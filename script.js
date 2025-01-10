@@ -239,7 +239,7 @@ class WordGame {
         if ('speechSynthesis' in window) {
             const utterance = new SpeechSynthesisUtterance(letter);
             utterance.lang = "en-US"; // 設定語言為美式英語
-            utterance.rate = 0.8; // 設定語速
+            utterance.rate = 0.1; // 設定語速
             speechSynthesis.speak(utterance);
         } else {
             console.warn("你的瀏覽器不支援 Web Speech API！");
