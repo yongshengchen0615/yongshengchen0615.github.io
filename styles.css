@@ -1,0 +1,126 @@
+/* 全局樣式 - 暗色模式 */
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #121212;
+    color: #ffffff;
+    margin: 0;
+    padding: 0;
+}
+
+/* 分數顯示區 */
+#scoreDisplay {
+    font-size: 24px;
+    font-weight: bold;
+    margin: 20px 0;
+    transition: transform 0.2s ease-in-out;
+}
+
+/* 分數變化動畫 */
+.score-animation {
+    transform: scale(1.2);
+}
+
+/* 單詞顯示區 */
+#wordDisplay {
+    font-size: 28px;
+    font-weight: bold;
+    margin: 10px 0;
+    color: #bb86fc; /* 紫色強調色 */
+}
+
+/* 9 宮格佈局 */
+#gridContainer {
+    display: grid;
+    grid-template-columns: repeat(3, 80px); /* 3x3 格子 */
+    grid-template-rows: repeat(3, 80px);
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* 每個字母按鈕 */
+.grid-item {
+    font-size: 24px;
+    font-weight: bold;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #1e1e1e;
+    border: 2px solid #333;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    color: #ffffff;
+}
+
+/* 滑鼠懸停效果 */
+.grid-item:hover {
+    background-color: #292929;
+}
+
+/* 選擇正確的字母 */
+.grid-item.correct {
+    background-color: #4caf50;
+    color: #ffffff;
+    border-color: #388e3c;
+}
+
+/* 選擇錯誤的字母 */
+.grid-item.wrong {
+    background-color: #d32f2f;
+    color: #ffffff;
+    border-color: #b71c1c;
+}
+
+/* 顯示提示字母 */
+.grid-item.hint {
+    background-color: #ff9800;
+    color: #ffffff;
+    border-color: #e65100;
+}
+
+/* 顯示單詞時隱藏的字母 */
+.gray {
+    color: #888888;
+}
+
+/* 顯示單詞時已揭示的字母 */
+.black {
+    color: #ffffff;
+}
+
+/* 🔹 加分動畫 */
+.reward-animation {
+    font-size: 40px;
+    font-weight: bold;
+    color: #00c853;
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 1;
+    transition: opacity 0.5s, transform 0.5s;
+}
+
+/* 🔹 扣分動畫 */
+.penalty-animation {
+    font-size: 40px;
+    font-weight: bold;
+    color: #ff1744;
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 1;
+    transition: opacity 0.5s, transform 0.5s;
+}
+
+/* 🔹 動畫淡出與上升 */
+@keyframes fadeUp {
+    0% { opacity: 1; transform: translateY(0px); }
+    100% { opacity: 0; transform: translateY(-10px); }
+}
