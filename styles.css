@@ -1,4 +1,4 @@
-/* 全局樣式 - 暗色模式 */
+/* 🔲 全局樣式 - 強化對比暗色模式 */
 body {
     font-family: Arial, sans-serif;
     text-align: center;
@@ -8,119 +8,170 @@ body {
     padding: 0;
 }
 
-/* 分數顯示區 */
+/* 🔢 分數顯示區 */
 #scoreDisplay {
-    font-size: 24px;
+    font-size: 32px;
     font-weight: bold;
     margin: 20px 0;
-    transition: transform 0.2s ease-in-out;
+    transition: transform 0.3s ease-in-out, color 0.3s ease-in-out;
 }
 
-/* 分數變化動畫 */
+/* ⭐ 分數變化動畫 */
 .score-animation {
-    transform: scale(1.2);
+    transform: scale(1.5);
+    color: #ffd700; /* 金黃色 */
+    text-shadow: 0px 0px 12px #ffd700;
 }
 
-/* 單詞顯示區 */
+/* 🔤 單詞顯示區 */
 #wordDisplay {
-    font-size: 28px;
+    font-size: 34px;
     font-weight: bold;
     margin: 10px 0;
-    color: #bb86fc; /* 紫色強調色 */
+    color: #bb86fc;
+    letter-spacing: 3px;
+    text-shadow: 0px 0px 12px #bb86fc;
 }
 
-/* 9 宮格佈局 */
+/* 🔲 9 宮格佈局 */
 #gridContainer {
     display: grid;
-    grid-template-columns: repeat(3, 80px); /* 3x3 格子 */
-    grid-template-rows: repeat(3, 80px);
-    gap: 12px;
+    grid-template-columns: repeat(3, 100px);
+    grid-template-rows: repeat(3, 100px);
+    gap: 18px;
     justify-content: center;
     margin-top: 20px;
 }
 
-/* 每個字母按鈕 */
+/* 🔘 每個字母按鈕 - 增強對比度 & 可點擊效果 */
 .grid-item {
-    font-size: 24px;
+    font-size: 30px;
     font-weight: bold;
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #1e1e1e;
-    border: 2px solid #333;
-    border-radius: 10px;
+    background: linear-gradient(145deg, #1c1c1c, #2d2d2d);
+    border: 4px solid #444;
+    border-radius: 14px;
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     position: relative;
     color: #ffffff;
+    box-shadow: 6px 6px 12px #0d0d0d, -6px -6px 12px #333;
 }
 
-/* 滑鼠懸停效果 */
+/* 🔍 滑鼠懸停效果 - 更明顯 */
 .grid-item:hover {
-    background-color: #292929;
+    background: linear-gradient(145deg, #323232, #404040);
+    box-shadow: inset 6px 6px 12px #0d0d0d, inset -6px -6px 12px #444;
+    transform: scale(1.08);
 }
 
-/* 選擇正確的字母 */
+/* 🔽 按下按鈕時的回饋 */
+.grid-item:active {
+    transform: scale(0.9);
+    box-shadow: inset 8px 8px 14px #0d0d0d, inset -8px -8px 14px #444;
+}
+
+/* ✅ 正確選擇的字母 - 加強亮度 */
 .grid-item.correct {
     background-color: #4caf50;
     color: #ffffff;
-    border-color: #388e3c;
+    border-color: #2e7d32;
+    box-shadow: 0px 0px 16px #00e676;
+    animation: glowEffect 0.5s ease-in-out;
 }
 
-/* 選擇錯誤的字母 */
+/* ❌ 選擇錯誤的字母 - 紅色強化 + 閃爍 */
 .grid-item.wrong {
-    background-color: #d32f2f;
+    background-color: #ff3d00;
     color: #ffffff;
     border-color: #b71c1c;
+    animation: shake 0.3s ease-in-out, redFlash 0.5s ease-in-out;
 }
 
-/* 顯示提示字母 */
+/* ❌ 增強錯誤動畫 - 紅色閃爍 */
+@keyframes redFlash {
+    0% { background-color: #ff3d00; }
+    50% { background-color: #ff8a65; }
+    100% { background-color: #ff3d00; }
+}
+
+/* ❌ 錯誤答案的更強烈抖動 */
+@keyframes shake {
+    0%, 100% { transform: translateX(0px); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-8px); }
+    80% { transform: translateX(8px); }
+}
+
+/* 🔥 提示字母 - 增強閃爍 + 黃色更顯眼 */
 .grid-item.hint {
-    background-color: #ff9800;
+    background-color: #ffa726;
     color: #ffffff;
-    border-color: #e65100;
+    border-color: #ff6f00;
+    box-shadow: 0px 0px 20px #ffd740;
+    animation: glowHint 1s infinite alternate;
 }
 
-/* 顯示單詞時隱藏的字母 */
-.gray {
-    color: #888888;
+/* 💡 提示字母的強化光暈 */
+@keyframes glowHint {
+    0% { box-shadow: 0px 0px 15px #ffd740; }
+    100% { box-shadow: 0px 0px 25px #ffff00; }
 }
 
-/* 顯示單詞時已揭示的字母 */
-.black {
-    color: #ffffff;
-}
-
-/* 🔹 加分動畫 */
+/* 🎯 分數動畫區 */
 .reward-animation {
-    font-size: 40px;
+    font-size: 44px;
     font-weight: bold;
-    color: #00c853;
+    color: #00e676;
     position: absolute;
-    top: -30px;
+    top: -50px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) scale(1);
     opacity: 1;
-    transition: opacity 0.5s, transform 0.5s;
+    animation: rewardEffect 0.7s ease-out;
 }
 
-/* 🔹 扣分動畫 */
 .penalty-animation {
-    font-size: 40px;
+    font-size: 44px;
     font-weight: bold;
     color: #ff1744;
     position: absolute;
-    top: -30px;
+    top: -50px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) scale(1);
     opacity: 1;
-    transition: opacity 0.5s, transform 0.5s;
+    animation: penaltyEffect 0.7s ease-out;
 }
 
-/* 🔹 動畫淡出與上升 */
-@keyframes fadeUp {
-    0% { opacity: 1; transform: translateY(0px); }
-    100% { opacity: 0; transform: translateY(-10px); }
+/* 🎯 分數動畫 - 變大 + 上升 */
+@keyframes rewardEffect {
+    0% { opacity: 1; transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.4); }
+    100% { opacity: 0; transform: translateX(-50%) scale(1.6); }
+}
+
+@keyframes penaltyEffect {
+    0% { opacity: 1; transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.3); }
+    100% { opacity: 0; transform: translateX(-50%) scale(1.5); }
+}
+
+/* 🏆 修正未揭示的字母為清晰的灰色 */
+.gray {
+    color: #b0b0b0 !important;
+    opacity: 0.7;
+    transition: color 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* 🏆 修正揭示後的字母為高對比度白色 */
+.black {
+    color: #ffffff !important;
+    opacity: 1;
+    text-shadow: 0px 0px 6px #ffffff;
+    transition: color 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
