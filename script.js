@@ -5,44 +5,11 @@ const wordList = [
     { word: "banana", translation: "香蕉" },
     { word: "dog", translation: "狗" },
     { word: "cat", translation: "貓" },
-    { word: "house", translation: "房子" },
-    { word: "car", translation: "車" },
-    { word: "tree", translation: "樹" },
-    { word: "sun", translation: "太陽" },
-    { word: "water", translation: "水" },
-    { word: "milk", translation: "牛奶" },
-    { word: "bread", translation: "麵包" },
-    { word: "rice", translation: "米飯" },
-    { word: "egg", translation: "雞蛋" },
-    { word: "father", translation: "爸爸" },
-    { word: "mother", translation: "媽媽" },
-    { word: "brother", translation: "兄弟" },
-    { word: "sister", translation: "姐妹" },
-    { word: "school", translation: "學校" },
-    { word: "teacher", translation: "老師" },
-    { word: "student", translation: "學生" },
-    { word: "pen", translation: "筆" },
-    { word: "book", translation: "書" },
-    { word: "chair", translation: "椅子" },
-    { word: "table", translation: "桌子" },
-    { word: "door", translation: "門" },
-    { word: "window", translation: "窗戶" },
-    { word: "happy", translation: "快樂的" },
-    { word: "big", translation: "大的" },
-    { word: "small", translation: "小的" },
-    { word: "cold", translation: "冷的" },
-    { word: "hot", translation: "熱的" },
-    { word: "run", translation: "跑" },
-    { word: "jump", translation: "跳" },
-    { word: "walk", translation: "走" },
-    { word: "eat", translation: "吃" },
-    { word: "drink", translation: "喝" },
-    { word: "sleep", translation: "睡覺" },
-    { word: "hello", translation: "你好" },
-    { word: "goodbye", translation: "再見" },
-    { word: "thank you", translation: "謝謝" },
-    { word: "sorry", translation: "對不起" }
+    { word: "orange", translation: "橙子" },
+    { word: "mango", translation: "芒果" },
+    { word: "pear", translation: "梨" },
 ];
+
 
 class WordGame {
     constructor(wordList) {
@@ -210,13 +177,26 @@ class WordGame {
     }
 
     nextWord() {
-        let newIndex;
-        do {
-            newIndex = Math.floor(Math.random() * this.wordList.length);
-        } while (newIndex === this.currentWordIndex);
-        this.currentWordIndex = newIndex;
-        this.resetWord();
+    // 確保已出現單字的索引記錄
+    if (!this.usedWords) {
+        this.usedWords = new Set();
     }
+
+    // 如果所有單字都出現過，則重置記錄
+    if (this.usedWords.size >= this.wordList.length) {
+        this.usedWords.clear();
+    }
+
+    let newIndex;
+    do {
+        newIndex = Math.floor(Math.random() * this.wordList.length);
+    } while (this.usedWords.has(newIndex)); // 避免選擇已經出現過的單字
+
+    this.usedWords.add(newIndex); // 記錄已選過的單字
+    this.currentWordIndex = newIndex;
+    this.resetWord();
+}
+
 
     shuffleArray(array) {
         for (let i = array.length - 1; i > 0; i--) {
