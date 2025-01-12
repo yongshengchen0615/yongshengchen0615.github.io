@@ -43,7 +43,7 @@ class WordGame {
         this.currentLetterIndex = 0;
         this.incorrectAttempts = 0;
         this.correctStreak = 0;
-        this.difficultyLevel = 1;
+        this.difficultyLevel = 0;
         this.roundsCompleted = 0;
         this.completedRounds = 0; // 追蹤已完成的單字數量
 
