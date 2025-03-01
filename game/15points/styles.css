@@ -37,7 +37,7 @@ canvas {
     top: 0;
     left: 0;
     border-radius: 12px;
-    cursor: pointer;
+    cursor: crosshair;
 }
 
 button {
@@ -52,14 +52,33 @@ button {
     border-radius: 8px;
 }
 
+/* 獎項列表 - 固定高度 + 滾動條 */
 #prize-list {
-    margin-top: 20px;
+    max-height: 200px; /* 限制最大高度，避免超出 */
+    overflow-y: auto; /* 當獎項過多時顯示滾動條 */
     padding: 12px;
     background: #fff3cd;
     border: 2px solid #ffcc00;
     border-radius: 12px;
+    text-align: left;
+    width: 80%; /* 避免過寬，保持美觀 */
+    margin: 20px auto;
 }
 
+/* 響應式調整：手機畫面適配 */
+@media (max-width: 600px) {
+    .google-btn {
+        padding: 10px 20px;
+        font-size: 16px;
+        left: 10px;
+        bottom: 10px;
+    }
+    
+    #prize-list {
+        max-height: 150px; /* 手機上適當縮小高度 */
+        font-size: 14px; /* 手機上縮小字體 */
+    }
+}
 
 .google-btn {
     position: fixed;
@@ -81,14 +100,4 @@ button {
 .google-btn:hover {
     background-color: #357ae8;
     transform: scale(1.05);
-}
-
-/* 響應式調整：手機畫面適配 */
-@media (max-width: 600px) {
-    .google-btn {
-        padding: 10px 20px;
-        font-size: 16px;
-        left: 10px;
-        bottom: 10px;
-    }
 }
