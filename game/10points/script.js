@@ -2,8 +2,7 @@
 const prizePool = [
     { prize: "🔸 身體按摩券 💆", probability: 5 }, 
     { prize: "🔸 甜湯 / 雞湯 🍵", probability: 10 },  
-    { prize: "🔸 複方精油 1 瓶 🌸", probability: 15 }, 
-    { prize: "🔸 基底精油 1 瓶 🌿", probability: 20 }, 
+    { prize: "🔸 200 元回饋金", probability: 35 },  
     { prize: "🔸 100元回饋金", probability: 50 }, 
 ];
 
