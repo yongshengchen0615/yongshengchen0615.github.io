@@ -2,9 +2,10 @@
 const prizePool = [
     { prize: "🔸 腳底按摩券 🦶 x2", probability: 6 }, 
     { prize: "🔸 身體按摩券 💆", probability: 8 },  
-    { prize: "🔸 甜湯 / 雞湯 🍵", probability: 20 }, 
-    { prize: "🔸 300元回饋金", probability: 28 }, 
-    { prize: "🔸 200元回饋金", probability: 38 }, 
+    { prize: "🔸 甜湯 / 雞湯 🍵", probability: 18 }, 
+    { prize: "🔸 茶包禮盒 🍵", probability: 24 }, 
+    { prize: "🔸 300元回饋金", probability: 22 }, 
+    { prize: "🔸 200元回饋金", probability: 22 },
    
 ];
 
