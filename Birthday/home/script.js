@@ -1,6 +1,6 @@
 // **店家 GPS 經緯度**
-const storeLat = 22.98944263649047; // 你的店家緯度
-const storeLon = 120.20551617583745; // 你的店家經度
+const storeLat = 22.992065379940605; // 你的店家緯度
+const storeLon = 120.21046723409638; // 你的店家經度
 const allowedDistance = 0.1; // 設定允許範圍 (公里)，100 公尺 = 0.1 公里
 
 function checkLocation() {
