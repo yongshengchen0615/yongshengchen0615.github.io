@@ -3,71 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google 登入範例</title>
-    
-    <!-- 🔹 正確載入 Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #user-info { margin-top: 20px; display: none; }
-        img { border-radius: 50px; margin-top: 10px; }
-    </style>
+    <title>Firebase Google 登入 (ES6 模組)</title>
 </head>
 <body>
-    <h2>使用 Google 帳號登入</h2>
-    <button id="google-login">使用 Google 登入</button>
+    <h2>Google 登入示例</h2>
+    <button id="googleLogin">使用 Google 登入</button>
     <button id="logout" style="display:none;">登出</button>
+    <p id="user-info"></p>
 
-    <div id="user-info">
-        <h3>歡迎, <span id="user-name"></span></h3>
-        <img id="user-pic" src="" width="80" height="80">
-        <p>Email: <span id="user-email"></span></p>
-    </div>
+    <!-- ✅ 必須使用 type="module" -->
+    <script type="module">
+        // ✅ ES6 模組版本 (使用 import)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    <script>
-        // 🔹 Firebase 設定 (請替換為你的 Firebase 設定)
+        // ✅ Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-    authDomain: "reservesystem-c8bbc.firebaseapp.com",
-    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-    projectId: "reservesystem-c8bbc",
-    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-    messagingSenderId: "138232489371",
-    appId: "1:138232489371:web:849190b97774b5abae2d3e",
-    measurementId: "G-XXDSGNYTV1"
+  authDomain: "reservesystem-c8bbc.firebaseapp.com",
+  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+  projectId: "reservesystem-c8bbc",
+  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+  messagingSenderId: "138232489371",
+  appId: "1:138232489371:web:849190b97774b5abae2d3e",
+  measurementId: "G-XXDSGNYTV1"
         };
 
-        // 🔹 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
+        // ✅ 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
 
-        // 🔹 Google 登入
-        document.getElementById("google-login").addEventListener("click", function() {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider)
+        // ✅ Google 登入
+        document.getElementById("googleLogin").addEventListener("click", () => {
+            signInWithPopup(auth, provider)
                 .then(result => {
                     const user = result.user;
-                    document.getElementById("user-name").innerText = user.displayName;
-                    document.getElementById("user-email").innerText = user.email;
-                    document.getElementById("user-pic").src = user.photoURL;
-
-                    document.getElementById("user-info").style.display = "block";
-                    document.getElementById("google-login").style.display = "none";
-                    document.getElementById("logout").style.display = "inline-block";
+                    document.getElementById("user-info").innerHTML = `登入成功: ${user.displayName} (${user.email})`;
+                    document.getElementById("googleLogin").style.display = "none";
+                    document.getElementById("logout").style.display = "block";
                 })
                 .catch(error => {
                     console.error("登入錯誤:", error);
                 });
         });
 
-        // 🔹 登出
-        document.getElementById("logout").addEventListener("click", function() {
-            auth.signOut().then(() => {
-                document.getElementById("user-info").style.display = "none";
-                document.getElementById("google-login").style.display = "inline-block";
+        // ✅ 登出
+        document.getElementById("logout").addEventListener("click", () => {
+            signOut(auth).then(() => {
+                document.getElementById("user-info").innerHTML = "已登出";
+                document.getElementById("googleLogin").style.display = "block";
                 document.getElementById("logout").style.display = "none";
             }).catch(error => {
                 console.error("登出錯誤:", error);
