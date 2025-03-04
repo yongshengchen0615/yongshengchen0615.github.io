@@ -10,20 +10,31 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #ffe5b4; /* 溫暖的米黃色背景 */
-            font-family: "Microsoft JhengHei", sans-serif;
+            background-color: #ffe5b4;
+            font-family: "Microsoft JhengHei", "Arial", sans-serif;
             margin: 0;
+            flex-direction: column;
         }
+
+        .message {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 18px;
+            color: #d9534f;
+            padding: 10px;
+        }
+
         .container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            grid-template-columns: repeat(2, minmax(120px, 1fr)); /* 兩列排列 */
             gap: 15px;
-            width: min(90vw, 300px);
+            width: min(90vw, 350px);
         }
+
         .button {
-            padding: 30px;
-            text-align: center;
-            font-size: 30px;
+            min-width: 120px;
+            padding: 20px;
+            font-size: 24px;
             color: white;
             background-color: #ff7f50;
             border: none;
@@ -35,42 +46,42 @@
             justify-content: center;
             align-items: center;
             box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
-            pointer-events: none; /* 預設禁用按鈕 */
-            opacity: 0.5; /* 預設變淡顯示 */
+            pointer-events: none;
+            opacity: 0.5;
+            white-space: nowrap; /* 防止文字換行 */
         }
+
         .button.enabled {
             pointer-events: auto;
             opacity: 1;
         }
+
         .button:hover {
             background-color: #ff6347;
             transform: scale(1.05);
         }
-        .message {
-            text-align: center;
-            margin-bottom: 20px;
-            font-size: 18px;
-            color: #d9534f;
+
+        @media (max-width: 400px) {
+            .container {
+                grid-template-columns: repeat(1, 1fr); /* 小螢幕變單列排列 */
+            }
         }
     </style>
 </head>
 <body>
-    <div>
-        <div class="message" id="message">正在獲取您的定位...</div>
-        <div class="container">
-            <a href="./5points/index.html" class="button" id="btn5">5點</a>
-            <a href="./10points/index.html" class="button" id="btn10">10點</a>
-            <a href="./15points/index.html" class="button" id="btn15">15點</a>
-            <a href="./20points/index.html" class="button" id="btn20">20點</a>
-        </div>
+    <div class="message" id="message">正在獲取您的定位...</div>
+    <div class="container">
+        <a href="./5points/index.html" class="button" id="btn5">5點</a>
+        <a href="./10points/index.html" class="button" id="btn10">10點</a>
+        <a href="./15points/index.html" class="button" id="btn15">15點</a>
+        <a href="./20points/index.html" class="button" id="btn20">20點</a>
     </div>
 
     <script>
         // **手動輸入店家 GPS 經緯度**
-        // 例如：台北101 經緯度
-        const storeLat = 22.989387612842272;
-        const storeLon = 120.20557594637502;
-        const allowedDistance = 0.3; // 設定允許範圍 (公里)，例如 100 公尺 = 0.1 公里
+        const storeLat = 22.989350930639816; // 你的店家緯度
+        const storeLon = 120.20550621390623; // 你的店家經度
+        const allowedDistance = 0.1; // 設定允許範圍 (公里)，100 公尺 = 0.1 公里
 
         function checkLocation() {
             if (navigator.geolocation) {
@@ -107,7 +118,7 @@
             });
         }
 
-        // 使用「哈弗賽公式」計算兩個經緯度之間的距離（公里）
+        // **哈弗賽公式計算兩點間距離（公里）**
         function getDistanceFromLatLon(lat1, lon1, lat2, lon2) {
             const R = 6371; // 地球半徑（公里）
             const dLat = deg2rad(lat2 - lat1);
@@ -117,8 +128,7 @@
                 Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
                 Math.sin(dLon / 2) * Math.sin(dLon / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            const distance = R * c;
-            return distance;
+            return R * c; // 轉換成公里
         }
 
         function deg2rad(deg) {
