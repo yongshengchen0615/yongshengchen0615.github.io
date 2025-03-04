@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電話簡訊驗證</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+        import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+            authDomain: "reservesystem-c8bbc.firebaseapp.com",
+            projectId: "reservesystem-c8bbc",
+            storageBucket: "reservesystem-c8bbc.appspot.com",
+            messagingSenderId: "138232489371",
+            appId: "1:138232489371:web:849190b97774b5abae2d3e"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        auth.useDeviceLanguage();
+
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            'size': 'normal',
+            'callback': (response) => {
+                console.log("reCAPTCHA verified");
+            },
+            'expired-callback': () => {
+                console.log("reCAPTCHA expired");
+            }
+        });
+
+        function sendVerificationCode() {
+            const phoneNumber = document.getElementById("phone").value;
+            const appVerifier = window.recaptchaVerifier;
+
+            signInWithPhoneNumber(auth, phoneNumber, appVerifier)
+                .then((confirmationResult) => {
+                    window.confirmationResult = confirmationResult;
+                    alert("驗證碼已發送！");
+                }).catch((error) => {
+                    console.error("發送驗證碼失敗", error);
+                    alert("發送驗證碼失敗: " + error.message);
+                });
+        }
+
+        function verifyCode() {
+            const code = document.getElementById("verificationCode").value;
+            window.confirmationResult.confirm(code)
+                .then((result) => {
+                    alert("驗證成功！歡迎: " + result.user.phoneNumber);
+                }).catch((error) => {
+                    alert("驗證失敗: " + error.message);
+                });
+        }
+
+        window.sendVerificationCode = sendVerificationCode;
+        window.verifyCode = verifyCode;
+    </script>
+</head>
+<body>
+    <h2>電話簡訊驗證</h2>
+    <label>輸入手機號碼（請加上國碼，例如 +886912345678）:</label>
+    <input type="text" id="phone" placeholder="+886912345678">
+    <div id="recaptcha-container"></div>
+    <button onclick="sendVerificationCode()">發送驗證碼</button>
+    <br><br>
+    <label>輸入驗證碼:</label>
+    <input type="text" id="verificationCode" placeholder="123456">
+    <button onclick="verifyCode()">驗證</button>
+</body>
+</html>
