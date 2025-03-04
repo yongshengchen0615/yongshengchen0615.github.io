@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase 電話驗證</title>
+    <!-- 正確載入 Firebase SDK (使用 CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+    <h2>Firebase 電話驗證</h2>
+    <label for="phoneNumber">輸入你的手機號碼：</label>
+    <input type="text" id="phoneNumber" placeholder="+886912345678">
+    <div id="recaptcha-container"></div>
+    <button onclick="sendOTP()">發送驗證碼</button>
+
+    <br><br>
+
+    <label for="otpCode">輸入驗證碼：</label>
+    <input type="text" id="otpCode">
+    <button onclick="verifyOTP()">驗證</button>
+
+    <p id="message"></p>
+
+    <script>
+        // Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+  authDomain: "reservesystem-c8bbc.firebaseapp.com",
+  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+  projectId: "reservesystem-c8bbc",
+  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+  messagingSenderId: "138232489371",
+  appId: "1:138232489371:web:849190b97774b5abae2d3e",
+  measurementId: "G-XXDSGNYTV1"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        function sendOTP() {
+            const phoneNumber = document.getElementById("phoneNumber").value;
+            const appVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
+                'size': 'invisible'
+            });
+
+            firebase.auth().signInWithPhoneNumber(phoneNumber, appVerifier)
+                .then((confirmationResult) => {
+                    window.confirmationResult = confirmationResult;
+                    document.getElementById("message").innerText = "驗證碼已發送！請檢查簡訊。";
+                })
+                .catch((error) => {
+                    document.getElementById("message").innerText = "錯誤：" + error.message;
+                });
+        }
+
+        function verifyOTP() {
+            const otpCode = document.getElementById("otpCode").value;
+            window.confirmationResult.confirm(otpCode)
+                .then((result) => {
+                    document.getElementById("message").innerText = "驗證成功！使用者：" + result.user.phoneNumber;
+                })
+                .catch((error) => {
+                    document.getElementById("message").innerText = "驗證失敗：" + error.message;
+                });
+        }
+    </script>
+</body>
+</html>
