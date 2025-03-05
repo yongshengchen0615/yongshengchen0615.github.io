@@ -4,20 +4,26 @@ body {
     font-family: Arial, sans-serif;
     padding: 50px;
     background: linear-gradient(to right, #f8f9fa, #e9ecef);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-/* 讓按鈕區塊置中 */
+/* 按鈕區塊置中 */
 #button-container {
-    position: flex;
-    justify-content: center; /* 讓按鈕水平置中 */
+    display: flex;
+    justify-content: center;
     align-items: center;
-    width: 100%; /* 確保區塊佔滿整行 */
+    width: 100%;
     margin-top: 20px;
 }
 
-/* 確保按鈕本身也能正確置中 */
+/* 統一按鈕樣式 */
 button {
-    min-width: 180px; /* 讓按鈕大小統一 */
+    min-width: 180px;
     padding: 12px 24px;
     font-size: 18px;
     font-weight: bold;
@@ -25,8 +31,7 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    display: block; /* 讓按鈕獨占一行 */
-    margin: 0 auto; /* 讓按鈕在區塊內置中 */
+    text-align: center;
 }
 
 /* Google 登入按鈕 */
@@ -34,30 +39,25 @@ button {
     background: linear-gradient(to right, #4285F4, #34A853);
     color: white;
     box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    transition: background 0.3s ease-in-out, transform 0.2s ease-in-out;
 }
 
 #login-btn:hover {
     background: linear-gradient(to right, #357AE8, #2E8B57);
+    transform: scale(1.05);
 }
 
 /* 使用者資訊區塊 */
 #user-info {
-    display: none; /* 預設隱藏 */
+    display: none;
     margin-top: 20px;
     padding: 20px;
     background: white;
     border-radius: 10px;
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
     max-width: 400px;
-    margin-left: auto;
-    margin-right: auto;
-    text-align: center; /* 讓內容置中 */
-}
-
-/* 使用者資訊內的文字 */
-#user-info p {
-    font-size: 18px;
-    margin-bottom: 10px;
+    width: 90%;
+    text-align: center;
 }
 
 /* 使用者頭像 */
@@ -66,7 +66,8 @@ button {
     height: 100px;
     border-radius: 50%;
     border: 3px solid #4285F4;
-    margin-bottom: 10px; /* 增加與按鈕的距離 */
+    margin-bottom: 10px;
+    object-fit: cover; /* 防止圖片變形 */
 }
 
 /* 登出按鈕 */
@@ -78,24 +79,24 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 15px; /* 與上方內容區隔 */
+    margin-top: 15px;
     display: none; /* 預設隱藏，登入後才顯示 */
     width: 80%;
-    text-align: center;
+    max-width: 300px;
 }
 
 #logout-btn:hover {
     background: #c82333;
 }
 
-/* 響應式設計（適應手機、平板） */
+/* 響應式設計 */
 @media screen and (max-width: 768px) {
     body {
         padding: 20px;
     }
 
     button {
-        width: 80%; /* 手機上按鈕變大 */
+        width: 80%;
         font-size: 16px;
     }
 
@@ -115,8 +116,11 @@ button {
         font-size: 20px;
     }
 
-    button {
+    #login-btn, #logout-btn {
         width: 100%;
+    }
+
+    button {
         font-size: 16px;
         padding: 10px;
     }
