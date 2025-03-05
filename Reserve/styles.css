@@ -6,8 +6,18 @@ body {
     background: linear-gradient(to right, #f8f9fa, #e9ecef);
 }
 
-/* 按鈕樣式 */
+/* 讓按鈕區塊置中 */
+#button-container {
+    display: flex;
+    justify-content: center; /* 讓按鈕水平置中 */
+    align-items: center;
+    gap: 20px; /* 設定按鈕間距 */
+    margin-top: 20px;
+}
+
+/* 統一按鈕樣式 */
 button {
+    min-width: 180px; /* 讓按鈕寬度一致 */
     padding: 12px 24px;
     font-size: 18px;
     font-weight: bold;
@@ -15,7 +25,6 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin: 10px;
 }
 
 /* Google 登入按鈕 */
@@ -34,6 +43,7 @@ button {
     background: #dc3545;
     color: white;
     box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    display: none; /* 預設隱藏，登入後才顯示 */
 }
 
 #logout-btn:hover {
@@ -42,7 +52,7 @@ button {
 
 /* 使用者資訊區塊 */
 #user-info {
-    display: none;
+    display: none; /* 預設隱藏 */
     margin-top: 20px;
     padding: 20px;
     background: white;
@@ -53,11 +63,13 @@ button {
     margin-right: auto;
 }
 
+/* 使用者資訊內的文字 */
 #user-info p {
     font-size: 18px;
     margin-bottom: 10px;
 }
 
+/* 使用者頭像 */
 #user-pic {
     width: 100px;
     height: 100px;
@@ -72,7 +84,7 @@ button {
     }
 
     button {
-        width: 80%;
+        width: 80%; /* 手機上按鈕變大 */
         font-size: 16px;
     }
 
