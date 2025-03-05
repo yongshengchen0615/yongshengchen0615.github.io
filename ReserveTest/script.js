@@ -1,13 +1,11 @@
-// Firebase 設定（請替換為你的 Firebase 專案資訊）
+// Firebase 設定
 const firebaseConfig = {
-    apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-    authDomain: "reservesystem-c8bbc.firebaseapp.com",
-    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-    projectId: "reservesystem-c8bbc",
-    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-    messagingSenderId: "138232489371",
-    appId: "1:138232489371:web:849190b97774b5abae2d3e",
-    measurementId: "G-XXDSGNYTV1"
+    apiKey: "你的API Key",
+    authDomain: "你的Auth網域",
+    projectId: "你的Project ID",
+    storageBucket: "你的Storage桶",
+    messagingSenderId: "你的Sender ID",
+    appId: "你的App ID"
 };
 
 // 初始化 Firebase
@@ -27,16 +25,7 @@ loginBtn.addEventListener("click", async () => {
     const provider = new firebase.auth.GoogleAuthProvider();
     try {
         const result = await auth.signInWithPopup(provider);
-        const user = result.user;
-
-        userName.textContent = user.displayName;
-        userPic.src = user.photoURL;
-        loginBtn.style.display = "none";
-        logoutBtn.style.display = "block";
-        userInfo.style.display = "block";
-        document.getElementById("appointment-section").style.display = "block";
-
-        loadUserAppointments(user.uid);
+        loadUserAppointments(result.user.uid);
     } catch (error) {
         alert("登入失敗: " + error.message);
     }
@@ -44,12 +33,7 @@ loginBtn.addEventListener("click", async () => {
 
 // 登出
 logoutBtn.addEventListener("click", () => {
-    auth.signOut().then(() => {
-        loginBtn.style.display = "block";
-        logoutBtn.style.display = "none";
-        userInfo.style.display = "none";
-        document.getElementById("appointment-section").style.display = "none";
-    });
+    auth.signOut().then(() => location.reload());
 });
 
 // 監聽登入狀態
@@ -78,7 +62,7 @@ document.getElementById("submit-appointment").addEventListener("click", async ()
     loadUserAppointments(user.uid);
 });
 
-// 顯示預約
+// 顯示 & 刪除預約
 async function loadUserAppointments(userId) {
     const appointmentsList = document.getElementById("user-appointments");
     appointmentsList.innerHTML = "";
@@ -86,6 +70,14 @@ async function loadUserAppointments(userId) {
     querySnapshot.forEach(doc => {
         const li = document.createElement("li");
         li.textContent = `${doc.data().date} - ${doc.data().time}`;
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "取消";
+        cancelBtn.onclick = async () => {
+            await db.collection("appointments").doc(doc.id).delete();
+            alert("預約已取消！");
+            loadUserAppointments(userId);
+        };
+        li.appendChild(cancelBtn);
         appointmentsList.appendChild(li);
     });
 }
