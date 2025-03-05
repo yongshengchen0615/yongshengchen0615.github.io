@@ -3,220 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>預約系統</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 500px;
-            margin: 20px auto;
-            text-align: center;
-        }
-        input, button {
-            margin: 5px;
-            padding: 10px;
-            width: 80%;
-        }
-        ul {
-            list-style: none;
-            padding: 0;
-        }
-        li {
-            background: #f4f4f4;
-            margin: 5px;
-            padding: 10px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .edit-btn, .delete-btn {
-            margin-left: 5px;
-            padding: 5px;
-            cursor: pointer;
-            border-radius: 5px;
-            color: white;
-            border: none;
-        }
-        .edit-btn { background: blue; }
-        .delete-btn { background: red; }
-    </style>
-</head>
-<body>
+    <title>LINE 登入示範</title>
+    <script>
+        // 設定 LINE 登入參數
+        const CLIENT_ID = "2005939681"; // 替換為你的 Channel ID
+        const REDIRECT_URI = "https://yongshengchen0615.github.io/ReserveTest/index.html"; // 替換為你的回調網址
+        const STATE = "random_string"; // 可以使用隨機字串
 
-    <h2>Firebase 預約系統</h2>
-    <button id="loginButton">Google 登入</button>
-    <button id="logoutButton" style="display:none;">登出</button>
-    <p id="userInfo"></p>
+        function loginWithLine() {
+            const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${STATE}&scope=profile%20openid%20email`;
+            window.location.href = loginUrl;
+        }
 
-    <h3>新增預約</h3>
-    <input type="date" id="dateInput" disabled>
-    <input type="time" id="timeInput" disabled>
-    <button id="addButton" disabled>新增預約</button>
+        // 解析 URL 取得授權碼
+        function getUrlParameter(name) {
+            name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
+            const regex = new RegExp("[\\?&]" + name + "=([^&#]*)");
+            const results = regex.exec(window.location.search);
+            return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+        }
 
-    <h3>我的預約</h3>
-    <ul id="appointmentsList"></ul>
-
-    <script type="module">
-        // 匯入 Firebase 函式
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getDatabase, ref, push, set, update, remove, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
-
-        // Firebase 設定
-        const firebaseConfig = {
-            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-            authDomain: "reservesystem-c8bbc.firebaseapp.com",
-            databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-            projectId: "reservesystem-c8bbc",
-            storageBucket: "reservesystem-c8bbc.appspot.com",
-            messagingSenderId: "138232489371",
-            appId: "1:138232489371:web:849190b97774b5abae2d3e",
-            measurementId: "G-XXDSGNYTV1"
+        // 登入成功後處理 Callback
+        window.onload = function() {
+            const code = getUrlParameter("code");
+            if (code) {
+                document.getElementById("status").innerText = "登入成功，正在處理...";
+                fetchToken(code);
+            }
         };
 
-        // 初始化 Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const database = getDatabase(app);
-        const provider = new GoogleAuthProvider();
-
-        // 取得 UI 元素
-        const loginButton = document.getElementById("loginButton");
-        const logoutButton = document.getElementById("logoutButton");
-        const userInfo = document.getElementById("userInfo");
-        const dateInput = document.getElementById("dateInput");
-        const timeInput = document.getElementById("timeInput");
-        const addButton = document.getElementById("addButton");
-        const appointmentsList = document.getElementById("appointmentsList");
-
-        let currentUser = null;
-
-        // Google 登入
-        loginButton.addEventListener("click", () => {
-            signInWithPopup(auth, provider)
-                .then((result) => {
-                    currentUser = result.user;
-                    updateUI();
-                    loadAppointments();
+        // 交換 access token 取得用戶資料
+        async function fetchToken(code) {
+            const response = await fetch("https://api.line.me/oauth2/v2.1/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: new URLSearchParams({
+                    grant_type: "authorization_code",
+                    code: code,
+                    redirect_uri: REDIRECT_URI,
+                    client_id: CLIENT_ID,
+                    client_secret: "YOUR_CLIENT_SECRET" // 替換為你的 Channel Secret
                 })
-                .catch((error) => console.error("登入失敗：", error));
-        });
-
-        // Google 登出
-        logoutButton.addEventListener("click", () => {
-            signOut(auth).then(() => {
-                currentUser = null;
-                updateUI();
-                appointmentsList.innerHTML = ""; // 清空預約列表
-            }).catch((error) => console.error("登出失敗：", error));
-        });
-
-        // 監聽登入狀態變更
-        onAuthStateChanged(auth, (user) => {
-            currentUser = user;
-            updateUI();
-            if (currentUser) {
-                loadAppointments();
-            }
-        });
-
-        // 更新 UI
-        function updateUI() {
-            if (currentUser) {
-                loginButton.style.display = "none";
-                logoutButton.style.display = "inline-block";
-                userInfo.innerHTML = `歡迎，${currentUser.displayName} (${currentUser.email})`;
-                dateInput.disabled = false;
-                timeInput.disabled = false;
-                addButton.disabled = false;
+            });
+            const data = await response.json();
+            console.log(data);
+            if (data.access_token) {
+                fetchUserProfile(data.access_token);
             } else {
-                loginButton.style.display = "inline-block";
-                logoutButton.style.display = "none";
-                userInfo.innerHTML = "";
-                dateInput.disabled = true;
-                timeInput.disabled = true;
-                addButton.disabled = true;
+                document.getElementById("status").innerText = "登入失敗，請重試";
             }
         }
 
-        // 新增預約
-        addButton.addEventListener("click", () => {
-            if (!currentUser) return;
-
-            const date = dateInput.value;
-            const time = timeInput.value;
-            if (!date || !time) return alert("請選擇日期和時間");
-
-            const appointmentsRef = ref(database, `appointments/${currentUser.uid}`);
-            const newAppointmentRef = push(appointmentsRef);
-            set(newAppointmentRef, {
-                date,
-                time,
-                user: currentUser.displayName,
-                email: currentUser.email,
-                uid: currentUser.uid
-            });
-
-            dateInput.value = "";
-            timeInput.value = "";
-        });
-
-        // 載入使用者的預約
-        function loadAppointments() {
-            if (!currentUser) return;
-            appointmentsList.innerHTML = ""; // 清空列表
-
-            const appointmentsRef = ref(database, `appointments/${currentUser.uid}`);
-
-            onChildAdded(appointmentsRef, (snapshot) => {
-                const appointment = snapshot.val();
-                const appointmentId = snapshot.key;
-                addAppointmentToList(appointment, appointmentId);
-            });
-
-            onChildChanged(appointmentsRef, (snapshot) => {
-                const appointment = snapshot.val();
-                const appointmentId = snapshot.key;
-                document.getElementById(appointmentId).innerHTML = `${appointment.date} ${appointment.time}`;
-            });
-
-            onChildRemoved(appointmentsRef, (snapshot) => {
-                document.getElementById(snapshot.key)?.remove();
-            });
-        }
-
-        // 顯示預約
-        function addAppointmentToList(appointment, appointmentId) {
-            const li = document.createElement("li");
-            li.id = appointmentId;
-            li.innerHTML = `${appointment.date} ${appointment.time}`;
-
-            // 修改按鈕
-            const editButton = document.createElement("button");
-            editButton.textContent = "修改";
-            editButton.classList.add("edit-btn");
-            editButton.addEventListener("click", () => {
-                const newDate = prompt("請輸入新的日期", appointment.date);
-                const newTime = prompt("請輸入新的時間", appointment.time);
-                if (newDate && newTime) {
-                    update(ref(database, `appointments/${currentUser.uid}/${appointmentId}`), { date: newDate, time: newTime });
+        // 取得用戶資料
+        async function fetchUserProfile(accessToken) {
+            const response = await fetch("https://api.line.me/v2/profile", {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${accessToken}`
                 }
             });
-
-            // 刪除按鈕
-            const deleteButton = document.createElement("button");
-            deleteButton.textContent = "刪除";
-            deleteButton.classList.add("delete-btn");
-            deleteButton.addEventListener("click", () => {
-                remove(ref(database, `appointments/${currentUser.uid}/${appointmentId}`));
-            });
-
-            li.appendChild(editButton);
-            li.appendChild(deleteButton);
-            appointmentsList.appendChild(li);
+            const user = await response.json();
+            document.getElementById("status").innerHTML = `
+                <h3>歡迎, ${user.displayName}!</h3>
+                <img src="${user.pictureUrl}" width="100" />
+                <p>User ID: ${user.userId}</p>
+            `;
         }
-
     </script>
-
+</head>
+<body>
+    <h2>LINE 登入範例</h2>
+    <button onclick="loginWithLine()">使用 LINE 登入</button>
+    <div id="status"></div>
 </body>
 </html>
