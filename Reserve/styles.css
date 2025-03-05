@@ -8,7 +8,7 @@ body {
 
 /* 讓按鈕區塊置中 */
 #button-container {
-    display: flex;
+    position: flex;
     justify-content: center; /* 讓按鈕水平置中 */
     align-items: center;
     width: 100%; /* 確保區塊佔滿整行 */
