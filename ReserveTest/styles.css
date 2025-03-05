@@ -1,71 +1,53 @@
-/* 全局樣式 */
+/* 調整整體頁面 */
 body {
     text-align: center;
     font-family: Arial, sans-serif;
     padding: 50px;
     background: linear-gradient(to right, #f8f9fa, #e9ecef);
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
 }
 
-/* 按鈕樣式 */
-button {
-    min-width: 180px;
-    padding: 12px 24px;
-    font-size: 18px;
+/* 預約表單樣式 */
+#booking-form {
+    display: none; /* 預設隱藏，登入後才顯示 */
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    margin: 20px auto;
+}
+
+#booking-form h3 {
+    margin-bottom: 15px;
+}
+
+#booking-form label {
+    display: block;
+    margin-top: 10px;
     font-weight: bold;
-    border: none;
+}
+
+#booking-form select,
+#booking-form input {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+/* 預約按鈕 */
+#submit-booking {
+    background: #28a745;
+    color: white;
+    font-size: 16px;
+    padding: 10px;
     border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    width: 100%;
+    margin-top: 15px;
 }
 
-/* Google 登入按鈕 */
-#login-btn {
-    background: linear-gradient(to right, #4285F4, #34A853);
-    color: white;
-}
-
-#login-btn:hover {
-    background: linear-gradient(to right, #357AE8, #2E8B57);
-}
-
-/* 使用者資訊區塊 */
-#user-info {
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 400px;
-    width: 90%;
-    text-align: center;
-}
-
-/* 預約功能區 */
-#appointment-section {
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-}
-
-/* 已預約時段 */
-#user-appointments li {
-    list-style: none;
-    padding: 8px;
-    background: #f8f9fa;
-    margin: 5px;
-    border-radius: 5px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+#submit-booking:hover {
+    background: #218838;
 }
