@@ -1,19 +1,18 @@
-// Firebase 設定（請替換為你的 Firebase 設定）
+// Firebase 設定
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-  authDomain: "reservesystem-c8bbc.firebaseapp.com",
-  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-  projectId: "reservesystem-c8bbc",
-  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-  messagingSenderId: "138232489371",
-  appId: "1:138232489371:web:849190b97774b5abae2d3e",
-  measurementId: "G-XXDSGNYTV1"
+    authDomain: "reservesystem-c8bbc.firebaseapp.com",
+    projectId: "reservesystem-c8bbc",
+    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+    messagingSenderId: "138232489371",
+    appId: "1:138232489371:web:849190b97774b5abae2d3e",
+    measurementId: "G-XXDSGNYTV1"
 };
 
 // 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore(); // ✅ Firestore 初始化
+const db = firebase.firestore();
 
 // Google 登入
 document.getElementById("login-btn").addEventListener("click", async () => {

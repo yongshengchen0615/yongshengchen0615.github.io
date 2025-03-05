@@ -58,30 +58,6 @@ button {
     width: 90%;
 }
 
-/* 預約輸入框 */
-#appointment-date, #appointment-time {
-    width: 80%;
-    padding: 8px;
-    margin: 10px 0;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-}
-
-/* 預約按鈕 */
-#submit-appointment {
-    background: #34A853;
-    color: white;
-    padding: 10px;
-    font-size: 16px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-#submit-appointment:hover {
-    background: #2E8B57;
-}
-
 /* 已預約時段 */
 #user-appointments li {
     list-style: none;
@@ -92,18 +68,4 @@ button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-/* 取消按鈕 */
-#user-appointments button {
-    background: #dc3545;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    cursor: pointer;
-    border-radius: 3px;
-}
-
-#user-appointments button:hover {
-    background: #c82333;
 }
