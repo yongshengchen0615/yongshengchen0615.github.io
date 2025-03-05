@@ -3,20 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE 登入示範</title>
-    <link rel="stylesheet" href="style.css">
-    <script defer src="script.js"></script>
-</head>
-<body>
-    <h2>LINE 登入示範 v3</h2>
-    <button id="loginBtn">使用 LINE 登入</button>
-    <button id="logoutBtn" style="display:none;">登出</button>
-    <p id="status"></p>
+    <title>LINE 登入範例</title>
+    <script>
+        const LINE_CLIENT_ID = "2005939681"; // 替換為你的 LINE Channel ID
+        const REDIRECT_URI = "https://yongshengchen0615.github.io/ReserveTest/"; // 確保這個網址與 LINE 設定的 callback URI 一致
 
-    <div id="profile">
-        <h3>歡迎, <span id="name"></span>!</h3>
-        <img id="profilePic" alt="頭像">
-        <p id="userId"></p>
-    </div>
+        // 生成 LINE 登入 URL
+        function loginWithLine() {
+            const state = Math.random().toString(36).substr(2, 10); // 防止 CSRF 攻擊
+            const scope = "profile openid email"; // 權限設定
+            const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}&scope=${scope}`;
+            window.location.href = lineLoginUrl;
+        }
+
+        // 處理 LINE 回傳的 Token 並獲取使用者資訊
+        async function getLineUserProfile(code) {
+            const tokenUrl = "https://api.line.me/oauth2/v2.1/token";
+            const data = new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code,
+                redirect_uri: REDIRECT_URI,
+                client_id: LINE_CLIENT_ID,
+                client_secret: "你的_CLIENT_SECRET" // 請替換為你的 Client Secret
+            });
+
+            const response = await fetch(tokenUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: data
+            });
+
+            const tokenData = await response.json();
+            if (tokenData.access_token) {
+                const userResponse = await fetch("https://api.line.me/v2/profile", {
+                    method: "GET",
+                    headers: { "Authorization": `Bearer ${tokenData.access_token}` }
+                });
+                const userData = await userResponse.json();
+                document.getElementById("profile").innerHTML = `
+                    <p>歡迎, ${userData.displayName}</p>
+                    <img src="${userData.pictureUrl}" alt="LINE 頭像" width="100">
+                `;
+            }
+        }
+
+        // 解析 URL，獲取授權碼
+        function handleCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get("code");
+            if (code) {
+                getLineUserProfile(code);
+            }
+        }
+    </script>
+</head>
+<body onload="handleCallback()">
+    <h2>使用 LINE 登入</h2>
+    <button onclick="loginWithLine()">使用 LINE 登入</button>
+    <div id="profile"></div>
 </body>
 </html>

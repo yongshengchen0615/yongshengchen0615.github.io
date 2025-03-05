@@ -1,67 +1,33 @@
-/* 全局樣式 */
-body { 
-    font-family: Arial, sans-serif; 
-    text-align: center; 
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    margin: 0;
-    padding: 10px;
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #f4f4f4;
 }
 
-/* 按鈕樣式 */
-button { 
-    padding: 12px 20px; 
-    margin: 10px; 
-    font-size: 18px; 
-    cursor: pointer; 
-    border: none;
-    border-radius: 8px;
+.container {
+    margin-top: 50px;
+}
+
+button {
     background-color: #06C755;
     color: white;
-    transition: background 0.3s ease;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 5px;
 }
 
 button:hover {
-    background-color: #05a043;
+    background-color: #05A642;
 }
 
-/* 使用者資訊區塊 */
-#profile { 
-    display: none; 
+#userInfo {
     margin-top: 20px;
-    padding: 20px;
-    border-radius: 10px;
-    background: #f9f9f9;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    max-width: 90%;
 }
 
-/* 使用者頭像 */
-img { 
-    border-radius: 50%; /* 圓形 */
-    width: 120px; 
-    height: 120px;
-    object-fit: cover; /* 確保圖片完整顯示 */
-    border: 4px solid #06C755;
-    margin-top: 10px;
-}
-
-/* RWD 適應不同螢幕 */
-@media (max-width: 600px) {
-    button {
-        font-size: 16px;
-        padding: 10px 16px;
-    }
-
-    img {
-        width: 100px;
-        height: 100px;
-    }
-
-    #profile {
-        padding: 15px;
-    }
+#userImg {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
 }
