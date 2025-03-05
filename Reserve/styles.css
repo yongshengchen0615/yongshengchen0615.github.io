@@ -11,13 +11,13 @@ body {
     display: flex;
     justify-content: center; /* 讓按鈕水平置中 */
     align-items: center;
-    gap: 20px; /* 設定按鈕間距 */
+    width: 100%; /* 確保區塊佔滿整行 */
     margin-top: 20px;
 }
 
-/* 統一按鈕樣式 */
+/* 確保按鈕本身也能正確置中 */
 button {
-    min-width: 180px; /* 讓按鈕寬度一致 */
+    min-width: 180px; /* 讓按鈕大小統一 */
     padding: 12px 24px;
     font-size: 18px;
     font-weight: bold;
@@ -25,6 +25,8 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
+    display: block; /* 讓按鈕獨占一行 */
+    margin: 0 auto; /* 讓按鈕在區塊內置中 */
 }
 
 /* Google 登入按鈕 */
@@ -76,9 +78,10 @@ button {
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 15px; /* 增加間距，讓按鈕與上方資訊分開 */
+    margin-top: 15px; /* 與上方內容區隔 */
     display: none; /* 預設隱藏，登入後才顯示 */
     width: 80%;
+    text-align: center;
 }
 
 #logout-btn:hover {
