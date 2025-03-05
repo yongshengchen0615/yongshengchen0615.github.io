@@ -2,67 +2,120 @@
 body {
     text-align: center;
     font-family: Arial, sans-serif;
-    background: #f8f9fa;
-    padding: 20px;
+    padding: 50px;
+    background: linear-gradient(to right, #f8f9fa, #e9ecef);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 /* 按鈕樣式 */
 button {
-    padding: 10px 20px;
-    font-size: 16px;
+    min-width: 180px;
+    padding: 12px 24px;
+    font-size: 18px;
+    font-weight: bold;
     border: none;
-    border-radius: 5px;
+    border-radius: 8px;
     cursor: pointer;
-    margin: 10px;
+    transition: all 0.3s ease;
+    text-align: center;
 }
 
-/* 登入按鈕 */
+/* Google 登入按鈕 */
 #login-btn {
-    background: #4285F4;
+    background: linear-gradient(to right, #4285F4, #34A853);
     color: white;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 #login-btn:hover {
-    background: #357AE8;
+    background: linear-gradient(to right, #357AE8, #2E8B57);
+    transform: scale(1.05);
+}
+
+/* 預約區塊 */
+#booking-section {
+    display: none;
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+/* 預約時間輸入框 */
+input[type="datetime-local"] {
+    padding: 10px;
+    font-size: 16px;
+    margin: 10px 0;
+    width: 100%;
+}
+
+/* 提交預約按鈕 */
+#book-btn {
+    background: #007bff;
+    color: white;
+}
+
+#book-btn:hover {
+    background: #0056b3;
+}
+
+/* 使用者資訊區塊 */
+#user-info {
+    display: none;
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+/* 使用者頭像 */
+#user-pic {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid #4285F4;
+    margin-bottom: 10px;
+    object-fit: cover;
 }
 
 /* 登出按鈕 */
 #logout-btn {
     background: #dc3545;
     color: white;
-    display: none;
+    font-size: 16px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 15px;
+    width: 80%;
+    max-width: 300px;
 }
 
 #logout-btn:hover {
     background: #c82333;
 }
 
-/* 預約表單 */
-#booking-form {
-    margin-top: 20px;
-    padding: 15px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-    display: inline-block;
-}
-
-input {
-    padding: 5px;
-    font-size: 14px;
-    margin: 5px;
-}
-
-/* 預約列表 */
-#booking-list {
-    list-style: none;
-    padding: 0;
-    margin-top: 20px;
-}
-
-#booking-list li {
-    padding: 10px;
-    background: #e9ecef;
-    margin: 5px 0;
-    border-radius: 5px;
+/* 響應式設計 */
+@media screen and (max-width: 768px) {
+    body {
+        padding: 20px;
+    }
+    button {
+        width: 80%;
+        font-size: 16px;
+    }
 }

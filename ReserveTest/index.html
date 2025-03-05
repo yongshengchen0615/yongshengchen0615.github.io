@@ -6,39 +6,28 @@
     <title>簡易預約系統</title>
     <link rel="stylesheet" href="styles.css">
     
-    <!-- 引入 Firebase SDK（**務必在 script.js 之前**） -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
-    <h2>預約系統v1</h2>
-
-    <!-- 登入/登出按鈕 -->
+    <h2>簡易預約系統</h2>
+    
     <button id="login-btn">使用 Google 登入</button>
-    <button id="logout-btn" style="display:none;">登出</button>
-
-    <!-- 使用者資訊 -->
-    <div id="user-info" style="display:none;">
+    <div id="user-info" style="display: none;">
         <p><strong>名稱：</strong><span id="user-name"></span></p>
-        <img id="user-pic" width="80" height="80">
+        <img id="user-pic" width="100" height="100">
+        <button id="logout-btn">登出</button>
     </div>
-
-    <!-- 預約表單 -->
-    <div id="booking-form" style="display:none;">
+    
+    <div id="booking-section" style="display: none;">
         <h3>預約時間</h3>
-        <label>選擇日期：</label>
-        <input type="date" id="date-picker">
-        <label>選擇時間：</label>
-        <input type="time" id="time-picker">
-        <button id="submit-btn">確認預約</button>
+        <input type="datetime-local" id="appointment-time">
+        <button id="book-btn">提交預約</button>
+        <h3>預約紀錄</h3>
+        <ul id="appointments-list"></ul>
     </div>
-
-    <!-- 已預約時段 -->
-    <h3>已預約時段</h3>
-    <ul id="booking-list"></ul>
-
-    <!-- script.js 必須放在 Firebase SDK 之後 -->
+    
     <script src="script.js"></script>
 </body>
 </html>

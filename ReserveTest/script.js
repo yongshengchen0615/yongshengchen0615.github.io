@@ -1,4 +1,3 @@
-// ✅ Firebase 設定（請勿修改，這是你的專案設定）
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -10,24 +9,20 @@ const firebaseConfig = {
     measurementId: "G-XXDSGNYTV1"
 };
 
-// ✅ 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const database = firebase.database();
 
-// ✅ 取得 HTML 元素
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userInfo = document.getElementById("user-info");
 const userName = document.getElementById("user-name");
 const userPic = document.getElementById("user-pic");
-const bookingForm = document.getElementById("booking-form");
-const datePicker = document.getElementById("date-picker");
-const timePicker = document.getElementById("time-picker");
-const submitBtn = document.getElementById("submit-btn");
-const bookingList = document.getElementById("booking-list");
+const bookingSection = document.getElementById("booking-section");
+const bookBtn = document.getElementById("book-btn");
+const appointmentTime = document.getElementById("appointment-time");
+const appointmentsList = document.getElementById("appointments-list");
 
-// ✅ Google 登入
 loginBtn.addEventListener("click", () => {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
@@ -36,63 +31,46 @@ loginBtn.addEventListener("click", () => {
             userName.textContent = user.displayName;
             userPic.src = user.photoURL;
             loginBtn.style.display = "none";
-            logoutBtn.style.display = "block";
             userInfo.style.display = "block";
-            bookingForm.style.display = "block";
-            loadBookings(); // 讀取預約資料
+            bookingSection.style.display = "block";
+            loadAppointments(user.uid);
         })
         .catch(error => {
-            alert("登入失敗：" + error.message);
+            alert("登入失敗: " + error.message);
         });
 });
 
-// ✅ 登出
 logoutBtn.addEventListener("click", () => {
     auth.signOut().then(() => {
         loginBtn.style.display = "block";
-        logoutBtn.style.display = "none";
         userInfo.style.display = "none";
-        bookingForm.style.display = "none";
-        bookingList.innerHTML = ""; // 清空預約列表
+        bookingSection.style.display = "none";
     });
 });
 
-// ✅ 提交預約
-submitBtn.addEventListener("click", () => {
+bookBtn.addEventListener("click", () => {
     const user = auth.currentUser;
-    if (!user) return alert("請先登入");
-
-    const date = datePicker.value;
-    const time = timePicker.value;
-    if (!date || !time) return alert("請選擇日期與時間");
-
-    const bookingData = {
-        name: user.displayName,
-        date: date,
-        time: time
-    };
-
-    // ✅ 儲存至 Firebase
-    const bookingRef = database.ref("bookings").push();
-    bookingRef.set(bookingData)
-        .then(() => {
-            alert("預約成功！");
-            loadBookings(); // 重新載入預約列表
-        })
-        .catch(error => {
-            alert("預約失敗：" + error.message);
+    if (user && appointmentTime.value) {
+        const bookingRef = database.ref("appointments/" + user.uid).push();
+        bookingRef.set({
+            time: appointmentTime.value,
+            userName: user.displayName
+        }).then(() => {
+            alert("預約成功");
+            appointmentTime.value = "";
+            loadAppointments(user.uid);
         });
+    }
 });
 
-// ✅ 讀取預約資料
-function loadBookings() {
-    bookingList.innerHTML = "";
-    database.ref("bookings").once("value", snapshot => {
+function loadAppointments(userId) {
+    appointmentsList.innerHTML = "";
+    database.ref("appointments/" + userId).once("value", snapshot => {
         snapshot.forEach(childSnapshot => {
             const data = childSnapshot.val();
             const li = document.createElement("li");
-            li.textContent = `${data.name} 預約於 ${data.date} ${data.time}`;
-            bookingList.appendChild(li);
+            li.textContent = `${data.userName} 預約時間: ${data.time}`;
+            appointmentsList.appendChild(li);
         });
     });
 }
