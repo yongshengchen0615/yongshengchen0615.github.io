@@ -1,4 +1,4 @@
- // Firebase 設定
+// Firebase 設定
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -13,7 +13,7 @@ const firebaseConfig = {
 // 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const database = firebase.database();
+const database = firebase.database(); // 這裡使用 Realtime Database，而非 Firestore
 
 // 取得 DOM 元素
 const loginBtn = document.getElementById("login-btn");
@@ -79,7 +79,7 @@ submitBookingBtn.addEventListener("click", () => {
         time: time
     };
 
-    // 將預約資料存入 Firebase
+    // 使用 Realtime Database 儲存預約資料
     const newBookingRef = database.ref("bookings").push();
     newBookingRef.set(bookingData)
         .then(() => {
