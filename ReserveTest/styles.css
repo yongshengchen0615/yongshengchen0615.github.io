@@ -1,119 +1,18 @@
-/* 🔹 全局樣式 */
-body {
-    font-family: 'Arial', sans-serif;
-    background-color: #f8f9fa;
-    text-align: center;
-    padding: 20px;
-    margin: 0;
+body { 
+    font-family: Arial, sans-serif; 
+    text-align: center; 
 }
-
-/* 🔹 容器 */
-.container {
-    max-width: 600px;
-    margin: 0 auto;
-    background: #fff;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+#profile { 
+    display: none; 
+    margin-top: 20px; 
 }
-
-/* 🔹 標題 */
-h2 {
-    color: #333;
+img { 
+    border-radius: 50%; 
+    width: 100px; 
 }
-
-/* 🔹 輸入區 */
-.input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-input {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 16px;
-    outline: none;
-    transition: border 0.3s ease-in-out;
-}
-
-input:focus {
-    border-color: #007bff;
-}
-
-/* 🔹 按鈕 */
-button {
-    width: 100%;
-    padding: 12px;
-    background: #007bff;
-    color: white;
-    font-size: 16px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.3s ease-in-out;
-}
-
-button:hover {
-    background: #0056b3;
-}
-
-/* 🔹 留言區 */
-#messages {
-    margin-top: 20px;
-    text-align: left;
-}
-
-/* 🔹 單條留言 */
-.message {
-    background: #ffffff;
-    border: 1px solid #ddd;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: transform 0.2s ease-in-out;
-}
-
-.message:hover {
-    transform: scale(1.02);
-}
-
-/* 🔹 按鈕組 */
-.message-buttons {
-    display: flex;
-    gap: 5px;
-}
-
-.message-buttons button {
-    padding: 5px 10px;
-    font-size: 14px;
-}
-
-/* 🔹 響應式設計 */
-@media (max-width: 600px) {
-    .container {
-        width: 90%;
-        padding: 15px;
-    }
-
-    input, button {
-        font-size: 14px;
-        padding: 10px;
-    }
-
-    .message {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .message-buttons {
-        width: 100%;
-        display: flex;
-        justify-content: flex-end;
-    }
+button { 
+    padding: 10px 20px; 
+    margin: 10px; 
+    font-size: 16px; 
+    cursor: pointer; 
 }

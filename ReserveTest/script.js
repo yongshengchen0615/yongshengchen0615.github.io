@@ -1,91 +1,85 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-import { getDatabase, ref, push, set, update, remove, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+const CLIENT_ID = "2005939681";  // 你的 LINE Channel ID
+const REDIRECT_URI = "https://yongshengchen0615.github.io/ReserveTest/"; // 你的回調網址
+const CLIENT_SECRET = "8c0a5aae81b608572097e0f438f1dec0"; // 你的 LINE Channel Secret
+const STATE = "123456"; // 防止 CSRF 攻擊
+let accessToken = "";
 
-// 🔹 Firebase 設定
-const firebaseConfig = {
-    apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-    authDomain: "reservesystem-c8bbc.firebaseapp.com",
-    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-    projectId: "reservesystem-c8bbc",
-    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-    messagingSenderId: "138232489371",
-    appId: "1:138232489371:web:849190b97774b5abae2d3e",
-    measurementId: "G-XXDSGNYTV1"
-};
+document.getElementById("loginBtn").addEventListener("click", loginWithLine);
+document.getElementById("logoutBtn").addEventListener("click", logout);
 
-// 🔹 初始化 Firebase
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const messagesRef = ref(database, "messages");
-
-// 🔹 送出留言
-document.getElementById("sendBtn").addEventListener("click", () => {
-    const username = document.getElementById("username").value.trim();
-    const message = document.getElementById("message").value.trim();
-
-    if (username && message) {
-        const newMessageRef = push(messagesRef);
-        set(newMessageRef, {
-            username: username,
-            message: message,
-            timestamp: new Date().getTime()
-        });
-
-        document.getElementById("message").value = ""; // 清空輸入框
-    } else {
-        alert("請輸入名稱和留言！");
-    }
-});
-
-// 🔹 監聽 Firebase 新增留言
-onChildAdded(messagesRef, (snapshot) => {
-    const data = snapshot.val();
-    createMessageElement(snapshot.key, data.username, data.message);
-});
-
-// 🔹 監聽 Firebase 修改留言
-onChildChanged(messagesRef, (snapshot) => {
-    const data = snapshot.val();
-    const messageElement = document.getElementById(snapshot.key);
-    if (messageElement) {
-        messageElement.querySelector(".message-text").innerText = data.message;
-    }
-});
-
-// 🔹 監聽 Firebase 刪除留言
-onChildRemoved(messagesRef, (snapshot) => {
-    const messageElement = document.getElementById(snapshot.key);
-    if (messageElement) {
-        messageElement.remove();
-    }
-});
-
-// 🔹 創建留言元素
-function createMessageElement(id, username, message) {
-    const messageDiv = document.createElement("div");
-    messageDiv.classList.add("message");
-    messageDiv.id = id;
-    messageDiv.innerHTML = `
-        <strong>${username}:</strong> <span class="message-text">${message}</span>
-        <button onclick="editMessage('${id}')">編輯</button>
-        <button onclick="deleteMessage('${id}')">刪除</button>
-    `;
-    document.getElementById("messages").appendChild(messageDiv);
+function loginWithLine() {
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${STATE}&scope=profile%20openid%20email`;
+    window.location.href = loginUrl;
 }
 
-// 🔹 修改留言
-window.editMessage = function(id) {
-    const newMessage = prompt("請輸入新的留言內容：");
-    if (newMessage) {
-        const messageRef = ref(database, `messages/${id}`);
-        update(messageRef, { message: newMessage });
+function getUrlParameter(name) {
+    name = name.replace(/[[]/, "\\[").replace(/[\]]/, "\\]");
+    const regex = new RegExp("[\\?&]" + name + "=([^&#]*)");
+    const results = regex.exec(window.location.search);
+    return results === null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+}
+
+window.onload = function() {
+    const code = getUrlParameter("code");
+    if (code) {
+        document.getElementById("status").innerText = "登入成功，正在獲取用戶資訊...";
+        fetchToken(code);
     }
 };
 
-// 🔹 刪除留言
-window.deleteMessage = function(id) {
-    if (confirm("確定要刪除這則留言嗎？")) {
-        const messageRef = ref(database, `messages/${id}`);
-        remove(messageRef);
+async function fetchToken(code) {
+    const response = await fetch("https://api.line.me/oauth2/v2.1/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            grant_type: "authorization_code",
+            code: code,
+            redirect_uri: REDIRECT_URI,
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET
+        })
+    });
+
+    const data = await response.json();
+    if (data.access_token) {
+        accessToken = data.access_token;
+        localStorage.setItem("lineAccessToken", accessToken); // 儲存 Token
+        fetchUserProfile(accessToken);
+    } else {
+        document.getElementById("status").innerText = "登入失敗，請重試";
     }
-};
+}
+
+async function fetchUserProfile(token) {
+    const response = await fetch("https://api.line.me/v2/profile", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const user = await response.json();
+    document.getElementById("profile").style.display = "block";
+    document.getElementById("name").innerText = user.displayName;
+    document.getElementById("userId").innerText = "User ID: " + user.userId;
+    document.getElementById("profilePic").src = user.pictureUrl;
+    document.getElementById("status").innerText = "登入成功！";
+    document.getElementById("loginBtn").style.display = "none";
+    document.getElementById("logoutBtn").style.display = "inline-block";
+}
+
+function logout() {
+    const token = localStorage.getItem("lineAccessToken");
+    if (token) {
+        fetch("https://api.line.me/oauth2/v2.1/revoke", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                access_token: token,
+                client_id: CLIENT_ID,
+                client_secret: CLIENT_SECRET
+            })
+        }).then(() => {
+            localStorage.removeItem("lineAccessToken");
+            window.location.href = REDIRECT_URI; // 重新導向到首頁
+        });
+    }
+}
