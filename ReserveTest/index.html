@@ -3,31 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>簡易預約系統</title>
+    <title>Google 登入與預約系統</title>
     <link rel="stylesheet" href="styles.css">
     
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
-    <h2>簡易預約系統</h2>
-    
+    <h2>Google 登入與預約系統</h2>
+
+    <!-- Google 登入按鈕 -->
     <button id="login-btn">使用 Google 登入</button>
+
+    <!-- 使用者資訊區 -->
     <div id="user-info" style="display: none;">
         <p><strong>名稱：</strong><span id="user-name"></span></p>
-        <img id="user-pic" width="100" height="100">
+        <img id="user-pic" width="100" height="100" style="border-radius: 50%;">
         <button id="logout-btn">登出</button>
     </div>
-    
-    <div id="booking-section" style="display: none;">
-        <h3>預約時間</h3>
-        <input type="datetime-local" id="appointment-time">
-        <button id="book-btn">提交預約</button>
-        <h3>預約紀錄</h3>
-        <ul id="appointments-list"></ul>
+
+    <!-- 預約功能 -->
+    <div id="appointment-section" style="display:none;">
+        <h3>預約服務</h3>
+        
+        <label for="appointment-date">選擇日期：</label>
+        <input type="date" id="appointment-date">
+        
+        <label for="appointment-time">選擇時段：</label>
+        <select id="appointment-time">
+            <option value="10:00">10:00</option>
+            <option value="14:00">14:00</option>
+            <option value="16:00">16:00</option>
+        </select>
+
+        <button id="submit-appointment">提交預約</button>
+
+        <h4>你的預約：</h4>
+        <ul id="user-appointments"></ul>
     </div>
-    
+
     <script src="script.js"></script>
 </body>
 </html>

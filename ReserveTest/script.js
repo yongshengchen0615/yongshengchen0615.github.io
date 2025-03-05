@@ -1,3 +1,4 @@
+// Firebase 設定（請替換為你的 Firebase 專案資訊）
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -9,68 +10,82 @@ const firebaseConfig = {
     measurementId: "G-XXDSGNYTV1"
 };
 
+// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const database = firebase.database();
+const db = firebase.firestore();
 
+// 元素選取
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userInfo = document.getElementById("user-info");
 const userName = document.getElementById("user-name");
 const userPic = document.getElementById("user-pic");
-const bookingSection = document.getElementById("booking-section");
-const bookBtn = document.getElementById("book-btn");
-const appointmentTime = document.getElementById("appointment-time");
-const appointmentsList = document.getElementById("appointments-list");
 
-loginBtn.addEventListener("click", () => {
+// Google 登入
+loginBtn.addEventListener("click", async () => {
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider)
-        .then(result => {
-            const user = result.user;
-            userName.textContent = user.displayName;
-            userPic.src = user.photoURL;
-            loginBtn.style.display = "none";
-            userInfo.style.display = "block";
-            bookingSection.style.display = "block";
-            loadAppointments(user.uid);
-        })
-        .catch(error => {
-            alert("登入失敗: " + error.message);
-        });
-});
+    try {
+        const result = await auth.signInWithPopup(provider);
+        const user = result.user;
 
-logoutBtn.addEventListener("click", () => {
-    auth.signOut().then(() => {
-        loginBtn.style.display = "block";
-        userInfo.style.display = "none";
-        bookingSection.style.display = "none";
-    });
-});
+        userName.textContent = user.displayName;
+        userPic.src = user.photoURL;
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "block";
+        userInfo.style.display = "block";
+        document.getElementById("appointment-section").style.display = "block";
 
-bookBtn.addEventListener("click", () => {
-    const user = auth.currentUser;
-    if (user && appointmentTime.value) {
-        const bookingRef = database.ref("appointments/" + user.uid).push();
-        bookingRef.set({
-            time: appointmentTime.value,
-            userName: user.displayName
-        }).then(() => {
-            alert("預約成功");
-            appointmentTime.value = "";
-            loadAppointments(user.uid);
-        });
+        loadUserAppointments(user.uid);
+    } catch (error) {
+        alert("登入失敗: " + error.message);
     }
 });
 
-function loadAppointments(userId) {
+// 登出
+logoutBtn.addEventListener("click", () => {
+    auth.signOut().then(() => {
+        loginBtn.style.display = "block";
+        logoutBtn.style.display = "none";
+        userInfo.style.display = "none";
+        document.getElementById("appointment-section").style.display = "none";
+    });
+});
+
+// 監聽登入狀態
+auth.onAuthStateChanged(user => {
+    if (user) {
+        userName.textContent = user.displayName;
+        userPic.src = user.photoURL;
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "block";
+        userInfo.style.display = "block";
+        document.getElementById("appointment-section").style.display = "block";
+        loadUserAppointments(user.uid);
+    }
+});
+
+// 預約功能
+document.getElementById("submit-appointment").addEventListener("click", async () => {
+    const user = auth.currentUser;
+    if (!user) return alert("請先登入！");
+
+    const date = document.getElementById("appointment-date").value;
+    const time = document.getElementById("appointment-time").value;
+
+    await db.collection("appointments").add({ userId: user.uid, date, time });
+    alert("預約成功！");
+    loadUserAppointments(user.uid);
+});
+
+// 顯示預約
+async function loadUserAppointments(userId) {
+    const appointmentsList = document.getElementById("user-appointments");
     appointmentsList.innerHTML = "";
-    database.ref("appointments/" + userId).once("value", snapshot => {
-        snapshot.forEach(childSnapshot => {
-            const data = childSnapshot.val();
-            const li = document.createElement("li");
-            li.textContent = `${data.userName} 預約時間: ${data.time}`;
-            appointmentsList.appendChild(li);
-        });
+    const querySnapshot = await db.collection("appointments").where("userId", "==", userId).get();
+    querySnapshot.forEach(doc => {
+        const li = document.createElement("li");
+        li.textContent = `${doc.data().date} - ${doc.data().time}`;
+        appointmentsList.appendChild(li);
     });
 }
