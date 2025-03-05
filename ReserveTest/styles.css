@@ -1,97 +1,17 @@
 body {
-    text-align: center;
     font-family: Arial, sans-serif;
-    padding: 50px;
-    background: linear-gradient(to right, #f8f9fa, #e9ecef);
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-button {
-    min-width: 180px;
-    padding: 12px 24px;
-    font-size: 18px;
-    font-weight: bold;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
     text-align: center;
-    margin-top: 10px;
+    margin: 20px;
 }
-
-#login-btn {
-    background: linear-gradient(to right, #4285F4, #34A853);
-    color: white;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+button {
+    padding: 10px 15px;
+    margin: 5px;
+    cursor: pointer;
 }
-
-#login-btn:hover {
-    background: linear-gradient(to right, #357AE8, #2E8B57);
-    transform: scale(1.05);
+ul {
+    list-style: none;
+    padding: 0;
 }
-
-#logout-btn {
-    background: #dc3545;
-    color: white;
-}
-
-#logout-btn:hover {
-    background: #c82333;
-}
-
-#user-info {
-    display: none;
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 400px;
-    width: 90%;
-}
-
-#user-pic {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    border: 3px solid #4285F4;
-    margin-bottom: 10px;
-    object-fit: cover;
-}
-
-#reservation-section {
-    display: none;
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 400px;
-    width: 90%;
-}
-
-#reservation-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    border-bottom: 1px solid #ccc;
-}
-
-#reservation-list button {
-    margin-left: 10px;
-    padding: 6px 12px;
-    font-size: 14px;
-    background: #ff9800;
-    color: white;
-    border-radius: 4px;
-}
-
-#reservation-list button:hover {
-    background: #e68900;
+li {
+    margin: 10px 0;
 }
