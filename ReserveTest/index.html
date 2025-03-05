@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase Google 登入 + 訊息儲存</title>
+    <title>預約系統</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 400px;
+            max-width: 500px;
             margin: 20px auto;
             text-align: center;
         }
@@ -29,35 +29,38 @@
             justify-content: space-between;
             align-items: center;
         }
-        .delete-btn {
-            background: red;
-            color: white;
-            border: none;
+        .edit-btn, .delete-btn {
+            margin-left: 5px;
             padding: 5px;
             cursor: pointer;
             border-radius: 5px;
+            color: white;
+            border: none;
         }
+        .edit-btn { background: blue; }
+        .delete-btn { background: red; }
     </style>
 </head>
 <body>
 
-    <h2>Firebase Google 登入</h2>
+    <h2>Firebase 預約系統</h2>
     <button id="loginButton">Google 登入</button>
     <button id="logoutButton" style="display:none;">登出</button>
     <p id="userInfo"></p>
 
-    <h2>訊息儲存範例</h2>
-    <input type="text" id="messageInput" placeholder="輸入訊息..." disabled>
-    <button id="sendButton" disabled>送出</button>
+    <h3>新增預約</h3>
+    <input type="date" id="dateInput" disabled>
+    <input type="time" id="timeInput" disabled>
+    <button id="addButton" disabled>新增預約</button>
 
-    <h3>訊息列表</h3>
-    <ul id="messagesList"></ul>
+    <h3>我的預約</h3>
+    <ul id="appointmentsList"></ul>
 
     <script type="module">
         // 匯入 Firebase 函式
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getDatabase, ref, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+        import { getDatabase, ref, push, set, update, remove, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
         // Firebase 設定
         const firebaseConfig = {
@@ -81,9 +84,10 @@
         const loginButton = document.getElementById("loginButton");
         const logoutButton = document.getElementById("logoutButton");
         const userInfo = document.getElementById("userInfo");
-        const messageInput = document.getElementById("messageInput");
-        const sendButton = document.getElementById("sendButton");
-        const messagesList = document.getElementById("messagesList");
+        const dateInput = document.getElementById("dateInput");
+        const timeInput = document.getElementById("timeInput");
+        const addButton = document.getElementById("addButton");
+        const appointmentsList = document.getElementById("appointmentsList");
 
         let currentUser = null;
 
@@ -93,10 +97,9 @@
                 .then((result) => {
                     currentUser = result.user;
                     updateUI();
+                    loadAppointments();
                 })
-                .catch((error) => {
-                    console.error("登入失敗：", error);
-                });
+                .catch((error) => console.error("登入失敗：", error));
         });
 
         // Google 登出
@@ -104,15 +107,17 @@
             signOut(auth).then(() => {
                 currentUser = null;
                 updateUI();
-            }).catch((error) => {
-                console.error("登出失敗：", error);
-            });
+                appointmentsList.innerHTML = ""; // 清空預約列表
+            }).catch((error) => console.error("登出失敗：", error));
         });
 
         // 監聽登入狀態變更
         onAuthStateChanged(auth, (user) => {
             currentUser = user;
             updateUI();
+            if (currentUser) {
+                loadAppointments();
+            }
         });
 
         // 更新 UI
@@ -121,66 +126,96 @@
                 loginButton.style.display = "none";
                 logoutButton.style.display = "inline-block";
                 userInfo.innerHTML = `歡迎，${currentUser.displayName} (${currentUser.email})`;
-                messageInput.disabled = false;
-                sendButton.disabled = false;
+                dateInput.disabled = false;
+                timeInput.disabled = false;
+                addButton.disabled = false;
             } else {
                 loginButton.style.display = "inline-block";
                 logoutButton.style.display = "none";
                 userInfo.innerHTML = "";
-                messageInput.disabled = true;
-                sendButton.disabled = true;
+                dateInput.disabled = true;
+                timeInput.disabled = true;
+                addButton.disabled = true;
             }
         }
 
-        // 送出訊息到 Firebase
-        sendButton.addEventListener("click", () => {
-            const message = messageInput.value.trim();
-            if (message === "" || !currentUser) return;
+        // 新增預約
+        addButton.addEventListener("click", () => {
+            if (!currentUser) return;
 
-            const messagesRef = ref(database, "messages");
-            push(messagesRef, {
-                text: message,
+            const date = dateInput.value;
+            const time = timeInput.value;
+            if (!date || !time) return alert("請選擇日期和時間");
+
+            const appointmentsRef = ref(database, `appointments/${currentUser.uid}`);
+            const newAppointmentRef = push(appointmentsRef);
+            set(newAppointmentRef, {
+                date,
+                time,
                 user: currentUser.displayName,
                 email: currentUser.email,
-                uid: currentUser.uid,
-                timestamp: Date.now()
+                uid: currentUser.uid
             });
 
-            messageInput.value = "";
+            dateInput.value = "";
+            timeInput.value = "";
         });
 
-        // 監聽 Firebase 並即時更新畫面
-        const messagesRef = ref(database, "messages");
-        onChildAdded(messagesRef, (snapshot) => {
-            const messageData = snapshot.val();
-            const messageId = snapshot.key; // 取得訊息 ID
+        // 載入使用者的預約
+        function loadAppointments() {
+            if (!currentUser) return;
+            appointmentsList.innerHTML = ""; // 清空列表
 
-            // 建立訊息列表項目
-            const li = document.createElement("li");
-            li.innerHTML = `<b>${messageData.user}:</b> ${messageData.text}`;
+            const appointmentsRef = ref(database, `appointments/${currentUser.uid}`);
 
-            // 若是該使用者發的訊息，顯示刪除按鈕
-            if (currentUser && currentUser.uid === messageData.uid) {
-                const deleteButton = document.createElement("button");
-                deleteButton.textContent = "刪除";
-                deleteButton.classList.add("delete-btn");
-                deleteButton.addEventListener("click", () => deleteMessage(messageId, li));
+            onChildAdded(appointmentsRef, (snapshot) => {
+                const appointment = snapshot.val();
+                const appointmentId = snapshot.key;
+                addAppointmentToList(appointment, appointmentId);
+            });
 
-                li.appendChild(deleteButton);
-            }
+            onChildChanged(appointmentsRef, (snapshot) => {
+                const appointment = snapshot.val();
+                const appointmentId = snapshot.key;
+                document.getElementById(appointmentId).innerHTML = `${appointment.date} ${appointment.time}`;
+            });
 
-            messagesList.appendChild(li);
-        });
-
-        // 刪除訊息
-        function deleteMessage(messageId, listItem) {
-            const messageRef = ref(database, `messages/${messageId}`);
-            remove(messageRef).then(() => {
-                messagesList.removeChild(listItem);
-            }).catch((error) => {
-                console.error("刪除失敗：", error);
+            onChildRemoved(appointmentsRef, (snapshot) => {
+                document.getElementById(snapshot.key)?.remove();
             });
         }
+
+        // 顯示預約
+        function addAppointmentToList(appointment, appointmentId) {
+            const li = document.createElement("li");
+            li.id = appointmentId;
+            li.innerHTML = `${appointment.date} ${appointment.time}`;
+
+            // 修改按鈕
+            const editButton = document.createElement("button");
+            editButton.textContent = "修改";
+            editButton.classList.add("edit-btn");
+            editButton.addEventListener("click", () => {
+                const newDate = prompt("請輸入新的日期", appointment.date);
+                const newTime = prompt("請輸入新的時間", appointment.time);
+                if (newDate && newTime) {
+                    update(ref(database, `appointments/${currentUser.uid}/${appointmentId}`), { date: newDate, time: newTime });
+                }
+            });
+
+            // 刪除按鈕
+            const deleteButton = document.createElement("button");
+            deleteButton.textContent = "刪除";
+            deleteButton.classList.add("delete-btn");
+            deleteButton.addEventListener("click", () => {
+                remove(ref(database, `appointments/${currentUser.uid}/${appointmentId}`));
+            });
+
+            li.appendChild(editButton);
+            li.appendChild(deleteButton);
+            appointmentsList.appendChild(li);
+        }
+
     </script>
 
 </body>
