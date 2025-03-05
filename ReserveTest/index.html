@@ -10,29 +10,23 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
-    <h2>Google 登入 & 預約系統</h2>
+    <h2>預約系統</h2>
     
+    <!-- Google 登入按鈕 -->
     <button id="login-btn">使用 Google 登入</button>
-    <button id="logout-btn" style="display:none;">登出</button>
     
+    <!-- 使用者資訊區塊 -->
     <div id="user-info" style="display:none;">
         <p><strong>名稱：</strong><span id="user-name"></span></p>
-        <img id="user-pic" width="100" height="100" style="border-radius: 50%;">
+        <img id="user-pic" width="100" height="100">
+        <button id="logout-btn">登出</button>
     </div>
     
+    <!-- 預約管理區塊 -->
     <div id="reservation-section" style="display:none;">
-        <h3>預約管理</h3>
-        <form id="reservation-form">
-            <label for="date">選擇日期：</label>
-            <input type="date" id="date" required>
-            
-            <label for="time">選擇時間：</label>
-            <input type="time" id="time" required>
-            
-            <button type="submit">新增預約</button>
-        </form>
-        
         <h3>我的預約</h3>
+        <input type="text" id="reservation-input" placeholder="輸入預約內容">
+        <button id="add-reservation">新增預約</button>
         <ul id="reservation-list"></ul>
     </div>
     
