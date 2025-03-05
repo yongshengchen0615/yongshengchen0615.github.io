@@ -1,72 +1,98 @@
+// Firebase 設定（使用你的 Firebase 專案資訊）
+const firebaseConfig = {
+    apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+    authDomain: "reservesystem-c8bbc.firebaseapp.com",
+    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+    projectId: "reservesystem-c8bbc",
+    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+    messagingSenderId: "138232489371",
+    appId: "1:138232489371:web:849190b97774b5abae2d3e",
+    measurementId: "G-XXDSGNYTV1"
+};
+
 // 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const database = firebase.database();
 
-// DOM 元素
+// 取得 HTML 元素
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userInfo = document.getElementById("user-info");
 const userName = document.getElementById("user-name");
 const userPic = document.getElementById("user-pic");
-const userDetailsForm = document.getElementById("user-details-form");
-const saveUserDetailsBtn = document.getElementById("save-user-details");
-const reservationForm = document.getElementById("reservation-form");
-const reservationList = document.getElementById("reservation-list");
+const bookingForm = document.getElementById("booking-form");
+const datePicker = document.getElementById("date-picker");
+const timePicker = document.getElementById("time-picker");
+const submitBtn = document.getElementById("submit-btn");
+const bookingList = document.getElementById("booking-list");
 
-// **修正登入監聽邏輯**
-auth.onAuthStateChanged(user => {
-    if (user) {
-        console.log("用戶登入成功：", user.displayName);
-        userInfo.style.display = "block";
-        userName.textContent = user.displayName;
-        userPic.src = user.photoURL;
-        loginBtn.style.display = "none";
-        logoutBtn.style.display = "block";
-
-        // **確保 Firebase 資料庫回應後再顯示內容**
-        database.ref("users/" + user.uid).once("value").then(snapshot => {
-            if (snapshot.exists()) {
-                console.log("用戶基本資料已存在");
-                userDetailsForm.style.display = "none";
-                reservationForm.style.display = "block";
-                loadReservations(user.uid);
-            } else {
-                console.log("用戶基本資料不存在，請填寫");
-                userDetailsForm.style.display = "block";
-                reservationForm.style.display = "none";
-            }
-        }).catch(error => {
-            console.error("讀取用戶資料錯誤：", error);
-        });
-
-    } else {
-        console.log("用戶未登入");
-        userInfo.style.display = "none";
-        loginBtn.style.display = "block";
-        logoutBtn.style.display = "none";
-        userDetailsForm.style.display = "none";
-        reservationForm.style.display = "none";
-        reservationList.innerHTML = "";
-    }
-});
-
-// **修正 Google 登入功能**
+// 登入
 loginBtn.addEventListener("click", () => {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
         .then(result => {
-            console.log("登入成功：", result.user);
+            const user = result.user;
+            userName.textContent = user.displayName;
+            userPic.src = user.photoURL;
+            loginBtn.style.display = "none";
+            logoutBtn.style.display = "block";
+            userInfo.style.display = "block";
+            bookingForm.style.display = "block";
+            loadBookings(); // 載入預約列表
         })
         .catch(error => {
-            console.error("登入失敗：", error.message);
             alert("登入失敗：" + error.message);
         });
 });
 
-// **登出功能**
+// 登出
 logoutBtn.addEventListener("click", () => {
-    auth.signOut()
-        .then(() => console.log("已登出"))
-        .catch(error => console.error("登出失敗：", error));
+    auth.signOut().then(() => {
+        loginBtn.style.display = "block";
+        logoutBtn.style.display = "none";
+        userInfo.style.display = "none";
+        bookingForm.style.display = "none";
+        bookingList.innerHTML = ""; // 清空預約列表
+    });
 });
+
+// 提交預約
+submitBtn.addEventListener("click", () => {
+    const user = auth.currentUser;
+    if (!user) return alert("請先登入");
+
+    const date = datePicker.value;
+    const time = timePicker.value;
+    if (!date || !time) return alert("請選擇日期與時間");
+
+    const bookingData = {
+        name: user.displayName,
+        date: date,
+        time: time
+    };
+
+    // 將預約資料存入 Firebase
+    const bookingRef = database.ref("bookings").push();
+    bookingRef.set(bookingData)
+        .then(() => {
+            alert("預約成功！");
+            loadBookings(); // 重新載入預約列表
+        })
+        .catch(error => {
+            alert("預約失敗：" + error.message);
+        });
+});
+
+// 讀取預約資料
+function loadBookings() {
+    bookingList.innerHTML = "";
+    database.ref("bookings").once("value", snapshot => {
+        snapshot.forEach(childSnapshot => {
+            const data = childSnapshot.val();
+            const li = document.createElement("li");
+            li.textContent = `${data.name} 預約於 ${data.date} ${data.time}`;
+            bookingList.appendChild(li);
+        });
+    });
+}
