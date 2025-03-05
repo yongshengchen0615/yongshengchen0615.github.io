@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上預約系統</title>
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- 引入 Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+</head>
+<body>
+    <h2>線上預約系統</h2>
+
+    <!-- 登入按鈕 -->
+    <button id="login-btn">使用 Google 登入</button>
+
+    <!-- 使用者資訊區塊 -->
+    <div id="user-info">
+        <p><strong>名稱：</strong><span id="user-name"></span></p>
+        <img id="user-pic" width="100" height="100">
+        <button id="logout-btn">登出</button>
+    </div>
+
+    <!-- 預約表單 -->
+    <div id="reservation-form">
+        <h3>預約服務</h3>
+        <label for="service-type">選擇服務：</label>
+        <select id="service-type">
+            <option value="足部護理">足部護理</option>
+            <option value="筋膜運動按摩">筋膜運動按摩</option>
+            <option value="全身經絡推拿">全身經絡推拿</option>
+        </select>
+
+        <label for="date">選擇日期：</label>
+        <input type="date" id="date">
+
+        <label for="time">選擇時間：</label>
+        <input type="time" id="time">
+
+        <button id="reserve-btn">預約</button>
+    </div>
+
+    <!-- 顯示預約紀錄 -->
+    <div id="reservations">
+        <h3>您的預約紀錄</h3>
+        <ul id="reservation-list"></ul>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
