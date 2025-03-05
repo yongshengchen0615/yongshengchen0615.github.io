@@ -1,4 +1,4 @@
-// Firebase 設定（使用你的 Firebase 專案資訊）
+// ✅ Firebase 設定（請勿修改，這是你的專案設定）
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -10,12 +10,12 @@ const firebaseConfig = {
     measurementId: "G-XXDSGNYTV1"
 };
 
-// 初始化 Firebase
+// ✅ 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const database = firebase.database();
 
-// 取得 HTML 元素
+// ✅ 取得 HTML 元素
 const loginBtn = document.getElementById("login-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userInfo = document.getElementById("user-info");
@@ -27,7 +27,7 @@ const timePicker = document.getElementById("time-picker");
 const submitBtn = document.getElementById("submit-btn");
 const bookingList = document.getElementById("booking-list");
 
-// 登入
+// ✅ Google 登入
 loginBtn.addEventListener("click", () => {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
@@ -39,14 +39,14 @@ loginBtn.addEventListener("click", () => {
             logoutBtn.style.display = "block";
             userInfo.style.display = "block";
             bookingForm.style.display = "block";
-            loadBookings(); // 載入預約列表
+            loadBookings(); // 讀取預約資料
         })
         .catch(error => {
             alert("登入失敗：" + error.message);
         });
 });
 
-// 登出
+// ✅ 登出
 logoutBtn.addEventListener("click", () => {
     auth.signOut().then(() => {
         loginBtn.style.display = "block";
@@ -57,7 +57,7 @@ logoutBtn.addEventListener("click", () => {
     });
 });
 
-// 提交預約
+// ✅ 提交預約
 submitBtn.addEventListener("click", () => {
     const user = auth.currentUser;
     if (!user) return alert("請先登入");
@@ -72,7 +72,7 @@ submitBtn.addEventListener("click", () => {
         time: time
     };
 
-    // 將預約資料存入 Firebase
+    // ✅ 儲存至 Firebase
     const bookingRef = database.ref("bookings").push();
     bookingRef.set(bookingData)
         .then(() => {
@@ -84,7 +84,7 @@ submitBtn.addEventListener("click", () => {
         });
 });
 
-// 讀取預約資料
+// ✅ 讀取預約資料
 function loadBookings() {
     bookingList.innerHTML = "";
     database.ref("bookings").once("value", snapshot => {

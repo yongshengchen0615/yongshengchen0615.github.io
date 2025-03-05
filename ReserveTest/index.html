@@ -6,7 +6,7 @@
     <title>簡易預約系統</title>
     <link rel="stylesheet" href="styles.css">
     
-    <!-- 引入 Firebase SDK -->
+    <!-- 引入 Firebase SDK（**務必在 script.js 之前**） -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
@@ -38,6 +38,7 @@
     <h3>已預約時段</h3>
     <ul id="booking-list"></ul>
 
+    <!-- script.js 必須放在 Firebase SDK 之後 -->
     <script src="script.js"></script>
 </body>
 </html>
