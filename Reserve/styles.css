@@ -38,18 +38,6 @@ button {
     background: linear-gradient(to right, #357AE8, #2E8B57);
 }
 
-/* 登出按鈕 */
-#logout-btn {
-    background: #dc3545;
-    color: white;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
-    display: none; /* 預設隱藏，登入後才顯示 */
-}
-
-#logout-btn:hover {
-    background: #c82333;
-}
-
 /* 使用者資訊區塊 */
 #user-info {
     display: none; /* 預設隱藏 */
@@ -61,6 +49,7 @@ button {
     max-width: 400px;
     margin-left: auto;
     margin-right: auto;
+    text-align: center; /* 讓內容置中 */
 }
 
 /* 使用者資訊內的文字 */
@@ -75,6 +64,25 @@ button {
     height: 100px;
     border-radius: 50%;
     border: 3px solid #4285F4;
+    margin-bottom: 10px; /* 增加與按鈕的距離 */
+}
+
+/* 登出按鈕 */
+#logout-btn {
+    background: #dc3545;
+    color: white;
+    font-size: 16px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 15px; /* 增加間距，讓按鈕與上方資訊分開 */
+    display: none; /* 預設隱藏，登入後才顯示 */
+    width: 80%;
+}
+
+#logout-btn:hover {
+    background: #c82333;
 }
 
 /* 響應式設計（適應手機、平板） */
