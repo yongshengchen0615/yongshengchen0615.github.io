@@ -14,6 +14,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const database = firebase.database();
+const db = firebase.firestore(); // ✅ Firestore 正確初始化
 
 // 取得按鈕與顯示使用者資訊的元素
 const loginBtn = document.getElementById("login-btn");
