@@ -1,70 +1,105 @@
+/* 全局樣式 */
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    margin: 0;
-    padding: 20px;
-}
-
-.container {
-    width: 100%;
-    max-width: 400px;
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    margin: auto;
-}
-
-h2 {
     text-align: center;
+    font-family: Arial, sans-serif;
+    padding: 50px;
+    background: linear-gradient(to right, #f8f9fa, #e9ecef);
 }
 
-form {
-    display: flex;
-    flex-direction: column;
-}
-
-label {
-    margin-top: 10px;
-}
-
-input, select, button {
-    margin-top: 5px;
-    padding: 8px;
-    font-size: 16px;
-}
-
+/* 按鈕樣式 */
 button {
-    background-color: #28a745;
-    color: white;
+    padding: 12px 24px;
+    font-size: 18px;
+    font-weight: bold;
     border: none;
+    border-radius: 8px;
     cursor: pointer;
-    margin-top: 15px;
+    transition: all 0.3s ease;
+    margin: 10px;
 }
 
-button:hover {
-    background-color: #218838;
-}
-
-ul {
-    list-style: none;
-    padding: 0;
-}
-
-li {
-    background: #fff;
-    margin: 5px 0;
-    padding: 10px;
-    border-radius: 5px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.delete-btn {
-    background-color: #dc3545;
+/* Google 登入按鈕 */
+#login-btn {
+    background: linear-gradient(to right, #4285F4, #34A853);
     color: white;
-    border: none;
-    padding: 5px;
-    cursor: pointer;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+#login-btn:hover {
+    background: linear-gradient(to right, #357AE8, #2E8B57);
+}
+
+/* 登出按鈕 */
+#logout-btn {
+    background: #dc3545;
+    color: white;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+#logout-btn:hover {
+    background: #c82333;
+}
+
+/* 使用者資訊區塊 */
+#user-info {
+    display: none;
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#user-info p {
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+#user-pic {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid #4285F4;
+}
+
+/* 響應式設計（適應手機、平板） */
+@media screen and (max-width: 768px) {
+    body {
+        padding: 20px;
+    }
+
+    button {
+        width: 80%;
+        font-size: 16px;
+    }
+
+    #user-info {
+        max-width: 90%;
+        padding: 15px;
+    }
+
+    #user-pic {
+        width: 80px;
+        height: 80px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    h2 {
+        font-size: 20px;
+    }
+
+    button {
+        width: 100%;
+        font-size: 16px;
+        padding: 10px;
+    }
+
+    #user-info {
+        max-width: 100%;
+        padding: 10px;
+    }
 }

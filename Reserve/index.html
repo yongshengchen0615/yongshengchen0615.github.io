@@ -4,69 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Google 登入</title>
+    <!-- 引入 CSS 樣式表 -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- 引入 Firebase 相關的 SDK（使用 compat 版本） -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics-compat.js"></script>
-    <style>
-        body { text-align: center; font-family: Arial, sans-serif; padding: 50px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-        #user-info { display: none; margin-top: 20px; }
-    </style>
 </head>
 <body>
     <h2>Google 登入範例</h2>
+
+    <!-- Google 登入按鈕 -->
     <button id="login-btn">使用 Google 登入</button>
+
+    <!-- 登出按鈕（預設隱藏） -->
     <button id="logout-btn" style="display:none;">登出</button>
+
+    <!-- 顯示使用者資訊（預設隱藏） -->
     <div id="user-info">
         <p><strong>名稱：</strong><span id="user-name"></span></p>
         <img id="user-pic" width="100" height="100" style="border-radius: 50%;">
     </div>
-    
-    <script>
-        // Firebase 設定
-        const firebaseConfig = {
-            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-            authDomain: "reservesystem-c8bbc.firebaseapp.com",
-            databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-            projectId: "reservesystem-c8bbc",
-            storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-            messagingSenderId: "138232489371",
-            appId: "1:138232489371:web:849190b97774b5abae2d3e",
-            measurementId: "G-XXDSGNYTV1"
-        };
 
-        // 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const analytics = firebase.analytics();
-
-        const loginBtn = document.getElementById("login-btn");
-        const logoutBtn = document.getElementById("logout-btn");
-        const userInfo = document.getElementById("user-info");
-        const userName = document.getElementById("user-name");
-        const userPic = document.getElementById("user-pic");
-
-        loginBtn.addEventListener("click", () => {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider)
-                .then(result => {
-                    const user = result.user;
-                    userName.textContent = user.displayName;
-                    userPic.src = user.photoURL;
-                    loginBtn.style.display = "none";
-                    logoutBtn.style.display = "block";
-                    userInfo.style.display = "block";
-                })
-                .catch(error => alert("登入失敗: " + error.message));
-        });
-
-        logoutBtn.addEventListener("click", () => {
-            auth.signOut().then(() => {
-                loginBtn.style.display = "block";
-                logoutBtn.style.display = "none";
-                userInfo.style.display = "none";
-            });
-        });
-    </script>
+    <!-- 引入 JavaScript -->
+    <script src="script.js"></script>
 </body>
 </html>
