@@ -1,27 +1,22 @@
-// Firebase 設定
+// Firebase 設定（請替換為你的 Firebase 設定）
 const firebaseConfig = {
-    apiKey: "你的API Key",
-    authDomain: "你的Auth網域",
-    projectId: "你的Project ID",
-    storageBucket: "你的Storage桶",
-    messagingSenderId: "你的Sender ID",
-    appId: "你的App ID"
+    apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+  authDomain: "reservesystem-c8bbc.firebaseapp.com",
+  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+  projectId: "reservesystem-c8bbc",
+  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+  messagingSenderId: "138232489371",
+  appId: "1:138232489371:web:849190b97774b5abae2d3e",
+  measurementId: "G-XXDSGNYTV1"
 };
 
 // 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore();
-
-// 元素選取
-const loginBtn = document.getElementById("login-btn");
-const logoutBtn = document.getElementById("logout-btn");
-const userInfo = document.getElementById("user-info");
-const userName = document.getElementById("user-name");
-const userPic = document.getElementById("user-pic");
+const db = firebase.firestore(); // ✅ Firestore 初始化
 
 // Google 登入
-loginBtn.addEventListener("click", async () => {
+document.getElementById("login-btn").addEventListener("click", async () => {
     const provider = new firebase.auth.GoogleAuthProvider();
     try {
         const result = await auth.signInWithPopup(provider);
@@ -31,25 +26,15 @@ loginBtn.addEventListener("click", async () => {
     }
 });
 
-// 登出
-logoutBtn.addEventListener("click", () => {
-    auth.signOut().then(() => location.reload());
-});
-
 // 監聽登入狀態
 auth.onAuthStateChanged(user => {
     if (user) {
-        userName.textContent = user.displayName;
-        userPic.src = user.photoURL;
-        loginBtn.style.display = "none";
-        logoutBtn.style.display = "block";
-        userInfo.style.display = "block";
         document.getElementById("appointment-section").style.display = "block";
         loadUserAppointments(user.uid);
     }
 });
 
-// 預約功能
+// 提交預約
 document.getElementById("submit-appointment").addEventListener("click", async () => {
     const user = auth.currentUser;
     if (!user) return alert("請先登入！");
