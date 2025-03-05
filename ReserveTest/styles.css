@@ -1,53 +1,114 @@
-/* 調整整體頁面 */
+/* 全局樣式 */
 body {
     text-align: center;
     font-family: Arial, sans-serif;
     padding: 50px;
     background: linear-gradient(to right, #f8f9fa, #e9ecef);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-/* 預約表單樣式 */
-#booking-form {
-    display: none; /* 預設隱藏，登入後才顯示 */
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    width: 300px;
-    margin: 20px auto;
-}
-
-#booking-form h3 {
-    margin-bottom: 15px;
-}
-
-#booking-form label {
-    display: block;
-    margin-top: 10px;
+/* 按鈕區塊 */
+button {
+    min-width: 180px;
+    padding: 12px 24px;
+    font-size: 18px;
     font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    margin: 5px;
 }
 
-#booking-form select,
-#booking-form input {
-    width: 100%;
-    padding: 8px;
-    margin-top: 5px;
+/* Google 按鈕 */
+#login-btn {
+    background: linear-gradient(to right, #4285F4, #34A853);
+    color: white;
+}
+
+#login-btn:hover {
+    background: linear-gradient(to right, #357AE8, #2E8B57);
+    transform: scale(1.05);
+}
+
+/* 登出按鈕 */
+#logout-btn {
+    background: #dc3545;
+    color: white;
+    display: none;
+}
+
+#logout-btn:hover {
+    background: #c82333;
+}
+
+/* 使用者資訊 */
+#user-info {
+    display: none;
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    width: 90%;
+}
+
+/* 預約管理區 */
+#reservation-form, #reservation-list {
+    margin-top: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    width: 90%;
+}
+
+/* 表單輸入 */
+#reservation-form input {
+    width: 90%;
+    padding: 10px;
+    margin: 10px 0;
     border: 1px solid #ccc;
     border-radius: 5px;
 }
 
-/* 預約按鈕 */
-#submit-booking {
-    background: #28a745;
-    color: white;
-    font-size: 16px;
-    padding: 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    width: 100%;
-    margin-top: 15px;
+/* 預約列表 */
+#appointments {
+    list-style: none;
+    padding: 0;
 }
 
-#submit-booking:hover {
-    background: #218838;
+#appointments li {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 預約操作按鈕 */
+.edit-btn, .delete-btn {
+    padding: 5px 10px;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+    margin-left: 5px;
+}
+
+.edit-btn {
+    background: #ffc107;
+    color: white;
+}
+
+.delete-btn {
+    background: #dc3545;
+    color: white;
 }
