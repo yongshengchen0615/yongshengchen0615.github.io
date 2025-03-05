@@ -12,7 +12,7 @@ body {
     align-items: center;
 }
 
-/* 按鈕區塊 */
+/* 統一按鈕樣式 */
 button {
     min-width: 180px;
     padding: 12px 24px;
@@ -23,13 +23,14 @@ button {
     cursor: pointer;
     transition: all 0.3s ease;
     text-align: center;
-    margin: 5px;
 }
 
-/* Google 按鈕 */
+/* Google 登入按鈕 */
 #login-btn {
     background: linear-gradient(to right, #4285F4, #34A853);
     color: white;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    transition: background 0.3s ease-in-out, transform 0.2s ease-in-out;
 }
 
 #login-btn:hover {
@@ -37,78 +38,58 @@ button {
     transform: scale(1.05);
 }
 
-/* 登出按鈕 */
-#logout-btn {
-    background: #dc3545;
-    color: white;
-    display: none;
-}
-
-#logout-btn:hover {
-    background: #c82333;
-}
-
-/* 使用者資訊 */
-#user-info {
-    display: none;
+/* 預約表單樣式 */
+#reservation-section {
     margin-top: 20px;
     padding: 20px;
     background: white;
     border-radius: 10px;
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 400px;
-    width: 90%;
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
 }
 
-/* 預約管理區 */
-#reservation-form, #reservation-list {
-    margin-top: 20px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    max-width: 400px;
-    width: 90%;
+#reservation-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-/* 表單輸入 */
 #reservation-form input {
-    width: 90%;
     padding: 10px;
-    margin: 10px 0;
+    font-size: 16px;
     border: 1px solid #ccc;
     border-radius: 5px;
 }
 
-/* 預約列表 */
-#appointments {
+/* 預約列表樣式 */
+#reservation-list {
     list-style: none;
     padding: 0;
+    margin-top: 15px;
 }
 
-#appointments li {
+#reservation-list li {
+    background: #f1f1f1;
     padding: 10px;
-    border-bottom: 1px solid #ddd;
+    margin: 5px 0;
+    border-radius: 5px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-/* 預約操作按鈕 */
-.edit-btn, .delete-btn {
-    padding: 5px 10px;
-    border: none;
-    cursor: pointer;
-    border-radius: 5px;
-    margin-left: 5px;
-}
-
-.edit-btn {
-    background: #ffc107;
-    color: white;
-}
-
+/* 刪除按鈕 */
 .delete-btn {
     background: #dc3545;
     color: white;
+    font-size: 14px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.delete-btn:hover {
+    background: #c82333;
 }
