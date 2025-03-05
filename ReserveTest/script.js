@@ -1,4 +1,4 @@
-// Firebase 設定（已整合你的專案資訊）
+// Firebase 設定
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -21,6 +21,8 @@ const logoutBtn = document.getElementById("logout-btn");
 const userInfo = document.getElementById("user-info");
 const userName = document.getElementById("user-name");
 const userPic = document.getElementById("user-pic");
+const userDetailsForm = document.getElementById("user-details-form");
+const saveUserDetailsBtn = document.getElementById("save-user-details");
 const reservationForm = document.getElementById("reservation-form");
 const reserveBtn = document.getElementById("reserve-btn");
 const reservationList = document.getElementById("reservation-list");
@@ -33,78 +35,51 @@ auth.onAuthStateChanged(user => {
         userPic.src = user.photoURL;
         loginBtn.style.display = "none";
         logoutBtn.style.display = "block";
-        reservationForm.style.display = "block";
 
-        loadReservations(user.uid);
+        // 檢查是否已填寫基本資料
+        database.ref("users/" + user.uid).once("value", snapshot => {
+            if (snapshot.exists()) {
+                userDetailsForm.style.display = "none";
+                reservationForm.style.display = "block";
+                loadReservations(user.uid);
+            } else {
+                userDetailsForm.style.display = "block";
+                reservationForm.style.display = "none";
+            }
+        });
     } else {
         userInfo.style.display = "none";
         loginBtn.style.display = "block";
         logoutBtn.style.display = "none";
+        userDetailsForm.style.display = "none";
         reservationForm.style.display = "none";
         reservationList.innerHTML = "";
     }
 });
 
-// Google 登入
-loginBtn.addEventListener("click", () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch(error => {
-        alert("登入失敗: " + error.message);
-    });
-});
-
-// 登出
-logoutBtn.addEventListener("click", () => {
-    auth.signOut();
-});
-
-// 預約功能
-reserveBtn.addEventListener("click", () => {
+// 儲存用戶基本資料
+saveUserDetailsBtn.addEventListener("click", () => {
     const user = auth.currentUser;
-    if (!user) {
-        alert("請先登入！");
+    if (!user) return;
+
+    const lastName = document.getElementById("last-name").value;
+    const gender = document.getElementById("gender").value;
+    const phone = document.getElementById("phone").value;
+
+    if (!lastName || !phone) {
+        alert("請填寫完整資料！");
         return;
     }
 
-    const serviceType = document.getElementById("service-type").value;
-    const date = document.getElementById("date").value;
-    const time = document.getElementById("time").value;
-
-    if (!date || !time) {
-        alert("請選擇日期和時間！");
-        return;
-    }
-
-    const reservationRef = database.ref("reservations/" + user.uid).push();
-    reservationRef.set({
-        service: serviceType,
-        date: date,
-        time: time
+    database.ref("users/" + user.uid).set({
+        name: user.displayName,
+        lastName: lastName,
+        gender: gender,
+        phone: phone,
+        email: user.email
     });
 
-    alert("預約成功！");
-    loadReservations(user.uid);
+    alert("基本資料已儲存！");
+    userDetailsForm.style.display = "none";
+    reservationForm.style.display = "block";
 });
-
-// 載入使用者預約資料
-function loadReservations(uid) {
-    database.ref("reservations/" + uid).once("value", snapshot => {
-        reservationList.innerHTML = "";
-        snapshot.forEach(childSnapshot => {
-            const data = childSnapshot.val();
-            const li = document.createElement("li");
-            li.textContent = `${data.date} ${data.time} - ${data.service}`;
-            
-            // 取消預約按鈕
-            const cancelBtn = document.createElement("button");
-            cancelBtn.textContent = "取消";
-            cancelBtn.onclick = () => {
-                childSnapshot.ref.remove();
-                loadReservations(uid);
-            };
-
-            li.appendChild(cancelBtn);
-            reservationList.appendChild(li);
-        });
-    });
-}
