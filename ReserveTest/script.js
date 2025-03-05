@@ -1,7 +1,7 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+import { getDatabase, ref, push, set, update, remove, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
-// 🔥 替換為你的 Firebase 配置
+// 🔹 Firebase 設定
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -13,56 +13,79 @@ const firebaseConfig = {
     measurementId: "G-XXDSGNYTV1"
 };
 
-// ✅ 初始化 Firebase
+// 🔹 初始化 Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const database = getDatabase(app);
+const messagesRef = ref(database, "messages");
 
-// ✅ 加載留言
-const messageList = document.getElementById("messageList");
+// 🔹 送出留言
+document.getElementById("sendBtn").addEventListener("click", () => {
+    const username = document.getElementById("username").value.trim();
+    const message = document.getElementById("message").value.trim();
 
-function loadMessages() {
-    onSnapshot(collection(db, "messages"), (snapshot) => {
-        messageList.innerHTML = "";
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const li = document.createElement("li");
-            li.innerHTML = `
-                ${data.text}
-                <button class="edit-btn" onclick="editMessage('${doc.id}', '${data.text}')">編輯</button>
-                <button class="delete-btn" onclick="deleteMessage('${doc.id}')">刪除</button>
-            `;
-            messageList.appendChild(li);
+    if (username && message) {
+        const newMessageRef = push(messagesRef);
+        set(newMessageRef, {
+            username: username,
+            message: message,
+            timestamp: new Date().getTime()
         });
-    });
+
+        document.getElementById("message").value = ""; // 清空輸入框
+    } else {
+        alert("請輸入名稱和留言！");
+    }
+});
+
+// 🔹 監聽 Firebase 新增留言
+onChildAdded(messagesRef, (snapshot) => {
+    const data = snapshot.val();
+    createMessageElement(snapshot.key, data.username, data.message);
+});
+
+// 🔹 監聽 Firebase 修改留言
+onChildChanged(messagesRef, (snapshot) => {
+    const data = snapshot.val();
+    const messageElement = document.getElementById(snapshot.key);
+    if (messageElement) {
+        messageElement.querySelector(".message-text").innerText = data.message;
+    }
+});
+
+// 🔹 監聽 Firebase 刪除留言
+onChildRemoved(messagesRef, (snapshot) => {
+    const messageElement = document.getElementById(snapshot.key);
+    if (messageElement) {
+        messageElement.remove();
+    }
+});
+
+// 🔹 創建留言元素
+function createMessageElement(id, username, message) {
+    const messageDiv = document.createElement("div");
+    messageDiv.classList.add("message");
+    messageDiv.id = id;
+    messageDiv.innerHTML = `
+        <strong>${username}:</strong> <span class="message-text">${message}</span>
+        <button onclick="editMessage('${id}')">編輯</button>
+        <button onclick="deleteMessage('${id}')">刪除</button>
+    `;
+    document.getElementById("messages").appendChild(messageDiv);
 }
 
-// ✅ 新增留言
-window.addMessage = async function () {
-    const messageInput = document.getElementById("message");
-    const message = messageInput.value.trim();
-    if (message === "") return;
-
-    await addDoc(collection(db, "messages"), {
-        text: message,
-        timestamp: serverTimestamp()
-    });
-    messageInput.value = "";
-};
-
-// ✅ 編輯留言
-window.editMessage = async function (id, oldMessage) {
-    const newMessage = prompt("修改留言:", oldMessage);
-    if (newMessage !== null) {
-        await updateDoc(doc(db, "messages", id), { text: newMessage });
+// 🔹 修改留言
+window.editMessage = function(id) {
+    const newMessage = prompt("請輸入新的留言內容：");
+    if (newMessage) {
+        const messageRef = ref(database, `messages/${id}`);
+        update(messageRef, { message: newMessage });
     }
 };
 
-// ✅ 刪除留言
-window.deleteMessage = async function (id) {
+// 🔹 刪除留言
+window.deleteMessage = function(id) {
     if (confirm("確定要刪除這則留言嗎？")) {
-        await deleteDoc(doc(db, "messages", id));
+        const messageRef = ref(database, `messages/${id}`);
+        remove(messageRef);
     }
 };
-
-// ✅ 頁面加載時載入留言
-loadMessages();

@@ -1,77 +1,119 @@
+/* 🔹 全局樣式 */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Arial', sans-serif;
     background-color: #f8f9fa;
     text-align: center;
-}
-
-.container {
-    width: 400px;
-    margin: 50px auto;
-    background: white;
     padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin: 0;
 }
 
-h1 {
-    margin-bottom: 20px;
+/* 🔹 容器 */
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
-.input-section {
+/* 🔹 標題 */
+h2 {
+    color: #333;
+}
+
+/* 🔹 輸入區 */
+.input-group {
     display: flex;
+    flex-direction: column;
     gap: 10px;
 }
 
 input {
-    flex: 1;
-    padding: 8px;
+    width: 100%;
+    padding: 12px;
     border: 1px solid #ccc;
-    border-radius: 4px;
+    border-radius: 5px;
+    font-size: 16px;
+    outline: none;
+    transition: border 0.3s ease-in-out;
 }
 
+input:focus {
+    border-color: #007bff;
+}
+
+/* 🔹 按鈕 */
 button {
-    padding: 8px 12px;
-    border: none;
+    width: 100%;
+    padding: 12px;
     background: #007bff;
     color: white;
-    border-radius: 4px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
     cursor: pointer;
+    transition: background 0.3s ease-in-out;
 }
 
 button:hover {
     background: #0056b3;
 }
 
-ul {
-    list-style-type: none;
-    padding: 0;
+/* 🔹 留言區 */
+#messages {
     margin-top: 20px;
+    text-align: left;
 }
 
-li {
-    background: #e9ecef;
-    margin: 10px 0;
+/* 🔹 單條留言 */
+.message {
+    background: #ffffff;
+    border: 1px solid #ddd;
     padding: 10px;
-    border-radius: 4px;
+    border-radius: 5px;
+    margin-bottom: 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    transition: transform 0.2s ease-in-out;
 }
 
-.edit-btn, .delete-btn {
-    margin-left: 5px;
-    padding: 5px;
-    border: none;
-    cursor: pointer;
-    border-radius: 4px;
+.message:hover {
+    transform: scale(1.02);
 }
 
-.edit-btn {
-    background: #ffc107;
-    color: black;
+/* 🔹 按鈕組 */
+.message-buttons {
+    display: flex;
+    gap: 5px;
 }
 
-.delete-btn {
-    background: #dc3545;
-    color: white;
+.message-buttons button {
+    padding: 5px 10px;
+    font-size: 14px;
+}
+
+/* 🔹 響應式設計 */
+@media (max-width: 600px) {
+    .container {
+        width: 90%;
+        padding: 15px;
+    }
+
+    input, button {
+        font-size: 14px;
+        padding: 10px;
+    }
+
+    .message {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .message-buttons {
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+    }
 }

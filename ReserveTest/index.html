@@ -3,19 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase 留言板</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Firebase Google 登入 + 訊息儲存</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 400px;
+            margin: 20px auto;
+            text-align: center;
+        }
+        input, button {
+            margin: 5px;
+            padding: 10px;
+            width: 80%;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            background: #f4f4f4;
+            margin: 5px;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .delete-btn {
+            background: red;
+            color: white;
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>留言板</h1>
-        <div class="input-section">
-            <input type="text" id="message" placeholder="輸入你的留言...">
-            <button onclick="addMessage()">送出</button>
-        </div>
-        <ul id="messageList"></ul>
-    </div>
 
-    <script type="module" src="script.js"></script>
+    <h2>Firebase Google 登入</h2>
+    <button id="loginButton">Google 登入</button>
+    <button id="logoutButton" style="display:none;">登出</button>
+    <p id="userInfo"></p>
+
+    <h2>訊息儲存範例</h2>
+    <input type="text" id="messageInput" placeholder="輸入訊息..." disabled>
+    <button id="sendButton" disabled>送出</button>
+
+    <h3>訊息列表</h3>
+    <ul id="messagesList"></ul>
+
+    <script type="module">
+        // 匯入 Firebase 函式
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getDatabase, ref, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+
+        // Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+            authDomain: "reservesystem-c8bbc.firebaseapp.com",
+            databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+            projectId: "reservesystem-c8bbc",
+            storageBucket: "reservesystem-c8bbc.appspot.com",
+            messagingSenderId: "138232489371",
+            appId: "1:138232489371:web:849190b97774b5abae2d3e",
+            measurementId: "G-XXDSGNYTV1"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+        const provider = new GoogleAuthProvider();
+
+        // 取得 UI 元素
+        const loginButton = document.getElementById("loginButton");
+        const logoutButton = document.getElementById("logoutButton");
+        const userInfo = document.getElementById("userInfo");
+        const messageInput = document.getElementById("messageInput");
+        const sendButton = document.getElementById("sendButton");
+        const messagesList = document.getElementById("messagesList");
+
+        let currentUser = null;
+
+        // Google 登入
+        loginButton.addEventListener("click", () => {
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    currentUser = result.user;
+                    updateUI();
+                })
+                .catch((error) => {
+                    console.error("登入失敗：", error);
+                });
+        });
+
+        // Google 登出
+        logoutButton.addEventListener("click", () => {
+            signOut(auth).then(() => {
+                currentUser = null;
+                updateUI();
+            }).catch((error) => {
+                console.error("登出失敗：", error);
+            });
+        });
+
+        // 監聽登入狀態變更
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            updateUI();
+        });
+
+        // 更新 UI
+        function updateUI() {
+            if (currentUser) {
+                loginButton.style.display = "none";
+                logoutButton.style.display = "inline-block";
+                userInfo.innerHTML = `歡迎，${currentUser.displayName} (${currentUser.email})`;
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+            } else {
+                loginButton.style.display = "inline-block";
+                logoutButton.style.display = "none";
+                userInfo.innerHTML = "";
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+            }
+        }
+
+        // 送出訊息到 Firebase
+        sendButton.addEventListener("click", () => {
+            const message = messageInput.value.trim();
+            if (message === "" || !currentUser) return;
+
+            const messagesRef = ref(database, "messages");
+            push(messagesRef, {
+                text: message,
+                user: currentUser.displayName,
+                email: currentUser.email,
+                uid: currentUser.uid,
+                timestamp: Date.now()
+            });
+
+            messageInput.value = "";
+        });
+
+        // 監聽 Firebase 並即時更新畫面
+        const messagesRef = ref(database, "messages");
+        onChildAdded(messagesRef, (snapshot) => {
+            const messageData = snapshot.val();
+            const messageId = snapshot.key; // 取得訊息 ID
+
+            // 建立訊息列表項目
+            const li = document.createElement("li");
+            li.innerHTML = `<b>${messageData.user}:</b> ${messageData.text}`;
+
+            // 若是該使用者發的訊息，顯示刪除按鈕
+            if (currentUser && currentUser.uid === messageData.uid) {
+                const deleteButton = document.createElement("button");
+                deleteButton.textContent = "刪除";
+                deleteButton.classList.add("delete-btn");
+                deleteButton.addEventListener("click", () => deleteMessage(messageId, li));
+
+                li.appendChild(deleteButton);
+            }
+
+            messagesList.appendChild(li);
+        });
+
+        // 刪除訊息
+        function deleteMessage(messageId, listItem) {
+            const messageRef = ref(database, `messages/${messageId}`);
+            remove(messageRef).then(() => {
+                messagesList.removeChild(listItem);
+            }).catch((error) => {
+                console.error("刪除失敗：", error);
+            });
+        }
+    </script>
+
 </body>
 </html>
