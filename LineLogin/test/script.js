@@ -77,23 +77,33 @@ function loadBookings() {
     });
 }
 
-function editBooking(id, name, date, time) {
+// 註冊到全域
+window.editBooking = function (id, name, date, time) {
     document.getElementById("bookingId").value = id;
     document.getElementById("name").value = name;
     document.getElementById("date").value = date;
     document.getElementById("time").value = time;
     document.getElementById("updateBookingBtn").style.display = "inline-block";
-}
+};
 
-function updateBooking() {
+window.updateBooking = function () {
     const id = document.getElementById("bookingId").value;
     update(ref(database, `bookings/${id}`), {
         name: document.getElementById("name").value,
         date: document.getElementById("date").value,
         time: document.getElementById("time").value
     }).then(() => { alert("更新成功！"); loadBookings(); });
-}
+};
 
-function deleteBooking(id) {
-    remove(ref(database, `bookings/${id}`)).then(() => { alert("已刪除"); loadBookings(); });
-}
+window.deleteBooking = function (id) {
+    if (confirm("確定要刪除這筆預約嗎？")) {
+        remove(ref(database, `bookings/${id}`))
+            .then(() => {
+                alert("預約已刪除！");
+                loadBookings();
+            })
+            .catch((error) => {
+                alert("刪除失敗：" + error.message);
+            });
+    }
+};
