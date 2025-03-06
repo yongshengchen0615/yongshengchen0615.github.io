@@ -1,51 +1,39 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE Login</title>
-</head>
-<body>
-    <h2>使用 LINE 登入</h2>
-    <button onclick="loginWithLINE()">使用 LINE 登入</button>
-    <div id="userInfo" style="display: none;">
-        <h3>用戶資訊</h3>
-        <img id="userPicture" src="" alt="User Picture" style="width:100px;">
-        <p id="userName"></p>
-    </div>
-
+    <title>LINE Login (無後端)</title>
     <script>
-        const LINE_CHANNEL_ID = "2005939681"; // 請填入你的 LINE Channel ID
-        const REDIRECT_URI = "https://yongshengchen0615.github.io/ReserveTest/"; // 需與 LINE Developers 設定的一致
+        const CLIENT_ID = "2005939681"; // 請填入你的 LINE Channel ID
+        const REDIRECT_URI = "https://yongshengchen0615.github.io/ReserveTest/"; // 請填入你的回調網址
+        const SCOPE = "profile openid email";
+        const STATE = Math.random().toString(36).substring(7); // 生成隨機 state 防止 CSRF 攻擊
 
         function loginWithLINE() {
-            const loginURL = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${LINE_CHANNEL_ID}&redirect_uri=${REDIRECT_URI}&scope=profile%20openid&state=12345`;
-            window.location.href = loginURL;
+            const url = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${STATE}&scope=${encodeURIComponent(SCOPE)}`;
+            window.location.href = url;
         }
 
-        function getUserProfile(accessToken) {
-            fetch("https://api.line.me/v2/profile", {
-                headers: { "Authorization": `Bearer ${accessToken}` }
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById("userInfo").style.display = "block";
-                document.getElementById("userPicture").src = data.pictureUrl;
-                document.getElementById("userName").textContent = `歡迎, ${data.displayName}`;
-            })
-            .catch(error => console.error("Error fetching user profile:", error));
+        function getAuthCodeFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get("code");
         }
 
-        function checkLogin() {
-            const hash = window.location.hash;
-            if (hash.includes("access_token")) {
-                const params = new URLSearchParams(hash.substring(1));
-                const accessToken = params.get("access_token");
-                getUserProfile(accessToken);
+        async function getUserProfile(authCode) {
+            alert(`授權碼: ${authCode}，請手動交換 access_token 來獲取用戶資訊`);
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const authCode = getAuthCodeFromURL();
+            if (authCode) {
+                getUserProfile(authCode);
             }
-        }
-
-        window.onload = checkLogin;
+        });
     </script>
+</head>
+<body>
+    <h2>使用 LINE 登入 (無後端)</h2>
+    <button onclick="loginWithLINE()">登入 LINE</button>
 </body>
 </html>
