@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
 
 // LINE LIFF ID
 const LINE_LIFF_ID = "2005939681-ayjyxlz3"; 
@@ -10,7 +11,7 @@ const firebaseConfig = {
     authDomain: "reservesystem-c8bbc.firebaseapp.com",
     databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
     projectId: "reservesystem-c8bbc",
-    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+    storageBucket: "reservesystem-c8bbc.appspot.com",
     messagingSenderId: "138232489371",
     appId: "1:138232489371:web:849190b97774b5abae2d3e",
     measurementId: "G-XXDSGNYTV1"
@@ -19,6 +20,7 @@ const firebaseConfig = {
 // 初始化 Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const analytics = getAnalytics(app);
 
 document.addEventListener("DOMContentLoaded", () => {
     initLiff();
