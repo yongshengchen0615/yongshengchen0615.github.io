@@ -39,9 +39,10 @@ button {
 }
 
 .profile-img {
-    width: 80px;
-    height: 80px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
+    object-fit: cover;
     margin-top: 10px;
 }
 

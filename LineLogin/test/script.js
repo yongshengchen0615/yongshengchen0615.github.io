@@ -55,29 +55,9 @@ function saveBooking() {
 
     const bookingRef = push(ref(database, "bookings"));
     set(bookingRef, { userId, name, date, time, timestamp: serverTimestamp() })
-        .then(() => { alert("預約成功！"); loadBookings(); })
-        .catch(error => alert("預約失敗：" + error.message));
+        .then(() => { alert("預約成功！"); loadBookings(); });
 }
 
-function loadBookings() {
-    get(ref(database, "bookings")).then(snapshot => {
-        const bookingsList = document.getElementById("bookingsList");
-        bookingsList.innerHTML = "";
-
-        snapshot.forEach(child => {
-            const booking = child.val();
-            if (booking.userId === userId) {
-                const li = document.createElement("li");
-                li.innerHTML = `${booking.name} - ${booking.date} ${booking.time}
-                    <button onclick="editBooking('${child.key}', '${booking.name}', '${booking.date}', '${booking.time}')">修改</button>
-                    <button onclick="deleteBooking('${child.key}')">刪除</button>`;
-                bookingsList.appendChild(li);
-            }
-        });
-    });
-}
-
-// 註冊到全域
 window.editBooking = function (id, name, date, time) {
     document.getElementById("bookingId").value = id;
     document.getElementById("name").value = name;
@@ -86,24 +66,9 @@ window.editBooking = function (id, name, date, time) {
     document.getElementById("updateBookingBtn").style.display = "inline-block";
 };
 
-window.updateBooking = function () {
-    const id = document.getElementById("bookingId").value;
-    update(ref(database, `bookings/${id}`), {
-        name: document.getElementById("name").value,
-        date: document.getElementById("date").value,
-        time: document.getElementById("time").value
-    }).then(() => { alert("更新成功！"); loadBookings(); });
-};
-
 window.deleteBooking = function (id) {
     if (confirm("確定要刪除這筆預約嗎？")) {
         remove(ref(database, `bookings/${id}`))
-            .then(() => {
-                alert("預約已刪除！");
-                loadBookings();
-            })
-            .catch((error) => {
-                alert("刪除失敗：" + error.message);
-            });
+            .then(() => { alert("已刪除！"); loadBookings(); });
     }
 };

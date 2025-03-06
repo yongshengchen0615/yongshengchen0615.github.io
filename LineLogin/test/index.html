@@ -11,10 +11,10 @@
     <!-- LINE SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-    <!-- Firebase 最新 SDK -->
+    <!-- Firebase 設定 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, set, get, update, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         window.firebaseConfig = {
             apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
@@ -30,7 +30,7 @@
 </head>
 <body>
     <div class="container">
-        <h2>LINE 預約系統v2</h2>
+        <h2>LINE 預約系統</h2>
 
         <div id="loginSection">
             <button id="loginBtn">使用 LINE 登入</button>
