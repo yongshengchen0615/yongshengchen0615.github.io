@@ -4,61 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE Login Demo</title>
+    <link rel="stylesheet" href="styles.css">
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 10px; }
-        #profile { display: none; }
-    </style>
 </head>
 <body>
 
-    <h2>LINE Login Demo</h2>
-    <button id="loginBtn">使用 LINE 登入</button>
-    <button id="logoutBtn" style="display: none;">登出</button>
+    <div class="container">
+        <h2>LINE Login Demo</h2>
+        <button id="loginBtn" class="btn">使用 LINE 登入</button>
+        <button id="logoutBtn" class="btn btn-danger">登出</button>
 
-    <div id="profile">
-        <h3>使用者資訊</h3>
-        <img id="userImage" src="" alt="User Image" style="width: 100px; border-radius: 50%;">
-        <p id="userName"></p>
+        <div id="profile" class="profile">
+            <h3>使用者資訊</h3>
+            <img id="userImage" src="" alt="User Image">
+            <p id="userName"></p>
+        </div>
     </div>
 
-    <script>
-        const LINE_LIFF_ID = "2005939681-ayjyxlz3"; // 替換成你的 LINE LIFF ID
-
-        async function initLiff() {
-            try {
-                await liff.init({ liffId: LINE_LIFF_ID });
-                if (liff.isLoggedIn()) {
-                    getUserProfile();
-                }
-            } catch (error) {
-                console.error("LIFF 初始化失敗", error);
-            }
-        }
-
-        async function getUserProfile() {
-            if (liff.isLoggedIn()) {
-                const profile = await liff.getProfile();
-                document.getElementById("userImage").src = profile.pictureUrl;
-                document.getElementById("userName").textContent = `你好, ${profile.displayName}`;
-                document.getElementById("profile").style.display = "block";
-                document.getElementById("loginBtn").style.display = "none";
-                document.getElementById("logoutBtn").style.display = "inline-block";
-            }
-        }
-
-        document.getElementById("loginBtn").addEventListener("click", () => {
-            liff.login();
-        });
-
-        document.getElementById("logoutBtn").addEventListener("click", () => {
-            liff.logout();
-            location.reload();
-        });
-
-        window.onload = initLiff;
-    </script>
+    <script src="script.js"></script>
 
 </body>
 </html>

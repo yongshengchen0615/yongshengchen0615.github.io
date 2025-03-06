@@ -19,7 +19,7 @@ body {
 }
 
 /* 按鈕樣式 */
-button {
+.btn {
     display: inline-block;
     padding: 12px 20px;
     font-size: 16px;
@@ -32,32 +32,28 @@ button {
     margin: 10px;
 }
 
-/* 登入按鈕 */
-#loginBtn {
-    background-color: #06c755; /* LINE 綠色 */
+.btn:hover {
+    opacity: 0.9;
 }
 
-#loginBtn:hover {
-    background-color: #059c44;
+/* LINE 登入按鈕 */
+#loginBtn {
+    background-color: #06c755;
 }
 
 /* 登出按鈕 */
-#logoutBtn {
+.btn-danger {
     background-color: #ff4444;
     display: none;
 }
 
-#logoutBtn:hover {
-    background-color: #cc0000;
-}
-
 /* 使用者資訊區塊 */
-#profile {
+.profile {
     display: none;
     margin-top: 20px;
 }
 
-#profile h3 {
+.profile h3 {
     font-size: 18px;
     color: #06c755;
 }
