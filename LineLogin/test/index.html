@@ -1,17 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE 登入 + Firebase 留言板</title>
+    <title>LINE Login & Firebase 留言板</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script type="module">
-        // 匯入 Firebase SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
-
-        // **Firebase 設定**
+        import { getDatabase, ref, push, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+        
+        // Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
             authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -19,103 +17,85 @@
             projectId: "reservesystem-c8bbc",
             storageBucket: "reservesystem-c8bbc.firebasestorage.app",
             messagingSenderId: "138232489371",
-            appId: "1:138232489371:web:849190b97774b5abae2d3e",
-            measurementId: "G-XXDSGNYTV1"
+            appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
+            measurementId: "G-RZ9XSVK925"
         };
-
-        // 初始化 Firebase
+        
         const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        const db = getFirestore(app);
+        const db = getDatabase(app);
+        let userId = "";
 
-        // 初始化 LINE LIFF
-        async function initLine() {
-            await liff.init({ liffId: "2005939681-ayjyxlz3" }); // 你的 LIFF ID
+        async function login() {
+            await liff.init({ liffId: "2005939681-ayjyxlz3" });
             if (!liff.isLoggedIn()) {
                 liff.login();
             } else {
                 const profile = await liff.getProfile();
-                document.getElementById("user-info").innerHTML = `
-                    <img src="${profile.pictureUrl}" width="50"> 
-                    ${profile.displayName}
-                `;
-            }
-        }
-
-        // 讀取 Firestore 中的留言
-        async function loadMessages() {
-            const messages = document.getElementById("messages");
-            messages.innerHTML = "";
-
-            const querySnapshot = await getDocs(collection(db, "messages"));
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const messageItem = document.createElement("div");
-                messageItem.innerHTML = `
-                    <p>${data.text} - <b>${data.user}</b></p>
-                    <button onclick="editMessage('${doc.id}', '${data.text}')">編輯</button>
-                    <button onclick="deleteMessage('${doc.id}')">刪除</button>
-                `;
-                messages.appendChild(messageItem);
-            });
-        }
-
-        // 新增留言
-        async function addMessage() {
-            const messageText = document.getElementById("message").value;
-            if (!messageText) return alert("請輸入留言內容");
-            
-            const profile = await liff.getProfile();
-            await addDoc(collection(db, "messages"), {
-                text: messageText,
-                user: profile.displayName
-            });
-
-            document.getElementById("message").value = "";
-            loadMessages();
-        }
-
-        // 編輯留言
-        async function editMessage(id, oldText) {
-            const newText = prompt("修改留言:", oldText);
-            if (newText && newText !== oldText) {
-                const messageRef = doc(db, "messages", id);
-                await updateDoc(messageRef, { text: newText });
+                userId = profile.userId;
+                document.getElementById("userInfo").innerText = `Hello, ${profile.displayName}`;
                 loadMessages();
             }
         }
-
-        // 刪除留言
-        async function deleteMessage(id) {
-            if (confirm("確定刪除？")) {
-                await deleteDoc(doc(db, "messages", id));
-                loadMessages();
-            }
+        
+        function logout() {
+            liff.logout();
+            location.reload();
         }
-
-        // 初始執行
-        window.onload = async function () {
-            await initLine();
-            await loadMessages();
-        };
-
-        // 暴露函數給全域範圍，讓 HTML 按鈕能夠執行
+        
+        function addMessage() {
+            const messageInput = document.getElementById("messageInput").value;
+            if (messageInput.trim() === "") return;
+            const newMessageRef = push(ref(db, "messages"));
+            set(newMessageRef, {
+                userId: userId,
+                message: messageInput,
+                timestamp: Date.now()
+            });
+            document.getElementById("messageInput").value = "";
+        }
+        
+        function updateMessage(id, newMessage) {
+            update(ref(db, `messages/${id}`), { message: newMessage });
+        }
+        
+        function deleteMessage(id) {
+            remove(ref(db, `messages/${id}`));
+        }
+        
+        function loadMessages() {
+            onValue(ref(db, "messages"), (snapshot) => {
+                const messagesDiv = document.getElementById("messages");
+                messagesDiv.innerHTML = "";
+                snapshot.forEach((childSnapshot) => {
+                    const messageData = childSnapshot.val();
+                    const messageId = childSnapshot.key;
+                    
+                    const messageElement = document.createElement("div");
+                    messageElement.innerHTML = `
+                        <p>${messageData.message} <button onclick="editMessage('${messageId}', '${messageData.message}')">修改</button> <button onclick="deleteMessage('${messageId}')">刪除</button></p>
+                    `;
+                    messagesDiv.appendChild(messageElement);
+                });
+            });
+        }
+        
         window.addMessage = addMessage;
-        window.editMessage = editMessage;
         window.deleteMessage = deleteMessage;
-
+        window.editMessage = (id, oldMessage) => {
+            const newMessage = prompt("修改留言:", oldMessage);
+            if (newMessage) updateMessage(id, newMessage);
+        };
+        
+        window.onload = login;
     </script>
 </head>
 <body>
-    <h2>LINE 登入 + Firebase 留言板</h2>
-    <div id="user-info">登入中...</div>
-    
-    <div>
-        <input type="text" id="message" placeholder="輸入留言">
-        <button onclick="addMessage()">送出</button>
-    </div>
-    
-    <h3>留言列表</h3>
+    <h1>LINE Login & Firebase 留言板</h1>
+    <p id="userInfo">請登入...</p>
+    <button onclick="logout()">登出</button>
+    <br><br>
+    <input type="text" id="messageInput" placeholder="輸入留言...">
+    <button onclick="addMessage()">送出</button>
     <div id="messages"></div>
 </body>
 </html>
