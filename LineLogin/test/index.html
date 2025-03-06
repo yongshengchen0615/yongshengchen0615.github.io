@@ -3,31 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE Login & Firebase Chat</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
-    <script type="module" src="script.js"></script>
+    <title>LINE 登入 + Firebase 留言板</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script type="module">
+        // 匯入 Firebase SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+        // **Firebase 設定**
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+            authDomain: "reservesystem-c8bbc.firebaseapp.com",
+            databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+            projectId: "reservesystem-c8bbc",
+            storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+            messagingSenderId: "138232489371",
+            appId: "1:138232489371:web:849190b97774b5abae2d3e",
+            measurementId: "G-XXDSGNYTV1"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        // 初始化 LINE LIFF
+        async function initLine() {
+            await liff.init({ liffId: "2005939681-ayjyxlz3" }); // 你的 LIFF ID
+            if (!liff.isLoggedIn()) {
+                liff.login();
+            } else {
+                const profile = await liff.getProfile();
+                document.getElementById("user-info").innerHTML = `
+                    <img src="${profile.pictureUrl}" width="50"> 
+                    ${profile.displayName}
+                `;
+            }
+        }
+
+        // 讀取 Firestore 中的留言
+        async function loadMessages() {
+            const messages = document.getElementById("messages");
+            messages.innerHTML = "";
+
+            const querySnapshot = await getDocs(collection(db, "messages"));
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const messageItem = document.createElement("div");
+                messageItem.innerHTML = `
+                    <p>${data.text} - <b>${data.user}</b></p>
+                    <button onclick="editMessage('${doc.id}', '${data.text}')">編輯</button>
+                    <button onclick="deleteMessage('${doc.id}')">刪除</button>
+                `;
+                messages.appendChild(messageItem);
+            });
+        }
+
+        // 新增留言
+        async function addMessage() {
+            const messageText = document.getElementById("message").value;
+            if (!messageText) return alert("請輸入留言內容");
+            
+            const profile = await liff.getProfile();
+            await addDoc(collection(db, "messages"), {
+                text: messageText,
+                user: profile.displayName
+            });
+
+            document.getElementById("message").value = "";
+            loadMessages();
+        }
+
+        // 編輯留言
+        async function editMessage(id, oldText) {
+            const newText = prompt("修改留言:", oldText);
+            if (newText && newText !== oldText) {
+                const messageRef = doc(db, "messages", id);
+                await updateDoc(messageRef, { text: newText });
+                loadMessages();
+            }
+        }
+
+        // 刪除留言
+        async function deleteMessage(id) {
+            if (confirm("確定刪除？")) {
+                await deleteDoc(doc(db, "messages", id));
+                loadMessages();
+            }
+        }
+
+        // 初始執行
+        window.onload = async function () {
+            await initLine();
+            await loadMessages();
+        };
+
+        // 暴露函數給全域範圍，讓 HTML 按鈕能夠執行
+        window.addMessage = addMessage;
+        window.editMessage = editMessage;
+        window.deleteMessage = deleteMessage;
+
+    </script>
 </head>
 <body>
-
-    <div class="container">
-        <h2>LINE Login & Firebase Chat</h2>
-        <button id="loginBtn" class="btn">使用 LINE 登入</button>
-        <button id="logoutBtn" class="btn btn-danger">登出</button>
-
-        <div id="profile" class="profile">
-            <h3>使用者資訊</h3>
-            <img id="userImage" src="" alt="User Image">
-            <p id="userName"></p>
-        </div>
-
-        <div id="chatSection" class="chat-section">
-            <h3>留言區</h3>
-            <input type="text" id="messageInput" placeholder="輸入訊息">
-            <button id="sendMessageBtn" class="btn">發送</button>
-            <ul id="messageList"></ul>
-        </div>
+    <h2>LINE 登入 + Firebase 留言板</h2>
+    <div id="user-info">登入中...</div>
+    
+    <div>
+        <input type="text" id="message" placeholder="輸入留言">
+        <button onclick="addMessage()">送出</button>
     </div>
-
+    
+    <h3>留言列表</h3>
+    <div id="messages"></div>
 </body>
 </html>
