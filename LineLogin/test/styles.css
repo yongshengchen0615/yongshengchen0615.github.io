@@ -1,67 +1,58 @@
 body {
     font-family: Arial, sans-serif;
     text-align: center;
-    margin: 20px;
+    background-color: #f4f4f4;
+    padding: 20px;
 }
 
-.container {
-    width: 90%;
-    max-width: 500px;
-    margin: auto;
-    padding: 20px;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    background-color: #f9f9f9;
+h1 {
+    color: #333;
 }
 
 button {
-    padding: 10px;
-    margin: 10px;
+    background-color: #06C755;
+    color: white;
     border: none;
+    padding: 10px 15px;
+    margin: 10px;
     cursor: pointer;
     border-radius: 5px;
 }
 
-#loginBtn {
-    background-color: #06c755;
-    color: white;
+button:hover {
+    background-color: #059e4f;
 }
 
-#logoutBtn {
-    background-color: #d9534f;
-    color: white;
+#messageBoard {
+    margin-top: 20px;
 }
 
-#updateBookingBtn {
-    display: none;
-    background-color: #f0ad4e;
-    color: white;
+#messageInput {
+    padding: 10px;
+    width: 60%;
+    border: 1px solid #ccc;
+    border-radius: 5px;
 }
 
-.profile-img {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-top: 10px;
-}
-
-ul {
+#messagesList {
     list-style-type: none;
     padding: 0;
 }
 
-li {
+#messagesList li {
     background: white;
     padding: 10px;
-    margin: 5px 0;
+    margin: 10px auto;
+    width: 60%;
+    border-radius: 5px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-radius: 5px;
 }
 
-li button {
+#messagesList button {
+    background-color: #ff5555;
     padding: 5px;
-    font-size: 0.8em;
+    font-size: 12px;
 }

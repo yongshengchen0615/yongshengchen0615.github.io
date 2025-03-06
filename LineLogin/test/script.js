@@ -1,74 +1,127 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, push, set, get, update, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getAuth, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-const firebaseConfig = window.firebaseConfig;
+const liffId = "YOUR_LIFF_ID";  // 請替換為你的 LIFF ID
+
+// Firebase 設定
+const firebaseConfig = {
+    apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
+    authDomain: "reservesystem-c8bbc.firebaseapp.com",
+    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+    projectId: "reservesystem-c8bbc",
+    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+    messagingSenderId: "138232489371",
+    appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
+    measurementId: "G-RZ9XSVK925"
+};
+
+// 初始化 Firebase
 const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
+const auth = getAuth(app);
+const db = getDatabase(app);
 
-const liffId = "2005939681-ayjyxlz3";
-let userId = "";
-
-// 初始化 LINE LIFF
-document.addEventListener("DOMContentLoaded", async function () {
+async function initializeLIFF() {
     await liff.init({ liffId });
 
     if (liff.isLoggedIn()) {
-        getUserProfile();
+        const profile = await liff.getProfile();
+        handleLoginSuccess(profile);
     } else {
-        document.getElementById("loginSection").style.display = "block";
+        document.getElementById("loginBtn").style.display = "block";
     }
+}
 
-    document.getElementById("loginBtn").addEventListener("click", () => liff.login());
-    document.getElementById("logoutBtn").addEventListener("click", () => {
-        liff.logout();
-        location.reload();
-    });
-
-    document.getElementById("bookingForm").addEventListener("submit", function (e) {
-        e.preventDefault();
-        saveBooking();
-    });
-
-    document.getElementById("updateBookingBtn").addEventListener("click", function () {
-        updateBooking();
-    });
+document.getElementById("loginBtn").addEventListener("click", async () => {
+    await liff.login();
 });
 
-async function getUserProfile() {
-    const profile = await liff.getProfile();
-    document.getElementById("userName").textContent = profile.displayName;
-    document.getElementById("userPicture").src = profile.pictureUrl;
-    userId = profile.userId;
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await signOut(auth);
+    liff.logout();
+    location.reload();
+});
 
-    document.getElementById("loginSection").style.display = "none";
+async function handleLoginSuccess(profile) {
+    document.getElementById("loginBtn").style.display = "none";
+    document.getElementById("logoutBtn").style.display = "block";
     document.getElementById("userInfo").style.display = "block";
-    document.getElementById("bookingSection").style.display = "block";
-    document.getElementById("myBookings").style.display = "block";
+    document.getElementById("messageBoard").style.display = "block";
 
-    loadBookings();
+    document.getElementById("userName").innerText = profile.displayName;
+    document.getElementById("userImage").src = profile.pictureUrl;
+
+    // 取得 LINE Token 並傳送至 Firebase 進行驗證
+    const idToken = await liff.getIDToken();
+    const credential = signInWithCustomToken(auth, idToken);
+    
+    credential.then(() => {
+        loadMessages(profile.userId);
+    }).catch((error) => {
+        console.error("Firebase 登入失敗", error);
+    });
 }
 
-function saveBooking() {
-    const name = document.getElementById("name").value;
-    const date = document.getElementById("date").value;
-    const time = document.getElementById("time").value;
+function loadMessages(userId) {
+    const messagesList = document.getElementById("messagesList");
+    messagesList.innerHTML = "";
 
-    const bookingRef = push(ref(database, "bookings"));
-    set(bookingRef, { userId, name, date, time, timestamp: serverTimestamp() })
-        .then(() => { alert("預約成功！"); loadBookings(); });
+    onValue(ref(db, "messages"), (snapshot) => {
+        messagesList.innerHTML = "";
+        snapshot.forEach((childSnapshot) => {
+            const msgData = childSnapshot.val();
+            const msgId = childSnapshot.key;
+
+            const li = document.createElement("li");
+            li.innerHTML = `<span>${msgData.name}: ${msgData.text}</span>`;
+
+            if (msgData.userId === userId) {
+                const editBtn = document.createElement("button");
+                editBtn.innerText = "編輯";
+                editBtn.onclick = () => editMessage(msgId, msgData.text);
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.innerText = "刪除";
+                deleteBtn.onclick = () => deleteMessage(msgId);
+
+                li.appendChild(editBtn);
+                li.appendChild(deleteBtn);
+            }
+
+            messagesList.appendChild(li);
+        });
+    });
 }
 
-window.editBooking = function (id, name, date, time) {
-    document.getElementById("bookingId").value = id;
-    document.getElementById("name").value = name;
-    document.getElementById("date").value = date;
-    document.getElementById("time").value = time;
-    document.getElementById("updateBookingBtn").style.display = "inline-block";
-};
+function sendMessage() {
+    const messageInput = document.getElementById("messageInput");
+    const text = messageInput.value.trim();
 
-window.deleteBooking = function (id) {
-    if (confirm("確定要刪除這筆預約嗎？")) {
-        remove(ref(database, `bookings/${id}`))
-            .then(() => { alert("已刪除！"); loadBookings(); });
+    if (text === "") return;
+
+    liff.getProfile().then((profile) => {
+        push(ref(db, "messages"), {
+            userId: profile.userId,
+            name: profile.displayName,
+            text: text
+        });
+        messageInput.value = "";  // 清空輸入框
+    });
+}
+
+function editMessage(msgId, oldText) {
+    const newText = prompt("修改留言:", oldText);
+    if (newText !== null) {
+        update(ref(db, "messages/" + msgId), { text: newText });
     }
-};
+}
+
+function deleteMessage(msgId) {
+    if (confirm("確定要刪除這則留言嗎？")) {
+        remove(ref(db, "messages/" + msgId));
+    }
+}
+
+document.getElementById("sendMessageBtn").addEventListener("click", sendMessage);
+
+initializeLIFF();
