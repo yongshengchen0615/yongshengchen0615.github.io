@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>預約系統</title>
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <title>LINE 預約系統</title>
     <script type="module">
-        // ✅ 1. 載入 Firebase 最新 SDK (v10+)
+        // 引入 Firebase 最新 SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, push, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-        import { getAuth, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-        // ✅ 2. 初始化 Firebase 設定
+        // Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
   authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -22,121 +20,109 @@
   appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
   measurementId: "G-RZ9XSVK925"
         };
-
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const auth = getAuth(app);
 
-        // ✅ 3. 初始化 LINE LIFF
-        async function initLiff() {
-            await liff.init({ liffId: "2005939681-ayjyxlz3" });
-            if (!liff.isLoggedIn()) {
-                liff.login();
+        // LINE 登入設定
+        const clientId = "2005939681";
+        const redirectUri = window.location.origin; // 目前網頁 URL
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const loginBtn = document.getElementById("loginBtn");
+            const logoutBtn = document.getElementById("logoutBtn");
+            const userInfo = document.getElementById("userInfo");
+            const userAvatar = document.getElementById("userAvatar");
+            const userName = document.getElementById("userName");
+            const reservationForm = document.querySelector(".form");
+
+            loginBtn.addEventListener("click", () => {
+                window.location.href = `https://access.line.me/oauth2/v2.1/authorize?response_type=token&client_id=${clientId}&redirect_uri=${redirectUri}&scope=profile%20openid&state=12345`;
+            });
+
+            logoutBtn.addEventListener("click", () => {
+                localStorage.clear();
+                window.location.href = redirectUri;
+            });
+
+            // 解析 URL 取得 access_token
+            function getAccessToken() {
+                const hash = window.location.hash.substring(1);
+                const params = new URLSearchParams(hash);
+                return params.get("access_token");
+            }
+
+            async function fetchUserProfile() {
+                const token = getAccessToken();
+                if (!token) return;
+
+                const response = await fetch("https://api.line.me/v2/profile", {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const data = await response.json();
+                localStorage.setItem("userName", data.displayName);
+                localStorage.setItem("userAvatar", data.pictureUrl);
+
+                userAvatar.src = data.pictureUrl;
+                userName.textContent = data.displayName;
+                userInfo.style.display = "block";
+                reservationForm.style.display = "block";
+                loginBtn.style.display = "none";
+                logoutBtn.style.display = "block";
+            }
+
+            if (localStorage.getItem("userName")) {
+                userAvatar.src = localStorage.getItem("userAvatar");
+                userName.textContent = localStorage.getItem("userName");
+                userInfo.style.display = "block";
+                reservationForm.style.display = "block";
+                loginBtn.style.display = "none";
+                logoutBtn.style.display = "block";
             } else {
-                const profile = await liff.getProfile();
-                document.getElementById("userInfo").innerText = `歡迎, ${profile.displayName}`;
-                document.getElementById("loginBtn").style.display = "none";
-                document.getElementById("logoutBtn").style.display = "inline";
-                handleLoginWithFirebase();
+                fetchUserProfile();
             }
-        }
 
-        // ✅ 4. 透過 Firebase SignIn 記錄使用者
-        async function handleLoginWithFirebase() {
-            const idToken = await liff.getIDToken();
-            const response = await fetch("YOUR_SERVER_ENDPOINT_TO_GENERATE_CUSTOM_TOKEN", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idToken }),
-            });
-            const data = await response.json();
-            signInWithCustomToken(auth, data.firebaseToken).then(() => {
-                loadAppointments(auth.currentUser.uid);
-            });
-        }
-
-        document.getElementById("loginBtn").addEventListener("click", initLiff);
-        document.getElementById("logoutBtn").addEventListener("click", () => {
-            signOut(auth).then(() => {
-                liff.logout();
-                location.reload();
-            });
-        });
-
-        // ✅ 5. 新增預約
-        document.getElementById("appointmentForm").addEventListener("submit", function (e) {
-            e.preventDefault();
-            const title = document.getElementById("appointmentTitle").value;
-            const time = document.getElementById("appointmentTime").value;
-            const userId = auth.currentUser.uid;
-
-            const newRef = push(ref(db, `appointments/${userId}`));
-            set(newRef, { title, time }).then(() => {
+            // 預約功能
+            document.getElementById("reserveBtn").addEventListener("click", () => {
+                const date = document.getElementById("date").value;
+                const time = document.getElementById("time").value;
+                if (!date || !time) {
+                    alert("請選擇時間");
+                    return;
+                }
+                const user = localStorage.getItem("userName");
+                push(ref(db, "appointments"), { user, date, time });
                 alert("預約成功！");
-                document.getElementById("appointmentForm").reset();
-                loadAppointments(userId);
             });
         });
-
-        // ✅ 6. 載入預約資料
-        function loadAppointments(userId) {
-            onValue(ref(db, `appointments/${userId}`), (snapshot) => {
-                const list = document.getElementById("appointmentList");
-                list.innerHTML = "";
-                snapshot.forEach((child) => {
-                    const data = child.val();
-                    const li = document.createElement("li");
-                    li.innerHTML = `${data.title} - ${data.time} 
-                        <button onclick="editAppointment('${userId}', '${child.key}', '${data.title}', '${data.time}')">編輯</button>
-                        <button onclick="deleteAppointment('${userId}', '${child.key}')">刪除</button>`;
-                    list.appendChild(li);
-                });
-            });
-        }
-
-        // ✅ 7. 刪除預約
-        function deleteAppointment(userId, key) {
-            remove(ref(db, `appointments/${userId}/${key}`)).then(() => {
-                alert("刪除成功！");
-                loadAppointments(userId);
-            });
-        }
-
-        // ✅ 8. 編輯預約
-        function editAppointment(userId, key, oldTitle, oldTime) {
-            const newTitle = prompt("修改預約名稱", oldTitle);
-            const newTime = prompt("修改預約時間 (YYYY-MM-DDTHH:MM)", oldTime);
-            if (newTitle && newTime) {
-                update(ref(db, `appointments/${userId}/${key}`), { title: newTitle, time: newTime }).then(() => {
-                    alert("修改成功！");
-                    loadAppointments(userId);
-                });
-            }
-        }
-
-        // ✅ 9. 監聽登入狀態變化
-        liff.ready.then(() => {
-            if (liff.isLoggedIn()) {
-                handleLoginWithFirebase();
-            }
-        });
-
     </script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        .container { max-width: 500px; margin: auto; padding: 20px; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; border: 2px solid #4CAF50; }
+        .btn { padding: 10px 15px; margin: 10px; cursor: pointer; border: none; color: white; }
+        .login-btn { background: #06C755; }
+        .logout-btn { background: red; display: none; }
+        .form { display: none; }
+        input, select, button { width: 100%; margin: 5px 0; padding: 10px; }
+    </style>
 </head>
 <body>
-    <h1>LINE 預約系統</h1>
-    <button id="loginBtn">使用 LINE 登入</button>
-    <button id="logoutBtn" style="display:none;">登出</button>
-    <p id="userInfo"></p>
 
-    <h2>預約管理</h2>
-    <form id="appointmentForm">
-        <input type="text" id="appointmentTitle" placeholder="輸入預約事項" required>
-        <input type="datetime-local" id="appointmentTime" required>
-        <button type="submit">新增預約</button>
-    </form>
+    <h2>LINE 預約系統</h2>
+    <button id="loginBtn" class="btn login-btn">使用 LINE 登入</button>
+    <button id="logoutBtn" class="btn logout-btn">登出</button>
+    
+    <div id="userInfo" class="container" style="display:none;">
+        <img id="userAvatar" class="avatar" src="" alt="頭像">
+        <h3 id="userName"></h3>
+    </div>
 
-    <h2>您的預約列表</h2>
-    <ul id="appointmentList"></ul>
+    <div class="form">
+        <h3>預約時間</h3>
+        <input type="date" id="date">
+        <input type="time" id="time">
+        <button id="reserveBtn" class="btn">預約</button>
+    </div>
+
 </body>
 </html>
