@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE Login & Firebase 留言板</title>
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <title>預約系統</title>
+    <script src="https://static.line-scdn.net/liff/edge/2.21.5/sdk.js"></script>
     <script type="module">
+        // Firebase SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getDatabase, ref, push, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
-        
+        import { getDatabase, ref, push, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+
         // Firebase 設定
         const firebaseConfig = {
             apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
@@ -21,81 +22,122 @@
             measurementId: "G-RZ9XSVK925"
         };
         
+        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        let userId = "";
 
-        async function login() {
+        // 初始化 LIFF
+        async function initializeLIFF() {
             await liff.init({ liffId: "2005939681-ayjyxlz3" });
-            if (!liff.isLoggedIn()) {
-                liff.login();
-            } else {
+            if (liff.isLoggedIn()) {
                 const profile = await liff.getProfile();
-                userId = profile.userId;
-                document.getElementById("userInfo").innerText = `Hello, ${profile.displayName}`;
-                loadMessages();
+                document.getElementById("user-info").innerHTML = `
+                    <img src="${profile.pictureUrl}" width="50">
+                    <p>${profile.displayName}</p>
+                    <button onclick="logout()">登出</button>
+                `;
+                document.getElementById("login-section").style.display = "none";
+                document.getElementById("booking-section").style.display = "block";
             }
         }
-        
+
+        // LINE 登出
         function logout() {
             liff.logout();
             location.reload();
         }
-        
-        function addMessage() {
-            const messageInput = document.getElementById("messageInput").value;
-            if (messageInput.trim() === "") return;
-            const newMessageRef = push(ref(db, "messages"));
-            set(newMessageRef, {
-                userId: userId,
-                message: messageInput,
-                timestamp: Date.now()
+
+        // 新增預約
+        document.getElementById("addBooking").addEventListener("click", function () {
+            const name = document.getElementById("name").value;
+            const date = document.getElementById("date").value;
+            const time = document.getElementById("time").value;
+
+            if (!name || !date || !time) {
+                alert("請填寫完整資訊！");
+                return;
+            }
+
+            const bookingRef = push(ref(db, "bookings"));
+            set(bookingRef, {
+                id: bookingRef.key,
+                name,
+                date,
+                time
             });
-            document.getElementById("messageInput").value = "";
-        }
-        
-        function updateMessage(id, newMessage) {
-            update(ref(db, `messages/${id}`), { message: newMessage });
-        }
-        
-        function deleteMessage(id) {
-            remove(ref(db, `messages/${id}`));
-        }
-        
-        function loadMessages() {
-            onValue(ref(db, "messages"), (snapshot) => {
-                const messagesDiv = document.getElementById("messages");
-                messagesDiv.innerHTML = "";
-                snapshot.forEach((childSnapshot) => {
-                    const messageData = childSnapshot.val();
-                    const messageId = childSnapshot.key;
-                    
-                    const messageElement = document.createElement("div");
-                    messageElement.innerHTML = `
-                        <p>${messageData.message} <button onclick="editMessage('${messageId}', '${messageData.message}')">修改</button> <button onclick="deleteMessage('${messageId}')">刪除</button></p>
-                    `;
-                    messagesDiv.appendChild(messageElement);
-                });
+
+            document.getElementById("name").value = "";
+            document.getElementById("date").value = "";
+            document.getElementById("time").value = "";
+        });
+
+        // 監聽 Firebase 資料變更
+        onValue(ref(db, "bookings"), (snapshot) => {
+            const bookingList = document.getElementById("bookingList");
+            bookingList.innerHTML = "";
+            snapshot.forEach((child) => {
+                const booking = child.val();
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    ${booking.name} - ${booking.date} ${booking.time} 
+                    <button onclick="editBooking('${booking.id}', '${booking.name}', '${booking.date}', '${booking.time}')">編輯</button>
+                    <button onclick="deleteBooking('${booking.id}')">刪除</button>
+                `;
+                bookingList.appendChild(li);
             });
-        }
-        
-        window.addMessage = addMessage;
-        window.deleteMessage = deleteMessage;
-        window.editMessage = (id, oldMessage) => {
-            const newMessage = prompt("修改留言:", oldMessage);
-            if (newMessage) updateMessage(id, newMessage);
+        });
+
+        // 刪除預約
+        window.deleteBooking = function (id) {
+            remove(ref(db, "bookings/" + id));
         };
-        
-        window.onload = login;
+
+        // 編輯預約
+        window.editBooking = function (id, name, date, time) {
+            document.getElementById("name").value = name;
+            document.getElementById("date").value = date;
+            document.getElementById("time").value = time;
+            document.getElementById("updateBooking").style.display = "block";
+            document.getElementById("updateBooking").setAttribute("data-id", id);
+        };
+
+        // 更新預約
+        document.getElementById("updateBooking").addEventListener("click", function () {
+            const id = this.getAttribute("data-id");
+            const name = document.getElementById("name").value;
+            const date = document.getElementById("date").value;
+            const time = document.getElementById("time").value;
+
+            if (!name || !date || !time) {
+                alert("請填寫完整資訊！");
+                return;
+            }
+
+            update(ref(db, "bookings/" + id), { name, date, time });
+            document.getElementById("updateBooking").style.display = "none";
+        });
+
+        // 初始化 LIFF
+        initializeLIFF();
     </script>
 </head>
 <body>
-    <h1>LINE Login & Firebase 留言板</h1>
-    <p id="userInfo">請登入...</p>
-    <button onclick="logout()">登出</button>
-    <br><br>
-    <input type="text" id="messageInput" placeholder="輸入留言...">
-    <button onclick="addMessage()">送出</button>
-    <div id="messages"></div>
+    <div id="login-section">
+        <button onclick="liff.login()">使用 LINE 登入</button>
+    </div>
+
+    <div id="user-info"></div>
+
+    <div id="booking-section" style="display: none;">
+        <h2>預約管理</h2>
+        <label>姓名: <input type="text" id="name"></label>
+        <label>日期: <input type="date" id="date"></label>
+        <label>時間: <input type="time" id="time"></label>
+        <button id="addBooking">新增預約</button>
+        <button id="updateBooking" style="display:none;">更新預約</button>
+
+        <h3>預約列表</h3>
+        <ul id="bookingList"></ul>
+    </div>
 </body>
 </html>
