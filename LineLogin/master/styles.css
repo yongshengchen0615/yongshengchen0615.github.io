@@ -1,0 +1,74 @@
+/* 全局樣式 */
+body {
+    font-family: 'Arial', sans-serif;
+    text-align: center;
+    background-color: #f4f4f4;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+/* 主容器 */
+.container {
+    max-width: 400px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin: 50px auto;
+}
+
+/* 按鈕樣式 */
+.btn {
+    display: inline-block;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease-in-out;
+    margin: 10px;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+/* LINE 登入按鈕 */
+#loginBtn {
+    background-color: #06c755;
+}
+
+/* 登出按鈕 */
+.btn-danger {
+    background-color: #ff4444;
+    display: none;
+}
+
+/* 使用者資訊區塊 */
+.profile {
+    display: none;
+    margin-top: 20px;
+}
+
+.profile h3 {
+    font-size: 18px;
+    color: #06c755;
+}
+
+/* 使用者圖片 */
+#userImage {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid #06c755;
+    margin-top: 10px;
+}
+
+#userName {
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 10px;
+}

@@ -1,0 +1,75 @@
+/* 全局樣式 */
+body {
+    font-family: 'Arial', sans-serif;
+    text-align: center;
+    background-color: #f4f4f4;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+/* 容器 */
+.container {
+    max-width: 400px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin: 50px auto;
+}
+
+/* 按鈕 */
+.btn {
+    padding: 10px 15px;
+    font-size: 16px;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: 0.3s;
+    margin: 10px;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+#loginBtn { background-color: #06c755; }
+.btn-danger { background-color: #ff4444; display: none; }
+
+/* 使用者資訊 */
+.profile {
+    display: none;
+    margin-top: 20px;
+}
+
+#userImage {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-top: 10px;
+}
+
+/* 留言區 */
+.chat-section {
+    display: none;
+    margin-top: 20px;
+}
+
+input {
+    width: 80%;
+    padding: 10px;
+    margin: 10px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    background: #ddd;
+    margin: 5px;
+    padding: 10px;
+    border-radius: 5px;
+}

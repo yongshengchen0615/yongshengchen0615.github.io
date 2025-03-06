@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE Login & Firebase Chat</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
+    <script type="module" src="script.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h2>LINE Login & Firebase Chat</h2>
+        <button id="loginBtn" class="btn">使用 LINE 登入</button>
+        <button id="logoutBtn" class="btn btn-danger">登出</button>
+
+        <div id="profile" class="profile">
+            <h3>使用者資訊</h3>
+            <img id="userImage" src="" alt="User Image">
+            <p id="userName"></p>
+        </div>
+
+        <div id="chatSection" class="chat-section">
+            <h3>留言區</h3>
+            <input type="text" id="messageInput" placeholder="輸入訊息">
+            <button id="sendMessageBtn" class="btn">發送</button>
+            <ul id="messageList"></ul>
+        </div>
+    </div>
+
+</body>
+</html>
