@@ -1,65 +1,48 @@
-/* 全局樣式 */
 body {
-    font-family: 'Arial', sans-serif;
+    font-family: Arial, sans-serif;
     text-align: center;
-    background-color: #f4f4f4;
-    color: #333;
-    margin: 0;
-    padding: 20px;
+    margin: 20px;
 }
 
-/* 容器 */
 .container {
-    max-width: 400px;
-    background: white;
+    width: 90%;
+    max-width: 500px;
+    margin: auto;
     padding: 20px;
+    border: 1px solid #ccc;
     border-radius: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    margin: 50px auto;
+    background-color: #f9f9f9;
 }
 
-/* 按鈕 */
-.btn {
-    padding: 10px 15px;
-    font-size: 16px;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: 0.3s;
+button {
+    padding: 10px;
     margin: 10px;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
 }
 
-.btn:hover {
-    opacity: 0.9;
+#loginBtn {
+    background-color: #06c755;
+    color: white;
 }
 
-#loginBtn { background-color: #06c755; }
-.btn-danger { background-color: #ff4444; display: none; }
+#logoutBtn {
+    background-color: #d9534f;
+    color: white;
+}
 
-/* 使用者資訊 */
-.profile {
+#updateBookingBtn {
     display: none;
-    margin-top: 20px;
+    background-color: #f0ad4e;
+    color: white;
 }
 
-#userImage {
+.profile-img {
     width: 80px;
     height: 80px;
     border-radius: 50%;
     margin-top: 10px;
-}
-
-/* 留言區 */
-.chat-section {
-    display: none;
-    margin-top: 20px;
-}
-
-input {
-    width: 80%;
-    padding: 10px;
-    margin: 10px;
 }
 
 ul {
@@ -68,8 +51,16 @@ ul {
 }
 
 li {
-    background: #ddd;
-    margin: 5px;
+    background: white;
     padding: 10px;
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-radius: 5px;
+}
+
+li button {
+    padding: 5px;
+    font-size: 0.8em;
 }
