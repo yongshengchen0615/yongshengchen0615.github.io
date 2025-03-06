@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
 import { getAuth, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getDatabase, ref, push, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-const liffId = "YOUR_LIFF_ID";  // 請替換為你的 LIFF ID
+const liffId = "2005939681-ayjyxlz3";  // 請替換為你的 LIFF ID
 
 // Firebase 設定
 const firebaseConfig = {
