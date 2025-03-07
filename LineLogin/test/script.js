@@ -5,61 +5,86 @@ import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, orderBy,
 // Firebase 設定（請填入你的 Firebase 專案資訊）
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-  authDomain: "reservesystem-c8bbc.firebaseapp.com",
-  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-  projectId: "reservesystem-c8bbc",
-  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-  messagingSenderId: "138232489371",
-  appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
-  measurementId: "G-RZ9XSVK925"
+    authDomain: "reservesystem-c8bbc.firebaseapp.com",
+    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
+    projectId: "reservesystem-c8bbc",
+    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
+    messagingSenderId: "138232489371",
+    appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
+    measurementId: "G-RZ9XSVK925"
 };
 
 // 初始化 Firebase & Firestore
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 確保 DOM 加載完畢後執行
 document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("appointmentForm");
+    const userInfoForm = document.getElementById("userInfoForm");
+    const appointmentForm = document.getElementById("appointmentForm");
+    const confirmUserInfoBtn = document.getElementById("confirmUserInfo");
+    const phoneInput = document.getElementById("phone");
+    const nameInput = document.getElementById("name");
+    const genderSelect = document.getElementById("gender");
+    const dateInput = document.getElementById("date");
+    const timeInput = document.getElementById("time");
     const appointmentsList = document.getElementById("appointmentsList");
     const modal = document.getElementById("successModal");
     const closeModal = document.getElementById("closeModal");
 
-    if (!form) {
-        console.error("❌ 錯誤：找不到預約表單 (#appointmentForm)");
-        return;
-    }
+    let userInfo = null;
 
-    // 監聽表單提交
-    form.addEventListener("submit", async (event) => {
+    // ✅ 監聽使用者輸入基本資訊
+    confirmUserInfoBtn.addEventListener("click", () => {
+        const phone = phoneInput.value.trim();
+        const name = nameInput.value.trim();
+        const gender = genderSelect.value;
+
+        if (!phone || !name || !gender) {
+            alert("請完整填寫電話、姓氏與性別");
+            return;
+        }
+
+        userInfo = { phone, name, gender };
+        userInfoForm.style.display = "none";
+        appointmentForm.style.display = "block";
+        dateInput.removeAttribute("disabled");
+        timeInput.removeAttribute("disabled");
+    });
+
+    // ✅ 監聽表單提交（預約）
+    appointmentForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        let name = document.getElementById("name").value.trim();
-        let phone = document.getElementById("phone").value.trim();
-        let date = document.getElementById("date").value;
-        let time = document.getElementById("time").value;
+        let date = dateInput.value;
+        let time = timeInput.value;
 
-        if (name && phone && date && time) {
-            try {
-                await addDoc(collection(db, "appointments"), {
-                    name: name,
-                    phone: phone,
-                    date: date,
-                    time: time,
-                    timestamp: serverTimestamp()
-                });
+        if (!date || !time) {
+            alert("請選擇日期和時間");
+            return;
+        }
 
-                // ✅ 顯示彈出視窗
-                modal.style.display = "block";
+        try {
+            await addDoc(collection(db, "appointments"), {
+                name: userInfo.name,
+                phone: userInfo.phone,
+                gender: userInfo.gender,
+                date: date,
+                time: time,
+                timestamp: serverTimestamp()
+            });
 
-                // 清空表單
-                form.reset();
-            } catch (error) {
-                console.error("❌ 錯誤：", error);
-                alert("❌ 預約失敗，請稍後再試");
-            }
-        } else {
-            alert("⚠️ 請填寫所有欄位");
+            // ✅ 顯示彈出視窗
+            modal.style.display = "block";
+
+            // 清空表單
+            appointmentForm.reset();
+            appointmentForm.style.display = "none";
+            userInfoForm.style.display = "block";
+            dateInput.setAttribute("disabled", true);
+            timeInput.setAttribute("disabled", true);
+        } catch (error) {
+            console.error("❌ 錯誤：", error);
+            alert("❌ 預約失敗，請稍後再試");
         }
     });
 
@@ -68,13 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
         modal.style.display = "none";
     });
 
-    // 即時監聽 Firestore 預約列表
+    // ✅ 即時監聽 Firestore 預約列表
     onSnapshot(query(collection(db, "appointments"), orderBy("timestamp", "desc")), (snapshot) => {
-        appointmentsList.innerHTML = ""; // 清空舊的列表
+        appointmentsList.innerHTML = "";
         snapshot.forEach(doc => {
             let data = doc.data();
             let listItem = document.createElement("li");
-            listItem.textContent = `${data.name} - ${data.phone} - ${data.date} ${data.time}`;
+            listItem.textContent = `${data.name} (${data.gender}) - ${data.phone} - ${data.date} ${data.time}`;
             appointmentsList.appendChild(listItem);
         });
     });
