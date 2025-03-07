@@ -43,3 +43,31 @@ li {
     padding: 10px;
     border-radius: 5px;
 }
+
+/* ✅ 預約成功彈出視窗 (Modal) */
+.modal {
+    display: none; /* 預設隱藏 */
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: white;
+    padding: 20px;
+    margin: 20% auto;
+    width: 80%;
+    max-width: 300px;
+    text-align: center;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content button {
+    margin-top: 10px;
+    background: #007bff;
+}

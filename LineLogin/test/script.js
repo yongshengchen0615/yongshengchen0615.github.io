@@ -22,6 +22,8 @@ const db = getFirestore(app);
 document.addEventListener("DOMContentLoaded", () => {
     const form = document.getElementById("appointmentForm");
     const appointmentsList = document.getElementById("appointmentsList");
+    const modal = document.getElementById("successModal");
+    const closeModal = document.getElementById("closeModal");
 
     if (!form) {
         console.error("❌ 錯誤：找不到預約表單 (#appointmentForm)");
@@ -46,7 +48,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     time: time,
                     timestamp: serverTimestamp()
                 });
-                alert("✅ 預約成功！");
+
+                // ✅ 顯示彈出視窗
+                modal.style.display = "block";
+
+                // 清空表單
                 form.reset();
             } catch (error) {
                 console.error("❌ 錯誤：", error);
@@ -55,6 +61,11 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             alert("⚠️ 請填寫所有欄位");
         }
+    });
+
+    // ✅ 點擊「確定」按鈕關閉視窗
+    closeModal.addEventListener("click", () => {
+        modal.style.display = "none";
     });
 
     // 即時監聽 Firestore 預約列表
