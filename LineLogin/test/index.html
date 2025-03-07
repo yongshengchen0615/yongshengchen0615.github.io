@@ -9,6 +9,8 @@
 <body>
     <div class="container">
         <h2>預約系統</h2>
+
+        <!-- ✅ 使用者基本資訊輸入 -->
         <form id="userInfoForm">
             <input type="tel" id="phone" placeholder="請輸入您的電話" required>
             <input type="text" id="name" placeholder="請輸入您的姓氏" required>
@@ -20,9 +22,13 @@
             <button type="button" id="confirmUserInfo">確認</button>
         </form>
 
-        <form id="appointmentForm" style="display: none;">
-            <input type="date" id="date" required disabled>
-            <input type="time" id="time" required disabled>
+        <!-- ✅ 顯示使用者資訊 -->
+        <div id="userDisplay" class="hidden"></div>
+
+        <!-- ✅ 預約表單（初始隱藏） -->
+        <form id="appointmentForm" class="hidden">
+            <input type="date" id="date" required>
+            <input type="time" id="time" required>
             <button type="submit">提交預約</button>
         </form>
 

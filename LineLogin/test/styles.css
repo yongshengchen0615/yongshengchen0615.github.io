@@ -43,6 +43,22 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* ✅ 使用者資訊顯示區 */
+#userDisplay {
+    display: none;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    background: #e3f2fd;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+/* ✅ 隱藏預約表單，等待確認 */
+.hidden {
+    display: none;
+}
+
 /* 預約列表 */
 ul {
     list-style: none;
@@ -58,7 +74,7 @@ li {
 
 /* ✅ 預約成功彈出視窗 (Modal) */
 .modal {
-    display: none; /* 預設隱藏 */
+    display: none;
     position: fixed;
     z-index: 1000;
     left: 0;
