@@ -10,10 +10,22 @@
     <div class="container">
         <h2>預約系統</h2>
         <form id="appointmentForm">
-            <input type="text" id="name" placeholder="您的姓名" required>
-            <input type="tel" id="phone" placeholder="您的電話" required>
-            <input type="date" id="date" required>
-            <input type="time" id="time" required>
+            <div class="form-group">
+                <label for="name">姓名：</label>
+                <input type="text" id="name" placeholder="請輸入您的姓名" required>
+            </div>
+            <div class="form-group">
+                <label for="phone">電話：</label>
+                <input type="tel" id="phone" placeholder="請輸入您的電話" required>
+            </div>
+            <div class="form-group">
+                <label for="date">日期：</label>
+                <input type="date" id="date" required>
+            </div>
+            <div class="form-group">
+                <label for="time">時間：</label>
+                <input type="time" id="time" required>
+            </div>
             <button type="submit">提交預約</button>
         </form>
         <h3>已預約列表</h3>
