@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, orderBy, query } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-// Firebase 配置（請填入你的 Firebase 設定）
+// Firebase 設定（請填入你的 Firebase 專案資訊）
 const firebaseConfig = {
     apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
   authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -18,43 +18,53 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 監聽表單提交
-document.getElementById("appointmentForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
+// 確保 DOM 加載完畢後執行
+document.addEventListener("DOMContentLoaded", () => {
+    const form = document.getElementById("appointmentForm");
+    const appointmentsList = document.getElementById("appointmentsList");
 
-    let name = document.getElementById("name").value;
-    let phone = document.getElementById("phone").value;
-    let date = document.getElementById("date").value;
-    let time = document.getElementById("time").value;
-
-    if (name && phone && date && time) {
-        try {
-            await addDoc(collection(db, "appointments"), {
-                name: name,
-                phone: phone,
-                date: date,
-                time: time,
-                timestamp: serverTimestamp()
-            });
-            alert("預約成功！");
-            document.getElementById("appointmentForm").reset();
-        } catch (error) {
-            console.error("錯誤: ", error);
-        }
-    } else {
-        alert("請填寫所有欄位");
+    if (!form) {
+        console.error("❌ 錯誤：找不到預約表單 (#appointmentForm)");
+        return;
     }
-});
 
-// 即時監聽 Firestore 預約列表
-const appointmentsList = document.getElementById("appointmentsList");
+    // 監聽表單提交
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-onSnapshot(query(collection(db, "appointments"), orderBy("timestamp", "desc")), (snapshot) => {
-    appointmentsList.innerHTML = "";
-    snapshot.forEach(doc => {
-        let data = doc.data();
-        let listItem = document.createElement("li");
-        listItem.textContent = `${data.name} - ${data.phone} - ${data.date} ${data.time}`;
-        appointmentsList.appendChild(listItem);
+        let name = document.getElementById("name").value.trim();
+        let phone = document.getElementById("phone").value.trim();
+        let date = document.getElementById("date").value;
+        let time = document.getElementById("time").value;
+
+        if (name && phone && date && time) {
+            try {
+                await addDoc(collection(db, "appointments"), {
+                    name: name,
+                    phone: phone,
+                    date: date,
+                    time: time,
+                    timestamp: serverTimestamp()
+                });
+                alert("✅ 預約成功！");
+                form.reset();
+            } catch (error) {
+                console.error("❌ 錯誤：", error);
+                alert("❌ 預約失敗，請稍後再試");
+            }
+        } else {
+            alert("⚠️ 請填寫所有欄位");
+        }
+    });
+
+    // 即時監聽 Firestore 預約列表
+    onSnapshot(query(collection(db, "appointments"), orderBy("timestamp", "desc")), (snapshot) => {
+        appointmentsList.innerHTML = ""; // 清空舊的列表
+        snapshot.forEach(doc => {
+            let data = doc.data();
+            let listItem = document.createElement("li");
+            listItem.textContent = `${data.name} - ${data.phone} - ${data.date} ${data.time}`;
+            appointmentsList.appendChild(listItem);
+        });
     });
 });
