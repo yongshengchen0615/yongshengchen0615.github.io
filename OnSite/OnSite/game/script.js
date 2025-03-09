@@ -1,8 +1,8 @@
 // 定義獎項及其出現機率（總和需為 100）
 const prizePool = [
-    { prize: "🔸 💰 200元回饋金", probability: 5 }, 
-    { prize: "🔸 💵 100元回饋金", probability: 30 }, 
-    { prize: "🔸 🎟 再接再厲", probability: 65 },   
+    { prize: "🔸 甜湯 🍵", probability: 2 }, 
+    { prize: "🔸 足湯包 🍵", probability: 23 }, 
+    { prize: "🔸 🎟 再接再厲", probability: 65 },
 
 ];
 
