@@ -2,7 +2,7 @@
 const prizePool = [
     { prize: "🔸 甜湯 🍵", probability: 2 }, 
     { prize: "🔸 足湯包 🍵", probability: 23 }, 
-    { prize: "🔸 🎟 再接再厲", probability: 65 },
+    { prize: "🔸 🎟 集點刮點數1點", probability: 65 },
 
 ];
 
