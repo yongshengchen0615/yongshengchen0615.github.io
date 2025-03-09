@@ -1,12 +1,10 @@
 // 定義獎項及其出現機率（總和需為 100）
 const prizePool = [
-    { prize: "🔸 身體按摩券 💆 x2", probability: 4 }, 
-    { prize: "🔸 腳底按摩券 🦶 x2", probability: 8 },  
-    { prize: "🔸 甜湯 / 雞湯 🍵", probability: 12 }, 
-    { prize: "🔸 浴湯包禮盒 🍵", probability: 18 }, 
-    { prize: "🔸 茶包禮盒 🍵", probability: 20 }, 
-    { prize: "🔸 300元回饋金", probability: 16 }, 
-    { prize: "🔸 200元回饋金", probability: 22 }, 
+    { prize: "🔸 身體按摩券+腳底按摩券💆", probability: 2 }, 
+    { prize: "🔸 浴湯包禮盒🍵", probability: 8 },  
+    { prize: "🔸 茶包禮盒🍵", probability: 10 }, 
+    { prize: "🔸 雞湯🍵", probability: 20 }, 
+    { prize: "🔸 甜湯🍵", probability: 50 }, 
     
     
    // { prize: "❌ 再接再厲", probability: 25 },   
