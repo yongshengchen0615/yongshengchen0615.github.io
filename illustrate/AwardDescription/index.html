@@ -1,105 +1,124 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>刮刮樂獎勵</title>
+    <title>經絡工程師 刮刮樂活動</title>
     <style>
         body {
             font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
             background-color: #f8f8f8;
-            text-align: center;
-            padding: 20px;
             color: #333;
         }
         .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        .reward-box {
-            background: #ffffff;
-            padding: 25px;
-            margin: 25px 0;
-            border-radius: 12px;
-            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        .reward-title {
-            font-size: 1.8em;
-            font-weight: bold;
-            color: #d9534f;
-            margin-bottom: 15px;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
-        }
-        .reward-list {
-            list-style: none;
-            padding: 0;
-            text-align: left;
-            font-size: 1.3em;
-            line-height: 2;
-        }
-        .reward-list li {
-            padding: 5px 0;
-        }
-        .note {
-            font-size: 1.1em;
-            color: #555;
-            margin-top: 30px;
-            padding: 15px;
-            border-top: 2px solid #ddd;
-            background: #f9f9f9;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
             border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2, h3 {
+            text-align: center;
+            color: #d9534f;
+        }
+        .highlight {
+            color: #d9534f;
+            font-weight: bold;
+        }
+        .rules, .rewards {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .rules {
+            background: #ffebee;
+        }
+        .rewards {
+            background: #e3f2fd;
+        }
+        .rewards ul, .rules ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .rewards li, .rules li {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        .cta {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .cta button {
+            background: #d9534f;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .cta button:hover {
+            background: #c9302c;
+        }
+        @media (max-width: 600px) {
+            .container {
+                width: 90%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎫 刮刮樂獎勵</h1>
-        
-        <div class="reward-box">
-            <div class="reward-title">🎯 5 點獎勵 🎊</div>
-            <ul class="reward-list">
+        <h1>🎉 經絡工程師 刮刮樂 🎉</h1>
+        <h2>免費按摩等你來刮！</h2>
+        <div class="rules">
+            <h3>🎟 如何獲得點數？</h3>
+            <ul>
+                <li>✅ <span class="highlight">平日預約 No.10 技師</span> 並完成服務，每 1 小時服務獲得 1 點</li>
+                <li>✅ <span class="highlight">假日現場指定 No.10 技師</span> 並完成服務，每 1 小時服務獲得 1 點</li>
+                <li>✅ 當日完成服務後，於 Google 留 5 星好評並截圖回傳，可獲得 1 點</li>
+                <li>✅ 分享官方帳號於 IG/FB 限時動態 24 小時並截圖回傳，可獲得 1 點</li>
+                <li>✅ 推薦好友來體驗，推薦人可獲得 1 點</li>
+            </ul>
+        </div>
+        <div class="rewards">
+            <h3>🎫 刮刮樂獎勵</h3>
+            <h4>🎯 5 點刮刮樂有機會獲得 🎊</h4>
+            <ul>
                 <li>🔸 腳底按摩券 🦶</li>
                 <li>🔸 甜湯 🍵</li>
                 <li>🔸 足湯包 🛁</li>
             </ul>
-        </div>
-        
-        <div class="reward-box">
-            <div class="reward-title">🎯 10 點獎勵 🎁</div>
-            <ul class="reward-list">
+            <h4>🎯 10 點刮刮樂有機會獲得 🎁</h4>
+            <ul>
                 <li>🔸 身體按摩券 💆</li>
                 <li>🔸 雞湯 🍵</li>
                 <li>🔸 甜湯 🍵</li>
                 <li>🔸 足湯包 🛁</li>
             </ul>
-        </div>
-        
-        <div class="reward-box">
-            <div class="reward-title">🎯 15 點獎勵 🎊</div>
-            <ul class="reward-list">
+            <h4>🎯 15 點刮刮樂有機會獲得 🎊</h4>
+            <ul>
                 <li>🔸 身體按摩券 💆</li>
                 <li>🔸 腳底按摩券 🦶</li>
                 <li>🔸 茶包禮盒 🍵</li>
                 <li>🔸 雞湯 🍵</li>
                 <li>🔸 甜湯 🍵</li>
             </ul>
-        </div>
-        
-        <div class="reward-box">
-            <div class="reward-title">🎯 20 點獎勵 🎁</div>
-            <ul class="reward-list">
-                <li>🔸 身體按摩券 + 腳底按摩券 💆</li>
-                <li>🔸 浴湯包禮盒 🍵</li>
+            <h4>🎯 20 點刮刮樂有機會獲得 🎁</h4>
+            <ul>
+                <li>🔸 身體按摩券 + 腳底按摩券 💆🦶</li>
+                <li>🔸 浴湯包禮盒 🛁</li>
                 <li>🔸 茶包禮盒 🍵</li>
                 <li>🔸 雞湯 🍵</li>
                 <li>🔸 甜湯 🍵</li>
             </ul>
         </div>
+        <div class="cta">
         
-        <div class="note">
-            📌 每次限用一種優惠券<br>
-            📌 所有點數均需服務完成後發放，無法透過取消預約或未出席獲得點<br>
-            「本活動內容可能依實際情況調整，最新資訊請以現場或官方公告為準。」
         </div>
     </div>
 </body>

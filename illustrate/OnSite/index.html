@@ -7,28 +7,48 @@
     <style>
         body {
             font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
             text-align: center;
-            background-color: #f8f9fa;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
         }
         .container {
             max-width: 600px;
-            margin: auto;
             background: white;
             padding: 20px;
+            margin: 30px auto;
             border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         h1 {
-            color: #d9534f;
+            color: #d63384;
+            font-size: 24px;
         }
         .rules, .prizes {
             text-align: left;
-            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: #fff3cd;
         }
-        .highlight {
-            color: #d9534f;
+        .bonus {
+            background: #ffebcc;
+            padding: 15px;
+            border-radius: 8px;
             font-weight: bold;
+            margin-top: 15px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        ul li {
+            padding: 5px 0;
+        }
+        .disclaimer {
+            font-size: 12px;
+            color: gray;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -40,9 +60,8 @@
         <div class="rules">
             <h2>📜 活動規則</h2>
             <ul>
-                <li>🔹 現場安排，幸運降臨！</li>
                 <li>✅ 櫃檯分配。</li>
-                <li>✅ 若剛好被安排到 <span class="highlight">No.10 技師</span>，即可獲得刮刮卡 1 張！</li>
+                <li>✅ 若剛好被安排到 No.10 技師，即可獲得 刮刮卡 1 張！</li>
                 <li>✅ 立即刮開，當場對獎！</li>
             </ul>
         </div>
@@ -57,13 +76,13 @@
             </ul>
         </div>
         
-        <div class="extra">
+        <div class="bonus">
             <h2>📢 假日限定加碼！</h2>
-            <p>✨ 現場指定 <span class="highlight">No.10 技師</span> 也能參與！</p>
+            <p>✨ 現場指定 No.10 技師 也能參與！</p>
             <p>🔥 不僅享受舒壓按摩，還有機會贏獎勵！快來試試你的手氣吧！</p>
         </div>
         
-        <p style="font-size: 12px; color: gray;">「本活動內容可能依實際情況調整，最新資訊請以現場或官方公告為準。」</p>
+        <p class="disclaimer">「本活動內容可能依實際情況調整，最新資訊請以現場或官方公告為準。」</p>
     </div>
 </body>
 </html>
