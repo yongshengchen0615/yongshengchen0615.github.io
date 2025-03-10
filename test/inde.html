@@ -20,23 +20,27 @@
 </head>
 <body>
     <h2>LIFF User ID 獲取</h2>
-    <button onclick="initLiff()">開啟 LIFF</button>
+    <button id="loginBtn">開啟 LIFF</button>
     <p>用戶 ID：<span id="userId">尚未獲取</span></p>
 
     <script>
-        function initLiff() {
+        document.addEventListener("DOMContentLoaded", function () {
+            console.log("DOM 已載入，初始化 LIFF...");
             liff.init({
                 liffId: "2005939681-bZ9XB8dP" // 請替換為你的 LIFF ID
             }).then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login(); // 若未登入，則跳轉至 LINE 登入頁面
-                } else {
+                console.log("LIFF 初始化成功");
+                if (liff.isLoggedIn()) {
                     getUserProfile();
+                } else {
+                    document.getElementById("loginBtn").addEventListener("click", function () {
+                        liff.login();
+                    });
                 }
             }).catch(err => {
                 console.error("LIFF 初始化失敗:", err);
             });
-        }
+        });
 
         function getUserProfile() {
             liff.getProfile().then(profile => {
