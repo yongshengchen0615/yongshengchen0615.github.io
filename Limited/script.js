@@ -3,7 +3,6 @@ import { getFirestore, doc, getDoc, updateDoc, increment } from "https://www.gst
 import QrScanner from "https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Firebase 設定
     const firebaseConfig = {
         apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
   authDomain: "reservesystem-c8bbc.firebaseapp.com",
@@ -20,8 +19,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let prizeData = {};
     let isAuthenticated = false;
+    let isDrawing = false;
 
-    // 獲取獎品數量
     async function fetchPrizes() {
         const docRef = doc(db, "prizes", "lottery");
         const docSnap = await getDoc(docRef);
@@ -41,6 +40,10 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        if (isDrawing) return;
+        isDrawing = true;
+        document.getElementById("drawButton").disabled = true;
+
         let availablePrizes = [];
         if (prizeData.sweetSoup > 0) availablePrizes.push("甜湯");
         if (prizeData.footBath > 0) availablePrizes.push("足湯包");
@@ -48,6 +51,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (availablePrizes.length === 0) {
             document.getElementById("prizeText").textContent = "已無獎品！";
+            isDrawing = false;
+            document.getElementById("drawButton").disabled = false;
             return;
         }
 
@@ -56,16 +61,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let prizeKey = chosenPrize === "甜湯" ? "sweetSoup" : chosenPrize === "足湯包" ? "footBath" : "point";
         const docRef = doc(db, "prizes", "lottery");
-        await updateDoc(docRef, { [prizeKey]: increment(-1) });
 
-        fetchPrizes();
+        // 確保 Firestore 數據不會變成負數
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists() && docSnap.data()[prizeKey] > 0) {
+            await updateDoc(docRef, { [prizeKey]: increment(-1) });
+        } else {
+            document.getElementById("prizeText").textContent = "獎品已兌換完，請稍後再試！";
+        }
+
+        await fetchPrizes();
+        isDrawing = false;
+        document.getElementById("drawButton").disabled = false;
     });
 
-    // QR Code 掃描功能
     const video = document.getElementById("qr-video");
     const qrContainer = document.getElementById("qr-container");
     const authStatus = document.getElementById("authStatus");
-
     let qrScanner;
 
     document.getElementById("scanQRButton").addEventListener("click", () => {
@@ -76,6 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     authStatus.textContent = "驗證成功！可以抽獎！";
                     qrScanner.stop();
                     qrContainer.style.display = "none";
+                    document.getElementById("drawButton").disabled = false;
                 } else {
                     alert("無效的 QR Code！");
                 }
