@@ -1,88 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE LIFF + Firestore</title>
-    <script src="https://static.line-scdn.net/liff/edge/latest/sdk.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-    authDomain: "reservesystem-c8bbc.firebaseapp.com",
-    databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-    projectId: "reservesystem-c8bbc",
-    storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-    messagingSenderId: "138232489371",
-    appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
-    measurementId: "G-RZ9XSVK925"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        
-        async function initLIFF() {
-            await liff.init({ liffId: "2005939681-bZ9XB8dP" });
-            if (liff.isInClient()) {
-                const profile = await liff.getProfile();
-                document.getElementById("userId").innerText = `使用者 ID: ${profile.userId}`;
-                document.getElementById("displayName").innerText = `名稱: ${profile.displayName}`;
-            } else {
-                document.getElementById("userId").innerText = "無法獲取使用者資訊 (非 LINE APP 開啟)";
-            }
-            loadMessages();
-        }
-
-        async function loadMessages() {
-            const querySnapshot = await getDocs(collection(db, "messages"));
-            const list = document.getElementById("messageList");
-            list.innerHTML = "";
-            querySnapshot.forEach((doc) => {
-                let li = document.createElement("li");
-                li.textContent = doc.data().text;
-                li.setAttribute("data-id", doc.id);
-                li.innerHTML += ` <button onclick="editMessage('${doc.id}', '${doc.data().text}')">修改</button>`;
-                li.innerHTML += ` <button onclick="deleteMessage('${doc.id}')">刪除</button>`;
-                list.appendChild(li);
-            });
-        }
-
-        async function addMessage() {
-            const text = document.getElementById("messageInput").value;
-            if (text) {
-                await addDoc(collection(db, "messages"), { text });
-                document.getElementById("messageInput").value = "";
-                loadMessages();
-            }
-        }
-
-        async function editMessage(id, oldText) {
-            const newText = prompt("修改內容:", oldText);
-            if (newText) {
-                await updateDoc(doc(db, "messages", id), { text: newText });
-                loadMessages();
-            }
-        }
-
-        async function deleteMessage(id) {
-            await deleteDoc(doc(db, "messages", id));
-            loadMessages();
-        }
-
-        window.addMessage = addMessage;
-        window.editMessage = editMessage;
-        window.deleteMessage = deleteMessage;
-        window.onload = initLIFF;
-    </script>
+    <title>LIFF 留言板 (強制 LINE 開啟)</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>LINE LIFF + Firestore</h1>
-    <p id="userId">載入中...</p>
-    <p id="displayName"></p>
-    <input type="text" id="messageInput" placeholder="輸入訊息">
-    <button onclick="addMessage()">新增</button>
-    <ul id="messageList"></ul>
+    <h2>LIFF 留言板 (強制 LINE 開啟)</h2>
+
+    <p><strong>使用者 ID:</strong> <span id="userId">載入中...</span></p>
+    <p><strong>使用者名稱:</strong> <span id="userName">載入中...</span></p>
+
+    <div class="message-box">
+        <input type="text" id="messageInput" placeholder="輸入留言...">
+        <button onclick="addMessage()">新增留言</button>
+    </div>
+
+    <div class="messages" id="messagesList"></div>
+
+    <script type="module" src="app.js"></script>
 </body>
 </html>
