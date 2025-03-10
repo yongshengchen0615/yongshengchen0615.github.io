@@ -1,22 +1,63 @@
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Arial', sans-serif;
     text-align: center;
+    background-color: #f8f9fa;
+    color: #333;
+    margin: 0;
+    padding: 20px;
 }
 
 button {
     font-size: 18px;
-    padding: 10px 20px;
+    padding: 12px 24px;
     margin-top: 20px;
     cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    background-color: #007bff;
+    color: white;
+    transition: background-color 0.3s ease-in-out;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
 #qr-container {
     display: none;
     margin-top: 20px;
+    padding: 10px;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    background-color: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 video {
-    width: 300px;
-    height: 300px;
-    border: 1px solid black;
+    width: 320px;
+    height: 320px;
+    border-radius: 8px;
+    border: 3px solid #007bff;
+}
+
+p {
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+h1 {
+    font-size: 28px;
+    color: #007bff;
+}
+
+#prizeText {
+    font-size: 20px;
+    font-weight: bold;
+    color: #28a745;
+    margin-top: 15px;
 }
