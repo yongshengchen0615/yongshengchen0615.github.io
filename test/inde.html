@@ -3,63 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LIFF User ID 獲取</title>
-    <!-- 引入最新版本的 LIFF SDK -->
-    <script src="https://static.line-scdn.net/liff/edge/2.18.0/sdk.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 50px;
-        }
-        #userId {
-            font-size: 18px;
-            font-weight: bold;
-            color: blue;
-        }
-    </style>
+    <title>LIFF 顯示 UserID</title>
+    <script src="https://static.line-scdn.net/liff/2.17.1/sdk.js"></script>
 </head>
 <body>
-    <h2>LIFF User ID 獲取</h2>
-    <button id="loginBtn">開啟 LIFF</button>
-    <p>用戶 ID：<span id="userId">尚未獲取</span></p>
+    <h1>你的 LINE UserID</h1>
+    <p id="userId">載入中...</p>
 
     <script>
-        // 等待頁面載入完成後執行
-        window.onload = function () {
-            console.log("頁面載入完成，開始初始化 LIFF...");
-            // 檢查 LIFF SDK 是否成功載入
-            if (typeof liff !== "undefined") {
-                // 初始化 LIFF
-                liff.init({
-                    liffId: "2005939681-bZ9XB8dP" // 請替換為你的 LIFF ID
-                }).then(() => {
-                    console.log("LIFF 初始化成功");
-                    // 檢查使用者是否已登入
-                    if (liff.isLoggedIn()) {
-                        getUserProfile();
-                    } else {
-                        // 綁定登入按鈕事件
-                        document.getElementById("loginBtn").addEventListener("click", function () {
-                            liff.login();
-                        });
-                    }
-                }).catch(err => {
-                    console.error("LIFF 初始化失敗:", err);
-                });
-            } else {
-                console.error("LIFF SDK 載入失敗，請檢查網路或 LIFF 版本");
-            }
-        };
+        document.addEventListener("DOMContentLoaded", async () => {
+            const LIFF_ID = "2005939681-bZ9XB8dP"; // 請替換為你的 LIFF ID
 
-        // 獲取使用者資料
-        function getUserProfile() {
-            liff.getProfile().then(profile => {
-                document.getElementById("userId").textContent = profile.userId;
-            }).catch(err => {
-                console.error("獲取 User ID 失敗:", err);
-            });
-        }
+            try {
+                await liff.init({ liffId: LIFF_ID });
+
+                const context = liff.getContext();
+                if (context.userId) {
+                    document.getElementById("userId").textContent = `你的 UserID：${context.userId}`;
+                } else {
+                    document.getElementById("userId").textContent = "無法獲取 UserID（請確保從官方帳號內開啟）";
+                }
+            } catch (error) {
+                console.error("LIFF 初始化錯誤：", error);
+                document.getElementById("userId").textContent = "LIFF 初始化失敗";
+            }
+        });
     </script>
 </body>
 </html>
