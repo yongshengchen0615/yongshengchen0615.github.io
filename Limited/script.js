@@ -17,87 +17,41 @@ document.addEventListener("DOMContentLoaded", () => {
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    let prizeData = {};
     let isAuthenticated = false;
-    let isDrawing = false;
 
     async function fetchPrizes() {
         const docRef = doc(db, "prizes", "lottery");
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-            prizeData = docSnap.data();
-            document.getElementById("sweetSoupCount").textContent = prizeData.sweetSoup;
-            document.getElementById("footBathCount").textContent = prizeData.footBath;
-            document.getElementById("pointCount").textContent = prizeData.point;
+            document.getElementById("sweetSoupCount").textContent = docSnap.data().sweetSoup;
+            document.getElementById("footBathCount").textContent = docSnap.data().footBath;
+            document.getElementById("pointCount").textContent = docSnap.data().point;
         }
     }
 
     fetchPrizes();
 
-    document.getElementById("drawButton").addEventListener("click", async function() {
+    document.getElementById("drawButton").addEventListener("click", async () => {
         if (!isAuthenticated) {
             alert("請先掃描 QR Code 獲取授權！");
             return;
         }
 
-        if (isDrawing) return;
-        isDrawing = true;
         document.getElementById("drawButton").disabled = true;
 
-        let availablePrizes = [];
-        if (prizeData.sweetSoup > 0) availablePrizes.push("甜湯");
-        if (prizeData.footBath > 0) availablePrizes.push("足湯包");
-        if (prizeData.point > 0) availablePrizes.push("1 點");
-
-        if (availablePrizes.length === 0) {
-            document.getElementById("prizeText").textContent = "已無獎品！";
-            isDrawing = false;
-            document.getElementById("drawButton").disabled = false;
-            return;
+        let docRef = doc(db, "prizes", "lottery");
+        let docSnap = await getDoc(docRef);
+        if (docSnap.exists() && docSnap.data().sweetSoup > 0) {
+            await updateDoc(docRef, { sweetSoup: increment(-1) });
+            fetchPrizes();
         }
 
-        let chosenPrize = availablePrizes[Math.floor(Math.random() * availablePrizes.length)];
-        document.getElementById("prizeText").textContent = "恭喜獲得: " + chosenPrize;
-
-        let prizeKey = chosenPrize === "甜湯" ? "sweetSoup" : chosenPrize === "足湯包" ? "footBath" : "point";
-        const docRef = doc(db, "prizes", "lottery");
-
-        // 確保 Firestore 數據不會變成負數
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data()[prizeKey] > 0) {
-            await updateDoc(docRef, { [prizeKey]: increment(-1) });
-        } else {
-            document.getElementById("prizeText").textContent = "獎品已兌換完，請稍後再試！";
-        }
-
-        await fetchPrizes();
-        isDrawing = false;
         document.getElementById("drawButton").disabled = false;
     });
 
-    const video = document.getElementById("qr-video");
-    const qrContainer = document.getElementById("qr-container");
-    const authStatus = document.getElementById("authStatus");
-    let qrScanner;
-
     document.getElementById("scanQRButton").addEventListener("click", () => {
-        if (!qrScanner) {
-            qrScanner = new QrScanner(video, result => {
-                if (result === "AUTHORIZED_CODE") {
-                    isAuthenticated = true;
-                    authStatus.textContent = "驗證成功！可以抽獎！";
-                    qrScanner.stop();
-                    qrContainer.style.display = "none";
-                    document.getElementById("drawButton").disabled = false;
-                } else {
-                    alert("無效的 QR Code！");
-                }
-            });
-        }
-        qrContainer.style.display = "block";
-        qrScanner.start().catch(err => {
-            console.error("無法啟動 QR 掃描器", err);
-            alert("無法啟動 QR 掃描，請確保相機權限已開啟！");
-        });
+        isAuthenticated = true;
+        document.getElementById("authStatus").textContent = "驗證成功！";
+        document.getElementById("drawButton").disabled = false;
     });
 });
