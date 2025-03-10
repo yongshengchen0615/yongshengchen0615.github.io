@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>按鈕抽獎</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>按鈕抽獎</h1>
+    <p>剩餘獎品：</p>
+    <p>甜湯: <span id="sweetSoupCount">載入中...</span></p>
+    <p>足湯包: <span id="footBathCount">載入中...</span></p>
+    <p>集點刮點數 1 點: <span id="pointCount">載入中...</span></p>
+
+    <button id="scanQRButton">掃描 QR Code 以獲取授權</button>
+    <p id="authStatus">尚未驗證</p>
+
+    <div id="qr-container">
+        <video id="qr-video"></video>
+    </div>
+
+    <button id="drawButton">點擊抽獎</button>
+    <p id="prizeText">等待抽獎...</p>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
