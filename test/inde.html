@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIFF User ID 獲取</title>
+    <script src="https://static.line-scdn.net/liff/edge/2.18.0/sdk.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        #userId {
+            font-size: 18px;
+            font-weight: bold;
+            color: blue;
+        }
+    </style>
+</head>
+<body>
+    <h2>LIFF User ID 獲取</h2>
+    <button onclick="initLiff()">開啟 LIFF</button>
+    <p>用戶 ID：<span id="userId">尚未獲取</span></p>
+
+    <script>
+        function initLiff() {
+            liff.init({
+                liffId: "2005939681-bZ9XB8dP" // 請替換為你的 LIFF ID
+            }).then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login(); // 若未登入，則跳轉至 LINE 登入頁面
+                } else {
+                    getUserProfile();
+                }
+            }).catch(err => {
+                console.error("LIFF 初始化失敗:", err);
+            });
+        }
+
+        function getUserProfile() {
+            liff.getProfile().then(profile => {
+                document.getElementById("userId").textContent = profile.userId;
+            }).catch(err => {
+                console.error("獲取 User ID 失敗:", err);
+            });
+        }
+    </script>
+</body>
+</html>
