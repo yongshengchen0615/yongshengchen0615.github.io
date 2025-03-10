@@ -4,84 +4,78 @@ import QrScanner from "https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js";
 
 document.addEventListener("DOMContentLoaded", () => {
     const firebaseConfig = {
-        apiKey: "AIzaSyCQpelp4H9f-S0THHgSiIJHCzyvNG3AGvs",
-  authDomain: "reservesystem-c8bbc.firebaseapp.com",
-  databaseURL: "https://reservesystem-c8bbc-default-rtdb.firebaseio.com",
-  projectId: "reservesystem-c8bbc",
-  storageBucket: "reservesystem-c8bbc.firebasestorage.app",
-  messagingSenderId: "138232489371",
-  appId: "1:138232489371:web:b5358137baf293f9ae2d3e",
-  measurementId: "G-RZ9XSVK925"
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+        appId: "YOUR_APP_ID"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
     let isAuthenticated = false;
+
+    const prizeValues = { sweetSoup: 100, footBath: 80, point: 50 };
 
     async function fetchPrizes() {
         const docRef = doc(db, "prizes", "lottery");
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-            document.getElementById("sweetSoupCount").textContent = docSnap.data().sweetSoup;
-            document.getElementById("footBathCount").textContent = docSnap.data().footBath;
-            document.getElementById("pointCount").textContent = docSnap.data().point;
+            const prizeData = docSnap.data();
+            Object.keys(prizeData).forEach(prize => {
+                document.getElementById(`${prize}Count`).textContent = prizeData[prize];
+            });
+            return prizeData;
         }
+        return null;
     }
 
-    fetchPrizes();
+    function calculateProbabilities(prizeData) {
+        let totalPrizes = Object.values(prizeData).reduce((sum, count) => sum + count, 0);
+        if (totalPrizes === 0) return null;
 
-    async function calculateExpectedValueAndDrawPrize() {
+        let weights = {};
+        let totalWeight = 0;
+        Object.keys(prizeData).forEach(prize => {
+            let factor = (prizeData[prize] / totalPrizes) ** 2;
+            weights[prize] = (prizeData[prize] / totalPrizes) * prizeValues[prize] * (1 - factor);
+            totalWeight += weights[prize];
+        });
+
+        return Object.keys(weights).reduce((probs, prize) => {
+            probs[prize] = weights[prize] / totalWeight;
+            return probs;
+        }, {});
+    }
+
+    async function drawPrize() {
         const docRef = doc(db, "prizes", "lottery");
-        const docSnap = await getDoc(docRef);
-        if (!docSnap.exists()) return;
-
-        let prizeData = docSnap.data();
-        let totalPrizes = prizeData.sweetSoup + prizeData.footBath + prizeData.point;
-
-        if (totalPrizes === 0) {
+        const prizeData = await fetchPrizes();
+        if (!prizeData) {
             document.getElementById("prizeText").textContent = "已無獎品！";
             return;
         }
 
-        // 設定獎品價值
-        const valueSweetSoup = 100;
-        const valueFootBath = 80;
-        const valuePoint = 50;
+        let probabilities = calculateProbabilities(prizeData);
+        if (!probabilities) {
+            document.getElementById("prizeText").textContent = "已無獎品！";
+            return;
+        }
 
-        // 計算各獎項機率
-        let probSweetSoup = prizeData.sweetSoup / totalPrizes;
-        let probFootBath = prizeData.footBath / totalPrizes;
-        let probPoint = prizeData.point / totalPrizes;
-
-        // 計算期望值
-        let expectedValue = (probSweetSoup * valueSweetSoup) + (probFootBath * valueFootBath) + (probPoint * valuePoint);
-
-        console.log(`當前期望值: ${expectedValue.toFixed(2)}`);
-
-        // 根據機率隨機選擇獎品
-        let rand = Math.random();
-        let cumulativeProb = 0;
-
-        let chosenPrize;
-        if (rand < (cumulativeProb += probSweetSoup)) {
-            chosenPrize = "甜湯";
-        } else if (rand < (cumulativeProb += probFootBath)) {
-            chosenPrize = "足湯包";
-        } else {
-            chosenPrize = "1 點";
+        let rand = Math.random(), cumulativeProb = 0, chosenPrize;
+        for (let [prize, prob] of Object.entries(probabilities)) {
+            cumulativeProb += prob;
+            if (rand < cumulativeProb) {
+                chosenPrize = prize;
+                break;
+            }
         }
 
         document.getElementById("prizeText").textContent = `恭喜獲得: ${chosenPrize}`;
-
-        // 獎品鍵對應 Firestore 欄位名稱
-        let prizeKey = chosenPrize === "甜湯" ? "sweetSoup" : chosenPrize === "足湯包" ? "footBath" : "point";
-
-        // 確保獎品數量足夠後才減少
-        if (prizeData[prizeKey] > 0) {
-            await updateDoc(docRef, { [prizeKey]: increment(-1) });
+        if (prizeData[chosenPrize] > 0) {
+            await updateDoc(docRef, { [chosenPrize]: increment(-1) });
         }
-
         fetchPrizes();
     }
 
@@ -90,24 +84,20 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("請先掃描 QR Code 獲取授權！");
             return;
         }
-
         document.getElementById("drawButton").disabled = true;
-        await calculateExpectedValueAndDrawPrize();
+        await drawPrize();
         document.getElementById("drawButton").disabled = false;
     });
 
-    // QR Code 掃描驗證
-    const video = document.getElementById("qr-video");
     const qrContainer = document.getElementById("qr-container");
-    const authStatus = document.getElementById("authStatus");
     let qrScanner;
 
     document.getElementById("scanQRButton").addEventListener("click", () => {
         if (!qrScanner) {
-            qrScanner = new QrScanner(video, result => {
+            qrScanner = new QrScanner(document.getElementById("qr-video"), result => {
                 if (result === "AUTHORIZED_CODE") {
                     isAuthenticated = true;
-                    authStatus.textContent = "驗證成功！";
+                    document.getElementById("authStatus").textContent = "驗證成功！";
                     qrScanner.stop();
                     qrContainer.style.display = "none";
                     document.getElementById("drawButton").disabled = false;
@@ -117,16 +107,11 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
         qrContainer.style.display = "block";
-        qrScanner.start().catch(err => {
-            console.error("無法啟動 QR 掃描器", err);
-            alert("無法啟動 QR 掃描，請確保相機權限已開啟！");
-        });
+        qrScanner.start().catch(err => alert("無法啟動 QR 掃描，請確保相機權限已開啟！"));
     });
 
     document.getElementById("close-qr").addEventListener("click", () => {
         qrContainer.style.display = "none";
-        if (qrScanner) {
-            qrScanner.stop();
-        }
+        if (qrScanner) qrScanner.stop();
     });
 });
