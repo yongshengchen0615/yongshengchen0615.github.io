@@ -5,45 +5,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE MINI App 預約系統</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <link rel="stylesheet" href="style.css">
-    <script defer src="script.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: auto;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <div id="messageBox" style="display: none; padding: 10px; margin-top: 10px; border-radius: 5px;"></div>
-
-        <h1>範例預約系統</h1>
-        <div id="profile" style="display: none;">
-            <img id="userImage" src="" alt="User Image">
-            <h2 id="userName"></h2>
-        </div>
-
-        <h3>基本資料</h3>
-        <input type="text" id="userFullName" placeholder="請輸入姓名">
+        <h2>預約服務</h2>
+        <label>選擇日期：</label>
+        <input type="date" id="date">
         
-        <h3>性別</h3>
-        <select id="gender">
-            <option value="男">男</option>
-            <option value="女">女</option>
+        <label>選擇時段：</label>
+        <select id="time">
+            <option value="10:00">10:00 AM</option>
+            <option value="14:00">2:00 PM</option>
+            <option value="18:00">6:00 PM</option>
         </select>
 
-        <h3>聯絡電話</h3>
-        <input type="tel" id="phoneNumber" placeholder="請輸入手機號碼">
-
-        <h3>選擇服務</h3>
+        <label>選擇服務：</label>
         <select id="service">
-            <option value="按摩">按摩</option>
-            <option value="SPA">SPA</option>
             <option value="足部護理">足部護理</option>
+            <option value="全身指壓">全身指壓</option>
+            <option value="精油按摩">精油按摩</option>
         </select>
 
-        <h3>選擇日期與時間</h3>
-        <div class="datetime-container">
-            <input type="date">
-            <input type="time">
-        </div>
-
-        <button id="submitBooking">提交預約</button>
+        <button onclick="submitBooking()">送出預約</button>
     </div>
+
+    <script>
+        function submitBooking() {
+            const date = document.getElementById('date').value;
+            const time = document.getElementById('time').value;
+            const service = document.getElementById('service').value;
+
+            if (!date) {
+                alert('請選擇日期！');
+                return;
+            }
+
+            const message = `📅 預約日期：${date}\n⏰ 預約時間：${time}\n💆 服務內容：${service}`;
+            
+            // 初始化 LIFF
+            liff.init({ liffId: "2007061321-g603NNZG" })  // 替換為你的 LIFF ID
+                .then(() => {
+                    if (!liff.isLoggedIn()) {
+                        liff.login();
+                    } else {
+                        liff.sendMessages([{
+                            type: "text",
+                            text: message
+                        }]).then(() => {
+                            alert("預約成功！已通知官方帳號");
+                            liff.closeWindow();  // 關閉 LINE MINI App
+                        }).catch(err => {
+                            console.error("發送失敗:", err);
+                            alert("發送失敗，請稍後再試");
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error("LIFF 初始化失敗:", err);
+                });
+        }
+    </script>
 </body>
 </html>
