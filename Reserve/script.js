@@ -117,7 +117,8 @@ function submitBooking() {
     const totalDuration = serviceInfo.duration + addOnInfo.duration;
     const totalPrice = serviceInfo.price + addOnInfo.price;
 
-    let message = `${bookingTitle}\n👤 預約人姓名：${name}\n
+    let message = `${bookingTitle}\n
+    👤 預約人姓名：${name}\n
     📞 預約人電話：${phone}\n
     📅 預約日期：${formattedDate}\n
     ⏰ 預約時間：${time}\n
