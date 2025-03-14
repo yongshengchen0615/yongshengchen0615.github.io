@@ -1,18 +1,18 @@
+const allowAddOns = true; // 設為 true 允許加購，false 則不允許
+
 const services = [
-    { name: "腳底按摩 40分鐘 800元", duration: 50, price: 800 },
-    { name: "腳底按摩 60分鐘 1100元", duration: 70, price: 1100 },
-    { name: "腳底按摩 80分鐘 1600元", duration: 90, price: 1600 },
-    { name: "全身指壓 60分鐘 1100元", duration: 70, price: 1100 },
-    { name: "全身指壓 90分鐘 1650元", duration: 100, price: 1650 },
-    { name: "全身指壓 120分鐘 2200元", duration: 130, price: 2200 },
-    { name: "修腳皮or修腳指甲 600元", duration: 40, price: 600 },
-    { name: "修腳皮+修腳指甲 1000元", duration: 70, price: 1000 },
+    { name: "腳底按摩 40分鐘 800元", duration: 40, price: 800 },
+    { name: "腳底按摩 60分鐘 800元", duration: 60, price: 1200 },
+    { name: "腳底按摩 80分鐘 1600元", duration: 80, price: 1600 },
+    { name: "全身指壓 60分鐘 1100元", duration: 60, price: 1100 },
+    { name: "全身指壓 90分鐘 1650元", duration: 90, price: 1650 },
+    { name: "全身指壓 120分鐘 2200元", duration: 120, price: 2200 }
 ];
 
 const addOns = [
     { name: "不加購", duration: 0, price: 0 },
     { name: "修腳皮", duration: 30, price: 600 },
-    { name: "修指甲", duration: 30, price: 600 },
+    { name: "修腳指甲", duration: 30, price: 600 },
 ];
 
 function populateServices() {
@@ -24,13 +24,17 @@ function populateServices() {
         serviceSelect.appendChild(option);
     });
 
-    const addOnSelect = document.getElementById("add-on");
-    addOns.forEach(addOn => {
-        const option = document.createElement("option");
-        option.value = addOn.name;
-        option.textContent = `${addOn.name} (+${addOn.duration} 分鐘, ${addOn.price} 元)`;
-        addOnSelect.appendChild(option);
-    });
+    if (allowAddOns) {
+        const addOnSelect = document.getElementById("add-on");
+        addOns.forEach(addOn => {
+            const option = document.createElement("option");
+            option.value = addOn.name;
+            option.textContent = `${addOn.name} (+${addOn.duration} 分鐘, ${addOn.price} 元)`;
+            addOnSelect.appendChild(option);
+        });
+    } else {
+        document.getElementById("add-on-container").style.display = "none";
+    }
 
     updateServiceInfo();
 }
@@ -39,46 +43,17 @@ function updateServiceInfo() {
     const selectedService = document.getElementById("service").value;
     const serviceInfo = services.find(service => service.name === selectedService);
 
-    const selectedAddOn = document.getElementById("add-on").value;
-    const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+    let totalDuration = serviceInfo.duration;
+    let totalPrice = serviceInfo.price;
 
-    const totalDuration = serviceInfo.duration + addOnInfo.duration;
-    const totalPrice = serviceInfo.price + addOnInfo.price;
+    if (allowAddOns) {
+        const selectedAddOn = document.getElementById("add-on").value;
+        const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+        totalDuration += addOnInfo.duration;
+        totalPrice += addOnInfo.price;
+    }
 
     document.getElementById("service-info").innerHTML = `🕒 總時長：${totalDuration} 分鐘 | 💰 總價格：${totalPrice} 元`;
-}
-
-function toggleBookingFields() {
-    const bookingType = document.getElementById("booking-type").value;
-    document.getElementById("self-booking").style.display = bookingType === "self" ? "block" : "none";
-    document.getElementById("other-booking").style.display = bookingType === "other" ? "block" : "none";
-}
-
-function showMessage(message, type) {
-    const messageBox = document.getElementById('message-box');
-    messageBox.innerText = message;
-    messageBox.className = `message-box ${type}`;
-    messageBox.style.display = "block";
-
-    setTimeout(() => {
-        messageBox.style.display = "none";
-        if (type === "success") {
-            liff.closeWindow();
-        }
-    }, 2000);
-}
-
-function isValidPhone(phone) {
-    return /^09\d{8}$/.test(phone);
-}
-
-function formatDate(dateString) {
-    const dateObj = new Date(dateString);
-    const month = dateObj.getMonth() + 1;
-    const day = dateObj.getDate();
-    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
-    const weekday = weekdays[dateObj.getDay()];
-    return `${month}/${day}(${weekday})`;
 }
 
 function submitBooking() {
@@ -88,19 +63,24 @@ function submitBooking() {
     const selectedService = document.getElementById('service').value;
     const serviceInfo = services.find(service => service.name === selectedService);
 
-    const selectedAddOn = document.getElementById('add-on').value;
-    const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+    let selectedAddOn = "不加購";
+    let addOnInfo = { duration: 0, price: 0 };
+
+    if (allowAddOns) {
+        selectedAddOn = document.getElementById('add-on').value;
+        addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+    }
 
     let name, phone, bookingTitle;
 
     if (bookingType === "self") {
         name = document.getElementById('name').value.trim();
         phone = document.getElementById('phone').value.trim();
-        bookingTitle = "📌本人預約";
+        bookingTitle = "📌 本人預約";
     } else {
         name = document.getElementById('other-name').value.trim();
         phone = document.getElementById('other-phone').value.trim();
-        bookingTitle = "📌代訂他人";
+        bookingTitle = "📌 代訂他人";
     }
 
     if (!name || !phone || !dateInput || !time) {
@@ -117,15 +97,15 @@ function submitBooking() {
     const totalDuration = serviceInfo.duration + addOnInfo.duration;
     const totalPrice = serviceInfo.price + addOnInfo.price;
 
-    let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆服務內容：${selectedService}\n`;
+    let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}\n🕒 服務時長：${serviceInfo.duration} 分鐘`;
 
-    if (selectedAddOn !== "不加購") {
+    if (allowAddOns && selectedAddOn !== "不加購") {
         message += `\n➕ 加購項目：${selectedAddOn} (+${addOnInfo.duration} 分鐘)`;
     }
 
     message += `\n🕒 總時長：${totalDuration} 分鐘\n💰 總價格：${totalPrice} 元`;
 
-    liff.init({ liffId: "2007061321-g603NNZG" }) 
+    liff.init({ liffId: "YOUR_LIFF_ID" }) 
         .then(() => {
             if (!liff.isLoggedIn()) {
                 liff.login();

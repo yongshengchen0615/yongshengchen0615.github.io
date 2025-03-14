@@ -40,10 +40,13 @@
 
         <label>選擇服務：</label>
         <select id="service" onchange="updateServiceInfo()"></select>
-        <label for="add-on">加購項目：</label>
-        <select id="add-on" onchange="updateServiceInfo()">
-            <!-- 選項會由 JavaScript 動態填充 -->
-        </select>
+        <div id="add-on-container">
+            <label for="add-on">加購項目：</label>
+            <select id="add-on" onchange="updateServiceInfo()">
+                <!-- 選項將由 JavaScript 動態填充 -->
+            </select>
+        </div>
+        
 
         <div id="service-info" class="service-info"></div>
 
