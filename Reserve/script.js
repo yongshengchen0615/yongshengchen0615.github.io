@@ -18,7 +18,7 @@ function populateServices() {
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
-        option.textContent = service.name+" "+service.price+" 元";
+        option.textContent = service.name+" "+service.duration+" 分鐘"+service.price+" 元";
         serviceSelect.appendChild(option);
     });
 
