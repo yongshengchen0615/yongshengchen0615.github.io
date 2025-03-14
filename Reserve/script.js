@@ -79,7 +79,7 @@ function submitBooking() {
     const message = `📌 預約通知(請等待預約確認)\n👤 姓名：${name}\n📞 電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}\n🕒 時間：${serviceInfo.duration}\n💰 價格：${serviceInfo.price}`;
 
     // 初始化 LIFF
-    liff.init({ liffId: "YOUR_LIFF_ID" })  // 替換為你的 LIFF ID
+    liff.init({ liffId: "2007061321-g603NNZG" })  // 替換為你的 LIFF ID
         .then(() => {
             if (!liff.isLoggedIn()) {
                 liff.login();
