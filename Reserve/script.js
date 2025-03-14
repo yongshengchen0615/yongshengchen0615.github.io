@@ -11,9 +11,10 @@ const services = [
 
 const addOns = [
     { name: "不加購", duration: 0, price: 0 },
+    { name: "肩頸", duration: 20, price: 450 },
+    { name: "刮痧", duration: 20, price: 650 },
     { name: "修腳皮", duration: 30, price: 600 },
     { name: "修腳指甲", duration: 30, price: 600 },
-    
 ];
 
 function populateServices() {
