@@ -38,10 +38,9 @@ function populateServices() {
         document.getElementById("add-on-container").style.display = "none";
     }
 
-    updateServiceInfo(); // 修正：確保函數存在
+    updateServiceInfo(); // 確保初始顯示總時長與價格
 }
 
-// **修正：新增 updateServiceInfo() 函數**
 function updateServiceInfo() {
     const selectedService = document.getElementById("service").value;
     const serviceInfo = services.find(service => service.name === selectedService) || { duration: 0, price: 0 };
@@ -104,4 +103,5 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchData();
     restrictPastDates();
     populateTimeOptions();
+    updateServiceInfo(); // 確保初始顯示資訊
 });
