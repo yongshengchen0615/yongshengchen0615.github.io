@@ -1,119 +1,105 @@
-document.addEventListener("DOMContentLoaded", function () {
-    liff.init({ liffId: "2007061321-g603NNZG" }) // ✅ 替換成你的 LIFF ID
+// 服務選項列表（包含名稱、時間與價格）
+const services = [
+    { name: "腳底按摩40分鐘", duration: "40 分鐘", price: "800 元" },
+    { name: "腳底按摩90分鐘", duration: "90 分鐘", price: "1200 元" },
+    { name: "腳底按摩80分鐘", duration: "80 分鐘", price: "1600 元" },
+    { name: "全身指壓60分鐘", duration: "60 分鐘", price: "1100 元" },
+    { name: "全身指壓90分鐘", duration: "90 分鐘", price: "1650 元" },
+    { name: "全身指壓120分鐘", duration: "120 分鐘", price: "2200 元" }
+];
+
+// 動態生成服務選單
+function populateServices() {
+    const serviceSelect = document.getElementById("service");
+    services.forEach(service => {
+        const option = document.createElement("option");
+        option.value = service.name;
+        option.textContent = service.name;
+        serviceSelect.appendChild(option);
+    });
+
+    // 預設顯示第一個服務的資訊
+    updateServiceInfo();
+}
+
+// 更新服務資訊顯示（時間 & 價格）
+function updateServiceInfo() {
+    const selectedService = document.getElementById("service").value;
+    const serviceInfo = services.find(service => service.name === selectedService);
+    document.getElementById("service-info").innerHTML = `🕒 時間：${serviceInfo.duration} | 💰 價格：${serviceInfo.price}`;
+}
+
+function showMessage(message, type) {
+    const messageBox = document.getElementById('message-box');
+    messageBox.innerText = message;
+    messageBox.className = `message-box ${type}`;
+    messageBox.style.display = "block";
+
+    // 2 秒後隱藏訊息
+    setTimeout(() => {
+        messageBox.style.display = "none";
+        if (type === "success") {
+            liff.closeWindow(); // 成功時關閉 LINE MINI App
+        }
+    }, 2000);
+}
+
+function isValidPhone(phone) {
+    const phoneRegex = /^09\d{8}$/;  // 台灣手機號碼格式 09XXXXXXXX
+    return phoneRegex.test(phone);
+}
+
+function submitBooking() {
+    const name = document.getElementById('name').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const dateInput = document.getElementById('date').value;
+    const time = document.getElementById('time').value;
+    const selectedService = document.getElementById('service').value;
+    const serviceInfo = services.find(service => service.name === selectedService);
+
+    if (!name || !phone || !dateInput || !time) {
+        showMessage('❌ 請填寫完整資訊！', 'error');
+        return;
+    }
+
+    // 手機號碼格式檢查
+    if (!isValidPhone(phone)) {
+        showMessage('❌ 手機號碼格式錯誤，請輸入 09 開頭的 10 碼數字！', 'error');
+        return;
+    }
+
+    // 轉換日期格式 (YYYY-MM-DD → MM/DD(週X))
+    const dateObj = new Date(dateInput);
+    const month = dateObj.getMonth() + 1; // 月份從 0 開始
+    const day = dateObj.getDate();
+    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    const weekday = weekdays[dateObj.getDay()];
+    const formattedDate = `${month}/${day}(${weekday})`;
+
+    const message = `📌 預約通知(請等待預約確認)\n👤 姓名：${name}\n📞 電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}\n🕒 時間：${serviceInfo.duration}\n💰 價格：${serviceInfo.price}`;
+
+    // 初始化 LIFF
+    liff.init({ liffId: "YOUR_LIFF_ID" })  // 替換為你的 LIFF ID
         .then(() => {
-            console.log("LIFF 初始化成功");
-
-            if (!liff.isInClient()) {
-                showMessage("請在LINE官方帳號內預約", "error");
-                return;
-            }
-
             if (!liff.isLoggedIn()) {
                 liff.login();
-                return;
+            } else {
+                liff.sendMessages([{
+                    type: "text",
+                    text: message
+                }]).then(() => {
+                    showMessage("✅ 預約成功！已通知官方帳號", "success");
+                }).catch(err => {
+                    console.error("發送失敗:", err);
+                    showMessage("❌ 發送失敗，請稍後再試", "error");
+                });
             }
-
-            getUserProfile();
-            document.getElementById("submitBooking").addEventListener("click", submitBooking);
-            document.getElementById("closeApp").addEventListener("click", () => liff.closeWindow());
         })
         .catch(err => {
-            console.error("LIFF 初始化失敗", err);
-            showMessage("LIFF 初始化失敗，請稍後再試！", "error");
+            console.error("LIFF 初始化失敗:", err);
+            showMessage("❌ LIFF 初始化失敗，請重新整理", "error");
         });
+}
 
-    function getUserProfile() {
-        liff.getProfile().then(profile => {
-            document.getElementById("userImage").src = profile.pictureUrl;
-            document.getElementById("userName").innerText = `Hello, ${profile.displayName}`;
-            document.getElementById("profile").style.display = "block";
-        }).catch(err => {
-            console.error("獲取用戶資訊失敗", err);
-            showMessage("無法獲取用戶資訊，請重新登入", "error");
-        });
-    }
-
-    function validatePhoneNumber(phone) {
-        const phoneRegex = /^09\d{8}$/; // 台灣手機格式：09xxxxxxxx (共 10 位數字)
-        return phoneRegex.test(phone);
-    }
-
-    function submitBooking() {
-        const fullName = document.getElementById("userFullName").value.trim();
-        const gender = document.getElementById("gender").value;
-        const phone = document.getElementById("phoneNumber").value.trim();
-        const service = document.getElementById("service").value;
-        const date = document.getElementById("date").value;
-        const time = document.getElementById("time").value;
-
-        if (!fullName || !phone || !date || !time) {
-            showMessage("請填寫完整資料！", "error");
-            return;
-        }
-
-        // 🟢 驗證電話號碼格式
-        if (!validatePhoneNumber(phone)) {
-            showMessage("請輸入正確的手機號碼格式 (09xxxxxxxx)！", "error");
-            return;
-        }
-
-        // 🟢 取得姓氏
-        const lastName = fullName.charAt(0); // 取第一個字作為姓氏
-        let title = "先生"; // 預設為男性
-
-        // 🟢 根據性別選擇稱謂
-        if (gender === "女") {
-            title = "小姐";
-        } else if (gender === "其他") {
-            title = "女士";
-        }
-
-        const formattedName = `${lastName}${title}`; // 組合為「王先生」
-
-        // 🟢 轉換日期為 "3/15(六)" 格式
-        const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
-        const selectedDate = new Date(date);
-        const month = selectedDate.getMonth() + 1;
-        const day = selectedDate.getDate();
-        const weekDay = `(${weekDays[selectedDate.getDay()]})`;
-
-        // 🟢 確保時間是 24 小時制
-        const formattedTime = time;
-
-        const message = `📅 預約確認\n預約人：${formattedName}\n電話：${phone}\n服務：${service}\n日期：${month}/${day}${weekDay}\n時間：${formattedTime}`;
-
-        if (!liff.isInClient()) {
-            showMessage("請在 LINE 應用內提交預約！", "error");
-            return;
-        }
-
-        liff.sendMessages([{ type: "text", text: message }])
-            .then(() => {
-                showMessage("預約已提交！", "success");
-                setTimeout(() => liff.closeWindow(), 2000);
-            })
-            .catch(err => {
-                console.error("預約發送失敗", err);
-                showMessage("訊息發送失敗，請確認是否在 LINE App 內開啟，並確保 LIFF 權限正確設定！", "error");
-            });
-    }
-
-    function showMessage(text, type) {
-        const messageBox = document.getElementById("messageBox");
-        messageBox.innerText = text;
-        messageBox.style.display = "block";
-
-        if (type === "success") {
-            messageBox.style.backgroundColor = "#d4edda"; // 綠色背景
-            messageBox.style.color = "#155724";
-            messageBox.style.border = "1px solid #c3e6cb";
-        } else {
-            messageBox.style.backgroundColor = "#f8d7da"; // 紅色背景
-            messageBox.style.color = "#721c24";
-            messageBox.style.border = "1px solid #f5c6cb";
-        }
-
-        // 自動滾動到訊息框
-        messageBox.scrollIntoView({ behavior: "smooth" });
-    }
-});
+// 初始化服務選單
+window.onload = populateServices;

@@ -5,82 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LINE MINI App 預約系統</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        .container {
-            max-width: 400px;
-            margin: auto;
-        }
-        input, select, button {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            font-size: 16px;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <h2>預約服務</h2>
+
+        <label>姓名：</label>
+        <input type="text" id="name" placeholder="請輸入您的姓名">
+
+        <label>電話：</label>
+        <input type="tel" id="phone" placeholder="請輸入您的手機號碼">
+
         <label>選擇日期：</label>
         <input type="date" id="date">
         
-        <label>選擇時段：</label>
-        <select id="time">
-            <option value="10:00">10:00 AM</option>
-            <option value="14:00">2:00 PM</option>
-            <option value="18:00">6:00 PM</option>
-        </select>
+        <label>選擇時間：</label>
+        <input type="time" id="time">
 
         <label>選擇服務：</label>
-        <select id="service">
-            <option value="足部護理">足部護理</option>
-            <option value="全身指壓">全身指壓</option>
-            <option value="精油按摩">精油按摩</option>
-        </select>
+        <select id="service" onchange="updateServiceInfo()"></select>
+
+        <!-- 顯示所選服務的時間與價格 -->
+        <div id="service-info" class="service-info"></div>
 
         <button onclick="submitBooking()">送出預約</button>
+
+        <!-- 訊息顯示區 -->
+        <div id="message-box" class="message-box"></div>
     </div>
 
-    <script>
-        function submitBooking() {
-            const date = document.getElementById('date').value;
-            const time = document.getElementById('time').value;
-            const service = document.getElementById('service').value;
-
-            if (!date) {
-                alert('請選擇日期！');
-                return;
-            }
-
-            const message = `📅 預約日期：${date}\n⏰ 預約時間：${time}\n💆 服務內容：${service}`;
-            
-            // 初始化 LIFF
-            liff.init({ liffId: "2007061321-g603NNZG" })  // 替換為你的 LIFF ID
-                .then(() => {
-                    if (!liff.isLoggedIn()) {
-                        liff.login();
-                    } else {
-                        liff.sendMessages([{
-                            type: "text",
-                            text: message
-                        }]).then(() => {
-                            alert("預約成功！已通知官方帳號");
-                            liff.closeWindow();  // 關閉 LINE MINI App
-                        }).catch(err => {
-                            console.error("發送失敗:", err);
-                            alert("發送失敗，請稍後再試");
-                        });
-                    }
-                })
-                .catch(err => {
-                    console.error("LIFF 初始化失敗:", err);
-                });
-        }
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
