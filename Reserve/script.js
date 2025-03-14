@@ -58,6 +58,41 @@ function updateServiceInfo() {
     document.getElementById("service-info").innerHTML = `🕒 總時長：${totalDuration} 分鐘 | 💰 總價格：${totalPrice} 元`;
 }
 
+function submitBooking() {
+    const selectedService = document.getElementById("service").value;
+    const selectedAddOn = allowAddOns ? document.getElementById("add-on").value : "無";
+    const selectedDate = document.getElementById("date").value;
+    const selectedTime = document.getElementById("time").value;
+
+    if (!selectedService || !selectedDate || !selectedTime) {
+        alert("請選擇完整的服務、日期和時間！");
+        return;
+    }
+
+    const serviceInfo = services.find(service => service.name === selectedService) || { duration: 0, price: 0 };
+    let totalDuration = serviceInfo.duration;
+    let totalPrice = serviceInfo.price;
+
+    if (allowAddOns && selectedAddOn !== "無") {
+        const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn) || { duration: 0, price: 0 };
+        totalDuration += addOnInfo.duration;
+        totalPrice += addOnInfo.price;
+    }
+
+    const bookingDetails = {
+        服務: selectedService,
+        加購: selectedAddOn,
+        日期: selectedDate,
+        時間: selectedTime,
+        總時長: `${totalDuration} 分鐘`,
+        總價格: `${totalPrice} 元`
+    };
+
+    console.log("預約資訊:", bookingDetails);
+    alert("預約成功！\n" + JSON.stringify(bookingDetails, null, 2));
+}
+
+
 // 限制日期不可選過去
 function restrictPastDates() {
     const today = new Date().toISOString().split("T")[0];
