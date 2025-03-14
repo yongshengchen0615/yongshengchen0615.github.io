@@ -117,13 +117,7 @@ function submitBooking() {
     const totalDuration = serviceInfo.duration + addOnInfo.duration;
     const totalPrice = serviceInfo.price + addOnInfo.price;
 
-    let message = `${bookingTitle}\n
-    👤 預約人姓名：${name}\n
-    📞 預約人電話：${phone}\n
-    📅 預約日期：${formattedDate}\n
-    ⏰ 預約時間：${time}\n
-    💆服務內容：${selectedService}\n`
-    ;
+    let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆服務內容：${selectedService}\n`;
 
     if (selectedAddOn !== "不加購") {
         message += `\n➕ 加購項目：${selectedAddOn} (+${addOnInfo.duration} 分鐘)`;
