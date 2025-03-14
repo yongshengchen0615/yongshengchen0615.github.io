@@ -18,17 +18,17 @@
         </select>
 
         <div id="self-booking">
-            <label>姓名：</label>
-            <input type="text" id="name" placeholder="請輸入您的姓名">
-            <label>電話：</label>
-            <input type="tel" id="phone" placeholder="請輸入您的手機號碼">
+           <!-- <label>姓名：</label>-->
+            <input type="text" id="name" placeholder="範例：陳先生or陳小姐">
+            <!-- <label>電話：</label>-->
+            <input type="tel" id="phone" placeholder="請輸入手機號碼">
         </div>
 
         <div id="other-booking" style="display: none;">
-            <label>預約人姓名：</label>
-            <input type="text" id="other-name" placeholder="請輸入預約人姓名">
-            <label>預約人電話：</label>
-            <input type="tel" id="other-phone" placeholder="請輸入預約人手機號碼">
+            <!--<label>預約人姓名：</label>-->
+            <input type="text" id="other-name" placeholder="範例：陳先生or陳小姐">
+           <!--  <label>預約人電話：</label>-->
+            <input type="tel" id="other-phone" placeholder="請輸入手機號碼">
         </div>
 
         <label>選擇日期：</label>
@@ -39,8 +39,13 @@
 
         <label>選擇服務：</label>
         <select id="service" onchange="updateServiceInfo()"></select>
+        <label for="add-on">加購項目：</label>
+        <select id="add-on" onchange="updateServiceInfo()">
+            <!-- 選項會由 JavaScript 動態填充 -->
+        </select>
 
         <div id="service-info" class="service-info"></div>
+
 
         <button onclick="submitBooking()">送出預約</button>
 

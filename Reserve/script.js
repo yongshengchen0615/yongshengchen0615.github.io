@@ -1,10 +1,18 @@
 const services = [
-    { name: "足部護理", duration: "60 分鐘", price: "1200 元" },
-    { name: "全身指壓", duration: "90 分鐘", price: "1800 元" },
-    { name: "精油按摩", duration: "75 分鐘", price: "1500 元" },
-    { name: "肩頸放鬆", duration: "45 分鐘", price: "1000 元" },
-    { name: "拔罐疏通", duration: "30 分鐘", price: "800 元" },
-    { name: "刮痧理療", duration: "40 分鐘", price: "900 元" }
+    { name: "腳底按摩 40分鐘 800元", duration: 50, price: 800 },
+    { name: "腳底按摩 60分鐘 1100元", duration: 70, price: 1100 },
+    { name: "腳底按摩 80分鐘 1600元", duration: 90, price: 1600 },
+    { name: "全身指壓 60分鐘 1100元", duration: 70, price: 1100 },
+    { name: "全身指壓 90分鐘 1650元", duration: 100, price: 1650 },
+    { name: "全身指壓 120分鐘 2200元", duration: 130, price: 2200 },
+    { name: "修腳皮or修腳指甲 600元", duration: 40, price: 600 },
+    { name: "修腳皮+修腳指甲 1000元", duration: 70, price: 1000 },
+];
+
+const addOns = [
+    { name: "不加購", duration: 0, price: 0 },
+    { name: "修腳皮", duration: 30, price: 600 },
+    { name: "修指甲", duration: 30, price: 600 },
 ];
 
 function populateServices() {
@@ -16,13 +24,28 @@ function populateServices() {
         serviceSelect.appendChild(option);
     });
 
+    const addOnSelect = document.getElementById("add-on");
+    addOns.forEach(addOn => {
+        const option = document.createElement("option");
+        option.value = addOn.name;
+        option.textContent = `${addOn.name} (+${addOn.duration} 分鐘, ${addOn.price} 元)`;
+        addOnSelect.appendChild(option);
+    });
+
     updateServiceInfo();
 }
 
 function updateServiceInfo() {
     const selectedService = document.getElementById("service").value;
     const serviceInfo = services.find(service => service.name === selectedService);
-    document.getElementById("service-info").innerHTML = `🕒 時間：${serviceInfo.duration} | 💰 價格：${serviceInfo.price}`;
+
+    const selectedAddOn = document.getElementById("add-on").value;
+    const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+
+    const totalDuration = serviceInfo.duration + addOnInfo.duration;
+    const totalPrice = serviceInfo.price + addOnInfo.price;
+
+    document.getElementById("service-info").innerHTML = `🕒 總時長：${totalDuration} 分鐘 | 💰 總價格：${totalPrice} 元`;
 }
 
 function toggleBookingFields() {
@@ -65,14 +88,19 @@ function submitBooking() {
     const selectedService = document.getElementById('service').value;
     const serviceInfo = services.find(service => service.name === selectedService);
 
-    let name, phone;
+    const selectedAddOn = document.getElementById('add-on').value;
+    const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+
+    let name, phone, bookingTitle;
 
     if (bookingType === "self") {
         name = document.getElementById('name').value.trim();
         phone = document.getElementById('phone').value.trim();
+        bookingTitle = "📌 本人預約";
     } else {
         name = document.getElementById('other-name').value.trim();
         phone = document.getElementById('other-phone').value.trim();
+        bookingTitle = "📌 代訂他人";
     }
 
     if (!name || !phone || !dateInput || !time) {
@@ -86,9 +114,16 @@ function submitBooking() {
     }
 
     const formattedDate = formatDate(dateInput);
-    const bookingTitle = bookingType === "self" ? "📌 本人預約通知" : "📌 代訂他人預約通知";
+    const totalDuration = serviceInfo.duration + addOnInfo.duration;
+    const totalPrice = serviceInfo.price + addOnInfo.price;
 
-    const message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}\n🕒 時間：${serviceInfo.duration}\n💰 價格：${serviceInfo.price}`;
+    let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}\n🕒 服務時長：${serviceInfo.duration} 分鐘`;
+
+    if (selectedAddOn !== "不加購") {
+        message += `\n➕ 加購項目：${selectedAddOn} (+${addOnInfo.duration} 分鐘)`;
+    }
+
+    message += `\n🕒 總時長：${totalDuration} 分鐘\n💰 總價格：${totalPrice} 元`;
 
     liff.init({ liffId: "2007061321-g603NNZG" }) 
         .then(() => {
