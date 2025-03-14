@@ -5,6 +5,7 @@
         { "name": "腳底按摩 60分鐘", "duration": 60, "price": 1200 },
         { "name": "腳底按摩 80分鐘", "duration": 80, "price": 1600 },
         { "name": "全身指壓 60分鐘", "duration": 60, "price": 1100 }
+        { "name": "全身指壓 90分鐘", "duration": 90, "price": 1650 }
     ],
     "addOns": [
         { "name": "不加購", "duration": 0, "price": 0 },
