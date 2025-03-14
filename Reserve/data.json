@@ -1,0 +1,13 @@
+{
+    "services": [
+        { "name": "不選擇", "duration": 0, "price": 0 },
+        { "name": "腳底按摩 40分鐘", "duration": 40, "price": 800 },
+        { "name": "腳底按摩 60分鐘", "duration": 60, "price": 1200 },
+        { "name": "腳底按摩 80分鐘", "duration": 80, "price": 1600 },
+        { "name": "全身指壓 60分鐘", "duration": 60, "price": 1100 }
+    ],
+    "addOns": [
+        { "name": "不加購", "duration": 0, "price": 0 },
+        { "name": "修腳皮", "duration": 30, "price": 600 }
+    ]
+}

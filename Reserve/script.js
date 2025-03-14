@@ -1,19 +1,29 @@
 const allowAddOns = true; // 設為 true 允許加購，false 則不允許
+let services = [];
+let addOns = [];
 
-const services = [
-    { name: "不選擇", duration: 0, price: 0 },
-    { name: "腳底按摩 40分鐘", duration: 40, price: 800 },
-    { name: "腳底按摩 60分鐘", duration: 60, price: 1200 },
-    { name: "腳底按摩 80分鐘", duration: 80, price: 1600 },
-];
-
-const addOns = [
-    { name: "不加購", duration: 0, price: 0 },
-    { name: "修腳皮", duration: 30, price: 600 },
-];
+function fetchData() {
+    fetch("data.json")
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("資料讀取失敗");
+            }
+            return response.json();
+        })
+        .then(data => {
+            services = data.services;
+            addOns = data.addOns;
+            populateServices();
+        })
+        .catch(error => {
+            console.error("讀取 JSON 失敗:", error);
+        });
+}
 
 function populateServices() {
     const serviceSelect = document.getElementById("service");
+    serviceSelect.innerHTML = ""; // 清空選單
+
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
@@ -23,6 +33,8 @@ function populateServices() {
 
     if (allowAddOns) {
         const addOnSelect = document.getElementById("add-on");
+        addOnSelect.innerHTML = ""; // 清空選單
+
         addOns.forEach(addOn => {
             const option = document.createElement("option");
             option.value = addOn.name;
@@ -38,14 +50,14 @@ function populateServices() {
 
 function updateServiceInfo() {
     const selectedService = document.getElementById("service").value;
-    const serviceInfo = services.find(service => service.name === selectedService);
+    const serviceInfo = services.find(service => service.name === selectedService) || { duration: 0, price: 0 };
 
     let totalDuration = serviceInfo.duration;
     let totalPrice = serviceInfo.price;
 
     if (allowAddOns) {
         const selectedAddOn = document.getElementById("add-on").value;
-        const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+        const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn) || { duration: 0, price: 0 };
         totalDuration += addOnInfo.duration;
         totalPrice += addOnInfo.price;
     }
@@ -94,14 +106,14 @@ function submitBooking() {
     const dateInput = document.getElementById('date').value;
     const time = document.getElementById('time').value;
     const selectedService = document.getElementById('service').value;
-    const serviceInfo = services.find(service => service.name === selectedService);
+    const serviceInfo = services.find(service => service.name === selectedService) || { duration: 0, price: 0 };
 
     let selectedAddOn = "不加購";
     let addOnInfo = { duration: 0, price: 0 };
 
     if (allowAddOns) {
         selectedAddOn = document.getElementById('add-on').value;
-        addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn);
+        addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn) || { duration: 0, price: 0 };
     }
 
     let name, phone, bookingTitle, bookerName, bookerPhone;
@@ -165,15 +177,15 @@ function submitBooking() {
                     .catch(err => {
                         console.error("發送失敗:", err);
                         showMessage("❌ 發送失敗，請稍後再試", "error");
-                        submitButton.disabled = false; // 發送失敗後恢復按鈕
+                        submitButton.disabled = false;
                     });
             }
         })
         .catch(err => {
             console.error("LIFF 初始化失敗:", err);
             showMessage("❌ LIFF 初始化失敗，請重新整理", "error");
-            submitButton.disabled = false; // 初始化失敗後恢復按鈕
+            submitButton.disabled = false;
         });
 }
 
-window.onload = populateServices;
+window.onload = fetchData;
