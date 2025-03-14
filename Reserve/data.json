@@ -1,15 +1,20 @@
 {
     "services": [
-        { "name": "-- 足部按摩 --", "duration": 0, "price": 0, "isDivider": true },
+        { "name": "不選擇", "duration": 0, "price": 0 },
+        { "name": "-----足部按摩-----", "duration": 0, "price": 0, "isDivider": true },
         { "name": "腳底按摩 40分鐘", "duration": 40, "price": 800 },
         { "name": "腳底按摩 60分鐘", "duration": 60, "price": 1200 },
-        { "name": "-- 全身按摩 --", "duration": 0, "price": 0, "isDivider": true },
+        { "name": "腳底按摩 80分鐘", "duration": 80, "price": 1600 },
+        { "name": "-----全身按摩-----", "duration": 0, "price": 0, "isDivider": true },
         { "name": "全身指壓 60分鐘", "duration": 60, "price": 1500 },
-        { "name": "全身指壓 90分鐘", "duration": 90, "price": 2200 }
+        { "name": "全身指壓 90分鐘", "duration": 90, "price": 1650 },
+        { "name": "全身指壓 120分鐘", "duration": 120, "price": 2200 }
     ],
     "addOns": [
         { "name": "不加購", "duration": 0, "price": 0 },
-        { "name": "-- 加購項目 --", "duration": 0, "price": 0, "isDivider": true },
-        { "name": "修腳皮", "duration": 30, "price": 600 }
+        { "name": "-----加購項目-----", "duration": 0, "price": 0, "isDivider": true },
+        { "name": "修腳皮", "duration": 30, "price": 600 },
+        { "name": "修腳指甲", "duration": 30, "price": 600 },
+        { "name": "修腳皮+修腳指甲", "duration": 60, "price": 1000 }
     ]
 }
