@@ -10,7 +10,6 @@ const services = [
 const addOns = [
     { name: "不加購", duration: 0, price: 0 },
     { name: "修腳皮", duration: 30, price: 600 },
-    
 ];
 
 function populateServices() {
@@ -18,7 +17,7 @@ function populateServices() {
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
-        option.textContent = service.name+service.price+" 元";
+        option.textContent = `${service.name} ${service.price} 元`;
         serviceSelect.appendChild(option);
     });
 
@@ -88,6 +87,9 @@ function formatDate(dateString) {
 }
 
 function submitBooking() {
+    const submitButton = document.getElementById('submit-button');
+    submitButton.disabled = true; // 防止連續點擊
+
     const bookingType = document.getElementById("booking-type").value;
     const dateInput = document.getElementById('date').value;
     const time = document.getElementById('time').value;
@@ -120,11 +122,13 @@ function submitBooking() {
 
     if (!name || !phone || !dateInput || !time) {
         showMessage('❌ 請填寫完整資訊！', 'error');
+        submitButton.disabled = false; // 恢復按鈕
         return;
     }
 
     if (!isValidPhone(phone)) {
         showMessage('❌ 手機號碼格式錯誤，請輸入 09 開頭的 10 碼數字！', 'error');
+        submitButton.disabled = false; // 恢復按鈕
         return;
     }
 
@@ -133,10 +137,6 @@ function submitBooking() {
     const totalPrice = serviceInfo.price + addOnInfo.price;
 
     let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}`;
-
-   // if (bookingType === "other") {
-     //   message += `\n👤 代訂人姓名：${bookerName}\n📞 代訂人電話：${bookerPhone}`;
-    //}
 
     message += `\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}`;
 
@@ -156,16 +156,23 @@ function submitBooking() {
                 liff.login();
             } else {
                 liff.sendMessages([{ type: "text", text: message }])
-                    .then(() => showMessage("✅ 預約成功！已通知官方帳號", "success"))
+                    .then(() => {
+                        showMessage("✅ 預約成功！已通知官方帳號", "success");
+                        setTimeout(() => {
+                            submitButton.disabled = false; // 預約完成後恢復按鈕
+                        }, 2000);
+                    })
                     .catch(err => {
                         console.error("發送失敗:", err);
                         showMessage("❌ 發送失敗，請稍後再試", "error");
+                        submitButton.disabled = false; // 發送失敗後恢復按鈕
                     });
             }
         })
         .catch(err => {
             console.error("LIFF 初始化失敗:", err);
             showMessage("❌ LIFF 初始化失敗，請重新整理", "error");
+            submitButton.disabled = false; // 初始化失敗後恢復按鈕
         });
 }
 
