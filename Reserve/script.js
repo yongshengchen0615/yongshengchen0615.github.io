@@ -1,12 +1,12 @@
 const allowAddOns = true; // 設為 true 允許加購，false 則不允許
 
 const services = [
-    { name: "腳底按摩 40分鐘 800元", duration: 40, price: 800 },
-    { name: "腳底按摩 60分鐘 1200元", duration: 60, price: 1200 },
-    { name: "腳底按摩 80分鐘 1600元", duration: 80, price: 1600 },
-    { name: "全身指壓 60分鐘 1100元", duration: 60, price: 1100 },
-    { name: "全身指壓 90分鐘 1650元", duration: 90, price: 1650 },
-    { name: "全身指壓 120分鐘 2200元", duration: 120, price: 2200 }
+    { name: "腳底按摩 40分鐘", duration: 40, price: 800 },
+    { name: "腳底按摩 60分鐘", duration: 60, price: 1200 },
+    { name: "腳底按摩 80分鐘", duration: 80, price: 1600 },
+    { name: "全身指壓 60分鐘", duration: 60, price: 1100 },
+    { name: "全身指壓 90分鐘", duration: 90, price: 1650 },
+    { name: "全身指壓 120分鐘", duration: 120, price: 2200 }
 ];
 
 const addOns = [
@@ -21,7 +21,7 @@ function populateServices() {
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
-        option.textContent = service.name;
+        option.textContent = service.name+" "+ service.price+" 元";
         serviceSelect.appendChild(option);
     });
 
