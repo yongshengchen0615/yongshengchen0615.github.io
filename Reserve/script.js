@@ -1,4 +1,4 @@
-const allowAddOns = true; // 設為 true 允許加購，false 則不允許
+const allowAddOns = true; 
 let services = [];
 let addOns = [];
 
@@ -41,52 +41,52 @@ function populateServices() {
     updateServiceInfo();
 }
 
-function updateServiceInfo() {
-    const selectedService = document.getElementById("service").value;
-    const serviceInfo = services.find(service => service.name === selectedService) || { duration: 0, price: 0 };
-
-    let totalDuration = serviceInfo.duration;
-    let totalPrice = serviceInfo.price;
-
-    if (allowAddOns) {
-        const selectedAddOn = document.getElementById("add-on").value;
-        const addOnInfo = addOns.find(addOn => addOn.name === selectedAddOn) || { duration: 0, price: 0 };
-        totalDuration += addOnInfo.duration;
-        totalPrice += addOnInfo.price;
-    }
-
-    document.getElementById("service-info").innerHTML = `🕒 總時長：${totalDuration} 分鐘 | 💰 總價格：${totalPrice} 元`;
-}
-
+// 限制日期不可選過去
 function restrictPastDates() {
     const today = new Date().toISOString().split("T")[0];
     document.getElementById("date").setAttribute("min", today);
 }
 
-function restrictPastTimes() {
-    const dateInput = document.getElementById("date").value;
-    const timeInput = document.getElementById("time");
-
-    if (!dateInput) return;
+// 產生 10 分鐘單位的時間選擇
+function populateTimeOptions() {
+    const timeSelect = document.getElementById("time");
+    timeSelect.innerHTML = "";
 
     const now = new Date();
-    const selectedDate = new Date(dateInput);
+    const selectedDate = document.getElementById("date").value;
+    const isToday = selectedDate === now.toISOString().split("T")[0];
 
-    if (selectedDate.toDateString() === now.toDateString()) {
-        const hours = now.getHours().toString().padStart(2, "0");
-        const minutes = Math.ceil(now.getMinutes() / 10) * 10; // 進位到最近的 10 分鐘
-        const minTime = `${hours}:${minutes.toString().padStart(2, "0")}`;
+    let startHour = 9; // 營業開始時間
+    let endHour = 24; // 營業結束時間
 
-        timeInput.setAttribute("min", minTime);
-    } else {
-        timeInput.removeAttribute("min");
+    for (let hour = startHour; hour < endHour; hour++) {
+        for (let minute = 0; minute < 60; minute += 30) {
+            let time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+
+            if (isToday) {
+                let selectedTime = new Date(`${selectedDate}T${time}`);
+                if (selectedTime < now) {
+                    continue; // 不顯示已過去的時間
+                }
+            }
+
+            let option = document.createElement("option");
+            option.value = time;
+            option.textContent = time;
+            timeSelect.appendChild(option);
+        }
     }
 }
 
+// 限制時間選擇
+document.getElementById("date").addEventListener("change", populateTimeOptions);
+
+// 確保手機號碼格式正確
 function isValidPhone(phone) {
-    return /^09\d{8}$/.test(phone); 
+    return /^09\d{8}$/.test(phone);
 }
 
+// 格式化日期
 function formatDate(dateString) {
     const dateObj = new Date(dateString);
     const month = dateObj.getMonth() + 1;
@@ -96,6 +96,7 @@ function formatDate(dateString) {
     return `${month}/${day}(${weekday})`;
 }
 
+// 提交預約
 function submitBooking() {
     const submitButton = document.getElementById("submit-button");
     submitButton.disabled = true; 
@@ -158,6 +159,7 @@ function submitBooking() {
     showMessage("✅ 預約成功！已通知官方帳號", "success");
 }
 
+// 顯示訊息
 function showMessage(message, type) {
     const messageBox = document.getElementById("message-box");
     messageBox.innerText = message;
@@ -169,8 +171,9 @@ function showMessage(message, type) {
     }, 2000);
 }
 
-document.getElementById("date").addEventListener("change", restrictPastTimes);
+// 初始化
 document.addEventListener("DOMContentLoaded", () => {
     fetchData();
     restrictPastDates();
+    populateTimeOptions();
 });
