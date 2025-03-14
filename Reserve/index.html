@@ -11,7 +11,10 @@
     <div class="container">
         <h2>預約服務</h2>
         <h5>送出預約後，需等待官方帳號回覆才算預約完成</h5>
-
+        <h5>若沒有您要的項目，則在備註說明您要的項目，填寫完預約資料後，服務項目選擇『不選擇』，加購項目選擇『不加購』
+            ，等待官方帳號回覆
+        </h5>
+     
         <label>預約類型：</label>
         <select id="booking-type" onchange="toggleBookingFields()">
             <option value="self">本人預約</option>
@@ -46,7 +49,8 @@
                 <!-- 選項將由 JavaScript 動態填充 -->
             </select>
         </div>
-        
+        <label for="remarks">備註：</label>
+        <textarea id="remarks" placeholder="請輸入備註 (可選填)" rows="3"></textarea>
 
         <div id="service-info" class="service-info"></div>
 

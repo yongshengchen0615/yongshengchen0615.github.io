@@ -1,20 +1,16 @@
 const allowAddOns = true; // 設為 true 允許加購，false 則不允許
 
 const services = [
-    { name: "腳底按摩 40分鐘", duration: 40, price: 800 },
-    { name: "腳底按摩 60分鐘", duration: 60, price: 1200 },
-    { name: "腳底按摩 80分鐘", duration: 80, price: 1600 },
-    { name: "全身指壓 60分鐘", duration: 60, price: 1100 },
-    { name: "全身指壓 90分鐘", duration: 90, price: 1650 },
-    { name: "全身指壓 120分鐘", duration: 120, price: 2200 }
+    { name: "不選擇", duration: 0, price: 0 },
+    { name: "腳底按摩", duration: 40, price: 800 },
+    { name: "腳底按摩", duration: 60, price: 1200 },
+    { name: "腳底按摩", duration: 80, price: 1600 },
 ];
 
 const addOns = [
     { name: "不加購", duration: 0, price: 0 },
-    { name: "肩頸", duration: 20, price: 450 },
-    { name: "刮痧", duration: 20, price: 650 },
     { name: "修腳皮", duration: 30, price: 600 },
-    { name: "修腳指甲", duration: 30, price: 600 },
+    
 ];
 
 function populateServices() {
@@ -22,7 +18,7 @@ function populateServices() {
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
-        option.textContent = service.name+" "+ service.price+" 元";
+        option.textContent = service.name+" "+service.price+" 元";
         serviceSelect.appendChild(option);
     });
 
@@ -120,6 +116,8 @@ function submitBooking() {
         bookingTitle = "📌 代訂他人";
     }
 
+    const remarks = document.getElementById('remarks').value.trim(); // 獲取備註內容
+
     if (!name || !phone || !dateInput || !time) {
         showMessage('❌ 請填寫完整資訊！', 'error');
         return;
@@ -136,8 +134,8 @@ function submitBooking() {
 
     let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}`;
 
-    //if (bookingType === "other") {
-    //    message += `\n👤 代訂人姓名：${bookerName}\n📞 代訂人電話：${bookerPhone}`;
+   // if (bookingType === "other") {
+     //   message += `\n👤 代訂人姓名：${bookerName}\n📞 代訂人電話：${bookerPhone}`;
     //}
 
     message += `\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}`;
@@ -147,6 +145,10 @@ function submitBooking() {
     }
 
     message += `\n🕒 總時長：${totalDuration} 分鐘\n💰 總價格：${totalPrice} 元`;
+
+    if (remarks) {
+        message += `\n📝 備註：${remarks}`;
+    }
 
     liff.init({ liffId: "2007061321-g603NNZG" }) 
         .then(() => {
