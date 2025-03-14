@@ -103,7 +103,7 @@ function submitBooking() {
         message += `\n➕ 加購項目：${selectedAddOn} (+${addOnInfo.duration} 分鐘)`;
     }
 
-    message += `\n🕒 總時長：${totalDuration} 分鐘\n💰 總價格：${totalPrice} 元`;
+    message += `\nß🕒 總時長：${totalDuration} 分鐘\n💰 總價格：${totalPrice} 元`;
 
     liff.init({ liffId: "2007061321-g603NNZG" }) 
         .then(() => {
