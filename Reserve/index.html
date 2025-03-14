@@ -11,11 +11,25 @@
     <div class="container">
         <h2>預約服務</h2>
 
-        <label>姓名：</label>
-        <input type="text" id="name" placeholder="請輸入您的姓名">
+        <label>預約類型：</label>
+        <select id="booking-type" onchange="toggleBookingFields()">
+            <option value="self">本人預約</option>
+            <option value="other">代訂他人</option>
+        </select>
 
-        <label>電話：</label>
-        <input type="tel" id="phone" placeholder="請輸入您的手機號碼">
+        <div id="self-booking">
+            <label>姓名：</label>
+            <input type="text" id="name" placeholder="請輸入您的姓名">
+            <label>電話：</label>
+            <input type="tel" id="phone" placeholder="請輸入您的手機號碼">
+        </div>
+
+        <div id="other-booking" style="display: none;">
+            <label>預約人姓名：</label>
+            <input type="text" id="other-name" placeholder="請輸入預約人姓名">
+            <label>預約人電話：</label>
+            <input type="tel" id="other-phone" placeholder="請輸入預約人手機號碼">
+        </div>
 
         <label>選擇日期：</label>
         <input type="date" id="date">
@@ -26,12 +40,10 @@
         <label>選擇服務：</label>
         <select id="service" onchange="updateServiceInfo()"></select>
 
-        <!-- 顯示所選服務的時間與價格 -->
         <div id="service-info" class="service-info"></div>
 
         <button onclick="submitBooking()">送出預約</button>
 
-        <!-- 訊息顯示區 -->
         <div id="message-box" class="message-box"></div>
     </div>
 
