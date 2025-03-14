@@ -27,7 +27,16 @@ function populateServices() {
     services.forEach(service => {
         const option = document.createElement("option");
         option.value = service.name;
-        option.textContent = `${service.name} ${service.price} 元`;
+        option.textContent = service.name;
+
+        if (service.isDivider) {
+            option.disabled = true;  // 禁止點擊
+            option.style.fontWeight = "bold"; // 加粗字體
+            option.style.backgroundColor = "#f0f0f0"; // 灰色背景
+        } else {
+            option.textContent += ` ${service.price} 元`;
+        }
+
         serviceSelect.appendChild(option);
     });
 
@@ -38,7 +47,16 @@ function populateServices() {
         addOns.forEach(addOn => {
             const option = document.createElement("option");
             option.value = addOn.name;
-            option.textContent = `${addOn.name} (+${addOn.duration} 分鐘, ${addOn.price} 元)`;
+            option.textContent = addOn.name;
+
+            if (addOn.isDivider) {
+                option.disabled = true;
+                option.style.fontWeight = "bold";
+                option.style.backgroundColor = "#f0f0f0";
+            } else {
+                option.textContent += ` (+${addOn.duration} 分鐘, ${addOn.price} 元)`;
+            }
+
             addOnSelect.appendChild(option);
         });
     } else {
@@ -164,28 +182,14 @@ function submitBooking() {
 
     liff.init({ liffId: "2007061321-g603NNZG" }) 
         .then(() => {
-            if (!liff.isLoggedIn()) {
-                liff.login();
-            } else {
-                liff.sendMessages([{ type: "text", text: message }])
-                    .then(() => {
-                        showMessage("✅ 預約成功！已通知官方帳號", "success");
-                        setTimeout(() => {
-                            submitButton.disabled = false; // 預約完成後恢復按鈕
-                        }, 2000);
-                    })
-                    .catch(err => {
-                        console.error("發送失敗:", err);
-                        showMessage("❌ 發送失敗，請稍後再試", "error");
-                        submitButton.disabled = false;
-                    });
-            }
+            liff.sendMessages([{ type: "text", text: message }])
+                .then(() => showMessage("✅ 預約成功！已通知官方帳號", "success"))
+                .catch(err => {
+                    console.error("發送失敗:", err);
+                    showMessage("❌ 發送失敗，請稍後再試", "error");
+                });
         })
-        .catch(err => {
-            console.error("LIFF 初始化失敗:", err);
-            showMessage("❌ LIFF 初始化失敗，請重新整理", "error");
-            submitButton.disabled = false;
-        });
+        .catch(err => console.error("LIFF 初始化失敗:", err));
 }
 
 window.onload = fetchData;
