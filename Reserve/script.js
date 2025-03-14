@@ -96,11 +96,11 @@ function submitBooking() {
     if (bookingType === "self") {
         name = document.getElementById('name').value.trim();
         phone = document.getElementById('phone').value.trim();
-        bookingTitle = "📌 本人預約";
+        bookingTitle = "📌本人預約";
     } else {
         name = document.getElementById('other-name').value.trim();
         phone = document.getElementById('other-phone').value.trim();
-        bookingTitle = "📌 代訂他人";
+        bookingTitle = "📌代訂他人";
     }
 
     if (!name || !phone || !dateInput || !time) {
