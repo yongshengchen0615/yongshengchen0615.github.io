@@ -18,34 +18,13 @@ body {
     margin: 20px auto;
     backdrop-filter: blur(10px);
     box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 標題樣式 */
-h1, h3 {
-    font-weight: bold;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* 圖片樣式（用戶頭像） */
-img {
-    width: 85px;
-    height: 85px;
-    border-radius: 50%;
-    border: 4px solid rgba(255, 255, 255, 0.7);
-    margin-bottom: 12px;
-    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 日期與時間的外框 */
-.datetime-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    box-sizing: border-box;  /* ✅ 確保內邊距不影響總寬度 */
 }
 
 /* 輸入框 & 選擇框樣式 */
 input, select {
     width: 100%;
+    max-width: 100%; /* ✅ 確保不會超出 container */
     padding: 12px;
     margin: 10px 0;
     border: 1px solid rgba(255, 255, 255, 0.5);
@@ -58,6 +37,7 @@ input, select {
     display: block;
     backdrop-filter: blur(5px);
     transition: all 0.3s ease-in-out;
+    box-sizing: border-box; /* ✅ 避免 padding 讓輸入框變寬 */
     min-height: 44px;
 }
 
@@ -66,14 +46,10 @@ input:focus, select:focus {
     background: rgba(255, 255, 255, 0.3);
 }
 
-/* 避免 placeholder 變白色，確保可讀性 */
-input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
-}
-
 /* 按鈕樣式（玻璃質感） */
 button {
     width: 100%;
+    max-width: 100%;
     padding: 14px;
     margin-top: 15px;
     font-size: 18px;
@@ -87,6 +63,7 @@ button {
     backdrop-filter: blur(8px);
     box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
     min-height: 48px;
+    box-sizing: border-box; /* ✅ 避免超出 */
 }
 
 button:hover {
@@ -95,26 +72,15 @@ button:hover {
 }
 
 /* RWD 響應式設計 */
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 480px) {
     .container {
-        width: 85%;
+        width: 95%;
         padding: 20px;
     }
 
     input, select, button {
         font-size: 15px;
         padding: 12px;
-    }
-}
-
-@media screen and (max-width: 480px) {
-    .container {
-        width: 95%;
-    }
-
-    input, select, button {
-        font-size: 14px;
-        padding: 10px;
     }
 }
 
@@ -127,9 +93,18 @@ button:hover {
     input, select, button {
         font-size: 14px;
         padding: 10px;
+        min-height: 40px;
+    }
+}
+
+@media screen and (max-width: 320px) { 
+    .container {
+        width: 100%;
+        padding: 10px;
     }
 
-    button {
-        min-height: 44px;
+    input, select, button {
+        font-size: 13px;
+        padding: 8px;
     }
 }
