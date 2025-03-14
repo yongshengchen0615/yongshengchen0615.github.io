@@ -135,9 +135,9 @@ function submitBooking() {
 
     let message = `${bookingTitle}\n👤 預約人姓名：${name}\n📞 預約人電話：${phone}`;
 
-    if (bookingType === "other") {
-        message += `\n👤 代訂人姓名：${bookerName}\n📞 代訂人電話：${bookerPhone}`;
-    }
+    //if (bookingType === "other") {
+    //    message += `\n👤 代訂人姓名：${bookerName}\n📞 代訂人電話：${bookerPhone}`;
+    //}
 
     message += `\n📅 預約日期：${formattedDate}\n⏰ 預約時間：${time}\n💆 服務內容：${selectedService}`;
 
