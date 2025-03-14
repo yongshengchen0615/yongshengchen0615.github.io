@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", function () {
-    liff.init({ liffId: "2005939681-WrwevLMV" }) // ✅ 替換成你的 LIFF ID
+    liff.init({ liffId: "2007061321-g603NNZG" }) // ✅ 替換成你的 LIFF ID
         .then(() => {
             console.log("LIFF 初始化成功");
 
