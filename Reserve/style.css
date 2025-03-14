@@ -1,0 +1,119 @@
+/* 全局樣式 */
+body {
+    font-family: 'Arial', sans-serif;
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(to right, #4e54c8, #8f94fb);
+    color: #ffffff;
+    margin: 0;
+}
+
+/* 設定容器 */
+.container {
+    max-width: 400px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    padding: 25px;
+    margin: 20px auto;
+    backdrop-filter: blur(10px);
+    box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 標題樣式 */
+h1, h3 {
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 圖片樣式（用戶頭像） */
+img {
+    width: 85px;
+    height: 85px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.7);
+    margin-bottom: 12px;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* 日期與時間的外框 */
+.datetime-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 輸入框 & 選擇框樣式 */
+input {
+    width: 93%; 
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    font-size: 16px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    text-align: center;
+    display: block;
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease-in-out;
+}
+ select {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
+    font-size: 16px;
+    outline: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    text-align: center;
+    display: block;
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease-in-out;
+}
+
+input:focus, select:focus {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* 避免 placeholder 變白色，確保可讀性 */
+input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* 按鈕樣式（玻璃質感） */
+button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 15px;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease-in-out;
+    color: white;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+
+button:hover {
+    background: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+}
+
+/* RWD 響應式設計 */
+@media screen and (max-width: 480px) {
+    .container {
+        width: 95%;
+    }
+
+    input, select, button {
+        font-size: 15px;
+        padding: 10px;
+    }
+}

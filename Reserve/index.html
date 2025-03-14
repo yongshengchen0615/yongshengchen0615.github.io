@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE MINI App 預約系統</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script defer src="script.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div id="messageBox" style="display: none; padding: 10px; margin-top: 10px; border-radius: 5px;"></div>
+
+        <h1>範例預約系統</h1>
+        <div id="profile" style="display: none;">
+            <img id="userImage" src="" alt="User Image">
+            <h2 id="userName"></h2>
+        </div>
+
+        <h3>基本資料</h3>
+        <input type="text" id="userFullName" placeholder="請輸入姓名">
+        
+        <h3>性別</h3>
+        <select id="gender">
+            <option value="男">男</option>
+            <option value="女">女</option>
+        </select>
+
+        <h3>聯絡電話</h3>
+        <input type="tel" id="phoneNumber" placeholder="請輸入手機號碼">
+
+        <h3>選擇服務</h3>
+        <select id="service">
+            <option value="按摩">按摩</option>
+            <option value="SPA">SPA</option>
+            <option value="足部護理">足部護理</option>
+        </select>
+
+        <h3>選擇日期與時間</h3>
+        <div class="datetime-container">
+            <input type="date">
+            <input type="time">
+        </div>
+
+        <button id="submitBooking">提交預約</button>
+    </div>
+</body>
+</html>
