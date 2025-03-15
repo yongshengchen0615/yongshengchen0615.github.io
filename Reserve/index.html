@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>LINE LIFF 預約系統</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
@@ -10,6 +10,8 @@
             font-family: Arial, sans-serif;
             text-align: center;
             padding: 20px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .container {
             max-width: 400px;
@@ -18,77 +20,142 @@
             border: 1px solid #ddd;
             border-radius: 10px;
             box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+            background: white;
         }
         input, select, button {
             width: 100%;
             padding: 10px;
             margin-top: 10px;
         }
+        .error-message {
+            color: red;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .dialog-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        .dialog-box button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <h2>LINE LIFF 預約系統</h2>
-    <div class="container" id="bookingForm">
+    <div class="container">
         <h3>填寫預約資訊</h3>
+        <label for="reservationType">預約類型</label>
+        <select id="reservationType">
+            <option value="self">本人預約</option>
+            <option value="other">代訂他人</option>
+        </select>
         <label for="name">姓名</label>
         <input type="text" id="name" placeholder="請輸入姓名">
-        
+        <p id="nameError" class="error-message">請輸入正確的姓名格式，例如：陳先生 或 陳小姐</p>
+        <label for="phone">電話</label>
+        <input type="tel" id="phone" placeholder="請輸入電話" required>
+        <p id="phoneError" class="error-message">請輸入有效的 10 位數電話號碼</p>
         <label for="date">預約日期</label>
         <input type="date" id="date">
-        
         <label for="time">預約時間</label>
-        <input type="time" id="time">
-        
+        <select id="time"></select>
         <label for="service">選擇服務</label>
-        <select id="service">
-            <option value="massage">按摩</option>
-            <option value="facial">臉部護理</option>
-            <option value="spa">SPA</option>
-        </select>
-        
+        <select id="service"></select>
         <button id="submitBtn">提交預約</button>
+    </div>
+    
+    <div id="dialogOverlay" class="dialog-overlay">
+        <div class="dialog-box">
+            <p id="dialogMessage"></p>
+            <button id="closeDialog">確認</button>
+        </div>
     </div>
 
     <script>
-        const LIFF_ID = "2007061321-g603NNZG";  // 替換為你的 LIFF ID
+        const CONFIG = {
+            LIFF_ID: "YOUR_LIFF_ID",
+            START_HOUR: 9,
+            END_HOUR: 21,
+            SERVICES: [
+                { text: "按摩", duration: "60分鐘", price: "1000元" },
+                { text: "臉部護理", duration: "45分鐘", price: "800元" },
+                { text: "SPA", duration: "90分鐘", price: "1500元" }
+            ]
+        };
 
         async function initLIFF() {
-            try {
-                await liff.init({ liffId: LIFF_ID });
-            } catch (error) {
-                console.error("LIFF 初始化失敗", error);
+            await liff.init({ liffId: CONFIG.LIFF_ID });
+            if (!liff.isInClient()) {
+                showDialog("請在 LINE 應用程式內開啟此頁面");
             }
         }
 
-        document.getElementById("submitBtn").addEventListener("click", () => {
-            const name = document.getElementById("name").value;
-            const date = document.getElementById("date").value;
-            const time = document.getElementById("time").value;
-            const service = document.getElementById("service").value;
-            
-            if (!name || !date || !time || !service) {
-                alert("請填寫完整資訊");
-                return;
-            }
-            
-            const message = `預約成功！\n姓名: ${name}\n日期: ${date}\n時間: ${time}\n服務: ${service}`;
-            
-            if (liff.isInClient()) {
-                liff.sendMessages([
-                    {
-                        type: "text",
-                        text: message
-                    }
-                ]).then(() => {
-                    liff.closeWindow();
-                }).catch(err => {
-                    console.error("發送訊息失敗", err);
-                });
-            } else {
-                alert("請在 LINE 應用內開啟此頁面以發送訊息");
-            }
-        });
+        function showDialog(message) {
+            document.getElementById("dialogMessage").textContent = message;
+            document.getElementById("dialogOverlay").style.display = "flex";
+        }
 
+        function populateServices() {
+            const serviceSelect = document.getElementById("service");
+            serviceSelect.innerHTML = "";
+            CONFIG.SERVICES.forEach(service => {
+                let option = new Option(`${service.text} (${service.duration} / ${service.price})`, service.text);
+                serviceSelect.add(option);
+            });
+        }
+
+        function updateTimeOptions() {
+            const now = new Date();
+            const selectedDate = document.getElementById("date").value;
+            const isToday = selectedDate === now.toISOString().split("T")[0];
+            let timeSelect = document.getElementById("time");
+            timeSelect.innerHTML = "";
+            
+            for (let hour = CONFIG.START_HOUR; hour <= CONFIG.END_HOUR; hour++) {
+                for (let minute = 0; minute < 60; minute += 10) {
+                    if (isToday && (hour < now.getHours() || (hour === now.getHours() && minute < now.getMinutes()))) {
+                        continue;
+                    }
+                    timeSelect.add(new Option(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, `${hour}:${minute}`));
+                }
+            }
+        }
+
+        function setMinDate() {
+            document.getElementById("date").min = new Date().toISOString().split("T")[0];
+            updateTimeOptions();
+        }
+
+        document.getElementById("date").addEventListener("change", updateTimeOptions);
+        document.getElementById("closeDialog").addEventListener("click", function() {
+            document.getElementById("dialogOverlay").style.display = "none";
+        });
+        
+        setMinDate();
+        populateServices();
         initLIFF();
     </script>
 </body>
