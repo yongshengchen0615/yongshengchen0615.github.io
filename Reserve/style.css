@@ -25,6 +25,6 @@ button {
 
 .remove-btn {
     cursor: pointer;
-    color: red;
+    color: rgb(255, 255, 255);
     font-weight: bold;
 }

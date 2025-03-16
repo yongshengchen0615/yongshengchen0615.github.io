@@ -5,8 +5,8 @@ $(document).ready(function () {
     liff.init({ liffId: LIFF_ID })
         .then(() => {
             if (!liff.isInClient()) {
-                alert("請使用 LINE 開啟此預約系統！");
-                window.location.href = "https://line.me/R/"; // 跳轉到 LINE
+               // alert("請使用 LINE 開啟此預約系統！");
+               // window.location.href = "https://line.me/R/"; // 跳轉到 LINE
             }
         })
         .catch(err => console.error("LIFF 初始化錯誤:", err));
