@@ -1,148 +1,152 @@
 $(document).ready(function () {
-    const LIFF_ID = "2007061321-g603NNZG"; // 替換為你的 LIFF ID
+    const mainServices = {
+        "全身經絡按摩": { time: 60, price: 1500 },
+        "足部護理": { time: 45, price: 1000 },
+        "精油SPA": { time: 90, price: 2000 }
+    };
 
-    // 初始化 LIFF 並強制在 LINE 內開啟
-    liff.init({ liffId: LIFF_ID })
-        .then(() => {
-            if (!liff.isInClient()) {
-               // alert("請使用 LINE 開啟此預約系統！");
-               // window.location.href = "https://line.me/R/"; // 跳轉到 LINE
-            }
-        })
-        .catch(err => console.error("LIFF 初始化錯誤:", err));
+    const addonServices = {
+        "肩頸放鬆加強": { time: 30, price: 800 },
+        "足部去角質": { time: 20, price: 500 },
+        "熱石按摩": { time: 40, price: 1200 }
+    };
 
-    // 主要服務列表
-    const services = [
-        { id: 1, name: "全身經絡按摩", duration: 60, price: 1200 },
-        { id: 2, name: "足部護理", duration: 45, price: 800 },
-        { id: 3, name: "精油按摩", duration: 90, price: 1500 }
-    ];
+    function createPersonForm(index) {
+        let mainServiceOptions = Object.keys(mainServices).map(service => `<option value="${service}">${service}</option>`).join("");
+        let addonServiceOptions = Object.keys(addonServices).map(service => `<option value="${service}">${service}</option>`).join("");
 
-    // 加購服務列表
-    const addOns = [
-        { id: 101, name: "肩頸放鬆加強", duration: 15, price: 300 },
-        { id: 102, name: "足底按摩延長", duration: 30, price: 500 },
-        { id: 103, name: "熱石按摩", duration: 20, price: 800 }
-    ];
-
-    let selectedServices = [];
-    let selectedAddOns = [];
-
-    // 生成服務選單
-    services.forEach(service => {
-        $("#service").append(new Option(`${service.name} - ${service.duration} 分鐘 ($${service.price})`, service.id));
-    });
-
-    addOns.forEach(addOn => {
-        $("#addon").append(new Option(`${addOn.name} - ${addOn.duration} 分鐘 (+$${addOn.price})`, addOn.id));
-    });
-
-    function updateSummary() {
-        let totalPrice = 0;
-        $("#selected-services").html("");
-        selectedServices.forEach((service, index) => {
-            totalPrice += service.price * service.quantity;
-            $("#selected-services").append(`
-                <div class="service-item">
-                    ${service.name} (${service.duration} 分鐘) x ${service.quantity} - $${service.price * service.quantity}
-                    <button class="btn btn-danger btn-sm remove-btn" onclick="removeService(${index})">移除</button>
+        return `
+            <div class="person-card shadow p-3 mb-3" data-person="${index}">
+                <h5>預約人 ${index + 1}</h5>
+                <label class="form-label">選擇主要服務</label>
+                <div class="input-group">
+                    <select class="form-select main-service">${mainServiceOptions}</select>
+                    <button type="button" class="btn btn-outline-primary add-main-service">添加</button>
                 </div>
-            `);
-        });
+                <ul class="list-group main-service-list mt-2"></ul>
 
-        $("#selected-addons").html("");
-        selectedAddOns.forEach((addon, index) => {
-            totalPrice += addon.price * addon.quantity;
-            $("#selected-addons").append(`
-                <div class="addon-item">
-                    ${addon.name} (${addon.duration} 分鐘) x ${addon.quantity} - $${addon.price * addon.quantity}
-                    <button class="btn btn-danger btn-sm remove-btn" onclick="removeAddon(${index})">移除</button>
+                <label class="form-label mt-2">選擇加購服務</label>
+                <div class="input-group">
+                    <select class="form-select addon-service">${addonServiceOptions}</select>
+                    <button type="button" class="btn btn-outline-secondary add-addon-service">添加</button>
                 </div>
-            `);
-        });
+                <ul class="list-group addon-service-list mt-2"></ul>
 
-        $("#status").html(`總金額：$${totalPrice}`);
+                <div class="mt-2">
+                    <h6>⏳ 個人總時間：<span class="total-time text-primary">0</span> 分鐘</h6>
+                    <h6>💰 個人總價格：$<span class="total-price text-success">0</span> 元</h6>
+                </div>
+            </div>
+        `;
     }
 
-    $("#add-service").click(function () {
-        const serviceId = parseInt($("#service").val());
-        const service = services.find(s => s.id === serviceId);
-        if (service) {
-            const existingService = selectedServices.find(s => s.id === serviceId);
-            if (existingService) {
-                existingService.quantity++;
-            } else {
-                selectedServices.push({ ...service, quantity: 1 });
-            }
-            updateSummary();
-        }
-    });
+    function updateTotal() {
+        let totalTimeAll = 0, totalPriceAll = 0;
+        $(".person-card").each(function () {
+            totalTimeAll += parseInt($(this).find(".total-time").text());
+            totalPriceAll += parseInt($(this).find(".total-price").text());
+        });
+        $("#total-time-all").text(totalTimeAll);
+        $("#total-price-all").text(totalPriceAll);
+    }
 
-    $("#add-addon").click(function () {
-        const addonId = parseInt($("#addon").val());
-        const addon = addOns.find(a => a.id === addonId);
-        if (addon) {
-            const existingAddon = selectedAddOns.find(a => a.id === addonId);
-            if (existingAddon) {
-                existingAddon.quantity++;
-            } else {
-                selectedAddOns.push({ ...addon, quantity: 1 });
-            }
-            updateSummary();
-        }
-    });
+    function addService(button, serviceData, listClass) {
+        let serviceName = button.siblings("select").val();
+        let list = button.closest(".person-card").find(listClass);
+        let timeElement = button.closest(".person-card").find(".total-time");
+        let priceElement = button.closest(".person-card").find(".total-price");
 
-    window.removeService = function (index) {
-        selectedServices.splice(index, 1);
-        updateSummary();
-    };
-
-    window.removeAddon = function (index) {
-        selectedAddOns.splice(index, 1);
-        updateSummary();
-    };
-
-    $("#booking-form").submit(async function (e) {
-        e.preventDefault();
-
-        if (selectedServices.length === 0) {
-            alert("請至少選擇一個主要服務！");
+        if (!serviceData[serviceName]) {
+            alert("請選擇有效的服務！");
             return;
         }
 
-        const name = $("#name").val().trim();
-        const phone = $("#phone").val().trim();
-        const date = $("#date").val();
-        const time = $("#time").val();
+        list.append(`
+            <li class="list-group-item" data-time="${serviceData[serviceName].time}" data-price="${serviceData[serviceName].price}">
+                ${serviceName} (${serviceData[serviceName].time} 分鐘, $${serviceData[serviceName].price})
+                <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
+            </li>
+        `);
 
-        const phoneRegex = /^[0-9]{10}$/;
-        if (!phoneRegex.test(phone)) {
-            alert("請輸入有效的 10 碼手機號碼！");
+        timeElement.text(parseInt(timeElement.text()) + serviceData[serviceName].time);
+        priceElement.text(parseInt(priceElement.text()) + serviceData[serviceName].price);
+
+        updateTotal();
+    }
+
+    $(document).on("click", ".add-main-service", function () {
+        addService($(this), mainServices, ".main-service-list");
+    });
+
+    $(document).on("click", ".add-addon-service", function () {
+        addService($(this), addonServices, ".addon-service-list");
+    });
+
+    $(document).on("click", ".remove-service", function () {
+        let item = $(this).parent();
+        let personCard = item.closest(".person-card");
+
+        let removedTime = parseInt(item.attr("data-time"));
+        let removedPrice = parseInt(item.attr("data-price"));
+
+        personCard.find(".total-time").text(parseInt(personCard.find(".total-time").text()) - removedTime);
+        personCard.find(".total-price").text(parseInt(personCard.find(".total-price").text()) - removedPrice);
+
+        item.remove();
+        updateTotal();
+    });
+
+    $("#num-people").change(function () {
+        let numPeople = parseInt($(this).val());
+        $("#people-container").html("");
+        for (let i = 0; i < numPeople; i++) {
+            $("#people-container").append(createPersonForm(i));
+        }
+        updateTotal();
+    });
+
+    $("#num-people").trigger("change");
+
+    // 初始化 LINE LIFF
+    liff.init({ liffId: "2007061321-g603NNZG" }).then(() => {
+        console.log("LIFF 初始化成功");
+    });
+
+    $("#booking-form").submit(function (event) {
+        event.preventDefault();
+
+        let totalTime = parseInt($("#total-time-all").text());
+        let totalPrice = parseInt($("#total-price-all").text());
+
+        if (totalTime === 0 || totalPrice === 0) {
+            alert("請至少選擇一項服務！");
             return;
         }
 
-        let totalPrice = 0;
-        let serviceDetails = selectedServices.map(s => {
-            totalPrice += s.price * s.quantity;
-            return `${s.name} (${s.quantity} 次) - $${s.price * s.quantity}`;
-        }).join("\n");
+        let name = $("#name").val();
+        let phone = $("#phone").val();
+        let numPeople = $("#num-people").val();
+        let bookingDetails = [];
 
-        let addOnDetails = selectedAddOns.length > 0 ? selectedAddOns.map(a => {
-            totalPrice += a.price * a.quantity;
-            return `${a.name} (${a.quantity} 次) - $${a.price * a.quantity}`;
-        }).join("\n") : "無";
+        $(".person-card").each(function (index) {
+            let personIndex = index + 1;
+            let services = [];
+            $(this).find(".main-service-list li, .addon-service-list li").each(function () {
+                services.push($(this).text().replace("刪除", "").trim());
+            });
 
-        const message = `📅 預約成功！\n👤 姓名：${name}\n📞 電話：${phone}\n🗓 日期：${date}\n⏰ 時間：${time}\n\n🔹 主要服務：\n${serviceDetails}\n\n➕ 加購服務：\n${addOnDetails}\n\n💰 總金額：$${totalPrice}`;
+            bookingDetails.push(`👤 預約人 ${personIndex}: \n- 服務內容: ${services.join(", ")}\n`);
+        });
 
-        console.log("回傳到 LINE 訊息：", message);
+        let summary = `✅ 預約成功！\n👤 預約人：${name}\n📞 連絡電話：${phone}\n👥 預約人數：${numPeople} 人\n⏳ 總時間：${totalTime} 分鐘\n💰 總價格：$${totalPrice} 元\n\n${bookingDetails.join("\n")}`;
+
+        $("#status").html(summary.replace(/\n/g, "<br>"));
 
         if (liff.isInClient()) {
-            await liff.sendMessages([{ type: "text", text: message }]);
-            alert("預約成功！訊息已發送到 LINE，視窗將自動關閉。");
-            liff.closeWindow();
-        } else {
-            alert("請在 LINE 內開啟此預約系統！");
-            window.location.href = "https://line.me/R/";
+            liff.sendMessages([{ type: "text", text: summary }]).then(() => {
+                alert("預約資訊已發送至 LINE！");
+                liff.closeWindow();
+            });
         }
     });
 });
