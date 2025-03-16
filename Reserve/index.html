@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE LIFF 預約系統</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .profile {
+            margin-bottom: 20px;
+        }
+        .profile img {
+            width: 100px;
+            border-radius: 50%;
+        }
+        button {
+            padding: 10px;
+            margin-top: 10px;
+            width: 100%;
+            border: none;
+            background-color: #06C755;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #05a644;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>LINE LIFF 預約系統</h2>
+        
+        <!-- 用戶資訊 -->
+        <div class="profile" id="profile">
+            <img src="" id="userImage" alt="User Image">
+            <p id="userName">載入中...</p>
+        </div>
+
+        <!-- 預約選項 -->
+        <label for="date">選擇預約日期：</label>
+        <input type="date" id="date"><br><br>
+
+        <label for="time">選擇預約時間：</label>
+        <input type="time" id="time"><br><br>
+
+        <button onclick="submitBooking()">提交預約</button>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            liff.init({ liffId: "2007061321-g603NNZG" }) // 請填入你的 LIFF ID
+                .then(() => {
+                    if (liff.isLoggedIn() || liff.getOS()) {
+                        getUserProfile(); // 直接取得用戶資料
+                    }
+                })
+                .catch(err => console.error("LIFF 初始化錯誤", err));
+        });
+
+        function getUserProfile() {
+            liff.getProfile().then(profile => {
+                document.getElementById("userImage").src = profile.pictureUrl;
+                document.getElementById("userName").textContent = `Hello, ${profile.displayName}!`;
+            }).catch(err => console.error("獲取用戶資訊失敗", err));
+        }
+
+        function submitBooking() {
+            const date = document.getElementById("date").value;
+            const time = document.getElementById("time").value;
+
+            if (!date || !time) {
+                alert("請選擇日期和時間");
+                return;
+            }
+
+            const message = `📅 預約日期：${date}\n⏰ 預約時間：${time}`;
+
+            if (liff.isInClient()) {
+                liff.sendMessages([
+                    { type: "text", text: message }
+                ]).then(() => {
+                    alert("預約成功！請查看 LINE 訊息");
+                    liff.closeWindow();
+                }).catch(err => console.error("訊息發送失敗", err));
+            } else {
+                alert("請在 LINE 應用程式內提交預約");
+            }
+        }
+    </script>
+
+</body>
+</html>
