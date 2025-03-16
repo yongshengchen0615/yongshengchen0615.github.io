@@ -1,0 +1,30 @@
+body {
+    background: #f4f4f4;
+}
+
+h2 {
+    font-weight: bold;
+}
+
+.card {
+    max-width: 500px;
+    margin: auto;
+    border-radius: 10px;
+}
+
+button {
+    font-size: 1.2em;
+}
+
+.service-item, .addon-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 5px;
+}
+
+.remove-btn {
+    cursor: pointer;
+    color: red;
+    font-weight: bold;
+}
