@@ -23,15 +23,32 @@
                     </select>
                 </div>
 
+                <!-- 預約人姓名 -->
                 <div class="mb-3">
                     <label for="name" class="form-label">預約人姓名</label>
                     <input type="text" id="name" class="form-control" placeholder="請輸入姓名" required>
+                    <small class="text-danger" id="name-error"></small>
                 </div>
+
+                <!-- 預約人電話 -->
                 <div class="mb-3">
                     <label for="phone" class="form-label">聯絡電話</label>
                     <input type="tel" id="phone" class="form-control" placeholder="請輸入電話" required>
                 </div>
 
+                <!-- 預約日期 -->
+                <div class="mb-3">
+                    <label for="booking-date" class="form-label">預約日期</label>
+                    <input type="date" id="booking-date" class="form-control" required>
+                </div>
+
+                <!-- 預約時間 -->
+                <div class="mb-3">
+                  <label for="booking-time" class="form-label">預約時間 (09:00 - 21:00)</label>
+                  <select id="booking-time" class="form-select" required></select>
+                </div>
+
+                <!-- 預約人數 -->
                 <div class="mb-3">
                     <label for="num-people" class="form-label">預約人數</label>
                     <select id="num-people" class="form-select">
@@ -41,17 +58,12 @@
                     </select>
                 </div>
 
-                <div id="people-container">
-                    <!-- 預約人表單將動態生成 -->
-                </div>
+                <!-- 動態生成預約人表單 -->
+                <div id="people-container"></div>
 
                 <!-- 總計 -->
                 <div class="summary-card mt-3 p-3 shadow">
                     <h5 class="text-center text-dark">💡 總計</h5>
-                    <div class="d-flex justify-content-between">
-                        <h6>⏳ 總時間：</h6>
-                        <h6><span id="total-time-all" class="text-primary">0</span> 分鐘</h6>
-                    </div>
                     <div class="d-flex justify-content-between">
                         <h6>💰 總價格：</h6>
                         <h6>$<span id="total-price-all" class="text-success">0</span> 元</h6>
