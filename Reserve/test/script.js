@@ -49,8 +49,11 @@ liff.init({ liffId: "2007061321-g603NNZG" })
             let personServices = [];
 
             $(this).find(".main-service-list li, .addon-service-list li").each(function () {
-                personServices.push($(this).text().trim());
+                // ⭐ 排除「刪除」按鈕的文字
+                const serviceText = $(this).clone().children("button").remove().end().text().trim();
+                personServices.push(serviceText);
             });
+            
 
             bookingDetails.push(`👤 預約人 ${personIndex}：\n- 服務內容：${personServices.join(", ")}\n- 服務總時間：${personTime} 分鐘`);
         });
