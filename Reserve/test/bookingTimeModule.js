@@ -9,17 +9,35 @@ export const BookingTimeModule = (() => {
 
         const bookingDate = document.getElementById("booking-date");
         bookingDate.setAttribute("min", today);
-        bookingDate.value = today;  // ⭐️ 預設為今天，避免空白
+        bookingDate.value = today;
 
         bookingDate.addEventListener("change", function () {
             if (this.value < today) {
-                alert("⚠️ 無法選擇過去日期，已修正為今天！");
                 this.value = today;
+                showTempWarning("⚠️ 無法選擇過去日期，已自動修正為今天！");
             }
             updateTimeOptions();
         });
 
         updateTimeOptions();
+    }
+
+    function showTempWarning(message) {
+        let warningEl = document.getElementById("date-warning");
+        if (!warningEl) {
+            warningEl = document.createElement("div");
+            warningEl.id = "date-warning";
+            warningEl.style.color = "red";
+            warningEl.style.fontSize = "0.9rem";
+            warningEl.style.marginTop = "0.25rem";
+            const bookingDateEl = document.getElementById("booking-date");
+            bookingDateEl.parentNode.appendChild(warningEl);
+        }
+        warningEl.textContent = message;
+
+        setTimeout(() => {
+            warningEl.textContent = "";
+        }, 2000);  // ⭐️ 2秒後清除提示
     }
 
     function updateTimeOptions() {
@@ -35,7 +53,7 @@ export const BookingTimeModule = (() => {
         let timeOptions = "";
 
         for (let minutes = startMinutes; minutes <= endMinutes; minutes += 30) {
-            if (selectedDate === today && minutes <= (now.getHours() * 60 + now.getMinutes())) continue;
+            if (isToday && minutes <= (now.getHours() * 60 + now.getMinutes())) continue;
 
             const hour = Math.floor(minutes / 60).toString().padStart(2, "0");
             const minute = (minutes % 60).toString().padStart(2, "0");
