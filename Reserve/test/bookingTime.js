@@ -1,14 +1,14 @@
-const BookingTime = (() => {
+export const BookingTime = (() => {
     let today = new Date().toISOString().split("T")[0];
 
     function init() {
-        $("#booking-date").attr("min", today);
+        document.getElementById("booking-date").setAttribute("min", today);
 
-        $("#booking-date").on("change", function () {
-            let selectedDate = $(this).val();
+        document.getElementById("booking-date").addEventListener("change", function () {
+            let selectedDate = this.value;
             if (selectedDate < today) {
                 alert("⚠️ 無法選擇過去的日期，已自動修正為今天！");
-                $(this).val(today);
+                this.value = today;
             }
             updateTimeOptions();
         });
@@ -23,12 +23,12 @@ const BookingTime = (() => {
     }
 
     function updateTimeOptions() {
-        let selectedDate = $("#booking-date").val();
+        let selectedDate = document.getElementById("booking-date").value;
         let now = new Date();
-        let currentMinutes = now.getHours() * 60 + now.getMinutes(); // 當前時間轉換為分鐘數
+        let currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-        let startTime = 9 * 60;  // 09:00 轉換為分鐘
-        let endTime = 21 * 60;   // 21:00 轉換為分鐘
+        let startTime = 9 * 60;  // 09:00
+        let endTime = 21 * 60;   // 21:00
         let timeOptions = "";
 
         for (let minutes = startTime; minutes <= endTime; minutes += 10) {
@@ -36,7 +36,6 @@ const BookingTime = (() => {
             let minute = (minutes % 60).toString().padStart(2, "0");
             let timeValue = `${hour}:${minute}`;
 
-            // ✅ 如果選擇當天，過去時間不顯示
             if (selectedDate === today && minutes <= currentMinutes) {
                 continue;
             }
@@ -44,7 +43,7 @@ const BookingTime = (() => {
             timeOptions += `<option value="${timeValue}">${timeValue}</option>`;
         }
 
-        $("#booking-time").html(timeOptions);
+        document.getElementById("booking-time").innerHTML = timeOptions;
     }
 
     return {

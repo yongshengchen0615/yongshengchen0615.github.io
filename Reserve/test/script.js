@@ -1,4 +1,5 @@
 import { validateName, validatePhone } from "./validation.js";
+import { BookingTime } from "./bookingTime.js";
 
 document.addEventListener("DOMContentLoaded", () => {
     // ✅ 初始化「預約時間」模組
