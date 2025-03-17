@@ -37,7 +37,8 @@ liff.init({ liffId: "2007061321-g603NNZG" })
         const name = $("#name").val();
         const phone = $("#phone").val();
         const numPeople = $("#num-people").val();
-    
+        const bookingTypeText = $("#booking-type option:selected").text();
+
         let totalPriceAll = 0;
         let totalTimeAll = 0;
         const bookingDetails = [];
@@ -71,6 +72,7 @@ liff.init({ liffId: "2007061321-g603NNZG" })
     
         const summary = 
     `   等待預約回覆
+    - 預約類型：${bookingTypeText}
      📅 日期：${date}
      ⏰ 時間：${time}
      👤 姓名：${name}
