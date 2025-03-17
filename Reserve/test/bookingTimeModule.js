@@ -39,7 +39,7 @@ export const BookingTimeModule = (() => {
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
         let timeOptions = "";
 
-        for (let minutes = startHour * 60 + startMinute; minutes <= endHour * 60 + endMinute; minutes += 10) {
+        for (let minutes = startHour * 60 + startMinute; minutes <= endHour * 60 + endMinute; minutes += 30) {
             if (selectedDate === today && minutes <= currentMinutes) continue;
 
             const hour = String(Math.floor(minutes / 60)).padStart(2, '0');
