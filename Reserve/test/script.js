@@ -62,19 +62,19 @@ liff.init({ liffId: "2007061321-g603NNZG" })
     
             bookingDetails.push(`👤 預約人 ${personIndex}：
     - 服務內容：${personServices.join(", ")}
-    - 服務總時間：${personTime} 分鐘`);
+    - 服務總時間：${personTime} 分鐘
+    - 服務總金額：$${personPrice} 元`);
         });
     
-        // ⭐️此處 totalTimeAll, totalPriceAll 保證有效數值
         $("#total-time-all").text(totalTimeAll);
         $("#total-price-all").text(totalPriceAll);
     
         const summary = 
-   `✅ 預約成功！\n
-    📅 日期：${date}\n
-    ⏰ 時間：${time}\n
-    👤 姓名：${name}\n
-    📞 電話：${phone}\n
+    `✅ 預約成功！
+    📅 日期：${date}
+    ⏰ 時間：${time}
+    👤 姓名：${name}
+    📞 電話：${phone}
     👥 人數：${numPeople} 人
     
     ${bookingDetails.join("\n\n")}
@@ -86,5 +86,6 @@ liff.init({ liffId: "2007061321-g603NNZG" })
             .then(() => liff.closeWindow())
             .catch(err => alert("發送訊息失敗：" + err));
     });
+    
 
 });
