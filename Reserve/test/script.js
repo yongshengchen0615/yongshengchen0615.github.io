@@ -1,13 +1,15 @@
 import { validateName, validatePhone } from "./validation.js";
-import { BookingTime } from "./bookingTime.js";
+import { BookingTimeModule } from "./bookingTimeModule.js";
 import { BookingModule } from "./bookingModule.js";
 
 $(document).ready(function () {
+// ✅ 初始化 LIFF（先做這一步！）
+liff.init({ liffId: "2007061321-g603NNZG" })
+    .catch(err => console.error("LIFF 初始化錯誤", err));
+
     // ✅ 初始化「預約時間」模組
-    BookingTime.init();
+    BookingTimeModule.init("9:00","21:00");
     BookingModule.init("#num-people", "#people-container", 5); //最多5人
-    // 初始化 BookingModule (處理人數與服務)
-    BookingModule.init("#num-people", "#people-container");
 
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
@@ -31,7 +33,7 @@ $(document).ready(function () {
             return;
         }
 
-        let date = BookingTime.formatDateWithDay($("#booking-date").val());
+        let date = BookingTimeModule.formatDateWithDay($("#booking-date").val());
         let time = $("#booking-time").val();
         let name = $("#name").val();
         let phone = $("#phone").val();
