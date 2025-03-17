@@ -31,7 +31,9 @@ liff.init({ liffId: "2007061321-g603NNZG" })
             alert("請確保姓名與手機格式正確！");
             return;
         }
-    
+   // ⭐️ 確保至少選了一個主要服務（只提示一次）
+   if (!BookingModule.checkAtLeastOneServiceSelected()) return;
+
         const date = BookingTimeModule.formatDateWithDay($("#booking-date").val());
         const time = $("#booking-time").val();
         const name = $("#name").val();

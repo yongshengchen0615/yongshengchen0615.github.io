@@ -11,6 +11,26 @@ export const BookingModule = (() => {
         "熱石按摩": { time: 40, price: 1200, type: "按摩" }
     };
 
+    function checkAtLeastOneServiceSelected() {
+        let invalidPersons = [];
+
+        $(".person-card").each(function (index) {
+            const mainServicesCount = $(this).find(".main-service-list li").length;
+    
+            if (mainServicesCount === 0) {
+                invalidPersons.push(`預約人 ${index + 1}`);
+            }
+        });
+    
+        if (invalidPersons.length > 0) {
+            alert(`⚠️ ${invalidPersons.join(", ")} 必須至少選擇一個主要服務！`);
+            return false;
+        }
+    
+        return true;
+    }
+
+
     function serviceOptionsGrouped(services) {
         const grouped = {};
         for (const [name, info] of Object.entries(services)) {
@@ -137,7 +157,11 @@ export const BookingModule = (() => {
     function init(numPeopleSelector, peopleContainerSelector, maxPeople = 5) {
         populateNumPeople(numPeopleSelector, maxPeople);
         bindEvents(numPeopleSelector, peopleContainerSelector);
+        
     }
 
-    return { init };
+    return { 
+        init ,
+        checkAtLeastOneServiceSelected
+    };
 })();
