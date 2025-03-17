@@ -25,35 +25,33 @@ liff.init({ liffId: "2007061321-g603NNZG" })
     // 初始化時計算一次總額（重要！）
     updateTotal();
     $("#booking-form").submit(function (event) {
-
-        let  totalPriceAll = 0;
         event.preventDefault();
-
+    
         if (!validateName() || !validatePhone()) {
             alert("請確保姓名與手機格式正確！");
             return;
         }
-
-        let date = BookingTimeModule.formatDateWithDay($("#booking-date").val());
-        let time = $("#booking-time").val();
-        let name = $("#name").val();
-        let phone = $("#phone").val();
-        let numPeople = $("#num-people").val();
-        let totalPrice = $("#total-price-all").text();
+    
+        const date = BookingTimeModule.formatDateWithDay($("#booking-date").val());
+        const time = $("#booking-time").val();
+        const name = $("#name").val();
+        const phone = $("#phone").val();
+        const numPeople = $("#num-people").val();
+    
+        let totalPriceAll = 0;
         let totalTimeAll = 0;
-        let bookingDetails = [];
-
+        const bookingDetails = [];
+    
         $(".person-card").each(function (index) {
             const personIndex = index + 1;
             let personTime = 0;
-            let personPrice = 0;  // ⭐️ 新增：個人價格總計
+            let personPrice = 0;
             const personServices = [];
     
             $(this).find(".main-service-list li, .addon-service-list li").each(function () {
                 const serviceText = $(this).clone().children("button").remove().end().text().trim();
                 const serviceTime = parseInt($(this).attr("data-time"));
                 const servicePrice = parseInt($(this).attr("data-price"));
-    
                 personServices.push(serviceText);
                 personTime += serviceTime;
                 personPrice += servicePrice;
@@ -65,28 +63,33 @@ liff.init({ liffId: "2007061321-g603NNZG" })
             bookingDetails.push(`👤 預約人 ${personIndex}：
     - 服務內容：${personServices.join(", ")}
     - 服務總時間：${personTime} 分鐘
-    - 個人金額：$${personPrice} 元`); // ⭐️ 新增金額於此
+    - 服務總金額：$${personPrice} 元`);
         });
-
-        const summary = `✅ 預約成功！
-📅 日期：${date}
-⏰ 時間：${time}
-👤 姓名：${name}
-📞 電話：${phone}
-👥 人數：${numPeople} 人
-
-${bookingDetails.join("\n\n")}
-
-⏳ 總時間：${totalTimeAll} 分鐘
-💰 總金額：$${totalPrice} 元`;
-
-    // 發送訊息至LINE對話框（只會送出介面上現有項目）
+    
+        $("#total-time-all").text(totalTimeAll);
+        $("#total-price-all").text(totalPriceAll);
+    
+        const summary = 
+    `   等待預約回覆
+     📅 日期：${date}
+     ⏰ 時間：${time}
+     👤 姓名：${name}
+     📞 電話：${phone}
+     👥 人數：${numPeople} 人
+    
+    ${bookingDetails.join("\n\n")}
+    
+    ⏳ 總時間：${totalTimeAll} 分鐘
+    💰 總金額：$${totalPriceAll} 元`;
+    
     liff.sendMessages([{ type: "text", text: summary }])
-        .then(() => liff.closeWindow())
-        .catch(err => {
-            alert("發送訊息失敗：" + err);
-        });
-
-        liff.sendMessages([{ type: "text", text: summary }]).then(() => liff.closeWindow());
+    .then(() => {
+        alert("✅ 預約確認訊息已成功傳送！");
+        liff.closeWindow();  // ⭐️ 使用者確認後立即關閉
+    })
+    .catch(err => {
+        alert("⚠️ 發送訊息失敗：" + err);
+        console.error(err);
+    });
     });
 });
