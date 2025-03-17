@@ -30,3 +30,33 @@ body {
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
     padding: 15px;
 }
+
+
+
+/* 整個卡片調整 */
+.person-card {
+    border-radius: 10px;
+    background-color: #c8c8c84d;
+  }
+  
+  /* 調整標題文字 */
+  .person-card h5 {
+    color: #007bff;
+    font-weight: bold;
+  }
+  
+  /* 主要服務區域 */
+  .person-card .main-service-list {
+    border-left: 3px solid #007bff;
+  }
+  
+  /* 加購服務區域 */
+  .person-card .addon-service-list {
+    border-left: 3px solid #6c757d;
+  }
+  
+  /* 調整總價與總時區域 */
+  .person-card h6 {
+    font-size: 16px;
+  }
+  
