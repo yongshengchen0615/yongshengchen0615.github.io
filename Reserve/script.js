@@ -1,4 +1,7 @@
 $(document).ready(function () {
+    // ✅ 初始化「預約時間」模組
+    BookingTime.init();
+
     const mainServices = {
         "全身經絡按摩": { time: 60, price: 1500 },
         "足部護理": { time: 45, price: 1000 },
@@ -11,93 +14,9 @@ $(document).ready(function () {
         "熱石按摩": { time: 40, price: 1200 }
     };
 
-    // ✅ 取得今天的日期（格式 YYYY-MM-DD）
-    let today = new Date().toISOString().split("T")[0];
-
-    // ✅ 設定日期選擇器的最小值為今天
-    $("#booking-date").attr("min", today);
-
-    // ✅ 防止 LINE WebView、iOS、Android 選擇過去日期
-    $("#booking-date").on("change", function () {
-        let selectedDate = $(this).val();
-        if (selectedDate < today) {
-            alert("⚠️ 無法選擇過去的日期，已自動修正為今天！");
-            $(this).val(today);
-        }
-    });
-
-    
-    function formatDateWithDay(dateStr) {
-        let date = new Date(dateStr);
-        let weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-        return `${dateStr}（${weekdays[date.getDay()]}）`;
-    }
-
-
-    $("#booking-form").submit(function (event) {
-        event.preventDefault();
-
-        let date = $("#booking-date").val();
-        let time = $("#booking-time").val();
-
-        // ✅ 確保提交時日期不為過去日期
-        if (!date || date < today) {Ｆ
-            alert("請選擇有效的預約日期（不能選擇過去的日期）！");
-            $("#booking-date").val(today);
-            return;
-        }
-
-    
-// ✅ 確保使用者選擇了有效的時間
-if (!date || !time) {
-    alert("請選擇預約日期與時間！");
-    return;
-}
-
-console.log("預約時間:", time);  // 確保正確輸出
-
-        let formattedDate = formatDateWithDay(date);
-        console.log("預約日期:", formattedDate);  // 確保正確輸出
-    });
-
-    // ✅ 監聽日期變更，動態更新時間選單
-    $("#booking-date").on("change", function () {
-        updateTimeOptions();
-    });
-
-
-    function updateTimeOptions() {
-        let selectedDate = $("#booking-date").val();
-        let now = new Date();
-        let currentMinutes = now.getHours() * 60 + now.getMinutes(); // 當前時間轉換為總分鐘數
-
-        let startTime = 9 * 60;  // 09:00 轉換為分鐘
-        let endTime = 21 * 60;   // 21:00 轉換為分鐘
-        let timeOptions = "";
-
-        for (let minutes = startTime; minutes <= endTime; minutes += 10) {
-            let hour = Math.floor(minutes / 60).toString().padStart(2, "0");
-            let minute = (minutes % 60).toString().padStart(2, "0");
-            let timeValue = `${hour}:${minute}`;
-
-            // ✅ 如果選擇當天，過去時間不顯示
-            if (selectedDate === today && minutes <= currentMinutes) {
-                continue;
-            }
-
-            timeOptions += `<option value="${timeValue}">${timeValue}</option>`;
-        }
-
-        $("#booking-time").html(timeOptions);
-    }
-
-    // ✅ 預設載入時間選單
-    updateTimeOptions();
-
     function validateName() {
         const namePattern = /^[\u4e00-\u9fa5]{1,5}(先生|小姐)$/;
         let name = $("#name").val().trim();
-
         if (!namePattern.test(name)) {
             $("#name-error").text("請輸入正確格式，如：王先生 / 李小姐");
             return false;
@@ -108,9 +27,8 @@ console.log("預約時間:", time);  // 確保正確輸出
     }
 
     function validatePhone() {
-        const phonePattern = /^09\d{8}$/; // 台灣手機格式 09XXXXXXXX
+        const phonePattern = /^09\d{8}$/;
         let phone = $("#phone").val().trim();
-
         if (!phonePattern.test(phone)) {
             $("#phone-error").text("請輸入正確手機號碼，如：0912345678");
             return false;
@@ -154,7 +72,6 @@ console.log("預約時間:", time);  // 確保正確輸出
 
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
-
         $(".person-card").each(function () {
             totalTimeAll += parseInt($(this).find(".total-time").text());
             totalPriceAll += parseInt($(this).find(".total-price").text());
@@ -187,22 +104,17 @@ console.log("預約時間:", time);  // 確保正確輸出
 
         timeElement.text(parseInt(timeElement.text()) + serviceData[serviceName].time);
         priceElement.text(parseInt(priceElement.text()) + serviceData[serviceName].price);
-
         updateTotal();
     }
 
     function removeService(button) {
         let item = button.parent();
         let personCard = item.closest(".person-card");
-
         let removedTime = parseInt(item.attr("data-time"));
         let removedPrice = parseInt(item.attr("data-price"));
 
-        let timeElement = personCard.find(".total-time");
-        let priceElement = personCard.find(".total-price");
-
-        timeElement.text(parseInt(timeElement.text()) - removedTime);
-        priceElement.text(parseInt(priceElement.text()) - removedPrice);
+        personCard.find(".total-time").text(parseInt(personCard.find(".total-time").text()) - removedTime);
+        personCard.find(".total-price").text(parseInt(personCard.find(".total-price").text()) - removedPrice);
 
         item.remove();
         updateTotal();
@@ -228,7 +140,13 @@ console.log("預約時間:", time);  // 確保正確輸出
 
     $("#booking-form").submit(function (event) {
         event.preventDefault();
-        let date = formatDateWithDay($("#booking-date").val());
+
+        if (!validateName() || !validatePhone()) {
+            alert("請確保姓名與手機格式正確！");
+            return;
+        }
+
+        let date = BookingTime.formatDateWithDay($("#booking-date").val());
         let time = $("#booking-time").val();
         let name = $("#name").val();
         let phone = $("#phone").val();
