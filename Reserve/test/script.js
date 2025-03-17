@@ -1,21 +1,13 @@
 import { validateName, validatePhone } from "./validation.js";
 import { BookingTime } from "./bookingTime.js";
+import { BookingModule } from "./bookingModule.js";
 
-document.addEventListener("DOMContentLoaded", () => {
+$(document).ready(function () {
     // ✅ 初始化「預約時間」模組
     BookingTime.init();
 
-    const mainServices = {
-        "全身經絡按摩": { time: 60, price: 1500 },
-        "足部護理": { time: 45, price: 1000 },
-        "精油SPA": { time: 90, price: 2000 }
-    };
-
-    const addonServices = {
-        "肩頸放鬆加強": { time: 30, price: 800 },
-        "足部去角質": { time: 20, price: 500 },
-        "熱石按摩": { time: 40, price: 1200 }
-    };
+    // 初始化 BookingModule (處理人數與服務)
+    BookingModule.init("#num-people", "#people-container");
 
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
@@ -24,11 +16,14 @@ document.addEventListener("DOMContentLoaded", () => {
             totalPriceAll += parseInt(person.querySelector(".total-price").textContent);
         });
 
-        document.getElementById("total-time-all").textContent = totalTimeAll;
-        document.getElementById("total-price-all").textContent = totalPriceAll;
+        $("#total-time-all").text(totalTimeAll);
+        $("#total-price-all").text(totalPriceAll);
     }
 
-    document.getElementById("booking-form").addEventListener("submit", (event) => {
+    // 初始化時計算一次總額（重要！）
+    updateTotal();
+
+    $("#booking-form").submit(function (event) {
         event.preventDefault();
 
         if (!validateName() || !validatePhone()) {
@@ -36,30 +31,33 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        let date = BookingTime.formatDateWithDay(document.getElementById("booking-date").value);
-        let time = document.getElementById("booking-time").value;
-        let name = document.getElementById("name").value;
-        let phone = document.getElementById("phone").value;
-        let numPeople = document.getElementById("num-people").value;
-        let totalPrice = document.getElementById("total-price-all").textContent;
+        let date = BookingTime.formatDateWithDay($("#booking-date").val());
+        let time = $("#booking-time").val();
+        let name = $("#name").val();
+        let phone = $("#phone").val();
+        let numPeople = $("#num-people").val();
+        let totalPrice = $("#total-price-all").text();
         let totalTimeAll = 0;
         let bookingDetails = [];
 
-        document.querySelectorAll(".person-card").forEach((person, index) => {
+        $(".person-card").each(function (index) {
             let personIndex = index + 1;
-            let personTime = parseInt(person.querySelector(".total-time").textContent);
+            let personTime = parseInt($(this).find(".total-time").text());
             totalTimeAll += personTime;
             let personServices = [];
 
-            person.querySelectorAll(".main-service-list li, .addon-service-list li").forEach(service => {
-                personServices.push(service.textContent.replace("刪除", "").trim());
+            $(this).find(".main-service-list li, .addon-service-list li").each(function () {
+                personServices.push($(this).text().trim());
             });
 
             bookingDetails.push(`👤 預約人 ${personIndex}：\n- 服務內容：${personServices.join(", ")}\n- 服務總時間：${personTime} 分鐘`);
         });
 
-        let summary = `✅ 預約成功！\n📅 ${date}\n⏰ ${time}\n👤 ${name}\n📞 ${phone}\n👥 ${numPeople} 人\n💰 總價格：$${totalPrice} 元\n⏳ 總服務時間：${totalTimeAll} 分鐘\n\n${bookingDetails.join("\n\n")}`;
+        let summary = `✅ 預約成功！\n📅 ${date}\n⏰ ${time}\n👤 ${name}\n📞 ${phone}\n👥 ${numPeople} 人\n${bookingDetails.join("\n\n")}\n\n⏳ 總時間：${totalTimeAll} 分鐘\n💰 總金額：$${totalPrice}元`;
 
         liff.sendMessages([{ type: "text", text: summary }]).then(() => liff.closeWindow());
     });
+
+    // 初始化 BookingModule
+    BookingModule.init("#num-people", "#people-container");
 });
