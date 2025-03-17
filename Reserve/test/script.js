@@ -82,10 +82,14 @@ liff.init({ liffId: "2007061321-g603NNZG" })
     ⏳ 總時間：${totalTimeAll} 分鐘
     💰 總金額：$${totalPriceAll} 元`;
     
-        liff.sendMessages([{ type: "text", text: summary }])
-            .then(() => liff.closeWindow())
-            .catch(err => alert("發送訊息失敗：" + err));
+    liff.sendMessages([{ type: "text", text: summary }])
+    .then(() => {
+        alert("✅ 預約確認訊息已成功傳送！");
+        liff.closeWindow();
+    })
+    .catch(err => {
+        alert("⚠️ 發送訊息失敗：" + err);
+        console.error(err);
     });
-    
-
+    });
 });
