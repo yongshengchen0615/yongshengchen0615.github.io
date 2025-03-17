@@ -5,7 +5,7 @@ import { BookingModule } from "./bookingModule.js";
 $(document).ready(function () {
     // ✅ 初始化「預約時間」模組
     BookingTime.init();
-
+    BookingModule.init("#num-people", "#people-container", 5); //最多5人
     // 初始化 BookingModule (處理人數與服務)
     BookingModule.init("#num-people", "#people-container");
 

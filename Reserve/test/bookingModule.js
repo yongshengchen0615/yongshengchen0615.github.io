@@ -85,10 +85,17 @@ export const BookingModule = (() => {
         updateTotal();
     }
 
-    // ⭐️初始化事件監聽（僅執行一次）
+    function populateNumPeople(numPeopleSelector, maxPeople) {
+        const numPeopleEl = $(numPeopleSelector);
+        numPeopleEl.empty();  // ⭐️ 清空舊有選項，避免重複添加
+        for (let i = 1; i <= maxPeople; i++) {
+            numPeopleEl.append(`<option value="${i}">${i} 人</option>`);
+        }
+    }
+
     function bindEvents(numPeopleSelector, peopleContainerSelector) {
         $(document)
-            .off("click.booking") //先移除之前的事件避免重複綁定
+            .off("click.booking")
             .on("click.booking", ".add-service", function () {
                 addService($(this));
             })
@@ -106,8 +113,9 @@ export const BookingModule = (() => {
         }).trigger("change");
     }
 
-    function init(numPeopleSelector, peopleContainerSelector) {
-        bindEvents(numPeopleSelector, peopleContainerSelector);
+    function init(numPeopleSelector, peopleContainerSelector, maxPeople = 5) {
+        populateNumPeople(numPeopleSelector, maxPeople);
+    bindEvents(numPeopleSelector, peopleContainerSelector);
     }
 
     return { init };
