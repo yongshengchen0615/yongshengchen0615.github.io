@@ -69,11 +69,12 @@ liff.init({ liffId: "2007061321-g603NNZG" })
         $("#total-time-all").text(totalTimeAll);
         $("#total-price-all").text(totalPriceAll);
     
-        const summary = `✅ 預約成功！
-    📅 日期：${date}
-    ⏰ 時間：${time}
-    👤 姓名：${name}
-    📞 電話：${phone}
+        const summary = 
+   `✅ 預約成功！\n
+    📅 日期：${date}\n
+    ⏰ 時間：${time}\n
+    👤 姓名：${name}\n
+    📞 電話：${phone}\n
     👥 人數：${numPeople} 人
     
     ${bookingDetails.join("\n\n")}
