@@ -43,19 +43,28 @@ liff.init({ liffId: "2007061321-g603NNZG" })
         let bookingDetails = [];
 
         $(".person-card").each(function (index) {
-            let personIndex = index + 1;
-            let personTime = parseInt($(this).find(".total-time").text());
-            totalTimeAll += personTime;
-            let personServices = [];
-
+            const personIndex = index + 1;
+            let personTime = 0;
+            let personPrice = 0;  // ⭐️ 新增：個人價格總計
+            const personServices = [];
+    
             $(this).find(".main-service-list li, .addon-service-list li").each(function () {
-                // ⭐ 排除「刪除」按鈕的文字
                 const serviceText = $(this).clone().children("button").remove().end().text().trim();
+                const serviceTime = parseInt($(this).attr("data-time"));
+                const servicePrice = parseInt($(this).attr("data-price"));
+    
                 personServices.push(serviceText);
+                personTime += serviceTime;
+                personPrice += servicePrice;
             });
-            
-
-            bookingDetails.push(`👤 預約人 ${personIndex}：\n- 服務內容：${personServices.join(", ")}\n- 服務總時間：${personTime} 分鐘`);
+    
+            totalTimeAll += personTime;
+            totalPriceAll += personPrice;
+    
+            bookingDetails.push(`👤 預約人 ${personIndex}：
+    - 服務內容：${personServices.join(", ")}
+    - 服務總時間：${personTime} 分鐘
+    - 個人金額：$${personPrice} 元`); // ⭐️ 新增金額於此
         });
 
         const summary = `✅ 預約成功！
