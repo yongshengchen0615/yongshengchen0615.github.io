@@ -34,12 +34,13 @@
                 <div class="mb-3">
                     <label for="phone" class="form-label">聯絡電話</label>
                     <input type="tel" id="phone" class="form-control" placeholder="請輸入電話" required>
+                    <small class="text-danger" id="phone-error"></small>
                 </div>
 
                 <!-- 預約日期 -->
                 <div class="mb-3">
                     <label for="booking-date" class="form-label">預約日期</label>
-                    <input type="date" id="booking-date" class="form-control" required>
+                    <input type="date" id="booking-date" class="form-control" required onkeydown="return false;">
                 </div>
 
                 <!-- 預約時間 -->

@@ -11,14 +11,45 @@ $(document).ready(function () {
         "熱石按摩": { time: 40, price: 1200 }
     };
 
+    // ✅ 取得今天的日期（格式 YYYY-MM-DD）
     let today = new Date().toISOString().split("T")[0];
+
+    // ✅ 設定日期選擇器的最小值為今天
     $("#booking-date").attr("min", today);
 
+    // ✅ 防止 LINE WebView、iOS、Android 選擇過去日期
+    $("#booking-date").on("change", function () {
+        let selectedDate = $(this).val();
+        if (selectedDate < today) {
+            alert("⚠️ 無法選擇過去的日期，已自動修正為今天！");
+            $(this).val(today);
+        }
+    });
+
+    
     function formatDateWithDay(dateStr) {
         let date = new Date(dateStr);
         let weekdays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
         return `${dateStr}（${weekdays[date.getDay()]}）`;
     }
+
+    $("#booking-form").submit(function (event) {
+        event.preventDefault();
+
+        let date = $("#booking-date").val();
+        let time = $("#booking-time").val();
+
+        // ✅ 確保提交時日期不為過去日期
+        if (!date || date < today) {
+            alert("請選擇有效的預約日期（不能選擇過去的日期）！");
+            $("#booking-date").val(today);
+            return;
+        }
+
+        let formattedDate = formatDateWithDay(date);
+        console.log("預約日期:", formattedDate);  // 確保正確輸出
+    });
+
 
     function generateTimeOptions() {
         let startTime = 9 * 60;
@@ -49,7 +80,21 @@ $(document).ready(function () {
         }
     }
 
+    function validatePhone() {
+        const phonePattern = /^09\d{8}$/; // 台灣手機格式 09XXXXXXXX
+        let phone = $("#phone").val().trim();
+
+        if (!phonePattern.test(phone)) {
+            $("#phone-error").text("請輸入正確手機號碼，如：0912345678");
+            return false;
+        } else {
+            $("#phone-error").text("");
+            return true;
+        }
+    }
+
     $("#name").on("input", validateName);
+    $("#phone").on("input", validatePhone);
 
     function createPersonForm(index) {
         let serviceOptions = (services) => Object.keys(services)
