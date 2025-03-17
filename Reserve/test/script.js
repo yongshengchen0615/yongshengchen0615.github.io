@@ -55,7 +55,24 @@ liff.init({ liffId: "2007061321-g603NNZG" })
             bookingDetails.push(`👤 預約人 ${personIndex}：\n- 服務內容：${personServices.join(", ")}\n- 服務總時間：${personTime} 分鐘`);
         });
 
-        let summary = `✅ 預約成功！\n📅 ${date}\n⏰ ${time}\n👤 ${name}\n📞 ${phone}\n👥 ${numPeople} 人\n${bookingDetails.join("\n\n")}\n\n⏳ 總時間：${totalTimeAll} 分鐘\n💰 總金額：$${totalPrice}元`;
+        const summary = `✅ 預約成功！
+📅 日期：${date}
+⏰ 時間：${time}
+👤 姓名：${name}
+📞 電話：${phone}
+👥 人數：${numPeople} 人
+
+${bookingDetails.join("\n\n")}
+
+⏳ 總時間：${totalTimeAll} 分鐘
+💰 總金額：$${totalPrice} 元`;
+
+    // 發送訊息至LINE對話框（只會送出介面上現有項目）
+    liff.sendMessages([{ type: "text", text: summary }])
+        .then(() => liff.closeWindow())
+        .catch(err => {
+            alert("發送訊息失敗：" + err);
+        });
 
         liff.sendMessages([{ type: "text", text: summary }]).then(() => liff.closeWindow());
     });
