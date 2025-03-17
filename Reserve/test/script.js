@@ -38,26 +38,36 @@ liff.init({ liffId: "2007061321-g603NNZG" })
         const phone = $("#phone").val();
         const numPeople = $("#num-people").val();
     
-        // ⭐️ 直接從畫面取總額數值（推薦做法）
-        let totalPriceAll = parseInt($("#total-price-all").text());
-        let totalTimeAll = parseInt($("#total-time-all").text());
-    
+        let totalPriceAll = 0;
+        let totalTimeAll = 0;
         const bookingDetails = [];
     
         $(".person-card").each(function (index) {
             const personIndex = index + 1;
-            const personTime = parseInt($(this).find(".total-time").text());
+            let personTime = 0;
+            let personPrice = 0;
             const personServices = [];
-      
+    
             $(this).find(".main-service-list li, .addon-service-list li").each(function () {
                 const serviceText = $(this).clone().children("button").remove().end().text().trim();
+                const serviceTime = parseInt($(this).attr("data-time"));
+                const servicePrice = parseInt($(this).attr("data-price"));
                 personServices.push(serviceText);
+                personTime += serviceTime;
+                personPrice += servicePrice;
             });
+    
+            totalTimeAll += personTime;
+            totalPriceAll += personPrice;
     
             bookingDetails.push(`👤 預約人 ${personIndex}：
     - 服務內容：${personServices.join(", ")}
     - 服務總時間：${personTime} 分鐘`);
         });
+    
+        // ⭐️此處 totalTimeAll, totalPriceAll 保證有效數值
+        $("#total-time-all").text(totalTimeAll);
+        $("#total-price-all").text(totalPriceAll);
     
         const summary = `✅ 預約成功！
     📅 日期：${date}
