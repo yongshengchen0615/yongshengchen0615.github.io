@@ -85,7 +85,7 @@ liff.init({ liffId: "2007061321-g603NNZG" })
     liff.sendMessages([{ type: "text", text: summary }])
     .then(() => {
         alert("✅ 預約確認訊息已成功傳送！");
-        liff.closeWindow();
+        liff.closeWindow();  // ⭐️ 使用者確認後立即關閉
     })
     .catch(err => {
         alert("⚠️ 發送訊息失敗：" + err);
