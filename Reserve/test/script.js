@@ -57,7 +57,4 @@ $(document).ready(function () {
 
         liff.sendMessages([{ type: "text", text: summary }]).then(() => liff.closeWindow());
     });
-
-    // 初始化 BookingModule
-    BookingModule.init("#num-people", "#people-container");
 });

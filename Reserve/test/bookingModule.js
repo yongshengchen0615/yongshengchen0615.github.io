@@ -1,33 +1,53 @@
 export const BookingModule = (() => {
     const mainServices = {
-        "全身經絡按摩": { time: 60, price: 1500 },
-        "足部護理": { time: 45, price: 1000 },
-        "精油SPA": { time: 90, price: 2000 }
+        "全身經絡按摩": { time: 60, price: 1500, type: "------按摩------" },
+        "足部護理1": { time: 45, price: 1000, type: "------護理------" },
+        "精油SPA": { time: 90, price: 2000, type: "------SPA------" }
     };
 
     const addonServices = {
-        "肩頸放鬆加強": { time: 30, price: 800 },
-        "足部去角質": { time: 20, price: 500 },
-        "熱石按摩": { time: 40, price: 1200 }
+        "肩頸放鬆加強": { time: 30, price: 800, type: "按摩" },
+        "足部去角質": { time: 20, price: 500, type: "護理" },
+        "熱石按摩": { time: 40, price: 1200, type: "按摩" }
     };
 
-    function createPersonForm(index) {
-        const serviceOptions = (services) => Object.keys(services)
-            .map(service => `<option value="${service}">${service}</option>`).join("");
+    function serviceOptionsGrouped(services) {
+        const grouped = {};
+        for (const [name, info] of Object.entries(services)) {
+            if (!grouped[info.type]) grouped[info.type] = [];
+            grouped[info.type].push(name);
+        }
+    
+        return Object.entries(grouped)
+            .map(([type, names]) => `
+                <optgroup label="${type}">
+                    ${namesToOptions(names=names)}
+                </optgroup>
+            `).join("");
+    
+        function namesToOptions(names) {
+            return names.map(name => `<option value="${name}">${name}</option>`).join("");
+        }
+    }
 
+    function createPersonForm(index) {
         return `
             <div class="person-card shadow p-3 mb-3" data-person="${index}">
                 <h5>預約人 ${index + 1}</h5>
                 <label class="form-label">選擇主要服務</label>
                 <div class="input-group">
-                    <select class="form-select main-service">${serviceOptions(mainServices)}</select>
+                    <select class="form-select main-service">
+                        ${serviceOptionsGrouped(mainServices)}
+                    </select>
                     <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加</button>
                 </div>
                 <ul class="list-group main-service-list mt-2"></ul>
 
                 <label class="form-label mt-2">選擇加購服務</label>
                 <div class="input-group">
-                    <select class="form-select addon-service">${serviceOptions(addonServices)}</select>
+                    <select class="form-select addon-service">
+                        ${serviceOptionsGrouped(addonServices)}
+                    </select>
                     <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加</button>
                 </div>
                 <ul class="list-group addon-service-list mt-2"></ul>
@@ -59,16 +79,17 @@ export const BookingModule = (() => {
         const list = button.closest(".person-card").find(listClass);
         const timeElement = button.closest(".person-card").find(".total-time");
         const priceElement = button.closest(".person-card").find(".total-price");
+        const { time, price, type: serviceType } = serviceData[serviceName];
 
         list.append(`
-            <li class="list-group-item" data-time="${serviceData[serviceName].time}" data-price="${serviceData[serviceName].price}">
-                ${serviceName} (${serviceData[serviceName].time} 分鐘, $${serviceData[serviceName].price})
+            <li class="list-group-item" data-time="${time}" data-price="${price}">
+                ${serviceName}  - ${time} 分鐘, $${price}
                 <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
             </li>
         `);
 
-        timeElement.text(parseInt(timeElement.text()) + serviceData[serviceName].time);
-        priceElement.text(parseInt(priceElement.text()) + serviceData[serviceName].price);
+        timeElement.text(parseInt(timeElement.text()) + time);
+        priceElement.text(parseInt(priceElement.text()) + price);
         updateTotal();
     }
 
@@ -87,7 +108,7 @@ export const BookingModule = (() => {
 
     function populateNumPeople(numPeopleSelector, maxPeople) {
         const numPeopleEl = $(numPeopleSelector);
-        numPeopleEl.empty();  // ⭐️ 清空舊有選項，避免重複添加
+        numPeopleEl.empty();
         for (let i = 1; i <= maxPeople; i++) {
             numPeopleEl.append(`<option value="${i}">${i} 人</option>`);
         }
@@ -115,7 +136,7 @@ export const BookingModule = (() => {
 
     function init(numPeopleSelector, peopleContainerSelector, maxPeople = 5) {
         populateNumPeople(numPeopleSelector, maxPeople);
-    bindEvents(numPeopleSelector, peopleContainerSelector);
+        bindEvents(numPeopleSelector, peopleContainerSelector);
     }
 
     return { init };
