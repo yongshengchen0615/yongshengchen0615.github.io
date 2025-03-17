@@ -33,6 +33,7 @@ $(document).ready(function () {
         return `${dateStr}（${weekdays[date.getDay()]}）`;
     }
 
+
     $("#booking-form").submit(function (event) {
         event.preventDefault();
 
@@ -40,32 +41,58 @@ $(document).ready(function () {
         let time = $("#booking-time").val();
 
         // ✅ 確保提交時日期不為過去日期
-        if (!date || date < today) {
+        if (!date || date < today) {Ｆ
             alert("請選擇有效的預約日期（不能選擇過去的日期）！");
             $("#booking-date").val(today);
             return;
         }
 
+    
+// ✅ 確保使用者選擇了有效的時間
+if (!date || !time) {
+    alert("請選擇預約日期與時間！");
+    return;
+}
+
+console.log("預約時間:", time);  // 確保正確輸出
+
         let formattedDate = formatDateWithDay(date);
         console.log("預約日期:", formattedDate);  // 確保正確輸出
     });
 
+    // ✅ 監聽日期變更，動態更新時間選單
+    $("#booking-date").on("change", function () {
+        updateTimeOptions();
+    });
 
-    function generateTimeOptions() {
-        let startTime = 9 * 60;
-        let endTime = 21 * 60;
+
+    function updateTimeOptions() {
+        let selectedDate = $("#booking-date").val();
+        let now = new Date();
+        let currentMinutes = now.getHours() * 60 + now.getMinutes(); // 當前時間轉換為總分鐘數
+
+        let startTime = 9 * 60;  // 09:00 轉換為分鐘
+        let endTime = 21 * 60;   // 21:00 轉換為分鐘
         let timeOptions = "";
 
         for (let minutes = startTime; minutes <= endTime; minutes += 10) {
             let hour = Math.floor(minutes / 60).toString().padStart(2, "0");
             let minute = (minutes % 60).toString().padStart(2, "0");
-            timeOptions += `<option value="${hour}:${minute}">${hour}:${minute}</option>`;
+            let timeValue = `${hour}:${minute}`;
+
+            // ✅ 如果選擇當天，過去時間不顯示
+            if (selectedDate === today && minutes <= currentMinutes) {
+                continue;
+            }
+
+            timeOptions += `<option value="${timeValue}">${timeValue}</option>`;
         }
 
         $("#booking-time").html(timeOptions);
     }
 
-    generateTimeOptions();
+    // ✅ 預設載入時間選單
+    updateTimeOptions();
 
     function validateName() {
         const namePattern = /^[\u4e00-\u9fa5]{1,5}(先生|小姐)$/;
