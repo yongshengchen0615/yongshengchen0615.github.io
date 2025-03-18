@@ -10,7 +10,7 @@ $(document).ready(async function () {
 
         // 🛑 不強制登入，允許未登入的使用者使用
         if (!liff.isInClient()) {
-            console.warn("⚠️ 注意：目前不在 LINE 應用內，某些功能可能無法使用。");
+            alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
         }
 
     } catch (err) {

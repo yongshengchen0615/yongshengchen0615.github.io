@@ -1,16 +1,16 @@
 export const BookingModule = (() => {
     const mainServices = {
-        "全身指壓1節": { time: 60, price: 1100, type: "------全身按摩------" },
-        "全身指壓1.5節": { time: 90, price: 1650, type: "------全身護理------" },
-        "全身指壓2節": { time: 120, price: 2200, type: "------全身按摩------" },
-        "腳底按摩1節": { time: 40, price: 800, type: "------全身按摩------" },
-        "腳底按摩1.5節": { time: 60, price: 1200, type: "------全身護理------" },
-        "腳底按摩2節": { time: 80, price: 1600, type: "------全身按摩------" }
+        "全身指壓60分鐘- $1100": { time: 60, price: 1100, type: "------全身按摩------" },
+        "全身指壓90分鐘- $1650": { time: 90, price: 1650, type: "------全身按摩------" },
+        "全身指壓120分鐘- $2200": { time: 120, price: 2200, type: "------全身按摩------" },
+        "腳底按摩40分鐘- $800": { time: 40, price: 800, type: "---腳底按摩------" },
+        "腳底按摩60分鐘- $1200": { time: 60, price: 1200, type: "---腳底按摩------" },
+        "腳底按摩80分鐘- $1600": { time: 80, price: 1600, type: "---腳底按摩------" }
     };
 
     const addonServices = {
-        "刮痧": { time: 30, price: 600, type: "------加購服務------" },
-        "肩頸": { time: 20, price: 450, type: "------加購服務------" },
+        "刮痧 30分鐘": { time: 30, price: 600, type: "------加購服務------" },
+        "肩頸 20分鐘": { time: 20, price: 450, type: "------加購服務------" },
     };
 
     function checkAtLeastOneServiceSelected() {
@@ -61,7 +61,7 @@ export const BookingModule = (() => {
                     <select class="form-select main-service">
                         ${serviceOptionsGrouped(mainServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加</button>
+                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">確認</button>
                 </div>
                 <ul class="list-group main-service-list mt-2"></ul>
 
@@ -70,7 +70,7 @@ export const BookingModule = (() => {
                     <select class="form-select addon-service">
                         ${serviceOptionsGrouped(addonServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加</button>
+                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">確認</button>
                 </div>
                 <ul class="list-group addon-service-list mt-2"></ul>
 
@@ -105,7 +105,7 @@ export const BookingModule = (() => {
 
         list.append(`
             <li class="list-group-item" data-time="${time}" data-price="${price}">
-                ${serviceName}  - ${time} 分鐘, $${price}
+                ${serviceName}
                 <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
             </li>
         `);
