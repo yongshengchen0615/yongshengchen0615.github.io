@@ -2,10 +2,21 @@ import { validateName, validatePhone } from "./validation.js";
 import { BookingTimeModule } from "./bookingTimeModule.js";
 import { BookingModule } from "./bookingModule.js";
 
-$(document).ready(function () {
-// ✅ 初始化 LIFF（先做這一步！）
-liff.init({ liffId: "2007061321-g603NNZG" })
-    .catch(err => console.error("LIFF 初始化錯誤", err));
+$(document).ready(async function () {
+    try {
+        await liff.init({ liffId: "2005939681-WrwevLMV" });
+
+        console.log("✅ LIFF 初始化成功");
+
+        // 🛑 不強制登入，允許未登入的使用者使用
+        if (!liff.isInClient()) {
+            console.warn("⚠️ 注意：目前不在 LINE 應用內，某些功能可能無法使用。");
+        }
+
+    } catch (err) {
+        console.error("❌ LIFF 初始化失敗", err);
+        alert("⚠️ 無法載入 LIFF，請重新整理頁面！");
+    }
 
     // ✅ 初始化「預約時間」模組
     BookingTimeModule.init("9:00","21:00");
