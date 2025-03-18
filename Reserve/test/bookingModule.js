@@ -9,8 +9,8 @@ export const BookingModule = (() => {
     };
 
     const addonServices = {
-        "刮痧 30分鐘": { time: 30, price: 600, type: "------加購服務------" },
-        "肩頸 20分鐘": { time: 20, price: 450, type: "------加購服務------" },
+        "刮痧 30分鐘- $600": { time: 30, price: 600, type: "------加購服務------" },
+        "肩頸 20分鐘- $450": { time: 20, price: 450, type: "------加購服務------" },
     };
 
     function checkAtLeastOneServiceSelected() {
