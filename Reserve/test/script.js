@@ -5,12 +5,18 @@ import { BookingModule } from "./bookingModule.js";
 $(document).ready(async function () {
     try {
         await liff.init({ liffId: "2005939681-WrwevLMV" });
-        alert("您的使用者編號"+liff.profile.userId);
+      //  alert("您的使用者編號"+liff.profile.userId);
 
         // 🛑 不強制登入，允許未登入的使用者使用
         if (!liff.isInClient()) {
             alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
         }
+// 獲取用戶資訊
+liff.getProfile().then(profile => {
+    alert("ser ID:"+profile.userId);
+}).catch(err => {
+    console.error("❌ 獲取用戶資訊失敗:", err);
+});
 
     } catch (err) {
         console.error("❌ LIFF 初始化失敗", err);
@@ -20,7 +26,6 @@ $(document).ready(async function () {
     // ✅ 初始化「預約時間」模組
     BookingTimeModule.init("9:00","21:00");
     BookingModule.init("#num-people", "#people-container", 5); //最多5人
-
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
         document.querySelectorAll(".person-card").forEach(person => {
