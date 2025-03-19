@@ -5,8 +5,7 @@ import { BookingModule } from "./bookingModule.js";
 $(document).ready(async function () {
     try {
         await liff.init({ liffId: "2005939681-WrwevLMV" });
-
-        console.log("✅ LIFF 初始化成功");
+        alert("您的使用者編號"+liff.profile.userId);
 
         // 🛑 不強制登入，允許未登入的使用者使用
         if (!liff.isInClient()) {
