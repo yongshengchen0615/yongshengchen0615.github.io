@@ -4,77 +4,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>官方帳號專屬優惠</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- 自訂樣式 -->
     <style>
         body {
-            font-family: Arial, sans-serif;
             background-color: #f9f9f9;
-            margin: 0;
-            padding: 20px;
-            text-align: center;
         }
-        .container {
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            max-width: 600px;
-            margin: auto;
-        }
-        h1 {
-            color: #d9534f;
-        }
-        .highlight {
-            color: #f39c12;
-            font-weight: bold;
-        }
-        .offer {
-            font-size: 18px;
-            margin: 10px 0;
-            padding: 10px;
+        .offer-box {
             background: #ffefc1;
+            padding: 15px;
             border-radius: 5px;
-        }
-        .rules {
-            text-align: left;
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            background: #f4f4f4;
-            border-radius: 5px;
-        }
-        .footer {
-            font-size: 14px;
-            color: #777;
-            margin-top: 15px;
+            font-size: 18px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎉 官方帳號專屬優惠 🎉</h1>
-        <div class="offer">🔹 全身指壓或腳底按摩滿 60 分鐘現折 $100</div>
-        <div class="offer">🔹 修腳皮或修腳指甲每單項現折 $50</div>
-        
-       <div class="rules">
-             <h3>📌 如何獲得優惠？</h3> 
-        <p>🔹 透過官方帳號預約平日時段服務者，結帳時以現金付款，並向 10 號技師出示官方帳號預約畫面。</p>
-        <p>🔹 週六、日或國定假日現場指定服務者，結帳時以現金付款，並向 10 號技師出示加入官方帳號畫面。</p>
-    </div>
-        <div class="rules">
-            <h3>📌 活動規則說明</h3>
-           
-                <p>🔹 每日限額 2 位，依預約時間為優先排序。</p>
-                <p>🔹 服務時數不得轉贈他人，僅限本人當次消費累計。</p>
-                <p>🔹 單筆消費滿 60 分鐘折 100 元、120 分鐘折 200 元，以此類推，無上限。</p>
-                <p>🔹 平日定義為週一至週五，假日為週六、週日及國定假日。(平、假日定義以府前店當日公告為主)</p>
-                <p>🔹 本活動僅限府前店 10 號技師。</p>
-                <p>🔹 本活動內容依實際情況滾動式調整，最新資訊以現場或官方帳號公告為主。</p>
-                <p>🔹 本官方帳號對此活動規則保留最終解釋權。</p>
-            
+
+<div class="container mt-4">
+    <div class="card shadow p-4">
+        <h1 class="text-danger text-center">🎉 官方帳號專屬優惠 🎉</h1>
+
+        <!-- 優惠內容 -->
+        <div class="alert alert-warning text-center">
+            🔹 <strong>全身指壓或腳底按摩</strong> 滿 60 分鐘現折 <strong>$100</strong>
         </div>
-        
-        <p class="highlight">🔥 名額有限，快來預約吧！</p>
-       
+        <div class="alert alert-warning text-center">
+            🔹 <strong>修腳皮或修腳指甲</strong> 每單項現折 <strong>$50</strong>
+        </div>
+
+        <!-- 如何獲得優惠 -->
+        <div class="card border-primary mt-3">
+            <div class="card-header bg-primary text-white">📌 如何獲得優惠？</div>
+            <div class="card-body">
+                <p>🔹 透過官方帳號預約**平日時段**服務，結帳時以現金付款，並向 **10 號技師** 出示官方帳號預約畫面。</p>
+                <p>🔹 週六、日或國定假日現場指定服務者，結帳時以現金付款，並向 **10 號技師** 出示加入官方帳號畫面。</p>
+            </div>
+        </div>
+
+        <!-- 活動規則說明 -->
+        <div class="card border-secondary mt-3">
+            <div class="card-header bg-secondary text-white">📌 活動規則說明</div>
+            <div class="card-body">
+                <ul class="list-group">
+                    <li class="list-group-item">🔹 **每日限額 2 位**，依預約時間為優先排序。</li>
+                    <li class="list-group-item">🔹 **服務時數不得轉贈**，僅限本人當次消費累計。</li>
+                    <li class="list-group-item">🔹 單筆消費 **滿 60 分鐘折 100 元，120 分鐘折 200 元**，以此類推，無上限。</li>
+                    <li class="list-group-item">🔹 **平日：週一至週五，假日：週六、週日及國定假日**。（依府前店公告為主）</li>
+                    <li class="list-group-item">🔹 **僅限府前店 10 號技師**，活動規則可能隨時調整。</li>
+                    <li class="list-group-item">🔹 **官方帳號保留最終解釋權**。</li>
+                </ul>
+            </div>
+        </div>
+
+        <p class="text-center text-danger fw-bold mt-3">🔥 名額有限，快來預約吧！</p>
     </div>
+</div>
+
+<!-- Bootstrap 5 & jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>
