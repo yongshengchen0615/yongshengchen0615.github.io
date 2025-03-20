@@ -1,118 +1,81 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>經絡工程師 刮刮樂活動</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <style>
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
             background-color: #f8f8f8;
-            margin: 20px;
-            padding: 20px;
         }
         .container {
             max-width: 800px;
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        h1, h2 {
-            text-align: center;
-        }
-        h3 {
-            text-align: left;
-        }
-        ul {
-            list-style-type: none;
-            padding: 0;
-            text-align: left;
-        }
-        li {
-            margin: 5px 0;
         }
         .highlight {
             color: #d9534f;
             font-weight: bold;
         }
-        .emoji {
-            font-size: 1.2em;
-        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎉 經絡工程師 | 免費按摩等你來刮！ 🎉</h1>
-        <h2>💆‍♂️ 預約 No.10 技師，累積點數，刮出好禮！</h2>
-        <p>🎯 平日預約更輕鬆，假日現場指定也能參加！</p>
-        <p>📍 活動長期有效，隨時累積，<span class="highlight">現場兌換</span></p>
-        
-        <h2>🎟 如何獲得點數？</h2>
-        <ul>
-            <li>✅ 平日透過官方帳號預約 No.10 技師 並完成服務，每 1 小時服務獲得 <span class="highlight">1 點</span></li>
-            <li>✅ 假日現場指定 No.10 技師 並完成服務，每 1 小時服務獲得 <span class="highlight">1 點</span></li>
-            <li>✅ 當日完成服務後，於 Google 留 <span class="highlight">5 星好評</span> 並截圖回傳，可獲得 <span class="highlight">1 點</span>（每日限 1 次）</li>
-            <li>✅ <span class="highlight">IG/FB 限時動態分享官方帳號</span>，保留 24 小時並截圖回傳，可獲得 <span class="highlight">1 點</span>（每日限 1 次）</li>
-            <li>✅ 推薦好友來體驗，推薦人可獲得 <span class="highlight">1 點</span>（每次服務限 1 點）</li>
-        </ul>
-        <p>📢 點數無期限</p>
-        <p>📢 <span class="highlight">每累積 5 點</span>，即可獲得 1 張刮刮樂！</p>
-        
-        <h2>🎫 刮刮樂獎勵</h2>
-        
-        <h3>🎯 5 點刮刮樂可能獲得 🎊</h3>
-        <ul>
-            <li>🔸 腳底按摩券 🦶</li>
-            <li>🔸 甜湯 🍵</li>
-            <li>🔸 足湯包 🛁</li>
-        </ul>
-        
-        <h3>🎯 10 點刮刮樂可能獲得 🎁</h3>
-        <ul>
-            <li>🔸 身體按摩券 💆</li>
-            <li>🔸 雞湯 🍵</li>
-            <li>🔸 甜湯 🍵</li>
-            <li>🔸 足湯包 🛁</li>
-        </ul>
-        
-        <h3>🎯 15 點刮刮樂可能獲得 🎊</h3>
-        <ul>
-            <li>🔸 身體按摩券 💆</li>
-            <li>🔸 腳底按摩券 🦶</li>
-            <li>🔸 茶包禮盒 🍵</li>
-            <li>🔸 雞湯 🍵</li>
-            <li>🔸 甜湯 🍵</li>
-        </ul>
-        
-        <h3>🎯 20 點刮刮樂可能獲得 🎁</h3>
-        <ul>
-            <li>🔸 身體按摩券 + 腳底按摩券 💆🦶</li>
-            <li>🔸 浴湯包禮盒 🛁</li>
-            <li>🔸 茶包禮盒 🍵</li>
-            <li>🔸 雞湯 🍵</li>
-            <li>🔸 甜湯 🍵</li>
-        </ul>
-        
-        <h2>📩 如何參加？</h2>
-        <ol>
-            <li><span class="highlight">平日透過官方帳號預約</span> No.10 技師，服務結束後出示預約證明</li>
-            <li><span class="highlight">假日現場指定</span> No.10 技師，服務結束後出示官方帳號頁面</li>
-            <li><span class="highlight">完成服務</span>並累積 5、10、15、20 點後，點選官方帳號的刮刮樂功能</li>
-            <li>立即刮開你的幸運獎品！ 🎉</li>
-        </ol>
-        
-        <h2>📌 注意事項</h2>
-        <ul>
-            <li>✅ 每次限用一種優惠券</li>
-            <li>✅ 所有點數皆需完成服務後發放，無法透過取消預約或未出席獲得點數</li>
-            <li>✅ Google 評論與限時動態分享，每人每日各限 1 次，且須於服務當日完成</li>
-            <li>✅ 推薦與同行須為不同帳號，且好友需實際到店並完成服務</li>
-        </ul>
-        
-        <p>📩 立即點擊官方帳號預約 No.10 技師，開始累積點數吧！ ✨</p>
-        <p>📢 「本活動內容可能依實際情況調整，最新資訊請以現場或官方公告為準。」</p>
+
+<div class="container mt-5">
+    <div class="text-center mb-4">
+        <h1 class="text-primary">🎉 經絡工程師 刮刮樂活動 🎉</h1>
+        <h4>💆‍♂️ 預約 No.10 技師，累積點數，刮出好禮！</h4>
+        <p class="text-muted">📅 活動長期有效，隨時累積，<span class="highlight">現場兌換</span></p>
     </div>
+
+    <!-- 如何獲得點數 -->
+    <div class="card shadow-sm p-4">
+        <h5 class="mb-3">🎟 <strong>如何獲得點數？</strong></h5>
+        <ul class="list-group">
+            <li class="list-group-item">✅ 平日透過官方帳號預約 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span></li>
+            <li class="list-group-item">✅ 假日現場指定 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span></li>
+            <li class="list-group-item">✅ Google 留 <span class="highlight">5 星好評</span> 並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</li>
+            <li class="list-group-item">✅ IG/FB 限時動態分享官方帳號，並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</li>
+            <li class="list-group-item">✅ 推薦好友來體驗，推薦人可獲得 <span class="badge bg-success">1 點</span></li>
+        </ul>
+        <p class="text-danger fw-bold mt-3">📌 每累積 5 點，即可獲得 1 張刮刮樂！</p>
+    </div>
+
+    <!-- 刮刮樂獎勵 -->
+    <div class="card mt-4 shadow-sm p-4">
+        <h5 class="mb-3">🎫 刮刮樂獎勵</h5>
+        <div class="alert alert-info">✨ 獎品可能包含免費按摩、足浴包、甜湯等！</div>
+        <ul class="list-group">
+            <li class="list-group-item">🎯 5 點刮刮樂：腳底按摩券 🦶、甜湯 🍵、足湯包 🛁</li>
+            <li class="list-group-item">🎯 10 點刮刮樂：身體按摩券 💆、雞湯 🍵、甜湯 🍵</li>
+            <li class="list-group-item">🎯 15 點刮刮樂：身體按摩券 💆、腳底按摩券 🦶、茶包禮盒 🍵</li>
+            <li class="list-group-item">🎯 20 點刮刮樂：身體 + 腳底按摩券 💆🦶、浴湯包 🛁、雞湯 🍵</li>
+        </ul>
+    </div>
+
+    <!-- 如何參加 -->
+    <div class="card mt-4 shadow-sm p-4">
+        <h5 class="mb-3">📩 如何參加？</h5>
+        <ol>
+            <li>📅 <span class="highlight">平日透過官方帳號預約</span> No.10 技師，完成服務後出示預約證明</li>
+            <li>📅 <span class="highlight">假日現場指定</span> No.10 技師，服務結束後出示官方帳號頁面</li>
+            <li>📅 累積 5、10、15、20 點後，點選官方帳號的刮刮樂功能</li>
+            <li>🎉 立即刮開你的幸運獎品！</li>
+        </ol>
+    </div>
+
+   
+</div>
+
+<!-- Bootstrap 5 & jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    
+</script>
+
 </body>
 </html>
