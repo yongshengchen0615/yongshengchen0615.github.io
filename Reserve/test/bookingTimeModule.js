@@ -26,53 +26,43 @@ export const BookingTimeModule = (() => {
 
     function isValidBookingTime(dateStr, timeStr) {
         const now = new Date();
-    const selectedDate = new Date(dateStr);
-    const selectedTime = timeStr.split(":").map(Number);
-    const selectedMinutes = selectedTime[0] * 60 + selectedTime[1];
-
-    let [startHour, startMinute] = bookingStartTime.split(":").map(Number);
-    let [endHour, endMinute] = bookingEndTime.split(":").map(Number);
-    let startMinutes = startHour * 60 + startMinute;
-    let endMinutes = endHour * 60 + endMinute;
-
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-    // **檢查是否為當日預約**
-    const isToday = dateStr === today;
-
-    if (isToday) {
-        // 🛑 **當日預約：時間不能小於當前時間**
-        if (selectedMinutes <= nowMinutes) {
-            return false;
-        }
-
-        // **跨日營業處理**
-        if (startMinutes > endMinutes) {
-            if (!(selectedMinutes >= startMinutes || selectedMinutes <= endMinutes)) {
+        const selectedDate = new Date(dateStr);
+        const selectedTime = timeStr.split(":").map(Number);
+        const selectedMinutes = selectedTime[0] * 60 + selectedTime[1];
+    
+        let [startHour, startMinute] = bookingStartTime.split(":").map(Number);
+        let [endHour, endMinute] = bookingEndTime.split(":").map(Number);
+        let startMinutes = startHour * 60 + startMinute;
+        let endMinutes = endHour * 60 + endMinute;
+    
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const todayStr = new Date().toISOString().split("T")[0];
+        const isToday = dateStr === todayStr;
+        const buffer = 5; // 🕐 建議保留 5 分鐘緩衝
+    
+        console.log("isToday:", isToday);
+        console.log("selectedMinutes:", selectedMinutes);
+        console.log("nowMinutes + buffer:", nowMinutes + buffer);
+    
+        if (isToday) {
+            if (selectedMinutes <= nowMinutes + buffer) {
                 return false;
             }
-        } else {
-            if (selectedMinutes < startMinutes || selectedMinutes > endMinutes) {
-                return false;
-            }
-        }
-    } else {
-        // **未來日期預約**
-        if (startMinutes > endMinutes) {
-            // **營業時間為 20:00 - 03:00**
-            if (selectedMinutes >= startMinutes || selectedMinutes <= endMinutes) {
-                return true;
+    
+            if (startMinutes > endMinutes) {
+                return selectedMinutes >= startMinutes || selectedMinutes <= endMinutes;
+            } else {
+                return selectedMinutes >= startMinutes && selectedMinutes <= endMinutes;
             }
         } else {
-            // **正常營業時間**
-            if (selectedMinutes >= startMinutes && selectedMinutes <= endMinutes) {
-                return true;
+            if (startMinutes > endMinutes) {
+                return selectedMinutes >= startMinutes || selectedMinutes <= endMinutes;
+            } else {
+                return selectedMinutes >= startMinutes && selectedMinutes <= endMinutes;
             }
         }
     }
-
-    return false;
-    }
+    
 
     function updateTimeOptions() {
         let timeUnit=30;
