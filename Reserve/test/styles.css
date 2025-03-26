@@ -116,3 +116,11 @@ body {
 .text-success {
   color: #6a89cc !important; /* 總金額 */
 }
+
+#recent-bookings li {
+  background-color: #2c2e4a;
+  border: 1px solid #4a4e69;
+  border-radius: 10px;
+  padding: 10px;
+  color: #f8f9fa;
+}

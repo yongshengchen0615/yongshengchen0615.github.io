@@ -14,7 +14,7 @@
 <body>
     <div class="container mt-5">
         <div class="card shadow p-4">
-            <h2 class="text-center text-primary">經絡工程師預約系統v32</h2>
+            <h2 class="text-center text-primary">經絡工程師預約系統v33</h2>
             <form id="booking-form">
                 <!-- 預約類型 -->
                 <div class="mb-3">
@@ -74,6 +74,10 @@
             <button type="button" id="clear-history" class="btn btn-outline-warning w-100 mt-2">
                 🧹 清除上次預約資料
             </button>
+            <div class="mt-4">
+                <h5 class="text-info">🕘 最近三筆預約記錄</h5>
+                <ul id="recent-bookings" class="list-group"></ul>
+            </div>
             <p id="status" class="mt-3 text-center text-success fw-bold"></p>
         </div>
     </div>

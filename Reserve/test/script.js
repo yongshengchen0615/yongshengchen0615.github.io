@@ -42,6 +42,22 @@ $(document).ready(async function () {
             location.reload();
         }
     });
+
+    const history = JSON.parse(localStorage.getItem("bookingHistory")) || [];
+    const recentList = $("#recent-bookings");
+    history.forEach((item, i) => {
+        recentList.append(`
+        <li class="list-group-item bg-dark text-light mb-2">
+            <strong>第 ${i + 1} 筆</strong>（${item.timestamp}）<br>
+            👤 ${item.name} ｜ ${item.date} ${item.time}｜ ${item.numPeople}人 ｜ 💰 $${item.total} 元
+            <details class="mt-1">
+              <summary class="text-info">查看詳細</summary>
+              <pre style="white-space: pre-wrap;">${item.services.join("\n\n")}</pre>
+            </details>
+        </li>
+    `);
+    });
+
 });
 
 async function initLIFF() {
@@ -139,8 +155,6 @@ ${bookingDetails.join("\n\n")}
 
     liff.sendMessages([{ type: "text", text: summary }])
         .then(() => {
-            alert("✅ 預約確認訊息已成功傳送！");
-            // ✅ 儲存預約資料
             localStorage.setItem("lastBookingData", JSON.stringify({
                 name, phone, date, time, bookingTypeText, numPeople,
                 people: $(".person-card").map(function () {
@@ -154,6 +168,25 @@ ${bookingDetails.join("\n\n")}
                     };
                 }).get()
             }));
+
+            // ✅ 儲存到 bookingHistory 陣列中
+            let history = JSON.parse(localStorage.getItem("bookingHistory")) || [];
+            history.unshift({
+                timestamp: new Date().toLocaleString(),
+                name,
+                date: dateWithDay,
+                time,
+                numPeople,
+                total: totalPriceAll,
+                services: bookingDetails
+            });
+            history = history.slice(0, 3); // 只保留 3 筆
+            localStorage.setItem("bookingHistory", JSON.stringify(history));
+            alert("✅ 預約確認訊息已成功傳送！");
+            // ✅ 儲存預約資料
+
+
+
             liff.closeWindow();
         })
         .catch(err => {
