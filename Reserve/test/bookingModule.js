@@ -173,8 +173,31 @@ export const BookingModule = (() => {
         bindEvents(numPeopleSelector, peopleContainerSelector);
     }
 
+    function addServiceByName(cardElement, serviceName, type = "main") {
+        const serviceData = type === "main" ? mainServices : addonServices;
+        const listClass = type === "main" ? ".main-service-list" : ".addon-service-list";
+        const list = cardElement.find(listClass);
+        const timeElement = cardElement.find(".total-time");
+        const priceElement = cardElement.find(".total-price");
+    
+        if (!serviceData[serviceName]) return; // 保護措施
+    
+        const { time, price } = serviceData[serviceName];
+        list.append(`
+            <li class="list-group-item" data-time="${time}" data-price="${price}">
+                ${serviceName}
+                <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
+            </li>
+        `);
+        timeElement.text(parseInt(timeElement.text()) + time);
+        priceElement.text(parseInt(priceElement.text()) + price);
+        updateTotal();
+    }
+    
+
     return {
         init,
-        checkAtLeastOneServiceSelected
+        checkAtLeastOneServiceSelected,
+        addServiceByName
     };
 })();

@@ -5,11 +5,43 @@ import { BookingModule } from "./bookingModule.js";
 $(document).ready(async function () {
     await initLIFF();
 
-    BookingTimeModule.init("9:00", "21:00");
+    BookingTimeModule.init("20:00", "8:00");
     BookingModule.init("#num-people", "#people-container", 5);
+    const saved = JSON.parse(localStorage.getItem("lastBookingData"));
+    if (saved) {
+        $("#name").val(saved.name);
+        $("#phone").val(saved.phone);
+        $("#booking-date").val(saved.date);
+        $("#booking-time").val(saved.time);
+        $("#booking-type").val(saved.bookingTypeText === "代訂他人" ? "other" : "self");
+        $("#num-people").val(saved.numPeople).trigger("change");
+
+        // 🕐 等待 DOM 完成後載入每位預約人服務
+        setTimeout(() => {
+            $(".person-card").each(function (i) {
+                const p = saved.people[i];
+                if (!p) return;
+                const card = $(this);
+
+                p.main.forEach(serviceName => {
+                    BookingModule.addServiceByName(card, serviceName, "main");
+                });
+
+                p.addon.forEach(serviceName => {
+                    BookingModule.addServiceByName(card, serviceName, "addon");
+                });
+            });
+        }, 300); // 等人數 UI 渲染完
+    }
     updateTotal();
 
     $("#booking-form").submit(handleSubmit);
+    $("#clear-history").click(function () {
+        if (confirm("確定要清除上次預約資料嗎？")) {
+            localStorage.removeItem("lastBookingData");
+            location.reload();
+        }
+    });
 });
 
 async function initLIFF() {
@@ -21,7 +53,7 @@ async function initLIFF() {
         }
 
         const profile = await liff.getProfile();
-        alert("user ID:" + profile.userId);
+        // alert("user ID:" + profile.userId);
 
     } catch (err) {
         console.error("❌ LIFF 初始化失敗", err);
@@ -108,6 +140,20 @@ ${bookingDetails.join("\n\n")}
     liff.sendMessages([{ type: "text", text: summary }])
         .then(() => {
             alert("✅ 預約確認訊息已成功傳送！");
+            // ✅ 儲存預約資料
+            localStorage.setItem("lastBookingData", JSON.stringify({
+                name, phone, date, time, bookingTypeText, numPeople,
+                people: $(".person-card").map(function () {
+                    return {
+                        main: $(this).find(".main-service-list li").map(function () {
+                            return $(this).text().replace("刪除", "").trim();
+                        }).get(),
+                        addon: $(this).find(".addon-service-list li").map(function () {
+                            return $(this).text().replace("刪除", "").trim();
+                        }).get()
+                    };
+                }).get()
+            }));
             liff.closeWindow();
         })
         .catch(err => {
