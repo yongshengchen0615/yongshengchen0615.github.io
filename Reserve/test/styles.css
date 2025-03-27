@@ -130,3 +130,25 @@ body {
   border-radius: 8px;
   margin: 4px 0;
 }
+/* 📱 條列式服務顯示美化 */
+.service-item {
+  background-color: #6c757d;
+  color: #fff;
+  border-radius: 8px;
+  margin: 4px 0;
+  font-size: 0.95rem;
+  padding: 6px 10px;
+}
+
+/* 📱 RWD 調整：預約記錄卡片 */
+#recent-bookings .list-group-item {
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+
+/* 🧩 collapse 按鈕間距調整 */
+@media (max-width: 768px) {
+  #recent-bookings .btn {
+    width: 100%;
+  }
+}
