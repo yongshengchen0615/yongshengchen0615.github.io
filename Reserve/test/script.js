@@ -15,24 +15,25 @@ $(document).ready(async function () {
         $("#booking-time").val(saved.time);
         $("#booking-type").val(saved.bookingTypeText === "代訂他人" ? "other" : "self");
         $("#num-people").val(saved.numPeople).trigger("change");
-
-        // 🕐 等待 DOM 完成後載入每位預約人服務
-        setTimeout(() => {
+    
+        // ✅ 等待人數欄位渲染完後再填入每個預約人的服務
+        waitForPersonCards(saved.numPeople, () => {
             $(".person-card").each(function (i) {
                 const p = saved.people[i];
                 if (!p) return;
                 const card = $(this);
-
+    
                 p.main.forEach(serviceName => {
                     BookingModule.addServiceByName(card, serviceName, "main");
                 });
-
+    
                 p.addon.forEach(serviceName => {
                     BookingModule.addServiceByName(card, serviceName, "addon");
                 });
             });
-        }, 300); // 等人數 UI 渲染完
+        });
     }
+    
     updateTotal();
 
     $("#booking-form").submit(handleSubmit);
@@ -224,3 +225,13 @@ ${bookingDetails.join("\n\n")}
             console.error(err);
         });
 }
+
+// ✅ 等待 .person-card 都載入後再執行 callback
+function waitForPersonCards(count, callback) {
+    const checkExist = setInterval(() => {
+      if ($(".person-card").length === count) {
+        clearInterval(checkExist);
+        callback();
+      }
+    }, 100);
+  }
