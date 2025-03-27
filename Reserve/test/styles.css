@@ -195,3 +195,25 @@ body {
   }
 }
 
+/* 🧱 區塊包裝：讓左右變上下 */
+.recent-booking-item {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* 📱 小螢幕：切換為直向（上下）排版 */
+@media (max-width: 768px) {
+  .recent-booking-item {
+    flex-direction: column;
+  }
+}
+.service-card-item {
+  background-color: #394867;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}

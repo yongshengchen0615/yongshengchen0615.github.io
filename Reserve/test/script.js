@@ -48,48 +48,45 @@ $(document).ready(async function () {
     history.forEach((item, i) => {
         recentList.append(`
             <li class="list-group-item bg-dark text-light mb-3 rounded-3 p-3">
-              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center recent-header">
-                <div>
+              <div class="recent-booking-item">
+                <!-- 左側：基本資訊 -->
+                <div class="booking-info">
                   <strong>第 ${i + 1} 筆</strong><br>
                   👤 ${item.name}<br>
                   📅 ${item.date} ⏰ ${item.time}<br>
                   👥 ${item.numPeople}人 ｜ 💰 $${item.total} 元
+                  <button class="btn btn-info w-100 mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#detail-${i}">
+                    查看詳細服務
+                  </button>
                 </div>
-                <button class="btn btn-outline-info mt-2 mt-md-0" type="button" data-bs-toggle="collapse" data-bs-target="#detail-${i}">
-                  查看詳細服務
-                </button>
-              </div>
-              <div class="collapse mt-3" id="detail-${i}">
-                <div class="mt-2">
+          
+                <!-- 右側：詳細資訊（collapse） -->
+                <div class="collapse mt-2" id="detail-${i}">
                   ${item.services.map(serviceBlock => {
-                    const lines = serviceBlock.split("\n");
-                    const title = lines[0];
-                    const serviceLine = lines[1]?.replace("- 服務內容：", "") ?? "";
-                    const timeLine = lines[2] ?? "";
-                    const priceLine = lines[3] ?? "";
-            
-                    const serviceItems = serviceLine
-                      .split(/、|,|，/)
-                      .filter(s => s.trim() !== "")
-                      .map(s => `<li>${s.trim()}</li>`)
-                      .join("");
-            
-                    return `
-                      <div class="recent-person-block">
-                        <strong>${title}</strong>
-                        <ul>${serviceItems}</ul>
-                        <div>${timeLine}</div>
-                        <div>${priceLine}</div>
-                      </div>
-                    `;
-                  }).join("")}
+            const lines = serviceBlock.split("\n");
+            const title = lines[0];
+            const serviceLine = lines[1];
+            const timeLine = lines[2];
+            const priceLine = lines[3];
+
+            const serviceList = serviceLine.replace("- 服務內容：", "").split("、").map(s => `
+                      <li class="service-card-item">• ${s}</li>`).join("");
+
+            return `
+                    <div class="recent-person-block">
+                      <strong>${title}</strong>
+                      <ul class="ps-3 mt-2">${serviceList}</ul>
+                      <div class="mt-2">${timeLine}</div>
+                      <div>${priceLine}</div>
+                    </div>`;
+        }).join("")}
                 </div>
               </div>
             </li>
-            `);
-            
+          `);
+
     });
-    
+
 
 });
 
