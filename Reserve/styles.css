@@ -1,32 +1,154 @@
+/* 🌙 柔和暗色模式整體背景 */
 body {
-    background-color: #f8f9fa;
+  background-color: #2b2d42;
+  font-family: Arial, sans-serif;
+  color: #f8f9fa;
 }
 
+/* 📌 調整卡片樣式 */
 .card {
-    max-width: 600px;
-    margin: auto;
-    border-radius: 15px;
+  max-width: 600px;
+  margin: auto;
+  border-radius: 15px;
+  background: #3d405b;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  padding: 20px;
+  color: #f8f9fa;
 }
 
+/* 🏷 按鈕樣式 */
 .btn {
-    font-size: 1.1rem;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  color: #ffffff;
 }
 
+/* 主要按鈕（新增服務） */
+.btn-outline-primary {
+  border-color: #6a89cc;
+  color: #6a89cc;
+}
+
+.btn-outline-primary:hover {
+  background-color: #6a89cc;
+  color: white;
+}
+
+/* 刪除按鈕 */
+.btn-danger {
+  background-color: #e76f51;
+  border: none;
+}
+
+.btn-danger:hover {
+  background-color: #d62828;
+}
+
+/* 確認預約按鈕 */
+.btn-success {
+  background-color: #2a9d8f;
+  border: none;
+}
+
+.btn-success:hover {
+  background-color: #1d756b;
+}
+
+/* 📌 調整列表樣式 */
 .list-group-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: #fff;
-    border-radius: 10px;
-    padding: 10px 15px;
-    margin-top: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #44476a;
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin-top: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+  color: #f8f9fa;
 }
 
+/* 🎯 調整總計卡片 */
 .summary-card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
-    padding: 15px;
+  background: #3d405b;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  padding: 15px;
+}
+
+/* 🏷 預約人資訊卡 */
+.person-card {
+  border-radius: 20px;
+  background-color: #44476a;
+  padding: 15px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* 🔹 標題顏色（柔和藍） */
+.person-card h5 {
+  color: #a8dadc;
+  font-weight: bold;
+}
+
+/* 主要服務區域（淡藍色邊框） */
+.person-card .main-service-list {
+  border-left: 4px solid #6a89cc;
+  padding-left: 10px;
+}
+
+/* 加購服務區域（柔和橘色邊框） */
+.person-card .addon-service-list {
+  border-left: 4px solid #f4a261;
+  padding-left: 10px;
+}
+
+/* 🕐 調整總價與總時區域 */
+.person-card h6 {
+  font-size: 16px;
+  color: #d3d3d3;
+}
+
+/* 🎯 強調數字資訊（總價 & 總時間） */
+.text-primary {
+  color: #f4a261 !important; /* 總時間 */
+}
+
+.text-success {
+  color: #6a89cc !important; /* 總金額 */
+}
+
+#recent-bookings li {
+  background-color: #2c2e4a;
+  border: 1px solid #4a4e69;
+  border-radius: 10px;
+  padding: 10px;
+  color: #f8f9fa;
+}
+.list-group-item.bg-secondary ul li {
+  background-color: #6c757d;
+  color: white;
+  border-radius: 8px;
+  margin: 4px 0;
+}
+/* 📱 條列式服務顯示美化 */
+.service-item {
+  background-color: #6c757d;
+  color: #fff;
+  border-radius: 8px;
+  margin: 4px 0;
+  font-size: 0.95rem;
+  padding: 6px 10px;
+}
+
+/* 📱 RWD 調整：預約記錄卡片 */
+#recent-bookings .list-group-item {
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+
+/* 🧩 collapse 按鈕間距調整 */
+@media (max-width: 768px) {
+  #recent-bookings .btn {
+    width: 100%;
+  }
 }
