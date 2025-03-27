@@ -116,3 +116,13 @@ body {
 .text-success {
   color: #6a89cc !important; /* 總金額 */
 }
+.accordion-button {
+  background-color: #3d405b;
+  color: #f4a261;
+}
+.accordion-body {
+  background-color: #2b2d42;
+  color: #ffffff;
+  font-size: 14px;
+  border-radius: 8px;
+}

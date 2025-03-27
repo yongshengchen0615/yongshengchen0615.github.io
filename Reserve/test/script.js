@@ -28,6 +28,8 @@ $(document).ready(async function () {
     BookingTimeModule.init("9:00", "21:00");
     BookingModule.init("#num-people", "#people-container", 5); //最多5人
     BookingStorageModule.restoreToForm(BookingStorageModule.load());
+    BookingStorageModule.renderAllHistoryUI(BookingStorageModule.load());
+
     // 🔻 ✅ 就放這裡
     $("#clear-history").click(() => {
         BookingStorageModule.clear();
