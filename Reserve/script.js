@@ -47,42 +47,47 @@ $(document).ready(async function () {
     const recentList = $("#recent-bookings");
     history.forEach((item, i) => {
         recentList.append(`
-        <li class="list-group-item bg-dark text-light mb-3 rounded-3 p-3">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+            <li class="list-group-item bg-dark text-light mb-3 rounded-3 p-3">
+              <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center recent-header">
                 <div>
-                    <strong>第 ${i + 1} 筆</strong><br>
-                    👤 ${item.name}<br>
-                    📅 ${item.date} ⏰ ${item.time}<br>
-                    👥 ${item.numPeople}人 ｜ 💰 $${item.total} 元
+                  <strong>第 ${i + 1} 筆</strong><br>
+                  👤 ${item.name}<br>
+                  📅 ${item.date} ⏰ ${item.time}<br>
+                  👥 ${item.numPeople}人 ｜ 💰 $${item.total} 元
                 </div>
                 <button class="btn btn-outline-info mt-2 mt-md-0" type="button" data-bs-toggle="collapse" data-bs-target="#detail-${i}">
-                    查看詳細服務
+                  查看詳細服務
                 </button>
-            </div>
-            <div class="collapse mt-3" id="detail-${i}">
-                <ul class="list-group">
-                    ${item.services.map(serviceBlock => {
-                        const lines = serviceBlock.split("\n");
-                        const title = lines[0]; // 👤 預約人 x
-                        const serviceLine = lines[1];
-                        const timeLine = lines[2];
-                        const priceLine = lines[3];
-    
-                        const serviceList = serviceLine.replace("- 服務內容：", "").split("、").map(s => `
-                            <li class="list-group-item service-item">${s}</li>`).join("");
-    
-                        return `
-                        <li class="list-group-item bg-secondary text-light rounded mb-2">
-                            <strong>${title}</strong>
-                            <ul class="list-group mt-2 mb-2">${serviceList}</ul>
-                            <div>${timeLine}</div>
-                            <div>${priceLine}</div>
-                        </li>`;
-                    }).join("")}
-                </ul>
-            </div>
-        </li>
-        `);
+              </div>
+              <div class="collapse mt-3" id="detail-${i}">
+                <div class="mt-2">
+                  ${item.services.map(serviceBlock => {
+                    const lines = serviceBlock.split("\n");
+                    const title = lines[0];
+                    const serviceLine = lines[1]?.replace("- 服務內容：", "") ?? "";
+                    const timeLine = lines[2] ?? "";
+                    const priceLine = lines[3] ?? "";
+            
+                    const serviceItems = serviceLine
+                      .split(/、|,|，/)
+                      .filter(s => s.trim() !== "")
+                      .map(s => `<li>${s.trim()}</li>`)
+                      .join("");
+            
+                    return `
+                      <div class="recent-person-block">
+                        <strong>${title}</strong>
+                        <ul>${serviceItems}</ul>
+                        <div>${timeLine}</div>
+                        <div>${priceLine}</div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              </div>
+            </li>
+            `);
+            
     });
     
 

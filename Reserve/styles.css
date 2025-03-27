@@ -152,3 +152,46 @@ body {
     width: 100%;
   }
 }
+/* ✅ 最近預約紀錄卡片基礎樣式 */
+#recent-bookings .list-group-item {
+  background-color: #1e1f2f;
+  border: 1px solid #44476a;
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 20px;
+  color: #f1f1f1;
+}
+
+/* ✅ collapse 內部每位預約人區塊 */
+.recent-person-block {
+  background-color: #2b2d42;
+  border-radius: 10px;
+  padding: 10px 15px;
+  margin-top: 10px;
+  font-size: 0.95rem;
+}
+
+/* ✅ 服務清單條列美化 */
+.recent-person-block ul {
+  padding-left: 18px;
+  margin-bottom: 8px;
+}
+
+.recent-person-block ul li {
+  list-style: disc;
+  margin-bottom: 4px;
+}
+
+/* ✅ 小螢幕專屬樣式（手機排版調整） */
+@media (max-width: 768px) {
+  .recent-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+
+  .recent-header button {
+    width: 100%;
+  }
+}
+
