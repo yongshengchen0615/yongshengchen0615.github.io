@@ -4,6 +4,29 @@ import { BookingModule } from "./bookingModule.js";
 import { BookingStorage } from "./bookingStorage.js";
 
 $(document).ready(async function () {
+    // ✅ LIFF 初始化（非強制登入）
+    try {
+        await liff.init({ liffId: "2005939681-WrwevLMV" });
+
+        if (!liff.isInClient()) {
+            alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
+        }
+
+        liff.getProfile().then(profile => {
+            alert("user ID:" + profile.userId);
+        }).catch(err => {
+            console.error("❌ 獲取用戶資訊失敗:", err);
+        });
+    } catch (err) {
+        console.error("❌ LIFF 初始化失敗", err);
+        alert("⚠️ 無法載入 LIFF，請重新整理頁面！");
+    }
+
+    // ✅ 初始化預約模組
+    BookingTimeModule.init("9:00", "21:00");
+    BookingModule.init("#num-people", "#people-container", 5);
+
+    // ✅ 自動還原上次預約資料（含服務）
     const lastData = BookingStorage.load();
     if (lastData) {
         $("#name").val(lastData.name);
@@ -13,8 +36,7 @@ $(document).ready(async function () {
         $("#booking-time").val(lastData.time);
         $("#num-people").val(lastData.numPeople).trigger("change");
 
-        // ⏳ 等人數欄位渲染完再加入服務
-        setTimeout(() => {
+        waitForPersonCards(lastData.numPeople, () => {
             $(".person-card").each(function (index) {
                 const personData = lastData.people[index];
                 personData.services.forEach(srv => {
@@ -25,46 +47,10 @@ $(document).ready(async function () {
                     select.siblings(".add-service").click();
                 });
             });
-        }, 100);
-    }
-
-
-    try {
-        await liff.init({ liffId: "2005939681-WrwevLMV" });
-        //  alert("您的使用者編號"+liff.profile.userId);
-
-        // 🛑 不強制登入，允許未登入的使用者使用
-        if (!liff.isInClient()) {
-            alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
-        }
-        // 獲取用戶資訊
-        liff.getProfile().then(profile => {
-            alert("user ID:" + profile.userId);
-        }).catch(err => {
-            console.error("❌ 獲取用戶資訊失敗:", err);
         });
-
-    } catch (err) {
-        console.error("❌ LIFF 初始化失敗", err);
-        alert("⚠️ 無法載入 LIFF，請重新整理頁面！");
     }
 
-    // ✅ 初始化「預約時間」模組
-    BookingTimeModule.init("9:00", "21:00");
-    BookingModule.init("#num-people", "#people-container", 5); //最多5人
-    function updateTotal() {
-        let totalTimeAll = 0, totalPriceAll = 0;
-        document.querySelectorAll(".person-card").forEach(person => {
-            totalTimeAll += parseInt(person.querySelector(".total-time").textContent);
-            totalPriceAll += parseInt(person.querySelector(".total-price").textContent);
-        });
-
-        $("#total-time-all").text(totalTimeAll);
-        $("#total-price-all").text(totalPriceAll);
-    }
-
-    // 初始化時計算一次總額（重要！）
-    updateTotal();
+    // ✅ 表單送出處理
     $("#booking-form").submit(function (event) {
         event.preventDefault();
 
@@ -72,19 +58,18 @@ $(document).ready(async function () {
             alert("請確保姓名與手機格式正確！");
             return;
         }
-        // ⭐️ 確保至少選了一個主要服務（只提示一次）
+
         if (!BookingModule.checkAtLeastOneServiceSelected()) return;
 
-        const date = BookingTimeModule.formatDateWithDay($("#booking-date").val());
+        const date = $("#booking-date").val();
         const time = $("#booking-time").val();
 
-
-        // ⭐️ 新增時間檢查
         if (!BookingTimeModule.isValidBookingTime(date, time)) {
             alert("⚠️ 當日預約已超過可預約時間，請選擇其他時段！");
             return;
         }
 
+        const formattedDate = BookingTimeModule.formatDateWithDay(date);
         const name = $("#name").val();
         const phone = $("#phone").val();
         const numPeople = $("#num-people").val();
@@ -121,21 +106,7 @@ $(document).ready(async function () {
         $("#total-time-all").text(totalTimeAll);
         $("#total-price-all").text(totalPriceAll);
 
-        const summary =
-            `   等待預約回覆
-    - 預約類型：${bookingTypeText}
-     📅 日期：${date}
-     ⏰ 時間：${time}
-     👤 姓名：${name}
-     📞 電話：${phone}
-     👥 人數：${numPeople} 人
-    
-    ${bookingDetails.join("\n\n")}
-    
-    ⏳ 總時間：${totalTimeAll} 分鐘
-    💰 總金額：$${totalPriceAll} 元`;
-
-        // ⭐️ 儲存資料到 localStorage
+        // ✅ 儲存資料到 localStorage
         BookingStorage.save({
             name, phone, bookingType: $("#booking-type").val(), date, time, numPeople,
             people: $(".person-card").map(function () {
@@ -150,15 +121,38 @@ $(document).ready(async function () {
             }).get()
         });
 
+        const summary =
+            `   等待預約回覆
+    - 預約類型：${bookingTypeText}
+     📅 日期：${formattedDate}
+     ⏰ 時間：${time}
+     👤 姓名：${name}
+     📞 電話：${phone}
+     👥 人數：${numPeople} 人
+
+    ${bookingDetails.join("\n\n")}
+
+    ⏳ 總時間：${totalTimeAll} 分鐘
+    💰 總金額：$${totalPriceAll} 元`;
 
         liff.sendMessages([{ type: "text", text: summary }])
             .then(() => {
                 alert("✅ 預約確認訊息已成功傳送！");
-                liff.closeWindow();  // ⭐️ 使用者確認後立即關閉
+                liff.closeWindow();
             })
             .catch(err => {
                 alert("⚠️ 發送訊息失敗：" + err);
                 console.error(err);
             });
     });
+
+    // 🧠 工具：等待人數卡片載入完成再執行回呼
+    function waitForPersonCards(count, callback) {
+        const interval = setInterval(() => {
+            if ($(".person-card").length === count) {
+                clearInterval(interval);
+                callback();
+            }
+        }, 50);
+    }
 });
