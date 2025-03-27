@@ -167,11 +167,14 @@ export const BookingModule = (() => {
             }
         }).trigger("change");
     }
-
-    function init(numPeopleSelector, peopleContainerSelector, maxPeople = 5) {
+    function init(numPeopleSelector, peopleContainerSelector, maxPeople = 5, onReadyCallback) {
         populateNumPeople(numPeopleSelector, maxPeople);
         bindEvents(numPeopleSelector, peopleContainerSelector);
-    }
+      
+        if (typeof onReadyCallback === "function") {
+          setTimeout(() => onReadyCallback(), 0);
+        }
+      }
 
     function addServiceByName(cardElement, serviceName, type = "main") {
         const serviceData = type === "main" ? mainServices : addonServices;
