@@ -161,9 +161,42 @@ export const BookingModule = (() => {
         bindEvents(numPeopleSelector, peopleContainerSelector);
         
     }
-
+    function  loadPreviousBooking(data) {
+        const { numPeople, people } = data;
+        document.querySelector("#num-people").value = numPeople;
+    
+        // 先建立人數卡片
+        this.generatePersonCards(numPeople);
+    
+        // 填入每個人服務資料
+        people.forEach((person, index) => {
+            const card = document.querySelectorAll(".person-card")[index];
+            const mainList = card.querySelector(".main-service-list");
+            const addonList = card.querySelector(".addon-service-list");
+    
+            person.services.forEach(service => {
+                const li = document.createElement("li");
+                li.setAttribute("data-time", service.serviceTime);
+                li.setAttribute("data-price", service.servicePrice);
+                li.textContent = service.serviceText;
+    
+                const removeBtn = document.createElement("button");
+                removeBtn.textContent = "❌";
+                removeBtn.onclick = () => li.remove();
+                li.appendChild(removeBtn);
+    
+                // 判斷要放主項或加購（這邊你可以改更細邏輯）
+                if (mainList.children.length === 0) {
+                    mainList.appendChild(li);
+                } else {
+                    addonList.appendChild(li);
+                }
+            });
+        });
+    }
     return { 
         init ,
-        checkAtLeastOneServiceSelected
+        checkAtLeastOneServiceSelected,
+        loadPreviousBooking
     };
 })();
