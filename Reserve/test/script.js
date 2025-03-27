@@ -5,7 +5,7 @@ import { BookingModule } from "./bookingModule.js";
 $(document).ready(async function () {
     await initLIFF();
 
-    BookingTimeModule.init("20:00", "8:00");
+    BookingTimeModule.init("9:00", "21:00");
     BookingModule.init("#num-people", "#people-container", 5);
     const saved = JSON.parse(localStorage.getItem("lastBookingData"));
     if (saved) {
@@ -47,15 +47,36 @@ $(document).ready(async function () {
     const recentList = $("#recent-bookings");
     history.forEach((item, i) => {
         recentList.append(`
-        <li class="list-group-item bg-dark text-light mb-2">
-            <strong>第 ${i + 1} 筆</strong>（${item.timestamp}）<br>
-            👤 ${item.name} ｜ ${item.date} ${item.time}｜ ${item.numPeople}人 ｜ 💰 $${item.total} 元
-            <details class="mt-1">
-              <summary class="text-info">查看詳細</summary>
-              <pre style="white-space: pre-wrap;">${item.services.join("\n\n")}</pre>
-            </details>
-        </li>
-    `);
+            <li class="list-group-item bg-dark text-light mb-2">
+              <strong>第 ${i + 1} 筆</strong>（${item.timestamp}）<br>
+              👤 ${item.name} ｜ ${item.date} ${item.time}｜ ${item.numPeople}人 ｜ 💰 $${item.total} 元
+              <details class="mt-1">
+                <summary class="text-info">查看詳細</summary>
+                <ul class="list-group mt-2">
+                  ${item.services.map(serviceBlock => {
+            const lines = serviceBlock.split("\n");
+            const title = lines[0]; // 👤 預約人 x
+            const serviceLine = lines[1]; // - 服務內容：...
+            const timeLine = lines[2];
+            const priceLine = lines[3];
+
+            const serviceList = serviceLine.replace("- 服務內容：", "").split("、").map(s => `
+                      <li class="list-group-item">${s}</li>`).join("");
+
+            return `
+                    <li class="list-group-item bg-secondary text-light mb-2">
+                      <strong>${title}</strong>
+                      <ul class="list-group mt-2 mb-2">${serviceList}</ul>
+                      <div>${timeLine}</div>
+                      <div>${priceLine}</div>
+                    </li>
+                    `;
+        }).join("")}
+                </ul>
+              </details>
+            </li>
+            `);
+
     });
 
 });

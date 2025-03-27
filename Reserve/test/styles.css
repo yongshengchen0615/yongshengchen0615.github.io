@@ -124,3 +124,9 @@ body {
   padding: 10px;
   color: #f8f9fa;
 }
+.list-group-item.bg-secondary ul li {
+  background-color: #6c757d;
+  color: white;
+  border-radius: 8px;
+  margin: 4px 0;
+}
