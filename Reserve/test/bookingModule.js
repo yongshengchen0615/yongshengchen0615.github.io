@@ -56,7 +56,7 @@ export const BookingModule = (() => {
                     <select class="form-select main-service">
                         ${serviceOptionsGrouped(mainServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">確認</button>
+                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加服務</button>
                 </div>
                 <ul class="list-group main-service-list mt-2"></ul>
 
@@ -65,7 +65,7 @@ export const BookingModule = (() => {
                     <select class="form-select addon-service">
                         ${serviceOptionsGrouped(addonServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">確認</button>
+                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加服務</button>
                 </div>
                 <ul class="list-group addon-service-list mt-2"></ul>
 
@@ -101,7 +101,7 @@ export const BookingModule = (() => {
         list.append(`
             <li class="list-group-item" data-time="${time}" data-price="${price}">
                 ${serviceName}
-                <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
+                <button type="button" class="btn btn-danger btn-sm remove-service">刪除服務</button>
             </li>
         `);
         timeElement.text(parseInt(timeElement.text()) + time);
@@ -186,7 +186,7 @@ export const BookingModule = (() => {
         list.append(`
             <li class="list-group-item" data-time="${time}" data-price="${price}">
                 ${serviceName}
-                <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
+                <button type="button" class="btn btn-danger btn-sm remove-service">刪除服務</button>
             </li>
         `);
         timeElement.text(parseInt(timeElement.text()) + time);
