@@ -66,7 +66,7 @@ export const HistoryModule = (() => {
     function loadFormData(data) {
         if (!data) return;
       
-        // ✅ 填入基本欄位（立即填）
+        // 先填入基本欄位
         $("#name").val(data.name);
         $("#phone").val(data.phone);
         $("#booking-date").val(data.date);
@@ -74,54 +74,46 @@ export const HistoryModule = (() => {
         $("#booking-type").val(data.type);
         $("#num-people").val(data.numPeople).trigger("change");
       
-        // ✅ 等待 #people-container 中 .person-card 全部載入後再填資料
-        const maxWaitTime = 3000; // 最多等 3 秒
-        let waited = 0;
+        // 觀察 DOM 是否生成了預期的人卡片數量
+        const target = document.getElementById("people-container");
       
-        const checkInterval = setInterval(() => {
-          const personCards = $(".person-card");
-          if (personCards.length === parseInt(data.numPeople)) {
-            clearInterval(checkInterval); // 停止等待
+        const observer = new MutationObserver(() => {
+          const cards = document.querySelectorAll(".person-card");
+          if (cards.length === parseInt(data.numPeople)) {
+            observer.disconnect(); // 停止觀察
       
-            personCards.each(function (index) {
+            // ✅ 開始填資料
+            $(".person-card").each(function (index) {
               const p = data.people[index];
               if (!p) return;
       
               const personEl = $(this);
       
-              // 填主要服務
+              // 主服務
               for (let service of p.main) {
                 const btn = personEl.find("[data-type='main']");
                 btn.siblings("select").val(service);
                 btn.click();
               }
       
-              // 填加購服務
+              // 加購服務
               for (let service of p.addon) {
                 const btn = personEl.find("[data-type='addon']");
                 btn.siblings("select").val(service);
                 btn.click();
               }
       
-              // 填備註
+              // 備註
               personEl.find(".person-note").val(p.note);
             });
       
-            // ✅ 可加提示
             alert("✅ 已成功填入上次預約內容！");
           }
+        });
       
-          waited += 100;
-          if (waited >= maxWaitTime) {
-            clearInterval(checkInterval);
-            alert("⚠️ 表單載入超時，無法自動填入。請重新操作。");
-          }
-        }, 100);
+        // 設定觀察條件：只觀察子元素變化
+        observer.observe(target, { childList: true });
       }
-      
-      
-      
-  
     return {
       saveBooking,
       getBooking,
