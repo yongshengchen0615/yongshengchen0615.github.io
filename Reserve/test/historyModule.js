@@ -64,35 +64,41 @@ export const HistoryModule = (() => {
   
     // ✨ 將儲存的資料自動填入表單（只填姓名、電話、基本欄位）
     function loadFormData(data) {
-      if (!data) return;
-      $("#name").val(data.name);
-      $("#phone").val(data.phone);
-      $("#booking-date").val(data.date);
-      $("#booking-time").val(data.time);
-      $("#booking-type").val(data.type);
-      $("#num-people").val(data.numPeople).trigger("change");
-  
-      // 填入服務與備註
-      setTimeout(() => {
-        $(".person-card").each(function (index) {
-          const p = data.people[index];
-          if (!p) return;
-  
-          const personEl = $(this);
-          for (let service of p.main) {
-            const btn = personEl.find("[data-type='main']");
-            btn.siblings("select").val(service);
-            btn.click();
+        if (!data) return;
+        $("#name").val(data.name);
+        $("#phone").val(data.phone);
+        $("#booking-date").val(data.date);
+        $("#booking-time").val(data.time);
+        $("#booking-type").val(data.type);
+        $("#num-people").val(data.numPeople).trigger("change");
+      
+        // 監聽人卡片生成完成後再填資料
+        const checkInterval = setInterval(() => {
+          const personCards = $(".person-card");
+          if (personCards.length === parseInt(data.numPeople)) {
+            clearInterval(checkInterval);
+      
+            personCards.each(function (index) {
+              const p = data.people[index];
+              if (!p) return;
+      
+              const personEl = $(this);
+              for (let service of p.main) {
+                const btn = personEl.find("[data-type='main']");
+                btn.siblings("select").val(service);
+                btn.click();
+              }
+              for (let service of p.addon) {
+                const btn = personEl.find("[data-type='addon']");
+                btn.siblings("select").val(service);
+                btn.click();
+              }
+              personEl.find(".person-note").val(p.note);
+            });
           }
-          for (let service of p.addon) {
-            const btn = personEl.find("[data-type='addon']");
-            btn.siblings("select").val(service);
-            btn.click();
-          }
-          personEl.find(".person-note").val(p.note);
-        });
-      }, 500); // 延遲填寫服務，等待 DOM 生出
-    }
+        }, 100);
+      }
+      
   
     return {
       saveBooking,
