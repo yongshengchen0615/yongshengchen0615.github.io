@@ -16,7 +16,7 @@
         <div class="card shadow p-4">
             <!-- 顯示使用者 ID -->
             <div id="user-info" class="text-center text-info mb-3" style="display:none;"></div>
-            <h2 class="text-center text-primary">經絡工程師預約系統v49</h2>
+            <h2 class="text-center text-primary">經絡工程師預約系統v50</h2>
             <form id="booking-form">
                 <!-- 預約類型 -->
                 <div class="mb-3">
@@ -96,7 +96,27 @@
         </div>
     </div>
 
-
+<!-- 📋 歷史紀錄 Modal -->
+<div id="history-modal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content" style="background-color:#3d405b; color:white;">
+        <div class="modal-header">
+          <h5 class="modal-title">上次預約紀錄</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="history-date" class="text-info"></p>
+          <pre id="history-summary" style="white-space: pre-wrap;"></pre>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-fill" class="btn btn-success">✅ 填入表單</button>
+          <button id="btn-delete" class="btn btn-danger">❌ 刪除紀錄</button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
 
     <!-- jQuery & Bootstrap -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -110,6 +130,7 @@
     <script type="module" src="previewModule.js"></script>
     <script type="module" src="historyModule.js"></script>
     <script type="module" src="mainController.js"></script>
+
 
 </body>
 

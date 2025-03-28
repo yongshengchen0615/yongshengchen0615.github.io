@@ -24,39 +24,43 @@ export const HistoryModule = (() => {
     }
   
     function bindHistoryButton(userId) {
-      const button = document.createElement("button");
-      button.textContent = "📜 查詢上次預約";
-      button.className = "btn btn-outline-info w-100 my-2";
-      button.addEventListener("click", () => {
-        const record = getBooking(userId);
-        if (!record) {
-          alert("尚未有任何預約紀錄！");
-          return;
-        }
-  
-        const options = `
-  上次預約時間：${new Date(record.date).toLocaleString()}
-  ----------------------------------------
-  ${record.summary}
-  ----------------------------------------
-  
-  ✅ 是否要：
-  1️⃣ 填入表單
-  2️⃣ 刪除紀錄
-  3️⃣ 關閉
-  請輸入：1 / 2 / 3`;
-  
-        const input = prompt(options);
-        if (input === "1") {
-          loadFormData(record.formData);
-        } else if (input === "2") {
-          deleteBooking(userId);
-          alert("❌ 已清除上次預約紀錄");
-        }
-      });
-  
-      document.querySelector("#booking-form").prepend(button);
-    }
+        const button = document.createElement("button");
+        button.textContent = "📜 查詢上次預約";
+        button.className = "btn btn-outline-info w-100 my-2";
+      
+        button.addEventListener("click", () => {
+          const record = getBooking(userId);
+          if (!record) {
+            alert("尚未有任何預約紀錄！");
+            return;
+          }
+      
+          // 顯示紀錄內容
+          document.getElementById("history-date").textContent = `🕒 時間：${new Date(record.date).toLocaleString()}`;
+          document.getElementById("history-summary").textContent = record.summary;
+      
+          // 綁定按鈕功能
+          document.getElementById("btn-fill").onclick = () => {
+            loadFormData(record.formData);
+            const modal = bootstrap.Modal.getInstance(document.getElementById("history-modal"));
+            modal.hide();
+          };
+      
+          document.getElementById("btn-delete").onclick = () => {
+            deleteBooking(userId);
+            alert("❌ 已清除上次預約紀錄！");
+            const modal = bootstrap.Modal.getInstance(document.getElementById("history-modal"));
+            modal.hide();
+          };
+      
+          // 顯示 modal
+          const modal = new bootstrap.Modal(document.getElementById("history-modal"));
+          modal.show();
+        });
+      
+        document.querySelector("#booking-form").prepend(button);
+      }
+      
   
     // ✨ 將儲存的資料自動填入表單（只填姓名、電話、基本欄位）
     function loadFormData(data) {
