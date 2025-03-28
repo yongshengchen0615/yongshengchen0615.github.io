@@ -2,6 +2,7 @@
 import { BookingTimeModule } from "./bookingTimeModule.js";
 import { BookingModule } from "./bookingModule.js";
 import { handleSubmit } from "./submitHandler.js";
+import { HistoryModule } from "./historyModule.js"; // ⬅️ 引入
 
 $(document).ready(async function () {
   try {
@@ -13,11 +14,14 @@ $(document).ready(async function () {
     }
 
     liff.getProfile()
-    .then(profile => {
-      const userInfoDiv = document.getElementById("user-info");
-      userInfoDiv.textContent = `👤 使用者 ID：${profile.userId}`;
-      userInfoDiv.style.display = "block";
-    })
+      .then(profile => {
+        const userInfoDiv = document.getElementById("user-info");
+        userInfoDiv.textContent = `👤 使用者 ID：${profile.userId}`;
+        userInfoDiv.style.display = "block";
+
+        // 綁定查詢按鈕
+        HistoryModule.bindHistoryButton(profile.userId);
+      })
   } catch (err) {
     console.error("❌ LIFF 初始化失敗", err);
     alert("⚠️ 無法載入 LIFF，請重新整理頁面！");

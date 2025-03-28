@@ -3,6 +3,7 @@ import { validateName, validatePhone } from "./validation.js";
 import { BookingModule } from "./bookingModule.js";
 import { BookingTimeModule } from "./bookingTimeModule.js";
 import { PreviewModule } from "./previewModule.js";
+import { HistoryModule } from "./historyModule.js"; // ⬅️ 記得引入
 
 export function handleSubmit() {
   if (!validateName() || !validatePhone()) {
@@ -79,6 +80,10 @@ ${bookingDetails.join("\n\n")}
 // 送出前：顯示預覽畫面
 PreviewModule.render(summary);
 PreviewModule.bindEvents((finalSummary) => {
+ // ✅ 儲存至 localStorage
+ const userId = liff.getContext()?.userId || "default";
+ HistoryModule.saveBooking(finalSummary, userId);
+
   // 使用者確認後才真正送出
   liff.sendMessages([{ type: "text", text: finalSummary }])
     .then(() => {
