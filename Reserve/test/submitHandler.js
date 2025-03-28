@@ -34,7 +34,7 @@ export function handleSubmit() {
     let personTime = 0;
     let personPrice = 0;
     const personServices = [];
-
+  
     $(this).find(".main-service-list li, .addon-service-list li").each(function () {
       const serviceText = $(this).clone().children("button").remove().end().text().trim();
       const serviceTime = parseInt($(this).attr("data-time"));
@@ -43,15 +43,19 @@ export function handleSubmit() {
       personTime += serviceTime;
       personPrice += servicePrice;
     });
-
+  
+    const personNote = $(this).find(".person-note").val().trim(); // 新增：取得備註
+  
     totalTimeAll += personTime;
     totalPriceAll += personPrice;
-
+  
     bookingDetails.push(`👤 預約人 ${personIndex}：
-- 服務內容：${personServices.join(", ")}
-- 服務總時間：${personTime} 分鐘
-- 服務總金額：$${personPrice} 元`);
+  - 服務內容：${personServices.join(", ")}
+  - 服務總時間：${personTime} 分鐘
+  - 服務總金額：$${personPrice} 元
+  - 備註：${personNote || "（無）"}`);
   });
+  
 
   $("#total-time-all").text(totalTimeAll);
   $("#total-price-all").text(totalPriceAll);

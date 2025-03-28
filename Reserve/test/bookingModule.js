@@ -56,6 +56,7 @@ export const BookingModule = (() => {
         return `
             <div class="person-card shadow p-3 mb-3" data-person="${index}">
                 <h5>預約人 ${index + 1}</h5>
+    
                 <label class="form-label">主要服務(點選添加)</label>
                 <div class="input-group">
                     <select class="form-select main-service">
@@ -64,7 +65,7 @@ export const BookingModule = (() => {
                     <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加</button>
                 </div>
                 <ul class="list-group main-service-list mt-2"></ul>
-
+    
                 <label class="form-label mt-2">加購服務(點選添加)</label>
                 <div class="input-group">
                     <select class="form-select addon-service">
@@ -73,7 +74,10 @@ export const BookingModule = (() => {
                     <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加</button>
                 </div>
                 <ul class="list-group addon-service-list mt-2"></ul>
-
+    
+                <label class="form-label mt-2">備註</label>
+                <textarea class="form-control person-note" rows="2" placeholder="如：不聊天 / 容易怕癢"></textarea>
+    
                 <div class="mt-2">
                     <h6>⏳ 個人總時間：<span class="total-time text-primary">0</span> 分鐘</h6>
                     <h6>💰 個人總價格：$<span class="total-price text-success">0</span> 元</h6>
@@ -81,6 +85,7 @@ export const BookingModule = (() => {
             </div>
         `;
     }
+    
 
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
