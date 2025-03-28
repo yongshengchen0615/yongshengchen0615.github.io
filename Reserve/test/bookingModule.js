@@ -56,21 +56,21 @@ export const BookingModule = (() => {
         return `
             <div class="person-card shadow p-3 mb-3" data-person="${index}">
                 <h5>預約人 ${index + 1}</h5>
-                <label class="form-label">選擇主要服務</label>
+                <label class="form-label">主要服務(點選添加)</label>
                 <div class="input-group">
                     <select class="form-select main-service">
                         ${serviceOptionsGrouped(mainServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">確認</button>
+                    <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加</button>
                 </div>
                 <ul class="list-group main-service-list mt-2"></ul>
 
-                <label class="form-label mt-2">選擇加購服務</label>
+                <label class="form-label mt-2">加購服務(點選添加)</label>
                 <div class="input-group">
                     <select class="form-select addon-service">
                         ${serviceOptionsGrouped(addonServices)}
                     </select>
-                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">確認</button>
+                    <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加</button>
                 </div>
                 <ul class="list-group addon-service-list mt-2"></ul>
 

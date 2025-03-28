@@ -2,6 +2,7 @@
 import { validateName, validatePhone } from "./validation.js";
 import { BookingModule } from "./bookingModule.js";
 import { BookingTimeModule } from "./bookingTimeModule.js";
+import { PreviewModule } from "./previewModule.js";
 
 export function handleSubmit() {
   if (!validateName() || !validatePhone()) {
@@ -69,8 +70,13 @@ ${bookingDetails.join("\n\n")}
 ⏳ 總時間：${totalTimeAll} 分鐘
 💰 總金額：$${totalPriceAll} 元`;
 
-  // 傳送至 LINE LIFF
-  liff.sendMessages([{ type: "text", text: summary }])
+
+
+// 送出前：顯示預覽畫面
+PreviewModule.render(summary);
+PreviewModule.bindEvents((finalSummary) => {
+  // 使用者確認後才真正送出
+  liff.sendMessages([{ type: "text", text: finalSummary }])
     .then(() => {
       alert("✅ 預約確認訊息已成功傳送！");
       liff.closeWindow();
@@ -79,4 +85,5 @@ ${bookingDetails.join("\n\n")}
       alert("⚠️ 發送訊息失敗：" + err);
       console.error(err);
     });
+});
 }
