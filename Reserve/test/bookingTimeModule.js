@@ -26,88 +26,97 @@ export const BookingTimeModule = (() => {
 
     function isValidBookingTime(dateStr, timeStr) {
         const now = new Date();
-    const selectedDate = new Date(dateStr);
-    const selectedTime = timeStr.split(":").map(Number);
-    const selectedMinutes = selectedTime[0] * 60 + selectedTime[1];
-
-    let [startHour, startMinute] = bookingStartTime.split(":").map(Number);
-    let [endHour, endMinute] = bookingEndTime.split(":").map(Number);
-    let startMinutes = startHour * 60 + startMinute;
-    let endMinutes = endHour * 60 + endMinute;
-
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-    // **檢查是否為當日預約**
-    const isToday = dateStr === today;
-
-    if (isToday) {
-        // 🛑 **當日預約：時間不能小於當前時間**
-        if (selectedMinutes <= nowMinutes) {
+        const selectedDateTime = new Date(`${dateStr}T${timeStr}`);
+        const nowTime = now.getTime();
+    
+        const selectedTimeInMin = selectedDateTime.getHours() * 60 + selectedDateTime.getMinutes();
+    
+        // 允許的時間範圍
+        const [startHour, startMin] = bookingStartTime.split(":").map(Number);
+        const [endHour, endMin] = bookingEndTime.split(":").map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+    
+        const bufferMinutes = 30; // 🔐 提前多久不能預約（預設：30分鐘）
+        const minAllowedTime = nowTime + bufferMinutes * 60 * 1000;
+    
+        const isToday = dateStr === getTodayStr();
+    
+        // ✅ 檢查當日是否選擇過去時間（考慮提前 buffer）
+        if (isToday && selectedDateTime.getTime() < minAllowedTime) {
             return false;
         }
-
-        // **跨日營業處理**
-        if (startMinutes > endMinutes) {
-            if (!(selectedMinutes >= startMinutes || selectedMinutes <= endMinutes)) {
-                return false;
-            }
+    
+        // ✅ 營業時間合法性檢查（跨日情況）
+        if (startMinutes <= endMinutes) {
+            // 正常時段
+            return selectedTimeInMin >= startMinutes && selectedTimeInMin <= endMinutes;
         } else {
-            if (selectedMinutes < startMinutes || selectedMinutes > endMinutes) {
-                return false;
-            }
-        }
-    } else {
-        // **未來日期預約**
-        if (startMinutes > endMinutes) {
-            // **營業時間為 20:00 - 03:00**
-            if (selectedMinutes >= startMinutes || selectedMinutes <= endMinutes) {
-                return true;
-            }
-        } else {
-            // **正常營業時間**
-            if (selectedMinutes >= startMinutes && selectedMinutes <= endMinutes) {
-                return true;
-            }
+            // 跨日：如 20:00 ~ 03:00
+            return selectedTimeInMin >= startMinutes || selectedTimeInMin <= endMinutes;
         }
     }
-
-    return false;
+    
+    // 🔁 補充：動態取得今日字串
+    function getTodayStr() {
+        const now = new Date();
+        return now.toISOString().split("T")[0];
     }
+    
 
     function updateTimeOptions() {
-        let timeUnit=30;
+        const timeUnit = 30; // 單位：每 30 分鐘
+        const bufferMinutes = 30; // ❗ 提前幾分鐘不可預約
+    
         const selectedDate = document.getElementById("booking-date").value;
         const now = new Date();
-        const isToday = selectedDate === today;
+        const isToday = selectedDate === getTodayStr();
     
-        let [startHour, startMinute] = bookingStartTime.split(":").map(Number);
-        let [endHour, endMinute] = bookingEndTime.split(":").map(Number);
-        let startMinutes = startHour * 60 + startMinute;
-        let endMinutes = endHour * 60 + endMinute;
-        let nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const nowTime = now.getTime();
+        const minAllowedTime = nowTime + bufferMinutes * 60 * 1000;
+    
+        const [startHour, startMinute] = bookingStartTime.split(":").map(Number);
+        const [endHour, endMinute] = bookingEndTime.split(":").map(Number);
+        const startMinutes = startHour * 60 + startMinute;
+        const endMinutes = endHour * 60 + endMinute;
     
         let timeOptions = "";
     
+        // 🕒 將分鐘轉為 Date 物件（方便比對時間合法性）
+        const createDate = (minutes) => {
+            const hour = Math.floor(minutes / 60).toString().padStart(2, "0");
+            const min = (minutes % 60).toString().padStart(2, "0");
+            return new Date(`${selectedDate}T${hour}:${min}`);
+        };
+    
         if (startMinutes > endMinutes) {
-            // **跨日營業時間（如 20:00 - 03:00）**
+            // 🔁 跨日營業
             for (let minutes = startMinutes; minutes < 1440; minutes += timeUnit) {
-                if (isToday && minutes <= nowMinutes) continue;
+                const optionDate = createDate(minutes);
+                if (isToday && optionDate.getTime() < minAllowedTime) continue;
                 timeOptions += generateOption(minutes);
             }
             for (let minutes = 0; minutes <= endMinutes; minutes += timeUnit) {
-                if (isToday && minutes <= nowMinutes) continue;
+                const optionDate = createDate(minutes);
+                if (isToday && optionDate.getTime() < minAllowedTime) continue;
                 timeOptions += generateOption(minutes);
             }
         } else {
-            // **正常營業時間（如 09:00 - 21:00）**
+            // ⏰ 正常營業
             for (let minutes = startMinutes; minutes <= endMinutes; minutes += timeUnit) {
-                if (isToday && minutes <= nowMinutes) continue;
+                const optionDate = createDate(minutes);
+                if (isToday && optionDate.getTime() < minAllowedTime) continue;
                 timeOptions += generateOption(minutes);
             }
         }
-    
-        document.getElementById("booking-time").innerHTML = timeOptions;
+        // ✅ 加在這裡
+    if (!timeOptions) {
+        timeOptions = `<option disabled selected>⚠️ 今日已無可預約時段</option>`;
     }
+
+    document.getElementById("booking-time").innerHTML = timeOptions;
+    }
+    
 
     // ✅ **將 `generateOption()` 定義在 `BookingTimeModule` 內部**
     function generateOption(minutes) {
