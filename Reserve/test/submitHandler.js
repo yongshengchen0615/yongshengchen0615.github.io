@@ -77,9 +77,37 @@ ${bookingDetails.join("\n\n")}
 
 
 
+
+
+
 // 送出前：顯示預覽畫面
 PreviewModule.render(summary);
 PreviewModule.bindEvents((finalSummary) => {
+  // ✅ 收集結構化表單資料
+  const bookingData = {
+    name,
+    phone,
+    date: $("#booking-date").val(),
+    time,
+    type: $("#booking-type").val(),
+    numPeople,
+    people: []
+  };
+
+  $(".person-card").each(function () {
+    const main = [];
+    const addon = [];
+
+    $(this).find(".main-service-list li").each(function () {
+      main.push($(this).clone().children("button").remove().end().text().trim());
+    });
+    $(this).find(".addon-service-list li").each(function () {
+      addon.push($(this).clone().children("button").remove().end().text().trim());
+    });
+
+    const note = $(this).find(".person-note").val().trim();
+    bookingData.people.push({ main, addon, note });
+  });
  // ✅ 儲存至 localStorage
  const userId = liff.getContext()?.userId || "default";
  HistoryModule.saveBooking(finalSummary, userId);
