@@ -33,24 +33,20 @@ export const BookingModule = (() => {
     }
 
 
-    function serviceOptionsGrouped(services) {
+    function serviceOptionsGrouped(serviceList) {
         const grouped = {};
-        for (const [name, info] of Object.entries(services)) {
-            if (!grouped[info.type]) grouped[info.type] = [];
-            grouped[info.type].push(name);
+        for (const s of serviceList) {
+          if (!grouped[s.type]) grouped[s.type] = [];
+          grouped[s.type].push(s);
         }
-    
-        return Object.entries(grouped)
-            .map(([type, names]) => `
-                <optgroup label="${type}">
-                    ${namesToOptions(names=names)}
-                </optgroup>
-            `).join("");
-    
-        function namesToOptions(names) {
-            return names.map(name => `<option value="${name}">${name}</option>`).join("");
-        }
-    }
+      
+        return Object.entries(grouped).map(([type, items]) => `
+          <optgroup label="${type}">
+            ${items.map(s => `<option value="${s.id}">${s.name}（${s.time} 分／$${s.price}）</option>`).join("")}
+          </optgroup>
+        `).join("");
+      }
+      
 
     function createPersonForm(index) {
         return `
@@ -100,25 +96,28 @@ export const BookingModule = (() => {
 
     function addService(button) {
         const type = button.data("type");
-        const serviceData = type === "main" ? mainServices : addonServices;
-        const serviceName = button.siblings("select").val();
+        const serviceList = type === "main" ? mainServices : addonServices;
+        const serviceId = button.siblings("select").val();
+        const service = serviceList.find(s => s.id === serviceId);
+        if (!service) return;
+      
         const listClass = type === "main" ? ".main-service-list" : ".addon-service-list";
         const list = button.closest(".person-card").find(listClass);
         const timeElement = button.closest(".person-card").find(".total-time");
         const priceElement = button.closest(".person-card").find(".total-price");
-        const { time, price, type: serviceType } = serviceData[serviceName];
-
+      
         list.append(`
-            <li class="list-group-item" data-time="${time}" data-price="${price}">
-                ${serviceName}
-                <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
-            </li>
+          <li class="list-group-item" data-id="${service.id}" data-time="${service.time}" data-price="${service.price}">
+            ${service.name}（${service.time} 分／$${service.price}）
+            <button type="button" class="btn btn-danger btn-sm remove-service">刪除</button>
+          </li>
         `);
-
-        timeElement.text(parseInt(timeElement.text()) + time);
-        priceElement.text(parseInt(priceElement.text()) + price);
+      
+        timeElement.text(parseInt(timeElement.text()) + service.time);
+        priceElement.text(parseInt(priceElement.text()) + service.price);
         updateTotal();
-    }
+      }
+      
 
     function removeService(button) {
         const item = button.parent();

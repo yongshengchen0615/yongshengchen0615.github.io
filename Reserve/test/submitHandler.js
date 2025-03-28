@@ -99,8 +99,8 @@ PreviewModule.bindEvents((finalSummary) => {
     const addon = [];
 
     $(this).find(".main-service-list li").each(function () {
-      main.push($(this).clone().children("button").remove().end().text().trim());
-    });
+      main.push($(this).attr("data-id"));
+    })
     $(this).find(".addon-service-list li").each(function () {
       addon.push($(this).clone().children("button").remove().end().text().trim());
     });
