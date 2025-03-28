@@ -54,6 +54,7 @@ $(document).ready(async function () {
     // ✅ 初始化「預約時間」模組
     BookingTimeModule.init("9:00", "21:00");
     BookingModule.init("#num-people", "#people-container", 5); //最多5人
+    restoreLastBooking(); // 🔁 加這行還原資料
     function updateTotal() {
         let totalTimeAll = 0, totalPriceAll = 0;
         document.querySelectorAll(".person-card").forEach(person => {
@@ -64,7 +65,42 @@ $(document).ready(async function () {
         $("#total-time-all").text(totalTimeAll);
         $("#total-price-all").text(totalPriceAll);
     }
+    function restoreLastBooking() {
+        const lastBooking = JSON.parse(localStorage.getItem("lastBookingData"));
+        if (!lastBooking) return;
 
+        $("#name").val(lastBooking.name);
+        $("#phone").val(lastBooking.phone);
+        $("#booking-type").val(lastBooking.bookingTypeText === "代訂他人" ? "other" : "self");
+        $("#booking-date").val(lastBooking.date);
+        $("#booking-time").val(lastBooking.time);
+        $("#num-people").val(lastBooking.numPeople).trigger("change");
+
+        // 等待人數改變後的卡片都產生完，再填入每人服務（使用 setTimeout 確保完成）
+        setTimeout(() => {
+            lastBooking.persons.forEach((person, index) => {
+                const card = $(`.person-card[data-person="${index}"]`);
+
+                // 主服務
+                person.mainServices.forEach(service => {
+                    const select = card.find(".main-service");
+                    if (select.find(`option[value="${service}"]`).length) {
+                        select.val(service);
+                        card.find(".add-service[data-type='main']").click();
+                    }
+                });
+
+                // 加購服務
+                person.addonServices.forEach(service => {
+                    const select = card.find(".addon-service");
+                    if (select.find(`option[value="${service}"]`).length) {
+                        select.val(service);
+                        card.find(".add-service[data-type='addon']").click();
+                    }
+                });
+            });
+        }, 300); // ⏳ 延遲 300ms 確保卡片與選單載入完畢
+    }
     // 初始化時計算一次總額（重要！）
     updateTotal();
     $("#booking-form").submit(function (event) {
@@ -168,3 +204,5 @@ $(document).ready(async function () {
             });
     });
 });
+
+
