@@ -12,10 +12,12 @@ $(document).ready(async function () {
       alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
     }
 
-    // 取得使用者資訊
     liff.getProfile()
-      .then(profile => alert("user ID:" + profile.userId))
-      .catch(err => console.error("❌ 獲取用戶資訊失敗:", err));
+    .then(profile => {
+      const userInfoDiv = document.getElementById("user-info");
+      userInfoDiv.textContent = `👤 使用者 ID：${profile.userId}`;
+      userInfoDiv.style.display = "block";
+    })
   } catch (err) {
     console.error("❌ LIFF 初始化失敗", err);
     alert("⚠️ 無法載入 LIFF，請重新整理頁面！");
