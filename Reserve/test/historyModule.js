@@ -65,6 +65,8 @@ export const HistoryModule = (() => {
     // ✨ 將儲存的資料自動填入表單（只填姓名、電話、基本欄位）
     function loadFormData(data) {
         if (!data) return;
+      
+        // ✅ 填入基本欄位（立即填）
         $("#name").val(data.name);
         $("#phone").val(data.phone);
         $("#booking-date").val(data.date);
@@ -72,32 +74,52 @@ export const HistoryModule = (() => {
         $("#booking-type").val(data.type);
         $("#num-people").val(data.numPeople).trigger("change");
       
-        // 監聽人卡片生成完成後再填資料
+        // ✅ 等待 #people-container 中 .person-card 全部載入後再填資料
+        const maxWaitTime = 3000; // 最多等 3 秒
+        let waited = 0;
+      
         const checkInterval = setInterval(() => {
           const personCards = $(".person-card");
           if (personCards.length === parseInt(data.numPeople)) {
-            clearInterval(checkInterval);
+            clearInterval(checkInterval); // 停止等待
       
             personCards.each(function (index) {
               const p = data.people[index];
               if (!p) return;
       
               const personEl = $(this);
+      
+              // 填主要服務
               for (let service of p.main) {
                 const btn = personEl.find("[data-type='main']");
                 btn.siblings("select").val(service);
                 btn.click();
               }
+      
+              // 填加購服務
               for (let service of p.addon) {
                 const btn = personEl.find("[data-type='addon']");
                 btn.siblings("select").val(service);
                 btn.click();
               }
+      
+              // 填備註
               personEl.find(".person-note").val(p.note);
             });
+      
+            // ✅ 可加提示
+            alert("✅ 已成功填入上次預約內容！");
+          }
+      
+          waited += 100;
+          if (waited >= maxWaitTime) {
+            clearInterval(checkInterval);
+            alert("⚠️ 表單載入超時，無法自動填入。請重新操作。");
           }
         }, 100);
       }
+      
+      
       
   
     return {
