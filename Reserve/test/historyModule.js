@@ -1,117 +1,64 @@
-// historyModule.js
-import { BookingStorageModule } from "./bookingStorageModule.js";
+function renderHistoryList(containerSelector) {
+    const container = document.querySelector(containerSelector);
+    if (!container) return;
 
-export const HistoryModule = (() => {
-    const historyKey = "bookingHistory";
+    const history = getHistory();
+    container.innerHTML = "";
 
-    // 儲存新紀錄到歷史中（最多保留10筆）
-    function saveToHistory(data) {
-        const history = getHistory();
-        history.unshift(data);
-        const limited = history.slice(0, 10);
-        localStorage.setItem(historyKey, JSON.stringify(limited));
+    if (history.length === 0) {
+        container.innerHTML = `<p class="text-muted">暫無預約紀錄</p>`;
+        return;
     }
 
-    // 取得所有歷史資料
-    function getHistory() {
-        return JSON.parse(localStorage.getItem(historyKey)) || [];
-    }
+    const accordionId = "historyAccordion";
+    const accordion = document.createElement("div");
+    accordion.className = "accordion";
+    accordion.id = accordionId;
 
-    // 以 index 還原某筆紀錄
-    function restoreFromHistory(index) {
-        const history = getHistory();
-        const record = history[index];
-        if (record) {
-            BookingStorageModule.restoreToForm(record);
-        }
-    }
+    history.forEach((record, index) => {
+        const collapseId = `collapse-${index}`;
+        const { totalTime, totalPrice } = calculateTotal(record);
+        const summary = getSummary(record);
+        const details = record.persons
+            .map((p, i) => {
+                const services = [...p.main, ...p.addon].map(s => `・${s}`).join("<br>");
+                return `<strong>👤 預約人 ${i + 1}</strong><br>${services}`;
+            })
+            .join("<hr>");
 
-    // 刪除某筆紀錄
-    function deleteHistory(index) {
-        const history = getHistory();
-        history.splice(index, 1);
-        localStorage.setItem(historyKey, JSON.stringify(history));
-    }
+        const item = document.createElement("div");
+        item.className = "accordion-item";
 
-    // 傳回簡要摘要（可搭配 UI 顯示）
-    function getSummary(data) {
-        return `📅 ${data.date} ⏰ ${data.time} 👤 ${data.name}（${data.numPeople}人）`;
-    }
+        item.innerHTML = `
+            <h2 class="accordion-header" id="heading-${index}">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                    ${summary} ｜ ⏳ ${totalTime} 分｜💰 $${totalPrice} 元
+                </button>
+            </h2>
+            <div id="${collapseId}" class="accordion-collapse collapse" aria-labelledby="heading-${index}" data-bs-parent="#${accordionId}">
+                <div class="accordion-body">
+                    <div class="mb-3">
+                        ${details}
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button class="btn btn-sm btn-outline-primary restore-btn">還原</button>
+                        <button class="btn btn-sm btn-outline-danger delete-btn">刪除</button>
+                    </div>
+                </div>
+            </div>
+        `;
 
-    // 產出 HTML 清單（可綁定在容器）
-    function renderHistoryList(containerSelector) {
-        const container = document.querySelector(containerSelector);
-        if (!container) return;
-
-        const history = getHistory();
-        container.innerHTML = "";
-
-        if (history.length === 0) {
-            container.innerHTML = `<p class="text-muted">暫無預約紀錄</p>`;
-            return;
-        }
-
-        history.forEach((record, index) => {
-            const collapseId = `collapse-${index}`;
-            const div = document.createElement("div");
-            div.className = "history-item border p-2 mb-2 rounded bg-light text-dark";
-
-            const summary = getSummary(record);
-            const details = record.persons
-                .map((p, i) => {
-                    const services = [...p.main, ...p.addon].join("、") || "無";
-                    return `👤 預約人 ${i + 1}<br>- ${services}`;
-                })
-                .join("<hr>");
-
-            div.innerHTML = `
-               <div class="history-item border p-2 mb-3 rounded bg-light text-dark">
-  <div class="row">
-    <!-- 📅 摘要區 -->
-    <div class="col-12 col-md-8 mb-2">
-      <strong>${summary}</strong>
-    </div>
-
-    <!-- 🔘 按鈕區 -->
-    <div class="col-12 col-md-4 d-flex flex-wrap justify-content-md-end gap-2">
-      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
-        🔽 詳細
-      </button>
-      <button class="btn btn-sm btn-outline-primary restore-btn">還原</button>
-      <button class="btn btn-sm btn-outline-danger delete-btn">刪除</button>
-    </div>
-  </div>
-
-  <!-- 🔽 展開詳細 -->
-  <div id="${collapseId}" class="collapse mt-2">
-    <div class="card card-body bg-white text-dark small">
-      ${details}
-    </div>
-  </div>
-</div>
-
-            `;
-
-            div.querySelector(".restore-btn").addEventListener("click", () => {
-                restoreFromHistory(index);
-            });
-
-            div.querySelector(".delete-btn").addEventListener("click", () => {
-                deleteHistory(index);
-                renderHistoryList(containerSelector); // 重新載入
-            });
-
-            container.appendChild(div);
+        item.querySelector(".restore-btn").addEventListener("click", () => {
+            restoreFromHistory(index);
         });
-    }
 
+        item.querySelector(".delete-btn").addEventListener("click", () => {
+            deleteHistory(index);
+            renderHistoryList(containerSelector); // 重新載入
+        });
 
-    return {
-        saveToHistory,
-        getHistory,
-        restoreFromHistory,
-        deleteHistory,
-        getSummary,
-        renderHistoryList
-    };
-})();
+        accordion.appendChild(item);
+    });
+
+    container.appendChild(accordion);
+}
