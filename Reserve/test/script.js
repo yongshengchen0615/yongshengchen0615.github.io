@@ -51,7 +51,13 @@ $(document).ready(async function () {
     BookingModule.init("#num-people", "#people-container", 5); // 最多5人
 
     // ▶ 嘗試還原上次預約
-    BookingStorageModule.restoreToForm(BookingStorageModule.load());
+    BookingStorageModule.restoreToForm(
+        BookingStorageModule.load(),
+        () => {
+            console.log("✅ 預約資料還原完成！");
+            // 可加上自動計算總價時間或其他行為
+        }
+    );
 
     // ▶ 清除上次預約事件
     document.getElementById("clear-history").addEventListener("click", () => {

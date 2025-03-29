@@ -1,4 +1,4 @@
-// bookingStorageModule.js
+// bookingStorageModule.js ✅ callback 版本
 export const BookingStorageModule = (() => {
     const storageKey = "lastBooking";
 
@@ -15,7 +15,8 @@ export const BookingStorageModule = (() => {
         localStorage.removeItem(storageKey);
     }
 
-    function restoreToForm(data) {
+    // ✅ 接收 callback
+    function restoreToForm(data, callback) {
         if (!data) return;
 
         $("#booking-type").val(data.bookingType);
@@ -25,25 +26,36 @@ export const BookingStorageModule = (() => {
         $("#booking-time").val(data.time);
         $("#num-people").val(data.numPeople).trigger("change");
 
-        // 等待預約人卡片動態生成完畢後填入服務
-        setTimeout(() => {
-            $(".person-card").each(function (i) {
-                const personData = data.persons[i];
-                if (!personData) return;
+        // 改用 MutationObserver 檢查 DOM 生成是否完成
+        const observer = new MutationObserver(() => {
+            if ($(".person-card").length === parseInt(data.numPeople)) {
+                observer.disconnect();
 
-                personData.main.forEach(service => {
-                    const select = $(this).find(".main-service");
-                    select.val(service);
-                    $(this).find(".add-service[data-type='main']").click();
+                $(".person-card").each(function (i) {
+                    const personData = data.persons[i];
+                    if (!personData) return;
+
+                    personData.main.forEach(service => {
+                        const select = $(this).find(".main-service");
+                        select.val(service);
+                        $(this).find(".add-service[data-type='main']").click();
+                    });
+
+                    personData.addon.forEach(service => {
+                        const select = $(this).find(".addon-service");
+                        select.val(service);
+                        $(this).find(".add-service[data-type='addon']").click();
+                    });
                 });
 
-                personData.addon.forEach(service => {
-                    const select = $(this).find(".addon-service");
-                    select.val(service);
-                    $(this).find(".add-service[data-type='addon']").click();
-                });
-            });
-        }, 100);
+                if (typeof callback === "function") callback(); // ✅ 完成後執行 callback
+            }
+        });
+
+        observer.observe(document.getElementById("people-container"), {
+            childList: true,
+            subtree: true
+        });
     }
 
     return {
