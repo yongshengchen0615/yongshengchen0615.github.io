@@ -17,8 +17,8 @@ $(document).ready(async function () {
         }
         // 獲取用戶資訊
         liff.getProfile().then(profile => {
-    
-            alert("user ID:" + profile.userId);
+            document.getElementById("user-id").textContent = `UserID: ${profile.userId}`;
+           // alert("user ID:" + profile.userId);
         }).catch(err => {
             console.error("❌ 獲取用戶資訊失敗:", err);
         });
