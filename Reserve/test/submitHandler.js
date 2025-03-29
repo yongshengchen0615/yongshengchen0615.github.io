@@ -44,7 +44,7 @@ export function handleSubmit() {
 - 服務總金額：$${priceSum} 元`;
         });
 
-        const totalTime = $("#total-time-all").text();
+       // const totalTime = $("#total-time-all").text();
         const totalPrice = $("#total-price-all").text();
 
         const summary = `等待預約回覆

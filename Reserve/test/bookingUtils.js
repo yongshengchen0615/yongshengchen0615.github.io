@@ -8,7 +8,7 @@ export function updateTotalAll() {
         totalPriceAll += parseInt(person.querySelector(".total-price").textContent);
     });
 
-    document.getElementById("total-time-all").textContent = totalTimeAll;
+  //  document.getElementById("total-time-all").textContent = totalTimeAll;
     document.getElementById("total-price-all").textContent = totalPriceAll;
 }
 
