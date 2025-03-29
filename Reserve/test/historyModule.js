@@ -52,18 +52,44 @@ export const HistoryModule = (() => {
         }
 
         history.forEach((record, index) => {
+            const collapseId = `collapse-${index}`;
             const div = document.createElement("div");
             div.className = "history-item border p-2 mb-2 rounded bg-light text-dark";
+
+            const summary = getSummary(record);
+            const details = record.persons
+                .map((p, i) => {
+                    const services = [...p.main, ...p.addon].join("、") || "無";
+                    return `👤 預約人 ${i + 1}<br>- ${services}`;
+                })
+                .join("<hr>");
+
             div.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>${getSummary(record)}</strong>
-                    </div>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary me-2 restore-btn">還原</button>
-                        <button class="btn btn-sm btn-outline-danger delete-btn">刪除</button>
-                    </div>
-                </div>
+               <div class="history-item border p-2 mb-3 rounded bg-light text-dark">
+  <div class="row">
+    <!-- 📅 摘要區 -->
+    <div class="col-12 col-md-8 mb-2">
+      <strong>${summary}</strong>
+    </div>
+
+    <!-- 🔘 按鈕區 -->
+    <div class="col-12 col-md-4 d-flex flex-wrap justify-content-md-end gap-2">
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+        🔽 詳細
+      </button>
+      <button class="btn btn-sm btn-outline-primary restore-btn">還原</button>
+      <button class="btn btn-sm btn-outline-danger delete-btn">刪除</button>
+    </div>
+  </div>
+
+  <!-- 🔽 展開詳細 -->
+  <div id="${collapseId}" class="collapse mt-2">
+    <div class="card card-body bg-white text-dark small">
+      ${details}
+    </div>
+  </div>
+</div>
+
             `;
 
             div.querySelector(".restore-btn").addEventListener("click", () => {
@@ -78,6 +104,7 @@ export const HistoryModule = (() => {
             container.appendChild(div);
         });
     }
+
 
     return {
         saveToHistory,
