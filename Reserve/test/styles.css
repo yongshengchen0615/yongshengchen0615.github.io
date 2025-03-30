@@ -1,0 +1,137 @@
+/* 🌙 柔和暗色模式主題變數 */
+:root {
+  --color-bg-dark: #2b2d42;
+  --color-card-bg: #3d405b;
+  --color-light-text: #f8f9fa;
+  --color-highlight-blue: #6a89cc;
+  --color-highlight-orange: #f4a261;
+  --color-btn-danger: #e76f51;
+  --color-btn-danger-hover: #d62828;
+  --color-btn-success: #2a9d8f;
+  --color-btn-success-hover: #1d756b;
+  --color-list-bg: #44476a;
+}
+
+/* 🌙 整體背景與文字 */
+body {
+  background-color: var(--color-bg-dark);
+  font-family: Arial, sans-serif;
+  color: var(--color-light-text);
+}
+
+/* 📦 卡片樣式 */
+.card, .summary-card, .person-card {
+  background: var(--color-card-bg);
+  color: var(--color-light-text);
+  border-radius: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  padding: 20px;
+  max-width: 600px;
+  margin: auto;
+}
+
+.summary-card {
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+.person-card {
+  border-radius: 20px;
+  background-color: var(--color-list-bg);
+  padding: 15px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.person-card h5 {
+  color: #a8dadc;
+  font-weight: bold;
+}
+
+.person-card .main-service-list {
+  border-left: 4px solid var(--color-highlight-blue);
+  padding-left: 10px;
+}
+
+.person-card .addon-service-list {
+  border-left: 4px solid var(--color-highlight-orange);
+  padding-left: 10px;
+}
+
+.person-card h6 {
+  font-size: 16px;
+  color: #d3d3d3;
+}
+
+/* 🎯 數字強調 */
+.text-primary {
+  color: var(--color-highlight-orange) !important;
+}
+
+.text-success {
+  color: var(--color-highlight-blue) !important;
+}
+
+/* 📝 列表樣式 */
+.list-group-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-list-bg);
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin-top: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+  color: var(--color-light-text);
+}
+
+/* 🏷 按鈕基礎樣式 */
+.btn {
+  font-size: 1.1rem;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+/* 主要按鈕 */
+.btn-outline-primary {
+  border-color: var(--color-highlight-blue);
+  color: var(--color-highlight-blue);
+  background-color: transparent;
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--color-highlight-blue);
+  color: white;
+}
+
+/* 刪除按鈕 */
+.btn-outline-danger,
+#clear-history {
+  width: 100%;
+  margin-top: 8px;
+  border: 2px solid var(--color-btn-danger);
+  background-color: transparent;
+  color: var(--color-btn-danger);
+}
+
+.btn-outline-danger:hover,
+#clear-history:hover {
+  background-color: var(--color-btn-danger);
+  color: white;
+}
+
+/* 確認按鈕 */
+.btn-success {
+  background-color: var(--color-btn-success);
+  border: none;
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: var(--color-btn-success-hover);
+}
+.is-invalid {
+  border: 2px solid #e76f51 !important;
+  background-color: #4a2c2c !important;
+}
