@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>經絡工程師專屬預約系統</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+
+    <!-- Bootstrap 5 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="styles/styles.css">
+</head>
+
+<body>
+    <!-- 清除 localStorage（測試用） -->
+    <!-- 🧪 測試工具區（僅在 TestMode 顯示） -->
+    <div id="test-tools" class="text-center mt-3 d-none">
+        <div class="mb-2">
+            <span class="badge bg-warning text-dark fw-bold">🧪 測試模式開啟</span>
+        </div>
+        <button id="clear-all-storage" class="btn btn-outline-danger mb-2">🧹 清除所有儲存資料</button>
+        <button id="inject-test" class="btn btn-secondary">填入測試資料</button>
+    </div>
+    <div class="container mt-5">
+        <div class="card shadow p-4">
+            <h2 class="text-center text-primary">經絡工程師預約系統v69</h2>
+            <form id="user-id"></form>
+
+            <form id="booking-form">
+                <!-- 預約類型 -->
+                <div class="mb-3">
+                    <label class="form-label">預約類型</label>
+                    <select id="booking-type" class="form-select">
+                        <option value="self">本人預約</option>
+                        <option value="other">代訂他人</option>
+                    </select>
+                </div>
+
+                <!-- 預約人姓名 -->
+                <div class="mb-3">
+                    <label for="name" class="form-label">預約人姓名</label>
+                    <input type="text" id="name" class="form-control" placeholder="請輸入姓名" required />
+                    <small class="text-danger" id="name-error"></small>
+                </div>
+
+                <!-- 聯絡電話 -->
+                <div class="mb-3">
+                    <label for="phone" class="form-label">聯絡電話</label>
+                    <input type="tel" id="phone" class="form-control" placeholder="請輸入電話" required />
+                    <small class="text-danger" id="phone-error"></small>
+                </div>
+                <!-- 預約日期 -->
+                <div class="mb-3">
+                    <label for="booking-date" class="form-label">預約日期</label>
+                    <div class="booking-note" id="date-note"></div>
+                    <input type="date" id="booking-date" class="form-control" required onkeydown="return false;" />
+                </div>
+
+                <!-- 預約時間 -->
+                <h6 class="booking-note"><span id="time-bufferMinutes">載入中...</span></h6>
+                <div class="mb-3">
+                    <label for="booking-time" class="form-label">
+                        預約時間 <span id="time-range">載入中...</span>
+                    </label>
+                    <select id="booking-time" class="form-select" required></select>
+                </div>
+
+                <!-- 預約人數 -->
+                <div class="mb-3">
+                    <label for="num-people" class="form-label">預約人數</label>
+                    <select id="num-people" class="form-select"></select>
+                </div>
+                <h6>每項服務均送龜苓膏 + 10分鐘肩頸服務</h6>
+                <!-- 預約人動態表單插入點 -->
+                <div id="people-container"></div>
+
+                <!-- 總計資訊 -->
+                <div class="summary-card mt-3 p-3 shadow">
+                    <h5 class="text-center text-dark">💡 總計</h5>
+                    <div class="d-flex justify-content-between">
+                        <h6>💰 總價格：</h6>
+                        <h6>$<span id="total-price-all" class="text-success">0</span> 元</h6>
+                    </div>
+                    <!--  <div class="d-flex justify-content-between">
+                        <h6>⏳ 總時間：</h6>
+                        <h6><span id="total-time-all" class="text-primary">0</span> 分鐘</h6>
+                    </div>-->
+                </div>
+
+                <button type="submit" class="btn btn-success w-100 mt-3">確認預約</button>
+                <p id="status" class="mt-3 text-center text-success fw-bold"></p>
+            </form>
+
+            <!-- 預約紀錄 -->
+            <div class="card shadow p-3 mt-4">
+                <h5 class="text-center text-secondary">📜 預約紀錄</h5>
+                <div id="history-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔁 動態預約人表單樣板 -->
+    <template id="person-form-template">
+        <div class="person-card shadow p-3 mb-3" data-person="{{index}}">
+            <h5>預約人 {{indexDisplay}}</h5>
+
+            <label class="form-label">選擇主要服務</label>
+            <div class="input-group">
+                <select class="form-select main-service">
+                    <!-- JS 動態填入 -->
+                </select>
+                <button type="button" class="btn btn-outline-primary add-service" data-type="main">添加</button>
+            </div>
+            <ul class="list-group main-service-list mt-2"></ul>
+
+            <label class="form-label mt-2">選擇加購服務</label>
+            <div class="input-group">
+                <select class="form-select addon-service">
+                    <!-- JS 動態填入 -->
+                </select>
+                <button type="button" class="btn btn-outline-secondary add-service" data-type="addon">添加</button>
+            </div>
+            <ul class="list-group addon-service-list mt-2"></ul>
+            <!-- 個人備註欄位 -->
+            <div class="mt-2">
+                <label class="form-label">備註（選填）</label>
+                <textarea class="form-control person-note" rows="2" placeholder="如有特殊需求請填寫..."></textarea>
+            </div>
+
+            <div class="mt-2">
+                <h6>⏳ 個人總時間：<span class="total-time text-primary">0</span> 分鐘</h6>
+                <h6>💰 個人總價格：$<span class="total-price text-success">0</span> 元</h6>
+            </div>
+        </div>
+    </template>
+
+    <!-- JS 套件與模組 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <script type="module" src="js/utils/validation.js"></script>
+    <script type="module" src="js/utils/bookingUtils.js"></script>
+    <script type="module" src="js/modules/bookingTimeModule.js"></script>
+    <script type="module" src="js/modules/bookingStorageModule.js"></script>
+    <script type="module" src="js/modules/bookingModule.js"></script>
+    <script type="module" src="js/modules/historyModule.js"></script>
+    <script type="module" src="js/modules/testModeModule.js"></script>
+    <script type="module" src="js/handlers/submitHandler.js"></script>
+    <script type="module" src="main.js"></script>
+</body>
+
+</html>
