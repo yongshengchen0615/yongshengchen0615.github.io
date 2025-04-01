@@ -1,0 +1,153 @@
+:root {
+  --color-bg-light: #E2D2D2;              /* 頁面背景（雪白粉） */
+  --color-card-bg: #FFFFFF;               /* 卡片背景 */
+  --color-dark-text: #333;                /* 文字顏色 */
+  --color-highlight-blue: #BFC8D7;        /* 標題區、hover 淡藍灰 */
+  --color-highlight-yellow: #E3E2B4;      /* 柔和米黃，重要提示 */
+  --color-btn-success: #A2B59F;           /* 成功按鈕用灰綠色 */
+  --color-btn-success-hover: #8CA588;
+  --color-btn-danger: #CC5C5C;
+  --color-btn-danger-hover: #A64444;
+  --color-list-bg: #F8F8F8;               /* 列表背景 */
+}
+
+/* 整體背景與文字 */
+body {
+  background-color: var(--color-bg-light);
+  font-family: 'Arial', sans-serif;
+  color: var(--color-dark-text);
+}
+
+/* 卡片 */
+.card, .summary-card, .person-card {
+  background: var(--color-card-bg);
+  color: var(--color-dark-text);
+  border-radius: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  max-width: 600px;
+  margin: auto;
+}
+
+.summary-card {
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.person-card {
+  border-radius: 20px;
+  background-color: var(--color-list-bg);
+  padding: 15px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+}
+
+.person-card h5 {
+  color: var(--color-btn-success);
+  font-weight: bold;
+}
+
+.person-card .main-service-list {
+  border-left: 4px solid var(--color-highlight-blue);
+  padding-left: 10px;
+}
+
+.person-card .addon-service-list {
+  border-left: 4px solid var(--color-highlight-yellow);
+  padding-left: 10px;
+}
+
+.person-card h6 {
+  font-size: 16px;
+  color: #666;
+}
+
+/* 強調文字 */
+.text-primary {
+  color: var(--color-highlight-yellow) !important;
+}
+
+.text-success {
+  color: var(--color-highlight-blue) !important;
+}
+
+/* 列表樣式 */
+.list-group-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-list-bg);
+  border-radius: 10px;
+  padding: 12px 15px;
+  margin-top: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  font-weight: bold;
+  color: var(--color-dark-text);
+}
+
+/* 按鈕通用 */
+.btn {
+  font-size: 1.1rem;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+/* 主要按鈕（淡藍灰） */
+.btn-outline-primary {
+  border-color: var(--color-highlight-blue);
+  color: var(--color-highlight-blue);
+  background-color: transparent;
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--color-highlight-blue);
+  color: rgb(255, 255, 255);
+}
+/* 刪除按鈕 */
+.btn-outline-danger,
+#clear-history {
+  width: 100%;
+  margin-top: 8px;
+  border: 2px solid var(--color-btn-danger);
+  background-color: transparent;
+  color: var(--color-btn-danger);
+}
+
+.btn-outline-danger:hover,
+#clear-history:hover {
+  background-color: var(--color-btn-danger-hover);
+  color: white;
+}
+
+/* 成功按鈕 */
+.btn-success {
+  background-color: var(--color-btn-success);
+  border: none;
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: var(--color-btn-success-hover);
+}
+
+/* 支援多行 Accordion 標題 */
+.accordion-button.multi-line {
+  white-space: normal !important;
+  text-align: left;
+}
+
+/* 裝置優化 */
+html, body {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  -ms-touch-action: manipulation;
+}
+
+/* 預約提醒樣式 */
+.booking-note {
+  font-size: 14px;
+  color: #d9534f; /* 紅色提醒 */
+  font-weight: bold;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
