@@ -26,7 +26,7 @@ $(document).ready(async function () {
             });
         }
 
-        await liff.init({ liffId: "2005939681-WrwevLMV" });
+        await liff.init({ liffId: "2005939681-0EkdVl4g" });
         //  alert("您的使用者編號"+liff.profile.userId);
 
         // 🛑 不強制登入，允許未登入的使用者使用
