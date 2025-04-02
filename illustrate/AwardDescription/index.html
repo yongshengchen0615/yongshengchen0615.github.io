@@ -19,6 +19,24 @@
             color: #d9534f;
             font-weight: bold;
         }
+
+        .btn-line {
+        background-color: #00C300;
+        color: white;
+        font-weight: bold;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        text-decoration: none; /* 取消底線 */
+        display: inline-block;
+        transition: background-color 0.3s ease;
+    }
+    .btn-line:hover {
+        background-color: #00a500;
+        color: white;
+        text-decoration: none; /* 確保 hover 時也沒底線 */
+    }
     </style>
 </head>
 <body>
@@ -65,7 +83,12 @@
             <li>🎉 立即刮開你的幸運獎品！</li>
         </ol>
     </div>
-
+<!-- 加入LINE集點卡按鈕 -->
+<div class="text-center mt-4">
+    <a href="https://u.lin.ee/iIlOdke" target="blank" class="btn-line">
+        我的 LINE 集點卡
+    </a>
+</div>
    
 </div>
 
