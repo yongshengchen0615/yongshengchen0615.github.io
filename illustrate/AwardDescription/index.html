@@ -1,134 +1,131 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>經絡工程師 刮刮樂活動</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>經絡工程師 刮刮樂活動</title>
 
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <style>
-        body {
-            background-color: #f8f8f8;
-        }
-        .container {
-            max-width: 800px;
-        }
-        .highlight {
-            color: #d9534f;
-            font-weight: bold;
-        }
-
-        .btn-line {
-        background-color: #00C300;
-        color: white;
-        font-weight: bold;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-size: 1.2rem;
-        text-decoration: none; /* 取消底線 */
-        display: inline-block;
-        transition: background-color 0.3s ease;
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <style>
+    body {
+      background-color: #f8f8f8;
+    }
+    .container {
+      max-width: 800px;
+    }
+    .highlight {
+      color: #d9534f;
+      font-weight: bold;
+    }
+    .btn-line {
+      background-color: #00C300;
+      color: white;
+      font-weight: bold;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      text-decoration: none;
+      display: inline-block;
+      transition: background-color 0.3s ease;
     }
     .btn-line:hover {
-        background-color: #00a500;
-        color: white;
-        text-decoration: none; /* 確保 hover 時也沒底線 */
+      background-color: #00a500;
+      color: white;
+      text-decoration: none;
     }
-    </style>
+  </style>
 </head>
 <body>
 
 <div class="container mt-5">
-    <div class="text-center mb-4">
-        <h1 class="text-primary">🎉 經絡工程師 刮刮樂活動 🎉</h1>
-        <h4>💆‍♂️ 預約 No.10 技師，累積點數，刮出好禮！</h4>
-        <p class="text-muted">📅 活動長期有效，隨時累積，<span class="highlight">現場兌換</span></p>
-    </div>
+  <div class="text-center mb-4">
+    <h1 class="text-primary">🎉 經絡工程師 刮刮樂活動 🎉</h1>
+    <h4>💆‍♂️ 預約 No.10 技師，累積點數，刮出好禮！</h4>
+    <p class="text-muted">📅 活動長期有效，隨時累積，<span class="highlight">現場兌換</span></p>
+  </div>
 
-    <!-- 如何獲得點數 -->
-    <div class="card shadow-sm p-4">
-        <h5 class="mb-3">🎟 <strong>如何獲得點數？</strong></h5>
-        <ul class="list-group">
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                ✅ 平日透過官方帳號預約 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                ✅ 假日現場指定 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>✅ Google 留 <span class="highlight">5 星好評</span> 並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</span>
-                <a href="https://www.google.com/search?q=不老松足湯台南府前行館&ludocid=YOUR_PLACE_ID#lrd=0x0:0x0,1" target="_blank" class="btn btn-outline-primary btn-sm">給 5 星</a>
-            </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>✅ IG/FB 限時動態分享官方帳號，並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</span>
-                <button class="btn btn-outline-success btn-sm" onclick="shareToSocial()">分享至IG/FB</button>
-            </li>
-            <li class="list-group-item">
-                ✅ 推薦好友來體驗，推薦人可獲得 <span class="badge bg-success">1 點</span>
-            </li>
-        </ul>
-        
-        <p class="text-danger fw-bold mt-3">📌 每累積 5 點，即可獲得 1 張刮刮樂！</p>
-    </div>
+  <!-- 如何獲得點數 -->
+  <div class="card shadow-sm p-4">
+    <h5 class="mb-3">🎟 <strong>如何獲得點數？</strong></h5>
+    <ul class="list-group">
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        ✅ 平日透過官方帳號預約 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        ✅ 假日現場指定 No.10 技師，每 1 小時獲得 <span class="badge bg-danger">1 點</span>
+      </li>
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>✅ Google 留 <span class="highlight">5 星好評</span> 並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</span>
+        <a href="https://search.google.com/local/writereview?placeid=ChIJX_ekda53bjQRR3nx3JL8L2o" target="_blank" class="btn btn-outline-primary btn-sm">給 5 星</a>
+      </li>
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>✅ IG/FB 限時動態分享官方帳號，並截圖回傳，獲得 <span class="badge bg-warning text-dark">1 點</span>（每日 1 次）</span>
+        <button class="btn btn-outline-success btn-sm" onclick="shareToSocial()">分享</button>
+      </li>
+      <li class="list-group-item">
+        ✅ 推薦好友來體驗，推薦人可獲得 <span class="badge bg-success">1 點</span>
+      </li>
+    </ul>
+    <p class="text-danger fw-bold mt-3">📌 每累積 5 點，即可獲得 1 張刮刮樂！</p>
+  </div>
 
-    <!-- 刮刮樂獎勵 -->
-    <div class="card mt-4 shadow-sm p-4">
-        <h5 class="mb-3">🎫 刮刮樂獎勵</h5>
-        <div class="alert alert-info">✨ 獎品可能包含免費按摩、足浴包、甜湯等！</div>
-        <ul class="list-group">
-            <li class="list-group-item">🎯 5 點刮刮樂：腳底按摩券 🦶、甜湯 🍵、足湯包 🛁</li>
-            <li class="list-group-item">🎯 10 點刮刮樂：身體按摩券 💆、雞湯 🍵、甜湯 🍵</li>
-            <li class="list-group-item">🎯 15 點刮刮樂：身體按摩券 💆、腳底按摩券 🦶、茶包禮盒 🍵</li>
-            <li class="list-group-item">🎯 20 點刮刮樂：身體 + 腳底按摩券 💆🦶、浴湯包 🛁、雞湯 🍵</li>
-        </ul>
-    </div>
+  <!-- 刮刮樂獎勵 -->
+  <div class="card mt-4 shadow-sm p-4">
+    <h5 class="mb-3">🎫 刮刮樂獎勵</h5>
+    <div class="alert alert-info">✨ 獎品可能包含免費按摩、足浴包、甜湯等！</div>
+    <ul class="list-group">
+      <li class="list-group-item">🎯 5 點刮刮樂：腳底按摩券 🦶、甜湯 🍵、足湯包 🛁</li>
+      <li class="list-group-item">🎯 10 點刮刮樂：身體按摩券 💆、雞湯 🍵、甜湯 🍵</li>
+      <li class="list-group-item">🎯 15 點刮刮樂：身體按摩券 💆、腳底按摩券 🦶、茶包禮盒 🍵</li>
+      <li class="list-group-item">🎯 20 點刮刮樂：身體 + 腳底按摩券 💆🦶、浴湯包 🛁、雞湯 🍵</li>
+    </ul>
+  </div>
 
-    <!-- 如何參加 -->
-    <div class="card mt-4 shadow-sm p-4">
-        <h5 class="mb-3">📩 如何參加？</h5>
-        <ol>
-            <li>📅 <span class="highlight">平日透過官方帳號預約</span> No.10 技師，完成服務後出示預約證明</li>
-            <li>📅 <span class="highlight">假日現場指定</span> No.10 技師，服務結束後出示官方帳號頁面</li>
-            <li>📅 累積 5、10、15、20 點後，點選官方帳號的刮刮樂功能</li>
-            <li>🎉 立即刮開你的幸運獎品！</li>
-        </ol>
-    </div>
-<!-- 加入LINE集點卡按鈕 -->
-<div class="text-center mt-4">
+  <!-- 如何參加 -->
+  <div class="card mt-4 shadow-sm p-4">
+    <h5 class="mb-3">📩 如何參加？</h5>
+    <ol>
+      <li>📅 <span class="highlight">平日透過官方帳號預約</span> No.10 技師，完成服務後出示預約證明</li>
+      <li>📅 <span class="highlight">假日現場指定</span> No.10 技師，服務結束後出示官方帳號頁面</li>
+      <li>📅 累積 5、10、15、20 點後，點選官方帳號的刮刮樂功能</li>
+      <li>🎉 立即刮開你的幸運獎品！</li>
+    </ol>
+  </div>
+
+  <!-- LINE 集點卡按鈕 -->
+  <div class="text-center mt-4">
     <a href="https://u.lin.ee/iIlOdke" target="blank" class="btn-line">
-        我的 LINE 集點卡
+      我的 LINE 集點卡
     </a>
-</div>
-   
+  </div>
 </div>
 
 <!-- Bootstrap 5 & jQuery -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-
-
-
+<!-- 分享功能 -->
 <script>
-    function shareToSocial() {
-    const shareData = {
-        title: "經絡工程師 刮刮樂活動",
-        text: "快來參加按摩刮刮樂活動，一起刮好禮 🎁",
-        url: window.location.href
-    };
+function shareToSocial() {
+  const shareData = {
+    title: "🎉 經絡工程師 刮刮樂活動",
+    text: "我正在參加經絡工程師的按摩集點活動！快來一起參加 🎁",
+    url: window.location.href
+  };
 
-    if (navigator.share) {
-        navigator.share(shareData).catch(err => console.log("分享失敗：", err));
-    } else {
-        navigator.clipboard.writeText(shareData.url).then(() => {
-            alert("已複製連結，快貼到你的限時動態吧！");
-        });
-    }
+  if (navigator.share) {
+    navigator.share(shareData)
+      .then(() => console.log("分享成功"))
+      .catch(err => console.log("分享失敗或取消：", err));
+  } else {
+    navigator.clipboard.writeText(shareData.url).then(() => {
+      alert("您的裝置不支援分享功能，已複製連結，請手動貼到 IG/FB 限時動態！");
+    });
+  }
 }
-
 </script>
 
 </body>
