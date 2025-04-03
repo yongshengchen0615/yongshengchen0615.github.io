@@ -1,0 +1,74 @@
+/* ===============================
+   預設樣式（無主題）
+================================ */
+body {
+  background: linear-gradient(135deg, #fdfbfb, #ebedee);
+  font-family: "Microsoft JhengHei", sans-serif;
+  color: #333;
+}
+
+.card {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+  background-color: #fff;
+  padding: 1rem;
+  margin: 1rem;
+}
+
+h1, h5 {
+  color: #dc3545;
+}
+
+.section-text {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.btn-success {
+  background-color: #00C300;
+  border: none;
+  font-weight: bold;
+  padding: 8px 20px;
+  color: white;
+  border-radius: 6px;
+}
+
+.btn-success:hover {
+  background-color: #00a500;
+}
+
+/* ===============================
+   🌸 可愛風格主題（theme-cute）
+================================ */
+body.theme-cute {
+  background: linear-gradient(135deg, #ffe6f0, #fff0e5);
+  font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  color: #444;
+}
+
+body.theme-cute .card {
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(255, 182, 193, 0.3);
+  border: 1px solid #ffd6e0;
+}
+
+body.theme-cute h1,
+body.theme-cute h5 {
+  color: #ff5e8e;
+}
+
+body.theme-cute .section-text {
+  color: #555;
+  line-height: 1.9;
+}
+
+body.theme-cute .btn-success {
+  background-color: #ff85a2;
+  border-radius: 999px;
+}
+
+body.theme-cute .btn-success:hover {
+  background-color: #ff5e8e;
+}
