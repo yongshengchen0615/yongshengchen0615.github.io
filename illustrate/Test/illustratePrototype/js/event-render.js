@@ -120,7 +120,7 @@ $(function () {
           <div class="component-card w-100">
             <div class="card-body">
               <h6 class="card-title">${item.title}</h6>
-              <p class="card-text">${item.desc || '（尚無說明）'}</p>
+              <p class="card-text">${item.desc || ''}</p>
             </div>
           </div>
         `).join('')}
@@ -130,7 +130,9 @@ $(function () {
 
   function renderTextSection(section) {
     return `<div class="component-section mt-4">
+      ${section.title ? `<h5 class="fw-bold mb-2">${section.title}</h5>` : ''}
       <p>${section.content}</p>
     </div>`;
   }
+  
 });

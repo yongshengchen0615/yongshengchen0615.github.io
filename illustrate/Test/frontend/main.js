@@ -21,22 +21,27 @@ async function saveEvent() {
       const textarea = el.querySelector('textarea');
       const items = textarea ? textarea.value.trim().split('\n') : [];
       return { type, title: sectionTitle, items };
-
+    
     } else if (type === 'card') {
-      const cardRows = el.querySelectorAll('.card-row'); // ✅ 只抓卡片欄位
+      const cardRows = el.querySelectorAll('.card-row');
       const items = [];
       cardRows.forEach(row => {
         const inputs = row.querySelectorAll('input');
         const title = inputs[0]?.value.trim() || '(未命名)';
-        const desc = inputs[1]?.value.trim() || '（尚無說明）';
+        const desc = inputs[1]?.value.trim() || '';
         items.push({ title, desc });
       });
       return { type, title: sectionTitle, items };
-
+    
     } else if (type === 'text') {
       const textarea = el.querySelector('textarea');
-      return { type, content: textarea?.value?.trim() || '' };
+      return {
+        type,
+        title: sectionTitle,
+        content: textarea?.value?.trim() || ''
+      };
     }
+    
 
     return {}; // fallback
   });
@@ -132,7 +137,18 @@ function resetForm() {
 function addSection(data = null) {
   const container = document.getElementById('sectionList');
   const wrapper = document.createElement('div');
-  wrapper.className = 'bg-gray-50 p-3 rounded border space-y-2';
+  wrapper.className = 'bg-gray-50 p-3 rounded border space-y-2 relative';
+
+  const deleteSectionBtn = document.createElement('button');
+  deleteSectionBtn.textContent = '🗑️';
+  deleteSectionBtn.title = '刪除此區塊';
+  deleteSectionBtn.className = 'absolute top-2 right-2 text-sm bg-red-500 text-white px-2 py-1 rounded';
+  deleteSectionBtn.onclick = () => {
+    if (confirm('確定要刪除此區塊？')) {
+      wrapper.remove();
+    }
+  };
+  
 
   const typeSelect = document.createElement('select');
   typeSelect.className = 'border p-1 w-full';
@@ -222,6 +238,7 @@ function addSection(data = null) {
   wrapper.appendChild(typeSelect);
   wrapper.appendChild(titleInput);
   wrapper.appendChild(contentContainer);
+  wrapper.appendChild(deleteSectionBtn); // ✅ 要加這行
   container.appendChild(wrapper);
 }
 
@@ -253,9 +270,10 @@ function addButton(data = null) {
 
   wrapper.appendChild(textInput);
   wrapper.appendChild(linkInput);
-  wrapper.appendChild(deleteBtn); // ✅ 加入刪除鍵
+  wrapper.appendChild(deleteBtn); // ✅ 正確加入刪除鍵
   container.appendChild(wrapper);
 }
+
 
 
 // 初始化
