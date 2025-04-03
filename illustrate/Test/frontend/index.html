@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>活動管理後台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <div class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-6">🎉 活動管理後台</h1>
+
+    <!-- 活動清單 -->
+    <div id="eventList" class="mb-8 space-y-2"></div>
+
+    <!-- 活動表單 -->
+    <div id="eventForm" class="bg-white p-4 rounded shadow space-y-4">
+      <h2 id="formTitle" class="text-xl font-semibold">➕ 新增活動</h2>
+      <input id="title" class="border p-2 w-full" placeholder="活動標題" />
+      <textarea id="description" class="border p-2 w-full" placeholder="活動描述"></textarea>
+      <select id="theme" class="border p-2 w-full">
+        <option value="dark">暗色主題</option>
+        <option value="festival">喜慶主題</option>
+        <option value="cute">可愛主題</option>
+      </select>
+
+      <div class="border-t pt-4">
+        <h3 class="font-semibold">📦 區塊內容</h3>
+        <div id="sectionList" class="space-y-2"></div>
+        <button onclick="addSection()" class="bg-blue-600 text-white px-3 py-1 rounded">+ 新增區塊</button>
+      </div>
+
+      <div class="border-t pt-4">
+        <h3 class="font-semibold">🔘 按鈕區塊</h3>
+        <div id="buttonList" class="space-y-2"></div>
+        <button onclick="addButton()" class="bg-blue-600 text-white px-3 py-1 rounded">+ 新增按鈕</button>
+      </div>
+
+      <button onclick="saveEvent()" class="bg-green-600 text-white px-6 py-2 rounded">💾 儲存</button>
+      <button onclick="resetForm()" class="bg-gray-400 text-white px-6 py-2 rounded">↩️ 取消</button>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>
