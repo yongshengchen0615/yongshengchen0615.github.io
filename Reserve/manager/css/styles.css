@@ -1,0 +1,100 @@
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #f2f2f2;
+    margin: 0;
+    padding: 0;
+  }
+  .container {
+    max-width: 800px;
+    margin: 2em auto;
+    background: #fff;
+    padding: 2em;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  h1, h2 {
+    text-align: center;
+  }
+  form fieldset {
+    border: 1px solid #ccc;
+    padding: 1em;
+    margin-bottom: 1.5em;
+    border-radius: 8px;
+  }
+  form label {
+    display: block;
+    margin-bottom: 0.5em;
+  }
+  input[type="time"],
+  input[type="number"],
+  input[type="date"],
+  input[type="text"] {
+    width: 200px;
+    padding: 5px;
+    margin-left: 1em;
+  }
+  button {
+    margin-top: 0.5em;
+    padding: 8px 12px;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover {
+    background-color: #0051a1;
+  }
+  .date-group, #breakPeriodList > div {
+    margin-bottom: 0.8em;
+  }
+  #configDisplay {
+    margin-top: 2em;
+    background: #eaeaea;
+    padding: 1em;
+    border-radius: 8px;
+    font-family: monospace;
+  }
+  .service-form {
+    display: flex;
+    flex-direction: column;
+    padding: 1em;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    margin-bottom: 1em;
+    background-color: #fafafa;
+  }
+  .service-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+  }
+  .service-fields input {
+    flex: 1 1 150px;
+    padding: 5px;
+    border: 1px solid #aaa;
+    border-radius: 5px;
+  }
+  .service-actions {
+    display: flex;
+    gap: 0.5em;
+    justify-content: flex-end;
+  }
+  .service-form[draggable="true"] {
+    cursor: move;
+  }
+  .service-form[draggable="true"] {
+    cursor: grab;
+    touch-action: none; /* 手機防止誤捲動 */
+  }
+  .service-form.dragging {
+    background-color: #e0f7fa;
+    box-shadow: 0 0 8px rgba(0, 123, 255, 0.6);
+    transform: scale(1.02);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .service-form {
+    transition: transform 0.2s ease;
+  }  
+  
