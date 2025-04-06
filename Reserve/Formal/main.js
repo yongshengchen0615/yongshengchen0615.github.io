@@ -35,7 +35,7 @@ $(document).ready(async function () {
         });
 
         // ✅ 初始化 LIFF
-        await liff.init({ liffId: "2007061321-g603NNZG" });
+        await liff.init({ liffId: "2005939681-0EkdVl4g" });
 
         if (!liff.isInClient()) {
             alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
