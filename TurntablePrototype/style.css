@@ -1,69 +1,87 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+/* 全域重置與基本字體設定 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
-  font-family: 'Fredoka', 'Segoe UI', sans-serif;
-  background: linear-gradient(135deg, #fdfcfb, #e2d1c3);
+  font-family: "Helvetica Neue", sans-serif;
+  background: linear-gradient(135deg, #fefcea, #f1daff);
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  margin: 0;
+  min-height: 100vh;
 }
 
+/* 整體包裝區塊，含標題與格子 */
+.lottery-wrapper {
+  max-width: 400px;
+  width: 90%;
+  margin: 2rem auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 標題樣式 */
+.lottery-title {
+  font-size: 2rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 1.2rem;
+  color: #111;
+  letter-spacing: 1px;
+}
+
+/* 外框容器（白底圓角） */
 .lottery-container {
-  width: 320px;
-  height: 320px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  border-radius: 20px;
-  background-color: #fff;
-  padding: 10px;
-  box-sizing: border-box;
+  background: #fff;
+  padding: 1rem;
+  border-radius: 25px;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
 }
 
+/* 抽獎格子排版區塊 */
 .prize-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 8px;
-  width: 100%;
-  height: 100%;
-}
-
-.prize {
-  background: linear-gradient(145deg, #f9c74f, #f8b933);
-  border: 2px solid #f9844a;
-  display: flex;
+  grid-template-columns: repeat(3, 100px);
+  grid-template-rows: repeat(3, 100px);
+  gap: 12px;
   justify-content: center;
-  align-items: center;
-  font-size: 2.2rem;
-  border-radius: 15px;
-  transition: all 0.3s ease;
-  user-select: none;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-.prize:hover {
+/* 每個獎品格樣式 */
+.prize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  background-color: #f9c74f;
+  border-radius: 16px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+/* 開始按鈕樣式 */
+.prize.center {
+  background-color: #577590;
+  color: white;
+  font-weight: bold;
+  font-size: 1.2rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 點擊動畫效果 */
+.prize.center:hover {
+  background-color: #415a77;
   transform: scale(1.05);
 }
 
+/* 中獎格子高亮效果 */
 .prize.active {
-  background: #f94144;
+  background-color: #f94144 !important;
   color: #fff;
-  box-shadow: 0 0 10px #f94144, 0 0 20px #f94144;
-  font-weight: bold;
-}
-
-.prize.center {
-  background: #577590;
-  color: white;
-  font-weight: bold;
-  cursor: pointer;
-  font-size: 1.6rem;
-  box-shadow: 0 0 10px rgba(87, 117, 144, 0.5);
-  transition: transform 0.2s ease;
-}
-
-.prize.center:hover {
-  transform: scale(1.1);
-  background-color: #4a6780;
+  transform: scale(1.05);
 }
