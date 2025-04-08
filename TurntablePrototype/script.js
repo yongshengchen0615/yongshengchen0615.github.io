@@ -1,57 +1,83 @@
-// ✅ 轉動速度參數（可依需求調整）
-const SPIN_CONFIG = {
-  initialDelay: 40,      // 初始延遲（ms）
-  delayIncrement: 20,    // 每轉一步增加多少延遲
-  maxDelay: 300          // 最大延遲（防止無限慢）
-};
-
-const prizeElements = document.querySelectorAll('.prize-grid .prize');
-const startBtn = document.getElementById('startBtn');
-
-let isSpinning = false;
-let currentIndex = 0;
-
-// ✅ 各獎項資料與權重（index 對應九宮格位置）
-const prizeData = [
-  { index: 0, emoji: "🍎", weight: 100 },
-  { index: 1, emoji: "🍌", weight: 0 },
-  { index: 2, emoji: "🍇", weight: 0 },
-  { index: 3, emoji: "🍓", weight: 0 },
-  { index: 5, emoji: "🍍", weight: 0 },
-  { index: 6, emoji: "🥝", weight: 0 },
-  { index: 7, emoji: "🍉", weight: 0 },
-  { index: 8, emoji: "🍊", weight: 0 }
+// ✅ 抽獎格子資料（含獎項與起始按鈕）
+const prizes = [
+  { index: 0, emoji: "甜湯", weight: 50 },
+  { index: 1, emoji: "腳底卷", weight: 0 },
+  { index: 2, emoji: "甜湯", weight: 0 },
+  { index: 3, emoji: "腳底卷", weight: 0 },
+  { index: 4, emoji: "center" }, // 中心按鈕
+  { index: 5, emoji: "腳底卷", weight: 50 },
+  { index: 6, emoji: "全身卷", weight: 0 },
+  { index: 7, emoji: "全身卷", weight: 0 },
+  { index: 8, emoji: "雞湯", weight: 0 }
 ];
 
-// ✅ 控制轉動順序（排除 index 4）
+// ✅ 動畫設定
+const SPIN_CONFIG = {
+  initialDelay: 40,
+  delayIncrement: 20,
+  maxDelay: 300
+};
+
+// ✅ 控制轉動順序（排除中心）
 const prizeIndexes = [0, 1, 2, 5, 8, 7, 6, 3];
 
-// ✅ 初始高亮一個獎項
+let currentIndex = 0;
+let isSpinning = false;
+let prizeElements = []; // 動態產生後賦值
+let startBtn = null;
+
+// ✅ 產生格子 HTML
+function generatePrizeGrid() {
+  const grid = document.getElementById("prizeGrid");
+  grid.innerHTML = "";
+
+  prizes.forEach((item) => {
+    const div = document.createElement("div");
+
+    if (item.emoji === "center") {
+      div.className = "prize center";
+      div.id = "startBtn";
+      div.textContent = "開始";
+      startBtn = div; // 保存引用
+    } else {
+      div.className = "prize";
+      div.textContent = item.emoji;
+    }
+
+    grid.appendChild(div);
+  });
+
+  // 更新元素陣列
+  prizeElements = document.querySelectorAll(".prize-grid .prize");
+}
+
+// ✅ 加權隨機中獎
+function weightedRandom(prizes) {
+  const validPrizes = prizes.filter(p => typeof p.weight === 'number');
+  const total = validPrizes.reduce((sum, p) => sum + p.weight, 0);
+  let r = Math.random() * total;
+
+  for (const prize of validPrizes) {
+    r -= prize.weight;
+    if (r < 0) return prize;
+  }
+  return validPrizes[validPrizes.length - 1];
+}
+
+// ✅ 初始高亮
 function initializePrizeHighlight() {
   const initialPrize = prizeIndexes[currentIndex % prizeIndexes.length];
   prizeElements[initialPrize].classList.add('active');
 }
 
-// ✅ 抽獎：加權隨機抽出一個獎項
-function weightedRandom(prizes) {
-  const total = prizes.reduce((sum, p) => sum + p.weight, 0);
-  let r = Math.random() * total;
-
-  for (const prize of prizes) {
-    r -= prize.weight;
-    if (r < 0) return prize;
-  }
-  return prizes[prizes.length - 1]; // fallback
-}
-
-// ✅ 執行抽獎並動畫轉動
-startBtn.addEventListener('click', () => {
+// ✅ 啟動抽獎邏輯
+function handleStartSpin() {
   if (isSpinning) return;
 
   prizeElements.forEach(el => el.classList.remove('active'));
   isSpinning = true;
 
-  const selectedPrize = weightedRandom(prizeData);
+  const selectedPrize = weightedRandom(prizes);
   const fixedPrizeIndex = selectedPrize.index;
 
   const cycles = 2;
@@ -60,11 +86,10 @@ startBtn.addEventListener('click', () => {
   const stepsToTarget = (targetPos - currentPos + prizeIndexes.length) % prizeIndexes.length;
   const totalSteps = cycles * prizeIndexes.length + stepsToTarget;
 
-  // ✅ 啟動轉動動畫
   spin(0, SPIN_CONFIG.initialDelay, totalSteps, selectedPrize);
-});
+}
 
-// ✅ 動畫邏輯：逐格高亮，並逐步減速
+// ✅ 動畫轉動邏輯
 function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPrize) {
   if (step > 0) {
     const prevIndex = prizeIndexes[(currentIndex - 1 + prizeIndexes.length) % prizeIndexes.length];
@@ -86,5 +111,15 @@ function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPr
   }
 }
 
-// ✅ 首次載入初始化高亮
-initializePrizeHighlight();
+// ✅ 啟動初始化
+window.addEventListener("DOMContentLoaded", () => {
+  generatePrizeGrid();
+  initializePrizeHighlight();
+
+  // 綁定開始按鈕點擊
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "startBtn") {
+      handleStartSpin();
+    }
+  });
+});

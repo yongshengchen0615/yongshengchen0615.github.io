@@ -53,15 +53,23 @@ body {
 
 /* 每個獎品格樣式 */
 .prize {
+  font-size: clamp(1.2rem, 2vw, 2rem); /* 自動調整字體大小 */
+  line-height: 1.2;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2rem;
   background-color: #f9c74f;
   border-radius: 16px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s, background-color 0.2s;
+
+  /* 🆕 以下是新增的防溢出處理 */
+  padding: 0.5rem;
+  text-align: center;
+  word-wrap: break-word;
+  overflow: hidden;
 }
+
 
 /* 開始按鈕樣式 */
 .prize.center {
