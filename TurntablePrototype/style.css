@@ -1,6 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background-color: #fefefe;
+  font-family: 'Fredoka', 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #fdfcfb, #e2d1c3);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -9,37 +11,59 @@ body {
 }
 
 .lottery-container {
-  width: 300px;
-  height: 300px;
+  width: 320px;
+  height: 320px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  border-radius: 20px;
+  background-color: #fff;
+  padding: 10px;
+  box-sizing: border-box;
 }
 
 .prize-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 5px;
+  gap: 8px;
   width: 100%;
   height: 100%;
 }
 
 .prize {
-  background-color: #f9c74f;
+  background: linear-gradient(145deg, #f9c74f, #f8b933);
+  border: 2px solid #f9844a;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 2rem;
-  border-radius: 10px;
-  transition: background-color 0.2s;
+  font-size: 2.2rem;
+  border-radius: 15px;
+  transition: all 0.3s ease;
+  user-select: none;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.prize:hover {
+  transform: scale(1.05);
 }
 
 .prize.active {
-  background-color: #f94144;
-  color: white;
+  background: #f94144;
+  color: #fff;
+  box-shadow: 0 0 10px #f94144, 0 0 20px #f94144;
+  font-weight: bold;
 }
 
 .prize.center {
-  background-color: #577590;
+  background: #577590;
   color: white;
   font-weight: bold;
   cursor: pointer;
+  font-size: 1.6rem;
+  box-shadow: 0 0 10px rgba(87, 117, 144, 0.5);
+  transition: transform 0.2s ease;
+}
+
+.prize.center:hover {
+  transform: scale(1.1);
+  background-color: #4a6780;
 }
