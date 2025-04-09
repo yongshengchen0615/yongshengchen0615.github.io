@@ -14,7 +14,7 @@ const SPIN_CONFIG = {
 const prizeIndexes = [0, 1, 2, 5, 8, 7, 6, 3]; // 固定順序，排除 index 4（中心）
 
 // ✅ 從 API 取得獎品資料與標題
-async function fetchPrizesFromAPI(id = "67dd44799177db210a18ff5a") {
+async function fetchPrizesFromAPI(id = "67dd4c419177db210a18ff5d") {
   try {
     const res = await fetch(`https://servertest-r18o.onrender.com/api/prizePool/${id}`);
     const json = await res.json();
@@ -25,6 +25,7 @@ async function fetchPrizesFromAPI(id = "67dd44799177db210a18ff5a") {
       throw new Error("後端未回傳正確的 prize 陣列");
     }
 
+    // 解析 prize 陣列
     const parsed = json.prize.map((itemStr) => {
       const [, name, weightStr] = itemStr.split(';');
       return {
@@ -35,27 +36,38 @@ async function fetchPrizesFromAPI(id = "67dd44799177db210a18ff5a") {
 
     console.log("🧾 解析後獎項：", parsed);
 
-    const filled = [];
-    while (filled.length < 8) {
-      const totalWeight = parsed.reduce((sum, p) => sum + p.weight, 0);
-      let r = Math.random() * totalWeight;
-      for (const p of parsed) {
-        r -= p.weight;
-        if (r < 0) {
-          filled.push({ ...p });
-          break;
+    // 先完整填入原始資料（最多8個）
+    const filled = parsed.slice(0, 8);
+
+    // 如果不足 8 個，再根據機率補滿
+    if (filled.length < 8) {
+      const needed = 8 - filled.length;
+      console.log(`🔁 原始獎項 ${filled.length} 個，補入 ${needed} 個`);
+
+      for (let i = 0; i < needed; i++) {
+        const totalWeight = parsed.reduce((sum, p) => sum + p.weight, 0);
+        let r = Math.random() * totalWeight;
+        for (const p of parsed) {
+          r -= p.weight;
+          if (r < 0) {
+            filled.push({ ...p });
+            break;
+          }
         }
       }
     }
 
-    console.log("🧩 補滿 8 格結果：", filled);
+    console.log("🎯 完整 8 格獎項：", filled);
 
+    // 插入中心按鈕
     filled.splice(4, 0, { emoji: "center" });
 
+    // 加入 index
     prizeData = filled.map((item, index) => ({ index, ...item }));
 
     console.log("🎲 最終 9 格資料（含 center）：", prizeData);
 
+    // 設定標題
     document.querySelector(".lottery-title").textContent = json.titleText || "幸運抽獎";
 
     generatePrizeGrid();
@@ -65,8 +77,6 @@ async function fetchPrizesFromAPI(id = "67dd44799177db210a18ff5a") {
     console.error("❌ 讀取獎品資料失敗", err);
   }
 }
-
-
 
 // ✅ 產生格子 HTML
 function generatePrizeGrid() {
@@ -133,7 +143,6 @@ function handleStartSpin() {
   spin(0, SPIN_CONFIG.initialDelay, totalSteps, selectedPrize);
 }
 
-
 // ✅ 動畫主體
 function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPrize) {
   if (step > 0) {
@@ -158,7 +167,7 @@ function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPr
 
 // ✅ 啟動初始化
 window.addEventListener("DOMContentLoaded", () => {
-  fetchPrizesFromAPI(); // 讀取 id=100001 的獎項設定
+  fetchPrizesFromAPI(); // 開始讀取抽獎設定
 
   document.addEventListener("click", (e) => {
     if (e.target.id === "startBtn") {
