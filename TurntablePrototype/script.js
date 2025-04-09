@@ -1,44 +1,86 @@
-// ✅ 抽獎格子資料（含獎項與起始按鈕）
-const prizes = [
-  { index: 0, emoji: "甜湯", weight: 50 },
-  { index: 1, emoji: "腳底卷", weight: 0 },
-  { index: 2, emoji: "甜湯", weight: 0 },
-  { index: 3, emoji: "腳底卷", weight: 0 },
-  { index: 4, emoji: "center" }, // 中心按鈕
-  { index: 5, emoji: "腳底卷", weight: 50 },
-  { index: 6, emoji: "全身卷", weight: 0 },
-  { index: 7, emoji: "全身卷", weight: 0 },
-  { index: 8, emoji: "雞湯", weight: 0 }
-];
+// ✅ 動態取得後端資料
+let prizeData = []; // 儲存從後端取得的獎項資料
+let currentIndex = 0;
+let isSpinning = false;
+let prizeElements = [];
+let startBtn = null;
 
-// ✅ 動畫設定
 const SPIN_CONFIG = {
   initialDelay: 40,
   delayIncrement: 20,
   maxDelay: 300
 };
 
-// ✅ 控制轉動順序（排除中心）
-const prizeIndexes = [0, 1, 2, 5, 8, 7, 6, 3];
+const prizeIndexes = [0, 1, 2, 5, 8, 7, 6, 3]; // 固定順序，排除 index 4（中心）
 
-let currentIndex = 0;
-let isSpinning = false;
-let prizeElements = []; // 動態產生後賦值
-let startBtn = null;
+// ✅ 從 API 取得獎品資料與標題
+async function fetchPrizesFromAPI(id = "67dd44799177db210a18ff5a") {
+  try {
+    const res = await fetch(`https://servertest-r18o.onrender.com/api/prizePool/${id}`);
+    const json = await res.json();
+
+    console.log("📥 後端回傳資料：", json);
+
+    if (!json.prize || !Array.isArray(json.prize)) {
+      throw new Error("後端未回傳正確的 prize 陣列");
+    }
+
+    const parsed = json.prize.map((itemStr) => {
+      const [, name, weightStr] = itemStr.split(';');
+      return {
+        emoji: name,
+        weight: parseInt(weightStr, 10)
+      };
+    });
+
+    console.log("🧾 解析後獎項：", parsed);
+
+    const filled = [];
+    while (filled.length < 8) {
+      const totalWeight = parsed.reduce((sum, p) => sum + p.weight, 0);
+      let r = Math.random() * totalWeight;
+      for (const p of parsed) {
+        r -= p.weight;
+        if (r < 0) {
+          filled.push({ ...p });
+          break;
+        }
+      }
+    }
+
+    console.log("🧩 補滿 8 格結果：", filled);
+
+    filled.splice(4, 0, { emoji: "center" });
+
+    prizeData = filled.map((item, index) => ({ index, ...item }));
+
+    console.log("🎲 最終 9 格資料（含 center）：", prizeData);
+
+    document.querySelector(".lottery-title").textContent = json.titleText || "幸運抽獎";
+
+    generatePrizeGrid();
+    initializePrizeHighlight();
+
+  } catch (err) {
+    console.error("❌ 讀取獎品資料失敗", err);
+  }
+}
+
+
 
 // ✅ 產生格子 HTML
 function generatePrizeGrid() {
   const grid = document.getElementById("prizeGrid");
   grid.innerHTML = "";
 
-  prizes.forEach((item) => {
+  prizeData.forEach((item) => {
     const div = document.createElement("div");
 
     if (item.emoji === "center") {
       div.className = "prize center";
       div.id = "startBtn";
       div.textContent = "開始";
-      startBtn = div; // 保存引用
+      startBtn = div;
     } else {
       div.className = "prize";
       div.textContent = item.emoji;
@@ -47,11 +89,10 @@ function generatePrizeGrid() {
     grid.appendChild(div);
   });
 
-  // 更新元素陣列
   prizeElements = document.querySelectorAll(".prize-grid .prize");
 }
 
-// ✅ 加權隨機中獎
+// ✅ 加權隨機選取中獎項
 function weightedRandom(prizes) {
   const validPrizes = prizes.filter(p => typeof p.weight === 'number');
   const total = validPrizes.reduce((sum, p) => sum + p.weight, 0);
@@ -70,14 +111,17 @@ function initializePrizeHighlight() {
   prizeElements[initialPrize].classList.add('active');
 }
 
-// ✅ 啟動抽獎邏輯
+// ✅ 點擊開始抽獎
 function handleStartSpin() {
   if (isSpinning) return;
 
   prizeElements.forEach(el => el.classList.remove('active'));
   isSpinning = true;
 
-  const selectedPrize = weightedRandom(prizes);
+  const selectedPrize = weightedRandom(prizeData);
+
+  console.log("🏆 中獎項目：", selectedPrize);
+
   const fixedPrizeIndex = selectedPrize.index;
 
   const cycles = 2;
@@ -89,7 +133,8 @@ function handleStartSpin() {
   spin(0, SPIN_CONFIG.initialDelay, totalSteps, selectedPrize);
 }
 
-// ✅ 動畫轉動邏輯
+
+// ✅ 動畫主體
 function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPrize) {
   if (step > 0) {
     const prevIndex = prizeIndexes[(currentIndex - 1 + prizeIndexes.length) % prizeIndexes.length];
@@ -113,10 +158,8 @@ function spin(step = 0, delay = SPIN_CONFIG.initialDelay, totalSteps, selectedPr
 
 // ✅ 啟動初始化
 window.addEventListener("DOMContentLoaded", () => {
-  generatePrizeGrid();
-  initializePrizeHighlight();
+  fetchPrizesFromAPI(); // 讀取 id=100001 的獎項設定
 
-  // 綁定開始按鈕點擊
   document.addEventListener("click", (e) => {
     if (e.target.id === "startBtn") {
       handleStartSpin();
