@@ -1,0 +1,135 @@
+/* 深色主題 - 基礎樣式 */
+body.theme-dark {
+  background-color: #0d0d0d;
+  background-image: linear-gradient(135deg, #0d0d0d, #1a1a1a);
+  font-family: "Microsoft JhengHei", sans-serif;
+  color: #e0e0e0;
+}
+
+/* 連結樣式 */
+body.theme-dark a {
+  color: #4fd2ff;
+}
+body.theme-dark a:hover {
+  color: #00bcd4;
+}
+
+/* 次要文字 */
+body.theme-dark .text-muted {
+  color: #999 !important;
+}
+
+/* 標題樣式 + 🪂 淡入浮動動畫 */
+body.theme-dark h1,
+body.theme-dark h5 {
+  color: #4fd2ff;
+  animation: animateTextIn 0.8s ease-in-out both;
+}
+
+/* 🪂 標題淡入浮動動畫 Keyframes */
+@keyframes animateTextIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 區塊文字 */
+body.theme-dark .component-section {
+  color: #cccccc;
+}
+
+/* 元件卡片與通用卡片 */
+body.theme-dark .component-card,
+body.theme-dark .card {
+  background-color: #1a1a1a !important;
+  color: #f0f0f0 !important;
+  border: 1px solid #333;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 0.75rem 1rem;
+
+  /* 🌟 懸停光暈效果 */
+  transition: box-shadow 0.3s ease-in-out;
+}
+body.theme-dark .component-card:hover,
+body.theme-dark .card:hover {
+  box-shadow: 0 0 12px rgba(79, 210, 255, 0.3);
+}
+
+/* 卡片內文字 */
+body.theme-dark .card-body {
+  background-color: transparent;
+  color: inherit;
+}
+
+/* 容器內文字 */
+body.theme-dark .container {
+  color: #e0e0e0;
+}
+
+/* 白底背景轉深色 */
+body.theme-dark .bg-white {
+  background-color: #1a1a1a !important;
+}
+
+/* 警告提示樣式 */
+body.theme-dark .alert-warning {
+  background-color: #2b2b2b;
+  border-left: 4px solid #fbc02d;
+  color: #fdd835;
+}
+
+/* CTA 按鈕樣式 */
+body.theme-dark .btn-cta {
+  background-color: #37474f;
+  color: #fff;
+  border: 1px solid #555;
+
+  /* 💧 Ripple 動畫定位與遮蔽設定 */
+  position: relative;
+  overflow: hidden;
+  z-index: 0;
+}
+body.theme-dark .btn-cta:hover {
+  background-color: #455a64;
+}
+
+/* 💧 Ripple 動畫效果 */
+body.theme-dark .btn-cta:active::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  width: 100px;
+  height: 100px;
+  top: 50%;
+  left: 50%;
+  background: rgba(79, 210, 255, 0.3);
+  transform: translate(-50%, -50%) scale(0);
+  animation: ripple 0.6s linear;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes ripple {
+  to {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* 載入中 Spinner 樣式 */
+body.theme-dark .spinner-border {
+  border-color: #4fd2ff #4fd2ff #0000 #0000;
+}
+
+/* 淡入光暈動畫 */
+@keyframes animateFadeGlow {
+  0% { opacity: 0; box-shadow: 0 0 0 rgba(79, 210, 255, 0); }
+  100% { opacity: 1; box-shadow: 0 0 12px rgba(79, 210, 255, 0.2); }
+}
+body.theme-dark .animated {
+  animation: animateFadeGlow 0.6s ease-out both;
+}
