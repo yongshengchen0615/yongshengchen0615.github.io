@@ -37,7 +37,7 @@ export function handleSubmit() {
 
         const bookingTypeText = $("#booking-type option:selected").text();
 
-        const EXTRA_TIME_BUFFER = 10; // 可視需要獨立移出設定檔
+        const EXTRA_TIME_BUFFER = 0; // 可視需要獨立移出設定檔
 
         const bookingDetails = bookingData.persons.map((p, i) => {
             const allServices = [...p.main, ...p.addon];
