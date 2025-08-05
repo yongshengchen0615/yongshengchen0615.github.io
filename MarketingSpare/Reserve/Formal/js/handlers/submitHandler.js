@@ -62,7 +62,7 @@ ${noteLine}`;
 
         const totalPrice = $("#total-price-all").text();
 
-        const summary = `等待預約回覆
+        const summary = `
 - 預約類型：${bookingTypeText}
 📅 日期：${date}
 ⏰ 時間：${time}
@@ -72,7 +72,14 @@ ${noteLine}`;
 
 ${bookingDetails.join("\n\n")}
 
-💰 總金額：$${totalPrice} 元`;
+💰 總金額：$${totalPrice} 元
+
+感謝您的預約訊息！
+我們會在 24 小時內回覆您，確認最終預約時段。
+提醒您：需收到我們的確認回覆，預約才算完成。
+若有特定時段偏好，也歡迎一併告知，方便加速安排。
+謝謝您的耐心等候，期待與您見面！
+`;
 
         try {
             await liff.sendMessages([{ type: "text", text: summary }]);
