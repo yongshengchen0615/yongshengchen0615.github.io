@@ -1,58 +1,108 @@
-// **店家 GPS 經緯度**
-const storeLat = 22.989400929173414; // 你的店家緯度
-const storeLon = 120.20560902221429; // 你的店家經度
-const allowedDistance = 0.3; // 設定允許範圍 (公里)，100 公尺 = 0.1 公里
+// ===== 門市座標與距離設定 =====
+const storeLat = 22.989400929173414;
+const storeLon = 120.20560902221429;
+const allowedDistanceKm = 0.3;
 
-function checkLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const userLat = position.coords.latitude;  // 使用者緯度
-                const userLon = position.coords.longitude; // 使用者經度
+const linkTargets = {
+  btn5:  "../5points/index.html",
+  btn10: "../10points/index.html",
+  btn15: "../15points/index.html",
+  btn20: "../20points/index.html",
+};
 
-                console.log(`使用者位置：${userLat}, ${userLon}`);
+const $msg = document.getElementById("message");
+const $retry = document.getElementById("retry");
 
-                // 計算距離
-                const distance = getDistanceFromLatLon(userLat, userLon, storeLat, storeLon);
+// ===== 模式開關判斷 =====
+const CONFIG = {
+  requireGeo:
+    new URL(location.href).searchParams.get('geo')?.toLowerCase() === 'on' ? true
+    : new URL(location.href).searchParams.get('geo')?.toLowerCase() === 'off' ? false
+    : typeof window.GEO_REQUIRE === 'boolean' ? window.GEO_REQUIRE
+    : true,
+};
 
-                if (distance <= allowedDistance) {
-                    document.getElementById("message").innerText = "✅ 位置確認成功！您可以參加刮刮樂！";
-                    enableButtons();
-                } else {
-                    document.getElementById("message").innerText = `❌ 位置不符，請到店內參加！（距離約 ${distance.toFixed(2)} 公里）`;
-                }
-            },
-            (error) => {
-                console.error("定位錯誤：" + error.message);
-                document.getElementById("message").innerText = "❌ 獲取位置失敗，請允許定位權限";
-            }
-        );
-    } else {
-        document.getElementById("message").innerText = "❌ 瀏覽器不支援定位功能";
-    }
+// ===== 初始化 =====
+init();
+
+function init() {
+  if (!CONFIG.requireGeo) {
+    // 關閉定位判斷 → 靜默解鎖，不顯示任何訊息
+    unlockLinks();
+    return;
+  }
+
+  // 開啟定位判斷 → 顯示定位狀態訊息
+  setMessage("📍 正在獲取您的定位，請稍候…", "");
+  locate();
 }
 
-function enableButtons() {
-    document.querySelectorAll(".button").forEach(btn => {
-        btn.classList.add("enabled");
-    });
+// ===== 定位功能 =====
+function locate() {
+  $retry.hidden = true;
+
+  if (!("geolocation" in navigator)) {
+    setMessage("❌ 此瀏覽器不支援定位功能。", "error");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(onPosition, onGeoError, {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 30000,
+  });
 }
 
-// **哈弗賽公式計算兩點間距離（公里）**
-function getDistanceFromLatLon(lat1, lon1, lat2, lon2) {
-    const R = 6371; // 地球半徑（公里）
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // 轉換成公里
+function onPosition({ coords }) {
+  const { latitude: userLat, longitude: userLon, accuracy } = coords;
+  const distance = haversineKm(userLat, userLon, storeLat, storeLon);
+
+  console.log(`[geo] lat=${userLat}, lon=${userLon}, acc~${Math.round(accuracy)}m, d=${distance.toFixed(3)}km`);
+
+  if (distance <= allowedDistanceKm) {
+    setMessage("✅ 位置確認成功！您可以參加刮刮樂！", "success");
+    unlockLinks();
+  } else {
+    setMessage(`❌ 您距離門市約 ${distance.toFixed(2)} 公里，請靠近店內再試。`, "error");
+    $retry.hidden = false;
+  }
 }
 
-function deg2rad(deg) {
-    return deg * (Math.PI / 180);
+function onGeoError(err) {
+  const map = {
+    1: "您拒絕了定位權限，請在瀏覽器設定中允許位置存取。",
+    2: "目前無法取得位置，請確認裝置的定位服務已開啟。",
+    3: "定位逾時，請移動到空曠處或稍後再試。",
+  };
+  setMessage(`❌ ${map[err.code] || `定位錯誤：${err.message}`}`, "error");
+  $retry.hidden = false;
 }
 
-checkLocation();
+// ===== 解鎖按鈕 =====
+function unlockLinks() {
+  Object.entries(linkTargets).forEach(([id, href]) => {
+    const a = document.getElementById(id);
+    a.setAttribute("href", href);
+    a.removeAttribute("aria-disabled");
+    a.removeAttribute("tabindex");
+  });
+}
+
+// ===== 工具函式 =====
+function setMessage(text, type) {
+  $msg.classList.remove("message--success", "message--error");
+  if (type) $msg.classList.add(`message--${type}`);
+  $msg.textContent = text;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+const deg2rad = d => d * (Math.PI / 180);

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>產生 20 碼金鑰並更新試算表 + QR Code</title>
+
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: #f9fafb;
+      color: #111827;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 640px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      border: 1px solid #e5e7eb;
+    }
+    h1 {
+      margin: 0 0 12px 0;
+      font-size: 1.3rem;
+      color: #1f2937;
+    }
+    .key {
+      font-family: monospace;
+      font-size: 1.05rem;
+      padding: 10px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      word-break: break-all;
+      color: #111827;
+    }
+    .btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+    .primary {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    .primary:hover {
+      background: #1e40af;
+    }
+    .muted {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+    .muted:hover {
+      background: #d1d5db;
+    }
+    .status {
+      margin-top: 10px;
+      color: #4b5563;
+      min-height: 1.2em;
+    }
+    .qr-wrapper {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    #qrcode {
+      background: #ffffff;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #d1d5db;
+      min-height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>產生 20 碼英文+數字亂碼，更新 Google 試算表 A2，並顯示 QR Code</h1>
+
+    <div>
+      <div style="font-size:0.9rem;color:#6b7280">目前金鑰內容：</div>
+      <div id="generatedKey" class="key">（尚未產生）</div>
+    </div>
+
+    <div class="btns">
+      <button id="genBtn" class="primary">產生新金鑰（20 碼）</button>
+      <button id="copyBtn" class="muted">複製到剪貼簿</button>
+      <button id="updateBtn" class="primary">寫回 Google 試算表並顯示 QR</button>
+    </div>
+
+    <div class="status" id="status">狀態：等待操作</div>
+
+    <div class="qr-wrapper">
+      <div style="font-size:0.9rem;color:#6b7280">金鑰 QR Code（更新成功後產生）：</div>
+      <div id="qrcode">（尚未產生 QR Code）</div>
+    </div>
+
+    <hr style="margin-top:16px;border:none;border-top:1px solid #e5e7eb" />
+
+    <div style="font-size:0.85rem;color:#6b7280">
+      請修改程式碼中的：
+      <ul style="margin:4px 0 0 18px;padding:0;">
+        <li><code>API_URL</code>：你的 Apps Script Web App <code>/exec</code> URL</li>
+        <li><code>ADMIN_SECRET</code>：要跟 Apps Script 裡的 <code>ADMIN_SECRET</code> 一樣</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // ===== 這兩個要改成你的 =====
+    const API_URL = 'https://script.google.com/macros/s/AKfycbybyOjMvi1mXrVcdayHOQmdeCN8apchtqghLHax_Hql2VLD7Lgzfyt5O7AXNVDD3xPguQ/exec';
+    const ADMIN_SECRET = '123456789';
+    // ============================
+
+    const genBtn = document.getElementById('genBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const generatedKeyEl = document.getElementById('generatedKey');
+    const statusEl = document.getElementById('status');
+    const qrContainer = document.getElementById('qrcode');
+
+    function randomAlphaNum(len = 20) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let out = '';
+      for (let i = 0; i < len; i++) {
+        out += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return out;
+    }
+
+    function renderQr(key) {
+      qrContainer.innerHTML = '';
+      if (!key) {
+        qrContainer.textContent = '（沒有金鑰，無法產生 QR Code）';
+        return;
+      }
+      new QRCode(qrContainer, {
+        text: key,
+        width: 200,
+        height: 200,
+        colorDark: "#111827",   // 深色圖案
+        colorLight: "#ffffff",  // 白底
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    genBtn.addEventListener('click', () => {
+      const key = randomAlphaNum(20);
+      generatedKeyEl.textContent = key;
+      statusEl.textContent = '已產生新金鑰，尚未寫入試算表。';
+      qrContainer.innerHTML = '（尚未產生 QR Code）';
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      const key = generatedKeyEl.textContent;
+      if (!key || key.includes('尚未')) {
+        statusEl.textContent = '沒有可複製的金鑰，請先產生。';
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(key);
+        statusEl.textContent = '已複製金鑰到剪貼簿。';
+      } catch (err) {
+        statusEl.textContent = '複製失敗：' + err.message;
+      }
+    });
+
+    updateBtn.addEventListener('click', async () => {
+      const key = generatedKeyEl.textContent;
+      if (!key || key.includes('尚未')) {
+        statusEl.textContent = '沒有要寫入的金鑰，請先產生。';
+        return;
+      }
+
+      statusEl.textContent = '正在呼叫後端更新試算表 A2…';
+
+      try {
+        const url = API_URL + '?action=update&key=' + encodeURIComponent(key) + '&secret=' + encodeURIComponent(ADMIN_SECRET);
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        if (data.ok && data.updated) {
+          statusEl.textContent = '更新成功！A2 已設為：' + data.newKey + '，並已產生 QR Code。';
+          renderQr(key);
+        } else {
+          statusEl.textContent = '更新失敗：' + (data.error || JSON.stringify(data));
+          qrContainer.innerHTML = '（更新失敗，未產生 QR Code）';
+        }
+      } catch (err) {
+        statusEl.textContent = '呼叫後端失敗：' + err.message;
+        qrContainer.innerHTML = '（呼叫後端失敗，未產生 QR Code）';
+      }
+    });
+  </script>
+</body>
+</html>

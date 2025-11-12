@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>QR 金鑰驗證與跳轉</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #111827;
+      color: #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 12px;
+    }
+    .btn-group {
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    #startBtn {
+      background: #22c55e;
+      color: #022c22;
+    }
+    #stopBtn {
+      background: #4b5563;
+      color: #e5e7eb;
+    }
+    #videoContainer {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 3 / 4;
+      background: #020617;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    .scan-box {
+      position: absolute;
+      inset: 15%;
+      border: 2px solid rgba(34, 197, 94, 0.8);
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      pointer-events: none;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: #9ca3af;
+      text-align: center;
+      min-height: 1.2em;
+    }
+    #result {
+      margin-top: 16px;
+      width: 100%;
+      max-width: 400px;
+      background: #020617;
+      border-radius: 12px;
+      padding: 12px;
+      word-break: break-all;
+      border: 1px solid #1f2937;
+      font-size: 0.9rem;
+    }
+    #result strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #a5b4fc;
+    }
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>QR 金鑰驗證</h1>
+
+  <div class="btn-group">
+    <button id="startBtn">開始掃描</button>
+    <button id="stopBtn">停止掃描</button>
+  </div>
+
+  <div id="videoContainer">
+    <video id="video" playsinline></video>
+    <div class="scan-box"></div>
+  </div>
+
+  <div id="status">尚未開始掃描</div>
+
+  <div id="result">
+    <strong>掃描內容（金鑰）：</strong>
+    <span id="resultText">（還沒有內容）</span>
+    <div id="verifyResult" style="margin-top:8px;"></div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // 👇 換成你的 Web App URL（/exec 結尾）
+    const API_URL = 'https://script.google.com/macros/s/AKfycbybyOjMvi1mXrVcdayHOQmdeCN8apchtqghLHax_Hql2VLD7Lgzfyt5O7AXNVDD3xPguQ/exec';
+    // ✅ 掃描成功且驗證通過後要跳轉的網址
+    const REDIRECT_URL = './home/index.html';
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+    const resultText = document.getElementById('resultText');
+    const verifyResultEl = document.getElementById('verifyResult');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    let stream = null;
+    let scanTimer = null;
+    let isScanning = false;
+
+    async function startScan() {
+      try {
+        if (isScanning) return;
+        verifyResultEl.textContent = '';
+        statusEl.textContent = '正在啟動相機…';
+        resultText.textContent = '（掃描中… 請將 QR Code 對準框內）';
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        isScanning = true;
+        statusEl.textContent = '掃描中…';
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        scanTimer = setInterval(scanFrame, 200);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '無法啟動相機：' + err.message;
+      }
+    }
+
+    function stopScan() {
+      isScanning = false;
+      if (scanTimer) clearInterval(scanTimer);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (!statusEl.textContent.startsWith('無法啟動相機')) {
+        statusEl.textContent = '掃描已停止';
+      }
+    }
+
+    function scanFrame() {
+      if (!isScanning) return;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+
+      if (code) {
+        const key = code.data.trim();
+        resultText.textContent = key || '(空字串)';
+        statusEl.textContent = '已掃描到金鑰，正在驗證…';
+        stopScan();
+        verifyKey(key);
+      }
+    }
+
+    async function verifyKey(key) {
+      if (!key) {
+        verifyResultEl.style.color = '#f97373';
+        verifyResultEl.textContent = '⚠ 掃描到的金鑰是空的。';
+        return;
+      }
+
+      try {
+        // ✅ 加上 action=verify
+        const url = API_URL + '?action=verify&key=' + encodeURIComponent(key);
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const data = await res.json();
+
+        if (!data.ok) {
+          verifyResultEl.style.color = '#f97373';
+          verifyResultEl.textContent = '伺服器錯誤：' + (data.error || '未知錯誤');
+          statusEl.textContent = '驗證失敗。';
+          return;
+        }
+
+        if (data.matched) {
+          verifyResultEl.style.color = '#4ade80';
+          verifyResultEl.textContent = '✅ 金鑰正確，正在跳轉中...';
+          statusEl.textContent = '驗證成功，跳轉中...';
+
+          // ✅ 驗證成功後跳轉
+          setTimeout(() => {
+            window.location.href = REDIRECT_URL;
+          }, 1500);
+        } else {
+          verifyResultEl.style.color = '#f97373';
+          verifyResultEl.textContent = '❌ 金鑰不存在於資料庫。';
+          statusEl.textContent = '驗證失敗：金鑰未註冊。';
+        }
+      } catch (err) {
+        console.error(err);
+        verifyResultEl.style.color = '#f97373';
+        verifyResultEl.textContent = '❌ 呼叫後端失敗：' + err.message;
+        statusEl.textContent = '驗證失敗。';
+      }
+    }
+
+    startBtn.addEventListener('click', startScan);
+    stopBtn.addEventListener('click', stopScan);
+  </script>
+</body>
+</html>
