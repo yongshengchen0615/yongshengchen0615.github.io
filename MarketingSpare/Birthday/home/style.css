@@ -19,10 +19,9 @@ body {
 
 .container {
     display: grid;
-    grid-template-columns: repeat(1, minmax(120px, 1fr)); /* 兩列排列 */
+    grid-template-columns: repeat(1, minmax(120px, 1fr));
     gap: 15px;
     width: min(90vw, 350px);
-    
 }
 
 .button {
@@ -42,7 +41,7 @@ body {
     box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
     pointer-events: none;
     opacity: 0.5;
-    white-space: nowrap; /* 防止文字換行 */
+    white-space: nowrap;
 }
 
 .button.enabled {
@@ -57,6 +56,6 @@ body {
 
 @media (max-width: 400px) {
     .container {
-        grid-template-columns: repeat(1, 1fr); /* 小螢幕變單列排列 */
+        grid-template-columns: repeat(1, 1fr);
     }
 }
