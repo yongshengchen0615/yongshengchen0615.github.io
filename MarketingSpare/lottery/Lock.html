@@ -73,22 +73,125 @@
       text-align: center;
       min-height: 1.2em;
     }
-    #result {
-      margin-top: 16px;
-      width: 100%;
-      max-width: 400px;
+
+    /* ✅ 全螢幕驗證動畫 Overlay */
+    .fullscreen-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.94); /* 深色半透明 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .fullscreen-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .verify-box {
       background: #020617;
-      border-radius: 12px;
-      padding: 12px;
-      word-break: break-all;
+      border-radius: 16px;
+      padding: 24px 20px;
       border: 1px solid #1f2937;
-      font-size: 0.9rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+      max-width: 260px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
     }
-    #result strong {
-      display: block;
-      margin-bottom: 4px;
-      color: #a5b4fc;
+    .fullscreen-overlay.active .verify-box {
+      opacity: 1;
+      transform: translateY(0);
     }
+
+    .verify-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      border: 3px solid #4b5563;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      font-size: 1.6rem;
+    }
+    .verify-text {
+      font-size: 0.95rem;
+      color: #e5e7eb;
+      text-align: center;
+    }
+
+    /* 狀態：驗證中（旋轉圈） */
+    .verify-box.is-verifying .verify-icon {
+      border-color: #22c55e33;
+    }
+    .verify-box.is-verifying .verify-icon::before {
+      content: "";
+      position: absolute;
+      inset: 6px;
+      border-radius: 999px;
+      border: 3px solid #22c55e;
+      border-top-color: transparent;
+      animation: spin 0.9s linear infinite;
+    }
+
+    /* 狀態：成功 ✓ */
+    .verify-box.is-success .verify-icon {
+      background: #22c55e;
+      border-color: #bbf7d0;
+      color: #022c22;
+    }
+    .verify-box.is-success .verify-icon::before {
+      content: "✓";
+      position: relative;
+      animation: pop 0.35s ease-out;
+    }
+    .verify-box.is-success .verify-text {
+      color: #bbf7d0;
+    }
+
+    /* 狀態：失敗 ✕ */
+    .verify-box.is-error .verify-icon {
+      background: #ef4444;
+      border-color: #fecaca;
+      color: #7f1d1d;
+    }
+    .verify-box.is-error .verify-icon::before {
+      content: "✕";
+      position: relative;
+      animation: pop 0.35s ease-out;
+    }
+    .verify-box.is-error .verify-text {
+      color: #fecaca;
+    }
+
+    /* 動畫 */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    @keyframes pop {
+      0% {
+        transform: scale(0.4);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
     canvas {
       display: none;
     }
@@ -109,10 +212,12 @@
 
   <div id="status">尚未開始掃描</div>
 
-  <div id="result">
-    <strong>掃描內容（金鑰）：</strong>
-    <span id="resultText">（還沒有內容）</span>
-    <div id="verifyResult" style="margin-top:8px;"></div>
+  <!-- ✅ 全螢幕驗證動畫 -->
+  <div id="verifyOverlay" class="fullscreen-overlay">
+    <div id="verifyBox" class="verify-box is-verifying">
+      <div class="verify-icon"></div>
+      <div id="verifyText" class="verify-text">正在驗證金鑰…</div>
+    </div>
   </div>
 
   <canvas id="canvas"></canvas>
@@ -126,21 +231,46 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const statusEl = document.getElementById('status');
-    const resultText = document.getElementById('resultText');
-    const verifyResultEl = document.getElementById('verifyResult');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+
+    const verifyOverlay = document.getElementById('verifyOverlay');
+    const verifyBox = document.getElementById('verifyBox');
+    const verifyText = document.getElementById('verifyText');
 
     let stream = null;
     let scanTimer = null;
     let isScanning = false;
 
+    // 控制 Overlay 顯示/隱藏
+    function showOverlay(show) {
+      if (show) {
+        verifyOverlay.classList.add('active');
+      } else {
+        verifyOverlay.classList.remove('active');
+      }
+    }
+
+    // 控制驗證狀態樣式與文字
+    function setVerifyState(state, message) {
+      verifyBox.classList.remove('is-verifying', 'is-success', 'is-error');
+      if (state === 'verifying') {
+        verifyBox.classList.add('is-verifying');
+      } else if (state === 'success') {
+        verifyBox.classList.add('is-success');
+      } else if (state === 'error') {
+        verifyBox.classList.add('is-error');
+      }
+      if (message) {
+        verifyText.textContent = message;
+      }
+    }
+
     async function startScan() {
       try {
         if (isScanning) return;
-        verifyResultEl.textContent = '';
         statusEl.textContent = '正在啟動相機…';
-        resultText.textContent = '（掃描中… 請將 QR Code 對準框內）';
+        showOverlay(false); // 開始掃描先關掉 overlay
 
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
@@ -151,13 +281,16 @@
         await video.play();
 
         isScanning = true;
-        statusEl.textContent = '掃描中…';
+        statusEl.textContent = '掃描中… 請將 QR Code 放入框內';
+
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         scanTimer = setInterval(scanFrame, 200);
       } catch (err) {
         console.error(err);
         statusEl.textContent = '無法啟動相機：' + err.message;
+        showOverlay(true);
+        setVerifyState('error', '無法啟動相機，請檢查權限設定。');
       }
     }
 
@@ -185,22 +318,25 @@
 
       if (code) {
         const key = code.data.trim();
-        resultText.textContent = key || '(空字串)';
-        statusEl.textContent = '已掃描到金鑰，正在驗證…';
+        statusEl.textContent = '已掃描到 QR Code，正在驗證…';
+
+        // 停止掃描並開啟全螢幕驗證動畫
         stopScan();
+        showOverlay(true);
+        setVerifyState('verifying', '已掃描到 QR Code，正在進行認證');
+
         verifyKey(key);
       }
     }
 
     async function verifyKey(key) {
       if (!key) {
-        verifyResultEl.style.color = '#f97373';
-        verifyResultEl.textContent = '⚠ 掃描到的金鑰是空的。';
+        setVerifyState('error', '⚠ 掃描到的金鑰是空的。');
+        statusEl.textContent = '驗證失敗：金鑰為空。';
         return;
       }
 
       try {
-        // ✅ 加上 action=verify
         const url = API_URL + '?action=verify&key=' + encodeURIComponent(key);
         const res = await fetch(url, { method: 'GET' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -208,30 +344,30 @@
         const data = await res.json();
 
         if (!data.ok) {
-          verifyResultEl.style.color = '#f97373';
-          verifyResultEl.textContent = '伺服器錯誤：' + (data.error || '未知錯誤');
+          setVerifyState('error', '伺服器錯誤：' + (data.error || '未知錯誤'));
           statusEl.textContent = '驗證失敗。';
           return;
         }
 
         if (data.matched) {
-          verifyResultEl.style.color = '#4ade80';
-          verifyResultEl.textContent = '✅ 金鑰正確，正在跳轉中...';
-          statusEl.textContent = '驗證成功，跳轉中...';
+          setVerifyState('success', '✅ 認證成功，正在跳轉中…');
+          statusEl.textContent = '驗證成功，跳轉中…';
 
-          // ✅ 驗證成功後跳轉
           setTimeout(() => {
             window.location.href = REDIRECT_URL;
           }, 1500);
         } else {
-          verifyResultEl.style.color = '#f97373';
-          verifyResultEl.textContent = '❌ 金鑰不存在於資料庫。';
+          setVerifyState('error', '❌ 認證失敗');
           statusEl.textContent = '驗證失敗：金鑰未註冊。';
+
+          // 如果你想失敗後幾秒自動關閉動畫，可以打開下面這段：
+           setTimeout(() => {
+             showOverlay(false);
+           }, 1500);
         }
       } catch (err) {
         console.error(err);
-        verifyResultEl.style.color = '#f97373';
-        verifyResultEl.textContent = '❌ 呼叫後端失敗：' + err.message;
+        setVerifyState('error', '❌ 呼叫後端失敗：' + err.message);
         statusEl.textContent = '驗證失敗。';
       }
     }
