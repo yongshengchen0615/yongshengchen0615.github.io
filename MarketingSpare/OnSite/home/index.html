@@ -5,13 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📢🎉 經絡工程師 刮刮樂 | 免費按摩等你來刮！ 🎉📢</title>
     <link rel="stylesheet" href="style.css"> <!-- 引入 CSS -->
+
+    <script>
+      // ===== 可程式控制的定位開關（預設 true） =====
+      // 方式 A：直接在這裡設布林值控制
+      // true = 必須做定位判斷；false = 跳過定位判斷
+      window.GEO_ENFORCE = false;
+      // 方式 B：網址參數 ?geo=1 / ?geo=0 覆寫
+      // 方式 C：呼叫 setGeoEnforce(true/false) 寫入 localStorage，重新整理後生效
+    </script>
 </head>
 <body>
     <div class="message" id="message">正在獲取您的定位...</div>
     <div class="container">
         <a href="../game/index.html" class="button" id="btn5">🎉 前往幸運10號刮刮樂 🎉</a>
-
     </div>
+
+    <!-- （可移除）測試用快速切換控件
+    <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="button enabled" style="padding:10px 16px; font-size:16px;" onclick="setGeoEnforce(true)">啟用定位判斷</button>
+      <button class="button enabled" style="padding:10px 16px; font-size:16px;" onclick="setGeoEnforce(false)">跳過定位判斷</button>
+      <button class="button enabled" style="padding:10px 16px; font-size:16px;" onclick="clearGeoOverride()">清除覆寫</button>
+    </div>-->
+
     <script src="script.js"></script> <!-- 引入 JavaScript -->
 </body>
 </html>
