@@ -1,22 +1,97 @@
-:root{
+/* 預設主題 (Dark) */
+:root,
+[data-theme="dark"]{
   --bg:#0f1720;
   --card:#0b1220;
   --accent:#ffb86b;
   --muted:#cbd5e1;
+  --bg-grad-from:#071021;
+  --card-grad-from:#0b1220;
+  --card-grad-to:#091426;
+  --card-center-from:#122036;
+  --card-center-to:#0f2a44;
+  --modal-bg-from:#071428;
+  --modal-bg-to:#0c2540;
+  --shadow:rgba(2,6,23,0.6);
 }
+
+/* Light 主題 */
+[data-theme="light"]{
+  --bg:#f5f5f5;
+  --card:#ffffff;
+  --accent:#ff6b6b;
+  --muted:#333333;
+  --bg-grad-from:#e0e0e0;
+  --card-grad-from:#ffffff;
+  --card-grad-to:#f0f0f0;
+  --card-center-from:#ffe0e0;
+  --card-center-to:#ffc0c0;
+  --modal-bg-from:#ffffff;
+  --modal-bg-to:#f5f5f5;
+  --shadow:rgba(100,100,100,0.3);
+}
+
+/* Neon 主題 */
+[data-theme="neon"]{
+  --bg:#0a0e27;
+  --card:#1a1f3a;
+  --accent:#00ff88;
+  --muted:#00ffff;
+  --bg-grad-from:#050812;
+  --card-grad-from:#0f1428;
+  --card-grad-to:#1a2540;
+  --card-center-from:#1a2860;
+  --card-center-to:#0f4080;
+  --modal-bg-from:#050812;
+  --modal-bg-to:#0f1440;
+  --shadow:rgba(0,255,136,0.2);
+}
+
+/* Sunset 主題 */
+[data-theme="sunset"]{
+  --bg:#2a1810;
+  --card:#3d2416;
+  --accent:#ff8c42;
+  --muted:#ffd4a3;
+  --bg-grad-from:#1a0f08;
+  --card-grad-from:#2d1810;
+  --card-grad-to:#4a2820;
+  --card-center-from:#6b4423;
+  --card-center-to:#8b5a2b;
+  --modal-bg-from:#1a0f08;
+  --modal-bg-to:#3d2416;
+  --shadow:rgba(255,140,66,0.3);
+}
+
+/* Nature 主題 */
+[data-theme="nature"]{
+  --bg:#0f3d1f;
+  --card:#1a5f2e;
+  --accent:#4ade80;
+  --muted:#d4f1d4;
+  --bg-grad-from:#051012;
+  --card-grad-from:#0d3a1a;
+  --card-grad-to:#1a5f2e;
+  --card-center-from:#2d7a3e;
+  --card-center-to:#1f5a2f;
+  --modal-bg-from:#051012;
+  --modal-bg-to:#0d3a1a;
+  --shadow:rgba(74,222,128,0.3);
+}
+
 *{box-sizing:border-box}
-body{font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial; background:linear-gradient(180deg,#071021,var(--bg)); color:var(--muted); margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+body{font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial; background:linear-gradient(180deg,var(--bg-grad-from),var(--bg)); color:var(--muted); margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); transition:background 0.3s ease, color 0.3s ease}
 .container{width:min(92vw,480px); max-width:480px; padding:16px; text-align:center}
 h1{margin:0 0 12px 0; font-size:clamp(16px,2.6vw,22px); color:#fff}
 .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(6px,2vw,14px); margin:12px 0; width:100%}
 
 /* 讓每個格子保持正方形且可縮放 */
-.cell{background:linear-gradient(180deg,#0b1220,#091426); border-radius:8px; padding:0; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600; font-size:clamp(12px,2.4vw,16px); box-shadow:0 6px 14px rgba(2,6,23,0.6); transition:transform .12s, box-shadow .12s}
-.cell.center{background:linear-gradient(180deg,#122036,#0f2a44); font-size:clamp(13px,2.4vw,15px); position:relative}
+.cell{background:linear-gradient(180deg,var(--card-grad-from),var(--card-grad-to)); border-radius:8px; padding:0; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600; font-size:clamp(12px,2.4vw,16px); box-shadow:0 6px 14px var(--shadow); transition:transform .12s, box-shadow .12s, background 0.3s ease; cursor:pointer}
+.cell.center{background:linear-gradient(180deg,var(--card-center-from),var(--card-center-to)); font-size:clamp(13px,2.4vw,15px); position:relative}
 .cell.active{outline:4px solid rgba(255,184,107,0.18); box-shadow:0 10px 26px rgba(255,184,107,0.08); transform:translateY(-4px)}
 
 /* 中間格按鈕樣式，使按鈕填滿格子，並保留良好觸控目標 */
-.cell.center button{all:unset; display:inline-flex; align-items:center; justify-content:center; width:100%; height:100%; padding:0; border-radius:8px; background:var(--accent); color:#072026; font-weight:800; cursor:pointer; font-size:clamp(14px,3vw,18px); touch-action:manipulation}
+.cell.center button{all:unset; display:inline-flex; align-items:center; justify-content:center; width:100%; height:100%; padding:0; border-radius:8px; background:var(--accent); color:var(--bg); font-weight:800; cursor:pointer; font-size:clamp(14px,3vw,18px); touch-action:manipulation; transition:background 0.3s ease}
 .cell.center button:active{transform:translateY(1px)}
 
 /* label 在 cell 內提供內縮 (padding) 與置中文字，確保所有 cell 外觀大小一致 */
@@ -43,12 +118,12 @@ h1{margin:0 0 12px 0; font-size:clamp(16px,2.6vw,22px); color:#fff}
 }
 
 /* Modal (full-screen) */
-.modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.65); backdrop-filter:blur(6px); z-index:1200}
+.modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.65); backdrop-filter:blur(6px); z-index:1200; transition:background 0.3s ease}
 .modal.hidden{display:none}
-.modal-content{background:linear-gradient(180deg,#071428,#0c2540); color:#fff; padding:22px; border-radius:12px; width:min(92%,560px); max-width:560px; text-align:center; box-shadow:0 12px 40px rgba(2,6,23,0.6)}
+.modal-content{background:linear-gradient(180deg,var(--modal-bg-from),var(--modal-bg-to)); color:var(--muted); padding:22px; border-radius:12px; width:min(92%,560px); max-width:560px; text-align:center; box-shadow:0 12px 40px var(--shadow); transition:background 0.3s ease, color 0.3s ease}
 .modal-content h2{margin:0 0 8px 0; font-size:clamp(18px,3.2vw,26px)}
 .modal-prize{font-weight:800; font-size:clamp(16px,2.8vw,22px); margin:8px 0 18px 0}
-.modal-confirm{all:unset; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#072026; padding:12px 20px; border-radius:10px; font-weight:800; cursor:pointer}
+.modal-confirm{all:unset; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:var(--bg); padding:12px 20px; border-radius:10px; font-weight:800; cursor:pointer; transition:background 0.3s ease}
 .modal-confirm:active{transform:translateY(1px)}
 
 @media (max-width:420px){

@@ -1,7 +1,10 @@
-// 9宮格抽獎邏輯
-// 權重設定：調整每個獎項的 weight (數字)。weight 越大，被抽中的機率越高。
-// 若想禁用某格可把 weight 設為 0（或移除項目，但請保留 index 對應）。
-// 注意：中間格 (index 4) 預設不在旋轉序列中，若你想讓中間格也能被抽中，請同時更新 `order` 陣列。
+// ============ 設定區 ============
+// 修改這裡的參數來調整遊戲設定
+
+// 主題設定（可選：'dark', 'light', 'neon', 'sunset', 'nature'）
+const CURRENT_THEME = 'neon';
+
+// 中獎權重設定
 const prizes = [
   { label: '50元折價券', weight: 1 },
   { label: '30元折價券', weight: 0 },
@@ -14,7 +17,13 @@ const prizes = [
   { label: '感謝參加', weight: 1 }
 ];
 
-// 走訪順序（順時針），不包含中間格（index 4）以避免轉到中間
+// ============ 程式碼開始 ============
+
+// 9宮格抽獎邏輯
+// 權重設定：調整每個獎項的 weight (數字)。weight 越大，被抽中的機率越高。
+// 若想禁用某格可把 weight 設為 0（或移除項目，但請保留 index 對應）。
+// 注意：中間格 (index 4) 預設不在旋轉序列中，若你想讓中間格也能被抽中，請同時更新 `order` 陣列。
+
 const order = [0,1,2,5,8,7,6,3];
 const cells = Array.from(document.querySelectorAll('.cell'));
 const spinBtn = document.getElementById('spinBtn');
@@ -217,3 +226,17 @@ function simulateWeights(trials = 10000){
 
 // 暴露給全域，以便在瀏覽器 console 直接呼叫
 window.simulateWeights = simulateWeights;
+
+// 主題設定：頁面載入時應用設定的主題
+function applyTheme(){
+  const THEMES = ['dark', 'light', 'neon', 'sunset', 'nature'];
+  const theme = THEMES.includes(CURRENT_THEME) ? CURRENT_THEME : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+// 頁面載入時套用主題
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', applyTheme);
+} else {
+  applyTheme();
+}
