@@ -100,6 +100,10 @@ function spin() {
   if (spinning) return;
   spinning = true;
   spinBtn.disabled = true;
+  // 讓按鈕失去焦點以避免瀏覽器自動滾動到按鈕
+  try{ spinBtn.blur(); }catch(e){}
+  // 在轉動期間暫時隱藏全域滾動，避免右側滾動條閃爍
+  try{ document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; }catch(e){}
   // 不在頁面下方顯示狀態（改為以 modal 顯示結果）
 
   const pickIndex = weightedPickIndex(prizes);
@@ -127,7 +131,9 @@ function spin() {
     const t = Math.min(1, elapsed / duration);
     const eased = easeOutCubic(t);
     currentRotation = startRotation + (targetRotationDeg - startRotation) * eased;
-    canvas.style.transform = `rotate(${currentRotation}deg)`;
+    // 限制小數位並強制使用 GPU 合成（translateZ(0)），以減少 sub-pixel jitter
+    const rounded = Math.round(currentRotation * 100) / 100;
+    canvas.style.transform = `rotate(${rounded}deg) translateZ(0)`;
     if (t < 1){
       requestAnimationFrame(frame);
     } else {
@@ -164,6 +170,8 @@ function hideModal(){
   }
   spinning = false;
   spinBtn.disabled = false;
+  // 恢復頁面滾動行為
+  try{ document.documentElement.style.overflow = ''; document.body.style.overflow = ''; }catch(e){}
 }
 
 function addHistory(text){
