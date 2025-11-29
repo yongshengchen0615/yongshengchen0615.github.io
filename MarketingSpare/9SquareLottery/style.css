@@ -1,0 +1,57 @@
+:root{
+  --bg:#0f1720;
+  --card:#0b1220;
+  --accent:#ffb86b;
+  --muted:#cbd5e1;
+}
+*{box-sizing:border-box}
+body{font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial; background:linear-gradient(180deg,#071021,var(--bg)); color:var(--muted); margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.container{width:min(92vw,480px); max-width:480px; padding:16px; text-align:center}
+h1{margin:0 0 12px 0; font-size:clamp(16px,2.6vw,22px); color:#fff}
+.grid{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(6px,2vw,14px); margin:12px 0; width:100%}
+
+/* 讓每個格子保持正方形且可縮放 */
+.cell{background:linear-gradient(180deg,#0b1220,#091426); border-radius:8px; padding:0; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600; font-size:clamp(12px,2.4vw,16px); box-shadow:0 6px 14px rgba(2,6,23,0.6); transition:transform .12s, box-shadow .12s}
+.cell.center{background:linear-gradient(180deg,#122036,#0f2a44); font-size:clamp(13px,2.4vw,15px); position:relative}
+.cell.active{outline:4px solid rgba(255,184,107,0.18); box-shadow:0 10px 26px rgba(255,184,107,0.08); transform:translateY(-4px)}
+
+/* 中間格按鈕樣式，使按鈕填滿格子，並保留良好觸控目標 */
+.cell.center button{all:unset; display:inline-flex; align-items:center; justify-content:center; width:100%; height:100%; padding:0; border-radius:8px; background:var(--accent); color:#072026; font-weight:800; cursor:pointer; font-size:clamp(14px,3vw,18px); touch-action:manipulation}
+.cell.center button:active{transform:translateY(1px)}
+
+/* label 在 cell 內提供內縮 (padding) 與置中文字，確保所有 cell 外觀大小一致 */
+.cell .label{padding:clamp(8px,2.4vw,18px); width:100%; height:100%; display:flex; align-items:center; justify-content:center; text-align:center}
+
+.controls{display:flex; align-items:center; gap:12px; justify-content:center; margin-top:12px}
+.result{min-height:30px; color:#fff; font-weight:700}
+
+/* small confetti pop */
+.confetti{position:fixed; left:50%; top:20%; transform:translateX(-50%); pointer-events:none}
+.chip{width:8px;height:12px; display:inline-block; margin:0 2px; animation:fall 900ms linear forwards}
+@keyframes fall{from{transform:translateY(-30px) rotate(0deg)} to{transform:translateY(120px) rotate(360deg); opacity:0}}
+
+/* 更小螢幕的細微調整 */
+@media (max-width:420px){
+  .container{width:92vw}
+  .grid{gap:8px}
+}
+
+/* 橫向或非常寬的螢幕：讓格子尺寸放大但限制最大寬度 */
+@media (min-width:900px){
+  .container{max-width:640px}
+  .cell{font-size:clamp(14px,1.6vw,18px)}
+}
+
+/* Modal (full-screen) */
+.modal{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.65); backdrop-filter:blur(6px); z-index:1200}
+.modal.hidden{display:none}
+.modal-content{background:linear-gradient(180deg,#071428,#0c2540); color:#fff; padding:22px; border-radius:12px; width:min(92%,560px); max-width:560px; text-align:center; box-shadow:0 12px 40px rgba(2,6,23,0.6)}
+.modal-content h2{margin:0 0 8px 0; font-size:clamp(18px,3.2vw,26px)}
+.modal-prize{font-weight:800; font-size:clamp(16px,2.8vw,22px); margin:8px 0 18px 0}
+.modal-confirm{all:unset; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#072026; padding:12px 20px; border-radius:10px; font-weight:800; cursor:pointer}
+.modal-confirm:active{transform:translateY(1px)}
+
+@media (max-width:420px){
+  .modal-content{padding:16px}
+  .modal-prize{font-size:16px}
+}

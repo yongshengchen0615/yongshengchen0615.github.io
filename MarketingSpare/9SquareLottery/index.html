@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>9宮格抽獎</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>9宮格抽獎遊戲</h1>
+
+    <div id="grid" class="grid">
+      <div class="cell" data-index="0"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="1"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="2"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="3"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell center" data-index="4"><button id="spinBtn">抽獎</button></div>
+      <div class="cell" data-index="5"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="6"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="7"><div class="label" aria-hidden="false"></div></div>
+      <div class="cell" data-index="8"><div class="label" aria-hidden="false"></div></div>
+    </div>
+
+    <!-- 全螢幕中獎提示 Modal -->
+    <div id="winModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-content">
+        <h2 id="modalTitle">中獎！</h2>
+        <p id="modalPrize" class="modal-prize"></p>
+        <button id="modalConfirm" class="modal-confirm">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
