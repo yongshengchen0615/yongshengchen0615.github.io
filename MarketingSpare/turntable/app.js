@@ -1,4 +1,39 @@
-// 轉盤抽獎主要邏輯
+// ========== 樣式設定（修改這個參數即可切換整體風格）==========
+// 可選值：'default', 'dark', 'light', 'neon'
+const THEME = 'light';
+
+// ========== 主題配色設定 ==========
+const themes = {
+  default: {
+    wheelColors: ['#ffb703', '#fb8500'],  // 轉盤扇形顏色（交替）
+    textColor: '#08111b',                 // 轉盤文字顏色
+    pointerColor: '#ffb703'               // 指針顏色
+  },
+  dark: {
+    wheelColors: ['#ffd166', '#ff8f00'],
+    textColor: '#08111b',
+    pointerColor: '#ffd166'
+  },
+  light: {
+    wheelColors: ['#0ea5a4', '#06b6d4'],
+    textColor: '#042028',
+    pointerColor: '#0ea5a4'
+  },
+  neon: {
+    wheelColors: ['#7c3aed', '#06b6d4'],
+    textColor: '#e6e6ff',
+    pointerColor: '#7c3aed'
+  }
+};
+
+// 應用當前主題
+const currentTheme = themes[THEME] || themes.default;
+document.documentElement.className = `theme-${THEME}`;
+if (document.getElementById('pointer')) {
+  document.getElementById('pointer').style.color = currentTheme.pointerColor;
+}
+
+// ========== 轉盤抽獎主要邏輯 ==========
 const canvas = document.getElementById('wheel');
 const ctx = canvas.getContext('2d');
 const spinBtn = document.getElementById('spinBtn');
@@ -60,11 +95,6 @@ function drawWheel() {
   ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
   const count = prizes.length;
   const arc = 2 * Math.PI / count;
-  // 取得主題變數（slice 顏色與文字顏色）
-  const cs = getComputedStyle(document.documentElement);
-  const sliceA = (cs.getPropertyValue('--slice1') || '#ffb703').trim();
-  const sliceB = (cs.getPropertyValue('--slice2') || '#fb8500').trim();
-  const textColor = (cs.getPropertyValue('--text') || '#08111b').trim();
   for (let i=0;i<count;i++){
     const start = i * arc;
     const end = start + arc;
@@ -72,14 +102,14 @@ function drawWheel() {
     ctx.moveTo(cx,cy);
     ctx.arc(cx,cy,radius,start,end,false);
     ctx.closePath();
-    ctx.fillStyle = i%2===0 ? sliceA : sliceB;
+    ctx.fillStyle = currentTheme.wheelColors[i % 2];
     ctx.fill();
     ctx.save();
     // 繪文字
     ctx.translate(cx,cy);
     ctx.rotate(start + arc/2);
     ctx.textAlign = 'right';
-    ctx.fillStyle = textColor;
+    ctx.fillStyle = currentTheme.textColor;
     // 字型大小隨畫布大小調整
     const fontSize = Math.max(10, Math.round(size * 0.038));
     ctx.font = `bold ${fontSize}px sans-serif`;
@@ -87,86 +117,6 @@ function drawWheel() {
     ctx.restore();
   }
 }
-
-// 主題切換：對 <html> 加上 class `theme-...`，並儲存設定
-function setTheme(name){
-  try{
-    // 移除舊的 theme- 前綴類別
-    const html = document.documentElement;
-    [...html.classList].forEach(c=>{ if (c.startsWith('theme-')) html.classList.remove(c); });
-    if (name && name !== 'default') html.classList.add(`theme-${name}`);
-    localStorage.setItem('wheel_theme', name || 'default');
-    // 重新繪製，確保 canvas 取到新的顏色
-    drawWheel();
-    // 更新切換按鈕狀態（若有）
-    try{ document.querySelectorAll('.theme-switcher button').forEach(b=>b.classList.toggle('active', b.dataset.theme===name)); }catch(e){}
-  }catch(e){/* ignore */}
-}
-
-function initTheme(){
-  const saved = localStorage.getItem('wheel_theme') || 'default';
-  setTheme(saved);
-}
-
-// 暴露給全域方便 HTML onclick 使用
-window.setTheme = setTheme;
-window.initTheme = initTheme;
-
-// -------------
-// 以 JS 字串或物件套用主題（不需額外 UI）
-// 1) applyThemeFromString(cssText, saveName?)
-//    - cssText 可為完整的 ":root{--a:1;--b:2}" 或單純 "--a:1;--b:2;"
-// 2) setCssVars(obj, saveName?)
-//    - 以物件直接設定 CSS 變數，例如 { '--accent': '#0ea5a4' }
-// 3) clearDynamicTheme() 將移除動態產生的 <style>，並可重繪
-
-function applyThemeFromString(cssText, saveName){
-  try{
-    let body = cssText || '';
-    const m = cssText.match(/\{([\s\S]*)\}/);
-    if (m) body = m[1];
-    // 保證末端有分號
-    if (body && !/;\s*$/.test(body)) body = body + ';';
-    const styleId = 'dynamic-theme-style';
-    let s = document.getElementById(styleId);
-    if (!s){ s = document.createElement('style'); s.id = styleId; document.head.appendChild(s); }
-    s.textContent = `:root{${body}}`;
-    // 重新繪製 canvas
-    drawWheel();
-    if (saveName) localStorage.setItem('wheel_theme', saveName);
-    return true;
-  }catch(e){ console.error('applyThemeFromString error', e); return false; }
-}
-
-function setCssVars(obj, saveName){
-  try{
-    const root = document.documentElement;
-    Object.entries(obj).forEach(([k,v])=>{
-      const key = k.startsWith('--') ? k : `--${k}`;
-      root.style.setProperty(key, v);
-    });
-    drawWheel();
-    if (saveName) localStorage.setItem('wheel_theme', saveName);
-    return true;
-  }catch(e){ console.error('setCssVars error', e); return false; }
-}
-
-function clearDynamicTheme(){
-  try{
-    const styleId = 'dynamic-theme-style';
-    const s = document.getElementById(styleId);
-    if (s) s.parentNode.removeChild(s);
-    // optional: 清除 inline style vars
-    // (不自動移除，以免覆蓋使用者先前的 setCssVars; 若需可再加清除功能)
-    drawWheel();
-    return true;
-  }catch(e){ return false; }
-}
-
-// 暴露給全域，方便在瀏覽器 console 或其他 script 使用
-window.applyThemeFromString = applyThemeFromString;
-window.setCssVars = setCssVars;
-window.clearDynamicTheme = clearDynamicTheme;
 
 // 權重抽樣，回傳索引
 function weightedPickIndex(items){
@@ -185,10 +135,6 @@ function spin() {
   if (spinning) return;
   spinning = true;
   spinBtn.disabled = true;
-  // 讓按鈕失去焦點以避免瀏覽器自動滾動到按鈕
-  try{ spinBtn.blur(); }catch(e){}
-  // 在轉動期間暫時隱藏全域滾動，避免右側滾動條閃爍
-  try{ document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; }catch(e){}
   // 不在頁面下方顯示狀態（改為以 modal 顯示結果）
 
   const pickIndex = weightedPickIndex(prizes);
@@ -255,8 +201,6 @@ function hideModal(){
   }
   spinning = false;
   spinBtn.disabled = false;
-  // 恢復頁面滾動行為
-  try{ document.documentElement.style.overflow = ''; document.body.style.overflow = ''; }catch(e){}
 }
 
 function addHistory(text){

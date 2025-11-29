@@ -49,10 +49,7 @@ h1{margin:0 0 12px;font-size:24px}
   --text: #e6e6ff;
 }
 
-/* simple theme switcher UI */
-.theme-switcher{display:flex;gap:8px;justify-content:flex-end;margin-bottom:8px}
-.theme-switcher button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent);padding:6px 8px;border-radius:8px;cursor:pointer}
-.theme-switcher button.active{outline:2px solid rgba(255,255,255,0.06)}
+
 
 /* 讓轉盤容器自適應各種裝置寬度，維持正方形 */
 .wheel-area{position:relative;width:min(90vw,560px);max-width:100%;margin:12px auto;aspect-ratio:1/1}
