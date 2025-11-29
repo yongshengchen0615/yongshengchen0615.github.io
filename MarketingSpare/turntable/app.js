@@ -1,36 +1,23 @@
 // ========== 樣式設定（修改這個參數即可切換整體風格）==========
 // 可選值：'default', 'dark', 'light', 'neon'
-const THEME = 'light';
+const THEME = 'default';
 
-// ========== 主題配色設定 ==========
-const themes = {
-  default: {
-    wheelColors: ['#ffb703', '#fb8500'],  // 轉盤扇形顏色（交替）
-    textColor: '#08111b',                 // 轉盤文字顏色
-    pointerColor: '#ffb703'               // 指針顏色
-  },
-  dark: {
-    wheelColors: ['#ffd166', '#ff8f00'],
-    textColor: '#08111b',
-    pointerColor: '#ffd166'
-  },
-  light: {
-    wheelColors: ['#0ea5a4', '#06b6d4'],
-    textColor: '#042028',
-    pointerColor: '#0ea5a4'
-  },
-  neon: {
-    wheelColors: ['#7c3aed', '#06b6d4'],
-    textColor: '#e6e6ff',
-    pointerColor: '#7c3aed'
-  }
-};
-
-// 應用當前主題
-const currentTheme = themes[THEME] || themes.default;
+// 應用主題 class
 document.documentElement.className = `theme-${THEME}`;
+
+// 取得主題色彩（從 CSS 變數）
+function getThemeColors() {
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    wheelColors: [styles.getPropertyValue('--slice1').trim(), styles.getPropertyValue('--slice2').trim()],
+    textColor: styles.getPropertyValue('--text').trim(),
+    pointerColor: styles.getPropertyValue('--accent').trim()
+  };
+}
+
+// 設定指針顏色
 if (document.getElementById('pointer')) {
-  document.getElementById('pointer').style.color = currentTheme.pointerColor;
+  document.getElementById('pointer').style.color = getThemeColors().pointerColor;
 }
 
 // ========== 轉盤抽獎主要邏輯 ==========
@@ -95,6 +82,7 @@ function drawWheel() {
   ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
   const count = prizes.length;
   const arc = 2 * Math.PI / count;
+  const themeColors = getThemeColors();
   for (let i=0;i<count;i++){
     const start = i * arc;
     const end = start + arc;
@@ -102,14 +90,14 @@ function drawWheel() {
     ctx.moveTo(cx,cy);
     ctx.arc(cx,cy,radius,start,end,false);
     ctx.closePath();
-    ctx.fillStyle = currentTheme.wheelColors[i % 2];
+    ctx.fillStyle = themeColors.wheelColors[i % 2];
     ctx.fill();
     ctx.save();
     // 繪文字
     ctx.translate(cx,cy);
     ctx.rotate(start + arc/2);
     ctx.textAlign = 'right';
-    ctx.fillStyle = currentTheme.textColor;
+    ctx.fillStyle = themeColors.textColor;
     // 字型大小隨畫布大小調整
     const fontSize = Math.max(10, Math.round(size * 0.038));
     ctx.font = `bold ${fontSize}px sans-serif`;
