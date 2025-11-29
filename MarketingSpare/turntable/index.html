@@ -9,6 +9,12 @@
 <body>
   <div class="container">
     <h1>轉盤抽獎</h1>
+    <div class="theme-switcher" aria-hidden="false">
+      <button data-theme="default" onclick="setTheme('default')">Default</button>
+      <button data-theme="dark" onclick="setTheme('dark')">Dark</button>
+      <button data-theme="light" onclick="setTheme('light')">Light</button>
+      <button data-theme="neon" onclick="setTheme('neon')">Neon</button>
+    </div>
     <div class="wheel-area">
       <canvas id="wheel" width="500" height="500"></canvas>
       <div id="pointer">▼</div>
@@ -27,5 +33,6 @@
     <!-- 獎項與權重請直接在程式碼（app.js 的 defaultPrizes）中修改 -->
   </div>
   <script src="app.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', ()=>{ if (window.initTheme) window.initTheme(); });</script>
 </body>
 </html>
