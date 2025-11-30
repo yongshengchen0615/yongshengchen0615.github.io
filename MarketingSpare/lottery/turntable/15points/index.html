@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>轉盤抽獎遊戲</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>15點轉盤抽獎</h1>
+
+    <div class="wheel-area">
+      <canvas id="wheel" width="500" height="500"></canvas>
+      <div id="pointer">▼</div>
+      <button id="spinBtn" class="spin-center" aria-label="開始轉動">開始</button>
+    </div>
+    <!-- 獎項與權重請直接在程式碼（app.js 的 defaultPrizes）中修改 -->
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

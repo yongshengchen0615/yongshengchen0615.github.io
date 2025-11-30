@@ -4,10 +4,11 @@ const storeLon = 120.20560902221429;
 const allowedDistanceKm = 0.3;
 
 const linkTargets = {
-  btn5:  "../5points/index.html",
-  btn10: "../10points/index.html",
-  btn15: "../15points/index.html",
-  btn20: "../20points/index.html",
+ btn5:  "../turntable/5points/index.html",
+  btn10: "../turntable/10points/index.html",
+  btn15: "../turntable/15points/index.html",
+  btn20: "../turntable/20points/index.html",
+
 };
 
 const $msg = document.getElementById("message");
