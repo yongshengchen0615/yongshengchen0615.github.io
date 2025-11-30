@@ -659,8 +659,8 @@ function renderContact() {
     container.innerHTML = '';
     
     const contactItems = [
-        { label: '服務電話', value: eventConfig.contact.phone },
-        { label: 'Email', value: eventConfig.contact.email },
+       // { label: '服務電話', value: eventConfig.contact.phone },
+      //  { label: 'Email', value: eventConfig.contact.email },
         { label: 'LINE ID', value: eventConfig.contact.line },
         { label: '服務時間', value: eventConfig.contact.hours }
     ];
