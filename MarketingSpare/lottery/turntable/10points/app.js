@@ -38,10 +38,10 @@ const defaultPrizes = [
   {label: '🔸 雞湯🍵', weight: 0, color: '#ffd93d'},  // 二獎：金黃色
    {label: '再接再厲', weight: 30},
   {label: '再接再厲', weight: 30},
-  {label: '🔸 甜湯🍵', weight: 0, color: '#a8e6cf'},  // 三獎：淺綠色
+  {label: '🔸 甜湯🍵', weight: 5, color: '#a8e6cf'},  // 三獎：淺綠色
    {label: '再接再厲', weight: 30},
   {label: '再接再厲', weight: 30},
-  {label: '🔸 足湯包 🛁', weight: 0, color: '#95e1d3'},  // 四獎：青綠色
+  {label: '🔸 足湯包 🛁', weight: 10, color: '#95e1d3'},  // 四獎：青綠色
 ];
 
 

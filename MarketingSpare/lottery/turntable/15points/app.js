@@ -40,7 +40,7 @@ const defaultPrizes = [
     {label: '再接再厲', weight: 30},
   {label: '🔸 雞湯 🍵', weight: 1, color: '#a8e6cf'},  // 三獎：淺綠色
     {label: '再接再厲', weight: 30},
-  {label: '🔸 甜湯', weight: 1, color: '#95e1d3'},  // 四獎：青綠色
+  {label: '🔸 甜湯', weight: 10, color: '#95e1d3'},  // 四獎：青綠色
   {label: '再接再厲', weight: 30},
 ];
 

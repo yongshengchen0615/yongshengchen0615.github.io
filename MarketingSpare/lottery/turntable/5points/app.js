@@ -37,9 +37,9 @@ const defaultPrizes = [
   {label: '🔸 甜湯🍵', weight: 1, color: '#ffd93d'},  // 二獎：金黃色
     {label: '再接再厲', weight: 10},
   {label: '再接再厲', weight: 10},
-  {label: '🔸 足湯包 🛁', weight: 1, color: '#a8e6cf'},  // 三獎：淺綠色
+  {label: '🔸 足湯包 🛁', weight: 10, color: '#a8e6cf'},  // 三獎：淺綠色
   {label: '再接再厲', weight: 10},
-  {label: '再接再厲', weight: 10},
+  {label: '再接再厲', weight: 20},
 ];
 
 
