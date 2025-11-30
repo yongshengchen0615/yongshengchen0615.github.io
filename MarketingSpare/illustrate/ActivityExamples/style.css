@@ -5,22 +5,58 @@
 }
 
 :root {
+    /* 顏色變數 - 可透過 JS 動態修改 */
     --primary-color: #6366f1;
     --secondary-color: #8b5cf6;
     --accent-color: #ec4899;
     --success-color: #10b981;
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
-    --dark: #1e293b;
-    --light: #f8fafc;
-    --gray: #64748b;
+    --dark-color: #1e293b;
+    --light-color: #f8fafc;
+    --gray-color: #64748b;
+    
+    /* 漸層變數 - 可透過 JS 動態修改 */
     --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-time: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --gradient-description: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    --gradient-notice: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    --gradient-prize: linear-gradient(135deg, #d299c2 0%, #fef9d7 100%);
+    
+    /* 陰影變數 - 可透過 JS 動態修改 */
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+    
+    /* 字體大小變數 - 可透過 JS 動態修改 */
+    --hero-title-size: 3em;
+    --hero-subtitle-size: 1.4em;
+    --section-title-size: 2.2em;
+    --body-text-size: 1.1em;
+    
+    /* 圓角變數 - 可透過 JS 動態修改 */
+    --border-radius-container: 24px;
+    --border-radius-card: 16px;
+    --border-radius-button: 50px;
+    --border-radius-badge: 50px;
+    
+    /* 間距變數 - 可透過 JS 動態修改 */
+    --section-padding: 60px 40px;
+    --hero-padding: 80px 40px;
+    --card-padding: 30px;
+    
+    /* 動畫變數 - 可透過 JS 動態修改 */
+    --animation-speed: 0.3s;
+    --float-duration: 6s;
+    
+    /* 相容性別名 */
+    --dark: var(--dark-color);
+    --light: var(--light-color);
+    --gray: var(--gray-color);
 }
 
 body {
@@ -36,7 +72,7 @@ body {
     max-width: 1200px;
     margin: 0 auto;
     background: white;
-    border-radius: 24px;
+    border-radius: var(--border-radius-container);
     overflow: hidden;
     box-shadow: var(--shadow-xl);
 }
@@ -46,7 +82,7 @@ body {
     position: relative;
     background: var(--gradient-1);
     color: white;
-    padding: 80px 40px;
+    padding: var(--hero-padding);
     overflow: hidden;
     text-align: center;
 }
@@ -65,7 +101,7 @@ body {
     position: absolute;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
-    animation: float 6s ease-in-out infinite;
+    animation: float var(--float-duration) ease-in-out infinite;
 }
 
 .circle-1 {
@@ -107,7 +143,7 @@ body {
 }
 
 .hero-title {
-    font-size: 3em;
+    font-size: var(--hero-title-size);
     font-weight: 800;
     margin-bottom: 20px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
@@ -115,7 +151,7 @@ body {
 }
 
 .hero-subtitle {
-    font-size: 1.4em;
+    font-size: var(--hero-subtitle-size);
     margin-bottom: 30px;
     opacity: 0.95;
     animation: slideUp 0.8s ease-out;
@@ -126,7 +162,7 @@ body {
     background: rgba(255, 255, 255, 0.2);
     backdrop-filter: blur(10px);
     padding: 12px 30px;
-    border-radius: 50px;
+    border-radius: var(--border-radius-badge);
     font-weight: 600;
     font-size: 1.1em;
     border: 2px solid rgba(255, 255, 255, 0.3);
@@ -172,13 +208,13 @@ body {
 
 .time-card {
     background: white;
-    border-radius: 16px;
-    padding: 30px;
+    border-radius: var(--border-radius-card);
+    padding: var(--card-padding);
     display: flex;
     align-items: center;
     gap: 25px;
     box-shadow: var(--shadow-lg);
-    transition: transform 0.3s ease;
+    transition: transform var(--animation-speed) ease;
 }
 
 .time-card:hover {
@@ -219,11 +255,11 @@ body {
 
 /* Section Styles */
 section {
-    padding: 60px 40px;
+    padding: var(--section-padding);
 }
 
 .section-title {
-    font-size: 2.2em;
+    font-size: var(--section-title-size);
     font-weight: 700;
     margin-bottom: 35px;
     display: flex;
@@ -244,9 +280,9 @@ section {
 .description-content {
     background: white;
     padding: 35px;
-    border-radius: 16px;
+    border-radius: var(--border-radius-card);
     box-shadow: var(--shadow-md);
-    font-size: 1.1em;
+    font-size: var(--body-text-size);
     line-height: 1.9;
 }
 
@@ -276,10 +312,10 @@ section {
 
 .step-card {
     background: white;
-    border-radius: 16px;
-    padding: 30px;
+    border-radius: var(--border-radius-card);
+    padding: var(--card-padding);
     box-shadow: var(--shadow-md);
-    transition: all 0.3s ease;
+    transition: all var(--animation-speed) ease;
     position: relative;
     overflow: hidden;
 }
@@ -293,7 +329,7 @@ section {
     height: 5px;
     background: var(--gradient-1);
     transform: scaleX(0);
-    transition: transform 0.3s ease;
+    transition: transform var(--animation-speed) ease;
 }
 
 .step-card:hover {
@@ -338,7 +374,7 @@ section {
 
 .notice-list {
     background: white;
-    border-radius: 16px;
+    border-radius: var(--border-radius-card);
     padding: 35px;
     box-shadow: var(--shadow-md);
 }
@@ -352,7 +388,7 @@ section {
     display: flex;
     align-items: flex-start;
     gap: 15px;
-    transition: all 0.3s ease;
+    transition: all var(--animation-speed) ease;
 }
 
 .notice-item:hover {
@@ -385,11 +421,11 @@ section {
 
 .prize-card {
     background: white;
-    border-radius: 16px;
-    padding: 30px;
+    border-radius: var(--border-radius-card);
+    padding: var(--card-padding);
     text-align: center;
     box-shadow: var(--shadow-md);
-    transition: all 0.3s ease;
+    transition: all var(--animation-speed) ease;
     position: relative;
     overflow: hidden;
 }
@@ -448,7 +484,7 @@ section {
 
 .contact-card {
     background: white;
-    border-radius: 16px;
+    border-radius: var(--border-radius-card);
     padding: 40px;
     box-shadow: var(--shadow-lg);
     max-width: 600px;
@@ -475,7 +511,7 @@ section {
     padding: 15px;
     background: #f8fafc;
     border-radius: 12px;
-    transition: all 0.3s ease;
+    transition: all var(--animation-speed) ease;
 }
 
 .contact-item:hover {
@@ -544,6 +580,12 @@ section {
     .contact-card {
         padding: 30px 20px;
     }
+}
+
+/* 禁用動畫類別 */
+.no-animations * {
+    animation: none !important;
+    transition: none !important;
 }
 
 /* 印刷樣式 */

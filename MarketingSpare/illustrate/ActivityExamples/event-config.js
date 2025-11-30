@@ -1,5 +1,76 @@
 // 活動設定檔 - 所有文字內容都可以在這裡修改
 const eventConfig = {
+    // ===== 快速主題切換 =====
+    // 只需修改這一個參數即可套用整套樣式!
+    // 可選主題: "default" | "elegant-black" | "fresh-green" | "minimalist" | "cute-pink" | "ocean-blue" | "sunset-orange" | "purple-dream" | "custom"
+    theme: "ocean-blue",  // 👈 修改這裡即可切換整個主題!
+    
+    // ===== 自訂樣式設定 (theme: "custom" 時使用) =====
+    // 當 theme 設為 "custom" 時，以下設定才會生效
+    // 可以透過修改這些參數來改變網站的視覺風格
+    styles: {
+        // 主題色彩
+        colors: {
+            primary: "#6366f1",      // 主色
+            secondary: "#8b5cf6",    // 次要色
+            accent: "#ec4899",       // 強調色
+            success: "#10b981",      // 成功色
+            warning: "#f59e0b",      // 警告色
+            danger: "#ef4444",       // 危險色
+            dark: "#1e293b",         // 深色
+            light: "#f8fafc",        // 淺色
+            gray: "#64748b"          // 灰色
+        },
+        
+        // 漸層色設定
+        gradients: {
+            hero: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",        // 主視覺漸層
+            bodyBg: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",      // 背景漸層
+            time: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",        // 時間區塊
+            description: "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)", // 說明區塊
+            notice: "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",      // 注意事項
+            prize: "linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)"        // 獎品區塊
+        },
+        
+        // 字體設定
+        typography: {
+            heroTitleSize: "3em",      // 主標題大小
+            heroSubtitleSize: "1.4em", // 副標題大小
+            sectionTitleSize: "2.2em", // 區塊標題大小
+            bodyTextSize: "1.1em",     // 內文大小
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif"
+        },
+        
+        // 圓角設定
+        borderRadius: {
+            container: "24px",  // 容器圓角
+            card: "16px",       // 卡片圓角
+            button: "50px",     // 按鈕圓角
+            badge: "50px"       // 徽章圓角
+        },
+        
+        // 間距設定
+        spacing: {
+            sectionPadding: "60px 40px",    // 區塊內距
+            heroPadding: "80px 40px",       // 主視覺內距
+            cardPadding: "30px"             // 卡片內距
+        },
+        
+        // 陰影設定
+        shadows: {
+            enabled: true,                // 是否啟用陰影
+            intensity: "medium"           // 陰影強度: light, medium, heavy
+        },
+        
+        // 動畫設定
+        animations: {
+            enabled: true,                // 是否啟用動畫
+            speed: "0.3s",               // 動畫速度
+            floatDuration: "6s"          // 浮動動畫時長
+        }
+    },
+    
+    // ===== 內容設定 =====
     // 主標題區塊
     title: "2025 年度超級優惠活動",
     subtitle: "參加即有機會獲得超值好禮",
@@ -76,7 +147,8 @@ const eventConfig = {
             item: "100元購物金",
             quantity: "50名",
             color: "#FFA07A"
-        }
+        },
+        
     ],
     
     // 聯絡資訊
