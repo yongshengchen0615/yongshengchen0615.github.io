@@ -102,6 +102,7 @@ body {
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
     animation: float var(--float-duration) ease-in-out infinite;
+    will-change: transform;
 }
 
 .circle-1 {
@@ -148,6 +149,7 @@ body {
     margin-bottom: 20px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
     animation: slideDown 0.8s ease-out;
+    letter-spacing: 0.5px;
 }
 
 .hero-subtitle {
@@ -166,7 +168,9 @@ body {
     font-weight: 600;
     font-size: 1.1em;
     border: 2px solid rgba(255, 255, 255, 0.3);
-    animation: pulse 2s ease-in-out infinite;
+    animation: pulse 2s ease-in-out infinite, shimmer 3s linear infinite;
+    position: relative;
+    overflow: hidden;
 }
 
 @keyframes slideDown {
@@ -198,6 +202,27 @@ body {
     50% {
         transform: scale(1.05);
     }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.hero-badge::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -50%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 50%, rgba(255,255,255,0) 100%);
+    transform: skewX(-20deg);
+    animation: badge-sweep 2.8s ease-in-out infinite;
+}
+
+@keyframes badge-sweep {
+    0% { left: -60%; }
+    50% { left: 110%; }
+    100% { left: 110%; }
 }
 
 /* Time Section */
@@ -318,6 +343,7 @@ section {
     transition: all var(--animation-speed) ease;
     position: relative;
     overflow: hidden;
+    will-change: transform, box-shadow;
 }
 
 .step-card::before {
@@ -330,6 +356,26 @@ section {
     background: var(--gradient-1);
     transform: scaleX(0);
     transition: transform var(--animation-speed) ease;
+}
+
+.step-card::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, rgba(99,102,241,0) 60%);
+    transform: scale(0);
+    pointer-events: none;
+    animation: none;
+}
+
+.step-card.ripple-active::after {
+    animation: ripple 0.6s ease-out;
+}
+
+@keyframes ripple {
+    0% { transform: scale(0); opacity: 0.6; }
+    100% { transform: scale(12); opacity: 0; }
 }
 
 .step-card:hover {
@@ -428,6 +474,8 @@ section {
     transition: all var(--animation-speed) ease;
     position: relative;
     overflow: hidden;
+    transform-style: preserve-3d;
+    will-change: transform, box-shadow;
 }
 
 .prize-card::before {
@@ -439,6 +487,7 @@ section {
     height: 100%;
     opacity: 0;
     transition: opacity 0.3s ease;
+    background: var(--prize-hover-bg, transparent);
 }
 
 .prize-card:hover {
@@ -458,6 +507,7 @@ section {
     border-radius: 12px;
     color: white;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+    transform: translateZ(20px);
 }
 
 .prize-item {
@@ -518,6 +568,7 @@ section {
     background: var(--gradient-3);
     color: white;
     transform: translateX(5px);
+    box-shadow: var(--shadow-lg);
 }
 
 .contact-item strong {

@@ -1,379 +1,47 @@
 // 當頁面載入完成後執行
-document.addEventListener('DOMContentLoaded', function() {
-    applyTheme(); // 先套用主題
+document.addEventListener('DOMContentLoaded', withErrorHandling(() => {
+    applyTheme();
     renderEventPage();
-});
+    initInteractiveAnimations();
+}));
 
-// 主題預設配置
-const themePresets = {
-    "default": {
-        colors: {
-            primary: "#6366f1",
-            secondary: "#8b5cf6",
-            accent: "#ec4899",
-            warning: "#f59e0b",
-            dark: "#1e293b",
-            light: "#f8fafc",
-            gray: "#64748b"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            bodyBg: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            time: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-            description: "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
-            notice: "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
-            prize: "linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)"
-        },
-        typography: {
-            heroTitleSize: "3em",
-            heroSubtitleSize: "1.4em",
-            sectionTitleSize: "2.2em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "24px",
-            card: "16px",
-            button: "50px",
-            badge: "50px"
-        },
-        spacing: {
-            sectionPadding: "60px 40px",
-            heroPadding: "80px 40px",
-            cardPadding: "30px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.3s",
-            floatDuration: "6s"
-        }
-    },
-    
-    "elegant-black": {
-        colors: {
-            primary: "#d4af37",
-            secondary: "#b8860b",
-            accent: "#ffd700",
-            warning: "#f59e0b",
-            dark: "#000000",
-            light: "#1a1a1a",
-            gray: "#808080"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #434343 0%, #000000 100%)",
-            bodyBg: "linear-gradient(135deg, #1a1a1a 0%, #000000 100%)",
-            time: "linear-gradient(135deg, #2c2c2c 0%, #1a1a1a 100%)",
-            description: "linear-gradient(135deg, #3a3a3a 0%, #2c2c2c 100%)",
-            notice: "linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%)",
-            prize: "linear-gradient(135deg, #5a5a5a 0%, #4a4a4a 100%)"
-        },
-        typography: {
-            heroTitleSize: "3.2em",
-            heroSubtitleSize: "1.5em",
-            sectionTitleSize: "2.3em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "12px",
-            card: "8px",
-            button: "4px",
-            badge: "4px"
-        },
-        spacing: {
-            sectionPadding: "70px 50px",
-            heroPadding: "90px 50px",
-            cardPadding: "35px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "heavy"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.4s",
-            floatDuration: "8s"
-        }
-    },
-    
-    "fresh-green": {
-        colors: {
-            primary: "#10b981",
-            secondary: "#059669",
-            accent: "#34d399",
-            warning: "#fbbf24",
-            dark: "#064e3b",
-            light: "#ecfdf5",
-            gray: "#6b7280"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-            bodyBg: "linear-gradient(135deg, #34d399 0%, #10b981 100%)",
-            time: "linear-gradient(135deg, #6ee7b7 0%, #34d399 100%)",
-            description: "linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)",
-            notice: "linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%)",
-            prize: "linear-gradient(135deg, #6ee7b7 0%, #34d399 100%)"
-        },
-        typography: {
-            heroTitleSize: "3em",
-            heroSubtitleSize: "1.4em",
-            sectionTitleSize: "2.2em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "28px",
-            card: "20px",
-            button: "60px",
-            badge: "60px"
-        },
-        spacing: {
-            sectionPadding: "60px 40px",
-            heroPadding: "80px 40px",
-            cardPadding: "30px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.25s",
-            floatDuration: "5s"
-        }
-    },
-    
-    "minimalist": {
-        colors: {
-            primary: "#3b82f6",
-            secondary: "#2563eb",
-            accent: "#60a5fa",
-            warning: "#f59e0b",
-            dark: "#111827",
-            light: "#ffffff",
-            gray: "#6b7280"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-            bodyBg: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-            time: "linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)",
-            description: "linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)",
-            notice: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-            prize: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)"
-        },
-        typography: {
-            heroTitleSize: "2.8em",
-            heroSubtitleSize: "1.3em",
-            sectionTitleSize: "2em",
-            bodyTextSize: "1em"
-        },
-        borderRadius: {
-            container: "8px",
-            card: "8px",
-            button: "8px",
-            badge: "8px"
-        },
-        spacing: {
-            sectionPadding: "50px 30px",
-            heroPadding: "70px 30px",
-            cardPadding: "25px"
-        },
-        shadows: {
-            enabled: false,
-            intensity: "light"
-        },
-        animations: {
-            enabled: false,
-            speed: "0.2s",
-            floatDuration: "4s"
-        }
-    },
-    
-    "cute-pink": {
-        colors: {
-            primary: "#ec4899",
-            secondary: "#f472b6",
-            accent: "#fbbf24",
-            warning: "#fb923c",
-            dark: "#831843",
-            light: "#fdf2f8",
-            gray: "#9ca3af"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #fbbf24 0%, #ec4899 100%)",
-            bodyBg: "linear-gradient(135deg, #fde047 0%, #f472b6 100%)",
-            time: "linear-gradient(135deg, #fbcfe8 0%, #fbbf24 100%)",
-            description: "linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)",
-            notice: "linear-gradient(135deg, #fed7aa 0%, #fde68a 100%)",
-            prize: "linear-gradient(135deg, #ddd6fe 0%, #fbcfe8 100%)"
-        },
-        typography: {
-            heroTitleSize: "3.5em",
-            heroSubtitleSize: "1.6em",
-            sectionTitleSize: "2.4em",
-            bodyTextSize: "1.15em"
-        },
-        borderRadius: {
-            container: "32px",
-            card: "24px",
-            button: "60px",
-            badge: "60px"
-        },
-        spacing: {
-            sectionPadding: "65px 45px",
-            heroPadding: "85px 45px",
-            cardPadding: "35px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.35s",
-            floatDuration: "5s"
-        }
-    },
-    
-    "ocean-blue": {
-        colors: {
-            primary: "#0ea5e9",
-            secondary: "#0284c7",
-            accent: "#06b6d4",
-            warning: "#f59e0b",
-            dark: "#0c4a6e",
-            light: "#f0f9ff",
-            gray: "#64748b"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
-            bodyBg: "linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)",
-            time: "linear-gradient(135deg, #7dd3fc 0%, #38bdf8 100%)",
-            description: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
-            notice: "linear-gradient(135deg, #a5f3fc 0%, #67e8f9 100%)",
-            prize: "linear-gradient(135deg, #bae6fd 0%, #7dd3fc 100%)"
-        },
-        typography: {
-            heroTitleSize: "3.1em",
-            heroSubtitleSize: "1.45em",
-            sectionTitleSize: "2.25em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "20px",
-            card: "16px",
-            button: "50px",
-            badge: "50px"
-        },
-        spacing: {
-            sectionPadding: "60px 40px",
-            heroPadding: "80px 40px",
-            cardPadding: "30px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.3s",
-            floatDuration: "7s"
-        }
-    },
-    
-    "sunset-orange": {
-        colors: {
-            primary: "#f97316",
-            secondary: "#ea580c",
-            accent: "#fb923c",
-            warning: "#fbbf24",
-            dark: "#7c2d12",
-            light: "#fff7ed",
-            gray: "#78716c"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-            bodyBg: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)",
-            time: "linear-gradient(135deg, #fed7aa 0%, #fdba74 100%)",
-            description: "linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)",
-            notice: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-            prize: "linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)"
-        },
-        typography: {
-            heroTitleSize: "3.2em",
-            heroSubtitleSize: "1.5em",
-            sectionTitleSize: "2.3em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "24px",
-            card: "16px",
-            button: "50px",
-            badge: "50px"
-        },
-        spacing: {
-            sectionPadding: "60px 40px",
-            heroPadding: "80px 40px",
-            cardPadding: "30px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.3s",
-            floatDuration: "6s"
-        }
-    },
-    
-    "purple-dream": {
-        colors: {
-            primary: "#a855f7",
-            secondary: "#9333ea",
-            accent: "#c084fc",
-            warning: "#f59e0b",
-            dark: "#581c87",
-            light: "#faf5ff",
-            gray: "#71717a"
-        },
-        gradients: {
-            hero: "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)",
-            bodyBg: "linear-gradient(135deg, #c084fc 0%, #a855f7 100%)",
-            time: "linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%)",
-            description: "linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)",
-            notice: "linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)",
-            prize: "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)"
-        },
-        typography: {
-            heroTitleSize: "3.1em",
-            heroSubtitleSize: "1.45em",
-            sectionTitleSize: "2.25em",
-            bodyTextSize: "1.1em"
-        },
-        borderRadius: {
-            container: "26px",
-            card: "18px",
-            button: "55px",
-            badge: "55px"
-        },
-        spacing: {
-            sectionPadding: "65px 40px",
-            heroPadding: "85px 40px",
-            cardPadding: "32px"
-        },
-        shadows: {
-            enabled: true,
-            intensity: "medium"
-        },
-        animations: {
-            enabled: true,
-            speed: "0.3s",
-            floatDuration: "6.5s"
-        }
+// 引入主題配置
+// 主題預設配置已移至 themes.js
+
+// 常量定義
+const ANIMATION_DELAY = 100;
+const RIPPLE_DURATION = 650;
+
+// 工具函數
+const $ = (id) => document.getElementById(id);
+const $$ = (selector) => document.querySelectorAll(selector);
+
+// 安全的元素操作
+function safeSetText(id, text) {
+    const el = $(id);
+    if (el && typeof text === 'string') {
+        el.textContent = text;
     }
-};
+}
+
+function safeSetHTML(id, html) {
+    const el = $(id);
+    if (el && typeof html === 'string') {
+        el.innerHTML = html;
+    }
+}
+
+// 錯誤處理包裝器
+function withErrorHandling(fn, fallback = () => {}) {
+    return (...args) => {
+        try {
+            return fn(...args);
+        } catch (error) {
+            console.error('Error in function:', error);
+            return fallback();
+        }
+    };
+}
 
 // 套用主題
 function applyTheme() {
@@ -397,113 +65,63 @@ function applyTheme() {
 // 套用自訂樣式
 function applyCustomStyles(styles) {
     if (!styles) return;
-    
     const root = document.documentElement;
-    
-    // 套用顏色設定
+
+    // 顏色
     if (styles.colors) {
-        Object.keys(styles.colors).forEach(key => {
-            root.style.setProperty(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}-color`, styles.colors[key]);
-        });
+        for (const [key, val] of Object.entries(styles.colors)) {
+            root.style.setProperty(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}-color`, val);
+        }
     }
-    
-    // 套用漸層設定
+
+    // 漸層統一改為 CSS 變數，不直接改各 section style
     if (styles.gradients) {
-        Object.keys(styles.gradients).forEach(key => {
-            root.style.setProperty(`--gradient-${key}`, styles.gradients[key]);
-        });
-        
-        // 套用背景漸層
+        for (const [key, val] of Object.entries(styles.gradients)) {
+            root.style.setProperty(`--gradient-${key}`, val);
+        }
         if (styles.gradients.bodyBg) {
             document.body.style.background = styles.gradients.bodyBg;
         }
-        
-        // 套用 Hero 漸層
+        // 保持兼容：將 hero 同步到舊的 --gradient-1
         if (styles.gradients.hero) {
             root.style.setProperty('--gradient-1', styles.gradients.hero);
         }
-        
-        // 套用時間區塊漸層
-        if (styles.gradients.time) {
-            const timeSection = document.querySelector('.time-section');
-            if (timeSection) {
-                timeSection.style.background = styles.gradients.time;
-            }
-        }
-        
-        // 套用說明區塊漸層
-        if (styles.gradients.description) {
-            const descSection = document.querySelector('.description-section');
-            if (descSection) {
-                descSection.style.background = styles.gradients.description;
-            }
-        }
-        
-        // 套用注意事項漸層
-        if (styles.gradients.notice) {
-            const noticeSection = document.querySelector('.notice-section');
-            if (noticeSection) {
-                noticeSection.style.background = styles.gradients.notice;
-            }
-        }
-        
-        // 套用獎品區塊漸層
-        if (styles.gradients.prize) {
-            const prizeSection = document.querySelector('.prize-section');
-            if (prizeSection) {
-                prizeSection.style.background = styles.gradients.prize;
-            }
-        }
     }
-    
-    // 套用字體設定
+
+    // 字體
     if (styles.typography) {
-        if (styles.typography.fontFamily) {
-            document.body.style.fontFamily = styles.typography.fontFamily;
-        }
-        if (styles.typography.heroTitleSize) {
-            root.style.setProperty('--hero-title-size', styles.typography.heroTitleSize);
-        }
-        if (styles.typography.heroSubtitleSize) {
-            root.style.setProperty('--hero-subtitle-size', styles.typography.heroSubtitleSize);
-        }
-        if (styles.typography.sectionTitleSize) {
-            root.style.setProperty('--section-title-size', styles.typography.sectionTitleSize);
-        }
-        if (styles.typography.bodyTextSize) {
-            root.style.setProperty('--body-text-size', styles.typography.bodyTextSize);
-        }
+        const t = styles.typography;
+        if (t.fontFamily) document.body.style.fontFamily = t.fontFamily;
+        if (t.heroTitleSize) root.style.setProperty('--hero-title-size', t.heroTitleSize);
+        if (t.heroSubtitleSize) root.style.setProperty('--hero-subtitle-size', t.heroSubtitleSize);
+        if (t.sectionTitleSize) root.style.setProperty('--section-title-size', t.sectionTitleSize);
+        if (t.bodyTextSize) root.style.setProperty('--body-text-size', t.bodyTextSize);
     }
-    
-    // 套用圓角設定
+
+    // 圓角
     if (styles.borderRadius) {
-        Object.keys(styles.borderRadius).forEach(key => {
-            root.style.setProperty(`--border-radius-${key}`, styles.borderRadius[key]);
-        });
+        for (const [key, val] of Object.entries(styles.borderRadius)) {
+            root.style.setProperty(`--border-radius-${key}`, val);
+        }
     }
-    
-    // 套用間距設定
+
+    // 間距
     if (styles.spacing) {
-        if (styles.spacing.sectionPadding) {
-            root.style.setProperty('--section-padding', styles.spacing.sectionPadding);
-        }
-        if (styles.spacing.heroPadding) {
-            root.style.setProperty('--hero-padding', styles.spacing.heroPadding);
-        }
-        if (styles.spacing.cardPadding) {
-            root.style.setProperty('--card-padding', styles.spacing.cardPadding);
-        }
+        const s = styles.spacing;
+        if (s.sectionPadding) root.style.setProperty('--section-padding', s.sectionPadding);
+        if (s.heroPadding) root.style.setProperty('--hero-padding', s.heroPadding);
+        if (s.cardPadding) root.style.setProperty('--card-padding', s.cardPadding);
     }
-    
-    // 套用陰影設定
+
+    // 陰影
     if (styles.shadows) {
         if (!styles.shadows.enabled) {
             root.style.setProperty('--shadow-sm', 'none');
             root.style.setProperty('--shadow-md', 'none');
             root.style.setProperty('--shadow-lg', 'none');
             root.style.setProperty('--shadow-xl', 'none');
-        } else if (styles.shadows.intensity) {
-            const intensities = {
+        } else {
+            const map = {
                 light: {
                     sm: '0 1px 2px 0 rgb(0 0 0 / 0.03)',
                     md: '0 4px 6px -1px rgb(0 0 0 / 0.05)',
@@ -523,78 +141,79 @@ function applyCustomStyles(styles) {
                     xl: '0 20px 25px -5px rgb(0 0 0 / 0.2)'
                 }
             };
-            
-            const intensity = intensities[styles.shadows.intensity] || intensities.medium;
-            Object.keys(intensity).forEach(key => {
-                root.style.setProperty(`--shadow-${key}`, intensity[key]);
-            });
+            const intensity = map[styles.shadows.intensity] || map.medium;
+            for (const [key, val] of Object.entries(intensity)) {
+                root.style.setProperty(`--shadow-${key}`, val);
+            }
         }
     }
-    
-    // 套用動畫設定
+
+    // 動畫
     if (styles.animations) {
         if (!styles.animations.enabled) {
             document.body.classList.add('no-animations');
         }
-        if (styles.animations.speed) {
-            root.style.setProperty('--animation-speed', styles.animations.speed);
-        }
-        if (styles.animations.floatDuration) {
-            root.style.setProperty('--float-duration', styles.animations.floatDuration);
-        }
+        if (styles.animations.speed) root.style.setProperty('--animation-speed', styles.animations.speed);
+        if (styles.animations.floatDuration) root.style.setProperty('--float-duration', styles.animations.floatDuration);
     }
 }
 
 // 渲染整個活動頁面
 function renderEventPage() {
-    // 渲染標題區塊
-    renderHero();
-    
-    // 渲染活動時間
-    renderTime();
-    
-    // 渲染活動說明
-    renderDescription();
-    
-    // 渲染參加方式
-    renderParticipationSteps();
-    
-    // 渲染注意事項
-    renderNotices();
-    
-    // 渲染獎品資訊
-    renderPrizes();
-    
-    // 渲染聯絡資訊
-    renderContact();
-    
-    // 渲染頁尾
-    renderFooter();
+    withErrorHandling(() => {
+        // 渲染標題區塊
+        renderHero();
+        
+        // 渲染活動時間
+        renderTime();
+        
+        // 渲染活動說明
+        renderDescription();
+        
+        // 渲染參加方式
+        renderParticipationSteps();
+        
+        // 渲染注意事項
+        renderNotices();
+        
+        // 渲染獎品資訊
+        renderPrizes();
+        
+        // 渲染聯絡資訊
+        renderContact();
+        
+        // 渲染頁尾
+        renderFooter();
+    })();
 }
 
 // 渲染標題區塊
 function renderHero() {
-    document.getElementById('eventTitle').textContent = eventConfig.title;
-    document.getElementById('eventSubtitle').textContent = eventConfig.subtitle;
-    document.getElementById('eventBadge').textContent = eventConfig.badge;
+    safeSetText('eventTitle', eventConfig.title);
+    safeSetText('eventSubtitle', eventConfig.subtitle);
+    safeSetText('eventBadge', eventConfig.badge);
 }
 
 // 渲染活動時間
 function renderTime() {
-    document.getElementById('eventTime').textContent = eventConfig.time;
+    safeSetText('eventTime', eventConfig.time);
 }
 
 // 渲染活動說明
 function renderDescription() {
-    document.getElementById('eventDescription').innerHTML = eventConfig.description;
+    safeSetHTML('eventDescription', eventConfig.description);
 }
 
 // 渲染參加方式
 function renderParticipationSteps() {
-    const container = document.getElementById('participationSteps');
-    container.innerHTML = '';
+    const container = $('participationSteps');
+    if (!container) return;
     
-    eventConfig.participationSteps.forEach(step => {
+    container.innerHTML = '';
+    const steps = eventConfig.participationSteps || [];
+    const frag = document.createDocumentFragment();
+    
+    steps.forEach(step => {
         const stepCard = document.createElement('div');
         stepCard.className = 'step-card';
         
@@ -604,34 +223,44 @@ function renderParticipationSteps() {
             <p>${step.description}</p>
         `;
         
-        container.appendChild(stepCard);
+        frag.appendChild(stepCard);
     });
+    container.appendChild(frag);
 }
 
 // 渲染注意事項
 function renderNotices() {
-    const container = document.getElementById('noticeList');
-    container.innerHTML = '';
+    const container = $('noticeList');
+    if (!container) return;
     
-    eventConfig.notices.forEach(notice => {
+    container.innerHTML = '';
+    const notices = eventConfig.notices || [];
+    const frag = document.createDocumentFragment();
+    
+    notices.forEach(notice => {
         const noticeItem = document.createElement('div');
         noticeItem.className = 'notice-item';
         noticeItem.textContent = notice;
-        
-        container.appendChild(noticeItem);
+        frag.appendChild(noticeItem);
     });
+    container.appendChild(frag);
 }
 
 // 渲染獎品資訊
 function renderPrizes() {
-    const container = document.getElementById('prizeGrid');
-    container.innerHTML = '';
+    const container = $('prizeGrid');
+    const section = $('prizeSection');
+    
+    if (!container || !section) return;
     
     // 如果沒有獎品資訊,隱藏整個區塊
     if (!eventConfig.prizes || eventConfig.prizes.length === 0) {
-        document.getElementById('prizeSection').style.display = 'none';
+        section.style.display = 'none';
         return;
     }
+    
+    container.innerHTML = '';
+    const frag = document.createDocumentFragment();
     
     eventConfig.prizes.forEach(prize => {
         const prizeCard = document.createElement('div');
@@ -645,27 +274,26 @@ function renderPrizes() {
             <div class="prize-quantity">名額: ${prize.quantity}</div>
         `;
         
-        // 設置卡片懸停效果背景色
-        prizeCard.style.setProperty('--prize-color', prize.color);
-        prizeCard.querySelector('.prize-card::before')?.style.setProperty('background', prize.color);
-        
-        container.appendChild(prizeCard);
+        // 使用 CSS 變數供 ::before 使用，避免直接選取偽元素
+        if (prize.color) prizeCard.style.setProperty('--prize-hover-bg', prize.color);
+        frag.appendChild(prizeCard);
     });
+    container.appendChild(frag);
 }
 
 // 渲染聯絡資訊
 function renderContact() {
-    const container = document.getElementById('contactInfo');
+    const container = $('contactInfo');
+    if (!container) return;
+    
     container.innerHTML = '';
     
     const contactItems = [
-       // { label: '服務電話', value: eventConfig.contact.phone },
-      //  { label: 'Email', value: eventConfig.contact.email },
-        { label: 'LINE ID', value: eventConfig.contact.line },
-        { label: '服務時間', value: eventConfig.contact.hours }
+        { label: 'LINE ID', value: eventConfig.contact?.line },
+        { label: '服務時間', value: eventConfig.contact?.hours }
     ];
     
-    contactItems.forEach(item => {
+    contactItems.filter(item => item.value).forEach(item => {
         const contactItem = document.createElement('div');
         contactItem.className = 'contact-item';
         
@@ -680,7 +308,10 @@ function renderContact() {
 
 // 渲染頁尾
 function renderFooter() {
-    document.getElementById('footerText').textContent = eventConfig.footer;
+    const footerEl = $('footerText');
+    if (footerEl && eventConfig.footer) {
+        footerEl.textContent = eventConfig.footer;
+    }
 }
 
 // 平滑滾動效果(如果需要添加錨點連結)
@@ -717,11 +348,11 @@ function addScrollAnimations() {
 }
 
 // 初始化動畫
-setTimeout(() => {
+setTimeout(withErrorHandling(() => {
     if (!eventConfig.styles || !eventConfig.styles.animations || eventConfig.styles.animations.enabled !== false) {
         addScrollAnimations();
     }
-}, 100);
+}), ANIMATION_DELAY);
 
 // ===== 輔助函數 =====
 
@@ -731,7 +362,7 @@ function updateStyle(category, property, value) {
     if (!eventConfig.styles[category]) eventConfig.styles[category] = {};
     
     eventConfig.styles[category][property] = value;
-    applyCustomStyles();
+    applyCustomStyles(eventConfig.styles);
     
     console.log(`✅ 已更新 ${category}.${property} = ${value}`);
 }
@@ -841,3 +472,64 @@ ${'─'.repeat(50)}
 
 提示: 開啟開發者工具(F12)後可直接使用這些函數!
 `);
+
+// ===== 酷炫互動動畫 =====
+function initInteractiveAnimations() {
+    withErrorHandling(() => {
+        // Hero 圓形視差效果
+        const hero = document.querySelector('.hero-section');
+        const circles = document.querySelectorAll('.circle');
+        if (hero && circles.length) {
+            hero.addEventListener('mousemove', (e) => {
+                const rect = hero.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width - 0.5;
+                const y = (e.clientY - rect.top) / rect.height - 0.5;
+                circles.forEach((c, i) => {
+                    const depth = (i + 1) * 8;
+                    c.style.transform = `translate(${x * depth}px, ${y * depth}px)`;
+                });
+            });
+            hero.addEventListener('mouseleave', () => {
+                circles.forEach(c => { c.style.transform = 'translate(0,0)'; });
+            });
+        }
+
+        // Prize 卡片傾斜與高光
+        const prizeCards = document.querySelectorAll('.prize-card');
+        prizeCards.forEach(card => {
+            card.addEventListener('mousemove', (e) => {
+                const r = card.getBoundingClientRect();
+                const cx = e.clientX - r.left;
+                const cy = e.clientY - r.top;
+                const rotX = ((cy / r.height) - 0.5) * -6; // 上下傾斜
+                const rotY = ((cx / r.width) - 0.5) * 6;  // 左右傾斜
+                card.style.transform = `translateY(-6px) scale(1.02) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+                card.style.boxShadow = '0 20px 25px -5px rgb(0 0 0 / 0.15)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = '';
+                card.style.boxShadow = '';
+            });
+        });
+
+        // Step 卡片點擊波紋
+        const stepCards = document.querySelectorAll('.step-card');
+        stepCards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const after = card; // 使用 ::after 需設定位置
+                const style = after.style;
+                style.setProperty('--ripple-x', `${x}px`);
+                style.setProperty('--ripple-y', `${y}px`);
+                card.classList.remove('ripple-active');
+                // 重新觸發動畫
+                void card.offsetWidth;
+                card.classList.add('ripple-active');
+                // 動畫結束移除類別
+                setTimeout(() => card.classList.remove('ripple-active'), RIPPLE_DURATION);
+            });
+        });
+    })();
+}
