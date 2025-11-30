@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活動說明</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 標題區塊 -->
+        <header class="hero-section">
+            <div class="hero-content">
+                <h1 class="hero-title" id="eventTitle"></h1>
+                <p class="hero-subtitle" id="eventSubtitle"></p>
+                <div class="hero-badge" id="eventBadge"></div>
+            </div>
+            <div class="hero-decoration">
+                <div class="circle circle-1"></div>
+                <div class="circle circle-2"></div>
+                <div class="circle circle-3"></div>
+            </div>
+        </header>
+
+        <!-- 活動時間 -->
+        <section class="time-section">
+            <div class="time-card">
+                <div class="icon-wrapper">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                <div class="time-content">
+                    <h3>活動時間</h3>
+                    <p id="eventTime"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 活動說明 -->
+        <section class="description-section">
+            <h2 class="section-title">
+                <span class="title-icon">📋</span>
+                活動說明
+            </h2>
+            <div class="description-content" id="eventDescription"></div>
+        </section>
+
+        <!-- 參加方式 -->
+        <section class="participation-section">
+            <h2 class="section-title">
+                <span class="title-icon">🎯</span>
+                參加方式
+            </h2>
+            <div class="steps-container" id="participationSteps"></div>
+        </section>
+
+        <!-- 注意事項 -->
+        <section class="notice-section">
+            <h2 class="section-title">
+                <span class="title-icon">⚠️</span>
+                注意事項
+            </h2>
+            <div class="notice-list" id="noticeList"></div>
+        </section>
+
+        <!-- 獎品資訊 -->
+        <section class="prize-section" id="prizeSection">
+            <h2 class="section-title">
+                <span class="title-icon">🎁</span>
+                獎品資訊
+            </h2>
+            <div class="prize-grid" id="prizeGrid"></div>
+        </section>
+
+        <!-- 聯絡資訊 -->
+        <section class="contact-section">
+            <div class="contact-card">
+                <h3>聯絡我們</h3>
+                <div class="contact-info" id="contactInfo"></div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p id="footerText"></p>
+        </footer>
+    </div>
+
+    <script src="event-config.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
