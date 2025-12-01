@@ -38,6 +38,19 @@
     #tableWrap table{margin:0}
     .footer-tip{margin-top:30px;font-size:12px;color:var(--muted);text-align:center}
 
+    /* 拖曳排序樣式 */
+    tr.draggable-row td{cursor:grab}
+    tr.draggable-row.dragging{opacity:.6}
+    tr.drag-over-before td{box-shadow:inset 0 3px 0 0 var(--accent)}
+    tr.drag-over-after td{box-shadow:inset 0 -3px 0 0 var(--accent)}
+
+    /* 拖曳手把（跨裝置） */
+    .drag-cell{width:44px;text-align:center}
+    .drag-handle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;color:#fff}
+    .drag-handle:active{cursor:grabbing}
+    .drag-handle:focus{outline:2px solid var(--accent);outline-offset:2px}
+    .drag-handle::before{content:'≡';font-size:16px;line-height:1;opacity:.9;letter-spacing:1px}
+
     /* 使用說明 */
     details.help{margin:0 auto 12px;max-width:960px}
     details.help>summary{cursor:pointer;list-style:none;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;background:rgba(255,255,255,0.04);font-weight:600;user-select:none}

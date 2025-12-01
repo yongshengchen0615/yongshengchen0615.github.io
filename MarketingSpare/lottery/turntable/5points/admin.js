@@ -11,6 +11,7 @@ const statusEl = document.getElementById('status');
 
 let prizes = []; // 目前編輯中的資料
 let originalSerialized = ''; // 用於判斷是否有變更
+let dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
 
 function setStatus(msg, type){
   statusEl.textContent = msg;
@@ -33,7 +34,8 @@ function renderTable(){
     return;
   }
   const rows = prizes.map((p,i)=>{
-    return `<tr data-index="${i}">
+    return `<tr data-index="${i}" draggable="true" class="draggable-row">
+      <td class="drag-cell"><button type="button" class="drag-handle" aria-label="拖曳排序" title="拖曳排序"></button></td>
       <td><input type="text" class="inp-label" value="${escapeHtml(p.label)}" placeholder="獎項名稱" /></td>
       <td style="width:110px"><input type="number" min="0" step="1" class="inp-weight" value="${p.weight}" /></td>
       <td style="width:150px" class="color-cell">
@@ -47,8 +49,9 @@ function renderTable(){
     </tr>`;
   }).join('');
 
-  tableWrap.innerHTML = `<table><thead><tr><th>獎項標題</th><th style="width:110px">權重</th><th style="width:150px">顏色</th><th style="width:110px">操作</th></tr></thead><tbody>${rows}</tbody></table>`;
+  tableWrap.innerHTML = `<table><thead><tr><th style="width:44px">排序</th><th>獎項標題</th><th style="width:110px">權重</th><th style="width:150px">顏色</th><th style="width:110px">操作</th></tr></thead><tbody>${rows}</tbody></table>`;
   attachRowEvents();
+  attachDndEvents();
   markDirty();
 }
 
@@ -73,6 +76,132 @@ function attachRowEvents(){
         }
       });
     });
+  });
+}
+
+function attachDndEvents(){
+  const rows = Array.from(tableWrap.querySelectorAll('tbody tr'));
+  const clearOver = () => {
+    rows.forEach(r=>r.classList.remove('drag-over-before','drag-over-after'));
+  };
+  rows.forEach(tr=>{
+    const idx = Number(tr.getAttribute('data-index'));
+
+    tr.addEventListener('dragstart', (e)=>{
+      // 避免從輸入或按鈕開始拖曳
+      if (e.target && (e.target.closest('input') || e.target.closest('button'))) {
+        e.preventDefault();
+        return;
+      }
+      dragState.active = true;
+      dragState.fromIndex = idx;
+      tr.classList.add('dragging');
+      if (e.dataTransfer){
+        e.dataTransfer.effectAllowed = 'move';
+        // Safari 需要有 setData 才能觸發 drop
+        e.dataTransfer.setData('text/plain', String(idx));
+      }
+    });
+
+    tr.addEventListener('dragend', ()=>{
+      tr.classList.remove('dragging');
+      clearOver();
+      dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
+    });
+
+    tr.addEventListener('dragover', (e)=>{
+      if (!dragState.active) return;
+      e.preventDefault();
+      const rect = tr.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height/2;
+      clearOver();
+      tr.classList.add(before ? 'drag-over-before' : 'drag-over-after');
+      dragState.overIndex = idx;
+      dragState.overPos = before ? 'before' : 'after';
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+
+    tr.addEventListener('dragleave', ()=>{
+      tr.classList.remove('drag-over-before','drag-over-after');
+    });
+
+    tr.addEventListener('drop', (e)=>{
+      if (!dragState.active) return;
+      e.preventDefault();
+      const targetIdx = idx;
+      let from = Number(dragState.fromIndex);
+      let to = targetIdx + (dragState.overPos === 'after' ? 1 : 0);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+      if (to > from) to--; // 移除後索引位移修正
+      clearOver();
+      dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
+      if (from === to) return; // 無變更
+      const moved = prizes.splice(from,1)[0];
+      prizes.splice(to,0,moved);
+      renderTable();
+      setStatus('已重新排序。','');
+    });
+  });
+
+  // 跨裝置拖曳：使用拖曳手把 + Pointer 事件
+  const handles = Array.from(tableWrap.querySelectorAll('.drag-handle'));
+  let ptrDragging = false;
+  let ptrFromIdx = null;
+  let ptrOverIdx = null;
+  let ptrOverPos = null; // 'before' | 'after'
+
+  const onPtrMove = (e)=>{
+    if (!ptrDragging) return;
+    e.preventDefault();
+    const y = e.clientY;
+    let targetTr = null;
+    for (const r of rows){
+      const rect = r.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom){ targetTr = r; break; }
+    }
+    clearOver();
+    if (!targetTr){ ptrOverIdx = null; ptrOverPos = null; return; }
+    const rect = targetTr.getBoundingClientRect();
+    const before = (y - rect.top) < rect.height/2;
+    targetTr.classList.add(before ? 'drag-over-before' : 'drag-over-after');
+    ptrOverIdx = Number(targetTr.getAttribute('data-index'));
+    ptrOverPos = before ? 'before' : 'after';
+  };
+
+  const stopPtrDrag = ()=>{
+    if (!ptrDragging) return;
+    ptrDragging = false;
+    clearOver();
+    rows.forEach(r=>r.classList.remove('dragging'));
+    if (ptrFromIdx==null || ptrOverIdx==null){ ptrFromIdx = ptrOverIdx = ptrOverPos = null; return; }
+    let from = Number(ptrFromIdx);
+    let to = ptrOverIdx + (ptrOverPos === 'after' ? 1 : 0);
+    if (to > from) to--;
+    if (from !== to){
+      const moved = prizes.splice(from,1)[0];
+      prizes.splice(to,0,moved);
+      renderTable();
+      setStatus('已重新排序。','');
+    }
+    ptrFromIdx = ptrOverIdx = ptrOverPos = null;
+    window.removeEventListener('pointermove', onPtrMove, { capture:false });
+    window.removeEventListener('pointerup', stopPtrDrag, { capture:false });
+    window.removeEventListener('pointercancel', stopPtrDrag, { capture:false });
+  };
+
+  handles.forEach(h=>{
+    h.addEventListener('pointerdown', (e)=>{
+      // 僅用手把啟動，避免干擾輸入欄位
+      const tr = h.closest('tr');
+      if (!tr) return;
+      ptrFromIdx = Number(tr.getAttribute('data-index'));
+      ptrDragging = true;
+      tr.classList.add('dragging');
+      try { h.setPointerCapture(e.pointerId); } catch(_){}
+      window.addEventListener('pointermove', onPtrMove, { passive:false });
+      window.addEventListener('pointerup', stopPtrDrag, { passive:true });
+      window.addEventListener('pointercancel', stopPtrDrag, { passive:true });
+    }, { passive:true });
   });
 }
 
