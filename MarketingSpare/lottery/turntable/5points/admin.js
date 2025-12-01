@@ -74,8 +74,8 @@
     const colorHex = colorToHex(colorRaw) || paletteHex;
     const colorText = colorRaw || colorHex;
     return `
-      <tr>
-        <td>${idx + 1}</td>
+      <tr draggable="true">
+        <td><span class="drag-handle" title="拖曳排序" aria-label="拖曳排序">☰</span><span class="row-index">${idx + 1}</span></td>
         <td><input type="text" value="${escapeHtml(label)}" placeholder="獎項名稱" style="width:100%" /></td>
         <td><input type="text" value="${escapeHtml(probability)}" placeholder="數字或百分比，如 20 或 20%" style="width:100%" /></td>
         <td>
@@ -84,7 +84,10 @@
             <input type="text" class="colorText" value="${escapeHtml(colorText)}" placeholder="#FFB200 或 red" />
           </div>
         </td>
-        <td><button class="btn danger" data-action="delete">刪除</button></td>
+        <td>
+          <button class="btn" data-action="copy">複製</button>
+          <button class="btn danger" data-action="delete">刪除</button>
+        </td>
       </tr>
     `;
   }
@@ -132,9 +135,26 @@
   function renumberRows() {
     let i = 1;
     for (const tr of els.tableBody.querySelectorAll('tr')) {
-      const first = tr.querySelector('td');
-      if (first) first.textContent = String(i++);
+      const idxEl = tr.querySelector('.row-index');
+      if (idxEl) idxEl.textContent = String(i++);
+      else {
+        const first = tr.querySelector('td');
+        if (first) first.textContent = String(i++);
+      }
     }
+  }
+
+  function getDragAfterElement(container, y) {
+    const elsArr = [...container.querySelectorAll('tr:not(.dragging)')];
+    let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    for (const child of elsArr) {
+      const box = child.getBoundingClientRect();
+      const offset = y - (box.top + box.height / 2);
+      if (offset < 0 && offset > closest.offset) {
+        closest = { offset, element: child };
+      }
+    }
+    return closest.element;
   }
 
   function toNumber(val) {
@@ -228,11 +248,38 @@
   els.saveBtn.addEventListener('click', saveData);
 
   els.tableBody.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action="delete"]');
-    if (!btn) return;
-    const tr = btn.closest('tr');
-    if (tr) tr.remove();
-    renumberRows();
+    const delBtn = e.target.closest('button[data-action="delete"]');
+    const copyBtn = e.target.closest('button[data-action="copy"]');
+    if (delBtn) {
+      const tr = delBtn.closest('tr');
+      if (tr) tr.remove();
+      renumberRows();
+      return;
+    }
+    if (copyBtn) {
+      const tr = copyBtn.closest('tr');
+      if (!tr) return;
+      const tds = tr.querySelectorAll('td');
+      const label = tds[1].querySelector('input')?.value?.trim() || '';
+      const probRaw = tds[2].querySelector('input')?.value?.trim() || '';
+      const colorTextEl = tds[3].querySelector('input.colorText');
+      const colorPickerEl = tds[3].querySelector('input.colorPicker');
+      const colorTextVal = colorTextEl ? colorTextEl.value.trim() : '';
+      const colorPickVal = colorPickerEl ? colorPickerEl.value.trim() : '';
+      const item = { label, probability: probRaw, color: colorTextVal || colorPickVal };
+
+      const newTr = document.createElement('tr');
+      // use current position index for palette fallback, though item has color
+      const idx = [...els.tableBody.querySelectorAll('tr')].indexOf(tr) + 1;
+      newTr.innerHTML = rowTemplate(item, idx);
+      if (tr.nextSibling) {
+        els.tableBody.insertBefore(newTr, tr.nextSibling);
+      } else {
+        els.tableBody.appendChild(newTr);
+      }
+      renumberRows();
+      return;
+    }
   });
 
   // Sync color picker and text input
@@ -249,5 +296,63 @@
       const pickerEl = tr?.querySelector('input.colorPicker');
       if (hex && pickerEl) pickerEl.value = hex;
     }
+  });
+
+  // Drag & Drop row reordering
+  els.tableBody.addEventListener('dragstart', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    tr.classList.add('dragging');
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); } catch(_) {}
+  });
+  els.tableBody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const dragging = els.tableBody.querySelector('tr.dragging');
+    if (!dragging) return;
+    const after = getDragAfterElement(els.tableBody, e.clientY);
+    if (after == null) {
+      els.tableBody.appendChild(dragging);
+    } else {
+      els.tableBody.insertBefore(dragging, after);
+    }
+  });
+  els.tableBody.addEventListener('drop', (e) => {
+    e.preventDefault();
+  });
+  els.tableBody.addEventListener('dragend', () => {
+    const dragging = els.tableBody.querySelector('tr.dragging');
+    if (dragging) dragging.classList.remove('dragging');
+    renumberRows();
+  });
+
+  // Basic touch support for reordering on mobile/tablet
+  let touchDrag = { active: false, row: null };
+  els.tableBody.addEventListener('touchstart', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const tr = handle.closest('tr');
+    if (!tr) return;
+    touchDrag.active = true;
+    touchDrag.row = tr;
+    tr.classList.add('dragging');
+  }, { passive: true });
+
+  els.tableBody.addEventListener('touchmove', (e) => {
+    if (!touchDrag.active || !touchDrag.row) return;
+    if (e.cancelable) e.preventDefault();
+    const touch = e.touches[0];
+    const after = getDragAfterElement(els.tableBody, touch.clientY);
+    if (after == null) {
+      els.tableBody.appendChild(touchDrag.row);
+    } else {
+      els.tableBody.insertBefore(touchDrag.row, after);
+    }
+  }, { passive: false });
+
+  els.tableBody.addEventListener('touchend', () => {
+    if (touchDrag.row) touchDrag.row.classList.remove('dragging');
+    touchDrag.active = false;
+    touchDrag.row = null;
+    renumberRows();
   });
 })();

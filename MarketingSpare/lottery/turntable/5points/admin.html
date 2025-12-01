@@ -20,6 +20,7 @@
     .btn.danger { background: #ef4444; color: #fff; border-color: #ef4444; }
     .btn.danger:hover { background:#dc2626; }
     .table-wrap { margin-top: 16px; border:1px solid #222838; border-radius:8px; overflow:auto; max-height: 56vh; }
+    .table-wrap { -webkit-overflow-scrolling: touch; }
     table { width: 100%; border-collapse: separate; border-spacing: 0; }
     th, td { border-bottom: 1px solid #222838; padding: 10px; text-align: left; color:#e5e7eb; }
     thead th { position: sticky; top: 0; background: #1b2030; z-index: 1; }
@@ -29,6 +30,7 @@
     .col-prob { width: 26%; }
     .col-color { width: 20%; }
     .col-actions { width: 120px; }
+      .col-actions { width: 160px; }
     .status { margin-top: 12px; font-size: 14px; display:flex; align-items:center; gap:8px; }
     .status.ok { color: #60a5fa; }
     .status.err { color: #f87171; }
@@ -40,6 +42,35 @@
     .color-field { display:flex; align-items:center; gap:10px; }
     .color-field .colorPicker { width: 40px; height: 32px; padding: 0; background: transparent; border: 1px solid #2a3040; border-radius: 6px; }
     .color-field .colorText { flex:1; min-width:140px; padding: 9px 12px; border: 1px solid #2a3040; background:#1b2030; color:#e5e7eb; border-radius: 8px; }
+    .drag-handle { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-right:8px; cursor:grab; color:#9aa3b2; }
+    tbody tr.dragging { opacity: .6; }
+    tbody tr { user-select: none; }
+
+    /* Responsive adjustments */
+    @media (max-width: 1024px) {
+      .container { padding: 0 12px; }
+      .table-wrap { max-height: 52vh; }
+    }
+    @media (max-width: 768px) {
+      .row { flex-direction: column; align-items: stretch; }
+      .row input { width: 100%; }
+      .col-label { width: 40%; }
+      .col-prob { width: 24%; }
+      .col-color { width: auto; }
+      .col-actions { width: 120px; }
+      th, td { padding: 8px; }
+      .color-field { gap:8px; }
+      .color-field .colorPicker { width: 36px; height: 28px; }
+    }
+    @media (max-width: 520px) {
+      body { font-size: 14px; }
+      thead th { font-size: 13px; }
+      td input { font-size: 14px; }
+      .drag-handle { width:20px; height:20px; margin-right:6px; }
+      .table-wrap { max-height: 50vh; }
+      .color-field { flex-wrap: wrap; }
+      .color-field .colorText { min-width: 0; width: 100%; }
+    }
   </style>
 </head>
 <body>
