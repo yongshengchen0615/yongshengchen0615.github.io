@@ -109,9 +109,7 @@
 
   function addEmptyRow() {
     const idx = els.tableBody.children.length;
-    const tr = document.createElement('tr');
-    tr.innerHTML = rowTemplate(nextDefaultItem(), idx);
-    els.tableBody.appendChild(tr);
+    els.tableBody.insertAdjacentHTML('beforeend', rowTemplate(nextDefaultItem(), idx));
     renumberRows();
   }
 
@@ -268,15 +266,10 @@
       const colorPickVal = colorPickerEl ? colorPickerEl.value.trim() : '';
       const item = { label, probability: probRaw, color: colorTextVal || colorPickVal };
 
-      const newTr = document.createElement('tr');
-      // use current position index for palette fallback, though item has color
+      // 使用正確的 TR 片段插入，避免巢狀 <tr> 造成 draggable 失效
       const idx = [...els.tableBody.querySelectorAll('tr')].indexOf(tr) + 1;
-      newTr.innerHTML = rowTemplate(item, idx);
-      if (tr.nextSibling) {
-        els.tableBody.insertBefore(newTr, tr.nextSibling);
-      } else {
-        els.tableBody.appendChild(newTr);
-      }
+      const html = rowTemplate(item, idx);
+      tr.insertAdjacentHTML('afterend', html);
       renumberRows();
       return;
     }
