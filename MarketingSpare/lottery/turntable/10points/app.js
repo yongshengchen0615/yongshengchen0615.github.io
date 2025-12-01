@@ -29,20 +29,59 @@ const modal = document.getElementById('resultModal');
 const modalPrize = document.getElementById('modalPrize');
 const confirmBtn = document.getElementById('confirmBtn');
 
-// 可編輯的獎項與權重（會儲存到 localStorage）
-// color: 自訂顏色（選填），例如 '#ff0000' 或 'red'，不填則使用預設交替色
-const defaultPrizes = [
-  {label: '🔸 身體按摩券 💆', weight: 0, color: '#ff6b6b'},  // 大獎：紅色
-  {label: '再接再厲', weight: 30},
-  {label: '再接再厲', weight: 30},
-  {label: '🔸 雞湯🍵', weight: 0, color: '#ffd93d'},  // 二獎：金黃色
-   {label: '再接再厲', weight: 30},
-  {label: '再接再厲', weight: 30},
-  {label: '🔸 甜湯🍵', weight: 5, color: '#a8e6cf'},  // 三獎：淺綠色
-   {label: '再接再厲', weight: 30},
-  {label: '再接再厲', weight: 30},
-  {label: '🔸 足湯包 🛁', weight: 10, color: '#95e1d3'},  // 四獎：青綠色
-];
+// 初始不使用任何內建獎項，等待遠端載入
+const defaultPrizes = [];
+
+// ================== 遠端獎項來源（僅使用 Google Apps Script） ==================
+// 部署一個 Apps Script Web App，回傳 JSON: { prizes: [ {label, weight, color?} ] }
+// 部署後取得類似：https://script.google.com/macros/s/AKfycbxxxxxxxxxxxxxxxx/exec
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDFLkjCAFmw5a7p5065TRIcFAJDpcXVaTje7J1eBFkew9cOGBlLVFYB_c24LyZMX6j/exec';
+
+// （已移除 CSV / Sheets API 回退，僅保留 Apps Script）
+
+// 透過 Google Apps Script Web App 取得資料（回傳 JSON: {prizes: [...]}）
+async function loadPrizesFromAppsScript(){
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingMsg = document.getElementById('loadingMsg');
+  const errorMsg = document.getElementById('errorMsg');
+  spinBtn.disabled = true; // 禁用直到載入完成
+  try {
+    const resp = await fetch(APPS_SCRIPT_URL + '?t=' + Date.now(), {cache: 'no-store'});
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (!data || !Array.isArray(data.prizes) || !data.prizes.length) throw new Error('無獎項資料');
+    const parsed = [];
+    for (const p of data.prizes){
+      if (!p.label) continue;
+      const w = Number(p.weight);
+      if (!Number.isFinite(w) || w < 0) continue; // 允許 0，僅排除負數與非數字
+      parsed.push({label: p.label, weight: w, color: p.color ? String(p.color).trim() || undefined : undefined});
+    }
+    if (!parsed.length) throw new Error('解析後無有效獎項');
+    prizes = parsed;
+    drawWheel();
+    console.info('已載入 Apps Script 獎項資料');
+    const total = prizes.reduce((s,i)=>s + (Number(i.weight)||0), 0);
+    if (total <= 0){
+      if (loadingMsg) loadingMsg.style.display = 'none';
+      if (errorMsg){
+        errorMsg.textContent = '目前所有獎項權重為 0，無法抽獎。請至後台調整權重後重試。';
+        errorMsg.style.display = '';
+      }
+      if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+      spinBtn.disabled = true;
+    } else {
+      if (loadingOverlay) loadingOverlay.classList.add('hidden');
+      spinBtn.disabled = false;
+    }
+  } catch(e){
+    console.warn('Apps Script 載入失敗:', e);
+    if (loadingMsg) loadingMsg.style.display = 'none';
+    if (errorMsg) errorMsg.style.display = '';
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    spinBtn.disabled = true; // 保持禁用，禁止抽獎
+  }
+}
 
 
 let prizes = JSON.parse(JSON.stringify(defaultPrizes));
@@ -82,6 +121,16 @@ function drawWheel() {
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
   const count = prizes.length;
+  if (!count) {
+    // 尚未載入資料時顯示提示（簡單文字）
+    ctx.save();
+    ctx.fillStyle = getThemeColors().textColor;
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('等待遠端獎項資料...', canvas.width/(2*dpr), canvas.height/(2*dpr));
+    ctx.restore();
+    return;
+  }
   const arc = 2 * Math.PI / count;
   const themeColors = getThemeColors();
   for (let i=0;i<count;i++){
@@ -110,7 +159,9 @@ function drawWheel() {
 
 // 權重抽樣，回傳索引
 function weightedPickIndex(items){
+  if (!items.length) return -1;
   const total = items.reduce((s,i)=>s+i.weight,0);
+  if (total <= 0) return -1;
   let r = Math.random()*total;
   for (let i=0;i<items.length;i++){
     r -= items[i].weight;
@@ -123,15 +174,19 @@ function weightedPickIndex(items){
 let spinning = false;
 function spin() {
   if (spinning) return;
+  if (!prizes.length) return; // 未載入不抽獎
+  if (prizes.length && spinBtn.disabled) return; // 安全檢查
   
   // 如果正在閃爍，停止閃爍
   stopBlink();
-  
+  // 先計算是否有可抽獎項（避免所有 0 權重時鎖死按鈕）
+  const pickIndex = weightedPickIndex(prizes);
+  if (pickIndex < 0) {
+    return; // 全為 0 權重或資料異常
+  }
   spinning = true;
   spinBtn.disabled = true;
   // 不在頁面下方顯示狀態（改為以 modal 顯示結果）
-
-  const pickIndex = weightedPickIndex(prizes);
   const segmentAngle = 360 / prizes.length;
   // 目標角度中心（度數），指針在頂端，canvas 0 度在正右，需轉換
   const targetSegStart = pickIndex * segmentAngle;
@@ -251,5 +306,8 @@ spinBtn.addEventListener('click', spin);
 
 // 初始繪製
 drawWheel();
+
+// 嘗試載入遠端獎項（僅 Apps Script），失敗則維持預設
+(async ()=>{ await loadPrizesFromAppsScript(); })();
 
 // 注意：獎項請直接在程式碼的 `defaultPrizes` 中修改，UI 上不提供編輯功能
