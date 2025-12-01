@@ -11,7 +11,8 @@ function getThemeColors() {
   return {
     wheelColors: [styles.getPropertyValue('--slice1').trim(), styles.getPropertyValue('--slice2').trim()],
     textColor: styles.getPropertyValue('--text').trim(),
-    pointerColor: styles.getPropertyValue('--accent').trim()
+    pointerColor: styles.getPropertyValue('--accent').trim(),
+    dividerColor: styles.getPropertyValue('--divider').trim()
   };
 }
 
@@ -136,6 +137,19 @@ function drawWheel() {
     // 優先使用臨時閃爍色，再使用自訂色，最後使用預設交替色
     ctx.fillStyle = prizes[i].tempColor || prizes[i].color || themeColors.wheelColors[i % 2];
     ctx.fill();
+
+    // 分片區隔線（由中心到外圈），使用主題 divider 色
+    if (count > 0) {
+      ctx.save();
+      ctx.strokeStyle = themeColors.dividerColor || '#ffffff';
+      ctx.lineWidth = Math.max(1, Math.round(size * 0.006));
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.save();
     // 繪文字
     ctx.translate(cx,cy);
