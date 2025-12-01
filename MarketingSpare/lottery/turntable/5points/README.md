@@ -80,3 +80,51 @@ open index.html
 ```
 
 設定好 `GAS_ENDPOINT` 後重新整理頁面即可看到更新。
+
+## 後台管理（Admin）
+
+本資料夾新增 `admin.html` 與 `admin.js`，可連接你的 Google Apps Script Web App 來管理機率與顏色。
+
+- 打開 `admin.html`
+- 在「Apps Script Web App URL」填入部署後的網址（`/exec` 結尾）
+- 如需指定工作表，於「工作表名稱」填入（預設為「機率」）
+- 點「載入資料」讀取 `doGet` 返回的 JSON（格式：`[{ label, probability, color }]`）
+- 編輯表格後，按「儲存到後端」會以 `POST` 傳送 `{ sheet, items }` 至 Web App
+
+### Apps Script：doPost 範例
+
+你已提供 `doGet`。若要讓 Admin 能儲存，請在 Apps Script 中加入 `doPost`：
+
+```javascript
+function doPost(e) {
+   try {
+      var body = e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+      var sheetName = body.sheet || '機率';
+      var items = Array.isArray(body.items) ? body.items : [];
+
+      var SPREADSHEET_ID = '1DAksZc4S9XWdc3Tr6VYy39kiEFuij2wv2R9Ez3aZlvs';
+      var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+
+      sheet.clearContents();
+      sheet.getRange(1, 1, 1, 3).setValues([[ '獎項', '機率', '顏色' ]]);
+
+      var rows = items.map(function (it) {
+         var prob = (it && typeof it.probability !== 'undefined') ? it.probability : '';
+         return [ it.label || '', prob, it.color || '' ];
+      });
+
+      if (rows.length > 0) {
+         sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+         .setMimeType(ContentService.MimeType.JSON);
+   } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ error: String(err) }))
+         .setMimeType(ContentService.MimeType.JSON);
+   }
+}
+```
+
+部署為「任何人都可存取」的 Web App（或依需求控管權限）；Apps Script Web App 一般可跨網域存取。
