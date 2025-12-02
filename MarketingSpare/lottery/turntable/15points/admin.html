@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>轉盤後台管理（5points）</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', Arial, sans-serif; background:#0f1115; color:#e5e7eb; color-scheme: dark; }
+    .container { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #151821; border: 1px solid #222838; border-radius: 12px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .row input { padding: 9px 12px; border: 1px solid #2a3040; background:#1b2030; color:#e5e7eb; border-radius: 8px; min-height: 36px; }
+    .row input::placeholder{ color:#8a90a0; }
+    .row label { font-size: 14px; color: #cfd8e3; }
+    .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #2f3750; cursor: pointer; background: #212736; color:#e5e7eb; transition: background .15s ease, box-shadow .15s ease; }
+    .btn:hover { background:#283049; box-shadow:0 1px 4px rgba(0,0,0,0.25); }
+    .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .btn.primary:hover { background:#2563eb; }
+    .btn.danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .btn.danger:hover { background:#dc2626; }
+    .table-wrap { margin-top: 16px; border:1px solid #222838; border-radius:8px; overflow:auto; max-height: 56vh; }
+    .table-wrap { -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    th, td { border-bottom: 1px solid #222838; padding: 10px; text-align: left; color:#e5e7eb; }
+    thead th { position: sticky; top: 0; background: #1b2030; z-index: 1; }
+    tbody tr:nth-child(even){ background:#131926; }
+    .col-idx { width: 56px; }
+    .col-label { width: 34%; }
+    .col-prob { width: 26%; }
+    .col-color { width: 20%; }
+    .col-actions { width: 120px; }
+      .col-actions { width: 160px; }
+    .status { margin-top: 12px; font-size: 14px; display:flex; align-items:center; gap:8px; }
+    .status.ok { color: #60a5fa; }
+    .status.err { color: #f87171; }
+    .status .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .status.ok .dot { background:#60a5fa; }
+    .status.err .dot { background:#f87171; }
+    .badge { font-size: 12px; color: #9aa3b2; margin-left: 8px; }
+    .flex-grow { flex: 1; }
+    .color-field { display:flex; align-items:center; gap:10px; }
+    .color-field .colorPicker { width: 40px; height: 32px; padding: 0; background: transparent; border: 1px solid #2a3040; border-radius: 6px; }
+    .color-field .colorText { flex:1; min-width:140px; padding: 9px 12px; border: 1px solid #2a3040; background:#1b2030; color:#e5e7eb; border-radius: 8px; }
+    .drag-handle { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-right:8px; cursor:grab; color:#9aa3b2; }
+    tbody tr.dragging { opacity: .6; }
+    tbody tr { user-select: none; }
+
+    /* Responsive adjustments */
+    @media (max-width: 1024px) {
+      .container { padding: 0 12px; }
+      .table-wrap { max-height: 52vh; }
+    }
+    @media (max-width: 768px) {
+      .row { flex-direction: column; align-items: stretch; }
+      .row input { width: 100%; }
+      .col-label { width: 40%; }
+      .col-prob { width: 24%; }
+      .col-color { width: auto; }
+      .col-actions { width: 120px; }
+      th, td { padding: 8px; }
+      .color-field { gap:8px; }
+      .color-field .colorPicker { width: 36px; height: 28px; }
+    }
+    @media (max-width: 520px) {
+      body { font-size: 14px; }
+      thead th { font-size: 13px; }
+      td input { font-size: 14px; }
+      .drag-handle { width:20px; height:20px; margin-right:6px; }
+      .table-wrap { max-height: 50vh; }
+      .color-field { flex-wrap: wrap; }
+      .color-field .colorText { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>轉盤後台管理（5points）</h2>
+    <div class="card">
+      <div class="row">
+        <label>Apps Script Web App URL</label>
+        <input id="scriptUrl" class="flex-grow" placeholder="https://script.google.com/macros/s/AKfycbzXUesyCQXq63_9zWQm0B7dfLvZ4me3n4frQots_RXX6XYNrzr8YC1cSM2Ojlgv1X2e/exec" />
+        <button class="btn" id="loadBtn">載入資料</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>工作表名稱</label>
+        <input id="sheetName" placeholder="機率" />
+        <span class="badge">若後端支援動態工作表，可填寫</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Proxy URL</label>
+        <input id="proxyUrl" class="flex-grow" placeholder="（選填）例如 https://cors.isomorphic-git.org/" />
+        <label><input type="checkbox" id="noCorsMode" /> 使用 no-cors（POST 不讀回應）</label>
+      </div>
+      <div class="status" id="status"></div>
+
+      <div class="table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th class="col-idx">#</th>
+            <th class="col-label">獎項（label）</th>
+            <th class="col-prob">機率（weight / %）</th>
+            <th class="col-color">顏色（color）</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="addRowBtn">新增一列</button>
+        <div class="flex-grow"></div>
+        <button class="btn danger" id="resetBtn">清空所有列</button>
+        <button class="btn primary" id="saveBtn">儲存到後端</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

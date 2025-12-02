@@ -11,7 +11,8 @@ function getThemeColors() {
   return {
     wheelColors: [styles.getPropertyValue('--slice1').trim(), styles.getPropertyValue('--slice2').trim()],
     textColor: styles.getPropertyValue('--text').trim(),
-    pointerColor: styles.getPropertyValue('--accent').trim()
+    pointerColor: styles.getPropertyValue('--accent').trim(),
+    dividerColor: styles.getPropertyValue('--divider').trim()
   };
 }
 
@@ -21,6 +22,10 @@ if (document.getElementById('pointer')) {
 }
 
 // ========== 轉盤抽獎主要邏輯 ==========
+// 可選：設定已部署的 Google Apps Script Web App URL
+// 範例：https://script.google.com/macros/s/XXXXXXXX/exec
+const GAS_ENDPOINT ='https://script.google.com/macros/s/AKfycbzXUesyCQXq63_9zWQm0B7dfLvZ4me3n4frQots_RXX6XYNrzr8YC1cSM2Ojlgv1X2e/exec';
+const loadingEl = document.getElementById('loadingOverlay');
 const canvas = document.getElementById('wheel');
 const ctx = canvas.getContext('2d');
 const spinBtn = document.getElementById('spinBtn');
@@ -31,21 +36,53 @@ const confirmBtn = document.getElementById('confirmBtn');
 
 // 可編輯的獎項與權重（會儲存到 localStorage）
 // color: 自訂顏色（選填），例如 '#ff0000' 或 'red'，不填則使用預設交替色
-const defaultPrizes = [
-  {label: '🔸 身體按摩券 💆', weight: 0, color: '#ff6b6b'},  // 大獎：紅色
-  {label: '🔸 腳底按摩券 🦶', weight: 0, color: '#ff8c42'},  // 大獎：橘紅色
-    {label: '再接再厲', weight: 30},
-      {label: '再接再厲', weight: 30},
-  {label: '🔸 茶包禮盒 🍵', weight: 0, color: '#ffd93d'},  // 二獎：金黃色
-    {label: '再接再厲', weight: 30},
-  {label: '🔸 雞湯 🍵', weight: 1, color: '#a8e6cf'},  // 三獎：淺綠色
-    {label: '再接再厲', weight: 30},
-  {label: '🔸 甜湯', weight: 10, color: '#95e1d3'},  // 四獎：青綠色
-  {label: '再接再厲', weight: 30},
-];
+// 移除本地預設獎項，強制僅使用 GAS 資料
+let prizes = [];
 
+// 從 Google Apps Script 取得獎項資料
+async function fetchPrizesFromGAS() {
+  if (!GAS_ENDPOINT) {
+    console.error('未設定 GAS_ENDPOINT，請在 app.js 或 localStorage 設定 Web App URL');
+    disableSpinWithMessage('未設定資料來源（GAS）');
+    return null;
+  }
+  try {
+    showLoading(true);
+    const res = await fetch(GAS_ENDPOINT, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    // 預期資料格式：[{ label: string, probability: number, color?: string }]
+    // probability 可為百分比或權重數值（皆接受）。
+    if (!Array.isArray(data)) throw new Error('Invalid JSON: not array');
+    // 兼容欄位名稱：probability/weight/概率/機率
+    const normalized = data.map((item) => {
+      const label = item.label ?? item.name ?? '';
+      let weight = item.weight ?? item.probability ?? item.機率 ?? item.概率;
+      const color = item.color ?? item.colour ?? item.顏色;
+      // 字串百分比轉數值，例如 '12%' -> 12
+      if (typeof weight === 'string') {
+        const m = weight.trim().match(/^([0-9]+(?:\.[0-9]+)?)%$/);
+        weight = m ? parseFloat(m[1]) : parseFloat(weight);
+      }
+      // 無效或負數則置 0
+      if (!Number.isFinite(weight) || weight < 0) weight = 0;
+      return { label: String(label || '').trim() || '未命名', weight, color };
+    }).filter(p => p.label);
 
-let prizes = JSON.parse(JSON.stringify(defaultPrizes));
+    // 若提供的是百分比（總和約 100），直接作為權重；否則維持數值權重
+    const sum = normalized.reduce((s, i) => s + i.weight, 0);
+    if (sum <= 0) throw new Error('All weights are zero');
+    prizes = normalized;
+    return prizes;
+  } catch (e) {
+    console.error('GAS 讀取失敗：', e);
+    disableSpinWithMessage('資料載入失敗，請稍後重試');
+    return null;
+  } finally {
+    showLoading(false);
+    updateSpinEnabled();
+  }
+}
 
 let size = 0;
 let cx = 0;
@@ -74,8 +111,13 @@ function resizeCanvas(){
 
 // 在載入和視窗尺寸變化時重設畫布
 window.addEventListener('resize', ()=>{ resizeCanvas(); drawWheel(); });
-// 立即執行一次
-setTimeout(()=>{ resizeCanvas(); drawWheel(); }, 0);
+// 立即執行一次（先嘗試讀取 GAS，再繪製）
+(async () => {
+  resizeCanvas();
+  showLoading(true);
+  await fetchPrizesFromGAS();
+  drawWheel();
+})();
 
 function drawWheel() {
   // 清除以 CSS 像素為單位（canvas.width 為 device pixels，因此除以 dpr）
@@ -94,6 +136,19 @@ function drawWheel() {
     // 優先使用臨時閃爍色，再使用自訂色，最後使用預設交替色
     ctx.fillStyle = prizes[i].tempColor || prizes[i].color || themeColors.wheelColors[i % 2];
     ctx.fill();
+
+    // 分片區隔線（由中心到外圈），使用主題 divider 色
+    if (count > 0) {
+      ctx.save();
+      ctx.strokeStyle = themeColors.dividerColor || '#ffffff';
+      ctx.lineWidth = Math.max(1, Math.round(size * 0.006));
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.save();
     // 繪文字
     ctx.translate(cx,cy);
@@ -110,10 +165,10 @@ function drawWheel() {
 
 // 權重抽樣，回傳索引
 function weightedPickIndex(items){
-  const total = items.reduce((s,i)=>s+i.weight,0);
+  const total = items.reduce((s,i)=>s+(Number.isFinite(i.weight)?i.weight:0),0);
   let r = Math.random()*total;
   for (let i=0;i<items.length;i++){
-    r -= items[i].weight;
+    r -= (Number.isFinite(items[i].weight)?items[i].weight:0);
     if (r <= 0) return i;
   }
   return items.length-1;
@@ -123,6 +178,10 @@ function weightedPickIndex(items){
 let spinning = false;
 function spin() {
   if (spinning) return;
+  if (!prizes.length) {
+    disableSpinWithMessage('尚未載入獎項資料');
+    return;
+  }
   
   // 如果正在閃爍，停止閃爍
   stopBlink();
@@ -177,6 +236,23 @@ function spin() {
   }
 
   requestAnimationFrame(frame);
+}
+
+function disableSpinWithMessage(msg) {
+  spinBtn.disabled = true;
+  // 若頁面有提示元素可更新，否則使用簡單 alert
+  try {
+    alert(msg);
+  } catch (e) {}
+}
+
+function updateSpinEnabled(){
+  spinBtn.disabled = !prizes.length;
+}
+
+function showLoading(visible){
+  if (!loadingEl) return;
+  loadingEl.classList.toggle('hidden', !visible);
 }
 
 // 中獎獎項閃爍效果
@@ -250,6 +326,6 @@ let currentRotation = 0;
 spinBtn.addEventListener('click', spin);
 
 // 初始繪製
-drawWheel();
+// 移至上方 IIFE 內處理初始繪製
 
 // 注意：獎項請直接在程式碼的 `defaultPrizes` 中修改，UI 上不提供編輯功能
