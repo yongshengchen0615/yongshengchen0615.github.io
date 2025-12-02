@@ -1,303 +1,351 @@
-// 後台管理腳本：讀取與更新獎項至 Apps Script
-// 需求：Apps Script 需支援 GET (取得) 與 POST (更新) JSON
-// POST 內容格式：{ prizes: [ { label: string, weight: number, color?: string } ] }
-
-const scriptUrlInput = document.getElementById('scriptUrl');
-const loadBtn = document.getElementById('loadBtn');
-const addBtn = document.getElementById('addBtn');
-const saveBtn = document.getElementById('saveBtn');
-const tableWrap = document.getElementById('tableWrap');
-const statusEl = document.getElementById('status');
-
-let prizes = []; // 目前編輯中的資料
-let originalSerialized = ''; // 用於判斷是否有變更
-let dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
-
-function setStatus(msg, type){
-  statusEl.textContent = msg;
-  statusEl.className = 'status' + (type ? ' ' + type : '');
-}
-
-function serialize(arr){
-  return JSON.stringify(arr.map(p=>({label:p.label, weight:p.weight, color:p.color||''})));
-}
-
-function markDirty(){
-  const current = serialize(prizes);
-  saveBtn.disabled = (current === originalSerialized || prizes.length === 0);
-}
-
-function renderTable(){
-  if (!prizes.length){
-    tableWrap.innerHTML = '<div class="empty-hint">尚無獎項，請新增。</div>';
-    markDirty();
-    return;
+/* Admin page logic for managing turntable probabilities via Apps Script */
+(function () {
+  const DEFAULT_COLORS = ['#F87171', '#34D399', '#60A5FA', '#FBBF24', '#A78BFA', '#F472B6', '#10B981', '#F59E0B'];
+  let colorCtx;
+  function ensureColorCtx() {
+    if (!colorCtx) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 1;
+      colorCtx = c.getContext('2d');
+    }
+    return colorCtx;
   }
-  const rows = prizes.map((p,i)=>{
-    return `<tr data-index="${i}" draggable="true" class="draggable-row">
-      <td class="drag-cell"><button type="button" class="drag-handle" aria-label="拖曳排序" title="拖曳排序"></button></td>
-      <td><input type="text" class="inp-label" value="${escapeHtml(p.label)}" placeholder="獎項名稱" /></td>
-      <td style="width:110px"><input type="number" min="0" step="1" class="inp-weight" value="${p.weight}" /></td>
-      <td style="width:150px" class="color-cell">
-        <input type="text" class="inp-color" value="${p.color?escapeHtml(p.color):''}" placeholder="#HEX 或色名" style="flex:1 1 auto" />
-        <input type="color" class="inp-color-picker" value="${p.color && isColorHex(p.color)?p.color:'#ffffff'}" />
-      </td>
-      <td style="width:110px" class="row-actions">
-        <button class="secondary" data-act="dup">複製</button>
-        <button class="danger" data-act="del">刪除</button>
-      </td>
-    </tr>`;
-  }).join('');
 
-  tableWrap.innerHTML = `<table><thead><tr><th style="width:44px">排序</th><th>獎項標題</th><th style="width:110px">權重</th><th style="width:150px">顏色</th><th style="width:110px">操作</th></tr></thead><tbody>${rows}</tbody></table>`;
-  attachRowEvents();
-  attachDndEvents();
-  markDirty();
-}
+  function colorToHex(input) {
+    const s = String(input || '').trim();
+    if (!s) return null;
+    const hexRe = /^#([0-9a-fA-F]{6})$/;
+    if (hexRe.test(s)) return s.toUpperCase();
+    try {
+      const ctx = ensureColorCtx();
+      ctx.fillStyle = '#000000';
+      ctx.fillStyle = s; // if invalid, stays '#000000'
+      const out = ctx.fillStyle;
+      if (/^#/.test(out)) return out.toUpperCase();
+      const m = out.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+      if (m) {
+        const r = (parseInt(m[1]) | 0).toString(16).padStart(2, '0');
+        const g = (parseInt(m[2]) | 0).toString(16).padStart(2, '0');
+        const b = (parseInt(m[3]) | 0).toString(16).padStart(2, '0');
+        return ('#' + r + g + b).toUpperCase();
+      }
+    } catch (_) {}
+    return null;
+  }
 
-function attachRowEvents(){
-  tableWrap.querySelectorAll('tbody tr').forEach(tr=>{
-    const idx = Number(tr.getAttribute('data-index'));
-    const labelInput = tr.querySelector('.inp-label');
-    const weightInput = tr.querySelector('.inp-weight');
-    const colorInput = tr.querySelector('.inp-color');
-    const colorPicker = tr.querySelector('.inp-color-picker');
-    labelInput.addEventListener('input', ()=>{ prizes[idx].label = labelInput.value.trim(); markDirty(); });
-    weightInput.addEventListener('input', ()=>{ prizes[idx].weight = Number(weightInput.value); markDirty(); });
-    colorInput.addEventListener('input', ()=>{ prizes[idx].color = colorInput.value.trim() || undefined; if (isColorHex(colorInput.value.trim())) colorPicker.value = normalizeHex(colorInput.value.trim()); markDirty(); });
-    colorPicker.addEventListener('input', ()=>{ prizes[idx].color = colorPicker.value; colorInput.value = colorPicker.value; markDirty(); });
-    tr.querySelectorAll('button[data-act]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const act = btn.getAttribute('data-act');
-        if (act === 'del') {
-          prizes.splice(idx,1); renderTable();
-        } else if (act === 'dup') {
-          prizes.splice(idx+1,0,{...prizes[idx]}); renderTable();
-        }
-      });
-    });
-  });
-}
-
-function attachDndEvents(){
-  const rows = Array.from(tableWrap.querySelectorAll('tbody tr'));
-  const clearOver = () => {
-    rows.forEach(r=>r.classList.remove('drag-over-before','drag-over-after'));
+  const els = {
+    scriptUrl: document.getElementById('scriptUrl'),
+    sheetName: document.getElementById('sheetName'),
+    proxyUrl: document.getElementById('proxyUrl'),
+    noCorsMode: document.getElementById('noCorsMode'),
+    loadBtn: document.getElementById('loadBtn'),
+    status: document.getElementById('status'),
+    tableBody: document.querySelector('#dataTable tbody'),
+    addRowBtn: document.getElementById('addRowBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    saveBtn: document.getElementById('saveBtn'),
   };
-  rows.forEach(tr=>{
-    const idx = Number(tr.getAttribute('data-index'));
 
-    tr.addEventListener('dragstart', (e)=>{
-      // 避免從輸入或按鈕開始拖曳
-      if (e.target && (e.target.closest('input') || e.target.closest('button'))) {
-        e.preventDefault();
+  // Persist URL to localStorage for convenience
+  const LS_KEY = 'turntable_admin_script_url';
+  const LS_SHEET = 'turntable_admin_sheet_name';
+  const LS_PROXY = 'turntable_admin_proxy_url';
+  const LS_NOCORS = 'turntable_admin_no_cors';
+  const savedUrl = localStorage.getItem(LS_KEY);
+  const savedSheet = localStorage.getItem(LS_SHEET);
+  const savedProxy = localStorage.getItem(LS_PROXY);
+  const savedNoCors = localStorage.getItem(LS_NOCORS);
+  if (savedUrl) els.scriptUrl.value = savedUrl;
+  if (savedSheet) els.sheetName.value = savedSheet;
+  if (savedProxy) els.proxyUrl.value = savedProxy;
+  if (savedNoCors) els.noCorsMode.checked = savedNoCors === '1';
+
+  function setStatus(msg, ok = true) {
+    const dot = '<span class="dot"></span>';
+    els.status.innerHTML = (msg ? (dot + '<span>' + escapeHtml(msg) + '</span>') : '');
+    els.status.className = 'status ' + (ok ? 'ok' : 'err');
+  }
+
+  function rowTemplate(item, idx) {
+    const label = item?.label ?? '';
+    const probability = item?.probability ?? '';
+    const colorRaw = item?.color ?? '';
+    const paletteHex = DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
+    const colorHex = colorToHex(colorRaw) || paletteHex;
+    const colorText = colorRaw || colorHex;
+    return `
+      <tr draggable="true">
+        <td><span class="drag-handle" title="拖曳排序" aria-label="拖曳排序">☰</span><span class="row-index">${idx + 1}</span></td>
+        <td><input type="text" value="${escapeHtml(label)}" placeholder="獎項名稱" style="width:100%" /></td>
+        <td><input type="text" value="${escapeHtml(probability)}" placeholder="數字或百分比，如 20 或 20%" style="width:100%" /></td>
+        <td>
+          <div class="color-field">
+            <input type="color" class="colorPicker" value="${escapeHtml(colorHex)}" aria-label="選擇顏色" />
+            <input type="text" class="colorText" value="${escapeHtml(colorText)}" placeholder="#FFB200 或 red" />
+          </div>
+        </td>
+        <td>
+          <button class="btn" data-action="copy">複製</button>
+          <button class="btn danger" data-action="delete">刪除</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  function renderRows(items) {
+    els.tableBody.innerHTML = (items || []).map(rowTemplate).join('');
+    // ensure any immediately rendered rows get numbering and synced events
+    renumberRows();
+  }
+
+  function nextDefaultItem() {
+    const idx = els.tableBody.children.length;
+    return {
+      label: `獎項 ${idx + 1}`,
+      probability: 10,
+      color: DEFAULT_COLORS[idx % DEFAULT_COLORS.length]
+    };
+  }
+
+  function addEmptyRow() {
+    const idx = els.tableBody.children.length;
+    els.tableBody.insertAdjacentHTML('beforeend', rowTemplate(nextDefaultItem(), idx));
+    renumberRows();
+  }
+
+  function getRows() {
+    const rows = [];
+    for (const tr of els.tableBody.querySelectorAll('tr')) {
+      const tds = tr.querySelectorAll('td');
+      const label = tds[1].querySelector('input').value.trim();
+      const probRaw = tds[2].querySelector('input').value.trim();
+      const colorTextEl = tds[3].querySelector('input.colorText');
+      const colorPickerEl = tds[3].querySelector('input.colorPicker');
+      const colorTextVal = colorTextEl ? colorTextEl.value.trim() : '';
+      const colorPickVal = colorPickerEl ? colorPickerEl.value.trim() : '';
+      const color = colorTextVal || colorPickVal;
+      if (!label) continue;
+      rows.push({ label, probability: toNumber(probRaw), color: color || undefined });
+    }
+    return rows;
+  }
+
+  function renumberRows() {
+    let i = 1;
+    for (const tr of els.tableBody.querySelectorAll('tr')) {
+      const idxEl = tr.querySelector('.row-index');
+      if (idxEl) idxEl.textContent = String(i++);
+      else {
+        const first = tr.querySelector('td');
+        if (first) first.textContent = String(i++);
+      }
+    }
+  }
+
+  function getDragAfterElement(container, y) {
+    const elsArr = [...container.querySelectorAll('tr:not(.dragging)')];
+    let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    for (const child of elsArr) {
+      const box = child.getBoundingClientRect();
+      const offset = y - (box.top + box.height / 2);
+      if (offset < 0 && offset > closest.offset) {
+        closest = { offset, element: child };
+      }
+    }
+    return closest.element;
+  }
+
+  function toNumber(val) {
+    if (typeof val === 'number') return val;
+    const s = String(val || '').trim();
+    const m = s.match(/^([0-9]+(?:\.[0-9]+)?)%$/);
+    if (m) return parseFloat(m[1]);
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function fetchData() {
+    const url = els.scriptUrl.value.trim();
+    const sheet = els.sheetName.value.trim();
+    const proxy = els.proxyUrl.value.trim();
+    if (!url) return setStatus('請先填入 Apps Script Web App URL', false);
+    localStorage.setItem(LS_KEY, url);
+    if (sheet) localStorage.setItem(LS_SHEET, sheet);
+    if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
+
+    try {
+      setStatus('載入中…');
+      const qs = sheet ? `?sheet=${encodeURIComponent(sheet)}` : '';
+      const target = (proxy ? (proxy.replace(/\/$/, '') + '/' + url.replace(/^https?:\/\//, '')) : (url)) + qs;
+      const res = await fetch(target, { method: 'GET' });
+      const data = await res.json();
+      if (data && data.error) {
+        setStatus('後端錯誤：' + data.error, false);
         return;
       }
-      dragState.active = true;
-      dragState.fromIndex = idx;
-      tr.classList.add('dragging');
-      if (e.dataTransfer){
-        e.dataTransfer.effectAllowed = 'move';
-        // Safari 需要有 setData 才能觸發 drop
-        e.dataTransfer.setData('text/plain', String(idx));
-      }
-    });
-
-    tr.addEventListener('dragend', ()=>{
-      tr.classList.remove('dragging');
-      clearOver();
-      dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
-    });
-
-    tr.addEventListener('dragover', (e)=>{
-      if (!dragState.active) return;
-      e.preventDefault();
-      const rect = tr.getBoundingClientRect();
-      const before = (e.clientY - rect.top) < rect.height/2;
-      clearOver();
-      tr.classList.add(before ? 'drag-over-before' : 'drag-over-after');
-      dragState.overIndex = idx;
-      dragState.overPos = before ? 'before' : 'after';
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    });
-
-    tr.addEventListener('dragleave', ()=>{
-      tr.classList.remove('drag-over-before','drag-over-after');
-    });
-
-    tr.addEventListener('drop', (e)=>{
-      if (!dragState.active) return;
-      e.preventDefault();
-      const targetIdx = idx;
-      let from = Number(dragState.fromIndex);
-      let to = targetIdx + (dragState.overPos === 'after' ? 1 : 0);
-      if (!Number.isFinite(from) || !Number.isFinite(to)) return;
-      if (to > from) to--; // 移除後索引位移修正
-      clearOver();
-      dragState = { active:false, fromIndex:null, overIndex:null, overPos:null };
-      if (from === to) return; // 無變更
-      const moved = prizes.splice(from,1)[0];
-      prizes.splice(to,0,moved);
-      renderTable();
-      setStatus('已重新排序。','');
-    });
-  });
-
-  // 跨裝置拖曳：使用拖曳手把 + Pointer 事件
-  const handles = Array.from(tableWrap.querySelectorAll('.drag-handle'));
-  let ptrDragging = false;
-  let ptrFromIdx = null;
-  let ptrOverIdx = null;
-  let ptrOverPos = null; // 'before' | 'after'
-
-  const onPtrMove = (e)=>{
-    if (!ptrDragging) return;
-    e.preventDefault();
-    const y = e.clientY;
-    let targetTr = null;
-    for (const r of rows){
-      const rect = r.getBoundingClientRect();
-      if (y >= rect.top && y <= rect.bottom){ targetTr = r; break; }
+      renderRows(Array.isArray(data) ? data : []);
+      setStatus('載入完成');
+    } catch (err) {
+      setStatus('載入失敗：' + (err?.message || err), false);
     }
-    clearOver();
-    if (!targetTr){ ptrOverIdx = null; ptrOverPos = null; return; }
-    const rect = targetTr.getBoundingClientRect();
-    const before = (y - rect.top) < rect.height/2;
-    targetTr.classList.add(before ? 'drag-over-before' : 'drag-over-after');
-    ptrOverIdx = Number(targetTr.getAttribute('data-index'));
-    ptrOverPos = before ? 'before' : 'after';
-  };
-
-  const stopPtrDrag = ()=>{
-    if (!ptrDragging) return;
-    ptrDragging = false;
-    clearOver();
-    rows.forEach(r=>r.classList.remove('dragging'));
-    if (ptrFromIdx==null || ptrOverIdx==null){ ptrFromIdx = ptrOverIdx = ptrOverPos = null; return; }
-    let from = Number(ptrFromIdx);
-    let to = ptrOverIdx + (ptrOverPos === 'after' ? 1 : 0);
-    if (to > from) to--;
-    if (from !== to){
-      const moved = prizes.splice(from,1)[0];
-      prizes.splice(to,0,moved);
-      renderTable();
-      setStatus('已重新排序。','');
-    }
-    ptrFromIdx = ptrOverIdx = ptrOverPos = null;
-    window.removeEventListener('pointermove', onPtrMove, { capture:false });
-    window.removeEventListener('pointerup', stopPtrDrag, { capture:false });
-    window.removeEventListener('pointercancel', stopPtrDrag, { capture:false });
-  };
-
-  handles.forEach(h=>{
-    h.addEventListener('pointerdown', (e)=>{
-      // 僅用手把啟動，避免干擾輸入欄位
-      const tr = h.closest('tr');
-      if (!tr) return;
-      ptrFromIdx = Number(tr.getAttribute('data-index'));
-      ptrDragging = true;
-      tr.classList.add('dragging');
-      try { h.setPointerCapture(e.pointerId); } catch(_){}
-      window.addEventListener('pointermove', onPtrMove, { passive:false });
-      window.addEventListener('pointerup', stopPtrDrag, { passive:true });
-      window.addEventListener('pointercancel', stopPtrDrag, { passive:true });
-    }, { passive:true });
-  });
-}
-
-function escapeHtml(str){
-  return str.replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));
-}
-
-function isColorHex(v){
-  return /^#[0-9a-fA-F]{6}$/.test(v.trim());
-}
-function normalizeHex(v){
-  const m = v.trim().match(/^#([0-9a-fA-F]{6})$/); return m ? '#'+m[1].toLowerCase() : '#ffffff';
-}
-
-addBtn.addEventListener('click', ()=>{
-  prizes.push({label:'新獎項', weight:1, color:undefined});
-  renderTable();
-});
-
-saveBtn.addEventListener('click', async ()=>{
-  // 驗證
-  const cleaned = prizes.map(p=>({label:p.label.trim(), weight:Number(p.weight), color:p.color? p.color.trim(): undefined}));
-  for (const p of cleaned){
-    if (!p.label) return setStatus('存在空白標題，請修正。','error');
-    if (!Number.isFinite(p.weight) || p.weight<0) return setStatus('權重需為非負整數。','error');
-    if (p.color && !isColorHex(p.color) && /\s/.test(p.color)) return setStatus('顏色格式不合法 (HEX 或色名無空白)。','error');
   }
-  setStatus('儲存中...', '');
-  saveBtn.disabled = true;
-  const spinner = document.createElement('span'); spinner.className='loading-inline'; saveBtn.prepend(spinner);
-  try {
-    const url = scriptUrlInput.value.trim();
-    const resp = await fetch(url, {
-      method: 'POST',
-      // 使用簡單請求以避免 CORS 預檢（Apps Script 以 e.postData.contents 解析）
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ prizes: cleaned })
-    });
-    if (!resp.ok) throw new Error('HTTP '+resp.status);
-    const data = await resp.json();
-    if (!data.ok) throw new Error(data.error || '未知錯誤');
-    prizes = cleaned; // 套用成功狀態
-    originalSerialized = serialize(prizes);
-    renderTable();
-    setStatus('儲存成功，共 '+prizes.length+' 筆。','success');
 
-    // 儲存後再次讀取一次，檢查 0 權重是否被後端過濾，若有則提示更新 Apps Script
+  async function saveData() {
+    const url = els.scriptUrl.value.trim();
+    const sheet = els.sheetName.value.trim();
+    const proxy = els.proxyUrl.value.trim();
+    const useNoCors = !!els.noCorsMode.checked;
+    if (!url) return setStatus('請先填入 Apps Script Web App URL', false);
+    localStorage.setItem(LS_KEY, url);
+    if (sheet) localStorage.setItem(LS_SHEET, sheet);
+    if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
+    localStorage.setItem(LS_NOCORS, useNoCors ? '1' : '0');
+
+    const payload = {
+      sheet: sheet || undefined,
+      items: getRows()
+    };
+
     try {
-      const verifyResp = await fetch(url + '?t=' + Date.now());
-      if (verifyResp.ok) {
-        const verifyData = await verifyResp.json();
-        const serverPrizes = Array.isArray(verifyData.prizes) ? verifyData.prizes : [];
-        const zerosClient = new Set(cleaned.filter(p => Number(p.weight) === 0).map(p => String(p.label).trim()));
-        const zerosServer = new Set(serverPrizes.filter(p => Number(p.weight) === 0).map(p => String(p.label || '').trim()));
-        const droppedZero = [];
-        zerosClient.forEach(lbl => { if (!zerosServer.has(lbl)) droppedZero.push(lbl); });
-        if (droppedZero.length) {
-          setStatus('注意：後端未保留 0 權重獎項：' + droppedZero.join(', ') + '。請更新 Apps Script 以允許 0 權重。', 'error');
-        }
+      setStatus('儲存中…');
+      const target = proxy ? (proxy.replace(/\/$/, '') + '/' + url.replace(/^https?:\/\//, '')) : url;
+      const options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      };
+      if (useNoCors) options.mode = 'no-cors';
+      const res = await fetch(target, options);
+      const data = await res.json().catch(() => ({}));
+      if (data && data.error) {
+        setStatus('後端錯誤：' + data.error, false);
+        return;
       }
-    } catch(_) { /* ignore verify errors */ }
-  } catch(e){
-    console.error(e);
-    setStatus('儲存失敗: '+e.message,'error');
-  } finally {
-    spinner.remove();
-    markDirty();
+      setStatus(useNoCors ? '已送出（no-cors 模式，不讀回應）' : '儲存完成');
+    } catch (err) {
+      setStatus('儲存失敗：' + (err?.message || err), false);
+    }
   }
-});
 
-loadBtn.addEventListener('click', ()=>{ loadPrizes(); });
+  // Event bindings
+  els.loadBtn.addEventListener('click', fetchData);
+  els.addRowBtn.addEventListener('click', addEmptyRow);
+  els.resetBtn.addEventListener('click', () => {
+    els.tableBody.innerHTML = '';
+    setStatus('已清空');
+  });
+  els.saveBtn.addEventListener('click', saveData);
 
-async function loadPrizes(){
-  setStatus('載入中...','');
-  saveBtn.disabled = true;
-  try {
-    const url = scriptUrlInput.value.trim();
-    const resp = await fetch(url + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('HTTP '+resp.status);
-    const data = await resp.json();
-    if (!data.prizes || !Array.isArray(data.prizes)) throw new Error('格式錯誤');
-    prizes = data.prizes.map(p=>({
-      label: String(p.label||'').trim(),
-      weight: Number(p.weight)||0,
-      color: p.color? String(p.color).trim() || undefined : undefined
-    })).filter(p=>p.label);
-    originalSerialized = serialize(prizes);
-    renderTable();
-    setStatus('載入完成，' + prizes.length + ' 筆。','success');
-  } catch(e){
-    console.error(e);
-    setStatus('載入失敗: '+e.message,'error');
-    prizes = [];
-    renderTable();
-  }
-}
+  els.tableBody.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('button[data-action="delete"]');
+    const copyBtn = e.target.closest('button[data-action="copy"]');
+    if (delBtn) {
+      const tr = delBtn.closest('tr');
+      if (tr) tr.remove();
+      renumberRows();
+      return;
+    }
+    if (copyBtn) {
+      const tr = copyBtn.closest('tr');
+      if (!tr) return;
+      const tds = tr.querySelectorAll('td');
+      const label = tds[1].querySelector('input')?.value?.trim() || '';
+      const probRaw = tds[2].querySelector('input')?.value?.trim() || '';
+      const colorTextEl = tds[3].querySelector('input.colorText');
+      const colorPickerEl = tds[3].querySelector('input.colorPicker');
+      const colorTextVal = colorTextEl ? colorTextEl.value.trim() : '';
+      const colorPickVal = colorPickerEl ? colorPickerEl.value.trim() : '';
+      const item = { label, probability: probRaw, color: colorTextVal || colorPickVal };
 
-// 初次載入
-loadPrizes();
+      // 使用正確的 TR 片段插入，避免巢狀 <tr> 造成 draggable 失效
+      const idx = [...els.tableBody.querySelectorAll('tr')].indexOf(tr) + 1;
+      const html = rowTemplate(item, idx);
+      tr.insertAdjacentHTML('afterend', html);
+      renumberRows();
+      return;
+    }
+  });
+
+  // Sync color picker and text input
+  els.tableBody.addEventListener('input', (e) => {
+    const picker = e.target.closest('input.colorPicker');
+    const text = e.target.closest('input.colorText');
+    if (picker) {
+      const tr = picker.closest('tr');
+      const textEl = tr?.querySelector('input.colorText');
+      if (textEl) textEl.value = picker.value;
+    } else if (text) {
+      const hex = colorToHex(text.value);
+      const tr = text.closest('tr');
+      const pickerEl = tr?.querySelector('input.colorPicker');
+      if (hex && pickerEl) pickerEl.value = hex;
+    }
+  });
+
+  // Drag & Drop row reordering
+  els.tableBody.addEventListener('dragstart', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    tr.classList.add('dragging');
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); } catch(_) {}
+  });
+  els.tableBody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const dragging = els.tableBody.querySelector('tr.dragging');
+    if (!dragging) return;
+    const after = getDragAfterElement(els.tableBody, e.clientY);
+    if (after == null) {
+      els.tableBody.appendChild(dragging);
+    } else {
+      els.tableBody.insertBefore(dragging, after);
+    }
+  });
+  els.tableBody.addEventListener('drop', (e) => {
+    e.preventDefault();
+  });
+  els.tableBody.addEventListener('dragend', () => {
+    const dragging = els.tableBody.querySelector('tr.dragging');
+    if (dragging) dragging.classList.remove('dragging');
+    renumberRows();
+  });
+
+  // Basic touch support for reordering on mobile/tablet
+  let touchDrag = { active: false, row: null };
+  els.tableBody.addEventListener('touchstart', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const tr = handle.closest('tr');
+    if (!tr) return;
+    touchDrag.active = true;
+    touchDrag.row = tr;
+    tr.classList.add('dragging');
+  }, { passive: true });
+
+  els.tableBody.addEventListener('touchmove', (e) => {
+    if (!touchDrag.active || !touchDrag.row) return;
+    if (e.cancelable) e.preventDefault();
+    const touch = e.touches[0];
+    const after = getDragAfterElement(els.tableBody, touch.clientY);
+    if (after == null) {
+      els.tableBody.appendChild(touchDrag.row);
+    } else {
+      els.tableBody.insertBefore(touchDrag.row, after);
+    }
+  }, { passive: false });
+
+  els.tableBody.addEventListener('touchend', () => {
+    if (touchDrag.row) touchDrag.row.classList.remove('dragging');
+    touchDrag.active = false;
+    touchDrag.row = null;
+    renumberRows();
+  });
+})();

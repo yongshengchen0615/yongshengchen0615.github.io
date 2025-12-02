@@ -7,6 +7,8 @@
   --slice1: #ffb703;
   --slice2: #fb8500;
   --text: #08111b;
+  /* divider color between slices */
+  --divider: rgba(255,255,255,0.9);
 }
 *{box-sizing:border-box}
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans TC',sans-serif;margin:0;background:linear-gradient(180deg,#071029 0%,#0f1724 100%);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -29,6 +31,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #ffd166;
   --slice2: #ff8f00;
   --text: #08111b;
+  --divider: rgba(255,255,255,0.9);
 }
 .theme-light{
   --bg: #f7fafc;
@@ -38,6 +41,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #0ea5a4;
   --slice2: #06b6d4;
   --text: #042028;
+  --divider: rgba(0,0,0,0.35);
 }
 .theme-neon{
   --bg: linear-gradient(180deg,#04021a 0%,#071038 100%);
@@ -47,6 +51,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #7c3aed;
   --slice2: #06b6d4;
   --text: #e6e6ff;
+  --divider: rgba(230,230,255,0.9);
 }
 
 
@@ -97,11 +102,10 @@ button:active{transform:translateY(1px)}
 .modal-actions{display:flex;gap:12px;justify-content:center}
 .spin-center.small{position:static;transform:none;width:140px;height:48px;aspect-ratio:auto;border-radius:10px;font-size:16px}
 
-/* ================= 全螢幕載入 Overlay ================= */
-.loading-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(7,16,41,0.92);z-index:2000;backdrop-filter:blur(4px)}
-.loading-box{padding:32px 40px;background:linear-gradient(180deg,#08111b 0%,#0e1826 100%);border:1px solid rgba(255,255,255,0.06);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.6);max-width:340px;width:90%;text-align:center}
-.loading-box p{margin:12px 0 0;font-size:15px;line-height:1.5}
-.loading-box #errorMsg{color:#ff6b6b;font-weight:600}
-.spinner{width:54px;height:54px;border:6px solid rgba(255,255,255,0.15);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto}
+/* 載入中遮罩與動畫 */
+.loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:1300}
+.loading.hidden{display:none}
+.loading-card{background:linear-gradient(180deg,#08111b 0%,#0b1220 100%);padding:20px 24px;border-radius:12px;display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,0.06);box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+.spinner{width:22px;height:22px;border:3px solid rgba(255,255,255,0.25);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.loading-text{color:#fff;font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading-overlay.hidden{display:none}

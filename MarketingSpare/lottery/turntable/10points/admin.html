@@ -1,117 +1,123 @@
-<!doctype html>
-<html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>獎項後台管理</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>轉盤後台管理（5points）</title>
   <link rel="stylesheet" href="style.css" />
   <style>
-    body.admin-page{display:block;align-items:unset;justify-content:unset;padding:24px;min-height:100vh;overflow:auto}
-    @media (hover: hover) and (pointer: fine){body.admin-page{overflow:auto !important}}
-    h1{margin:0 0 12px;text-align:center}
-    .page-subtitle{margin:0 auto 12px;max-width:960px;text-align:center;color:var(--muted);font-size:13px}
-    .admin-container{max-width:960px;margin:0 auto;background:rgba(255,255,255,0.04);padding:24px 28px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,0.5)}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{padding:8px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;vertical-align:middle}
-    th{background:rgba(255,255,255,0.06);font-weight:600;position:sticky;top:0;z-index:2}
-    tr:last-child td{border-bottom:none}
-    input[type=text],input[type=number]{width:100%;padding:6px 8px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.25);color:#fff;border-radius:6px;font-size:14px}
-    input[type=text]:focus,input[type=number]:focus{outline:2px solid var(--accent);outline-offset:1px}
-    input[type=color]{border:0;background:transparent;cursor:pointer;width:38px;height:32px;padding:0}
-    .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
-    button.primary{background:var(--accent);color:#08111b;font-weight:700}
-    button.secondary{background:#34495e}
-    button.danger{background:#c0392b}
-    button{border:0;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px;letter-spacing:.5px}
-    button:disabled{opacity:.45;cursor:not-allowed}
-    .status{margin-top:12px;font-size:13px;color:var(--muted)}
-    .error{color:#ff6b6b;font-weight:600}
-    .success{color:#53dd8a;font-weight:600}
-    .row-actions button{padding:4px 10px;font-size:12px}
-    .loading-inline{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.3);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;vertical-align:middle;margin-right:6px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .flex-center{display:flex;align-items:center;gap:8px}
-    .color-cell{display:flex;align-items:center;gap:6px}
-    .pill{display:inline-block;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.1);font-size:12px;margin-left:4px}
-    .empty-hint{margin-top:16px;text-align:center;font-size:14px;color:var(--muted)}
-    #tableWrap{overflow:visible;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:4px;margin-top:12px;background:rgba(0,0,0,0.15);}
-    #tableWrap table{margin:0}
-    .footer-tip{margin-top:30px;font-size:12px;color:var(--muted);text-align:center}
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', Arial, sans-serif; background:#0f1115; color:#e5e7eb; color-scheme: dark; }
+    .container { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #151821; border: 1px solid #222838; border-radius: 12px; padding: 20px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .row input { padding: 9px 12px; border: 1px solid #2a3040; background:#1b2030; color:#e5e7eb; border-radius: 8px; min-height: 36px; }
+    .row input::placeholder{ color:#8a90a0; }
+    .row label { font-size: 14px; color: #cfd8e3; }
+    .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #2f3750; cursor: pointer; background: #212736; color:#e5e7eb; transition: background .15s ease, box-shadow .15s ease; }
+    .btn:hover { background:#283049; box-shadow:0 1px 4px rgba(0,0,0,0.25); }
+    .btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .btn.primary:hover { background:#2563eb; }
+    .btn.danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .btn.danger:hover { background:#dc2626; }
+    .table-wrap { margin-top: 16px; border:1px solid #222838; border-radius:8px; overflow:auto; max-height: 56vh; }
+    .table-wrap { -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    th, td { border-bottom: 1px solid #222838; padding: 10px; text-align: left; color:#e5e7eb; }
+    thead th { position: sticky; top: 0; background: #1b2030; z-index: 1; }
+    tbody tr:nth-child(even){ background:#131926; }
+    .col-idx { width: 56px; }
+    .col-label { width: 34%; }
+    .col-prob { width: 26%; }
+    .col-color { width: 20%; }
+    .col-actions { width: 120px; }
+      .col-actions { width: 160px; }
+    .status { margin-top: 12px; font-size: 14px; display:flex; align-items:center; gap:8px; }
+    .status.ok { color: #60a5fa; }
+    .status.err { color: #f87171; }
+    .status .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .status.ok .dot { background:#60a5fa; }
+    .status.err .dot { background:#f87171; }
+    .badge { font-size: 12px; color: #9aa3b2; margin-left: 8px; }
+    .flex-grow { flex: 1; }
+    .color-field { display:flex; align-items:center; gap:10px; }
+    .color-field .colorPicker { width: 40px; height: 32px; padding: 0; background: transparent; border: 1px solid #2a3040; border-radius: 6px; }
+    .color-field .colorText { flex:1; min-width:140px; padding: 9px 12px; border: 1px solid #2a3040; background:#1b2030; color:#e5e7eb; border-radius: 8px; }
+    .drag-handle { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; margin-right:8px; cursor:grab; color:#9aa3b2; }
+    tbody tr.dragging { opacity: .6; }
+    tbody tr { user-select: none; }
 
-    /* 拖曳排序樣式 */
-    tr.draggable-row td{cursor:grab}
-    tr.draggable-row.dragging{opacity:.6}
-    tr.drag-over-before td{box-shadow:inset 0 3px 0 0 var(--accent)}
-    tr.drag-over-after td{box-shadow:inset 0 -3px 0 0 var(--accent)}
-
-    /* 拖曳手把（跨裝置） */
-    .drag-cell{width:44px;text-align:center}
-    .drag-handle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;color:#fff}
-    .drag-handle:active{cursor:grabbing}
-    .drag-handle:focus{outline:2px solid var(--accent);outline-offset:2px}
-    .drag-handle::before{content:'≡';font-size:16px;line-height:1;opacity:.9;letter-spacing:1px}
-
-    /* 使用說明 */
-    details.help{margin:0 auto 12px;max-width:960px}
-    details.help>summary{cursor:pointer;list-style:none;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;background:rgba(255,255,255,0.04);font-weight:600;user-select:none}
-    details.help[open]>summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
-    details.help .help-body{border:1px solid rgba(255,255,255,0.08);border-top:0;border-bottom-left-radius:10px;border-bottom-right-radius:10px;padding:10px 12px;background:rgba(255,255,255,0.02);font-size:13px;color:var(--muted)}
-    details.help ul{margin:8px 0 0 18px}
-
-    /* 響應式與可用性強化 */
-    .top-row{gap:10px;flex-wrap:wrap}
-    .top-row label{flex:1 1 420px}
-    #scriptUrl{min-height:38px}
-    .actions button{flex:0 1 auto}
-
-    @media (max-width: 960px){
-      body.admin-page{padding:16px}
-      .admin-container{padding:18px}
+    /* Responsive adjustments */
+    @media (max-width: 1024px) {
+      .container { padding: 0 12px; }
+      .table-wrap { max-height: 52vh; }
     }
-
-    @media (max-width: 640px){
-      h1{font-size:20px}
-      .page-subtitle{font-size:12px}
-      .admin-container{padding:14px}
-      .top-row{flex-direction:column}
-      .top-row label{flex:1 1 auto;width:100%}
-      .actions{flex-direction:column;position:sticky;bottom:0;background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 16%, rgba(0,0,0,0.55) 100%);padding-bottom:env(safe-area-inset-bottom)}
-      .actions button{width:100%}
-      th,td{padding:8px}
-      button{padding:12px 14px}
+    @media (max-width: 768px) {
+      .row { flex-direction: column; align-items: stretch; }
+      .row input { width: 100%; }
+      .col-label { width: 40%; }
+      .col-prob { width: 24%; }
+      .col-color { width: auto; }
+      .col-actions { width: 120px; }
+      th, td { padding: 8px; }
+      .color-field { gap:8px; }
+      .color-field .colorPicker { width: 36px; height: 28px; }
     }
-
+    @media (max-width: 520px) {
+      body { font-size: 14px; }
+      thead th { font-size: 13px; }
+      td input { font-size: 14px; }
+      .drag-handle { width:20px; height:20px; margin-right:6px; }
+      .table-wrap { max-height: 50vh; }
+      .color-field { flex-wrap: wrap; }
+      .color-field .colorText { min-width: 0; width: 100%; }
+    }
   </style>
 </head>
-<body class="admin-page">
-  <div class="admin-container">
-    <h1>獎項後台管理</h1>
-    <p class="page-subtitle">快速設定資料來源，新增或調整獎項，最後按下「儲存變更」。</p>
-    <details class="help">
-      <summary>使用說明與小提示</summary>
-      <div class="help-body">
-        <ul>
-          <li>將 Google Apps Script 發佈的網址貼在欄位中後，按「重新載入」讀取最新資料。</li>
-          <li>按「新增獎項」新增一列，編輯名稱、顏色、機率/權重等欄位。</li>
-          <li>按「儲存變更」會覆蓋整張雲端工作表，請先確認內容正確。</li>
-        </ul>
+<body>
+  <div class="container">
+    <h2>轉盤後台管理（5points）</h2>
+    <div class="card">
+      <div class="row">
+        <label>Apps Script Web App URL</label>
+        <input id="scriptUrl" class="flex-grow" placeholder="https://script.google.com/macros/s/AKfycbyXD41OvVKmzM7cLWhkT7Nsr4f_PUBRaDPq12665Cc7W5T7uzS8bGFlNecnengl-iqE8Q/exec" />
+        <button class="btn" id="loadBtn">載入資料</button>
       </div>
-    </details>
+      <div class="row" style="margin-top:8px">
+        <label>工作表名稱</label>
+        <input id="sheetName" placeholder="機率" />
+        <span class="badge">若後端支援動態工作表，可填寫</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Proxy URL</label>
+        <input id="proxyUrl" class="flex-grow" placeholder="（選填）例如 https://cors.isomorphic-git.org/" />
+        <label><input type="checkbox" id="noCorsMode" /> 使用 no-cors（POST 不讀回應）</label>
+      </div>
+      <div class="status" id="status"></div>
 
-    <div class="flex-center top-row" role="group" aria-label="資料來源設定">
-      <label>Apps Script URL
-        <input id="scriptUrl" type="text" inputmode="url" enterkeyhint="go" placeholder="貼上 Google Apps Script 執行網址" aria-label="Google Apps Script 執行網址" value="https://script.google.com/macros/s/AKfycbyDFLkjCAFmw5a7p5065TRIcFAJDpcXVaTje7J1eBFkew9cOGBlLVFYB_c24LyZMX6j/exec" />
-      </label>
-      <button id="loadBtn" class="secondary" type="button" aria-label="重新載入資料">重新載入</button>
+      <div class="table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th class="col-idx">#</th>
+            <th class="col-label">獎項（label）</th>
+            <th class="col-prob">機率（weight / %）</th>
+            <th class="col-color">顏色（color）</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="addRowBtn">新增一列</button>
+        <div class="flex-grow"></div>
+        <button class="btn danger" id="resetBtn">清空所有列</button>
+        <button class="btn primary" id="saveBtn">儲存到後端</button>
+      </div>
     </div>
-    <div class="actions">
-      <button id="addBtn" class="secondary" type="button">新增獎項</button>
-      <button id="saveBtn" class="primary" type="button" disabled>儲存變更</button>
-    </div>
-    <div id="tableWrap"></div>
-    <div id="status" class="status"></div>
-    <div class="footer-tip">提示：空白顏色表示使用系統主題交替色。權重可為 0（會顯示但不會中獎）。儲存將覆蓋整張工作表。</div>
   </div>
+
   <script src="admin.js"></script>
 </body>
 </html>

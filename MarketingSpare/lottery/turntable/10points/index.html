@@ -10,11 +10,11 @@
   <div class="container">
     <h1>10點轉盤抽獎</h1>
 
-    <div id="loadingOverlay" class="loading-overlay" aria-live="polite">
-      <div class="loading-box">
+    <!-- 載入中遮罩 -->
+    <div id="loadingOverlay" class="loading hidden" aria-live="polite" aria-busy="true">
+      <div class="loading-card">
         <div class="spinner" aria-hidden="true"></div>
-        <p id="loadingMsg">資料載入中，請稍候...</p>
-        <p id="errorMsg" style="display:none;">載入失敗，請重新整理或稍後再試。</p>
+        <div class="loading-text">資料載入中…</div>
       </div>
     </div>
 
