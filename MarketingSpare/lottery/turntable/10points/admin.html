@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>轉盤後台管理（5points）</title>
+  <title>10點轉盤後台管理</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Pico.css：輕量化 CSS 框架以優化表單/按鈕/排版 -->
+  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css" />
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', Arial, sans-serif; background:#0f1115; color:#e5e7eb; color-scheme: dark; }
     .container { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
@@ -21,16 +23,15 @@
     .btn.danger:hover { background:#dc2626; }
     .table-wrap { margin-top: 16px; border:1px solid #222838; border-radius:8px; overflow:auto; max-height: 56vh; }
     .table-wrap { -webkit-overflow-scrolling: touch; }
-    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15px; }
     th, td { border-bottom: 1px solid #222838; padding: 10px; text-align: left; color:#e5e7eb; }
     thead th { position: sticky; top: 0; background: #1b2030; z-index: 1; }
     tbody tr:nth-child(even){ background:#131926; }
     .col-idx { width: 56px; }
-    .col-label { width: 34%; }
-    .col-prob { width: 26%; }
-    .col-color { width: 20%; }
-    .col-actions { width: 120px; }
-      .col-actions { width: 160px; }
+    .col-label { width: 34%; min-width: 200px; }
+    .col-prob { width: 26%; min-width: 160px; }
+    .col-color { width: 20%; min-width: 200px; }
+    .col-actions { width: 160px; }
     .status { margin-top: 12px; font-size: 14px; display:flex; align-items:center; gap:8px; }
     .status.ok { color: #60a5fa; }
     .status.err { color: #f87171; }
@@ -50,17 +51,22 @@
     @media (max-width: 1024px) {
       .container { padding: 0 12px; }
       .table-wrap { max-height: 52vh; }
+      table { font-size: 14px; }
+      th, td { padding: 9px; }
     }
     @media (max-width: 768px) {
       .row { flex-direction: column; align-items: stretch; }
       .row input { width: 100%; }
-      .col-label { width: 40%; }
-      .col-prob { width: 24%; }
+      .col-label { width: auto; }
+      .col-prob { width: auto; }
       .col-color { width: auto; }
-      .col-actions { width: 120px; }
+      .col-actions { width: auto; }
       th, td { padding: 8px; }
       .color-field { gap:8px; }
       .color-field .colorPicker { width: 36px; height: 28px; }
+      /* 讓操作按鈕在窄螢幕可換行且不撐寬 */
+      td:last-child { white-space: normal; }
+      td:last-child .btn { display: inline-block; min-width: 84px; margin-bottom: 6px; }
     }
     @media (max-width: 520px) {
       body { font-size: 14px; }
@@ -70,27 +76,36 @@
       .table-wrap { max-height: 50vh; }
       .color-field { flex-wrap: wrap; }
       .color-field .colorText { min-width: 0; width: 100%; }
+      /* 更小尺寸下縮減左右間距並提升觸控友善性 */
+      .btn { padding: 8px 12px; min-width: 72px; }
+      th, td { padding: 6px; }
+      table { font-size: 13.5px; }
+      .color-field .colorPicker { width: 30px; height: 26px; }
     }
+    @media (max-width: 400px) {
+      table { font-size: 13px; }
+      .col-idx { width: 44px; }
+      .drag-handle { width:18px; height:18px; }
+      .col-actions { width: auto; }
+    }
+    /* 覆寫 Pico：維持原按鈕與輸入框暗色風格與大小 */
+    :root { --pico-font-size: 16px; }
+    .btn { background: #212736; color:#e5e7eb; border: 1px solid #2f3750; }
+    .btn.primary { background: #3b82f6; border-color: #3b82f6; color:#fff; }
+    .btn.primary:hover { background:#2563eb; }
+    .btn.danger { background: #ef4444; border-color: #ef4444; color:#fff; }
+    .btn.danger:hover { background:#dc2626; }
+    .row input, .color-field .colorText, .color-field .colorPicker {
+      background:#1b2030; color:#e5e7eb; border:1px solid #2a3040;
+    }
+    table { background: transparent; }
   </style>
 </head>
-<body>
+<body data-theme="dark">
   <div class="container">
-    <h2>轉盤後台管理（5points）</h2>
+    <h2>10點轉盤後台管理</h2>
     <div class="card">
-      <div class="row">
-        <label>Web App URL 由程式碼設定</label>
-        <button class="btn" id="loadBtn">載入資料</button>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label>工作表名稱</label>
-        <input id="sheetName" placeholder="機率" />
-        <span class="badge">若後端支援動態工作表，可填寫</span>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label>Proxy URL</label>
-        <input id="proxyUrl" class="flex-grow" placeholder="（選填）例如 https://cors.isomorphic-git.org/" />
-        <label><input type="checkbox" id="noCorsMode" /> 使用 no-cors（POST 不讀回應）</label>
-      </div>
+      <!-- 已改為由 config.js 設定，並自動載入資料；以下設定輸入區塊移除 -->
       <div class="status" id="status"></div>
 
       <div class="table-wrap">
@@ -117,6 +132,7 @@
     </div>
   </div>
 
+  <script src="config.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>
