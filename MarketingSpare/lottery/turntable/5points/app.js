@@ -24,8 +24,7 @@ if (document.getElementById('pointer')) {
 // ========== 轉盤抽獎主要邏輯 ==========
 // 可選：設定已部署的 Google Apps Script Web App URL
 // 範例：https://script.google.com/macros/s/XXXXXXXX/exec
-const GAS_ENDPOINT = localStorage.getItem('gas_endpoint') 
-|| 'https://script.google.com/macros/s/AKfycbzhhDithyIdajNRnZfUF468UgZhkkYTOxb88AsPF3lq-UU9V-QyFi7fOecO0YK1ImAP/exec';
+const GAS_ENDPOINT ='https://script.google.com/macros/s/AKfycbzhhDithyIdajNRnZfUF468UgZhkkYTOxb88AsPF3lq-UU9V-QyFi7fOecO0YK1ImAP/exec';
 const loadingEl = document.getElementById('loadingOverlay');
 const canvas = document.getElementById('wheel');
 const ctx = canvas.getContext('2d');
