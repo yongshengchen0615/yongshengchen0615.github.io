@@ -5,7 +5,7 @@ import { updateTotalAll, generateBookingData } from "./js/utils/bookingUtils.js"
 import { handleSubmit } from "./js/handlers/submitHandler.js";
 import { HistoryModule } from "./js/modules/historyModule.js";
 import { TestModeModule } from "./js/modules/testModeModule.js";
-
+//版空測試
 $(document).ready(async function () {
     try {
         // ✅ 啟用測試模式
