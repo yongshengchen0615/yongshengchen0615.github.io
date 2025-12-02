@@ -1,6 +1,11 @@
 /* Admin page logic for managing turntable probabilities via Apps Script */
 (function () {
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzXUesyCQXq63_9zWQm0B7dfLvZ4me3n4frQots_RXX6XYNrzr8YC1cSM2Ojlgv1X2e/exec';
+  // 從 config.js 讀取設定
+  const CFG = (window.TURN_ADMIN_CONFIG || {});
+  const SCRIPT_URL = String(CFG.scriptUrl || '').trim();
+  const DEFAULT_SHEET = String(CFG.sheetName || '').trim();
+  const DEFAULT_PROXY = String(CFG.proxyUrl || '').trim();
+  const DEFAULT_NO_CORS = !!CFG.noCors;
   const DEFAULT_COLORS = ['#F87171', '#34D399', '#60A5FA', '#FBBF24', '#A78BFA', '#F472B6', '#10B981', '#F59E0B'];
   let colorCtx;
   function ensureColorCtx() {
@@ -35,10 +40,11 @@
   }
 
   const els = {
-    sheetName: document.getElementById('sheetName'),
-    proxyUrl: document.getElementById('proxyUrl'),
-    noCorsMode: document.getElementById('noCorsMode'),
-    loadBtn: document.getElementById('loadBtn'),
+    // 已移除設定輸入與按鈕，僅保留狀態與資料表
+    sheetName: null,
+    proxyUrl: null,
+    noCorsMode: null,
+    loadBtn: null,
     status: document.getElementById('status'),
     tableBody: document.querySelector('#dataTable tbody'),
     addRowBtn: document.getElementById('addRowBtn'),
@@ -53,9 +59,7 @@
   const savedSheet = localStorage.getItem(LS_SHEET);
   const savedProxy = localStorage.getItem(LS_PROXY);
   const savedNoCors = localStorage.getItem(LS_NOCORS);
-  if (savedSheet) els.sheetName.value = savedSheet;
-  if (savedProxy) els.proxyUrl.value = savedProxy;
-  if (savedNoCors) els.noCorsMode.checked = savedNoCors === '1';
+  // 若存在使用者先前存檔，仍沿用；否則用預設設定
 
   function setStatus(msg, ok = true) {
     const dot = '<span class="dot"></span>';
@@ -172,8 +176,8 @@
 
   async function fetchData() {
     const url = SCRIPT_URL.trim();
-    const sheet = els.sheetName.value.trim();
-    const proxy = els.proxyUrl.value.trim();
+    const sheet = (savedSheet || DEFAULT_SHEET || '').trim();
+    const proxy = (savedProxy || DEFAULT_PROXY || '').trim();
     if (!url) return setStatus('請先在程式碼中設定 SCRIPT_URL', false);
     if (sheet) localStorage.setItem(LS_SHEET, sheet);
     if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
@@ -197,9 +201,9 @@
 
   async function saveData() {
     const url = SCRIPT_URL.trim();
-    const sheet = els.sheetName.value.trim();
-    const proxy = els.proxyUrl.value.trim();
-    const useNoCors = !!els.noCorsMode.checked;
+    const sheet = (localStorage.getItem(LS_SHEET) || DEFAULT_SHEET || '').trim();
+    const proxy = (localStorage.getItem(LS_PROXY) || DEFAULT_PROXY || '').trim();
+    const useNoCors = (localStorage.getItem(LS_NOCORS) ? localStorage.getItem(LS_NOCORS) === '1' : DEFAULT_NO_CORS);
     if (!url) return setStatus('請先在程式碼中設定 SCRIPT_URL', false);
     if (sheet) localStorage.setItem(LS_SHEET, sheet);
     if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
@@ -232,7 +236,8 @@
   }
 
   // Event bindings
-  els.loadBtn.addEventListener('click', fetchData);
+  // 自動載入資料；移除載入按鈕
+  document.addEventListener('DOMContentLoaded', fetchData);
   els.addRowBtn.addEventListener('click', addEmptyRow);
   els.resetBtn.addEventListener('click', () => {
     els.tableBody.innerHTML = '';
