@@ -1,5 +1,6 @@
 /* Admin page logic for managing turntable probabilities via Apps Script */
 (function () {
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzXUesyCQXq63_9zWQm0B7dfLvZ4me3n4frQots_RXX6XYNrzr8YC1cSM2Ojlgv1X2e/exec';
   const DEFAULT_COLORS = ['#F87171', '#34D399', '#60A5FA', '#FBBF24', '#A78BFA', '#F472B6', '#10B981', '#F59E0B'];
   let colorCtx;
   function ensureColorCtx() {
@@ -34,7 +35,6 @@
   }
 
   const els = {
-    scriptUrl: document.getElementById('scriptUrl'),
     sheetName: document.getElementById('sheetName'),
     proxyUrl: document.getElementById('proxyUrl'),
     noCorsMode: document.getElementById('noCorsMode'),
@@ -47,15 +47,12 @@
   };
 
   // Persist URL to localStorage for convenience
-  const LS_KEY = 'turntable_admin_script_url';
   const LS_SHEET = 'turntable_admin_sheet_name';
   const LS_PROXY = 'turntable_admin_proxy_url';
   const LS_NOCORS = 'turntable_admin_no_cors';
-  const savedUrl = localStorage.getItem(LS_KEY);
   const savedSheet = localStorage.getItem(LS_SHEET);
   const savedProxy = localStorage.getItem(LS_PROXY);
   const savedNoCors = localStorage.getItem(LS_NOCORS);
-  if (savedUrl) els.scriptUrl.value = savedUrl;
   if (savedSheet) els.sheetName.value = savedSheet;
   if (savedProxy) els.proxyUrl.value = savedProxy;
   if (savedNoCors) els.noCorsMode.checked = savedNoCors === '1';
@@ -174,11 +171,10 @@
   }
 
   async function fetchData() {
-    const url = els.scriptUrl.value.trim();
+    const url = SCRIPT_URL.trim();
     const sheet = els.sheetName.value.trim();
     const proxy = els.proxyUrl.value.trim();
-    if (!url) return setStatus('請先填入 Apps Script Web App URL', false);
-    localStorage.setItem(LS_KEY, url);
+    if (!url) return setStatus('請先在程式碼中設定 SCRIPT_URL', false);
     if (sheet) localStorage.setItem(LS_SHEET, sheet);
     if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
 
@@ -200,12 +196,11 @@
   }
 
   async function saveData() {
-    const url = els.scriptUrl.value.trim();
+    const url = SCRIPT_URL.trim();
     const sheet = els.sheetName.value.trim();
     const proxy = els.proxyUrl.value.trim();
     const useNoCors = !!els.noCorsMode.checked;
-    if (!url) return setStatus('請先填入 Apps Script Web App URL', false);
-    localStorage.setItem(LS_KEY, url);
+    if (!url) return setStatus('請先在程式碼中設定 SCRIPT_URL', false);
     if (sheet) localStorage.setItem(LS_SHEET, sheet);
     if (proxy) localStorage.setItem(LS_PROXY, proxy); else localStorage.removeItem(LS_PROXY);
     localStorage.setItem(LS_NOCORS, useNoCors ? '1' : '0');
