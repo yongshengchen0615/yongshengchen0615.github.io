@@ -10,6 +10,14 @@
   <div class="container">
     <h1>20點轉盤抽獎</h1>
 
+    <!-- 載入中遮罩 -->
+    <div id="loadingOverlay" class="loading hidden" aria-live="polite" aria-busy="true">
+      <div class="loading-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-text">資料載入中…</div>
+      </div>
+    </div>
+
     <div class="wheel-area">
       <canvas id="wheel" width="500" height="500"></canvas>
       <div id="pointer">▼</div>

@@ -7,6 +7,8 @@
   --slice1: #ffb703;
   --slice2: #fb8500;
   --text: #08111b;
+  /* divider color between slices */
+  --divider: rgba(255,255,255,0.9);
 }
 *{box-sizing:border-box}
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans TC',sans-serif;margin:0;background:linear-gradient(180deg,#071029 0%,#0f1724 100%);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -29,6 +31,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #ffd166;
   --slice2: #ff8f00;
   --text: #08111b;
+  --divider: rgba(255,255,255,0.9);
 }
 .theme-light{
   --bg: #f7fafc;
@@ -38,6 +41,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #0ea5a4;
   --slice2: #06b6d4;
   --text: #042028;
+  --divider: rgba(0,0,0,0.35);
 }
 .theme-neon{
   --bg: linear-gradient(180deg,#04021a 0%,#071038 100%);
@@ -47,6 +51,7 @@ h1{margin:0 0 12px;font-size:24px;text-align:center}
   --slice1: #7c3aed;
   --slice2: #06b6d4;
   --text: #e6e6ff;
+  --divider: rgba(230,230,255,0.9);
 }
 
 
@@ -75,7 +80,7 @@ button:active{transform:translateY(1px)}
 }
 
 /* 中央圓形按鈕 */
-.spin-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:10%;aspect-ratio:1/1;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:clamp(12px,3vw,18px);font-weight:800;box-shadow:0 8px 20px rgba(0,0,0,0.5);border:4px solid rgba(255,255,255,0.06);background:linear-gradient(180deg,var(--accent),#ffa500);cursor:pointer}
+.spin-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:20%;aspect-ratio:1/1;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:clamp(12px,3vw,18px);font-weight:800;box-shadow:0 8px 20px rgba(0,0,0,0.5);border:4px solid rgba(255,255,255,0.06);background:linear-gradient(180deg,var(--accent),#ffa500);cursor:pointer}
 .spin-center:active{transform:translate(-50%,-50%) scale(0.98)}
 
 /* 小的清除按鈕 */
@@ -87,4 +92,20 @@ button:active{transform:translateY(1px)}
 
 .muted{color:var(--muted);font-size:13px;margin:6px 0}
 
+/* Modal：全畫面中獎顯示 */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:1200;padding:20px}
+.modal.hidden{display:none}
+.modal-content{background:linear-gradient(180deg,#08111b 0%,#0b1220 100%);padding:28px;border-radius:12px;min-width:280px;max-width:720px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.04)}
+.modal-content{max-height:calc(100vh - 80px);overflow:auto}
+.modal-content h2{margin:0 0 8px;font-size:clamp(20px,4vw,40px);color:var(--accent)}
+.modal-content .muted{margin:0 0 16px}
+.modal-actions{display:flex;gap:12px;justify-content:center}
+.spin-center.small{position:static;transform:none;width:140px;height:48px;aspect-ratio:auto;border-radius:10px;font-size:16px}
 
+/* 載入中遮罩與動畫 */
+.loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:1300}
+.loading.hidden{display:none}
+.loading-card{background:linear-gradient(180deg,#08111b 0%,#0b1220 100%);padding:20px 24px;border-radius:12px;display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,0.06);box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+.spinner{width:22px;height:22px;border:3px solid rgba(255,255,255,0.25);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.loading-text{color:#fff;font-weight:600}
+@keyframes spin{to{transform:rotate(360deg)}}
