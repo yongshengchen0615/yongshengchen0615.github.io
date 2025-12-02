@@ -23,8 +23,8 @@ export const BookingStorageModule = (() => {
 
     function restoreToForm(data) {
         if (!data) return;
-    
-        const todayStr = new Date().toISOString().split("T")[0];
+        
+        const todayStr = BookingTimeModule.getTodayYMD();
         const dateStr = data.date;
         const dateObj = new Date(dateStr);
         const today = new Date(todayStr);
@@ -42,13 +42,14 @@ export const BookingStorageModule = (() => {
             alert(`⚠️ 原預約日期（${dateStr}）無法預約，已自動改為 ${finalDate}`);
         }
     
-        // 替換預約資料日期
+        // 替換預約資料日期與基本欄位
         $("#booking-type").val((data.bookingType === "self" || data.bookingType === "本人預約") ? "self" : "other");
         $("#name").val(data.name);
         $("#phone").val(data.phone);
-        $("#booking-date").val(finalDate);
-        $("#booking-time").val(data.time);
         $("#num-people").val(data.numPeople).trigger("change");
+        
+        // 透過公開 API 設定日期與時間，確保 UI 與限制同步
+        BookingTimeModule.setDateTime(finalDate, data.time);
     
         data.date = finalDate; // 👈 更新資料中的日期，以利後續同步使用
     
@@ -65,7 +66,7 @@ export const BookingStorageModule = (() => {
                     return;
                 }
             }
-    
+            
             cards.each(function (i) {
                 const personData = data.persons[i];
                 if (!personData) return;

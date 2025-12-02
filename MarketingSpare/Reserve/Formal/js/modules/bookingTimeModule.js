@@ -4,7 +4,15 @@ import { bookingConfig } from "../data/bookingConfig.js";
 let flatpickrInstance = null;
 
 export const BookingTimeModule = (() => {
-    const today = new Date().toISOString().split("T")[0];
+    function getTodayYMDLocal() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+    }
+
+    let today = getTodayYMDLocal();
 
     const {
         startTime,
@@ -22,6 +30,8 @@ export const BookingTimeModule = (() => {
         updateDOMText("time-bufferMinutes", `當天預約需提早${bufferMinutes}分鐘`);
 
         const bookingDateInput = document.getElementById("booking-date");
+        // 重新計算 today（避免跨日）
+        today = getTodayYMDLocal();
         const defaultDateStr = getNextAvailableDate(today);
 
         flatpickrInstance = flatpickr(bookingDateInput, {
@@ -251,9 +261,13 @@ export const BookingTimeModule = (() => {
         days.forEach(day => {
             if (!day.dateObj) return;
             const dateStr = formatDate(day.dateObj);
-            day.addEventListener("click", () => {
-                showTooltipForDate(dateStr, day);
-            });
+            // 避免重複綁定
+            if (!day.dataset.tooltipBound) {
+                day.addEventListener("click", () => {
+                    showTooltipForDate(dateStr, day);
+                });
+                day.dataset.tooltipBound = "1";
+            }
         });
     }
 
@@ -288,11 +302,46 @@ export const BookingTimeModule = (() => {
         return `${dateStr}（${weekdays[date.getDay()]}）`;
     }
 
+    // 公開方法：設定日期與時間，並同步 UI 與可選時段
+    function setDateTime(dateStr, timeStr) {
+        try {
+            // 更新 today（避免隔日切換時錯誤）
+            today = getTodayYMDLocal();
+
+            const dateInput = document.getElementById("booking-date");
+            if (flatpickrInstance) {
+                flatpickrInstance.setDate(dateStr, true); // triggerChange = true
+            } else if (dateInput) {
+                dateInput.value = dateStr;
+            }
+
+            // 重新生成時間選單
+            updateTimeOptions();
+
+            const timeSelect = document.getElementById("booking-time");
+            if (!timeSelect) return;
+
+            // 若指定時間存在則選取，否則選第一個可用
+            const idx = Array.from(timeSelect.options).findIndex(opt => opt.value === timeStr);
+            if (idx >= 0) {
+                timeSelect.selectedIndex = idx;
+            } else if (timeSelect.options.length > 0) {
+                timeSelect.selectedIndex = 0;
+            }
+
+            updateDateNoteMessage(dateStr);
+        } catch (e) {
+            console.warn("setDateTime 發生例外：", e);
+        }
+    }
+
     return {
         init,
         isValidBookingTime,
         formatDateWithDay,
         isValidTimeFormat: time => /^\d{2}:\d{2}$/.test(time),
         findNextAvailableDate: getNextAvailableDate,
+        getTodayYMD: getTodayYMDLocal,
+        setDateTime,
     };
 })();

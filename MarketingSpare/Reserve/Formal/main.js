@@ -34,11 +34,14 @@ $(document).ready(async function () {
             }
         });
 
-        // ✅ 初始化 LIFF
-        await liff.init({ liffId: "2005939681-vgdMV81W" });
-
-        if (!liff.isInClient()) {
-            alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
+        // ✅ 初始化 LIFF（若可用）
+        if (typeof window.liff !== "undefined" && typeof liff.init === "function") {
+            await liff.init({ liffId: "2005939681-vgdMV81W" });
+            if (!liff.isInClient()) {
+                alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
+            }
+        } else {
+            console.warn("略過 LIFF 初始化（非 LINE 環境或測試模式）");
         }
 
         // 獲取使用者資訊
@@ -63,11 +66,7 @@ $(document).ready(async function () {
     // ✅ 恢復暫存資料（localStorage）
     BookingStorageModule.restoreToForm(BookingStorageModule.load());
 
-    // ✅ 清除預約紀錄按鈕
-    $("#clear-history").click(() => {
-        BookingStorageModule.clear();
-        alert("✅ 已清除上次預約紀錄！");
-    });
+    // ⛳️ 移除不存在的 #clear-history 綁定（清除功能統一由 .clear-all-storage 處理）
 
     // ✅ 渲染歷史紀錄清單
     HistoryModule.renderHistoryList("#history-container");
