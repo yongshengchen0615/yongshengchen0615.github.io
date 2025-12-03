@@ -206,8 +206,9 @@
       if (!id) return alert('未知類型');
       const date = document.getElementById(id).value;
       if (!date) return alert('請選擇日期');
-      const res = await apiPost({ entity: 'datetypes', action: 'create', data: { Type: type, Date: date } });
-      if (res.ok) alert('已新增 ' + type + '：' + date);
+      // 同時傳 Type 與 DateType，提升後端相容性
+      const res = await apiPost({ entity: 'datetypes', action: 'create', data: { Type: type, DateType: type, Date: date } });
+      if (res.ok) { alert('已新增 ' + type + '：' + date); try { renderDateTypes(); } catch {} }
       else alert('新增失敗：' + (res.error || ''));
     } catch (err) {
       alert('操作失敗：' + String(err));
@@ -290,15 +291,17 @@
             <td>$${it.Price}</td>
             <td>${it.Type}</td>
             <td>
-              <button data-act="edit">修改</button>
-              <button data-act="del">刪除</button>
+              <button type="button" data-act="edit">修改</button>
+              <button type="button" data-act="del">刪除</button>
             </td>`;
-          tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
+          tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
+            e.preventDefault();
             if (!confirm(`確定刪除：${it.ServiceName}？`)) return;
             const res = await apiPost({ entity: 'services', action: 'delete', key: it.ServiceName });
             if (res.ok) renderServices(); else alert('刪除失敗：' + (res.error || ''));
           });
-          tr.querySelector('[data-act="edit"]').addEventListener('click', () => {
+          tr.querySelector('[data-act="edit"]').addEventListener('click', (e) => {
+            e.preventDefault();
             // 行內編輯
             const name = prompt('服務名稱', it.ServiceName) || it.ServiceName;
             const minutes = Number(prompt('分鐘', it.TimeMinutes) || it.TimeMinutes);
@@ -335,6 +338,90 @@
   }
   weeklyRefreshBtn.addEventListener('click', renderWeeklyOff);
 
+  // 日期格式工具：建立刪除時可嘗試的多種日期字串
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function unique(arr) { return Array.from(new Set(arr.filter(Boolean))); }
+  function excelSerialToISO(n) {
+    const base = new Date(Date.UTC(1899, 11, 30));
+    const ms = base.getTime() + Math.round(Number(n)) * 86400000;
+    const d = new Date(ms);
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+  }
+  function normalizeYMD(y, m, d) {
+    const yy = String(y).padStart(4, '0');
+    const mm = pad2(m);
+    const dd = pad2(d);
+    return {
+      dash: `${yy}-${mm}-${dd}`,
+      slash: `${yy}/${mm}/${dd}`
+    };
+  }
+  function buildDateCandidates(raw) {
+    const out = [];
+    const v = raw == null ? '' : String(raw).trim();
+    if (!v) return out;
+    out.push(v);
+    // yyyy-mm-dd or yyyy/mm/dd
+    let m = v.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\D.*)?$/);
+    if (m) {
+      const { dash, slash } = normalizeYMD(m[1], m[2], m[3]);
+      out.push(dash, slash);
+    }
+    // mm-dd-yyyy or mm/dd/yyyy
+    m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\D.*)?$/);
+    if (m) {
+      const { dash, slash } = normalizeYMD(m[3], m[1], m[2]);
+      out.push(dash, slash);
+    }
+    // ISO with time
+    try {
+      const d = new Date(v);
+      if (!isNaN(d.getTime())) {
+        const iso = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+        out.push(iso, iso.replace(/-/g, '/'));
+      }
+    } catch {}
+    // Excel serial
+    if (/^\d{4,6}$/.test(v)) {
+      try {
+        const iso = excelSerialToISO(v);
+        out.push(iso, iso.replace(/-/g, '/'));
+      } catch {}
+    }
+    return unique(out);
+  }
+  async function attemptDeleteDateType(type, dateStr) {
+    const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    // 嘗試 payload1
+    let payload = {
+      entity: 'datetypes',
+      action: 'delete',
+      key: { DateType: type, Type: type, Date: dateStr },
+      DateType: type,
+      Type: type,
+      Date: dateStr,
+      data: { DateType: type, Type: type, Date: dateStr }
+    };
+    try { console.debug('[datetypes:delete] try payload#1', payload); } catch {}
+    let res = await apiPost(payload);
+    try { console.debug('[datetypes:delete] response#1', res); } catch {}
+    if (res && res.ok) return res;
+    // 嘗試 payload2（首字大寫）
+    payload = {
+      entity: 'datetypes',
+      action: 'delete',
+      key: { DateType: cap(type), Type: cap(type), Date: dateStr },
+      DateType: cap(type),
+      Type: cap(type),
+      Date: dateStr,
+      data: { DateType: cap(type), Type: cap(type), Date: dateStr }
+    };
+    try { console.debug('[datetypes:delete] try payload#2', payload); } catch {}
+    res = await apiPost(payload);
+    try { console.debug('[datetypes:delete] response#2', res); } catch {}
+    return res;
+  }
+
   // 特殊日期渲染：讀取 datetypes，依 Type 類別分組顯示
   async function renderDateTypes() {
     try {
@@ -342,7 +429,8 @@
       if (!res.ok) { datesMsg.textContent = res.error || '載入失敗'; datesMsg.className = 'small error'; return; }
       const data = Array.isArray(res.data) ? res.data : [];
       datesMsg.textContent = `共 ${data.length} 筆`; datesMsg.className = 'small success';
-      const byType = (t) => data.filter(r => r.Type === t);
+      // 同時支援 r.Type 與 r.DateType 兩種欄位
+      const byType = (t) => data.filter(r => r && (r.Type === t || r.DateType === t));
       const renderList = (id, items, type) => {
         const el = document.getElementById(id);
         el.innerHTML = '';
@@ -351,12 +439,24 @@
         table.style.width = '100%'; table.style.borderCollapse = 'collapse';
         table.innerHTML = `<thead><tr><th style="text-align:left;">日期</th><th>操作</th></tr></thead><tbody></tbody>`;
         const tbody = table.querySelector('tbody');
+        // 顯示前嘗試偵測日期格式（僅除錯）
+        try {
+          const formats = unique(items.map(x => (x && x.Date ? String(x.Date) : '')).map(s => (s.includes('T') ? 'ISO-with-time' : s.includes('/') ? 'yyyy/MM/dd' : s.includes('-') ? 'yyyy-MM-dd' : 'other')));
+          console.debug(`[datetypes:list:${type}] date formats`, formats);
+        } catch {}
         items.forEach(({ Date }) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${Date}</td><td><button data-act="del">刪除</button></td>`;
-          tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
+          tr.innerHTML = `<td>${Date}</td><td><button type="button" data-act="del">刪除</button></td>`;
+          tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
+            e.preventDefault();
             if (!confirm(`確定刪除：${type} ${Date}？`)) return;
-            const res = await apiPost({ entity: 'datetypes', action: 'delete', key: { Type: type, Date } });
+            const candidates = unique([String(Date), ...buildDateCandidates(Date), ...(typeof Date === 'string' ? [String(Date).replace(/-/g, '/'), String(Date).replace(/\//g, '-')] : [])]);
+            try { console.debug('[datetypes:delete] candidates', candidates); } catch {}
+            let res;
+            for (const ds of candidates) {
+              res = await attemptDeleteDateType(type, ds);
+              if (res && res.ok) { try { console.debug('[datetypes:delete] success with date', ds); } catch {} break; }
+            }
             if (res.ok) renderDateTypes(); else alert('刪除失敗：' + (res.error || ''));
           });
           tbody.appendChild(tr);
