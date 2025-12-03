@@ -1,100 +1,127 @@
+/* Admin 後台自定義樣式 - 配合 Bootstrap 5 */
+
 body {
-    font-family: 'Segoe UI', sans-serif;
-    background-color: #f2f2f2;
-    margin: 0;
-    padding: 0;
-  }
-  .container {
-    max-width: 800px;
-    margin: 2em auto;
-    background: #fff;
-    padding: 2em;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-  }
-  h1, h2 {
-    text-align: center;
-  }
-  form fieldset {
-    border: 1px solid #ccc;
-    padding: 1em;
-    margin-bottom: 1.5em;
-    border-radius: 8px;
-  }
-  form label {
-    display: block;
-    margin-bottom: 0.5em;
-  }
-  input[type="time"],
-  input[type="number"],
-  input[type="date"],
-  input[type="text"] {
-    width: 200px;
-    padding: 5px;
-    margin-left: 1em;
-  }
-  button {
-    margin-top: 0.5em;
-    padding: 8px 12px;
-    background-color: #0066cc;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  button:hover {
-    background-color: #0051a1;
-  }
-  .date-group, #breakPeriodList > div {
-    margin-bottom: 0.8em;
-  }
-  #configDisplay {
-    margin-top: 2em;
-    background: #eaeaea;
-    padding: 1em;
-    border-radius: 8px;
-    font-family: monospace;
-  }
-  .service-form {
-    display: flex;
-    flex-direction: column;
-    padding: 1em;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    margin-bottom: 1em;
-    background-color: #fafafa;
-  }
-  .service-fields {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5em;
-    margin-bottom: 0.5em;
-  }
-  .service-fields input {
-    flex: 1 1 150px;
-    padding: 5px;
-    border: 1px solid #aaa;
-    border-radius: 5px;
-  }
-  .service-actions {
-    display: flex;
-    gap: 0.5em;
-    justify-content: flex-end;
-  }
-  .service-form[draggable="true"] {
-    cursor: move;
-  }
-  .service-form[draggable="true"] {
+    font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+}
+
+/* 卡片陰影優化 */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* 日期列表樣式 */
+.date-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* 服務表單樣式優化 */
+.service-form {
+    transition: all 0.2s ease-in-out;
+}
+
+.service-form:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 拖拽效果 */
+.service-form[draggable="true"] {
     cursor: grab;
-    touch-action: none; /* 手機防止誤捲動 */
-  }
-  .service-form.dragging {
-    background-color: #e0f7fa;
+    touch-action: none;
+}
+
+.service-form.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
     box-shadow: 0 0 8px rgba(0, 123, 255, 0.6);
-    transform: scale(1.02);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  .service-form {
-    transition: transform 0.2s ease;
-  }  
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .btn-lg {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+    }
+}
+
+/* 表格優化 */
+.table th {
+    font-weight: 600;
+    border-top: none;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* 表單控制項優化 */
+.form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* 按鈕優化 */
+.btn {
+    border-radius: 0.375rem;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    transition: all 0.2s ease;
+}
+
+/* 狀態訊息樣式 */
+.text-success {
+    color: #198754 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.text-muted {
+    color: #6c757d !important;
+}
+
+/* 載入動畫 */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 成功/錯誤訊息樣式 */
+.alert {
+    border-radius: 0.5rem;
+    border: none;
+}
+
+.alert-success {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: #198754;
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}  
   

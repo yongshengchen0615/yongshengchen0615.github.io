@@ -2,112 +2,239 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>預約設定後台</title>
+  <!-- Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body>
-  <div class="container">
-    <h1>預約設定後台</h1>
+<body class="bg-light">
+  <div class="container-fluid py-4">
+    <div class="row justify-content-center">
+      <div class="col-lg-10 col-xl-8">
+        <div class="card shadow">
+          <div class="card-header bg-primary text-white">
+            <h1 class="h3 mb-0">🛠️ 預約設定後台</h1>
+          </div>
+          <div class="card-body">
+            <!-- 已改為在程式碼中設定 ENDPOINT 常數，不再於畫面輸入 -->
 
-    <!-- 已改為在程式碼中設定 ENDPOINT 常數，不再於畫面輸入 -->
+            <form id="bookingForm">
+              <!-- 預約時間設定 -->
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h5 class="mb-0">🕒 預約時間設定</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="startTime" class="form-label">開始時間</label>
+                      <input type="time" id="startTime" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                      <label for="endTime" class="form-label">結束時間</label>
+                      <input type="time" id="endTime" class="form-control" />
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-    <form id="bookingForm">
-      <fieldset>
-        <legend>🕒 預約時間設定</legend>
-        <label>開始時間：<input type="time" id="startTime" /></label>
-        <label>結束時間：<input type="time" id="endTime" /></label>
-      </fieldset>
+              <!-- 預約限制 -->
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h5 class="mb-0">⏳ 預約限制</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="bufferMinutes" class="form-label">當天預約需提前（分鐘）</label>
+                      <input type="number" id="bufferMinutes" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                      <label for="maxBookingDays" class="form-label">最多可預約天數</label>
+                      <input type="number" id="maxBookingDays" class="form-control" />
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-      <fieldset>
-        <legend>⏳ 預約限制</legend>
-        <label>當天預約需提前（分鐘）：<input type="number" id="bufferMinutes" /></label>
-        <label>最多可預約天數：<input type="number" id="maxBookingDays" /></label>
-      </fieldset>
+              <!-- 中間休息時間 -->
+              <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="mb-0">⛔ 中間休息時間</h5>
+                  <button type="button" class="btn btn-outline-primary btn-sm" onclick="addBreakPeriod()">＋ 新增休息時間</button>
+                </div>
+                <div class="card-body">
+                  <div id="breakPeriodList" class="row g-3"></div>
+                </div>
+              </div>
 
-      <fieldset>
-        <legend>⛔ 中間休息時間</legend>
-        <div id="breakPeriodList"></div>
-        <button type="button" onclick="addBreakPeriod()">＋ 新增休息時間</button>
-      </fieldset>
+              <!-- 每週固定休假日 -->
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h5 class="mb-0">📅 每週固定休假日</h5>
+                </div>
+                <div class="card-body">
+                  <div id="weeklyOffCheckboxes" class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="0" id="weekly-0">
+                        <label class="form-check-label" for="weekly-0">週日</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" id="weekly-1">
+                        <label class="form-check-label" for="weekly-1">週一</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="2" id="weekly-2">
+                        <label class="form-check-label" for="weekly-2">週二</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="3" id="weekly-3">
+                        <label class="form-check-label" for="weekly-3">週三</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="4" id="weekly-4">
+                        <label class="form-check-label" for="weekly-4">週四</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="5" id="weekly-5">
+                        <label class="form-check-label" for="weekly-5">週五</label>
+                      </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="6" id="weekly-6">
+                        <label class="form-check-label" for="weekly-6">週六</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="d-flex justify-content-between align-items-center">
+                    <button type="button" id="weeklyRefresh" class="btn btn-outline-secondary">重新整理每週休假</button>
+                    <small id="weeklyMsg" class="text-muted"></small>
+                  </div>
+                </div>
+              </div>
 
-      <fieldset>
-        <legend>📅 每週固定休假日</legend>
-        <div id="weeklyOffCheckboxes">
-          <label><input type="checkbox" value="0" /> 週日</label>
-          <label><input type="checkbox" value="1" /> 週一</label>
-          <label><input type="checkbox" value="2" /> 週二</label>
-          <label><input type="checkbox" value="3" /> 週三</label>
-          <label><input type="checkbox" value="4" /> 週四</label>
-          <label><input type="checkbox" value="5" /> 週五</label>
-          <label><input type="checkbox" value="6" /> 週六</label>
+              <!-- 特殊日期設定 -->
+              <div class="card mb-4">
+                <div class="card-header">
+                  <h5 class="mb-0">📆 特殊日期設定</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row g-3">
+                    <!-- 假日 -->
+                    <div class="col-md-6">
+                      <div class="card h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">假日</h6>
+                          <div class="input-group mb-2">
+                            <input type="date" id="holidayInput" class="form-control" />
+                            <button type="button" class="btn btn-outline-success" onclick="addDate('holiday')">新增</button>
+                          </div>
+                          <div id="holidayList" class="date-list"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 封鎖日 -->
+                    <div class="col-md-6">
+                      <div class="card h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">封鎖日</h6>
+                          <div class="input-group mb-2">
+                            <input type="date" id="blockedDayInput" class="form-control" />
+                            <button type="button" class="btn btn-outline-danger" onclick="addDate('blockedDay')">新增</button>
+                          </div>
+                          <div id="blockedDayList" class="date-list"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 活動日 -->
+                    <div class="col-md-6">
+                      <div class="card h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">活動日</h6>
+                          <div class="input-group mb-2">
+                            <input type="date" id="eventDayInput" class="form-control" />
+                            <button type="button" class="btn btn-outline-info" onclick="addDate('eventDay')">新增</button>
+                          </div>
+                          <div id="eventDayList" class="date-list"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 半天營業日 -->
+                    <div class="col-md-6">
+                      <div class="card h-100">
+                        <div class="card-body">
+                          <h6 class="card-title">半天營業日</h6>
+                          <div class="input-group mb-2">
+                            <input type="date" id="halfDayInput" class="form-control" />
+                            <button type="button" class="btn btn-outline-warning" onclick="addDate('halfDay')">新增</button>
+                          </div>
+                          <div id="halfDayList" class="date-list"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button type="button" id="datesRefresh" class="btn btn-outline-secondary">重新整理特殊日期</button>
+                    <small id="datesMsg" class="text-muted"></small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-center">
+                <button type="submit" class="btn btn-success btn-lg px-5">💾 儲存設定</button>
+              </div>
+            </form>
+
+            <hr class="my-5" />
+
+            <!-- 服務項目管理 -->
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="h4 mb-0">📋 服務項目管理</h2>
+                <select id="serviceTypeSelect" class="form-select w-auto">
+                  <option value="main">主服務</option>
+                  <option value="addon">加購服務</option>
+                </select>
+              </div>
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <button id="servicesRefresh" type="button" class="btn btn-outline-primary">重新整理服務列表</button>
+                  <small id="servicesMsg" class="text-muted"></small>
+                </div>
+                <div id="serviceList" class="mb-3"></div>
+                <div class="text-center">
+                  <button id="addServiceBtn" type="button" class="btn btn-primary">＋ 新增服務</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-          <button type="button" id="weeklyRefresh">重新整理每週休假</button>
-          <span id="weeklyMsg" class="small"></span>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>📆 特殊日期設定</legend>
-
-        <div class="date-group">
-          <label>假日：</label>
-          <input type="date" id="holidayInput" />
-          <button type="button" onclick="addDate('holiday')">新增</button>
-          <div id="holidayList" class="date-list"></div>
-        </div>
-
-        <div class="date-group">
-          <label>封鎖日：</label>
-          <input type="date" id="blockedDayInput" />
-          <button type="button" onclick="addDate('blockedDay')">新增</button>
-          <div id="blockedDayList" class="date-list"></div>
-        </div>
-
-        <div class="date-group">
-          <label>活動日：</label>
-          <input type="date" id="eventDayInput" />
-          <button type="button" onclick="addDate('eventDay')">新增</button>
-          <div id="eventDayList" class="date-list"></div>
-        </div>
-
-        <div class="date-group">
-          <label>半天營業日：</label>
-          <input type="date" id="halfDayInput" />
-          <button type="button" onclick="addDate('halfDay')">新增</button>
-          <div id="halfDayList" class="date-list"></div>
-        </div>
-
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-          <button type="button" id="datesRefresh">重新整理特殊日期</button>
-          <span id="datesMsg" class="small"></span>
-        </div>
-      </fieldset>
-
-      <button type="submit">💾 儲存設定</button>
-    </form>
-
-    <hr />
-    <h2>🛠️ 服務項目管理</h2>
-
-    <select id="serviceTypeSelect">
-      <option value="main">主服務</option>
-      <option value="addon">加購服務</option>
-    </select>
-
-    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;">
-      <button id="servicesRefresh" type="button">重新整理服務列表</button>
-      <span id="servicesMsg" class="small"></span>
+      </div>
     </div>
-    <div id="serviceList" class="date-group"></div>
-    <button id="addServiceBtn" type="button">＋ 新增服務</button>
-
-   <!-- <div id="configDisplay"></div>-->
   </div>
-<!-- 刪除 bookingConfig.js -->
-<!-- <script src="js/bookingConfig.js"></script> -->
-<!-- 移除不存在的模組檔引用以避免 404 -->
-<script src="../js/admin.js"></script>
 
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- 刪除 bookingConfig.js -->
+  <!-- <script src="js/bookingConfig.js"></script> -->
+  <!-- 移除不存在的模組檔引用以避免 404 -->
+  <script src="../js/admin.js"></script>
 </body>
 </html>

@@ -49,12 +49,26 @@ const BreakPeriodManager = {
   addBreakRow(start = '', end = '') {
     const breakPeriodList = document.getElementById('breakPeriodList');
     const row = document.createElement('div');
+    row.className = 'col-12';
     row.setAttribute('data-break-item', '1');
-    row.style.display = 'flex'; row.style.gap = '8px'; row.style.margin = '6px 0';
     row.innerHTML = `
-      <input data-break-start type="time" value="${start}" />
-      <input data-break-end type="time" value="${end}" />
-      <button type="button">刪除</button>
+      <div class="card border-warning">
+        <div class="card-body p-3">
+          <div class="row g-2 align-items-center">
+            <div class="col-md-4">
+              <label class="form-label small mb-1">開始時間</label>
+              <input data-break-start type="time" value="${start}" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small mb-1">結束時間</label>
+              <input data-break-end type="time" value="${end}" class="form-control form-control-sm" />
+            </div>
+            <div class="col-md-4">
+              <button type="button" class="btn btn-outline-danger btn-sm w-100">刪除</button>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
     row.querySelector('button').addEventListener('click', () => row.remove());
     breakPeriodList.appendChild(row);
@@ -85,24 +99,27 @@ const DateTypeManager = {
       const res = await apiGet({ entity: 'datetypes', action: 'list' });
       if (!res.ok) { 
         document.getElementById('datesMsg').textContent = res.error || '載入失敗'; 
-        document.getElementById('datesMsg').className = 'small error'; 
+        document.getElementById('datesMsg').className = 'small text-danger'; 
         return; 
       }
       const data = Array.isArray(res.data) ? res.data : [];
       document.getElementById('datesMsg').textContent = `共 ${data.length} 筆`; 
-      document.getElementById('datesMsg').className = 'small success';
+      document.getElementById('datesMsg').className = 'small text-success';
       const byType = (t) => data.filter(r => r.Type === t);
       const renderList = (id, items, type) => {
         const el = document.getElementById(id);
         el.innerHTML = '';
-        if (!items.length) { el.textContent = '（無）'; return; }
+        if (!items.length) { 
+          el.innerHTML = '<p class="text-muted mb-0">（無）</p>'; 
+          return; 
+        }
         const table = document.createElement('table');
-        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
-        table.innerHTML = `<thead><tr><th style="text-align:left;">日期</th><th>操作</th></tr></thead><tbody></tbody>`;
+        table.className = 'table table-sm table-hover';
+        table.innerHTML = `<thead class="table-light"><tr><th>日期</th><th class="text-end">操作</th></tr></thead><tbody></tbody>`;
         const tbody = table.querySelector('tbody');
         items.forEach(({ Date }) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${Date}</td><td><button data-act="del">刪除</button></td>`;
+          tr.innerHTML = `<td>${Date}</td><td class="text-end"><button class="btn btn-outline-danger btn-sm" data-act="del">刪除</button></td>`;
           tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
             if (!confirm(`確定刪除：${type} ${Date}？`)) return;
             const res = await apiPost({ entity: 'datetypes', action: 'delete', key: { Type: type, Date } });
@@ -118,7 +135,7 @@ const DateTypeManager = {
       renderList('halfDayList', byType('halfDay'), 'halfDay');
     } catch (err) {
       document.getElementById('datesMsg').textContent = String(err); 
-      document.getElementById('datesMsg').className = 'small error';
+      document.getElementById('datesMsg').className = 'small text-danger';
     }
   }
 };
@@ -131,16 +148,28 @@ const ServiceManager = {
       // 建立行內輸入列
       const container = document.getElementById('serviceList');
       const formRow = document.createElement('div');
-      formRow.style.display = 'grid';
-      formRow.style.gridTemplateColumns = '2fr 1fr 1fr 1fr auto';
-      formRow.style.gap = '8px';
-      formRow.style.margin = '8px 0';
+      formRow.className = 'card border-primary mb-3';
       formRow.innerHTML = `
-        <input type="text" placeholder="服務名稱" />
-        <input type="number" placeholder="分鐘" />
-        <input type="number" placeholder="價格" />
-        <input type="text" placeholder="分類（例：全身按摩）" ${isAddonType ? 'value="加購服務"' : ''} />
-        <button type="button">儲存</button>
+        <div class="card-body p-3">
+          <h6 class="card-title text-primary mb-3">新增${isAddonType ? '加購' : '主'}服務</h6>
+          <div class="row g-2">
+            <div class="col-md-6 col-lg-3">
+              <input type="text" class="form-control" placeholder="服務名稱" />
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <input type="number" class="form-control" placeholder="分鐘" />
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <input type="number" class="form-control" placeholder="價格" />
+            </div>
+            <div class="col-md-6 col-lg-3">
+              <input type="text" class="form-control" placeholder="分類（例：全身按摩）" value="${isAddonType ? '加購服務' : ''}" />
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <button type="button" class="btn btn-success w-100">儲存</button>
+            </div>
+          </div>
+        </div>
       `;
       const [nameEl, minEl, priceEl, typeEl, saveBtn] = formRow.querySelectorAll('input,button');
       container.prepend(formRow);
@@ -163,41 +192,50 @@ const ServiceManager = {
       const res = await apiGet({ entity: 'services', action: 'list' });
       if (!res.ok) { 
         document.getElementById('servicesMsg').textContent = res.error || '載入失敗'; 
-        document.getElementById('servicesMsg').className = 'small error'; 
+        document.getElementById('servicesMsg').className = 'small text-danger'; 
         return; 
       }
       const data = Array.isArray(res.data) ? res.data : [];
       document.getElementById('servicesMsg').textContent = `共 ${data.length} 筆`; 
-      document.getElementById('servicesMsg').className = 'small success';
+      document.getElementById('servicesMsg').className = 'small text-success';
       const container = document.getElementById('serviceList');
       container.innerHTML = '';
       const main = data.filter(d => String(d.IsAddon).toUpperCase() !== 'TRUE');
       const addon = data.filter(d => String(d.IsAddon).toUpperCase() === 'TRUE');
-      const section = (title, items) => {
+      const section = (title, items, bgClass = 'bg-light') => {
         const wrap = document.createElement('div');
-        wrap.style.marginTop = '8px';
-        const h = document.createElement('h3'); h.textContent = title; h.style.fontSize = '14px';
+        wrap.className = `mb-4 ${bgClass}`;
+        const h = document.createElement('h5'); 
+        h.className = 'mb-3 text-primary';
+        h.textContent = title; 
         wrap.appendChild(h);
+        if (!items.length) {
+          const empty = document.createElement('p');
+          empty.className = 'text-muted mb-0';
+          empty.textContent = '（無服務項目）';
+          wrap.appendChild(empty);
+          return wrap;
+        }
         const table = document.createElement('table');
-        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
-        table.innerHTML = `<thead><tr>
-          <th style="text-align:left;">服務名稱</th>
+        table.className = 'table table-hover';
+        table.innerHTML = `<thead class="table-light"><tr>
+          <th>服務名稱</th>
           <th>分鐘</th>
           <th>價格</th>
           <th>分類</th>
-          <th>操作</th>
+          <th class="text-end">操作</th>
         </tr></thead><tbody></tbody>`;
         const tbody = table.querySelector('tbody');
         items.forEach(it => {
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${it.ServiceName}</td>
+            <td><strong>${it.ServiceName}</strong></td>
             <td>${it.TimeMinutes}</td>
-            <td>$${it.Price}</td>
-            <td>${it.Type}</td>
-            <td>
-              <button data-act="edit">修改</button>
-              <button data-act="del">刪除</button>
+            <td class="text-success">$${it.Price}</td>
+            <td><small class="text-muted">${it.Type}</small></td>
+            <td class="text-end">
+              <button class="btn btn-outline-primary btn-sm me-1" data-act="edit">修改</button>
+              <button class="btn btn-outline-danger btn-sm" data-act="del">刪除</button>
             </td>`;
           tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
             if (!confirm(`確定刪除：${it.ServiceName}？`)) return;
@@ -218,11 +256,11 @@ const ServiceManager = {
         wrap.appendChild(table);
         return wrap;
       };
-      container.appendChild(section('主服務', main));
-      container.appendChild(section('加購服務', addon));
+      container.appendChild(section('🏥 主服務', main, 'bg-primary bg-opacity-10'));
+      container.appendChild(section('➕ 加購服務', addon, 'bg-success bg-opacity-10'));
     } catch (err) {
       document.getElementById('servicesMsg').textContent = String(err); 
-      document.getElementById('servicesMsg').className = 'small error';
+      document.getElementById('servicesMsg').className = 'small text-danger';
     }
   }
 };
@@ -234,17 +272,17 @@ const WeeklyOffManager = {
       const res = await apiGet({ entity: 'config', action: 'list' });
       if (!res.ok) { 
         document.getElementById('weeklyMsg').textContent = res.error || '載入失敗'; 
-        document.getElementById('weeklyMsg').className = 'small error'; 
+        document.getElementById('weeklyMsg').className = 'small text-danger'; 
         return; 
       }
       const offs = (() => { try { return JSON.parse(res.data.weeklyOff || '[]'); } catch { return []; } })();
       const boxes = Array.from(document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]'));
       boxes.forEach(cb => { cb.checked = offs.includes(cb.value); });
-      document.getElementById('weeklyMsg').textContent = `目前設定：${offs.join(', ') || '（無）'}`; 
-      document.getElementById('weeklyMsg').className = 'small success';
+      document.getElementById('weeklyMsg').textContent = offs.length ? `目前設定：${offs.map(d => ['週日','週一','週二','週三','週四','週五','週六'][d]).join(', ')}` : '目前設定：（無）'; 
+      document.getElementById('weeklyMsg').className = 'small text-success';
     } catch (err) {
       document.getElementById('weeklyMsg').textContent = String(err); 
-      document.getElementById('weeklyMsg').className = 'small error';
+      document.getElementById('weeklyMsg').className = 'small text-danger';
     }
   }
 };
