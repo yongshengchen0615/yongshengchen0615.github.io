@@ -1,25 +1,29 @@
-// serviceData.js
-export const mainServices = {
-    "全身指壓60分鐘- $1100": { time: 70, price: 1100, type: "全身按摩" },
-    "全身指壓90分鐘- $1650": { time: 100, price: 1650, type: "全身按摩" },
-    "全身指壓120分鐘- $2200": { time: 130, price: 2200, type: "全身按摩" },
+// serviceData.js - 改為由 Google Apps Script 讀取遠端資料
 
-    "腳底按摩40分鐘- $800": { time: 50, price: 800, type: "腳底按摩" },
-    "腳底按摩60分鐘- $1200": { time: 70, price: 1200, type: "腳底按摩" },
-    "腳底按摩80分鐘- $1600": { time: 90, price: 1600, type: "腳底按摩" },
+// 以 let 匯出，允許在初始化後填入遠端資料
+export let mainServices = {};
+export let addonServices = {};
 
-    "精油腳底按摩40分鐘- $1100": { time: 50, price: 1100, type: "精油腳底按摩" },
-    "精油腳底按摩60分鐘- $1500": { time: 70, price: 1500, type: "精油腳底按摩" },
-    "精油腳底按摩80分鐘- $1900": { time: 90, price: 1900, type: "精油腳底按摩" },
+// 從 Google Apps Script Web App 端點讀取服務資料
+// 端點需回傳 JSON，格式例如：
+// {
+//   "mainServices": { "服務名稱": {"time": 70, "price": 1100, "type": "分類"}, ... },
+//   "addonServices": { "加購名稱": {"time": 20, "price": 450, "type": "加購服務"}, ... }
+// }
+export async function loadServiceData(endpointUrl) {
+    const url = endpointUrl || (window.GAS_SERVICE_ENDPOINT || window.GAS_BASE_URL);
+    if (!url) throw new Error("缺少 GAS 服務資料端點設定 (window.GAS_SERVICE_ENDPOINT 或 window.GAS_BASE_URL)");
 
-    "修腳趾甲＋修腳皮- $1000": { time: 60, price: 1000, type: "修腳趾甲＋修腳皮" },
-    "腳底按摩40分鐘＋修腳皮- $1300": { time: 80, price: 1300, type: "修腳趾甲＋修腳皮" },
-    "腳底按摩40分鐘＋修腳指甲＋修腳皮- $1800": { time: 110, price: 1800, type: "修腳趾甲＋修腳皮" },
-    "修腳指甲- $600": { time: 50, price: 600, type: "修腳趾甲＋修腳皮" },
-    "修腳皮- $600": { time: 50, price: 600, type: "修腳趾甲＋修腳皮" },
-};
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error(`載入服務資料失敗: ${res.status}`);
+    let data = await res.json();
+    // 支援 Apps Script 包裝格式 { ok: true, data: {...} }
+    if (data && data.ok === true && data.data) data = data.data;
 
-export const addonServices = {
-    "刮痧 30分鐘- $600": { time: 30, price: 600, type: "加購服務" },
-    "肩頸 20分鐘- $450": { time: 20, price: 450, type: "加購服務" },
-};
+    // 基本驗證
+    if (!data || typeof data !== "object") throw new Error("服務資料格式錯誤");
+    mainServices = data.mainServices || {};
+    addonServices = data.addonServices || {};
+
+    return { mainServices, addonServices };
+}

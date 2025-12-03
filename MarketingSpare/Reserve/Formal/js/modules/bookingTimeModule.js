@@ -2,6 +2,14 @@ import { dateTypes, setDateTypes as updateDateTypes } from "./bookingDateTypes.j
 import { bookingConfig } from "../data/bookingConfig.js";
 
 let flatpickrInstance = null;
+// 模組層級快取目前使用的設定，避免未定義錯誤
+let CURRENT_CFG = {
+    startTime: "09:00",
+    endTime: "21:00",
+    bufferMinutes: 60,
+    maxBookingDays: 14,
+    breakPeriods: [],
+};
 
 export const BookingTimeModule = (() => {
     function getTodayYMDLocal() {
@@ -14,16 +22,22 @@ export const BookingTimeModule = (() => {
 
     let today = getTodayYMDLocal();
 
-    const {
-        startTime,
-        endTime,
-        bufferMinutes,
-        maxBookingDays,
-        breakPeriods,
-        dateTypes: configDateTypes
-    } = bookingConfig;
+    // 注意：bookingConfig 由遠端載入，避免模組載入時就解構，改在 init 中取值
 
     function init() {
+        const cfg = bookingConfig || {};
+        const startTime = cfg.startTime || "09:00";
+        const endTime = cfg.endTime || "21:00";
+        const bufferMinutes = Number(cfg.bufferMinutes ?? 60);
+        const maxBookingDays = Number(cfg.maxBookingDays ?? 14);
+        const breakPeriods = Array.isArray(cfg.breakPeriods) ? cfg.breakPeriods : [];
+        const configDateTypes = cfg.dateTypes || { holiday: [], weeklyOff: [], blockedDay: [], eventDay: [], halfDay: [] };
+
+        // 更新模組層級設定快取
+        CURRENT_CFG = { startTime, endTime, bufferMinutes, maxBookingDays, breakPeriods };
+        console.log("[init CURRENT_CFG]", CURRENT_CFG);
+        console.log("[init dateTypes]", configDateTypes);
+
         updateDateTypes(configDateTypes); // 載入日期型別設定
 
         updateDOMText("time-range", `${startTime} - ${endTime}`);
@@ -33,16 +47,17 @@ export const BookingTimeModule = (() => {
         // 重新計算 today（避免跨日）
         today = getTodayYMDLocal();
         const defaultDateStr = getNextAvailableDate(today);
+        console.log("[init defaultDateStr]", defaultDateStr);
 
         flatpickrInstance = flatpickr(bookingDateInput, {
             locale: "zh",
             dateFormat: "Y-m-d",
             minDate: today,
-            maxDate: new Date().fp_incr(maxBookingDays),
+            maxDate: new Date().fp_incr(CURRENT_CFG.maxBookingDays),
             disable: generateDisabledDates(),
             defaultDate: defaultDateStr,
             onChange: (selectedDates, dateStr) => {
-                updateTimeOptions();
+                updateTimeOptions(CURRENT_CFG.startTime, CURRENT_CFG.endTime, CURRENT_CFG.bufferMinutes, CURRENT_CFG.breakPeriods);
                 showTooltipForDate(dateStr, findDayElemByDate(dateStr));
                 updateDateNoteMessage(dateStr);
             },
@@ -56,7 +71,7 @@ export const BookingTimeModule = (() => {
             onOpen: attachDateClickTooltip,
         });
 
-        updateTimeOptions();
+        updateTimeOptions(CURRENT_CFG.startTime, CURRENT_CFG.endTime, CURRENT_CFG.bufferMinutes, CURRENT_CFG.breakPeriods);
         updateDateNoteMessage(defaultDateStr);
     }
 
@@ -67,7 +82,7 @@ export const BookingTimeModule = (() => {
 
     function getNextAvailableDate(startDateStr) {
         const startDate = new Date(startDateStr);
-        for (let i = 0; i <= maxBookingDays; i++) {
+        for (let i = 0; i <= CURRENT_CFG.maxBookingDays; i++) {
             const checkDate = new Date(startDate);
             checkDate.setDate(checkDate.getDate() + i);
             const dateStr = formatDate(checkDate);
@@ -115,7 +130,7 @@ export const BookingTimeModule = (() => {
         ];
     }
 
-    function updateTimeOptions() {
+    function updateTimeOptions(startTime, endTime, bufferMinutes, breakPeriods) {
         const selectedDate = document.getElementById("booking-date").value;
         const timeSelect = document.getElementById("booking-time");
         timeSelect.innerHTML = "";
@@ -129,13 +144,18 @@ export const BookingTimeModule = (() => {
         const startMins = toMinutes(startTime);
         const endMins = isHalfDay ? 13 * 60 : toMinutes(endTime);
 
+        if (isNaN(startMins) || isNaN(endMins)) {
+            timeSelect.innerHTML = '<option disabled>⚠️ 設定時間格式錯誤</option>';
+            return;
+        }
+
         const now = new Date();
         const isToday = selectedDate === today;
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
         const minAllowed = isToday ? nowMinutes + bufferMinutes : 0;
 
         for (let minutes = 0; minutes < 1440; minutes += 30) {
-            if (isTimeAvailable(minutes, startMins, endMins, minAllowed)) {
+            if (isTimeAvailable(minutes, startMins, endMins, minAllowed, breakPeriods)) {
                 timeSelect.innerHTML += generateOption(minutes);
             }
         }
@@ -147,7 +167,7 @@ export const BookingTimeModule = (() => {
         }
     }
 
-    function isTimeAvailable(mins, start, end, minAllowed) {
+    function isTimeAvailable(mins, start, end, minAllowed, breakPeriods) {
         if (mins < minAllowed) return false;
 
         const timeStr = formatMinutes(mins);
@@ -178,7 +198,12 @@ export const BookingTimeModule = (() => {
     }
 
     function toMinutes(timeStr) {
-        const [h, m] = timeStr.split(":").map(Number);
+        if (typeof timeStr !== "string") return NaN;
+        const parts = timeStr.split(":");
+        if (parts.length !== 2) return NaN;
+        const h = Number(parts[0]);
+        const m = Number(parts[1]);
+        if (isNaN(h) || isNaN(m)) return NaN;
         return h * 60 + m;
     }
 
@@ -202,18 +227,18 @@ export const BookingTimeModule = (() => {
 
         const dateObj = new Date(dateStr);
         const dateNoteEl = document.getElementById("date-note");
-        const isOutOfRange = dateObj > new Date(today).fp_incr(maxBookingDays);
+        const isOutOfRange = dateObj > new Date(today).fp_incr(CURRENT_CFG.maxBookingDays);
 
         if (dateNoteEl) dateNoteEl.textContent = "";
 
         tooltip.textContent =
-            isOutOfRange ? `⚠️ 僅能選擇 ${maxBookingDays} 天內的日期` :
+            isOutOfRange ? `⚠️ 僅能選擇 ${CURRENT_CFG.maxBookingDays} 天內的日期` :
             dateTypes.holiday.includes(dateStr) ? "技師休假日，無法預約" :
             dateTypes.weeklyOff.includes(dateObj.getDay()) ? "週末，無法預約" :
             dateTypes.eventDay.includes(dateStr) ? "🎉 點數加倍日" :
             dateTypes.halfDay.includes(dateStr) ? "⏰ 半天營業，預約時間至 13:00" :
             dateTypes.blockedDay.includes(dateStr) ? "國定假日暫停預約" :
-            `✅ 可預約時間：${startTime} - ${endTime}`;
+            `✅ 可預約時間：${CURRENT_CFG.startTime} - ${CURRENT_CFG.endTime}`;
 
         if (dateTypes.eventDay.includes(dateStr) && dateNoteEl) {
             dateNoteEl.textContent = "🎉 這天是點數加倍日，預約即贈雙倍點數！";
@@ -280,9 +305,12 @@ export const BookingTimeModule = (() => {
         const selectedMins = h * 60 + m;
         const nowMins = now.getHours() * 60 + now.getMinutes();
         const isToday = dateStr === today;
-
-        const startMins = toMinutes(startTime);
-        const endMins = toMinutes(endTime);
+        const cfg = bookingConfig || {};
+        const startMins = toMinutes(cfg.startTime || "09:00");
+        const endMins = toMinutes(cfg.endTime || "21:00");
+        if (isNaN(startMins) || isNaN(endMins)) return false;
+        const bufferMinutes = Number(cfg.bufferMinutes ?? 60);
+        const breakPeriods = Array.isArray(cfg.breakPeriods) ? cfg.breakPeriods : [];
         const minAllowed = isToday ? nowMins + bufferMinutes : 0;
 
         if (selectedMins < minAllowed) return false;

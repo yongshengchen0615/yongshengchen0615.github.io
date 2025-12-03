@@ -1,59 +1,118 @@
-// bookingConfig.js
+// bookingConfig.js - 改為由 Google Apps Script 讀取遠端設定
 
-export const bookingConfig = {
-    // 🕒 預約起始時間（格式為 "HH:mm"）
-    // 用於控制預約的最早可選時間
-    startTime: "9:00",           
+// 以 let 匯出，允許初始化後填入遠端設定
+export let bookingConfig = {};
 
-    // 🕓 預約結束時間（格式為 "HH:mm"）
-    // 用於控制預約的最晚可選時間
-    endTime: "21:00",
+// 從 Google Apps Script Web App 端點讀取設定
+// 端點需回傳 JSON，格式例如：
+// {
+//   "startTime": "9:00",
+//   "endTime": "21:00",
+//   "bufferMinutes": 60,
+//   "maxBookingDays": 14,
+//   "breakPeriods": [{"start":"12:00","end":"13:00"}],
+//   "dateTypes": {
+//       "holiday": [...],
+//       "weeklyOff": [0,6],
+//       "blockedDay": [...],
+//       "eventDay": [...],
+//       "halfDay": [...]
+//   }
+// }
+export async function loadBookingConfig(endpointUrl) {
+    const url = endpointUrl || (window.GAS_CONFIG_ENDPOINT || window.GAS_BASE_URL);
+    if (!url) throw new Error("缺少 GAS 設定端點設定 (window.GAS_CONFIG_ENDPOINT 或 window.GAS_BASE_URL)");
 
-    // ⏳ 當天預約需提前幾分鐘（數值型）
-    // 若當天為今天，預約時間需晚於「現在時間 + 此設定」
-    bufferMinutes: 60,
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error(`載入預約設定失敗: ${res.status}`);
+    let data = await res.json();
+    // 支援 Apps Script 包裝格式 { ok: true, data: {...} }
+    if (data && data.ok === true && data.data) data = data.data;
 
-    // 📅 可預約的天數範圍
-    // 從今天起，最多可以選擇幾天內的日期（含今天）
-    maxBookingDays: 14,
+    if (!data || typeof data !== "object") throw new Error("預約設定資料格式錯誤");
+    // 暫存原始資料供除錯
+    window.__RAW_CFG = data;
+    console.log("[cfg raw]", data);
+    // 前端正規化：將 dateTypes 的日期統一為 YYYY-MM-DD 字串
+    bookingConfig = normalizeBookingConfig(data);
+    console.log("[cfg normalized]", bookingConfig);
+    return bookingConfig;
+}
 
-    // ⏸ 中間休息時段（選填）
-    // 當設定的時間區間內，有部分時段不開放預約，例如午休或交班時間
-    // 每一個物件都需包含 `start` 和 `end` 時間（格式為 "HH:mm"）
-    breakPeriods: [
-        // 範例：{ start: "12:00", end: "13:00" } 表示中午 12 點至 13 點不能預約
-    ],
-
-    // 📆 特殊日期類型設定
-    dateTypes: {
-        // 🚫 假日（不開放預約）
-        // 指定的日期字串（格式為 "YYYY-MM-DD"），將完全禁用預約
-        holiday: [
-            '2025-12-02',
-            '2025-12-07',
-            '2025-12-08',
-            '2025-12-15',
-            '2025-12-16',
-            '2025-12-17',
-        ],
-
-        // 🛌 固定每週的休假日（以數字表示，0=週日，6=週六）
-        // 適用於每週定期公休，例如週末不開放預約
-        weeklyOff: [0, 6],
-
-        // 🏛 被封鎖的日期（不開放預約）
-        // 可用於像是「國定假日」或特殊狀況（設備維修）等暫停預約日期
-        blockedDay: ['2025-04-03', '2025-04-04'],
-
-        // 🎉 特殊活動日（會顯示活動提示）
-        // 遇到這些日期會顯示點數加倍等促銷訊息
-        eventDay: [
-            '2025-12-09',
-            '2025-12-18',
-        ],
-
-        // 🌓 半天營業日（預約只開放到 13:00）
-        // 若有指定的日期為半天營業，將自動限制可選時間至 13:00
-        halfDay: [], // 預設為空，日後可擴充
+function normalizeBookingConfig(cfg) {
+    const out = { ...cfg };
+    const dt = cfg.dateTypes || {};
+    function padHHmm(s) {
+        // 寬鬆解析：支援字串、數字、Date；輸出標準 HH:mm
+        if (s == null) return undefined;
+        if (s instanceof Date) {
+            const h = String(s.getHours()).padStart(2, "0");
+            const m = String(s.getMinutes()).padStart(2, "0");
+            return `${h}:${m}`;
+        }
+        if (typeof s === "number") {
+            // 視為分鐘數或整點小時（優先解讀為分鐘數）
+            const mins = Number(s);
+            if (!isNaN(mins)) {
+                const h = String(Math.floor(mins / 60)).padStart(2, "0");
+                const m = String(mins % 60).padStart(2, "0");
+                return `${h}:${m}`;
+            }
+        }
+        let str = String(s).trim();
+        // 若是 ISO 日期時間字串（含 'T'），嘗試用 Date 解析取 HH:mm
+        if (str.includes('T')) {
+            const d = new Date(str);
+            if (!isNaN(d)) {
+                const h = String(d.getHours()).padStart(2, "0");
+                const m = String(d.getMinutes()).padStart(2, "0");
+                return `${h}:${m}`;
+            }
+        }
+        // 支援 "H:m" / "HH:mm"
+        const parts = str.split(":");
+        if (parts.length !== 2) return str; // 交由後續檢查
+        const h = String(parts[0]).padStart(2, "0");
+        const m = String(parts[1]).padStart(2, "0");
+        return `${h}:${m}`;
     }
-};
+    function normalizeDateStr(s) {
+        if (s == null) return s;
+        // 嘗試用 Date 解析，成功則轉 YYYY-MM-DD；失敗則回傳原字串去空白
+        const d = new Date(s);
+        if (!isNaN(d)) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            return `${y}-${m}-${day}`;
+        }
+        return String(s).trim();
+    }
+
+    const norm = {
+        holiday: Array.isArray(dt.holiday) ? dt.holiday.map(normalizeDateStr) : [],
+        blockedDay: Array.isArray(dt.blockedDay) ? dt.blockedDay.map(normalizeDateStr) : [],
+        eventDay: Array.isArray(dt.eventDay) ? dt.eventDay.map(normalizeDateStr) : [],
+        halfDay: Array.isArray(dt.halfDay) ? dt.halfDay.map(normalizeDateStr) : [],
+        weeklyOff: Array.isArray(dt.weeklyOff) ? dt.weeklyOff.map(n => Number(n)).filter(n => !isNaN(n)) : [],
+    };
+    out.dateTypes = norm;
+    // breakPeriods 標準化（支援字串、數字、Date）
+    if (Array.isArray(out.breakPeriods)) {
+        out.breakPeriods = out.breakPeriods
+            .map(p => {
+                const start = padHHmm(p.start);
+                const end = padHHmm(p.end);
+                return { start: String(start || "").trim(), end: String(end || "").trim() };
+            })
+            .filter(p => /^\d{1,2}:\d{2}$/.test(p.start) && /^\d{1,2}:\d{2}$/.test(p.end));
+    } else {
+        out.breakPeriods = [];
+    }
+    // 其他欄位安全預設
+    out.startTime = padHHmm(out.startTime || "09:00");
+    out.endTime = padHHmm(out.endTime || "21:00");
+    out.bufferMinutes = Number(out.bufferMinutes ?? 60);
+    out.maxBookingDays = Number(out.maxBookingDays ?? 14);
+    return out;
+}
