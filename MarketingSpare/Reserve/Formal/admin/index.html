@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>預約設定後台</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>預約設定後台</h1>
+
+    <!-- 已改為在程式碼中設定 ENDPOINT 常數，不再於畫面輸入 -->
+
+    <form id="bookingForm">
+      <fieldset>
+        <legend>🕒 預約時間設定</legend>
+        <label>開始時間：<input type="time" id="startTime" /></label>
+        <label>結束時間：<input type="time" id="endTime" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>⏳ 預約限制</legend>
+        <label>當天預約需提前（分鐘）：<input type="number" id="bufferMinutes" /></label>
+        <label>最多可預約天數：<input type="number" id="maxBookingDays" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>⛔ 中間休息時間</legend>
+        <div id="breakPeriodList"></div>
+        <button type="button" onclick="addBreakPeriod()">＋ 新增休息時間</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>📅 每週固定休假日</legend>
+        <div id="weeklyOffCheckboxes">
+          <label><input type="checkbox" value="0" /> 週日</label>
+          <label><input type="checkbox" value="1" /> 週一</label>
+          <label><input type="checkbox" value="2" /> 週二</label>
+          <label><input type="checkbox" value="3" /> 週三</label>
+          <label><input type="checkbox" value="4" /> 週四</label>
+          <label><input type="checkbox" value="5" /> 週五</label>
+          <label><input type="checkbox" value="6" /> 週六</label>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+          <button type="button" id="weeklyRefresh">重新整理每週休假</button>
+          <span id="weeklyMsg" class="small"></span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>📆 特殊日期設定</legend>
+
+        <div class="date-group">
+          <label>假日：</label>
+          <input type="date" id="holidayInput" />
+          <button type="button" onclick="addDate('holiday')">新增</button>
+          <div id="holidayList" class="date-list"></div>
+        </div>
+
+        <div class="date-group">
+          <label>封鎖日：</label>
+          <input type="date" id="blockedDayInput" />
+          <button type="button" onclick="addDate('blockedDay')">新增</button>
+          <div id="blockedDayList" class="date-list"></div>
+        </div>
+
+        <div class="date-group">
+          <label>活動日：</label>
+          <input type="date" id="eventDayInput" />
+          <button type="button" onclick="addDate('eventDay')">新增</button>
+          <div id="eventDayList" class="date-list"></div>
+        </div>
+
+        <div class="date-group">
+          <label>半天營業日：</label>
+          <input type="date" id="halfDayInput" />
+          <button type="button" onclick="addDate('halfDay')">新增</button>
+          <div id="halfDayList" class="date-list"></div>
+        </div>
+
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+          <button type="button" id="datesRefresh">重新整理特殊日期</button>
+          <span id="datesMsg" class="small"></span>
+        </div>
+      </fieldset>
+
+      <button type="submit">💾 儲存設定</button>
+    </form>
+
+    <hr />
+    <h2>🛠️ 服務項目管理</h2>
+
+    <select id="serviceTypeSelect">
+      <option value="main">主服務</option>
+      <option value="addon">加購服務</option>
+    </select>
+
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;">
+      <button id="servicesRefresh" type="button">重新整理服務列表</button>
+      <span id="servicesMsg" class="small"></span>
+    </div>
+    <div id="serviceList" class="date-group"></div>
+    <button id="addServiceBtn" type="button">＋ 新增服務</button>
+
+   <!-- <div id="configDisplay"></div>-->
+  </div>
+<!-- 刪除 bookingConfig.js -->
+<!-- <script src="js/bookingConfig.js"></script> -->
+<!-- 移除不存在的模組檔引用以避免 404 -->
+<script>
+  // 在此直接設定 Apps Script Web App URL（請修改為你的 /exec 連結）：
+  const ENDPOINT = 'https://script.google.com/macros/s/AKfycbwp46vU_Vk_s05D_LTbjAnDfUI4cyEUgQETikt6aIInecfZCAb_RI_vXZUm89GbNhEDgQ/exec';
+
+  function getEndpoint() {
+    if (!ENDPOINT || !/^https:\/\/script.google.com\/.+\/exec$/.test(ENDPOINT)) {
+      throw new Error('請先在程式碼中設定正確的 ENDPOINT');
+    }
+    return ENDPOINT;
+  }
+  async function apiGet(params) {
+    const ep = getEndpoint();
+    const url = ep + '?' + new URLSearchParams(params).toString();
+    const res = await fetch(url, { method: 'GET' });
+    return res.json();
+  }
+  async function apiPost(payload) {
+    const ep = getEndpoint();
+    // 不設置 Content-Type: application/json，避免 CORS 預檢；Apps Script 仍可讀取 postData.contents
+    const res = await fetch(ep, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    return res.json();
+  }
+
+  // 不再需要儲存 URL
+
+  // 將現有設定表單送出時，同步寫入 Config 工作表
+  const bookingForm = document.getElementById('bookingForm');
+  bookingForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      const bufferMinutes = document.getElementById('bufferMinutes').value;
+      const maxBookingDays = document.getElementById('maxBookingDays').value;
+
+      // 休息時間收集（以 data-break-start/end 欄位）
+      const breaks = Array.from(document.querySelectorAll('[data-break-item]')).map(el => ({
+        start: el.querySelector('[data-break-start]').value,
+        end: el.querySelector('[data-break-end]').value
+      })).filter(b => b.start && b.end);
+
+      // weeklyOff 勾選
+      const weeklyChecked = Array.from(document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]'))
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+
+      // 逐項更新 Config（若不存在則 create，存在則 update）
+      const upsertConfig = async (key, value) => {
+        // 嘗試 update，失敗再 create
+        let res = await apiPost({ entity: 'config', action: 'update', key, data: { Key: key, Value: value } });
+        if (!res.ok) {
+          res = await apiPost({ entity: 'config', action: 'create', data: { Key: key, Value: value } });
+        }
+        return res;
+      };
+
+      await upsertConfig('startTime', startTime || '');
+      await upsertConfig('endTime', endTime || '');
+      await upsertConfig('bufferMinutes', String(bufferMinutes || ''));
+      await upsertConfig('maxBookingDays', String(maxBookingDays || ''));
+      await upsertConfig('breakPeriods', JSON.stringify(breaks));
+      await upsertConfig('weeklyOff', JSON.stringify(weeklyChecked));
+
+      alert('已儲存設定到 Config 工作表');
+    } catch (err) {
+      alert('儲存設定失敗：' + String(err));
+    }
+  });
+
+  // 動態新增休息時間 UI（與現有 addBreakPeriod 連動）
+  const breakPeriodList = document.getElementById('breakPeriodList');
+  function addBreakRow(start = '', end = '') {
+    const row = document.createElement('div');
+    row.setAttribute('data-break-item', '1');
+    row.style.display = 'flex'; row.style.gap = '8px'; row.style.margin = '6px 0';
+    row.innerHTML = `
+      <input data-break-start type="time" value="${start}" />
+      <input data-break-end type="time" value="${end}" />
+      <button type="button">刪除</button>
+    `;
+    row.querySelector('button').addEventListener('click', () => row.remove());
+    breakPeriodList.appendChild(row);
+  }
+  // 若頁面已定義 addBreakPeriod 函式，則覆蓋為使用上述 DOM
+  window.addBreakPeriod = function() { addBreakRow(); };
+
+  // DateTypes 操作的簡易入口：從頁面四種日期群組按鈕觸發（addDate(type)）
+  window.addDate = async function(type) {
+    try {
+      const map = {
+        holiday: 'holidayInput', blockedDay: 'blockedDayInput', eventDay: 'eventDayInput', halfDay: 'halfDayInput'
+      };
+      const id = map[type];
+      if (!id) return alert('未知類型');
+      const date = document.getElementById(id).value;
+      if (!date) return alert('請選擇日期');
+      const res = await apiPost({ entity: 'datetypes', action: 'create', data: { Type: type, Date: date } });
+      if (res.ok) alert('已新增 ' + type + '：' + date);
+      else alert('新增失敗：' + (res.error || ''));
+    } catch (err) {
+      alert('操作失敗：' + String(err));
+    }
+  };
+
+  // 服務項目管理：依現有 UI（serviceTypeSelect、serviceList、addServiceBtn）提供簡易新增主/加購服務
+  const addServiceBtn = document.getElementById('addServiceBtn');
+  const servicesMsg = document.getElementById('servicesMsg');
+  const servicesRefreshBtn = document.getElementById('servicesRefresh');
+  const weeklyRefreshBtn = document.getElementById('weeklyRefresh');
+  const weeklyMsg = document.getElementById('weeklyMsg');
+  const datesRefreshBtn = document.getElementById('datesRefresh');
+  const datesMsg = document.getElementById('datesMsg');
+  // 直覺的新增服務：使用頁面下方的輸入表單（彈出對話框改為行內輸入）
+  addServiceBtn.addEventListener('click', async () => {
+    try {
+      const isAddonType = document.getElementById('serviceTypeSelect').value === 'addon';
+      // 建立行內輸入列
+      const container = document.getElementById('serviceList');
+      const formRow = document.createElement('div');
+      formRow.style.display = 'grid';
+      formRow.style.gridTemplateColumns = '2fr 1fr 1fr 1fr auto';
+      formRow.style.gap = '8px';
+      formRow.style.margin = '8px 0';
+      formRow.innerHTML = `
+        <input type="text" placeholder="服務名稱" />
+        <input type="number" placeholder="分鐘" />
+        <input type="number" placeholder="價格" />
+        <input type="text" placeholder="分類（例：全身按摩）" ${isAddonType ? 'value="加購服務"' : ''} />
+        <button type="button">儲存</button>
+      `;
+      const [nameEl, minEl, priceEl, typeEl, saveBtn] = formRow.querySelectorAll('input,button');
+      container.prepend(formRow);
+      saveBtn.addEventListener('click', async () => {
+        const ServiceName = nameEl.value.trim();
+        const TimeMinutes = Number(minEl.value || '0');
+        const Price = Number(priceEl.value || '0');
+        const Type = typeEl.value.trim();
+        const IsAddon = isAddonType ? 'TRUE' : 'FALSE';
+        if (!ServiceName) return alert('請輸入服務名稱');
+        const res = await apiPost({ entity: 'services', action: 'create', data: { ServiceName, TimeMinutes, Price, Type, IsAddon } });
+        if (res.ok) { alert('服務已新增'); renderServices(); formRow.remove(); }
+        else { alert('新增失敗：' + (res.error || '')); }
+      });
+    } catch (err) { alert('操作失敗：' + String(err)); }
+  });
+
+  // 服務列表渲染：從 services list 讀取並分類展示
+  async function renderServices() {
+    try {
+      const res = await apiGet({ entity: 'services', action: 'list' });
+      if (!res.ok) { servicesMsg.textContent = res.error || '載入失敗'; servicesMsg.className = 'small error'; return; }
+      const data = Array.isArray(res.data) ? res.data : [];
+      servicesMsg.textContent = `共 ${data.length} 筆`; servicesMsg.className = 'small success';
+      const container = document.getElementById('serviceList');
+      container.innerHTML = '';
+      const main = data.filter(d => String(d.IsAddon).toUpperCase() !== 'TRUE');
+      const addon = data.filter(d => String(d.IsAddon).toUpperCase() === 'TRUE');
+      const section = (title, items) => {
+        const wrap = document.createElement('div');
+        wrap.style.marginTop = '8px';
+        const h = document.createElement('h3'); h.textContent = title; h.style.fontSize = '14px';
+        wrap.appendChild(h);
+        const table = document.createElement('table');
+        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
+        table.innerHTML = `<thead><tr>
+          <th style="text-align:left;">服務名稱</th>
+          <th>分鐘</th>
+          <th>價格</th>
+          <th>分類</th>
+          <th>操作</th>
+        </tr></thead><tbody></tbody>`;
+        const tbody = table.querySelector('tbody');
+        items.forEach(it => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${it.ServiceName}</td>
+            <td>${it.TimeMinutes}</td>
+            <td>$${it.Price}</td>
+            <td>${it.Type}</td>
+            <td>
+              <button data-act="edit">修改</button>
+              <button data-act="del">刪除</button>
+            </td>`;
+          tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
+            if (!confirm(`確定刪除：${it.ServiceName}？`)) return;
+            const res = await apiPost({ entity: 'services', action: 'delete', key: it.ServiceName });
+            if (res.ok) renderServices(); else alert('刪除失敗：' + (res.error || ''));
+          });
+          tr.querySelector('[data-act="edit"]').addEventListener('click', () => {
+            // 行內編輯
+            const name = prompt('服務名稱', it.ServiceName) || it.ServiceName;
+            const minutes = Number(prompt('分鐘', it.TimeMinutes) || it.TimeMinutes);
+            const price = Number(prompt('價格', it.Price) || it.Price);
+            const type = prompt('分類', it.Type) || it.Type;
+            const payload = { entity: 'services', action: 'update', key: it.ServiceName, data: { ServiceName: name, TimeMinutes: minutes, Price: price, Type: type, IsAddon: String(it.IsAddon).toUpperCase() === 'TRUE' ? 'TRUE' : 'FALSE' } };
+            apiPost(payload).then(res => { if (res.ok) renderServices(); else alert('修改失敗：' + (res.error || '')); });
+          });
+          tbody.appendChild(tr);
+        });
+        wrap.appendChild(table);
+        return wrap;
+      };
+      container.appendChild(section('主服務', main));
+      container.appendChild(section('加購服務', addon));
+    } catch (err) {
+      servicesMsg.textContent = String(err); servicesMsg.className = 'small error';
+    }
+  }
+  servicesRefreshBtn.addEventListener('click', renderServices);
+
+  // 每週固定休假渲染：從 Config.weeklyOff 預填勾選並顯示筆數
+  async function renderWeeklyOff() {
+    try {
+      const res = await apiGet({ entity: 'config', action: 'list' });
+      if (!res.ok) { weeklyMsg.textContent = res.error || '載入失敗'; weeklyMsg.className = 'small error'; return; }
+      const offs = (() => { try { return JSON.parse(res.data.weeklyOff || '[]'); } catch { return []; } })();
+      const boxes = Array.from(document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]'));
+      boxes.forEach(cb => { cb.checked = offs.includes(cb.value); });
+      weeklyMsg.textContent = `目前設定：${offs.join(', ') || '（無）'}`; weeklyMsg.className = 'small success';
+    } catch (err) {
+      weeklyMsg.textContent = String(err); weeklyMsg.className = 'small error';
+    }
+  }
+  weeklyRefreshBtn.addEventListener('click', renderWeeklyOff);
+
+  // 特殊日期渲染：讀取 datetypes，依 Type 類別分組顯示
+  async function renderDateTypes() {
+    try {
+      const res = await apiGet({ entity: 'datetypes', action: 'list' });
+      if (!res.ok) { datesMsg.textContent = res.error || '載入失敗'; datesMsg.className = 'small error'; return; }
+      const data = Array.isArray(res.data) ? res.data : [];
+      datesMsg.textContent = `共 ${data.length} 筆`; datesMsg.className = 'small success';
+      const byType = (t) => data.filter(r => r.Type === t);
+      const renderList = (id, items, type) => {
+        const el = document.getElementById(id);
+        el.innerHTML = '';
+        if (!items.length) { el.textContent = '（無）'; return; }
+        const table = document.createElement('table');
+        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
+        table.innerHTML = `<thead><tr><th style="text-align:left;">日期</th><th>操作</th></tr></thead><tbody></tbody>`;
+        const tbody = table.querySelector('tbody');
+        items.forEach(({ Date }) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${Date}</td><td><button data-act="del">刪除</button></td>`;
+          tr.querySelector('[data-act="del"]').addEventListener('click', async () => {
+            if (!confirm(`確定刪除：${type} ${Date}？`)) return;
+            const res = await apiPost({ entity: 'datetypes', action: 'delete', key: { Type: type, Date } });
+            if (res.ok) renderDateTypes(); else alert('刪除失敗：' + (res.error || ''));
+          });
+          tbody.appendChild(tr);
+        });
+        el.appendChild(table);
+      };
+      renderList('holidayList', byType('holiday'), 'holiday');
+      renderList('blockedDayList', byType('blockedDay'), 'blockedDay');
+      renderList('eventDayList', byType('eventDay'), 'eventDay');
+      renderList('halfDayList', byType('halfDay'), 'halfDay');
+    } catch (err) {
+      datesMsg.textContent = String(err); datesMsg.className = 'small error';
+    }
+  }
+  datesRefreshBtn.addEventListener('click', renderDateTypes);
+
+  // 簡易：載入 Config 以預填 UI
+  (async function preloadConfig() {
+    try {
+      // 若 ENDPOINT 未設定則不載入
+      if (!ENDPOINT) return;
+      const res = await apiGet({ entity: 'config', action: 'list' });
+      if (res.ok && res.data) {
+        const cfg = res.data;
+        // 將可能為日期字串的時間轉為 HH:mm
+        const toHHMM = (val) => {
+          if (!val) return '';
+          // 若為 "HH:mm" 直接使用
+          if (/^\d{2}:\d{2}(:\d{2}(\.\d{3})?)?$/.test(val)) return val.slice(0,5);
+          try {
+            const d = new Date(val);
+            if (!isNaN(d.getTime())) {
+              const hh = String(d.getHours()).padStart(2,'0');
+              const mm = String(d.getMinutes()).padStart(2,'0');
+              return `${hh}:${mm}`;
+            }
+          } catch {}
+          return '';
+        };
+        if (cfg.startTime) document.getElementById('startTime').value = toHHMM(cfg.startTime);
+        if (cfg.endTime) document.getElementById('endTime').value = toHHMM(cfg.endTime);
+        if (cfg.bufferMinutes) document.getElementById('bufferMinutes').value = Number(cfg.bufferMinutes);
+        if (cfg.maxBookingDays) document.getElementById('maxBookingDays').value = Number(cfg.maxBookingDays);
+        if (cfg.breakPeriods) {
+          try { JSON.parse(cfg.breakPeriods).forEach(b => addBreakRow(b.start, b.end)); } catch {}
+        }
+        if (cfg.weeklyOff) {
+          try {
+            const offs = JSON.parse(cfg.weeklyOff);
+            Array.from(document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]')).forEach(cb => {
+              cb.checked = offs.includes(cb.value);
+            });
+          } catch {}
+        }
+      }
+      // 初次載入同時渲染三區塊
+      renderWeeklyOff();
+      renderDateTypes();
+      renderServices();
+    } catch {}
+  })();
+</script>
+</body>
+</html>

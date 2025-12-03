@@ -11,8 +11,9 @@ export let addonServices = {};
 //   "addonServices": { "加購名稱": {"time": 20, "price": 450, "type": "加購服務"}, ... }
 // }
 export async function loadServiceData(endpointUrl) {
-    const url = endpointUrl || (window.GAS_SERVICE_ENDPOINT || window.GAS_BASE_URL);
-    if (!url) throw new Error("缺少 GAS 服務資料端點設定 (window.GAS_SERVICE_ENDPOINT 或 window.GAS_BASE_URL)");
+    const base = endpointUrl || window.GAS_BASE_URL;
+    if (!base) throw new Error("缺少 GAS Base URL 設定 (window.GAS_BASE_URL)");
+    const url = `${base}?entity=services&action=list`;
 
     const res = await fetch(url, { method: "GET" });
     if (!res.ok) throw new Error(`載入服務資料失敗: ${res.status}`);
@@ -20,10 +21,26 @@ export async function loadServiceData(endpointUrl) {
     // 支援 Apps Script 包裝格式 { ok: true, data: {...} }
     if (data && data.ok === true && data.data) data = data.data;
 
-    // 基本驗證
-    if (!data || typeof data !== "object") throw new Error("服務資料格式錯誤");
-    mainServices = data.mainServices || {};
-    addonServices = data.addonServices || {};
+    // 從 GAS 讀回的是列資料陣列（每列為物件），需轉為 main/addon 兩個 map
+    if (!Array.isArray(data)) throw new Error("服務資料格式錯誤（預期為陣列）");
+    const mainMap = {};
+    const addonMap = {};
+    data.forEach(row => {
+        const name = String(row.ServiceName || '').trim();
+        if (!name) return;
+        const time = Number(row.TimeMinutes || row.time || 0);
+        const price = Number(row.Price || row.price || 0);
+        const type = row.Type || row.type || '';
+        const isAddon = String(row.IsAddon || row.isAddon || '').toLowerCase();
+        const entry = { time, price, type };
+        if (isAddon === 'true' || isAddon === '1') {
+            addonMap[name] = entry;
+        } else {
+            mainMap[name] = entry;
+        }
+    });
 
+    mainServices = mainMap;
+    addonServices = addonMap;
     return { mainServices, addonServices };
 }
