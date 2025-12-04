@@ -3,6 +3,16 @@
 body {
     font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
 }
+/* 提升可讀性：限制容器寬度並增加垂直間距 */
+.container { max-width: 1000px; }
+.small { font-size: 12px; color: #6c757d; }
+.error { color: #dc3545; }
+.success { color: #198754; }
+.date-group { margin: 8px 0; }
+.date-list table { width: 100%; border-collapse: collapse; }
+.date-list table th, .date-list table td { padding: 8px; border-bottom: 1px solid #eee; }
+.date-list thead th { background: #f8f9fa; }
+.date-list { max-height: 260px; }
 
 /* 卡片陰影優化 */
 .card {
@@ -16,7 +26,7 @@ body {
 
 /* 日期列表樣式 */
 .date-list {
-    max-height: 200px;
+    max-height: 260px;
     overflow-y: auto;
 }
 
@@ -69,6 +79,10 @@ body {
     vertical-align: middle;
 }
 
+/* 休息時間行內輸入尺寸微調 */
+[data-break-item] input[type="time"] { width: 140px; }
+[data-break-item] button { white-space: nowrap; }
+
 /* 表單控制項優化 */
 .form-control:focus {
     border-color: #0d6efd;
@@ -89,6 +103,78 @@ body {
     transform: translateY(-1px);
     transition: all 0.2s ease;
 }
+
+/* Soft 按鈕樣式：更柔和的背景與陰影 */
+.btn.soft {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.btn.soft:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+/* 讓 outline 按鈕在暗色更清晰 */
+body[data-theme="dark"] .btn-outline-primary { color: #9ec5fe; border-color: #3b7ddd; }
+body[data-theme="dark"] .btn-outline-primary:hover { background-color: #3b7ddd; color: #fff; }
+body[data-theme="dark"] .btn-outline-secondary { color: #c3c8ce; border-color: #6c757d; }
+body[data-theme="dark"] .btn-outline-secondary:hover { background-color: #6c757d; color: #fff; }
+body[data-theme="dark"] .btn-danger { background-color: #dc3545; border-color: #dc3545; color: #fff; }
+body[data-theme="dark"] .btn-secondary { background-color: #6c757d; border-color: #6c757d; color: #fff; }
+
+/* 亮/暗主題：以 CSS 變數驅動 */
+:root {
+    --bg: #ffffff;
+    --fg: #212529;
+    --muted: #6c757d;
+    --card: #ffffff;
+    --border: #dee2e6;
+}
+
+body[data-theme="dark"] {
+    --bg: #0f1115;
+    --fg: #e9ecef;
+    --muted: #adb5bd;
+    --card: #151922;
+    --border: #2a2f3a;
+}
+
+body {
+    background-color: var(--bg);
+    color: var(--fg);
+}
+
+.card, fieldset.border {
+    background-color: var(--card);
+    border-color: var(--border);
+}
+
+.small { color: var(--muted); }
+
+.table { color: var(--fg); }
+.table thead th { background: rgba(0,0,0,0.03); }
+body[data-theme="dark"] .table thead th { background: rgba(255,255,255,0.05); }
+
+/* 特殊日期列表與服務區塊標題色調 */
+h3 { color: var(--fg); }
+.section-title { font-size: 0.95rem; color: var(--muted); }
+body[data-theme="dark"] .section-title { color: #cfd6de; }
+
+/* 主服務/加購服務分段的輕量標示色 */
+.service-section-main h3 { color: #0d6efd; }
+body[data-theme="dark"] .service-section-main h3 { color: #9ec5fe; }
+.service-section-addon h3 { color: #6f42c1; }
+body[data-theme="dark"] .service-section-addon h3 { color: #c5b3ea; }
+
+/* 表單控制在暗色模式的對比優化 */
+body[data-theme="dark"] .form-control, 
+body[data-theme="dark"] .form-select {
+    background-color: #1b2030;
+    border-color: #2a2f3a;
+    color: var(--fg);
+}
+body[data-theme="dark"] .form-control::placeholder { color: var(--muted); }
+
+/* Switch label 顏色隨主題 */
+body[data-theme="dark"] .form-check-label { color: var(--fg); }
 
 /* 狀態訊息樣式 */
 .text-success {

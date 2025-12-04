@@ -3,104 +3,138 @@
 <head>
   <meta charset="UTF-8" />
   <title>預約設定後台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>預約設定後台</h1>
+  <div class="container py-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h3 mb-0">預約設定後台</h1>
+      <div class="d-flex align-items-center gap-2">
+        <label class="form-check form-switch mb-0" title="切換亮/暗色調">
+          <input class="form-check-input" type="checkbox" id="themeToggle" />
+          <span class="form-check-label">暗色模式</span>
+        </label>
+      </div>
+    </div>
 
     <!-- 已改為在程式碼中設定 ENDPOINT 常數，不再於畫面輸入 -->
 
-    <form id="bookingForm">
-      <fieldset>
-        <legend>🕒 預約時間設定</legend>
-        <label>開始時間：<input type="time" id="startTime" /></label>
-        <label>結束時間：<input type="time" id="endTime" /></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>⏳ 預約限制</legend>
-        <label>當天預約需提前（分鐘）：<input type="number" id="bufferMinutes" /></label>
-        <label>最多可預約天數：<input type="number" id="maxBookingDays" /></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>⛔ 中間休息時間</legend>
-        <div id="breakPeriodList"></div>
-        <button type="button" onclick="addBreakPeriod()">＋ 新增休息時間</button>
-      </fieldset>
-
-      <fieldset>
-        <legend>📅 每週固定休假日</legend>
-        <div id="weeklyOffCheckboxes">
-          <label><input type="checkbox" value="0" /> 週日</label>
-          <label><input type="checkbox" value="1" /> 週一</label>
-          <label><input type="checkbox" value="2" /> 週二</label>
-          <label><input type="checkbox" value="3" /> 週三</label>
-          <label><input type="checkbox" value="4" /> 週四</label>
-          <label><input type="checkbox" value="5" /> 週五</label>
-          <label><input type="checkbox" value="6" /> 週六</label>
+    <form id="bookingForm" class="needs-validation" novalidate>
+      <fieldset class="border rounded-3 p-3 mb-3">
+        <legend class="float-none w-auto px-2">🕒 預約時間設定</legend>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label for="startTime" class="form-label">開始時間</label>
+            <input type="time" id="startTime" class="form-control" />
+          </div>
+          <div class="col-sm-6">
+            <label for="endTime" class="form-label">結束時間</label>
+            <input type="time" id="endTime" class="form-control" />
+          </div>
         </div>
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-          <button type="button" id="weeklyRefresh">重新整理每週休假</button>
+      </fieldset>
+
+      <fieldset class="border rounded-3 p-3 mb-3">
+        <legend class="float-none w-auto px-2">⏳ 預約限制</legend>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label for="bufferMinutes" class="form-label">當天預約需提前（分鐘）</label>
+            <input type="number" id="bufferMinutes" class="form-control" />
+          </div>
+          <div class="col-sm-6">
+            <label for="maxBookingDays" class="form-label">最多可預約天數</label>
+            <input type="number" id="maxBookingDays" class="form-control" />
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="border rounded-3 p-3 mb-3">
+        <legend class="float-none w-auto px-2">⛔ 中間休息時間</legend>
+        <div id="breakPeriodList" class="mb-2"></div>
+        <button type="button" class="btn btn-primary btn-sm soft" onclick="addBreakPeriod()">＋ 新增休息時間</button>
+      </fieldset>
+
+      <fieldset class="border rounded-3 p-3 mb-3">
+        <legend class="float-none w-auto px-2">📅 每週固定休假日</legend>
+        <div id="weeklyOffCheckboxes" class="d-flex flex-wrap gap-3">
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="0" /><span class="form-check-label"> 週日</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="1" /><span class="form-check-label"> 週一</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="2" /><span class="form-check-label"> 週二</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="3" /><span class="form-check-label"> 週三</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="4" /><span class="form-check-label"> 週四</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="5" /><span class="form-check-label"> 週五</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" value="6" /><span class="form-check-label"> 週六</span></label>
+        </div>
+        <div class="mt-2 d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-secondary btn-sm soft" id="weeklyRefresh">重新整理每週休假</button>
           <span id="weeklyMsg" class="small"></span>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>📆 特殊日期設定</legend>
+      <fieldset class="border rounded-3 p-3 mb-3">
+        <legend class="float-none w-auto px-2">📆 特殊日期設定</legend>
 
-        <div class="date-group">
-          <label>假日：</label>
-          <input type="date" id="holidayInput" />
-          <button type="button" onclick="addDate('holiday')">新增</button>
-          <div id="holidayList" class="date-list"></div>
+        <div class="date-group mb-3">
+          <label class="form-label">假日</label>
+          <div class="d-flex gap-2">
+            <input type="date" id="holidayInput" class="form-control" />
+            <button type="button" class="btn btn-primary soft" onclick="addDate('holiday')">新增</button>
+          </div>
+          <div id="holidayList" class="date-list mt-2"></div>
         </div>
 
-        <div class="date-group">
-          <label>封鎖日：</label>
-          <input type="date" id="blockedDayInput" />
-          <button type="button" onclick="addDate('blockedDay')">新增</button>
-          <div id="blockedDayList" class="date-list"></div>
+        <div class="date-group mb-3">
+          <label class="form-label">封鎖日</label>
+          <div class="d-flex gap-2">
+            <input type="date" id="blockedDayInput" class="form-control" />
+            <button type="button" class="btn btn-primary soft" onclick="addDate('blockedDay')">新增</button>
+          </div>
+          <div id="blockedDayList" class="date-list mt-2"></div>
         </div>
 
-        <div class="date-group">
-          <label>活動日：</label>
-          <input type="date" id="eventDayInput" />
-          <button type="button" onclick="addDate('eventDay')">新增</button>
-          <div id="eventDayList" class="date-list"></div>
+        <div class="date-group mb-3">
+          <label class="form-label">活動日</label>
+          <div class="d-flex gap-2">
+            <input type="date" id="eventDayInput" class="form-control" />
+            <button type="button" class="btn btn-primary soft" onclick="addDate('eventDay')">新增</button>
+          </div>
+          <div id="eventDayList" class="date-list mt-2"></div>
         </div>
 
-        <div class="date-group">
-          <label>半天營業日：</label>
-          <input type="date" id="halfDayInput" />
-          <button type="button" onclick="addDate('halfDay')">新增</button>
-          <div id="halfDayList" class="date-list"></div>
+        <div class="date-group mb-3">
+          <label class="form-label">半天營業日</label>
+          <div class="d-flex gap-2">
+            <input type="date" id="halfDayInput" class="form-control" />
+            <button type="button" class="btn btn-primary soft" onclick="addDate('halfDay')">新增</button>
+          </div>
+          <div id="halfDayList" class="date-list mt-2"></div>
         </div>
 
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-          <button type="button" id="datesRefresh">重新整理特殊日期</button>
+        <div class="mt-2 d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-secondary btn-sm soft" id="datesRefresh">重新整理特殊日期</button>
           <span id="datesMsg" class="small"></span>
         </div>
       </fieldset>
 
-      <button type="submit">💾 儲存設定</button>
+      <button type="submit" class="btn btn-success soft">💾 儲存設定</button>
     </form>
 
-    <hr />
-    <h2>🛠️ 服務項目管理</h2>
+    <hr class="my-4" />
+    <h2 class="h4 mb-3">🛠️ 服務項目管理</h2>
 
-    <select id="serviceTypeSelect">
+    <select id="serviceTypeSelect" class="form-select w-auto">
       <option value="main">主服務</option>
       <option value="addon">加購服務</option>
     </select>
 
-    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;">
-      <button id="servicesRefresh" type="button">重新整理服務列表</button>
+    <div class="d-flex align-items-center gap-2 my-2">
+      <button id="servicesRefresh" type="button" class="btn btn-secondary btn-sm soft">重新整理服務列表</button>
       <span id="servicesMsg" class="small"></span>
     </div>
     <div id="serviceList" class="date-group"></div>
-    <button id="addServiceBtn" type="button">＋ 新增服務</button>
+    <button id="addServiceBtn" type="button" class="btn btn-primary mt-2 soft">＋ 新增服務</button>
 
    <!-- <div id="configDisplay"></div>-->
   </div>
@@ -271,11 +305,13 @@
       const section = (title, items) => {
         const wrap = document.createElement('div');
         wrap.style.marginTop = '8px';
-        const h = document.createElement('h3'); h.textContent = title; h.style.fontSize = '14px';
+          const h = document.createElement('h3'); h.textContent = title; h.className = 'section-title';
+          if (title.includes('主服務')) wrap.classList.add('service-section-main');
+          if (title.includes('加購服務')) wrap.classList.add('service-section-addon');
         wrap.appendChild(h);
         const table = document.createElement('table');
-        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
-        table.innerHTML = `<thead><tr>
+          table.style.width = '100%'; table.style.borderCollapse = 'collapse';
+          table.innerHTML = `<thead><tr>
           <th style="text-align:left;">服務名稱</th>
           <th>分鐘</th>
           <th>價格</th>
@@ -285,14 +321,16 @@
         const tbody = table.querySelector('tbody');
         items.forEach(it => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `
+            tr.innerHTML = `
             <td>${it.ServiceName}</td>
             <td>${it.TimeMinutes}</td>
             <td>$${it.Price}</td>
             <td>${it.Type}</td>
             <td>
-              <button type="button" data-act="edit">修改</button>
-              <button type="button" data-act="del">刪除</button>
+              <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-primary soft" data-act="edit">修改</button>
+                <button type="button" class="btn btn-danger soft" data-act="del">刪除</button>
+              </div>
             </td>`;
           tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
             e.preventDefault();
@@ -436,8 +474,8 @@
         el.innerHTML = '';
         if (!items.length) { el.textContent = '（無）'; return; }
         const table = document.createElement('table');
-        table.style.width = '100%'; table.style.borderCollapse = 'collapse';
-        table.innerHTML = `<thead><tr><th style="text-align:left;">日期</th><th>操作</th></tr></thead><tbody></tbody>`;
+        table.className = 'table table-striped table-sm';
+        table.innerHTML = `<thead><tr><th class="text-start">日期</th><th class="text-start">操作</th></tr></thead><tbody></tbody>`;
         const tbody = table.querySelector('tbody');
         // 顯示前嘗試偵測日期格式（僅除錯）
         try {
@@ -446,7 +484,9 @@
         } catch {}
         items.forEach(({ Date }) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${Date}</td><td><button type="button" data-act="del">刪除</button></td>`;
+          tr.innerHTML = `<td>${Date}</td><td>
+            <button type="button" class="btn btn-danger btn-sm soft" data-act="del">刪除</button>
+          </td>`;
           tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
             e.preventDefault();
             if (!confirm(`確定刪除：${type} ${Date}？`)) return;
@@ -518,6 +558,30 @@
       renderServices();
     } catch {}
   })();
+</script>
+<script>
+  // 主題切換：依 localStorage 初始、變更 body data-theme
+  (function themeInit(){
+    const key = 'admin.theme';
+    const saved = localStorage.getItem(key) || 'light';
+    document.body.dataset.theme = saved;
+    const toggle = document.getElementById('themeToggle');
+    if (toggle) toggle.checked = saved === 'dark';
+    if (toggle) toggle.addEventListener('change', () => {
+      const v = toggle.checked ? 'dark' : 'light';
+      document.body.dataset.theme = v;
+      localStorage.setItem(key, v);
+    });
+  })();
+
+  // 美化：服務列表的表格套用 Bootstrap 樣式（在渲染後由 JS 建立）
+  const _origRenderServices = renderServices;
+  renderServices = async function(){
+    await _origRenderServices();
+    document.querySelectorAll('#serviceList table').forEach(t => {
+      t.classList.add('table','table-striped','table-sm');
+    });
+  };
 </script>
 </body>
 </html>
