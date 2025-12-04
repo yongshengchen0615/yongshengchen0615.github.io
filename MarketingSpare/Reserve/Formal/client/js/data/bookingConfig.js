@@ -189,6 +189,24 @@ function mapConfigAndDateTypes(cfgMap, dtRows) {
                 break;
         }
     });
+    // 週休來源合併：優先採用 Config.weeklyOff（JSON 字串或陣列），並與 DateTypes.weeklyOff 合併去重
+    try {
+        const rawWeekly = cfgMap?.weeklyOff;
+        let cfgWeekly = [];
+        if (typeof rawWeekly === 'string') {
+            cfgWeekly = JSON.parse(rawWeekly);
+        } else if (Array.isArray(rawWeekly)) {
+            cfgWeekly = rawWeekly;
+        }
+        const merged = [...dateTypes.weeklyOff, ...cfgWeekly]
+            .map(n => Number(n))
+            .filter(n => !isNaN(n))
+            .filter(n => n >= 0 && n <= 6);
+        dateTypes.weeklyOff = Array.from(new Set(merged));
+    } catch (_) {
+        // 若解析失敗，沿用從 DateTypes 取得的 weeklyOff
+    }
+
     out.dateTypes = dateTypes;
     return out;
 }
