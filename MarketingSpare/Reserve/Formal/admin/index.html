@@ -118,7 +118,7 @@
         </div>
       </fieldset>
 
-      <button type="submit" class="btn btn-success soft">💾 儲存設定</button>
+      
     </form>
 
     <hr class="my-4" />
@@ -136,7 +136,18 @@
     <div id="serviceList" class="date-group"></div>
     <button id="addServiceBtn" type="button" class="btn btn-primary mt-2 soft">＋ 新增服務</button>
 
+    <div class="d-flex justify-content-end mt-4">
+      <button form="bookingForm" type="submit" class="btn btn-success btn-lg soft">💾 儲存設定</button>
+    </div>
+
    <!-- <div id="configDisplay"></div>-->
+  </div>
+  <!-- 全域載入/儲存覆蓋層 -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="overlay-card card p-3 text-center">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div id="overlayText" class="mt-2">載入資料中...</div>
+    </div>
   </div>
 <!-- 刪除 bookingConfig.js -->
 <!-- <script src="js/bookingConfig.js"></script> -->
@@ -167,6 +178,22 @@
     return res.json();
   }
 
+  // 本地狀態（只在首次載入時從後端抓取一次）
+  const LocalState = {
+    datetypes: [],
+    services: []
+  };
+
+  // 暫存所有變更，儲存時一次送出
+  const Pending = {
+    config: {},
+    datetypesAdd: [],     // {type, date}
+    datetypesDel: [],     // {type, date}
+    servicesAdd: [],      // {ServiceName, TimeMinutes, Price, Type, IsAddon}
+    servicesUpdate: [],   // {key, data}
+    servicesDel: []       // {key}
+  };
+
   // 不再需要儲存 URL
 
   // 將現有設定表單送出時，同步寫入 Config 工作表
@@ -174,6 +201,7 @@
   bookingForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
+      showOverlay && showOverlay('儲存中...');
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
       const bufferMinutes = document.getElementById('bufferMinutes').value;
@@ -200,17 +228,47 @@
         return res;
       };
 
-      await upsertConfig('startTime', startTime || '');
-      await upsertConfig('endTime', endTime || '');
-      await upsertConfig('bufferMinutes', String(bufferMinutes || ''));
-      await upsertConfig('maxBookingDays', String(maxBookingDays || ''));
-      await upsertConfig('breakPeriods', JSON.stringify(breaks));
-      await upsertConfig('weeklyOff', JSON.stringify(weeklyChecked));
+      Pending.config.startTime = startTime || '';
+      Pending.config.endTime = endTime || '';
+      Pending.config.bufferMinutes = String(bufferMinutes || '');
+      Pending.config.maxBookingDays = String(maxBookingDays || '');
+      Pending.config.breakPeriods = JSON.stringify(breaks);
+      Pending.config.weeklyOff = JSON.stringify(weeklyChecked);
 
-      alert('已儲存設定到 Config 工作表');
+      // 單一批次送出：Config + DateTypes + Services
+      const batchPayload = {
+        entity: 'batch',
+        action: 'apply',
+        data: {
+          config: Pending.config,
+          datetypes: {
+            add: Pending.datetypesAdd,
+            del: Pending.datetypesDel
+          },
+          services: {
+            add: Pending.servicesAdd,
+            update: Pending.servicesUpdate,
+            del: Pending.servicesDel
+          }
+        }
+      };
+      const batchRes = await apiPost(batchPayload);
+      if (!batchRes || !batchRes.ok) throw new Error(batchRes && batchRes.error ? batchRes.error : '批次儲存失敗');
+
+      // 清空暫存
+      Pending.config = {};
+      Pending.datetypesAdd = [];
+      Pending.datetypesDel = [];
+      Pending.servicesAdd = [];
+      Pending.servicesUpdate = [];
+      Pending.servicesDel = [];
+
+      const r = batchRes.results || {};
+      const msg = `儲存完成：Config(${(r.config?.updated||0)} 更新/${(r.config?.created||0)} 新增) Services(${(r.services?.updated||0)} 更新/${(r.services?.created||0)} 新增/${(r.services?.deleted||0)} 刪除) DateTypes(${(r.datetypes?.created||0)} 新增/${(r.datetypes?.deleted||0)} 刪除)`;
+      alert(msg);
     } catch (err) {
       alert('儲存設定失敗：' + String(err));
-    }
+    } finally { hideOverlay && hideOverlay(); }
   });
 
   // 動態新增休息時間 UI（與現有 addBreakPeriod 連動）
@@ -240,10 +298,10 @@
       if (!id) return alert('未知類型');
       const date = document.getElementById(id).value;
       if (!date) return alert('請選擇日期');
-      // 同時傳 Type 與 DateType，提升後端相容性
-      const res = await apiPost({ entity: 'datetypes', action: 'create', data: { Type: type, DateType: type, Date: date } });
-      if (res.ok) { alert('已新增 ' + type + '：' + date); try { renderDateTypes(); } catch {} }
-      else alert('新增失敗：' + (res.error || ''));
+      // 暫存新增，不即刻呼叫後端
+      Pending.datetypesAdd.push({ type, date });
+      alert('已暫存新增 ' + type + '：' + date);
+      try { renderDateTypes(); } catch {}
     } catch (err) {
       alert('操作失敗：' + String(err));
     }
@@ -260,44 +318,66 @@
   // 直覺的新增服務：使用頁面下方的輸入表單（彈出對話框改為行內輸入）
   addServiceBtn.addEventListener('click', async () => {
     try {
-      const isAddonType = document.getElementById('serviceTypeSelect').value === 'addon';
-      // 建立行內輸入列
+      // 預設類型以上方選擇器為準
+      const defaultIsAddon = document.getElementById('serviceTypeSelect').value === 'addon';
       const container = document.getElementById('serviceList');
       const formRow = document.createElement('div');
+      formRow.className = 'card p-2 service-form';
       formRow.style.display = 'grid';
-      formRow.style.gridTemplateColumns = '2fr 1fr 1fr 1fr auto';
+      formRow.style.gridTemplateColumns = '2fr 1fr 1fr 1fr 1fr auto';
       formRow.style.gap = '8px';
       formRow.style.margin = '8px 0';
       formRow.innerHTML = `
-        <input type="text" placeholder="服務名稱" />
-        <input type="number" placeholder="分鐘" />
-        <input type="number" placeholder="價格" />
-        <input type="text" placeholder="分類（例：全身按摩）" ${isAddonType ? 'value="加購服務"' : ''} />
-        <button type="button">儲存</button>
+        <input class="form-control" type="text" placeholder="服務名稱（必填）" />
+        <input class="form-control" type="number" placeholder="分鐘（必填）" />
+        <input class="form-control" type="number" placeholder="價格（必填）" />
+        <input class="form-control" type="text" placeholder="分類（例：全身按摩）" ${defaultIsAddon ? 'value="加購服務"' : ''} />
+        <select class="form-select">
+          <option value="main" ${defaultIsAddon ? '' : 'selected'}>主服務</option>
+          <option value="addon" ${defaultIsAddon ? 'selected' : ''}>加購服務</option>
+        </select>
+        <div class="btn-group">
+          <button type="button" class="btn btn-success soft">儲存</button>
+          <button type="button" class="btn btn-outline-secondary soft">取消</button>
+        </div>
       `;
-      const [nameEl, minEl, priceEl, typeEl, saveBtn] = formRow.querySelectorAll('input,button');
-      container.prepend(formRow);
+      const [nameEl, minEl, priceEl, typeEl, kindEl] = formRow.querySelectorAll('input,select');
+      const [saveBtn, cancelBtn] = formRow.querySelectorAll('button');
+      // 放到列表下方，使用者視線順著往下操作
+      container.appendChild(formRow);
+      try { formRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch {}
+      cancelBtn.addEventListener('click', () => formRow.remove());
       saveBtn.addEventListener('click', async () => {
         const ServiceName = nameEl.value.trim();
         const TimeMinutes = Number(minEl.value || '0');
         const Price = Number(priceEl.value || '0');
         const Type = typeEl.value.trim();
-        const IsAddon = isAddonType ? 'TRUE' : 'FALSE';
+        const IsAddon = kindEl.value === 'addon' ? 'TRUE' : 'FALSE';
         if (!ServiceName) return alert('請輸入服務名稱');
-        const res = await apiPost({ entity: 'services', action: 'create', data: { ServiceName, TimeMinutes, Price, Type, IsAddon } });
-        if (res.ok) { alert('服務已新增'); renderServices(); formRow.remove(); }
-        else { alert('新增失敗：' + (res.error || '')); }
+        if (!TimeMinutes || TimeMinutes <= 0) return alert('請輸入有效的分鐘');
+        if (Price < 0) return alert('價格不可為負數');
+        Pending.servicesAdd.push({ ServiceName, TimeMinutes, Price, Type, IsAddon });
+        alert('服務已暫存新增');
+        renderServices();
+        formRow.remove();
       });
     } catch (err) { alert('操作失敗：' + String(err)); }
   });
 
-  // 服務列表渲染：從 services list 讀取並分類展示
+  // 服務列表渲染：以本地狀態 + 暫存變更為來源，立即反映 UI
   async function renderServices() {
     try {
-      const res = await apiGet({ entity: 'services', action: 'list' });
-      if (!res.ok) { servicesMsg.textContent = res.error || '載入失敗'; servicesMsg.className = 'small error'; return; }
-      const data = Array.isArray(res.data) ? res.data : [];
-      servicesMsg.textContent = `共 ${data.length} 筆`; servicesMsg.className = 'small success';
+      // 以 LocalState.services 為基底
+      let data = Array.isArray(LocalState.services) ? LocalState.services.map(s => ({...s})) : [];
+      // 套用暫存刪除
+      const delSet = new Set(Pending.servicesDel.map(x => String(x.key)));
+      data = data.filter(s => !delSet.has(String(s.ServiceName)));
+      // 套用暫存更新（以 ServiceName 當 key 覆蓋）
+      const updMap = new Map(Pending.servicesUpdate.map(u => [String(u.key), {...u.data, ServiceName: String(u.data?.ServiceName || u.key)}]));
+      data = data.map(s => updMap.has(String(s.ServiceName)) ? ({...s, ...updMap.get(String(s.ServiceName))}) : s);
+      // 套用暫存新增（前插，立即可見）
+      Pending.servicesAdd.forEach(a => { data.unshift({...a}); });
+      servicesMsg.textContent = `共 ${data.length} 筆（包含暫存變更）`; servicesMsg.className = 'small success';
       const container = document.getElementById('serviceList');
       container.innerHTML = '';
       const main = data.filter(d => String(d.IsAddon).toUpperCase() !== 'TRUE');
@@ -329,14 +409,14 @@
             <td>
               <div class="btn-group btn-group-sm" role="group">
                 <button type="button" class="btn btn-outline-primary soft" data-act="edit">修改</button>
-                <button type="button" class="btn btn-danger soft" data-act="del">刪除</button>
+                <button type="button" class="btn btn-outline-danger soft" data-act="del">刪除</button>
               </div>
             </td>`;
           tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
             e.preventDefault();
             if (!confirm(`確定刪除：${it.ServiceName}？`)) return;
-            const res = await apiPost({ entity: 'services', action: 'delete', key: it.ServiceName });
-            if (res.ok) renderServices(); else alert('刪除失敗：' + (res.error || ''));
+            Pending.servicesDel.push({ key: it.ServiceName });
+            renderServices();
           });
           tr.querySelector('[data-act="edit"]').addEventListener('click', (e) => {
             e.preventDefault();
@@ -345,8 +425,9 @@
             const minutes = Number(prompt('分鐘', it.TimeMinutes) || it.TimeMinutes);
             const price = Number(prompt('價格', it.Price) || it.Price);
             const type = prompt('分類', it.Type) || it.Type;
-            const payload = { entity: 'services', action: 'update', key: it.ServiceName, data: { ServiceName: name, TimeMinutes: minutes, Price: price, Type: type, IsAddon: String(it.IsAddon).toUpperCase() === 'TRUE' ? 'TRUE' : 'FALSE' } };
-            apiPost(payload).then(res => { if (res.ok) renderServices(); else alert('修改失敗：' + (res.error || '')); });
+            Pending.servicesUpdate.push({ key: it.ServiceName, data: { ServiceName: name, TimeMinutes: minutes, Price: price, Type: type, IsAddon: String(it.IsAddon).toUpperCase() === 'TRUE' ? 'TRUE' : 'FALSE' } });
+            alert('服務已暫存修改');
+            renderServices();
           });
           tbody.appendChild(tr);
         });
@@ -463,9 +544,13 @@
   // 特殊日期渲染：讀取 datetypes，依 Type 類別分組顯示
   async function renderDateTypes() {
     try {
-      const res = await apiGet({ entity: 'datetypes', action: 'list' });
-      if (!res.ok) { datesMsg.textContent = res.error || '載入失敗'; datesMsg.className = 'small error'; return; }
-      const data = Array.isArray(res.data) ? res.data : [];
+      // 以本地狀態 + 暫存變更為來源
+      let data = Array.isArray(LocalState.datetypes) ? LocalState.datetypes.map(r => ({ Type: r.Type || r.DateType, DateType: r.DateType || r.Type, Date: r.Date })) : [];
+      // 套用暫存刪除
+      const delKeys = new Set(Pending.datetypesDel.map(x => `${x.type}|${String(x.date)}`));
+      data = data.filter(r => !delKeys.has(`${r.Type}|${String(r.Date)}`));
+      // 套用暫存新增（前插，立即可見）
+      Pending.datetypesAdd.forEach(a => { data.unshift({ Type: a.type, DateType: a.type, Date: a.date }); });
       datesMsg.textContent = `共 ${data.length} 筆`; datesMsg.className = 'small success';
       // 同時支援 r.Type 與 r.DateType 兩種欄位
       const byType = (t) => data.filter(r => r && (r.Type === t || r.DateType === t));
@@ -490,14 +575,9 @@
           tr.querySelector('[data-act="del"]').addEventListener('click', async (e) => {
             e.preventDefault();
             if (!confirm(`確定刪除：${type} ${Date}？`)) return;
-            const candidates = unique([String(Date), ...buildDateCandidates(Date), ...(typeof Date === 'string' ? [String(Date).replace(/-/g, '/'), String(Date).replace(/\//g, '-')] : [])]);
-            try { console.debug('[datetypes:delete] candidates', candidates); } catch {}
-            let res;
-            for (const ds of candidates) {
-              res = await attemptDeleteDateType(type, ds);
-              if (res && res.ok) { try { console.debug('[datetypes:delete] success with date', ds); } catch {} break; }
-            }
-            if (res.ok) renderDateTypes(); else alert('刪除失敗：' + (res.error || ''));
+            // 暫存刪除（以原始 Date 字串為主）
+            Pending.datetypesDel.push({ type, date: String(Date) });
+            renderDateTypes();
           });
           tbody.appendChild(tr);
         });
@@ -552,7 +632,16 @@
           } catch {}
         }
       }
-      // 初次載入同時渲染三區塊
+      // 初次載入同時抓取 datetypes/services 一次到本地狀態
+      try {
+        const dtRes = await apiGet({ entity: 'datetypes', action: 'list' });
+        if (dtRes.ok) LocalState.datetypes = Array.isArray(dtRes.data) ? dtRes.data : [];
+      } catch {}
+      try {
+        const srvRes = await apiGet({ entity: 'services', action: 'list' });
+        if (srvRes.ok) LocalState.services = Array.isArray(srvRes.data) ? srvRes.data : [];
+      } catch {}
+      // 初次渲染各區塊（使用本地狀態 + 暫存）
       renderWeeklyOff();
       renderDateTypes();
       renderServices();
@@ -582,6 +671,40 @@
       t.classList.add('table','table-striped','table-sm');
     });
   };
+
+  // Overlay 控制
+  function showOverlay(text){
+    const ov = document.getElementById('overlay');
+    const tx = document.getElementById('overlayText');
+    if (tx && text) tx.textContent = text; else if (tx) tx.textContent = '載入資料中...';
+    ov?.classList.add('show');
+    ov?.setAttribute('aria-hidden','false');
+  }
+  function hideOverlay(){
+    const ov = document.getElementById('overlay');
+    ov?.classList.remove('show');
+    ov?.setAttribute('aria-hidden','true');
+  }
+
+  // 攔截表單儲存時顯示儲存中
+  (function hookFormSave(){
+    var formEl = document.getElementById('bookingForm');
+    if (!formEl) return;
+    formEl.addEventListener('submit', () => showOverlay('儲存中...'));
+  })();
+
+  // 初次載入：在三區塊渲染完成後關閉 overlay
+  (async function hookInitialLoad(){
+    showOverlay('載入資料中...');
+    const tasks = [];
+    try {
+      tasks.push((async()=>{ try { await renderWeeklyOff(); } catch {} })());
+      tasks.push((async()=>{ try { await renderDateTypes(); } catch {} })());
+      tasks.push((async()=>{ try { await renderServices(); } catch {} })());
+    } finally {
+      Promise.all(tasks).finally(() => hideOverlay());
+    }
+  })();
 </script>
 </body>
 </html>

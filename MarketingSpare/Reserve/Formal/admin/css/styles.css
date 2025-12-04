@@ -118,6 +118,8 @@ body[data-theme="dark"] .btn-outline-primary:hover { background-color: #3b7ddd; 
 body[data-theme="dark"] .btn-outline-secondary { color: #c3c8ce; border-color: #6c757d; }
 body[data-theme="dark"] .btn-outline-secondary:hover { background-color: #6c757d; color: #fff; }
 body[data-theme="dark"] .btn-danger { background-color: #dc3545; border-color: #dc3545; color: #fff; }
+body[data-theme="dark"] .btn-outline-danger { color: #f5b3ba; border-color: #dc3545; }
+body[data-theme="dark"] .btn-outline-danger:hover { background-color: #dc3545; color: #fff; }
 body[data-theme="dark"] .btn-secondary { background-color: #6c757d; border-color: #6c757d; color: #fff; }
 
 /* 亮/暗主題：以 CSS 變數驅動 */
@@ -210,4 +212,19 @@ body[data-theme="dark"] .form-check-label { color: var(--fg); }
     background-color: rgba(220, 53, 69, 0.1);
     color: #dc3545;
 }  
+
+/* 全域覆蓋層（載入/儲存） */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.08);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+    backdrop-filter: blur(2px);
+}
+.overlay.show { display: flex; }
+.overlay-card { min-width: 220px; }
+body[data-theme="dark"] .overlay { background: rgba(0,0,0,0.35); }
   
