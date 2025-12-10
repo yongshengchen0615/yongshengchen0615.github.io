@@ -622,12 +622,12 @@
     // - "15:00"
     // - "9:5"
     // - "15:00:00"
-    // - "2025-01-01T07:00:00.000Z"（GAS 回傳的 Date → UTC）
+    // - "2025-01-01T07:00:00.000Z"（GAS 回傳 Date → UTC）
     // 不是時間、或是 00:00 → 視為無預約
     function fmtAppointment(v) {
       if (v === null || v === undefined) return "";
 
-      // 若是 Date 物件（保險）
+      // Date 物件（保險）
       if (Object.prototype.toString.call(v) === "[object Date]") {
         const d = v;
         if (isNaN(d.getTime())) return "";
@@ -640,9 +640,9 @@
       let s = String(v).trim();
       if (!s) return "";
 
-      // ISO 8601 格式（例如 "2025-01-01T07:00:00.000Z"）
+      // ISO 8601（"2025-01-01T07:00:00.000Z"）
       if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
-        const d = new Date(s); // 自動依瀏覽器時區轉本地時間
+        const d = new Date(s); // 自動轉本地時區
         if (isNaN(d.getTime())) return "";
         const hh = String(d.getHours()).padStart(2, "0");
         const mm = String(d.getMinutes()).padStart(2, "0");
@@ -659,7 +659,7 @@
         return `${hh}:${mm}`;
       }
 
-      // 其他含時間的字串（保險），抓第一組 h:m
+      // 其他含時間的字串，抓第一組 h:m
       const any = s.match(/(\d{1,2}):(\d{1,2})/);
       if (any) {
         const hh = any[1].padStart(2, "0");
@@ -668,11 +668,10 @@
         return `${hh}:${mm}`;
       }
 
-      // 完全看不出時間 → 視為無預約
       return "";
     }
 
-    // 從 text-CXXXXXX 這種 class 抽出 hex 色碼 (#XXXXXX)
+    // 從 text-CXXXXXX 類的 class 抽出 hex 色碼 (#XXXXXX)
     function extractHexColor(colorClassString) {
       if (!colorClassString) return null;
       const parts = String(colorClassString).split(/\s+/);
@@ -683,6 +682,22 @@
       const hex = token.slice(-6); // 取最後 6 碼
       if (!/^[0-9A-Fa-f]{6}$/.test(hex)) return null;
       return "#" + hex;
+    }
+
+    // 暗色主題下將顏色提亮，避免太暗看不到
+    function lightenForDarkTheme(hexColor, factor = 1.8) {
+      if (!/^#?[0-9A-Fa-f]{6}$/.test(hexColor)) return hexColor;
+
+      let hex = hexColor.replace("#", "");
+      let r = parseInt(hex.substring(0, 2), 16);
+      let g = parseInt(hex.substring(2, 4), 16);
+      let b = parseInt(hex.substring(4, 6), 16);
+
+      r = Math.min(255, Math.floor(r * factor));
+      g = Math.min(255, Math.floor(g * factor));
+      b = Math.min(255, Math.floor(b * factor));
+
+      return `rgb(${r},${g},${b})`;
     }
 
     function applyFilters(list) {
@@ -709,7 +724,6 @@
           );
         }
 
-        // 其他直接比關鍵字
         return status.includes(filterStatus);
       });
     }
@@ -732,6 +746,8 @@
 
       visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
 
+      const isDark = document.body.classList.contains("theme-dark");
+
       filtered.forEach(row => {
         const tr = document.createElement("tr");
 
@@ -752,20 +768,26 @@
         // Index 顏色 → 順序欄
         const indexColor = extractHexColor(row.colorIndex);
         if (indexColor) {
-          tds[0].style.color = indexColor;
+          tds[0].style.color = isDark
+            ? lightenForDarkTheme(indexColor)
+            : indexColor;
         }
 
         // 師傅顏色 → 師傅欄
         const masterColor = extractHexColor(row.colorMaster);
         if (masterColor) {
-          tds[1].style.color = masterColor;
+          tds[1].style.color = isDark
+            ? lightenForDarkTheme(masterColor)
+            : masterColor;
         }
 
         // 狀態顏色 → 狀態欄（裡面的 tag）
         const statusColor = extractHexColor(row.colorStatus);
         if (statusColor) {
           const statusSpan = tds[2].querySelector(".tag") || tds[2];
-          statusSpan.style.color = statusColor;
+          statusSpan.style.color = isDark
+            ? lightenForDarkTheme(statusColor)
+            : statusColor;
         }
 
         tbody.appendChild(tr);
@@ -819,6 +841,9 @@
       } else {
         themeToggleBtn.textContent = "☀️ 亮色模式";
       }
+
+      // 主題變更後重繪一次（讓顏色亮度跟著調整）
+      render();
     }
 
     // 初始化主題
@@ -850,8 +875,8 @@
 
     // 啟動
     loadData();
-    // 自動刷新（目前 10 秒，可依需求調整）
-    setInterval(loadData, 10000);
+    // 自動刷新（目前 200 秒，可依需求調整）
+    setInterval(loadData, 200000);
   </script>
 </body>
 </html>
