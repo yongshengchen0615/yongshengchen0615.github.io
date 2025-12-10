@@ -398,17 +398,16 @@ async function checkOrRegisterUser(userId, displayName) {
 
 // 註冊使用者到 AUTH_API_URL（寫入 UUID + LINE 名稱 + 審核 = 待審核）
 async function registerUser(userId, displayName) {
-  // 用表單格式避免 CORS preflight
-  const params = new URLSearchParams();
-  params.set("mode", "register");
-  params.set("userId", userId);
-  params.set("displayName", displayName || "");
+  // 直接用 GET，跟 check 的方式一樣
+  const url =
+    AUTH_API_URL +
+    "?mode=register" +
+    "&userId=" +
+    encodeURIComponent(userId) +
+    "&displayName=" +
+    encodeURIComponent(displayName || "");
 
-  const resp = await fetch(AUTH_API_URL, {
-    method: "POST",
-    // 不要自己設定 Content-Type，讓瀏覽器自動用 application/x-www-form-urlencoded
-    body: params,
-  });
+  const resp = await fetch(url, { method: "GET" });
 
   if (!resp.ok) {
     console.error("[Auth] register HTTP error", resp.status, resp.statusText);
@@ -419,6 +418,7 @@ async function registerUser(userId, displayName) {
   console.log("[Auth] register result", data);
   return data;
 }
+
 
 
 // ===== LIFF 初始化與權限守門 =====
