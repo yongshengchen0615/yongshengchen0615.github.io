@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>預約月曆 & 師傅狀態</title>
+  <!-- 連結外部 CSS -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 全螢幕 Loading -->
+  <div id="loadingOverlay">
+    <div class="loader"></div>
+  </div>
+
+  <!-- 主要畫面：資料載入完才顯示 -->
+  <div id="appContainer">
+    <div class="calendar-container">
+      <h1>月曆視圖</h1>
+      <div class="subtitle"></div>
+
+      <div class="month-nav">
+        <button id="prevBtn">← 上個月</button>
+        <div id="monthLabel" class="month-label"></div>
+        <button id="nextBtn">下個月 →</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>日</th><th>一</th><th>二</th><th>三</th>
+              <th>四</th><th>五</th><th>六</th>
+            </tr>
+          </thead>
+          <tbody id="calendarBody"></tbody>
+        </table>
+      </div>
+
+      <div id="popup" class="event-popup" style="display:none;"></div>
+
+      <!-- 師傅狀態卡片：放在月曆下方 -->
+      <div class="tech-status-card">
+        <div class="tech-status-header">
+          <div class="tech-status-title">
+            師傅 <span id="techMasterId">--</span> 目前狀態
+          </div>
+        </div>
+
+        <div class="tech-status-grid">
+          <div>
+            <div class="tech-col-title">身體</div>
+            <div class="tech-row">
+              <span class="tech-label">狀態</span>
+              <span class="tech-value" id="bodyStatusText">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">預約</span>
+              <span class="tech-value" id="bodyAppointmentText">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">剩餘時間</span>
+              <span class="tech-value" id="bodyRemainingText">-</span>
+            </div>
+          </div>
+          <div>
+            <div class="tech-col-title">腳底</div>
+            <div class="tech-row">
+              <span class="tech-label">狀態</span>
+              <span class="tech-value" id="footStatusText">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">預約</span>
+              <span class="tech-value" id="footAppointmentText">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">剩餘時間</span>
+              <span class="tech-value" id="footRemainingText">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- /師傅狀態卡片 -->
+    </div>
+  </div>
+
+  <!-- 外部 JS -->
+  <script src="app.js"></script>
+</body>
+</html>
