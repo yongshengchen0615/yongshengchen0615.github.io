@@ -5,6 +5,8 @@ import { updateTotalAll, generateBookingData } from "./js/utils/bookingUtils.js"
 import { handleSubmit } from "./js/handlers/submitHandler.js";
 import { HistoryModule } from "./js/modules/historyModule.js";
 import { TestModeModule } from "./js/modules/testModeModule.js";
+import { loadServiceData } from "./js/data/serviceData.js";
+import { loadBookingConfig } from "./js/data/bookingConfig.js";
 //版空測試
 $(document).ready(async function () {
     try {
@@ -55,6 +57,20 @@ $(document).ready(async function () {
     } catch (err) {
         console.error("❌ LIFF 初始化失敗", err);
         alert("⚠️ 無法載入 LIFF，請重新整理頁面！");
+    }
+
+    // ✅ 先載入遠端資料（Google Apps Script）
+    // 請在 index.html 以 <script> 設定 window.GAS_BASE_URL 或分別設定
+    // window.GAS_SERVICE_ENDPOINT / window.GAS_CONFIG_ENDPOINT 指向對應 Web App URL
+    try {
+        await Promise.all([
+            loadServiceData(),
+            loadBookingConfig(),
+        ]);
+    } catch (e) {
+        console.error("❌ 載入遠端資料失敗：", e);
+        alert("⚠️ 無法載入服務或設定資料，請稍後再試。");
+        return; // 中止初始化，避免使用未載入的資料
     }
 
     // ✅ 預約時間設定：9:00~21:00，需提前 60 分鐘

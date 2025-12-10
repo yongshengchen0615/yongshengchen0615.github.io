@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Body & Foot Panel Dashboard</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-card: #020617;
+      --bg-soft: #020617;
+      --border: #1f2937;
+      --text-main: #e5e7eb;
+      --text-sub: #9ca3af;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.1);
+      --danger: #f97373;
+      --muted: #4b5563;
+      --radius-lg: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    /* 暗色系（預設） */
+    body.theme-dark {
+      background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #020617 100%);
+      color: var(--text-main);
+    }
+
+    /* 亮色系 */
+    body.theme-light {
+      --bg: #f3f4f6;
+      --bg-card: #ffffff;
+      --bg-soft: #e5e7eb;
+      --border: #d1d5db;
+      --text-main: #111827;
+      --text-sub: #4b5563;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.08);
+      --danger: #dc2626;
+      --muted: #9ca3af;
+
+      background: radial-gradient(circle at top, #e5e7eb 0, #f9fafb 45%, #f3f4f6 100%);
+      color: var(--text-main);
+    }
+
+    .layout {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 .logo-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a 50%, #14532d 100%);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.7);
+    }
+
+    .subtitle {
+      margin-bottom: 16px;
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      font-size: 11px;
+      color: var(--text-sub);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: default;
+    }
+
+    .pill-btn {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    body.theme-light .pill {
+      background: #ffffff;
+      border-color: rgba(209, 213, 219, 0.9);
+      color: var(--text-sub);
+    }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+    }
+
+    .top-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-left: auto;
+    }
+
+    .stat-card {
+      min-width: 108px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(31, 41, 55, 0.9);
+    }
+
+    body.theme-light .stat-card {
+      background: #ffffff;
+      border-color: #e5e7eb;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-sub);
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .tabs-card {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: var(--radius-lg);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(31, 41, 55, 1);
+      box-shadow:
+        0 18px 45px rgba(15, 23, 42, 0.9),
+        0 0 0 1px rgba(15, 23, 42, 0.8);
+    }
+
+    body.theme-light .tabs-card {
+      background: #ffffff;
+      border-color: #e5e7eb;
+      box-shadow:
+        0 12px 30px rgba(15, 23, 42, 0.08),
+        0 0 0 1px rgba(209, 213, 219, 0.8);
+    }
+
+    .tabs-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .tab-buttons {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      gap: 3px;
+    }
+
+    body.theme-light .tab-buttons {
+      background: #f3f4f6;
+      border-color: #d1d5db;
+    }
+
+    .tab-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-sub);
+      font-size: 13px;
+      padding: 5px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tab-btn .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #4b5563;
+    }
+
+    .tab-btn.active {
+      background: radial-gradient(circle at 30% 0%, rgba(56, 189, 248, 0.25), rgba(37, 99, 235, 0.6));
+      color: #e5e7eb;
+      box-shadow:
+        0 0 0 1px rgba(59, 130, 246, 0.6),
+        0 0 20px rgba(37, 99, 235, 0.5);
+    }
+
+    body.theme-light .tab-btn.active {
+      color: #0b1120;
+    }
+
+    .tab-btn.active .dot {
+      background: #22c55e;
+      box-shadow: 0 0 7px rgba(34, 197, 94, 0.7);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .filters label {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
+    .input,
+    .select {
+      font-size: 12px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text-main);
+      outline: none;
+      min-width: 120px;
+    }
+
+    body.theme-light .input,
+    body.theme-light .select {
+      background: #ffffff;
+      border-color: #d1d5db;
+      color: var(--text-main);
+    }
+
+    .input::placeholder {
+      color: #6b7280;
+    }
+
+    .panel-body {
+      margin-top: 8px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(31, 41, 55, 1);
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.9), #020617);
+    }
+
+    body.theme-light .panel-body {
+      background: #f9fafb;
+      border-color: #e5e7eb;
+    }
+
+    .table-wrap {
+      max-height: 70vh;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th,
+    td {
+      padding: 6px 8px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    thead {
+      background: rgba(15, 23, 42, 0.98);
+    }
+
+    body.theme-light thead {
+      background: #f3f4f6;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      font-weight: 500;
+      color: var(--text-sub);
+      border-bottom: 1px solid rgba(31, 41, 55, 1);
+    }
+
+    body.theme-light th {
+      border-bottom-color: #e5e7eb;
+    }
+
+    tbody tr:nth-child(odd) {
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(15, 23, 42, 0.98);
+    }
+
+    body.theme-light tbody tr:nth-child(odd) {
+      background: #ffffff;
+    }
+
+    body.theme-light tbody tr:nth-child(even) {
+      background: #f9fafb;
+    }
+
+    tbody tr:hover {
+      background: rgba(30, 64, 175, 0.55);
+    }
+
+    body.theme-light tbody tr:hover {
+      background: #e5effe;
+    }
+
+    td {
+      border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+    }
+
+    body.theme-light td {
+      border-bottom-color: #e5e7eb;
+    }
+
+    .tag {
+      border-radius: 9999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tag-status-work {
+      background: rgba(250, 204, 21, 0.08);
+      color: #fde68a;
+      border: 1px solid rgba(234, 179, 8, 0.7);
+    }
+
+    .tag-status-off {
+      background: rgba(15, 23, 42, 0.9);
+      color: #9ca3af;
+      border: 1px solid rgba(75, 85, 99, 0.7);
+    }
+
+    .tag-status-schedule {
+      background: rgba(22, 163, 74, 0.12);
+      color: #bbf7d0;
+      border: 1px solid rgba(22, 163, 74, 0.8);
+    }
+
+    .tag-status-notyet {
+      background: rgba(30, 64, 175, 0.1);
+      color: #bfdbfe;
+      border: 1px solid rgba(59, 130, 246, 0.8);
+    }
+
+    .status-remaining {
+      font-weight: 600;
+    }
+
+    .tag-appointment {
+      background: rgba(15, 23, 42, 0.9);
+      color: #e5e7eb;
+      border: 1px solid rgba(75, 85, 99, 0.9);
+      min-width: 52px;
+    }
+
+    body.theme-light .tag-appointment {
+      background: #ffffff;
+      color: var(--text-main);
+      border-color: #d1d5db;
+    }
+
+    .small {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      color: #9ca3af;
+    }
+
+    body.theme-light .badge {
+      background: #ffffff;
+      border-color: #d1d5db;
+      color: var(--text-sub);
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #fbbf24;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 12px;
+      }
+
+      .top-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .top-stats {
+        margin-left: 0;
+      }
+
+      .tabs-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .filters {
+        width: 100%;
+      }
+
+      .input,
+      .select {
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <h1>
+      <span class="logo-dot"></span>
+      Panel Monitor
+    </h1>
+    <div class="subtitle">
+      由腳本貓 → GAS，同步「身體 / 腳底」師傅狀態。這裡只顯示每位師傅的最新一筆資料。
+    </div>
+
+    <div class="top-bar">
+      <div class="pill" id="infoPill">
+        <span class="pill-dot"></span>
+        <span id="infoText">初始化中…</span>
+      </div>
+
+      <div class="top-stats">
+        <div class="stat-card">
+          <div class="stat-label">身體師傅數</div>
+          <div class="stat-value" id="bodyCount">–</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">腳底師傅數</div>
+          <div class="stat-value" id="footCount">–</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">監控來源</div>
+          <div class="stat-value" style="font-size: 13px;">GAS API</div>
+        </div>
+      </div>
+
+      <!-- 主題切換 -->
+      <button id="themeToggle" class="pill pill-btn" type="button">
+        ☀️ 亮色模式
+      </button>
+    </div>
+
+    <div class="tabs-card">
+      <div class="tabs-header">
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-panel="body" id="tabBody">
+            <span class="dot"></span>
+            身體 Body
+          </button>
+          <button class="tab-btn" data-panel="foot" id="tabFoot">
+            <span class="dot"></span>
+            腳底 Foot
+          </button>
+        </div>
+
+        <div class="filters">
+          <label>
+            <span class="small">師傅搜尋</span><br />
+            <input
+              id="filterMaster"
+              class="input"
+              type="text"
+              placeholder="輸入師傅編號，例如 07"
+            />
+          </label>
+
+          <label>
+            <span class="small">狀態篩選</span><br />
+            <select id="filterStatus" class="select">
+              <option value="all">全部狀態</option>
+              <option value="work">工作中 / 有剩餘時間</option>
+              <option value="排班">排班</option>
+              <option value="未到">未到</option>
+              <option value="下班">下班</option>
+            </select>
+          </label>
+
+          <span class="badge">
+            <span class="badge-dot"></span>
+            <span id="visibleCount">– 筆顯示中</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>順序</th>
+                <th>師傅</th>
+                <th>狀態</th>
+                <th>預約</th>
+              </tr>
+            </thead>
+            <tbody id="dataTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ★ 換成你的 GAS 網址
+    const API_URL = "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+
+    const rawData = {
+      body: [],
+      foot: []
+    };
+
+    let activePanel = "body";
+    let filterMaster = "";
+    let filterStatus = "all";
+
+    const infoTextEl = document.getElementById("infoText");
+    const bodyCountEl = document.getElementById("bodyCount");
+    const footCountEl = document.getElementById("footCount");
+    const visibleCountEl = document.getElementById("visibleCount");
+
+    const tabBodyBtn = document.getElementById("tabBody");
+    const tabFootBtn = document.getElementById("tabFoot");
+
+    const filterMasterEl = document.getElementById("filterMaster");
+    const filterStatusEl = document.getElementById("filterStatus");
+    const tbody = document.getElementById("dataTableBody");
+
+    const themeToggleBtn = document.getElementById("themeToggle");
+
+    function toStatusTag(status, remaining) {
+      const hasRemaining = remaining !== "" && remaining !== null && remaining !== undefined;
+      if (hasRemaining) {
+        return `<span class="tag tag-status-work status-remaining">工作中 (${remaining})</span>`;
+      }
+      if (!status) return "";
+
+      if (status.includes("排班")) {
+        return `<span class="tag tag-status-schedule">${status}</span>`;
+      }
+      if (status.includes("未到")) {
+        return `<span class="tag tag-status-notyet">${status}</span>`;
+      }
+      if (status.includes("下班")) {
+        return `<span class="tag tag-status-off">${status}</span>`;
+      }
+      if (status.includes("工作")) {
+        return `<span class="tag tag-status-work">${status}</span>`;
+      }
+      return status;
+    }
+
+    function fmtRemaining(v) {
+      if (v === "" || v === null || v === undefined) return "";
+      const n = Number(v);
+      if (Number.isNaN(n)) return v;
+      if (n === 0) return "0";
+      if (n > 0) return `+${n}`;
+      return String(n);
+    }
+
+    // 預約時間只顯示 24 小時制 HH:mm
+    // 來源可能是：
+    // - "15:00"
+    // - "9:5"
+    // - "15:00:00"
+    // - "2025-01-01T07:00:00.000Z"（GAS 回傳的 Date → UTC）
+    // 不是時間、或是 00:00 → 視為無預約
+    function fmtAppointment(v) {
+      if (v === null || v === undefined) return "";
+
+      // 若是 Date 物件（保險）
+      if (Object.prototype.toString.call(v) === "[object Date]") {
+        const d = v;
+        if (isNaN(d.getTime())) return "";
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        if (hh === "00" && mm === "00") return "";
+        return `${hh}:${mm}`;
+      }
+
+      let s = String(v).trim();
+      if (!s) return "";
+
+      // ISO 8601 格式（例如 "2025-01-01T07:00:00.000Z"）
+      if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
+        const d = new Date(s); // 自動依瀏覽器時區轉本地時間
+        if (isNaN(d.getTime())) return "";
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        if (hh === "00" && mm === "00") return "";
+        return `${hh}:${mm}`;
+      }
+
+      // 純時間字串 "HH:mm" / "H:m" / "HH:mm:ss"
+      const pure = s.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
+      if (pure) {
+        const hh = pure[1].padStart(2, "0");
+        const mm = pure[2].padStart(2, "0");
+        if (hh === "00" && mm === "00") return "";
+        return `${hh}:${mm}`;
+      }
+
+      // 其他含時間的字串（保險），抓第一組 h:m
+      const any = s.match(/(\d{1,2}):(\d{1,2})/);
+      if (any) {
+        const hh = any[1].padStart(2, "0");
+        const mm = any[2].padStart(2, "0");
+        if (hh === "00" && mm === "00") return "";
+        return `${hh}:${mm}`;
+      }
+
+      // 完全看不出時間 → 視為無預約
+      return "";
+    }
+
+    // 從 text-CXXXXXX 這種 class 抽出 hex 色碼 (#XXXXXX)
+    function extractHexColor(colorClassString) {
+      if (!colorClassString) return null;
+      const parts = String(colorClassString).split(/\s+/);
+      const textClass = parts.find(p => p.startsWith("text-C"));
+      if (!textClass) return null;
+
+      const token = textClass.replace("text-", ""); // 例如 C333333 / CBC5C5C / CCBCBCB
+      const hex = token.slice(-6); // 取最後 6 碼
+      if (!/^[0-9A-Fa-f]{6}$/.test(hex)) return null;
+      return "#" + hex;
+    }
+
+    function applyFilters(list) {
+      return list.filter(row => {
+        // 搜尋師傅
+        if (filterMaster) {
+          const key = String(filterMaster).trim();
+          if (!String(row.masterId || "").includes(key)) {
+            return false;
+          }
+        }
+
+        // 狀態過濾
+        if (filterStatus === "all") return true;
+
+        const status = String(row.status || "");
+        const remainingDisplay = fmtRemaining(row.remaining);
+
+        if (filterStatus === "work") {
+          // 有剩餘時間 或 狀態包含 "工作"
+          return (
+            (remainingDisplay !== "") ||
+            status.includes("工作")
+          );
+        }
+
+        // 其他直接比關鍵字
+        return status.includes(filterStatus);
+      });
+    }
+
+    function render() {
+      const list = rawData[activePanel] || [];
+
+      bodyCountEl.textContent = rawData.body.length;
+      footCountEl.textContent = rawData.foot.length;
+
+      tbody.innerHTML = "";
+
+      const filtered = applyFilters(
+        list.slice().sort((a, b) => {
+          const ia = Number(a.sort || a.index || 0);
+          const ib = Number(b.sort || b.index || 0);
+          return ia - ib;
+        })
+      );
+
+      visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
+
+      filtered.forEach(row => {
+        const tr = document.createElement("tr");
+
+        const remainingDisplay = fmtRemaining(row.remaining);
+        const statusHtml = toStatusTag(row.status, remainingDisplay);
+        const appt = fmtAppointment(row.appointment);
+        const apptDisplay = appt || "—";
+
+        tr.innerHTML = `
+          <td>${row.sort || row.index || ""}</td>
+          <td>${row.masterId || ""}</td>
+          <td>${statusHtml}</td>
+          <td><span class="tag tag-appointment">${apptDisplay}</span></td>
+        `;
+
+        const tds = tr.querySelectorAll("td");
+
+        // Index 顏色 → 順序欄
+        const indexColor = extractHexColor(row.colorIndex);
+        if (indexColor) {
+          tds[0].style.color = indexColor;
+        }
+
+        // 師傅顏色 → 師傅欄
+        const masterColor = extractHexColor(row.colorMaster);
+        if (masterColor) {
+          tds[1].style.color = masterColor;
+        }
+
+        // 狀態顏色 → 狀態欄（裡面的 tag）
+        const statusColor = extractHexColor(row.colorStatus);
+        if (statusColor) {
+          const statusSpan = tds[2].querySelector(".tag") || tds[2];
+          statusSpan.style.color = statusColor;
+        }
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function setActivePanel(panel) {
+      activePanel = panel;
+      if (panel === "body") {
+        tabBodyBtn.classList.add("active");
+        tabFootBtn.classList.remove("active");
+      } else {
+        tabFootBtn.classList.add("active");
+        tabBodyBtn.classList.remove("active");
+      }
+      render();
+    }
+
+    async function loadData() {
+      infoTextEl.textContent = "從 GAS 載入資料中…";
+
+      try {
+        const resp = await fetch(API_URL, { method: "GET" });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+
+        rawData.body = Array.isArray(data.body) ? data.body : [];
+        rawData.foot = Array.isArray(data.foot) ? data.foot : [];
+
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        const ss = String(now.getSeconds()).padStart(2, "0");
+        infoTextEl.textContent = `已更新：${hh}:${mm}:${ss}`;
+
+        render();
+      } catch (err) {
+        console.error("[Dashboard] 讀取 GAS 失敗：", err);
+        infoTextEl.textContent = "⚠ 無法讀取 GAS（請檢查網址 / 權限）";
+      }
+    }
+
+    // 主題切換
+    function applyTheme(theme) {
+      document.body.classList.remove("theme-light", "theme-dark");
+      document.body.classList.add(theme);
+      localStorage.setItem("panelTheme", theme);
+
+      if (theme === "theme-light") {
+        themeToggleBtn.textContent = "🌙 暗色模式";
+      } else {
+        themeToggleBtn.textContent = "☀️ 亮色模式";
+      }
+    }
+
+    // 初始化主題
+    (function initTheme() {
+      const saved = localStorage.getItem("panelTheme") || "theme-dark";
+      applyTheme(saved);
+    })();
+
+    // 事件綁定
+    tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
+    tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
+
+    filterMasterEl.addEventListener("input", (e) => {
+      filterMaster = e.target.value || "";
+      render();
+    });
+
+    filterStatusEl.addEventListener("change", (e) => {
+      filterStatus = e.target.value || "all";
+      render();
+    });
+
+    themeToggleBtn.addEventListener("click", () => {
+      const next = document.body.classList.contains("theme-dark")
+        ? "theme-light"
+        : "theme-dark";
+      applyTheme(next);
+    });
+
+    // 啟動
+    loadData();
+    // 自動刷新（目前 10 秒，可依需求調整）
+    setInterval(loadData, 10000);
+  </script>
+</body>
+</html>
