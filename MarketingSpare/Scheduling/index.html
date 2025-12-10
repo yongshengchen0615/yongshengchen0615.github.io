@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Body & Foot Panel Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <h1>
+      <span class="logo-dot"></span>
+      Panel Monitor
+    </h1>
+    <div class="subtitle">
+      由腳本貓 → GAS，同步「身體 / 腳底」師傅狀態。這裡只顯示每位師傅的最新一筆資料。
+    </div>
+
+    <div class="top-bar">
+      <div class="pill" id="infoPill">
+        <span class="pill-dot"></span>
+        <span id="infoText">初始化中…</span>
+      </div>
+
+      <div class="top-stats">
+        <div class="stat-card">
+          <div class="stat-label">身體師傅數</div>
+          <div class="stat-value" id="bodyCount">–</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">腳底師傅數</div>
+          <div class="stat-value" id="footCount">–</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">監控來源</div>
+          <div class="stat-value" style="font-size: 13px;">GAS API</div>
+        </div>
+      </div>
+
+      <!-- 主題切換 -->
+      <button id="themeToggle" class="pill pill-btn" type="button">
+        ☀️ 亮色模式
+      </button>
+    </div>
+
+    <div class="tabs-card">
+      <div class="tabs-header">
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-panel="body" id="tabBody">
+            <span class="dot"></span>
+            身體 Body
+          </button>
+          <button class="tab-btn" data-panel="foot" id="tabFoot">
+            <span class="dot"></span>
+            腳底 Foot
+          </button>
+        </div>
+
+        <div class="filters">
+          <label>
+            <span class="small">師傅搜尋</span><br />
+            <input
+              id="filterMaster"
+              class="input"
+              type="text"
+              placeholder="輸入師傅編號，例如 07"
+            />
+          </label>
+
+          <label>
+            <span class="small">狀態篩選</span><br />
+            <select id="filterStatus" class="select">
+              <option value="all">全部狀態</option>
+              <option value="work">工作中 / 有剩餘時間</option>
+              <option value="排班">排班</option>
+              <option value="未到">未到</option>
+              <option value="下班">下班</option>
+            </select>
+          </label>
+
+          <span class="badge">
+            <span class="badge-dot"></span>
+            <span id="visibleCount">– 筆顯示中</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div class="panel-header-row">
+          <div class="panel-title" id="panelTitle">身體 Body 面板</div>
+          <div class="panel-subtitle">顯示每位師傅最新狀態</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>順序</th>
+                <th>師傅</th>
+                <th>狀態</th>
+                <th>預約</th>
+              </tr>
+            </thead>
+            <tbody id="dataTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
