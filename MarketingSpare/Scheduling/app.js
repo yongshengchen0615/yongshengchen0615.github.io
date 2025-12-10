@@ -25,7 +25,7 @@ let filterMaster = "";
 let filterStatus = "all";
 
 const infoTextEl = document.getElementById("infoText");
-// 已移除身體/腳底師傅數卡片，不再需要 bodyCountEl / footCountEl
+// 已取消身體/腳底師傅數統計，不再需要 bodyCount / footCount
 const visibleCountEl = document.getElementById("visibleCount");
 
 const tabBodyBtn = document.getElementById("tabBody");
@@ -213,7 +213,7 @@ function updatePanelTitle(filteredLength) {
 function render() {
   const list = rawData[activePanel] || [];
 
-  // 已取消「身體 / 腳底師傅數」功能，不再操作 bodyCount / footCount
+  if (!tbody) return;
 
   tbody.innerHTML = "";
 
@@ -225,9 +225,11 @@ function render() {
     }),
   );
 
+  // 防止 null textContent crash
   if (visibleCountEl) {
     visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
   }
+
   updatePanelTitle(filtered.length);
 
   const isDark = document.body.classList.contains("theme-dark");
@@ -249,7 +251,6 @@ function render() {
 
     const tds = tr.querySelectorAll("td");
 
-    // Index 顏色 → 順序欄
     const indexColor = extractHexColor(row.colorIndex);
     if (indexColor) {
       tds[0].style.color = isDark
@@ -257,7 +258,6 @@ function render() {
         : indexColor;
     }
 
-    // 師傅顏色 → 師傅欄
     const masterColor = extractHexColor(row.colorMaster);
     if (masterColor) {
       tds[1].style.color = isDark
@@ -265,7 +265,6 @@ function render() {
         : masterColor;
     }
 
-    // 狀態顏色 → 狀態欄（裡面的 tag）
     const statusColor = extractHexColor(row.colorStatus);
     if (statusColor) {
       const statusSpan = tds[2].querySelector(".tag") || tds[2];
@@ -335,10 +334,12 @@ function applyTheme(theme) {
   document.body.classList.add(theme);
   localStorage.setItem("panelTheme", theme);
 
-  if (theme === "theme-light" && themeToggleBtn) {
-    themeToggleBtn.textContent = "🌙 暗色模式";
-  } else if (themeToggleBtn) {
-    themeToggleBtn.textContent = "☀️ 亮色模式";
+  if (themeToggleBtn) {
+    if (theme === "theme-light") {
+      themeToggleBtn.textContent = "🌙 暗色模式";
+    } else {
+      themeToggleBtn.textContent = "☀️ 亮色模式";
+    }
   }
 
   // 主題變更後重繪一次（讓顏色亮度跟著調整）

@@ -18,10 +18,10 @@
   <div class="layout" id="appRoot" style="display: none;">
     <h1>
       <span class="logo-dot"></span>
-      排班系統
+      Panel Monitor
     </h1>
     <div class="subtitle">
-    <!--  由腳本貓 → GAS，同步「身體 / 腳底」師傅狀態。這裡只顯示每位師傅的最新一筆資料。-->
+      由腳本貓 → GAS，同步「身體 / 腳底」師傅狀態。這裡只顯示每位師傅的最新一筆資料。
     </div>
 
     <div class="top-bar">
@@ -30,6 +30,7 @@
         <span id="infoText">初始化中…</span>
       </div>
 
+      <!-- 已取消：身體師傅數 / 腳底師傅數 / 監控來源 -->
       <!--
       <div class="top-stats">
         <div class="stat-card">
@@ -119,8 +120,8 @@
   </div>
 
   <script src="app.js"></script>
+  <script>
+    console.log("LIFF SDK Loaded:", typeof liff);
+  </script>
 </body>
-<script>
-  console.log("LIFF SDK Loaded:", typeof liff);
-</script>
 </html>
