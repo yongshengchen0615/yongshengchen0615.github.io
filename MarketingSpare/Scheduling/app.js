@@ -1,7 +1,20 @@
-// ★ 換成你的 GAS 網址
-const API_URL =
+// ★ 換成你的 GAS Web App URL
+// A：師傅狀態（身體 / 腳底）
+const STATUS_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
+// B：使用者權限（UUID + 名稱 + 審核）
+const AUTH_API_URL =
+  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+
+// ★ LINE LIFF ID
+const LIFF_ID = "2008669658";
+
+// 授權畫面 & 主畫面容器
+const gateEl = document.getElementById("gate");
+const appRootEl = document.getElementById("appRoot");
+
+// Dashboard 用資料
 const rawData = {
   body: [],
   foot: [],
@@ -25,6 +38,33 @@ const tbody = document.getElementById("dataTableBody");
 
 const themeToggleBtn = document.getElementById("themeToggle");
 const panelTitleEl = document.getElementById("panelTitle");
+
+// ===== gate 顯示工具 =====
+
+function showGate(message, isError = false) {
+  if (!gateEl) return;
+  gateEl.textContent = message;
+  gateEl.classList.remove("gate-hidden");
+  if (isError) {
+    gateEl.classList.add("gate-error");
+  } else {
+    gateEl.classList.remove("gate-error");
+  }
+  if (appRootEl) {
+    appRootEl.style.display = "none";
+  }
+}
+
+function openApp() {
+  if (gateEl) {
+    gateEl.classList.add("gate-hidden");
+  }
+  if (appRootEl) {
+    appRootEl.style.display = "block";
+  }
+}
+
+// ===== 狀態格式化 / 顏色處理 =====
 
 function toStatusTag(status, remaining) {
   const hasRemaining =
@@ -134,6 +174,8 @@ function lightenForDarkTheme(hexColor, factor = 1.8) {
 
   return `rgb(${r},${g},${b})`;
 }
+
+// ===== 過濾與渲染 =====
 
 function applyFilters(list) {
   return list.filter((row) => {
@@ -248,11 +290,15 @@ function setActivePanel(panel) {
   render();
 }
 
+// ===== 從「師傅狀態」GAS 載入 body / foot =====
+
 async function loadData() {
-  infoTextEl.textContent = "從 GAS 載入資料中…";
+  if (infoTextEl) {
+    infoTextEl.textContent = "從 GAS 載入資料中…";
+  }
 
   try {
-    const resp = await fetch(API_URL, { method: "GET" });
+    const resp = await fetch(STATUS_API_URL, { method: "GET" });
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const data = await resp.json();
 
@@ -263,16 +309,27 @@ async function loadData() {
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
     const ss = String(now.getSeconds()).padStart(2, "0");
-    infoTextEl.textContent = `已更新：${hh}:${mm}:${ss}`;
+    if (infoTextEl) {
+      infoTextEl.textContent = `已更新：${hh}:${mm}:${ss}`;
+    }
 
     render();
   } catch (err) {
-    console.error("[Dashboard] 讀取 GAS 失敗：", err);
-    infoTextEl.textContent = "⚠ 無法讀取 GAS（請檢查網址 / 權限）";
+    console.error("[Dashboard] 讀取狀態 GAS 失敗：", err);
+    if (infoTextEl) {
+      infoTextEl.textContent = "⚠ 無法讀取狀態 GAS（請檢查網址 / 權限）";
+    }
   }
 }
 
-// 主題切換
+function startApp() {
+  loadData();
+  // 自動刷新（目前 20 秒，可依需求調整）
+  setInterval(loadData, 20000);
+}
+
+// ===== 主題切換 =====
+
 function applyTheme(theme) {
   document.body.classList.remove("theme-light", "theme-dark");
   document.body.classList.add(theme);
@@ -294,7 +351,132 @@ function applyTheme(theme) {
   applyTheme(saved);
 })();
 
-// 事件綁定
+// ===== 使用者權限：check + register（用「權限」那支 GAS）=====
+
+// 呼叫 AUTH_API_URL 檢查使用者；若沒在名單會自動註冊並標記待審核
+async function checkOrRegisterUser(userId, displayName) {
+  const url =
+    AUTH_API_URL +
+    "?mode=check&userId=" +
+    encodeURIComponent(userId);
+
+  const resp = await fetch(url, { method: "GET" });
+  if (!resp.ok) {
+    throw new Error("Check HTTP " + resp.status);
+  }
+
+  // 預期 GAS 回傳：
+  // { status: "approved" | "pending" | "none" }
+  const data = await resp.json();
+  const status = (data && data.status) || "none";
+
+  if (status === "approved") {
+    // 已通過 → 可以使用
+    return { allowed: true, status: "approved" };
+  }
+
+  if (status === "pending") {
+    // 已存在但還沒審核 → 顯示管理者審核中
+    return { allowed: false, status: "pending" };
+  }
+
+  // 走到這裡代表 status === "none" → Sheet 找不到 UUID
+  // 先顯示沒有權限，再自動送出審核
+  showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
+
+  try {
+    await registerUser(userId, displayName);
+  } catch (e) {
+    console.error("[Register] 寫入 AUTH GAS 失敗：", e);
+    // 寫入失敗時就直接顯示錯誤
+    return { allowed: false, status: "error" };
+  }
+
+  // 註冊完成後，狀態視為 pending（待管理者把審核欄位改成通過）
+  return { allowed: false, status: "pending" };
+}
+
+// 註冊使用者到 AUTH_API_URL（寫入 UUID + LINE 名稱 + 審核 = 待審核）
+async function registerUser(userId, displayName) {
+  const payload = {
+    mode: "register",
+    userId,
+    displayName,
+  };
+
+  const resp = await fetch(AUTH_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!resp.ok) {
+    throw new Error("Register HTTP " + resp.status);
+  }
+
+  const data = await resp.json();
+  return data; // 預期 { ok: true } 類似這樣
+}
+
+// ===== LIFF 初始化與權限守門 =====
+
+async function initLiffAndGuard() {
+  showGate("正在啟動 LIFF…");
+
+  try {
+    await liff.init({ liffId: LIFF_ID });
+
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+
+    showGate("正在取得使用者資訊…");
+
+    const ctx = liff.getContext();
+    const profile = await liff.getProfile();
+
+    const userId = (ctx && ctx.userId) || profile.userId;
+    const displayName = profile.displayName || "";
+
+    if (!userId) {
+      throw new Error("無法取得 LINE 使用者 ID");
+    }
+
+    showGate("正在驗證使用權限…");
+
+    const result = await checkOrRegisterUser(userId, displayName);
+
+    if (result.allowed && result.status === "approved") {
+      showGate("驗證通過，正在載入資料…");
+      openApp();
+      startApp();
+      return;
+    }
+
+    if (result.status === "pending") {
+      // 不論是原本就 pending 或剛註冊完，都顯示「管理者審核中」
+      showGate("此帳號已送出使用申請，管理者審核中。");
+      return;
+    }
+
+    if (result.status === "error") {
+      showGate("⚠ 無法送出審核申請，請稍後再試。", true);
+      return;
+    }
+
+    // 理論上不會走到這裡，保險一下
+    showGate("⚠ 無法確認使用權限，請稍後再試。", true);
+  } catch (err) {
+    console.error("[LIFF] 初始化或驗證失敗：", err);
+    showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
+  }
+}
+
+// ===== 事件綁定 =====
+
 tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
 tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
 
@@ -315,7 +497,5 @@ themeToggleBtn.addEventListener("click", () => {
   applyTheme(next);
 });
 
-// 啟動
-loadData();
-// 自動刷新（目前 20 秒，可依需求調整）
-setInterval(loadData, 20000);
+// ========= 入口：先跑 LIFF + 權限檢查 =========
+initLiffAndGuard();

@@ -5,9 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Body & Foot Panel Dashboard</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-  <div class="layout">
+  <!-- 授權 / 判斷登入 / 審核狀態遮罩 -->
+  <div id="gate" class="gate gate-hidden">
+    初始化中…
+  </div>
+
+  <!-- 主畫面容器（通過驗證後才顯示） -->
+  <div class="layout" id="appRoot" style="display: none;">
     <h1>
       <span class="logo-dot"></span>
       Panel Monitor
@@ -87,7 +95,7 @@
 
       <div class="panel-body">
         <div class="panel-header-row">
-          <div class="panel-title" id="panelTitle">身體 Body 面板</div>
+          <div class="panel-title" id="panelTitle">身體 Body 面板 · 0 位師傅</div>
           <div class="panel-subtitle">顯示每位師傅最新狀態</div>
         </div>
         <div class="table-wrap">

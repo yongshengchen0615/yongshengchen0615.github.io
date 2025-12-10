@@ -490,6 +490,35 @@ body.theme-light .badge {
   background: #fbbf24;
 }
 
+/* ===== LIFF 權限遮罩 ===== */
+
+.gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  background: radial-gradient(circle at top, #020617, #000000);
+  color: #e5e7eb;
+  font-size: 14px;
+  z-index: 9999;
+}
+
+body.theme-light .gate {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.gate-hidden {
+  display: none;
+}
+
+.gate-error {
+  color: #fecaca;
+}
+
 /* ========= RWD ========= */
 
 @media (max-width: 1024px) {
