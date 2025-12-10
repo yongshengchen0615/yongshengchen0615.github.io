@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Body & Foot Panel Dashboard</title>
   <style>
     :root {
@@ -64,6 +65,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     h1 .logo-dot {
@@ -99,11 +101,16 @@
       align-items: center;
       gap: 6px;
       cursor: default;
+      max-width: 100%;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
 
     .pill-btn {
       cursor: pointer;
       user-select: none;
+      white-space: nowrap;
     }
 
     body.theme-light .pill {
@@ -133,6 +140,13 @@
       border-radius: 10px;
       background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.9));
       border: 1px solid rgba(31, 41, 55, 0.9);
+      flex: 1 1 108px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.7);
     }
 
     body.theme-light .stat-card {
@@ -145,6 +159,7 @@
       font-size: 11px;
       color: var(--text-sub);
       margin-bottom: 2px;
+      white-space: nowrap;
     }
 
     .stat-value {
@@ -154,7 +169,7 @@
 
     .tabs-card {
       margin-top: 10px;
-      padding: 10px;
+      padding: 12px;
       border-radius: var(--radius-lg);
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(31, 41, 55, 1);
@@ -187,6 +202,7 @@
       background: rgba(15, 23, 42, 0.9);
       border: 1px solid rgba(55, 65, 81, 0.9);
       gap: 3px;
+      flex-wrap: wrap;
     }
 
     body.theme-light .tab-buttons {
@@ -205,6 +221,8 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      white-space: nowrap;
+      transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
     }
 
     .tab-btn .dot {
@@ -253,6 +271,14 @@
       color: var(--text-main);
       outline: none;
       min-width: 120px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .input:focus,
+    .select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
+      background: rgba(15, 23, 42, 1);
     }
 
     body.theme-light .input,
@@ -268,10 +294,11 @@
 
     .panel-body {
       margin-top: 8px;
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
       border: 1px solid rgba(31, 41, 55, 1);
-      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.9), #020617);
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.95), #020617);
+      box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.1);
     }
 
     body.theme-light .panel-body {
@@ -279,15 +306,54 @@
       border-color: #e5e7eb;
     }
 
+    .panel-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(31, 41, 55, 0.8);
+    }
+
+    body.theme-light .panel-header-row {
+      border-bottom-color: #e5e7eb;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .panel-subtitle {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
     .table-wrap {
       max-height: 70vh;
       overflow: auto;
+      width: 100%;
+    }
+
+    /* 捲軸優化 */
+    .table-wrap::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    .table-wrap::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .table-wrap::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.5);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 12px;
+      min-width: 380px;
     }
 
     th,
@@ -415,6 +481,7 @@
       border: 1px solid rgba(55, 65, 81, 0.9);
       background: rgba(15, 23, 42, 0.9);
       color: #9ca3af;
+      white-space: nowrap;
     }
 
     body.theme-light .badge {
@@ -430,6 +497,14 @@
       background: #fbbf24;
     }
 
+    /* ========= RWD ========= */
+
+    @media (max-width: 1024px) {
+      body {
+        padding: 16px;
+      }
+    }
+
     @media (max-width: 768px) {
       body {
         padding: 12px;
@@ -437,11 +512,16 @@
 
       .top-bar {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
       }
 
       .top-stats {
         margin-left: 0;
+        width: 100%;
+      }
+
+      .stat-card {
+        flex: 1 1 calc(50% - 5px);
       }
 
       .tabs-header {
@@ -454,9 +534,73 @@
         width: 100%;
       }
 
+      .filters label {
+        flex: 1 1 140px;
+      }
+
       .input,
       .select {
-        flex: 1;
+        width: 100%;
+      }
+
+      table {
+        font-size: 11px;
+      }
+
+      th,
+      td {
+        padding: 5px 6px;
+      }
+
+      /* 手機關掉 sticky header，避免滑動重疊感 */
+      th {
+        position: static;
+      }
+    }
+
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 18px;
+      }
+
+      .subtitle {
+        font-size: 12px;
+      }
+
+      .top-stats {
+        flex-direction: column;
+      }
+
+      .stat-card {
+        flex: 1 1 100%;
+      }
+
+      .badge {
+        align-self: flex-start;
+      }
+    }
+
+    @media (max-width: 480px) {
+      table {
+        font-size: 10px;
+        min-width: 340px;
+      }
+
+      th,
+      td {
+        padding: 4px 4px;
+      }
+
+      .tag,
+      .tag-appointment {
+        font-size: 10px;
+        padding: 1px 6px;
+      }
+
+      .pill,
+      .pill-btn {
+        font-size: 10px;
+        padding: 4px 8px;
       }
     }
   </style>
@@ -541,6 +685,10 @@
       </div>
 
       <div class="panel-body">
+        <div class="panel-header-row">
+          <div class="panel-title" id="panelTitle">身體 Body 面板</div>
+          <div class="panel-subtitle">顯示每位師傅最新狀態</div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -585,6 +733,7 @@
     const tbody = document.getElementById("dataTableBody");
 
     const themeToggleBtn = document.getElementById("themeToggle");
+    const panelTitleEl = document.getElementById("panelTitle");
 
     function toStatusTag(status, remaining) {
       const hasRemaining = remaining !== "" && remaining !== null && remaining !== undefined;
@@ -618,12 +767,6 @@
     }
 
     // 預約時間只顯示 24 小時制 HH:mm
-    // 來源可能是：
-    // - "15:00"
-    // - "9:5"
-    // - "15:00:00"
-    // - "2025-01-01T07:00:00.000Z"（GAS 回傳 Date → UTC）
-    // 不是時間、或是 00:00 → 視為無預約
     function fmtAppointment(v) {
       if (v === null || v === undefined) return "";
 
@@ -642,7 +785,7 @@
 
       // ISO 8601（"2025-01-01T07:00:00.000Z"）
       if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
-        const d = new Date(s); // 自動轉本地時區
+        const d = new Date(s);
         if (isNaN(d.getTime())) return "";
         const hh = String(d.getHours()).padStart(2, "0");
         const mm = String(d.getMinutes()).padStart(2, "0");
@@ -684,7 +827,7 @@
       return "#" + hex;
     }
 
-    // 暗色主題下將顏色提亮，避免太暗看不到
+    // 暗色主題下將顏色提亮
     function lightenForDarkTheme(hexColor, factor = 1.8) {
       if (!/^#?[0-9A-Fa-f]{6}$/.test(hexColor)) return hexColor;
 
@@ -728,6 +871,15 @@
       });
     }
 
+    function updatePanelTitle(filteredLength) {
+      if (!panelTitleEl) return;
+      if (activePanel === "body") {
+        panelTitleEl.textContent = `身體 Body 面板 · ${filteredLength} 位師傅`;
+      } else {
+        panelTitleEl.textContent = `腳底 Foot 面板 · ${filteredLength} 位師傅`;
+      }
+    }
+
     function render() {
       const list = rawData[activePanel] || [];
 
@@ -745,6 +897,7 @@
       );
 
       visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
+      updatePanelTitle(filtered.length);
 
       const isDark = document.body.classList.contains("theme-dark");
 
