@@ -25,8 +25,7 @@ let filterMaster = "";
 let filterStatus = "all";
 
 const infoTextEl = document.getElementById("infoText");
-const bodyCountEl = document.getElementById("bodyCount");
-const footCountEl = document.getElementById("footCount");
+// 已移除身體/腳底師傅數卡片，不再需要 bodyCountEl / footCountEl
 const visibleCountEl = document.getElementById("visibleCount");
 
 const tabBodyBtn = document.getElementById("tabBody");
@@ -214,13 +213,7 @@ function updatePanelTitle(filteredLength) {
 function render() {
   const list = rawData[activePanel] || [];
 
-  // 防護：只有在元素存在時才更新數字
-  if (bodyCountEl) {
-    bodyCountEl.textContent = rawData.body.length;
-  }
-  if (footCountEl) {
-    footCountEl.textContent = rawData.foot.length;
-  }
+  // 已取消「身體 / 腳底師傅數」功能，不再操作 bodyCount / footCount
 
   tbody.innerHTML = "";
 
@@ -288,11 +281,11 @@ function render() {
 function setActivePanel(panel) {
   activePanel = panel;
   if (panel === "body") {
-    tabBodyBtn.classList.add("active");
-    tabFootBtn.classList.remove("active");
+    tabBodyBtn && tabBodyBtn.classList.add("active");
+    tabFootBtn && tabFootBtn.classList.remove("active");
   } else {
-    tabFootBtn.classList.add("active");
-    tabBodyBtn.classList.remove("active");
+    tabFootBtn && tabFootBtn.classList.add("active");
+    tabBodyBtn && tabBodyBtn.classList.remove("active");
   }
   render();
 }
@@ -342,9 +335,9 @@ function applyTheme(theme) {
   document.body.classList.add(theme);
   localStorage.setItem("panelTheme", theme);
 
-  if (theme === "theme-light") {
+  if (theme === "theme-light" && themeToggleBtn) {
     themeToggleBtn.textContent = "🌙 暗色模式";
-  } else {
+  } else if (themeToggleBtn) {
     themeToggleBtn.textContent = "☀️ 亮色模式";
   }
 
@@ -358,9 +351,8 @@ function applyTheme(theme) {
   applyTheme(saved);
 })();
 
-// ===== 使用者權限：check + register（用「權限」那支 GAS）=====
+// ===== 使用者權限：check + register =====
 
-// 呼叫 AUTH_API_URL 檢查使用者；若沒在名單會自動註冊並標記待審核
 async function checkOrRegisterUser(userId, displayName) {
   const url =
     AUTH_API_URL +
@@ -378,34 +370,27 @@ async function checkOrRegisterUser(userId, displayName) {
   const status = (data && data.status) || "none";
 
   if (status === "approved") {
-    // 已通過 → 可以使用
     return { allowed: true, status: "approved" };
   }
 
   if (status === "pending") {
-    // 已存在但還沒審核 → 顯示管理者審核中
     return { allowed: false, status: "pending" };
   }
 
-  // 走到這裡代表 status === "none" → Sheet 找不到 UUID
-  // 先顯示沒有權限，再自動送出審核
+  // status === "none"
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
   try {
     await registerUser(userId, displayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    // 寫入失敗時就直接顯示錯誤
     return { allowed: false, status: "error" };
   }
 
-  // 註冊完成後，狀態視為 pending（待管理者把審核欄位改成通過）
   return { allowed: false, status: "pending" };
 }
 
-// 註冊使用者到 AUTH_API_URL（寫入 UUID + LINE 名稱 + 審核 = 待審核）
 async function registerUser(userId, displayName) {
-  // 直接用 GET，跟 check 的方式一樣
   const url =
     AUTH_API_URL +
     "?mode=register" +
@@ -463,7 +448,6 @@ async function initLiffAndGuard() {
     }
 
     if (result.status === "pending") {
-      // 不論是原本就 pending 或剛註冊完，都顯示「管理者審核中」
       showGate("此帳號已送出使用申請，管理者審核中。");
       return;
     }
@@ -473,7 +457,6 @@ async function initLiffAndGuard() {
       return;
     }
 
-    // 理論上不會走到這裡，保險一下
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
