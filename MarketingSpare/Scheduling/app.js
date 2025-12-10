@@ -214,8 +214,13 @@ function updatePanelTitle(filteredLength) {
 function render() {
   const list = rawData[activePanel] || [];
 
-  bodyCountEl.textContent = rawData.body.length;
-  footCountEl.textContent = rawData.foot.length;
+  // 防護：只有在元素存在時才更新數字
+  if (bodyCountEl) {
+    bodyCountEl.textContent = rawData.body.length;
+  }
+  if (footCountEl) {
+    footCountEl.textContent = rawData.foot.length;
+  }
 
   tbody.innerHTML = "";
 
@@ -227,7 +232,9 @@ function render() {
     }),
   );
 
-  visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
+  if (visibleCountEl) {
+    visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
+  }
   updatePanelTitle(filtered.length);
 
   const isDark = document.body.classList.contains("theme-dark");
@@ -419,8 +426,6 @@ async function registerUser(userId, displayName) {
   return data;
 }
 
-
-
 // ===== LIFF 初始化與權限守門 =====
 
 async function initLiffAndGuard() {
@@ -478,25 +483,35 @@ async function initLiffAndGuard() {
 
 // ===== 事件綁定 =====
 
-tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
-tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
+if (tabBodyBtn) {
+  tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
+}
+if (tabFootBtn) {
+  tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
+}
 
-filterMasterEl.addEventListener("input", (e) => {
-  filterMaster = e.target.value || "";
-  render();
-});
+if (filterMasterEl) {
+  filterMasterEl.addEventListener("input", (e) => {
+    filterMaster = e.target.value || "";
+    render();
+  });
+}
 
-filterStatusEl.addEventListener("change", (e) => {
-  filterStatus = e.target.value || "all";
-  render();
-});
+if (filterStatusEl) {
+  filterStatusEl.addEventListener("change", (e) => {
+    filterStatus = e.target.value || "all";
+    render();
+  });
+}
 
-themeToggleBtn.addEventListener("click", () => {
-  const next = document.body.classList.contains("theme-dark")
-    ? "theme-light"
-    : "theme-dark";
-  applyTheme(next);
-});
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener("click", () => {
+    const next = document.body.classList.contains("theme-dark")
+      ? "theme-light"
+      : "theme-dark";
+    applyTheme(next);
+  });
+}
 
 // ========= 入口：先跑 LIFF + 權限檢查 =========
 initLiffAndGuard();
