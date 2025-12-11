@@ -194,15 +194,21 @@ function fmtTimeCell(v) {
 
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
+  const n = Number(remaining);
 
+  // 🔥 規則：
+  // 1) 狀態為「工作中」 → 工作中
+  // 2) 狀態為「預約」 → 預約
+  // 3) 剩餘時間小於 0（超時） → 也算工作中
+  // -------------------------------
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
+  if (!Number.isNaN(n) && n < 0) return "status-busy"; // <-- 加這個
 
-  const n = Number(remaining);
-  if (!Number.isNaN(n) && n <= 0) return "status-free";
-
+  // 其他狀態類型（空閒 / 休息 / 未上班）
   return "status-other";
 }
+
 
 // ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
