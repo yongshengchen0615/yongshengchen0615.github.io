@@ -165,7 +165,7 @@ function fmtTimeCell(v) {
   if (!v) return "";
 
   if (typeof v === "number") {
-    // 這裡不再用剩餘分鐘顯示，只當純文字
+    // 這裡不再用「剩餘分鐘」文案，只當純文字
     return String(v);
   }
 
@@ -192,31 +192,27 @@ function fmtTimeCell(v) {
   return s;
 }
 
+// 超時也歸類在「工作中」
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
   const n = Number(remaining);
 
-  // 🔥 規則：
-  // 1) 狀態為「工作中」 → 工作中
-  // 2) 狀態為「預約」 → 預約
-  // 3) 剩餘時間小於 0（超時） → 也算工作中
-  // -------------------------------
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-  if (!Number.isNaN(n) && n < 0) return "status-busy"; // <-- 加這個
+  if (!Number.isNaN(n) && n < 0) return "status-busy"; // 超時 → 視為工作中
 
-  // 其他狀態類型（空閒 / 休息 / 未上班）
   return "status-other";
 }
-
 
 // ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
-    const remaining = (row.remaining === 0 || row.remaining) ? row.remaining : "";
+    const remaining =
+      row.remaining === 0 || row.remaining ? row.remaining : "";
 
     return {
       sort: row.sort,
+      index: row.index,
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
@@ -225,7 +221,6 @@ function mapRowsToDisplay(rows) {
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
 
-      // 剩餘時間：直接顯示資料表原始值
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
       timeDisplay: fmtTimeCell(row.appointment),
@@ -249,7 +244,6 @@ function rebuildStatusFilterOptions() {
 
   const previous = filterStatusSelect.value || "all";
 
-  // 清掉所有選項，重新建立
   filterStatusSelect.innerHTML = "";
 
   const optAll = document.createElement("option");
@@ -264,27 +258,25 @@ function rebuildStatusFilterOptions() {
     filterStatusSelect.appendChild(opt);
   }
 
-  // 還原之前的選擇（如果還存在）
   if (previous !== "all" && statuses.has(previous)) {
     filterStatusSelect.value = previous;
   } else {
     filterStatusSelect.value = "all";
   }
 
-  // 同步到內部 filterStatus 變數
   filterStatus = filterStatusSelect.value;
 }
 
-// ===== 渲染（包含：排序 + 過濾）=====
+// ===== 渲染（包含：排序 + 動態順序編號）=====
 function render() {
   if (!tbodyRowsEl) return;
 
   const list = activePanel === "body" ? rawData.body : rawData.foot;
 
-  // 先過濾
+  // 先依目前篩選條件過濾
   const filtered = applyFilters(list);
 
-  // 再依「順序」排序（sort，沒有就用 index）
+  // 再依「sort / index」排序
   const sorted = filtered.slice().sort((a, b) => {
     const aBase = a.sort ?? a.index ?? 0;
     const bBase = b.sort ?? b.index ?? 0;
@@ -297,6 +289,7 @@ function render() {
     return na - nb;
   });
 
+  // 轉成顯示用資料（此時順序已固定）
   const displayRows = mapRowsToDisplay(sorted);
 
   tbodyRowsEl.innerHTML = "";
@@ -307,12 +300,12 @@ function render() {
     if (emptyStateEl) emptyStateEl.style.display = "none";
   }
 
-  displayRows.forEach((row) => {
+  displayRows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
-    // 順序欄位（colorIndex）
+    // 🔢 順序欄位：依「目前排序＋篩選結果」重新編號 1,2,3...
     const tdOrder = document.createElement("td");
-    tdOrder.textContent = row.sort || "";
+    tdOrder.textContent = String(idx + 1);
     tdOrder.className = "cell-order";
     if (row.colorIndex) {
       applyScriptCatColorToElement(tdOrder, row.colorIndex);
@@ -374,7 +367,7 @@ function applyFilters(list) {
       }
     }
 
-    // 狀態過濾：完全相等，不再合併
+    // 狀態過濾：完全相等，不合併
     if (filterStatus && filterStatus !== "all") {
       const status = String(row.status || "");
       if (status !== filterStatus) return false;
