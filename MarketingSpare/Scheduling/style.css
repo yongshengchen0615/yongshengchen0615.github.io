@@ -6,13 +6,13 @@
   --text-main: #e5e7eb;
   --text-sub: #9ca3af;
   --accent: #38bdf8;
-  --accent-soft: rgba(56, 189, 248, 0.1);
+  --accent-soft: rgba(56, 189, 248, 0.15);
   --danger: #f97373;
   --muted: #4b5563;
-  --radius-lg: 14px;
+  --radius-lg: 16px;
 }
 
-/* 一些 reset */
+/* Reset 基本設定 */
 *,
 *::before,
 *::after {
@@ -28,23 +28,22 @@ body {
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  min-height: 100vh;
   background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #020617 100%);
   color: var(--text-main);
-  min-height: 100vh;
 }
 
-/* Gate 遮罩 */
+/* Gate 遮罩（登入 / 審核提示） */
 .gate {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.96);
-  color: #e5e7eb;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 9999;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .gate-hidden {
@@ -53,25 +52,27 @@ body {
 }
 
 .gate-message {
-  max-width: 480px;
+  max-width: 520px;
+  width: 100%;
+  padding: 20px 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: radial-gradient(circle at top, #0b1120 0, #020617 60%);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
   text-align: center;
-  background: rgba(15, 23, 42, 0.92);
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  padding: 18px 20px;
-  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.7);
 }
 
 .gate-message p {
   margin: 0;
   white-space: pre-line;
-  line-height: 1.6;
+  line-height: 1.7;
+  font-size: 14px;
 }
 
-/* App root 隱藏/顯示 */
+/* 主要 layout */
 .app-root {
   opacity: 1;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.2s ease;
 }
 
 .app-hidden {
@@ -79,41 +80,53 @@ body {
   pointer-events: none;
 }
 
-/* Layout */
+.layout {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px 32px 16px;
+}
+
+/* Header */
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px 12px 32px;
   gap: 16px;
+  margin-bottom: 18px;
 }
 
-.app-header-left h1 {
-  font-size: 24px;
+.app-header-left {
+  min-width: 0;
+}
+
+.app-title {
   margin: 0 0 4px;
+  font-size: 22px;
+  letter-spacing: 0.02em;
 }
 
 .app-subtitle {
   margin: 0;
+  font-size: 13px;
   color: var(--text-sub);
-  font-size: 14px;
 }
 
 .app-header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
+/* Pills & Buttons */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.85);
-  padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 4px 10px;
   font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  background: rgba(15, 23, 42, 0.9);
   color: var(--text-sub);
 }
 
@@ -128,30 +141,41 @@ body {
   white-space: nowrap;
 }
 
-.app-main {
-  padding: 0 32px 32px 32px;
+.btn {
+  border-radius: 999px;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+  border: none;
 }
 
-.app-main-top {
+.btn-ghost {
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-main);
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent);
+}
+
+/* Tabs + Filter Toolbar */
+.toolbar {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.app-main-bottom {
-  display: flex;
-}
-
-/* Tabs */
 .tabs {
   display: inline-flex;
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(15, 23, 42, 0.9);
   border-radius: 999px;
-  padding: 4px;
-  border: 1px solid rgba(148, 163, 184, 0.5);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.65);
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.8);
 }
 
 .tab {
@@ -166,106 +190,109 @@ body {
 }
 
 .tab-active {
-  background: linear-gradient(135deg, #38bdf8, #4f46e5);
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
   color: #0b1120;
   font-weight: 600;
 }
 
-/* Filters */
 .filters {
   display: flex;
-  gap: 16px;
   align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.filter-group {
+.filter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+  gap: 4px;
 }
 
-.filter-group label {
+.filter-label {
+  font-size: 12px;
   color: var(--text-sub);
 }
 
-.filter-group input,
-.filter-group select {
-  background: rgba(15, 23, 42, 0.9);
+/* 表單元件 */
+.input,
+.select {
+  min-width: 160px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  padding: 5px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
   color: var(--text-main);
-  outline: none;
+  padding: 5px 12px;
   font-size: 13px;
+  outline: none;
 }
 
-.filter-group input::placeholder {
+.input::placeholder {
   color: rgba(148, 163, 184, 0.8);
 }
 
-/* Buttons */
-.btn-outline {
-  border-radius: 999px;
-  padding: 6px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  background: rgba(15, 23, 42, 0.85);
-  color: var(--text-main);
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* 主內容區 */
+.main {
+  display: flex;
 }
 
-.btn-outline:hover {
-  border-color: #38bdf8;
-}
-
-/* Card + Table */
+/* 卡片 + 表格 */
 .card {
   flex: 1;
-  background: radial-gradient(circle at top, #0f172a 0, #020617 60%);
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.85);
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: radial-gradient(circle at top, #0b1120 0, #020617 55%);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
   overflow: hidden;
 }
 
 .card-header {
-  padding: 16px 20px 10px 20px;
-  border-bottom: 1px solid rgba(30, 64, 175, 0.55);
+  padding: 14px 18px 10px 18px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
 }
 
-.card-header h2 {
-  margin: 0;
+.card-header-left {
+  min-width: 0;
+}
+
+.card-title {
+  margin: 0 0 4px;
   font-size: 18px;
+}
+
+.card-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
 .card-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
 .badge {
-  font-size: 12px;
-  padding: 3px 10px;
+  font-size: 11px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
   color: var(--text-sub);
 }
 
-.table-wrapper {
-  position: relative;
-  padding: 10px 20px 16px 20px;
+.card-body {
+  padding: 10px 18px 16px 18px;
 }
 
 /* Table */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .status-table {
   width: 100%;
   border-collapse: collapse;
@@ -278,14 +305,20 @@ body {
   border-bottom: 1px solid rgba(55, 65, 81, 0.9);
   color: var(--text-sub);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .status-table tbody td {
   padding: 6px 8px;
   border-bottom: 1px solid rgba(31, 41, 55, 0.85);
+  vertical-align: middle;
 }
 
-/* 狀態色彩 */
+.status-table tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
+
+/* 狀態 Pill */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -297,46 +330,46 @@ body {
 }
 
 .status-busy {
-  background: rgba(248, 113, 113, 0.18);
+  background: rgba(248, 113, 113, 0.16);
   color: #fecaca;
 }
 
 .status-booked {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(56, 189, 248, 0.16);
   color: #bae6fd;
 }
 
 .status-free {
-  background: rgba(34, 197, 94, 0.13);
+  background: rgba(34, 197, 94, 0.15);
   color: #bbf7d0;
 }
 
 .status-other {
-  background: rgba(148, 163, 184, 0.16);
+  background: rgba(148, 163, 184, 0.22);
   color: #e5e7eb;
 }
 
+/* 剩餘時間 badge */
 .time-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px;
+  justify-content: center;
+  padding: 2px 10px;
   border-radius: 999px;
-  font-size: 12px;
-  background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.95);
+  font-size: 12px;
 }
 
-/* States */
-.empty-state,
-.loading-state,
-.error-state {
-  margin-top: 8px;
+/* 空 / Loading / Error 狀態 */
+.state {
+  margin-top: 10px;
   font-size: 13px;
   color: var(--text-sub);
   display: none;
 }
 
-.loading-state {
+.state-loading {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -347,7 +380,7 @@ body {
   height: 14px;
   border-radius: 999px;
   border: 2px solid rgba(148, 163, 184, 0.2);
-  border-top-color: #38bdf8;
+  border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
 
@@ -357,28 +390,62 @@ body {
   }
 }
 
-/* Responsive */
+/* Legend */
+.legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legend-work {
+  background: #f97373;
+}
+
+.legend-free {
+  background: #22c55e;
+}
+
+.legend-other {
+  background: #9ca3af;
+}
+
+/* RWD */
 @media (max-width: 768px) {
   .app-header {
     flex-direction: column;
     align-items: flex-start;
-    padding: 16px;
   }
 
-  .app-main {
-    padding: 0 16px 16px 16px;
-  }
-
-  .app-main-top {
+  .toolbar {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
   }
 
   .filters {
-    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .input,
+  .select {
+    width: 100%;
   }
 
   .card {
-    border-radius: 12px;
+    border-radius: 14px;
   }
 }

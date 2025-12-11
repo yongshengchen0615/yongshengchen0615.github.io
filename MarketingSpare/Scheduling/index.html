@@ -16,93 +16,123 @@
 
   <!-- 主畫面 -->
   <div id="appRoot" class="app-root app-hidden">
-    <header class="app-header">
-      <div class="app-header-left">
-        <h1>Body & Foot Panel Dashboard</h1>
-        <p class="app-subtitle">
-          即時監控師傅狀態與預約情形
-        </p>
-      </div>
-      <div class="app-header-right">
-        <div class="pill">
-          <span class="pill-dot"></span>
-          <span class="pill-text" id="connectionStatus">連線中…</span>
+    <div class="layout">
+      <!-- 頂部 Header -->
+      <header class="app-header">
+        <div class="app-header-left">
+          <h1 class="app-title">Body & Foot Panel Dashboard</h1>
+          <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
         </div>
-        <button id="refreshBtn" class="btn-outline">
-          手動重整
-        </button>
-      </div>
-    </header>
 
-    <main class="app-main">
-      <section class="app-main-top">
+        <div class="app-header-right">
+          <div class="pill pill-status">
+            <span class="pill-dot"></span>
+            <span class="pill-text" id="connectionStatus">連線中…</span>
+          </div>
+          <button id="refreshBtn" class="btn btn-ghost" type="button">
+            🔄 手動重整
+          </button>
+        </div>
+      </header>
+
+      <!-- Tabs + 篩選列 -->
+      <section class="toolbar">
         <div class="tabs">
-          <button id="tabBody" class="tab tab-active">身體</button>
-          <button id="tabFoot" class="tab">腳底</button>
+          <button id="tabBody" class="tab tab-active" type="button">
+            身體面板
+          </button>
+          <button id="tabFoot" class="tab" type="button">
+            腳底面板
+          </button>
         </div>
 
         <div class="filters">
-          <div class="filter-group">
-            <label for="filterMaster">指定師傅</label>
+          <div class="filter">
+            <label for="filterMaster" class="filter-label">師傅搜尋</label>
             <input
               id="filterMaster"
+              class="input"
               type="text"
-              placeholder="輸入師傅編號（例如 07）"
+              placeholder="輸入師傅編號，例如 07"
             />
           </div>
 
-          <div class="filter-group">
-            <label for="filterStatus">狀態篩選</label>
-            <select id="filterStatus">
-              <option value="all">全部</option>
+          <div class="filter">
+            <label for="filterStatus" class="filter-label">狀態篩選</label>
+            <select id="filterStatus" class="select">
+              <option value="all">全部狀態</option>
               <option value="busy">工作中 / 預約</option>
-              <option value="free">空閒或接近結束</option>
+              <option value="free">空閒 / 即將結束 / 超時</option>
             </select>
           </div>
         </div>
       </section>
 
-      <section class="app-main-bottom">
-        <div class="card card-table">
-          <div class="card-header">
-            <h2 id="panelTitle">身體面板</h2>
-            <div class="card-header-right">
-              <span class="badge" id="lastUpdate">尚未更新</span>
+      <!-- 主卡片 + 表格 -->
+      <main class="main">
+        <section class="card card-table">
+          <header class="card-header">
+            <div class="card-header-left">
+              <h2 id="panelTitle" class="card-title">身體面板</h2>
+              <p class="card-subtitle">
+                依「順序」排序，可透過上方輸入框篩選指定師傅
+              </p>
             </div>
-          </div>
+            <div class="card-header-right">
+              <span id="lastUpdate" class="badge">尚未更新</span>
+            </div>
+          </header>
 
-          <div class="table-wrapper">
-            <table class="status-table">
-              <thead>
-                <tr>
-                  <th>順序</th>
-                  <th>師傅</th>
-                  <th>狀態</th>
-                  <th>預約</th>
-                  <th>剩餘時間</th>
-                </tr>
-              </thead>
-              <tbody id="tbodyRows">
-                <!-- 動態插入 -->
-              </tbody>
-            </table>
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th style="width: 80px;">順序</th>
+                    <th style="width: 80px;">師傅</th>
+                    <th style="width: 160px;">狀態</th>
+                    <th>預約內容</th>
+                    <th style="width: 160px;">剩餘時間</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyRows">
+                  <!-- 由 app.js 動態插入 -->
+                </tbody>
+              </table>
+            </div>
 
-            <div id="emptyState" class="empty-state">
+            <!-- 空狀態 -->
+            <div id="emptyState" class="state state-empty">
               <p>目前沒有任何資料。</p>
             </div>
 
-            <div id="loadingState" class="loading-state">
+            <!-- Loading 狀態 -->
+            <div id="loadingState" class="state state-loading">
               <div class="spinner"></div>
-              <p>資料載入中…</p>
+              <p>資料載入中，請稍候…</p>
             </div>
 
-            <div id="errorState" class="error-state">
-              <p>無法取得資料，請稍後再試。</p>
+            <!-- Error 狀態 -->
+            <div id="errorState" class="state state-error">
+              <p>無法取得資料，請稍後再試或使用右上角「手動重整」。</p>
             </div>
+
+            <!-- 狀態顏色說明 -->
+            <footer class="legend">
+              <span class="legend-item">
+                <span class="legend-dot legend-work"></span> 工作中 / 預約中
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot legend-free"></span> 空閒 / 即將結束 / 超時
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot legend-other"></span> 其他狀態
+              </span>
+            </footer>
           </div>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   </div>
 
   <script src="app.js"></script>
