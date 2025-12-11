@@ -547,3 +547,31 @@ body {
     border-radius: 14px;
   }
 }
+
+/* 使用者名稱 + 剩餘天數提示橫幅 */
+.usage-banner {
+  margin: 6px 0 14px 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+}
+
+/* 亮色主題時 */
+:root[data-theme="light"] .usage-banner {
+  background: #ffffff;
+}
+
+/* 快過期（<=3 天） */
+.usage-banner-warning {
+  border-color: #facc15;
+}
+
+/* 已過期（<=0 天） */
+.usage-banner-expired {
+  border-color: #f97373;
+}

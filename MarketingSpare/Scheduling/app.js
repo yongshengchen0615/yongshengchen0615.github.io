@@ -58,6 +58,10 @@ const loadingStateEl = document.getElementById("loadingState");
 const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
+// 🔔 使用者名稱 + 剩餘天數橫幅 DOM
+const usageBannerEl = document.getElementById("usageBanner");
+const usageBannerTextEl = document.getElementById("usageBannerText");
+
 // ===== Gate 顯示工具 =====
 function showGate(message, isError) {
   if (!gateEl) return;
@@ -80,6 +84,48 @@ function openApp() {
   hideGate();
   if (!appRootEl) return;
   appRootEl.classList.remove("app-hidden");
+}
+
+// ===== 使用時間頂端橫幅 =====
+function updateUsageBanner(displayName, remainingDays) {
+  if (!usageBannerEl || !usageBannerTextEl) return;
+
+  // 若沒有名稱也沒有天數，就隱藏
+  if (!displayName && (remainingDays === null || remainingDays === undefined)) {
+    usageBannerEl.style.display = "none";
+    return;
+  }
+
+  let msg = "";
+
+  if (displayName) {
+    msg += `使用者：${displayName}  `;
+  }
+
+  if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
+    if (remainingDays > 0) {
+      msg += `｜剩餘使用天數：${remainingDays} 天`;
+    } else if (remainingDays === 0) {
+      msg += "｜今天為最後使用日";
+    } else {
+      msg += `｜使用期限已過期（${remainingDays} 天）`;
+    }
+  } else {
+    msg += "｜剩餘使用天數：－";
+  }
+
+  usageBannerTextEl.textContent = msg;
+  usageBannerEl.style.display = "flex";
+
+  // 調整顏色狀態
+  usageBannerEl.classList.remove("usage-banner-warning", "usage-banner-expired");
+  if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
+    if (remainingDays <= 0) {
+      usageBannerEl.classList.add("usage-banner-expired");
+    } else if (remainingDays <= 3) {
+      usageBannerEl.classList.add("usage-banner-warning");
+    }
+  }
 }
 
 // ===== ScriptCat 顏色解析工具 =====
@@ -444,7 +490,7 @@ async function refreshStatus() {
 }
 
 // ===== 審核相關：方案 B =====
-async function checkOrRegisterUser(userId, displayName) {
+async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const url =
     AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
 
@@ -457,24 +503,60 @@ async function checkOrRegisterUser(userId, displayName) {
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
 
+  // 從 GAS 讀取 displayName / remainingDays（若有）
+  const serverDisplayName = (data && data.displayName) || "";
+  let remainingDays = null;
+  if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
+    const n = Number(data.remainingDays);
+    if (!Number.isNaN(n)) {
+      remainingDays = n;
+    }
+  }
+
+  const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
+
   if (status === "approved") {
-    return { allowed: true, status: "approved", audit };
+    return {
+      allowed: true,
+      status: "approved",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+    };
   }
 
   if (status === "pending") {
-    return { allowed: false, status: "pending", audit };
+    return {
+      allowed: false,
+      status: "pending",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+    };
   }
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
   try {
-    await registerUser(userId, displayName);
+    await registerUser(userId, finalDisplayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return { allowed: false, status: "error", audit: "" };
+    return {
+      allowed: false,
+      status: "error",
+      audit: "",
+      remainingDays: null,
+      displayName: finalDisplayName,
+    };
   }
 
-  return { allowed: false, status: "pending", audit: "待審核" };
+  return {
+    allowed: false,
+    status: "pending",
+    audit: "待審核",
+    remainingDays: null,
+    displayName: finalDisplayName,
+  };
 }
 
 async function registerUser(userId, displayName) {
@@ -551,6 +633,9 @@ async function initLiffAndGuard() {
     const userId = profile.userId || (ctx && ctx.userId) || "";
     const displayName = profile.displayName || "";
 
+    window.currentUserId = userId;
+    window.currentDisplayName = displayName;
+
     if (!userId) {
       showGate("無法取得使用者 ID，請重新開啟 LIFF。", true);
       console.timeEnd("[Perf] LIFF+Auth");
@@ -562,9 +647,16 @@ async function initLiffAndGuard() {
     const result = await checkOrRegisterUser(userId, displayName);
     console.timeEnd("[Perf] checkOrRegisterUser");
 
+    const finalDisplayName = result.displayName || displayName;
+    window.currentDisplayName = finalDisplayName;
+
     if (result.allowed && result.status === "approved") {
       showGate("驗證通過，正在載入資料…");
       openApp();
+
+      // 顯示使用者名稱 + 剩餘使用天數
+      updateUsageBanner(finalDisplayName, result.remainingDays);
+
       console.time("[Perf] first refreshStatus");
       startApp();
       console.timeEnd("[Perf] first refreshStatus");
