@@ -2,13 +2,22 @@
 const WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbwp46vU_Vk_s05D_LTbjAnDfUI4cyEUgQETikt6aIInecfZCAb_RI_vXZUm89GbNhEDgQ/exec";
 
-// ===== 2) 身體 / 腳底 狀態 Web App URL =====
+// ===== 2) 師傅狀態 Web App URL =====
 const TECH_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+
+// ===== 3) 使用者審核 / Users Web App URL（你貼的那支 GAS） =====
+// TODO: 換成你實際部署的 URL
+const AUTH_API_URL =
+  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+
+// ===== 4) LIFF ID =====
+const LIFF_ID = window.LIFF_ID || "Y2008669658-W3uPaMku";
 
 // 想看的師傅 masterId
 const TARGET_MASTER_ID = "10";
 
+/* ========= 類型定義 ========= */
 const TYPE_META = {
   holiday:   { label: "技師休假日",          tagClass: "tag-holiday" },
   weeklyOff: { label: "六日無法預約",        tagClass: "tag-weeklyOff" },
@@ -23,6 +32,7 @@ let current = new Date();
 const dayEvents = new Map();       // "yyyy-MM-dd" -> [type...]
 const weeklyOffSet = new Set();    // 0~6（來自 Config + DateTypes）
 
+/* ========= DOM 綁定 ========= */
 document.getElementById("prevBtn").onclick = () => {
   current.setMonth(current.getMonth() - 1);
   renderCalendar();
@@ -39,7 +49,14 @@ function showApp() {
   document.getElementById("appContainer").style.display = "block";
 }
 
-/* ========== 月曆資料：bootstrap ========== */
+/* ========== 小工具 ========== */
+function setSubtitle(msg) {
+  const el = document.querySelector(".subtitle");
+  if (!el) return;
+  el.textContent = msg || "";
+}
+
+/* ========= 月曆資料：bootstrap ========= */
 function normalizeType(val) {
   return String(val || "").trim();
 }
@@ -239,7 +256,7 @@ function formatRemaining(rem) {
 function formatAppointment(appt) {
   const s = String(appt || "").trim();
   if (!s) return "無預約";
-  return s; // 直接顯示 "15:00" 之類
+  return s; // ex: "15:00"
 }
 
 function updateStatusUI(kind, row) {
@@ -287,20 +304,149 @@ async function loadTechStatus() {
   updateStatusUI("foot", footRow);
 }
 
-// ========== 初始化：兩個 API 都載完才顯示畫面，之後每 10 秒自動刷新師傅狀態 ==========
+/* ========== 審核相關：對接你給的 GAS ========= */
+
+/** 取得目前登入使用者（從 LIFF 設定進來） */
+function getCurrentUser() {
+  return {
+    userId: window.AUTH_USER_ID || "",
+    displayName: window.AUTH_DISPLAY_NAME || ""
+  };
+}
+
+/** 呼叫審核 GAS：check / register */
+async function callAuthApi(mode, payload) {
+  if (!AUTH_API_URL) throw new Error("尚未設定 AUTH_API_URL");
+
+  if (mode === "check") {
+    const url = new URL(AUTH_API_URL);
+    url.searchParams.set("mode", "check");
+    url.searchParams.set("userId", payload.userId);
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error("auth check HTTP " + res.status);
+    return res.json();
+  }
+
+  if (mode === "register") {
+    const res = await fetch(AUTH_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "register",
+        userId: payload.userId,
+        displayName: payload.displayName || ""
+      })
+    });
+    if (!res.ok) throw new Error("auth register HTTP " + res.status);
+    return res.json();
+  }
+
+  throw new Error("unsupported auth mode: " + mode);
+}
+
+/**
+ * 確認使用者是否「已通過審核」
+ * - approved  ：允許進入頁面
+ * - none      ：自動幫他註冊，提示「已送出申請」
+ * - pending   ：提示「審核中」
+ */
+async function ensureApprovedUser() {
+  const { userId, displayName } = getCurrentUser();
+
+  if (!userId) {
+    setSubtitle("尚未取得使用者身分，請重新開啟此 LIFF。");
+    throw new Error("no_userId");
+  }
+
+  setSubtitle("正在檢查審核狀態…");
+
+  const check = await callAuthApi("check", { userId });
+  // GAS handleCheck_ 回傳：
+  // { status: "none" | "pending" | "approved", audit: "通過/待審核/拒絕/停用..." }
+
+  if (check.status === "approved") {
+    const label = check.audit || "通過";
+    setSubtitle(`您好，${displayName || "貴賓"}，審核狀態：${label}`);
+    return; // ✅ 允許繼續
+  }
+
+  if (check.status === "none") {
+    // 第一次進來 → 幫他註冊 + 提示審核中
+    await callAuthApi("register", { userId, displayName });
+    setSubtitle("已送出加入申請，審核中。審核通過前無法使用此頁面。");
+    throw new Error("pending");
+  }
+
+  // 其餘狀態（pending / 拒絕 / 停用 …）
+  const auditText = check.audit || "待審核";
+  setSubtitle(`審核狀態：${auditText}（尚未通過，暫時無法使用此頁面）`);
+  throw new Error("pending");
+}
+
+/* ========== LIFF 初始化 + 審核 + 資料載入 ========= */
+
+async function initLiffAndGuard() {
+  try {
+    if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID_HERE") {
+      throw new Error("請先設定 LIFF_ID");
+    }
+
+    // 1) 初始化 LIFF
+    await liff.init({ liffId: LIFF_ID });
+
+    // 2) 未登入就導到 LINE Login
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: window.location.href });
+      return; // login 之後頁面會重載
+    }
+
+    // 3) 拿使用者資料
+    const profile = await liff.getProfile();
+    window.AUTH_USER_ID = profile.userId;
+    window.AUTH_DISPLAY_NAME = profile.displayName || "";
+
+    setSubtitle(`歡迎，${window.AUTH_DISPLAY_NAME}，正在檢查審核狀態…`);
+
+    // 4) 檢查審核
+    await ensureApprovedUser();
+
+    // 5) 只有通過審核才載入資料
+    await Promise.all([loadData(), loadTechStatus()]);
+
+    // 6) 顯示畫面 & 啟動狀態輪詢
+    showApp();
+    setInterval(() => {
+      loadTechStatus().catch(err =>
+        console.error("自動刷新師傅狀態失敗:", err)
+      );
+    }, 10000);
+  } catch (err) {
+    console.error("[Init] LIFF / auth 流程錯誤:", err);
+
+    const msg = String(err && err.message) || "";
+
+    // 審核中 / 無 user
+    if (msg.includes("pending") || msg.includes("no_userId")) {
+      document.getElementById("loadingOverlay").classList.add("hidden");
+      document.getElementById("appContainer").style.display = "block";
+      return;
+    }
+
+    // LIFF ID 未設定
+    if (msg.includes("請先設定 LIFF_ID")) {
+      setSubtitle("系統尚未設定 LIFF ID，請聯絡管理員。");
+      document.getElementById("loadingOverlay").classList.add("hidden");
+      document.getElementById("appContainer").style.display = "block";
+      return;
+    }
+
+    alert("登入或載入資料時發生錯誤，請稍後重試。");
+    showApp();
+  }
+}
+
+/* ========== 入口：window load 時啟動 LIFF ========= */
 
 window.addEventListener("load", () => {
-  Promise.all([loadData(), loadTechStatus()])
-    .then(() => {
-      showApp();
-      // 每 10 秒自動刷新師傅狀態（你目前設定的是 10000ms）
-      setInterval(() => {
-        loadTechStatus().catch(err => console.error("自動刷新師傅狀態失敗:", err));
-      }, 10000);
-    })
-    .catch(err => {
-      console.error("初始化錯誤:", err);
-      alert("載入資料時發生錯誤，請稍後重試");
-      showApp(); // 就算錯誤也把畫面打開
-    });
+  initLiffAndGuard();
 });
