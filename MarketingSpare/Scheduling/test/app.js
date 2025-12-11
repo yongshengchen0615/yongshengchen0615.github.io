@@ -20,7 +20,7 @@
 // ★ 換成你的 GAS Web App URL
 // A：師傅狀態（身體 / 腳底）→ 面板 GAS
 const STATUS_API_URL =
-  "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+  "https://script.google.com/macros/s/AKfycbw4SrZiFdKRBHiCTpfXKBa935XDN7lMPOXSd61c1PKfMJCklNl_NYDvwctcoom3X7QP_A/exec";
 
 // B：使用者權限（UUID + 名稱 + 審核）→ Users 認證 GAS
 const AUTH_API_URL =

@@ -4,143 +4,24 @@
   <meta charset="utf-8" />
   <title>Users 後台管理</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --bg: #020617;
-      --bg-card: #0b1220;
-      --bg-soft: #020617;
-      --border: #1f2937;
-      --text-main: #e5e7eb;
-      --text-sub: #9ca3af;
-      --accent: #38bdf8;
-      --accent-soft: rgba(56, 189, 248, 0.1);
-      --danger: #f97373;
-      --danger-soft: rgba(248, 113, 113, 0.1);
-      --success: #4ade80;
-      --success-soft: rgba(74, 222, 128, 0.1);
-      --warning: #facc15;
-      --warning-soft: rgba(250, 204, 21, 0.12);
-      --radius-lg: 14px;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #020617 100%);
-      color: var(--text-main);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      padding: 16px;
-      display: flex;
-      justify-content: center;
-    }
-
-    .app { width: 100%; max-width: 1120px; }
-    .card {
-      background: var(--bg-card);
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      padding: 20px;
-      box-shadow: 0 18px 45px rgba(15,23,42,0.6);
-    }
-
-    /* ===== 標題 ===== */
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .title-wrap h1 { margin: 0; font-size: 20px; }
-    .title-wrap p { margin: 4px 0 0; font-size: 13px; color: var(--text-sub); }
-
-    /* ===== 搜尋 / 篩選 ===== */
-    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
-    .search-box {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-    }
-    .search-box input {
-      border: none; background: none; color: var(--text-main);
-      flex: 1; outline: none;
-    }
-
-    .chip {
-      padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--border); background: #020617;
-      color: var(--text-sub); cursor: pointer;
-    }
-    .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-
-    /* ===== 表格 ===== */
-    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-    table { width: 100%; min-width: 900px; border-collapse: collapse; }
-    th, td { padding: 8px 10px; border-bottom: 1px solid #111827; white-space: nowrap; }
-    th { font-size: 12px; color: var(--text-sub); }
-
-    /* ===== 審核狀態徽章 ===== */
-    .badge { padding: 3px 8px; border-radius: 999px; display: inline-flex; gap: 6px; font-size: 11px; }
-    .badge.approved { color: var(--success); background: var(--success-soft); border: 1px solid var(--success); }
-    .badge.pending { color: var(--warning); background: var(--warning-soft); border: 1px solid var(--warning); }
-    .badge.rejected { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); }
-
-    /* ===== 使用期限 pill ===== */
-    .expiry-pill { padding: 3px 8px; border-radius: 999px; font-size: 11px; border: 1px solid #444; }
-    .expiry-pill.active { color: var(--success); background: var(--success-soft); border-color: var(--success); }
-    .expiry-pill.expired { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
-    .expiry-pill.unset   { color: var(--warning); background: var(--warning-soft); border-color: var(--warning); }
-
-    /* ===== 可編輯 input ===== */
-    .date-input,
-    .days-input {
-      width: 120px;
-      padding: 4px 6px;
-      border-radius: 8px;
-      border: 1px solid #1f2937;
-      background: #020617;
-      color: var(--text-main);
-      font-size: 12px;
-    }
-
-    /* ===== 按鈕 ===== */
-    .btn {
-      padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--border); background: #020617;
-      color: var(--text-main); font-size: 12px; cursor: pointer;
-    }
-    .btn.primary { border-color: var(--accent); color: var(--accent); }
-    .btn.danger { border-color: var(--danger); color: var(--danger); }
-    .btn-sm { padding: 3px 8px; font-size: 11px; }
-
-    /* ===== RWD 修正：手機===== */
-    @media (max-width: 600px) {
-      body { padding: 10px; }
-      table { font-size: 12px; }
-
-      /* ⭐ 只隱藏「建立時間」欄（手機可編輯開始日期與使用期限） */
-      th:nth-child(4),
-      td:nth-child(4) { display: none; }
-    }
-  </style>
+  <!-- 外部 CSS -->
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <div class="app">
   <div class="card">
 
+    <!-- 標題區 -->
     <div class="card-header">
       <div class="title-wrap">
         <h1>Users 後台管理</h1>
-        <p>管理審核狀態與使用期限</p>
+        <p>管理審核狀態、使用期限與師傅資訊</p>
       </div>
       <div id="summaryText">載入中...</div>
     </div>
 
+    <!-- 工具列：搜尋 + 篩選 -->
     <div class="toolbar">
       <div class="search-box">
         🔍 <input id="searchInput" placeholder="搜尋 userId / 顯示名稱" />
@@ -151,6 +32,7 @@
       <button class="chip" data-filter="拒絕">已拒絕</button>
     </div>
 
+    <!-- 資料表 -->
     <div class="table-wrap">
       <table>
         <thead>
@@ -163,167 +45,26 @@
             <th>期限(天)</th>
             <th>使用狀態</th>
             <th>審核狀態</th>
+            <th>師傅編號</th>
+            <th>是否師傅</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr><td colspan="9">載入中...</td></tr>
+          <tr><td colspan="11">載入中...</td></tr>
         </tbody>
       </table>
     </div>
 
-    <div id="footerStatus" style="margin-top:10px; color:#9ca3af;"></div>
+    <div id="footerStatus" class="footer-status">
+      -
+    </div>
 
   </div>
 </div>
 
-<script>
-  // ★ 換成你的 GAS 部署網址
-  const API_BASE_URL = "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
-
-  let allUsers = [];
-  let filteredUsers = [];
-
-  document.addEventListener("DOMContentLoaded", () => {
-    loadUsers();
-    bindFilter();
-    document.getElementById("searchInput").addEventListener("input", applyFilters);
-  });
-
-  function bindFilter() {
-    document.querySelectorAll(".chip").forEach(chip => {
-      chip.addEventListener("click", () => {
-        document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-        chip.classList.add("active");
-        applyFilters();
-      });
-    });
-  }
-
-  /* ===== 讀資料 ===== */
-  async function loadUsers() {
-    const res = await fetch(API_BASE_URL + "?mode=listUsers");
-    const json = await res.json();
-    if (!json.ok) return alert("讀取失敗");
-    allUsers = json.users;
-    applyFilters();
-  }
-
-  /* ===== 篩選 + 搜尋 ===== */
-  function applyFilters() {
-    const keyword = document.getElementById("searchInput").value.toLowerCase();
-    const filter = document.querySelector(".chip.active").dataset.filter;
-
-    filteredUsers = allUsers.filter(u => {
-      if (filter !== "ALL" && u.audit !== filter) return false;
-      if (keyword && !(`${u.userId} ${u.displayName}`.toLowerCase().includes(keyword)))
-        return false;
-      return true;
-    });
-
-    renderTable();
-  }
-
-  /* ===== 表格渲染 ===== */
-  function renderTable() {
-    const tbody = document.getElementById("tbody");
-    tbody.innerHTML = "";
-
-    filteredUsers.forEach((u, i) => {
-      const expiry = getExpiryInfo(u);
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${i + 1}</td>
-        <td>${u.userId}</td>
-        <td>${u.displayName}</td>
-        <td>${u.createdAt}</td>
-
-        <td>
-          <input type="date" class="date-input" value="${toInputDate(u.startDate)}">
-        </td>
-
-        <td>
-          <input type="number" class="days-input" min="1" value="${u.usageDays || ""}">
-        </td>
-
-        <td><span class="expiry-pill ${expiry.cls}">${expiry.text}</span></td>
-
-        <td><span class="badge ${badgeCls(u.audit)}">${u.audit}</span></td>
-
-        <td>
-          <button class="btn btn-sm" data-act="save">儲存期限</button>
-          <button class="btn btn-sm primary" data-act="approve">通過</button>
-          <button class="btn btn-sm" data-act="pending">待審核</button>
-          <button class="btn btn-sm danger" data-act="reject">拒絕</button>
-        </td>
-      `;
-
-      const dateInput = tr.querySelector(".date-input");
-      const daysInput = tr.querySelector(".days-input");
-
-      tr.querySelectorAll("button").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const a = btn.dataset.act;
-          if (a === "save") {
-            updateUsage(u.userId, dateInput.value, daysInput.value);
-          } else {
-            updateStatus(u.userId, btn.textContent);
-          }
-        });
-      });
-
-      tbody.appendChild(tr);
-    });
-  }
-
-  /* ===== 判斷使用狀態 ===== */
-  function getExpiryInfo(u) {
-    if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
-
-    const start = new Date(u.startDate.replace(" ", "T"));
-    const end = new Date(start.getTime() + u.usageDays * 86400000);
-    const diff = Math.ceil((end - new Date()) / 86400000);
-
-    if (diff < 0) return { cls: "expired", text: "已過期" };
-    return { cls: "active", text: `使用中（剩 ${diff} 天）` };
-  }
-
-  function badgeCls(a) {
-    if (a === "通過") return "approved";
-    if (a === "拒絕") return "rejected";
-    return "pending";
-  }
-
-  function toInputDate(str) {
-    if (!str) return "";
-    const d = new Date(str.replace(" ", "T"));
-    return d.toISOString().slice(0, 10);
-  }
-
-  /* ===== 更新審核狀態 ===== */
-  async function updateStatus(id, status) {
-    const fd = new URLSearchParams();
-    fd.append("mode", "updateStatus");
-    fd.append("userId", id);
-    fd.append("audit", status);
-
-    await fetch(API_BASE_URL, { method: "POST", body: fd });
-    await loadUsers();
-  }
-
-  /* ===== 更新開始日期 + 使用期限 ===== */
-  async function updateUsage(id, date, days) {
-    const fd = new URLSearchParams();
-    fd.append("mode", "updateUsage");
-    fd.append("userId", id);
-    fd.append("startDate", date);
-    fd.append("usageDays", days);
-
-    await fetch(API_BASE_URL, { method: "POST", body: fd });
-    await loadUsers();
-  }
-</script>
+<!-- 外部 JS -->
+<script src="app.js" defer></script>
 
 </body>
 </html>

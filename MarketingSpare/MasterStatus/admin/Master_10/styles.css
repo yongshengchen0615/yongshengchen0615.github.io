@@ -1,0 +1,308 @@
+:root {
+  --bg: #020617;
+  --bg-card: #0b1220;
+  --bg-soft: #020617;
+  --border: #1f2937;
+  --border-soft: #111827;
+  --text-main: #e5e7eb;
+  --text-sub: #9ca3af;
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.1);
+  --danger: #f97373;
+  --danger-soft: rgba(248, 113, 113, 0.1);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.1);
+  --warning: #facc15;
+  --warning-soft: rgba(250, 204, 21, 0.12);
+  --radius-lg: 14px;
+  --radius-full: 999px;
+  --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.7);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #020617 100%);
+  color: var(--text-main);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.app {
+  width: 100%;
+  max-width: 1120px;
+}
+
+.card {
+  background: var(--bg-card);
+  border-radius: 20px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+/* ===== 標題區 ===== */
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.title-wrap h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.title-wrap p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+#summaryText {
+  font-size: 13px;
+  color: var(--text-sub);
+  text-align: right;
+}
+
+/* ===== 工具列 ===== */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.search-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text-main);
+  width: 100%;
+  font-size: 13px;
+}
+
+.chip {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-sub);
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ===== 表格 ===== */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead {
+  background: rgba(15, 23, 42, 0.96);
+}
+
+th,
+td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-sub);
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+tbody tr:hover {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.6);
+}
+
+/* ===== Badge（審核狀態） ===== */
+.badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.badge.approved {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+}
+
+.badge.pending {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+}
+
+.badge.rejected {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+}
+
+/* ===== 使用狀態 pill ===== */
+.expiry-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+}
+
+.expiry-pill.active {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+
+.expiry-pill.expired {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.expiry-pill.unset {
+  color: var(--text-sub);
+  background: rgba(31, 41, 55, 0.7);
+}
+
+/* ===== 按鈕 ===== */
+.btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  background: #020617;
+  color: var(--text-main);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, border-color 0.15s;
+}
+
+.btn-sm {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.btn.primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.btn.danger {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+.btn:active {
+  transform: translateY(0);
+  opacity: 0.9;
+}
+
+/* input 欄位 */
+input[type="date"],
+input[type="number"],
+input[type="text"] {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #020617;
+  color: var(--text-main);
+  outline: none;
+}
+
+input[type="date"]:focus,
+input[type="number"]:focus,
+input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+/* 下方狀態列 */
+.footer-status {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+/* ===== 手機優化：縮掉次要欄位 ===== */
+@media (max-width: 768px) {
+  th:nth-child(4),
+  td:nth-child(4) {
+    display: none; /* 建立時間 */
+  }
+  th:nth-child(7),
+  td:nth-child(7) {
+    display: none; /* 使用狀態 pill */
+  }
+}
