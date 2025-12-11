@@ -3,7 +3,7 @@ const TECH_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
 // 想顯示的師傅 ID
-const TARGET_MASTER_ID = "10";
+const TARGET_MASTER_ID = "92";
 
 /* ========== 主題切換 ========== */
 function applyTheme(theme) {
