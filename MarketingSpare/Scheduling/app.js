@@ -1,3 +1,36 @@
+
+// ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
+(function () {
+  const rawLog = console.log;
+
+  console.log = function (...args) {
+    try {
+      // 把第一個參數轉成字串檢查
+      const first = args[0];
+      const msg = typeof first === "string" ? first : "";
+
+      // 如果是 PanelScan 找不到 panel 的那句，就直接略過
+      if (
+        msg.includes("[PanelScan]") &&
+        msg.includes("找不到 身體 / 腳底 panel")
+      ) {
+        // 想完全安靜就 return；想記錄可以改成寫到別處
+        return;
+      }
+    } catch (e) {
+      // 防禦性：什麼事都不要讓 console.log 掛掉
+    }
+
+    // 其他正常 log 照常輸出
+    return rawLog.apply(console, args);
+  };
+})();
+
+
+
+
+
+
 // ★ 換成你的 GAS Web App URL
 // A：師傅狀態（身體 / 腳底）
 const STATUS_API_URL =
