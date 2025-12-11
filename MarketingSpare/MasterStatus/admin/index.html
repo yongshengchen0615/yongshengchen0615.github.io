@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Users 後台管理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-card: #0b1220;
+      --bg-soft: #020617;
+      --border: #1f2937;
+      --text-main: #e5e7eb;
+      --text-sub: #9ca3af;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.1);
+      --danger: #f97373;
+      --danger-soft: rgba(248, 113, 113, 0.1);
+      --success: #4ade80;
+      --success-soft: rgba(74, 222, 128, 0.1);
+      --muted: #4b5563;
+      --radius-lg: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #0f172a 0, #020617 45%, #020617 100%);
+      color: var(--text-main);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 1080px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.7);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .title-wrap h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .title-wrap p {
+      margin: 4px 0 0 0;
+      font-size: 13px;
+      color: var(--text-sub);
+    }
+
+    .status-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--text-sub);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 180px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #020617;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      font-size: 13px;
+    }
+
+    .search-box input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      outline: none;
+    }
+
+    .search-box span {
+      font-size: 14px;
+      color: var(--text-sub);
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #020617;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--text-sub);
+      cursor: pointer;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      user-select: none;
+    }
+
+    .chip.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .chip.bad {
+      border-color: var(--danger);
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .chip.good {
+      border-color: var(--success);
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .table-wrap {
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: #020617;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead {
+      background: #020617;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #111827;
+      white-space: nowrap;
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-sub);
+      font-size: 12px;
+    }
+
+    tbody tr:hover {
+      background: #020617;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .col-displayName {
+      max-width: 200px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      border: 1px solid #374151;
+    }
+
+    .badge.pending {
+      color: #eab308;
+      background: rgba(234, 179, 8, 0.08);
+      border-color: rgba(234, 179, 8, 0.55);
+    }
+
+    .badge.approved {
+      color: #4ade80;
+      background: rgba(74, 222, 128, 0.08);
+      border-color: rgba(74, 222, 128, 0.55);
+    }
+
+    .badge.rejected {
+      color: var(--danger);
+      background: var(--danger-soft);
+      border-color: rgba(248, 113, 113, 0.7);
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      color: var(--text-main);
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .btn.danger {
+      border-color: var(--danger);
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .btn-sm {
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+
+    .right {
+      text-align: right;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .footer {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-sub);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .loading {
+      font-size: 12px;
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .loading-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      border: 2px solid rgba(56, 189, 248, 0.4);
+      border-top-color: var(--accent);
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .card {
+        padding: 16px;
+      }
+      th:nth-child(4), td:nth-child(4) {
+        display: none; /* 小螢幕隱藏建立時間欄 */
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="card">
+    <div class="card-header">
+      <div class="title-wrap">
+        <h1>Users 後台管理</h1>
+        <p>管理註冊使用者的審核狀態（資料來自 Google Sheet「Users」工作表）</p>
+      </div>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span id="summaryText">載入中…</span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <span>🔍</span>
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="搜尋 userId / 顯示名稱"
+        />
+      </div>
+      <div class="filter-group">
+        <button class="chip active" data-status="ALL">全部</button>
+        <button class="chip good" data-status="通過">已通過</button>
+        <button class="chip" data-status="待審核">待審核</button>
+        <button class="chip bad" data-status="拒絕">已拒絕</button>
+      </div>
+    </div>
+
+    <div class="table-wrap" id="tableWrap">
+      <table>
+        <thead>
+        <tr>
+          <th style="width: 40px;">#</th>
+          <th style="min-width: 140px;">userId</th>
+          <th style="min-width: 140px;">顯示名稱</th>
+          <th style="min-width: 140px;">建立時間</th>
+          <th style="min-width: 120px;">審核狀態</th>
+          <th style="min-width: 160px;" class="right">操作</th>
+        </tr>
+        </thead>
+        <tbody id="tbody">
+        <tr>
+          <td colspan="6" class="empty-state">
+            <span class="loading">
+              <span class="loading-dot"></span>
+              <span>資料載入中…</span>
+            </span>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <div id="footerStatus">—</div>
+      <div id="footerHint">提示：點「通過」會把該使用者審核狀態改成「通過」，不會修改其他欄位。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ★★★ 這裡換成你的 GAS Web App URL（/exec） ★★★
+  const API_BASE_URL = "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+
+  let allUsers = [];
+  let filteredUsers = [];
+  let currentFilterStatus = "ALL";
+  let isLoading = false;
+
+  const tbody = document.getElementById("tbody");
+  const summaryText = document.getElementById("summaryText");
+  const footerStatus = document.getElementById("footerStatus");
+  const searchInput = document.getElementById("searchInput");
+
+  document.addEventListener("DOMContentLoaded", () => {
+    bindUI();
+    loadUsers();
+  });
+
+  function bindUI() {
+    searchInput.addEventListener("input", () => {
+      applyFilters();
+    });
+
+    document.querySelectorAll(".chip[data-status]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".chip[data-status]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        currentFilterStatus = chip.getAttribute("data-status");
+        applyFilters();
+      });
+    });
+  }
+
+  async function loadUsers() {
+    isLoading = true;
+    renderLoading();
+
+    try {
+      const url = API_BASE_URL + "?mode=listUsers";
+      const res = await fetch(url, { method: "GET" });
+      const json = await res.json();
+
+      if (!json.ok) {
+        throw new Error(json.error || "API 回傳失敗");
+      }
+
+      allUsers = json.users || [];
+      applyFilters();
+
+      summaryText.textContent = `總共 ${allUsers.length} 位使用者`;
+      footerStatus.textContent = `最後更新時間：${new Date().toLocaleString()}`;
+    } catch (err) {
+      console.error(err);
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            讀取失敗：${err.message || err}  
+          </td>
+        </tr>
+      `;
+      summaryText.textContent = "讀取失敗";
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  function renderLoading() {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="empty-state">
+          <span class="loading">
+            <span class="loading-dot"></span>
+            <span>資料載入中…</span>
+          </span>
+        </td>
+      </tr>
+    `;
+    summaryText.textContent = "載入中…";
+  }
+
+  function applyFilters() {
+    const keyword = searchInput.value.trim().toLowerCase();
+
+    filteredUsers = allUsers.filter((u) => {
+      if (currentFilterStatus !== "ALL") {
+        if ((u.audit || "") !== currentFilterStatus) return false;
+      }
+
+      if (keyword) {
+        const hay = `${u.userId || ""} ${u.displayName || ""}`.toLowerCase();
+        if (!hay.includes(keyword)) return false;
+      }
+
+      return true;
+    });
+
+    renderTable();
+  }
+
+  function renderTable() {
+    if (!filteredUsers.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            沒有符合條件的使用者
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = "";
+    filteredUsers.forEach((u, idx) => {
+      const tr = document.createElement("tr");
+
+      const audit = (u.audit || "").trim();
+      const badgeInfo = getBadgeInfo(audit);
+
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(u.userId || "")}</td>
+        <td class="col-displayName">${escapeHtml(u.displayName || "")}</td>
+        <td>${escapeHtml(u.createdAt || "")}</td>
+        <td>
+          <span class="badge ${badgeInfo.cls}">
+            <span class="badge-dot"></span>
+            <span>${badgeInfo.text}</span>
+          </span>
+        </td>
+        <td class="right">
+          <button class="btn btn-sm primary" data-action="approve">通過</button>
+          <button class="btn btn-sm" data-action="pending">改為待審核</button>
+          <button class="btn btn-sm danger" data-action="reject">拒絕</button>
+        </td>
+      `;
+
+      const buttons = tr.querySelectorAll("button[data-action]");
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.getAttribute("data-action");
+          let newStatus = "";
+
+          if (action === "approve") newStatus = "通過";
+          if (action === "pending") newStatus = "待審核";
+          if (action === "reject") newStatus = "拒絕";
+
+          if (!newStatus) return;
+
+          const confirmText = `確定要將「${u.displayName || u.userId}」的審核狀態改為「${newStatus}」嗎？`;
+          if (!confirm(confirmText)) return;
+
+          updateUserStatus(u.userId, newStatus);
+        });
+      });
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function getBadgeInfo(audit) {
+    if (audit === "通過") {
+      return { cls: "approved", text: "已通過" };
+    }
+    if (audit === "拒絕" || audit === "停用") {
+      return { cls: "rejected", text: audit || "已拒絕" };
+    }
+    if (audit === "待審核" || !audit) {
+      return { cls: "pending", text: audit || "待審核" };
+    }
+    return { cls: "pending", text: audit };
+  }
+
+  async function updateUserStatus(userId, newStatus) {
+    try {
+      footerStatus.textContent = `更新中：${userId} → ${newStatus}…`;
+
+      const body = new URLSearchParams();
+      body.append("mode", "updateStatus");
+      body.append("userId", userId);
+      body.append("audit", newStatus);
+
+      const res = await fetch(API_BASE_URL, {
+        method: "POST",
+        body // x-www-form-urlencoded，避免 preflight
+      });
+
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || "API 回傳失敗");
+      }
+
+      allUsers = allUsers.map((u) =>
+        u.userId === userId ? { ...u, audit: newStatus } : u
+      );
+
+      applyFilters();
+      footerStatus.textContent = `已更新：${userId} → ${newStatus}`;
+    } catch (err) {
+      console.error(err);
+      alert("更新失敗：" + (err.message || err));
+      footerStatus.textContent = "更新失敗，請稍後再試";
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+</script>
+</body>
+</html>
