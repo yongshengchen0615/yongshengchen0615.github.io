@@ -14,114 +14,97 @@
     初始化中…
   </div>
 
-  <!-- 主畫面容器（通過驗證後才顯示） -->
-  <div class="layout" id="appRoot" style="display: none;">
-    <h1>
-      <span class="logo-dot"></span>
-      府前店排班系統
-    </h1>
-    <div class="subtitle">
-     <!--  由腳本貓 → GAS，同步「身體 / 腳底」師傅狀態。這裡只顯示每位師傅的最新一筆資料。 -->
-    </div>
-
-    <div class="top-bar">
-      <div class="pill" id="infoPill">
-        <span class="pill-dot"></span>
-        <span id="infoText">初始化中…</span>
+  <!-- 主畫面 -->
+  <div id="appRoot" class="app-root app-hidden">
+    <header class="app-header">
+      <div class="app-header-left">
+        <h1>Body & Foot Panel Dashboard</h1>
+        <p class="app-subtitle">
+          即時監控師傅狀態與預約情形
+        </p>
       </div>
-
-      <!-- 已取消：身體師傅數 / 腳底師傅數 / 監控來源 -->
-      <!--
-      <div class="top-stats">
-        <div class="stat-card">
-          <div class="stat-label">身體師傅數</div>
-          <div class="stat-value" id="bodyCount">–</div>
+      <div class="app-header-right">
+        <div class="pill">
+          <span class="pill-dot"></span>
+          <span class="pill-text" id="connectionStatus">連線中…</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">腳底師傅數</div>
-          <div class="stat-value" id="footCount">–</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">監控來源</div>
-          <div class="stat-value" style="font-size: 13px;">GAS API</div>
-        </div>
+        <button id="refreshBtn" class="btn-outline">
+          手動重整
+        </button>
       </div>
-      -->
+    </header>
 
-      <!-- 主題切換 -->
-      <button id="themeToggle" class="pill pill-btn" type="button">
-        ☀️ 亮色模式
-      </button>
-    </div>
-
-    <div class="tabs-card">
-      <div class="tabs-header">
-        <div class="tab-buttons">
-          <button class="tab-btn active" data-panel="body" id="tabBody">
-            <span class="dot"></span>
-            身體 Body
-          </button>
-          <button class="tab-btn" data-panel="foot" id="tabFoot">
-            <span class="dot"></span>
-            腳底 Foot
-          </button>
+    <main class="app-main">
+      <section class="app-main-top">
+        <div class="tabs">
+          <button id="tabBody" class="tab tab-active">身體</button>
+          <button id="tabFoot" class="tab">腳底</button>
         </div>
 
         <div class="filters">
-          <label>
-            <span class="small">師傅搜尋</span><br />
+          <div class="filter-group">
+            <label for="filterMaster">指定師傅</label>
             <input
               id="filterMaster"
-              class="input"
               type="text"
-              placeholder="輸入師傅編號，例如 07"
+              placeholder="輸入師傅編號（例如 07）"
             />
-          </label>
+          </div>
 
-          <label>
-            <span class="small">狀態篩選</span><br />
-            <select id="filterStatus" class="select">
-              <option value="all">全部狀態</option>
-              <option value="work">工作中 / 有剩餘時間</option>
-              <option value="排班">排班</option>
-              <option value="未到">未到</option>
-              <option value="下班">下班</option>
+          <div class="filter-group">
+            <label for="filterStatus">狀態篩選</label>
+            <select id="filterStatus">
+              <option value="all">全部</option>
+              <option value="busy">工作中 / 預約</option>
+              <option value="free">空閒或接近結束</option>
             </select>
-          </label>
+          </div>
+        </div>
+      </section>
 
-          <span class="badge">
-            <span class="badge-dot"></span>
-            <span id="visibleCount">– 筆顯示中</span>
-          </span>
-        </div>
-      </div>
+      <section class="app-main-bottom">
+        <div class="card card-table">
+          <div class="card-header">
+            <h2 id="panelTitle">身體面板</h2>
+            <div class="card-header-right">
+              <span class="badge" id="lastUpdate">尚未更新</span>
+            </div>
+          </div>
 
-      <div class="panel-body">
-        <div class="panel-header-row">
-          <div class="panel-title" id="panelTitle">身體 Body 面板 · 0 位師傅</div>
-          <div class="panel-subtitle">顯示每位師傅最新狀態</div>
+          <div class="table-wrapper">
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th>順序</th>
+                  <th>師傅</th>
+                  <th>狀態</th>
+                  <th>預約</th>
+                  <th>剩餘時間</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyRows">
+                <!-- 動態插入 -->
+              </tbody>
+            </table>
+
+            <div id="emptyState" class="empty-state">
+              <p>目前沒有任何資料。</p>
+            </div>
+
+            <div id="loadingState" class="loading-state">
+              <div class="spinner"></div>
+              <p>資料載入中…</p>
+            </div>
+
+            <div id="errorState" class="error-state">
+              <p>無法取得資料，請稍後再試。</p>
+            </div>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>順序</th>
-                <th>師傅</th>
-                <th>狀態</th>
-                <th>預約</th>
-              </tr>
-            </thead>
-            <tbody id="dataTableBody">
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
 
   <script src="app.js"></script>
-  <script>
-    console.log("LIFF SDK Loaded:", typeof liff);
-  </script>
 </body>
 </html>

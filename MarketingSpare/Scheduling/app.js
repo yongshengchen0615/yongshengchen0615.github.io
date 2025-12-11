@@ -1,4 +1,3 @@
-
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
 (function () {
   const rawLog = console.log;
@@ -14,22 +13,16 @@
         msg.includes("[PanelScan]") &&
         msg.includes("找不到 身體 / 腳底 panel")
       ) {
-        // 想完全安靜就 return；想記錄可以改成寫到別處
         return;
       }
     } catch (e) {
-      // 防禦性：什麼事都不要讓 console.log 掛掉
+      // 防禦性：什麼事都不要讓 console.log 本身拋錯
     }
 
-    // 其他正常 log 照常輸出
-    return rawLog.apply(console, args);
+    // 其餘 log 正常印出
+    rawLog.apply(console, args);
   };
 })();
-
-
-
-
-
 
 // ★ 換成你的 GAS Web App URL
 // A：師傅狀態（身體 / 腳底）
@@ -57,87 +50,67 @@ let activePanel = "body";
 let filterMaster = "";
 let filterStatus = "all";
 
-const infoTextEl = document.getElementById("infoText");
-// 已取消身體/腳底師傅數統計，不再需要 bodyCount / footCount
-const visibleCountEl = document.getElementById("visibleCount");
-
+// DOM
+const connectionStatusEl = document.getElementById("connectionStatus");
+const refreshBtn = document.getElementById("refreshBtn");
 const tabBodyBtn = document.getElementById("tabBody");
 const tabFootBtn = document.getElementById("tabFoot");
-
-const filterMasterEl = document.getElementById("filterMaster");
-const filterStatusEl = document.getElementById("filterStatus");
-const tbody = document.getElementById("dataTableBody");
-
-const themeToggleBtn = document.getElementById("themeToggle");
+const filterMasterInput = document.getElementById("filterMaster");
+const filterStatusSelect = document.getElementById("filterStatus");
 const panelTitleEl = document.getElementById("panelTitle");
+const lastUpdateEl = document.getElementById("lastUpdate");
+const tbodyRowsEl = document.getElementById("tbodyRows");
+const emptyStateEl = document.getElementById("emptyState");
+const loadingStateEl = document.getElementById("loadingState");
+const errorStateEl = document.getElementById("errorState");
 
-// ===== gate 顯示工具 =====
-
-function showGate(message, isError = false) {
+// ===== Gate 顯示工具 =====
+function showGate(message, isError) {
   if (!gateEl) return;
-  gateEl.textContent = message;
+
   gateEl.classList.remove("gate-hidden");
-  if (isError) {
-    gateEl.classList.add("gate-error");
-  } else {
-    gateEl.classList.remove("gate-error");
-  }
-  if (appRootEl) {
-    appRootEl.style.display = "none";
-  }
+  gateEl.innerHTML =
+    '<div class="gate-message' +
+    (isError ? " gate-message-error" : "") +
+    '"><p>' +
+    String(message || "").replace(/\n/g, "<br>") +
+    "</p></div>";
+}
+
+function hideGate() {
+  if (!gateEl) return;
+  gateEl.classList.add("gate-hidden");
 }
 
 function openApp() {
-  if (gateEl) {
-    gateEl.classList.add("gate-hidden");
-  }
-  if (appRootEl) {
-    appRootEl.style.display = "block";
-  }
+  hideGate();
+  if (!appRootEl) return;
+  appRootEl.classList.remove("app-hidden");
 }
 
-// ===== 狀態格式化 / 顏色處理 =====
-
-function toStatusTag(status, remaining) {
-  const hasRemaining =
-    remaining !== "" && remaining !== null && remaining !== undefined;
-  if (hasRemaining) {
-    return `<span class="tag tag-status-work status-remaining">工作中 (${remaining})</span>`;
-  }
-  if (!status) return "";
-
-  if (status.includes("排班")) {
-    return `<span class="tag tag-status-schedule">${status}</span>`;
-  }
-  if (status.includes("未到")) {
-    return `<span class="tag tag-status-notyet">${status}</span>`;
-  }
-  if (status.includes("下班")) {
-    return `<span class="tag tag-status-off">${status}</span>`;
-  }
-  if (status.includes("工作")) {
-    return `<span class="tag tag-status-work">${status}</span>`;
-  }
-  return status;
-}
-
+// ===== 資料格式工具 =====
 function fmtRemaining(v) {
   if (v === "" || v === null || v === undefined) return "";
-  const n = Number(v);
-  if (Number.isNaN(n)) return v;
-  if (n === 0) return "0";
-  if (n > 0) return `+${n}`;
-  return String(n);
+
+  const num = Number(v);
+  if (Number.isNaN(num)) return "";
+
+  if (num > 0) return `剩餘 ${num} 分鐘`;
+  if (num < 0) return `超時 ${Math.abs(num)} 分鐘`;
+  return "即將結束";
 }
 
-// 預約時間只顯示 24 小時制 HH:mm
-function fmtAppointment(v) {
-  if (v === null || v === undefined) return "";
+function fmtTimeCell(v) {
+  if (!v) return "";
 
-  // Date 物件（保險）
-  if (Object.prototype.toString.call(v) === "[object Date]") {
+  // 如果是純數字，就當成「剩餘分鐘」顯示在右邊
+  if (typeof v === "number") {
+    return fmtRemaining(v);
+  }
+
+  // 如果是 Date 物件
+  if (v instanceof Date) {
     const d = v;
-    if (isNaN(d.getTime())) return "";
     const hh = String(d.getHours()).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
     if (hh === "00" && mm === "00") return "";
@@ -157,58 +130,98 @@ function fmtAppointment(v) {
     return `${hh}:${mm}`;
   }
 
-  // 純時間字串 "HH:mm" / "H:m" / "HH:mm:ss"
-  const pure = s.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
-  if (pure) {
-    const hh = pure[1].padStart(2, "0");
-    const mm = pure[2].padStart(2, "0");
-    if (hh === "00" && mm === "00") return "";
-    return `${hh}:${mm}`;
+  // 其他字串就原樣顯示
+  return s;
+}
+
+function deriveStatusClass(status, remaining) {
+  const s = String(status || "");
+
+  if (s.includes("工作")) {
+    return "status-busy";
+  }
+  if (s.includes("預約")) {
+    return "status-booked";
   }
 
-  // 其他含時間的字串，抓第一組 h:m
-  const any = s.match(/(\d{1,2}):(\d{1,2})/);
-  if (any) {
-    const hh = any[1].padStart(2, "0");
-    const mm = any[2].padStart(2, "0");
-    if (hh === "00" && mm === "00") return "";
-    return `${hh}:${mm}`;
+  // 如果是「空閒 / 休息 / 未上班」之類
+  const n = Number(remaining);
+  if (!Number.isNaN(n) && n <= 0) {
+    return "status-free";
   }
 
-  return "";
+  return "status-other";
 }
 
-// 從 text-CXXXXXX 類的 class 抽出 hex 色碼 (#XXXXXX)
-function extractHexColor(colorClassString) {
-  if (!colorClassString) return null;
-  const parts = String(colorClassString).split(/\s+/);
-  const textClass = parts.find((p) => p.startsWith("text-C"));
-  if (!textClass) return null;
-
-  const token = textClass.replace("text-", ""); // 例如 C333333 / CBC5C5C / CCBCBCB
-  const hex = token.slice(-6); // 取最後 6 碼
-  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) return null;
-  return "#" + hex;
+// ===== 轉成畫面用 row =====
+function mapRowsToDisplay(rows) {
+  return rows.map((row) => {
+    const remaining = row.remaining;
+    return {
+      sort: row.sort,
+      masterId: row.masterId,
+      status: row.status,
+      appointment: row.appointment,
+      remainingDisplay: fmtRemaining(remaining),
+      statusClass: deriveStatusClass(row.status, remaining),
+      timeDisplay: fmtTimeCell(row.appointment),
+    };
+  });
 }
 
-// 暗色主題下將顏色提亮
-function lightenForDarkTheme(hexColor, factor = 1.8) {
-  if (!/^#?[0-9A-Fa-f]{6}$/.test(hexColor)) return hexColor;
+// ===== 渲染 =====
+function render() {
+  if (!tbodyRowsEl) return;
 
-  let hex = hexColor.replace("#", "");
-  let r = parseInt(hex.substring(0, 2), 16);
-  let g = parseInt(hex.substring(2, 4), 16);
-  let b = parseInt(hex.substring(4, 6), 16);
+  const list = activePanel === "body" ? rawData.body : rawData.foot;
+  const displayRows = mapRowsToDisplay(applyFilters(list));
 
-  r = Math.min(255, Math.floor(r * factor));
-  g = Math.min(255, Math.floor(g * factor));
-  b = Math.min(255, Math.floor(b * factor));
+  tbodyRowsEl.innerHTML = "";
 
-  return `rgb(${r},${g},${b})`;
+  if (!displayRows.length) {
+    if (emptyStateEl) emptyStateEl.style.display = "block";
+  } else {
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+  }
+
+  displayRows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    const tdOrder = document.createElement("td");
+    tdOrder.textContent = row.sort || "";
+    tr.appendChild(tdOrder);
+
+    const tdMaster = document.createElement("td");
+    tdMaster.textContent = row.masterId || "";
+    tr.appendChild(tdMaster);
+
+    const tdStatus = document.createElement("td");
+    const statusSpan = document.createElement("span");
+    statusSpan.className = "status-pill " + row.statusClass;
+    statusSpan.textContent = row.status || "";
+    tdStatus.appendChild(statusSpan);
+    tr.appendChild(tdStatus);
+
+    const tdAppointment = document.createElement("td");
+    tdAppointment.textContent = row.appointment || "";
+    tr.appendChild(tdAppointment);
+
+    const tdRemaining = document.createElement("td");
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "time-badge";
+    timeSpan.textContent = row.remainingDisplay || "";
+    tdRemaining.appendChild(timeSpan);
+    tr.appendChild(tdRemaining);
+
+    tbodyRowsEl.appendChild(tr);
+  });
+
+  if (panelTitleEl) {
+    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
+  }
 }
 
-// ===== 過濾與渲染 =====
-
+// ===== 過濾器 =====
 function applyFilters(list) {
   return list.filter((row) => {
     // 搜尋師傅
@@ -223,170 +236,81 @@ function applyFilters(list) {
     if (filterStatus === "all") return true;
 
     const status = String(row.status || "");
-    const remainingDisplay = fmtRemaining(row.remaining);
+    const remainingDisplay = fmtRemaining(row.remaining || "");
 
-    if (filterStatus === "work") {
-      // 有剩餘時間 或 狀態包含 "工作"
-      return remainingDisplay !== "" || status.includes("工作");
+    if (filterStatus === "busy") {
+      return status.includes("工作") || status.includes("預約");
     }
 
-    return status.includes(filterStatus);
+    if (filterStatus === "free") {
+      return (
+        status.includes("空閒") ||
+        status.includes("休息") ||
+        remainingDisplay.includes("超時") ||
+        remainingDisplay.includes("即將結束")
+      );
+    }
+
+    return true;
   });
 }
 
-function updatePanelTitle(filteredLength) {
-  if (!panelTitleEl) return;
-  if (activePanel === "body") {
-    panelTitleEl.textContent = `身體 Body 面板 · ${filteredLength} 位師傅`;
-  } else {
-    panelTitleEl.textContent = `腳底 Foot 面板 · ${filteredLength} 位師傅`;
+// ===== 抓 Status GAS =====
+async function fetchStatus(panelType) {
+  const url = STATUS_API_URL + "?type=" + encodeURIComponent(panelType);
+
+  const resp = await fetch(url, { method: "GET" });
+  if (!resp.ok) {
+    throw new Error("Status HTTP " + resp.status);
   }
+
+  const data = await resp.json();
+  // 預期格式：{ ok: true, rows: [...] }
+  if (!data || !data.ok) {
+    throw new Error("Status response not ok");
+  }
+  return data.rows || [];
 }
 
-function render() {
-  const list = rawData[activePanel] || [];
-
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-
-  const filtered = applyFilters(
-    list.slice().sort((a, b) => {
-      const ia = Number(a.sort || a.index || 0);
-      const ib = Number(b.sort || b.index || 0);
-      return ia - ib;
-    }),
-  );
-
-  // 防止 null textContent crash
-  if (visibleCountEl) {
-    visibleCountEl.textContent = `${filtered.length} 筆顯示中`;
-  }
-
-  updatePanelTitle(filtered.length);
-
-  const isDark = document.body.classList.contains("theme-dark");
-
-  filtered.forEach((row) => {
-    const tr = document.createElement("tr");
-
-    const remainingDisplay = fmtRemaining(row.remaining);
-    const statusHtml = toStatusTag(row.status, remainingDisplay);
-    const appt = fmtAppointment(row.appointment);
-    const apptDisplay = appt || "—";
-
-    tr.innerHTML = `
-      <td>${row.sort || row.index || ""}</td>
-      <td>${row.masterId || ""}</td>
-      <td>${statusHtml}</td>
-      <td><span class="tag tag-appointment">${apptDisplay}</span></td>
-    `;
-
-    const tds = tr.querySelectorAll("td");
-
-    const indexColor = extractHexColor(row.colorIndex);
-    if (indexColor) {
-      tds[0].style.color = isDark
-        ? lightenForDarkTheme(indexColor)
-        : indexColor;
-    }
-
-    const masterColor = extractHexColor(row.colorMaster);
-    if (masterColor) {
-      tds[1].style.color = isDark
-        ? lightenForDarkTheme(masterColor)
-        : masterColor;
-    }
-
-    const statusColor = extractHexColor(row.colorStatus);
-    if (statusColor) {
-      const statusSpan = tds[2].querySelector(".tag") || tds[2];
-      statusSpan.style.color = isDark
-        ? lightenForDarkTheme(statusColor)
-        : statusColor;
-    }
-
-    tbody.appendChild(tr);
-  });
-}
-
-function setActivePanel(panel) {
-  activePanel = panel;
-  if (panel === "body") {
-    tabBodyBtn && tabBodyBtn.classList.add("active");
-    tabFootBtn && tabFootBtn.classList.remove("active");
-  } else {
-    tabFootBtn && tabFootBtn.classList.add("active");
-    tabBodyBtn && tabBodyBtn.classList.remove("active");
-  }
-  render();
-}
-
-// ===== 從「師傅狀態」GAS 載入 body / foot =====
-
-async function loadData() {
-  if (infoTextEl) {
-    infoTextEl.textContent = "從 GAS 載入資料中…";
-  }
+async function refreshStatus() {
+  if (loadingStateEl) loadingStateEl.style.display = "flex";
+  if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    const resp = await fetch(STATUS_API_URL, { method: "GET" });
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const data = await resp.json();
+    const [bodyRows, footRows] = await Promise.all([
+      fetchStatus("body"),
+      fetchStatus("foot"),
+    ]);
 
-    rawData.body = Array.isArray(data.body) ? data.body : [];
-    rawData.foot = Array.isArray(data.foot) ? data.foot : [];
+    rawData.body = Array.isArray(bodyRows) ? bodyRows : [];
+    rawData.foot = Array.isArray(footRows) ? footRows : [];
 
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    if (infoTextEl) {
-      infoTextEl.textContent = `已更新：${hh}:${mm}:${ss}`;
+    if (connectionStatusEl) {
+      connectionStatusEl.textContent = "已連線";
+    }
+
+    if (lastUpdateEl) {
+      const now = new Date();
+      lastUpdateEl.textContent =
+        "更新：" +
+        now.getHours().toString().padStart(2, "0") +
+        ":" +
+        now.getMinutes().toString().padStart(2, "0");
     }
 
     render();
   } catch (err) {
-    console.error("[Dashboard] 讀取狀態 GAS 失敗：", err);
-    if (infoTextEl) {
-      infoTextEl.textContent = "⚠ 無法讀取狀態 GAS（請檢查網址 / 權限）";
+    console.error("[Status] 取得狀態失敗：", err);
+    if (connectionStatusEl) {
+      connectionStatusEl.textContent = "異常";
     }
+    if (errorStateEl) errorStateEl.style.display = "block";
+  } finally {
+    if (loadingStateEl) loadingStateEl.style.display = "none";
   }
 }
 
-function startApp() {
-  loadData();
-  // 自動刷新（目前 20 秒，可依需求調整）
-  setInterval(loadData, 20000);
-}
-
-// ===== 主題切換 =====
-
-function applyTheme(theme) {
-  document.body.classList.remove("theme-light", "theme-dark");
-  document.body.classList.add(theme);
-  localStorage.setItem("panelTheme", theme);
-
-  if (themeToggleBtn) {
-    if (theme === "theme-light") {
-      themeToggleBtn.textContent = "🌙 暗色模式";
-    } else {
-      themeToggleBtn.textContent = "☀️ 亮色模式";
-    }
-  }
-
-  // 主題變更後重繪一次（讓顏色亮度跟著調整）
-  render();
-}
-
-// 初始化主題
-(function initTheme() {
-  const saved = localStorage.getItem("panelTheme") || "theme-dark";
-  applyTheme(saved);
-})();
-
-// ===== 使用者權限：check + register =====
-
+// ===== 審核相關：方案 B =====
 async function checkOrRegisterUser(userId, displayName) {
   const url =
     AUTH_API_URL +
@@ -399,29 +323,31 @@ async function checkOrRegisterUser(userId, displayName) {
   }
 
   // 預期 GAS 回傳：
-  // { status: "approved" | "pending" | "none" }
+  // { status: "approved" | "pending" | "none", audit?: "待審核" | "拒絕" | "停用" | ... }
   const data = await resp.json();
   const status = (data && data.status) || "none";
+  const audit = (data && data.audit) || "";
 
   if (status === "approved") {
-    return { allowed: true, status: "approved" };
+    return { allowed: true, status: "approved", audit };
   }
 
   if (status === "pending") {
-    return { allowed: false, status: "pending" };
+    return { allowed: false, status: "pending", audit };
   }
 
-  // status === "none"
+  // status === "none" → 幫他註冊
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
   try {
     await registerUser(userId, displayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return { allowed: false, status: "error" };
+    return { allowed: false, status: "error", audit: "" };
   }
 
-  return { allowed: false, status: "pending" };
+  // 新註冊的一律視為待審核
+  return { allowed: false, status: "pending", audit: "待審核" };
 }
 
 async function registerUser(userId, displayName) {
@@ -445,8 +371,7 @@ async function registerUser(userId, displayName) {
   return data;
 }
 
-// ===== LIFF 初始化與權限守門 =====
-
+// ===== LIFF 初始化與權限 Gate =====
 async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 
@@ -463,14 +388,15 @@ async function initLiffAndGuard() {
     const ctx = liff.getContext();
     const profile = await liff.getProfile();
 
-    const userId = (ctx && ctx.userId) || profile.userId;
+    const userId = profile.userId || (ctx && ctx.userId) || "";
     const displayName = profile.displayName || "";
 
     if (!userId) {
-      throw new Error("無法取得 LINE 使用者 ID");
+      showGate("無法取得使用者 ID，請重新開啟 LIFF。", true);
+      return;
     }
 
-    showGate("正在驗證使用權限…");
+    showGate("正在確認使用權限…");
 
     const result = await checkOrRegisterUser(userId, displayName);
 
@@ -482,7 +408,18 @@ async function initLiffAndGuard() {
     }
 
     if (result.status === "pending") {
-      showGate("此帳號已送出使用申請，管理者審核中。");
+      const auditText = result.audit || "待審核";
+
+      let msg = "此帳號目前尚未通過審核。\n";
+      msg += "目前審核狀態：「" + auditText + "」。\n\n";
+
+      if (auditText === "拒絕" || auditText === "停用") {
+        msg += "如需重新申請或有疑問，請聯絡店家確認原因。";
+      } else {
+        msg += "若你已經等待一段時間，請聯絡店家確認審核進度。";
+      }
+
+      showGate(msg);
       return;
     }
 
@@ -499,36 +436,59 @@ async function initLiffAndGuard() {
 }
 
 // ===== 事件綁定 =====
-
 if (tabBodyBtn) {
   tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
 }
 if (tabFootBtn) {
   tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
 }
-
-if (filterMasterEl) {
-  filterMasterEl.addEventListener("input", (e) => {
+if (filterMasterInput) {
+  filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
     render();
   });
 }
-
-if (filterStatusEl) {
-  filterStatusEl.addEventListener("change", (e) => {
+if (filterStatusSelect) {
+  filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
     render();
   });
 }
-
-if (themeToggleBtn) {
-  themeToggleBtn.addEventListener("click", () => {
-    const next = document.body.classList.contains("theme-dark")
-      ? "theme-light"
-      : "theme-dark";
-    applyTheme(next);
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", () => {
+    refreshStatus();
   });
 }
 
-// ========= 入口：先跑 LIFF + 權限檢查 =========
-initLiffAndGuard();
+// ===== Panel 切換 =====
+function setActivePanel(panel) {
+  activePanel = panel;
+
+  if (!tabBodyBtn || !tabFootBtn) return;
+
+  if (panel === "body") {
+    tabBodyBtn.classList.add("tab-active");
+    tabFootBtn.classList.remove("tab-active");
+  } else {
+    tabFootBtn.classList.add("tab-active");
+    tabBodyBtn.classList.remove("tab-active");
+  }
+
+  render();
+}
+
+// ===== App 啟動 =====
+function startApp() {
+  setActivePanel("body");
+  refreshStatus();
+
+  // 可視需要：定時刷新
+  setInterval(() => {
+    refreshStatus();
+  }, 30 * 1000);
+}
+
+// ===== 入口：window onload =====
+window.addEventListener("load", () => {
+  initLiffAndGuard();
+});
