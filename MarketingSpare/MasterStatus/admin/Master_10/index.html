@@ -20,12 +20,7 @@
       --success-soft: rgba(74, 222, 128, 0.1);
       --warning: #facc15;
       --warning-soft: rgba(250, 204, 21, 0.12);
-      --muted: #4b5563;
       --radius-lg: 14px;
-    }
-
-    * {
-      box-sizing: border-box;
     }
 
     body {
@@ -39,336 +34,71 @@
       justify-content: center;
     }
 
-    .app {
-      width: 100%;
-      max-width: 1120px;
-    }
-
+    .app { width: 100%; max-width: 1120px; }
     .card {
       background: var(--bg-card);
       border-radius: 18px;
       border: 1px solid var(--border);
       padding: 20px;
-      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.7);
+      box-shadow: 0 18px 45px rgba(15,23,42,0.6);
     }
 
+    /* ===== 標題 ===== */
     .card-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
+      flex-wrap: wrap;
       gap: 12px;
-      flex-wrap: wrap;
     }
+    .title-wrap h1 { margin: 0; font-size: 20px; }
+    .title-wrap p { margin: 4px 0 0; font-size: 13px; color: var(--text-sub); }
 
-    .title-wrap h1 {
-      margin: 0;
-      font-size: 20px;
-    }
-
-    .title-wrap p {
-      margin: 4px 0 0 0;
-      font-size: 13px;
-      color: var(--text-sub);
-    }
-
-    .status-pill {
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      border: 1px solid var(--border);
-      color: var(--text-sub);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: #22c55e;
-      box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
-    }
-
-    .toolbar {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
-    }
-
+    /* ===== 搜尋 / 篩選 ===== */
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
     .search-box {
       flex: 1;
-      min-width: 180px;
       display: flex;
       align-items: center;
       gap: 6px;
       padding: 6px 10px;
       border-radius: 999px;
-      background: #020617;
       border: 1px solid var(--border);
-      color: var(--text-main);
-      font-size: 13px;
+      background: var(--bg);
     }
-
     .search-box input {
-      flex: 1;
-      border: none;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      outline: none;
-      min-width: 0;
-    }
-
-    .search-box span {
-      font-size: 14px;
-      color: var(--text-sub);
-    }
-
-    .filter-group {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
+      border: none; background: none; color: var(--text-main);
+      flex: 1; outline: none;
     }
 
     .chip {
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #020617;
-      padding: 4px 10px;
-      font-size: 12px;
-      color: var(--text-sub);
-      cursor: pointer;
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
-      user-select: none;
-      white-space: nowrap;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border); background: #020617;
+      color: var(--text-sub); cursor: pointer;
     }
+    .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
-    .chip.active {
-      border-color: var(--accent);
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
+    /* ===== 表格 ===== */
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+    table { width: 100%; min-width: 900px; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #111827; white-space: nowrap; }
+    th { font-size: 12px; color: var(--text-sub); }
 
-    .chip.bad {
-      border-color: var(--danger);
-      background: var(--danger-soft);
-      color: var(--danger);
-    }
+    /* ===== 審核狀態徽章 ===== */
+    .badge { padding: 3px 8px; border-radius: 999px; display: inline-flex; gap: 6px; font-size: 11px; }
+    .badge.approved { color: var(--success); background: var(--success-soft); border: 1px solid var(--success); }
+    .badge.pending { color: var(--warning); background: var(--warning-soft); border: 1px solid var(--warning); }
+    .badge.rejected { color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger); }
 
-    .chip.good {
-      border-color: var(--success);
-      background: var(--success-soft);
-      color: var(--success);
-    }
+    /* ===== 使用期限 pill ===== */
+    .expiry-pill { padding: 3px 8px; border-radius: 999px; font-size: 11px; border: 1px solid #444; }
+    .expiry-pill.active { color: var(--success); background: var(--success-soft); border-color: var(--success); }
+    .expiry-pill.expired { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
+    .expiry-pill.unset   { color: var(--warning); background: var(--warning-soft); border-color: var(--warning); }
 
-    .table-wrap {
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: #020617;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      min-width: 780px;
-    }
-
-    thead {
-      background: #020617;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
-
-    th, td {
-      padding: 8px 10px;
-      text-align: left;
-      border-bottom: 1px solid #111827;
-      white-space: nowrap;
-    }
-
-    th {
-      font-weight: 600;
-      color: var(--text-sub);
-      font-size: 12px;
-    }
-
-    tbody tr:hover {
-      background: #020617;
-    }
-
-    tbody tr:last-child td {
-      border-bottom: none;
-    }
-
-    .col-displayName {
-      max-width: 220px;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      border: 1px solid #374151;
-    }
-
-    .badge.pending {
-      color: #eab308;
-      background: rgba(234, 179, 8, 0.08);
-      border-color: rgba(234, 179, 8, 0.55);
-    }
-
-    .badge.approved {
-      color: #4ade80;
-      background: rgba(74, 222, 128, 0.08);
-      border-color: rgba(74, 222, 128, 0.55);
-    }
-
-    .badge.rejected {
-      color: var(--danger);
-      background: var(--danger-soft);
-      border-color: rgba(248, 113, 113, 0.7);
-    }
-
-    .badge-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: currentColor;
-    }
-
-    .expiry-pill {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      border: 1px solid #374151;
-      color: var(--text-sub);
-      background: rgba(15, 23, 42, 0.8);
-    }
-
-    .expiry-pill.active {
-      color: var(--success);
-      border-color: rgba(74, 222, 128, 0.6);
-      background: var(--success-soft);
-    }
-
-    .expiry-pill.expired {
-      color: var(--danger);
-      border-color: rgba(248, 113, 113, 0.7);
-      background: var(--danger-soft);
-    }
-
-    .expiry-pill.unset {
-      color: var(--warning);
-      border-color: rgba(250, 204, 21, 0.6);
-      background: var(--warning-soft);
-    }
-
-    .btn {
-      border-radius: 999px;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      background: #020617;
-      color: var(--text-main);
-      font-size: 12px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      user-select: none;
-      white-space: nowrap;
-    }
-
-    .btn.primary {
-      border-color: var(--accent);
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-
-    .btn.danger {
-      border-color: var(--danger);
-      background: var(--danger-soft);
-      color: var(--danger);
-    }
-
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
-
-    .btn-sm {
-      padding: 2px 6px;
-      font-size: 11px;
-    }
-
-    .right {
-      text-align: right;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 20px;
-      color: var(--text-sub);
-      font-size: 13px;
-      white-space: normal;
-    }
-
-    .footer {
-      margin-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--text-sub);
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .loading {
-      font-size: 12px;
-      color: var(--accent);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .loading-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      border: 2px solid rgba(56, 189, 248, 0.4);
-      border-top-color: var(--accent);
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    /* ====== 表單輸入 ====== */
+    /* ===== 可編輯 input ===== */
     .date-input,
     .days-input {
-      width: 100%;
-      max-width: 130px;
+      width: 120px;
       padding: 4px 6px;
       border-radius: 8px;
       border: 1px solid #1f2937;
@@ -377,367 +107,169 @@
       font-size: 12px;
     }
 
-    .date-input:focus,
-    .days-input:focus {
-      outline: none;
-      border-color: var(--accent);
+    /* ===== 按鈕 ===== */
+    .btn {
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--border); background: #020617;
+      color: var(--text-main); font-size: 12px; cursor: pointer;
     }
+    .btn.primary { border-color: var(--accent); color: var(--accent); }
+    .btn.danger { border-color: var(--danger); color: var(--danger); }
+    .btn-sm { padding: 3px 8px; font-size: 11px; }
 
-    .days-input {
-      text-align: right;
-    }
-
-    /* ========= 中等螢幕（平板） ========= */
-    @media (max-width: 900px) {
-      body {
-        padding: 12px;
-      }
-
-      .card {
-        padding: 16px;
-      }
-
-      .card-header {
-        align-items: flex-start;
-      }
-
-      .title-wrap h1 {
-        font-size: 18px;
-      }
-
-      .title-wrap p {
-        font-size: 12px;
-      }
-
-      .toolbar {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .filter-group {
-        justify-content: flex-start;
-      }
-    }
-
-    /* ========= 小螢幕（手機） ========= */
+    /* ===== RWD 修正：手機===== */
     @media (max-width: 600px) {
-      body {
-        padding: 10px;
-      }
+      body { padding: 10px; }
+      table { font-size: 12px; }
 
-      .card {
-        padding: 14px;
-        border-radius: 14px;
-      }
-
-      .title-wrap h1 {
-        font-size: 17px;
-      }
-
-      .status-pill {
-        font-size: 11px;
-        padding-inline: 8px;
-      }
-
-      table {
-        font-size: 12px;
-      }
-
-      th, td {
-        padding: 6px 8px;
-      }
-
-      /* 手機上隱藏「建立時間 / 開始使用 / 使用期限」三欄 */
+      /* ⭐ 只隱藏「建立時間」欄（手機可編輯開始日期與使用期限） */
       th:nth-child(4),
-      td:nth-child(4),
-      th:nth-child(5),
-      td:nth-child(5),
-      th:nth-child(6),
-      td:nth-child(6) {
-        display: none;
-      }
-
-      .footer {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .footer #footerHint {
-        line-height: 1.5;
-      }
+      td:nth-child(4) { display: none; }
     }
   </style>
 </head>
 <body>
+
 <div class="app">
   <div class="card">
+
     <div class="card-header">
       <div class="title-wrap">
         <h1>Users 後台管理</h1>
-        <p>管理註冊使用者的審核狀態與使用期限（資料來自 Google Sheet「Users」工作表）</p>
+        <p>管理審核狀態與使用期限</p>
       </div>
-      <div class="status-pill">
-        <span class="status-dot"></span>
-        <span id="summaryText">載入中…</span>
-      </div>
+      <div id="summaryText">載入中...</div>
     </div>
 
     <div class="toolbar">
       <div class="search-box">
-        <span>🔍</span>
-        <input
-          id="searchInput"
-          type="text"
-          placeholder="搜尋 userId / 顯示名稱"
-        />
+        🔍 <input id="searchInput" placeholder="搜尋 userId / 顯示名稱" />
       </div>
-      <div class="filter-group">
-        <button class="chip active" data-status="ALL">全部</button>
-        <button class="chip good" data-status="通過">已通過</button>
-        <button class="chip" data-status="待審核">待審核</button>
-        <button class="chip bad" data-status="拒絕">已拒絕</button>
-      </div>
+      <button class="chip active" data-filter="ALL">全部</button>
+      <button class="chip" data-filter="通過">已通過</button>
+      <button class="chip" data-filter="待審核">待審核</button>
+      <button class="chip" data-filter="拒絕">已拒絕</button>
     </div>
 
-    <div class="table-wrap" id="tableWrap">
+    <div class="table-wrap">
       <table>
         <thead>
-        <tr>
-          <th style="width: 40px;">#</th>
-          <th style="min-width: 140px;">userId</th>
-          <th style="min-width: 140px;">顯示名稱</th>
-          <th style="min-width: 140px;">建立時間</th>
-          <th style="min-width: 140px;">開始使用</th>
-          <th style="min-width: 90px;">期限(天)</th>
-          <th style="min-width: 140px;">使用狀態</th>
-          <th style="min-width: 120px;">審核狀態</th>
-          <th style="min-width: 180px;" class="right">操作</th>
-        </tr>
+          <tr>
+            <th>#</th>
+            <th>userId</th>
+            <th>顯示名稱</th>
+            <th>建立時間</th>
+            <th>開始使用</th>
+            <th>期限(天)</th>
+            <th>使用狀態</th>
+            <th>審核狀態</th>
+            <th>操作</th>
+          </tr>
         </thead>
         <tbody id="tbody">
-        <tr>
-          <td colspan="9" class="empty-state">
-            <span class="loading">
-              <span class="loading-dot"></span>
-              <span>資料載入中…</span>
-            </span>
-          </td>
-        </tr>
+          <tr><td colspan="9">載入中...</td></tr>
         </tbody>
       </table>
     </div>
 
-    <div class="footer">
-      <div id="footerStatus">—</div>
-      <div id="footerHint">
-        提示：<br/>
-        ・可以在後台直接設定「開始使用日期」與「使用期限(天)」，按「儲存期限」即可更新。<br/>
-        ・過期的使用者會自動被改成「待審核」，同時這裡會標示「已過期」。
-      </div>
-    </div>
+    <div id="footerStatus" style="margin-top:10px; color:#9ca3af;"></div>
+
   </div>
 </div>
 
 <script>
-
-  // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
-(function () {
-  const rawLog = console.log;
-
-  console.log = function (...args) {
-    try {
-      const first = args[0];
-      const msg = typeof first === "string" ? first : "";
-      if (
-        msg.includes("[PanelScan]") &&
-        msg.includes("找不到 身體 / 腳底 panel")
-      ) {
-        return;
-      }
-    } catch (e) {}
-    rawLog.apply(console, args);
-  };
-})();
-  // ★★★ 換成你的 GAS Web App URL ★★★
-  const API_BASE_URL =
-    "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  // ★ 換成你的 GAS 部署網址
+  const API_BASE_URL = "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
   let allUsers = [];
   let filteredUsers = [];
-  let currentFilterStatus = "ALL";
-  let isLoading = false;
-
-  const tbody = document.getElementById("tbody");
-  const summaryText = document.getElementById("summaryText");
-  const footerStatus = document.getElementById("footerStatus");
-  const searchInput = document.getElementById("searchInput");
 
   document.addEventListener("DOMContentLoaded", () => {
-    bindUI();
     loadUsers();
+    bindFilter();
+    document.getElementById("searchInput").addEventListener("input", applyFilters);
   });
 
-  function bindUI() {
-    searchInput.addEventListener("input", () => {
-      applyFilters();
-    });
-
-    document.querySelectorAll(".chip[data-status]").forEach((chip) => {
+  function bindFilter() {
+    document.querySelectorAll(".chip").forEach(chip => {
       chip.addEventListener("click", () => {
-        document.querySelectorAll(".chip[data-status]").forEach(c => c.classList.remove("active"));
+        document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
         chip.classList.add("active");
-        currentFilterStatus = chip.getAttribute("data-status");
         applyFilters();
       });
     });
   }
 
+  /* ===== 讀資料 ===== */
   async function loadUsers() {
-    isLoading = true;
-    renderLoading();
-
-    try {
-      const url = API_BASE_URL + "?mode=listUsers";
-      const res = await fetch(url, { method: "GET" });
-      const json = await res.json();
-
-      if (!json.ok) {
-        throw new Error(json.error || "API 回傳失敗");
-      }
-
-      allUsers = json.users || [];
-      applyFilters();
-
-      const expiredCount = allUsers.filter(u => getExpiryInfo(u).cls === "expired").length;
-      summaryText.textContent = `總共 ${allUsers.length} 位使用者，其中 ${expiredCount} 位已過期`;
-      footerStatus.textContent = `最後更新時間：${new Date().toLocaleString()}`;
-    } catch (err) {
-      console.error(err);
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="9" class="empty-state">
-            讀取失敗：${err.message || err}
-          </td>
-        </tr>
-      `;
-      summaryText.textContent = "讀取失敗";
-    } finally {
-      isLoading = false;
-    }
+    const res = await fetch(API_BASE_URL + "?mode=listUsers");
+    const json = await res.json();
+    if (!json.ok) return alert("讀取失敗");
+    allUsers = json.users;
+    applyFilters();
   }
 
-  function renderLoading() {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="9" class="empty-state">
-          <span class="loading">
-            <span class="loading-dot"></span>
-            <span>資料載入中…</span>
-          </span>
-        </td>
-      </tr>
-    `;
-    summaryText.textContent = "載入中…";
-  }
-
+  /* ===== 篩選 + 搜尋 ===== */
   function applyFilters() {
-    const keyword = searchInput.value.trim().toLowerCase();
+    const keyword = document.getElementById("searchInput").value.toLowerCase();
+    const filter = document.querySelector(".chip.active").dataset.filter;
 
-    filteredUsers = allUsers.filter((u) => {
-      if (currentFilterStatus !== "ALL") {
-        if ((u.audit || "") !== currentFilterStatus) return false;
-      }
-
-      if (keyword) {
-        const hay = `${u.userId || ""} ${u.displayName || ""}`.toLowerCase();
-        if (!hay.includes(keyword)) return false;
-      }
-
+    filteredUsers = allUsers.filter(u => {
+      if (filter !== "ALL" && u.audit !== filter) return false;
+      if (keyword && !(`${u.userId} ${u.displayName}`.toLowerCase().includes(keyword)))
+        return false;
       return true;
     });
 
     renderTable();
   }
 
+  /* ===== 表格渲染 ===== */
   function renderTable() {
-    if (!filteredUsers.length) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="9" class="empty-state">
-            沒有符合條件的使用者
-          </td>
-        </tr>
-      `;
-      return;
-    }
-
+    const tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
-    filteredUsers.forEach((u, idx) => {
+
+    filteredUsers.forEach((u, i) => {
+      const expiry = getExpiryInfo(u);
+
       const tr = document.createElement("tr");
-
-      const audit = (u.audit || "").trim();
-      const badgeInfo = getBadgeInfo(audit);
-      const expiryInfo = getExpiryInfo(u);
-
-      const startDateObj = parseDateTime(u.startDate || "");
-      const startDateForInput = startDateObj ? formatDateForInput(startDateObj) : "";
-
       tr.innerHTML = `
-        <td>${idx + 1}</td>
-        <td>${escapeHtml(u.userId || "")}</td>
-        <td class="col-displayName">${escapeHtml(u.displayName || "")}</td>
-        <td>${escapeHtml(u.createdAt || "")}</td>
+        <td>${i + 1}</td>
+        <td>${u.userId}</td>
+        <td>${u.displayName}</td>
+        <td>${u.createdAt}</td>
+
         <td>
-          <input type="date" class="date-input" value="${startDateForInput}">
+          <input type="date" class="date-input" value="${toInputDate(u.startDate)}">
         </td>
+
         <td>
-          <input type="number" class="days-input" min="1" step="1" value="${u.usageDays || ""}">
+          <input type="number" class="days-input" min="1" value="${u.usageDays || ""}">
         </td>
+
+        <td><span class="expiry-pill ${expiry.cls}">${expiry.text}</span></td>
+
+        <td><span class="badge ${badgeCls(u.audit)}">${u.audit}</span></td>
+
         <td>
-          <span class="expiry-pill ${expiryInfo.cls}">
-            ${escapeHtml(expiryInfo.text)}
-          </span>
-        </td>
-        <td>
-          <span class="badge ${badgeInfo.cls}">
-            <span class="badge-dot"></span>
-            <span>${badgeInfo.text}</span>
-          </span>
-        </td>
-        <td class="right">
-          <button class="btn btn-sm" data-action="save-usage">儲存期限</button>
-          <button class="btn btn-sm primary" data-action="approve">通過</button>
-          <button class="btn btn-sm" data-action="pending">待審核</button>
-          <button class="btn btn-sm danger" data-action="reject">拒絕</button>
+          <button class="btn btn-sm" data-act="save">儲存期限</button>
+          <button class="btn btn-sm primary" data-act="approve">通過</button>
+          <button class="btn btn-sm" data-act="pending">待審核</button>
+          <button class="btn btn-sm danger" data-act="reject">拒絕</button>
         </td>
       `;
 
       const dateInput = tr.querySelector(".date-input");
       const daysInput = tr.querySelector(".days-input");
 
-      const buttons = tr.querySelectorAll("button[data-action]");
-      buttons.forEach((btn) => {
+      tr.querySelectorAll("button").forEach(btn => {
         btn.addEventListener("click", () => {
-          const action = btn.getAttribute("data-action");
-
-          if (action === "save-usage") {
-            const startValue = dateInput.value; // yyyy-MM-dd
-            const daysValue = daysInput.value;
-            updateUsage(u.userId, startValue, daysValue);
-            return;
+          const a = btn.dataset.act;
+          if (a === "save") {
+            updateUsage(u.userId, dateInput.value, daysInput.value);
+          } else {
+            updateStatus(u.userId, btn.textContent);
           }
-
-          let newStatus = "";
-          if (action === "approve") newStatus = "通過";
-          if (action === "pending") newStatus = "待審核";
-          if (action === "reject") newStatus = "拒絕";
-
-          if (!newStatus) return;
-
-          const confirmText = `確定要將「${u.displayName || u.userId}」的審核狀態改為「${newStatus}」嗎？`;
-          if (!confirm(confirmText)) return;
-
-          updateUserStatus(u.userId, newStatus);
         });
       });
 
@@ -745,148 +277,53 @@
     });
   }
 
-  function getBadgeInfo(audit) {
-    if (audit === "通過") {
-      return { cls: "approved", text: "已通過" };
-    }
-    if (audit === "拒絕" || audit === "停用") {
-      return { cls: "rejected", text: audit || "已拒絕" };
-    }
-    if (audit === "待審核" || !audit) {
-      return { cls: "pending", text: audit || "待審核" };
-    }
-    return { cls: "pending", text: audit };
-  }
-
-  // 解析 "yyyy-MM-dd HH:mm:ss" → Date
-  function parseDateTime(str) {
-    if (!str) return null;
-    const m = str.match(
-      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/
-    );
-    if (!m) return null;
-    const year = Number(m[1]);
-    const month = Number(m[2]) - 1; // 0-based
-    const day = Number(m[3]);
-    const hour = Number(m[4]);
-    const minute = Number(m[5]);
-    const second = Number(m[6]);
-    return new Date(year, month, day, hour, minute, second);
-  }
-
-  // Date → "yyyy-MM-dd" 給 <input type="date">
-  function formatDateForInput(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const da = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${da}`;
-  }
-
-  // 判斷使用狀態：使用中 / 已過期 / 未設定
+  /* ===== 判斷使用狀態 ===== */
   function getExpiryInfo(u) {
-    const startStr = u.startDate;
-    const usageRaw = u.usageDays;
+    if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
 
-    if (!startStr || !usageRaw) {
-      return { cls: "unset", text: "未設定" };
-    }
+    const start = new Date(u.startDate.replace(" ", "T"));
+    const end = new Date(start.getTime() + u.usageDays * 86400000);
+    const diff = Math.ceil((end - new Date()) / 86400000);
 
-    const usageDays = parseInt(usageRaw, 10);
-    if (isNaN(usageDays) || usageDays <= 0) {
-      return { cls: "unset", text: "未設定" };
-    }
-
-    const start = parseDateTime(startStr);
-    if (!start) {
-      return { cls: "unset", text: "未設定" };
-    }
-
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const end = new Date(start.getTime() + usageDays * msPerDay);
-    const now = new Date();
-    const diffMs = end.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / msPerDay);
-
-    if (diffDays < 0) {
-      return { cls: "expired", text: "已過期" };
-    }
-
-    return {
-      cls: "active",
-      text: `使用中（剩餘 ${diffDays} 天）`
-    };
+    if (diff < 0) return { cls: "expired", text: "已過期" };
+    return { cls: "active", text: `使用中（剩 ${diff} 天）` };
   }
 
-  async function updateUserStatus(userId, newStatus) {
-    try {
-      footerStatus.textContent = `更新中：${userId} → ${newStatus}…`;
-
-      const body = new URLSearchParams();
-      body.append("mode", "updateStatus");
-      body.append("userId", userId);
-      body.append("audit", newStatus);
-
-      const res = await fetch(API_BASE_URL, {
-        method: "POST",
-        body
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "API 回傳失敗");
-      }
-
-      allUsers = allUsers.map((u) =>
-        u.userId === userId ? { ...u, audit: newStatus } : u
-      );
-
-      applyFilters();
-      footerStatus.textContent = `已更新：${userId} → ${newStatus}`;
-    } catch (err) {
-      console.error(err);
-      alert("更新失敗：" + (err.message || err));
-      footerStatus.textContent = "更新失敗，請稍後再試";
-    }
+  function badgeCls(a) {
+    if (a === "通過") return "approved";
+    if (a === "拒絕") return "rejected";
+    return "pending";
   }
 
-  async function updateUsage(userId, startDate, usageDays) {
-    try {
-      footerStatus.textContent = `更新使用期限中：${userId}…`;
-
-      const body = new URLSearchParams();
-      body.append("mode", "updateUsage");
-      body.append("userId", userId);
-      body.append("startDate", startDate || "");
-      body.append("usageDays", usageDays || "");
-
-      const res = await fetch(API_BASE_URL, {
-        method: "POST",
-        body
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "API 回傳失敗");
-      }
-
-      // 成功後重新載入，讓狀態與剩餘天數重新計算
-      await loadUsers();
-      footerStatus.textContent = `已更新使用期限：${userId}`;
-    } catch (err) {
-      console.error(err);
-      alert("更新使用期限失敗：" + (err.message || err));
-      footerStatus.textContent = "更新使用期限失敗，請稍後再試";
-    }
+  function toInputDate(str) {
+    if (!str) return "";
+    const d = new Date(str.replace(" ", "T"));
+    return d.toISOString().slice(0, 10);
   }
 
-  function escapeHtml(str) {
-    return String(str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+  /* ===== 更新審核狀態 ===== */
+  async function updateStatus(id, status) {
+    const fd = new URLSearchParams();
+    fd.append("mode", "updateStatus");
+    fd.append("userId", id);
+    fd.append("audit", status);
+
+    await fetch(API_BASE_URL, { method: "POST", body: fd });
+    await loadUsers();
+  }
+
+  /* ===== 更新開始日期 + 使用期限 ===== */
+  async function updateUsage(id, date, days) {
+    const fd = new URLSearchParams();
+    fd.append("mode", "updateUsage");
+    fd.append("userId", id);
+    fd.append("startDate", date);
+    fd.append("usageDays", days);
+
+    await fetch(API_BASE_URL, { method: "POST", body: fd });
+    await loadUsers();
   }
 </script>
+
 </body>
 </html>
