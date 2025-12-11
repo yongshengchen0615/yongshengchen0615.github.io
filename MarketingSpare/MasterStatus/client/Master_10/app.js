@@ -6,12 +6,11 @@ const WEB_APP_URL =
 const TECH_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// ===== 3) 使用者審核 / Users Web App URL（你貼的那支 GAS） =====
-// TODO: 換成你實際部署的 URL
+// ===== 3) 使用者審核 / Users Web App URL =====
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-// ===== 4) LIFF ID =====
+// ===== 4) LIFF ID（改成你的實際 LIFF ID） =====
 const LIFF_ID = "2008669658-W3uPaMku";
 
 // 想看的師傅 masterId
@@ -49,11 +48,27 @@ function showApp() {
   document.getElementById("appContainer").style.display = "block";
 }
 
-/* ========== 小工具 ========== */
+/* ========== 小工具：標題、副標題、審核提示卡 ========== */
 function setSubtitle(msg) {
   const el = document.querySelector(".subtitle");
   if (!el) return;
   el.textContent = msg || "";
+}
+
+function showAuditNotice(type, msg) {
+  const box = document.getElementById("auditNotice");
+  if (!box) return;
+  box.style.display = "block";
+  box.className = "audit-notice " + (type || "");
+  box.textContent = msg || "";
+}
+
+function hideAuditNotice() {
+  const box = document.getElementById("auditNotice");
+  if (!box) return;
+  box.style.display = "none";
+  box.className = "audit-notice";
+  box.textContent = "";
 }
 
 /* ========= 月曆資料：bootstrap ========= */
@@ -256,7 +271,7 @@ function formatRemaining(rem) {
 function formatAppointment(appt) {
   const s = String(appt || "").trim();
   if (!s) return "無預約";
-  return s; // ex: "15:00"
+  return s; // 直接顯示 "15:00" 之類
 }
 
 function updateStatusUI(kind, row) {
@@ -304,9 +319,8 @@ async function loadTechStatus() {
   updateStatusUI("foot", footRow);
 }
 
-/* ========== 審核相關：對接你給的 GAS ========= */
+/* ========== 審核相關：對接 Users GAS ========= */
 
-/** 取得目前登入使用者（從 LIFF 設定進來） */
 function getCurrentUser() {
   return {
     userId: window.AUTH_USER_ID || "",
@@ -314,7 +328,6 @@ function getCurrentUser() {
   };
 }
 
-/** 呼叫審核 GAS：check / register */
 async function callAuthApi(mode, payload) {
   if (!AUTH_API_URL) throw new Error("尚未設定 AUTH_API_URL");
 
@@ -355,18 +368,26 @@ async function ensureApprovedUser() {
 
   if (!userId) {
     setSubtitle("尚未取得使用者身分，請重新開啟此 LIFF。");
+    showAuditNotice(
+      "audit-rejected",
+      "❗ 無法取得使用者資料，請關閉畫面後重新從 LINE 開啟。"
+    );
     throw new Error("no_userId");
   }
 
   setSubtitle("正在檢查審核狀態…");
+  hideAuditNotice();
 
   const check = await callAuthApi("check", { userId });
-  // GAS handleCheck_ 回傳：
   // { status: "none" | "pending" | "approved", audit: "通過/待審核/拒絕/停用..." }
 
   if (check.status === "approved") {
     const label = check.audit || "通過";
     setSubtitle(`您好，${displayName || "貴賓"}，審核狀態：${label}`);
+    showAuditNotice(
+      "audit-approved",
+      "✔ 審核已通過，您可以使用全部功能。"
+    );
     return; // ✅ 允許繼續
   }
 
@@ -374,11 +395,28 @@ async function ensureApprovedUser() {
     // 第一次進來 → 幫他註冊 + 提示審核中
     await callAuthApi("register", { userId, displayName });
     setSubtitle("已送出加入申請，審核中。審核通過前無法使用此頁面。");
+    showAuditNotice(
+      "audit-pending",
+      "⏳ 已送出申請，請等待管理員審核。"
+    );
     throw new Error("pending");
   }
 
   // 其餘狀態（pending / 拒絕 / 停用 …）
   const auditText = check.audit || "待審核";
+
+  if (auditText === "待審核") {
+    showAuditNotice(
+      "audit-pending",
+      "⏳ 您的帳號正在審核中，審核通過前暫時無法使用此頁面。"
+    );
+  } else {
+    showAuditNotice(
+      "audit-rejected",
+      `❗ 審核狀態：${auditText}，目前無法使用此頁面，請聯絡管理員。`
+    );
+  }
+
   setSubtitle(`審核狀態：${auditText}（尚未通過，暫時無法使用此頁面）`);
   throw new Error("pending");
 }
@@ -435,6 +473,10 @@ async function initLiffAndGuard() {
     // LIFF ID 未設定
     if (msg.includes("請先設定 LIFF_ID")) {
       setSubtitle("系統尚未設定 LIFF ID，請聯絡管理員。");
+      showAuditNotice(
+        "audit-rejected",
+        "❗ LIFF 設定不完整，請通知系統管理員。"
+      );
       document.getElementById("loadingOverlay").classList.add("hidden");
       document.getElementById("appContainer").style.display = "block";
       return;

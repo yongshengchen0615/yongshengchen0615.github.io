@@ -54,6 +54,10 @@ body {
   display: none; /* 載入完成前不顯示 */
 }
 
+.calendar-container {
+  width: 100%;
+}
+
 h1 {
   margin: 0 0 6px;
   font-size: 24px;
@@ -62,8 +66,40 @@ h1 {
 .subtitle {
   font-size: 13px;
   color: var(--text-sub);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   min-height: 16px;
+}
+
+/* ===== 審核狀態提示卡 ===== */
+.audit-notice {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+/* 通過：綠色 */
+.audit-approved {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+/* 審核中：黃色 */
+.audit-pending {
+  background: rgba(250, 204, 21, 0.2);
+  border-color: #facc15;
+  color: #fef9c3;
+}
+
+/* 拒絕 / 停用：紅色 */
+.audit-rejected {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #fecaca;
 }
 
 /* ========== 月曆導航 ========== */
@@ -153,26 +189,12 @@ td.empty {
 
 td.has-event { box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.3); }
 
-td.type-holiday {
-  background: radial-gradient(circle at top, rgba(248, 113, 113, 0.26), rgba(15, 23, 42, 1));
-  border-color: #f97373;
-}
-td.type-blockedDay {
-  background: radial-gradient(circle at top, rgba(248, 171, 113, 0.22), rgba(15, 23, 42, 1));
-  border-color: #fb923c;
-}
-td.type-halfDay {
-  background: radial-gradient(circle at top, rgba(252, 211, 77, 0.22), rgba(15, 23, 42, 1));
-  border-color: #facc15;
-}
-td.type-eventDay {
-  background: radial-gradient(circle at top, rgba(96, 165, 250, 0.24), rgba(15, 23, 42, 1));
-  border-color: #60a5fa;
-}
-td.type-weeklyOff {
-  background: radial-gradient(circle at top, rgba(148, 163, 184, 0.24), rgba(15, 23, 42, 1));
-  border-color: #9ca3af;
-}
+/* 類型加強背景 */
+td.type-holiday    { background: radial-gradient(circle at top, #4b1e1e 0, #020617 45%); }
+td.type-weeklyOff  { background: radial-gradient(circle at top, #111827 0, #020617 45%); }
+td.type-eventDay   { background: radial-gradient(circle at top, #1d283a 0, #020617 45%); }
+td.type-halfDay    { background: radial-gradient(circle at top, #3b2f16 0, #020617 45%); }
+td.type-blockedDay { background: radial-gradient(circle at top, #422018 0, #020617 45%); }
 
 /* ========== 日期 badge ========== */
 .badge-row {

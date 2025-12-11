@@ -21,7 +21,12 @@
   <div id="appContainer">
     <div class="calendar-container">
       <h1>預約月曆 & 師傅狀態</h1>
+
+      <!-- 上方說明文字（動態更新） -->
       <div class="subtitle"></div>
+
+      <!-- 審核狀態提示卡（JS 控制顯示/隱藏） -->
+      <div id="auditNotice" class="audit-notice" style="display:none;"></div>
 
       <!-- 月曆導航 -->
       <div class="month-nav">
@@ -55,6 +60,7 @@
         </div>
 
         <div class="tech-status-grid">
+          <!-- 身體 -->
           <div>
             <div class="tech-col-title">身體</div>
             <div class="tech-row">
@@ -70,6 +76,8 @@
               <span class="tech-value" id="bodyRemainingText">-</span>
             </div>
           </div>
+
+          <!-- 腳底 -->
           <div>
             <div class="tech-col-title">腳底</div>
             <div class="tech-row">
@@ -87,11 +95,9 @@
           </div>
         </div>
       </div>
-      <!-- /師傅狀態卡片 -->
+
     </div>
   </div>
-
-
 
   <!-- 主程式 -->
   <script src="app.js"></script>
