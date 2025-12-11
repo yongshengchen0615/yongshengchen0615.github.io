@@ -66,6 +66,7 @@ h1 {
   min-height: 16px;
 }
 
+/* ========== 月曆導航 ========== */
 .month-nav {
   display: flex;
   justify-content: space-between;
@@ -98,6 +99,7 @@ button {
 button:hover { background: #334155; }
 button:active { transform: scale(0.97); }
 
+/* ========== 月曆表格 ========== */
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -172,6 +174,7 @@ td.type-weeklyOff {
   border-color: #9ca3af;
 }
 
+/* ========== 日期 badge ========== */
 .badge-row {
   margin-top: 6px;
   display: flex;
@@ -198,12 +201,13 @@ td.type-weeklyOff {
   border-radius: 999px;
 }
 
-.tag-holiday .dot { background: #f97373; }
-.tag-weeklyOff .dot { background: #9ca3af; }
-.tag-eventDay .dot { background: #60a5fa; }
-.tag-halfDay .dot { background: #facc15; }
+.tag-holiday .dot    { background: #f97373; }
+.tag-weeklyOff .dot  { background: #9ca3af; }
+.tag-eventDay .dot   { background: #60a5fa; }
+.tag-halfDay .dot    { background: #facc15; }
 .tag-blockedDay .dot { background: #fb923c; }
 
+/* ========== 日期說明 popup ========== */
 .event-popup {
   margin-top: 14px;
   padding: 10px 12px;
@@ -289,6 +293,7 @@ td.type-weeklyOff {
   color: #e5e7eb;
 }
 
+/* ========== RWD ========== */
 @media (max-width: 768px) {
   body { padding: 12px; }
   h1 { font-size: 20px; }
