@@ -579,9 +579,9 @@ async function initLiffAndGuard() {
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
 
       if (auditText === "拒絕" || auditText === "停用") {
-        msg += "如需重新申請或有疑問，請聯絡店家確認原因。";
+        msg += "如需重新申請或有疑問，請聯絡管理員。";
       } else {
-        msg += "若你已經等待一段時間，請聯絡店家確認審核進度。";
+        msg += "若你已經等待一段時間，請聯絡管理員確認審核進度。";
       }
 
       showGate(msg);

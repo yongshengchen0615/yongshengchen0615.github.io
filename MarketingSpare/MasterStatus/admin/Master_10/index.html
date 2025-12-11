@@ -18,6 +18,8 @@
       --danger-soft: rgba(248, 113, 113, 0.1);
       --success: #4ade80;
       --success-soft: rgba(74, 222, 128, 0.1);
+      --warning: #facc15;
+      --warning-soft: rgba(250, 204, 21, 0.12);
       --muted: #4b5563;
       --radius-lg: 14px;
     }
@@ -39,7 +41,7 @@
 
     .app {
       width: 100%;
-      max-width: 1080px;
+      max-width: 1120px;
     }
 
     .card {
@@ -79,6 +81,7 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      white-space: nowrap;
     }
 
     .status-dot {
@@ -117,6 +120,7 @@
       color: inherit;
       font: inherit;
       outline: none;
+      min-width: 0;
     }
 
     .search-box span {
@@ -128,6 +132,7 @@
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .chip {
@@ -142,6 +147,7 @@
       gap: 6px;
       align-items: center;
       user-select: none;
+      white-space: nowrap;
     }
 
     .chip.active {
@@ -165,18 +171,23 @@
     .table-wrap {
       border-radius: 14px;
       border: 1px solid var(--border);
-      overflow: hidden;
       background: #020617;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
+      min-width: 780px;
     }
 
     thead {
       background: #020617;
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
 
     th, td {
@@ -201,7 +212,7 @@
     }
 
     .col-displayName {
-      max-width: 200px;
+      max-width: 220px;
       white-space: nowrap;
       text-overflow: ellipsis;
       overflow: hidden;
@@ -242,6 +253,35 @@
       background: currentColor;
     }
 
+    .expiry-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      border: 1px solid #374151;
+      color: var(--text-sub);
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .expiry-pill.active {
+      color: var(--success);
+      border-color: rgba(74, 222, 128, 0.6);
+      background: var(--success-soft);
+    }
+
+    .expiry-pill.expired {
+      color: var(--danger);
+      border-color: rgba(248, 113, 113, 0.7);
+      background: var(--danger-soft);
+    }
+
+    .expiry-pill.unset {
+      color: var(--warning);
+      border-color: rgba(250, 204, 21, 0.6);
+      background: var(--warning-soft);
+    }
+
     .btn {
       border-radius: 999px;
       padding: 4px 10px;
@@ -254,6 +294,7 @@
       align-items: center;
       gap: 6px;
       user-select: none;
+      white-space: nowrap;
     }
 
     .btn.primary {
@@ -274,7 +315,7 @@
     }
 
     .btn-sm {
-      padding: 2px 8px;
+      padding: 2px 6px;
       font-size: 11px;
     }
 
@@ -287,6 +328,7 @@
       padding: 20px;
       color: var(--text-sub);
       font-size: 13px;
+      white-space: normal;
     }
 
     .footer {
@@ -322,12 +364,106 @@
       }
     }
 
-    @media (max-width: 720px) {
+    /* ====== 表單輸入 ====== */
+    .date-input,
+    .days-input {
+      width: 100%;
+      max-width: 130px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: var(--text-main);
+      font-size: 12px;
+    }
+
+    .date-input:focus,
+    .days-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .days-input {
+      text-align: right;
+    }
+
+    /* ========= 中等螢幕（平板） ========= */
+    @media (max-width: 900px) {
+      body {
+        padding: 12px;
+      }
+
       .card {
         padding: 16px;
       }
-      th:nth-child(4), td:nth-child(4) {
-        display: none; /* 小螢幕隱藏建立時間欄 */
+
+      .card-header {
+        align-items: flex-start;
+      }
+
+      .title-wrap h1 {
+        font-size: 18px;
+      }
+
+      .title-wrap p {
+        font-size: 12px;
+      }
+
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .filter-group {
+        justify-content: flex-start;
+      }
+    }
+
+    /* ========= 小螢幕（手機） ========= */
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 14px;
+        border-radius: 14px;
+      }
+
+      .title-wrap h1 {
+        font-size: 17px;
+      }
+
+      .status-pill {
+        font-size: 11px;
+        padding-inline: 8px;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      th, td {
+        padding: 6px 8px;
+      }
+
+      /* 手機上隱藏「建立時間 / 開始使用 / 使用期限」三欄 */
+      th:nth-child(4),
+      td:nth-child(4),
+      th:nth-child(5),
+      td:nth-child(5),
+      th:nth-child(6),
+      td:nth-child(6) {
+        display: none;
+      }
+
+      .footer {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .footer #footerHint {
+        line-height: 1.5;
       }
     }
   </style>
@@ -338,7 +474,7 @@
     <div class="card-header">
       <div class="title-wrap">
         <h1>Users 後台管理</h1>
-        <p>管理註冊使用者的審核狀態（資料來自 Google Sheet「Users」工作表）</p>
+        <p>管理註冊使用者的審核狀態與使用期限（資料來自 Google Sheet「Users」工作表）</p>
       </div>
       <div class="status-pill">
         <span class="status-dot"></span>
@@ -371,13 +507,16 @@
           <th style="min-width: 140px;">userId</th>
           <th style="min-width: 140px;">顯示名稱</th>
           <th style="min-width: 140px;">建立時間</th>
+          <th style="min-width: 140px;">開始使用</th>
+          <th style="min-width: 90px;">期限(天)</th>
+          <th style="min-width: 140px;">使用狀態</th>
           <th style="min-width: 120px;">審核狀態</th>
-          <th style="min-width: 160px;" class="right">操作</th>
+          <th style="min-width: 180px;" class="right">操作</th>
         </tr>
         </thead>
         <tbody id="tbody">
         <tr>
-          <td colspan="6" class="empty-state">
+          <td colspan="9" class="empty-state">
             <span class="loading">
               <span class="loading-dot"></span>
               <span>資料載入中…</span>
@@ -390,14 +529,19 @@
 
     <div class="footer">
       <div id="footerStatus">—</div>
-      <div id="footerHint">提示：點「通過」會把該使用者審核狀態改成「通過」，不會修改其他欄位。</div>
+      <div id="footerHint">
+        提示：<br/>
+        ・可以在後台直接設定「開始使用日期」與「使用期限(天)」，按「儲存期限」即可更新。<br/>
+        ・過期的使用者會自動被改成「待審核」，同時這裡會標示「已過期」。
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-  // ★★★ 這裡換成你的 GAS Web App URL（/exec） ★★★
-  const API_BASE_URL = "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  // ★★★ 換成你的 GAS Web App URL ★★★
+  const API_BASE_URL =
+    "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
   let allUsers = [];
   let filteredUsers = [];
@@ -445,14 +589,15 @@
       allUsers = json.users || [];
       applyFilters();
 
-      summaryText.textContent = `總共 ${allUsers.length} 位使用者`;
+      const expiredCount = allUsers.filter(u => getExpiryInfo(u).cls === "expired").length;
+      summaryText.textContent = `總共 ${allUsers.length} 位使用者，其中 ${expiredCount} 位已過期`;
       footerStatus.textContent = `最後更新時間：${new Date().toLocaleString()}`;
     } catch (err) {
       console.error(err);
       tbody.innerHTML = `
         <tr>
-          <td colspan="6" class="empty-state">
-            讀取失敗：${err.message || err}  
+          <td colspan="9" class="empty-state">
+            讀取失敗：${err.message || err}
           </td>
         </tr>
       `;
@@ -465,7 +610,7 @@
   function renderLoading() {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" class="empty-state">
+        <td colspan="9" class="empty-state">
           <span class="loading">
             <span class="loading-dot"></span>
             <span>資料載入中…</span>
@@ -499,7 +644,7 @@
     if (!filteredUsers.length) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="6" class="empty-state">
+          <td colspan="9" class="empty-state">
             沒有符合條件的使用者
           </td>
         </tr>
@@ -513,6 +658,10 @@
 
       const audit = (u.audit || "").trim();
       const badgeInfo = getBadgeInfo(audit);
+      const expiryInfo = getExpiryInfo(u);
+
+      const startDateObj = parseDateTime(u.startDate || "");
+      const startDateForInput = startDateObj ? formatDateForInput(startDateObj) : "";
 
       tr.innerHTML = `
         <td>${idx + 1}</td>
@@ -520,24 +669,46 @@
         <td class="col-displayName">${escapeHtml(u.displayName || "")}</td>
         <td>${escapeHtml(u.createdAt || "")}</td>
         <td>
+          <input type="date" class="date-input" value="${startDateForInput}">
+        </td>
+        <td>
+          <input type="number" class="days-input" min="1" step="1" value="${u.usageDays || ""}">
+        </td>
+        <td>
+          <span class="expiry-pill ${expiryInfo.cls}">
+            ${escapeHtml(expiryInfo.text)}
+          </span>
+        </td>
+        <td>
           <span class="badge ${badgeInfo.cls}">
             <span class="badge-dot"></span>
             <span>${badgeInfo.text}</span>
           </span>
         </td>
         <td class="right">
+          <button class="btn btn-sm" data-action="save-usage">儲存期限</button>
           <button class="btn btn-sm primary" data-action="approve">通過</button>
-          <button class="btn btn-sm" data-action="pending">改為待審核</button>
+          <button class="btn btn-sm" data-action="pending">待審核</button>
           <button class="btn btn-sm danger" data-action="reject">拒絕</button>
         </td>
       `;
+
+      const dateInput = tr.querySelector(".date-input");
+      const daysInput = tr.querySelector(".days-input");
 
       const buttons = tr.querySelectorAll("button[data-action]");
       buttons.forEach((btn) => {
         btn.addEventListener("click", () => {
           const action = btn.getAttribute("data-action");
-          let newStatus = "";
 
+          if (action === "save-usage") {
+            const startValue = dateInput.value; // yyyy-MM-dd
+            const daysValue = daysInput.value;
+            updateUsage(u.userId, startValue, daysValue);
+            return;
+          }
+
+          let newStatus = "";
           if (action === "approve") newStatus = "通過";
           if (action === "pending") newStatus = "待審核";
           if (action === "reject") newStatus = "拒絕";
@@ -568,6 +739,65 @@
     return { cls: "pending", text: audit };
   }
 
+  // 解析 "yyyy-MM-dd HH:mm:ss" → Date
+  function parseDateTime(str) {
+    if (!str) return null;
+    const m = str.match(
+      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/
+    );
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]) - 1; // 0-based
+    const day = Number(m[3]);
+    const hour = Number(m[4]);
+    const minute = Number(m[5]);
+    const second = Number(m[6]);
+    return new Date(year, month, day, hour, minute, second);
+  }
+
+  // Date → "yyyy-MM-dd" 給 <input type="date">
+  function formatDateForInput(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
+  }
+
+  // 判斷使用狀態：使用中 / 已過期 / 未設定
+  function getExpiryInfo(u) {
+    const startStr = u.startDate;
+    const usageRaw = u.usageDays;
+
+    if (!startStr || !usageRaw) {
+      return { cls: "unset", text: "未設定" };
+    }
+
+    const usageDays = parseInt(usageRaw, 10);
+    if (isNaN(usageDays) || usageDays <= 0) {
+      return { cls: "unset", text: "未設定" };
+    }
+
+    const start = parseDateTime(startStr);
+    if (!start) {
+      return { cls: "unset", text: "未設定" };
+    }
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const end = new Date(start.getTime() + usageDays * msPerDay);
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / msPerDay);
+
+    if (diffDays < 0) {
+      return { cls: "expired", text: "已過期" };
+    }
+
+    return {
+      cls: "active",
+      text: `使用中（剩餘 ${diffDays} 天）`
+    };
+  }
+
   async function updateUserStatus(userId, newStatus) {
     try {
       footerStatus.textContent = `更新中：${userId} → ${newStatus}…`;
@@ -579,7 +809,7 @@
 
       const res = await fetch(API_BASE_URL, {
         method: "POST",
-        body // x-www-form-urlencoded，避免 preflight
+        body
       });
 
       const json = await res.json();
@@ -597,6 +827,36 @@
       console.error(err);
       alert("更新失敗：" + (err.message || err));
       footerStatus.textContent = "更新失敗，請稍後再試";
+    }
+  }
+
+  async function updateUsage(userId, startDate, usageDays) {
+    try {
+      footerStatus.textContent = `更新使用期限中：${userId}…`;
+
+      const body = new URLSearchParams();
+      body.append("mode", "updateUsage");
+      body.append("userId", userId);
+      body.append("startDate", startDate || "");
+      body.append("usageDays", usageDays || "");
+
+      const res = await fetch(API_BASE_URL, {
+        method: "POST",
+        body
+      });
+
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || "API 回傳失敗");
+      }
+
+      // 成功後重新載入，讓狀態與剩餘天數重新計算
+      await loadUsers();
+      footerStatus.textContent = `已更新使用期限：${userId}`;
+    } catch (err) {
+      console.error(err);
+      alert("更新使用期限失敗：" + (err.message || err));
+      footerStatus.textContent = "更新使用期限失敗，請稍後再試";
     }
   }
 
