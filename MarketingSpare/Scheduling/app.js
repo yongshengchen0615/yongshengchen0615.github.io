@@ -102,7 +102,7 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
-// 從像是 "text-C333333 text-opacity-60" 這種字串裡，抓出顏色 + 透明度
+// 從 "text-C333333 text-opacity-60" 抓出顏色 + 透明度
 function parseScriptCatColor(colorStr) {
   if (!colorStr) return { color: null, opacity: null };
 
@@ -114,9 +114,8 @@ function parseScriptCatColor(colorStr) {
   let opacity = null;
 
   tokens.forEach((t) => {
-    // text-Cxxxxxx
     if (t.startsWith("text-C")) {
-      let raw = t.slice("text-".length); // 例如 "C333333"
+      let raw = t.slice("text-".length); // "C333333"
       if (/^C[0-9A-Fa-f]{6}$/.test(raw)) {
         raw = raw.slice(1); // "333333"
       }
@@ -125,7 +124,6 @@ function parseScriptCatColor(colorStr) {
       }
     }
 
-    // text-opacity-60 / text-opacity-0.6
     if (t.startsWith("text-opacity-")) {
       const vRaw = t.slice("text-opacity-".length);
       let v = parseFloat(vRaw);
@@ -139,7 +137,7 @@ function parseScriptCatColor(colorStr) {
   return { color: hex, opacity };
 }
 
-// 套用 ScriptCat 顏色到某個 element 的文字顏色
+// 套用 ScriptCat 顏色到 element 的文字顏色
 function applyScriptCatColorToElement(el, colorStr) {
   if (!el || !colorStr) return;
 
@@ -157,22 +155,18 @@ function applyScriptCatColorToElement(el, colorStr) {
 }
 
 // ===== 資料格式工具 =====
-function fmtRemaining(v) {
-  if (v === "" || v === null || v === undefined) return "";
-
-  const num = Number(v);
-  if (Number.isNaN(num)) return "";
-
-  if (num > 0) return `剩餘 ${num} 分鐘`;
-  if (num < 0) return `超時 ${Math.abs(num)} 分鐘`;
-  return "即將結束";
+function fmtRemainingRaw(v) {
+  // 直接顯示工作表資料：空/null → 空字串，其它轉字串
+  if (v === null || v === undefined) return "";
+  return String(v);
 }
 
 function fmtTimeCell(v) {
   if (!v) return "";
 
   if (typeof v === "number") {
-    return fmtRemaining(v);
+    // 這裡不再用剩餘分鐘顯示，只當純文字
+    return String(v);
   }
 
   if (v instanceof Date) {
@@ -201,17 +195,11 @@ function fmtTimeCell(v) {
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
 
-  if (s.includes("工作")) {
-    return "status-busy";
-  }
-  if (s.includes("預約")) {
-    return "status-booked";
-  }
+  if (s.includes("工作")) return "status-busy";
+  if (s.includes("預約")) return "status-booked";
 
   const n = Number(remaining);
-  if (!Number.isNaN(n) && n <= 0) {
-    return "status-free";
-  }
+  if (!Number.isNaN(n) && n <= 0) return "status-free";
 
   return "status-other";
 }
@@ -219,7 +207,8 @@ function deriveStatusClass(status, remaining) {
 // ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
-    const remaining = row.remaining;
+    const remaining = (row.remaining === 0 || row.remaining) ? row.remaining : "";
+
     return {
       sort: row.sort,
       masterId: row.masterId,
@@ -230,19 +219,79 @@ function mapRowsToDisplay(rows) {
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
 
-      remainingDisplay: fmtRemaining(remaining),
+      // 剩餘時間：直接顯示資料表原始值
+      remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
       timeDisplay: fmtTimeCell(row.appointment),
     };
   });
 }
 
-// ===== 渲染 =====
+// ===== 重建「狀態篩選」選項：列出所有實際出現過的狀態 =====
+function rebuildStatusFilterOptions() {
+  if (!filterStatusSelect) return;
+
+  const statuses = new Set();
+
+  ["body", "foot"].forEach((type) => {
+    const rows = rawData[type] || [];
+    rows.forEach((r) => {
+      const s = String(r.status || "").trim();
+      if (s) statuses.add(s);
+    });
+  });
+
+  const previous = filterStatusSelect.value || "all";
+
+  // 清掉所有選項，重新建立
+  filterStatusSelect.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "全部狀態";
+  filterStatusSelect.appendChild(optAll);
+
+  for (const s of statuses) {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    filterStatusSelect.appendChild(opt);
+  }
+
+  // 還原之前的選擇（如果還存在）
+  if (previous !== "all" && statuses.has(previous)) {
+    filterStatusSelect.value = previous;
+  } else {
+    filterStatusSelect.value = "all";
+  }
+
+  // 同步到內部 filterStatus 變數
+  filterStatus = filterStatusSelect.value;
+}
+
+// ===== 渲染（包含：排序 + 過濾）=====
 function render() {
   if (!tbodyRowsEl) return;
 
   const list = activePanel === "body" ? rawData.body : rawData.foot;
-  const displayRows = mapRowsToDisplay(applyFilters(list));
+
+  // 先過濾
+  const filtered = applyFilters(list);
+
+  // 再依「順序」排序（sort，沒有就用 index）
+  const sorted = filtered.slice().sort((a, b) => {
+    const aBase = a.sort ?? a.index ?? 0;
+    const bBase = b.sort ?? b.index ?? 0;
+    const na = Number(aBase);
+    const nb = Number(bBase);
+
+    if (Number.isNaN(na) && Number.isNaN(nb)) return 0;
+    if (Number.isNaN(na)) return 1;
+    if (Number.isNaN(nb)) return -1;
+    return na - nb;
+  });
+
+  const displayRows = mapRowsToDisplay(sorted);
 
   tbodyRowsEl.innerHTML = "";
 
@@ -292,7 +341,7 @@ function render() {
     tdAppointment.className = "cell-appointment";
     tr.appendChild(tdAppointment);
 
-    // 剩餘時間欄位
+    // 剩餘時間欄位（直接顯示資料表內容）
     const tdRemaining = document.createElement("td");
     const timeSpan = document.createElement("span");
     timeSpan.className = "time-badge";
@@ -308,9 +357,10 @@ function render() {
   }
 }
 
-// ===== 過濾器 =====
+// ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
   return list.filter((row) => {
+    // 師傅搜尋（模糊包含）
     if (filterMaster) {
       const key = String(filterMaster).trim();
       if (!String(row.masterId || "").includes(key)) {
@@ -318,22 +368,10 @@ function applyFilters(list) {
       }
     }
 
-    if (filterStatus === "all") return true;
-
-    const status = String(row.status || "");
-    const remainingDisplay = fmtRemaining(row.remaining || "");
-
-    if (filterStatus === "busy") {
-      return status.includes("工作") || status.includes("預約");
-    }
-
-    if (filterStatus === "free") {
-      return (
-        status.includes("空閒") ||
-        status.includes("休息") ||
-        remainingDisplay.includes("超時") ||
-        remainingDisplay.includes("即將結束")
-      );
+    // 狀態過濾：完全相等，不再合併
+    if (filterStatus && filterStatus !== "all") {
+      const status = String(row.status || "");
+      if (status !== filterStatus) return false;
     }
 
     return true;
@@ -341,14 +379,18 @@ function applyFilters(list) {
 }
 
 // ===== 抓 Status GAS（一次拿 body + foot）=====
+// 加上 Perf 計時
 async function fetchStatusAll() {
+  console.time("[Perf] STATUS_API fetch");
   const resp = await fetch(STATUS_API_URL, { method: "GET" });
 
   if (!resp.ok) {
+    console.timeEnd("[Perf] STATUS_API fetch");
     throw new Error("Status HTTP " + resp.status);
   }
 
   const data = await resp.json();
+  console.timeEnd("[Perf] STATUS_API fetch");
   console.log("[Status] raw from GAS:", data);
 
   if (data.ok === false) {
@@ -366,10 +408,14 @@ async function refreshStatus() {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
+    console.time("[Perf] refreshStatus total");
     const { bodyRows, footRows } = await fetchStatusAll();
 
     rawData.body = bodyRows;
     rawData.foot = footRows;
+
+    // 取得資料後重建「狀態篩選」列表
+    rebuildStatusFilterOptions();
 
     if (connectionStatusEl) {
       connectionStatusEl.textContent = "已連線";
@@ -385,12 +431,14 @@ async function refreshStatus() {
     }
 
     render();
+    console.timeEnd("[Perf] refreshStatus total");
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) {
       connectionStatusEl.textContent = "異常";
     }
     if (errorStateEl) errorStateEl.style.display = "block";
+    console.timeEnd("[Perf] refreshStatus total");
   } finally {
     if (loadingStateEl) loadingStateEl.style.display = "none";
   }
@@ -481,37 +529,47 @@ if (themeToggleBtn) {
 
 // ===== LIFF 初始化與權限 Gate =====
 async function initLiffAndGuard() {
+  console.time("[Perf] LIFF+Auth");
   showGate("正在啟動 LIFF…");
 
   try {
+    console.time("[Perf] liff.init");
     await liff.init({ liffId: LIFF_ID });
+    console.timeEnd("[Perf] liff.init");
 
     if (!liff.isLoggedIn()) {
       liff.login();
+      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("正在取得使用者資訊…");
-
+    console.time("[Perf] liff.getProfile");
     const ctx = liff.getContext();
     const profile = await liff.getProfile();
+    console.timeEnd("[Perf] liff.getProfile");
 
     const userId = profile.userId || (ctx && ctx.userId) || "";
     const displayName = profile.displayName || "";
 
     if (!userId) {
       showGate("無法取得使用者 ID，請重新開啟 LIFF。", true);
+      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("正在確認使用權限…");
-
+    console.time("[Perf] checkOrRegisterUser");
     const result = await checkOrRegisterUser(userId, displayName);
+    console.timeEnd("[Perf] checkOrRegisterUser");
 
     if (result.allowed && result.status === "approved") {
       showGate("驗證通過，正在載入資料…");
       openApp();
+      console.time("[Perf] first refreshStatus");
       startApp();
+      console.timeEnd("[Perf] first refreshStatus");
+      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
@@ -528,18 +586,22 @@ async function initLiffAndGuard() {
       }
 
       showGate(msg);
+      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     if (result.status === "error") {
       showGate("⚠ 無法送出審核申請，請稍後再試。", true);
+      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
+    console.timeEnd("[Perf] LIFF+Auth");
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
+    console.timeEnd("[Perf] LIFF+Auth");
   }
 }
 
