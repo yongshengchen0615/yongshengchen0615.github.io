@@ -25,11 +25,11 @@
 })();
 
 // ★ 換成你的 GAS Web App URL
-// A：師傅狀態（身體 / 腳底）
+// A：師傅狀態（身體 / 腳底）→ 面板 GAS
 const STATUS_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// B：使用者權限（UUID + 名稱 + 審核）
+// B：使用者權限（UUID + 名稱 + 審核）→ Users 認證 GAS
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
@@ -255,21 +255,27 @@ function applyFilters(list) {
   });
 }
 
-// ===== 抓 Status GAS =====
-async function fetchStatus(panelType) {
-  const url = STATUS_API_URL + "?type=" + encodeURIComponent(panelType);
+// ===== 抓 Status GAS（改成一次拿 body + foot）=====
+async function fetchStatusAll() {
+  const resp = await fetch(STATUS_API_URL, { method: "GET" });
 
-  const resp = await fetch(url, { method: "GET" });
   if (!resp.ok) {
     throw new Error("Status HTTP " + resp.status);
   }
 
   const data = await resp.json();
-  // 預期格式：{ ok: true, rows: [...] }
-  if (!data || !data.ok) {
-    throw new Error("Status response not ok");
+  console.log("[Status] raw from GAS:", data);
+
+  // 你的面板 GAS 現在回的是：{ body: [...], foot: [...] }
+  // 也容許未來擴充成 { ok: true, body: [...], foot: [...] }
+  if (data.ok === false) {
+    throw new Error(data.error || "Status response not ok");
   }
-  return data.rows || [];
+
+  const bodyRows = Array.isArray(data.body) ? data.body : [];
+  const footRows = Array.isArray(data.foot) ? data.foot : [];
+
+  return { bodyRows, footRows };
 }
 
 async function refreshStatus() {
@@ -277,13 +283,10 @@ async function refreshStatus() {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    const [bodyRows, footRows] = await Promise.all([
-      fetchStatus("body"),
-      fetchStatus("foot"),
-    ]);
+    const { bodyRows, footRows } = await fetchStatusAll();
 
-    rawData.body = Array.isArray(bodyRows) ? bodyRows : [];
-    rawData.foot = Array.isArray(footRows) ? footRows : [];
+    rawData.body = bodyRows;
+    rawData.foot = footRows;
 
     if (connectionStatusEl) {
       connectionStatusEl.textContent = "已連線";
