@@ -539,6 +539,25 @@
 </div>
 
 <script>
+
+  // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
+(function () {
+  const rawLog = console.log;
+
+  console.log = function (...args) {
+    try {
+      const first = args[0];
+      const msg = typeof first === "string" ? first : "";
+      if (
+        msg.includes("[PanelScan]") &&
+        msg.includes("找不到 身體 / 腳底 panel")
+      ) {
+        return;
+      }
+    } catch (e) {}
+    rawLog.apply(console, args);
+  };
+})();
   // ★★★ 換成你的 GAS Web App URL ★★★
   const API_BASE_URL =
     "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
