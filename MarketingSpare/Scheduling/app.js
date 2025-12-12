@@ -15,15 +15,12 @@
 })();
 
 // ★ 換成你的 GAS Web App URL
-// A：師傅狀態（身體 / 腳底）→ 面板 GAS
 const STATUS_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// B：使用者權限（UUID + 名稱 + 審核）→ Users 認證 GAS
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-// ★ LINE LIFF ID
 const LIFF_ID = "2008669658-sBKFvZEz";
 
 // 授權畫面 & 主畫面容器
@@ -31,10 +28,7 @@ const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
 // Dashboard 用資料
-const rawData = {
-  body: [],
-  foot: [],
-};
+const rawData = { body: [], foot: [] };
 
 let activePanel = "body";
 let filterMaster = "";
@@ -87,7 +81,6 @@ function openApp() {
 function updateUsageBanner(displayName, remainingDays) {
   if (!usageBannerEl || !usageBannerTextEl) return;
 
-  // 若沒有名稱也沒有天數，就隱藏
   if (!displayName && (remainingDays === null || remainingDays === undefined)) {
     usageBannerEl.style.display = "none";
     return;
@@ -95,18 +88,12 @@ function updateUsageBanner(displayName, remainingDays) {
 
   let msg = "";
 
-  if (displayName) {
-    msg += `使用者：${displayName}  `;
-  }
+  if (displayName) msg += `使用者：${displayName}  `;
 
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
-    if (remainingDays > 0) {
-      msg += `｜剩餘使用天數：${remainingDays} 天`;
-    } else if (remainingDays === 0) {
-      msg += "｜今天為最後使用日";
-    } else {
-      msg += `｜使用期限已過期（${remainingDays} 天）`;
-    }
+    if (remainingDays > 0) msg += `｜剩餘使用天數：${remainingDays} 天`;
+    else if (remainingDays === 0) msg += "｜今天為最後使用日";
+    else msg += `｜使用期限已過期（${remainingDays} 天）`;
   } else {
     msg += "｜剩餘使用天數：－";
   }
@@ -114,14 +101,10 @@ function updateUsageBanner(displayName, remainingDays) {
   usageBannerTextEl.textContent = msg;
   usageBannerEl.style.display = "flex";
 
-  // 調整顏色狀態
   usageBannerEl.classList.remove("usage-banner-warning", "usage-banner-expired");
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
-    if (remainingDays <= 0) {
-      usageBannerEl.classList.add("usage-banner-expired");
-    } else if (remainingDays <= 3) {
-      usageBannerEl.classList.add("usage-banner-warning");
-    }
+    if (remainingDays <= 0) usageBannerEl.classList.add("usage-banner-expired");
+    else if (remainingDays <= 3) usageBannerEl.classList.add("usage-banner-warning");
   }
 }
 
@@ -129,12 +112,7 @@ function updateUsageBanner(displayName, remainingDays) {
 function hexToRgb(hex) {
   if (!hex) return null;
   let s = hex.replace("#", "").trim();
-  if (s.length === 3) {
-    s = s
-      .split("")
-      .map((ch) => ch + ch)
-      .join("");
-  }
+  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
   if (s.length !== 6) return null;
   const r = parseInt(s.slice(0, 2), 16);
   const g = parseInt(s.slice(2, 4), 16);
@@ -146,22 +124,15 @@ function hexToRgb(hex) {
 function parseScriptCatColor(colorStr) {
   if (!colorStr) return { color: null, opacity: null };
 
-  const tokens = String(colorStr)
-    .split(/\s+/)
-    .filter(Boolean);
-
+  const tokens = String(colorStr).split(/\s+/).filter(Boolean);
   let hex = null;
   let opacity = null;
 
   tokens.forEach((t) => {
     if (t.startsWith("text-C")) {
-      let raw = t.slice("text-".length); // "C333333"
-      if (/^C[0-9A-Fa-f]{6}$/.test(raw)) {
-        raw = raw.slice(1); // "333333"
-      }
-      if (/^[0-9A-Fa-f]{6}$/.test(raw)) {
-        hex = "#" + raw;
-      }
+      let raw = t.slice("text-".length);
+      if (/^C[0-9A-Fa-f]{6}$/.test(raw)) raw = raw.slice(1);
+      if (/^[0-9A-Fa-f]{6}$/.test(raw)) hex = "#" + raw;
     }
 
     if (t.startsWith("text-opacity-")) {
@@ -199,42 +170,13 @@ function fmtRemainingRaw(v) {
   return String(v);
 }
 
-function fmtTimeCell(v) {
-  if (!v) return "";
-
-  if (typeof v === "number") return String(v);
-
-  if (v instanceof Date) {
-    const d = v;
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    if (hh === "00" && mm === "00") return "";
-    return `${hh}:${mm}`;
-  }
-
-  const s = String(v).trim();
-  if (!s) return "";
-
-  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return "";
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    if (hh === "00" && mm === "00") return "";
-    return `${hh}:${mm}`;
-  }
-
-  return s;
-}
-
-// 超時也歸類在「工作中」
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
   const n = Number(remaining);
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-  if (!Number.isNaN(n) && n < 0) return "status-busy"; // 超時 → 視為工作中
+  if (!Number.isNaN(n) && n < 0) return "status-busy";
 
   return "status-other";
 }
@@ -247,7 +189,7 @@ function mapRowsToDisplay(rows) {
     return {
       sort: row.sort,
       index: row.index,
-      _gasSeq: row._gasSeq, // ✅保留 GAS 原始順序索引（sort 非數字時保底）
+      _gasSeq: row._gasSeq,
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
@@ -258,20 +200,17 @@ function mapRowsToDisplay(rows) {
 
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
-      timeDisplay: fmtTimeCell(row.appointment),
     };
   });
 }
 
-// ===== 重建「狀態篩選」選項：列出所有實際出現過的狀態 =====
+// ===== 重建「狀態篩選」選項 =====
 function rebuildStatusFilterOptions() {
   if (!filterStatusSelect) return;
 
   const statuses = new Set();
-
   ["body", "foot"].forEach((type) => {
-    const rows = rawData[type] || [];
-    rows.forEach((r) => {
+    (rawData[type] || []).forEach((r) => {
       const s = String(r.status || "").trim();
       if (s) statuses.add(s);
     });
@@ -280,7 +219,6 @@ function rebuildStatusFilterOptions() {
   const previous = filterStatusSelect.value || "all";
 
   filterStatusSelect.innerHTML = "";
-
   const optAll = document.createElement("option");
   optAll.value = "all";
   optAll.textContent = "全部狀態";
@@ -293,22 +231,17 @@ function rebuildStatusFilterOptions() {
     filterStatusSelect.appendChild(opt);
   }
 
-  if (previous !== "all" && statuses.has(previous)) {
-    filterStatusSelect.value = previous;
-  } else {
-    filterStatusSelect.value = "all";
-  }
-
+  filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
 }
 
-// ===== 渲染（包含：排序 + 動態順序編號）=====
+// ===== 渲染（包含：排序 + 第一欄顯示）=====
 function render() {
   if (!tbodyRowsEl) return;
 
   const list = activePanel === "body" ? rawData.body : rawData.foot;
 
-  // 先依目前篩選條件過濾
+  // ✅ filtered 一定要在 render() 裡宣告，後面才能用
   const filtered = applyFilters(list);
 
   // ✅ 規則：
@@ -316,7 +249,7 @@ function render() {
   // - 其他狀態：依 GAS sort（sort 非數字才用 _gasSeq）
   const isAll = filterStatus === "all";
   const isShift = String(filterStatus || "").includes("排班");
-  const useDisplayOrder = isAll || isShift; // 「排列顯示順序」專用
+  const useDisplayOrder = isAll || isShift;
 
   let finalRows;
 
@@ -347,19 +280,14 @@ function render() {
   const displayRows = mapRowsToDisplay(finalRows);
 
   tbodyRowsEl.innerHTML = "";
-
-  if (!displayRows.length) {
-    if (emptyStateEl) emptyStateEl.style.display = "block";
-  } else {
-    if (emptyStateEl) emptyStateEl.style.display = "none";
-  }
+  if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
 
   displayRows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
-    // ✅ 第一欄「順序」顯示：
-    // - 全部/排班：顯示 1,2,3...
-    // - 其他狀態：顯示 GAS sort（10,20,30...）
+    // ✅ 第一欄顯示：
+    // - 全部/排班：顯示 1..N
+    // - 其他狀態：顯示 GAS sort（10,20,30..）
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
     const orderText =
@@ -400,29 +328,23 @@ function render() {
     tbodyRowsEl.appendChild(tr);
   });
 
-  if (panelTitleEl) {
-    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
-  }
+  if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
 }
 
 // ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
   return list.filter((row) => {
-    // ===== 師傅搜尋 =====
     if (filterMaster) {
       const key = String(filterMaster).trim();
       const master = String(row.masterId || "").trim();
 
       if (/^\d+$/.test(key)) {
-        // 純數字 → 數字相等
         if (parseInt(master, 10) !== parseInt(key, 10)) return false;
       } else {
-        // 非數字 → 模糊搜尋
         if (!master.includes(key)) return false;
       }
     }
 
-    // ===== 狀態篩選 =====
     if (filterStatus && filterStatus !== "all") {
       if (row.status !== filterStatus) return false;
     }
@@ -433,22 +355,14 @@ function applyFilters(list) {
 
 // ===== 抓 Status GAS（一次拿 body + foot）=====
 async function fetchStatusAll() {
-  console.time("[Perf] STATUS_API fetch");
   const resp = await fetch(STATUS_API_URL, { method: "GET" });
-
-  if (!resp.ok) {
-    console.timeEnd("[Perf] STATUS_API fetch");
-    throw new Error("Status HTTP " + resp.status);
-  }
+  if (!resp.ok) throw new Error("Status HTTP " + resp.status);
 
   const data = await resp.json();
-  console.timeEnd("[Perf] STATUS_API fetch");
-
   if (data.ok === false) throw new Error(data.error || "Status response not ok");
 
   const bodyRows = Array.isArray(data.body) ? data.body : [];
   const footRows = Array.isArray(data.foot) ? data.foot : [];
-
   return { bodyRows, footRows };
 }
 
@@ -457,33 +371,26 @@ async function refreshStatus() {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    console.time("[Perf] refreshStatus total");
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    // ✅ 存 _gasSeq：sort 非數字時保底 + 穩定排序
+    // ✅ _gasSeq：sort 非數字時保底 + 穩定排序
     rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
     rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     rebuildStatusFilterOptions();
 
     if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
-
     if (lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
-        "更新：" +
-        String(now.getHours()).padStart(2, "0") +
-        ":" +
-        String(now.getMinutes()).padStart(2, "0");
+        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
     render();
-    console.timeEnd("[Perf] refreshStatus total");
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
-    console.timeEnd("[Perf] refreshStatus total");
   } finally {
     if (loadingStateEl) loadingStateEl.style.display = "none";
   }
@@ -496,8 +403,7 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   const newName = String(liffName || "").trim();
   const oldName = String(gasName || "").trim();
 
-  if (!userId) return false;
-  if (!newName) return false;
+  if (!userId || !newName) return false;
 
   if (!oldName || oldName !== newName) {
     try {
@@ -522,7 +428,6 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const data = await resp.json();
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
-
   const serverDisplayName = (data && data.displayName) || "";
 
   let remainingDays = null;
@@ -534,25 +439,11 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
 
   if (status === "approved") {
-    return {
-      allowed: true,
-      status: "approved",
-      audit,
-      remainingDays,
-      displayName: finalDisplayName,
-      serverDisplayName,
-    };
+    return { allowed: true, status: "approved", audit, remainingDays, displayName: finalDisplayName, serverDisplayName };
   }
 
   if (status === "pending") {
-    return {
-      allowed: false,
-      status: "pending",
-      audit,
-      remainingDays,
-      displayName: finalDisplayName,
-      serverDisplayName,
-    };
+    return { allowed: false, status: "pending", audit, remainingDays, displayName: finalDisplayName, serverDisplayName };
   }
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
@@ -561,24 +452,10 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     await registerUser(userId, finalDisplayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return {
-      allowed: false,
-      status: "error",
-      audit: "",
-      remainingDays: null,
-      displayName: finalDisplayName,
-      serverDisplayName,
-    };
+    return { allowed: false, status: "error", audit: "", remainingDays: null, displayName: finalDisplayName, serverDisplayName };
   }
 
-  return {
-    allowed: false,
-    status: "pending",
-    audit: "待審核",
-    remainingDays: null,
-    displayName: finalDisplayName,
-    serverDisplayName,
-  };
+  return { allowed: false, status: "pending", audit: "待審核", remainingDays: null, displayName: finalDisplayName, serverDisplayName };
 }
 
 async function registerUser(userId, displayName) {
@@ -591,14 +468,9 @@ async function registerUser(userId, displayName) {
     encodeURIComponent(displayName || "");
 
   const resp = await fetch(url, { method: "GET" });
+  if (!resp.ok) throw new Error("Register HTTP " + resp.status);
 
-  if (!resp.ok) {
-    console.error("[Auth] register HTTP error", resp.status, resp.statusText);
-    throw new Error("Register HTTP " + resp.status);
-  }
-
-  const data = await resp.json();
-  return data;
+  return await resp.json();
 }
 
 // ===== 主題切換（亮 / 暗）=====
@@ -609,9 +481,7 @@ function setTheme(theme) {
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
 
-  if (themeToggleBtn) {
-    themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
-  }
+  if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
 
 (function initTheme() {
@@ -622,32 +492,25 @@ function setTheme(theme) {
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme") || "dark";
-    const next = current === "dark" ? "light" : "dark";
-    setTheme(next);
+    setTheme(current === "dark" ? "light" : "dark");
   });
 }
 
 // ===== LIFF 初始化與權限 Gate =====
 async function initLiffAndGuard() {
-  console.time("[Perf] LIFF+Auth");
   showGate("正在啟動 LIFF…");
 
   try {
-    console.time("[Perf] liff.init");
     await liff.init({ liffId: LIFF_ID });
-    console.timeEnd("[Perf] liff.init");
 
     if (!liff.isLoggedIn()) {
       liff.login();
-      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("正在取得使用者資訊…");
-    console.time("[Perf] liff.getProfile");
     const ctx = liff.getContext();
     const profile = await liff.getProfile();
-    console.timeEnd("[Perf] liff.getProfile");
 
     const userId = profile.userId || (ctx && ctx.userId) || "";
     const displayName = profile.displayName || "";
@@ -657,15 +520,11 @@ async function initLiffAndGuard() {
 
     if (!userId) {
       showGate("無法取得使用者 ID，請重新開啟 LIFF。", true);
-      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("正在確認使用權限…");
-    console.time("[Perf] checkOrRegisterUser");
     const result = await checkOrRegisterUser(userId, displayName);
-    console.timeEnd("[Perf] checkOrRegisterUser");
-
     await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
 
     const finalDisplayName = (displayName || result.displayName || "").trim();
@@ -674,45 +533,26 @@ async function initLiffAndGuard() {
     if (result.allowed && result.status === "approved") {
       showGate("驗證通過，正在載入資料…");
       openApp();
-
       updateUsageBanner(finalDisplayName, result.remainingDays);
-
-      console.time("[Perf] first refreshStatus");
       startApp();
-      console.timeEnd("[Perf] first refreshStatus");
-      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     if (result.status === "pending") {
       const auditText = result.audit || "待審核";
-
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
-
-      if (auditText === "拒絕" || auditText === "停用") {
-        msg += "如需重新申請或有疑問，請聯絡管理員。";
-      } else {
-        msg += "若你已經等待一段時間，請聯絡管理員確認審核進度。";
-      }
-
+      msg += auditText === "拒絕" || auditText === "停用"
+        ? "如需重新申請或有疑問，請聯絡管理員。"
+        : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
       showGate(msg);
-      console.timeEnd("[Perf] LIFF+Auth");
-      return;
-    }
-
-    if (result.status === "error") {
-      showGate("⚠ 無法送出審核申請，請稍後再試。", true);
-      console.timeEnd("[Perf] LIFF+Auth");
       return;
     }
 
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
-    console.timeEnd("[Perf] LIFF+Auth");
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
-    console.timeEnd("[Perf] LIFF+Auth");
   }
 }
 
@@ -734,24 +574,20 @@ if (filterStatusSelect) {
   });
 }
 
-if (refreshBtn) {
-  refreshBtn.addEventListener("click", () => {
-    refreshStatus();
-  });
-}
+if (refreshBtn) refreshBtn.addEventListener("click", refreshStatus);
 
 // ===== Panel 切換 =====
 function setActivePanel(panel) {
   activePanel = panel;
 
-  if (!tabBodyBtn || !tabFootBtn) return;
-
-  if (panel === "body") {
-    tabBodyBtn.classList.add("tab-active");
-    tabFootBtn.classList.remove("tab-active");
-  } else {
-    tabFootBtn.classList.add("tab-active");
-    tabBodyBtn.classList.remove("tab-active");
+  if (tabBodyBtn && tabFootBtn) {
+    if (panel === "body") {
+      tabBodyBtn.classList.add("tab-active");
+      tabFootBtn.classList.remove("tab-active");
+    } else {
+      tabFootBtn.classList.add("tab-active");
+      tabBodyBtn.classList.remove("tab-active");
+    }
   }
 
   render();
@@ -761,10 +597,7 @@ function setActivePanel(panel) {
 function startApp() {
   setActivePanel("body");
   refreshStatus();
-
-  setInterval(() => {
-    refreshStatus();
-  }, 10 * 1000);
+  setInterval(refreshStatus, 10 * 1000);
 }
 
 // ===== 入口 =====
