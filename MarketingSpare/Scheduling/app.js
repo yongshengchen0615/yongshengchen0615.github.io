@@ -311,12 +311,13 @@ function render() {
   // 先依目前篩選條件過濾
   const filtered = applyFilters(list);
 
-  // ✅ 排班才依 sort/index；排班以外依 _gasSeq（GAS 原始順序）
+  // ✅ 排班：sort/index；非排班：依 GAS sort
   const isShift = String(filterStatus || "").includes("排班");
 
   let finalRows;
 
   if (isShift) {
+    // 排班：sort → index
     finalRows = filtered.slice().sort((a, b) => {
       const aBase = a.sort ?? a.index ?? 0;
       const bBase = b.sort ?? b.index ?? 0;
@@ -329,10 +330,16 @@ function render() {
       return na - nb;
     });
   } else {
+    // ✅ 非排班（含全部狀態）：一律依 GAS 傳來 sort
+    // sort 非數字才 fallback _gasSeq，避免 NaN 造成順序不穩
     finalRows = filtered.slice().sort((a, b) => {
-      const na = Number(a._gasSeq ?? 0);
-      const nb = Number(b._gasSeq ?? 0);
-      return na - nb;
+      const na = Number(a.sort);
+      const nb = Number(b.sort);
+
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+
+      return aKey - bKey;
     });
   }
 
@@ -444,7 +451,7 @@ async function refreshStatus() {
     console.time("[Perf] refreshStatus total");
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    // ✅ 在「拿到 GAS」當下就打上原始順序索引，之後保序顯示靠這個
+    // ✅ 在「拿到 GAS」當下就打上原始順序索引（作為 sort 非數字時的保底）
     rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
     rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
