@@ -597,7 +597,11 @@ function setActivePanel(panel) {
 function startApp() {
   setActivePanel("body");
   refreshStatus();
-  setInterval(refreshStatus, 10 * 1000);
+
+  const jitter = Math.floor(Math.random() * 4000); // 0~4秒隨機錯開
+  setTimeout(() => {
+    setInterval(refreshStatus, 10 * 1000);
+  }, jitter);
 }
 
 // ===== 入口 =====
