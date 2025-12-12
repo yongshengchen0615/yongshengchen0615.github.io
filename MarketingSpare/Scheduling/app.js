@@ -14,6 +14,7 @@
   };
 })();
 
+
 // ★ 換成你的 GAS Web App URL
 // A：師傅狀態（身體 / 腳底）→ 面板 GAS
 const STATUS_API_URL =
