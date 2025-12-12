@@ -303,98 +303,42 @@ function rebuildStatusFilterOptions() {
 }
 
 // ===== 渲染（包含：排序 + 動態順序編號）=====
-function render() {
-  if (!tbodyRowsEl) return;
+// ✅ 全部狀態 + 排班：依「排列顯示順序」(sort → index)
+// ✅ 其他狀態：依 GAS sort
 
-  const list = activePanel === "body" ? rawData.body : rawData.foot;
+const isAll = filterStatus === "all";
+const isShift = String(filterStatus || "").includes("排班");
 
-  // 先依目前篩選條件過濾
-  const filtered = applyFilters(list);
+let finalRows;
 
-  // ✅ 排班：sort/index；非排班：依 GAS sort
-  const isShift = String(filterStatus || "").includes("排班");
+if (isAll || isShift) {
+  // 排列顯示順序：sort → index → _gasSeq（保底/穩定）
+  finalRows = filtered.slice().sort((a, b) => {
+    const na = Number(a.sort ?? a.index);
+    const nb = Number(b.sort ?? b.index);
 
-  let finalRows;
+    const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+    const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
 
-  if (isShift) {
-    // 排班：sort → index
-    finalRows = filtered.slice().sort((a, b) => {
-      const aBase = a.sort ?? a.index ?? 0;
-      const bBase = b.sort ?? b.index ?? 0;
-      const na = Number(aBase);
-      const nb = Number(bBase);
+    if (aKey !== bKey) return aKey - bKey;
 
-      if (Number.isNaN(na) && Number.isNaN(nb)) return 0;
-      if (Number.isNaN(na)) return 1;
-      if (Number.isNaN(nb)) return -1;
-      return na - nb;
-    });
-  } else {
-    // ✅ 非排班（含全部狀態）：一律依 GAS 傳來 sort
-    // sort 非數字才 fallback _gasSeq，避免 NaN 造成順序不穩
-    finalRows = filtered.slice().sort((a, b) => {
-      const na = Number(a.sort);
-      const nb = Number(b.sort);
-
-      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
-      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-
-      return aKey - bKey;
-    });
-  }
-
-  const displayRows = mapRowsToDisplay(finalRows);
-
-  tbodyRowsEl.innerHTML = "";
-
-  if (!displayRows.length) {
-    if (emptyStateEl) emptyStateEl.style.display = "block";
-  } else {
-    if (emptyStateEl) emptyStateEl.style.display = "none";
-  }
-
-  displayRows.forEach((row, idx) => {
-    const tr = document.createElement("tr");
-
-    const tdOrder = document.createElement("td");
-    tdOrder.textContent = String(idx + 1);
-    tdOrder.className = "cell-order";
-    if (row.colorIndex) applyScriptCatColorToElement(tdOrder, row.colorIndex);
-    tr.appendChild(tdOrder);
-
-    const tdMaster = document.createElement("td");
-    tdMaster.textContent = row.masterId || "";
-    tdMaster.className = "cell-master";
-    if (row.colorMaster) applyScriptCatColorToElement(tdMaster, row.colorMaster);
-    tr.appendChild(tdMaster);
-
-    const tdStatus = document.createElement("td");
-    const statusSpan = document.createElement("span");
-    statusSpan.className = "status-pill " + row.statusClass;
-    if (row.colorStatus) applyScriptCatColorToElement(statusSpan, row.colorStatus);
-    statusSpan.textContent = row.status || "";
-    tdStatus.appendChild(statusSpan);
-    tr.appendChild(tdStatus);
-
-    const tdAppointment = document.createElement("td");
-    tdAppointment.textContent = row.appointment || "";
-    tdAppointment.className = "cell-appointment";
-    tr.appendChild(tdAppointment);
-
-    const tdRemaining = document.createElement("td");
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "time-badge";
-    timeSpan.textContent = row.remainingDisplay || "";
-    tdRemaining.appendChild(timeSpan);
-    tr.appendChild(tdRemaining);
-
-    tbodyRowsEl.appendChild(tr);
+    // 同 sort 時，保穩定（避免跳來跳去）
+    return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
   });
+} else {
+  // 其他狀態：照 GAS sort（sort 非數字才 fallback _gasSeq）
+  finalRows = filtered.slice().sort((a, b) => {
+    const na = Number(a.sort);
+    const nb = Number(b.sort);
 
-  if (panelTitleEl) {
-    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
-  }
+    const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+    const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+
+    if (aKey !== bKey) return aKey - bKey;
+    return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+  });
 }
+
 
 // ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
