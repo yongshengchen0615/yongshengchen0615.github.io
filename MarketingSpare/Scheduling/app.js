@@ -600,7 +600,7 @@ function startApp() {
 
   const jitter = Math.floor(Math.random() * 4000); // 0~4秒隨機錯開
   setTimeout(() => {
-    setInterval(refreshStatus, 10 * 1000);
+    setInterval(refreshStatus, 30 * 1000);
   }, jitter);
 }
 
