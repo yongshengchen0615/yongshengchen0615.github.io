@@ -740,7 +740,7 @@ function startApp() {
 
   setInterval(() => {
     refreshStatus();
-  }, 30 * 1000);
+  }, 10 * 1000);
 }
 
 // ===== 入口 =====
