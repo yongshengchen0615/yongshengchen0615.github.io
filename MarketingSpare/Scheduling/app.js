@@ -25,7 +25,7 @@ const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 // ★ LINE LIFF ID
-const LIFF_ID = "22008669658-jQqr9Ge4";
+const LIFF_ID = "2008669658-sBKFvZEz";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
