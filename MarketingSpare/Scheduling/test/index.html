@@ -71,8 +71,6 @@
             <label for="filterStatus" class="filter-label">狀態篩選</label>
             <select id="filterStatus" class="select">
               <option value="all">全部狀態</option>
-              <option value="busy">工作中 / 預約</option>
-              <option value="free">空閒 / 即將結束 / 超時</option>
             </select>
           </div>
         </div>
@@ -105,9 +103,7 @@
                     <th style="width: 160px;">剩餘時間</th>
                   </tr>
                 </thead>
-                <tbody id="tbodyRows">
-                  <!-- 由 app.js 動態插入 -->
-                </tbody>
+                <tbody id="tbodyRows"></tbody>
               </table>
             </div>
 
