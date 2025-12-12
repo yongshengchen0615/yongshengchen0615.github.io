@@ -266,6 +266,9 @@ function bindBulk_() {
 
   const bulkApply = document.getElementById("bulkApply");
   if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
+
+  const bulkDelete = document.getElementById("bulkDelete");
+  if (bulkDelete) bulkDelete.addEventListener("click", () => bulkDelete_());
 }
 
 function updateBulkBar_() {
@@ -323,6 +326,59 @@ async function bulkApply_() {
 
   applyFilters();
   toast("已套用到選取（尚未儲存）", "ok");
+}
+
+async function bulkDelete_() {
+  const btn = document.getElementById("bulkDelete");
+  const ids = Array.from(selectedIds);
+
+  if (!ids.length) return;
+
+  const okConfirm = confirm(
+    `確定要批次刪除？\n\n共 ${ids.length} 筆。\n此操作不可復原。`
+  );
+  if (!okConfirm) return;
+
+  // 基本防呆：若有未儲存的更動，提醒一次（仍允許刪）
+  const dirtySelected = ids.filter((id) => dirtyMap.has(id)).length;
+  if (dirtySelected) {
+    const ok2 = confirm(
+      `注意：選取中有 ${dirtySelected} 筆「未儲存」的更動。\n仍要繼續刪除嗎？`
+    );
+    if (!ok2) return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "刪除中...";
+  }
+
+  let okCount = 0;
+  let failCount = 0;
+
+  // 逐筆刪，避免同時打爆 GAS / UrlFetch 配額
+  for (const id of ids) {
+    const ok = await deleteUser(id);
+    if (ok) okCount++;
+    else failCount++;
+
+    // 小延遲：降低瞬間併發壓力
+    await sleep_(80);
+  }
+
+  // reset selection regardless
+  selectedIds.clear();
+  hideBulkBar_();
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = "批次刪除";
+  }
+
+  if (failCount === 0) toast(`批次刪除完成：${okCount} 筆`, "ok");
+  else toast(`批次刪除：成功 ${okCount} / 失敗 ${failCount}`, "err");
+
+  await loadUsers();
 }
 
 /* ========= Table ========= */
@@ -663,4 +719,8 @@ function debounce(fn, wait) {
     if (t) clearTimeout(t);
     t = setTimeout(() => fn(...args), wait);
   };
+}
+
+function sleep_(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
