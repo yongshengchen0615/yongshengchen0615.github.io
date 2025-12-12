@@ -202,9 +202,7 @@ function fmtRemainingRaw(v) {
 function fmtTimeCell(v) {
   if (!v) return "";
 
-  if (typeof v === "number") {
-    return String(v);
-  }
+  if (typeof v === "number") return String(v);
 
   if (v instanceof Date) {
     const d = v;
@@ -214,7 +212,7 @@ function fmtTimeCell(v) {
     return `${hh}:${mm}`;
   }
 
-  let s = String(v).trim();
+  const s = String(v).trim();
   if (!s) return "";
 
   if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
@@ -249,6 +247,7 @@ function mapRowsToDisplay(rows) {
     return {
       sort: row.sort,
       index: row.index,
+      _gasSeq: row._gasSeq, // ✅保留 GAS 原始順序索引
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
@@ -312,10 +311,12 @@ function render() {
   // 先依目前篩選條件過濾
   const filtered = applyFilters(list);
 
-  // ✅ 只有「排班」才排序；排班以外完全照 GAS 傳來順序
+  // ✅ 排班才依 sort/index；排班以外依 _gasSeq（GAS 原始順序）
+  const isShift = String(filterStatus || "").includes("排班");
+
   let finalRows;
 
-  if (filterStatus === "排班") {
+  if (isShift) {
     finalRows = filtered.slice().sort((a, b) => {
       const aBase = a.sort ?? a.index ?? 0;
       const bBase = b.sort ?? b.index ?? 0;
@@ -328,10 +329,13 @@ function render() {
       return na - nb;
     });
   } else {
-    finalRows = filtered; // 🔒 保序
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a._gasSeq ?? 0);
+      const nb = Number(b._gasSeq ?? 0);
+      return na - nb;
+    });
   }
 
-  // 轉成顯示用資料（此時順序已固定）
   const displayRows = mapRowsToDisplay(finalRows);
 
   tbodyRowsEl.innerHTML = "";
@@ -395,14 +399,10 @@ function applyFilters(list) {
 
       if (/^\d+$/.test(key)) {
         // 純數字 → 數字相等
-        if (parseInt(master, 10) !== parseInt(key, 10)) {
-          return false;
-        }
+        if (parseInt(master, 10) !== parseInt(key, 10)) return false;
       } else {
         // 非數字 → 模糊搜尋
-        if (!master.includes(key)) {
-          return false;
-        }
+        if (!master.includes(key)) return false;
       }
     }
 
@@ -444,8 +444,9 @@ async function refreshStatus() {
     console.time("[Perf] refreshStatus total");
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    rawData.body = bodyRows;
-    rawData.foot = footRows;
+    // ✅ 在「拿到 GAS」當下就打上原始順序索引，之後保序顯示靠這個
+    rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     rebuildStatusFilterOptions();
 
@@ -475,11 +476,6 @@ async function refreshStatus() {
 /* =========================
  * ✅ 使用者更名同步（以 GAS 為準判斷 LINE 是否改名）
  * ========================= */
-
-// 規則：
-// - 以 GAS 回傳的 displayName 當作舊名
-// - 以 LIFF profile.displayName 當作新名
-// - 若新名存在且與舊名不同 → 呼叫 register 更新（GAS 端已是「改名才更新」）
 async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   const newName = String(liffName || "").trim();
   const oldName = String(gasName || "").trim();
@@ -487,7 +483,6 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   if (!userId) return false;
   if (!newName) return false;
 
-  // GAS 沒名字 or 不同 → 更新
   if (!oldName || oldName !== newName) {
     try {
       await registerUser(userId, newName);
@@ -512,10 +507,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
 
-  // ✅ GAS 上的名字（舊名）
   const serverDisplayName = (data && data.displayName) || "";
 
-  // remainingDays
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
     const n = Number(data.remainingDays);
@@ -531,7 +524,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       audit,
       remainingDays,
       displayName: finalDisplayName,
-      serverDisplayName, // ✅帶出去做比對
+      serverDisplayName,
     };
   }
 
@@ -542,11 +535,10 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       audit,
       remainingDays,
       displayName: finalDisplayName,
-      serverDisplayName, // ✅帶出去做比對
+      serverDisplayName,
     };
   }
 
-  // none：自動送出審核
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
   try {
@@ -658,10 +650,8 @@ async function initLiffAndGuard() {
     const result = await checkOrRegisterUser(userId, displayName);
     console.timeEnd("[Perf] checkOrRegisterUser");
 
-    // ✅ 更名同步（以 GAS 為準：GAS 舊名 vs LIFF 新名）
     await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
 
-    // ✅ 畫面顯示以「最新 LINE 名」為優先（同步後 GAS 也會更新）
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
