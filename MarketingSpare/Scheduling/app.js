@@ -6,10 +6,7 @@
     try {
       const first = args[0];
       const msg = typeof first === "string" ? first : "";
-      if (
-        msg.includes("[PanelScan]") &&
-        msg.includes("找不到 身體 / 腳底 panel")
-      ) {
+      if (msg.includes("[PanelScan]") && msg.includes("找不到 身體 / 腳底 panel")) {
         return;
       }
     } catch (e) {}
@@ -27,7 +24,7 @@ const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 // ★ LINE LIFF ID
-const LIFF_ID = "2008669658-jQqr9Ge4";
+const LIFF_ID = "22008669658-jQqr9Ge4";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
@@ -129,8 +126,6 @@ function updateUsageBanner(displayName, remainingDays) {
 }
 
 // ===== ScriptCat 顏色解析工具 =====
-
-// 把 "#rrggbb" 轉成 { r, g, b }
 function hexToRgb(hex) {
   if (!hex) return null;
   let s = hex.replace("#", "").trim();
@@ -148,7 +143,6 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
-// 從 "text-C333333 text-opacity-60" 抓出顏色 + 透明度
 function parseScriptCatColor(colorStr) {
   if (!colorStr) return { color: null, opacity: null };
 
@@ -183,7 +177,6 @@ function parseScriptCatColor(colorStr) {
   return { color: hex, opacity };
 }
 
-// 套用 ScriptCat 顏色到 element 的文字顏色
 function applyScriptCatColorToElement(el, colorStr) {
   if (!el || !colorStr) return;
 
@@ -202,7 +195,6 @@ function applyScriptCatColorToElement(el, colorStr) {
 
 // ===== 資料格式工具 =====
 function fmtRemainingRaw(v) {
-  // 直接顯示工作表資料：空/null → 空字串，其它轉字串
   if (v === null || v === undefined) return "";
   return String(v);
 }
@@ -211,7 +203,6 @@ function fmtTimeCell(v) {
   if (!v) return "";
 
   if (typeof v === "number") {
-    // 這裡不再用「剩餘分鐘」文案，只當純文字
     return String(v);
   }
 
@@ -253,8 +244,7 @@ function deriveStatusClass(status, remaining) {
 // ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
-    const remaining =
-      row.remaining === 0 || row.remaining ? row.remaining : "";
+    const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
 
     return {
       sort: row.sort,
@@ -349,44 +339,31 @@ function render() {
   displayRows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
-    // 🔢 順序欄位：依「目前排序＋篩選結果」重新編號 1,2,3...
     const tdOrder = document.createElement("td");
     tdOrder.textContent = String(idx + 1);
     tdOrder.className = "cell-order";
-    if (row.colorIndex) {
-      applyScriptCatColorToElement(tdOrder, row.colorIndex);
-    }
+    if (row.colorIndex) applyScriptCatColorToElement(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
-    // 師傅欄位（colorMaster）
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
-    if (row.colorMaster) {
-      applyScriptCatColorToElement(tdMaster, row.colorMaster);
-    }
+    if (row.colorMaster) applyScriptCatColorToElement(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
-    // 狀態欄位（colorStatus + 主題 pill）
     const tdStatus = document.createElement("td");
     const statusSpan = document.createElement("span");
-
     statusSpan.className = "status-pill " + row.statusClass;
-    if (row.colorStatus) {
-      applyScriptCatColorToElement(statusSpan, row.colorStatus);
-    }
-
+    if (row.colorStatus) applyScriptCatColorToElement(statusSpan, row.colorStatus);
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);
 
-    // 預約欄位
     const tdAppointment = document.createElement("td");
     tdAppointment.textContent = row.appointment || "";
     tdAppointment.className = "cell-appointment";
     tr.appendChild(tdAppointment);
 
-    // 剩餘時間欄位（直接顯示資料表內容）
     const tdRemaining = document.createElement("td");
     const timeSpan = document.createElement("span");
     timeSpan.className = "time-badge";
@@ -405,15 +382,11 @@ function render() {
 // ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
   return list.filter((row) => {
-    // 師傅搜尋（模糊包含）
     if (filterMaster) {
       const key = String(filterMaster).trim();
-      if (!String(row.masterId || "").includes(key)) {
-        return false;
-      }
+      if (!String(row.masterId || "").includes(key)) return false;
     }
 
-    // 狀態過濾：完全相等，不合併
     if (filterStatus && filterStatus !== "all") {
       const status = String(row.status || "");
       if (status !== filterStatus) return false;
@@ -424,7 +397,6 @@ function applyFilters(list) {
 }
 
 // ===== 抓 Status GAS（一次拿 body + foot）=====
-// 加上 Perf 計時
 async function fetchStatusAll() {
   console.time("[Perf] STATUS_API fetch");
   const resp = await fetch(STATUS_API_URL, { method: "GET" });
@@ -436,11 +408,8 @@ async function fetchStatusAll() {
 
   const data = await resp.json();
   console.timeEnd("[Perf] STATUS_API fetch");
-  console.log("[Status] raw from GAS:", data);
 
-  if (data.ok === false) {
-    throw new Error(data.error || "Status response not ok");
-  }
+  if (data.ok === false) throw new Error(data.error || "Status response not ok");
 
   const bodyRows = Array.isArray(data.body) ? data.body : [];
   const footRows = Array.isArray(data.foot) ? data.foot : [];
@@ -459,29 +428,24 @@ async function refreshStatus() {
     rawData.body = bodyRows;
     rawData.foot = footRows;
 
-    // 取得資料後重建「狀態篩選」列表
     rebuildStatusFilterOptions();
 
-    if (connectionStatusEl) {
-      connectionStatusEl.textContent = "已連線";
-    }
+    if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
 
     if (lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
         "更新：" +
-        now.getHours().toString().padStart(2, "0") +
+        String(now.getHours()).padStart(2, "0") +
         ":" +
-        now.getMinutes().toString().padStart(2, "0");
+        String(now.getMinutes()).padStart(2, "0");
     }
 
     render();
     console.timeEnd("[Perf] refreshStatus total");
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
-    if (connectionStatusEl) {
-      connectionStatusEl.textContent = "異常";
-    }
+    if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
     console.timeEnd("[Perf] refreshStatus total");
   } finally {
@@ -489,28 +453,54 @@ async function refreshStatus() {
   }
 }
 
-// ===== 審核相關：方案 B =====
+/* =========================
+ * ✅ 使用者更名同步（以 GAS 為準判斷 LINE 是否改名）
+ * ========================= */
+
+// 規則：
+// - 以 GAS 回傳的 displayName 當作舊名
+// - 以 LIFF profile.displayName 當作新名
+// - 若新名存在且與舊名不同 → 呼叫 register 更新（GAS 端已是「改名才更新」）
+async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
+  const newName = String(liffName || "").trim();
+  const oldName = String(gasName || "").trim();
+
+  if (!userId) return false;
+  if (!newName) return false;
+
+  // GAS 沒名字 or 不同 → 更新
+  if (!oldName || oldName !== newName) {
+    try {
+      await registerUser(userId, newName);
+      console.log("[NameSync] updated:", { oldName, newName });
+      return true;
+    } catch (e) {
+      console.warn("[NameSync] update failed:", e);
+      return false;
+    }
+  }
+  return false;
+}
+
+// ===== 審核相關 =====
 async function checkOrRegisterUser(userId, displayNameFromLiff) {
-  const url =
-    AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
+  const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
 
   const resp = await fetch(url, { method: "GET" });
-  if (!resp.ok) {
-    throw new Error("Check HTTP " + resp.status);
-  }
+  if (!resp.ok) throw new Error("Check HTTP " + resp.status);
 
   const data = await resp.json();
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
 
-  // 從 GAS 讀取 displayName / remainingDays（若有）
+  // ✅ GAS 上的名字（舊名）
   const serverDisplayName = (data && data.displayName) || "";
+
+  // remainingDays
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
     const n = Number(data.remainingDays);
-    if (!Number.isNaN(n)) {
-      remainingDays = n;
-    }
+    if (!Number.isNaN(n)) remainingDays = n;
   }
 
   const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
@@ -522,6 +512,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       audit,
       remainingDays,
       displayName: finalDisplayName,
+      serverDisplayName, // ✅帶出去做比對
     };
   }
 
@@ -532,9 +523,11 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       audit,
       remainingDays,
       displayName: finalDisplayName,
+      serverDisplayName, // ✅帶出去做比對
     };
   }
 
+  // none：自動送出審核
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
   try {
@@ -547,6 +540,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       audit: "",
       remainingDays: null,
       displayName: finalDisplayName,
+      serverDisplayName,
     };
   }
 
@@ -556,6 +550,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     audit: "待審核",
     remainingDays: null,
     displayName: finalDisplayName,
+    serverDisplayName,
   };
 }
 
@@ -576,7 +571,6 @@ async function registerUser(userId, displayName) {
   }
 
   const data = await resp.json();
-  console.log("[Auth] register result", data);
   return data;
 }
 
@@ -589,8 +583,7 @@ function setTheme(theme) {
   localStorage.setItem("dashboardTheme", finalTheme);
 
   if (themeToggleBtn) {
-    themeToggleBtn.textContent =
-      finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
+    themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
   }
 }
 
@@ -601,8 +594,7 @@ function setTheme(theme) {
 
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener("click", () => {
-    const current =
-      document.documentElement.getAttribute("data-theme") || "dark";
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
     const next = current === "dark" ? "light" : "dark";
     setTheme(next);
   });
@@ -647,14 +639,17 @@ async function initLiffAndGuard() {
     const result = await checkOrRegisterUser(userId, displayName);
     console.timeEnd("[Perf] checkOrRegisterUser");
 
-    const finalDisplayName = result.displayName || displayName;
+    // ✅ 更名同步（以 GAS 為準：GAS 舊名 vs LIFF 新名）
+    await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
+
+    // ✅ 畫面顯示以「最新 LINE 名」為優先（同步後 GAS 也會更新）
+    const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
     if (result.allowed && result.status === "approved") {
       showGate("驗證通過，正在載入資料…");
       openApp();
 
-      // 顯示使用者名稱 + 剩餘使用天數
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
       console.time("[Perf] first refreshStatus");
@@ -697,24 +692,23 @@ async function initLiffAndGuard() {
 }
 
 // ===== 事件綁定 =====
-if (tabBodyBtn) {
-  tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
-}
-if (tabFootBtn) {
-  tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
-}
+if (tabBodyBtn) tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
+if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
+
 if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
     render();
   });
 }
+
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
     render();
   });
 }
+
 if (refreshBtn) {
   refreshBtn.addEventListener("click", () => {
     refreshStatus();
@@ -748,7 +742,7 @@ function startApp() {
   }, 30 * 1000);
 }
 
-// ===== 入口：window onload =====
+// ===== 入口 =====
 window.addEventListener("load", () => {
   initLiffAndGuard();
 });
