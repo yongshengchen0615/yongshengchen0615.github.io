@@ -14,7 +14,6 @@
   };
 })();
 
-
 // ★ 換成你的 GAS Web App URL
 // A：師傅狀態（身體 / 腳底）→ 面板 GAS
 const STATUS_API_URL =
@@ -313,21 +312,27 @@ function render() {
   // 先依目前篩選條件過濾
   const filtered = applyFilters(list);
 
-  // 再依「sort / index」排序
-  const sorted = filtered.slice().sort((a, b) => {
-    const aBase = a.sort ?? a.index ?? 0;
-    const bBase = b.sort ?? b.index ?? 0;
-    const na = Number(aBase);
-    const nb = Number(bBase);
+  // ✅ 只有「排班」才排序；排班以外完全照 GAS 傳來順序
+  let finalRows;
 
-    if (Number.isNaN(na) && Number.isNaN(nb)) return 0;
-    if (Number.isNaN(na)) return 1;
-    if (Number.isNaN(nb)) return -1;
-    return na - nb;
-  });
+  if (filterStatus === "排班") {
+    finalRows = filtered.slice().sort((a, b) => {
+      const aBase = a.sort ?? a.index ?? 0;
+      const bBase = b.sort ?? b.index ?? 0;
+      const na = Number(aBase);
+      const nb = Number(bBase);
+
+      if (Number.isNaN(na) && Number.isNaN(nb)) return 0;
+      if (Number.isNaN(na)) return 1;
+      if (Number.isNaN(nb)) return -1;
+      return na - nb;
+    });
+  } else {
+    finalRows = filtered; // 🔒 保序
+  }
 
   // 轉成顯示用資料（此時順序已固定）
-  const displayRows = mapRowsToDisplay(sorted);
+  const displayRows = mapRowsToDisplay(finalRows);
 
   tbodyRowsEl.innerHTML = "";
 
@@ -409,8 +414,6 @@ function applyFilters(list) {
     return true;
   });
 }
-
-
 
 // ===== 抓 Status GAS（一次拿 body + foot）=====
 async function fetchStatusAll() {
