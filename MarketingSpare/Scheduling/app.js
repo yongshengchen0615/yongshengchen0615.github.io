@@ -247,7 +247,7 @@ function mapRowsToDisplay(rows) {
     return {
       sort: row.sort,
       index: row.index,
-      _gasSeq: row._gasSeq, // ✅保留 GAS 原始順序索引
+      _gasSeq: row._gasSeq, // ✅保留 GAS 原始順序索引（sort 非數字時保底）
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
@@ -303,42 +303,107 @@ function rebuildStatusFilterOptions() {
 }
 
 // ===== 渲染（包含：排序 + 動態順序編號）=====
-// ✅ 全部狀態 + 排班：依「排列顯示順序」(sort → index)
-// ✅ 其他狀態：依 GAS sort
+function render() {
+  if (!tbodyRowsEl) return;
 
-const isAll = filterStatus === "all";
-const isShift = String(filterStatus || "").includes("排班");
+  const list = activePanel === "body" ? rawData.body : rawData.foot;
 
-let finalRows;
+  // 先依目前篩選條件過濾
+  const filtered = applyFilters(list);
 
-if (isAll || isShift) {
-  // 排列顯示順序：sort → index → _gasSeq（保底/穩定）
-  finalRows = filtered.slice().sort((a, b) => {
-    const na = Number(a.sort ?? a.index);
-    const nb = Number(b.sort ?? b.index);
+  // ✅ 規則：
+  // - 全部狀態 & 排班：依「排列顯示順序」(sort → index → _gasSeq)
+  // - 其他狀態：依 GAS sort（sort 非數字才用 _gasSeq）
+  const isAll = filterStatus === "all";
+  const isShift = String(filterStatus || "").includes("排班");
+  const useDisplayOrder = isAll || isShift; // 「排列顯示順序」專用
 
-    const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
-    const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+  let finalRows;
 
-    if (aKey !== bKey) return aKey - bKey;
+  if (useDisplayOrder) {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort ?? a.index);
+      const nb = Number(b.sort ?? b.index);
 
-    // 同 sort 時，保穩定（避免跳來跳去）
-    return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  } else {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort);
+      const nb = Number(b.sort);
+
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  }
+
+  const displayRows = mapRowsToDisplay(finalRows);
+
+  tbodyRowsEl.innerHTML = "";
+
+  if (!displayRows.length) {
+    if (emptyStateEl) emptyStateEl.style.display = "block";
+  } else {
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+  }
+
+  displayRows.forEach((row, idx) => {
+    const tr = document.createElement("tr");
+
+    // ✅ 第一欄「順序」顯示：
+    // - 全部/排班：顯示 1,2,3...
+    // - 其他狀態：顯示 GAS sort（10,20,30...）
+    const showGasSortInOrderCol = !useDisplayOrder;
+    const sortNum = Number(row.sort);
+    const orderText =
+      showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+
+    const tdOrder = document.createElement("td");
+    tdOrder.textContent = orderText;
+    tdOrder.className = "cell-order";
+    if (row.colorIndex) applyScriptCatColorToElement(tdOrder, row.colorIndex);
+    tr.appendChild(tdOrder);
+
+    const tdMaster = document.createElement("td");
+    tdMaster.textContent = row.masterId || "";
+    tdMaster.className = "cell-master";
+    if (row.colorMaster) applyScriptCatColorToElement(tdMaster, row.colorMaster);
+    tr.appendChild(tdMaster);
+
+    const tdStatus = document.createElement("td");
+    const statusSpan = document.createElement("span");
+    statusSpan.className = "status-pill " + row.statusClass;
+    if (row.colorStatus) applyScriptCatColorToElement(statusSpan, row.colorStatus);
+    statusSpan.textContent = row.status || "";
+    tdStatus.appendChild(statusSpan);
+    tr.appendChild(tdStatus);
+
+    const tdAppointment = document.createElement("td");
+    tdAppointment.textContent = row.appointment || "";
+    tdAppointment.className = "cell-appointment";
+    tr.appendChild(tdAppointment);
+
+    const tdRemaining = document.createElement("td");
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "time-badge";
+    timeSpan.textContent = row.remainingDisplay || "";
+    tdRemaining.appendChild(timeSpan);
+    tr.appendChild(tdRemaining);
+
+    tbodyRowsEl.appendChild(tr);
   });
-} else {
-  // 其他狀態：照 GAS sort（sort 非數字才 fallback _gasSeq）
-  finalRows = filtered.slice().sort((a, b) => {
-    const na = Number(a.sort);
-    const nb = Number(b.sort);
 
-    const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
-    const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-
-    if (aKey !== bKey) return aKey - bKey;
-    return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
-  });
+  if (panelTitleEl) {
+    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
+  }
 }
-
 
 // ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
@@ -395,7 +460,7 @@ async function refreshStatus() {
     console.time("[Perf] refreshStatus total");
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    // ✅ 在「拿到 GAS」當下就打上原始順序索引（作為 sort 非數字時的保底）
+    // ✅ 存 _gasSeq：sort 非數字時保底 + 穩定排序
     rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
     rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
