@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <title>Users 後台管理</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- 外部 CSS -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,16 +11,17 @@
 <div class="app">
   <div class="card">
 
-    <!-- 標題區 -->
     <div class="card-header">
-      <div class="title-wrap">
-        <h1>Users 後台管理</h1>
-        <p>管理審核狀態、使用期限與師傅資訊</p>
-      </div>
-      <div id="summaryText">載入中...</div>
+     <div class="title-wrap">
+    <h1>Users 後台管理</h1>
+    <p>單筆修改後按「儲存」一次寫回；可刪除使用者</p>
+  </div>
+  <div class="header-actions">
+    <button id="themeToggle" class="btn" type="button" aria-label="切換亮暗主題">切換主題</button>
+    <div id="summaryText">載入中...</div>
+  </div>
     </div>
 
-    <!-- 工具列：搜尋 + 篩選 -->
     <div class="toolbar">
       <div class="search-box">
         🔍 <input id="searchInput" placeholder="搜尋 userId / 顯示名稱" />
@@ -32,7 +32,6 @@
       <button class="chip" data-filter="拒絕">已拒絕</button>
     </div>
 
-    <!-- 資料表 -->
     <div class="table-wrap">
       <table>
         <thead>
@@ -47,24 +46,23 @@
             <th>審核狀態</th>
             <th>師傅編號</th>
             <th>是否師傅</th>
+            <th>是否推播</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr><td colspan="11">載入中...</td></tr>
+          <tr><td colspan="12">載入中...</td></tr>
         </tbody>
       </table>
     </div>
 
-    <div id="footerStatus" class="footer-status">
-      -
-    </div>
+    <div id="footerStatus" class="footer-status">-</div>
 
   </div>
 </div>
 
-<!-- 外部 JS -->
-<script src="app.js" defer></script>
+<div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
+<script src="app.js" defer></script>
 </body>
 </html>
