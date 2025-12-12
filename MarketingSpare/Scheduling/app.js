@@ -383,11 +383,27 @@ function render() {
 // ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
   return list.filter((row) => {
+    // --- 師傅搜尋 ---
     if (filterMaster) {
-      const key = String(filterMaster).trim();
-      if (!String(row.masterId || "").includes(key)) return false;
+      const keyRaw = String(filterMaster).trim();
+      const masterRaw = String(row.masterId || "").trim();
+
+      // 純數字：做「數字相等」比對（避免 8 匹配到 58/68/18）
+      if (/^\d+$/.test(keyRaw)) {
+        const keyNum = parseInt(keyRaw, 10);
+        const masterNum = parseInt(masterRaw, 10);
+
+        // masterId 不是數字就不算
+        if (Number.isNaN(masterNum)) return false;
+
+        if (masterNum !== keyNum) return false;
+      } else {
+        // 非純數字：保留模糊搜尋
+        if (!masterRaw.includes(keyRaw)) return false;
+      }
     }
 
+    // --- 狀態篩選 ---
     if (filterStatus && filterStatus !== "all") {
       const status = String(row.status || "");
       if (status !== filterStatus) return false;
@@ -396,6 +412,7 @@ function applyFilters(list) {
     return true;
   });
 }
+
 
 // ===== 抓 Status GAS（一次拿 body + foot）=====
 async function fetchStatusAll() {
