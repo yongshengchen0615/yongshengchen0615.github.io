@@ -14,10 +14,43 @@
   };
 })();
 
-// ★ 換成你的 GAS Web App URL
-const STATUS_API_URL =
+/* =========================================================
+ * ✅ 分流設定：10 個 Edge GAS（Status 讀取分流）
+ * ========================================================= */
+
+// ★ 換成你的 10 個 Edge GAS Web App URL（/exec 結尾）
+const EDGE_STATUS_URLS = [
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbxZgErdlrmSbPPe6rA4HK4CmqZJmGMzIW4Eno8TTbRcnnM-s4DteRM2DPzl7PJBG34n-Q/exec",
+  "https://script.google.com/macros/s/AKfycbxSypQ2Jx3VjyWw266dlWrX863SwPFC1l60FB9xvaLF1sUOEgqWWWIaj6k11ODXLUwdnw/exec"
+];
+
+// （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
+const FALLBACK_ORIGIN_CACHE_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
+// 一致性 hash：同一 userId 永遠命中同一台 Edge
+function hashToIndex_(str, mod) {
+  let h = 0;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return mod ? (h % mod) : 0;
+}
+
+// 取得目前使用者應該打的 Edge URL
+function getStatusEdgeUrl_() {
+  const uid = window.currentUserId || "";
+  const idx = hashToIndex_(uid || "anonymous", EDGE_STATUS_URLS.length);
+  return EDGE_STATUS_URLS[idx];
+}
+
+/* =========================================================
+ * 原本你的設定
+ * ========================================================= */
+
+// ★ AUTH GAS Web App URL
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
@@ -241,12 +274,8 @@ function render() {
 
   const list = activePanel === "body" ? rawData.body : rawData.foot;
 
-  // ✅ filtered 一定要在 render() 裡宣告，後面才能用
   const filtered = applyFilters(list);
 
-  // ✅ 規則：
-  // - 全部狀態 & 排班：依「排列顯示順序」(sort → index → _gasSeq)
-  // - 其他狀態：依 GAS sort（sort 非數字才用 _gasSeq）
   const isAll = filterStatus === "all";
   const isShift = String(filterStatus || "").includes("排班");
   const useDisplayOrder = isAll || isShift;
@@ -285,9 +314,6 @@ function render() {
   displayRows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
-    // ✅ 第一欄顯示：
-    // - 全部/排班：顯示 1..N
-    // - 其他狀態：顯示 GAS sort（10,20,30..）
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
     const orderText =
@@ -353,17 +379,40 @@ function applyFilters(list) {
   });
 }
 
-// ===== 抓 Status GAS（一次拿 body + foot）=====
+/* =========================================================
+ * ✅ 分流後的 Status 取得（一次拿 body + foot）
+ * - 優先打 Edge?mode=all
+ * - 失敗 fallback 打主站 cache_all
+ * ========================================================= */
+
 async function fetchStatusAll() {
-  const resp = await fetch(STATUS_API_URL, { method: "GET" });
-  if (!resp.ok) throw new Error("Status HTTP " + resp.status);
+  const edgeBase = getStatusEdgeUrl_();
+  const jitterBust = Date.now(); // 你想固定也可以拿掉
 
-  const data = await resp.json();
-  if (data.ok === false) throw new Error(data.error || "Status response not ok");
+  const tryUrls = [
+    `${edgeBase}?mode=all&v=${encodeURIComponent(jitterBust)}`,
+    `${FALLBACK_ORIGIN_CACHE_URL}&v=${encodeURIComponent(jitterBust)}`,
+  ];
 
-  const bodyRows = Array.isArray(data.body) ? data.body : [];
-  const footRows = Array.isArray(data.foot) ? data.foot : [];
-  return { bodyRows, footRows };
+  let lastErr = null;
+
+  for (const url of tryUrls) {
+    try {
+      const resp = await fetch(url, { method: "GET", cache: "no-store" });
+      if (!resp.ok) throw new Error("Status HTTP " + resp.status);
+
+      const data = await resp.json();
+      if (data && data.ok === false) throw new Error(data.error || "Status response not ok");
+
+      const bodyRows = Array.isArray(data.body) ? data.body : [];
+      const footRows = Array.isArray(data.foot) ? data.foot : [];
+      return { bodyRows, footRows };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  throw lastErr || new Error("fetchStatusAll failed");
 }
 
 async function refreshStatus() {
@@ -373,7 +422,6 @@ async function refreshStatus() {
   try {
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    // ✅ _gasSeq：sort 非數字時保底 + 穩定排序
     rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
     rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
@@ -383,7 +431,10 @@ async function refreshStatus() {
     if (lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
-        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+        "更新：" +
+        String(now.getHours()).padStart(2, "0") +
+        ":" +
+        String(now.getMinutes()).padStart(2, "0");
     }
 
     render();
@@ -439,11 +490,25 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
 
   if (status === "approved") {
-    return { allowed: true, status: "approved", audit, remainingDays, displayName: finalDisplayName, serverDisplayName };
+    return {
+      allowed: true,
+      status: "approved",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+      serverDisplayName,
+    };
   }
 
   if (status === "pending") {
-    return { allowed: false, status: "pending", audit, remainingDays, displayName: finalDisplayName, serverDisplayName };
+    return {
+      allowed: false,
+      status: "pending",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+      serverDisplayName,
+    };
   }
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
@@ -452,10 +517,24 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     await registerUser(userId, finalDisplayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return { allowed: false, status: "error", audit: "", remainingDays: null, displayName: finalDisplayName, serverDisplayName };
+    return {
+      allowed: false,
+      status: "error",
+      audit: "",
+      remainingDays: null,
+      displayName: finalDisplayName,
+      serverDisplayName,
+    };
   }
 
-  return { allowed: false, status: "pending", audit: "待審核", remainingDays: null, displayName: finalDisplayName, serverDisplayName };
+  return {
+    allowed: false,
+    status: "pending",
+    audit: "待審核",
+    remainingDays: null,
+    displayName: finalDisplayName,
+    serverDisplayName,
+  };
 }
 
 async function registerUser(userId, displayName) {
@@ -542,9 +621,10 @@ async function initLiffAndGuard() {
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
-      msg += auditText === "拒絕" || auditText === "停用"
-        ? "如需重新申請或有疑問，請聯絡管理員。"
-        : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
+      msg +=
+        auditText === "拒絕" || auditText === "停用"
+          ? "如需重新申請或有疑問，請聯絡管理員。"
+          : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
       showGate(msg);
       return;
     }
@@ -598,9 +678,13 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  const jitter = Math.floor(Math.random() * 4000); // 0~4秒隨機錯開
+  // ✅ 你要每人 10 秒讀取一次：改成 10 秒
+  const intervalMs = 2 * 1000;
+
+  // ✅ jitter：避免同秒齊發尖峰（0~4秒）
+  const jitter = Math.floor(Math.random() * 3000);
   setTimeout(() => {
-    setInterval(refreshStatus, 30 * 1000);
+    setInterval(refreshStatus, intervalMs);
   }, jitter);
 }
 
