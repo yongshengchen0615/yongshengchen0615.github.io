@@ -18,11 +18,14 @@
  * ✅ 分流設定：10 個 Edge GAS（Status 讀取分流）
  * ========================================================= */
 
-// ★ 換成你的 10 個 Edge GAS Web App URL（/exec 結尾）
+// ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
 const EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
   "https://script.google.com/macros/s/AKfycbxZgErdlrmSbPPe6rA4HK4CmqZJmGMzIW4Eno8TTbRcnnM-s4DteRM2DPzl7PJBG34n-Q/exec",
-  "https://script.google.com/macros/s/AKfycbxSypQ2Jx3VjyWw266dlWrX863SwPFC1l60FB9xvaLF1sUOEgqWWWIaj6k11ODXLUwdnw/exec"
+  "https://script.google.com/macros/s/AKfycbxSypQ2Jx3VjyWw266dlWrX863SwPFC1l60FB9xvaLF1sUOEgqWWWIaj6k11ODXLUwdnw/exec",
+  "https://script.google.com/macros/s/AKfycbw9vUkS4jC-PJtQXu6FolZxYliIEKY3nGpbG7_qVUeAxS0bGadaN3pi9ekylZO_1DKR/exec",
+  "https://script.google.com/macros/s/AKfycbxAb50G7pNHLrcNUr_56kIZMkFldQ26nmglSDIodGiLV8Ya6Ur9QMelN6eXXrOeamd8/exec",
+  "https://script.google.com/macros/s/AKfycbxxg3AdVaqp3EGo-1ZpQzIshZ8_yqcvtlPtt51qoiTvfYr0xrovs44uqQjwajMACzju/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
