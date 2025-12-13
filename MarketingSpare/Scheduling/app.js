@@ -682,7 +682,7 @@ function startApp() {
   refreshStatus();
 
   // ✅ 你要每人 10 秒讀取一次：改成 10 秒
-  const intervalMs = 2 * 1000;
+  const intervalMs = 5 * 1000;
 
   // ✅ jitter：避免同秒齊發尖峰（0~4秒）
   const jitter = Math.floor(Math.random() * 3000);
