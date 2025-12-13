@@ -34,6 +34,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (clearSearchBtn) clearSearchBtn.addEventListener("click", () => {
     const si = document.getElementById("searchInput");
     if (si) si.value = "";
+
+    // ✅ 清除後同步移除「搜尋中」視覺狀態
+    const box = si?.closest(".search-box");
+    box?.classList.remove("is-searching");
+
     applyFilters();
   });
 
@@ -41,8 +46,20 @@ document.addEventListener("DOMContentLoaded", () => {
   bindSorting_();
   bindBulk_();
 
+  // ✅ 更直覺：有輸入就顯示「搜尋中」狀態
   const searchInput = document.getElementById("searchInput");
-  if (searchInput) searchInput.addEventListener("input", debounce(applyFilters, 180));
+  if (searchInput) {
+    searchInput.addEventListener("input", debounce(() => {
+      const box = searchInput.closest(".search-box");
+      const hasValue = searchInput.value.trim().length > 0;
+      box?.classList.toggle("is-searching", hasValue);
+      applyFilters();
+    }, 180));
+
+    // 初始狀態同步一次（避免從快取返回時狀態不一致）
+    const box = searchInput.closest(".search-box");
+    box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+  }
 
   loadUsers();
 });
@@ -167,7 +184,12 @@ function updateFooter() {
 
   const dirtyCount = dirtyMap.size;
   const dirtyText = dirtyCount ? `，未儲存 ${dirtyCount} 筆` : "";
-  el.textContent = `最後更新：${hh}:${mm}:${ss}，目前顯示 ${filteredUsers.length} 筆${dirtyText}`;
+
+  // ✅ 更直覺：若有關鍵字，顯示「搜尋中」
+  const keyword = document.getElementById("searchInput")?.value.trim();
+  const searchHint = keyword ? "（搜尋中）" : "";
+
+  el.textContent = `最後更新：${hh}:${mm}:${ss}，目前顯示 ${filteredUsers.length} 筆${searchHint}${dirtyText}`;
 }
 
 /* ========= Sorting ========= */
@@ -245,7 +267,6 @@ function bindBulk_() {
   if (checkAll) {
     checkAll.addEventListener("change", () => {
       const checked = !!checkAll.checked;
-      // only affect current page list (= filteredUsers)
       filteredUsers.forEach((u) => {
         if (checked) selectedIds.add(u.userId);
         else selectedIds.delete(u.userId);
@@ -315,7 +336,6 @@ async function bulkApply_() {
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
 
-  // apply to UI (mark dirty)
   ids.forEach((id) => {
     const u = allUsers.find((x) => x.userId === id);
     if (!u) return;
@@ -334,17 +354,12 @@ async function bulkDelete_() {
 
   if (!ids.length) return;
 
-  const okConfirm = confirm(
-    `確定要批次刪除？\n\n共 ${ids.length} 筆。\n此操作不可復原。`
-  );
+  const okConfirm = confirm(`確定要批次刪除？\n\n共 ${ids.length} 筆。\n此操作不可復原。`);
   if (!okConfirm) return;
 
-  // 基本防呆：若有未儲存的更動，提醒一次（仍允許刪）
   const dirtySelected = ids.filter((id) => dirtyMap.has(id)).length;
   if (dirtySelected) {
-    const ok2 = confirm(
-      `注意：選取中有 ${dirtySelected} 筆「未儲存」的更動。\n仍要繼續刪除嗎？`
-    );
+    const ok2 = confirm(`注意：選取中有 ${dirtySelected} 筆「未儲存」的更動。\n仍要繼續刪除嗎？`);
     if (!ok2) return;
   }
 
@@ -356,17 +371,13 @@ async function bulkDelete_() {
   let okCount = 0;
   let failCount = 0;
 
-  // 逐筆刪，避免同時打爆 GAS / UrlFetch 配額
   for (const id of ids) {
     const ok = await deleteUser(id);
     if (ok) okCount++;
     else failCount++;
-
-    // 小延遲：降低瞬間併發壓力
     await sleep_(80);
   }
 
-  // reset selection regardless
   selectedIds.clear();
   hideBulkBar_();
 
@@ -388,7 +399,6 @@ function renderTable() {
   if (!tbody) return;
   tbody.innerHTML = "";
 
-  // refresh sort indicators
   refreshSortIndicators_();
 
   if (!filteredUsers.length) {
@@ -413,7 +423,7 @@ function renderTable() {
         <input class="row-check" type="checkbox" ${selectedIds.has(u.userId) ? "checked" : ""} aria-label="選取此列">
       </td>
 
-      <td data-label="#" >${i + 1}</td>
+      <td data-label="#">${i + 1}</td>
       <td data-label="userId"><span class="mono">${escapeHtml(u.userId)}</span></td>
       <td data-label="顯示名稱">${escapeHtml(u.displayName || "")}</td>
       <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
@@ -471,12 +481,10 @@ function renderTable() {
     });
 
     const onAnyChange = () => {
-      // sync badge
       const v = auditSelect.value;
       badge.textContent = v;
       badge.className = `audit-badge ${auditClass_(v)}`;
 
-      // update u
       u.startDate = dateInput.value || "";
       u.usageDays = daysInput.value || "";
       u.masterCode = masterInput.value || "";
@@ -485,7 +493,6 @@ function renderTable() {
 
       markDirty_(u.userId, u);
 
-      // refresh expiry
       const exp = getExpiryInfo(u);
       const pill = tr.querySelector(".expiry-pill");
       if (pill) {
@@ -493,13 +500,11 @@ function renderTable() {
         pill.textContent = exp.text;
       }
 
-      // enable save
       saveBtn.disabled = false;
       tr.classList.add("dirty");
       applyFiltersFooterOnly_();
     };
 
-    // on change events
     dateInput.addEventListener("change", onAnyChange);
     daysInput.addEventListener("input", onAnyChange);
     masterInput.addEventListener("input", onAnyChange);
@@ -527,12 +532,8 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
-
-        // update snapshot + clear dirty
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
-
-        // keep selection
         await loadUsers();
       } else {
         toast("儲存失敗", "err");
@@ -583,7 +584,6 @@ function refreshSortIndicators_() {
 }
 
 function applyFiltersFooterOnly_() {
-  // avoid re-render table while typing, just update footer line
   updateFooter();
 }
 
@@ -625,7 +625,6 @@ function toInputDate(str) {
 /* ========= Dirty tracking ========= */
 
 function snapshot_(u) {
-  // only track editable fields
   return JSON.stringify({
     userId: u.userId,
     audit: u.audit || "待審核",

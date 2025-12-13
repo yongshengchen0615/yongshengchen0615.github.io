@@ -58,12 +58,17 @@
       <div class="panel-head">
         <div class="filters">
           <div class="search-box" role="search">
-            <span class="icon">⌕</span>
-            <input id="searchInput" class="input" placeholder="搜尋 userId / 顯示名稱 / 師傅編號" autocomplete="off" />
+            <span class="icon" aria-hidden="true">⌕</span>
+            <input
+              id="searchInput"
+              class="input"
+              placeholder="搜尋：userId、名稱、師傅編號"
+              autocomplete="off"
+            />
             <button id="clearSearchBtn" class="btn icon ghost" type="button" aria-label="清除搜尋">✕</button>
           </div>
 
-          <div class="seg">
+          <div class="seg" aria-label="審核狀態篩選">
             <button class="chip active" data-filter="ALL" type="button">全部</button>
             <button class="chip" data-filter="通過" type="button">通過</button>
             <button class="chip" data-filter="待審核" type="button">待審核</button>
