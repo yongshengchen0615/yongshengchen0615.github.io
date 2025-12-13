@@ -63,6 +63,10 @@ const LIFF_ID = "2008669658-sBKFvZEz";
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
+// ✅ Top Loading Hint DOM
+const topLoadingEl = document.getElementById("topLoading");
+const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading-text") : null;
+
 // Dashboard 用資料
 const rawData = { body: [], foot: [] };
 
@@ -88,6 +92,17 @@ const themeToggleBtn = document.getElementById("themeToggle");
 // 🔔 使用者名稱 + 剩餘天數橫幅 DOM
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
+
+// ✅ Top Loading Hint 控制
+function showLoadingHint(text) {
+  if (!topLoadingEl) return;
+  if (topLoadingTextEl) topLoadingTextEl.textContent = text || "資料載入中…";
+  topLoadingEl.classList.remove("hidden");
+}
+function hideLoadingHint() {
+  if (!topLoadingEl) return;
+  topLoadingEl.classList.add("hidden");
+}
 
 // ===== Gate 顯示工具 =====
 function showGate(message, isError) {
@@ -390,7 +405,7 @@ function applyFilters(list) {
 
 async function fetchStatusAll() {
   const edgeBase = getStatusEdgeUrl_();
-  const jitterBust = Date.now(); // 你想固定也可以拿掉
+  const jitterBust = Date.now();
 
   const tryUrls = [
     `${edgeBase}?mode=all&v=${encodeURIComponent(jitterBust)}`,
@@ -419,7 +434,8 @@ async function fetchStatusAll() {
 }
 
 async function refreshStatus() {
-  if (loadingStateEl) loadingStateEl.style.display = "flex";
+  // ✅ 改成上方 toast，不影響版面排列
+  showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
@@ -446,7 +462,7 @@ async function refreshStatus() {
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
-    if (loadingStateEl) loadingStateEl.style.display = "none";
+    hideLoadingHint();
   }
 }
 
