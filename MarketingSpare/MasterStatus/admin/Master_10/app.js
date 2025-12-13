@@ -339,8 +339,16 @@ async function bulkApply_() {
   ids.forEach((id) => {
     const u = allUsers.find((x) => x.userId === id);
     if (!u) return;
+
     if (audit) u.audit = audit;
-    if (pushEnabled) u.pushEnabled = pushEnabled;
+
+    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（批次也不能繞過）
+    if ((u.audit || "待審核") !== "通過") {
+      u.pushEnabled = "否";
+    } else if (pushEnabled) {
+      u.pushEnabled = pushEnabled;
+    }
+
     markDirty_(id, u);
   });
 
@@ -473,6 +481,14 @@ function renderTable() {
     const saveBtn = tr.querySelector(".btn-save");
     const delBtn = tr.querySelector(".btn-del");
 
+    // ✅ 初始渲染就套用規則：非通過 → 推播強制否 + 禁用
+    if ((audit || "待審核") !== "通過") {
+      pushSelect.value = "否";
+      pushSelect.disabled = true;
+    } else {
+      pushSelect.disabled = false;
+    }
+
     rowCheck.addEventListener("change", () => {
       if (rowCheck.checked) selectedIds.add(u.userId);
       else selectedIds.delete(u.userId);
@@ -488,9 +504,21 @@ function renderTable() {
       u.startDate = dateInput.value || "";
       u.usageDays = daysInput.value || "";
       u.masterCode = masterInput.value || "";
-      u.pushEnabled = pushSelect.value || "否";
       u.audit = auditSelect.value || "待審核";
 
+      // 先吃使用者選擇
+      u.pushEnabled = pushSelect.value || "否";
+
+      // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
+      if (u.audit !== "通過") {
+        u.pushEnabled = "否";
+        pushSelect.value = "否";
+        pushSelect.disabled = true;
+      } else {
+        pushSelect.disabled = false;
+      }
+
+      // 規則套用後再做 dirty 判斷（避免 snapshot 不一致）
       markDirty_(u.userId, u);
 
       const exp = getExpiryInfo(u);
@@ -517,13 +545,20 @@ function renderTable() {
       saveBtn.disabled = true;
       saveBtn.textContent = "儲存中...";
 
+      // 保險：送出前再強制一次（避免 UI 被外力改動）
+      const finalAudit = auditSelect.value || "待審核";
+      const finalPush = (finalAudit !== "通過") ? "否" : (pushSelect.value || "否");
+      if (finalAudit !== "通過") {
+        pushSelect.value = "否";
+      }
+
       const payload = {
         userId: u.userId,
-        audit: auditSelect.value,
+        audit: finalAudit,
         startDate: dateInput.value,
         usageDays: daysInput.value,
         masterCode: masterInput.value,
-        pushEnabled: pushSelect.value
+        pushEnabled: finalPush
       };
 
       const ok = await updateUser(payload);
@@ -532,6 +567,9 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
+        // 同步 u 狀態，讓 snapshot 正確
+        u.audit = finalAudit;
+        u.pushEnabled = finalPush;
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
         await loadUsers();
