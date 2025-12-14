@@ -1,111 +1,122 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="dark">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>預約月曆 & 師傅狀態</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>師傅狀態看板</title>
 
-  <!-- 外部 CSS -->
-  <link rel="stylesheet" href="styles.css">
+  <!-- 可留可不留：目前主要樣式都在 styles.css -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- LINE LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
-  <!-- 全螢幕 Loading -->
-  <div id="loadingOverlay">
-    <div class="loader"></div>
-    <div class="loading-text">初始化中…</div>
+  <!-- Loading -->
+  <div id="loadingOverlay" aria-live="polite" aria-busy="true">
+    <div class="loader" aria-label="載入中"></div>
   </div>
 
-  <!-- 主要畫面：資料載入完才顯示 -->
-  <div id="appContainer">
-    <div class="calendar-container">
-      <h1>預約月曆 & 師傅狀態</h1>
+  <!-- App 主體 -->
+  <div id="appContainer" style="display:none;">
+    <div class="page-container">
 
-      <!-- 上方說明文字（動態更新） -->
-      <div class="subtitle"></div>
-
-      <!-- 審核狀態提示卡（JS 控制顯示/隱藏） -->
-      <div id="auditNotice" class="audit-notice" style="display:none;"></div>
-
-      <!-- ✅ 審核通過才顯示的功能區 -->
-      <div id="protectedContent" style="display:none;">
-
-      <!-- 月曆導航 -->
-      <div class="month-nav">
-        <button id="prevBtn">← 上個月</button>
-        <div id="monthLabel" class="month-label"></div>
-        <button id="nextBtn">下個月 →</button>
-      </div>
-
-      <!-- 月曆表格 -->
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>日</th><th>一</th><th>二</th><th>三</th>
-              <th>四</th><th>五</th><th>六</th>
-            </tr>
-          </thead>
-          <tbody id="calendarBody"></tbody>
-        </table>
-      </div>
-
-      <!-- 日期說明 -->
-      <div id="popup" class="event-popup" style="display:none;"></div>
-
-      <!-- 師傅狀態卡片 -->
-      <div class="tech-status-card">
-        <div class="tech-status-head">
-          <div class="tech-status-title">
-            師傅 <span id="techMasterId">--</span> 目前狀態
+      <!-- Header -->
+      <div class="page-header">
+        <div class="header-text">
+          <h1>師傅狀態看板</h1>
+          <div class="subtitle">
+            目前顯示師傅 <span id="techMasterId">--</span> 的狀態
           </div>
         </div>
 
-        <div class="tech-status-grid">
-          <!-- 身體 -->
-          <div>
-            <div class="tech-col-title">身體</div>
-            <div class="tech-row">
-              <span class="tech-label">狀態</span>
-              <span class="tech-value" id="bodyStatusText">-</span>
-            </div>
-            <div class="tech-row">
-              <span class="tech-label">預約</span>
-              <span class="tech-value" id="bodyAppointmentText">-</span>
-            </div>
-            <div class="tech-row">
-              <span class="tech-label">剩餘時間</span>
-              <span class="tech-value" id="bodyRemainingText">-</span>
-            </div>
+        <!-- Theme Toggle -->
+        <button id="themeToggleBtn" class="theme-toggle" type="button" aria-label="切換亮色或暗色主題">
+          <span class="theme-toggle-track" aria-hidden="true">
+            <span class="theme-toggle-knob"></span>
+          </span>
+          <span class="theme-toggle-text">
+            <span class="theme-label-light">亮色</span>
+            <span class="theme-label-dark">暗色</span>
+          </span>
+        </button>
+      </div>
+
+      <!-- 狀態卡 -->
+      <div class="tech-status-grid">
+        <div class="tech-status-card">
+          <div class="tech-status-header">
+            <div class="tech-status-title">身體</div>
           </div>
 
-          <!-- 腳底 -->
-          <div>
-            <div class="tech-col-title">腳底</div>
+          <div class="tech-status-list">
             <div class="tech-row">
               <span class="tech-label">狀態</span>
-              <span class="tech-value" id="footStatusText">-</span>
+              <span id="bodyStatusText" class="tech-value">-</span>
             </div>
             <div class="tech-row">
               <span class="tech-label">預約</span>
-              <span class="tech-value" id="footAppointmentText">-</span>
+              <span id="bodyAppointmentText" class="tech-value">-</span>
             </div>
             <div class="tech-row">
               <span class="tech-label">剩餘時間</span>
-              <span class="tech-value" id="footRemainingText">-</span>
+              <span id="bodyRemainingText" class="tech-value">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tech-status-card">
+          <div class="tech-status-header">
+            <div class="tech-status-title">腳底</div>
+          </div>
+
+          <div class="tech-status-list">
+            <div class="tech-row">
+              <span class="tech-label">狀態</span>
+              <span id="footStatusText" class="tech-value">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">預約</span>
+              <span id="footAppointmentText" class="tech-value">-</span>
+            </div>
+            <div class="tech-row">
+              <span class="tech-label">剩餘時間</span>
+              <span id="footRemainingText" class="tech-value">-</span>
             </div>
           </div>
         </div>
       </div>
 
-      </div>
+      <!-- 營業設定（日曆） -->
+      <section class="cal-card" aria-label="日曆">
+        <div class="cal-head">
+          <div>
+            <div class="cal-title">預約設定</div>
+            <div class="cal-sub" id="bizSummary">讀取中…</div>
+          </div>
+
+          <div class="cal-nav" aria-label="切換月份">
+            <button id="calPrev" type="button" aria-label="上一個月">‹</button>
+            <div id="calMonthLabel" class="cal-month">—</div>
+            <button id="calNext" type="button" aria-label="下一個月">›</button>
+          </div>
+        </div>
+
+        <div class="cal-weekdays" id="calWeekdays" aria-hidden="true"></div>
+        <div class="cal-grid" id="calGrid"></div>
+
+        <div class="cal-legend" aria-hidden="true">
+          <span class="legend-item"><span class="legend-dot dot-off"></span> 固定休假日</span>
+          <span class="legend-item"><span class="legend-dot dot-today"></span> 今日</span>
+        </div>
+      </section>
+
+      <!-- 小提示 / 錯誤列 -->
+      <div id="toast" class="toast" style="display:none;"></div>
 
     </div>
   </div>
 
-  <!-- 主程式 -->
   <script src="app.js"></script>
 </body>
 </html>
