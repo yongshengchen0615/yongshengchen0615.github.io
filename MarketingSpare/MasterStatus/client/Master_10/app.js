@@ -4,11 +4,11 @@ const WEB_APP_URL =
 
 // ===== 2) 師傅狀態 Web App URL =====
 const TECH_API_URL =
-  "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+  "https://script.google.com/macros/s/AKfycbwp46vU_Vk_s05D_LTbjAnDfUI4cyEUgQETikt6aIInecfZCAb_RI_vXZUm89GbNhEDgQ/exec";
 
 // ===== 3) 使用者審核 / Users Web App URL =====
 const AUTH_API_URL =
-  "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
+  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 // ===== 4) LIFF ID（改成你的實際 LIFF ID） =====
 const LIFF_ID = "2008669658-CwYIitI1";
