@@ -15,6 +15,7 @@
   <!-- 全螢幕 Loading -->
   <div id="loadingOverlay">
     <div class="loader"></div>
+    <div class="loading-text">初始化中…</div>
   </div>
 
   <!-- 主要畫面：資料載入完才顯示 -->
@@ -27,6 +28,9 @@
 
       <!-- 審核狀態提示卡（JS 控制顯示/隱藏） -->
       <div id="auditNotice" class="audit-notice" style="display:none;"></div>
+
+      <!-- ✅ 審核通過才顯示的功能區 -->
+      <div id="protectedContent" style="display:none;">
 
       <!-- 月曆導航 -->
       <div class="month-nav">
@@ -53,7 +57,7 @@
 
       <!-- 師傅狀態卡片 -->
       <div class="tech-status-card">
-        <div class="tech-status-header">
+        <div class="tech-status-head">
           <div class="tech-status-title">
             師傅 <span id="techMasterId">--</span> 目前狀態
           </div>
@@ -94,6 +98,8 @@
             </div>
           </div>
         </div>
+      </div>
+
       </div>
 
     </div>

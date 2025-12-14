@@ -14,45 +14,25 @@ const AUTH_API_URL =
 const LIFF_ID = "2008669658-CwYIitI1";
 
 // 想看的師傅 masterId
-const TARGET_MASTER_ID = "10";
+const MASTER_ID = "07";
 
-/* ========= 類型定義 ========= */
-const TYPE_META = {
-  holiday:   { label: "技師休假日",          tagClass: "tag-holiday" },
-  weeklyOff: { label: "六日無法預約",        tagClass: "tag-weeklyOff" },
-  eventDay:  { label: "雙倍點數日",          tagClass: "tag-eventDay" },
-  halfDay:   { label: "半天營業日（如營業到 13:00）", tagClass: "tag-halfDay" },
-  blockedDay:{ label: "不可預約日",          tagClass: "tag-blockedDay" }
-};
+// 月曆狀態
+let currentYear = 0;
+let currentMonth = 0;
 
-const TYPE_PRIORITY = ["holiday", "blockedDay", "halfDay", "eventDay", "weeklyOff"];
+// 使用者狀態
+let currentUser = { userId: "", displayName: "" };
 
-let current = new Date();
-const dayEvents = new Map();       // "yyyy-MM-dd" -> [type...]
-const weeklyOffSet = new Set();    // 0~6（來自 Config + DateTypes）
-
-/* ========= DOM 綁定 ========= */
-document.getElementById("prevBtn").onclick = () => {
-  current.setMonth(current.getMonth() - 1);
-  renderCalendar();
-};
-document.getElementById("nextBtn").onclick = () => {
-  current.setMonth(current.getMonth() + 1);
-  renderCalendar();
-};
-document.getElementById("techMasterId").textContent = TARGET_MASTER_ID;
-
-/* ========== 顯示 App / 關閉 loading ========== */
+/* ========== 工具：顯示/隱藏畫面 ========== */
 function showApp() {
   document.getElementById("loadingOverlay").classList.add("hidden");
   document.getElementById("appContainer").style.display = "block";
 }
 
 /* ========== 小工具：標題、副標題、審核提示卡 ========== */
-function setSubtitle(msg) {
+function setSubtitle(text) {
   const el = document.querySelector(".subtitle");
-  if (!el) return;
-  el.textContent = msg || "";
+  if (el) el.textContent = text || "";
 }
 
 function showAuditNotice(type, msg) {
@@ -71,45 +51,219 @@ function hideAuditNotice() {
   box.textContent = "";
 }
 
+function showProtectedContent() {
+  const el = document.getElementById("protectedContent");
+  if (el) el.style.display = "block";
+}
+
+function hideProtectedContent() {
+  const el = document.getElementById("protectedContent");
+  if (el) el.style.display = "none";
+}
+
 /* ========= 月曆資料：bootstrap ========= */
 function normalizeType(val) {
-  return String(val || "").trim();
+  return String(val || "").trim().toLowerCase();
 }
 
-function preprocessDateTypes(rows) {
-  dayEvents.clear();
+// 從 Data_* 回傳格式 → 統一成 [{ date:"YYYY-MM-DD", type:"rest|out|book|..." , title:"..." }]
+function normalizeBookings(data) {
+  const out = [];
+
+  const rows = Array.isArray(data.rows) ? data.rows : [];
   rows.forEach(r => {
-    const typeKey = normalizeType(r.Type || r.DateType);
-    const dateRaw = String(r.Date || "").trim();
-    if (!typeKey) return;
+    const date = String(r.date || r.Date || "").trim();
+    const type = normalizeType(r.type || r.Type || r.status || r.Status);
+    const title = String(r.title || r.Title || r.note || r.Note || "").trim();
 
-    if (typeKey === "weeklyOff") {
-      const w = parseInt(dateRaw, 10);
-      if (!isNaN(w) && w >= 0 && w <= 6) {
-        weeklyOffSet.add(w);
-      }
-    } else {
-      if (!dateRaw) return;
-      const key = dateRaw; // yyyy-MM-dd
-      const arr = dayEvents.get(key) || [];
-      arr.push(typeKey);
-      dayEvents.set(key, arr);
-    }
+    if (!date) return;
+    out.push({ date, type, title });
   });
+
+  // weeklyOff: [0..6] 代表每週固定休
+  // extra: optional
+  return out;
 }
 
+function ymd(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/* ========= API：通用 fetch ========= */
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("JSON parse failed:", text);
+    throw new Error("Invalid JSON response");
+  }
+}
+
+/* ========= AUTH API ========= */
+async function callAuthApi(mode, payload) {
+  const m = String(mode || "").toLowerCase();
+  // 你這支 GAS 同時支援 GET/POST；這裡用 GET 方便 CORS（你已有 preflight）
+  const qs = new URLSearchParams({ mode: m, ...payload }).toString();
+  const url = `${AUTH_API_URL}?${qs}`;
+  return await fetchJson(url);
+}
+
+/* ========= Booking/DateTypes API ========= */
+async function callBookingApi(mode, payload) {
+  const m = String(mode || "").toLowerCase();
+  const qs = new URLSearchParams({ mode: m, ...payload }).toString();
+  const url = `${WEB_APP_URL}?${qs}`;
+  return await fetchJson(url);
+}
+
+/* ========= TechStatus API ========= */
+async function callTechApi(mode, payload) {
+  const m = String(mode || "").toLowerCase();
+  const qs = new URLSearchParams({ mode: m, ...payload }).toString();
+  const url = `${TECH_API_URL}?${qs}`;
+  return await fetchJson(url);
+}
+
+/* ========= 月曆 UI ========= */
+function setMonthLabel(year, month) {
+  const el = document.getElementById("monthLabel");
+  if (!el) return;
+  el.textContent = `${year} / ${month + 1}`;
+}
+
+function clearCalendar() {
+  const tbody = document.getElementById("calendarBody");
+  if (tbody) tbody.innerHTML = "";
+}
+
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function renderCalendar(bookings, weeklyOffSet) {
+  clearCalendar();
+
+  const tbody = document.getElementById("calendarBody");
+  if (!tbody) return;
+
+  const first = new Date(currentYear, currentMonth, 1);
+  const last = new Date(currentYear, currentMonth + 1, 0);
+  const startDay = first.getDay();
+  const daysInMonth = last.getDate();
+
+  const today = new Date();
+
+  // bookings map by date
+  const byDate = new Map();
+  bookings.forEach(b => {
+    if (!byDate.has(b.date)) byDate.set(b.date, []);
+    byDate.get(b.date).push(b);
+  });
+
+  let dayNum = 1;
+  for (let week = 0; week < 6; week++) {
+    const tr = document.createElement("tr");
+
+    for (let dow = 0; dow < 7; dow++) {
+      const td = document.createElement("td");
+
+      const cellIndex = week * 7 + dow;
+      if (cellIndex < startDay || dayNum > daysInMonth) {
+        td.innerHTML = "&nbsp;";
+        tr.appendChild(td);
+        continue;
+      }
+
+      const d = new Date(currentYear, currentMonth, dayNum);
+      const dateStr = ymd(d);
+
+      // date number
+      const dateNumEl = document.createElement("div");
+      dateNumEl.className = "date-num";
+      dateNumEl.textContent = String(dayNum);
+      td.appendChild(dateNumEl);
+
+      // tags
+      const tagsWrap = document.createElement("div");
+      tagsWrap.className = "tags";
+
+      // weekly off
+      if (weeklyOffSet && weeklyOffSet.has(dow)) {
+        const tag = document.createElement("span");
+        tag.className = "tag rest";
+        tag.textContent = "固定休";
+        tagsWrap.appendChild(tag);
+      }
+
+      const items = byDate.get(dateStr) || [];
+      items.forEach(item => {
+        const t = normalizeType(item.type);
+        const tag = document.createElement("span");
+        tag.className = "tag " + (t === "rest" ? "rest" : t === "out" ? "out" : "book");
+        tag.textContent = item.title || (t === "rest" ? "休息" : t === "out" ? "外出" : "預約");
+        tagsWrap.appendChild(tag);
+      });
+
+      if (tagsWrap.childNodes.length) td.appendChild(tagsWrap);
+
+      // today
+      if (isSameDay(d, today)) td.classList.add("is-today");
+
+      // click popup
+      td.addEventListener("click", () => {
+        const popup = document.getElementById("popup");
+        if (!popup) return;
+
+        const all = [];
+
+        if (weeklyOffSet && weeklyOffSet.has(dow)) {
+          all.push("固定休");
+        }
+
+        items.forEach(item => {
+          const t = normalizeType(item.type);
+          const label = item.title || (t === "rest" ? "休息" : t === "out" ? "外出" : "預約");
+          all.push(label);
+        });
+
+        if (!all.length) {
+          popup.style.display = "block";
+          popup.textContent = `${dateStr}：無資料`;
+          return;
+        }
+
+        popup.style.display = "block";
+        popup.textContent = `${dateStr}：${all.join("、")}`;
+      });
+
+      tr.appendChild(td);
+      dayNum++;
+    }
+
+    tbody.appendChild(tr);
+    if (dayNum > daysInMonth) break;
+  }
+}
+
+/* ========= 取 Booking 資料 ========= */
 async function loadData() {
-  const res = await fetch(WEB_APP_URL + "?entity=bootstrap");
-  if (!res.ok) throw new Error("bootstrap HTTP " + res.status);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || "bootstrap error");
+  setSubtitle("載入月曆資料中…");
 
-  const data = json.data || {};
-  const config = data.config || {};
+  // 你原本的 GAS 可能回傳 { ok:true, datetypes:[], weeklyOff:[] } 或 { rows:[] }
+  const data = await callBookingApi("datetypes", { masterId: MASTER_ID });
 
-  // 解析 Config.weeklyOff：["0","6"] 之類
-  weeklyOffSet.clear();
-  let weeklyOffRaw = config.weeklyOff;
+  const weeklyOffSet = new Set();
+  let weeklyOffRaw = data.weeklyOff;
+
   if (typeof weeklyOffRaw === "string") {
     try {
       const parsed = JSON.parse(weeklyOffRaw);
@@ -125,246 +279,63 @@ async function loadData() {
     });
   }
 
-  const dtRows = Array.isArray(data.datetypes) ? data.datetypes : [];
-  preprocessDateTypes(dtRows);
-  renderCalendar();
+  const dtRows = Array.isArray(data.datetypes)
+    ? data.datetypes.map(r => ({
+        date: String(r.date || r.Date || "").trim(),
+        type: normalizeType(r.type || r.Type),
+        title: String(r.title || r.Title || "").trim()
+      }))
+    : normalizeBookings(data);
+
+  setMonthLabel(currentYear, currentMonth);
+  renderCalendar(dtRows, weeklyOffSet);
+
+  setSubtitle("月曆資料已更新");
 }
 
-function renderCalendar() {
-  const year = current.getFullYear();
-  const month = current.getMonth();
-  const monthLabel = document.getElementById("monthLabel");
-  const body = document.getElementById("calendarBody");
-  body.innerHTML = "";
-
-  monthLabel.textContent = `${year} 年 ${month + 1} 月`;
-
-  const firstDay = new Date(year, month, 1);
-  const startWeekday = firstDay.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  let day = 1 - startWeekday;
-
-  for (let r = 0; r < 6; r++) {
-    const tr = document.createElement("tr");
-
-    for (let c = 0; c < 7; c++) {
-      const td = document.createElement("td");
-
-      if (day > 0 && day <= daysInMonth) {
-        const d = new Date(year, month, day);
-        const weekday = d.getDay();
-        const yyyy = year;
-        const mm = String(month + 1).padStart(2, "0");
-        const dd = String(day).padStart(2, "0");
-        const key = `${yyyy}-${mm}-${dd}`;
-
-        const dayTypeList = (dayEvents.get(key) || []).slice();
-        if (weeklyOffSet.has(weekday)) {
-          dayTypeList.push("weeklyOff");
-        }
-
-        const numSpan = document.createElement("div");
-        numSpan.className = "day-num";
-        numSpan.textContent = day;
-        td.appendChild(numSpan);
-
-        if (dayTypeList.length > 0) {
-          td.classList.add("has-event");
-
-          const mainType = pickMainType(dayTypeList);
-          if (mainType) td.classList.add("type-" + mainType);
-
-          const badgeRow = document.createElement("div");
-          badgeRow.className = "badge-row";
-
-          const uniqueTypes = Array.from(new Set(dayTypeList));
-          uniqueTypes.forEach(t => {
-            const meta = TYPE_META[t] || null;
-            const tag = document.createElement("div");
-            tag.className = "tag" + (meta ? (" " + meta.tagClass) : "");
-            const dot = document.createElement("span");
-            dot.className = "dot";
-            const label = document.createElement("span");
-            label.textContent = meta ? meta.label : t;
-            tag.appendChild(dot);
-            tag.appendChild(label);
-            badgeRow.appendChild(tag);
-          });
-
-          td.appendChild(badgeRow);
-          td.onclick = () => showPopup(key, uniqueTypes);
-        } else {
-          td.onclick = () => clearPopup();
-        }
-      } else {
-        td.className = "empty";
-      }
-
-      tr.appendChild(td);
-      day++;
-    }
-
-    body.appendChild(tr);
-  }
-}
-
-function pickMainType(types) {
-  const set = new Set(types);
-  for (const t of TYPE_PRIORITY) {
-    if (set.has(t)) return t;
-  }
-  return null;
-}
-
-function showPopup(dateStr, types) {
-  const popup = document.getElementById("popup");
-  popup.style.display = "block";
-
-  const items = types.map(t => {
-    const meta = TYPE_META[t];
-    return `<li>${meta ? meta.label : t}</li>`;
-  }).join("");
-
-  popup.innerHTML = `
-    <p class="popup-title">${dateStr}</p>
-    <ul class="popup-list">
-      ${items}
-    </ul>
-  `;
-}
-
-function clearPopup() {
-  const popup = document.getElementById("popup");
-  popup.style.display = "none";
-  popup.innerHTML = "";
-}
-
-/* ========== 師傅狀態區 ========== */
-
-function normalizeMasterId(v) {
-  if (v === null || v === undefined) return "";
-  let s = String(v).trim();
-  if (!s) return "";
-  s = s.replace(/[^\d]/g, "");
-  if (!s) return "";
-  const n = parseInt(s, 10);
-  if (isNaN(n)) return "";
-  return String(n);
-}
-
-function classifyStatus(statusText) {
-  const s = String(statusText || "").trim();
-  if (s.includes("工作中")) return "busy";
-  if (s.includes("上班") || s.includes("可預約")) return "idle";
-  if (s.includes("休") || s.includes("下班")) return "off";
-  if (!s) return "off";
-  return "idle";
-}
-
-// 剩餘時間：完全顯示表格回傳值，空就 "-"
-function formatRemaining(rem) {
-  if (rem === null || rem === undefined || rem === "") return "-";
-  return String(rem);
-}
-
-function formatAppointment(appt) {
-  const s = String(appt || "").trim();
-  if (!s) return "無預約";
-  return s; // 直接顯示 "15:00" 之類
-}
-
-function updateStatusUI(kind, row) {
-  const statusEl = document.getElementById(kind + "StatusText");
-  const apptEl   = document.getElementById(kind + "AppointmentText");
-  const remEl    = document.getElementById(kind + "RemainingText");
-  if (!statusEl || !apptEl || !remEl) return;
-
-  statusEl.className = "tech-value";
-
-  if (!row) {
-    statusEl.innerHTML = `<span class="status-pill status-off">無資料</span>`;
-    apptEl.textContent = "-";
-    remEl.textContent   = "-";
-    return;
-  }
-
-  const rawStatus = row.status || "";
-  const bucket = classifyStatus(rawStatus);
-  let pillClass = "status-off";
-  if (bucket === "busy") pillClass = "status-busy";
-  else if (bucket === "idle") pillClass = "status-idle";
-
-  statusEl.innerHTML = `<span class="status-pill ${pillClass}">${rawStatus || "未知"}</span>`;
-  apptEl.textContent = formatAppointment(row.appointment);
-  remEl.textContent  = formatRemaining(row.remaining);
+/* ========= 取 Tech Status ========= */
+function fmtRemaining(n) {
+  if (n === null || n === undefined || n === "") return "-";
+  const v = Number(n);
+  if (isNaN(v)) return String(n);
+  return v + " 分";
 }
 
 async function loadTechStatus() {
-  const res = await fetch(TECH_API_URL);
-  if (!res.ok) throw new Error("tech HTTP " + res.status);
-  const json = await res.json();
+  const data = await callTechApi("check", { masterId: MASTER_ID });
 
-  const bodyList = Array.isArray(json.body) ? json.body : [];
-  const footList = Array.isArray(json.foot) ? json.foot : [];
-  const targetKey = normalizeMasterId(TARGET_MASTER_ID);
+  const techIdEl = document.getElementById("techMasterId");
+  if (techIdEl) techIdEl.textContent = MASTER_ID;
 
-  const pickByMaster = (arr) =>
-    arr.find(r => normalizeMasterId(r.masterId) === targetKey) || null;
+  // body
+  const bodyStatusText = document.getElementById("bodyStatusText");
+  const bodyAppointmentText = document.getElementById("bodyAppointmentText");
+  const bodyRemainingText = document.getElementById("bodyRemainingText");
 
-  const bodyRow = pickByMaster(bodyList);
-  const footRow = pickByMaster(footList);
+  if (bodyStatusText) bodyStatusText.textContent = data.bodyStatus || "-";
+  if (bodyAppointmentText) bodyAppointmentText.textContent = data.bodyAppointment || "-";
+  if (bodyRemainingText) bodyRemainingText.textContent = fmtRemaining(data.bodyRemaining);
 
-  updateStatusUI("body", bodyRow);
-  updateStatusUI("foot", footRow);
+  // foot
+  const footStatusText = document.getElementById("footStatusText");
+  const footAppointmentText = document.getElementById("footAppointmentText");
+  const footRemainingText = document.getElementById("footRemainingText");
+
+  if (footStatusText) footStatusText.textContent = data.footStatus || "-";
+  if (footAppointmentText) footAppointmentText.textContent = data.footAppointment || "-";
+  if (footRemainingText) footRemainingText.textContent = fmtRemaining(data.footRemaining);
 }
 
-/* ========== 審核相關：對接 Users GAS ========= */
-
+/* ========= LIFF ========= */
 function getCurrentUser() {
-  return {
-    userId: window.AUTH_USER_ID || "",
-    displayName: window.AUTH_DISPLAY_NAME || ""
-  };
+  return currentUser || { userId: "", displayName: "" };
 }
 
-async function callAuthApi(mode, payload) {
-  if (!AUTH_API_URL) throw new Error("尚未設定 AUTH_API_URL");
-
-  if (mode === "check") {
-    const url = new URL(AUTH_API_URL);
-    url.searchParams.set("mode", "check");
-    url.searchParams.set("userId", payload.userId);
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error("auth check HTTP " + res.status);
-    return res.json();
-  }
-
-  if (mode === "register") {
-    const res = await fetch(AUTH_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mode: "register",
-        userId: payload.userId,
-        displayName: payload.displayName || ""
-      })
-    });
-    if (!res.ok) throw new Error("auth register HTTP " + res.status);
-    return res.json();
-  }
-
-  throw new Error("unsupported auth mode: " + mode);
-}
-
-/**
- * 確認使用者是否「已通過審核」
- * - approved  ：允許進入頁面
- * - none      ：自動幫他註冊，提示「已送出申請」
- * - pending   ：提示「審核中」
- */
 async function ensureApprovedUser() {
   const { userId, displayName } = getCurrentUser();
+
+  // 預設先鎖住功能區，只有「通過」才放行
+  hideProtectedContent();
 
   if (!userId) {
     setSubtitle("尚未取得使用者身分，請重新開啟此 LIFF。");
@@ -381,31 +352,30 @@ async function ensureApprovedUser() {
   const check = await callAuthApi("check", { userId });
   // { status: "none" | "pending" | "approved", audit: "通過/待審核/拒絕/停用..." }
 
-  if (check.status === "approved") {
-    const label = check.audit || "通過";
+  const auditText = String(check.audit || "").trim();
+  const isApproved = auditText === "通過" || check.status === "approved";
+
+  if (isApproved) {
+    const label = auditText || "通過";
     setSubtitle(`您好，${displayName || "貴賓"}，審核狀態：${label}`);
-    showAuditNotice(
-      "audit-approved",
-      "✔ 審核已通過，您可以使用全部功能。"
-    );
-    return; // ✅ 允許繼續
+    showAuditNotice("audit-approved", "✔ 審核已通過，您可以使用全部功能。");
+    showProtectedContent(); // ✅ 放行功能區
+    return;
   }
 
   if (check.status === "none") {
     // 第一次進來 → 幫他註冊 + 提示審核中
     await callAuthApi("register", { userId, displayName });
+
     setSubtitle("已送出加入申請，審核中。審核通過前無法使用此頁面。");
-    showAuditNotice(
-      "audit-pending",
-      "⏳ 已送出申請，請等待管理員審核。"
-    );
+    showAuditNotice("audit-pending", "⏳ 已送出申請，請等待管理員審核。");
     throw new Error("pending");
   }
 
   // 其餘狀態（pending / 拒絕 / 停用 …）
-  const auditText = check.audit || "待審核";
+  const text = auditText || "待審核";
 
-  if (auditText === "待審核") {
+  if (text === "待審核") {
     showAuditNotice(
       "audit-pending",
       "⏳ 您的帳號正在審核中，審核通過前暫時無法使用此頁面。"
@@ -413,15 +383,13 @@ async function ensureApprovedUser() {
   } else {
     showAuditNotice(
       "audit-rejected",
-      `❗ 審核狀態：${auditText}，目前無法使用此頁面，請聯絡管理員。`
+      `❗ 審核狀態：${text}，目前無法使用此頁面，請聯絡管理員。`
     );
   }
 
-  setSubtitle(`審核狀態：${auditText}（尚未通過，暫時無法使用此頁面）`);
+  setSubtitle(`審核狀態：${text}（尚未通過，暫時無法使用此頁面）`);
   throw new Error("pending");
 }
-
-/* ========== LIFF 初始化 + 審核 + 資料載入 ========= */
 
 async function initLiffAndGuard() {
   try {
@@ -440,10 +408,10 @@ async function initLiffAndGuard() {
 
     // 3) 拿使用者資料
     const profile = await liff.getProfile();
-    window.AUTH_USER_ID = profile.userId;
-    window.AUTH_DISPLAY_NAME = profile.displayName || "";
-
-    setSubtitle(`歡迎，${window.AUTH_DISPLAY_NAME}，正在檢查審核狀態…`);
+    currentUser = {
+      userId: profile.userId || "",
+      displayName: profile.displayName || ""
+    };
 
     // 4) 檢查審核
     await ensureApprovedUser();
@@ -487,8 +455,41 @@ async function initLiffAndGuard() {
   }
 }
 
-/* ========== 入口：window load 時啟動 LIFF ========= */
+/* ========= 初始化：預設月份 + 按鈕 ========= */
+function initCalendarState() {
+  const now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
+  setMonthLabel(currentYear, currentMonth);
+}
 
-window.addEventListener("load", () => {
+document.addEventListener("DOMContentLoaded", () => {
+  initCalendarState();
+
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", async () => {
+      currentMonth--;
+      if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      }
+      await loadData();
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener("click", async () => {
+      currentMonth++;
+      if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      }
+      await loadData();
+    });
+  }
+
   initLiffAndGuard();
 });
