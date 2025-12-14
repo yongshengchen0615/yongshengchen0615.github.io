@@ -11,7 +11,7 @@ const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 // ===== 4) LIFF ID（改成你的實際 LIFF ID） =====
-const LIFF_ID = "2008669658-W3uPaMku";
+const LIFF_ID = "2008669658-KFm2HWQb";
 
 // 想看的師傅 masterId
 const TARGET_MASTER_ID = "10";
