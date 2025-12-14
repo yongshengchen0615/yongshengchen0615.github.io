@@ -1,6 +1,5 @@
 // js/api.js
 
-// 在此直接設定 Apps Script Web App URL（請修改為你的 /exec 連結）：
 const ENDPOINT =
   "https://script.google.com/macros/s/AKfycbyDLxx5tINOCerjzpH3_dhxBCDR_SGw-bLatqLpcLgbx01ds3UJ0nJPCy7rkDhimxYvVw/exec";
 
@@ -20,30 +19,22 @@ async function apiGet(params) {
 
 async function apiPost(payload) {
   const ep = getEndpoint();
-  // 不設置 Content-Type: application/json，避免 CORS 預檢；Apps Script 仍可讀取 postData.contents
-  const res = await fetch(ep, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  // 不設置 Content-Type: application/json，避免 CORS 預檢
+  const res = await fetch(ep, { method: "POST", body: JSON.stringify(payload) });
   return res.json();
 }
 
-// 本地狀態（只在首次載入時從後端抓取一次）
+// 本地狀態（只抓 holiday 用）
 window.LocalState = {
-  datetypes: [],
-  services: [],
+  datetypes: [], // 仍沿用 datetypes/list，但只渲染 holiday
 };
 
 // 暫存所有變更，儲存時一次送出
 window.Pending = {
   config: {},
-  datetypesAdd: [],
-  datetypesDel: [],
-  servicesAdd: [],
-  servicesUpdate: [],
-  servicesDel: [],
+  holidaysAdd: [],
+  holidaysDel: [],
 };
 
-// 讓其他檔案可用（如果你習慣全域）
 window.apiGet = apiGet;
 window.apiPost = apiPost;

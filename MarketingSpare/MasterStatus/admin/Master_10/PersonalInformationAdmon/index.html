@@ -49,12 +49,6 @@
       </fieldset>
 
       <fieldset class="border rounded-3 p-3 mb-3">
-        <legend class="float-none w-auto px-2">⛔ 中間休息時間</legend>
-        <div id="breakPeriodList" class="mb-2"></div>
-        <button type="button" class="btn btn-primary btn-sm soft" onclick="addBreakPeriod()">＋ 新增休息時間</button>
-      </fieldset>
-
-      <fieldset class="border rounded-3 p-3 mb-3">
         <legend class="float-none w-auto px-2">📅 每週固定休假日</legend>
         <div id="weeklyOffCheckboxes" class="d-flex flex-wrap gap-3">
           <label class="form-check"><input class="form-check-input" type="checkbox" value="0" /><span class="form-check-label"> 週日</span></label>
@@ -72,66 +66,23 @@
       </fieldset>
 
       <fieldset class="border rounded-3 p-3 mb-3">
-        <legend class="float-none w-auto px-2">📆 特殊日期設定</legend>
+        <legend class="float-none w-auto px-2">📆 特殊日期設定（假日）</legend>
 
         <div class="date-group mb-3">
           <label class="form-label">假日</label>
           <div class="d-flex gap-2">
             <input type="date" id="holidayInput" class="form-control" />
-            <button type="button" class="btn btn-primary soft" onclick="addDate('holiday')">新增</button>
+            <button type="button" class="btn btn-primary soft" onclick="addHoliday()">新增</button>
           </div>
           <div id="holidayList" class="date-list mt-2"></div>
         </div>
 
-        <div class="date-group mb-3">
-          <label class="form-label">封鎖日</label>
-          <div class="d-flex gap-2">
-            <input type="date" id="blockedDayInput" class="form-control" />
-            <button type="button" class="btn btn-primary soft" onclick="addDate('blockedDay')">新增</button>
-          </div>
-          <div id="blockedDayList" class="date-list mt-2"></div>
-        </div>
-
-        <div class="date-group mb-3">
-          <label class="form-label">活動日</label>
-          <div class="d-flex gap-2">
-            <input type="date" id="eventDayInput" class="form-control" />
-            <button type="button" class="btn btn-primary soft" onclick="addDate('eventDay')">新增</button>
-          </div>
-          <div id="eventDayList" class="date-list mt-2"></div>
-        </div>
-
-        <div class="date-group mb-3">
-          <label class="form-label">半天營業日</label>
-          <div class="d-flex gap-2">
-            <input type="date" id="halfDayInput" class="form-control" />
-            <button type="button" class="btn btn-primary soft" onclick="addDate('halfDay')">新增</button>
-          </div>
-          <div id="halfDayList" class="date-list mt-2"></div>
-        </div>
-
         <div class="mt-2 d-flex align-items-center gap-2">
-          <button type="button" class="btn btn-secondary btn-sm soft" id="datesRefresh">重新整理特殊日期</button>
-          <span id="datesMsg" class="small"></span>
+          <button type="button" class="btn btn-secondary btn-sm soft" id="holidaysRefresh">重新整理假日</button>
+          <span id="holidaysMsg" class="small"></span>
         </div>
       </fieldset>
     </form>
-
-    <hr class="my-4" />
-    <h2 class="h4 mb-3">🛠️ 服務項目管理</h2>
-
-    <select id="serviceTypeSelect" class="form-select w-auto">
-      <option value="main">主服務</option>
-      <option value="addon">加購服務</option>
-    </select>
-
-    <div class="d-flex align-items-center gap-2 my-2">
-      <button id="servicesRefresh" type="button" class="btn btn-secondary btn-sm soft">重新整理服務列表</button>
-      <span id="servicesMsg" class="small"></span>
-    </div>
-
-    <div id="serviceList" class="date-group"></div>
-    <button id="addServiceBtn" type="button" class="btn btn-primary mt-2 soft">＋ 新增服務</button>
 
     <div class="d-flex justify-content-end mt-4">
       <button form="bookingForm" type="submit" class="btn btn-success btn-lg soft">💾 儲存設定</button>
@@ -146,7 +97,6 @@
     </div>
   </div>
 
-  <!-- ✅ 拆分後：先載入 API，再載入 App -->
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>
 </body>
