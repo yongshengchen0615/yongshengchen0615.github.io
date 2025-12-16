@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>師傅狀態看板</title>
 
-  <!-- 可留可不留：目前主要樣式都在 styles.css -->
+  <!-- 可留可不留：主要樣式在 styles.css -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <link rel="stylesheet" href="styles.css" />
@@ -105,9 +105,13 @@
         <div class="cal-weekdays" id="calWeekdays" aria-hidden="true"></div>
         <div class="cal-grid" id="calGrid"></div>
 
+        <!-- Legend：用小色塊提示「整格底色」 -->
         <div class="cal-legend" aria-hidden="true">
-          <span class="legend-item"><span class="legend-dot dot-off"></span> 固定休假日</span>
-          <span class="legend-item"><span class="legend-dot dot-today"></span> 今日</span>
+          <span class="legend-item"><span class="legend-swatch sw-weeklyoff"></span> 固定休</span>
+          <span class="legend-item"><span class="legend-swatch sw-holiday"></span> 休假</span>
+          <span class="legend-item"><span class="legend-swatch sw-workday"></span> 補班</span>
+          <span class="legend-item"><span class="legend-swatch sw-special"></span> 其他</span>
+          <span class="legend-item"><span class="legend-swatch sw-today"></span> 今日框線</span>
         </div>
       </section>
 

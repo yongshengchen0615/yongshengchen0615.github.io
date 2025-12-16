@@ -157,11 +157,10 @@ body{
   align-items:center;
   gap:12px;
 }
-
 .header-text{ min-width:0; }
 
 /* ===========================
-   Theme Toggle (no magic translate)
+   Theme Toggle
 =========================== */
 .theme-toggle{
   display:inline-flex;
@@ -190,7 +189,6 @@ body{
   border:1px solid var(--border);
   background: rgba(255,255,255,.04);
 }
-
 :root[data-theme="light"] .theme-toggle-track{
   background: rgba(15,23,42,.05);
 }
@@ -311,7 +309,6 @@ body{
   white-space:nowrap;
   border: 1px solid rgba(255,255,255,.06);
 }
-
 :root[data-theme="light"] .status-pill{
   border: 1px solid rgba(15,23,42,.06);
 }
@@ -411,6 +408,11 @@ body{
   background: var(--cal-cell-bg);
   position:relative;
   min-width:0;
+  cursor:pointer;
+  transition: transform .10s ease, background .15s ease, border-color .15s ease;
+}
+.cal-cell:hover{
+  transform: translateY(-1px);
 }
 
 .cal-date{
@@ -419,20 +421,45 @@ body{
   font-weight:650;
 }
 
+/* 今日：框線 */
 .cal-cell.is-today{
   outline: 2px solid rgba(56,189,248,.28);
   border-color: rgba(56,189,248,.28);
 }
 
-.cal-cell.is-off{
-  opacity:.6;
+/* 點選日期高亮 */
+.cal-cell.is-selected{
+  outline: 2px solid rgba(56,189,248,.40);
+  border-color: rgba(56,189,248,.40);
+}
+
+/* ===========================
+   Calendar Cell Color States (整格底色)
+   優先級：holiday > workday > weeklyoff > special
+=========================== */
+.cal-cell.is-holiday{
+  background: rgba(239, 68, 68, .08);
+  border-color: rgba(239, 68, 68, .22);
+}
+.cal-cell.is-workday{
+  background: rgba(34, 197, 94, .08);
+  border-color: rgba(34, 197, 94, .22);
+}
+.cal-cell.is-special{
+  background: rgba(148, 163, 184, .08);
+  border-color: rgba(148, 163, 184, .20);
+}
+.cal-cell.is-weeklyoff{
+  opacity: .85;
   background: rgba(148,163,184,.10);
   border-style:dashed;
 }
 
-:root[data-theme="light"] .cal-cell.is-off{
-  background: rgba(100,116,139,.10);
-}
+/* Light theme 增強可見度 */
+:root[data-theme="light"] .cal-cell.is-holiday{ background: rgba(239, 68, 68, .10); }
+:root[data-theme="light"] .cal-cell.is-workday{ background: rgba(34, 197, 94, .10); }
+:root[data-theme="light"] .cal-cell.is-special { background: rgba(100,116,139,.10); }
+:root[data-theme="light"] .cal-cell.is-weeklyoff{ background: rgba(100,116,139,.10); }
 
 /* Legend */
 .cal-legend{
@@ -444,13 +471,17 @@ body{
   flex-wrap:wrap;
 }
 .legend-item{ display:inline-flex; align-items:center; gap:8px; }
-.legend-dot{
-  width:10px; height:10px;
-  border-radius:999px;
+.legend-swatch{
+  width:14px; height:10px;
+  border-radius:6px;
   border:1px solid var(--border);
+  background: rgba(148,163,184,.10);
 }
-.dot-off{ background: rgba(148,163,184,.25); border-style:dashed; }
-.dot-today{ background: rgba(56,189,248,.22); }
+.sw-weeklyoff{ background: rgba(148,163,184,.10); border-style:dashed; }
+.sw-holiday { background: rgba(239, 68, 68, .10); }
+.sw-workday { background: rgba(34, 197, 94, .10); }
+.sw-special { background: rgba(148, 163, 184, .10); }
+.sw-today   { background: rgba(56,189,248,.12); border-color: rgba(56,189,248,.28); }
 
 /* Toast */
 .toast{
@@ -461,69 +492,4 @@ body{
   background: rgba(239,68,68,.10);
   color: var(--text-main);
   font-size:13px;
-}
-
-/* ===========================
-   Tags (DateTypes + WeeklyOff) on calendar cell
-=========================== */
-.cal-tags{
-  position:absolute;
-  top:10px;
-  right:10px;
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  max-width: calc(100% - 20px);
-}
-
-.cal-tag{
-  padding: 2px 8px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:800;
-  border:1px solid var(--border);
-  background: rgba(148,163,184,.12);
-  color: var(--text-main);
-  max-width: 120px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.cal-tag.holiday{ background: rgba(239,68,68,.12); }
-.cal-tag.workday{ background: rgba(34,197,94,.12); }
-.cal-tag.other  { background: rgba(148,163,184,.12); }
-
-/* weeklyOff tag */
-.cal-tag.weeklyoff{
-  background: rgba(148,163,184,.18);
-  border-style: dashed;
-  opacity: .95;
-}
-:root[data-theme="light"] .cal-tag.weeklyoff{
-  background: rgba(100,116,139,.14);
-}
-
-/* tooltip */
-.cal-cell[data-tooltip]{ cursor: help; }
-.cal-cell[data-tooltip]:hover::after{
-  content: attr(data-tooltip);
-  position:absolute;
-  left:10px;
-  top:42px;
-  z-index:10;
-  max-width:240px;
-  padding:8px 10px;
-  border-radius:12px;
-  border:1px solid var(--border);
-  background: rgba(2,6,23,.92);
-  color: var(--text-main);
-  font-size:12px;
-  line-height:1.35;
-  box-shadow: 0 10px 28px var(--shadow);
-  white-space:pre-line;
-}
-:root[data-theme="light"] .cal-cell[data-tooltip]:hover::after{
-  background: rgba(255,255,255,.96);
 }

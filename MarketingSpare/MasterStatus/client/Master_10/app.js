@@ -14,26 +14,17 @@ const BOOKING_API_URL =
 const TARGET_MASTER_ID = "10";
 
 // ================================
-// 2) Calendar Display Text Config（所有日曆標記文字只改這裡）
+// 2) Calendar UI Text（點選日期才顯示文字）
 // ================================
 const CALENDAR_UI_TEXT = {
   weeklyOff: {
-    tag: "固定休",
     tooltip: "固定休假日",
   },
-
-  // ✅ holiday 跟 weeklyOff 一樣：只靠 tag/tooltip
-  // 其他 bucket 維持 prefix + type
   dateTypes: {
-    holiday: { tag: "休假", tooltip: "休假日" },
-    workday: { tagPrefix: "補班", tooltipPrefix: "" },
-    other: { tagPrefix: "", tooltipPrefix: "" },
+    holiday: { tooltip: "休假日" },
+    workday: { tooltipPrefix: "" }, // 例如你想顯示「補班」可加前綴
+    other: { tooltipPrefix: "" },
   },
-
-  tooltip: { bullet: "• " },
-  tagLimit: 2,
-
-  // DateTypes 有 workday 時，覆蓋 weeklyOff（不灰底）
   rule_workday_override_weeklyoff: true,
 };
 
@@ -57,30 +48,25 @@ function normalizeDigits(v) {
   return String(v || "").replace(/[^\d]/g, "");
 }
 
-function safeAttrText(s) {
-  return String(s || "").replace(/"/g, "&quot;");
-}
-
 /**
  * ✅ 把 Config 的時間（可能是 Date / 1899-12-30 / "09:00" / 0.375 / "0.375"）統一轉成 "HH:mm"
  */
 function formatTimeHHmm(val) {
   if (val == null || val === "") return "";
 
-  // 1) 字串本來就是 HH:mm
   const s = String(val).trim();
+
+  // 1) 字串本來就是 HH:mm
   const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
   if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
 
-  // 2) ✅ ISO 8601 (UTC Z) => 轉 Asia/Taipei (+08:00)
-  //    例如 "1899-12-30T02:00:00.000Z" -> 10:00
+  // 2) ISO 8601 (UTC Z) => +8 (Asia/Taipei)
   if (/\d{4}-\d{2}-\d{2}T/.test(s) && /Z$/.test(s)) {
     const d = new Date(s);
     if (!isNaN(d.getTime())) {
-      // 用 UTC 取時分，再 +8 小時（台北）
       const utcH = d.getUTCHours();
       const utcM = d.getUTCMinutes();
-      const total = utcH * 60 + utcM + 8 * 60; // +08:00
+      const total = utcH * 60 + utcM + 8 * 60;
       const hh = String(Math.floor((total % 1440) / 60)).padStart(2, "0");
       const mm = String(total % 60).padStart(2, "0");
       return `${hh}:${mm}`;
@@ -116,9 +102,6 @@ function formatTimeHHmm(val) {
 
   return "";
 }
-
-
-
 
 // ================================
 // 4) 主題切換
@@ -201,7 +184,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 7) 營業設定（日曆） + DateTypes + WeeklyOff Tag
+// 7) 日曆：整格底色 + 點擊 toast
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -213,8 +196,11 @@ const calState = {
   viewMonth: new Date().getMonth(),
 };
 
-// DateTypes index: yyyy-MM-dd -> [{ type, bucket }]
+// yyyy-MM-dd -> [{ type, bucket }]
 const dtState = { byDate: new Map() };
+
+// 點擊用：ymd -> { off, dtItems }
+const calInfoByDate = new Map();
 
 function normTypeText(t) {
   return String(t || "").trim();
@@ -225,6 +211,15 @@ function typeToBucket(type) {
   if (s.includes("假") || s.includes("holiday") || s.includes("休")) return "holiday";
   if (s.includes("補班") || s.includes("work") || s.includes("上班")) return "workday";
   return "other";
+}
+
+function buildLabelWithPrefix(prefix, type) {
+  const p = String(prefix || "").trim();
+  const t = String(type || "").trim();
+  if (!p) return t;
+  if (!t) return p;
+  if (p === t) return p;
+  return `${p} ${t}`;
 }
 
 async function loadBizConfig() {
@@ -239,30 +234,13 @@ async function loadBizConfig() {
   const weeklyOff = json.data?.weeklyOff || [];
   const datetypes = json.data?.datetypes || [];
 
-  // ===== DEBUG: 檢查 startTime / endTime 真實型態 =====
-  console.group("[DEBUG] Config startTime / endTime");
-  console.log("raw cfg.startTime =", cfg.startTime);
-  console.log("typeof cfg.startTime =", typeof cfg.startTime);
-  console.log("instanceof Date =", cfg.startTime instanceof Date);
-
-  console.log("raw cfg.endTime =", cfg.endTime);
-  console.log("typeof cfg.endTime =", typeof cfg.endTime);
-  console.log("instanceof Date =", cfg.endTime instanceof Date);
-
-  console.log("formatTimeHHmm(startTime) =", formatTimeHHmm(cfg.startTime));
-  console.log("formatTimeHHmm(endTime)   =", formatTimeHHmm(cfg.endTime));
-  console.groupEnd();
-  // ================================================
-
-  // ✅ 修正：時間格式只取 HH:mm
   calState.startTime = formatTimeHHmm(cfg.startTime);
   calState.endTime = formatTimeHHmm(cfg.endTime);
   calState.weeklyOff = Array.isArray(weeklyOff) ? weeklyOff : [];
 
-  // ✅ DateTypes 索引
   dtState.byDate = new Map();
   (Array.isArray(datetypes) ? datetypes : []).forEach((r) => {
-    const date = String(r.Date || r.date || "").trim(); // yyyy-MM-dd
+    const date = String(r.Date || r.date || "").trim();
     const type = normTypeText(r.Type || r.DateType || r.type);
     if (!date || !type) return;
 
@@ -271,7 +249,6 @@ async function loadBizConfig() {
     dtState.byDate.get(date).push(item);
   });
 
-  // ✅ 上方摘要：只顯示營業時間
   const summary = $("bizSummary");
   if (summary) {
     const timePart =
@@ -288,88 +265,6 @@ function renderWeekdays() {
   const el = $("calWeekdays");
   if (!el) return;
   el.innerHTML = WEEKDAY_LABELS.map((w) => `<div>${w}</div>`).join("");
-}
-
-function bucketToTagClass(bucket) {
-  if (bucket === "holiday") return "holiday";
-  if (bucket === "workday") return "workday";
-  return "other";
-}
-
-function buildLabelWithPrefix(prefix, type) {
-  const p = String(prefix || "").trim();
-  const t = String(type || "").trim();
-  const lt = t.toLowerCase();
-
-  const isGeneric = !t || lt === "holiday" || lt === "workday" || lt === "other";
-  if (!p) return t;
-  if (isGeneric) return p;
-  if (p === t) return p;
-  return `${p} ${t}`;
-}
-
-function getHolidayTagText() {
-  const h = CALENDAR_UI_TEXT.dateTypes?.holiday || {};
-  return String(h.tag || "").trim();
-}
-function getHolidayTooltipText() {
-  const h = CALENDAR_UI_TEXT.dateTypes?.holiday || {};
-  return String(h.tooltip || "").trim();
-}
-
-function buildCalendarTagsAndTooltip({ off, dtItems }) {
-  const ui = CALENDAR_UI_TEXT;
-
-  const tags = [];
-  const tooltipLines = [];
-
-  if (off) {
-    tags.push({ text: ui.weeklyOff.tag, cls: "weeklyoff" });
-    tooltipLines.push(ui.tooltip.bullet + ui.weeklyOff.tooltip);
-  }
-
-  dtItems.forEach((it) => {
-    const bucket = it.bucket;
-    const cls = bucketToTagClass(bucket);
-
-    if (bucket === "holiday") {
-      const tagText = getHolidayTagText();
-      const tipText = getHolidayTooltipText();
-
-      if (tagText) tags.push({ text: tagText, cls });
-      if (tipText) tooltipLines.push(ui.tooltip.bullet + tipText);
-      return;
-    }
-
-    const cfg = ui.dateTypes[bucket] || ui.dateTypes.other;
-    const tagText = buildLabelWithPrefix(cfg.tagPrefix, it.type);
-    const tipText = buildLabelWithPrefix(cfg.tooltipPrefix, it.type);
-
-    if (tagText) tags.push({ text: tagText, cls });
-    if (tipText) tooltipLines.push(ui.tooltip.bullet + tipText);
-  });
-
-  if (!tags.length) return { tagsHtml: "", tooltipAttr: "" };
-
-  const limit = Math.max(0, Number(ui.tagLimit || 0)) || 2;
-  const show = tags.slice(0, limit);
-  const rest = tags.length - show.length;
-
-  const tagHtml = show
-    .map(
-      (t) =>
-        `<span class="cal-tag ${t.cls}" title="${safeAttrText(t.text)}">${t.text}</span>`
-    )
-    .join("");
-
-  const more = rest > 0 ? `<span class="cal-tag other">+${rest}</span>` : "";
-  const tagsHtml = `<div class="cal-tags">${tagHtml}${more}</div>`;
-
-  const tooltipAttr = tooltipLines.length
-    ? ` data-tooltip="${safeAttrText(tooltipLines.join("\n"))}"`
-    : "";
-
-  return { tagsHtml, tooltipAttr };
 }
 
 function renderCalendar() {
@@ -389,8 +284,11 @@ function renderCalendar() {
 
   label.textContent = `${y}-${String(m + 1).padStart(2, "0")}`;
 
+  calInfoByDate.clear();
+
   const cells = [];
 
+  // 前置空白
   for (let i = 0; i < firstDow; i++) {
     cells.push(`<div class="cal-cell" style="visibility:hidden"></div>`);
   }
@@ -408,6 +306,7 @@ function renderCalendar() {
     const ymd = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dtItems = dtState.byDate.get(ymd) || [];
 
+    // 補班覆蓋固定休：不灰底
     if (
       CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true &&
       dtItems.some((it) => it.bucket === "workday")
@@ -415,21 +314,68 @@ function renderCalendar() {
       off = false;
     }
 
-    const { tagsHtml, tooltipAttr } = buildCalendarTagsAndTooltip({ off, dtItems });
+    calInfoByDate.set(ymd, { off, dtItems });
 
-    const cls = ["cal-cell", off ? "is-off" : "", isToday(y, m, d) ? "is-today" : ""]
+    // ===== 顏色優先級（只挑一個主狀態，避免混色）=====
+    const hasHoliday = dtItems.some((it) => it.bucket === "holiday");
+    const hasWorkday = dtItems.some((it) => it.bucket === "workday");
+    const hasOther   = dtItems.some((it) => it.bucket === "other");
+    const isWeeklyOff = off === true;
+
+    let stateCls = "";
+    if (hasHoliday) stateCls = "is-holiday";
+    else if (hasWorkday) stateCls = "is-workday";
+    else if (isWeeklyOff) stateCls = "is-weeklyoff";
+    else if (hasOther) stateCls = "is-special";
+
+    const cls = [
+      "cal-cell",
+      stateCls,
+      isWeeklyOff ? "is-off" : "",
+      isToday(y, m, d) ? "is-today" : "",
+    ]
       .filter(Boolean)
       .join(" ");
 
     cells.push(`
-      <div class="${cls}" data-ymd="${ymd}"${tooltipAttr}>
-        ${tagsHtml}
+      <div class="${cls}" data-ymd="${ymd}">
         <div class="cal-date">${d}</div>
       </div>
     `);
   }
 
   grid.innerHTML = cells.join("");
+
+  // 點選日期：toast 顯示文字
+  grid.querySelectorAll('.cal-cell[data-ymd]').forEach((cell) => {
+    cell.onclick = () => {
+      grid.querySelectorAll(".cal-cell.is-selected").forEach((c) => c.classList.remove("is-selected"));
+      cell.classList.add("is-selected");
+
+      const ymd = cell.getAttribute("data-ymd");
+      const info = calInfoByDate.get(ymd);
+      if (!info) return;
+
+      const lines = [ymd];
+
+      if (info.off) {
+        lines.push(CALENDAR_UI_TEXT.weeklyOff.tooltip || "固定休假日");
+      }
+
+      (info.dtItems || []).forEach((it) => {
+        if (it.bucket === "holiday") {
+          lines.push(CALENDAR_UI_TEXT.dateTypes.holiday.tooltip || "休假日");
+          return;
+        }
+        const cfg = CALENDAR_UI_TEXT.dateTypes[it.bucket] || CALENDAR_UI_TEXT.dateTypes.other;
+        const tip = buildLabelWithPrefix(cfg.tooltipPrefix, it.type);
+        if (tip) lines.push(tip);
+      });
+
+      if (lines.length === 1) lines.push("無特殊設定");
+      toast(lines.join("｜"));
+    };
+  });
 }
 
 function bindCalendarNav() {
@@ -470,7 +416,6 @@ window.onload = async () => {
 
   try {
     await Promise.all([loadTechStatus(), loadBizConfig()]);
-
     showApp();
 
     setInterval(async () => {

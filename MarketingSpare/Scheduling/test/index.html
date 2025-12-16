@@ -14,6 +14,12 @@
     初始化中…
   </div>
 
+  <!-- ✅ Top Loading Hint：不影響面板排列（fixed toast） -->
+  <div id="topLoading" class="top-loading hidden" aria-live="polite" aria-atomic="true">
+    <span class="top-loading-spinner" aria-hidden="true"></span>
+    <span class="top-loading-text">資料載入中…</span>
+  </div>
+
   <!-- 主畫面 -->
   <div id="appRoot" class="app-root app-hidden">
     <div class="layout">
@@ -112,7 +118,7 @@
               <p>目前沒有任何資料。</p>
             </div>
 
-            <!-- Loading 狀態 -->
+            <!-- Loading 狀態（✅ 已禁用不佔位：CSS 會 display:none !important） -->
             <div id="loadingState" class="state state-loading">
               <div class="spinner"></div>
               <p>資料載入中，請稍候…</p>
@@ -143,4 +149,5 @@
 
   <script src="app.js"></script>
 </body>
+<link rel="icon" href="data:," />
 </html>

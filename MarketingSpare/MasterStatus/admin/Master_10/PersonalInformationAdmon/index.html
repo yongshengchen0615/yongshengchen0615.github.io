@@ -46,10 +46,9 @@
             <input type="number" id="maxBookingDays" class="form-control" />
           </div>
         </div>
-      </fieldset>
-
+     </fieldset>
       <fieldset class="border rounded-3 p-3 mb-3">
-        <legend class="float-none w-auto px-2">📅 每週固定休假日</legend>
+        <legend class="float-none w-auto px-2">📅 每週固定不能預約日</legend>
         <div id="weeklyOffCheckboxes" class="d-flex flex-wrap gap-3">
           <label class="form-check"><input class="form-check-input" type="checkbox" value="0" /><span class="form-check-label"> 週日</span></label>
           <label class="form-check"><input class="form-check-input" type="checkbox" value="1" /><span class="form-check-label"> 週一</span></label>
@@ -66,10 +65,9 @@
       </fieldset>
 
       <fieldset class="border rounded-3 p-3 mb-3">
-        <legend class="float-none w-auto px-2">📆 特殊日期設定（假日）</legend>
-
+        <legend class="float-none w-auto px-2">📆 無法預約日（假日or國定假日）</legend>
         <div class="date-group mb-3">
-          <label class="form-label">假日</label>
+          <label class="form-label">假日or國定假日</label>
           <div class="d-flex gap-2">
             <input type="date" id="holidayInput" class="form-control" />
             <button type="button" class="btn btn-primary soft" onclick="addHoliday()">新增</button>
