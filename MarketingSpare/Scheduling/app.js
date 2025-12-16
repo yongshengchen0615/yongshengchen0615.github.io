@@ -23,7 +23,7 @@ const EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
   "https://script.google.com/macros/s/AKfycbxZgErdlrmSbPPe6rA4HK4CmqZJmGMzIW4Eno8TTbRcnnM-s4DteRM2DPzl7PJBG34n-Q/exec",
   "https://script.google.com/macros/s/AKfycbxSypQ2Jx3VjyWw266dlWrX863SwPFC1l60FB9xvaLF1sUOEgqWWWIaj6k11ODXLUwdnw/exec",
-  "https://script.google.com/macros/s/AKfycbw9vUkS4jC-PJtQXu6FolZxYliIEKY3nGpbG7_qVUeAxS0bGadaN3pi9ekylZO_1DKR/exec",
+  "https://script.google.com/macros/s/AKfycbw9vUkS4jC-PPJtQXu6FolZxYliIEKY3nGpbG7_qVUeAxS0bGadaN3pi9ekylZO_1DKR/exec",
   "https://script.google.com/macros/s/AKfycbxAb50G7pNHLrcNUr_56kIZMkFldQ26nmglSDIodGiLV8Ya6Ur9QMelN6eXXrOeamd8/exec",
   "https://script.google.com/macros/s/AKfycbxxg3AdVaqp3EGo-1ZpQzIshZ8_yqcvtlPtt51qoiTvfYr0xrovs44uqQjwajMACzju/exec",
 ];
@@ -156,6 +156,50 @@ function updateUsageBanner(displayName, remainingDays) {
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
     if (remainingDays <= 0) usageBannerEl.classList.add("usage-banner-expired");
     else if (remainingDays <= 3) usageBannerEl.classList.add("usage-banner-warning");
+  }
+}
+
+/* =========================================================
+ * ✅ 每日首次：由使用者傳訊息給官方帳號（只改前端）
+ * - 同裝置每天一次（localStorage）
+ * - 必須在 LINE App 內 (liff.isInClient) 才能 sendMessages
+ * ========================================================= */
+const DAILY_USER_MSG_KEY = "daily_user_first_msg_v1";
+
+function getTodayTaipei_() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const y = parts.find((p) => p.type === "year")?.value || "0000";
+  const m = parts.find((p) => p.type === "month")?.value || "00";
+  const d = parts.find((p) => p.type === "day")?.value || "00";
+  return `${y}-${m}-${d}`;
+}
+
+async function sendDailyFirstMessageFromUser_() {
+  try {
+    if (!window.liff) return;
+    if (!liff.isInClient()) return; // 外部瀏覽器不送（避免 throw）
+
+    const today = getTodayTaipei_();
+    const last = localStorage.getItem(DAILY_USER_MSG_KEY) || "";
+    if (last === today) return;
+
+    const name = String(window.currentDisplayName || "").trim();
+    const text = name
+      ? `【每日首次開啟】${name} 已進入看板（${today}）`
+      : `【每日首次開啟】使用者已進入看板（${today}）`;
+
+    await liff.sendMessages([{ type: "text", text }]);
+
+    // ✅ 成功才記錄
+    localStorage.setItem(DAILY_USER_MSG_KEY, today);
+  } catch (e) {
+    console.warn("[DailyUserMessage] send failed:", e);
   }
 }
 
@@ -632,6 +676,10 @@ async function initLiffAndGuard() {
       showGate("驗證通過，正在載入資料…");
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
+
+      // ✅ 每天首次：由使用者在 OA 聊天室送出訊息（只改前端）
+      await sendDailyFirstMessageFromUser_();
+
       startApp();
       return;
     }
@@ -697,11 +745,12 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  // ✅ 你要每人 10 秒讀取一次：改成 10 秒
+  // ✅ 你要每人 10 秒讀取一次：改成 10 秒（你目前是 5 秒）
   const intervalMs = 5 * 1000;
 
-  // ✅ jitter：避免同秒齊發尖峰（0~4秒）
+  // ✅ jitter：避免同秒齊發尖峰（你目前是 0~3 秒）
   const jitter = Math.floor(Math.random() * 3000);
+
   setTimeout(() => {
     setInterval(refreshStatus, intervalMs);
   }, jitter);
