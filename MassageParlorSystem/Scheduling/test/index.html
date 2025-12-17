@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Body & Foot Panel Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+  <!-- 授權 / 判斷登入 / 審核狀態遮罩 -->
+  <div id="gate" class="gate gate-hidden">
+    初始化中…
+  </div>
+
+  <!-- ✅ Top Loading Hint：不影響面板排列（fixed toast） -->
+  <div id="topLoading" class="top-loading hidden" aria-live="polite" aria-atomic="true">
+    <span class="top-loading-spinner" aria-hidden="true"></span>
+    <span class="top-loading-text">資料載入中…</span>
+  </div>
+
+  <!-- 主畫面 -->
+  <div id="appRoot" class="app-root app-hidden">
+    <div class="layout">
+      <!-- 🔔 使用者名稱 + 剩餘天數橫幅 -->
+      <div id="usageBanner" class="usage-banner" style="display:none;">
+        <span id="usageBannerText"></span>
+      </div>
+
+      <!-- 頂部 Header -->
+      <header class="app-header">
+        <div class="app-header-left">
+          <h1 class="app-title">府前店排班行動版</h1>
+          <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
+        </div>
+
+        <div class="app-header-right">
+          <div class="pill pill-status">
+            <span class="pill-dot"></span>
+            <span class="pill-text" id="connectionStatus">連線中…</span>
+          </div>
+
+          <button id="themeToggle" class="btn btn-ghost" type="button">
+            🌙 深色
+          </button>
+
+          <button id="refreshBtn" class="btn btn-ghost" type="button">
+            🔄 手動重整
+          </button>
+        </div>
+      </header>
+
+      <!-- Tabs + 篩選列 -->
+      <section class="toolbar">
+        <div class="tabs">
+          <button id="tabBody" class="tab tab-active" type="button">
+            身體面板
+          </button>
+          <button id="tabFoot" class="tab" type="button">
+            腳底面板
+          </button>
+        </div>
+
+        <div class="filters">
+          <div class="filter">
+            <label for="filterMaster" class="filter-label">師傅搜尋</label>
+            <input
+              id="filterMaster"
+              class="input"
+              type="text"
+              placeholder="輸入師傅編號，例如 07"
+            />
+          </div>
+
+          <div class="filter">
+            <label for="filterStatus" class="filter-label">狀態篩選</label>
+            <select id="filterStatus" class="select">
+              <option value="all">全部狀態</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 主卡片 + 表格 -->
+      <main class="main">
+        <section class="card card-table">
+          <header class="card-header">
+            <div class="card-header-left">
+              <h2 id="panelTitle" class="card-title">身體面板</h2>
+              <p class="card-subtitle">
+                依「順序」排序，可透過上方輸入框篩選指定師傅
+              </p>
+            </div>
+            <div class="card-header-right">
+              <span id="lastUpdate" class="badge">尚未更新</span>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th style="width: 80px;">順序</th>
+                    <th style="width: 80px;">師傅</th>
+                    <th style="width: 160px;">狀態</th>
+                    <th>預約內容</th>
+                    <th style="width: 160px;">剩餘時間</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyRows"></tbody>
+              </table>
+            </div>
+
+            <!-- 空狀態 -->
+            <div id="emptyState" class="state state-empty">
+              <p>目前沒有任何資料。</p>
+            </div>
+
+            <!-- Loading 狀態（✅ 已禁用不佔位：CSS 會 display:none !important） -->
+            <div id="loadingState" class="state state-loading">
+              <div class="spinner"></div>
+              <p>資料載入中，請稍候…</p>
+            </div>
+
+            <!-- Error 狀態 -->
+            <div id="errorState" class="state state-error">
+              <p>無法取得資料，請稍後再試或使用右上角「手動重整」。</p>
+            </div>
+
+            <!-- 狀態顏色說明 -->
+            <footer class="legend">
+              <span class="legend-item">
+                <span class="legend-dot legend-work"></span> 工作中 / 預約中
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot legend-free"></span> 空閒 / 即將結束 / 超時
+              </span>
+              <span class="legend-item">
+                <span class="legend-dot legend-other"></span> 其他狀態
+              </span>
+            </footer>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+<link rel="icon" href="data:," />
+</html>
