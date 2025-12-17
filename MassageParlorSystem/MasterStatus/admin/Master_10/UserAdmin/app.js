@@ -1,5 +1,6 @@
 // =========================================================
-// Users 後台管理 — app.js（動態 TECH URL 版）
+// Users 後台管理 — app.js（config.json + 動態 TECH URL 版）
+// ✅ 先讀 ./config.json 取得 ADMIN_API_BASE_URL / LIFF_ID
 // ✅ Gate：LIFF init → 若未登入則自動 liff.login() → 取 profile.userId
 // ✅ ADMIN check：personalStatusEnabled / personalStatus 任一為「是」才放行
 // ✅ 通過後：讀取 PersonalStatus「使用者管理連結」→ 指派 TECH_API_BASE_URL
@@ -8,15 +9,38 @@
 // =========================================================
 
 // ===============================
-// 0) 你要改的參數
+// 0) Config（從 config.json 載入）
 // ===============================
-const ADMIN_API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+let ADMIN_API_BASE_URL = "";
+let LIFF_ID = "";
 
-// ✅ 改成動態寫入（從 PersonalStatus「使用者管理連結」拿）
+// ✅ TECH 仍是 PersonalStatus 讀取後才會被寫入
 let TECH_API_BASE_URL = "";
 
-const LIFF_ID = "2008669658-JNGJgZpR";
+/**
+ * 讀取 ./config.json
+ * 注意：需要 HTTP Host，file:// 會被瀏覽器擋
+ */
+async function loadConfig_() {
+  const url = "./config.json?ts=" + Date.now(); // 避免快取
+  const res = await fetch(url, { cache: "no-store" });
+  const raw = await res.text();
+
+  if (!res.ok) throw new Error(`讀取 config.json 失敗 HTTP ${res.status}\nraw: ${raw.slice(0, 200)}`);
+
+  let cfg;
+  try {
+    cfg = JSON.parse(raw);
+  } catch (e) {
+    throw new Error("config.json 不是合法 JSON\nraw: " + raw.slice(0, 200));
+  }
+
+  ADMIN_API_BASE_URL = String(cfg.ADMIN_API_BASE_URL || "").trim();
+  LIFF_ID = String(cfg.LIFF_ID || "").trim();
+
+  if (!ADMIN_API_BASE_URL) throw new Error("config.json 缺少 ADMIN_API_BASE_URL");
+  if (!LIFF_ID) throw new Error("config.json 缺少 LIFF_ID");
+}
 
 // ===============================
 // 1) State
@@ -39,7 +63,19 @@ let __authedUserId = "";
 // ===============================
 // 2) DOM Ready
 // ===============================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // 先顯示 Gate（避免白畫面）
+  showGate_("⏳ 讀取設定檔 config.json…");
+
+  try {
+    await loadConfig_();
+  } catch (e) {
+    console.error("loadConfig_ error:", e);
+    showGate_("❌ 設定檔載入失敗：\n" + (e?.message || String(e)));
+    toast_("設定檔載入失敗", "err");
+    return;
+  }
+
   initTheme_();
 
   document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
@@ -104,18 +140,18 @@ async function startAuthThenLoad_() {
 
   // 基本檢查
   if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID") {
-    showGate_("❌ 錯誤：尚未設定 LIFF_ID");
+    showGate_("❌ 錯誤：尚未設定 LIFF_ID（config.json）");
     toast_("尚未設定 LIFF_ID", "err");
+    return;
+  }
+  if (!ADMIN_API_BASE_URL) {
+    showGate_("❌ 錯誤：尚未設定 ADMIN_API_BASE_URL（config.json）");
+    toast_("ADMIN API URL 未設定", "err");
     return;
   }
   if (!window.liff) {
     showGate_("❌ 錯誤：LIFF SDK 未載入\n請確認已引入 LIFF SDK script");
     toast_("LIFF SDK 未載入", "err");
-    return;
-  }
-  if (!ADMIN_API_BASE_URL) {
-    showGate_("❌ 錯誤：尚未設定 ADMIN API URL");
-    toast_("ADMIN API URL 未設定", "err");
     return;
   }
 
