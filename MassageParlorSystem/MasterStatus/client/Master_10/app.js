@@ -110,9 +110,10 @@ function showDenied_(info) {
     return;
   }
 
-  // default：not approved / pending
   if (titleEl) titleEl.textContent = "尚未通過審核";
-  if (textEl) textEl.textContent = "目前未通過審核（新用戶會自動建立為「待審核」），請聯絡管理員開通權限。";
+  if (textEl)
+    textEl.textContent =
+      "目前未通過審核（新用戶會自動建立為「待審核」），請聯絡管理員開通權限。";
 }
 
 // ================================
@@ -145,6 +146,7 @@ async function getUserIdFromLiff_() {
 
 // ================================
 // 6) 管理員 GAS：check + 若不存在則 register（預設待審核）
+//    ✅ 加入 debug：避免回 HTML / 不是 JSON 時看不到原因
 // ================================
 async function adminGet_(paramsObj) {
   const u = new URL(ADMIN_API_URL);
@@ -153,9 +155,24 @@ async function adminGet_(paramsObj) {
   });
   u.searchParams.set("_cors", "1");
 
-  const res = await fetch(u.toString(), { method: "GET" });
-  if (!res.ok) throw new Error("ADMIN_API fetch failed: " + res.status);
-  return await res.json();
+  const url = u.toString();
+  console.log("[ADMIN_API] GET", url);
+
+  const res = await fetch(url, { method: "GET" });
+  const text = await res.text();
+
+  console.log("[ADMIN_API] status", res.status);
+  console.log("[ADMIN_API] raw", text.slice(0, 200));
+
+  if (!res.ok) {
+    throw new Error("ADMIN_API HTTP " + res.status + " " + text.slice(0, 120));
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error("ADMIN_API non-JSON response: " + text.slice(0, 160));
+  }
 }
 
 // 依你目前 GAS：找不到 user 時回 status:"none", audit:"", displayName:""
@@ -200,18 +217,18 @@ async function checkAccessOrBlock_() {
     // ✅ 若不存在就自動 register（待審核）
     json = await ensureUserExists_(userId, displayName);
   } catch (e) {
+    console.error(e);
+    toast("權限檢查失敗：" + String(e.message || e));
     showDenied_({ denyReason: "check_failed" });
     return { allowed: false };
   }
 
-  // 兼容：若 GAS 尚未加 allowed，則用 audit==="通過"
   const allowed =
     json && typeof json.allowed === "boolean"
       ? json.allowed
       : String(json.audit || "").trim() === "通過";
 
   if (!allowed) {
-    // 新用戶：此處 audit 通常是 待審核
     showDenied_(json || { denyReason: "not_approved" });
     return { allowed: false };
   }
@@ -331,9 +348,6 @@ function buildLabelWithPrefix(prefix, type) {
   return `${p} ${t}`;
 }
 
-/**
- * ✅ 把 Config 的時間（可能是 Date / 1899-12-30 / "09:00" / 0.375 / "0.375"）統一轉成 "HH:mm"
- */
 function formatTimeHHmm(val) {
   if (val == null || val === "") return "";
 
