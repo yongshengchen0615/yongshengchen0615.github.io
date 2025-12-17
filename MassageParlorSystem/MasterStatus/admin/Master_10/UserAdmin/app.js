@@ -1,6 +1,6 @@
 // ★ 換成你的 GAS 最新部署網址
 const API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
+  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 // ✅ 你要改：你的 LIFF ID
 const LIFF_ID = "2008715969-ZZ9pT504";
