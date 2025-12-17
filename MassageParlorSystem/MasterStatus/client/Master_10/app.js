@@ -1,8 +1,8 @@
 // =========================================================
 // 師傅狀態 + 日曆（✅ 設定檔 config.json 讀取版）
 // Gate：
-// 1) 使用者需通過審核（Users 管理 GAS：check / register）
-// 2) TARGET_MASTER_ID 對應技師 personalStatusEnabled=是 才放行（Users 管理 GAS：listUsers）
+// 1) 使用者需通過審核（USER_MGMT_API_URL：check / register）
+// 2) TARGET_MASTER_ID 對應技師 personalStatusEnabled=是 才放行（USER_MGMT_API_URL：listUsers）
 // =========================================================
 
 // ================================
@@ -27,26 +27,21 @@ async function loadConfig_() {
     throw new Error("CONFIG non-JSON: " + text.slice(0, 200));
   }
 
-  // ✅ USER_MGMT_API_URL 是新增的；若未提供，fallback 用 ADMIN_API_URL（兼容舊 config）
-  const userMgmtUrl = String(json.USER_MGMT_API_URL || "").trim();
-  const adminUrl = String(json.ADMIN_API_URL || "").trim();
-  const resolvedUserMgmtUrl = userMgmtUrl || adminUrl;
-
   const required = ["LIFF_ID", "TECH_API_URL", "BOOKING_API_URL", "TARGET_MASTER_ID"];
   const missingBase = required.filter((k) => !json[k] || String(json[k]).trim() === "");
   if (missingBase.length) throw new Error("CONFIG missing: " + missingBase.join(", "));
 
-  if (!resolvedUserMgmtUrl) {
-    throw new Error("CONFIG missing: USER_MGMT_API_URL (or ADMIN_API_URL fallback)");
-  }
+  // ✅ 你說不要跟 ADMIN_API_URL 搞混，所以新增 USER_MGMT_API_URL
+  //    若沒填 USER_MGMT_API_URL，才 fallback 用 ADMIN_API_URL（兼容舊 config）
+  const userMgmt = String(json.USER_MGMT_API_URL || "").trim();
+  const adminFallback = String(json.ADMIN_API_URL || "").trim();
+  const userMgmtResolved = userMgmt || adminFallback;
+
+  if (!userMgmtResolved) throw new Error("CONFIG missing: USER_MGMT_API_URL (or ADMIN_API_URL fallback)");
 
   APP_CONFIG = Object.freeze({
     LIFF_ID: String(json.LIFF_ID).trim(),
-
-    // 你原本的 ADMIN 仍保留在 config（可能另外用），但本頁 Gate 走 USER_MGMT_API_URL
-    ADMIN_API_URL: adminUrl,
-    USER_MGMT_API_URL: resolvedUserMgmtUrl,
-
+    USER_MGMT_API_URL: userMgmtResolved,
     TECH_API_URL: String(json.TECH_API_URL).trim(),
     BOOKING_API_URL: String(json.BOOKING_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
@@ -90,7 +85,7 @@ function normalizeDigits(v) {
 }
 
 // ================================
-// 3) Gate UI（未通過審核 / 非 LIFF 環境）
+// 3) Gate UI
 // ================================
 function hideLoading_() {
   const lo = $("loadingOverlay");
@@ -128,8 +123,7 @@ function showDenied_(info) {
   if (reason === "not_in_liff") {
     if (titleEl) titleEl.textContent = "請在 LINE 內開啟";
     if (textEl)
-      textEl.textContent =
-        "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
+      textEl.textContent = "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
     return;
   }
 
@@ -145,25 +139,25 @@ function showDenied_(info) {
     return;
   }
 
-  // ✅ TARGET_MASTER_ID 技師 Gate
+  // ✅ 目標技師 Gate
   if (reason === "target_not_found") {
     if (titleEl) titleEl.textContent = "找不到技師資料";
     if (textEl)
       textEl.textContent =
-        "系統找不到此技師的資料（Users 表沒有對應的師傅編號）。請聯絡管理員確認 TARGET_MASTER_ID 與 Users 表「師傅編號」一致。";
+        "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。";
     return;
   }
 
   if (reason === "target_personal_disabled") {
-    if (titleEl) titleEl.textContent = "此技師尚未開通使用權限";
+    if (titleEl) titleEl.textContent = "此技師尚未開通";
     if (textEl)
       textEl.textContent =
-        "此看板需該技師「個人狀態開通」= 是 才能使用。請聯絡管理員到 Users 後台將該技師設為「是」。";
+        "此頁面需技師「個人狀態開通」= 是 才能使用。請聯絡管理員在 Users 後台將該技師設為「是」。";
     return;
   }
 
   if (reason === "target_check_failed") {
-    if (titleEl) titleEl.textContent = "技師權限檢查失敗";
+    if (titleEl) titleEl.textContent = "技師狀態檢查失敗";
     if (textEl) textEl.textContent = "無法讀取技師的開通狀態，請稍後再試或聯絡管理員。";
     return;
   }
@@ -203,12 +197,10 @@ async function getUserIdFromLiff_() {
 }
 
 // ================================
-// 5) Users 管理 GAS（你貼的那份）：check/register/listUsers
+// 5) USER_MGMT_API（你貼的 GAS）：GET helper
 // ================================
 async function userMgmtGet_(paramsObj) {
-  const base = APP_CONFIG.USER_MGMT_API_URL;
-  const u = new URL(base);
-
+  const u = new URL(APP_CONFIG.USER_MGMT_API_URL);
   Object.entries(paramsObj || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
   });
@@ -232,6 +224,7 @@ async function userMgmtGet_(paramsObj) {
   }
 }
 
+// 依你 GAS：找不到 user 時回 status:"none", audit:"", displayName:""
 function isUserNotFound_(checkJson) {
   if (!checkJson) return true;
   const status = String(checkJson.status || "").trim().toLowerCase();
@@ -244,12 +237,7 @@ async function ensureUserExists_(userId, displayName) {
   const check1 = await userMgmtGet_({ mode: "check", userId });
 
   if (isUserNotFound_(check1)) {
-    await userMgmtGet_({
-      mode: "register",
-      userId,
-      displayName: displayName || "",
-    });
-
+    await userMgmtGet_({ mode: "register", userId, displayName: displayName || "" });
     const check2 = await userMgmtGet_({ mode: "check", userId });
     return check2;
   }
@@ -258,7 +246,7 @@ async function ensureUserExists_(userId, displayName) {
 }
 
 // ================================
-// 5.5) ✅ 目標技師 Gate：TARGET_MASTER_ID 的「個人狀態開通」必須為 是
+// 6) ✅ 目標技師 Gate：TARGET_MASTER_ID 的「個人狀態開通」必須為 是
 // ================================
 async function fetchTargetTechRow_() {
   const json = await userMgmtGet_({ mode: "listUsers" });
@@ -288,7 +276,6 @@ async function checkTargetTechEnabledOrBlock_() {
 
   const enabled = String(techRow.personalStatusEnabled || "").trim() === "是";
   if (!enabled) {
-    // meta 顯示那位技師，方便你查哪筆沒開
     showDenied_({
       denyReason: "target_personal_disabled",
       audit: techRow.audit || "-",
@@ -302,7 +289,7 @@ async function checkTargetTechEnabledOrBlock_() {
 }
 
 // ================================
-// 6) Gate：使用者通過審核 + 目標技師開通
+// 7) Gate：使用者通過審核 + 目標技師開通
 // ================================
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
@@ -311,9 +298,9 @@ async function checkAccessOrBlock_() {
   const userId = String(auth.userId || "").trim();
   const displayName = String(auth.profile?.displayName || "").trim();
 
-  let checkJson;
+  let json;
   try {
-    checkJson = await ensureUserExists_(userId, displayName);
+    json = await ensureUserExists_(userId, displayName);
   } catch (e) {
     console.error(e);
     toast("權限檢查失敗：" + String(e.message || e));
@@ -321,24 +308,25 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  const viewerAllowed =
-    checkJson && typeof checkJson.allowed === "boolean"
-      ? checkJson.allowed
-      : String(checkJson.audit || "").trim() === "通過";
+  const allowed =
+    json && typeof json.allowed === "boolean"
+      ? json.allowed
+      : String(json.audit || "").trim() === "通過";
 
-  if (!viewerAllowed) {
-    showDenied_(checkJson || { denyReason: "not_approved" });
+  if (!allowed) {
+    showDenied_(json || { denyReason: "not_approved" });
     return { allowed: false };
   }
 
+  // ✅ 技師「個人狀態開通」判斷
   const techGate = await checkTargetTechEnabledOrBlock_();
   if (!techGate.ok) return { allowed: false };
 
-  return { allowed: true, userId, profile: checkJson, targetTech: techGate.techRow };
+  return { allowed: true, userId, profile: json, targetTech: techGate.techRow };
 }
 
 // ================================
-// 7) 主題切換
+// 8) 主題切換
 // ================================
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -359,7 +347,7 @@ function initTheme() {
 }
 
 // ================================
-// 8) Loading
+// 9) Loading
 // ================================
 function showApp() {
   hideLoading_();
@@ -368,7 +356,7 @@ function showApp() {
 }
 
 // ================================
-// 9) 師傅狀態
+// 10) 師傅狀態
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
@@ -412,7 +400,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 10) 日曆
+// 11) 日曆
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -449,39 +437,10 @@ function buildLabelWithPrefix(prefix, type) {
 
 function formatTimeHHmm(val) {
   if (val == null || val === "") return "";
-  const s = String(val).trim();
 
+  const s = String(val).trim();
   const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
   if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
-
-  if (/\d{4}-\d{2}-\d{2}T/.test(s) && /Z$/.test(s)) {
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      const utcH = d.getUTCHours();
-      const utcM = d.getUTCMinutes();
-      const total = utcH * 60 + utcM + 8 * 60;
-      const hh = String(Math.floor((total % 1440) / 60)).padStart(2, "0");
-      const mm = String(total % 60).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
-  }
-
-  if (typeof val === "number" && isFinite(val) && val >= 0 && val < 1) {
-    const totalMinutes = Math.round(val * 24 * 60);
-    const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
-    const mm = String(totalMinutes % 60).padStart(2, "0");
-    return `${hh}:${mm}`;
-  }
-
-  if (/^\d+(\.\d+)?$/.test(s)) {
-    const num = Number(s);
-    if (isFinite(num) && num >= 0 && num < 1) {
-      const totalMinutes = Math.round(num * 24 * 60);
-      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
-      const mm = String(totalMinutes % 60).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
-  }
 
   const d2 = new Date(s);
   if (!isNaN(d2.getTime())) {
@@ -657,7 +616,7 @@ function bindCalendarNav() {
 }
 
 // ================================
-// 11) 初始化
+// 12) 初始化
 // ================================
 window.onload = async () => {
   initTheme();
