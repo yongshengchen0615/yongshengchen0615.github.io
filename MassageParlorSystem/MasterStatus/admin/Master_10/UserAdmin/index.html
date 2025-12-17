@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <title>Users 後台管理</title>
@@ -8,26 +8,22 @@
 </head>
 <body>
 
-<!-- ✅ LINE Auth Gate（未通過前：擋住整個後台） -->
-<div id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-label="LINE 登入與權限檢查">
+<!-- ✅ 自動認證 Gate（純顯示用，無按鈕） -->
+<div id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-label="LINE 自動登入與權限檢查">
   <div class="auth-card">
     <div class="auth-head">
       <div class="auth-mark">U</div>
       <div class="auth-title">
         <div class="auth-h">Users 後台管理</div>
-        <div class="auth-p">需要 LINE 登入與「個人狀態開通」權限</div>
+        <div class="auth-p">LINE 自動登入與權限檢查中</div>
       </div>
     </div>
 
     <div id="authStatus" class="auth-status">初始化中…</div>
 
-    <div class="auth-actions">
-      <button id="btnLineLogin" class="btn primary" type="button">LINE 登入</button>
-      <button id="btnRetryAuth" class="btn ghost" type="button">重試</button>
-    </div>
-
     <div class="auth-hint">
-      若已登入仍被擋下，代表該 userId 在 Users 表的「個人狀態開通」為「否」。
+      若顯示「尚未開通」，請通知管理員在 Users 表中將<br>
+      <b>「個人狀態開通」設為「是」</b>
     </div>
   </div>
 </div>
@@ -77,7 +73,7 @@
       </div>
     </section>
 
-    <!-- Toolbar -->
+    <!-- Panel -->
     <section class="panel">
       <div class="panel-head">
         <div class="filters">
@@ -163,7 +159,7 @@
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="13">載入中...</td></tr>
+            <tr><td colspan="13">載入中…</td></tr>
           </tbody>
         </table>
       </div>
@@ -176,7 +172,6 @@
 
 <!-- ✅ LIFF SDK（必須） -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
 <script src="app.js" defer></script>
 </body>
 </html>

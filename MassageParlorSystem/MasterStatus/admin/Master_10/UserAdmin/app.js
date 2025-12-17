@@ -1,23 +1,20 @@
 // =========================================================
-// Users 後台管理 — app.js（完整可用版）
-// ✅ 兩段式 Gate：LIFF 取 userId → 走 ADMIN_API_BASE_URL 做權限檢查
-// ✅ 通過後才會呼叫 TECH_API_BASE_URL 讀 listUsers / updateUser / deleteUser
-// ✅ 欄位兼容：personalStatusEnabled 不存在時，fallback 用 pushEnabled
+// Users 後台管理 — app.js（整合版）
+// ✅ Gate：LIFF init → 若未登入則自動 liff.login() → 取 profile.userId
+// ✅ ADMIN check：personalStatusEnabled / personalStatus / pushEnabled 任一為「是」才放行
+// ✅ 放行後才呼叫 TECH listUsers / updateUser / deleteUser
+// ✅ Gate 無按鈕（純顯示）
 // =========================================================
 
 // ===============================
 // 0) 你要改的參數
 // ===============================
-
-// ★ 管理者 GAS（用來 check 權限欄位：personalStatusEnabled 或 pushEnabled）
 const ADMIN_API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-// ★ Users 後台 GAS（用來 listUsers / updateUser / deleteUser）
 const TECH_API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
 
-// ✅ 你的 LIFF ID（要跟你後台 LIFF 專案一致）
 const LIFF_ID = "2008669658-JNGJgZpR";
 
 // ===============================
@@ -27,16 +24,14 @@ let allUsers = [];
 let filteredUsers = [];
 
 let sortKey = "createdAt";
-let sortDir = "desc"; // asc | desc
+let sortDir = "desc";
 
-const selectedIds = new Set(); // userId
-
-const originalMap = new Map(); // userId -> snapshot json string
-const dirtyMap = new Map(); // userId -> true
+const selectedIds = new Set();
+const originalMap = new Map();
+const dirtyMap = new Map();
 
 let lastLoadedAt = "";
 
-// Gate state
 let __authPassed = false;
 let __authedUserId = "";
 
@@ -46,29 +41,20 @@ let __authedUserId = "";
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
 
-  const themeBtn = document.getElementById("themeToggle");
-  if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
+  document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
 
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn)
-    reloadBtn.addEventListener("click", async () => {
-      const ok = await ensureAuthed_();
-      if (!ok) return;
+  document.getElementById("reloadBtn")?.addEventListener("click", async () => {
+    const ok = await ensureAuthed_();
+    if (!ok) return;
+    await loadUsers();
+  });
 
-      selectedIds.clear();
-      hideBulkBar_();
-      await loadUsers();
-    });
-
-  const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn)
-    clearSearchBtn.addEventListener("click", () => {
-      const si = document.getElementById("searchInput");
-      if (si) si.value = "";
-      const box = si?.closest(".search-box");
-      box?.classList.remove("is-searching");
-      applyFilters();
-    });
+  document.getElementById("clearSearchBtn")?.addEventListener("click", () => {
+    const si = document.getElementById("searchInput");
+    if (si) si.value = "";
+    si?.closest(".search-box")?.classList.remove("is-searching");
+    applyFilters();
+  });
 
   bindFilter_();
   bindSorting_();
@@ -80,50 +66,28 @@ document.addEventListener("DOMContentLoaded", () => {
     searchInput.addEventListener(
       "input",
       debounce(() => {
-        const box = searchInput.closest(".search-box");
         const hasValue = searchInput.value.trim().length > 0;
-        box?.classList.toggle("is-searching", hasValue);
+        searchInput.closest(".search-box")?.classList.toggle("is-searching", hasValue);
         applyFilters();
       }, 180)
     );
-
-    const box = searchInput.closest(".search-box");
-    box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
 
-  // ✅ Gate -> load
+  // ✅ Auto gate -> load
   startAuthThenLoad_();
 });
 
 // =========================================================
-// 3) Gate UI
+// 3) Gate UI（無按鈕）
 // =========================================================
 function showGate_(msg) {
   const gate = document.getElementById("authGate");
   const status = document.getElementById("authStatus");
-  if (status) status.textContent = msg || "需要登入與權限檢查";
+  if (status) status.textContent = msg || "LINE 自動登入與權限檢查中…";
   if (gate) gate.classList.remove("hidden");
 }
 function hideGate_() {
-  const gate = document.getElementById("authGate");
-  if (gate) gate.classList.add("hidden");
-}
-
-function bindGateButtons_() {
-  const btnLogin = document.getElementById("btnLineLogin");
-  const btnRetry = document.getElementById("btnRetryAuth");
-
-  if (btnLogin) {
-    btnLogin.onclick = () => {
-      try {
-        if (window.liff && !liff.isLoggedIn()) liff.login();
-        else startAuthThenLoad_();
-      } catch (e) {
-        showGate_("LINE 登入呼叫失敗：" + (e?.message || String(e)));
-      }
-    };
-  }
-  if (btnRetry) btnRetry.onclick = () => startAuthThenLoad_();
+  document.getElementById("authGate")?.classList.add("hidden");
 }
 
 async function ensureAuthed_() {
@@ -133,61 +97,73 @@ async function ensureAuthed_() {
 }
 
 async function startAuthThenLoad_() {
-  bindGateButtons_();
+  __authPassed = false;
+  __authedUserId = "";
 
+  // 基本檢查
   if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID") {
-    showGate_("錯誤：尚未設定 LIFF_ID");
+    showGate_("❌ 錯誤：尚未設定 LIFF_ID");
     toast_("尚未設定 LIFF_ID", "err");
     return;
   }
   if (!window.liff) {
-    showGate_("錯誤：LIFF SDK 未載入");
+    showGate_("❌ 錯誤：LIFF SDK 未載入\n請確認已引入 LIFF SDK script");
     toast_("LIFF SDK 未載入", "err");
     return;
   }
   if (!ADMIN_API_BASE_URL || !TECH_API_BASE_URL) {
-    showGate_("錯誤：尚未設定 ADMIN_API_BASE_URL / TECH_API_BASE_URL");
+    showGate_("❌ 錯誤：尚未設定 API URL");
     toast_("API URL 未設定", "err");
     return;
   }
 
-  showGate_("初始化 LIFF…");
+  // LIFF init
+  showGate_("⏳ 初始化 LIFF…");
   try {
     await liff.init({ liffId: LIFF_ID });
   } catch (e) {
-    showGate_("LIFF 初始化失敗：" + (e?.message || String(e)));
+    showGate_("❌ LIFF 初始化失敗：\n" + (e?.message || String(e)));
     toast_("LIFF 初始化失敗", "err");
     return;
   }
 
+  // 未登入：自動登入
   if (!liff.isLoggedIn()) {
-    showGate_("尚未登入 LINE。請點「LINE 登入」。");
+    showGate_("⏳ 尚未登入 LINE，正在自動登入…");
+    try {
+      liff.login(); // 會 redirect，後續回到同頁會再跑一次流程
+    } catch (e) {
+      showGate_("❌ 自動登入失敗：\n" + (e?.message || String(e)));
+      toast_("自動登入失敗", "err");
+    }
     return;
   }
 
-  showGate_("取得 LINE 使用者資訊…");
+  // 取 profile
+  showGate_("⏳ 取得 LINE 使用者資訊…");
   let profile;
   try {
     profile = await liff.getProfile();
   } catch (e) {
-    showGate_("取得 profile 失敗：" + (e?.message || String(e)));
+    showGate_("❌ 取得 profile 失敗：\n" + (e?.message || String(e)));
     toast_("取得 profile 失敗", "err");
     return;
   }
 
   const userId = String(profile?.userId || "").trim();
   const displayName = String(profile?.displayName || "").trim();
+
   if (!userId) {
-    showGate_("錯誤：未取得 userId");
+    showGate_("❌ 未取得 userId\n請確認此頁面為 LIFF 內開啟");
     toast_("未取得 userId", "err");
     return;
   }
 
   showGate_(
-    `已登入：${displayName || "（無名）"}\nuserId：${userId}\n\n檢查權限中…`
+    `✅ 已登入：${displayName || "（無名）"}\nuserId：${userId}\n\n⏳ 檢查是否已開通…`
   );
 
-  // ✅ 走 ADMIN check
+  // ADMIN check
   const r = await adminCheckPersonalStatus_(userId);
 
   if (!r.ok) {
@@ -195,10 +171,7 @@ async function startAuthThenLoad_() {
     __authedUserId = userId;
 
     showGate_(
-      `管理者權限檢查失敗\n` +
-        `userId：${userId}\n` +
-        `error：${r.error}\n` +
-        `raw：${(r.raw || "").slice(0, 300)}`
+      `❌ 權限檢查失敗\nuserId：${userId}\nerror：${r.error}\nraw：${(r.raw || "").slice(0, 300)}`
     );
     toast_("權限檢查失敗", "err");
     return;
@@ -209,25 +182,26 @@ async function startAuthThenLoad_() {
     __authedUserId = userId;
 
     showGate_(
-      `功能未開啟（欄位需為「是」）\n` +
-        `userId：${userId}\n` +
-        `enabledField：${String(r.personalStatusEnabled)}\n` +
-        `audit：${String(r.audit)}`
+      `⛔ 尚未開通\nuserId：${userId}\n欄位值：${String(r.personalStatusEnabled)}\n\n請通知管理員把「個人狀態開通」設為「是」。`
     );
-    toast_("功能未開啟", "err");
+    toast_("尚未開通，請通知管理員", "err");
     return;
   }
 
-  // ✅ 通過：進入資料讀取
+  // 通過
   __authPassed = true;
   __authedUserId = userId;
-  hideGate_();
+
+  showGate_("✅ 驗證通過，正在載入資料…");
   toast_("驗證通過", "ok");
 
   await loadUsers();
+
+  // 載入成功才關 Gate
+  hideGate_();
 }
 
-// ✅ 欄位兼容：personalStatusEnabled 若不存在，fallback 用 pushEnabled
+// 欄位兼容：personalStatusEnabled 若不存在，fallback 用 personalStatus / pushEnabled
 async function adminCheckPersonalStatus_(userId) {
   const url =
     ADMIN_API_BASE_URL +
@@ -429,15 +403,12 @@ function compareBy_(a, b, key, dir) {
 }
 
 function valueForSort_(u, key) {
-  if (key === "index") return 0; // 由 render 時處理
+  if (key === "index") return 0;
   if (key === "expiry") return calcExpiryStatus_(u).rank;
 
   const v = u?.[key];
 
-  if (key === "createdAt" || key === "startDate") {
-    // "yyyy-MM-dd HH:mm:ss" or ""
-    return String(v || "");
-  }
+  if (key === "createdAt" || key === "startDate") return String(v || "");
   if (key === "usageDays") {
     const n = parseInt(String(v || ""), 10);
     return isNaN(n) ? -1 : n;
@@ -469,15 +440,12 @@ function renderTable_() {
     const pushEnabled = String(u.pushEnabled || "否") === "是" ? "是" : "否";
 
     const checked = selectedIds.has(userId) ? "checked" : "";
-
-    const expiry = calcExpiryStatus_(u); // { label, cls, rank }
+    const expiry = calcExpiryStatus_(u);
 
     const dirty = dirtyMap.has(userId);
     const trCls = dirty ? "dirty" : "";
 
-    const auditBadgeCls = auditToBadgeCls_(audit);
-    const auditBadge = `<span class="audit-badge ${auditBadgeCls}">${escapeHtml_(audit)}</span>`;
-
+    const auditBadge = `<span class="audit-badge ${auditToBadgeCls_(audit)}">${escapeHtml_(audit)}</span>`;
     const saveDisabled = dirty ? "" : "disabled";
 
     return `
@@ -547,7 +515,6 @@ function renderTable_() {
 
   tbody.innerHTML = rows.join("");
 
-  // bind row events
   tbody.querySelectorAll(".row-input").forEach((el) => {
     el.addEventListener("change", onRowChange_);
     el.addEventListener("input", debounce(onRowChange_, 120));
@@ -588,47 +555,37 @@ function onRowChange_(e) {
   if (!tr) return;
 
   const userId = tr.getAttribute("data-userid") || "";
-  if (!userId) return;
-
   const u = findUserById_(userId);
   if (!u) return;
 
   const field = el.getAttribute("data-field");
   if (!field) return;
 
-  let v = "";
-  if (el.tagName === "SELECT") v = el.value;
-  else v = el.value;
+  const v = el.value;
 
-  // update model
   if (field === "displayName") u.displayName = v;
-  if (field === "startDate") u.startDate = v; // 用 date input 的 yyyy-MM-dd（後端 parseDateLoose_ 可吃）
+  if (field === "startDate") u.startDate = v;
   if (field === "usageDays") u.usageDays = v;
   if (field === "audit") u.audit = v;
   if (field === "masterCode") u.masterCode = v;
   if (field === "pushEnabled") u.pushEnabled = v;
 
-  // derived
   u.isMaster = String(u.masterCode || "").trim() ? "是" : "否";
 
-  // dirty calc
   markDirty_(userId, u);
 
-  // update UI: row class + save button + audit badge + expiry
   const dirty = dirtyMap.has(userId);
   tr.classList.toggle("dirty", dirty);
 
   const saveBtn = tr.querySelector(".btn-save");
   if (saveBtn) saveBtn.disabled = !dirty;
 
-  // update audit badge text/class
   const badge = tr.querySelector(".audit-badge");
   if (badge) {
     badge.className = `audit-badge ${auditToBadgeCls_(String(u.audit || "待審核"))}`;
     badge.textContent = String(u.audit || "待審核");
   }
 
-  // update expiry pill
   const pill = tr.querySelector(".expiry-pill");
   if (pill) {
     const ex = calcExpiryStatus_(u);
@@ -644,34 +601,27 @@ async function saveRow_(userId) {
   const u = findUserById_(userId);
   if (!u) return;
 
-  const audit = String(u.audit || "").trim();
-  const startDate = normalizeDateForPost_(u.startDate);
-  const usageDays = String(u.usageDays ?? "").trim();
-  const masterCode = String(u.masterCode || "").trim();
-  const pushEnabled = String(u.pushEnabled || "否") === "是" ? "是" : "否";
-
   const payload = {
     mode: "updateUser",
     userId,
-    audit,
-    startDate: startDate || "",
-    usageDays: usageDays || "",
-    masterCode: masterCode || "",
-    pushEnabled,
+    audit: String(u.audit || "").trim(),
+    startDate: normalizeDateForPost_(u.startDate) || "",
+    usageDays: String(u.usageDays ?? "").trim() || "",
+    masterCode: String(u.masterCode || "").trim() || "",
+    pushEnabled: String(u.pushEnabled || "否") === "是" ? "是" : "否",
   };
 
-  const ok = await techPost_(payload);
-  if (!ok.ok) {
-    toast_("儲存失敗：" + (ok.error || "unknown"), "err");
+  const r = await techPost_(payload);
+  if (!r.ok) {
+    toast_("儲存失敗：" + (r.error || "unknown"), "err");
     return;
   }
 
-  // ✅ 更新原始快照
   originalMap.set(userId, snapshot_(u));
   dirtyMap.delete(userId);
 
   toast_("已儲存", "ok");
-  applyFilters(); // refresh (re-render badges/pills, sorting)
+  applyFilters();
 }
 
 async function deleteRow_(userId) {
@@ -679,14 +629,13 @@ async function deleteRow_(userId) {
   const yes = confirm(`確定刪除 userId：\n${userId} ？`);
   if (!yes) return;
 
-  const ok = await techPost_({ mode: "deleteUser", userId });
-  if (!ok.ok) {
-    toast_("刪除失敗：" + (ok.error || "unknown"), "err");
+  const r = await techPost_({ mode: "deleteUser", userId });
+  if (!r.ok) {
+    toast_("刪除失敗：" + (r.error || "unknown"), "err");
     return;
   }
 
   allUsers = allUsers.filter((x) => String(x.userId || "").trim() !== userId);
-  filteredUsers = filteredUsers.filter((x) => String(x.userId || "").trim() !== userId);
 
   originalMap.delete(userId);
   dirtyMap.delete(userId);
@@ -702,70 +651,59 @@ function findUserById_(userId) {
 }
 
 // =========================================================
-// 8) Bulk actions
+// 8) Bulk
 // =========================================================
 function bindBulk_() {
-  const bulkApply = document.getElementById("bulkApply");
-  const bulkDelete = document.getElementById("bulkDelete");
-  const bulkClear = document.getElementById("bulkClear");
+  document.getElementById("bulkApply")?.addEventListener("click", async () => {
+    if (!selectedIds.size) return;
 
-  if (bulkApply)
-    bulkApply.addEventListener("click", async () => {
-      if (!selectedIds.size) return;
+    const bulkAudit = document.getElementById("bulkAudit")?.value || "";
+    const bulkPush = document.getElementById("bulkPush")?.value || "";
 
-      const bulkAudit = document.getElementById("bulkAudit")?.value || "";
-      const bulkPush = document.getElementById("bulkPush")?.value || "";
+    if (!bulkAudit && !bulkPush) {
+      toast_("未選擇要套用的欄位", "err");
+      return;
+    }
 
-      if (!bulkAudit && !bulkPush) {
-        toast_("未選擇要套用的欄位", "err");
-        return;
-      }
+    for (const userId of selectedIds) {
+      const u = findUserById_(userId);
+      if (!u) continue;
 
-      // 套用到 model + dirty
-      for (const userId of selectedIds) {
-        const u = findUserById_(userId);
-        if (!u) continue;
+      if (bulkAudit) u.audit = bulkAudit;
+      if (bulkPush) u.pushEnabled = bulkPush;
 
-        if (bulkAudit) u.audit = bulkAudit;
-        if (bulkPush) u.pushEnabled = bulkPush;
+      u.isMaster = String(u.masterCode || "").trim() ? "是" : "否";
+      markDirty_(userId, u);
+    }
 
-        u.isMaster = String(u.masterCode || "").trim() ? "是" : "否";
-        markDirty_(userId, u);
-      }
+    toast_("已套用到選取（尚未儲存）", "ok");
+    applyFilters();
+  });
 
-      toast_("已套用到選取（尚未儲存）", "ok");
-      applyFilters();
-    });
+  document.getElementById("bulkDelete")?.addEventListener("click", async () => {
+    if (!selectedIds.size) return;
 
-  if (bulkDelete)
-    bulkDelete.addEventListener("click", async () => {
-      if (!selectedIds.size) return;
+    const yes = confirm(`確定批次刪除 ${selectedIds.size} 筆？`);
+    if (!yes) return;
 
-      const yes = confirm(`確定批次刪除 ${selectedIds.size} 筆？`);
-      if (!yes) return;
+    const ids = Array.from(selectedIds);
+    let okCount = 0;
 
-      // 逐筆刪（保持簡單可靠）
-      const ids = Array.from(selectedIds);
-      let okCount = 0;
+    for (const id of ids) {
+      const r = await techPost_({ mode: "deleteUser", userId: id });
+      if (r.ok) okCount++;
+    }
 
-      for (const id of ids) {
-        const r = await techPost_({ mode: "deleteUser", userId: id });
-        if (r.ok) okCount++;
-      }
+    toast_(`批次刪除完成：${okCount}/${ids.length}`, okCount ? "ok" : "err");
+    await loadUsers();
+  });
 
-      toast_(`批次刪除完成：${okCount}/${ids.length}`, okCount ? "ok" : "err");
-
-      // reload
-      await loadUsers();
-    });
-
-  if (bulkClear)
-    bulkClear.addEventListener("click", () => {
-      selectedIds.clear();
-      hideBulkBar_();
-      syncCheckAll_();
-      applyFilters();
-    });
+  document.getElementById("bulkClear")?.addEventListener("click", () => {
+    selectedIds.clear();
+    hideBulkBar_();
+    syncCheckAll_();
+    applyFilters();
+  });
 }
 
 function updateBulkBar_() {
@@ -784,8 +722,7 @@ function updateBulkBar_() {
 }
 
 function hideBulkBar_() {
-  const bar = document.getElementById("bulkBar");
-  if (bar) bar.hidden = true;
+  document.getElementById("bulkBar") && (document.getElementById("bulkBar").hidden = true);
 }
 
 // =========================================================
@@ -799,12 +736,9 @@ function bindCheckAll_() {
     const tbody = document.getElementById("tbody");
     if (!tbody) return;
 
-    const rows = tbody.querySelectorAll('.row-check[data-userid]');
-    if (chk.checked) {
-      rows.forEach((r) => selectedIds.add(r.getAttribute("data-userid")));
-    } else {
-      rows.forEach((r) => selectedIds.delete(r.getAttribute("data-userid")));
-    }
+    const rows = tbody.querySelectorAll(".row-check[data-userid]");
+    if (chk.checked) rows.forEach((r) => selectedIds.add(r.getAttribute("data-userid")));
+    else rows.forEach((r) => selectedIds.delete(r.getAttribute("data-userid")));
 
     rows.forEach((r) => (r.checked = chk.checked));
 
@@ -818,7 +752,7 @@ function syncCheckAll_() {
   const tbody = document.getElementById("tbody");
   if (!chk || !tbody) return;
 
-  const rows = Array.from(tbody.querySelectorAll('.row-check[data-userid]'));
+  const rows = Array.from(tbody.querySelectorAll(".row-check[data-userid]"));
   if (!rows.length) {
     chk.checked = false;
     chk.indeterminate = false;
@@ -836,10 +770,7 @@ function syncCheckAll_() {
 function updateKpis_() {
   const total = allUsers.length;
 
-  let approved = 0,
-    pending = 0,
-    rejected = 0,
-    disabled = 0;
+  let approved = 0, pending = 0, rejected = 0, disabled = 0;
 
   for (const u of allUsers) {
     const a = String(u.audit || "待審核").trim();
@@ -860,29 +791,19 @@ function updateSummary_() {
   const el = document.getElementById("summaryText");
   if (!el) return;
 
-  const f = filteredUsers.length;
-  const t = allUsers.length;
-
-  const dirtyCount = dirtyMap.size;
-  const selectedCount = selectedIds.size;
-
   el.textContent =
-    `顯示 ${f}/${t}｜已選取 ${selectedCount}｜未儲存 ${dirtyCount}` +
+    `顯示 ${filteredUsers.length}/${allUsers.length}｜已選取 ${selectedIds.size}｜未儲存 ${dirtyMap.size}` +
     (lastLoadedAt ? `｜更新：${lastLoadedAt}` : "");
 }
 
 function updateFooter_() {
   const el = document.getElementById("footerStatus");
   if (!el) return;
-
-  const dirtyCount = dirtyMap.size;
-  const selectedCount = selectedIds.size;
-
-  el.textContent = `選取 ${selectedCount}｜未儲存 ${dirtyCount}`;
+  el.textContent = `選取 ${selectedIds.size}｜未儲存 ${dirtyMap.size}`;
 }
 
 // =========================================================
-// 11) Helpers (dirty, snapshot, expiry, audit options)
+// 11) Helpers
 // =========================================================
 function snapshot_(u) {
   return JSON.stringify({
@@ -904,7 +825,6 @@ function markDirty_(userId, u) {
 }
 
 function calcExpiryStatus_(u) {
-  // ranking: active(2) > unset(1) > expired(0)
   const start = normalizeDateForPost_(u.startDate);
   const daysRaw = String(u.usageDays ?? "").trim();
   const n = parseInt(daysRaw, 10);
@@ -913,16 +833,12 @@ function calcExpiryStatus_(u) {
     return { label: "未設定", cls: "unset", rank: 1 };
   }
 
-  // start is yyyy-MM-dd
   const startDate = new Date(start + "T00:00:00");
   const today = new Date();
   const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
   const expire = new Date(startDate.getTime() + n * 24 * 60 * 60 * 1000);
 
-  if (today0.getTime() >= expire.getTime()) {
-    return { label: "已到期", cls: "expired", rank: 0 };
-  }
+  if (today0.getTime() >= expire.getTime()) return { label: "已到期", cls: "expired", rank: 0 };
   return { label: "使用中", cls: "active", rank: 2 };
 }
 
@@ -943,14 +859,12 @@ function auditToBadgeCls_(audit) {
   return "other";
 }
 
-// "yyyy-MM-dd HH:mm:ss" 或 "yyyy-MM-dd" 或 Date-like -> input yyyy-MM-dd
 function toDateInputValue_(v) {
   if (!v) return "";
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^\d{4}-\d{2}-\d{2}\s/.test(s)) return s.slice(0, 10);
 
-  // fallback: try Date
   const d = new Date(s);
   if (isNaN(d.getTime())) return "";
   const yyyy = String(d.getFullYear());
@@ -959,7 +873,6 @@ function toDateInputValue_(v) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// 給後端 parseDateLoose_：最穩就是 yyyy-MM-dd
 function normalizeDateForPost_(v) {
   return toDateInputValue_(v);
 }
@@ -1019,7 +932,6 @@ function escapeHtml_(s) {
 }
 
 function escapeAttr_(s) {
-  // attribute-safe (minimal)
   return escapeHtml_(s).replaceAll("\n", " ");
 }
 
