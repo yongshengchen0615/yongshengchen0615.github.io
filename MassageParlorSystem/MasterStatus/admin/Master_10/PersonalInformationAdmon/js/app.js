@@ -3,9 +3,9 @@
 /**********************
  * ✅ 0) 你要填的參數
  **********************/
-const LIFF_ID = "你的_LIFF_ID";
+const LIFF_ID = "2008669658-hxybEXdF";
 const ADMIN_API_BASE_URL =
-  "https://script.google.com/macros/s/你的_USERS_GAS_WEBAPP/exec";
+  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
 /**********************
  * DOM refs
