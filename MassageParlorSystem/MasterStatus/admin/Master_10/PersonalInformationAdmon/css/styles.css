@@ -233,3 +233,28 @@ body[data-theme="dark"] .table {
 .text-muted {
   color: var(--muted) !important;
 }
+
+/* =========================
+   ✅ Gate（LINE 登入 / 權限檢查遮罩）
+   ========================= */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(6px);
+
+  display: grid;
+  place-items: center;
+
+  padding: 24px;
+  white-space: pre-line;
+  text-align: left;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.gate-hidden {
+  display: none;
+}

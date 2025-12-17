@@ -1,5 +1,15 @@
 // js/app.js
 
+/**********************
+ * ✅ 0) 你要填的參數
+ **********************/
+const LIFF_ID = "你的_LIFF_ID";
+const ADMIN_API_BASE_URL =
+  "https://script.google.com/macros/s/你的_USERS_GAS_WEBAPP/exec";
+
+/**********************
+ * DOM refs
+ **********************/
 const bookingForm = document.getElementById("bookingForm");
 
 const weeklyRefreshBtn = document.getElementById("weeklyRefresh");
@@ -8,7 +18,31 @@ const weeklyMsg = document.getElementById("weeklyMsg");
 const holidaysRefreshBtn = document.getElementById("holidaysRefresh");
 const holidaysMsg = document.getElementById("holidaysMsg");
 
-// ===== Overlay =====
+/**********************
+ * Gate helpers
+ **********************/
+function showGate(msg) {
+  const gate = document.getElementById("gate");
+  if (!gate) return;
+  gate.classList.remove("gate-hidden");
+  gate.textContent = msg || "處理中…";
+}
+function hideGate() {
+  const gate = document.getElementById("gate");
+  if (!gate) return;
+  gate.classList.add("gate-hidden");
+}
+function setUiEnabled(enabled) {
+  // 未通過時：整個表單不可用（避免使用者先亂按）
+  if (bookingForm) {
+    const controls = bookingForm.querySelectorAll("input, button, select, textarea");
+    controls.forEach((el) => (el.disabled = !enabled));
+  }
+}
+
+/**********************
+ * Overlay（原樣）
+ **********************/
 function showOverlay(text) {
   const ov = document.getElementById("overlay");
   const tx = document.getElementById("overlayText");
@@ -25,7 +59,9 @@ function hideOverlay() {
 window.showOverlay = showOverlay;
 window.hideOverlay = hideOverlay;
 
-// ===== Theme =====
+/**********************
+ * Theme（原樣）
+ **********************/
 (function themeInit() {
   const key = "admin.theme";
   const saved = localStorage.getItem(key) || "light";
@@ -41,7 +77,78 @@ window.hideOverlay = hideOverlay;
     });
 })();
 
-// ===== Weekly Off =====
+/**********************
+ * ✅ 1) LINE Gate：登入 + check 權限
+ * 條件：audit=通過 && personalStatusEnabled=是
+ **********************/
+async function adminCheckByUserId(userId) {
+  if (!ADMIN_API_BASE_URL || !/^https:\/\/script.google.com\/.+\/exec$/.test(ADMIN_API_BASE_URL)) {
+    throw new Error("請先設定正確的 ADMIN_API_BASE_URL（Users 管理 GAS WebApp /exec）");
+  }
+
+  const url =
+    ADMIN_API_BASE_URL +
+    "?" +
+    new URLSearchParams({
+      mode: "check",
+      userId: String(userId || "").trim(),
+      _cors: "1",
+    }).toString();
+
+  const res = await fetch(url, { method: "GET" });
+  return res.json();
+}
+
+async function runGate() {
+  // 預設先鎖 UI
+  setUiEnabled(false);
+  showGate("初始化 LINE 登入中…");
+
+  if (!window.liff) throw new Error("LIFF SDK 未載入（請確認 index.html 已引入 LIFF SDK）");
+  await liff.init({ liffId: LIFF_ID });
+
+  if (!liff.isLoggedIn()) {
+    showGate("導向 LINE 登入中…");
+    liff.login();
+    return { passed: false, redirected: true };
+  }
+
+  showGate("取得使用者資訊…");
+  const profile = await liff.getProfile();
+  const userId = String(profile?.userId || "").trim();
+  if (!userId) throw new Error("無法取得 LINE userId");
+
+  showGate("檢查審核與權限中…");
+  const check = await adminCheckByUserId(userId);
+
+  const audit = String(check?.audit || "").trim();
+  const personalStatusEnabled = String(check?.personalStatusEnabled || "").trim() === "是" ? "是" : "否";
+
+  const isApproved = audit === "通過";
+  const isPersonalOn = personalStatusEnabled === "是";
+
+  if (!audit) {
+    showGate("無法使用本功能。\n\n原因：\n- 尚未註冊或資料不存在\n\n請聯絡管理員協助開通。");
+    return { passed: false };
+  }
+
+  if (!isApproved || !isPersonalOn) {
+    const reasons = [];
+    if (!isApproved) reasons.push(`審核狀態：${audit}`);
+    if (!isPersonalOn) reasons.push("個人狀態尚未開通");
+    showGate(`無法使用本功能。\n\n原因：\n- ${reasons.join("\n- ")}\n\n請聯絡管理員協助開通。`);
+    return { passed: false };
+  }
+
+  // ✅ 通過
+  hideGate();
+  setUiEnabled(true);
+  return { passed: true, userId };
+}
+
+/**********************
+ * Weekly Off（微調：字串化比對更穩）
+ **********************/
 async function renderWeeklyOff() {
   try {
     const res = await apiGet({ entity: "config", action: "list" });
@@ -59,12 +166,14 @@ async function renderWeeklyOff() {
       }
     })();
 
+    const offSet = new Set(Array.isArray(offs) ? offs.map(String) : []);
+
     const boxes = Array.from(
       document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]')
     );
-    boxes.forEach((cb) => (cb.checked = offs.includes(cb.value)));
+    boxes.forEach((cb) => (cb.checked = offSet.has(String(cb.value))));
 
-    weeklyMsg.textContent = `目前設定：${offs.join(", ") || "（無）"}`;
+    weeklyMsg.textContent = `目前設定：${(Array.isArray(offs) ? offs : []).join(", ") || "（無）"}`;
     weeklyMsg.className = "small success";
   } catch (err) {
     weeklyMsg.textContent = String(err);
@@ -73,12 +182,13 @@ async function renderWeeklyOff() {
 }
 weeklyRefreshBtn?.addEventListener("click", renderWeeklyOff);
 
-// ===== Holidays (Special Dates: holiday only) =====
+/**********************
+ * Holidays（原樣）
+ **********************/
 window.addHoliday = function () {
   const date = document.getElementById("holidayInput").value;
   if (!date) return alert("請選擇日期");
 
-  // 去重：避免同一天重複暫存
   const key = String(date);
   const alreadyAdded = Pending.holidaysAdd.some((x) => String(x.date) === key);
   if (alreadyAdded) return alert("這個假日已暫存");
@@ -93,20 +203,16 @@ async function renderHolidays() {
   try {
     let data = Array.isArray(LocalState.datetypes) ? LocalState.datetypes : [];
 
-    // 正規化欄位
     data = data.map((r) => ({
       Type: r.Type || r.DateType,
       Date: String(r.Date || ""),
     }));
 
-    // 只留下 holiday
     data = data.filter((r) => r.Type === "holiday");
 
-    // 套用 Pending 刪除
     const delSet = new Set(Pending.holidaysDel.map((x) => String(x.date)));
     data = data.filter((r) => !delSet.has(String(r.Date)));
 
-    // 套用 Pending 新增（放最前）
     Pending.holidaysAdd.forEach((a) => data.unshift({ Type: "holiday", Date: String(a.date) }));
 
     holidaysMsg.textContent = `共 ${data.length} 筆（包含暫存變更）`;
@@ -136,12 +242,10 @@ async function renderHolidays() {
         e.preventDefault();
         if (!confirm(`確定刪除：假日 ${Date}？`)) return;
 
-        // 如果它本來就是 Pending 新增的，就直接從 add 移除（不用再記 del）
         const idx = Pending.holidaysAdd.findIndex((x) => String(x.date) === String(Date));
         if (idx >= 0) {
           Pending.holidaysAdd.splice(idx, 1);
         } else {
-          // 否則記錄刪除，等儲存時送出
           const exists = Pending.holidaysDel.some((x) => String(x.date) === String(Date));
           if (!exists) Pending.holidaysDel.push({ type: "holiday", date: String(Date) });
         }
@@ -159,7 +263,9 @@ async function renderHolidays() {
 }
 holidaysRefreshBtn?.addEventListener("click", renderHolidays);
 
-// ===== Form Submit (batch: config + holiday only) =====
+/**********************
+ * Form Submit（原樣）
+ **********************/
 bookingForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -198,7 +304,6 @@ bookingForm?.addEventListener("submit", async (e) => {
       throw new Error(batchRes?.error || "批次儲存失敗");
     }
 
-    // 清空 pending
     Pending.config = {};
     Pending.holidaysAdd = [];
     Pending.holidaysDel = [];
@@ -211,11 +316,12 @@ bookingForm?.addEventListener("submit", async (e) => {
   }
 });
 
-// ===== Preload =====
-(async function preload() {
+/**********************
+ * ✅ Preload：改成函式（Gate 通過後才跑）
+ **********************/
+async function preload() {
   showOverlay("載入資料中...");
   try {
-    // config
     const res = await apiGet({ entity: "config", action: "list" });
     if (res.ok && res.data) {
       const cfg = res.data;
@@ -239,26 +345,40 @@ bookingForm?.addEventListener("submit", async (e) => {
       document.getElementById("bufferMinutes").value = cfg.bufferMinutes ? Number(cfg.bufferMinutes) : "";
       document.getElementById("maxBookingDays").value = cfg.maxBookingDays ? Number(cfg.maxBookingDays) : "";
 
-      // weekly off
+      // weekly off（字串化比對）
       try {
         const offs = JSON.parse(cfg.weeklyOff || "[]");
+        const offSet = new Set(Array.isArray(offs) ? offs.map(String) : []);
         Array.from(
           document.querySelectorAll('#weeklyOffCheckboxes input[type="checkbox"]')
-        ).forEach((cb) => (cb.checked = offs.includes(cb.value)));
+        ).forEach((cb) => (cb.checked = offSet.has(String(cb.value))));
       } catch {}
     }
 
-    // holidays list (reuse datetypes/list，但只渲染 holiday)
     const dtRes = await apiGet({ entity: "datetypes", action: "list" });
     if (dtRes.ok) LocalState.datetypes = Array.isArray(dtRes.data) ? dtRes.data : [];
 
     await renderWeeklyOff();
     await renderHolidays();
   } catch (err) {
-    // 這裡不阻斷 UI，只顯示在 messages
     weeklyMsg.textContent = weeklyMsg.textContent || String(err);
     weeklyMsg.className = "small error";
   } finally {
     hideOverlay();
+  }
+}
+
+/**********************
+ * ✅ App Boot：先 Gate 再 preload
+ **********************/
+(async function boot() {
+  try {
+    const gate = await runGate();
+    if (gate.redirected) return; // 已跳轉登入
+    if (!gate.passed) return;     // Gate 未通過：維持鎖住 + 顯示原因
+    await preload();              // ✅ 通過才載入後台資料
+  } catch (err) {
+    showGate("初始化失敗：\n" + String(err?.message || err));
+    setUiEnabled(false);
   }
 })();
