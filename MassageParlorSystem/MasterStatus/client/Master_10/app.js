@@ -1,12 +1,14 @@
 // =========================================================
 // 師傅狀態 + 日曆（✅ 設定檔 config.json 讀取版）
-// - 先 loadConfig_() → 再 LIFF gate → 通過才載入狀態與日曆
+// Gate：
+// 1) 使用者需通過審核（Users 管理 GAS：check / register）
+// 2) TARGET_MASTER_ID 對應技師 personalStatusEnabled=是 才放行（Users 管理 GAS：listUsers）
 // =========================================================
 
 // ================================
 // 0) Runtime Config（from config.json）
 // ================================
-const CONFIG_URL = "./config.json"; // 依你的部署調整："/config.json" 或 "./config/config.json"
+const CONFIG_URL = "./config.json";
 let APP_CONFIG = null;
 
 async function loadConfig_() {
@@ -16,9 +18,7 @@ async function loadConfig_() {
   });
   const text = await res.text();
 
-  if (!res.ok) {
-    throw new Error(`CONFIG fetch failed: ${res.status} ${text.slice(0, 160)}`);
-  }
+  if (!res.ok) throw new Error(`CONFIG fetch failed: ${res.status} ${text.slice(0, 160)}`);
 
   let json;
   try {
@@ -27,19 +27,26 @@ async function loadConfig_() {
     throw new Error("CONFIG non-JSON: " + text.slice(0, 200));
   }
 
-  const required = [
-    "LIFF_ID",
-    "ADMIN_API_URL",
-    "TECH_API_URL",
-    "BOOKING_API_URL",
-    "TARGET_MASTER_ID",
-  ];
-  const missing = required.filter((k) => !json[k] || String(json[k]).trim() === "");
-  if (missing.length) throw new Error("CONFIG missing: " + missing.join(", "));
+  // ✅ USER_MGMT_API_URL 是新增的；若未提供，fallback 用 ADMIN_API_URL（兼容舊 config）
+  const userMgmtUrl = String(json.USER_MGMT_API_URL || "").trim();
+  const adminUrl = String(json.ADMIN_API_URL || "").trim();
+  const resolvedUserMgmtUrl = userMgmtUrl || adminUrl;
+
+  const required = ["LIFF_ID", "TECH_API_URL", "BOOKING_API_URL", "TARGET_MASTER_ID"];
+  const missingBase = required.filter((k) => !json[k] || String(json[k]).trim() === "");
+  if (missingBase.length) throw new Error("CONFIG missing: " + missingBase.join(", "));
+
+  if (!resolvedUserMgmtUrl) {
+    throw new Error("CONFIG missing: USER_MGMT_API_URL (or ADMIN_API_URL fallback)");
+  }
 
   APP_CONFIG = Object.freeze({
     LIFF_ID: String(json.LIFF_ID).trim(),
-    ADMIN_API_URL: String(json.ADMIN_API_URL).trim(),
+
+    // 你原本的 ADMIN 仍保留在 config（可能另外用），但本頁 Gate 走 USER_MGMT_API_URL
+    ADMIN_API_URL: adminUrl,
+    USER_MGMT_API_URL: resolvedUserMgmtUrl,
+
     TECH_API_URL: String(json.TECH_API_URL).trim(),
     BOOKING_API_URL: String(json.BOOKING_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
@@ -138,6 +145,29 @@ function showDenied_(info) {
     return;
   }
 
+  // ✅ TARGET_MASTER_ID 技師 Gate
+  if (reason === "target_not_found") {
+    if (titleEl) titleEl.textContent = "找不到技師資料";
+    if (textEl)
+      textEl.textContent =
+        "系統找不到此技師的資料（Users 表沒有對應的師傅編號）。請聯絡管理員確認 TARGET_MASTER_ID 與 Users 表「師傅編號」一致。";
+    return;
+  }
+
+  if (reason === "target_personal_disabled") {
+    if (titleEl) titleEl.textContent = "此技師尚未開通使用權限";
+    if (textEl)
+      textEl.textContent =
+        "此看板需該技師「個人狀態開通」= 是 才能使用。請聯絡管理員到 Users 後台將該技師設為「是」。";
+    return;
+  }
+
+  if (reason === "target_check_failed") {
+    if (titleEl) titleEl.textContent = "技師權限檢查失敗";
+    if (textEl) textEl.textContent = "無法讀取技師的開通狀態，請稍後再試或聯絡管理員。";
+    return;
+  }
+
   if (titleEl) titleEl.textContent = "尚未通過審核";
   if (textEl)
     textEl.textContent =
@@ -153,16 +183,12 @@ async function getUserIdFromLiff_() {
     return null;
   }
 
-  if (!APP_CONFIG || !APP_CONFIG.LIFF_ID) {
-    throw new Error("APP_CONFIG not ready (LIFF_ID missing)");
-  }
-
   await liff.init({ liffId: APP_CONFIG.LIFF_ID });
 
   if (!liff.isLoggedIn()) {
     showDenied_({ denyReason: "liff_login" });
     liff.login();
-    return null; // login 會 redirect
+    return null;
   }
 
   const profile = await liff.getProfile();
@@ -177,41 +203,35 @@ async function getUserIdFromLiff_() {
 }
 
 // ================================
-// 5) 管理員 GAS：check + 若不存在則 register（預設待審核）
-//    ✅ debug：避免回 HTML / 不是 JSON 時看不到原因
+// 5) Users 管理 GAS（你貼的那份）：check/register/listUsers
 // ================================
-async function adminGet_(paramsObj) {
-  if (!APP_CONFIG || !APP_CONFIG.ADMIN_API_URL) {
-    throw new Error("APP_CONFIG not ready (ADMIN_API_URL missing)");
-  }
+async function userMgmtGet_(paramsObj) {
+  const base = APP_CONFIG.USER_MGMT_API_URL;
+  const u = new URL(base);
 
-  const u = new URL(APP_CONFIG.ADMIN_API_URL);
   Object.entries(paramsObj || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
   });
   u.searchParams.set("_cors", "1");
 
   const url = u.toString();
-  console.log("[ADMIN_API] GET", url);
+  console.log("[USER_MGMT] GET", url);
 
   const res = await fetch(url, { method: "GET" });
   const text = await res.text();
 
-  console.log("[ADMIN_API] status", res.status);
-  console.log("[ADMIN_API] raw", text.slice(0, 200));
+  console.log("[USER_MGMT] status", res.status);
+  console.log("[USER_MGMT] raw", text.slice(0, 200));
 
-  if (!res.ok) {
-    throw new Error("ADMIN_API HTTP " + res.status + " " + text.slice(0, 120));
-  }
+  if (!res.ok) throw new Error("USER_MGMT HTTP " + res.status + " " + text.slice(0, 160));
 
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new Error("ADMIN_API non-JSON response: " + text.slice(0, 160));
+    throw new Error("USER_MGMT non-JSON response: " + text.slice(0, 200));
   }
 }
 
-// 依你目前 GAS：找不到 user 時回 status:"none", audit:"", displayName:""
 function isUserNotFound_(checkJson) {
   if (!checkJson) return true;
   const status = String(checkJson.status || "").trim().toLowerCase();
@@ -221,17 +241,16 @@ function isUserNotFound_(checkJson) {
 }
 
 async function ensureUserExists_(userId, displayName) {
-  const check1 = await adminGet_({ mode: "check", userId });
+  const check1 = await userMgmtGet_({ mode: "check", userId });
 
   if (isUserNotFound_(check1)) {
-    // ✅ 自動建立：handleRegister_ 會預設待審核
-    await adminGet_({
+    await userMgmtGet_({
       mode: "register",
       userId,
       displayName: displayName || "",
     });
 
-    const check2 = await adminGet_({ mode: "check", userId });
+    const check2 = await userMgmtGet_({ mode: "check", userId });
     return check2;
   }
 
@@ -239,7 +258,51 @@ async function ensureUserExists_(userId, displayName) {
 }
 
 // ================================
-// 6) 審核 Gate：通過審核才能進主畫面
+// 5.5) ✅ 目標技師 Gate：TARGET_MASTER_ID 的「個人狀態開通」必須為 是
+// ================================
+async function fetchTargetTechRow_() {
+  const json = await userMgmtGet_({ mode: "listUsers" });
+  const users = Array.isArray(json?.users) ? json.users : [];
+
+  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const hit = users.find((u) => normalizeDigits(u.masterCode) === target);
+
+  return hit || null;
+}
+
+async function checkTargetTechEnabledOrBlock_() {
+  let techRow = null;
+
+  try {
+    techRow = await fetchTargetTechRow_();
+  } catch (e) {
+    console.error(e);
+    showDenied_({ denyReason: "target_check_failed" });
+    return { ok: false };
+  }
+
+  if (!techRow) {
+    showDenied_({ denyReason: "target_not_found" });
+    return { ok: false };
+  }
+
+  const enabled = String(techRow.personalStatusEnabled || "").trim() === "是";
+  if (!enabled) {
+    // meta 顯示那位技師，方便你查哪筆沒開
+    showDenied_({
+      denyReason: "target_personal_disabled",
+      audit: techRow.audit || "-",
+      displayName: techRow.displayName || "-",
+      remainingDays: "-",
+    });
+    return { ok: false };
+  }
+
+  return { ok: true, techRow };
+}
+
+// ================================
+// 6) Gate：使用者通過審核 + 目標技師開通
 // ================================
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
@@ -248,10 +311,9 @@ async function checkAccessOrBlock_() {
   const userId = String(auth.userId || "").trim();
   const displayName = String(auth.profile?.displayName || "").trim();
 
-  let json;
+  let checkJson;
   try {
-    // ✅ 若不存在就自動 register（待審核）
-    json = await ensureUserExists_(userId, displayName);
+    checkJson = await ensureUserExists_(userId, displayName);
   } catch (e) {
     console.error(e);
     toast("權限檢查失敗：" + String(e.message || e));
@@ -259,17 +321,20 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  const allowed =
-    json && typeof json.allowed === "boolean"
-      ? json.allowed
-      : String(json.audit || "").trim() === "通過";
+  const viewerAllowed =
+    checkJson && typeof checkJson.allowed === "boolean"
+      ? checkJson.allowed
+      : String(checkJson.audit || "").trim() === "通過";
 
-  if (!allowed) {
-    showDenied_(json || { denyReason: "not_approved" });
+  if (!viewerAllowed) {
+    showDenied_(checkJson || { denyReason: "not_approved" });
     return { allowed: false };
   }
 
-  return { allowed: true, userId, profile: json };
+  const techGate = await checkTargetTechEnabledOrBlock_();
+  if (!techGate.ok) return { allowed: false };
+
+  return { allowed: true, userId, profile: checkJson, targetTech: techGate.techRow };
 }
 
 // ================================
@@ -303,7 +368,7 @@ function showApp() {
 }
 
 // ================================
-// 9) 師傅狀態 UI
+// 9) 師傅狀態
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
@@ -327,18 +392,12 @@ function updateStatusUI(kind, data) {
   }
 
   const bucket = classifyStatus(String(data.status || ""));
-  statusEl.innerHTML = `<span class="status-pill status-${bucket}">${String(
-    data.status || ""
-  )}</span>`;
+  statusEl.innerHTML = `<span class="status-pill status-${bucket}">${String(data.status || "")}</span>`;
   apptEl.textContent = data.appointment || "無預約";
   remEl.textContent = data.remaining || "-";
 }
 
 async function loadTechStatus() {
-  if (!APP_CONFIG || !APP_CONFIG.TECH_API_URL) {
-    throw new Error("APP_CONFIG not ready (TECH_API_URL missing)");
-  }
-
   const res = await fetch(APP_CONFIG.TECH_API_URL, { method: "GET" });
   if (!res.ok) throw new Error("TECH_API fetch failed: " + res.status);
 
@@ -353,7 +412,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 10) 日曆：整格底色 + 點擊 toast
+// 10) 日曆
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -390,7 +449,6 @@ function buildLabelWithPrefix(prefix, type) {
 
 function formatTimeHHmm(val) {
   if (val == null || val === "") return "";
-
   const s = String(val).trim();
 
   const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
@@ -436,10 +494,6 @@ function formatTimeHHmm(val) {
 }
 
 async function loadBizConfig() {
-  if (!APP_CONFIG || !APP_CONFIG.BOOKING_API_URL) {
-    throw new Error("APP_CONFIG not ready (BOOKING_API_URL missing)");
-  }
-
   const url = `${APP_CONFIG.BOOKING_API_URL}?entity=bootstrap`;
   const res = await fetch(url, { method: "GET" });
   if (!res.ok) throw new Error("BOOKING_API fetch failed: " + res.status);
@@ -468,11 +522,10 @@ async function loadBizConfig() {
 
   const summary = $("bizSummary");
   if (summary) {
-    const timePart =
+    summary.textContent =
       calState.startTime && calState.endTime
         ? `預約時間：${calState.startTime} ~ ${calState.endTime}`
         : `預約時間：未設定`;
-    summary.textContent = timePart;
   }
 
   renderCalendar();
@@ -521,10 +574,7 @@ function renderCalendar() {
     const ymd = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dtItems = dtState.byDate.get(ymd) || [];
 
-    if (
-      CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true &&
-      dtItems.some((it) => it.bucket === "workday")
-    ) {
+    if (CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true && dtItems.some((it) => it.bucket === "workday")) {
       off = false;
     }
 
@@ -541,9 +591,7 @@ function renderCalendar() {
     else if (isWeeklyOff) stateCls = "is-weeklyoff";
     else if (hasOther) stateCls = "is-special";
 
-    const cls = ["cal-cell", stateCls, isToday(y, m, d) ? "is-today" : ""]
-      .filter(Boolean)
-      .join(" ");
+    const cls = ["cal-cell", stateCls, isToday(y, m, d) ? "is-today" : ""].filter(Boolean).join(" ");
 
     cells.push(`
       <div class="${cls}" data-ymd="${ymd}">
@@ -609,14 +657,13 @@ function bindCalendarNav() {
 }
 
 // ================================
-// 11) 初始化（✅ 先 config → 再 LIFF → check → 通過才載入）
+// 11) 初始化
 // ================================
 window.onload = async () => {
   initTheme();
   bindCalendarNav();
 
   try {
-    // ✅ 先讀設定檔
     await loadConfig_();
 
     const mid = $("techMasterId");
