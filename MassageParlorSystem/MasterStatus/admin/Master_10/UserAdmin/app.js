@@ -3,7 +3,7 @@ const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
 
 // ✅ 你要改：你的 LIFF ID
-const LIFF_ID = "YOUR_LIFF_ID";
+const LIFF_ID = "2008715969-ZZ9pT504";
 
 let allUsers = [];
 let filteredUsers = [];
