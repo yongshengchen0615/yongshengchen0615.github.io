@@ -1,7 +1,8 @@
 // =========================================================
-// Users 後台管理 — app.js（移除師傅/推播版）
+// Users 後台管理 — app.js（動態 TECH URL 版）
 // ✅ Gate：LIFF init → 若未登入則自動 liff.login() → 取 profile.userId
 // ✅ ADMIN check：personalStatusEnabled / personalStatus 任一為「是」才放行
+// ✅ 通過後：讀取 PersonalStatus「使用者管理連結」→ 指派 TECH_API_BASE_URL
 // ✅ 放行後才呼叫 TECH listUsers / updateUser / deleteUser
 // ✅ Gate 無按鈕（純顯示）
 // =========================================================
@@ -12,8 +13,8 @@
 const ADMIN_API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-const TECH_API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
+// ✅ 改成動態寫入（從 PersonalStatus「使用者管理連結」拿）
+let TECH_API_BASE_URL = "";
 
 const LIFF_ID = "2008669658-JNGJgZpR";
 
@@ -99,6 +100,7 @@ async function ensureAuthed_() {
 async function startAuthThenLoad_() {
   __authPassed = false;
   __authedUserId = "";
+  TECH_API_BASE_URL = "";
 
   // 基本檢查
   if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID") {
@@ -111,9 +113,9 @@ async function startAuthThenLoad_() {
     toast_("LIFF SDK 未載入", "err");
     return;
   }
-  if (!ADMIN_API_BASE_URL || !TECH_API_BASE_URL) {
-    showGate_("❌ 錯誤：尚未設定 API URL");
-    toast_("API URL 未設定", "err");
+  if (!ADMIN_API_BASE_URL) {
+    showGate_("❌ 錯誤：尚未設定 ADMIN API URL");
+    toast_("ADMIN API URL 未設定", "err");
     return;
   }
 
@@ -188,6 +190,47 @@ async function startAuthThenLoad_() {
     return;
   }
 
+  // ✅ 讀取 PersonalStatus 的「使用者管理連結」當作 TECH_API_BASE_URL
+  showGate_("✅ 已開通，讀取使用者管理連結中…");
+  const linkRes = await adminGetUserManageLink_(userId);
+
+  if (!linkRes.ok) {
+    __authPassed = false;
+    __authedUserId = userId;
+
+    showGate_(
+      `❌ 讀取使用者管理連結失敗\nuserId：${userId}\nerror：${linkRes.error}\nraw：${(linkRes.raw || "").slice(0, 300)}`
+    );
+    toast_("讀取使用者管理連結失敗", "err");
+    return;
+  }
+
+  const techUrl = String(linkRes.techUrl || "").trim();
+  if (!techUrl) {
+    __authPassed = false;
+    __authedUserId = userId;
+
+    showGate_(
+      `⛔ 尚未設定「使用者管理連結」\nuserId：${userId}\n\n請到 PersonalStatus 表的「使用者管理連結」欄填入對應的 GAS WebApp /exec 連結。`
+    );
+    toast_("尚未設定使用者管理連結", "err");
+    return;
+  }
+
+  // 基本校驗（避免亂填）
+  if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(techUrl) || !/\/exec(\?|$)/.test(techUrl)) {
+    __authPassed = false;
+    __authedUserId = userId;
+
+    showGate_(
+      `❌ 使用者管理連結格式不正確\n目前值：${techUrl}\n\n需為 GAS WebApp 的 /exec 連結。`
+    );
+    toast_("使用者管理連結格式錯誤", "err");
+    return;
+  }
+
+  TECH_API_BASE_URL = techUrl;
+
   // 通過
   __authPassed = true;
   __authedUserId = userId;
@@ -201,7 +244,7 @@ async function startAuthThenLoad_() {
   hideGate_();
 }
 
-// ✅ 移除推播兼容：只看 personalStatusEnabled / personalStatus
+// ✅ 只看 personalStatusEnabled / personalStatus
 async function adminCheckPersonalStatus_(userId) {
   const url =
     ADMIN_API_BASE_URL +
@@ -239,10 +282,46 @@ async function adminCheckPersonalStatus_(userId) {
   }
 }
 
+// ✅ 讀 PersonalStatus 的「使用者管理連結」
+async function adminGetUserManageLink_(userId) {
+  const url =
+    ADMIN_API_BASE_URL +
+    `?mode=getUserManageLink&userId=${encodeURIComponent(userId)}&_cors=1`;
+
+  try {
+    const res = await fetch(url, { method: "GET" });
+    const raw = await res.text();
+
+    console.log("[admin-get-link] url:", url);
+    console.log("[admin-get-link] http:", res.status, "raw:", raw.slice(0, 300));
+
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, raw };
+
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch (_) {
+      return { ok: false, error: "Response is not JSON", raw };
+    }
+
+    if (!json.ok) return { ok: false, error: json.error || "not ok", raw, json };
+
+    return { ok: true, techUrl: json.techUrl, raw, json };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e), raw: "" };
+  }
+}
+
 // =========================================================
 // 4) TECH API（list/update/delete）
 // =========================================================
+function assertTechUrl_() {
+  if (!TECH_API_BASE_URL) throw new Error("TECH_API_BASE_URL 尚未設定（PersonalStatus 使用者管理連結為空）");
+}
+
 async function techGet_(paramsObj) {
+  assertTechUrl_();
+
   const u = new URL(TECH_API_BASE_URL);
   Object.entries(paramsObj || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
@@ -266,6 +345,8 @@ async function techGet_(paramsObj) {
 }
 
 async function techPost_(paramsObj) {
+  assertTechUrl_();
+
   const fd = new URLSearchParams();
   Object.entries(paramsObj || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null) fd.append(k, String(v));
