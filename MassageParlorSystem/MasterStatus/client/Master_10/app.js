@@ -92,7 +92,9 @@ function showDenied_(info) {
 
   if (reason === "not_in_liff") {
     if (titleEl) titleEl.textContent = "請在 LINE 內開啟";
-    if (textEl) textEl.textContent = "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
+    if (textEl)
+      textEl.textContent =
+        "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
     return;
   }
 
@@ -108,13 +110,13 @@ function showDenied_(info) {
     return;
   }
 
-  // default：not approved
+  // default：not approved / pending
   if (titleEl) titleEl.textContent = "尚未通過審核";
-  if (textEl) textEl.textContent = "目前未通過審核，請聯絡管理員開通權限。";
+  if (textEl) textEl.textContent = "目前未通過審核（新用戶會自動建立為「待審核」），請聯絡管理員開通權限。";
 }
 
 // ================================
-// 5) LIFF：取得 userId
+// 5) LIFF：取得 userId + displayName
 // ================================
 async function getUserIdFromLiff_() {
   if (typeof liff === "undefined") {
@@ -122,18 +124,14 @@ async function getUserIdFromLiff_() {
     return null;
   }
 
-  // 有些情境（外部瀏覽器）liff.isInClient() 會是 false
-  // 但如果你允許外部 browser 也能登入，仍可繼續走 liff login。
   await liff.init({ liffId: LIFF_ID });
 
   if (!liff.isLoggedIn()) {
-    // 直接觸發登入（會 redirect）
     showDenied_({ denyReason: "liff_login" });
     liff.login();
-    return null;
+    return null; // login 會 redirect
   }
 
-  // ✅ 取得 profile.userId
   const profile = await liff.getProfile();
   const userId = profile && profile.userId ? String(profile.userId) : "";
 
@@ -146,32 +144,74 @@ async function getUserIdFromLiff_() {
 }
 
 // ================================
-// 6) 審核檢查（通過才允許）
+// 6) 管理員 GAS：check + 若不存在則 register（預設待審核）
+// ================================
+async function adminGet_(paramsObj) {
+  const u = new URL(ADMIN_API_URL);
+  Object.entries(paramsObj || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
+  });
+  u.searchParams.set("_cors", "1");
+
+  const res = await fetch(u.toString(), { method: "GET" });
+  if (!res.ok) throw new Error("ADMIN_API fetch failed: " + res.status);
+  return await res.json();
+}
+
+// 依你目前 GAS：找不到 user 時回 status:"none", audit:"", displayName:""
+function isUserNotFound_(checkJson) {
+  if (!checkJson) return true;
+  const status = String(checkJson.status || "").trim().toLowerCase();
+  const audit = String(checkJson.audit || "").trim();
+  const name = String(checkJson.displayName || "").trim();
+  return status === "none" || (!audit && !name);
+}
+
+async function ensureUserExists_(userId, displayName) {
+  const check1 = await adminGet_({ mode: "check", userId });
+
+  if (isUserNotFound_(check1)) {
+    // ✅ 自動建立：handleRegister_ 會預設待審核
+    await adminGet_({
+      mode: "register",
+      userId,
+      displayName: displayName || "",
+    });
+
+    const check2 = await adminGet_({ mode: "check", userId });
+    return check2;
+  }
+
+  return check1;
+}
+
+// ================================
+// 7) 審核 Gate：通過審核才能進主畫面
 // ================================
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
   if (!auth) return { allowed: false };
 
-  const { userId } = auth;
+  const userId = String(auth.userId || "").trim();
+  const displayName = String(auth.profile?.displayName || "").trim();
 
-  const url =
-    `${ADMIN_API_URL}?mode=check&userId=${encodeURIComponent(userId)}&_cors=1`;
-
-  const res = await fetch(url, { method: "GET" });
-  if (!res.ok) {
+  let json;
+  try {
+    // ✅ 若不存在就自動 register（待審核）
+    json = await ensureUserExists_(userId, displayName);
+  } catch (e) {
     showDenied_({ denyReason: "check_failed" });
     return { allowed: false };
   }
 
-  const json = await res.json();
-
-  // 兼容：若 GAS 尚未加 allowed，則用 audit==="通過" 判斷
+  // 兼容：若 GAS 尚未加 allowed，則用 audit==="通過"
   const allowed =
     json && typeof json.allowed === "boolean"
       ? json.allowed
       : String(json.audit || "").trim() === "通過";
 
   if (!allowed) {
+    // 新用戶：此處 audit 通常是 待審核
     showDenied_(json || { denyReason: "not_approved" });
     return { allowed: false };
   }
@@ -180,7 +220,7 @@ async function checkAccessOrBlock_() {
 }
 
 // ================================
-// 7) 主題切換
+// 8) 主題切換
 // ================================
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -201,7 +241,7 @@ function initTheme() {
 }
 
 // ================================
-// 8) Loading
+// 9) Loading
 // ================================
 function showApp() {
   hideLoading_();
@@ -210,7 +250,7 @@ function showApp() {
 }
 
 // ================================
-// 9) 師傅狀態 UI
+// 10) 師傅狀態 UI
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
@@ -256,7 +296,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 10) 日曆：整格底色 + 點擊 toast
+// 11) 日曆：整格底色 + 點擊 toast
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -291,8 +331,12 @@ function buildLabelWithPrefix(prefix, type) {
   return `${p} ${t}`;
 }
 
+/**
+ * ✅ 把 Config 的時間（可能是 Date / 1899-12-30 / "09:00" / 0.375 / "0.375"）統一轉成 "HH:mm"
+ */
 function formatTimeHHmm(val) {
   if (val == null || val === "") return "";
+
   const s = String(val).trim();
 
   const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
@@ -333,6 +377,7 @@ function formatTimeHHmm(val) {
     const mm = String(d2.getMinutes()).padStart(2, "0");
     return `${hh}:${mm}`;
   }
+
   return "";
 }
 
@@ -365,10 +410,11 @@ async function loadBizConfig() {
 
   const summary = $("bizSummary");
   if (summary) {
-    summary.textContent =
+    const timePart =
       calState.startTime && calState.endTime
         ? `預約時間：${calState.startTime} ~ ${calState.endTime}`
         : `預約時間：未設定`;
+    summary.textContent = timePart;
   }
 
   renderCalendar();
@@ -396,8 +442,8 @@ function renderCalendar() {
   const daysInMonth = last.getDate();
 
   label.textContent = `${y}-${String(m + 1).padStart(2, "0")}`;
-  calInfoByDate.clear();
 
+  calInfoByDate.clear();
   const cells = [];
 
   for (let i = 0; i < firstDow; i++) {
@@ -428,7 +474,7 @@ function renderCalendar() {
 
     const hasHoliday = dtItems.some((it) => it.bucket === "holiday");
     const hasWorkday = dtItems.some((it) => it.bucket === "workday");
-    const hasOther   = dtItems.some((it) => it.bucket === "other");
+    const hasOther = dtItems.some((it) => it.bucket === "other");
     const isWeeklyOff = off === true;
 
     let stateCls = "";
@@ -483,21 +529,29 @@ function bindCalendarNav() {
   const prev = $("calPrev");
   const next = $("calNext");
 
-  if (prev) prev.onclick = () => {
-    calState.viewMonth--;
-    if (calState.viewMonth < 0) { calState.viewMonth = 11; calState.viewYear--; }
-    renderCalendar();
-  };
+  if (prev)
+    prev.onclick = () => {
+      calState.viewMonth--;
+      if (calState.viewMonth < 0) {
+        calState.viewMonth = 11;
+        calState.viewYear--;
+      }
+      renderCalendar();
+    };
 
-  if (next) next.onclick = () => {
-    calState.viewMonth++;
-    if (calState.viewMonth > 11) { calState.viewMonth = 0; calState.viewYear++; }
-    renderCalendar();
-  };
+  if (next)
+    next.onclick = () => {
+      calState.viewMonth++;
+      if (calState.viewMonth > 11) {
+        calState.viewMonth = 0;
+        calState.viewYear++;
+      }
+      renderCalendar();
+    };
 }
 
 // ================================
-// 11) 初始化（✅ 先 LIFF → 再審核 → 再載入功能）
+// 12) 初始化（✅ 先 LIFF → check → 若無則 register → 再 check → 通過才載入）
 // ================================
 window.onload = async () => {
   initTheme();
