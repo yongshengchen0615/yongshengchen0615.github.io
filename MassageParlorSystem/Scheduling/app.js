@@ -39,7 +39,7 @@ function hashToIndex_(str, mod) {
   for (let i = 0; i < s.length; i++) {
     h = (h * 31 + s.charCodeAt(i)) >>> 0;
   }
-  return mod ? (h % mod) : 0;
+  return mod ? h % mod : 0;
 }
 
 // 取得目前使用者應該打的 Edge URL
@@ -543,6 +543,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
   const serverDisplayName = (data && data.displayName) || "";
+  const scheduleEnabled = (data && data.scheduleEnabled) || "否"; // ✅新增：排班表開通
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -560,6 +561,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       remainingDays,
       displayName: finalDisplayName,
       serverDisplayName,
+      scheduleEnabled,
     };
   }
 
@@ -571,6 +573,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       remainingDays,
       displayName: finalDisplayName,
       serverDisplayName,
+      scheduleEnabled,
     };
   }
 
@@ -587,6 +590,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       remainingDays: null,
       displayName: finalDisplayName,
       serverDisplayName,
+      scheduleEnabled,
     };
   }
 
@@ -597,6 +601,7 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     remainingDays: null,
     displayName: finalDisplayName,
     serverDisplayName,
+    scheduleEnabled,
   };
 }
 
@@ -672,7 +677,15 @@ async function initLiffAndGuard() {
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
-    if (result.allowed && result.status === "approved") {
+    // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
+    const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
+
+    // ✅ 今天最後一天也能用：remainingDays >= 0
+    const rd = result.remainingDays;
+    const hasRd = typeof rd === "number" && !Number.isNaN(rd);
+    const notExpired = hasRd ? rd >= 0 : false;
+
+    if (result.allowed && result.status === "approved" && scheduleOk && notExpired) {
       showGate("驗證通過，正在載入資料…");
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
@@ -681,6 +694,16 @@ async function initLiffAndGuard() {
       await sendDailyFirstMessageFromUser_();
 
       startApp();
+      return;
+    }
+
+    // ✅ 審核通過但被擋：顯示原因
+    if (result.status === "approved") {
+      let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
+      if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
+      if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
+      msg += "\n請聯絡管理員協助開通或延長使用期限。";
+      showGate(msg);
       return;
     }
 

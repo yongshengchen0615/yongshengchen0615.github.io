@@ -208,7 +208,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .table-wrap{ overflow:auto; padding:12px 14px 14px; }
 table{
   width:100%;
-  min-width:1320px; /* ✅新增欄位後小調 */
+  min-width:1440px; /* ✅新增欄位後小調 */
   border-collapse:separate;
   border-spacing:0;
   background:var(--card);

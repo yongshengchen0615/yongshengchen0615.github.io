@@ -98,10 +98,12 @@ async function loadUsers() {
     const res = await fetch(API_BASE_URL + "?mode=listUsers");
     const json = await res.json();
     if (!json.ok) throw new Error("listUsers not ok");
+
     allUsers = (json.users || []).map((u) => ({
       ...u,
       // ✅確保新欄位存在
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
+      scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否", // ✅新增
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
     }));
 
@@ -220,8 +222,8 @@ function compareBy_(a, b, key, dir) {
   const av = get(a);
   const bv = get(b);
 
-  // ✅ 是/否 欄位排序（push / personalStatus）
-  if (key === "pushEnabled" || key === "personalStatusEnabled") {
+  // ✅ 是/否 欄位排序（push / personalStatus / schedule）
+  if (key === "pushEnabled" || key === "personalStatusEnabled" || key === "scheduleEnabled") {
     const na = String(av) === "是" ? 1 : 0;
     const nb = String(bv) === "是" ? 1 : 0;
     return (na - nb) * sgn;
@@ -331,9 +333,10 @@ function syncCheckAll_() {
 async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
-  const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || ""; // ✅新增
+  const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
+  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || ""; // ✅新增
 
-  if (!audit && !pushEnabled && !personalStatusEnabled) {
+  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -347,17 +350,18 @@ async function bulkApply_() {
 
     if (audit) u.audit = audit;
 
-    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（批次也不能繞過）
+    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否
     if ((u.audit || "待審核") !== "通過") {
       u.pushEnabled = "否";
     } else if (pushEnabled) {
       u.pushEnabled = pushEnabled;
     }
 
-    // ✅ 個人狀態開通：不綁審核狀態（純開關）
-    if (personalStatusEnabled) {
-      u.personalStatusEnabled = personalStatusEnabled;
-    }
+    // ✅ 個人狀態：純開關
+    if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
+
+    // ✅ 排班表：純開關
+    if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 
     markDirty_(id, u);
   });
@@ -421,7 +425,7 @@ function renderTable() {
 
   if (!filteredUsers.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14">無資料</td>`;
+    tr.innerHTML = `<td colspan="15">無資料</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -429,7 +433,8 @@ function renderTable() {
   filteredUsers.forEach((u, i) => {
     const expiry = getExpiryInfo(u);
     const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
-    const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否"; // ✅新增
+    const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
+    const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
     const audit = u.audit || "待審核";
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
@@ -473,11 +478,17 @@ function renderTable() {
         </select>
       </td>
 
-      <!-- ✅新增：個人狀態開通（下拉） -->
       <td data-label="個人狀態開通">
         <select class="personal-status-select" aria-label="個人狀態開通">
           <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
+        </select>
+      </td>
+
+      <td data-label="排班表開通">
+        <select class="schedule-select" aria-label="排班表開通">
+          <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
+          <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
@@ -495,7 +506,8 @@ function renderTable() {
     const daysInput = tr.querySelector(".days-input");
     const masterInput = tr.querySelector(".master-code-input");
     const pushSelect = tr.querySelector(".push-select");
-    const personalSelect = tr.querySelector(".personal-status-select"); // ✅新增
+    const personalSelect = tr.querySelector(".personal-status-select");
+    const scheduleSelect = tr.querySelector(".schedule-select");
     const auditSelect = tr.querySelector(".audit-select");
     const badge = tr.querySelector(".audit-badge");
     const saveBtn = tr.querySelector(".btn-save");
@@ -538,8 +550,11 @@ function renderTable() {
         pushSelect.disabled = false;
       }
 
-      // ✅ 個人狀態開通：純開關
+      // ✅ 個人狀態：純開關
       u.personalStatusEnabled = personalSelect.value || "否";
+
+      // ✅ 排班表：純開關
+      u.scheduleEnabled = scheduleSelect.value || "否";
 
       markDirty_(u.userId, u);
 
@@ -559,7 +574,8 @@ function renderTable() {
     daysInput.addEventListener("input", onAnyChange);
     masterInput.addEventListener("input", onAnyChange);
     pushSelect.addEventListener("change", onAnyChange);
-    personalSelect.addEventListener("change", onAnyChange); // ✅新增
+    personalSelect.addEventListener("change", onAnyChange);
+    scheduleSelect.addEventListener("change", onAnyChange);
     auditSelect.addEventListener("change", onAnyChange);
 
     saveBtn.addEventListener("click", async () => {
@@ -582,7 +598,8 @@ function renderTable() {
         usageDays: daysInput.value,
         masterCode: masterInput.value,
         pushEnabled: finalPush,
-        personalStatusEnabled: personalSelect.value || "否" // ✅新增
+        personalStatusEnabled: personalSelect.value || "否",
+        scheduleEnabled: scheduleSelect.value || "否",
       };
 
       const ok = await updateUser(payload);
@@ -594,6 +611,7 @@ function renderTable() {
         u.audit = finalAudit;
         u.pushEnabled = finalPush;
         u.personalStatusEnabled = personalSelect.value || "否";
+        u.scheduleEnabled = scheduleSelect.value || "否";
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
         await loadUsers();
@@ -690,7 +708,8 @@ function snapshot_(u) {
     usageDays: String(u.usageDays || ""),
     masterCode: u.masterCode || "",
     pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
-    personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否", // ✅新增
+    personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
+    scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
   });
 }
 
@@ -703,7 +722,10 @@ function markDirty_(userId, u) {
 
 /* ========= API ========= */
 
-async function updateUser({ userId, audit, startDate, usageDays, masterCode, pushEnabled, personalStatusEnabled }) {
+async function updateUser({
+  userId, audit, startDate, usageDays, masterCode,
+  pushEnabled, personalStatusEnabled, scheduleEnabled
+}) {
   try {
     const fd = new URLSearchParams();
     fd.append("mode", "updateUser");
@@ -713,7 +735,8 @@ async function updateUser({ userId, audit, startDate, usageDays, masterCode, pus
     fd.append("usageDays", usageDays || "");
     fd.append("masterCode", masterCode || "");
     fd.append("pushEnabled", pushEnabled || "否");
-    fd.append("personalStatusEnabled", personalStatusEnabled || "否"); // ✅新增
+    fd.append("personalStatusEnabled", personalStatusEnabled || "否");
+    fd.append("scheduleEnabled", scheduleEnabled || "否");
 
     const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
     const json = await res.json().catch(() => ({}));
