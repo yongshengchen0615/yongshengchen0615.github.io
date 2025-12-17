@@ -2,7 +2,7 @@
 const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-// ✅ 你要改：你的 LIFF ID
+// ✅ 你的 LIFF ID
 const LIFF_ID = "2008715969-ZZ9pT504";
 
 let allUsers = [];
@@ -17,7 +17,7 @@ const selectedIds = new Set();
 
 // dirty state (userId -> snapshot string)
 const originalMap = new Map(); // userId -> JSON string snapshot
-const dirtyMap = new Map();    // userId -> true
+const dirtyMap = new Map(); // userId -> true
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
@@ -27,27 +27,29 @@ document.addEventListener("DOMContentLoaded", () => {
   if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
 
   const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.addEventListener("click", async () => {
-    // ✅ 重新整理也要先確保已通過 Gate
-    const ok = await ensureAuthed_();
-    if (!ok) return;
+  if (reloadBtn)
+    reloadBtn.addEventListener("click", async () => {
+      // ✅ 重新整理也要先確保已通過 Gate
+      const ok = await ensureAuthed_();
+      if (!ok) return;
 
-    selectedIds.clear();
-    hideBulkBar_();
-    await loadUsers();
-  });
+      selectedIds.clear();
+      hideBulkBar_();
+      await loadUsers();
+    });
 
   const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn) clearSearchBtn.addEventListener("click", () => {
-    const si = document.getElementById("searchInput");
-    if (si) si.value = "";
+  if (clearSearchBtn)
+    clearSearchBtn.addEventListener("click", () => {
+      const si = document.getElementById("searchInput");
+      if (si) si.value = "";
 
-    // ✅ 清除後同步移除「搜尋中」視覺狀態
-    const box = si?.closest(".search-box");
-    box?.classList.remove("is-searching");
+      // ✅ 清除後同步移除「搜尋中」視覺狀態
+      const box = si?.closest(".search-box");
+      box?.classList.remove("is-searching");
 
-    applyFilters();
-  });
+      applyFilters();
+    });
 
   bindFilter();
   bindSorting_();
@@ -56,24 +58,27 @@ document.addEventListener("DOMContentLoaded", () => {
   // ✅ 更直覺：有輸入就顯示「搜尋中」狀態
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
-    searchInput.addEventListener("input", debounce(() => {
-      const box = searchInput.closest(".search-box");
-      const hasValue = searchInput.value.trim().length > 0;
-      box?.classList.toggle("is-searching", hasValue);
-      applyFilters();
-    }, 180));
+    searchInput.addEventListener(
+      "input",
+      debounce(() => {
+        const box = searchInput.closest(".search-box");
+        const hasValue = searchInput.value.trim().length > 0;
+        box?.classList.toggle("is-searching", hasValue);
+        applyFilters();
+      }, 180)
+    );
 
     // 初始狀態同步一次（避免從快取返回時狀態不一致）
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
 
-  // ✅ 改：先 LIFF + 權限檢查，再載入列表
+  // ✅ 先 LIFF + 權限檢查，再載入列表
   startAuthThenLoad_();
 });
 
 /* =========================================================
- * ✅ LINE Auth Gate（新增）
+ * ✅ LINE Auth Gate（含 Debug）
  * ========================================================= */
 
 let __authPassed = false;
@@ -101,7 +106,6 @@ function bindGateButtons_() {
         if (window.liff && !liff.isLoggedIn()) {
           liff.login(); // 會跳轉
         } else {
-          // 已登入就重新跑檢查
           startAuthThenLoad_();
         }
       } catch (e) {
@@ -111,22 +115,19 @@ function bindGateButtons_() {
   }
 
   if (btnRetry) {
-    btnRetry.onclick = () => {
-      startAuthThenLoad_();
-    };
+    btnRetry.onclick = () => startAuthThenLoad_();
   }
 }
 
 async function ensureAuthed_() {
   if (__authPassed) return true;
-  await startAuthThenLoad_(); // 會在成功時載入
+  await startAuthThenLoad_();
   return __authPassed;
 }
 
 async function startAuthThenLoad_() {
   bindGateButtons_();
 
-  // 基本防呆
   if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID") {
     showGate_("錯誤：尚未設定 LIFF_ID（請在 app.js 填入你的 LIFF ID）");
     toast("尚未設定 LIFF_ID", "err");
@@ -155,6 +156,7 @@ async function startAuthThenLoad_() {
   }
 
   showGate_("取得 LINE 使用者資訊…");
+
   let profile;
   try {
     profile = await liff.getProfile();
@@ -165,21 +167,46 @@ async function startAuthThenLoad_() {
   }
 
   const userId = String(profile?.userId || "").trim();
+  const displayName = String(profile?.displayName || "").trim();
+
   if (!userId) {
     showGate_("錯誤：未取得 userId，無法驗證。");
     toast("未取得 userId", "err");
     return;
   }
 
-  showGate_("檢查「個人狀態開通」權限…");
+  showGate_(
+    `已登入：${displayName || "（無名）"}\nuserId：${userId}\n\n檢查「個人狀態開通」權限…`
+  );
 
-  const enabled = await checkPersonalStatusEnabled_(userId);
-  if (!enabled) {
-    // ✅ 擋住
+  const r = await checkPersonalStatusEnabledDebug_(userId);
+
+  if (!r.ok) {
     __authPassed = false;
     __authedUserId = userId;
 
-    showGate_("功能未開啟：此 userId 的「個人狀態開通」為「否」。");
+    showGate_(
+      `權限檢查失敗（請看下方資訊）\n` +
+        `userId：${userId}\n` +
+        `error：${r.error}\n` +
+        `raw：${(r.raw || "").slice(0, 300)}`
+    );
+
+    toast("權限檢查失敗", "err");
+    return;
+  }
+
+  if (!r.enabled) {
+    __authPassed = false;
+    __authedUserId = userId;
+
+    showGate_(
+      `功能未開啟（personalStatusEnabled != "是"）\n` +
+        `userId：${userId}\n` +
+        `GAS 回傳 personalStatusEnabled：${String(r.personalStatusEnabled)}\n` +
+        `audit：${String(r.audit)}`
+    );
+
     toast("功能未開啟", "err");
     return;
   }
@@ -188,31 +215,45 @@ async function startAuthThenLoad_() {
   __authPassed = true;
   __authedUserId = userId;
   hideGate_();
-
-  // optional：把登入者顯示在 summary（不影響原本統計）
-  const el = document.getElementById("summaryText");
-  if (el) {
-    const shortId = userId.slice(0, 6) + "…";
-    el.textContent = `已驗證：${profile.displayName || "（無名）"} / ${shortId}（載入中…）`;
-  }
+  toast("驗證通過", "ok");
 
   await loadUsers();
 }
 
-async function checkPersonalStatusEnabled_(userId) {
-  try {
-    const url = API_BASE_URL + `?mode=check&userId=${encodeURIComponent(userId)}`;
-    const res = await fetch(url);
-    const json = await res.json();
+async function checkPersonalStatusEnabledDebug_(userId) {
+  const url = API_BASE_URL + `?mode=check&userId=${encodeURIComponent(userId)}`;
 
-    // handleCheck_ 回傳結構：{ status, audit, ..., personalStatusEnabled }
-    const v = String(json?.personalStatusEnabled || "否").trim();
-    return v === "是";
+  try {
+    const res = await fetch(url, { method: "GET" });
+    const raw = await res.text();
+
+    console.log("[check] url:", url);
+    console.log("[check] http:", res.status, "raw:", raw.slice(0, 200));
+
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status}`, raw };
+    }
+
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch (e) {
+      return { ok: false, error: "Response is not JSON (maybe HTML/login page)", raw };
+    }
+
+    const personalStatusEnabled = json?.personalStatusEnabled;
+    const enabled = String(personalStatusEnabled || "").trim() === "是";
+
+    return {
+      ok: true,
+      enabled,
+      personalStatusEnabled,
+      audit: json?.audit,
+      json,
+      raw
+    };
   } catch (e) {
-    console.error("checkPersonalStatusEnabled_ error:", e);
-    showGate_("權限檢查失敗（mode=check 無法取得）：請確認 GAS /exec 可公開讀取。");
-    toast("權限檢查失敗", "err");
-    return false;
+    return { ok: false, error: e?.message || String(e), raw: "" };
   }
 }
 
@@ -252,7 +293,15 @@ function bindFilter() {
 async function loadUsers() {
   try {
     const res = await fetch(API_BASE_URL + "?mode=listUsers");
-    const json = await res.json();
+    const raw = await res.text();
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch (e) {
+      console.error("listUsers raw:", raw.slice(0, 300));
+      throw new Error("listUsers response is not JSON");
+    }
+
     if (!json.ok) throw new Error("listUsers not ok");
     allUsers = json.users || [];
 
@@ -261,9 +310,7 @@ async function loadUsers() {
     dirtyMap.clear();
 
     // snapshot original
-    for (const u of allUsers) {
-      originalMap.set(u.userId, snapshot_(u));
-    }
+    for (const u of allUsers) originalMap.set(u.userId, snapshot_(u));
 
     applyFilters();
     toast("資料已更新", "ok");
@@ -288,7 +335,6 @@ function applyFilters() {
     return true;
   });
 
-  // sort
   filteredUsers.sort((a, b) => compareBy_(a, b, sortKey, sortDir));
 
   renderTable();
@@ -337,7 +383,6 @@ function updateFooter() {
   const dirtyCount = dirtyMap.size;
   const dirtyText = dirtyCount ? `，未儲存 ${dirtyCount} 筆` : "";
 
-  // ✅ 更直覺：若有關鍵字，顯示「搜尋中」
   const keyword = document.getElementById("searchInput")?.value.trim();
   const searchHint = keyword ? "（搜尋中）" : "";
 
@@ -367,7 +412,7 @@ function compareBy_(a, b, key, dir) {
 
   const get = (u) => {
     if (key === "index") return 0;
-    if (key === "expiry") return getExpiryDiff_(u); // remaining days
+    if (key === "expiry") return getExpiryDiff_(u);
     if (key === "isMaster") return u.masterCode ? 1 : 0;
     return u[key];
   };
@@ -375,21 +420,18 @@ function compareBy_(a, b, key, dir) {
   const av = get(a);
   const bv = get(b);
 
-  // number
   if (key === "usageDays" || key === "isMaster" || key === "pushEnabled") {
     const na = Number(av || 0);
     const nb = Number(bv || 0);
     return (na - nb) * sgn;
   }
 
-  // date-ish
   if (key === "createdAt" || key === "startDate") {
     const da = toTime_(av);
     const db = toTime_(bv);
     return (da - db) * sgn;
   }
 
-  // string
   const sa = String(av ?? "").toLowerCase();
   const sb = String(bv ?? "").toLowerCase();
   if (sa < sb) return -1 * sgn;
@@ -430,12 +472,13 @@ function bindBulk_() {
   }
 
   const bulkClear = document.getElementById("bulkClear");
-  if (bulkClear) bulkClear.addEventListener("click", () => {
-    selectedIds.clear();
-    renderTable();
-    updateBulkBar_();
-    syncCheckAll_();
-  });
+  if (bulkClear)
+    bulkClear.addEventListener("click", () => {
+      selectedIds.clear();
+      renderTable();
+      updateBulkBar_();
+      syncCheckAll_();
+    });
 
   const bulkApply = document.getElementById("bulkApply");
   if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
@@ -494,7 +537,6 @@ async function bulkApply_() {
 
     if (audit) u.audit = audit;
 
-    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（批次也不能繞過）
     if ((u.audit || "待審核") !== "通過") {
       u.pushEnabled = "否";
     } else if (pushEnabled) {
@@ -658,10 +700,8 @@ function renderTable() {
       u.masterCode = masterInput.value || "";
       u.audit = auditSelect.value || "待審核";
 
-      // 先吃使用者選擇
       u.pushEnabled = pushSelect.value || "否";
 
-      // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
       if (u.audit !== "通過") {
         u.pushEnabled = "否";
         pushSelect.value = "否";
@@ -670,7 +710,6 @@ function renderTable() {
         pushSelect.disabled = false;
       }
 
-      // 規則套用後再做 dirty 判斷（避免 snapshot 不一致）
       markDirty_(u.userId, u);
 
       const exp = getExpiryInfo(u);
@@ -697,12 +736,9 @@ function renderTable() {
       saveBtn.disabled = true;
       saveBtn.textContent = "儲存中...";
 
-      // 保險：送出前再強制一次（避免 UI 被外力改動）
       const finalAudit = auditSelect.value || "待審核";
-      const finalPush = (finalAudit !== "通過") ? "否" : (pushSelect.value || "否");
-      if (finalAudit !== "通過") {
-        pushSelect.value = "否";
-      }
+      const finalPush = finalAudit !== "通過" ? "否" : pushSelect.value || "否";
+      if (finalAudit !== "通過") pushSelect.value = "否";
 
       const payload = {
         userId: u.userId,
@@ -719,7 +755,6 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
-        // 同步 u 狀態，讓 snapshot 正確
         u.audit = finalAudit;
         u.pushEnabled = finalPush;
         originalMap.set(u.userId, snapshot_(u));
@@ -784,11 +819,16 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (String(audit || "").trim()) {
-    case "通過": return "approved";
-    case "待審核": return "pending";
-    case "拒絕": return "rejected";
-    case "停用": return "disabled";
-    default: return "other";
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    default:
+      return "other";
   }
 }
 
@@ -821,7 +861,7 @@ function snapshot_(u) {
     startDate: u.startDate || "",
     usageDays: String(u.usageDays || ""),
     masterCode: u.masterCode || "",
-    pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
+    pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否"
   });
 }
 
@@ -846,7 +886,13 @@ async function updateUser({ userId, audit, startDate, usageDays, masterCode, pus
     fd.append("pushEnabled", pushEnabled || "否");
 
     const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
-    const json = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let json = {};
+    try {
+      json = JSON.parse(raw);
+    } catch (_) {
+      console.error("updateUser raw:", raw.slice(0, 200));
+    }
     return !!json.ok;
   } catch (err) {
     console.error("updateUser error:", err);
@@ -861,7 +907,13 @@ async function deleteUser(userId) {
     fd.append("userId", userId);
 
     const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
-    const json = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let json = {};
+    try {
+      json = JSON.parse(raw);
+    } catch (_) {
+      console.error("deleteUser raw:", raw.slice(0, 200));
+    }
     return !!json.ok;
   } catch (err) {
     console.error("deleteUser error:", err);
