@@ -1,28 +1,56 @@
-// ================================
-// 0) 你要改的兩個值
-// ================================
-
-// ✅ 你的 LIFF ID
-const LIFF_ID = "2008669658-CwYIitI1";
-
-// ✅ 管理員 Users 後台那支（審核 gate 用）
-const ADMIN_API_URL =
-  "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
+// =========================================================
+// 師傅狀態 + 日曆（✅ 設定檔 config.json 讀取版）
+// - 先 loadConfig_() → 再 LIFF gate → 通過才載入狀態與日曆
+// =========================================================
 
 // ================================
-// 1) 其他 API 設定（你原本那兩支）
+// 0) Runtime Config（from config.json）
 // ================================
-const TECH_API_URL =
-  "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+const CONFIG_URL = "./config.json"; // 依你的部署調整："/config.json" 或 "./config/config.json"
+let APP_CONFIG = null;
 
-const BOOKING_API_URL =
-  "https://script.google.com/macros/s/AKfycbyDLxx5tINOCerjzpH3_dhxBCDR_SGw-bLatqLpcLgbx01ds3UJ0nJPCy7rkDhimxYvVw/exec";
+async function loadConfig_() {
+  const res = await fetch(`${CONFIG_URL}?v=${Date.now()}`, {
+    cache: "no-store",
+    method: "GET",
+  });
+  const text = await res.text();
 
-// 想顯示的師傅 ID
-const TARGET_MASTER_ID = "10";
+  if (!res.ok) {
+    throw new Error(`CONFIG fetch failed: ${res.status} ${text.slice(0, 160)}`);
+  }
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    throw new Error("CONFIG non-JSON: " + text.slice(0, 200));
+  }
+
+  const required = [
+    "LIFF_ID",
+    "ADMIN_API_URL",
+    "TECH_API_URL",
+    "BOOKING_API_URL",
+    "TARGET_MASTER_ID",
+  ];
+  const missing = required.filter((k) => !json[k] || String(json[k]).trim() === "");
+  if (missing.length) throw new Error("CONFIG missing: " + missing.join(", "));
+
+  APP_CONFIG = Object.freeze({
+    LIFF_ID: String(json.LIFF_ID).trim(),
+    ADMIN_API_URL: String(json.ADMIN_API_URL).trim(),
+    TECH_API_URL: String(json.TECH_API_URL).trim(),
+    BOOKING_API_URL: String(json.BOOKING_API_URL).trim(),
+    TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
+  });
+
+  console.log("[CONFIG] loaded", APP_CONFIG);
+  return APP_CONFIG;
+}
 
 // ================================
-// 2) Calendar UI Text
+// 1) Calendar UI Text
 // ================================
 const CALENDAR_UI_TEXT = {
   weeklyOff: { tooltip: "固定休假日" },
@@ -35,7 +63,7 @@ const CALENDAR_UI_TEXT = {
 };
 
 // ================================
-// 3) 小工具
+// 2) 小工具
 // ================================
 function $(id) {
   return document.getElementById(id);
@@ -55,7 +83,7 @@ function normalizeDigits(v) {
 }
 
 // ================================
-// 4) Gate UI（未通過審核 / 非 LIFF 環境）
+// 3) Gate UI（未通過審核 / 非 LIFF 環境）
 // ================================
 function hideLoading_() {
   const lo = $("loadingOverlay");
@@ -117,7 +145,7 @@ function showDenied_(info) {
 }
 
 // ================================
-// 5) LIFF：取得 userId + displayName
+// 4) LIFF：取得 userId + displayName
 // ================================
 async function getUserIdFromLiff_() {
   if (typeof liff === "undefined") {
@@ -125,7 +153,11 @@ async function getUserIdFromLiff_() {
     return null;
   }
 
-  await liff.init({ liffId: LIFF_ID });
+  if (!APP_CONFIG || !APP_CONFIG.LIFF_ID) {
+    throw new Error("APP_CONFIG not ready (LIFF_ID missing)");
+  }
+
+  await liff.init({ liffId: APP_CONFIG.LIFF_ID });
 
   if (!liff.isLoggedIn()) {
     showDenied_({ denyReason: "liff_login" });
@@ -145,11 +177,15 @@ async function getUserIdFromLiff_() {
 }
 
 // ================================
-// 6) 管理員 GAS：check + 若不存在則 register（預設待審核）
-//    ✅ 加入 debug：避免回 HTML / 不是 JSON 時看不到原因
+// 5) 管理員 GAS：check + 若不存在則 register（預設待審核）
+//    ✅ debug：避免回 HTML / 不是 JSON 時看不到原因
 // ================================
 async function adminGet_(paramsObj) {
-  const u = new URL(ADMIN_API_URL);
+  if (!APP_CONFIG || !APP_CONFIG.ADMIN_API_URL) {
+    throw new Error("APP_CONFIG not ready (ADMIN_API_URL missing)");
+  }
+
+  const u = new URL(APP_CONFIG.ADMIN_API_URL);
   Object.entries(paramsObj || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
   });
@@ -203,7 +239,7 @@ async function ensureUserExists_(userId, displayName) {
 }
 
 // ================================
-// 7) 審核 Gate：通過審核才能進主畫面
+// 6) 審核 Gate：通過審核才能進主畫面
 // ================================
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
@@ -237,7 +273,7 @@ async function checkAccessOrBlock_() {
 }
 
 // ================================
-// 8) 主題切換
+// 7) 主題切換
 // ================================
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -258,7 +294,7 @@ function initTheme() {
 }
 
 // ================================
-// 9) Loading
+// 8) Loading
 // ================================
 function showApp() {
   hideLoading_();
@@ -267,7 +303,7 @@ function showApp() {
 }
 
 // ================================
-// 10) 師傅狀態 UI
+// 9) 師傅狀態 UI
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
@@ -299,11 +335,15 @@ function updateStatusUI(kind, data) {
 }
 
 async function loadTechStatus() {
-  const res = await fetch(TECH_API_URL, { method: "GET" });
+  if (!APP_CONFIG || !APP_CONFIG.TECH_API_URL) {
+    throw new Error("APP_CONFIG not ready (TECH_API_URL missing)");
+  }
+
+  const res = await fetch(APP_CONFIG.TECH_API_URL, { method: "GET" });
   if (!res.ok) throw new Error("TECH_API fetch failed: " + res.status);
 
   const json = await res.json();
-  const target = normalizeDigits(TARGET_MASTER_ID);
+  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
 
   const body = json.body?.find((r) => normalizeDigits(r.masterId) === target);
   const foot = json.foot?.find((r) => normalizeDigits(r.masterId) === target);
@@ -313,7 +353,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 11) 日曆：整格底色 + 點擊 toast
+// 10) 日曆：整格底色 + 點擊 toast
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -396,7 +436,11 @@ function formatTimeHHmm(val) {
 }
 
 async function loadBizConfig() {
-  const url = `${BOOKING_API_URL}?entity=bootstrap`;
+  if (!APP_CONFIG || !APP_CONFIG.BOOKING_API_URL) {
+    throw new Error("APP_CONFIG not ready (BOOKING_API_URL missing)");
+  }
+
+  const url = `${APP_CONFIG.BOOKING_API_URL}?entity=bootstrap`;
   const res = await fetch(url, { method: "GET" });
   if (!res.ok) throw new Error("BOOKING_API fetch failed: " + res.status);
 
@@ -565,17 +609,19 @@ function bindCalendarNav() {
 }
 
 // ================================
-// 12) 初始化（✅ 先 LIFF → check → 若無則 register → 再 check → 通過才載入）
+// 11) 初始化（✅ 先 config → 再 LIFF → check → 通過才載入）
 // ================================
 window.onload = async () => {
   initTheme();
-
-  const mid = $("techMasterId");
-  if (mid) mid.textContent = TARGET_MASTER_ID;
-
   bindCalendarNav();
 
   try {
+    // ✅ 先讀設定檔
+    await loadConfig_();
+
+    const mid = $("techMasterId");
+    if (mid) mid.textContent = APP_CONFIG.TARGET_MASTER_ID;
+
     const gate = await checkAccessOrBlock_();
     if (!gate.allowed) return;
 
@@ -592,5 +638,6 @@ window.onload = async () => {
   } catch (err) {
     showApp();
     toast("初始化失敗：" + String(err.message || err));
+    console.error(err);
   }
 };
