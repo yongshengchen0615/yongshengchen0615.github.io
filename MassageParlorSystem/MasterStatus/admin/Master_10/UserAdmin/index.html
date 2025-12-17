@@ -82,7 +82,7 @@
             <input
               id="searchInput"
               class="input"
-              placeholder="搜尋：userId、名稱、師傅編號"
+              placeholder="搜尋：userId、名稱"
               autocomplete="off"
             />
             <button id="clearSearchBtn" class="btn icon ghost" type="button" aria-label="清除搜尋">✕</button>
@@ -122,15 +122,6 @@
             </select>
           </div>
 
-          <div class="bulk-group">
-            <label class="bulk-label" for="bulkPush">批次推播</label>
-            <select id="bulkPush" class="select">
-              <option value="">不變更</option>
-              <option value="是">開啟</option>
-              <option value="否">關閉</option>
-            </select>
-          </div>
-
           <button id="bulkApply" class="btn primary" type="button">套用到選取</button>
           <button id="bulkDelete" class="btn danger" type="button">批次刪除</button>
         </div>
@@ -152,14 +143,11 @@
               <th data-sort="usageDays" class="sortable">期限(天)</th>
               <th data-sort="expiry" class="sortable">使用狀態</th>
               <th data-sort="audit" class="sortable">審核狀態</th>
-              <th data-sort="masterCode" class="sortable">師傅編號</th>
-              <th data-sort="isMaster" class="sortable">是否師傅</th>
-              <th data-sort="pushEnabled" class="sortable">是否推播</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="13">載入中…</td></tr>
+            <tr><td colspan="10">載入中…</td></tr>
           </tbody>
         </table>
       </div>

@@ -1,7 +1,7 @@
 // =========================================================
-// Users 後台管理 — app.js（整合版）
+// Users 後台管理 — app.js（移除師傅/推播版）
 // ✅ Gate：LIFF init → 若未登入則自動 liff.login() → 取 profile.userId
-// ✅ ADMIN check：personalStatusEnabled / personalStatus / pushEnabled 任一為「是」才放行
+// ✅ ADMIN check：personalStatusEnabled / personalStatus 任一為「是」才放行
 // ✅ 放行後才呼叫 TECH listUsers / updateUser / deleteUser
 // ✅ Gate 無按鈕（純顯示）
 // =========================================================
@@ -131,7 +131,7 @@ async function startAuthThenLoad_() {
   if (!liff.isLoggedIn()) {
     showGate_("⏳ 尚未登入 LINE，正在自動登入…");
     try {
-      liff.login(); // 會 redirect，後續回到同頁會再跑一次流程
+      liff.login(); // redirect
     } catch (e) {
       showGate_("❌ 自動登入失敗：\n" + (e?.message || String(e)));
       toast_("自動登入失敗", "err");
@@ -201,7 +201,7 @@ async function startAuthThenLoad_() {
   hideGate_();
 }
 
-// 欄位兼容：personalStatusEnabled 若不存在，fallback 用 personalStatus / pushEnabled
+// ✅ 移除推播兼容：只看 personalStatusEnabled / personalStatus
 async function adminCheckPersonalStatus_(userId) {
   const url =
     ADMIN_API_BASE_URL +
@@ -223,9 +223,7 @@ async function adminCheckPersonalStatus_(userId) {
       return { ok: false, error: "Response is not JSON", raw };
     }
 
-    const personalStatusEnabled =
-      json?.personalStatusEnabled ?? json?.personalStatus ?? json?.pushEnabled;
-
+    const personalStatusEnabled = json?.personalStatusEnabled ?? json?.personalStatus;
     const enabled = String(personalStatusEnabled || "").trim() === "是";
 
     return {
@@ -375,7 +373,7 @@ function applyFilters() {
     if (filter !== "ALL" && audit !== filter) return false;
 
     if (keywordRaw) {
-      const hay = `${u.userId} ${u.displayName || ""} ${u.masterCode || ""}`.toLowerCase();
+      const hay = `${u.userId} ${u.displayName || ""}`.toLowerCase();
       if (!hay.includes(keywordRaw)) return false;
     }
     return true;
@@ -424,7 +422,7 @@ function renderTable_() {
   if (!tbody) return;
 
   if (!filteredUsers.length) {
-    tbody.innerHTML = `<tr><td colspan="13">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10">無資料</td></tr>`;
     return;
   }
 
@@ -435,9 +433,6 @@ function renderTable_() {
     const startDate = toDateInputValue_(u.startDate);
     const usageDays = String(u.usageDays ?? "");
     const audit = String(u.audit || "待審核");
-    const masterCode = String(u.masterCode || "");
-    const isMaster = String(u.isMaster || (masterCode ? "是" : "否"));
-    const pushEnabled = String(u.pushEnabled || "否") === "是" ? "是" : "否";
 
     const checked = selectedIds.has(userId) ? "checked" : "";
     const expiry = calcExpiryStatus_(u);
@@ -485,21 +480,6 @@ function renderTable_() {
       ${renderAuditOptions_(audit)}
     </select>
     ${auditBadge}
-  </td>
-
-  <td data-label="師傅編號">
-    <input class="row-input" type="text" data-field="masterCode" value="${escapeAttr_(masterCode)}" />
-  </td>
-
-  <td data-label="是否師傅">
-    <span class="row-hint">${escapeHtml_(isMaster)}</span>
-  </td>
-
-  <td data-label="是否推播">
-    <select class="row-input" data-field="pushEnabled">
-      <option value="是" ${pushEnabled === "是" ? "selected" : ""}>是</option>
-      <option value="否" ${pushEnabled === "否" ? "selected" : ""}>否</option>
-    </select>
   </td>
 
   <td data-label="操作">
@@ -567,10 +547,6 @@ function onRowChange_(e) {
   if (field === "startDate") u.startDate = v;
   if (field === "usageDays") u.usageDays = v;
   if (field === "audit") u.audit = v;
-  if (field === "masterCode") u.masterCode = v;
-  if (field === "pushEnabled") u.pushEnabled = v;
-
-  u.isMaster = String(u.masterCode || "").trim() ? "是" : "否";
 
   markDirty_(userId, u);
 
@@ -607,8 +583,6 @@ async function saveRow_(userId) {
     audit: String(u.audit || "").trim(),
     startDate: normalizeDateForPost_(u.startDate) || "",
     usageDays: String(u.usageDays ?? "").trim() || "",
-    masterCode: String(u.masterCode || "").trim() || "",
-    pushEnabled: String(u.pushEnabled || "否") === "是" ? "是" : "否",
   };
 
   const r = await techPost_(payload);
@@ -651,16 +625,15 @@ function findUserById_(userId) {
 }
 
 // =========================================================
-// 8) Bulk
+// 8) Bulk（只保留批次審核 + 批次刪除）
 // =========================================================
 function bindBulk_() {
   document.getElementById("bulkApply")?.addEventListener("click", async () => {
     if (!selectedIds.size) return;
 
     const bulkAudit = document.getElementById("bulkAudit")?.value || "";
-    const bulkPush = document.getElementById("bulkPush")?.value || "";
 
-    if (!bulkAudit && !bulkPush) {
+    if (!bulkAudit) {
       toast_("未選擇要套用的欄位", "err");
       return;
     }
@@ -669,10 +642,7 @@ function bindBulk_() {
       const u = findUserById_(userId);
       if (!u) continue;
 
-      if (bulkAudit) u.audit = bulkAudit;
-      if (bulkPush) u.pushEnabled = bulkPush;
-
-      u.isMaster = String(u.masterCode || "").trim() ? "是" : "否";
+      u.audit = bulkAudit;
       markDirty_(userId, u);
     }
 
@@ -812,8 +782,6 @@ function snapshot_(u) {
     audit: String(u.audit || "待審核"),
     startDate: normalizeDateForPost_(u.startDate),
     usageDays: String(u.usageDays ?? ""),
-    masterCode: String(u.masterCode || ""),
-    pushEnabled: String(u.pushEnabled || "否") === "是" ? "是" : "否",
   });
 }
 

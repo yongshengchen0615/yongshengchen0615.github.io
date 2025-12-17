@@ -208,7 +208,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .table-wrap{ overflow:auto; padding:12px 14px 14px; }
 table{
   width:100%;
-  min-width:1220px;
+  min-width: 980px; /* ✅ 少三欄後縮小 */
   border-collapse:separate;
   border-spacing:0;
   background:var(--card);
@@ -468,7 +468,7 @@ input[type="date"]:focus, input[type="number"]:focus, input[type="text"]:focus, 
 
 .auth-hint{
   margin-top:12px;
-  color: var(--text-sub);
+  color:var(--text-sub);
   font-size:12px;
   line-height:1.6;
   padding:10px 12px;
