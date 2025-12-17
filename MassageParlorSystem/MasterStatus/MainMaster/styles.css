@@ -146,7 +146,6 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .search-box:focus-within{ box-shadow:var(--focus); border-color:rgba(56,189,248,.45); }
 
-/* ✅ 搜尋中狀態（更直覺） */
 .search-box.is-searching{
   border-color: rgba(56,189,248,.55);
   background: var(--accent-soft);
@@ -209,7 +208,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .table-wrap{ overflow:auto; padding:12px 14px 14px; }
 table{
   width:100%;
-  min-width:1220px;
+  min-width:1320px; /* ✅新增欄位後小調 */
   border-collapse:separate;
   border-spacing:0;
   background:var(--card);
@@ -240,14 +239,12 @@ tbody td{
   white-space:nowrap;
 }
 
-/* ✅ Zebra rows：單列 / 雙列顏色區分 */
 tbody tr:nth-child(odd){
   background: rgba(255,255,255,.02);
 }
 tbody tr:nth-child(even){
   background: rgba(0,0,0,.14);
 }
-/* light mode 微調 */
 html[data-theme="light"] tbody tr:nth-child(odd){
   background: rgba(0,0,0,.015);
 }
@@ -255,7 +252,6 @@ html[data-theme="light"] tbody tr:nth-child(even){
   background: rgba(0,0,0,.04);
 }
 
-/* hover / dirty 優先 */
 tbody tr:hover{ background:rgba(56,189,248,.08); }
 tbody tr.dirty{ box-shadow: inset 3px 0 0 rgba(245,158,11,.75); }
 tbody tr.dirty:hover{ background:rgba(245,158,11,.10); }

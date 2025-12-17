@@ -2,6 +2,9 @@
 const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
 
+// ✅ 你要改：你的 LIFF ID
+const LIFF_ID = "YOUR_LIFF_ID";
+
 let allUsers = [];
 let filteredUsers = [];
 
@@ -25,6 +28,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const reloadBtn = document.getElementById("reloadBtn");
   if (reloadBtn) reloadBtn.addEventListener("click", async () => {
+    // ✅ 重新整理也要先確保已通過 Gate
+    const ok = await ensureAuthed_();
+    if (!ok) return;
+
     selectedIds.clear();
     hideBulkBar_();
     await loadUsers();
@@ -61,8 +68,153 @@ document.addEventListener("DOMContentLoaded", () => {
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
 
-  loadUsers();
+  // ✅ 改：先 LIFF + 權限檢查，再載入列表
+  startAuthThenLoad_();
 });
+
+/* =========================================================
+ * ✅ LINE Auth Gate（新增）
+ * ========================================================= */
+
+let __authPassed = false;
+let __authedUserId = "";
+
+function showGate_(msg) {
+  const gate = document.getElementById("authGate");
+  const status = document.getElementById("authStatus");
+  if (status) status.textContent = msg || "需要登入與權限檢查";
+  if (gate) gate.classList.remove("hidden");
+}
+
+function hideGate_() {
+  const gate = document.getElementById("authGate");
+  if (gate) gate.classList.add("hidden");
+}
+
+function bindGateButtons_() {
+  const btnLogin = document.getElementById("btnLineLogin");
+  const btnRetry = document.getElementById("btnRetryAuth");
+
+  if (btnLogin) {
+    btnLogin.onclick = () => {
+      try {
+        if (window.liff && !liff.isLoggedIn()) {
+          liff.login(); // 會跳轉
+        } else {
+          // 已登入就重新跑檢查
+          startAuthThenLoad_();
+        }
+      } catch (e) {
+        showGate_("LINE 登入呼叫失敗：" + (e?.message || String(e)));
+      }
+    };
+  }
+
+  if (btnRetry) {
+    btnRetry.onclick = () => {
+      startAuthThenLoad_();
+    };
+  }
+}
+
+async function ensureAuthed_() {
+  if (__authPassed) return true;
+  await startAuthThenLoad_(); // 會在成功時載入
+  return __authPassed;
+}
+
+async function startAuthThenLoad_() {
+  bindGateButtons_();
+
+  // 基本防呆
+  if (!LIFF_ID || LIFF_ID === "YOUR_LIFF_ID") {
+    showGate_("錯誤：尚未設定 LIFF_ID（請在 app.js 填入你的 LIFF ID）");
+    toast("尚未設定 LIFF_ID", "err");
+    return;
+  }
+
+  if (!window.liff) {
+    showGate_("錯誤：LIFF SDK 未載入。請確認 index.html 已引入 LIFF SDK。");
+    toast("LIFF SDK 未載入", "err");
+    return;
+  }
+
+  showGate_("初始化 LIFF…");
+
+  try {
+    await liff.init({ liffId: LIFF_ID });
+  } catch (e) {
+    showGate_("LIFF 初始化失敗：" + (e?.message || String(e)));
+    toast("LIFF 初始化失敗", "err");
+    return;
+  }
+
+  if (!liff.isLoggedIn()) {
+    showGate_("尚未登入 LINE。請點「LINE 登入」。");
+    return;
+  }
+
+  showGate_("取得 LINE 使用者資訊…");
+  let profile;
+  try {
+    profile = await liff.getProfile();
+  } catch (e) {
+    showGate_("取得 profile 失敗：" + (e?.message || String(e)));
+    toast("取得 profile 失敗", "err");
+    return;
+  }
+
+  const userId = String(profile?.userId || "").trim();
+  if (!userId) {
+    showGate_("錯誤：未取得 userId，無法驗證。");
+    toast("未取得 userId", "err");
+    return;
+  }
+
+  showGate_("檢查「個人狀態開通」權限…");
+
+  const enabled = await checkPersonalStatusEnabled_(userId);
+  if (!enabled) {
+    // ✅ 擋住
+    __authPassed = false;
+    __authedUserId = userId;
+
+    showGate_("功能未開啟：此 userId 的「個人狀態開通」為「否」。");
+    toast("功能未開啟", "err");
+    return;
+  }
+
+  // ✅ 通過
+  __authPassed = true;
+  __authedUserId = userId;
+  hideGate_();
+
+  // optional：把登入者顯示在 summary（不影響原本統計）
+  const el = document.getElementById("summaryText");
+  if (el) {
+    const shortId = userId.slice(0, 6) + "…";
+    el.textContent = `已驗證：${profile.displayName || "（無名）"} / ${shortId}（載入中…）`;
+  }
+
+  await loadUsers();
+}
+
+async function checkPersonalStatusEnabled_(userId) {
+  try {
+    const url = API_BASE_URL + `?mode=check&userId=${encodeURIComponent(userId)}`;
+    const res = await fetch(url);
+    const json = await res.json();
+
+    // handleCheck_ 回傳結構：{ status, audit, ..., personalStatusEnabled }
+    const v = String(json?.personalStatusEnabled || "否").trim();
+    return v === "是";
+  } catch (e) {
+    console.error("checkPersonalStatusEnabled_ error:", e);
+    showGate_("權限檢查失敗（mode=check 無法取得）：請確認 GAS /exec 可公開讀取。");
+    toast("權限檢查失敗", "err");
+    return false;
+  }
+}
 
 /* ========= Theme ========= */
 

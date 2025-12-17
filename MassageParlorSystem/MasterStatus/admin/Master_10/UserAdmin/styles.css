@@ -403,3 +403,87 @@ input[type="date"]:focus, input[type="number"]:focus, input[type="text"]:focus, 
   .sticky-col{ position:static; }
   .actions{ justify-content:flex-end; width:100%; }
 }
+
+/* =========================================================
+ * ✅ LINE Auth Gate（新增）
+ * ========================================================= */
+.auth-gate{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background: rgba(2,6,23,.62);
+  backdrop-filter: blur(10px);
+}
+.auth-gate.hidden{ display:none; }
+
+.auth-card{
+  width:min(520px, 100%);
+  border:1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--card2), transparent);
+  box-shadow: var(--shadow);
+  padding:14px;
+}
+
+.auth-head{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.auth-mark{
+  width:42px;
+  height:42px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(56,189,248,.35);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight:900;
+}
+.auth-title .auth-h{
+  font-weight:900;
+  font-size:14px;
+  letter-spacing:.2px;
+}
+.auth-title .auth-p{
+  margin-top:4px;
+  color: var(--text-sub);
+  font-size:12px;
+}
+
+.auth-status{
+  margin-top:12px;
+  border:1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding:10px 12px;
+  color: var(--text);
+  font-size:12px;
+  line-height:1.6;
+  min-height: 44px;
+  display:flex;
+  align-items:center;
+}
+
+.auth-actions{
+  margin-top:12px;
+  display:flex;
+  gap:10px;
+}
+.auth-actions .btn{ flex:1; }
+
+.auth-hint{
+  margin-top:12px;
+  color: var(--text-sub);
+  font-size:12px;
+  line-height:1.6;
+  padding:10px 12px;
+  border-radius: var(--radius-md);
+  border:1px solid rgba(56,189,248,.25);
+  background: var(--accent-soft);
+}

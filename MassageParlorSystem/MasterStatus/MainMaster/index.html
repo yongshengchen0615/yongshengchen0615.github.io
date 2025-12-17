@@ -111,6 +111,16 @@
             </select>
           </div>
 
+          <!-- ✅新增：批次個人狀態開通 -->
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkPersonalStatus">批次個人狀態</label>
+            <select id="bulkPersonalStatus" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
           <button id="bulkApply" class="btn primary" type="button">套用到選取</button>
           <button id="bulkDelete" class="btn danger" type="button">批次刪除</button>
         </div>
@@ -135,11 +145,12 @@
               <th data-sort="masterCode" class="sortable">師傅編號</th>
               <th data-sort="isMaster" class="sortable">是否師傅</th>
               <th data-sort="pushEnabled" class="sortable">是否推播</th>
+              <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th> <!-- ✅新增 -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="13">載入中...</td></tr>
+            <tr><td colspan="14">載入中...</td></tr>
           </tbody>
         </table>
       </div>

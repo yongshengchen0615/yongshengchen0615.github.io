@@ -12,14 +12,13 @@ let sortDir = "desc"; // asc | desc
 // selection state
 const selectedIds = new Set();
 
-// dirty state (userId -> snapshot string)
+// dirty state
 const originalMap = new Map(); // userId -> JSON string snapshot
 const dirtyMap = new Map();    // userId -> true
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
 
-  // actions
   const themeBtn = document.getElementById("themeToggle");
   if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
 
@@ -35,7 +34,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const si = document.getElementById("searchInput");
     if (si) si.value = "";
 
-    // ✅ 清除後同步移除「搜尋中」視覺狀態
     const box = si?.closest(".search-box");
     box?.classList.remove("is-searching");
 
@@ -46,7 +44,6 @@ document.addEventListener("DOMContentLoaded", () => {
   bindSorting_();
   bindBulk_();
 
-  // ✅ 更直覺：有輸入就顯示「搜尋中」狀態
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", debounce(() => {
@@ -56,7 +53,6 @@ document.addEventListener("DOMContentLoaded", () => {
       applyFilters();
     }, 180));
 
-    // 初始狀態同步一次（避免從快取返回時狀態不一致）
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
@@ -102,13 +98,16 @@ async function loadUsers() {
     const res = await fetch(API_BASE_URL + "?mode=listUsers");
     const json = await res.json();
     if (!json.ok) throw new Error("listUsers not ok");
-    allUsers = json.users || [];
+    allUsers = (json.users || []).map((u) => ({
+      ...u,
+      // ✅確保新欄位存在
+      personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
+      pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
+    }));
 
-    // reset state
     originalMap.clear();
     dirtyMap.clear();
 
-    // snapshot original
     for (const u of allUsers) {
       originalMap.set(u.userId, snapshot_(u));
     }
@@ -136,7 +135,6 @@ function applyFilters() {
     return true;
   });
 
-  // sort
   filteredUsers.sort((a, b) => compareBy_(a, b, sortKey, sortDir));
 
   renderTable();
@@ -185,7 +183,6 @@ function updateFooter() {
   const dirtyCount = dirtyMap.size;
   const dirtyText = dirtyCount ? `，未儲存 ${dirtyCount} 筆` : "";
 
-  // ✅ 更直覺：若有關鍵字，顯示「搜尋中」
   const keyword = document.getElementById("searchInput")?.value.trim();
   const searchHint = keyword ? "（搜尋中）" : "";
 
@@ -215,7 +212,7 @@ function compareBy_(a, b, key, dir) {
 
   const get = (u) => {
     if (key === "index") return 0;
-    if (key === "expiry") return getExpiryDiff_(u); // remaining days
+    if (key === "expiry") return getExpiryDiff_(u);
     if (key === "isMaster") return u.masterCode ? 1 : 0;
     return u[key];
   };
@@ -223,8 +220,15 @@ function compareBy_(a, b, key, dir) {
   const av = get(a);
   const bv = get(b);
 
+  // ✅ 是/否 欄位排序（push / personalStatus）
+  if (key === "pushEnabled" || key === "personalStatusEnabled") {
+    const na = String(av) === "是" ? 1 : 0;
+    const nb = String(bv) === "是" ? 1 : 0;
+    return (na - nb) * sgn;
+  }
+
   // number
-  if (key === "usageDays" || key === "isMaster" || key === "pushEnabled") {
+  if (key === "usageDays" || key === "isMaster") {
     const na = Number(av || 0);
     const nb = Number(bv || 0);
     return (na - nb) * sgn;
@@ -327,8 +331,9 @@ function syncCheckAll_() {
 async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
+  const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || ""; // ✅新增
 
-  if (!audit && !pushEnabled) {
+  if (!audit && !pushEnabled && !personalStatusEnabled) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -347,6 +352,11 @@ async function bulkApply_() {
       u.pushEnabled = "否";
     } else if (pushEnabled) {
       u.pushEnabled = pushEnabled;
+    }
+
+    // ✅ 個人狀態開通：不綁審核狀態（純開關）
+    if (personalStatusEnabled) {
+      u.personalStatusEnabled = personalStatusEnabled;
     }
 
     markDirty_(id, u);
@@ -411,7 +421,7 @@ function renderTable() {
 
   if (!filteredUsers.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="13">無資料</td>`;
+    tr.innerHTML = `<td colspan="14">無資料</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -419,6 +429,7 @@ function renderTable() {
   filteredUsers.forEach((u, i) => {
     const expiry = getExpiryInfo(u);
     const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
+    const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否"; // ✅新增
     const audit = u.audit || "待審核";
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
@@ -462,6 +473,14 @@ function renderTable() {
         </select>
       </td>
 
+      <!-- ✅新增：個人狀態開通（下拉） -->
+      <td data-label="個人狀態開通">
+        <select class="personal-status-select" aria-label="個人狀態開通">
+          <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
+          <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
+        </select>
+      </td>
+
       <td data-label="操作">
         <div class="actions">
           ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : `<span class="row-hint">-</span>`}
@@ -476,6 +495,7 @@ function renderTable() {
     const daysInput = tr.querySelector(".days-input");
     const masterInput = tr.querySelector(".master-code-input");
     const pushSelect = tr.querySelector(".push-select");
+    const personalSelect = tr.querySelector(".personal-status-select"); // ✅新增
     const auditSelect = tr.querySelector(".audit-select");
     const badge = tr.querySelector(".audit-badge");
     const saveBtn = tr.querySelector(".btn-save");
@@ -518,7 +538,9 @@ function renderTable() {
         pushSelect.disabled = false;
       }
 
-      // 規則套用後再做 dirty 判斷（避免 snapshot 不一致）
+      // ✅ 個人狀態開通：純開關
+      u.personalStatusEnabled = personalSelect.value || "否";
+
       markDirty_(u.userId, u);
 
       const exp = getExpiryInfo(u);
@@ -530,13 +552,14 @@ function renderTable() {
 
       saveBtn.disabled = false;
       tr.classList.add("dirty");
-      applyFiltersFooterOnly_();
+      updateFooter();
     };
 
     dateInput.addEventListener("change", onAnyChange);
     daysInput.addEventListener("input", onAnyChange);
     masterInput.addEventListener("input", onAnyChange);
     pushSelect.addEventListener("change", onAnyChange);
+    personalSelect.addEventListener("change", onAnyChange); // ✅新增
     auditSelect.addEventListener("change", onAnyChange);
 
     saveBtn.addEventListener("click", async () => {
@@ -558,7 +581,8 @@ function renderTable() {
         startDate: dateInput.value,
         usageDays: daysInput.value,
         masterCode: masterInput.value,
-        pushEnabled: finalPush
+        pushEnabled: finalPush,
+        personalStatusEnabled: personalSelect.value || "否" // ✅新增
       };
 
       const ok = await updateUser(payload);
@@ -567,9 +591,9 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
-        // 同步 u 狀態，讓 snapshot 正確
         u.audit = finalAudit;
         u.pushEnabled = finalPush;
+        u.personalStatusEnabled = personalSelect.value || "否";
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
         await loadUsers();
@@ -621,10 +645,6 @@ function refreshSortIndicators_() {
   });
 }
 
-function applyFiltersFooterOnly_() {
-  updateFooter();
-}
-
 function auditOption(value, current) {
   const sel = value === current ? "selected" : "";
   return `<option value="${value}" ${sel}>${value}</option>`;
@@ -670,6 +690,7 @@ function snapshot_(u) {
     usageDays: String(u.usageDays || ""),
     masterCode: u.masterCode || "",
     pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
+    personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否", // ✅新增
   });
 }
 
@@ -682,7 +703,7 @@ function markDirty_(userId, u) {
 
 /* ========= API ========= */
 
-async function updateUser({ userId, audit, startDate, usageDays, masterCode, pushEnabled }) {
+async function updateUser({ userId, audit, startDate, usageDays, masterCode, pushEnabled, personalStatusEnabled }) {
   try {
     const fd = new URLSearchParams();
     fd.append("mode", "updateUser");
@@ -692,6 +713,7 @@ async function updateUser({ userId, audit, startDate, usageDays, masterCode, pus
     fd.append("usageDays", usageDays || "");
     fd.append("masterCode", masterCode || "");
     fd.append("pushEnabled", pushEnabled || "否");
+    fd.append("personalStatusEnabled", personalStatusEnabled || "否"); // ✅新增
 
     const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
     const json = await res.json().catch(() => ({}));
