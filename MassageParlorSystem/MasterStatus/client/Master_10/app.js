@@ -1,12 +1,20 @@
 // ================================
-// 1) API 設定：請填你的 GAS Web App
+// 0) 你要改的兩個值
 // ================================
 
-// A) 師傅狀態 Web App URL（你原本那支）
+// ✅ 你的 LIFF ID
+const LIFF_ID = "2008669658-CwYIitI1";
+
+// ✅ 管理員 Users 後台那支（審核 gate 用）
+const ADMIN_API_URL =
+  "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec";
+
+// ================================
+// 1) 其他 API 設定（你原本那兩支）
+// ================================
 const TECH_API_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// B) Booking CRUD（含 Config / DateTypes）那支
 const BOOKING_API_URL =
   "https://script.google.com/macros/s/AKfycbyDLxx5tINOCerjzpH3_dhxBCDR_SGw-bLatqLpcLgbx01ds3UJ0nJPCy7rkDhimxYvVw/exec";
 
@@ -14,15 +22,13 @@ const BOOKING_API_URL =
 const TARGET_MASTER_ID = "10";
 
 // ================================
-// 2) Calendar UI Text（點選日期才顯示文字）
+// 2) Calendar UI Text
 // ================================
 const CALENDAR_UI_TEXT = {
-  weeklyOff: {
-    tooltip: "固定休假日",
-  },
+  weeklyOff: { tooltip: "固定休假日" },
   dateTypes: {
     holiday: { tooltip: "休假日" },
-    workday: { tooltipPrefix: "" }, // 例如你想顯示「補班」可加前綴
+    workday: { tooltipPrefix: "" },
     other: { tooltipPrefix: "" },
   },
   rule_workday_override_weeklyoff: true,
@@ -48,63 +54,133 @@ function normalizeDigits(v) {
   return String(v || "").replace(/[^\d]/g, "");
 }
 
-/**
- * ✅ 把 Config 的時間（可能是 Date / 1899-12-30 / "09:00" / 0.375 / "0.375"）統一轉成 "HH:mm"
- */
-function formatTimeHHmm(val) {
-  if (val == null || val === "") return "";
+// ================================
+// 4) Gate UI（未通過審核 / 非 LIFF 環境）
+// ================================
+function hideLoading_() {
+  const lo = $("loadingOverlay");
+  if (lo) {
+    lo.classList.add("hidden");
+    lo.setAttribute("aria-busy", "false");
+  }
+}
 
-  const s = String(val).trim();
+function showDenied_(info) {
+  hideLoading_();
 
-  // 1) 字串本來就是 HH:mm
-  const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
-  if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+  const denied = $("accessDenied");
+  if (denied) denied.style.display = "block";
 
-  // 2) ISO 8601 (UTC Z) => +8 (Asia/Taipei)
-  if (/\d{4}-\d{2}-\d{2}T/.test(s) && /Z$/.test(s)) {
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      const utcH = d.getUTCHours();
-      const utcM = d.getUTCMinutes();
-      const total = utcH * 60 + utcM + 8 * 60;
-      const hh = String(Math.floor((total % 1440) / 60)).padStart(2, "0");
-      const mm = String(total % 60).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
+  const app = $("appContainer");
+  if (app) app.style.display = "none";
+
+  const titleEl = $("deniedTitle");
+  const textEl = $("deniedText");
+  const auditEl = $("deniedAudit");
+  const nameEl = $("deniedName");
+  const daysEl = $("deniedDays");
+
+  const audit = info && info.audit ? String(info.audit) : "-";
+  const name = info && info.displayName ? String(info.displayName) : "-";
+  const days = info && info.remainingDays != null ? String(info.remainingDays) : "-";
+
+  if (auditEl) auditEl.textContent = audit;
+  if (nameEl) nameEl.textContent = name;
+  if (daysEl) daysEl.textContent = days;
+
+  const reason = info && info.denyReason ? String(info.denyReason) : "not_approved";
+
+  if (reason === "not_in_liff") {
+    if (titleEl) titleEl.textContent = "請在 LINE 內開啟";
+    if (textEl) textEl.textContent = "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
+    return;
   }
 
-  // 3) number: Sheets time fraction (0~1)
-  if (typeof val === "number" && isFinite(val) && val >= 0 && val < 1) {
-    const totalMinutes = Math.round(val * 24 * 60);
-    const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
-    const mm = String(totalMinutes % 60).padStart(2, "0");
-    return `${hh}:${mm}`;
+  if (reason === "liff_login") {
+    if (titleEl) titleEl.textContent = "需要登入";
+    if (textEl) textEl.textContent = "正在導向登入，若未自動登入請重新開啟。";
+    return;
   }
 
-  // 4) string number: "0.375"
-  if (/^\d+(\.\d+)?$/.test(s)) {
-    const num = Number(s);
-    if (isFinite(num) && num >= 0 && num < 1) {
-      const totalMinutes = Math.round(num * 24 * 60);
-      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
-      const mm = String(totalMinutes % 60).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
+  if (reason === "check_failed") {
+    if (titleEl) titleEl.textContent = "權限檢查失敗";
+    if (textEl) textEl.textContent = "無法完成審核檢查，請稍後再試或聯絡管理員。";
+    return;
   }
 
-  // 5) fallback：一般 Date 字串（不帶 Z）
-  const d2 = new Date(s);
-  if (!isNaN(d2.getTime())) {
-    const hh = String(d2.getHours()).padStart(2, "0");
-    const mm = String(d2.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
-  }
-
-  return "";
+  // default：not approved
+  if (titleEl) titleEl.textContent = "尚未通過審核";
+  if (textEl) textEl.textContent = "目前未通過審核，請聯絡管理員開通權限。";
 }
 
 // ================================
-// 4) 主題切換
+// 5) LIFF：取得 userId
+// ================================
+async function getUserIdFromLiff_() {
+  if (typeof liff === "undefined") {
+    showDenied_({ denyReason: "not_in_liff" });
+    return null;
+  }
+
+  // 有些情境（外部瀏覽器）liff.isInClient() 會是 false
+  // 但如果你允許外部 browser 也能登入，仍可繼續走 liff login。
+  await liff.init({ liffId: LIFF_ID });
+
+  if (!liff.isLoggedIn()) {
+    // 直接觸發登入（會 redirect）
+    showDenied_({ denyReason: "liff_login" });
+    liff.login();
+    return null;
+  }
+
+  // ✅ 取得 profile.userId
+  const profile = await liff.getProfile();
+  const userId = profile && profile.userId ? String(profile.userId) : "";
+
+  if (!userId) {
+    showDenied_({ denyReason: "not_in_liff" });
+    return null;
+  }
+
+  return { userId, profile };
+}
+
+// ================================
+// 6) 審核檢查（通過才允許）
+// ================================
+async function checkAccessOrBlock_() {
+  const auth = await getUserIdFromLiff_();
+  if (!auth) return { allowed: false };
+
+  const { userId } = auth;
+
+  const url =
+    `${ADMIN_API_URL}?mode=check&userId=${encodeURIComponent(userId)}&_cors=1`;
+
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) {
+    showDenied_({ denyReason: "check_failed" });
+    return { allowed: false };
+  }
+
+  const json = await res.json();
+
+  // 兼容：若 GAS 尚未加 allowed，則用 audit==="通過" 判斷
+  const allowed =
+    json && typeof json.allowed === "boolean"
+      ? json.allowed
+      : String(json.audit || "").trim() === "通過";
+
+  if (!allowed) {
+    showDenied_(json || { denyReason: "not_approved" });
+    return { allowed: false };
+  }
+
+  return { allowed: true, userId, profile: json };
+}
+
+// ================================
+// 7) 主題切換
 // ================================
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -125,20 +201,16 @@ function initTheme() {
 }
 
 // ================================
-// 5) Loading
+// 8) Loading
 // ================================
 function showApp() {
-  const lo = $("loadingOverlay");
+  hideLoading_();
   const app = $("appContainer");
-  if (lo) {
-    lo.classList.add("hidden");
-    lo.setAttribute("aria-busy", "false");
-  }
   if (app) app.style.display = "block";
 }
 
 // ================================
-// 6) 師傅狀態 UI
+// 9) 師傅狀態 UI
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
@@ -184,7 +256,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 7) 日曆：整格底色 + 點擊 toast
+// 10) 日曆：整格底色 + 點擊 toast
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -196,10 +268,7 @@ const calState = {
   viewMonth: new Date().getMonth(),
 };
 
-// yyyy-MM-dd -> [{ type, bucket }]
 const dtState = { byDate: new Map() };
-
-// 點擊用：ymd -> { off, dtItems }
 const calInfoByDate = new Map();
 
 function normTypeText(t) {
@@ -220,6 +289,51 @@ function buildLabelWithPrefix(prefix, type) {
   if (!t) return p;
   if (p === t) return p;
   return `${p} ${t}`;
+}
+
+function formatTimeHHmm(val) {
+  if (val == null || val === "") return "";
+  const s = String(val).trim();
+
+  const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+
+  if (/\d{4}-\d{2}-\d{2}T/.test(s) && /Z$/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const utcH = d.getUTCHours();
+      const utcM = d.getUTCMinutes();
+      const total = utcH * 60 + utcM + 8 * 60;
+      const hh = String(Math.floor((total % 1440) / 60)).padStart(2, "0");
+      const mm = String(total % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+  }
+
+  if (typeof val === "number" && isFinite(val) && val >= 0 && val < 1) {
+    const totalMinutes = Math.round(val * 24 * 60);
+    const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+    const mm = String(totalMinutes % 60).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const num = Number(s);
+    if (isFinite(num) && num >= 0 && num < 1) {
+      const totalMinutes = Math.round(num * 24 * 60);
+      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, "0");
+      const mm = String(totalMinutes % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+  }
+
+  const d2 = new Date(s);
+  if (!isNaN(d2.getTime())) {
+    const hh = String(d2.getHours()).padStart(2, "0");
+    const mm = String(d2.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+  return "";
 }
 
 async function loadBizConfig() {
@@ -251,11 +365,10 @@ async function loadBizConfig() {
 
   const summary = $("bizSummary");
   if (summary) {
-    const timePart =
+    summary.textContent =
       calState.startTime && calState.endTime
         ? `預約時間：${calState.startTime} ~ ${calState.endTime}`
         : `預約時間：未設定`;
-    summary.textContent = timePart;
   }
 
   renderCalendar();
@@ -283,12 +396,10 @@ function renderCalendar() {
   const daysInMonth = last.getDate();
 
   label.textContent = `${y}-${String(m + 1).padStart(2, "0")}`;
-
   calInfoByDate.clear();
 
   const cells = [];
 
-  // 前置空白
   for (let i = 0; i < firstDow; i++) {
     cells.push(`<div class="cal-cell" style="visibility:hidden"></div>`);
   }
@@ -306,7 +417,6 @@ function renderCalendar() {
     const ymd = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dtItems = dtState.byDate.get(ymd) || [];
 
-    // 補班覆蓋固定休：不灰底
     if (
       CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true &&
       dtItems.some((it) => it.bucket === "workday")
@@ -316,7 +426,6 @@ function renderCalendar() {
 
     calInfoByDate.set(ymd, { off, dtItems });
 
-    // ===== 顏色優先級（只挑一個主狀態，避免混色）=====
     const hasHoliday = dtItems.some((it) => it.bucket === "holiday");
     const hasWorkday = dtItems.some((it) => it.bucket === "workday");
     const hasOther   = dtItems.some((it) => it.bucket === "other");
@@ -328,12 +437,7 @@ function renderCalendar() {
     else if (isWeeklyOff) stateCls = "is-weeklyoff";
     else if (hasOther) stateCls = "is-special";
 
-    const cls = [
-      "cal-cell",
-      stateCls,
-      isWeeklyOff ? "is-off" : "",
-      isToday(y, m, d) ? "is-today" : "",
-    ]
+    const cls = ["cal-cell", stateCls, isToday(y, m, d) ? "is-today" : ""]
       .filter(Boolean)
       .join(" ");
 
@@ -346,8 +450,7 @@ function renderCalendar() {
 
   grid.innerHTML = cells.join("");
 
-  // 點選日期：toast 顯示文字
-  grid.querySelectorAll('.cal-cell[data-ymd]').forEach((cell) => {
+  grid.querySelectorAll(".cal-cell[data-ymd]").forEach((cell) => {
     cell.onclick = () => {
       grid.querySelectorAll(".cal-cell.is-selected").forEach((c) => c.classList.remove("is-selected"));
       cell.classList.add("is-selected");
@@ -358,9 +461,7 @@ function renderCalendar() {
 
       const lines = [ymd];
 
-      if (info.off) {
-        lines.push(CALENDAR_UI_TEXT.weeklyOff.tooltip || "固定休假日");
-      }
+      if (info.off) lines.push(CALENDAR_UI_TEXT.weeklyOff.tooltip || "固定休假日");
 
       (info.dtItems || []).forEach((it) => {
         if (it.bucket === "holiday") {
@@ -382,29 +483,21 @@ function bindCalendarNav() {
   const prev = $("calPrev");
   const next = $("calNext");
 
-  if (prev)
-    prev.onclick = () => {
-      calState.viewMonth--;
-      if (calState.viewMonth < 0) {
-        calState.viewMonth = 11;
-        calState.viewYear--;
-      }
-      renderCalendar();
-    };
+  if (prev) prev.onclick = () => {
+    calState.viewMonth--;
+    if (calState.viewMonth < 0) { calState.viewMonth = 11; calState.viewYear--; }
+    renderCalendar();
+  };
 
-  if (next)
-    next.onclick = () => {
-      calState.viewMonth++;
-      if (calState.viewMonth > 11) {
-        calState.viewMonth = 0;
-        calState.viewYear++;
-      }
-      renderCalendar();
-    };
+  if (next) next.onclick = () => {
+    calState.viewMonth++;
+    if (calState.viewMonth > 11) { calState.viewMonth = 0; calState.viewYear++; }
+    renderCalendar();
+  };
 }
 
 // ================================
-// 8) 初始化
+// 11) 初始化（✅ 先 LIFF → 再審核 → 再載入功能）
 // ================================
 window.onload = async () => {
   initTheme();
@@ -415,6 +508,9 @@ window.onload = async () => {
   bindCalendarNav();
 
   try {
+    const gate = await checkAccessOrBlock_();
+    if (!gate.allowed) return;
+
     await Promise.all([loadTechStatus(), loadBizConfig()]);
     showApp();
 
