@@ -101,10 +101,11 @@ const themeToggleBtn = document.getElementById("themeToggle");
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
-// ✅ 個人狀態快捷按鈕 DOM
+// ✅ 個人狀態快捷按鈕 DOM（✅ 加入休假）
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
+const btnVacationEl = document.getElementById("btnVacation");
 
 /* =========================================================
  * ✅ 功能提示（叫班提醒 / 個人狀態 / 排班表）
@@ -123,7 +124,6 @@ function normalizeYesNo_(v) {
 }
 
 function ensureFeatureBanner_() {
-  // 已經在 HTML 裡固定放了 featureBanner
   const el = document.getElementById("featureBanner");
   return el || null;
 }
@@ -146,13 +146,11 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  const chipsHtml = [
+  chipsEl.innerHTML = [
     buildChip_("叫班提醒", push),
     buildChip_("個人狀態", personal),
     buildChip_("排班表", schedule),
   ].join("");
-
-  chipsEl.innerHTML = chipsHtml;
 }
 
 function updateFeatureState_(data) {
@@ -176,7 +174,6 @@ function hideLoadingHint() {
 // ===== Gate 顯示工具 =====
 function showGate(message, isError) {
   if (!gateEl) return;
-
   gateEl.classList.remove("gate-hidden");
   gateEl.innerHTML =
     '<div class="gate-message' +
@@ -207,7 +204,6 @@ function updateUsageBanner(displayName, remainingDays) {
   }
 
   let msg = "";
-
   if (displayName) msg += `使用者：${displayName}  `;
 
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
@@ -229,7 +225,7 @@ function updateUsageBanner(displayName, remainingDays) {
 }
 
 /* =========================================================
- * ✅ 個人狀態開通：顯示「使用者管理 / 個人狀態」按鈕
+ * ✅ 個人狀態開通：顯示「使用者管理 / 個人狀態 / 休假設定」
  * - 只在 personalStatusEnabled=是 時觸發
  * - 連結來源：AUTH GAS mode=getPersonalStatus 回傳欄位
  * ========================================================= */
@@ -241,29 +237,39 @@ async function fetchPersonalStatusRow_(userId) {
   return await resp.json();
 }
 
-function showPersonalTools_(manageLiff, personalLink) {
-  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl) return;
+function showPersonalTools_(manageLiff, personalLink, vacationLink) {
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl) return;
 
   const m = String(manageLiff || "").trim();
   const p = String(personalLink || "").trim();
+  const v = String(vacationLink || "").trim();
 
-  if (!m && !p) {
+  if (!m && !p && !v) {
     personalToolsEl.style.display = "none";
     return;
   }
 
   personalToolsEl.style.display = "flex";
 
+  // 使用者管理
   btnUserManageEl.style.display = m ? "inline-flex" : "none";
   btnUserManageEl.onclick = () => {
     if (!m) return;
     window.location.href = m;
   };
 
+  // 個人狀態
   btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
   btnPersonalStatusEl.onclick = () => {
     if (!p) return;
     window.location.href = p;
+  };
+
+  // 休假設定
+  btnVacationEl.style.display = v ? "inline-flex" : "none";
+  btnVacationEl.onclick = () => {
+    if (!v) return;
+    window.location.href = v;
   };
 }
 
@@ -374,7 +380,6 @@ function fmtRemainingRaw(v) {
   return String(v);
 }
 
-// ✅ 小幅補強：讓 legend 的綠色有機會出現（可視你的狀態字串再加）
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
   const n = Number(remaining);
@@ -388,11 +393,9 @@ function deriveStatusClass(status, remaining) {
   return "status-other";
 }
 
-// ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
-
     return {
       sort: row.sort,
       index: row.index,
@@ -400,18 +403,15 @@ function mapRowsToDisplay(rows) {
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
-
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
-
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
     };
   });
 }
 
-// ===== 重建「狀態篩選」選項 =====
 function rebuildStatusFilterOptions() {
   if (!filterStatusSelect) return;
 
@@ -424,8 +424,8 @@ function rebuildStatusFilterOptions() {
   });
 
   const previous = filterStatusSelect.value || "all";
-
   filterStatusSelect.innerHTML = "";
+
   const optAll = document.createElement("option");
   optAll.value = "all";
   optAll.textContent = "全部狀態";
@@ -442,7 +442,6 @@ function rebuildStatusFilterOptions() {
   filterStatus = filterStatusSelect.value;
 }
 
-// ===== 渲染（包含：排序 + 第一欄顯示）=====
 function render() {
   if (!tbodyRowsEl) return;
 
@@ -454,15 +453,12 @@ function render() {
   const useDisplayOrder = isAll || isShift;
 
   let finalRows;
-
   if (useDisplayOrder) {
     finalRows = filtered.slice().sort((a, b) => {
       const na = Number(a.sort ?? a.index);
       const nb = Number(b.sort ?? b.index);
-
       const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
       const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-
       if (aKey !== bKey) return aKey - bKey;
       return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
     });
@@ -470,10 +466,8 @@ function render() {
     finalRows = filtered.slice().sort((a, b) => {
       const na = Number(a.sort);
       const nb = Number(b.sort);
-
       const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
       const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-
       if (aKey !== bKey) return aKey - bKey;
       return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
     });
@@ -530,7 +524,6 @@ function render() {
   if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
 }
 
-// ===== 過濾器（師傅 / 狀態）=====
 function applyFilters(list) {
   return list.filter((row) => {
     if (filterMaster) {
@@ -554,8 +547,6 @@ function applyFilters(list) {
 
 /* =========================================================
  * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * - 優先打 Edge?mode=all
- * - 失敗 fallback 打主站（由你後端決定 mode 需求）
  * ========================================================= */
 
 async function fetchStatusAll() {
@@ -566,7 +557,6 @@ async function fetchStatusAll() {
   const fallbackUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "v=" + encodeURIComponent(jitterBust));
 
   const tryUrls = [edgeUrl, fallbackUrl];
-
   let lastErr = null;
 
   for (const url of tryUrls) {
@@ -577,9 +567,10 @@ async function fetchStatusAll() {
       const data = await resp.json();
       if (data && data.ok === false) throw new Error(data.error || "Status response not ok");
 
-      const bodyRows = Array.isArray(data.body) ? data.body : [];
-      const footRows = Array.isArray(data.foot) ? data.foot : [];
-      return { bodyRows, footRows };
+      return {
+        bodyRows: Array.isArray(data.body) ? data.body : [],
+        footRows: Array.isArray(data.foot) ? data.foot : [],
+      };
     } catch (e) {
       lastErr = e;
     }
@@ -621,12 +612,11 @@ async function refreshStatus() {
 }
 
 /* =========================
- * ✅ 使用者更名同步（以 GAS 為準判斷 LINE 是否改名）
+ * ✅ 使用者更名同步（以 GAS 為準）
  * ========================= */
 async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   const newName = String(liffName || "").trim();
   const oldName = String(gasName || "").trim();
-
   if (!userId || !newName) return false;
 
   if (!oldName || oldName !== newName) {
@@ -645,7 +635,6 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
 // ===== 審核相關 =====
 async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
-
   const resp = await fetch(url, { method: "GET" });
   if (!resp.ok) throw new Error("Check HTTP " + resp.status);
 
@@ -811,15 +800,19 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ personalStatusEnabled=是 → 顯示兩顆按鈕（連結來自 getPersonalStatus）
+      // ✅ personalStatusEnabled=是 → 顯示三顆按鈕（連結來自 getPersonalStatus）
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
           const ps = await fetchPersonalStatusRow_(userId);
           if (ps && ps.ok) {
-            const manage = ps.manageLiff || ps["使用者管理liff"];
-            const pLink = ps.personalStatusLink || ps["個人狀態連結"];
-            showPersonalTools_(manage, pLink);
+            const manage = ps.manageLiff || ps["使用者管理liff"] || "";
+            const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
+
+            // ✅ 休假設定連結：支援兩種鍵名（你 GAS 想用哪個都行）
+            const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定"] || "";
+
+            showPersonalTools_(manage, pLink, vLink);
           } else {
             hidePersonalTools_();
           }
@@ -913,10 +906,7 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  // ✅ 每人 10 秒讀取一次
   const intervalMs = 10 * 1000;
-
-  // ✅ jitter：避免同秒齊發尖峰（0~5 秒）
   const jitter = Math.floor(Math.random() * 5000);
 
   setTimeout(() => {
