@@ -18,7 +18,6 @@
  * ✅ 分流設定：Edge GAS（Status 讀取分流）
  * ========================================================= */
 
-// ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
 const EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
   "https://script.google.com/macros/s/AKfycbxZgErdlrmSbPPe6rA4HK4CmqZJmGMzIW4Eno8TTbRcnnM-s4DteRM2DPzl7PJBG34n-Q/exec",
@@ -28,21 +27,16 @@ const EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbxxg3AdVaqp3EGo-1ZpQzIshZ8_yqcvtlPtt51qoiTvfYr0xrovs44uqQjwajMACzju/exec",
 ];
 
-// （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
 const FALLBACK_ORIGIN_CACHE_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// 一致性 hash：同一 userId 永遠命中同一台 Edge
 function hashToIndex_(str, mod) {
   let h = 0;
   const s = String(str || "");
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  }
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return mod ? h % mod : 0;
 }
 
-// 取得目前使用者應該打的 Edge URL
 function getStatusEdgeUrl_() {
   const uid = window.currentUserId || "";
   const idx = hashToIndex_(uid || "anonymous", EDGE_STATUS_URLS.length);
@@ -53,7 +47,6 @@ function getStatusEdgeUrl_() {
  * 原本你的設定
  * ========================================================= */
 
-// ★ AUTH GAS Web App URL
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
@@ -85,7 +78,6 @@ const panelTitleEl = document.getElementById("panelTitle");
 const lastUpdateEl = document.getElementById("lastUpdate");
 const tbodyRowsEl = document.getElementById("tbodyRows");
 const emptyStateEl = document.getElementById("emptyState");
-const loadingStateEl = document.getElementById("loadingState");
 const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
@@ -93,11 +85,10 @@ const themeToggleBtn = document.getElementById("themeToggle");
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
-// ✅ 已開通功能提示 DOM
+// ✅ 功能提示 DOM
 const featureBannerEl = document.getElementById("featureBanner");
 const featureChipsEl = document.getElementById("featureChips");
 
-// ✅ Top Loading Hint 控制
 function showLoadingHint(text) {
   if (!topLoadingEl) return;
   if (topLoadingTextEl) topLoadingTextEl.textContent = text || "資料載入中…";
@@ -108,10 +99,8 @@ function hideLoadingHint() {
   topLoadingEl.classList.add("hidden");
 }
 
-// ===== Gate 顯示工具 =====
 function showGate(message, isError) {
   if (!gateEl) return;
-
   gateEl.classList.remove("gate-hidden");
   gateEl.innerHTML =
     '<div class="gate-message' +
@@ -142,7 +131,6 @@ function updateUsageBanner(displayName, remainingDays) {
   }
 
   let msg = "";
-
   if (displayName) msg += `使用者：${displayName}  `;
 
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
@@ -163,33 +151,39 @@ function updateUsageBanner(displayName, remainingDays) {
   }
 }
 
-// ✅ 已開通功能提示（只顯示「是」的）
+/* =========================================================
+ * ✅ 功能提示：固定顯示 3 顆
+ * - 是：正常色 chip
+ * - 否/空：灰色 chip + badge「未開通」
+ * ========================================================= */
 function updateFeatureBanner(flags) {
   if (!featureBannerEl || !featureChipsEl) return;
 
-  const chips = [];
+  const items = [
+    { key: "pushEnabled", label: "叫班提醒" },
+    { key: "personalStatusEnabled", label: "個人狀態" },
+    { key: "scheduleEnabled", label: "排班表" },
+  ];
 
-  // 是否推播 = 叫班提醒
-  if (String(flags.pushEnabled || "").trim() === "是") chips.push("叫班提醒");
-
-  // 個人狀態開通 = 個人狀態
-  if (String(flags.personalStatusEnabled || "").trim() === "是") chips.push("個人狀態");
-
-  // 排班表開通 = 排班表
-  if (String(flags.scheduleEnabled || "").trim() === "是") chips.push("排班表");
-
-  if (!chips.length) {
-    featureBannerEl.style.display = "none";
-    featureChipsEl.innerHTML = "";
-    return;
-  }
+  const isYes = (v) => String(v || "").trim() === "是";
 
   featureChipsEl.innerHTML = "";
-  chips.forEach((text) => {
-    const span = document.createElement("span");
-    span.className = "feature-chip";
-    span.textContent = text;
-    featureChipsEl.appendChild(span);
+
+  items.forEach((it) => {
+    const enabled = isYes(flags[it.key]);
+
+    const chip = document.createElement("span");
+    chip.className = "feature-chip" + (enabled ? "" : " feature-chip-disabled");
+    chip.textContent = it.label;
+
+    if (!enabled) {
+      const badge = document.createElement("span");
+      badge.className = "feature-chip-badge";
+      badge.textContent = "未開通";
+      chip.appendChild(badge);
+    }
+
+    featureChipsEl.appendChild(chip);
   });
 
   featureBannerEl.style.display = "flex";
@@ -197,8 +191,6 @@ function updateFeatureBanner(flags) {
 
 /* =========================================================
  * ✅ 每日首次：由使用者傳訊息給官方帳號（只改前端）
- * - 同裝置每天一次（localStorage）
- * - 必須在 LINE App 內 (liff.isInClient) 才能 sendMessages
  * ========================================================= */
 const DAILY_USER_MSG_KEY = "daily_user_first_msg_v1";
 
@@ -237,63 +229,7 @@ async function sendDailyFirstMessageFromUser_() {
   }
 }
 
-// ===== ScriptCat 顏色解析工具 =====
-function hexToRgb(hex) {
-  if (!hex) return null;
-  let s = hex.replace("#", "").trim();
-  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
-  if (s.length !== 6) return null;
-  const r = parseInt(s.slice(0, 2), 16);
-  const g = parseInt(s.slice(2, 4), 16);
-  const b = parseInt(s.slice(4, 6), 16);
-  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
-  return { r, g, b };
-}
-
-function parseScriptCatColor(colorStr) {
-  if (!colorStr) return { color: null, opacity: null };
-
-  const tokens = String(colorStr).split(/\s+/).filter(Boolean);
-  let hex = null;
-  let opacity = null;
-
-  tokens.forEach((t) => {
-    if (t.startsWith("text-C")) {
-      let raw = t.slice("text-".length);
-      if (/^C[0-9A-Fa-f]{6}$/.test(raw)) raw = raw.slice(1);
-      if (/^[0-9A-Fa-f]{6}$/.test(raw)) hex = "#" + raw;
-    }
-
-    if (t.startsWith("text-opacity-")) {
-      const vRaw = t.slice("text-opacity-".length);
-      let v = parseFloat(vRaw);
-      if (!Number.isNaN(v)) {
-        if (v > 1) v = v / 100;
-        opacity = Math.max(0, Math.min(1, v));
-      }
-    }
-  });
-
-  return { color: hex, opacity };
-}
-
-function applyScriptCatColorToElement(el, colorStr) {
-  if (!el || !colorStr) return;
-
-  const info = parseScriptCatColor(colorStr);
-  if (!info.color) return;
-
-  const rgb = hexToRgb(info.color);
-  if (!rgb) return;
-
-  if (info.opacity != null && info.opacity < 1) {
-    el.style.color = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${info.opacity})`;
-  } else {
-    el.style.color = info.color;
-  }
-}
-
-// ===== 資料格式工具 =====
+// ===== 資料格式工具（保留你的原邏輯）=====
 function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);
@@ -302,19 +238,15 @@ function fmtRemainingRaw(v) {
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
   const n = Number(remaining);
-
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
-
   return "status-other";
 }
 
-// ===== 轉成畫面用 row =====
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
-
     return {
       sort: row.sort,
       index: row.index,
@@ -322,11 +254,9 @@ function mapRowsToDisplay(rows) {
       masterId: row.masterId,
       status: row.status,
       appointment: row.appointment,
-
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
-
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
     };
@@ -364,7 +294,7 @@ function rebuildStatusFilterOptions() {
   filterStatus = filterStatusSelect.value;
 }
 
-// ===== 渲染（包含：排序 + 第一欄顯示）=====
+// ===== 渲染（保留你的原邏輯）=====
 function render() {
   if (!tbodyRowsEl) return;
 
@@ -417,19 +347,16 @@ function render() {
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
-    if (row.colorIndex) applyScriptCatColorToElement(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
-    if (row.colorMaster) applyScriptCatColorToElement(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
     const tdStatus = document.createElement("td");
     const statusSpan = document.createElement("span");
     statusSpan.className = "status-pill " + row.statusClass;
-    if (row.colorStatus) applyScriptCatColorToElement(statusSpan, row.colorStatus);
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);
@@ -469,15 +396,11 @@ function applyFilters(list) {
     if (filterStatus && filterStatus !== "all") {
       if (row.status !== filterStatus) return false;
     }
-
     return true;
   });
 }
 
-/* =========================================================
- * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * ========================================================= */
-
+// ===== Status 取得 =====
 async function fetchStatusAll() {
   const edgeBase = getStatusEdgeUrl_();
   const jitterBust = Date.now();
@@ -540,29 +463,7 @@ async function refreshStatus() {
   }
 }
 
-/* =========================
- * ✅ 使用者更名同步（以 GAS 為準判斷 LINE 是否改名）
- * ========================= */
-async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
-  const newName = String(liffName || "").trim();
-  const oldName = String(gasName || "").trim();
-
-  if (!userId || !newName) return false;
-
-  if (!oldName || oldName !== newName) {
-    try {
-      await registerUser(userId, newName);
-      console.log("[NameSync] updated:", { oldName, newName });
-      return true;
-    } catch (e) {
-      console.warn("[NameSync] update failed:", e);
-      return false;
-    }
-  }
-  return false;
-}
-
-// ===== 審核相關 =====
+// ===== 審核相關（補齊三個開通欄位）=====
 async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
 
@@ -574,7 +475,6 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const audit = (data && data.audit) || "";
   const serverDisplayName = (data && data.displayName) || "";
 
-  // ✅ 取三個開通欄位（用於 feature banner + 放行條件）
   const pushEnabled = (data && data.pushEnabled) || "否";
   const personalStatusEnabled = (data && data.personalStatusEnabled) || "否";
   const scheduleEnabled = (data && data.scheduleEnabled) || "否";
@@ -714,15 +614,14 @@ async function initLiffAndGuard() {
 
     showGate("正在確認使用權限…");
     const result = await checkOrRegisterUser(userId, displayName);
-    await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
 
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
-    // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
+    // ✅ 功能提示：不管能不能用都可以先顯示（但你目前 gate 時看不到 appRoot）
+    // 這裡放在 openApp 之後顯示即可，所以在放行成功時再 render 一次
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
 
-    // ✅ 今天最後一天也能用：remainingDays >= 0
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
     const notExpired = hasRd ? rd >= 0 : false;
@@ -731,7 +630,7 @@ async function initLiffAndGuard() {
       showGate("驗證通過，正在載入資料…");
       openApp();
 
-      // ✅ 上方顯示「已開通」功能（只顯示為「是」的）
+      // ✅ 固定顯示三項（未開通灰色）
       updateFeatureBanner({
         pushEnabled: result.pushEnabled,
         personalStatusEnabled: result.personalStatusEnabled,
@@ -745,7 +644,6 @@ async function initLiffAndGuard() {
       return;
     }
 
-    // ✅ 審核通過但被擋：顯示原因
     if (result.status === "approved") {
       let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
       if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
@@ -807,7 +705,6 @@ function setActivePanel(panel) {
       tabBodyBtn.classList.remove("tab-active");
     }
   }
-
   render();
 }
 
@@ -816,10 +713,7 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  // ✅ 你目前是 5 秒輪詢一次
   const intervalMs = 5 * 1000;
-
-  // ✅ jitter：避免同秒齊發尖峰
   const jitter = Math.floor(Math.random() * 3000);
 
   setTimeout(() => {

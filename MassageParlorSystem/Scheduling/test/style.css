@@ -110,7 +110,7 @@ body {
   padding: 20px 16px 32px 16px;
 }
 
-/* ✅ 已開通功能提示橫幅 */
+/* ✅ 已開通功能提示橫幅（固定顯示三項） */
 .feature-banner {
   margin: 6px 0 10px 0;
   padding: 8px 14px;
@@ -144,6 +144,7 @@ body {
 .feature-chip {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -156,6 +157,33 @@ body {
   background: rgba(37, 99, 235, 0.08);
 }
 
+/* ✅ 未開通：灰色 chip */
+.feature-chip-disabled {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .feature-chip-disabled {
+  background: rgba(107, 114, 128, 0.10);
+  border-color: rgba(107, 114, 128, 0.25);
+  color: #6b7280;
+}
+
+/* chip 內的「未開通」小 badge */
+.feature-chip-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .feature-chip-badge {
+  background: rgba(255, 255, 255, 0.7);
+}
+
 /* Header */
 .app-header {
   display: flex;
@@ -165,9 +193,7 @@ body {
   margin-bottom: 18px;
 }
 
-.app-header-left {
-  min-width: 0;
-}
+.app-header-left { min-width: 0; }
 
 .app-title {
   margin: 0 0 4px;
@@ -212,9 +238,7 @@ body {
   background: #22c55e;
 }
 
-.pill-text {
-  white-space: nowrap;
-}
+.pill-text { white-space: nowrap; }
 
 .btn {
   border-radius: 999px;
@@ -230,9 +254,7 @@ body {
   color: var(--text-main);
 }
 
-.btn-ghost:hover {
-  border-color: var(--accent);
-}
+.btn-ghost:hover { border-color: var(--accent); }
 
 :root[data-theme="light"] .btn-ghost {
   background: #ffffff;
@@ -291,16 +313,9 @@ body {
   flex-wrap: wrap;
 }
 
-.filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.filter { display: flex; flex-direction: column; gap: 4px; }
 
-.filter-label {
-  font-size: 12px;
-  color: var(--text-sub);
-}
+.filter-label { font-size: 12px; color: var(--text-sub); }
 
 /* 表單元件 */
 .input,
@@ -320,14 +335,10 @@ body {
   background: #ffffff;
 }
 
-.input::placeholder {
-  color: rgba(148, 163, 184, 0.8);
-}
+.input::placeholder { color: rgba(148, 163, 184, 0.8); }
 
 /* 主內容區 */
-.main {
-  display: flex;
-}
+.main { display: flex; }
 
 /* 卡片 + 表格 */
 .card {
@@ -357,25 +368,8 @@ body {
   border-bottom-color: rgba(209, 213, 219, 0.9);
 }
 
-.card-header-left {
-  min-width: 0;
-}
-
-.card-title {
-  margin: 0 0 4px;
-  font-size: 18px;
-}
-
-.card-subtitle {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-sub);
-}
-
-.card-header-right {
-  display: flex;
-  align-items: center;
-}
+.card-title { margin: 0 0 4px; font-size: 18px; }
+.card-subtitle { margin: 0; font-size: 12px; color: var(--text-sub); }
 
 .badge {
   font-size: 11px;
@@ -386,25 +380,12 @@ body {
   color: var(--text-sub);
 }
 
-:root[data-theme="light"] .badge {
-  background: #ffffff;
-}
+:root[data-theme="light"] .badge { background: #ffffff; }
 
-.card-body {
-  padding: 10px 18px 16px 18px;
-}
+.card-body { padding: 10px 18px 16px 18px; }
 
-/* Table */
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.status-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
+.table-wrapper { width: 100%; overflow-x: auto; }
+.status-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .status-table thead th {
   text-align: left;
@@ -429,16 +410,7 @@ body {
   border-bottom-color: rgba(229, 231, 235, 1);
 }
 
-.status-table tbody tr:last-child td {
-  border-bottom-color: transparent;
-}
-
-/* 順序 / 師傅 / 預約欄基礎樣式（顏色會被 JS 覆蓋）*/
-.cell-order,
-.cell-master,
-.cell-appointment {
-  font-size: 13px;
-}
+.status-table tbody tr:last-child td { border-bottom-color: transparent; }
 
 /* 狀態 Pill */
 .status-pill {
@@ -451,42 +423,15 @@ body {
   font-weight: 500;
 }
 
-.status-busy {
-  background: rgba(248, 113, 113, 0.16);
-  color: #fecaca;
-}
+.status-busy { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.status-booked { background: rgba(56, 189, 248, 0.16); color: #bae6fd; }
+.status-free { background: rgba(34, 197, 94, 0.15); color: #bbf7d0; }
+.status-other { background: rgba(148, 163, 184, 0.22); color: #e5e7eb; }
 
-.status-booked {
-  background: rgba(56, 189, 248, 0.16);
-  color: #bae6fd;
-}
-
-.status-free {
-  background: rgba(34, 197, 94, 0.15);
-  color: #bbf7d0;
-}
-
-.status-other {
-  background: rgba(148, 163, 184, 0.22);
-  color: #e5e7eb;
-}
-
-:root[data-theme="light"] .status-busy {
-  background: rgba(248, 113, 113, 0.1);
-  color: #b91c1c;
-}
-:root[data-theme="light"] .status-booked {
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
-}
-:root[data-theme="light"] .status-free {
-  background: rgba(22, 163, 74, 0.08);
-  color: #15803d;
-}
-:root[data-theme="light"] .status-other {
-  background: rgba(148, 163, 184, 0.15);
-  color: #374151;
-}
+:root[data-theme="light"] .status-busy { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
+:root[data-theme="light"] .status-booked { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
+:root[data-theme="light"] .status-free { background: rgba(22, 163, 74, 0.08); color: #15803d; }
+:root[data-theme="light"] .status-other { background: rgba(148, 163, 184, 0.15); color: #374151; }
 
 /* 剩餘時間 badge */
 .time-badge {
@@ -500,23 +445,10 @@ body {
   font-size: 12px;
 }
 
-:root[data-theme="light"] .time-badge {
-  background: #ffffff;
-}
+:root[data-theme="light"] .time-badge { background: #ffffff; }
 
 /* 空 / Loading / Error 狀態 */
-.state {
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--text-sub);
-  display: none;
-}
-
-.state-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.state { margin-top: 10px; font-size: 13px; color: var(--text-sub); display: none; }
 
 .spinner {
   width: 14px;
@@ -527,13 +459,8 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* Legend */
 .legend {
   margin-top: 10px;
   display: flex;
@@ -543,54 +470,18 @@ body {
   color: var(--text-sub);
 }
 
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 999px; }
+.legend-work { background: #f97373; }
+.legend-free { background: #22c55e; }
+.legend-other { background: #9ca3af; }
 
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
-.legend-work {
-  background: #f97373;
-}
-
-.legend-free {
-  background: #22c55e;
-}
-
-.legend-other {
-  background: #9ca3af;
-}
-
-/* RWD */
 @media (max-width: 768px) {
-  .app-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .filters {
-    width: 100%;
-  }
-
-  .input,
-  .select {
-    width: 100%;
-  }
-
-  .card {
-    border-radius: 14px;
-  }
+  .app-header { flex-direction: column; align-items: flex-start; }
+  .toolbar { flex-direction: column; align-items: flex-start; }
+  .filters { width: 100%; }
+  .input, .select { width: 100%; }
+  .card { border-radius: 14px; }
 }
 
 /* 使用者名稱 + 剩餘天數提示橫幅 */
@@ -606,24 +497,12 @@ body {
   align-items: center;
 }
 
-/* 亮色主題時 */
-:root[data-theme="light"] .usage-banner {
-  background: #ffffff;
-}
+:root[data-theme="light"] .usage-banner { background: #ffffff; }
 
-/* 快過期（<=3 天） */
-.usage-banner-warning {
-  border-color: #facc15;
-}
+.usage-banner-warning { border-color: #facc15; }
+.usage-banner-expired { border-color: #f97373; }
 
-/* 已過期（<=0 天） */
-.usage-banner-expired {
-  border-color: #f97373;
-}
-
-/* =========================================================
- * ✅ Top Loading Hint（fixed toast，不影響面板排列）
- * ========================================================= */
+/* ✅ Top Loading Hint（fixed toast） */
 .top-loading {
   position: fixed;
   top: 10px;
@@ -642,7 +521,7 @@ body {
   background: rgba(15, 23, 42, 0.92);
   color: #e5e7eb;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 10px 28px rgba(0,0,0,.28);
   backdrop-filter: blur(6px);
 
   pointer-events: none;
@@ -654,9 +533,7 @@ body {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
-.top-loading.hidden {
-  display: none;
-}
+.top-loading.hidden { display: none; }
 
 .top-loading-spinner {
   width: 12px;
@@ -668,6 +545,4 @@ body {
 }
 
 /* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
-#loadingState {
-  display: none !important;
-}
+#loadingState { display: none !important; }
