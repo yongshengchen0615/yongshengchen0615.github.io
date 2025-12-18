@@ -15,7 +15,7 @@
 })();
 
 /* =========================================================
- * ✅ 分流設定：10 個 Edge GAS（Status 讀取分流）
+ * ✅ 分流設定：Edge GAS（Status 讀取分流）
  * ========================================================= */
 
 // ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
@@ -49,6 +49,14 @@ function getStatusEdgeUrl_() {
   return EDGE_STATUS_URLS[idx];
 }
 
+// ✅ 安全組 URL（避免你原本 fallback &v 少 ? 的問題）
+function withQuery_(base, extraQuery) {
+  const b = String(base || "");
+  const q = String(extraQuery || "");
+  if (!q) return b;
+  return b + (b.includes("?") ? "&" : "?") + q.replace(/^\?/, "");
+}
+
 /* =========================================================
  * 原本你的設定
  * ========================================================= */
@@ -57,7 +65,7 @@ function getStatusEdgeUrl_() {
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-const LIFF_ID = "2008669658-6Et3vVqv";
+const LIFF_ID = "2008669658-sBKFvZEz";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
@@ -93,11 +101,15 @@ const themeToggleBtn = document.getElementById("themeToggle");
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
+// ✅ 個人狀態快捷按鈕 DOM
+const personalToolsEl = document.getElementById("personalTools");
+const btnUserManageEl = document.getElementById("btnUserManage");
+const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
+
 /* =========================================================
  * ✅ 功能提示（叫班提醒 / 個人狀態 / 排班表）
  * - 永遠顯示三個 chip
  * - 未開通顯示灰色 + badge「未開通」
- * - 只動前端：從 AUTH check 回傳值推導
  * ========================================================= */
 
 let featureState = {
@@ -111,26 +123,9 @@ function normalizeYesNo_(v) {
 }
 
 function ensureFeatureBanner_() {
-  // 目標：插在 usageBanner 上方（同一個 layout 內）
-  if (!usageBannerEl) return null;
-
-  let el = document.getElementById("featureBanner");
-  if (el) return el;
-
-  const parent = usageBannerEl.parentElement;
-  if (!parent) return null;
-
-  el = document.createElement("div");
-  el.id = "featureBanner";
-  el.className = "feature-banner";
-
-  el.innerHTML = `
-    <span class="feature-title">已開通功能：</span>
-    <div class="feature-chips" id="featureChips"></div>
-  `;
-
-  parent.insertBefore(el, usageBannerEl); // 放在 usageBanner 上方
-  return el;
+  // 已經在 HTML 裡固定放了 featureBanner
+  const el = document.getElementById("featureBanner");
+  return el || null;
 }
 
 function buildChip_(label, enabled) {
@@ -151,7 +146,6 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  // 顯示文案 mapping（照你要求）
   const chipsHtml = [
     buildChip_("叫班提醒", push),
     buildChip_("個人狀態", personal),
@@ -162,7 +156,6 @@ function renderFeatureBanner_() {
 }
 
 function updateFeatureState_(data) {
-  // data 來源：checkOrRegisterUser 的 result
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
   featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
@@ -236,9 +229,51 @@ function updateUsageBanner(displayName, remainingDays) {
 }
 
 /* =========================================================
+ * ✅ 個人狀態開通：顯示「使用者管理 / 個人狀態」按鈕
+ * - 只在 personalStatusEnabled=是 時觸發
+ * - 連結來源：AUTH GAS mode=getPersonalStatus 回傳欄位
+ * ========================================================= */
+
+async function fetchPersonalStatusRow_(userId) {
+  const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
+  const resp = await fetch(url, { method: "GET", cache: "no-store" });
+  if (!resp.ok) throw new Error("getPersonalStatus HTTP " + resp.status);
+  return await resp.json();
+}
+
+function showPersonalTools_(manageLiff, personalLink) {
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl) return;
+
+  const m = String(manageLiff || "").trim();
+  const p = String(personalLink || "").trim();
+
+  if (!m && !p) {
+    personalToolsEl.style.display = "none";
+    return;
+  }
+
+  personalToolsEl.style.display = "flex";
+
+  btnUserManageEl.style.display = m ? "inline-flex" : "none";
+  btnUserManageEl.onclick = () => {
+    if (!m) return;
+    window.location.href = m;
+  };
+
+  btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
+  btnPersonalStatusEl.onclick = () => {
+    if (!p) return;
+    window.location.href = p;
+  };
+}
+
+function hidePersonalTools_() {
+  if (!personalToolsEl) return;
+  personalToolsEl.style.display = "none";
+}
+
+/* =========================================================
  * ✅ 每日首次：由使用者傳訊息給官方帳號（只改前端）
- * - 同裝置每天一次（localStorage）
- * - 必須在 LINE App 內 (liff.isInClient) 才能 sendMessages
  * ========================================================= */
 const DAILY_USER_MSG_KEY = "daily_user_first_msg_v1";
 
@@ -259,7 +294,7 @@ function getTodayTaipei_() {
 async function sendDailyFirstMessageFromUser_() {
   try {
     if (!window.liff) return;
-    if (!liff.isInClient()) return; // 外部瀏覽器不送（避免 throw）
+    if (!liff.isInClient()) return;
 
     const today = getTodayTaipei_();
     const last = localStorage.getItem(DAILY_USER_MSG_KEY) || "";
@@ -271,8 +306,6 @@ async function sendDailyFirstMessageFromUser_() {
       : `【每日首次開啟】使用者已進入看板（${today}）`;
 
     await liff.sendMessages([{ type: "text", text }]);
-
-    // ✅ 成功才記錄
     localStorage.setItem(DAILY_USER_MSG_KEY, today);
   } catch (e) {
     console.warn("[DailyUserMessage] send failed:", e);
@@ -341,12 +374,15 @@ function fmtRemainingRaw(v) {
   return String(v);
 }
 
+// ✅ 小幅補強：讓 legend 的綠色有機會出現（可視你的狀態字串再加）
 function deriveStatusClass(status, remaining) {
   const s = String(status || "");
   const n = Number(remaining);
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
+
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
 
   return "status-other";
@@ -411,7 +447,6 @@ function render() {
   if (!tbodyRowsEl) return;
 
   const list = activePanel === "body" ? rawData.body : rawData.foot;
-
   const filtered = applyFilters(list);
 
   const isAll = filterStatus === "all";
@@ -520,17 +555,17 @@ function applyFilters(list) {
 /* =========================================================
  * ✅ 分流後的 Status 取得（一次拿 body + foot）
  * - 優先打 Edge?mode=all
- * - 失敗 fallback 打主站 cache_all
+ * - 失敗 fallback 打主站（由你後端決定 mode 需求）
  * ========================================================= */
 
 async function fetchStatusAll() {
   const edgeBase = getStatusEdgeUrl_();
   const jitterBust = Date.now();
 
-  const tryUrls = [
-    `${edgeBase}?mode=all&v=${encodeURIComponent(jitterBust)}`,
-    `${FALLBACK_ORIGIN_CACHE_URL}&v=${encodeURIComponent(jitterBust)}`,
-  ];
+  const edgeUrl = withQuery_(edgeBase, "mode=all&v=" + encodeURIComponent(jitterBust));
+  const fallbackUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "v=" + encodeURIComponent(jitterBust));
+
+  const tryUrls = [edgeUrl, fallbackUrl];
 
   let lastErr = null;
 
@@ -554,7 +589,6 @@ async function fetchStatusAll() {
 }
 
 async function refreshStatus() {
-  // ✅ 改成上方 toast，不影響版面排列
   showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
@@ -619,9 +653,9 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
   const serverDisplayName = (data && data.displayName) || "";
-  const scheduleEnabled = (data && data.scheduleEnabled) || "否"; // ✅新增：排班表開通
-  const pushEnabled = (data && data.pushEnabled) || "否"; // ✅新增：是否推播
-  const personalStatusEnabled = (data && data.personalStatusEnabled) || "否"; // ✅新增：個人狀態開通
+  const scheduleEnabled = (data && data.scheduleEnabled) || "否";
+  const pushEnabled = (data && data.pushEnabled) || "否";
+  const personalStatusEnabled = (data && data.personalStatusEnabled) || "否";
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -763,13 +797,11 @@ async function initLiffAndGuard() {
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
-    // ✅ 先渲染功能提示（不論最後是否放行，畫面上方都能顯示）
+    // ✅ 先渲染功能提示
     updateFeatureState_(result);
 
     // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
-
-    // ✅ 今天最後一天也能用：remainingDays >= 0
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
     const notExpired = hasRd ? rd >= 0 : false;
@@ -779,15 +811,35 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ 每天首次：由使用者在 OA 聊天室送出訊息（只改前端）
-      await sendDailyFirstMessageFromUser_();
+      // ✅ personalStatusEnabled=是 → 顯示兩顆按鈕（連結來自 getPersonalStatus）
+      const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
+      if (personalOk) {
+        try {
+          const ps = await fetchPersonalStatusRow_(userId);
+          if (ps && ps.ok) {
+            const manage = ps.manageLiff || ps["使用者管理liff"];
+            const pLink = ps.personalStatusLink || ps["個人狀態連結"];
+            showPersonalTools_(manage, pLink);
+          } else {
+            hidePersonalTools_();
+          }
+        } catch (e) {
+          console.warn("[PersonalTools] getPersonalStatus failed:", e);
+          hidePersonalTools_();
+        }
+      } else {
+        hidePersonalTools_();
+      }
 
+      await sendDailyFirstMessageFromUser_();
       startApp();
       return;
     }
 
     // ✅ 審核通過但被擋：顯示原因
     if (result.status === "approved") {
+      hidePersonalTools_();
+
       let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
       if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
       if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
@@ -797,6 +849,8 @@ async function initLiffAndGuard() {
     }
 
     if (result.status === "pending") {
+      hidePersonalTools_();
+
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
@@ -808,9 +862,11 @@ async function initLiffAndGuard() {
       return;
     }
 
+    hidePersonalTools_();
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
+    hidePersonalTools_();
     showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
   }
 }
@@ -857,11 +913,11 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  // ✅ 你要每人 10 秒讀取一次：改成 10 秒（你目前是 5 秒）
-  const intervalMs = 5 * 1000;
+  // ✅ 每人 10 秒讀取一次
+  const intervalMs = 10 * 1000;
 
-  // ✅ jitter：避免同秒齊發尖峰（你目前是 0~3 秒）
-  const jitter = Math.floor(Math.random() * 3000);
+  // ✅ jitter：避免同秒齊發尖峰（0~5 秒）
+  const jitter = Math.floor(Math.random() * 5000);
 
   setTimeout(() => {
     setInterval(refreshStatus, intervalMs);
