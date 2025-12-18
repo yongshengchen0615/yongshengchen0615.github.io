@@ -7,7 +7,7 @@
 //    - ADMIN_API_URL  <- PersonalStatus「使用者資料庫」(databaseUrl)
 //    - BOOKING_API_URL <- PersonalStatus「相關日期資料庫」(dateDatabaseUrl)
 // 4) ✅ 用 ADMIN_API_URL(使用者資料庫) 再檢查登入者 audit 是否「通過」
-//    - 非通過：顯示提醒 + 禁用「個人狀態」功能（不整頁封鎖）
+//    - 非通過：顯示不同提示文案 + 整頁不能用
 // =========================================================
 
 // ================================
@@ -84,6 +84,46 @@ function normalizeDigits(v) {
   return String(v || "").replace(/[^\d]/g, "");
 }
 
+// ✅ audit 不同提示文案
+function auditBlockMessage_(auditRaw) {
+  const a = String(auditRaw || "").trim();
+
+  if (a === "通過") return null;
+
+  if (!a || a === "-") {
+    return {
+      title: "審核狀態未設定",
+      text: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。",
+    };
+  }
+
+  if (a === "待審核") {
+    return {
+      title: "尚未通過審核",
+      text: "你的帳號目前為「待審核」，暫時無法使用。請聯絡管理員開通。",
+    };
+  }
+
+  if (a === "拒絕") {
+    return {
+      title: "審核未通過",
+      text: "你的帳號審核結果為「拒絕」，無法使用此頁面。請聯絡管理員確認原因。",
+    };
+  }
+
+  if (a === "停用") {
+    return {
+      title: "帳號已停用",
+      text: "你的帳號目前為「停用」，無法使用此頁面。請聯絡管理員協助。",
+    };
+  }
+
+  return {
+    title: "無法使用",
+    text: `你的審核狀態為「${a}」，目前無法使用此頁面。請聯絡管理員。`,
+  };
+}
+
 // ================================
 // 3) Gate UI
 // ================================
@@ -122,8 +162,7 @@ function showDenied_(info) {
 
   if (reason === "not_in_liff") {
     if (titleEl) titleEl.textContent = "請在 LINE 內開啟";
-    if (textEl)
-      textEl.textContent = "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
+    if (textEl) textEl.textContent = "此頁面需要透過 LIFF 取得使用者身份。請從 LINE 官方帳號的 LIFF 入口開啟。";
     return;
   }
 
@@ -142,17 +181,13 @@ function showDenied_(info) {
   // ✅ 目標技師 Gate
   if (reason === "target_not_found") {
     if (titleEl) titleEl.textContent = "找不到技師資料";
-    if (textEl)
-      textEl.textContent =
-        "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。";
+    if (textEl) textEl.textContent = "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。";
     return;
   }
 
   if (reason === "target_personal_disabled") {
     if (titleEl) titleEl.textContent = "此技師尚未開通";
-    if (textEl)
-      textEl.textContent =
-        "此頁面需技師「個人狀態開通」= 是 才能使用。請聯絡管理員在 Users 後台將該技師設為「是」。";
+    if (textEl) textEl.textContent = "此頁面需技師「個人狀態開通」= 是 才能使用。請聯絡管理員在 Users 後台將該技師設為「是」。";
     return;
   }
 
@@ -168,10 +203,15 @@ function showDenied_(info) {
     return;
   }
 
+  // ✅ 新增：audit block（整頁不可用）
+  if (reason === "audit_block") {
+    if (titleEl) titleEl.textContent = String(info?.denyTitle || "無法使用");
+    if (textEl) textEl.textContent = String(info?.denyText || "你的審核狀態未通過，無法使用此頁面。");
+    return;
+  }
+
   if (titleEl) titleEl.textContent = "尚未通過審核";
-  if (textEl)
-    textEl.textContent =
-      "目前未通過審核（新用戶會自動建立為「待審核」），請聯絡管理員開通權限。";
+  if (textEl) textEl.textContent = "目前未通過審核（新用戶會自動建立為「待審核」），請聯絡管理員開通權限。";
 }
 
 // ================================
@@ -294,7 +334,7 @@ async function checkTargetTechEnabledOrBlock_() {
   return { ok: true, techRow };
 }
 
-// ✅ 新增：取得 TARGET_MASTER_ID 對應那列的 ownerUserId（用來讀 PersonalStatus 的使用者資料庫連結）
+// ✅ 取得 TARGET_MASTER_ID 對應那列的 ownerUserId（實際上就是那列的 userId）
 async function getOwnerUserIdByTargetMaster_() {
   const json = await userMgmtGet_({ mode: "listUsers" });
   const users = Array.isArray(json?.users) ? json.users : [];
@@ -319,7 +359,6 @@ function pickField_(obj, keys) {
 }
 
 async function hydrateUrlsFromPersonalStatus_(userId) {
-  // ✅ 固定只打 getPersonalStatus
   const json = await userMgmtGet_({ mode: "getPersonalStatus", userId });
 
   if (!json || json.ok !== true) {
@@ -327,7 +366,6 @@ async function hydrateUrlsFromPersonalStatus_(userId) {
     throw new Error(err);
   }
 
-  // 兼容：後端既有英文 alias + 中文鍵
   const adminUrl = pickField_(json, ["databaseUrl", "使用者資料庫"]);
   const bookingUrl = pickField_(json, ["dateDatabaseUrl", "相關日期資料庫"]);
 
@@ -345,7 +383,7 @@ async function hydrateUrlsFromPersonalStatus_(userId) {
   return json;
 }
 
-// ✅ 新增：ADMIN_API_URL（使用者資料庫）查登入者 audit 是否通過
+// ✅ ADMIN_API_URL（使用者資料庫）GET helper
 async function adminDbGet_(paramsObj) {
   if (!APP_CONFIG.ADMIN_API_URL) throw new Error("ADMIN_API_URL missing");
 
@@ -375,26 +413,9 @@ async function adminDbGet_(paramsObj) {
 
 async function checkLoginUserAuditFromAdminDb_(loginUserId) {
   const json = await adminDbGet_({ mode: "check", userId: loginUserId });
-
   const audit = String(json?.audit || "").trim();
   const ok = audit === "通過";
-
   return { ok, audit, raw: json };
-}
-
-// ✅ 新增：鎖個人狀態 UI（不整頁封鎖）
-function lockPersonalStatusUI_(msg) {
-  toast(msg || "審核未通過，無法使用個人狀態");
-
-  // 你若有實際 id，請對齊這兩個；沒有也不會報錯
-  const btn = $("personalStatusBtn");
-  const section = $("personalStatusSection");
-
-  if (btn) btn.disabled = true;
-  if (section) {
-    section.style.pointerEvents = "none";
-    section.style.opacity = "0.55";
-  }
 }
 
 // ================================
@@ -427,7 +448,6 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  // ✅ 技師「個人狀態開通」判斷
   const techGate = await checkTargetTechEnabledOrBlock_();
   if (!techGate.ok) return { allowed: false };
 
@@ -521,7 +541,7 @@ const calState = {
   viewMonth: new Date().getMonth(),
 };
 
-const dtState = { byDate: new Map() };
+let dtState = { byDate: new Map() };
 const calInfoByDate = new Map();
 
 function normTypeText(t) {
@@ -579,7 +599,7 @@ async function loadBizConfig() {
   calState.endTime = formatTimeHHmm(cfg.endTime);
   calState.weeklyOff = Array.isArray(weeklyOff) ? weeklyOff : [];
 
-  dtState.byDate = new Map();
+  dtState = { byDate: new Map() };
   (Array.isArray(datetypes) ? datetypes : []).forEach((r) => {
     const date = String(r.Date || r.date || "").trim();
     const type = normTypeText(r.Type || r.DateType || r.type);
@@ -763,17 +783,33 @@ window.onload = async () => {
       return;
     }
 
-    // ✅ 新增：用「使用者資料庫」再檢查登入者 audit
+    // ✅ 重要：用 ADMIN_API_URL（使用者資料庫）檢查登入者 audit；非通過 → 整頁不能用（不同文案）
     try {
       const auditCheck = await checkLoginUserAuditFromAdminDb_(gate.userId);
-      if (!auditCheck.ok) {
-        lockPersonalStatusUI_(
-          `你目前審核狀態為「${auditCheck.audit || "空白"}」，無法使用個人狀態`
-        );
+      const msg = auditBlockMessage_(auditCheck.audit);
+
+      if (msg) {
+        showDenied_({
+          denyReason: "audit_block",
+          audit: auditCheck.audit || "-",
+          displayName: gate.profile?.displayName || "-",
+          remainingDays: auditCheck.raw?.remainingDays ?? "-",
+          denyTitle: msg.title,
+          denyText: msg.text,
+        });
+        return;
       }
     } catch (e) {
       console.error(e);
-      lockPersonalStatusUI_("審核狀態檢查失敗，暫時無法使用個人狀態");
+      showDenied_({
+        denyReason: "audit_block",
+        audit: "-",
+        displayName: gate.profile?.displayName || "-",
+        remainingDays: "-",
+        denyTitle: "審核狀態檢查失敗",
+        denyText: "無法讀取你的審核狀態，暫時無法使用此頁面。請稍後再試或聯絡管理員。",
+      });
+      return;
     }
 
     await Promise.all([loadTechStatus(), loadBizConfig()]);
