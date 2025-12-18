@@ -1,12 +1,11 @@
 // =========================================================
-// 師傅狀態 + 日曆（✅ endpoints 由 USER_MGMT_API_URL 讀 PersonalStatus 分發）
-// 分工：
-// - USER_MGMT_API_URL：只負責讀 PersonalStatus → 分發 endpoints（ADMIN/BOOKING/TECH）
-// - ADMIN_API_URL：讀取「使用者資料庫」(Users) → check/register/listUsers...
-// - BOOKING_API_URL：讀取「相關日期資料庫」→ entity=bootstrap...
-// - TECH_API_URL：讀取「技師狀態資料庫」→ body/foot...
-//
-// ✅ 相容舊版：若 PersonalStatus 沒提供 techApiUrl/booking/admin，可 fallback 用 config.json 裡的舊欄位
+// 師傅狀態 + 日曆（✅ config.json 讀取 + PersonalStatus 動態 URL）
+// Gate：
+// 1) 使用者需通過審核（USER_MGMT_API_URL：check / register）
+// 2) TARGET_MASTER_ID 對應技師 personalStatusEnabled=是 才放行（USER_MGMT_API_URL：listUsers）
+// 3) ✅ ADMIN_API_URL / BOOKING_API_URL 由 USER_MGMT 的 PersonalStatus 讀取：
+//    - ADMIN_API_URL  <- PersonalStatus「使用者資料庫」
+//    - BOOKING_API_URL <- PersonalStatus「相關日期資料庫」
 // =========================================================
 
 // ================================
@@ -14,13 +13,6 @@
 // ================================
 const CONFIG_URL = "./config.json";
 let APP_CONFIG = null;
-
-// 由 PersonalStatus 分發出來的 endpoints（或 fallback）
-let ENDPOINTS = {
-  ADMIN_API_URL: "",
-  BOOKING_API_URL: "",
-  TECH_API_URL: "",
-};
 
 async function loadConfig_() {
   const res = await fetch(`${CONFIG_URL}?v=${Date.now()}`, {
@@ -38,23 +30,34 @@ async function loadConfig_() {
     throw new Error("CONFIG non-JSON: " + text.slice(0, 200));
   }
 
-  // ✅ 新版最小必要欄位
-  const required = ["LIFF_ID", "USER_MGMT_API_URL", "TARGET_MASTER_ID"];
-  const missing = required.filter((k) => !json[k] || String(json[k]).trim() === "");
-  if (missing.length) throw new Error("CONFIG missing: " + missing.join(", "));
+  // ✅ 不再要求 BOOKING_API_URL（因為要從 PersonalStatus 動態取得）
+  const required = ["LIFF_ID", "TECH_API_URL", "TARGET_MASTER_ID"];
+  const missingBase = required.filter((k) => !json[k] || String(json[k]).trim() === "");
+  if (missingBase.length) throw new Error("CONFIG missing: " + missingBase.join(", "));
 
-  APP_CONFIG = Object.freeze({
+  // ✅ USER_MGMT 必填（若你還想兼容舊的 ADMIN_API_URL 當 fallback，可保留）
+  const userMgmt = String(json.USER_MGMT_API_URL || "").trim();
+  const adminFallback = String(json.ADMIN_API_URL || "").trim();
+  const userMgmtResolved = userMgmt || adminFallback;
+
+  if (!userMgmtResolved) throw new Error("CONFIG missing: USER_MGMT_API_URL (or ADMIN_API_URL fallback)");
+
+  // ✅ APP_CONFIG 先建立成可變物件，之後會注入 ADMIN_API_URL / BOOKING_API_URL
+  APP_CONFIG = {
     LIFF_ID: String(json.LIFF_ID).trim(),
-    USER_MGMT_API_URL: String(json.USER_MGMT_API_URL).trim(),
+    USER_MGMT_API_URL: userMgmtResolved,
+    TECH_API_URL: String(json.TECH_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
 
-    // ✅ 舊版相容：萬一 PersonalStatus 沒給 endpoint，就用這些 fallback
-    ADMIN_FALLBACK: String(json.ADMIN_API_URL || "").trim(),
-    BOOKING_FALLBACK: String(json.BOOKING_API_URL || "").trim(),
-    TECH_FALLBACK: String(json.TECH_API_URL || "").trim(),
-  });
+    // ✅ 動態注入（PersonalStatus 來）
+    ADMIN_API_URL: "",
+    BOOKING_API_URL: "",
 
-  console.log("[CONFIG] loaded", APP_CONFIG);
+    // （可選）如果你在 config.json 有放 BOOKING_API_URL，當 PersonalStatus 失敗時可 fallback
+    _BOOKING_FALLBACK: String(json.BOOKING_API_URL || "").trim(),
+  };
+
+  console.log("[CONFIG] loaded (base)", APP_CONFIG);
   return APP_CONFIG;
 }
 
@@ -89,17 +92,6 @@ function toast(msg) {
 
 function normalizeDigits(v) {
   return String(v || "").replace(/[^\d]/g, "");
-}
-
-function normalizeWeeklyOffArray_(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .map((x) => Number(String(x).trim()))
-    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 6);
-}
-
-function isYmd_(s) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
 }
 
 // ================================
@@ -151,26 +143,13 @@ function showDenied_(info) {
     return;
   }
 
-  if (reason === "endpoints_missing") {
-    if (titleEl) titleEl.textContent = "系統尚未設定";
-    if (textEl)
-      textEl.textContent =
-        "PersonalStatus 尚未配置 endpoint（ADMIN/BOOKING/TECH）。請管理員到 PersonalStatus 表填入對應欄位。";
-    return;
-  }
-
-  if (reason === "endpoint_fetch_failed") {
-    if (titleEl) titleEl.textContent = "讀取設定失敗";
-    if (textEl) textEl.textContent = "無法從 PersonalStatus 讀取 endpoint，請稍後再試或聯絡管理員。";
-    return;
-  }
-
   if (reason === "check_failed") {
     if (titleEl) titleEl.textContent = "權限檢查失敗";
     if (textEl) textEl.textContent = "無法完成審核檢查，請稍後再試或聯絡管理員。";
     return;
   }
 
+  // ✅ 目標技師 Gate
   if (reason === "target_not_found") {
     if (titleEl) titleEl.textContent = "找不到技師資料";
     if (textEl)
@@ -190,6 +169,13 @@ function showDenied_(info) {
   if (reason === "target_check_failed") {
     if (titleEl) titleEl.textContent = "技師狀態檢查失敗";
     if (textEl) textEl.textContent = "無法讀取技師的開通狀態，請稍後再試或聯絡管理員。";
+    return;
+  }
+
+  // ✅ PersonalStatus 讀取失敗
+  if (reason === "personalstatus_failed") {
+    if (titleEl) titleEl.textContent = "讀取設定失敗";
+    if (textEl) textEl.textContent = "無法從 PersonalStatus 取得資料庫 URL，請聯絡管理員檢查設定。";
     return;
   }
 
@@ -228,7 +214,7 @@ async function getUserIdFromLiff_() {
 }
 
 // ================================
-// 5) USER_MGMT（PersonalStatus 分發用）GET helper
+// 5) USER_MGMT_API（GAS）：GET helper
 // ================================
 async function userMgmtGet_(paramsObj) {
   const u = new URL(APP_CONFIG.USER_MGMT_API_URL);
@@ -255,83 +241,6 @@ async function userMgmtGet_(paramsObj) {
   }
 }
 
-/**
- * 從 PersonalStatus 取得 endpoints
- * 兼容兩種回傳：
- * - 新版：mode=getEndpoints → { ok, adminApiUrl, bookingApiUrl, techApiUrl }
- * - 舊版：mode=getUserManageLink → { ok, databaseUrl, dateDatabaseUrl, techApiUrl? }
- */
-async function fetchEndpointsFromPersonalStatus_(userId) {
-  // 1) 優先新版 getEndpoints
-  try {
-    const j = await userMgmtGet_({ mode: "getEndpoints", userId });
-    if (j && j.ok) {
-      const admin = String(j.adminApiUrl || "").trim();
-      const booking = String(j.bookingApiUrl || "").trim();
-      const tech = String(j.techApiUrl || "").trim();
-      return { admin, booking, tech, source: "getEndpoints", raw: j };
-    }
-  } catch (e) {
-    console.warn("[ENDPOINTS] getEndpoints not available, fallback to getUserManageLink");
-  }
-
-  // 2) fallback：getUserManageLink
-  const j2 = await userMgmtGet_({ mode: "getUserManageLink", userId });
-  if (!j2 || !j2.ok) return { admin: "", booking: "", tech: "", source: "none", raw: j2 };
-
-  const admin = String(j2.databaseUrl || "").trim();       // PersonalStatus C: 使用者資料庫
-  const booking = String(j2.dateDatabaseUrl || "").trim(); // PersonalStatus E: 相關日期資料庫
-  const tech = String(j2.techApiUrl || "").trim();         // 若你日後加欄位可直接吃到
-  return { admin, booking, tech, source: "getUserManageLink", raw: j2 };
-}
-
-function resolveEndpoints_(ps, config) {
-  const admin = (ps.admin || "").trim() || (config.ADMIN_FALLBACK || "").trim();
-  const booking = (ps.booking || "").trim() || (config.BOOKING_FALLBACK || "").trim();
-  const tech = (ps.tech || "").trim() || (config.TECH_FALLBACK || "").trim();
-
-  ENDPOINTS = {
-    ADMIN_API_URL: admin,
-    BOOKING_API_URL: booking,
-    TECH_API_URL: tech,
-  };
-
-  console.log("[ENDPOINTS] resolved", ENDPOINTS, "source=", ps.source);
-
-  // 你這頁面實際需要：ADMIN + BOOKING + TECH
-  const must = ["ADMIN_API_URL", "BOOKING_API_URL", "TECH_API_URL"];
-  const missing = must.filter((k) => !ENDPOINTS[k] || String(ENDPOINTS[k]).trim() === "");
-  return { ok: missing.length === 0, missing };
-}
-
-// ================================
-// 6) ADMIN（Users 資料庫）GET helper
-// ================================
-async function adminGet_(paramsObj) {
-  const u = new URL(ENDPOINTS.ADMIN_API_URL);
-  Object.entries(paramsObj || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
-  });
-  u.searchParams.set("_cors", "1");
-
-  const url = u.toString();
-  console.log("[ADMIN] GET", url);
-
-  const res = await fetch(url, { method: "GET" });
-  const text = await res.text();
-
-  console.log("[ADMIN] status", res.status);
-  console.log("[ADMIN] raw", text.slice(0, 200));
-
-  if (!res.ok) throw new Error("ADMIN HTTP " + res.status + " " + text.slice(0, 160));
-
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw new Error("ADMIN non-JSON response: " + text.slice(0, 200));
-  }
-}
-
 // 依你 GAS：找不到 user 時回 status:"none", audit:"", displayName:""
 function isUserNotFound_(checkJson) {
   if (!checkJson) return true;
@@ -341,12 +250,12 @@ function isUserNotFound_(checkJson) {
   return status === "none" || (!audit && !name);
 }
 
-async function ensureUserExistsOnAdmin_(userId, displayName) {
-  const check1 = await adminGet_({ mode: "check", userId });
+async function ensureUserExists_(userId, displayName) {
+  const check1 = await userMgmtGet_({ mode: "check", userId });
 
   if (isUserNotFound_(check1)) {
-    await adminGet_({ mode: "register", userId, displayName: displayName || "" });
-    const check2 = await adminGet_({ mode: "check", userId });
+    await userMgmtGet_({ mode: "register", userId, displayName: displayName || "" });
+    const check2 = await userMgmtGet_({ mode: "check", userId });
     return check2;
   }
 
@@ -354,35 +263,90 @@ async function ensureUserExistsOnAdmin_(userId, displayName) {
 }
 
 // ================================
-// 7) ✅ 目標技師 Gate：TARGET_MASTER_ID 的「個人狀態開通」必須為 是
+// 5.5) ✅ 從 USER_MGMT 的 PersonalStatus 讀取動態 URL
+// - ADMIN_API_URL  <- PersonalStatus「使用者資料庫」
+// - BOOKING_API_URL <- PersonalStatus「相關日期資料庫」
 // ================================
-function pickMasterCode_(u) {
-  // ✅ schema 容錯：不同後端可能叫不同欄位
-  return (
-    u?.masterCode ??
-    u?.masterId ??
-    u?.masterID ??
-    u?.師傅編號 ??
-    u?.code ??
-    u?.id ??
-    ""
-  );
+function pickField_(obj, keys) {
+  for (const k of keys) {
+    if (obj && obj[k] != null && String(obj[k]).trim() !== "") return String(obj[k]).trim();
+  }
+  return "";
 }
 
-async function fetchTargetTechRowFromAdmin_() {
-  const json = await adminGet_({ mode: "listUsers" });
+async function fetchPersonalStatus_() {
+  // 你後端 mode 名稱若不同，至少這三個其中一個成功即可
+  const modesToTry = ["personalStatus", "getPersonalStatus", "PersonalStatus"];
+
+  let lastErr = null;
+  for (const mode of modesToTry) {
+    try {
+      const json = await userMgmtGet_({ mode });
+      if (!json) continue;
+
+      // 兼容常見回傳形狀：
+      // - { ok:true, data:{...} }
+      // - { ok:true, personalStatus:{...} }
+      // - { ... }（直接就是字典）
+      const ps = json.data || json.personalStatus || json;
+      if (ps && typeof ps === "object") return ps;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("PersonalStatus fetch failed");
+}
+
+async function hydrateUrlsFromPersonalStatus_() {
+  const ps = await fetchPersonalStatus_();
+
+  // ✅ 你指定的欄位名（中文）
+  const adminUrl = pickField_(ps, ["使用者資料庫"]);
+  const bookingUrl = pickField_(ps, ["相關日期資料庫"]);
+
+  // （可選）你若後端欄位改成英文，也可在 keys 裡加別名：
+  // const adminUrl = pickField_(ps, ["使用者資料庫", "userDb", "ADMIN_API_URL"]);
+  // const bookingUrl = pickField_(ps, ["相關日期資料庫", "dateDb", "BOOKING_API_URL"]);
+
+  if (!adminUrl) {
+    throw new Error("PersonalStatus 缺少「使用者資料庫」欄位或值為空");
+  }
+  if (!bookingUrl) {
+    // ✅ fallback：如果你 config.json 有放 BOOKING_API_URL，這裡可救急
+    if (APP_CONFIG._BOOKING_FALLBACK) {
+      APP_CONFIG.BOOKING_API_URL = APP_CONFIG._BOOKING_FALLBACK;
+      APP_CONFIG.ADMIN_API_URL = adminUrl;
+      console.log("[CONFIG] hydrated from PersonalStatus + BOOKING fallback", {
+        ADMIN_API_URL: APP_CONFIG.ADMIN_API_URL,
+        BOOKING_API_URL: APP_CONFIG.BOOKING_API_URL,
+      });
+      return { adminUrl: APP_CONFIG.ADMIN_API_URL, bookingUrl: APP_CONFIG.BOOKING_API_URL };
+    }
+
+    throw new Error("PersonalStatus 缺少「相關日期資料庫」欄位或值為空");
+  }
+
+  APP_CONFIG.ADMIN_API_URL = adminUrl;
+  APP_CONFIG.BOOKING_API_URL = bookingUrl;
+
+  console.log("[CONFIG] hydrated from PersonalStatus", {
+    ADMIN_API_URL: APP_CONFIG.ADMIN_API_URL,
+    BOOKING_API_URL: APP_CONFIG.BOOKING_API_URL,
+  });
+
+  return { adminUrl, bookingUrl };
+}
+
+// ================================
+// 6) ✅ 目標技師 Gate：TARGET_MASTER_ID 的「個人狀態開通」必須為 是
+// ================================
+async function fetchTargetTechRow_() {
+  const json = await userMgmtGet_({ mode: "listUsers" });
   const users = Array.isArray(json?.users) ? json.users : [];
 
   const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const hit = users.find((u) => normalizeDigits(u.masterCode) === target);
 
-  // debug（避免你又遇到「找不到」卻不知道 users 長啥樣）
-  console.log("[TARGET] target=", target, "users_count=", users.length);
-  console.log(
-    "[TARGET] sample masterCodes=",
-    users.slice(0, 20).map((u) => String(pickMasterCode_(u)))
-  );
-
-  const hit = users.find((u) => normalizeDigits(pickMasterCode_(u)) === target);
   return hit || null;
 }
 
@@ -390,7 +354,7 @@ async function checkTargetTechEnabledOrBlock_() {
   let techRow = null;
 
   try {
-    techRow = await fetchTargetTechRowFromAdmin_();
+    techRow = await fetchTargetTechRow_();
   } catch (e) {
     console.error(e);
     showDenied_({ denyReason: "target_check_failed" });
@@ -417,7 +381,7 @@ async function checkTargetTechEnabledOrBlock_() {
 }
 
 // ================================
-// 8) Gate：使用者通過審核 + 目標技師開通
+// 7) Gate：使用者通過審核 + 目標技師開通
 // ================================
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
@@ -426,28 +390,9 @@ async function checkAccessOrBlock_() {
   const userId = String(auth.userId || "").trim();
   const displayName = String(auth.profile?.displayName || "").trim();
 
-  // 1) 先從 PersonalStatus 分發 endpoints
-  let ps;
-  try {
-    ps = await fetchEndpointsFromPersonalStatus_(userId);
-  } catch (e) {
-    console.error(e);
-    toast("讀取 endpoint 失敗：" + String(e.message || e));
-    showDenied_({ denyReason: "endpoint_fetch_failed" });
-    return { allowed: false };
-  }
-
-  const r = resolveEndpoints_(ps, APP_CONFIG);
-  if (!r.ok) {
-    console.warn("[ENDPOINTS] missing:", r.missing);
-    showDenied_({ denyReason: "endpoints_missing" });
-    return { allowed: false };
-  }
-
-  // 2) 再走 ADMIN 的 check/register（Users 資料庫）
   let json;
   try {
-    json = await ensureUserExistsOnAdmin_(userId, displayName);
+    json = await ensureUserExists_(userId, displayName);
   } catch (e) {
     console.error(e);
     toast("權限檢查失敗：" + String(e.message || e));
@@ -465,7 +410,7 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  // 3) 目標技師 Gate（從 ADMIN listUsers）
+  // ✅ 技師「個人狀態開通」判斷
   const techGate = await checkTargetTechEnabledOrBlock_();
   if (!techGate.ok) return { allowed: false };
 
@@ -473,7 +418,7 @@ async function checkAccessOrBlock_() {
 }
 
 // ================================
-// 9) 主題切換
+// 8) 主題切換
 // ================================
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
@@ -494,7 +439,7 @@ function initTheme() {
 }
 
 // ================================
-// 10) Loading
+// 9) Loading / App 顯示
 // ================================
 function showApp() {
   hideLoading_();
@@ -503,17 +448,12 @@ function showApp() {
 }
 
 // ================================
-// 11) 師傅狀態（TECH_API_URL）
+// 10) 師傅狀態
 // ================================
 function classifyStatus(text) {
   if (!text) return "off";
   if (text.includes("工作")) return "busy";
-  if (text.includes("準備")) return "idle";
-  if (text.includes("備牌")) return "idle";
   if (text.includes("上班") || text.includes("可預約")) return "idle";
-  if (text.includes("外出")) return "off";
-  if (text.includes("排班")) return "off";
-  if (text.includes("未到")) return "off";
   if (text.includes("休") || text.includes("下班")) return "off";
   return "idle";
 }
@@ -531,18 +471,14 @@ function updateStatusUI(kind, data) {
     return;
   }
 
-  const statusText = String(data.status || "");
-  const bucket = classifyStatus(statusText);
-
-  statusEl.innerHTML = `<span class="status-pill status-${bucket}" aria-label="狀態：${statusText}">${statusText}</span>`;
+  const bucket = classifyStatus(String(data.status || ""));
+  statusEl.innerHTML = `<span class="status-pill status-${bucket}">${String(data.status || "")}</span>`;
   apptEl.textContent = data.appointment || "無預約";
   remEl.textContent = data.remaining || "-";
 }
 
 async function loadTechStatus() {
-  if (!ENDPOINTS.TECH_API_URL) throw new Error("TECH_API_URL missing");
-
-  const res = await fetch(ENDPOINTS.TECH_API_URL, { method: "GET" });
+  const res = await fetch(APP_CONFIG.TECH_API_URL, { method: "GET" });
   if (!res.ok) throw new Error("TECH_API fetch failed: " + res.status);
 
   const json = await res.json();
@@ -556,7 +492,7 @@ async function loadTechStatus() {
 }
 
 // ================================
-// 12) 日曆（BOOKING_API_URL）
+// 11) 日曆
 // ================================
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -609,9 +545,9 @@ function formatTimeHHmm(val) {
 }
 
 async function loadBizConfig() {
-  if (!ENDPOINTS.BOOKING_API_URL) throw new Error("BOOKING_API_URL missing");
+  if (!APP_CONFIG.BOOKING_API_URL) throw new Error("BOOKING_API_URL missing (not hydrated)");
 
-  const url = `${ENDPOINTS.BOOKING_API_URL}?entity=bootstrap`;
+  const url = `${APP_CONFIG.BOOKING_API_URL}?entity=bootstrap`;
   const res = await fetch(url, { method: "GET" });
   if (!res.ok) throw new Error("BOOKING_API fetch failed: " + res.status);
 
@@ -619,20 +555,18 @@ async function loadBizConfig() {
   if (!json.ok) throw new Error(json.error || "BOOKING_API error");
 
   const cfg = json.data?.config || {};
-  const weeklyOffRaw = json.data?.weeklyOff || [];
+  const weeklyOff = json.data?.weeklyOff || [];
   const datetypes = json.data?.datetypes || [];
 
   calState.startTime = formatTimeHHmm(cfg.startTime);
   calState.endTime = formatTimeHHmm(cfg.endTime);
-  calState.weeklyOff = normalizeWeeklyOffArray_(weeklyOffRaw);
+  calState.weeklyOff = Array.isArray(weeklyOff) ? weeklyOff : [];
 
   dtState.byDate = new Map();
   (Array.isArray(datetypes) ? datetypes : []).forEach((r) => {
     const date = String(r.Date || r.date || "").trim();
     const type = normTypeText(r.Type || r.DateType || r.type);
-
-    if (!isYmd_(date)) return;
-    if (!type) return;
+    if (!date || !type) return;
 
     const item = { type, bucket: typeToBucket(type) };
     if (!dtState.byDate.has(date)) dtState.byDate.set(date, []);
@@ -693,10 +627,7 @@ function renderCalendar() {
     const ymd = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dtItems = dtState.byDate.get(ymd) || [];
 
-    if (
-      CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true &&
-      dtItems.some((it) => it.bucket === "workday")
-    ) {
+    if (CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true && dtItems.some((it) => it.bucket === "workday")) {
       off = false;
     }
 
@@ -779,7 +710,7 @@ function bindCalendarNav() {
 }
 
 // ================================
-// 13) 初始化
+// 12) 初始化
 // ================================
 window.onload = async () => {
   initTheme();
@@ -791,14 +722,24 @@ window.onload = async () => {
     const mid = $("techMasterId");
     if (mid) mid.textContent = APP_CONFIG.TARGET_MASTER_ID;
 
-    // Gate（內含：先抓 endpoints → 再走 ADMIN check/register → 再做 target tech gate）
+    // ✅ 先做 Gate（使用者審核 + 技師開通）
     const gate = await checkAccessOrBlock_();
     if (!gate.allowed) return;
 
-    // 進入後：TECH + BOOKING 同時載入
+    // ✅ 再從 PersonalStatus 動態注入 ADMIN/BOOKING URL
+    try {
+      await hydrateUrlsFromPersonalStatus_();
+    } catch (e) {
+      console.error(e);
+      toast("讀取 PersonalStatus 失敗：" + String(e.message || e));
+      showDenied_({ denyReason: "personalstatus_failed" });
+      return;
+    }
+
     await Promise.all([loadTechStatus(), loadBizConfig()]);
     showApp();
 
+    // 每 10 秒輪詢師傅狀態
     setInterval(async () => {
       try {
         await loadTechStatus();
@@ -807,8 +748,8 @@ window.onload = async () => {
       }
     }, 10000);
   } catch (err) {
-    showApp();
-    toast("初始化失敗：" + String(err.message || err));
     console.error(err);
+    toast("初始化失敗：" + String(err.message || err));
+    showDenied_({ denyReason: "check_failed" });
   }
 };
