@@ -55,7 +55,7 @@ async function loadConfig_() {
 // 1) Calendar UI Text
 // ================================
 const CALENDAR_UI_TEXT = {
-  weeklyOff: { tooltip: "固定休假日" },
+  weeklyOff: { tooltip: "無法預約日" },
   dateTypes: {
     holiday: { tooltip: "休假日" },
     workday: { tooltipPrefix: "" },
@@ -715,7 +715,7 @@ function renderCalendar() {
         if (tip) lines.push(tip);
       });
 
-      if (lines.length === 1) lines.push("無特殊設定");
+      if (lines.length === 1) lines.push("可預約日");
       toast(lines.join("｜"));
     };
   });
