@@ -1,14 +1,11 @@
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
 (function () {
   const rawLog = console.log;
-
   console.log = function (...args) {
     try {
       const first = args[0];
       const msg = typeof first === "string" ? first : "";
-      if (msg.includes("[PanelScan]") && msg.includes("找不到 身體 / 腳底 panel")) {
-        return;
-      }
+      if (msg.includes("[PanelScan]") && msg.includes("找不到 身體 / 腳底 panel")) return;
     } catch (e) {}
     rawLog.apply(console, args);
   };
@@ -21,28 +18,22 @@
 // ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
 const EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbxZgErdlrmSbPPe6rA4HK4CmqZJmGMzIW4Eno8TTbRcnnM-s4DteRM2DPzl7PJBG34n-Q/exec",
-  "https://script.google.com/macros/s/AKfycbxSypQ2Jx3VjyWw266dlWrX863SwPFC1l60FB9xvaLF1sUOEgqWWWIaj6k11ODXLUwdnw/exec",
-  "https://script.google.com/macros/s/AKfycbw9vUkS4jC-PPJtQXu6FolZxYliIEKY3nGpbG7_qVUeAxS0bGadaN3pi9ekylZO_1DKR/exec",
-  "https://script.google.com/macros/s/AKfycbxAb50G7pNHLrcNUr_56kIZMkFldQ26nmglSDIodGiLV8Ya6Ur9QMelN6eXXrOeamd8/exec",
-  "https://script.google.com/macros/s/AKfycbxxg3AdVaqp3EGo-1ZpQzIshZ8_yqcvtlPtt51qoiTvfYr0xrovs44uqQjwajMACzju/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
 const FALLBACK_ORIGIN_CACHE_URL =
   "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
 
-// 一致性 hash：同一 userId 永遠命中同一台 Edge
+/* =========================
+ * Hash / URL utils
+ * ========================= */
 function hashToIndex_(str, mod) {
   let h = 0;
   const s = String(str || "");
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  }
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return mod ? h % mod : 0;
 }
 
-// ✅ 安全組 URL（避免你原本 fallback &v 少 ? 的問題）
 function withQuery_(base, extraQuery) {
   const b = String(base || "");
   const q = String(extraQuery || "");
@@ -51,32 +42,22 @@ function withQuery_(base, extraQuery) {
 }
 
 /* =========================================================
- * ✅ 高效率修正：Edge Failover + Timeout + Sticky Reroute
- * - 先打「hash 命中 Edge」
- * - 失敗 → 依序嘗試其他 Edge（最多試 3 台，可調）
- * - 每次 fetch 加 timeout（避免卡住）
- * - 同一使用者連續失敗 → 暫時切到下一台 Edge（記 localStorage）
+ * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
 
-const STATUS_FETCH_TIMEOUT_MS = 8000; // ✅ 建議 6~10 秒
-const EDGE_TRY_MAX = 3; // ✅ 最多試幾台 Edge（含命中那台）
-const EDGE_FAIL_THRESHOLD = 2; // ✅ 命中那台連續失敗幾次後觸發 reroute
-const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // ✅ reroute 有效期：30 分鐘
+const STATUS_FETCH_TIMEOUT_MS = 8000; // 6~10 秒
+const EDGE_TRY_MAX = 3;               // 最多試幾台（含命中那台）
+const EDGE_FAIL_THRESHOLD = 2;        // 命中那台連續失敗幾次後 reroute
+const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // reroute 有效期
 
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
 
 function readJsonLS_(k) {
-  try {
-    return JSON.parse(localStorage.getItem(k) || "null");
-  } catch (e) {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; }
 }
 function writeJsonLS_(k, v) {
-  try {
-    localStorage.setItem(k, JSON.stringify(v));
-  } catch (e) {}
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
 }
 
 function getOverrideEdgeIndex_() {
@@ -88,36 +69,26 @@ function getOverrideEdgeIndex_() {
   }
   return o.idx;
 }
-
 function setOverrideEdgeIndex_(idx) {
   writeJsonLS_(EDGE_ROUTE_KEY, { idx, exp: Date.now() + EDGE_REROUTE_TTL_MS });
 }
-
 function bumpFailCount_(idx) {
-  const now = Date.now();
   const s = readJsonLS_(EDGE_FAIL_KEY) || {};
   const sameIdx = s && s.idx === idx;
   const n = sameIdx ? Number(s.n || 0) + 1 : 1;
-
-  writeJsonLS_(EDGE_FAIL_KEY, { idx, n, t: now });
+  writeJsonLS_(EDGE_FAIL_KEY, { idx, n, t: Date.now() });
   return n;
 }
-
-function resetFailCount_() {
-  localStorage.removeItem(EDGE_FAIL_KEY);
-}
+function resetFailCount_() { localStorage.removeItem(EDGE_FAIL_KEY); }
 
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = hashToIndex_(uid, EDGE_STATUS_URLS.length);
   const overrideIdx = getOverrideEdgeIndex_();
-  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) {
-    return overrideIdx;
-  }
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) return overrideIdx;
   return baseIdx;
 }
 
-// 依序產生要嘗試的 Edge index：先命中，再往後輪
 function buildEdgeTryOrder_(startIdx) {
   const n = EDGE_STATUS_URLS.length;
   const order = [];
@@ -131,19 +102,13 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
 
   try {
     const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
-    const text = await resp.text(); // ✅ 先拿 text，避免非 JSON 直接炸
+    const text = await resp.text();
 
-    if (!resp.ok) {
-      const head = text.slice(0, 160);
-      throw new Error(`HTTP ${resp.status} ${head}`);
-    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
 
     let json;
-    try {
-      json = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`NON_JSON ${text.slice(0, 160)}`);
-    }
+    try { json = JSON.parse(text); }
+    catch { throw new Error(`NON_JSON ${text.slice(0, 160)}`); }
 
     if (json && json.ok === false) throw new Error(`NOT_OK ${json.error || "response not ok"}`);
     return json;
@@ -196,32 +161,20 @@ const themeToggleBtn = document.getElementById("themeToggle");
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
-// ✅ 個人狀態快捷按鈕 DOM（✅ 加入休假）
+// ✅ 個人狀態快捷按鈕 DOM
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
 const btnVacationEl = document.getElementById("btnVacation");
 
 /* =========================================================
- * ✅ 功能提示（叫班提醒 / 個人狀態 / 排班表）
- * - 永遠顯示三個 chip
- * - 未開通顯示灰色 + badge「未開通」
+ * ✅ 功能提示 chip
  * ========================================================= */
+let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
 
-let featureState = {
-  pushEnabled: "否",
-  personalStatusEnabled: "否",
-  scheduleEnabled: "否",
-};
+function normalizeYesNo_(v) { return String(v || "").trim() === "是" ? "是" : "否"; }
 
-function normalizeYesNo_(v) {
-  return String(v || "").trim() === "是" ? "是" : "否";
-}
-
-function ensureFeatureBanner_() {
-  const el = document.getElementById("featureBanner");
-  return el || null;
-}
+function ensureFeatureBanner_() { return document.getElementById("featureBanner") || null; }
 
 function buildChip_(label, enabled) {
   const on = enabled === "是";
@@ -233,7 +186,6 @@ function buildChip_(label, enabled) {
 function renderFeatureBanner_() {
   const banner = ensureFeatureBanner_();
   if (!banner) return;
-
   const chipsEl = document.getElementById("featureChips");
   if (!chipsEl) return;
 
@@ -255,7 +207,9 @@ function updateFeatureState_(data) {
   renderFeatureBanner_();
 }
 
-// ✅ Top Loading Hint 控制
+/* =========================================================
+ * UI helpers
+ * ========================================================= */
 function showLoadingHint(text) {
   if (!topLoadingEl) return;
   if (topLoadingTextEl) topLoadingTextEl.textContent = text || "資料載入中…";
@@ -266,7 +220,6 @@ function hideLoadingHint() {
   topLoadingEl.classList.add("hidden");
 }
 
-// ===== Gate 顯示工具 =====
 function showGate(message, isError) {
   if (!gateEl) return;
   gateEl.classList.remove("gate-hidden");
@@ -277,19 +230,12 @@ function showGate(message, isError) {
     String(message || "").replace(/\n/g, "<br>") +
     "</p></div>";
 }
-
-function hideGate() {
-  if (!gateEl) return;
-  gateEl.classList.add("gate-hidden");
-}
-
+function hideGate() { if (gateEl) gateEl.classList.add("gate-hidden"); }
 function openApp() {
   hideGate();
-  if (!appRootEl) return;
-  appRootEl.classList.remove("app-hidden");
+  if (appRootEl) appRootEl.classList.remove("app-hidden");
 }
 
-// ===== 使用時間頂端橫幅 =====
 function updateUsageBanner(displayName, remainingDays) {
   if (!usageBannerEl || !usageBannerTextEl) return;
 
@@ -320,11 +266,8 @@ function updateUsageBanner(displayName, remainingDays) {
 }
 
 /* =========================================================
- * ✅ 個人狀態開通：顯示「使用者管理 / 個人狀態 / 休假設定」
- * - 只在 personalStatusEnabled=是 時觸發
- * - 連結來源：AUTH GAS mode=getPersonalStatus 回傳欄位
+ * ✅ Personal Tools（getPersonalStatus）
  * ========================================================= */
-
 async function fetchPersonalStatusRow_(userId) {
   const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
@@ -346,31 +289,17 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
 
   personalToolsEl.style.display = "flex";
 
-  // 使用者管理
   btnUserManageEl.style.display = m ? "inline-flex" : "none";
-  btnUserManageEl.onclick = () => {
-    if (!m) return;
-    window.location.href = m;
-  };
+  btnUserManageEl.onclick = () => { if (m) window.location.href = m; };
 
-  // 個人狀態
   btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => {
-    if (!p) return;
-    window.location.href = p;
-  };
+  btnPersonalStatusEl.onclick = () => { if (p) window.location.href = p; };
 
-  // 休假設定
   btnVacationEl.style.display = v ? "inline-flex" : "none";
-  btnVacationEl.onclick = () => {
-    if (!v) return;
-    window.location.href = v;
-  };
+  btnVacationEl.onclick = () => { if (v) window.location.href = v; };
 }
-
 function hidePersonalTools_() {
-  if (!personalToolsEl) return;
-  personalToolsEl.style.display = "none";
+  if (personalToolsEl) personalToolsEl.style.display = "none";
 }
 
 /* =========================================================
@@ -413,7 +342,9 @@ async function sendDailyFirstMessageFromUser_() {
   }
 }
 
-// ===== ScriptCat 顏色解析工具 =====
+/* =========================================================
+ * 顏色解析工具
+ * ========================================================= */
 function hexToRgb(hex) {
   if (!hex) return null;
   let s = hex.replace("#", "").trim();
@@ -455,21 +386,18 @@ function parseScriptCatColor(colorStr) {
 
 function applyScriptCatColorToElement(el, colorStr) {
   if (!el || !colorStr) return;
-
   const info = parseScriptCatColor(colorStr);
   if (!info.color) return;
-
   const rgb = hexToRgb(info.color);
   if (!rgb) return;
 
-  if (info.opacity != null && info.opacity < 1) {
-    el.style.color = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${info.opacity})`;
-  } else {
-    el.style.color = info.color;
-  }
+  if (info.opacity != null && info.opacity < 1) el.style.color = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${info.opacity})`;
+  else el.style.color = info.color;
 }
 
-// ===== 資料格式工具 =====
+/* =========================================================
+ * Render helpers
+ * ========================================================= */
 function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);
@@ -481,10 +409,8 @@ function deriveStatusClass(status, remaining) {
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-
   if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
-
   return "status-other";
 }
 
@@ -535,6 +461,27 @@ function rebuildStatusFilterOptions() {
 
   filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
+}
+
+function applyFilters(list) {
+  return list.filter((row) => {
+    if (filterMaster) {
+      const key = String(filterMaster).trim();
+      const master = String(row.masterId || "").trim();
+
+      if (/^\d+$/.test(key)) {
+        if (parseInt(master, 10) !== parseInt(key, 10)) return false;
+      } else {
+        if (!master.includes(key)) return false;
+      }
+    }
+
+    if (filterStatus && filterStatus !== "all") {
+      if (row.status !== filterStatus) return false;
+    }
+
+    return true;
+  });
 }
 
 function render() {
@@ -618,37 +565,14 @@ function render() {
   if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
 }
 
-function applyFilters(list) {
-  return list.filter((row) => {
-    if (filterMaster) {
-      const key = String(filterMaster).trim();
-      const master = String(row.masterId || "").trim();
-
-      if (/^\d+$/.test(key)) {
-        if (parseInt(master, 10) !== parseInt(key, 10)) return false;
-      } else {
-        if (!master.includes(key)) return false;
-      }
-    }
-
-    if (filterStatus && filterStatus !== "all") {
-      if (row.status !== filterStatus) return false;
-    }
-
-    return true;
-  });
-}
-
 /* =========================================================
  * ✅ 分流後的 Status 取得（一次拿 body + foot）
  * ========================================================= */
-
 async function fetchStatusAll() {
   const jitterBust = Date.now();
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
-  // ✅ fallback 兼容：mode=all / mode=cache_all / 無 mode
   const fallbackCandidates = [
     withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
     withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
@@ -657,25 +581,20 @@ async function fetchStatusAll() {
 
   let lastErr = null;
 
-  // 1) 先試 Edge（命中 → 失敗再輪詢別台）
+  // 1) Edge
   for (const idx of tryEdgeIdxList) {
     const edgeBase = EDGE_STATUS_URLS[idx];
     const edgeUrl = withQuery_(edgeBase, "mode=all&v=" + encodeURIComponent(jitterBust));
 
     try {
       const data = await fetchJsonWithTimeout_(edgeUrl, STATUS_FETCH_TIMEOUT_MS);
-
-      // ✅ 成功：清失敗計數
       resetFailCount_();
-
       return {
         bodyRows: Array.isArray(data.body) ? data.body : [],
         footRows: Array.isArray(data.foot) ? data.foot : [],
       };
     } catch (e) {
       lastErr = e;
-
-      // ✅ 只有「第一台（命中那台）」失敗才累積 failCount（避免輪詢也一直加）
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (n >= EDGE_FAIL_THRESHOLD) {
@@ -686,7 +605,7 @@ async function fetchStatusAll() {
     }
   }
 
-  // 2) Edge 都失敗 → 試 fallback
+  // 2) fallback
   for (const url of fallbackCandidates) {
     try {
       const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
@@ -703,7 +622,17 @@ async function fetchStatusAll() {
   throw lastErr || new Error("fetchStatusAll failed");
 }
 
+/* =========================================================
+ * ✅ refresh：避免重疊 + 背景暫停
+ * ========================================================= */
+let refreshInFlight = false;
+
 async function refreshStatus() {
+  // 背景暫停（回前景會補打一輪）
+  if (document.hidden) return;
+  if (refreshInFlight) return;
+
+  refreshInFlight = true;
   showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
@@ -732,8 +661,14 @@ async function refreshStatus() {
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
     hideLoadingHint();
+    refreshInFlight = false;
   }
 }
+
+// 回到前景：補打一輪
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshStatus();
+});
 
 /* =========================
  * ✅ 使用者更名同步（以 GAS 為準）
@@ -779,31 +714,11 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
 
   if (status === "approved") {
-    return {
-      allowed: true,
-      status: "approved",
-      audit,
-      remainingDays,
-      displayName: finalDisplayName,
-      serverDisplayName,
-      scheduleEnabled,
-      pushEnabled,
-      personalStatusEnabled,
-    };
+    return { allowed: true, status: "approved", audit, remainingDays, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
   }
 
   if (status === "pending") {
-    return {
-      allowed: false,
-      status: "pending",
-      audit,
-      remainingDays,
-      displayName: finalDisplayName,
-      serverDisplayName,
-      scheduleEnabled,
-      pushEnabled,
-      personalStatusEnabled,
-    };
+    return { allowed: false, status: "pending", audit, remainingDays, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
   }
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
@@ -812,30 +727,10 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     await registerUser(userId, finalDisplayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return {
-      allowed: false,
-      status: "error",
-      audit: "",
-      remainingDays: null,
-      displayName: finalDisplayName,
-      serverDisplayName,
-      scheduleEnabled,
-      pushEnabled,
-      personalStatusEnabled,
-    };
+    return { allowed: false, status: "error", audit: "", remainingDays: null, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
   }
 
-  return {
-    allowed: false,
-    status: "pending",
-    audit: "待審核",
-    remainingDays: null,
-    displayName: finalDisplayName,
-    serverDisplayName,
-    scheduleEnabled,
-    pushEnabled,
-    personalStatusEnabled,
-  };
+  return { allowed: false, status: "pending", audit: "待審核", remainingDays: null, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
 }
 
 async function registerUser(userId, displayName) {
@@ -849,7 +744,6 @@ async function registerUser(userId, displayName) {
 
   const resp = await fetch(url, { method: "GET" });
   if (!resp.ok) throw new Error("Register HTTP " + resp.status);
-
   return await resp.json();
 }
 
@@ -857,10 +751,8 @@ async function registerUser(userId, displayName) {
 function setTheme(theme) {
   const root = document.documentElement;
   const finalTheme = theme === "light" ? "light" : "dark";
-
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
-
   if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
 
@@ -910,7 +802,6 @@ async function initLiffAndGuard() {
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
 
-    // ✅ 先渲染功能提示
     updateFeatureState_(result);
 
     // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
@@ -924,7 +815,6 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ personalStatusEnabled=是 → 顯示三顆按鈕（連結來自 getPersonalStatus）
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
@@ -934,9 +824,7 @@ async function initLiffAndGuard() {
             const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
             const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定"] || "";
             showPersonalTools_(manage, pLink, vLink);
-          } else {
-            hidePersonalTools_();
-          }
+          } else hidePersonalTools_();
         } catch (e) {
           console.warn("[PersonalTools] getPersonalStatus failed:", e);
           hidePersonalTools_();
@@ -950,10 +838,8 @@ async function initLiffAndGuard() {
       return;
     }
 
-    // ✅ 審核通過但被擋：顯示原因
     if (result.status === "approved") {
       hidePersonalTools_();
-
       let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
       if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
       if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
@@ -964,20 +850,19 @@ async function initLiffAndGuard() {
 
     if (result.status === "pending") {
       hidePersonalTools_();
-
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
-      msg +=
-        auditText === "拒絕" || auditText === "停用"
-          ? "如需重新申請或有疑問，請聯絡管理員。"
-          : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
+      msg += (auditText === "拒絕" || auditText === "停用")
+        ? "如需重新申請或有疑問，請聯絡管理員。"
+        : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
       showGate(msg);
       return;
     }
 
     hidePersonalTools_();
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
+
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     hidePersonalTools_();
@@ -985,7 +870,9 @@ async function initLiffAndGuard() {
   }
 }
 
-// ===== 事件綁定 =====
+/* =========================
+ * 事件綁定
+ * ========================= */
 if (tabBodyBtn) tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
 if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
 
@@ -1003,9 +890,8 @@ if (filterStatusSelect) {
   });
 }
 
-if (refreshBtn) refreshBtn.addEventListener("click", refreshStatus);
+if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus());
 
-// ===== Panel 切換 =====
 function setActivePanel(panel) {
   activePanel = panel;
 
@@ -1018,11 +904,14 @@ function setActivePanel(panel) {
       tabBodyBtn.classList.remove("tab-active");
     }
   }
-
   render();
 }
 
-// ===== App 啟動 =====
+/* =========================
+ * App 啟動（輪詢不重疊 + jitter）
+ * ========================= */
+let pollTimer = null;
+
 function startApp() {
   setActivePanel("body");
   refreshStatus();
@@ -1030,8 +919,10 @@ function startApp() {
   const intervalMs = 10 * 1000;
   const jitter = Math.floor(Math.random() * 5000);
 
+  if (pollTimer) clearInterval(pollTimer);
+
   setTimeout(() => {
-    setInterval(refreshStatus, intervalMs);
+    pollTimer = setInterval(() => refreshStatus(), intervalMs);
   }, jitter);
 }
 
