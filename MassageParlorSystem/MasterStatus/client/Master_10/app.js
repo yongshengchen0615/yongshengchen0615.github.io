@@ -1,8 +1,8 @@
 // =========================================================
-// app.js (Optimized)
-// - 單次 listUsers
+// app.js (Optimized + TECH_API masterId query)
+// - TECH_API：只抓單一 masterId（減少 payload + 降低 parse/find 成本）
 // - fetch timeout + retry
-// - 輪詢不重疊
+// - 輪詢不重疊 + 背景暫停
 // - 日曆事件委派
 // - 分層結構化
 // =========================================================
@@ -64,7 +64,7 @@ function cacheDom_() {
 }
 
 /** ================================
- * 3) Small Utils
+ * 3) Utils
  * ================================ */
 function normalizeDigits(v) {
   return String(v || "").replace(/[^\d]/g, "");
@@ -132,7 +132,6 @@ function showDenied_(info = {}) {
 
   const reason = String(info.denyReason || "not_approved");
 
-  // 統一的標題/文案覆蓋
   const setDeniedText = (title, text) => {
     if (DOM.deniedTitle) DOM.deniedTitle.textContent = title;
     if (DOM.deniedText) DOM.deniedText.textContent = text;
@@ -151,7 +150,10 @@ function showDenied_(info = {}) {
     return;
   }
   if (reason === "target_not_found") {
-    setDeniedText("找不到技師資料", "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。");
+    setDeniedText(
+      "找不到技師資料",
+      "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。"
+    );
     return;
   }
   if (reason === "target_personal_disabled") {
@@ -223,7 +225,6 @@ async function fetchJson_(url, opts = {}) {
       }
     } catch (e) {
       lastErr = e;
-      // 指數退避：250, 600, 1200...
       if (i < retries) await new Promise((r) => setTimeout(r, 250 * Math.pow(2, i) + Math.random() * 120));
     }
   }
@@ -256,7 +257,6 @@ async function loadConfig_() {
     TECH_API_URL: String(json.TECH_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
 
-    // hydrated by getPersonalStatus
     ADMIN_API_URL: "",
     BOOKING_API_URL: "",
   };
@@ -329,13 +329,11 @@ async function ensureUserExists_(userId, displayName) {
  * 9) Target Tech Gate (single listUsers)
  * ================================ */
 async function getTargetTechContext_() {
-  // 可選：小快取（避免重整狂打 listUsers）
   const cacheKey = "targetTechCtx:v1:" + normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
   const cached = sessionStorage.getItem(cacheKey);
   if (cached) {
     try {
       const obj = JSON.parse(cached);
-      // 90 秒內有效
       if (obj && Date.now() - (obj._ts || 0) < 90_000) return obj;
     } catch {}
   }
@@ -360,7 +358,6 @@ async function getTargetTechContext_() {
  * 10) getPersonalStatus hydrate
  * ================================ */
 async function hydrateUrlsFromPersonalStatus_(ownerUserId) {
-  // 可選：小快取（避免同 session 反覆打）
   const cacheKey = "psUrls:v1:" + ownerUserId;
   const cached = sessionStorage.getItem(cacheKey);
   if (cached) {
@@ -419,7 +416,6 @@ async function adminDbRegisterDefault_(userId, displayName) {
   try {
     await adminDbGet_({ mode: "register", userId, displayName: displayName || "" });
   } catch (e) {
-    // register 失敗不應阻塞：仍然顯示未設定
     console.error("[ADMIN_DB] register default failed", e);
   }
 }
@@ -578,7 +574,7 @@ async function checkAccessOrBlock_() {
 }
 
 /** ================================
- * 13) Tech Status
+ * 13) Tech Status (UPDATED: masterId query)
  * ================================ */
 function classifyStatus(text) {
   const t = String(text || "");
@@ -605,7 +601,6 @@ function updateStatusUI_(kind, data) {
   const status = String(data.status || "");
   const bucket = classifyStatus(status);
 
-  // 減少不必要重繪：內容相同就不改
   const nextHtml = `<span class="status-pill status-${bucket}">${status}</span>`;
   if (statusEl._v !== nextHtml) {
     statusEl.innerHTML = nextHtml;
@@ -625,22 +620,57 @@ function updateStatusUI_(kind, data) {
   }
 }
 
+// ✅ NEW: build TECH_API URL with masterId
+function buildTechApiUrl_() {
+  const u = new URL(APP_CONFIG.TECH_API_URL);
+  // 後端支援：?masterId=10
+  u.searchParams.set("masterId", normalizeDigits(APP_CONFIG.TARGET_MASTER_ID));
+  // 若你 TECH_API 也需要 _cors，可保留（不影響不需要的情況）
+  u.searchParams.set("_cors", "1");
+  return u.toString();
+}
+
+// ✅ NEW: 兼容 2 種回傳格式
+function pickTechResult_(json) {
+  if (!json) return { body: null, foot: null };
+
+  // 新格式：{ ok:true, body:{}, foot:{} }
+  const bodyObj = json.body && !Array.isArray(json.body) ? json.body : null;
+  const footObj = json.foot && !Array.isArray(json.foot) ? json.foot : null;
+  if (bodyObj || footObj) return { body: bodyObj, foot: footObj };
+
+  // 舊格式：{ body:[...], foot:[...] }（但後端可能已過濾只有一筆）
+  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const bodyArr = Array.isArray(json.body) ? json.body : [];
+  const footArr = Array.isArray(json.foot) ? json.foot : [];
+
+  const body = bodyArr.find((r) => normalizeDigits(r.masterId) === target) || bodyArr[0] || null;
+  const foot = footArr.find((r) => normalizeDigits(r.masterId) === target) || footArr[0] || null;
+
+  return { body, foot };
+}
+
 let techPollInFlight = false;
 
 async function loadTechStatus_() {
-  const json = await fetchJson_(APP_CONFIG.TECH_API_URL, { method: "GET", timeoutMs: 12000, retries: 1 });
-  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const url = buildTechApiUrl_();
 
-  const body = json.body?.find((r) => normalizeDigits(r.masterId) === target) || null;
-  const foot = json.foot?.find((r) => normalizeDigits(r.masterId) === target) || null;
+  // 這支就是你 Network 看到 6 秒那支 → 先把 payload 減少
+  const json = await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 1 });
 
+  // 若後端有 ok:false
+  if (json && json.ok === false) {
+    throw new Error(String(json.error || "TECH_API ok=false"));
+  }
+
+  const { body, foot } = pickTechResult_(json);
   updateStatusUI_("body", body);
   updateStatusUI_("foot", foot);
 }
 
 function startTechPolling_() {
   const tick = async () => {
-    if (document.hidden) return; // 背景不輪詢，省資源
+    if (document.hidden) return;
 
     if (techPollInFlight) return;
     techPollInFlight = true;
@@ -655,13 +685,9 @@ function startTechPolling_() {
     }
   };
 
-  // 先跑一次
   tick();
-
-  // 用 setInterval + inFlight guard（不重疊）
   setInterval(tick, 10000);
 
-  // 回到前景時立刻更新一次
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) tick();
   });
@@ -678,7 +704,6 @@ const calState = {
   viewMonth: new Date().getMonth(),
 };
 
-// dtState: Map<ymd, { hasHoliday, hasWorkday, others: string[] }>
 let dtState = new Map();
 const calInfoByDate = new Map();
 
@@ -884,10 +909,8 @@ async function bootstrap_() {
   const gate = await checkAccessOrBlock_();
   if (!gate.allowed) return;
 
-  // 進入主畫面：先顯示 UI（loading overlay hidden）
   showApp_();
 
-  // 並行載入：狀態 + 日曆
   try {
     await Promise.all([loadTechStatus_(), loadBizConfig_()]);
   } catch (e) {
@@ -895,7 +918,6 @@ async function bootstrap_() {
     toast("初始化資料載入失敗：" + String(e.message || e));
   }
 
-  // 開始輪詢師傅狀態（不重疊）
   startTechPolling_();
 }
 
