@@ -1,10 +1,10 @@
 {
   "LIFF_ID": "2008669658-CwYIitI1",
+   "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec",
+  "TARGET_MASTER_ID": "1000",
 
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec",
-  "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec",
-  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec",
-  "BOOKING_API_URL": "https://script.google.com/macros/s/AKfycbyDLxx5tINOCerjzpH3_dhxBCDR_SGw-bLatqLpcLgbx01ds3UJ0nJPCy7rkDhimxYvVw/exec",
-  
-  "TARGET_MASTER_ID": "10"
+  // （可選）舊版相容 fallback：PersonalStatus 還沒填 TECH/ADMIN/BOOKING 時才會用到
+  "ADMIN_API_URL": "",
+  "BOOKING_API_URL": "",
+  "TECH_API_URL": ""
 }
