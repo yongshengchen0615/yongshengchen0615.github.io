@@ -41,8 +41,7 @@ body {
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
   background: radial-gradient(circle at top, #0f172a 0, var(--bg) 45%, var(--bg) 100%);
   color: var(--text-main);
@@ -113,7 +112,6 @@ body {
 
 /* =========================================================
  * ✅ 已開通功能提示（固定顯示三項；未開通灰色 + 未開通 badge）
- * 放在 usage-banner 上方
  * ========================================================= */
 .feature-banner {
   margin: 6px 0 10px 0;
@@ -186,6 +184,18 @@ body {
 
 :root[data-theme="light"] .feature-chip-badge {
   background: rgba(255, 255, 255, 0.7);
+}
+
+/* ✅ 個人狀態：快捷按鈕列 */
+.personal-tools{
+  margin: 6px 0 12px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.personal-tools .btn{
+  padding: 6px 14px;
 }
 
 /* Header */
@@ -503,22 +513,10 @@ body {
   color: #e5e7eb;
 }
 
-:root[data-theme="light"] .status-busy {
-  background: rgba(248, 113, 113, 0.1);
-  color: #b91c1c;
-}
-:root[data-theme="light"] .status-booked {
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
-}
-:root[data-theme="light"] .status-free {
-  background: rgba(22, 163, 74, 0.08);
-  color: #15803d;
-}
-:root[data-theme="light"] .status-other {
-  background: rgba(148, 163, 184, 0.15);
-  color: #374151;
-}
+:root[data-theme="light"] .status-busy { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
+:root[data-theme="light"] .status-booked { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
+:root[data-theme="light"] .status-free { background: rgba(22, 163, 74, 0.08); color: #15803d; }
+:root[data-theme="light"] .status-other { background: rgba(148, 163, 184, 0.15); color: #374151; }
 
 /* 剩餘時間 badge */
 .time-badge {
@@ -560,9 +558,7 @@ body {
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 /* Legend */
@@ -587,17 +583,9 @@ body {
   border-radius: 999px;
 }
 
-.legend-work {
-  background: #f97373;
-}
-
-.legend-free {
-  background: #22c55e;
-}
-
-.legend-other {
-  background: #9ca3af;
-}
+.legend-work { background: #f97373; }
+.legend-free { background: #22c55e; }
+.legend-other { background: #9ca3af; }
 
 /* RWD */
 @media (max-width: 768px) {
