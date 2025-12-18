@@ -1,26 +1,15 @@
 // js/app.js
 
-/**********************
- * ✅ 0) 你要填的參數
- **********************/
 const LIFF_ID = "2008669658-hxybEXdF";
 const ADMIN_API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-/**********************
- * DOM refs
- **********************/
 const bookingForm = document.getElementById("bookingForm");
-
 const weeklyRefreshBtn = document.getElementById("weeklyRefresh");
 const weeklyMsg = document.getElementById("weeklyMsg");
-
 const holidaysRefreshBtn = document.getElementById("holidaysRefresh");
 const holidaysMsg = document.getElementById("holidaysMsg");
 
-/**********************
- * Gate helpers
- **********************/
 function showGate(msg) {
   const gate = document.getElementById("gate");
   if (!gate) return;
@@ -33,16 +22,12 @@ function hideGate() {
   gate.classList.add("gate-hidden");
 }
 function setUiEnabled(enabled) {
-  // 未通過時：整個表單不可用（避免使用者先亂按）
   if (bookingForm) {
     const controls = bookingForm.querySelectorAll("input, button, select, textarea");
     controls.forEach((el) => (el.disabled = !enabled));
   }
 }
 
-/**********************
- * Overlay（原樣）
- **********************/
 function showOverlay(text) {
   const ov = document.getElementById("overlay");
   const tx = document.getElementById("overlayText");
@@ -59,9 +44,6 @@ function hideOverlay() {
 window.showOverlay = showOverlay;
 window.hideOverlay = hideOverlay;
 
-/**********************
- * Theme（原樣）
- **********************/
 (function themeInit() {
   const key = "admin.theme";
   const saved = localStorage.getItem(key) || "light";
@@ -77,10 +59,6 @@ window.hideOverlay = hideOverlay;
     });
 })();
 
-/**********************
- * ✅ 1) LINE Gate：登入 + check 權限
- * 條件：audit=通過 && personalStatusEnabled=是
- **********************/
 async function adminCheckByUserId(userId) {
   if (!ADMIN_API_BASE_URL || !/^https:\/\/script.google.com\/.+\/exec$/.test(ADMIN_API_BASE_URL)) {
     throw new Error("請先設定正確的 ADMIN_API_BASE_URL（Users 管理 GAS WebApp /exec）");
@@ -99,8 +77,27 @@ async function adminCheckByUserId(userId) {
   return res.json();
 }
 
+/** ✅ 新增：取得 DateDB ENDPOINT（PersonalStatus 的 E 欄） */
+async function fetchDateDbEndpointByUserId(userId) {
+  const url =
+    ADMIN_API_BASE_URL +
+    "?" +
+    new URLSearchParams({
+      mode: "getDateDbEndpoint",
+      userId: String(userId || "").trim(),
+      _cors: "1",
+    }).toString();
+
+  const res = await fetch(url, { method: "GET" });
+  const json = await res.json();
+
+  if (!json || !json.ok || !json.endpoint) {
+    throw new Error(json?.error || "無法取得 DateDB ENDPOINT");
+  }
+  return String(json.endpoint).trim();
+}
+
 async function runGate() {
-  // 預設先鎖 UI
   setUiEnabled(false);
   showGate("初始化 LINE 登入中…");
 
@@ -140,15 +137,18 @@ async function runGate() {
     return { passed: false };
   }
 
-  // ✅ 通過
+  // ✅ 通過後：再向 GAS 拿 DateDB endpoint（同時會驗證未過期 + 排班表開通=是）
+  showGate("讀取資料庫連結中…");
+  const endpoint = await fetchDateDbEndpointByUserId(userId);
+
+  window.RUNTIME_USER_ID = userId;
+  window.RUNTIME_ENDPOINT = endpoint;
+
   hideGate();
   setUiEnabled(true);
-  return { passed: true, userId };
+  return { passed: true, userId, endpoint };
 }
 
-/**********************
- * Weekly Off（微調：字串化比對更穩）
- **********************/
 async function renderWeeklyOff() {
   try {
     const res = await apiGet({ entity: "config", action: "list" });
@@ -182,9 +182,6 @@ async function renderWeeklyOff() {
 }
 weeklyRefreshBtn?.addEventListener("click", renderWeeklyOff);
 
-/**********************
- * Holidays（原樣）
- **********************/
 window.addHoliday = function () {
   const date = document.getElementById("holidayInput").value;
   if (!date) return alert("請選擇日期");
@@ -263,9 +260,6 @@ async function renderHolidays() {
 }
 holidaysRefreshBtn?.addEventListener("click", renderHolidays);
 
-/**********************
- * Form Submit（原樣）
- **********************/
 bookingForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -316,9 +310,6 @@ bookingForm?.addEventListener("submit", async (e) => {
   }
 });
 
-/**********************
- * ✅ Preload：改成函式（Gate 通過後才跑）
- **********************/
 async function preload() {
   showOverlay("載入資料中...");
   try {
@@ -345,7 +336,6 @@ async function preload() {
       document.getElementById("bufferMinutes").value = cfg.bufferMinutes ? Number(cfg.bufferMinutes) : "";
       document.getElementById("maxBookingDays").value = cfg.maxBookingDays ? Number(cfg.maxBookingDays) : "";
 
-      // weekly off（字串化比對）
       try {
         const offs = JSON.parse(cfg.weeklyOff || "[]");
         const offSet = new Set(Array.isArray(offs) ? offs.map(String) : []);
@@ -368,15 +358,12 @@ async function preload() {
   }
 }
 
-/**********************
- * ✅ App Boot：先 Gate 再 preload
- **********************/
 (async function boot() {
   try {
     const gate = await runGate();
-    if (gate.redirected) return; // 已跳轉登入
-    if (!gate.passed) return;     // Gate 未通過：維持鎖住 + 顯示原因
-    await preload();              // ✅ 通過才載入後台資料
+    if (gate.redirected) return;
+    if (!gate.passed) return;
+    await preload();
   } catch (err) {
     showGate("初始化失敗：\n" + String(err?.message || err));
     setUiEnabled(false);
