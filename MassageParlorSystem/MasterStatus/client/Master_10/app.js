@@ -8,6 +8,7 @@
 //    - BOOKING_API_URL <- PersonalStatus「相關日期資料庫」(dateDatabaseUrl)
 // 4) ✅ 用 ADMIN_API_URL(使用者資料庫) 再檢查登入者 audit 是否「通過」
 //    - 非通過：顯示不同提示文案 + 整頁不能用
+//    - ✅ 若 ADMIN_DB 查不到此用戶資料：先 register 建立預設資料，然後顯示「審核狀態未設定」並封鎖
 // =========================================================
 
 // ================================
@@ -203,7 +204,7 @@ function showDenied_(info) {
     return;
   }
 
-  // ✅ 新增：audit block（整頁不可用）
+  // ✅ audit block（整頁不可用）
   if (reason === "audit_block") {
     if (titleEl) titleEl.textContent = String(info?.denyTitle || "無法使用");
     if (textEl) textEl.textContent = String(info?.denyText || "你的審核狀態未通過，無法使用此頁面。");
@@ -409,6 +410,20 @@ async function adminDbGet_(paramsObj) {
   } catch (e) {
     throw new Error("ADMIN_DB non-JSON response: " + text.slice(0, 200));
   }
+}
+
+// ✅ ADMIN_DB：判斷「沒有用戶資料」
+function isAdminUserNotFound_(checkJson) {
+  if (!checkJson) return true;
+  const status = String(checkJson.status || "").trim().toLowerCase();
+  const audit = String(checkJson.audit || "").trim();
+  const name = String(checkJson.displayName || "").trim();
+  return status === "none" || (!audit && !name);
+}
+
+// ✅ ADMIN_DB：建立預設資料（用現有 mode=register，不改 GAS）
+async function adminDbRegisterDefault_(userId, displayName) {
+  return await adminDbGet_({ mode: "register", userId, displayName: displayName || "" });
 }
 
 async function checkLoginUserAuditFromAdminDb_(loginUserId) {
@@ -783,17 +798,38 @@ window.onload = async () => {
       return;
     }
 
-    // ✅ 重要：用 ADMIN_API_URL（使用者資料庫）檢查登入者 audit；非通過 → 整頁不能用（不同文案）
+    // ✅ 重要：用 ADMIN_API_URL（使用者資料庫）檢查登入者 audit
+    // ✅ 若 ADMIN_DB 查不到用戶資料：建立預設資料 -> 顯示「審核狀態未設定」並封鎖
     try {
-      const auditCheck = await checkLoginUserAuditFromAdminDb_(gate.userId);
-      const msg = auditBlockMessage_(auditCheck.audit);
+      const c1 = await adminDbGet_({ mode: "check", userId: gate.userId });
+
+      if (isAdminUserNotFound_(c1)) {
+        try {
+          await adminDbRegisterDefault_(gate.userId, gate.profile?.displayName || "");
+        } catch (e2) {
+          console.error("[ADMIN_DB] register default failed", e2);
+        }
+
+        showDenied_({
+          denyReason: "audit_block",
+          audit: "-",
+          displayName: gate.profile?.displayName || "-",
+          remainingDays: "-",
+          denyTitle: "審核狀態未設定",
+          denyText: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。",
+        });
+        return;
+      }
+
+      const audit = String(c1?.audit || "").trim();
+      const msg = auditBlockMessage_(audit);
 
       if (msg) {
         showDenied_({
           denyReason: "audit_block",
-          audit: auditCheck.audit || "-",
-          displayName: gate.profile?.displayName || "-",
-          remainingDays: auditCheck.raw?.remainingDays ?? "-",
+          audit: audit || "-",
+          displayName: c1?.displayName || gate.profile?.displayName || "-",
+          remainingDays: c1?.remainingDays ?? "-",
           denyTitle: msg.title,
           denyText: msg.text,
         });
