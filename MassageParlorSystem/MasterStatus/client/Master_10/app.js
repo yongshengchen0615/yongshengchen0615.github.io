@@ -1,6 +1,7 @@
 // =========================================================
-// app.js (Optimized + TECH_API masterId query)
-// - TECH_API：只抓單一 masterId（減少 payload + 降低 parse/find 成本）
+// app.js (Optimized + EDGE_STATUS_URLS + masterId query)
+// - TECH_API：優先走 6 個 Edge 分流（Promise.any 取最快）
+// - Edge/Origin 都帶 masterId（後端若支援單取更快）
 // - fetch timeout + retry
 // - 輪詢不重疊 + 背景暫停
 // - 日曆事件委派
@@ -92,7 +93,6 @@ function toast(msg) {
   const s = String(msg || "");
   if (!s) return;
 
-  // 避免短時間同訊息刷屏
   if (toast._last === s && Date.now() - (toast._lastAt || 0) < 1200) return;
   toast._last = s;
   toast._lastAt = Date.now();
@@ -150,10 +150,7 @@ function showDenied_(info = {}) {
     return;
   }
   if (reason === "target_not_found") {
-    setDeniedText(
-      "找不到技師資料",
-      "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。"
-    );
+    setDeniedText("找不到技師資料", "找不到此技師（Users 表沒有對應的「師傅編號」）。請確認 TARGET_MASTER_ID 與 Users 表的師傅編號一致。");
     return;
   }
   if (reason === "target_personal_disabled") {
@@ -193,7 +190,7 @@ function initTheme_() {
 }
 
 /** ================================
- * 5) Fetch Layer (timeout + retry)
+ * 5) Fetch Layer (timeout + retry + any)
  * ================================ */
 async function fetchText_(url, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 12000;
@@ -201,7 +198,7 @@ async function fetchText_(url, opts = {}) {
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, { ...opts, signal: controller.signal });
+    const res = await fetch(url, { cache: "no-store", ...opts, signal: controller.signal });
     const text = await res.text();
     return { res, text };
   } finally {
@@ -210,14 +207,13 @@ async function fetchText_(url, opts = {}) {
 }
 
 async function fetchJson_(url, opts = {}) {
-  const retries = opts.retries ?? 2;
+  const retries = opts.retries ?? 1;
   let lastErr = null;
 
   for (let i = 0; i <= retries; i++) {
     try {
       const { res, text } = await fetchText_(url, opts);
       if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 160)}`);
-
       try {
         return JSON.parse(text);
       } catch {
@@ -225,11 +221,73 @@ async function fetchJson_(url, opts = {}) {
       }
     } catch (e) {
       lastErr = e;
-      if (i < retries) await new Promise((r) => setTimeout(r, 250 * Math.pow(2, i) + Math.random() * 120));
+      if (i < retries) await new Promise((r) => setTimeout(r, 200 * Math.pow(2, i) + Math.random() * 120));
     }
   }
-
   throw lastErr || new Error("fetchJson failed");
+}
+
+// ✅ Promise.any polyfill（某些 LINE WebView/舊 Android 會沒有）
+if (typeof Promise.any !== "function") {
+  Promise.any = function (iterable) {
+    return new Promise((resolve, reject) => {
+      const errs = [];
+      let pending = 0;
+      let done = false;
+
+      for (const p of iterable) {
+        pending++;
+        Promise.resolve(p).then(
+          (v) => {
+            if (done) return;
+            done = true;
+            resolve(v);
+          },
+          (e) => {
+            errs.push(e);
+            pending--;
+            if (!done && pending === 0) {
+              const agg = new Error("All promises were rejected");
+              agg.errors = errs;
+              reject(agg);
+            }
+          }
+        );
+      }
+
+      if (pending === 0) {
+        const agg = new Error("All promises were rejected");
+        agg.errors = errs;
+        reject(agg);
+      }
+    });
+  };
+}
+
+// ✅ NEW: 多路同時打，取最快成功（Promise.any）
+async function fetchAnyJson_(urls, opts = {}) {
+  const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
+  if (!list.length) throw new Error("fetchAnyJson_: empty urls");
+
+  const timeoutMs = opts.timeoutMs ?? 5000;
+
+  const tasks = list.map((u) =>
+    fetchJson_(u, { method: "GET", timeoutMs, retries: 0 }).then(
+      (json) => ({ ok: true, url: u, json }),
+      (err) => Promise.reject(Object.assign(err, { _url: u }))
+    )
+  );
+
+  try {
+    return await Promise.any(tasks);
+  } catch (agg) {
+    const errs = agg?.errors || [];
+    const msg = errs
+      .map((e) => `- ${e?._url || "?"}: ${String(e?.message || e)}`)
+      .slice(0, 6)
+      .join("\n");
+    throw new Error("All edges failed:\n" + msg);
+  }
 }
 
 /** ================================
@@ -237,7 +295,7 @@ async function fetchJson_(url, opts = {}) {
  * ================================ */
 async function loadConfig_() {
   const url = `${CONFIG_URL}?v=${Date.now()}`;
-  const { res, text } = await fetchText_(url, { cache: "no-store", method: "GET", timeoutMs: 12000 });
+  const { res, text } = await fetchText_(url, { method: "GET", timeoutMs: 12000 });
   if (!res.ok) throw new Error(`CONFIG fetch failed: ${res.status} ${text.slice(0, 160)}`);
 
   let json;
@@ -247,19 +305,28 @@ async function loadConfig_() {
     throw new Error("CONFIG non-JSON: " + text.slice(0, 200));
   }
 
-  const required = ["LIFF_ID", "USER_MGMT_API_URL", "TECH_API_URL", "TARGET_MASTER_ID"];
+  const required = ["LIFF_ID", "USER_MGMT_API_URL", "TARGET_MASTER_ID"];
   const missing = required.filter((k) => !json[k] || String(json[k]).trim() === "");
   if (missing.length) throw new Error("CONFIG missing: " + missing.join(", "));
+
+  const edgeUrls = Array.isArray(json.EDGE_STATUS_URLS) ? json.EDGE_STATUS_URLS.map(String) : [];
+  const techUrl = String(json.TECH_API_URL || "").trim();
 
   APP_CONFIG = {
     LIFF_ID: String(json.LIFF_ID).trim(),
     USER_MGMT_API_URL: String(json.USER_MGMT_API_URL).trim(),
-    TECH_API_URL: String(json.TECH_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
+
+    EDGE_STATUS_URLS: edgeUrls.filter((x) => x && x.trim()),
+    TECH_API_URL: techUrl,
 
     ADMIN_API_URL: "",
     BOOKING_API_URL: "",
   };
+
+  if (!APP_CONFIG.EDGE_STATUS_URLS.length && !APP_CONFIG.TECH_API_URL) {
+    throw new Error("CONFIG missing: EDGE_STATUS_URLS or TECH_API_URL");
+  }
 
   return APP_CONFIG;
 }
@@ -305,7 +372,7 @@ function buildUserMgmtUrl_(paramsObj) {
 
 async function userMgmtGet_(paramsObj) {
   const url = buildUserMgmtUrl_(paramsObj);
-  return await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 2 });
+  return await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 1 });
 }
 
 function isUserNotFound_(checkJson) {
@@ -401,7 +468,7 @@ function buildAdminDbUrl_(paramsObj) {
 
 async function adminDbGet_(paramsObj) {
   const url = buildAdminDbUrl_(paramsObj);
-  return await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 2 });
+  return await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 1 });
 }
 
 function isAdminUserNotFound_(checkJson) {
@@ -425,33 +492,18 @@ function auditBlockMessage_(auditRaw) {
   if (a === "通過") return null;
 
   if (!a || a === "-") {
-    return {
-      title: "審核狀態未設定",
-      text: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。",
-    };
+    return { title: "審核狀態未設定", text: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。" };
   }
   if (a === "待審核") {
-    return {
-      title: "尚未通過審核",
-      text: "你的帳號目前為「待審核」，暫時無法使用。請聯絡管理員開通。",
-    };
+    return { title: "尚未通過審核", text: "你的帳號目前為「待審核」，暫時無法使用。請聯絡管理員開通。" };
   }
   if (a === "拒絕") {
-    return {
-      title: "審核未通過",
-      text: "你的帳號審核結果為「拒絕」，無法使用此頁面。請聯絡管理員確認原因。",
-    };
+    return { title: "審核未通過", text: "你的帳號審核結果為「拒絕」，無法使用此頁面。請聯絡管理員確認原因。" };
   }
   if (a === "停用") {
-    return {
-      title: "帳號已停用",
-      text: "你的帳號目前為「停用」，無法使用此頁面。請聯絡管理員協助。",
-    };
+    return { title: "帳號已停用", text: "你的帳號目前為「停用」，無法使用此頁面。請聯絡管理員協助。" };
   }
-  return {
-    title: "無法使用",
-    text: `你的審核狀態為「${a}」，目前無法使用此頁面。請聯絡管理員。`,
-  };
+  return { title: "無法使用", text: `你的審核狀態為「${a}」，目前無法使用此頁面。請聯絡管理員。` };
 }
 
 /** ================================
@@ -464,7 +516,6 @@ async function checkAccessOrBlock_() {
   const userId = String(auth.userId || "").trim();
   const displayName = String(auth.profile?.displayName || "").trim();
 
-  // USER_MGMT：確保存在 + 通過
   let profileJson;
   try {
     profileJson = await ensureUserExists_(userId, displayName);
@@ -485,7 +536,6 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  // Target Tech：一次 listUsers 取得 techRow + ownerUserId
   let ctx;
   try {
     ctx = await getTargetTechContext_();
@@ -516,7 +566,6 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  // PersonalStatus：hydrate ADMIN/BOOKING URL
   try {
     await hydrateUrlsFromPersonalStatus_(ctx.ownerUserId);
   } catch (e) {
@@ -526,13 +575,11 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
-  // ADMIN_DB：檢查登入者 audit（查不到就 register default → block）
   try {
     const c1 = await adminDbGet_({ mode: "check", userId });
 
     if (isAdminUserNotFound_(c1)) {
       await adminDbRegisterDefault_(userId, profileJson?.displayName || displayName);
-
       showDenied_({
         denyReason: "audit_block",
         audit: "-",
@@ -574,7 +621,7 @@ async function checkAccessOrBlock_() {
 }
 
 /** ================================
- * 13) Tech Status (UPDATED: masterId query)
+ * 13) Tech Status (EDGE_STATUS_URLS: fastest wins)
  * ================================ */
 function classifyStatus(text) {
   const t = String(text || "");
@@ -607,30 +654,20 @@ function updateStatusUI_(kind, data) {
     statusEl._v = nextHtml;
   }
 
-  const nextAppt = data.appointment || "無預約";
+  const nextAppt = String(data.appointment || "").trim() || "無預約";
   if (apptEl._v !== nextAppt) {
     apptEl.textContent = nextAppt;
     apptEl._v = nextAppt;
   }
 
-  const nextRem = data.remaining || "-";
+  const nextRem = data.remaining === 0 ? "0" : (String(data.remaining || "").trim() || "-");
   if (remEl._v !== nextRem) {
     remEl.textContent = nextRem;
     remEl._v = nextRem;
   }
 }
 
-// ✅ NEW: build TECH_API URL with masterId
-function buildTechApiUrl_() {
-  const u = new URL(APP_CONFIG.TECH_API_URL);
-  // 後端支援：?masterId=10
-  u.searchParams.set("masterId", normalizeDigits(APP_CONFIG.TARGET_MASTER_ID));
-  // 若你 TECH_API 也需要 _cors，可保留（不影響不需要的情況）
-  u.searchParams.set("_cors", "1");
-  return u.toString();
-}
-
-// ✅ NEW: 兼容 2 種回傳格式
+// ✅ 兼容 2 種回傳格式
 function pickTechResult_(json) {
   if (!json) return { body: null, foot: null };
 
@@ -639,29 +676,69 @@ function pickTechResult_(json) {
   const footObj = json.foot && !Array.isArray(json.foot) ? json.foot : null;
   if (bodyObj || footObj) return { body: bodyObj, foot: footObj };
 
-  // 舊格式：{ body:[...], foot:[...] }（但後端可能已過濾只有一筆）
+  // 舊格式：{ body:[...], foot:[...] }
   const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
   const bodyArr = Array.isArray(json.body) ? json.body : [];
   const footArr = Array.isArray(json.foot) ? json.foot : [];
 
-  const body = bodyArr.find((r) => normalizeDigits(r.masterId) === target) || bodyArr[0] || null;
-  const foot = footArr.find((r) => normalizeDigits(r.masterId) === target) || footArr[0] || null;
+  const body = bodyArr.find((r) => normalizeDigits(r.masterId) === target) || null;
+  const foot = footArr.find((r) => normalizeDigits(r.masterId) === target) || null;
 
   return { body, foot };
 }
 
+// ✅ build URL list (edges first, fallback last)
+function buildTechApiUrlCandidates_() {
+  const masterId = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const urls = [];
+
+  // 1) Edges: ?mode=all&masterId=10
+  (APP_CONFIG.EDGE_STATUS_URLS || []).forEach((base) => {
+    try {
+      const u = new URL(String(base).trim());
+      u.searchParams.set("mode", "all");
+      u.searchParams.set("masterId", masterId);
+      u.searchParams.set("_cors", "1");
+      urls.push(u.toString());
+    } catch {}
+  });
+
+  // 2) Fallback origin: ?masterId=10
+  if (APP_CONFIG.TECH_API_URL) {
+    try {
+      const u2 = new URL(APP_CONFIG.TECH_API_URL);
+      u2.searchParams.set("masterId", masterId);
+      u2.searchParams.set("_cors", "1");
+      urls.push(u2.toString());
+    } catch {}
+  }
+
+  return urls;
+}
+
 let techPollInFlight = false;
+let techPollTimer = null;
 
 async function loadTechStatus_() {
-  const url = buildTechApiUrl_();
+  const urls = buildTechApiUrlCandidates_();
+  const edgeCount = (APP_CONFIG.EDGE_STATUS_URLS || []).length;
 
-  // 這支就是你 Network 看到 6 秒那支 → 先把 payload 減少
-  const json = await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 1 });
-
-  // 若後端有 ok:false
-  if (json && json.ok === false) {
-    throw new Error(String(json.error || "TECH_API ok=false"));
+  // 1) Edge 六路搶最快（短 timeout）
+  let json = null;
+  if (edgeCount > 0) {
+    const edgeUrls = urls.slice(0, edgeCount);
+    const got = await fetchAnyJson_(edgeUrls, { timeoutMs: 5200 });
+    json = got?.json || null;
   }
+
+  // 2) Edge 全掛 → fallback origin（較長 timeout）
+  if (!json) {
+    const originUrl = urls[urls.length - 1];
+    if (!originUrl) throw new Error("TECH_API_URL missing and edges failed");
+    json = await fetchJson_(originUrl, { method: "GET", timeoutMs: 12000, retries: 1 });
+  }
+
+  if (json && json.ok === false) throw new Error(String(json.error || "TECH_API ok=false"));
 
   const { body, foot } = pickTechResult_(json);
   updateStatusUI_("body", body);
@@ -671,10 +748,9 @@ async function loadTechStatus_() {
 function startTechPolling_() {
   const tick = async () => {
     if (document.hidden) return;
-
     if (techPollInFlight) return;
-    techPollInFlight = true;
 
+    techPollInFlight = true;
     try {
       await loadTechStatus_();
     } catch (e) {
@@ -686,7 +762,10 @@ function startTechPolling_() {
   };
 
   tick();
-  setInterval(tick, 10000);
+
+  // ✅ 單例 interval
+  if (techPollTimer) clearInterval(techPollTimer);
+  techPollTimer = setInterval(tick, 10000);
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) tick();
@@ -771,10 +850,7 @@ function renderCalendar_() {
     const dt = dtState.get(ymd) || { hasHoliday: false, hasWorkday: false, others: [] };
 
     let off = calState.weeklyOff.includes(dow);
-
-    if (CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true && dt.hasWorkday) {
-      off = false;
-    }
+    if (CALENDAR_UI_TEXT.rule_workday_override_weeklyoff === true && dt.hasWorkday) off = false;
 
     calInfoByDate.set(ymd, { off, dt });
 
@@ -817,7 +893,6 @@ function bindCalendarNav_() {
       renderCalendar_();
     };
 
-  // 事件委派：只綁一次 click
   if (DOM.calGrid) {
     DOM.calGrid.addEventListener("click", (e) => {
       const cell = e.target?.closest?.(".cal-cell[data-ymd]");
@@ -831,7 +906,6 @@ function bindCalendarNav_() {
       if (!info) return;
 
       const lines = [ymd];
-
       if (info.off) lines.push(CALENDAR_UI_TEXT.weeklyOff.tooltip || "固定休假日");
 
       if (info.dt.hasHoliday) lines.push(CALENDAR_UI_TEXT.dateTypes.holiday.tooltip || "休假日");
@@ -856,8 +930,7 @@ async function loadBizConfig_() {
   if (!APP_CONFIG.BOOKING_API_URL) throw new Error("BOOKING_API_URL missing (not hydrated)");
 
   const url = `${APP_CONFIG.BOOKING_API_URL}?entity=bootstrap`;
-  const json = await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 2 });
-
+  const json = await fetchJson_(url, { method: "GET", timeoutMs: 12000, retries: 1 });
   if (!json.ok) throw new Error(json.error || "BOOKING_API error");
 
   const cfg = json.data?.config || {};
