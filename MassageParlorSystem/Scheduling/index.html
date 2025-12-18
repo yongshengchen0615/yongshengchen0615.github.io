@@ -4,7 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Body & Foot Panel Dashboard</title>
+
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
+
   <!-- LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -23,6 +26,12 @@
   <!-- 主畫面 -->
   <div id="appRoot" class="app-root app-hidden">
     <div class="layout">
+      <!-- ✅ 已開通功能提示（固定顯示三項；未開通顯示灰色 + 未開通） -->
+      <div id="featureBanner" class="feature-banner">
+        <span class="feature-title">功能：</span>
+        <div id="featureChips" class="feature-chips"></div>
+      </div>
+
       <!-- 🔔 使用者名稱 + 剩餘天數橫幅 -->
       <div id="usageBanner" class="usage-banner" style="display:none;">
         <span id="usageBannerText"></span>
@@ -149,5 +158,4 @@
 
   <script src="app.js"></script>
 </body>
-<link rel="icon" href="data:," />
 </html>

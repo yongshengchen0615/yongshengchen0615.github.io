@@ -93,6 +93,82 @@ const themeToggleBtn = document.getElementById("themeToggle");
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
+/* =========================================================
+ * ✅ 功能提示（叫班提醒 / 個人狀態 / 排班表）
+ * - 永遠顯示三個 chip
+ * - 未開通顯示灰色 + badge「未開通」
+ * - 只動前端：從 AUTH check 回傳值推導
+ * ========================================================= */
+
+let featureState = {
+  pushEnabled: "否",
+  personalStatusEnabled: "否",
+  scheduleEnabled: "否",
+};
+
+function normalizeYesNo_(v) {
+  return String(v || "").trim() === "是" ? "是" : "否";
+}
+
+function ensureFeatureBanner_() {
+  // 目標：插在 usageBanner 上方（同一個 layout 內）
+  if (!usageBannerEl) return null;
+
+  let el = document.getElementById("featureBanner");
+  if (el) return el;
+
+  const parent = usageBannerEl.parentElement;
+  if (!parent) return null;
+
+  el = document.createElement("div");
+  el.id = "featureBanner";
+  el.className = "feature-banner";
+
+  el.innerHTML = `
+    <span class="feature-title">已開通功能：</span>
+    <div class="feature-chips" id="featureChips"></div>
+  `;
+
+  parent.insertBefore(el, usageBannerEl); // 放在 usageBanner 上方
+  return el;
+}
+
+function buildChip_(label, enabled) {
+  const on = enabled === "是";
+  const cls = on ? "feature-chip" : "feature-chip feature-chip-disabled";
+  const badge = on ? "" : `<span class="feature-chip-badge">未開通</span>`;
+  return `<span class="${cls}">${label}${badge}</span>`;
+}
+
+function renderFeatureBanner_() {
+  const banner = ensureFeatureBanner_();
+  if (!banner) return;
+
+  const chipsEl = document.getElementById("featureChips");
+  if (!chipsEl) return;
+
+  const push = normalizeYesNo_(featureState.pushEnabled);
+  const personal = normalizeYesNo_(featureState.personalStatusEnabled);
+  const schedule = normalizeYesNo_(featureState.scheduleEnabled);
+
+  // 顯示文案 mapping（照你要求）
+  const chipsHtml = [
+    buildChip_("叫班提醒", push),
+    buildChip_("個人狀態", personal),
+    buildChip_("排班表", schedule),
+  ].join("");
+
+  chipsEl.innerHTML = chipsHtml;
+}
+
+function updateFeatureState_(data) {
+  // data 來源：checkOrRegisterUser 的 result
+  featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
+  featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
+  featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
+  renderFeatureBanner_();
+}
+
 // ✅ Top Loading Hint 控制
 function showLoadingHint(text) {
   if (!topLoadingEl) return;
@@ -544,6 +620,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const audit = (data && data.audit) || "";
   const serverDisplayName = (data && data.displayName) || "";
   const scheduleEnabled = (data && data.scheduleEnabled) || "否"; // ✅新增：排班表開通
+  const pushEnabled = (data && data.pushEnabled) || "否"; // ✅新增：是否推播
+  const personalStatusEnabled = (data && data.personalStatusEnabled) || "否"; // ✅新增：個人狀態開通
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -562,6 +640,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       displayName: finalDisplayName,
       serverDisplayName,
       scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
     };
   }
 
@@ -574,6 +654,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       displayName: finalDisplayName,
       serverDisplayName,
       scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
     };
   }
 
@@ -591,6 +673,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
       displayName: finalDisplayName,
       serverDisplayName,
       scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
     };
   }
 
@@ -602,6 +686,8 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     displayName: finalDisplayName,
     serverDisplayName,
     scheduleEnabled,
+    pushEnabled,
+    personalStatusEnabled,
   };
 }
 
@@ -676,6 +762,9 @@ async function initLiffAndGuard() {
 
     const finalDisplayName = (displayName || result.displayName || "").trim();
     window.currentDisplayName = finalDisplayName;
+
+    // ✅ 先渲染功能提示（不論最後是否放行，畫面上方都能顯示）
+    updateFeatureState_(result);
 
     // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
