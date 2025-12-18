@@ -42,19 +42,114 @@ function hashToIndex_(str, mod) {
   return mod ? h % mod : 0;
 }
 
-// 取得目前使用者應該打的 Edge URL
-function getStatusEdgeUrl_() {
-  const uid = window.currentUserId || "";
-  const idx = hashToIndex_(uid || "anonymous", EDGE_STATUS_URLS.length);
-  return EDGE_STATUS_URLS[idx];
-}
-
 // ✅ 安全組 URL（避免你原本 fallback &v 少 ? 的問題）
 function withQuery_(base, extraQuery) {
   const b = String(base || "");
   const q = String(extraQuery || "");
   if (!q) return b;
   return b + (b.includes("?") ? "&" : "?") + q.replace(/^\?/, "");
+}
+
+/* =========================================================
+ * ✅ 高效率修正：Edge Failover + Timeout + Sticky Reroute
+ * - 先打「hash 命中 Edge」
+ * - 失敗 → 依序嘗試其他 Edge（最多試 3 台，可調）
+ * - 每次 fetch 加 timeout（避免卡住）
+ * - 同一使用者連續失敗 → 暫時切到下一台 Edge（記 localStorage）
+ * ========================================================= */
+
+const STATUS_FETCH_TIMEOUT_MS = 8000; // ✅ 建議 6~10 秒
+const EDGE_TRY_MAX = 3; // ✅ 最多試幾台 Edge（含命中那台）
+const EDGE_FAIL_THRESHOLD = 2; // ✅ 命中那台連續失敗幾次後觸發 reroute
+const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // ✅ reroute 有效期：30 分鐘
+
+const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
+const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
+
+function readJsonLS_(k) {
+  try {
+    return JSON.parse(localStorage.getItem(k) || "null");
+  } catch (e) {
+    return null;
+  }
+}
+function writeJsonLS_(k, v) {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch (e) {}
+}
+
+function getOverrideEdgeIndex_() {
+  const o = readJsonLS_(EDGE_ROUTE_KEY);
+  if (!o || typeof o.idx !== "number") return null;
+  if (typeof o.exp === "number" && Date.now() > o.exp) {
+    localStorage.removeItem(EDGE_ROUTE_KEY);
+    return null;
+  }
+  return o.idx;
+}
+
+function setOverrideEdgeIndex_(idx) {
+  writeJsonLS_(EDGE_ROUTE_KEY, { idx, exp: Date.now() + EDGE_REROUTE_TTL_MS });
+}
+
+function bumpFailCount_(idx) {
+  const now = Date.now();
+  const s = readJsonLS_(EDGE_FAIL_KEY) || {};
+  const sameIdx = s && s.idx === idx;
+  const n = sameIdx ? Number(s.n || 0) + 1 : 1;
+
+  writeJsonLS_(EDGE_FAIL_KEY, { idx, n, t: now });
+  return n;
+}
+
+function resetFailCount_() {
+  localStorage.removeItem(EDGE_FAIL_KEY);
+}
+
+function getStatusEdgeIndex_() {
+  const uid = window.currentUserId || "anonymous";
+  const baseIdx = hashToIndex_(uid, EDGE_STATUS_URLS.length);
+  const overrideIdx = getOverrideEdgeIndex_();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) {
+    return overrideIdx;
+  }
+  return baseIdx;
+}
+
+// 依序產生要嘗試的 Edge index：先命中，再往後輪
+function buildEdgeTryOrder_(startIdx) {
+  const n = EDGE_STATUS_URLS.length;
+  const order = [];
+  for (let i = 0; i < n; i++) order.push((startIdx + i) % n);
+  return order.slice(0, Math.min(EDGE_TRY_MAX, n));
+}
+
+async function fetchJsonWithTimeout_(url, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
+
+  try {
+    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    const text = await resp.text(); // ✅ 先拿 text，避免非 JSON 直接炸
+
+    if (!resp.ok) {
+      const head = text.slice(0, 160);
+      throw new Error(`HTTP ${resp.status} ${head}`);
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`NON_JSON ${text.slice(0, 160)}`);
+    }
+
+    if (json && json.ok === false) throw new Error(`NOT_OK ${json.error || "response not ok"}`);
+    return json;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /* =========================================================
@@ -483,8 +578,7 @@ function render() {
 
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
-    const orderText =
-      showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
@@ -550,23 +644,53 @@ function applyFilters(list) {
  * ========================================================= */
 
 async function fetchStatusAll() {
-  const edgeBase = getStatusEdgeUrl_();
   const jitterBust = Date.now();
+  const startIdx = getStatusEdgeIndex_();
+  const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
-  const edgeUrl = withQuery_(edgeBase, "mode=all&v=" + encodeURIComponent(jitterBust));
-  const fallbackUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "v=" + encodeURIComponent(jitterBust));
+  // ✅ fallback 兼容：mode=all / mode=cache_all / 無 mode
+  const fallbackCandidates = [
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "v=" + encodeURIComponent(jitterBust)),
+  ];
 
-  const tryUrls = [edgeUrl, fallbackUrl];
   let lastErr = null;
 
-  for (const url of tryUrls) {
+  // 1) 先試 Edge（命中 → 失敗再輪詢別台）
+  for (const idx of tryEdgeIdxList) {
+    const edgeBase = EDGE_STATUS_URLS[idx];
+    const edgeUrl = withQuery_(edgeBase, "mode=all&v=" + encodeURIComponent(jitterBust));
+
     try {
-      const resp = await fetch(url, { method: "GET", cache: "no-store" });
-      if (!resp.ok) throw new Error("Status HTTP " + resp.status);
+      const data = await fetchJsonWithTimeout_(edgeUrl, STATUS_FETCH_TIMEOUT_MS);
 
-      const data = await resp.json();
-      if (data && data.ok === false) throw new Error(data.error || "Status response not ok");
+      // ✅ 成功：清失敗計數
+      resetFailCount_();
 
+      return {
+        bodyRows: Array.isArray(data.body) ? data.body : [],
+        footRows: Array.isArray(data.foot) ? data.foot : [],
+      };
+    } catch (e) {
+      lastErr = e;
+
+      // ✅ 只有「第一台（命中那台）」失敗才累積 failCount（避免輪詢也一直加）
+      if (idx === startIdx) {
+        const n = bumpFailCount_(idx);
+        if (n >= EDGE_FAIL_THRESHOLD) {
+          const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
+          setOverrideEdgeIndex_(nextIdx);
+        }
+      }
+    }
+  }
+
+  // 2) Edge 都失敗 → 試 fallback
+  for (const url of fallbackCandidates) {
+    try {
+      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
+      resetFailCount_();
       return {
         bodyRows: Array.isArray(data.body) ? data.body : [],
         footRows: Array.isArray(data.foot) ? data.foot : [],
@@ -808,10 +932,7 @@ async function initLiffAndGuard() {
           if (ps && ps.ok) {
             const manage = ps.manageLiff || ps["使用者管理liff"] || "";
             const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
-
-            // ✅ 休假設定連結：支援兩種鍵名（你 GAS 想用哪個都行）
             const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定"] || "";
-
             showPersonalTools_(manage, pLink, vLink);
           } else {
             hidePersonalTools_();
