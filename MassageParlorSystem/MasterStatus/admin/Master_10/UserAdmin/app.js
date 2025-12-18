@@ -3,7 +3,7 @@
 // ✅ 先讀 ./config.json 取得 ADMIN_API_BASE_URL / LIFF_ID
 // ✅ Gate：LIFF init → 若未登入則自動 liff.login() → 取 profile.userId
 // ✅ ADMIN check：personalStatusEnabled / personalStatus 任一為「是」才放行
-// ✅ 通過後：讀取 PersonalStatus「使用者管理連結」→ 指派 TECH_API_BASE_URL
+// ✅ 通過後：讀取 PersonalStatus「使用者資料庫」→ 指派 TECH_API_BASE_URL
 // ✅ 放行後才呼叫 TECH listUsers / updateUser / deleteUser
 // ✅ Gate 無按鈕（純顯示）
 // =========================================================
@@ -197,9 +197,7 @@ async function startAuthThenLoad_() {
     return;
   }
 
-  showGate_(
-    `✅ 已登入：${displayName || "（無名）"}\nuserId：${userId}\n\n⏳ 檢查是否已開通…`
-  );
+  showGate_(`✅ 已登入：${displayName || "（無名）"}\nuserId：${userId}\n\n⏳ 檢查是否已開通…`);
 
   // ADMIN check
   const r = await adminCheckPersonalStatus_(userId);
@@ -226,46 +224,46 @@ async function startAuthThenLoad_() {
     return;
   }
 
-  // ✅ 讀取 PersonalStatus 的「使用者管理連結」當作 TECH_API_BASE_URL
-  showGate_("✅ 已開通，讀取使用者管理連結中…");
-  const linkRes = await adminGetUserManageLink_(userId);
+  // ✅ 讀取 PersonalStatus 的「使用者資料庫」當作 TECH_API_BASE_URL
+  showGate_("✅ 已開通，讀取使用者資料庫連結中…");
+  const linkRes = await adminGetUserDatabaseUrl_(userId);
 
   if (!linkRes.ok) {
     __authPassed = false;
     __authedUserId = userId;
 
     showGate_(
-      `❌ 讀取使用者管理連結失敗\nuserId：${userId}\nerror：${linkRes.error}\nraw：${(linkRes.raw || "").slice(0, 300)}`
+      `❌ 讀取使用者資料庫連結失敗\nuserId：${userId}\nerror：${linkRes.error}\nraw：${(linkRes.raw || "").slice(0, 300)}`
     );
-    toast_("讀取使用者管理連結失敗", "err");
+    toast_("讀取使用者資料庫連結失敗", "err");
     return;
   }
 
-  const techUrl = String(linkRes.techUrl || "").trim();
-  if (!techUrl) {
+  const dbUrl = String(linkRes.databaseUrl || "").trim();
+  if (!dbUrl) {
     __authPassed = false;
     __authedUserId = userId;
 
     showGate_(
-      `⛔ 尚未設定「使用者管理連結」\nuserId：${userId}\n\n請到 PersonalStatus 表的「使用者管理連結」欄填入對應的 GAS WebApp /exec 連結。`
+      `⛔ 尚未設定「使用者資料庫」\nuserId：${userId}\n\n請到 PersonalStatus 表的「使用者資料庫」欄填入對應的 GAS WebApp /exec 連結。`
     );
-    toast_("尚未設定使用者管理連結", "err");
+    toast_("尚未設定使用者資料庫", "err");
     return;
   }
 
   // 基本校驗（避免亂填）
-  if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(techUrl) || !/\/exec(\?|$)/.test(techUrl)) {
+  if (!/^https:\/\/script\.google\.com\/macros\/s\//.test(dbUrl) || !/\/exec(\?|$)/.test(dbUrl)) {
     __authPassed = false;
     __authedUserId = userId;
 
     showGate_(
-      `❌ 使用者管理連結格式不正確\n目前值：${techUrl}\n\n需為 GAS WebApp 的 /exec 連結。`
+      `❌ 使用者資料庫連結格式不正確\n目前值：${dbUrl}\n\n需為 GAS WebApp 的 /exec 連結。`
     );
-    toast_("使用者管理連結格式錯誤", "err");
+    toast_("使用者資料庫連結格式錯誤", "err");
     return;
   }
 
-  TECH_API_BASE_URL = techUrl;
+  TECH_API_BASE_URL = dbUrl;
 
   // 通過
   __authPassed = true;
@@ -282,9 +280,7 @@ async function startAuthThenLoad_() {
 
 // ✅ 只看 personalStatusEnabled / personalStatus
 async function adminCheckPersonalStatus_(userId) {
-  const url =
-    ADMIN_API_BASE_URL +
-    `?mode=check&userId=${encodeURIComponent(userId)}&_cors=1`;
+  const url = ADMIN_API_BASE_URL + `?mode=check&userId=${encodeURIComponent(userId)}&_cors=1`;
 
   try {
     const res = await fetch(url, { method: "GET" });
@@ -310,6 +306,8 @@ async function adminCheckPersonalStatus_(userId) {
       enabled,
       personalStatusEnabled,
       audit: json?.audit,
+      scheduleEnabled: json?.scheduleEnabled,
+      remainingDays: json?.remainingDays,
       raw,
       json,
     };
@@ -318,18 +316,16 @@ async function adminCheckPersonalStatus_(userId) {
   }
 }
 
-// ✅ 讀 PersonalStatus 的「使用者管理連結」
-async function adminGetUserManageLink_(userId) {
-  const url =
-    ADMIN_API_BASE_URL +
-    `?mode=getUserManageLink&userId=${encodeURIComponent(userId)}&_cors=1`;
+// ✅ 讀 PersonalStatus 的「使用者資料庫」
+async function adminGetUserDatabaseUrl_(userId) {
+  const url = ADMIN_API_BASE_URL + `?mode=getUserManageLink&userId=${encodeURIComponent(userId)}&_cors=1`;
 
   try {
     const res = await fetch(url, { method: "GET" });
     const raw = await res.text();
 
-    console.log("[admin-get-link] url:", url);
-    console.log("[admin-get-link] http:", res.status, "raw:", raw.slice(0, 300));
+    console.log("[admin-get-db] url:", url);
+    console.log("[admin-get-db] http:", res.status, "raw:", raw.slice(0, 300));
 
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, raw };
 
@@ -342,7 +338,14 @@ async function adminGetUserManageLink_(userId) {
 
     if (!json.ok) return { ok: false, error: json.error || "not ok", raw, json };
 
-    return { ok: true, techUrl: json.techUrl, raw, json };
+    // GAS 回傳：databaseUrl / manageLiff
+    return {
+      ok: true,
+      databaseUrl: json.databaseUrl,
+      manageLiff: json.manageLiff,
+      raw,
+      json,
+    };
   } catch (e) {
     return { ok: false, error: e?.message || String(e), raw: "" };
   }
@@ -352,7 +355,7 @@ async function adminGetUserManageLink_(userId) {
 // 4) TECH API（list/update/delete）
 // =========================================================
 function assertTechUrl_() {
-  if (!TECH_API_BASE_URL) throw new Error("TECH_API_BASE_URL 尚未設定（PersonalStatus 使用者管理連結為空）");
+  if (!TECH_API_BASE_URL) throw new Error("TECH_API_BASE_URL 尚未設定（PersonalStatus 使用者資料庫為空）");
 }
 
 async function techGet_(paramsObj) {
@@ -477,9 +480,7 @@ function updateSortIndicators_() {
 }
 
 function applyFilters() {
-  const keywordRaw = (document.getElementById("searchInput")?.value || "")
-    .trim()
-    .toLowerCase();
+  const keywordRaw = (document.getElementById("searchInput")?.value || "").trim().toLowerCase();
 
   const activeChip = document.querySelector(".chip.active");
   const filter = activeChip ? activeChip.dataset.filter : "ALL";
@@ -857,7 +858,10 @@ function syncCheckAll_() {
 function updateKpis_() {
   const total = allUsers.length;
 
-  let approved = 0, pending = 0, rejected = 0, disabled = 0;
+  let approved = 0,
+    pending = 0,
+    rejected = 0,
+    disabled = 0;
 
   for (const u of allUsers) {
     const a = String(u.audit || "待審核").trim();
@@ -931,7 +935,10 @@ function renderAuditOptions_(current) {
   const v = String(current || "待審核");
   const opts = ["待審核", "通過", "拒絕", "停用", "其他"];
   return opts
-    .map((o) => `<option value="${escapeAttr_(o)}" ${v === o ? "selected" : ""}>${escapeHtml_(o)}</option>`)
+    .map(
+      (o) =>
+        `<option value="${escapeAttr_(o)}" ${v === o ? "selected" : ""}>${escapeHtml_(o)}</option>`
+    )
     .join("");
 }
 
