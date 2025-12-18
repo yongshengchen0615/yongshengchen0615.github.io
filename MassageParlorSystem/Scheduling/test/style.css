@@ -41,8 +41,7 @@ body {
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
   background: radial-gradient(circle at top, #0f172a 0, var(--bg) 45%, var(--bg) 100%);
   color: var(--text-main);
@@ -109,6 +108,52 @@ body {
   max-width: 1080px;
   margin: 0 auto;
   padding: 20px 16px 32px 16px;
+}
+
+/* ✅ 已開通功能提示橫幅 */
+.feature-banner {
+  margin: 6px 0 10px 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+:root[data-theme="light"] .feature-banner {
+  background: #ffffff;
+}
+
+.feature-title {
+  color: var(--text-sub);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.feature-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.feature-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .feature-chip {
+  background: rgba(37, 99, 235, 0.08);
 }
 
 /* Header */
@@ -579,7 +624,7 @@ body {
 /* =========================================================
  * ✅ Top Loading Hint（fixed toast，不影響面板排列）
  * ========================================================= */
-.top-loading{
+.top-loading {
   position: fixed;
   top: 10px;
   left: 50%;
@@ -597,21 +642,23 @@ body {
   background: rgba(15, 23, 42, 0.92);
   color: #e5e7eb;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(6px);
 
   pointer-events: none;
 }
 
-:root[data-theme="light"] .top-loading{
+:root[data-theme="light"] .top-loading {
   background: rgba(255, 255, 255, 0.92);
   color: #111827;
   border-color: rgba(148, 163, 184, 0.6);
 }
 
-.top-loading.hidden{ display:none; }
+.top-loading.hidden {
+  display: none;
+}
 
-.top-loading-spinner{
+.top-loading-spinner {
   width: 12px;
   height: 12px;
   border-radius: 999px;
@@ -621,6 +668,6 @@ body {
 }
 
 /* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
-#loadingState{
+#loadingState {
   display: none !important;
 }
