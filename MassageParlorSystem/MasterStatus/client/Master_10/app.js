@@ -3,9 +3,11 @@
 // Gate：
 // 1) 使用者需通過審核（USER_MGMT_API_URL：check / register）
 // 2) TARGET_MASTER_ID 對應技師 personalStatusEnabled=是 才放行（USER_MGMT_API_URL：listUsers）
-// 3) ✅ ADMIN_API_URL / BOOKING_API_URL 固定從 getPersonalStatus 取得：
+// 3) ✅ ADMIN_API_URL / BOOKING_API_URL 固定從「TARGET_MASTER_ID 對應技師 ownerUserId」的 getPersonalStatus 取得：
 //    - ADMIN_API_URL  <- PersonalStatus「使用者資料庫」(databaseUrl)
 //    - BOOKING_API_URL <- PersonalStatus「相關日期資料庫」(dateDatabaseUrl)
+// 4) ✅ 用 ADMIN_API_URL(使用者資料庫) 再檢查登入者 audit 是否「通過」
+//    - 非通過：顯示提醒 + 禁用「個人狀態」功能（不整頁封鎖）
 // =========================================================
 
 // ================================
@@ -40,7 +42,7 @@ async function loadConfig_() {
     TECH_API_URL: String(json.TECH_API_URL).trim(),
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
 
-    // ✅ 由 getPersonalStatus 動態注入
+    // ✅ 由 getPersonalStatus 動態注入（改為用 ownerUserId 注入）
     ADMIN_API_URL: "",
     BOOKING_API_URL: "",
   };
@@ -292,6 +294,20 @@ async function checkTargetTechEnabledOrBlock_() {
   return { ok: true, techRow };
 }
 
+// ✅ 新增：取得 TARGET_MASTER_ID 對應那列的 ownerUserId（用來讀 PersonalStatus 的使用者資料庫連結）
+async function getOwnerUserIdByTargetMaster_() {
+  const json = await userMgmtGet_({ mode: "listUsers" });
+  const users = Array.isArray(json?.users) ? json.users : [];
+
+  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const hit = users.find((u) => normalizeDigits(u.masterCode) === target);
+
+  const ownerUserId = String(hit?.userId || "").trim();
+  if (!ownerUserId) throw new Error("TARGET_MASTER_ID 找不到對應的 Users 列或該列缺 userId");
+
+  return { ownerUserId, ownerRow: hit };
+}
+
 // ================================
 // 7) ✅ 固定：mode=getPersonalStatus 取得動態 URL
 // ================================
@@ -327,6 +343,58 @@ async function hydrateUrlsFromPersonalStatus_(userId) {
   });
 
   return json;
+}
+
+// ✅ 新增：ADMIN_API_URL（使用者資料庫）查登入者 audit 是否通過
+async function adminDbGet_(paramsObj) {
+  if (!APP_CONFIG.ADMIN_API_URL) throw new Error("ADMIN_API_URL missing");
+
+  const u = new URL(APP_CONFIG.ADMIN_API_URL);
+  Object.entries(paramsObj || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
+  });
+  u.searchParams.set("_cors", "1");
+
+  const url = u.toString();
+  console.log("[ADMIN_DB] GET", url);
+
+  const res = await fetch(url, { method: "GET" });
+  const text = await res.text();
+
+  console.log("[ADMIN_DB] status", res.status);
+  console.log("[ADMIN_DB] raw", text.slice(0, 200));
+
+  if (!res.ok) throw new Error("ADMIN_DB HTTP " + res.status + " " + text.slice(0, 160));
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error("ADMIN_DB non-JSON response: " + text.slice(0, 200));
+  }
+}
+
+async function checkLoginUserAuditFromAdminDb_(loginUserId) {
+  const json = await adminDbGet_({ mode: "check", userId: loginUserId });
+
+  const audit = String(json?.audit || "").trim();
+  const ok = audit === "通過";
+
+  return { ok, audit, raw: json };
+}
+
+// ✅ 新增：鎖個人狀態 UI（不整頁封鎖）
+function lockPersonalStatusUI_(msg) {
+  toast(msg || "審核未通過，無法使用個人狀態");
+
+  // 你若有實際 id，請對齊這兩個；沒有也不會報錯
+  const btn = $("personalStatusBtn");
+  const section = $("personalStatusSection");
+
+  if (btn) btn.disabled = true;
+  if (section) {
+    section.style.pointerEvents = "none";
+    section.style.opacity = "0.55";
+  }
 }
 
 // ================================
@@ -675,14 +743,37 @@ window.onload = async () => {
     const gate = await checkAccessOrBlock_();
     if (!gate.allowed) return;
 
-    // ✅ 固定只打 getPersonalStatus：注入 ADMIN/BOOKING URL
+    // ✅ 改：用 TARGET_MASTER_ID 對應技師的 ownerUserId 取得 PersonalStatus（使用者資料庫/日期資料庫）
+    let owner;
     try {
-      await hydrateUrlsFromPersonalStatus_(gate.userId);
+      owner = await getOwnerUserIdByTargetMaster_();
+    } catch (e) {
+      console.error(e);
+      toast("找不到技師設定來源：" + String(e.message || e));
+      showDenied_({ denyReason: "target_not_found" });
+      return;
+    }
+
+    try {
+      await hydrateUrlsFromPersonalStatus_(owner.ownerUserId);
     } catch (e) {
       console.error(e);
       toast("讀取 PersonalStatus 失敗：" + String(e.message || e));
       showDenied_({ denyReason: "personalstatus_failed" });
       return;
+    }
+
+    // ✅ 新增：用「使用者資料庫」再檢查登入者 audit
+    try {
+      const auditCheck = await checkLoginUserAuditFromAdminDb_(gate.userId);
+      if (!auditCheck.ok) {
+        lockPersonalStatusUI_(
+          `你目前審核狀態為「${auditCheck.audit || "空白"}」，無法使用個人狀態`
+        );
+      }
+    } catch (e) {
+      console.error(e);
+      lockPersonalStatusUI_("審核狀態檢查失敗，暫時無法使用個人狀態");
     }
 
     await Promise.all([loadTechStatus(), loadBizConfig()]);
