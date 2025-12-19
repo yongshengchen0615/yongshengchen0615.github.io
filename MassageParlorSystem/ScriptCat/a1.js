@@ -2,6 +2,7 @@
 // @name         Body+Foot Full Snapshot (Every 1s) -> GAS
 // @namespace    http://scriptcat.org/
 // @version      2.0
+// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
 // @description  每秒掃描「身體/腳底」面板，全量用 JSON 字串送到 GAS，GAS 覆寫 Data_Body/Data_Foot
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
