@@ -1143,8 +1143,8 @@ function startApp() {
   setActivePanel("body");
   refreshStatus();
 
-  const intervalMs = 10 * 1000;
-  const jitter = Math.floor(Math.random() * 5000);
+  const intervalMs = 5 * 1000;
+  const jitter = Math.floor(Math.random() * 3000);
 
   if (pollTimer) clearInterval(pollTimer);
 
