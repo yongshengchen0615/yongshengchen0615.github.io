@@ -1,11 +1,9 @@
 // =========================================================
-// app.js (Optimized + EDGE_STATUS_URLS + masterId query)
-// - TECH_API：優先走 6 個 Edge 分流（Promise.any 取最快）
-// - Edge/Origin 都帶 masterId（後端若支援單取更快）
-// - fetch timeout + retry
+// app.js (Integrated for Edge Cache Reader v5)
+// - TECH status: Edge 用 ?mode=cache_one&masterId=xx（符合你最新 Edge GAS）
+// - Edge 回 ok:false（cache_miss）→ 自動 fallback origin
+// - fetch timeout + retry + Promise.any polyfill
 // - 輪詢不重疊 + 背景暫停
-// - 日曆事件委派
-// - 分層結構化
 // =========================================================
 
 /** ================================
@@ -264,7 +262,7 @@ if (typeof Promise.any !== "function") {
   };
 }
 
-// ✅ NEW: 多路同時打，取最快成功（Promise.any）
+// ✅ 多路同時打，取最快成功（會把 ok:false 視為失敗以便 fallback）
 async function fetchAnyJson_(urls, opts = {}) {
   const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
   if (!list.length) throw new Error("fetchAnyJson_: empty urls");
@@ -272,10 +270,15 @@ async function fetchAnyJson_(urls, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 5000;
 
   const tasks = list.map((u) =>
-    fetchJson_(u, { method: "GET", timeoutMs, retries: 0 }).then(
-      (json) => ({ ok: true, url: u, json }),
-      (err) => Promise.reject(Object.assign(err, { _url: u }))
-    )
+    fetchJson_(u, { method: "GET", timeoutMs, retries: 0 }).then((json) => {
+      if (json && json.ok === false) {
+        const err = new Error(String(json.error || "ok=false"));
+        err._url = u;
+        err._json = json;
+        throw err;
+      }
+      return { ok: true, url: u, json };
+    })
   );
 
   try {
@@ -491,18 +494,11 @@ function auditBlockMessage_(auditRaw) {
   const a = String(auditRaw || "").trim();
   if (a === "通過") return null;
 
-  if (!a || a === "-") {
-    return { title: "審核狀態未設定", text: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。" };
-  }
-  if (a === "待審核") {
-    return { title: "尚未通過審核", text: "你的帳號目前為「待審核」，暫時無法使用。請聯絡管理員開通。" };
-  }
-  if (a === "拒絕") {
-    return { title: "審核未通過", text: "你的帳號審核結果為「拒絕」，無法使用此頁面。請聯絡管理員確認原因。" };
-  }
-  if (a === "停用") {
-    return { title: "帳號已停用", text: "你的帳號目前為「停用」，無法使用此頁面。請聯絡管理員協助。" };
-  }
+  if (!a || a === "-") return { title: "審核狀態未設定", text: "你的審核狀態尚未設定，暫時無法使用此頁面。請聯絡管理員處理。" };
+  if (a === "待審核") return { title: "尚未通過審核", text: "你的帳號目前為「待審核」，暫時無法使用。請聯絡管理員開通。" };
+  if (a === "拒絕") return { title: "審核未通過", text: "你的帳號審核結果為「拒絕」，無法使用此頁面。請聯絡管理員確認原因。" };
+  if (a === "停用") return { title: "帳號已停用", text: "你的帳號目前為「停用」，無法使用此頁面。請聯絡管理員協助。" };
+
   return { title: "無法使用", text: `你的審核狀態為「${a}」，目前無法使用此頁面。請聯絡管理員。` };
 }
 
@@ -621,7 +617,7 @@ async function checkAccessOrBlock_() {
 }
 
 /** ================================
- * 13) Tech Status (EDGE_STATUS_URLS: fastest wins)
+ * 13) Tech Status (Edge cache_one first)
  * ================================ */
 function classifyStatus(text) {
   const t = String(text || "");
@@ -671,7 +667,7 @@ function updateStatusUI_(kind, data) {
 function pickTechResult_(json) {
   if (!json) return { body: null, foot: null };
 
-  // 新格式：{ ok:true, body:{}, foot:{} }
+  // Edge cache_one：{ ok:true, masterId, body:{}, foot:{} }
   const bodyObj = json.body && !Array.isArray(json.body) ? json.body : null;
   const footObj = json.foot && !Array.isArray(json.foot) ? json.foot : null;
   if (bodyObj || footObj) return { body: bodyObj, foot: footObj };
@@ -688,22 +684,22 @@ function pickTechResult_(json) {
 }
 
 // ✅ build URL list (edges first, fallback last)
+//   - Edge：?mode=cache_one&masterId=10（符合你 Edge GAS v5）
+//   - Origin：?masterId=10（或你 origin 的單取參數）
 function buildTechApiUrlCandidates_() {
   const masterId = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
   const urls = [];
 
-  // 1) Edges: ?mode=all&masterId=10
   (APP_CONFIG.EDGE_STATUS_URLS || []).forEach((base) => {
     try {
       const u = new URL(String(base).trim());
-      u.searchParams.set("mode", "all");
+      u.searchParams.set("mode", "cache_one");
       u.searchParams.set("masterId", masterId);
       u.searchParams.set("_cors", "1");
       urls.push(u.toString());
     } catch {}
   });
 
-  // 2) Fallback origin: ?masterId=10
   if (APP_CONFIG.TECH_API_URL) {
     try {
       const u2 = new URL(APP_CONFIG.TECH_API_URL);
@@ -723,22 +719,22 @@ async function loadTechStatus_() {
   const urls = buildTechApiUrlCandidates_();
   const edgeCount = (APP_CONFIG.EDGE_STATUS_URLS || []).length;
 
-  // 1) Edge 六路搶最快（短 timeout）
   let json = null;
+
+  // 1) Edge 六路搶最快（短 timeout）
   if (edgeCount > 0) {
     const edgeUrls = urls.slice(0, edgeCount);
     const got = await fetchAnyJson_(edgeUrls, { timeoutMs: 5200 });
     json = got?.json || null;
   }
 
-  // 2) Edge 全掛 → fallback origin（較長 timeout）
+  // 2) Edge 全掛（含 cache_miss / ok:false）→ fallback origin
   if (!json) {
     const originUrl = urls[urls.length - 1];
     if (!originUrl) throw new Error("TECH_API_URL missing and edges failed");
     json = await fetchJson_(originUrl, { method: "GET", timeoutMs: 12000, retries: 1 });
+    if (json && json.ok === false) throw new Error(String(json.error || "TECH_API ok=false"));
   }
-
-  if (json && json.ok === false) throw new Error(String(json.error || "TECH_API ok=false"));
 
   const { body, foot } = pickTechResult_(json);
   updateStatusUI_("body", body);
@@ -763,7 +759,6 @@ function startTechPolling_() {
 
   tick();
 
-  // ✅ 單例 interval
   if (techPollTimer) clearInterval(techPollTimer);
   techPollTimer = setInterval(tick, 10000);
 
@@ -1001,3 +996,9 @@ window.onload = () => {
     showDenied_({ denyReason: "check_failed" });
   });
 };
+
+/*
+config.json 需確保：
+- EDGE_STATUS_URLS: ["https://script.google.com/macros/s/EDGE_1/exec", ...]
+- TECH_API_URL: "https://script.google.com/macros/s/ORIGIN/exec"
+*/
