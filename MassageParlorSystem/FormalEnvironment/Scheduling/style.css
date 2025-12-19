@@ -1,0 +1,691 @@
+/* 預設：暗色主題 */
+:root {
+  --bg: #020617;
+  --bg-card: #020617;
+  --bg-soft: #020617;
+  --border: #1f2937;
+  --text-main: #e5e7eb;
+  --text-sub: #9ca3af;
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.15);
+  --danger: #f97373;
+  --muted: #4b5563;
+  --radius-lg: 16px;
+}
+
+/* 亮色主題覆蓋（按 data-theme 切換） */
+:root[data-theme="light"] {
+  --bg: #f3f4f6;
+  --bg-card: #ffffff;
+  --bg-soft: #f9fafb;
+  --border: #d1d5db;
+  --text-main: #111827;
+  --text-sub: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --danger: #b91c1c;
+  --muted: #9ca3af;
+}
+
+/* Reset 基本設定 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #0f172a 0, var(--bg) 45%, var(--bg) 100%);
+  color: var(--text-main);
+}
+
+/* 亮色主題時，背景調整 */
+:root[data-theme="light"] body {
+  background: linear-gradient(180deg, #e5e7eb 0, #f9fafb 40%, #f9fafb 100%);
+}
+
+/* Gate 遮罩（登入 / 審核提示） */
+.gate {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 9999;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.gate-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.gate-message {
+  max-width: 520px;
+  width: 100%;
+  padding: 20px 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: radial-gradient(circle at top, #0b1120 0, #020617 60%);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
+  text-align: center;
+}
+
+:root[data-theme="light"] .gate-message {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.gate-message p {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+/* 主要 layout */
+.app-root {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.app-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.layout {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px 32px 16px;
+}
+
+/* =========================================================
+ * ✅ 已開通功能提示（固定顯示三項；未開通灰色 + 未開通 badge）
+ * ========================================================= */
+.feature-banner {
+  margin: 6px 0 10px 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+:root[data-theme="light"] .feature-banner {
+  background: #ffffff;
+}
+
+.feature-title {
+  color: var(--text-sub);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.feature-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.feature-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .feature-chip {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+/* 未開通：灰色 chip */
+.feature-chip-disabled {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .feature-chip-disabled {
+  background: rgba(107, 114, 128, 0.10);
+  border-color: rgba(107, 114, 128, 0.25);
+  color: #6b7280;
+}
+
+/* chip 內「未開通」badge */
+.feature-chip-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.35);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .feature-chip-badge {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* ✅ 個人狀態：快捷按鈕列 */
+.personal-tools{
+  margin: 6px 0 12px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.personal-tools .btn{
+  padding: 6px 14px;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.app-header-left {
+  min-width: 0;
+}
+
+.app-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+
+.app-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Pills & Buttons */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .pill {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+}
+
+.pill-text {
+  white-space: nowrap;
+}
+
+.btn {
+  border-radius: 999px;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-ghost {
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-main);
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .btn-ghost {
+  background: #ffffff;
+}
+
+/* Tabs + Filter Toolbar */
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: inline-flex;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 999px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.8);
+}
+
+:root[data-theme="light"] .tabs {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-active {
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: #0b1120;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .tab-active {
+  color: #f9fafb;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-label {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+/* 表單元件 */
+.input,
+.select {
+  min-width: 160px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-main);
+  padding: 5px 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+:root[data-theme="light"] .input,
+:root[data-theme="light"] .select {
+  background: #ffffff;
+}
+
+.input::placeholder {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+/* 主內容區 */
+.main {
+  display: flex;
+}
+
+/* 卡片 + 表格 */
+.card {
+  flex: 1;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: radial-gradient(circle at top, #0b1120 0, var(--bg-card) 55%);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
+  overflow: hidden;
+}
+
+:root[data-theme="light"] .card {
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+}
+
+.card-header {
+  padding: 14px 18px 10px 18px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:root[data-theme="light"] .card-header {
+  border-bottom-color: rgba(209, 213, 219, 0.9);
+}
+
+.card-header-left {
+  min-width: 0;
+}
+
+.card-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.card-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+.card-header-right {
+  display: flex;
+  align-items: center;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-sub);
+}
+
+:root[data-theme="light"] .badge {
+  background: #ffffff;
+}
+
+.card-body {
+  padding: 10px 18px 16px 18px;
+}
+
+/* Table */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.status-table thead th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(55, 65, 81, 0.9);
+  color: var(--text-sub);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+:root[data-theme="light"] .status-table thead th {
+  border-bottom-color: rgba(209, 213, 219, 0.9);
+}
+
+.status-table tbody td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.85);
+  vertical-align: middle;
+}
+
+:root[data-theme="light"] .status-table tbody td {
+  border-bottom-color: rgba(229, 231, 235, 1);
+}
+
+.status-table tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
+
+/* 順序 / 師傅 / 預約欄基礎樣式（顏色會被 JS 覆蓋）*/
+.cell-order,
+.cell-master,
+.cell-appointment {
+  font-size: 13px;
+}
+
+/* 狀態 Pill */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-busy {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+}
+
+.status-booked {
+  background: rgba(56, 189, 248, 0.16);
+  color: #bae6fd;
+}
+
+.status-free {
+  background: rgba(34, 197, 94, 0.15);
+  color: #bbf7d0;
+}
+
+.status-other {
+  background: rgba(148, 163, 184, 0.22);
+  color: #e5e7eb;
+}
+
+:root[data-theme="light"] .status-busy { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
+:root[data-theme="light"] .status-booked { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
+:root[data-theme="light"] .status-free { background: rgba(22, 163, 74, 0.08); color: #15803d; }
+:root[data-theme="light"] .status-other { background: rgba(148, 163, 184, 0.15); color: #374151; }
+
+/* 剩餘時間 badge */
+.time-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.95);
+  font-size: 12px;
+}
+
+:root[data-theme="light"] .time-badge {
+  background: #ffffff;
+}
+
+/* 空 / Loading / Error 狀態 */
+.state {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-sub);
+  display: none;
+}
+
+.state-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.2);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Legend */
+.legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legend-work { background: #f97373; }
+.legend-free { background: #22c55e; }
+.legend-other { background: #9ca3af; }
+
+/* RWD */
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filters {
+    width: 100%;
+  }
+
+  .input,
+  .select {
+    width: 100%;
+  }
+
+  .card {
+    border-radius: 14px;
+  }
+}
+
+/* 使用者名稱 + 剩餘天數提示橫幅 */
+.usage-banner {
+  margin: 6px 0 14px 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+}
+
+/* 亮色主題時 */
+:root[data-theme="light"] .usage-banner {
+  background: #ffffff;
+}
+
+/* 快過期（<=3 天） */
+.usage-banner-warning {
+  border-color: #facc15;
+}
+
+/* 已過期（<=0 天） */
+.usage-banner-expired {
+  border-color: #f97373;
+}
+
+/* =========================================================
+ * ✅ Top Loading Hint（fixed toast，不影響面板排列）
+ * ========================================================= */
+.top-loading{
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+
+  background: rgba(15, 23, 42, 0.92);
+  color: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+  backdrop-filter: blur(6px);
+
+  pointer-events: none;
+}
+
+:root[data-theme="light"] .top-loading{
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.top-loading.hidden{ display:none; }
+
+.top-loading-spinner{
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+/* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
+#loadingState{
+  display: none !important;
+}
