@@ -17,7 +17,7 @@
 
 // ★ 換成你的 6 個 Edge GAS Web App URL（每個都要不同 /exec）
 let EDGE_STATUS_URLS = [
- "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
+  "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
@@ -115,11 +115,7 @@ function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
   const overrideIdx = getOverrideEdgeIndex_();
-  if (
-    typeof overrideIdx === "number" &&
-    overrideIdx >= 0 &&
-    overrideIdx < EDGE_STATUS_URLS.length
-  )
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length)
     return overrideIdx;
   return baseIdx;
 }
@@ -151,8 +147,7 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
       throw new Error(`NON_JSON ${text.slice(0, 160)}`);
     }
 
-    if (json && json.ok === false)
-      throw new Error(`NOT_OK ${json.error || "response not ok"}`);
+    if (json && json.ok === false) throw new Error(`NOT_OK ${json.error || "response not ok"}`);
     return json;
   } finally {
     clearTimeout(t);
@@ -175,9 +170,7 @@ const appRootEl = document.getElementById("appRoot");
 
 // ✅ Top Loading Hint DOM
 const topLoadingEl = document.getElementById("topLoading");
-const topLoadingTextEl = topLoadingEl
-  ? topLoadingEl.querySelector(".top-loading-text")
-  : null;
+const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading-text") : null;
 
 // Dashboard 用資料
 const rawData = { body: [], foot: [] };
@@ -242,11 +235,7 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [
-    buildChip_("叫班提醒", push),
-    buildChip_("個人狀態", personal),
-    buildChip_("排班表", schedule),
-  ].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -319,10 +308,7 @@ function updateUsageBanner(displayName, remainingDays) {
  * ✅ Personal Tools（getPersonalStatus）
  * ========================================================= */
 async function fetchPersonalStatusRow_(userId) {
-  const url = withQuery_(
-    AUTH_API_URL,
-    "mode=getPersonalStatus&userId=" + encodeURIComponent(userId)
-  );
+  const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("getPersonalStatus HTTP " + resp.status);
   return await resp.json();
@@ -343,13 +329,19 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
   personalToolsEl.style.display = "flex";
 
   btnUserManageEl.style.display = m ? "inline-flex" : "none";
-  btnUserManageEl.onclick = () => { if (m) window.location.href = m; };
+  btnUserManageEl.onclick = () => {
+    if (m) window.location.href = m;
+  };
 
   btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => { if (p) window.location.href = p; };
+  btnPersonalStatusEl.onclick = () => {
+    if (p) window.location.href = p;
+  };
 
   btnVacationEl.style.display = v ? "inline-flex" : "none";
-  btnVacationEl.onclick = () => { if (v) window.location.href = v; };
+  btnVacationEl.onclick = () => {
+    if (v) window.location.href = v;
+  };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
@@ -384,9 +376,7 @@ async function sendDailyFirstMessageFromUser_() {
     if (last === today) return;
 
     const name = String(window.currentDisplayName || "").trim();
-    const text = name
-      ? `【每日首次開啟】${name} 已進入看板（${today}）`
-      : `【每日首次開啟】使用者已進入看板（${today}）`;
+    const text = name ? `【每日首次開啟】${name} 已進入看板（${today}）` : `【每日首次開啟】使用者已進入看板（${today}）`;
 
     await liff.sendMessages([{ type: "text", text }]);
     localStorage.setItem(DAILY_USER_MSG_KEY, today);
@@ -545,6 +535,38 @@ function applyReadableBgColor_(el, colorStr) {
 }
 
 /* =========================================================
+ * ✅ bgIndex 特規：支援 bg-CF6F6F6（多一碼也 OK）
+ * - 抓 bg- 後面的 hex 字串
+ * - 只取前 6 碼當色碼
+ * - 用淡底色塗到「順序」欄位
+ * ========================================================= */
+function pickHex6FromBgToken_(bgToken) {
+  const s = String(bgToken || "").trim();
+  const m = s.match(/bg-([0-9a-fA-F]+)/);
+  if (!m) return null;
+
+  const hexRaw = m[1]; // 例如 CF6F6F6
+  const hex6 = hexRaw.slice(0, 6); // 取 CF6F6F
+  if (!/^[0-9a-fA-F]{6}$/.test(hex6)) return null;
+
+  return "#" + hex6;
+}
+
+function applyBgIndexToOrderCell_(el, bgIndexToken) {
+  if (!el || !bgIndexToken) return false;
+
+  const hex = pickHex6FromBgToken_(bgIndexToken);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const alpha = isLightTheme_() ? 0.10 : 0.16;
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  return true;
+}
+
+/* =========================================================
  * ✅ 字串清洗
  * ========================================================= */
 function normalizeText_(s) {
@@ -630,8 +652,7 @@ function rebuildStatusFilterOptions() {
     filterStatusSelect.appendChild(opt);
   }
 
-  filterStatusSelect.value =
-    previous !== "all" && statuses.has(previous) ? previous : "all";
+  filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
 }
 
@@ -699,14 +720,13 @@ function render() {
 
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
-    const orderText =
-      showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
     // 順序
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
-    if (row.bgIndex) applyReadableBgColor_(tdOrder, row.bgIndex);      // ✅ bgIndex
+    if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex); // ✅ bgIndex: bg-XXXXXX(可多碼)
     if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
@@ -714,7 +734,7 @@ function render() {
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
-    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);   // ✅ bgMaster
+    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster); // ✅ bgMaster
     if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
@@ -749,8 +769,7 @@ function render() {
 
   tbodyRowsEl.appendChild(frag);
 
-  if (panelTitleEl)
-    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
+  if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
 }
 
 /* =========================================================
@@ -838,10 +857,7 @@ async function refreshStatus() {
     if (lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
-        "更新：" +
-        String(now.getHours()).padStart(2, "0") +
-        ":" +
-        String(now.getMinutes()).padStart(2, "0");
+        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
     render();
@@ -989,8 +1005,7 @@ function setTheme(theme) {
   const finalTheme = theme === "light" ? "light" : "dark";
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
-  if (themeToggleBtn)
-    themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
+  if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
 
 (function initTheme() {
