@@ -15,14 +15,10 @@
  * ✅ 分流設定：Edge GAS（Status 讀取分流）
  * ========================================================= */
 
-// ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
-const EDGE_STATUS_URLS = [
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+// ★ 換成你的 6 個 Edge GAS Web App URL（每個都要不同 /exec）
+let EDGE_STATUS_URLS = [
+ "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
@@ -39,8 +35,9 @@ function hashToIndex_(str, mod) {
   return mod ? h % mod : 0;
 }
 function withQuery_(base, extraQuery) {
-  const b = String(base || "");
-  const q = String(extraQuery || "");
+  const b = String(base || "").trim();
+  const q = String(extraQuery || "").trim();
+  if (!b) return "";
   if (!q) return b;
   return b + (b.includes("?") ? "&" : "?") + q.replace(/^\?/, "");
 }
@@ -93,9 +90,32 @@ function resetFailCount_() {
   localStorage.removeItem(EDGE_FAIL_KEY);
 }
 
+/**
+ * ✅ Edge URL sanitize
+ * - 去重
+ * - 過濾空字串
+ */
+function sanitizeEdgeUrls_() {
+  const seen = new Set();
+  EDGE_STATUS_URLS = (EDGE_STATUS_URLS || [])
+    .map((u) => String(u || "").trim())
+    .filter((u) => u && u.startsWith("https://script.google.com/macros/s/") && u.includes("/exec"))
+    .filter((u) => {
+      if (seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    });
+
+  // 如果你只填到 1 個（或不小心都一樣），reroute 沒意義，但至少不會壞
+  if (!EDGE_STATUS_URLS.length) {
+    console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
+  }
+}
+sanitizeEdgeUrls_();
+
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
-  const baseIdx = hashToIndex_(uid, EDGE_STATUS_URLS.length);
+  const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
   const overrideIdx = getOverrideEdgeIndex_();
   if (
     typeof overrideIdx === "number" &&
@@ -149,7 +169,7 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
 const AUTH_API_URL =
   "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
 
-const LIFF_ID = "2008669658-sBKFvZEz";
+const LIFF_ID = "2008669658-6Et3vVqv";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
@@ -389,12 +409,6 @@ async function sendDailyFirstMessageFromUser_() {
 
 /* =========================================================
  * ✅ 一致策略：腳本貓色（保留自訂色、提高可讀性）
- * - 支援多種 token：text-Cxxxxxx / Cxxxxxx / #xxxxxx / text-[#xxxxxx]
- * - 支援 opacity：text-opacity-80 / opacity-80 / /80 / 0.8
- * - 套用規則：
- *   1) 有腳本貓色：前景色使用該色（opacity 有就用，並設最小可讀性）
- *   2) 狀態 pill：背景改用「該色的柔和底」，避免出現“前景腳本貓、背景CSS”的混搭不一致
- *   3) 沒腳本貓色：回到原 CSS（你現有 status-busy/free/other）
  * ========================================================= */
 
 function isLightTheme_() {
@@ -421,19 +435,15 @@ function normalizeHex6_(maybe) {
   if (!maybe) return null;
   let s = String(maybe).trim();
 
-  // text-[#AABBCC]
   const mBracket = s.match(/text-\[#([0-9a-fA-F]{6})\]/);
   if (mBracket) return "#" + mBracket[1];
 
-  // #AABBCC
   const mHash = s.match(/#([0-9a-fA-F]{6})/);
   if (mHash) return "#" + mHash[1];
 
-  // text-CFFAABB or CFFAABB or text-FFAABB
   const mC = s.match(/(?:^|text-)(?:C)?([0-9a-fA-F]{6})$/);
   if (mC) return "#" + mC[1];
 
-  // text-Cxxxxxx inside tokens
   const mIn = s.match(/text-C([0-9a-fA-F]{6})/);
   if (mIn) return "#" + mIn[1];
 
@@ -444,21 +454,18 @@ function parseOpacityToken_(token) {
   if (!token) return null;
   const t = String(token).trim();
 
-  // text-opacity-80 / opacity-80
   let m = t.match(/(?:text-opacity-|opacity-)(\d{1,3})/);
   if (m) {
     const n = Number(m[1]);
     if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
   }
 
-  // /80 (tailwind-like)
   m = t.match(/\/(\d{1,3})$/);
   if (m) {
     const n = Number(m[1]);
     if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
   }
 
-  // 0.8
   m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
   if (m) {
     const n = Number(m[1]);
@@ -476,20 +483,16 @@ function parseScriptCatColorV2_(colorStr) {
   let opacity = null;
 
   for (const tk of tokens) {
-    // hex
     if (!hex) {
       const h = normalizeHex6_(tk);
       if (h) hex = h;
     }
-
-    // opacity
     if (opacity == null) {
       const o = parseOpacityToken_(tk);
       if (o != null) opacity = o;
     }
   }
 
-  // 兼容：整串裡面直接包含 #xxxxxx
   if (!hex) {
     const h = normalizeHex6_(String(colorStr));
     if (h) hex = h;
@@ -498,13 +501,6 @@ function parseScriptCatColorV2_(colorStr) {
   return { hex, opacity };
 }
 
-/**
- * ✅ 一致策略（文字）
- * - 只設定 color（必要時加 rgba）
- * - opacity 做可讀性下限：
- *   - dark：最小 0.65
- *   - light：最小 0.80
- */
 function applyReadableTextColor_(el, colorStr) {
   if (!el || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -521,12 +517,6 @@ function applyReadableTextColor_(el, colorStr) {
   return true;
 }
 
-/**
- * ✅ 一致策略（狀態 pill）
- * - 使用腳本貓色作為前景
- * - 背景用同色的柔和底，避免“前景腳本貓、背景CSS”的混搭不一致
- * - 仍保留 status class（例如字重/圓角/內距），但背景/文字由腳本貓統一
- */
 function applyReadablePillColor_(pillEl, colorStr) {
   if (!pillEl || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -535,17 +525,14 @@ function applyReadablePillColor_(pillEl, colorStr) {
   const rgb = hexToRgb(hex);
   if (!rgb) return false;
 
-  // 前景：可讀性下限
   const minAlpha = isLightTheme_() ? 0.85 : 0.7;
   let aText = opacity == null ? 1 : opacity;
   aText = clamp_(aText, minAlpha, 1);
   pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
 
-  // 背景：固定柔和透明度（light 再淡一點）
   const aBg = isLightTheme_() ? 0.1 : 0.16;
   pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
 
-  // 邊框：加一點點同色線，讓 pill 更清楚
   const aBd = isLightTheme_() ? 0.25 : 0.35;
   pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
 
@@ -553,12 +540,12 @@ function applyReadablePillColor_(pillEl, colorStr) {
 }
 
 /* =========================================================
- * ✅ 字串清洗（避免全形空白/換行造成視覺不一致）
+ * ✅ 字串清洗
  * ========================================================= */
 function normalizeText_(s) {
   return String(s ?? "")
     .replace(/\r\n/g, "\n")
-    .replace(/\u3000/g, " ") // 全形空白
+    .replace(/\u3000/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n+/g, " ")
     .trim();
@@ -688,9 +675,9 @@ function render() {
 
   const displayRows = mapRowsToDisplay(finalRows);
 
-  // ✅ 減少 layout thrash：用 fragment 一次性 append
   tbodyRowsEl.innerHTML = "";
   if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
+
   const frag = document.createDocumentFragment();
 
   displayRows.forEach((row, idx) => {
@@ -701,47 +688,35 @@ function render() {
     const orderText =
       showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
-    // 順序
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
-    // ✅ 一致策略：有腳本貓色就用（可讀性保護）
     if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
-    // 師傅
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
     if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
-    // 狀態 pill
     const tdStatus = document.createElement("td");
     const statusSpan = document.createElement("span");
     statusSpan.className = "status-pill " + row.statusClass;
 
-    // ✅ 一致策略：若有腳本貓色 → 同時套前景+柔和底（避免混搭不一致）
     if (row.colorStatus) {
-      const ok = applyReadablePillColor_(statusSpan, row.colorStatus);
-      // 解析不到就回到原 CSS（不做任何 inline）
-      if (!ok) {
-        // 可選：debug
-        // console.warn("[ColorParseFail][status]", row.masterId, row.status, row.colorStatus);
-      }
+      applyReadablePillColor_(statusSpan, row.colorStatus);
     }
 
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);
 
-    // 預約
     const tdAppointment = document.createElement("td");
     tdAppointment.textContent = row.appointment || "";
     tdAppointment.className = "cell-appointment";
     tr.appendChild(tdAppointment);
 
-    // 剩餘
     const tdRemaining = document.createElement("td");
     const timeSpan = document.createElement("span");
     timeSpan.className = "time-badge";
@@ -760,24 +735,20 @@ function render() {
 
 /* =========================================================
  * ✅ 分流後的 Status 取得（一次拿 body + foot）
+ * - ✅ 先打 Edge 的 cache_all：吃到「Edge Cache sheet」
+ * - 再 fallback Origin cache_all / all
  * ========================================================= */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
-  // ✅ 只保留「一定回 body+foot」的 fallback（避免混亂）
-  const fallbackCandidates = [
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
-  ];
-
-  let lastErr = null;
-
-  // 1) Edge
+  // ✅ Edge：優先 cache_all（避免 Origin 偶發慢，且可真正使用 Edge 自己的 Cache sheet）
   for (const idx of tryEdgeIdxList) {
     const edgeBase = EDGE_STATUS_URLS[idx];
-    const edgeUrl = withQuery_(edgeBase, "mode=all&v=" + encodeURIComponent(jitterBust));
+    if (!edgeBase) continue;
+
+    const edgeUrl = withQuery_(edgeBase, "mode=cache_all&v=" + encodeURIComponent(jitterBust));
 
     try {
       const data = await fetchJsonWithTimeout_(edgeUrl, STATUS_FETCH_TIMEOUT_MS);
@@ -787,10 +758,10 @@ async function fetchStatusAll() {
         footRows: Array.isArray(data.foot) ? data.foot : [],
       };
     } catch (e) {
-      lastErr = e;
+      // sticky reroute：只針對起始 idx 計數
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
-        if (n >= EDGE_FAIL_THRESHOLD) {
+        if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
           const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
           setOverrideEdgeIndex_(nextIdx);
         }
@@ -798,7 +769,13 @@ async function fetchStatusAll() {
     }
   }
 
-  // 2) fallback
+  // ✅ fallback：Origin
+  const fallbackCandidates = [
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
+  ];
+
+  let lastErr = null;
   for (const url of fallbackCandidates) {
     try {
       const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
@@ -816,9 +793,15 @@ async function fetchStatusAll() {
 }
 
 /* =========================================================
- * ✅ refresh：避免重疊 + 背景暫停
+ * ✅ refresh：避免重疊 + 背景暫停 + error 文案收斂
  * ========================================================= */
 let refreshInFlight = false;
+let lastErrToastKey = "";
+
+function shortErr_(err) {
+  const s = String((err && err.message) || err || "").replace(/\s+/g, " ").trim();
+  return s.length > 140 ? s.slice(0, 140) + "…" : s;
+}
 
 async function refreshStatus() {
   if (document.hidden) return;
@@ -848,9 +831,21 @@ async function refreshStatus() {
 
     render();
   } catch (err) {
-    console.error("[Status] 取得狀態失敗：", err);
+    const msg = shortErr_(err);
+    const key = msg; // 同訊息就不狂噴
+
+    if (key !== lastErrToastKey) {
+      console.error("[Status] 取得狀態失敗：", err);
+      lastErrToastKey = key;
+    }
+
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
-    if (errorStateEl) errorStateEl.style.display = "block";
+    if (errorStateEl) {
+      errorStateEl.style.display = "block";
+      // 如果你的 errorStateEl 內有 .error-text 就塞入（可選）
+      const et = errorStateEl.querySelector?.(".error-text");
+      if (et) et.textContent = "無法取得資料：" + msg;
+    }
   } finally {
     hideLoadingHint();
     refreshInFlight = false;
@@ -1047,6 +1042,7 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
+      // ✅ 個人狀態工具列
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
@@ -1054,7 +1050,7 @@ async function initLiffAndGuard() {
           if (ps && ps.ok) {
             const manage = ps.manageLiff || ps["使用者管理liff"] || "";
             const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
-            const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定連結"] || "";
+            const vLink = ps.vacationLink || ps["休假設定連結"] || "";
             showPersonalTools_(manage, pLink, vLink);
           } else hidePersonalTools_();
         } catch (e) {
