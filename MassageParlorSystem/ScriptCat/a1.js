@@ -1,23 +1,27 @@
 // ==UserScript==
 // @name         Body+Foot Full Snapshot (Every 1s) -> GAS
 // @namespace    http://scriptcat.org/
-// @version      3.0
+// @version      3.1
 // @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
-// @description  每秒掃描「身體/腳底」面板，全量用 JSON 字串送到 GAS，GAS 覆寫 Data_Body/Data_Foot
+// @description  每秒掃描「身體/腳底」面板，全量用 JSON 字串送到 GAS，GAS 覆寫 Data_Body/Data_Foot；並且每次發送都 console log payload
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
 
 (function () {
-  'use strict';
+  "use strict";
 
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec"; // <-- 換成你的
+  const GAS_URL =
+    "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec"; // <-- 換成你的
   const INTERVAL_MS = 1000;
 
-  console.log("[PanelScan] 🟢 啟動：每秒全量送出 身體+腳底 -> GAS");
+  // ✅ log 模式：full = 每秒完整 payload；group = 摘要+可展開
+  const LOG_MODE = "group"; // "full" | "group"
 
-  /* ========= 小工具 ======11111=== */
+  console.log("[PanelScan] 🟢 啟動：每秒全量送出 身體+腳底 -> GAS (with console log)");
+
+  /* ========= 小工具 ========= */
 
   function getText(el) {
     if (!el) return "";
@@ -71,7 +75,7 @@
       remaining: remaining,
       colorIndex,
       colorMaster,
-      colorStatus
+      colorStatus,
     };
   }
 
@@ -81,7 +85,7 @@
       ".flex.justify-center.items-center.flex-1.border-b.border-gray-400"
     );
     const list = [];
-    rows.forEach(row => {
+    rows.forEach((row) => {
       const r = parseRow(row);
       if (r) list.push(r);
     });
@@ -114,38 +118,48 @@
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    }).catch(err => console.error("[PanelScan] ❌ POST 失敗:", err));
+      body: JSON.stringify(payload),
+    }).catch((err) => console.error("[PanelScan] ❌ POST 失敗:", err));
+  }
+
+  function logPayload(ts, bodyRows, footRows, payload) {
+    if (LOG_MODE === "full") {
+      console.log("[PanelScan] 📤 snapshot payload =", payload);
+      return;
+    }
+
+    // LOG_MODE === "group"
+    console.groupCollapsed(
+      `[PanelScan] 📤 ${ts} body=${bodyRows.length} foot=${footRows.length}`
+    );
+    console.log("payload =", payload);
+    console.groupEnd();
   }
 
   /* ========= 主循環 ========= */
 
-  let bodyPanel = null;
-  let footPanel = null;
-
   function tick() {
     try {
       // 面板可能被重繪，允許每次重新抓（成本可接受）
-      bodyPanel = findBodyPanel();
-      footPanel = findFootPanel();
+      const bodyPanel = findBodyPanel();
+      const footPanel = findFootPanel();
 
       const ts = new Date().toISOString();
 
-      const bodyRows = scanPanel(bodyPanel).map(r => ({ timestamp: ts, ...r }));
-      const footRows = scanPanel(footPanel).map(r => ({ timestamp: ts, ...r }));
+      const bodyRows = scanPanel(bodyPanel).map((r) => ({ timestamp: ts, ...r }));
+      const footRows = scanPanel(footPanel).map((r) => ({ timestamp: ts, ...r }));
 
       const payload = {
         mode: "snapshot_v1",
         timestamp: ts,
         body: bodyRows,
-        foot: footRows
+        foot: footRows,
       };
 
       postSnapshot(payload);
 
-      // 你要看 console 可以打開這行（但每秒會很多）
-      // console.log("[PanelScan] 📤 snapshot sent", payload);
-
+      // ✅ 每次發送都 log
+      logPayload(ts, bodyRows, footRows, payload);
     } catch (e) {
       console.error("[PanelScan] 🔥 tick error:", e);
     }
