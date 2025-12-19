@@ -1,9 +1,10 @@
 // =========================================================
-// app.js (Integrated for Edge Cache Reader v5)
-// - TECH status: Edge 用 ?mode=cache_one&masterId=xx（符合你最新 Edge GAS）
-// - Edge 回 ok:false（cache_miss）→ 自動 fallback origin
+// app.js (Final - Edge Cache Reader v5 ONLY)
+// - Tech status: ONLY call Edge GAS ?mode=cache_one&masterId=TARGET_MASTER_ID
+// - Edge internally reads Cache sheet key=read_all_v1 and finds masterId -> {body, foot}
+// - cache_miss is treated as "no data" (NO throw / NO spam toast)
 // - fetch timeout + retry + Promise.any polyfill
-// - 輪詢不重疊 + 背景暫停
+// - polling: single in-flight + pause on background
 // =========================================================
 
 /** ================================
@@ -225,7 +226,7 @@ async function fetchJson_(url, opts = {}) {
   throw lastErr || new Error("fetchJson failed");
 }
 
-// ✅ Promise.any polyfill（某些 LINE WebView/舊 Android 會沒有）
+// Promise.any polyfill
 if (typeof Promise.any !== "function") {
   Promise.any = function (iterable) {
     return new Promise((resolve, reject) => {
@@ -262,7 +263,7 @@ if (typeof Promise.any !== "function") {
   };
 }
 
-// ✅ 多路同時打，取最快成功（會把 ok:false 視為失敗以便 fallback）
+// fetch any edge: take fastest "ok:true". ok:false also treated as reject (to let other edges win)
 async function fetchAnyJson_(urls, opts = {}) {
   const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
   if (!list.length) throw new Error("fetchAnyJson_: empty urls");
@@ -281,16 +282,7 @@ async function fetchAnyJson_(urls, opts = {}) {
     })
   );
 
-  try {
-    return await Promise.any(tasks);
-  } catch (agg) {
-    const errs = agg?.errors || [];
-    const msg = errs
-      .map((e) => `- ${e?._url || "?"}: ${String(e?.message || e)}`)
-      .slice(0, 6)
-      .join("\n");
-    throw new Error("All edges failed:\n" + msg);
-  }
+  return await Promise.any(tasks);
 }
 
 /** ================================
@@ -313,7 +305,6 @@ async function loadConfig_() {
   if (missing.length) throw new Error("CONFIG missing: " + missing.join(", "));
 
   const edgeUrls = Array.isArray(json.EDGE_STATUS_URLS) ? json.EDGE_STATUS_URLS.map(String) : [];
-  const techUrl = String(json.TECH_API_URL || "").trim();
 
   APP_CONFIG = {
     LIFF_ID: String(json.LIFF_ID).trim(),
@@ -321,14 +312,14 @@ async function loadConfig_() {
     TARGET_MASTER_ID: String(json.TARGET_MASTER_ID).trim(),
 
     EDGE_STATUS_URLS: edgeUrls.filter((x) => x && x.trim()),
-    TECH_API_URL: techUrl,
 
+    // PersonalStatus hydrate targets
     ADMIN_API_URL: "",
     BOOKING_API_URL: "",
   };
 
-  if (!APP_CONFIG.EDGE_STATUS_URLS.length && !APP_CONFIG.TECH_API_URL) {
-    throw new Error("CONFIG missing: EDGE_STATUS_URLS or TECH_API_URL");
+  if (!APP_CONFIG.EDGE_STATUS_URLS.length) {
+    throw new Error("CONFIG missing: EDGE_STATUS_URLS");
   }
 
   return APP_CONFIG;
@@ -396,7 +387,7 @@ async function ensureUserExists_(userId, displayName) {
 }
 
 /** ================================
- * 9) Target Tech Gate (single listUsers)
+ * 9) Target Tech Gate (listUsers)
  * ================================ */
 async function getTargetTechContext_() {
   const cacheKey = "targetTechCtx:v1:" + normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
@@ -617,7 +608,7 @@ async function checkAccessOrBlock_() {
 }
 
 /** ================================
- * 13) Tech Status (Edge cache_one first)
+ * 13) Tech Status (Edge cache_one only)
  * ================================ */
 function classifyStatus(text) {
   const t = String(text || "");
@@ -663,29 +654,7 @@ function updateStatusUI_(kind, data) {
   }
 }
 
-// ✅ 兼容 2 種回傳格式
-function pickTechResult_(json) {
-  if (!json) return { body: null, foot: null };
-
-  // Edge cache_one：{ ok:true, masterId, body:{}, foot:{} }
-  const bodyObj = json.body && !Array.isArray(json.body) ? json.body : null;
-  const footObj = json.foot && !Array.isArray(json.foot) ? json.foot : null;
-  if (bodyObj || footObj) return { body: bodyObj, foot: footObj };
-
-  // 舊格式：{ body:[...], foot:[...] }
-  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
-  const bodyArr = Array.isArray(json.body) ? json.body : [];
-  const footArr = Array.isArray(json.foot) ? json.foot : [];
-
-  const body = bodyArr.find((r) => normalizeDigits(r.masterId) === target) || null;
-  const foot = footArr.find((r) => normalizeDigits(r.masterId) === target) || null;
-
-  return { body, foot };
-}
-
-// ✅ build URL list (edges first, fallback last)
-//   - Edge：?mode=cache_one&masterId=10（符合你 Edge GAS v5）
-//   - Origin：?masterId=10（或你 origin 的單取參數）
+// build edge URL candidates: mode=cache_one&masterId=TARGET_MASTER_ID
 function buildTechApiUrlCandidates_() {
   const masterId = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
   const urls = [];
@@ -700,15 +669,6 @@ function buildTechApiUrlCandidates_() {
     } catch {}
   });
 
-  if (APP_CONFIG.TECH_API_URL) {
-    try {
-      const u2 = new URL(APP_CONFIG.TECH_API_URL);
-      u2.searchParams.set("masterId", masterId);
-      u2.searchParams.set("_cors", "1");
-      urls.push(u2.toString());
-    } catch {}
-  }
-
   return urls;
 }
 
@@ -717,26 +677,36 @@ let techPollTimer = null;
 
 async function loadTechStatus_() {
   const urls = buildTechApiUrlCandidates_();
-  const edgeCount = (APP_CONFIG.EDGE_STATUS_URLS || []).length;
+  if (!urls.length) throw new Error("EDGE_STATUS_URLS is empty");
 
   let json = null;
 
-  // 1) Edge 六路搶最快（短 timeout）
-  if (edgeCount > 0) {
-    const edgeUrls = urls.slice(0, edgeCount);
-    const got = await fetchAnyJson_(edgeUrls, { timeoutMs: 5200 });
+  try {
+    // fastest edge wins
+    const got = await fetchAnyJson_(urls, { timeoutMs: 5200 });
     json = got?.json || null;
+  } catch (e) {
+    console.warn("[TECH] all edges failed", e);
+    updateStatusUI_("body", null);
+    updateStatusUI_("foot", null);
+    return;
   }
 
-  // 2) Edge 全掛（含 cache_miss / ok:false）→ fallback origin
-  if (!json) {
-    const originUrl = urls[urls.length - 1];
-    if (!originUrl) throw new Error("TECH_API_URL missing and edges failed");
-    json = await fetchJson_(originUrl, { method: "GET", timeoutMs: 12000, retries: 1 });
-    if (json && json.ok === false) throw new Error(String(json.error || "TECH_API ok=false"));
+  // ok:false includes cache_miss -> treat as no data (silent)
+  if (!json || json.ok === false) {
+    const err = String(json?.error || "");
+    if (err === "cache_miss") {
+      updateStatusUI_("body", null);
+      updateStatusUI_("foot", null);
+      return;
+    }
+    throw new Error(err || "Edge ok=false");
   }
 
-  const { body, foot } = pickTechResult_(json);
+  // Edge cache_one format: { ok:true, masterId, body:{}, foot:{} }
+  const body = json.body && !Array.isArray(json.body) ? json.body : null;
+  const foot = json.foot && !Array.isArray(json.foot) ? json.foot : null;
+
   updateStatusUI_("body", body);
   updateStatusUI_("foot", foot);
 }
@@ -751,7 +721,8 @@ function startTechPolling_() {
       await loadTechStatus_();
     } catch (e) {
       console.error(e);
-      toast("師傅狀態更新失敗：" + String(e.message || e));
+      const msg = String(e?.message || e);
+      if (!msg.includes("cache_miss")) toast("師傅狀態更新失敗：" + msg);
     } finally {
       techPollInFlight = false;
     }
@@ -983,7 +954,8 @@ async function bootstrap_() {
     await Promise.all([loadTechStatus_(), loadBizConfig_()]);
   } catch (e) {
     console.error(e);
-    toast("初始化資料載入失敗：" + String(e.message || e));
+    const msg = String(e?.message || e);
+    if (!msg.includes("cache_miss")) toast("初始化資料載入失敗：" + msg);
   }
 
   startTechPolling_();
@@ -998,7 +970,7 @@ window.onload = () => {
 };
 
 /*
-config.json 需確保：
-- EDGE_STATUS_URLS: ["https://script.google.com/macros/s/EDGE_1/exec", ...]
-- TECH_API_URL: "https://script.google.com/macros/s/ORIGIN/exec"
+config.json 必要：
+- EDGE_STATUS_URLS: ["https://script.google.com/macros/s/EDGE_1/exec", ...]  (6 個 Edge)
+- (不需要 TECH_API_URL)
 */
