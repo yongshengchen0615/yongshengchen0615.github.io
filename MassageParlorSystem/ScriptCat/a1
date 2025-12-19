@@ -1,0 +1,250 @@
+// ==UserScript==
+// @name         Body & Foot Panel INIT + DIFF + GAS Sync
+// @namespace    http://scriptcat.org/
+// @version      1.0
+// @description  身體 + 腳底：初始全量寫入 + 變動才輸出並同步 Google Sheet（masterId 當 key，含顏色）
+// @match        https://yongshengchen0615.github.io/master.html
+// @run-at       document-end
+// @grant        none
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+
+  console.log("[PanelScan] 🟢 啟動 身體 + 腳底 監控 (INIT + DIFF)");
+
+  /* ========= 小工具 ========= */
+
+  function getText(el) {
+    if (!el) return "";
+    return el.textContent.replace(/\s+/g, "").trim();
+  }
+
+  // 抓某格裡面「第一個有 class 的 span」的 className 當顏色標記
+  function getFirstSpanClass(el) {
+    if (!el) return "";
+    const span = el.querySelector("span[class]");
+    return span ? span.className.trim() : "";
+  }
+
+  // 解析一列：index / masterId / status / appointment / remaining + 顏色
+  function parseRow(row, panelType) {
+    const cells = row.querySelectorAll(":scope > div");
+    if (cells.length < 4) return null;
+
+    const indexCell = cells[0];
+    const masterCell = cells[1];
+    const statusCell = cells[2];
+    const appointmentCell = cells[3];
+
+    const indexText = getText(indexCell);
+    const masterText = getText(masterCell);
+    let statusText = getText(statusCell);
+    const appointment = getText(appointmentCell);
+
+    if (!masterText) return null; // 沒師傅 ID 就跳過
+
+    let remaining = null;
+
+    // 無論 body / foot，只要第三格是純數字就當作剩餘時間
+    if (/^-?\d+$/.test(statusText)) {
+      remaining = parseInt(statusText, 10);
+      statusText = "工作中";
+    }
+
+    const colorIndex = getFirstSpanClass(indexCell);
+    const colorMaster = getFirstSpanClass(masterCell);
+    const colorStatus = getFirstSpanClass(statusCell);
+
+    return {
+      index: indexText ? parseInt(indexText, 10) : null,
+      sort: indexText ? parseInt(indexText, 10) : null,
+      masterId: masterText || "",
+      status: statusText || "",
+      appointment: appointment || "",
+      remaining: remaining,
+      colorIndex,
+      colorMaster,
+      colorStatus
+    };
+  }
+
+  // 掃描 panel（身體 / 腳底 共用）
+  function scanPanel(panel, panelType) {
+    const rows = panel.querySelectorAll(
+      ".flex.justify-center.items-center.flex-1.border-b.border-gray-400"
+    );
+    const list = [];
+    rows.forEach(row => {
+      const r = parseRow(row, panelType);
+      if (r) list.push(r);
+    });
+    return list;
+  }
+
+  // 找「身體」panel（mr-2）
+  function findBodyPanel() {
+    const list = document.querySelectorAll("div.flex.flex-col.flex-1.mr-2");
+    for (const el of list) {
+      const t = el.querySelector("div.flex.justify-center.items-center");
+      if (t && t.textContent.includes("身體")) return el;
+    }
+    return null;
+  }
+
+  // 找「腳底」panel（ml-2）
+  function findFootPanel() {
+    const list = document.querySelectorAll("div.flex.flex-col.flex-1.ml-2");
+    for (const el of list) {
+      const t = el.querySelector("div.flex.justify-center.items-center");
+      if (t && t.textContent.includes("腳底")) return el;
+    }
+    return null;
+  }
+
+  /* ========= 狀態快照 ========= */
+
+  // prevStateByType[type] = Map(masterId -> JSON(row))
+  const prevStateByType = {
+    body: new Map(),
+    foot: new Map()
+  };
+  const initializedByType = {
+    body: false,
+    foot: false
+  };
+
+  function sendToGAS(payload, label) {
+    console.log("[PanelScan] 🚀 準備送出到 GAS:", label, payload);
+
+    fetch(GAS_URL, {
+      method: "POST",
+      mode: "no-cors", // 避開 CORS
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8" // 避免 preflight
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(() => {
+        console.log(`[PanelScan] 📤 ${label} 已送出 (no-cors，無法讀取回應)`);
+      })
+      .catch(err => {
+        console.error("[PanelScan] ❌ GAS 發送錯誤:", err);
+      });
+  }
+
+  // === INIT：第一次全量寫入（per type） ===
+  function initPanel(panelType, panelEl) {
+    const allRows = scanPanel(panelEl, panelType);
+    const ts = new Date().toISOString();
+
+    const payload = {
+      type: panelType, // "body" / "foot"
+      timestamp: ts,
+      initial: true,
+      rows: allRows.map(r => ({
+        timestamp: ts,
+        ...r
+      }))
+    };
+
+    console.log(`[PanelScan] 🟡 INIT：${panelType} 全量寫入 Google Sheet…`);
+    console.log(payload);
+
+    sendToGAS(payload, `INIT_${panelType}`);
+
+    // 建立初始快照
+    const map = new Map();
+    allRows.forEach(r => {
+      if (!r.masterId) return;
+      map.set(r.masterId, JSON.stringify(r));
+    });
+    prevStateByType[panelType] = map;
+    initializedByType[panelType] = true;
+  }
+
+  // === DIFF：每秒檢查變動（per type） ===
+  function checkDiff(panelType, panelEl) {
+    if (!initializedByType[panelType]) return;
+
+    const now = scanPanel(panelEl, panelType);
+    const nowMap = new Map();
+    const changed = [];
+    const prevMap = prevStateByType[panelType];
+
+    now.forEach(r => {
+      if (!r.masterId) return;
+      const key = r.masterId;
+      const json = JSON.stringify(r);
+
+      nowMap.set(key, json);
+
+      const prev = prevMap.get(key);
+      if (!prev || prev !== json) {
+        changed.push(r);
+      }
+    });
+
+    if (changed.length > 0) {
+      const ts = new Date().toISOString();
+
+      console.log("-----------------------------------------------------");
+      console.log(`[PanelScan] 🔁 ${panelType} 變動筆數：${changed.length}`);
+      console.log(JSON.stringify(changed, null, 2));
+      console.log("-----------------------------------------------------");
+
+      const payload = {
+        type: panelType,
+        timestamp: ts,
+        rows: changed.map(r => ({ timestamp: ts, ...r }))
+      };
+
+      sendToGAS(payload, `DIFF_${panelType}`);
+    }
+
+    prevStateByType[panelType] = nowMap;
+  }
+
+  /* ========= 啟動流程 ========= */
+
+  function start() {
+    const bodyPanel = findBodyPanel();
+    const footPanel = findFootPanel();
+
+    if (!bodyPanel && !footPanel) {
+      console.log("[PanelScan] ❌ 找不到 身體 / 腳底 panel，1 秒後重試");
+      return setTimeout(start, 1000);
+    }
+
+    if (bodyPanel) {
+      console.log("[PanelScan] ✅ 找到 身體 panel → INIT");
+      initPanel("body", bodyPanel);
+    } else {
+      console.log("[PanelScan] ⚠️ 找不到 身體 panel");
+    }
+
+    if (footPanel) {
+      console.log("[PanelScan] ✅ 找到 腳底 panel → INIT");
+      initPanel("foot", footPanel);
+    } else {
+      console.log("[PanelScan] ⚠️ 找不到 腳底 panel");
+    }
+
+    setInterval(() => {
+      try {
+        if (bodyPanel) checkDiff("body", bodyPanel);
+        if (footPanel) checkDiff("foot", footPanel);
+      } catch (err) {
+        console.error("[PanelScan] 🔥 Diff 錯誤:", err);
+      }
+    }, 1000);
+  }
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
+})();
