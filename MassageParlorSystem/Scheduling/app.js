@@ -17,12 +17,12 @@
 
 // ★ 換成你的 Edge GAS Web App URL（/exec 結尾）
 const EDGE_STATUS_URLS = [
-   "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-     "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-      "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-       "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-        "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-         "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec"
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
@@ -38,7 +38,6 @@ function hashToIndex_(str, mod) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return mod ? h % mod : 0;
 }
-
 function withQuery_(base, extraQuery) {
   const b = String(base || "");
   const q = String(extraQuery || "");
@@ -51,18 +50,24 @@ function withQuery_(base, extraQuery) {
  * ========================================================= */
 
 const STATUS_FETCH_TIMEOUT_MS = 8000; // 6~10 秒
-const EDGE_TRY_MAX = 3;               // 最多試幾台（含命中那台）
-const EDGE_FAIL_THRESHOLD = 2;        // 命中那台連續失敗幾次後 reroute
+const EDGE_TRY_MAX = 3; // 最多試幾台（含命中那台）
+const EDGE_FAIL_THRESHOLD = 2; // 命中那台連續失敗幾次後 reroute
 const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // reroute 有效期
 
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
 
 function readJsonLS_(k) {
-  try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem(k) || "null");
+  } catch {
+    return null;
+  }
 }
 function writeJsonLS_(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch {}
 }
 
 function getOverrideEdgeIndex_() {
@@ -84,16 +89,22 @@ function bumpFailCount_(idx) {
   writeJsonLS_(EDGE_FAIL_KEY, { idx, n, t: Date.now() });
   return n;
 }
-function resetFailCount_() { localStorage.removeItem(EDGE_FAIL_KEY); }
+function resetFailCount_() {
+  localStorage.removeItem(EDGE_FAIL_KEY);
+}
 
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = hashToIndex_(uid, EDGE_STATUS_URLS.length);
   const overrideIdx = getOverrideEdgeIndex_();
-  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) return overrideIdx;
+  if (
+    typeof overrideIdx === "number" &&
+    overrideIdx >= 0 &&
+    overrideIdx < EDGE_STATUS_URLS.length
+  )
+    return overrideIdx;
   return baseIdx;
 }
-
 function buildEdgeTryOrder_(startIdx) {
   const n = EDGE_STATUS_URLS.length;
   const order = [];
@@ -106,16 +117,24 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    const resp = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
     const text = await resp.text();
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
 
     let json;
-    try { json = JSON.parse(text); }
-    catch { throw new Error(`NON_JSON ${text.slice(0, 160)}`); }
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`NON_JSON ${text.slice(0, 160)}`);
+    }
 
-    if (json && json.ok === false) throw new Error(`NOT_OK ${json.error || "response not ok"}`);
+    if (json && json.ok === false)
+      throw new Error(`NOT_OK ${json.error || "response not ok"}`);
     return json;
   } finally {
     clearTimeout(t);
@@ -138,7 +157,9 @@ const appRootEl = document.getElementById("appRoot");
 
 // ✅ Top Loading Hint DOM
 const topLoadingEl = document.getElementById("topLoading");
-const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading-text") : null;
+const topLoadingTextEl = topLoadingEl
+  ? topLoadingEl.querySelector(".top-loading-text")
+  : null;
 
 // Dashboard 用資料
 const rawData = { body: [], foot: [] };
@@ -175,19 +196,24 @@ const btnVacationEl = document.getElementById("btnVacation");
 /* =========================================================
  * ✅ 功能提示 chip
  * ========================================================= */
-let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
+let featureState = {
+  pushEnabled: "否",
+  personalStatusEnabled: "否",
+  scheduleEnabled: "否",
+};
 
-function normalizeYesNo_(v) { return String(v || "").trim() === "是" ? "是" : "否"; }
-
-function ensureFeatureBanner_() { return document.getElementById("featureBanner") || null; }
-
+function normalizeYesNo_(v) {
+  return String(v || "").trim() === "是" ? "是" : "否";
+}
+function ensureFeatureBanner_() {
+  return document.getElementById("featureBanner") || null;
+}
 function buildChip_(label, enabled) {
   const on = enabled === "是";
   const cls = on ? "feature-chip" : "feature-chip feature-chip-disabled";
   const badge = on ? "" : `<span class="feature-chip-badge">未開通</span>`;
   return `<span class="${cls}">${label}${badge}</span>`;
 }
-
 function renderFeatureBanner_() {
   const banner = ensureFeatureBanner_();
   if (!banner) return;
@@ -204,10 +230,11 @@ function renderFeatureBanner_() {
     buildChip_("排班表", schedule),
   ].join("");
 }
-
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
-  featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
+  featureState.personalStatusEnabled = normalizeYesNo_(
+    data && data.personalStatusEnabled
+  );
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
   renderFeatureBanner_();
 }
@@ -235,7 +262,9 @@ function showGate(message, isError) {
     String(message || "").replace(/\n/g, "<br>") +
     "</p></div>";
 }
-function hideGate() { if (gateEl) gateEl.classList.add("gate-hidden"); }
+function hideGate() {
+  if (gateEl) gateEl.classList.add("gate-hidden");
+}
 function openApp() {
   hideGate();
   if (appRootEl) appRootEl.classList.remove("app-hidden");
@@ -266,7 +295,8 @@ function updateUsageBanner(displayName, remainingDays) {
   usageBannerEl.classList.remove("usage-banner-warning", "usage-banner-expired");
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
     if (remainingDays <= 0) usageBannerEl.classList.add("usage-banner-expired");
-    else if (remainingDays <= 3) usageBannerEl.classList.add("usage-banner-warning");
+    else if (remainingDays <= 3)
+      usageBannerEl.classList.add("usage-banner-warning");
   }
 }
 
@@ -274,14 +304,18 @@ function updateUsageBanner(displayName, remainingDays) {
  * ✅ Personal Tools（getPersonalStatus）
  * ========================================================= */
 async function fetchPersonalStatusRow_(userId) {
-  const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
+  const url = withQuery_(
+    AUTH_API_URL,
+    "mode=getPersonalStatus&userId=" + encodeURIComponent(userId)
+  );
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("getPersonalStatus HTTP " + resp.status);
   return await resp.json();
 }
 
 function showPersonalTools_(manageLiff, personalLink, vacationLink) {
-  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl) return;
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl)
+    return;
 
   const m = String(manageLiff || "").trim();
   const p = String(personalLink || "").trim();
@@ -295,13 +329,19 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
   personalToolsEl.style.display = "flex";
 
   btnUserManageEl.style.display = m ? "inline-flex" : "none";
-  btnUserManageEl.onclick = () => { if (m) window.location.href = m; };
+  btnUserManageEl.onclick = () => {
+    if (m) window.location.href = m;
+  };
 
   btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => { if (p) window.location.href = p; };
+  btnPersonalStatusEl.onclick = () => {
+    if (p) window.location.href = p;
+  };
 
   btnVacationEl.style.display = v ? "inline-flex" : "none";
-  btnVacationEl.onclick = () => { if (v) window.location.href = v; };
+  btnVacationEl.onclick = () => {
+    if (v) window.location.href = v;
+  };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
@@ -348,11 +388,26 @@ async function sendDailyFirstMessageFromUser_() {
 }
 
 /* =========================================================
- * 顏色解析工具
+ * ✅ 一致策略：腳本貓色（保留自訂色、提高可讀性）
+ * - 支援多種 token：text-Cxxxxxx / Cxxxxxx / #xxxxxx / text-[#xxxxxx]
+ * - 支援 opacity：text-opacity-80 / opacity-80 / /80 / 0.8
+ * - 套用規則：
+ *   1) 有腳本貓色：前景色使用該色（opacity 有就用，並設最小可讀性）
+ *   2) 狀態 pill：背景改用「該色的柔和底」，避免出現“前景腳本貓、背景CSS”的混搭不一致
+ *   3) 沒腳本貓色：回到原 CSS（你現有 status-busy/free/other）
  * ========================================================= */
+
+function isLightTheme_() {
+  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
+}
+
+function clamp_(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+
 function hexToRgb(hex) {
   if (!hex) return null;
-  let s = hex.replace("#", "").trim();
+  let s = String(hex).replace("#", "").trim();
   if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
   if (s.length !== 6) return null;
   const r = parseInt(s.slice(0, 2), 16);
@@ -362,42 +417,151 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
-function parseScriptCatColor(colorStr) {
-  if (!colorStr) return { color: null, opacity: null };
+function normalizeHex6_(maybe) {
+  if (!maybe) return null;
+  let s = String(maybe).trim();
 
+  // text-[#AABBCC]
+  const mBracket = s.match(/text-\[#([0-9a-fA-F]{6})\]/);
+  if (mBracket) return "#" + mBracket[1];
+
+  // #AABBCC
+  const mHash = s.match(/#([0-9a-fA-F]{6})/);
+  if (mHash) return "#" + mHash[1];
+
+  // text-CFFAABB or CFFAABB or text-FFAABB
+  const mC = s.match(/(?:^|text-)(?:C)?([0-9a-fA-F]{6})$/);
+  if (mC) return "#" + mC[1];
+
+  // text-Cxxxxxx inside tokens
+  const mIn = s.match(/text-C([0-9a-fA-F]{6})/);
+  if (mIn) return "#" + mIn[1];
+
+  return null;
+}
+
+function parseOpacityToken_(token) {
+  if (!token) return null;
+  const t = String(token).trim();
+
+  // text-opacity-80 / opacity-80
+  let m = t.match(/(?:text-opacity-|opacity-)(\d{1,3})/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  // /80 (tailwind-like)
+  m = t.match(/\/(\d{1,3})$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  // 0.8
+  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
+  }
+
+  return null;
+}
+
+function parseScriptCatColorV2_(colorStr) {
+  if (!colorStr) return { hex: null, opacity: null };
   const tokens = String(colorStr).split(/\s+/).filter(Boolean);
+
   let hex = null;
   let opacity = null;
 
-  tokens.forEach((t) => {
-    if (t.startsWith("text-C")) {
-      let raw = t.slice("text-".length);
-      if (/^C[0-9A-Fa-f]{6}$/.test(raw)) raw = raw.slice(1);
-      if (/^[0-9A-Fa-f]{6}$/.test(raw)) hex = "#" + raw;
+  for (const tk of tokens) {
+    // hex
+    if (!hex) {
+      const h = normalizeHex6_(tk);
+      if (h) hex = h;
     }
 
-    if (t.startsWith("text-opacity-")) {
-      const vRaw = t.slice("text-opacity-".length);
-      let v = parseFloat(vRaw);
-      if (!Number.isNaN(v)) {
-        if (v > 1) v = v / 100;
-        opacity = Math.max(0, Math.min(1, v));
-      }
+    // opacity
+    if (opacity == null) {
+      const o = parseOpacityToken_(tk);
+      if (o != null) opacity = o;
     }
-  });
+  }
 
-  return { color: hex, opacity };
+  // 兼容：整串裡面直接包含 #xxxxxx
+  if (!hex) {
+    const h = normalizeHex6_(String(colorStr));
+    if (h) hex = h;
+  }
+
+  return { hex, opacity };
 }
 
-function applyScriptCatColorToElement(el, colorStr) {
-  if (!el || !colorStr) return;
-  const info = parseScriptCatColor(colorStr);
-  if (!info.color) return;
-  const rgb = hexToRgb(info.color);
-  if (!rgb) return;
+/**
+ * ✅ 一致策略（文字）
+ * - 只設定 color（必要時加 rgba）
+ * - opacity 做可讀性下限：
+ *   - dark：最小 0.65
+ *   - light：最小 0.80
+ */
+function applyReadableTextColor_(el, colorStr) {
+  if (!el || !colorStr) return false;
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
 
-  if (info.opacity != null && info.opacity < 1) el.style.color = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${info.opacity})`;
-  else el.style.color = info.color;
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const minAlpha = isLightTheme_() ? 0.8 : 0.65;
+  let a = opacity == null ? 1 : opacity;
+  a = clamp_(a, minAlpha, 1);
+
+  el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
+  return true;
+}
+
+/**
+ * ✅ 一致策略（狀態 pill）
+ * - 使用腳本貓色作為前景
+ * - 背景用同色的柔和底，避免“前景腳本貓、背景CSS”的混搭不一致
+ * - 仍保留 status class（例如字重/圓角/內距），但背景/文字由腳本貓統一
+ */
+function applyReadablePillColor_(pillEl, colorStr) {
+  if (!pillEl || !colorStr) return false;
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  // 前景：可讀性下限
+  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
+  let aText = opacity == null ? 1 : opacity;
+  aText = clamp_(aText, minAlpha, 1);
+  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
+
+  // 背景：固定柔和透明度（light 再淡一點）
+  const aBg = isLightTheme_() ? 0.1 : 0.16;
+  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  // 邊框：加一點點同色線，讓 pill 更清楚
+  const aBd = isLightTheme_() ? 0.25 : 0.35;
+  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+
+  return true;
+}
+
+/* =========================================================
+ * ✅ 字串清洗（避免全形空白/換行造成視覺不一致）
+ * ========================================================= */
+function normalizeText_(s) {
+  return String(s ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u3000/g, " ") // 全形空白
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n+/g, " ")
+    .trim();
 }
 
 /* =========================================================
@@ -409,12 +573,13 @@ function fmtRemainingRaw(v) {
 }
 
 function deriveStatusClass(status, remaining) {
-  const s = String(status || "");
+  const s = normalizeText_(status || "");
   const n = Number(remaining);
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌"))
+    return "status-free";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
@@ -426,9 +591,9 @@ function mapRowsToDisplay(rows) {
       sort: row.sort,
       index: row.index,
       _gasSeq: row._gasSeq,
-      masterId: row.masterId,
-      status: row.status,
-      appointment: row.appointment,
+      masterId: normalizeText_(row.masterId),
+      status: normalizeText_(row.status),
+      appointment: normalizeText_(row.appointment),
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
@@ -444,7 +609,7 @@ function rebuildStatusFilterOptions() {
   const statuses = new Set();
   ["body", "foot"].forEach((type) => {
     (rawData[type] || []).forEach((r) => {
-      const s = String(r.status || "").trim();
+      const s = normalizeText_(r.status);
       if (s) statuses.add(s);
     });
   });
@@ -464,7 +629,8 @@ function rebuildStatusFilterOptions() {
     filterStatusSelect.appendChild(opt);
   }
 
-  filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
+  filterStatusSelect.value =
+    previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
 }
 
@@ -522,41 +688,60 @@ function render() {
 
   const displayRows = mapRowsToDisplay(finalRows);
 
+  // ✅ 減少 layout thrash：用 fragment 一次性 append
   tbodyRowsEl.innerHTML = "";
   if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
+  const frag = document.createDocumentFragment();
 
   displayRows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
-    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+    const orderText =
+      showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
+    // 順序
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
-    if (row.colorIndex) applyScriptCatColorToElement(tdOrder, row.colorIndex);
+    // ✅ 一致策略：有腳本貓色就用（可讀性保護）
+    if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
+    // 師傅
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
-    if (row.colorMaster) applyScriptCatColorToElement(tdMaster, row.colorMaster);
+    if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
+    // 狀態 pill
     const tdStatus = document.createElement("td");
     const statusSpan = document.createElement("span");
     statusSpan.className = "status-pill " + row.statusClass;
-    if (row.colorStatus) applyScriptCatColorToElement(statusSpan, row.colorStatus);
+
+    // ✅ 一致策略：若有腳本貓色 → 同時套前景+柔和底（避免混搭不一致）
+    if (row.colorStatus) {
+      const ok = applyReadablePillColor_(statusSpan, row.colorStatus);
+      // 解析不到就回到原 CSS（不做任何 inline）
+      if (!ok) {
+        // 可選：debug
+        // console.warn("[ColorParseFail][status]", row.masterId, row.status, row.colorStatus);
+      }
+    }
+
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);
 
+    // 預約
     const tdAppointment = document.createElement("td");
     tdAppointment.textContent = row.appointment || "";
     tdAppointment.className = "cell-appointment";
     tr.appendChild(tdAppointment);
 
+    // 剩餘
     const tdRemaining = document.createElement("td");
     const timeSpan = document.createElement("span");
     timeSpan.className = "time-badge";
@@ -564,10 +749,13 @@ function render() {
     tdRemaining.appendChild(timeSpan);
     tr.appendChild(tdRemaining);
 
-    tbodyRowsEl.appendChild(tr);
+    frag.appendChild(tr);
   });
 
-  if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
+  tbodyRowsEl.appendChild(frag);
+
+  if (panelTitleEl)
+    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
 }
 
 /* =========================================================
@@ -578,10 +766,10 @@ async function fetchStatusAll() {
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
+  // ✅ 只保留「一定回 body+foot」的 fallback（避免混亂）
   const fallbackCandidates = [
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
     withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "v=" + encodeURIComponent(jitterBust)),
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
   ];
 
   let lastErr = null;
@@ -613,7 +801,7 @@ async function fetchStatusAll() {
   // 2) fallback
   for (const url of fallbackCandidates) {
     try {
-      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
+      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
       resetFailCount_();
       return {
         bodyRows: Array.isArray(data.body) ? data.body : [],
@@ -633,7 +821,6 @@ async function fetchStatusAll() {
 let refreshInFlight = false;
 
 async function refreshStatus() {
-  // 背景暫停（回前景會補打一輪）
   if (document.hidden) return;
   if (refreshInFlight) return;
 
@@ -670,7 +857,6 @@ async function refreshStatus() {
   }
 }
 
-// 回到前景：補打一輪
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) refreshStatus();
 });
@@ -699,7 +885,7 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
 // ===== 審核相關 =====
 async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
-  const resp = await fetch(url, { method: "GET" });
+  const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("Check HTTP " + resp.status);
 
   const data = await resp.json();
@@ -719,11 +905,31 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
   const finalDisplayName = serverDisplayName || displayNameFromLiff || "";
 
   if (status === "approved") {
-    return { allowed: true, status: "approved", audit, remainingDays, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
+    return {
+      allowed: true,
+      status: "approved",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+      serverDisplayName,
+      scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
+    };
   }
 
   if (status === "pending") {
-    return { allowed: false, status: "pending", audit, remainingDays, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
+    return {
+      allowed: false,
+      status: "pending",
+      audit,
+      remainingDays,
+      displayName: finalDisplayName,
+      serverDisplayName,
+      scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
+    };
   }
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
@@ -732,10 +938,30 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     await registerUser(userId, finalDisplayName);
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
-    return { allowed: false, status: "error", audit: "", remainingDays: null, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
+    return {
+      allowed: false,
+      status: "error",
+      audit: "",
+      remainingDays: null,
+      displayName: finalDisplayName,
+      serverDisplayName,
+      scheduleEnabled,
+      pushEnabled,
+      personalStatusEnabled,
+    };
   }
 
-  return { allowed: false, status: "pending", audit: "待審核", remainingDays: null, displayName: finalDisplayName, serverDisplayName, scheduleEnabled, pushEnabled, personalStatusEnabled };
+  return {
+    allowed: false,
+    status: "pending",
+    audit: "待審核",
+    remainingDays: null,
+    displayName: finalDisplayName,
+    serverDisplayName,
+    scheduleEnabled,
+    pushEnabled,
+    personalStatusEnabled,
+  };
 }
 
 async function registerUser(userId, displayName) {
@@ -747,7 +973,7 @@ async function registerUser(userId, displayName) {
     "&displayName=" +
     encodeURIComponent(displayName || "");
 
-  const resp = await fetch(url, { method: "GET" });
+  const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("Register HTTP " + resp.status);
   return await resp.json();
 }
@@ -758,7 +984,8 @@ function setTheme(theme) {
   const finalTheme = theme === "light" ? "light" : "dark";
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
-  if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
+  if (themeToggleBtn)
+    themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
 
 (function initTheme() {
@@ -827,7 +1054,7 @@ async function initLiffAndGuard() {
           if (ps && ps.ok) {
             const manage = ps.manageLiff || ps["使用者管理liff"] || "";
             const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
-            const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定"] || "";
+            const vLink = ps.vacationLink || ps["休假設定連結"] || ps["休假設定連結"] || "";
             showPersonalTools_(manage, pLink, vLink);
           } else hidePersonalTools_();
         } catch (e) {
@@ -858,16 +1085,16 @@ async function initLiffAndGuard() {
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
-      msg += (auditText === "拒絕" || auditText === "停用")
-        ? "如需重新申請或有疑問，請聯絡管理員。"
-        : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
+      msg +=
+        auditText === "拒絕" || auditText === "停用"
+          ? "如需重新申請或有疑問，請聯絡管理員。"
+          : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
       showGate(msg);
       return;
     }
 
     hidePersonalTools_();
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
-
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     hidePersonalTools_();
