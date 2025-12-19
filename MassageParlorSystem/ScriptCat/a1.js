@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
 
   console.log("[PanelScan] 🟢 啟動 身體 + 腳底 監控 (INIT + DIFF)");
 
