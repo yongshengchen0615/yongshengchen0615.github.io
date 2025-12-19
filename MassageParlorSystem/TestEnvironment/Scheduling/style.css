@@ -482,6 +482,13 @@ body {
   font-size: 13px;
 }
 
+/* ✅ bgIndex/bgMaster 背景提示：讓淡色更「像貼紙」 */
+.cell-order,
+.cell-master {
+  border-radius: 10px;
+  background-clip: padding-box;
+}
+
 /* 狀態 Pill */
 .status-pill {
   display: inline-flex;
@@ -491,6 +498,7 @@ body {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
+  border: 1px solid transparent;
 }
 
 .status-busy {

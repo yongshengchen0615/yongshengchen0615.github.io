@@ -105,7 +105,6 @@ function sanitizeEdgeUrls_() {
       return true;
     });
 
-  // 如果你只填到 1 個（或不小心都一樣），reroute 沒意義，但至少不會壞
   if (!EDGE_STATUS_URLS.length) {
     console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
   }
@@ -251,9 +250,7 @@ function renderFeatureBanner_() {
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
-  featureState.personalStatusEnabled = normalizeYesNo_(
-    data && data.personalStatusEnabled
-  );
+  featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
   renderFeatureBanner_();
 }
@@ -314,8 +311,7 @@ function updateUsageBanner(displayName, remainingDays) {
   usageBannerEl.classList.remove("usage-banner-warning", "usage-banner-expired");
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
     if (remainingDays <= 0) usageBannerEl.classList.add("usage-banner-expired");
-    else if (remainingDays <= 3)
-      usageBannerEl.classList.add("usage-banner-warning");
+    else if (remainingDays <= 3) usageBannerEl.classList.add("usage-banner-warning");
   }
 }
 
@@ -333,8 +329,7 @@ async function fetchPersonalStatusRow_(userId) {
 }
 
 function showPersonalTools_(manageLiff, personalLink, vacationLink) {
-  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl)
-    return;
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl) return;
 
   const m = String(manageLiff || "").trim();
   const p = String(personalLink || "").trim();
@@ -348,19 +343,13 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
   personalToolsEl.style.display = "flex";
 
   btnUserManageEl.style.display = m ? "inline-flex" : "none";
-  btnUserManageEl.onclick = () => {
-    if (m) window.location.href = m;
-  };
+  btnUserManageEl.onclick = () => { if (m) window.location.href = m; };
 
   btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => {
-    if (p) window.location.href = p;
-  };
+  btnPersonalStatusEl.onclick = () => { if (p) window.location.href = p; };
 
   btnVacationEl.style.display = v ? "inline-flex" : "none";
-  btnVacationEl.onclick = () => {
-    if (v) window.location.href = v;
-  };
+  btnVacationEl.onclick = () => { if (v) window.location.href = v; };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
@@ -539,6 +528,23 @@ function applyReadablePillColor_(pillEl, colorStr) {
 }
 
 /* =========================================================
+ * ✅ bgIndex/bgMaster/bgStatus：背景色提示（淡色）
+ * ========================================================= */
+function applyReadableBgColor_(el, colorStr) {
+  if (!el || !colorStr) return false;
+
+  const { hex } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const alpha = isLightTheme_() ? 0.10 : 0.16;
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  return true;
+}
+
+/* =========================================================
  * ✅ 字串清洗
  * ========================================================= */
 function normalizeText_(s) {
@@ -577,12 +583,21 @@ function mapRowsToDisplay(rows) {
       sort: row.sort,
       index: row.index,
       _gasSeq: row._gasSeq,
+
       masterId: normalizeText_(row.masterId),
       status: normalizeText_(row.status),
       appointment: normalizeText_(row.appointment),
+
+      // text colors
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
+
+      // bg colors ✅
+      bgIndex: row.bgIndex || "",
+      bgMaster: row.bgMaster || "",
+      bgStatus: row.bgStatus || "",
+
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
     };
@@ -687,35 +702,41 @@ function render() {
     const orderText =
       showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
+    // 順序
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
+    if (row.bgIndex) applyReadableBgColor_(tdOrder, row.bgIndex);      // ✅ bgIndex
     if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
+    // 師傅
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
+    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);   // ✅ bgMaster
     if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
+    // 狀態
     const tdStatus = document.createElement("td");
     const statusSpan = document.createElement("span");
     statusSpan.className = "status-pill " + row.statusClass;
 
-    if (row.colorStatus) {
-      applyReadablePillColor_(statusSpan, row.colorStatus);
-    }
+    if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus); // ✅ bgStatus（提示底色）
+    if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus); // ✅ 文字可讀+邊框
 
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);
 
+    // 預約
     const tdAppointment = document.createElement("td");
     tdAppointment.textContent = row.appointment || "";
     tdAppointment.className = "cell-appointment";
     tr.appendChild(tdAppointment);
 
+    // 剩餘
     const tdRemaining = document.createElement("td");
     const timeSpan = document.createElement("span");
     timeSpan.className = "time-badge";
@@ -734,15 +755,12 @@ function render() {
 
 /* =========================================================
  * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * - ✅ 先打 Edge 的 cache_all：吃到「Edge Cache sheet」
- * - 再 fallback Origin cache_all / all
  * ========================================================= */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
-  // ✅ Edge：優先 cache_all（避免 Origin 偶發慢，且可真正使用 Edge 自己的 Cache sheet）
   for (const idx of tryEdgeIdxList) {
     const edgeBase = EDGE_STATUS_URLS[idx];
     if (!edgeBase) continue;
@@ -757,7 +775,6 @@ async function fetchStatusAll() {
         footRows: Array.isArray(data.foot) ? data.foot : [],
       };
     } catch (e) {
-      // sticky reroute：只針對起始 idx 計數
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
@@ -768,7 +785,6 @@ async function fetchStatusAll() {
     }
   }
 
-  // ✅ fallback：Origin
   const fallbackCandidates = [
     withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
     withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
@@ -831,7 +847,7 @@ async function refreshStatus() {
     render();
   } catch (err) {
     const msg = shortErr_(err);
-    const key = msg; // 同訊息就不狂噴
+    const key = msg;
 
     if (key !== lastErrToastKey) {
       console.error("[Status] 取得狀態失敗：", err);
@@ -839,12 +855,7 @@ async function refreshStatus() {
     }
 
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
-    if (errorStateEl) {
-      errorStateEl.style.display = "block";
-      // 如果你的 errorStateEl 內有 .error-text 就塞入（可選）
-      const et = errorStateEl.querySelector?.(".error-text");
-      if (et) et.textContent = "無法取得資料：" + msg;
-    }
+    if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
     hideLoadingHint();
     refreshInFlight = false;
