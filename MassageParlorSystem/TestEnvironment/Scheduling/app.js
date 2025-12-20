@@ -746,6 +746,9 @@ function applyFilters(list) {
   });
 }
 
+/* =========================================================
+ * ✅ 原本 render() 保留（備用）
+ * ========================================================= */
 function render() {
   if (!tbodyRowsEl) return;
 
@@ -933,7 +936,155 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 }
 
 /* =========================================================
- * ✅ refresh：只改有變的資料 + 只在必要時 render
+ * ✅ 增量渲染（B-4）
+ * - 核心：保留 tr node，排序時搬移，不整表重建
+ * ========================================================= */
+
+const rowDomMapByPanel_ = {
+  body: new Map(), // masterId -> tr
+  foot: new Map(),
+};
+
+function buildRowKey_(row) {
+  return String((row && row.masterId) || "").trim();
+}
+
+function ensureRowDom_(panel, row) {
+  const key = buildRowKey_(row);
+  if (!key) return null;
+
+  const map = rowDomMapByPanel_[panel];
+  let tr = map.get(key);
+  if (tr) return tr;
+
+  tr = document.createElement("tr");
+
+  const tdOrder = document.createElement("td");
+  tdOrder.className = "cell-order";
+
+  const tdMaster = document.createElement("td");
+  tdMaster.className = "cell-master";
+
+  const tdStatus = document.createElement("td");
+
+  const tdAppointment = document.createElement("td");
+  tdAppointment.className = "cell-appointment";
+
+  const tdRemaining = document.createElement("td");
+
+  tr.appendChild(tdOrder);
+  tr.appendChild(tdMaster);
+  tr.appendChild(tdStatus);
+  tr.appendChild(tdAppointment);
+  tr.appendChild(tdRemaining);
+
+  map.set(key, tr);
+  return tr;
+}
+
+function patchRowDom_(tr, row, orderText) {
+  const tds = tr.children;
+  const tdOrder = tds[0];
+  const tdMaster = tds[1];
+  const tdStatus = tds[2];
+  const tdAppointment = tds[3];
+  const tdRemaining = tds[4];
+
+  // 順序
+  tdOrder.textContent = orderText;
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.color = "";
+  if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
+  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
+
+  // 師傅
+  tdMaster.textContent = row.masterId || "";
+  tdMaster.style.backgroundColor = "";
+  tdMaster.style.color = "";
+  if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
+  if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
+
+  // 狀態（這裡仍會重建 pill span，但 tr 不會重建，刷新感已大幅降低）
+  tdStatus.innerHTML = "";
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "status-pill " + (row.statusClass || "");
+  statusSpan.style.background = "";
+  statusSpan.style.border = "";
+  statusSpan.style.color = "";
+  if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
+  if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
+  statusSpan.textContent = row.status || "";
+  tdStatus.appendChild(statusSpan);
+
+  // 預約
+  tdAppointment.textContent = row.appointment || "";
+
+  // 剩餘
+  tdRemaining.innerHTML = "";
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time-badge";
+  timeSpan.textContent = row.remainingDisplay || "";
+  tdRemaining.appendChild(timeSpan);
+}
+
+function renderIncremental_(panel) {
+  if (!tbodyRowsEl) return;
+
+  const list = panel === "body" ? rawData.body : rawData.foot;
+  const filtered = applyFilters(list);
+
+  const isAll = filterStatus === "all";
+  const isShift = String(filterStatus || "").includes("排班");
+  const useDisplayOrder = isAll || isShift;
+
+  let finalRows;
+  if (useDisplayOrder) {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort ?? a.index);
+      const nb = Number(b.sort ?? b.index);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  } else {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort);
+      const nb = Number(b.sort);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  }
+
+  const displayRows = mapRowsToDisplay(finalRows);
+
+  if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
+  if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
+
+  const frag = document.createDocumentFragment();
+
+  displayRows.forEach((row, idx) => {
+    const showGasSortInOrderCol = !useDisplayOrder;
+    const sortNum = Number(row.sort);
+    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+
+    const tr = ensureRowDom_(panel, row);
+    if (!tr) return;
+
+    patchRowDom_(tr, row, orderText);
+    frag.appendChild(tr);
+  });
+
+  // ✅ 一次性替換子節點，但大量 tr 會被「搬移」而不是重建
+  tbodyRowsEl.replaceChildren(frag);
+}
+
+/* =========================================================
+ * ✅ refresh：改法 A + 改法 B-4
+ * - A：自動輪詢不閃 loading（手動才顯示）
+ * - B-4：activeChanged 用 renderIncremental_
  * ========================================================= */
 let refreshInFlight = false;
 let lastErrToastKey = "";
@@ -943,12 +1094,15 @@ function shortErr_(err) {
   return s.length > 140 ? s.slice(0, 140) + "…" : s;
 }
 
-async function refreshStatus() {
+// ✅ 改法 A：加 isManual 參數（預設 false）
+async function refreshStatus(isManual = false) {
   if (document.hidden) return;
   if (refreshInFlight) return;
 
   refreshInFlight = true;
-  showLoadingHint("同步資料中…");
+
+  // ✅ 自動輪詢不顯示 loading；手動才顯示
+  if (isManual) showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
@@ -977,8 +1131,8 @@ async function refreshStatus() {
         "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    // ✅ 只重畫目前面板且該面板有變更
-    if (activeChanged) render();
+    // ✅ 改法 B-4：只重畫目前面板且該面板有變更（增量渲染）
+    if (activeChanged) renderIncremental_(activePanel);
   } catch (err) {
     const msg = shortErr_(err);
     const key = msg;
@@ -991,13 +1145,14 @@ async function refreshStatus() {
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
-    hideLoadingHint();
+    // ✅ 改法 A：只有手動才收起 loading
+    if (isManual) hideLoadingHint();
     refreshInFlight = false;
   }
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) refreshStatus();
+  if (!document.hidden) refreshStatus(false);
 });
 
 /* =========================
@@ -1205,6 +1360,8 @@ async function initLiffAndGuard() {
       }
 
       await sendDailyFirstMessageFromUser_();
+
+      // ✅ 進入 App：第一次就用增量 render（避免整表重建）
       startApp();
       return;
     }
@@ -1250,18 +1407,21 @@ if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"
 if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
-    render();
+    // ✅ filter 變更：直接增量 render
+    renderIncremental_(activePanel);
   });
 }
 
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
-    render();
+    // ✅ filter 變更：直接增量 render
+    renderIncremental_(activePanel);
   });
 }
 
-if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus());
+// ✅ 改法 A：手動刷新才顯示 loading
+if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus(true));
 
 function setActivePanel(panel) {
   activePanel = panel;
@@ -1275,8 +1435,9 @@ function setActivePanel(panel) {
       tabBodyBtn.classList.remove("tab-active");
     }
   }
-  // ✅ 切換面板直接 render（不等下一次輪詢）
-  render();
+
+  // ✅ 切換面板：用增量 render（不等輪詢）
+  renderIncremental_(activePanel);
 }
 
 /* =========================
@@ -1286,7 +1447,9 @@ let pollTimer = null;
 
 function startApp() {
   setActivePanel("body");
-  refreshStatus();
+
+  // ✅ 首次刷新（不閃 loading）
+  refreshStatus(false);
 
   const intervalMs = 5 * 1000;
   const jitter = Math.floor(Math.random() * 3000);
@@ -1294,7 +1457,8 @@ function startApp() {
   if (pollTimer) clearInterval(pollTimer);
 
   setTimeout(() => {
-    pollTimer = setInterval(() => refreshStatus(), intervalMs);
+    // ✅ 自動輪詢：不閃 loading
+    pollTimer = setInterval(() => refreshStatus(false), intervalMs);
   }, jitter);
 }
 
