@@ -615,7 +615,6 @@ function pickHex6FromBgToken_(bgToken) {
   return "#CCBCBC";
 }
 
-
 function applyBgIndexToOrderCell_(el, bgIndexToken) {
   if (!el) return false;
 
@@ -637,7 +636,6 @@ function applyBgIndexToOrderCell_(el, bgIndexToken) {
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
 }
-
 
 /* =========================================================
  * ✅ 字串清洗
@@ -665,8 +663,7 @@ function deriveStatusClass(status, remaining) {
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌"))
-    return "status-free";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
@@ -1008,7 +1005,7 @@ function patchRowDom_(tr, row, orderText) {
   if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
   if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
 
-  // 狀態（這裡仍會重建 pill span，但 tr 不會重建，刷新感已大幅降低）
+  // 狀態（這裡仍會重建 pill span，但 tr 不會重建）
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
@@ -1081,7 +1078,6 @@ function renderIncremental_(panel) {
     frag.appendChild(tr);
   });
 
-  // ✅ 一次性替換子節點，但大量 tr 會被「搬移」而不是重建
   tbodyRowsEl.replaceChildren(frag);
 }
 
@@ -1089,6 +1085,7 @@ function renderIncremental_(panel) {
  * ✅ refresh：改法 A + 改法 B-4
  * - A：自動輪詢不閃 loading（手動才顯示）
  * - B-4：activeChanged 用 renderIncremental_
+ * + ✅ 空快照保護：連續 2 次空才接受（只針對自動輪詢）
  * ========================================================= */
 let refreshInFlight = false;
 let lastErrToastKey = "";
@@ -1096,6 +1093,55 @@ let lastErrToastKey = "";
 function shortErr_(err) {
   const s = String((err && err.message) || err || "").replace(/\s+/g, " ").trim();
   return s.length > 140 ? s.slice(0, 140) + "…" : s;
+}
+
+/* =========================================================
+ * ✅ 空快照保護：連續 2 次空才接受（只針對自動輪詢）
+ * - 避免 Edge 偶發回空 rows 造成 UI 抽動（展開/縮小）
+ * - 手動重整：永遠接受
+ * ========================================================= */
+const EMPTY_ACCEPT_AFTER_N = 2; // ✅ 連續 N 次空才接受
+const emptyStreak_ = { body: 0, foot: 0 };
+
+/**
+ * 決定是否接受本次 incomingRows
+ * - 自動輪詢：若 prev 有資料、incoming 空 → streak+1，未達門檻就「拒收」(沿用 prev)
+ * - 若 incoming 非空 → streak 立刻歸零並接受
+ * - 若 prev 本來就空 → 直接接受（避免第一次永遠進不來）
+ * - 手動：一律接受 + streak 歸零
+ */
+function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
+  const inc = Array.isArray(incomingRows) ? incomingRows : [];
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+
+  if (isManual) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true, reason: "manual" };
+  }
+
+  // incoming 有資料：直接接受並清 streak
+  if (inc.length > 0) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true, reason: "non_empty" };
+  }
+
+  // incoming 空 + prev 也空：接受（不然永遠無法顯示空狀態）
+  if (prev.length === 0) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true, reason: "both_empty" };
+  }
+
+  // incoming 空 + prev 有資料：視為「可疑空快照」
+  emptyStreak_[panel] = (emptyStreak_[panel] || 0) + 1;
+
+  if (emptyStreak_[panel] >= EMPTY_ACCEPT_AFTER_N) {
+    // ✅ 連續達標：接受空資料，並重置 streak（避免一直累加）
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true, reason: "empty_accepted_after_streak" };
+  }
+
+  // ❌ 未達門檻：拒收（沿用 prev）
+  return { rows: prev, accepted: false, reason: "empty_rejected" };
 }
 
 // ✅ 改法 A：加 isManual 參數（預設 false）
@@ -1112,9 +1158,16 @@ async function refreshStatus(isManual = false) {
   try {
     const { bodyRows, footRows } = await fetchStatusAll();
 
+    // ✅ 空快照保護：連續 2 次空才接受（手動永遠接受）
+    const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
+    const footDecision = decideIncomingRows_("foot", footRows, rawData.foot, isManual);
+
+    // （可選）debug：看是不是被空快照打到
+    // console.log("[EmptyGuard]", { body: bodyDecision.reason, foot: footDecision.reason });
+
     // ✅ Diff merge（不全量覆寫 rawData）
-    const bodyDiff = diffMergePanelRows_(rawData.body, bodyRows);
-    const footDiff = diffMergePanelRows_(rawData.foot, footRows);
+    const bodyDiff = diffMergePanelRows_(rawData.body, bodyDecision.rows);
+    const footDiff = diffMergePanelRows_(rawData.foot, footDecision.rows);
 
     // ✅ 只有 changed 才重建 _gasSeq（避免每次都變動）
     if (bodyDiff.changed) rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
@@ -1135,7 +1188,7 @@ async function refreshStatus(isManual = false) {
         "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    // ✅ 改法 B-4：只重畫目前面板且該面板有變更（增量渲染）
+    // ✅ 只重畫目前面板且該面板有變更（增量渲染）
     if (activeChanged) renderIncremental_(activePanel);
   } catch (err) {
     const msg = shortErr_(err);
@@ -1149,7 +1202,7 @@ async function refreshStatus(isManual = false) {
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
-    // ✅ 改法 A：只有手動才收起 loading
+    // ✅ 只有手動才收起 loading
     if (isManual) hideLoadingHint();
     refreshInFlight = false;
   }
@@ -1411,7 +1464,6 @@ if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"
 if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
-    // ✅ filter 變更：直接增量 render
     renderIncremental_(activePanel);
   });
 }
@@ -1419,7 +1471,6 @@ if (filterMasterInput) {
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
-    // ✅ filter 變更：直接增量 render
     renderIncremental_(activePanel);
   });
 }
@@ -1440,7 +1491,6 @@ function setActivePanel(panel) {
     }
   }
 
-  // ✅ 切換面板：用增量 render（不等輪詢）
   renderIncremental_(activePanel);
 }
 
