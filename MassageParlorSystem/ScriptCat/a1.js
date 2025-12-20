@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Body+Foot Full Snapshot (Every 1s) -> GAS
+// @name         Body+Foot Full Snapshot (Every 1s) -> GAS (with bg class)
 // @namespace    http://scriptcat.org/
-// @version      3.1
+// @version      3.2
 // @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
-// @description  每秒掃描「身體/腳底」面板，全量用 JSON 字串送到 GAS，GAS 覆寫 Data_Body/Data_Foot；並且每次發送都 console log payload
+// @description  每秒掃描「身體/腳底」面板，全量用 JSON 字串送到 GAS，GAS 覆寫 Data_Body/Data_Foot；並記錄 span 顏色 class + div 背景 bg-* class；每次發送都 console log payload
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        none
@@ -13,13 +13,13 @@
   "use strict";
 
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec"; // <-- 換成你的
+    "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
   const INTERVAL_MS = 1000;
 
   // ✅ log 模式：full = 每秒完整 payload；group = 摘要+可展開
   const LOG_MODE = "group"; // "full" | "group"
 
-  console.log("[PanelScan] 🟢 啟動：每秒全量送出 身體+腳底 -> GAS (with console log)");
+  console.log("[PanelScan] 🟢 啟動：每秒全量送出 身體+腳底 -> GAS (with console log + bg class)");
 
   /* ========= 小工具 ========= */
 
@@ -35,7 +35,15 @@
     return span ? span.className.trim() : "";
   }
 
-  // 解析一列：index / masterId / status / appointment / remaining + 顏色
+  // ✅ 抓元素 className 裡第一個 bg-xxx（例如 bg-CCBCBCB）
+  function getBgClass(el) {
+    if (!el) return "";
+    const cls = (el.className || "").toString();
+    const m = cls.match(/\bbg-[A-Za-z0-9_-]+\b/);
+    return m ? m[0] : "";
+  }
+
+  // 解析一列：index / masterId / status / appointment / remaining + 顏色 + 背景
   function parseRow(row) {
     const cells = row.querySelectorAll(":scope > div");
     if (cells.length < 4) return null;
@@ -60,9 +68,16 @@
       statusText = "工作中";
     }
 
+    // span 顏色 class（你原本的）
     const colorIndex = getFirstSpanClass(indexCell);
     const colorMaster = getFirstSpanClass(masterCell);
     const colorStatus = getFirstSpanClass(statusCell);
+
+    // ✅ div 背景 bg-*（新增）
+    const bgIndex = getBgClass(indexCell);
+    const bgMaster = getBgClass(masterCell);
+    const bgStatus = getBgClass(statusCell);
+    const bgAppointment = getBgClass(appointmentCell);
 
     const idxNum = indexText ? parseInt(indexText, 10) : "";
 
@@ -73,9 +88,16 @@
       status: statusText || "",
       appointment: appointment || "",
       remaining: remaining,
+
       colorIndex,
       colorMaster,
       colorStatus,
+
+      // ✅ 新增：背景 class
+      bgIndex,
+      bgMaster,
+      bgStatus,
+      bgAppointment,
     };
   }
 
@@ -128,7 +150,6 @@
       return;
     }
 
-    // LOG_MODE === "group"
     console.groupCollapsed(
       `[PanelScan] 📤 ${ts} body=${bodyRows.length} foot=${footRows.length}`
     );
@@ -140,7 +161,6 @@
 
   function tick() {
     try {
-      // 面板可能被重繪，允許每次重新抓（成本可接受）
       const bodyPanel = findBodyPanel();
       const footPanel = findFootPanel();
 
@@ -157,8 +177,6 @@
       };
 
       postSnapshot(payload);
-
-      // ✅ 每次發送都 log
       logPayload(ts, bodyRows, footRows, payload);
     } catch (e) {
       console.error("[PanelScan] 🔥 tick error:", e);
@@ -167,7 +185,7 @@
 
   function start() {
     console.log("[PanelScan] ▶️ start loop", INTERVAL_MS, "ms");
-    tick(); // 立刻送一次
+    tick();
     setInterval(tick, INTERVAL_MS);
   }
 
