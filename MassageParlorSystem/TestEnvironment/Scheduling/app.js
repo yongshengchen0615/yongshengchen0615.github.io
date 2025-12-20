@@ -606,34 +606,38 @@ function applyReadableBgColor_(el, colorStr) {
   return true;
 }
 
-/* =========================================================
- * ✅ bgIndex 特規：支援 bg-CF6F6F6（多一碼也 OK）
- * ========================================================= */
 function pickHex6FromBgToken_(bgToken) {
   const s = String(bgToken || "").trim();
-  const m = s.match(/bg-([0-9a-fA-F]+)/);
-  if (!m) return null;
+  // ✅ 只允許這一種 token（大小寫不敏感）
+  if (!/^bg-CCBCBCB$/i.test(s)) return null;
 
-  const hexRaw = m[1]; // 例如 CF6F6F6
-  const hex6 = hexRaw.slice(0, 6); // 取 CF6F6F
-  if (!/^[0-9a-fA-F]{6}$/.test(hex6)) return null;
-
-  return "#" + hex6;
+  // bg-CCBCBCB -> #CCBCBC（取前 6 碼）
+  return "#CCBCBC";
 }
 
+
 function applyBgIndexToOrderCell_(el, bgIndexToken) {
-  if (!el || !bgIndexToken) return false;
+  if (!el) return false;
 
   const hex = pickHex6FromBgToken_(bgIndexToken);
-  if (!hex) return false;
+
+  // ✅ 不是指定 token：不套色，並清掉可能殘留的背景色
+  if (!hex) {
+    el.style.backgroundColor = "";
+    return false;
+  }
 
   const rgb = hexToRgb(hex);
-  if (!rgb) return false;
+  if (!rgb) {
+    el.style.backgroundColor = "";
+    return false;
+  }
 
   const alpha = isLightTheme_() ? 0.10 : 0.16;
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
 }
+
 
 /* =========================================================
  * ✅ 字串清洗
