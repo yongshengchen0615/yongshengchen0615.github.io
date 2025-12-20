@@ -16,7 +16,6 @@
  * - ✅ 這裡要與「主站 GAS CONFIG.EDGE_ENDPOINTS」一致
  * ========================================================= */
 
-// ★ 直接貼主站 CONFIG.EDGE_ENDPOINTS（你貼的主站有 2 台）
 let EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
   "https://script.google.com/macros/s/AKfycbxUP__mjCCxRVMm-3wY-iQhhsNveKvjUeINsErGUBxsb_Z7wNH-UoXCn6XbmIh-O_--uQ/exec",
@@ -796,7 +795,7 @@ function render() {
     const tdOrder = document.createElement("td");
     tdOrder.textContent = orderText;
     tdOrder.className = "cell-order";
-    if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex); // ✅ bgIndex: bg-XXXXXX(可多碼)
+    if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
     if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
     tr.appendChild(tdOrder);
 
@@ -804,7 +803,7 @@ function render() {
     const tdMaster = document.createElement("td");
     tdMaster.textContent = row.masterId || "";
     tdMaster.className = "cell-master";
-    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster); // ✅ bgMaster
+    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
     if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
     tr.appendChild(tdMaster);
 
@@ -813,8 +812,8 @@ function render() {
     const statusSpan = document.createElement("span");
     statusSpan.className = "status-pill " + row.statusClass;
 
-    if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus); // ✅ bgStatus（提示底色）
-    if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus); // ✅ 文字可讀+邊框
+    if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
+    if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
 
     statusSpan.textContent = row.status || "";
     tdStatus.appendChild(statusSpan);
@@ -843,7 +842,98 @@ function render() {
 }
 
 /* =========================================================
- * ✅ refresh：避免重疊 + 背景暫停 + error 文案收斂
+ * ✅ Panel Diff：只更新有變的資料（不全量覆寫 rawData）
+ * ========================================================= */
+
+// 取出會影響畫面的欄位（不要把 _gasSeq 放進去）
+function rowSignature_(r) {
+  if (!r) return "";
+  return [
+    r.masterId ?? "",
+    r.index ?? "",
+    r.sort ?? "",
+    r.status ?? "",
+    r.appointment ?? "",
+    r.remaining ?? "",
+    r.colorIndex ?? "",
+    r.colorMaster ?? "",
+    r.colorStatus ?? "",
+    r.bgIndex ?? "",
+    r.bgMaster ?? "",
+    r.bgStatus ?? "",
+    r.bgAppointment ?? "",
+  ].join("|");
+}
+
+function buildStatusSet_(rows) {
+  const s = new Set();
+  (rows || []).forEach((r) => {
+    const t = normalizeText_(r && r.status);
+    if (t) s.add(t);
+  });
+  return s;
+}
+
+function setEquals_(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+/**
+ * 回傳：
+ * - changed: 是否有任何 row 新增/刪除/內容變更
+ * - statusChanged: status 集合是否變更（影響下拉選單）
+ * - nextRows: 更新後的 rows（盡量保留既有物件引用）
+ */
+function diffMergePanelRows_(prevRows, incomingRows) {
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+  const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
+
+  const prevMap = new Map();
+  prev.forEach((r) => {
+    const id = String((r && r.masterId) || "").trim();
+    if (id) prevMap.set(id, r);
+  });
+
+  let changed = false;
+  const nextRows = [];
+
+  for (const nr of nextIn) {
+    const id = String((nr && nr.masterId) || "").trim();
+    if (!id) continue;
+
+    const old = prevMap.get(id);
+    if (!old) {
+      nextRows.push({ ...nr });
+      changed = true;
+      continue;
+    }
+
+    const oldSig = rowSignature_(old);
+    const newSig = rowSignature_(nr);
+
+    if (oldSig !== newSig) {
+      Object.assign(old, nr);
+      changed = true;
+    }
+
+    nextRows.push(old);
+    prevMap.delete(id);
+  }
+
+  // 被刪除的 row
+  if (prevMap.size > 0) changed = true;
+
+  const prevStatus = buildStatusSet_(prev);
+  const nextStatus = buildStatusSet_(nextRows);
+  const statusChanged = !setEquals_(prevStatus, nextStatus);
+
+  return { changed, statusChanged, nextRows };
+}
+
+/* =========================================================
+ * ✅ refresh：只改有變的資料 + 只在必要時 render
  * ========================================================= */
 let refreshInFlight = false;
 let lastErrToastKey = "";
@@ -864,19 +954,31 @@ async function refreshStatus() {
   try {
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
-    rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    // ✅ Diff merge（不全量覆寫 rawData）
+    const bodyDiff = diffMergePanelRows_(rawData.body, bodyRows);
+    const footDiff = diffMergePanelRows_(rawData.foot, footRows);
 
-    rebuildStatusFilterOptions();
+    // ✅ 只有 changed 才重建 _gasSeq（避免每次都變動）
+    if (bodyDiff.changed) rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    if (footDiff.changed) rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+
+    // ✅ status 集合變了才重建下拉
+    if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+
+    const anyChanged = bodyDiff.changed || footDiff.changed;
+    const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
     if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
-    if (lastUpdateEl) {
+
+    // ✅ 只有資料真的有變才更新時間（避免一直跳）
+    if (anyChanged && lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
         "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    render();
+    // ✅ 只重畫目前面板且該面板有變更
+    if (activeChanged) render();
   } catch (err) {
     const msg = shortErr_(err);
     const key = msg;
@@ -1173,6 +1275,7 @@ function setActivePanel(panel) {
       tabBodyBtn.classList.remove("tab-active");
     }
   }
+  // ✅ 切換面板直接 render（不等下一次輪詢）
   render();
 }
 
