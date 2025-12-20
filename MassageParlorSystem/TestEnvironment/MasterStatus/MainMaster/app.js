@@ -1,6 +1,11 @@
-// ★ 換成你的 GAS 最新部署網址
+// ★ Users API（不要動）
 const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
+
+// ★ 主 GAS（snapshot receiver 那支）用來寫 PushRoster（新增）
+// ⚠️ 請換成你主gas的部署 /exec URL
+const ORIGIN_GAS_URL =
+  "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
 
 let allUsers = [];
 let filteredUsers = [];
@@ -14,7 +19,7 @@ const selectedIds = new Set();
 
 // dirty state
 const originalMap = new Map(); // userId -> JSON string snapshot
-const dirtyMap = new Map();    // userId -> true
+const dirtyMap = new Map(); // userId -> true
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
@@ -23,22 +28,24 @@ document.addEventListener("DOMContentLoaded", () => {
   if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
 
   const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.addEventListener("click", async () => {
-    selectedIds.clear();
-    hideBulkBar_();
-    await loadUsers();
-  });
+  if (reloadBtn)
+    reloadBtn.addEventListener("click", async () => {
+      selectedIds.clear();
+      hideBulkBar_();
+      await loadUsers();
+    });
 
   const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn) clearSearchBtn.addEventListener("click", () => {
-    const si = document.getElementById("searchInput");
-    if (si) si.value = "";
+  if (clearSearchBtn)
+    clearSearchBtn.addEventListener("click", () => {
+      const si = document.getElementById("searchInput");
+      if (si) si.value = "";
 
-    const box = si?.closest(".search-box");
-    box?.classList.remove("is-searching");
+      const box = si?.closest(".search-box");
+      box?.classList.remove("is-searching");
 
-    applyFilters();
-  });
+      applyFilters();
+    });
 
   bindFilter();
   bindSorting_();
@@ -46,12 +53,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
-    searchInput.addEventListener("input", debounce(() => {
-      const box = searchInput.closest(".search-box");
-      const hasValue = searchInput.value.trim().length > 0;
-      box?.classList.toggle("is-searching", hasValue);
-      applyFilters();
-    }, 180));
+    searchInput.addEventListener(
+      "input",
+      debounce(() => {
+        const box = searchInput.closest(".search-box");
+        const hasValue = searchInput.value.trim().length > 0;
+        box?.classList.toggle("is-searching", hasValue);
+        applyFilters();
+      }, 180)
+    );
 
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
@@ -395,8 +405,19 @@ async function bulkDelete_() {
 
   for (const id of ids) {
     const ok = await deleteUser(id);
-    if (ok) okCount++;
-    else failCount++;
+    if (ok) {
+      okCount++;
+
+      // ✅ 同步：確保主 GAS PushRoster 也移除
+      await syncPushRosterToOrigin_({
+        userId: id,
+        displayName: "",
+        masterCode: "",
+        pushEnabled: "否",
+      });
+    } else {
+      failCount++;
+    }
     await sleep_(80);
   }
 
@@ -614,6 +635,15 @@ function renderTable() {
         u.scheduleEnabled = scheduleSelect.value || "否";
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
+
+        // ✅ 新增：同步主 GAS 的 PushRoster（是=upsert，否=delete）
+        await syncPushRosterToOrigin_({
+          userId: u.userId,
+          displayName: u.displayName || "",
+          masterCode: u.masterCode || "",
+          pushEnabled: finalPush,
+        });
+
         await loadUsers();
       } else {
         toast("儲存失敗", "err");
@@ -638,6 +668,15 @@ function renderTable() {
       if (ok) {
         toast("刪除完成", "ok");
         selectedIds.delete(u.userId);
+
+        // ✅ 新增：刪除後也同步主 GAS（確保 PushRoster 清掉）
+        await syncPushRosterToOrigin_({
+          userId: u.userId,
+          displayName: u.displayName || "",
+          masterCode: u.masterCode || "",
+          pushEnabled: "否",
+        });
+
         await loadUsers();
       } else {
         toast("刪除失敗", "err");
@@ -721,6 +760,32 @@ function markDirty_(userId, u) {
 }
 
 /* ========= API ========= */
+
+// ✅ 新增：同步 PushRoster 到主 GAS（是=upsert，否=delete）
+async function syncPushRosterToOrigin_({ userId, displayName, masterCode, pushEnabled }) {
+  try {
+    if (!ORIGIN_GAS_URL) return;
+
+    const payload = {
+      mode: "push_roster_v1",
+      userId: String(userId || "").trim(),
+      displayName: String(displayName || "").trim(),
+      masterCode: String(masterCode || "").trim(),
+      pushEnabled: String(pushEnabled || "否") === "是" ? "是" : "否",
+    };
+
+    if (!payload.userId) return;
+
+    await fetch(ORIGIN_GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    // 不擋主流程
+    console.warn("syncPushRosterToOrigin_ failed:", err);
+  }
+}
 
 async function updateUser({
   userId, audit, startDate, usageDays, masterCode,
