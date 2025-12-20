@@ -1,6 +1,10 @@
 {
-  "LIFF_ID": "22008669658-q1wEuwKf",
+  "LIFF_ID": "2008669658-q1wEuwKf",
   "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec",
-  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec",
-  "TARGET_MASTER_ID": "98"
+  "TARGET_MASTER_ID": "98",
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+  "https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec"
+  ],
+  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec"
 }
