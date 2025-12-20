@@ -13,11 +13,13 @@
 
 /* =========================================================
  * ✅ 分流設定：Edge GAS（Status 讀取分流）
+ * - ✅ 這裡要與「主站 GAS CONFIG.EDGE_ENDPOINTS」一致
  * ========================================================= */
 
-// ★ 換成你的 6 個 Edge GAS Web App URL（每個都要不同 /exec）
+// ★ 直接貼主站 CONFIG.EDGE_ENDPOINTS（你貼的主站有 2 台）
 let EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
+  "https://script.google.com/macros/s/AKfycbxUP__mjCCxRVMm-3wY-iQhhsNveKvjUeINsErGUBxsb_Z7wNH-UoXCn6XbmIh-O_--uQ/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
@@ -147,11 +149,80 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
       throw new Error(`NON_JSON ${text.slice(0, 160)}`);
     }
 
-    if (json && json.ok === false) throw new Error(`NOT_OK ${json.error || "response not ok"}`);
+    if (json && json.ok === false) throw new Error(`NOT_OK ${json.err || json.error || "response not ok"}`);
     return json;
   } finally {
     clearTimeout(t);
   }
+}
+
+/* =========================================================
+ * ✅ Edge 讀取：依你的 Edge doGet(panel=body/foot/meta)
+ * ========================================================= */
+async function fetchFromEdge_(edgeBase, jitterBust) {
+  const urlBody = withQuery_(edgeBase, "panel=body&v=" + encodeURIComponent(jitterBust));
+  const urlFoot = withQuery_(edgeBase, "panel=foot&v=" + encodeURIComponent(jitterBust));
+
+  const [b, f] = await Promise.all([
+    fetchJsonWithTimeout_(urlBody, STATUS_FETCH_TIMEOUT_MS),
+    fetchJsonWithTimeout_(urlFoot, STATUS_FETCH_TIMEOUT_MS),
+  ]);
+
+  const bodyRows = b && b.data && Array.isArray(b.data.rows) ? b.data.rows : [];
+  const footRows = f && f.data && Array.isArray(f.data.rows) ? f.data.rows : [];
+
+  return { bodyRows, footRows };
+}
+
+/* =========================================================
+ * ✅ 分流後的 Status 取得（一次拿 body + foot）
+ * - Edge：panel=body/foot
+ * - Origin fallback：mode=cache_all/all
+ * ========================================================= */
+async function fetchStatusAll() {
+  const jitterBust = Date.now();
+  const startIdx = getStatusEdgeIndex_();
+  const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
+
+  for (const idx of tryEdgeIdxList) {
+    const edgeBase = EDGE_STATUS_URLS[idx];
+    if (!edgeBase) continue;
+
+    try {
+      const data = await fetchFromEdge_(edgeBase, jitterBust);
+      resetFailCount_();
+      return data;
+    } catch (e) {
+      if (idx === startIdx) {
+        const n = bumpFailCount_(idx);
+        if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
+          const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
+          setOverrideEdgeIndex_(nextIdx);
+        }
+      }
+    }
+  }
+
+  const fallbackCandidates = [
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
+    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
+  ];
+
+  let lastErr = null;
+  for (const url of fallbackCandidates) {
+    try {
+      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
+      resetFailCount_();
+      return {
+        bodyRows: Array.isArray(data.body) ? data.body : [],
+        footRows: Array.isArray(data.foot) ? data.foot : [],
+      };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  throw lastErr || new Error("fetchStatusAll failed");
 }
 
 /* =========================================================
@@ -160,9 +231,9 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
 
 // ★ AUTH GAS Web App URL
 const AUTH_API_URL =
-  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
 
-const LIFF_ID = "2008669658-6Et3vVqv";
+const LIFF_ID = "2008735934-mBO1mD8M";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
@@ -235,7 +306,9 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+    ""
+  );
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -536,9 +609,6 @@ function applyReadableBgColor_(el, colorStr) {
 
 /* =========================================================
  * ✅ bgIndex 特規：支援 bg-CF6F6F6（多一碼也 OK）
- * - 抓 bg- 後面的 hex 字串
- * - 只取前 6 碼當色碼
- * - 用淡底色塗到「順序」欄位
  * ========================================================= */
 function pickHex6FromBgToken_(bgToken) {
   const s = String(bgToken || "").trim();
@@ -770,60 +840,6 @@ function render() {
   tbodyRowsEl.appendChild(frag);
 
   if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
-}
-
-/* =========================================================
- * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * ========================================================= */
-async function fetchStatusAll() {
-  const jitterBust = Date.now();
-  const startIdx = getStatusEdgeIndex_();
-  const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
-
-  for (const idx of tryEdgeIdxList) {
-    const edgeBase = EDGE_STATUS_URLS[idx];
-    if (!edgeBase) continue;
-
-    const edgeUrl = withQuery_(edgeBase, "mode=cache_all&v=" + encodeURIComponent(jitterBust));
-
-    try {
-      const data = await fetchJsonWithTimeout_(edgeUrl, STATUS_FETCH_TIMEOUT_MS);
-      resetFailCount_();
-      return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
-      };
-    } catch (e) {
-      if (idx === startIdx) {
-        const n = bumpFailCount_(idx);
-        if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
-          const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
-          setOverrideEdgeIndex_(nextIdx);
-        }
-      }
-    }
-  }
-
-  const fallbackCandidates = [
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
-  ];
-
-  let lastErr = null;
-  for (const url of fallbackCandidates) {
-    try {
-      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
-      resetFailCount_();
-      return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
-      };
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  throw lastErr || new Error("fetchStatusAll failed");
 }
 
 /* =========================================================
