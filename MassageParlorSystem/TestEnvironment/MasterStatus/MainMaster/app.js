@@ -2,11 +2,6 @@
 const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
 
-// ★ 主 GAS（snapshot receiver 那支）用來寫 PushRoster（新增）
-// ⚠️ 請換成你主gas的部署 /exec URL
-const ORIGIN_GAS_URL =
-  "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
-
 let allUsers = [];
 let filteredUsers = [];
 
@@ -111,18 +106,14 @@ async function loadUsers() {
 
     allUsers = (json.users || []).map((u) => ({
       ...u,
-      // ✅確保新欄位存在
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
-      scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否", // ✅新增
+      scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
     }));
 
     originalMap.clear();
     dirtyMap.clear();
-
-    for (const u of allUsers) {
-      originalMap.set(u.userId, snapshot_(u));
-    }
+    for (const u of allUsers) originalMap.set(u.userId, snapshot_(u));
 
     applyFilters();
     toast("資料已更新", "ok");
@@ -232,28 +223,24 @@ function compareBy_(a, b, key, dir) {
   const av = get(a);
   const bv = get(b);
 
-  // ✅ 是/否 欄位排序（push / personalStatus / schedule）
   if (key === "pushEnabled" || key === "personalStatusEnabled" || key === "scheduleEnabled") {
     const na = String(av) === "是" ? 1 : 0;
     const nb = String(bv) === "是" ? 1 : 0;
     return (na - nb) * sgn;
   }
 
-  // number
   if (key === "usageDays" || key === "isMaster") {
     const na = Number(av || 0);
     const nb = Number(bv || 0);
     return (na - nb) * sgn;
   }
 
-  // date-ish
   if (key === "createdAt" || key === "startDate") {
     const da = toTime_(av);
     const db = toTime_(bv);
     return (da - db) * sgn;
   }
 
-  // string
   const sa = String(av ?? "").toLowerCase();
   const sb = String(bv ?? "").toLowerCase();
   if (sa < sb) return -1 * sgn;
@@ -294,12 +281,13 @@ function bindBulk_() {
   }
 
   const bulkClear = document.getElementById("bulkClear");
-  if (bulkClear) bulkClear.addEventListener("click", () => {
-    selectedIds.clear();
-    renderTable();
-    updateBulkBar_();
-    syncCheckAll_();
-  });
+  if (bulkClear)
+    bulkClear.addEventListener("click", () => {
+      selectedIds.clear();
+      renderTable();
+      updateBulkBar_();
+      syncCheckAll_();
+    });
 
   const bulkApply = document.getElementById("bulkApply");
   if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
@@ -344,7 +332,7 @@ async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
-  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || ""; // ✅新增
+  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
   if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled) {
     toast("請先選擇要套用的批次欄位", "err");
@@ -367,10 +355,7 @@ async function bulkApply_() {
       u.pushEnabled = pushEnabled;
     }
 
-    // ✅ 個人狀態：純開關
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
-
-    // ✅ 排班表：純開關
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 
     markDirty_(id, u);
@@ -383,7 +368,6 @@ async function bulkApply_() {
 async function bulkDelete_() {
   const btn = document.getElementById("bulkDelete");
   const ids = Array.from(selectedIds);
-
   if (!ids.length) return;
 
   const okConfirm = confirm(`確定要批次刪除？\n\n共 ${ids.length} 筆。\n此操作不可復原。`);
@@ -405,19 +389,8 @@ async function bulkDelete_() {
 
   for (const id of ids) {
     const ok = await deleteUser(id);
-    if (ok) {
-      okCount++;
-
-      // ✅ 同步：確保主 GAS PushRoster 也移除
-      await syncPushRosterToOrigin_({
-        userId: id,
-        displayName: "",
-        masterCode: "",
-        pushEnabled: "否",
-      });
-    } else {
-      failCount++;
-    }
+    if (ok) okCount++;
+    else failCount++;
     await sleep_(80);
   }
 
@@ -534,7 +507,7 @@ function renderTable() {
     const saveBtn = tr.querySelector(".btn-save");
     const delBtn = tr.querySelector(".btn-del");
 
-    // ✅ 初始渲染就套用規則：非通過 → 推播強制否 + 禁用
+    // ✅ 初始規則：非通過 → 推播強制否 + 禁用
     if ((audit || "待審核") !== "通過") {
       pushSelect.value = "否";
       pushSelect.disabled = true;
@@ -559,7 +532,6 @@ function renderTable() {
       u.masterCode = masterInput.value || "";
       u.audit = auditSelect.value || "待審核";
 
-      // 先吃使用者選擇
       u.pushEnabled = pushSelect.value || "否";
 
       // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
@@ -571,10 +543,7 @@ function renderTable() {
         pushSelect.disabled = false;
       }
 
-      // ✅ 個人狀態：純開關
       u.personalStatusEnabled = personalSelect.value || "否";
-
-      // ✅ 排班表：純開關
       u.scheduleEnabled = scheduleSelect.value || "否";
 
       markDirty_(u.userId, u);
@@ -605,12 +574,9 @@ function renderTable() {
       saveBtn.disabled = true;
       saveBtn.textContent = "儲存中...";
 
-      // 保險：送出前再強制一次（避免 UI 被外力改動）
       const finalAudit = auditSelect.value || "待審核";
-      const finalPush = (finalAudit !== "通過") ? "否" : (pushSelect.value || "否");
-      if (finalAudit !== "通過") {
-        pushSelect.value = "否";
-      }
+      const finalPush = finalAudit !== "通過" ? "否" : (pushSelect.value || "否");
+      if (finalAudit !== "通過") pushSelect.value = "否";
 
       const payload = {
         userId: u.userId,
@@ -629,20 +595,15 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
+
         u.audit = finalAudit;
         u.pushEnabled = finalPush;
+        u.masterCode = masterInput.value || "";
         u.personalStatusEnabled = personalSelect.value || "否";
         u.scheduleEnabled = scheduleSelect.value || "否";
+
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
-
-        // ✅ 新增：同步主 GAS 的 PushRoster（是=upsert，否=delete）
-        await syncPushRosterToOrigin_({
-          userId: u.userId,
-          displayName: u.displayName || "",
-          masterCode: u.masterCode || "",
-          pushEnabled: finalPush,
-        });
 
         await loadUsers();
       } else {
@@ -668,15 +629,6 @@ function renderTable() {
       if (ok) {
         toast("刪除完成", "ok");
         selectedIds.delete(u.userId);
-
-        // ✅ 新增：刪除後也同步主 GAS（確保 PushRoster 清掉）
-        await syncPushRosterToOrigin_({
-          userId: u.userId,
-          displayName: u.displayName || "",
-          masterCode: u.masterCode || "",
-          pushEnabled: "否",
-        });
-
         await loadUsers();
       } else {
         toast("刪除失敗", "err");
@@ -761,35 +713,15 @@ function markDirty_(userId, u) {
 
 /* ========= API ========= */
 
-// ✅ 新增：同步 PushRoster 到主 GAS（是=upsert，否=delete）
-async function syncPushRosterToOrigin_({ userId, displayName, masterCode, pushEnabled }) {
-  try {
-    if (!ORIGIN_GAS_URL) return;
-
-    const payload = {
-      mode: "push_roster_v1",
-      userId: String(userId || "").trim(),
-      displayName: String(displayName || "").trim(),
-      masterCode: String(masterCode || "").trim(),
-      pushEnabled: String(pushEnabled || "否") === "是" ? "是" : "否",
-    };
-
-    if (!payload.userId) return;
-
-    await fetch(ORIGIN_GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    // 不擋主流程
-    console.warn("syncPushRosterToOrigin_ failed:", err);
-  }
-}
-
 async function updateUser({
-  userId, audit, startDate, usageDays, masterCode,
-  pushEnabled, personalStatusEnabled, scheduleEnabled
+  userId,
+  audit,
+  startDate,
+  usageDays,
+  masterCode,
+  pushEnabled,
+  personalStatusEnabled,
+  scheduleEnabled,
 }) {
   try {
     const fd = new URLSearchParams();
