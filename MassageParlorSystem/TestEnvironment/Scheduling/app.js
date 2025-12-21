@@ -196,10 +196,22 @@ async function fetchStatusAll() {
 
       resetFailCount_();
 
+           const body = Array.isArray(data.body) ? data.body : [];
+      const foot = Array.isArray(data.foot) ? data.foot : [];
+
+      // ✅ 關鍵：Edge sheet_all 偶發雙空，視為失效（避免 UI 被清空）
+      // 你要的是：Edge 有資料才用，沒資料就走主站
+      if (body.length === 0 && foot.length === 0) {
+        throw new Error("EDGE_SHEET_EMPTY");
+      }
+
+      resetFailCount_();
+
       return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
+        bodyRows: body,
+        footRows: foot,
       };
+
     } catch (e) {
       // 只有「命中那台」才累計 failcount，達標就 reroute
       if (idx === startIdx) {
