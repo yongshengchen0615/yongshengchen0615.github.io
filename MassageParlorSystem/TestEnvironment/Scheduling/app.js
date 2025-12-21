@@ -12,22 +12,43 @@
 })();
 
 /* =========================================================
- * ✅ 分流設定：Edge GAS（Status 讀取分流）
- * - ✅ 這裡要與「主站 GAS CONFIG.EDGE_ENDPOINTS」一致
+ * ✅ Config.json 讀取（取代硬寫 URL / LIFF_ID）
  * ========================================================= */
 
-let EDGE_STATUS_URLS = [
-  "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
-    "https://script.google.com/macros/s/AKfycbxUP__mjCCxRVMm-3wY-iQhhsNveKvjUeINsErGUBxsb_Z7wNH-UoXCn6XbmIh-O_--uQ/exec",
-    "https://script.google.com/macros/s/AKfycbx8IO62rjUCpLUMXQUZAiNavrdCNd16trulkNBRznG22Y56UI3SlCFWuGid-YGPQUB-jg/exec",
-    "https://script.google.com/macros/s/AKfycbxNuKVTcH0-x5ncebfyGESmZSpDgAuRKg7-0vr58co3JZOYIwI0m_Alc3h81CHTYSmY/exec",
-    "https://script.google.com/macros/s/AKfycbwV1zzveF09Cy7ez9HveZsZjMrOr-J6peczREKudm-9GXS6mohkwsbu9lKmU2b49_sV/exec",
-    "https://script.google.com/macros/s/AKfycbzZp_Ly71l3sqMa88WG7AoDqzY0kQQ0fM5tmz_krlZ8qUXglrEJ7WY-17IGreVZj1jV/exec",
-];
+const CONFIG_JSON_URL = "./config.json";
 
-// （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
-const FALLBACK_ORIGIN_CACHE_URL =
-  "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
+// 先給預設值（若 config 失敗，你要不要 fallback 由 boot 決定）
+let EDGE_STATUS_URLS = [];
+let FALLBACK_ORIGIN_CACHE_URL = "";
+let AUTH_API_URL = "";
+let LIFF_ID = "";
+
+/**
+ * 載入 config.json 並套用到全域設定
+ * 必填：
+ * - EDGE_STATUS_URLS (array)
+ * - FALLBACK_ORIGIN_CACHE_URL (string)
+ * - AUTH_API_URL (string)
+ * - LIFF_ID (string)
+ */
+async function loadConfigJson_() {
+  const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
+  if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
+
+  const cfg = await resp.json();
+
+  const edges = Array.isArray(cfg.EDGE_STATUS_URLS) ? cfg.EDGE_STATUS_URLS : [];
+  EDGE_STATUS_URLS = edges.map((u) => String(u || "").trim()).filter(Boolean);
+
+  FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
+  AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
+  LIFF_ID = String(cfg.LIFF_ID || "").trim();
+
+  if (!LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
+  if (!AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
+  if (!FALLBACK_ORIGIN_CACHE_URL) throw new Error("CONFIG_FALLBACK_ORIGIN_CACHE_URL_MISSING");
+  if (!EDGE_STATUS_URLS.length) throw new Error("CONFIG_EDGE_STATUS_URLS_EMPTY");
+}
 
 /* =========================
  * Hash / URL utils
@@ -98,6 +119,8 @@ function resetFailCount_() {
  * ✅ Edge URL sanitize
  * - 去重
  * - 過濾空字串
+ *
+ * ⚠️ 注意：不要在載入 config 前呼叫
  */
 function sanitizeEdgeUrls_() {
   const seen = new Set();
@@ -114,14 +137,12 @@ function sanitizeEdgeUrls_() {
     console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
   }
 }
-sanitizeEdgeUrls_();
 
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
   const overrideIdx = getOverrideEdgeIndex_();
-  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length)
-    return overrideIdx;
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) return overrideIdx;
   return baseIdx;
 }
 function buildEdgeTryOrder_(startIdx) {
@@ -159,24 +180,6 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   }
 }
 
-/* =========================================================
- * ✅ Edge 讀取：依你的 Edge doGet(panel=body/foot/meta)
- * ========================================================= */
-async function fetchFromEdge_(edgeBase, jitterBust) {
-  const urlBody = withQuery_(edgeBase, "panel=body&v=" + encodeURIComponent(jitterBust));
-  const urlFoot = withQuery_(edgeBase, "panel=foot&v=" + encodeURIComponent(jitterBust));
-
-  const [b, f] = await Promise.all([
-    fetchJsonWithTimeout_(urlBody, STATUS_FETCH_TIMEOUT_MS),
-    fetchJsonWithTimeout_(urlFoot, STATUS_FETCH_TIMEOUT_MS),
-  ]);
-
-  const bodyRows = b && b.data && Array.isArray(b.data.rows) ? b.data.rows : [];
-  const footRows = f && f.data && Array.isArray(f.data.rows) ? f.data.rows : [];
-
-  return { bodyRows, footRows };
-}
-
 /**
  * ✅ 新策略：
  * 1) 先讀 Edge（分流）試算表 Data_Body/Data_Foot：mode=sheet_all
@@ -185,7 +188,6 @@ async function fetchFromEdge_(edgeBase, jitterBust) {
 async function fetchStatusAll() {
   const jitterBust = Date.now();
 
-  // Edge：依照你原本的 sticky reroute + try order
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
@@ -198,13 +200,10 @@ async function fetchStatusAll() {
     try {
       const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
 
-      resetFailCount_();
-
-           const body = Array.isArray(data.body) ? data.body : [];
+      const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
 
       // ✅ 關鍵：Edge sheet_all 偶發雙空，視為失效（避免 UI 被清空）
-      // 你要的是：Edge 有資料才用，沒資料就走主站
       if (body.length === 0 && foot.length === 0) {
         throw new Error("EDGE_SHEET_EMPTY");
       }
@@ -215,9 +214,7 @@ async function fetchStatusAll() {
         bodyRows: body,
         footRows: foot,
       };
-
     } catch (e) {
-      // 只有「命中那台」才累計 failcount，達標就 reroute
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
@@ -240,18 +237,9 @@ async function fetchStatusAll() {
   };
 }
 
-
-
-
 /* =========================================================
- * 原本你的設定
+ * 原本你的設定（AUTH_API_URL / LIFF_ID 已由 config.json 提供）
  * ========================================================= */
-
-// ★ AUTH GAS Web App URL
-const AUTH_API_URL =
-  "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
-
-const LIFF_ID = "2008735934-mBO1mD8M";
 
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
@@ -627,10 +615,7 @@ function applyReadableBgColor_(el, colorStr) {
 
 function pickHex6FromBgToken_(bgToken) {
   const s = String(bgToken || "").trim();
-  // ✅ 只允許這一種 token（大小寫不敏感）
   if (!/^bg-CCBCBCB$/i.test(s)) return null;
-
-  // bg-CCBCBCB -> #CCBCBC（取前 6 碼）
   return "#CCBCBC";
 }
 
@@ -639,7 +624,6 @@ function applyBgIndexToOrderCell_(el, bgIndexToken) {
 
   const hex = pickHex6FromBgToken_(bgIndexToken);
 
-  // ✅ 不是指定 token：不套色，並清掉可能殘留的背景色
   if (!hex) {
     el.style.backgroundColor = "";
     return false;
@@ -699,12 +683,10 @@ function mapRowsToDisplay(rows) {
       status: normalizeText_(row.status),
       appointment: normalizeText_(row.appointment),
 
-      // text colors
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
 
-      // bg colors ✅
       bgIndex: row.bgIndex || "",
       bgMaster: row.bgMaster || "",
       bgStatus: row.bgStatus || "",
@@ -767,108 +749,9 @@ function applyFilters(list) {
 }
 
 /* =========================================================
- * ✅ 原本 render() 保留（備用）
- * ========================================================= */
-function render() {
-  if (!tbodyRowsEl) return;
-
-  const list = activePanel === "body" ? rawData.body : rawData.foot;
-  const filtered = applyFilters(list);
-
-  const isAll = filterStatus === "all";
-  const isShift = String(filterStatus || "").includes("排班");
-  const useDisplayOrder = isAll || isShift;
-
-  let finalRows;
-  if (useDisplayOrder) {
-    finalRows = filtered.slice().sort((a, b) => {
-      const na = Number(a.sort ?? a.index);
-      const nb = Number(b.sort ?? b.index);
-      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
-      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-      if (aKey !== bKey) return aKey - bKey;
-      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
-    });
-  } else {
-    finalRows = filtered.slice().sort((a, b) => {
-      const na = Number(a.sort);
-      const nb = Number(b.sort);
-      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
-      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
-      if (aKey !== bKey) return aKey - bKey;
-      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
-    });
-  }
-
-  const displayRows = mapRowsToDisplay(finalRows);
-
-  tbodyRowsEl.innerHTML = "";
-  if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
-
-  const frag = document.createDocumentFragment();
-
-  displayRows.forEach((row, idx) => {
-    const tr = document.createElement("tr");
-
-    const showGasSortInOrderCol = !useDisplayOrder;
-    const sortNum = Number(row.sort);
-    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
-
-    // 順序
-    const tdOrder = document.createElement("td");
-    tdOrder.textContent = orderText;
-    tdOrder.className = "cell-order";
-    if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
-    if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
-    tr.appendChild(tdOrder);
-
-    // 師傅
-    const tdMaster = document.createElement("td");
-    tdMaster.textContent = row.masterId || "";
-    tdMaster.className = "cell-master";
-    if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
-    if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
-    tr.appendChild(tdMaster);
-
-    // 狀態
-    const tdStatus = document.createElement("td");
-    const statusSpan = document.createElement("span");
-    statusSpan.className = "status-pill " + row.statusClass;
-
-    if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
-    if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
-
-    statusSpan.textContent = row.status || "";
-    tdStatus.appendChild(statusSpan);
-    tr.appendChild(tdStatus);
-
-    // 預約
-    const tdAppointment = document.createElement("td");
-    tdAppointment.textContent = row.appointment || "";
-    tdAppointment.className = "cell-appointment";
-    tr.appendChild(tdAppointment);
-
-    // 剩餘
-    const tdRemaining = document.createElement("td");
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "time-badge";
-    timeSpan.textContent = row.remainingDisplay || "";
-    tdRemaining.appendChild(timeSpan);
-    tr.appendChild(tdRemaining);
-
-    frag.appendChild(tr);
-  });
-
-  tbodyRowsEl.appendChild(frag);
-
-  if (panelTitleEl) panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
-}
-
-/* =========================================================
  * ✅ Panel Diff：只更新有變的資料（不全量覆寫 rawData）
  * ========================================================= */
 
-// 取出會影響畫面的欄位（不要把 _gasSeq 放進去）
 function rowSignature_(r) {
   if (!r) return "";
   return [
@@ -903,12 +786,6 @@ function setEquals_(a, b) {
   return true;
 }
 
-/**
- * 回傳：
- * - changed: 是否有任何 row 新增/刪除/內容變更
- * - statusChanged: status 集合是否變更（影響下拉選單）
- * - nextRows: 更新後的 rows（盡量保留既有物件引用）
- */
 function diffMergePanelRows_(prevRows, incomingRows) {
   const prev = Array.isArray(prevRows) ? prevRows : [];
   const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
@@ -945,7 +822,6 @@ function diffMergePanelRows_(prevRows, incomingRows) {
     prevMap.delete(id);
   }
 
-  // 被刪除的 row
   if (prevMap.size > 0) changed = true;
 
   const prevStatus = buildStatusSet_(prev);
@@ -957,11 +833,10 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 
 /* =========================================================
  * ✅ 增量渲染（B-4）
- * - 核心：保留 tr node，排序時搬移，不整表重建
  * ========================================================= */
 
 const rowDomMapByPanel_ = {
-  body: new Map(), // masterId -> tr
+  body: new Map(),
   foot: new Map(),
 };
 
@@ -1010,21 +885,18 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
-  // 順序
   tdOrder.textContent = orderText;
   tdOrder.style.backgroundColor = "";
   tdOrder.style.color = "";
   if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
   if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
 
-  // 師傅
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.backgroundColor = "";
   tdMaster.style.color = "";
   if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
   if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
 
-  // 狀態（這裡仍會重建 pill span，但 tr 不會重建）
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
@@ -1036,10 +908,8 @@ function patchRowDom_(tr, row, orderText) {
   statusSpan.textContent = row.status || "";
   tdStatus.appendChild(statusSpan);
 
-  // 預約
   tdAppointment.textContent = row.appointment || "";
 
-  // 剩餘
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
@@ -1101,10 +971,7 @@ function renderIncremental_(panel) {
 }
 
 /* =========================================================
- * ✅ refresh：改法 A + 改法 B-4
- * - A：自動輪詢不閃 loading（手動才顯示）
- * - B-4：activeChanged 用 renderIncremental_
- * + ✅ 空快照保護：連續 2 次空才接受（只針對自動輪詢）
+ * ✅ refresh：自動輪詢不閃 loading + 增量渲染 + 空快照保護
  * ========================================================= */
 let refreshInFlight = false;
 let lastErrToastKey = "";
@@ -1114,21 +981,9 @@ function shortErr_(err) {
   return s.length > 140 ? s.slice(0, 140) + "…" : s;
 }
 
-/* =========================================================
- * ✅ 空快照保護：連續 2 次空才接受（只針對自動輪詢）
- * - 避免 Edge 偶發回空 rows 造成 UI 抽動（展開/縮小）
- * - 手動重整：永遠接受
- * ========================================================= */
-const EMPTY_ACCEPT_AFTER_N = 2; // ✅ 連續 N 次空才接受
+const EMPTY_ACCEPT_AFTER_N = 2;
 const emptyStreak_ = { body: 0, foot: 0 };
 
-/**
- * 決定是否接受本次 incomingRows
- * - 自動輪詢：若 prev 有資料、incoming 空 → streak+1，未達門檻就「拒收」(沿用 prev)
- * - 若 incoming 非空 → streak 立刻歸零並接受
- * - 若 prev 本來就空 → 直接接受（避免第一次永遠進不來）
- * - 手動：一律接受 + streak 歸零
- */
 function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
   const inc = Array.isArray(incomingRows) ? incomingRows : [];
   const prev = Array.isArray(prevRows) ? prevRows : [];
@@ -1138,61 +993,47 @@ function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
     return { rows: inc, accepted: true, reason: "manual" };
   }
 
-  // incoming 有資料：直接接受並清 streak
   if (inc.length > 0) {
     emptyStreak_[panel] = 0;
     return { rows: inc, accepted: true, reason: "non_empty" };
   }
 
-  // incoming 空 + prev 也空：接受（不然永遠無法顯示空狀態）
   if (prev.length === 0) {
     emptyStreak_[panel] = 0;
     return { rows: inc, accepted: true, reason: "both_empty" };
   }
 
-  // incoming 空 + prev 有資料：視為「可疑空快照」
   emptyStreak_[panel] = (emptyStreak_[panel] || 0) + 1;
 
   if (emptyStreak_[panel] >= EMPTY_ACCEPT_AFTER_N) {
-    // ✅ 連續達標：接受空資料，並重置 streak（避免一直累加）
     emptyStreak_[panel] = 0;
     return { rows: inc, accepted: true, reason: "empty_accepted_after_streak" };
   }
 
-  // ❌ 未達門檻：拒收（沿用 prev）
   return { rows: prev, accepted: false, reason: "empty_rejected" };
 }
 
-// ✅ 改法 A：加 isManual 參數（預設 false）
 async function refreshStatus(isManual = false) {
   if (document.hidden) return;
   if (refreshInFlight) return;
 
   refreshInFlight = true;
 
-  // ✅ 自動輪詢不顯示 loading；手動才顯示
   if (isManual) showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
     const { bodyRows, footRows } = await fetchStatusAll();
 
-    // ✅ 空快照保護：連續 2 次空才接受（手動永遠接受）
     const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
     const footDecision = decideIncomingRows_("foot", footRows, rawData.foot, isManual);
 
-    // （可選）debug：看是不是被空快照打到
-    // console.log("[EmptyGuard]", { body: bodyDecision.reason, foot: footDecision.reason });
-
-    // ✅ Diff merge（不全量覆寫 rawData）
     const bodyDiff = diffMergePanelRows_(rawData.body, bodyDecision.rows);
     const footDiff = diffMergePanelRows_(rawData.foot, footDecision.rows);
 
-    // ✅ 只有 changed 才重建 _gasSeq（避免每次都變動）
     if (bodyDiff.changed) rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
     if (footDiff.changed) rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
-    // ✅ status 集合變了才重建下拉
     if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
 
     const anyChanged = bodyDiff.changed || footDiff.changed;
@@ -1200,14 +1041,12 @@ async function refreshStatus(isManual = false) {
 
     if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
 
-    // ✅ 只有資料真的有變才更新時間（避免一直跳）
     if (anyChanged && lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
         "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    // ✅ 只重畫目前面板且該面板有變更（增量渲染）
     if (activeChanged) renderIncremental_(activePanel);
   } catch (err) {
     const msg = shortErr_(err);
@@ -1221,7 +1060,6 @@ async function refreshStatus(isManual = false) {
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
-    // ✅ 只有手動才收起 loading
     if (isManual) hideLoadingHint();
     refreshInFlight = false;
   }
@@ -1405,7 +1243,6 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
@@ -1416,7 +1253,6 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ 個人狀態工具列
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
@@ -1436,8 +1272,6 @@ async function initLiffAndGuard() {
       }
 
       await sendDailyFirstMessageFromUser_();
-
-      // ✅ 進入 App：第一次就用增量 render（避免整表重建）
       startApp();
       return;
     }
@@ -1494,7 +1328,6 @@ if (filterStatusSelect) {
   });
 }
 
-// ✅ 改法 A：手動刷新才顯示 loading
 if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus(true));
 
 function setActivePanel(panel) {
@@ -1520,8 +1353,6 @@ let pollTimer = null;
 
 function startApp() {
   setActivePanel("body");
-
-  // ✅ 首次刷新（不閃 loading）
   refreshStatus(false);
 
   const intervalMs = 3 * 1000;
@@ -1530,12 +1361,22 @@ function startApp() {
   if (pollTimer) clearInterval(pollTimer);
 
   setTimeout(() => {
-    // ✅ 自動輪詢：不閃 loading
     pollTimer = setInterval(() => refreshStatus(false), intervalMs);
   }, jitter);
 }
 
-// ===== 入口 =====
-window.addEventListener("load", () => {
+/* =========================================================
+ * ✅ 入口：先讀 config.json → sanitize → 再 init LIFF
+ * ========================================================= */
+window.addEventListener("load", async () => {
+  try {
+    await loadConfigJson_();
+    sanitizeEdgeUrls_();
+  } catch (e) {
+    console.error("[Config] load failed:", e);
+    showGate("⚠ 無法載入 config.json，請確認檔案存在且可被存取。", true);
+    return;
+  }
+
   initLiffAndGuard();
 });
