@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Body+Foot Snapshot (Clean LS every 5 days)
 // @namespace    http://scriptcat.org/
-// @version      3.6
+// @version      3.7
 // @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
 // @description  每次掃描「身體/腳底」面板；可選全量送主GAS；localStorage 每 5 天自動清除一次；含 span 顏色 class + div 背景 bg-* class
 // @match        https://yongshengchen0615.github.io/master.html
@@ -12,7 +12,7 @@
 (function () {
   "use strict";
 
-  // =========================/////
+  // =========================
   // ✅ 設定區
   // =========================
 
