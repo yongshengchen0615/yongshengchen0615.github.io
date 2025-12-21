@@ -697,3 +697,36 @@ body {
 #loadingState{
   display: none !important;
 }
+
+/* =========================================================
+ * ✅ FIX: 狀態 pill 中文換行造成列高變動（工作中跑版）
+ * - 中文預設可斷行，需要強制 nowrap
+ * - 同時給狀態欄最小寬度，避免被擠爆
+ * ========================================================= */
+
+.status-pill{
+  white-space: nowrap;      /* ✅ 核心：禁止換行 */
+  word-break: keep-all;     /* ✅ 中文不要拆字 */
+  overflow-wrap: normal;    /* ✅ 不要 anywhere */
+  line-height: 1;           /* ✅ 避免行高撐開 */
+}
+
+/* ✅ 也把「狀態欄位 td」設成不換行（雙保險） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3){
+  white-space: nowrap;
+}
+
+/* ✅ 狀態欄最小寬度（避免 pill 被擠到只能換行） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3){
+  min-width: 86px; /* 可調：80~110 */
+}
+
+/* （可選）手機再縮一點，避免整表水平捲動太多 */
+@media (max-width: 420px){
+  .status-table tbody td:nth-child(3),
+  .status-table thead th:nth-child(3){
+    min-width: 76px;
+  }
+}
