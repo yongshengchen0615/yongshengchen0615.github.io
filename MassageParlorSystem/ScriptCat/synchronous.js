@@ -1,16 +1,15 @@
 // ==UserScript==
-// @name         Body+Foot Snapshot (Clean LS every 5 days)
+// @name         Body+Foot Snapshot (No LS Clean)
 // @namespace    http://scriptcat.org/
-// @version      4.1
-// @description  每次掃描「身體/腳底」面板；可選全量送主GAS；localStorage 每 5 天自動清除一次；含 span 顏色 class + div 背景 bg-* class
+// @version      4.3
+// @description  每次掃描「身體/腳底」面板；可選全量送主GAS；含 span 顏色 class + div 背景 bg-* class（已移除 localStorage 清除功能）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        none
 //
-// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
-// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
+// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
+// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
 // ==/UserScript==
-
 
 (function () {
   "use strict";
@@ -26,14 +25,10 @@
   // 掃描間隔
   const INTERVAL_MS = 1000;
 
-  // ✅ localStorage：清除週期（保留，但不再記錄 ready 狀態）
-  const LS_CLEAN_TS_KEY = "__PANELSCAN_CLEAN_TS__";
-  const LS_CLEAN_DAYS = 5; // 每 5 天清一次
-
   // ✅ log 模式：full = 完整 payload；group = 摘要+可展開
   const LOG_MODE = "group"; // "full" | "group"
 
-  console.log("[PanelScan] 🟢 啟動：掃描 + Snapshot（每 5 天清 localStorage）");
+  console.log("[PanelScan] 🟢 啟動：掃描 + Snapshot");
 
   // =========================
   // Utils
@@ -41,35 +36,6 @@
 
   function nowIso() {
     return new Date().toISOString();
-  }
-
-  function maybeCleanLocalStorage() {
-    try {
-      const now = Date.now();
-      const intervalMs = LS_CLEAN_DAYS * 24 * 60 * 60 * 1000;
-      const lastClean = parseInt(localStorage.getItem(LS_CLEAN_TS_KEY) || "0", 10);
-
-      if (!lastClean || now - lastClean >= intervalMs) {
-        // ✅ 清除本腳本相關 key（避免誤刪其他站點資料）
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (!k) continue;
-          // 只刪除你腳本命名空間的 key（可自行擴充）
-          if (k.startsWith("__READY_") || k.startsWith("__PANELSCAN_")) {
-            keysToRemove.push(k);
-          }
-        }
-        keysToRemove.forEach((k) => localStorage.removeItem(k));
-
-        localStorage.setItem(LS_CLEAN_TS_KEY, String(now));
-        console.warn(
-          `[PanelScan] 🧹 localStorage 已清除（超過 ${LS_CLEAN_DAYS} 天），removed=${keysToRemove.length}`
-        );
-      }
-    } catch (e) {
-      console.warn("[PanelScan] localStorage clean failed:", e);
-    }
   }
 
   function getText(el) {
@@ -245,9 +211,6 @@
   }
 
   function start() {
-    // ✅ 每 5 天自動清除一次 localStorage（僅清本腳本 key）
-    maybeCleanLocalStorage();
-
     console.log("[PanelScan] ▶️ start loop", INTERVAL_MS, "ms");
     tick();
     setInterval(tick, INTERVAL_MS);
