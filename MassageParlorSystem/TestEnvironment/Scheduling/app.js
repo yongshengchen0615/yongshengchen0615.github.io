@@ -18,7 +18,11 @@
 
 let EDGE_STATUS_URLS = [
   "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
-  "https://script.google.com/macros/s/AKfycbxUP__mjCCxRVMm-3wY-iQhhsNveKvjUeINsErGUBxsb_Z7wNH-UoXCn6XbmIh-O_--uQ/exec",
+    "https://script.google.com/macros/s/AKfycbxUP__mjCCxRVMm-3wY-iQhhsNveKvjUeINsErGUBxsb_Z7wNH-UoXCn6XbmIh-O_--uQ/exec",
+    "https://script.google.com/macros/s/AKfycbx8IO62rjUCpLUMXQUZAiNavrdCNd16trulkNBRznG22Y56UI3SlCFWuGid-YGPQUB-jg/exec",
+    "https://script.google.com/macros/s/AKfycbxNuKVTcH0-x5ncebfyGESmZSpDgAuRKg7-0vr58co3JZOYIwI0m_Alc3h81CHTYSmY/exec",
+    "https://script.google.com/macros/s/AKfycbwV1zzveF09Cy7ez9HveZsZjMrOr-J6peczREKudm-9GXS6mohkwsbu9lKmU2b49_sV/exec",
+    "https://script.google.com/macros/s/AKfycbzZp_Ly71l3sqMa88WG7AoDqzY0kQQ0fM5tmz_krlZ8qUXglrEJ7WY-17IGreVZj1jV/exec",
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
