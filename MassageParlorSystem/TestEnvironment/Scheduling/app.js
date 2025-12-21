@@ -173,13 +173,15 @@ async function fetchFromEdge_(edgeBase, jitterBust) {
   return { bodyRows, footRows };
 }
 
-/* =========================================================
- * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * - Edge：panel=body/foot
- * - Origin fallback：mode=cache_all/all
- * ========================================================= */
+/**
+ * ✅ 新策略：
+ * 1) 先讀 Edge（分流）試算表 Data_Body/Data_Foot：mode=sheet_all
+ * 2) Edge 失效再讀主站試算表 Data_Body/Data_Foot：mode=sheet_all
+ */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
+
+  // Edge：依照你原本的 sticky reroute + try order
   const startIdx = getStatusEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
@@ -187,11 +189,19 @@ async function fetchStatusAll() {
     const edgeBase = EDGE_STATUS_URLS[idx];
     if (!edgeBase) continue;
 
+    const url = withQuery_(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
+
     try {
-      const data = await fetchFromEdge_(edgeBase, jitterBust);
+      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
+
       resetFailCount_();
-      return data;
+
+      return {
+        bodyRows: Array.isArray(data.body) ? data.body : [],
+        footRows: Array.isArray(data.foot) ? data.foot : [],
+      };
     } catch (e) {
+      // 只有「命中那台」才累計 failcount，達標就 reroute
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
@@ -202,27 +212,20 @@ async function fetchStatusAll() {
     }
   }
 
-  const fallbackCandidates = [
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
-  ];
+  // Origin fallback：也改讀 sheet_all
+  const originUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
+  const data = await fetchJsonWithTimeout_(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
 
-  let lastErr = null;
-  for (const url of fallbackCandidates) {
-    try {
-      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
-      resetFailCount_();
-      return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
-      };
-    } catch (e) {
-      lastErr = e;
-    }
-  }
+  resetFailCount_();
 
-  throw lastErr || new Error("fetchStatusAll failed");
+  return {
+    bodyRows: Array.isArray(data.body) ? data.body : [],
+    footRows: Array.isArray(data.foot) ? data.foot : [],
+  };
 }
+
+
+
 
 /* =========================================================
  * 原本你的設定
