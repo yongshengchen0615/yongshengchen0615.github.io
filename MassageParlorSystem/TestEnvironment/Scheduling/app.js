@@ -1520,7 +1520,7 @@ function startApp() {
   // ✅ 首次刷新（不閃 loading）
   refreshStatus(false);
 
-  const intervalMs = 5 * 1000;
+  const intervalMs = 3 * 1000;
   const jitter = Math.floor(Math.random() * 3000);
 
   if (pollTimer) clearInterval(pollTimer);
