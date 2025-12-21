@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Body+Foot Snapshot (No LS Clean)
+// @name         Body+Foot Snapshot + Ready Event (Change-only)
 // @namespace    http://scriptcat.org/
-// @version      4.3
-// @description  每次掃描「身體/腳底」面板；可選全量送主GAS；含 span 顏色 class + div 背景 bg-* class（已移除 localStorage 清除功能）
+// @version      5.0
+// @description  掃描「身體/腳底」面板；snapshot_v1 改為「變更才送」；偵測 非準備→準備 即刻送 ready_event_v1（小包）以加速 LINE 推播
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        none
@@ -18,17 +18,26 @@
   // ✅ 設定區
   // =========================
 
-  // 你的主GAS（若你還要照舊送全量 snapshot 就保留；不需要可改成空字串）
+  // 主 GAS endpoint（同一支即可，同時收 snapshot_v1 / ready_event_v1）
   const GAS_URL =
     "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
 
   // 掃描間隔
   const INTERVAL_MS = 1000;
 
-  // ✅ log 模式：full = 完整 payload；group = 摘要+可展開
-  const LOG_MODE = "group"; // "full" | "group"
+  // ✅ log 模式：full = 完整 payload；group = 摘要+可展開；off = 不印
+  const LOG_MODE = "group"; // "full" | "group" | "off"
 
-  console.log("[PanelScan] 🟢 啟動：掃描 + Snapshot");
+  // ✅ 是否送 snapshot_v1（保留你的資料管線）
+  const ENABLE_SNAPSHOT = true;
+
+  // ✅ 是否送 ready_event_v1（推播快路徑）
+  const ENABLE_READY_EVENT = true;
+
+  // ✅ ready_event 防抖：同一 masterId 在 N 秒內重複觸發就忽略（避免 UI 抖動造成重送）
+  const READY_EVENT_DEDUP_MS = 3000;
+
+  console.log("[PanelScan] 🟢 啟動：掃描 + change-only snapshot + ready_event");
 
   // =========================
   // Utils
@@ -56,6 +65,36 @@
     const cls = (el.className || "").toString();
     const m = cls.match(/\bbg-[A-Za-z0-9_-]+\b/);
     return m ? m[0] : "";
+  }
+
+  // 簡單 hash（djb2）
+  function hashStr(str) {
+    str = String(str || "");
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) + h) ^ str.charCodeAt(i);
+    }
+    // 轉成無號 32-bit
+    return (h >>> 0).toString(16);
+  }
+
+  function stableRowsForHash(rows) {
+    // 只取穩定欄位，避免順序外的雜訊
+    return (rows || []).map((r) => ({
+      index: r.index ?? "",
+      sort: r.sort ?? "",
+      masterId: r.masterId ?? "",
+      status: r.status ?? "",
+      appointment: r.appointment ?? "",
+      remaining: r.remaining ?? "",
+      colorIndex: r.colorIndex ?? "",
+      colorMaster: r.colorMaster ?? "",
+      colorStatus: r.colorStatus ?? "",
+      bgIndex: r.bgIndex ?? "",
+      bgMaster: r.bgMaster ?? "",
+      bgStatus: r.bgStatus ?? "",
+      bgAppointment: r.bgAppointment ?? "",
+    }));
   }
 
   // =========================
@@ -89,6 +128,8 @@
 
     const colorIndex = getFirstSpanClass(indexCell);
     const colorMaster = getFirstSpanClass(masterCell);
+    // 注意：statusText 是字串，不是 element。原本程式碼這裡會拿錯
+    // 這裡改成用 statusCell 取 span class
     const colorStatus = getFirstSpanClass(statusCell);
 
     const bgIndex = getBgClass(indexCell);
@@ -168,16 +209,77 @@
   // Logging
   // =========================
 
-  function logPayload(ts, bodyRows, footRows, payload) {
+  function logGroup(title, payload) {
+    if (LOG_MODE === "off") return;
     if (LOG_MODE === "full") {
-      console.log("[PanelScan] 📤 snapshot payload =", payload);
+      console.log(title, payload);
       return;
     }
-    console.groupCollapsed(
-      `[PanelScan] 📤 ${ts} body=${bodyRows.length} foot=${footRows.length}`
-    );
+    console.groupCollapsed(title);
     console.log("payload =", payload);
     console.groupEnd();
+  }
+
+  // =========================
+  // Change-only + Ready detect
+  // =========================
+
+  // 上一版 snapshot hash
+  let lastSnapshotHash = "";
+
+  // 狀態記憶：panel::masterId -> status
+  const lastStatus = new Map();
+
+  // ready_event 防重：panel::masterId -> lastSentMs
+  const readySentAt = new Map();
+
+  function statusKey(panel, masterId) {
+    return `${panel}::${masterId}`;
+  }
+
+  function maybeSendReadyEvent(panel, row, payloadTs) {
+    if (!ENABLE_READY_EVENT) return;
+    if (!row || !row.masterId) return;
+
+    const masterId = String(row.masterId || "").trim();
+    if (!masterId) return;
+
+    const k = statusKey(panel, masterId);
+    const prev = lastStatus.get(k) || "";
+
+    // 更新 lastStatus（先更新或後更新都可，這裡採「先判斷後更新」）
+    const nowStatus = String(row.status || "").trim();
+
+    const isReadyTransition = nowStatus === "準備" && prev !== "準備";
+
+    if (isReadyTransition) {
+      const nowMs = Date.now();
+      const lastMs = readySentAt.get(k) || 0;
+      if (nowMs - lastMs < READY_EVENT_DEDUP_MS) {
+        // 防抖：短時間內略過
+      } else {
+        readySentAt.set(k, nowMs);
+
+        const evt = {
+          mode: "ready_event_v1",
+          timestamp: payloadTs,
+          panel: panel, // "body" | "foot"
+          masterId: masterId,
+          status: "準備",
+          index: row.index ?? "",
+          appointment: row.appointment ?? "",
+          remaining: row.remaining ?? "",
+          bgStatus: row.bgStatus ?? "",
+          colorStatus: row.colorStatus ?? "",
+        };
+
+        postJsonNoCors(GAS_URL, evt);
+        logGroup(`[PanelScan] ⚡ ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
+      }
+    }
+
+    // 最後更新狀態
+    lastStatus.set(k, nowStatus);
   }
 
   // =========================
@@ -191,19 +293,41 @@
 
       const ts = nowIso();
 
-      const bodyRows = scanPanel(bodyPanel).map((r) => ({ timestamp: ts, ...r }));
-      const footRows = scanPanel(footPanel).map((r) => ({ timestamp: ts, ...r }));
+      const bodyRowsRaw = scanPanel(bodyPanel);
+      const footRowsRaw = scanPanel(footPanel);
 
-      // ✅ 全量送主GAS snapshot（可關閉 GAS_URL）
-      if (GAS_URL) {
-        const payload = {
-          mode: "snapshot_v1",
-          timestamp: ts,
-          body: bodyRows,
-          foot: footRows,
-        };
-        postJsonNoCors(GAS_URL, payload);
-        logPayload(ts, bodyRows, footRows, payload);
+      // ✅ 先做 ready_event 偵測（用 raw rows 即可，不需要 timestamp 展開）
+      bodyRowsRaw.forEach((r) => maybeSendReadyEvent("body", r, ts));
+      footRowsRaw.forEach((r) => maybeSendReadyEvent("foot", r, ts));
+
+      // ✅ snapshot_v1：改成「變更才送」
+      if (ENABLE_SNAPSHOT && GAS_URL) {
+        const bodyStable = stableRowsForHash(bodyRowsRaw);
+        const footStable = stableRowsForHash(footRowsRaw);
+
+        const snapshotHash = hashStr(JSON.stringify({ body: bodyStable, foot: footStable }));
+
+        if (snapshotHash !== lastSnapshotHash) {
+          lastSnapshotHash = snapshotHash;
+
+          const bodyRows = bodyRowsRaw.map((r) => ({ timestamp: ts, ...r }));
+          const footRows = footRowsRaw.map((r) => ({ timestamp: ts, ...r }));
+
+          const payload = {
+            mode: "snapshot_v1",
+            timestamp: ts,
+            body: bodyRows,
+            foot: footRows,
+          };
+
+          postJsonNoCors(GAS_URL, payload);
+          logGroup(`[PanelScan] 📤 snapshot_changed ${ts} body=${bodyRows.length} foot=${footRows.length}`, payload);
+        } else {
+          // 沒變就不送
+          if (LOG_MODE !== "off") {
+            console.log(`[PanelScan] ⏸ snapshot unchanged (${ts})`);
+          }
+        }
       }
     } catch (e) {
       console.error("[PanelScan] 🔥 tick error:", e);
