@@ -184,6 +184,8 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
  * ✅ 新策略：
  * 1) 先讀 Edge（分流）試算表 Data_Body/Data_Foot：mode=sheet_all
  * 2) Edge 失效再讀主站試算表 Data_Body/Data_Foot：mode=sheet_all
+ *
+ * ✅ 回傳會包含 source：'edge' | 'origin'，用來顯示連線來源
  */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
@@ -211,10 +213,12 @@ async function fetchStatusAll() {
       resetFailCount_();
 
       return {
+        source: "edge",
         bodyRows: body,
         footRows: foot,
       };
     } catch (e) {
+      // 只對「命中那台」做 failcount/reroute（避免過度亂跳）
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
@@ -232,6 +236,7 @@ async function fetchStatusAll() {
   resetFailCount_();
 
   return {
+    source: "origin",
     bodyRows: Array.isArray(data.body) ? data.body : [],
     footRows: Array.isArray(data.foot) ? data.foot : [],
   };
@@ -1023,7 +1028,7 @@ async function refreshStatus(isManual = false) {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    const { bodyRows, footRows } = await fetchStatusAll();
+    const { source, bodyRows, footRows } = await fetchStatusAll();
 
     const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
     const footDecision = decideIncomingRows_("foot", footRows, rawData.foot, isManual);
@@ -1039,7 +1044,9 @@ async function refreshStatus(isManual = false) {
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
-    if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
+    if (connectionStatusEl) {
+      connectionStatusEl.textContent = source === "edge" ? "已連線（分流）" : "已連線（主站）";
+    }
 
     if (anyChanged && lastUpdateEl) {
       const now = new Date();
