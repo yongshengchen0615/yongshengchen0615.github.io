@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Body+Foot Snapshot + Ready Event (Change-only, Faster Tx 2s Snapshot Throttle, No Silent Catch)
+// @name         Body+Foot Snapshot + Ready Event (Change-only, GM_xhr, Throttle 2s, No Silent Catch)
 // @namespace    http://scriptcat.org/
-// @version      5.3
-// @description  掃描「身體/腳底」面板；snapshot_v1 改為「變更才送」+「最多每 2 秒送一次(節流)」；偵測 非準備→準備 即刻送 ready_event_v1（Beacon 優先）以加速 LINE 推播；移除 catch(e){} 靜默吞錯
+// @version      5.3.1
+// @description  掃描「身體/腳底」面板；change-only snapshot + 最多每2秒送一次；非準備→準備 即刻送 ready_event；用 GM_xmlhttpRequest 避開 CSP；不靜默吞錯
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
-// @grant        none
-//
+// @grant        GM_xmlhttpRequest
+// @connect      script.google.com
 // @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
 // @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
 // ==/UserScript==
@@ -14,39 +14,18 @@
 (function () {
   "use strict";
 
-  // =========================
-  // ✅ 設定區
-  // =========================
-
-  // 主 GAS endpoint（同一支即可，同時收 snapshot_v1 / ready_event_v1）
   const GAS_URL =
     "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec";
 
-  // 掃描間隔
   const INTERVAL_MS = 1000;
-
-  // ✅ snapshot 送出節流：最多每 N ms 送一次（你指定 2s）
   const SNAPSHOT_THROTTLE_MS = 2000;
 
-  // ✅ log 模式：full = 完整 payload；group = 摘要+可展開；off = 不印
   const LOG_MODE = "group"; // "full" | "group" | "off"
-
-  // ✅ 是否送 snapshot_v1
   const ENABLE_SNAPSHOT = true;
-
-  // ✅ 是否送 ready_event_v1
   const ENABLE_READY_EVENT = true;
-
-  // ✅ ready_event 防抖：同一 masterId 在 N ms 內重複觸發就忽略
   const READY_EVENT_DEDUP_MS = 3000;
 
-  console.log(
-    "[PanelScan] 🟢 啟動：掃描 + change-only snapshot + ready_event (Beacon) + snapshot throttle 2s + no silent catch"
-  );
-
-  // =========================
-  // Utils
-  // =========================
+  console.log("[PanelScan] 🟢 start (GM_xmlhttpRequest mode)");
 
   function nowIso() {
     return new Date().toISOString();
@@ -57,14 +36,12 @@
     return el.textContent.replace(/\s+/g, "").trim();
   }
 
-  // 抓某格裡面「第一個有 class 的 span」的 className 當顏色標記
   function getFirstSpanClass(el) {
     if (!el) return "";
     const span = el.querySelector("span[class]");
     return span ? span.className.trim() : "";
   }
 
-  // 抓元素 className 裡第一個 bg-xxx（例如 bg-CCBCBCB）
   function getBgClass(el) {
     if (!el) return "";
     const cls = (el.className || "").toString();
@@ -72,7 +49,6 @@
     return m ? m[0] : "";
   }
 
-  // 簡單 hash（djb2）
   function hashStr(str) {
     str = String(str || "");
     let h = 5381;
@@ -83,7 +59,6 @@
   }
 
   function stableRowsForHash(rows) {
-    // 只取穩定欄位，避免順序外的雜訊
     return (rows || []).map((r) => ({
       index: r.index ?? "",
       sort: r.sort ?? "",
@@ -100,10 +75,6 @@
       bgAppointment: r.bgAppointment ?? "",
     }));
   }
-
-  // =========================
-  // Parse / Scan
-  // =========================
 
   function parseRow(row) {
     const cells = row.querySelectorAll(":scope > div");
@@ -122,8 +93,6 @@
     if (!masterText) return null;
 
     let remaining = "";
-
-    // 第三格是純數字 → remaining；status 視為「工作中」
     if (/^-?\d+$/.test(statusText)) {
       remaining = parseInt(statusText, 10);
       statusText = "工作中";
@@ -147,11 +116,9 @@
       status: statusText || "",
       appointment: appointment || "",
       remaining: remaining,
-
       colorIndex,
       colorMaster,
       colorStatus,
-
       bgIndex,
       bgMaster,
       bgStatus,
@@ -172,7 +139,6 @@
     return list;
   }
 
-  // 找「身體」panel（mr-2）
   function findBodyPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.mr-2");
     for (const el of list) {
@@ -182,7 +148,6 @@
     return null;
   }
 
-  // 找「腳底」panel（ml-2）
   function findFootPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.ml-2");
     for (const el of list) {
@@ -193,48 +158,54 @@
   }
 
   // =========================
-  // Network
+  // ✅ Network (GM_xmlhttpRequest)
   // =========================
-
-  function postJsonNoCors(url, payload) {
+  function postJsonGM(url, payload) {
     if (!url) return;
-    fetch(url, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    }).catch((err) => console.error("[PanelScan] ❌ POST(fetch no-cors) 失敗:", err));
+    try {
+      GM_xmlhttpRequest({
+        method: "POST",
+        url,
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        data: JSON.stringify(payload),
+        timeout: 8000,
+        onload: function () {
+          // 不讀 response 也行；但這裡保留可觀測性
+        },
+        onerror: function (err) {
+          console.error("[PanelScan] ❌ GM_xmlhttpRequest POST failed:", err);
+        },
+        ontimeout: function () {
+          console.error("[PanelScan] ❌ GM_xmlhttpRequest POST timeout");
+        },
+      });
+    } catch (e) {
+      console.error("[PanelScan] ❌ GM_xmlhttpRequest exception:", e);
+    }
   }
 
-  // ✅ 優先用 Beacon（更適合 fire-and-forget + 小包）
   function postBeaconFirst(url, payload, tag) {
     if (!url) return;
 
-    // sendBeacon 丟錯（Blob / JSON stringify）要可觀測
+    // 先試 beacon（若 CSP 擋，通常會直接 false 或丟錯）
     try {
       if (navigator && typeof navigator.sendBeacon === "function") {
         const blob = new Blob([JSON.stringify(payload)], {
           type: "text/plain;charset=utf-8",
         });
         const ok = navigator.sendBeacon(url, blob);
-        if (!ok) {
-          console.warn(`[PanelScan] ⚠️ sendBeacon queue failed${tag ? " (" + tag + ")" : ""} → fallback fetch`);
-          postJsonNoCors(url, payload);
-        }
-        return;
+        if (ok) return;
+        console.warn(`[PanelScan] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`);
       }
-      // 沒有 sendBeacon 就 fallback
-      postJsonNoCors(url, payload);
     } catch (e) {
-      console.error(`[PanelScan] ❌ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback fetch`, e);
-      postJsonNoCors(url, payload);
+      console.warn(`[PanelScan] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`, e);
     }
-  }
 
-  // =========================
-  // Logging
-  // =========================
+    // ✅ CSP 最穩 fallback
+    postJsonGM(url, payload);
+  }
 
   function logGroup(title, payload) {
     if (LOG_MODE === "off") return;
@@ -247,22 +218,12 @@
     console.groupEnd();
   }
 
-  // =========================
-  // Change-only + Ready detect
-  // =========================
-
-  // 上一版 snapshot hash（已送出成功視角）
   let lastSnapshotHash = "";
-
-  // Snapshot 節流狀態
   let lastSnapshotSentMs = 0;
-  let pendingSnapshot = null; // {payload, title}
-  let pendingSnapshotHash = ""; // pending 對應的 hash（最新一包）
+  let pendingSnapshot = null;
+  let pendingSnapshotHash = "";
 
-  // 狀態記憶：panel::masterId -> status
   const lastStatus = new Map();
-
-  // ready_event 防重：panel::masterId -> lastSentMs
   const readySentAt = new Map();
 
   function statusKey(panel, masterId) {
@@ -286,15 +247,13 @@
       const nowMs = Date.now();
       const lastMs = readySentAt.get(k) || 0;
 
-      if (nowMs - lastMs < READY_EVENT_DEDUP_MS) {
-        // 防抖：短時間內略過（可選擇印 debug）
-      } else {
+      if (nowMs - lastMs >= READY_EVENT_DEDUP_MS) {
         readySentAt.set(k, nowMs);
 
         const evt = {
           mode: "ready_event_v1",
           timestamp: payloadTs,
-          panel: panel, // "body" | "foot"
+          panel: panel,
           masterId: masterId,
           status: "準備",
           index: row.index ?? "",
@@ -320,16 +279,10 @@
 
     const { payload, title } = pendingSnapshot;
 
-    // NOTE:
-    // - sendBeacon / fetch(no-cors) 都無法確認「伺服器真的成功處理」
-    // - 這裡的「成功」只代表：我們把傳送動作排入/發出。
-    // - 如果你要端到端保證，必須改成可回應的 CORS + ACK 機制（後端配合）。
     postBeaconFirst(GAS_URL, payload, "snapshot");
     logGroup(title, payload);
 
     lastSnapshotSentMs = nowMs;
-
-    // ✅ 視為已送出：把 lastSnapshotHash 前移到「最新 pending 的 hash」
     lastSnapshotHash = pendingSnapshotHash;
 
     pendingSnapshot = null;
@@ -341,14 +294,8 @@
       flushPendingSnapshot(force);
     } catch (e) {
       console.error(`[PanelScan] ❌ flushPendingSnapshot failed (${reason || "unknown"})`, e);
-      // 不要在這裡清 pending / 不要前移 lastSnapshotHash
-      // 讓下一輪 tick 還有機會再送
     }
   }
-
-  // =========================
-  // Main loop
-  // =========================
 
   function tick() {
     try {
@@ -360,11 +307,9 @@
       const bodyRowsRaw = scanPanel(bodyPanel);
       const footRowsRaw = scanPanel(footPanel);
 
-      // ✅ 先做 ready_event 偵測
       bodyRowsRaw.forEach((r) => maybeSendReadyEvent("body", r, ts));
       footRowsRaw.forEach((r) => maybeSendReadyEvent("foot", r, ts));
 
-      // ✅ snapshot_v1：變更才送 + 2s 節流（合併多次變更）
       if (ENABLE_SNAPSHOT && GAS_URL) {
         const bodyStable = stableRowsForHash(bodyRowsRaw);
         const footStable = stableRowsForHash(footRowsRaw);
@@ -388,11 +333,9 @@
           };
           pendingSnapshotHash = snapshotHash;
 
-          // 盡可能送（若未達 2s 會留到下一輪 tick 再送）
           safeFlushPendingSnapshot(false, "tick");
         } else {
           if (LOG_MODE !== "off") console.log(`[PanelScan] ⏸ snapshot unchanged (${ts})`);
-          // 若 pending 存在且時間到，仍要送
           safeFlushPendingSnapshot(false, "tick-unchanged");
         }
       }
@@ -406,7 +349,6 @@
     tick();
     setInterval(tick, INTERVAL_MS);
 
-    // ✅ 頁面要離開時，嘗試強制 flush pending snapshot（不允許靜默吞錯）
     window.addEventListener("pagehide", () => safeFlushPendingSnapshot(true, "pagehide"));
     window.addEventListener("beforeunload", () => safeFlushPendingSnapshot(true, "beforeunload"));
   }
