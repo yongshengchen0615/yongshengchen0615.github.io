@@ -1,10 +1,19 @@
 {
-  "LIFF_ID": "2008669658-CwYIitI1",
-  "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec",
+  "LIFF_ID": "2008735934-sqGIhatI",
+  "_comment_LIFF_ID": "LIFF App ID；用於 liff.init({ liffId })，不正確會無法在 LINE 內取得 userId。",
+
+  "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec",
+  "_comment_USER_MGMT_API_URL": "使用者/權限管理 API；供 check/register/listUsers/getPersonalStatus 使用。",
+
   "TARGET_MASTER_ID": "10",
+  "_comment_TARGET_MASTER_ID": "目標技師編號；用於 Gate(listUsers 找 masterCode) + Edge 查詢(cache_one&masterId=...)；程式會只取數字。",
+
   "EDGE_STATUS_URLS": [
-    "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec"
+    "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec"
+   
   ],
-  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec"
+  "_comment_EDGE_STATUS_URLS": "Edge GAS 清單；狀態讀取只打 Edge：?mode=cache_one&masterId=<TARGET_MASTER_ID>&_cors=1；Promise.any 取最快 ok:true；cache_miss 視為無資料。",
+
+  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec",
+  "_comment_TECH_API_URL": "在 Edge Cache Reader v5 ONLY 版本不使用；若專案其他檔案也沒用，可刪。"
 }

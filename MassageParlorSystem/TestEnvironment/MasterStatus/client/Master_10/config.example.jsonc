@@ -4,12 +4,6 @@
   // 必須與 LINE 官方帳號後台設定一致
   "LIFF_ID": "2008669658-CwYIitI1",
 
-  // 管理員 Users 後台 GAS Web App
-  // 功能：
-  // - check：檢查使用者是否存在、審核狀態
-  // - register：不存在時自動建立（預設待審核）
-  // - 回傳 allowed / audit / displayName 等資訊
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbyBg3w57x-Yw4C6v-SQ9rQazx6n9_VZRDjPKvXJy8WNkv29KPbrd8gHKIu1DFjwstUg/exec",
 
   // 師傅即時狀態 API（TECH）
   // 回傳 body / foot 兩區的師傅狀態
