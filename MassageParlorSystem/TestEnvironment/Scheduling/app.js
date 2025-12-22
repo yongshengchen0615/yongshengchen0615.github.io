@@ -1,9 +1,8 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF Gate + Personal Tools)
-// - config.json: EDGE_STATUS_URLS, FALLBACK_ORIGIN_CACHE_URL, AUTH_API_URL, LIFF_ID
-// - Status source: Edge GAS mode=sheet_all -> { body, foot }
-// - Origin fallback: mode=sheet_all
-// - Personal tools: AUTH_API mode=getPersonalStatus
+// ✅ Fast fix: PersonalTools 3 buttons ALWAYS show when personalStatusEnabled=是
+//    - If link missing -> button stays visible but disabled + tooltip
+// ✅ Also: gate-hidden adds pointer-events none (CSS recommended), but we also guard here.
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -83,10 +82,10 @@ function withQuery_(base, extraQuery) {
 /* =========================================================
  * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
-const STATUS_FETCH_TIMEOUT_MS = 8000; // 6~10 秒
-const EDGE_TRY_MAX = 3; // 最多試幾台（含命中那台）
-const EDGE_FAIL_THRESHOLD = 2; // 命中那台連續失敗幾次後 reroute
-const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // reroute 有效期
+const STATUS_FETCH_TIMEOUT_MS = 8000;
+const EDGE_TRY_MAX = 3;
+const EDGE_FAIL_THRESHOLD = 2;
+const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000;
 
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
@@ -127,13 +126,6 @@ function resetFailCount_() {
   localStorage.removeItem(EDGE_FAIL_KEY);
 }
 
-/**
- * ✅ Edge URL sanitize
- * - 去重
- * - 過濾空字串
- *
- * ⚠️ 注意：不要在載入 config 前呼叫
- */
 function sanitizeEdgeUrls_() {
   const seen = new Set();
   EDGE_STATUS_URLS = (EDGE_STATUS_URLS || [])
@@ -145,9 +137,7 @@ function sanitizeEdgeUrls_() {
       return true;
     });
 
-  if (!EDGE_STATUS_URLS.length) {
-    console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
-  }
+  if (!EDGE_STATUS_URLS.length) console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
 }
 
 function getStatusEdgeIndex_() {
@@ -169,13 +159,8 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
+    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
     const text = await resp.text();
-
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
 
     let json;
@@ -194,10 +179,8 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
 
 /**
  * ✅ 新策略：
- * 1) 先讀 Edge（分流）試算表 Data_Body/Data_Foot：mode=sheet_all
- * 2) Edge 失效再讀主站試算表 Data_Body/Data_Foot：mode=sheet_all
- *
- * ✅ 回傳會包含 source：'edge' | 'origin'，用來顯示連線來源
+ * 1) 先讀 Edge：mode=sheet_all -> { body, foot }
+ * 2) Edge 失效再讀主站：mode=sheet_all
  */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
@@ -210,27 +193,16 @@ async function fetchStatusAll() {
     if (!edgeBase) continue;
 
     const url = withQuery_(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
-
     try {
       const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
-
       const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
 
-      // ✅ 關鍵：Edge sheet_all 偶發雙空，視為失效（避免 UI 被清空）
-      if (body.length === 0 && foot.length === 0) {
-        throw new Error("EDGE_SHEET_EMPTY");
-      }
+      if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
 
       resetFailCount_();
-
-      return {
-        source: "edge",
-        bodyRows: body,
-        footRows: foot,
-      };
+      return { source: "edge", bodyRows: body, footRows: foot };
     } catch (e) {
-      // 只對「命中那台」做 failcount/reroute（避免過度亂跳）
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
         if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
@@ -242,7 +214,6 @@ async function fetchStatusAll() {
     }
   }
 
-  // Origin fallback：也改讀 sheet_all
   const originUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
   const data = await fetchJsonWithTimeout_(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
 
@@ -258,7 +229,6 @@ async function fetchStatusAll() {
 /* =========================================================
  * DOM 取得
  * ========================================================= */
-// 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
@@ -268,7 +238,6 @@ const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading
 
 // Dashboard 用資料
 const rawData = { body: [], foot: [] };
-
 let activePanel = "body";
 let filterMaster = "";
 let filterStatus = "all";
@@ -329,9 +298,11 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
-    ""
-  );
+  chipsEl.innerHTML = [
+    buildChip_("叫班提醒", push),
+    buildChip_("個人狀態", personal),
+    buildChip_("排班表", schedule),
+  ].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -356,6 +327,8 @@ function hideLoadingHint() {
 function showGate(message, isError) {
   if (!gateEl) return;
   gateEl.classList.remove("gate-hidden");
+  // 保險：Gate 出現時一定要可擋點
+  gateEl.style.pointerEvents = "auto";
   gateEl.innerHTML =
     '<div class="gate-message' +
     (isError ? " gate-message-error" : "") +
@@ -364,7 +337,10 @@ function showGate(message, isError) {
     "</p></div>";
 }
 function hideGate() {
-  if (gateEl) gateEl.classList.add("gate-hidden");
+  if (!gateEl) return;
+  gateEl.classList.add("gate-hidden");
+  // ✅ 保險：Gate 隱藏後不要擋點（即使 CSS 忘記加 pointer-events）
+  gateEl.style.pointerEvents = "none";
 }
 function openApp() {
   hideGate();
@@ -402,6 +378,9 @@ function updateUsageBanner(displayName, remainingDays) {
 
 /* =========================================================
  * ✅ Personal Tools（getPersonalStatus）
+ * 目標：三顆按鈕「可見」不再被 display:none 隱藏
+ * - 有連結 => enabled 可點
+ * - 無連結 => disabled 但保留可見 + tooltip
  * ========================================================= */
 async function fetchPersonalStatusRow_(userId) {
   const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
@@ -410,41 +389,6 @@ async function fetchPersonalStatusRow_(userId) {
   return await resp.json();
 }
 
-function showPersonalTools_(manageLiff, personalLink, vacationLink) {
-  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl) return;
-
-  const m = String(manageLiff || "").trim();
-  const p = String(personalLink || "").trim();
-  const v = String(vacationLink || "").trim();
-
-  // ✅ 三個都沒值：整排不顯示
-  if (!m && !p && !v) {
-    personalToolsEl.style.display = "none";
-    return;
-  }
-
-  personalToolsEl.style.display = "flex";
-
-  btnUserManageEl.style.display = m ? "inline-flex" : "none";
-  btnUserManageEl.onclick = () => {
-    if (m) window.location.href = m;
-  };
-
-  btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => {
-    if (p) window.location.href = p;
-  };
-
-  btnVacationEl.style.display = v ? "inline-flex" : "none";
-  btnVacationEl.onclick = () => {
-    if (v) window.location.href = v;
-  };
-}
-function hidePersonalTools_() {
-  if (personalToolsEl) personalToolsEl.style.display = "none";
-}
-
-// ✅ 取第一個非空字串（用來兼容 GAS 欄位名）
 function pickFirstString_(obj, keys) {
   for (const k of keys) {
     const v = obj && obj[k];
@@ -452,6 +396,49 @@ function pickFirstString_(obj, keys) {
     if (s) return s;
   }
   return "";
+}
+
+function setBtnState_(btn, href, fallbackText) {
+  if (!btn) return;
+  const h = String(href || "").trim();
+
+  // ✅ 永遠顯示按鈕
+  btn.style.display = "inline-flex";
+
+  if (h) {
+    btn.disabled = false;
+    btn.style.opacity = "1";
+    btn.style.pointerEvents = "auto";
+    btn.title = "";
+    btn.onclick = () => (window.location.href = h);
+    btn.dataset.href = h;
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = "0.45";
+    btn.style.pointerEvents = "none";
+    btn.title = fallbackText || "尚未設定連結";
+    btn.onclick = null;
+    btn.dataset.href = "";
+  }
+}
+
+function showPersonalToolsAlways_(links) {
+  if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
+
+  // ✅ 整排一定顯示
+  personalToolsEl.style.display = "flex";
+
+  const m = (links && links.manage) || "";
+  const v = (links && links.vacation) || "";
+  const p = (links && links.personal) || "";
+
+  setBtnState_(btnUserManageEl, m, "尚未設定「使用者管理」連結");
+  setBtnState_(btnVacationEl, v, "尚未設定「休假設定」連結");
+  setBtnState_(btnPersonalStatusEl, p, "尚未設定「個人狀態」連結");
+}
+
+function hidePersonalTools_() {
+  if (personalToolsEl) personalToolsEl.style.display = "none";
 }
 
 /* =========================================================
@@ -483,7 +470,9 @@ async function sendDailyFirstMessageFromUser_() {
     if (last === today) return;
 
     const name = String(window.currentDisplayName || "").trim();
-    const text = name ? `【每日首次開啟】${name} 已進入看板（${today}）` : `【每日首次開啟】使用者已進入看板（${today}）`;
+    const text = name
+      ? `【每日首次開啟】${name} 已進入看板（${today}）`
+      : `【每日首次開啟】使用者已進入看板（${today}）`;
 
     await liff.sendMessages([{ type: "text", text }]);
     localStorage.setItem(DAILY_USER_MSG_KEY, today);
@@ -493,16 +482,14 @@ async function sendDailyFirstMessageFromUser_() {
 }
 
 /* =========================================================
- * ✅ 一致策略：腳本貓色（保留自訂色、提高可讀性）
+ * ✅ 色彩與可讀性（腳本貓色）
  * ========================================================= */
 function isLightTheme_() {
   return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
 }
-
 function clamp_(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
-
 function hexToRgb(hex) {
   if (!hex) return null;
   let s = String(hex).replace("#", "").trim();
@@ -514,7 +501,6 @@ function hexToRgb(hex) {
   if ([r, g, b].some((v) => Number.isNaN(v))) return null;
   return { r, g, b };
 }
-
 function normalizeHex6_(maybe) {
   if (!maybe) return null;
   let s = String(maybe).trim();
@@ -533,7 +519,6 @@ function normalizeHex6_(maybe) {
 
   return null;
 }
-
 function parseOpacityToken_(token) {
   if (!token) return null;
   const t = String(token).trim();
@@ -558,7 +543,6 @@ function parseOpacityToken_(token) {
 
   return null;
 }
-
 function parseScriptCatColorV2_(colorStr) {
   if (!colorStr) return { hex: null, opacity: null };
   const tokens = String(colorStr).split(/\s+/).filter(Boolean);
@@ -584,7 +568,6 @@ function parseScriptCatColorV2_(colorStr) {
 
   return { hex, opacity };
 }
-
 function applyReadableTextColor_(el, colorStr) {
   if (!el || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -600,7 +583,6 @@ function applyReadableTextColor_(el, colorStr) {
   el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
   return true;
 }
-
 function applyReadablePillColor_(pillEl, colorStr) {
   if (!pillEl || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -622,13 +604,8 @@ function applyReadablePillColor_(pillEl, colorStr) {
 
   return true;
 }
-
-/* =========================================================
- * ✅ bgIndex/bgMaster/bgStatus：背景色提示（淡色）
- * ========================================================= */
 function applyReadableBgColor_(el, colorStr) {
   if (!el || !colorStr) return false;
-
   const { hex } = parseScriptCatColorV2_(colorStr);
   if (!hex) return false;
 
@@ -639,29 +616,23 @@ function applyReadableBgColor_(el, colorStr) {
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
 }
-
 function pickHex6FromBgToken_(bgToken) {
   const s = String(bgToken || "").trim();
   if (!/^bg-CCBCBCB$/i.test(s)) return null;
   return "#CCBCBC";
 }
-
 function applyBgIndexToOrderCell_(el, bgIndexToken) {
   if (!el) return false;
-
   const hex = pickHex6FromBgToken_(bgIndexToken);
-
   if (!hex) {
     el.style.backgroundColor = "";
     return false;
   }
-
   const rgb = hexToRgb(hex);
   if (!rgb) {
     el.style.backgroundColor = "";
     return false;
   }
-
   const alpha = isLightTheme_() ? 0.1 : 0.16;
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
@@ -686,7 +657,6 @@ function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);
 }
-
 function deriveStatusClass(status, remaining) {
   const s = normalizeText_(status || "");
   const n = Number(remaining);
@@ -697,7 +667,6 @@ function deriveStatusClass(status, remaining) {
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
-
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
@@ -796,7 +765,6 @@ function rowSignature_(r) {
     r.bgAppointment ?? "",
   ].join("|");
 }
-
 function buildStatusSet_(rows) {
   const s = new Set();
   (rows || []).forEach((r) => {
@@ -805,13 +773,11 @@ function buildStatusSet_(rows) {
   });
   return s;
 }
-
 function setEquals_(a, b) {
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;
   return true;
 }
-
 function diffMergePanelRows_(prevRows, incomingRows) {
   const prev = Array.isArray(prevRows) ? prevRows : [];
   const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
@@ -858,12 +824,9 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 }
 
 /* =========================================================
- * ✅ 增量渲染（B-4）
+ * ✅ 增量渲染
  * ========================================================= */
-const rowDomMapByPanel_ = {
-  body: new Map(),
-  foot: new Map(),
-};
+const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
 
 function buildRowKey_(row) {
   return String((row && row.masterId) || "").trim();
@@ -979,7 +942,6 @@ function renderIncremental_(panel) {
   if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
 
   const frag = document.createDocumentFragment();
-
   displayRows.forEach((row, idx) => {
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
@@ -996,7 +958,7 @@ function renderIncremental_(panel) {
 }
 
 /* =========================================================
- * ✅ refresh：自動輪詢不閃 loading + 增量渲染 + 空快照保護
+ * ✅ refresh：輪詢不重疊 + 增量渲染 + 空快照保護
  * ========================================================= */
 let refreshInFlight = false;
 let lastErrToastKey = "";
@@ -1064,9 +1026,7 @@ async function refreshStatus(isManual = false) {
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
-    if (connectionStatusEl) {
-      connectionStatusEl.textContent = source === "edge" ? "已連線（分流）" : "已連線（主站）";
-    }
+    if (connectionStatusEl) connectionStatusEl.textContent = source === "edge" ? "已連線（分流）" : "已連線（主站）";
 
     if (anyChanged && lastUpdateEl) {
       const now = new Date();
@@ -1221,12 +1181,10 @@ function setTheme(theme) {
   localStorage.setItem("dashboardTheme", finalTheme);
   if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
-
 (function initTheme() {
   const saved = localStorage.getItem("dashboardTheme") || "dark";
   setTheme(saved);
 })();
-
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme") || "dark";
@@ -1272,17 +1230,6 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    if (DEBUG) {
-      console.log("[FeatureFlags]", {
-        personalStatusEnabled: result.personalStatusEnabled,
-        scheduleEnabled: result.scheduleEnabled,
-        pushEnabled: result.pushEnabled,
-        remainingDays: result.remainingDays,
-        status: result.status,
-        allowed: result.allowed,
-      });
-    }
-
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
@@ -1293,30 +1240,57 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ 個人狀態工具列（只有 personalStatusEnabled=是 才嘗試抓連結）
+      // ✅ PersonalTools：只要 personalStatusEnabled=是，就「三顆都顯示」
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
+        // 先顯示（禁用狀態），避免「看不到」造成誤判
+        showPersonalToolsAlways_({ manage: "", vacation: "", personal: "" });
+
         try {
           const ps = await fetchPersonalStatusRow_(userId);
-          if (DEBUG) console.log("[getPersonalStatus]", ps);
 
-          // ✅ 放寬：避免後端格式差異導致整排被 hide
-          const ok = ps && (ps.ok === true || ps.success === true || ps.error == null);
+          // 常見包裝：{ok:true, data:{...}} / {row:{...}} / {payload:{...}}
+          const psRow = ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps;
 
-          if (ok) {
-            const manage = pickFirstString_(ps, ["manageLiff", "使用者管理liff", "userManageLiff", "manageLink"]);
-            const pLink = pickFirstString_(ps, ["personalStatusLink", "個人狀態連結", "personalLink", "personalStatusLiff"]);
-            const vLink = pickFirstString_(ps, ["vacationLink", "休假設定連結", "vacationLiff", "vacationUrl"]);
+          const manage = pickFirstString_(psRow, [
+            "manageLiff",
+            "userManageLiff",
+            "manageLink",
+            "使用者管理liff",
+            "使用者管理LIFF",
+            "使用者管理連結",
+          ]);
 
-            if (DEBUG) console.log("[PersonalLinks]", { manage, pLink, vLink });
+          const vacation = pickFirstString_(psRow, [
+            "vacationLink",
+            "vacationLiff",
+            "vacationUrl",
+            "vacationLIFF",
+            "休假設定連結",
+            "休假設定liff",
+            "休假設定LIFF",
+            "休假連結",
+          ]);
 
-            showPersonalTools_(manage, pLink, vLink);
-          } else {
-            hidePersonalTools_();
-          }
+          const personal = pickFirstString_(psRow, [
+            "personalStatusLink",
+            "personalLink",
+            "personalStatusLiff",
+            "personalStatusUrl",
+            "personalStatusLIFF",
+            "個人狀態連結",
+            "個人狀態liff",
+            "個人狀態LIFF",
+          ]);
+
+          showPersonalToolsAlways_({ manage, vacation, personal });
+
+          // ✅ 方便你直接在 console 看
+          window.__personalLinks = { manage, vacation, personal, psRow };
+          console.log("[PersonalLinks]", window.__personalLinks);
         } catch (e) {
           console.warn("[PersonalTools] getPersonalStatus failed:", e);
-          hidePersonalTools_();
+          // 保留可見但禁用狀態
         }
       } else {
         hidePersonalTools_();
@@ -1327,8 +1301,10 @@ async function initLiffAndGuard() {
       return;
     }
 
+    // 非可用狀態
+    hidePersonalTools_();
+
     if (result.status === "approved") {
-      hidePersonalTools_();
       let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
       if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
       if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
@@ -1338,7 +1314,6 @@ async function initLiffAndGuard() {
     }
 
     if (result.status === "pending") {
-      hidePersonalTools_();
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
@@ -1350,7 +1325,6 @@ async function initLiffAndGuard() {
       return;
     }
 
-    hidePersonalTools_();
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
