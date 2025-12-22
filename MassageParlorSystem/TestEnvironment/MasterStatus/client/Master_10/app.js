@@ -1,10 +1,10 @@
 // =========================================================
-// app.js (Final - Edge Cache Reader v5 ONLY)
-// - Tech status: ONLY call Edge GAS ?mode=cache_one&masterId=TARGET_MASTER_ID
-// - Edge internally reads Cache sheet key=read_all_v1 and finds masterId -> {body, foot}
-// - cache_miss is treated as "no data" (NO throw / NO spam toast)
-// - fetch timeout + retry + Promise.any polyfill
-// - polling: single in-flight + pause on background
+// app.js (Integrated - Faster Bootstrap + Smart Edge Winner + Prefetch + Dynamic Polling)
+// ✅ Speed improvements integrated:
+// 1) Gate parallelization (ensureUserExists + listUsers in parallel)
+// 2) Tech status prefetch right after config load (no UI update until allowed)
+// 3) Edge winner cache: first race -> remember fastest edge for 5 min -> then single-hit polling
+// 4) Dynamic polling: first 60s @ 5s, then 15s; pauses on background; single in-flight
 // =========================================================
 
 /** ================================
@@ -263,7 +263,7 @@ if (typeof Promise.any !== "function") {
   };
 }
 
-// fetch any edge: take fastest "ok:true". ok:false also treated as reject (to let other edges win)
+// fetch any edge: take fastest "ok:true". ok:false treated as reject (let other edges win)
 async function fetchAnyJson_(urls, opts = {}) {
   const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
   if (!list.length) throw new Error("fetchAnyJson_: empty urls");
@@ -389,6 +389,16 @@ async function ensureUserExists_(userId, displayName) {
 /** ================================
  * 9) Target Tech Gate (listUsers)
  * ================================ */
+async function getTargetTechContextFromUsers_(users) {
+  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+  const hit = (Array.isArray(users) ? users : []).find((u) => normalizeDigits(u?.masterCode) === target);
+  return {
+    _ts: Date.now(),
+    techRow: hit || null,
+    ownerUserId: String(hit?.userId || "").trim(),
+  };
+}
+
 async function getTargetTechContext_() {
   const cacheKey = "targetTechCtx:v1:" + normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
   const cached = sessionStorage.getItem(cacheKey);
@@ -402,15 +412,7 @@ async function getTargetTechContext_() {
   const json = await userMgmtGet_({ mode: "listUsers" });
   const users = Array.isArray(json?.users) ? json.users : [];
 
-  const target = normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
-  const hit = users.find((u) => normalizeDigits(u.masterCode) === target);
-
-  const ctx = {
-    _ts: Date.now(),
-    techRow: hit || null,
-    ownerUserId: String(hit?.userId || "").trim(),
-  };
-
+  const ctx = await getTargetTechContextFromUsers_(users);
   sessionStorage.setItem(cacheKey, JSON.stringify(ctx));
   return ctx;
 }
@@ -494,7 +496,7 @@ function auditBlockMessage_(auditRaw) {
 }
 
 /** ================================
- * 12) Gate Orchestration
+ * 12) Gate Orchestration (FASTER: parallelize where safe)
  * ================================ */
 async function checkAccessOrBlock_() {
   const auth = await getUserIdFromLiff_();
@@ -503,9 +505,16 @@ async function checkAccessOrBlock_() {
   const userId = String(auth.userId || "").trim();
   const displayName = String(auth.profile?.displayName || "").trim();
 
+  // Kick off in parallel:
+  // - ensureUserExists (needed for allowed/audit/displayName)
+  // - listUsers (needed for target tech mapping)
+  const pEnsure = ensureUserExists_(userId, displayName);
+  const pListUsers = userMgmtGet_({ mode: "listUsers" });
+
+  // 1) Decide user allowed ASAP (don’t wait listUsers if blocked)
   let profileJson;
   try {
-    profileJson = await ensureUserExists_(userId, displayName);
+    profileJson = await pEnsure;
   } catch (e) {
     console.error(e);
     toast("權限檢查失敗：" + String(e.message || e));
@@ -523,9 +532,16 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
+  // 2) Resolve listUsers -> target tech row
   let ctx;
   try {
-    ctx = await getTargetTechContext_();
+    const json = await pListUsers;
+    const users = Array.isArray(json?.users) ? json.users : [];
+    ctx = await getTargetTechContextFromUsers_(users);
+
+    // Store cache for later calls
+    const cacheKey = "targetTechCtx:v1:" + normalizeDigits(APP_CONFIG.TARGET_MASTER_ID);
+    sessionStorage.setItem(cacheKey, JSON.stringify(ctx));
   } catch (e) {
     console.error(e);
     showDenied_({ denyReason: "check_failed" });
@@ -553,6 +569,7 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
+  // 3) Hydrate ADMIN/BOOKING URLs from PersonalStatus
   try {
     await hydrateUrlsFromPersonalStatus_(ctx.ownerUserId);
   } catch (e) {
@@ -562,6 +579,7 @@ async function checkAccessOrBlock_() {
     return { allowed: false };
   }
 
+  // 4) Check ADMIN_DB audit
   try {
     const c1 = await adminDbGet_({ mode: "check", userId });
 
@@ -608,7 +626,7 @@ async function checkAccessOrBlock_() {
 }
 
 /** ================================
- * 13) Tech Status (Edge cache_one only)
+ * 13) Tech Status (Edge cache_one only, SMART winner cache + prefetch)
  * ================================ */
 function classifyStatus(text) {
   const t = String(text || "");
@@ -647,7 +665,7 @@ function updateStatusUI_(kind, data) {
     apptEl._v = nextAppt;
   }
 
-  const nextRem = data.remaining === 0 ? "0" : (String(data.remaining || "").trim() || "-");
+  const nextRem = data.remaining === 0 ? "0" : String(data.remaining || "").trim() || "-";
   if (remEl._v !== nextRem) {
     remEl.textContent = nextRem;
     remEl._v = nextRem;
@@ -672,19 +690,65 @@ function buildTechApiUrlCandidates_() {
   return urls;
 }
 
-let techPollInFlight = false;
-let techPollTimer = null;
+// ---- Winner cache (reduce fan-out) ----
+let EDGE_WINNER = null;
+let EDGE_WINNER_TS = 0;
+const EDGE_WINNER_TTL_MS = 5 * 60 * 1000; // 5 min
 
-async function loadTechStatus_() {
-  const urls = buildTechApiUrlCandidates_();
-  if (!urls.length) throw new Error("EDGE_STATUS_URLS is empty");
+function getEdgeCandidates_() {
+  const all = buildTechApiUrlCandidates_();
+  if (!all.length) return [];
 
-  let json = null;
+  const now = Date.now();
+  const winnerValid = EDGE_WINNER && now - EDGE_WINNER_TS < EDGE_WINNER_TTL_MS;
 
+  if (winnerValid) return [EDGE_WINNER];
+  return all;
+}
+
+async function fetchTechStatusSmartJson_() {
+  const all = buildTechApiUrlCandidates_();
+  const prefer = getEdgeCandidates_();
+  if (!prefer.length) throw new Error("EDGE_STATUS_URLS is empty");
+
+  // 1) try preferred (usually single winner)
   try {
-    // fastest edge wins
-    const got = await fetchAnyJson_(urls, { timeoutMs: 5200 });
-    json = got?.json || null;
+    const got = await fetchAnyJson_(prefer, { timeoutMs: 3200 });
+    EDGE_WINNER = got.url;
+    EDGE_WINNER_TS = Date.now();
+    return got.json;
+  } catch {
+    // 2) fallback to full race
+    const got = await fetchAnyJson_(all, { timeoutMs: 5200 });
+    EDGE_WINNER = got.url;
+    EDGE_WINNER_TS = Date.now();
+    return got.json;
+  }
+}
+
+function parseEdgeTechJson_(json) {
+  // ok:false includes cache_miss -> treat as no data (silent)
+  if (!json || json.ok === false) {
+    const err = String(json?.error || "");
+    if (err === "cache_miss") return { body: null, foot: null, cacheMiss: true };
+    return { body: null, foot: null, error: err || "Edge ok=false" };
+  }
+
+  // Edge cache_one format: { ok:true, masterId, body:{}, foot:{...} }
+  const body = json.body && !Array.isArray(json.body) ? json.body : null;
+  const foot = json.foot && !Array.isArray(json.foot) ? json.foot : null;
+  return { body, foot };
+}
+
+async function loadTechStatusData_() {
+  const json = await fetchTechStatusSmartJson_();
+  return parseEdgeTechJson_(json);
+}
+
+async function loadTechStatusAndRender_() {
+  let data;
+  try {
+    data = await loadTechStatusData_();
   } catch (e) {
     console.warn("[TECH] all edges failed", e);
     updateStatusUI_("body", null);
@@ -692,49 +756,115 @@ async function loadTechStatus_() {
     return;
   }
 
-  // ok:false includes cache_miss -> treat as no data (silent)
-  if (!json || json.ok === false) {
-    const err = String(json?.error || "");
-    if (err === "cache_miss") {
-      updateStatusUI_("body", null);
-      updateStatusUI_("foot", null);
-      return;
-    }
-    throw new Error(err || "Edge ok=false");
+  if (data?.cacheMiss) {
+    updateStatusUI_("body", null);
+    updateStatusUI_("foot", null);
+    return;
   }
 
-  // Edge cache_one format: { ok:true, masterId, body:{}, foot:{} }
-  const body = json.body && !Array.isArray(json.body) ? json.body : null;
-  const foot = json.foot && !Array.isArray(json.foot) ? json.foot : null;
+  if (data?.error) {
+    throw new Error(data.error);
+  }
 
-  updateStatusUI_("body", body);
-  updateStatusUI_("foot", foot);
+  updateStatusUI_("body", data.body);
+  updateStatusUI_("foot", data.foot);
+}
+
+// ---- Tech prefetch (start early, apply after allowed) ----
+let TECH_PREFETCH_PROMISE = null;
+function startTechPrefetch_() {
+  // Only once
+  if (TECH_PREFETCH_PROMISE) return;
+  TECH_PREFETCH_PROMISE = (async () => {
+    try {
+      return await loadTechStatusData_();
+    } catch (e) {
+      return { body: null, foot: null, error: String(e?.message || e) };
+    }
+  })();
+}
+
+async function applyTechPrefetchIfReady_() {
+  if (!TECH_PREFETCH_PROMISE) return false;
+  const data = await TECH_PREFETCH_PROMISE;
+
+  if (data?.cacheMiss) {
+    updateStatusUI_("body", null);
+    updateStatusUI_("foot", null);
+    return true;
+  }
+  if (data?.error) {
+    // don’t toast here; bootstrap will handle later if needed
+    updateStatusUI_("body", null);
+    updateStatusUI_("foot", null);
+    return true;
+  }
+
+  updateStatusUI_("body", data.body);
+  updateStatusUI_("foot", data.foot);
+  return true;
+}
+
+// ---- Dynamic polling (fast then slow) ----
+let techPollInFlight = false;
+let techPollTimer = null;
+let techPollStartAt = 0;
+
+function computeTechPollDelayMs_(elapsedMs) {
+  // First 60s: 5s (faster perceived freshness)
+  if (elapsedMs < 60_000) return 5000;
+  // After: 15s (save traffic / more stable)
+  return 15000;
+}
+
+function stopTechPolling_() {
+  if (techPollTimer) clearTimeout(techPollTimer);
+  techPollTimer = null;
 }
 
 function startTechPolling_() {
+  stopTechPolling_();
+  techPollStartAt = Date.now();
+
   const tick = async () => {
-    if (document.hidden) return;
-    if (techPollInFlight) return;
+    if (document.hidden) {
+      // reschedule when visible; keep light
+      scheduleNext_();
+      return;
+    }
+    if (techPollInFlight) {
+      scheduleNext_();
+      return;
+    }
 
     techPollInFlight = true;
     try {
-      await loadTechStatus_();
+      await loadTechStatusAndRender_();
     } catch (e) {
       console.error(e);
       const msg = String(e?.message || e);
       if (!msg.includes("cache_miss")) toast("師傅狀態更新失敗：" + msg);
     } finally {
       techPollInFlight = false;
+      scheduleNext_();
     }
   };
 
+  const scheduleNext_ = () => {
+    stopTechPolling_();
+    const elapsed = Date.now() - techPollStartAt;
+    const delay = computeTechPollDelayMs_(elapsed);
+    techPollTimer = setTimeout(tick, delay);
+  };
+
+  // run now
   tick();
 
-  if (techPollTimer) clearInterval(techPollTimer);
-  techPollTimer = setInterval(tick, 10000);
-
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) tick();
+    if (!document.hidden) {
+      // immediate refresh on return
+      tick();
+    }
   });
 }
 
@@ -934,30 +1064,50 @@ async function loadBizConfig_() {
 }
 
 /** ================================
- * 15) Bootstrap
+ * 15) Bootstrap (FASTER: config -> prefetch -> gate -> show -> apply prefetch -> load rest)
  * ================================ */
 async function bootstrap_() {
   cacheDom_();
   initTheme_();
   bindCalendarNav_();
 
+  // 1) Load config
   await loadConfig_();
 
   if (DOM.techMasterId) DOM.techMasterId.textContent = APP_CONFIG.TARGET_MASTER_ID;
 
+  // 2) Start tech prefetch ASAP (does NOT touch UI yet)
+  startTechPrefetch_();
+
+  // 3) Gate
   const gate = await checkAccessOrBlock_();
   if (!gate.allowed) return;
 
+  // 4) Show app now
   showApp_();
 
+  // 5) Apply tech prefetch immediately if ready; if not ready, load once
   try {
-    await Promise.all([loadTechStatus_(), loadBizConfig_()]);
+    const applied = await applyTechPrefetchIfReady_();
+    if (!applied) {
+      await loadTechStatusAndRender_();
+    }
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);
-    if (!msg.includes("cache_miss")) toast("初始化資料載入失敗：" + msg);
+    if (!msg.includes("cache_miss")) toast("師傅狀態載入失敗：" + msg);
   }
 
+  // 6) Load calendar (can run after showApp)
+  try {
+    await loadBizConfig_();
+  } catch (e) {
+    console.error(e);
+    const msg = String(e?.message || e);
+    toast("日曆載入失敗：" + msg);
+  }
+
+  // 7) Start polling (dynamic)
   startTechPolling_();
 }
 
@@ -971,6 +1121,6 @@ window.onload = () => {
 
 /*
 config.json 必要：
-- EDGE_STATUS_URLS: ["https://script.google.com/macros/s/EDGE_1/exec", ...]  (6 個 Edge)
-- (不需要 TECH_API_URL)
+- EDGE_STATUS_URLS: ["https://script.google.com/macros/s/EDGE_1/exec", ...]
+- LIFF_ID, USER_MGMT_API_URL, TARGET_MASTER_ID
 */
