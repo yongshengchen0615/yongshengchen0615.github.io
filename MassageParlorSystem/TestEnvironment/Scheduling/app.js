@@ -1,8 +1,12 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF Gate + Personal Tools)
-// ✅ Fast fix: PersonalTools 3 buttons ALWAYS show when personalStatusEnabled=是
-//    - If link missing -> button stays visible but disabled + tooltip
-// ✅ Also: gate-hidden adds pointer-events none (CSS recommended), but we also guard here.
+// ✅ Personal Tools FINAL LOGIC (per your spec)
+// - personalStatusEnabled === "是"  -> 3 buttons ALL visible + usable
+// - Click mapping (PersonalStatus row):
+//   使用者管理 -> 使用者管理liff
+//   休假設定   -> 休假設定連結
+//   個人狀態   -> 個人狀態連結
+// - If any link missing: still show buttons, but click will console.error (no silent hide)
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -19,29 +23,16 @@
 })();
 
 /* =========================================================
- * ✅ Debug switch
- * ========================================================= */
-const DEBUG = false;
-
-/* =========================================================
  * ✅ Config.json 讀取（取代硬寫 URL / LIFF_ID）
  * ========================================================= */
+
 const CONFIG_JSON_URL = "./config.json";
 
-// 先給預設值（若 config 失敗，你要不要 fallback 由 boot 決定）
 let EDGE_STATUS_URLS = [];
 let FALLBACK_ORIGIN_CACHE_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
 
-/**
- * 載入 config.json 並套用到全域設定
- * 必填：
- * - EDGE_STATUS_URLS (array)
- * - FALLBACK_ORIGIN_CACHE_URL (string)
- * - AUTH_API_URL (string)
- * - LIFF_ID (string)
- */
 async function loadConfigJson_() {
   const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
@@ -82,6 +73,7 @@ function withQuery_(base, extraQuery) {
 /* =========================================================
  * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
+
 const STATUS_FETCH_TIMEOUT_MS = 8000;
 const EDGE_TRY_MAX = 3;
 const EDGE_FAIL_THRESHOLD = 2;
@@ -159,8 +151,13 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    const resp = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
     const text = await resp.text();
+
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
 
     let json;
@@ -179,8 +176,8 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
 
 /**
  * ✅ 新策略：
- * 1) 先讀 Edge：mode=sheet_all -> { body, foot }
- * 2) Edge 失效再讀主站：mode=sheet_all
+ * 1) Edge: mode=sheet_all
+ * 2) Origin fallback: mode=sheet_all
  */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
@@ -193,15 +190,22 @@ async function fetchStatusAll() {
     if (!edgeBase) continue;
 
     const url = withQuery_(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
+
     try {
       const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
+
       const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
 
       if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
 
       resetFailCount_();
-      return { source: "edge", bodyRows: body, footRows: foot };
+
+      return {
+        source: "edge",
+        bodyRows: body,
+        footRows: foot,
+      };
     } catch (e) {
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
@@ -210,7 +214,6 @@ async function fetchStatusAll() {
           setOverrideEdgeIndex_(nextIdx);
         }
       }
-      if (DEBUG) console.warn("[EdgeFail]", idx, String(e && e.message ? e.message : e));
     }
   }
 
@@ -227,8 +230,9 @@ async function fetchStatusAll() {
 }
 
 /* =========================================================
- * DOM 取得
+ * DOM
  * ========================================================= */
+
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
@@ -236,7 +240,7 @@ const appRootEl = document.getElementById("appRoot");
 const topLoadingEl = document.getElementById("topLoading");
 const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading-text") : null;
 
-// Dashboard 用資料
+// Dashboard data
 const rawData = { body: [], foot: [] };
 let activePanel = "body";
 let filterMaster = "";
@@ -257,18 +261,18 @@ const loadingStateEl = document.getElementById("loadingState");
 const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
-// 🔔 使用者名稱 + 剩餘天數橫幅 DOM
+// 🔔 Usage banner
 const usageBannerEl = document.getElementById("usageBanner");
 const usageBannerTextEl = document.getElementById("usageBannerText");
 
-// ✅ 個人狀態快捷按鈕 DOM
+// ✅ Personal Tools DOM
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
 const btnVacationEl = document.getElementById("btnVacation");
 
 /* =========================================================
- * ✅ 功能提示 chip
+ * ✅ Feature banner
  * ========================================================= */
 let featureState = {
   pushEnabled: "否",
@@ -298,11 +302,9 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [
-    buildChip_("叫班提醒", push),
-    buildChip_("個人狀態", personal),
-    buildChip_("排班表", schedule),
-  ].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+    ""
+  );
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -327,7 +329,6 @@ function hideLoadingHint() {
 function showGate(message, isError) {
   if (!gateEl) return;
   gateEl.classList.remove("gate-hidden");
-  // 保險：Gate 出現時一定要可擋點
   gateEl.style.pointerEvents = "auto";
   gateEl.innerHTML =
     '<div class="gate-message' +
@@ -339,7 +340,7 @@ function showGate(message, isError) {
 function hideGate() {
   if (!gateEl) return;
   gateEl.classList.add("gate-hidden");
-  // ✅ 保險：Gate 隱藏後不要擋點（即使 CSS 忘記加 pointer-events）
+  // ✅ 保險：避免透明 gate 擋點
   gateEl.style.pointerEvents = "none";
 }
 function openApp() {
@@ -377,10 +378,7 @@ function updateUsageBanner(displayName, remainingDays) {
 }
 
 /* =========================================================
- * ✅ Personal Tools（getPersonalStatus）
- * 目標：三顆按鈕「可見」不再被 display:none 隱藏
- * - 有連結 => enabled 可點
- * - 無連結 => disabled 但保留可見 + tooltip
+ * ✅ Personal Tools FINAL (per your spec)
  * ========================================================= */
 async function fetchPersonalStatusRow_(userId) {
   const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
@@ -389,52 +387,36 @@ async function fetchPersonalStatusRow_(userId) {
   return await resp.json();
 }
 
-function pickFirstString_(obj, keys) {
-  for (const k of keys) {
-    const v = obj && obj[k];
-    const s = String(v || "").trim();
-    if (s) return s;
-  }
-  return "";
-}
-
-function setBtnState_(btn, href, fallbackText) {
-  if (!btn) return;
-  const h = String(href || "").trim();
-
-  // ✅ 永遠顯示按鈕
-  btn.style.display = "inline-flex";
-
-  if (h) {
-    btn.disabled = false;
-    btn.style.opacity = "1";
-    btn.style.pointerEvents = "auto";
-    btn.title = "";
-    btn.onclick = () => (window.location.href = h);
-    btn.dataset.href = h;
-  } else {
-    btn.disabled = true;
-    btn.style.opacity = "0.45";
-    btn.style.pointerEvents = "none";
-    btn.title = fallbackText || "尚未設定連結";
-    btn.onclick = null;
-    btn.dataset.href = "";
-  }
-}
-
-function showPersonalToolsAlways_(links) {
+function showPersonalToolsFinal_(psRow) {
   if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
 
-  // ✅ 整排一定顯示
+  // ✅ 只要 personalStatusEnabled=是，三顆「必定顯示」
   personalToolsEl.style.display = "flex";
+  btnUserManageEl.style.display = "inline-flex";
+  btnVacationEl.style.display = "inline-flex";
+  btnPersonalStatusEl.style.display = "inline-flex";
 
-  const m = (links && links.manage) || "";
-  const v = (links && links.vacation) || "";
-  const p = (links && links.personal) || "";
+  // ✅ 依你的欄位名稱取值（可加相容欄位，但優先用這三個）
+  const manage = String((psRow && psRow["使用者管理liff"]) || "").trim();
+  const vacation = String((psRow && psRow["休假設定連結"]) || "").trim();
+  const personal = String((psRow && psRow["個人狀態連結"]) || "").trim();
 
-  setBtnState_(btnUserManageEl, m, "尚未設定「使用者管理」連結");
-  setBtnState_(btnVacationEl, v, "尚未設定「休假設定」連結");
-  setBtnState_(btnPersonalStatusEl, p, "尚未設定「個人狀態」連結");
+  // ✅ 點擊：直接跳對應連結（若缺就明確噴錯，不做隱藏）
+  btnUserManageEl.onclick = () => {
+    if (!manage) return console.error("PersonalStatus 缺少欄位：使用者管理liff", psRow);
+    window.location.href = manage;
+  };
+  btnVacationEl.onclick = () => {
+    if (!vacation) return console.error("PersonalStatus 缺少欄位：休假設定連結", psRow);
+    window.location.href = vacation;
+  };
+  btnPersonalStatusEl.onclick = () => {
+    if (!personal) return console.error("PersonalStatus 缺少欄位：個人狀態連結", psRow);
+    window.location.href = personal;
+  };
+
+  // Debug 快速檢查
+  window.__personalLinks = { manage, vacation, personal, psRow };
 }
 
 function hidePersonalTools_() {
@@ -470,9 +452,7 @@ async function sendDailyFirstMessageFromUser_() {
     if (last === today) return;
 
     const name = String(window.currentDisplayName || "").trim();
-    const text = name
-      ? `【每日首次開啟】${name} 已進入看板（${today}）`
-      : `【每日首次開啟】使用者已進入看板（${today}）`;
+    const text = name ? `【每日首次開啟】${name} 已進入看板（${today}）` : `【每日首次開啟】使用者已進入看板（${today}）`;
 
     await liff.sendMessages([{ type: "text", text }]);
     localStorage.setItem(DAILY_USER_MSG_KEY, today);
@@ -482,164 +462,7 @@ async function sendDailyFirstMessageFromUser_() {
 }
 
 /* =========================================================
- * ✅ 色彩與可讀性（腳本貓色）
- * ========================================================= */
-function isLightTheme_() {
-  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
-}
-function clamp_(v, a, b) {
-  return Math.max(a, Math.min(b, v));
-}
-function hexToRgb(hex) {
-  if (!hex) return null;
-  let s = String(hex).replace("#", "").trim();
-  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
-  if (s.length !== 6) return null;
-  const r = parseInt(s.slice(0, 2), 16);
-  const g = parseInt(s.slice(2, 4), 16);
-  const b = parseInt(s.slice(4, 6), 16);
-  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
-  return { r, g, b };
-}
-function normalizeHex6_(maybe) {
-  if (!maybe) return null;
-  let s = String(maybe).trim();
-
-  const mBracket = s.match(/text-\[#([0-9a-fA-F]{6})\]/);
-  if (mBracket) return "#" + mBracket[1];
-
-  const mHash = s.match(/#([0-9a-fA-F]{6})/);
-  if (mHash) return "#" + mHash[1];
-
-  const mC = s.match(/(?:^|text-)(?:C)?([0-9a-fA-F]{6})$/);
-  if (mC) return "#" + mC[1];
-
-  const mIn = s.match(/text-C([0-9a-fA-F]{6})/);
-  if (mIn) return "#" + mIn[1];
-
-  return null;
-}
-function parseOpacityToken_(token) {
-  if (!token) return null;
-  const t = String(token).trim();
-
-  let m = t.match(/(?:text-opacity-|opacity-)(\d{1,3})/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
-  }
-
-  m = t.match(/\/(\d{1,3})$/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
-  }
-
-  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
-  }
-
-  return null;
-}
-function parseScriptCatColorV2_(colorStr) {
-  if (!colorStr) return { hex: null, opacity: null };
-  const tokens = String(colorStr).split(/\s+/).filter(Boolean);
-
-  let hex = null;
-  let opacity = null;
-
-  for (const tk of tokens) {
-    if (!hex) {
-      const h = normalizeHex6_(tk);
-      if (h) hex = h;
-    }
-    if (opacity == null) {
-      const o = parseOpacityToken_(tk);
-      if (o != null) opacity = o;
-    }
-  }
-
-  if (!hex) {
-    const h = normalizeHex6_(String(colorStr));
-    if (h) hex = h;
-  }
-
-  return { hex, opacity };
-}
-function applyReadableTextColor_(el, colorStr) {
-  if (!el || !colorStr) return false;
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const minAlpha = isLightTheme_() ? 0.8 : 0.65;
-  let a = opacity == null ? 1 : opacity;
-  a = clamp_(a, minAlpha, 1);
-
-  el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
-  return true;
-}
-function applyReadablePillColor_(pillEl, colorStr) {
-  if (!pillEl || !colorStr) return false;
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
-  let aText = opacity == null ? 1 : opacity;
-  aText = clamp_(aText, minAlpha, 1);
-  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
-
-  const aBg = isLightTheme_() ? 0.1 : 0.16;
-  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
-
-  const aBd = isLightTheme_() ? 0.25 : 0.35;
-  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
-
-  return true;
-}
-function applyReadableBgColor_(el, colorStr) {
-  if (!el || !colorStr) return false;
-  const { hex } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const alpha = isLightTheme_() ? 0.1 : 0.16;
-  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
-  return true;
-}
-function pickHex6FromBgToken_(bgToken) {
-  const s = String(bgToken || "").trim();
-  if (!/^bg-CCBCBCB$/i.test(s)) return null;
-  return "#CCBCBC";
-}
-function applyBgIndexToOrderCell_(el, bgIndexToken) {
-  if (!el) return false;
-  const hex = pickHex6FromBgToken_(bgIndexToken);
-  if (!hex) {
-    el.style.backgroundColor = "";
-    return false;
-  }
-  const rgb = hexToRgb(hex);
-  if (!rgb) {
-    el.style.backgroundColor = "";
-    return false;
-  }
-  const alpha = isLightTheme_() ? 0.1 : 0.16;
-  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
-  return true;
-}
-
-/* =========================================================
- * ✅ 字串清洗
+ * ✅ 字串清洗 + 狀態映射
  * ========================================================= */
 function normalizeText_(s) {
   return String(s ?? "")
@@ -649,10 +472,6 @@ function normalizeText_(s) {
     .replace(/\n+/g, " ")
     .trim();
 }
-
-/* =========================================================
- * Render helpers
- * ========================================================= */
 function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);
@@ -693,6 +512,9 @@ function mapRowsToDisplay(rows) {
   });
 }
 
+/* =========================================================
+ * Filter options
+ * ========================================================= */
 function rebuildStatusFilterOptions() {
   if (!filterStatusSelect) return;
 
@@ -745,7 +567,7 @@ function applyFilters(list) {
 }
 
 /* =========================================================
- * ✅ Panel Diff：只更新有變的資料（不全量覆寫 rawData）
+ * ✅ Panel Diff
  * ========================================================= */
 function rowSignature_(r) {
   if (!r) return "";
@@ -824,9 +646,12 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 }
 
 /* =========================================================
- * ✅ 增量渲染
+ * ✅ Incremental render
  * ========================================================= */
-const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
+const rowDomMapByPanel_ = {
+  body: new Map(),
+  foot: new Map(),
+};
 
 function buildRowKey_(row) {
   return String((row && row.masterId) || "").trim();
@@ -874,25 +699,11 @@ function patchRowDom_(tr, row, orderText) {
   const tdRemaining = tds[4];
 
   tdOrder.textContent = orderText;
-  tdOrder.style.backgroundColor = "";
-  tdOrder.style.color = "";
-  if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
-  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
-
   tdMaster.textContent = row.masterId || "";
-  tdMaster.style.backgroundColor = "";
-  tdMaster.style.color = "";
-  if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
-  if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
 
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
-  statusSpan.style.background = "";
-  statusSpan.style.border = "";
-  statusSpan.style.color = "";
-  if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
-  if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
   statusSpan.textContent = row.status || "";
   tdStatus.appendChild(statusSpan);
 
@@ -942,6 +753,7 @@ function renderIncremental_(panel) {
   if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
 
   const frag = document.createDocumentFragment();
+
   displayRows.forEach((row, idx) => {
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
@@ -958,15 +770,9 @@ function renderIncremental_(panel) {
 }
 
 /* =========================================================
- * ✅ refresh：輪詢不重疊 + 增量渲染 + 空快照保護
+ * ✅ refresh：輪詢不重疊 + 空快照保護
  * ========================================================= */
 let refreshInFlight = false;
-let lastErrToastKey = "";
-
-function shortErr_(err) {
-  const s = String((err && err.message) || err || "").replace(/\s+/g, " ").trim();
-  return s.length > 140 ? s.slice(0, 140) + "…" : s;
-}
 
 const EMPTY_ACCEPT_AFTER_N = 2;
 const emptyStreak_ = { body: 0, foot: 0 };
@@ -977,27 +783,27 @@ function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
 
   if (isManual) {
     emptyStreak_[panel] = 0;
-    return { rows: inc, accepted: true, reason: "manual" };
+    return { rows: inc, accepted: true };
   }
 
   if (inc.length > 0) {
     emptyStreak_[panel] = 0;
-    return { rows: inc, accepted: true, reason: "non_empty" };
+    return { rows: inc, accepted: true };
   }
 
   if (prev.length === 0) {
     emptyStreak_[panel] = 0;
-    return { rows: inc, accepted: true, reason: "both_empty" };
+    return { rows: inc, accepted: true };
   }
 
   emptyStreak_[panel] = (emptyStreak_[panel] || 0) + 1;
 
   if (emptyStreak_[panel] >= EMPTY_ACCEPT_AFTER_N) {
     emptyStreak_[panel] = 0;
-    return { rows: inc, accepted: true, reason: "empty_accepted_after_streak" };
+    return { rows: inc, accepted: true };
   }
 
-  return { rows: prev, accepted: false, reason: "empty_rejected" };
+  return { rows: prev, accepted: false };
 }
 
 async function refreshStatus(isManual = false) {
@@ -1036,14 +842,7 @@ async function refreshStatus(isManual = false) {
 
     if (activeChanged) renderIncremental_(activePanel);
   } catch (err) {
-    const msg = shortErr_(err);
-    const key = msg;
-
-    if (key !== lastErrToastKey) {
-      console.error("[Status] 取得狀態失敗：", err);
-      lastErrToastKey = key;
-    }
-
+    console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
     if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
@@ -1067,7 +866,6 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   if (!oldName || oldName !== newName) {
     try {
       await registerUser(userId, newName);
-      if (DEBUG) console.log("[NameSync] updated:", { oldName, newName });
       return true;
     } catch (e) {
       console.warn("[NameSync] update failed:", e);
@@ -1240,57 +1038,19 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ PersonalTools：只要 personalStatusEnabled=是，就「三顆都顯示」
+      // ✅ FINAL PERSONAL TOOLS LOGIC:
+      // personalStatusEnabled=是 -> 顯示三顆並使用 PersonalStatus 欄位連結
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
-        // 先顯示（禁用狀態），避免「看不到」造成誤判
-        showPersonalToolsAlways_({ manage: "", vacation: "", personal: "" });
-
         try {
           const ps = await fetchPersonalStatusRow_(userId);
-
-          // 常見包裝：{ok:true, data:{...}} / {row:{...}} / {payload:{...}}
           const psRow = ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps;
-
-          const manage = pickFirstString_(psRow, [
-            "manageLiff",
-            "userManageLiff",
-            "manageLink",
-            "使用者管理liff",
-            "使用者管理LIFF",
-            "使用者管理連結",
-          ]);
-
-          const vacation = pickFirstString_(psRow, [
-            "vacationLink",
-            "vacationLiff",
-            "vacationUrl",
-            "vacationLIFF",
-            "休假設定連結",
-            "休假設定liff",
-            "休假設定LIFF",
-            "休假連結",
-          ]);
-
-          const personal = pickFirstString_(psRow, [
-            "personalStatusLink",
-            "personalLink",
-            "personalStatusLiff",
-            "personalStatusUrl",
-            "personalStatusLIFF",
-            "個人狀態連結",
-            "個人狀態liff",
-            "個人狀態LIFF",
-          ]);
-
-          showPersonalToolsAlways_({ manage, vacation, personal });
-
-          // ✅ 方便你直接在 console 看
-          window.__personalLinks = { manage, vacation, personal, psRow };
-          console.log("[PersonalLinks]", window.__personalLinks);
+          showPersonalToolsFinal_(psRow);
         } catch (e) {
-          console.warn("[PersonalTools] getPersonalStatus failed:", e);
-          // 保留可見但禁用狀態
+          // 依你的規格：開通了就必須能用
+          // 這裡直接顯示三顆，但點擊會噴錯（避免「看不到」）
+          showPersonalToolsFinal_({});
+          console.error("[PersonalTools] getPersonalStatus failed:", e);
         }
       } else {
         hidePersonalTools_();
@@ -1301,7 +1061,7 @@ async function initLiffAndGuard() {
       return;
     }
 
-    // 非可用狀態
+    // 非可用狀態：隱藏個人工具
     hidePersonalTools_();
 
     if (result.status === "approved") {
@@ -1334,7 +1094,7 @@ async function initLiffAndGuard() {
 }
 
 /* =========================
- * 事件綁定
+ * Events
  * ========================= */
 if (tabBodyBtn) tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
 if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
@@ -1372,7 +1132,7 @@ function setActivePanel(panel) {
 }
 
 /* =========================
- * App 啟動（輪詢不重疊 + jitter）
+ * App start
  * ========================= */
 let pollTimer = null;
 
@@ -1391,7 +1151,7 @@ function startApp() {
 }
 
 /* =========================================================
- * ✅ 入口：先讀 config.json → sanitize → 再 init LIFF
+ * ✅ Entry
  * ========================================================= */
 window.addEventListener("load", async () => {
   try {
