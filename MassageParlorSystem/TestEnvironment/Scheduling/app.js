@@ -12,6 +12,9 @@
 // - colorIndex/colorMaster/colorStatus: 只控制文字顏色（不再覆蓋背景）
 // - bgIndex/bgMaster/bgStatus: 只控制背景/框線
 // - status pill: bgStatus 優先；colorStatus 只改字；若無 bgStatus 可選用 colorStatus 自動生成 pill 背景
+//
+// ✅ Edge Random Routing (NEW)
+// - EDGE_STATUS_URLS 每次 fetchStatusAll() 都隨機抽起點（仍保留 failover + override reroute TTL）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -131,6 +134,10 @@ function sanitizeEdgeUrls_() {
 
   if (!EDGE_STATUS_URLS.length) console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
 }
+
+/**
+ * ✅ 原本 hash 版（保留不刪，方便你回切），但現在不再使用
+ */
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
@@ -138,6 +145,20 @@ function getStatusEdgeIndex_() {
   if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) return overrideIdx;
   return baseIdx;
 }
+
+/**
+ * ✅ NEW：每次都隨機分配 Edge 起點（仍保留 override reroute）
+ */
+function getRandomEdgeIndex_() {
+  const n = EDGE_STATUS_URLS.length || 0;
+  if (!n) return 0;
+
+  const overrideIdx = getOverrideEdgeIndex_();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < n) return overrideIdx;
+
+  return Math.floor(Math.random() * n);
+}
+
 function buildEdgeTryOrder_(startIdx) {
   const n = EDGE_STATUS_URLS.length;
   const order = [];
@@ -174,10 +195,13 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
  * 1) Edge: mode=sheet_all
  * 2) Origin fallback: mode=sheet_all
  */
+/* =========================================================
+ * ✅ 1) fetchStatusAll：回傳 edgeIdx（分流序號 = EDGE_STATUS_URLS 的 index）
+ * ========================================================= */
 async function fetchStatusAll() {
   const jitterBust = Date.now();
 
-  const startIdx = getStatusEdgeIndex_();
+  const startIdx = getRandomEdgeIndex_();
   const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
   for (const idx of tryEdgeIdxList) {
@@ -195,7 +219,12 @@ async function fetchStatusAll() {
       if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
 
       resetFailCount_();
-      return { source: "edge", bodyRows: body, footRows: foot };
+      return {
+        source: "edge",
+        edgeIdx: idx, // ✅ NEW: 回傳分流 index（0-based，對應 EDGE_STATUS_URLS 排序）
+        bodyRows: body,
+        footRows: foot,
+      };
     } catch (e) {
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
@@ -213,10 +242,12 @@ async function fetchStatusAll() {
   resetFailCount_();
   return {
     source: "origin",
+    edgeIdx: null, // ✅ NEW
     bodyRows: Array.isArray(data.body) ? data.body : [],
     footRows: Array.isArray(data.foot) ? data.foot : [],
   };
 }
+
 
 /* =========================================================
  * DOM
@@ -708,8 +739,6 @@ function applyOrderHighlightBg_(el, bgStr) {
   return true;
 }
 
-
-
 /* =========================================================
  * ✅ 字串清洗 + 狀態映射
  * ========================================================= */
@@ -942,22 +971,20 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
-// --- order cell ---
-tdOrder.textContent = orderText;
-tdOrder.style.backgroundColor = "";
-tdOrder.style.color = "";
-tdOrder.style.borderLeft = "";
-tdOrder.style.fontWeight = "";
+  // --- order cell ---
+  tdOrder.textContent = orderText;
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.color = "";
+  tdOrder.style.borderLeft = "";
+  tdOrder.style.fontWeight = "";
 
-// ✅ 只有 bg-CCBCBCB 才用「強化順序樣式」
-if (isOrderBgCcbcBcB_(row.bgIndex)) {
-  applyOrderHighlightBg_(tdOrder, row.bgIndex);
-}
+  // ✅ 只有 bg-CCBCBCB 才用「強化順序樣式」
+  if (isOrderBgCcbcBcB_(row.bgIndex)) {
+    applyOrderHighlightBg_(tdOrder, row.bgIndex);
+  }
 
-// 文字色可保留（或視需求一起限制）
-if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
-
-
+  // 文字色可保留（或視需求一起限制）
+  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
 
   // --- master cell ---
   tdMaster.textContent = row.masterId || "";
@@ -1096,6 +1123,9 @@ function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
   return { rows: prev, accepted: false };
 }
 
+/* =========================================================
+ * ✅ 2) refreshStatus：顯示「已連線（分流X）」(X = edgeIdx+1)
+ * ========================================================= */
 async function refreshStatus(isManual = false) {
   if (document.hidden) return;
   if (refreshInFlight) return;
@@ -1106,7 +1136,8 @@ async function refreshStatus(isManual = false) {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    const { source, bodyRows, footRows } = await fetchStatusAll();
+    // ✅ 改：多接 edgeIdx
+    const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
 
     const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
     const footDecision = decideIncomingRows_("foot", footRows, rawData.foot, isManual);
@@ -1122,7 +1153,14 @@ async function refreshStatus(isManual = false) {
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
-    if (connectionStatusEl) connectionStatusEl.textContent = source === "edge" ? "已連線（分流）" : "已連線（主站）";
+    // ✅ NEW：分流顯示第幾分流（依 EDGE_STATUS_URLS 排序）
+    if (connectionStatusEl) {
+      if (source === "edge" && typeof edgeIdx === "number") {
+        connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
+      } else {
+        connectionStatusEl.textContent = "已連線（主站）";
+      }
+    }
 
     if (anyChanged && lastUpdateEl) {
       const now = new Date();
