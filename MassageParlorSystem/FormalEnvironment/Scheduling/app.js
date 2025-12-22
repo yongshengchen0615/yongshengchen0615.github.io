@@ -17,8 +17,10 @@
 
 // ★ 換成你的 6 個 Edge GAS Web App URL（每個都要不同 /exec）
 let EDGE_STATUS_URLS = [
- "https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-  "https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec",
+"https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
+"https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec",
+"https://script.google.com/macros/s/AKfycbzzPY_Ted_wrNzqKeTojhyFzGCSVBcUQQcGR3ZZEpZqgRPoQJ-YVPLPK1pkkYZvP20RVQ/exec",
+"https://script.google.com/macros/s/AKfycbzhJHk4T24FvUQewqNlhCgiAFR0W9A8CAKaYRjf0vrkWtndM-Q8xpTZAbpQt_DQJwDH/exec"
 ];
 
 // （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
