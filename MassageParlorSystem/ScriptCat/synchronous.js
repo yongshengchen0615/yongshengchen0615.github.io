@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Body+Foot Snapshot + Ready Event (Change-only)
 // @namespace    http://scriptcat.org/
-// @version      5.0
+// @version      5.1
 // @description  掃描「身體/腳底」面板；snapshot_v1 改為「變更才送」；偵測 非準備→準備 即刻送 ready_event_v1（小包）以加速 LINE 推播
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        none
 //
-// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
-// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/a1.js
+// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
+// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
 // ==/UserScript==
 
 (function () {
