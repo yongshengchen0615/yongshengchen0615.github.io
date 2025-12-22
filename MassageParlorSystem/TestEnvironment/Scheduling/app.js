@@ -8,9 +8,10 @@
 //   個人狀態   -> 個人狀態連結
 // - If any link missing: still show buttons, but click will console.error (no silent hide)
 //
-// ✅ Color/Background FINAL
-// - Apply colorIndex/colorMaster/colorStatus (ScriptCat tokens: text-Cxxxxxx text-opacity-60 ...)
-// - Apply bgIndex/bgMaster/bgStatus (ScriptCat tokens: bg-Cxxxxxx bg-opacity-20, bg-[#RRGGBB]/15 ...)
+// ✅ Color/Background FINAL (FIXED)
+// - colorIndex/colorMaster/colorStatus: 只控制文字顏色（不再覆蓋背景）
+// - bgIndex/bgMaster/bgStatus: 只控制背景/框線
+// - status pill: bgStatus 優先；colorStatus 只改字；若無 bgStatus 可選用 colorStatus 自動生成 pill 背景
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -250,7 +251,7 @@ const themeToggleBtn = document.getElementById("themeToggle");
 
 // 🔔 Usage banner
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
 
 // ✅ Personal Tools DOM
 const personalToolsEl = document.getElementById("personalTools");
@@ -554,6 +555,11 @@ function applyReadableTextColor_(el, colorStr) {
   el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
   return true;
 }
+
+/**
+ * ✅ 原本的 pill 全套函數（會改字 + 背景 + 框線）
+ * - 只能在「沒有 bgStatus」時當 fallback 使用
+ */
 function applyReadablePillColor_(pillEl, colorStr) {
   if (!pillEl || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -573,6 +579,26 @@ function applyReadablePillColor_(pillEl, colorStr) {
   const aBd = isLightTheme_() ? 0.25 : 0.35;
   pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
 
+  return true;
+}
+
+/**
+ * ✅ FIX: pill 文字 only（不改背景/框線）
+ */
+function applyReadablePillTextOnly_(pillEl, colorStr) {
+  if (!pillEl || !colorStr) return false;
+
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
+  let aText = opacity == null ? 1 : opacity;
+  aText = clamp_(aText, minAlpha, 1);
+
+  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
   return true;
 }
 
@@ -629,6 +655,30 @@ function applyReadableBgColor_(el, bgStr) {
   a = clamp_(a, 0.03, 0.35);
 
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  return true;
+}
+
+/**
+ * ✅ FIX: pill 背景+框線 from bg token（不改文字顏色）
+ */
+function applyReadablePillBgFromBgToken_(pillEl, bgStr) {
+  if (!pillEl || !bgStr) return false;
+
+  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  let aBg = opacity;
+  if (aBg == null) aBg = isLightTheme_() ? 0.10 : 0.16;
+  aBg = clamp_(aBg, 0.03, 0.35);
+
+  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aBd = clamp_(aBg + (isLightTheme_() ? 0.12 : 0.18), 0.12, 0.55);
+  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+
   return true;
 }
 
@@ -888,11 +938,28 @@ function patchRowDom_(tr, row, orderText) {
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
+
+  // reset inline style
   statusSpan.style.background = "";
   statusSpan.style.border = "";
   statusSpan.style.color = "";
-  if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
-  if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
+
+  // ✅ FIXED APPLY ORDER:
+  // 1) bgStatus -> 背景 + 框線（不改字）
+  if (row.bgStatus) {
+    applyReadablePillBgFromBgToken_(statusSpan, row.bgStatus);
+  }
+
+  // 2) colorStatus -> 只改文字顏色（不改背景/框線）
+  if (row.colorStatus) {
+    applyReadablePillTextOnly_(statusSpan, row.colorStatus);
+  }
+
+  // 3) optional fallback: 沒 bgStatus 但有 colorStatus 時，自動生成 pill 背景
+  if (!row.bgStatus && row.colorStatus) {
+    applyReadablePillColor_(statusSpan, row.colorStatus);
+  }
+
   tdStatus.appendChild(statusSpan);
 
   // --- appointment ---
