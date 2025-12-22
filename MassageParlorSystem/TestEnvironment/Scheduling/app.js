@@ -686,6 +686,29 @@ function applyReadablePillBgFromBgToken_(pillEl, bgStr) {
 function applyBgIndexToOrderCell_(el, bgIndexToken) {
   return applyReadableBgColor_(el, bgIndexToken);
 }
+function applyOrderHighlightBg_(el, bgStr) {
+  if (!el || !bgStr) return false;
+
+  const { hex } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  // ✅ 背景：比一般 cell 明顯
+  const bgAlpha = isLightTheme_() ? 0.28 : 0.38;
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${bgAlpha})`;
+
+  // ✅ 左側強調線（順序視覺錨點）
+  el.style.borderLeft = `4px solid rgba(${rgb.r},${rgb.g},${rgb.b},0.85)`;
+
+  // ✅ 字體略微加粗（不影響排版）
+  el.style.fontWeight = "600";
+
+  return true;
+}
+
+
 
 /* =========================================================
  * ✅ 字串清洗 + 狀態映射
@@ -923,15 +946,17 @@ function patchRowDom_(tr, row, orderText) {
 tdOrder.textContent = orderText;
 tdOrder.style.backgroundColor = "";
 tdOrder.style.color = "";
+tdOrder.style.borderLeft = "";
+tdOrder.style.fontWeight = "";
 
-// ✅ 只有 bgIndex 是 CCBCBCB 才改順序欄背景
+// ✅ 只有 bg-CCBCBCB 才用「強化順序樣式」
 if (isOrderBgCcbcBcB_(row.bgIndex)) {
-  applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
+  applyOrderHighlightBg_(tdOrder, row.bgIndex);
 }
 
-// （可選）如果你也希望只有 CCBCBCB 才改文字色，就把 colorIndex 也包起來；
-// 不然就維持原本：colorIndex 仍可改文字色
+// 文字色可保留（或視需求一起限制）
 if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
+
 
 
   // --- master cell ---
