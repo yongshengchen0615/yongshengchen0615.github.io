@@ -10,10 +10,7 @@
 
   "EDGE_STATUS_URLS": [
     "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec"
-   
   ],
-  "_comment_EDGE_STATUS_URLS": "Edge GAS 清單；狀態讀取只打 Edge：?mode=cache_one&masterId=<TARGET_MASTER_ID>&_cors=1；Promise.any 取最快 ok:true；cache_miss 視為無資料。",
+  "_comment_EDGE_STATUS_URLS": "Edge GAS 清單；狀態讀取只打 Edge：?mode=cache_one&masterId=<TARGET_MASTER_ID>&_cors=1；Promise.any 取最快 ok:true；cache_miss 視為無資料。"
 
-  "TECH_API_URL": "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec",
-  "_comment_TECH_API_URL": "在 Edge Cache Reader v5 ONLY 版本不使用；若專案其他檔案也沒用，可刪。"
 }
