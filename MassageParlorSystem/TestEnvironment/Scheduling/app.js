@@ -1,3 +1,11 @@
+// =========================================================
+// app.js (Dashboard - Edge Cache Reader + LIFF Gate + Personal Tools)
+// - config.json: EDGE_STATUS_URLS, FALLBACK_ORIGIN_CACHE_URL, AUTH_API_URL, LIFF_ID
+// - Status source: Edge GAS mode=sheet_all -> { body, foot }
+// - Origin fallback: mode=sheet_all
+// - Personal tools: AUTH_API mode=getPersonalStatus
+// =========================================================
+
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
 (function () {
   const rawLog = console.log;
@@ -12,9 +20,13 @@
 })();
 
 /* =========================================================
+ * ✅ Debug switch
+ * ========================================================= */
+const DEBUG = false;
+
+/* =========================================================
  * ✅ Config.json 讀取（取代硬寫 URL / LIFF_ID）
  * ========================================================= */
-
 const CONFIG_JSON_URL = "./config.json";
 
 // 先給預設值（若 config 失敗，你要不要 fallback 由 boot 決定）
@@ -59,6 +71,7 @@ function hashToIndex_(str, mod) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return mod ? h % mod : 0;
 }
+
 function withQuery_(base, extraQuery) {
   const b = String(base || "").trim();
   const q = String(extraQuery || "").trim();
@@ -70,7 +83,6 @@ function withQuery_(base, extraQuery) {
 /* =========================================================
  * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
-
 const STATUS_FETCH_TIMEOUT_MS = 8000; // 6~10 秒
 const EDGE_TRY_MAX = 3; // 最多試幾台（含命中那台）
 const EDGE_FAIL_THRESHOLD = 2; // 命中那台連續失敗幾次後 reroute
@@ -226,6 +238,7 @@ async function fetchStatusAll() {
           setOverrideEdgeIndex_(nextIdx);
         }
       }
+      if (DEBUG) console.warn("[EdgeFail]", idx, String(e && e.message ? e.message : e));
     }
   }
 
@@ -243,9 +256,8 @@ async function fetchStatusAll() {
 }
 
 /* =========================================================
- * 原本你的設定（AUTH_API_URL / LIFF_ID 已由 config.json 提供）
+ * DOM 取得
  * ========================================================= */
-
 // 授權畫面 & 主畫面容器
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
@@ -405,6 +417,7 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
   const p = String(personalLink || "").trim();
   const v = String(vacationLink || "").trim();
 
+  // ✅ 三個都沒值：整排不顯示
   if (!m && !p && !v) {
     personalToolsEl.style.display = "none";
     return;
@@ -429,6 +442,16 @@ function showPersonalTools_(manageLiff, personalLink, vacationLink) {
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
+}
+
+// ✅ 取第一個非空字串（用來兼容 GAS 欄位名）
+function pickFirstString_(obj, keys) {
+  for (const k of keys) {
+    const v = obj && obj[k];
+    const s = String(v || "").trim();
+    if (s) return s;
+  }
+  return "";
 }
 
 /* =========================================================
@@ -472,7 +495,6 @@ async function sendDailyFirstMessageFromUser_() {
 /* =========================================================
  * ✅ 一致策略：腳本貓色（保留自訂色、提高可讀性）
  * ========================================================= */
-
 function isLightTheme_() {
   return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
 }
@@ -613,7 +635,7 @@ function applyReadableBgColor_(el, colorStr) {
   const rgb = hexToRgb(hex);
   if (!rgb) return false;
 
-  const alpha = isLightTheme_() ? 0.10 : 0.16;
+  const alpha = isLightTheme_() ? 0.1 : 0.16;
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
 }
@@ -640,7 +662,7 @@ function applyBgIndexToOrderCell_(el, bgIndexToken) {
     return false;
   }
 
-  const alpha = isLightTheme_() ? 0.10 : 0.16;
+  const alpha = isLightTheme_() ? 0.1 : 0.16;
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
   return true;
 }
@@ -756,7 +778,6 @@ function applyFilters(list) {
 /* =========================================================
  * ✅ Panel Diff：只更新有變的資料（不全量覆寫 rawData）
  * ========================================================= */
-
 function rowSignature_(r) {
   if (!r) return "";
   return [
@@ -839,7 +860,6 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 /* =========================================================
  * ✅ 增量渲染（B-4）
  * ========================================================= */
-
 const rowDomMapByPanel_ = {
   body: new Map(),
   foot: new Map(),
@@ -1087,7 +1107,7 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   if (!oldName || oldName !== newName) {
     try {
       await registerUser(userId, newName);
-      console.log("[NameSync] updated:", { oldName, newName });
+      if (DEBUG) console.log("[NameSync] updated:", { oldName, newName });
       return true;
     } catch (e) {
       console.warn("[NameSync] update failed:", e);
@@ -1214,7 +1234,9 @@ if (themeToggleBtn) {
   });
 }
 
-// ===== LIFF 初始化與權限 Gate =====
+/* =========================================================
+ * ✅ LIFF 初始化與權限 Gate
+ * ========================================================= */
 async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 
@@ -1250,6 +1272,17 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
+    if (DEBUG) {
+      console.log("[FeatureFlags]", {
+        personalStatusEnabled: result.personalStatusEnabled,
+        scheduleEnabled: result.scheduleEnabled,
+        pushEnabled: result.pushEnabled,
+        remainingDays: result.remainingDays,
+        status: result.status,
+        allowed: result.allowed,
+      });
+    }
+
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
@@ -1260,16 +1293,27 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
+      // ✅ 個人狀態工具列（只有 personalStatusEnabled=是 才嘗試抓連結）
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
           const ps = await fetchPersonalStatusRow_(userId);
-          if (ps && ps.ok) {
-            const manage = ps.manageLiff || ps["使用者管理liff"] || "";
-            const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
-            const vLink = ps.vacationLink || ps["休假設定連結"] || "";
+          if (DEBUG) console.log("[getPersonalStatus]", ps);
+
+          // ✅ 放寬：避免後端格式差異導致整排被 hide
+          const ok = ps && (ps.ok === true || ps.success === true || ps.error == null);
+
+          if (ok) {
+            const manage = pickFirstString_(ps, ["manageLiff", "使用者管理liff", "userManageLiff", "manageLink"]);
+            const pLink = pickFirstString_(ps, ["personalStatusLink", "個人狀態連結", "personalLink", "personalStatusLiff"]);
+            const vLink = pickFirstString_(ps, ["vacationLink", "休假設定連結", "vacationLiff", "vacationUrl"]);
+
+            if (DEBUG) console.log("[PersonalLinks]", { manage, pLink, vLink });
+
             showPersonalTools_(manage, pLink, vLink);
-          } else hidePersonalTools_();
+          } else {
+            hidePersonalTools_();
+          }
         } catch (e) {
           console.warn("[PersonalTools] getPersonalStatus failed:", e);
           hidePersonalTools_();
