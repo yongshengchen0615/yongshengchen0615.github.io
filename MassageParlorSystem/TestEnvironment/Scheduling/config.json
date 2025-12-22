@@ -1,8 +1,10 @@
 {
   "EDGE_STATUS_URLS": [
-    "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
-  "https://script.google.com/macros/s/AKfycbwH_3V56sz9SUM5UC6UZpOqMOe4DAZZNXWYvXaGXIvQbpPRq800qIHwxPHLVEh_WllqTQ/exec"
-  ],
+  "https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
+  "https://script.google.com/macros/s/AKfycbwH_3V56sz9SUM5UC6UZpOqMOe4DAZZNXWYvXaGXIvQbpPRq800qIHwxPHLVEh_WllqTQ/exec",
+"https://script.google.com/macros/s/AKfycbzo9-Amp2Ammw9RxvE78CP1Lr8FBKyIAXUIxg9O90StJTYqRovpVM1P4fY_GIbJcMCBuA/exec",
+"https://script.google.com/macros/s/AKfycbxzZ3Rlyuxst7Up6mps8_sZB4Jq7SUVE7VlHwsLnljsjehiUPbasjzaIk3fEfoP_noK/exec"  
+],
   "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec",
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec",
   "LIFF_ID": "2008735934-mBO1mD8M"
