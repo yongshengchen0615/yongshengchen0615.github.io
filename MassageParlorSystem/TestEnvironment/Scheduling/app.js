@@ -919,12 +919,20 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
-  // --- order cell ---
-  tdOrder.textContent = orderText;
-  tdOrder.style.backgroundColor = "";
-  tdOrder.style.color = "";
-  if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
-  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
+// --- order cell ---
+tdOrder.textContent = orderText;
+tdOrder.style.backgroundColor = "";
+tdOrder.style.color = "";
+
+// ✅ 只有 bgIndex 是 CCBCBCB 才改順序欄背景
+if (isOrderBgCcbcBcB_(row.bgIndex)) {
+  applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
+}
+
+// （可選）如果你也希望只有 CCBCBCB 才改文字色，就把 colorIndex 也包起來；
+// 不然就維持原本：colorIndex 仍可改文字色
+if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
+
 
   // --- master cell ---
   tdMaster.textContent = row.masterId || "";
@@ -1423,3 +1431,10 @@ window.addEventListener("load", async () => {
 
   initLiffAndGuard();
 });
+
+function isOrderBgCcbcBcB_(bgToken) {
+  const s = String(bgToken || "").trim();
+  if (!s) return false;
+  // 允許：bg-CCBCBCB / bg-[#CCBCBCB]/xx / #CCBCBCB / 直接 CCBCBCB
+  return s.includes("CCBCBCB");
+}
