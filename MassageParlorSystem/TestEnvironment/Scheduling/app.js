@@ -7,6 +7,10 @@
 //   休假設定   -> 休假設定連結
 //   個人狀態   -> 個人狀態連結
 // - If any link missing: still show buttons, but click will console.error (no silent hide)
+//
+// ✅ Color/Background FINAL
+// - Apply colorIndex/colorMaster/colorStatus (ScriptCat tokens: text-Cxxxxxx text-opacity-60 ...)
+// - Apply bgIndex/bgMaster/bgStatus (ScriptCat tokens: bg-Cxxxxxx bg-opacity-20, bg-[#RRGGBB]/15 ...)
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -25,7 +29,6 @@
 /* =========================================================
  * ✅ Config.json 讀取（取代硬寫 URL / LIFF_ID）
  * ========================================================= */
-
 const CONFIG_JSON_URL = "./config.json";
 
 let EDGE_STATUS_URLS = [];
@@ -61,7 +64,6 @@ function hashToIndex_(str, mod) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return mod ? h % mod : 0;
 }
-
 function withQuery_(base, extraQuery) {
   const b = String(base || "").trim();
   const q = String(extraQuery || "").trim();
@@ -73,7 +75,6 @@ function withQuery_(base, extraQuery) {
 /* =========================================================
  * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
-
 const STATUS_FETCH_TIMEOUT_MS = 8000;
 const EDGE_TRY_MAX = 3;
 const EDGE_FAIL_THRESHOLD = 2;
@@ -94,7 +95,6 @@ function writeJsonLS_(k, v) {
     localStorage.setItem(k, JSON.stringify(v));
   } catch {}
 }
-
 function getOverrideEdgeIndex_() {
   const o = readJsonLS_(EDGE_ROUTE_KEY);
   if (!o || typeof o.idx !== "number") return null;
@@ -117,7 +117,6 @@ function bumpFailCount_(idx) {
 function resetFailCount_() {
   localStorage.removeItem(EDGE_FAIL_KEY);
 }
-
 function sanitizeEdgeUrls_() {
   const seen = new Set();
   EDGE_STATUS_URLS = (EDGE_STATUS_URLS || [])
@@ -131,7 +130,6 @@ function sanitizeEdgeUrls_() {
 
   if (!EDGE_STATUS_URLS.length) console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
 }
-
 function getStatusEdgeIndex_() {
   const uid = window.currentUserId || "anonymous";
   const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
@@ -151,11 +149,7 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
+    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
     const text = await resp.text();
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
@@ -200,12 +194,7 @@ async function fetchStatusAll() {
       if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
 
       resetFailCount_();
-
-      return {
-        source: "edge",
-        bodyRows: body,
-        footRows: foot,
-      };
+      return { source: "edge", bodyRows: body, footRows: foot };
     } catch (e) {
       if (idx === startIdx) {
         const n = bumpFailCount_(idx);
@@ -221,7 +210,6 @@ async function fetchStatusAll() {
   const data = await fetchJsonWithTimeout_(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
 
   resetFailCount_();
-
   return {
     source: "origin",
     bodyRows: Array.isArray(data.body) ? data.body : [],
@@ -232,7 +220,6 @@ async function fetchStatusAll() {
 /* =========================================================
  * DOM
  * ========================================================= */
-
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
@@ -274,11 +261,7 @@ const btnVacationEl = document.getElementById("btnVacation");
 /* =========================================================
  * ✅ Feature banner
  * ========================================================= */
-let featureState = {
-  pushEnabled: "否",
-  personalStatusEnabled: "否",
-  scheduleEnabled: "否",
-};
+let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
 
 function normalizeYesNo_(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
@@ -302,9 +285,7 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
-    ""
-  );
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -387,6 +368,15 @@ async function fetchPersonalStatusRow_(userId) {
   return await resp.json();
 }
 
+// 安全取欄位：先吃中文鍵，再吃英文鍵（避免 GAS 回傳欄位不齊時直接掛）
+function pickField_(obj, keys) {
+  for (const k of keys) {
+    const v = obj && obj[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+
 function showPersonalToolsFinal_(psRow) {
   if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
 
@@ -396,10 +386,10 @@ function showPersonalToolsFinal_(psRow) {
   btnVacationEl.style.display = "inline-flex";
   btnPersonalStatusEl.style.display = "inline-flex";
 
-  // ✅ 依你的欄位名稱取值（可加相容欄位，但優先用這三個）
-  const manage = String((psRow && psRow["使用者管理liff"]) || "").trim();
-  const vacation = String((psRow && psRow["休假設定連結"]) || "").trim();
-  const personal = String((psRow && psRow["個人狀態連結"]) || "").trim();
+  // ✅ 依你的欄位名稱取值（並做英文相容）
+  const manage = pickField_(psRow, ["使用者管理liff", "manageLiff", "userManageLiff", "userManageLink"]);
+  const vacation = pickField_(psRow, ["休假設定連結", "vacationLink"]);
+  const personal = pickField_(psRow, ["個人狀態連結", "personalStatusLink"]);
 
   // ✅ 點擊：直接跳對應連結（若缺就明確噴錯，不做隱藏）
   btnUserManageEl.onclick = () => {
@@ -418,7 +408,6 @@ function showPersonalToolsFinal_(psRow) {
   // Debug 快速檢查
   window.__personalLinks = { manage, vacation, personal, psRow };
 }
-
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
 }
@@ -459,6 +448,193 @@ async function sendDailyFirstMessageFromUser_() {
   } catch (e) {
     console.warn("[DailyUserMessage] send failed:", e);
   }
+}
+
+/* =========================================================
+ * ✅ 顏色/背景：ScriptCat token 解析 + 可讀性套用
+ * ========================================================= */
+function isLightTheme_() {
+  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
+}
+function clamp_(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+function hexToRgb(hex) {
+  if (!hex) return null;
+  let s = String(hex).replace("#", "").trim();
+  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
+  if (s.length !== 6) return null;
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+  return { r, g, b };
+}
+
+function normalizeHex6_(maybe) {
+  if (!maybe) return null;
+  let s = String(maybe).trim();
+
+  const mBracket = s.match(/text-\[#([0-9a-fA-F]{6})\]/);
+  if (mBracket) return "#" + mBracket[1];
+
+  const mHash = s.match(/#([0-9a-fA-F]{6})/);
+  if (mHash) return "#" + mHash[1];
+
+  const mC = s.match(/(?:^|text-)(?:C)?([0-9a-fA-F]{6})$/);
+  if (mC) return "#" + mC[1];
+
+  const mIn = s.match(/text-C([0-9a-fA-F]{6})/);
+  if (mIn) return "#" + mIn[1];
+
+  return null;
+}
+function parseOpacityToken_(token) {
+  if (!token) return null;
+  const t = String(token).trim();
+
+  let m = t.match(/(?:text-opacity-|opacity-)(\d{1,3})/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  m = t.match(/\/(\d{1,3})$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
+  }
+
+  return null;
+}
+function parseScriptCatColorV2_(colorStr) {
+  if (!colorStr) return { hex: null, opacity: null };
+  const tokens = String(colorStr).split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  let opacity = null;
+
+  for (const tk of tokens) {
+    if (!hex) {
+      const h = normalizeHex6_(tk);
+      if (h) hex = h;
+    }
+    if (opacity == null) {
+      const o = parseOpacityToken_(tk);
+      if (o != null) opacity = o;
+    }
+  }
+
+  if (!hex) {
+    const h = normalizeHex6_(String(colorStr));
+    if (h) hex = h;
+  }
+
+  return { hex, opacity };
+}
+
+function applyReadableTextColor_(el, colorStr) {
+  if (!el || !colorStr) return false;
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const minAlpha = isLightTheme_() ? 0.8 : 0.65;
+  let a = opacity == null ? 1 : opacity;
+  a = clamp_(a, minAlpha, 1);
+
+  el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
+  return true;
+}
+function applyReadablePillColor_(pillEl, colorStr) {
+  if (!pillEl || !colorStr) return false;
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
+  let aText = opacity == null ? 1 : opacity;
+  aText = clamp_(aText, minAlpha, 1);
+  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
+
+  const aBg = isLightTheme_() ? 0.1 : 0.16;
+  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aBd = isLightTheme_() ? 0.25 : 0.35;
+  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+
+  return true;
+}
+
+// ✅ BG token: bg-Cxxxxxx bg-opacity-20 / bg-[#RRGGBB]/15 / #RRGGBB
+function parseScriptCatBgV2_(bgStr) {
+  if (!bgStr) return { hex: null, opacity: null };
+  const tokens = String(bgStr).split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  let opacity = null;
+
+  for (const tk of tokens) {
+    if (!hex) {
+      const mBracket = tk.match(/bg-\[#([0-9a-fA-F]{6})\]/);
+      if (mBracket) hex = "#" + mBracket[1];
+
+      const mC = tk.match(/(?:^|bg-)(?:C)?([0-9a-fA-F]{6})$/);
+      if (!hex && mC) hex = "#" + mC[1];
+
+      const mHash = tk.match(/#([0-9a-fA-F]{6})/);
+      if (!hex && mHash) hex = "#" + mHash[1];
+    }
+
+    if (opacity == null) {
+      let m = tk.match(/(?:bg-opacity-|opacity-)(\d{1,3})/);
+      if (m) {
+        const n = Number(m[1]);
+        if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
+      }
+      if (opacity == null) {
+        m = tk.match(/\/(\d{1,3})$/);
+        if (m) {
+          const n = Number(m[1]);
+          if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
+        }
+      }
+    }
+  }
+
+  return { hex, opacity };
+}
+
+function applyReadableBgColor_(el, bgStr) {
+  if (!el || !bgStr) return false;
+
+  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  let a = opacity;
+  if (a == null) a = isLightTheme_() ? 0.10 : 0.16;
+  a = clamp_(a, 0.03, 0.35);
+
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  return true;
+}
+
+// 兼容你原本 order cell 特規：改成通用 bg 套用
+function applyBgIndexToOrderCell_(el, bgIndexToken) {
+  return applyReadableBgColor_(el, bgIndexToken);
 }
 
 /* =========================================================
@@ -544,7 +720,6 @@ function rebuildStatusFilterOptions() {
   filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
 }
-
 function applyFilters(list) {
   return list.filter((row) => {
     if (filterMaster) {
@@ -648,15 +823,11 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 /* =========================================================
  * ✅ Incremental render
  * ========================================================= */
-const rowDomMapByPanel_ = {
-  body: new Map(),
-  foot: new Map(),
-};
+const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
 
 function buildRowKey_(row) {
   return String((row && row.masterId) || "").trim();
 }
-
 function ensureRowDom_(panel, row) {
   const key = buildRowKey_(row);
   if (!key) return null;
@@ -698,17 +869,36 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
+  // --- order cell ---
   tdOrder.textContent = orderText;
-  tdMaster.textContent = row.masterId || "";
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.color = "";
+  if (row.bgIndex) applyBgIndexToOrderCell_(tdOrder, row.bgIndex);
+  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
 
+  // --- master cell ---
+  tdMaster.textContent = row.masterId || "";
+  tdMaster.style.backgroundColor = "";
+  tdMaster.style.color = "";
+  if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
+  if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
+
+  // --- status cell ---
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
+  statusSpan.style.background = "";
+  statusSpan.style.border = "";
+  statusSpan.style.color = "";
+  if (row.bgStatus) applyReadableBgColor_(statusSpan, row.bgStatus);
+  if (row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
+  // --- appointment ---
   tdAppointment.textContent = row.appointment || "";
 
+  // --- remaining ---
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
@@ -1044,11 +1234,14 @@ async function initLiffAndGuard() {
       if (personalOk) {
         try {
           const ps = await fetchPersonalStatusRow_(userId);
-          const psRow = ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps;
+
+          // 兼容：有些人會包在 data/row/payload
+          const psRow =
+            (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
+
           showPersonalToolsFinal_(psRow);
         } catch (e) {
-          // 依你的規格：開通了就必須能用
-          // 這裡直接顯示三顆，但點擊會噴錯（避免「看不到」）
+          // 依你的規格：開通了就必須能看到三顆
           showPersonalToolsFinal_({});
           console.error("[PersonalTools] getPersonalStatus failed:", e);
         }
@@ -1105,14 +1298,12 @@ if (filterMasterInput) {
     renderIncremental_(activePanel);
   });
 }
-
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
     renderIncremental_(activePanel);
   });
 }
-
 if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus(true));
 
 function setActivePanel(panel) {
