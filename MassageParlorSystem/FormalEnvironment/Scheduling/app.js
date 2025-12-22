@@ -114,17 +114,11 @@ function sanitizeEdgeUrls_() {
 sanitizeEdgeUrls_();
 
 function getStatusEdgeIndex_() {
-  const uid = window.currentUserId || "anonymous";
-  const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
-  const overrideIdx = getOverrideEdgeIndex_();
-  if (
-    typeof overrideIdx === "number" &&
-    overrideIdx >= 0 &&
-    overrideIdx < EDGE_STATUS_URLS.length
-  )
-    return overrideIdx;
-  return baseIdx;
+  const n = EDGE_STATUS_URLS.length;
+  if (!n) return 0;
+  return Math.floor(Math.random() * n);
 }
+
 function buildEdgeTryOrder_(startIdx) {
   const n = EDGE_STATUS_URLS.length;
   const order = [];
