@@ -1,8 +1,8 @@
 // js/app.js
 
-const LIFF_ID = "2008669658-hxybEXdF";
+const LIFF_ID = "2008735934-MXQr4bQs";
 const ADMIN_API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
 
 const bookingForm = document.getElementById("bookingForm");
 const weeklyRefreshBtn = document.getElementById("weeklyRefresh");
