@@ -9,10 +9,8 @@
 // @connect      script.google.com
 // @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/synchronous.js
 // @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/synchronous.js
-<<<<<<< HEAD
-=======
 // ==/UserScript==
->>>>>>> 正式環境
+
 
 (function () {
   "use strict";
