@@ -21,7 +21,7 @@
   const INTERVAL_MS = 1000;
   const SNAPSHOT_THROTTLE_MS = 2000;
 
-  const LOG_MODE = "group"; // "full" | "group" | "off"===========
+  const LOG_MODE = "group"; // "full" | "group" | "off" 測試
   const ENABLE_SNAPSHOT = true;
   const ENABLE_READY_EVENT = true;
   const READY_EVENT_DEDUP_MS = 3000;
