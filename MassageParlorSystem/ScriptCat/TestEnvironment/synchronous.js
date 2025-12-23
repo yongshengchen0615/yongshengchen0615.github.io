@@ -16,7 +16,7 @@
   "use strict";
 
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exechttps://script.google.com/macros/s/AKfycbzC8H1KKbPKkkUNejHGa3jOLDUVscFr6xzcSrlPT_QPDdo82N7ws_ZKDGQQ7aqUYV_H/exec";
+    "https://script.google.com/macros/s/AKfycbzC8H1KKbPKkkUNejHGa3jOLDUVscFr6xzcSrlPT_QPDdo82N7ws_ZKDGQQ7aqUYV_H/exec";
 
   const INTERVAL_MS = 1000;
   const SNAPSHOT_THROTTLE_MS = 2000;
