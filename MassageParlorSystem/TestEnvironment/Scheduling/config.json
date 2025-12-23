@@ -1,17 +1,26 @@
 {
+  "_comment": "=== 系統設定檔（純 JSON，可直接 JSON.parse）===",
+
   "EDGE_STATUS_URLS": [
-"https://script.google.com/macros/s/AKfycbxAyIgSmj1xgaDqXzk5GcdmFGKzGOULT0d0ZB54uPp4iRYpBGVo5hLoLHEXk7BKGjqI/exec",
-"https://script.google.com/macros/s/AKfycbwH_3V56sz9SUM5UC6UZpOqMOe4DAZZNXWYvXaGXIvQbpPRq800qIHwxPHLVEh_WllqTQ/exec",
-"https://script.google.com/macros/s/AKfycbzo9-Amp2Ammw9RxvE78CP1Lr8FBKyIAXUIxg9O90StJTYqRovpVM1P4fY_GIbJcMCBuA/exec",
-"https://script.google.com/macros/s/AKfycbxzZ3Rlyuxst7Up6mps8_sZB4Jq7SUVE7VlHwsLnljsjehiUPbasjzaIk3fEfoP_noK/exec" , 
-"https://script.google.com/macros/s/AKfycbx16j6Gw04f6e6RDv3ilzWFVBkf-avUItHY_8s-lCdkf2FbdqL91zDSB-ePbpecswEURQ/exec",
-"https://script.google.com/macros/s/AKfycbzO278-qqyBT2lGNurGN8-rxrKrRWCwmbEbDTRCxDUGMBJT-qNIbj3OT-mmKJK5uNdy5Q/exec",
-"https://script.google.com/macros/s/AKfycbwruxqU6IIXQXvBaRPzoK8SSd6rgkUKHR_jjN1C8yyCKV0eRXfDWdHAD_RwHpG8bPGz/exec",
-"https://script.google.com/macros/s/AKfycbzLL06AtJFaS4Nag-_2lq5YDhE4dNEmqv6bwZ30414zxstr6Epwrm3rLfou-WBC3q98Ig/exec",
-"https://script.google.com/macros/s/AKfycbzatxcGY1-qPrk4teCfvqrDcuoR1iDvMYqFx9j_BS5HzNm9WEBbPhd7CCG45kIOYdrEEg/exec",
-"https://script.google.com/macros/s/AKfycbw-OcKPLtLo-ZgnkmDy1QBDYkIbSwomjxDPOVfDwJ4DiEecrIYGj4Eo5K2wiYqa9Kzp/exec"
-],
-  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbz5MZWyQjFE1eCAkKpXZCh1-hf0-rKY8wzlwWoBkVdpU8lDSOYH4IuPu1eLMX4jz_9j/exec",
-  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec",
-  "LIFF_ID": "2008669658-sBKFvZEz"
+    "https://script.google.com/macros/s/AKfycbztkK2sABPZiSq5aVcH1v05mRYgLSPAzfkkETtPx42oWO6BQl3xnX_Blgnfi6N5yBZI/exec",
+    "https://script.google.com/macros/s/AKfycbyzL-EYg4kq2i9nX7IiT7fpK_eWj0ZzmJmkWt0BmwbS58k6qlw442m9jD0jBDW-vDcd/exec",
+    "https://script.google.com/macros/s/AKfycbzhfmdcRux0vj511pzjSsaMQRV6CpJ-tCyh2zRpEhu4vscFs9r253YDXj8jUm-yWUjU/exec",
+    "https://script.google.com/macros/s/AKfycbyFFHMxLPb44PauwFdp6hRneBIOcgXx13Xq1Y6OkzRKqDQ3H8P3eeoCj4qwPPldgYt4/exec",
+    "https://script.google.com/macros/s/AKfycbx334cn23WRMqhNh1-Avjg1VY3Sk7BZTpigYCQyY90pC9xpQ2hkQmam-aE10SYuz7Lo/exec",
+    "https://script.google.com/macros/s/AKfycbzHzskROVIf7FsRbRx3-T2lv_g-kn2JQGetsiv_C403th-cK83LAf1wp6y5XioPmA2Y/exec",
+    "https://script.google.com/macros/s/AKfycbz8UKZsPKokqkYbIWzOHTjGY2YgVJb_ID7ZEuNeo08ZU66RfQfcUrsO99cmbcW48Ts/exec",
+    "https://script.google.com/macros/s/AKfycbx4_Bbw8NIiV2WTYl0XvpOMZPGHN-MIrSZndyVeek1gzh0MGpR0QXSUKQfcBsU_aUC8/exec",
+    "https://script.google.com/macros/s/AKfycbz3s8YTt-BlbK64FcTkRVu2gNGHxA7Nin48zkWpslPYJmVmHre9C83tIdzaL9JAH2P0Gg/exec",
+    "https://script.google.com/macros/s/AKfycbys_soZngFX1MKZdMPZTjPadjKL_Rvjd5nfakDKFAHf3n3TiPMIC33dEyTWHFsTQRnNKQ/exec"
+  ],
+  "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
+
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbzC8H1KKbPKkkUNejHGa3jOLDUVscFr6xzcSrlPT_QPDdo82N7ws_ZKDGQQ7aqUYV_H/exec",
+  "_comment_FALLBACK_ORIGIN_CACHE_URL": "當所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec",
+  "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
+
+  "LIFF_ID": "2008735934-mBO1mD8M",
+  "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。"
 }
