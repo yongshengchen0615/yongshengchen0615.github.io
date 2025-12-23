@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Body+Foot Snapshot + Ready Event (Change-only, GM_xhr, Throttle 2s, No Silent Catch)
 // @namespace    http://scriptcat.org/
-// @version      5.3.3
+// @version      5.3.4
 // @description  掃描「身體/腳底」面板；change-only snapshot + 最多每2秒送一次；非準備→準備 即刻送 ready_event；用 GM_xmlhttpRequest 避開 CSP；不靜默吞錯
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -21,7 +21,7 @@
   const INTERVAL_MS = 1000;
   const SNAPSHOT_THROTTLE_MS = 2000;
 
-  const LOG_MODE = "group"; // "full" | "group" | "off"======
+  const LOG_MODE = "group"; // "full" | "group" | "off"iiiiiiiii
   const ENABLE_SNAPSHOT = true;
   const ENABLE_READY_EVENT = true;
   const READY_EVENT_DEDUP_MS = 3000;
