@@ -7,8 +7,8 @@
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
-// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
-// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/synchronous.js
+// @updateURL    https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/synchronous.js
+// @downloadURL  https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/synchronous.js
 // ==/UserScript==
 
 (function () {
