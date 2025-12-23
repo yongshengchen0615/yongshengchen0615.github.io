@@ -1,6 +1,6 @@
-// ★ 換成你的 GAS 最新部署網址
+// ★ Users API（不要動）
 const API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  "https://script.google.com/macros/s/AKfycbymh1PL-vjrUUrdJtDh6N47VGhssnyH5VVJRySL4EqRUqSS_Xmn6k0L7yuZaGFYXCLd/exec";
 
 let allUsers = [];
 let filteredUsers = [];
@@ -14,7 +14,7 @@ const selectedIds = new Set();
 
 // dirty state
 const originalMap = new Map(); // userId -> JSON string snapshot
-const dirtyMap = new Map();    // userId -> true
+const dirtyMap = new Map(); // userId -> true
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
@@ -23,22 +23,24 @@ document.addEventListener("DOMContentLoaded", () => {
   if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
 
   const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.addEventListener("click", async () => {
-    selectedIds.clear();
-    hideBulkBar_();
-    await loadUsers();
-  });
+  if (reloadBtn)
+    reloadBtn.addEventListener("click", async () => {
+      selectedIds.clear();
+      hideBulkBar_();
+      await loadUsers();
+    });
 
   const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn) clearSearchBtn.addEventListener("click", () => {
-    const si = document.getElementById("searchInput");
-    if (si) si.value = "";
+  if (clearSearchBtn)
+    clearSearchBtn.addEventListener("click", () => {
+      const si = document.getElementById("searchInput");
+      if (si) si.value = "";
 
-    const box = si?.closest(".search-box");
-    box?.classList.remove("is-searching");
+      const box = si?.closest(".search-box");
+      box?.classList.remove("is-searching");
 
-    applyFilters();
-  });
+      applyFilters();
+    });
 
   bindFilter();
   bindSorting_();
@@ -46,12 +48,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
-    searchInput.addEventListener("input", debounce(() => {
-      const box = searchInput.closest(".search-box");
-      const hasValue = searchInput.value.trim().length > 0;
-      box?.classList.toggle("is-searching", hasValue);
-      applyFilters();
-    }, 180));
+    searchInput.addEventListener(
+      "input",
+      debounce(() => {
+        const box = searchInput.closest(".search-box");
+        const hasValue = searchInput.value.trim().length > 0;
+        box?.classList.toggle("is-searching", hasValue);
+        applyFilters();
+      }, 180)
+    );
 
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
@@ -101,18 +106,14 @@ async function loadUsers() {
 
     allUsers = (json.users || []).map((u) => ({
       ...u,
-      // ✅確保新欄位存在
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
-      scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否", // ✅新增
+      scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
     }));
 
     originalMap.clear();
     dirtyMap.clear();
-
-    for (const u of allUsers) {
-      originalMap.set(u.userId, snapshot_(u));
-    }
+    for (const u of allUsers) originalMap.set(u.userId, snapshot_(u));
 
     applyFilters();
     toast("資料已更新", "ok");
@@ -222,28 +223,24 @@ function compareBy_(a, b, key, dir) {
   const av = get(a);
   const bv = get(b);
 
-  // ✅ 是/否 欄位排序（push / personalStatus / schedule）
   if (key === "pushEnabled" || key === "personalStatusEnabled" || key === "scheduleEnabled") {
     const na = String(av) === "是" ? 1 : 0;
     const nb = String(bv) === "是" ? 1 : 0;
     return (na - nb) * sgn;
   }
 
-  // number
   if (key === "usageDays" || key === "isMaster") {
     const na = Number(av || 0);
     const nb = Number(bv || 0);
     return (na - nb) * sgn;
   }
 
-  // date-ish
   if (key === "createdAt" || key === "startDate") {
     const da = toTime_(av);
     const db = toTime_(bv);
     return (da - db) * sgn;
   }
 
-  // string
   const sa = String(av ?? "").toLowerCase();
   const sb = String(bv ?? "").toLowerCase();
   if (sa < sb) return -1 * sgn;
@@ -284,12 +281,13 @@ function bindBulk_() {
   }
 
   const bulkClear = document.getElementById("bulkClear");
-  if (bulkClear) bulkClear.addEventListener("click", () => {
-    selectedIds.clear();
-    renderTable();
-    updateBulkBar_();
-    syncCheckAll_();
-  });
+  if (bulkClear)
+    bulkClear.addEventListener("click", () => {
+      selectedIds.clear();
+      renderTable();
+      updateBulkBar_();
+      syncCheckAll_();
+    });
 
   const bulkApply = document.getElementById("bulkApply");
   if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
@@ -334,7 +332,7 @@ async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
-  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || ""; // ✅新增
+  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
   if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled) {
     toast("請先選擇要套用的批次欄位", "err");
@@ -357,10 +355,7 @@ async function bulkApply_() {
       u.pushEnabled = pushEnabled;
     }
 
-    // ✅ 個人狀態：純開關
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
-
-    // ✅ 排班表：純開關
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 
     markDirty_(id, u);
@@ -373,7 +368,6 @@ async function bulkApply_() {
 async function bulkDelete_() {
   const btn = document.getElementById("bulkDelete");
   const ids = Array.from(selectedIds);
-
   if (!ids.length) return;
 
   const okConfirm = confirm(`確定要批次刪除？\n\n共 ${ids.length} 筆。\n此操作不可復原。`);
@@ -513,7 +507,7 @@ function renderTable() {
     const saveBtn = tr.querySelector(".btn-save");
     const delBtn = tr.querySelector(".btn-del");
 
-    // ✅ 初始渲染就套用規則：非通過 → 推播強制否 + 禁用
+    // ✅ 初始規則：非通過 → 推播強制否 + 禁用
     if ((audit || "待審核") !== "通過") {
       pushSelect.value = "否";
       pushSelect.disabled = true;
@@ -538,7 +532,6 @@ function renderTable() {
       u.masterCode = masterInput.value || "";
       u.audit = auditSelect.value || "待審核";
 
-      // 先吃使用者選擇
       u.pushEnabled = pushSelect.value || "否";
 
       // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
@@ -550,10 +543,7 @@ function renderTable() {
         pushSelect.disabled = false;
       }
 
-      // ✅ 個人狀態：純開關
       u.personalStatusEnabled = personalSelect.value || "否";
-
-      // ✅ 排班表：純開關
       u.scheduleEnabled = scheduleSelect.value || "否";
 
       markDirty_(u.userId, u);
@@ -584,12 +574,9 @@ function renderTable() {
       saveBtn.disabled = true;
       saveBtn.textContent = "儲存中...";
 
-      // 保險：送出前再強制一次（避免 UI 被外力改動）
       const finalAudit = auditSelect.value || "待審核";
-      const finalPush = (finalAudit !== "通過") ? "否" : (pushSelect.value || "否");
-      if (finalAudit !== "通過") {
-        pushSelect.value = "否";
-      }
+      const finalPush = finalAudit !== "通過" ? "否" : (pushSelect.value || "否");
+      if (finalAudit !== "通過") pushSelect.value = "否";
 
       const payload = {
         userId: u.userId,
@@ -608,12 +595,16 @@ function renderTable() {
 
       if (ok) {
         toast("儲存完成", "ok");
+
         u.audit = finalAudit;
         u.pushEnabled = finalPush;
+        u.masterCode = masterInput.value || "";
         u.personalStatusEnabled = personalSelect.value || "否";
         u.scheduleEnabled = scheduleSelect.value || "否";
+
         originalMap.set(u.userId, snapshot_(u));
         dirtyMap.delete(u.userId);
+
         await loadUsers();
       } else {
         toast("儲存失敗", "err");
@@ -723,8 +714,14 @@ function markDirty_(userId, u) {
 /* ========= API ========= */
 
 async function updateUser({
-  userId, audit, startDate, usageDays, masterCode,
-  pushEnabled, personalStatusEnabled, scheduleEnabled
+  userId,
+  audit,
+  startDate,
+  usageDays,
+  masterCode,
+  pushEnabled,
+  personalStatusEnabled,
+  scheduleEnabled,
 }) {
   try {
     const fd = new URLSearchParams();

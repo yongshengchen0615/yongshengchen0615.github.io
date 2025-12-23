@@ -1,3 +1,22 @@
+// =========================================================
+// app.js (Dashboard - Edge Cache Reader + LIFF Gate + Personal Tools)
+// ✅ Personal Tools FINAL LOGIC (per your spec)
+// - personalStatusEnabled === "是"  -> 3 buttons ALL visible + usable
+// - Click mapping (PersonalStatus row):
+//   使用者管理 -> 使用者管理liff
+//   休假設定   -> 休假設定連結
+//   個人狀態   -> 個人狀態連結
+// - If any link missing: still show buttons, but click will console.error (no silent hide)
+//
+// ✅ Color/Background FINAL (FIXED)
+// - colorIndex/colorMaster/colorStatus: 只控制文字顏色（不再覆蓋背景）
+// - bgIndex/bgMaster/bgStatus: 只控制背景/框線
+// - status pill: bgStatus 優先；colorStatus 只改字；若無 bgStatus 可選用 colorStatus 自動生成 pill 背景
+//
+// ✅ Edge Random Routing (NEW)
+// - EDGE_STATUS_URLS 每次 fetchStatusAll() 都隨機抽起點（仍保留 failover + override reroute TTL）
+// =========================================================
+
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
 (function () {
   const rawLog = console.log;
@@ -12,20 +31,33 @@
 })();
 
 /* =========================================================
- * ✅ 分流設定：Edge GAS（Status 讀取分流）
+ * ✅ Config.json 讀取（取代硬寫 URL / LIFF_ID）
  * ========================================================= */
+const CONFIG_JSON_URL = "./config.json";
 
-// ★ 換成你的 6 個 Edge GAS Web App URL（每個都要不同 /exec）
-let EDGE_STATUS_URLS = [
-"https://script.google.com/macros/s/AKfycbyCS69SlJi7T_BYpk7rbyDl52PKGvLJHCrQeUGeQ78G-oxDui_kiAndm4cmXJLCixYZGQ/exec",
-"https://script.google.com/macros/s/AKfycbwpM8Iox_6AyXoyA5qB-cYri1rbjt-SB25m0PkK0pkYFDUNgwKOKfFvDJnd-GeFnJOxLg/exec",
-"https://script.google.com/macros/s/AKfycbzzPY_Ted_wrNzqKeTojhyFzGCSVBcUQQcGR3ZZEpZqgRPoQJ-YVPLPK1pkkYZvP20RVQ/exec",
-"https://script.google.com/macros/s/AKfycbzhJHk4T24FvUQewqNlhCgiAFR0W9A8CAKaYRjf0vrkWtndM-Q8xpTZAbpQt_DQJwDH/exec"
-];
+let EDGE_STATUS_URLS = [];
+let FALLBACK_ORIGIN_CACHE_URL = "";
+let AUTH_API_URL = "";
+let LIFF_ID = "";
 
-// （可選）主站 fallback：走 cache_all（避免 Edge 偶發失敗）
-const FALLBACK_ORIGIN_CACHE_URL =
-  "https://script.google.com/macros/s/AKfycbwXwpKPzQFuIWtZOJpeGU9aPbl3RR5bj9yVWjV7mfyYaABaxMetKn_3j_mdMJGN9Ok5Ug/exec";
+async function loadConfigJson_() {
+  const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
+  if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
+
+  const cfg = await resp.json();
+
+  const edges = Array.isArray(cfg.EDGE_STATUS_URLS) ? cfg.EDGE_STATUS_URLS : [];
+  EDGE_STATUS_URLS = edges.map((u) => String(u || "").trim()).filter(Boolean);
+
+  FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
+  AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
+  LIFF_ID = String(cfg.LIFF_ID || "").trim();
+
+  if (!LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
+  if (!AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
+  if (!FALLBACK_ORIGIN_CACHE_URL) throw new Error("CONFIG_FALLBACK_ORIGIN_CACHE_URL_MISSING");
+  if (!EDGE_STATUS_URLS.length) throw new Error("CONFIG_EDGE_STATUS_URLS_EMPTY");
+}
 
 /* =========================
  * Hash / URL utils
@@ -47,11 +79,10 @@ function withQuery_(base, extraQuery) {
 /* =========================================================
  * ✅ Edge Failover + Timeout + Sticky Reroute
  * ========================================================= */
-
-const STATUS_FETCH_TIMEOUT_MS = 8000; // 6~10 秒
-const EDGE_TRY_MAX = 3; // 最多試幾台（含命中那台）
-const EDGE_FAIL_THRESHOLD = 2; // 命中那台連續失敗幾次後 reroute
-const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000; // reroute 有效期
+const STATUS_FETCH_TIMEOUT_MS = 8000;
+const EDGE_TRY_MAX = 3;
+const EDGE_FAIL_THRESHOLD = 2;
+const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000;
 
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
@@ -68,7 +99,6 @@ function writeJsonLS_(k, v) {
     localStorage.setItem(k, JSON.stringify(v));
   } catch {}
 }
-
 function getOverrideEdgeIndex_() {
   const o = readJsonLS_(EDGE_ROUTE_KEY);
   if (!o || typeof o.idx !== "number") return null;
@@ -91,12 +121,6 @@ function bumpFailCount_(idx) {
 function resetFailCount_() {
   localStorage.removeItem(EDGE_FAIL_KEY);
 }
-
-/**
- * ✅ Edge URL sanitize
- * - 去重
- * - 過濾空字串
- */
 function sanitizeEdgeUrls_() {
   const seen = new Set();
   EDGE_STATUS_URLS = (EDGE_STATUS_URLS || [])
@@ -108,16 +132,30 @@ function sanitizeEdgeUrls_() {
       return true;
     });
 
-  // 如果你只填到 1 個（或不小心都一樣），reroute 沒意義，但至少不會壞
-  if (!EDGE_STATUS_URLS.length) {
-    console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
-  }
+  if (!EDGE_STATUS_URLS.length) console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
 }
-sanitizeEdgeUrls_();
 
+/**
+ * ✅ 原本 hash 版（保留不刪，方便你回切），但現在不再使用
+ */
 function getStatusEdgeIndex_() {
-  const n = EDGE_STATUS_URLS.length;
+  const uid = window.currentUserId || "anonymous";
+  const baseIdx = EDGE_STATUS_URLS.length ? hashToIndex_(uid, EDGE_STATUS_URLS.length) : 0;
+  const overrideIdx = getOverrideEdgeIndex_();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < EDGE_STATUS_URLS.length) return overrideIdx;
+  return baseIdx;
+}
+
+/**
+ * ✅ NEW：每次都隨機分配 Edge 起點（仍保留 override reroute）
+ */
+function getRandomEdgeIndex_() {
+  const n = EDGE_STATUS_URLS.length || 0;
   if (!n) return 0;
+
+  const overrideIdx = getOverrideEdgeIndex_();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < n) return overrideIdx;
+
   return Math.floor(Math.random() * n);
 }
 
@@ -133,11 +171,7 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
+    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
     const text = await resp.text();
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 160)}`);
@@ -149,37 +183,84 @@ async function fetchJsonWithTimeout_(url, timeoutMs) {
       throw new Error(`NON_JSON ${text.slice(0, 160)}`);
     }
 
-    if (json && json.ok === false)
-      throw new Error(`NOT_OK ${json.error || "response not ok"}`);
+    if (json && json.ok === false) throw new Error(`NOT_OK ${json.err || json.error || "response not ok"}`);
     return json;
   } finally {
     clearTimeout(t);
   }
 }
 
+/**
+ * ✅ 新策略：
+ * 1) Edge: mode=sheet_all
+ * 2) Origin fallback: mode=sheet_all
+ */
 /* =========================================================
- * 原本你的設定
+ * ✅ 1) fetchStatusAll：回傳 edgeIdx（分流序號 = EDGE_STATUS_URLS 的 index）
  * ========================================================= */
+async function fetchStatusAll() {
+  const jitterBust = Date.now();
 
-// ★ AUTH GAS Web App URL
-const AUTH_API_URL =
-  "https://script.google.com/macros/s/AKfycbzYgHZiXNKR2EZ5GVAx99ExBuDYVFYOsKmwpxev_i2aivVOwStCG_rHIik6sMuZ4KCf/exec";
+  const startIdx = getRandomEdgeIndex_();
+  const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
 
-const LIFF_ID = "2008669658-sBKFvZEz";
+  for (const idx of tryEdgeIdxList) {
+    const edgeBase = EDGE_STATUS_URLS[idx];
+    if (!edgeBase) continue;
 
-// 授權畫面 & 主畫面容器
+    const url = withQuery_(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
+
+    try {
+      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS);
+
+      const body = Array.isArray(data.body) ? data.body : [];
+      const foot = Array.isArray(data.foot) ? data.foot : [];
+
+      if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
+
+      resetFailCount_();
+      return {
+        source: "edge",
+        edgeIdx: idx, // ✅ NEW: 回傳分流 index（0-based，對應 EDGE_STATUS_URLS 排序）
+        bodyRows: body,
+        footRows: foot,
+      };
+    } catch (e) {
+      if (idx === startIdx) {
+        const n = bumpFailCount_(idx);
+        if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
+          const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
+          setOverrideEdgeIndex_(nextIdx);
+        }
+      }
+    }
+  }
+
+  const originUrl = withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
+  const data = await fetchJsonWithTimeout_(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
+
+  resetFailCount_();
+  return {
+    source: "origin",
+    edgeIdx: null, // ✅ NEW
+    bodyRows: Array.isArray(data.body) ? data.body : [],
+    footRows: Array.isArray(data.foot) ? data.foot : [],
+  };
+}
+
+
+/* =========================================================
+ * DOM
+ * ========================================================= */
 const gateEl = document.getElementById("gate");
 const appRootEl = document.getElementById("appRoot");
 
 // ✅ Top Loading Hint DOM
 const topLoadingEl = document.getElementById("topLoading");
-const topLoadingTextEl = topLoadingEl
-  ? topLoadingEl.querySelector(".top-loading-text")
-  : null;
+const topLoadingTextEl = topLoadingEl ? topLoadingEl.querySelector(".top-loading-text") : null;
 
-// Dashboard 用資料
+// Dashboard data
 const rawData = { body: [], foot: [] };
-
 let activePanel = "body";
 let filterMaster = "";
 let filterStatus = "all";
@@ -199,24 +280,20 @@ const loadingStateEl = document.getElementById("loadingState");
 const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
-// 🔔 使用者名稱 + 剩餘天數橫幅 DOM
+// 🔔 Usage banner
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
 
-// ✅ 個人狀態快捷按鈕 DOM
+// ✅ Personal Tools DOM
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
 const btnVacationEl = document.getElementById("btnVacation");
 
 /* =========================================================
- * ✅ 功能提示 chip
+ * ✅ Feature banner
  * ========================================================= */
-let featureState = {
-  pushEnabled: "否",
-  personalStatusEnabled: "否",
-  scheduleEnabled: "否",
-};
+let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
 
 function normalizeYesNo_(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
@@ -240,17 +317,11 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [
-    buildChip_("叫班提醒", push),
-    buildChip_("個人狀態", personal),
-    buildChip_("排班表", schedule),
-  ].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
-  featureState.personalStatusEnabled = normalizeYesNo_(
-    data && data.personalStatusEnabled
-  );
+  featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
   renderFeatureBanner_();
 }
@@ -271,6 +342,7 @@ function hideLoadingHint() {
 function showGate(message, isError) {
   if (!gateEl) return;
   gateEl.classList.remove("gate-hidden");
+  gateEl.style.pointerEvents = "auto";
   gateEl.innerHTML =
     '<div class="gate-message' +
     (isError ? " gate-message-error" : "") +
@@ -279,7 +351,10 @@ function showGate(message, isError) {
     "</p></div>";
 }
 function hideGate() {
-  if (gateEl) gateEl.classList.add("gate-hidden");
+  if (!gateEl) return;
+  gateEl.classList.add("gate-hidden");
+  // ✅ 保險：避免透明 gate 擋點
+  gateEl.style.pointerEvents = "none";
 }
 function openApp() {
   hideGate();
@@ -311,53 +386,59 @@ function updateUsageBanner(displayName, remainingDays) {
   usageBannerEl.classList.remove("usage-banner-warning", "usage-banner-expired");
   if (typeof remainingDays === "number" && !Number.isNaN(remainingDays)) {
     if (remainingDays <= 0) usageBannerEl.classList.add("usage-banner-expired");
-    else if (remainingDays <= 3)
-      usageBannerEl.classList.add("usage-banner-warning");
+    else if (remainingDays <= 3) usageBannerEl.classList.add("usage-banner-warning");
   }
 }
 
 /* =========================================================
- * ✅ Personal Tools（getPersonalStatus）
+ * ✅ Personal Tools FINAL (per your spec)
  * ========================================================= */
 async function fetchPersonalStatusRow_(userId) {
-  const url = withQuery_(
-    AUTH_API_URL,
-    "mode=getPersonalStatus&userId=" + encodeURIComponent(userId)
-  );
+  const url = withQuery_(AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("getPersonalStatus HTTP " + resp.status);
   return await resp.json();
 }
 
-function showPersonalTools_(manageLiff, personalLink, vacationLink) {
-  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl || !btnVacationEl)
-    return;
-
-  const m = String(manageLiff || "").trim();
-  const p = String(personalLink || "").trim();
-  const v = String(vacationLink || "").trim();
-
-  if (!m && !p && !v) {
-    personalToolsEl.style.display = "none";
-    return;
+// 安全取欄位：先吃中文鍵，再吃英文鍵（避免 GAS 回傳欄位不齊時直接掛）
+function pickField_(obj, keys) {
+  for (const k of keys) {
+    const v = obj && obj[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
   }
+  return "";
+}
 
+function showPersonalToolsFinal_(psRow) {
+  if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
+
+  // ✅ 只要 personalStatusEnabled=是，三顆「必定顯示」
   personalToolsEl.style.display = "flex";
+  btnUserManageEl.style.display = "inline-flex";
+  btnVacationEl.style.display = "inline-flex";
+  btnPersonalStatusEl.style.display = "inline-flex";
 
-  btnUserManageEl.style.display = m ? "inline-flex" : "none";
+  // ✅ 依你的欄位名稱取值（並做英文相容）
+  const manage = pickField_(psRow, ["使用者管理liff", "manageLiff", "userManageLiff", "userManageLink"]);
+  const vacation = pickField_(psRow, ["休假設定連結", "vacationLink"]);
+  const personal = pickField_(psRow, ["個人狀態連結", "personalStatusLink"]);
+
+  // ✅ 點擊：直接跳對應連結（若缺就明確噴錯，不做隱藏）
   btnUserManageEl.onclick = () => {
-    if (m) window.location.href = m;
+    if (!manage) return console.error("PersonalStatus 缺少欄位：使用者管理liff", psRow);
+    window.location.href = manage;
   };
-
-  btnPersonalStatusEl.style.display = p ? "inline-flex" : "none";
-  btnPersonalStatusEl.onclick = () => {
-    if (p) window.location.href = p;
-  };
-
-  btnVacationEl.style.display = v ? "inline-flex" : "none";
   btnVacationEl.onclick = () => {
-    if (v) window.location.href = v;
+    if (!vacation) return console.error("PersonalStatus 缺少欄位：休假設定連結", psRow);
+    window.location.href = vacation;
   };
+  btnPersonalStatusEl.onclick = () => {
+    if (!personal) return console.error("PersonalStatus 缺少欄位：個人狀態連結", psRow);
+    window.location.href = personal;
+  };
+
+  // Debug 快速檢查
+  window.__personalLinks = { manage, vacation, personal, psRow };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
@@ -392,9 +473,7 @@ async function sendDailyFirstMessageFromUser_() {
     if (last === today) return;
 
     const name = String(window.currentDisplayName || "").trim();
-    const text = name
-      ? `【每日首次開啟】${name} 已進入看板（${today}）`
-      : `【每日首次開啟】使用者已進入看板（${today}）`;
+    const text = name ? `【每日首次開啟】${name} 已進入看板（${today}）` : `【每日首次開啟】使用者已進入看板（${today}）`;
 
     await liff.sendMessages([{ type: "text", text }]);
     localStorage.setItem(DAILY_USER_MSG_KEY, today);
@@ -404,17 +483,14 @@ async function sendDailyFirstMessageFromUser_() {
 }
 
 /* =========================================================
- * ✅ 一致策略：腳本貓色（保留自訂色、提高可讀性）
+ * ✅ 顏色/背景：ScriptCat token 解析 + 可讀性套用
  * ========================================================= */
-
 function isLightTheme_() {
   return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
 }
-
 function clamp_(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
-
 function hexToRgb(hex) {
   if (!hex) return null;
   let s = String(hex).replace("#", "").trim();
@@ -445,7 +521,6 @@ function normalizeHex6_(maybe) {
 
   return null;
 }
-
 function parseOpacityToken_(token) {
   if (!token) return null;
   const t = String(token).trim();
@@ -470,7 +545,6 @@ function parseOpacityToken_(token) {
 
   return null;
 }
-
 function parseScriptCatColorV2_(colorStr) {
   if (!colorStr) return { hex: null, opacity: null };
   const tokens = String(colorStr).split(/\s+/).filter(Boolean);
@@ -513,6 +587,10 @@ function applyReadableTextColor_(el, colorStr) {
   return true;
 }
 
+/**
+ * ✅ 原本的 pill 全套函數（會改字 + 背景 + 框線）
+ * - 只能在「沒有 bgStatus」時當 fallback 使用
+ */
 function applyReadablePillColor_(pillEl, colorStr) {
   if (!pillEl || !colorStr) return false;
   const { hex, opacity } = parseScriptCatColorV2_(colorStr);
@@ -535,8 +613,134 @@ function applyReadablePillColor_(pillEl, colorStr) {
   return true;
 }
 
+/**
+ * ✅ FIX: pill 文字 only（不改背景/框線）
+ */
+function applyReadablePillTextOnly_(pillEl, colorStr) {
+  if (!pillEl || !colorStr) return false;
+
+  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
+  let aText = opacity == null ? 1 : opacity;
+  aText = clamp_(aText, minAlpha, 1);
+
+  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
+  return true;
+}
+
+// ✅ BG token: bg-Cxxxxxx bg-opacity-20 / bg-[#RRGGBB]/15 / #RRGGBB
+function parseScriptCatBgV2_(bgStr) {
+  if (!bgStr) return { hex: null, opacity: null };
+  const tokens = String(bgStr).split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  let opacity = null;
+
+  for (const tk of tokens) {
+    if (!hex) {
+      const mBracket = tk.match(/bg-\[#([0-9a-fA-F]{6})\]/);
+      if (mBracket) hex = "#" + mBracket[1];
+
+      const mC = tk.match(/(?:^|bg-)(?:C)?([0-9a-fA-F]{6})$/);
+      if (!hex && mC) hex = "#" + mC[1];
+
+      const mHash = tk.match(/#([0-9a-fA-F]{6})/);
+      if (!hex && mHash) hex = "#" + mHash[1];
+    }
+
+    if (opacity == null) {
+      let m = tk.match(/(?:bg-opacity-|opacity-)(\d{1,3})/);
+      if (m) {
+        const n = Number(m[1]);
+        if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
+      }
+      if (opacity == null) {
+        m = tk.match(/\/(\d{1,3})$/);
+        if (m) {
+          const n = Number(m[1]);
+          if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
+        }
+      }
+    }
+  }
+
+  return { hex, opacity };
+}
+
+function applyReadableBgColor_(el, bgStr) {
+  if (!el || !bgStr) return false;
+
+  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  let a = opacity;
+  if (a == null) a = isLightTheme_() ? 0.10 : 0.16;
+  a = clamp_(a, 0.03, 0.35);
+
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  return true;
+}
+
+/**
+ * ✅ FIX: pill 背景+框線 from bg token（不改文字顏色）
+ */
+function applyReadablePillBgFromBgToken_(pillEl, bgStr) {
+  if (!pillEl || !bgStr) return false;
+
+  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  let aBg = opacity;
+  if (aBg == null) aBg = isLightTheme_() ? 0.10 : 0.16;
+  aBg = clamp_(aBg, 0.03, 0.35);
+
+  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aBd = clamp_(aBg + (isLightTheme_() ? 0.12 : 0.18), 0.12, 0.55);
+  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+
+  return true;
+}
+
+// 兼容你原本 order cell 特規：改成通用 bg 套用
+function applyBgIndexToOrderCell_(el, bgIndexToken) {
+  return applyReadableBgColor_(el, bgIndexToken);
+}
+function applyOrderHighlightBg_(el, bgStr) {
+  if (!el || !bgStr) return false;
+
+  const { hex } = parseScriptCatBgV2_(bgStr);
+  if (!hex) return false;
+
+  const rgb = hexToRgb(hex);
+  if (!rgb) return false;
+
+  // ✅ 背景：比一般 cell 明顯
+  const bgAlpha = isLightTheme_() ? 0.28 : 0.38;
+  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${bgAlpha})`;
+
+  // ✅ 左側強調線（順序視覺錨點）
+  el.style.borderLeft = `4px solid rgba(${rgb.r},${rgb.g},${rgb.b},0.85)`;
+
+  // ✅ 字體略微加粗（不影響排版）
+  el.style.fontWeight = "600";
+
+  return true;
+}
+
 /* =========================================================
- * ✅ 字串清洗
+ * ✅ 字串清洗 + 狀態映射
  * ========================================================= */
 function normalizeText_(s) {
   return String(s ?? "")
@@ -546,27 +750,20 @@ function normalizeText_(s) {
     .replace(/\n+/g, " ")
     .trim();
 }
-
-/* =========================================================
- * Render helpers
- * ========================================================= */
 function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);
 }
-
 function deriveStatusClass(status, remaining) {
   const s = normalizeText_(status || "");
   const n = Number(remaining);
 
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
-  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌"))
-    return "status-free";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
-
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
@@ -574,18 +771,28 @@ function mapRowsToDisplay(rows) {
       sort: row.sort,
       index: row.index,
       _gasSeq: row._gasSeq,
+
       masterId: normalizeText_(row.masterId),
       status: normalizeText_(row.status),
       appointment: normalizeText_(row.appointment),
+
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
+
+      bgIndex: row.bgIndex || "",
+      bgMaster: row.bgMaster || "",
+      bgStatus: row.bgStatus || "",
+
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
     };
   });
 }
 
+/* =========================================================
+ * Filter options
+ * ========================================================= */
 function rebuildStatusFilterOptions() {
   if (!filterStatusSelect) return;
 
@@ -612,11 +819,9 @@ function rebuildStatusFilterOptions() {
     filterStatusSelect.appendChild(opt);
   }
 
-  filterStatusSelect.value =
-    previous !== "all" && statuses.has(previous) ? previous : "all";
+  filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   filterStatus = filterStatusSelect.value;
 }
-
 function applyFilters(list) {
   return list.filter((row) => {
     if (filterMaster) {
@@ -638,10 +843,200 @@ function applyFilters(list) {
   });
 }
 
-function render() {
+/* =========================================================
+ * ✅ Panel Diff
+ * ========================================================= */
+function rowSignature_(r) {
+  if (!r) return "";
+  return [
+    r.masterId ?? "",
+    r.index ?? "",
+    r.sort ?? "",
+    r.status ?? "",
+    r.appointment ?? "",
+    r.remaining ?? "",
+    r.colorIndex ?? "",
+    r.colorMaster ?? "",
+    r.colorStatus ?? "",
+    r.bgIndex ?? "",
+    r.bgMaster ?? "",
+    r.bgStatus ?? "",
+    r.bgAppointment ?? "",
+  ].join("|");
+}
+function buildStatusSet_(rows) {
+  const s = new Set();
+  (rows || []).forEach((r) => {
+    const t = normalizeText_(r && r.status);
+    if (t) s.add(t);
+  });
+  return s;
+}
+function setEquals_(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+function diffMergePanelRows_(prevRows, incomingRows) {
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+  const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
+
+  const prevMap = new Map();
+  prev.forEach((r) => {
+    const id = String((r && r.masterId) || "").trim();
+    if (id) prevMap.set(id, r);
+  });
+
+  let changed = false;
+  const nextRows = [];
+
+  for (const nr of nextIn) {
+    const id = String((nr && nr.masterId) || "").trim();
+    if (!id) continue;
+
+    const old = prevMap.get(id);
+    if (!old) {
+      nextRows.push({ ...nr });
+      changed = true;
+      continue;
+    }
+
+    const oldSig = rowSignature_(old);
+    const newSig = rowSignature_(nr);
+
+    if (oldSig !== newSig) {
+      Object.assign(old, nr);
+      changed = true;
+    }
+
+    nextRows.push(old);
+    prevMap.delete(id);
+  }
+
+  if (prevMap.size > 0) changed = true;
+
+  const prevStatus = buildStatusSet_(prev);
+  const nextStatus = buildStatusSet_(nextRows);
+  const statusChanged = !setEquals_(prevStatus, nextStatus);
+
+  return { changed, statusChanged, nextRows };
+}
+
+/* =========================================================
+ * ✅ Incremental render
+ * ========================================================= */
+const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
+
+function buildRowKey_(row) {
+  return String((row && row.masterId) || "").trim();
+}
+function ensureRowDom_(panel, row) {
+  const key = buildRowKey_(row);
+  if (!key) return null;
+
+  const map = rowDomMapByPanel_[panel];
+  let tr = map.get(key);
+  if (tr) return tr;
+
+  tr = document.createElement("tr");
+
+  const tdOrder = document.createElement("td");
+  tdOrder.className = "cell-order";
+
+  const tdMaster = document.createElement("td");
+  tdMaster.className = "cell-master";
+
+  const tdStatus = document.createElement("td");
+
+  const tdAppointment = document.createElement("td");
+  tdAppointment.className = "cell-appointment";
+
+  const tdRemaining = document.createElement("td");
+
+  tr.appendChild(tdOrder);
+  tr.appendChild(tdMaster);
+  tr.appendChild(tdStatus);
+  tr.appendChild(tdAppointment);
+  tr.appendChild(tdRemaining);
+
+  map.set(key, tr);
+  return tr;
+}
+
+function patchRowDom_(tr, row, orderText) {
+  const tds = tr.children;
+  const tdOrder = tds[0];
+  const tdMaster = tds[1];
+  const tdStatus = tds[2];
+  const tdAppointment = tds[3];
+  const tdRemaining = tds[4];
+
+  // --- order cell ---
+  tdOrder.textContent = orderText;
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.color = "";
+  tdOrder.style.borderLeft = "";
+  tdOrder.style.fontWeight = "";
+
+  // ✅ 只有 bg-CCBCBCB 才用「強化順序樣式」
+  if (isOrderBgCcbcBcB_(row.bgIndex)) {
+    applyOrderHighlightBg_(tdOrder, row.bgIndex);
+  }
+
+  // 文字色可保留（或視需求一起限制）
+  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
+
+  // --- master cell ---
+  tdMaster.textContent = row.masterId || "";
+  tdMaster.style.backgroundColor = "";
+  tdMaster.style.color = "";
+  if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
+  if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
+
+  // --- status cell ---
+  tdStatus.innerHTML = "";
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "status-pill " + (row.statusClass || "");
+  statusSpan.textContent = row.status || "";
+
+  // reset inline style
+  statusSpan.style.background = "";
+  statusSpan.style.border = "";
+  statusSpan.style.color = "";
+
+  // ✅ FIXED APPLY ORDER:
+  // 1) bgStatus -> 背景 + 框線（不改字）
+  if (row.bgStatus) {
+    applyReadablePillBgFromBgToken_(statusSpan, row.bgStatus);
+  }
+
+  // 2) colorStatus -> 只改文字顏色（不改背景/框線）
+  if (row.colorStatus) {
+    applyReadablePillTextOnly_(statusSpan, row.colorStatus);
+  }
+
+  // 3) optional fallback: 沒 bgStatus 但有 colorStatus 時，自動生成 pill 背景
+  if (!row.bgStatus && row.colorStatus) {
+    applyReadablePillColor_(statusSpan, row.colorStatus);
+  }
+
+  tdStatus.appendChild(statusSpan);
+
+  // --- appointment ---
+  tdAppointment.textContent = row.appointment || "";
+
+  // --- remaining ---
+  tdRemaining.innerHTML = "";
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time-badge";
+  timeSpan.textContent = row.remainingDisplay || "";
+  tdRemaining.appendChild(timeSpan);
+}
+
+function renderIncremental_(panel) {
   if (!tbodyRowsEl) return;
 
-  const list = activePanel === "body" ? rawData.body : rawData.foot;
+  const list = panel === "body" ? rawData.body : rawData.foot;
   const filtered = applyFilters(list);
 
   const isAll = filterStatus === "all";
@@ -671,185 +1066,121 @@ function render() {
 
   const displayRows = mapRowsToDisplay(finalRows);
 
-  tbodyRowsEl.innerHTML = "";
   if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
+  if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
 
   const frag = document.createDocumentFragment();
 
   displayRows.forEach((row, idx) => {
-    const tr = document.createElement("tr");
-
     const showGasSortInOrderCol = !useDisplayOrder;
     const sortNum = Number(row.sort);
-    const orderText =
-      showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
 
-    const tdOrder = document.createElement("td");
-    tdOrder.textContent = orderText;
-    tdOrder.className = "cell-order";
-    if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
-    tr.appendChild(tdOrder);
+    const tr = ensureRowDom_(panel, row);
+    if (!tr) return;
 
-    const tdMaster = document.createElement("td");
-    tdMaster.textContent = row.masterId || "";
-    tdMaster.className = "cell-master";
-    if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
-    tr.appendChild(tdMaster);
-
-    const tdStatus = document.createElement("td");
-    const statusSpan = document.createElement("span");
-    statusSpan.className = "status-pill " + row.statusClass;
-
-    if (row.colorStatus) {
-      applyReadablePillColor_(statusSpan, row.colorStatus);
-    }
-
-    statusSpan.textContent = row.status || "";
-    tdStatus.appendChild(statusSpan);
-    tr.appendChild(tdStatus);
-
-    const tdAppointment = document.createElement("td");
-    tdAppointment.textContent = row.appointment || "";
-    tdAppointment.className = "cell-appointment";
-    tr.appendChild(tdAppointment);
-
-    const tdRemaining = document.createElement("td");
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "time-badge";
-    timeSpan.textContent = row.remainingDisplay || "";
-    tdRemaining.appendChild(timeSpan);
-    tr.appendChild(tdRemaining);
-
+    patchRowDom_(tr, row, orderText);
     frag.appendChild(tr);
   });
 
-  tbodyRowsEl.appendChild(frag);
-
-  if (panelTitleEl)
-    panelTitleEl.textContent = activePanel === "body" ? "身體面板" : "腳底面板";
+  tbodyRowsEl.replaceChildren(frag);
 }
 
 /* =========================================================
- * ✅ 分流後的 Status 取得（一次拿 body + foot）
- * - ✅ 先打 Edge 的 cache_all：吃到「Edge Cache sheet」
- * - 再 fallback Origin cache_all / all
- * ========================================================= */
-async function fetchStatusAll() {
-  const jitterBust = Date.now();
-  const startIdx = getStatusEdgeIndex_();
-  const tryEdgeIdxList = buildEdgeTryOrder_(startIdx);
-
-  // ✅ Edge：優先 cache_all（避免 Origin 偶發慢，且可真正使用 Edge 自己的 Cache sheet）
-  for (const idx of tryEdgeIdxList) {
-    const edgeBase = EDGE_STATUS_URLS[idx];
-    if (!edgeBase) continue;
-
-    const edgeUrl = withQuery_(edgeBase, "mode=cache_all&v=" + encodeURIComponent(jitterBust));
-
-    try {
-      const data = await fetchJsonWithTimeout_(edgeUrl, STATUS_FETCH_TIMEOUT_MS);
-      resetFailCount_();
-      return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
-      };
-    } catch (e) {
-      // sticky reroute：只針對起始 idx 計數
-      if (idx === startIdx) {
-        const n = bumpFailCount_(idx);
-        if (EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
-          const nextIdx = (idx + 1) % EDGE_STATUS_URLS.length;
-          setOverrideEdgeIndex_(nextIdx);
-        }
-      }
-    }
-  }
-
-  // ✅ fallback：Origin
-  const fallbackCandidates = [
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=cache_all&v=" + encodeURIComponent(jitterBust)),
-    withQuery_(FALLBACK_ORIGIN_CACHE_URL, "mode=all&v=" + encodeURIComponent(jitterBust)),
-  ];
-
-  let lastErr = null;
-  for (const url of fallbackCandidates) {
-    try {
-      const data = await fetchJsonWithTimeout_(url, STATUS_FETCH_TIMEOUT_MS + 4000);
-      resetFailCount_();
-      return {
-        bodyRows: Array.isArray(data.body) ? data.body : [],
-        footRows: Array.isArray(data.foot) ? data.foot : [],
-      };
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  throw lastErr || new Error("fetchStatusAll failed");
-}
-
-/* =========================================================
- * ✅ refresh：避免重疊 + 背景暫停 + error 文案收斂
+ * ✅ refresh：輪詢不重疊 + 空快照保護
  * ========================================================= */
 let refreshInFlight = false;
-let lastErrToastKey = "";
 
-function shortErr_(err) {
-  const s = String((err && err.message) || err || "").replace(/\s+/g, " ").trim();
-  return s.length > 140 ? s.slice(0, 140) + "…" : s;
+const EMPTY_ACCEPT_AFTER_N = 2;
+const emptyStreak_ = { body: 0, foot: 0 };
+
+function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
+  const inc = Array.isArray(incomingRows) ? incomingRows : [];
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+
+  if (isManual) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  if (inc.length > 0) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  if (prev.length === 0) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  emptyStreak_[panel] = (emptyStreak_[panel] || 0) + 1;
+
+  if (emptyStreak_[panel] >= EMPTY_ACCEPT_AFTER_N) {
+    emptyStreak_[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  return { rows: prev, accepted: false };
 }
 
-async function refreshStatus() {
+/* =========================================================
+ * ✅ 2) refreshStatus：顯示「已連線（分流X）」(X = edgeIdx+1)
+ * ========================================================= */
+async function refreshStatus(isManual = false) {
   if (document.hidden) return;
   if (refreshInFlight) return;
 
   refreshInFlight = true;
-  showLoadingHint("同步資料中…");
+
+  if (isManual) showLoadingHint("同步資料中…");
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    const { bodyRows, footRows } = await fetchStatusAll();
+    // ✅ 改：多接 edgeIdx
+    const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
 
-    rawData.body = bodyRows.map((r, i) => ({ ...r, _gasSeq: i }));
-    rawData.foot = footRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
+    const footDecision = decideIncomingRows_("foot", footRows, rawData.foot, isManual);
 
-    rebuildStatusFilterOptions();
+    const bodyDiff = diffMergePanelRows_(rawData.body, bodyDecision.rows);
+    const footDiff = diffMergePanelRows_(rawData.foot, footDecision.rows);
 
-    if (connectionStatusEl) connectionStatusEl.textContent = "已連線";
-    if (lastUpdateEl) {
+    if (bodyDiff.changed) rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    if (footDiff.changed) rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+
+    if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+
+    const anyChanged = bodyDiff.changed || footDiff.changed;
+    const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
+
+    // ✅ NEW：分流顯示第幾分流（依 EDGE_STATUS_URLS 排序）
+    if (connectionStatusEl) {
+      if (source === "edge" && typeof edgeIdx === "number") {
+        connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
+      } else {
+        connectionStatusEl.textContent = "已連線（主站）";
+      }
+    }
+
+    if (anyChanged && lastUpdateEl) {
       const now = new Date();
       lastUpdateEl.textContent =
-        "更新：" +
-        String(now.getHours()).padStart(2, "0") +
-        ":" +
-        String(now.getMinutes()).padStart(2, "0");
+        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    render();
+    if (activeChanged) renderIncremental_(activePanel);
   } catch (err) {
-    const msg = shortErr_(err);
-    const key = msg; // 同訊息就不狂噴
-
-    if (key !== lastErrToastKey) {
-      console.error("[Status] 取得狀態失敗：", err);
-      lastErrToastKey = key;
-    }
-
+    console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
-    if (errorStateEl) {
-      errorStateEl.style.display = "block";
-      // 如果你的 errorStateEl 內有 .error-text 就塞入（可選）
-      const et = errorStateEl.querySelector?.(".error-text");
-      if (et) et.textContent = "無法取得資料：" + msg;
-    }
+    if (errorStateEl) errorStateEl.style.display = "block";
   } finally {
-    hideLoadingHint();
+    if (isManual) hideLoadingHint();
     refreshInFlight = false;
   }
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) refreshStatus();
+  if (!document.hidden) refreshStatus(false);
 });
 
 /* =========================
@@ -863,7 +1194,6 @@ async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
   if (!oldName || oldName !== newName) {
     try {
       await registerUser(userId, newName);
-      console.log("[NameSync] updated:", { oldName, newName });
       return true;
     } catch (e) {
       console.warn("[NameSync] update failed:", e);
@@ -975,15 +1305,12 @@ function setTheme(theme) {
   const finalTheme = theme === "light" ? "light" : "dark";
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
-  if (themeToggleBtn)
-    themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
+  if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 }
-
 (function initTheme() {
   const saved = localStorage.getItem("dashboardTheme") || "dark";
   setTheme(saved);
 })();
-
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme") || "dark";
@@ -991,7 +1318,9 @@ if (themeToggleBtn) {
   });
 }
 
-// ===== LIFF 初始化與權限 Gate =====
+/* =========================================================
+ * ✅ LIFF 初始化與權限 Gate
+ * ========================================================= */
 async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 
@@ -1027,7 +1356,6 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    // ✅ 放行條件：審核通過 + 未過期(含最後一天) + 排班表開通=是
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     const rd = result.remainingDays;
     const hasRd = typeof rd === "number" && !Number.isNaN(rd);
@@ -1038,20 +1366,22 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ 個人狀態工具列
+      // ✅ FINAL PERSONAL TOOLS LOGIC:
+      // personalStatusEnabled=是 -> 顯示三顆並使用 PersonalStatus 欄位連結
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
           const ps = await fetchPersonalStatusRow_(userId);
-          if (ps && ps.ok) {
-            const manage = ps.manageLiff || ps["使用者管理liff"] || "";
-            const pLink = ps.personalStatusLink || ps["個人狀態連結"] || "";
-            const vLink = ps.vacationLink || ps["休假設定連結"] || "";
-            showPersonalTools_(manage, pLink, vLink);
-          } else hidePersonalTools_();
+
+          // 兼容：有些人會包在 data/row/payload
+          const psRow =
+            (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
+
+          showPersonalToolsFinal_(psRow);
         } catch (e) {
-          console.warn("[PersonalTools] getPersonalStatus failed:", e);
-          hidePersonalTools_();
+          // 依你的規格：開通了就必須能看到三顆
+          showPersonalToolsFinal_({});
+          console.error("[PersonalTools] getPersonalStatus failed:", e);
         }
       } else {
         hidePersonalTools_();
@@ -1062,8 +1392,10 @@ async function initLiffAndGuard() {
       return;
     }
 
+    // 非可用狀態：隱藏個人工具
+    hidePersonalTools_();
+
     if (result.status === "approved") {
-      hidePersonalTools_();
       let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
       if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
       if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
@@ -1073,7 +1405,6 @@ async function initLiffAndGuard() {
     }
 
     if (result.status === "pending") {
-      hidePersonalTools_();
       const auditText = result.audit || "待審核";
       let msg = "此帳號目前尚未通過審核。\n";
       msg += "目前審核狀態：「" + auditText + "」。\n\n";
@@ -1085,7 +1416,6 @@ async function initLiffAndGuard() {
       return;
     }
 
-    hidePersonalTools_();
     showGate("⚠ 無法確認使用權限，請稍後再試。", true);
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
@@ -1095,7 +1425,7 @@ async function initLiffAndGuard() {
 }
 
 /* =========================
- * 事件綁定
+ * Events
  * ========================= */
 if (tabBodyBtn) tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
 if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
@@ -1103,18 +1433,16 @@ if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"
 if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
-    render();
+    renderIncremental_(activePanel);
   });
 }
-
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
-    render();
+    renderIncremental_(activePanel);
   });
 }
-
-if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus());
+if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus(true));
 
 function setActivePanel(panel) {
   activePanel = panel;
@@ -1128,29 +1456,48 @@ function setActivePanel(panel) {
       tabBodyBtn.classList.remove("tab-active");
     }
   }
-  render();
+
+  renderIncremental_(activePanel);
 }
 
 /* =========================
- * App 啟動（輪詢不重疊 + jitter）
+ * App start
  * ========================= */
 let pollTimer = null;
 
 function startApp() {
   setActivePanel("body");
-  refreshStatus();
+  refreshStatus(false);
 
-  const intervalMs = 10 * 1000;
-  const jitter = Math.floor(Math.random() * 5000);
+  const intervalMs = 3 * 1000;
+  const jitter = Math.floor(Math.random() * 3000);
 
   if (pollTimer) clearInterval(pollTimer);
 
   setTimeout(() => {
-    pollTimer = setInterval(() => refreshStatus(), intervalMs);
+    pollTimer = setInterval(() => refreshStatus(false), intervalMs);
   }, jitter);
 }
 
-// ===== 入口 =====
-window.addEventListener("load", () => {
+/* =========================================================
+ * ✅ Entry
+ * ========================================================= */
+window.addEventListener("load", async () => {
+  try {
+    await loadConfigJson_();
+    sanitizeEdgeUrls_();
+  } catch (e) {
+    console.error("[Config] load failed:", e);
+    showGate("⚠ 無法載入 config.json，請確認檔案存在且可被存取。", true);
+    return;
+  }
+
   initLiffAndGuard();
 });
+
+function isOrderBgCcbcBcB_(bgToken) {
+  const s = String(bgToken || "").trim();
+  if (!s) return false;
+  // 允許：bg-CCBCBCB / bg-[#CCBCBCB]/xx / #CCBCBCB / 直接 CCBCBCB
+  return s.includes("CCBCBCB");
+}
