@@ -1,5 +1,9 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF Gate + Personal Tools)
+// ✅ ENABLE_LINE_LOGIN 控制是否需要 LINE LIFF 登入
+// - ENABLE_LINE_LOGIN=true  -> 走 initLiffAndGuard()
+// - ENABLE_LINE_LOGIN=false -> 跳過 LIFF，走 initNoLiffAndGuard()（仍保留 AUTH 權限控管）
+//
 // ✅ Personal Tools FINAL LOGIC (per your spec)
 // - personalStatusEnabled === "是"  -> 3 buttons ALL visible + usable
 // - Click mapping (PersonalStatus row):
@@ -39,6 +43,7 @@ let EDGE_STATUS_URLS = [];
 let FALLBACK_ORIGIN_CACHE_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
+let ENABLE_LINE_LOGIN = true; // ✅ default true（正式環境）
 
 async function loadConfigJson_() {
   const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
@@ -52,8 +57,10 @@ async function loadConfigJson_() {
   FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
+  ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN); // ✅ NEW
 
-  if (!LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
+  // ✅ 只有在需要 LINE 登入時才強制要求 LIFF_ID
+  if (ENABLE_LINE_LOGIN && !LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
   if (!FALLBACK_ORIGIN_CACHE_URL) throw new Error("CONFIG_FALLBACK_ORIGIN_CACHE_URL_MISSING");
   if (!EDGE_STATUS_URLS.length) throw new Error("CONFIG_EDGE_STATUS_URLS_EMPTY");
@@ -248,7 +255,6 @@ async function fetchStatusAll() {
   };
 }
 
-
 /* =========================================================
  * DOM
  * ========================================================= */
@@ -282,7 +288,9 @@ const themeToggleBtn = document.getElementById("themeToggle");
 
 // 🔔 Usage banner
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl
+  ? usageBannerEl.querySelector("#usageBannerText")
+  : document.getElementById("usageBannerText");
 
 // ✅ Personal Tools DOM
 const personalToolsEl = document.getElementById("personalTools");
@@ -317,7 +325,9 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+    ""
+  );
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -465,6 +475,7 @@ function getTodayTaipei_() {
 
 async function sendDailyFirstMessageFromUser_() {
   try {
+    if (!ENABLE_LINE_LOGIN) return; // ✅ NEW：No-LIFF 模式不送訊息
     if (!window.liff) return;
     if (!liff.isInClient()) return;
 
@@ -682,7 +693,7 @@ function applyReadableBgColor_(el, bgStr) {
   if (!rgb) return false;
 
   let a = opacity;
-  if (a == null) a = isLightTheme_() ? 0.10 : 0.16;
+  if (a == null) a = isLightTheme_() ? 0.1 : 0.16;
   a = clamp_(a, 0.03, 0.35);
 
   el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
@@ -702,7 +713,7 @@ function applyReadablePillBgFromBgToken_(pillEl, bgStr) {
   if (!rgb) return false;
 
   let aBg = opacity;
-  if (aBg == null) aBg = isLightTheme_() ? 0.10 : 0.16;
+  if (aBg == null) aBg = isLightTheme_() ? 0.1 : 0.16;
   aBg = clamp_(aBg, 0.03, 0.35);
 
   pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
@@ -1136,7 +1147,6 @@ async function refreshStatus(isManual = false) {
   if (errorStateEl) errorStateEl.style.display = "none";
 
   try {
-    // ✅ 改：多接 edgeIdx
     const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
 
     const bodyDecision = decideIncomingRows_("body", bodyRows, rawData.body, isManual);
@@ -1153,7 +1163,6 @@ async function refreshStatus(isManual = false) {
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
-    // ✅ NEW：分流顯示第幾分流（依 EDGE_STATUS_URLS 排序）
     if (connectionStatusEl) {
       if (source === "edge" && typeof edgeIdx === "number") {
         connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
@@ -1319,6 +1328,101 @@ if (themeToggleBtn) {
 }
 
 /* =========================================================
+ * ✅ No-LIFF 模式：ENABLE_LINE_LOGIN=false 跳過 LINE 登入
+ * - 仍走同一套 AUTH_API（check/register/approved gate）
+ * - userId 來源：URL ?userId=xxx > localStorage(devUserId) > "dev_user"
+ * ========================================================= */
+function getQueryParam_(k) {
+  try {
+    const u = new URL(location.href);
+    return u.searchParams.get(k) || "";
+  } catch {
+    return "";
+  }
+}
+
+async function initNoLiffAndGuard() {
+  showGate("✅ 測試模式（未啟用 LINE 登入）\n正在確認使用權限…");
+
+  try {
+    const userId =
+      String(getQueryParam_("userId") || "").trim() ||
+      String(localStorage.getItem("devUserId") || "").trim() ||
+      "dev_user";
+
+    const displayName =
+      String(getQueryParam_("name") || "").trim() ||
+      String(localStorage.getItem("devDisplayName") || "").trim() ||
+      "測試使用者";
+
+    window.currentUserId = userId;
+    window.currentDisplayName = displayName;
+
+    const result = await checkOrRegisterUser(userId, displayName);
+
+    updateFeatureState_(result);
+
+    const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
+    const rd = result.remainingDays;
+    const hasRd = typeof rd === "number" && !Number.isNaN(rd);
+    const notExpired = hasRd ? rd >= 0 : false;
+
+    if (result.allowed && result.status === "approved" && scheduleOk && notExpired) {
+      showGate("驗證通過，正在載入資料…");
+      openApp();
+      updateUsageBanner(displayName, result.remainingDays);
+
+      const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
+      if (personalOk) {
+        try {
+          const ps = await fetchPersonalStatusRow_(userId);
+          const psRow = (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
+          showPersonalToolsFinal_(psRow);
+        } catch (e) {
+          showPersonalToolsFinal_({});
+          console.error("[PersonalTools] getPersonalStatus failed:", e);
+        }
+      } else {
+        hidePersonalTools_();
+      }
+
+      // ✅ No-LIFF 模式不送 liff.sendMessages
+      startApp();
+      return;
+    }
+
+    hidePersonalTools_();
+
+    if (result.status === "approved") {
+      let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
+      if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
+      if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
+      msg += "\n請聯絡管理員協助開通或延長使用期限。";
+      showGate(msg);
+      return;
+    }
+
+    if (result.status === "pending") {
+      const auditText = result.audit || "待審核";
+      let msg = "此帳號目前尚未通過審核。\n";
+      msg += "目前審核狀態：「" + auditText + "」。\n\n";
+      msg +=
+        auditText === "拒絕" || auditText === "停用"
+          ? "如需重新申請或有疑問，請聯絡管理員。"
+          : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
+      showGate(msg);
+      return;
+    }
+
+    showGate("⚠ 無法確認使用權限，請稍後再試。", true);
+  } catch (err) {
+    console.error("[NoLIFF] 驗證失敗：", err);
+    hidePersonalTools_();
+    showGate("⚠ 權限驗證失敗，請稍後再試。", true);
+  }
+}
+
+/* =========================================================
  * ✅ LIFF 初始化與權限 Gate
  * ========================================================= */
 async function initLiffAndGuard() {
@@ -1366,20 +1470,15 @@ async function initLiffAndGuard() {
       openApp();
       updateUsageBanner(finalDisplayName, result.remainingDays);
 
-      // ✅ FINAL PERSONAL TOOLS LOGIC:
-      // personalStatusEnabled=是 -> 顯示三顆並使用 PersonalStatus 欄位連結
       const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
       if (personalOk) {
         try {
           const ps = await fetchPersonalStatusRow_(userId);
 
-          // 兼容：有些人會包在 data/row/payload
-          const psRow =
-            (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
+          const psRow = (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
 
           showPersonalToolsFinal_(psRow);
         } catch (e) {
-          // 依你的規格：開通了就必須能看到三顆
           showPersonalToolsFinal_({});
           console.error("[PersonalTools] getPersonalStatus failed:", e);
         }
@@ -1392,7 +1491,6 @@ async function initLiffAndGuard() {
       return;
     }
 
-    // 非可用狀態：隱藏個人工具
     hidePersonalTools_();
 
     if (result.status === "approved") {
@@ -1492,7 +1590,8 @@ window.addEventListener("load", async () => {
     return;
   }
 
-  initLiffAndGuard();
+  if (ENABLE_LINE_LOGIN) initLiffAndGuard();
+  else initNoLiffAndGuard(); // ✅ NEW
 });
 
 function isOrderBgCcbcBcB_(bgToken) {
