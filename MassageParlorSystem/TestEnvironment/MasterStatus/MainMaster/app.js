@@ -16,6 +16,12 @@ const selectedIds = new Set();
 const originalMap = new Map(); // userId -> JSON string snapshot
 const dirtyMap = new Map(); // userId -> true
 
+// toast timer
+let toastTimer = null;
+
+// save-all runtime
+let savingAll = false;
+
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
 
@@ -25,6 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const reloadBtn = document.getElementById("reloadBtn");
   if (reloadBtn)
     reloadBtn.addEventListener("click", async () => {
+      if (savingAll) return;
       selectedIds.clear();
       hideBulkBar_();
       await loadUsers();
@@ -42,9 +49,12 @@ document.addEventListener("DOMContentLoaded", () => {
       applyFilters();
     });
 
+  ensureSaveAllButton_(); // ✅新增：一鍵儲存（JS 插入，不改 HTML）
+ensureMobileSelectAll_(); // ✅新增：手機版全選
   bindFilter();
   bindSorting_();
   bindBulk_();
+  bindTableDelegation_(); // ✅事件委派：只綁一次
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
@@ -61,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
+
 
   loadUsers();
 });
@@ -86,6 +97,84 @@ function updateThemeButtonText_() {
   btn.textContent = current === "dark" ? "亮色" : "暗色";
 }
 
+/* ========= Save All Button ========= */
+
+function ensureSaveAllButton_() {
+  const topRight = document.querySelector(".topbar-right");
+  if (!topRight) return;
+
+  // 若已存在就不重複插
+  if (document.getElementById("saveAllBtn")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "saveAllBtn";
+  btn.type = "button";
+  btn.className = "btn primary";
+  btn.textContent = "儲存全部變更";
+  btn.disabled = true; // 初始沒有 dirty
+
+  btn.addEventListener("click", async () => {
+    if (savingAll) return;
+    await saveAllDirty_();
+  });
+
+  // 插到 reloadBtn 前面（或最後）
+  const reloadBtn = document.getElementById("reloadBtn");
+  if (reloadBtn && reloadBtn.parentElement === topRight) {
+    topRight.insertBefore(btn, reloadBtn);
+  } else {
+    topRight.appendChild(btn);
+  }
+
+  refreshSaveAllButton_();
+}
+function ensureMobileSelectAll_() {
+  // 插到 panel-head filters 區塊（搜尋/Chip 那一排）
+  const filters = document.querySelector(".panel-head .filters");
+  if (!filters) return;
+
+  if (document.getElementById("mobileCheckAll")) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "mobile-selectall";
+  wrap.innerHTML = `
+    <input id="mobileCheckAll" type="checkbox" aria-label="全選（目前列表）">
+    <span class="label">全選</span>
+    <span class="hint" id="mobileCheckAllHint">（0/${filteredUsers.length || 0}）</span>
+  `;
+
+  filters.appendChild(wrap);
+
+  const mobile = wrap.querySelector("#mobileCheckAll");
+  mobile.addEventListener("change", () => {
+    const checked = !!mobile.checked;
+
+    // 全選只針對「目前 filteredUsers」（符合你的桌機版行為）
+    filteredUsers.forEach((u) => {
+      if (checked) selectedIds.add(u.userId);
+      else selectedIds.delete(u.userId);
+    });
+
+    renderTable();
+    updateBulkBar_();
+    syncCheckAll_(); // 會同步 indeterminate / checked
+  });
+}
+
+
+function refreshSaveAllButton_() {
+  const btn = document.getElementById("saveAllBtn");
+  if (!btn) return;
+
+  const dirtyCount = dirtyMap.size;
+  btn.disabled = savingAll || dirtyCount === 0;
+  btn.textContent = savingAll
+    ? `儲存中...`
+    : dirtyCount
+      ? `儲存全部變更（${dirtyCount}）`
+      : "儲存全部變更";
+}
+
 /* ========= Filters ========= */
 
 function bindFilter() {
@@ -109,6 +198,7 @@ async function loadUsers() {
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
       scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
+      audit: u.audit || "待審核",
     }));
 
     originalMap.clear();
@@ -120,6 +210,8 @@ async function loadUsers() {
   } catch (err) {
     console.error("loadUsers error:", err);
     toast("讀取失敗", "err");
+  } finally {
+    refreshSaveAllButton_();
   }
 }
 
@@ -146,6 +238,7 @@ function applyFilters() {
   updateFooter();
   syncCheckAll_();
   updateBulkBar_();
+  refreshSaveAllButton_();
 }
 
 function updateSummary() {
@@ -317,16 +410,36 @@ function hideBulkBar_() {
 
 function syncCheckAll_() {
   const checkAll = document.getElementById("checkAll");
-  if (!checkAll) return;
-  if (!filteredUsers.length) {
-    checkAll.indeterminate = false;
-    checkAll.checked = false;
+  const mobile = document.getElementById("mobileCheckAll");
+  const hint = document.getElementById("mobileCheckAllHint");
+
+  const total = filteredUsers.length;
+
+  const setState = (el, checked, indeterminate) => {
+    if (!el) return;
+    el.checked = checked;
+    el.indeterminate = indeterminate;
+  };
+
+  if (hint) {
+    const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
+    hint.textContent = `（${selCount}/${total}）`;
+  }
+
+  if (!total) {
+    setState(checkAll, false, false);
+    setState(mobile, false, false);
     return;
   }
+
   const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
-  checkAll.checked = selCount === filteredUsers.length;
-  checkAll.indeterminate = selCount > 0 && selCount < filteredUsers.length;
+  const checked = selCount === total;
+  const indeterminate = selCount > 0 && selCount < total;
+
+  setState(checkAll, checked, indeterminate);
+  setState(mobile, checked, indeterminate);
 }
+
 
 async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
@@ -366,6 +479,8 @@ async function bulkApply_() {
 }
 
 async function bulkDelete_() {
+  if (savingAll) return;
+
   const btn = document.getElementById("bulkDelete");
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
@@ -408,7 +523,7 @@ async function bulkDelete_() {
   await loadUsers();
 }
 
-/* ========= Table ========= */
+/* ========= Table (render only) ========= */
 
 function renderTable() {
   const tbody = document.getElementById("tbody");
@@ -424,6 +539,8 @@ function renderTable() {
     return;
   }
 
+  const frag = document.createDocumentFragment();
+
   filteredUsers.forEach((u, i) => {
     const expiry = getExpiryInfo(u);
     const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
@@ -433,7 +550,10 @@ function renderTable() {
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
 
+    const pushDisabled = audit !== "通過" ? "disabled" : "";
+
     const tr = document.createElement("tr");
+    tr.dataset.userid = u.userId;
     if (isDirty) tr.classList.add("dirty");
 
     tr.innerHTML = `
@@ -446,13 +566,19 @@ function renderTable() {
       <td data-label="顯示名稱">${escapeHtml(u.displayName || "")}</td>
       <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
 
-      <td data-label="開始使用"><input type="date" class="date-input" value="${toInputDate(u.startDate)}"></td>
-      <td data-label="期限(天)"><input type="number" class="days-input" min="1" value="${escapeHtml(u.usageDays || "")}"></td>
+      <td data-label="開始使用">
+        <input type="date" data-field="startDate" value="${toInputDate(u.startDate)}">
+      </td>
+      <td data-label="期限(天)">
+        <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
+      </td>
 
-      <td data-label="使用狀態"><span class="expiry-pill ${expiry.cls}">${escapeHtml(expiry.text)}</span></td>
+      <td data-label="使用狀態">
+        <span class="expiry-pill ${expiry.cls}">${escapeHtml(expiry.text)}</span>
+      </td>
 
       <td data-label="審核狀態">
-        <select class="audit-select" aria-label="審核狀態">
+        <select data-field="audit" aria-label="審核狀態">
           ${auditOption("待審核", audit)}
           ${auditOption("通過", audit)}
           ${auditOption("拒絕", audit)}
@@ -462,25 +588,27 @@ function renderTable() {
         <span class="audit-badge ${auditClass_(audit)}">${escapeHtml(audit)}</span>
       </td>
 
-      <td data-label="師傅編號"><input type="text" class="master-code-input" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}"></td>
+      <td data-label="師傅編號">
+        <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}">
+      </td>
       <td data-label="是否師傅">${isMaster}</td>
 
       <td data-label="是否推播">
-        <select class="push-select" aria-label="是否推播">
+        <select data-field="pushEnabled" aria-label="是否推播" ${pushDisabled}>
           <option value="否" ${pushEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${pushEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
       <td data-label="個人狀態開通">
-        <select class="personal-status-select" aria-label="個人狀態開通">
+        <select data-field="personalStatusEnabled" aria-label="個人狀態開通">
           <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
       <td data-label="排班表開通">
-        <select class="schedule-select" aria-label="排班表開通">
+        <select data-field="scheduleEnabled" aria-label="排班表開通">
           <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
         </select>
@@ -489,154 +617,15 @@ function renderTable() {
       <td data-label="操作">
         <div class="actions">
           ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : `<span class="row-hint">-</span>`}
-          <button class="btn primary btn-save" ${isDirty ? "" : "disabled"}>儲存</button>
-          <button class="btn danger btn-del">刪除</button>
+          <button class="btn danger btn-del" type="button">刪除</button>
         </div>
       </td>
     `;
 
-    const rowCheck = tr.querySelector(".row-check");
-    const dateInput = tr.querySelector(".date-input");
-    const daysInput = tr.querySelector(".days-input");
-    const masterInput = tr.querySelector(".master-code-input");
-    const pushSelect = tr.querySelector(".push-select");
-    const personalSelect = tr.querySelector(".personal-status-select");
-    const scheduleSelect = tr.querySelector(".schedule-select");
-    const auditSelect = tr.querySelector(".audit-select");
-    const badge = tr.querySelector(".audit-badge");
-    const saveBtn = tr.querySelector(".btn-save");
-    const delBtn = tr.querySelector(".btn-del");
-
-    // ✅ 初始規則：非通過 → 推播強制否 + 禁用
-    if ((audit || "待審核") !== "通過") {
-      pushSelect.value = "否";
-      pushSelect.disabled = true;
-    } else {
-      pushSelect.disabled = false;
-    }
-
-    rowCheck.addEventListener("change", () => {
-      if (rowCheck.checked) selectedIds.add(u.userId);
-      else selectedIds.delete(u.userId);
-      updateBulkBar_();
-      syncCheckAll_();
-    });
-
-    const onAnyChange = () => {
-      const v = auditSelect.value;
-      badge.textContent = v;
-      badge.className = `audit-badge ${auditClass_(v)}`;
-
-      u.startDate = dateInput.value || "";
-      u.usageDays = daysInput.value || "";
-      u.masterCode = masterInput.value || "";
-      u.audit = auditSelect.value || "待審核";
-
-      u.pushEnabled = pushSelect.value || "否";
-
-      // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
-      if (u.audit !== "通過") {
-        u.pushEnabled = "否";
-        pushSelect.value = "否";
-        pushSelect.disabled = true;
-      } else {
-        pushSelect.disabled = false;
-      }
-
-      u.personalStatusEnabled = personalSelect.value || "否";
-      u.scheduleEnabled = scheduleSelect.value || "否";
-
-      markDirty_(u.userId, u);
-
-      const exp = getExpiryInfo(u);
-      const pill = tr.querySelector(".expiry-pill");
-      if (pill) {
-        pill.className = `expiry-pill ${exp.cls}`;
-        pill.textContent = exp.text;
-      }
-
-      saveBtn.disabled = false;
-      tr.classList.add("dirty");
-      updateFooter();
-    };
-
-    dateInput.addEventListener("change", onAnyChange);
-    daysInput.addEventListener("input", onAnyChange);
-    masterInput.addEventListener("input", onAnyChange);
-    pushSelect.addEventListener("change", onAnyChange);
-    personalSelect.addEventListener("change", onAnyChange);
-    scheduleSelect.addEventListener("change", onAnyChange);
-    auditSelect.addEventListener("change", onAnyChange);
-
-    saveBtn.addEventListener("click", async () => {
-      if (saveBtn.disabled) return;
-
-      saveBtn.disabled = true;
-      saveBtn.textContent = "儲存中...";
-
-      const finalAudit = auditSelect.value || "待審核";
-      const finalPush = finalAudit !== "通過" ? "否" : (pushSelect.value || "否");
-      if (finalAudit !== "通過") pushSelect.value = "否";
-
-      const payload = {
-        userId: u.userId,
-        audit: finalAudit,
-        startDate: dateInput.value,
-        usageDays: daysInput.value,
-        masterCode: masterInput.value,
-        pushEnabled: finalPush,
-        personalStatusEnabled: personalSelect.value || "否",
-        scheduleEnabled: scheduleSelect.value || "否",
-      };
-
-      const ok = await updateUser(payload);
-
-      saveBtn.textContent = "儲存";
-
-      if (ok) {
-        toast("儲存完成", "ok");
-
-        u.audit = finalAudit;
-        u.pushEnabled = finalPush;
-        u.masterCode = masterInput.value || "";
-        u.personalStatusEnabled = personalSelect.value || "否";
-        u.scheduleEnabled = scheduleSelect.value || "否";
-
-        originalMap.set(u.userId, snapshot_(u));
-        dirtyMap.delete(u.userId);
-
-        await loadUsers();
-      } else {
-        toast("儲存失敗", "err");
-        saveBtn.disabled = false;
-      }
-    });
-
-    delBtn.addEventListener("click", async () => {
-      const okConfirm = confirm(
-        `確定要刪除使用者？\n\nuserId: ${u.userId}\n顯示名稱: ${u.displayName || ""}\n\n此操作不可復原。`
-      );
-      if (!okConfirm) return;
-
-      delBtn.disabled = true;
-      delBtn.textContent = "刪除中...";
-
-      const ok = await deleteUser(u.userId);
-
-      delBtn.disabled = false;
-      delBtn.textContent = "刪除";
-
-      if (ok) {
-        toast("刪除完成", "ok");
-        selectedIds.delete(u.userId);
-        await loadUsers();
-      } else {
-        toast("刪除失敗", "err");
-      }
-    });
-
-    tbody.appendChild(tr);
+    frag.appendChild(tr);
   });
+
+  tbody.appendChild(frag);
 }
 
 function refreshSortIndicators_() {
@@ -654,6 +643,294 @@ function refreshSortIndicators_() {
   });
 }
 
+/* ========= Table Delegation (ONE TIME) ========= */
+
+function bindTableDelegation_() {
+  const tbody = document.getElementById("tbody");
+  if (!tbody) return;
+
+  // checkbox / select / date / number changes
+  tbody.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+
+    // row checkbox
+    if (t.classList.contains("row-check")) {
+      const row = t.closest("tr");
+      const userId = row?.dataset.userid;
+      if (!userId) return;
+      if (t.checked) selectedIds.add(userId);
+      else selectedIds.delete(userId);
+      updateBulkBar_();
+      syncCheckAll_();
+      return;
+    }
+
+    // field changes (select/date)
+    if (t.matches("[data-field]")) {
+      handleRowFieldChange_(t);
+      return;
+    }
+  });
+
+  // text/number input (live)
+  tbody.addEventListener("input", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.matches("input[data-field]")) {
+      handleRowFieldChange_(t);
+    }
+  });
+
+  // delete buttons
+  tbody.addEventListener("click", async (e) => {
+    if (savingAll) return;
+
+    const btn = e.target instanceof Element ? e.target.closest("button") : null;
+    if (!btn) return;
+
+    const row = btn.closest("tr");
+    const userId = row?.dataset.userid;
+    if (!userId) return;
+
+    if (btn.classList.contains("btn-del")) {
+      await handleRowDelete_(row, userId, btn);
+      return;
+    }
+  });
+}
+
+function handleRowFieldChange_(fieldEl) {
+  const row = fieldEl.closest("tr");
+  const userId = row?.dataset.userid;
+  if (!row || !userId) return;
+
+  const u = allUsers.find((x) => x.userId === userId);
+  if (!u) return;
+
+  const field = fieldEl.getAttribute("data-field");
+  if (!field) return;
+
+  const value = readFieldValue_(fieldEl);
+
+  if (field === "usageDays") u.usageDays = String(value || "");
+  else if (field === "startDate") u.startDate = String(value || "");
+  else if (field === "masterCode") u.masterCode = String(value || "");
+  else if (field === "audit") u.audit = String(value || "待審核");
+  else if (field === "pushEnabled") u.pushEnabled = String(value || "否");
+  else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
+  else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
+
+  // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
+  const audit = u.audit || "待審核";
+  const pushSel = row.querySelector('select[data-field="pushEnabled"]');
+  if (audit !== "通過") {
+    u.pushEnabled = "否";
+    if (pushSel) {
+      pushSel.value = "否";
+      pushSel.disabled = true;
+    }
+  } else {
+    if (pushSel) pushSel.disabled = false;
+  }
+
+  // badge
+  if (field === "audit") {
+    const badge = row.querySelector(".audit-badge");
+    if (badge) {
+      badge.textContent = audit;
+      badge.className = `audit-badge ${auditClass_(audit)}`;
+    }
+  }
+
+  // expiry pill
+  const exp = getExpiryInfo(u);
+  const pill = row.querySelector(".expiry-pill");
+  if (pill) {
+    pill.className = `expiry-pill ${exp.cls}`;
+    pill.textContent = exp.text;
+  }
+
+  // dirty
+  markDirty_(userId, u);
+  const isDirty = dirtyMap.has(userId);
+  row.classList.toggle("dirty", isDirty);
+
+  // actions UI（點點/提示）
+  const actions = row.querySelector(".actions");
+  if (actions) {
+    const dot = actions.querySelector(".dirty-dot");
+    const hint = actions.querySelector(".row-hint");
+    if (isDirty) {
+      if (!dot) {
+        if (hint) hint.remove();
+        actions.insertAdjacentHTML("afterbegin", `<span class="dirty-dot" title="未儲存"></span>`);
+      }
+    } else {
+      if (dot) dot.remove();
+      if (!actions.querySelector(".row-hint")) {
+        actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
+      }
+    }
+  }
+
+  updateFooter();
+  refreshSaveAllButton_();
+}
+
+function readFieldValue_(el) {
+  if (el instanceof HTMLInputElement) return el.value;
+  if (el instanceof HTMLSelectElement) return el.value;
+  return "";
+}
+
+async function handleRowDelete_(row, userId, delBtn) {
+  const u = allUsers.find((x) => x.userId === userId);
+  const okConfirm = confirm(
+    `確定要刪除使用者？\n\nuserId: ${userId}\n顯示名稱: ${u?.displayName || ""}\n\n此操作不可復原。`
+  );
+  if (!okConfirm) return;
+
+  delBtn.disabled = true;
+  const oldText = delBtn.textContent;
+  delBtn.textContent = "刪除中...";
+
+  const ok = await deleteUser(userId);
+
+  delBtn.disabled = false;
+  delBtn.textContent = oldText || "刪除";
+
+  if (ok) {
+    toast("刪除完成", "ok");
+    selectedIds.delete(userId);
+
+    // 移除 local model
+    allUsers = allUsers.filter((x) => x.userId !== userId);
+    filteredUsers = filteredUsers.filter((x) => x.userId !== userId);
+    originalMap.delete(userId);
+    dirtyMap.delete(userId);
+
+    // 重新渲染以更新編號與統計
+    applyFilters();
+  } else {
+    toast("刪除失敗", "err");
+  }
+}
+
+/* ========= Save All Dirty ========= */
+
+async function saveAllDirty_() {
+  const dirtyIds = Array.from(dirtyMap.keys());
+  if (!dirtyIds.length) {
+    toast("目前沒有需要儲存的變更", "ok");
+    return;
+  }
+
+  savingAll = true;
+  refreshSaveAllButton_();
+
+  // 避免使用者手滑 reload
+  const reloadBtn = document.getElementById("reloadBtn");
+  if (reloadBtn) reloadBtn.disabled = true;
+
+  let okCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < dirtyIds.length; i++) {
+    const userId = dirtyIds[i];
+    const u = allUsers.find((x) => x.userId === userId);
+    if (!u) {
+      dirtyMap.delete(userId);
+      continue;
+    }
+
+    // 🔒 再次 enforce 規則（保險）
+    const finalAudit = u.audit || "待審核";
+    const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
+
+    const payload = {
+      userId: u.userId,
+      audit: finalAudit,
+      startDate: u.startDate || "",
+      usageDays: u.usageDays || "",
+      masterCode: u.masterCode || "",
+      pushEnabled: finalPush,
+      personalStatusEnabled: u.personalStatusEnabled || "否",
+      scheduleEnabled: u.scheduleEnabled || "否",
+    };
+
+    // UI：footer 顯示進度（不吵 toast）
+    const el = document.getElementById("footerStatus");
+    if (el) {
+      el.textContent = `儲存中：${i + 1}/${dirtyIds.length}（userId: ${u.userId}）`;
+    }
+
+    const ok = await updateUser(payload);
+    if (ok) {
+      okCount++;
+
+      // 同步回 model
+      u.audit = finalAudit;
+      u.pushEnabled = finalPush;
+
+      // reset baseline
+      originalMap.set(userId, snapshot_(u));
+      dirtyMap.delete(userId);
+
+      // 更新當下畫面 row（若 row 在目前 filteredUsers 視窗內）
+      const row = document.querySelector(`#tbody tr[data-userid="${cssEscape_(userId)}"]`);
+      if (row) {
+        row.classList.remove("dirty");
+        const actions = row.querySelector(".actions");
+        if (actions) {
+          const dot = actions.querySelector(".dirty-dot");
+          if (dot) dot.remove();
+          if (!actions.querySelector(".row-hint")) {
+            actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
+          }
+        }
+        const badge = row.querySelector(".audit-badge");
+        if (badge) {
+          badge.textContent = finalAudit;
+          badge.className = `audit-badge ${auditClass_(finalAudit)}`;
+        }
+        const pushSel = row.querySelector('select[data-field="pushEnabled"]');
+        if (pushSel) {
+          pushSel.value = finalPush;
+          pushSel.disabled = finalAudit !== "通過";
+        }
+        const exp = getExpiryInfo(u);
+        const pill = row.querySelector(".expiry-pill");
+        if (pill) {
+          pill.className = `expiry-pill ${exp.cls}`;
+          pill.textContent = exp.text;
+        }
+      }
+    } else {
+      failCount++;
+      // 保留 dirty，不動 baseline
+    }
+
+    // 小節流，避免 GAS 扛不住（可調整/移除）
+    await sleep_(60);
+    refreshSaveAllButton_();
+  }
+
+  savingAll = false;
+  if (reloadBtn) reloadBtn.disabled = false;
+
+  // 最後統一更新 KPI/summary/footer
+  updateSummary();
+  updateKpis_();
+  updateFooter();
+  refreshSaveAllButton_();
+
+  if (failCount === 0) toast(`全部儲存完成：${okCount} 筆`, "ok");
+  else toast(`儲存完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
+}
+
+/* ========= Helpers for options/badges/expiry ========= */
+
 function auditOption(value, current) {
   const sel = value === current ? "selected" : "";
   return `<option value="${value}" ${sel}>${value}</option>`;
@@ -661,11 +938,16 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (String(audit || "").trim()) {
-    case "通過": return "approved";
-    case "待審核": return "pending";
-    case "拒絕": return "rejected";
-    case "停用": return "disabled";
-    default: return "other";
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    default:
+      return "other";
   }
 }
 
@@ -761,7 +1043,6 @@ async function deleteUser(userId) {
 
 /* ========= Toast ========= */
 
-let toastTimer = null;
 function toast(msg, type) {
   const el = document.getElementById("toast");
   if (!el) return;
@@ -802,4 +1083,10 @@ function debounce(fn, wait) {
 
 function sleep_(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// CSS selector escape（避免 userId 含特殊字元）
+function cssEscape_(s) {
+  // 最小實作：足夠應付大多數情境；若 userId 都是字母數字其實用不到
+  return String(s).replaceAll('"', '\\"').replaceAll("\\", "\\\\");
 }

@@ -399,3 +399,33 @@ input[type="date"]:focus, input[type="number"]:focus, input[type="text"]:focus, 
   .sticky-col{ position:static; }
   .actions{ justify-content:flex-end; width:100%; }
 }
+
+
+/* ===== Mobile Select All (only show on small screens) ===== */
+.mobile-selectall{
+  display:none;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  border:1px solid var(--border);
+  background:var(--card);
+  border-radius:999px;
+  user-select:none;
+}
+.mobile-selectall input{
+  width:16px;
+  height:16px;
+}
+.mobile-selectall .label{
+  font-size:12px;
+  color:var(--text);
+}
+.mobile-selectall .hint{
+  font-size:12px;
+  color:var(--text-sub);
+  font-family:var(--mono);
+}
+
+@media (max-width: 860px){
+  .mobile-selectall{ display:flex; }
+}
