@@ -1523,6 +1523,54 @@ async function initLiffAndGuard() {
   }
 }
 
+/* =========================================================
+ * ✅ Test Mode: 不登入、不審核，直接進看板（ENABLE_LINE_LOGIN=false）
+ * - 不呼叫 AUTH_API
+ * - userId/displayName 僅用於顯示/除錯
+ * ========================================================= */
+function getQueryParam_(k) {
+  try {
+    const u = new URL(location.href);
+    return u.searchParams.get(k) || "";
+  } catch {
+    return "";
+  }
+}
+
+function initTestModeNoAuth_() {
+  const userId =
+    String(getQueryParam_("userId") || "").trim() ||
+    String(localStorage.getItem("devUserId") || "").trim() ||
+    "test_user";
+
+  const displayName =
+    String(getQueryParam_("name") || "").trim() ||
+    String(localStorage.getItem("devDisplayName") || "").trim() ||
+    "測試模式";
+
+  window.currentUserId = userId;
+  window.currentDisplayName = displayName;
+
+  // feature banner：測試模式預設全開（你也可改成全否）
+  updateFeatureState_({
+    pushEnabled: "是",
+    personalStatusEnabled: "是",
+    scheduleEnabled: "是",
+  });
+
+  // usage banner：顯示無期限（或你想顯示固定天數也行）
+  updateUsageBanner(displayName, 999);
+
+  // 個人工具：測試模式要不要顯示？
+  // 你如果要「直接顯示但不依 PersonalStatus 表」，可以用空物件顯示三顆並噴缺欄位
+  // showPersonalToolsFinal_({});
+
+  showGate("✅ 測試模式：已跳過登入與審核，直接進入看板…");
+  openApp();
+  startApp();
+}
+
+
 /* =========================
  * Events
  * ========================= */
@@ -1591,8 +1639,9 @@ window.addEventListener("load", async () => {
     return;
   }
 
-  if (ENABLE_LINE_LOGIN) initLiffAndGuard();
-  else initNoLiffAndGuard(); // ✅ NEW
+if (ENABLE_LINE_LOGIN) initLiffAndGuard();
+else initTestModeNoAuth_(); // ✅ 測試模式：不登入、不審核，直接進看板
+
 });
 
 function isOrderBgCcbcBcB_(bgToken) {
