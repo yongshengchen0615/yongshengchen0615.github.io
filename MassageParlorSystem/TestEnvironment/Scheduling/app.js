@@ -1248,19 +1248,20 @@ async function checkOrRegisterUser(userId, displayNameFromLiff) {
     };
   }
 
-  if (status === "pending") {
-    return {
-      allowed: false,
-      status: "pending",
-      audit,
-      remainingDays,
-      displayName: finalDisplayName,
-      serverDisplayName,
-      scheduleEnabled,
-      pushEnabled,
-      personalStatusEnabled,
-    };
-  }
+if (status === "pending") {
+  const bypassPendingInNoLiff = !ENABLE_LINE_LOGIN; // ✅ 只測試環境放行
+  return {
+    allowed: bypassPendingInNoLiff,
+    status: "pending",
+    audit,
+    remainingDays,
+    displayName: finalDisplayName,
+    serverDisplayName,
+    scheduleEnabled,
+    pushEnabled,
+    personalStatusEnabled,
+  };
+}
 
   showGate("此帳號目前沒有使用權限，已自動送出審核申請…");
 
