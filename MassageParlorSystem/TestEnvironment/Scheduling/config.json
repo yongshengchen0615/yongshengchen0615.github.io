@@ -3,15 +3,9 @@
 
   "EDGE_STATUS_URLS": [
     "https://script.google.com/macros/s/AKfycbztkK2sABPZiSq5aVcH1v05mRYgLSPAzfkkETtPx42oWO6BQl3xnX_Blgnfi6N5yBZI/exec",
-    "https://script.google.com/macros/s/AKfycbyzL-EYg4kq2i9nX7IiT7fpK_eWj0ZzmJmkWt0BmwbS58k6qlw442m9jD0jBDW-vDcd/exec",
-    "https://script.google.com/macros/s/AKfycbzhfmdcRux0vj511pzjSsaMQRV6CpJ-tCyh2zRpEhu4vscFs9r253YDXj8jUm-yWUjU/exec",
-    "https://script.google.com/macros/s/AKfycbyFFHMxLPb44PauwFdp6hRneBIOcgXx13Xq1Y6OkzRKqDQ3H8P3eeoCj4qwPPldgYt4/exec",
-    "https://script.google.com/macros/s/AKfycbx334cn23WRMqhNh1-Avjg1VY3Sk7BZTpigYCQyY90pC9xpQ2hkQmam-aE10SYuz7Lo/exec",
-    "https://script.google.com/macros/s/AKfycbzHzskROVIf7FsRbRx3-T2lv_g-kn2JQGetsiv_C403th-cK83LAf1wp6y5XioPmA2Y/exec",
-    "https://script.google.com/macros/s/AKfycbz8UKZsPKokqkYbIWzOHTjGY2YgVJb_ID7ZEuNeo08ZU66RfQfcUrsO99cmbcW48Ts/exec",
-    "https://script.google.com/macros/s/AKfycbx4_Bbw8NIiV2WTYl0XvpOMZPGHN-MIrSZndyVeek1gzh0MGpR0QXSUKQfcBsU_aUC8/exec",
-    "https://script.google.com/macros/s/AKfycbz3s8YTt-BlbK64FcTkRVu2gNGHxA7Nin48zkWpslPYJmVmHre9C83tIdzaL9JAH2P0Gg/exec",
-    "https://script.google.com/macros/s/AKfycbys_soZngFX1MKZdMPZTjPadjKL_Rvjd5nfakDKFAHf3n3TiPMIC33dEyTWHFsTQRnNKQ/exec"
+    "https://script.google.com/macros/s/AKfycby-VyZZWp3_F00hVL1y7CJ53xSJugPFb_KsBpP2YgglrxTq2oyjURoMHlvHGlPQaXAFjg/exec",
+    "https://script.google.com/macros/s/AKfycbxXI-HYcwvjtDPcnpnz5i8NxV77Fwh5fDkH364Quc5fdld4OlnU2bFMvs9u22QBTkcn/exec",
+    "https://script.google.com/macros/s/AKfycbwFFuSms_6QmhR5o0quA8fhunw2ZVGimNwhTuSHRhVLV4-UtePplVbIj56s4--lu9vC7w/exec"
   ],
   "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
 
