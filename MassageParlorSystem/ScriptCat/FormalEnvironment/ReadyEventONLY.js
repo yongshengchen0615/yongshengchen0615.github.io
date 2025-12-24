@@ -3,7 +3,7 @@
 // @namespace    http://scriptcat.org/
 // @version      2.0
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）
-// @match        https://yongshengchen0615.github.io/master.html
+// @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
