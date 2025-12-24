@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Body+Foot Snapshot ONLY (Change-only, GM_xhr, Throttle 2s)
+// @name         Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress)
 // @namespace    http://scriptcat.org/
-// @version      1.0.0
-// @description  只做「身體/腳底」面板 snapshot_v1：change-only + 2s 節流；GM_xmlhttpRequest 避 CSP；不吞錯
+// @version      1.1.0
+// @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
@@ -13,47 +13,78 @@
   "use strict";
 
   // =========================
-  // ✅ 1) GAS Web App 端點（Snapshot 接收 /exec）
+  // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
-  // 前端會把掃描到的「身體/腳底」資料用 snapshot_v1 POST 到這個 URL
+  // 這個 URL 是「Ready Event 接收 / 推播」的 GAS Web App
+  // 前端偵測到師傅從「非準備」變成「準備」時，就會 POST 到這裡
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbxtgOJJaPJjX3xddi9g8s-kS2JKvHTkYyhi67Z8pbvJ9ODcxdL0_-GUEjGgWmSN61sdxQ/exec";
+    "https://script.google.com/macros/s/AKfycbxj3yinKEuzDeSm1T0erPZISvKUzn4tC4R6SqQGvfICbst0MTyKzve7EX5yZ068HZ0s/exec";
 
   // =========================
-  // ✅ 2) 掃描與節流參數
+  // ✅ 2) 正式掃描設定（定時掃描 DOM）
   // =========================
-  const INTERVAL_MS = 1000;            // 每 1 秒掃描一次 DOM（掃描頻率）
-  const SNAPSHOT_THROTTLE_MS = 2000;   // 最多每 2 秒送出一次 snapshot（送出節流）
+  const INTERVAL_MS = 120000; // 每 2 分鐘掃一次（避免太頻繁造成效能負擔 / 不必要流量）
 
   // LOG_MODE：
-  // - "full"  ：輸出詳細 log
-  // - "group" ：折疊群組 log（較清楚）
-  // - "off"   ：不輸出 log（正式建議 off 或 group）
+  // - "full"  ：詳細 log（包含回應等）
+  // - "group" ：折疊群組 log（較乾淨）
+  // - "off"   ：完全不印 log（正式建議 off 或 group）
   const LOG_MODE = "group";
 
-  // 是否啟用 snapshot 送出功能（正式開關）
-  const ENABLE_SNAPSHOT = true;
+  // 是否啟用「準備事件」送出（正式核心功能）
+  const ENABLE_READY_EVENT = true;
 
-  console.log("[SnapshotOnly] 🟢 start (GM_xmlhttpRequest mode)");
+  // 正式端去重（同一位師傅、同一面板，兩次準備事件至少隔多久才允許再送）
+  // 目的：避免 UI 抖動/重繪導致短時間內重送
+  const READY_EVENT_DEDUP_MS = 120000; // 2 分鐘
 
   // =========================
-  // ✅ 3) 工具：取得 ISO 格式時間字串
+  // ✅ 3) 壓力測試設定（整合進正式腳本，但預設關閉）
+  // =========================
+  // 壓測用途：模擬 30 個 ready_event_v1 同時/連續打進 GAS
+  // 注意：正式不要開，避免誤推
+  const STRESS = {
+    enabled: false,      // ✅ 壓測總開關（正式預設 false）
+    autorun: false,      // ✅ 是否載入後自動跑壓測（建議 false）
+    delayMs: 1500,       // autorun 延遲（ms）
+
+    count: 30,           // ✅ 壓測人數：30
+    panel: "body",       // 壓測面板：body 或 foot
+
+    // burst：
+    // - true  ：同一瞬間全部送出（最極限併發，容易造成 lock 競爭 / timeout）
+    // - false ：依 gapMs 間隔送出（較穩，符合「穩定 + 不誤判」）
+    burst: false,        // ✅ 推薦 false
+    gapMs: 120,          // ✅ 推薦 120ms（30 人大概 3.6 秒內送完）
+
+    // timeout：壓測用 timeout（避免 GAS lock 等待 30s 時，前端先誤判 timeout）
+    timeoutMs: 45000,    // ✅ 推薦 45s
+
+    // 壓測用 masterId 前綴，會產生：T001 ~ T030
+    // 目的：可讀、可辨識；避免跟真實師傅 ID 混淆（你也可以改成 STRESS-）
+    masterPrefix: "T",
+  };
+
+  console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
+
+  // =========================
+  // ✅ 4) 工具：取得 ISO 時間字串
   // =========================
   function nowIso() {
     return new Date().toISOString();
   }
 
   // =========================
-  // ✅ 4) DOM 工具：讀取文字（去空白）
+  // ✅ 5) DOM 工具：取文字（去掉空白）
   // =========================
   function getText(el) {
     if (!el) return "";
-    // 移除所有空白並 trim，避免版面排版造成比對誤差
+    // 將所有空白壓縮並移除，避免格式影響比對
     return el.textContent.replace(/\s+/g, "").trim();
   }
 
   // =========================
-  // ✅ 5) DOM 工具：取第一個 span 的 class（通常是文字顏色 class）
+  // ✅ 6) DOM 工具：取狀態欄位裡第一個 span 的 class（文字顏色等）
   // =========================
   function getFirstSpanClass(el) {
     if (!el) return "";
@@ -62,7 +93,7 @@
   }
 
   // =========================
-  // ✅ 6) DOM 工具：抓 bg-* 的 class（背景色 class）
+  // ✅ 7) DOM 工具：從 className 裡抓出 bg-*（背景色 class）
   // =========================
   function getBgClass(el) {
     if (!el) return "";
@@ -73,111 +104,63 @@
   }
 
   // =========================
-  // ✅ 7) hash 工具：把字串做成雜湊（change-only 判斷用）
-  // =========================
-  // 這裡用的是簡單 hash（類 djb2 變形），速度快、足夠用於「是否變更」判斷
-  function hashStr(str) {
-    str = String(str || "");
-    let h = 5381;
-    for (let i = 0; i < str.length; i++) {
-      h = ((h << 5) + h) ^ str.charCodeAt(i);
-    }
-    // >>>0 轉成無符號 32-bit，最後用 16 進位字串表示
-    return (h >>> 0).toString(16);
-  }
-
-  // =========================
-  // ✅ 8) 產生「穩定欄位」版本（避免 timestamp 造成永遠不同）
-  // =========================
-  // 核心：change-only 的判斷不能把 timestamp 算進去，否則每秒都不同 → 永遠會送
-  // 所以只保留「會影響畫面/狀態」的欄位做 hash
-  function stableRowsForHash(rows) {
-    return (rows || []).map((r) => ({
-      index: r.index ?? "",
-      sort: r.sort ?? "",
-      masterId: r.masterId ?? "",
-      status: r.status ?? "",
-      appointment: r.appointment ?? "",
-      remaining: r.remaining ?? "",
-      colorIndex: r.colorIndex ?? "",
-      colorMaster: r.colorMaster ?? "",
-      colorStatus: r.colorStatus ?? "",
-      bgIndex: r.bgIndex ?? "",
-      bgMaster: r.bgMaster ?? "",
-      bgStatus: r.bgStatus ?? "",
-      bgAppointment: r.bgAppointment ?? "",
-    }));
-  }
-
-  // =========================
-  // ✅ 9) 解析單列資料（1 row -> object）
+  // ✅ 8) 解析單列師傅資料（1 row -> object）
   // =========================
   function parseRow(row) {
     // 每列通常有 4 個 div：號碼 / 師傅 / 狀態 / 預約
     const cells = row.querySelectorAll(":scope > div");
     if (cells.length < 4) return null;
 
-    const indexCell = cells[0];        // 號碼欄
-    const masterCell = cells[1];       // 師傅欄
-    const statusCell = cells[2];       // 狀態欄
-    const appointmentCell = cells[3];  // 預約欄
+    const indexCell = cells[0];        // 號碼
+    const masterCell = cells[1];       // 師傅 ID/名稱
+    const statusCell = cells[2];       // 狀態（準備/休息/工作中/數字剩餘等）
+    const appointmentCell = cells[3];  // 預約
 
     const indexText = getText(indexCell);
     const masterText = getText(masterCell);
     let statusText = getText(statusCell);
     const appointment = getText(appointmentCell);
 
-    // 沒師傅就略過（避免送空資料）
+    // 沒師傅就跳過
     if (!masterText) return null;
 
-    // 若狀態是純數字，通常代表「剩餘分鐘」之類 → 轉成 工作中 + remaining
+    // 若 statusText 是純數字，代表「剩餘分鐘」之類 → 轉成「工作中 + remaining」
     let remaining = "";
     if (/^-?\d+$/.test(statusText)) {
       remaining = parseInt(statusText, 10);
       statusText = "工作中";
     }
 
-    // 抓文字顏色 class（用於 UI/狀態顯示）
-    const colorIndex = getFirstSpanClass(indexCell);
-    const colorMaster = getFirstSpanClass(masterCell);
+    // 抓樣式 class（可用於推播訊息或 UI 追蹤）
     const colorStatus = getFirstSpanClass(statusCell);
-
-    // 抓背景色 class（用於 UI/狀態顯示）
-    const bgIndex = getBgClass(indexCell);
-    const bgMaster = getBgClass(masterCell);
     const bgStatus = getBgClass(statusCell);
-    const bgAppointment = getBgClass(appointmentCell);
 
-    // index 轉數字（轉不了就留空）
+    // index 轉數字（若解析失敗則留空）
     const idxNum = indexText ? parseInt(indexText, 10) : "";
 
-    // 組成統一資料格式（後端/前端都能穩定使用）
+    // 回傳統一格式
     return {
       index: idxNum,
-      sort: idxNum,                 // sort 通常同 index（若未來要自訂排序可改）
+      sort: idxNum,
       masterId: masterText || "",
       status: statusText || "",
       appointment: appointment || "",
       remaining: remaining,
-      colorIndex,
-      colorMaster,
-      colorStatus,
-      bgIndex,
-      bgMaster,
       bgStatus,
-      bgAppointment,
+      colorStatus,
     };
   }
 
   // =========================
-  // ✅ 10) 掃描某個面板（身體/腳底）取得所有列資料
+  // ✅ 9) 掃描某個面板（身體/腳底）取得所有列資料
   // =========================
   function scanPanel(panelEl) {
     if (!panelEl) return [];
-    // 這個 selector 是每列的 DOM class（若頁面改版需同步調整）
+    // 這個 selector 是你目前頁面每一列的 DOM class（若頁面 class 改了要同步調整）
     const rows = panelEl.querySelectorAll(
       ".flex.justify-center.items-center.flex-1.border-b.border-gray-400"
     );
+
     const list = [];
     rows.forEach((row) => {
       const r = parseRow(row);
@@ -187,7 +170,7 @@
   }
 
   // =========================
-  // ✅ 11) 找到「身體」面板容器
+  // ✅ 10) 找到「身體」面板容器
   // =========================
   function findBodyPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.mr-2");
@@ -199,7 +182,7 @@
   }
 
   // =========================
-  // ✅ 12) 找到「腳底」面板容器
+  // ✅ 11) 找到「腳底」面板容器
   // =========================
   function findFootPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.ml-2");
@@ -211,45 +194,57 @@
   }
 
   // =========================
-  // ✅ 13) 網路送出：GM_xmlhttpRequest（避 CSP、跨域可用）
+  // ✅ 12) 網路送出：GM_xmlhttpRequest（避 CSP、跨域可用）
   // =========================
-  function postJsonGM(url, payload) {
+  // DEFAULT_TIMEOUT_MS：正式送出用的 timeout（可短一點）
+  const DEFAULT_TIMEOUT_MS = 8000;
+
+  // 用 GM_xmlhttpRequest 送 POST JSON
+  // timeoutMs 可選：正式用 8 秒；壓測用 45 秒
+  function postJsonGM(url, payload, timeoutMs) {
     if (!url) return;
     try {
       GM_xmlhttpRequest({
         method: "POST",
         url,
-        // GAS doPost 常用 text/plain 解析（你後端也多用 e.postData.contents）
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         data: JSON.stringify(payload),
+        timeout: timeoutMs || DEFAULT_TIMEOUT_MS,
 
-        // 這裡 timeout 8s：若後端瞬間慢（寫表/鎖）可能會 timeout，但不等於沒收到
-        timeout: 8000,
-
-        // onload：成功回應（你這裡刻意不印，避免 log 太吵）
-        onload: function () {},
-
-        // onerror：網路錯誤
-        onerror: function (err) {
-          console.error("[SnapshotOnly] ❌ GM POST failed:", err);
+        // onload：成功回應
+        onload: function (res) {
+          // 正式預設不吵，full 才印回應
+          if (LOG_MODE === "full") {
+            const txt = (res.responseText || "").replace(/\s+/g, " ").slice(0, 200);
+            console.log("[ReadyOnly] ✅", res.status, "resp:", txt);
+          }
         },
 
-        // ontimeout：超時（可能後端收到但回慢）
+        // onerror：連線/網路錯誤
+        onerror: function (err) {
+          console.error("[ReadyOnly] ❌ GM POST failed:", err);
+        },
+
+        // ontimeout：超時（不代表後端沒收到；可能是後端卡 lock 或寫表慢）
         ontimeout: function () {
-          console.error("[SnapshotOnly] ❌ GM POST timeout");
+          console.error(
+            "[ReadyOnly] ❌ GM POST timeout",
+            "(timeout_ms=" + (timeoutMs || DEFAULT_TIMEOUT_MS) + ")"
+          );
         },
       });
     } catch (e) {
-      console.error("[SnapshotOnly] ❌ GM exception:", e);
+      // GM 呼叫本身拋錯（通常是腳本環境問題）
+      console.error("[ReadyOnly] ❌ GM exception:", e);
     }
   }
 
   // =========================
-  // ✅ 14) 送出策略：sendBeacon 優先，失敗再 fallback GM
+  // ✅ 13) 送出策略：sendBeacon 優先，失敗再 fallback GM
   // =========================
-  // sendBeacon 優點：背景送出、卸載頁面前也可能送出
-  // 缺點：不一定保證成功、不一定能拿到回應
-  function postBeaconFirst(url, payload, tag) {
+  // sendBeacon 優點：頁面 unload 時也比較容易送出去；非阻塞
+  // 缺點：不一定可靠、也不一定拿得到回應
+  function postBeaconFirst(url, payload, tag, timeoutMs) {
     if (!url) return;
 
     try {
@@ -259,23 +254,25 @@
         });
         const ok = navigator.sendBeacon(url, blob);
         if (ok) return; // ✅ beacon 成功就結束
-        console.warn(
-          `[SnapshotOnly] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`
-        );
+
+        // beacon 失敗 → fallback GM
+        if (LOG_MODE !== "off") {
+          console.warn(`[ReadyOnly] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`);
+        }
       }
     } catch (e) {
-      console.warn(
-        `[SnapshotOnly] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`,
-        e
-      );
+      // beacon 例外 → fallback GM
+      if (LOG_MODE !== "off") {
+        console.warn(`[ReadyOnly] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`, e);
+      }
     }
 
-    // beacon 失敗/例外 → fallback GM
-    postJsonGM(url, payload);
+    // fallback：用 GM_xmlhttpRequest
+    postJsonGM(url, payload, timeoutMs);
   }
 
   // =========================
-  // ✅ 15) log 工具：group/console 控制
+  // ✅ 14) Log 工具：group/console 控制
   // =========================
   function logGroup(title, payload) {
     if (LOG_MODE === "off") return;
@@ -286,137 +283,174 @@
   }
 
   // =========================
-  // ✅ 16) change-only + throttle 狀態變數
+  // ✅ 15) 正式核心：狀態轉換追蹤（非準備 -> 準備）
   // =========================
-  let lastSnapshotHash = "";     // 上一次已「成功送出」的 snapshot hash（用來判斷是否變更）
-  let lastSnapshotSentMs = 0;    // 上一次送出時間（用來做 2 秒節流）
+  // lastStatus：記錄每位師傅上次狀態（用於判斷 transition）
+  const lastStatus = new Map(); // key -> last status string
 
-  // pendingSnapshot：當偵測到變更時，先放到 pending，等節流時間到再送
-  let pendingSnapshot = null;      // { payload, title }
-  let pendingSnapshotHash = "";    // pending 對應的 hash（送出後會變成 lastSnapshotHash）
+  // readySentAt：記錄每位師傅上次送 ready_event 的時間（用於 dedup）
+  const readySentAt = new Map(); // key -> last sent ms
 
-  // =========================
-  // ✅ 17) flush：嘗試送出 pendingSnapshot（受 throttle 限制）
-  // =========================
-  function flushPendingSnapshot(force) {
-    // 沒有 pending 就不做事
-    if (!pendingSnapshot) return;
-
-    const nowMs = Date.now();
-
-    // force=false 時：必須符合「距離上次送出 >= 2秒」才能送
-    if (!force && nowMs - lastSnapshotSentMs < SNAPSHOT_THROTTLE_MS) return;
-
-    // 取出 pending payload 與 log title
-    const { payload, title } = pendingSnapshot;
-
-    // 送出：beacon 優先，失敗走 GM
-    postBeaconFirst(GAS_URL, payload, "snapshot");
-
-    // log（依 LOG_MODE 控制）
-    logGroup(title, payload);
-
-    // 更新送出時間與最後 hash（代表這個變更已送出）
-    lastSnapshotSentMs = nowMs;
-    lastSnapshotHash = pendingSnapshotHash;
-
-    // 清掉 pending（代表已送完）
-    pendingSnapshot = null;
-    pendingSnapshotHash = "";
+  // 產生唯一 key：面板 + 師傅
+  function statusKey(panel, masterId) {
+    return `${panel}::${masterId}`;
   }
 
-  // =========================
-  // ✅ 18) safeFlush：避免 flush 例外導致整個 tick 壞掉
-  // =========================
-  function safeFlushPendingSnapshot(force, reason) {
-    try {
-      flushPendingSnapshot(force);
-    } catch (e) {
-      console.error(
-        `[SnapshotOnly] ❌ flushPendingSnapshot failed (${reason || "unknown"})`,
-        e
-      );
+  // 判斷是否要送 ready_event（只在「轉換成準備」時送）
+  function maybeSendReadyEvent(panel, row, payloadTs) {
+    if (!ENABLE_READY_EVENT || !GAS_URL) return;
+    if (!row || !row.masterId) return;
+
+    const masterId = String(row.masterId || "").trim();
+    if (!masterId) return;
+
+    const k = statusKey(panel, masterId);
+    const prev = lastStatus.get(k) || "";                 // 前一次狀態
+    const nowStatus = String(row.status || "").trim();    // 現在狀態
+
+    // ✅ 只有「現在=準備」且「上一筆不是準備」才算 transition
+    const isReadyTransition = nowStatus === "準備" && prev !== "準備";
+
+    if (isReadyTransition) {
+      const nowMs = Date.now();
+      const lastMs = readySentAt.get(k) || 0;
+
+      // ✅ 前端 dedup：避免 UI 抖動短時間重送
+      if (nowMs - lastMs >= READY_EVENT_DEDUP_MS) {
+        readySentAt.set(k, nowMs);
+
+        // 組 ready_event_v1 payload（對應你 GAS 端的格式）
+        const evt = {
+          mode: "ready_event_v1",
+          timestamp: payloadTs,
+          panel: panel,
+          masterId: masterId,
+          status: "準備",
+          index: row.index ?? "",
+          appointment: row.appointment ?? "",
+          remaining: row.remaining ?? "",
+          bgStatus: row.bgStatus ?? "",
+          colorStatus: row.colorStatus ?? "",
+          // source: "prod", // 如要區分來源可打開
+        };
+
+        // 送出：beacon 優先（快），失敗用 GM（穩）
+        postBeaconFirst(GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
+
+        // log（依 LOG_MODE 控制）
+        logGroup(`[ReadyOnly] ⚡ ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
+      }
     }
+
+    // 更新 lastStatus（必須放最後，否則 transition 判斷會失效）
+    lastStatus.set(k, nowStatus);
   }
 
   // =========================
-  // ✅ 19) tick：每秒掃描一次，變更才送，且最多 2 秒送一次
+  // ✅ 16) tick：每次掃描一次頁面（身體+腳底）
   // =========================
   function tick() {
     try {
-      if (!ENABLE_SNAPSHOT || !GAS_URL) return;
+      if (!ENABLE_READY_EVENT || !GAS_URL) return;
 
-      // 找面板 DOM
       const bodyPanel = findBodyPanel();
       const footPanel = findFootPanel();
       const ts = nowIso();
 
-      // 掃描 raw rows（包含顏色、背景等）
-      const bodyRowsRaw = scanPanel(bodyPanel);
-      const footRowsRaw = scanPanel(footPanel);
+      // 掃描 DOM 取得每一列資料
+      const bodyRows = scanPanel(bodyPanel);
+      const footRows = scanPanel(footPanel);
 
-      // 取「穩定欄位」做 hash（避免 timestamp 造成永遠變更）
-      const bodyStable = stableRowsForHash(bodyRowsRaw);
-      const footStable = stableRowsForHash(footRowsRaw);
-
-      // 生成本次 snapshot hash（body+foot 合併）
-      const snapshotHash = hashStr(JSON.stringify({ body: bodyStable, foot: footStable }));
-
-      // ✅ 若 hash 不同 => 代表資料真的變更（change-only）
-      if (snapshotHash !== lastSnapshotHash) {
-        // 送出 payload 仍保留 timestamp（方便後端追蹤與時序）
-        // 注意：timestamp 不參與 hash，但會被送出
-        const bodyRows = bodyRowsRaw.map((r) => ({ timestamp: ts, ...r }));
-        const footRows = footRowsRaw.map((r) => ({ timestamp: ts, ...r }));
-
-        // snapshot_v1 payload（對應後端模式）
-        const payload = {
-          mode: "snapshot_v1",
-          timestamp: ts,
-          body: bodyRows,
-          foot: footRows,
-        };
-
-        // 先放入 pending（由 throttle 控制是否立刻送）
-        pendingSnapshot = {
-          payload,
-          title: `[SnapshotOnly] 📤 snapshot_changed(throttle<=2s) ${ts} body=${bodyRows.length} foot=${footRows.length}`,
-        };
-        pendingSnapshotHash = snapshotHash;
-
-        // 嘗試送出（若 2 秒未到會暫不送，留待後續 tick 再送）
-        safeFlushPendingSnapshot(false, "tick");
-      } else {
-        // ✅ 沒變更：不送 payload，僅 log（可關）
-        if (LOG_MODE !== "off") console.log(`[SnapshotOnly] ⏸ snapshot unchanged (${ts})`);
-
-        // 即使沒變更，也嘗試 flush（可能有 pending 正在等節流）
-        safeFlushPendingSnapshot(false, "tick-unchanged");
-      }
+      // 對每一位師傅判斷是否出現準備 transition
+      bodyRows.forEach((r) => maybeSendReadyEvent("body", r, ts));
+      footRows.forEach((r) => maybeSendReadyEvent("foot", r, ts));
     } catch (e) {
-      console.error("[SnapshotOnly] 🔥 tick error:", e);
+      // 防止 tick 任何錯誤導致整個 interval 失效
+      console.error("[ReadyOnly] 🔥 tick error:", e);
     }
   }
 
   // =========================
-  // ✅ 20) start：啟動 loop + 在離開頁面時強制 flush
+  // ✅ 17) 壓測：產生壓測用 masterId
   // =========================
-  function start() {
-    console.log("[SnapshotOnly] ▶️ start loop", INTERVAL_MS, "ms");
-
-    // 立刻跑一次，避免等 1 秒才出第一筆
-    tick();
-
-    // 每 1 秒掃一次
-    setInterval(tick, INTERVAL_MS);
-
-    // ✅ pagehide/beforeunload：頁面離開前強制 flush pending（避免最後一筆變更丟失）
-    window.addEventListener("pagehide", () => safeFlushPendingSnapshot(true, "pagehide"));
-    window.addEventListener("beforeunload", () => safeFlushPendingSnapshot(true, "beforeunload"));
+  function makeStressMasterId(i) {
+    // 例：T001 ~ T030
+    return String(STRESS.masterPrefix || "T") + String(i + 1).padStart(3, "0");
   }
 
   // =========================
-  // ✅ 21) DOM Ready 判斷（確保 DOM 已載入）
+  // ✅ 18) 壓測：送出單筆 ready_event_v1
+  // =========================
+  function sendOneStress(i) {
+    const ts = nowIso();
+    const masterId = makeStressMasterId(i);
+
+    const evt = {
+      mode: "ready_event_v1",
+      timestamp: ts,
+      panel: STRESS.panel,
+      masterId: masterId,
+      status: "準備",
+      index: i + 1,
+      appointment: "TEST",
+      remaining: "",
+      bgStatus: "bg-test",
+      colorStatus: "text-test",
+      source: "stress", // 用於後端 log 區分（如果你要）
+    };
+
+    if (LOG_MODE !== "off") console.log("[Stress] ▶ send", masterId, ts);
+
+    // 壓測用：timeout 拉長到 45 秒，避免 GAS lock wait 造成誤判
+    postJsonGM(GAS_URL, evt, STRESS.timeoutMs);
+  }
+
+  // =========================
+  // ✅ 19) 壓測：跑 N 人（burst 或 gap）
+  // =========================
+  function runStress() {
+    if (!GAS_URL) return console.error("[Stress] missing GAS_URL");
+    if (!STRESS.enabled) return console.warn("[Stress] STRESS.enabled=false");
+
+    console.log(
+      `[Stress] 🚀 start: count=${STRESS.count}, burst=${STRESS.burst}, gap=${STRESS.gapMs}ms, timeout=${STRESS.timeoutMs}ms, panel=${STRESS.panel}`
+    );
+
+    // burst=true：同一瞬間爆發（最極限，最容易 timeout）
+    if (STRESS.burst) {
+      for (let i = 0; i < STRESS.count; i++) sendOneStress(i);
+    } else {
+      // burst=false：每 gapMs 送一次（推薦，較穩）
+      for (let i = 0; i < STRESS.count; i++) {
+        setTimeout(() => sendOneStress(i), i * STRESS.gapMs);
+      }
+    }
+  }
+
+  // =========================
+  // ✅ 20) start：啟動正式掃描 + 掛壓測入口
+  // =========================
+  function start() {
+    console.log("[ReadyOnly] ▶️ start loop", INTERVAL_MS, "ms");
+
+    // 立刻跑一次（避免等第一個 interval）
+    tick();
+
+    // 進入定時掃描
+    setInterval(tick, INTERVAL_MS);
+
+    // ✅ 提供 Console 手動觸發壓測
+    // 用法：window.__runStress()
+    window.__runStress = runStress;
+
+    // ✅ 可選：載入後自動壓測（預設關閉）
+    if (STRESS.enabled && STRESS.autorun) {
+      setTimeout(runStress, Math.max(0, STRESS.delayMs || 0));
+    }
+  }
+
+  // =========================
+  // ✅ 21) DOM Ready 判斷（確保 DOM 可掃）
   // =========================
   if (document.readyState === "loading") {
     window.addEventListener("DOMContentLoaded", start);
