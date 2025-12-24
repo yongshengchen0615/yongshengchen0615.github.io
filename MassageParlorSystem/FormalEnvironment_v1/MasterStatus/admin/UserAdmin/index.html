@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <title>Users 後台管理</title>
@@ -7,6 +7,26 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+<!-- ✅ 自動認證 Gate（純顯示用，無按鈕） -->
+<div id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-label="LINE 自動登入與權限檢查">
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="auth-mark">U</div>
+      <div class="auth-title">
+        <div class="auth-h">Users 後台管理</div>
+        <div class="auth-p">LINE 自動登入與權限檢查中</div>
+      </div>
+    </div>
+
+    <div id="authStatus" class="auth-status">初始化中…</div>
+
+    <div class="auth-hint">
+      若顯示「尚未開通」，請通知管理員在 Users 表中將<br>
+      <b>「個人狀態開通」設為「是」</b>
+    </div>
+  </div>
+</div>
 
 <div class="app">
   <div class="shell">
@@ -51,14 +71,9 @@
         <div class="kpi-label">停用</div>
         <div class="kpi-value" id="kpiDisabled">-</div>
       </div>
-      <!-- ✅ NEW: 系統維護 KPI -->
-      <div class="kpi-card maintenance">
-        <div class="kpi-label">系統維護</div>
-        <div class="kpi-value" id="kpiMaintenance">-</div>
-      </div>
     </section>
 
-    <!-- Toolbar -->
+    <!-- Panel -->
     <section class="panel">
       <div class="panel-head">
         <div class="filters">
@@ -67,7 +82,7 @@
             <input
               id="searchInput"
               class="input"
-              placeholder="搜尋：userId、名稱、師傅編號"
+              placeholder="搜尋：userId、名稱"
               autocomplete="off"
             />
             <button id="clearSearchBtn" class="btn icon ghost" type="button" aria-label="清除搜尋">✕</button>
@@ -79,8 +94,6 @@
             <button class="chip" data-filter="待審核" type="button">待審核</button>
             <button class="chip" data-filter="拒絕" type="button">拒絕</button>
             <button class="chip" data-filter="停用" type="button">停用</button>
-            <!-- ✅ NEW: 系統維護篩選 -->
-            <button class="chip" data-filter="系統維護" type="button">系統維護</button>
           </div>
         </div>
 
@@ -105,38 +118,7 @@
               <option value="通過">通過</option>
               <option value="拒絕">拒絕</option>
               <option value="停用">停用</option>
-              <!-- ✅ NEW -->
-              <option value="系統維護">系統維護</option>
               <option value="其他">其他</option>
-            </select>
-          </div>
-
-          <div class="bulk-group">
-            <label class="bulk-label" for="bulkPush">批次推播</label>
-            <select id="bulkPush" class="select">
-              <option value="">不變更</option>
-              <option value="是">開啟</option>
-              <option value="否">關閉</option>
-            </select>
-          </div>
-
-          <!-- ✅批次個人狀態 -->
-          <div class="bulk-group">
-            <label class="bulk-label" for="bulkPersonalStatus">批次個人狀態</label>
-            <select id="bulkPersonalStatus" class="select">
-              <option value="">不變更</option>
-              <option value="是">開啟</option>
-              <option value="否">關閉</option>
-            </select>
-          </div>
-
-          <!-- ✅新增：批次排班表 -->
-          <div class="bulk-group">
-            <label class="bulk-label" for="bulkScheduleEnabled">批次排班表</label>
-            <select id="bulkScheduleEnabled" class="select">
-              <option value="">不變更</option>
-              <option value="是">開啟</option>
-              <option value="否">關閉</option>
             </select>
           </div>
 
@@ -161,16 +143,11 @@
               <th data-sort="usageDays" class="sortable">期限(天)</th>
               <th data-sort="expiry" class="sortable">使用狀態</th>
               <th data-sort="audit" class="sortable">審核狀態</th>
-              <th data-sort="masterCode" class="sortable">師傅編號</th>
-              <th data-sort="isMaster" class="sortable">是否師傅</th>
-              <th data-sort="pushEnabled" class="sortable">是否推播</th>
-              <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th>
-              <th data-sort="scheduleEnabled" class="sortable">排班表開通</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="15">載入中...</td></tr>
+            <tr><td colspan="10">載入中…</td></tr>
           </tbody>
         </table>
       </div>
@@ -181,6 +158,8 @@
 
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
+<!-- ✅ LIFF SDK（必須） -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="app.js" defer></script>
 </body>
 </html>
