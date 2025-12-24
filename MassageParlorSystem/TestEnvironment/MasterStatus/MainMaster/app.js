@@ -2,6 +2,18 @@
 const API_BASE_URL =
   "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec";
 
+/* =========================================================
+ * ✅ Audit 狀態枚舉（新增：系統維護）
+ * - 視為一種 audit 狀態（同級：通過/待審核/停用）
+ * - 仍沿用既有規則：audit ≠ 通過 → pushEnabled 強制否 + UI 禁用
+ * ========================================================= */
+const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
+function normalizeAudit_(v) {
+  const s = String(v || "").trim();
+  if (!s) return "待審核";
+  return AUDIT_ENUM.includes(s) ? s : "其他";
+}
+
 let allUsers = [];
 let filteredUsers = [];
 
@@ -50,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
   ensureSaveAllButton_(); // ✅新增：一鍵儲存（JS 插入，不改 HTML）
-ensureMobileSelectAll_(); // ✅新增：手機版全選
+  ensureMobileSelectAll_(); // ✅新增：手機版全選
   bindFilter();
   bindSorting_();
   bindBulk_();
@@ -71,7 +83,6 @@ ensureMobileSelectAll_(); // ✅新增：手機版全選
     const box = searchInput.closest(".search-box");
     box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
   }
-
 
   loadUsers();
 });
@@ -128,6 +139,7 @@ function ensureSaveAllButton_() {
 
   refreshSaveAllButton_();
 }
+
 function ensureMobileSelectAll_() {
   // 插到 panel-head filters 區塊（搜尋/Chip 那一排）
   const filters = document.querySelector(".panel-head .filters");
@@ -160,7 +172,6 @@ function ensureMobileSelectAll_() {
     syncCheckAll_(); // 會同步 indeterminate / checked
   });
 }
-
 
 function refreshSaveAllButton_() {
   const btn = document.getElementById("saveAllBtn");
@@ -198,7 +209,7 @@ async function loadUsers() {
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
       scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
-      audit: u.audit || "待審核",
+      audit: normalizeAudit_(u.audit), // ✅ 這行：加入系統維護
     }));
 
     originalMap.clear();
@@ -221,7 +232,10 @@ function applyFilters() {
   const filter = activeChip ? activeChip.dataset.filter : "ALL";
 
   filteredUsers = allUsers.filter((u) => {
-    if (filter !== "ALL" && String(u.audit || "待審核") !== filter) return false;
+    const audit = normalizeAudit_(u.audit);
+
+    // ✅ chip filter：可用 data-filter="系統維護" 直接篩
+    if (filter !== "ALL" && audit !== filter) return false;
 
     if (keywordRaw) {
       const hay = `${u.userId} ${u.displayName || ""} ${u.masterCode || ""}`.toLowerCase();
@@ -246,25 +260,30 @@ function updateSummary() {
   if (!el) return;
 
   const total = allUsers.length;
-  const approved = allUsers.filter((u) => (u.audit || "待審核") === "通過").length;
-  const pending = allUsers.filter((u) => (u.audit || "待審核") === "待審核").length;
-  const rejected = allUsers.filter((u) => (u.audit || "待審核") === "拒絕").length;
+  const approved = allUsers.filter((u) => normalizeAudit_(u.audit) === "通過").length;
+  const pending = allUsers.filter((u) => normalizeAudit_(u.audit) === "待審核").length;
+  const rejected = allUsers.filter((u) => normalizeAudit_(u.audit) === "拒絕").length;
+  const maintenance = allUsers.filter((u) => normalizeAudit_(u.audit) === "系統維護").length;
 
-  el.textContent = `總筆數：${total}（通過 ${approved} / 待審核 ${pending} / 拒絕 ${rejected}）`;
+  el.textContent = `總筆數：${total}（通過 ${approved} / 待審核 ${pending} / 拒絕 ${rejected} / 維護 ${maintenance}）`;
 }
 
 function updateKpis_() {
   const total = allUsers.length;
-  const approved = allUsers.filter((u) => (u.audit || "待審核") === "通過").length;
-  const pending = allUsers.filter((u) => (u.audit || "待審核") === "待審核").length;
-  const rejected = allUsers.filter((u) => (u.audit || "待審核") === "拒絕").length;
-  const disabled = allUsers.filter((u) => (u.audit || "") === "停用").length;
+  const approved = allUsers.filter((u) => normalizeAudit_(u.audit) === "通過").length;
+  const pending = allUsers.filter((u) => normalizeAudit_(u.audit) === "待審核").length;
+  const rejected = allUsers.filter((u) => normalizeAudit_(u.audit) === "拒絕").length;
+  const disabled = allUsers.filter((u) => normalizeAudit_(u.audit) === "停用").length;
+  const maintenance = allUsers.filter((u) => normalizeAudit_(u.audit) === "系統維護").length;
 
   setText_("kpiTotal", total);
   setText_("kpiApproved", approved);
   setText_("kpiPending", pending);
   setText_("kpiRejected", rejected);
   setText_("kpiDisabled", disabled);
+
+  // ✅ 可選 KPI：HTML 有放才會顯示（沒有也不會報錯）
+  setText_("kpiMaintenance", maintenance);
 }
 
 function updateFooter() {
@@ -440,7 +459,6 @@ function syncCheckAll_() {
   setState(mobile, checked, indeterminate);
 }
 
-
 async function bulkApply_() {
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
@@ -459,10 +477,10 @@ async function bulkApply_() {
     const u = allUsers.find((x) => x.userId === id);
     if (!u) return;
 
-    if (audit) u.audit = audit;
+    if (audit) u.audit = normalizeAudit_(audit);
 
-    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否
-    if ((u.audit || "待審核") !== "通過") {
+    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（含 系統維護）
+    if (normalizeAudit_(u.audit) !== "通過") {
       u.pushEnabled = "否";
     } else if (pushEnabled) {
       u.pushEnabled = pushEnabled;
@@ -546,10 +564,12 @@ function renderTable() {
     const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
     const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
     const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
-    const audit = u.audit || "待審核";
+
+    const audit = normalizeAudit_(u.audit);
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
 
+    // ✅ audit ≠ 通過 -> 推播禁用（含 系統維護）
     const pushDisabled = audit !== "通過" ? "disabled" : "";
 
     const tr = document.createElement("tr");
@@ -579,11 +599,7 @@ function renderTable() {
 
       <td data-label="審核狀態">
         <select data-field="audit" aria-label="審核狀態">
-          ${auditOption("待審核", audit)}
-          ${auditOption("通過", audit)}
-          ${auditOption("拒絕", audit)}
-          ${auditOption("停用", audit)}
-          ${auditOption("其他", audit)}
+          ${AUDIT_ENUM.map((v) => auditOption(v, audit)).join("")}
         </select>
         <span class="audit-badge ${auditClass_(audit)}">${escapeHtml(audit)}</span>
       </td>
@@ -716,13 +732,13 @@ function handleRowFieldChange_(fieldEl) {
   if (field === "usageDays") u.usageDays = String(value || "");
   else if (field === "startDate") u.startDate = String(value || "");
   else if (field === "masterCode") u.masterCode = String(value || "");
-  else if (field === "audit") u.audit = String(value || "待審核");
+  else if (field === "audit") u.audit = normalizeAudit_(value || "待審核");
   else if (field === "pushEnabled") u.pushEnabled = String(value || "否");
   else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
   else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 
-  // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用
-  const audit = u.audit || "待審核";
+  // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用（含 系統維護）
+  const audit = normalizeAudit_(u.audit);
   const pushSel = row.querySelector('select[data-field="pushEnabled"]');
   if (audit !== "通過") {
     u.pushEnabled = "否";
@@ -775,6 +791,8 @@ function handleRowFieldChange_(fieldEl) {
   }
 
   updateFooter();
+  updateSummary();
+  updateKpis_();
   refreshSaveAllButton_();
 }
 
@@ -845,7 +863,7 @@ async function saveAllDirty_() {
     }
 
     // 🔒 再次 enforce 規則（保險）
-    const finalAudit = u.audit || "待審核";
+    const finalAudit = normalizeAudit_(u.audit);
     const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
 
     const payload = {
@@ -937,7 +955,7 @@ function auditOption(value, current) {
 }
 
 function auditClass_(audit) {
-  switch (String(audit || "").trim()) {
+  switch (normalizeAudit_(audit)) {
     case "通過":
       return "approved";
     case "待審核":
@@ -946,6 +964,8 @@ function auditClass_(audit) {
       return "rejected";
     case "停用":
       return "disabled";
+    case "系統維護":
+      return "maintenance";
     default:
       return "other";
   }
@@ -976,7 +996,7 @@ function toInputDate(str) {
 function snapshot_(u) {
   return JSON.stringify({
     userId: u.userId,
-    audit: u.audit || "待審核",
+    audit: normalizeAudit_(u.audit),
     startDate: u.startDate || "",
     usageDays: String(u.usageDays || ""),
     masterCode: u.masterCode || "",
@@ -1009,7 +1029,7 @@ async function updateUser({
     const fd = new URLSearchParams();
     fd.append("mode", "updateUser");
     fd.append("userId", userId);
-    fd.append("audit", audit);
+    fd.append("audit", normalizeAudit_(audit));
     fd.append("startDate", startDate || "");
     fd.append("usageDays", usageDays || "");
     fd.append("masterCode", masterCode || "");
