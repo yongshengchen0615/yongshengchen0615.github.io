@@ -2,17 +2,14 @@
   "_comment": "=== 系統設定檔（純 JSON，可直接 JSON.parse）===",
 
   "EDGE_STATUS_URLS": [
-    "https://script.google.com/macros/s/AKfycbztkK2sABPZiSq5aVcH1v05mRYgLSPAzfkkETtPx42oWO6BQl3xnX_Blgnfi6N5yBZI/exec",
-    "https://script.google.com/macros/s/AKfycby-VyZZWp3_F00hVL1y7CJ53xSJugPFb_KsBpP2YgglrxTq2oyjURoMHlvHGlPQaXAFjg/exec",
-    "https://script.google.com/macros/s/AKfycbxXI-HYcwvjtDPcnpnz5i8NxV77Fwh5fDkH364Quc5fdld4OlnU2bFMvs9u22QBTkcn/exec",
-    "https://script.google.com/macros/s/AKfycbwFFuSms_6QmhR5o0quA8fhunw2ZVGimNwhTuSHRhVLV4-UtePplVbIj56s4--lu9vC7w/exec"
+    "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec"
   ],
   "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
 
-  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbzC8H1KKbPKkkUNejHGa3jOLDUVscFr6xzcSrlPT_QPDdo82N7ws_ZKDGQQ7aqUYV_H/exec",
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec",
   "_comment_FALLBACK_ORIGIN_CACHE_URL": "當所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。",
 
-  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec",
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
   "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
 
   "LIFF_ID": "2008669658-sBKFvZEz",
