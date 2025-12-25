@@ -16,7 +16,7 @@
    * 0) Config
    * ========================= */
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbxtgOJJaPJjX3xddi9g8s-kS2JKvHTkYyhi67Z8pbvJ9ODcxdL0_-GUEjGgWmSN61sdxQ/exec";
+    "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec";
 
   // 掃描頻率
   const INTERVAL_MS = 1000;
