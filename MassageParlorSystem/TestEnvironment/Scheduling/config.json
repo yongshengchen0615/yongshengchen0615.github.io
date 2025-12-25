@@ -2,7 +2,10 @@
   "_comment": "=== 系統設定檔（純 JSON，可直接 JSON.parse）===",
 
   "EDGE_STATUS_URLS": [
-    "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec"
+    "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec",
+    "https://script.google.com/macros/s/AKfycbyEGaQ0Gqikbw5azOA-32ZiV4SDe0tjKv0T9BDn63zOBpxV_1VF7EKccyU8GOZKwEpW/exec",
+    "https://script.google.com/macros/s/AKfycbwJ0ugTDlqlVWQS4lvOAXw1U8Zlt0eE-UbrE59EjBt2pt6D9SnJpalZKtitRblaPPXbIw/exec",
+    "https://script.google.com/macros/s/AKfycbyTy3uGeBve49gzJx6vjxKzYW6OtJns2Qltpr-FD1_xk42SSXYIEQXfqdL15YBudhSu/exec"
   ],
   "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
 
