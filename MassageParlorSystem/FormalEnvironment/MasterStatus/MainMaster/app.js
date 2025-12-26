@@ -4,8 +4,6 @@ const API_BASE_URL =
 
 /* =========================================================
  * ✅ Audit 狀態枚舉（新增：系統維護）
- * - 視為一種 audit 狀態（同級：通過/待審核/停用）
- * - 仍沿用既有規則：audit ≠ 通過 → pushEnabled 強制否 + UI 禁用
  * ========================================================= */
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 function normalizeAudit_(v) {
@@ -52,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const clearSearchBtn = document.getElementById("clearSearchBtn");
   if (clearSearchBtn)
     clearSearchBtn.addEventListener("click", () => {
+      if (savingAll) return;
       const si = document.getElementById("searchInput");
       if (si) si.value = "";
 
@@ -61,18 +60,19 @@ document.addEventListener("DOMContentLoaded", () => {
       applyFilters();
     });
 
-  ensureSaveAllButton_(); // ✅新增：一鍵儲存（JS 插入，不改 HTML）
-  ensureMobileSelectAll_(); // ✅新增：手機版全選
+  ensureSaveAllButton_();
+  ensureMobileSelectAll_();
   bindFilter();
   bindSorting_();
   bindBulk_();
-  bindTableDelegation_(); // ✅事件委派：只綁一次
+  bindTableDelegation_();
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener(
       "input",
       debounce(() => {
+        if (savingAll) return;
         const box = searchInput.closest(".search-box");
         const hasValue = searchInput.value.trim().length > 0;
         box?.classList.toggle("is-searching", hasValue);
@@ -95,6 +95,7 @@ function initTheme_() {
   updateThemeButtonText_();
 }
 function toggleTheme_() {
+  if (savingAll) return;
   const current = document.documentElement.getAttribute("data-theme") || "dark";
   const next = current === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
@@ -108,13 +109,72 @@ function updateThemeButtonText_() {
   btn.textContent = current === "dark" ? "亮色" : "暗色";
 }
 
+/* ========= UI Lock (disable all editing while saving) ========= */
+
+function setEditingEnabled_(enabled) {
+  const lock = !enabled;
+
+  // panel visual hint
+  const panel = document.querySelector(".panel");
+  if (panel) panel.classList.toggle("is-locked", lock);
+
+  // topbar
+  const reloadBtn = document.getElementById("reloadBtn");
+  if (reloadBtn) reloadBtn.disabled = lock;
+
+  // （可選）主題切換也鎖；你若不想鎖，保留註解即可
+  const themeBtn = document.getElementById("themeToggle");
+  if (themeBtn) themeBtn.disabled = lock;
+
+  // filters/search
+  document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
+
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) searchInput.disabled = lock;
+
+  const clearSearchBtn = document.getElementById("clearSearchBtn");
+  if (clearSearchBtn) clearSearchBtn.disabled = lock;
+
+  // bulk controls
+  const ids = [
+    "checkAll",
+    "mobileCheckAll",
+    "bulkClear",
+    "bulkAudit",
+    "bulkPush",
+    "bulkPersonalStatus",
+    "bulkScheduleEnabled",
+    "bulkApply",
+    "bulkDelete",
+  ];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = lock;
+  });
+
+  // table controls
+  const tbody = document.getElementById("tbody");
+  if (tbody) {
+    tbody.querySelectorAll("input, select, button").forEach((el) => {
+      el.disabled = lock;
+    });
+  }
+
+  // disable sorting headers
+  document.querySelectorAll("th.sortable").forEach((th) => {
+    th.style.pointerEvents = lock ? "none" : "";
+    th.style.opacity = lock ? "0.6" : "";
+  });
+
+  refreshSaveAllButton_();
+}
+
 /* ========= Save All Button ========= */
 
 function ensureSaveAllButton_() {
   const topRight = document.querySelector(".topbar-right");
   if (!topRight) return;
 
-  // 若已存在就不重複插
   if (document.getElementById("saveAllBtn")) return;
 
   const btn = document.createElement("button");
@@ -122,14 +182,13 @@ function ensureSaveAllButton_() {
   btn.type = "button";
   btn.className = "btn primary";
   btn.textContent = "儲存全部變更";
-  btn.disabled = true; // 初始沒有 dirty
+  btn.disabled = true;
 
   btn.addEventListener("click", async () => {
     if (savingAll) return;
     await saveAllDirty_();
   });
 
-  // 插到 reloadBtn 前面（或最後）
   const reloadBtn = document.getElementById("reloadBtn");
   if (reloadBtn && reloadBtn.parentElement === topRight) {
     topRight.insertBefore(btn, reloadBtn);
@@ -141,7 +200,6 @@ function ensureSaveAllButton_() {
 }
 
 function ensureMobileSelectAll_() {
-  // 插到 panel-head filters 區塊（搜尋/Chip 那一排）
   const filters = document.querySelector(".panel-head .filters");
   if (!filters) return;
 
@@ -159,9 +217,9 @@ function ensureMobileSelectAll_() {
 
   const mobile = wrap.querySelector("#mobileCheckAll");
   mobile.addEventListener("change", () => {
+    if (savingAll) return;
     const checked = !!mobile.checked;
 
-    // 全選只針對「目前 filteredUsers」（符合你的桌機版行為）
     filteredUsers.forEach((u) => {
       if (checked) selectedIds.add(u.userId);
       else selectedIds.delete(u.userId);
@@ -169,7 +227,7 @@ function ensureMobileSelectAll_() {
 
     renderTable();
     updateBulkBar_();
-    syncCheckAll_(); // 會同步 indeterminate / checked
+    syncCheckAll_();
   });
 }
 
@@ -191,6 +249,7 @@ function refreshSaveAllButton_() {
 function bindFilter() {
   document.querySelectorAll(".chip").forEach((chip) => {
     chip.addEventListener("click", () => {
+      if (savingAll) return;
       document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
       applyFilters();
@@ -209,7 +268,7 @@ async function loadUsers() {
       personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
       scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
       pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
-      audit: normalizeAudit_(u.audit), // ✅ 這行：加入系統維護
+      audit: normalizeAudit_(u.audit),
     }));
 
     originalMap.clear();
@@ -234,7 +293,6 @@ function applyFilters() {
   filteredUsers = allUsers.filter((u) => {
     const audit = normalizeAudit_(u.audit);
 
-    // ✅ chip filter：可用 data-filter="系統維護" 直接篩
     if (filter !== "ALL" && audit !== filter) return false;
 
     if (keywordRaw) {
@@ -253,6 +311,9 @@ function applyFilters() {
   syncCheckAll_();
   updateBulkBar_();
   refreshSaveAllButton_();
+
+  // 如果正在儲存，render 完要再次確保 UI 被鎖（避免重渲染把 disabled 還原）
+  if (savingAll) setEditingEnabled_(false);
 }
 
 function updateSummary() {
@@ -281,8 +342,6 @@ function updateKpis_() {
   setText_("kpiPending", pending);
   setText_("kpiRejected", rejected);
   setText_("kpiDisabled", disabled);
-
-  // ✅ 可選 KPI：HTML 有放才會顯示（沒有也不會報錯）
   setText_("kpiMaintenance", maintenance);
 }
 
@@ -309,6 +368,7 @@ function updateFooter() {
 function bindSorting_() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.addEventListener("click", () => {
+      if (savingAll) return;
       const key = th.dataset.sort;
       if (!key) return;
       if (sortKey === key) {
@@ -347,9 +407,15 @@ function compareBy_(a, b, key, dir) {
     return (na - nb) * sgn;
   }
 
-  if (key === "createdAt" || key === "startDate") {
+  // startDate / createdAt 都是字串，簡化解析（startDate: yyyy-MM-dd）
+  if (key === "createdAt") {
     const da = toTime_(av);
     const db = toTime_(bv);
+    return (da - db) * sgn;
+  }
+  if (key === "startDate") {
+    const da = toTime_(String(av || "") + "T00:00:00");
+    const db = toTime_(String(bv || "") + "T00:00:00");
     return (da - db) * sgn;
   }
 
@@ -369,8 +435,11 @@ function toTime_(v) {
 
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
-  const start = new Date(String(u.startDate).replace(" ", "T"));
+
+  // startDate: yyyy-MM-dd
+  const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return 999999;
+
   const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
   return Math.ceil((end - new Date()) / 86400000);
 }
@@ -381,6 +450,7 @@ function bindBulk_() {
   const checkAll = document.getElementById("checkAll");
   if (checkAll) {
     checkAll.addEventListener("change", () => {
+      if (savingAll) return;
       const checked = !!checkAll.checked;
       filteredUsers.forEach((u) => {
         if (checked) selectedIds.add(u.userId);
@@ -395,6 +465,7 @@ function bindBulk_() {
   const bulkClear = document.getElementById("bulkClear");
   if (bulkClear)
     bulkClear.addEventListener("click", () => {
+      if (savingAll) return;
       selectedIds.clear();
       renderTable();
       updateBulkBar_();
@@ -460,6 +531,8 @@ function syncCheckAll_() {
 }
 
 async function bulkApply_() {
+  if (savingAll) return;
+
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
@@ -569,7 +642,6 @@ function renderTable() {
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
 
-    // ✅ audit ≠ 通過 -> 推播禁用（含 系統維護）
     const pushDisabled = audit !== "通過" ? "disabled" : "";
 
     const tr = document.createElement("tr");
@@ -587,7 +659,7 @@ function renderTable() {
       <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
 
       <td data-label="開始使用">
-        <input type="date" data-field="startDate" value="${toInputDate(u.startDate)}">
+        <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}">
       </td>
       <td data-label="期限(天)">
         <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
@@ -642,6 +714,12 @@ function renderTable() {
   });
 
   tbody.appendChild(frag);
+
+  // ✅ 如果正在儲存，確保表格互動元件仍然被 disabled
+  if (savingAll) {
+    const tbody = document.getElementById("tbody");
+    if (tbody) tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
+  }
 }
 
 function refreshSortIndicators_() {
@@ -665,12 +743,12 @@ function bindTableDelegation_() {
   const tbody = document.getElementById("tbody");
   if (!tbody) return;
 
-  // checkbox / select / date / number changes
   tbody.addEventListener("change", (e) => {
+    if (savingAll) return;
+
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
 
-    // row checkbox
     if (t.classList.contains("row-check")) {
       const row = t.closest("tr");
       const userId = row?.dataset.userid;
@@ -682,15 +760,15 @@ function bindTableDelegation_() {
       return;
     }
 
-    // field changes (select/date)
     if (t.matches("[data-field]")) {
       handleRowFieldChange_(t);
       return;
     }
   });
 
-  // text/number input (live)
   tbody.addEventListener("input", (e) => {
+    if (savingAll) return;
+
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (t.matches("input[data-field]")) {
@@ -698,7 +776,6 @@ function bindTableDelegation_() {
     }
   });
 
-  // delete buttons
   tbody.addEventListener("click", async (e) => {
     if (savingAll) return;
 
@@ -737,7 +814,7 @@ function handleRowFieldChange_(fieldEl) {
   else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
   else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 
-  // 🔒 核心規則：審核狀態 ≠ 通過 → 推播強制否 + 禁用（含 系統維護）
+  // 🔒 audit ≠ 通過 → pushEnabled 強制否 + disable
   const audit = normalizeAudit_(u.audit);
   const pushSel = row.querySelector('select[data-field="pushEnabled"]');
   if (audit !== "通過") {
@@ -750,7 +827,6 @@ function handleRowFieldChange_(fieldEl) {
     if (pushSel) pushSel.disabled = false;
   }
 
-  // badge
   if (field === "audit") {
     const badge = row.querySelector(".audit-badge");
     if (badge) {
@@ -759,7 +835,6 @@ function handleRowFieldChange_(fieldEl) {
     }
   }
 
-  // expiry pill
   const exp = getExpiryInfo(u);
   const pill = row.querySelector(".expiry-pill");
   if (pill) {
@@ -767,12 +842,10 @@ function handleRowFieldChange_(fieldEl) {
     pill.textContent = exp.text;
   }
 
-  // dirty
   markDirty_(userId, u);
   const isDirty = dirtyMap.has(userId);
   row.classList.toggle("dirty", isDirty);
 
-  // actions UI（點點/提示）
   const actions = row.querySelector(".actions");
   if (actions) {
     const dot = actions.querySelector(".dirty-dot");
@@ -822,20 +895,18 @@ async function handleRowDelete_(row, userId, delBtn) {
     toast("刪除完成", "ok");
     selectedIds.delete(userId);
 
-    // 移除 local model
     allUsers = allUsers.filter((x) => x.userId !== userId);
     filteredUsers = filteredUsers.filter((x) => x.userId !== userId);
     originalMap.delete(userId);
     dirtyMap.delete(userId);
 
-    // 重新渲染以更新編號與統計
     applyFilters();
   } else {
     toast("刪除失敗", "err");
   }
 }
 
-/* ========= Save All Dirty ========= */
+/* ========= Save All Dirty (BATCH) ========= */
 
 async function saveAllDirty_() {
   const dirtyIds = Array.from(dirtyMap.keys());
@@ -845,106 +916,79 @@ async function saveAllDirty_() {
   }
 
   savingAll = true;
+  setEditingEnabled_(false);
   refreshSaveAllButton_();
 
-  // 避免使用者手滑 reload
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.disabled = true;
+  try {
+    // 1) 組 batch items
+    const items = dirtyIds
+      .map((userId) => allUsers.find((x) => x.userId === userId))
+      .filter(Boolean)
+      .map((u) => {
+        const finalAudit = normalizeAudit_(u.audit);
+        const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
 
-  let okCount = 0;
-  let failCount = 0;
+        return {
+          userId: u.userId,
+          audit: finalAudit,
+          startDate: u.startDate || "", // yyyy-MM-dd
+          usageDays: u.usageDays || "",
+          masterCode: u.masterCode || "",
+          pushEnabled: finalPush,
+          personalStatusEnabled: u.personalStatusEnabled || "否",
+          scheduleEnabled: u.scheduleEnabled || "否",
+        };
+      });
 
-  for (let i = 0; i < dirtyIds.length; i++) {
-    const userId = dirtyIds[i];
-    const u = allUsers.find((x) => x.userId === userId);
-    if (!u) {
-      dirtyMap.delete(userId);
-      continue;
-    }
-
-    // 🔒 再次 enforce 規則（保險）
-    const finalAudit = normalizeAudit_(u.audit);
-    const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
-
-    const payload = {
-      userId: u.userId,
-      audit: finalAudit,
-      startDate: u.startDate || "",
-      usageDays: u.usageDays || "",
-      masterCode: u.masterCode || "",
-      pushEnabled: finalPush,
-      personalStatusEnabled: u.personalStatusEnabled || "否",
-      scheduleEnabled: u.scheduleEnabled || "否",
-    };
-
-    // UI：footer 顯示進度（不吵 toast）
     const el = document.getElementById("footerStatus");
-    if (el) {
-      el.textContent = `儲存中：${i + 1}/${dirtyIds.length}（userId: ${u.userId}）`;
-    }
+    if (el) el.textContent = `儲存中：1/1（共 ${items.length} 筆）`;
 
-    const ok = await updateUser(payload);
-    if (ok) {
-      okCount++;
+    // 2) 一次送後端
+    const ret = await updateUsersBatch(items);
 
-      // 同步回 model
-      u.audit = finalAudit;
-      u.pushEnabled = finalPush;
+    // 3) 回寫前端狀態
+    if (ret && ret.okCount) {
+      const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));
 
-      // reset baseline
-      originalMap.set(userId, snapshot_(u));
-      dirtyMap.delete(userId);
+      items.forEach((it) => {
+        const id = it.userId;
+        if (!id) return;
+        if (failedSet.has(id)) return;
 
-      // 更新當下畫面 row（若 row 在目前 filteredUsers 視窗內）
-      const row = document.querySelector(`#tbody tr[data-userid="${cssEscape_(userId)}"]`);
-      if (row) {
-        row.classList.remove("dirty");
-        const actions = row.querySelector(".actions");
-        if (actions) {
-          const dot = actions.querySelector(".dirty-dot");
-          if (dot) dot.remove();
-          if (!actions.querySelector(".row-hint")) {
-            actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
-          }
-        }
-        const badge = row.querySelector(".audit-badge");
-        if (badge) {
-          badge.textContent = finalAudit;
-          badge.className = `audit-badge ${auditClass_(finalAudit)}`;
-        }
-        const pushSel = row.querySelector('select[data-field="pushEnabled"]');
-        if (pushSel) {
-          pushSel.value = finalPush;
-          pushSel.disabled = finalAudit !== "通過";
-        }
-        const exp = getExpiryInfo(u);
-        const pill = row.querySelector(".expiry-pill");
-        if (pill) {
-          pill.className = `expiry-pill ${exp.cls}`;
-          pill.textContent = exp.text;
-        }
-      }
+        const u = allUsers.find((x) => x.userId === id);
+        if (!u) return;
+
+        // ✅ 同步全部欄位，避免前後端不一致
+        u.audit = it.audit;
+        u.startDate = it.startDate;
+        u.usageDays = it.usageDays;
+        u.masterCode = it.masterCode;
+        u.pushEnabled = it.audit !== "通過" ? "否" : it.pushEnabled;
+        u.personalStatusEnabled = it.personalStatusEnabled;
+        u.scheduleEnabled = it.scheduleEnabled;
+
+        originalMap.set(id, snapshot_(u));
+        dirtyMap.delete(id);
+      });
+
+      applyFilters();
     } else {
-      failCount++;
-      // 保留 dirty，不動 baseline
+      // 沒成功就保留 dirty
+      applyFilters();
     }
 
-    // 小節流，避免 GAS 扛不住（可調整/移除）
-    await sleep_(60);
+    refreshSaveAllButton_();
+    updateSummary();
+    updateKpis_();
+    updateFooter();
+
+    if (ret && ret.failCount === 0) toast(`全部儲存完成：${ret.okCount} 筆`, "ok");
+    else toast(`儲存完成：成功 ${ret?.okCount || 0} / 失敗 ${ret?.failCount || 0}`, "err");
+  } finally {
+    savingAll = false;
+    setEditingEnabled_(true);
     refreshSaveAllButton_();
   }
-
-  savingAll = false;
-  if (reloadBtn) reloadBtn.disabled = false;
-
-  // 最後統一更新 KPI/summary/footer
-  updateSummary();
-  updateKpis_();
-  updateFooter();
-  refreshSaveAllButton_();
-
-  if (failCount === 0) toast(`全部儲存完成：${okCount} 筆`, "ok");
-  else toast(`儲存完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
 }
 
 /* ========= Helpers for options/badges/expiry ========= */
@@ -974,7 +1018,7 @@ function auditClass_(audit) {
 function getExpiryInfo(u) {
   if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
 
-  const start = new Date(String(u.startDate).replace(" ", "T"));
+  const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return { cls: "unset", text: "未設定" };
 
   const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
@@ -982,13 +1026,6 @@ function getExpiryInfo(u) {
 
   if (diff < 0) return { cls: "expired", text: `已過期（超 ${Math.abs(diff)} 天）` };
   return { cls: "active", text: `使用中（剩 ${diff} 天）` };
-}
-
-function toInputDate(str) {
-  if (!str) return "";
-  const d = new Date(String(str).replace(" ", "T"));
-  if (isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
 }
 
 /* ========= Dirty tracking ========= */
@@ -1043,6 +1080,25 @@ async function updateUser({
   } catch (err) {
     console.error("updateUser error:", err);
     return false;
+  }
+}
+
+/**
+ * ✅✅✅ Batch 更新（一次送多筆）
+ * - CORS-safe：text/plain JSON（避免 preflight）
+ */
+async function updateUsersBatch(items) {
+  try {
+    const res = await fetch(API_BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "updateUsersBatch", items }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return json;
+  } catch (err) {
+    console.error("updateUsersBatch error:", err);
+    return { ok: false, error: String(err) };
   }
 }
 
@@ -1103,10 +1159,4 @@ function debounce(fn, wait) {
 
 function sleep_(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-// CSS selector escape（避免 userId 含特殊字元）
-function cssEscape_(s) {
-  // 最小實作：足夠應付大多數情境；若 userId 都是字母數字其實用不到
-  return String(s).replaceAll('"', '\\"').replaceAll("\\", "\\\\");
 }
