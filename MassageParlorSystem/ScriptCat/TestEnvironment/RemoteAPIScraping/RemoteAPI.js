@@ -4,7 +4,6 @@
 // @version      2.3
 // @description  Capture XHR/fetch/beacon/ws/sse and send to GAS with diagnostics
 // @match        http://yspos.youngsong.com.tw/*
-// @match        https://yspos.youngsong.com.tw/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
