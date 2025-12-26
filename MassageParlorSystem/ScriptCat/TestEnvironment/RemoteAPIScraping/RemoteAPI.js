@@ -1,120 +1,56 @@
 // ==UserScript==
-// @name         NET Capture → GAS (XHR + fetch, auto schema)
+// @name         FULL Net Capture → GAS (XHR/fetch/beacon/ws/sse)
 // @namespace    http://scriptcat.org/
-// @version      1.0
-// @description  Capture ALL XHR + fetch requests and send to GAS. GAS auto creates sheet/columns.
+// @version      2.1
+// @description  Capture as much as possible from JS network APIs and send to GAS (bypass CSP)
 // @match        http://yspos.youngsong.com.tw/*
+// @match        https://yspos.youngsong.com.tw/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
+// @connect      script.googleusercontent.com
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  // ✅ 1) 你的 GAS Web App /exec
   const GAS_URL = "https://script.google.com/macros/s/AKfycbzzDqKr3lCAsxEIsMTxYJgBmxyv17RPRKIuT2Qn0px3_DTfKKwnyTPQDCZRrMTr7vOR/exec";
 
-  // ✅ 2) 是否要排除常見雜訊（分析/追蹤）
-  const NOISE_HOSTS = [
-    "google-analytics.com",
-    "googletagmanager.com",
-    "doubleclick.net",
-    "facebook.com",
-    "fbcdn.net",
-  ];
+  // === throughput guard (avoid GAS quota/429) ===
+  const FLUSH_INTERVAL_MS = 500;
+  const MAX_BATCH = 20;          // per flush
+  const MAX_QUEUE = 2000;        // drop oldest if too much
 
-  // ✅ 3) 是否全部送（true=全送；false=只送同網域）
-  const SEND_ALL = true;
+  const q = [];
+  let flushing = false;
 
-  // ✅ 4) 防爆：每 1 秒最多送 N 筆（避免把 GAS 打爆）
-  const MAX_SEND_PER_SEC = 8;
+  function nowIso() { return new Date().toISOString(); }
 
-  // -----------------------------------------
-  // Rate limit queue
-  // -----------------------------------------
-  let sentInCurrentSec = 0;
-  let secTick = Math.floor(Date.now() / 1000);
-  const sendQueue = [];
+  function enqueue(evt) {
+    if (!evt) return;
+    evt.pageUrl = location.href;
+    evt.ua = navigator.userAgent;
 
-  function enqueueSend(payload) {
-    sendQueue.push(payload);
-    pump();
+    q.push(evt);
+    if (q.length > MAX_QUEUE) q.splice(0, q.length - MAX_QUEUE); // drop oldest
   }
 
-  function pump() {
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (nowSec !== secTick) {
-      secTick = nowSec;
-      sentInCurrentSec = 0;
-    }
-    while (sentInCurrentSec < MAX_SEND_PER_SEC && sendQueue.length) {
-      sentInCurrentSec++;
-      const p = sendQueue.shift();
-      postToGAS(p);
-    }
-  }
-
-  setInterval(pump, 120);
-
-  function isNoise(url) {
-    try {
-      const u = new URL(url, location.href);
-      return NOISE_HOSTS.some((h) => u.hostname.includes(h));
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function shouldCapture(url) {
-    if (!SEND_ALL) {
-      try {
-        const u = new URL(url, location.href);
-        if (u.hostname !== location.hostname) return false;
-      } catch (_) {}
-    }
-    if (isNoise(url)) return false;
-    return true;
-  }
-
-  // -----------------------------------------
-  // Helpers
-  // -----------------------------------------
-  function safeJsonParse(s) {
-    try { return JSON.parse(s); } catch (_) { return null; }
-  }
-
-  function normalizeBody(body) {
-    if (body == null) return null;
-
-    // string: might be JSON or urlencoded
-    if (typeof body === "string") {
-      const js = safeJsonParse(body);
-      return js !== null ? js : body;
-    }
-
-    // FormData
-    if (body instanceof FormData) {
-      const out = {};
-      for (const [k, v] of body.entries()) {
-        out[k] = v instanceof File ? `[File ${v.name} ${v.type} ${v.size}]` : v;
+  function safeStringify(x) {
+    const seen = new WeakSet();
+    return JSON.stringify(x, function (k, v) {
+      if (typeof v === "bigint") return v.toString();
+      if (typeof v === "object" && v !== null) {
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
       }
-      return { __type: "FormData", ...out };
-    }
-
-    // Blob / ArrayBuffer / others
-    if (body instanceof Blob) return `[Blob ${body.type} ${body.size}]`;
-    if (body instanceof ArrayBuffer) return `[ArrayBuffer ${body.byteLength}]`;
-
-    // object
-    try { return JSON.parse(JSON.stringify(body)); } catch (_) {}
-    return String(body);
+      return v;
+    });
   }
 
-  function headersToObj(h) {
-    // fetch headers can be Headers, array, or plain object
+  function normalizeHeadersAny(h) {
     const out = {};
     try {
+      if (!h) return out;
       if (h instanceof Headers) {
         h.forEach((v, k) => (out[k] = v));
         return out;
@@ -123,7 +59,7 @@
         h.forEach(([k, v]) => (out[String(k)] = String(v)));
         return out;
       }
-      if (h && typeof h === "object") {
+      if (typeof h === "object") {
         Object.keys(h).forEach((k) => (out[k] = String(h[k])));
         return out;
       }
@@ -131,97 +67,227 @@
     return out;
   }
 
-  function postToGAS(data) {
+  function normalizeBody(body) {
+    if (body == null) return null;
+
+    if (typeof body === "string") {
+      try { return JSON.parse(body); } catch (_) { return body; }
+    }
+
+    if (body instanceof FormData) {
+      const out = {};
+      for (const [k, v] of body.entries()) {
+        out[k] = v instanceof File ? `[File ${v.name} ${v.type} ${v.size}]` : v;
+      }
+      return { __type: "FormData", ...out };
+    }
+
+    if (body instanceof Blob) return `[Blob ${body.type} ${body.size}]`;
+    if (body instanceof ArrayBuffer) return `[ArrayBuffer ${body.byteLength}]`;
+
+    // Request/Response body streams are not safely readable here; keep tag
+    if (body instanceof ReadableStream) return "[ReadableStream]";
+
+    try { return JSON.parse(safeStringify(body)); } catch (_) {}
+    return String(body);
+  }
+
+  function flush() {
+    if (flushing) return;
+    if (!q.length) return;
+    flushing = true;
+
+    const batch = q.splice(0, MAX_BATCH);
     GM_xmlhttpRequest({
       method: "POST",
       url: GAS_URL,
       headers: { "Content-Type": "application/json" },
-      data: JSON.stringify({ mode: "netcap_v1", data }),
+      data: safeStringify({ mode: "netcap_v2", items: batch }),
+      onload: () => { flushing = false; },
+      onerror: () => { flushing = false; },
+      timeout: 15000,
+      ontimeout: () => { flushing = false; },
     });
   }
 
-  // -----------------------------------------
-  // XHR Hook
-  // -----------------------------------------
+  setInterval(flush, FLUSH_INTERVAL_MS);
+
+  // ---------------------------
+  // XHR
+  // ---------------------------
   (function hookXHR() {
     const origOpen = XMLHttpRequest.prototype.open;
     const origSend = XMLHttpRequest.prototype.send;
     const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 
     XMLHttpRequest.prototype.open = function (method, url) {
-      this.__netcap = {
-        kind: "xhr",
+      this.__cap = {
+        t: "xhr",
+        ts: nowIso(),
         method: String(method || "GET").toUpperCase(),
         url: String(url || ""),
         headers: {},
-        start: Date.now(),
+        start: performance.now(),
       };
       return origOpen.apply(this, arguments);
     };
 
     XMLHttpRequest.prototype.setRequestHeader = function (k, v) {
-      if (this.__netcap) this.__netcap.headers[String(k)] = String(v);
+      if (this.__cap) this.__cap.headers[String(k)] = String(v);
       return origSetHeader.apply(this, arguments);
     };
 
     XMLHttpRequest.prototype.send = function (body) {
-      if (this.__netcap) this.__netcap.body = normalizeBody(body);
+      if (this.__cap) this.__cap.body = normalizeBody(body);
 
       this.addEventListener("loadend", () => {
-        const s = this.__netcap;
-        if (!s) return;
-        if (!shouldCapture(s.url)) return;
-
-        const payload = {
-          kind: s.kind,
-          ts: new Date().toISOString(),
-          method: s.method,
-          url: s.url,
+        const c = this.__cap;
+        if (!c) return;
+        enqueue({
+          ...c,
           status: Number(this.status || 0),
-          durationMs: Date.now() - s.start,
-          headers: s.headers,
-          body: s.body ?? null,
-        };
-
-        enqueueSend(payload);
+          durationMs: Math.round(performance.now() - c.start),
+          // response preview optional; keep short to avoid huge logs
+          respPreview: (() => {
+            try { return String(this.responseText || "").slice(0, 300); } catch (_) { return ""; }
+          })(),
+        });
       });
 
       return origSend.apply(this, arguments);
     };
   })();
 
-  // -----------------------------------------
-  // fetch Hook
-  // -----------------------------------------
+  // ---------------------------
+  // fetch
+  // ---------------------------
   (function hookFetch() {
     const origFetch = window.fetch;
 
     window.fetch = async function (input, init = {}) {
-      const start = Date.now();
-
+      const start = performance.now();
       const url = typeof input === "string" ? input : (input && input.url) || "";
       const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
-      const headers = headersToObj((init && init.headers) || (input && input.headers));
+      const headers = normalizeHeadersAny((init && init.headers) || (input && input.headers));
       const body = normalizeBody(init && init.body);
 
       const res = await origFetch.apply(this, arguments);
 
-      try {
-        if (shouldCapture(url)) {
-          enqueueSend({
-            kind: "fetch",
-            ts: new Date().toISOString(),
-            method,
-            url,
-            status: Number(res.status || 0),
-            durationMs: Date.now() - start,
-            headers,
-            body: body ?? null,
-          });
-        }
-      } catch (_) {}
+      enqueue({
+        t: "fetch",
+        ts: nowIso(),
+        method,
+        url,
+        headers,
+        body,
+        status: Number(res.status || 0),
+        durationMs: Math.round(performance.now() - start),
+      });
 
       return res;
     };
   })();
+
+  // ---------------------------
+  // sendBeacon
+  // ---------------------------
+  (function hookBeacon() {
+    const orig = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
+    if (!orig) return;
+
+    navigator.sendBeacon = function (url, data) {
+      try {
+        enqueue({
+          t: "beacon",
+          ts: nowIso(),
+          method: "POST",
+          url: String(url || ""),
+          headers: {},
+          body: normalizeBody(data),
+          status: -1,
+          durationMs: 0,
+        });
+      } catch (_) {}
+      return orig(url, data);
+    };
+  })();
+
+  // ---------------------------
+  // WebSocket
+  // ---------------------------
+  (function hookWS() {
+    const OrigWS = window.WebSocket;
+    if (!OrigWS) return;
+
+    window.WebSocket = function (url, protocols) {
+      const ws = protocols ? new OrigWS(url, protocols) : new OrigWS(url);
+      const wsUrl = String(url || "");
+
+      enqueue({ t: "ws_open", ts: nowIso(), url: wsUrl });
+
+      const origSend = ws.send;
+      ws.send = function (data) {
+        try {
+          enqueue({
+            t: "ws_send",
+            ts: nowIso(),
+            url: wsUrl,
+            body: normalizeBody(data),
+          });
+        } catch (_) {}
+        return origSend.apply(this, arguments);
+      };
+
+      ws.addEventListener("message", (ev) => {
+        try {
+          // message may be huge; preview only
+          const msg = (typeof ev.data === "string") ? ev.data.slice(0, 300) : normalizeBody(ev.data);
+          enqueue({ t: "ws_msg", ts: nowIso(), url: wsUrl, body: msg });
+        } catch (_) {}
+      });
+
+      ws.addEventListener("close", (ev) => {
+        enqueue({ t: "ws_close", ts: nowIso(), url: wsUrl, code: ev.code, reason: ev.reason });
+      });
+
+      ws.addEventListener("error", () => {
+        enqueue({ t: "ws_error", ts: nowIso(), url: wsUrl });
+      });
+
+      return ws;
+    };
+
+    // keep prototype chain
+    window.WebSocket.prototype = OrigWS.prototype;
+  })();
+
+  // ---------------------------
+  // EventSource (SSE)
+  // ---------------------------
+  (function hookSSE() {
+    const OrigES = window.EventSource;
+    if (!OrigES) return;
+
+    window.EventSource = function (url, config) {
+      const es = new OrigES(url, config);
+      const sseUrl = String(url || "");
+      enqueue({ t: "sse_open", ts: nowIso(), url: sseUrl });
+
+      es.addEventListener("message", (ev) => {
+        try {
+          enqueue({ t: "sse_msg", ts: nowIso(), url: sseUrl, body: String(ev.data || "").slice(0, 300) });
+        } catch (_) {}
+      });
+
+      es.addEventListener("error", () => {
+        enqueue({ t: "sse_error", ts: nowIso(), url: sseUrl });
+      });
+
+      return es;
+    };
+
+    window.EventSource.prototype = OrigES.prototype;
+  })();
+
+  console.log("[FULL Net Capture] running", location.href);
 })();
