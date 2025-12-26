@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
 // @namespace    http://scriptcat.org/
-// @version      2.1
+// @version      2.2
 // @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
@@ -16,7 +16,7 @@
    * 0) Config
    * ========================= */
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec";
+    "https://script.google.com/macros/s/AKfycbzi81eYEZ_KQIHbzdxIQF0wkRzxr4ECEWchV5XF2Dv7ud4m_yBTL5UgVEtJab8Aa1Ov9w/exec";
 
   // 掃描頻率
   const INTERVAL_MS = 1000;
