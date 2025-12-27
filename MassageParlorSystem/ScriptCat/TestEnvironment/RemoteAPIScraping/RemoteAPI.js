@@ -4,7 +4,6 @@
 // @version      2.5
 // @description  Capture network calls (best-effort) and send to GAS via GM_xmlhttpRequest
 // @match        http://yspos.youngsong.com.tw/*
-// @match        https://yspos.youngsong.com.tw/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
