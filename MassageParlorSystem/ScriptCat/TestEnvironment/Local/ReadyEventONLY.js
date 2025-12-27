@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         TestEnvironment Local Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress) + API_KEY
 // @namespace    http://scriptcat.org/
-// @version      2.4
+// @version      2.5
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）；✅Version B: payload 加 key（對應 GAS READY_API_KEY）
-// @match        http://yspos.youngsong.com.tw/*
+// @match       https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
