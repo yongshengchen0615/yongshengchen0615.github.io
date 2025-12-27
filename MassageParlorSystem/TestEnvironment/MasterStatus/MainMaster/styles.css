@@ -81,13 +81,12 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .brand-text h1{ margin:0; font-size:16px; letter-spacing:.2px; }
 .brand-text p{ margin:4px 0 0; color:var(--text-sub); font-size:12px; font-family:var(--mono); }
-
 .topbar-right{ display:flex; gap:10px; align-items:center; }
 
 /* ===== KPI ===== */
 .kpi-grid{
   display:grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr)); /* ✅ 6 cards */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap:12px;
 }
 .kpi-card{
@@ -104,8 +103,6 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .kpi-card.warning{ border-color:rgba(245,158,11,.25); }
 .kpi-card.danger{ border-color:rgba(239,68,68,.25); }
 .kpi-card.muted{ border-color:rgba(100,116,139,.35); }
-
-/* ✅ NEW: KPI 系統維護 */
 .kpi-card.maintenance{ border-color:rgba(147,51,234,.25); }
 
 @media (max-width: 1100px){
@@ -131,17 +128,51 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   gap:12px;
   align-items:flex-start;
   justify-content:space-between;
+  flex-wrap:wrap; /* ✅ allow viewtabs to be its own row */
 }
 .filters{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 .panel-meta .hint{ color:var(--text-sub); font-size:12px; font-family:var(--mono); }
 
-/* ✅ NEW: locked visual hint */
-.panel.is-locked{
-  opacity:.88;
+/* ✅ order layout: filters row1, tabs row2, meta last */
+.panel-head .filters{ order:1; }
+#viewTabs.viewtabs{
+  flex:0 0 100%;
+  width:100%;
+  order:2;
+  margin-top:10px;
 }
-.panel.is-locked .table-wrap{
-  cursor: progress;
+.panel-head .panel-meta{
+  order:3;
+  margin-left:auto;
 }
+
+/* ✅ locked */
+.panel.is-locked{ opacity:.88; }
+.panel.is-locked .table-wrap{ cursor: progress; }
+
+/* ===== View Tabs ===== */
+.viewtabs{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.viewtab{
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text-sub);
+  font-size:12px;
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+}
+.viewtab:hover{ border-color:rgba(56,189,248,.45); color:var(--text); }
+.viewtab.active{
+  color:var(--accent);
+  border-color:rgba(56,189,248,.45);
+  background:var(--accent-soft);
+}
+.viewtab:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* Search */
 .search-box{
@@ -159,14 +190,11 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   font-size:12px;
 }
 .search-box:focus-within{ box-shadow:var(--focus); border-color:rgba(56,189,248,.45); }
-
 .search-box.is-searching{
   border-color: rgba(56,189,248,.55);
   background: var(--accent-soft);
 }
-.search-box.is-searching .icon{
-  color: var(--accent);
-}
+.search-box.is-searching .icon{ color: var(--accent); }
 
 .seg{ display:flex; gap:8px; flex-wrap:wrap; }
 
@@ -185,10 +213,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border-color:rgba(56,189,248,.45);
   background:var(--accent-soft);
 }
-.chip:disabled{
-  opacity:.55;
-  cursor:not-allowed;
-}
+.chip:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* ===== Bulk bar ===== */
 .bulkbar{
@@ -257,18 +282,10 @@ tbody td{
   white-space:nowrap;
 }
 
-tbody tr:nth-child(odd){
-  background: rgba(255,255,255,.02);
-}
-tbody tr:nth-child(even){
-  background: rgba(0,0,0,.14);
-}
-html[data-theme="light"] tbody tr:nth-child(odd){
-  background: rgba(0,0,0,.015);
-}
-html[data-theme="light"] tbody tr:nth-child(even){
-  background: rgba(0,0,0,.04);
-}
+tbody tr:nth-child(odd){ background: rgba(255,255,255,.02); }
+tbody tr:nth-child(even){ background: rgba(0,0,0,.14); }
+html[data-theme="light"] tbody tr:nth-child(odd){ background: rgba(0,0,0,.015); }
+html[data-theme="light"] tbody tr:nth-child(even){ background: rgba(0,0,0,.04); }
 
 tbody tr:hover{ background:rgba(56,189,248,.08); }
 tbody tr.dirty{ box-shadow: inset 3px 0 0 rgba(245,158,11,.75); }
@@ -282,15 +299,9 @@ tbody tr.dirty:hover{ background:rgba(245,158,11,.10); }
   z-index:3;
   background:var(--bg);
 }
-tbody td.sticky-col{
-  background:transparent;
-}
-tbody tr:hover td.sticky-col{
-  background:rgba(56,189,248,.08);
-}
-tbody tr.dirty:hover td.sticky-col{
-  background:rgba(245,158,11,.10);
-}
+tbody td.sticky-col{ background:transparent; }
+tbody tr:hover td.sticky-col{ background:rgba(56,189,248,.08); }
+tbody tr.dirty:hover td.sticky-col{ background:rgba(245,158,11,.10); }
 
 /* Inputs */
 input[type="date"], input[type="number"], input[type="text"], select{
@@ -306,10 +317,7 @@ input[type="date"]:focus, input[type="number"]:focus, input[type="text"]:focus, 
   border-color:rgba(56,189,248,.55);
   box-shadow:var(--focus);
 }
-input:disabled, select:disabled{
-  opacity:.55;
-  cursor:not-allowed;
-}
+input:disabled, select:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* Pill */
 .expiry-pill{
@@ -339,8 +347,6 @@ input:disabled, select:disabled{
 .audit-badge.rejected{ border-color:rgba(239,68,68,.45); background:var(--danger-soft); color:var(--danger); }
 .audit-badge.disabled{ border-color:rgba(100,116,139,.45); background:rgba(100,116,139,.10); color:var(--muted); }
 .audit-badge.other{ border-color:rgba(56,189,248,.45); background:var(--accent-soft); color:var(--accent); }
-
-/* ✅ NEW: 系統維護 badge */
 .audit-badge.maintenance{
   border-color:rgba(147,51,234,.45);
   background:rgba(147,51,234,.12);
@@ -357,7 +363,7 @@ input:disabled, select:disabled{
   cursor:pointer;
   font-size:12px;
   line-height:1;
-  box-shadow: none;
+  box-shadow:none;
 }
 .btn:hover{ border-color:rgba(56,189,248,.45); }
 .btn:focus{ outline:none; box-shadow:var(--focus); border-color:rgba(56,189,248,.55); }
@@ -429,7 +435,7 @@ input:disabled, select:disabled{
   .actions{ justify-content:flex-end; width:100%; }
 }
 
-/* ===== Mobile Select All (only show on small screens) ===== */
+/* ===== Mobile Select All ===== */
 .mobile-selectall{
   display:none;
   align-items:center;
@@ -440,20 +446,69 @@ input:disabled, select:disabled{
   border-radius:999px;
   user-select:none;
 }
-.mobile-selectall input{
-  width:16px;
-  height:16px;
-}
-.mobile-selectall .label{
-  font-size:12px;
-  color:var(--text);
-}
-.mobile-selectall .hint{
-  font-size:12px;
-  color:var(--text-sub);
-  font-family:var(--mono);
-}
-
+.mobile-selectall input{ width:16px; height:16px; }
+.mobile-selectall .label{ font-size:12px; color:var(--text); }
+.mobile-selectall .hint{ font-size:12px; color:var(--text-sub); font-family:var(--mono); }
 @media (max-width: 860px){
   .mobile-selectall{ display:flex; }
+}
+
+/* =========================================================
+ * ✅ 欄位分類（分頁顯示/隱藏）
+ * table[data-view="usage" | "master" | "features" | "all"]
+ * 欄位序（15欄）對齊你 HTML
+ * ========================================================= */
+
+/* ALL：顯示全部（預設） */
+table[data-view="all"]{}
+
+/* USAGE：顯示 1-9 + 15；隱藏 10-14 */
+table[data-view="usage"] thead th:nth-child(10),
+table[data-view="usage"] thead th:nth-child(11),
+table[data-view="usage"] thead th:nth-child(12),
+table[data-view="usage"] thead th:nth-child(13),
+table[data-view="usage"] thead th:nth-child(14),
+table[data-view="usage"] tbody td:nth-child(10),
+table[data-view="usage"] tbody td:nth-child(11),
+table[data-view="usage"] tbody td:nth-child(12),
+table[data-view="usage"] tbody td:nth-child(13),
+table[data-view="usage"] tbody td:nth-child(14){
+  display:none;
+}
+
+/* MASTER：顯示 1-5 + 9-11 + 15；隱藏 6-8 + 12-14 */
+table[data-view="master"] thead th:nth-child(6),
+table[data-view="master"] thead th:nth-child(7),
+table[data-view="master"] thead th:nth-child(8),
+table[data-view="master"] thead th:nth-child(12),
+table[data-view="master"] thead th:nth-child(13),
+table[data-view="master"] thead th:nth-child(14),
+table[data-view="master"] tbody td:nth-child(6),
+table[data-view="master"] tbody td:nth-child(7),
+table[data-view="master"] tbody td:nth-child(8),
+table[data-view="master"] tbody td:nth-child(12),
+table[data-view="master"] tbody td:nth-child(13),
+table[data-view="master"] tbody td:nth-child(14){
+  display:none;
+}
+
+/* FEATURES：顯示 1-5 + 9 + 12-14 + 15；隱藏 6-8 + 10-11 */
+table[data-view="features"] thead th:nth-child(6),
+table[data-view="features"] thead th:nth-child(7),
+table[data-view="features"] thead th:nth-child(8),
+table[data-view="features"] thead th:nth-child(10),
+table[data-view="features"] thead th:nth-child(11),
+table[data-view="features"] tbody td:nth-child(6),
+table[data-view="features"] tbody td:nth-child(7),
+table[data-view="features"] tbody td:nth-child(8),
+table[data-view="features"] tbody td:nth-child(10),
+table[data-view="features"] tbody td:nth-child(11){
+  display:none;
+}
+
+/* 分頁縮小 min-width（可調） */
+@media (min-width: 861px){
+  table[data-view="usage"]{ min-width: 1040px; }
+  table[data-view="master"]{ min-width: 980px; }
+  table[data-view="features"]{ min-width: 1020px; }
 }

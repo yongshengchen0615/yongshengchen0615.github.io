@@ -32,6 +32,59 @@ let toastTimer = null;
 // save-all runtime
 let savingAll = false;
 
+/* =========================================================
+ * ✅ 欄位分頁 View Tabs（不改 HTML，用 JS 注入）
+ *  - all / usage / master / features
+ * ========================================================= */
+const VIEW_ENUM = ["all", "usage", "master", "features"];
+let currentView = localStorage.getItem("users_view") || "usage";
+
+function ensureViewTabs_() {
+  const head = document.querySelector(".panel-head");
+  if (!head) return;
+
+  if (document.getElementById("viewTabs")) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "viewtabs";
+  wrap.id = "viewTabs";
+  wrap.innerHTML = `
+    <button class="viewtab" data-view="all" type="button">全部欄位</button>
+    <button class="viewtab" data-view="usage" type="button">使用/審核</button>
+    <button class="viewtab" data-view="master" type="button">師傅資訊</button>
+    <button class="viewtab" data-view="features" type="button">功能開通</button>
+  `;
+
+  head.appendChild(wrap);
+
+  wrap.addEventListener("click", (e) => {
+    if (savingAll) return;
+    const btn = e.target instanceof Element ? e.target.closest("button.viewtab") : null;
+    if (!btn) return;
+
+    const v = btn.dataset.view;
+    if (!VIEW_ENUM.includes(v)) return;
+
+    currentView = v;
+    localStorage.setItem("users_view", currentView);
+    applyView_();
+  });
+
+  // 初始套用
+  if (!VIEW_ENUM.includes(currentView)) currentView = "usage";
+  applyView_();
+}
+
+function applyView_() {
+  document.querySelectorAll("#viewTabs .viewtab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === currentView);
+    b.disabled = savingAll;
+  });
+
+  const table = document.querySelector(".table-wrap table");
+  if (table) table.setAttribute("data-view", currentView);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initTheme_();
 
@@ -62,6 +115,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   ensureSaveAllButton_();
   ensureMobileSelectAll_();
+  ensureViewTabs_(); // ✅ NEW
+
   bindFilter();
   bindSorting_();
   bindBulk_();
@@ -109,24 +164,20 @@ function updateThemeButtonText_() {
   btn.textContent = current === "dark" ? "亮色" : "暗色";
 }
 
-/* ========= UI Lock (disable all editing while saving) ========= */
+/* ========= UI Lock ========= */
 
 function setEditingEnabled_(enabled) {
   const lock = !enabled;
 
-  // panel visual hint
   const panel = document.querySelector(".panel");
   if (panel) panel.classList.toggle("is-locked", lock);
 
-  // topbar
   const reloadBtn = document.getElementById("reloadBtn");
   if (reloadBtn) reloadBtn.disabled = lock;
 
-  // （可選）主題切換也鎖；你若不想鎖，保留註解即可
   const themeBtn = document.getElementById("themeToggle");
   if (themeBtn) themeBtn.disabled = lock;
 
-  // filters/search
   document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
 
   const searchInput = document.getElementById("searchInput");
@@ -135,7 +186,6 @@ function setEditingEnabled_(enabled) {
   const clearSearchBtn = document.getElementById("clearSearchBtn");
   if (clearSearchBtn) clearSearchBtn.disabled = lock;
 
-  // bulk controls
   const ids = [
     "checkAll",
     "mobileCheckAll",
@@ -152,20 +202,15 @@ function setEditingEnabled_(enabled) {
     if (el) el.disabled = lock;
   });
 
-  // table controls
   const tbody = document.getElementById("tbody");
-  if (tbody) {
-    tbody.querySelectorAll("input, select, button").forEach((el) => {
-      el.disabled = lock;
-    });
-  }
+  if (tbody) tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = lock));
 
-  // disable sorting headers
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.style.pointerEvents = lock ? "none" : "";
     th.style.opacity = lock ? "0.6" : "";
   });
 
+  applyView_(); // ✅ viewTabs disabled 狀態同步
   refreshSaveAllButton_();
 }
 
@@ -190,11 +235,8 @@ function ensureSaveAllButton_() {
   });
 
   const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn && reloadBtn.parentElement === topRight) {
-    topRight.insertBefore(btn, reloadBtn);
-  } else {
-    topRight.appendChild(btn);
-  }
+  if (reloadBtn && reloadBtn.parentElement === topRight) topRight.insertBefore(btn, reloadBtn);
+  else topRight.appendChild(btn);
 
   refreshSaveAllButton_();
 }
@@ -237,11 +279,7 @@ function refreshSaveAllButton_() {
 
   const dirtyCount = dirtyMap.size;
   btn.disabled = savingAll || dirtyCount === 0;
-  btn.textContent = savingAll
-    ? `儲存中...`
-    : dirtyCount
-      ? `儲存全部變更（${dirtyCount}）`
-      : "儲存全部變更";
+  btn.textContent = savingAll ? `儲存中...` : dirtyCount ? `儲存全部變更（${dirtyCount}）` : "儲存全部變更";
 }
 
 /* ========= Filters ========= */
@@ -282,6 +320,7 @@ async function loadUsers() {
     toast("讀取失敗", "err");
   } finally {
     refreshSaveAllButton_();
+    applyView_();
   }
 }
 
@@ -292,7 +331,6 @@ function applyFilters() {
 
   filteredUsers = allUsers.filter((u) => {
     const audit = normalizeAudit_(u.audit);
-
     if (filter !== "ALL" && audit !== filter) return false;
 
     if (keywordRaw) {
@@ -311,8 +349,8 @@ function applyFilters() {
   syncCheckAll_();
   updateBulkBar_();
   refreshSaveAllButton_();
+  applyView_();
 
-  // 如果正在儲存，render 完要再次確保 UI 被鎖（避免重渲染把 disabled 還原）
   if (savingAll) setEditingEnabled_(false);
 }
 
@@ -371,9 +409,8 @@ function bindSorting_() {
       if (savingAll) return;
       const key = th.dataset.sort;
       if (!key) return;
-      if (sortKey === key) {
-        sortDir = sortDir === "asc" ? "desc" : "asc";
-      } else {
+      if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+      else {
         sortKey = key;
         sortDir = key === "createdAt" ? "desc" : "asc";
       }
@@ -407,7 +444,6 @@ function compareBy_(a, b, key, dir) {
     return (na - nb) * sgn;
   }
 
-  // startDate / createdAt 都是字串，簡化解析（startDate: yyyy-MM-dd）
   if (key === "createdAt") {
     const da = toTime_(av);
     const db = toTime_(bv);
@@ -428,18 +464,17 @@ function compareBy_(a, b, key, dir) {
 
 function toTime_(v) {
   if (!v) return 0;
-  const d = new Date(String(v).replace(" ", "T"));
+  const s = String(v).trim();
+  if (!s) return 0;
+  const d = new Date(s.includes(" ") ? s.replace(" ", "T") : s);
   const t = d.getTime();
   return isNaN(t) ? 0 : t;
 }
 
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
-
-  // startDate: yyyy-MM-dd
   const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return 999999;
-
   const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
   return Math.ceil((end - new Date()) / 86400000);
 }
@@ -452,10 +487,7 @@ function bindBulk_() {
     checkAll.addEventListener("change", () => {
       if (savingAll) return;
       const checked = !!checkAll.checked;
-      filteredUsers.forEach((u) => {
-        if (checked) selectedIds.add(u.userId);
-        else selectedIds.delete(u.userId);
-      });
+      filteredUsers.forEach((u) => (checked ? selectedIds.add(u.userId) : selectedIds.delete(u.userId)));
       renderTable();
       updateBulkBar_();
       syncCheckAll_();
@@ -523,11 +555,8 @@ function syncCheckAll_() {
   }
 
   const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
-  const checked = selCount === total;
-  const indeterminate = selCount > 0 && selCount < total;
-
-  setState(checkAll, checked, indeterminate);
-  setState(mobile, checked, indeterminate);
+  setState(checkAll, selCount === total, selCount > 0 && selCount < total);
+  setState(mobile, selCount === total, selCount > 0 && selCount < total);
 }
 
 async function bulkApply_() {
@@ -552,12 +581,8 @@ async function bulkApply_() {
 
     if (audit) u.audit = normalizeAudit_(audit);
 
-    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（含 系統維護）
-    if (normalizeAudit_(u.audit) !== "通過") {
-      u.pushEnabled = "否";
-    } else if (pushEnabled) {
-      u.pushEnabled = pushEnabled;
-    }
+    if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
+    else if (pushEnabled) u.pushEnabled = pushEnabled;
 
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
@@ -595,8 +620,7 @@ async function bulkDelete_() {
 
   for (const id of ids) {
     const ok = await deleteUser(id);
-    if (ok) okCount++;
-    else failCount++;
+    ok ? okCount++ : failCount++;
     await sleep_(80);
   }
 
@@ -614,7 +638,7 @@ async function bulkDelete_() {
   await loadUsers();
 }
 
-/* ========= Table (render only) ========= */
+/* ========= Table ========= */
 
 function renderTable() {
   const tbody = document.getElementById("tbody");
@@ -715,10 +739,9 @@ function renderTable() {
 
   tbody.appendChild(frag);
 
-  // ✅ 如果正在儲存，確保表格互動元件仍然被 disabled
   if (savingAll) {
-    const tbody = document.getElementById("tbody");
-    if (tbody) tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
+    const tb = document.getElementById("tbody");
+    if (tb) tb.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
 }
 
@@ -737,7 +760,7 @@ function refreshSortIndicators_() {
   });
 }
 
-/* ========= Table Delegation (ONE TIME) ========= */
+/* ========= Delegation ========= */
 
 function bindTableDelegation_() {
   const tbody = document.getElementById("tbody");
@@ -753,27 +776,20 @@ function bindTableDelegation_() {
       const row = t.closest("tr");
       const userId = row?.dataset.userid;
       if (!userId) return;
-      if (t.checked) selectedIds.add(userId);
-      else selectedIds.delete(userId);
+      t.checked ? selectedIds.add(userId) : selectedIds.delete(userId);
       updateBulkBar_();
       syncCheckAll_();
       return;
     }
 
-    if (t.matches("[data-field]")) {
-      handleRowFieldChange_(t);
-      return;
-    }
+    if (t.matches("[data-field]")) handleRowFieldChange_(t);
   });
 
   tbody.addEventListener("input", (e) => {
     if (savingAll) return;
-
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
-    if (t.matches("input[data-field]")) {
-      handleRowFieldChange_(t);
-    }
+    if (t.matches("input[data-field]")) handleRowFieldChange_(t);
   });
 
   tbody.addEventListener("click", async (e) => {
@@ -788,7 +804,6 @@ function bindTableDelegation_() {
 
     if (btn.classList.contains("btn-del")) {
       await handleRowDelete_(row, userId, btn);
-      return;
     }
   });
 }
@@ -814,7 +829,6 @@ function handleRowFieldChange_(fieldEl) {
   else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
   else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 
-  // 🔒 audit ≠ 通過 → pushEnabled 強制否 + disable
   const audit = normalizeAudit_(u.audit);
   const pushSel = row.querySelector('select[data-field="pushEnabled"]');
   if (audit !== "通過") {
@@ -857,9 +871,7 @@ function handleRowFieldChange_(fieldEl) {
       }
     } else {
       if (dot) dot.remove();
-      if (!actions.querySelector(".row-hint")) {
-        actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
-      }
+      if (!actions.querySelector(".row-hint")) actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
     }
   }
 
@@ -906,7 +918,7 @@ async function handleRowDelete_(row, userId, delBtn) {
   }
 }
 
-/* ========= Save All Dirty (BATCH) ========= */
+/* ========= Save All Dirty ========= */
 
 async function saveAllDirty_() {
   const dirtyIds = Array.from(dirtyMap.keys());
@@ -920,18 +932,16 @@ async function saveAllDirty_() {
   refreshSaveAllButton_();
 
   try {
-    // 1) 組 batch items
     const items = dirtyIds
       .map((userId) => allUsers.find((x) => x.userId === userId))
       .filter(Boolean)
       .map((u) => {
         const finalAudit = normalizeAudit_(u.audit);
         const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
-
         return {
           userId: u.userId,
           audit: finalAudit,
-          startDate: u.startDate || "", // yyyy-MM-dd
+          startDate: u.startDate || "",
           usageDays: u.usageDays || "",
           masterCode: u.masterCode || "",
           pushEnabled: finalPush,
@@ -943,22 +953,17 @@ async function saveAllDirty_() {
     const el = document.getElementById("footerStatus");
     if (el) el.textContent = `儲存中：1/1（共 ${items.length} 筆）`;
 
-    // 2) 一次送後端
     const ret = await updateUsersBatch(items);
 
-    // 3) 回寫前端狀態
     if (ret && ret.okCount) {
       const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));
-
       items.forEach((it) => {
         const id = it.userId;
-        if (!id) return;
-        if (failedSet.has(id)) return;
+        if (!id || failedSet.has(id)) return;
 
         const u = allUsers.find((x) => x.userId === id);
         if (!u) return;
 
-        // ✅ 同步全部欄位，避免前後端不一致
         u.audit = it.audit;
         u.startDate = it.startDate;
         u.usageDays = it.usageDays;
@@ -973,7 +978,6 @@ async function saveAllDirty_() {
 
       applyFilters();
     } else {
-      // 沒成功就保留 dirty
       applyFilters();
     }
 
@@ -991,7 +995,7 @@ async function saveAllDirty_() {
   }
 }
 
-/* ========= Helpers for options/badges/expiry ========= */
+/* ========= Helpers ========= */
 
 function auditOption(value, current) {
   const sel = value === current ? "selected" : "";
@@ -1000,18 +1004,12 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (normalizeAudit_(audit)) {
-    case "通過":
-      return "approved";
-    case "待審核":
-      return "pending";
-    case "拒絕":
-      return "rejected";
-    case "停用":
-      return "disabled";
-    case "系統維護":
-      return "maintenance";
-    default:
-      return "other";
+    case "通過": return "approved";
+    case "待審核": return "pending";
+    case "拒絕": return "rejected";
+    case "停用": return "disabled";
+    case "系統維護": return "maintenance";
+    default: return "other";
   }
 }
 
@@ -1027,8 +1025,6 @@ function getExpiryInfo(u) {
   if (diff < 0) return { cls: "expired", text: `已過期（超 ${Math.abs(diff)} 天）` };
   return { cls: "active", text: `使用中（剩 ${diff} 天）` };
 }
-
-/* ========= Dirty tracking ========= */
 
 function snapshot_(u) {
   return JSON.stringify({
@@ -1052,41 +1048,6 @@ function markDirty_(userId, u) {
 
 /* ========= API ========= */
 
-async function updateUser({
-  userId,
-  audit,
-  startDate,
-  usageDays,
-  masterCode,
-  pushEnabled,
-  personalStatusEnabled,
-  scheduleEnabled,
-}) {
-  try {
-    const fd = new URLSearchParams();
-    fd.append("mode", "updateUser");
-    fd.append("userId", userId);
-    fd.append("audit", normalizeAudit_(audit));
-    fd.append("startDate", startDate || "");
-    fd.append("usageDays", usageDays || "");
-    fd.append("masterCode", masterCode || "");
-    fd.append("pushEnabled", pushEnabled || "否");
-    fd.append("personalStatusEnabled", personalStatusEnabled || "否");
-    fd.append("scheduleEnabled", scheduleEnabled || "否");
-
-    const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
-    const json = await res.json().catch(() => ({}));
-    return !!json.ok;
-  } catch (err) {
-    console.error("updateUser error:", err);
-    return false;
-  }
-}
-
-/**
- * ✅✅✅ Batch 更新（一次送多筆）
- * - CORS-safe：text/plain JSON（避免 preflight）
- */
 async function updateUsersBatch(items) {
   try {
     const res = await fetch(API_BASE_URL, {
@@ -1094,8 +1055,7 @@ async function updateUsersBatch(items) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ mode: "updateUsersBatch", items }),
     });
-    const json = await res.json().catch(() => ({}));
-    return json;
+    return await res.json().catch(() => ({}));
   } catch (err) {
     console.error("updateUsersBatch error:", err);
     return { ok: false, error: String(err) };
