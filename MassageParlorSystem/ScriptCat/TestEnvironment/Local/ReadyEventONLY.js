@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         TestEnvironment Local Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress) + API_KEY
 // @namespace    http://scriptcat.org/
-// @version      2.7
+// @version      3.0
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）；✅Version B: payload 加 key（對應 GAS READY_API_KEY）
-// @match       https://yongshengchen0615.github.io/master.html
+// @match         https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
@@ -23,7 +23,7 @@
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbyVTR0LkxX9raylD7rQb5sZCtFIfL8pLRiTGU4wHnsN364gBq5tFOkZHBfNJp6KOUzuJQ/exec";
+    "https://script.google.com/macros/s/AKfycbzW5MQM1vMPkfTIHzojicGu4TSuPO5SbKmfRFrHy2ksxW-Y4-U-uVebDgn1p_Qmm7-T/exec";
 
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
