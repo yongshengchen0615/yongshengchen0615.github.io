@@ -1,10 +1,9 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
-// ✅ 你已決策：
-// - 移除「免 AUTH 的測試模式」
-// - ENABLE_LINE_LOGIN=false 代表「不用 LINE，但仍要 AUTH」(initNoLiffAndGuard)
-// - ✅ 已移除：【每日首次開啟】傳 LINE 訊息功能（含 key/日期/送訊息/呼叫點）
-// - ✅ 新增：第一次自動註冊成 pending（第一次審核）時，傳訊息給官方帳號（以使用者身分透過 LIFF sendMessages）
+// ✅ 本版改動：
+// - ❌ 移除：【每日首次開啟】傳訊息功能（整段已刪）
+// - ✅ 新增：只要狀態為 pending，每次開啟都通知官方帳號（不去重）
+//   → 透過 LIFF sendMessages（使用者身分送到 OA 聊天室）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -399,12 +398,9 @@ function hidePersonalTools_() {
 }
 
 /* =========================================================
- * First audit notify (LIFF only) - send message to OA once
- * - 觸發：result.status==="pending" 且 result.justRegistered===true
- * - 去重：localStorage 以 userId 記一次（同 userId 同裝置不重複）
+ * ✅ Pending notify (LIFF only) - send every open when pending
  * ========================================================= */
 function getNowTaipei_() {
-  // e.g. 2025-12-28 21:05:33
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
@@ -419,37 +415,29 @@ function getNowTaipei_() {
   const pick = (t) => parts.find((p) => p.type === t)?.value || "00";
   return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
-function auditMsgKey_(userId) {
-  return "first_audit_msg_sent_v1:" + String(userId || "").trim();
-}
-async function sendFirstAuditMessageToOAOnce_(userId, displayName) {
+
+async function sendPendingNotifyToOA_(userId, displayName, auditText) {
   try {
-    if (!ENABLE_LINE_LOGIN) return { ok: false, reason: "ENABLE_LINE_LOGIN=false" };
-    if (!window.liff) return { ok: false, reason: "LIFF_SDK_MISSING" };
-    if (!liff.isInClient()) return { ok: false, reason: "NOT_IN_LINE_CLIENT" };
+    if (!ENABLE_LINE_LOGIN) return;
+    if (!window.liff) return;
+    if (!liff.isInClient()) return;
 
     const uid = String(userId || "").trim();
-    if (!uid) return { ok: false, reason: "NO_USER_ID" };
-
-    // once-per-user (localStorage)
-    const k = auditMsgKey_(uid);
-    if (localStorage.getItem(k) === "1") return { ok: true, skipped: true };
+    if (!uid) return;
 
     const name = String(displayName || "").trim() || "未命名";
     const ts = getNowTaipei_();
+    const audit = String(auditText || "待審核").trim() || "待審核";
 
     const text =
-      `【新申請待審核】\n` +
+      `【待審核提醒】\n` +
       `姓名：${name}\n` +
-      `時間：${ts}\n`
+      `狀態：${audit}\n` +
+      `時間：${ts}\n`;
 
     await liff.sendMessages([{ type: "text", text }]);
-
-    localStorage.setItem(k, "1");
-    return { ok: true };
   } catch (e) {
-    console.warn("[FirstAuditNotify] send failed:", e);
-    return { ok: false, reason: "SEND_FAILED" };
+    console.warn("[PendingNotify] send failed:", e);
   }
 }
 
@@ -1096,7 +1084,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 /* =========================================================
- * AUTH + RULES (核心改動：rules 驅動)
+ * AUTH + RULES (rules 驅動)
  * ========================================================= */
 function normalizeBoolOn_(v) {
   if (v === true) return true;
@@ -1144,7 +1132,7 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     flags,
     messages,
     raw: data || {},
-    justRegistered: false, // 由 checkOrRegisterUser 設定
+    justRegistered: false,
   };
 }
 
@@ -1228,7 +1216,6 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
 
   if (r.status === "approved" || r.status === "pending") return r;
 
-  // none/unknown -> 自動註冊，回 pending
   try {
     await registerUser(userId, r.displayName || displayNameFromClient || "");
     r.status = "pending";
@@ -1385,7 +1372,7 @@ async function initLiffAndGuard() {
     showGate("正在確認使用權限…");
     const result = await checkOrRegisterUser(userId, displayName);
 
-    // ✅ 名稱同步（若 serverDisplayName 不同）
+    // ✅ 名稱同步
     await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
 
     const finalDisplayName = (displayName || result.displayName || "").trim();
@@ -1393,9 +1380,9 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    // ✅ 第一次自動註冊（pending）→ 通知 OA（只送一次/同裝置）
-    if (result && result.status === "pending" && result.justRegistered === true) {
-      await sendFirstAuditMessageToOAOnce_(userId, finalDisplayName);
+    // ✅ 只要 pending：每次開啟都通知 OA（不去重）
+    if (result && result.status === "pending") {
+      await sendPendingNotifyToOA_(userId, finalDisplayName, result.audit);
     }
 
     const gate = decideGateAction_(result);
@@ -1424,7 +1411,6 @@ async function initLiffAndGuard() {
       hidePersonalTools_();
     }
 
-    // ✅ 已移除：每日首次開啟訊息
     startApp();
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
