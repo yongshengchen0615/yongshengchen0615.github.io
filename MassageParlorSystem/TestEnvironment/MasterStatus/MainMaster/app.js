@@ -1,6 +1,29 @@
-// ★ Users API（不要動）
-const API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec";
+/* =========================================================
+ * ✅ config.json Loader（支援 _comment）
+ * ========================================================= */
+
+// ★ Users API（改為從 config.json 載入）
+let API_BASE_URL = "";
+
+/**
+ * 讀取 config.json（標準 JSON，可含 _comment 欄位）
+ * - 只讀 API_BASE_URL / DEFAULT_VIEW
+ * - _comment 欄位自然忽略
+ */
+async function loadConfig_() {
+  const res = await fetch("config.json", { cache: "no-store" });
+  const cfg = await res.json();
+
+  API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
+  if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
+
+  const defView = String(cfg.DEFAULT_VIEW || "").trim();
+  if (!localStorage.getItem("users_view") && defView) {
+    localStorage.setItem("users_view", defView);
+  }
+
+  return cfg;
+}
 
 /* =========================================================
  * ✅ Audit 狀態枚舉（新增：系統維護）
@@ -85,61 +108,72 @@ function applyView_() {
   if (table) table.setAttribute("data-view", currentView);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  initTheme_();
+/* =========================================================
+ * ✅ DOMContentLoaded（先載 config.json）
+ * ========================================================= */
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await loadConfig_();
+    currentView = localStorage.getItem("users_view") || currentView;
 
-  const themeBtn = document.getElementById("themeToggle");
-  if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
+    initTheme_();
 
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn)
-    reloadBtn.addEventListener("click", async () => {
-      if (savingAll) return;
-      selectedIds.clear();
-      hideBulkBar_();
-      await loadUsers();
-    });
+    const themeBtn = document.getElementById("themeToggle");
+    if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
 
-  const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn)
-    clearSearchBtn.addEventListener("click", () => {
-      if (savingAll) return;
-      const si = document.getElementById("searchInput");
-      if (si) si.value = "";
-
-      const box = si?.closest(".search-box");
-      box?.classList.remove("is-searching");
-
-      applyFilters();
-    });
-
-  ensureSaveAllButton_();
-  ensureMobileSelectAll_();
-  ensureViewTabs_(); // ✅ NEW
-
-  bindFilter();
-  bindSorting_();
-  bindBulk_();
-  bindTableDelegation_();
-
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) {
-    searchInput.addEventListener(
-      "input",
-      debounce(() => {
+    const reloadBtn = document.getElementById("reloadBtn");
+    if (reloadBtn)
+      reloadBtn.addEventListener("click", async () => {
         if (savingAll) return;
-        const box = searchInput.closest(".search-box");
-        const hasValue = searchInput.value.trim().length > 0;
-        box?.classList.toggle("is-searching", hasValue);
+        selectedIds.clear();
+        hideBulkBar_();
+        await loadUsers();
+      });
+
+    const clearSearchBtn = document.getElementById("clearSearchBtn");
+    if (clearSearchBtn)
+      clearSearchBtn.addEventListener("click", () => {
+        if (savingAll) return;
+        const si = document.getElementById("searchInput");
+        if (si) si.value = "";
+
+        const box = si?.closest(".search-box");
+        box?.classList.remove("is-searching");
+
         applyFilters();
-      }, 180)
-    );
+      });
 
-    const box = searchInput.closest(".search-box");
-    box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+    ensureSaveAllButton_();
+    ensureMobileSelectAll_();
+    ensureViewTabs_(); // ✅ NEW
+
+    bindFilter();
+    bindSorting_();
+    bindBulk_();
+    bindTableDelegation_();
+
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+      searchInput.addEventListener(
+        "input",
+        debounce(() => {
+          if (savingAll) return;
+          const box = searchInput.closest(".search-box");
+          const hasValue = searchInput.value.trim().length > 0;
+          box?.classList.toggle("is-searching", hasValue);
+          applyFilters();
+        }, 180)
+      );
+
+      const box = searchInput.closest(".search-box");
+      box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+    }
+
+    loadUsers();
+  } catch (e) {
+    console.error("loadConfig error:", e);
+    toast("設定檔讀取失敗（config.json）", "err");
   }
-
-  loadUsers();
 });
 
 /* ========= Theme ========= */
@@ -297,6 +331,8 @@ function bindFilter() {
 
 async function loadUsers() {
   try {
+    if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
     const res = await fetch(API_BASE_URL + "?mode=listUsers");
     const json = await res.json();
     if (!json.ok) throw new Error("listUsers not ok");
@@ -871,7 +907,8 @@ function handleRowFieldChange_(fieldEl) {
       }
     } else {
       if (dot) dot.remove();
-      if (!actions.querySelector(".row-hint")) actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
+      if (!actions.querySelector(".row-hint"))
+        actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
     }
   }
 
@@ -937,7 +974,7 @@ async function saveAllDirty_() {
       .filter(Boolean)
       .map((u) => {
         const finalAudit = normalizeAudit_(u.audit);
-        const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
+        const finalPush = finalAudit !== "通過" ? "否" : u.pushEnabled || "否";
         return {
           userId: u.userId,
           audit: finalAudit,
@@ -1004,12 +1041,18 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (normalizeAudit_(audit)) {
-    case "通過": return "approved";
-    case "待審核": return "pending";
-    case "拒絕": return "rejected";
-    case "停用": return "disabled";
-    case "系統維護": return "maintenance";
-    default: return "other";
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    case "系統維護":
+      return "maintenance";
+    default:
+      return "other";
   }
 }
 
