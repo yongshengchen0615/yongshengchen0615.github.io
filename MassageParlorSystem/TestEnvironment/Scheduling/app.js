@@ -3,6 +3,8 @@
 // ✅ 你已決策：
 // - 移除「免 AUTH 的測試模式」
 // - ENABLE_LINE_LOGIN=false 代表「不用 LINE，但仍要 AUTH」(initNoLiffAndGuard)
+// - ✅ 已移除：【每日首次開啟】傳 LINE 訊息功能（含 key/日期/送訊息/呼叫點）
+// - ✅ 新增：第一次自動註冊成 pending（第一次審核）時，傳訊息給官方帳號（以使用者身分透過 LIFF sendMessages）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -397,41 +399,59 @@ function hidePersonalTools_() {
 }
 
 /* =========================================================
- * Daily first message (LIFF only)
+ * First audit notify (LIFF only) - send message to OA once
+ * - 觸發：result.status==="pending" 且 result.justRegistered===true
+ * - 去重：localStorage 以 userId 記一次（同 userId 同裝置不重複）
  * ========================================================= */
-const DAILY_USER_MSG_KEY = "daily_user_first_msg_v1";
-
-function getTodayTaipei_() {
+function getNowTaipei_() {
+  // e.g. 2025-12-28 21:05:33
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).formatToParts(new Date());
 
-  const y = parts.find((p) => p.type === "year")?.value || "0000";
-  const m = parts.find((p) => p.type === "month")?.value || "00";
-  const d = parts.find((p) => p.type === "day")?.value || "00";
-  return `${y}-${m}-${d}`;
+  const pick = (t) => parts.find((p) => p.type === t)?.value || "00";
+  return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
-
-async function sendDailyFirstMessageFromUser_() {
+function auditMsgKey_(userId) {
+  return "first_audit_msg_sent_v1:" + String(userId || "").trim();
+}
+async function sendFirstAuditMessageToOAOnce_(userId, displayName) {
   try {
-    if (!ENABLE_LINE_LOGIN) return;
-    if (!window.liff) return;
-    if (!liff.isInClient()) return;
+    if (!ENABLE_LINE_LOGIN) return { ok: false, reason: "ENABLE_LINE_LOGIN=false" };
+    if (!window.liff) return { ok: false, reason: "LIFF_SDK_MISSING" };
+    if (!liff.isInClient()) return { ok: false, reason: "NOT_IN_LINE_CLIENT" };
 
-    const today = getTodayTaipei_();
-    const last = localStorage.getItem(DAILY_USER_MSG_KEY) || "";
-    if (last === today) return;
+    const uid = String(userId || "").trim();
+    if (!uid) return { ok: false, reason: "NO_USER_ID" };
 
-    const name = String(window.currentDisplayName || "").trim();
-    const text = name ? `【每日首次開啟】${name} 已進入看板（${today}）` : `【每日首次開啟】使用者已進入看板（${today}）`;
+    // once-per-user (localStorage)
+    const k = auditMsgKey_(uid);
+    if (localStorage.getItem(k) === "1") return { ok: true, skipped: true };
+
+    const name = String(displayName || "").trim() || "未命名";
+    const ts = getNowTaipei_();
+
+    const text =
+      `【新申請待審核】\n` +
+      `姓名：${name}\n` +
+      `userId：${uid}\n` +
+      `時間：${ts}\n` +
+      `來源：看板 LIFF`;
 
     await liff.sendMessages([{ type: "text", text }]);
-    localStorage.setItem(DAILY_USER_MSG_KEY, today);
+
+    localStorage.setItem(k, "1");
+    return { ok: true };
   } catch (e) {
-    console.warn("[DailyUserMessage] send failed:", e);
+    console.warn("[FirstAuditNotify] send failed:", e);
+    return { ok: false, reason: "SEND_FAILED" };
   }
 }
 
@@ -1102,7 +1122,6 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     if (!Number.isNaN(n)) remainingDays = n;
   }
 
-  // ✅ 你要加其他狀態：只要在 flags/messages/rules 增加即可
   const flags = {
     maintenance: normalizeBoolOn_(data && (data.maintenance ?? data.systemMaintenance)),
     blocked: normalizeBoolOn_(data && (data.blocked ?? data.banned ?? data.disabled)),
@@ -1159,7 +1178,6 @@ function decideGateAction_(r) {
       action: () => ({
         allow: false,
         message: "⬆️ 需要更新\n" + (String(r.messages.forceUpdateMsg || "").trim() || "請更新至最新版本後再使用。"),
-        // redirect: "https://..." // 可選：強制導向
       }),
     },
     {
@@ -1210,10 +1228,9 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
   const data = await resp.json();
   let r = normalizeCheckResult_(data, displayNameFromClient);
 
-  // 已是 approved/pending 就直接回
   if (r.status === "approved" || r.status === "pending") return r;
 
-  // none/unknown -> 自動註冊，回 pending（保持你原本行為）
+  // none/unknown -> 自動註冊，回 pending
   try {
     await registerUser(userId, r.displayName || displayNameFromClient || "");
     r.status = "pending";
@@ -1302,7 +1319,6 @@ async function initNoLiffAndGuard() {
 
     const result = await checkOrRegisterUser(userId, displayName);
 
-    // 功能 chips 仍照常顯示（維護/封鎖也可顯示或忽略都行）
     updateFeatureState_(result);
 
     const gate = decideGateAction_(result);
@@ -1379,6 +1395,11 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
+    // ✅ 第一次自動註冊（pending）→ 通知 OA（只送一次/同裝置）
+    if (result && result.status === "pending" && result.justRegistered === true) {
+      await sendFirstAuditMessageToOAOnce_(userId, finalDisplayName);
+    }
+
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
@@ -1405,7 +1426,7 @@ async function initLiffAndGuard() {
       hidePersonalTools_();
     }
 
-    await sendDailyFirstMessageFromUser_();
+    // ✅ 已移除：每日首次開啟訊息
     startApp();
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
