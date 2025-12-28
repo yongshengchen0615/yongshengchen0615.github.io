@@ -441,9 +441,7 @@ async function sendFirstAuditMessageToOAOnce_(userId, displayName) {
     const text =
       `【新申請待審核】\n` +
       `姓名：${name}\n` +
-      `userId：${uid}\n` +
-      `時間：${ts}\n` +
-      `來源：看板 LIFF`;
+      `時間：${ts}\n`
 
     await liff.sendMessages([{ type: "text", text }]);
 
