@@ -228,6 +228,7 @@ function setEditingEnabled_(enabled) {
     "bulkPush",
     "bulkPersonalStatus",
     "bulkScheduleEnabled",
+    "bulkUsageDays", // ✅ NEW
     "bulkApply",
     "bulkDelete",
   ];
@@ -603,7 +604,15 @@ async function bulkApply_() {
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
   const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
-  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled) {
+  // ✅ NEW：批次期限(天)
+  const usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
+  const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
+  if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
+    toast("批次期限(天) 請輸入大於 0 的數字", "err");
+    return;
+  }
+
+  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -616,6 +625,9 @@ async function bulkApply_() {
     if (!u) return;
 
     if (audit) u.audit = normalizeAudit_(audit);
+
+    // ✅ NEW：套用 usageDays
+    if (usageDaysRaw) u.usageDays = String(usageDays);
 
     if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
     else if (pushEnabled) u.pushEnabled = pushEnabled;
