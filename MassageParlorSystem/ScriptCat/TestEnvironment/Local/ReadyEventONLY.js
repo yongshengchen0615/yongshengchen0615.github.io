@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TestEnvironment Local  Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + TestPlan)
 // @namespace    http://scriptcat.org/
-// @version      1.1
+// @version      1.2
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：用 list 排程幾秒後送幾筆（可指定同一 userId）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -42,7 +42,7 @@
   // 特點：全部可以指定送到同一個 userId（targetUserId）
   const TEST_PLAN = {
     enabled: true,            // ✅ 總開關（要測就 true）
-    autorun: false,           // ✅ 載入後自動跑（想自動就 true）
+    autorun: true,           // ✅ 載入後自動跑（想自動就 true）
     delayMs: 800,             // autorun 延遲
 
     // ✅ 你的 LINE userId（全部都送到同一人）
