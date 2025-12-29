@@ -1,9 +1,30 @@
-// ★ Users API（不要動）
-const API_BASE_URL =
-  "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec";
+/* ================================
+ * app.js (FULL)
+ * ================================ */
 
 /* =========================================================
- * ✅ Audit 狀態枚舉（新增：系統維護）
+ * ✅ config.json Loader（支援 _comment）
+ * ========================================================= */
+
+let API_BASE_URL = "";
+
+async function loadConfig_() {
+  const res = await fetch("config.json", { cache: "no-store" });
+  const cfg = await res.json();
+
+  API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
+  if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
+
+  const defView = String(cfg.DEFAULT_VIEW || "").trim();
+  if (!localStorage.getItem("users_view") && defView) {
+    localStorage.setItem("users_view", defView);
+  }
+
+  return cfg;
+}
+
+/* =========================================================
+ * ✅ Audit 狀態枚舉
  * ========================================================= */
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 function normalizeAudit_(v) {
@@ -15,80 +36,125 @@ function normalizeAudit_(v) {
 let allUsers = [];
 let filteredUsers = [];
 
-// sort state
 let sortKey = "createdAt";
-let sortDir = "desc"; // asc | desc
+let sortDir = "desc";
 
-// selection state
 const selectedIds = new Set();
+const originalMap = new Map();
+const dirtyMap = new Map();
 
-// dirty state
-const originalMap = new Map(); // userId -> JSON string snapshot
-const dirtyMap = new Map(); // userId -> true
-
-// toast timer
 let toastTimer = null;
-
-// save-all runtime
 let savingAll = false;
 
-document.addEventListener("DOMContentLoaded", () => {
-  initTheme_();
+/* =========================================================
+ * ✅ View Tabs
+ * ========================================================= */
+const VIEW_ENUM = ["all", "usage", "master", "features"];
+let currentView = localStorage.getItem("users_view") || "usage";
 
-  const themeBtn = document.getElementById("themeToggle");
-  if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
+function ensureViewTabs_() {
+  const head = document.querySelector(".panel-head");
+  if (!head) return;
+  if (document.getElementById("viewTabs")) return;
 
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn)
-    reloadBtn.addEventListener("click", async () => {
+  const wrap = document.createElement("div");
+  wrap.className = "viewtabs";
+  wrap.id = "viewTabs";
+  wrap.innerHTML = `
+    <button class="viewtab" data-view="all" type="button">全部欄位</button>
+    <button class="viewtab" data-view="usage" type="button">使用/審核</button>
+    <button class="viewtab" data-view="master" type="button">師傅資訊</button>
+    <button class="viewtab" data-view="features" type="button">功能開通</button>
+  `;
+  head.appendChild(wrap);
+
+  wrap.addEventListener("click", (e) => {
+    if (savingAll) return;
+    const btn = e.target instanceof Element ? e.target.closest("button.viewtab") : null;
+    if (!btn) return;
+
+    const v = btn.dataset.view;
+    if (!VIEW_ENUM.includes(v)) return;
+
+    currentView = v;
+    localStorage.setItem("users_view", currentView);
+    applyView_();
+  });
+
+  if (!VIEW_ENUM.includes(currentView)) currentView = "usage";
+  applyView_();
+}
+
+function applyView_() {
+  document.querySelectorAll("#viewTabs .viewtab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === currentView);
+    b.disabled = savingAll;
+  });
+
+  const table = document.querySelector(".table-wrap table");
+  if (table) table.setAttribute("data-view", currentView);
+}
+
+/* =========================================================
+ * ✅ DOMContentLoaded
+ * ========================================================= */
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await loadConfig_();
+    currentView = localStorage.getItem("users_view") || currentView;
+
+    initTheme_();
+
+    document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
+
+    document.getElementById("reloadBtn")?.addEventListener("click", async () => {
       if (savingAll) return;
       selectedIds.clear();
       hideBulkBar_();
       await loadUsers();
     });
 
-  const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn)
-    clearSearchBtn.addEventListener("click", () => {
+    document.getElementById("clearSearchBtn")?.addEventListener("click", () => {
       if (savingAll) return;
       const si = document.getElementById("searchInput");
       if (si) si.value = "";
-
-      const box = si?.closest(".search-box");
-      box?.classList.remove("is-searching");
-
+      si?.closest(".search-box")?.classList.remove("is-searching");
       applyFilters();
     });
 
-  ensureSaveAllButton_();
-  ensureMobileSelectAll_();
-  bindFilter();
-  bindSorting_();
-  bindBulk_();
-  bindTableDelegation_();
+    ensureSaveAllButton_();
+    ensureMobileSelectAll_();
+    ensureViewTabs_();
+    ensurePushPanel_();
 
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) {
-    searchInput.addEventListener(
-      "input",
-      debounce(() => {
-        if (savingAll) return;
-        const box = searchInput.closest(".search-box");
-        const hasValue = searchInput.value.trim().length > 0;
-        box?.classList.toggle("is-searching", hasValue);
-        applyFilters();
-      }, 180)
-    );
+    bindFilter();
+    bindSorting_();
+    bindBulk_();
+    bindTableDelegation_();
 
-    const box = searchInput.closest(".search-box");
-    box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+      searchInput.addEventListener(
+        "input",
+        debounce(() => {
+          if (savingAll) return;
+          const box = searchInput.closest(".search-box");
+          const hasValue = searchInput.value.trim().length > 0;
+          box?.classList.toggle("is-searching", hasValue);
+          applyFilters();
+        }, 180)
+      );
+      searchInput.closest(".search-box")?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+    }
+
+    loadUsers();
+  } catch (e) {
+    console.error("loadConfig error:", e);
+    toast("設定檔讀取失敗（config.json）", "err");
   }
-
-  loadUsers();
 });
 
 /* ========= Theme ========= */
-
 function initTheme_() {
   const saved = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
@@ -109,72 +175,40 @@ function updateThemeButtonText_() {
   btn.textContent = current === "dark" ? "亮色" : "暗色";
 }
 
-/* ========= UI Lock (disable all editing while saving) ========= */
-
+/* ========= UI Lock ========= */
 function setEditingEnabled_(enabled) {
   const lock = !enabled;
 
-  // panel visual hint
-  const panel = document.querySelector(".panel");
-  if (panel) panel.classList.toggle("is-locked", lock);
-
-  // topbar
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.disabled = lock;
-
-  // （可選）主題切換也鎖；你若不想鎖，保留註解即可
-  const themeBtn = document.getElementById("themeToggle");
-  if (themeBtn) themeBtn.disabled = lock;
-
-  // filters/search
-  document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
-
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) searchInput.disabled = lock;
-
-  const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn) clearSearchBtn.disabled = lock;
-
-  // bulk controls
-  const ids = [
-    "checkAll",
-    "mobileCheckAll",
-    "bulkClear",
-    "bulkAudit",
-    "bulkPush",
-    "bulkPersonalStatus",
-    "bulkScheduleEnabled",
-    "bulkApply",
-    "bulkDelete",
-  ];
-  ids.forEach((id) => {
+  document.querySelector(".panel")?.classList.toggle("is-locked", lock);
+  ["reloadBtn","themeToggle","searchInput","clearSearchBtn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = lock;
   });
 
-  // table controls
-  const tbody = document.getElementById("tbody");
-  if (tbody) {
-    tbody.querySelectorAll("input, select, button").forEach((el) => {
-      el.disabled = lock;
-    });
-  }
+  document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
 
-  // disable sorting headers
+  const ids = [
+    "checkAll","mobileCheckAll","bulkClear","bulkAudit","bulkPush","bulkPersonalStatus",
+    "bulkScheduleEnabled","bulkUsageDays","bulkApply","bulkDelete"
+  ];
+  ids.forEach((id) => document.getElementById(id) && (document.getElementById(id).disabled = lock));
+
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.style.pointerEvents = lock ? "none" : "";
     th.style.opacity = lock ? "0.6" : "";
   });
 
+  document.getElementById("tbody")?.querySelectorAll("input, select, button").forEach((el) => (el.disabled = lock));
+
+  applyView_();
   refreshSaveAllButton_();
+  pushSetEnabled_(!lock);
 }
 
 /* ========= Save All Button ========= */
-
 function ensureSaveAllButton_() {
   const topRight = document.querySelector(".topbar-right");
   if (!topRight) return;
-
   if (document.getElementById("saveAllBtn")) return;
 
   const btn = document.createElement("button");
@@ -190,19 +224,24 @@ function ensureSaveAllButton_() {
   });
 
   const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn && reloadBtn.parentElement === topRight) {
-    topRight.insertBefore(btn, reloadBtn);
-  } else {
-    topRight.appendChild(btn);
-  }
+  if (reloadBtn && reloadBtn.parentElement === topRight) topRight.insertBefore(btn, reloadBtn);
+  else topRight.appendChild(btn);
 
   refreshSaveAllButton_();
 }
 
+function refreshSaveAllButton_() {
+  const btn = document.getElementById("saveAllBtn");
+  if (!btn) return;
+  const dirtyCount = dirtyMap.size;
+  btn.disabled = savingAll || dirtyCount === 0;
+  btn.textContent = savingAll ? "儲存中..." : dirtyCount ? `儲存全部變更（${dirtyCount}）` : "儲存全部變更";
+}
+
+/* ========= Mobile Select All ========= */
 function ensureMobileSelectAll_() {
   const filters = document.querySelector(".panel-head .filters");
   if (!filters) return;
-
   if (document.getElementById("mobileCheckAll")) return;
 
   const wrap = document.createElement("div");
@@ -212,7 +251,6 @@ function ensureMobileSelectAll_() {
     <span class="label">全選</span>
     <span class="hint" id="mobileCheckAllHint">（0/${filteredUsers.length || 0}）</span>
   `;
-
   filters.appendChild(wrap);
 
   const mobile = wrap.querySelector("#mobileCheckAll");
@@ -231,21 +269,7 @@ function ensureMobileSelectAll_() {
   });
 }
 
-function refreshSaveAllButton_() {
-  const btn = document.getElementById("saveAllBtn");
-  if (!btn) return;
-
-  const dirtyCount = dirtyMap.size;
-  btn.disabled = savingAll || dirtyCount === 0;
-  btn.textContent = savingAll
-    ? `儲存中...`
-    : dirtyCount
-      ? `儲存全部變更（${dirtyCount}）`
-      : "儲存全部變更";
-}
-
 /* ========= Filters ========= */
-
 function bindFilter() {
   document.querySelectorAll(".chip").forEach((chip) => {
     chip.addEventListener("click", () => {
@@ -259,6 +283,8 @@ function bindFilter() {
 
 async function loadUsers() {
   try {
+    if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
     const res = await fetch(API_BASE_URL + "?mode=listUsers");
     const json = await res.json();
     if (!json.ok) throw new Error("listUsers not ok");
@@ -282,6 +308,7 @@ async function loadUsers() {
     toast("讀取失敗", "err");
   } finally {
     refreshSaveAllButton_();
+    applyView_();
   }
 }
 
@@ -292,7 +319,6 @@ function applyFilters() {
 
   filteredUsers = allUsers.filter((u) => {
     const audit = normalizeAudit_(u.audit);
-
     if (filter !== "ALL" && audit !== filter) return false;
 
     if (keywordRaw) {
@@ -311,8 +337,8 @@ function applyFilters() {
   syncCheckAll_();
   updateBulkBar_();
   refreshSaveAllButton_();
+  applyView_();
 
-  // 如果正在儲存，render 完要再次確保 UI 被鎖（避免重渲染把 disabled 還原）
   if (savingAll) setEditingEnabled_(false);
 }
 
@@ -364,16 +390,15 @@ function updateFooter() {
 }
 
 /* ========= Sorting ========= */
-
 function bindSorting_() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.addEventListener("click", () => {
       if (savingAll) return;
       const key = th.dataset.sort;
       if (!key) return;
-      if (sortKey === key) {
-        sortDir = sortDir === "asc" ? "desc" : "asc";
-      } else {
+
+      if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
+      else {
         sortKey = key;
         sortDir = key === "createdAt" ? "desc" : "asc";
       }
@@ -407,12 +432,12 @@ function compareBy_(a, b, key, dir) {
     return (na - nb) * sgn;
   }
 
-  // startDate / createdAt 都是字串，簡化解析（startDate: yyyy-MM-dd）
   if (key === "createdAt") {
     const da = toTime_(av);
     const db = toTime_(bv);
     return (da - db) * sgn;
   }
+
   if (key === "startDate") {
     const da = toTime_(String(av || "") + "T00:00:00");
     const db = toTime_(String(bv || "") + "T00:00:00");
@@ -428,7 +453,9 @@ function compareBy_(a, b, key, dir) {
 
 function toTime_(v) {
   if (!v) return 0;
-  const d = new Date(String(v).replace(" ", "T"));
+  const s = String(v).trim();
+  if (!s) return 0;
+  const d = new Date(s.includes(" ") ? s.replace(" ", "T") : s);
   const t = d.getTime();
   return isNaN(t) ? 0 : t;
 }
@@ -436,47 +463,42 @@ function toTime_(v) {
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
 
-  // startDate: yyyy-MM-dd
   const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return 999999;
 
-  const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
-  return Math.ceil((end - new Date()) / 86400000);
+  const usage = Number(u.usageDays);
+  if (!Number.isFinite(usage) || usage <= 0) return 999999;
+
+  const last = new Date(start.getTime() + (usage - 1) * 86400000);
+  last.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.floor((last - today) / 86400000);
 }
 
 /* ========= Selection + Bulk ========= */
-
 function bindBulk_() {
-  const checkAll = document.getElementById("checkAll");
-  if (checkAll) {
-    checkAll.addEventListener("change", () => {
-      if (savingAll) return;
-      const checked = !!checkAll.checked;
-      filteredUsers.forEach((u) => {
-        if (checked) selectedIds.add(u.userId);
-        else selectedIds.delete(u.userId);
-      });
-      renderTable();
-      updateBulkBar_();
-      syncCheckAll_();
-    });
-  }
+  document.getElementById("checkAll")?.addEventListener("change", () => {
+    if (savingAll) return;
+    const checked = !!document.getElementById("checkAll").checked;
+    filteredUsers.forEach((u) => (checked ? selectedIds.add(u.userId) : selectedIds.delete(u.userId)));
+    renderTable();
+    updateBulkBar_();
+    syncCheckAll_();
+  });
 
-  const bulkClear = document.getElementById("bulkClear");
-  if (bulkClear)
-    bulkClear.addEventListener("click", () => {
-      if (savingAll) return;
-      selectedIds.clear();
-      renderTable();
-      updateBulkBar_();
-      syncCheckAll_();
-    });
+  document.getElementById("bulkClear")?.addEventListener("click", () => {
+    if (savingAll) return;
+    selectedIds.clear();
+    renderTable();
+    updateBulkBar_();
+    syncCheckAll_();
+  });
 
-  const bulkApply = document.getElementById("bulkApply");
-  if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
-
-  const bulkDelete = document.getElementById("bulkDelete");
-  if (bulkDelete) bulkDelete.addEventListener("click", () => bulkDelete_());
+  document.getElementById("bulkApply")?.addEventListener("click", () => bulkApply_());
+  document.getElementById("bulkDelete")?.addEventListener("click", () => bulkDelete_());
 }
 
 function updateBulkBar_() {
@@ -502,7 +524,6 @@ function syncCheckAll_() {
   const checkAll = document.getElementById("checkAll");
   const mobile = document.getElementById("mobileCheckAll");
   const hint = document.getElementById("mobileCheckAllHint");
-
   const total = filteredUsers.length;
 
   const setState = (el, checked, indeterminate) => {
@@ -511,10 +532,8 @@ function syncCheckAll_() {
     el.indeterminate = indeterminate;
   };
 
-  if (hint) {
-    const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
-    hint.textContent = `（${selCount}/${total}）`;
-  }
+  const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
+  if (hint) hint.textContent = `（${selCount}/${total}）`;
 
   if (!total) {
     setState(checkAll, false, false);
@@ -522,12 +541,8 @@ function syncCheckAll_() {
     return;
   }
 
-  const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
-  const checked = selCount === total;
-  const indeterminate = selCount > 0 && selCount < total;
-
-  setState(checkAll, checked, indeterminate);
-  setState(mobile, checked, indeterminate);
+  setState(checkAll, selCount === total, selCount > 0 && selCount < total);
+  setState(mobile, selCount === total, selCount > 0 && selCount < total);
 }
 
 async function bulkApply_() {
@@ -538,7 +553,14 @@ async function bulkApply_() {
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
   const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
-  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled) {
+  const usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
+  const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
+  if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
+    toast("批次期限(天) 請輸入大於 0 的數字", "err");
+    return;
+  }
+
+  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -551,13 +573,10 @@ async function bulkApply_() {
     if (!u) return;
 
     if (audit) u.audit = normalizeAudit_(audit);
+    if (usageDaysRaw) u.usageDays = String(usageDays);
 
-    // 🔒 規則：審核狀態 ≠ 通過 → 推播必為否（含 系統維護）
-    if (normalizeAudit_(u.audit) !== "通過") {
-      u.pushEnabled = "否";
-    } else if (pushEnabled) {
-      u.pushEnabled = pushEnabled;
-    }
+    if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
+    else if (pushEnabled) u.pushEnabled = pushEnabled;
 
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
@@ -595,8 +614,7 @@ async function bulkDelete_() {
 
   for (const id of ids) {
     const ok = await deleteUser(id);
-    if (ok) okCount++;
-    else failCount++;
+    ok ? okCount++ : failCount++;
     await sleep_(80);
   }
 
@@ -614,8 +632,7 @@ async function bulkDelete_() {
   await loadUsers();
 }
 
-/* ========= Table (render only) ========= */
-
+/* ========= Table ========= */
 function renderTable() {
   const tbody = document.getElementById("tbody");
   if (!tbody) return;
@@ -715,10 +732,8 @@ function renderTable() {
 
   tbody.appendChild(frag);
 
-  // ✅ 如果正在儲存，確保表格互動元件仍然被 disabled
   if (savingAll) {
-    const tbody = document.getElementById("tbody");
-    if (tbody) tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
+    tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
 }
 
@@ -737,15 +752,13 @@ function refreshSortIndicators_() {
   });
 }
 
-/* ========= Table Delegation (ONE TIME) ========= */
-
+/* ========= Delegation ========= */
 function bindTableDelegation_() {
   const tbody = document.getElementById("tbody");
   if (!tbody) return;
 
   tbody.addEventListener("change", (e) => {
     if (savingAll) return;
-
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
 
@@ -753,27 +766,20 @@ function bindTableDelegation_() {
       const row = t.closest("tr");
       const userId = row?.dataset.userid;
       if (!userId) return;
-      if (t.checked) selectedIds.add(userId);
-      else selectedIds.delete(userId);
+      t.checked ? selectedIds.add(userId) : selectedIds.delete(userId);
       updateBulkBar_();
       syncCheckAll_();
       return;
     }
 
-    if (t.matches("[data-field]")) {
-      handleRowFieldChange_(t);
-      return;
-    }
+    if (t.matches("[data-field]")) handleRowFieldChange_(t);
   });
 
   tbody.addEventListener("input", (e) => {
     if (savingAll) return;
-
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
-    if (t.matches("input[data-field]")) {
-      handleRowFieldChange_(t);
-    }
+    if (t.matches("input[data-field]")) handleRowFieldChange_(t);
   });
 
   tbody.addEventListener("click", async (e) => {
@@ -788,7 +794,6 @@ function bindTableDelegation_() {
 
     if (btn.classList.contains("btn-del")) {
       await handleRowDelete_(row, userId, btn);
-      return;
     }
   });
 }
@@ -814,9 +819,9 @@ function handleRowFieldChange_(fieldEl) {
   else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
   else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 
-  // 🔒 audit ≠ 通過 → pushEnabled 強制否 + disable
   const audit = normalizeAudit_(u.audit);
   const pushSel = row.querySelector('select[data-field="pushEnabled"]');
+
   if (audit !== "通過") {
     u.pushEnabled = "否";
     if (pushSel) {
@@ -857,9 +862,8 @@ function handleRowFieldChange_(fieldEl) {
       }
     } else {
       if (dot) dot.remove();
-      if (!actions.querySelector(".row-hint")) {
+      if (!actions.querySelector(".row-hint"))
         actions.insertAdjacentHTML("afterbegin", `<span class="row-hint">-</span>`);
-      }
     }
   }
 
@@ -906,8 +910,7 @@ async function handleRowDelete_(row, userId, delBtn) {
   }
 }
 
-/* ========= Save All Dirty (BATCH) ========= */
-
+/* ========= Save All Dirty ========= */
 async function saveAllDirty_() {
   const dirtyIds = Array.from(dirtyMap.keys());
   if (!dirtyIds.length) {
@@ -920,18 +923,16 @@ async function saveAllDirty_() {
   refreshSaveAllButton_();
 
   try {
-    // 1) 組 batch items
     const items = dirtyIds
       .map((userId) => allUsers.find((x) => x.userId === userId))
       .filter(Boolean)
       .map((u) => {
         const finalAudit = normalizeAudit_(u.audit);
-        const finalPush = finalAudit !== "通過" ? "否" : (u.pushEnabled || "否");
-
+        const finalPush = finalAudit !== "通過" ? "否" : u.pushEnabled || "否";
         return {
           userId: u.userId,
           audit: finalAudit,
-          startDate: u.startDate || "", // yyyy-MM-dd
+          startDate: u.startDate || "",
           usageDays: u.usageDays || "",
           masterCode: u.masterCode || "",
           pushEnabled: finalPush,
@@ -940,25 +941,20 @@ async function saveAllDirty_() {
         };
       });
 
-    const el = document.getElementById("footerStatus");
-    if (el) el.textContent = `儲存中：1/1（共 ${items.length} 筆）`;
+    document.getElementById("footerStatus") &&
+      (document.getElementById("footerStatus").textContent = `儲存中：1/1（共 ${items.length} 筆）`);
 
-    // 2) 一次送後端
     const ret = await updateUsersBatch(items);
 
-    // 3) 回寫前端狀態
     if (ret && ret.okCount) {
       const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));
-
       items.forEach((it) => {
         const id = it.userId;
-        if (!id) return;
-        if (failedSet.has(id)) return;
+        if (!id || failedSet.has(id)) return;
 
         const u = allUsers.find((x) => x.userId === id);
         if (!u) return;
 
-        // ✅ 同步全部欄位，避免前後端不一致
         u.audit = it.audit;
         u.startDate = it.startDate;
         u.usageDays = it.usageDays;
@@ -973,7 +969,6 @@ async function saveAllDirty_() {
 
       applyFilters();
     } else {
-      // 沒成功就保留 dirty
       applyFilters();
     }
 
@@ -991,8 +986,7 @@ async function saveAllDirty_() {
   }
 }
 
-/* ========= Helpers for options/badges/expiry ========= */
-
+/* ========= Helpers ========= */
 function auditOption(value, current) {
   const sel = value === current ? "selected" : "";
   return `<option value="${value}" ${sel}>${value}</option>`;
@@ -1000,18 +994,12 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (normalizeAudit_(audit)) {
-    case "通過":
-      return "approved";
-    case "待審核":
-      return "pending";
-    case "拒絕":
-      return "rejected";
-    case "停用":
-      return "disabled";
-    case "系統維護":
-      return "maintenance";
-    default:
-      return "other";
+    case "通過": return "approved";
+    case "待審核": return "pending";
+    case "拒絕": return "rejected";
+    case "停用": return "disabled";
+    case "系統維護": return "maintenance";
+    default: return "other";
   }
 }
 
@@ -1021,14 +1009,20 @@ function getExpiryInfo(u) {
   const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return { cls: "unset", text: "未設定" };
 
-  const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
-  const diff = Math.ceil((end - new Date()) / 86400000);
+  const usage = Number(u.usageDays);
+  if (!Number.isFinite(usage) || usage <= 0) return { cls: "unset", text: "未設定" };
+
+  const last = new Date(start.getTime() + (usage - 1) * 86400000);
+  last.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor((last - today) / 86400000);
 
   if (diff < 0) return { cls: "expired", text: `已過期（超 ${Math.abs(diff)} 天）` };
   return { cls: "active", text: `使用中（剩 ${diff} 天）` };
 }
-
-/* ========= Dirty tracking ========= */
 
 function snapshot_(u) {
   return JSON.stringify({
@@ -1051,42 +1045,6 @@ function markDirty_(userId, u) {
 }
 
 /* ========= API ========= */
-
-async function updateUser({
-  userId,
-  audit,
-  startDate,
-  usageDays,
-  masterCode,
-  pushEnabled,
-  personalStatusEnabled,
-  scheduleEnabled,
-}) {
-  try {
-    const fd = new URLSearchParams();
-    fd.append("mode", "updateUser");
-    fd.append("userId", userId);
-    fd.append("audit", normalizeAudit_(audit));
-    fd.append("startDate", startDate || "");
-    fd.append("usageDays", usageDays || "");
-    fd.append("masterCode", masterCode || "");
-    fd.append("pushEnabled", pushEnabled || "否");
-    fd.append("personalStatusEnabled", personalStatusEnabled || "否");
-    fd.append("scheduleEnabled", scheduleEnabled || "否");
-
-    const res = await fetch(API_BASE_URL, { method: "POST", body: fd });
-    const json = await res.json().catch(() => ({}));
-    return !!json.ok;
-  } catch (err) {
-    console.error("updateUser error:", err);
-    return false;
-  }
-}
-
-/**
- * ✅✅✅ Batch 更新（一次送多筆）
- * - CORS-safe：text/plain JSON（避免 preflight）
- */
 async function updateUsersBatch(items) {
   try {
     const res = await fetch(API_BASE_URL, {
@@ -1094,8 +1052,7 @@ async function updateUsersBatch(items) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ mode: "updateUsersBatch", items }),
     });
-    const json = await res.json().catch(() => ({}));
-    return json;
+    return await res.json().catch(() => ({}));
   } catch (err) {
     console.error("updateUsersBatch error:", err);
     return { ok: false, error: String(err) };
@@ -1118,7 +1075,6 @@ async function deleteUser(userId) {
 }
 
 /* ========= Toast ========= */
-
 function toast(msg, type) {
   const el = document.getElementById("toast");
   if (!el) return;
@@ -1134,7 +1090,6 @@ function toast(msg, type) {
 }
 
 /* ========= Utils ========= */
-
 function setText_(id, v) {
   const el = document.getElementById(id);
   if (el) el.textContent = String(v ?? "-");
@@ -1159,4 +1114,164 @@ function debounce(fn, wait) {
 
 function sleep_(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/* =========================================================
+ * ✅ Push Panel（device agnostic layout）
+ * ========================================================= */
+let pushingNow = false;
+
+function ensurePushPanel_() {
+  const panelHead = document.querySelector(".panel-head");
+  if (!panelHead) return;
+  if (document.getElementById("pushPanel")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "pushPanel";
+  wrap.style.flex = "0 0 100%";
+  wrap.style.width = "100%";
+  wrap.style.marginTop = "10px";
+
+  wrap.innerHTML = `
+    <div class="pushbar">
+      <div class="pushbar-left">
+        <span class="bulk-pill" style="border-color:rgba(147,51,234,.35); background:rgba(147,51,234,.12); color:rgb(167,139,250);">
+          推播
+        </span>
+
+        <div class="bulk-group">
+          <label class="bulk-label" for="pushTarget">對象</label>
+          <select id="pushTarget" class="select">
+            <option value="selected">選取的（勾選）</option>
+            <option value="filtered">目前篩選結果</option>
+            <option value="all">全部</option>
+            <option value="single">單一 userId</option>
+          </select>
+        </div>
+
+        <div class="bulk-group" id="pushSingleWrap" style="display:none;">
+          <label class="bulk-label" for="pushSingleUserId">userId</label>
+          <input id="pushSingleUserId" class="select push-single" type="text"
+            placeholder="貼上 userId（LINE userId）" />
+        </div>
+
+        <div class="bulk-group">
+          <label class="bulk-label" style="user-select:none;">displayName 前綴</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); user-select:none;">
+            <input id="pushIncludeName" type="checkbox" />
+            加上 displayName
+          </label>
+        </div>
+      </div>
+
+      <div class="pushbar-right">
+        <div class="bulk-group" style="flex:1; width:100%;">
+          <input id="pushMessage" class="select push-message" type="text"
+            placeholder="輸入要推播的訊息…" />
+        </div>
+
+        <button id="pushSendBtn" class="btn primary" type="button">送出推播</button>
+      </div>
+    </div>
+  `;
+
+  panelHead.appendChild(wrap);
+
+  const targetSel = document.getElementById("pushTarget");
+  const singleWrap = document.getElementById("pushSingleWrap");
+
+  targetSel?.addEventListener("change", () => {
+    const v = targetSel.value;
+    if (singleWrap) singleWrap.style.display = v === "single" ? "" : "none";
+  });
+
+  document.getElementById("pushSendBtn")?.addEventListener("click", async () => {
+    if (savingAll || pushingNow) return;
+    await pushSend_();
+  });
+
+  pushSetEnabled_(!savingAll);
+}
+
+function pushSetEnabled_(enabled) {
+  const lock = !enabled || pushingNow;
+  ["pushTarget","pushSingleUserId","pushIncludeName","pushMessage","pushSendBtn"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = lock;
+  });
+
+  const btn = document.getElementById("pushSendBtn");
+  if (btn) btn.textContent = pushingNow ? "推播中…" : "送出推播";
+}
+
+function buildPushTargetIds_(target) {
+  if (target === "single") {
+    const uid = String(document.getElementById("pushSingleUserId")?.value || "").trim();
+    return uid ? [uid] : [];
+  }
+  if (target === "selected") return Array.from(selectedIds);
+  if (target === "filtered") return filteredUsers.map((u) => u.userId).filter(Boolean);
+  if (target === "all") return allUsers.map((u) => u.userId).filter(Boolean);
+  return [];
+}
+
+async function pushSend_() {
+  const target = String(document.getElementById("pushTarget")?.value || "selected");
+  const includeDisplayName = !!document.getElementById("pushIncludeName")?.checked;
+  const message = String(document.getElementById("pushMessage")?.value || "").trim();
+
+  if (!message) {
+    toast("請輸入推播內容", "err");
+    return;
+  }
+
+  const userIds = buildPushTargetIds_(target);
+  if (!userIds.length) {
+    toast(target === "selected" ? "請先勾選要推播的使用者" : "找不到推播對象", "err");
+    return;
+  }
+
+  const n = userIds.length;
+  const warn = includeDisplayName ? "⚠️ 勾選 displayName 前綴：後端可能需要逐人處理（較慢）。\n\n" : "";
+  if (target === "all" || target === "filtered" || n > 30) {
+    const ok = confirm(`即將推播給 ${n} 位使用者。\n\n${warn}確定要送出嗎？`);
+    if (!ok) return;
+  }
+
+  pushingNow = true;
+  pushSetEnabled_(false);
+
+  try {
+    const ret = await pushMessageBatch_(userIds, message, includeDisplayName);
+    const okCount = Number(ret?.okCount || 0);
+    const failCount = Number(ret?.failCount || 0);
+
+    if (failCount === 0) toast(`推播完成：成功 ${okCount} 筆`, "ok");
+    else toast(`推播完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
+
+    if (ret?.fail?.length) console.warn("push fail:", ret.fail);
+  } catch (e) {
+    console.error("pushSend error:", e);
+    toast("推播失敗（請看 console）", "err");
+  } finally {
+    pushingNow = false;
+    pushSetEnabled_(!savingAll);
+  }
+}
+
+async function pushMessageBatch_(userIds, message, includeDisplayName) {
+  if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
+  const res = await fetch(API_BASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      mode: "pushMessage",
+      userIds,
+      message,
+      includeDisplayName: includeDisplayName ? "是" : "否",
+    }),
+  });
+
+  return await res.json().catch(() => ({}));
 }
