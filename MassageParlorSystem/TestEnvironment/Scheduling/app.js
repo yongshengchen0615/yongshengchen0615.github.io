@@ -1,9 +1,14 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
-// ✅ 本版改動：
+// ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
+// - 成功穩定：3s → 5s → 8s → 12s → 20s（可調）
+// - 有變動：下一次偏快（例如 4.5s）
+// - 失敗：指數退避，封頂 60s
+// - document.hidden：不打（前景回來再抓）
+//
+// ✅ 仍保留：
 // - ❌ 移除：【每日首次開啟】傳訊息功能（整段已刪）
-// - ✅ 新增：只要狀態為 pending，每次開啟都通知官方帳號（不去重）
-//   → 透過 LIFF sendMessages（使用者身分送到 OA 聊天室）
+// - ✅ pending 每次開啟都通知 OA（用 liff.sendMessages；只在 LIFF + inClient）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -245,9 +250,7 @@ const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = usageBannerEl
-  ? usageBannerEl.querySelector("#usageBannerText")
-  : document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
 
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
@@ -276,9 +279,7 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
-    ""
-  );
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -442,7 +443,7 @@ async function sendPendingNotifyToOA_(userId, displayName, auditText) {
 }
 
 /* =========================================================
- * Color/BG utils（你的原版保持）
+ * Color/BG utils（保持你的原版）
  * ========================================================= */
 function isLightTheme_() {
   return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
@@ -1079,10 +1080,6 @@ async function refreshStatus(isManual = false) {
   }
 }
 
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) refreshStatus(false);
-});
-
 /* =========================================================
  * AUTH + RULES (rules 驅動)
  * ========================================================= */
@@ -1437,7 +1434,6 @@ if (filterStatusSelect) {
     renderIncremental_(activePanel);
   });
 }
-if (refreshBtn) refreshBtn.addEventListener("click", () => refreshStatus(true));
 
 function setActivePanel(panel) {
   activePanel = panel;
@@ -1456,23 +1452,138 @@ function setActivePanel(panel) {
 }
 
 /* =========================================================
- * App start
+ * ✅ Adaptive Polling（降低 GAS 壓力）
  * ========================================================= */
 let pollTimer = null;
 
+// 可調參數
+const POLL = {
+  BASE_MS: 3000,       // 最快（原本 3s）
+  MAX_MS: 20000,       // 穩定後最慢（建議 15~30s）
+  FAIL_MAX_MS: 60000,  // 失敗退避封頂
+  STABLE_UP_AFTER: 3,  // 連續成功幾次後開始放慢
+  CHANGED_BOOST_MS: 4500, // 有變動時，下次偏快
+  JITTER_RATIO: 0.2,   // ±20% 抖動（去同步）
+};
+
+const pollState_ = {
+  successStreak: 0,
+  failStreak: 0,
+  nextMs: POLL.BASE_MS,
+};
+
+function withJitter_(ms, ratio) {
+  const r = typeof ratio === "number" ? ratio : 0.15;
+  const delta = ms * r;
+  const j = (Math.random() * 2 - 1) * delta;
+  return Math.max(800, Math.floor(ms + j));
+}
+function clearPoll_() {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = null;
+}
+function scheduleNextPoll_(ms) {
+  clearPoll_();
+  const wait = withJitter_(ms, POLL.JITTER_RATIO);
+
+  pollTimer = setTimeout(async () => {
+    if (document.hidden) return;
+
+    const res = await refreshStatusAdaptive_(false);
+    const next = computeNextInterval_(res);
+    scheduleNextPoll_(next);
+  }, wait);
+}
+function computeNextInterval_(res) {
+  const ok = !!(res && res.ok);
+  const changed = !!(res && res.changed);
+
+  if (!ok) {
+    pollState_.failStreak += 1;
+    pollState_.successStreak = 0;
+
+    const backoff = Math.min(POLL.FAIL_MAX_MS, POLL.BASE_MS * Math.pow(2, pollState_.failStreak));
+    pollState_.nextMs = Math.max(POLL.BASE_MS, backoff);
+    return pollState_.nextMs;
+  }
+
+  pollState_.successStreak += 1;
+  pollState_.failStreak = 0;
+
+  if (changed) {
+    pollState_.nextMs = Math.max(POLL.BASE_MS, Math.min(POLL.MAX_MS, POLL.CHANGED_BOOST_MS));
+    return pollState_.nextMs;
+  }
+
+  if (pollState_.successStreak < POLL.STABLE_UP_AFTER) {
+    pollState_.nextMs = Math.max(POLL.BASE_MS, pollState_.nextMs);
+    return pollState_.nextMs;
+  }
+
+  const s = pollState_.successStreak;
+  let target;
+  if (s < 6) target = 5000;
+  else if (s < 10) target = 8000;
+  else if (s < 16) target = 12000;
+  else target = POLL.MAX_MS;
+
+  pollState_.nextMs = Math.min(POLL.MAX_MS, Math.max(POLL.BASE_MS, target));
+  return pollState_.nextMs;
+}
+
+// refreshStatus 不回傳 changed，所以包一層推斷 changed（你的 diffMerge 只有 changed 才會替換 rawData）
+async function refreshStatusAdaptive_(isManual) {
+  try {
+    const beforeBody = rawData.body;
+    const beforeFoot = rawData.foot;
+
+    await refreshStatus(isManual);
+
+    const changed = beforeBody !== rawData.body || beforeFoot !== rawData.foot;
+    return { ok: true, changed };
+  } catch (e) {
+    return { ok: false, changed: false };
+  }
+}
+
+/* =========================================================
+ * App start（改成自適應輪詢）
+ * ========================================================= */
 function startApp() {
   setActivePanel("body");
-  refreshStatus(false);
 
-  const intervalMs = 3 * 1000;
-  const jitter = Math.floor(Math.random() * 3000);
+  // 手動重整：立即抓 + 重置節奏（避免剛穩定到 20s 還要等很久）
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      pollState_.successStreak = 0;
+      pollState_.failStreak = 0;
+      pollState_.nextMs = POLL.BASE_MS;
 
-  if (pollTimer) clearInterval(pollTimer);
+      const res = await refreshStatusAdaptive_(true);
+      const next = computeNextInterval_(res);
+      scheduleNextPoll_(next);
+    });
+  }
 
-  setTimeout(() => {
-    pollTimer = setInterval(() => refreshStatus(false), intervalMs);
-  }, jitter);
+  // 首次立即抓一次
+  refreshStatusAdaptive_(false).then((res) => {
+    const next = computeNextInterval_(res);
+    scheduleNextPoll_(next);
+  });
 }
+
+// 前景回來：立即抓一次 + 重置節奏（你原本的 visibilitychange 在這裡升級）
+document.addEventListener("visibilitychange", async () => {
+  if (!document.hidden) {
+    pollState_.successStreak = 0;
+    pollState_.failStreak = 0;
+    pollState_.nextMs = POLL.BASE_MS;
+
+    const res = await refreshStatusAdaptive_(false);
+    const next = computeNextInterval_(res);
+    scheduleNextPoll_(next);
+  }
+});
 
 /* =========================================================
  * Entry
