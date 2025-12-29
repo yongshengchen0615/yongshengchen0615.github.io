@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TestEnvironment Local Ready Event ONLY + StressPlan List (GM_xhr, Dedup)
 // @namespace    http://scriptcat.org/
-// @version      2.4
+// @version      2.5
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅壓測：list 排程（秒數/人數/prefix/panel/間隔/burst）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -55,8 +55,8 @@
     // pad：補零位數（預設 3）
     list: [
       // 範例（需要就打開 enabled + Console 跑）
-       { afterSec: 1,  count: 10, prefix: "A", panel: "body", burst: true, gapMs: 120, timeoutMs: 45000 },
-       { afterSec: 3, count: 2, prefix: "B", panel: "foot", burst: true, gapMs: 120, timeoutMs: 45000 },
+       { afterSec: 1,  count: 10, prefix: "A", panel: "body", burst: true, gapMs: 600, timeoutMs: 45000 },
+       { afterSec: 5, count: 2, prefix: "B", panel: "foot", burst: true, gapMs: 600, timeoutMs: 45000 },
     ],
   };
 
