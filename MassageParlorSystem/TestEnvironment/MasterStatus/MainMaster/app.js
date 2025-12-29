@@ -1,15 +1,13 @@
+/* ================================
+ * app.js (FULL)
+ * ================================ */
+
 /* =========================================================
  * ✅ config.json Loader（支援 _comment）
  * ========================================================= */
 
-// ★ Users API（改為從 config.json 載入）
 let API_BASE_URL = "";
 
-/**
- * 讀取 config.json（標準 JSON，可含 _comment 欄位）
- * - 只讀 API_BASE_URL / DEFAULT_VIEW
- * - _comment 欄位自然忽略
- */
 async function loadConfig_() {
   const res = await fetch("config.json", { cache: "no-store" });
   const cfg = await res.json();
@@ -26,7 +24,7 @@ async function loadConfig_() {
 }
 
 /* =========================================================
- * ✅ Audit 狀態枚舉（新增：系統維護）
+ * ✅ Audit 狀態枚舉
  * ========================================================= */
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 function normalizeAudit_(v) {
@@ -38,26 +36,18 @@ function normalizeAudit_(v) {
 let allUsers = [];
 let filteredUsers = [];
 
-// sort state
 let sortKey = "createdAt";
-let sortDir = "desc"; // asc | desc
+let sortDir = "desc";
 
-// selection state
 const selectedIds = new Set();
+const originalMap = new Map();
+const dirtyMap = new Map();
 
-// dirty state
-const originalMap = new Map(); // userId -> JSON string snapshot
-const dirtyMap = new Map(); // userId -> true
-
-// toast timer
 let toastTimer = null;
-
-// save-all runtime
 let savingAll = false;
 
 /* =========================================================
- * ✅ 欄位分頁 View Tabs（不改 HTML，用 JS 注入）
- *  - all / usage / master / features
+ * ✅ View Tabs
  * ========================================================= */
 const VIEW_ENUM = ["all", "usage", "master", "features"];
 let currentView = localStorage.getItem("users_view") || "usage";
@@ -65,7 +55,6 @@ let currentView = localStorage.getItem("users_view") || "usage";
 function ensureViewTabs_() {
   const head = document.querySelector(".panel-head");
   if (!head) return;
-
   if (document.getElementById("viewTabs")) return;
 
   const wrap = document.createElement("div");
@@ -77,7 +66,6 @@ function ensureViewTabs_() {
     <button class="viewtab" data-view="master" type="button">師傅資訊</button>
     <button class="viewtab" data-view="features" type="button">功能開通</button>
   `;
-
   head.appendChild(wrap);
 
   wrap.addEventListener("click", (e) => {
@@ -93,7 +81,6 @@ function ensureViewTabs_() {
     applyView_();
   });
 
-  // 初始套用
   if (!VIEW_ENUM.includes(currentView)) currentView = "usage";
   applyView_();
 }
@@ -109,7 +96,7 @@ function applyView_() {
 }
 
 /* =========================================================
- * ✅ DOMContentLoaded（先載 config.json）
+ * ✅ DOMContentLoaded
  * ========================================================= */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -118,35 +105,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     initTheme_();
 
-    const themeBtn = document.getElementById("themeToggle");
-    if (themeBtn) themeBtn.addEventListener("click", toggleTheme_);
+    document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
 
-    const reloadBtn = document.getElementById("reloadBtn");
-    if (reloadBtn)
-      reloadBtn.addEventListener("click", async () => {
-        if (savingAll) return;
-        selectedIds.clear();
-        hideBulkBar_();
-        await loadUsers();
-      });
+    document.getElementById("reloadBtn")?.addEventListener("click", async () => {
+      if (savingAll) return;
+      selectedIds.clear();
+      hideBulkBar_();
+      await loadUsers();
+    });
 
-    const clearSearchBtn = document.getElementById("clearSearchBtn");
-    if (clearSearchBtn)
-      clearSearchBtn.addEventListener("click", () => {
-        if (savingAll) return;
-        const si = document.getElementById("searchInput");
-        if (si) si.value = "";
-
-        const box = si?.closest(".search-box");
-        box?.classList.remove("is-searching");
-
-        applyFilters();
-      });
+    document.getElementById("clearSearchBtn")?.addEventListener("click", () => {
+      if (savingAll) return;
+      const si = document.getElementById("searchInput");
+      if (si) si.value = "";
+      si?.closest(".search-box")?.classList.remove("is-searching");
+      applyFilters();
+    });
 
     ensureSaveAllButton_();
     ensureMobileSelectAll_();
     ensureViewTabs_();
-    ensurePushPanel_(); // ✅ NEW：推播面板
+    ensurePushPanel_();
 
     bindFilter();
     bindSorting_();
@@ -165,9 +144,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           applyFilters();
         }, 180)
       );
-
-      const box = searchInput.closest(".search-box");
-      box?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
+      searchInput.closest(".search-box")?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
     }
 
     loadUsers();
@@ -178,7 +155,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 /* ========= Theme ========= */
-
 function initTheme_() {
   const saved = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
@@ -200,65 +176,39 @@ function updateThemeButtonText_() {
 }
 
 /* ========= UI Lock ========= */
-
 function setEditingEnabled_(enabled) {
   const lock = !enabled;
 
-  const panel = document.querySelector(".panel");
-  if (panel) panel.classList.toggle("is-locked", lock);
-
-  const reloadBtn = document.getElementById("reloadBtn");
-  if (reloadBtn) reloadBtn.disabled = lock;
-
-  const themeBtn = document.getElementById("themeToggle");
-  if (themeBtn) themeBtn.disabled = lock;
-
-  document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
-
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) searchInput.disabled = lock;
-
-  const clearSearchBtn = document.getElementById("clearSearchBtn");
-  if (clearSearchBtn) clearSearchBtn.disabled = lock;
-
-  const ids = [
-    "checkAll",
-    "mobileCheckAll",
-    "bulkClear",
-    "bulkAudit",
-    "bulkPush",
-    "bulkPersonalStatus",
-    "bulkScheduleEnabled",
-    "bulkUsageDays",
-    "bulkApply",
-    "bulkDelete",
-  ];
-  ids.forEach((id) => {
+  document.querySelector(".panel")?.classList.toggle("is-locked", lock);
+  ["reloadBtn","themeToggle","searchInput","clearSearchBtn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = lock;
   });
 
-  const tbody = document.getElementById("tbody");
-  if (tbody) tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = lock));
+  document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
+
+  const ids = [
+    "checkAll","mobileCheckAll","bulkClear","bulkAudit","bulkPush","bulkPersonalStatus",
+    "bulkScheduleEnabled","bulkUsageDays","bulkApply","bulkDelete"
+  ];
+  ids.forEach((id) => document.getElementById(id) && (document.getElementById(id).disabled = lock));
 
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.style.pointerEvents = lock ? "none" : "";
     th.style.opacity = lock ? "0.6" : "";
   });
 
+  document.getElementById("tbody")?.querySelectorAll("input, select, button").forEach((el) => (el.disabled = lock));
+
   applyView_();
   refreshSaveAllButton_();
-
-  // ✅ NEW：推播面板同步 lock
   pushSetEnabled_(!lock);
 }
 
 /* ========= Save All Button ========= */
-
 function ensureSaveAllButton_() {
   const topRight = document.querySelector(".topbar-right");
   if (!topRight) return;
-
   if (document.getElementById("saveAllBtn")) return;
 
   const btn = document.createElement("button");
@@ -280,10 +230,18 @@ function ensureSaveAllButton_() {
   refreshSaveAllButton_();
 }
 
+function refreshSaveAllButton_() {
+  const btn = document.getElementById("saveAllBtn");
+  if (!btn) return;
+  const dirtyCount = dirtyMap.size;
+  btn.disabled = savingAll || dirtyCount === 0;
+  btn.textContent = savingAll ? "儲存中..." : dirtyCount ? `儲存全部變更（${dirtyCount}）` : "儲存全部變更";
+}
+
+/* ========= Mobile Select All ========= */
 function ensureMobileSelectAll_() {
   const filters = document.querySelector(".panel-head .filters");
   if (!filters) return;
-
   if (document.getElementById("mobileCheckAll")) return;
 
   const wrap = document.createElement("div");
@@ -293,7 +251,6 @@ function ensureMobileSelectAll_() {
     <span class="label">全選</span>
     <span class="hint" id="mobileCheckAllHint">（0/${filteredUsers.length || 0}）</span>
   `;
-
   filters.appendChild(wrap);
 
   const mobile = wrap.querySelector("#mobileCheckAll");
@@ -312,17 +269,7 @@ function ensureMobileSelectAll_() {
   });
 }
 
-function refreshSaveAllButton_() {
-  const btn = document.getElementById("saveAllBtn");
-  if (!btn) return;
-
-  const dirtyCount = dirtyMap.size;
-  btn.disabled = savingAll || dirtyCount === 0;
-  btn.textContent = savingAll ? `儲存中...` : dirtyCount ? `儲存全部變更（${dirtyCount}）` : "儲存全部變更";
-}
-
 /* ========= Filters ========= */
-
 function bindFilter() {
   document.querySelectorAll(".chip").forEach((chip) => {
     chip.addEventListener("click", () => {
@@ -443,13 +390,13 @@ function updateFooter() {
 }
 
 /* ========= Sorting ========= */
-
 function bindSorting_() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.addEventListener("click", () => {
       if (savingAll) return;
       const key = th.dataset.sort;
       if (!key) return;
+
       if (sortKey === key) sortDir = sortDir === "asc" ? "desc" : "asc";
       else {
         sortKey = key;
@@ -490,6 +437,7 @@ function compareBy_(a, b, key, dir) {
     const db = toTime_(bv);
     return (da - db) * sgn;
   }
+
   if (key === "startDate") {
     const da = toTime_(String(av || "") + "T00:00:00");
     const db = toTime_(String(bv || "") + "T00:00:00");
@@ -512,9 +460,6 @@ function toTime_(v) {
   return isNaN(t) ? 0 : t;
 }
 
-/* =========================================================
- * ✅ FIX：到期排序對齊 GAS（start + (usageDays-1)）
- * ========================================================= */
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
 
@@ -525,8 +470,8 @@ function getExpiryDiff_(u) {
   if (!Number.isFinite(usage) || usage <= 0) return 999999;
 
   const last = new Date(start.getTime() + (usage - 1) * 86400000);
-
   last.setHours(0, 0, 0, 0);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -534,35 +479,26 @@ function getExpiryDiff_(u) {
 }
 
 /* ========= Selection + Bulk ========= */
-
 function bindBulk_() {
-  const checkAll = document.getElementById("checkAll");
-  if (checkAll) {
-    checkAll.addEventListener("change", () => {
-      if (savingAll) return;
-      const checked = !!checkAll.checked;
-      filteredUsers.forEach((u) => (checked ? selectedIds.add(u.userId) : selectedIds.delete(u.userId)));
-      renderTable();
-      updateBulkBar_();
-      syncCheckAll_();
-    });
-  }
+  document.getElementById("checkAll")?.addEventListener("change", () => {
+    if (savingAll) return;
+    const checked = !!document.getElementById("checkAll").checked;
+    filteredUsers.forEach((u) => (checked ? selectedIds.add(u.userId) : selectedIds.delete(u.userId)));
+    renderTable();
+    updateBulkBar_();
+    syncCheckAll_();
+  });
 
-  const bulkClear = document.getElementById("bulkClear");
-  if (bulkClear)
-    bulkClear.addEventListener("click", () => {
-      if (savingAll) return;
-      selectedIds.clear();
-      renderTable();
-      updateBulkBar_();
-      syncCheckAll_();
-    });
+  document.getElementById("bulkClear")?.addEventListener("click", () => {
+    if (savingAll) return;
+    selectedIds.clear();
+    renderTable();
+    updateBulkBar_();
+    syncCheckAll_();
+  });
 
-  const bulkApply = document.getElementById("bulkApply");
-  if (bulkApply) bulkApply.addEventListener("click", () => bulkApply_());
-
-  const bulkDelete = document.getElementById("bulkDelete");
-  if (bulkDelete) bulkDelete.addEventListener("click", () => bulkDelete_());
+  document.getElementById("bulkApply")?.addEventListener("click", () => bulkApply_());
+  document.getElementById("bulkDelete")?.addEventListener("click", () => bulkDelete_());
 }
 
 function updateBulkBar_() {
@@ -588,7 +524,6 @@ function syncCheckAll_() {
   const checkAll = document.getElementById("checkAll");
   const mobile = document.getElementById("mobileCheckAll");
   const hint = document.getElementById("mobileCheckAllHint");
-
   const total = filteredUsers.length;
 
   const setState = (el, checked, indeterminate) => {
@@ -597,10 +532,8 @@ function syncCheckAll_() {
     el.indeterminate = indeterminate;
   };
 
-  if (hint) {
-    const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
-    hint.textContent = `（${selCount}/${total}）`;
-  }
+  const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
+  if (hint) hint.textContent = `（${selCount}/${total}）`;
 
   if (!total) {
     setState(checkAll, false, false);
@@ -608,7 +541,6 @@ function syncCheckAll_() {
     return;
   }
 
-  const selCount = filteredUsers.filter((u) => selectedIds.has(u.userId)).length;
   setState(checkAll, selCount === total, selCount > 0 && selCount < total);
   setState(mobile, selCount === total, selCount > 0 && selCount < total);
 }
@@ -641,7 +573,6 @@ async function bulkApply_() {
     if (!u) return;
 
     if (audit) u.audit = normalizeAudit_(audit);
-
     if (usageDaysRaw) u.usageDays = String(usageDays);
 
     if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
@@ -702,7 +633,6 @@ async function bulkDelete_() {
 }
 
 /* ========= Table ========= */
-
 function renderTable() {
   const tbody = document.getElementById("tbody");
   if (!tbody) return;
@@ -803,8 +733,7 @@ function renderTable() {
   tbody.appendChild(frag);
 
   if (savingAll) {
-    const tb = document.getElementById("tbody");
-    if (tb) tb.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
+    tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
 }
 
@@ -824,14 +753,12 @@ function refreshSortIndicators_() {
 }
 
 /* ========= Delegation ========= */
-
 function bindTableDelegation_() {
   const tbody = document.getElementById("tbody");
   if (!tbody) return;
 
   tbody.addEventListener("change", (e) => {
     if (savingAll) return;
-
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
 
@@ -894,6 +821,7 @@ function handleRowFieldChange_(fieldEl) {
 
   const audit = normalizeAudit_(u.audit);
   const pushSel = row.querySelector('select[data-field="pushEnabled"]');
+
   if (audit !== "通過") {
     u.pushEnabled = "否";
     if (pushSel) {
@@ -983,7 +911,6 @@ async function handleRowDelete_(row, userId, delBtn) {
 }
 
 /* ========= Save All Dirty ========= */
-
 async function saveAllDirty_() {
   const dirtyIds = Array.from(dirtyMap.keys());
   if (!dirtyIds.length) {
@@ -1014,8 +941,8 @@ async function saveAllDirty_() {
         };
       });
 
-    const el = document.getElementById("footerStatus");
-    if (el) el.textContent = `儲存中：1/1（共 ${items.length} 筆）`;
+    document.getElementById("footerStatus") &&
+      (document.getElementById("footerStatus").textContent = `儲存中：1/1（共 ${items.length} 筆）`);
 
     const ret = await updateUsersBatch(items);
 
@@ -1060,7 +987,6 @@ async function saveAllDirty_() {
 }
 
 /* ========= Helpers ========= */
-
 function auditOption(value, current) {
   const sel = value === current ? "selected" : "";
   return `<option value="${value}" ${sel}>${value}</option>`;
@@ -1068,24 +994,15 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (normalizeAudit_(audit)) {
-    case "通過":
-      return "approved";
-    case "待審核":
-      return "pending";
-    case "拒絕":
-      return "rejected";
-    case "停用":
-      return "disabled";
-    case "系統維護":
-      return "maintenance";
-    default:
-      return "other";
+    case "通過": return "approved";
+    case "待審核": return "pending";
+    case "拒絕": return "rejected";
+    case "停用": return "disabled";
+    case "系統維護": return "maintenance";
+    default: return "other";
   }
 }
 
-/* =========================================================
- * ✅ FIX：到期顯示對齊 GAS（start + (usageDays-1)）
- * ========================================================= */
 function getExpiryInfo(u) {
   if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
 
@@ -1096,8 +1013,8 @@ function getExpiryInfo(u) {
   if (!Number.isFinite(usage) || usage <= 0) return { cls: "unset", text: "未設定" };
 
   const last = new Date(start.getTime() + (usage - 1) * 86400000);
-
   last.setHours(0, 0, 0, 0);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -1128,7 +1045,6 @@ function markDirty_(userId, u) {
 }
 
 /* ========= API ========= */
-
 async function updateUsersBatch(items) {
   try {
     const res = await fetch(API_BASE_URL, {
@@ -1159,7 +1075,6 @@ async function deleteUser(userId) {
 }
 
 /* ========= Toast ========= */
-
 function toast(msg, type) {
   const el = document.getElementById("toast");
   if (!el) return;
@@ -1175,7 +1090,6 @@ function toast(msg, type) {
 }
 
 /* ========= Utils ========= */
-
 function setText_(id, v) {
   const el = document.getElementById(id);
   if (el) el.textContent = String(v ?? "-");
@@ -1203,9 +1117,8 @@ function sleep_(ms) {
 }
 
 /* =========================================================
- * ✅ Push Panel（推播面板 / 單一/選取/篩選/全部 + displayName 前綴）
+ * ✅ Push Panel（device agnostic layout）
  * ========================================================= */
-
 let pushingNow = false;
 
 function ensurePushPanel_() {
@@ -1220,8 +1133,8 @@ function ensurePushPanel_() {
   wrap.style.marginTop = "10px";
 
   wrap.innerHTML = `
-    <div class="bulkbar" style="border:1px solid var(--border); border-radius:14px;">
-      <div class="bulk-left" style="flex-wrap:wrap;">
+    <div class="pushbar">
+      <div class="pushbar-left">
         <span class="bulk-pill" style="border-color:rgba(147,51,234,.35); background:rgba(147,51,234,.12); color:rgb(167,139,250);">
           推播
         </span>
@@ -1238,7 +1151,8 @@ function ensurePushPanel_() {
 
         <div class="bulk-group" id="pushSingleWrap" style="display:none;">
           <label class="bulk-label" for="pushSingleUserId">userId</label>
-          <input id="pushSingleUserId" class="select" type="text" placeholder="貼上 userId（LINE userId）" style="min-width:300px;" />
+          <input id="pushSingleUserId" class="select push-single" type="text"
+            placeholder="貼上 userId（LINE userId）" />
         </div>
 
         <div class="bulk-group">
@@ -1250,9 +1164,10 @@ function ensurePushPanel_() {
         </div>
       </div>
 
-      <div class="bulk-right" style="flex:1; justify-content:flex-end;">
-        <div class="bulk-group" style="flex:1; min-width:320px;">
-          <input id="pushMessage" class="select" type="text" placeholder="輸入要推播的訊息…" style="width:100%;" />
+      <div class="pushbar-right">
+        <div class="bulk-group" style="flex:1; width:100%;">
+          <input id="pushMessage" class="select push-message" type="text"
+            placeholder="輸入要推播的訊息…" />
         </div>
 
         <button id="pushSendBtn" class="btn primary" type="button">送出推播</button>
@@ -1264,14 +1179,13 @@ function ensurePushPanel_() {
 
   const targetSel = document.getElementById("pushTarget");
   const singleWrap = document.getElementById("pushSingleWrap");
-  const sendBtn = document.getElementById("pushSendBtn");
 
   targetSel?.addEventListener("change", () => {
     const v = targetSel.value;
     if (singleWrap) singleWrap.style.display = v === "single" ? "" : "none";
   });
 
-  sendBtn?.addEventListener("click", async () => {
+  document.getElementById("pushSendBtn")?.addEventListener("click", async () => {
     if (savingAll || pushingNow) return;
     await pushSend_();
   });
@@ -1281,9 +1195,7 @@ function ensurePushPanel_() {
 
 function pushSetEnabled_(enabled) {
   const lock = !enabled || pushingNow;
-
-  const ids = ["pushTarget", "pushSingleUserId", "pushIncludeName", "pushMessage", "pushSendBtn"];
-  ids.forEach((id) => {
+  ["pushTarget","pushSingleUserId","pushIncludeName","pushMessage","pushSendBtn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = lock;
   });
@@ -1320,8 +1232,7 @@ async function pushSend_() {
   }
 
   const n = userIds.length;
-  const warn = includeDisplayName ? "⚠️ 勾選 displayName 前綴：會改為逐人 push（較慢）。\n\n" : "";
-
+  const warn = includeDisplayName ? "⚠️ 勾選 displayName 前綴：後端可能需要逐人處理（較慢）。\n\n" : "";
   if (target === "all" || target === "filtered" || n > 30) {
     const ok = confirm(`即將推播給 ${n} 位使用者。\n\n${warn}確定要送出嗎？`);
     if (!ok) return;
@@ -1332,7 +1243,6 @@ async function pushSend_() {
 
   try {
     const ret = await pushMessageBatch_(userIds, message, includeDisplayName);
-
     const okCount = Number(ret?.okCount || 0);
     const failCount = Number(ret?.failCount || 0);
 
