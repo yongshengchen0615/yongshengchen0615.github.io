@@ -145,7 +145,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     ensureSaveAllButton_();
     ensureMobileSelectAll_();
-    ensureViewTabs_(); // ✅ NEW
+    ensureViewTabs_();
+    ensurePushPanel_(); // ✅ NEW：推播面板
 
     bindFilter();
     bindSorting_();
@@ -228,7 +229,7 @@ function setEditingEnabled_(enabled) {
     "bulkPush",
     "bulkPersonalStatus",
     "bulkScheduleEnabled",
-    "bulkUsageDays", // ✅ NEW
+    "bulkUsageDays",
     "bulkApply",
     "bulkDelete",
   ];
@@ -245,8 +246,11 @@ function setEditingEnabled_(enabled) {
     th.style.opacity = lock ? "0.6" : "";
   });
 
-  applyView_(); // ✅ viewTabs disabled 狀態同步
+  applyView_();
   refreshSaveAllButton_();
+
+  // ✅ NEW：推播面板同步 lock
+  pushSetEnabled_(!lock);
 }
 
 /* ========= Save All Button ========= */
@@ -510,8 +514,6 @@ function toTime_(v) {
 
 /* =========================================================
  * ✅ FIX：到期排序對齊 GAS（start + (usageDays-1)）
- * - 回傳剩餘天數 diff（可為負）
- * - 未設定回傳超大值，讓它排在後面
  * ========================================================= */
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
@@ -522,13 +524,9 @@ function getExpiryDiff_(u) {
   const usage = Number(u.usageDays);
   if (!Number.isFinite(usage) || usage <= 0) return 999999;
 
-  // GAS: lastUsableDay = start + (usageDays - 1)
   const last = new Date(start.getTime() + (usage - 1) * 86400000);
 
-  // 對齊「天」：避免因為現在時間造成跳動
-  start.setHours(0, 0, 0, 0);
   last.setHours(0, 0, 0, 0);
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -623,7 +621,6 @@ async function bulkApply_() {
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
   const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
-  // ✅ NEW：批次期限(天)
   const usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
   const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
   if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
@@ -645,7 +642,6 @@ async function bulkApply_() {
 
     if (audit) u.audit = normalizeAudit_(audit);
 
-    // ✅ NEW：套用 usageDays
     if (usageDaysRaw) u.usageDays = String(usageDays);
 
     if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
@@ -1089,9 +1085,6 @@ function auditClass_(audit) {
 
 /* =========================================================
  * ✅ FIX：到期顯示對齊 GAS（start + (usageDays-1)）
- * - 未設定：unset
- * - diff < 0：expired（已過期）
- * - diff >=0：active（剩 diff 天）
  * ========================================================= */
 function getExpiryInfo(u) {
   if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
@@ -1102,10 +1095,8 @@ function getExpiryInfo(u) {
   const usage = Number(u.usageDays);
   if (!Number.isFinite(usage) || usage <= 0) return { cls: "unset", text: "未設定" };
 
-  // GAS: lastUsableDay = start + (usageDays - 1)
   const last = new Date(start.getTime() + (usage - 1) * 86400000);
 
-  // 對齊「天」：用 00:00 讓 diff 穩定
   last.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1209,4 +1200,168 @@ function debounce(fn, wait) {
 
 function sleep_(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/* =========================================================
+ * ✅ Push Panel（推播面板 / 單一/選取/篩選/全部 + displayName 前綴）
+ * ========================================================= */
+
+let pushingNow = false;
+
+function ensurePushPanel_() {
+  const panelHead = document.querySelector(".panel-head");
+  if (!panelHead) return;
+  if (document.getElementById("pushPanel")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "pushPanel";
+  wrap.style.flex = "0 0 100%";
+  wrap.style.width = "100%";
+  wrap.style.marginTop = "10px";
+
+  wrap.innerHTML = `
+    <div class="bulkbar" style="border:1px solid var(--border); border-radius:14px;">
+      <div class="bulk-left" style="flex-wrap:wrap;">
+        <span class="bulk-pill" style="border-color:rgba(147,51,234,.35); background:rgba(147,51,234,.12); color:rgb(167,139,250);">
+          推播
+        </span>
+
+        <div class="bulk-group">
+          <label class="bulk-label" for="pushTarget">對象</label>
+          <select id="pushTarget" class="select">
+            <option value="selected">選取的（勾選）</option>
+            <option value="filtered">目前篩選結果</option>
+            <option value="all">全部</option>
+            <option value="single">單一 userId</option>
+          </select>
+        </div>
+
+        <div class="bulk-group" id="pushSingleWrap" style="display:none;">
+          <label class="bulk-label" for="pushSingleUserId">userId</label>
+          <input id="pushSingleUserId" class="select" type="text" placeholder="貼上 userId（LINE userId）" style="min-width:300px;" />
+        </div>
+
+        <div class="bulk-group">
+          <label class="bulk-label" style="user-select:none;">displayName 前綴</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); user-select:none;">
+            <input id="pushIncludeName" type="checkbox" />
+            加上 displayName
+          </label>
+        </div>
+      </div>
+
+      <div class="bulk-right" style="flex:1; justify-content:flex-end;">
+        <div class="bulk-group" style="flex:1; min-width:320px;">
+          <input id="pushMessage" class="select" type="text" placeholder="輸入要推播的訊息…" style="width:100%;" />
+        </div>
+
+        <button id="pushSendBtn" class="btn primary" type="button">送出推播</button>
+      </div>
+    </div>
+  `;
+
+  panelHead.appendChild(wrap);
+
+  const targetSel = document.getElementById("pushTarget");
+  const singleWrap = document.getElementById("pushSingleWrap");
+  const sendBtn = document.getElementById("pushSendBtn");
+
+  targetSel?.addEventListener("change", () => {
+    const v = targetSel.value;
+    if (singleWrap) singleWrap.style.display = v === "single" ? "" : "none";
+  });
+
+  sendBtn?.addEventListener("click", async () => {
+    if (savingAll || pushingNow) return;
+    await pushSend_();
+  });
+
+  pushSetEnabled_(!savingAll);
+}
+
+function pushSetEnabled_(enabled) {
+  const lock = !enabled || pushingNow;
+
+  const ids = ["pushTarget", "pushSingleUserId", "pushIncludeName", "pushMessage", "pushSendBtn"];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = lock;
+  });
+
+  const btn = document.getElementById("pushSendBtn");
+  if (btn) btn.textContent = pushingNow ? "推播中…" : "送出推播";
+}
+
+function buildPushTargetIds_(target) {
+  if (target === "single") {
+    const uid = String(document.getElementById("pushSingleUserId")?.value || "").trim();
+    return uid ? [uid] : [];
+  }
+  if (target === "selected") return Array.from(selectedIds);
+  if (target === "filtered") return filteredUsers.map((u) => u.userId).filter(Boolean);
+  if (target === "all") return allUsers.map((u) => u.userId).filter(Boolean);
+  return [];
+}
+
+async function pushSend_() {
+  const target = String(document.getElementById("pushTarget")?.value || "selected");
+  const includeDisplayName = !!document.getElementById("pushIncludeName")?.checked;
+  const message = String(document.getElementById("pushMessage")?.value || "").trim();
+
+  if (!message) {
+    toast("請輸入推播內容", "err");
+    return;
+  }
+
+  const userIds = buildPushTargetIds_(target);
+  if (!userIds.length) {
+    toast(target === "selected" ? "請先勾選要推播的使用者" : "找不到推播對象", "err");
+    return;
+  }
+
+  const n = userIds.length;
+  const warn = includeDisplayName ? "⚠️ 勾選 displayName 前綴：會改為逐人 push（較慢）。\n\n" : "";
+
+  if (target === "all" || target === "filtered" || n > 30) {
+    const ok = confirm(`即將推播給 ${n} 位使用者。\n\n${warn}確定要送出嗎？`);
+    if (!ok) return;
+  }
+
+  pushingNow = true;
+  pushSetEnabled_(false);
+
+  try {
+    const ret = await pushMessageBatch_(userIds, message, includeDisplayName);
+
+    const okCount = Number(ret?.okCount || 0);
+    const failCount = Number(ret?.failCount || 0);
+
+    if (failCount === 0) toast(`推播完成：成功 ${okCount} 筆`, "ok");
+    else toast(`推播完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
+
+    if (ret?.fail?.length) console.warn("push fail:", ret.fail);
+  } catch (e) {
+    console.error("pushSend error:", e);
+    toast("推播失敗（請看 console）", "err");
+  } finally {
+    pushingNow = false;
+    pushSetEnabled_(!savingAll);
+  }
+}
+
+async function pushMessageBatch_(userIds, message, includeDisplayName) {
+  if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
+  const res = await fetch(API_BASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      mode: "pushMessage",
+      userIds,
+      message,
+      includeDisplayName: includeDisplayName ? "是" : "否",
+    }),
+  });
+
+  return await res.json().catch(() => ({}));
 }
