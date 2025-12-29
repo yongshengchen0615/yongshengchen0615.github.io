@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TestEnvironment Local  Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + TestPlan)
 // @namespace    http://scriptcat.org/
-// @version      1.0
+// @version      1.1
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：用 list 排程幾秒後送幾筆（可指定同一 userId）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -47,7 +47,7 @@
 
     // ✅ 你的 LINE userId（全部都送到同一人）
     // 你只要改這個就好
-    targetUserId: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    targetUserId: "U974e3043db80b35e38fca1f5172fa917",
 
     // list：每一項代表一個批次
     // afterSec：幾秒後開始送
