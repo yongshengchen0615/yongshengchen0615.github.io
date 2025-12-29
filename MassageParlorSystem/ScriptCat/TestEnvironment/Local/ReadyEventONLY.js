@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         TestEnvironment Local Ready Event ONLY + StressPlan List (GM_xhr, Dedup)
+// @name         TestEnvironment Local  Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + TestPlan)
 // @namespace    http://scriptcat.org/
-// @version      2.6
-// @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅壓測：list 排程（秒數/人數/prefix/panel/間隔/burst）
+// @version      1.0
+// @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：用 list 排程幾秒後送幾筆（可指定同一 userId）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
@@ -21,74 +21,68 @@
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
   // =========================
-  const INTERVAL_MS = 2000; // 每 2000ms 掃一次（若要 2 分鐘=120000）
+  const INTERVAL_MS = 2000; // 每 2 秒掃一次（你原註解寫 2 分鐘，但實際是 2 秒）
 
   // LOG_MODE：
-  // - "full"  ：詳細 log
-  // - "group" ：折疊群組 log
+  // - "full"  ：詳細 log（包含回應等）
+  // - "group" ：折疊群組 log（較乾淨）
   // - "off"   ：完全不印 log
   const LOG_MODE = "group";
 
   // 是否啟用「準備事件」送出（正式核心功能）
   const ENABLE_READY_EVENT = true;
 
-  // 正式端去重：同一位師傅、同一面板，兩次準備事件至少隔多久才允許再送
-  const READY_EVENT_DEDUP_MS = 2000; // 2000ms（若要 2 分鐘=120000）
+  // 前端去重：同一位師傅、同一面板，兩次準備事件至少隔多久才允許再送
+  const READY_EVENT_DEDUP_MS = 2000; // 2 秒（你原註解寫 2 分鐘，但實際是 2 秒）
 
   // =========================
-  // ✅ 3) 壓測 list 排程模組（預設關閉）
+  // ✅ 3) TestPlan：list 測試推播模組（你要的）
   // =========================
-  const STRESS_PLAN = {
-    enabled: false, // ✅ 壓測總開關（正式預設 false）
-    autorun: false, // ✅ 是否載入後自動跑（建議 false）
-    delayMs: 1500,  // autorun 延遲（ms）
+  // 目的：不用真的切狀態，也能用排程「幾秒後送幾筆」
+  // 特點：全部可以指定送到同一個 userId（targetUserId）
+  const TEST_PLAN = {
+    enabled: true,            // ✅ 總開關（要測就 true）
+    autorun: false,           // ✅ 載入後自動跑（想自動就 true）
+    delayMs: 800,             // autorun 延遲
 
-    // ✅ list：可排多組
-    // afterSec：幾秒後開始
-    // count：人數
-    // prefix：masterId 前綴（你要的「組數的開頭字母」）
-    // panel：body 或 foot
-    // burst：true=同時全部送；false=依 gapMs 間隔送
-    // gapMs：burst=false 時每筆間隔
-    // timeoutMs：GM 超時（GAS lock/寫表慢建議 45000）
-    // startIndex：序號起始（預設 1 → prefix001）
-    // pad：補零位數（預設 3）
+    // ✅ 你的 LINE userId（全部都送到同一人）
+    // 你只要改這個就好
+    targetUserId: "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+
+    // list：每一項代表一個批次
+    // afterSec：幾秒後開始送
+    // count：送幾筆（你說的人數，但這裡就是送幾次事件）
+    // gapMs：同一批內每筆間隔（避免全塞同一瞬間）
+    // panel：body/foot
     list: [
-      // 範例（需要就打開 enabled + Console 跑）
-       { afterSec: 1,  count: 10, prefix: "A", panel: "body", burst: true, gapMs: 600, timeoutMs: 45000 },
-       { afterSec: 5, count: 2, prefix: "B", panel: "foot", burst: true, gapMs: 600, timeoutMs: 45000 },
+      { name: "batch-1", afterSec: 3, count: 10, gapMs: 300, panel: "body" },
+      { name: "batch-2", afterSec: 6, count: 2,  gapMs: 300, panel: "body" },
     ],
   };
 
   console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
 
   // =========================
-  // ✅ 4) 工具：ISO 時間
+  // ✅ 4) 工具：時間字串
   // =========================
   function nowIso() {
     return new Date().toISOString();
   }
 
   // =========================
-  // ✅ 5) DOM 工具：取文字（去空白）
+  // ✅ 5) DOM 工具
   // =========================
   function getText(el) {
     if (!el) return "";
     return el.textContent.replace(/\s+/g, "").trim();
   }
 
-  // =========================
-  // ✅ 6) DOM 工具：取狀態欄第一個 span 的 class
-  // =========================
   function getFirstSpanClass(el) {
     if (!el) return "";
     const span = el.querySelector("span[class]");
     return span ? span.className.trim() : "";
   }
 
-  // =========================
-  // ✅ 7) DOM 工具：從 className 抓 bg-*
-  // =========================
   function getBgClass(el) {
     if (!el) return "";
     const cls = (el.className || "").toString();
@@ -97,7 +91,7 @@
   }
 
   // =========================
-  // ✅ 8) 解析單列師傅資料（1 row -> object）
+  // ✅ 6) 解析單列
   // =========================
   function parseRow(row) {
     const cells = row.querySelectorAll(":scope > div");
@@ -115,7 +109,6 @@
 
     if (!masterText) return null;
 
-    // 若 statusText 是純數字 -> 工作中 + remaining
     let remaining = "";
     if (/^-?\d+$/.test(statusText)) {
       remaining = parseInt(statusText, 10);
@@ -124,7 +117,6 @@
 
     const colorStatus = getFirstSpanClass(statusCell);
     const bgStatus = getBgClass(statusCell);
-
     const idxNum = indexText ? parseInt(indexText, 10) : "";
 
     return {
@@ -139,9 +131,6 @@
     };
   }
 
-  // =========================
-  // ✅ 9) 掃描某個面板取得所有列資料
-  // =========================
   function scanPanel(panelEl) {
     if (!panelEl) return [];
     const rows = panelEl.querySelectorAll(
@@ -156,9 +145,6 @@
     return list;
   }
 
-  // =========================
-  // ✅ 10) 找到「身體」面板容器
-  // =========================
   function findBodyPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.mr-2");
     for (const el of list) {
@@ -168,9 +154,6 @@
     return null;
   }
 
-  // =========================
-  // ✅ 11) 找到「腳底」面板容器
-  // =========================
   function findFootPanel() {
     const list = document.querySelectorAll("div.flex.flex-col.flex-1.ml-2");
     for (const el of list) {
@@ -181,7 +164,7 @@
   }
 
   // =========================
-  // ✅ 12) 網路送出：GM_xmlhttpRequest
+  // ✅ 7) GM POST
   // =========================
   const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -218,9 +201,6 @@
     }
   }
 
-  // =========================
-  // ✅ 13) 送出策略：sendBeacon 優先，失敗再 fallback GM
-  // =========================
   function postBeaconFirst(url, payload, tag, timeoutMs) {
     if (!url) return;
 
@@ -233,26 +213,18 @@
         if (ok) return;
 
         if (LOG_MODE !== "off") {
-          console.warn(
-            `[ReadyOnly] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`
-          );
+          console.warn(`[ReadyOnly] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`);
         }
       }
     } catch (e) {
       if (LOG_MODE !== "off") {
-        console.warn(
-          `[ReadyOnly] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`,
-          e
-        );
+        console.warn(`[ReadyOnly] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`, e);
       }
     }
 
     postJsonGM(url, payload, timeoutMs);
   }
 
-  // =========================
-  // ✅ 14) Log 工具：group/console 控制
-  // =========================
   function logGroup(title, payload) {
     if (LOG_MODE === "off") return;
     if (LOG_MODE === "full") return console.log(title, payload);
@@ -262,10 +234,10 @@
   }
 
   // =========================
-  // ✅ 15) 正式核心：狀態轉換追蹤（非準備 -> 準備）
+  // ✅ 8) 正式核心：狀態轉換追蹤
   // =========================
-  const lastStatus = new Map();   // key -> last status
-  const readySentAt = new Map();  // key -> last sent ms
+  const lastStatus = new Map();
+  const readySentAt = new Map();
 
   function statusKey(panel, masterId) {
     return `${panel}::${masterId}`;
@@ -302,7 +274,6 @@
           remaining: row.remaining ?? "",
           bgStatus: row.bgStatus ?? "",
           colorStatus: row.colorStatus ?? "",
-          source: "prod",
         };
 
         postBeaconFirst(GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
@@ -313,9 +284,6 @@
     lastStatus.set(k, nowStatus);
   }
 
-  // =========================
-  // ✅ 16) tick：掃描身體+腳底
-  // =========================
   function tick() {
     try {
       if (!ENABLE_READY_EVENT || !GAS_URL) return;
@@ -335,118 +303,96 @@
   }
 
   // =========================
-  // ✅ 17) 壓測 list 模組：masterId 產生器
+  // ✅ 9) TestPlan：排程送「測試事件」（全部送同一 userId）
   // =========================
-  function makePlannedMasterId(prefix, seq, pad) {
-    const p = String(prefix || "T");
-    const w = Number.isFinite(pad) ? pad : 3;
-    return p + String(seq).padStart(w, "0");
-  }
+  // 注意：這裡送的是 mode=ready_event_v1，但 payload 會額外帶 targetUserId
+  // 你 GAS 端只要做：若 payload.targetUserId 存在 → 直接推給該 userId
+  const TEST_TIMEOUT_MS = 45000;
 
-  // =========================
-  // ✅ 18) 壓測 list 模組：送出單筆（依 plan item）
-  // =========================
-  function sendOnePlanned(planItem, i) {
+  function sendOneTestEvent(seq, batchName, panel, targetUserId) {
     const ts = nowIso();
-    const startIndex = Number.isFinite(planItem.startIndex) ? planItem.startIndex : 1;
-    const pad = Number.isFinite(planItem.pad) ? planItem.pad : 3;
-
-    const seq = startIndex + i;
-    const masterId = makePlannedMasterId(planItem.prefix, seq, pad);
 
     const evt = {
       mode: "ready_event_v1",
       timestamp: ts,
-      panel: planItem.panel || "body",
-      masterId,
+      panel: panel || "body",
+
+      // 仍保留 masterId（方便 log 對照），但你可在 GAS 忽略它
+      masterId: `TEST-${batchName}-${String(seq).padStart(3, "0")}`,
+
       status: "準備",
       index: seq,
       appointment: "TEST",
       remaining: "",
       bgStatus: "bg-test",
       colorStatus: "text-test",
-      source: "stress_plan",
-      planAfterSec: planItem.afterSec ?? "",
-      planPrefix: planItem.prefix ?? "",
+
+      // ✅ 核心：全部送同一個 userId
+      targetUserId: targetUserId,
+
+      source: "test_plan",
+      batch: batchName,
     };
 
-    if (LOG_MODE !== "off") console.log("[StressPlan] ▶ send", masterId, ts, "panel=", evt.panel);
+    if (LOG_MODE !== "off") console.log("[TestPlan] ▶ send", batchName, "seq=", seq, "to", targetUserId, ts);
 
-    postJsonGM(GAS_URL, evt, planItem.timeoutMs || 45000);
+    postJsonGM(GAS_URL, evt, TEST_TIMEOUT_MS);
   }
 
-  // =========================
-  // ✅ 19) 壓測 list 模組：跑單一 group
-  // =========================
-  function runOnePlan(planItem) {
-    if (!planItem) return;
-    const count = Number(planItem.count || 0);
-    if (!count || count <= 0) return;
-
-    const burst = !!planItem.burst;
-    const gapMs = Number(planItem.gapMs || 0);
-
-    console.log(
-      `[StressPlan] 🚀 group start: afterSec=${planItem.afterSec}s count=${count} prefix=${planItem.prefix} panel=${planItem.panel} burst=${burst} gapMs=${gapMs}`
-    );
-
-    if (burst) {
-      for (let i = 0; i < count; i++) sendOnePlanned(planItem, i);
-    } else {
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => sendOnePlanned(planItem, i), i * gapMs);
-      }
-    }
-  }
-
-  // =========================
-  // ✅ 20) 壓測 list 模組：依 list 排程多組
-  // =========================
-  function runStressPlan() {
-    if (!GAS_URL) return console.error("[StressPlan] missing GAS_URL");
-    if (!STRESS_PLAN.enabled) return console.warn("[StressPlan] STRESS_PLAN.enabled=false");
-    if (!Array.isArray(STRESS_PLAN.list) || STRESS_PLAN.list.length === 0) {
-      return console.warn("[StressPlan] list empty");
+  function runTestPlan() {
+    if (!GAS_URL) return console.error("[TestPlan] missing GAS_URL");
+    if (!TEST_PLAN.enabled) return console.warn("[TestPlan] TEST_PLAN.enabled=false");
+    if (!TEST_PLAN.targetUserId || !String(TEST_PLAN.targetUserId).trim()) {
+      return console.error("[TestPlan] missing TEST_PLAN.targetUserId");
     }
 
-    console.log(`[StressPlan] 🧩 schedule groups = ${STRESS_PLAN.list.length}`);
+    const targetUserId = String(TEST_PLAN.targetUserId).trim();
+    const list = Array.isArray(TEST_PLAN.list) ? TEST_PLAN.list : [];
 
-    STRESS_PLAN.list.forEach((item, idx) => {
-      const afterSec = Number(item.afterSec || 0);
-      const delay = Math.max(0, afterSec * 1000);
+    console.log("[TestPlan] 🚀 start", {
+      targetUserId,
+      batches: list.length,
+      list,
+    });
+
+    list.forEach((job) => {
+      const name = String(job.name || "batch").trim();
+      const afterSec = Number(job.afterSec || 0);
+      const count = Math.max(0, parseInt(job.count || 0, 10));
+      const gapMs = Math.max(0, parseInt(job.gapMs || 0, 10));
+      const panel = job.panel === "foot" ? "foot" : "body";
+
+      const startDelayMs = Math.max(0, Math.round(afterSec * 1000));
 
       setTimeout(() => {
-        console.log(`[StressPlan] ⏱️ run group #${idx + 1}`);
-        runOnePlan(item);
-      }, delay);
+        console.log(`[TestPlan] ▶ batch start: ${name} afterSec=${afterSec} count=${count} gapMs=${gapMs} panel=${panel}`);
+
+        for (let i = 1; i <= count; i++) {
+          const delay = gapMs > 0 ? (i - 1) * gapMs : 0;
+          setTimeout(() => sendOneTestEvent(i, name, panel, targetUserId), delay);
+        }
+      }, startDelayMs);
     });
   }
 
   // =========================
-  // ✅ 21) start：啟動正式掃描 + 掛壓測入口
+  // ✅ 10) start：啟動正式掃描 + 掛測試入口
   // =========================
   function start() {
     console.log("[ReadyOnly] ▶️ start loop", INTERVAL_MS, "ms");
 
-    // 立刻跑一次
     tick();
-
-    // 進入定時掃描
     setInterval(tick, INTERVAL_MS);
 
-    // ✅ Console 入口
-    // 用法：window.__runStressPlan()
-    window.__runStressPlan = runStressPlan;
+    // Console 手動觸發：
+    // window.__runTestPlan()
+    window.__runTestPlan = runTestPlan;
 
-    // ✅ 可選：載入後自動跑 list 壓測（預設關閉）
-    if (STRESS_PLAN.enabled && STRESS_PLAN.autorun) {
-      setTimeout(runStressPlan, Math.max(0, STRESS_PLAN.delayMs || 0));
+    if (TEST_PLAN.enabled && TEST_PLAN.autorun) {
+      setTimeout(runTestPlan, Math.max(0, TEST_PLAN.delayMs || 0));
     }
   }
 
-  // =========================
-  // ✅ 22) DOM Ready 判斷
-  // =========================
   if (document.readyState === "loading") {
     window.addEventListener("DOMContentLoaded", start);
   } else {
