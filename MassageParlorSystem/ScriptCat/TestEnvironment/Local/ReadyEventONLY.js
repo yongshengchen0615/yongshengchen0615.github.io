@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Ready Event ONLY + StressPlan List (GM_xhr, Dedup)
+// @name         TestEnvironment Local Ready Event ONLY + StressPlan List (GM_xhr, Dedup)
 // @namespace    http://scriptcat.org/
-// @version      2.3
+// @version      2.4
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅壓測：list 排程（秒數/人數/prefix/panel/間隔/burst）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
