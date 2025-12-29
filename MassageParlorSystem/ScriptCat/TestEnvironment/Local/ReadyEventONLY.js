@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        TestEnvironment Local Ready Event ONLY + TestPlan Scheduler (GM_xhr, Dedup + Stress)
 // @namespace    http://scriptcat.org/
-// @version      2.3
+// @version      2.4
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：用 list 排程幾秒後送哪個版面/送幾筆/送給哪些使用者；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -75,38 +75,46 @@
     // - gapMs: burst=false 時，每筆間隔
     // - repeat: 送幾輪（同一批 targets 重複送）
     // - repeatGapMs: 每輪間隔（ms）
-   jobs: [
-  // Job A：3 秒後，送 body，3 位（T001..T003）
+  jobs: [
+  // Batch 1 (T001..T010) — body
   {
-    atSec: 3,
+    atSec: 1,
     panel: "body",
-    targets: ["T001", "T002", "T003"],
+    targets: [
+      "T001","T002","T003","T004","T005",
+      "T006","T007","T008","T009","T010"
+    ],
     burst: false,
-    gapMs: 120,
+    gapMs: 220,
   },
 
-  // Job B：8 秒後，送 foot，10 位（接續，不重複：T004..T013）
+  // Batch 2 (T011..T020) — foot
   {
-    atSec: 8,
+    atSec: 11,
     panel: "foot",
     targets: [
-      "T004","T005","T006","T007","T008",
-      "T009","T010","T011","T012","T013"
+      "T011","T012","T013","T014","T015",
+      "T016","T017","T018","T019","T020"
     ],
-    burst: true,
+    burst: false,
+    gapMs: 220,
   },
 
-  // Job C：10 秒後，送 body，5 位（接續：T014..T018），repeat 2 輪
+  // Batch 3 (T021..T030) — body + 輕量 repeat（模擬重送壓力，但不新增 masterId）
   {
-    atSec: 10,
+    atSec: 21,
     panel: "body",
-    targets: ["T014", "T015", "T016", "T017", "T018"],
+    targets: [
+      "T021","T022","T023","T024","T025",
+      "T026","T027","T028","T029","T030"
+    ],
     burst: false,
-    gapMs: 150,
+    gapMs: 220,
     repeat: 2,
-    repeatGapMs: 800,
+    repeatGapMs: 1200,
   },
 ],
+
 
   };
 
