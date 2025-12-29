@@ -75,35 +75,39 @@
     // - gapMs: burst=false 時，每筆間隔
     // - repeat: 送幾輪（同一批 targets 重複送）
     // - repeatGapMs: 每輪間隔（ms）
-    jobs: [
-      // 範例 A：3 秒後，送 body，指定 3 位使用者，各 1 筆
-      {
-        atSec: 3,
-        panel: "body",
-        targets: ["T001", "T002", "T003"],
-        burst: false,
-        gapMs: 120,
-      },
+   jobs: [
+  // Job A：3 秒後，送 body，3 位（T001..T003）
+  {
+    atSec: 3,
+    panel: "body",
+    targets: ["T001", "T002", "T003"],
+    burst: false,
+    gapMs: 120,
+  },
 
-      // 範例 B：8 秒後，送 foot，自動產生 10 位（T001..T010），同瞬間 burst
-      {
-        atSec: 8,
-        panel: "foot",
-        auto: { prefix: "T", autoCount: 10, pad: 3 },
-        burst: true,
-      },
-
-      // 範例 C：15 秒後，送 body，自動 5 位，每位送 2 輪（每輪間隔 800ms）
-      {
-        atSec: 10,
-        panel: "body",
-        auto: { prefix: "T", autoCount: 5, pad: 3 },
-        burst: false,
-        gapMs: 150,
-        repeat: 2,
-        repeatGapMs: 800,
-      },
+  // Job B：8 秒後，送 foot，10 位（接續，不重複：T004..T013）
+  {
+    atSec: 8,
+    panel: "foot",
+    targets: [
+      "T004","T005","T006","T007","T008",
+      "T009","T010","T011","T012","T013"
     ],
+    burst: true,
+  },
+
+  // Job C：10 秒後，送 body，5 位（接續：T014..T018），repeat 2 輪
+  {
+    atSec: 10,
+    panel: "body",
+    targets: ["T014", "T015", "T016", "T017", "T018"],
+    burst: false,
+    gapMs: 150,
+    repeat: 2,
+    repeatGapMs: 800,
+  },
+],
+
   };
 
   console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
