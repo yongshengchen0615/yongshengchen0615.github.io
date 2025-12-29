@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        TestEnvironment Local Ready Event ONLY + TestPlan Scheduler (GM_xhr, Dedup + Stress)
 // @namespace    http://scriptcat.org/
-// @version      2.2
+// @version      2.3
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：用 list 排程幾秒後送哪個版面/送幾筆/送給哪些使用者；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
