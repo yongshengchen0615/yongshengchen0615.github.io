@@ -508,12 +508,31 @@ function toTime_(v) {
   return isNaN(t) ? 0 : t;
 }
 
+/* =========================================================
+ * ✅ FIX：到期排序對齊 GAS（start + (usageDays-1)）
+ * - 回傳剩餘天數 diff（可為負）
+ * - 未設定回傳超大值，讓它排在後面
+ * ========================================================= */
 function getExpiryDiff_(u) {
   if (!u.startDate || !u.usageDays) return 999999;
+
   const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return 999999;
-  const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
-  return Math.ceil((end - new Date()) / 86400000);
+
+  const usage = Number(u.usageDays);
+  if (!Number.isFinite(usage) || usage <= 0) return 999999;
+
+  // GAS: lastUsableDay = start + (usageDays - 1)
+  const last = new Date(start.getTime() + (usage - 1) * 86400000);
+
+  // 對齊「天」：避免因為現在時間造成跳動
+  start.setHours(0, 0, 0, 0);
+  last.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.floor((last - today) / 86400000);
 }
 
 /* ========= Selection + Bulk ========= */
@@ -1068,14 +1087,30 @@ function auditClass_(audit) {
   }
 }
 
+/* =========================================================
+ * ✅ FIX：到期顯示對齊 GAS（start + (usageDays-1)）
+ * - 未設定：unset
+ * - diff < 0：expired（已過期）
+ * - diff >=0：active（剩 diff 天）
+ * ========================================================= */
 function getExpiryInfo(u) {
   if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
 
   const start = new Date(String(u.startDate) + "T00:00:00");
   if (isNaN(start.getTime())) return { cls: "unset", text: "未設定" };
 
-  const end = new Date(start.getTime() + Number(u.usageDays) * 86400000);
-  const diff = Math.ceil((end - new Date()) / 86400000);
+  const usage = Number(u.usageDays);
+  if (!Number.isFinite(usage) || usage <= 0) return { cls: "unset", text: "未設定" };
+
+  // GAS: lastUsableDay = start + (usageDays - 1)
+  const last = new Date(start.getTime() + (usage - 1) * 86400000);
+
+  // 對齊「天」：用 00:00 讓 diff 穩定
+  last.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor((last - today) / 86400000);
 
   if (diff < 0) return { cls: "expired", text: `已過期（超 ${Math.abs(diff)} 天）` };
   return { cls: "active", text: `使用中（剩 ${diff} 天）` };
