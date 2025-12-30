@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TestEnvironment Local Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + TestPlanV3 Scheduler)
 // @namespace    http://scriptcat.org/
-// @version      1.4
+// @version      1.5
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlanV3：可排程（幾秒後幾位師傅準備，再過幾秒再幾位）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -290,8 +290,8 @@
   // ✅ 8) TestPlan v3：排程波次（幾秒後幾位師傅準備，再過幾秒再幾位）
   // =========================================================
   const TEST_PLAN_V3 = {
-    enabled: true,
-    autorun: true,
+    enabled: false,
+    autorun: false,
     delayMs: 800,
 
     // ✅ 推播目標（可多個，會 round-robin）
