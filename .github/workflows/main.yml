@@ -45,7 +45,7 @@ jobs:
 
           # ✅ 你的目標資料夾（策略 B）
           TARGET_DIRS = [
-            "MassageParlorSystem/ScriptCat/TestEnvironment/Local",
+            "/MassageParlorSystem/ScriptCat/TestEnvironment/Local/",
           ]
 
           # 只支援 x.y（例如 1.0）
