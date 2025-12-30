@@ -1,9 +1,9 @@
-name: Bump Userscript @version
+name: Bump Userscript Versions (Strategy B)
 
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main"]   # 如果你是 master，改成 ["master"]
 
 permissions:
   contents: write
@@ -11,66 +11,96 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ✅ 避免 actions 自己 commit 又觸發自己造成迴圈
+      # ─────────────────────────────────────────────
+      # 1️⃣ 防止 GitHub Actions 自己 commit 造成無限迴圈
+      # ─────────────────────────────────────────────
       - name: Stop if last commit is from bot
         run: |
           AUTHOR=$(git log -1 --pretty=format:'%an')
           echo "Last commit author: $AUTHOR"
           if [ "$AUTHOR" = "github-actions[bot]" ]; then
-            echo "Bot commit detected. Stop."
+            echo "Bot commit detected. Stop workflow."
             exit 0
           fi
 
-      - name: Bump @version (x.y -> x.(y+1))
+      # ─────────────────────────────────────────────
+      # 2️⃣ 掃描指定資料夾，批次 bump 所有 js 的 @version
+      # ─────────────────────────────────────────────
+      - name: Bump @version in target JS files
         run: |
-          FILE="MassageParlorSystem/ScriptCat/TestEnvironment/Local/ReadyEventONLY.js"
-          echo "Target file: $FILE"
-
-          if [ ! -f "$FILE" ]; then
-            echo "❌ File not found: $FILE"
-            echo "Repo tree (top 4 levels):"
-            find . -maxdepth 4 -type f | sed 's|^\./||'
-            exit 1
-          fi
-
           python3 - << 'PY'
           import re
           from pathlib import Path
 
-          path = Path("MassageParlorSystem/ScriptCat/TestEnvironment/Local/ReadyEventONLY.js")
-          s = path.read_text(encoding="utf-8")
+          # =========================
+          # ⭐ 你只需要維護這裡 ⭐
+          # 指定「要掃描的資料夾」
+          # =========================
+          TARGET_DIRS = [
+            "MassageParlorSystem/ScriptCat/TestEnvironment",
+            # 之後要加系統，只要再加一行
+            # "AnotherSystem/Userscripts",
+          ]
 
-          # 支援：// @version      1.0
-          m = re.search(r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$", s, re.M)
-          if not m:
-            raise SystemExit("❌ Cannot find @version x.y line (example: // @version 1.0)")
-
-          major = int(m.group(2))
-          minor = int(m.group(3))
-          minor += 1
-          new_ver = f"{major}.{minor}"
-
-          s2 = re.sub(
-            r"^(\s*//\s*@version\s+)\d+\.\d+\s*$",
-            rf"\g<1>{new_ver}",
-            s,
-            flags=re.M
+          # 支援格式：
+          # // @version      1.0
+          VERSION_RE = re.compile(
+              r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$",
+              re.MULTILINE
           )
 
-          path.write_text(s2, encoding="utf-8")
-          print("✅ Bumped to:", new_ver)
+          changed_files = []
+
+          for base in TARGET_DIRS:
+            base_path = Path(base)
+            if not base_path.exists():
+              print(f"⚠️ Skip missing dir: {base}")
+              continue
+
+            for js_file in base_path.rglob("*.js"):
+              try:
+                text = js_file.read_text(encoding="utf-8")
+              except Exception:
+                # 非 UTF-8 或讀不到的檔案直接跳過
+                continue
+
+              match = VERSION_RE.search(text)
+              if not match:
+                continue  # 沒有 @version 的 js 不處理
+
+              major = int(match.group(2))
+              minor = int(match.group(3)) + 1
+              new_version = f"{major}.{minor}"
+
+              new_text = VERSION_RE.sub(
+                  rf"\1{new_version}",
+                  text,
+                  count=1
+              )
+
+              js_file.write_text(new_text, encoding="utf-8")
+              changed_files.append((str(js_file), new_version))
+
+          if not changed_files:
+            print("ℹ️ No JS files updated.")
+          else:
+            print("✅ Updated JS files:")
+            for path, ver in changed_files:
+              print(f" - {path} -> {ver}")
           PY
 
-      - name: Commit & Push
+      # ─────────────────────────────────────────────
+      # 3️⃣ Commit & Push
+      # ─────────────────────────────────────────────
+      - name: Commit and push changes
         run: |
-          FILE="MassageParlorSystem/ScriptCat/TestEnvironment/Local/ReadyEventONLY.js"
-
           if git diff --quiet; then
             echo "No changes to commit."
             exit 0
@@ -78,6 +108,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "$FILE"
-          git commit -m "chore: bump userscript version"
+
+          git add .
+          git commit -m "chore: bump userscript versions"
           git push
