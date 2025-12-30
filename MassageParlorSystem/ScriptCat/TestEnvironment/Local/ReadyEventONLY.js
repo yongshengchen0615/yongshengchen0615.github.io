@@ -18,7 +18,7 @@
   // 這個 URL 是「Ready Event 接收 / 推播」的 GAS Web App
   // 前端偵測到師傅從「非準備」變成「準備」時，就會 POST 到這裡
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbxj3yinKEuzDeSm1T0erPZISvKUzn4tC4R6SqQGvfICbst0MTyKzve7EX5yZ068HZ0s/exec";
+    "https://script.google.com/macros/s/AKfycbzW5MQM1vMPkfTIHzojicGu4TSuPO5SbKmfRFrHy2ksxW-Y4-U-uVebDgn1p_Qmm7-T/exec";
 
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
