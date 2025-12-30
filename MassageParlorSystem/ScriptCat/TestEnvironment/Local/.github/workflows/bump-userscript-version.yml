@@ -1,0 +1,33 @@
+name: bump userscript version
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: set version from run number
+        run: |
+          FILE="ReadyEventONLY.js"   # ← 改成你的 userscript 檔名
+          VERSION="1.0.${{ github.run_number }}"
+          echo "Bump to $VERSION"
+
+          # 只替換 meta header 內的 @version 行
+          perl -0777 -pe "s/(@version\s+)([0-9A-Za-z\.\-\+]+)/\${1}$VERSION/" -i "$FILE"
+
+      - name: commit back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ready.user.js
+          git commit -m "chore: bump userscript @version" || exit 0
+          git push
