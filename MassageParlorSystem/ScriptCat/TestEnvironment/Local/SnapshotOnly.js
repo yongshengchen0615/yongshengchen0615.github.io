@@ -13,7 +13,7 @@
   "use strict";
 
   /* =========================
-   * 0) Config
+   * 0) Config------
    * ========================= */
   const GAS_URL =
     "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec";
