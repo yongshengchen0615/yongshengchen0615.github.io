@@ -28,6 +28,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ready.user.js
+          git add ReadyEventONLY.js # ← 改成你的 userscript 檔名
           git commit -m "chore: bump userscript @version" || exit 0
           git push
