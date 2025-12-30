@@ -3,7 +3,7 @@ name: Bump Userscript Versions (Strategy B)
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]   # 如果你是 master 改成 ["master"]
+    branches: ["main"] # 如果你的預設分支是 master，改成 ["master"]
 
 permissions:
   contents: write
@@ -11,12 +11,14 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ✅ 防止 bot 自己 commit 又觸發自己造成迴圈
       - name: Stop if last commit is from bot
         run: |
           AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -26,30 +28,24 @@ jobs:
             exit 0
           fi
 
-      - name: Debug repo tree (top)
-        run: |
-          echo "== PWD =="
-          pwd
-          echo "== ls -la =="
-          ls -la
-          echo "== find .github/workflows =="
-          find .github/workflows -maxdepth 1 -type f -print || true
-          echo "== find MassageParlorSystem (maxdepth 4) =="
-          find MassageParlorSystem -maxdepth 4 -type d -print || true
-
-      - name: Bump @version in target JS files (with diagnostics)
+      # ✅ 策略B：掃描指定資料夾底下所有 *.js，只要有 // @version x.y 就 bump y+1
+      - name: Bump @version in target JS files
         run: |
           python3 - << 'PY'
           import re
           from pathlib import Path
 
-          # ✅ 你的目標資料夾（策略 B）
+          # ⭐ 只要維護這裡：要掃描的資料夾（可加多個）
           TARGET_DIRS = [
             "MassageParlorSystem/ScriptCat/TestEnvironment/Local",
+            # "OtherSystem/Userscripts",
           ]
 
-          # 只支援 x.y（例如 1.0）
-          VERSION_RE = re.compile(r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$", re.MULTILINE)
+          # 只支援：// @version      1.0  (x.y)
+          VERSION_RE = re.compile(
+              r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$",
+              re.MULTILINE
+          )
 
           changed = []
           scanned_js = 0
@@ -67,24 +63,25 @@ jobs:
 
             for p in js_files:
               try:
-                txt = p.read_text(encoding="utf-8", errors="strict")
+                text = p.read_text(encoding="utf-8")
               except Exception:
-                # 有些檔案不是 UTF-8，跳過但印一下（避免你以為沒掃到）
-                print(f"⚠️ Skip non-utf8/unreadable: {p}")
+                # 非 UTF-8 或讀不到，跳過
                 continue
 
-              m = VERSION_RE.search(txt)
+              m = VERSION_RE.search(text)
               if not m:
                 continue
 
               version_hits += 1
               major = int(m.group(2))
               minor = int(m.group(3)) + 1
-              new_ver = f"{major}.{minor}"
+              new_version = f"{major}.{minor}"
 
-              new_txt = VERSION_RE.sub(rf"\1{new_ver}", txt, count=1)
-              p.write_text(new_txt, encoding="utf-8")
-              changed.append((str(p), new_ver))
+              # ✅ 關鍵修正：用 \g<1> 避免 \1{digit} 被誤判成 \11
+              new_text = VERSION_RE.sub(rf"\g<1>{new_version}", text, count=1)
+
+              p.write_text(new_text, encoding="utf-8")
+              changed.append((str(p), new_version))
 
           print("== Diagnostics ==")
           print("TARGET_DIRS:", TARGET_DIRS)
