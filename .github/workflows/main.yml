@@ -3,7 +3,7 @@ name: Bump Userscript Versions (Strategy B)
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]   # 如果你是 master，改成 ["master"]
+    branches: ["main"]   # 如果你是 master 改成 ["master"]
 
 permissions:
   contents: write
@@ -11,16 +11,12 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ─────────────────────────────────────────────
-      # 1️⃣ 防止 GitHub Actions 自己 commit 造成無限迴圈
-      # ─────────────────────────────────────────────
       - name: Stop if last commit is from bot
         run: |
           AUTHOR=$(git log -1 --pretty=format:'%an')
@@ -30,76 +26,89 @@ jobs:
             exit 0
           fi
 
-      # ─────────────────────────────────────────────
-      # 2️⃣ 掃描指定資料夾，批次 bump 所有 js 的 @version
-      # ─────────────────────────────────────────────
-      - name: Bump @version in target JS files
+      - name: Debug repo tree (top)
+        run: |
+          echo "== PWD =="
+          pwd
+          echo "== ls -la =="
+          ls -la
+          echo "== find .github/workflows =="
+          find .github/workflows -maxdepth 1 -type f -print || true
+          echo "== find MassageParlorSystem (maxdepth 4) =="
+          find MassageParlorSystem -maxdepth 4 -type d -print || true
+
+      - name: Bump @version in target JS files (with diagnostics)
         run: |
           python3 - << 'PY'
           import re
           from pathlib import Path
 
-          # =========================
-          # ⭐ 你只需要維護這裡 ⭐
-          # 指定「要掃描的資料夾」
-          # =========================
+          # ✅ 你的目標資料夾（策略 B）
           TARGET_DIRS = [
-            "MassageParlorSystem/ScriptCat/TestEnvironment",
-            # 之後要加系統，只要再加一行
-            # "AnotherSystem/Userscripts",
+            "MassageParlorSystem/ScriptCat/TestEnvironment/Local",
           ]
 
-          # 支援格式：
-          # // @version      1.0
-          VERSION_RE = re.compile(
-              r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$",
-              re.MULTILINE
-          )
+          # 只支援 x.y（例如 1.0）
+          VERSION_RE = re.compile(r"^(\s*//\s*@version\s+)(\d+)\.(\d+)\s*$", re.MULTILINE)
 
-          changed_files = []
+          changed = []
+          scanned_js = 0
+          version_hits = 0
+          missing_dirs = []
 
           for base in TARGET_DIRS:
             base_path = Path(base)
             if not base_path.exists():
-              print(f"⚠️ Skip missing dir: {base}")
+              missing_dirs.append(base)
               continue
 
-            for js_file in base_path.rglob("*.js"):
+            js_files = list(base_path.rglob("*.js"))
+            scanned_js += len(js_files)
+
+            for p in js_files:
               try:
-                text = js_file.read_text(encoding="utf-8")
+                txt = p.read_text(encoding="utf-8", errors="strict")
               except Exception:
-                # 非 UTF-8 或讀不到的檔案直接跳過
+                # 有些檔案不是 UTF-8，跳過但印一下（避免你以為沒掃到）
+                print(f"⚠️ Skip non-utf8/unreadable: {p}")
                 continue
 
-              match = VERSION_RE.search(text)
-              if not match:
-                continue  # 沒有 @version 的 js 不處理
+              m = VERSION_RE.search(txt)
+              if not m:
+                continue
 
-              major = int(match.group(2))
-              minor = int(match.group(3)) + 1
-              new_version = f"{major}.{minor}"
+              version_hits += 1
+              major = int(m.group(2))
+              minor = int(m.group(3)) + 1
+              new_ver = f"{major}.{minor}"
 
-              new_text = VERSION_RE.sub(
-                  rf"\1{new_version}",
-                  text,
-                  count=1
-              )
+              new_txt = VERSION_RE.sub(rf"\1{new_ver}", txt, count=1)
+              p.write_text(new_txt, encoding="utf-8")
+              changed.append((str(p), new_ver))
 
-              js_file.write_text(new_text, encoding="utf-8")
-              changed_files.append((str(js_file), new_version))
+          print("== Diagnostics ==")
+          print("TARGET_DIRS:", TARGET_DIRS)
+          print("Missing dirs:", missing_dirs)
+          print("Total .js scanned:", scanned_js)
+          print("@version hits:", version_hits)
+          print("Files changed:", len(changed))
 
-          if not changed_files:
-            print("ℹ️ No JS files updated.")
-          else:
-            print("✅ Updated JS files:")
-            for path, ver in changed_files:
-              print(f" - {path} -> {ver}")
+          if missing_dirs:
+            raise SystemExit(f"❌ Missing target directories: {missing_dirs}")
+
+          if scanned_js == 0:
+            raise SystemExit("❌ No .js files found under TARGET_DIRS (check paths/case).")
+
+          if version_hits == 0:
+            raise SystemExit("❌ Found .js files, but none contains '// @version x.y'.")
+
+          if changed:
+            print("== Updated files ==")
+            for f, v in changed:
+              print(f" - {f} -> {v}")
           PY
 
-      # ─────────────────────────────────────────────
-      # 3️⃣ Commit & Push
-      # ─────────────────────────────────────────────
-      - name: Commit and push changes
+      - name: Commit & Push
         run: |
           if git diff --quiet; then
             echo "No changes to commit."
