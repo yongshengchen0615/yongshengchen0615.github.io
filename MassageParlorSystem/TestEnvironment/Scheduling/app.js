@@ -1,6 +1,7 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
 // ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
+// ✅ 方案A已套用：支援後端回傳 masterCode → 正確顯示「我的狀態」
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -249,12 +250,12 @@ const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
 const btnVacationEl = document.getElementById("btnVacation");
 
-/* ✅ 新增：個人師傅狀態 DOM */
+/* ✅ 個人師傅狀態 DOM */
 const myMasterStatusEl = document.getElementById("myMasterStatus");
 const myMasterStatusTextEl = document.getElementById("myMasterStatusText");
 
 /* =========================================================
- * ✅ 新增：使用者（師傅）個人狀態 - state
+ * ✅ 使用者（師傅）個人狀態 - state
  * ========================================================= */
 const myMasterState_ = {
   isMaster: false,
@@ -279,17 +280,28 @@ function parseIsMaster_(data) {
 function normalizeTechNo_(v) {
   const s = String(v ?? "").trim();
   if (!s) return "";
-  // 抓數字（支援 "07號" / "7" / "07"）
   const m = s.match(/\d+/);
   if (!m) return "";
   const n = parseInt(m[0], 10);
   if (Number.isNaN(n)) return "";
   return String(n).padStart(2, "0");
 }
+
+/** ✅ 方案A 핵심：支援 GAS 回傳 masterCode */
 function parseTechNo_(data) {
-  const v = pickAny_(data, ["techNo", "師傅編號", "masterId", "masterNo", "tech", "師傅", "技師編號"]);
+  const v = pickAny_(data, [
+    "techNo",
+    "師傅編號",
+    "masterCode",   // ✅ NEW：你的後端回傳欄位
+    "masterId",
+    "masterNo",
+    "tech",
+    "師傅",
+    "技師編號",
+  ]);
   return normalizeTechNo_(v);
 }
+
 function findRowByTechNo_(rows, techNo) {
   const t = normalizeTechNo_(techNo);
   if (!t) return null;
@@ -1143,7 +1155,7 @@ async function refreshStatus(isManual = false) {
 
     if (activeChanged) renderIncremental_(activePanel);
 
-    /* ✅ 新增：每次 refresh 後更新「我的狀態」（若是師傅） */
+    // ✅ 每次 refresh 後更新「我的狀態」（若是師傅）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
@@ -1192,7 +1204,7 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     forceUpdateMsg: (data && (data.forceUpdateMsg || data.mustUpdateMsg)) || "",
   };
 
-  /* ✅ 新增：師傅資訊（用多 key 兼容） */
+  // ✅ 師傅資訊（含 masterCode 支援）
   const isMaster = parseIsMaster_(data || {});
   const techNo = parseTechNo_(data || {});
 
@@ -1385,9 +1397,9 @@ async function initNoLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    /* ✅ 新增：寫入師傅 state（只顯示給師傅） */
+    // ✅ 方案A：把師傅資訊寫入 state（包含 masterCode 相容）
     myMasterState_.isMaster = !!result.isMaster;
-    myMasterState_.techNo = normalizeTechNo_(result.techNo);
+    myMasterState_.techNo = normalizeTechNo_(result.techNo || result.masterCode || "");
 
     const gate = decideGateAction_(result);
     if (!gate.allow) {
@@ -1468,9 +1480,9 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
-    /* ✅ 新增：寫入師傅 state（只顯示給師傅） */
+    // ✅ 方案A：把師傅資訊寫入 state（包含 masterCode 相容）
     myMasterState_.isMaster = !!result.isMaster;
-    myMasterState_.techNo = normalizeTechNo_(result.techNo);
+    myMasterState_.techNo = normalizeTechNo_(result.techNo || result.masterCode || "");
 
     // ✅ 只要 pending：每次開啟都通知 OA（不去重）
     if (result && result.status === "pending") {
@@ -1556,7 +1568,6 @@ function setActivePanel(panel) {
  * ========================================================= */
 let pollTimer = null;
 
-// 可調參數
 const POLL = {
   BASE_MS: 3000,
   MAX_MS: 20000,
