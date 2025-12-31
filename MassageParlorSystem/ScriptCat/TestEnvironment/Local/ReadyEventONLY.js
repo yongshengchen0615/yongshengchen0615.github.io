@@ -46,10 +46,10 @@
     // 你要「推同一個 userId」：就不要在 job 裡改 masterId，或改也要同一個
     list: [
       // 範例：3 秒後開始，送 10 筆，每 300ms 送一筆，面板 body
-      { name: "batch-1", afterSec: 3, count: 10, gapMs: 300, panel: "body" },
+      { name: "batch-1", afterSec: 3, count: 10, gapMs: 800, panel: "body" },
 
       // 範例：6 秒後開始，送 2 筆，每 300ms 送一筆，面板 body
-      { name: "batch-2", afterSec: 6, count: 2, gapMs: 300, panel: "body" },
+      { name: "batch-2", afterSec: 6, count: 2, gapMs: 800, panel: "body" },
     ],
 
     // 測試事件的 timeout 拉長（避免 GAS lock wait 造成前端誤判超時）
