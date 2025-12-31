@@ -37,7 +37,7 @@ jobs:
 
           # ⭐ 只要維護這裡：要掃描的資料夾（可加多個）
           TARGET_DIRS = [
-            "MassageParlorSystem/ScriptCat/TestEnvironment/Local",
+            "MassageParlorSystem/ScriptCat/TestEnvironment",
             # "OtherSystem/Userscripts",
           ]
 
