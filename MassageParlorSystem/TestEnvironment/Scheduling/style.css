@@ -30,15 +30,10 @@
 /* Reset 基本設定 */
 *,
 *::before,
-*::after {
-  box-sizing: border-box;
-}
+*::after { box-sizing: border-box; }
 
 html,
-body {
-  margin: 0;
-  padding: 0;
-}
+body { margin: 0; padding: 0; }
 
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -65,10 +60,7 @@ body {
   transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
-.gate-hidden {
-  opacity: 0;
-  visibility: hidden;
-}
+.gate-hidden { opacity: 0; visibility: hidden; }
 
 .gate-message {
   max-width: 520px;
@@ -94,15 +86,8 @@ body {
 }
 
 /* 主要 layout */
-.app-root {
-  opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.app-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
+.app-root { opacity: 1; transition: opacity 0.2s ease; }
+.app-hidden { opacity: 0; pointer-events: none; }
 
 .layout {
   max-width: 1080px;
@@ -127,9 +112,7 @@ body {
   flex-wrap: wrap;
 }
 
-:root[data-theme="light"] .feature-banner {
-  background: #ffffff;
-}
+:root[data-theme="light"] .feature-banner { background: #ffffff; }
 
 .feature-title {
   color: var(--text-sub);
@@ -137,11 +120,7 @@ body {
   white-space: nowrap;
 }
 
-.feature-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+.feature-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .feature-chip {
   display: inline-flex;
@@ -155,9 +134,7 @@ body {
   color: var(--text-main);
 }
 
-:root[data-theme="light"] .feature-chip {
-  background: rgba(37, 99, 235, 0.08);
-}
+:root[data-theme="light"] .feature-chip { background: rgba(37, 99, 235, 0.08); }
 
 /* 未開通：灰色 chip */
 .feature-chip-disabled {
@@ -182,9 +159,7 @@ body {
   color: var(--text-sub);
 }
 
-:root[data-theme="light"] .feature-chip-badge {
-  background: rgba(255, 255, 255, 0.7);
-}
+:root[data-theme="light"] .feature-chip-badge { background: rgba(255, 255, 255, 0.7); }
 
 /* ✅ 個人狀態：快捷按鈕列 */
 .personal-tools{
@@ -193,10 +168,7 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
-
-.personal-tools .btn{
-  padding: 6px 14px;
-}
+.personal-tools .btn{ padding: 6px 14px; }
 
 /* Header */
 .app-header {
@@ -206,22 +178,9 @@ body {
   gap: 16px;
   margin-bottom: 18px;
 }
-
-.app-header-left {
-  min-width: 0;
-}
-
-.app-title {
-  margin: 0 0 4px;
-  font-size: 22px;
-  letter-spacing: 0.02em;
-}
-
-.app-subtitle {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-sub);
-}
+.app-header-left { min-width: 0; }
+.app-title { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.02em; }
+.app-subtitle { margin: 0; font-size: 13px; color: var(--text-sub); }
 
 .app-header-right {
   display: flex;
@@ -247,16 +206,8 @@ body {
   border-color: rgba(148, 163, 184, 0.7);
 }
 
-.pill-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #22c55e;
-}
-
-.pill-text {
-  white-space: nowrap;
-}
+.pill-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; }
+.pill-text { white-space: nowrap; }
 
 .btn {
   border-radius: 999px;
@@ -271,14 +222,8 @@ body {
   background: rgba(15, 23, 42, 0.9);
   color: var(--text-main);
 }
-
-.btn-ghost:hover {
-  border-color: var(--accent);
-}
-
-:root[data-theme="light"] .btn-ghost {
-  background: #ffffff;
-}
+.btn-ghost:hover { border-color: var(--accent); }
+:root[data-theme="light"] .btn-ghost { background: #ffffff; }
 
 /* Tabs + Filter Toolbar */
 .toolbar {
@@ -321,9 +266,7 @@ body {
   font-weight: 600;
 }
 
-:root[data-theme="light"] .tab-active {
-  color: #f9fafb;
-}
+:root[data-theme="light"] .tab-active { color: #f9fafb; }
 
 /* Filters */
 .filters {
@@ -333,16 +276,9 @@ body {
   flex-wrap: wrap;
 }
 
-.filter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.filter { display: flex; flex-direction: column; gap: 4px; }
 
-.filter-label {
-  font-size: 12px;
-  color: var(--text-sub);
-}
+.filter-label { font-size: 12px; color: var(--text-sub); }
 
 /* 表單元件 */
 .input,
@@ -358,18 +294,12 @@ body {
 }
 
 :root[data-theme="light"] .input,
-:root[data-theme="light"] .select {
-  background: #ffffff;
-}
+:root[data-theme="light"] .select { background: #ffffff; }
 
-.input::placeholder {
-  color: rgba(148, 163, 184, 0.8);
-}
+.input::placeholder { color: rgba(148, 163, 184, 0.8); }
 
 /* 主內容區 */
-.main {
-  display: flex;
-}
+.main { display: flex; }
 
 /* 卡片 + 表格 */
 .card {
@@ -395,29 +325,15 @@ body {
   gap: 12px;
 }
 
-:root[data-theme="light"] .card-header {
-  border-bottom-color: rgba(209, 213, 219, 0.9);
-}
+:root[data-theme="light"] .card-header { border-bottom-color: rgba(209, 213, 219, 0.9); }
 
-.card-header-left {
-  min-width: 0;
-}
+.card-header-left { min-width: 0; }
 
-.card-title {
-  margin: 0 0 4px;
-  font-size: 18px;
-}
+.card-title { margin: 0 0 4px; font-size: 18px; }
 
-.card-subtitle {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-sub);
-}
+.card-subtitle { margin: 0; font-size: 12px; color: var(--text-sub); }
 
-.card-header-right {
-  display: flex;
-  align-items: center;
-}
+.card-header-right { display: flex; align-items: center; }
 
 .badge {
   font-size: 11px;
@@ -428,19 +344,12 @@ body {
   color: var(--text-sub);
 }
 
-:root[data-theme="light"] .badge {
-  background: #ffffff;
-}
+:root[data-theme="light"] .badge { background: #ffffff; }
 
-.card-body {
-  padding: 10px 18px 16px 18px;
-}
+.card-body { padding: 10px 18px 16px 18px; }
 
 /* Table */
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-}
+.table-wrapper { width: 100%; overflow-x: auto; }
 
 .status-table {
   width: 100%;
@@ -457,9 +366,7 @@ body {
   white-space: nowrap;
 }
 
-:root[data-theme="light"] .status-table thead th {
-  border-bottom-color: rgba(209, 213, 219, 0.9);
-}
+:root[data-theme="light"] .status-table thead th { border-bottom-color: rgba(209, 213, 219, 0.9); }
 
 .status-table tbody td {
   padding: 6px 8px;
@@ -467,27 +374,18 @@ body {
   vertical-align: middle;
 }
 
-:root[data-theme="light"] .status-table tbody td {
-  border-bottom-color: rgba(229, 231, 235, 1);
-}
+:root[data-theme="light"] .status-table tbody td { border-bottom-color: rgba(229, 231, 235, 1); }
 
-.status-table tbody tr:last-child td {
-  border-bottom-color: transparent;
-}
+.status-table tbody tr:last-child td { border-bottom-color: transparent; }
 
 /* 順序 / 師傅 / 預約欄基礎樣式（顏色會被 JS 覆蓋）*/
 .cell-order,
 .cell-master,
-.cell-appointment {
-  font-size: 13px;
-}
+.cell-appointment { font-size: 13px; }
 
 /* ✅ bgIndex/bgMaster 背景提示：讓淡色更「像貼紙」 */
 .cell-order,
-.cell-master {
-  border-radius: 10px;
-  background-clip: padding-box;
-}
+.cell-master { border-radius: 10px; background-clip: padding-box; }
 
 /* 狀態 Pill */
 .status-pill {
@@ -499,32 +397,36 @@ body {
   font-size: 12px;
   font-weight: 500;
   border: 1px solid transparent;
+
+  /* ✅ FIX: 狀態 pill 中文換行造成列高變動 */
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1;
 }
 
-.status-busy {
-  background: rgba(248, 113, 113, 0.16);
-  color: #fecaca;
-}
-
-.status-booked {
-  background: rgba(56, 189, 248, 0.16);
-  color: #bae6fd;
-}
-
-.status-free {
-  background: rgba(34, 197, 94, 0.15);
-  color: #bbf7d0;
-}
-
-.status-other {
-  background: rgba(148, 163, 184, 0.22);
-  color: #e5e7eb;
-}
+.status-busy { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.status-booked { background: rgba(56, 189, 248, 0.16); color: #bae6fd; }
+.status-free { background: rgba(34, 197, 94, 0.15); color: #bbf7d0; }
+.status-other { background: rgba(148, 163, 184, 0.22); color: #e5e7eb; }
 
 :root[data-theme="light"] .status-busy { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
 :root[data-theme="light"] .status-booked { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
 :root[data-theme="light"] .status-free { background: rgba(22, 163, 74, 0.08); color: #15803d; }
 :root[data-theme="light"] .status-other { background: rgba(148, 163, 184, 0.15); color: #374151; }
+
+/* ✅ 狀態欄位 td 也禁止換行（雙保險） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3){
+  white-space: nowrap;
+  min-width: 86px;
+}
+@media (max-width: 420px){
+  .status-table tbody td:nth-child(3),
+  .status-table thead th:nth-child(3){
+    min-width: 76px;
+  }
+}
 
 /* 剩餘時間 badge */
 .time-badge {
@@ -537,10 +439,7 @@ body {
   background: rgba(15, 23, 42, 0.95);
   font-size: 12px;
 }
-
-:root[data-theme="light"] .time-badge {
-  background: #ffffff;
-}
+:root[data-theme="light"] .time-badge { background: #ffffff; }
 
 /* 空 / Loading / Error 狀態 */
 .state {
@@ -565,60 +464,15 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Legend */
-.legend {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--text-sub);
-}
-
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
-.legend-work { background: #f97373; }
-.legend-free { background: #22c55e; }
-.legend-other { background: #9ca3af; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* RWD */
 @media (max-width: 768px) {
-  .app-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .filters {
-    width: 100%;
-  }
-
-  .input,
-  .select {
-    width: 100%;
-  }
-
-  .card {
-    border-radius: 14px;
-  }
+  .app-header { flex-direction: column; align-items: flex-start; }
+  .toolbar { flex-direction: column; align-items: flex-start; }
+  .filters { width: 100%; }
+  .input, .select { width: 100%; }
+  .card { border-radius: 14px; }
 }
 
 /* 使用者名稱 + 剩餘天數提示橫幅 */
@@ -633,21 +487,12 @@ body {
   display: flex;
   align-items: center;
 }
-
-/* 亮色主題時 */
-:root[data-theme="light"] .usage-banner {
-  background: #ffffff;
-}
+:root[data-theme="light"] .usage-banner { background: #ffffff; }
 
 /* 快過期（<=3 天） */
-.usage-banner-warning {
-  border-color: #facc15;
-}
-
+.usage-banner-warning { border-color: #facc15; }
 /* 已過期（<=0 天） */
-.usage-banner-expired {
-  border-color: #f97373;
-}
+.usage-banner-expired { border-color: #f97373; }
 
 /* =========================================================
  * ✅ Top Loading Hint（fixed toast，不影響面板排列）
@@ -694,39 +539,39 @@ body {
 }
 
 /* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
-#loadingState{
-  display: none !important;
+#loadingState{ display: none !important; }
+
+
+/* ✅ 新增：個人（師傅）身體/腳底狀態 */
+.my-master-status{
+  margin: 0 0 14px 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-/* =========================================================
- * ✅ FIX: 狀態 pill 中文換行造成列高變動（工作中跑版）
- * - 中文預設可斷行，需要強制 nowrap
- * - 同時給狀態欄最小寬度，避免被擠爆
- * ========================================================= */
-
-.status-pill{
-  white-space: nowrap;      /* ✅ 核心：禁止換行 */
-  word-break: keep-all;     /* ✅ 中文不要拆字 */
-  overflow-wrap: normal;    /* ✅ 不要 anywhere */
-  line-height: 1;           /* ✅ 避免行高撐開 */
+:root[data-theme="light"] .my-master-status{
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(148, 163, 184, 0.65);
 }
 
-/* ✅ 也把「狀態欄位 td」設成不換行（雙保險） */
-.status-table tbody td:nth-child(3),
-.status-table thead th:nth-child(3){
+.my-master-title{
+  font-size: 12px;
+  color: var(--text-sub);
   white-space: nowrap;
+  padding-top: 2px;
 }
 
-/* ✅ 狀態欄最小寬度（避免 pill 被擠到只能換行） */
-.status-table tbody td:nth-child(3),
-.status-table thead th:nth-child(3){
-  min-width: 86px; /* 可調：80~110 */
-}
-
-/* （可選）手機再縮一點，避免整表水平捲動太多 */
-@media (max-width: 420px){
-  .status-table tbody td:nth-child(3),
-  .status-table thead th:nth-child(3){
-    min-width: 76px;
-  }
+.my-master-text{
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.6;
+  text-align: right;
+  white-space: pre-line;
 }

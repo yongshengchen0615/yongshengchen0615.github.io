@@ -1,14 +1,6 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
 // ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
-// - 成功穩定：3s → 5s → 8s → 12s → 20s（可調）
-// - 有變動：下一次偏快（例如 4.5s）
-// - 失敗：指數退避，封頂 60s
-// - document.hidden：不打（前景回來再抓）
-//
-// ✅ 仍保留：
-// - ❌ 移除：【每日首次開啟】傳訊息功能（整段已刪）
-// - ✅ pending 每次開啟都通知 OA（用 liff.sendMessages；只在 LIFF + inClient）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -256,6 +248,86 @@ const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
 const btnVacationEl = document.getElementById("btnVacation");
+
+/* ✅ 新增：個人師傅狀態 DOM */
+const myMasterStatusEl = document.getElementById("myMasterStatus");
+const myMasterStatusTextEl = document.getElementById("myMasterStatusText");
+
+/* =========================================================
+ * ✅ 新增：使用者（師傅）個人狀態 - state
+ * ========================================================= */
+const myMasterState_ = {
+  isMaster: false,
+  techNo: "", // 例如 "07"
+};
+
+function pickAny_(obj, keys) {
+  for (const k of keys) {
+    const v = obj && obj[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
+}
+function parseIsMaster_(data) {
+  const v = pickAny_(data, ["isMaster", "是否師傅", "isTech", "isTechnician", "tech", "master"]);
+  if (v === true) return true;
+  const s = String(v ?? "").trim();
+  if (s === "是") return true;
+  if (s === "true" || s === "1" || s.toLowerCase() === "yes" || s.toLowerCase() === "y") return true;
+  return false;
+}
+function normalizeTechNo_(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  // 抓數字（支援 "07號" / "7" / "07"）
+  const m = s.match(/\d+/);
+  if (!m) return "";
+  const n = parseInt(m[0], 10);
+  if (Number.isNaN(n)) return "";
+  return String(n).padStart(2, "0");
+}
+function parseTechNo_(data) {
+  const v = pickAny_(data, ["techNo", "師傅編號", "masterId", "masterNo", "tech", "師傅", "技師編號"]);
+  return normalizeTechNo_(v);
+}
+function findRowByTechNo_(rows, techNo) {
+  const t = normalizeTechNo_(techNo);
+  if (!t) return null;
+  const list = Array.isArray(rows) ? rows : [];
+  for (const r of list) {
+    const mid = normalizeTechNo_(r && r.masterId);
+    if (mid && mid === t) return r;
+  }
+  return null;
+}
+function fmtRowShort_(row) {
+  if (!row) return "—";
+  const s = String(row.status ?? "").trim() || "—";
+  const rem = row.remaining === 0 || row.remaining ? String(row.remaining) : "";
+  const remText = rem !== "" ? `（${rem}）` : "";
+  return `${s}${remText}`;
+}
+function updateMyMasterStatusUI_() {
+  if (!myMasterStatusEl || !myMasterStatusTextEl) return;
+
+  if (!myMasterState_.isMaster || !myMasterState_.techNo) {
+    myMasterStatusEl.style.display = "none";
+    return;
+  }
+
+  const bodyRow = findRowByTechNo_(rawData.body, myMasterState_.techNo);
+  const footRow = findRowByTechNo_(rawData.foot, myMasterState_.techNo);
+
+  const bodyText = fmtRowShort_(bodyRow);
+  const footText = fmtRowShort_(footRow);
+
+  myMasterStatusTextEl.textContent =
+    `師傅：${myMasterState_.techNo}\n` +
+    `身體：${bodyText}\n` +
+    `腳底：${footText}`;
+
+  myMasterStatusEl.style.display = "flex";
+}
 
 /* =========================================================
  * Feature banner
@@ -1070,6 +1142,9 @@ async function refreshStatus(isManual = false) {
     }
 
     if (activeChanged) renderIncremental_(activePanel);
+
+    /* ✅ 新增：每次 refresh 後更新「我的狀態」（若是師傅） */
+    updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
@@ -1117,6 +1192,10 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     forceUpdateMsg: (data && (data.forceUpdateMsg || data.mustUpdateMsg)) || "",
   };
 
+  /* ✅ 新增：師傅資訊（用多 key 兼容） */
+  const isMaster = parseIsMaster_(data || {});
+  const techNo = parseTechNo_(data || {});
+
   return {
     status,
     audit,
@@ -1130,6 +1209,9 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     messages,
     raw: data || {},
     justRegistered: false,
+
+    isMaster,
+    techNo,
   };
 }
 
@@ -1303,9 +1385,14 @@ async function initNoLiffAndGuard() {
 
     updateFeatureState_(result);
 
+    /* ✅ 新增：寫入師傅 state（只顯示給師傅） */
+    myMasterState_.isMaster = !!result.isMaster;
+    myMasterState_.techNo = normalizeTechNo_(result.techNo);
+
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
+      if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
       if (gate.redirect) location.href = gate.redirect;
       else showGate(gate.message, gate.isError);
       return;
@@ -1314,6 +1401,9 @@ async function initNoLiffAndGuard() {
     showGate("驗證通過，正在載入資料…");
     openApp();
     updateUsageBanner(result.displayName || displayName, result.remainingDays);
+
+    // ✅ 先讓「我的狀態」區塊出現（資料未抓到前會顯示 —）
+    updateMyMasterStatusUI_();
 
     const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
     if (personalOk) {
@@ -1333,6 +1423,7 @@ async function initNoLiffAndGuard() {
   } catch (err) {
     console.error("[NoLIFF] 驗證失敗：", err);
     hidePersonalTools_();
+    if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
     showGate("⚠ 權限驗證失敗，請稍後再試。", true);
   }
 }
@@ -1377,6 +1468,10 @@ async function initLiffAndGuard() {
 
     updateFeatureState_(result);
 
+    /* ✅ 新增：寫入師傅 state（只顯示給師傅） */
+    myMasterState_.isMaster = !!result.isMaster;
+    myMasterState_.techNo = normalizeTechNo_(result.techNo);
+
     // ✅ 只要 pending：每次開啟都通知 OA（不去重）
     if (result && result.status === "pending") {
       await sendPendingNotifyToOA_(userId, finalDisplayName, result.audit);
@@ -1385,6 +1480,7 @@ async function initLiffAndGuard() {
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
+      if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
       if (gate.redirect) location.href = gate.redirect;
       else showGate(gate.message, gate.isError);
       return;
@@ -1393,6 +1489,9 @@ async function initLiffAndGuard() {
     showGate("驗證通過，正在載入資料…");
     openApp();
     updateUsageBanner(finalDisplayName, result.remainingDays);
+
+    // ✅ 先讓「我的狀態」區塊出現（資料未抓到前會顯示 —）
+    updateMyMasterStatusUI_();
 
     const personalOk = String(result.personalStatusEnabled || "").trim() === "是";
     if (personalOk) {
@@ -1412,6 +1511,7 @@ async function initLiffAndGuard() {
   } catch (err) {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     hidePersonalTools_();
+    if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
     showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
   }
 }
@@ -1458,12 +1558,12 @@ let pollTimer = null;
 
 // 可調參數
 const POLL = {
-  BASE_MS: 3000,       // 最快（原本 3s）
-  MAX_MS: 20000,       // 穩定後最慢（建議 15~30s）
-  FAIL_MAX_MS: 60000,  // 失敗退避封頂
-  STABLE_UP_AFTER: 3,  // 連續成功幾次後開始放慢
-  CHANGED_BOOST_MS: 4500, // 有變動時，下次偏快
-  JITTER_RATIO: 0.2,   // ±20% 抖動（去同步）
+  BASE_MS: 3000,
+  MAX_MS: 20000,
+  FAIL_MAX_MS: 60000,
+  STABLE_UP_AFTER: 3,
+  CHANGED_BOOST_MS: 4500,
+  JITTER_RATIO: 0.2,
 };
 
 const pollState_ = {
@@ -1531,7 +1631,6 @@ function computeNextInterval_(res) {
   return pollState_.nextMs;
 }
 
-// refreshStatus 不回傳 changed，所以包一層推斷 changed（你的 diffMerge 只有 changed 才會替換 rawData）
 async function refreshStatusAdaptive_(isManual) {
   try {
     const beforeBody = rawData.body;
@@ -1552,7 +1651,6 @@ async function refreshStatusAdaptive_(isManual) {
 function startApp() {
   setActivePanel("body");
 
-  // 手動重整：立即抓 + 重置節奏（避免剛穩定到 20s 還要等很久）
   if (refreshBtn) {
     refreshBtn.addEventListener("click", async () => {
       pollState_.successStreak = 0;
@@ -1565,14 +1663,12 @@ function startApp() {
     });
   }
 
-  // 首次立即抓一次
   refreshStatusAdaptive_(false).then((res) => {
     const next = computeNextInterval_(res);
     scheduleNextPoll_(next);
   });
 }
 
-// 前景回來：立即抓一次 + 重置節奏（你原本的 visibilitychange 在這裡升級）
 document.addEventListener("visibilitychange", async () => {
   if (!document.hidden) {
     pollState_.successStreak = 0;
