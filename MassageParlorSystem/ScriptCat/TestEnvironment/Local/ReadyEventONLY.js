@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name        TestEnvironment Local Ready Event ONLY + TestPlan (same userId)
+// @name        TestEnvironment Local Ready Event ONLY + TestPlan (same userId / multi masterIds)
 // @namespace    http://scriptcat.org/
-// @version      1.6
-// @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆(固定同一 masterId→同一 userId)；✅附壓測模組（可關閉）
+// @version      1.7
+// @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
@@ -21,43 +21,40 @@
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
   // =========================
-  const INTERVAL_MS = 2000; // 你原本註解寫「2分鐘」但值是 2000ms=2秒；這裡保留你的值
+  const INTERVAL_MS = 2000; // 2000ms=2秒
   const LOG_MODE = "group"; // "full" | "group" | "off"
   const ENABLE_READY_EVENT = true;
-  const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒；你原本註解寫「2分鐘」但值是 2秒
+  const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒
 
   console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
 
   // =========================
-  // ✅ 3) TestPlan：測試排程（固定同一個 masterId → 推到同一個 userId）
+  // ✅ 3) TestPlan：測試排程（支援多個 masterId 平均分配）
   // =========================
-  // 用途：你可以設定「幾秒後開始」+「送幾筆」+「每筆間隔」，並且固定 masterId
+  // 用途：你可以設定「幾秒後開始」+「送幾筆」+「每筆間隔」
+  //      並用 fixedMasterIds 設定多個 techNo，測試人數會平均分配到這些 masterId 上
   // 前提：GAS 端是用 masterId/techNo 去 Users 表找到 userId
-  // 例如：Users 表 techNo=08 對到 userId=Uxxxx，那你 masterId 就固定填 "08"
   const TEST_PLAN = {
-    enabled: true, // ✅總開關（要測試就改 true）
-    autorun: true, // ✅載入後自動跑（通常先用 false，手動觸發比較安全）
+    enabled: false,
+    autorun: false,
 
-    // ✅固定 masterId（同一個 masterId → 同一個 userId）
-    // 建議填一個「你確定在 Users 表能對應到 userId」的師傅編號，例如 "08"
-    fixedMasterId: "10",
+    // ✅ 多個 masterId 平均分配（Round-robin）
+    // 例：count=12 時，大約 10/08/12 各 4 筆
+    fixedMasterIds: ["10"],
 
-    // ✅排程列表：每個 job 都會在 afterSec 後開始，送 count 筆，每筆 gapMs 間隔
-    // 你要「推同一個 userId」：就不要在 job 裡改 masterId，或改也要同一個
+    // ✅ 也支援權重（可選）
+    // fixedMasterIds: [{ id: "10", w: 3 }, { id: "08", w: 1 }],
+
     list: [
-      // 範例：3 秒後開始，送 10 筆，每 300ms 送一筆，面板 body
       { name: "batch-1", afterSec: 3, count: 10, gapMs: 800, panel: "body" },
-
-      // 範例：6 秒後開始，送 2 筆，每 300ms 送一筆，面板 body
       { name: "batch-2", afterSec: 6, count: 2, gapMs: 800, panel: "body" },
     ],
 
-    // 測試事件的 timeout 拉長（避免 GAS lock wait 造成前端誤判超時）
     timeoutMs: 45000,
   };
 
   // =========================
-  // ✅ 4) 壓力測試設定（你原本的，保留）
+  // ✅ 4) 壓力測試設定（保留）
   // =========================
   const STRESS = {
     enabled: false,
@@ -286,6 +283,7 @@
           remaining: row.remaining ?? "",
           bgStatus: row.bgStatus ?? "",
           colorStatus: row.colorStatus ?? "",
+          source: "prod", // ✅建議明確標記正式
         };
 
         postBeaconFirst(GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
@@ -315,15 +313,44 @@
   }
 
   // =========================
-  // ✅ 12) TestPlan：送出「固定 masterId」的測試事件
+  // ✅ 12) TestPlan：多個 masterId 平均分配（round-robin）
   // =========================
-  function sendOneTestPlan(jobName, panel, seq, fixedMasterId) {
+  function expandWeightedIds_(idsOrWeighted) {
+    if (!Array.isArray(idsOrWeighted) || idsOrWeighted.length === 0) return [];
+
+    // A) ["10","08","12"]
+    if (typeof idsOrWeighted[0] === "string") {
+      return idsOrWeighted.map((x) => String(x).trim()).filter(Boolean);
+    }
+
+    // B) [{id:"10", w:3}, {id:"08", w:1}]
+    const out = [];
+    idsOrWeighted.forEach((it) => {
+      const id = String(it.id || "").trim();
+      const w = Math.max(0, Number(it.w || 0));
+      if (!id || !isFinite(w) || w <= 0) return;
+      for (let i = 0; i < w; i++) out.push(id);
+    });
+    return out;
+  }
+
+  // round-robin 指標（跨 job 也會平均輪）
+  let __tp_rr = 0;
+
+  function pickMasterIdForTest_(pool) {
+    if (!pool || pool.length === 0) return "";
+    const id = pool[__tp_rr % pool.length];
+    __tp_rr++;
+    return id;
+  }
+
+  function sendOneTestPlan(jobName, panel, seq, masterId) {
     const ts = nowIso();
     const evt = {
       mode: "ready_event_v1",
       timestamp: ts,
       panel: panel || "body",
-      masterId: String(fixedMasterId || "").trim(),
+      masterId: String(masterId || "").trim(),
       status: "準備",
       index: seq,
       appointment: `TEST_PLAN:${jobName}`,
@@ -336,13 +363,15 @@
     };
 
     if (!evt.masterId) {
-      console.error("[TestPlan] ❌ missing fixedMasterId (請設定 TEST_PLAN.fixedMasterId)");
+      console.error("[TestPlan] ❌ missing masterId (請設定 TEST_PLAN.fixedMasterIds)");
       return;
     }
 
-    if (LOG_MODE !== "off") console.log(`[TestPlan] ▶ send job=${jobName} seq=${seq} masterId=${evt.masterId} ts=${ts}`);
+    if (LOG_MODE !== "off")
+      console.log(
+        `[TestPlan] ▶ send job=${jobName} seq=${seq} masterId=${evt.masterId} ts=${ts}`
+      );
 
-    // 測試用：直接用 GM，比較可控（也能拿到 status）
     postJsonGM(GAS_URL, evt, TEST_PLAN.timeoutMs || 45000);
   }
 
@@ -352,14 +381,25 @@
     if (!Array.isArray(TEST_PLAN.list) || TEST_PLAN.list.length === 0)
       return console.warn("[TestPlan] list is empty");
 
-    const fixedMasterId = String(TEST_PLAN.fixedMasterId || "").trim();
-    if (!fixedMasterId) {
-      console.error("[TestPlan] ❌ TEST_PLAN.fixedMasterId is empty（你要固定同一個 masterId 才會推同一個 userId）");
+    // ✅ 向下相容：如果你還留著 fixedMasterId
+    const idsRaw =
+      TEST_PLAN.fixedMasterIds && Array.isArray(TEST_PLAN.fixedMasterIds)
+        ? TEST_PLAN.fixedMasterIds
+        : TEST_PLAN.fixedMasterId
+        ? [TEST_PLAN.fixedMasterId]
+        : [];
+
+    const pool = expandWeightedIds_(idsRaw);
+
+    if (!pool.length) {
+      console.error(
+        "[TestPlan] ❌ TEST_PLAN.fixedMasterIds is empty（請設定多個 masterId，例如 ['10','08']）"
+      );
       return;
     }
 
     console.log(
-      `[TestPlan] 🚀 start: fixedMasterId=${fixedMasterId}, jobs=${TEST_PLAN.list.length}`
+      `[TestPlan] 🚀 start: masterIdPool=${JSON.stringify(pool)}, jobs=${TEST_PLAN.list.length}`
     );
 
     TEST_PLAN.list.forEach((job) => {
@@ -372,19 +412,25 @@
       const startDelayMs = Math.max(0, afterSec * 1000);
 
       setTimeout(() => {
-        console.log(`[TestPlan] ▶ run job=${name} panel=${panel} count=${count} gapMs=${gapMs} afterSec=${afterSec}`);
+        console.log(
+          `[TestPlan] ▶ run job=${name} panel=${panel} count=${count} gapMs=${gapMs} afterSec=${afterSec}`
+        );
 
         for (let i = 0; i < count; i++) {
           const seq = i + 1;
           const d = gapMs > 0 ? i * gapMs : 0;
-          setTimeout(() => sendOneTestPlan(name, panel, seq, fixedMasterId), d);
+
+          setTimeout(() => {
+            const masterId = pickMasterIdForTest_(pool); // ✅平均分配
+            sendOneTestPlan(name, panel, seq, masterId);
+          }, d);
         }
       }, startDelayMs);
     });
   }
 
   // =========================
-  // ✅ 13) 你原本的壓測（保留）
+  // ✅ 13) 壓力測試（保留）
   // =========================
   function makeStressMasterId(i) {
     return String(STRESS.masterPrefix || "T") + String(i + 1).padStart(3, "0");
