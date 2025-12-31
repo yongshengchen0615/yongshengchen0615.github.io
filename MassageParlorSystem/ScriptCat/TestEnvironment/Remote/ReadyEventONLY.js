@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        TestEnvironment Local Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress)
 // @namespace    http://scriptcat.org/
-// @version      2.1
+// @version      1.0
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
@@ -13,7 +13,7 @@
   "use strict";
 
   // =========================
-  // ✅ 1) 你的 GAS Web App 端點（/exec）
+  // ✅ 1) 你的 GAS Web App 端點（/exec）=====
   // =========================
   // 這個 URL 是「Ready Event 接收 / 推播」的 GAS Web App
   // 前端偵測到師傅從「非準備」變成「準備」時，就會 POST 到這裡
