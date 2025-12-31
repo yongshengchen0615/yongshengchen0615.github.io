@@ -40,7 +40,7 @@
 
     // ✅固定 masterId（同一個 masterId → 同一個 userId）
     // 建議填一個「你確定在 Users 表能對應到 userId」的師傅編號，例如 "08"
-    fixedMasterId: "08",
+    fixedMasterId: "10",
 
     // ✅排程列表：每個 job 都會在 afterSec 後開始，送 count 筆，每筆 gapMs 間隔
     // 你要「推同一個 userId」：就不要在 job 裡改 masterId，或改也要同一個
