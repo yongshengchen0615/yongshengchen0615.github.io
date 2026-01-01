@@ -82,50 +82,61 @@ async function loadConfig_() {
 async function initAuthGate_() {
   setAuthText_("初始化 LIFF…", "");
 
-  // 1) init
   await liff.init({ liffId: LIFF_ID });
 
-  // 2) 印出診斷資訊（很重要）
+  const ctx = liff.getContext?.() || {};
   console.log("[LIFF] isInClient:", liff.isInClient());
   console.log("[LIFF] isLoggedIn:", liff.isLoggedIn());
-  console.log("[LIFF] language:", liff.getLanguage?.());
-  console.log("[LIFF] OS:", liff.getOS?.());
-  console.log("[LIFF] version:", liff.getVersion?.());
-  console.log("[LIFF] context:", liff.getContext?.());
+  console.log("[LIFF] context:", ctx);
 
-  // 3) 若未登入，導向登入（帶 redirectUri 避免回跳錯）
   if (!liff.isLoggedIn()) {
     setAuthText_("尚未登入，導向 LINE 登入…", "");
     liff.login({ redirectUri: window.location.href });
     return;
   }
 
-  // 4) 取得 profile
-  let profile = null;
+  // ✅ 1) userId：external 模式下優先用 context.userId
+  let lineUserId = String(ctx.userId || "").trim();
+
+  // ✅ 2) displayName：先嘗試 profile，再嘗試 decoded id token，最後 fallback
+  let lineDisplayName = "";
+
+  // 嘗試 getProfile（只在某些情境可用）
   try {
-    profile = await liff.getProfile();
+    const profile = await liff.getProfile();
+    console.log("[LIFF] profile:", profile);
+    if (!lineUserId) lineUserId = String(profile?.userId || "").trim();
+    lineDisplayName = String(profile?.displayName || "").trim() || lineDisplayName;
   } catch (e) {
-    console.warn("[LIFF] getProfile failed:", e);
+    console.warn("[LIFF] getProfile failed (may be external):", e);
   }
 
-  const lineUserId = String(profile?.userId || "").trim();
-  const lineDisplayName = String(profile?.displayName || "").trim();
+  // 嘗試 decoded ID token（你有 openid scope）
+  try {
+    const idt = liff.getDecodedIDToken?.();
+    console.log("[LIFF] decodedIDToken:", idt);
+    // 有些情境 name 會在這裡
+    if (!lineDisplayName) lineDisplayName = String(idt?.name || "").trim();
+  } catch (e) {
+    console.warn("[LIFF] getDecodedIDToken failed:", e);
+  }
 
-  console.log("[LIFF] profile:", profile);
+  // fallback displayName
+  if (!lineDisplayName) {
+    lineDisplayName = lineUserId
+      ? `User-${lineUserId.slice(-6)}`
+      : "Unknown";
+  }
 
-  // 5) 如果 userId 還是沒有 -> 給明確提示
   if (!lineUserId) {
-    const hint = liff.isInClient()
-      ? "你在 LINE 內，但仍拿不到 userId：請確認此 LIFF 綁定的 Channel 類型與設定正確。"
-      : "你目前可能在外部瀏覽器開啟：請改用 LINE 內開啟 LIFF（或掃 LIFF QR）。";
-
-    setAuthText_(`⛔ 無法取得 userId。${hint}`, "err");
-    toast("無法取得 userId（請看 console 診斷）", "err");
-    throw new Error("Missing userId (profile.userId is empty)");
+    setAuthText_("⛔ 無法取得 userId（請確認用 LIFF URL 開啟）", "err");
+    toast("無法取得 userId", "err");
+    throw new Error("Missing userId");
   }
 
-  // 6) 呼叫 GAS：建檔 + 回傳審核狀態
   setAuthText_("檢查審核狀態…", "");
+
+  // ✅ 呼叫 GAS：寫入/更新 + 回傳 audit
   const ret = await apiPostAuth_({
     mode: "adminUpsertAndCheck",
     lineUserId,
@@ -144,7 +155,7 @@ async function initAuthGate_() {
     isApproved: !!ret.isApproved,
   };
 
-  // 7) Gate：只要通過才放行
+  // ✅ Gate：只要 audit=通過 才能用管理台
   if (!ACTOR.isApproved) {
     const reason = `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
     setAuthText_(`⛔ 無權限：${reason}`, "err");
@@ -155,6 +166,7 @@ async function initAuthGate_() {
 
   setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（審核：通過）`, "ok");
 }
+
 
 
 /* =========================
