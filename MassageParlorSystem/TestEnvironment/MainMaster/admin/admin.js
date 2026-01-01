@@ -1,10 +1,12 @@
 /* ================================
- * Admin Dashboard (FULL) + LIFF Allowlist Gate + Copy userId
+ * Admin Dashboard (FULL)
+ * + LIFF login
+ * + AUTH GAS gate: must be Super Admin AND audit=通過
  * ================================ */
 
-let ADMIN_API_URL = ""; // 你的 Admin GAS /exec
+let ADMIN_API_URL = ""; // 既有 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
+let AUTH_API_URL = "";  // ✅ 新的 Auth GAS /exec（adminUpsertAndCheck）
 let LIFF_ID = "";
-let ADMIN_ALLOW_USERIDS = [];
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 
@@ -29,8 +31,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const cfg = await loadConfig_();
     initTheme_();
 
-    // ✅ 先做 LIFF 登入 + allowlist 驗證（通過才繼續）
-    await ensureLiffAuthOrBlock_(cfg);
+    // ✅ 先做 LIFF 登入 + 走 AUTH GAS 審核判斷（通過才繼續）
+    await ensureLiffAuthAndAuditOrBlock_(cfg);
 
     $("#themeToggle")?.addEventListener("click", toggleTheme_);
     $("#reloadBtn")?.addEventListener("click", () => loadAdmins_());
@@ -55,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadAdmins_();
   } catch (e) {
     console.error(e);
-    toast("初始化失敗（請檢查 config.json / LIFF）", "err");
+    toast("初始化失敗（請檢查 config.json / LIFF / AUTH GAS）", "err");
     showBlocker_("系統初始化失敗", String(e?.message || e || "unknown"));
   }
 });
@@ -70,24 +72,19 @@ async function loadConfig_() {
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
 
+  AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
+  if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
+
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
   if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
-
-  ADMIN_ALLOW_USERIDS = Array.isArray(cfg.ADMIN_ALLOW_USERIDS)
-    ? cfg.ADMIN_ALLOW_USERIDS.map(x => String(x || "").trim()).filter(Boolean)
-    : [];
-
-  if (!ADMIN_ALLOW_USERIDS.length) {
-    throw new Error("config.json missing ADMIN_ALLOW_USERIDS (at least 1 userId)");
-  }
 
   return cfg;
 }
 
 /* =========================
- * LIFF Gate (Allowlist)
+ * LIFF + AUTH Gate
  * ========================= */
-async function ensureLiffAuthOrBlock_() {
+async function ensureLiffAuthAndAuditOrBlock_() {
   if (!window.liff) {
     showBlocker_("缺少 LIFF 環境", "請用 LIFF 方式開啟此頁（LINE 內 / LIFF URL）。");
     throw new Error("LIFF SDK not available");
@@ -96,7 +93,6 @@ async function ensureLiffAuthOrBlock_() {
   await window.liff.init({ liffId: LIFF_ID });
 
   if (!window.liff.isLoggedIn()) {
-    // 會跳轉
     window.liff.login({ redirectUri: window.location.href });
     return;
   }
@@ -111,29 +107,52 @@ async function ensureLiffAuthOrBlock_() {
     pictureUrl: String(profile?.pictureUrl || ""),
   };
 
-  const allow = ADMIN_ALLOW_USERIDS.includes(userId);
+  setAuthText_(`已登入：${displayName || "-"} / ${userId}`);
 
-  setAuthText_(
-    allow
-      ? `已登入：${displayName || "-"} / ${userId}`
-      : `已登入：${displayName || "-"} / ${userId}（未授權）`
-  );
+  // ✅ 呼叫新的 AUTH GAS：自動 upsert + 回傳是否通過
+  const ret = await authPost_({
+    mode: "adminUpsertAndCheck",
+    userId,
+    displayName
+  });
 
-  if (!allow) {
+  // 預期 ret:
+  // { ok:true, allowed:true/false, audit:"通過/待審核/拒絕...", isSuperAdmin:true/false }
+  if (!ret || !ret.ok) {
     showBlocker_(
-      "無權限使用",
-      "你的 LINE userId 不在 config.json 的 ADMIN_ALLOW_USERIDS 清單中。",
+      "AUTH 檢查失敗",
+      String(ret?.error || "Auth GAS 回傳失敗"),
       { userId, displayName }
     );
+    bindCloseLiff_();
+    throw new Error(ret?.error || "Auth check failed");
+  }
 
-    $("#btnCloseLiff")?.addEventListener("click", () => {
-      try { window.liff.closeWindow(); } catch (_) {}
-    });
+  const allowed = !!ret.allowed;
+  const audit = String(ret.audit || "").trim();
+  const isSuperAdmin = !!ret.isSuperAdmin;
 
-    throw new Error("Not in ADMIN_ALLOW_USERIDS");
+  if (!allowed) {
+    const msg = isSuperAdmin
+      ? `你的審核狀態目前是「${audit || "未知"}」，需為「通過」才能使用。`
+      : "你不是總管理員（Super Admin），無法使用此管理台。";
+
+    showBlocker_(
+      "無權限使用",
+      msg,
+      { userId, displayName, audit, isSuperAdmin }
+    );
+    bindCloseLiff_();
+    throw new Error("Not allowed by AUTH GAS");
   }
 
   hideBlocker_();
+}
+
+function bindCloseLiff_() {
+  $("#btnCloseLiff")?.addEventListener("click", () => {
+    try { window.liff.closeWindow(); } catch (_) {}
+  });
 }
 
 function setAuthText_(text) {
@@ -158,13 +177,11 @@ function showBlocker_(title, msg, meta) {
 
   let userId = "";
   let displayName = "";
+  let audit = "";
   if (meta && typeof meta === "object") {
     userId = String(meta.userId || "").trim();
     displayName = String(meta.displayName || "").trim();
-  } else {
-    const s = String(meta || "");
-    userId = s.includes("userId:") ? s.split("userId:")[1].split("\n")[0].trim() : "";
-    displayName = s.includes("name:") ? s.split("name:")[1].split("\n")[0].trim() : "";
+    audit = String(meta.audit || "").trim();
   }
 
   if (k) {
@@ -178,14 +195,19 @@ function showBlocker_(title, msg, meta) {
           <div class="kv-label">displayName</div>
           <div class="kv-value">${escapeHtml(displayName || "-")}</div>
         </div>
+        ${audit ? `
+        <div class="kv-row">
+          <div class="kv-label">audit</div>
+          <div class="kv-value">${escapeHtml(audit)}</div>
+        </div>` : ``}
       </div>
       <div style="color:var(--text-sub);font-family:var(--mono);font-size:12px;">
-        請把 userId 加到 config.json → ADMIN_ALLOW_USERIDS
+        若需開通，請管理員到 AUTH GAS 的 Admins 表把此 userId 設為「通過」。
       </div>
     `;
   }
 
-  // 避免重複綁定：先移除舊 handler（用 clone 方式）
+  // 避免重複綁定：先 clone
   const copyBtn = $("#btnCopyUserId");
   if (copyBtn) {
     const newBtn = copyBtn.cloneNode(true);
@@ -194,12 +216,10 @@ function showBlocker_(title, msg, meta) {
     newBtn.addEventListener("click", async () => {
       const uid = String(userId || "").trim();
       if (!uid) return toast("找不到 userId", "err");
-
       try {
         await navigator.clipboard.writeText(uid);
         toast("已複製 userId", "ok");
       } catch (e) {
-        // fallback
         try {
           const ta = document.createElement("textarea");
           ta.value = uid;
@@ -218,7 +238,7 @@ function showBlocker_(title, msg, meta) {
     });
   }
 
-  // 點 userId 也能複製（加強 UX）
+  // 點 userId 也可複製
   const metaUid = document.getElementById("metaUserId");
   if (metaUid) {
     metaUid.style.cursor = "pointer";
@@ -226,10 +246,7 @@ function showBlocker_(title, msg, meta) {
     metaUid.addEventListener("click", async () => {
       const uid = String(userId || "").trim();
       if (!uid) return;
-      try {
-        await navigator.clipboard.writeText(uid);
-        toast("已複製 userId", "ok");
-      } catch (_) {}
+      try { await navigator.clipboard.writeText(uid); toast("已複製 userId", "ok"); } catch (_) {}
     });
   }
 }
@@ -626,6 +643,15 @@ function setLock_(locked) {
  * ========================= */
 async function apiPost_(bodyObj) {
   const res = await fetch(ADMIN_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj),
+  });
+  return await res.json().catch(() => ({}));
+}
+
+async function authPost_(bodyObj) {
+  const res = await fetch(AUTH_API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(bodyObj),
