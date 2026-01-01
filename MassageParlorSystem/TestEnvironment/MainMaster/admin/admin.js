@@ -1,9 +1,10 @@
 /* ================================
- * Admin Dashboard (FULL + LIFF Gate / AUDIT ONLY)
+ * Admin Dashboard (FULL)
+ * + LIFF Gate (AUTH_API_URL)
  * ================================ */
 
-let ADMIN_API_URL = "";
-let AUTH_API_URL = "";
+let ADMIN_API_URL = ""; // ✅ 你的既有 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
+let AUTH_API_URL = "";  // ✅ 新的 Auth GAS /exec（adminUpsertAndCheck）
 let LIFF_ID = "";
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
@@ -18,8 +19,8 @@ const dirtyMap = new Map();    // userId -> true
 let savingAll = false;
 let toastTimer = null;
 
-// 當前操作者（LIFF）
-let ACTOR = { lineUserId: "", lineDisplayName: "", audit: "", isApproved: false };
+// ✅ 目前登入者（僅用於顯示、與 AUTH gate）
+let me = { userId: "", displayName: "", audit: "" };
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -46,14 +47,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
-    // ✅ 先做 LIFF + 審核 gate
-    await initAuthGate_();
+    // ✅ 先 LIFF 登入 + AUTH 審核 gate（未通過直接 block）
+    await liffGate_();
 
-    // ✅ 通過後才載入資料
+    // ✅ 通過才載入既有 Admin GAS 資料
     await loadAdmins_();
   } catch (e) {
     console.error(e);
-    if (String(e?.message || e).includes("NO_PERMISSION")) return;
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
   }
 });
@@ -66,108 +66,80 @@ async function loadConfig_() {
   const cfg = await res.json();
 
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
-  AUTH_API_URL  = String(cfg.AUTH_API_URL  || "").trim();
-  LIFF_ID       = String(cfg.LIFF_ID       || "").trim();
+  AUTH_API_URL  = String(cfg.AUTH_API_URL || "").trim();
+  LIFF_ID       = String(cfg.LIFF_ID || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
-  if (!AUTH_API_URL)  throw new Error("config.json missing AUTH_API_URL");
-  if (!LIFF_ID)       throw new Error("config.json missing LIFF_ID");
+  if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
+  if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
 
   return cfg;
 }
 
 /* =========================
- * LIFF Auth Gate (AUDIT ONLY)
+ * LIFF + AUTH Gate
  * ========================= */
-async function initAuthGate_() {
-  setAuthText_("初始化 LIFF…", "");
+async function liffGate_() {
+  setAuthText_("LIFF 初始化中...");
 
   await liff.init({ liffId: LIFF_ID });
 
-  const ctx = liff.getContext?.() || {};
-  console.log("[LIFF] isInClient:", liff.isInClient());
-  console.log("[LIFF] isLoggedIn:", liff.isLoggedIn());
-  console.log("[LIFF] context:", ctx);
-
   if (!liff.isLoggedIn()) {
-    setAuthText_("尚未登入，導向 LINE 登入…", "");
-    liff.login({ redirectUri: window.location.href });
+    setAuthText_("導向登入中...");
+    liff.login();
     return;
   }
 
-  // ✅ 1) userId：external 模式下優先用 context.userId
-  let lineUserId = String(ctx.userId || "").trim();
+  const profile = await liff.getProfile();
+  me.userId = String(profile.userId || "").trim();
+  me.displayName = String(profile.displayName || "").trim();
 
-  // ✅ 2) displayName：先嘗試 profile，再嘗試 decoded id token，最後 fallback
-  let lineDisplayName = "";
+  if (!me.userId) throw new Error("LIFF missing userId");
 
-  // 嘗試 getProfile（只在某些情境可用）
-  try {
-    const profile = await liff.getProfile();
-    console.log("[LIFF] profile:", profile);
-    if (!lineUserId) lineUserId = String(profile?.userId || "").trim();
-    lineDisplayName = String(profile?.displayName || "").trim() || lineDisplayName;
-  } catch (e) {
-    console.warn("[LIFF] getProfile failed (may be external):", e);
-  }
-
-  // 嘗試 decoded ID token（你有 openid scope）
-  try {
-    const idt = liff.getDecodedIDToken?.();
-    console.log("[LIFF] decodedIDToken:", idt);
-    // 有些情境 name 會在這裡
-    if (!lineDisplayName) lineDisplayName = String(idt?.name || "").trim();
-  } catch (e) {
-    console.warn("[LIFF] getDecodedIDToken failed:", e);
-  }
-
-  // fallback displayName
-  if (!lineDisplayName) {
-    lineDisplayName = lineUserId
-      ? `User-${lineUserId.slice(-6)}`
-      : "Unknown";
-  }
-
-  if (!lineUserId) {
-    setAuthText_("⛔ 無法取得 userId（請確認用 LIFF URL 開啟）", "err");
-    toast("無法取得 userId", "err");
-    throw new Error("Missing userId");
-  }
-
-  setAuthText_("檢查審核狀態…", "");
-
-  // ✅ 呼叫 GAS：寫入/更新 + 回傳 audit
-  const ret = await apiPostAuth_({
+  // ✅ Auth GAS：自動建表 + upsert + 回 allowed
+  const ret = await authPost_({
     mode: "adminUpsertAndCheck",
-    lineUserId,
-    lineDisplayName,
+    userId: me.userId,
+    displayName: me.displayName,
   });
 
-  if (!ret || !ret.ok) {
-    setAuthText_(`⛔ 審核服務失敗：${ret?.error || "unknown"}`, "err");
-    throw new Error(ret?.error || "adminUpsertAndCheck failed");
+  if (!ret || !ret.ok) throw new Error(ret?.error || "adminUpsertAndCheck failed");
+
+  me.audit = String(ret.user?.audit || "");
+  setAuthText_(`${me.displayName}（${me.audit}）`);
+
+  if (!ret.allowed) {
+    blockPage_(
+      `尚未通過審核（目前：${me.audit}）\n\n請由總管理員在 Auth GAS 的資料表將你的狀態改為「通過」。`
+    );
+    throw new Error("NOT_ALLOWED");
   }
-
-  ACTOR = {
-    lineUserId,
-    lineDisplayName,
-    audit: String(ret.audit || ""),
-    isApproved: !!ret.isApproved,
-  };
-
-  // ✅ Gate：只要 audit=通過 才能用管理台
-  if (!ACTOR.isApproved) {
-    const reason = `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
-    setAuthText_(`⛔ 無權限：${reason}`, "err");
-    setLock_(true);
-    toast("尚未通過審核", "err");
-    throw new Error("NO_PERMISSION");
-  }
-
-  setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（審核：通過）`, "ok");
 }
 
+async function authPost_(bodyObj) {
+  const res = await fetch(AUTH_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj),
+  });
+  return await res.json().catch(() => ({}));
+}
 
+function setAuthText_(t) {
+  const el = document.getElementById("authText");
+  if (el) el.textContent = String(t || "");
+}
+
+function blockPage_(msg) {
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui;">
+      <div style="max-width:720px;width:100%;border:1px solid rgba(148,163,184,.35);border-radius:16px;padding:18px;background:rgba(2,6,23,.65);color:#e2e8f0;">
+        <h2 style="margin:0 0 8px;font-size:18px;">禁止存取</h2>
+        <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:13px;line-height:1.55;color:#cbd5e1;">${escapeHtml(msg)}</pre>
+      </div>
+    </div>
+  `;
+}
 
 /* =========================
  * Theme
@@ -185,7 +157,7 @@ function toggleTheme_() {
 }
 
 /* =========================
- * Data load
+ * Data load (ADMIN_API_URL)
  * ========================= */
 async function loadAdmins_() {
   try {
@@ -211,7 +183,7 @@ async function loadAdmins_() {
     toast("資料已更新", "ok");
   } catch (e) {
     console.error(e);
-    toast(`讀取失敗（${e?.message || "unknown"}）`, "err");
+    toast("讀取失敗", "err");
   } finally {
     setLock_(false);
   }
@@ -372,11 +344,7 @@ async function bulkDelete_() {
     await sleep_(80);
   }
 
-  toast(
-    failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`,
-    failCount ? "err" : "ok"
-  );
-
+  toast(failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`, failCount ? "err" : "ok");
   await loadAdmins_();
   setLock_(false);
 }
@@ -438,7 +406,7 @@ function bindTableDelegation_() {
         toast("刪除完成", "ok");
         await loadAdmins_();
       } else {
-        toast(`刪除失敗（${ret?.error || "unknown"}）`, "err");
+        toast("刪除失敗", "err");
         btn.disabled = false;
         btn.textContent = "刪除";
       }
@@ -458,14 +426,11 @@ async function saveAllDirty_() {
   refreshSaveAllButton_();
 
   try {
-    const items = ids
-      .map(id => allAdmins.find(x => x.userId === id))
-      .filter(Boolean)
-      .map(a => ({
-        userId: a.userId,
-        displayName: a.displayName,
-        audit: normalizeAudit_(a.audit),
-      }));
+    const items = ids.map(id => allAdmins.find(x => x.userId === id)).filter(Boolean).map(a => ({
+      userId: a.userId,
+      displayName: a.displayName,
+      audit: normalizeAudit_(a.audit),
+    }));
 
     const ret = await apiPost_({ mode: "updateAdminsBatch", items });
     if (!ret || !ret.ok) throw new Error(ret?.error || "updateAdminsBatch failed");
@@ -480,10 +445,7 @@ async function saveAllDirty_() {
     });
 
     applyFilters_();
-    toast(
-      ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`,
-      ret.failCount ? "err" : "ok"
-    );
+    toast(ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`, ret.failCount ? "err" : "ok");
   } catch (e) {
     console.error(e);
     toast("儲存失敗", "err");
@@ -559,41 +521,16 @@ function setLock_(locked) {
     });
 
   document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
-
-  if (locked) document.querySelector(".panel")?.classList.add("is-locked");
-  else document.querySelector(".panel")?.classList.remove("is-locked");
-}
-
-function setAuthText_(msg, cls) {
-  const el = document.getElementById("authText");
-  if (!el) return;
-  el.classList.remove("ok", "err");
-  if (cls) el.classList.add(cls);
-  el.textContent = msg;
 }
 
 /* =========================
- * API
+ * API (ADMIN_API_URL)  ✅保持不動
  * ========================= */
-async function apiPostAuth_(bodyObj) {
-  const res = await fetch(AUTH_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(bodyObj),
-  });
-  return await res.json().catch(() => ({}));
-}
-
 async function apiPost_(bodyObj) {
-  const payload = {
-    ...bodyObj,
-    actorUserId: ACTOR?.lineUserId || "",
-  };
-
   const res = await fetch(ADMIN_API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(bodyObj),
   });
   return await res.json().catch(() => ({}));
 }
@@ -663,8 +600,3 @@ function debounce(fn, wait) {
 }
 
 function sleep_(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function initTheme_() {
-  const saved = localStorage.getItem("theme") || "dark";
-  document.documentElement.setAttribute("data-theme", saved);
-}

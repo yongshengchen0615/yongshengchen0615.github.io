@@ -69,9 +69,9 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .brand-text h1{ margin:0; font-size:16px; letter-spacing:.2px; }
 .brand-text p{ margin:4px 0 0; color:var(--text-sub); font-size:12px; font-family:var(--mono); }
 
-.auth-text{ margin:4px 0 0; font-size:12px; font-family:var(--mono); color:var(--text-sub); }
-.auth-text.ok{ color: var(--success); }
-.auth-text.err{ color: var(--danger); }
+.auth-text{
+  opacity:.95;
+}
 
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
@@ -253,112 +253,4 @@ tbody td.sticky-col{ background:transparent; }
 @media (max-width: 720px){
   .panel-head{ flex-direction:column; align-items:stretch; }
   .search-box{ width:100%; }
-}
-
-/* =========================
- * ✅ 登入狀態文字
- * ========================= */
-.auth-text{
-  margin:6px 0 0;
-  color:var(--text-sub);
-  font-size:12px;
-  font-family:var(--mono);
-}
-
-/* =========================
- * ✅ 無權限 blocker overlay
- * ========================= */
-.blocker{
-  position:fixed;
-  inset:0;
-  background:rgba(2,6,23,.72);
-  backdrop-filter: blur(6px);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:18px;
-  z-index:9999;
-}
-
-.blocker-card{
-  width:min(520px, 100%);
-  border-radius:18px;
-  border:1px solid rgba(56,189,248,.25);
-  background:linear-gradient(180deg, var(--card2), rgba(0,0,0,.25));
-  box-shadow:0 18px 60px rgba(0,0,0,.35);
-  padding:16px 16px 14px;
-}
-
-.blocker-badge{
-  display:inline-flex;
-  align-items:center;
-  padding:6px 10px;
-  border-radius:999px;
-  border:1px solid rgba(239,68,68,.4);
-  background:rgba(239,68,68,.12);
-  color:rgba(239,68,68,1);
-  font-family:var(--mono);
-  font-size:12px;
-}
-
-.blocker-title{
-  margin:12px 0 6px;
-  font-size:18px;
-}
-
-.blocker-msg{
-  margin:0 0 10px;
-  color:var(--text-sub);
-  line-height:1.6;
-  font-size:13px;
-}
-
-.blocker-meta{
-  font-family:var(--mono);
-  font-size:12px;
-  color:var(--text-sub);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:10px 12px;
-  background:rgba(255,255,255,.03);
-  margin-bottom:12px;
-}
-
-.blocker-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:10px;
-}
-
-/* ✅ 可複製 KV */
-.blocker-kv{
-  display:grid;
-  gap:8px;
-  margin-bottom:12px;
-}
-
-.kv-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:10px 12px;
-  background:rgba(255,255,255,.03);
-}
-
-.kv-label{
-  color:var(--text-sub);
-  font-size:12px;
-  font-family:var(--mono);
-}
-
-.kv-value{
-  font-size:12px;
-  font-family:var(--mono);
-  color:var(--text);
-  user-select:all;
-  word-break:break-all;
-  text-align:right;
 }
