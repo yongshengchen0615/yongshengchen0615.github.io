@@ -1,5 +1,5 @@
 /* ================================
- * Admin Dashboard (FULL) + LIFF Allowlist Gate
+ * Admin Dashboard (FULL) + LIFF Allowlist Gate + Copy userId
  * ================================ */
 
 let ADMIN_API_URL = ""; // 你的 Admin GAS /exec
@@ -56,7 +56,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF）", "err");
-    // 初始化失敗也別讓使用者誤操作
     showBlocker_("系統初始化失敗", String(e?.message || e || "unknown"));
   }
 });
@@ -89,23 +88,19 @@ async function loadConfig_() {
  * LIFF Gate (Allowlist)
  * ========================= */
 async function ensureLiffAuthOrBlock_() {
-  // 1) 必須有 liff SDK
   if (!window.liff) {
     showBlocker_("缺少 LIFF 環境", "請用 LIFF 方式開啟此頁（LINE 內 / LIFF URL）。");
     throw new Error("LIFF SDK not available");
   }
 
-  // 2) init
   await window.liff.init({ liffId: LIFF_ID });
 
-  // 3) login
   if (!window.liff.isLoggedIn()) {
-    // 這行會跳轉，後面不會繼續執行
+    // 會跳轉
     window.liff.login({ redirectUri: window.location.href });
     return;
   }
 
-  // 4) profile
   const profile = await window.liff.getProfile();
   const userId = String(profile?.userId || "").trim();
   const displayName = String(profile?.displayName || "").trim();
@@ -116,7 +111,6 @@ async function ensureLiffAuthOrBlock_() {
     pictureUrl: String(profile?.pictureUrl || ""),
   };
 
-  // 5) allowlist check
   const allow = ADMIN_ALLOW_USERIDS.includes(userId);
 
   setAuthText_(
@@ -129,16 +123,16 @@ async function ensureLiffAuthOrBlock_() {
     showBlocker_(
       "無權限使用",
       "你的 LINE userId 不在 config.json 的 ADMIN_ALLOW_USERIDS 清單中。",
-      `userId: ${userId}\nname: ${displayName || "-"}`
+      { userId, displayName }
     );
-    // 可選：直接關閉 LIFF
+
     $("#btnCloseLiff")?.addEventListener("click", () => {
       try { window.liff.closeWindow(); } catch (_) {}
     });
+
     throw new Error("Not in ADMIN_ALLOW_USERIDS");
   }
 
-  // allow → 解除 blocker（如果曾顯示）
   hideBlocker_();
 }
 
@@ -147,6 +141,9 @@ function setAuthText_(text) {
   if (el) el.textContent = String(text || "");
 }
 
+/* =========================
+ * Blocker (show userId + copy)
+ * ========================= */
 function showBlocker_(title, msg, meta) {
   const b = $("#blocker");
   if (!b) return;
@@ -158,7 +155,83 @@ function showBlocker_(title, msg, meta) {
 
   if (t) t.textContent = String(title || "無權限使用");
   if (m) m.textContent = String(msg || "你的帳號不在管理者清單中。");
-  if (k) k.textContent = String(meta || "");
+
+  let userId = "";
+  let displayName = "";
+  if (meta && typeof meta === "object") {
+    userId = String(meta.userId || "").trim();
+    displayName = String(meta.displayName || "").trim();
+  } else {
+    const s = String(meta || "");
+    userId = s.includes("userId:") ? s.split("userId:")[1].split("\n")[0].trim() : "";
+    displayName = s.includes("name:") ? s.split("name:")[1].split("\n")[0].trim() : "";
+  }
+
+  if (k) {
+    k.innerHTML = `
+      <div class="blocker-kv">
+        <div class="kv-row">
+          <div class="kv-label">userId</div>
+          <div class="kv-value" id="metaUserId">${escapeHtml(userId || "-")}</div>
+        </div>
+        <div class="kv-row">
+          <div class="kv-label">displayName</div>
+          <div class="kv-value">${escapeHtml(displayName || "-")}</div>
+        </div>
+      </div>
+      <div style="color:var(--text-sub);font-family:var(--mono);font-size:12px;">
+        請把 userId 加到 config.json → ADMIN_ALLOW_USERIDS
+      </div>
+    `;
+  }
+
+  // 避免重複綁定：先移除舊 handler（用 clone 方式）
+  const copyBtn = $("#btnCopyUserId");
+  if (copyBtn) {
+    const newBtn = copyBtn.cloneNode(true);
+    copyBtn.parentNode.replaceChild(newBtn, copyBtn);
+
+    newBtn.addEventListener("click", async () => {
+      const uid = String(userId || "").trim();
+      if (!uid) return toast("找不到 userId", "err");
+
+      try {
+        await navigator.clipboard.writeText(uid);
+        toast("已複製 userId", "ok");
+      } catch (e) {
+        // fallback
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = uid;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+          toast("已複製 userId", "ok");
+        } catch (_) {
+          toast("複製失敗（請手動選取）", "err");
+        }
+      }
+    });
+  }
+
+  // 點 userId 也能複製（加強 UX）
+  const metaUid = document.getElementById("metaUserId");
+  if (metaUid) {
+    metaUid.style.cursor = "pointer";
+    metaUid.title = "點擊複製";
+    metaUid.addEventListener("click", async () => {
+      const uid = String(userId || "").trim();
+      if (!uid) return;
+      try {
+        await navigator.clipboard.writeText(uid);
+        toast("已複製 userId", "ok");
+      } catch (_) {}
+    });
+  }
 }
 
 function hideBlocker_() {

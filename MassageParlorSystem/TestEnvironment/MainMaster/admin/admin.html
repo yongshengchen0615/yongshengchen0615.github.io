@@ -120,7 +120,7 @@
 
   <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- ✅ 權限擋頁 Overlay -->
+  <!-- ✅ 無權限擋頁 Overlay -->
   <div id="blocker" class="blocker" hidden>
     <div class="blocker-card" role="dialog" aria-modal="true" aria-labelledby="blockerTitle">
       <div class="blocker-badge">ACCESS</div>
@@ -128,8 +128,12 @@
       <p id="blockerMsg" class="blocker-msg">
         你的 LINE 帳號不在管理者清單中，請聯絡系統管理員。
       </p>
+
+      <!-- 這裡會由 JS 動態塞入 userId / displayName -->
       <div class="blocker-meta" id="blockerMeta">-</div>
+
       <div class="blocker-actions">
+        <button id="btnCopyUserId" class="btn primary" type="button">複製 userId</button>
         <button id="btnCloseLiff" class="btn danger" type="button">關閉</button>
       </div>
     </div>
