@@ -1,8 +1,10 @@
 /* ================================
- * Admin Dashboard (FULL)
+ * Admin Dashboard (FULL) + LIFF Allowlist Gate
  * ================================ */
 
 let ADMIN_API_URL = ""; // 你的 Admin GAS /exec
+let LIFF_ID = "";
+let ADMIN_ALLOW_USERIDS = [];
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 
@@ -16,10 +18,19 @@ const dirtyMap = new Map();    // userId -> true
 let savingAll = false;
 let toastTimer = null;
 
+// ✅ 登入者資訊（LIFF）
+let authedUser = null; // { userId, displayName, pictureUrl }
+
+/* =========================
+ * Boot
+ * ========================= */
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    await loadConfig_();
+    const cfg = await loadConfig_();
     initTheme_();
+
+    // ✅ 先做 LIFF 登入 + allowlist 驗證（通過才繼續）
+    await ensureLiffAuthOrBlock_(cfg);
 
     $("#themeToggle")?.addEventListener("click", toggleTheme_);
     $("#reloadBtn")?.addEventListener("click", () => loadAdmins_());
@@ -44,7 +55,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadAdmins_();
   } catch (e) {
     console.error(e);
-    toast("初始化失敗（請檢查 config.json）", "err");
+    toast("初始化失敗（請檢查 config.json / LIFF）", "err");
+    // 初始化失敗也別讓使用者誤操作
+    showBlocker_("系統初始化失敗", String(e?.message || e || "unknown"));
   }
 });
 
@@ -58,7 +71,99 @@ async function loadConfig_() {
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
 
+  LIFF_ID = String(cfg.LIFF_ID || "").trim();
+  if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
+
+  ADMIN_ALLOW_USERIDS = Array.isArray(cfg.ADMIN_ALLOW_USERIDS)
+    ? cfg.ADMIN_ALLOW_USERIDS.map(x => String(x || "").trim()).filter(Boolean)
+    : [];
+
+  if (!ADMIN_ALLOW_USERIDS.length) {
+    throw new Error("config.json missing ADMIN_ALLOW_USERIDS (at least 1 userId)");
+  }
+
   return cfg;
+}
+
+/* =========================
+ * LIFF Gate (Allowlist)
+ * ========================= */
+async function ensureLiffAuthOrBlock_() {
+  // 1) 必須有 liff SDK
+  if (!window.liff) {
+    showBlocker_("缺少 LIFF 環境", "請用 LIFF 方式開啟此頁（LINE 內 / LIFF URL）。");
+    throw new Error("LIFF SDK not available");
+  }
+
+  // 2) init
+  await window.liff.init({ liffId: LIFF_ID });
+
+  // 3) login
+  if (!window.liff.isLoggedIn()) {
+    // 這行會跳轉，後面不會繼續執行
+    window.liff.login({ redirectUri: window.location.href });
+    return;
+  }
+
+  // 4) profile
+  const profile = await window.liff.getProfile();
+  const userId = String(profile?.userId || "").trim();
+  const displayName = String(profile?.displayName || "").trim();
+
+  authedUser = {
+    userId,
+    displayName,
+    pictureUrl: String(profile?.pictureUrl || ""),
+  };
+
+  // 5) allowlist check
+  const allow = ADMIN_ALLOW_USERIDS.includes(userId);
+
+  setAuthText_(
+    allow
+      ? `已登入：${displayName || "-"} / ${userId}`
+      : `已登入：${displayName || "-"} / ${userId}（未授權）`
+  );
+
+  if (!allow) {
+    showBlocker_(
+      "無權限使用",
+      "你的 LINE userId 不在 config.json 的 ADMIN_ALLOW_USERIDS 清單中。",
+      `userId: ${userId}\nname: ${displayName || "-"}`
+    );
+    // 可選：直接關閉 LIFF
+    $("#btnCloseLiff")?.addEventListener("click", () => {
+      try { window.liff.closeWindow(); } catch (_) {}
+    });
+    throw new Error("Not in ADMIN_ALLOW_USERIDS");
+  }
+
+  // allow → 解除 blocker（如果曾顯示）
+  hideBlocker_();
+}
+
+function setAuthText_(text) {
+  const el = $("#authText");
+  if (el) el.textContent = String(text || "");
+}
+
+function showBlocker_(title, msg, meta) {
+  const b = $("#blocker");
+  if (!b) return;
+  b.hidden = false;
+
+  const t = $("#blockerTitle");
+  const m = $("#blockerMsg");
+  const k = $("#blockerMeta");
+
+  if (t) t.textContent = String(title || "無權限使用");
+  if (m) m.textContent = String(msg || "你的帳號不在管理者清單中。");
+  if (k) k.textContent = String(meta || "");
+}
+
+function hideBlocker_() {
+  const b = $("#blocker");
+  if (b) b.hidden = true;
 }
 
 /* =========================
@@ -355,7 +460,6 @@ async function saveAllDirty_() {
     const ret = await apiPost_({ mode: "updateAdminsBatch", items });
     if (!ret || !ret.ok) throw new Error(ret?.error || "updateAdminsBatch failed");
 
-    // 成功的就寫回 original / 清 dirty
     const failedSet = new Set((ret.fail || []).map(x => String(x.userId || "").trim()));
     items.forEach(it => {
       if (!it.userId || failedSet.has(it.userId)) return;
@@ -437,14 +541,11 @@ function updateFooter_() {
 function setLock_(locked) {
   ["reloadBtn", "themeToggle", "searchInput", "clearSearchBtn", "checkAll", "bulkClear", "bulkAudit", "bulkApply", "bulkDelete", "saveAllBtn"]
     .forEach(id => {
-      const el = $("#" + id);
+      const el = document.getElementById(id);
       if (el) el.disabled = locked;
     });
 
   document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
-
-  if (locked) document.querySelector(".panel")?.classList.add("is-locked");
-  else document.querySelector(".panel")?.classList.remove("is-locked");
 }
 
 /* =========================

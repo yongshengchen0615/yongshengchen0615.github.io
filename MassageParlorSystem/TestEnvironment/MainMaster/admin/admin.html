@@ -16,6 +16,7 @@
           <div class="brand-text">
             <h1>Admin 審核管理台</h1>
             <p id="summaryText">載入中…</p>
+            <p id="authText" class="auth-text">尚未登入</p>
           </div>
         </div>
 
@@ -118,6 +119,24 @@
   </div>
 
   <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ✅ 權限擋頁 Overlay -->
+  <div id="blocker" class="blocker" hidden>
+    <div class="blocker-card" role="dialog" aria-modal="true" aria-labelledby="blockerTitle">
+      <div class="blocker-badge">ACCESS</div>
+      <h2 id="blockerTitle" class="blocker-title">無權限使用</h2>
+      <p id="blockerMsg" class="blocker-msg">
+        你的 LINE 帳號不在管理者清單中，請聯絡系統管理員。
+      </p>
+      <div class="blocker-meta" id="blockerMeta">-</div>
+      <div class="blocker-actions">
+        <button id="btnCloseLiff" class="btn danger" type="button">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <script src="admin.js" defer></script>
 </body>
