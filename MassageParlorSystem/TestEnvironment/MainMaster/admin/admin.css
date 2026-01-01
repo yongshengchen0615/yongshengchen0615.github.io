@@ -68,6 +68,11 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .brand-text h1{ margin:0; font-size:16px; letter-spacing:.2px; }
 .brand-text p{ margin:4px 0 0; color:var(--text-sub); font-size:12px; font-family:var(--mono); }
+
+.auth-text{ margin:4px 0 0; font-size:12px; font-family:var(--mono); color:var(--text-sub); }
+.auth-text.ok{ color: var(--success); }
+.auth-text.err{ color: var(--danger); }
+
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
 .kpi-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }

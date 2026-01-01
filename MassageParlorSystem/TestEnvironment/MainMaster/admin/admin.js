@@ -1,8 +1,10 @@
 /* ================================
- * Admin Dashboard (FULL)
+ * Admin Dashboard (FULL + LIFF Gate)
  * ================================ */
 
-let ADMIN_API_URL = ""; // 你的 Admin GAS /exec
+let ADMIN_API_URL = "";
+let AUTH_API_URL = "";
+let LIFF_ID = "";
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 
@@ -15,6 +17,9 @@ const dirtyMap = new Map();    // userId -> true
 
 let savingAll = false;
 let toastTimer = null;
+
+// 當前操作者（LIFF）
+let ACTOR = { lineUserId: "", lineDisplayName: "", audit: "", isApproved: false, isSuperAdmin: false };
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -41,10 +46,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
+    // ✅ 先做 LIFF + 審核 gate
+    await initAuthGate_();
+
+    // ✅ 通過後才載入資料
     await loadAdmins_();
   } catch (e) {
     console.error(e);
-    toast("初始化失敗（請檢查 config.json）", "err");
+    if (String(e?.message || e).includes("NO_PERMISSION")) return;
+    toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
   }
 });
 
@@ -56,9 +66,72 @@ async function loadConfig_() {
   const cfg = await res.json();
 
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
+  AUTH_API_URL  = String(cfg.AUTH_API_URL  || "").trim();
+  LIFF_ID       = String(cfg.LIFF_ID       || "").trim();
+
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
+  if (!AUTH_API_URL)  throw new Error("config.json missing AUTH_API_URL");
+  if (!LIFF_ID)       throw new Error("config.json missing LIFF_ID");
 
   return cfg;
+}
+
+/* =========================
+ * LIFF Auth Gate
+ * ========================= */
+async function initAuthGate_() {
+  setAuthText_("初始化 LIFF…", "");
+
+  await liff.init({ liffId: LIFF_ID });
+
+  if (!liff.isLoggedIn()) {
+    setAuthText_("導向登入中…", "");
+    liff.login();
+    return; // 會跳頁
+  }
+
+  const profile = await liff.getProfile();
+  const lineUserId = String(profile.userId || "").trim();
+  const lineDisplayName = String(profile.displayName || "").trim();
+
+  if (!lineUserId) {
+    setAuthText_("無法取得 userId", "err");
+    throw new Error("LIFF profile missing userId");
+  }
+
+  // 呼叫 GAS：建檔 + 檢查審核/是否總管
+  const ret = await apiPostAuth_({
+    mode: "adminUpsertAndCheck",
+    lineUserId,
+    lineDisplayName,
+  });
+
+  if (!ret || !ret.ok) {
+    setAuthText_("審核服務失敗", "err");
+    throw new Error(ret?.error || "adminUpsertAndCheck failed");
+  }
+
+  ACTOR = {
+    lineUserId,
+    lineDisplayName,
+    audit: String(ret.audit || ""),
+    isApproved: !!ret.isApproved,
+    isSuperAdmin: !!ret.isSuperAdmin,
+  };
+
+  // ✅ Gate：必須「通過」且「總管理員名單內」
+  if (!ACTOR.isApproved || !ACTOR.isSuperAdmin) {
+    const reason = !ACTOR.isSuperAdmin
+      ? "你不是總管理員（SUPER_ADMIN_USERIDS）"
+      : `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
+
+    setAuthText_(`⛔ 無權限：${reason}`, "err");
+    setLock_(true);
+    toast("無權限使用此管理台", "err");
+    throw new Error("NO_PERMISSION");
+  }
+
+  setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（通過 / Super Admin）`, "ok");
 }
 
 /* =========================
@@ -264,7 +337,11 @@ async function bulkDelete_() {
     await sleep_(80);
   }
 
-  toast(failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`, failCount ? "err" : "ok");
+  toast(
+    failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`,
+    failCount ? "err" : "ok"
+  );
+
   await loadAdmins_();
   setLock_(false);
 }
@@ -326,7 +403,7 @@ function bindTableDelegation_() {
         toast("刪除完成", "ok");
         await loadAdmins_();
       } else {
-        toast("刪除失敗", "err");
+        toast(`刪除失敗（${ret?.error || "unknown"}）`, "err");
         btn.disabled = false;
         btn.textContent = "刪除";
       }
@@ -346,16 +423,18 @@ async function saveAllDirty_() {
   refreshSaveAllButton_();
 
   try {
-    const items = ids.map(id => allAdmins.find(x => x.userId === id)).filter(Boolean).map(a => ({
-      userId: a.userId,
-      displayName: a.displayName,
-      audit: normalizeAudit_(a.audit),
-    }));
+    const items = ids
+      .map(id => allAdmins.find(x => x.userId === id))
+      .filter(Boolean)
+      .map(a => ({
+        userId: a.userId,
+        displayName: a.displayName,
+        audit: normalizeAudit_(a.audit),
+      }));
 
     const ret = await apiPost_({ mode: "updateAdminsBatch", items });
     if (!ret || !ret.ok) throw new Error(ret?.error || "updateAdminsBatch failed");
 
-    // 成功的就寫回 original / 清 dirty
     const failedSet = new Set((ret.fail || []).map(x => String(x.userId || "").trim()));
     items.forEach(it => {
       if (!it.userId || failedSet.has(it.userId)) return;
@@ -366,7 +445,10 @@ async function saveAllDirty_() {
     });
 
     applyFilters_();
-    toast(ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`, ret.failCount ? "err" : "ok");
+    toast(
+      ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`,
+      ret.failCount ? "err" : "ok"
+    );
   } catch (e) {
     console.error(e);
     toast("儲存失敗", "err");
@@ -447,14 +529,36 @@ function setLock_(locked) {
   else document.querySelector(".panel")?.classList.remove("is-locked");
 }
 
+function setAuthText_(msg, cls) {
+  const el = document.getElementById("authText");
+  if (!el) return;
+  el.classList.remove("ok", "err");
+  if (cls) el.classList.add(cls);
+  el.textContent = msg;
+}
+
 /* =========================
  * API
  * ========================= */
-async function apiPost_(bodyObj) {
-  const res = await fetch(ADMIN_API_URL, {
+async function apiPostAuth_(bodyObj) {
+  const res = await fetch(AUTH_API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(bodyObj),
+  });
+  return await res.json().catch(() => ({}));
+}
+
+async function apiPost_(bodyObj) {
+  const payload = {
+    ...bodyObj,
+    actorUserId: ACTOR?.lineUserId || "",
+  };
+
+  const res = await fetch(ADMIN_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
   });
   return await res.json().catch(() => ({}));
 }
