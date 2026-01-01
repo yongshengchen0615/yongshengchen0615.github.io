@@ -1,4 +1,7 @@
 {
-  "_comment": "Admin 管理台設定檔（標準 JSON，不可用 // 註解）",
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec"
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
+  "LIFF_ID": "2008804969-o8cRFrmi",
+  "ADMIN_ALLOW_USERIDS": [
+    "U974e3043db80b35e38fca1f5172fa917"
+  ]
 }
