@@ -293,3 +293,42 @@ tbody td.sticky-col{ background:transparent; }
   .panel-head{ flex-direction:column; align-items:stretch; }
   .search-box{ width:100%; }
 }
+
+/* === 固定最右操作欄（避免刪除按鈕跑位） === */
+th.sticky-right,
+td.sticky-right{
+  position: sticky;
+  right: 0;
+  z-index: 4;
+  background: var(--bg);
+}
+tbody td.sticky-right{
+  background: transparent;
+}
+
+/* === 技師欄位「是/否」切換按鈕（替代 select，避免無法展開/被裁切） === */
+.yn-toggle{
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text);
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:12px;
+  line-height:1;
+  cursor:pointer;
+  user-select:none;
+  min-width:52px;
+  text-align:center;
+}
+.yn-toggle:hover{ border-color:rgba(56,189,248,.45); }
+.yn-toggle[data-val="是"]{
+  border-color:rgba(22,163,74,.45);
+  background:rgba(22,163,74,.12);
+  color:#22c55e;
+}
+.yn-toggle[data-val="否"]{
+  border-color:rgba(239,68,68,.35);
+  background:rgba(239,68,68,.10);
+  color:#fb7185;
+}
+.yn-toggle:focus{ outline:none; box-shadow:var(--focus); }

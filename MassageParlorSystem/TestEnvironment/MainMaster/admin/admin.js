@@ -1,27 +1,26 @@
 /* ================================
- * Admin Dashboard (FULL)
- * + LIFF Gate (AUTH_API_URL)
- * + Tech fields editable (是/否)
+ * Admin Dashboard (FIXED)
+ * + LIFF Gate
+ * + Tech fields editable with toggle (是/否)
+ * + 操作欄 sticky-right
  * ================================ */
 
-let ADMIN_API_URL = ""; // 你的 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
-let AUTH_API_URL = "";  // Auth GAS /exec（adminUpsertAndCheck）
+let ADMIN_API_URL = "";
+let AUTH_API_URL = "";
 let LIFF_ID = "";
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
-const YESNO_ENUM = ["是", "否"];
 
 let allAdmins = [];
 let filtered = [];
 
 const selectedIds = new Set();
-const originalMap = new Map(); // userId -> snapshot
-const dirtyMap = new Map();    // userId -> true
+const originalMap = new Map();
+const dirtyMap = new Map();
 
 let savingAll = false;
 let toastTimer = null;
 
-// ✅ 目前登入者（僅用於顯示、與 AUTH gate）
 let me = { userId: "", displayName: "", audit: "" };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -49,10 +48,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
-    // ✅ 先 LIFF 登入 + AUTH 審核 gate（未通過直接 block）
     await liffGate_();
-
-    // ✅ 通過才載入資料
     await loadAdmins_();
   } catch (e) {
     console.error(e);
@@ -83,7 +79,6 @@ async function loadConfig_() {
  * ========================= */
 async function liffGate_() {
   setAuthText_("LIFF 初始化中...");
-
   await liff.init({ liffId: LIFF_ID });
 
   if (!liff.isLoggedIn()) {
@@ -109,10 +104,7 @@ async function liffGate_() {
   me.audit = String(ret.audit || ret.user?.audit || "");
   setAuthText_(`${me.displayName}（${me.audit}）`);
 
-  // ret.allowed 可能不存在（看你 Auth GAS 回傳格式）
-  // 若不存在：保守用 audit=通過 才放行
   const allowed = (ret.allowed === true) || (String(me.audit) === "通過");
-
   if (!allowed) {
     showBlocker_(
       `尚未通過審核（目前：${me.audit}）\n\n請由總管理員將你的狀態改為「通過」。`,
@@ -164,10 +156,7 @@ function showBlocker_(msg, userId, displayName, audit) {
   });
 
   document.getElementById("btnCloseLiff")?.addEventListener("click", () => {
-    try {
-      if (liff?.closeWindow) liff.closeWindow();
-    } catch (_) {}
-    // fallback
+    try { if (liff?.closeWindow) liff.closeWindow(); } catch (_) {}
     blocker.hidden = true;
   });
 }
@@ -188,7 +177,7 @@ function toggleTheme_() {
 }
 
 /* =========================
- * Data load (ADMIN_API_URL)
+ * Data load
  * ========================= */
 async function loadAdmins_() {
   try {
@@ -197,14 +186,12 @@ async function loadAdmins_() {
     if (!ret.ok) throw new Error(ret.error || "listAdmins failed");
 
     allAdmins = (ret.admins || []).map(a => ({
-      // 舊欄位
       userId: String(a.userId || ""),
       displayName: String(a.displayName || ""),
       audit: normalizeAudit_(a.audit),
       createdAt: String(a.createdAt || ""),
       lastLogin: String(a.lastLogin || ""),
 
-      // 新欄位（全部字串，預設會是 "否"）
       techAudit: normalizeYesNo_(a.techAudit),
       techCreatedAt: normalizeYesNo_(a.techCreatedAt),
       techStartDate: normalizeYesNo_(a.techStartDate),
@@ -219,7 +206,6 @@ async function loadAdmins_() {
     originalMap.clear();
     dirtyMap.clear();
     selectedIds.clear();
-
     for (const a of allAdmins) originalMap.set(a.userId, snapshot_(a));
 
     applyFilters_();
@@ -271,40 +257,40 @@ function render_() {
 
   filtered.forEach((a, i) => {
     const isDirty = dirtyMap.has(a.userId);
-
     const tr = document.createElement("tr");
     tr.dataset.userid = a.userId;
     if (isDirty) tr.classList.add("dirty");
 
+    // ✅ 固定 17 欄
     tr.innerHTML = `
       <td class="sticky-col col-check">
         <input class="row-check" type="checkbox" ${selectedIds.has(a.userId) ? "checked" : ""} aria-label="選取此列">
       </td>
       <td>${i + 1}</td>
 
-      <!-- 舊欄位 -->
       <td><span style="font-family:var(--mono)">${escapeHtml(a.userId)}</span></td>
       <td>${escapeHtml(a.displayName)}</td>
+
       <td>
         <select data-field="audit" class="select" aria-label="審核狀態">
           ${AUDIT_ENUM.map(v => `<option value="${v}" ${normalizeAudit_(a.audit)===v ? "selected":""}>${v}</option>`).join("")}
         </select>
       </td>
+
       <td><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
       <td><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
 
-      <!-- 新欄位（全都是 是/否 下拉） -->
-      ${yesNoCell_("techAudit", "技師審核狀態", a.techAudit)}
-      ${yesNoCell_("techCreatedAt", "技師建立時間", a.techCreatedAt)}
-      ${yesNoCell_("techStartDate", "技師開始使用日期", a.techStartDate)}
-      ${yesNoCell_("techExpiryDate", "技師使用期限", a.techExpiryDate)}
-      ${yesNoCell_("techMasterNo", "技師師傅編號", a.techMasterNo)}
-      ${yesNoCell_("techIsMaster", "技師是否師傅", a.techIsMaster)}
-      ${yesNoCell_("techPushEnabled", "技師是否推播", a.techPushEnabled)}
-      ${yesNoCell_("techPersonalStatusEnabled", "技師個人狀態開通", a.techPersonalStatusEnabled)}
-      ${yesNoCell_("techScheduleEnabled", "技師排班表開通", a.techScheduleEnabled)}
+      ${ynCell_("techAudit", a.techAudit)}
+      ${ynCell_("techCreatedAt", a.techCreatedAt)}
+      ${ynCell_("techStartDate", a.techStartDate)}
+      ${ynCell_("techExpiryDate", a.techExpiryDate)}
+      ${ynCell_("techMasterNo", a.techMasterNo)}
+      ${ynCell_("techIsMaster", a.techIsMaster)}
+      ${ynCell_("techPushEnabled", a.techPushEnabled)}
+      ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled)}
+      ${ynCell_("techScheduleEnabled", a.techScheduleEnabled)}
 
-      <td>
+      <td class="sticky-right">
         <div class="actions">
           ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
           <button class="btn danger btn-del" type="button">刪除</button>
@@ -322,13 +308,13 @@ function render_() {
   }
 }
 
-function yesNoCell_(field, label, value) {
+function ynCell_(field, value) {
   const v = normalizeYesNo_(value);
   return `
     <td>
-      <select data-field="${field}" class="select" aria-label="${escapeHtml(label)}">
-        ${YESNO_ENUM.map(x => `<option value="${x}" ${v===x ? "selected":""}>${x}</option>`).join("")}
-      </select>
+      <button type="button" class="yn-toggle" data-field="${field}" data-val="${v}" aria-label="${field}">
+        ${v}
+      </button>
     </td>
   `;
 }
@@ -354,7 +340,8 @@ function updateStats_() {
 function bindBulk_() {
   $("#checkAll")?.addEventListener("change", () => {
     if (savingAll) return;
-    const checked = !!$("#checkAll").checked;
+    const el = $("#checkAll");
+    const checked = !!el && el.checked;
     filtered.forEach(a => checked ? selectedIds.add(a.userId) : selectedIds.delete(a.userId));
     render_();
     syncCheckAll_();
@@ -416,6 +403,7 @@ async function bulkDelete_() {
     failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`,
     failCount ? "err" : "ok"
   );
+
   await loadAdmins_();
   setLock_(false);
 }
@@ -427,6 +415,7 @@ function bindTableDelegation_() {
   const tbody = $("#tbody");
   if (!tbody) return;
 
+  // ✅ change：audit 下拉
   tbody.addEventListener("change", (e) => {
     if (savingAll) return;
     const t = e.target;
@@ -442,7 +431,7 @@ function bindTableDelegation_() {
       return;
     }
 
-    if (t.matches("select[data-field]")) {
+    if (t.matches("select[data-field='audit']")) {
       const row = t.closest("tr");
       const id = row?.dataset.userid;
       if (!id) return;
@@ -450,30 +439,18 @@ function bindTableDelegation_() {
       const a = allAdmins.find(x => x.userId === id);
       if (!a) return;
 
-      const field = String(t.getAttribute("data-field") || "");
-      const val = String(t.value ?? "");
-
-      if (field === "audit") a.audit = normalizeAudit_(val);
-      else if (field === "techAudit") a.techAudit = normalizeYesNo_(val);
-      else if (field === "techCreatedAt") a.techCreatedAt = normalizeYesNo_(val);
-      else if (field === "techStartDate") a.techStartDate = normalizeYesNo_(val);
-      else if (field === "techExpiryDate") a.techExpiryDate = normalizeYesNo_(val);
-      else if (field === "techMasterNo") a.techMasterNo = normalizeYesNo_(val);
-      else if (field === "techIsMaster") a.techIsMaster = normalizeYesNo_(val);
-      else if (field === "techPushEnabled") a.techPushEnabled = normalizeYesNo_(val);
-      else if (field === "techPersonalStatusEnabled") a.techPersonalStatusEnabled = normalizeYesNo_(val);
-      else if (field === "techScheduleEnabled") a.techScheduleEnabled = normalizeYesNo_(val);
-
+      a.audit = normalizeAudit_(t.value);
       markDirty_(id, a);
       row.classList.toggle("dirty", dirtyMap.has(id));
       refreshSaveAllButton_();
       updateFooter_();
-      return;
     }
   });
 
+  // ✅ click：技師欄位 toggle + 刪除
   tbody.addEventListener("click", async (e) => {
     if (savingAll) return;
+
     const btn = e.target instanceof Element ? e.target.closest("button") : null;
     if (!btn) return;
 
@@ -481,6 +458,29 @@ function bindTableDelegation_() {
     const id = row?.dataset.userid;
     if (!id) return;
 
+    // 1) 技師欄位 toggle
+    if (btn.classList.contains("yn-toggle")) {
+      const field = String(btn.getAttribute("data-field") || "");
+      const cur = normalizeYesNo_(btn.getAttribute("data-val"));
+      const next = cur === "是" ? "否" : "是";
+
+      const a = allAdmins.find(x => x.userId === id);
+      if (!a) return;
+
+      if (field in a) a[field] = next;
+
+      // update UI
+      btn.setAttribute("data-val", next);
+      btn.textContent = next;
+
+      markDirty_(id, a);
+      row.classList.toggle("dirty", dirtyMap.has(id));
+      refreshSaveAllButton_();
+      updateFooter_();
+      return;
+    }
+
+    // 2) 刪除
     if (btn.classList.contains("btn-del")) {
       const a = allAdmins.find(x => x.userId === id);
       const ok = confirm(`確定要刪除？\n\nuserId: ${id}\n名稱: ${a?.displayName || ""}`);
@@ -521,7 +521,6 @@ async function saveAllDirty_() {
         displayName: a.displayName,
         audit: normalizeAudit_(a.audit),
 
-        // ✅ 新欄位全部一起送
         techAudit: normalizeYesNo_(a.techAudit),
         techCreatedAt: normalizeYesNo_(a.techCreatedAt),
         techStartDate: normalizeYesNo_(a.techStartDate),
@@ -620,16 +619,15 @@ function updateFooter_() {
 function setLock_(locked) {
   ["reloadBtn", "themeToggle", "searchInput", "clearSearchBtn", "checkAll", "bulkClear", "bulkAudit", "bulkApply", "bulkDelete", "saveAllBtn"]
     .forEach(id => {
-      const el = $("#" + id);
+      const el = document.getElementById(id);
       if (el) el.disabled = locked;
     });
 
-  // chip 用 button，所以也可以設 disabled
   document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
 }
 
 /* =========================
- * API (ADMIN_API_URL)
+ * API
  * ========================= */
 async function apiPost_(bodyObj) {
   const res = await fetch(ADMIN_API_URL, {
