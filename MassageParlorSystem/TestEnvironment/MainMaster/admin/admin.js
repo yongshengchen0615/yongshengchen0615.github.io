@@ -1,13 +1,15 @@
 /* ================================
  * Admin Dashboard (FULL)
  * + LIFF Gate (AUTH_API_URL)
+ * + Tech fields editable (是/否)
  * ================================ */
 
-let ADMIN_API_URL = ""; // ✅ 你的既有 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
-let AUTH_API_URL = "";  // ✅ 新的 Auth GAS /exec（adminUpsertAndCheck）
+let ADMIN_API_URL = ""; // 你的 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
+let AUTH_API_URL = "";  // Auth GAS /exec（adminUpsertAndCheck）
 let LIFF_ID = "";
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
+const YESNO_ENUM = ["是", "否"];
 
 let allAdmins = [];
 let filtered = [];
@@ -50,7 +52,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ 先 LIFF 登入 + AUTH 審核 gate（未通過直接 block）
     await liffGate_();
 
-    // ✅ 通過才載入既有 Admin GAS 資料
+    // ✅ 通過才載入資料
     await loadAdmins_();
   } catch (e) {
     console.error(e);
@@ -96,7 +98,6 @@ async function liffGate_() {
 
   if (!me.userId) throw new Error("LIFF missing userId");
 
-  // ✅ Auth GAS：自動建表 + upsert + 回 allowed
   const ret = await authPost_({
     mode: "adminUpsertAndCheck",
     userId: me.userId,
@@ -105,12 +106,19 @@ async function liffGate_() {
 
   if (!ret || !ret.ok) throw new Error(ret?.error || "adminUpsertAndCheck failed");
 
-  me.audit = String(ret.user?.audit || "");
+  me.audit = String(ret.audit || ret.user?.audit || "");
   setAuthText_(`${me.displayName}（${me.audit}）`);
 
-  if (!ret.allowed) {
-    blockPage_(
-      `尚未通過審核（目前：${me.audit}）\n\n請由總管理員在 Auth GAS 的資料表將你的狀態改為「通過」。`
+  // ret.allowed 可能不存在（看你 Auth GAS 回傳格式）
+  // 若不存在：保守用 audit=通過 才放行
+  const allowed = (ret.allowed === true) || (String(me.audit) === "通過");
+
+  if (!allowed) {
+    showBlocker_(
+      `尚未通過審核（目前：${me.audit}）\n\n請由總管理員將你的狀態改為「通過」。`,
+      me.userId,
+      me.displayName,
+      me.audit
     );
     throw new Error("NOT_ALLOWED");
   }
@@ -130,15 +138,38 @@ function setAuthText_(t) {
   if (el) el.textContent = String(t || "");
 }
 
-function blockPage_(msg) {
-  document.body.innerHTML = `
-    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui;">
-      <div style="max-width:720px;width:100%;border:1px solid rgba(148,163,184,.35);border-radius:16px;padding:18px;background:rgba(2,6,23,.65);color:#e2e8f0;">
-        <h2 style="margin:0 0 8px;font-size:18px;">禁止存取</h2>
-        <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:13px;line-height:1.55;color:#cbd5e1;">${escapeHtml(msg)}</pre>
-      </div>
-    </div>
-  `;
+function showBlocker_(msg, userId, displayName, audit) {
+  const blocker = document.getElementById("blocker");
+  const meta = document.getElementById("blockerMeta");
+  const p = document.getElementById("blockerMsg");
+  if (!blocker) return;
+
+  if (p) p.textContent = msg;
+  if (meta) {
+    meta.textContent =
+      `userId: ${userId || "-"}\n` +
+      `displayName: ${displayName || "-"}\n` +
+      `audit: ${audit || "-"}`;
+  }
+
+  blocker.hidden = false;
+
+  document.getElementById("btnCopyUserId")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(String(userId || ""));
+      toast("已複製 userId", "ok");
+    } catch (_) {
+      toast("複製失敗", "err");
+    }
+  });
+
+  document.getElementById("btnCloseLiff")?.addEventListener("click", () => {
+    try {
+      if (liff?.closeWindow) liff.closeWindow();
+    } catch (_) {}
+    // fallback
+    blocker.hidden = true;
+  });
 }
 
 /* =========================
@@ -166,11 +197,23 @@ async function loadAdmins_() {
     if (!ret.ok) throw new Error(ret.error || "listAdmins failed");
 
     allAdmins = (ret.admins || []).map(a => ({
+      // 舊欄位
       userId: String(a.userId || ""),
       displayName: String(a.displayName || ""),
       audit: normalizeAudit_(a.audit),
       createdAt: String(a.createdAt || ""),
       lastLogin: String(a.lastLogin || ""),
+
+      // 新欄位（全部字串，預設會是 "否"）
+      techAudit: normalizeYesNo_(a.techAudit),
+      techCreatedAt: normalizeYesNo_(a.techCreatedAt),
+      techStartDate: normalizeYesNo_(a.techStartDate),
+      techExpiryDate: normalizeYesNo_(a.techExpiryDate),
+      techMasterNo: normalizeYesNo_(a.techMasterNo),
+      techIsMaster: normalizeYesNo_(a.techIsMaster),
+      techPushEnabled: normalizeYesNo_(a.techPushEnabled),
+      techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
+      techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
     }));
 
     originalMap.clear();
@@ -220,7 +263,7 @@ function render_() {
   tbody.innerHTML = "";
 
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="8">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="17">無資料</td></tr>`;
     return;
   }
 
@@ -238,6 +281,8 @@ function render_() {
         <input class="row-check" type="checkbox" ${selectedIds.has(a.userId) ? "checked" : ""} aria-label="選取此列">
       </td>
       <td>${i + 1}</td>
+
+      <!-- 舊欄位 -->
       <td><span style="font-family:var(--mono)">${escapeHtml(a.userId)}</span></td>
       <td>${escapeHtml(a.displayName)}</td>
       <td>
@@ -247,6 +292,18 @@ function render_() {
       </td>
       <td><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
       <td><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
+
+      <!-- 新欄位（全都是 是/否 下拉） -->
+      ${yesNoCell_("techAudit", "技師審核狀態", a.techAudit)}
+      ${yesNoCell_("techCreatedAt", "技師建立時間", a.techCreatedAt)}
+      ${yesNoCell_("techStartDate", "技師開始使用日期", a.techStartDate)}
+      ${yesNoCell_("techExpiryDate", "技師使用期限", a.techExpiryDate)}
+      ${yesNoCell_("techMasterNo", "技師師傅編號", a.techMasterNo)}
+      ${yesNoCell_("techIsMaster", "技師是否師傅", a.techIsMaster)}
+      ${yesNoCell_("techPushEnabled", "技師是否推播", a.techPushEnabled)}
+      ${yesNoCell_("techPersonalStatusEnabled", "技師個人狀態開通", a.techPersonalStatusEnabled)}
+      ${yesNoCell_("techScheduleEnabled", "技師排班表開通", a.techScheduleEnabled)}
+
       <td>
         <div class="actions">
           ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
@@ -263,6 +320,17 @@ function render_() {
   if (savingAll) {
     tbody.querySelectorAll("input, select, button").forEach(el => el.disabled = true);
   }
+}
+
+function yesNoCell_(field, label, value) {
+  const v = normalizeYesNo_(value);
+  return `
+    <td>
+      <select data-field="${field}" class="select" aria-label="${escapeHtml(label)}">
+        ${YESNO_ENUM.map(x => `<option value="${x}" ${v===x ? "selected":""}>${x}</option>`).join("")}
+      </select>
+    </td>
+  `;
 }
 
 function updateStats_() {
@@ -344,7 +412,10 @@ async function bulkDelete_() {
     await sleep_(80);
   }
 
-  toast(failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`, failCount ? "err" : "ok");
+  toast(
+    failCount === 0 ? `批次刪除完成：${okCount} 筆` : `刪除：成功 ${okCount} / 失敗 ${failCount}`,
+    failCount ? "err" : "ok"
+  );
   await loadAdmins_();
   setLock_(false);
 }
@@ -371,17 +442,33 @@ function bindTableDelegation_() {
       return;
     }
 
-    if (t.matches("select[data-field='audit']")) {
+    if (t.matches("select[data-field]")) {
       const row = t.closest("tr");
       const id = row?.dataset.userid;
       if (!id) return;
+
       const a = allAdmins.find(x => x.userId === id);
       if (!a) return;
-      a.audit = normalizeAudit_(t.value);
+
+      const field = String(t.getAttribute("data-field") || "");
+      const val = String(t.value ?? "");
+
+      if (field === "audit") a.audit = normalizeAudit_(val);
+      else if (field === "techAudit") a.techAudit = normalizeYesNo_(val);
+      else if (field === "techCreatedAt") a.techCreatedAt = normalizeYesNo_(val);
+      else if (field === "techStartDate") a.techStartDate = normalizeYesNo_(val);
+      else if (field === "techExpiryDate") a.techExpiryDate = normalizeYesNo_(val);
+      else if (field === "techMasterNo") a.techMasterNo = normalizeYesNo_(val);
+      else if (field === "techIsMaster") a.techIsMaster = normalizeYesNo_(val);
+      else if (field === "techPushEnabled") a.techPushEnabled = normalizeYesNo_(val);
+      else if (field === "techPersonalStatusEnabled") a.techPersonalStatusEnabled = normalizeYesNo_(val);
+      else if (field === "techScheduleEnabled") a.techScheduleEnabled = normalizeYesNo_(val);
+
       markDirty_(id, a);
       row.classList.toggle("dirty", dirtyMap.has(id));
       refreshSaveAllButton_();
       updateFooter_();
+      return;
     }
   });
 
@@ -426,11 +513,25 @@ async function saveAllDirty_() {
   refreshSaveAllButton_();
 
   try {
-    const items = ids.map(id => allAdmins.find(x => x.userId === id)).filter(Boolean).map(a => ({
-      userId: a.userId,
-      displayName: a.displayName,
-      audit: normalizeAudit_(a.audit),
-    }));
+    const items = ids
+      .map(id => allAdmins.find(x => x.userId === id))
+      .filter(Boolean)
+      .map(a => ({
+        userId: a.userId,
+        displayName: a.displayName,
+        audit: normalizeAudit_(a.audit),
+
+        // ✅ 新欄位全部一起送
+        techAudit: normalizeYesNo_(a.techAudit),
+        techCreatedAt: normalizeYesNo_(a.techCreatedAt),
+        techStartDate: normalizeYesNo_(a.techStartDate),
+        techExpiryDate: normalizeYesNo_(a.techExpiryDate),
+        techMasterNo: normalizeYesNo_(a.techMasterNo),
+        techIsMaster: normalizeYesNo_(a.techIsMaster),
+        techPushEnabled: normalizeYesNo_(a.techPushEnabled),
+        techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
+        techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
+      }));
 
     const ret = await apiPost_({ mode: "updateAdminsBatch", items });
     if (!ret || !ret.ok) throw new Error(ret?.error || "updateAdminsBatch failed");
@@ -445,7 +546,10 @@ async function saveAllDirty_() {
     });
 
     applyFilters_();
-    toast(ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`, ret.failCount ? "err" : "ok");
+    toast(
+      ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`,
+      ret.failCount ? "err" : "ok"
+    );
   } catch (e) {
     console.error(e);
     toast("儲存失敗", "err");
@@ -520,11 +624,12 @@ function setLock_(locked) {
       if (el) el.disabled = locked;
     });
 
+  // chip 用 button，所以也可以設 disabled
   document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
 }
 
 /* =========================
- * API (ADMIN_API_URL)  ✅保持不動
+ * API (ADMIN_API_URL)
  * ========================= */
 async function apiPost_(bodyObj) {
   const res = await fetch(ADMIN_API_URL, {
@@ -545,6 +650,16 @@ function snapshot_(a) {
     audit: normalizeAudit_(a.audit),
     createdAt: a.createdAt,
     lastLogin: a.lastLogin,
+
+    techAudit: normalizeYesNo_(a.techAudit),
+    techCreatedAt: normalizeYesNo_(a.techCreatedAt),
+    techStartDate: normalizeYesNo_(a.techStartDate),
+    techExpiryDate: normalizeYesNo_(a.techExpiryDate),
+    techMasterNo: normalizeYesNo_(a.techMasterNo),
+    techIsMaster: normalizeYesNo_(a.techIsMaster),
+    techPushEnabled: normalizeYesNo_(a.techPushEnabled),
+    techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
+    techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
   });
 }
 
@@ -561,10 +676,15 @@ function normalizeAudit_(v) {
   return AUDIT_ENUM.includes(s) ? s : "其他";
 }
 
+function normalizeYesNo_(v) {
+  const s = String(v ?? "").trim();
+  return s === "是" ? "是" : "否";
+}
+
 /* =========================
  * Utils
  * ========================= */
-function $(sel) { return document.querySelector(sel.startsWith("#") ? sel : sel); }
+function $(sel) { return document.querySelector(sel); }
 
 function setText_(id, v) {
   const el = document.getElementById(id);

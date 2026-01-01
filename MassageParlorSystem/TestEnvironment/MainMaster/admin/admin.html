@@ -103,16 +103,30 @@
               <tr>
                 <th class="sticky-col col-check"><input id="checkAll" type="checkbox" aria-label="全選" /></th>
                 <th>#</th>
+
+                <!-- 舊欄位 -->
                 <th>lineUserId</th>
                 <th>lineDisplayName</th>
                 <th>審核狀態</th>
                 <th>建立時間</th>
                 <th>最後登入</th>
+
+                <!-- 新欄位（接在後面） -->
+                <th>技師審核狀態</th>
+                <th>技師建立時間</th>
+                <th>技師開始使用日期</th>
+                <th>技師使用期限</th>
+                <th>技師師傅編號</th>
+                <th>技師是否師傅</th>
+                <th>技師是否推播</th>
+                <th>技師個人狀態開通</th>
+                <th>技師排班表開通</th>
+
                 <th>操作</th>
               </tr>
             </thead>
             <tbody id="tbody">
-              <tr><td colspan="8">載入中...</td></tr>
+              <tr><td colspan="17">載入中...</td></tr>
             </tbody>
           </table>
         </div>
@@ -132,7 +146,6 @@
         你的 LINE 帳號不在管理者清單中，請聯絡系統管理員。
       </p>
 
-      <!-- 這裡會由 JS 動態塞入 userId / displayName / audit -->
       <div class="blocker-meta" id="blockerMeta">-</div>
 
       <div class="blocker-actions">
@@ -141,9 +154,6 @@
       </div>
     </div>
   </div>
-
-  <!-- ✅ LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <script src="admin.js" defer></script>
 </body>

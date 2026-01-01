@@ -68,11 +68,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .brand-text h1{ margin:0; font-size:16px; letter-spacing:.2px; }
 .brand-text p{ margin:4px 0 0; color:var(--text-sub); font-size:12px; font-family:var(--mono); }
-
-.auth-text{
-  opacity:.95;
-}
-
+.auth-text{ opacity:.95; }
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
 .kpi-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
@@ -166,6 +162,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .select:focus, input[type="text"]:focus{ box-shadow:var(--focus); border-color:rgba(56,189,248,.45); }
 
+/* 表格內更緊湊 */
 .table-wrap{ overflow:auto; padding:12px 14px 14px; -webkit-overflow-scrolling:touch; }
 table{
   width:100%;
@@ -249,6 +246,48 @@ tbody td.sticky-col{ background:transparent; }
 .toast.show{ opacity:1; transform:translateX(-50%) translateY(-4px); }
 .toast.ok{ border-color:rgba(22,163,74,.35); }
 .toast.err{ border-color:rgba(239,68,68,.35); }
+
+/* Blocker overlay */
+.blocker{
+  position:fixed; inset:0;
+  background:rgba(2,6,23,.82);
+  display:flex; align-items:center; justify-content:center;
+  padding:18px;
+  z-index:999;
+}
+.blocker[hidden]{ display:none !important; }
+.blocker-card{
+  width:min(560px, 100%);
+  border:1px solid rgba(148,163,184,.35);
+  border-radius:16px;
+  padding:16px;
+  background:rgba(2,6,23,.75);
+  color:var(--text);
+  box-shadow:0 18px 46px rgba(0,0,0,.35);
+}
+.blocker-badge{
+  display:inline-block;
+  font-family:var(--mono);
+  font-size:12px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(56,189,248,.35);
+  background:rgba(56,189,248,.12);
+  color:var(--accent);
+}
+.blocker-title{ margin:10px 0 6px; font-size:18px; }
+.blocker-msg{ margin:0 0 10px; color:var(--text-sub); line-height:1.6; }
+.blocker-meta{
+  font-family:var(--mono);
+  font-size:12px;
+  color:#cbd5e1;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(148,163,184,.25);
+  padding:10px 12px;
+  border-radius:12px;
+  white-space:pre-wrap;
+}
+.blocker-actions{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
 
 @media (max-width: 720px){
   .panel-head{ flex-direction:column; align-items:stretch; }
