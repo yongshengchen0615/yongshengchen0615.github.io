@@ -1,5 +1,5 @@
 /* ================================
- * app.js (FULL)
+ * app.js (FULL + LIFF Admin Gate)
  * ================================ */
 
 /* =========================================================
@@ -7,6 +7,8 @@
  * ========================================================= */
 
 let API_BASE_URL = "";
+let ADMIN_API_URL = "";
+let LIFF_ID = "";
 
 async function loadConfig_() {
   const res = await fetch("config.json", { cache: "no-store" });
@@ -14,6 +16,12 @@ async function loadConfig_() {
 
   API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
   if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
+
+  ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
+  if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
+
+  LIFF_ID = String(cfg.LIFF_ID || "").trim();
+  if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
 
   const defView = String(cfg.DEFAULT_VIEW || "").trim();
   if (!localStorage.getItem("users_view") && defView) {
@@ -122,6 +130,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       applyFilters();
     });
 
+    // ✅ Gate buttons
+    document.getElementById("authRetryBtn")?.addEventListener("click", () => adminAuthBoot_());
+    document.getElementById("authLogoutBtn")?.addEventListener("click", () => adminLogout_());
+
     ensureSaveAllButton_();
     ensureMobileSelectAll_();
     ensureViewTabs_();
@@ -147,10 +159,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       searchInput.closest(".search-box")?.classList.toggle("is-searching", searchInput.value.trim().length > 0);
     }
 
+    // ✅ 先做管理員驗證：通過才放行 loadUsers()
+    await adminAuthBoot_();
+
+    // ✅ 通過才會走到這裡
     loadUsers();
   } catch (e) {
-    console.error("loadConfig error:", e);
-    toast("設定檔讀取失敗（config.json）", "err");
+    console.error("boot error:", e);
+    toast("啟動失敗（請看 console）", "err");
+    showAuthGate_(true, "系統啟動失敗，請確認 config.json / 網路狀態。");
   }
 });
 
@@ -1274,4 +1291,91 @@ async function pushMessageBatch_(userIds, message, includeDisplayName) {
   });
 
   return await res.json().catch(() => ({}));
+}
+
+/* =========================================================
+ * ✅ Admin Auth (LIFF + Admin GAS Gate)
+ * ========================================================= */
+let adminProfile = null; // { userId, displayName }
+
+function showAuthGate_(show, msg) {
+  const gate = document.getElementById("authGate");
+  const m = document.getElementById("authGateMsg");
+  if (m && msg) m.textContent = msg;
+  if (gate) gate.style.display = show ? "flex" : "none";
+}
+
+async function adminAuthBoot_() {
+  showAuthGate_(true, "請稍候，正在進行 LINE 登入與權限檢查…");
+
+  try {
+    if (!window.liff) throw new Error("LIFF SDK not loaded");
+
+    await liff.init({ liffId: LIFF_ID });
+
+    if (!liff.isLoggedIn()) {
+      showAuthGate_(true, "尚未登入 LINE，將導向登入…");
+      liff.login({ redirectUri: window.location.href });
+      return; // 會跳轉
+    }
+
+    const profile = await liff.getProfile();
+    adminProfile = { userId: profile.userId, displayName: profile.displayName || "" };
+
+    const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName);
+
+    if (!check.ok) {
+      showAuthGate_(true, "管理員驗證失敗（後端回傳異常）。請稍後重試。");
+      setEditingEnabled_(false);
+      throw new Error("adminCheckAccess not ok");
+    }
+
+    if (String(check.audit || "") !== "通過") {
+      const hint =
+        check.audit === "待審核" ? "你的管理員權限目前為「待審核」。" :
+        check.audit === "拒絕" ? "你的管理員權限已被「拒絕」。" :
+        check.audit === "停用" ? "你的管理員權限目前為「停用」。" :
+        check.audit === "系統維護" ? "系統目前維護中，暫不開放管理員登入。" :
+        "你的管理員權限尚未通過。";
+
+      showAuthGate_(true, `${hint}\n\nLINE：${adminProfile.displayName}\nID：${adminProfile.userId}`);
+      setEditingEnabled_(false);
+      // 直接丟錯：阻止後面 loadUsers() 執行
+      throw new Error("admin not approved");
+    }
+
+    showAuthGate_(false);
+    setEditingEnabled_(true);
+    toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");
+    return true;
+  } catch (err) {
+    console.warn("adminAuthBoot blocked:", err);
+    // 留在 Gate，不放行
+    return false;
+  }
+}
+
+async function adminLogout_() {
+  try {
+    if (window.liff && liff.isLoggedIn()) await liff.logout();
+  } finally {
+    adminProfile = null;
+    showAuthGate_(true, "已登出。請重新登入。");
+  }
+}
+
+async function adminCheckAccess_(userId, displayName) {
+  if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
+
+  const res = await fetch(ADMIN_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      mode: "adminUpsertAndCheck",
+      userId,
+      displayName
+    })
+  });
+
+  return await res.json().catch(() => ({ ok: false }));
 }
