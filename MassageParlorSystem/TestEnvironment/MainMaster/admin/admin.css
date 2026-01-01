@@ -250,6 +250,9 @@ tbody td.sticky-col{ background:transparent; }
   .search-box{ width:100%; }
 }
 
+/* =========================
+ * ✅ 新增：登入狀態文字
+ * ========================= */
 .auth-text{
   margin:6px 0 0;
   color:var(--text-sub);
@@ -257,7 +260,9 @@ tbody td.sticky-col{ background:transparent; }
   font-family:var(--mono);
 }
 
-/* ✅ blocker overlay */
+/* =========================
+ * ✅ 新增：無權限 blocker overlay
+ * ========================= */
 .blocker{
   position:fixed;
   inset:0;
@@ -318,4 +323,37 @@ tbody td.sticky-col{ background:transparent; }
   display:flex;
   justify-content:flex-end;
   gap:10px;
+}
+
+/* ✅ 新增：可複製 KV */
+.blocker-kv{
+  display:grid;
+  gap:8px;
+  margin-bottom:12px;
+}
+
+.kv-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+}
+
+.kv-label{
+  color:var(--text-sub);
+  font-size:12px;
+  font-family:var(--mono);
+}
+
+.kv-value{
+  font-size:12px;
+  font-family:var(--mono);
+  color:var(--text);
+  user-select:all;
+  word-break:break-all;
+  text-align:right;
 }
