@@ -1,6 +1,16 @@
 {
-  "_comment": "Admin 管理台設定檔（標準 JSON，不可用 // 註解）",
+  "_meta": {
+    "description": "Admin 審核管理台設定檔",
+    "note": "本檔案為標準 JSON，不可使用 // 或 /* */ 註解",
+    "usage": "由 admin.js 於載入時 fetch 並解析"
+  },
+
   "LIFF_ID": "2008804969-o8cRFrmi",
+  "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
+
   "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
-  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec"
+  "_ADMIN_API_URL_DESC": "既有 Admin 管理 GAS（請勿修改）：提供 listAdmins / updateAdminsBatch / deleteAdmin",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec",
+  "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台"
 }
