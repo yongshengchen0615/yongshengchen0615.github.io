@@ -1,5 +1,5 @@
 /* ================================
- * Admin Dashboard (FULL + LIFF Gate)
+ * Admin Dashboard (FULL + LIFF Gate / AUDIT ONLY)
  * ================================ */
 
 let ADMIN_API_URL = "";
@@ -19,7 +19,7 @@ let savingAll = false;
 let toastTimer = null;
 
 // 當前操作者（LIFF）
-let ACTOR = { lineUserId: "", lineDisplayName: "", audit: "", isApproved: false, isSuperAdmin: false };
+let ACTOR = { lineUserId: "", lineDisplayName: "", audit: "", isApproved: false };
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -77,7 +77,7 @@ async function loadConfig_() {
 }
 
 /* =========================
- * LIFF Auth Gate
+ * LIFF Auth Gate (AUDIT ONLY)
  * ========================= */
 async function initAuthGate_() {
   setAuthText_("初始化 LIFF…", "");
@@ -87,7 +87,7 @@ async function initAuthGate_() {
   if (!liff.isLoggedIn()) {
     setAuthText_("導向登入中…", "");
     liff.login();
-    return; // 會跳頁
+    return;
   }
 
   const profile = await liff.getProfile();
@@ -99,7 +99,7 @@ async function initAuthGate_() {
     throw new Error("LIFF profile missing userId");
   }
 
-  // 呼叫 GAS：建檔 + 檢查審核/是否總管
+  // 呼叫 GAS：建檔 + 回傳審核狀態
   const ret = await apiPostAuth_({
     mode: "adminUpsertAndCheck",
     lineUserId,
@@ -116,22 +116,18 @@ async function initAuthGate_() {
     lineDisplayName,
     audit: String(ret.audit || ""),
     isApproved: !!ret.isApproved,
-    isSuperAdmin: !!ret.isSuperAdmin,
   };
 
-  // ✅ Gate：必須「通過」且「總管理員名單內」
-  if (!ACTOR.isApproved || !ACTOR.isSuperAdmin) {
-    const reason = !ACTOR.isSuperAdmin
-      ? "你不是總管理員（SUPER_ADMIN_USERIDS）"
-      : `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
-
+  // ✅ Gate：只要 audit=通過 就可以用
+  if (!ACTOR.isApproved) {
+    const reason = `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
     setAuthText_(`⛔ 無權限：${reason}`, "err");
     setLock_(true);
-    toast("無權限使用此管理台", "err");
+    toast("尚未通過審核", "err");
     throw new Error("NO_PERMISSION");
   }
 
-  setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（通過 / Super Admin）`, "ok");
+  setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（審核：通過）`, "ok");
 }
 
 /* =========================
@@ -176,7 +172,7 @@ async function loadAdmins_() {
     toast("資料已更新", "ok");
   } catch (e) {
     console.error(e);
-    toast("讀取失敗", "err");
+    toast(`讀取失敗（${e?.message || "unknown"}）`, "err");
   } finally {
     setLock_(false);
   }
@@ -628,3 +624,8 @@ function debounce(fn, wait) {
 }
 
 function sleep_(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function initTheme_() {
+  const saved = localStorage.getItem("theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+}
