@@ -1,5 +1,12 @@
 {
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec",
+  "_comment": "Admin 審核管理台設定檔（標準 JSON，可被 fetch(...).json() 正常解析）",
+  "_help": {
+    "LIFF_ID": "你的 LINE LIFF 應用程式 ID（在 LINE Developers 後台取得）",
+    "AUTH_API_URL": "審核/登入檢查的 GAS Web App /exec URL（mode=adminUpsertAndCheck 使用）",
+    "ADMIN_API_URL": "管理台 CRUD 的 GAS Web App /exec URL（mode=listAdmins/updateAdminsBatch/deleteAdmin 使用）",
+    "note": "若你使用我給的『合併版 GAS（Auth + CRUD 同一支）』，AUTH_API_URL 與 ADMIN_API_URL 可填同一個 /exec"
+  },
+  "LIFF_ID": "2008804969-o8cRFrmi",
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
-  "LIFF_ID": "2008804969-o8cRFrmi"
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec"
 }
