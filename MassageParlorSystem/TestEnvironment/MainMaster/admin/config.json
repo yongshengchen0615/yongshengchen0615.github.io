@@ -1,7 +1,5 @@
 {
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
-  "LIFF_ID": "2008804969-o8cRFrmi",
-  "ADMIN_ALLOW_USERIDS": [
-    "U974e3043db80b35e38fca1f5172fa917"
-  ]
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec",
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
+  "LIFF_ID": "2008804969-o8cRFrmi"
 }
