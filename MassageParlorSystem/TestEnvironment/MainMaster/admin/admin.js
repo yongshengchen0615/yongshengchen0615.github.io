@@ -1,8 +1,11 @@
 /* ================================
  * Admin Dashboard (FULL)
+ * + LIFF Gate (AUTH_API_URL)
  * ================================ */
 
-let ADMIN_API_URL = ""; // 你的 Admin GAS /exec
+let ADMIN_API_URL = ""; // ✅ 你的既有 Admin GAS /exec（listAdmins / updateAdminsBatch / deleteAdmin）
+let AUTH_API_URL = "";  // ✅ 新的 Auth GAS /exec（adminUpsertAndCheck）
+let LIFF_ID = "";
 
 const AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
 
@@ -15,6 +18,9 @@ const dirtyMap = new Map();    // userId -> true
 
 let savingAll = false;
 let toastTimer = null;
+
+// ✅ 目前登入者（僅用於顯示、與 AUTH gate）
+let me = { userId: "", displayName: "", audit: "" };
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -41,10 +47,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
+    // ✅ 先 LIFF 登入 + AUTH 審核 gate（未通過直接 block）
+    await liffGate_();
+
+    // ✅ 通過才載入既有 Admin GAS 資料
     await loadAdmins_();
   } catch (e) {
     console.error(e);
-    toast("初始化失敗（請檢查 config.json）", "err");
+    toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
   }
 });
 
@@ -56,9 +66,79 @@ async function loadConfig_() {
   const cfg = await res.json();
 
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
+  AUTH_API_URL  = String(cfg.AUTH_API_URL || "").trim();
+  LIFF_ID       = String(cfg.LIFF_ID || "").trim();
+
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
+  if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
+  if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
 
   return cfg;
+}
+
+/* =========================
+ * LIFF + AUTH Gate
+ * ========================= */
+async function liffGate_() {
+  setAuthText_("LIFF 初始化中...");
+
+  await liff.init({ liffId: LIFF_ID });
+
+  if (!liff.isLoggedIn()) {
+    setAuthText_("導向登入中...");
+    liff.login();
+    return;
+  }
+
+  const profile = await liff.getProfile();
+  me.userId = String(profile.userId || "").trim();
+  me.displayName = String(profile.displayName || "").trim();
+
+  if (!me.userId) throw new Error("LIFF missing userId");
+
+  // ✅ Auth GAS：自動建表 + upsert + 回 allowed
+  const ret = await authPost_({
+    mode: "adminUpsertAndCheck",
+    userId: me.userId,
+    displayName: me.displayName,
+  });
+
+  if (!ret || !ret.ok) throw new Error(ret?.error || "adminUpsertAndCheck failed");
+
+  me.audit = String(ret.user?.audit || "");
+  setAuthText_(`${me.displayName}（${me.audit}）`);
+
+  if (!ret.allowed) {
+    blockPage_(
+      `尚未通過審核（目前：${me.audit}）\n\n請由總管理員在 Auth GAS 的資料表將你的狀態改為「通過」。`
+    );
+    throw new Error("NOT_ALLOWED");
+  }
+}
+
+async function authPost_(bodyObj) {
+  const res = await fetch(AUTH_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj),
+  });
+  return await res.json().catch(() => ({}));
+}
+
+function setAuthText_(t) {
+  const el = document.getElementById("authText");
+  if (el) el.textContent = String(t || "");
+}
+
+function blockPage_(msg) {
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui;">
+      <div style="max-width:720px;width:100%;border:1px solid rgba(148,163,184,.35);border-radius:16px;padding:18px;background:rgba(2,6,23,.65);color:#e2e8f0;">
+        <h2 style="margin:0 0 8px;font-size:18px;">禁止存取</h2>
+        <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:13px;line-height:1.55;color:#cbd5e1;">${escapeHtml(msg)}</pre>
+      </div>
+    </div>
+  `;
 }
 
 /* =========================
@@ -77,7 +157,7 @@ function toggleTheme_() {
 }
 
 /* =========================
- * Data load
+ * Data load (ADMIN_API_URL)
  * ========================= */
 async function loadAdmins_() {
   try {
@@ -355,7 +435,6 @@ async function saveAllDirty_() {
     const ret = await apiPost_({ mode: "updateAdminsBatch", items });
     if (!ret || !ret.ok) throw new Error(ret?.error || "updateAdminsBatch failed");
 
-    // 成功的就寫回 original / 清 dirty
     const failedSet = new Set((ret.fail || []).map(x => String(x.userId || "").trim()));
     items.forEach(it => {
       if (!it.userId || failedSet.has(it.userId)) return;
@@ -442,13 +521,10 @@ function setLock_(locked) {
     });
 
   document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
-
-  if (locked) document.querySelector(".panel")?.classList.add("is-locked");
-  else document.querySelector(".panel")?.classList.remove("is-locked");
 }
 
 /* =========================
- * API
+ * API (ADMIN_API_URL)  ✅保持不動
  * ========================= */
 async function apiPost_(bodyObj) {
   const res = await fetch(ADMIN_API_URL, {
