@@ -82,24 +82,50 @@ async function loadConfig_() {
 async function initAuthGate_() {
   setAuthText_("初始化 LIFF…", "");
 
+  // 1) init
   await liff.init({ liffId: LIFF_ID });
 
+  // 2) 印出診斷資訊（很重要）
+  console.log("[LIFF] isInClient:", liff.isInClient());
+  console.log("[LIFF] isLoggedIn:", liff.isLoggedIn());
+  console.log("[LIFF] language:", liff.getLanguage?.());
+  console.log("[LIFF] OS:", liff.getOS?.());
+  console.log("[LIFF] version:", liff.getVersion?.());
+  console.log("[LIFF] context:", liff.getContext?.());
+
+  // 3) 若未登入，導向登入（帶 redirectUri 避免回跳錯）
   if (!liff.isLoggedIn()) {
-    setAuthText_("導向登入中…", "");
-    liff.login();
+    setAuthText_("尚未登入，導向 LINE 登入…", "");
+    liff.login({ redirectUri: window.location.href });
     return;
   }
 
-  const profile = await liff.getProfile();
-  const lineUserId = String(profile.userId || "").trim();
-  const lineDisplayName = String(profile.displayName || "").trim();
-
-  if (!lineUserId) {
-    setAuthText_("無法取得 userId", "err");
-    throw new Error("LIFF profile missing userId");
+  // 4) 取得 profile
+  let profile = null;
+  try {
+    profile = await liff.getProfile();
+  } catch (e) {
+    console.warn("[LIFF] getProfile failed:", e);
   }
 
-  // 呼叫 GAS：建檔 + 回傳審核狀態
+  const lineUserId = String(profile?.userId || "").trim();
+  const lineDisplayName = String(profile?.displayName || "").trim();
+
+  console.log("[LIFF] profile:", profile);
+
+  // 5) 如果 userId 還是沒有 -> 給明確提示
+  if (!lineUserId) {
+    const hint = liff.isInClient()
+      ? "你在 LINE 內，但仍拿不到 userId：請確認此 LIFF 綁定的 Channel 類型與設定正確。"
+      : "你目前可能在外部瀏覽器開啟：請改用 LINE 內開啟 LIFF（或掃 LIFF QR）。";
+
+    setAuthText_(`⛔ 無法取得 userId。${hint}`, "err");
+    toast("無法取得 userId（請看 console 診斷）", "err");
+    throw new Error("Missing userId (profile.userId is empty)");
+  }
+
+  // 6) 呼叫 GAS：建檔 + 回傳審核狀態
+  setAuthText_("檢查審核狀態…", "");
   const ret = await apiPostAuth_({
     mode: "adminUpsertAndCheck",
     lineUserId,
@@ -107,7 +133,7 @@ async function initAuthGate_() {
   });
 
   if (!ret || !ret.ok) {
-    setAuthText_("審核服務失敗", "err");
+    setAuthText_(`⛔ 審核服務失敗：${ret?.error || "unknown"}`, "err");
     throw new Error(ret?.error || "adminUpsertAndCheck failed");
   }
 
@@ -118,7 +144,7 @@ async function initAuthGate_() {
     isApproved: !!ret.isApproved,
   };
 
-  // ✅ Gate：只要 audit=通過 就可以用
+  // 7) Gate：只要通過才放行
   if (!ACTOR.isApproved) {
     const reason = `尚未通過審核（目前：${ACTOR.audit || "待審核"}）`;
     setAuthText_(`⛔ 無權限：${reason}`, "err");
@@ -129,6 +155,7 @@ async function initAuthGate_() {
 
   setAuthText_(`✅ 已登入：${ACTOR.lineDisplayName}（審核：通過）`, "ok");
 }
+
 
 /* =========================
  * Theme
