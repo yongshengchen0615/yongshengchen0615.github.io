@@ -401,7 +401,9 @@ function updateStats_() {
 function bindBulk_() {
   $("#checkAll")?.addEventListener("change", () => {
     if (savingAll) return;
-    const checked = !!$("#checkAll").checked;
+    const el = $("#checkAll");
+    const checked = !!(el && el.checked);
+
     filtered.forEach(a => checked ? selectedIds.add(a.userId) : selectedIds.delete(a.userId));
     render_();
     syncCheckAll_();
@@ -635,7 +637,10 @@ function setLock_(locked) {
       if (el) el.disabled = locked;
     });
 
-  document.querySelectorAll(".chip").forEach(el => el.disabled = locked);
+  // chips 是 button，所以可以 disabled
+  document.querySelectorAll(".chip").forEach(el => {
+    try { el.disabled = locked; } catch (_) {}
+  });
 }
 
 /* =========================

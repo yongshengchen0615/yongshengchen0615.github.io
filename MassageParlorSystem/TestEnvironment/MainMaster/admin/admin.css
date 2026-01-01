@@ -251,7 +251,7 @@ tbody td.sticky-col{ background:transparent; }
 }
 
 /* =========================
- * ✅ 新增：登入狀態文字
+ * ✅ 登入狀態文字
  * ========================= */
 .auth-text{
   margin:6px 0 0;
@@ -261,7 +261,7 @@ tbody td.sticky-col{ background:transparent; }
 }
 
 /* =========================
- * ✅ 新增：無權限 blocker overlay
+ * ✅ 無權限 blocker overlay
  * ========================= */
 .blocker{
   position:fixed;
@@ -325,7 +325,7 @@ tbody td.sticky-col{ background:transparent; }
   gap:10px;
 }
 
-/* ✅ 新增：可複製 KV */
+/* ✅ 可複製 KV */
 .blocker-kv{
   display:grid;
   gap:8px;
