@@ -1,0 +1,15 @@
+{
+  "_comment": "Users 後台設定檔（標準 JSON）。禁止 // 或 /* */ 註解，改用 _comment 欄位。",
+
+  "_comment_users_api": "原本 Users API（你現有那支 GAS Web App /exec）",
+  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
+
+  "_comment_admin_api": "✅新：管理員門禁（獨立 GAS Web App /exec）",
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
+
+  "_comment_liff": "✅你的 LIFF ID（LINE Developers 後台取得）",
+  "LIFF_ID": "2008804969-Zo59tqoJ",
+
+  "_comment_view": "預設欄位分頁：all / usage / master / features（localStorage users_view 會優先）",
+  "DEFAULT_VIEW": "usage"
+}

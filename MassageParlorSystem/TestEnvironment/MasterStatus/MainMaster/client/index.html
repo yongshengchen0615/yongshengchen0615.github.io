@@ -5,8 +5,31 @@
   <title>Users 後台管理</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- ✅ LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
+
+<!-- ✅ 管理員門禁 Gate：未通過前會遮住整個頁面 -->
+<div id="authGate" style="
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); backdrop-filter: blur(6px);
+  z-index:9999; padding:18px;">
+  <div style="
+    width:min(520px, 100%); border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; background:rgba(2,6,23,.92); color:#e5e7eb;
+    padding:16px 16px; box-shadow:0 12px 36px rgba(0,0,0,.35);">
+    <div style="font-weight:800; font-size:16px;">管理員驗證中…</div>
+    <div id="authGateMsg" style="margin-top:8px; color:rgba(229,231,235,.75); font-size:13px; line-height:1.5;">
+      請稍候，正在進行 LINE 登入與權限檢查。
+    </div>
+    <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="authRetryBtn" class="btn ghost" type="button">重試</button>
+      <button id="authLogoutBtn" class="btn danger" type="button">登出</button>
+    </div>
+  </div>
+</div>
 
 <div class="app">
   <div class="shell">
@@ -136,7 +159,6 @@
             </select>
           </div>
 
-          <!-- ✅ NEW：批次期限(天) -->
           <div class="bulk-group">
             <label class="bulk-label" for="bulkUsageDays">批次期限(天)</label>
             <input id="bulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
@@ -149,7 +171,6 @@
 
       <!-- Table -->
       <div class="table-wrap" aria-label="使用者列表">
-        <!-- ✅ data-view 由 JS 控制 -->
         <table>
           <thead>
             <tr>
