@@ -1,7 +1,7 @@
 /**
  * config.js
  *
- * 負責讀取 ../config.json，並把設定集中到 config 物件。
+ * 負責讀取 ./config.json（以 index.html 的 URL 為基準），並把設定集中到 config 物件。
  * 其他模組只要 import { config } 就能取用。
  */
 
