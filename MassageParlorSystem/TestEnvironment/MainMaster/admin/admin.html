@@ -155,6 +155,16 @@
     </div>
   </div>
 
-  <script src="admin.js" defer></script>
+  <!-- 拆分後的 JS（使用 defer 並依序載入，確保相依性正確） -->
+  <script src="js/admin.constants.js" defer></script>
+  <script src="js/admin.state.js" defer></script>
+  <script src="js/admin.utils.js" defer></script>
+  <script src="js/admin.data.js" defer></script>
+  <script src="js/admin.api.js" defer></script>
+  <script src="js/admin.ui.js" defer></script>
+  <script src="js/admin.features.js" defer></script>
+
+  <!-- 入口檔（DOMContentLoaded 初始化） -->
+  <script src="js/admin.js" defer></script>
 </body>
 </html>
