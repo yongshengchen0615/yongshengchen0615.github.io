@@ -1,0 +1,534 @@
+/**
+ * table.js
+ *
+ * 身體/腳底面板：
+ * - 篩選列（師傅搜尋、狀態篩選）
+ * - 增量渲染（reuse tr）
+ * - diff merge（避免 DOM 閃動）
+ * - refreshStatus（含 empty snapshot guard）
+ */
+
+import { dom } from "./dom.js";
+import { state } from "./state.js";
+import {
+  normalizeText,
+  fmtRemainingRaw,
+  deriveStatusClass,
+  applyPillFromTokens,
+  applyTextColorFromToken,
+  applyTextColorFromTokenStrong,
+  normalizeHex6,
+  hexToRgb,
+  isLightTheme,
+} from "./core.js";
+import { fetchStatusAll } from "./edgeClient.js";
+import { updateMyMasterStatusUI } from "./myMasterStatus.js";
+
+/* =========================
+ * mapping
+ * ========================= */
+function mapRowsToDisplay(rows) {
+  return rows.map((row) => {
+    const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
+    return {
+      sort: row.sort,
+      index: row.index,
+      _gasSeq: row._gasSeq,
+
+      masterId: normalizeText(row.masterId),
+      status: normalizeText(row.status),
+      appointment: normalizeText(row.appointment),
+
+      colorIndex: row.colorIndex || "",
+      colorMaster: row.colorMaster || "",
+      colorStatus: row.colorStatus || "",
+
+      colorAppointment: row.colorAppointment || row.colorAppt || row.colorBooking || "",
+      colorRemaining: row.colorRemaining || row.colorRemain || row.colorTime || "",
+
+      bgIndex: row.bgIndex || "",
+      bgMaster: row.bgMaster || "",
+      bgStatus: row.bgStatus || "",
+
+      remainingDisplay: fmtRemainingRaw(remaining),
+      statusClass: deriveStatusClass(row.status, remaining),
+    };
+  });
+}
+
+/* =========================
+ * Filters
+ * ========================= */
+export function rebuildStatusFilterOptions() {
+  if (!dom.filterStatusSelect) return;
+
+  const statuses = new Set();
+  ["body", "foot"].forEach((type) => {
+    (state.rawData[type] || []).forEach((r) => {
+      const s = normalizeText(r.status);
+      if (s) statuses.add(s);
+    });
+  });
+
+  const previous = dom.filterStatusSelect.value || "all";
+  dom.filterStatusSelect.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "全部狀態";
+  dom.filterStatusSelect.appendChild(optAll);
+
+  for (const s of statuses) {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    dom.filterStatusSelect.appendChild(opt);
+  }
+
+  dom.filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
+  state.filterStatus = dom.filterStatusSelect.value;
+}
+
+function applyFilters(list) {
+  return list.filter((row) => {
+    if (state.filterMaster) {
+      const key = String(state.filterMaster).trim();
+      const master = String(row.masterId || "").trim();
+
+      if (/^\d+$/.test(key)) {
+        if (parseInt(master, 10) !== parseInt(key, 10)) return false;
+      } else {
+        if (!master.includes(key)) return false;
+      }
+    }
+
+    if (state.filterStatus && state.filterStatus !== "all") {
+      if (normalizeText(row.status) !== normalizeText(state.filterStatus)) return false;
+    }
+
+    return true;
+  });
+}
+
+/* =========================
+ * Panel diff merge
+ * ========================= */
+function rowSignature(r) {
+  if (!r) return "";
+  return [
+    r.masterId ?? "",
+    r.index ?? "",
+    r.sort ?? "",
+    r.status ?? "",
+    r.appointment ?? "",
+    r.remaining ?? "",
+    r.colorIndex ?? "",
+    r.colorMaster ?? "",
+    r.colorStatus ?? "",
+    r.bgIndex ?? "",
+    r.bgMaster ?? "",
+    r.bgStatus ?? "",
+    r.bgAppointment ?? "",
+  ].join("|");
+}
+
+function buildStatusSet(rows) {
+  const s = new Set();
+  (rows || []).forEach((r) => {
+    const t = normalizeText(r && r.status);
+    if (t) s.add(t);
+  });
+  return s;
+}
+
+function setEquals(a, b) {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+function diffMergePanelRows(prevRows, incomingRows) {
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+  const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
+
+  const prevMap = new Map();
+  prev.forEach((r) => {
+    const id = String((r && r.masterId) || "").trim();
+    if (id) prevMap.set(id, r);
+  });
+
+  let changed = false;
+  const nextRows = [];
+
+  for (const nr of nextIn) {
+    const id = String((nr && nr.masterId) || "").trim();
+    if (!id) continue;
+
+    const old = prevMap.get(id);
+    if (!old) {
+      nextRows.push({ ...nr });
+      changed = true;
+      continue;
+    }
+
+    const oldSig = rowSignature(old);
+    const newSig = rowSignature(nr);
+
+    if (oldSig !== newSig) {
+      Object.assign(old, nr);
+      changed = true;
+    }
+
+    nextRows.push(old);
+    prevMap.delete(id);
+  }
+
+  if (prevMap.size > 0) changed = true;
+
+  const prevStatus = buildStatusSet(prev);
+  const nextStatus = buildStatusSet(nextRows);
+  const statusChanged = !setEquals(prevStatus, nextStatus);
+
+  return { changed, statusChanged, nextRows };
+}
+
+/* =========================
+ * 表頭顏色：吃 GAS token
+ * ========================= */
+export function applyTableHeaderColorsFromRows(displayRows) {
+  try {
+    const table = dom.tbodyRowsEl ? dom.tbodyRowsEl.closest("table") : null;
+    if (!table) return;
+
+    const ths = table.querySelectorAll("thead th");
+    if (!ths || ths.length < 5) return;
+
+    const first = Array.isArray(displayRows) && displayRows.length ? displayRows[0] : null;
+
+    if (!first) {
+      ths.forEach((th) => {
+        th.style.color = "";
+        th.removeAttribute("data-colortoken");
+      });
+      return;
+    }
+
+    const tokens = [
+      first.colorIndex || "",
+      first.colorMaster || "",
+      first.colorStatus || "",
+      first.colorAppointment || "",
+      first.colorRemaining || "",
+    ];
+
+    for (let i = 0; i < 5; i++) {
+      const th = ths[i];
+      const tk = tokens[i] || "";
+      th.setAttribute("data-colortoken", tk);
+      applyTextColorFromToken(th, tk);
+    }
+  } catch (e) {}
+}
+
+export function reapplyTableHeaderColorsFromDataset() {
+  try {
+    const table = dom.tbodyRowsEl ? dom.tbodyRowsEl.closest("table") : null;
+    if (!table) return;
+    const ths = table.querySelectorAll("thead th[data-colortoken]");
+    ths.forEach((th) => {
+      const tk = th.getAttribute("data-colortoken") || "";
+      applyTextColorFromToken(th, tk);
+    });
+  } catch (e) {}
+}
+
+/* =========================
+ * Incremental render
+ * ========================= */
+const rowDomMapByPanel = { body: new Map(), foot: new Map() };
+
+function buildRowKey(row) {
+  return String((row && row.masterId) || "").trim();
+}
+
+function ensureRowDom(panel, row) {
+  const key = buildRowKey(row);
+  if (!key) return null;
+
+  const map = rowDomMapByPanel[panel];
+  let tr = map.get(key);
+  if (tr) return tr;
+
+  tr = document.createElement("tr");
+
+  const tdOrder = document.createElement("td");
+  tdOrder.className = "cell-order";
+
+  const tdMaster = document.createElement("td");
+  tdMaster.className = "cell-master";
+
+  const tdStatus = document.createElement("td");
+  const tdAppointment = document.createElement("td");
+  tdAppointment.className = "cell-appointment";
+
+  const tdRemaining = document.createElement("td");
+
+  tr.appendChild(tdOrder);
+  tr.appendChild(tdMaster);
+  tr.appendChild(tdStatus);
+  tr.appendChild(tdAppointment);
+  tr.appendChild(tdRemaining);
+
+  map.set(key, tr);
+  return tr;
+}
+
+/*
+ * 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色
+ */
+const ORDER_HL_BG_TOKEN = "bg-CCBCBCB";
+function isOrderIndexHighlight(bgIndexToken) {
+  return String(bgIndexToken || "").trim() === ORDER_HL_BG_TOKEN;
+}
+
+function applyOrderIndexHighlight(tdOrder, bgToken) {
+  if (!tdOrder) return;
+
+  const h = normalizeHex6(bgToken);
+  const rgb = hexToRgb(h);
+  if (!rgb) return;
+
+  const aBg = isLightTheme() ? 0.36 : 0.42;
+  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aStripe = 0.92;
+  tdOrder.style.borderLeft = `6px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+
+  const aBd = isLightTheme() ? 0.60 : 0.62;
+  tdOrder.style.outline = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+  tdOrder.style.outlineOffset = "-2px";
+
+  tdOrder.style.boxShadow = isLightTheme()
+    ? "inset 0 0 0 999px rgba(255,255,255,0.14), 0 1px 10px rgba(0,0,0,0.08)"
+    : "inset 0 0 0 999px rgba(0,0,0,0.10), 0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(0,0,0,0.35)";
+
+  tdOrder.style.fontWeight = "900";
+}
+
+function patchRowDom(tr, row, orderText) {
+  const tds = tr.children;
+  const tdOrder = tds[0];
+  const tdMaster = tds[1];
+  const tdStatus = tds[2];
+  const tdAppointment = tds[3];
+  const tdRemaining = tds[4];
+
+  tdOrder.textContent = orderText;
+
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.borderLeft = "";
+  tdOrder.style.outline = "";
+  tdOrder.style.outlineOffset = "";
+  tdOrder.style.boxShadow = "";
+  tdOrder.style.fontWeight = "";
+  tdOrder.style.textShadow = "";
+  tdOrder.style.color = "";
+
+  applyTextColorFromTokenStrong(tdOrder, row.colorIndex);
+
+  if (isOrderIndexHighlight(row.bgIndex)) {
+    applyOrderIndexHighlight(tdOrder, row.bgIndex);
+  }
+
+  tdMaster.textContent = row.masterId || "";
+  tdMaster.style.color = "";
+  applyTextColorFromToken(tdMaster, row.colorMaster);
+
+  tdStatus.innerHTML = "";
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "status-pill " + (row.statusClass || "");
+  statusSpan.textContent = row.status || "";
+  applyPillFromTokens(statusSpan, row.bgStatus, row.colorStatus);
+  tdStatus.appendChild(statusSpan);
+
+  tdAppointment.textContent = row.appointment || "";
+  tdAppointment.style.color = "";
+  applyTextColorFromToken(tdAppointment, row.colorAppointment);
+
+  tdRemaining.innerHTML = "";
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time-badge";
+  timeSpan.textContent = row.remainingDisplay || "";
+  applyTextColorFromToken(timeSpan, row.colorRemaining);
+  tdRemaining.appendChild(timeSpan);
+}
+
+export function renderIncremental(panel) {
+  if (!dom.tbodyRowsEl) return;
+
+  // 排班表未開通：不渲染面板
+  if (!state.scheduleUiEnabled) return;
+
+  const list = panel === "body" ? state.rawData.body : state.rawData.foot;
+  const filtered = applyFilters(list);
+
+  const isAll = state.filterStatus === "all";
+  const isShift = String(state.filterStatus || "").includes("排班");
+  const useDisplayOrder = isAll || isShift;
+
+  let finalRows;
+  if (useDisplayOrder) {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort ?? a.index);
+      const nb = Number(b.sort ?? b.index);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  } else {
+    finalRows = filtered.slice().sort((a, b) => {
+      const na = Number(a.sort);
+      const nb = Number(b.sort);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  }
+
+  const displayRows = mapRowsToDisplay(finalRows);
+
+  if (dom.emptyStateEl) dom.emptyStateEl.style.display = displayRows.length ? "none" : "block";
+  if (dom.panelTitleEl) dom.panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
+
+  applyTableHeaderColorsFromRows(displayRows);
+
+  const frag = document.createDocumentFragment();
+
+  displayRows.forEach((row, idx) => {
+    const showGasSortInOrderCol = !useDisplayOrder;
+    const sortNum = Number(row.sort);
+    const orderText = showGasSortInOrderCol && !Number.isNaN(sortNum) ? String(sortNum) : String(idx + 1);
+
+    const tr = ensureRowDom(panel, row);
+    if (!tr) return;
+
+    patchRowDom(tr, row, orderText);
+    frag.appendChild(tr);
+  });
+
+  dom.tbodyRowsEl.replaceChildren(frag);
+}
+
+/* =========================
+ * refresh: no overlap + empty snapshot guard
+ * ========================= */
+const EMPTY_ACCEPT_AFTER_N = 2;
+
+function decideIncomingRows(panel, incomingRows, prevRows, isManual) {
+  const inc = Array.isArray(incomingRows) ? incomingRows : [];
+  const prev = Array.isArray(prevRows) ? prevRows : [];
+
+  if (isManual) {
+    state.emptyStreak[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+  if (inc.length > 0) {
+    state.emptyStreak[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+  if (prev.length === 0) {
+    state.emptyStreak[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  state.emptyStreak[panel] = (state.emptyStreak[panel] || 0) + 1;
+  if (state.emptyStreak[panel] >= EMPTY_ACCEPT_AFTER_N) {
+    state.emptyStreak[panel] = 0;
+    return { rows: inc, accepted: true };
+  }
+
+  return { rows: prev, accepted: false };
+}
+
+export async function refreshStatus({ isManual } = { isManual: false }) {
+  if (document.hidden) return;
+  if (state.refreshInFlight) return;
+
+  state.refreshInFlight = true;
+
+  if (isManual && dom.errorStateEl) dom.errorStateEl.style.display = "none";
+
+  try {
+    const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
+
+    const bodyDecision = decideIncomingRows("body", bodyRows, state.rawData.body, isManual);
+    const footDecision = decideIncomingRows("foot", footRows, state.rawData.foot, isManual);
+
+    const bodyDiff = diffMergePanelRows(state.rawData.body, bodyDecision.rows);
+    const footDiff = diffMergePanelRows(state.rawData.foot, footDecision.rows);
+
+    if (bodyDiff.changed) state.rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+
+    if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+
+    const anyChanged = bodyDiff.changed || footDiff.changed;
+    const activeChanged = state.activePanel === "body" ? bodyDiff.changed : footDiff.changed;
+
+    if (dom.connectionStatusEl) {
+      if (!state.scheduleUiEnabled) {
+        dom.connectionStatusEl.textContent = "排班表未開通（僅顯示我的狀態）";
+      } else if (source === "edge" && typeof edgeIdx === "number") {
+        dom.connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
+      } else {
+        dom.connectionStatusEl.textContent = "已連線（主站）";
+      }
+    }
+
+    if (anyChanged && dom.lastUpdateEl) {
+      const now = new Date();
+      dom.lastUpdateEl.textContent =
+        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+    }
+
+    if (state.scheduleUiEnabled) {
+      if (activeChanged) renderIncremental(state.activePanel);
+      else reapplyTableHeaderColorsFromDataset();
+    }
+
+    // 永遠更新我的狀態（schedule=否 也要）
+    updateMyMasterStatusUI();
+  } catch (err) {
+    console.error("[Status] 取得狀態失敗：", err);
+    if (dom.connectionStatusEl) dom.connectionStatusEl.textContent = "異常";
+    if (dom.errorStateEl && state.scheduleUiEnabled) dom.errorStateEl.style.display = "block";
+    throw err;
+  } finally {
+    state.refreshInFlight = false;
+  }
+}
+
+/* =========================
+ * 面板切換（tabs）
+ * ========================= */
+export function setActivePanel(panel) {
+  // 排班表未開通：不允許切換
+  if (!state.scheduleUiEnabled) return;
+
+  state.activePanel = panel;
+
+  if (dom.tabBodyBtn && dom.tabFootBtn) {
+    if (panel === "body") {
+      dom.tabBodyBtn.classList.add("tab-active");
+      dom.tabFootBtn.classList.remove("tab-active");
+    } else {
+      dom.tabFootBtn.classList.add("tab-active");
+      dom.tabBodyBtn.classList.remove("tab-active");
+    }
+  }
+
+  renderIncremental(state.activePanel);
+  updateMyMasterStatusUI();
+}
