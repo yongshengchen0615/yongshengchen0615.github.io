@@ -467,7 +467,7 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber_(row);
   const remText =
-    remNum === null ? "—" : remNum < 0 ? `已過期 ${remNum} 天` : `${remNum} 天`;
+     remNum === null ? "—" : String(remNum);
 
   const stCls = "myms-status " + classifyMyStatusClass_(statusText, remNum);
   const remCls = "myms-rem " + remBadgeClass_(remNum);
