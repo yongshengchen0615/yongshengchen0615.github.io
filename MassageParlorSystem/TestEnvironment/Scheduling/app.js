@@ -2,6 +2,7 @@
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
 // ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
 // ✅ 方案A已套用：支援後端回傳 masterCode → 正確顯示「我的狀態」
+// ✅ NEW：不管是否排班，都顯示「若現在切到排班，我會排第幾」
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -319,6 +320,89 @@ function fmtRowShort_(row) {
   const remText = rem !== "" ? `（${rem}）` : "";
   return `${s}${remText}`;
 }
+
+/* =========================================================
+ * ✅ Shift rank helpers（排班順位：即使不是排班也顯示「若排班」）
+ * ========================================================= */
+
+// 判斷是否為排班狀態（你可依實際狀態字串調整）
+function isShiftStatus_(statusText) {
+  const s = normalizeText_(statusText || "");
+  return s.includes("排班");
+}
+
+// 取「表格目前使用的排序策略」：跟 renderIncremental_ 對齊
+function sortRowsForDisplay_(rows) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+
+  // 跟 renderIncremental_ 的 useDisplayOrder 同步（依當下 filterStatus）
+  const isAll = filterStatus === "all";
+  const isShift = String(filterStatus || "").includes("排班");
+  const useDisplayOrder = isAll || isShift;
+
+  if (useDisplayOrder) {
+    return list.sort((a, b) => {
+      const na = Number(a.sort ?? a.index);
+      const nb = Number(b.sort ?? b.index);
+      const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+      const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+      if (aKey !== bKey) return aKey - bKey;
+      return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+    });
+  }
+
+  return list.sort((a, b) => {
+    const na = Number(a.sort);
+    const nb = Number(b.sort);
+    const aKey = Number.isNaN(na) ? Number(a._gasSeq ?? 0) : na;
+    const bKey = Number.isNaN(nb) ? Number(b._gasSeq ?? 0) : nb;
+    if (aKey !== bKey) return aKey - bKey;
+    return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
+  });
+}
+
+// ✅ 算「假想排班順位」：就算你現在不是排班，也會顯示「若切到排班會排第幾」
+function getShiftRank_(panelRows, techNo) {
+  const t = normalizeTechNo_(techNo);
+  if (!t) return null;
+
+  const sortedAll = sortRowsForDisplay_(panelRows || []);
+  if (!sortedAll.length) return null;
+
+  // 你在整體排序中的位置
+  let myPos = -1;
+  let myRow = null;
+  for (let i = 0; i < sortedAll.length; i++) {
+    const r = sortedAll[i];
+    const mid = normalizeTechNo_(r && r.masterId);
+    if (mid && mid === t) {
+      myPos = i;
+      myRow = r;
+      break;
+    }
+  }
+  if (myPos < 0) return null;
+
+  // 目前排班中的師傅位置
+  const shiftPositions = [];
+  for (let i = 0; i < sortedAll.length; i++) {
+    const r = sortedAll[i];
+    if (isShiftStatus_(r && r.status)) shiftPositions.push(i);
+  }
+
+  const shiftCount = shiftPositions.length;
+  const meIsShiftNow = myRow && isShiftStatus_(myRow.status);
+
+  // 你若切到排班：會插在「所有排班師傅中，位於你前面的那些人」之後
+  const beforeMe = shiftPositions.filter((p) => p < myPos).length;
+  const rank = beforeMe + 1;
+
+  // 總數：若你原本不在排班，切過去會 +1
+  const total = shiftCount + (meIsShiftNow ? 0 : 1);
+
+  return { rank, total, meIsShiftNow };
+}
+
 function updateMyMasterStatusUI_() {
   if (!myMasterStatusEl || !myMasterStatusTextEl) return;
 
@@ -333,10 +417,26 @@ function updateMyMasterStatusUI_() {
   const bodyText = fmtRowShort_(bodyRow);
   const footText = fmtRowShort_(footRow);
 
+  // ✅ 永遠算「若排班」順位（不依賴你現在是否排班）
+  const bodyShiftRank = getShiftRank_(rawData.body, myMasterState_.techNo);
+  const footShiftRank = getShiftRank_(rawData.foot, myMasterState_.techNo);
+
+  const bodyRankText = bodyShiftRank
+    ? (bodyShiftRank.meIsShiftNow
+        ? `｜排班順位：第 ${bodyShiftRank.rank} / ${bodyShiftRank.total}`
+        : `｜若排班：第 ${bodyShiftRank.rank} / ${bodyShiftRank.total}`)
+    : "";
+
+  const footRankText = footShiftRank
+    ? (footShiftRank.meIsShiftNow
+        ? `｜排班順位：第 ${footShiftRank.rank} / ${footShiftRank.total}`
+        : `｜若排班：第 ${footShiftRank.rank} / ${footShiftRank.total}`)
+    : "";
+
   myMasterStatusTextEl.textContent =
     `師傅：${myMasterState_.techNo}\n` +
-    `身體：${bodyText}\n` +
-    `腳底：${footText}`;
+    `身體：${bodyText}${bodyRankText}\n` +
+    `腳底：${footText}${footRankText}`;
 
   myMasterStatusEl.style.display = "flex";
 }
@@ -1155,7 +1255,7 @@ async function refreshStatus(isManual = false) {
 
     if (activeChanged) renderIncremental_(activePanel);
 
-    // ✅ 每次 refresh 後更新「我的狀態」（若是師傅）
+    // ✅ 每次 refresh 後更新「我的狀態」（含若排班順位）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
@@ -1538,12 +1638,15 @@ if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
     renderIncremental_(activePanel);
+    // ✅ 因為「若排班順位」跟排序策略相關（依 filterStatus），這裡不必算；保留即可
   });
 }
 if (filterStatusSelect) {
   filterStatusSelect.addEventListener("change", (e) => {
     filterStatus = e.target.value || "all";
     renderIncremental_(activePanel);
+    // ✅ filterStatus 變了會影響排序策略 → 更新「若排班順位」
+    updateMyMasterStatusUI_();
   });
 }
 
