@@ -5,7 +5,7 @@
  * 其他模組只要 import { config } 就能取用。
  */
 
-const CONFIG_JSON_URL = "../config.json";
+const CONFIG_JSON_URL = "./config.json";
 
 export const config = {
   EDGE_STATUS_URLS: [],
