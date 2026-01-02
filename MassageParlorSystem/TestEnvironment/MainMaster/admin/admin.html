@@ -132,6 +132,123 @@
         </div>
       </section>
 
+      <!-- ✅ Users/技師資料管理：直接在 admin 內製作（不嵌入、不外連） -->
+      <section class="panel" aria-label="Users/技師資料管理">
+        <div class="panel-head">
+          <div class="filters">
+            <div class="search-box" role="search">
+              <span class="icon" aria-hidden="true">⌕</span>
+              <input
+                id="uSearchInput"
+                class="input"
+                placeholder="搜尋：userId、名稱、師傅編號"
+                autocomplete="off"
+              />
+              <button id="uClearSearchBtn" class="btn icon ghost" type="button" aria-label="清除搜尋">✕</button>
+            </div>
+
+            <div class="seg" aria-label="使用者審核狀態篩選">
+              <button class="u-chip active" data-filter="ALL" type="button">全部</button>
+              <button class="u-chip" data-filter="通過" type="button">通過</button>
+              <button class="u-chip" data-filter="待審核" type="button">待審核</button>
+              <button class="u-chip" data-filter="拒絕" type="button">拒絕</button>
+              <button class="u-chip" data-filter="停用" type="button">停用</button>
+              <button class="u-chip" data-filter="系統維護" type="button">系統維護</button>
+            </div>
+          </div>
+
+          <div class="panel-actions">
+            <div id="uFooterStatus" class="hint">-</div>
+            <button id="uReloadBtn" class="btn ghost" type="button">重新整理 Users</button>
+            <button id="uSaveAllBtn" class="btn primary" type="button" disabled>儲存 Users 變更</button>
+          </div>
+        </div>
+
+        <!-- Bulk bar -->
+        <div id="uBulkBar" class="bulkbar" hidden>
+          <div class="bulk-left">
+            <span class="bulk-pill" id="uBulkCount">已選取 0 筆</span>
+            <button id="uBulkClear" class="btn ghost" type="button">清除選取</button>
+          </div>
+
+          <div class="bulk-right">
+            <div class="bulk-group">
+              <label class="bulk-label" for="uBulkAudit">批次審核</label>
+              <select id="uBulkAudit" class="select">
+                <option value="">不變更</option>
+                <option value="待審核">待審核</option>
+                <option value="通過">通過</option>
+                <option value="拒絕">拒絕</option>
+                <option value="停用">停用</option>
+                <option value="系統維護">系統維護</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
+              <label class="bulk-label" for="uBulkPush">批次推播</label>
+              <select id="uBulkPush" class="select">
+                <option value="">不變更</option>
+                <option value="是">開啟</option>
+                <option value="否">關閉</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
+              <label class="bulk-label" for="uBulkPersonalStatus">批次個人狀態</label>
+              <select id="uBulkPersonalStatus" class="select">
+                <option value="">不變更</option>
+                <option value="是">開啟</option>
+                <option value="否">關閉</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
+              <label class="bulk-label" for="uBulkScheduleEnabled">批次排班表</label>
+              <select id="uBulkScheduleEnabled" class="select">
+                <option value="">不變更</option>
+                <option value="是">開啟</option>
+                <option value="否">關閉</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
+              <label class="bulk-label" for="uBulkUsageDays">批次期限(天)</label>
+              <input id="uBulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
+            </div>
+
+            <button id="uBulkApply" class="btn primary" type="button">套用到選取</button>
+            <button id="uBulkDelete" class="btn danger" type="button">批次刪除</button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap" aria-label="使用者列表（可編輯）">
+          <table>
+            <thead>
+              <tr>
+                <th class="sticky-col col-check"><input id="uCheckAll" type="checkbox" aria-label="全選" /></th>
+                <th>#</th>
+                <th>userId</th>
+                <th>顯示名稱</th>
+                <th>建立時間</th>
+                <th>開始使用</th>
+                <th>期限(天)</th>
+                <th>審核狀態</th>
+                <th>師傅編號</th>
+                <th>是否推播</th>
+                <th>個人狀態開通</th>
+                <th>排班表開通</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="uTbody">
+              <tr><td colspan="13">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </div>
   </div>
 
@@ -163,6 +280,9 @@
   <script src="js/admin.api.js" defer></script>
   <script src="js/admin.ui.js" defer></script>
   <script src="js/admin.features.js" defer></script>
+
+  <!-- Users/技師資料管理（獨立區塊，不影響原本 admin 清單） -->
+  <script src="js/admin.users.js" defer></script>
 
   <!-- 入口檔（DOMContentLoaded 初始化） -->
   <script src="js/admin.js" defer></script>

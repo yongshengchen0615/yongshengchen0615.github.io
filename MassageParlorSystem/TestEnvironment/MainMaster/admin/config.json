@@ -12,5 +12,8 @@
   "_ADMIN_API_URL_DESC": "既有 Admin 管理 GAS（請勿修改）：提供 listAdmins / updateAdminsBatch / deleteAdmin",
 
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxjp4C56p4vBaJbZMSg0fSbkvyRVM1pCKDFvNT3fjXBxGSLGiPJwk_To0QvdTeStU9doA/exec",
-  "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台"
+  "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台",
+
+  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
+  "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能"
 }

@@ -35,6 +35,7 @@
 let ADMIN_API_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
+let API_BASE_URL = "";
 
 /** @type {AdminRow[]} */
 let allAdmins = [];

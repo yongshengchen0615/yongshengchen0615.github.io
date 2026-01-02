@@ -14,10 +14,12 @@ async function loadConfig_() {
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
+  API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
   if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
   if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
+  if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
 
   return cfg;
 }
