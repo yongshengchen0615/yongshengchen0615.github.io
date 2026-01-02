@@ -2,7 +2,7 @@
  * app.js (FULL + LIFF Admin Gate)
  * ✅ 權限為「否」的欄位直接不顯示（整欄隱藏）
  * ✅ 只有當 9 個 tech 權限全部為「是」才顯示上方分頁 Tabs
- * ✅ NEW：Bulk Bar（批次審核/推播/個人狀態/排班表/期限）依管理員可控欄位顯示
+ * ✅ Bulk Bar（批次審核/推播/個人狀態/排班表/期限）依「技師欄位可改權限」顯示
  * ================================ */
 
 /* =========================================================
@@ -74,23 +74,22 @@ function isYes_(v) {
  * 1:勾選 2:# 3:userId 4:顯示名稱 5:建立時間 6:開始使用 7:期限(天) 8:使用狀態 9:審核狀態
  * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:操作
  *
- * tech 權限對應：
- * - techAudit                  -> 9 審核狀態
- * - techCreatedAt              -> 5 建立時間（目前只讀，但可隱藏）
- * - techStartDate              -> 6 開始使用
- * - techExpiryDate             -> 7 期限(天)（建議同時控制 8 使用狀態）
- * - techMasterNo               -> 10 師傅編號
- * - techIsMaster               -> 11 是否師傅（只讀顯示，但可隱藏）
- * - techPushEnabled            -> 12 是否推播
- * - techPersonalStatusEnabled  -> 13 個人狀態開通
- * - techScheduleEnabled        -> 14 排班表開通
+ * tech 權限對應（= 管理員是否可修改這個技師欄位）
+ * - techAudit                  -> 9 審核狀態（技師審核狀態）
+ * - techCreatedAt              -> 5 建立時間（技師建立時間）
+ * - techStartDate              -> 6 開始使用（技師開始使用日期）
+ * - techExpiryDate             -> 7 期限(天)（技師使用期限）+ 8 使用狀態
+ * - techMasterNo               -> 10 師傅編號（技師師傅編號）
+ * - techIsMaster               -> 11 是否師傅（技師是否師傅）
+ * - techPushEnabled            -> 12 是否推播（技師是否推播）
+ * - techPersonalStatusEnabled  -> 13 個人狀態開通（技師個人狀態開通）
+ * - techScheduleEnabled        -> 14 排班表開通（技師排班表開通）
  */
 const PERM_TO_COLS = {
   techAudit: [9],
   techCreatedAt: [5],
   techStartDate: [6],
-  // ✅ 期限(天) + 使用狀態一起控制比較合理
-  techExpiryDate: [7, 8],
+  techExpiryDate: [7, 8], // ✅ 期限 + 使用狀態一起控
   techMasterNo: [10],
   techIsMaster: [11],
   techPushEnabled: [12],
@@ -166,7 +165,14 @@ function enforceViewTabsPolicy_() {
 }
 
 /* =========================================================
- * ✅ Bulk Permission Gate (依管理員可控欄位顯示批次欄位)
+ * ✅ Bulk Permission Gate（依「技師欄位可改權限」顯示批次欄位）
+ *
+ * 你的規則：
+ * - 批次審核        -> 技師審核狀態(techAudit) = 是 才顯示
+ * - 批次推播        -> 技師是否推播(techPushEnabled) = 是 才顯示
+ * - 批次個人狀態    -> 技師個人狀態開通(techPersonalStatusEnabled) = 是 才顯示
+ * - 批次排班表      -> 技師排班表開通(techScheduleEnabled) = 是 才顯示
+ * - 批次期限(天)    -> 技師使用期限(techExpiryDate) = 是 才顯示
  * ========================================================= */
 
 const BULK_PERM_MAP = {
@@ -178,11 +184,12 @@ const BULK_PERM_MAP = {
 };
 
 function applyBulkPermissions_() {
-  // adminPerms 尚未取得時：先全部隱藏（避免閃現）
+  // perms 未取到：先全隱藏（避免閃現）
   const hasPerms = !!adminPerms;
 
   Object.keys(BULK_PERM_MAP).forEach((bulkId) => {
     const permKey = BULK_PERM_MAP[bulkId];
+
     const controlEl = document.getElementById(bulkId);
     if (!controlEl) return;
 
@@ -191,10 +198,9 @@ function applyBulkPermissions_() {
 
     const allowed = hasPerms && isYes_(adminPerms[permKey]);
 
-    // ✅ 權限否：整組不顯示
     group.style.display = allowed ? "" : "none";
 
-    // ✅ 權限否：清空值，避免 bulkApply_ 讀到殘值
+    // 權限否：清空值，避免 bulkApply_ 讀到殘值
     if (!allowed) {
       if (controlEl instanceof HTMLSelectElement) controlEl.value = "";
       if (controlEl instanceof HTMLInputElement) controlEl.value = "";
@@ -263,6 +269,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentView = localStorage.getItem("users_view") || currentView;
 
     initTheme_();
+
     document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
 
     document.getElementById("reloadBtn")?.addEventListener("click", async () => {
@@ -738,7 +745,7 @@ async function bulkApply_() {
 
   let usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
 
-  // ✅ 依權限強制忽略不可控欄位（避免 DOM 殘值 / 手動改 DOM）
+  // ✅ 依「技師欄位可改權限」強制忽略不可控欄位（避免 DOM 殘值 / 手動改 DOM）
   if (!adminPerms || !isYes_(adminPerms.techAudit)) audit = "";
   if (!adminPerms || !isYes_(adminPerms.techPushEnabled)) pushEnabled = "";
   if (!adminPerms || !isYes_(adminPerms.techPersonalStatusEnabled)) personalStatusEnabled = "";
@@ -1517,12 +1524,10 @@ async function adminAuthBoot_() {
       techScheduleEnabled: check.techScheduleEnabled,
     };
 
-    // ✅ NEW：依權限決定 Bulk 欄位顯示
-    applyBulkPermissions_();
-
-    // ✅ 先套用欄位隱藏 + tabs 政策（就算最後 audit 不通過也先準備好）
+    // ✅ 依權限套用：欄位隱藏 / tabs / bulk 欄位顯示
     applyColumnPermissions_();
     enforceViewTabsPolicy_();
+    applyBulkPermissions_();
 
     if (!check.ok) {
       showAuthGate_(true, "管理員驗證失敗（後端回傳異常）。請稍後重試。");
@@ -1550,7 +1555,7 @@ async function adminAuthBoot_() {
     showAuthGate_(false);
     setEditingEnabled_(true);
 
-    // ✅ 通過後再保險套一次（含 tabs / 欄位隱藏 / Bulk）
+    // ✅ 通過後再保險套一次
     applyColumnPermissions_();
     enforceViewTabsPolicy_();
     applyBulkPermissions_();
