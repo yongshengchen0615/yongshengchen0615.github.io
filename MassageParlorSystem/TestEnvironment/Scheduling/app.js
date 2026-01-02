@@ -1,13 +1,10 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
-// ✅ 修訂整合版：
-//   1) 補齊 initNoLiffAndGuard（ENABLE_LINE_LOGIN=false 不再炸）
-//   2) 沿用既有 AUTH GAS：GET ?mode=check / GET ?mode=register
-//   3) ✅「我的狀態」與「身體/腳底面板」狀態顏色：一律參照 GAS 回傳 token（bgStatus / colorStatus）
-//      - 表格狀態 pill 也吃 token
-//      - 我的狀態左側色條 ::before 也吃 token（寫入 CSS 變數 --myStripe）
-//   4) ✅ 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色；且背景/文字更明顯
-//   5) ✅ 表格表頭（順序/師傅/狀態/預約內容/剩餘時間）文字色：對應 GAS 回傳 token（colorIndex/colorMaster/colorStatus/...）
+// ✅ 修訂整合版（含你要的新增功能）
+//   1) 排班表開通=否：不顯示 身體/腳底面板（tabs/filters/table/refresh），只顯示「我的狀態」
+//   2) 排班表開通=否 且 非師傅：顯示提示卡「你不是師傅，因此無法顯示我的狀態」
+//   3) Gate 規則：通過審核 + 未過期 → 可進入；排班表未開通不再擋（只影響 UI 顯示）
+//   4) 既有：狀態顏色 token（bgStatus / colorStatus）、順序 bgIndex=bg-CCBCBCB 才上底色、表頭色吃 token
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -260,6 +257,114 @@ const myMasterStatusEl = document.getElementById("myMasterStatus");
 const myMasterStatusTextEl = document.getElementById("myMasterStatusText");
 
 /* =========================================================
+ * ✅ 排班表未開通：隱藏面板 UI，只留「我的狀態」
+ * ========================================================= */
+const toolbarEl = document.querySelector(".toolbar");
+const mainEl = document.querySelector("main.main");
+const cardTableEl = document.querySelector(".card.card-table");
+const refreshBtnEl = document.getElementById("refreshBtn");
+const tabBodyBtnEl = document.getElementById("tabBody");
+const tabFootBtnEl = document.getElementById("tabFoot");
+const filterMasterWrapEl = filterMasterInput ? filterMasterInput.closest(".filter") : null;
+const filterStatusWrapEl = filterStatusSelect ? filterStatusSelect.closest(".filter") : null;
+
+// 控制旗標（由 AUTH 回傳 scheduleEnabled 決定）
+let scheduleUiEnabled_ = true;
+
+/* =========================================================
+ * ✅ schedule=否 且非師傅：提示卡（不改 HTML，動態插入）
+ * ========================================================= */
+let notMasterHintEl = null;
+
+function ensureNotMasterHint_() {
+  if (notMasterHintEl && document.body.contains(notMasterHintEl)) return notMasterHintEl;
+
+  notMasterHintEl = document.createElement("div");
+  notMasterHintEl.id = "notMasterHint";
+  notMasterHintEl.style.display = "none";
+  notMasterHintEl.style.margin = "0 0 14px 0";
+  notMasterHintEl.style.padding = "10px 14px";
+  notMasterHintEl.style.borderRadius = "16px";
+  notMasterHintEl.style.border = "1px solid rgba(148, 163, 184, 0.55)";
+  notMasterHintEl.style.background = "rgba(15, 23, 42, 0.65)";
+  notMasterHintEl.style.color = "var(--text-main)";
+  notMasterHintEl.style.fontSize = "13px";
+  notMasterHintEl.style.lineHeight = "1.6";
+  notMasterHintEl.style.position = "relative";
+  notMasterHintEl.style.overflow = "hidden";
+  notMasterHintEl.innerHTML = `
+    <div style="font-size:12px;color:var(--text-sub);font-weight:700;letter-spacing:.02em;margin-bottom:4px;">
+      提示
+    </div>
+    <div>你不是師傅，因此無法顯示「我的狀態」。</div>
+  `;
+
+  const stripe = document.createElement("div");
+  stripe.style.position = "absolute";
+  stripe.style.left = "0";
+  stripe.style.top = "0";
+  stripe.style.bottom = "0";
+  stripe.style.width = "6px";
+  stripe.style.background = "rgba(148, 163, 184, 0.7)";
+  notMasterHintEl.appendChild(stripe);
+
+  const layout = document.querySelector(".layout");
+  if (myMasterStatusEl && myMasterStatusEl.parentNode) {
+    myMasterStatusEl.parentNode.insertBefore(notMasterHintEl, myMasterStatusEl);
+  } else if (layout) {
+    layout.insertBefore(notMasterHintEl, layout.firstChild);
+  } else {
+    document.body.insertBefore(notMasterHintEl, document.body.firstChild);
+  }
+
+  return notMasterHintEl;
+}
+
+function showNotMasterHint_(show) {
+  const el = ensureNotMasterHint_();
+  el.style.display = show ? "block" : "none";
+}
+
+function applyScheduleUiMode_(enabled) {
+  scheduleUiEnabled_ = !!enabled;
+
+  // ✅ 面板功能整段隱藏
+  if (toolbarEl) toolbarEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (mainEl) mainEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (cardTableEl) cardTableEl.style.display = scheduleUiEnabled_ ? "" : "none";
+
+  // ✅ 面板操作也隱藏（避免誤觸）
+  if (refreshBtnEl) refreshBtnEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (tabBodyBtnEl) tabBodyBtnEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (tabFootBtnEl) tabFootBtnEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (filterMasterWrapEl) filterMasterWrapEl.style.display = scheduleUiEnabled_ ? "" : "none";
+  if (filterStatusWrapEl) filterStatusWrapEl.style.display = scheduleUiEnabled_ ? "" : "none";
+
+  // ✅ 只顯示我的狀態（非師傅仍會被 updateMyMasterStatusUI_ 控制）
+  if (myMasterStatusEl) myMasterStatusEl.style.display = "flex";
+
+  // ✅ 狀態提示文字（可選）
+  if (connectionStatusEl) {
+    connectionStatusEl.textContent = scheduleUiEnabled_ ? "連線中…" : "排班表未開通（僅顯示我的狀態）";
+  }
+
+  // ✅ 清掉表格內容/狀態區（避免閃一下）
+  if (!scheduleUiEnabled_) {
+    if (tbodyRowsEl) tbodyRowsEl.innerHTML = "";
+    if (emptyStateEl) emptyStateEl.style.display = "none";
+    if (errorStateEl) errorStateEl.style.display = "none";
+  }
+
+  // ✅ schedule=否：師傅顯示我的狀態；非師傅顯示提示卡
+  if (!scheduleUiEnabled_) {
+    const isMaster = !!(myMasterState_ && myMasterState_.isMaster && myMasterState_.techNo);
+    showNotMasterHint_(!isMaster);
+  } else {
+    showNotMasterHint_(false);
+  }
+}
+
+/* =========================================================
  * ✅ 使用者（師傅）個人狀態 - state
  * ========================================================= */
 const myMasterState_ = {
@@ -291,18 +396,9 @@ function normalizeTechNo_(v) {
   if (Number.isNaN(n)) return "";
   return String(n).padStart(2, "0");
 }
-/** ✅ 方案A 핵심：支援 GAS 回傳 masterCode */
+/** ✅ 支援 GAS 回傳 masterCode */
 function parseTechNo_(data) {
-  const v = pickAny_(data, [
-    "techNo",
-    "師傅編號",
-    "masterCode", // ✅ NEW：你的後端回傳欄位
-    "masterId",
-    "masterNo",
-    "tech",
-    "師傅",
-    "技師編號",
-  ]);
+  const v = pickAny_(data, ["techNo", "師傅編號", "masterCode", "masterId", "masterNo", "tech", "師傅", "技師編號"]);
   return normalizeTechNo_(v);
 }
 function findRowByTechNo_(rows, techNo) {
@@ -335,9 +431,7 @@ function deriveStatusClass(status, remaining) {
   const s = normalizeText_(status || "");
   const n = Number(remaining);
 
-  // ✅ 補：排班狀態 class
   if (s.includes("排班")) return "status-shift";
-
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
   if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
@@ -360,7 +454,6 @@ function mapRowsToDisplay(rows) {
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
 
-      // 可能存在：預約/剩餘顏色 token（若後端有回傳就吃；沒有就空）
       colorAppointment: row.colorAppointment || row.colorAppt || row.colorBooking || "",
       colorRemaining: row.colorRemaining || row.colorRemain || row.colorTime || "",
 
@@ -501,8 +594,7 @@ function pickDominantRow_(bodyRow, footRow) {
 }
 
 /* =========================================================
- * ✅ GAS 顏色 token → 實際可用顏色（bgStatus / colorStatus）
- * - 支援：bg-[#RRGGBB] / text-[#RRGGBB] / bg-Cxxxxxx / text-Cxxxxxx / opacity-xx / /xx
+ * ✅ GAS 顏色 token → 實際可用顏色
  * ========================================================= */
 function clamp_(v, a, b) {
   return Math.max(a, Math.min(b, v));
@@ -591,12 +683,10 @@ function parseColorToken_(str) {
 function applyPillFromTokens_(pillEl, bgToken, textToken) {
   if (!pillEl) return;
 
-  // reset inline
   pillEl.style.background = "";
   pillEl.style.border = "";
   pillEl.style.color = "";
 
-  // bg
   const bg = parseColorToken_(bgToken);
   if (bg.hex) {
     const rgb = hexToRgb_(bg.hex);
@@ -611,7 +701,6 @@ function applyPillFromTokens_(pillEl, bgToken, textToken) {
     }
   }
 
-  // text
   const fg = parseColorToken_(textToken);
   if (fg.hex) {
     const rgb = hexToRgb_(fg.hex);
@@ -623,7 +712,6 @@ function applyPillFromTokens_(pillEl, bgToken, textToken) {
     }
   }
 
-  // 如果沒 bg 但有 fg：給一個柔和背景（避免太淡看不到）
   if (!bg.hex && fg.hex) {
     const rgb = hexToRgb_(fg.hex);
     if (rgb) {
@@ -649,7 +737,7 @@ function tokenToStripe_(bgToken, textToken) {
 }
 
 /* =========================================================
- * ✅ 一般文字顏色：吃 GAS token（給表頭/一般 cell 用）
+ * ✅ 一般文字顏色：吃 GAS token
  * ========================================================= */
 function applyTextColorFromToken_(el, token) {
   if (!el) return;
@@ -669,7 +757,7 @@ function applyTextColorFromToken_(el, token) {
 }
 
 /* =========================================================
- * ✅ 新增：強化版文字色（只給「順序」用）
+ * ✅ 強化版文字色（只給「順序」用）
  * ========================================================= */
 function applyTextColorFromTokenStrong_(el, token) {
   if (!el) return;
@@ -681,24 +769,19 @@ function applyTextColorFromTokenStrong_(el, token) {
   const rgb = hexToRgb_(fg.hex);
   if (!rgb) return;
 
-  // ✅ 深色更亮
   const minAlpha = isLightTheme_() ? 0.97 : 0.94;
   let aText = fg.opacity == null ? 1 : fg.opacity;
   aText = clamp_(aText, minAlpha, 1);
 
   el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
-
   el.style.fontWeight = "900";
-
-  // ✅ 深色：加一點發光，數字會跳出來
   el.style.textShadow = isLightTheme_()
     ? "0 1px 0 rgba(0,0,0,0.10)"
     : "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10)";
 }
 
-
 /* =========================================================
- * ✅ 我的狀態 row：把 token 帶進 DOM，後續套色
+ * ✅ 我的狀態 row：把 token 帶進 DOM
  * ========================================================= */
 function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
@@ -741,10 +824,17 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
 function updateMyMasterStatusUI_() {
   if (!myMasterStatusEl) return;
 
+  // ✅ 非師傅：schedule=否 顯示提示卡；否則隱藏提示
   if (!myMasterState_.isMaster || !myMasterState_.techNo) {
+    if (!scheduleUiEnabled_) showNotMasterHint_(true);
+    else showNotMasterHint_(false);
+
     myMasterStatusEl.style.display = "none";
     return;
   }
+
+  // ✅ 師傅：不顯示提示卡
+  showNotMasterHint_(false);
 
   const bodyRow = findRowByTechNo_(rawData.body, myMasterState_.techNo);
   const footRow = findRowByTechNo_(rawData.foot, myMasterState_.techNo);
@@ -752,7 +842,6 @@ function updateMyMasterStatusUI_() {
   const bodyShiftRank = getShiftRank_(rawData.body, myMasterState_.techNo);
   const footShiftRank = getShiftRank_(rawData.foot, myMasterState_.techNo);
 
-  // class 只當 fallback（真正顏色吃 token）
   myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
   myMasterStatusEl.classList.add("status-other");
 
@@ -772,7 +861,6 @@ function updateMyMasterStatusUI_() {
     </div>
   `;
 
-  // 1) 我的狀態 pill：吃 token
   const pills = host.querySelectorAll(".status-pill[data-bgstatus], .status-pill[data-colorstatus]");
   pills.forEach((pill) => {
     const bg = pill.getAttribute("data-bgstatus") || "";
@@ -780,7 +868,6 @@ function updateMyMasterStatusUI_() {
     applyPillFromTokens_(pill, bg, fg);
   });
 
-  // 2) 左側色條：取 dominant row 的 token，寫入 --myStripe（需配合 CSS 用 var(--myStripe)）
   const dominant = pickDominantRow_(bodyRow, footRow);
   if (dominant) {
     const stripe = tokenToStripe_(dominant.bgStatus, dominant.colorStatus);
@@ -1066,9 +1153,7 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 }
 
 /* =========================================================
- * ✅ 表頭顏色（順序/師傅/狀態/預約內容/剩餘時間）吃 GAS token
- * - 取目前 active panel 的「第一筆顯示列」token 當表頭色
- * - 你不用改 HTML；這裡用 thead th 的 index 0..4 對應
+ * ✅ 表頭顏色：吃 GAS token
  * ========================================================= */
 function applyTableHeaderColorsFromRows_(displayRows) {
   try {
@@ -1080,7 +1165,6 @@ function applyTableHeaderColorsFromRows_(displayRows) {
 
     const first = Array.isArray(displayRows) && displayRows.length ? displayRows[0] : null;
 
-    // 沒資料：清空表頭 inline 色
     if (!first) {
       ths.forEach((th) => {
         th.style.color = "";
@@ -1089,7 +1173,6 @@ function applyTableHeaderColorsFromRows_(displayRows) {
       return;
     }
 
-    // 對應：0順序 1師傅 2狀態 3預約 4剩餘
     const tokens = [
       first.colorIndex || "",
       first.colorMaster || "",
@@ -1104,9 +1187,7 @@ function applyTableHeaderColorsFromRows_(displayRows) {
       th.setAttribute("data-colortoken", tk);
       applyTextColorFromToken_(th, tk);
     }
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 }
 function reapplyTableHeaderColorsFromDataset_() {
   try {
@@ -1161,16 +1242,12 @@ function ensureRowDom_(panel, row) {
 }
 
 /* =========================================================
- * ✅ 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色（其餘不要）
+ * ✅ 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色
  * ========================================================= */
 const ORDER_HL_BG_TOKEN = "bg-CCBCBCB";
 function isOrderIndexHighlight_(bgIndexToken) {
   return String(bgIndexToken || "").trim() === ORDER_HL_BG_TOKEN;
 }
-
-/* =========================================================
- * ✅ 順序欄位：更明顯的背景/邊框/陰影（只作用於順序 td）
- * ========================================================= */
 function applyOrderIndexHighlight_(tdOrder, bgToken) {
   if (!tdOrder) return;
 
@@ -1178,27 +1255,22 @@ function applyOrderIndexHighlight_(tdOrder, bgToken) {
   const rgb = hexToRgb_(h);
   if (!rgb) return;
 
-  // ✅ 深色更明顯：背景 alpha 拉高
   const aBg = isLightTheme_() ? 0.36 : 0.42;
   tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
 
-  // ✅ 左側色條更亮更粗
-  const aStripe = isLightTheme_() ? 0.92 : 0.92;
+  const aStripe = 0.92;
   tdOrder.style.borderLeft = `6px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
 
-  // ✅ 框線更明顯
   const aBd = isLightTheme_() ? 0.60 : 0.62;
   tdOrder.style.outline = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
   tdOrder.style.outlineOffset = "-2px";
 
-  // ✅ 內層對比 + 外層微光（深色時特別有感）
   tdOrder.style.boxShadow = isLightTheme_()
     ? "inset 0 0 0 999px rgba(255,255,255,0.14), 0 1px 10px rgba(0,0,0,0.08)"
     : "inset 0 0 0 999px rgba(0,0,0,0.10), 0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(0,0,0,0.35)";
 
   tdOrder.style.fontWeight = "900";
 }
-
 
 function patchRowDom_(tr, row, orderText) {
   const tds = tr.children;
@@ -1208,12 +1280,8 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
-  // -----------------------------
-  // 順序
-  // -----------------------------
   tdOrder.textContent = orderText;
 
-  // reset（避免上次的 highlight 殘留）
   tdOrder.style.backgroundColor = "";
   tdOrder.style.borderLeft = "";
   tdOrder.style.outline = "";
@@ -1223,42 +1291,27 @@ function patchRowDom_(tr, row, orderText) {
   tdOrder.style.textShadow = "";
   tdOrder.style.color = "";
 
-  // ✅ 順序文字：強化版（更顯眼）
   applyTextColorFromTokenStrong_(tdOrder, row.colorIndex);
 
-  // ✅ 順序底色：只允許 bgIndex=bg-CCBCBCB
   if (isOrderIndexHighlight_(row.bgIndex)) {
     applyOrderIndexHighlight_(tdOrder, row.bgIndex);
   }
 
-  // -----------------------------
-  // 師傅
-  // -----------------------------
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.color = "";
   applyTextColorFromToken_(tdMaster, row.colorMaster);
 
-  // -----------------------------
-  // 狀態（pill：吃 bgStatus/colorStatus）
-  // -----------------------------
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
-
   applyPillFromTokens_(statusSpan, row.bgStatus, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
-  // -----------------------------
-  // 預約內容
-  // -----------------------------
   tdAppointment.textContent = row.appointment || "";
   tdAppointment.style.color = "";
   applyTextColorFromToken_(tdAppointment, row.colorAppointment);
 
-  // -----------------------------
-  // 剩餘時間（time badge 文字色也吃 token）
-  // -----------------------------
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
@@ -1269,6 +1322,9 @@ function patchRowDom_(tr, row, orderText) {
 
 function renderIncremental_(panel) {
   if (!tbodyRowsEl) return;
+
+  // ✅ 排班表未開通：不渲染面板（避免任何閃動/誤觸）
+  if (!scheduleUiEnabled_) return;
 
   const list = panel === "body" ? rawData.body : rawData.foot;
   const filtered = applyFilters(list);
@@ -1303,7 +1359,6 @@ function renderIncremental_(panel) {
   if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
   if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
 
-  // ✅ 表頭色：跟著 GAS token（用第一筆顯示列）
   applyTableHeaderColorsFromRows_(displayRows);
 
   const frag = document.createDocumentFragment();
@@ -1384,8 +1439,13 @@ async function refreshStatus(isManual = false) {
     const activeChanged = activePanel === "body" ? bodyDiff.changed : footDiff.changed;
 
     if (connectionStatusEl) {
-      if (source === "edge" && typeof edgeIdx === "number") connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
-      else connectionStatusEl.textContent = "已連線（主站）";
+      if (!scheduleUiEnabled_) {
+        connectionStatusEl.textContent = "排班表未開通（僅顯示我的狀態）";
+      } else if (source === "edge" && typeof edgeIdx === "number") {
+        connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
+      } else {
+        connectionStatusEl.textContent = "已連線（主站）";
+      }
     }
 
     if (anyChanged && lastUpdateEl) {
@@ -1394,18 +1454,17 @@ async function refreshStatus(isManual = false) {
         "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
-    if (activeChanged) renderIncremental_(activePanel);
-    else {
-      // 即使 rows 沒變，切換主題時表頭可能要重套
-      reapplyTableHeaderColorsFromDataset_();
+    if (scheduleUiEnabled_) {
+      if (activeChanged) renderIncremental_(activePanel);
+      else reapplyTableHeaderColorsFromDataset_();
     }
 
-    // ✅ refresh 後更新我的狀態（含 token 顏色）
+    // ✅ 永遠更新我的狀態（schedule=否 也要）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
     if (connectionStatusEl) connectionStatusEl.textContent = "異常";
-    if (errorStateEl) errorStateEl.style.display = "block";
+    if (errorStateEl && scheduleUiEnabled_) errorStateEl.style.display = "block";
   } finally {
     if (isManual) hideLoadingHint();
     refreshInFlight = false;
@@ -1468,8 +1527,13 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     techNo,
   };
 }
+
+/**
+ * ✅ Gate 規則（已修改）
+ * - 只要 approved + 未過期 → allow
+ * - scheduleEnabled=否 不再擋（只影響 UI 顯示）
+ */
 function decideGateAction_(r) {
-  const scheduleOk = String(r.scheduleEnabled || "").trim() === "是";
   const hasRd = typeof r.remainingDays === "number" && !Number.isNaN(r.remainingDays);
   const notExpired = hasRd ? r.remainingDays >= 0 : false;
 
@@ -1498,22 +1562,26 @@ function decideGateAction_(r) {
         message: "⬆️ 需要更新\n" + (String(r.messages.forceUpdateMsg || "").trim() || "請更新至最新版本後再使用。"),
       }),
     },
+
+    // ✅ 通過審核 + 未過期 → allow
     {
       id: "APPROVED_OK",
-      when: () => r.status === "approved" && scheduleOk && notExpired,
+      when: () => r.status === "approved" && notExpired,
       action: () => ({ allow: true }),
     },
+
+    // ✅ approved 但過期/未設定期限 → 擋
     {
       id: "APPROVED_BUT_LOCKED",
       when: () => r.status === "approved",
       action: () => {
         let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
-        if (!scheduleOk) msg += "原因：尚未開通「排班表」。\n";
-        if (!notExpired) msg += "原因：使用期限已到期或未設定期限。\n";
+        msg += "原因：使用期限已到期或未設定期限。\n";
         msg += "\n請聯絡管理員協助開通或延長使用期限。";
         return { allow: false, message: msg };
       },
     },
+
     {
       id: "PENDING",
       when: () => r.status === "pending",
@@ -1537,6 +1605,7 @@ function decideGateAction_(r) {
 
   return { ruleId: "UNKNOWN", allow: false, message: "⚠ 無法確認使用權限，請稍後再試。", isError: true };
 }
+
 async function checkOrRegisterUser(userId, displayNameFromClient) {
   const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
@@ -1584,10 +1653,7 @@ function setTheme(theme) {
   localStorage.setItem("dashboardTheme", finalTheme);
   if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 
-  // ✅ 主題切換時：表頭色重套（因為 alpha 下限不同）
   reapplyTableHeaderColorsFromDataset_();
-
-  // ✅ 主題切換時：我的狀態 pill 顏色也重套一次（避免顯示落差）
   updateMyMasterStatusUI_();
 }
 (function initTheme() {
@@ -1602,7 +1668,7 @@ if (themeToggleBtn) {
 }
 
 /* =========================================================
- * ✅ No-LIFF Guard（修訂重點：補齊，保證不會錯）
+ * ✅ No-LIFF Guard
  * ========================================================= */
 async function initNoLiffAndGuard() {
   showGate("✅ 未啟用 LINE 登入\n正在確認使用權限…");
@@ -1628,10 +1694,23 @@ async function initNoLiffAndGuard() {
     myMasterState_.isMaster = !!result.isMaster;
     myMasterState_.techNo = normalizeTechNo_(result.techNo || result.masterCode || "");
 
+    // ✅ 排班表開通=否：只顯示我的狀態
+    const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
+    applyScheduleUiMode_(scheduleOk);
+
+    // ✅ 立即同步提示（避免首次畫面沒出現）
+    if (!scheduleOk) {
+      const isMasterNow = !!(myMasterState_.isMaster && myMasterState_.techNo);
+      showNotMasterHint_(!isMasterNow);
+    } else {
+      showNotMasterHint_(false);
+    }
+
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
       if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
+      showNotMasterHint_(false);
       showGate(gate.message, gate.isError);
       return;
     }
@@ -1661,12 +1740,13 @@ async function initNoLiffAndGuard() {
     console.error("[NoLIFF] 驗證失敗：", err);
     hidePersonalTools_();
     if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
+    showNotMasterHint_(false);
     showGate("⚠ 權限驗證失敗，請稍後再試。", true);
   }
 }
 
 /* =========================================================
- * LIFF（如果你以後 ENABLE_LINE_LOGIN=true 才會走）
+ * LIFF
  * ========================================================= */
 async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
@@ -1703,10 +1783,23 @@ async function initLiffAndGuard() {
     myMasterState_.isMaster = !!result.isMaster;
     myMasterState_.techNo = normalizeTechNo_(result.techNo || result.masterCode || "");
 
+    // ✅ 排班表開通=否：只顯示我的狀態
+    const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
+    applyScheduleUiMode_(scheduleOk);
+
+    // ✅ 立即同步提示（避免首次畫面沒出現）
+    if (!scheduleOk) {
+      const isMasterNow = !!(myMasterState_.isMaster && myMasterState_.techNo);
+      showNotMasterHint_(!isMasterNow);
+    } else {
+      showNotMasterHint_(false);
+    }
+
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
       if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
+      showNotMasterHint_(false);
       showGate(gate.message, gate.isError);
       return;
     }
@@ -1736,6 +1829,7 @@ async function initLiffAndGuard() {
     console.error("[LIFF] 初始化或驗證失敗：", err);
     hidePersonalTools_();
     if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
+    showNotMasterHint_(false);
     showGate("⚠ LIFF 初始化或權限驗證失敗，請稍後再試。", true);
   }
 }
@@ -1762,6 +1856,9 @@ if (filterStatusSelect) {
 }
 
 function setActivePanel(panel) {
+  // ✅ 排班表未開通：不允許切換面板（因為面板 UI 已隱藏）
+  if (!scheduleUiEnabled_) return;
+
   activePanel = panel;
 
   if (tabBodyBtn && tabFootBtn) {
@@ -1874,6 +1971,31 @@ async function refreshStatusAdaptive_(isManual) {
  * App start
  * ========================================================= */
 function startApp() {
+  // ✅ 排班表未開通：不啟動身體/腳底面板，只輪詢更新 rawData + 我的狀態 / 提示
+  if (!scheduleUiEnabled_) {
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async () => {
+        pollState_.successStreak = 0;
+        pollState_.failStreak = 0;
+        pollState_.nextMs = POLL.BASE_MS;
+
+        const res = await refreshStatusAdaptive_(true);
+        updateMyMasterStatusUI_();
+        const next = computeNextInterval_(res);
+        scheduleNextPoll_(next);
+      });
+    }
+
+    refreshStatusAdaptive_(false).then((res) => {
+      updateMyMasterStatusUI_();
+      const next = computeNextInterval_(res);
+      scheduleNextPoll_(next);
+    });
+
+    return;
+  }
+
+  // ✅ 排班表已開通：原本行為
   setActivePanel("body");
 
   if (refreshBtn) {
