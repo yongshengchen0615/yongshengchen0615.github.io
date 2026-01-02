@@ -6,6 +6,13 @@
 //   3) ✅「我的狀態」與「身體/腳底面板」狀態顏色：一律參照 GAS 回傳 token（bgStatus / colorStatus）
 //      - 表格狀態 pill 也吃 token
 //      - 我的狀態左側色條 ::before 也吃 token（寫入 CSS 變數 --myStripe）
+//   4) ✅ 你要求的修正：表格「順序/師傅/狀態/預約內容/剩餘時間」文字顏色，對應 GAS 回傳 token
+//      - 順序：colorIndex 套文字色
+//      - 師傅：colorMaster 套文字色
+//      - 狀態：維持 pill 的 bgStatus/colorStatus
+//      - 預約內容：colorAppointment（若後端有回）套文字色
+//      - 剩餘時間：colorRemaining（若後端有回）套文字色
+//   5) ✅ 你指定的規則：bgIndex=bg-CCBCBCB 只允許「順序欄位」顯示底色，其餘不套
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -342,6 +349,10 @@ function deriveStatusClass(status, remaining) {
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
+
+/* =========================================================
+ * ✅ mapRowsToDisplay：透傳更多 token，支援表格文字色對應
+ * ========================================================= */
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
@@ -354,13 +365,19 @@ function mapRowsToDisplay(rows) {
       status: normalizeText_(row.status),
       appointment: normalizeText_(row.appointment),
 
+      // 文字色 tokens
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
+      colorAppointment: row.colorAppointment || row.colorAppt || "",
+      colorRemaining: row.colorRemaining || row.colorRemain || row.colorTime || "",
 
+      // 背景色 tokens
       bgIndex: row.bgIndex || "",
       bgMaster: row.bgMaster || "",
       bgStatus: row.bgStatus || "",
+      bgAppointment: row.bgAppointment || row.bgAppt || "",
+      bgRemaining: row.bgRemaining || row.bgRemain || row.bgTime || "",
 
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
@@ -640,6 +657,52 @@ function tokenToStripe_(bgToken, textToken) {
     if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
   }
   return "";
+}
+
+/* =========================================================
+ * ✅ 新增：把 token 套到「一般文字」(順序/師傅/預約/剩餘時間)
+ * ========================================================= */
+function applyTextColorFromToken_(el, token) {
+  if (!el) return;
+  el.style.color = "";
+
+  const fg = parseColorToken_(token);
+  if (!fg.hex) return;
+
+  const rgb = hexToRgb_(fg.hex);
+  if (!rgb) return;
+
+  const minAlpha = isLightTheme_() ? 0.85 : 0.70;
+  let aText = fg.opacity == null ? 1 : fg.opacity;
+  aText = clamp_(aText, minAlpha, 1);
+
+  el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
+}
+
+/* =========================================================
+ * ✅ 順序欄位底色規則：只允許 bgIndex=bg-CCBCBCB 才顯示底色
+ * ========================================================= */
+const ORDER_INDEX_BG_ALLOW_HEX = "#CBCBCB"; // 你指定的 CCBCBCB → 常見就是 CBCBCB
+function isOrderIndexHighlight_(bgToken) {
+  const h = normalizeHex6_(bgToken);
+  if (!h) return false;
+  return h.toUpperCase() === ORDER_INDEX_BG_ALLOW_HEX.toUpperCase();
+}
+function applyOrderIndexHighlight_(tdOrder, bgToken) {
+  if (!tdOrder) return;
+
+  const h = normalizeHex6_(bgToken);
+  const rgb = hexToRgb_(h);
+  if (!rgb) return;
+
+  // 只在順序欄位顯示底色：淡底 + 左邊色條，避免整格太刺眼
+  const aBg = isLightTheme_() ? 0.18 : 0.14;
+  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aStripe = isLightTheme_() ? 0.55 : 0.45;
+  tdOrder.style.borderLeft = `3px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+
+  tdOrder.style.fontWeight = "700";
 }
 
 /* =========================================================
@@ -943,13 +1006,18 @@ function rowSignature_(r) {
     r.status ?? "",
     r.appointment ?? "",
     r.remaining ?? "",
+
     r.colorIndex ?? "",
     r.colorMaster ?? "",
     r.colorStatus ?? "",
+    r.colorAppointment ?? r.colorAppt ?? "",
+    r.colorRemaining ?? r.colorRemain ?? r.colorTime ?? "",
+
     r.bgIndex ?? "",
     r.bgMaster ?? "",
     r.bgStatus ?? "",
-    r.bgAppointment ?? "",
+    r.bgAppointment ?? r.bgAppt ?? "",
+    r.bgRemaining ?? r.bgRemain ?? r.bgTime ?? "",
   ].join("|");
 }
 function buildStatusSet_(rows) {
@@ -1049,6 +1117,10 @@ function ensureRowDom_(panel, row) {
   map.set(key, tr);
   return tr;
 }
+
+/* =========================================================
+ * ✅ patchRowDom_：你要求的欄位文字色對應 + 順序底色限制
+ * ========================================================= */
 function patchRowDom_(tr, row, orderText) {
   const tds = tr.children;
   const tdOrder = tds[0];
@@ -1057,27 +1129,47 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
+  // ---- 順序：文字色吃 colorIndex；底色只允許 bgIndex=bg-CCBCBCB
   tdOrder.textContent = orderText;
-  tdMaster.textContent = row.masterId || "";
 
+  tdOrder.style.backgroundColor = "";
+  tdOrder.style.borderLeft = "";
+  tdOrder.style.fontWeight = "";
+  tdOrder.style.color = "";
+
+  applyTextColorFromToken_(tdOrder, row.colorIndex);
+
+  if (isOrderIndexHighlight_(row.bgIndex)) {
+    applyOrderIndexHighlight_(tdOrder, row.bgIndex);
+  }
+
+  // ---- 師傅：文字色吃 colorMaster
+  tdMaster.textContent = row.masterId || "";
+  tdMaster.style.color = "";
+  applyTextColorFromToken_(tdMaster, row.colorMaster);
+
+  // ---- 狀態：pill 吃 bgStatus/colorStatus（原本就有）
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
-
-  // ✅ 表格 status pill：吃 GAS token（bgStatus / colorStatus）
   applyPillFromTokens_(statusSpan, row.bgStatus, row.colorStatus);
-
   tdStatus.appendChild(statusSpan);
 
+  // ---- 預約內容：文字色吃 colorAppointment（若後端沒回就不改）
   tdAppointment.textContent = row.appointment || "";
+  tdAppointment.style.color = "";
+  applyTextColorFromToken_(tdAppointment, row.colorAppointment);
 
+  // ---- 剩餘時間：badge 文字色吃 colorRemaining
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
   timeSpan.textContent = row.remainingDisplay || "";
+  applyTextColorFromToken_(timeSpan, row.colorRemaining);
   tdRemaining.appendChild(timeSpan);
 }
+
 function renderIncremental_(panel) {
   if (!tbodyRowsEl) return;
 
