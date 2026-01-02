@@ -147,6 +147,23 @@ function uAuditOption_(value, current) {
   return `<option value="${value}" ${sel}>${value}</option>`;
 }
 
+function uAuditClass_(audit) {
+  switch (normalizeAudit_(audit)) {
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    case "系統維護":
+      return "maintenance";
+    default:
+      return "other";
+  }
+}
+
 function uRender_() {
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
@@ -194,6 +211,7 @@ function uRender_() {
         <select data-field="audit" class="select" aria-label="審核狀態">
           ${AUDIT_ENUM.map((v) => uAuditOption_(v, audit)).join("")}
         </select>
+        <span class="audit-badge ${uAuditClass_(audit)}">${escapeHtml(audit)}</span>
       </td>
 
       <td data-label="師傅編號">
@@ -562,7 +580,26 @@ function uBind_() {
 
     if (field === "audit") {
       u.audit = normalizeAudit_(v);
-      if (normalizeAudit_(u.audit) !== "通過") u.pushEnabled = "否";
+
+      // 審核非通過：強制關閉推播（與 client 行為一致）
+      const auditNow = normalizeAudit_(u.audit);
+      const pushSel = row?.querySelector('select[data-field="pushEnabled"]');
+      if (auditNow !== "通過") {
+        u.pushEnabled = "否";
+        if (pushSel) {
+          pushSel.value = "否";
+          pushSel.disabled = true;
+        }
+      } else {
+        if (pushSel) pushSel.disabled = false;
+      }
+
+      // 更新 badge（不重繪整表）
+      const badge = row?.querySelector(".audit-badge");
+      if (badge) {
+        badge.textContent = auditNow;
+        badge.className = `audit-badge ${uAuditClass_(auditNow)}`;
+      }
     } else if (field === "usageDays") {
       u.usageDays = v.trim();
     } else if (field === "pushEnabled") {
@@ -580,8 +617,15 @@ function uBind_() {
     uMarkDirty_(id, u);
     uUpdateRowDirtyUI_(row, id);
 
-    // audit 變更會影響 push select disabled / 值，簡單重繪
-    if (field === "audit") uApplyFilters_();
+    // 更新 footer（維持與 client 的「即時更新」感）
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    const keywordRaw = String(document.getElementById("uSearchInput")?.value || "").trim();
+    const dirtyText = uDirtyMap.size ? `，未儲存 ${uDirtyMap.size} 筆` : "";
+    const searchHint = keywordRaw ? "（搜尋中）" : "";
+    uSetFooter_(`最後更新：${hh}:${mm}:${ss}，目前顯示 ${uFiltered.length} 筆${searchHint}${dirtyText}`);
   });
 
   tbody.addEventListener("click", async (e) => {
