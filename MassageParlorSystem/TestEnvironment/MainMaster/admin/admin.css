@@ -483,10 +483,11 @@ tbody td.sticky-col{ background:transparent; }
   .responsive-table .sticky-col,
   .responsive-table .sticky-right{ position:static; }
 
+  .responsive-table .actions{ justify-content:flex-end; width:100%; flex-wrap:wrap; }
+
   /* 避免內容撐爆右側 */
   .responsive-table tbody td input,
-  .responsive-table tbody td select,
-  .responsive-table tbody td button{ max-width: 60%; }
+  .responsive-table tbody td select{ max-width: 60%; }
 }
 
 /* === 固定最右操作欄（避免刪除按鈕跑位） === */
