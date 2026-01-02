@@ -3,6 +3,7 @@
 // ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
 // ✅ 方案A已套用：支援後端回傳 masterCode → 正確顯示「我的狀態」
 // ✅ NEW：不管是否排班，都顯示「若現在切到排班，我會排第幾」
+// ✅ NEW：剩餘 < 0 或 <= 3 → badge 警告色；排班排名 <= 3 → rank badge 發光
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -244,7 +245,9 @@ const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl
+  ? usageBannerEl.querySelector("#usageBannerText")
+  : document.getElementById("usageBannerText");
 
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
@@ -293,7 +296,7 @@ function parseTechNo_(data) {
   const v = pickAny_(data, [
     "techNo",
     "師傅編號",
-    "masterCode",   // ✅ NEW：你的後端回傳欄位
+    "masterCode", // ✅ NEW：你的後端回傳欄位
     "masterId",
     "masterNo",
     "tech",
@@ -403,8 +406,103 @@ function getShiftRank_(panelRows, techNo) {
   return { rank, total, meIsShiftNow };
 }
 
+/* =========================================================
+ * ✅ 我的狀態：badge 規則 + 版面渲染
+ * ========================================================= */
+function parseRemainingNumber_(row) {
+  if (!row) return null;
+  const v = row.remaining === 0 || row.remaining ? row.remaining : null;
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (Number.isNaN(n)) return null;
+  return n;
+}
+
+function classifyMyStatusClass_(statusText, remainingNum) {
+  const s = normalizeText_(statusText || "");
+  const n = typeof remainingNum === "number" ? remainingNum : Number.NaN;
+
+  if (s.includes("排班")) return "is-shift";
+  if (s.includes("工作")) return "is-busy";
+  if (s.includes("預約")) return "is-booked";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "is-free";
+  if (!Number.isNaN(n) && n < 0) return "is-busy";
+  return "is-other";
+}
+
+function remBadgeClass_(n) {
+  if (typeof n !== "number" || Number.isNaN(n)) return "";
+  if (n < 0) return "is-expired";
+  if (n <= 3) return "is-warn";
+  return "";
+}
+
+function pickDominantMyStatus_(bodyRow, footRow) {
+  // 讓左側色條「更像你當下狀態」：排班 > 工作 > 預約 > 空閒 > 其他
+  const candidates = [
+    { row: bodyRow, tag: "身體" },
+    { row: footRow, tag: "腳底" },
+  ].filter((x) => x.row);
+
+  if (!candidates.length) return "is-other";
+
+  const score = (r) => {
+    const s = normalizeText_(r.status || "");
+    const n = parseRemainingNumber_(r);
+    if (s.includes("排班")) return 5;
+    if (s.includes("工作") || (!Number.isNaN(n) && n < 0)) return 4;
+    if (s.includes("預約")) return 3;
+    if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return 2;
+    return 1;
+  };
+
+  let best = candidates[0].row;
+  for (const c of candidates) {
+    if (score(c.row) > score(best)) best = c.row;
+  }
+  return classifyMyStatusClass_(best.status, parseRemainingNumber_(best));
+}
+
+function makeMyPanelRowHTML_(label, row, shiftRankObj) {
+  const statusText = row ? String(row.status || "").trim() || "—" : "—";
+  const remNum = parseRemainingNumber_(row);
+  const remText =
+    remNum === null ? "—" : remNum < 0 ? `已過期 ${remNum} 天` : `${remNum} 天`;
+
+  const stCls = "myms-status " + classifyMyStatusClass_(statusText, remNum);
+  const remCls = "myms-rem " + remBadgeClass_(remNum);
+
+  let rankText = "—";
+  let rankCls = "myms-rank";
+  if (shiftRankObj && typeof shiftRankObj.rank === "number") {
+    const prefix = shiftRankObj.meIsShiftNow ? "排班" : "若排班";
+    rankText = `${prefix}：第 ${shiftRankObj.rank} / ${shiftRankObj.total}`;
+    if (shiftRankObj.rank <= 3) rankCls += " is-top3";
+  }
+
+  return `
+    <div class="myms-row">
+      <div class="myms-label">${label}</div>
+      <div class="myms-right">
+        <span class="${stCls}">${escapeHtml_(statusText)}</span>
+        <span class="${remCls}">剩餘：${escapeHtml_(String(remText))}</span>
+        <span class="${rankCls}">${escapeHtml_(rankText)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml_(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function updateMyMasterStatusUI_() {
-  if (!myMasterStatusEl || !myMasterStatusTextEl) return;
+  if (!myMasterStatusEl) return;
 
   if (!myMasterState_.isMaster || !myMasterState_.techNo) {
     myMasterStatusEl.style.display = "none";
@@ -414,30 +512,33 @@ function updateMyMasterStatusUI_() {
   const bodyRow = findRowByTechNo_(rawData.body, myMasterState_.techNo);
   const footRow = findRowByTechNo_(rawData.foot, myMasterState_.techNo);
 
-  const bodyText = fmtRowShort_(bodyRow);
-  const footText = fmtRowShort_(footRow);
-
   // ✅ 永遠算「若排班」順位（不依賴你現在是否排班）
   const bodyShiftRank = getShiftRank_(rawData.body, myMasterState_.techNo);
   const footShiftRank = getShiftRank_(rawData.foot, myMasterState_.techNo);
 
-  const bodyRankText = bodyShiftRank
-    ? (bodyShiftRank.meIsShiftNow
-        ? `｜排班順位：第 ${bodyShiftRank.rank} / ${bodyShiftRank.total}`
-        : `｜若排班：第 ${bodyShiftRank.rank} / ${bodyShiftRank.total}`)
-    : "";
+  // 左色條狀態（提升辨識度）
+  const dominant = pickDominantMyStatus_(bodyRow, footRow);
+  myMasterStatusEl.classList.remove("is-shift", "is-busy", "is-booked", "is-free", "is-other");
+  myMasterStatusEl.classList.add(dominant);
 
-  const footRankText = footShiftRank
-    ? (footShiftRank.meIsShiftNow
-        ? `｜排班順位：第 ${footShiftRank.rank} / ${footShiftRank.total}`
-        : `｜若排班：第 ${footShiftRank.rank} / ${footShiftRank.total}`)
-    : "";
+  // ✅ 若 HTML 有舊的純文字容器，優先用它；沒有就直接塞進 myMasterStatusEl
+  const host = myMasterStatusTextEl || myMasterStatusEl;
 
-  myMasterStatusTextEl.textContent =
-    `師傅：${myMasterState_.techNo}\n` +
-    `身體：${bodyText}${bodyRankText}\n` +
-    `腳底：${footText}${footRankText}`;
+  const html = `
+    <div class="myms">
+      <div class="myms-head">
+        <div class="myms-tech">
+          <span class="myms-tech-badge">師傅</span>
+          <span> ${escapeHtml_(myMasterState_.techNo)} </span>
+        </div>
+      </div>
 
+      ${makeMyPanelRowHTML_("身體", bodyRow, bodyShiftRank)}
+      ${makeMyPanelRowHTML_("腳底", footRow, footShiftRank)}
+    </div>
+  `;
+
+  host.innerHTML = html;
   myMasterStatusEl.style.display = "flex";
 }
 
@@ -463,7 +564,9 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+    ""
+  );
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -614,11 +717,7 @@ async function sendPendingNotifyToOA_(userId, displayName, auditText) {
     const ts = getNowTaipei_();
     const audit = String(auditText || "待審核").trim() || "待審核";
 
-    const text =
-      `【待審核提醒】\n` +
-      `姓名：${name}\n` +
-      `狀態：${audit}\n` +
-      `時間：${ts}\n`;
+    const text = `【待審核提醒】\n姓名：${name}\n狀態：${audit}\n時間：${ts}\n`;
 
     await liff.sendMessages([{ type: "text", text }]);
   } catch (e) {
@@ -951,7 +1050,7 @@ function applyFilters(list) {
     }
 
     if (filterStatus && filterStatus !== "all") {
-      if (row.status !== filterStatus) return false;
+      if (normalizeText_(row.status) !== normalizeText_(filterStatus)) return false;
     }
 
     return true;
@@ -1255,7 +1354,7 @@ async function refreshStatus(isManual = false) {
 
     if (activeChanged) renderIncremental_(activePanel);
 
-    // ✅ 每次 refresh 後更新「我的狀態」（含若排班順位）
+    // ✅ 每次 refresh 後更新「我的狀態」（含若排班順位 + badge 規則）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
@@ -1638,7 +1737,6 @@ if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
     renderIncremental_(activePanel);
-    // ✅ 因為「若排班順位」跟排序策略相關（依 filterStatus），這裡不必算；保留即可
   });
 }
 if (filterStatusSelect) {
