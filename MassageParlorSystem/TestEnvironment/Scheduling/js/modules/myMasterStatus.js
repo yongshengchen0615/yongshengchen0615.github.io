@@ -207,8 +207,7 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
   let rankText = "—";
   let rankCls = "myms-rank";
   if (shiftRankObj && typeof shiftRankObj.rank === "number") {
-    const prefix = shiftRankObj.meIsShiftNow ? "排班" : "若排班";
-    rankText = `${prefix}：第 ${shiftRankObj.rank} / ${shiftRankObj.total}`;
+    rankText = `入牌順位：${shiftRankObj.rank}  排班人數：${shiftRankObj.total}`;
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
 
