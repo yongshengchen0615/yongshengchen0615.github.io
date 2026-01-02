@@ -846,7 +846,7 @@ body {
  * ✅ 我的狀態：窄螢幕置中，避免看起來偏右 + 避免滑動
  * ========================================================= */
 
-/* 1) 預設（桌機/寬）：保留原本右對齊（不改你現有風格） */
+/* 1) 預設（桌機/寬）：保留原本右對齊 */
 @media (min-width: 769px){
   .myms-head{ justify-content: space-between; }
   .myms-right{ justify-content: flex-end; }
@@ -854,20 +854,17 @@ body {
 
 /* 2) 中窄螢幕（<=768）：整體置中、徽章群置中 */
 @media (max-width: 768px){
-  /* 整塊「我的狀態」置中視覺 */
   .my-master-status{
     justify-content: center;
     text-align: center;
   }
 
-  /* 內容區塊寬度自適應，避免被右側推擠 */
   .myms{
     width: 100%;
-    max-width: 520px; /* 平板/大手機看起來更集中 */
+    max-width: 520px;
     margin: 0 auto;
   }
 
-  /* 標題列：改成置中，避免左右拉扯 */
   .myms-head{
     justify-content: center;
     flex-wrap: wrap;
@@ -878,13 +875,11 @@ body {
     justify-content: center;
   }
 
-  /* 每列：保持左右資訊，但整列置中 */
   .myms-row{
     width: 100%;
     margin: 0 auto;
   }
 
-  /* 左側 label + 右側徽章：改成「不靠右」，避免整排視覺偏右 */
   .myms-label{
     justify-content: center;
   }
@@ -892,7 +887,6 @@ body {
     justify-content: center;
   }
 
-  /* 徽章：在窄螢幕可換行且置中，不會被擠到右邊 */
   .myms-status,
   .myms-rem,
   .myms-rank{
@@ -900,7 +894,7 @@ body {
   }
 }
 
-/* 3) 超窄手機（<=420）：你原本上下堆疊方案再加強「置中」 */
+/* 3) 超窄手機（<=420）：上下堆疊方案再加強置中 */
 @media (max-width: 420px){
   .myms-row{
     align-items: center;
@@ -912,5 +906,136 @@ body {
   .myms-right{
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* =========================================================
+ * ✅【新增】行動裝置：整頁不左右滑 + 表格轉卡片（完全消除滑動需求）
+ * （覆蓋段：放在最後，權重最高）
+ * ========================================================= */
+
+/* 全站：避免任何水平溢出 */
+html, body{
+  overflow-x: hidden;
+}
+
+/* 某些瀏覽器會因 flex 子元素 min-width:auto 造成溢出 */
+.layout,
+.card,
+.card-body,
+.table-wrapper,
+.my-master-status,
+.myms,
+.myms-row{
+  min-width: 0;
+}
+
+/* <=768：表格改「卡片列」 */
+@media (max-width: 768px){
+
+  /* 關掉 wrapper 的水平捲動 */
+  .table-wrapper{
+    overflow-x: hidden !important;
+  }
+
+  /* table block 化 */
+  .status-table,
+  .status-table thead,
+  .status-table tbody,
+  .status-table th,
+  .status-table td,
+  .status-table tr{
+    display: block;
+    width: 100%;
+  }
+
+  /* 隱藏表頭 */
+  .status-table thead{
+    display: none !important;
+  }
+
+  /* 每一列變成卡片 */
+  .status-table tbody tr{
+    margin: 10px 0;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(148,163,184,.28);
+    background: rgba(2,6,23,.28);
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  :root[data-theme="light"] .status-table tbody tr{
+    background: rgba(249,250,251,.95);
+    border-color: rgba(209,213,219,.85);
+  }
+
+  /* 每格改成 label/value */
+  .status-table tbody td{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(148,163,184,.22);
+
+    min-width: 0;
+    overflow: hidden;
+  }
+  :root[data-theme="light"] .status-table tbody td{
+    border-bottom-color: rgba(209,213,219,.9);
+  }
+  .status-table tbody td:last-child{
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  /* 欄位名 */
+  .status-table tbody td:nth-child(1)::before{ content:"順序"; }
+  .status-table tbody td:nth-child(2)::before{ content:"師傅"; }
+  .status-table tbody td:nth-child(3)::before{ content:"狀態"; }
+  .status-table tbody td:nth-child(4)::before{ content:"預約"; }
+  .status-table tbody td:nth-child(5)::before{ content:"剩餘"; }
+
+  .status-table tbody td::before{
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--text-sub);
+    letter-spacing: .02em;
+    white-space: nowrap;
+    margin-right: 10px;
+  }
+
+  /* 解除你原本狀態欄 nowrap/min-width（手機會撐爆） */
+  .status-table tbody td:nth-child(3),
+  .status-table thead th:nth-child(3){
+    white-space: normal !important;
+    min-width: 0 !important;
+  }
+
+  /* 右側內容允許縮 */
+  .status-table tbody td > *{
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* 文字欄位：必要時截斷避免爆版 */
+  .cell-order,
+  .cell-master,
+  .cell-appointment{
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+  }
+
+  /* pill / badge 限寬 */
+  .status-pill,
+  .time-badge{
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
