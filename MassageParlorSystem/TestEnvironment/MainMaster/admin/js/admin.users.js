@@ -625,9 +625,16 @@ function uBind_() {
 function initUsersPanel_() {
   uBind_();
   uRefreshSaveBtn_();
-  uSetFooter_("Users：尚未載入");
+  uSetFooter_("Users：等待管理員驗證後載入");
+  uSetTbodyMessage_("等待管理員驗證後載入...");
 }
 
 async function bootUsersPanel_() {
+  if (!API_BASE_URL) {
+    const msg = "Users：缺少 API_BASE_URL（請檢查 admin/config.json）";
+    uSetFooter_(msg);
+    uSetTbodyMessage_(msg);
+    return;
+  }
   await uLoadUsers_();
 }
