@@ -199,6 +199,150 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .client-scope thead th.sortable:hover{ color:var(--text); }
 .client-scope thead th .sort-ind{ margin-left:6px; opacity:.75; }
 
+/* mono helper (match client) */
+.client-scope .mono{ font-family:var(--mono); }
+
+/* ===== View Tabs (match client) ===== */
+.client-scope #viewTabs.viewtabs{
+  flex:0 0 100%;
+  width:100%;
+  margin-top:10px;
+}
+.client-scope .viewtabs{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.client-scope .viewtab{
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text-sub);
+  font-size:12px;
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+}
+.client-scope .viewtab:hover{ border-color:rgba(56,189,248,.45); color:var(--text); }
+.client-scope .viewtab.active{
+  color:var(--accent);
+  border-color:rgba(56,189,248,.45);
+  background:var(--accent-soft);
+}
+.client-scope .viewtab:disabled{ opacity:.55; cursor:not-allowed; }
+
+/* =========================================================
+ * ✅ 欄位分類（分頁顯示/隱藏）- match client
+ * table[data-view="usage" | "master" | "features" | "all"]
+ * ========================================================= */
+
+.client-scope table[data-view="all"]{}
+
+/* USAGE：顯示 1-9 + 15；隱藏 10-14 */
+.client-scope table[data-view="usage"] thead th:nth-child(10),
+.client-scope table[data-view="usage"] thead th:nth-child(11),
+.client-scope table[data-view="usage"] thead th:nth-child(12),
+.client-scope table[data-view="usage"] thead th:nth-child(13),
+.client-scope table[data-view="usage"] thead th:nth-child(14),
+.client-scope table[data-view="usage"] tbody td:nth-child(10),
+.client-scope table[data-view="usage"] tbody td:nth-child(11),
+.client-scope table[data-view="usage"] tbody td:nth-child(12),
+.client-scope table[data-view="usage"] tbody td:nth-child(13),
+.client-scope table[data-view="usage"] tbody td:nth-child(14){
+  display:none;
+}
+
+/* MASTER：顯示 1-5 + 9-11 + 15；隱藏 6-8 + 12-14 */
+.client-scope table[data-view="master"] thead th:nth-child(6),
+.client-scope table[data-view="master"] thead th:nth-child(7),
+.client-scope table[data-view="master"] thead th:nth-child(8),
+.client-scope table[data-view="master"] thead th:nth-child(12),
+.client-scope table[data-view="master"] thead th:nth-child(13),
+.client-scope table[data-view="master"] thead th:nth-child(14),
+.client-scope table[data-view="master"] tbody td:nth-child(6),
+.client-scope table[data-view="master"] tbody td:nth-child(7),
+.client-scope table[data-view="master"] tbody td:nth-child(8),
+.client-scope table[data-view="master"] tbody td:nth-child(12),
+.client-scope table[data-view="master"] tbody td:nth-child(13),
+.client-scope table[data-view="master"] tbody td:nth-child(14){
+  display:none;
+}
+
+/* FEATURES：顯示 1-5 + 9 + 12-14 + 15；隱藏 6-8 + 10-11 */
+.client-scope table[data-view="features"] thead th:nth-child(6),
+.client-scope table[data-view="features"] thead th:nth-child(7),
+.client-scope table[data-view="features"] thead th:nth-child(8),
+.client-scope table[data-view="features"] thead th:nth-child(10),
+.client-scope table[data-view="features"] thead th:nth-child(11),
+.client-scope table[data-view="features"] tbody td:nth-child(6),
+.client-scope table[data-view="features"] tbody td:nth-child(7),
+.client-scope table[data-view="features"] tbody td:nth-child(8),
+.client-scope table[data-view="features"] tbody td:nth-child(10),
+.client-scope table[data-view="features"] tbody td:nth-child(11){
+  display:none;
+}
+
+/* expiry pill (match client) */
+.client-scope .expiry-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 10px; border-radius:999px;
+  border:1px solid var(--border);
+  font-size:12px; color:var(--text-sub);
+  background:var(--card2);
+}
+.client-scope .expiry-pill.active{ border-color:rgba(22,163,74,.4); background:var(--success-soft); color:var(--success); }
+.client-scope .expiry-pill.expired{ border-color:rgba(239,68,68,.4); background:var(--danger-soft); color:var(--danger); }
+.client-scope .expiry-pill.unset{ border-color:rgba(56,189,248,.35); background:var(--accent-soft); color:var(--accent); }
+
+/* =========================================================
+ * ✅ Push Panel - match client
+ * ========================================================= */
+.client-scope #pushPanel{ width:100%; }
+.client-scope .pushbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-start;
+  padding:10px 14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:linear-gradient(90deg, var(--card2), transparent);
+}
+.client-scope .pushbar-left{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  flex: 1 1 420px;
+  min-width:0;
+}
+.client-scope .pushbar-right{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-end;
+  flex: 1 1 420px;
+  min-width:0;
+}
+.client-scope .push-message{
+  flex: 1 1 260px;
+  width:100%;
+  min-width:0;
+}
+.client-scope .push-single{
+  flex: 1 1 260px;
+  min-width:0;
+}
+.client-scope #pushSendBtn{
+  flex: 0 0 auto;
+  white-space:nowrap;
+}
+@media (max-width: 520px){
+  .client-scope #pushSendBtn{ width:100%; padding:10px 12px; }
+  .client-scope .pushbar-right{ justify-content:flex-start; width:100%; }
+}
+
 /* audit badge (match client) */
 .client-scope .audit-badge{
   display:inline-flex; align-items:center; justify-content:center;

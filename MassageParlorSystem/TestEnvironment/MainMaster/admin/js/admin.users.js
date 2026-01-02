@@ -15,10 +15,15 @@ const uDirtyMap = new Map();
 
 let uSavingAll = false;
 
+const U_VIEW_ENUM = ["all", "usage", "master", "features"];
+let uCurrentView = localStorage.getItem("users_view") || "usage";
+
+let pushingNow = false;
+
 function uSetTbodyMessage_(msg) {
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="13">${escapeHtml(msg || "-")}</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="15">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function uNormalizeYesNo_(v) {
@@ -57,6 +62,9 @@ function uRefreshSaveBtn_() {
   const n = uDirtyMap.size;
   btn.disabled = uSavingAll || n === 0;
   btn.textContent = uSavingAll ? "儲存中..." : n ? `儲存 Users 變更（${n}）` : "儲存 Users 變更";
+
+  uApplyView_();
+  pushSetEnabled_(!uSavingAll);
 }
 
 function uSetLock_(locked) {
@@ -74,6 +82,13 @@ function uSetLock_(locked) {
     "uBulkUsageDays",
     "uBulkApply",
     "uBulkDelete",
+
+    // push panel (client-compatible ids)
+    "pushTarget",
+    "pushSingleUserId",
+    "pushIncludeName",
+    "pushMessage",
+    "pushSendBtn",
   ];
 
   ids.forEach((id) => {
@@ -82,7 +97,234 @@ function uSetLock_(locked) {
   });
 
   document.querySelectorAll(".u-chip").forEach((el) => (el.disabled = locked));
+  document.querySelectorAll("#viewTabs .viewtab").forEach((el) => (el.disabled = locked));
   document.getElementById("uTbody")?.querySelectorAll("input, select, button").forEach((el) => (el.disabled = locked));
+
+  pushSetEnabled_(!locked);
+}
+
+function uUsersSection_() {
+  return document.querySelector('section[aria-label="Users/技師資料管理"]');
+}
+
+function uEnsureViewTabs_() {
+  const sec = uUsersSection_();
+  const head = sec?.querySelector(".panel-head");
+  if (!head) return;
+  if (document.getElementById("viewTabs")) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "viewtabs";
+  wrap.id = "viewTabs";
+  wrap.innerHTML = `
+    <button class="viewtab" data-view="all" type="button">全部欄位</button>
+    <button class="viewtab" data-view="usage" type="button">使用/審核</button>
+    <button class="viewtab" data-view="master" type="button">師傅資訊</button>
+    <button class="viewtab" data-view="features" type="button">功能開通</button>
+  `;
+  head.appendChild(wrap);
+
+  wrap.addEventListener("click", (e) => {
+    if (uSavingAll) return;
+    const btn = e.target instanceof Element ? e.target.closest("button.viewtab") : null;
+    if (!btn) return;
+    const v = btn.dataset.view;
+    if (!U_VIEW_ENUM.includes(v)) return;
+    uCurrentView = v;
+    localStorage.setItem("users_view", uCurrentView);
+    uApplyView_();
+  });
+
+  if (!U_VIEW_ENUM.includes(uCurrentView)) uCurrentView = "usage";
+  uApplyView_();
+}
+
+function uApplyView_() {
+  document.querySelectorAll("#viewTabs .viewtab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === uCurrentView);
+    b.disabled = uSavingAll;
+  });
+
+  const table = document.getElementById("uUsersTable");
+  if (table) table.setAttribute("data-view", uCurrentView);
+}
+
+function ensurePushPanel_() {
+  const sec = uUsersSection_();
+  const panelHead = sec?.querySelector(".panel-head");
+  if (!panelHead) return;
+  if (document.getElementById("pushPanel")) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "pushPanel";
+  wrap.style.flex = "0 0 100%";
+  wrap.style.width = "100%";
+  wrap.style.marginTop = "10px";
+
+  wrap.innerHTML = `
+    <div class="pushbar">
+      <div class="pushbar-left">
+        <span class="bulk-pill" style="border-color:rgba(147,51,234,.35); background:rgba(147,51,234,.12); color:rgb(167,139,250);">
+          推播
+        </span>
+
+        <div class="bulk-group">
+          <label class="bulk-label" for="pushTarget">對象</label>
+          <select id="pushTarget" class="select">
+            <option value="selected">選取的（勾選）</option>
+            <option value="filtered">目前篩選結果</option>
+            <option value="all">全部</option>
+            <option value="single">單一 userId</option>
+          </select>
+        </div>
+
+        <div class="bulk-group" id="pushSingleWrap" style="display:none;">
+          <label class="bulk-label" for="pushSingleUserId">userId</label>
+          <input id="pushSingleUserId" class="select push-single" type="text" placeholder="貼上 userId（LINE userId）" />
+        </div>
+
+        <div class="bulk-group">
+          <label class="bulk-label" style="user-select:none;">displayName 前綴</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); user-select:none;">
+            <input id="pushIncludeName" type="checkbox" />
+            加上 displayName
+          </label>
+        </div>
+      </div>
+
+      <div class="pushbar-right">
+        <div class="bulk-group" style="flex:1; width:100%;">
+          <input id="pushMessage" class="select push-message" type="text" placeholder="輸入要推播的訊息…" />
+        </div>
+        <button id="pushSendBtn" class="btn primary" type="button">送出推播</button>
+      </div>
+    </div>
+  `;
+
+  panelHead.appendChild(wrap);
+
+  const targetSel = document.getElementById("pushTarget");
+  const singleWrap = document.getElementById("pushSingleWrap");
+
+  targetSel?.addEventListener("change", () => {
+    const v = targetSel.value;
+    if (singleWrap) singleWrap.style.display = v === "single" ? "" : "none";
+  });
+
+  document.getElementById("pushSendBtn")?.addEventListener("click", async () => {
+    if (uSavingAll || pushingNow) return;
+    await pushSend_();
+  });
+
+  pushSetEnabled_(!uSavingAll);
+}
+
+function setDisabledByIds_(ids, disabled) {
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+function pushSetEnabled_(enabled) {
+  const lock = !enabled || pushingNow;
+  setDisabledByIds_(["pushTarget", "pushSingleUserId", "pushIncludeName", "pushMessage", "pushSendBtn"], lock);
+
+  const btn = document.getElementById("pushSendBtn");
+  if (btn) btn.textContent = pushingNow ? "推播中…" : "送出推播";
+}
+
+function buildPushTargetIds_(target) {
+  if (target === "single") {
+    const uid = String(document.getElementById("pushSingleUserId")?.value || "").trim();
+    return uid ? [uid] : [];
+  }
+  if (target === "selected") return Array.from(uSelectedIds);
+  if (target === "filtered") return uFiltered.map((u) => String(u.userId || "")).filter(Boolean);
+  if (target === "all") return uAll.map((u) => String(u.userId || "")).filter(Boolean);
+  return [];
+}
+
+async function pushMessageBatch_(userIds, message, includeDisplayName) {
+  if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
+  const res = await fetch(API_BASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      mode: "pushMessage",
+      userIds,
+      message,
+      includeDisplayName: includeDisplayName ? "是" : "否",
+    }),
+  });
+
+  return await res.json().catch(() => ({}));
+}
+
+async function pushSend_() {
+  const target = String(document.getElementById("pushTarget")?.value || "selected");
+  const includeDisplayName = !!document.getElementById("pushIncludeName")?.checked;
+  const message = String(document.getElementById("pushMessage")?.value || "").trim();
+
+  if (!message) {
+    toast("請輸入推播內容", "err");
+    return;
+  }
+
+  const userIds = buildPushTargetIds_(target);
+  if (!userIds.length) {
+    toast(target === "selected" ? "請先勾選要推播的使用者" : "找不到推播對象", "err");
+    return;
+  }
+
+  const n = userIds.length;
+  const warn = includeDisplayName ? "⚠️ 勾選 displayName 前綴：後端可能需要逐人處理（較慢）。\n\n" : "";
+  if (target === "all" || target === "filtered" || n > 30) {
+    const ok = confirm(`即將推播給 ${n} 位使用者。\n\n${warn}確定要送出嗎？`);
+    if (!ok) return;
+  }
+
+  pushingNow = true;
+  pushSetEnabled_(false);
+
+  try {
+    const ret = await pushMessageBatch_(userIds, message, includeDisplayName);
+    const okCount = Number(ret?.okCount || 0);
+    const failCount = Number(ret?.failCount || 0);
+
+    if (failCount === 0) toast(`推播完成：成功 ${okCount} 筆`, "ok");
+    else toast(`推播完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
+
+    if (ret?.fail?.length) console.warn("push fail:", ret.fail);
+  } catch (e) {
+    console.error("pushSend error:", e);
+    toast("推播失敗（請看 console）", "err");
+  } finally {
+    pushingNow = false;
+    pushSetEnabled_(!uSavingAll);
+  }
+}
+
+function uGetExpiryInfo_(u) {
+  if (!u.startDate || !u.usageDays) return { cls: "unset", text: "未設定" };
+
+  const start = new Date(String(u.startDate) + "T00:00:00");
+  if (isNaN(start.getTime())) return { cls: "unset", text: "未設定" };
+
+  const usage = Number(u.usageDays);
+  if (!Number.isFinite(usage) || usage <= 0) return { cls: "unset", text: "未設定" };
+
+  const last = new Date(start.getTime() + (usage - 1) * 86400000);
+  last.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor((last - today) / 86400000);
+
+  if (diff < 0) return { cls: "expired", text: `已過期（超 ${Math.abs(diff)} 天）` };
+  return { cls: "active", text: `使用中（剩 ${diff} 天）` };
 }
 
 function uUpdateBulkBar_() {
@@ -170,7 +412,7 @@ function uRender_() {
   tbody.innerHTML = "";
 
   if (!uFiltered.length) {
-    tbody.innerHTML = `<tr><td colspan="13">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15">無資料</td></tr>`;
     return;
   }
 
@@ -179,6 +421,8 @@ function uRender_() {
   uFiltered.forEach((u, i) => {
     const userId = String(u.userId || "");
     const audit = normalizeAudit_(u.audit);
+
+    const expiry = uGetExpiryInfo_(u);
 
     const pushEnabled = uNormalizeYesNo_(u.pushEnabled || "否");
     const personalStatusEnabled = uNormalizeYesNo_(u.personalStatusEnabled || "否");
@@ -196,15 +440,19 @@ function uRender_() {
         <input class="u-row-check" type="checkbox" ${uSelectedIds.has(userId) ? "checked" : ""} aria-label="選取此列">
       </td>
       <td data-label="#">${i + 1}</td>
-      <td data-label="userId"><span style="font-family:var(--mono)">${escapeHtml(userId)}</span></td>
+      <td data-label="userId"><span class="mono">${escapeHtml(userId)}</span></td>
       <td data-label="顯示名稱">${escapeHtml(u.displayName || "")}</td>
-      <td data-label="建立時間"><span style="font-family:var(--mono)">${escapeHtml(u.createdAt || "")}</span></td>
+      <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
 
       <td data-label="開始使用">
         <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}">
       </td>
       <td data-label="期限(天)">
         <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
+      </td>
+
+      <td data-label="使用狀態">
+        <span class="expiry-pill ${expiry.cls}">${escapeHtml(expiry.text)}</span>
       </td>
 
       <td data-label="審核狀態">
@@ -217,6 +465,8 @@ function uRender_() {
       <td data-label="師傅編號">
         <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}">
       </td>
+
+      <td data-label="是否師傅" class="u-is-master">${u.masterCode ? "是" : "否"}</td>
 
       <td data-label="是否推播">
         <select data-field="pushEnabled" class="select" aria-label="是否推播" ${pushDisabled}>
@@ -602,6 +852,12 @@ function uBind_() {
       }
     } else if (field === "usageDays") {
       u.usageDays = v.trim();
+      const exp = uGetExpiryInfo_(u);
+      const pill = row?.querySelector(".expiry-pill");
+      if (pill) {
+        pill.className = `expiry-pill ${exp.cls}`;
+        pill.textContent = exp.text;
+      }
     } else if (field === "pushEnabled") {
       u.pushEnabled = uNormalizeYesNo_(v);
     } else if (field === "personalStatusEnabled") {
@@ -610,8 +866,16 @@ function uBind_() {
       u.scheduleEnabled = uNormalizeYesNo_(v);
     } else if (field === "startDate") {
       u.startDate = v;
+      const exp = uGetExpiryInfo_(u);
+      const pill = row?.querySelector(".expiry-pill");
+      if (pill) {
+        pill.className = `expiry-pill ${exp.cls}`;
+        pill.textContent = exp.text;
+      }
     } else if (field === "masterCode") {
       u.masterCode = v;
+      const isMasterCell = row?.querySelector(".u-is-master");
+      if (isMasterCell) isMasterCell.textContent = u.masterCode ? "是" : "否";
     }
 
     uMarkDirty_(id, u);
@@ -670,6 +934,8 @@ function uBind_() {
 
 // 提供給入口檔呼叫
 function initUsersPanel_() {
+  uEnsureViewTabs_();
+  ensurePushPanel_();
   uBind_();
   uRefreshSaveBtn_();
   uSetFooter_("Users：等待管理員驗證後載入");
