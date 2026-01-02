@@ -1001,3 +1001,61 @@ body {
     padding-right: calc(12px + env(safe-area-inset-right));
   }
 }
+
+/* =========================================================
+ * ✅ 覆蓋：我的狀態（myms-status）改成與面板 status-pill 同風格
+ * 直接貼在 CSS 最底部
+ * ========================================================= */
+
+/* 1) 讓我的狀態勳章“長得像” status-pill */
+.myms-status{
+  /* 跟 .status-pill 一致的骨架 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;        /* ← 跟 status-pill */
+  border-radius: 999px;    /* ← 跟 status-pill */
+  font-size: 12px;         /* ← 跟 status-pill */
+  font-weight: 500;        /* ← 跟 status-pill */
+  border: 1px solid transparent;
+
+  /* 保持你原本不換行規則 */
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1;
+}
+
+/* 2) 顏色：完全對齊你現有的 status-pill 類型（暗色） */
+.myms-status.is-busy   { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
+.myms-status.is-booked { background: rgba(56, 189, 248, 0.16);  color: #bae6fd; }
+.myms-status.is-free   { background: rgba(34, 197, 94, 0.15);   color: #bbf7d0; }
+.myms-status.is-other  { background: rgba(148, 163, 184, 0.22); color: #e5e7eb; }
+
+/* 3) 亮色：完全對齊你現有的 status-pill 類型（亮色） */
+:root[data-theme="light"] .myms-status.is-busy   { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
+:root[data-theme="light"] .myms-status.is-booked { background: rgba(37, 99, 235, 0.08);  color: #1d4ed8; }
+:root[data-theme="light"] .myms-status.is-free   { background: rgba(22, 163, 74, 0.08);   color: #15803d; }
+:root[data-theme="light"] .myms-status.is-other  { background: rgba(148, 163, 184, 0.15); color: #374151; }
+
+/* 4) 排班（shift）目前你的表格沒有對應 status-pill，給它一個“接近 other，但偏黃”的一致風格 */
+.myms-status.is-shift{
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+}
+:root[data-theme="light"] .myms-status.is-shift{
+  background: rgba(250, 204, 21, 0.12);
+  color: #92400e;
+}
+
+/* 5) 外框色條（左側那條）也跟表格狀態一致（可選，但你要求一致我就一併對齊） */
+.my-master-status.is-busy::before   { background: rgba(248, 113, 113, 0.9); }
+.my-master-status.is-booked::before { background: rgba(56, 189, 248, 0.9); }
+.my-master-status.is-free::before   { background: rgba(34, 197, 94, 0.9); }
+.my-master-status.is-other::before  { background: rgba(148, 163, 184, 0.7); }
+/* shift 保留黃 */
+.my-master-status.is-shift::before  { background: rgba(250, 204, 21, 0.9); }
+
+/* 6) 取消你原本 myms-status 的「高權重顏色」效果（避免被舊設定干擾）
+ * 若你上面那段 myms-status.is-xxx 還存在，這段放最底部就會以後者為準。
+ */
