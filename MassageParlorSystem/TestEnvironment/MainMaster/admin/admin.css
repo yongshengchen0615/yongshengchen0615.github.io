@@ -131,6 +131,22 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   background:var(--accent-soft);
 }
 
+/* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響） */
+.u-chip{
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text-sub);
+  font-size:12px;
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+}
+.u-chip.active{
+  color:var(--accent);
+  border-color:rgba(56,189,248,.45);
+  background:var(--accent-soft);
+}
+
 .bulkbar{
   display:flex; flex-wrap:wrap;
   align-items:flex-start; justify-content:space-between;
@@ -218,6 +234,16 @@ tbody td.sticky-col{ background:transparent; }
 .btn.ghost{ background:transparent; }
 .btn.icon{ padding:8px 10px; border-radius:999px; }
 .btn[disabled]{ opacity:.55; cursor:not-allowed; }
+
+/* =========================
+ * Panel heading helpers
+ * ========================= */
+
+.panel-title{ display:flex; flex-direction:column; gap:6px; }
+.panel-title-main{ font-weight:800; font-size:14px; letter-spacing:.2px; }
+.panel-title-sub{ max-width: 880px; }
+
+.panel-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 
 .actions{ display:flex; gap:8px; align-items:center; justify-content:flex-end; }
 .dirty-dot{

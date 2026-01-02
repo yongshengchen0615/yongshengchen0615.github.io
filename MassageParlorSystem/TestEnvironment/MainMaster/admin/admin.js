@@ -37,9 +37,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
+    // Users/技師資料管理（獨立區塊）
+    if (typeof initUsersPanel_ === "function") initUsersPanel_();
+
     // 先通過 LIFF + AUTH Gate 才載入資料
     await liffGate_();
     await loadAdmins_();
+
+    // Users 資料（不影響 admin 清單）
+    if (typeof bootUsersPanel_ === "function") await bootUsersPanel_();
   } catch (e) {
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
