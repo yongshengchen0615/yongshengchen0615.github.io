@@ -23,7 +23,7 @@
 /* =========================================================
  * Config.json
  * ========================================================= */
-const CONFIG_JSON_URL = "./config.json";
+const CONFIG_JSON_URL = "../config.json";
 
 let EDGE_STATUS_URLS = [];
 let FALLBACK_ORIGIN_CACHE_URL = "";
