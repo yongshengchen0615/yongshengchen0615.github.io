@@ -1034,3 +1034,9 @@ body {
     padding-right: calc(12px + env(safe-area-inset-right));
   }
 }
+
+/* ✅ 若 JS 有帶入 token，強制用 token 色條（覆蓋 status-xxx 固定色） */
+.my-master-status.stripe-token::before{
+  background: var(--myStripe, rgba(148, 163, 184, 0.55)) !important;
+}
+
