@@ -131,8 +131,10 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   background:var(--accent-soft);
 }
 
-/* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響） */
-.u-chip{
+/* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
+ * 但樣式需與 client 專案的 .chip 完全一致。
+ */
+.client-scope .u-chip{
   border:1px solid var(--border);
   background:var(--card);
   color:var(--text-sub);
@@ -141,11 +143,12 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border-radius:999px;
   cursor:pointer;
 }
-.u-chip.active{
+.client-scope .u-chip.active{
   color:var(--accent);
   border-color:rgba(56,189,248,.45);
   background:var(--accent-soft);
 }
+.client-scope .u-chip:disabled{ opacity:.55; cursor:not-allowed; }
 
 .bulkbar{
   display:flex; flex-wrap:wrap;
@@ -177,6 +180,105 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   outline:none;
 }
 .select:focus, input[type="text"]:focus{ box-shadow:var(--focus); border-color:rgba(56,189,248,.45); }
+
+/* ================================
+ * ✅ Client Users 區塊樣式（scope）
+ * 目標：讓 admin 內的 Users 區塊外觀與 client 專案一致，
+ *       且不影響上方 Admin 審核表格。
+ * ================================ */
+
+/* Search states (client has is-searching) */
+.client-scope .search-box.is-searching{
+  border-color: rgba(56,189,248,.55);
+  background: var(--accent-soft);
+}
+.client-scope .search-box.is-searching .icon{ color: var(--accent); }
+
+/* Table header sort affordance (style only;不強制功能) */
+.client-scope thead th.sortable{ cursor:pointer; }
+.client-scope thead th.sortable:hover{ color:var(--text); }
+.client-scope thead th .sort-ind{ margin-left:6px; opacity:.75; }
+
+/* Sticky left col hover backgrounds (client behavior) */
+.client-scope tbody tr:hover td.sticky-col{ background:rgba(56,189,248,.08); }
+.client-scope tbody tr.dirty:hover td.sticky-col{ background:rgba(245,158,11,.10); }
+
+/* Inputs (client styles date/number too) */
+.client-scope input[type="date"],
+.client-scope input[type="number"],
+.client-scope input[type="text"],
+.client-scope select{
+  font-size:12px;
+  padding:6px 8px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--input-bg);
+  color:var(--text);
+  outline:none;
+}
+.client-scope input[type="date"]:focus,
+.client-scope input[type="number"]:focus,
+.client-scope input[type="text"]:focus,
+.client-scope select:focus{
+  border-color:rgba(56,189,248,.55);
+  box-shadow:var(--focus);
+}
+.client-scope input:disabled,
+.client-scope select:disabled{ opacity:.55; cursor:not-allowed; }
+
+@media (max-width: 540px){
+  .client-scope .bulk-right{ width:100%; justify-content:flex-start; }
+  .client-scope #uBulkApply,
+  .client-scope #uBulkDelete{ width:100%; padding:10px 12px; }
+}
+
+/* ===== Mobile readability: table -> card (client behavior) ===== */
+@media (max-width: 720px){
+  .client-scope .panel-head{ flex-direction:column; align-items:stretch; }
+  .client-scope .search-box{ width: 100%; }
+
+  .client-scope .table-wrap{
+    overflow: visible;
+    padding:12px 14px 14px;
+  }
+
+  .client-scope thead{ display:none; }
+  .client-scope table,
+  .client-scope tbody,
+  .client-scope tr,
+  .client-scope td{ display:block; width:100%; }
+
+  .client-scope tbody tr{
+    border:1px solid var(--border);
+    border-radius:var(--radius-md);
+    overflow:hidden;
+    margin-bottom:10px;
+    background:var(--card);
+  }
+
+  .client-scope tbody td{
+    border-bottom:1px solid var(--border-soft);
+    white-space: normal !important;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  .client-scope tbody td::before{
+    content: attr(data-label);
+    color:var(--text-sub);
+    font-size:12px;
+    min-width: 110px;
+  }
+
+  .client-scope .sticky-col{ position:static; }
+  .client-scope .actions{ justify-content:flex-end; width:100%; }
+
+  .client-scope tbody td input,
+  .client-scope tbody td select{ max-width: 60%; }
+}
 
 /* 表格內更緊湊 */
 .table-wrap{ overflow:auto; padding:12px 14px 14px; -webkit-overflow-scrolling:touch; }

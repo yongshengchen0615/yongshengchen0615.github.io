@@ -111,6 +111,9 @@ function uApplyFilters_() {
     .trim()
     .toLowerCase();
 
+  const searchBox = document.getElementById("uSearchInput")?.closest(".search-box");
+  if (searchBox) searchBox.classList.toggle("is-searching", !!keywordRaw);
+
   const active = document.querySelector(".u-chip.active");
   const filter = active ? String(active.dataset.filter || "ALL") : "ALL";
 
