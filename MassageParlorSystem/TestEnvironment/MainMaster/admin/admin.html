@@ -232,7 +232,7 @@
 
         <!-- Table -->
         <div class="table-wrap" aria-label="使用者列表（可編輯）">
-          <table>
+          <table id="uUsersTable">
             <thead>
               <tr>
                 <th class="sticky-col col-check"><input id="uCheckAll" type="checkbox" aria-label="全選" /></th>
@@ -242,8 +242,10 @@
                 <th>建立時間</th>
                 <th>開始使用</th>
                 <th>期限(天)</th>
+                <th>使用狀態</th>
                 <th>審核狀態</th>
                 <th>師傅編號</th>
+                <th>是否師傅</th>
                 <th>是否推播</th>
                 <th>個人狀態開通</th>
                 <th>排班表開通</th>
@@ -251,7 +253,7 @@
               </tr>
             </thead>
             <tbody id="uTbody">
-              <tr><td colspan="13">等待管理員驗證後載入...</td></tr>
+              <tr><td colspan="15">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
         </div>
