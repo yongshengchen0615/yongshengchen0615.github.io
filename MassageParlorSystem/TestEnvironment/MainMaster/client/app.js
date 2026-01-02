@@ -2,6 +2,7 @@
  * app.js (FULL + LIFF Admin Gate)
  * ✅ 權限為「否」的欄位直接不顯示（整欄隱藏）
  * ✅ 只有當 9 個 tech 權限全部為「是」才顯示上方分頁 Tabs
+ * ✅ NEW：Bulk Bar（批次審核/推播/個人狀態/排班表/期限）依管理員可控欄位顯示
  * ================================ */
 
 /* =========================================================
@@ -165,6 +166,43 @@ function enforceViewTabsPolicy_() {
 }
 
 /* =========================================================
+ * ✅ Bulk Permission Gate (依管理員可控欄位顯示批次欄位)
+ * ========================================================= */
+
+const BULK_PERM_MAP = {
+  bulkAudit: "techAudit",
+  bulkPush: "techPushEnabled",
+  bulkPersonalStatus: "techPersonalStatusEnabled",
+  bulkScheduleEnabled: "techScheduleEnabled",
+  bulkUsageDays: "techExpiryDate",
+};
+
+function applyBulkPermissions_() {
+  // adminPerms 尚未取得時：先全部隱藏（避免閃現）
+  const hasPerms = !!adminPerms;
+
+  Object.keys(BULK_PERM_MAP).forEach((bulkId) => {
+    const permKey = BULK_PERM_MAP[bulkId];
+    const controlEl = document.getElementById(bulkId);
+    if (!controlEl) return;
+
+    const group = controlEl.closest(".bulk-group");
+    if (!group) return;
+
+    const allowed = hasPerms && isYes_(adminPerms[permKey]);
+
+    // ✅ 權限否：整組不顯示
+    group.style.display = allowed ? "" : "none";
+
+    // ✅ 權限否：清空值，避免 bulkApply_ 讀到殘值
+    if (!allowed) {
+      if (controlEl instanceof HTMLSelectElement) controlEl.value = "";
+      if (controlEl instanceof HTMLInputElement) controlEl.value = "";
+    }
+  });
+}
+
+/* =========================================================
  * ✅ View Tabs
  * ========================================================= */
 const VIEW_ENUM = ["all", "usage", "master", "features"];
@@ -225,7 +263,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentView = localStorage.getItem("users_view") || currentView;
 
     initTheme_();
-
     document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
 
     document.getElementById("reloadBtn")?.addEventListener("click", async () => {
@@ -450,6 +487,7 @@ async function loadUsers() {
     applyView_();
     // ✅ 權限欄位隱藏在 render 後也保險再套一次
     applyColumnPermissions_();
+    applyBulkPermissions_();
   }
 }
 
@@ -480,8 +518,9 @@ function applyFilters() {
   refreshSaveAllButton_();
   applyView_();
 
-  // ✅ 權限欄位隱藏
+  // ✅ 權限欄位隱藏 + Bulk 欄位顯示
   applyColumnPermissions_();
+  applyBulkPermissions_();
 
   if (savingAll) setEditingEnabled_(false);
 }
@@ -692,12 +731,20 @@ function syncCheckAll_() {
 async function bulkApply_() {
   if (savingAll) return;
 
-  const audit = document.getElementById("bulkAudit")?.value || "";
-  const pushEnabled = document.getElementById("bulkPush")?.value || "";
-  const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
-  const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
+  let audit = document.getElementById("bulkAudit")?.value || "";
+  let pushEnabled = document.getElementById("bulkPush")?.value || "";
+  let personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
+  let scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
 
-  const usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
+  let usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
+
+  // ✅ 依權限強制忽略不可控欄位（避免 DOM 殘值 / 手動改 DOM）
+  if (!adminPerms || !isYes_(adminPerms.techAudit)) audit = "";
+  if (!adminPerms || !isYes_(adminPerms.techPushEnabled)) pushEnabled = "";
+  if (!adminPerms || !isYes_(adminPerms.techPersonalStatusEnabled)) personalStatusEnabled = "";
+  if (!adminPerms || !isYes_(adminPerms.techScheduleEnabled)) scheduleEnabled = "";
+  if (!adminPerms || !isYes_(adminPerms.techExpiryDate)) usageDaysRaw = "";
+
   const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
   if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
     toast("批次期限(天) 請輸入大於 0 的數字", "err");
@@ -1470,6 +1517,9 @@ async function adminAuthBoot_() {
       techScheduleEnabled: check.techScheduleEnabled,
     };
 
+    // ✅ NEW：依權限決定 Bulk 欄位顯示
+    applyBulkPermissions_();
+
     // ✅ 先套用欄位隱藏 + tabs 政策（就算最後 audit 不通過也先準備好）
     applyColumnPermissions_();
     enforceViewTabsPolicy_();
@@ -1500,9 +1550,10 @@ async function adminAuthBoot_() {
     showAuthGate_(false);
     setEditingEnabled_(true);
 
-    // ✅ 通過後再保險套一次（含 tabs / 欄位隱藏）
+    // ✅ 通過後再保險套一次（含 tabs / 欄位隱藏 / Bulk）
     applyColumnPermissions_();
     enforceViewTabsPolicy_();
+    applyBulkPermissions_();
 
     toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");
     return true;
