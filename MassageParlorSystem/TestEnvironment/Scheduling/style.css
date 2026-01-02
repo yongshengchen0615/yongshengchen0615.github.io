@@ -1,3 +1,11 @@
+/* =========================================================
+ * style.css（完整修訂完成版）
+ * 修正重點：
+ * 1) 「我的狀態」外框色條一律使用 JS 實際加上的 class：status-xxx
+ * 2) 「我的狀態」內的狀態勳章使用 status-pill + status-xxx（含 status-shift）
+ * 3) 移除/避免混用 is-xxx::before 與 myms-status 系列覆蓋（以免你改了沒效果）
+ * ========================================================= */
+
 /* 預設：暗色主題 */
 :root {
   --bg: #020617;
@@ -187,14 +195,14 @@ body {
 }
 
 /* ✅ 個人狀態：快捷按鈕列 */
-.personal-tools{
+.personal-tools {
   margin: 6px 0 12px 0;
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.personal-tools .btn{
+.personal-tools .btn {
   padding: 6px 14px;
 }
 
@@ -489,7 +497,7 @@ body {
   background-clip: padding-box;
 }
 
-/* 狀態 Pill */
+/* 狀態 Pill（表格 & 我的狀態共用） */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -499,6 +507,12 @@ body {
   font-size: 12px;
   font-weight: 500;
   border: 1px solid transparent;
+
+  /* ✅ FIX: 中文狀態不換行，避免列高跳動 */
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1;
 }
 
 .status-busy {
@@ -521,10 +535,50 @@ body {
   color: #e5e7eb;
 }
 
-:root[data-theme="light"] .status-busy { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
-:root[data-theme="light"] .status-booked { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
-:root[data-theme="light"] .status-free { background: rgba(22, 163, 74, 0.08); color: #15803d; }
-:root[data-theme="light"] .status-other { background: rgba(148, 163, 184, 0.15); color: #374151; }
+/* ✅ NEW: 排班狀態（我的狀態會用到 status-shift） */
+.status-shift {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+}
+
+:root[data-theme="light"] .status-busy {
+  background: rgba(248, 113, 113, 0.1);
+  color: #b91c1c;
+}
+:root[data-theme="light"] .status-booked {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+:root[data-theme="light"] .status-free {
+  background: rgba(22, 163, 74, 0.08);
+  color: #15803d;
+}
+:root[data-theme="light"] .status-other {
+  background: rgba(148, 163, 184, 0.15);
+  color: #374151;
+}
+:root[data-theme="light"] .status-shift {
+  background: rgba(250, 204, 21, 0.12);
+  color: #92400e;
+}
+
+/* ✅ 也把「狀態欄位 td」設成不換行（雙保險） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3) {
+  white-space: nowrap;
+}
+
+/* ✅ 狀態欄最小寬度（避免 pill 被擠到只能換行） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3) {
+  min-width: 86px;
+}
+@media (max-width: 420px) {
+  .status-table tbody td:nth-child(3),
+  .status-table thead th:nth-child(3) {
+    min-width: 76px;
+  }
+}
 
 /* 剩餘時間 badge */
 .time-badge {
@@ -566,7 +620,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Legend */
@@ -591,9 +647,15 @@ body {
   border-radius: 999px;
 }
 
-.legend-work { background: #f97373; }
-.legend-free { background: #22c55e; }
-.legend-other { background: #9ca3af; }
+.legend-work {
+  background: #f97373;
+}
+.legend-free {
+  background: #22c55e;
+}
+.legend-other {
+  background: #9ca3af;
+}
 
 /* RWD */
 @media (max-width: 768px) {
@@ -652,7 +714,7 @@ body {
 /* =========================================================
  * ✅ Top Loading Hint（fixed toast，不影響面板排列）
  * ========================================================= */
-.top-loading{
+.top-loading {
   position: fixed;
   top: 10px;
   left: 50%;
@@ -670,21 +732,23 @@ body {
   background: rgba(15, 23, 42, 0.92);
   color: #e5e7eb;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(6px);
 
   pointer-events: none;
 }
 
-:root[data-theme="light"] .top-loading{
+:root[data-theme="light"] .top-loading {
   background: rgba(255, 255, 255, 0.92);
   color: #111827;
   border-color: rgba(148, 163, 184, 0.6);
 }
 
-.top-loading.hidden{ display:none; }
+.top-loading.hidden {
+  display: none;
+}
 
-.top-loading-spinner{
+.top-loading-spinner {
   width: 12px;
   height: 12px;
   border-radius: 999px;
@@ -694,56 +758,17 @@ body {
 }
 
 /* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
-#loadingState{
+#loadingState {
   display: none !important;
 }
 
 /* =========================================================
- * ✅ FIX: 狀態 pill 中文換行造成列高變動（工作中跑版）
- * - 中文預設可斷行，需要強制 nowrap
- * - 同時給狀態欄最小寬度，避免被擠爆
- * ========================================================= */
-
-.status-pill{
-  white-space: nowrap;      /* ✅ 核心：禁止換行 */
-  word-break: keep-all;     /* ✅ 中文不要拆字 */
-  overflow-wrap: normal;    /* ✅ 不要 anywhere */
-  line-height: 1;           /* ✅ 避免行高撐開 */
-}
-
-/* ✅ 也把「狀態欄位 td」設成不換行（雙保險） */
-.status-table tbody td:nth-child(3),
-.status-table thead th:nth-child(3){
-  white-space: nowrap;
-}
-
-/* ✅ 狀態欄最小寬度（避免 pill 被擠到只能換行） */
-.status-table tbody td:nth-child(3),
-.status-table thead th:nth-child(3){
-  min-width: 86px; /* 可調：80~110 */
-}
-
-/* （可選）手機再縮一點，避免整表水平捲動太多 */
-@media (max-width: 420px){
-  .status-table tbody td:nth-child(3),
-  .status-table thead th:nth-child(3){
-    min-width: 76px;
-  }
-}
-
-/* =========================================================
- * ✅ 我的狀態勳章（新增區塊 / 不改原本結構）
- * 依賴 class：
- * - 外層：.my-master-status  (+ is-shift / is-busy / is-booked / is-free)
- * - 內容：.myms .myms-head .myms-tech-badge
- * - 列：.myms-row / .myms-label / .myms-right
- * - 勳章：.myms-status (+ is-shift/is-busy/is-booked/is-free/is-other)
- * - 剩餘：.myms-rem (+ is-warn / is-expired)
- * - 排班順位：.myms-rank (+ is-top3)
+ * ✅ 我的狀態（卡片）
+ * 依賴 JS：myMasterStatusEl 會加上 status-xxx（不是 is-xxx）
  * ========================================================= */
 
 /* 容器卡片 */
-.my-master-status{
+.my-master-status {
   margin: 0 0 14px 0;
   padding: 10px 14px;
   border-radius: 16px;
@@ -756,320 +781,256 @@ body {
   position: relative;
   overflow: hidden;
 }
-:root[data-theme="light"] .my-master-status{
+
+:root[data-theme="light"] .my-master-status {
   background: rgba(255, 255, 255, 0.85);
   border-color: rgba(148, 163, 184, 0.65);
 }
 
-/* 左側色條：依狀態變色 */
-.my-master-status::before{
-  content:"";
-  position:absolute;
-  left:0; top:0; bottom:0;
-  width:6px;
+/* 左側色條：✅ 對齊 JS 使用的 status-xxx */
+.my-master-status::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
   background: rgba(148, 163, 184, 0.55);
 }
-.my-master-status.status-shift::before{ background: rgba(250, 204, 21, 0.9); }
-.my-master-status.status-busy::before{ background: rgba(248, 113, 113, 0.9); }
-.my-master-status.status-booked::before{ background: rgba(56, 189, 248, 0.9); }
-.my-master-status.status-free::before{ background: rgba(34, 197, 94, 0.9); }
-.my-master-status.status-other::before{ background: rgba(148, 163, 184, 0.7); }
+.my-master-status.status-shift::before {
+  background: rgba(250, 204, 21, 0.9);
+}
+.my-master-status.status-busy::before {
+  background: rgba(248, 113, 113, 0.9);
+}
+.my-master-status.status-booked::before {
+  background: rgba(56, 189, 248, 0.9);
+}
+.my-master-status.status-free::before {
+  background: rgba(34, 197, 94, 0.9);
+}
+.my-master-status.status-other::before {
+  background: rgba(148, 163, 184, 0.7);
+}
 
-
-.my-master-title{
+.my-master-title {
   font-size: 12px;
   color: var(--text-sub);
   white-space: nowrap;
   padding-top: 2px;
   font-weight: 700;
-  letter-spacing: .02em;
+  letter-spacing: 0.02em;
 }
 
 /* 內部排版 */
-.myms{
-  display:flex;
+.myms {
+  display: flex;
   flex-direction: column;
   gap: 10px;
   padding-left: 6px;
   min-width: 0;
   flex: 1 1 320px;
 }
-.myms-head{
-  display:flex;
-  align-items:center;
+.myms-head {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
-.myms-tech-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
+.myms-tech-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 2px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(148,163,184,.45);
-  background: rgba(15,23,42,.55);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.55);
   font-size: 12px;
   color: var(--text-main);
 }
-:root[data-theme="light"] .myms-tech-badge{
-  background: rgba(255,255,255,.9);
+:root[data-theme="light"] .myms-tech-badge {
+  background: rgba(255, 255, 255, 0.9);
 }
 
 /* 每列 */
-.myms-row{
-  display:flex;
-  align-items:center;
+.myms-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(148,163,184,.35);
-  background: rgba(2,6,23,.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(2, 6, 23, 0.35);
   min-width: 0;
 }
-:root[data-theme="light"] .myms-row{
-  background: rgba(249,250,251,.95);
+:root[data-theme="light"] .myms-row {
+  background: rgba(249, 250, 251, 0.95);
 }
 
-.myms-label{
-  display:flex;
-  align-items:center;
+.myms-label {
+  display: flex;
+  align-items: center;
   gap: 8px;
   min-width: 72px;
   font-size: 12px;
   color: var(--text-sub);
   flex: 0 0 auto;
 }
-.myms-right{
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
+.myms-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
   flex: 1 1 auto;
 }
 
-/* 勳章通用 */
-.myms-status,
+/* 剩餘 / 排班順位勳章 */
 .myms-rem,
-.myms-rank{
-  display:inline-flex;
-  align-items:center;
+.myms-rank {
+  display: inline-flex;
+  align-items: center;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
-  border: 1px solid rgba(148,163,184,.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 狀態勳章 */
-.myms-status{
-  font-weight: 750;
-  background: rgba(148,163,184,.12);
-  color: var(--text-main);
-}
-.myms-status.is-shift{  background: rgba(250,204,21,.16); border-color: rgba(250,204,21,.35); color: #fde68a; }
-.myms-status.is-busy{   background: rgba(248,113,113,.16); border-color: rgba(248,113,113,.35); color: #fecaca; }
-.myms-status.is-booked{ background: rgba(56,189,248,.16); border-color: rgba(56,189,248,.35); color: #bae6fd; }
-.myms-status.is-free{   background: rgba(34,197,94,.15);  border-color: rgba(34,197,94,.35);  color: #bbf7d0; }
-.myms-status.is-other{  background: rgba(148,163,184,.18); border-color: rgba(148,163,184,.35); color: #e5e7eb; }
-
-:root[data-theme="light"] .myms-status.is-shift{  color:#92400e; }
-:root[data-theme="light"] .myms-status.is-busy{   color:#991b1b; }
-:root[data-theme="light"] .myms-status.is-booked{ color:#1d4ed8; }
-:root[data-theme="light"] .myms-status.is-free{   color:#166534; }
-:root[data-theme="light"] .myms-status.is-other{  color:#374151; }
-
 /* 剩餘勳章 */
-.myms-rem{
-  background: rgba(15,23,42,.35);
+.myms-rem {
+  background: rgba(15, 23, 42, 0.35);
   color: var(--text-main);
 }
-:root[data-theme="light"] .myms-rem{
-  background: rgba(255,255,255,.9);
+:root[data-theme="light"] .myms-rem {
+  background: rgba(255, 255, 255, 0.9);
 }
 
 /* 剩餘警示色 */
-.myms-rem.is-warn{
+.myms-rem.is-warn {
   background: rgba(250, 204, 21, 0.16);
   border-color: rgba(250, 204, 21, 0.35);
   color: #fde68a;
 }
-.myms-rem.is-expired{
+.myms-rem.is-expired {
   background: rgba(248, 113, 113, 0.16);
   border-color: rgba(248, 113, 113, 0.35);
   color: #fecaca;
 }
-:root[data-theme="light"] .myms-rem.is-warn{ color: #92400e; }
-:root[data-theme="light"] .myms-rem.is-expired{ color: #991b1b; }
+:root[data-theme="light"] .myms-rem.is-warn {
+  color: #92400e;
+}
+:root[data-theme="light"] .myms-rem.is-expired {
+  color: #991b1b;
+}
 
 /* 排班順位勳章 + TOP3 發光 */
-.myms-rank{
-  background: rgba(99,102,241,.12);
+.myms-rank {
+  background: rgba(99, 102, 241, 0.12);
   color: var(--text-main);
 }
-:root[data-theme="light"] .myms-rank{
-  background: rgba(37,99,235,.08);
+:root[data-theme="light"] .myms-rank {
+  background: rgba(37, 99, 235, 0.08);
   color: #1d4ed8;
 }
 
 @keyframes glowPulse {
-  0%   { box-shadow: 0 0 0 rgba(99,102,241,0); transform: translateY(0); }
-  50%  { box-shadow: 0 0 18px rgba(99,102,241,0.55); transform: translateY(-1px); }
-  100% { box-shadow: 0 0 0 rgba(99,102,241,0); transform: translateY(0); }
+  0% {
+    box-shadow: 0 0 0 rgba(99, 102, 241, 0);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(99, 102, 241, 0.55);
+    transform: translateY(-1px);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(99, 102, 241, 0);
+    transform: translateY(0);
+  }
 }
-.myms-rank.is-top3{
-  border-color: rgba(99,102,241,0.65);
+.myms-rank.is-top3 {
+  border-color: rgba(99, 102, 241, 0.65);
   animation: glowPulse 1.25s ease-in-out infinite;
 }
-:root[data-theme="light"] .myms-rank.is-top3{
-  box-shadow: 0 0 14px rgba(37,99,235,0.35);
+:root[data-theme="light"] .myms-rank.is-top3 {
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.35);
 }
 
 /* =========================================================
  * ✅ 行動裝置自適應：置中 + 不左右滑（我的狀態區塊）
  * ========================================================= */
-.my-master-status{
+.my-master-status {
   flex-wrap: wrap;
   min-width: 0;
 }
 
 /* <=768：整體置中、內容集中、徽章群置中 */
-@media (max-width: 768px){
-  .my-master-status{
+@media (max-width: 768px) {
+  .my-master-status {
     justify-content: center;
     text-align: center;
   }
-  .myms{
+  .myms {
     width: 100%;
     max-width: 520px;
     margin: 0 auto;
   }
-  .myms-head{
+  .myms-head {
     justify-content: center;
     flex-wrap: wrap;
     gap: 8px;
   }
-  .myms-row{
+  .myms-row {
     width: 100%;
     margin: 0 auto;
   }
-  .myms-label{
+  .myms-label {
     justify-content: center;
   }
-  .myms-right{
+  .myms-right {
     justify-content: center;
   }
 }
 
 /* <=420：每列改上下堆疊更清楚 */
-@media (max-width: 420px){
-  .my-master-status{
+@media (max-width: 420px) {
+  .my-master-status {
     padding: 10px 12px;
     border-radius: 14px;
   }
-  .myms{
+  .myms {
     gap: 8px;
   }
-  .myms-row{
+  .myms-row {
     flex-direction: column;
     align-items: center;
     gap: 8px;
     padding: 10px 10px;
   }
-  .myms-label{
+  .myms-label {
     width: 100%;
     text-align: center;
     min-width: 0;
   }
-  .myms-right{
+  .myms-right {
     width: 100%;
     justify-content: center;
   }
 }
 
 /* iOS safe-area 避免貼邊 */
-.my-master-status{
+.my-master-status {
   padding-left: calc(14px + env(safe-area-inset-left));
   padding-right: calc(14px + env(safe-area-inset-right));
 }
-@media (max-width: 420px){
-  .my-master-status{
+@media (max-width: 420px) {
+  .my-master-status {
     padding-left: calc(12px + env(safe-area-inset-left));
     padding-right: calc(12px + env(safe-area-inset-right));
   }
-}
-
-/* =========================================================
- * ✅ 覆蓋：我的狀態（myms-status）改成與面板 status-pill 同風格
- * 直接貼在 CSS 最底部
- * ========================================================= */
-
-/* 1) 讓我的狀態勳章“長得像” status-pill */
-.myms-status{
-  /* 跟 .status-pill 一致的骨架 */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 8px;        /* ← 跟 status-pill */
-  border-radius: 999px;    /* ← 跟 status-pill */
-  font-size: 12px;         /* ← 跟 status-pill */
-  font-weight: 500;        /* ← 跟 status-pill */
-  border: 1px solid transparent;
-
-  /* 保持你原本不換行規則 */
-  white-space: nowrap;
-  word-break: keep-all;
-  overflow-wrap: normal;
-  line-height: 1;
-}
-
-/* 2) 顏色：完全對齊你現有的 status-pill 類型（暗色） */
-.myms-status.is-busy   { background: rgba(248, 113, 113, 0.16); color: #fecaca; }
-.myms-status.is-booked { background: rgba(56, 189, 248, 0.16);  color: #bae6fd; }
-.myms-status.is-free   { background: rgba(34, 197, 94, 0.15);   color: #bbf7d0; }
-.myms-status.is-other  { background: rgba(148, 163, 184, 0.22); color: #e5e7eb; }
-
-/* 3) 亮色：完全對齊你現有的 status-pill 類型（亮色） */
-:root[data-theme="light"] .myms-status.is-busy   { background: rgba(248, 113, 113, 0.1); color: #b91c1c; }
-:root[data-theme="light"] .myms-status.is-booked { background: rgba(37, 99, 235, 0.08);  color: #1d4ed8; }
-:root[data-theme="light"] .myms-status.is-free   { background: rgba(22, 163, 74, 0.08);   color: #15803d; }
-:root[data-theme="light"] .myms-status.is-other  { background: rgba(148, 163, 184, 0.15); color: #374151; }
-
-/* 4) 排班（shift）目前你的表格沒有對應 status-pill，給它一個“接近 other，但偏黃”的一致風格 */
-.myms-status.is-shift{
-  background: rgba(250, 204, 21, 0.16);
-  color: #fde68a;
-}
-:root[data-theme="light"] .myms-status.is-shift{
-  background: rgba(250, 204, 21, 0.12);
-  color: #92400e;
-}
-
-/* 5) 外框色條（左側那條）也跟表格狀態一致（可選，但你要求一致我就一併對齊） */
-.my-master-status.is-busy::before   { background: rgba(248, 113, 113, 0.9); }
-.my-master-status.is-booked::before { background: rgba(56, 189, 248, 0.9); }
-.my-master-status.is-free::before   { background: rgba(34, 197, 94, 0.9); }
-.my-master-status.is-other::before  { background: rgba(148, 163, 184, 0.7); }
-/* shift 保留黃 */
-.my-master-status.is-shift::before  { background: rgba(250, 204, 21, 0.9); }
-
-/* 6) 取消你原本 myms-status 的「高權重顏色」效果（避免被舊設定干擾）
- * 若你上面那段 myms-status.is-xxx 還存在，這段放最底部就會以後者為準。
- */
-
- /* =========================================================
- * ✅ 我的狀態：排班專用（沿用 status-pill 骨架）
- * ========================================================= */
-.status-shift{
-  background: rgba(250, 204, 21, 0.16);
-  color: #fde68a;
-}
-:root[data-theme="light"] .status-shift{
-  background: rgba(250, 204, 21, 0.12);
-  color: #92400e;
 }
