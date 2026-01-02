@@ -83,10 +83,10 @@ function toggleTheme_() {
  * @param {string} field - AdminRow 欄位名
  * @param {string} value - 目前值
  */
-function ynCell_(field, value) {
+function ynCell_(field, value, label) {
   const v = normalizeYesNo_(value);
   return `
-    <td>
+    <td data-label="${escapeHtml(label || field)}">
       <button type="button" class="yn-toggle" data-field="${field}" data-val="${v}" aria-label="${field}">
         ${v}
       </button>
@@ -119,34 +119,34 @@ function render_() {
 
     // ✅ 固定 17 欄
     tr.innerHTML = `
-      <td class="sticky-col col-check">
+      <td class="sticky-col col-check" data-label="選取">
         <input class="row-check" type="checkbox" ${selectedIds.has(a.userId) ? "checked" : ""} aria-label="選取此列">
       </td>
-      <td>${i + 1}</td>
+      <td data-label="#">${i + 1}</td>
 
-      <td><span style="font-family:var(--mono)">${escapeHtml(a.userId)}</span></td>
-      <td>${escapeHtml(a.displayName)}</td>
+      <td data-label="lineUserId"><span style="font-family:var(--mono)">${escapeHtml(a.userId)}</span></td>
+      <td data-label="lineDisplayName">${escapeHtml(a.displayName)}</td>
 
-      <td>
+      <td data-label="審核狀態">
         <select data-field="audit" class="select" aria-label="審核狀態">
           ${AUDIT_ENUM.map((v) => `<option value="${v}" ${normalizeAudit_(a.audit) === v ? "selected" : ""}>${v}</option>`).join("")}
         </select>
       </td>
 
-      <td><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
-      <td><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
+      <td data-label="建立時間"><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
+      <td data-label="最後登入"><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
 
-      ${ynCell_("techAudit", a.techAudit)}
-      ${ynCell_("techCreatedAt", a.techCreatedAt)}
-      ${ynCell_("techStartDate", a.techStartDate)}
-      ${ynCell_("techExpiryDate", a.techExpiryDate)}
-      ${ynCell_("techMasterNo", a.techMasterNo)}
-      ${ynCell_("techIsMaster", a.techIsMaster)}
-      ${ynCell_("techPushEnabled", a.techPushEnabled)}
-      ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled)}
-      ${ynCell_("techScheduleEnabled", a.techScheduleEnabled)}
+      ${ynCell_("techAudit", a.techAudit, "技師審核狀態")}
+      ${ynCell_("techCreatedAt", a.techCreatedAt, "技師建立時間")}
+      ${ynCell_("techStartDate", a.techStartDate, "技師開始使用日期")}
+      ${ynCell_("techExpiryDate", a.techExpiryDate, "技師使用期限")}
+      ${ynCell_("techMasterNo", a.techMasterNo, "技師師傅編號")}
+      ${ynCell_("techIsMaster", a.techIsMaster, "技師是否師傅")}
+      ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
+      ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
+      ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
 
-      <td class="sticky-right">
+      <td class="sticky-right" data-label="操作">
         <div class="actions">
           ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
           <button class="btn danger btn-del" type="button">刪除</button>
