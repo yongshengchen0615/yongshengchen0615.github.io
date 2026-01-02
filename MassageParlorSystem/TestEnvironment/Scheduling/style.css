@@ -702,3 +702,142 @@ body {
 :root[data-theme="light"] .myms-rank.is-top3{
   box-shadow: 0 0 14px rgba(37,99,235,0.35);
 }
+
+/* =========================================================
+ * ✅ 我的狀態：跨裝置自適應（只加 CSS，不動 JS/HTML）
+ * ========================================================= */
+
+/* 1) 讓整個區塊在窄螢幕更有彈性、不會左右擠爆 */
+.my-master-status{
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* 左標題 & 右內容不要互相擠死 */
+.my-master-title{
+  flex: 0 0 auto;
+}
+.myms{
+  flex: 1 1 320px;  /* 桌機/平板維持舒適寬 */
+  min-width: 0;     /* ✅ 關鍵：允許內容縮，不然會溢出 */
+}
+
+/* 2) 徽章區域：允許換行，但保持整齊 */
+.myms-right{
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 3) 每一列：避免文字把整列撐爆；右側 badge 可以換行 */
+.myms-row{
+  min-width: 0;
+}
+.myms-label{
+  flex: 0 0 auto;
+  min-width: 72px;
+}
+.myms-right{
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 4) badge：防止超長文字把版面撐爆（必要時截斷） */
+.myms-status,
+.myms-rem,
+.myms-rank{
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+ * ✅ 小手機（<=420px）：改成「上下堆疊」最清楚
+ * ========================================================= */
+@media (max-width: 420px){
+  .my-master-status{
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .myms{
+    flex-basis: 100%;
+    gap: 8px;
+  }
+
+  /* 每列改成上下排：左(標籤)在上、右(徽章)在下 */
+  .myms-row{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 10px;
+  }
+
+  .myms-label{
+    min-width: 0;
+  }
+
+  .myms-right{
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* badge 允許變短、字更清楚 */
+  .myms-status,
+  .myms-rem,
+  .myms-rank{
+    font-size: 12px;
+    padding: 4px 10px;
+    max-width: 100%;
+  }
+}
+
+/* =========================================================
+ * ✅ 中手機/窄平板（421~768px）：維持同列但更緊湊
+ * ========================================================= */
+@media (min-width: 421px) and (max-width: 768px){
+  .my-master-status{
+    padding: 10px 14px;
+  }
+
+  .myms-row{
+    padding: 10px 12px;
+  }
+
+  .myms-label{
+    min-width: 72px;
+  }
+
+  .myms-status,
+  .myms-rem,
+  .myms-rank{
+    font-size: 12px;
+  }
+}
+
+/* =========================================================
+ * ✅ 橫向手機（高度很矮）：避免占太多高度
+ * ========================================================= */
+@media (max-height: 420px){
+  .myms{
+    gap: 8px;
+  }
+  .myms-row{
+    padding: 8px 10px;
+  }
+}
+
+/* =========================================================
+ * ✅ iOS 安全區（瀏海/底部手勢條）保護：避免貼邊
+ * ========================================================= */
+.my-master-status{
+  padding-left: calc(14px + env(safe-area-inset-left));
+  padding-right: calc(14px + env(safe-area-inset-right));
+}
+@media (max-width: 420px){
+  .my-master-status{
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+}
