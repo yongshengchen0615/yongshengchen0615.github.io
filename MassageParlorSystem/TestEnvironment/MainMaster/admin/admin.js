@@ -27,6 +27,9 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡在預設「載入中」
+    if (typeof initUsersPanel_ === "function") initUsersPanel_();
+
     await loadConfig_();
     initTheme_();
 
@@ -37,9 +40,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
-    // Users/技師資料管理（獨立區塊）
-    if (typeof initUsersPanel_ === "function") initUsersPanel_();
-
     // 先通過 LIFF + AUTH Gate 才載入資料
     await liffGate_();
     await loadAdmins_();
@@ -49,5 +49,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
+
+    // 同步把錯誤狀態顯示在 Users 區塊（如果存在）
+    const msg = `初始化失敗：${String(e?.message || e)}`;
+    if (typeof uSetFooter_ === "function") uSetFooter_(msg);
+    if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
   }
 });
