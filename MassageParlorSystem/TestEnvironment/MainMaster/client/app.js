@@ -1,8 +1,7 @@
 /* ================================
- * app.js (FULL + LIFF Admin Gate + ✅ Admin Perms)
- * 最小改造：
- * 1) Admin GAS 回傳 permissions（tech* 欄位）
- * 2) Users 後台依 permissions 控制可編輯欄位（是=可編輯 / 否=不可編輯）
+ * app.js (FULL + LIFF Admin Gate)
+ * ✅ 權限為「否」的欄位直接不顯示（整欄隱藏）
+ * ✅ 只有當 9 個 tech 權限全部為「是」才顯示上方分頁 Tabs
  * ================================ */
 
 /* =========================================================
@@ -44,48 +43,6 @@ function normalizeAudit_(v) {
   return AUDIT_ENUM.includes(s) ? s : "其他";
 }
 
-/* =========================================================
- * ✅ Admin Perms（從 ADMIN_API_URL 回來的 tech* 欄位）
- * 規則：值 === "是" → 可編輯；其他（含 否/空白）→ 不可編輯
- * ========================================================= */
-let adminPerms = null; // { techAudit, techCreatedAt, techStartDate, techExpiryDate, techMasterNo, techIsMaster, techPushEnabled, techPersonalStatusEnabled, techScheduleEnabled }
-
-function boolPerm_(v) {
-  return String(v || "").trim() === "是";
-}
-
-/**
- * 權限映射：Admin 表的 tech 欄位 → Users 後台實際可編輯欄位
- * - techStartDate 控制 startDate
- * - techExpiryDate 控制 usageDays（你命名叫使用期限，但 Users 這邊是 期限(天)）
- * - techAudit 控制 audit
- * - techMasterNo / techIsMaster 控制 masterCode（是否師傅是 derived，但我們用同一權限控制 masterCode 編輯）
- * - techPushEnabled 控制 pushEnabled
- * - techPersonalStatusEnabled 控制 personalStatusEnabled
- * - techScheduleEnabled 控制 scheduleEnabled
- */
-function canEditField_(field) {
-  if (!adminPerms) return false; // 沒拿到 perms 就一律鎖
-  switch (field) {
-    case "startDate":
-      return boolPerm_(adminPerms.techStartDate);
-    case "usageDays":
-      return boolPerm_(adminPerms.techExpiryDate);
-    case "audit":
-      return boolPerm_(adminPerms.techAudit);
-    case "masterCode":
-      return boolPerm_(adminPerms.techMasterNo) || boolPerm_(adminPerms.techIsMaster);
-    case "pushEnabled":
-      return boolPerm_(adminPerms.techPushEnabled);
-    case "personalStatusEnabled":
-      return boolPerm_(adminPerms.techPersonalStatusEnabled);
-    case "scheduleEnabled":
-      return boolPerm_(adminPerms.techScheduleEnabled);
-    default:
-      return false;
-  }
-}
-
 let allUsers = [];
 let filteredUsers = [];
 
@@ -100,12 +57,123 @@ let toastTimer = null;
 let savingAll = false;
 
 /* =========================================================
+ * ✅ Column Permission Gate (tech perms -> hide columns)
+ * - perm "否" => hide that column in UI
+ * - only if ALL perms are "是" => show view tabs (all/usage/master/features)
+ * ========================================================= */
+
+let adminPerms = null; // { techAudit, techCreatedAt, techStartDate, techExpiryDate, ... }
+
+function isYes_(v) {
+  return String(v || "").trim() === "是";
+}
+
+/**
+ * ✅ 欄位 index（table nth-child）
+ * 1:勾選 2:# 3:userId 4:顯示名稱 5:建立時間 6:開始使用 7:期限(天) 8:使用狀態 9:審核狀態
+ * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:操作
+ *
+ * tech 權限對應：
+ * - techAudit                  -> 9 審核狀態
+ * - techCreatedAt              -> 5 建立時間（目前只讀，但可隱藏）
+ * - techStartDate              -> 6 開始使用
+ * - techExpiryDate             -> 7 期限(天)（建議同時控制 8 使用狀態）
+ * - techMasterNo               -> 10 師傅編號
+ * - techIsMaster               -> 11 是否師傅（只讀顯示，但可隱藏）
+ * - techPushEnabled            -> 12 是否推播
+ * - techPersonalStatusEnabled  -> 13 個人狀態開通
+ * - techScheduleEnabled        -> 14 排班表開通
+ */
+const PERM_TO_COLS = {
+  techAudit: [9],
+  techCreatedAt: [5],
+  techStartDate: [6],
+  // ✅ 期限(天) + 使用狀態一起控制比較合理
+  techExpiryDate: [7, 8],
+  techMasterNo: [10],
+  techIsMaster: [11],
+  techPushEnabled: [12],
+  techPersonalStatusEnabled: [13],
+  techScheduleEnabled: [14],
+};
+
+function allTechPermsYes_() {
+  if (!adminPerms) return false;
+  const keys = Object.keys(PERM_TO_COLS);
+  return keys.every((k) => isYes_(adminPerms[k]));
+}
+
+/**
+ * ✅ 依權限動態注入 CSS：把 "否" 的欄位整欄隱藏 (th + td)
+ */
+function applyColumnPermissions_() {
+  if (!adminPerms) return;
+
+  const styleId = "permHideStyle";
+  let styleEl = document.getElementById(styleId);
+
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = styleId;
+    document.head.appendChild(styleEl);
+  }
+
+  // 全部是：不隱藏
+  if (allTechPermsYes_()) {
+    styleEl.textContent = "";
+    return;
+  }
+
+  // 有任何否：隱藏所有否的欄位
+  const hideCols = [];
+  Object.keys(PERM_TO_COLS).forEach((k) => {
+    if (!isYes_(adminPerms[k])) hideCols.push(...PERM_TO_COLS[k]);
+  });
+
+  const cols = Array.from(new Set(hideCols)).sort((a, b) => a - b);
+
+  const rules = cols
+    .map(
+      (n) => `
+.table-wrap table thead th:nth-child(${n}),
+.table-wrap table tbody td:nth-child(${n}){ display:none !important; }
+`
+    )
+    .join("\n");
+
+  styleEl.textContent = rules;
+}
+
+/**
+ * ✅ Tabs 顯示規則：
+ * - 只有 ALL tech perms 都是 是 -> 顯示 view tabs
+ * - 否則 -> 不顯示 tabs，並強制 currentView=all（欄位顯示靠 perms hide 控制）
+ */
+function enforceViewTabsPolicy_() {
+  const showTabs = allTechPermsYes_();
+  const tabs = document.getElementById("viewTabs");
+
+  if (!showTabs) {
+    if (tabs) tabs.remove();
+    currentView = "all";
+    localStorage.setItem("users_view", "all");
+    applyView_();
+    return;
+  }
+
+  ensureViewTabs_();
+}
+
+/* =========================================================
  * ✅ View Tabs
  * ========================================================= */
 const VIEW_ENUM = ["all", "usage", "master", "features"];
 let currentView = localStorage.getItem("users_view") || "usage";
 
 function ensureViewTabs_() {
+  // ✅ 只有全部 tech perms 都是 是，才顯示 tabs
+  if (!allTechPermsYes_()) return;
+
   const head = document.querySelector(".panel-head");
   if (!head) return;
   if (document.getElementById("viewTabs")) return;
@@ -181,6 +249,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     ensureSaveAllButton_();
     ensureMobileSelectAll_();
+    // ✅ Tabs 會由權限決定是否建立（此時 perms 未載入，多半不會顯示）
     ensureViewTabs_();
     ensurePushPanel_();
 
@@ -242,7 +311,7 @@ function setEditingEnabled_(enabled) {
   const lock = !enabled;
 
   document.querySelector(".panel")?.classList.toggle("is-locked", lock);
-  ["reloadBtn","themeToggle","searchInput","clearSearchBtn"].forEach((id) => {
+  ["reloadBtn", "themeToggle", "searchInput", "clearSearchBtn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = lock;
   });
@@ -250,8 +319,16 @@ function setEditingEnabled_(enabled) {
   document.querySelectorAll(".chip").forEach((el) => (el.disabled = lock));
 
   const ids = [
-    "checkAll","mobileCheckAll","bulkClear","bulkAudit","bulkPush","bulkPersonalStatus",
-    "bulkScheduleEnabled","bulkUsageDays","bulkApply","bulkDelete"
+    "checkAll",
+    "mobileCheckAll",
+    "bulkClear",
+    "bulkAudit",
+    "bulkPush",
+    "bulkPersonalStatus",
+    "bulkScheduleEnabled",
+    "bulkUsageDays",
+    "bulkApply",
+    "bulkDelete",
   ];
   ids.forEach((id) => document.getElementById(id) && (document.getElementById(id).disabled = lock));
 
@@ -260,8 +337,6 @@ function setEditingEnabled_(enabled) {
     th.style.opacity = lock ? "0.6" : "";
   });
 
-  // ⚠️ 注意：這裡會把 table 全部 disable（包含欄位權限）
-  // 我們等 renderTable() 會再依 adminPerms 個別鎖欄位
   document.getElementById("tbody")?.querySelectorAll("input, select, button").forEach((el) => (el.disabled = lock));
 
   applyView_();
@@ -373,6 +448,8 @@ async function loadUsers() {
   } finally {
     refreshSaveAllButton_();
     applyView_();
+    // ✅ 權限欄位隱藏在 render 後也保險再套一次
+    applyColumnPermissions_();
   }
 }
 
@@ -402,6 +479,9 @@ function applyFilters() {
   updateBulkBar_();
   refreshSaveAllButton_();
   applyView_();
+
+  // ✅ 權限欄位隱藏
+  applyColumnPermissions_();
 
   if (savingAll) setEditingEnabled_(false);
 }
@@ -612,7 +692,6 @@ function syncCheckAll_() {
 async function bulkApply_() {
   if (savingAll) return;
 
-  // ✅ 權限：批次只對「允許編輯」的欄位生效
   const audit = document.getElementById("bulkAudit")?.value || "";
   const pushEnabled = document.getElementById("bulkPush")?.value || "";
   const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
@@ -625,18 +704,10 @@ async function bulkApply_() {
     return;
   }
 
-  // 若沒有任何批次值
   if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
-
-  // ✅ 若使用者選了某欄位，但你沒有該欄位權限 → 直接拒絕（避免誤會）
-  if (audit && !canEditField_("audit")) return toast("你沒有權限修改：審核狀態（請到 Admins 表開啟 技師審核狀態=是）", "err");
-  if (usageDaysRaw && !canEditField_("usageDays")) return toast("你沒有權限修改：使用期限（請到 Admins 表開啟 技師使用期限=是）", "err");
-  if (pushEnabled && !canEditField_("pushEnabled")) return toast("你沒有權限修改：是否推播（請到 Admins 表開啟 技師是否推播=是）", "err");
-  if (personalStatusEnabled && !canEditField_("personalStatusEnabled")) return toast("你沒有權限修改：個人狀態開通（請到 Admins 表開啟 技師個人狀態開通=是）", "err");
-  if (scheduleEnabled && !canEditField_("scheduleEnabled")) return toast("你沒有權限修改：排班表開通（請到 Admins 表開啟 技師排班表開通=是）", "err");
 
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
@@ -732,17 +803,7 @@ function renderTable() {
     const isMaster = u.masterCode ? "是" : "否";
     const isDirty = dirtyMap.has(u.userId);
 
-    // ✅ 權限鎖定（每欄位）
-    const lockStart = !canEditField_("startDate");
-    const lockUsage = !canEditField_("usageDays");
-    const lockAudit = !canEditField_("audit");
-    const lockMaster = !canEditField_("masterCode");
-    const lockPush = !canEditField_("pushEnabled");
-    const lockPS = !canEditField_("personalStatusEnabled");
-    const lockSch = !canEditField_("scheduleEnabled");
-
-    // ✅ push 邏輯：除了權限，audit != 通過 仍強制禁用
-    const pushDisabled = audit !== "通過" || lockPush ? "disabled" : "";
+    const pushDisabled = audit !== "通過" ? "disabled" : "";
 
     const tr = document.createElement("tr");
     tr.dataset.userid = u.userId;
@@ -759,10 +820,10 @@ function renderTable() {
       <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
 
       <td data-label="開始使用">
-        <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}" ${lockStart ? "disabled" : ""}>
+        <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}">
       </td>
       <td data-label="期限(天)">
-        <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}" ${lockUsage ? "disabled" : ""}>
+        <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
       </td>
 
       <td data-label="使用狀態">
@@ -770,14 +831,14 @@ function renderTable() {
       </td>
 
       <td data-label="審核狀態">
-        <select data-field="audit" aria-label="審核狀態" ${lockAudit ? "disabled" : ""}>
+        <select data-field="audit" aria-label="審核狀態">
           ${AUDIT_ENUM.map((v) => auditOption(v, audit)).join("")}
         </select>
         <span class="audit-badge ${auditClass_(audit)}">${escapeHtml(audit)}</span>
       </td>
 
       <td data-label="師傅編號">
-        <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}" ${lockMaster ? "disabled" : ""}>
+        <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}">
       </td>
       <td data-label="是否師傅">${isMaster}</td>
 
@@ -789,14 +850,14 @@ function renderTable() {
       </td>
 
       <td data-label="個人狀態開通">
-        <select data-field="personalStatusEnabled" aria-label="個人狀態開通" ${lockPS ? "disabled" : ""}>
+        <select data-field="personalStatusEnabled" aria-label="個人狀態開通">
           <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
       <td data-label="排班表開通">
-        <select data-field="scheduleEnabled" aria-label="排班表開通" ${lockSch ? "disabled" : ""}>
+        <select data-field="scheduleEnabled" aria-label="排班表開通">
           <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
         </select>
@@ -892,16 +953,6 @@ function handleRowFieldChange_(fieldEl) {
   const field = fieldEl.getAttribute("data-field");
   if (!field) return;
 
-  // ✅ 權限：阻擋寫入（避免用 DevTools 移除 disabled）
-  if (!canEditField_(field)) {
-    toast(`你沒有權限修改此欄位：${field}`, "err");
-    // 回填成原本值（重畫表格即可）
-    renderTable();
-    syncCheckAll_();
-    updateBulkBar_();
-    return;
-  }
-
   const value = readFieldValue_(fieldEl);
 
   if (field === "usageDays") u.usageDays = String(value || "");
@@ -922,10 +973,7 @@ function handleRowFieldChange_(fieldEl) {
       pushSel.disabled = true;
     }
   } else {
-    if (pushSel) {
-      // ✅ audit 通過，但仍要尊重權限
-      pushSel.disabled = !canEditField_("pushEnabled");
-    }
+    if (pushSel) pushSel.disabled = false;
   }
 
   if (field === "audit") {
@@ -1090,12 +1138,18 @@ function auditOption(value, current) {
 
 function auditClass_(audit) {
   switch (normalizeAudit_(audit)) {
-    case "通過": return "approved";
-    case "待審核": return "pending";
-    case "拒絕": return "rejected";
-    case "停用": return "disabled";
-    case "系統維護": return "maintenance";
-    default: return "other";
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    case "系統維護":
+      return "maintenance";
+    default:
+      return "other";
   }
 }
 
@@ -1290,17 +1344,14 @@ function ensurePushPanel_() {
 }
 
 function pushSetEnabled_(enabled) {
-  // ✅ 沒權限改「是否推播」就連推播功能也鎖（最小一致性）
-  const allowPushFeature = adminPerms ? boolPerm_(adminPerms.techPushEnabled) : false;
-
-  const lock = !enabled || pushingNow || !allowPushFeature;
-  ["pushTarget","pushSingleUserId","pushIncludeName","pushMessage","pushSendBtn"].forEach((id) => {
+  const lock = !enabled || pushingNow;
+  ["pushTarget", "pushSingleUserId", "pushIncludeName", "pushMessage", "pushSendBtn"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = lock;
   });
 
   const btn = document.getElementById("pushSendBtn");
-  if (btn) btn.textContent = pushingNow ? "推播中…" : (allowPushFeature ? "送出推播" : "無推播權限");
+  if (btn) btn.textContent = pushingNow ? "推播中…" : "送出推播";
 }
 
 function buildPushTargetIds_(target) {
@@ -1315,12 +1366,6 @@ function buildPushTargetIds_(target) {
 }
 
 async function pushSend_() {
-  // ✅ 權限二次檢查
-  if (!adminPerms || !boolPerm_(adminPerms.techPushEnabled)) {
-    toast("你沒有推播權限（Admins：技師是否推播=是）", "err");
-    return;
-  }
-
   const target = String(document.getElementById("pushTarget")?.value || "selected");
   const includeDisplayName = !!document.getElementById("pushIncludeName")?.checked;
   const message = String(document.getElementById("pushMessage")?.value || "").trim();
@@ -1412,6 +1457,23 @@ async function adminAuthBoot_() {
 
     const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName);
 
+    // ✅ 保存 tech 權限（後端 adminUpsertAndCheck 回傳）
+    adminPerms = {
+      techAudit: check.techAudit,
+      techCreatedAt: check.techCreatedAt,
+      techStartDate: check.techStartDate,
+      techExpiryDate: check.techExpiryDate,
+      techMasterNo: check.techMasterNo,
+      techIsMaster: check.techIsMaster,
+      techPushEnabled: check.techPushEnabled,
+      techPersonalStatusEnabled: check.techPersonalStatusEnabled,
+      techScheduleEnabled: check.techScheduleEnabled,
+    };
+
+    // ✅ 先套用欄位隱藏 + tabs 政策（就算最後 audit 不通過也先準備好）
+    applyColumnPermissions_();
+    enforceViewTabsPolicy_();
+
     if (!check.ok) {
       showAuthGate_(true, "管理員驗證失敗（後端回傳異常）。請稍後重試。");
       setEditingEnabled_(false);
@@ -1420,37 +1482,29 @@ async function adminAuthBoot_() {
 
     if (String(check.audit || "") !== "通過") {
       const hint =
-        check.audit === "待審核" ? "你的管理員權限目前為「待審核」。" :
-        check.audit === "拒絕" ? "你的管理員權限已被「拒絕」。" :
-        check.audit === "停用" ? "你的管理員權限目前為「停用」。" :
-        check.audit === "系統維護" ? "系統目前維護中，暫不開放管理員登入。" :
-        "你的管理員權限尚未通過。";
+        check.audit === "待審核"
+          ? "你的管理員權限目前為「待審核」。"
+          : check.audit === "拒絕"
+          ? "你的管理員權限已被「拒絕」。"
+          : check.audit === "停用"
+          ? "你的管理員權限目前為「停用」。"
+          : check.audit === "系統維護"
+          ? "系統目前維護中，暫不開放管理員登入。"
+          : "你的管理員權限尚未通過。";
 
       showAuthGate_(true, `${hint}\n\nLINE：${adminProfile.displayName}\nID：${adminProfile.userId}`);
       setEditingEnabled_(false);
       throw new Error("admin not approved");
     }
 
-    // ✅ 最小改造：把 tech 欄位 permissions 存起來（沒回就當全部否）
-    adminPerms = {
-      techAudit: String(check.techAudit || "否"),
-      techCreatedAt: String(check.techCreatedAt || "否"),
-      techStartDate: String(check.techStartDate || "否"),
-      techExpiryDate: String(check.techExpiryDate || "否"),
-      techMasterNo: String(check.techMasterNo || "否"),
-      techIsMaster: String(check.techIsMaster || "否"),
-      techPushEnabled: String(check.techPushEnabled || "否"),
-      techPersonalStatusEnabled: String(check.techPersonalStatusEnabled || "否"),
-      techScheduleEnabled: String(check.techScheduleEnabled || "否"),
-    };
-
     showAuthGate_(false);
     setEditingEnabled_(true);
+
+    // ✅ 通過後再保險套一次（含 tabs / 欄位隱藏）
+    applyColumnPermissions_();
+    enforceViewTabsPolicy_();
+
     toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");
-
-    // ✅ 權限摘要（console 方便你查）
-    console.log("[adminPerms]", adminPerms);
-
     return true;
   } catch (err) {
     console.warn("adminAuthBoot blocked:", err);
@@ -1477,8 +1531,8 @@ async function adminCheckAccess_(userId, displayName) {
     body: JSON.stringify({
       mode: "adminUpsertAndCheck",
       userId,
-      displayName
-    })
+      displayName,
+    }),
   });
 
   return await res.json().catch(() => ({ ok: false }));
