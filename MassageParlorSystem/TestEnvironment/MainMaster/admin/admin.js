@@ -27,6 +27,14 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    const withTimeout_ = (promise, ms, label) => {
+      let timer = null;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} 逾時（${ms / 1000}s）`)), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => timer && clearTimeout(timer));
+    };
+
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡在預設「載入中」
     if (typeof initUsersPanel_ === "function") initUsersPanel_();
 
@@ -41,10 +49,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindTableDelegation_();
 
     // 先通過 LIFF + AUTH Gate 才載入資料
-    await liffGate_();
+    if (typeof uSetFooter_ === "function") uSetFooter_("管理員驗證中...");
+    if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
+    await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
     await loadAdmins_();
 
     // Users 資料（不影響 admin 清單）
+    if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");
+    if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("載入 Users 資料中...");
     if (typeof bootUsersPanel_ === "function") await bootUsersPanel_();
   } catch (e) {
     console.error(e);
