@@ -1,8 +1,11 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
-// ✅ 修訂版：補齊 initNoLiffAndGuard（ENABLE_LINE_LOGIN=false 不再炸）
-// ✅ 沿用既有 AUTH GAS：GET ?mode=check / GET ?mode=register
-// ✅ 含：Edge failover / 自適應輪詢 / 增量渲染 / 我的狀態（含若排班順位）
+// ✅ 修訂整合版：
+//   1) 補齊 initNoLiffAndGuard（ENABLE_LINE_LOGIN=false 不再炸）
+//   2) 沿用既有 AUTH GAS：GET ?mode=check / GET ?mode=register
+//   3) ✅「我的狀態」與「身體/腳底面板」狀態顏色：一律參照 GAS 回傳 token（bgStatus / colorStatus）
+//      - 表格狀態 pill 也吃 token
+//      - 我的狀態左側色條 ::before 也吃 token（寫入 CSS 變數 --myStripe）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -330,6 +333,9 @@ function deriveStatusClass(status, remaining) {
   const s = normalizeText_(status || "");
   const n = Number(remaining);
 
+  // ✅ 補：排班狀態 class
+  if (s.includes("排班")) return "status-shift";
+
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
   if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
@@ -448,8 +454,7 @@ function classifyMyStatusClass_(statusText, remainingNum) {
   const s = normalizeText_(statusText || "");
   const n = typeof remainingNum === "number" ? remainingNum : Number.NaN;
 
-  if (s.includes("排班")) return "status-shift"; // ✅ 與面板一致（你 CSS 已定義）
-
+  if (s.includes("排班")) return "status-shift";
   if (s.includes("工作")) return "status-busy";
   if (s.includes("預約")) return "status-booked";
   if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
@@ -462,13 +467,17 @@ function remBadgeClass_(n) {
   if (n <= 3) return "is-warn";
   return "";
 }
-function pickDominantMyStatus_(bodyRow, footRow) {
-  const candidates = [
-    { row: bodyRow, tag: "身體" },
-    { row: footRow, tag: "腳底" },
-  ].filter((x) => x.row);
-
-  if (!candidates.length) return "status-other";
+function escapeHtml_(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function pickDominantRow_(bodyRow, footRow) {
+  const candidates = [bodyRow, footRow].filter(Boolean);
+  if (!candidates.length) return null;
 
   const score = (r) => {
     const s = normalizeText_(r.status || "");
@@ -480,20 +489,162 @@ function pickDominantMyStatus_(bodyRow, footRow) {
     return 1;
   };
 
-  let best = candidates[0].row;
-  for (const c of candidates) {
-    if (score(c.row) > score(best)) best = c.row;
+  let best = candidates[0];
+  for (const c of candidates) if (score(c) > score(best)) best = c;
+  return best;
+}
+
+/* =========================================================
+ * ✅ GAS 顏色 token → 實際可用顏色（bgStatus / colorStatus）
+ * - 支援：bg-[#RRGGBB] / text-[#RRGGBB] / bg-Cxxxxxx / text-Cxxxxxx / opacity-xx / /xx
+ * ========================================================= */
+function clamp_(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+function isLightTheme_() {
+  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
+}
+function hexToRgb_(hex) {
+  if (!hex) return null;
+  let s = String(hex).replace("#", "").trim();
+  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
+  if (s.length !== 6) return null;
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+  return { r, g, b };
+}
+function normalizeHex6_(maybe) {
+  if (!maybe) return null;
+  let s = String(maybe).trim();
+
+  const mBracket = s.match(/\[#([0-9a-fA-F]{6})\]/);
+  if (mBracket) return "#" + mBracket[1];
+
+  const mHash = s.match(/#([0-9a-fA-F]{6})/);
+  if (mHash) return "#" + mHash[1];
+
+  const mC = s.match(/(?:^|(?:text|bg)-)C?([0-9a-fA-F]{6})$/);
+  if (mC) return "#" + mC[1];
+
+  const mIn = s.match(/(?:text|bg)-C([0-9a-fA-F]{6})/);
+  if (mIn) return "#" + mIn[1];
+
+  return null;
+}
+function parseOpacityToken_(token) {
+  if (!token) return null;
+  const t = String(token).trim();
+
+  let m = t.match(/(?:text-opacity-|bg-opacity-|opacity-)(\d{1,3})/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
   }
-  return classifyMyStatusClass_(best.status, parseRemainingNumber_(best));
+
+  m = t.match(/\/(\d{1,3})$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
+  }
+
+  return null;
 }
-function escapeHtml_(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function parseColorToken_(str) {
+  if (!str) return { hex: null, opacity: null };
+  const tokens = String(str).split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  let opacity = null;
+
+  for (const tk of tokens) {
+    if (!hex) {
+      const h = normalizeHex6_(tk);
+      if (h) hex = h;
+    }
+    if (opacity == null) {
+      const o = parseOpacityToken_(tk);
+      if (o != null) opacity = o;
+    }
+  }
+
+  if (!hex) {
+    const h = normalizeHex6_(String(str));
+    if (h) hex = h;
+  }
+
+  return { hex, opacity };
 }
+function applyPillFromTokens_(pillEl, bgToken, textToken) {
+  if (!pillEl) return;
+
+  // reset inline
+  pillEl.style.background = "";
+  pillEl.style.border = "";
+  pillEl.style.color = "";
+
+  // bg
+  const bg = parseColorToken_(bgToken);
+  if (bg.hex) {
+    const rgb = hexToRgb_(bg.hex);
+    if (rgb) {
+      let aBg = bg.opacity;
+      if (aBg == null) aBg = isLightTheme_() ? 0.10 : 0.16;
+      aBg = clamp_(aBg, 0.03, 0.35);
+
+      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+      const aBd = clamp_(aBg + (isLightTheme_() ? 0.12 : 0.18), 0.12, 0.55);
+      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+    }
+  }
+
+  // text
+  const fg = parseColorToken_(textToken);
+  if (fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) {
+      const minAlpha = isLightTheme_() ? 0.85 : 0.70;
+      let aText = fg.opacity == null ? 1 : fg.opacity;
+      aText = clamp_(aText, minAlpha, 1);
+      pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
+    }
+  }
+
+  // 如果沒 bg 但有 fg：給一個柔和背景（避免太淡看不到）
+  if (!bg.hex && fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) {
+      const aBg = isLightTheme_() ? 0.08 : 0.14;
+      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+      const aBd = isLightTheme_() ? 0.22 : 0.32;
+      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+    }
+  }
+}
+function tokenToStripe_(bgToken, textToken) {
+  const bg = parseColorToken_(bgToken);
+  if (bg.hex) {
+    const rgb = hexToRgb_(bg.hex);
+    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+  }
+  const fg = parseColorToken_(textToken);
+  if (fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+  }
+  return "";
+}
+
+/* =========================================================
+ * ✅ 我的狀態 row：把 token 帶進 DOM，後續套色
+ * ========================================================= */
 function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber_(row);
@@ -510,17 +661,28 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
 
+  const bgStatus = row && row.bgStatus ? String(row.bgStatus) : "";
+  const colorStatus = row && row.colorStatus ? String(row.colorStatus) : "";
+
   return `
     <div class="myms-row">
-      <div class="myms-label">${label}</div>
+      <div class="myms-label">${escapeHtml_(label)}</div>
       <div class="myms-right">
-        <span class="${stCls}">${escapeHtml_(statusText)}</span>
+        <span class="${stCls}"
+              data-bgstatus="${escapeHtml_(bgStatus)}"
+              data-colorstatus="${escapeHtml_(colorStatus)}">
+          ${escapeHtml_(statusText)}
+        </span>
         <span class="${remCls}">剩餘：${escapeHtml_(String(remText))}</span>
         <span class="${rankCls}">${escapeHtml_(rankText)}</span>
       </div>
     </div>
   `;
 }
+
+/* =========================================================
+ * ✅ 我的狀態：套 token 顏色 + 左側色條 token
+ * ========================================================= */
 function updateMyMasterStatusUI_() {
   if (!myMasterStatusEl) return;
 
@@ -535,15 +697,13 @@ function updateMyMasterStatusUI_() {
   const bodyShiftRank = getShiftRank_(rawData.body, myMasterState_.techNo);
   const footShiftRank = getShiftRank_(rawData.foot, myMasterState_.techNo);
 
-  const dominant = pickDominantMyStatus_(bodyRow, footRow);
-
-  // 你的 CSS 有兩套：status-xxx 與 is-xxx，這裡統一用 status-xxx（與表格一致）
+  // class 只當 fallback（真正顏色吃 token）
   myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
-  myMasterStatusEl.classList.add(dominant);
+  myMasterStatusEl.classList.add("status-other");
 
   const host = myMasterStatusTextEl || myMasterStatusEl;
 
-  const html = `
+  host.innerHTML = `
     <div class="myms">
       <div class="myms-head">
         <div class="myms-tech">
@@ -557,7 +717,24 @@ function updateMyMasterStatusUI_() {
     </div>
   `;
 
-  host.innerHTML = html;
+  // 1) 我的狀態 pill：吃 token
+  const pills = host.querySelectorAll(".status-pill[data-bgstatus], .status-pill[data-colorstatus]");
+  pills.forEach((pill) => {
+    const bg = pill.getAttribute("data-bgstatus") || "";
+    const fg = pill.getAttribute("data-colorstatus") || "";
+    applyPillFromTokens_(pill, bg, fg);
+  });
+
+  // 2) 左側色條：取 dominant row 的 token，寫入 --myStripe（需配合 CSS 用 var(--myStripe)）
+  const dominant = pickDominantRow_(bodyRow, footRow);
+  if (dominant) {
+    const stripe = tokenToStripe_(dominant.bgStatus, dominant.colorStatus);
+    if (stripe) myMasterStatusEl.style.setProperty("--myStripe", stripe);
+    else myMasterStatusEl.style.removeProperty("--myStripe");
+  } else {
+    myMasterStatusEl.style.removeProperty("--myStripe");
+  }
+
   myMasterStatusEl.style.display = "flex";
 }
 
@@ -887,6 +1064,10 @@ function patchRowDom_(tr, row, orderText) {
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
+
+  // ✅ 表格 status pill：吃 GAS token（bgStatus / colorStatus）
+  applyPillFromTokens_(statusSpan, row.bgStatus, row.colorStatus);
+
   tdStatus.appendChild(statusSpan);
 
   tdAppointment.textContent = row.appointment || "";
@@ -1023,7 +1204,7 @@ async function refreshStatus(isManual = false) {
 
     if (activeChanged) renderIncremental_(activePanel);
 
-    // ✅ refresh 後更新我的狀態
+    // ✅ refresh 後更新我的狀態（含 token 顏色）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
