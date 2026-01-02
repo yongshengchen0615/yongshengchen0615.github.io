@@ -1,11 +1,18 @@
 // =========================================================
 // app.js (Dashboard - Edge Cache Reader + LIFF/No-LIFF Gate + Rules-driven Status)
-// ✅ 本版包含：降低 GAS 壓力（自適應輪詢 + 退避重試 + jitter 去同步 + 前景回來立即抓）
-// ✅ 方案A已套用：支援後端回傳 masterCode → 正確顯示「我的狀態」
-// ✅ NEW：不管是否排班，都顯示「若現在切到排班，我會排第幾」
-// ✅ NEW：剩餘 < 0 或 <= 3 → badge 警告色；排班排名 <= 3 → rank badge 發光
-// ✅ FIX：我的狀態「排班」顏色改為吃 GAS token（bgStatus / colorStatus）→ 與表格一致
-// ✅ (選配) FIX：我的狀態左側色條也可吃 token（--myStripe + stripe-token）→ 與表格一致
+// ✅ 修訂整合版：
+//   1) 補齊 initNoLiffAndGuard（ENABLE_LINE_LOGIN=false 不再炸）
+//   2) 沿用既有 AUTH GAS：GET ?mode=check / GET ?mode=register
+//   3) ✅「我的狀態」與「身體/腳底面板」狀態顏色：一律參照 GAS 回傳 token（bgStatus / colorStatus）
+//      - 表格狀態 pill 也吃 token
+//      - 我的狀態左側色條 ::before 也吃 token（寫入 CSS 變數 --myStripe）
+//   4) ✅ 你要求的修正：表格「順序/師傅/狀態/預約內容/剩餘時間」文字顏色，對應 GAS 回傳 token
+//      - 順序：colorIndex 套文字色
+//      - 師傅：colorMaster 套文字色
+//      - 狀態：維持 pill 的 bgStatus/colorStatus
+//      - 預約內容：colorAppointment（若後端有回）套文字色
+//      - 剩餘時間：colorRemaining（若後端有回）套文字色
+//   5) ✅ 你指定的規則：bgIndex=bg-CCBCBCB 只允許「順序欄位」顯示底色，其餘不套
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -129,7 +136,6 @@ function sanitizeEdgeUrls_() {
 
   if (!EDGE_STATUS_URLS.length) console.warn("[EdgeURL] EDGE_STATUS_URLS empty; fallback only");
 }
-
 function getRandomEdgeIndex_() {
   const n = EDGE_STATUS_URLS.length || 0;
   if (!n) return 0;
@@ -139,14 +145,12 @@ function getRandomEdgeIndex_() {
 
   return Math.floor(Math.random() * n);
 }
-
 function buildEdgeTryOrder_(startIdx) {
   const n = EDGE_STATUS_URLS.length;
   const order = [];
   for (let i = 0; i < n; i++) order.push((startIdx + i) % n);
   return order.slice(0, Math.min(EDGE_TRY_MAX, n));
 }
-
 async function fetchJsonWithTimeout_(url, timeoutMs) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
@@ -247,7 +251,9 @@ const errorStateEl = document.getElementById("errorState");
 const themeToggleBtn = document.getElementById("themeToggle");
 
 const usageBannerEl = document.getElementById("usageBanner");
-const usageBannerTextEl = usageBannerEl ? usageBannerEl.querySelector("#usageBannerText") : document.getElementById("usageBannerText");
+const usageBannerTextEl = usageBannerEl
+  ? usageBannerEl.querySelector("#usageBannerText")
+  : document.getElementById("usageBannerText");
 
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
@@ -290,13 +296,20 @@ function normalizeTechNo_(v) {
   if (Number.isNaN(n)) return "";
   return String(n).padStart(2, "0");
 }
-
 /** ✅ 方案A 핵심：支援 GAS 回傳 masterCode */
 function parseTechNo_(data) {
-  const v = pickAny_(data, ["techNo", "師傅編號", "masterCode", "masterId", "masterNo", "tech", "師傅", "技師編號"]);
+  const v = pickAny_(data, [
+    "techNo",
+    "師傅編號",
+    "masterCode", // ✅ NEW：你的後端回傳欄位
+    "masterId",
+    "masterNo",
+    "tech",
+    "師傅",
+    "技師編號",
+  ]);
   return normalizeTechNo_(v);
 }
-
 function findRowByTechNo_(rows, techNo) {
   const t = normalizeTechNo_(techNo);
   if (!t) return null;
@@ -309,16 +322,76 @@ function findRowByTechNo_(rows, techNo) {
 }
 
 /* =========================================================
+ * Text normalize + status mapping
+ * ========================================================= */
+function normalizeText_(s) {
+  return String(s ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u3000/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+function fmtRemainingRaw(v) {
+  if (v === null || v === undefined) return "";
+  return String(v);
+}
+function deriveStatusClass(status, remaining) {
+  const s = normalizeText_(status || "");
+  const n = Number(remaining);
+
+  // ✅ 補：排班狀態 class
+  if (s.includes("排班")) return "status-shift";
+
+  if (s.includes("工作")) return "status-busy";
+  if (s.includes("預約")) return "status-booked";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
+  if (!Number.isNaN(n) && n < 0) return "status-busy";
+  return "status-other";
+}
+
+/* =========================================================
+ * ✅ mapRowsToDisplay：透傳更多 token，支援表格文字色對應
+ * ========================================================= */
+function mapRowsToDisplay(rows) {
+  return rows.map((row) => {
+    const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
+    return {
+      sort: row.sort,
+      index: row.index,
+      _gasSeq: row._gasSeq,
+
+      masterId: normalizeText_(row.masterId),
+      status: normalizeText_(row.status),
+      appointment: normalizeText_(row.appointment),
+
+      // 文字色 tokens
+      colorIndex: row.colorIndex || "",
+      colorMaster: row.colorMaster || "",
+      colorStatus: row.colorStatus || "",
+      colorAppointment: row.colorAppointment || row.colorAppt || "",
+      colorRemaining: row.colorRemaining || row.colorRemain || row.colorTime || "",
+
+      // 背景色 tokens
+      bgIndex: row.bgIndex || "",
+      bgMaster: row.bgMaster || "",
+      bgStatus: row.bgStatus || "",
+      bgAppointment: row.bgAppointment || row.bgAppt || "",
+      bgRemaining: row.bgRemaining || row.bgRemain || row.bgTime || "",
+
+      remainingDisplay: fmtRemainingRaw(remaining),
+      statusClass: deriveStatusClass(row.status, remaining),
+    };
+  });
+}
+
+/* =========================================================
  * ✅ Shift rank helpers（排班順位：即使不是排班也顯示「若排班」）
  * ========================================================= */
-
-// 判斷是否為排班狀態（你可依實際狀態字串調整）
 function isShiftStatus_(statusText) {
   const s = normalizeText_(statusText || "");
   return s.includes("排班");
 }
-
-// 取「表格目前使用的排序策略」：跟 renderIncremental_ 對齊
 function sortRowsForDisplay_(rows) {
   const list = Array.isArray(rows) ? rows.slice() : [];
 
@@ -346,8 +419,6 @@ function sortRowsForDisplay_(rows) {
     return Number(a._gasSeq ?? 0) - Number(b._gasSeq ?? 0);
   });
 }
-
-// ✅ 算「假想排班順位」：就算你現在不是排班，也會顯示「若切到排班會排第幾」
 function getShiftRank_(panelRows, techNo) {
   const t = normalizeTechNo_(techNo);
   if (!t) return null;
@@ -396,7 +467,6 @@ function parseRemainingNumber_(row) {
   if (Number.isNaN(n)) return null;
   return n;
 }
-
 function classifyMyStatusClass_(statusText, remainingNum) {
   const s = normalizeText_(statusText || "");
   const n = typeof remainingNum === "number" ? remainingNum : Number.NaN;
@@ -408,16 +478,21 @@ function classifyMyStatusClass_(statusText, remainingNum) {
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
-
 function remBadgeClass_(n) {
   if (typeof n !== "number" || Number.isNaN(n)) return "";
   if (n < 0) return "is-expired";
   if (n <= 3) return "is-warn";
   return "";
 }
-
-/* ✅ 用來挑「dominant」那個 row（給 stripe token 用） */
-function pickDominantMyRow_(bodyRow, footRow) {
+function escapeHtml_(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function pickDominantRow_(bodyRow, footRow) {
   const candidates = [bodyRow, footRow].filter(Boolean);
   if (!candidates.length) return null;
 
@@ -432,16 +507,207 @@ function pickDominantMyRow_(bodyRow, footRow) {
   };
 
   let best = candidates[0];
-  for (const r of candidates) if (score(r) > score(best)) best = r;
+  for (const c of candidates) if (score(c) > score(best)) best = c;
   return best;
 }
 
-function pickDominantMyStatus_(bodyRow, footRow) {
-  const best = pickDominantMyRow_(bodyRow, footRow);
-  if (!best) return "status-other";
-  return classifyMyStatusClass_(best.status, parseRemainingNumber_(best));
+/* =========================================================
+ * ✅ GAS 顏色 token → 實際可用顏色（bgStatus / colorStatus）
+ * - 支援：bg-[#RRGGBB] / text-[#RRGGBB] / bg-Cxxxxxx / text-Cxxxxxx / opacity-xx / /xx
+ * ========================================================= */
+function clamp_(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+function isLightTheme_() {
+  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
+}
+function hexToRgb_(hex) {
+  if (!hex) return null;
+  let s = String(hex).replace("#", "").trim();
+  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
+  if (s.length !== 6) return null;
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+  return { r, g, b };
+}
+function normalizeHex6_(maybe) {
+  if (!maybe) return null;
+  let s = String(maybe).trim();
+
+  const mBracket = s.match(/\[#([0-9a-fA-F]{6})\]/);
+  if (mBracket) return "#" + mBracket[1];
+
+  const mHash = s.match(/#([0-9a-fA-F]{6})/);
+  if (mHash) return "#" + mHash[1];
+
+  const mC = s.match(/(?:^|(?:text|bg)-)C?([0-9a-fA-F]{6})$/);
+  if (mC) return "#" + mC[1];
+
+  const mIn = s.match(/(?:text|bg)-C([0-9a-fA-F]{6})/);
+  if (mIn) return "#" + mIn[1];
+
+  return null;
+}
+function parseOpacityToken_(token) {
+  if (!token) return null;
+  const t = String(token).trim();
+
+  let m = t.match(/(?:text-opacity-|bg-opacity-|opacity-)(\d{1,3})/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  m = t.match(/\/(\d{1,3})$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
+  }
+
+  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
+  if (m) {
+    const n = Number(m[1]);
+    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
+  }
+
+  return null;
+}
+function parseColorToken_(str) {
+  if (!str) return { hex: null, opacity: null };
+  const tokens = String(str).split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  let opacity = null;
+
+  for (const tk of tokens) {
+    if (!hex) {
+      const h = normalizeHex6_(tk);
+      if (h) hex = h;
+    }
+    if (opacity == null) {
+      const o = parseOpacityToken_(tk);
+      if (o != null) opacity = o;
+    }
+  }
+
+  if (!hex) {
+    const h = normalizeHex6_(String(str));
+    if (h) hex = h;
+  }
+
+  return { hex, opacity };
+}
+function applyPillFromTokens_(pillEl, bgToken, textToken) {
+  if (!pillEl) return;
+
+  // reset inline
+  pillEl.style.background = "";
+  pillEl.style.border = "";
+  pillEl.style.color = "";
+
+  // bg
+  const bg = parseColorToken_(bgToken);
+  if (bg.hex) {
+    const rgb = hexToRgb_(bg.hex);
+    if (rgb) {
+      let aBg = bg.opacity;
+      if (aBg == null) aBg = isLightTheme_() ? 0.10 : 0.16;
+      aBg = clamp_(aBg, 0.03, 0.35);
+
+      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+      const aBd = clamp_(aBg + (isLightTheme_() ? 0.12 : 0.18), 0.12, 0.55);
+      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+    }
+  }
+
+  // text
+  const fg = parseColorToken_(textToken);
+  if (fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) {
+      const minAlpha = isLightTheme_() ? 0.85 : 0.70;
+      let aText = fg.opacity == null ? 1 : fg.opacity;
+      aText = clamp_(aText, minAlpha, 1);
+      pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
+    }
+  }
+
+  // 如果沒 bg 但有 fg：給一個柔和背景（避免太淡看不到）
+  if (!bg.hex && fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) {
+      const aBg = isLightTheme_() ? 0.08 : 0.14;
+      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+      const aBd = isLightTheme_() ? 0.22 : 0.32;
+      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+    }
+  }
+}
+function tokenToStripe_(bgToken, textToken) {
+  const bg = parseColorToken_(bgToken);
+  if (bg.hex) {
+    const rgb = hexToRgb_(bg.hex);
+    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+  }
+  const fg = parseColorToken_(textToken);
+  if (fg.hex) {
+    const rgb = hexToRgb_(fg.hex);
+    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+  }
+  return "";
 }
 
+/* =========================================================
+ * ✅ 新增：把 token 套到「一般文字」(順序/師傅/預約/剩餘時間)
+ * ========================================================= */
+function applyTextColorFromToken_(el, token) {
+  if (!el) return;
+  el.style.color = "";
+
+  const fg = parseColorToken_(token);
+  if (!fg.hex) return;
+
+  const rgb = hexToRgb_(fg.hex);
+  if (!rgb) return;
+
+  const minAlpha = isLightTheme_() ? 0.85 : 0.70;
+  let aText = fg.opacity == null ? 1 : fg.opacity;
+  aText = clamp_(aText, minAlpha, 1);
+
+  el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
+}
+
+/* =========================================================
+ * ✅ 順序欄位底色規則：只允許 bgIndex=bg-CCBCBCB 才顯示底色
+ * ========================================================= */
+const ORDER_INDEX_BG_ALLOW_HEX = "#CBCBCB"; // 你指定的 CCBCBCB → 常見就是 CBCBCB
+function isOrderIndexHighlight_(bgToken) {
+  const h = normalizeHex6_(bgToken);
+  if (!h) return false;
+  return h.toUpperCase() === ORDER_INDEX_BG_ALLOW_HEX.toUpperCase();
+}
+function applyOrderIndexHighlight_(tdOrder, bgToken) {
+  if (!tdOrder) return;
+
+  const h = normalizeHex6_(bgToken);
+  const rgb = hexToRgb_(h);
+  if (!rgb) return;
+
+  // 只在順序欄位顯示底色：淡底 + 左邊色條，避免整格太刺眼
+  const aBg = isLightTheme_() ? 0.18 : 0.14;
+  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  const aStripe = isLightTheme_() ? 0.55 : 0.45;
+  tdOrder.style.borderLeft = `3px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+
+  tdOrder.style.fontWeight = "700";
+}
+
+/* =========================================================
+ * ✅ 我的狀態 row：把 token 帶進 DOM，後續套色
+ * ========================================================= */
 function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber_(row);
@@ -458,17 +724,18 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
 
-  // ✅ FIX：把 GAS token 帶到 DOM（稍後渲染後套 inline，與表格一致）
-  const bgTok = row && row.bgStatus ? String(row.bgStatus) : "";
-  const colorTok = row && row.colorStatus ? String(row.colorStatus) : "";
+  const bgStatus = row && row.bgStatus ? String(row.bgStatus) : "";
+  const colorStatus = row && row.colorStatus ? String(row.colorStatus) : "";
 
   return `
     <div class="myms-row">
-      <div class="myms-label">${label}</div>
+      <div class="myms-label">${escapeHtml_(label)}</div>
       <div class="myms-right">
         <span class="${stCls}"
-              data-bg="${escapeHtml_(bgTok)}"
-              data-color="${escapeHtml_(colorTok)}">${escapeHtml_(statusText)}</span>
+              data-bgstatus="${escapeHtml_(bgStatus)}"
+              data-colorstatus="${escapeHtml_(colorStatus)}">
+          ${escapeHtml_(statusText)}
+        </span>
         <span class="${remCls}">剩餘：${escapeHtml_(String(remText))}</span>
         <span class="${rankCls}">${escapeHtml_(rankText)}</span>
       </div>
@@ -476,15 +743,9 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   `;
 }
 
-function escapeHtml_(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
+/* =========================================================
+ * ✅ 我的狀態：套 token 顏色 + 左側色條 token
+ * ========================================================= */
 function updateMyMasterStatusUI_() {
   if (!myMasterStatusEl) return;
 
@@ -499,14 +760,13 @@ function updateMyMasterStatusUI_() {
   const bodyShiftRank = getShiftRank_(rawData.body, myMasterState_.techNo);
   const footShiftRank = getShiftRank_(rawData.foot, myMasterState_.techNo);
 
-  // 左色條狀態 class（預設邏輯）
-  const dominant = pickDominantMyStatus_(bodyRow, footRow);
+  // class 只當 fallback（真正顏色吃 token）
   myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
-  myMasterStatusEl.classList.add(dominant);
+  myMasterStatusEl.classList.add("status-other");
 
   const host = myMasterStatusTextEl || myMasterStatusEl;
 
-  const html = `
+  host.innerHTML = `
     <div class="myms">
       <div class="myms-head">
         <div class="myms-tech">
@@ -520,44 +780,22 @@ function updateMyMasterStatusUI_() {
     </div>
   `;
 
-  host.innerHTML = html;
+  // 1) 我的狀態 pill：吃 token
+  const pills = host.querySelectorAll(".status-pill[data-bgstatus], .status-pill[data-colorstatus]");
+  pills.forEach((pill) => {
+    const bg = pill.getAttribute("data-bgstatus") || "";
+    const fg = pill.getAttribute("data-colorstatus") || "";
+    applyPillFromTokens_(pill, bg, fg);
+  });
 
-  // ✅ FIX：讓「我的狀態」狀態 pill 套用 GAS token（與表格 patchRowDom_ 一致）
-  try {
-    const pills = host.querySelectorAll(".myms-row .status-pill");
-    pills.forEach((pill) => {
-      const bg = (pill.getAttribute("data-bg") || "").trim();
-      const color = (pill.getAttribute("data-color") || "").trim();
-
-      pill.style.background = "";
-      pill.style.border = "";
-      pill.style.color = "";
-
-      if (bg) applyReadablePillBgFromBgToken_(pill, bg);
-      if (color) applyReadablePillTextOnly_(pill, color);
-      if (!bg && color) applyReadablePillColor_(pill, color);
-    });
-  } catch (e) {
-    console.warn("[MyStatus] apply token failed:", e);
-  }
-
-  // ✅ (選配) 左側色條也吃 token（跟表格更一致）
-  try {
-    const bestRow = pickDominantMyRow_(bodyRow, footRow);
-    const stripe =
-      bestRow && bestRow.bgStatus ? rgbaFromBgToken_(bestRow.bgStatus)
-      : bestRow && bestRow.colorStatus ? rgbaFromColorToken_(bestRow.colorStatus)
-      : "";
-
-    if (stripe) {
-      myMasterStatusEl.style.setProperty("--myStripe", stripe);
-      myMasterStatusEl.classList.add("stripe-token");
-    } else {
-      myMasterStatusEl.style.removeProperty("--myStripe");
-      myMasterStatusEl.classList.remove("stripe-token");
-    }
-  } catch (e) {
-    myMasterStatusEl.classList.remove("stripe-token");
+  // 2) 左側色條：取 dominant row 的 token，寫入 --myStripe（需配合 CSS 用 var(--myStripe)）
+  const dominant = pickDominantRow_(bodyRow, footRow);
+  if (dominant) {
+    const stripe = tokenToStripe_(dominant.bgStatus, dominant.colorStatus);
+    if (stripe) myMasterStatusEl.style.setProperty("--myStripe", stripe);
+    else myMasterStatusEl.style.removeProperty("--myStripe");
+  } else {
+    myMasterStatusEl.style.removeProperty("--myStripe");
   }
 
   myMasterStatusEl.style.display = "flex";
@@ -567,7 +805,6 @@ function updateMyMasterStatusUI_() {
  * Feature banner
  * ========================================================= */
 let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
-
 function normalizeYesNo_(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
 }
@@ -585,7 +822,9 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join("");
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+    ""
+  );
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
@@ -606,7 +845,6 @@ function hideLoadingHint() {
   if (!topLoadingEl) return;
   topLoadingEl.classList.add("hidden");
 }
-
 function showGate(message, isError) {
   if (!gateEl) return;
   gateEl.classList.remove("gate-hidden");
@@ -627,7 +865,6 @@ function openApp() {
   hideGate();
   if (appRootEl) appRootEl.classList.remove("app-hidden");
 }
-
 function updateUsageBanner(displayName, remainingDays) {
   if (!usageBannerEl || !usageBannerTextEl) return;
 
@@ -705,346 +942,6 @@ function hidePersonalTools_() {
 }
 
 /* =========================================================
- * ✅ Pending notify (LIFF only) - send every open when pending
- * ========================================================= */
-function getNowTaipei_() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Taipei",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const pick = (t) => parts.find((p) => p.type === t)?.value || "00";
-  return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
-}
-
-async function sendPendingNotifyToOA_(userId, displayName, auditText) {
-  try {
-    if (!ENABLE_LINE_LOGIN) return;
-    if (!window.liff) return;
-    if (!liff.isInClient()) return;
-
-    const uid = String(userId || "").trim();
-    if (!uid) return;
-
-    const name = String(displayName || "").trim() || "未命名";
-    const ts = getNowTaipei_();
-    const audit = String(auditText || "待審核").trim() || "待審核";
-
-    const text = `【待審核提醒】\n姓名：${name}\n狀態：${audit}\n時間：${ts}\n`;
-
-    await liff.sendMessages([{ type: "text", text }]);
-  } catch (e) {
-    console.warn("[PendingNotify] send failed:", e);
-  }
-}
-
-/* =========================================================
- * Color/BG utils（保持你的原版）
- * ========================================================= */
-function isLightTheme_() {
-  return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
-}
-function clamp_(v, a, b) {
-  return Math.max(a, Math.min(b, v));
-}
-function hexToRgb(hex) {
-  if (!hex) return null;
-  let s = String(hex).replace("#", "").trim();
-  if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
-  if (s.length !== 6) return null;
-  const r = parseInt(s.slice(0, 2), 16);
-  const g = parseInt(s.slice(2, 4), 16);
-  const b = parseInt(s.slice(4, 6), 16);
-  if ([r, g, b].some((v) => Number.isNaN(v))) return null;
-  return { r, g, b };
-}
-function normalizeHex6_(maybe) {
-  if (!maybe) return null;
-  let s = String(maybe).trim();
-
-  const mBracket = s.match(/text-\[#([0-9a-fA-F]{6})\]/);
-  if (mBracket) return "#" + mBracket[1];
-
-  const mHash = s.match(/#([0-9a-fA-F]{6})/);
-  if (mHash) return "#" + mHash[1];
-
-  const mC = s.match(/(?:^|text-)(?:C)?([0-9a-fA-F]{6})$/);
-  if (mC) return "#" + mC[1];
-
-  const mIn = s.match(/text-C([0-9a-fA-F]{6})/);
-  if (mIn) return "#" + mIn[1];
-
-  return null;
-}
-function parseOpacityToken_(token) {
-  if (!token) return null;
-  const t = String(token).trim();
-
-  let m = t.match(/(?:text-opacity-|opacity-)(\d{1,3})/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
-  }
-
-  m = t.match(/\/(\d{1,3})$/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n / 100, 0, 1);
-  }
-
-  m = t.match(/^(0?\.\d+|1(?:\.0+)?)$/);
-  if (m) {
-    const n = Number(m[1]);
-    if (!Number.isNaN(n)) return clamp_(n, 0, 1);
-  }
-
-  return null;
-}
-function parseScriptCatColorV2_(colorStr) {
-  if (!colorStr) return { hex: null, opacity: null };
-  const tokens = String(colorStr).split(/\s+/).filter(Boolean);
-
-  let hex = null;
-  let opacity = null;
-
-  for (const tk of tokens) {
-    if (!hex) {
-      const h = normalizeHex6_(tk);
-      if (h) hex = h;
-    }
-    if (opacity == null) {
-      const o = parseOpacityToken_(tk);
-      if (o != null) opacity = o;
-    }
-  }
-
-  if (!hex) {
-    const h = normalizeHex6_(String(colorStr));
-    if (h) hex = h;
-  }
-
-  return { hex, opacity };
-}
-function applyReadableTextColor_(el, colorStr) {
-  if (!el || !colorStr) return false;
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const minAlpha = isLightTheme_() ? 0.8 : 0.65;
-  let a = opacity == null ? 1 : opacity;
-  a = clamp_(a, minAlpha, 1);
-
-  el.style.color = a < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${a})` : hex;
-  return true;
-}
-function applyReadablePillColor_(pillEl, colorStr) {
-  if (!pillEl || !colorStr) return false;
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
-  let aText = opacity == null ? 1 : opacity;
-  aText = clamp_(aText, minAlpha, 1);
-  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
-
-  const aBg = isLightTheme_() ? 0.1 : 0.16;
-  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
-
-  const aBd = isLightTheme_() ? 0.25 : 0.35;
-  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
-
-  return true;
-}
-function applyReadablePillTextOnly_(pillEl, colorStr) {
-  if (!pillEl || !colorStr) return false;
-
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const minAlpha = isLightTheme_() ? 0.85 : 0.7;
-  let aText = opacity == null ? 1 : opacity;
-  aText = clamp_(aText, minAlpha, 1);
-
-  pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : hex;
-  return true;
-}
-function parseScriptCatBgV2_(bgStr) {
-  if (!bgStr) return { hex: null, opacity: null };
-  const tokens = String(bgStr).split(/\s+/).filter(Boolean);
-
-  let hex = null;
-  let opacity = null;
-
-  for (const tk of tokens) {
-    if (!hex) {
-      const mBracket = tk.match(/bg-\[#([0-9a-fA-F]{6})\]/);
-      if (mBracket) hex = "#" + mBracket[1];
-
-      const mC = tk.match(/(?:^|bg-)(?:C)?([0-9a-fA-F]{6})$/);
-      if (!hex && mC) hex = "#" + mC[1];
-
-      const mHash = tk.match(/#([0-9a-fA-F]{6})/);
-      if (!hex && mHash) hex = "#" + mHash[1];
-    }
-
-    if (opacity == null) {
-      let m = tk.match(/(?:bg-opacity-|opacity-)(\d{1,3})/);
-      if (m) {
-        const n = Number(m[1]);
-        if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
-      }
-      if (opacity == null) {
-        m = tk.match(/\/(\d{1,3})$/);
-        if (m) {
-          const n = Number(m[1]);
-          if (!Number.isNaN(n)) opacity = clamp_(n / 100, 0, 1);
-        }
-      }
-    }
-  }
-
-  return { hex, opacity };
-}
-function applyReadableBgColor_(el, bgStr) {
-  if (!el || !bgStr) return false;
-
-  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  let a = opacity;
-  if (a == null) a = isLightTheme_() ? 0.1 : 0.16;
-  a = clamp_(a, 0.03, 0.35);
-
-  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
-  return true;
-}
-function applyReadablePillBgFromBgToken_(pillEl, bgStr) {
-  if (!pillEl || !bgStr) return false;
-
-  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  let aBg = opacity;
-  if (aBg == null) aBg = isLightTheme_() ? 0.1 : 0.16;
-  aBg = clamp_(aBg, 0.03, 0.35);
-
-  pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
-
-  const aBd = clamp_(aBg + (isLightTheme_() ? 0.12 : 0.18), 0.12, 0.55);
-  pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
-
-  return true;
-}
-function applyOrderHighlightBg_(el, bgStr) {
-  if (!el || !bgStr) return false;
-
-  const { hex } = parseScriptCatBgV2_(bgStr);
-  if (!hex) return false;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return false;
-
-  const bgAlpha = isLightTheme_() ? 0.28 : 0.38;
-  el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${bgAlpha})`;
-  el.style.borderLeft = `4px solid rgba(${rgb.r},${rgb.g},${rgb.b},0.85)`;
-  el.style.fontWeight = "600";
-  return true;
-}
-
-/* ✅ (選配) stripe token：由 bgStatus / colorStatus 轉 rgba */
-function rgbaFromBgToken_(bgStr) {
-  const { hex, opacity } = parseScriptCatBgV2_(bgStr);
-  if (!hex) return "";
-  const rgb = hexToRgb(hex);
-  if (!rgb) return "";
-  let a = opacity;
-  if (a == null) a = 0.9;
-  a = clamp_(a, 0.15, 1);
-  return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
-}
-function rgbaFromColorToken_(colorStr) {
-  const { hex, opacity } = parseScriptCatColorV2_(colorStr);
-  if (!hex) return "";
-  const rgb = hexToRgb(hex);
-  if (!rgb) return "";
-  let a = opacity == null ? 0.9 : opacity;
-  a = clamp_(a, 0.15, 1);
-  return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
-}
-
-/* =========================================================
- * Text normalize + status mapping
- * ========================================================= */
-function normalizeText_(s) {
-  return String(s ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\u3000/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n+/g, " ")
-    .trim();
-}
-function fmtRemainingRaw(v) {
-  if (v === null || v === undefined) return "";
-  return String(v);
-}
-function deriveStatusClass(status, remaining) {
-  const s = normalizeText_(status || "");
-  const n = Number(remaining);
-
-  if (s.includes("工作")) return "status-busy";
-  if (s.includes("預約")) return "status-booked";
-  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
-  if (!Number.isNaN(n) && n < 0) return "status-busy";
-  return "status-other";
-}
-function mapRowsToDisplay(rows) {
-  return rows.map((row) => {
-    const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
-    return {
-      sort: row.sort,
-      index: row.index,
-      _gasSeq: row._gasSeq,
-
-      masterId: normalizeText_(row.masterId),
-      status: normalizeText_(row.status),
-      appointment: normalizeText_(row.appointment),
-
-      colorIndex: row.colorIndex || "",
-      colorMaster: row.colorMaster || "",
-      colorStatus: row.colorStatus || "",
-
-      bgIndex: row.bgIndex || "",
-      bgMaster: row.bgMaster || "",
-      bgStatus: row.bgStatus || "",
-
-      remainingDisplay: fmtRemainingRaw(remaining),
-      statusClass: deriveStatusClass(row.status, remaining),
-    };
-  });
-}
-
-/* =========================================================
  * Filters
  * ========================================================= */
 function rebuildStatusFilterOptions() {
@@ -1109,13 +1006,18 @@ function rowSignature_(r) {
     r.status ?? "",
     r.appointment ?? "",
     r.remaining ?? "",
+
     r.colorIndex ?? "",
     r.colorMaster ?? "",
     r.colorStatus ?? "",
+    r.colorAppointment ?? r.colorAppt ?? "",
+    r.colorRemaining ?? r.colorRemain ?? r.colorTime ?? "",
+
     r.bgIndex ?? "",
     r.bgMaster ?? "",
     r.bgStatus ?? "",
-    r.bgAppointment ?? "",
+    r.bgAppointment ?? r.bgAppt ?? "",
+    r.bgRemaining ?? r.bgRemain ?? r.bgTime ?? "",
   ].join("|");
 }
 function buildStatusSet_(rows) {
@@ -1180,6 +1082,7 @@ function diffMergePanelRows_(prevRows, incomingRows) {
  * Incremental render
  * ========================================================= */
 const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
+
 function buildRowKey_(row) {
   return String((row && row.masterId) || "").trim();
 }
@@ -1200,7 +1103,6 @@ function ensureRowDom_(panel, row) {
   tdMaster.className = "cell-master";
 
   const tdStatus = document.createElement("td");
-
   const tdAppointment = document.createElement("td");
   tdAppointment.className = "cell-appointment";
 
@@ -1215,11 +1117,10 @@ function ensureRowDom_(panel, row) {
   map.set(key, tr);
   return tr;
 }
-function isOrderBgCcbcBcB_(bgToken) {
-  const s = String(bgToken || "").trim();
-  if (!s) return false;
-  return s.includes("CCBCBCB");
-}
+
+/* =========================================================
+ * ✅ patchRowDom_：你要求的欄位文字色對應 + 順序底色限制
+ * ========================================================= */
 function patchRowDom_(tr, row, orderText) {
   const tds = tr.children;
   const tdOrder = tds[0];
@@ -1228,46 +1129,47 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
+  // ---- 順序：文字色吃 colorIndex；底色只允許 bgIndex=bg-CCBCBCB
   tdOrder.textContent = orderText;
+
   tdOrder.style.backgroundColor = "";
-  tdOrder.style.color = "";
   tdOrder.style.borderLeft = "";
   tdOrder.style.fontWeight = "";
+  tdOrder.style.color = "";
 
-  if (isOrderBgCcbcBcB_(row.bgIndex)) {
-    applyOrderHighlightBg_(tdOrder, row.bgIndex);
+  applyTextColorFromToken_(tdOrder, row.colorIndex);
+
+  if (isOrderIndexHighlight_(row.bgIndex)) {
+    applyOrderIndexHighlight_(tdOrder, row.bgIndex);
   }
-  if (row.colorIndex) applyReadableTextColor_(tdOrder, row.colorIndex);
 
+  // ---- 師傅：文字色吃 colorMaster
   tdMaster.textContent = row.masterId || "";
-  tdMaster.style.backgroundColor = "";
   tdMaster.style.color = "";
-  if (row.bgMaster) applyReadableBgColor_(tdMaster, row.bgMaster);
-  if (row.colorMaster) applyReadableTextColor_(tdMaster, row.colorMaster);
+  applyTextColorFromToken_(tdMaster, row.colorMaster);
 
+  // ---- 狀態：pill 吃 bgStatus/colorStatus（原本就有）
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
-
-  statusSpan.style.background = "";
-  statusSpan.style.border = "";
-  statusSpan.style.color = "";
-
-  if (row.bgStatus) applyReadablePillBgFromBgToken_(statusSpan, row.bgStatus);
-  if (row.colorStatus) applyReadablePillTextOnly_(statusSpan, row.colorStatus);
-  if (!row.bgStatus && row.colorStatus) applyReadablePillColor_(statusSpan, row.colorStatus);
-
+  applyPillFromTokens_(statusSpan, row.bgStatus, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
+  // ---- 預約內容：文字色吃 colorAppointment（若後端沒回就不改）
   tdAppointment.textContent = row.appointment || "";
+  tdAppointment.style.color = "";
+  applyTextColorFromToken_(tdAppointment, row.colorAppointment);
 
+  // ---- 剩餘時間：badge 文字色吃 colorRemaining
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
   timeSpan.textContent = row.remainingDisplay || "";
+  applyTextColorFromToken_(timeSpan, row.colorRemaining);
   tdRemaining.appendChild(timeSpan);
 }
+
 function renderIncremental_(panel) {
   if (!tbodyRowsEl) return;
 
@@ -1388,12 +1290,13 @@ async function refreshStatus(isManual = false) {
 
     if (anyChanged && lastUpdateEl) {
       const now = new Date();
-      lastUpdateEl.textContent = "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+      lastUpdateEl.textContent =
+        "更新：" + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
     }
 
     if (activeChanged) renderIncremental_(activePanel);
 
-    // ✅ 每次 refresh 後更新「我的狀態」（含若排班順位 + token 套色）
+    // ✅ refresh 後更新我的狀態（含 token 顏色）
     updateMyMasterStatusUI_();
   } catch (err) {
     console.error("[Status] 取得狀態失敗：", err);
@@ -1413,7 +1316,6 @@ function normalizeBoolOn_(v) {
   const s = String(v ?? "").trim().toLowerCase();
   return s === "on" || s === "true" || s === "1" || s === "是" || s === "y" || s === "yes";
 }
-
 function normalizeCheckResult_(data, displayNameFromClient) {
   const status = (data && data.status) || "none";
   const audit = (data && data.audit) || "";
@@ -1462,7 +1364,6 @@ function normalizeCheckResult_(data, displayNameFromClient) {
     techNo,
   };
 }
-
 function decideGateAction_(r) {
   const scheduleOk = String(r.scheduleEnabled || "").trim() === "是";
   const hasRd = typeof r.remainingDays === "number" && !Number.isNaN(r.remainingDays);
@@ -1517,7 +1418,10 @@ function decideGateAction_(r) {
         let msg = "此帳號目前尚未通過審核。\n";
         msg += "目前審核狀態：「" + auditText + "」。\n\n";
         if (r.justRegistered) msg += "✅ 已自動送出審核申請。\n\n";
-        msg += auditText === "拒絕" || auditText === "停用" ? "如需重新申請或有疑問，請聯絡管理員。" : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
+        msg +=
+          auditText === "拒絕" || auditText === "停用"
+            ? "如需重新申請或有疑問，請聯絡管理員。"
+            : "若你已經等待一段時間，請聯絡管理員確認審核進度。";
         return { allow: false, message: msg };
       },
     },
@@ -1529,7 +1433,6 @@ function decideGateAction_(r) {
 
   return { ruleId: "UNKNOWN", allow: false, message: "⚠ 無法確認使用權限，請稍後再試。", isError: true };
 }
-
 async function checkOrRegisterUser(userId, displayNameFromClient) {
   const url = AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
@@ -1553,7 +1456,6 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
     return r;
   }
 }
-
 async function registerUser(userId, displayName) {
   const url =
     AUTH_API_URL +
@@ -1566,23 +1468,6 @@ async function registerUser(userId, displayName) {
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("Register HTTP " + resp.status);
   return await resp.json();
-}
-
-async function syncDisplayNameIfChanged_(userId, liffName, gasName) {
-  const newName = String(liffName || "").trim();
-  const oldName = String(gasName || "").trim();
-  if (!userId || !newName) return false;
-
-  if (!oldName || oldName !== newName) {
-    try {
-      await registerUser(userId, newName);
-      return true;
-    } catch (e) {
-      console.warn("[NameSync] update failed:", e);
-      return false;
-    }
-  }
-  return false;
 }
 
 /* =========================================================
@@ -1607,7 +1492,7 @@ if (themeToggleBtn) {
 }
 
 /* =========================================================
- * No-LIFF: still AUTH
+ * ✅ No-LIFF Guard（修訂重點：補齊，保證不會錯）
  * ========================================================= */
 async function initNoLiffAndGuard() {
   showGate("✅ 未啟用 LINE 登入\n正在確認使用權限…");
@@ -1637,8 +1522,7 @@ async function initNoLiffAndGuard() {
     if (!gate.allow) {
       hidePersonalTools_();
       if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
-      if (gate.redirect) location.href = gate.redirect;
-      else showGate(gate.message, gate.isError);
+      showGate(gate.message, gate.isError);
       return;
     }
 
@@ -1672,12 +1556,13 @@ async function initNoLiffAndGuard() {
 }
 
 /* =========================================================
- * LIFF
+ * LIFF（如果你以後 ENABLE_LINE_LOGIN=true 才會走）
  * ========================================================= */
 async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 
   try {
+    if (!window.liff) throw new Error("LIFF_SDK_MISSING");
     await liff.init({ liffId: LIFF_ID });
 
     if (!liff.isLoggedIn()) {
@@ -1703,32 +1588,22 @@ async function initLiffAndGuard() {
     showGate("正在確認使用權限…");
     const result = await checkOrRegisterUser(userId, displayName);
 
-    await syncDisplayNameIfChanged_(userId, displayName, result.serverDisplayName);
-
-    const finalDisplayName = (displayName || result.displayName || "").trim();
-    window.currentDisplayName = finalDisplayName;
-
     updateFeatureState_(result);
 
     myMasterState_.isMaster = !!result.isMaster;
     myMasterState_.techNo = normalizeTechNo_(result.techNo || result.masterCode || "");
 
-    if (result && result.status === "pending") {
-      await sendPendingNotifyToOA_(userId, finalDisplayName, result.audit);
-    }
-
     const gate = decideGateAction_(result);
     if (!gate.allow) {
       hidePersonalTools_();
       if (myMasterStatusEl) myMasterStatusEl.style.display = "none";
-      if (gate.redirect) location.href = gate.redirect;
-      else showGate(gate.message, gate.isError);
+      showGate(gate.message, gate.isError);
       return;
     }
 
     showGate("驗證通過，正在載入資料…");
     openApp();
-    updateUsageBanner(finalDisplayName, result.remainingDays);
+    updateUsageBanner(displayName || result.displayName || "", result.remainingDays);
 
     updateMyMasterStatusUI_();
 
@@ -1869,7 +1744,6 @@ function computeNextInterval_(res) {
   pollState_.nextMs = Math.min(POLL.MAX_MS, Math.max(POLL.BASE_MS, target));
   return pollState_.nextMs;
 }
-
 async function refreshStatusAdaptive_(isManual) {
   try {
     const beforeBody = rawData.body;
@@ -1885,7 +1759,7 @@ async function refreshStatusAdaptive_(isManual) {
 }
 
 /* =========================================================
- * App start（改成自適應輪詢）
+ * App start
  * ========================================================= */
 function startApp() {
   setActivePanel("body");
