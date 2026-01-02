@@ -199,6 +199,28 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .client-scope thead th.sortable:hover{ color:var(--text); }
 .client-scope thead th .sort-ind{ margin-left:6px; opacity:.75; }
 
+/* audit badge (match client) */
+.client-scope .audit-badge{
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--card2);
+  font-size:12px;
+  margin-left:8px;
+  user-select:none;
+}
+.client-scope .audit-badge.pending{ border-color:rgba(245,158,11,.45); background:var(--warning-soft); color:var(--warning); }
+.client-scope .audit-badge.approved{ border-color:rgba(22,163,74,.45); background:var(--success-soft); color:var(--success); }
+.client-scope .audit-badge.rejected{ border-color:rgba(239,68,68,.45); background:var(--danger-soft); color:var(--danger); }
+.client-scope .audit-badge.disabled{ border-color:rgba(100,116,139,.45); background:rgba(100,116,139,.10); color:var(--muted); }
+.client-scope .audit-badge.other{ border-color:rgba(56,189,248,.45); background:var(--accent-soft); color:var(--accent); }
+.client-scope .audit-badge.maintenance{
+  border-color:rgba(147,51,234,.45);
+  background:rgba(147,51,234,.12);
+  color:rgb(167,139,250);
+}
+
 /* Sticky left col hover backgrounds (client behavior) */
 .client-scope tbody tr:hover td.sticky-col{ background:rgba(56,189,248,.08); }
 .client-scope tbody tr.dirty:hover td.sticky-col{ background:rgba(245,158,11,.10); }
