@@ -15,6 +15,12 @@ const uDirtyMap = new Map();
 
 let uSavingAll = false;
 
+function uSetTbodyMessage_(msg) {
+  const tbody = document.getElementById("uTbody");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="13">${escapeHtml(msg || "-")}</td></tr>`;
+}
+
 function uNormalizeYesNo_(v) {
   const s = String(v ?? "").trim();
   return s === "是" ? "是" : "否";
@@ -232,8 +238,16 @@ function uRender_() {
 
 async function uApiListUsers_() {
   if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
-  const res = await fetch(API_BASE_URL + "?mode=listUsers", { cache: "no-store" });
-  return await res.json().catch(() => ({}));
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+
+  try {
+    const res = await fetch(API_BASE_URL + "?mode=listUsers", { cache: "no-store", signal: ctrl.signal });
+    return await res.json().catch(() => ({}));
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function uApiUpdateUsersBatch_(items) {
@@ -258,6 +272,7 @@ async function uLoadUsers_() {
   try {
     uSetLock_(true);
     uSetFooter_("載入中...");
+    uSetTbodyMessage_("載入中...");
 
     const json = await uApiListUsers_();
     if (!json || !json.ok) throw new Error(json?.error || "listUsers not ok");
@@ -280,7 +295,9 @@ async function uLoadUsers_() {
   } catch (e) {
     console.error(e);
     toast("Users 讀取失敗", "err");
-    uSetFooter_("Users 讀取失敗（請看 console）");
+    const errMsg = e?.name === "AbortError" ? "Users 讀取逾時（15s）" : `Users 讀取失敗：${String(e?.message || e)}`;
+    uSetFooter_(errMsg);
+    uSetTbodyMessage_(errMsg);
   } finally {
     uSetLock_(false);
     uRefreshSaveBtn_();
