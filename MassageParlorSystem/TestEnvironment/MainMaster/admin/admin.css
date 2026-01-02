@@ -420,6 +420,51 @@ tbody td.sticky-col{ background:transparent; }
 @media (max-width: 720px){
   .panel-head{ flex-direction:column; align-items:stretch; }
   .search-box{ width:100%; }
+
+  /* Admin 主表格：手機版 table -> card（需搭配 td[data-label]） */
+  .responsive-wrap{
+    overflow: visible;
+    padding:12px 14px 14px;
+  }
+
+  .responsive-table thead{ display:none; }
+  .responsive-table,
+  .responsive-table tbody,
+  .responsive-table tr,
+  .responsive-table td{ display:block; width:100%; }
+
+  .responsive-table tbody tr{
+    border:1px solid var(--border);
+    border-radius:var(--radius-md);
+    overflow:hidden;
+    margin-bottom:10px;
+    background:var(--card);
+  }
+
+  .responsive-table tbody td{
+    border-bottom:1px solid var(--border-soft);
+    white-space: normal !important;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  .responsive-table tbody td::before{
+    content: attr(data-label);
+    color:var(--text-sub);
+    font-size:12px;
+    min-width: 110px;
+  }
+
+  .responsive-table .sticky-col,
+  .responsive-table .sticky-right{ position:static; }
+
+  /* 避免內容撐爆右側 */
+  .responsive-table tbody td input,
+  .responsive-table tbody td select,
+  .responsive-table tbody td button{ max-width: 60%; }
 }
 
 /* === 固定最右操作欄（避免刪除按鈕跑位） === */
