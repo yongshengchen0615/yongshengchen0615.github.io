@@ -841,3 +841,76 @@ body {
     padding-right: calc(12px + env(safe-area-inset-right));
   }
 }
+
+/* =========================================================
+ * ✅ 我的狀態：窄螢幕置中，避免看起來偏右 + 避免滑動
+ * ========================================================= */
+
+/* 1) 預設（桌機/寬）：保留原本右對齊（不改你現有風格） */
+@media (min-width: 769px){
+  .myms-head{ justify-content: space-between; }
+  .myms-right{ justify-content: flex-end; }
+}
+
+/* 2) 中窄螢幕（<=768）：整體置中、徽章群置中 */
+@media (max-width: 768px){
+  /* 整塊「我的狀態」置中視覺 */
+  .my-master-status{
+    justify-content: center;
+    text-align: center;
+  }
+
+  /* 內容區塊寬度自適應，避免被右側推擠 */
+  .myms{
+    width: 100%;
+    max-width: 520px; /* 平板/大手機看起來更集中 */
+    margin: 0 auto;
+  }
+
+  /* 標題列：改成置中，避免左右拉扯 */
+  .myms-head{
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .myms-tech{
+    justify-content: center;
+  }
+
+  /* 每列：保持左右資訊，但整列置中 */
+  .myms-row{
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* 左側 label + 右側徽章：改成「不靠右」，避免整排視覺偏右 */
+  .myms-label{
+    justify-content: center;
+  }
+  .myms-right{
+    justify-content: center;
+  }
+
+  /* 徽章：在窄螢幕可換行且置中，不會被擠到右邊 */
+  .myms-status,
+  .myms-rem,
+  .myms-rank{
+    max-width: 100%;
+  }
+}
+
+/* 3) 超窄手機（<=420）：你原本上下堆疊方案再加強「置中」 */
+@media (max-width: 420px){
+  .myms-row{
+    align-items: center;
+  }
+  .myms-label{
+    width: 100%;
+    text-align: center;
+  }
+  .myms-right{
+    width: 100%;
+    justify-content: center;
+  }
+}
