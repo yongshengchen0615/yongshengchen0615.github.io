@@ -422,13 +422,17 @@ function classifyMyStatusClass_(statusText, remainingNum) {
   const s = normalizeText_(statusText || "");
   const n = typeof remainingNum === "number" ? remainingNum : Number.NaN;
 
-  if (s.includes("排班")) return "is-shift";
-  if (s.includes("工作")) return "is-busy";
-  if (s.includes("預約")) return "is-booked";
-  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "is-free";
-  if (!Number.isNaN(n) && n < 0) return "is-busy";
-  return "is-other";
+  // ✅ 排班：表格沒有這個狀態，單獨給 status-shift
+  if (s.includes("排班")) return "status-shift";
+
+  // ✅ 以下完全對齊表格 deriveStatusClass 的判斷邏輯
+  if (s.includes("工作")) return "status-busy";
+  if (s.includes("預約")) return "status-booked";
+  if (s.includes("空閒") || s.includes("待命") || s.includes("準備") || s.includes("備牌")) return "status-free";
+  if (!Number.isNaN(n) && n < 0) return "status-busy";
+  return "status-other";
 }
+
 
 function remBadgeClass_(n) {
   if (typeof n !== "number" || Number.isNaN(n)) return "";
@@ -469,7 +473,8 @@ function makeMyPanelRowHTML_(label, row, shiftRankObj) {
   const remText =
      remNum === null ? "—" : String(remNum);
 
-  const stCls = "myms-status " + classifyMyStatusClass_(statusText, remNum);
+const stCls = "status-pill " + classifyMyStatusClass_(statusText, remNum);
+
   const remCls = "myms-rem " + remBadgeClass_(remNum);
 
   let rankText = "—";
@@ -518,8 +523,9 @@ function updateMyMasterStatusUI_() {
 
   // 左色條狀態（提升辨識度）
   const dominant = pickDominantMyStatus_(bodyRow, footRow);
-  myMasterStatusEl.classList.remove("is-shift", "is-busy", "is-booked", "is-free", "is-other");
-  myMasterStatusEl.classList.add(dominant);
+myMasterStatusEl.classList.remove("status-shift","status-busy","status-booked","status-free","status-other");
+myMasterStatusEl.classList.add(dominant);
+
 
   // ✅ 若 HTML 有舊的純文字容器，優先用它；沒有就直接塞進 myMasterStatusEl
   const host = myMasterStatusTextEl || myMasterStatusEl;
