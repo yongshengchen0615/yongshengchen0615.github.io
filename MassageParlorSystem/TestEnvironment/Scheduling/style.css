@@ -499,6 +499,12 @@ body {
   font-size: 12px;
   font-weight: 500;
   border: 1px solid transparent;
+
+  /* 禁止換行（原本在後段重複宣告，集中在這裡） */
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  line-height: 1;
 }
 
 .status-busy {
@@ -668,14 +674,6 @@ body {
   display: none !important;
 }
 
-/* 狀態 pill 禁止換行 */
-.status-pill{
-  white-space: nowrap;
-  word-break: keep-all;
-  overflow-wrap: normal;
-  line-height: 1;
-}
-
 .status-table tbody td:nth-child(3),
 .status-table thead th:nth-child(3){
   white-space: nowrap;
@@ -716,13 +714,15 @@ body {
   position:absolute;
   left:0; top:0; bottom:0;
   width:6px;
-  background: rgba(148, 163, 184, 0.55);
+  /* JS 會寫入 --myStripe；沒寫入時走 fallback（見下方 status-* 設定） */
+  background: var(--myStripe, rgba(148, 163, 184, 0.55));
 }
-.my-master-status.status-shift::before{ background: rgba(250, 204, 21, 0.9); }
-.my-master-status.status-busy::before{ background: rgba(248, 113, 113, 0.9); }
-.my-master-status.status-booked::before{ background: rgba(56, 189, 248, 0.9); }
-.my-master-status.status-free::before{ background: rgba(34, 197, 94, 0.9); }
-.my-master-status.status-other::before{ background: rgba(148, 163, 184, 0.7); }
+/* 沒有 token 時的 fallback：用狀態 class 設定 --myStripe */
+.my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
+.my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
+.my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
+.my-master-status.status-free{ --myStripe: rgba(34, 197, 94, 0.9); }
+.my-master-status.status-other{ --myStripe: rgba(148, 163, 184, 0.7); }
 
 .my-master-title{
   font-size: 12px;
@@ -919,10 +919,5 @@ body {
   }
 }
 
-/* =========================================================
- * ✅ 新增：我的狀態左側色條吃 GAS token（JS 會寫 --myStripe）
- * 放在最底部，覆蓋上方寫死顏色
- * ========================================================= */
-.my-master-status::before{
-  background: var(--myStripe, rgba(148, 163, 184, 0.55));
-}
+/* ✅ 我的狀態左側色條吃 GAS token（JS 會寫 --myStripe）
+   - 沒有 token 時：使用上方 status-* 的 --myStripe fallback */
