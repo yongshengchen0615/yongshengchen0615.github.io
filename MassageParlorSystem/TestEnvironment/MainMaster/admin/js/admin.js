@@ -53,12 +53,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
 
     await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
-    await loadAdmins_();
 
-    // Users 資料（不影響 admin 清單）
+    // ✅ 驗證通過後，直接並行載入所有資料（admins + users）
     if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("載入 Users 資料中...");
-    if (typeof bootUsersPanel_ === "function") await bootUsersPanel_();
+
+    const tasks = [];
+    if (typeof loadAdmins_ === "function") {
+      tasks.push(
+        (async () => {
+          await loadAdmins_();
+          return "admins";
+        })()
+      );
+    }
+
+    if (typeof bootUsersPanel_ === "function") {
+      tasks.push(
+        (async () => {
+          await bootUsersPanel_();
+          return "users";
+        })()
+      );
+    }
+
+    const results = await Promise.allSettled(tasks);
+    const rejected = results.filter((r) => r.status === "rejected");
+    if (rejected.length) {
+      const reasonText = rejected
+        .map((r) => String(r.reason?.message || r.reason))
+        .filter(Boolean)
+        .slice(0, 2)
+        .join("；");
+      toast(`部分資料載入失敗：${reasonText || "請查看 console"}`, "err");
+    }
   } catch (e) {
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
