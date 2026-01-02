@@ -205,6 +205,17 @@
 
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
-<script src="app.js" defer></script>
+<!-- ✅ 拆分後的 JS（保持原本行為：defer 且依序執行） -->
+<script src="js/00_state.js" defer></script>
+<script src="js/01_utils.js" defer></script>
+<script src="js/02_config.js" defer></script>
+<script src="js/03_permissions_tabs.js" defer></script>
+<script src="js/07_api.js" defer></script>
+<script src="js/04_ui.js" defer></script>
+<script src="js/05_users_sort.js" defer></script>
+<script src="js/06_bulk_table_save.js" defer></script>
+<script src="js/08_push.js" defer></script>
+<script src="js/09_auth.js" defer></script>
+<script src="js/99_main.js" defer></script>
 </body>
 </html>
