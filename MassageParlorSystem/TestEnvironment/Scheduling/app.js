@@ -6,13 +6,8 @@
 //   3) ✅「我的狀態」與「身體/腳底面板」狀態顏色：一律參照 GAS 回傳 token（bgStatus / colorStatus）
 //      - 表格狀態 pill 也吃 token
 //      - 我的狀態左側色條 ::before 也吃 token（寫入 CSS 變數 --myStripe）
-//   4) ✅ 你要求的修正：表格「順序/師傅/狀態/預約內容/剩餘時間」文字顏色，對應 GAS 回傳 token
-//      - 順序：colorIndex 套文字色
-//      - 師傅：colorMaster 套文字色
-//      - 狀態：維持 pill 的 bgStatus/colorStatus
-//      - 預約內容：colorAppointment（若後端有回）套文字色
-//      - 剩餘時間：colorRemaining（若後端有回）套文字色
-//   5) ✅ 你指定的規則：bgIndex=bg-CCBCBCB 只允許「順序欄位」顯示底色，其餘不套
+//   4) ✅ 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色；且背景/文字更明顯
+//   5) ✅ 表格表頭（順序/師傅/狀態/預約內容/剩餘時間）文字色：對應 GAS 回傳 token（colorIndex/colorMaster/colorStatus/...）
 // =========================================================
 
 // ==== 過濾 PanelScan 錯誤訊息（只動前端，不改腳本貓）====
@@ -349,10 +344,6 @@ function deriveStatusClass(status, remaining) {
   if (!Number.isNaN(n) && n < 0) return "status-busy";
   return "status-other";
 }
-
-/* =========================================================
- * ✅ mapRowsToDisplay：透傳更多 token，支援表格文字色對應
- * ========================================================= */
 function mapRowsToDisplay(rows) {
   return rows.map((row) => {
     const remaining = row.remaining === 0 || row.remaining ? row.remaining : "";
@@ -365,19 +356,17 @@ function mapRowsToDisplay(rows) {
       status: normalizeText_(row.status),
       appointment: normalizeText_(row.appointment),
 
-      // 文字色 tokens
       colorIndex: row.colorIndex || "",
       colorMaster: row.colorMaster || "",
       colorStatus: row.colorStatus || "",
-      colorAppointment: row.colorAppointment || row.colorAppt || "",
+
+      // 可能存在：預約/剩餘顏色 token（若後端有回傳就吃；沒有就空）
+      colorAppointment: row.colorAppointment || row.colorAppt || row.colorBooking || "",
       colorRemaining: row.colorRemaining || row.colorRemain || row.colorTime || "",
 
-      // 背景色 tokens
       bgIndex: row.bgIndex || "",
       bgMaster: row.bgMaster || "",
       bgStatus: row.bgStatus || "",
-      bgAppointment: row.bgAppointment || row.bgAppt || "",
-      bgRemaining: row.bgRemaining || row.bgRemain || row.bgTime || "",
 
       remainingDisplay: fmtRemainingRaw(remaining),
       statusClass: deriveStatusClass(row.status, remaining),
@@ -660,7 +649,7 @@ function tokenToStripe_(bgToken, textToken) {
 }
 
 /* =========================================================
- * ✅ 新增：把 token 套到「一般文字」(順序/師傅/預約/剩餘時間)
+ * ✅ 一般文字顏色：吃 GAS token（給表頭/一般 cell 用）
  * ========================================================= */
 function applyTextColorFromToken_(el, token) {
   if (!el) return;
@@ -672,7 +661,7 @@ function applyTextColorFromToken_(el, token) {
   const rgb = hexToRgb_(fg.hex);
   if (!rgb) return;
 
-  const minAlpha = isLightTheme_() ? 0.85 : 0.70;
+  const minAlpha = isLightTheme_() ? 0.90 : 0.78;
   let aText = fg.opacity == null ? 1 : fg.opacity;
   aText = clamp_(aText, minAlpha, 1);
 
@@ -680,30 +669,33 @@ function applyTextColorFromToken_(el, token) {
 }
 
 /* =========================================================
- * ✅ 順序欄位底色規則：只允許 bgIndex=bg-CCBCBCB 才顯示底色
+ * ✅ 新增：強化版文字色（只給「順序」用）
  * ========================================================= */
-const ORDER_INDEX_BG_ALLOW_HEX = "#CBCBCB"; // 你指定的 CCBCBCB → 常見就是 CBCBCB
-function isOrderIndexHighlight_(bgToken) {
-  const h = normalizeHex6_(bgToken);
-  if (!h) return false;
-  return h.toUpperCase() === ORDER_INDEX_BG_ALLOW_HEX.toUpperCase();
-}
-function applyOrderIndexHighlight_(tdOrder, bgToken) {
-  if (!tdOrder) return;
+function applyTextColorFromTokenStrong_(el, token) {
+  if (!el) return;
+  el.style.color = "";
 
-  const h = normalizeHex6_(bgToken);
-  const rgb = hexToRgb_(h);
+  const fg = parseColorToken_(token);
+  if (!fg.hex) return;
+
+  const rgb = hexToRgb_(fg.hex);
   if (!rgb) return;
 
-  // 只在順序欄位顯示底色：淡底 + 左邊色條，避免整格太刺眼
-  const aBg = isLightTheme_() ? 0.18 : 0.14;
-  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+  // ✅ 深色更亮
+  const minAlpha = isLightTheme_() ? 0.97 : 0.94;
+  let aText = fg.opacity == null ? 1 : fg.opacity;
+  aText = clamp_(aText, minAlpha, 1);
 
-  const aStripe = isLightTheme_() ? 0.55 : 0.45;
-  tdOrder.style.borderLeft = `3px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+  el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
 
-  tdOrder.style.fontWeight = "700";
+  el.style.fontWeight = "900";
+
+  // ✅ 深色：加一點發光，數字會跳出來
+  el.style.textShadow = isLightTheme_()
+    ? "0 1px 0 rgba(0,0,0,0.10)"
+    : "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10)";
 }
+
 
 /* =========================================================
  * ✅ 我的狀態 row：把 token 帶進 DOM，後續套色
@@ -1006,18 +998,13 @@ function rowSignature_(r) {
     r.status ?? "",
     r.appointment ?? "",
     r.remaining ?? "",
-
     r.colorIndex ?? "",
     r.colorMaster ?? "",
     r.colorStatus ?? "",
-    r.colorAppointment ?? r.colorAppt ?? "",
-    r.colorRemaining ?? r.colorRemain ?? r.colorTime ?? "",
-
     r.bgIndex ?? "",
     r.bgMaster ?? "",
     r.bgStatus ?? "",
-    r.bgAppointment ?? r.bgAppt ?? "",
-    r.bgRemaining ?? r.bgRemain ?? r.bgTime ?? "",
+    r.bgAppointment ?? "",
   ].join("|");
 }
 function buildStatusSet_(rows) {
@@ -1079,6 +1066,61 @@ function diffMergePanelRows_(prevRows, incomingRows) {
 }
 
 /* =========================================================
+ * ✅ 表頭顏色（順序/師傅/狀態/預約內容/剩餘時間）吃 GAS token
+ * - 取目前 active panel 的「第一筆顯示列」token 當表頭色
+ * - 你不用改 HTML；這裡用 thead th 的 index 0..4 對應
+ * ========================================================= */
+function applyTableHeaderColorsFromRows_(displayRows) {
+  try {
+    const table = tbodyRowsEl ? tbodyRowsEl.closest("table") : null;
+    if (!table) return;
+
+    const ths = table.querySelectorAll("thead th");
+    if (!ths || ths.length < 5) return;
+
+    const first = Array.isArray(displayRows) && displayRows.length ? displayRows[0] : null;
+
+    // 沒資料：清空表頭 inline 色
+    if (!first) {
+      ths.forEach((th) => {
+        th.style.color = "";
+        th.removeAttribute("data-colortoken");
+      });
+      return;
+    }
+
+    // 對應：0順序 1師傅 2狀態 3預約 4剩餘
+    const tokens = [
+      first.colorIndex || "",
+      first.colorMaster || "",
+      first.colorStatus || "",
+      first.colorAppointment || "",
+      first.colorRemaining || "",
+    ];
+
+    for (let i = 0; i < 5; i++) {
+      const th = ths[i];
+      const tk = tokens[i] || "";
+      th.setAttribute("data-colortoken", tk);
+      applyTextColorFromToken_(th, tk);
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+function reapplyTableHeaderColorsFromDataset_() {
+  try {
+    const table = tbodyRowsEl ? tbodyRowsEl.closest("table") : null;
+    if (!table) return;
+    const ths = table.querySelectorAll("thead th[data-colortoken]");
+    ths.forEach((th) => {
+      const tk = th.getAttribute("data-colortoken") || "";
+      applyTextColorFromToken_(th, tk);
+    });
+  } catch (e) {}
+}
+
+/* =========================================================
  * Incremental render
  * ========================================================= */
 const rowDomMapByPanel_ = { body: new Map(), foot: new Map() };
@@ -1119,8 +1161,45 @@ function ensureRowDom_(panel, row) {
 }
 
 /* =========================================================
- * ✅ patchRowDom_：你要求的欄位文字色對應 + 順序底色限制
+ * ✅ 順序欄位：只允許 bgIndex=bg-CCBCBCB 才上底色（其餘不要）
  * ========================================================= */
+const ORDER_HL_BG_TOKEN = "bg-CCBCBCB";
+function isOrderIndexHighlight_(bgIndexToken) {
+  return String(bgIndexToken || "").trim() === ORDER_HL_BG_TOKEN;
+}
+
+/* =========================================================
+ * ✅ 順序欄位：更明顯的背景/邊框/陰影（只作用於順序 td）
+ * ========================================================= */
+function applyOrderIndexHighlight_(tdOrder, bgToken) {
+  if (!tdOrder) return;
+
+  const h = normalizeHex6_(bgToken);
+  const rgb = hexToRgb_(h);
+  if (!rgb) return;
+
+  // ✅ 深色更明顯：背景 alpha 拉高
+  const aBg = isLightTheme_() ? 0.36 : 0.42;
+  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+
+  // ✅ 左側色條更亮更粗
+  const aStripe = isLightTheme_() ? 0.92 : 0.92;
+  tdOrder.style.borderLeft = `6px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+
+  // ✅ 框線更明顯
+  const aBd = isLightTheme_() ? 0.60 : 0.62;
+  tdOrder.style.outline = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+  tdOrder.style.outlineOffset = "-2px";
+
+  // ✅ 內層對比 + 外層微光（深色時特別有感）
+  tdOrder.style.boxShadow = isLightTheme_()
+    ? "inset 0 0 0 999px rgba(255,255,255,0.14), 0 1px 10px rgba(0,0,0,0.08)"
+    : "inset 0 0 0 999px rgba(0,0,0,0.10), 0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(0,0,0,0.35)";
+
+  tdOrder.style.fontWeight = "900";
+}
+
+
 function patchRowDom_(tr, row, orderText) {
   const tds = tr.children;
   const tdOrder = tds[0];
@@ -1129,39 +1208,57 @@ function patchRowDom_(tr, row, orderText) {
   const tdAppointment = tds[3];
   const tdRemaining = tds[4];
 
-  // ---- 順序：文字色吃 colorIndex；底色只允許 bgIndex=bg-CCBCBCB
+  // -----------------------------
+  // 順序
+  // -----------------------------
   tdOrder.textContent = orderText;
 
+  // reset（避免上次的 highlight 殘留）
   tdOrder.style.backgroundColor = "";
   tdOrder.style.borderLeft = "";
+  tdOrder.style.outline = "";
+  tdOrder.style.outlineOffset = "";
+  tdOrder.style.boxShadow = "";
   tdOrder.style.fontWeight = "";
+  tdOrder.style.textShadow = "";
   tdOrder.style.color = "";
 
-  applyTextColorFromToken_(tdOrder, row.colorIndex);
+  // ✅ 順序文字：強化版（更顯眼）
+  applyTextColorFromTokenStrong_(tdOrder, row.colorIndex);
 
+  // ✅ 順序底色：只允許 bgIndex=bg-CCBCBCB
   if (isOrderIndexHighlight_(row.bgIndex)) {
     applyOrderIndexHighlight_(tdOrder, row.bgIndex);
   }
 
-  // ---- 師傅：文字色吃 colorMaster
+  // -----------------------------
+  // 師傅
+  // -----------------------------
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.color = "";
   applyTextColorFromToken_(tdMaster, row.colorMaster);
 
-  // ---- 狀態：pill 吃 bgStatus/colorStatus（原本就有）
+  // -----------------------------
+  // 狀態（pill：吃 bgStatus/colorStatus）
+  // -----------------------------
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill " + (row.statusClass || "");
   statusSpan.textContent = row.status || "";
+
   applyPillFromTokens_(statusSpan, row.bgStatus, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
-  // ---- 預約內容：文字色吃 colorAppointment（若後端沒回就不改）
+  // -----------------------------
+  // 預約內容
+  // -----------------------------
   tdAppointment.textContent = row.appointment || "";
   tdAppointment.style.color = "";
   applyTextColorFromToken_(tdAppointment, row.colorAppointment);
 
-  // ---- 剩餘時間：badge 文字色吃 colorRemaining
+  // -----------------------------
+  // 剩餘時間（time badge 文字色也吃 token）
+  // -----------------------------
   tdRemaining.innerHTML = "";
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
@@ -1205,6 +1302,9 @@ function renderIncremental_(panel) {
 
   if (emptyStateEl) emptyStateEl.style.display = displayRows.length ? "none" : "block";
   if (panelTitleEl) panelTitleEl.textContent = panel === "body" ? "身體面板" : "腳底面板";
+
+  // ✅ 表頭色：跟著 GAS token（用第一筆顯示列）
+  applyTableHeaderColorsFromRows_(displayRows);
 
   const frag = document.createDocumentFragment();
 
@@ -1295,6 +1395,10 @@ async function refreshStatus(isManual = false) {
     }
 
     if (activeChanged) renderIncremental_(activePanel);
+    else {
+      // 即使 rows 沒變，切換主題時表頭可能要重套
+      reapplyTableHeaderColorsFromDataset_();
+    }
 
     // ✅ refresh 後更新我的狀態（含 token 顏色）
     updateMyMasterStatusUI_();
@@ -1479,6 +1583,12 @@ function setTheme(theme) {
   root.setAttribute("data-theme", finalTheme);
   localStorage.setItem("dashboardTheme", finalTheme);
   if (themeToggleBtn) themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
+
+  // ✅ 主題切換時：表頭色重套（因為 alpha 下限不同）
+  reapplyTableHeaderColorsFromDataset_();
+
+  // ✅ 主題切換時：我的狀態 pill 顏色也重套一次（避免顯示落差）
+  updateMyMasterStatusUI_();
 }
 (function initTheme() {
   const saved = localStorage.getItem("dashboardTheme") || "dark";
@@ -1640,6 +1750,7 @@ if (filterMasterInput) {
   filterMasterInput.addEventListener("input", (e) => {
     filterMaster = e.target.value || "";
     renderIncremental_(activePanel);
+    updateMyMasterStatusUI_();
   });
 }
 if (filterStatusSelect) {
@@ -1664,6 +1775,7 @@ function setActivePanel(panel) {
   }
 
   renderIncremental_(activePanel);
+  updateMyMasterStatusUI_();
 }
 
 /* =========================================================
