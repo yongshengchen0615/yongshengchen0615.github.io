@@ -1535,14 +1535,19 @@ function normalizeCheckResult_(data, displayNameFromClient) {
 function decideGateAction_(r) {
   const hasRd = typeof r.remainingDays === "number" && !Number.isNaN(r.remainingDays);
   const notExpired = hasRd ? r.remainingDays >= 0 : false;
+  const auditText_ = String(r.audit || "").trim();
+  const isAuditMaintenance_ = auditText_ === "系統維護" || auditText_ === "系统维护";
 
   const rules = [
     {
       id: "MAINTENANCE",
-      when: () => r.flags.maintenance === true,
+      when: () => r.flags.maintenance === true || isAuditMaintenance_,
       action: () => ({
         allow: false,
-        message: "🛠️ 系統維護中\n" + (String(r.messages.maintenanceMsg || "").trim() || "請稍後再試。"),
+        message:
+          "🛠️ 系統維護\n" +
+          (String(r.messages.maintenanceMsg || "").trim() || "系統維護說明") +
+          "\n\n不開放使用",
       }),
     },
     {
