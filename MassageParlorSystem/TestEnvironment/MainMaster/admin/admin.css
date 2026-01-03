@@ -90,6 +90,8 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .kpi-card.success{ border-color:rgba(22,163,74,.25); }
 .kpi-card.warning{ border-color:rgba(245,158,11,.25); }
 .kpi-card.danger{ border-color:rgba(239,68,68,.25); }
+.kpi-card.muted{ border-color:rgba(100,116,139,.35); }
+.kpi-card.maintenance{ border-color:rgba(147,51,234,.25); }
 
 .panel{
   border:1px solid var(--border);
