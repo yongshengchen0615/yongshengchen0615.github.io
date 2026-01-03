@@ -1,0 +1,29 @@
+{
+  "_comment": "=== 系統設定檔（純 JSON，可直接 JSON.parse）===",
+
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec",
+    "https://script.google.com/macros/s/AKfycbyEGaQ0Gqikbw5azOA-32ZiV4SDe0tjKv0T9BDn63zOBpxV_1VF7EKccyU8GOZKwEpW/exec",
+    "https://script.google.com/macros/s/AKfycbwJ0ugTDlqlVWQS4lvOAXw1U8Zlt0eE-UbrE59EjBt2pt6D9SnJpalZKtitRblaPPXbIw/exec",
+    "https://script.google.com/macros/s/AKfycbyTy3uGeBve49gzJx6vjxKzYW6OtJns2Qltpr-FD1_xk42SSXYIEQXfqdL15YBudhSu/exec"
+  ],
+  "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
+
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec",
+  "_comment_FALLBACK_ORIGIN_CACHE_URL": "當所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
+  "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
+
+  "LIFF_ID": "2008735934-mBO1mD8M",
+  "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
+
+  "ENABLE_LINE_LOGIN": true,
+  "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
+
+  "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwvgNI1EfBnAPk92PJ8NtdsaTIcN_c-0DxOgIsA6oJHwGWJNgpMCLrKDu-8ZHM18R0g/exec",
+  "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
+
+  "USAGE_LOG_MIN_INTERVAL_MS": 10000,
+  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。"
+}
