@@ -62,10 +62,15 @@ let savingAll = false;
  * - only if ALL perms are "是" => show view tabs (all/usage/master/features)
  * ========================================================= */
 
-let adminPerms = null; // { techAudit, techCreatedAt, techStartDate, techExpiryDate, ... }
+let adminPerms = null; // { pushFeatureEnabled, techAudit, techCreatedAt, techStartDate, techExpiryDate, ... }
 
 function isYes_(v) {
   return String(v || "").trim() === "是";
+}
+
+function isPushFeatureEnabled_() {
+  if (!adminPerms) return false;
+  return isYes_(adminPerms.pushFeatureEnabled);
 }
 
 /**
@@ -118,17 +123,17 @@ function applyColumnPermissions_() {
     document.head.appendChild(styleEl);
   }
 
-  // 全部是：不隱藏
-  if (allTechPermsYes_()) {
-    styleEl.textContent = "";
-    return;
-  }
-
   // 有任何否：隱藏所有否的欄位
   const hideCols = [];
   Object.keys(PERM_TO_COLS).forEach((k) => {
     if (!isYes_(adminPerms[k])) hideCols.push(...PERM_TO_COLS[k]);
   });
+
+  // 沒有任何需要隱藏的欄位
+  if (hideCols.length === 0) {
+    styleEl.textContent = "";
+    return;
+  }
 
   const cols = Array.from(new Set(hideCols)).sort((a, b) => a - b);
 
@@ -162,6 +167,16 @@ function enforceViewTabsPolicy_() {
   }
 
   ensureViewTabs_();
+}
+
+/**
+ * ✅ 推播功能 Gate：
+ * - pushFeatureEnabled !== "是" -> 不顯示推播面板 + 隱藏批次推播 + 隱藏表格推播欄
+ */
+function applyPushFeatureGate_() {
+  // ✅ 只控制「推播面板」是否顯示
+  // （表格欄位/批次推播仍保留可管理）
+  ensurePushPanel_();
 }
 
 /* =========================================================
@@ -1274,6 +1289,16 @@ let pushingNow = false;
 function ensurePushPanel_() {
   const panelHead = document.querySelector(".panel-head");
   if (!panelHead) return;
+
+  // ✅ 權限尚未載入：先不要建立
+  if (!adminPerms) return;
+
+  // ✅ 推播功能未開通：移除推播面板
+  if (!isPushFeatureEnabled_()) {
+    document.getElementById("pushPanel")?.remove();
+    return;
+  }
+
   if (document.getElementById("pushPanel")) return;
 
   const wrap = document.createElement("div");
@@ -1459,6 +1484,7 @@ async function adminAuthBoot_() {
 
     // ✅ 保存 tech 權限（後端 adminUpsertAndCheck 回傳）
     adminPerms = {
+      pushFeatureEnabled: check.pushFeatureEnabled,
       techAudit: check.techAudit,
       techCreatedAt: check.techCreatedAt,
       techStartDate: check.techStartDate,
@@ -1470,8 +1496,8 @@ async function adminAuthBoot_() {
       techScheduleEnabled: check.techScheduleEnabled,
     };
 
-    // ✅ 先套用欄位隱藏 + tabs 政策（就算最後 audit 不通過也先準備好）
-    applyColumnPermissions_();
+    // ✅ 先套用欄位隱藏 + tabs 政策 + 推播 gate（就算最後 audit 不通過也先準備好）
+    applyPushFeatureGate_();
     enforceViewTabsPolicy_();
 
     if (!check.ok) {
@@ -1501,7 +1527,7 @@ async function adminAuthBoot_() {
     setEditingEnabled_(true);
 
     // ✅ 通過後再保險套一次（含 tabs / 欄位隱藏）
-    applyColumnPermissions_();
+    applyPushFeatureGate_();
     enforceViewTabsPolicy_();
 
     toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");
