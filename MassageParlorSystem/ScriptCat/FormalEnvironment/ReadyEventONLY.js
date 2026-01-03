@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress)
+// @name         FE Ready Event ONLY (Transition to 準備, GM_xhr, Dedup + Stress)
 // @namespace    http://scriptcat.org/
 // @version      2.1
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅附壓測模組（可關閉）
