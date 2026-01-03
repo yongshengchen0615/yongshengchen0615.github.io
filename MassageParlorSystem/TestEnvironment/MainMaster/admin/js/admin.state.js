@@ -20,6 +20,7 @@
  * @property {string} lastLogin
  *
  * // 技師欄位：此版本以「是/否」字串呈現，來源不一定真的是 boolean
+ * @property {string} pushFeatureEnabled
  * @property {string} techAudit
  * @property {string} techCreatedAt
  * @property {string} techStartDate

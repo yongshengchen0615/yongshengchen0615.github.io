@@ -105,7 +105,7 @@ function render_() {
   tbody.innerHTML = "";
 
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="17">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="18">無資料</td></tr>`;
     return;
   }
 
@@ -117,7 +117,7 @@ function render_() {
     tr.dataset.userid = a.userId;
     if (isDirty) tr.classList.add("dirty");
 
-    // ✅ 固定 17 欄
+    // ✅ 固定 18 欄
     tr.innerHTML = `
       <td class="sticky-col col-check" data-label="選取">
         <input class="row-check" type="checkbox" ${selectedIds.has(a.userId) ? "checked" : ""} aria-label="選取此列">
@@ -136,6 +136,7 @@ function render_() {
       <td data-label="建立時間"><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
       <td data-label="最後登入"><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
 
+      ${ynCell_("pushFeatureEnabled", a.pushFeatureEnabled, "推播功能開通")}
       ${ynCell_("techAudit", a.techAudit, "技師審核狀態")}
       ${ynCell_("techCreatedAt", a.techCreatedAt, "技師建立時間")}
       ${ynCell_("techStartDate", a.techStartDate, "技師開始使用日期")}
