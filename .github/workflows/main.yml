@@ -1,9 +1,9 @@
-name: Bump Userscript Versions (Strategy B)
+name: Bump Userscript Versions (Strategy B - changed files only)
 
 on:
   workflow_dispatch:
   push:
-    branches: ["main"] # 如果你的預設分支是 master，改成 ["master"]
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -28,11 +28,12 @@ jobs:
             exit 0
           fi
 
-      # ✅ 策略B：掃描指定資料夾底下所有 *.js，只要有 // @version x.y 就 bump y+1
-      - name: Bump @version in target JS files
+      # ✅ 只 bump「本次變更」的 JS（且在指定資料夾內）
+      - name: Bump @version only for changed JS files under target dirs
         run: |
           python3 - << 'PY'
           import re
+          import subprocess
           from pathlib import Path
 
           # ⭐ 只要維護這裡：要掃描的資料夾（可加多個）
@@ -47,61 +48,80 @@ jobs:
               re.MULTILINE
           )
 
-          changed = []
-          scanned_js = 0
-          version_hits = 0
-          missing_dirs = []
+          def run_git(args):
+            return subprocess.check_output(["git", *args], text=True).strip()
 
-          for base in TARGET_DIRS:
-            base_path = Path(base)
-            if not base_path.exists():
-              missing_dirs.append(base)
+          # 取得這次 push 的「前一個 commit」
+          # - push event: github.sha 是最新 commit；github.sha^ 是上一個
+          # - workflow_dispatch: 可能沒有上一個範圍的意義，但仍可用 HEAD^..HEAD
+          try:
+            base = run_git(["rev-parse", "HEAD^"])
+            head = run_git(["rev-parse", "HEAD"])
+          except Exception:
+            # fallback：至少處理 HEAD 的變更（通常不會走到）
+            base = "HEAD^"
+            head = "HEAD"
+
+          # 找出本次變更檔案（含新增/修改/改名；不含刪除）
+          diff_names = run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{base}..{head}"])
+          changed_files = [line.strip() for line in diff_names.splitlines() if line.strip()]
+
+          target_prefixes = [str(Path(d).as_posix()).rstrip("/") + "/" for d in TARGET_DIRS]
+
+          changed_js = []
+          for f in changed_files:
+            f_posix = Path(f).as_posix()
+            if not f_posix.endswith(".js"):
               continue
-
-            js_files = list(base_path.rglob("*.js"))
-            scanned_js += len(js_files)
-
-            for p in js_files:
-              try:
-                text = p.read_text(encoding="utf-8")
-              except Exception:
-                # 非 UTF-8 或讀不到，跳過
-                continue
-
-              m = VERSION_RE.search(text)
-              if not m:
-                continue
-
-              version_hits += 1
-              major = int(m.group(2))
-              minor = int(m.group(3)) + 1
-              new_version = f"{major}.{minor}"
-
-              # ✅ 關鍵修正：用 \g<1> 避免 \1{digit} 被誤判成 \11
-              new_text = VERSION_RE.sub(rf"\g<1>{new_version}", text, count=1)
-
-              p.write_text(new_text, encoding="utf-8")
-              changed.append((str(p), new_version))
+            if any(f_posix.startswith(pref) for pref in target_prefixes):
+              changed_js.append(Path(f_posix))
 
           print("== Diagnostics ==")
           print("TARGET_DIRS:", TARGET_DIRS)
-          print("Missing dirs:", missing_dirs)
-          print("Total .js scanned:", scanned_js)
-          print("@version hits:", version_hits)
-          print("Files changed:", len(changed))
+          print("base..head:", f"{base}..{head}")
+          print("Changed files:", len(changed_files))
+          print("Changed JS in target dirs:", len(changed_js))
 
-          if missing_dirs:
-            raise SystemExit(f"❌ Missing target directories: {missing_dirs}")
+          if not changed_js:
+            print("No changed JS files under target dirs. Nothing to bump.")
+            raise SystemExit(0)
 
-          if scanned_js == 0:
-            raise SystemExit("❌ No .js files found under TARGET_DIRS (check paths/case).")
+          bumped = []
+          version_hits = 0
+
+          for p in changed_js:
+            if not p.exists():
+              # 可能是 rename 邊界狀況或其他，跳過
+              continue
+            try:
+              text = p.read_text(encoding="utf-8")
+            except Exception:
+              continue
+
+            m = VERSION_RE.search(text)
+            if not m:
+              continue
+
+            version_hits += 1
+            major = int(m.group(2))
+            minor = int(m.group(3)) + 1
+            new_version = f"{major}.{minor}"
+
+            new_text = VERSION_RE.sub(rf"\g<1>{new_version}", text, count=1)
+            if new_text != text:
+              p.write_text(new_text, encoding="utf-8")
+              bumped.append((str(p), new_version))
+
+          print("@version hits among changed JS:", version_hits)
+          print("Files bumped:", len(bumped))
 
           if version_hits == 0:
-            raise SystemExit("❌ Found .js files, but none contains '// @version x.y'.")
+            print("Changed JS files exist, but none contains '// @version x.y'. Nothing to bump.")
+            raise SystemExit(0)
 
-          if changed:
+          if bumped:
             print("== Updated files ==")
-            for f, v in changed:
+            for f, v in bumped:
               print(f" - {f} -> {v}")
           PY
 
