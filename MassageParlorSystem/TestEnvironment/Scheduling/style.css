@@ -724,9 +724,10 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.55);
   background: rgba(15, 23, 42, 0.65);
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
   position: relative;
   overflow: hidden;
 }
@@ -760,11 +761,16 @@ body {
   letter-spacing: .02em;
 }
 
+/* myMasterStatus.js 會把主要內容塞進 #myMasterStatusText（.my-master-text） */
+.my-master-text{
+  padding-left: 6px;
+  min-width: 0;
+}
+
 .myms{
   display:flex;
   flex-direction: column;
   gap: 10px;
-  padding-left: 6px;
   min-width: 0;
   flex: 1 1 320px;
 }
@@ -790,9 +796,9 @@ body {
 }
 
 .myms-row{
-  display:flex;
+  display:grid;
+  grid-template-columns: 72px 1fr;
   align-items:flex-start;
-  justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 14px;
@@ -816,7 +822,7 @@ body {
 .myms-right{
   display:flex;
   flex-direction: column;
-  align-items:flex-end;
+  align-items:flex-start;
   justify-content:flex-start;
   gap: 6px;
   min-width: 0;
@@ -826,7 +832,7 @@ body {
 .myms-line{
   display:flex;
   align-items:center;
-  justify-content:flex-end;
+  justify-content:flex-start;
   gap: 8px;
   flex-wrap: wrap;
   max-width: 100%;
@@ -889,13 +895,8 @@ body {
   box-shadow: 0 0 14px rgba(37,99,235,0.35);
 }
 
-.my-master-status{
-  flex-wrap: wrap;
-  min-width: 0;
-}
 @media (max-width: 768px){
   .my-master-status{
-    justify-content: center;
     text-align: center;
   }
   .myms{
@@ -928,8 +929,8 @@ body {
     gap: 8px;
   }
   .myms-row{
-    flex-direction: column;
-    align-items: center;
+    grid-template-columns: 1fr;
+    justify-items: center;
     gap: 8px;
     padding: 10px 10px;
   }
@@ -937,6 +938,7 @@ body {
     width: 100%;
     text-align: center;
     min-width: 0;
+    justify-content: center;
   }
   .myms-right{
     width: 100%;
