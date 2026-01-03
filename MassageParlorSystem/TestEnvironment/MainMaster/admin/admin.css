@@ -42,6 +42,12 @@ html[data-theme="light"]{
   --text-sub:#475569;
   --input-bg:#ffffff;
   --shadow-soft:0 10px 28px rgba(2,6,23,.08);
+
+  /* match client light theme soft colors */
+  --accent-soft:rgba(56,189,248,.16);
+  --success-soft:rgba(22,163,74,.16);
+  --warning-soft:rgba(245,158,11,.16);
+  --danger-soft:rgba(239,68,68,.16);
 }
 
 *{ box-sizing:border-box; word-break: break-word; }
@@ -130,6 +136,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border-color:rgba(56,189,248,.45);
   background:var(--accent-soft);
 }
+.chip:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
  * 但樣式需與 client 專案的 .chip 完全一致。
