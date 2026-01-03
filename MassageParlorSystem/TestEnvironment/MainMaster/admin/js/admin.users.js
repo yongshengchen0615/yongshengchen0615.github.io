@@ -587,6 +587,9 @@ async function uLoadUsers_() {
       scheduleEnabled: uNormalizeYesNo_(u.scheduleEnabled || "否"),
     }));
 
+    // 先更新 KPI（即使後續流程失敗也能看到人數）
+    uUpdateKpi_();
+
     uOriginalMap.clear();
     uDirtyMap.clear();
     uSelectedIds.clear();
@@ -972,6 +975,8 @@ function initUsersPanel_() {
   ensurePushPanel_();
   uBind_();
   uRefreshSaveBtn_();
+  // 先顯示 KPI（避免在等待驗證/載入時一直是 "-"）
+  uUpdateKpi_();
   uSetFooter_("Users：等待管理員驗證後載入");
   uSetTbodyMessage_("等待管理員驗證後載入...");
 }
