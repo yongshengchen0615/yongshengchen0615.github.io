@@ -17,6 +17,7 @@ import { initLiffAndGuard, initNoLiffAndGuard } from "./modules/auth.js";
 import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
+import { logAppOpen } from "./modules/usageLog.js";
 
 let eventsBound = false;
 
@@ -63,6 +64,9 @@ async function boot() {
   // Auth / Gate
   const authRes = config.ENABLE_LINE_LOGIN ? await initLiffAndGuard() : await initNoLiffAndGuard();
   if (!authRes || !authRes.ok) return;
+
+  // （可選）使用頻率紀錄：只在授權通過後送出
+  logAppOpen({ userId: authRes.userId, displayName: authRes.displayName });
 
   // 排班表已開通：預設顯示身體面板
   if (state.scheduleUiEnabled) setActivePanel("body");

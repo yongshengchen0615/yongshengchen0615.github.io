@@ -11,6 +11,11 @@
   --danger: #f97373;
   --muted: #4b5563;
   --radius-lg: 16px;
+
+  /* 順序欄位：預設底色/邊框（未命中特殊 bgIndex 時使用） */
+  --order-bg: rgba(148, 163, 184, 0.14);
+  --order-border: rgba(148, 163, 184, 0.30);
+  --order-text-shadow: 0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10);
 }
 
 /* 亮色主題覆蓋（按 data-theme 切換） */
@@ -25,6 +30,10 @@
   --accent-soft: rgba(37, 99, 235, 0.1);
   --danger: #b91c1c;
   --muted: #9ca3af;
+
+  --order-bg: rgba(148, 163, 184, 0.18);
+  --order-border: rgba(148, 163, 184, 0.42);
+  --order-text-shadow: 0 1px 0 rgba(0,0,0,0.10);
 }
 
 /* Reset 基本設定 */
@@ -489,6 +498,24 @@ body {
   background-clip: padding-box;
 }
 
+/* ✅ 順序欄位：更清楚的數字對比（未命中特殊 highlight 時） */
+.cell-order{
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--text-main);
+  background: var(--order-bg);
+  border: 1px solid var(--order-border);
+  text-shadow: var(--order-text-shadow);
+}
+
+/* 命中 JS highlight（bgIndex=bg-CCBCBCB）時，避免跟 outline/stripe 打架 */
+.cell-order.cell-order-highlight{
+  border-color: transparent;
+  background: transparent;
+}
+
 /* 狀態 Pill */
 .status-pill {
   display: inline-flex;
@@ -764,7 +791,7 @@ body {
 
 .myms-row{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
@@ -788,12 +815,21 @@ body {
 }
 .myms-right{
   display:flex;
+  flex-direction: column;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.myms-line{
+  display:flex;
   align-items:center;
   justify-content:flex-end;
   gap: 8px;
   flex-wrap: wrap;
-  min-width: 0;
-  flex: 1 1 auto;
+  max-width: 100%;
 }
 
 .myms-rem,
@@ -880,7 +916,7 @@ body {
     justify-content: center;
   }
   .myms-right{
-    justify-content: center;
+    align-items: center;
   }
 }
 @media (max-width: 420px){
@@ -904,7 +940,7 @@ body {
   }
   .myms-right{
     width: 100%;
-    justify-content: center;
+    align-items: center;
   }
 }
 

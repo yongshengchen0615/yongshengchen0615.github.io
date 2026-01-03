@@ -13,6 +13,10 @@ export const config = {
   AUTH_API_URL: "",
   LIFF_ID: "",
   ENABLE_LINE_LOGIN: true,
+
+  // （可選）使用頻率紀錄
+  USAGE_LOG_URL: "",
+  USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 };
 
 export async function loadConfigJson() {
@@ -28,6 +32,11 @@ export async function loadConfigJson() {
   config.AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   config.LIFF_ID = String(cfg.LIFF_ID || "").trim();
   config.ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+
+  // optional: usage log
+  config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
+  const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
+  if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
 
   if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");

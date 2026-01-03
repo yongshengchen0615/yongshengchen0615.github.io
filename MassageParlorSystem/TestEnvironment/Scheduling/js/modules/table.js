@@ -336,9 +336,9 @@ function patchRowDom(tr, row, orderText) {
 
   applyTextColorFromTokenStrong(tdOrder, row.colorIndex);
 
-  if (isOrderIndexHighlight(row.bgIndex)) {
-    applyOrderIndexHighlight(tdOrder, row.bgIndex);
-  }
+  const isOrderHl = isOrderIndexHighlight(row.bgIndex);
+  tdOrder.classList.toggle("cell-order-highlight", isOrderHl);
+  if (isOrderHl) applyOrderIndexHighlight(tdOrder, row.bgIndex);
 
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.color = "";

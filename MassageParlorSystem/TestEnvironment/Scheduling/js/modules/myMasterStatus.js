@@ -207,7 +207,7 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
   let rankText = "—";
   let rankCls = "myms-rank";
   if (shiftRankObj && typeof shiftRankObj.rank === "number") {
-    rankText = `入牌順位：${shiftRankObj.rank}  排班人數：${shiftRankObj.total}`;
+    rankText = `入牌順位：${shiftRankObj.rank}`;
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
 
@@ -218,13 +218,17 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
     <div class="myms-row">
       <div class="myms-label">${escapeHtml(label)}</div>
       <div class="myms-right">
-        <span class="${stCls}"
-              data-bgstatus="${escapeHtml(bgStatus)}"
-              data-colorstatus="${escapeHtml(colorStatus)}">
-          ${escapeHtml(statusText)}
-        </span>
-        <span class="${remCls}">剩餘：${escapeHtml(String(remText))}</span>
-        <span class="${rankCls}">${escapeHtml(rankText)}</span>
+        <div class="myms-line myms-line1">
+          <span class="${stCls}"
+                data-bgstatus="${escapeHtml(bgStatus)}"
+                data-colorstatus="${escapeHtml(colorStatus)}">
+            ${escapeHtml(statusText)}
+          </span>
+          <span class="${remCls}">剩餘：${escapeHtml(String(remText))}</span>
+        </div>
+        <div class="myms-line myms-line2">
+          <span class="${rankCls}">${escapeHtml(rankText)}</span>
+        </div>
       </div>
     </div>
   `;
