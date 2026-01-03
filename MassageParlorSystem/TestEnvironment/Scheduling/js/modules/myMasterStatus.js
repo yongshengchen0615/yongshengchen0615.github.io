@@ -204,9 +204,10 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
   const stCls = "status-pill " + classifyMyStatusClass(statusText, remNum);
   const remCls = "myms-rem " + remBadgeClass(remNum);
 
-  let rankText = "—";
+  const hasRank = !!(shiftRankObj && typeof shiftRankObj.rank === "number");
+  let rankText = "";
   let rankCls = "myms-rank";
-  if (shiftRankObj && typeof shiftRankObj.rank === "number") {
+  if (hasRank) {
     rankText = `入牌順位：${shiftRankObj.rank}`;
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
@@ -226,9 +227,11 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
           </span>
           <span class="${remCls}">剩餘：${escapeHtml(String(remText))}</span>
         </div>
-        <div class="myms-line myms-line2">
-          <span class="${rankCls}">${escapeHtml(rankText)}</span>
-        </div>
+        ${hasRank ? `
+          <div class="myms-line myms-line2">
+            <span class="${rankCls}">${escapeHtml(rankText)}</span>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;
