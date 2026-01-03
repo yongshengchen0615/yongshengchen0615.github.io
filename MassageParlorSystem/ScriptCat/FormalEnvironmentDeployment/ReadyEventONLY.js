@@ -16,7 +16,7 @@
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
   const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbyD3h_QT3foNjpw67iWzbgGtVmWh9LsYW1Hi6LVHqdduy74Pv2q1EpJVTXJlaAU-LGr/exec";
+    "https://script.google.com/macros/s/AKfycbxmPh1EReKTJxvk7N26UjMX_C-WvTBEaXp4b7OUANKsGUCILFNTz_J9MV0DBfKCYXI0/exec";
 
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
