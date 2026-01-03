@@ -245,6 +245,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById("reloadBtn")?.addEventListener("click", async () => {
       if (savingAll) return;
+
+      // ✅ 重新整理時也同步更新管理員權限（含：推播功能開通）
+      const authed = await refreshAdminPerms_();
+      if (!authed) return;
+
       selectedIds.clear();
       hideBulkBar_();
       await loadUsers();
@@ -289,9 +294,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ✅ 先做管理員驗證：通過才放行 loadUsers()
-    await adminAuthBoot_();
+    const authed = await adminAuthBoot_();
+    if (!authed) return;
 
-    // ✅ 通過才會走到這裡
     loadUsers();
   } catch (e) {
     console.error("boot error:", e);
@@ -1290,8 +1295,11 @@ function ensurePushPanel_() {
   const panelHead = document.querySelector(".panel-head");
   if (!panelHead) return;
 
-  // ✅ 權限尚未載入：先不要建立
-  if (!adminPerms) return;
+  // ✅ 權限尚未載入/已清空（例如登出）：移除推播面板
+  if (!adminPerms) {
+    document.getElementById("pushPanel")?.remove();
+    return;
+  }
 
   // ✅ 推播功能未開通：移除推播面板
   if (!isPushFeatureEnabled_()) {
@@ -1391,6 +1399,12 @@ function buildPushTargetIds_(target) {
 }
 
 async function pushSend_() {
+  // ✅ 前端保險：即使透過 DevTools 呼叫也不允許推播
+  if (!isPushFeatureEnabled_()) {
+    toast("推播功能未開通", "err");
+    return;
+  }
+
   const target = String(document.getElementById("pushTarget")?.value || "selected");
   const includeDisplayName = !!document.getElementById("pushIncludeName")?.checked;
   const message = String(document.getElementById("pushMessage")?.value || "").trim();
@@ -1456,6 +1470,49 @@ async function pushMessageBatch_(userIds, message, includeDisplayName) {
  * ========================================================= */
 let adminProfile = null; // { userId, displayName }
 
+function setAdminPermsFromCheck_(check) {
+  adminPerms = {
+    pushFeatureEnabled: check.pushFeatureEnabled,
+    techAudit: check.techAudit,
+    techCreatedAt: check.techCreatedAt,
+    techStartDate: check.techStartDate,
+    techExpiryDate: check.techExpiryDate,
+    techMasterNo: check.techMasterNo,
+    techIsMaster: check.techIsMaster,
+    techPushEnabled: check.techPushEnabled,
+    techPersonalStatusEnabled: check.techPersonalStatusEnabled,
+    techScheduleEnabled: check.techScheduleEnabled,
+  };
+}
+
+async function refreshAdminPerms_() {
+  try {
+    if (!adminProfile?.userId) return false;
+
+    const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName || "");
+    if (!check?.ok) return false;
+
+    setAdminPermsFromCheck_(check);
+
+    // ✅ 立即套用 UI gate（推播面板/欄位隱藏/tabs）
+    applyPushFeatureGate_();
+    applyColumnPermissions_();
+    enforceViewTabsPolicy_();
+
+    // ✅ 若權限被撤銷，立即封鎖
+    if (String(check.audit || "") !== "通過") {
+      showAuthGate_(true, "你的管理員權限已變更，請重新登入或聯絡管理員。");
+      setEditingEnabled_(false);
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.warn("refreshAdminPerms_ failed:", e);
+    return false;
+  }
+}
+
 function showAuthGate_(show, msg) {
   const gate = document.getElementById("authGate");
   const m = document.getElementById("authGateMsg");
@@ -1482,19 +1539,8 @@ async function adminAuthBoot_() {
 
     const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName);
 
-    // ✅ 保存 tech 權限（後端 adminUpsertAndCheck 回傳）
-    adminPerms = {
-      pushFeatureEnabled: check.pushFeatureEnabled,
-      techAudit: check.techAudit,
-      techCreatedAt: check.techCreatedAt,
-      techStartDate: check.techStartDate,
-      techExpiryDate: check.techExpiryDate,
-      techMasterNo: check.techMasterNo,
-      techIsMaster: check.techIsMaster,
-      techPushEnabled: check.techPushEnabled,
-      techPersonalStatusEnabled: check.techPersonalStatusEnabled,
-      techScheduleEnabled: check.techScheduleEnabled,
-    };
+    // ✅ 保存權限（後端 adminUpsertAndCheck 回傳）
+    setAdminPermsFromCheck_(check);
 
     // ✅ 先套用欄位隱藏 + tabs 政策 + 推播 gate（就算最後 audit 不通過也先準備好）
     applyPushFeatureGate_();
@@ -1544,6 +1590,8 @@ async function adminLogout_() {
   } finally {
     adminProfile = null;
     adminPerms = null;
+    setEditingEnabled_(false);
+    ensurePushPanel_();
     showAuthGate_(true, "已登出。請重新登入。");
   }
 }
