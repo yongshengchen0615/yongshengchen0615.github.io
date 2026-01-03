@@ -81,8 +81,9 @@ function normalizeCheckResult(data, displayNameFromClient) {
 function decideGateAction(r) {
   const hasRd = typeof r.remainingDays === "number" && !Number.isNaN(r.remainingDays);
   const notExpired = hasRd ? r.remainingDays >= 0 : false;
-  const auditText = String(r.audit || "").trim();
-  const isAuditMaintenance = auditText === "系統維護" || auditText === "系統維護中" || auditText === "系统维护";
+  const auditRaw = String(r.audit || "");
+  const auditNorm = auditRaw.replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+  const isAuditMaintenance = auditNorm.includes("系統維護") || auditNorm.includes("系统维护");
 
   const rules = [
     {
@@ -135,6 +136,10 @@ function decideGateAction(r) {
       id: "PENDING",
       when: () => r.status === "pending",
       action: () => {
+        if (isAuditMaintenance) {
+          return { allow: false, message: "目前系統維護中\n不開放使用" };
+        }
+
         const auditText = r.audit || "待審核";
         let msg = "此帳號目前尚未通過審核。\n";
         msg += "目前審核狀態：「" + auditText + "」。\n\n";
@@ -162,6 +167,12 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
 
   const data = await resp.json();
   let r = normalizeCheckResult(data, displayNameFromClient);
+
+  // ✅ 如果後端以 audit 告知「系統維護」，不要走自動註冊/審核 UI。
+  {
+    const auditNorm = String(r.audit || "").replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+    if (auditNorm.includes("系統維護") || auditNorm.includes("系统维护")) return r;
+  }
 
   if (r.status === "approved" || r.status === "pending") return r;
 
