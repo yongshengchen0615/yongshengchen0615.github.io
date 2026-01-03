@@ -2,10 +2,10 @@
   "_comment": "Users 後台設定檔（標準 JSON）。禁止 // 或 /* */ 註解，改用 _comment 欄位。",
 
   "_comment_users_api": "原本 Users API（你現有那支 GAS Web App /exec）",
-  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
+  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbxcAgHXaSxaLRB_OcqUyq80r6EiZjHxWK7eBU-PzyGyxfMzPz6btC6gKx6w03_AwyCuMg/exec",
 
   "_comment_admin_api": "✅新：管理員門禁（獨立 GAS Web App /exec）",
-  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbziVr_I5tGAP0HGNuFDutshZ_sWU1ur7cbxh7KXA5EpUr4V2Yzh9oLShy0k-o1EP2irnQ/exec",
 
   "_comment_liff": "✅你的 LIFF ID（LINE Developers 後台取得）",
   "LIFF_ID": "2008804969-Zo59tqoJ",
