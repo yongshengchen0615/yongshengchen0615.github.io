@@ -65,3 +65,72 @@ async function adminCheckAccess_(userId, displayName) {
   return await res.json().catch(() => ({ ok: false }));
 }
 
+/* ================================
+ * Admin Dashboard APIs (Admins sheet)
+ * GAS modes: listAdmins / updateAdminsBatch / deleteAdmin / getSpreadsheetId
+ * ================================ */
+
+async function adminListAdmins_() {
+  try {
+    if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
+
+    const res = await fetch(ADMIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "listAdmins" }),
+    });
+    return await res.json().catch(() => ({}));
+  } catch (err) {
+    console.error("adminListAdmins_ error:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function adminUpdateAdminsBatch_(items) {
+  try {
+    if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
+
+    const res = await fetch(ADMIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "updateAdminsBatch", items: Array.isArray(items) ? items : [] }),
+    });
+    return await res.json().catch(() => ({}));
+  } catch (err) {
+    console.error("adminUpdateAdminsBatch_ error:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function adminDeleteAdmin_(userId) {
+  try {
+    if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
+
+    const res = await fetch(ADMIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "deleteAdmin", userId: String(userId || "").trim() }),
+    });
+    return await res.json().catch(() => ({}));
+  } catch (err) {
+    console.error("adminDeleteAdmin_ error:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function adminGetSpreadsheetId_() {
+  try {
+    if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
+
+    const res = await fetch(ADMIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "getSpreadsheetId" }),
+    });
+    return await res.json().catch(() => ({}));
+  } catch (err) {
+    console.error("adminGetSpreadsheetId_ error:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+

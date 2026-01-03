@@ -30,6 +30,7 @@ async function refreshAdminPerms_() {
 		// ✅ 立即套用 UI gate（推播面板/欄位隱藏/tabs）
 		applyPushFeatureGate_();
 		applyColumnPermissions_();
+		applyBulkPermissions_();
 		enforceViewTabsPolicy_();
 
 		// ✅ 若權限被撤銷，立即封鎖
@@ -77,6 +78,7 @@ async function adminAuthBoot_() {
 
 		// ✅ 先套用欄位隱藏 + tabs 政策 + 推播 gate（就算最後 audit 不通過也先準備好）
 		applyPushFeatureGate_();
+		applyBulkPermissions_();
 		enforceViewTabsPolicy_();
 
 		if (!check.ok) {
@@ -107,6 +109,7 @@ async function adminAuthBoot_() {
 
 		// ✅ 通過後再保險套一次（含 tabs / 欄位隱藏）
 		applyPushFeatureGate_();
+		applyBulkPermissions_();
 		enforceViewTabsPolicy_();
 
 		toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");

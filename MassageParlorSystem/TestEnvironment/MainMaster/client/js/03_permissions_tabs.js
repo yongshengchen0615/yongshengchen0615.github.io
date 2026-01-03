@@ -12,6 +12,11 @@ function isPushFeatureEnabled_() {
   return isYes_(adminPerms.pushFeatureEnabled);
 }
 
+function canTech_(permKey) {
+  if (!adminPerms) return false;
+  return isYes_(adminPerms[permKey]);
+}
+
 /**
  * 欄位 index（table nth-child）
  * 1:勾選 2:# 3:userId 4:顯示名稱 5:建立時間 6:開始使用 7:期限(天) 8:使用狀態 9:審核狀態
@@ -68,6 +73,42 @@ function applyColumnPermissions_() {
     .join("\n");
 
   styleEl.textContent = rules;
+}
+
+/**
+ * Bulk 欄位權限
+ * 規則：對應資料為「否」則不顯示
+ * - 批次審核 -> 技師審核狀態 (techAudit)
+ * - 批次推播 -> 技師是否推播 (techPushEnabled)
+ * - 批次個人狀態 -> 技師個人狀態開通 (techPersonalStatusEnabled)
+ * - 批次排班表 -> 技師排班表開通 (techScheduleEnabled)
+ * - 批次期限(天) -> 技師使用期限 (techExpiryDate)
+ */
+const PERM_TO_BULK_INPUT_IDS = {
+  techAudit: ["bulkAudit"],
+  techPushEnabled: ["bulkPush"],
+  techPersonalStatusEnabled: ["bulkPersonalStatus"],
+  techScheduleEnabled: ["bulkScheduleEnabled"],
+  techExpiryDate: ["bulkUsageDays"],
+};
+
+function applyBulkPermissions_() {
+  if (!adminPerms) return;
+
+  Object.keys(PERM_TO_BULK_INPUT_IDS).forEach((permKey) => {
+    const show = canTech_(permKey);
+    PERM_TO_BULK_INPUT_IDS[permKey].forEach((inputId) => {
+      const input = document.getElementById(inputId);
+      const group = input ? input.closest(".bulk-group") : null;
+      if (group) group.style.display = show ? "" : "none";
+
+      // 乾淨起見：隱藏時清空選擇，避免殘留值
+      if (!show && input) {
+        if (input instanceof HTMLSelectElement) input.value = "";
+        if (input instanceof HTMLInputElement) input.value = "";
+      }
+    });
+  });
 }
 
 function applyView_() {
@@ -133,5 +174,30 @@ function enforceViewTabsPolicy_() {
 function applyPushFeatureGate_() {
   // 只控制「推播面板」是否顯示
   if (typeof ensurePushPanel_ === "function") ensurePushPanel_();
+}
+
+function canEditUserField_(field) {
+  // 欄位層級對應（前端 table 欄位）
+  // 若 adminPerms 尚未載入，保守視為不可編輯（避免閃爍/誤操作）
+  if (!adminPerms) return false;
+
+  switch (field) {
+    case "audit":
+      return canTech_("techAudit");
+    case "startDate":
+      return canTech_("techStartDate");
+    case "usageDays":
+      return canTech_("techExpiryDate");
+    case "masterCode":
+      return canTech_("techMasterNo");
+    case "pushEnabled":
+      return canTech_("techPushEnabled");
+    case "personalStatusEnabled":
+      return canTech_("techPersonalStatusEnabled");
+    case "scheduleEnabled":
+      return canTech_("techScheduleEnabled");
+    default:
+      return true;
+  }
 }
 

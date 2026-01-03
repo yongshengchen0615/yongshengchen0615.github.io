@@ -73,12 +73,17 @@ function syncCheckAll_() {
 async function bulkApply_() {
 	if (savingAll) return;
 
-	const audit = document.getElementById("bulkAudit")?.value || "";
-	const pushEnabled = document.getElementById("bulkPush")?.value || "";
-	const personalStatusEnabled = document.getElementById("bulkPersonalStatus")?.value || "";
-	const scheduleEnabled = document.getElementById("bulkScheduleEnabled")?.value || "";
+	// ✅ 權限保險：對應資料為「否」則不套用（UI 也會隱藏）
+	const audit = canEditUserField_?.("audit") ? document.getElementById("bulkAudit")?.value || "" : "";
+	const pushEnabled = canEditUserField_?.("pushEnabled") ? document.getElementById("bulkPush")?.value || "" : "";
+	const personalStatusEnabled = canEditUserField_?.("personalStatusEnabled")
+		? document.getElementById("bulkPersonalStatus")?.value || ""
+		: "";
+	const scheduleEnabled = canEditUserField_?.("scheduleEnabled")
+		? document.getElementById("bulkScheduleEnabled")?.value || ""
+		: "";
 
-	const usageDaysRaw = String(document.getElementById("bulkUsageDays")?.value || "").trim();
+	const usageDaysRaw = canEditUserField_?.("usageDays") ? String(document.getElementById("bulkUsageDays")?.value || "").trim() : "";
 	const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
 	if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
 		toast("批次期限(天) 請輸入大於 0 的數字", "err");
@@ -333,6 +338,21 @@ function handleRowFieldChange_(fieldEl) {
 
 	const field = fieldEl.getAttribute("data-field");
 	if (!field) return;
+
+	// ✅ 權限保險：對應資料為「否」則不允許修改
+	if (typeof canEditUserField_ === "function" && !canEditUserField_(field)) {
+		const snapStr = originalMap.get(userId);
+		if (snapStr) {
+			try {
+				const snap = JSON.parse(snapStr);
+				const prev = snap?.[field];
+				if (fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLSelectElement) {
+					fieldEl.value = prev ?? "";
+				}
+			} catch (_) {}
+		}
+		return;
+	}
 
 	const value = readFieldValue_(fieldEl);
 
