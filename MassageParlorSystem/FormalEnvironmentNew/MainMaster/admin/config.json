@@ -5,7 +5,7 @@
     "usage": "由 admin.js 於載入時 fetch 並解析"
   },
 
-  "LIFF_ID": "2008804969-o8cRFrmi",
+  "LIFF_ID": "2008811948-AN0VZKiP",
   "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
 
   "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbziVr_I5tGAP0HGNuFDutshZ_sWU1ur7cbxh7KXA5EpUr4V2Yzh9oLShy0k-o1EP2irnQ/exec",
