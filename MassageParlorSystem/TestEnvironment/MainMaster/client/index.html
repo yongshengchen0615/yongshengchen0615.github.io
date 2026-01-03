@@ -205,7 +205,17 @@
 
 <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
-<!-- ✅ 使用打包版：包含最新管理員門禁 + 推播功能開通 gate 修正 -->
-<script src="app.js?v=20260103" defer></script>
+<!-- ✅ 模組化版本：拆分至 js/（保留管理員門禁 + 推播功能開通 gate 修正） -->
+<script src="js/00_state.js?v=20260103" defer></script>
+<script src="js/01_utils.js?v=20260103" defer></script>
+<script src="js/02_config.js?v=20260103" defer></script>
+<script src="js/03_permissions_tabs.js?v=20260103" defer></script>
+<script src="js/04_ui.js?v=20260103" defer></script>
+<script src="js/05_users_sort.js?v=20260103" defer></script>
+<script src="js/06_bulk_table_save.js?v=20260103" defer></script>
+<script src="js/07_api.js?v=20260103" defer></script>
+<script src="js/08_push.js?v=20260103" defer></script>
+<script src="js/09_auth.js?v=20260103" defer></script>
+<script src="js/99_main.js?v=20260103" defer></script>
 </body>
 </html>
