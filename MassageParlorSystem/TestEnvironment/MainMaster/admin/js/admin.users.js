@@ -405,14 +405,6 @@ function uApplyFilters_() {
   uUpdateBulkBar_();
   uRefreshSaveBtn_();
   uUpdateKpi_();
-
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-  const dirtyText = uDirtyMap.size ? `，未儲存 ${uDirtyMap.size} 筆` : "";
-  const searchHint = keywordRaw ? "（搜尋中）" : "";
-  uSetFooter_(`最後更新：${hh}:${mm}:${ss}，目前顯示 ${uFiltered.length} 筆${searchHint}${dirtyText}`);
 }
 
 function uAuditOption_(value, current) {
@@ -917,16 +909,6 @@ function uBind_() {
 
     uMarkDirty_(id, u);
     uUpdateRowDirtyUI_(row, id);
-
-    // 更新 footer（維持與 client 的「即時更新」感）
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    const keywordRaw = String(document.getElementById("uSearchInput")?.value || "").trim();
-    const dirtyText = uDirtyMap.size ? `，未儲存 ${uDirtyMap.size} 筆` : "";
-    const searchHint = keywordRaw ? "（搜尋中）" : "";
-    uSetFooter_(`最後更新：${hh}:${mm}:${ss}，目前顯示 ${uFiltered.length} 筆${searchHint}${dirtyText}`);
   });
 
   tbody.addEventListener("click", async (e) => {

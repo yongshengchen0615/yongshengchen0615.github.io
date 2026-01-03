@@ -138,6 +138,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border-color:rgba(56,189,248,.45);
   background:var(--accent-soft);
 }
+.chip:hover{ border-color:rgba(56,189,248,.45); color:var(--text); }
 .chip:disabled{ opacity:.55; cursor:not-allowed; }
 
 /* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
@@ -157,7 +158,19 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border-color:rgba(56,189,248,.45);
   background:var(--accent-soft);
 }
+.client-scope .u-chip:hover{ border-color:rgba(56,189,248,.45); color:var(--text); }
 .client-scope .u-chip:disabled{ opacity:.55; cursor:not-allowed; }
+
+/* Users(技師) panel head layout: keep chips right of search */
+.client-scope .panel-head .filters{ flex:1 1 100%; }
+.client-scope .panel-head .panel-actions{
+  flex:0 0 100%;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
 
 .bulkbar{
   display:flex; flex-wrap:wrap;
