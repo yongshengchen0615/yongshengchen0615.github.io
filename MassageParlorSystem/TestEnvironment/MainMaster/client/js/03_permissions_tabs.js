@@ -93,10 +93,9 @@ const PERM_TO_BULK_INPUT_IDS = {
 };
 
 function applyBulkPermissions_() {
-  if (!adminPerms) return;
-
   Object.keys(PERM_TO_BULK_INPUT_IDS).forEach((permKey) => {
-    const show = canTech_(permKey);
+    // ✅ 保守策略：權限未載入/已登出 -> 先全部隱藏，避免閃爍或誤顯示
+    const show = adminPerms ? canTech_(permKey) : false;
     PERM_TO_BULK_INPUT_IDS[permKey].forEach((inputId) => {
       const input = document.getElementById(inputId);
       const group = input ? input.closest(".bulk-group") : null;

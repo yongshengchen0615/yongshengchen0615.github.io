@@ -44,6 +44,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 		bindFilter();
 		bindSorting_();
 		bindBulk_();
+		// ✅ 權限尚未載入前：先隱藏批次欄位（避免「否」仍顯示的錯覺/閃爍）
+		if (typeof applyBulkPermissions_ === "function") applyBulkPermissions_();
 		bindTableDelegation_();
 
 		const searchInput = document.getElementById("searchInput");

@@ -127,6 +127,7 @@ async function adminLogout_() {
 		adminProfile = null;
 		adminPerms = null;
 		setEditingEnabled_(false);
+		if (typeof applyBulkPermissions_ === "function") applyBulkPermissions_();
 		ensurePushPanel_();
 		showAuthGate_(true, "已登出。請重新登入。");
 	}
