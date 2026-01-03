@@ -38,6 +38,7 @@ function snapshot_(a) {
     createdAt: a.createdAt,
     lastLogin: a.lastLogin,
 
+    pushFeatureEnabled: normalizeYesNo_(a.pushFeatureEnabled),
     techAudit: normalizeYesNo_(a.techAudit),
     techCreatedAt: normalizeYesNo_(a.techCreatedAt),
     techStartDate: normalizeYesNo_(a.techStartDate),
@@ -76,6 +77,7 @@ function toAdminRow_(a) {
     createdAt: String(a?.createdAt || ""),
     lastLogin: String(a?.lastLogin || ""),
 
+    pushFeatureEnabled: normalizeYesNo_(a?.pushFeatureEnabled),
     techAudit: normalizeYesNo_(a?.techAudit),
     techCreatedAt: normalizeYesNo_(a?.techCreatedAt),
     techStartDate: normalizeYesNo_(a?.techStartDate),
@@ -109,6 +111,7 @@ function toUpdateItem_(a) {
     displayName: a.displayName,
     audit: normalizeAudit_(a.audit),
 
+    pushFeatureEnabled: normalizeYesNo_(a.pushFeatureEnabled),
     techAudit: normalizeYesNo_(a.techAudit),
     techCreatedAt: normalizeYesNo_(a.techCreatedAt),
     techStartDate: normalizeYesNo_(a.techStartDate),

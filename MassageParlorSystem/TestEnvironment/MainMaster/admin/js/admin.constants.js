@@ -33,6 +33,7 @@ const LOCKABLE_IDS = [
  * - 目的：集中管理可切換欄位，避免 typo。
  */
 const TECH_TOGGLE_FIELDS = new Set([
+  "pushFeatureEnabled",
   "techAudit",
   "techCreatedAt",
   "techStartDate",
