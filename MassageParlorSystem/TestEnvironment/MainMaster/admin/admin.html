@@ -137,6 +137,34 @@
         </div>
       </section>
 
+      <!-- KPI (Users/技師名單 - match client) -->
+      <section class="kpi-grid" aria-label="技師統計資訊">
+        <div class="kpi-card">
+          <div class="kpi-label">總技師</div>
+          <div class="kpi-value" id="uKpiTotal">-</div>
+        </div>
+        <div class="kpi-card success">
+          <div class="kpi-label">通過</div>
+          <div class="kpi-value" id="uKpiApproved">-</div>
+        </div>
+        <div class="kpi-card warning">
+          <div class="kpi-label">待審核</div>
+          <div class="kpi-value" id="uKpiPending">-</div>
+        </div>
+        <div class="kpi-card danger">
+          <div class="kpi-label">拒絕</div>
+          <div class="kpi-value" id="uKpiRejected">-</div>
+        </div>
+        <div class="kpi-card muted">
+          <div class="kpi-label">停用</div>
+          <div class="kpi-value" id="uKpiDisabled">-</div>
+        </div>
+        <div class="kpi-card maintenance">
+          <div class="kpi-label">系統維護</div>
+          <div class="kpi-value" id="uKpiMaintenance">-</div>
+        </div>
+      </section>
+
       <!-- ✅ Users/技師資料管理：直接在 admin 內製作（不嵌入、不外連） -->
       <section class="panel client-scope" aria-label="Users/技師資料管理">
         <div class="panel-head">

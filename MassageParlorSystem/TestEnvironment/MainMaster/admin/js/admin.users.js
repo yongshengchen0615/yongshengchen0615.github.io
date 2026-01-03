@@ -56,6 +56,36 @@ function uSetFooter_(text) {
   if (el) el.textContent = String(text || "-");
 }
 
+function uSetText_(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = String(text ?? "-");
+}
+
+function uUpdateKpi_() {
+  const total = uAll.length;
+  let approved = 0;
+  let pending = 0;
+  let rejected = 0;
+  let disabled = 0;
+  let maintenance = 0;
+
+  for (const u of uAll) {
+    const audit = normalizeAudit_(u.audit);
+    if (audit === "通過") approved += 1;
+    else if (audit === "待審核") pending += 1;
+    else if (audit === "拒絕") rejected += 1;
+    else if (audit === "停用") disabled += 1;
+    else if (audit === "系統維護") maintenance += 1;
+  }
+
+  uSetText_("uKpiTotal", total || 0);
+  uSetText_("uKpiApproved", approved);
+  uSetText_("uKpiPending", pending);
+  uSetText_("uKpiRejected", rejected);
+  uSetText_("uKpiDisabled", disabled);
+  uSetText_("uKpiMaintenance", maintenance);
+}
+
 function uRefreshSaveBtn_() {
   const btn = document.getElementById("uSaveAllBtn");
   if (!btn) return;
@@ -374,6 +404,7 @@ function uApplyFilters_() {
   uSyncCheckAll_();
   uUpdateBulkBar_();
   uRefreshSaveBtn_();
+  uUpdateKpi_();
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
@@ -456,7 +487,7 @@ function uRender_() {
       </td>
 
       <td data-label="審核狀態">
-        <select data-field="audit" class="select" aria-label="審核狀態">
+        <select data-field="audit" aria-label="審核狀態">
           ${AUDIT_ENUM.map((v) => uAuditOption_(v, audit)).join("")}
         </select>
         <span class="audit-badge ${uAuditClass_(audit)}">${escapeHtml(audit)}</span>
@@ -469,21 +500,21 @@ function uRender_() {
       <td data-label="是否師傅" class="u-is-master">${u.masterCode ? "是" : "否"}</td>
 
       <td data-label="是否推播">
-        <select data-field="pushEnabled" class="select" aria-label="是否推播" ${pushDisabled}>
+        <select data-field="pushEnabled" aria-label="是否推播" ${pushDisabled}>
           <option value="否" ${pushEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${pushEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
       <td data-label="個人狀態開通">
-        <select data-field="personalStatusEnabled" class="select" aria-label="個人狀態開通">
+        <select data-field="personalStatusEnabled" aria-label="個人狀態開通">
           <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
         </select>
       </td>
 
       <td data-label="排班表開通">
-        <select data-field="scheduleEnabled" class="select" aria-label="排班表開通">
+        <select data-field="scheduleEnabled" aria-label="排班表開通">
           <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
           <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
         </select>
@@ -850,6 +881,9 @@ function uBind_() {
         badge.textContent = auditNow;
         badge.className = `audit-badge ${uAuditClass_(auditNow)}`;
       }
+
+      // 同步更新 KPI（audit 會影響統計）
+      uUpdateKpi_();
     } else if (field === "usageDays") {
       u.usageDays = v.trim();
       const exp = uGetExpiryInfo_(u);
