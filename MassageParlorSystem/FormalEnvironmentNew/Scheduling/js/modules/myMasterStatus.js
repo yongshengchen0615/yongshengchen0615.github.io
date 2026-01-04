@@ -208,7 +208,7 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber(row);
   const remText = remNum === null ? "—" : String(remNum);
-  const showRemaining = normalizeText(statusText) !== "工作中";
+  const showRemaining = normalizeText(statusText) === "工作中";
 
   const stCls = "status-pill " + classifyMyStatusClass(statusText, remNum);
   const remCls = "myms-rem " + remBadgeClass(remNum);
