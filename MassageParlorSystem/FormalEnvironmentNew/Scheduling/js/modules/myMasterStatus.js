@@ -15,6 +15,7 @@ import {
   escapeHtml,
   applyPillFromTokens,
   tokenToStripe,
+  applyTextColorFromToken,
 } from "./core.js";
 import { showNotMasterHint } from "./scheduleUi.js";
 
@@ -204,6 +205,15 @@ function pickDominantRow(bodyRow, footRow) {
   return best;
 }
 
+function parseAppointmentText(row) {
+  const v = pickAny(row || {}, ["appointment", "預約", "booking", "appt", "bookingContent"]);
+  return String(v ?? "").trim();
+}
+
+function parseAppointmentColor(row) {
+  return pickAny(row || {}, ["colorAppointment", "colorAppt", "colorBooking"]);
+}
+
 function makeMyPanelRowHTML(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber(row);
@@ -220,6 +230,11 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
     rankText = `入牌順位：${shiftRankObj.rank}`;
     if (shiftRankObj.rank <= 3) rankCls += " is-top3";
   }
+
+  const apptRaw = parseAppointmentText(row);
+  const hasAppt = !!apptRaw;
+  const apptHtml = escapeHtml(apptRaw).replace(/\r?\n/g, "<br>");
+  const apptColorToken = parseAppointmentColor(row);
 
   const bgStatus = row && row.bgStatus ? String(row.bgStatus) : "";
   const colorStatus = row && row.colorStatus ? String(row.colorStatus) : "";
@@ -239,6 +254,12 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
         ${hasRank ? `
           <div class="myms-line myms-line2">
             <span class="${rankCls}">${escapeHtml(rankText)}</span>
+          </div>
+        ` : ""}
+        ${hasAppt ? `
+          <div class="myms-line myms-line-appt">
+            <span class="myms-appt-badge">預約</span>
+            <span class="myms-appt-text" data-colorappt="${escapeHtml(apptColorToken)}">${apptHtml}</span>
           </div>
         ` : ""}
       </div>
@@ -296,6 +317,12 @@ export function updateMyMasterStatusUI() {
     const bg = pill.getAttribute("data-bgstatus") || "";
     const fg = pill.getAttribute("data-colorstatus") || "";
     applyPillFromTokens(pill, bg, fg);
+  });
+
+  const apptTexts = host.querySelectorAll('.myms-appt-text[data-colorappt]');
+  apptTexts.forEach((el) => {
+    const tk = el.getAttribute("data-colorappt") || "";
+    applyTextColorFromToken(el, tk);
   });
 
   // 左側色條（用 dominant row 的 token）
