@@ -20,6 +20,7 @@ import {
   normalizeHex6,
   hexToRgb,
   isLightTheme,
+  parseOpacityToken,
 } from "./core.js";
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
@@ -321,6 +322,49 @@ function applyOrderIndexHighlight(tdOrder, bgToken) {
     ? "inset 0 0 0 999px rgba(255,255,255,0.14), 0 1px 10px rgba(0,0,0,0.08)"
     : "inset 0 0 0 999px rgba(0,0,0,0.10), 0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(0,0,0,0.35)";
 
+function extractBgColorFromColorMaster(colorMaster) {
+  const tokens = String(colorMaster || "").split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  for (const tk of tokens) {
+    if (!tk.toLowerCase().startsWith("bg-")) continue;
+    const h = normalizeHex6(tk);
+    if (h) {
+      hex = h;
+      break;
+    }
+  }
+
+  if (!hex) return null;
+
+  let opacity = null;
+  for (const tk of tokens) {
+    const o = parseOpacityToken(tk);
+    if (o != null) {
+      opacity = o;
+      break;
+    }
+  }
+
+  return { hex, opacity };
+}
+
+function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
+  if (!tdAppointment) return;
+  tdAppointment.style.backgroundColor = "";
+
+  const bg = extractBgColorFromColorMaster(colorMaster);
+  if (!bg) return;
+
+  const rgb = hexToRgb(bg.hex);
+  if (!rgb) return;
+
+  const baseAlpha = isLightTheme() ? 0.14 : 0.22;
+  const alpha = Math.max(0.06, Math.min(0.40, bg.opacity == null ? baseAlpha : bg.opacity));
+
+  tdAppointment.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
   tdOrder.style.fontWeight = "900";
 }
 
@@ -352,6 +396,7 @@ function patchRowDom(tr, row, orderText) {
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.color = "";
   applyTextColorFromToken(tdMaster, row.colorMaster);
+  applyAppointmentBgFromColorMaster(tdMaster, row.colorMaster);
 
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
@@ -360,6 +405,7 @@ function patchRowDom(tr, row, orderText) {
   applyPillFromTokens(statusSpan, row.bgStatus, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
+  applyAppointmentBgFromColorMaster(tdAppointment, row.colorMaster);
   tdAppointment.textContent = row.appointment || "";
   tdAppointment.style.color = "";
   applyTextColorFromToken(tdAppointment, row.colorAppointment);
