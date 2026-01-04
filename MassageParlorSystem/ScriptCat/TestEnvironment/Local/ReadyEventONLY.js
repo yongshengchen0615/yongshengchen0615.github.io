@@ -3,7 +3,7 @@
 // @namespace    http://scriptcat.org/
 // @version      1.78
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
-// @match        https://yongshengchen0615.github.io/master.html
+// @match        https://yongshengchen0615.github.io/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -13,6 +13,8 @@
 
 (function () {
   "use strict";
+
+  console.log("[ReadyOnly] 🧩 injected on", location.href);
 
   // =========================
   // ✅ 1) 你的 GAS Web App 端點（/exec）
@@ -93,7 +95,21 @@
     try {
       if (typeof GM_getResourceText !== "function") return {};
       const raw = GM_getResourceText(GAS_RESOURCE);
+      if (typeof raw !== "string" || raw.trim() === "") {
+        console.warn(
+          `[Config] @resource '${GAS_RESOURCE}' is empty. ` +
+            `Check ScriptCat resources and ensure '@resource ${GAS_RESOURCE} gas-ready-config-local.json' is actually attached to this script.`
+        );
+        return {};
+      }
       const parsed = safeJsonParse(raw);
+      if (!parsed) {
+        console.warn(
+          `[Config] @resource '${GAS_RESOURCE}' is not valid JSON. ` +
+            `First 120 chars: ${String(raw).slice(0, 120)}`
+        );
+        return {};
+      }
       if (!parsed || typeof parsed !== "object") return {};
 
       const out = {};
@@ -105,6 +121,12 @@
   }
   function applyConfigOverrides() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
+    if (!CFG.GAS_URL) {
+      console.error(
+        `[Config] GAS_URL is empty. Resource='${GAS_RESOURCE}'. ` +
+          `If you expect it from JSON, verify the resource is loaded in ScriptCat and the JSON contains {"GAS_URL":"..."}.`
+      );
+    }
   }
   function getText(el) {
     if (!el) return "";

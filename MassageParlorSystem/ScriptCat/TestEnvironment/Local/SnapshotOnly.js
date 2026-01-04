@@ -3,7 +3,7 @@
 // @namespace    http://scriptcat.org/
 // @version      1.76
 // @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）
-// @match        https://yongshengchen0615.github.io/master.html
+// @match        https://yongshengchen0615.github.io/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -13,6 +13,8 @@
 
 (function () {
   "use strict";
+
+  console.log("[SnapshotQ] 🧩 injected on", location.href);
 
   /* =========================
    * 0) Config------
@@ -68,7 +70,21 @@
     try {
       if (typeof GM_getResourceText !== "function") return {};
       const raw = GM_getResourceText(GAS_RESOURCE);
+      if (typeof raw !== "string" || raw.trim() === "") {
+        console.warn(
+          `[Config] @resource '${GAS_RESOURCE}' is empty. ` +
+            `Check ScriptCat resources and ensure '@resource ${GAS_RESOURCE} gas-snapshot-config-local.json' is actually attached to this script.`
+        );
+        return {};
+      }
       const parsed = safeJsonParse(raw);
+      if (!parsed) {
+        console.warn(
+          `[Config] @resource '${GAS_RESOURCE}' is not valid JSON. ` +
+            `First 120 chars: ${String(raw).slice(0, 120)}`
+        );
+        return {};
+      }
       if (!parsed || typeof parsed !== "object") return {};
 
       const out = {};
@@ -80,6 +96,12 @@
   }
   function applyConfigOverrides() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
+    if (!CFG.GAS_URL) {
+      console.error(
+        `[Config] GAS_URL is empty. Resource='${GAS_RESOURCE}'. ` +
+          `If you expect it from JSON, verify the resource is loaded in ScriptCat and the JSON contains {"GAS_URL":"..."}.`
+      );
+    }
   }
   function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
