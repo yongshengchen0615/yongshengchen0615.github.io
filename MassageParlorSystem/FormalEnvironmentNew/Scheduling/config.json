@@ -15,7 +15,7 @@
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxcAgHXaSxaLRB_OcqUyq80r6EiZjHxWK7eBU-PzyGyxfMzPz6btC6gKx6w03_AwyCuMg/exec",
   "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
 
-  "LIFF_ID": "2008669658-sBKFvZEz",
+  "LIFF_ID": "2008669658-Q4WMyPkF",
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
   "ENABLE_LINE_LOGIN": true,
