@@ -322,6 +322,9 @@ function applyOrderIndexHighlight(tdOrder, bgToken) {
     ? "inset 0 0 0 999px rgba(255,255,255,0.14), 0 1px 10px rgba(0,0,0,0.08)"
     : "inset 0 0 0 999px rgba(0,0,0,0.10), 0 0 0 1px rgba(255,255,255,0.06), 0 4px 14px rgba(0,0,0,0.35)";
 
+  tdOrder.style.fontWeight = "900";
+}
+
 function extractBgColorFromColorMaster(colorMaster) {
   const tokens = String(colorMaster || "").split(/\s+/).filter(Boolean);
 
@@ -363,9 +366,6 @@ function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
   const alpha = Math.max(0.06, Math.min(0.40, bg.opacity == null ? baseAlpha : bg.opacity));
 
   tdAppointment.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
-}
-
-  tdOrder.style.fontWeight = "900";
 }
 
 function patchRowDom(tr, row, orderText) {
