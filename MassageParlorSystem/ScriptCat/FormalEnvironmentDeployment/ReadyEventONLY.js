@@ -6,7 +6,9 @@
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
 // @connect      script.google.com
+// @resource     gasConfigReadyFED gas-ready-config-fed.json
 // ==/UserScript==
 
 (function () {
@@ -15,8 +17,13 @@
   // =========================
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
-  const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbxmPh1EReKTJxvk7N26UjMX_C-WvTBEaXp4b7OUANKsGUCILFNTz_J9MV0DBfKCYXI0/exec";
+  const GAS_RESOURCE = "gasConfigReadyFED";
+
+  const DEFAULT_CFG = {
+    GAS_URL: ""
+  };
+
+  let CFG = { ...DEFAULT_CFG };
 
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
@@ -26,6 +33,7 @@
   const ENABLE_READY_EVENT = true;
   const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒
 
+  applyConfigOverrides();
   console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
 
   // =========================
@@ -73,6 +81,30 @@
   // =========================
   function nowIso() {
     return new Date().toISOString();
+  }
+  function safeJsonParse(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  function loadJsonOverrides() {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch {
+      return {};
+    }
+  }
+  function applyConfigOverrides() {
+    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
   }
   function getText(el) {
     if (!el) return "";
@@ -253,7 +285,7 @@
   }
 
   function maybeSendReadyEvent(panel, row, payloadTs) {
-    if (!ENABLE_READY_EVENT || !GAS_URL) return;
+    if (!ENABLE_READY_EVENT || !CFG.GAS_URL) return;
     if (!row || !row.masterId) return;
 
     const masterId = String(row.masterId || "").trim();
@@ -286,7 +318,7 @@
           source: "prod", // ✅建議明確標記正式
         };
 
-        postBeaconFirst(GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
+        postBeaconFirst(CFG.GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
         logGroup(`[ReadyOnly] ⚡ ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
       }
     }
@@ -296,7 +328,7 @@
 
   function tick() {
     try {
-      if (!ENABLE_READY_EVENT || !GAS_URL) return;
+      if (!ENABLE_READY_EVENT || !CFG.GAS_URL) return;
 
       const bodyPanel = findBodyPanel();
       const footPanel = findFootPanel();
@@ -372,11 +404,11 @@
         `[TestPlan] ▶ send job=${jobName} seq=${seq} masterId=${evt.masterId} ts=${ts}`
       );
 
-    postJsonGM(GAS_URL, evt, TEST_PLAN.timeoutMs || 45000);
+    postJsonGM(CFG.GAS_URL, evt, TEST_PLAN.timeoutMs || 45000);
   }
 
   function runTestPlan() {
-    if (!GAS_URL) return console.error("[TestPlan] ❌ missing GAS_URL");
+    if (!CFG.GAS_URL) return console.error("[TestPlan] ❌ missing GAS_URL");
     if (!TEST_PLAN.enabled) return console.warn("[TestPlan] TEST_PLAN.enabled=false");
     if (!Array.isArray(TEST_PLAN.list) || TEST_PLAN.list.length === 0)
       return console.warn("[TestPlan] list is empty");
@@ -455,11 +487,11 @@
     };
 
     if (LOG_MODE !== "off") console.log("[Stress] ▶ send", masterId, ts);
-    postJsonGM(GAS_URL, evt, STRESS.timeoutMs);
+    postJsonGM(CFG.GAS_URL, evt, STRESS.timeoutMs);
   }
 
   function runStress() {
-    if (!GAS_URL) return console.error("[Stress] missing GAS_URL");
+    if (!CFG.GAS_URL) return console.error("[Stress] missing GAS_URL");
     if (!STRESS.enabled) return console.warn("[Stress] STRESS.enabled=false");
 
     console.log(
