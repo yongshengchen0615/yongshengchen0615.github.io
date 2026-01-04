@@ -251,6 +251,13 @@ async function onAuthorized({ userId, displayName, result }) {
   return { ok: true, userId, displayName, result };
 }
 
+/**
+ * 非 LIFF 模式初始化 + 權限驗證（Gate）。
+ * - 會從 query 讀取 `userId` / `name`，或讀 localStorage (devUserId/devDisplayName)
+ * - 會呼叫 AUTH API 確認是否允許進入
+ *
+ * @returns {Promise<{ok:boolean, userId?:string, displayName?:string, result?:any}>}
+ */
 export async function initNoLiffAndGuard() {
   showGate("✅ 未啟用 LINE 登入\n正在確認使用權限…");
 
@@ -277,6 +284,14 @@ export async function initNoLiffAndGuard() {
   }
 }
 
+/**
+ * LIFF 模式初始化 + 權限驗證（Gate）。
+ * - 會做 liff.init / login / getProfile
+ * - 會呼叫 AUTH API 確認是否允許進入
+ *
+ * @returns {Promise<{ok:boolean, userId?:string, displayName?:string, result?:any}>}
+ *   ok=true 表示可進入主畫面；ok=false 代表仍停留在 gate（或已觸發 liff.login）。
+ */
 export async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 

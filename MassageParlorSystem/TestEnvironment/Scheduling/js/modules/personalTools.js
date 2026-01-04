@@ -64,6 +64,8 @@ export function hidePersonalTools() {
 /**
  * 依照 userId 向 AUTH 取個人連結並顯示按鈕。
  * 若取不到，仍會顯示按鈕但點擊會 console.error。
+ * @param {string} userId 使用者 ID（通常是 LIFF userId）。
+ * @returns {Promise<void>}
  */
 export async function loadAndShowPersonalTools(userId) {
   try {

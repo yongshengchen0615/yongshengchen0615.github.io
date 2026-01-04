@@ -36,6 +36,7 @@ function renderFeatureBanner() {
 /**
  * 更新 feature 狀態並重新渲染。
  * data 通常是 AUTH 回傳的物件。
+ * @param {any} data 後端回傳資料；至少包含 pushEnabled/personalStatusEnabled/scheduleEnabled。
  */
 export function updateFeatureState(data) {
   state.feature.pushEnabled = normalizeYesNo(data && data.pushEnabled);
