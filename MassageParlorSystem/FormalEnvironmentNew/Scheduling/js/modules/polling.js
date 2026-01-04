@@ -107,6 +107,8 @@ function resetPollState() {
 /**
  * 啟動輪詢
  * - scheduleUiEnabled=false：也會輪詢（只更新 rawData + 我的狀態/提示）
+ * - 內建自適應間隔：穩定後加長、失敗後退避、資料變更時加速下一次
+ * @returns {void}
  */
 export function startPolling() {
   // 手動重整

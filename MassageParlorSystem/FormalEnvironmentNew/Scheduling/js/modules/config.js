@@ -8,17 +8,36 @@
 const CONFIG_JSON_URL = "./config.json";
 
 export const config = {
+  /** Edge 狀態讀取用的 GAS Web App URL 清單（會先經 sanitizeEdgeUrls 清理/去重）。 */
   EDGE_STATUS_URLS: [],
+
+  /** 所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。 */
   FALLBACK_ORIGIN_CACHE_URL: "",
+
+  /** 權限驗證用 GAS API：支援 check / register / getPersonalStatus 等 mode。 */
   AUTH_API_URL: "",
+
+  /** LINE LIFF 應用程式 ID（給 liff.init({ liffId }) 使用）。 */
   LIFF_ID: "",
+
+  /** 是否啟用 LINE LIFF 登入流程（false 時走 No-LIFF 模式，方便測試）。 */
   ENABLE_LINE_LOGIN: true,
 
   // （可選）使用頻率紀錄
+  /** （可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。 */
   USAGE_LOG_URL: "",
+
+  /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 };
 
+/**
+ * 載入並套用 ./config.json 到 `config` 物件。
+ * - 會做基本型別轉換與 trim
+ * - 會檢查必要欄位是否存在（缺少則丟 Error）
+ *
+ * @returns {Promise<void>} 載入成功則 resolve；失敗會 throw。
+ */
 export async function loadConfigJson() {
   const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);

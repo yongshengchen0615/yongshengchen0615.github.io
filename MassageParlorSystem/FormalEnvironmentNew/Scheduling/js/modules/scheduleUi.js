@@ -56,6 +56,10 @@ function ensureNotMasterHint() {
   return notMasterHintEl;
 }
 
+/**
+ * 顯示/隱藏「你不是師傅」提示卡。
+ * @param {boolean} show 是否顯示。
+ */
 export function showNotMasterHint(show) {
   const el = ensureNotMasterHint();
   el.style.display = show ? "block" : "none";
