@@ -61,6 +61,11 @@ async function fireAndForgetGet(url) {
  * 記錄一次「app_open」事件
  * - 只有在 config.USAGE_LOG_URL 有填時才會送
  * - 同一 userId 會依 config.USAGE_LOG_MIN_INTERVAL_MS 節流
+ *
+ * @param {Object} [args]
+ * @param {string} [args.userId] 使用者唯一 ID（通常是 LIFF userId）；空值會略過不送。
+ * @param {string} [args.displayName] 顯示名稱（可選）；會送到後端作紀錄。
+ * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>} 送出結果；skipped 表示被略過。
  */
 export async function logAppOpen({ userId, displayName } = {}) {
   const base = String(config.USAGE_LOG_URL || "").trim();

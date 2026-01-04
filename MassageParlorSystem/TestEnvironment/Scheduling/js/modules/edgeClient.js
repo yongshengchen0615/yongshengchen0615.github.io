@@ -87,7 +87,15 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
 
 /**
  * 取得身體/腳底面板資料（含 failover）
- * 回傳格式固定：{ source, edgeIdx, bodyRows, footRows }
+ * - 會先嘗試 Edge（多個端點 + timeout + sticky reroute）
+ * - Edge 全部失敗才打 fallback origin cache
+ *
+ * 回傳格式固定：
+ * - source: "edge" | "origin"（資料來源）
+ * - edgeIdx: number | null（使用的 edge 索引；origin 時為 null）
+ * - bodyRows / footRows: Array（原始列資料）
+ *
+ * @returns {Promise<{source:"edge"|"origin", edgeIdx:number|null, bodyRows:any[], footRows:any[]}>}
  */
 export async function fetchStatusAll() {
   const jitterBust = Date.now();

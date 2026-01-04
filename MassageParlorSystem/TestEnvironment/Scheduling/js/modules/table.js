@@ -20,6 +20,7 @@ import {
   normalizeHex6,
   hexToRgb,
   isLightTheme,
+  parseOpacityToken,
 } from "./core.js";
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
@@ -59,6 +60,11 @@ function mapRowsToDisplay(rows) {
 /* =========================
  * Filters
  * ========================= */
+/**
+ * 依目前 rawData 重新建立「狀態篩選」下拉選單。
+ * - 會保留使用者原本選擇（若該狀態仍存在）
+ * - 會同步更新 state.filterStatus
+ */
 export function rebuildStatusFilterOptions() {
   if (!dom.filterStatusSelect) return;
 
@@ -193,46 +199,6 @@ function diffMergePanelRows(prevRows, incomingRows) {
 }
 
 /* =========================
- * colorMaster 特例：特定格式帶 bg token 時，給師傅/剩餘時間上底色
- * ========================= */
-function extractBgHexFromColorMaster(token) {
-  if (!token) return null;
-  const raw = String(token);
-
-  const hasRequiredMarkers = raw.includes("font-black") && raw.includes("justify-center") && raw.includes("bg-");
-  if (!hasRequiredMarkers) return null;
-
-  const m = raw.match(/bg-([0-9a-fA-F]{6}|C[0-9a-fA-F]{6})/);
-  if (!m) return null;
-
-  return normalizeHex6(m[0]);
-}
-
-function applyBgFromColorMaster(tdMaster, tdAppointment, token) {
-  if (tdMaster) tdMaster.style.backgroundColor = "";
-  if (tdAppointment) {
-    tdAppointment.style.backgroundColor = "";
-    tdAppointment.style.borderColor = "";
-  }
-
-  const hex = extractBgHexFromColorMaster(token);
-  if (!hex) return;
-
-  const rgb = hexToRgb(hex);
-  if (!rgb) return;
-
-  const masterAlpha = isLightTheme() ? 0.16 : 0.22;
-  if (tdMaster) tdMaster.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${masterAlpha})`;
-
-  if (tdAppointment) {
-    const apptAlpha = isLightTheme() ? 0.20 : 0.28;
-    const borderAlpha = isLightTheme() ? 0.32 : 0.38;
-    tdAppointment.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${apptAlpha})`;
-    tdAppointment.style.borderColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${borderAlpha})`;
-  }
-}
-
-/* =========================
  * 表頭顏色：吃 GAS token
  * ========================= */
 export function applyTableHeaderColorsFromRows(displayRows) {
@@ -270,6 +236,10 @@ export function applyTableHeaderColorsFromRows(displayRows) {
   } catch (e) {}
 }
 
+/**
+ * 重新套用表頭顏色（從 th[data-colortoken] 取回 token）。
+ * - 用在主題切換後：避免 token 顏色在不同 theme 下需要重算
+ */
 export function reapplyTableHeaderColorsFromDataset() {
   try {
     const table = dom.tbodyRowsEl ? dom.tbodyRowsEl.closest("table") : null;
@@ -355,6 +325,49 @@ function applyOrderIndexHighlight(tdOrder, bgToken) {
   tdOrder.style.fontWeight = "900";
 }
 
+function extractBgColorFromColorMaster(colorMaster) {
+  const tokens = String(colorMaster || "").split(/\s+/).filter(Boolean);
+
+  let hex = null;
+  for (const tk of tokens) {
+    if (!tk.toLowerCase().startsWith("bg-")) continue;
+    const h = normalizeHex6(tk);
+    if (h) {
+      hex = h;
+      break;
+    }
+  }
+
+  if (!hex) return null;
+
+  let opacity = null;
+  for (const tk of tokens) {
+    const o = parseOpacityToken(tk);
+    if (o != null) {
+      opacity = o;
+      break;
+    }
+  }
+
+  return { hex, opacity };
+}
+
+function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
+  if (!tdAppointment) return;
+  tdAppointment.style.backgroundColor = "";
+
+  const bg = extractBgColorFromColorMaster(colorMaster);
+  if (!bg) return;
+
+  const rgb = hexToRgb(bg.hex);
+  if (!rgb) return;
+
+  const baseAlpha = isLightTheme() ? 0.14 : 0.22;
+  const alpha = Math.max(0.06, Math.min(0.40, bg.opacity == null ? baseAlpha : bg.opacity));
+
+  tdAppointment.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
 function patchRowDom(tr, row, orderText) {
   const tds = tr.children;
   const tdOrder = tds[0];
@@ -383,6 +396,7 @@ function patchRowDom(tr, row, orderText) {
   tdMaster.textContent = row.masterId || "";
   tdMaster.style.color = "";
   applyTextColorFromToken(tdMaster, row.colorMaster);
+  applyAppointmentBgFromColorMaster(tdMaster, row.colorMaster);
 
   tdStatus.innerHTML = "";
   const statusSpan = document.createElement("span");
@@ -391,6 +405,7 @@ function patchRowDom(tr, row, orderText) {
   applyPillFromTokens(statusSpan, row.bgStatus, row.colorStatus);
   tdStatus.appendChild(statusSpan);
 
+  applyAppointmentBgFromColorMaster(tdAppointment, row.colorMaster);
   tdAppointment.textContent = row.appointment || "";
   tdAppointment.style.color = "";
   applyTextColorFromToken(tdAppointment, row.colorAppointment);
@@ -400,7 +415,6 @@ function patchRowDom(tr, row, orderText) {
   timeSpan.className = "time-badge";
   timeSpan.textContent = row.remainingDisplay || "";
   applyTextColorFromToken(timeSpan, row.colorRemaining);
-  applyBgFromColorMaster(tdMaster, tdAppointment, row.colorMaster);
   tdRemaining.appendChild(timeSpan);
 }
 

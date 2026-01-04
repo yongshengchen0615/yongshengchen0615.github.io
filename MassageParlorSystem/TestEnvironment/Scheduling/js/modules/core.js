@@ -38,6 +38,11 @@ export function withQuery(base, extraQuery) {
   return b + (b.includes("?") ? "&" : "?") + q.replace(/^\?/, "");
 }
 
+/**
+ * 取得 URL query string 參數。
+ * @param {string} k 參數名稱。
+ * @returns {string} 找不到則回傳空字串。
+ */
 export function getQueryParam(k) {
   try {
     const u = new URL(location.href);
@@ -58,6 +63,11 @@ export function readJsonLS(key) {
   }
 }
 
+/**
+ * 寫入 localStorage（JSON.stringify）。
+ * @param {string} key localStorage key。
+ * @param {any} value 要儲存的值（會 JSON.stringify）。
+ */
 export function writeJsonLS(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -76,6 +86,11 @@ export function normalizeText(s) {
     .trim();
 }
 
+/**
+ * 基本 HTML escape（避免 innerHTML 注入）。
+ * @param {string} s 原始字串。
+ * @returns {string} escape 後字串。
+ */
 export function escapeHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -109,6 +124,10 @@ export function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
 
+/**
+ * 目前是否為亮色主題。
+ * @returns {boolean}
+ */
 export function isLightTheme() {
   return (document.documentElement.getAttribute("data-theme") || "dark") === "light";
 }
