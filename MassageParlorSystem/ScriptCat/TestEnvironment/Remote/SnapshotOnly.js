@@ -6,7 +6,9 @@
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
 // @connect      script.google.com
+// @resource     gasConfigSnapshotTER gas-snapshot-config-remote.json
 // ==/UserScript==
 
 (function () {
@@ -15,8 +17,13 @@
   /* =========================
    * 0) Config
    * ========================= */
-  const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbzi81eYEZ_KQIHbzdxIQF0wkRzxr4ECEWchV5XF2Dv7ud4m_yBTL5UgVEtJab8Aa1Ov9w/exec";
+  const GAS_RESOURCE = "gasConfigSnapshotTER";
+
+  const DEFAULT_CFG = {
+    GAS_URL: ""
+  };
+
+  let CFG = { ...DEFAULT_CFG };
 
   // 掃描頻率
   const INTERVAL_MS = 1000;
@@ -41,6 +48,7 @@
   // 正式開關
   const ENABLE_SNAPSHOT = true;
 
+  applyConfigOverrides();
   console.log("[SnapshotQ] 🟢 start (Queue + InFlight + Backoff)");
 
   /* =========================
@@ -48,6 +56,30 @@
    * ========================= */
   function nowIso() {
     return new Date().toISOString();
+  }
+  function safeJsonParse(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  function loadJsonOverrides() {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch {
+      return {};
+    }
+  }
+  function applyConfigOverrides() {
+    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
   }
   function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -287,7 +319,7 @@
 
   async function pumpQueue(reason) {
     try {
-      if (!ENABLE_SNAPSHOT || !GAS_URL) return;
+      if (!ENABLE_SNAPSHOT || !CFG.GAS_URL) return;
       if (!queuedJob) return;
       if (!canSendNow()) return;
 
@@ -308,7 +340,7 @@
       logGroup(title, { meta: job.meta, queued: true });
 
       try {
-        const res = await postJsonGMWithAck(GAS_URL, job.payload);
+        const res = await postJsonGMWithAck(CFG.GAS_URL, job.payload);
 
         // ✅ ACK 成功
         lastAckHash = job.hash;
@@ -368,7 +400,7 @@
    * ========================= */
   function tick() {
     try {
-      if (!ENABLE_SNAPSHOT || !GAS_URL) return;
+      if (!ENABLE_SNAPSHOT || !CFG.GAS_URL) return;
 
       const ts = nowIso();
       const bodyPanel = findBodyPanel();

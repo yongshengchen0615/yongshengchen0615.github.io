@@ -1,4 +1,4 @@
 {
   "GAS_URL": "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec",
-  "GAS_URL__comment": "本地 Snapshot 腳本專用 GAS Web App URL"
+  "GAS_URL__comment": "正式部署版 Snapshot 腳本專用 GAS Web App URL"
 }

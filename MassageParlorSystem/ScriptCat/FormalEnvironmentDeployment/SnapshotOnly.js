@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name        FED Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
+// @name         FED Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
 // @namespace    http://scriptcat.org/
 // @version      1.80
 // @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）

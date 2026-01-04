@@ -6,7 +6,9 @@
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
 // @connect      script.google.com
+// @resource     gasConfigReadyTER gas-ready-config-remote.json
 // ==/UserScript==
 
 (function () {
@@ -17,8 +19,13 @@
   // =========================
   // 這個 URL 是「Ready Event 接收 / 推播」的 GAS Web App
   // 前端偵測到師傅從「非準備」變成「準備」時，就會 POST 到這裡
-  const GAS_URL =
-    "https://script.google.com/macros/s/AKfycbwP_LueNqPfxJlr0PtCyK9UBbGLxILfIWIvYQl1CNmBVZ41ZyIe4dTx6_rxfs0JHNhr/exec";
+  const GAS_RESOURCE = "gasConfigReadyTER";
+
+  const DEFAULT_CFG = {
+    GAS_URL: ""
+  };
+
+  let CFG = { ...DEFAULT_CFG };
 
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
@@ -65,6 +72,7 @@
     masterPrefix: "T",
   };
 
+  applyConfigOverrides();
   console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
 
   // =========================
@@ -72,6 +80,33 @@
   // =========================
   function nowIso() {
     return new Date().toISOString();
+  }
+
+  function safeJsonParse(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+
+  function loadJsonOverrides() {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function applyConfigOverrides() {
+    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
   }
 
   // =========================
@@ -298,7 +333,7 @@
 
   // 判斷是否要送 ready_event（只在「轉換成準備」時送）
   function maybeSendReadyEvent(panel, row, payloadTs) {
-    if (!ENABLE_READY_EVENT || !GAS_URL) return;
+    if (!ENABLE_READY_EVENT || !CFG.GAS_URL) return;
     if (!row || !row.masterId) return;
 
     const masterId = String(row.masterId || "").trim();
@@ -335,7 +370,7 @@
         };
 
         // 送出：beacon 優先（快），失敗用 GM（穩）
-        postBeaconFirst(GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
+        postBeaconFirst(CFG.GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
 
         // log（依 LOG_MODE 控制）
         logGroup(`[ReadyOnly] ⚡ ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
@@ -351,7 +386,7 @@
   // =========================
   function tick() {
     try {
-      if (!ENABLE_READY_EVENT || !GAS_URL) return;
+      if (!ENABLE_READY_EVENT || !CFG.GAS_URL) return;
 
       const bodyPanel = findBodyPanel();
       const footPanel = findFootPanel();
@@ -402,14 +437,14 @@
     if (LOG_MODE !== "off") console.log("[Stress] ▶ send", masterId, ts);
 
     // 壓測用：timeout 拉長到 45 秒，避免 GAS lock wait 造成誤判
-    postJsonGM(GAS_URL, evt, STRESS.timeoutMs);
+    postJsonGM(CFG.GAS_URL, evt, STRESS.timeoutMs);
   }
 
   // =========================
   // ✅ 19) 壓測：跑 N 人（burst 或 gap）
   // =========================
   function runStress() {
-    if (!GAS_URL) return console.error("[Stress] missing GAS_URL");
+    if (!CFG.GAS_URL) return console.error("[Stress] missing GAS_URL");
     if (!STRESS.enabled) return console.warn("[Stress] STRESS.enabled=false");
 
     console.log(

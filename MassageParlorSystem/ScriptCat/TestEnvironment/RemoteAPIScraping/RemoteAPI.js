@@ -8,6 +8,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
+// @grant        GM_getResourceText
+// @resource     gasConfigRemoteAPI gas-config-remoteapi.json
 // ==/UserScript==
 
 (function () {
@@ -16,7 +18,7 @@
   /* =========================
    * CONFIG
    * ========================= */
-  const CFG = {
+  const DEFAULT_CFG = {
     // --- UI/local ---
     MAX_LOGS: 300,
     PREVIEW_LIMIT: 2000,
@@ -24,8 +26,8 @@
     STORE_KEY: "api_spy_logs_v1",
 
     // --- GAS shipper ---
-    GAS_ENDPOINT: "https://script.google.com/macros/s/AKfycbzzDqKr3lCAsxEIsMTxYJgBmxyv17RPRKIuT2Qn0px3_DTfKKwnyTPQDCZRrMTr7vOR/exec", // <-- 改成你的 Web App URL
-    GAS_API_KEY: "SPY_API_KEY",                               // <-- 改成你設定的 SPY_API_KEY
+    GAS_ENDPOINT: "",
+    GAS_API_KEY: "",
     SHIP_ENABLED: true,
 
     // 批次送出策略
@@ -35,6 +37,8 @@
     SHIP_BACKOFF_BASE_MS: 1200,
     SHIP_QUEUE_KEY: "api_spy_ship_queue_v1"
   };
+
+  let CFG = { ...DEFAULT_CFG };
 
   /* =========================
    * Utils
@@ -60,6 +64,32 @@
     } catch {
       return out;
     }
+  };
+
+  // 讀取專屬 config（gas-config-remoteapi.json）中的 GAS 參數（只允許覆蓋 GAS 相關欄位）
+  const GAS_RESOURCE = "gasConfigRemoteAPI";
+
+  const loadJsonOverrides = () => {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+
+      const allowed = ["GAS_ENDPOINT", "GAS_API_KEY", "SHIP_ENABLED"];
+      const out = {};
+      for (const k of allowed) {
+        if (Object.prototype.hasOwnProperty.call(parsed, k)) out[k] = parsed[k];
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  };
+
+  const applyConfigOverrides = () => {
+    const overrides = loadJsonOverrides();
+    CFG = { ...DEFAULT_CFG, ...overrides };
   };
 
   /* =========================
@@ -394,6 +424,7 @@
    * Boot
    * ========================= */
   const boot = async () => {
+    applyConfigOverrides();
     logs = await loadLogs();
     hookFetch();
     hookXHR();
