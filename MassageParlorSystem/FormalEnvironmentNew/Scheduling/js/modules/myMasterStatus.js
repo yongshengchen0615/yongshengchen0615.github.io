@@ -36,7 +36,11 @@ export function parseIsMaster(data) {
   return false;
 }
 
-/** 把師傅編號統一成兩位數字字串，例如 7 -> "07" */
+/**
+ * 把師傅編號統一成兩位數字字串，例如 7 -> "07"。
+ * @param {string|number|null|undefined} v 任何可能的輸入（含文字/數字）。
+ * @returns {string} 兩位數字字串；無法解析則回傳空字串。
+ */
 export function normalizeTechNo(v) {
   const s = String(v ?? "").trim();
   if (!s) return "";
@@ -47,7 +51,11 @@ export function normalizeTechNo(v) {
   return String(n).padStart(2, "0");
 }
 
-/** 支援 GAS 回傳 masterCode 等欄位 */
+/**
+ * 從後端回傳物件解析師傅編號（支援 techNo/masterCode/masterId 等欄位）。
+ * @param {any} data 後端回傳的資料物件。
+ * @returns {string} 兩位數字 techNo；無法解析則空字串。
+ */
 export function parseTechNo(data) {
   const v = pickAny(data, [
     "techNo",

@@ -59,6 +59,11 @@ function mapRowsToDisplay(rows) {
 /* =========================
  * Filters
  * ========================= */
+/**
+ * 依目前 rawData 重新建立「狀態篩選」下拉選單。
+ * - 會保留使用者原本選擇（若該狀態仍存在）
+ * - 會同步更新 state.filterStatus
+ */
 export function rebuildStatusFilterOptions() {
   if (!dom.filterStatusSelect) return;
 
@@ -230,6 +235,10 @@ export function applyTableHeaderColorsFromRows(displayRows) {
   } catch (e) {}
 }
 
+/**
+ * 重新套用表頭顏色（從 th[data-colortoken] 取回 token）。
+ * - 用在主題切換後：避免 token 顏色在不同 theme 下需要重算
+ */
 export function reapplyTableHeaderColorsFromDataset() {
   try {
     const table = dom.tbodyRowsEl ? dom.tbodyRowsEl.closest("table") : null;

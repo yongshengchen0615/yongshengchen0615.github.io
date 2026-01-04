@@ -25,5 +25,5 @@
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
   "USAGE_LOG_MIN_INTERVAL_MS": 10000,
-  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。"
+  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄(app_open)』最小送出間隔（毫秒）。此環境設定為 10000 (=10 秒)；設為 0 或不填可視為不節流。"
 }
