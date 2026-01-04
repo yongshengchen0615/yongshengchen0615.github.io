@@ -208,6 +208,7 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
   const statusText = row ? String(row.status || "").trim() || "—" : "—";
   const remNum = parseRemainingNumber(row);
   const remText = remNum === null ? "—" : String(remNum);
+  const showRemaining = normalizeText(statusText) !== "工作中";
 
   const stCls = "status-pill " + classifyMyStatusClass(statusText, remNum);
   const remCls = "myms-rem " + remBadgeClass(remNum);
@@ -233,7 +234,7 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
                 data-colorstatus="${escapeHtml(colorStatus)}">
             ${escapeHtml(statusText)}
           </span>
-          <span class="${remCls}">剩餘：${escapeHtml(String(remText))}</span>
+          ${showRemaining ? `<span class="${remCls}">剩餘：${escapeHtml(String(remText))}</span>` : ""}
         </div>
         ${hasRank ? `
           <div class="myms-line myms-line2">
