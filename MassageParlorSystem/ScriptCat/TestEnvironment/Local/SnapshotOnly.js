@@ -20,6 +20,7 @@
    * 0) Config------
    * ========================= */
   const GAS_RESOURCE = "gasConfigSnapshotTEL";
+  const FALLBACK_CONFIG_URL = new URL("gas-snapshot-config-local.json", location.href).href;
 
   const DEFAULT_CFG = {
     GAS_URL: ""
@@ -50,8 +51,8 @@
   // 正式開關
   const ENABLE_SNAPSHOT = true;
 
-  applyConfigOverrides();
-  console.log("[SnapshotQ] 🟢 start (Queue + InFlight + Backoff)");
+  // 註：Local 測試環境常見情境是 ScriptCat 沒把本機檔名自動當作 @resource 綁定。
+  // 我們會在 start() 內再嘗試用同網域抓取 JSON（master.html 同資料夾）。
 
   /* =========================
    * 1) Utils
@@ -94,14 +95,50 @@
       return {};
     }
   }
-  function applyConfigOverrides() {
-    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
-    if (!CFG.GAS_URL) {
-      console.error(
-        `[Config] GAS_URL is empty. Resource='${GAS_RESOURCE}'. ` +
-          `If you expect it from JSON, verify the resource is loaded in ScriptCat and the JSON contains {"GAS_URL":"..."}.`
-      );
+  async function loadJsonOverridesFromUrl(url) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        console.warn(`[Config] fetch fallback failed (${res.status}) url=${url}`);
+        return {};
+      }
+      const raw = await res.text();
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        console.warn(`[Config] fetch fallback got non-JSON url=${url} head=${String(raw).slice(0, 120)}`);
+        return {};
+      }
+
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch (e) {
+      console.warn(`[Config] fetch fallback error url=${url}`, e);
+      return {};
     }
+  }
+
+  async function applyConfigOverridesAsync() {
+    const fromResource = loadJsonOverrides();
+    if (fromResource && fromResource.GAS_URL) {
+      CFG = { ...DEFAULT_CFG, ...fromResource };
+      console.log(`[Config] loaded from @resource '${GAS_RESOURCE}'`);
+      return;
+    }
+
+    const fromUrl = await loadJsonOverridesFromUrl(FALLBACK_CONFIG_URL);
+    if (fromUrl && fromUrl.GAS_URL) {
+      CFG = { ...DEFAULT_CFG, ...fromUrl };
+      console.log(`[Config] loaded from URL fallback ${FALLBACK_CONFIG_URL}`);
+      return;
+    }
+
+    CFG = { ...DEFAULT_CFG };
+    console.error(
+      `[Config] GAS_URL is empty. Resource='${GAS_RESOURCE}'. ` +
+        `Tried URL fallback: ${FALLBACK_CONFIG_URL}. ` +
+        `Fix by either attaching @resource in ScriptCat, or hosting gas-snapshot-config-local.json next to master.html.`
+    );
   }
   function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -480,9 +517,12 @@
    * 6) lifecycle hooks
    * ========================= */
   function start() {
-    console.log("[SnapshotQ] ▶️ start loop", INTERVAL_MS, "ms");
-    tick();
-    setInterval(tick, INTERVAL_MS);
+    applyConfigOverridesAsync().finally(() => {
+      console.log("[SnapshotQ] 🟢 start (Queue + InFlight + Backoff)");
+      console.log("[SnapshotQ] ▶️ start loop", INTERVAL_MS, "ms");
+      tick();
+      setInterval(tick, INTERVAL_MS);
+    });
 
     // 回前景：立刻掃 + pump
     document.addEventListener("visibilitychange", () => {
