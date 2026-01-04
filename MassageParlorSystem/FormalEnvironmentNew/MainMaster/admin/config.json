@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "description": "Admin 審核管理台設定檔",
+    "note": "本檔案為標準 JSON，不可使用 // 或 /* */ 註解",
+    "usage": "由 admin.js 於載入時 fetch 並解析"
+  },
+
+  "LIFF_ID": "2008811948-AN0VZKiP",
+  "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
+
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbziVr_I5tGAP0HGNuFDutshZ_sWU1ur7cbxh7KXA5EpUr4V2Yzh9oLShy0k-o1EP2irnQ/exec",
+  "_ADMIN_API_URL_DESC": "既有 Admin 管理 GAS（請勿修改）：提供 listAdmins / updateAdminsBatch / deleteAdmin",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycby4_YJZOS6hWOyT3eMUsMVLOA5X5S1vE0Y9V5cmvkDaiKFAeSHxkfMCOncvn9-Seho/exec",
+  "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台",
+
+  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbxcAgHXaSxaLRB_OcqUyq80r6EiZjHxWK7eBU-PzyGyxfMzPz6btC6gKx6w03_AwyCuMg/exec",
+  "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能"
+}

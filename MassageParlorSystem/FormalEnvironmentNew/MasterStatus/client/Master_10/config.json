@@ -1,0 +1,17 @@
+{
+  "LIFF_ID": "2008735934-sqGIhatI",
+  "_comment_LIFF_ID": "LIFF App ID；用於 liff.init({ liffId })，不正確會無法在 LINE 內取得 userId。",
+
+  "USER_MGMT_API_URL": "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec",
+  "_comment_USER_MGMT_API_URL": "使用者/權限管理 API；供 check/register/listUsers/getPersonalStatus 使用。",
+
+  "TARGET_MASTER_ID": "10",
+  "_comment_TARGET_MASTER_ID": "目標技師編號；用於 Gate(listUsers 找 masterCode) + Edge 查詢(cache_one&masterId=...)；程式會只取數字。",
+
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbztkK2sABPZiSq5aVcH1v05mRYgLSPAzfkkETtPx42oWO6BQl3xnX_Blgnfi6N5yBZI/exec",
+    "https://script.google.com/macros/s/AKfycby4GRV7t1INQluhSSCgs0QJFlE6T9pemXhuOxTv3Uma6IMKUu9tqZB0NQcc36Ov6nfU/exec"
+  ],
+  "_comment_EDGE_STATUS_URLS": "Edge GAS 清單；狀態讀取只打 Edge：?mode=cache_one&masterId=<TARGET_MASTER_ID>&_cors=1；Promise.any 取最快 ok:true；cache_miss 視為無資料。"
+
+}

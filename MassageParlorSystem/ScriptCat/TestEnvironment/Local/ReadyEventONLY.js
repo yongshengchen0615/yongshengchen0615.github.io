@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name        TestEnvironment Local Ready Event ONLY + TestPlan (same userId / multi masterIds)
+// @name        TEL Ready Event ONLY + TestPlan (same userId / multi masterIds)
 // @namespace    http://scriptcat.org/
-// @version      1.72
+// @version      1.78
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
@@ -21,7 +21,7 @@
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
   // =========================
-  const INTERVAL_MS = 2000; // 2000ms=2秒
+  const INTERVAL_MS = 1000; // 2000ms=2秒
   const LOG_MODE = "group"; // "full" | "group" | "off"
   const ENABLE_READY_EVENT = true;
   const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒
