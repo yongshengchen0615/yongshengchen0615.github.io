@@ -8,7 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigReadyFED gas-ready-config-fed.json
+// @resource     gasConfigReadyFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironmentDeployment/gas-ready-config-fed.json
 // ==/UserScript==
 
 (function () {

@@ -8,7 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigSnapshotFED gas-snapshot-config-fed.json
+// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironmentDeployment/gas-snapshot-config-fed.json
 // ==/UserScript==
 
 (function () {
