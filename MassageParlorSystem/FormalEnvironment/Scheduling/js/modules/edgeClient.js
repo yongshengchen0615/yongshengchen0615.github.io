@@ -10,7 +10,6 @@
 import { config } from "./config.js";
 import { withQuery, readJsonLS, writeJsonLS } from "./core.js";
 
-const STATUS_FETCH_TIMEOUT_MS = 8000;
 const EDGE_TRY_MAX = 3;
 const EDGE_FAIL_THRESHOLD = 2;
 const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000;
@@ -63,7 +62,8 @@ function buildEdgeTryOrder(startIdx) {
 
 async function fetchJsonWithTimeout(url, timeoutMs) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
+  const fallbackTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || fallbackTimeout);
 
   try {
     const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
@@ -100,6 +100,9 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
 export async function fetchStatusAll() {
   const jitterBust = Date.now();
 
+  const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
+  const originExtra = typeof config.STATUS_FETCH_ORIGIN_EXTRA_MS === "number" ? config.STATUS_FETCH_ORIGIN_EXTRA_MS : 4000;
+
   const startIdx = getRandomEdgeIndex();
   const tryEdgeIdxList = buildEdgeTryOrder(startIdx);
 
@@ -110,7 +113,7 @@ export async function fetchStatusAll() {
     const url = withQuery(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
 
     try {
-      const data = await fetchJsonWithTimeout(url, STATUS_FETCH_TIMEOUT_MS);
+      const data = await fetchJsonWithTimeout(url, baseTimeout);
 
       const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
@@ -131,7 +134,7 @@ export async function fetchStatusAll() {
   }
 
   const originUrl = withQuery(config.FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
-  const data = await fetchJsonWithTimeout(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
+  const data = await fetchJsonWithTimeout(originUrl, baseTimeout + originExtra);
 
   resetFailCount();
   return {

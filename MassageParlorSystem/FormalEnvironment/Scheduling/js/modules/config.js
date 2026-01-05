@@ -29,6 +29,25 @@ export const config = {
 
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
+
+  // （可選）輪詢/效能調校（不填則使用預設值）
+  /** 輪詢基本間隔（毫秒）。 */
+  POLL_BASE_MS: 3000,
+  /** 輪詢最大間隔（毫秒）。 */
+  POLL_MAX_MS: 20000,
+  /** 失敗退避最大間隔（毫秒）。 */
+  POLL_FAIL_MAX_MS: 60000,
+  /** 連續成功幾次後開始放慢。 */
+  POLL_STABLE_UP_AFTER: 3,
+  /** 偵測到資料變更時的下一次輪詢間隔（毫秒）。 */
+  POLL_CHANGED_BOOST_MS: 4500,
+  /** 輪詢抖動比例（0~1）。 */
+  POLL_JITTER_RATIO: 0.2,
+
+  /** 單次狀態抓取 timeout（毫秒）。 */
+  STATUS_FETCH_TIMEOUT_MS: 8000,
+  /** Origin fallback 額外 timeout（毫秒）。 */
+  STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
 };
 
 /**
@@ -56,6 +75,31 @@ export async function loadConfigJson() {
   config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
   const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
   if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
+
+  // optional: polling & fetch tuning
+  const pollBase = Number(cfg.POLL_BASE_MS);
+  if (!Number.isNaN(pollBase) && pollBase >= 800) config.POLL_BASE_MS = pollBase;
+
+  const pollMax = Number(cfg.POLL_MAX_MS);
+  if (!Number.isNaN(pollMax) && pollMax >= config.POLL_BASE_MS) config.POLL_MAX_MS = pollMax;
+
+  const pollFailMax = Number(cfg.POLL_FAIL_MAX_MS);
+  if (!Number.isNaN(pollFailMax) && pollFailMax >= config.POLL_BASE_MS) config.POLL_FAIL_MAX_MS = pollFailMax;
+
+  const stableUpAfter = Number(cfg.POLL_STABLE_UP_AFTER);
+  if (!Number.isNaN(stableUpAfter) && stableUpAfter >= 1) config.POLL_STABLE_UP_AFTER = stableUpAfter;
+
+  const changedBoost = Number(cfg.POLL_CHANGED_BOOST_MS);
+  if (!Number.isNaN(changedBoost) && changedBoost >= config.POLL_BASE_MS) config.POLL_CHANGED_BOOST_MS = changedBoost;
+
+  const jitterRatio = Number(cfg.POLL_JITTER_RATIO);
+  if (!Number.isNaN(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) config.POLL_JITTER_RATIO = jitterRatio;
+
+  const fetchTimeout = Number(cfg.STATUS_FETCH_TIMEOUT_MS);
+  if (!Number.isNaN(fetchTimeout) && fetchTimeout >= 1000) config.STATUS_FETCH_TIMEOUT_MS = fetchTimeout;
+
+  const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
+  if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
 
   if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
