@@ -25,5 +25,25 @@
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
   "USAGE_LOG_MIN_INTERVAL_MS": 10000,
-  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄(app_open)』最小送出間隔（毫秒）。此環境設定為 10000 (=10 秒)；設為 0 或不填可視為不節流。"
+  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄(app_open)』最小送出間隔（毫秒）。此環境設定為 10000 (=10 秒)；設為 0 或不填可視為不節流。",
+
+  "_comment_perf": "=== （可選）效能/更新速度調校：不填則沿用程式預設值 ===",
+
+  "POLL_BASE_MS": 3000,
+  "_comment_POLL_BASE_MS": "輪詢基本間隔（毫秒）。越小越即時，但 GAS/網路負載越高。",
+
+  "POLL_MAX_MS": 8000,
+  "_comment_POLL_MAX_MS": "穩定後輪詢最大間隔（毫秒）。想更即時可調小（例如 8000~12000）。",
+
+  "POLL_CHANGED_BOOST_MS": 3000,
+  "_comment_POLL_CHANGED_BOOST_MS": "偵測到資料變更後，下一次輪詢的間隔（毫秒）。想追更快可設成 3000。",
+
+  "POLL_JITTER_RATIO": 0.2,
+  "_comment_POLL_JITTER_RATIO": "輪詢抖動比例（0~1），用來分散同時請求，避免尖峰。",
+
+  "STATUS_FETCH_TIMEOUT_MS": 8000,
+  "_comment_STATUS_FETCH_TIMEOUT_MS": "單次狀態 API timeout（毫秒）。調小可加速失敗切換，但太小可能誤判網路慢為失敗。",
+
+  "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
+  "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。"
 }
