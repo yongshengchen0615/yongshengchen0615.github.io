@@ -105,10 +105,15 @@ async function loadAdmins_() {
 
     allAdmins = (ret.admins || []).map(toAdminRow_);
 
+    adminById.clear();
+    for (const a of allAdmins) adminById.set(a.userId, a);
+
     originalMap.clear();
     dirtyMap.clear();
     selectedIds.clear();
     for (const a of allAdmins) originalMap.set(a.userId, snapshot_(a));
+
+    invalidateStats_();
 
     applyFilters_();
     toast("資料已更新", "ok");
@@ -140,7 +145,7 @@ function applyFilters_() {
   });
 
   render_();
-  updateStats_();
+  maybeUpdateStats_();
   syncCheckAll_();
   updateBulkBar_();
   refreshSaveAllButton_();
@@ -160,8 +165,12 @@ function bindBulk_() {
     if (savingAll) return;
     const el = $("#checkAll");
     const checked = !!el && el.checked;
+
+    // 只更新選取狀態與 checkbox，不需要整表重繪
     filtered.forEach((a) => (checked ? selectedIds.add(a.userId) : selectedIds.delete(a.userId)));
-    render_();
+    document.querySelectorAll("#tbody .row-check").forEach((cb) => {
+      if (cb instanceof HTMLInputElement) cb.checked = checked;
+    });
     syncCheckAll_();
     updateBulkBar_();
   });
@@ -169,7 +178,11 @@ function bindBulk_() {
   $("#bulkClear")?.addEventListener("click", () => {
     if (savingAll) return;
     selectedIds.clear();
-    render_();
+
+    // 只需要把目前顯示的勾選取消
+    document.querySelectorAll("#tbody .row-check").forEach((cb) => {
+      if (cb instanceof HTMLInputElement) cb.checked = false;
+    });
     syncCheckAll_();
     updateBulkBar_();
   });
@@ -199,6 +212,7 @@ function bulkApply_() {
     markDirty_(id, a);
   });
 
+  invalidateStats_();
   applyFilters_();
   toast("已套用到選取（尚未儲存）", "ok");
 }
@@ -280,6 +294,10 @@ function bindTableDelegation_() {
       a.audit = normalizeAudit_(t.value);
       markDirty_(id, a);
       updateRowDirtyStateUI_(row, id);
+
+      // audit 變更會影響 KPI
+      invalidateStats_();
+      maybeUpdateStats_();
     }
   });
 
