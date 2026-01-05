@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FED Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
+// @name         FE Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
 // @namespace    http://scriptcat.org/
 // @version      1.82
 // @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）
@@ -8,8 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironmentDeployment/gas-snapshot-config-fed.json
-// ==/UserScript==
+// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironment/gas-snapshot-config-fed.json
 
 (function () {
   "use strict";
