@@ -1,23 +1,23 @@
 // ==UserScript==
-// @name         FE Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
+// @name         FED Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
 // @namespace    http://scriptcat.org/
-// @version      2.5
+// @version      1.82
 // @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigSnapshotFE gas-snapshot-config.json
+// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironmentDeployment/gas-snapshot-config-fed.json
 // ==/UserScript==
 
 (function () {
   "use strict";
 
   /* =========================
-   * 0) Config（每支腳本專屬 JSON 設定）
+   * 0) Config------
    * ========================= */
-  const GAS_RESOURCE = "gasConfigSnapshotFE";
+  const GAS_RESOURCE = "gasConfigSnapshotFED";
 
   const DEFAULT_CFG = {
     GAS_URL: ""

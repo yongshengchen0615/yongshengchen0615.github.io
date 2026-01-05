@@ -44,6 +44,12 @@
         <span id="usageBannerText"></span>
       </div>
 
+      <!-- ✅ 個人（師傅）身體/腳底狀態（只有師傅才顯示） -->
+      <div id="myMasterStatus" class="my-master-status" style="display:none;">
+        <div class="my-master-title">我的狀態</div>
+        <div id="myMasterStatusText" class="my-master-text">—</div>
+      </div>
+
       <!-- 頂部 Header -->
       <header class="app-header">
         <div class="app-header-left">
@@ -57,36 +63,22 @@
             <span class="pill-text" id="connectionStatus">連線中…</span>
           </div>
 
-          <button id="themeToggle" class="btn btn-ghost" type="button">
-            🌙 深色
-          </button>
-
-          <button id="refreshBtn" class="btn btn-ghost" type="button">
-            🔄 手動重整
-          </button>
+          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
+          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
         </div>
       </header>
 
       <!-- Tabs + 篩選列 -->
       <section class="toolbar">
         <div class="tabs">
-          <button id="tabBody" class="tab tab-active" type="button">
-            身體面板
-          </button>
-          <button id="tabFoot" class="tab" type="button">
-            腳底面板
-          </button>
+          <button id="tabBody" class="tab tab-active" type="button">身體面板</button>
+          <button id="tabFoot" class="tab" type="button">腳底面板</button>
         </div>
 
         <div class="filters">
           <div class="filter">
             <label for="filterMaster" class="filter-label">師傅搜尋</label>
-            <input
-              id="filterMaster"
-              class="input"
-              type="text"
-              placeholder="輸入師傅編號，例如 07"
-            />
+            <input id="filterMaster" class="input" type="text" placeholder="輸入師傅編號，例如 07" />
           </div>
 
           <div class="filter">
@@ -104,9 +96,7 @@
           <header class="card-header">
             <div class="card-header-left">
               <h2 id="panelTitle" class="card-title">身體面板</h2>
-              <p class="card-subtitle">
-                依「順序」排序，可透過上方輸入框篩選指定師傅
-              </p>
+              <p class="card-subtitle">依「順序」排序，可透過上方輸入框篩選指定師傅</p>
             </div>
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>
@@ -129,18 +119,15 @@
               </table>
             </div>
 
-            <!-- 空狀態 -->
             <div id="emptyState" class="state state-empty">
               <p>目前沒有任何資料。</p>
             </div>
 
-            <!-- Loading 狀態（✅ 已禁用不佔位：CSS 會 display:none !important） -->
             <div id="loadingState" class="state state-loading">
               <div class="spinner"></div>
               <p>資料載入中，請稍候…</p>
             </div>
 
-            <!-- Error 狀態 -->
             <div id="errorState" class="state state-error">
               <p>無法取得資料，請稍後再試或使用右上角「手動重整」。</p>
             </div>
@@ -150,6 +137,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

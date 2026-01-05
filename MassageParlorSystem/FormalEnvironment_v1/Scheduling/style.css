@@ -11,11 +11,6 @@
   --danger: #f97373;
   --muted: #4b5563;
   --radius-lg: 16px;
-
-  /* 順序欄位：預設底色/邊框（未命中特殊 bgIndex 時使用） */
-  --order-bg: rgba(148, 163, 184, 0.14);
-  --order-border: rgba(148, 163, 184, 0.30);
-  --order-text-shadow: 0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10);
 }
 
 /* 亮色主題覆蓋（按 data-theme 切換） */
@@ -30,10 +25,6 @@
   --accent-soft: rgba(37, 99, 235, 0.1);
   --danger: #b91c1c;
   --muted: #9ca3af;
-
-  --order-bg: rgba(148, 163, 184, 0.18);
-  --order-border: rgba(148, 163, 184, 0.42);
-  --order-text-shadow: 0 1px 0 rgba(0,0,0,0.10);
 }
 
 /* Reset 基本設定 */
@@ -498,24 +489,6 @@ body {
   background-clip: padding-box;
 }
 
-/* ✅ 順序欄位：更清楚的數字對比（未命中特殊 highlight 時） */
-.cell-order{
-  text-align: center;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--text-main);
-  background: var(--order-bg);
-  border: 1px solid var(--order-border);
-  text-shadow: var(--order-text-shadow);
-}
-
-/* 命中 JS highlight（bgIndex=bg-CCBCBCB）時，避免跟 outline/stripe 打架 */
-.cell-order.cell-order-highlight{
-  border-color: transparent;
-  background: transparent;
-}
-
 /* 狀態 Pill */
 .status-pill {
   display: inline-flex;
@@ -526,12 +499,6 @@ body {
   font-size: 12px;
   font-weight: 500;
   border: 1px solid transparent;
-
-  /* 禁止換行（原本在後段重複宣告，集中在這裡） */
-  white-space: nowrap;
-  word-break: keep-all;
-  overflow-wrap: normal;
-  line-height: 1;
 }
 
 .status-busy {
@@ -602,6 +569,32 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Legend */
+.legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legend-work { background: #f97373; }
+.legend-free { background: #22c55e; }
+.legend-other { background: #9ca3af; }
+
 /* RWD */
 @media (max-width: 768px) {
   .app-header {
@@ -641,14 +634,17 @@ body {
   align-items: center;
 }
 
+/* 亮色主題時 */
 :root[data-theme="light"] .usage-banner {
   background: #ffffff;
 }
 
+/* 快過期（<=3 天） */
 .usage-banner-warning {
   border-color: #facc15;
 }
 
+/* 已過期（<=0 天） */
 .usage-banner-expired {
   border-color: #f97373;
 }
@@ -697,291 +693,40 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
+/* ✅ 禁用原本卡片內 Loading（避免推擠 layout） */
 #loadingState{
   display: none !important;
 }
 
+/* =========================================================
+ * ✅ FIX: 狀態 pill 中文換行造成列高變動（工作中跑版）
+ * - 中文預設可斷行，需要強制 nowrap
+ * - 同時給狀態欄最小寬度，避免被擠爆
+ * ========================================================= */
+
+.status-pill{
+  white-space: nowrap;      /* ✅ 核心：禁止換行 */
+  word-break: keep-all;     /* ✅ 中文不要拆字 */
+  overflow-wrap: normal;    /* ✅ 不要 anywhere */
+  line-height: 1;           /* ✅ 避免行高撐開 */
+}
+
+/* ✅ 也把「狀態欄位 td」設成不換行（雙保險） */
 .status-table tbody td:nth-child(3),
 .status-table thead th:nth-child(3){
   white-space: nowrap;
-  min-width: 86px;
 }
 
+/* ✅ 狀態欄最小寬度（避免 pill 被擠到只能換行） */
+.status-table tbody td:nth-child(3),
+.status-table thead th:nth-child(3){
+  min-width: 86px; /* 可調：80~110 */
+}
+
+/* （可選）手機再縮一點，避免整表水平捲動太多 */
 @media (max-width: 420px){
   .status-table tbody td:nth-child(3),
   .status-table thead th:nth-child(3){
     min-width: 76px;
   }
 }
-
-/* =========================================================
- * ✅ 我的狀態（你原本那段完整保留）
- * ========================================================= */
-.my-master-status{
-  margin: 0 0 14px 0;
-  padding: 10px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.55);
-  background: rgba(15, 23, 42, 0.65);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 8px;
-  position: relative;
-  overflow: hidden;
-}
-:root[data-theme="light"] .my-master-status{
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(148, 163, 184, 0.65);
-}
-
-/* 左側色條：原本寫死 class 的你可以留著當 fallback */
-.my-master-status::before{
-  content:"";
-  position:absolute;
-  left:0; top:0; bottom:0;
-  width:6px;
-  /* JS 會寫入 --myStripe；沒寫入時走 fallback（見下方 status-* 設定） */
-  background: var(--myStripe, rgba(148, 163, 184, 0.55));
-}
-/* 沒有 token 時的 fallback：用狀態 class 設定 --myStripe */
-.my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
-.my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
-.my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
-.my-master-status.status-free{ --myStripe: rgba(34, 197, 94, 0.9); }
-.my-master-status.status-other{ --myStripe: rgba(148, 163, 184, 0.7); }
-
-.my-master-title{
-  font-size: 12px;
-  color: var(--text-sub);
-  white-space: nowrap;
-  padding-top: 2px;
-  font-weight: 700;
-  letter-spacing: .02em;
-}
-
-/* myMasterStatus.js 會把主要內容塞進 #myMasterStatusText（.my-master-text） */
-.my-master-text{
-  padding-left: 6px;
-  min-width: 0;
-}
-
-.myms{
-  display:flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  flex: 1 1 320px;
-}
-.myms-head{
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.myms-tech-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding: 2px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(148,163,184,.45);
-  background: rgba(15,23,42,.55);
-  font-size: 12px;
-  color: var(--text-main);
-}
-:root[data-theme="light"] .myms-tech-badge{
-  background: rgba(255,255,255,.9);
-}
-
-.myms-row{
-  display:grid;
-  grid-template-columns: 72px 1fr;
-  align-items:flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(148,163,184,.35);
-  background: rgba(2,6,23,.35);
-  min-width: 0;
-}
-:root[data-theme="light"] .myms-row{
-  background: rgba(249,250,251,.95);
-}
-
-.myms-label{
-  display:flex;
-  align-items:center;
-  gap: 8px;
-  min-width: 72px;
-  font-size: 12px;
-  color: var(--text-sub);
-  flex: 0 0 auto;
-}
-.myms-right{
-  display:flex;
-  flex-direction: column;
-  align-items:flex-start;
-  justify-content:flex-start;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.myms-line{
-  display:flex;
-  align-items:center;
-  justify-content:flex-start;
-  gap: 8px;
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-.myms-line-appt{
-  align-items:flex-start;
-}
-
-.myms-appt-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(148,163,184,.35);
-  background: rgba(15,23,42,.30);
-  font-size: 12px;
-  color: var(--text-sub);
-}
-:root[data-theme="light"] .myms-appt-badge{
-  background: rgba(255,255,255,.85);
-}
-
-.myms-appt-text{
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-main);
-  word-break: break-word;
-}
-
-.myms-rem,
-.myms-rank{
-  display:inline-flex;
-  align-items:center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid rgba(148,163,184,.35);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.myms-rem{
-  background: rgba(15,23,42,.35);
-  color: var(--text-main);
-}
-:root[data-theme="light"] .myms-rem{
-  background: rgba(255,255,255,.9);
-}
-
-.myms-rem.is-warn{
-  background: rgba(250, 204, 21, 0.16);
-  border-color: rgba(250, 204, 21, 0.35);
-  color: #fde68a;
-}
-.myms-rem.is-expired{
-  background: rgba(248, 113, 113, 0.16);
-  border-color: rgba(248, 113, 113, 0.35);
-  color: #fecaca;
-}
-:root[data-theme="light"] .myms-rem.is-warn{ color: #92400e; }
-:root[data-theme="light"] .myms-rem.is-expired{ color: #991b1b; }
-
-.myms-rank{
-  background: rgba(99,102,241,.12);
-  color: var(--text-main);
-}
-:root[data-theme="light"] .myms-rank{
-  background: rgba(37,99,235,.08);
-  color: #1d4ed8;
-}
-
-@keyframes glowPulse {
-  0%   { box-shadow: 0 0 0 rgba(99,102,241,0); transform: translateY(0); }
-  50%  { box-shadow: 0 0 18px rgba(99,102,241,0.55); transform: translateY(-1px); }
-  100% { box-shadow: 0 0 0 rgba(99,102,241,0); transform: translateY(0); }
-}
-.myms-rank.is-top3{
-  border-color: rgba(99,102,241,0.65);
-  animation: glowPulse 1.25s ease-in-out infinite;
-}
-:root[data-theme="light"] .myms-rank.is-top3{
-  box-shadow: 0 0 14px rgba(37,99,235,0.35);
-}
-
-@media (max-width: 768px){
-  .my-master-status{
-    text-align: center;
-  }
-  .myms{
-    width: 100%;
-    max-width: 520px;
-    margin: 0 auto;
-  }
-  .myms-head{
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .myms-row{
-    width: 100%;
-    margin: 0 auto;
-  }
-  .myms-label{
-    justify-content: center;
-  }
-  .myms-right{
-    align-items: center;
-  }
-}
-@media (max-width: 420px){
-  .my-master-status{
-    padding: 10px 12px;
-    border-radius: 14px;
-  }
-  .myms{
-    gap: 8px;
-  }
-  .myms-row{
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: 8px;
-    padding: 10px 10px;
-  }
-  .myms-label{
-    width: 100%;
-    text-align: center;
-    min-width: 0;
-    justify-content: center;
-  }
-  .myms-right{
-    width: 100%;
-    align-items: center;
-  }
-}
-
-.my-master-status{
-  padding-left: calc(14px + env(safe-area-inset-left));
-  padding-right: calc(14px + env(safe-area-inset-right));
-}
-@media (max-width: 420px){
-  .my-master-status{
-    padding-left: calc(12px + env(safe-area-inset-left));
-    padding-right: calc(12px + env(safe-area-inset-right));
-  }
-}
-
-/* ✅ 我的狀態左側色條吃 GAS token（JS 會寫 --myStripe）
-   - 沒有 token 時：使用上方 status-* 的 --myStripe fallback */
