@@ -6,7 +6,7 @@
  * - 業務邏輯分散在 js/modules/*.js
  */
 
-import { installConsoleFilter } from "./modules/core.js";
+import { debounce, installConsoleFilter } from "./modules/core.js";
 import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
@@ -25,6 +25,11 @@ function bindEventsOnce() {
   if (eventsBound) return;
   eventsBound = true;
 
+  const rerenderDebounced = debounce(() => {
+    renderIncremental(state.activePanel);
+    updateMyMasterStatusUI();
+  }, 120);
+
   // Tabs
   if (dom.tabBodyBtn) dom.tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
   if (dom.tabFootBtn) dom.tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
@@ -33,15 +38,13 @@ function bindEventsOnce() {
   if (dom.filterMasterInput) {
     dom.filterMasterInput.addEventListener("input", (e) => {
       state.filterMaster = e.target.value || "";
-      renderIncremental(state.activePanel);
-      updateMyMasterStatusUI();
+      rerenderDebounced();
     });
   }
   if (dom.filterStatusSelect) {
     dom.filterStatusSelect.addEventListener("change", (e) => {
       state.filterStatus = e.target.value || "all";
-      renderIncremental(state.activePanel);
-      updateMyMasterStatusUI();
+      rerenderDebounced();
     });
   }
 }

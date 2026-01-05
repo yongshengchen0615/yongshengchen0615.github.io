@@ -278,16 +278,27 @@ function ensureRowDom(panel, row) {
   tdMaster.className = "cell-master";
 
   const tdStatus = document.createElement("td");
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "status-pill";
+  tdStatus.appendChild(statusSpan);
+
   const tdAppointment = document.createElement("td");
   tdAppointment.className = "cell-appointment";
 
   const tdRemaining = document.createElement("td");
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time-badge";
+  tdRemaining.appendChild(timeSpan);
 
   tr.appendChild(tdOrder);
   tr.appendChild(tdMaster);
   tr.appendChild(tdStatus);
   tr.appendChild(tdAppointment);
   tr.appendChild(tdRemaining);
+
+  // Cache refs on the DOM node to avoid repeated query/creation
+  tr.__ui = { tdOrder, tdMaster, tdStatus, statusSpan, tdAppointment, tdRemaining, timeSpan };
+  tr.__sig = "";
 
   map.set(key, tr);
   return tr;
@@ -369,12 +380,14 @@ function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
 }
 
 function patchRowDom(tr, row, orderText) {
-  const tds = tr.children;
-  const tdOrder = tds[0];
-  const tdMaster = tds[1];
-  const tdStatus = tds[2];
-  const tdAppointment = tds[3];
-  const tdRemaining = tds[4];
+  const ui = tr.__ui;
+  const tdOrder = ui ? ui.tdOrder : tr.children[0];
+  const tdMaster = ui ? ui.tdMaster : tr.children[1];
+  const tdStatus = ui ? ui.tdStatus : tr.children[2];
+  const statusSpan = ui ? ui.statusSpan : null;
+  const tdAppointment = ui ? ui.tdAppointment : tr.children[3];
+  const tdRemaining = ui ? ui.tdRemaining : tr.children[4];
+  const timeSpan = ui ? ui.timeSpan : null;
 
   tdOrder.textContent = orderText;
 
@@ -398,24 +411,65 @@ function patchRowDom(tr, row, orderText) {
   applyTextColorFromToken(tdMaster, row.colorMaster);
   applyAppointmentBgFromColorMaster(tdMaster, row.colorMaster);
 
-  tdStatus.innerHTML = "";
-  const statusSpan = document.createElement("span");
-  statusSpan.className = "status-pill " + (row.statusClass || "");
-  statusSpan.textContent = row.status || "";
-  applyPillFromTokens(statusSpan, row.bgStatus, row.colorStatus);
-  tdStatus.appendChild(statusSpan);
+  const pill = statusSpan || (() => {
+    tdStatus.textContent = "";
+    const el = document.createElement("span");
+    el.className = "status-pill";
+    tdStatus.appendChild(el);
+    if (ui) ui.statusSpan = el;
+    return el;
+  })();
+  pill.className = "status-pill " + (row.statusClass || "");
+  pill.textContent = row.status || "";
+  applyPillFromTokens(pill, row.bgStatus, row.colorStatus);
 
   applyAppointmentBgFromColorMaster(tdAppointment, row.colorMaster);
   tdAppointment.textContent = row.appointment || "";
   tdAppointment.style.color = "";
   applyTextColorFromToken(tdAppointment, row.colorAppointment);
 
-  tdRemaining.innerHTML = "";
-  const timeSpan = document.createElement("span");
-  timeSpan.className = "time-badge";
-  timeSpan.textContent = row.remainingDisplay || "";
-  applyTextColorFromToken(timeSpan, row.colorRemaining);
-  tdRemaining.appendChild(timeSpan);
+  const tb = timeSpan || (() => {
+    tdRemaining.textContent = "";
+    const el = document.createElement("span");
+    el.className = "time-badge";
+    tdRemaining.appendChild(el);
+    if (ui) ui.timeSpan = el;
+    return el;
+  })();
+  tb.className = "time-badge";
+  tb.textContent = row.remainingDisplay || "";
+  applyTextColorFromToken(tb, row.colorRemaining);
+}
+
+function getThemeKey() {
+  return document.documentElement.getAttribute("data-theme") || "dark";
+}
+
+function buildRenderSignature(row, orderText) {
+  if (!row) return getThemeKey() + "|" + String(orderText || "");
+  return (
+    getThemeKey() +
+    "|" +
+    String(orderText || "") +
+    "|" +
+    [
+      row.masterId || "",
+      row.status || "",
+      row.appointment || "",
+      row.remainingDisplay || "",
+      row.statusClass || "",
+
+      row.colorIndex || "",
+      row.colorMaster || "",
+      row.colorStatus || "",
+      row.colorAppointment || "",
+      row.colorRemaining || "",
+
+      row.bgIndex || "",
+      row.bgMaster || "",
+      row.bgStatus || "",
+    ].join("|")
+  );
 }
 
 export function renderIncremental(panel) {
@@ -469,7 +523,11 @@ export function renderIncremental(panel) {
     const tr = ensureRowDom(panel, row);
     if (!tr) return;
 
-    patchRowDom(tr, row, orderText);
+    const sig = buildRenderSignature(row, orderText);
+    if (tr.__sig !== sig) {
+      patchRowDom(tr, row, orderText);
+      tr.__sig = sig;
+    }
     frag.appendChild(tr);
   });
 
