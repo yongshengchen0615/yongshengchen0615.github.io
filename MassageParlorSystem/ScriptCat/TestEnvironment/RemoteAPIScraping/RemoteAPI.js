@@ -3,7 +3,7 @@
 // @namespace    scriptcat-api-spy-gas
 // @version      1.0.0
 // @description  Observe endpoints, save responses, and ship logs to GAS Sheet for debugging.
-// @match        http://yspos.youngsong.com.tw/*
+// @match        https://yspos.youngsong.com.tw/#/performance?tab=A_DETAIL
 // @run-at       document-start
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -27,7 +27,7 @@
 
     // --- GAS shipper ---
     GAS_ENDPOINT: "",
-    GAS_API_KEY: "",
+    GAS_API_KEY: "CHANGE_ME",
     SHIP_ENABLED: true,
 
     // 批次送出策略

@@ -28,7 +28,7 @@
   // =========================
   // ✅ 2) 正式掃描設定（定時掃描 DOM）
   // =========================
-  const INTERVAL_MS = 1000; // 2000ms=2秒
+  const INTERVAL_MS = 500; // 2000ms=2秒
   const LOG_MODE = "group"; // "full" | "group" | "off"
   const ENABLE_READY_EVENT = true;
   const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒

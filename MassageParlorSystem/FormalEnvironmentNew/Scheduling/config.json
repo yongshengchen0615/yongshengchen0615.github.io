@@ -18,7 +18,7 @@
   "LIFF_ID": "2008669658-Q4WMyPkF",
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
-  "ENABLE_LINE_LOGIN": false,
+  "ENABLE_LINE_LOGIN": true,
   "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
 
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwO8-QUDrTF5sRsr0Pdjul60vPzIk9mmedxcOZRdAu7J-tz_AYQjZ_7euq0o_ufWgZ5jw/exec",
