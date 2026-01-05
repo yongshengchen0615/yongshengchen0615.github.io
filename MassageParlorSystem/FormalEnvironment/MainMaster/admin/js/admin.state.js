@@ -68,6 +68,13 @@ const dirtyMap = new Map();
  */
 let savingAll = false;
 
+// KPI 統計快取：避免在搜尋輸入時重複 O(n) 計算
+let statsDirty = true;
+let statsCache = { total: 0, approved: 0, pending: 0, rejected: 0 };
+
+// 管理員索引：大量互動時避免重複 allAdmins.find O(n)
+const adminById = new Map();
+
 // toast 計時器
 let toastTimer = null;
 
