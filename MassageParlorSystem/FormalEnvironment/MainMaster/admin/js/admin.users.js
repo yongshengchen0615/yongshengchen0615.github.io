@@ -534,7 +534,6 @@ function uRender_() {
     .join("");
 
   tbody.innerHTML = rowsHtml;
-      </td>
   if (uSavingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
