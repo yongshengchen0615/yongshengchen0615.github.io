@@ -110,6 +110,7 @@ function uSetLock_(locked) {
     "uBulkPersonalStatus",
     "uBulkScheduleEnabled",
     "uBulkUsageDays",
+    "uBulkStartDate",
     "uBulkApply",
     "uBulkDelete",
 
@@ -618,6 +619,7 @@ async function uBulkApply_() {
   let personalStatusEnabled = String(document.getElementById("uBulkPersonalStatus")?.value || "").trim();
   let scheduleEnabled = String(document.getElementById("uBulkScheduleEnabled")?.value || "").trim();
   let usageDaysRaw = String(document.getElementById("uBulkUsageDays")?.value || "").trim();
+  let startDate = String(document.getElementById("uBulkStartDate")?.value || "").trim();
 
   const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
   if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
@@ -625,7 +627,15 @@ async function uBulkApply_() {
     return;
   }
 
-  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
+  if (startDate) {
+    const dt = new Date(startDate + "T00:00:00");
+    if (isNaN(dt.getTime())) {
+      toast("批次開始使用日期格式不正確", "err");
+      return;
+    }
+  }
+
+  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw && !startDate) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -638,6 +648,7 @@ async function uBulkApply_() {
     if (!u) return;
 
     if (audit) u.audit = normalizeAudit_(audit);
+    if (startDate) u.startDate = startDate;
     if (usageDaysRaw) u.usageDays = String(usageDays);
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
@@ -823,6 +834,12 @@ function uBind_() {
   document.getElementById("uBulkApply")?.addEventListener("click", () => uBulkApply_());
   document.getElementById("uBulkDelete")?.addEventListener("click", () => uBulkDelete_());
 
+  // Date picker UX: some browsers/WebViews require explicit showPicker()
+  document.getElementById("uBulkStartDate")?.addEventListener("click", (e) => {
+    const el = e.currentTarget;
+    if (el && typeof el.showPicker === "function") el.showPicker();
+  });
+
   // Table delegation
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
@@ -909,6 +926,16 @@ function uBind_() {
 
     uMarkDirty_(id, u);
     uUpdateRowDirtyUI_(row, id);
+  });
+
+  // Date picker UX: open picker on click when supported
+  tbody.addEventListener("click", (e) => {
+    if (uSavingAll) return;
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t instanceof HTMLInputElement && t.type === "date") {
+      if (typeof t.showPicker === "function") t.showPicker();
+    }
   });
 
   tbody.addEventListener("click", async (e) => {
