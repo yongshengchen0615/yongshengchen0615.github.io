@@ -77,6 +77,17 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .auth-text{ opacity:.95; }
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
+.viewbar{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  background:linear-gradient(180deg, var(--card2), transparent);
+}
+
 .kpi-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
 .kpi-card{
   border:1px solid var(--border);
