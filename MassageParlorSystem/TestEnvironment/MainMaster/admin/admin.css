@@ -51,6 +51,7 @@ html[data-theme="light"]{
 }
 
 *{ box-sizing:border-box; word-break: break-word; }
+[hidden]{ display:none !important; }
 html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); background:var(--bg-page); }
 .app{ min-height:100%; padding:var(--pad); display:flex; justify-content:center; }
 .shell{ width:min(1380px, 100%); display:flex; flex-direction:column; gap:14px; }
