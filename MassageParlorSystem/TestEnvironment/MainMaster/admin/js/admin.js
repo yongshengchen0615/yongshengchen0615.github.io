@@ -39,6 +39,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const btnAdmins = document.getElementById("viewAdminsBtn");
       const btnUsers = document.getElementById("viewUsersBtn");
 
+      const summaryText = document.getElementById("summaryText");
+      const reloadBtn = document.getElementById("reloadBtn");
+      const saveAllBtn = document.getElementById("saveAllBtn");
+
       const adminsKpi = document.getElementById("adminsKpiSection");
       const adminsPanel = document.getElementById("adminsPanelSection");
       const usersKpi = document.getElementById("usersKpiSection");
@@ -53,6 +57,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (adminsPanel) adminsPanel.hidden = !isAdmins;
         if (usersKpi) usersKpi.hidden = isAdmins;
         if (usersPanel) usersPanel.hidden = isAdmins;
+
+        // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
+        if (summaryText) summaryText.hidden = !isAdmins;
+        if (reloadBtn) reloadBtn.hidden = !isAdmins;
+        if (saveAllBtn) saveAllBtn.hidden = !isAdmins;
 
         btnAdmins.classList.toggle("primary", isAdmins);
         btnAdmins.classList.toggle("ghost", !isAdmins);
