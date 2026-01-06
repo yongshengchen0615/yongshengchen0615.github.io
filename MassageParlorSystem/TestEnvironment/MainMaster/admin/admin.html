@@ -52,6 +52,15 @@
           <div class="kpi-label">拒絕</div>
           <div class="kpi-value" id="kpiRejected">-</div>
         </div>
+
+        <div class="kpi-card muted">
+          <div class="kpi-label">停用</div>
+          <div class="kpi-value" id="kpiDisabled">-</div>
+        </div>
+        <div class="kpi-card maintenance">
+          <div class="kpi-label">系統維護</div>
+          <div class="kpi-value" id="kpiMaintenance">-</div>
+        </div>
       </section>
 
       <section id="adminsPanelSection" class="panel">
@@ -143,7 +152,7 @@
       </section>
 
       <!-- KPI (Users/技師名單 - match client) -->
-      <section id="usersKpiSection" class="kpi-grid" aria-label="技師統計資訊">
+      <section id="usersKpiSection" class="kpi-grid" aria-label="技師統計資訊" hidden>
         <div class="kpi-card">
           <div class="kpi-label">總技師</div>
           <div class="kpi-value" id="uKpiTotal">-</div>
@@ -171,7 +180,7 @@
       </section>
 
       <!-- ✅ Users/技師資料管理：直接在 admin 內製作（不嵌入、不外連） -->
-      <section id="usersPanelSection" class="panel client-scope" aria-label="Users/技師資料管理">
+      <section id="usersPanelSection" class="panel client-scope" aria-label="Users/技師資料管理" hidden>
         <div class="panel-head">
           <div class="panel-title" aria-hidden="true">
             <div class="panel-title-main">技師名單</div>
