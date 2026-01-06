@@ -123,6 +123,14 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .filters{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1 1 520px; }
 .panel-meta .hint{ color:var(--text-sub); font-size:12px; font-family:var(--mono); }
 
+.panel-head .panel-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+
 .search-box{
   display:flex; align-items:center; gap:8px;
   background:var(--card);
