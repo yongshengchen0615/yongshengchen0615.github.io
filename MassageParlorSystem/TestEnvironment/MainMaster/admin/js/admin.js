@@ -35,11 +35,49 @@ document.addEventListener("DOMContentLoaded", async () => {
       return Promise.race([promise, timeout]).finally(() => timer && clearTimeout(timer));
     };
 
+    const initListViewToggle_ = () => {
+      const btnAdmins = document.getElementById("viewAdminsBtn");
+      const btnUsers = document.getElementById("viewUsersBtn");
+
+      const adminsKpi = document.getElementById("adminsKpiSection");
+      const adminsPanel = document.getElementById("adminsPanelSection");
+      const usersKpi = document.getElementById("usersKpiSection");
+      const usersPanel = document.getElementById("usersPanelSection");
+
+      if (!btnAdmins || !btnUsers) return;
+
+      const setView_ = (view) => {
+        const isAdmins = view === "admins";
+
+        if (adminsKpi) adminsKpi.hidden = !isAdmins;
+        if (adminsPanel) adminsPanel.hidden = !isAdmins;
+        if (usersKpi) usersKpi.hidden = isAdmins;
+        if (usersPanel) usersPanel.hidden = isAdmins;
+
+        btnAdmins.classList.toggle("primary", isAdmins);
+        btnAdmins.classList.toggle("ghost", !isAdmins);
+        btnAdmins.setAttribute("aria-pressed", isAdmins ? "true" : "false");
+
+        btnUsers.classList.toggle("primary", !isAdmins);
+        btnUsers.classList.toggle("ghost", isAdmins);
+        btnUsers.setAttribute("aria-pressed", !isAdmins ? "true" : "false");
+      };
+
+      // 預設顯示管理員切面（符合「切換」的直覺：一次只看一個名單）
+      setView_("admins");
+
+      btnAdmins.addEventListener("click", () => setView_("admins"));
+      btnUsers.addEventListener("click", () => setView_("users"));
+    };
+
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡住
     if (typeof initUsersPanel_ === "function") initUsersPanel_();
 
     await loadConfig_();
     initTheme_();
+
+    // 上方切換「管理員名單 / 技師名單」
+    initListViewToggle_();
 
     // 事件綁定（僅做一次）
     bindTopbar_();

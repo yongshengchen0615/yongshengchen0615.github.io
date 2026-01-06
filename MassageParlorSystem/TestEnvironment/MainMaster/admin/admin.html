@@ -24,13 +24,18 @@
         </div>
 
         <div class="topbar-right">
+          <div class="seg" aria-label="切換名單">
+            <button id="viewAdminsBtn" class="btn primary" type="button" aria-pressed="true">管理員名單</button>
+            <button id="viewUsersBtn" class="btn ghost" type="button" aria-pressed="false">技師名單</button>
+          </div>
+
           <button id="themeToggle" class="btn ghost" type="button">切換主題</button>
           <button id="reloadBtn" class="btn ghost" type="button">重新整理</button>
           <button id="saveAllBtn" class="btn primary" type="button" disabled>儲存全部變更</button>
         </div>
       </header>
 
-      <section class="kpi-grid" aria-label="統計資訊">
+      <section id="adminsKpiSection" class="kpi-grid" aria-label="統計資訊">
         <div class="kpi-card">
           <div class="kpi-label">總管理員</div>
           <div class="kpi-value" id="kpiTotal">-</div>
@@ -49,7 +54,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section id="adminsPanelSection" class="panel">
         <div class="panel-head">
           <div class="panel-title" aria-hidden="true">
             <div class="panel-title-main">管理員名單</div>
@@ -138,7 +143,7 @@
       </section>
 
       <!-- KPI (Users/技師名單 - match client) -->
-      <section class="kpi-grid" aria-label="技師統計資訊">
+      <section id="usersKpiSection" class="kpi-grid" aria-label="技師統計資訊">
         <div class="kpi-card">
           <div class="kpi-label">總技師</div>
           <div class="kpi-value" id="uKpiTotal">-</div>
@@ -166,7 +171,7 @@
       </section>
 
       <!-- ✅ Users/技師資料管理：直接在 admin 內製作（不嵌入、不外連） -->
-      <section class="panel client-scope" aria-label="Users/技師資料管理">
+      <section id="usersPanelSection" class="panel client-scope" aria-label="Users/技師資料管理">
         <div class="panel-head">
           <div class="panel-title" aria-hidden="true">
             <div class="panel-title-main">技師名單</div>
