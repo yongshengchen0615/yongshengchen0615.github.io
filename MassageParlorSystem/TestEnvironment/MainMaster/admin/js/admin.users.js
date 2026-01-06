@@ -9,11 +9,29 @@ let uAll = [];
 /** @type {any[]} */
 let uFiltered = [];
 
+// 快速索引：避免大量互動時重複 uAll.find O(n)
+const uById = new Map();
+
 const uSelectedIds = new Set();
 const uOriginalMap = new Map();
 const uDirtyMap = new Map();
 
 let uSavingAll = false;
+
+// KPI 統計快取：避免搜尋輸入時重複 O(n) 計算
+let uKpiDirty = true;
+let uKpiRaf = 0;
+
+function uInvalidateKpi_() {
+  uKpiDirty = true;
+  if (uKpiRaf) return;
+  uKpiRaf = requestAnimationFrame(() => {
+    uKpiRaf = 0;
+    if (!uKpiDirty) return;
+    uUpdateKpi_();
+    uKpiDirty = false;
+  });
+}
 
 const U_VIEW_ENUM = ["all", "usage", "master", "features"];
 let uCurrentView = localStorage.getItem("users_view") || "usage";
@@ -92,9 +110,6 @@ function uRefreshSaveBtn_() {
   const n = uDirtyMap.size;
   btn.disabled = uSavingAll || n === 0;
   btn.textContent = uSavingAll ? "儲存中..." : n ? `儲存 Users 變更（${n}）` : "儲存 Users 變更";
-
-  uApplyView_();
-  pushSetEnabled_(!uSavingAll);
 }
 
 function uSetLock_(locked) {
@@ -110,6 +125,7 @@ function uSetLock_(locked) {
     "uBulkPersonalStatus",
     "uBulkScheduleEnabled",
     "uBulkUsageDays",
+    "uBulkStartDate",
     "uBulkApply",
     "uBulkDelete",
 
@@ -404,7 +420,7 @@ function uApplyFilters_() {
   uSyncCheckAll_();
   uUpdateBulkBar_();
   uRefreshSaveBtn_();
-  uUpdateKpi_();
+  uInvalidateKpi_();
 }
 
 function uAuditOption_(value, current) {
@@ -432,99 +448,92 @@ function uAuditClass_(audit) {
 function uRender_() {
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
-  tbody.innerHTML = "";
-
   if (!uFiltered.length) {
     tbody.innerHTML = `<tr><td colspan="15">無資料</td></tr>`;
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  const rowsHtml = uFiltered
+    .map((u, i) => {
+      const userId = String(u.userId || "");
+      const audit = normalizeAudit_(u.audit);
 
-  uFiltered.forEach((u, i) => {
-    const userId = String(u.userId || "");
-    const audit = normalizeAudit_(u.audit);
+      const expiry = uGetExpiryInfo_(u);
 
-    const expiry = uGetExpiryInfo_(u);
+      const pushEnabled = uNormalizeYesNo_(u.pushEnabled || "否");
+      const personalStatusEnabled = uNormalizeYesNo_(u.personalStatusEnabled || "否");
+      const scheduleEnabled = uNormalizeYesNo_(u.scheduleEnabled || "否");
 
-    const pushEnabled = uNormalizeYesNo_(u.pushEnabled || "否");
-    const personalStatusEnabled = uNormalizeYesNo_(u.personalStatusEnabled || "否");
-    const scheduleEnabled = uNormalizeYesNo_(u.scheduleEnabled || "否");
+      const isDirty = uDirtyMap.has(userId);
+      const pushDisabled = audit !== "通過" ? "disabled" : "";
 
-    const isDirty = uDirtyMap.has(userId);
-    const pushDisabled = audit !== "通過" ? "disabled" : "";
+      return `
+        <tr data-userid="${escapeHtml(userId)}" class="${isDirty ? "dirty" : ""}">
+          <td class="sticky-col col-check" data-label="選取">
+            <input class="u-row-check" type="checkbox" ${uSelectedIds.has(userId) ? "checked" : ""} aria-label="選取此列">
+          </td>
+          <td data-label="#">${i + 1}</td>
+          <td data-label="userId"><span class="mono">${escapeHtml(userId)}</span></td>
+          <td data-label="顯示名稱">${escapeHtml(u.displayName || "")}</td>
+          <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
 
-    const tr = document.createElement("tr");
-    tr.dataset.userid = userId;
-    if (isDirty) tr.classList.add("dirty");
+          <td data-label="開始使用">
+            <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}">
+          </td>
+          <td data-label="期限(天)">
+            <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
+          </td>
 
-    tr.innerHTML = `
-      <td class="sticky-col col-check" data-label="選取">
-        <input class="u-row-check" type="checkbox" ${uSelectedIds.has(userId) ? "checked" : ""} aria-label="選取此列">
-      </td>
-      <td data-label="#">${i + 1}</td>
-      <td data-label="userId"><span class="mono">${escapeHtml(userId)}</span></td>
-      <td data-label="顯示名稱">${escapeHtml(u.displayName || "")}</td>
-      <td data-label="建立時間"><span class="mono">${escapeHtml(u.createdAt || "")}</span></td>
+          <td data-label="使用狀態">
+            <span class="expiry-pill ${expiry.cls}">${escapeHtml(expiry.text)}</span>
+          </td>
 
-      <td data-label="開始使用">
-        <input type="date" data-field="startDate" value="${escapeHtml(u.startDate || "")}">
-      </td>
-      <td data-label="期限(天)">
-        <input type="number" min="1" data-field="usageDays" value="${escapeHtml(u.usageDays || "")}">
-      </td>
+          <td data-label="審核狀態">
+            <select data-field="audit" aria-label="審核狀態">
+              ${AUDIT_ENUM.map((v) => uAuditOption_(v, audit)).join("")}
+            </select>
+            <span class="audit-badge ${uAuditClass_(audit)}">${escapeHtml(audit)}</span>
+          </td>
 
-      <td data-label="使用狀態">
-        <span class="expiry-pill ${expiry.cls}">${escapeHtml(expiry.text)}</span>
-      </td>
+          <td data-label="師傅編號">
+            <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}">
+          </td>
 
-      <td data-label="審核狀態">
-        <select data-field="audit" aria-label="審核狀態">
-          ${AUDIT_ENUM.map((v) => uAuditOption_(v, audit)).join("")}
-        </select>
-        <span class="audit-badge ${uAuditClass_(audit)}">${escapeHtml(audit)}</span>
-      </td>
+          <td data-label="是否師傅" class="u-is-master">${u.masterCode ? "是" : "否"}</td>
 
-      <td data-label="師傅編號">
-        <input type="text" data-field="masterCode" placeholder="師傅編號" value="${escapeHtml(u.masterCode || "")}">
-      </td>
+          <td data-label="是否推播">
+            <select data-field="pushEnabled" aria-label="是否推播" ${pushDisabled}>
+              <option value="否" ${pushEnabled === "否" ? "selected" : ""}>否</option>
+              <option value="是" ${pushEnabled === "是" ? "selected" : ""}>是</option>
+            </select>
+          </td>
 
-      <td data-label="是否師傅" class="u-is-master">${u.masterCode ? "是" : "否"}</td>
+          <td data-label="個人狀態開通">
+            <select data-field="personalStatusEnabled" aria-label="個人狀態開通">
+              <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
+              <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
+            </select>
+          </td>
 
-      <td data-label="是否推播">
-        <select data-field="pushEnabled" aria-label="是否推播" ${pushDisabled}>
-          <option value="否" ${pushEnabled === "否" ? "selected" : ""}>否</option>
-          <option value="是" ${pushEnabled === "是" ? "selected" : ""}>是</option>
-        </select>
-      </td>
+          <td data-label="排班表開通">
+            <select data-field="scheduleEnabled" aria-label="排班表開通">
+              <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
+              <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
+            </select>
+          </td>
 
-      <td data-label="個人狀態開通">
-        <select data-field="personalStatusEnabled" aria-label="個人狀態開通">
-          <option value="否" ${personalStatusEnabled === "否" ? "selected" : ""}>否</option>
-          <option value="是" ${personalStatusEnabled === "是" ? "selected" : ""}>是</option>
-        </select>
-      </td>
+          <td data-label="操作">
+            <div class="actions">
+              ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
+              <button class="btn danger u-btn-del" type="button">刪除</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
 
-      <td data-label="排班表開通">
-        <select data-field="scheduleEnabled" aria-label="排班表開通">
-          <option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
-          <option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
-        </select>
-      </td>
-
-      <td data-label="操作">
-        <div class="actions">
-          ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
-          <button class="btn danger u-btn-del" type="button">刪除</button>
-        </div>
-      </td>
-    `;
-
-    frag.appendChild(tr);
-  });
-
-  tbody.appendChild(frag);
-
+  tbody.innerHTML = rowsHtml;
   if (uSavingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
@@ -579,8 +588,11 @@ async function uLoadUsers_() {
       scheduleEnabled: uNormalizeYesNo_(u.scheduleEnabled || "否"),
     }));
 
+    uById.clear();
+    for (const u of uAll) uById.set(String(u.userId || ""), u);
+
     // 先更新 KPI（即使後續流程失敗也能看到人數）
-    uUpdateKpi_();
+    uInvalidateKpi_();
 
     uOriginalMap.clear();
     uDirtyMap.clear();
@@ -602,7 +614,9 @@ async function uLoadUsers_() {
 }
 
 function uGetById_(userId) {
-  return uAll.find((x) => String(x.userId || "") === String(userId || ""));
+  const id = String(userId || "");
+  if (!id) return undefined;
+  return uById.get(id) || uAll.find((x) => String(x.userId || "") === id);
 }
 
 function uUpdateRowDirtyUI_(row, userId) {
@@ -618,6 +632,7 @@ async function uBulkApply_() {
   let personalStatusEnabled = String(document.getElementById("uBulkPersonalStatus")?.value || "").trim();
   let scheduleEnabled = String(document.getElementById("uBulkScheduleEnabled")?.value || "").trim();
   let usageDaysRaw = String(document.getElementById("uBulkUsageDays")?.value || "").trim();
+  let startDate = String(document.getElementById("uBulkStartDate")?.value || "").trim();
 
   const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
   if (usageDaysRaw && (!Number.isFinite(usageDays) || usageDays <= 0)) {
@@ -625,7 +640,15 @@ async function uBulkApply_() {
     return;
   }
 
-  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
+  if (startDate) {
+    const dt = new Date(startDate + "T00:00:00");
+    if (isNaN(dt.getTime())) {
+      toast("批次開始使用日期格式不正確", "err");
+      return;
+    }
+  }
+
+  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw && !startDate) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -638,6 +661,7 @@ async function uBulkApply_() {
     if (!u) return;
 
     if (audit) u.audit = normalizeAudit_(audit);
+    if (startDate) u.startDate = startDate;
     if (usageDaysRaw) u.usageDays = String(usageDays);
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
@@ -807,7 +831,10 @@ function uBind_() {
       if (!id) return;
       checked ? uSelectedIds.add(id) : uSelectedIds.delete(id);
     });
-    uRender_();
+    // 只更新 checkbox，不需要整表重繪
+    document.querySelectorAll("#uTbody .u-row-check").forEach((cb) => {
+      if (cb instanceof HTMLInputElement) cb.checked = checked;
+    });
     uSyncCheckAll_();
     uUpdateBulkBar_();
   });
@@ -815,13 +842,22 @@ function uBind_() {
   document.getElementById("uBulkClear")?.addEventListener("click", () => {
     if (uSavingAll) return;
     uSelectedIds.clear();
-    uRender_();
+    // 只需要把目前顯示的勾選取消
+    document.querySelectorAll("#uTbody .u-row-check").forEach((cb) => {
+      if (cb instanceof HTMLInputElement) cb.checked = false;
+    });
     uSyncCheckAll_();
     uUpdateBulkBar_();
   });
 
   document.getElementById("uBulkApply")?.addEventListener("click", () => uBulkApply_());
   document.getElementById("uBulkDelete")?.addEventListener("click", () => uBulkDelete_());
+
+  // Date picker UX: some browsers/WebViews require explicit showPicker()
+  document.getElementById("uBulkStartDate")?.addEventListener("click", (e) => {
+    const el = e.currentTarget;
+    if (el && typeof el.showPicker === "function") el.showPicker();
+  });
 
   // Table delegation
   const tbody = document.getElementById("uTbody");
@@ -877,8 +913,8 @@ function uBind_() {
         badge.className = `audit-badge ${uAuditClass_(auditNow)}`;
       }
 
-      // 同步更新 KPI（audit 會影響統計）
-      uUpdateKpi_();
+      // KPI 可能變動（用 rAF 合併更新）
+      uInvalidateKpi_();
     } else if (field === "usageDays") {
       u.usageDays = v.trim();
       const exp = uGetExpiryInfo_(u);
@@ -909,6 +945,16 @@ function uBind_() {
 
     uMarkDirty_(id, u);
     uUpdateRowDirtyUI_(row, id);
+  });
+
+  // Date picker UX: open picker on click when supported
+  tbody.addEventListener("click", (e) => {
+    if (uSavingAll) return;
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t instanceof HTMLInputElement && t.type === "date") {
+      if (typeof t.showPicker === "function") t.showPicker();
+    }
   });
 
   tbody.addEventListener("click", async (e) => {
@@ -942,6 +988,7 @@ function uBind_() {
       uSelectedIds.delete(id);
       uAll = uAll.filter((x) => String(x.userId || "") !== id);
       uFiltered = uFiltered.filter((x) => String(x.userId || "") !== id);
+      uById.delete(id);
       uOriginalMap.delete(id);
       uDirtyMap.delete(id);
       uApplyFilters_();
@@ -958,7 +1005,7 @@ function initUsersPanel_() {
   uBind_();
   uRefreshSaveBtn_();
   // 先顯示 KPI（避免在等待驗證/載入時一直是 "-"）
-  uUpdateKpi_();
+  uInvalidateKpi_();
   uSetFooter_("Users：等待管理員驗證後載入");
   uSetTbodyMessage_("等待管理員驗證後載入...");
 }

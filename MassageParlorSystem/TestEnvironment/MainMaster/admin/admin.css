@@ -258,8 +258,6 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
  * table[data-view="usage" | "master" | "features" | "all"]
  * ========================================================= */
 
-.client-scope table[data-view="all"]{}
-
 /* USAGE：顯示 1-9 + 15；隱藏 10-14 */
 .client-scope table[data-view="usage"] thead th:nth-child(10),
 .client-scope table[data-view="usage"] thead th:nth-child(11),
@@ -430,7 +428,26 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
     padding:12px 14px 14px;
   }
 
-  .client-scope thead{ display:none; }
+  /* Mobile 仍需可操作「全選」：只顯示第一欄的 checkbox（其餘表頭維持隱藏） */
+  .client-scope thead{ display:block; }
+  .client-scope thead tr{ display:block; width:100%; }
+  .client-scope thead th{ display:none; }
+  .client-scope thead th.col-check{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    position:static;
+    width:100%;
+    padding:10px 10px;
+    border-bottom:1px solid var(--border);
+    background:var(--card);
+  }
+  .client-scope thead th.col-check::after{
+    content:" 全選";
+    color:var(--text-sub);
+    font-size:12px;
+  }
+
   .client-scope table,
   .client-scope tbody,
   .client-scope tr,
@@ -615,7 +632,26 @@ tbody td.sticky-col{ background:transparent; }
     padding:12px 14px 14px;
   }
 
-  .responsive-table thead{ display:none; }
+  /* Mobile 仍需可操作「全選」：只顯示第一欄的 checkbox（其餘表頭維持隱藏） */
+  .responsive-table thead{ display:block; }
+  .responsive-table thead tr{ display:block; width:100%; }
+  .responsive-table thead th{ display:none; }
+  .responsive-table thead th.col-check{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    position:static;
+    width:100%;
+    padding:10px 10px;
+    border-bottom:1px solid var(--border);
+    background:var(--card);
+  }
+  .responsive-table thead th.col-check::after{
+    content:" 全選";
+    color:var(--text-sub);
+    font-size:12px;
+  }
+
   .responsive-table,
   .responsive-table tbody,
   .responsive-table tr,
