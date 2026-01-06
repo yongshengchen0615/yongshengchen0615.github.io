@@ -443,6 +443,9 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   .client-scope .panel-head{ flex-direction:column; align-items:stretch; }
   .client-scope .search-box{ width: 100%; }
 
+  /* Mobile：避免 filters 在 column 版型被撐高，導致搜尋與 chips 中間大片空白 */
+  .client-scope .filters{ flex:0 0 auto; align-content:flex-start; }
+
   .client-scope .table-wrap{
     overflow: visible;
     padding:12px 14px 14px;
@@ -646,10 +649,13 @@ tbody td.sticky-col{ background:transparent; }
   .panel-head{ flex-direction:column; align-items:stretch; }
   .search-box{ width:100%; }
 
+  /* Mobile：避免 filters 在 column 版型被撐高，導致搜尋與 chips 中間大片空白 */
+  .filters{ flex:0 0 auto; align-content:flex-start; }
+
   /* Admin 主表格：手機版 table -> card（需搭配 td[data-label]） */
   .responsive-wrap{
     overflow: visible;
-    padding:12px 14px 14px;
+    padding:10px 10px 12px;
   }
 
   /* Mobile 仍需可操作「全選」：只顯示第一欄的 checkbox（其餘表頭維持隱藏） */
@@ -689,8 +695,8 @@ tbody td.sticky-col{ background:transparent; }
     border-bottom:1px solid var(--border-soft);
     white-space: normal !important;
     display:flex;
-    justify-content:space-between;
-    gap:10px;
+    justify-content:flex-start;
+    gap:8px;
     overflow-wrap:anywhere;
     word-break:break-word;
   }
@@ -699,7 +705,7 @@ tbody td.sticky-col{ background:transparent; }
     content: attr(data-label);
     color:var(--text-sub);
     font-size:12px;
-    min-width: 110px;
+    min-width: 88px;
   }
 
   .responsive-table .sticky-col,
