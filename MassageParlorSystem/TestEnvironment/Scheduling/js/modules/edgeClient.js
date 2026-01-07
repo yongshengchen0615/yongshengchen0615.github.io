@@ -9,6 +9,7 @@
 
 import { config } from "./config.js";
 import { withQuery, readJsonLS, writeJsonLS } from "./core.js";
+import { logUsageEvent } from "./usageLog.js";
 
 const STATUS_FETCH_TIMEOUT_MS = 8000;
 const EDGE_TRY_MAX = 3;
@@ -124,6 +125,13 @@ export async function fetchStatusAll() {
         const n = bumpFailCount(idx);
         if (config.EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
           const nextIdx = (idx + 1) % config.EDGE_STATUS_URLS.length;
+
+          // 切換分流（sticky reroute）
+          logUsageEvent({
+            event: "edge_reroute",
+            detail: `from=${idx};to=${nextIdx};failCount=${n};threshold=${EDGE_FAIL_THRESHOLD}`,
+          });
+
           setOverrideEdgeIndex(nextIdx);
         }
       }
