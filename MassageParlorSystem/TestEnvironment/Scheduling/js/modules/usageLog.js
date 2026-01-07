@@ -90,7 +90,7 @@ export async function logAppOpen({ userId, displayName } = {}) {
  * @param {string} args.event 事件名稱（必填）
  * @param {string} [args.userId] 使用者唯一 ID（通常是 LIFF userId）；空值會略過不送。
  * @param {string} [args.displayName] 顯示名稱（可選）
- * @param {string} [args.detail] 事件附加資訊（可選；例如 from/to、狀態原因）
+ * @param {string} [args.detail] 事件附加資訊（可選）
  * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>}
  */
 export async function logUsageEvent({ event, userId, displayName, detail } = {}) {
@@ -114,7 +114,6 @@ export async function logUsageEvent({ event, userId, displayName, detail } = {})
     return { ok: false, skipped: true, reason: "THROTTLED" };
   }
 
-  // 先寫入，避免短時間內重入重送
   safeWriteNumberLS(key, t);
 
   const url = buildUrl(base, {

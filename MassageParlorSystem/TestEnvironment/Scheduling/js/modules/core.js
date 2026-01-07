@@ -100,6 +100,27 @@ export function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+/* =========================
+ * Timing utils
+ * ========================= */
+/**
+ * Debounce：在一段時間內多次呼叫只會執行最後一次。
+ * @template {(...args:any[])=>any} F
+ * @param {F} fn
+ * @param {number} waitMs
+ * @returns {F}
+ */
+export function debounce(fn, waitMs) {
+  let t = null;
+  return function (...args) {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      t = null;
+      fn.apply(this, args);
+    }, Math.max(0, Number(waitMs) || 0));
+  };
+}
+
 export function fmtRemainingRaw(v) {
   if (v === null || v === undefined) return "";
   return String(v);

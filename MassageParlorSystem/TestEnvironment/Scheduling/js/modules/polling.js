@@ -12,6 +12,7 @@ import { dom } from "./dom.js";
 import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
+import { config } from "./config.js";
 
 const POLL = {
   BASE_MS: 3000,
@@ -21,6 +22,18 @@ const POLL = {
   CHANGED_BOOST_MS: 4500,
   JITTER_RATIO: 0.2,
 };
+
+function getPollCfg() {
+  // config 會在 boot 時 loadConfigJson() 後就緒
+  return {
+    BASE_MS: Number(config.POLL_BASE_MS) || POLL.BASE_MS,
+    MAX_MS: Number(config.POLL_MAX_MS) || POLL.MAX_MS,
+    FAIL_MAX_MS: Number(config.POLL_FAIL_MAX_MS) || POLL.FAIL_MAX_MS,
+    STABLE_UP_AFTER: Number(config.POLL_STABLE_UP_AFTER) || POLL.STABLE_UP_AFTER,
+    CHANGED_BOOST_MS: Number(config.POLL_CHANGED_BOOST_MS) || POLL.CHANGED_BOOST_MS,
+    JITTER_RATIO: typeof config.POLL_JITTER_RATIO === "number" ? config.POLL_JITTER_RATIO : POLL.JITTER_RATIO,
+  };
+}
 
 function withJitter(ms, ratio) {
   const r = typeof ratio === "number" ? ratio : 0.15;
@@ -36,7 +49,8 @@ function clearPoll() {
 
 function scheduleNextPoll(ms) {
   clearPoll();
-  const wait = withJitter(ms, POLL.JITTER_RATIO);
+  const pc = getPollCfg();
+  const wait = withJitter(ms, pc.JITTER_RATIO);
 
   state.pollTimer = setTimeout(async () => {
     if (document.hidden) return;
@@ -48,6 +62,7 @@ function scheduleNextPoll(ms) {
 }
 
 function computeNextInterval(res) {
+  const pc = getPollCfg();
   const ok = !!(res && res.ok);
   const changed = !!(res && res.changed);
 
@@ -55,8 +70,8 @@ function computeNextInterval(res) {
     state.poll.failStreak += 1;
     state.poll.successStreak = 0;
 
-    const backoff = Math.min(POLL.FAIL_MAX_MS, POLL.BASE_MS * Math.pow(2, state.poll.failStreak));
-    state.poll.nextMs = Math.max(POLL.BASE_MS, backoff);
+    const backoff = Math.min(pc.FAIL_MAX_MS, pc.BASE_MS * Math.pow(2, state.poll.failStreak));
+    state.poll.nextMs = Math.max(pc.BASE_MS, backoff);
     return state.poll.nextMs;
   }
 
@@ -64,12 +79,12 @@ function computeNextInterval(res) {
   state.poll.failStreak = 0;
 
   if (changed) {
-    state.poll.nextMs = Math.max(POLL.BASE_MS, Math.min(POLL.MAX_MS, POLL.CHANGED_BOOST_MS));
+    state.poll.nextMs = Math.max(pc.BASE_MS, Math.min(pc.MAX_MS, pc.CHANGED_BOOST_MS));
     return state.poll.nextMs;
   }
 
-  if (state.poll.successStreak < POLL.STABLE_UP_AFTER) {
-    state.poll.nextMs = Math.max(POLL.BASE_MS, state.poll.nextMs);
+  if (state.poll.successStreak < pc.STABLE_UP_AFTER) {
+    state.poll.nextMs = Math.max(pc.BASE_MS, state.poll.nextMs);
     return state.poll.nextMs;
   }
 
@@ -80,7 +95,7 @@ function computeNextInterval(res) {
   else if (s < 16) target = 12000;
   else target = POLL.MAX_MS;
 
-  state.poll.nextMs = Math.min(POLL.MAX_MS, Math.max(POLL.BASE_MS, target));
+  state.poll.nextMs = Math.min(pc.MAX_MS, Math.max(pc.BASE_MS, target));
   return state.poll.nextMs;
 }
 
@@ -101,7 +116,7 @@ async function refreshStatusAdaptive(isManual) {
 function resetPollState() {
   state.poll.successStreak = 0;
   state.poll.failStreak = 0;
-  state.poll.nextMs = POLL.BASE_MS;
+  state.poll.nextMs = getPollCfg().BASE_MS;
 }
 
 /**
