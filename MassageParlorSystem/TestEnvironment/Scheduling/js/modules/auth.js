@@ -233,6 +233,23 @@ async function onAuthorized({ userId, displayName, result }) {
     showNotMasterHint(false);
   }
 
+  // 紀錄審核狀態（每次開啟/驗證都會嘗試送出；由 USAGE_LOG_MIN_INTERVAL_MS 節流）
+  try {
+    logUsageEvent({
+      event: "audit_status",
+      userId,
+      displayName: result.displayName || displayName,
+      detail: JSON.stringify({
+        status: result.status,
+        audit: result.audit,
+        remainingDays: result.remainingDays,
+        scheduleEnabled: result.scheduleEnabled,
+        pushEnabled: result.pushEnabled,
+        personalStatusEnabled: result.personalStatusEnabled,
+      }),
+    });
+  } catch {}
+
   // Gate 規則
   const gate = decideGateAction(result);
   if (!gate.allow) {
