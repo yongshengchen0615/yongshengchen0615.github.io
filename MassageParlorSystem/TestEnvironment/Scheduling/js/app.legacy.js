@@ -900,7 +900,7 @@ function renderFeatureBanner_() {
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
+  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("排班表", schedule), buildChip_("個人狀態", personal)].join(
     ""
   );
 }

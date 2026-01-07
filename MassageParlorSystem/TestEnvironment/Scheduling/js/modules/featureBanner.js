@@ -28,7 +28,7 @@ function renderFeatureBanner() {
   const personal = normalizeYesNo(state.feature.personalStatusEnabled);
   const schedule = normalizeYesNo(state.feature.scheduleEnabled);
 
-  chipsEl.innerHTML = [buildChip("叫班提醒", push), buildChip("個人狀態", personal), buildChip("排班表", schedule)].join(
+  chipsEl.innerHTML = [buildChip("叫班提醒", push), buildChip("排班表", schedule), buildChip("個人狀態", personal)].join(
     ""
   );
 }
