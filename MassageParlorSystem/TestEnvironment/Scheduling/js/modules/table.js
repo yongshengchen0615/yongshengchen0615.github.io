@@ -566,7 +566,7 @@ function decideIncomingRows(panel, incomingRows, prevRows, isManual) {
 }
 
 export async function refreshStatus({ isManual } = { isManual: false }) {
-  if (document.hidden) return;
+  if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
   if (state.refreshInFlight) return;
 
   state.refreshInFlight = true;

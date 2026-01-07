@@ -53,7 +53,7 @@ function scheduleNextPoll(ms) {
   const wait = withJitter(ms, pc.JITTER_RATIO);
 
   state.pollTimer = setTimeout(async () => {
-    if (document.hidden) return;
+    if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
 
     const res = await refreshStatusAdaptive(false);
     const next = computeNextInterval(res);

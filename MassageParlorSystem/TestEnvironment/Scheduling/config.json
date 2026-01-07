@@ -41,6 +41,9 @@
   "POLL_JITTER_RATIO": 0.2,
   "_comment_POLL_JITTER_RATIO": "輪詢抖動比例（0~1），用來分散同時請求，避免尖峰。",
 
+  "POLL_ALLOW_BACKGROUND": true,
+  "_comment_POLL_ALLOW_BACKGROUND": "是否允許在背景（切到別的 App / 螢幕鎖定）時仍嘗試輪詢更新。注意：行動裝置/LINE WebView 可能仍會暫停或降頻，屬 best-effort。",
+
   "STATUS_FETCH_TIMEOUT_MS": 8000,
   "_comment_STATUS_FETCH_TIMEOUT_MS": "單次狀態 API timeout（毫秒）。調小可加速失敗切換，但太小可能誤判網路慢為失敗。",
 
