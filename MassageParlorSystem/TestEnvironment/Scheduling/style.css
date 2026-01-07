@@ -119,6 +119,12 @@ body {
   padding: 20px 16px 32px 16px;
 }
 
+/* 頁面標題（置頂置中） */
+.page-title {
+  text-align: center;
+  margin: 2px 0 10px 0;
+}
+
 /* =========================================================
  * ✅ 已開通功能提示（固定顯示三項；未開通灰色 + 未開通 badge）
  * ========================================================= */
@@ -211,9 +217,14 @@ body {
 .app-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.app-header-spacer {
+  display: none;
 }
 
 .app-header-left {

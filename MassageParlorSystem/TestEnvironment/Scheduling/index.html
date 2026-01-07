@@ -26,6 +26,27 @@
   <!-- 主畫面 -->
   <div id="appRoot" class="app-root app-hidden">
     <div class="layout">
+      <!-- ✅ 頁面標題（置頂置中） -->
+      <header class="page-title">
+        <h1 class="app-title">府前店排班行動版</h1>
+        <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
+      </header>
+
+      <!-- 連線狀態 / 深色 / 手動重整（移到功能欄位上方） -->
+      <header class="app-header">
+        <div class="app-header-spacer" aria-hidden="true"></div>
+
+        <div class="app-header-right">
+          <div class="pill pill-status">
+            <span class="pill-dot"></span>
+            <span class="pill-text" id="connectionStatus">連線中…</span>
+          </div>
+
+          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
+          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
+        </div>
+      </header>
+
       <!-- ✅ 已開通功能提示（固定顯示三項；未開通顯示灰色 + 未開通） -->
       <div id="featureBanner" class="feature-banner">
         <span class="feature-title">功能：</span>
@@ -49,24 +70,6 @@
         <div class="my-master-title">我的狀態</div>
         <div id="myMasterStatusText" class="my-master-text">—</div>
       </div>
-
-      <!-- 頂部 Header -->
-      <header class="app-header">
-        <div class="app-header-left">
-          <h1 class="app-title">府前店排班行動版</h1>
-          <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
-        </div>
-
-        <div class="app-header-right">
-          <div class="pill pill-status">
-            <span class="pill-dot"></span>
-            <span class="pill-text" id="connectionStatus">連線中…</span>
-          </div>
-
-          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
-          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
-        </div>
-      </header>
 
       <!-- Tabs + 篩選列 -->
       <section class="toolbar">
