@@ -30,6 +30,7 @@ let FALLBACK_ORIGIN_CACHE_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
 let ENABLE_LINE_LOGIN = true;
+let POLL_ALLOW_BACKGROUND_ = false;
 
 async function loadConfigJson_() {
   const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
@@ -44,6 +45,11 @@ async function loadConfigJson_() {
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
   ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+
+  // optional: allow background polling (best-effort)
+  if (typeof cfg.POLL_ALLOW_BACKGROUND === "boolean") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND;
+  else if (typeof cfg.POLL_ALLOW_BACKGROUND === "string") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND.trim() === "是";
+  else if (typeof cfg.POLL_ALLOW_BACKGROUND === "number") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND === 1;
 
   if (ENABLE_LINE_LOGIN && !LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
@@ -1412,7 +1418,7 @@ function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
 }
 
 async function refreshStatus(isManual = false) {
-  if (document.hidden) return;
+  if (document.hidden && !POLL_ALLOW_BACKGROUND_) return;
   if (refreshInFlight) return;
 
   refreshInFlight = true;
@@ -1924,7 +1930,7 @@ function scheduleNextPoll_(ms) {
   const wait = withJitter_(ms, POLL.JITTER_RATIO);
 
   pollTimer = setTimeout(async () => {
-    if (document.hidden) return;
+    if (document.hidden && !POLL_ALLOW_BACKGROUND_) return;
 
     const res = await refreshStatusAdaptive_(false);
     const next = computeNextInterval_(res);

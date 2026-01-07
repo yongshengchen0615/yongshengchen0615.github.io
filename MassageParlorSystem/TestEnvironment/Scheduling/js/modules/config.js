@@ -44,6 +44,9 @@ export const config = {
   /** 輪詢抖動比例（0~1）。 */
   POLL_JITTER_RATIO: 0.2,
 
+  /** 是否允許在背景（document.hidden=true）時仍嘗試輪詢更新。注意：行動裝置/LINE WebView 可能仍會暫停或降頻。 */
+  POLL_ALLOW_BACKGROUND: false,
+
   /** 單次狀態抓取 timeout（毫秒）。 */
   STATUS_FETCH_TIMEOUT_MS: 8000,
   /** Origin fallback 額外 timeout（毫秒）。 */
@@ -94,6 +97,12 @@ export async function loadConfigJson() {
 
   const jitterRatio = Number(cfg.POLL_JITTER_RATIO);
   if (!Number.isNaN(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) config.POLL_JITTER_RATIO = jitterRatio;
+
+  // optional: allow background polling (best-effort)
+  const allowBgRaw = cfg.POLL_ALLOW_BACKGROUND;
+  if (typeof allowBgRaw === "boolean") config.POLL_ALLOW_BACKGROUND = allowBgRaw;
+  else if (typeof allowBgRaw === "string") config.POLL_ALLOW_BACKGROUND = allowBgRaw.trim() === "是";
+  else if (typeof allowBgRaw === "number") config.POLL_ALLOW_BACKGROUND = allowBgRaw === 1;
 
   const fetchTimeout = Number(cfg.STATUS_FETCH_TIMEOUT_MS);
   if (!Number.isNaN(fetchTimeout) && fetchTimeout >= 1000) config.STATUS_FETCH_TIMEOUT_MS = fetchTimeout;
