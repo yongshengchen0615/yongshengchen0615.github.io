@@ -6,6 +6,7 @@
 // Config (loaded from config.json)
 let API_BASE_URL = "";
 let ADMIN_API_URL = "";
+let USAGE_LOG_API_URL = "";
 let LIFF_ID = "";
 
 // Users data

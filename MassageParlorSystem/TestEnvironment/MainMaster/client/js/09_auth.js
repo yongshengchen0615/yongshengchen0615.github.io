@@ -107,6 +107,11 @@ async function adminAuthBoot_() {
 		showAuthGate_(false);
 		setEditingEnabled_(true);
 
+		// ✅ 使用紀錄：登入成功
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("admin_login_ok", { audit: String(check.audit || ""), liff: true });
+		}
+
 		// ✅ 通過後再保險套一次（含 tabs / 欄位隱藏）
 		applyPushFeatureGate_();
 		applyBulkPermissions_();
@@ -124,6 +129,11 @@ async function adminLogout_() {
 	try {
 		if (window.liff && liff.isLoggedIn()) await liff.logout();
 	} finally {
+		// ✅ 使用紀錄：登出
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("admin_logout", { liff: !!(window.liff && liff.isLoggedIn && liff.isLoggedIn()) });
+		}
+
 		adminProfile = null;
 		adminPerms = null;
 		setEditingEnabled_(false);

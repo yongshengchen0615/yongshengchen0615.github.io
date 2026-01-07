@@ -7,6 +7,9 @@
   "_comment_admin_api": "✅新：管理員門禁（獨立 GAS Web App /exec）",
   "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbzjhISV_F00jlyLLDOGEJnseZYAXjKZb9x56bYEQvroviPI8YhPnq5ir8JjU9fmCk_kdQ/exec",
 
+  "_comment_usage_log": "✅新：使用紀錄（GAS Web App /exec，可選；留空代表不記錄）",
+  "USAGE_LOG_API_URL": "https://script.google.com/macros/s/AKfycbzS9LHsWMT7Va-wArlkIFShrWX0KWW2I0YRkXY-HsNxb_YfYjeNhY8laKQG_rYuo9Qk/exec",
+
   "_comment_liff": "✅你的 LIFF ID（LINE Developers 後台取得）",
   "LIFF_ID": "2008804969-Zo59tqoJ",
 
