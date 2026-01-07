@@ -159,6 +159,11 @@ async function bulkDelete_() {
 	if (failCount === 0) toast(`批次刪除完成：${okCount} 筆`, "ok");
 	else toast(`批次刪除：成功 ${okCount} / 失敗 ${failCount}`, "err");
 
+	// ✅ 使用紀錄：批次刪除
+	if (typeof usageLogFire_ === "function") {
+		usageLogFire_("users_delete_bulk", { requested: ids.length, okCount, failCount });
+	}
+
 	await loadUsers();
 }
 
@@ -441,6 +446,11 @@ async function handleRowDelete_(row, userId, delBtn) {
 
 	if (ok) {
 		toast("刪除完成", "ok");
+
+		// ✅ 使用紀錄：單筆刪除
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("users_delete_one", { userId });
+		}
 		selectedIds.delete(userId);
 
 		allUsers = allUsers.filter((x) => x.userId !== userId);
@@ -489,6 +499,15 @@ async function saveAllDirty_() {
 			(document.getElementById("footerStatus").textContent = `儲存中：1/1（共 ${items.length} 筆）`);
 
 		const ret = await updateUsersBatch(items);
+
+		// ✅ 使用紀錄：儲存全部（不含敏感內容）
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("users_update_batch", {
+				items: items.length,
+				okCount: Number(ret?.okCount || 0),
+				failCount: Number(ret?.failCount || 0),
+			});
+		}
 
 		if (ret && ret.okCount) {
 			const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));

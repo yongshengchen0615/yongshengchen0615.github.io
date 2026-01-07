@@ -21,6 +21,9 @@ async function loadConfig_() {
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
 
+  // Optional: usage log endpoint (GAS Web App /exec)
+  USAGE_LOG_API_URL = String(cfg.USAGE_LOG_API_URL || "").trim();
+
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
   if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
 
