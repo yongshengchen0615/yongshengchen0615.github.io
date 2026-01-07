@@ -17,6 +17,7 @@ import { updateFeatureState } from "./featureBanner.js";
 import { applyScheduleUiMode, showNotMasterHint } from "./scheduleUi.js";
 import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js";
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { logUsageEvent } from "./usageLog.js";
 
 function normalizeBoolOn(v) {
   if (v === true) return true;
@@ -181,6 +182,15 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
     r.status = "pending";
     r.audit = r.audit || "待審核";
     r.justRegistered = true;
+
+    // 使用者第一次送出審核（自動註冊）
+    logUsageEvent({
+      event: "audit_first_request",
+      userId,
+      displayName: r.displayName || displayNameFromClient || "",
+      detail: "auto_register",
+    });
+
     return r;
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
@@ -226,6 +236,16 @@ async function onAuthorized({ userId, displayName, result }) {
   // Gate 規則
   const gate = decideGateAction(result);
   if (!gate.allow) {
+    // 使用者開啟時仍在審核中
+    if (gate.ruleId === "PENDING") {
+      logUsageEvent({
+        event: "audit_pending_open",
+        userId,
+        displayName: result.displayName || displayName,
+        detail: String(result.audit || "pending") + (result.justRegistered ? "|justRegistered" : ""),
+      });
+    }
+
     hidePersonalTools();
     if (dom.myMasterStatusEl) dom.myMasterStatusEl.style.display = "none";
     showNotMasterHint(false);
