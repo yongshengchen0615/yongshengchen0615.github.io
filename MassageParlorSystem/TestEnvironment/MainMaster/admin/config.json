@@ -18,5 +18,8 @@
   "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能",
 
   "USAGE_LOG_API_URL": "https://script.google.com/macros/s/AKfycbzS9LHsWMT7Va-wArlkIFShrWX0KWW2I0YRkXY-HsNxb_YfYjeNhY8laKQG_rYuo9Qk/exec",
-  "_USAGE_LOG_API_URL_DESC": "管理員紀錄 GAS Web App（UsageLog）：提供 appendUsageLog / listUsageLog"
+  "_USAGE_LOG_API_URL_DESC": "管理員紀錄 GAS Web App（UsageLog）：提供 appendUsageLog / listUsageLog",
+
+  "TECH_USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwvgNI1EfBnAPk92PJ8NtdsaTIcN_c-0DxOgIsA6oJHwGWJNgpMCLrKDu-8ZHM18R0g/exec",
+  "_TECH_USAGE_LOG_URL_DESC": "技師使用紀錄 GAS Web App（usage_log）：用 GET 讀取（mode=list）與寫入（mode=log）"
 }

@@ -32,6 +32,7 @@
         <button id="viewAdminsBtn" class="btn primary" type="button" aria-pressed="true">管理員名單</button>
         <button id="viewAdminLogsBtn" class="btn ghost" type="button" aria-pressed="false">管理員紀錄</button>
         <button id="viewUsersBtn" class="btn ghost" type="button" aria-pressed="false">技師名單</button>
+        <button id="viewTechUsageLogsBtn" class="btn ghost" type="button" aria-pressed="false">技師使用紀錄</button>
       </div>
 
       <section id="adminsKpiSection" class="kpi-grid" aria-label="統計資訊">
@@ -343,6 +344,40 @@
         </div>
       </section>
 
+      <!-- ✅ 技師使用紀錄（僅顯示 serverTime / userId / name / detail） -->
+      <section id="techUsageLogsPanelSection" class="panel" aria-label="技師使用紀錄" hidden>
+        <div class="panel-head">
+          <div class="panel-title" aria-hidden="true">
+            <div class="panel-title-main">技師使用紀錄</div>
+          </div>
+
+          <div class="panel-meta">
+            <div id="techLogsFooterStatus" class="hint">-</div>
+          </div>
+
+          <div class="panel-actions" aria-label="技師使用紀錄操作">
+            <button id="techLogsReloadBtn" class="btn ghost" type="button">重新整理</button>
+          </div>
+        </div>
+
+        <div class="table-wrap responsive-wrap" aria-label="技師使用紀錄列表">
+          <table class="responsive-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>serverTime</th>
+                <th>userId</th>
+                <th>name</th>
+                <th>detail</th>
+              </tr>
+            </thead>
+            <tbody id="techLogsTbody">
+              <tr><td colspan="5">等待管理員驗證後載入...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </div>
   </div>
 
@@ -377,6 +412,9 @@
 
   <!-- 管理員紀錄（GAS UsageLog） -->
   <script src="js/admin.logs.js" defer></script>
+
+  <!-- 技師使用紀錄（GAS usage_log） -->
+  <script src="js/admin.techUsageLogs.js" defer></script>
 
   <!-- Users/技師資料管理（獨立區塊，不影響原本 admin 清單） -->
   <script src="js/admin.users.js" defer></script>

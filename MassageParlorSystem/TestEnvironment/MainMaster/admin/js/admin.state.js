@@ -38,6 +38,7 @@ let AUTH_API_URL = "";
 let LIFF_ID = "";
 let API_BASE_URL = "";
 let USAGE_LOG_API_URL = "";
+let TECH_USAGE_LOG_URL = "";
 
 /** @type {AdminRow[]} */
 let allAdmins = [];

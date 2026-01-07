@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const btnAdmins = document.getElementById("viewAdminsBtn");
       const btnLogs = document.getElementById("viewAdminLogsBtn");
       const btnUsers = document.getElementById("viewUsersBtn");
+      const btnTechUsageLogs = document.getElementById("viewTechUsageLogsBtn");
 
       const summaryText = document.getElementById("summaryText");
       const reloadBtn = document.getElementById("reloadBtn");
@@ -49,19 +50,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       const logsPanel = document.getElementById("adminLogsPanelSection");
       const usersKpi = document.getElementById("usersKpiSection");
       const usersPanel = document.getElementById("usersPanelSection");
+      const techUsageLogsPanel = document.getElementById("techUsageLogsPanelSection");
 
-      if (!btnAdmins || !btnUsers || !btnLogs) return;
+      if (!btnAdmins || !btnUsers || !btnLogs || !btnTechUsageLogs) return;
 
       const setView_ = (view) => {
         const isAdmins = view === "admins";
         const isLogs = view === "logs";
         const isUsers = view === "users";
+        const isTechUsageLogs = view === "techUsageLogs";
 
         if (adminsKpi) adminsKpi.hidden = !isAdmins;
         if (adminsPanel) adminsPanel.hidden = !isAdmins;
         if (logsPanel) logsPanel.hidden = !isLogs;
         if (usersKpi) usersKpi.hidden = !isUsers;
         if (usersPanel) usersPanel.hidden = !isUsers;
+        if (techUsageLogsPanel) techUsageLogsPanel.hidden = !isTechUsageLogs;
 
         // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
         if (summaryText) summaryText.hidden = !isAdmins;
@@ -80,7 +84,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         btnUsers.classList.toggle("ghost", !isUsers);
         btnUsers.setAttribute("aria-pressed", isUsers ? "true" : "false");
 
-        if (isLogs && typeof loadAdminLogs_ === "function") loadAdminLogs_();
+        btnTechUsageLogs.classList.toggle("primary", isTechUsageLogs);
+        btnTechUsageLogs.classList.toggle("ghost", !isTechUsageLogs);
+        btnTechUsageLogs.setAttribute("aria-pressed", isTechUsageLogs ? "true" : "false");
       };
 
       // 預設顯示管理員切面（符合「切換」的直覺：一次只看一個名單）
@@ -89,6 +95,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       btnAdmins.addEventListener("click", () => setView_("admins"));
       btnLogs.addEventListener("click", () => setView_("logs"));
       btnUsers.addEventListener("click", () => setView_("users"));
+      btnTechUsageLogs.addEventListener("click", () => setView_("techUsageLogs"));
     };
 
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡住
@@ -102,6 +109,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 管理員紀錄
     if (typeof bindAdminLogs_ === "function") bindAdminLogs_();
+
+    // 技師使用紀錄
+    if (typeof bindTechUsageLogs_ === "function") bindTechUsageLogs_();
 
     // 事件綁定（僅做一次）
     bindTopbar_();
@@ -138,6 +148,25 @@ document.addEventListener("DOMContentLoaded", async () => {
         (async () => {
           await bootUsersPanel_();
           return "users";
+        })()
+      );
+    }
+
+    // 管理員紀錄 / 技師使用紀錄：登入後一次載入（切換頁面不重新打 API）
+    if (typeof loadAdminLogs_ === "function") {
+      tasks.push(
+        (async () => {
+          await loadAdminLogs_();
+          return "adminLogs";
+        })()
+      );
+    }
+
+    if (typeof loadTechUsageLogs_ === "function") {
+      tasks.push(
+        (async () => {
+          await loadTechUsageLogs_();
+          return "techUsageLogs";
         })()
       );
     }
