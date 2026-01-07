@@ -30,6 +30,7 @@
 
       <div class="viewbar" aria-label="切換名單">
         <button id="viewAdminsBtn" class="btn primary" type="button" aria-pressed="true">管理員名單</button>
+        <button id="viewAdminLogsBtn" class="btn ghost" type="button" aria-pressed="false">管理員紀錄</button>
         <button id="viewUsersBtn" class="btn ghost" type="button" aria-pressed="false">技師名單</button>
       </div>
 
@@ -149,6 +150,39 @@
             </thead>
             <tbody id="tbody">
               <tr><td colspan="18">載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ✅ 管理員紀錄（僅顯示 ts / actorUserId / actorDisplayName） -->
+      <section id="adminLogsPanelSection" class="panel" aria-label="管理員紀錄" hidden>
+        <div class="panel-head">
+          <div class="panel-title" aria-hidden="true">
+            <div class="panel-title-main">管理員紀錄</div>
+          </div>
+
+          <div class="panel-meta">
+            <div id="logsFooterStatus" class="hint">-</div>
+          </div>
+
+          <div class="panel-actions" aria-label="管理員紀錄操作">
+            <button id="logsReloadBtn" class="btn ghost" type="button">重新整理</button>
+          </div>
+        </div>
+
+        <div class="table-wrap responsive-wrap" aria-label="管理員紀錄列表">
+          <table class="responsive-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ts</th>
+                <th>actorUserId</th>
+                <th>actorDisplayName</th>
+              </tr>
+            </thead>
+            <tbody id="logsTbody">
+              <tr><td colspan="4">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
         </div>
@@ -340,6 +374,9 @@
   <script src="js/admin.api.js" defer></script>
   <script src="js/admin.ui.js" defer></script>
   <script src="js/admin.features.js" defer></script>
+
+  <!-- 管理員紀錄（GAS UsageLog） -->
+  <script src="js/admin.logs.js" defer></script>
 
   <!-- Users/技師資料管理（獨立區塊，不影響原本 admin 清單） -->
   <script src="js/admin.users.js" defer></script>

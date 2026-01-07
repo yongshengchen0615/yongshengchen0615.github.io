@@ -15,5 +15,8 @@
   "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台",
 
   "API_BASE_URL": "https://script.google.com/macros/s/AKfycbz2iQBra2INAL9xmdsC6LHjlHuUKWoqXaAFZP4nKVjACth8A88AXPy1aZx1DQ5fbnbn/exec",
-  "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能"
+  "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能",
+
+  "USAGE_LOG_API_URL": "https://script.google.com/macros/s/AKfycbzS9LHsWMT7Va-wArlkIFShrWX0KWW2I0YRkXY-HsNxb_YfYjeNhY8laKQG_rYuo9Qk/exec",
+  "_USAGE_LOG_API_URL_DESC": "管理員紀錄 GAS Web App（UsageLog）：提供 appendUsageLog / listUsageLog"
 }
