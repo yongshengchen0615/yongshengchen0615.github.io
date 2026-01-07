@@ -84,8 +84,13 @@ async function loadAdminLogs_() {
     logsSetFooter_(`共 ${adminLogs_.length} 筆`);
   } catch (e) {
     console.error(e);
+    const msg = String(e?.message || e);
     logsSetFooter_("讀取失敗");
-    logsSetTbodyMessage_(String(e?.message || e));
+    logsSetTbodyMessage_(
+      msg.includes("unsupported mode")
+        ? "此 USAGE_LOG_API_URL 的 GAS 尚未支援 listUsageLog（請更新 GAS 程式並重新部署 Web App）"
+        : msg
+    );
     toast("讀取管理員紀錄失敗", "err");
   } finally {
     adminLogsLoading_ = false;
