@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const initListViewToggle_ = () => {
       const btnAdmins = document.getElementById("viewAdminsBtn");
+      const btnLogs = document.getElementById("viewAdminLogsBtn");
       const btnUsers = document.getElementById("viewUsersBtn");
 
       const summaryText = document.getElementById("summaryText");
@@ -45,18 +46,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const adminsKpi = document.getElementById("adminsKpiSection");
       const adminsPanel = document.getElementById("adminsPanelSection");
+      const logsPanel = document.getElementById("adminLogsPanelSection");
       const usersKpi = document.getElementById("usersKpiSection");
       const usersPanel = document.getElementById("usersPanelSection");
 
-      if (!btnAdmins || !btnUsers) return;
+      if (!btnAdmins || !btnUsers || !btnLogs) return;
 
       const setView_ = (view) => {
         const isAdmins = view === "admins";
+        const isLogs = view === "logs";
+        const isUsers = view === "users";
 
         if (adminsKpi) adminsKpi.hidden = !isAdmins;
         if (adminsPanel) adminsPanel.hidden = !isAdmins;
-        if (usersKpi) usersKpi.hidden = isAdmins;
-        if (usersPanel) usersPanel.hidden = isAdmins;
+        if (logsPanel) logsPanel.hidden = !isLogs;
+        if (usersKpi) usersKpi.hidden = !isUsers;
+        if (usersPanel) usersPanel.hidden = !isUsers;
 
         // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
         if (summaryText) summaryText.hidden = !isAdmins;
@@ -67,15 +72,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         btnAdmins.classList.toggle("ghost", !isAdmins);
         btnAdmins.setAttribute("aria-pressed", isAdmins ? "true" : "false");
 
-        btnUsers.classList.toggle("primary", !isAdmins);
-        btnUsers.classList.toggle("ghost", isAdmins);
-        btnUsers.setAttribute("aria-pressed", !isAdmins ? "true" : "false");
+        btnLogs.classList.toggle("primary", isLogs);
+        btnLogs.classList.toggle("ghost", !isLogs);
+        btnLogs.setAttribute("aria-pressed", isLogs ? "true" : "false");
+
+        btnUsers.classList.toggle("primary", isUsers);
+        btnUsers.classList.toggle("ghost", !isUsers);
+        btnUsers.setAttribute("aria-pressed", isUsers ? "true" : "false");
+
+        if (isLogs && typeof loadAdminLogs_ === "function") loadAdminLogs_();
       };
 
       // 預設顯示管理員切面（符合「切換」的直覺：一次只看一個名單）
       setView_("admins");
 
       btnAdmins.addEventListener("click", () => setView_("admins"));
+      btnLogs.addEventListener("click", () => setView_("logs"));
       btnUsers.addEventListener("click", () => setView_("users"));
     };
 
@@ -87,6 +99,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 上方切換「管理員名單 / 技師名單」
     initListViewToggle_();
+
+    // 管理員紀錄
+    if (typeof bindAdminLogs_ === "function") bindAdminLogs_();
 
     // 事件綁定（僅做一次）
     bindTopbar_();
@@ -100,6 +115,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
 
     await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
+
+    // ✅ 驗證通過後記一筆（不阻擋）
+    if (typeof appendAdminUsageLog_ === "function") appendAdminUsageLog_();
 
     // ✅ 驗證通過後，直接並行載入所有資料（admins + users）
     if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");

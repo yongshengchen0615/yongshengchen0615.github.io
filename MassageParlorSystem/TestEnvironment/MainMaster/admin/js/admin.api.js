@@ -15,6 +15,7 @@ async function loadConfig_() {
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
   API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
+  USAGE_LOG_API_URL = String(cfg.USAGE_LOG_API_URL || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
   if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
@@ -22,6 +23,22 @@ async function loadConfig_() {
   if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
 
   return cfg;
+}
+
+/**
+ * 呼叫 UsageLog GAS（text/plain + JSON 字串）。
+ * - mode: appendUsageLog | listUsageLog
+ * - 若未設定 USAGE_LOG_API_URL，會直接回傳 { ok:false, error:"missing USAGE_LOG_API_URL" }
+ * @param {Object} bodyObj
+ */
+async function usageLogPost_(bodyObj) {
+  if (!USAGE_LOG_API_URL) return { ok: false, error: "missing USAGE_LOG_API_URL" };
+  const res = await fetch(USAGE_LOG_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj),
+  });
+  return await res.json().catch(() => ({}));
 }
 
 /**
