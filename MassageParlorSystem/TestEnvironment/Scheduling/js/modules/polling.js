@@ -11,7 +11,7 @@ import { state } from "./state.js";
 import { dom } from "./dom.js";
 import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
-import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
+import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading } from "./uiHelpers.js";
 import { config } from "./config.js";
 
 const POLL = {
@@ -126,6 +126,8 @@ function resetPollState() {
  * @returns {void}
  */
 export function startPolling() {
+  showInitialLoading("資料載入中…");
+
   // 手動重整
   if (dom.refreshBtn) {
     dom.refreshBtn.addEventListener("click", async () => {
@@ -144,6 +146,7 @@ export function startPolling() {
   // 初次啟動
   refreshStatusAdaptive(false).then((res) => {
     updateMyMasterStatusUI();
+    hideInitialLoading();
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   });

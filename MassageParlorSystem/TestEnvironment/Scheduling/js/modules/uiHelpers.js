@@ -11,6 +11,21 @@
 import { dom } from "./dom.js";
 
 /**
+ * 初始載入遮罩：在第一次資料抓取前顯示，避免空白畫面。
+ */
+export function showInitialLoading(text) {
+  if (!dom.initialLoadingEl) return;
+  if (dom.initialLoadingTextEl) dom.initialLoadingTextEl.textContent = text || "資料載入中…";
+  dom.initialLoadingEl.classList.remove("initial-loading-hidden");
+}
+
+/** 隱藏初始載入遮罩。 */
+export function hideInitialLoading() {
+  if (!dom.initialLoadingEl) return;
+  dom.initialLoadingEl.classList.add("initial-loading-hidden");
+}
+
+/**
  * 顯示頂部載入提示（不影響版面，fixed toast）。
  * @param {string} [text] 顯示文字；未提供則使用預設文案。
  */
