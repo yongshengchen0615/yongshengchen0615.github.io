@@ -32,6 +32,9 @@
 // ================================
 const initialLoadingEl = document.getElementById("initialLoading");
 const initialLoadingTextEl = document.getElementById("initialLoadingText");
+const initialLoadingBarEl = document.getElementById("initialLoadingBar");
+const initialLoadingPercentEl = document.getElementById("initialLoadingPercent");
+const initialLoadingProgressEl = initialLoadingEl?.querySelector?.(".initial-loading-progress") || null;
 const appRootEl = document.querySelector(".app");
 
 function hideApp_() {
@@ -55,9 +58,18 @@ function hideInitialLoading_(text) {
   initialLoadingEl.classList.add("initial-loading-hidden");
 }
 
+function setInitialLoadingProgress_(percent, text) {
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+  if (initialLoadingBarEl) initialLoadingBarEl.style.width = `${p}%`;
+  if (initialLoadingPercentEl) initialLoadingPercentEl.textContent = `${Math.round(p)}%`;
+  if (initialLoadingProgressEl) initialLoadingProgressEl.setAttribute("aria-valuenow", String(Math.round(p)));
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   // 先顯示初始載入遮罩，避免白畫面/閃爍
   showInitialLoading_("資料載入中…");
+  setInitialLoadingProgress_(5);
 
   try {
     const withTimeout_ = (promise, ms, label) => {
@@ -134,7 +146,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡住
     if (typeof initUsersPanel_ === "function") initUsersPanel_();
 
+    setInitialLoadingProgress_(10, "讀取設定中…");
     await loadConfig_();
+    setInitialLoadingProgress_(18, "初始化介面中…");
     initTheme_();
 
     // 上方切換「管理員名單 / 技師名單」
@@ -154,10 +168,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindTableDelegation_();
 
     // 先通過 LIFF + AUTH Gate 才載入資料
+    setInitialLoadingProgress_(28, "管理員驗證中…");
     if (typeof uSetFooter_ === "function") uSetFooter_("管理員驗證中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
 
     await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
+    setInitialLoadingProgress_(40, "驗證通過，準備載入資料…");
 
     // ✅ 驗證通過後記一筆（不阻擋）
     if (typeof appendAdminUsageLog_ === "function") appendAdminUsageLog_();
@@ -165,6 +181,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ 驗證通過後，直接並行載入所有資料（admins + users）
     if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("載入 Users 資料中...");
+
+    setInitialLoadingProgress_(50, "載入資料中…");
 
     const tasks = [];
     if (typeof loadAdmins_ === "function") {
@@ -204,7 +222,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
     }
 
-    const results = await Promise.allSettled(tasks);
+    // 進度：用「完成的任務數」估算（避免卡住在某一步）
+    const total = Math.max(1, tasks.length);
+    let done = 0;
+    const trackedTasks = tasks.map((t) =>
+      Promise.resolve(t)
+        .catch((e) => {
+          throw e;
+        })
+        .finally(() => {
+          done += 1;
+          // 50% ~ 95%：隨任務完成推進
+          const p = 50 + (done / total) * 45;
+          setInitialLoadingProgress_(p, `載入資料中…（${done}/${total}）`);
+        })
+    );
+
+    const results = await Promise.allSettled(trackedTasks);
     const rejected = results.filter((r) => r.status === "rejected");
     if (rejected.length) {
       const reasonText = rejected
@@ -214,6 +248,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         .join("；");
       toast(`部分資料載入失敗：${reasonText || "請查看 console"}`, "err");
     }
+
+    setInitialLoadingProgress_(100, "完成");
   } catch (e) {
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
