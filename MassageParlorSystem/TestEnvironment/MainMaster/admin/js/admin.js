@@ -32,11 +32,21 @@
 // ================================
 const initialLoadingEl = document.getElementById("initialLoading");
 const initialLoadingTextEl = document.getElementById("initialLoadingText");
+const appRootEl = document.querySelector(".app");
+
+function hideApp_() {
+  appRootEl?.classList.add("app-hidden");
+}
+
+function showApp_() {
+  appRootEl?.classList.remove("app-hidden");
+}
 
 function showInitialLoading_(text) {
   if (!initialLoadingEl) return;
   if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
   initialLoadingEl.classList.remove("initial-loading-hidden");
+  hideApp_();
 }
 
 function hideInitialLoading_(text) {
@@ -213,6 +223,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
   } finally {
     // 不論成功或失敗，都要把遮罩收起來（避免卡住頁面）
+    // 並在首批資料流程結束後再顯示主畫面
+    showApp_();
     hideInitialLoading_();
   }
 });
