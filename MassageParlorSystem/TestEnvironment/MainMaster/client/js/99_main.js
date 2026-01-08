@@ -5,11 +5,23 @@
 
 const initialLoadingEl = document.getElementById("initialLoading");
 const initialLoadingTextEl = document.getElementById("initialLoadingText");
+const initialLoadingBarEl = document.getElementById("initialLoadingBar");
+const initialLoadingPercentEl = document.getElementById("initialLoadingPercent");
+const initialLoadingProgressEl = initialLoadingEl?.querySelector?.(".initial-loading-progress") || null;
+
+function setInitialLoadingProgress_(percent, text) {
+	const p = Math.max(0, Math.min(100, Number(percent) || 0));
+	if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+	if (initialLoadingBarEl) initialLoadingBarEl.style.width = `${p}%`;
+	if (initialLoadingPercentEl) initialLoadingPercentEl.textContent = `${Math.round(p)}%`;
+	if (initialLoadingProgressEl) initialLoadingProgressEl.setAttribute("aria-valuenow", String(Math.round(p)));
+}
 
 function showInitialLoading_(text) {
 	if (!initialLoadingEl) return;
 	if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
 	initialLoadingEl.classList.remove("initial-loading-hidden");
+	setInitialLoadingProgress_(5);
 }
 
 function hideInitialLoading_(text) {
@@ -21,9 +33,11 @@ function hideInitialLoading_(text) {
 document.addEventListener("DOMContentLoaded", async () => {
 	try {
 		showInitialLoading_("資料載入中…");
+		setInitialLoadingProgress_(10, "讀取設定中…");
 
 		await loadConfig_();
 		currentView = localStorage.getItem("users_view") || currentView;
+		setInitialLoadingProgress_(22, "初始化介面中…");
 
 		initTheme_();
 		document.getElementById("themeToggle")?.addEventListener("click", toggleTheme_);
@@ -81,18 +95,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 		}
 
 		// ✅ 先做管理員驗證：通過才放行 loadUsers()
+		setInitialLoadingProgress_(45, "管理員驗證中…");
 		const authed = await adminAuthBoot_();
 		if (!authed) {
 			hideInitialLoading_();
 			return;
 		}
 
+		setInitialLoadingProgress_(65, "載入使用者資料中…");
 		await loadUsers();
+		setInitialLoadingProgress_(100, "完成");
 		hideInitialLoading_();
 	} catch (e) {
 		console.error("boot error:", e);
 		toast("啟動失敗（請看 console）", "err");
 		showAuthGate_(true, "系統啟動失敗，請確認 config.json / 網路狀態。");
+		setInitialLoadingProgress_(100, "啟動失敗");
 		hideInitialLoading_("啟動失敗");
 	}
 });
