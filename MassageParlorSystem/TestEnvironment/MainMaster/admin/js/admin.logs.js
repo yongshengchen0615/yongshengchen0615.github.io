@@ -42,6 +42,21 @@ function toDateKey_(ts) {
   const s = String(ts || "").trim();
   if (!s) return "";
 
+  // epoch seconds (10) / milliseconds (13)
+  if (/^\d{10,13}$/.test(s)) {
+    const n = Number(s);
+    const ms = s.length === 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+    }
+  }
+
+  // 支援：2026-1-8 / 2026/1/8 / 2026-01-08 ...
+  // （直接抓日期部分，避免不同瀏覽器對字串 Date 解析差異）
+  const m = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+  if (m) return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+
   // 常見：2026-01-08T... 或 2026-01-08 12:34:56
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
 
