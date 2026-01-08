@@ -124,6 +124,20 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .filters{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1 1 520px; }
 .panel-meta .hint{ color:var(--text-sub); font-size:12px; font-family:var(--mono); }
 
+.panel-meta.range{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.panel-meta-group{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
 .panel-head .panel-actions{
   display:flex;
   gap:10px;

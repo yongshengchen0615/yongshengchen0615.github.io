@@ -53,19 +53,46 @@ function toDateKey_(ts) {
   return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
 }
 
-function getSelectedLogsDate_() {
-  const el = document.getElementById("logsDateInput");
-  const v = String(el?.value || "").trim();
-  return v;
+function logsGetSelectedRange_() {
+  const startEl = document.getElementById("logsStartDateInput");
+  const endEl = document.getElementById("logsEndDateInput");
+  let start = String(startEl?.value || "").trim();
+  let end = String(endEl?.value || "").trim();
+
+  // 若使用者反向選擇，直接交換（並同步回 UI）
+  if (start && end && start > end) {
+    const tmp = start;
+    start = end;
+    end = tmp;
+    if (startEl) startEl.value = start;
+    if (endEl) endEl.value = end;
+  }
+
+  return { start, end };
+}
+
+function logsBuildRangeLabel_(start, end) {
+  if (start && end) return start === end ? start : `${start} ~ ${end}`;
+  if (start) return `>= ${start}`;
+  if (end) return `<= ${end}`;
+  return "";
 }
 
 function applyAdminLogsDateFilter_() {
-  const dateKey = getSelectedLogsDate_();
-  if (!dateKey) {
+  const { start, end } = logsGetSelectedRange_();
+
+  if (!start && !end) {
     adminLogs_ = adminLogsAll_.slice();
     return;
   }
-  adminLogs_ = adminLogsAll_.filter((r) => toDateKey_(r.ts) === dateKey);
+
+  adminLogs_ = adminLogsAll_.filter((r) => {
+    const k = toDateKey_(r.ts);
+    if (!k) return false;
+    if (start && k < start) return false;
+    if (end && k > end) return false;
+    return true;
+  });
 }
 
 function renderAdminLogs_() {
@@ -123,8 +150,13 @@ async function loadAdminLogs_() {
     applyAdminLogsDateFilter_();
     renderAdminLogs_();
 
-    const dateKey = getSelectedLogsDate_();
-    logsSetFooter_(dateKey ? `共 ${adminLogs_.length} 筆（${dateKey}）/ 總 ${adminLogsAll_.length} 筆` : `共 ${adminLogs_.length} 筆`);
+    const { start, end } = logsGetSelectedRange_();
+    const rangeLabel = logsBuildRangeLabel_(start, end);
+    logsSetFooter_(
+      rangeLabel
+        ? `共 ${adminLogs_.length} 筆（${rangeLabel}）/ 總 ${adminLogsAll_.length} 筆`
+        : `共 ${adminLogs_.length} 筆`
+    );
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);
@@ -143,15 +175,30 @@ async function loadAdminLogs_() {
 function bindAdminLogs_() {
   document.getElementById("logsReloadBtn")?.addEventListener("click", () => loadAdminLogs_());
 
-  const dateEl = document.getElementById("logsDateInput");
-  if (dateEl) {
-    dateEl.addEventListener("change", () => {
-      applyAdminLogsDateFilter_();
-      renderAdminLogs_();
-      const dateKey = getSelectedLogsDate_();
-      logsSetFooter_(dateKey ? `共 ${adminLogs_.length} 筆（${dateKey}）/ 總 ${adminLogsAll_.length} 筆` : `共 ${adminLogs_.length} 筆`);
-    });
-  }
+  document.getElementById("logsShowAllBtn")?.addEventListener("click", () => {
+    const startEl = document.getElementById("logsStartDateInput");
+    const endEl = document.getElementById("logsEndDateInput");
+    if (startEl) startEl.value = "";
+    if (endEl) endEl.value = "";
+    applyAdminLogsDateFilter_();
+    renderAdminLogs_();
+    logsSetFooter_(`共 ${adminLogs_.length} 筆`);
+  });
+
+  const onRangeChange = () => {
+    applyAdminLogsDateFilter_();
+    renderAdminLogs_();
+    const { start, end } = logsGetSelectedRange_();
+    const rangeLabel = logsBuildRangeLabel_(start, end);
+    logsSetFooter_(
+      rangeLabel
+        ? `共 ${adminLogs_.length} 筆（${rangeLabel}）/ 總 ${adminLogsAll_.length} 筆`
+        : `共 ${adminLogs_.length} 筆`
+    );
+  };
+
+  document.getElementById("logsStartDateInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("logsEndDateInput")?.addEventListener("change", onRangeChange);
 }
 
 /**

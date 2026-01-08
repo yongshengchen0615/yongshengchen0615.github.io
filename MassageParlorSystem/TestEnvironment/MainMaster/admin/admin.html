@@ -175,9 +175,15 @@
             <div class="panel-title-main">管理員紀錄</div>
           </div>
 
-          <div class="panel-meta" aria-label="管理員紀錄日期">
-            <label class="bulk-label" for="logsDateInput">日期</label>
-            <input id="logsDateInput" class="select" type="date" />
+          <div class="panel-meta range" aria-label="管理員紀錄日期範圍">
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="logsStartDateInput">起日</label>
+              <input id="logsStartDateInput" class="select" type="date" />
+            </div>
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="logsEndDateInput">迄日</label>
+              <input id="logsEndDateInput" class="select" type="date" />
+            </div>
           </div>
 
           <div class="panel-meta">
@@ -185,6 +191,7 @@
           </div>
 
           <div class="panel-actions" aria-label="管理員紀錄操作">
+            <button id="logsShowAllBtn" class="btn ghost" type="button">全部</button>
             <button id="logsReloadBtn" class="btn ghost" type="button">重新整理</button>
           </div>
         </div>
@@ -368,9 +375,15 @@
             <div class="panel-title-main">技師使用紀錄</div>
           </div>
 
-          <div class="panel-meta" aria-label="技師使用紀錄日期">
-            <label class="bulk-label" for="techLogsDateInput">日期</label>
-            <input id="techLogsDateInput" class="select" type="date" />
+          <div class="panel-meta range" aria-label="技師使用紀錄日期範圍">
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="techLogsStartDateInput">起日</label>
+              <input id="techLogsStartDateInput" class="select" type="date" />
+            </div>
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="techLogsEndDateInput">迄日</label>
+              <input id="techLogsEndDateInput" class="select" type="date" />
+            </div>
           </div>
 
           <div class="panel-meta">
@@ -378,6 +391,7 @@
           </div>
 
           <div class="panel-actions" aria-label="技師使用紀錄操作">
+            <button id="techLogsShowAllBtn" class="btn ghost" type="button">全部</button>
             <button id="techLogsReloadBtn" class="btn ghost" type="button">重新整理</button>
           </div>
         </div>

@@ -52,19 +52,44 @@ function toDateKey_(ts) {
   return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
 }
 
-function getSelectedTechLogsDate_() {
-  const el = document.getElementById("techLogsDateInput");
-  const v = String(el?.value || "").trim();
-  return v;
+function techLogsGetSelectedRange_() {
+  const startEl = document.getElementById("techLogsStartDateInput");
+  const endEl = document.getElementById("techLogsEndDateInput");
+  let start = String(startEl?.value || "").trim();
+  let end = String(endEl?.value || "").trim();
+
+  if (start && end && start > end) {
+    const tmp = start;
+    start = end;
+    end = tmp;
+    if (startEl) startEl.value = start;
+    if (endEl) endEl.value = end;
+  }
+
+  return { start, end };
+}
+
+function techLogsBuildRangeLabel_(start, end) {
+  if (start && end) return start === end ? start : `${start} ~ ${end}`;
+  if (start) return `>= ${start}`;
+  if (end) return `<= ${end}`;
+  return "";
 }
 
 function applyTechUsageLogsDateFilter_() {
-  const dateKey = getSelectedTechLogsDate_();
-  if (!dateKey) {
+  const { start, end } = techLogsGetSelectedRange_();
+  if (!start && !end) {
     techUsageLogs_ = techUsageLogsAll_.slice();
     return;
   }
-  techUsageLogs_ = techUsageLogsAll_.filter((r) => toDateKey_(r.serverTime) === dateKey);
+
+  techUsageLogs_ = techUsageLogsAll_.filter((r) => {
+    const k = toDateKey_(r.serverTime);
+    if (!k) return false;
+    if (start && k < start) return false;
+    if (end && k > end) return false;
+    return true;
+  });
 }
 
 function renderTechUsageLogs_() {
@@ -125,9 +150,12 @@ async function loadTechUsageLogs_() {
     applyTechUsageLogsDateFilter_();
 
     renderTechUsageLogs_();
-    const dateKey = getSelectedTechLogsDate_();
+    const { start, end } = techLogsGetSelectedRange_();
+    const rangeLabel = techLogsBuildRangeLabel_(start, end);
     techLogsSetFooter_(
-      dateKey ? `共 ${techUsageLogs_.length} 筆（${dateKey}）/ 總 ${techUsageLogsAll_.length} 筆` : `共 ${techUsageLogs_.length} 筆`
+      rangeLabel
+        ? `共 ${techUsageLogs_.length} 筆（${rangeLabel}）/ 總 ${techUsageLogsAll_.length} 筆`
+        : `共 ${techUsageLogs_.length} 筆`
     );
   } catch (e) {
     console.error(e);
@@ -147,17 +175,28 @@ async function loadTechUsageLogs_() {
 function bindTechUsageLogs_() {
   document.getElementById("techLogsReloadBtn")?.addEventListener("click", () => loadTechUsageLogs_());
 
-  const dateEl = document.getElementById("techLogsDateInput");
-  if (dateEl) {
-    dateEl.addEventListener("change", () => {
-      applyTechUsageLogsDateFilter_();
-      renderTechUsageLogs_();
-      const dateKey = getSelectedTechLogsDate_();
-      techLogsSetFooter_(
-        dateKey
-          ? `共 ${techUsageLogs_.length} 筆（${dateKey}）/ 總 ${techUsageLogsAll_.length} 筆`
-          : `共 ${techUsageLogs_.length} 筆`
-      );
-    });
-  }
+  document.getElementById("techLogsShowAllBtn")?.addEventListener("click", () => {
+    const startEl = document.getElementById("techLogsStartDateInput");
+    const endEl = document.getElementById("techLogsEndDateInput");
+    if (startEl) startEl.value = "";
+    if (endEl) endEl.value = "";
+    applyTechUsageLogsDateFilter_();
+    renderTechUsageLogs_();
+    techLogsSetFooter_(`共 ${techUsageLogs_.length} 筆`);
+  });
+
+  const onRangeChange = () => {
+    applyTechUsageLogsDateFilter_();
+    renderTechUsageLogs_();
+    const { start, end } = techLogsGetSelectedRange_();
+    const rangeLabel = techLogsBuildRangeLabel_(start, end);
+    techLogsSetFooter_(
+      rangeLabel
+        ? `共 ${techUsageLogs_.length} 筆（${rangeLabel}）/ 總 ${techUsageLogsAll_.length} 筆`
+        : `共 ${techUsageLogs_.length} 筆`
+    );
+  };
+
+  document.getElementById("techLogsStartDateInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("techLogsEndDateInput")?.addEventListener("change", onRangeChange);
 }
