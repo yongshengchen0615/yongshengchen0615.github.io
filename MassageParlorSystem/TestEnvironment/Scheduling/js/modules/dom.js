@@ -9,6 +9,8 @@ export const dom = {
   // Gate / Root
   gateEl: document.getElementById("gate"),
   appRootEl: document.getElementById("appRoot"),
+  initialLoadingEl: document.getElementById("initialLoading"),
+  initialLoadingTextEl: document.getElementById("initialLoadingText"),
 
   // Top loading toast
   topLoadingEl: document.getElementById("topLoading"),

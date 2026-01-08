@@ -17,6 +17,14 @@
     初始化中…
   </div>
 
+  <!-- 初始資料載入遮罩：資料抓取完成後才會移除 -->
+  <div id="initialLoading" class="initial-loading initial-loading-hidden">
+    <div class="initial-loading-inner" role="status" aria-live="polite">
+      <div class="spinner spinner-lg" aria-hidden="true"></div>
+      <p id="initialLoadingText" class="initial-loading-text">資料載入中…</p>
+    </div>
+  </div>
+
   <!-- ✅ Top Loading Hint：不影響面板排列（fixed toast） -->
   <div id="topLoading" class="top-loading hidden" aria-live="polite" aria-atomic="true">
     <span class="top-loading-spinner" aria-hidden="true"></span>
