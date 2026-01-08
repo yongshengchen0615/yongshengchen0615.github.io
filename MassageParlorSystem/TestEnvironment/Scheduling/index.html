@@ -20,8 +20,12 @@
   <!-- 初始資料載入遮罩：資料抓取完成後才會移除 -->
   <div id="initialLoading" class="initial-loading initial-loading-hidden">
     <div class="initial-loading-inner" role="status" aria-live="polite">
-      <div class="spinner spinner-lg" aria-hidden="true"></div>
+      <div class="spinner-lg" aria-hidden="true"></div>
       <p id="initialLoadingText" class="initial-loading-text">資料載入中…</p>
+      <div class="initial-loading-progress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="initialLoadingBar" class="initial-loading-progress-bar" style="width:0%"></div>
+      </div>
+      <div id="initialLoadingPercent" class="initial-loading-percent">0%</div>
     </div>
   </div>
 
