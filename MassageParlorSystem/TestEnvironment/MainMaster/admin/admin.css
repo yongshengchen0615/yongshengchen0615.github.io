@@ -731,6 +731,18 @@ tbody td.sticky-col{ background:transparent; }
   .responsive-table .sticky-col,
   .responsive-table .sticky-right{ position:static; }
 
+  /* Admins 主表：手機 card 模式不使用右側 sticky 欄位群 */
+  #adminsTable thead th:nth-child(n+8):nth-child(-n+17),
+  #adminsTable tbody td:nth-child(n+8):nth-child(-n+17){
+    position: static;
+    right: auto;
+    z-index: auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    background: transparent;
+  }
+
   .responsive-table .actions{ justify-content:flex-end; width:100%; flex-wrap:wrap; }
 
   /* 避免內容撐爆右側 */
@@ -749,6 +761,81 @@ td.sticky-right{
 tbody td.sticky-right{
   background: transparent;
 }
+
+/* === Admins 主表：右側固定「是/否」欄位群（桌機） ===
+ * 欄位順序（1-indexed）：
+ * 1:check,2:#,3:userId,4:name,5:audit,6:createdAt,7:lastLogin,
+ * 8~17:是/否欄位, 18:操作(sticky-right)
+ */
+#adminsTable{
+  --yn-col-w: 96px;
+  --op-col-w: 120px;
+}
+
+/* 操作欄固定寬度，避免每列因內容不同而抖動 */
+#adminsTable th.sticky-right,
+#adminsTable td.sticky-right{
+  width: var(--op-col-w);
+  min-width: var(--op-col-w);
+  max-width: var(--op-col-w);
+}
+
+/* 是/否欄固定寬度 + 內容靠右（桌機） */
+#adminsTable td.yn-cell{ text-align:right; }
+#adminsTable thead th:nth-child(n+8):nth-child(-n+17),
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+17){
+  width: var(--yn-col-w);
+  min-width: var(--yn-col-w);
+  max-width: var(--yn-col-w);
+}
+
+/* 右側固定：把 8~17 欄位逐一 sticky 到操作欄左側（避免橫向捲動時找不到） */
+#adminsTable thead th:nth-child(n+8):nth-child(-n+17){
+  position: sticky;
+  z-index: 5;
+  background: var(--bg);
+}
+
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+17){
+  position: sticky;
+  z-index: 4;
+  background: inherit;
+}
+
+/* 讓操作欄蓋在最上層，避免邊界重疊 */
+#adminsTable thead th.sticky-right{ z-index: 6; }
+#adminsTable tbody td.sticky-right{ z-index: 5; background: inherit; }
+
+/* 右側 offset：第 17 欄貼著操作欄，往左依序累加 yn 欄寬 */
+#adminsTable thead th:nth-child(17),
+#adminsTable tbody td:nth-child(17){ right: var(--op-col-w); }
+
+#adminsTable thead th:nth-child(16),
+#adminsTable tbody td:nth-child(16){ right: calc(var(--op-col-w) + 1 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(15),
+#adminsTable tbody td:nth-child(15){ right: calc(var(--op-col-w) + 2 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(14),
+#adminsTable tbody td:nth-child(14){ right: calc(var(--op-col-w) + 3 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(13),
+#adminsTable tbody td:nth-child(13){ right: calc(var(--op-col-w) + 4 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(12),
+#adminsTable tbody td:nth-child(12){ right: calc(var(--op-col-w) + 5 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(11),
+#adminsTable tbody td:nth-child(11){ right: calc(var(--op-col-w) + 6 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(10),
+#adminsTable tbody td:nth-child(10){ right: calc(var(--op-col-w) + 7 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(9),
+#adminsTable tbody td:nth-child(9){ right: calc(var(--op-col-w) + 8 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(8),
+#adminsTable tbody td:nth-child(8){ right: calc(var(--op-col-w) + 9 * var(--yn-col-w)); }
 
 /* === 技師欄位「是/否」切換按鈕（替代 select，避免無法展開/被裁切） === */
 .yn-toggle{
