@@ -50,6 +50,9 @@ function showInitialLoading_(text) {
   if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
   initialLoadingEl.classList.remove("initial-loading-hidden");
   hideApp_();
+
+  // 避免「先顯示 0%」：一顯示遮罩就先推進度
+  setInitialLoadingProgress_(Math.max(1, Number(initialLoadingProgressEl?.getAttribute?.("aria-valuenow")) || 1));
 }
 
 function hideInitialLoading_(text) {
@@ -65,6 +68,10 @@ function setInitialLoadingProgress_(percent, text) {
   if (initialLoadingPercentEl) initialLoadingPercentEl.textContent = `${Math.round(p)}%`;
   if (initialLoadingProgressEl) initialLoadingProgressEl.setAttribute("aria-valuenow", String(Math.round(p)));
 }
+
+// defer 腳本會在 DOM 解析後、DOMContentLoaded 前執行。
+// admin.html 的 loading 預設可見，因此這裡先把 0% 推進到初始值，避免看到 0%。
+setInitialLoadingProgress_(1);
 
 document.addEventListener("DOMContentLoaded", async () => {
   // 先顯示初始載入遮罩，避免白畫面/閃爍
