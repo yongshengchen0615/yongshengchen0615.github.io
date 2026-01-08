@@ -25,7 +25,30 @@
  * - admin.html 必須先載入其他檔案，再載入本檔。
  * ================================ */
 
+// ================================
+// Initial Loading Overlay
+// - admin.html 已有 #initialLoading；admin.css 已有 .initial-loading 樣式
+// - 這裡負責在首批資料載入完成前顯示遮罩
+// ================================
+const initialLoadingEl = document.getElementById("initialLoading");
+const initialLoadingTextEl = document.getElementById("initialLoadingText");
+
+function showInitialLoading_(text) {
+  if (!initialLoadingEl) return;
+  if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+  initialLoadingEl.classList.remove("initial-loading-hidden");
+}
+
+function hideInitialLoading_(text) {
+  if (!initialLoadingEl) return;
+  if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+  initialLoadingEl.classList.add("initial-loading-hidden");
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+  // 先顯示初始載入遮罩，避免白畫面/閃爍
+  showInitialLoading_("資料載入中…");
+
   try {
     const withTimeout_ = (promise, ms, label) => {
       let timer = null;
@@ -188,5 +211,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const msg = `初始化失敗：${String(e?.message || e)}`;
     if (typeof uSetFooter_ === "function") uSetFooter_(msg);
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
+  } finally {
+    // 不論成功或失敗，都要把遮罩收起來（避免卡住頁面）
+    hideInitialLoading_();
   }
 });
