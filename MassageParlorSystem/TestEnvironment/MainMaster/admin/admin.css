@@ -807,35 +807,6 @@ html[data-theme="light"] .initial-loading-inner{
 
 .initial-loading-text{ font-size:15px; letter-spacing:.02em; }
 
-.initial-loading-progress{
-  width:min(360px, 72vw);
-  height:10px;
-  border-radius:999px;
-  border:1px solid rgba(148, 163, 184, 0.35);
-  background:rgba(2, 6, 23, 0.35);
-  overflow:hidden;
-}
-
-html[data-theme="light"] .initial-loading-progress{
-  border-color:rgba(148, 163, 184, 0.45);
-  background:rgba(15, 23, 42, 0.06);
-}
-
-.initial-loading-progress-bar{
-  height:100%;
-  width:0%;
-  border-radius:999px;
-  background:linear-gradient(90deg, var(--accent), rgba(56,189,248,.65));
-  box-shadow:0 0 0 3px rgba(56,189,248,.10);
-  transition:width .22s ease;
-}
-
-.initial-loading-percent{
-  font-size:12px;
-  color:var(--text-sub);
-  font-family:var(--mono);
-}
-
 .spinner-lg{
   width:32px;
   height:32px;
