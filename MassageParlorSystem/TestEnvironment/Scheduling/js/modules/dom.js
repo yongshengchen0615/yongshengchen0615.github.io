@@ -11,6 +11,11 @@ export const dom = {
   appRootEl: document.getElementById("appRoot"),
   initialLoadingEl: document.getElementById("initialLoading"),
   initialLoadingTextEl: document.getElementById("initialLoadingText"),
+  initialLoadingBarEl: document.getElementById("initialLoadingBar"),
+  initialLoadingPercentEl: document.getElementById("initialLoadingPercent"),
+  initialLoadingProgressEl: document.getElementById("initialLoading")
+    ? document.getElementById("initialLoading").querySelector(".initial-loading-progress")
+    : null,
 
   // Top loading toast
   topLoadingEl: document.getElementById("topLoading"),

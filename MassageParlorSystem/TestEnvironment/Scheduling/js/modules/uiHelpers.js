@@ -10,6 +10,25 @@
 
 import { dom } from "./dom.js";
 
+function clampPercent_(percent) {
+  const p = Number(percent);
+  if (!Number.isFinite(p)) return 0;
+  return Math.max(0, Math.min(100, p));
+}
+
+/**
+ * 更新初始載入進度（0~100）。
+ * @param {number} percent
+ * @param {string} [text]
+ */
+export function setInitialLoadingProgress(percent, text) {
+  const p = clampPercent_(percent);
+  if (dom.initialLoadingTextEl && text) dom.initialLoadingTextEl.textContent = text;
+  if (dom.initialLoadingBarEl) dom.initialLoadingBarEl.style.width = `${p}%`;
+  if (dom.initialLoadingPercentEl) dom.initialLoadingPercentEl.textContent = `${Math.round(p)}%`;
+  if (dom.initialLoadingProgressEl) dom.initialLoadingProgressEl.setAttribute("aria-valuenow", String(Math.round(p)));
+}
+
 /**
  * 初始載入遮罩：在第一次資料抓取前顯示，避免空白畫面。
  */
