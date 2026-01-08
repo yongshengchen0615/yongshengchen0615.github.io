@@ -3,8 +3,25 @@
  * App bootstrap
  * ================================ */
 
+const initialLoadingEl = document.getElementById("initialLoading");
+const initialLoadingTextEl = document.getElementById("initialLoadingText");
+
+function showInitialLoading_(text) {
+	if (!initialLoadingEl) return;
+	if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+	initialLoadingEl.classList.remove("initial-loading-hidden");
+}
+
+function hideInitialLoading_(text) {
+	if (!initialLoadingEl) return;
+	if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+	initialLoadingEl.classList.add("initial-loading-hidden");
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
 	try {
+		showInitialLoading_("資料載入中…");
+
 		await loadConfig_();
 		currentView = localStorage.getItem("users_view") || currentView;
 
@@ -65,12 +82,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 		// ✅ 先做管理員驗證：通過才放行 loadUsers()
 		const authed = await adminAuthBoot_();
-		if (!authed) return;
+		if (!authed) {
+			hideInitialLoading_();
+			return;
+		}
 
-		loadUsers();
+		await loadUsers();
+		hideInitialLoading_();
 	} catch (e) {
 		console.error("boot error:", e);
 		toast("啟動失敗（請看 console）", "err");
 		showAuthGate_(true, "系統啟動失敗，請確認 config.json / 網路狀態。");
+		hideInitialLoading_("啟動失敗");
 	}
 });
