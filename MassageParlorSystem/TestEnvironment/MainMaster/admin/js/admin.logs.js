@@ -7,6 +7,9 @@
 /** @type {{ts:string, actorUserId:string, actorDisplayName:string}[]} */
 let adminLogs_ = [];
 
+/** @type {{ts:string, actorUserId:string, actorDisplayName:string}[]} */
+let adminLogsAll_ = [];
+
 let adminLogsLoading_ = false;
 
 function logsSetFooter_(text) {
@@ -25,6 +28,44 @@ function normalizeLogRow_(r) {
   const actorUserId = String(r?.actorUserId ?? r?.userId ?? "");
   const actorDisplayName = String(r?.actorDisplayName ?? r?.displayName ?? "");
   return { ts, actorUserId, actorDisplayName };
+}
+
+function pad2_(n) {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * 盡量把各種 ts 字串轉成 YYYY-MM-DD（以本機時區為準）。
+ * @param {string} ts
+ */
+function toDateKey_(ts) {
+  const s = String(ts || "").trim();
+  if (!s) return "";
+
+  // 常見：2026-01-08T... 或 2026-01-08 12:34:56
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  // 常見：2026/01/08 ...
+  if (/^\d{4}\/\d{2}\/\d{2}/.test(s)) return s.slice(0, 10).replace(/\//g, "-");
+
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+}
+
+function getSelectedLogsDate_() {
+  const el = document.getElementById("logsDateInput");
+  const v = String(el?.value || "").trim();
+  return v;
+}
+
+function applyAdminLogsDateFilter_() {
+  const dateKey = getSelectedLogsDate_();
+  if (!dateKey) {
+    adminLogs_ = adminLogsAll_.slice();
+    return;
+  }
+  adminLogs_ = adminLogsAll_.filter((r) => toDateKey_(r.ts) === dateKey);
 }
 
 function renderAdminLogs_() {
@@ -78,10 +119,12 @@ async function loadAdminLogs_() {
       rows = ret.values.map((v) => ({ ts: v?.[0], actorUserId: v?.[1], actorDisplayName: v?.[2] }));
     }
 
-    adminLogs_ = rows.map(normalizeLogRow_).filter((r) => r.ts || r.actorUserId || r.actorDisplayName);
+    adminLogsAll_ = rows.map(normalizeLogRow_).filter((r) => r.ts || r.actorUserId || r.actorDisplayName);
+    applyAdminLogsDateFilter_();
     renderAdminLogs_();
 
-    logsSetFooter_(`共 ${adminLogs_.length} 筆`);
+    const dateKey = getSelectedLogsDate_();
+    logsSetFooter_(dateKey ? `共 ${adminLogs_.length} 筆（${dateKey}）/ 總 ${adminLogsAll_.length} 筆` : `共 ${adminLogs_.length} 筆`);
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);
@@ -99,6 +142,16 @@ async function loadAdminLogs_() {
 
 function bindAdminLogs_() {
   document.getElementById("logsReloadBtn")?.addEventListener("click", () => loadAdminLogs_());
+
+  const dateEl = document.getElementById("logsDateInput");
+  if (dateEl) {
+    dateEl.addEventListener("change", () => {
+      applyAdminLogsDateFilter_();
+      renderAdminLogs_();
+      const dateKey = getSelectedLogsDate_();
+      logsSetFooter_(dateKey ? `共 ${adminLogs_.length} 筆（${dateKey}）/ 總 ${adminLogsAll_.length} 筆` : `共 ${adminLogs_.length} 筆`);
+    });
+  }
 }
 
 /**
