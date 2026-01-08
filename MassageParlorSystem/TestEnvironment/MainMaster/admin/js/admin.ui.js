@@ -93,7 +93,7 @@ function toggleTheme_() {
 function ynCell_(field, value, label) {
   const v = normalizeYesNo_(value);
   return `
-    <td data-label="${escapeHtml(label || field)}">
+    <td data-label="${escapeHtml(label || field)}" class="yn-cell">
       <button type="button" class="yn-toggle" data-field="${field}" data-val="${v}" aria-label="${field}">
         ${v}
       </button>

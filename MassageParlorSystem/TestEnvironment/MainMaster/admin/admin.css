@@ -408,6 +408,8 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   font-size:12px;
   margin-left:8px;
   user-select:none;
+/* 讓「是/否」按鈕像刪除按鈕一樣靠右 */
+td.yn-cell{ text-align:right; }
 }
 .client-scope .audit-badge.pending{ border-color:rgba(245,158,11,.45); background:var(--warning-soft); color:var(--warning); }
 .client-scope .audit-badge.approved{ border-color:rgba(22,163,74,.45); background:var(--success-soft); color:var(--success); }
@@ -715,6 +717,9 @@ tbody td.sticky-col{ background:transparent; }
     overflow-wrap:anywhere;
     word-break:break-word;
   }
+  /* 手機 card 模式下：標籤在左、是/否按鈕在右 */
+  .responsive-table tbody td.yn-cell{ justify-content:space-between; }
+  .responsive-table tbody td.yn-cell .yn-toggle{ margin-left:auto; }
 
   .responsive-table tbody td::before{
     content: attr(data-label);
