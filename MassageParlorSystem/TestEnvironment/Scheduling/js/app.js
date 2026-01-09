@@ -17,7 +17,7 @@ import { initLiffAndGuard, initNoLiffAndGuard } from "./modules/auth.js";
 import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
-import { logAppOpen } from "./modules/usageLog.js";
+import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 
@@ -33,8 +33,20 @@ function bindEventsOnce() {
   }, 120);
 
   // Tabs
-  if (dom.tabBodyBtn) dom.tabBodyBtn.addEventListener("click", () => setActivePanel("body"));
-  if (dom.tabFootBtn) dom.tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
+  if (dom.tabBodyBtn) {
+    dom.tabBodyBtn.addEventListener("click", () => {
+      const from = state.activePanel || "";
+      logUsageEvent({ event: "panel_switch", detail: `${from}->body`, noThrottle: true });
+      setActivePanel("body");
+    });
+  }
+  if (dom.tabFootBtn) {
+    dom.tabFootBtn.addEventListener("click", () => {
+      const from = state.activePanel || "";
+      logUsageEvent({ event: "panel_switch", detail: `${from}->foot`, noThrottle: true });
+      setActivePanel("foot");
+    });
+  }
 
   // Filters
   if (dom.filterMasterInput) {

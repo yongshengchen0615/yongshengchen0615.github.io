@@ -91,9 +91,10 @@ export async function logAppOpen({ userId, displayName } = {}) {
  * @param {string} [args.userId] 使用者唯一 ID（通常是 LIFF userId）；空值會略過不送。
  * @param {string} [args.displayName] 顯示名稱（可選）
  * @param {string} [args.detail] 事件附加資訊（可選）
+ * @param {boolean} [args.noThrottle] 是否略過節流（預設 false）；適合 UI 切換等高頻事件。
  * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>}
  */
-export async function logUsageEvent({ event, userId, displayName, detail } = {}) {
+export async function logUsageEvent({ event, userId, displayName, detail, noThrottle } = {}) {
   const base = String(config.USAGE_LOG_URL || "").trim();
   if (!base) return { ok: false, skipped: true, reason: "NO_URL" };
 
@@ -107,14 +108,17 @@ export async function logUsageEvent({ event, userId, displayName, detail } = {})
   const name = String(displayName || fallback.displayName || "").trim();
   const t = nowMs();
 
-  const minIntervalMs = Number(config.USAGE_LOG_MIN_INTERVAL_MS) || 0;
-  const key = LS_KEY_PREFIX + uid + ":" + ev;
-  const last = safeReadNumberLS(key);
-  if (last && minIntervalMs > 0 && t - last < minIntervalMs) {
-    return { ok: false, skipped: true, reason: "THROTTLED" };
-  }
+  const skipThrottle = noThrottle === true;
+  if (!skipThrottle) {
+    const minIntervalMs = Number(config.USAGE_LOG_MIN_INTERVAL_MS) || 0;
+    const key = LS_KEY_PREFIX + uid + ":" + ev;
+    const last = safeReadNumberLS(key);
+    if (last && minIntervalMs > 0 && t - last < minIntervalMs) {
+      return { ok: false, skipped: true, reason: "THROTTLED" };
+    }
 
-  safeWriteNumberLS(key, t);
+    safeWriteNumberLS(key, t);
+  }
 
   const url = buildUrl(base, {
     mode: "log",

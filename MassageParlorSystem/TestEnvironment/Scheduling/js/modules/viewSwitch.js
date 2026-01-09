@@ -12,6 +12,7 @@ import { state } from "./state.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { renderIncremental } from "./table.js";
 import { onShowPerformance } from "./performance.js";
+import { logUsageEvent } from "./usageLog.js";
 
 export const VIEW = {
   SCHEDULE: "schedule",
@@ -68,7 +69,25 @@ export function setViewMode(mode) {
 }
 
 export function initViewSwitch() {
-  if (dom.btnMyStatusEl) dom.btnMyStatusEl.addEventListener("click", () => setViewMode(VIEW.MY_STATUS));
-  if (dom.btnScheduleEl) dom.btnScheduleEl.addEventListener("click", () => setViewMode(VIEW.SCHEDULE));
-  if (dom.btnPerformanceEl) dom.btnPerformanceEl.addEventListener("click", () => setViewMode(VIEW.PERFORMANCE));
+  if (dom.btnMyStatusEl) {
+    dom.btnMyStatusEl.addEventListener("click", () => {
+      const from = state.viewMode || "";
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.MY_STATUS}`, noThrottle: true });
+      setViewMode(VIEW.MY_STATUS);
+    });
+  }
+  if (dom.btnScheduleEl) {
+    dom.btnScheduleEl.addEventListener("click", () => {
+      const from = state.viewMode || "";
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.SCHEDULE}`, noThrottle: true });
+      setViewMode(VIEW.SCHEDULE);
+    });
+  }
+  if (dom.btnPerformanceEl) {
+    dom.btnPerformanceEl.addEventListener("click", () => {
+      const from = state.viewMode || "";
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.PERFORMANCE}`, noThrottle: true });
+      setViewMode(VIEW.PERFORMANCE);
+    });
+  }
 }
