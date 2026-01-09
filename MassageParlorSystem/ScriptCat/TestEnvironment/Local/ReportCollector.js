@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no button, hash-based)
 // @namespace    https://local/
-// @version      1.0
+// @version      1.1
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
