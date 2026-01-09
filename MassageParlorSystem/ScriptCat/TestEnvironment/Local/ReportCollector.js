@@ -1,19 +1,64 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no button, hash-based)
 // @namespace    https://local/
-// @version      1.1
+// @version      1.2
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
-// @match        *://*/*
+// @match        https://yongshengchen0615.github.io/Performance.html
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
 // @connect      script.google.com
 // @run-at       document-idle
+// @resource     gasConfigReportTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-report-config-TEL.json
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  // ✅ 1) 改成你的 GAS Web App URL（/exec）
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbzuU4eN6-qchYYA43AMNdkiRXbjScOp_XMvrVi1G9AkBgNX3eWXNANNAnGF4sTD7Mnd/exec";
+  /* =========================
+   * 0) Config（與 SnapshotOnly 同讀取方式：@resource + GM_getResourceText）
+   * ========================= */
+  const GAS_RESOURCE = "gasConfigReportTEL";
+
+  const DEFAULT_CFG = {
+    GAS_URL: "",
+  };
+
+  let CFG = { ...DEFAULT_CFG };
+
+  function safeJsonParse(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+
+  function loadJsonOverrides() {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function applyConfigOverrides() {
+    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
+  }
+
+  applyConfigOverrides();
+  if (!CFG.GAS_URL) {
+    console.warn(
+      "[AUTO_REPORT] ⚠️ CFG.GAS_URL is empty. Will keep scanning DOM, but will NOT send network requests.\n" +
+        "Check @resource JSON is valid and contains: {\"GAS_URL\":\"https://script.google.com/macros/s/.../exec\"}"
+    );
+  }
 
   // ✅ 2) 資料來源標記（可自訂）
   const SOURCE_NAME = "report_page_v1";
@@ -159,9 +204,10 @@
   // =========================
   function postToGAS(payload) {
     return new Promise((resolve, reject) => {
+      if (!CFG.GAS_URL) return resolve({ status: 0, json: { ok: false, error: "CFG_GAS_URL_EMPTY" } });
       GM_xmlhttpRequest({
         method: "POST",
-        url: GAS_URL,
+        url: CFG.GAS_URL,
         headers: { "Content-Type": "application/json" },
         data: JSON.stringify(payload),
         onload: (res) => {
