@@ -11,7 +11,7 @@ import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
 import { state } from "./modules/state.js";
-import { showGate, showInitialLoading, setInitialLoadingProgress } from "./modules/uiHelpers.js";
+import { showGate, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./modules/uiHelpers.js";
 import { initTheme } from "./modules/theme.js";
 import { initLiffAndGuard, initNoLiffAndGuard } from "./modules/auth.js";
 import { setActivePanel, renderIncremental } from "./modules/table.js";
@@ -64,6 +64,7 @@ async function boot() {
     sanitizeEdgeUrls();
   } catch (e) {
     console.error("[Config] load failed:", e);
+    hideInitialLoading();
     showGate("⚠ 無法載入 config.json，請確認檔案存在且可被存取。", true);
     return;
   }
@@ -75,7 +76,12 @@ async function boot() {
   // Auth / Gate
   setInitialLoadingProgress(45, "登入 / 權限檢查中…");
   const authRes = config.ENABLE_LINE_LOGIN ? await initLiffAndGuard() : await initNoLiffAndGuard();
-  if (!authRes || !authRes.ok) return;
+  if (!authRes || !authRes.ok) {
+    // 權限未通過（例如：待審核）時，auth 模組會顯示 Gate。
+    // 這裡要關掉 initial loading，避免畫面看起來卡在「登入/權限檢查中」。
+    hideInitialLoading();
+    return;
+  }
 
   setInitialLoadingProgress(62, "準備功能模組中…");
 
@@ -102,6 +108,7 @@ async function boot() {
 window.addEventListener("load", () => {
   boot().catch((e) => {
     console.error("[Boot] failed:", e);
+    hideInitialLoading();
     showGate("⚠ 初始化失敗，請稍後再試。", true);
   });
 });
