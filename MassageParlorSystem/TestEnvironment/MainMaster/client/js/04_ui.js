@@ -46,6 +46,7 @@ function setEditingEnabled_(enabled) {
 		"bulkPush",
 		"bulkPersonalStatus",
 		"bulkScheduleEnabled",
+		"bulkPerformanceEnabled",
 		"bulkUsageDays",
 		"bulkApply",
 		"bulkDelete",
@@ -152,6 +153,7 @@ async function loadUsers() {
 			...u,
 			personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
 			scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
+			performanceEnabled: (u.performanceEnabled || "否") === "是" ? "是" : "否",
 			pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
 			audit: normalizeAudit_(u.audit),
 		}));

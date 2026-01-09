@@ -82,6 +82,7 @@ async function bulkApply_() {
 	const scheduleEnabled = canEditUserField_?.("scheduleEnabled")
 		? document.getElementById("bulkScheduleEnabled")?.value || ""
 		: "";
+	const performanceEnabled = document.getElementById("bulkPerformanceEnabled")?.value || "";
 
 	const usageDaysRaw = canEditUserField_?.("usageDays") ? String(document.getElementById("bulkUsageDays")?.value || "").trim() : "";
 	const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
@@ -90,7 +91,7 @@ async function bulkApply_() {
 		return;
 	}
 
-	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
+	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw) {
 		toast("請先選擇要套用的批次欄位", "err");
 		return;
 	}
@@ -110,6 +111,7 @@ async function bulkApply_() {
 
 		if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
 		if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
+		if (performanceEnabled) u.performanceEnabled = performanceEnabled;
 
 		markDirty_(id, u);
 	});
@@ -177,7 +179,7 @@ function renderTable() {
 
 	if (!filteredUsers.length) {
 		const tr = document.createElement("tr");
-		tr.innerHTML = `<td colspan="15">無資料</td>`;
+		tr.innerHTML = `<td colspan="16">無資料</td>`;
 		tbody.appendChild(tr);
 		return;
 	}
@@ -189,6 +191,7 @@ function renderTable() {
 		const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
 		const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
 		const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
+		const performanceEnabled = (u.performanceEnabled || "否") === "是" ? "是" : "否";
 
 		const audit = normalizeAudit_(u.audit);
 		const isMaster = u.masterCode ? "是" : "否";
@@ -251,6 +254,13 @@ function renderTable() {
 				<select data-field="scheduleEnabled" aria-label="排班表開通">
 					<option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
 					<option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
+				</select>
+			</td>
+
+			<td data-label="業績開通">
+				<select data-field="performanceEnabled" aria-label="業績開通">
+					<option value="否" ${performanceEnabled === "否" ? "selected" : ""}>否</option>
+					<option value="是" ${performanceEnabled === "是" ? "selected" : ""}>是</option>
 				</select>
 			</td>
 
@@ -368,6 +378,7 @@ function handleRowFieldChange_(fieldEl) {
 	else if (field === "pushEnabled") u.pushEnabled = String(value || "否");
 	else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
 	else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
+	else if (field === "performanceEnabled") u.performanceEnabled = String(value || "否");
 
 	const audit = normalizeAudit_(u.audit);
 	const pushSel = row.querySelector('select[data-field="pushEnabled"]');
@@ -492,6 +503,7 @@ async function saveAllDirty_() {
 					pushEnabled: finalPush,
 					personalStatusEnabled: u.personalStatusEnabled || "否",
 					scheduleEnabled: u.scheduleEnabled || "否",
+					performanceEnabled: u.performanceEnabled || "否",
 				};
 			});
 
@@ -525,6 +537,7 @@ async function saveAllDirty_() {
 				u.pushEnabled = it.audit !== "通過" ? "否" : it.pushEnabled;
 				u.personalStatusEnabled = it.personalStatusEnabled;
 				u.scheduleEnabled = it.scheduleEnabled;
+				u.performanceEnabled = it.performanceEnabled;
 
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
@@ -603,6 +616,7 @@ function snapshot_(u) {
 		pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
 		personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
 		scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
+		performanceEnabled: (u.performanceEnabled || "否") === "是" ? "是" : "否",
 	});
 }
 

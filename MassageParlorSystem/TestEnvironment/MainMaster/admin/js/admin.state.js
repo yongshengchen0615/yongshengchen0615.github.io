@@ -30,6 +30,7 @@
  * @property {string} techPushEnabled
  * @property {string} techPersonalStatusEnabled
  * @property {string} techScheduleEnabled
+ * @property {string} techPerformanceEnabled
  */
 
 // 由 config.json 載入

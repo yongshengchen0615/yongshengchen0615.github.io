@@ -34,6 +34,7 @@ function normalizeCheckResult(data, displayNameFromClient) {
   const scheduleEnabled = (data && data.scheduleEnabled) || "否";
   const pushEnabled = (data && data.pushEnabled) || "否";
   const personalStatusEnabled = (data && data.personalStatusEnabled) || "否";
+  const performanceEnabled = (data && data.performanceEnabled) || "否";
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -64,6 +65,7 @@ function normalizeCheckResult(data, displayNameFromClient) {
     scheduleEnabled,
     pushEnabled,
     personalStatusEnabled,
+    performanceEnabled,
     remainingDays,
     flags,
     messages,
@@ -225,6 +227,13 @@ async function onAuthorized({ userId, displayName, result }) {
   const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
   applyScheduleUiMode(scheduleOk);
 
+  // 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
+  const performanceOk = String(result.performanceEnabled || "").trim() === "是";
+  const perfBtn = document.getElementById("btnPerformance");
+  if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
+  const perfCard = document.getElementById("perfCard");
+  if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
+
   // 立即同步提示（避免首次畫面沒出現）
   if (!scheduleOk) {
     const isMasterNow = !!(state.myMaster.isMaster && state.myMaster.techNo);
@@ -246,6 +255,7 @@ async function onAuthorized({ userId, displayName, result }) {
         scheduleEnabled: result.scheduleEnabled,
         pushEnabled: result.pushEnabled,
         personalStatusEnabled: result.personalStatusEnabled,
+        performanceEnabled: result.performanceEnabled,
       }),
     });
   } catch {}
