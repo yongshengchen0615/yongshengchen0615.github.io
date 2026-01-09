@@ -98,7 +98,7 @@ async function boot() {
   if (state.scheduleUiEnabled) setActivePanel("body");
 
   // 初始視圖
-  setViewMode(state.scheduleUiEnabled ? VIEW.SCHEDULE : VIEW.MY_STATUS);
+  setViewMode(VIEW.MY_STATUS);
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");

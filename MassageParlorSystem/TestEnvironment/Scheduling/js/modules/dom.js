@@ -70,6 +70,11 @@ export const dom = {
 
   // 業績
   perfCardEl: document.getElementById("perfCard"),
+  // 日期區間（新版）
+  perfDateStartInput: document.getElementById("perfDateStart"),
+  perfDateEndInput: document.getElementById("perfDateEnd"),
+
+  // 單日（舊版保留：若 HTML 沒有此欄位則為 null）
   perfDateKeyInput: document.getElementById("perfDateKey"),
   perfSearchBtn: document.getElementById("perfSearch"),
   perfStatusEl: document.getElementById("perfStatus"),

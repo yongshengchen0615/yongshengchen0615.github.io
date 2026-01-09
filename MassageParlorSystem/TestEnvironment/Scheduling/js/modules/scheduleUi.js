@@ -72,6 +72,9 @@ export function showNotMasterHint(show) {
 export function applyScheduleUiMode(enabled) {
   state.scheduleUiEnabled = !!enabled;
 
+  // 排班表未開通：不顯示「📋 排班表」按鈕
+  if (dom.btnScheduleEl) dom.btnScheduleEl.style.display = state.scheduleUiEnabled ? "" : "none";
+
   // 面板功能整段隱藏
   if (dom.toolbarEl) dom.toolbarEl.style.display = state.scheduleUiEnabled ? "" : "none";
   if (dom.mainEl) dom.mainEl.style.display = state.scheduleUiEnabled ? "" : "none";
