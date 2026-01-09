@@ -55,6 +55,9 @@
           </div>
 
           <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
+          <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
+          <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
+          <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
           <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
         </div>
       </header>
@@ -149,6 +152,81 @@
           </div>
         </section>
       </main>
+
+      <!-- ✅ 業績（預設隱藏，按「業績」後載入） -->
+      <section id="perfCard" class="card" style="margin-top:16px;display:none;">
+        <header class="card-header">
+          <div class="card-header-left">
+            <h2 class="card-title">師傅業績</h2>
+            <p id="perfMeta" class="card-subtitle">—</p>
+          </div>
+          <div class="card-header-right">
+            <span id="perfStatus" class="badge">尚未查詢</span>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="filters" style="margin-bottom:10px;">
+            <div class="filter">
+              <label for="perfDateKey" class="filter-label">日期</label>
+              <input id="perfDateKey" class="input" type="date" />
+            </div>
+            <div class="filter">
+              <label class="filter-label" aria-hidden="true">&nbsp;</label>
+              <button id="perfSearch" class="btn btn-ghost" type="button">查詢</button>
+            </div>
+          </div>
+
+          <div class="table-wrapper" style="margin-bottom:12px;">
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th style="width:120px;">類別</th>
+                  <th>單數</th>
+                  <th>筆數</th>
+                  <th>數量</th>
+                  <th>金額</th>
+                </tr>
+              </thead>
+              <tbody id="perfSummaryRows">
+                <tr><td colspan="5" style="color:var(--text-sub);">請先查詢。</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th>服務項目</th>
+                  <th>總筆數</th>
+                  <th>總節數</th>
+                  <th>總計金額</th>
+                  <th>老點筆數</th>
+                  <th>老點節數</th>
+                  <th>老點金額</th>
+                  <th>排班筆數</th>
+                  <th>排班節數</th>
+                  <th>排班金額</th>
+                </tr>
+              </thead>
+              <tbody id="perfDetailRows"></tbody>
+            </table>
+          </div>
+
+          <div id="perfEmpty" class="state state-empty" style="display:none;">
+            <p>查無明細資料。</p>
+          </div>
+
+          <div id="perfError" class="state state-error" style="display:none;">
+            <p>無法取得業績資料，請稍後再試。</p>
+          </div>
+
+          <div style="margin-top:10px;">
+            <span id="perfDetailCount" class="badge">0 筆</span>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 

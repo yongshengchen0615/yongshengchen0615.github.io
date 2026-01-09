@@ -24,6 +24,9 @@
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwvgNI1EfBnAPk92PJ8NtdsaTIcN_c-0DxOgIsA6oJHwGWJNgpMCLrKDu-8ZHM18R0g/exec",
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
+  "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbzuU4eN6-qchYYA43AMNdkiRXbjScOp_XMvrVi1G9AkBgNX3eWXNANNAnGF4sTD7Mnd/exec",
+  "_comment_REPORT_API_URL": "（可選）師傅業績查詢用 GAS Web App URL（report Web App）。report.html 會用它讀取 Report_Summary/Report_Detail。",
+
   "USAGE_LOG_MIN_INTERVAL_MS": 180000,
   "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。",
 

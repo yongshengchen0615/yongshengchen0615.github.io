@@ -36,6 +36,9 @@ export const dom = {
   emptyStateEl: document.getElementById("emptyState"),
   errorStateEl: document.getElementById("errorState"),
   themeToggleBtn: document.getElementById("themeToggle"),
+  btnMyStatusEl: document.getElementById("btnMyStatus"),
+  btnScheduleEl: document.getElementById("btnSchedule"),
+  btnPerformanceEl: document.getElementById("btnPerformance"),
 
   // Feature / personal tools
   usageBannerEl: document.getElementById("usageBanner"),
@@ -64,4 +67,16 @@ export const dom = {
   filterStatusWrapEl: document.getElementById("filterStatus")
     ? document.getElementById("filterStatus").closest(".filter")
     : null,
+
+  // 業績
+  perfCardEl: document.getElementById("perfCard"),
+  perfDateKeyInput: document.getElementById("perfDateKey"),
+  perfSearchBtn: document.getElementById("perfSearch"),
+  perfStatusEl: document.getElementById("perfStatus"),
+  perfMetaEl: document.getElementById("perfMeta"),
+  perfSummaryRowsEl: document.getElementById("perfSummaryRows"),
+  perfDetailRowsEl: document.getElementById("perfDetailRows"),
+  perfEmptyEl: document.getElementById("perfEmpty"),
+  perfErrorEl: document.getElementById("perfError"),
+  perfDetailCountEl: document.getElementById("perfDetailCount"),
 };

@@ -29,6 +29,7 @@ export const state = {
   filterMaster: "",
   filterStatus: "all",
   scheduleUiEnabled: true,
+  viewMode: "schedule", // schedule | myStatus | performance
 
   // 刷新/快照保護
   refreshInFlight: false,

@@ -18,6 +18,8 @@ import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen } from "./modules/usageLog.js";
+import { initPerformanceUi } from "./modules/performance.js";
+import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 
 let eventsBound = false;
 
@@ -77,11 +79,20 @@ async function boot() {
 
   setInitialLoadingProgress(62, "準備功能模組中…");
 
+  // 業績 UI（同頁面顯示）
+  initPerformanceUi();
+
+  // 同頁面三視圖切換
+  initViewSwitch();
+
   // （可選）使用頻率紀錄：只在授權通過後送出
   logAppOpen({ userId: authRes.userId, displayName: authRes.displayName });
 
   // 排班表已開通：預設顯示身體面板
   if (state.scheduleUiEnabled) setActivePanel("body");
+
+  // 初始視圖
+  setViewMode(state.scheduleUiEnabled ? VIEW.SCHEDULE : VIEW.MY_STATUS);
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");

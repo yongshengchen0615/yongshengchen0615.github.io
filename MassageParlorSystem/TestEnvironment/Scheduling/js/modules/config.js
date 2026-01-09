@@ -27,6 +27,9 @@ export const config = {
   /** （可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。 */
   USAGE_LOG_URL: "",
 
+  /** （可選）師傅業績查詢用 GAS Web App URL（report Web App）。 */
+  REPORT_API_URL: "",
+
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 
@@ -83,6 +86,7 @@ export async function loadConfigJson() {
 
   // optional: usage log
   config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
+  config.REPORT_API_URL = String(cfg.REPORT_API_URL || "").trim();
   const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
   if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
 
