@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Report Collector -> GAS (with techNo)
-// @namespace    https://yourdomain.local/
+// @name         Report Auto Sync -> GAS (no button, hash-based)
+// @namespace    https://local/
 // @version      1.0.0
-// @description  Collect techNo + summary cards + ant-table rows and POST to GAS
-// @match        https://yongshengchen0615.github.io/Performance.html
+// @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
+// @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @connect      script.google.com
 // @run-at       document-idle
@@ -12,27 +12,23 @@
 (function () {
   "use strict";
 
-  // ✅ 改成你的 GAS Web App URL（/exec）
+  // ✅ 1) 改成你的 GAS Web App URL（/exec）
   const GAS_URL = "https://script.google.com/macros/s/AKfycbzuU4eN6-qchYYA43AMNdkiRXbjScOp_XMvrVi1G9AkBgNX3eWXNANNAnGF4sTD7Mnd/exec";
 
-  // ✅ 資料來源標記（可自訂）
+  // ✅ 2) 資料來源標記（可自訂）
   const SOURCE_NAME = "report_page_v1";
 
-  // ✅ 是否自動定時送出（建議先用手動按鈕驗證）
-  const AUTO_SEND = true;
-  const AUTO_SEND_INTERVAL_MS = 5 * 1000;
+  // ✅ 3) 節流（React/AntD 會頻繁改 DOM）
+  const THROTTLE_MS = 600;
 
-  // ----------------------------
+  // =========================
   // Utils
-  // ----------------------------
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
+  // =========================
   function text(el) {
     return (el && el.textContent ? el.textContent : "").trim();
   }
 
   function safeNumber(v) {
-    // 允許 1.5 這種節數
     const s = String(v ?? "").trim().replace(/,/g, "");
     if (s === "") return 0;
     const n = Number(s);
@@ -43,8 +39,8 @@
     return new Date().toISOString();
   }
 
+  // 輕量 hash（非加密），用於判斷資料是否變動
   function makeHash(str) {
-    // 輕量 hash（非加密）避免同內容重送
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
       h ^= str.charCodeAt(i);
@@ -53,25 +49,22 @@
     return (h >>> 0).toString(16);
   }
 
-  // ----------------------------
-  // Extract: techNo (師傅號碼)
-  // ----------------------------
+  // =========================
+  // Extract: techNo（師傅號碼）
+  // =========================
   function extractTechNo() {
-    // 例如：<p class="text-C599F48">師傅號碼：<span>10</span></p>
+    // 例：<p class="text-C599F48">師傅號碼：<span>10</span></p>
     const ps = Array.from(document.querySelectorAll("p"));
     const p = ps.find((el) => (el.textContent || "").includes("師傅號碼"));
     if (!p) return "";
-
     const span = p.querySelector("span");
-    const v = (span ? span.textContent : "").trim();
-    return v; // "10"
+    return (span ? span.textContent : "").trim(); // "10"
   }
 
-  // ----------------------------
-  // Extract: Summary cards (排班 / 老點 / 總計)
-  // ----------------------------
+  // =========================
+  // Extract: Summary cards（排班/老點/總計）
+  // =========================
   function extractSummaryCards() {
-    // 你的結構：<div class="flex mb-4"> ... <div><p>排班</p><table>...</table></div> ... </div>
     const flex = document.querySelector("div.flex.mb-4");
     if (!flex) return {};
 
@@ -79,7 +72,7 @@
     const out = {};
 
     for (const block of blocks) {
-      const title = text(block.querySelector("p.mb-2"));
+      const title = text(block.querySelector("p.mb-2")); // 排班 / 老點 / 總計
       const tds = Array.from(block.querySelectorAll("tbody td")).map((td) => text(td));
       if (!title || tds.length < 4) continue;
 
@@ -93,9 +86,9 @@
     return out;
   }
 
-  // ----------------------------
-  // Extract: Ant table rows
-  // ----------------------------
+  // =========================
+  // Extract: Ant table rows（明細）
+  // =========================
   function extractAntTableRows() {
     const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
     if (!tbody) return [];
@@ -125,30 +118,34 @@
     return data;
   }
 
-  // ----------------------------
+  // =========================
   // Build payload
-  // ----------------------------
+  // =========================
   function buildPayload() {
     const techNo = extractTechNo();
     const summary = extractSummaryCards();
     const detail = extractAntTableRows();
 
+    // ⚠️ 若你之後要「同一天」以外的 key（例如頁面可切日期），可在這裡加 dateKey（從頁面抓）
+    const dateKey = ""; // 先留空，GAS 會用「台北今天」當 dateKey
+
     const payload = {
-      mode: "appendReport_v1",
+      mode: "upsertReport_v1",
       source: SOURCE_NAME,
       pageUrl: location.href,
       pageTitle: document.title,
       clientTsIso: nowIso(),
-      techNo, // ✅ 新增
+      techNo,
+      dateKey, // 可選
       summary,
       detail,
     };
 
-    // ✅ 把 techNo 也納入去重 key
+    // ✅ clientHash 必須只由「報表內容」組成（不要放時間）
     payload.clientHash = makeHash(
       JSON.stringify({
-        pageUrl: payload.pageUrl,
         techNo: payload.techNo,
+        dateKey: payload.dateKey, // 可留空
         summary: payload.summary,
         detail: payload.detail,
       })
@@ -157,9 +154,9 @@
     return payload;
   }
 
-  // ----------------------------
+  // =========================
   // POST to GAS
-  // ----------------------------
+  // =========================
   function postToGAS(payload) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -180,81 +177,48 @@
     });
   }
 
-  // ----------------------------
-  // UI Button (Manual send)
-  // ----------------------------
-  function mountButton() {
-    const btn = document.createElement("button");
-    btn.textContent = "送出報表";
-    btn.style.cssText = `
-      position: fixed; right: 16px; bottom: 16px; z-index: 999999;
-      padding: 10px 14px; border-radius: 10px; border: 1px solid #999;
-      background: #111; color: #fff; font-size: 14px; cursor: pointer;
-      box-shadow: 0 6px 18px rgba(0,0,0,.25);
-    `;
+  // =========================
+  // Auto watch + send only when changed
+  // =========================
+  let lastHash = "";
+  let timer = null;
 
-    const badge = document.createElement("div");
-    badge.style.cssText = `
-      position: fixed; right: 16px; bottom: 56px; z-index: 999999;
-      background: rgba(0,0,0,.75); color: #fff; padding: 6px 10px;
-      border-radius: 10px; font-size: 12px; display: none;
-      max-width: 45vw;
-      white-space: pre-wrap;
-    `;
+  async function checkAndSend() {
+    try {
+      const payload = buildPayload();
 
-    document.body.appendChild(btn);
-    document.body.appendChild(badge);
+      // 1) 沒抓到明細 → 不送
+      if (!payload.detail.length) return;
 
-    function toast(msg) {
-      badge.textContent = msg;
-      badge.style.display = "block";
-      setTimeout(() => (badge.style.display = "none"), 2800);
+      // 2) 同頁面中 hash 沒變 → 不送（不算更新）
+      if (payload.clientHash === lastHash) return;
+
+      // 3) hash 變了 → 送出（算一次更新）
+      lastHash = payload.clientHash;
+
+      const res = await postToGAS(payload);
+      if (res.json && res.json.ok) {
+        console.log("[AUTO_REPORT] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
+      } else {
+        console.warn("[AUTO_REPORT] fail:", res.json || res.text);
+      }
+    } catch (e) {
+      console.warn("[AUTO_REPORT] error:", e);
     }
-
-    btn.addEventListener("click", async () => {
-      try {
-        const payload = buildPayload();
-
-        if (!payload.detail.length) {
-          toast("抓不到明細表：請確認表格已載入完成");
-          return;
-        }
-
-        toast(
-          `送出中…\ntechNo=${payload.techNo || "(未抓到)"}\n明細=${payload.detail.length}筆`
-        );
-        const res = await postToGAS(payload);
-
-        if (res.json && res.json.ok) {
-          toast(
-            `✅ 寫入成功\nsummary=${res.json.summaryAppended} detail=${res.json.detailAppended}\n${
-              res.json.deduped ? "（去重：未重寫）" : ""
-            }`
-          );
-        } else {
-          toast(`⚠️ 送出失敗：${JSON.stringify(res.json || res.text).slice(0, 220)}`);
-        }
-      } catch (e) {
-        toast(`❌ 送出錯誤：${String(e)}`);
-      }
-    });
   }
 
-  // ----------------------------
-  // Boot
-  // ----------------------------
-  mountButton();
-
-  if (AUTO_SEND) {
-    (async () => {
-      while (true) {
-        await sleep(AUTO_SEND_INTERVAL_MS);
-        try {
-          const payload = buildPayload();
-          if (!payload.detail.length) continue;
-          await postToGAS(payload);
-        } catch (_) {}
-      }
-    })();
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      checkAndSend();
+    }, THROTTLE_MS);
   }
+
+  // 先跑一次（頁面已載入時）
+  schedule();
+
+  // 監聽 DOM 變動（React/AntD）
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 })();
