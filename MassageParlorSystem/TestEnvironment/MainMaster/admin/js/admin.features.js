@@ -56,7 +56,10 @@ async function liffGate_() {
   if (!liff.isLoggedIn()) {
     setAuthText_("導向登入中...");
     liff.login();
-    return;
+    // 避免後續流程誤以為已通過驗證（login 會導頁）
+    const err = new Error("LIFF_LOGIN_REDIRECT");
+    err.code = "LIFF_LOGIN_REDIRECT";
+    throw err;
   }
 
   const profile = await liff.getProfile();
@@ -84,7 +87,9 @@ async function liffGate_() {
       me.displayName,
       me.audit
     );
-    throw new Error("NOT_ALLOWED");
+    const err = new Error("ADMIN_NOT_ALLOWED");
+    err.code = "ADMIN_NOT_ALLOWED";
+    throw err;
   }
 }
 

@@ -258,10 +258,31 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     setInitialLoadingProgress_(100, "完成");
   } catch (e) {
+    const code = String(e?.code || "");
+    const message = String(e?.message || e);
+
+    // ✅ 權限未通過：showBlocker_ 已顯示，不視為「初始化失敗」
+    if (code === "ADMIN_NOT_ALLOWED" || message === "ADMIN_NOT_ALLOWED") {
+      console.warn("[AuthGate] admin not allowed");
+      const msg = "尚未通過審核（請由總管理員改為『通過』）";
+      if (typeof uSetFooter_ === "function") uSetFooter_(msg);
+      if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
+      return;
+    }
+
+    // ✅ LIFF 導頁登入：不顯示錯誤 toast
+    if (code === "LIFF_LOGIN_REDIRECT" || message === "LIFF_LOGIN_REDIRECT") {
+      console.info("[AuthGate] redirecting to LIFF login");
+      const msg = "導向登入中...";
+      if (typeof uSetFooter_ === "function") uSetFooter_(msg);
+      if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
+      return;
+    }
+
     console.error(e);
     toast("初始化失敗（請檢查 config.json / LIFF / GAS）", "err");
 
-    const msg = `初始化失敗：${String(e?.message || e)}`;
+    const msg = `初始化失敗：${message}`;
     if (typeof uSetFooter_ === "function") uSetFooter_(msg);
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
   } finally {
