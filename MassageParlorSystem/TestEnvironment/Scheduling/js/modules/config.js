@@ -51,6 +51,13 @@ export const config = {
   STATUS_FETCH_TIMEOUT_MS: 8000,
   /** Origin fallback 額外 timeout（毫秒）。 */
   STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
+
+  /**
+   * （可選）資料過久未更新的判定門檻（毫秒）。
+   * - 以資料列的 timestamp/sourceTs/updatedAt 為準
+   * - 設為 0 或負數可停用此判斷
+   */
+  STALE_DATA_MAX_AGE_MS: 10 * 60 * 1000,
 };
 
 /**
@@ -109,6 +116,10 @@ export async function loadConfigJson() {
 
   const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
   if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
+
+  // optional: stale data gate
+  const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);
+  if (!Number.isNaN(staleMaxAge)) config.STALE_DATA_MAX_AGE_MS = staleMaxAge;
 
   if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
