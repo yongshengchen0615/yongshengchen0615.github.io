@@ -85,7 +85,7 @@ export function applyScheduleUiMode(enabled) {
   if (dom.filterStatusWrapEl) dom.filterStatusWrapEl.style.display = state.scheduleUiEnabled ? "" : "none";
 
   // 只顯示我的狀態（非師傅仍會被 myMasterStatus 模組控制顯示/隱藏）
-  if (dom.myMasterStatusEl) dom.myMasterStatusEl.style.display = "flex";
+  // 由 viewSwitch/viewMode 控制顯示/隱藏，避免與「我的狀態 / 排班表 / 業績」切換打架。
 
   // 狀態提示文字
   if (dom.connectionStatusEl) {
