@@ -117,6 +117,9 @@ body {
   max-width: 1080px;
   margin: 0 auto;
   padding: 20px 16px 32px 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
 }
 
 /* 頁面標題（置頂置中） */
@@ -233,7 +236,7 @@ body {
 
 .app-title {
   margin: 0 0 4px;
-  font-size: 22px;
+  font-size: clamp(18px, 4.6vw, 22px);
   letter-spacing: 0.02em;
 }
 
@@ -247,6 +250,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* Pills & Buttons */
@@ -317,6 +322,7 @@ body {
   padding: 3px;
   border: 1px solid rgba(148, 163, 184, 0.6);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.8);
+  max-width: 100%;
 }
 
 :root[data-theme="light"] .tabs {
@@ -357,6 +363,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .filter-label {
@@ -389,6 +396,7 @@ body {
 /* 主內容區 */
 .main {
   display: flex;
+  min-width: 0;
 }
 
 /* 卡片 + 表格 */
@@ -460,6 +468,8 @@ body {
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .status-table {
@@ -620,18 +630,63 @@ body {
     align-items: flex-start;
   }
 
+  .app-header-right {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 6px 12px;
+  }
+
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .tabs {
+    width: 100%;
+    display: flex;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
   }
 
   .filters {
     width: 100%;
   }
 
+  .filter {
+    width: 100%;
+  }
+
   .input,
   .select {
     width: 100%;
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  .main {
+    flex-direction: column;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-header-right {
+    align-self: flex-start;
+  }
+
+  .status-table {
+    width: max-content;
+    min-width: 720px;
   }
 
   .card {
@@ -673,6 +728,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10000;
+
+  max-width: calc(100vw - 24px);
 
   display: flex;
   align-items: center;
@@ -813,6 +870,24 @@ body {
   .status-table tbody td:nth-child(3),
   .status-table thead th:nth-child(3){
     min-width: 76px;
+  }
+
+  .layout{
+    padding-top: 16px;
+  }
+
+  .card-header{
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .card-body{
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .status-table{
+    min-width: 680px;
   }
 }
 
