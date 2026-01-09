@@ -8,7 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigReadyFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-ready-config-local.json
+// @resource     gasConfigReadyTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-ready-config-local.json
 // ==/UserScript==
 
 (function () {
@@ -17,7 +17,7 @@
   // =========================
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
-  const GAS_RESOURCE = "gasConfigReadyFED";
+  const GAS_RESOURCE = "gasConfigReadyTEL";
 
   const DEFAULT_CFG = {
     GAS_URL: ""

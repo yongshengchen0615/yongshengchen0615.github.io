@@ -8,7 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-snapshot-config-local.json
+// @resource     gasConfigSnapshotTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-snapshot-config-local.json
 // ==/UserScript==
 
 (function () {
@@ -17,7 +17,7 @@
   /* =========================
    * 0) Config------
    * ========================= */
-  const GAS_RESOURCE = "gasConfigSnapshotFED";
+  const GAS_RESOURCE = "gasConfigSnapshotTEL";
 
   const DEFAULT_CFG = {
     GAS_URL: ""
