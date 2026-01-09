@@ -17,6 +17,13 @@ export const state = {
     foot: [],
   },
 
+  // 資料健康度（用於判斷「太久沒有更新」）
+  dataHealth: {
+    lastDataTimestampMs: null,
+    stale: false,
+    staleSinceMs: null,
+  },
+
   // UI 狀態
   activePanel: "body",
   filterMaster: "",

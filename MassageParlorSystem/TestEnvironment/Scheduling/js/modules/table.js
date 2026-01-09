@@ -24,6 +24,8 @@ import {
 } from "./core.js";
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { showGate, hideGate } from "./uiHelpers.js";
+import { config } from "./config.js";
 
 /* =========================
  * mapping
@@ -135,7 +137,70 @@ function rowSignature(r) {
     r.bgMaster ?? "",
     r.bgStatus ?? "",
     r.bgAppointment ?? "",
+    // ✅ timestamp 變更也視為資料更新（避免「內容相同但快照有更新」被當成沒變）
+    r.timestamp ?? r.sourceTs ?? r.updatedAt ?? "",
   ].join("|");
+}
+
+function parseTimestampMs_(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const ms = Date.parse(s);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function computeLatestDataTimestampMs_() {
+  let maxMs = null;
+  ["body", "foot"].forEach((panel) => {
+    (state.rawData[panel] || []).forEach((r) => {
+      const ms = parseTimestampMs_(r && (r.timestamp ?? r.sourceTs ?? r.updatedAt));
+      if (ms === null) return;
+      maxMs = maxMs === null ? ms : Math.max(maxMs, ms);
+    });
+  });
+  return maxMs;
+}
+
+function applyStaleSystemGate_() {
+  const maxAge = Number(config.STALE_DATA_MAX_AGE_MS);
+  if (!Number.isFinite(maxAge) || maxAge <= 0) {
+    // disabled
+    if (state.dataHealth && state.dataHealth.stale) {
+      state.dataHealth.stale = false;
+      state.dataHealth.staleSinceMs = null;
+      hideGate();
+    }
+    return;
+  }
+
+  const latestMs = computeLatestDataTimestampMs_();
+  state.dataHealth.lastDataTimestampMs = latestMs;
+
+  // 沒有可解析的 timestamp：不做「過久未更新」判斷（避免誤殺）
+  if (latestMs === null) {
+    if (state.dataHealth && state.dataHealth.stale) {
+      state.dataHealth.stale = false;
+      state.dataHealth.staleSinceMs = null;
+      hideGate();
+    }
+    return;
+  }
+
+  const isStale = Date.now() - latestMs > maxAge;
+
+  if (isStale && !state.dataHealth.stale) {
+    state.dataHealth.stale = true;
+    state.dataHealth.staleSinceMs = Date.now();
+    showGate("總系統異常 無法使用功能", true);
+    if (dom.connectionStatusEl) dom.connectionStatusEl.textContent = "異常";
+    return;
+  }
+
+  if (!isStale && state.dataHealth.stale) {
+    state.dataHealth.stale = false;
+    state.dataHealth.staleSinceMs = null;
+    hideGate();
+  }
 }
 
 function buildStatusSet(rows) {
@@ -610,6 +675,9 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
       if (activeChanged) renderIncremental(state.activePanel);
       else reapplyTableHeaderColorsFromDataset();
     }
+
+    // ✅ 資料過久未更新：顯示 Gate（並阻止操作）；恢復後自動解除
+    applyStaleSystemGate_();
 
     // 永遠更新我的狀態（schedule=否 也要）
     updateMyMasterStatusUI();
