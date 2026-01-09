@@ -601,37 +601,41 @@ html[data-theme="light"] .initial-loading-progress{
 /* ALL */
 table[data-view="all"]{}
 
-/* USAGE：顯示 1-9 + 15；隱藏 10-14 */
+/* USAGE：顯示 1-9 + 16；隱藏 10-15 */
 table[data-view="usage"] thead th:nth-child(10),
 table[data-view="usage"] thead th:nth-child(11),
 table[data-view="usage"] thead th:nth-child(12),
 table[data-view="usage"] thead th:nth-child(13),
 table[data-view="usage"] thead th:nth-child(14),
+table[data-view="usage"] thead th:nth-child(15),
 table[data-view="usage"] tbody td:nth-child(10),
 table[data-view="usage"] tbody td:nth-child(11),
 table[data-view="usage"] tbody td:nth-child(12),
 table[data-view="usage"] tbody td:nth-child(13),
-table[data-view="usage"] tbody td:nth-child(14){
+table[data-view="usage"] tbody td:nth-child(14),
+table[data-view="usage"] tbody td:nth-child(15){
   display:none;
 }
 
-/* MASTER：顯示 1-5 + 9-11 + 15；隱藏 6-8 + 12-14 */
+/* MASTER：顯示 1-5 + 9-11 + 16；隱藏 6-8 + 12-15 */
 table[data-view="master"] thead th:nth-child(6),
 table[data-view="master"] thead th:nth-child(7),
 table[data-view="master"] thead th:nth-child(8),
 table[data-view="master"] thead th:nth-child(12),
 table[data-view="master"] thead th:nth-child(13),
 table[data-view="master"] thead th:nth-child(14),
+table[data-view="master"] thead th:nth-child(15),
 table[data-view="master"] tbody td:nth-child(6),
 table[data-view="master"] tbody td:nth-child(7),
 table[data-view="master"] tbody td:nth-child(8),
 table[data-view="master"] tbody td:nth-child(12),
 table[data-view="master"] tbody td:nth-child(13),
-table[data-view="master"] tbody td:nth-child(14){
+table[data-view="master"] tbody td:nth-child(14),
+table[data-view="master"] tbody td:nth-child(15){
   display:none;
 }
 
-/* FEATURES：顯示 1-5 + 9 + 12-14 + 15；隱藏 6-8 + 10-11 */
+/* FEATURES：顯示 1-5 + 9 + 12-15 + 16；隱藏 6-8 + 10-11 */
 table[data-view="features"] thead th:nth-child(6),
 table[data-view="features"] thead th:nth-child(7),
 table[data-view="features"] thead th:nth-child(8),

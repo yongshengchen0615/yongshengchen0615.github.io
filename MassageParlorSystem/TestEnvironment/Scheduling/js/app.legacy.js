@@ -888,7 +888,7 @@ function updateMyMasterStatusUI_() {
 /* =========================================================
  * Feature banner
  * ========================================================= */
-let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
+let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否", performanceEnabled: "否" };
 function normalizeYesNo_(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
 }
@@ -905,15 +905,20 @@ function renderFeatureBanner_() {
   const push = normalizeYesNo_(featureState.pushEnabled);
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
+  const performance = normalizeYesNo_(featureState.performanceEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("排班表", schedule), buildChip_("個人狀態", personal)].join(
-    ""
-  );
+  chipsEl.innerHTML = [
+    buildChip_("叫班提醒", push),
+    buildChip_("排班表", schedule),
+    buildChip_("個人狀態", personal),
+    buildChip_("業績", performance),
+  ].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
   featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
+  featureState.performanceEnabled = normalizeYesNo_(data && data.performanceEnabled);
   renderFeatureBanner_();
 }
 
@@ -1717,6 +1722,13 @@ async function initNoLiffAndGuard() {
     // ✅ 排班表開通=否：只顯示我的狀態
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     applyScheduleUiMode_(scheduleOk);
+
+    // ✅ 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
+    const performanceOk = String(result.performanceEnabled || "").trim() === "是";
+    const perfBtn = document.getElementById("btnPerformance");
+    if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
+    const perfCard = document.getElementById("perfCard");
+    if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
 
     // ✅ 立即同步提示（避免首次畫面沒出現）
     if (!scheduleOk) {

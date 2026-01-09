@@ -157,12 +157,13 @@
                 <th>技師是否推播</th>
                 <th>技師個人狀態開通</th>
                 <th>技師排班表開通</th>
+                <th>技師業績開通</th>
 
                 <th class="sticky-right">操作</th>
               </tr>
             </thead>
             <tbody id="tbody">
-              <tr><td colspan="18">載入中...</td></tr>
+              <tr><td colspan="19">載入中...</td></tr>
             </tbody>
           </table>
         </div>
@@ -325,6 +326,15 @@
             </div>
 
             <div class="bulk-group">
+              <label class="bulk-label" for="uBulkPerformanceEnabled">批次業績</label>
+              <select id="uBulkPerformanceEnabled" class="select">
+                <option value="">不變更</option>
+                <option value="是">開啟</option>
+                <option value="否">關閉</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
               <label class="bulk-label" for="uBulkUsageDays">批次期限(天)</label>
               <input id="uBulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
             </div>
@@ -358,11 +368,12 @@
                 <th>是否推播</th>
                 <th>個人狀態開通</th>
                 <th>排班表開通</th>
+                <th>業績開通</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody id="uTbody">
-              <tr><td colspan="15">等待管理員驗證後載入...</td></tr>
+              <tr><td colspan="16">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
         </div>

@@ -46,6 +46,7 @@ export const state = {
     pushEnabled: "否",
     personalStatusEnabled: "否",
     scheduleEnabled: "否",
+    performanceEnabled: "否",
   },
 
   // Adaptive polling

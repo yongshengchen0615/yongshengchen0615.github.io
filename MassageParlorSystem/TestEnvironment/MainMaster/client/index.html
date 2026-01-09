@@ -172,6 +172,15 @@
           </div>
 
           <div class="bulk-group">
+            <label class="bulk-label" for="bulkPerformanceEnabled">批次業績</label>
+            <select id="bulkPerformanceEnabled" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
             <label class="bulk-label" for="bulkUsageDays">批次期限(天)</label>
             <input id="bulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
           </div>
@@ -202,11 +211,12 @@
               <th data-sort="pushEnabled" class="sortable">是否推播</th>
               <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th>
               <th data-sort="scheduleEnabled" class="sortable">排班表開通</th>
+              <th data-sort="performanceEnabled" class="sortable">業績開通</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="15">載入中...</td></tr>
+            <tr><td colspan="16">載入中...</td></tr>
           </tbody>
         </table>
       </div>

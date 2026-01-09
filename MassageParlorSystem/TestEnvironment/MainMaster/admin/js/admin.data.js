@@ -48,6 +48,7 @@ function snapshot_(a) {
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   });
 }
 
@@ -87,6 +88,7 @@ function toAdminRow_(a) {
     techPushEnabled: normalizeYesNo_(a?.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a?.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a?.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a?.techPerformanceEnabled),
   };
 }
 
@@ -123,5 +125,6 @@ function toUpdateItem_(a) {
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   };
 }
