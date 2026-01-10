@@ -11,6 +11,7 @@ import {
   changeAdminPassphrase,
 } from "./modules/api.js";
 import { escapeHtml, ymd, uniqSorted } from "./modules/core.js";
+import { initLiffLoginAndCheckAccess } from "./modules/lineAuth.js";
 
 const els = {
   pageTitle: document.getElementById("pageTitle"),
@@ -81,6 +82,7 @@ const state = {
   saving: false,
   authed: false,
   passphrase: "",
+  accessAllowed: false,
 };
 
 function setAuthMsg_(t) {
@@ -519,8 +521,42 @@ async function main() {
 
   // Default: require login first.
   setAuthed_(false, "");
-  setAuthMsg_("請先登入");
+  setAuthMsg_("LINE 登入驗證中…");
   setUiEnabled(false);
+
+  // Prevent using admin passphrase form before LINE access gate passes.
+  state.accessAllowed = false;
+  if (els.authPassphrase) els.authPassphrase.disabled = true;
+  if (els.authLoginBtn) els.authLoginBtn.disabled = true;
+
+  // ✅ LIFF login + Users-sheet access gate (must pass before showing admin password login)
+  try {
+    const access = await initLiffLoginAndCheckAccess({ setStatusText: setAuthMsg_ });
+    if (access && access.redirected) return;
+
+    if (!access || access.ok !== true) throw new Error("ACCESS_CHECK_FAILED");
+
+    if (!access.allowed) {
+      const reason = String(access.reason || "你沒有權限進入此頁面。").trim();
+      setAuthMsg_("無法進入：" + reason);
+      if (els.authPassphrase) els.authPassphrase.disabled = true;
+      if (els.authLoginBtn) els.authLoginBtn.disabled = true;
+      return;
+    }
+
+    // Allowed → enable admin password form
+    state.accessAllowed = true;
+    if (els.authPassphrase) els.authPassphrase.disabled = false;
+    if (els.authLoginBtn) els.authLoginBtn.disabled = false;
+    setAuthMsg_("請輸入管理密碼");
+  } catch (e) {
+    console.error(e);
+    const msg = String(e && e.message ? e.message : e);
+    setAuthMsg_(msg === "LIFF_SDK_NOT_LOADED" ? "請在 LINE 內開啟（LIFF 未載入）" : "無法完成 LINE 登入驗證");
+    if (els.authPassphrase) els.authPassphrase.disabled = true;
+    if (els.authLoginBtn) els.authLoginBtn.disabled = true;
+    return;
+  }
 
   els.openChangePassBtn?.addEventListener("click", () => {
     if (!state.authed) return;
@@ -541,6 +577,12 @@ async function main() {
 
   els.authForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
+
+    if (!state.accessAllowed) {
+      setAuthMsg_("尚未通過 LINE 權限驗證，無法登入");
+      return;
+    }
+
     const p = String(els.authPassphrase?.value || "");
     if (!p) return alert("請輸入管理密碼");
 

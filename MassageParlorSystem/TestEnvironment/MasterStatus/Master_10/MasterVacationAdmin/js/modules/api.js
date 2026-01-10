@@ -48,6 +48,23 @@ async function postJsonNoCorsPreflight(url, payload) {
 }
 
 /**
+ * Master Vacation Admin：檢查目前使用者是否允許進入頁面（以 Users 資料表為準）。
+ * 預期 GAS 支援：POST { entity:"auth", action:"user_check", data:{ masterId, userId, displayName? } }
+ */
+export async function checkMasterAdminAccess({ masterId, userId, displayName }) {
+  const payload = {
+    entity: "auth",
+    action: "user_check",
+    data: {
+      masterId: String(masterId || "").trim(),
+      userId: String(userId || "").trim(),
+      displayName: String(displayName || "").trim(),
+    },
+  };
+  return await postJsonNoCorsPreflight(config.AUTH_ENDPOINT || config.DATE_DB_ENDPOINT, payload);
+}
+
+/**
  * 驗證管理密碼（登入用）。
  * 預期 GAS 支援：POST { entity:"auth", action:"passphrase_verify", data:{ passphrase } }
  */

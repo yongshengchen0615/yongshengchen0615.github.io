@@ -35,6 +35,7 @@ function doGet(e) {
         "POST {entity:'auth', action:'open_status', data:{masterId}}",
         "POST {entity:'auth', action:'exchange', data:{masterId, token}}",
         "POST {entity:'auth', action:'check', data:{masterId, sessionId}}",
+        "POST {entity:'auth', action:'user_check', data:{masterId, userId, displayName?}}",
       ],
       now: Date.now(),
     });
@@ -49,6 +50,14 @@ function doPost(e) {
     const entity = String(payload.entity || "").trim();
     const action = String(payload.action || "").trim();
     const data = payload.data || {};
+
+    if (entity === "auth" && action === "user_check") {
+      const masterId = normalizeMasterId_(data.masterId);
+      const userId = String(data.userId || "").trim();
+      const displayName = String(data.displayName || "").trim();
+      const res = checkUserAccessByUsersSheet_({ masterId, userId, displayName });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
 
     if (entity === "auth" && action === "passphrase_verify") {
       const passphrase = String(data.passphrase || "");
@@ -398,6 +407,137 @@ function listRequests_({ masterId, status }) {
 
   out.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
   return { rows: out };
+}
+
+/* =========================
+ * Users-sheet access gate (for master admin pages)
+ * ========================= */
+
+function normalizeYesNo_(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  if (s === "是" || s.toLowerCase() === "yes" || s === "1" || s.toLowerCase() === "true") return "是";
+  if (s === "否" || s.toLowerCase() === "no" || s === "0" || s.toLowerCase() === "false") return "否";
+  return s;
+}
+
+function isAuditApproved_(auditRaw) {
+  const s = String(auditRaw || "").replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+  if (!s) return false;
+  if (s.includes("系統維護") || s.includes("系统维护")) return false;
+  if (s.includes("拒絕") || s.includes("停用") || s.includes("封鎖") || s.includes("禁用")) return false;
+  if (s.toLowerCase() === "approved" || s.toLowerCase() === "approve") return true;
+  if (s.includes("通過") || s.includes("通过") || s.includes("已通過") || s.includes("已通过")) return true;
+  return false;
+}
+
+function buildHeaderMap_(headers) {
+  const map = {};
+  (headers || []).forEach((h, idx) => {
+    const key = String(h || "").trim();
+    if (!key) return;
+    map[key] = idx;
+  });
+  return map;
+}
+
+function getCellByHeader_(row, headerMap, keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = String(keys[i] || "").trim();
+    if (!k) continue;
+    const idx = headerMap[k];
+    if (idx === undefined) continue;
+    const v = row[idx];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
+}
+
+function findUserRowByUserId_(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return null;
+
+  const sh = ensureSheet_(
+    USERS_SHEET,
+    [
+      "userId",
+      "displayName",
+      "審核狀態",
+      "建立時間",
+      "開始使用日期",
+      "使用期限",
+      "師傅編號",
+      "是否師傅",
+      "是否推播",
+      "個人狀態開通",
+      "排班表開通",
+      "業績開通",
+    ]
+  );
+
+  const values = sh.getDataRange().getValues();
+  if (!values || values.length < 2) return null;
+
+  const headerMap = buildHeaderMap_(values[0]);
+  const userIdIdx = headerMap["userId"]; // required
+  if (userIdIdx === undefined) return null;
+
+  for (let r = 2; r <= values.length; r++) {
+    const row = values[r - 1];
+    const rowUserId = String(row[userIdIdx] || "").trim();
+    if (!rowUserId) continue;
+    if (rowUserId !== uid) continue;
+    return { headerMap: headerMap, row: row };
+  }
+
+  return null;
+}
+
+function checkUserAccessByUsersSheet_({ masterId, userId, displayName }) {
+  if (!masterId) throw new Error("MASTER_ID_REQUIRED");
+  if (!userId) throw new Error("USER_ID_REQUIRED");
+
+  const found = findUserRowByUserId_(userId);
+  if (!found) {
+    return {
+      allowed: false,
+      reason: "找不到使用者資料（Users）",
+      user: { userId: userId, displayName: displayName || "" },
+    };
+  }
+
+  const hm = found.headerMap;
+  const row = found.row;
+
+  const rowDisplayName = String(getCellByHeader_(row, hm, ["displayName"]) || "").trim();
+  const audit = String(getCellByHeader_(row, hm, ["審核狀態", "audit"]) || "").trim();
+  const techNo = String(getCellByHeader_(row, hm, ["師傅編號", "masterId", "techNo"]) || "").trim();
+  const isMasterRaw = normalizeYesNo_(getCellByHeader_(row, hm, ["是否師傅", "isMaster"]));
+  const personalStatusEnabled = normalizeYesNo_(getCellByHeader_(row, hm, ["個人狀態開通", "personalStatusEnabled"])) || "否";
+
+  const denyByIsMasterFlag = String(isMasterRaw || "").trim() === "否";
+  const allow = !denyByIsMasterFlag && techNo === masterId && personalStatusEnabled === "是" && isAuditApproved_(audit);
+
+  let reason = "";
+  if (!allow) {
+    if (techNo !== masterId) reason = "師傅編號不符";
+    else if (denyByIsMasterFlag) reason = "不是師傅帳號";
+    else if (personalStatusEnabled !== "是") reason = "個人狀態未開通";
+    else reason = audit ? `審核狀態未通過（${audit}）` : "審核狀態未通過";
+  }
+
+  return {
+    allowed: allow,
+    reason: reason,
+    user: {
+      userId: userId,
+      displayName: rowDisplayName || displayName || "",
+      audit: audit,
+      masterId: techNo,
+      isMaster: isMasterRaw || "",
+      personalStatusEnabled: personalStatusEnabled,
+    },
+  };
 }
 
 function approveRequest_({ masterId, requestId, ttlMinutes, dashboardUrl }) {
