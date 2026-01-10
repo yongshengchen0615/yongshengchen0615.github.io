@@ -24,7 +24,6 @@ const els = {
   reviewCard: document.getElementById("reviewCard"),
   reviewPassphrase: document.getElementById("reviewPassphrase"),
   reviewStatus: document.getElementById("reviewStatus"),
-  reviewTtl: document.getElementById("reviewTtl"),
   reviewReloadBtn: document.getElementById("reviewReloadBtn"),
   reviewMsg: document.getElementById("reviewMsg"),
   reviewList: document.getElementById("reviewList"),
@@ -78,7 +77,6 @@ function setUiEnabled(enabled) {
 
   if (els.reviewPassphrase) els.reviewPassphrase.disabled = dis;
   if (els.reviewStatus) els.reviewStatus.disabled = dis;
-  if (els.reviewTtl) els.reviewTtl.disabled = dis;
   if (els.reviewReloadBtn) els.reviewReloadBtn.disabled = dis;
 }
 
@@ -177,7 +175,6 @@ function renderReviewList(rows, passphrase) {
       if (!requestId) return;
 
       const masterId = String(config.MASTER_ID || "").trim();
-      const ttlMinutes = Math.max(5, Math.min(1440, Number(els.reviewTtl?.value || 60)));
 
       try {
         setUiEnabled(false);
@@ -190,7 +187,7 @@ function renderReviewList(rows, passphrase) {
         if (dashboardUrl && dashboardUrl === String(config.AUTH_ENDPOINT || "").trim()) {
           throw new Error("設定錯誤：PUBLIC_DASHBOARD_URL 不能填 Auth WebApp 的 /exec");
         }
-        const res = await approveReviewRequest({ masterId, passphrase, requestId, ttlMinutes, dashboardUrl });
+        const res = await approveReviewRequest({ masterId, passphrase, requestId, dashboardUrl });
         if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "approve failed");
 
         const approvedLink = String(res.approvedLink || "").trim();
