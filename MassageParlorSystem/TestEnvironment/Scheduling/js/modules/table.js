@@ -338,19 +338,24 @@ function ensureRowDom(panel, row) {
 
   const tdOrder = document.createElement("td");
   tdOrder.className = "cell-order";
+  tdOrder.setAttribute("data-label", "順序");
 
   const tdMaster = document.createElement("td");
   tdMaster.className = "cell-master";
+  tdMaster.setAttribute("data-label", "師傅");
 
   const tdStatus = document.createElement("td");
+  tdStatus.setAttribute("data-label", "狀態");
   const statusSpan = document.createElement("span");
   statusSpan.className = "status-pill";
   tdStatus.appendChild(statusSpan);
 
   const tdAppointment = document.createElement("td");
   tdAppointment.className = "cell-appointment";
+  tdAppointment.setAttribute("data-label", "預約內容");
 
   const tdRemaining = document.createElement("td");
+  tdRemaining.setAttribute("data-label", "剩餘時間");
   const timeSpan = document.createElement("span");
   timeSpan.className = "time-badge";
   tdRemaining.appendChild(timeSpan);
