@@ -6,6 +6,7 @@ import {
   approveReviewRequest,
   denyReviewRequest,
   deleteReviewRequest,
+  updateReviewRequestStatus,
   verifyAdminPassphrase,
   changeAdminPassphrase,
 } from "./modules/api.js";
@@ -201,9 +202,10 @@ function renderReviewList(rows, passphrase) {
         <th style="width:120px;">申請碼</th>
         <th style="width:160px;">客人</th>
         <th>備註</th>
-        <th style="width:100px;">狀態</th>
+        <th style="width:180px;">狀態</th>
         <th style="width:240px;">看板連結</th>
-        <th style="width:220px;">操作</th>
+        <th style="width:140px;">更新</th>
+        <th style="width:160px;">刪除</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -219,23 +221,30 @@ function renderReviewList(rows, passphrase) {
     const token = String(r?.token || "").trim();
     const link = approvedLink || (token ? buildGuestLink_(token) : "");
 
-    const canApprove = status === "pending";
-    const canDeny = status === "pending";
-    const canDelete = status === "approved";
+    const safeStatus = status || "pending";
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="mono">${escapeHtml(requestId)}</td>
       <td>${escapeHtml(guestName)}</td>
       <td>${escapeHtml(guestNote || "—")}</td>
-      <td>${escapeHtml(status)}</td>
+      <td>
+        <select class="input" data-act="setStatus" data-id="${escapeHtml(requestId)}" style="height:34px;">
+          <option value="pending" ${safeStatus === "pending" ? "selected" : ""}>待審核</option>
+          <option value="approved" ${safeStatus === "approved" ? "selected" : ""}>通過</option>
+          <option value="denied" ${safeStatus === "denied" ? "selected" : ""}>拒絕</option>
+          <option value="disabled" ${safeStatus === "disabled" ? "selected" : ""}>停用</option>
+          <option value="maintenance" ${safeStatus === "maintenance" ? "selected" : ""}>系統維護</option>
+        </select>
+      </td>
       <td>
         ${link ? `<div class="row" style="gap:8px;"><input class="input" type="text" readonly value="${escapeHtml(link)}" /><button class="btn btn-ghost" type="button" data-act="copyLink" data-id="${escapeHtml(requestId)}">複製</button></div>` : "—"}
       </td>
       <td>
-        ${canApprove ? `<button class="btn btn-primary" type="button" data-act="approve" data-id="${escapeHtml(requestId)}">通過</button>` : ""}
-        ${canDeny ? `<button class="btn btn-danger" type="button" data-act="deny" data-id="${escapeHtml(requestId)}">拒絕</button>` : ""}
-        ${canDelete ? `<button class="btn btn-danger" type="button" data-act="delete" data-id="${escapeHtml(requestId)}">刪除/禁止</button>` : ""}
+        <button class="btn btn-primary" type="button" data-act="updateStatus" data-id="${escapeHtml(requestId)}">更新</button>
+      </td>
+      <td>
+        <button class="btn btn-danger" type="button" data-act="delete" data-id="${escapeHtml(requestId)}">刪除</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -244,76 +253,41 @@ function renderReviewList(rows, passphrase) {
   els.reviewList.innerHTML = "";
   els.reviewList.appendChild(table);
 
-  els.reviewList.querySelectorAll("[data-act=approve]").forEach((btn) => {
+  els.reviewList.querySelectorAll("[data-act=updateStatus]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const requestId = String(btn.getAttribute("data-id") || "");
       if (!requestId) return;
+
+      const sel = els.reviewList.querySelector(`[data-act=setStatus][data-id="${CSS.escape(requestId)}"]`);
+      const nextStatus = String(sel && sel.value ? sel.value : "").trim() || "pending";
+
+      if (!confirm(`確定將申請 ${requestId} 的狀態改為：${nextStatus}？\n\n（非通過狀態將撤銷已授權裝置，且舊連結可能失效）`)) return;
 
       const masterId = String(config.MASTER_ID || "").trim();
 
       try {
         setUiEnabled(false);
-        setReviewMsg("通過中…");
+        setReviewMsg("更新中…");
 
         // Prefer LIFF URL when configured.
         const liffId = String(config.LIFF_ID || "").trim();
         const liffBase = liffId ? `https://liff.line.me/${encodeURIComponent(liffId)}` : "";
         const dashboardUrl = String(liffBase || config.PUBLIC_DASHBOARD_URL || "").trim();
-        if (dashboardUrl && dashboardUrl === String(config.DATE_DB_ENDPOINT || "").trim()) {
-          throw new Error("設定錯誤：PUBLIC_DASHBOARD_URL 不能填 DateDB WebApp 的 /exec（會看到 JSON）");
-        }
-        if (dashboardUrl && dashboardUrl === String(config.AUTH_ENDPOINT || "").trim()) {
-          throw new Error("設定錯誤：PUBLIC_DASHBOARD_URL 不能填 Auth WebApp 的 /exec");
-        }
-        const res = await approveReviewRequest({ masterId, passphrase, requestId, dashboardUrl });
-        if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "approve failed");
+        const res = await updateReviewRequestStatus({ masterId, passphrase, requestId, status: nextStatus, dashboardUrl });
+        if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "update failed");
 
         const approvedLink = String(res.approvedLink || "").trim();
-        const token = String(res.token || "").trim();
-        const link = approvedLink || buildGuestLink_(token);
-        if (link) {
-          await navigator.clipboard.writeText(link).catch(() => {});
-          alert("已通過，授權連結已產生（並嘗試複製到剪貼簿）。\n\n" + link);
-        } else {
-          alert(
-            "已通過，但尚未設定連結基底，所以無法自動組合連結。\n\n" +
-              "請先在 config.json 填入 LIFF_ID（推薦）或 PUBLIC_DASHBOARD_URL。\n\n" +
-              "Token：" + token
-          );
+        if (approvedLink) {
+          await navigator.clipboard.writeText(approvedLink).catch(() => {});
+          alert("已更新狀態，授權連結已產生（並嘗試複製到剪貼簿）。\n\n" + approvedLink);
         }
 
         await reloadReview();
       } catch (e) {
         console.error(e);
         showReviewError(e);
-        setReviewMsg("通過失敗");
-        alert("通過失敗：" + String(e));
-      } finally {
-        setUiEnabled(!state.saving);
-      }
-    });
-  });
-
-  els.reviewList.querySelectorAll("[data-act=deny]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const requestId = String(btn.getAttribute("data-id") || "");
-      if (!requestId) return;
-      if (!confirm(`確定拒絕申請：${requestId}？`)) return;
-
-      const masterId = String(config.MASTER_ID || "").trim();
-      try {
-        setUiEnabled(false);
-        setReviewMsg("拒絕中…");
-
-        const res = await denyReviewRequest({ masterId, passphrase, requestId });
-        if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "deny failed");
-
-        await reloadReview();
-      } catch (e) {
-        console.error(e);
-        showReviewError(e);
-        setReviewMsg("拒絕失敗");
-        alert("拒絕失敗：" + String(e));
+        setReviewMsg("更新失敗");
+        alert("更新失敗：" + String(e));
       } finally {
         setUiEnabled(!state.saving);
       }
@@ -338,7 +312,7 @@ function renderReviewList(rows, passphrase) {
     btn.addEventListener("click", async () => {
       const requestId = String(btn.getAttribute("data-id") || "");
       if (!requestId) return;
-      if (!confirm(`確定刪除並禁止此客人（${requestId}）繼續觀看？\n\n已授權的裝置將會被撤銷，下次重新整理就會被擋下。`)) return;
+      if (!confirm(`確定刪除這筆客人資料（${requestId}）？\n\n已授權的裝置將會被撤銷，且未使用的連結也會失效。`)) return;
 
       const masterId = String(config.MASTER_ID || "").trim();
       try {

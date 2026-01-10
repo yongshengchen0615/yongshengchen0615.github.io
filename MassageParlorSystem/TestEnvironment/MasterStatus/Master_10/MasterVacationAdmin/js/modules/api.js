@@ -178,3 +178,22 @@ export async function deleteReviewRequest({ masterId, passphrase, requestId }) {
   };
   return await postJsonNoCorsPreflight(config.AUTH_ENDPOINT || config.DATE_DB_ENDPOINT, payload);
 }
+
+/**
+ * 修改客人審核狀態。
+ * 預期 GAS 支援：POST { entity:"auth", action:"requests_update_status", data:{ masterId, passphrase, requestId, status, dashboardUrl? } }
+ */
+export async function updateReviewRequestStatus({ masterId, passphrase, requestId, status, dashboardUrl }) {
+  const payload = {
+    entity: "auth",
+    action: "requests_update_status",
+    data: {
+      masterId: String(masterId || "").trim(),
+      passphrase: String(passphrase || ""),
+      requestId: String(requestId || "").trim(),
+      status: String(status || "").trim(),
+      dashboardUrl: String(dashboardUrl || "").trim(),
+    },
+  };
+  return await postJsonNoCorsPreflight(config.AUTH_ENDPOINT || config.DATE_DB_ENDPOINT, payload);
+}
