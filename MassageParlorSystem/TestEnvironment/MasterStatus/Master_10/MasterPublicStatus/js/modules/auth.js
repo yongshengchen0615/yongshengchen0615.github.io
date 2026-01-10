@@ -168,7 +168,6 @@ export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateE
 
       const err = String(st && st.error ? st.error : "").trim();
       if (err === "MASTER_NOT_APPROVED" || err === "MASTER_STATUS_NOT_ENABLED" || err === "MASTER_NOT_OPEN") {
-        clearStoredSession(m);
         if (gateEl) {
           gateEl.style.display = "";
           if (msgTarget) {
@@ -180,10 +179,17 @@ export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateE
                   : "目前師傅未開通看板（未通過審核或未啟用個人狀態）。";
           }
         }
+        // IMPORTANT: Do NOT clear stored session here.
+        // When the master later becomes approved/enabled again, the same session should work.
         return false;
       }
     } catch {
-      // fall through
+      // If check failed due to network/transient issues, keep session and show a safe message.
+      if (gateEl) {
+        gateEl.style.display = "";
+        if (msgTarget) msgTarget.textContent = "授權檢查失敗：請稍後重新整理再試。";
+      }
+      return false;
     }
     clearStoredSession(m);
   }
