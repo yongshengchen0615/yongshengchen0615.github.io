@@ -197,7 +197,7 @@ function renderReviewList(rows, passphrase) {
   }
 
   const table = document.createElement("table");
-  table.className = "table";
+  table.className = "table table-wide";
   table.innerHTML = `
     <thead>
       <tr>
@@ -253,7 +253,10 @@ function renderReviewList(rows, passphrase) {
   });
 
   els.reviewList.innerHTML = "";
-  els.reviewList.appendChild(table);
+  const scroller = document.createElement("div");
+  scroller.className = "table-scroll";
+  scroller.appendChild(table);
+  els.reviewList.appendChild(scroller);
 
   els.reviewList.querySelectorAll("[data-act=updateStatus]").forEach((btn) => {
     btn.addEventListener("click", async () => {

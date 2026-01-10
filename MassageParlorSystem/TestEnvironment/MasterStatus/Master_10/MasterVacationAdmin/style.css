@@ -129,6 +129,10 @@ body{
 .list{ overflow-x:auto; -webkit-overflow-scrolling: touch; }
 .table{ min-width: 520px; }
 
+/* Horizontal swipe for wide tables (e.g. 客人申請審核面板) */
+.table-scroll{ overflow-x:auto; -webkit-overflow-scrolling: touch; width:100%; }
+.table-wide{ width:max-content; min-width: 980px; }
+
 @media (max-width: 520px){
   .card-header-right{ justify-content:flex-start; width:100%; }
 
