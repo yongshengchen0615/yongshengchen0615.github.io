@@ -353,6 +353,9 @@ function ensureRowDom(panel, row) {
   const tdAppointment = document.createElement("td");
   tdAppointment.className = "cell-appointment";
   tdAppointment.setAttribute("data-label", "預約內容");
+  const apptBlock = document.createElement("div");
+  apptBlock.className = "appt-block";
+  tdAppointment.appendChild(apptBlock);
 
   const tdRemaining = document.createElement("td");
   tdRemaining.setAttribute("data-label", "剩餘時間");
@@ -367,7 +370,7 @@ function ensureRowDom(panel, row) {
   tr.appendChild(tdRemaining);
 
   // Cache refs on the DOM node to avoid repeated query/creation
-  tr.__ui = { tdOrder, tdMaster, tdStatus, statusSpan, tdAppointment, tdRemaining, timeSpan };
+  tr.__ui = { tdOrder, tdMaster, tdStatus, statusSpan, tdAppointment, apptBlock, tdRemaining, timeSpan };
   tr.__sig = "";
 
   map.set(key, tr);
@@ -456,6 +459,7 @@ function patchRowDom(tr, row, orderText) {
   const tdStatus = ui ? ui.tdStatus : tr.children[2];
   const statusSpan = ui ? ui.statusSpan : null;
   const tdAppointment = ui ? ui.tdAppointment : tr.children[3];
+  const apptBlock = ui ? ui.apptBlock : null;
   const tdRemaining = ui ? ui.tdRemaining : tr.children[4];
   const timeSpan = ui ? ui.timeSpan : null;
 
@@ -494,9 +498,17 @@ function patchRowDom(tr, row, orderText) {
   applyPillFromTokens(pill, row.bgStatus, row.colorStatus);
 
   applyAppointmentBgFromColorMaster(tdAppointment, row.colorMaster);
-  tdAppointment.textContent = row.appointment || "";
-  tdAppointment.style.color = "";
-  applyTextColorFromToken(tdAppointment, row.colorAppointment);
+  const ab = apptBlock || (() => {
+    tdAppointment.textContent = "";
+    const el = document.createElement("div");
+    el.className = "appt-block";
+    tdAppointment.appendChild(el);
+    if (ui) ui.apptBlock = el;
+    return el;
+  })();
+  ab.textContent = row.appointment || "";
+  ab.style.color = "";
+  applyTextColorFromToken(ab, row.colorAppointment);
 
   const tb = timeSpan || (() => {
     tdRemaining.textContent = "";

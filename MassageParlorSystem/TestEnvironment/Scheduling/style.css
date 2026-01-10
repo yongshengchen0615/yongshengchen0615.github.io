@@ -512,6 +512,20 @@ body {
   font-size: 13px;
 }
 
+/* 預約內容：用內層 block 承載文字（iOS/Safari 對 table-cell overflow 有時不裁切） */
+.cell-appointment {
+  min-width: 0;
+}
+
+.appt-block {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* ✅ bgIndex/bgMaster 背景提示：讓淡色更「像貼紙」 */
 .cell-order,
 .cell-master {
@@ -740,10 +754,13 @@ body {
   /* 剩餘時間：避免在小寬度下換行造成對位錯覺 */
   .card-table .status-table tbody td:nth-child(5) {
     white-space: nowrap;
+    overflow: hidden;
   }
 
   .time-badge {
     max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* 小螢幕略縮字，提升容納度 */
