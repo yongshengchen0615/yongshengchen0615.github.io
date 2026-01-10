@@ -126,6 +126,25 @@ async function exchangeInvite({ authEndpoint, masterId, token }) {
   return { sessionId, expiresAtMs };
 }
 
+function mapAuthErrorToGateMessage(err) {
+  const e = String(err || "").trim();
+  if (!e) return "授權失敗：請向師傅索取新的授權連結。";
+
+  if (e === "MASTER_NOT_APPROVED") return "目前師傅尚未通過審核，看板暫不可使用。";
+  if (e === "MASTER_STATUS_NOT_ENABLED") return "目前師傅尚未開通個人狀態，看板暫不可使用。";
+  if (e === "MASTER_NOT_OPEN") return "目前師傅未開通看板（未通過審核或未啟用個人狀態）。";
+
+  if (e === "TOKEN_EXPIRED") return "授權失敗：連結已過期。請向師傅索取新的授權連結。";
+  if (e === "TOKEN_ALREADY_USED") return "授權失敗：此連結已使用過（每個授權連結只能使用一次/一台裝置）。";
+  if (e === "TOKEN_NOT_FOUND") return "授權失敗：找不到授權資料。請向師傅索取新的授權連結。";
+  if (e === "TOKEN_MASTER_MISMATCH") return "授權失敗：此連結不屬於目前師傅。請確認你開的是正確的師傅頁面。";
+  if (e === "TOKEN_SIGNATURE_INVALID") return "授權失敗：連結已失效（可能系統更新/密鑰變更）。請向師傅索取新的授權連結。";
+  if (e === "TOKEN_FORMAT_INVALID") return "授權失敗：連結格式不正確。請向師傅索取新的授權連結。";
+
+  // Fallback: keep generic.
+  return "授權失敗：連結可能已過期或已使用。請向師傅索取新的授權連結。";
+}
+
 export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateEl, gateMsgEl }) {
   const m = String(masterId || "").trim();
   const endpoint = String(authEndpoint || "").trim();
@@ -183,14 +202,7 @@ export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateE
       if (gateEl) {
         gateEl.style.display = "";
         if (msgTarget) {
-          msgTarget.textContent =
-            err === "MASTER_NOT_APPROVED"
-              ? "目前師傅尚未通過審核，看板暫不可使用。"
-              : err === "MASTER_STATUS_NOT_ENABLED"
-                ? "目前師傅尚未開通個人狀態，看板暫不可使用。"
-                : err === "MASTER_NOT_OPEN"
-                  ? "目前師傅未開通看板（未通過審核或未啟用個人狀態）。"
-                  : "授權失敗：連結可能已過期或已使用。請向師傅索取新的授權連結。";
+          msgTarget.textContent = mapAuthErrorToGateMessage(err);
         }
       }
       return false;
