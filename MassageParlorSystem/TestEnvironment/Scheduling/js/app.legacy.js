@@ -256,7 +256,7 @@ const usageBannerTextEl = usageBannerEl
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
-const btnVacationEl = document.getElementById("btnVacation");
+// const btnVacationEl = document.getElementById("btnVacation"); // removed: 「複製個人狀態連結」功能已取消
 
 /* ✅ 個人師傅狀態 DOM */
 const myMasterStatusEl = document.getElementById("myMasterStatus");
@@ -1000,11 +1000,10 @@ function pickField_(obj, keys) {
   return "";
 }
 function showPersonalToolsFinal_(psRow) {
-  if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl) return;
 
   personalToolsEl.style.display = "flex";
   btnUserManageEl.style.display = "inline-flex";
-  btnVacationEl.style.display = "inline-flex";
   btnPersonalStatusEl.style.display = "inline-flex";
 
   const adminLiff = pickField_(psRow, ["adminLiff", "manageLiff", "技師管理員liff"]);
@@ -1023,45 +1022,6 @@ function showPersonalToolsFinal_(psRow) {
       return;
     }
     window.location.href = personalBoardLiff;
-  };
-
-  btnVacationEl.onclick = async () => {
-    if (!personalBoardLiff) {
-      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
-      return;
-    }
-
-    const ok = await (async function copyTextToClipboard_(text) {
-      const value = String(text || "");
-      if (!value) return false;
-
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(value);
-          return true;
-        }
-      } catch {}
-
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = value;
-        ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        ta.style.top = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        ta.setSelectionRange(0, ta.value.length);
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        return !!ok;
-      } catch {
-        return false;
-      }
-    })(personalBoardLiff);
-
-    if (ok) alert("已複製個人狀態連結");
-    else window.prompt("複製個人狀態連結：", personalBoardLiff);
   };
 
   window.__personalLinks = { adminLiff, personalBoardLiff, psRow };

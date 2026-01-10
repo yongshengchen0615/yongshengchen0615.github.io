@@ -49,7 +49,6 @@ export const dom = {
   personalToolsEl: document.getElementById("personalTools"),
   btnUserManageEl: document.getElementById("btnUserManage"),
   btnPersonalStatusEl: document.getElementById("btnPersonalStatus"),
-  btnVacationEl: document.getElementById("btnVacation"),
 
   // 我的狀態
   myMasterStatusEl: document.getElementById("myMasterStatus"),

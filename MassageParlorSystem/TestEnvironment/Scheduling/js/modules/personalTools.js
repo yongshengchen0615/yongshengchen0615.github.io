@@ -4,7 +4,6 @@
  * 個人狀態快捷按鈕列：
  * - 技師管理員（開啟 技師管理員liff / adminLiff）
  * - 個人狀態（開啟 個人看板liff / personalBoardLiff）
- * - 複製個人狀態連結（複製 個人看板liff / personalBoardLiff）
  *
  * 由 AUTH 的 personalStatusEnabled=是 才顯示。
  */
@@ -28,41 +27,11 @@ function pickField(obj, keys) {
   return "";
 }
 
-async function copyTextToClipboard(text) {
-  const value = String(text || "");
-  if (!value) return false;
-
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(value);
-      return true;
-    }
-  } catch {}
-
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = value;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    ta.style.top = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    ta.setSelectionRange(0, ta.value.length);
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return !!ok;
-  } catch {
-    return false;
-  }
-}
-
 function showPersonalToolsFinal(psRow) {
-  if (!dom.personalToolsEl || !dom.btnUserManageEl || !dom.btnVacationEl || !dom.btnPersonalStatusEl) return;
+  if (!dom.personalToolsEl || !dom.btnUserManageEl || !dom.btnPersonalStatusEl) return;
 
   dom.personalToolsEl.style.display = "flex";
   dom.btnUserManageEl.style.display = "inline-flex";
-  dom.btnVacationEl.style.display = "inline-flex";
   dom.btnPersonalStatusEl.style.display = "inline-flex";
 
   const adminLiff = pickField(psRow, ["adminLiff", "manageLiff", "技師管理員liff"]);
@@ -81,17 +50,6 @@ function showPersonalToolsFinal(psRow) {
       return;
     }
     window.location.href = personalBoardLiff;
-  };
-
-  dom.btnVacationEl.onclick = async () => {
-    if (!personalBoardLiff) {
-      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
-      return;
-    }
-
-    const ok = await copyTextToClipboard(personalBoardLiff);
-    if (ok) alert("已複製個人狀態連結");
-    else window.prompt("複製個人狀態連結：", personalBoardLiff);
   };
 
   // 保留原本的除錯用全域
