@@ -91,8 +91,17 @@ function clearStoredSession(masterId) {
 function removeTokenFromUrl() {
   try {
     const url = new URL(window.location.href);
-    if (!url.searchParams.has("token")) return;
-    url.searchParams.delete("token");
+    const hadToken = url.searchParams.has("token");
+    if (hadToken) url.searchParams.delete("token");
+
+    // LIFF may store the original query string in `liff.state`.
+    // If it contains token, remove it as well to avoid exposing the token in the URL.
+    const liffState = url.searchParams.get("liff.state");
+    if (liffState && String(liffState).includes("token=")) {
+      url.searchParams.delete("liff.state");
+    }
+
+    if (!hadToken && !liffState) return;
     window.history.replaceState({}, "", url.toString());
   } catch {
     // ignore
