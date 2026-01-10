@@ -671,6 +671,11 @@ body {
     font-size: 16px;
   }
 
+  /* 業績查詢：行動版讓日期與查詢按鈕同寬 */
+  #perfCard .filters .btn {
+    width: 100%;
+  }
+
   .main {
     flex-direction: column;
   }
