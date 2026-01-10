@@ -42,6 +42,7 @@ function doGet(e) {
         "POST {entity:'auth', action:'request', data:{masterId, guestName, guestNote?}}",
         "POST {entity:'auth', action:'requests_list', data:{masterId, passphrase, status?}}",
         "POST {entity:'auth', action:'requests_approve', data:{masterId, passphrase, requestId, ttlMinutes?}}",
+        "POST {entity:'auth', action:'requests_update_status', data:{masterId, passphrase, requestId, status, dashboardUrl?}}",
         "POST {entity:'auth', action:'requests_deny', data:{masterId, passphrase, requestId}}",
         "POST {entity:'auth', action:'requests_delete', data:{masterId, passphrase, requestId}}",
         "POST {entity:'auth', action:'open_status', data:{masterId}}",
@@ -117,6 +118,17 @@ function doPost(e) {
       const dashboardUrl = normalizeDashboardUrl_(data.dashboardUrl);
       assertPassphrase_(passphrase);
       const res = approveRequest_({ masterId, requestId, ttlMinutes, dashboardUrl });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (entity === "auth" && action === "requests_update_status") {
+      const masterId = normalizeMasterId_(data.masterId);
+      const passphrase = String(data.passphrase || "");
+      const requestId = String(data.requestId || "").trim();
+      const status = normalizeRequestStatus_(data.status || "pending");
+      const dashboardUrl = normalizeDashboardUrl_(data.dashboardUrl);
+      assertPassphrase_(passphrase);
+      const res = updateRequestStatus_({ masterId, requestId, status, dashboardUrl });
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
@@ -292,7 +304,7 @@ function approveRequest_({ masterId, requestId, ttlMinutes, dashboardUrl }) {
   }
   if (status === "denied") throw new Error("REQUEST_ALREADY_DENIED");
 
-  const ttl = clampInt_(Number(ttlMinutes || 60), 5, 1440);
+  const ttl = clampInt_(Number(ttlMinutes || 60), 5, INVITE_TTL_MINUTES);
   const issued = issueInvite_({ masterId, ttlMinutes: ttl });
   const now = Date.now();
 
@@ -314,6 +326,100 @@ function approveRequest_({ masterId, requestId, ttlMinutes, dashboardUrl }) {
     expiresAtMs: issued.expiresAtMs,
     approvedLink,
   };
+}
+
+function updateRequestStatus_({ masterId, requestId, status, dashboardUrl }) {
+  if (!masterId) throw new Error("MASTER_ID_REQUIRED");
+  if (!requestId) throw new Error("REQUEST_ID_REQUIRED");
+
+  const st = normalizeRequestStatus_(status || "pending");
+
+  const sh = ensureSheet_(
+    REQUESTS_SHEET,
+    [
+      "RequestId",
+      "MasterId",
+      "GuestName",
+      "GuestNote",
+      "Status",
+      "CreatedAtMs",
+      "ApprovedAtMs",
+      "DeniedAtMs",
+      "ApprovedToken",
+      "TokenExpiresAtMs",
+      "ApprovedLink",
+    ]
+  );
+
+  const values = sh.getDataRange().getValues();
+  let rowNo = -1;
+  let row = null;
+  for (let r = 2; r <= values.length; r++) {
+    const rid = String(values[r - 1][0] || "").trim();
+    if (rid === requestId) {
+      rowNo = r;
+      row = values[r - 1];
+      break;
+    }
+  }
+  if (rowNo < 0) throw new Error("REQUEST_NOT_FOUND");
+
+  const rowMaster = normalizeMasterId_(row[1]);
+  if (rowMaster !== masterId) throw new Error("REQUEST_MASTER_MISMATCH");
+
+  const prevStatus = String(row[4] || "").trim();
+  const prevToken = String(row[8] || "").trim();
+  const prevExpiresAtMs = Number(row[9]) || 0;
+  const prevApprovedLink = String(row[10] || "").trim();
+
+  if (st === "approved") {
+    if (prevStatus === "approved") {
+      return {
+        requestId,
+        status: "approved",
+        token: prevToken,
+        expiresAtMs: prevExpiresAtMs,
+        approvedLink: prevApprovedLink,
+      };
+    }
+
+    // If a previous unused token exists, revoke it first.
+    if (prevToken) revokeInviteByToken_({ masterId, token: prevToken });
+
+    const ttl = clampInt_(Number(INVITE_TTL_MINUTES), 5, INVITE_TTL_MINUTES);
+    const issued = issueInvite_({ masterId, ttlMinutes: ttl });
+    const now = Date.now();
+    const approvedLink = buildApprovedLink_(dashboardUrl, issued.token);
+
+    sh.getRange(rowNo, 5, 1, 1).setValue("approved");
+    sh.getRange(rowNo, 7, 1, 1).setValue(String(now));
+    sh.getRange(rowNo, 8, 1, 1).setValue("");
+    sh.getRange(rowNo, 9, 1, 1).setValue(issued.token);
+    sh.getRange(rowNo, 10, 1, 1).setValue(String(issued.expiresAtMs));
+    sh.getRange(rowNo, 11, 1, 1).setValue(approvedLink);
+
+    return {
+      requestId,
+      status: "approved",
+      token: issued.token,
+      expiresAtMs: issued.expiresAtMs,
+      approvedLink,
+    };
+  }
+
+  // For any non-approved status, revoke access and invalidate old link.
+  const revokedCount = revokeSessionsByRequestId_({ masterId, requestId });
+  const revokedInvite = prevToken ? revokeInviteByToken_({ masterId, token: prevToken }) : 0;
+
+  const now = Date.now();
+  sh.getRange(rowNo, 5, 1, 1).setValue(st);
+  sh.getRange(rowNo, 7, 1, 1).setValue("");
+  sh.getRange(rowNo, 8, 1, 1).setValue(st === "denied" ? String(now) : "");
+  sh.getRange(rowNo, 9, 1, 1).setValue("");
+  sh.getRange(rowNo, 10, 1, 1).setValue("");
+  sh.getRange(rowNo, 11, 1, 1).setValue("");
+
+  return { requestId, status: st, revokedCount, revokedInvite };
 }
 
 function deleteRequest_({ masterId, requestId }) {
@@ -730,7 +836,7 @@ function normalizeGuestNote_(v) {
 
 function normalizeRequestStatus_(v) {
   const s = String(v ?? "").trim();
-  if (s === "pending" || s === "approved" || s === "denied") return s;
+  if (s === "pending" || s === "approved" || s === "denied" || s === "disabled" || s === "maintenance") return s;
   return "pending";
 }
 
