@@ -49,7 +49,15 @@ body{
   color: var(--text);
 }
 
-.app-root{ width:min(980px, 100%); margin:0 auto; padding:18px 14px 40px; }
+.app-root{
+  width:min(980px, 100%);
+  margin:0 auto;
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    calc(14px + env(safe-area-inset-right))
+    calc(40px + env(safe-area-inset-bottom))
+    calc(14px + env(safe-area-inset-left));
+}
 
 .page-title{ text-align:center; margin:14px 0 18px; }
 .app-title{ margin:0; font-size:22px; font-weight:850; letter-spacing:.5px; }
@@ -67,8 +75,17 @@ body{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
+  flex-wrap:wrap;
   gap:12px;
   padding:14px 14px 10px;
+}
+.card-header-left{ min-width: 220px; }
+.card-header-right{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:8px;
 }
 .card-title{ margin:0; font-size:15px; font-weight:800; }
 .card-subtitle{ margin:6px 0 0; color:var(--text-sub); font-size:12px; }
@@ -87,6 +104,7 @@ body{
 
 .query-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
 .field{ display:flex; flex-direction:column; gap:6px; min-width: 180px; }
+.field-grow{ flex: 1 1 260px; }
 .field-label{ font-size:12px; color:var(--text-sub); }
 .input{
   height: 40px;
@@ -117,6 +135,24 @@ body{
 
 .grid-2{ display:grid; grid-template-columns: 1fr; gap:12px; }
 @media (min-width: 720px){ .grid-2{ grid-template-columns: 1fr 1fr; } }
+
+@media (max-width: 520px){
+  .card-header-right{ justify-content:flex-start; width:100%; }
+
+  .query-row{ flex-direction:column; align-items:stretch; }
+  .field{ min-width: 100%; }
+  .btn{ width:100%; }
+  .hint{ align-self:flex-start; }
+
+  .badge{ width:100%; justify-content:center; }
+}
+
+@media (max-width: 360px){
+  .app-title{ font-size:20px; }
+  .cal-cell{ min-height: 40px; padding: 6px 6px 5px; }
+  .cal-day{ font-size: 12px; }
+  .calendar-weekdays{ padding: 8px 8px; }
+}
 
 .panel{
   border:1px solid var(--card-border);
