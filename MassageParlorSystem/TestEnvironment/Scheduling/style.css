@@ -694,6 +694,51 @@ body {
     min-width: 720px;
   }
 
+  /* ✅ 排班表面板（card-table）：行動版維持原本表格樣式，但縮窄欄位避免過寬 */
+  .card-table .status-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .card-table .status-table th,
+  .card-table .status-table td {
+    padding: 6px 6px;
+  }
+
+  /* 覆蓋 index.html 內 th 的 inline width（需要 !important） */
+  .card-table .status-table thead th:nth-child(1),
+  .card-table .status-table tbody td:nth-child(1) {
+    width: 56px !important;
+  }
+
+  .card-table .status-table thead th:nth-child(2),
+  .card-table .status-table tbody td:nth-child(2) {
+    width: 56px !important;
+  }
+
+  .card-table .status-table thead th:nth-child(3),
+  .card-table .status-table tbody td:nth-child(3) {
+    width: 120px !important;
+  }
+
+  .card-table .status-table thead th:nth-child(5),
+  .card-table .status-table tbody td:nth-child(5) {
+    width: 120px !important;
+  }
+
+  /* 預約內容：允許換行，不要把整張表撐寬 */
+  .card-table .status-table tbody td:nth-child(4) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* 小螢幕略縮字，提升容納度 */
+  .card-table .status-table {
+    font-size: 12px;
+  }
+
   .card {
     border-radius: 14px;
   }
