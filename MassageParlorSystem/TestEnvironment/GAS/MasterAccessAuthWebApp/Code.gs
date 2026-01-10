@@ -38,6 +38,7 @@ function doGet(e) {
         "POST {entity:'auth', action:'requests_approve', data:{masterId, passphrase, requestId, ttlMinutes?}}",
         "POST {entity:'auth', action:'requests_deny', data:{masterId, passphrase, requestId}}",
         "POST {entity:'auth', action:'requests_delete', data:{masterId, passphrase, requestId}}",
+        "POST {entity:'auth', action:'open_status', data:{masterId}}",
         "POST {entity:'auth', action:'exchange', data:{masterId, token}}",
         "POST {entity:'auth', action:'check', data:{masterId, sessionId}}",
       ],
@@ -109,6 +110,13 @@ function doPost(e) {
       assertPassphrase_(passphrase);
       const res = deleteRequest_({ masterId, requestId });
       return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (entity === "auth" && action === "open_status") {
+      const masterId = normalizeMasterId_(data.masterId);
+      if (!masterId) throw new Error("MASTER_ID_REQUIRED");
+      // This variant does not implement Users-sheet gate; treat as open.
+      return json_({ ok: true, approved: true, enabled: true, found: false, now: Date.now() });
     }
 
     if (entity === "auth" && action === "exchange") {

@@ -32,6 +32,22 @@ async function postJsonNoCorsPreflight(url, payload) {
   return data;
 }
 
+export async function getMasterOpenStatus({ authEndpoint, masterId }) {
+  const res = await postJsonNoCorsPreflight(authEndpoint, {
+    entity: "auth",
+    action: "open_status",
+    data: { masterId: String(masterId || "").trim() },
+  });
+
+  if (!res || res.ok !== true) throw new Error((res && (res.error || res.err)) || "OPEN_STATUS_FAILED");
+
+  return {
+    approved: Boolean(res.approved),
+    enabled: Boolean(res.enabled),
+    found: Boolean(res.found),
+  };
+}
+
 export async function submitReviewRequest({ authEndpoint, masterId, guestName, guestNote }) {
   const res = await postJsonNoCorsPreflight(authEndpoint, {
     entity: "auth",
