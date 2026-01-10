@@ -57,6 +57,10 @@ function doPost(e) {
       const masterId = normalizeMasterId_(data.masterId);
       const guestName = normalizeGuestName_(data.guestName);
       const guestNote = normalizeGuestNote_(data.guestNote);
+
+      // Gate: if master is not approved/enabled, do not accept new requests.
+      assertMasterOpenForGuests_(masterId);
+
       const res = createRequest_({ masterId, guestName, guestNote });
       return json_({ ok: true, ...res, now: Date.now() });
     }

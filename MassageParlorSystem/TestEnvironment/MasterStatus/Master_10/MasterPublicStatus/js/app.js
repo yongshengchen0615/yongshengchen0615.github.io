@@ -50,6 +50,24 @@ async function submitAuthRequest_() {
     return;
   }
 
+  // Fail-closed: if master is not approved/enabled, do not allow submitting requests.
+  try {
+    const st = await getMasterOpenStatus({ authEndpoint: config.AUTH_ENDPOINT, masterId: config.TARGET_TECH_NO });
+    if (!st.approved || !st.enabled) {
+      showAuthRequestBlock(false);
+      setAuthReqResult("—");
+      setGateMessage(!st.approved ? "目前師傅尚未通過審核，看板暫不可使用。" : "目前師傅尚未開通個人狀態，看板暫不可使用。");
+      return;
+    }
+  } catch (e) {
+    // If status cannot be determined, close the panel (fail-closed).
+    console.warn("[Auth] open_status check failed", e);
+    showAuthRequestBlock(false);
+    setAuthReqResult("—");
+    setGateMessage("目前暫不開放申請，請稍後再試。");
+    return;
+  }
+
   try {
     if (els.reqSubmit) els.reqSubmit.disabled = true;
     setAuthReqResult("送出中…");
@@ -343,26 +361,26 @@ async function main() {
       el.style.display = "none";
     });
 
-    // Default: allow guests to submit request.
-    showAuthRequestBlock(true);
+    // Default: closed (fail-closed).
+    showAuthRequestBlock(false);
+    setAuthReqResult("—");
 
-    // If master is not approved or not enabled, hide request panel.
+    // Only show the request panel when master is approved + enabled.
     try {
       const st = await getMasterOpenStatus({ authEndpoint: config.AUTH_ENDPOINT, masterId: config.TARGET_TECH_NO });
       if (!st.approved || !st.enabled) {
-        showAuthRequestBlock(false);
-        setAuthReqResult("—");
         setGateMessage(!st.approved ? "目前師傅尚未通過審核，看板暫不可使用。" : "目前師傅尚未開通個人狀態，看板暫不可使用。");
         return;
       }
+
+      showAuthRequestBlock(true);
+      els.reqSubmit?.addEventListener("click", submitAuthRequest_);
     } catch (e) {
-      // If status cannot be determined (network/CORS), keep request panel available.
-      console.warn("[Auth] open_status ignored", e);
+      console.warn("[Auth] open_status failed", e);
+      setGateMessage("目前暫不開放申請，請稍後再試。");
+      return;
     }
 
-    // Enable request submission UI.
-    els.reqSubmit?.addEventListener("click", submitAuthRequest_);
-    setAuthReqResult("—");
     return;
   }
 
