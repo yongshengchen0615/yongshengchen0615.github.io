@@ -1,0 +1,9 @@
+{
+  "TARGET_TECH_NO": "10",
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec"
+  ],
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec",
+  "VACATION_DATE_DB_ENDPOINT": "https://script.google.com/macros/s/AKfycbzN9WEnLx4RTY1QCMs7ERnsVvdaieqEreu7eDyaq26pBR5xio9s3j4QtlnGKkOmoaIdRg/exec",
+  "STATUS_FETCH_TIMEOUT_MS": 8000
+}

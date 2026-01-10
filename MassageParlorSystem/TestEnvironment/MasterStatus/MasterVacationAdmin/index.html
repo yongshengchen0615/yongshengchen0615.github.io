@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>休假設定（假日）</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <div class="app-root">
+    <header class="page-title">
+      <h1 id="pageTitle" class="app-title">休假設定（假日）</h1>
+      <p class="app-subtitle">只管理指定日期的休假日（holiday）</p>
+    </header>
+
+    <section class="card">
+      <header class="card-header">
+        <div class="card-header-left">
+          <h2 class="card-title">新增假日</h2>
+          <p class="card-subtitle">選日期後按新增（會先暫存，需按儲存才會寫入 GAS）</p>
+        </div>
+        <div class="card-header-right">
+          <button id="themeToggle" class="btn btn-ghost" type="button">亮色</button>
+          <button id="reloadBtn" class="btn btn-ghost" type="button">重新整理</button>
+        </div>
+      </header>
+      <div class="card-body">
+        <div class="row">
+          <label class="field">
+            <span class="field-label">日期</span>
+            <input id="holidayInput" class="input" type="date" />
+          </label>
+          <button id="addBtn" class="btn btn-ghost" type="button">新增</button>
+          <button id="saveBtn" class="btn btn-primary" type="button">儲存變更</button>
+          <span id="msg" class="hint">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-header">
+        <div class="card-header-left">
+          <h2 class="card-title">假日清單</h2>
+          <p id="countMsg" class="card-subtitle">—</p>
+        </div>
+      </header>
+      <div class="card-body">
+        <div id="list" class="list">載入中…</div>
+        <div id="error" class="state state-error" style="display:none;"></div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span class="hint">每位師傅一份獨立專案：修改 config.json 的 DATE_DB_ENDPOINT 即可。</span>
+    </footer>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
