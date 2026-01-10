@@ -15,7 +15,25 @@
       <p class="app-subtitle">本頁由 config.json 固定指定師傅編號</p>
     </header>
 
-    <section class="card">
+    <div id="authGate" class="state state-error" style="display:none;">
+      <div id="authGateMsg">—</div>
+      <div id="authRequestBlock" style="margin-top:10px;">
+        <div class="query-row">
+          <label class="field" style="min-width:200px;">
+            <span class="field-label">姓名/稱呼</span>
+            <input id="reqGuestName" class="input" type="text" placeholder="例如：王小姐" />
+          </label>
+          <label class="field" style="min-width:260px; flex:1;">
+            <span class="field-label">備註（可選）</span>
+            <input id="reqGuestNote" class="input" type="text" placeholder="例如：第一次來、預約時間…" />
+          </label>
+          <button id="reqSubmit" class="btn btn-ghost" type="button">送出申請</button>
+        </div>
+        <div id="reqResult" class="hint" style="margin-top:8px;">—</div>
+      </div>
+    </div>
+
+    <section class="card" data-secured="1">
       <header class="card-header">
         <div class="card-header-left">
           <h2 class="card-title">師傅狀態</h2>
@@ -46,7 +64,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" data-secured="1">
       <header class="card-header">
         <div class="card-header-left">
           <h2 class="card-title">休假日</h2>
@@ -76,10 +94,11 @@
     </section>
 
     <footer class="footer">
-      <span class="hint">本頁為客人查詢用（不需登入）。</span>
+      <span class="hint">本頁需師傅核准的授權連結才能查看。</span>
     </footer>
   </div>
 
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

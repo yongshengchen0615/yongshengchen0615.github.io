@@ -1,12 +1,21 @@
 import { config, loadConfig } from "./modules/config.js";
 import { fetchSheetAll, listHolidays } from "./modules/api.js";
 import { normalizeTechNo } from "./modules/core.js";
+import { ensureAuthorizedOrShowGate, submitReviewRequest } from "./modules/auth.js";
+import { initLiffIfConfigured } from "./modules/liff.js";
 
 const els = {
   techNoInput: document.getElementById("techNoInput"),
   refreshBtn: document.getElementById("refreshBtn"),
   statusHint: document.getElementById("statusHint"),
   themeToggle: document.getElementById("themeToggle"),
+
+  authGate: document.getElementById("authGate"),
+  authGateMsg: document.getElementById("authGateMsg"),
+  reqGuestName: document.getElementById("reqGuestName"),
+  reqGuestNote: document.getElementById("reqGuestNote"),
+  reqSubmit: document.getElementById("reqSubmit"),
+  reqResult: document.getElementById("reqResult"),
 
   lastUpdate: document.getElementById("lastUpdate"),
   statusMeta: document.getElementById("statusMeta"),
@@ -26,6 +35,42 @@ const els = {
   calGrid: document.getElementById("calGrid"),
   vacationError: document.getElementById("vacationError"),
 };
+
+function setAuthReqResult(t) {
+  if (!els.reqResult) return;
+  els.reqResult.textContent = t;
+}
+
+async function submitAuthRequest_() {
+  const name = String(els.reqGuestName?.value || "").trim();
+  const note = String(els.reqGuestNote?.value || "").trim();
+  if (!name) {
+    alert("請輸入姓名/稱呼");
+    return;
+  }
+
+  try {
+    if (els.reqSubmit) els.reqSubmit.disabled = true;
+    setAuthReqResult("送出中…");
+
+    const res = await submitReviewRequest({
+      authEndpoint: config.AUTH_ENDPOINT,
+      masterId: config.TARGET_TECH_NO,
+      guestName: name,
+      guestNote: note,
+    });
+
+    const requestId = String(res.requestId || "").trim();
+    if (!requestId) throw new Error("missing requestId");
+
+    setAuthReqResult(`已送出申請，申請碼：${requestId}（請提供給師傅審核）`);
+  } catch (e) {
+    console.error(e);
+    setAuthReqResult("送出失敗：" + String(e));
+  } finally {
+    if (els.reqSubmit) els.reqSubmit.disabled = false;
+  }
+}
 
 function getTheme_() {
   const saved = String(localStorage.getItem("theme") || "").trim();
@@ -264,6 +309,35 @@ async function runQuery() {
 async function main() {
   setBusyHint("載入設定…");
   await loadConfig();
+
+  // Optional: LIFF init (does NOT replace existing auth flow).
+  try {
+    const info = await initLiffIfConfigured({ liffId: config.LIFF_ID, autoLogin: config.LIFF_AUTO_LOGIN });
+    if (config.LIFF_PREFILL_GUEST_NAME && els.reqGuestName && !String(els.reqGuestName.value || "").trim()) {
+      const dn = String(info && info.displayName ? info.displayName : "").trim();
+      if (dn) els.reqGuestName.value = dn;
+    }
+  } catch (e) {
+    console.warn("[LIFF] init ignored", e);
+  }
+
+  const authed = await ensureAuthorizedOrShowGate({
+    masterId: config.TARGET_TECH_NO,
+    authEndpoint: config.AUTH_ENDPOINT,
+    gateEl: els.authGate,
+    gateMsgEl: els.authGateMsg,
+  });
+  if (!authed) {
+    // Hide secured content when not authorized.
+    document.querySelectorAll('[data-secured="1"]').forEach((el) => {
+      el.style.display = "none";
+    });
+
+    // Enable request submission UI.
+    els.reqSubmit?.addEventListener("click", submitAuthRequest_);
+    setAuthReqResult("—");
+    return;
+  }
 
   initTheme_();
 

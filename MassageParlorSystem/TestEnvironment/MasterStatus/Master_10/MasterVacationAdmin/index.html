@@ -52,6 +52,42 @@
       </div>
     </section>
 
+    <section id="reviewCard" class="card" style="display:none;">
+      <header class="card-header">
+        <div class="card-header-left">
+          <h2 class="card-title">客人申請審核</h2>
+          <p class="card-subtitle">查看目前待審核客人，通過後產生授權連結</p>
+        </div>
+      </header>
+      <div class="card-body">
+        <form id="reviewForm" class="row" autocomplete="off">
+          <label class="field">
+            <span class="field-label">管理密碼</span>
+            <input id="reviewPassphrase" class="input" type="password" autocomplete="current-password" />
+          </label>
+          <label class="field">
+            <span class="field-label">狀態</span>
+            <select id="reviewStatus" class="input">
+              <option value="pending" selected>待審核</option>
+              <option value="approved">已通過</option>
+              <option value="denied">已拒絕</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">通過後 token 有效分鐘</span>
+            <input id="reviewTtl" class="input" type="number" min="5" max="1440" value="60" />
+          </label>
+          <button id="reviewReloadBtn" class="btn btn-ghost" type="button">重新整理清單</button>
+          <span id="reviewMsg" class="hint">—</span>
+        </form>
+
+        <div style="margin-top:10px;">
+          <div id="reviewList" class="list">尚未載入</div>
+          <div id="reviewError" class="state state-error" style="display:none;"></div>
+        </div>
+      </div>
+    </section>
+
     <footer class="footer">
       <span class="hint">每位師傅一份獨立專案：修改 config.json 的 DATE_DB_ENDPOINT 即可。</span>
     </footer>
