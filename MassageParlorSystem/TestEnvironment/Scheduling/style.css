@@ -715,6 +715,12 @@ body {
     table-layout: fixed;
   }
 
+  /* 行動版：避免任何欄位內容「互相蓋到」 */
+  .card-table .status-table th,
+  .card-table .status-table td {
+    overflow: hidden;
+  }
+
   .card-table .status-table th,
   .card-table .status-table td {
     padding: 6px 6px;
@@ -723,40 +729,52 @@ body {
   /* 覆蓋 index.html 內 th 的 inline width（需要 !important） */
   .card-table .status-table thead th:nth-child(1),
   .card-table .status-table tbody td:nth-child(1) {
-    width: 56px !important;
+    width: clamp(44px, 12vw, 56px) !important;
   }
 
   .card-table .status-table thead th:nth-child(2),
   .card-table .status-table tbody td:nth-child(2) {
-    width: 56px !important;
+    width: clamp(44px, 12vw, 56px) !important;
   }
 
   .card-table .status-table thead th:nth-child(3),
   .card-table .status-table tbody td:nth-child(3) {
-    width: 120px !important;
+    width: clamp(84px, 24vw, 120px) !important;
   }
 
   .card-table .status-table thead th:nth-child(5),
   .card-table .status-table tbody td:nth-child(5) {
-    width: 120px !important;
+    width: clamp(84px, 24vw, 120px) !important;
   }
 
-  /* 預約內容：允許換行，不要把整張表撐寬 */
+  /* 預約內容：不換行，隨欄寬自動截斷（避免窄螢幕上下堆疊/重疊） */
   .card-table .status-table tbody td:nth-child(4) {
-    white-space: normal;
-    /* iOS/Safari 對 overflow-wrap:anywhere 支援不一，改用更保守的 break-word */
-    overflow-wrap: break-word;
-    word-break: break-word;
-    /* 避免長字串溢出到「剩餘時間」欄造成視覺錯亂 */
-    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
     /* 視覺分隔：避免和第 5 欄看起來「重疊」 */
     box-shadow: inset -1px 0 0 var(--border);
   }
 
-  /* 剩餘時間：避免在小寬度下換行造成對位錯覺 */
+  .card-table .status-table tbody td:nth-child(4) .appt-block {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  /* 狀態 / 剩餘時間：不換行，必要時以省略號顯示 */
+  .card-table .status-table tbody td:nth-child(3) .status-pill {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .card-table .status-table tbody td:nth-child(5) {
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
 
   .card-table .status-table thead th:nth-child(4) {
@@ -767,6 +785,8 @@ body {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
   }
 
   /* 小螢幕略縮字，提升容納度 */
