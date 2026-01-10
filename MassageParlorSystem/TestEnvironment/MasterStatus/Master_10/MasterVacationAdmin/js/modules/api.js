@@ -7,7 +7,13 @@ function buildUrl(params) {
 }
 
 async function fetchJson(url, opts = {}) {
-  const resp = await fetch(url, { cache: "no-store", ...opts });
+  let resp;
+  try {
+    resp = await fetch(url, { cache: "no-store", ...opts });
+  } catch (e) {
+    const msg = e && e.message ? String(e.message) : String(e);
+    throw new Error(`FETCH_FAILED ${String(url || "").slice(0, 200)} ${msg}`);
+  }
   const text = await resp.text();
   if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 200)}`);
   try {
@@ -18,11 +24,18 @@ async function fetchJson(url, opts = {}) {
 }
 
 async function postJsonNoCorsPreflight(url, payload) {
-  const resp = await fetch(String(url || "").trim(), {
+  const endpoint = String(url || "").trim();
+  let resp;
+  try {
+    resp = await fetch(endpoint, {
     method: "POST",
     cache: "no-store",
     body: JSON.stringify(payload || {}),
-  });
+    });
+  } catch (e) {
+    const msg = e && e.message ? String(e.message) : String(e);
+    throw new Error(`FETCH_FAILED ${endpoint} ${msg}`);
+  }
 
   const text = await resp.text();
   if (!resp.ok) throw new Error(`HTTP ${resp.status} ${text.slice(0, 200)}`);
