@@ -16,7 +16,7 @@
     "desc": "師傅編號（兩位數字字串，例如 '07'）。必須與客人看板/授權流程一致。"
   },
   "PUBLIC_DASHBOARD_URL": {
-    "value": "http://127.0.0.1:3000/MasterStatus/Master_10/MasterPublicStatus/index.html",
+    "value": "https://yongshengchen0615.github.io/MassageParlorSystem/TestEnvironment/MasterStatus/Master_10/MasterPublicStatus/index.html",
     "desc": "客人看板（MasterPublicStatus）的『網頁網址』，用來組合授權連結：?token=...。注意：不能填任何 GAS /exec（例如 DateDB 或 Auth），否則打開會看到 JSON。\n\n本機測試可填：http://127.0.0.1:3000/...；正式環境必須改成對外可存取的網址（例如你的網域、GitHub Pages 等）。"
   }
 }
