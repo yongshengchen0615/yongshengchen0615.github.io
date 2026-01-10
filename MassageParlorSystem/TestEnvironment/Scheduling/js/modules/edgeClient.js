@@ -18,6 +18,10 @@ const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000;
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
 
+// Keep a stable edge choice for this page session to avoid data flip-flopping
+// across different edges (edges may have slightly different cache/update timing).
+let sessionEdgeIdx = null;
+
 function getOverrideEdgeIndex() {
   const o = readJsonLS(EDGE_ROUTE_KEY);
   if (!o || typeof o.idx !== "number") return null;
@@ -52,6 +56,19 @@ function getRandomEdgeIndex() {
   if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < n) return overrideIdx;
 
   return Math.floor(Math.random() * n);
+}
+
+function getStickyEdgeIndex() {
+  const n = config.EDGE_STATUS_URLS.length || 0;
+  if (!n) return 0;
+
+  const overrideIdx = getOverrideEdgeIndex();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < n) return overrideIdx;
+
+  if (typeof sessionEdgeIdx === "number" && sessionEdgeIdx >= 0 && sessionEdgeIdx < n) return sessionEdgeIdx;
+
+  sessionEdgeIdx = Math.floor(Math.random() * n);
+  return sessionEdgeIdx;
 }
 
 function buildEdgeTryOrder(startIdx) {
@@ -104,7 +121,7 @@ export async function fetchStatusAll() {
   const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
   const originExtra = typeof config.STATUS_FETCH_ORIGIN_EXTRA_MS === "number" ? config.STATUS_FETCH_ORIGIN_EXTRA_MS : 4000;
 
-  const startIdx = getRandomEdgeIndex();
+  const startIdx = getStickyEdgeIndex();
   const tryEdgeIdxList = buildEdgeTryOrder(startIdx);
 
   for (const idx of tryEdgeIdxList) {

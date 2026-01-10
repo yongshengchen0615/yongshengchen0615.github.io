@@ -730,8 +730,20 @@ body {
   /* 預約內容：允許換行，不要把整張表撐寬 */
   .card-table .status-table tbody td:nth-child(4) {
     white-space: normal;
-    overflow-wrap: anywhere;
+    /* iOS/Safari 對 overflow-wrap:anywhere 支援不一，改用更保守的 break-word */
+    overflow-wrap: break-word;
     word-break: break-word;
+    /* 避免長字串溢出到「剩餘時間」欄造成視覺錯亂 */
+    overflow: hidden;
+  }
+
+  /* 剩餘時間：避免在小寬度下換行造成對位錯覺 */
+  .card-table .status-table tbody td:nth-child(5) {
+    white-space: nowrap;
+  }
+
+  .time-badge {
+    max-width: 100%;
   }
 
   /* 小螢幕略縮字，提升容納度 */
