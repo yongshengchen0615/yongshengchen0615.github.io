@@ -431,10 +431,28 @@ function isAuditApproved_(auditRaw) {
   return false;
 }
 
+function normalizeHeaderKey_(v) {
+  return String(v || "")
+    .trim()
+    .replace(/[\s\u200B-\u200D\uFEFF_]/g, "")
+    .toLowerCase();
+}
+
+function findHeaderIndex_(headerMap, candidates) {
+  const list = Array.isArray(candidates) ? candidates : [candidates];
+  for (let i = 0; i < list.length; i++) {
+    const key = normalizeHeaderKey_(list[i]);
+    if (!key) continue;
+    const idx = headerMap[key];
+    if (idx !== undefined) return idx;
+  }
+  return -1;
+}
+
 function buildHeaderMap_(headers) {
   const map = {};
   (headers || []).forEach((h, idx) => {
-    const key = String(h || "").trim();
+    const key = normalizeHeaderKey_(h);
     if (!key) return;
     map[key] = idx;
   });
@@ -443,7 +461,7 @@ function buildHeaderMap_(headers) {
 
 function getCellByHeader_(row, headerMap, keys) {
   for (let i = 0; i < keys.length; i++) {
-    const k = String(keys[i] || "").trim();
+    const k = normalizeHeaderKey_(keys[i]);
     if (!k) continue;
     const idx = headerMap[k];
     if (idx === undefined) continue;
@@ -479,8 +497,21 @@ function findUserRowByUserId_(userId) {
   if (!values || values.length < 2) return null;
 
   const headerMap = buildHeaderMap_(values[0]);
-  const userIdIdx = headerMap["userId"]; // required
-  if (userIdIdx === undefined) return null;
+  const userIdIdx = findHeaderIndex_(headerMap, [
+    "userId",
+    "userid",
+    "lineUserId",
+    "lineuserid",
+    "line_user_id",
+    "line user id",
+    "LINE userId",
+    "LINE_USER_ID",
+    "使用者ID",
+    "用戶ID",
+    "line使用者ID",
+    "line用戶ID",
+  ]);
+  if (userIdIdx < 0) return { error: "USERS_MISSING_USER_ID_COLUMN", headerMap };
 
   for (let r = 2; r <= values.length; r++) {
     const row = values[r - 1];
@@ -498,10 +529,17 @@ function checkUserAccessByUsersSheet_({ masterId, userId, displayName }) {
   if (!userId) throw new Error("USER_ID_REQUIRED");
 
   const found = findUserRowByUserId_(userId);
+  if (found && found.error === "USERS_MISSING_USER_ID_COLUMN") {
+    return {
+      allowed: false,
+      reason: "Users 欄位缺少：userId",
+      user: { userId: userId, displayName: displayName || "" },
+    };
+  }
   if (!found) {
     return {
       allowed: false,
-      reason: "找不到使用者資料（Users）",
+      reason: `找不到使用者資料（Users：userId=${String(userId || "").trim()}）`,
       user: { userId: userId, displayName: displayName || "" },
     };
   }
@@ -509,11 +547,51 @@ function checkUserAccessByUsersSheet_({ masterId, userId, displayName }) {
   const hm = found.headerMap;
   const row = found.row;
 
-  const rowDisplayName = String(getCellByHeader_(row, hm, ["displayName"]) || "").trim();
-  const audit = String(getCellByHeader_(row, hm, ["審核狀態", "audit"]) || "").trim();
-  const techNo = String(getCellByHeader_(row, hm, ["師傅編號", "masterId", "techNo"]) || "").trim();
-  const isMasterRaw = normalizeYesNo_(getCellByHeader_(row, hm, ["是否師傅", "isMaster"]));
-  const personalStatusEnabled = normalizeYesNo_(getCellByHeader_(row, hm, ["個人狀態開通", "personalStatusEnabled"])) || "否";
+  const idxDisplayName = findHeaderIndex_(hm, ["displayName", "name", "姓名", "暱稱", "昵称"]);
+  const idxAudit = findHeaderIndex_(hm, ["審核狀態", "审核状态", "audit", "approved", "審核", "审核"]);
+  const idxTechNo = findHeaderIndex_(hm, [
+    "師傅編號",
+    "技師編號",
+    "masterId",
+    "masterid",
+    "techNo",
+    "techno",
+    "techNumber",
+    "technumber",
+    "編號",
+    "编号",
+  ]);
+  const idxIsMaster = findHeaderIndex_(hm, ["是否師傅", "是否技師", "isMaster", "ismaster"]);
+  const idxPersonalEnabled = findHeaderIndex_(hm, [
+    "個人狀態開通",
+    "个人状态开通",
+    "personalStatusEnabled",
+    "publicStatusEnabled",
+    "statusEnabled",
+    "enabled",
+    "狀態開通",
+    "状态开通",
+    "開通",
+    "开通",
+  ]);
+
+  const missing = [];
+  if (idxAudit < 0) missing.push("審核狀態");
+  if (idxTechNo < 0) missing.push("師傅編號");
+  if (idxPersonalEnabled < 0) missing.push("個人狀態開通");
+  if (missing.length) {
+    return {
+      allowed: false,
+      reason: `Users 欄位缺少：${missing.join("、")}`,
+      user: { userId: userId, displayName: displayName || "" },
+    };
+  }
+
+  const rowDisplayName = String((idxDisplayName >= 0 ? row[idxDisplayName] : "") || "").trim();
+  const audit = String(row[idxAudit] || "").trim();
+  const techNo = String(row[idxTechNo] || "").trim();
+  const isMasterRaw = normalizeYesNo_(idxIsMaster >= 0 ? row[idxIsMaster] : "");
+  const personalStatusEnabled = normalizeYesNo_(row[idxPersonalEnabled]) || "否";
 
   const denyByIsMasterFlag = String(isMasterRaw || "").trim() === "否";
   const allow = !denyByIsMasterFlag && techNo === masterId && personalStatusEnabled === "是" && isAuditApproved_(audit);
