@@ -6,6 +6,7 @@ export const config = {
   AUTH_ENDPOINT: "",
   MASTER_ID: "",
   PUBLIC_DASHBOARD_URL: "",
+  LIFF_ID: "",
 };
 
 function pick_(cfg, key) {
@@ -24,6 +25,7 @@ export async function loadConfig() {
   config.AUTH_ENDPOINT = String(pick_(cfg, "AUTH_ENDPOINT") || "").trim() || config.DATE_DB_ENDPOINT;
   config.MASTER_ID = String(pick_(cfg, "MASTER_ID") || "").trim();
   config.PUBLIC_DASHBOARD_URL = String(pick_(cfg, "PUBLIC_DASHBOARD_URL") || "").trim();
+  config.LIFF_ID = String(pick_(cfg, "LIFF_ID") || "").trim();
 
   if (!/^https:\/\/script.google.com\/.+\/exec$/.test(config.DATE_DB_ENDPOINT)) {
     throw new Error("CONFIG_DATE_DB_ENDPOINT_INVALID");

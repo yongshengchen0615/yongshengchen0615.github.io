@@ -18,5 +18,9 @@
   "PUBLIC_DASHBOARD_URL": {
     "value": "https://yongshengchen0615.github.io/MassageParlorSystem/TestEnvironment/MasterStatus/Master_10/MasterPublicStatus/index.html",
     "desc": "客人看板（MasterPublicStatus）的『網頁網址』，用來組合授權連結：?token=...。注意：不能填任何 GAS /exec（例如 DateDB 或 Auth），否則打開會看到 JSON。\n\n本機測試可填：http://127.0.0.1:3000/...；正式環境必須改成對外可存取的網址（例如你的網域、GitHub Pages 等）。"
+  },
+  "LIFF_ID": {
+    "value": "2008735934-bxdRwKQG",
+    "desc": "（可選）若填入 LIFF_ID，師傅通過申請後會產生 LIFF 版授權連結：https://liff.line.me/<LIFF_ID>?token=...。留空則用 PUBLIC_DASHBOARD_URL。"
   }
 }

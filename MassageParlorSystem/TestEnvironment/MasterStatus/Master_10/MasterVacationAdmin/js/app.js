@@ -6,12 +6,33 @@ import {
   approveReviewRequest,
   denyReviewRequest,
   deleteReviewRequest,
+  verifyAdminPassphrase,
+  changeAdminPassphrase,
 } from "./modules/api.js";
 import { escapeHtml, ymd, uniqSorted } from "./modules/core.js";
 
 const els = {
   pageTitle: document.getElementById("pageTitle"),
   themeToggle: document.getElementById("themeToggle"),
+
+  protectedHeader: document.getElementById("protectedHeader"),
+  protectedContent: document.getElementById("protectedContent"),
+
+  authCard: document.getElementById("authCard"),
+  authForm: document.getElementById("authForm"),
+  authPassphrase: document.getElementById("authPassphrase"),
+  authLoginBtn: document.getElementById("authLoginBtn"),
+  authMsg: document.getElementById("authMsg"),
+
+  openChangePassBtn: document.getElementById("openChangePassBtn"),
+  changePassCard: document.getElementById("changePassCard"),
+  changePassForm: document.getElementById("changePassForm"),
+  oldPassphrase: document.getElementById("oldPassphrase"),
+  newPassphrase: document.getElementById("newPassphrase"),
+  newPassphrase2: document.getElementById("newPassphrase2"),
+  changePassBtn: document.getElementById("changePassBtn"),
+  changePassCancelBtn: document.getElementById("changePassCancelBtn"),
+
   holidayInput: document.getElementById("holidayInput"),
   addBtn: document.getElementById("addBtn"),
   saveBtn: document.getElementById("saveBtn"),
@@ -57,7 +78,60 @@ const state = {
   pendingAdd: [], // [{type:"holiday", date:"YYYY-MM-DD"}]
   pendingDel: [], // same
   saving: false,
+  authed: false,
+  passphrase: "",
 };
+
+function setAuthMsg_(t) {
+  if (!els.authMsg) return;
+  els.authMsg.textContent = String(t || "—");
+}
+
+function showProtected_(show) {
+  const on = Boolean(show);
+  if (els.protectedHeader) els.protectedHeader.style.display = on ? "" : "none";
+  if (els.protectedContent) els.protectedContent.style.display = on ? "" : "none";
+}
+
+function showChangePassBlock_(show) {
+  if (!els.changePassCard) return;
+  els.changePassCard.style.display = show ? "" : "none";
+}
+
+function setAuthed_(authed, passphrase) {
+  state.authed = Boolean(authed);
+  state.passphrase = state.authed ? String(passphrase || "") : "";
+
+  // Gate visibility before anything else.
+  showProtected_(state.authed);
+
+  // Hide login panel after successful login.
+  if (els.authCard) els.authCard.style.display = state.authed ? "none" : "";
+
+  // Gate all operations.
+  setUiEnabled(state.authed && !state.saving);
+
+  // Keep review passphrase in sync for existing review actions.
+  if (els.reviewPassphrase) {
+    els.reviewPassphrase.value = state.passphrase;
+    els.reviewPassphrase.disabled = true;
+
+    const wrap = els.reviewPassphrase.closest(".field");
+    if (wrap) wrap.style.display = "none";
+  }
+
+  if (!state.authed) {
+    showChangePassBlock_(false);
+  }
+}
+
+async function tryVerifyPassphrase_(passphrase) {
+  const p = String(passphrase || "");
+  if (!p) return false;
+  const res = await verifyAdminPassphrase({ passphrase: p });
+  if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "VERIFY_FAILED");
+  return true;
+}
 
 function setText(el, t) {
   if (!el) return;
@@ -75,13 +149,14 @@ function setUiEnabled(enabled) {
   els.saveBtn && (els.saveBtn.disabled = dis);
   els.reloadBtn && (els.reloadBtn.disabled = dis);
 
-  if (els.reviewPassphrase) els.reviewPassphrase.disabled = dis;
   if (els.reviewStatus) els.reviewStatus.disabled = dis;
   if (els.reviewReloadBtn) els.reviewReloadBtn.disabled = dis;
 }
 
 function buildGuestLink_(token) {
-  const base = String(config.PUBLIC_DASHBOARD_URL || "").trim();
+  const liffId = String(config.LIFF_ID || "").trim();
+  const liffBase = liffId ? `https://liff.line.me/${encodeURIComponent(liffId)}` : "";
+  const base = liffBase || String(config.PUBLIC_DASHBOARD_URL || "").trim();
   if (!base) return "";
   // Prevent common misconfig: pointing dashboard URL to backend webapps.
   if (base === String(config.AUTH_ENDPOINT || "").trim()) return "";
@@ -180,7 +255,10 @@ function renderReviewList(rows, passphrase) {
         setUiEnabled(false);
         setReviewMsg("通過中…");
 
-        const dashboardUrl = String(config.PUBLIC_DASHBOARD_URL || "").trim();
+        // Prefer LIFF URL when configured.
+        const liffId = String(config.LIFF_ID || "").trim();
+        const liffBase = liffId ? `https://liff.line.me/${encodeURIComponent(liffId)}` : "";
+        const dashboardUrl = String(liffBase || config.PUBLIC_DASHBOARD_URL || "").trim();
         if (dashboardUrl && dashboardUrl === String(config.DATE_DB_ENDPOINT || "").trim()) {
           throw new Error("設定錯誤：PUBLIC_DASHBOARD_URL 不能填 DateDB WebApp 的 /exec（會看到 JSON）");
         }
@@ -198,8 +276,8 @@ function renderReviewList(rows, passphrase) {
           alert("已通過，授權連結已產生（並嘗試複製到剪貼簿）。\n\n" + link);
         } else {
           alert(
-            "已通過，但尚未設定 PUBLIC_DASHBOARD_URL，所以無法自動組合連結。\n\n" +
-              "請先在 config.json 填入 MasterPublicStatus 的網址。\n\n" +
+            "已通過，但尚未設定連結基底，所以無法自動組合連結。\n\n" +
+              "請先在 config.json 填入 LIFF_ID（推薦）或 PUBLIC_DASHBOARD_URL。\n\n" +
               "Token：" + token
           );
         }
@@ -285,11 +363,11 @@ function renderReviewList(rows, passphrase) {
 
 async function reloadReview() {
   const masterId = String(config.MASTER_ID || "").trim();
-  const passphrase = String(els.reviewPassphrase?.value || "");
+  const passphrase = String(state.passphrase || "");
   const status = String(els.reviewStatus?.value || "pending");
 
   if (!passphrase) {
-    setReviewMsg("請輸入管理密碼後再載入清單");
+    setReviewMsg("請先登入管理密碼");
     return;
   }
 
@@ -462,7 +540,92 @@ async function main() {
   if (els.pageTitle) els.pageTitle.textContent = config.TITLE;
   document.title = config.TITLE;
 
+  // Theme toggle exists inside protected content; safe to init anyway.
   initTheme_();
+
+  // Default: require login first.
+  setAuthed_(false, "");
+  setAuthMsg_("請先登入");
+  setUiEnabled(false);
+
+  els.openChangePassBtn?.addEventListener("click", () => {
+    if (!state.authed) return;
+    const cur = String(els.changePassCard?.style.display || "none");
+    const showNow = cur === "none";
+    showChangePassBlock_(showNow);
+    if (showNow) {
+      // Do not prefill old password; require manual entry.
+      if (els.oldPassphrase) els.oldPassphrase.value = "";
+      if (els.newPassphrase) els.newPassphrase.value = "";
+      if (els.newPassphrase2) els.newPassphrase2.value = "";
+      els.oldPassphrase?.focus();
+    }
+  });
+  els.changePassCancelBtn?.addEventListener("click", () => {
+    showChangePassBlock_(false);
+  });
+
+  els.authForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const p = String(els.authPassphrase?.value || "");
+    if (!p) return alert("請輸入管理密碼");
+
+    try {
+      if (els.authLoginBtn) els.authLoginBtn.disabled = true;
+      setAuthMsg_("驗證中…");
+      await tryVerifyPassphrase_(p);
+      setAuthed_(true, p);
+      setAuthMsg_("已登入");
+
+      // Load data after login.
+      await reload();
+      if (els.reviewCard && config.MASTER_ID) {
+        await reloadReview();
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthed_(false, "");
+      setAuthMsg_("登入失敗：密碼不正確或服務暫時不可用");
+      alert("登入失敗：" + String(err && err.message ? err.message : err));
+    } finally {
+      if (els.authLoginBtn) els.authLoginBtn.disabled = false;
+    }
+  });
+
+  els.changePassForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const oldP = String(els.oldPassphrase?.value || "");
+    const newP = String(els.newPassphrase?.value || "");
+    const newP2 = String(els.newPassphrase2?.value || "");
+
+    if (!oldP) return alert("請輸入舊密碼");
+    if (!newP) return alert("請輸入新密碼");
+    if (newP !== newP2) return alert("新密碼與確認不一致");
+
+    try {
+      if (els.changePassBtn) els.changePassBtn.disabled = true;
+      setAuthMsg_("修改中…");
+      const res = await changeAdminPassphrase({ oldPassphrase: oldP, newPassphrase: newP });
+      if (!res || res.ok !== true) throw new Error(res?.error || res?.err || "CHANGE_FAILED");
+
+      // Update current session passphrase.
+      if (els.authPassphrase) els.authPassphrase.value = newP;
+      setAuthed_(true, newP);
+
+      if (els.oldPassphrase) els.oldPassphrase.value = "";
+      if (els.newPassphrase) els.newPassphrase.value = "";
+      if (els.newPassphrase2) els.newPassphrase2.value = "";
+      showChangePassBlock_(false);
+      setAuthMsg_("已修改密碼");
+      alert("已修改密碼");
+    } catch (err) {
+      console.error(err);
+      setAuthMsg_("修改失敗");
+      alert("修改失敗：" + String(err && err.message ? err.message : err));
+    } finally {
+      if (els.changePassBtn) els.changePassBtn.disabled = false;
+    }
+  });
 
   els.addBtn?.addEventListener("click", addHoliday);
   els.saveBtn?.addEventListener("click", save);
@@ -470,8 +633,9 @@ async function main() {
 
   // Review requests panel (optional)
   if (els.reviewCard && config.MASTER_ID) {
+    // Will be shown only after login (protectedContent is hidden by default)
     els.reviewCard.style.display = "";
-    setReviewMsg("請輸入管理密碼後載入清單");
+    setReviewMsg("請先登入管理密碼");
     els.reviewReloadBtn?.addEventListener("click", reloadReview);
     els.reviewStatus?.addEventListener("change", () => reloadReview());
 
@@ -480,8 +644,6 @@ async function main() {
       reloadReview();
     });
   }
-
-  await reload();
 }
 
 main().catch((e) => {

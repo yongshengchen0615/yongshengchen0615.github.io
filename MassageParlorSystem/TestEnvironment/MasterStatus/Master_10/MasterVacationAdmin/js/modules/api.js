@@ -48,6 +48,37 @@ async function postJsonNoCorsPreflight(url, payload) {
 }
 
 /**
+ * 驗證管理密碼（登入用）。
+ * 預期 GAS 支援：POST { entity:"auth", action:"passphrase_verify", data:{ passphrase } }
+ */
+export async function verifyAdminPassphrase({ passphrase }) {
+  const payload = {
+    entity: "auth",
+    action: "passphrase_verify",
+    data: {
+      passphrase: String(passphrase || ""),
+    },
+  };
+  return await postJsonNoCorsPreflight(config.AUTH_ENDPOINT || config.DATE_DB_ENDPOINT, payload);
+}
+
+/**
+ * 修改管理密碼。
+ * 預期 GAS 支援：POST { entity:"auth", action:"passphrase_change", data:{ oldPassphrase, newPassphrase } }
+ */
+export async function changeAdminPassphrase({ oldPassphrase, newPassphrase }) {
+  const payload = {
+    entity: "auth",
+    action: "passphrase_change",
+    data: {
+      oldPassphrase: String(oldPassphrase || ""),
+      newPassphrase: String(newPassphrase || ""),
+    },
+  };
+  return await postJsonNoCorsPreflight(config.AUTH_ENDPOINT || config.DATE_DB_ENDPOINT, payload);
+}
+
+/**
  * 讀取日期類型資料。
  * 預期 GAS 支援：GET ?entity=datetypes&action=list
  */

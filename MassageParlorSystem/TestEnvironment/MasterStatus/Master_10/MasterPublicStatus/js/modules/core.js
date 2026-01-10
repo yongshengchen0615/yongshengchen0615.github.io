@@ -1,7 +1,36 @@
 export function getQueryParam(key) {
   try {
     const url = new URL(window.location.href);
-    return url.searchParams.get(String(key || "")) || "";
+    const k = String(key || "");
+    const direct = url.searchParams.get(k);
+    if (direct) return direct;
+
+    // LIFF deep link support:
+    // When opening https://liff.line.me/<LIFF_ID>?token=..., LINE typically redirects to the endpoint URL
+    // and stores the original query string inside `liff.state`.
+    // Example: https://example.com/index.html?liff.state=%3Ftoken%3Dabc
+    const liffState = url.searchParams.get("liff.state");
+    if (!liffState) return "";
+
+    let state = String(liffState || "");
+    try {
+      // searchParams.get already decodes, but keep this safe for edge cases.
+      state = decodeURIComponent(state);
+    } catch {
+      // ignore
+    }
+
+    // state can be like:
+    // - "?token=..."
+    // - "/path?token=...#..."
+    // - "token=..." (rare)
+    const qMark = state.indexOf("?");
+    let qs = qMark >= 0 ? state.slice(qMark + 1) : state;
+    const hash = qs.indexOf("#");
+    if (hash >= 0) qs = qs.slice(0, hash);
+
+    const params = new URLSearchParams(qs);
+    return params.get(k) || "";
   } catch {
     return "";
   }

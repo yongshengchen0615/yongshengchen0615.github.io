@@ -24,6 +24,8 @@ function doGet(e) {
       hint: "Master Access Auth WebApp",
       endpoints: [
         "POST {entity:'auth', action:'issue', data:{masterId, passphrase, ttlMinutes?}}",
+        "POST {entity:'auth', action:'passphrase_verify', data:{passphrase}}",
+        "POST {entity:'auth', action:'passphrase_change', data:{oldPassphrase, newPassphrase}}",
         "POST {entity:'auth', action:'request', data:{masterId, guestName, guestNote?}}",
         "POST {entity:'auth', action:'requests_list', data:{masterId, passphrase, status?}}",
         "POST {entity:'auth', action:'requests_approve', data:{masterId, passphrase, requestId, ttlMinutes?}}",
@@ -46,6 +48,26 @@ function doPost(e) {
     const entity = String(payload.entity || "").trim();
     const action = String(payload.action || "").trim();
     const data = payload.data || {};
+
+    if (entity === "auth" && action === "passphrase_verify") {
+      const passphrase = String(data.passphrase || "");
+      assertPassphrase_(passphrase);
+      return json_({ ok: true, now: Date.now() });
+    }
+
+    if (entity === "auth" && action === "passphrase_change") {
+      const oldPassphrase = String(data.oldPassphrase || "");
+      const newPassphraseRaw = String(data.newPassphrase || "");
+      assertPassphrase_(oldPassphrase);
+
+      const newPassphrase = String(newPassphraseRaw || "").trim();
+      if (!newPassphrase) throw new Error("NEW_PASSPHRASE_REQUIRED");
+      if (newPassphrase.length < 4) throw new Error("NEW_PASSPHRASE_TOO_SHORT");
+      if (newPassphrase.length > 80) throw new Error("NEW_PASSPHRASE_TOO_LONG");
+
+      PropertiesService.getScriptProperties().setProperty("MASTER_PASSPHRASE", newPassphrase);
+      return json_({ ok: true, now: Date.now() });
+    }
 
     if (entity === "auth" && action === "issue") {
       const masterId = normalizeMasterId_(data.masterId);
