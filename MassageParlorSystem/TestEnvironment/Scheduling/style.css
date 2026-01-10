@@ -749,12 +749,18 @@ body {
     word-break: break-word;
     /* 避免長字串溢出到「剩餘時間」欄造成視覺錯亂 */
     overflow: hidden;
+    /* 視覺分隔：避免和第 5 欄看起來「重疊」 */
+    box-shadow: inset -1px 0 0 var(--border);
   }
 
   /* 剩餘時間：避免在小寬度下換行造成對位錯覺 */
   .card-table .status-table tbody td:nth-child(5) {
     white-space: nowrap;
     overflow: hidden;
+  }
+
+  .card-table .status-table thead th:nth-child(4) {
+    box-shadow: inset -1px 0 0 var(--border);
   }
 
   .time-badge {
