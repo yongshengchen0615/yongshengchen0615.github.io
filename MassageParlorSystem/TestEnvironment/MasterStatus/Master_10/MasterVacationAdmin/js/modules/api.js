@@ -97,9 +97,10 @@ export async function listReviewRequests({ masterId, passphrase, status }) {
 
 /**
  * 通過申請並取得一次性 token。
- * 預期 GAS 支援：POST { entity:"auth", action:"requests_approve", data:{ masterId, passphrase, requestId, ttlMinutes? } }
+ * 注意：token 本身可長期有效；兌換後的 session 亦為長期有效，除非師傅撤銷。
+ * 預期 GAS 支援：POST { entity:"auth", action:"requests_approve", data:{ masterId, passphrase, requestId } }
  */
-export async function approveReviewRequest({ masterId, passphrase, requestId, ttlMinutes, dashboardUrl }) {
+export async function approveReviewRequest({ masterId, passphrase, requestId, dashboardUrl }) {
   const payload = {
     entity: "auth",
     action: "requests_approve",
@@ -107,7 +108,6 @@ export async function approveReviewRequest({ masterId, passphrase, requestId, tt
       masterId: String(masterId || "").trim(),
       passphrase: String(passphrase || ""),
       requestId: String(requestId || "").trim(),
-      ttlMinutes: typeof ttlMinutes === "number" ? ttlMinutes : 60,
       dashboardUrl: String(dashboardUrl || "").trim(),
     },
   };

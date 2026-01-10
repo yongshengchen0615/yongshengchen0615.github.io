@@ -26,6 +26,10 @@ const INVITES_SHEET = "Invites";
 const SESSIONS_SHEET = "Sessions";
 const REQUESTS_SHEET = "Requests";
 
+// Once approved, guests should be able to exchange at any time.
+// Use a very long invite TTL (practically permanent) while keeping token single-use.
+const INVITE_TTL_MINUTES = 3650 * 24 * 60; // ~10 years
+
 function doGet(e) {
   try {
     return json_({
@@ -59,7 +63,7 @@ function doPost(e) {
     if (entity === "auth" && action === "issue") {
       const masterId = normalizeMasterId_(data.masterId);
       const passphrase = String(data.passphrase || "");
-      const ttlMinutes = clampInt_(Number(data.ttlMinutes || 60), 5, 1440);
+      const ttlMinutes = INVITE_TTL_MINUTES;
 
       assertPassphrase_(passphrase);
       const res = issueInvite_({ masterId, ttlMinutes });
@@ -87,7 +91,7 @@ function doPost(e) {
       const masterId = normalizeMasterId_(data.masterId);
       const passphrase = String(data.passphrase || "");
       const requestId = String(data.requestId || "").trim();
-      const ttlMinutes = clampInt_(Number(data.ttlMinutes || 60), 5, 1440);
+      const ttlMinutes = INVITE_TTL_MINUTES;
       const dashboardUrl = normalizeDashboardUrl_(data.dashboardUrl);
       assertPassphrase_(passphrase);
       const res = approveRequest_({ masterId, requestId, ttlMinutes, dashboardUrl });
@@ -327,13 +331,50 @@ function deleteRequest_({ masterId, requestId }) {
   const rowMaster = normalizeMasterId_(row[1]);
   if (rowMaster !== masterId) throw new Error("REQUEST_MASTER_MISMATCH");
 
+  const approvedToken = String(row[8] || "").trim();
+
   // Revoke all active sessions issued from this request (if any)
   const revokedCount = revokeSessionsByRequestId_({ masterId, requestId });
+
+  // Also revoke unused invite token (if any) so deleted guests cannot exchange later.
+  if (approvedToken) revokeInviteByToken_({ masterId, token: approvedToken });
 
   // Delete the request row (remove guest from list)
   sh.deleteRow(rowNo);
 
   return { requestId, status: "deleted", revokedCount };
+}
+
+function revokeInviteByToken_({ masterId, token }) {
+  try {
+    const m = normalizeMasterId_(masterId);
+    const t = String(token || "").trim();
+    if (!m || !t) return 0;
+
+    const parts = t.split(".");
+    if (parts.length !== 2) return 0;
+    const tokenId = String(parts[0] || "").trim();
+    if (!tokenId) return 0;
+
+    const invites = ensureSheet_(INVITES_SHEET, ["TokenId", "MasterId", "ExpiresAtMs", "UsedAtMs", "CreatedAtMs"]);
+    const data = invites.getDataRange().getValues();
+    const now = Date.now();
+
+    for (let r = 2; r <= data.length; r++) {
+      const row = data[r - 1];
+      const rowTokenId = String(row[0] || "").trim();
+      if (rowTokenId !== tokenId) continue;
+      const rowMaster = normalizeMasterId_(row[1]);
+      if (rowMaster !== m) return 0;
+      const usedAtMs = String(row[3] || "").trim();
+      if (usedAtMs) return 0;
+      invites.getRange(r, 4, 1, 1).setValue(String(now));
+      return 1;
+    }
+  } catch {
+    // ignore
+  }
+  return 0;
 }
 
 function denyRequest_({ masterId, requestId }) {
