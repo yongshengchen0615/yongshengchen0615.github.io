@@ -25,6 +25,7 @@ function doGet(e) {
         "POST {entity:'auth', action:'requests_approve', data:{masterId, passphrase, requestId, ttlMinutes?}}",
         "POST {entity:'auth', action:'requests_deny', data:{masterId, passphrase, requestId}}",
         "POST {entity:'auth', action:'requests_delete', data:{masterId, passphrase, requestId}}",
+        "POST {entity:'auth', action:'open_status', data:{masterId}}",
         "POST {entity:'auth', action:'exchange', data:{masterId, token}}",
         "POST {entity:'auth', action:'check', data:{masterId, sessionId}}",
       ],
@@ -96,6 +97,12 @@ function doPost(e) {
       assertPassphrase_(passphrase);
       const res = deleteRequest_({ masterId, requestId });
       return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (entity === "auth" && action === "open_status") {
+      const masterId = normalizeMasterId_(data.masterId);
+      const st = getMasterAccessStatusFromUsers_({ masterId });
+      return json_({ ok: true, ...st, now: Date.now() });
     }
 
     if (entity === "auth" && action === "exchange") {

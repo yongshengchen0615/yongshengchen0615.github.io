@@ -1,7 +1,7 @@
 import { config, loadConfig } from "./modules/config.js";
 import { fetchSheetAll, listHolidays } from "./modules/api.js";
 import { normalizeTechNo } from "./modules/core.js";
-import { ensureAuthorizedOrShowGate, submitReviewRequest } from "./modules/auth.js";
+import { ensureAuthorizedOrShowGate, submitReviewRequest, getMasterOpenStatus } from "./modules/auth.js";
 import { initLiffIfConfigured } from "./modules/liff.js";
 
 const els = {
@@ -12,6 +12,7 @@ const els = {
 
   authGate: document.getElementById("authGate"),
   authGateMsg: document.getElementById("authGateMsg"),
+  authRequestBlock: document.getElementById("authRequestBlock"),
   reqGuestName: document.getElementById("reqGuestName"),
   reqGuestNote: document.getElementById("reqGuestNote"),
   reqSubmit: document.getElementById("reqSubmit"),
@@ -107,6 +108,15 @@ function setText(el, text) {
 function showEl(el, show) {
   if (!el) return;
   el.style.display = show ? "" : "none";
+}
+
+function setGateMessage(text) {
+  if (els.authGateMsg) els.authGateMsg.textContent = String(text || "—");
+}
+
+function showAuthRequestBlock(show) {
+  if (!els.authRequestBlock) return;
+  els.authRequestBlock.style.display = show ? "" : "none";
 }
 
 function setVacationMonth(year, month0) {
@@ -332,6 +342,23 @@ async function main() {
     document.querySelectorAll('[data-secured="1"]').forEach((el) => {
       el.style.display = "none";
     });
+
+    // Default: allow guests to submit request.
+    showAuthRequestBlock(true);
+
+    // If master is not approved or not enabled, hide request panel.
+    try {
+      const st = await getMasterOpenStatus({ authEndpoint: config.AUTH_ENDPOINT, masterId: config.TARGET_TECH_NO });
+      if (!st.approved || !st.enabled) {
+        showAuthRequestBlock(false);
+        setAuthReqResult("—");
+        setGateMessage(!st.approved ? "目前師傅尚未通過審核，看板暫不可使用。" : "目前師傅尚未開通個人狀態，看板暫不可使用。");
+        return;
+      }
+    } catch (e) {
+      // If status cannot be determined (network/CORS), keep request panel available.
+      console.warn("[Auth] open_status ignored", e);
+    }
 
     // Enable request submission UI.
     els.reqSubmit?.addEventListener("click", submitAuthRequest_);
