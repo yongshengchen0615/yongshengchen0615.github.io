@@ -1007,24 +1007,64 @@ function showPersonalToolsFinal_(psRow) {
   btnVacationEl.style.display = "inline-flex";
   btnPersonalStatusEl.style.display = "inline-flex";
 
-  const manage = pickField_(psRow, ["使用者管理liff", "manageLiff", "userManageLiff", "userManageLink"]);
-  const vacation = pickField_(psRow, ["休假設定連結", "vacationLink"]);
-  const personal = pickField_(psRow, ["個人狀態連結", "personalStatusLink"]);
+  const adminLiff = pickField_(psRow, ["adminLiff", "manageLiff", "技師管理員liff"]);
+  const personalBoardLiff = pickField_(psRow, ["personalBoardLiff", "personalLiff", "個人看板liff"]);
 
   btnUserManageEl.onclick = () => {
-    if (!manage) return console.error("PersonalStatus 缺少欄位：使用者管理liff", psRow);
-    window.location.href = manage;
-  };
-  btnVacationEl.onclick = () => {
-    if (!vacation) return console.error("PersonalStatus 缺少欄位：休假設定連結", psRow);
-    window.location.href = vacation;
+    if (!adminLiff) {
+      alert("尚未設定『技師管理員』連結，請管理員至後台填入技師管理員liff。 ");
+      return;
+    }
+    window.location.href = adminLiff;
   };
   btnPersonalStatusEl.onclick = () => {
-    if (!personal) return console.error("PersonalStatus 缺少欄位：個人狀態連結", psRow);
-    window.location.href = personal;
+    if (!personalBoardLiff) {
+      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      return;
+    }
+    window.location.href = personalBoardLiff;
   };
 
-  window.__personalLinks = { manage, vacation, personal, psRow };
+  btnVacationEl.onclick = async () => {
+    if (!personalBoardLiff) {
+      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      return;
+    }
+
+    const ok = await (async function copyTextToClipboard_(text) {
+      const value = String(text || "");
+      if (!value) return false;
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+          return true;
+        }
+      } catch {}
+
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = value;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return !!ok;
+      } catch {
+        return false;
+      }
+    })(personalBoardLiff);
+
+    if (ok) alert("已複製個人狀態連結");
+    else window.prompt("複製個人狀態連結：", personalBoardLiff);
+  };
+
+  window.__personalLinks = { adminLiff, personalBoardLiff, psRow };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
