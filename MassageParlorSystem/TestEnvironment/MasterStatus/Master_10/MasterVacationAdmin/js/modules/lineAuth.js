@@ -6,9 +6,9 @@ function getLiff_() {
 }
 
 export async function initLiffLoginAndCheckAccess({ setStatusText }) {
-  const liffId = String(config.LIFF_ID || "").trim();
+  const liffId = String(config.ADMIN_LIFF_ID || config.LIFF_ID || "").trim();
   if (!liffId) {
-    throw new Error("CONFIG_LIFF_ID_REQUIRED");
+    throw new Error("CONFIG_ADMIN_LIFF_ID_REQUIRED");
   }
 
   const liff = getLiff_();
