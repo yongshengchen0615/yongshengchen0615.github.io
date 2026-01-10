@@ -1,6 +1,6 @@
 {
   "TARGET_TECH_NO": {
-    "value": "07",
+    "value": "10",
     "desc": "師傅編號（兩位數字字串，例如 '07'）。此頁用它決定要顯示哪位師傅的狀態/資料。"
   },
   "EDGE_STATUS_URLS": {
