@@ -90,8 +90,8 @@ async function checkSession({ authEndpoint, masterId, sessionId }) {
     data: { masterId, sessionId },
   });
 
-  if (res && res.ok === true) return true;
-  return false;
+  if (res && res.ok === true) return { ok: true };
+  return { ok: false, error: res && (res.error || res.err) };
 }
 
 async function exchangeInvite({ authEndpoint, masterId, token }) {
@@ -128,8 +128,25 @@ export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateE
   const stored = readStoredSession(m);
   if (stored) {
     try {
-      const ok = await checkSession({ authEndpoint: endpoint, masterId: m, sessionId: stored.sessionId });
-      if (ok) return true;
+      const st = await checkSession({ authEndpoint: endpoint, masterId: m, sessionId: stored.sessionId });
+      if (st && st.ok === true) return true;
+
+      const err = String(st && st.error ? st.error : "").trim();
+      if (err === "MASTER_NOT_APPROVED" || err === "MASTER_STATUS_NOT_ENABLED" || err === "MASTER_NOT_OPEN") {
+        clearStoredSession(m);
+        if (gateEl) {
+          gateEl.style.display = "";
+          if (msgTarget) {
+            msgTarget.textContent =
+              err === "MASTER_NOT_APPROVED"
+                ? "目前師傅尚未通過審核，看板暫不可使用。"
+                : err === "MASTER_STATUS_NOT_ENABLED"
+                  ? "目前師傅尚未開通個人狀態，看板暫不可使用。"
+                  : "目前師傅未開通看板（未通過審核或未啟用個人狀態）。";
+          }
+        }
+        return false;
+      }
     } catch {
       // fall through
     }
@@ -145,10 +162,20 @@ export async function ensureAuthorizedOrShowGate({ masterId, authEndpoint, gateE
       removeTokenFromUrl();
       return true;
     } catch (e) {
+      const err = String(e && e.message ? e.message : "").trim();
       clearStoredSession(m);
       if (gateEl) {
         gateEl.style.display = "";
-        if (msgTarget) msgTarget.textContent = "授權失敗：連結可能已過期或已使用。請向師傅索取新的授權連結。";
+        if (msgTarget) {
+          msgTarget.textContent =
+            err === "MASTER_NOT_APPROVED"
+              ? "目前師傅尚未通過審核，看板暫不可使用。"
+              : err === "MASTER_STATUS_NOT_ENABLED"
+                ? "目前師傅尚未開通個人狀態，看板暫不可使用。"
+                : err === "MASTER_NOT_OPEN"
+                  ? "目前師傅未開通看板（未通過審核或未啟用個人狀態）。"
+                  : "授權失敗：連結可能已過期或已使用。請向師傅索取新的授權連結。";
+        }
       }
       return false;
     }
