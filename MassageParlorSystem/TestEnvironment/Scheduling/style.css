@@ -751,6 +751,10 @@ body {
   }
 
   #perfCard .perf-actions .btn {
+    /* Desktop has flex-basis:140px; in column direction it becomes height.
+       Override for mobile to prevent oversized buttons. */
+    flex: 0 0 auto;
+    height: auto;
     width: 100%;
     display: block;
   }
