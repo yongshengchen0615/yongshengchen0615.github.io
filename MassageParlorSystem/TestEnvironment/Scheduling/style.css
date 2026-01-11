@@ -604,6 +604,12 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: rgba(15, 23, 42, 0.95);
   font-size: 12px;
+
+  /* 避免窄螢幕時 badge 溢出蓋到前一欄（Safari table-cell overflow 有時不裁切） */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :root[data-theme="light"] .time-badge {
@@ -747,6 +753,12 @@ body {
     width: clamp(84px, 24vw, 120px) !important;
   }
 
+  /* ✅ 剩餘時間欄位靠右（避免視覺上蓋到預約內容欄位） */
+  .card-table .status-table thead th:nth-child(5),
+  .card-table .status-table tbody td:nth-child(5) {
+    text-align: right;
+  }
+
   /* 預約內容：不換行，隨欄寬自動截斷（避免窄螢幕上下堆疊/重疊） */
   .card-table .status-table tbody td:nth-child(4) {
     white-space: nowrap;
@@ -797,6 +809,12 @@ body {
   .card {
     border-radius: 14px;
   }
+}
+
+/* 桌機/平板也讓第 5 欄靠右（排班表卡片內表格） */
+.card-table .status-table thead th:nth-child(5),
+.card-table .status-table tbody td:nth-child(5) {
+  text-align: right;
 }
 
 /* 使用者名稱 + 剩餘天數提示橫幅 */
