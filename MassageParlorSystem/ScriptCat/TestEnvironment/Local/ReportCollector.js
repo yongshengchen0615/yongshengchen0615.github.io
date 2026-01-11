@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no button, hash-based)
 // @namespace    https://local/
-// @version      1.3
+// @version      1.4
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
 // @match        https://yspos.youngsong.com.tw/#/performance?tab=P_STATIC
 // @grant        GM_xmlhttpRequest
