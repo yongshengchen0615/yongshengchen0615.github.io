@@ -16,6 +16,38 @@ import { normalizeTechNo } from "./myMasterStatus.js";
 
 const PERF_FETCH_TIMEOUT_MS = 20000;
 
+const PERF_TZ = "Asia/Taipei";
+
+// Intl formatter 建立成本很高；在 iOS/LINE WebView 反覆 new 會明顯變慢。
+const PERF_TPE_TIME_FMT = (() => {
+  try {
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: PERF_TZ,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+    }
+  } catch {}
+  return null;
+})();
+
+const PERF_TPE_DATE_PARTS_FMT = (() => {
+  try {
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: PERF_TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    }
+  } catch {}
+  return null;
+})();
+
 let perfRequestSeq_ = 0;
 let lastAutoSearchAtMs_ = 0;
 
@@ -27,6 +59,134 @@ const perfCache_ = {
   summary: null, // { meta, summaryObj, detailAgg }
   detail: null, // { meta, summaryObj, detailRows }
 };
+
+function pad2_(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatDateYmd_(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v).trim();
+  if (!s) return "";
+
+  // 已是 YYYY-MM-DD / YYYY/MM/DD：正規化成 YYYY/MM/DD
+  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return `${m[1]}/${pad2_(m[2])}/${pad2_(m[3])}`;
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    return `${d.getFullYear()}/${pad2_(d.getMonth() + 1)}/${pad2_(d.getDate())}`;
+  }
+
+  return s;
+}
+
+function formatTimeTpeHms_(v) {
+  if (v === null || v === undefined) return "";
+
+  // 純時間字串：補零 + 補秒
+  if (typeof v === "string") {
+    const s0 = v.trim();
+    if (!s0) return "";
+    const m = s0.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (m) return `${pad2_(m[1])}:${m[2]}:${m[3] ? m[3] : "00"}`;
+  }
+
+  const d = v instanceof Date ? v : new Date(String(v).trim());
+  if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
+
+  try {
+    if (PERF_TPE_TIME_FMT) {
+      const out = PERF_TPE_TIME_FMT.format(d);
+      if (out) return out;
+    }
+  } catch {
+    // fall through
+  }
+
+  // Fallback: Taiwan is UTC+8
+  const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
+  const t = new Date(tzMs);
+  return `${pad2_(t.getUTCHours())}:${pad2_(t.getUTCMinutes())}:${pad2_(t.getUTCSeconds())}`;
+}
+
+function summaryRowsHtml_(summaryObj) {
+  if (!summaryObj) return '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  const cards = [
+    { label: "排班", card: summaryObj["排班"] || {} },
+    { label: "老點", card: summaryObj["老點"] || {} },
+    { label: "總計", card: summaryObj["總計"] || {} },
+  ];
+  return cards
+    .map(({ label, card }) => `<tr>${td(label)}${td(card.單數 ?? 0)}${td(card.筆數 ?? 0)}${td(card.數量 ?? 0)}${td(card.金額 ?? 0)}</tr>`)
+    .join("");
+}
+
+function detailSummaryRowsHtml_(detailRows) {
+  const list = Array.isArray(detailRows) ? detailRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list
+      .map((r) =>
+        "<tr>" +
+        td(r["服務項目"] || "") +
+        td(r["總筆數"] ?? 0) +
+        td(r["總節數"] ?? 0) +
+        td(r["總計金額"] ?? 0) +
+        td(r["老點筆數"] ?? 0) +
+        td(r["老點節數"] ?? 0) +
+        td(r["老點金額"] ?? 0) +
+        td(r["排班筆數"] ?? 0) +
+        td(r["排班節數"] ?? 0) +
+        td(r["排班金額"] ?? 0) +
+        "</tr>"
+      )
+      .join(""),
+  };
+}
+
+function detailRowsHtml_(detailRows) {
+  const list = Array.isArray(detailRows) ? detailRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list
+      .map((r) =>
+        "<tr>" +
+        td(formatDateYmd_(r["訂單日期"])) +
+        td(r["訂單編號"] || "") +
+        td(r["序"] ?? "") +
+        td(r["拉牌"] || "") +
+        td(r["服務項目"] || "") +
+        td(r["業績金額"] ?? 0) +
+        td(r["抽成金額"] ?? 0) +
+        td(r["數量"] ?? 0) +
+        td(r["小計"] ?? 0) +
+        td(r["分鐘"] ?? 0) +
+        td(formatTimeTpeHms_(r["開工"])) +
+        td(formatTimeTpeHms_(r["完工"])) +
+        td(r["狀態"] || "") +
+        "</tr>"
+      )
+      .join(""),
+  };
+}
+
+function applyDetailTableHtml_(html, count) {
+  if (!dom.perfDetailRowsEl) return;
+  setDetailCount_(count);
+  if (!count) {
+    dom.perfDetailRowsEl.innerHTML = "";
+    showEmpty_(true);
+    return;
+  }
+  showEmpty_(false);
+  dom.perfDetailRowsEl.innerHTML = html;
+}
 
 function hasCacheForKey_(cacheKey) {
   return perfCache_.key === cacheKey && !!(perfCache_.summary || perfCache_.detail);
@@ -73,8 +233,12 @@ function renderFromCache_(mode, info) {
     const c = perfCache_.summary;
     setMeta_((c && c.meta) || "—");
     setBadge_("已更新", false);
-    renderSummary_(c ? c.summaryObj : null);
-    renderDetailSummary_(c ? c.detailAgg : []);
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
+    if (c && c.detailAggHtml) applyDetailTableHtml_(c.detailAggHtml, Number(c.detailAggCount || 0) || 0);
+    else {
+      const tmp = detailSummaryRowsHtml_(c ? c.detailAgg : []);
+      applyDetailTableHtml_(tmp.html, tmp.count);
+    }
     return { ok: true, rendered: "summary" };
   }
 
@@ -82,8 +246,12 @@ function renderFromCache_(mode, info) {
   const c = perfCache_.detail;
   setMeta_((c && c.meta) || "—");
   setBadge_("已更新", false);
-  renderSummary_(c ? c.summaryObj : null);
-  renderDetailRows_(filterDetailRowsByRange_(c ? c.detailRows : [], r.normalizedStart, r.normalizedEnd));
+  if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
+  if (c && c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
+  else {
+    const tmp = detailRowsHtml_(c ? c.detailRows : []);
+    applyDetailTableHtml_(tmp.html, tmp.count);
+  }
   return { ok: true, rendered: "detail" };
 }
 
@@ -172,8 +340,28 @@ async function reloadAndCache_(info, { showToast } = { showToast: true }) {
 
   try {
     const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
-    if (sumRes.status === "fulfilled") perfCache_.summary = sumRes.value;
-    if (detRes.status === "fulfilled") perfCache_.detail = detRes.value;
+    if (sumRes.status === "fulfilled") {
+      const v = sumRes.value;
+      perfCache_.summary = {
+        ...v,
+        summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
+        ...(v && v.detailAgg ? (() => {
+          const tmp = detailSummaryRowsHtml_(v.detailAgg);
+          return { detailAggHtml: tmp.html, detailAggCount: tmp.count };
+        })() : { detailAggHtml: "", detailAggCount: 0 }),
+      };
+    }
+    if (detRes.status === "fulfilled") {
+      const v = detRes.value;
+      const rows = v && v.detailRows ? v.detailRows : [];
+      const tmp = detailRowsHtml_(rows);
+      perfCache_.detail = {
+        ...v,
+        summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
+        detailRowsHtml: tmp.html,
+        detailRowsCount: tmp.count,
+      };
+    }
 
     if (!perfCache_.summary && !perfCache_.detail) {
       const err = [sumRes, detRes]
@@ -318,25 +506,19 @@ function toDateKeyTaipei_(v) {
   if (Number.isNaN(d.getTime())) return "";
 
   try {
-    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
-      const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Taipei",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).formatToParts(d);
-
-      const get = (type) => {
-        const p = parts.find((x) => x.type === type);
-        return p ? p.value : "";
-      };
-
-      const yyyy = get("year");
-      const mm = get("month");
-      const dd = get("day");
+    if (PERF_TPE_DATE_PARTS_FMT) {
+      const parts = PERF_TPE_DATE_PARTS_FMT.formatToParts(d);
+      let yyyy = "";
+      let mm = "";
+      let dd = "";
+      for (const p of parts) {
+        if (p.type === "year") yyyy = p.value;
+        else if (p.type === "month") mm = p.value;
+        else if (p.type === "day") dd = p.value;
+      }
       if (yyyy && mm && dd) return `${yyyy}-${mm}-${dd}`;
     }
-  } catch (_) {
+  } catch {
     // fall through
   }
 
@@ -527,28 +709,13 @@ function renderDetailRows_(detailRows) {
     const d = v instanceof Date ? v : new Date(String(v).trim());
     if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
 
-    // 盡量用 Intl 做時區格式化；不支援時用固定 UTC+8（台灣無 DST）回退
+    // 盡量用 Intl 做時區格式化（快很多：formatter 已 memoize）；不支援時用固定 UTC+8 回退
     try {
-      if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
-        const parts = new Intl.DateTimeFormat("en-GB", {
-          timeZone: "Asia/Taipei",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        }).formatToParts(d);
-
-        const get = (type) => {
-          const p = parts.find((x) => x.type === type);
-          return p ? p.value : "";
-        };
-
-        const hh = get("hour");
-        const mm = get("minute");
-        const ss = get("second");
-        if (hh && mm && ss) return `${hh}:${mm}:${ss}`;
+      if (PERF_TPE_TIME_FMT) {
+        const out = PERF_TPE_TIME_FMT.format(d);
+        if (out) return out;
       }
-    } catch (_) {
+    } catch {
       // fall through
     }
 
