@@ -288,16 +288,7 @@ function renderDetailRows_(detailRows) {
     const s = String(v).trim();
     if (!s) return "";
 
-    // 已是 HH:mm 或 HH:mm:ss
-    const m = s.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
-    if (m) return `${pad2(m[1])}:${m[2]}`;
-
-    // ISO 或可 parse 的時間
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) {
-      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    }
-
+    // 依需求：開工/完工直接顯示 GAS 回傳值，不做任何時間推算/轉時區。
     return s;
   };
 
