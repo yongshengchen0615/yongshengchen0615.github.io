@@ -134,6 +134,70 @@ function buildDateKeys_(startKey, endKey, maxDays) {
   return { ok: true, keys: out, normalizedStart: toDateKey_(start), normalizedEnd: toDateKey_(end) };
 }
 
+function toDateKeyTaipei_(v) {
+  if (v === null || v === undefined) return "";
+
+  // Fast path: YYYY-MM-DD or YYYY/MM/DD
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return "";
+    const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (m) {
+      const mm = String(m[2]).padStart(2, "0");
+      const dd = String(m[3]).padStart(2, "0");
+      return `${m[1]}-${mm}-${dd}`;
+    }
+  }
+
+  const d = v instanceof Date ? v : new Date(String(v).trim());
+  if (Number.isNaN(d.getTime())) return "";
+
+  try {
+    if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+
+      const get = (type) => {
+        const p = parts.find((x) => x.type === type);
+        return p ? p.value : "";
+      };
+
+      const yyyy = get("year");
+      const mm = get("month");
+      const dd = get("day");
+      if (yyyy && mm && dd) return `${yyyy}-${mm}-${dd}`;
+    }
+  } catch (_) {
+    // fall through
+  }
+
+  // Fallback: Taiwan is UTC+8 (no DST)
+  const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
+  const t = new Date(tzMs);
+  const yyyy = String(t.getUTCFullYear());
+  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(t.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function filterDetailRowsByRange_(detailRows, startKey, endKey) {
+  const rows = Array.isArray(detailRows) ? detailRows : [];
+  const s = String(startKey || "").trim();
+  const e = String(endKey || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return rows;
+
+  return rows.filter((r) => {
+    const dk = toDateKeyTaipei_(r && r["訂單日期"]);
+    // 若無法辨識日期：保守不過濾，避免誤刪資料
+    if (!dk) return true;
+    return dk >= s && dk <= e;
+  });
+}
+
 function setBadge_(text, isError) {
   if (!dom.perfStatusEl) return;
   dom.perfStatusEl.textContent = String(text || "");
@@ -716,7 +780,7 @@ async function runSearchDetail_() {
     setMeta_(c.meta || "—");
     setBadge_("已更新", false);
     renderSummary_(c.summaryObj);
-    renderDetailRows_(c.detailRows);
+    renderDetailRows_(filterDetailRowsByRange_(c.detailRows, info.normalizedStart, info.normalizedEnd));
     return;
   }
 
@@ -756,10 +820,11 @@ async function runSearchDetail_() {
     setBadge_("已更新", false);
 
     renderSummary_(r.summary);
-    renderDetailRows_(r.detail);
+    const filteredDetail = filterDetailRowsByRange_(r.detail, info.normalizedStart, info.normalizedEnd);
+    renderDetailRows_(filteredDetail);
 
     perfCache_.key = cacheKey;
-    perfCache_.detail = { meta, summaryObj: r.summary, detailRows: r.detail };
+    perfCache_.detail = { meta, summaryObj: r.summary, detailRows: filteredDetail };
     perfCache_.summary = null;
   } catch (e) {
     console.error("[Performance] detail fetch failed:", e);
@@ -828,7 +893,7 @@ export async function prefetchPerformanceOnce() {
       setMeta_(perfCache_.detail.meta || "—");
       setBadge_("已更新", false);
       renderSummary_(perfCache_.detail.summaryObj);
-      renderDetailRows_(perfCache_.detail.detailRows);
+      renderDetailRows_(filterDetailRowsByRange_(perfCache_.detail.detailRows, info.normalizedStart, info.normalizedEnd));
       return { ok: true, cached: true };
     }
 
@@ -907,7 +972,7 @@ export async function prefetchPerformanceOnce() {
         .filter(Boolean)
         .join(" ｜ ");
 
-      return { meta, summaryObj: r.summary, detailRows: r.detail };
+      return { meta, summaryObj: r.summary, detailRows: filterDetailRowsByRange_(r.detail, info.normalizedStart, info.normalizedEnd) };
     })();
 
     const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
@@ -920,7 +985,7 @@ export async function prefetchPerformanceOnce() {
       setMeta_(perfCache_.detail.meta || "—");
       setBadge_("已更新", false);
       renderSummary_(perfCache_.detail.summaryObj);
-      renderDetailRows_(perfCache_.detail.detailRows);
+      renderDetailRows_(filterDetailRowsByRange_(perfCache_.detail.detailRows, info.normalizedStart, info.normalizedEnd));
       return { ok: true, rendered: "detail" };
     }
 
