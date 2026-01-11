@@ -121,9 +121,9 @@ async function boot() {
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");
-  // 不要讓「業績預載」阻擋整體進入畫面：改為背景載入。
-  startPolling();
-  // 仍保留背景預載（避免未處理的 promise 被某些環境視為 error）
+  // 需求：切到業績面板時要「馬上可看」→ 初始載入期間把業績預載做完，再進主畫面。
+  startPolling(perfReady);
+  // 避免未處理的 promise 被某些環境視為 error（startPolling 內部會 await，但仍保守處理）
   if (perfReady && typeof perfReady.then === "function") perfReady.catch(() => {});
 }
 

@@ -1064,12 +1064,19 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 }
 
 /**
- * 切換到「業績」視圖時呼叫：只補預設日期，不自動查詢。
- * - 使用者按「業績統計 / 業績明細」才會查詢
- * - 符合「除非重整/手動查詢，否則不需要一直載入」
+ * 切換到「業績」視圖時呼叫：
+ * - 補預設日期
+ * - 直接從快取渲染（不打 API）
+ *   讓切換到業績面板時可以立刻看到「統計/明細」
  */
 export function onShowPerformance() {
   ensureDefaultDate_();
+
+  // 進入業績頁時，先隱藏錯誤提示，並用快取渲染最後選擇的模式。
+  showError_(false);
+  try {
+    renderFromCache_(perfSelectedMode_);
+  } catch {}
 
   // 進入業績頁時，若之前有殘留 toast，先關掉
   hideLoadingHint();
