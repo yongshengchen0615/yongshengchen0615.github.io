@@ -705,8 +705,30 @@ body {
   }
 
   /* 業績查詢：行動版讓日期與查詢按鈕同寬 */
-  #perfCard .filters .btn {
+  #perfCard .filters {
+    gap: 10px;
+  }
+
+  /* 兩顆按鈕：在行動版穩定直排（避免 inline button 寬度 100% 時互相擠壓） */
+  #perfCard .filters .filter:last-child .filter-label {
+    display: none;
+  }
+
+  #perfCard .filters .filter:last-child .btn {
     width: 100%;
+    display: block;
+  }
+
+  /* 業績表格欄位多：行動版優先可橫向捲動 + 略縮字 */
+  #perfCard .status-table {
+    min-width: 980px;
+    font-size: 12px;
+  }
+
+  #perfCard .status-table th,
+  #perfCard .status-table td {
+    white-space: nowrap;
+    padding: 6px 6px;
   }
 
   .main {
@@ -827,6 +849,17 @@ body {
 
 /* 更窄螢幕：第 5 欄再縮，避免任何視覺遮擋第 4 欄 */
 @media (max-width: 420px) {
+  /* 超小螢幕：業績表格再縮一點，避免字太擠 */
+  #perfCard .card-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  #perfCard .status-table {
+    min-width: 880px;
+    font-size: 11px;
+  }
+
   .card-table .status-table thead th:nth-child(5),
   .card-table .status-table tbody td:nth-child(5) {
     width: clamp(56px, 16vw, 88px) !important;

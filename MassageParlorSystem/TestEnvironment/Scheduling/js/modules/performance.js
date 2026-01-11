@@ -20,6 +20,15 @@ function localDateKeyToday_() {
   return local.toISOString().slice(0, 10);
 }
 
+function localDateKeyMonthStart_() {
+  const now = new Date();
+  // 用本地日期組出當月 1 號（避免 UTC offset 導致月份/日期偏移）
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
 function parseDateKey_(s) {
   const v = String(s || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
@@ -574,9 +583,10 @@ async function runSearchDetail_() {
 
 function ensureDefaultDate_() {
   const today = localDateKeyToday_();
+  const monthStart = localDateKeyMonthStart_();
 
-  // 新版：日期區間（預設同一天）
-  if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = today;
+  // 新版：日期區間（開始=當月1號；結束=今日）
+  if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = monthStart;
   if (dom.perfDateEndInput && !dom.perfDateEndInput.value) dom.perfDateEndInput.value = today;
 
   // 舊版：單日
