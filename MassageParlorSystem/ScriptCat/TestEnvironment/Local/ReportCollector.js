@@ -3,7 +3,7 @@
 // @namespace    https://local/
 // @version      1.4
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
-// ✅ Fix: @match 不吃 #fragment → 改成 domain-wide match，再用程式內判斷 location.hash
+// @match 不吃 #fragment → 改成 domain-wide match，再用程式內判斷 location.hash
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
