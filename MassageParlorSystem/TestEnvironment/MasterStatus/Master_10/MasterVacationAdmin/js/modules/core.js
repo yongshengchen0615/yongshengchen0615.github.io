@@ -14,6 +14,13 @@ export function ymd(d) {
   return "";
 }
 
+// Display helper: converts canonical YYYY-MM-DD into YYYY/MM/DD.
+// Returns empty string if input is not a valid canonical date.
+export function ymdSlash(d) {
+  const s = ymd(d);
+  return s ? s.replace(/-/g, "/") : "";
+}
+
 export function uniqSorted(list) {
   const arr = (Array.isArray(list) ? list : []).map(String).filter(Boolean);
   const set = new Set(arr);
