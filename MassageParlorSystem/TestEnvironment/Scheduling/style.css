@@ -393,6 +393,37 @@ body {
   color: rgba(148, 163, 184, 0.8);
 }
 
+/* ✅ 業績查詢：開始/結束日期 + 明細/統計按鈕在各裝置自適應且不溢出 */
+#perfCard .filters {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+#perfCard .filter {
+  width: 100%;
+  min-width: 0;
+}
+
+#perfCard .input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+#perfCard .perf-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#perfCard .perf-actions .btn {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 /* 主內容區 */
 .main {
   display: flex;
@@ -706,6 +737,7 @@ body {
 
   /* 業績查詢：行動版讓日期與查詢按鈕同寬 */
   #perfCard .filters {
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 
@@ -714,7 +746,11 @@ body {
     display: none;
   }
 
-  #perfCard .filters .filter:last-child .btn {
+  #perfCard .perf-actions {
+    flex-direction: column;
+  }
+
+  #perfCard .perf-actions .btn {
     width: 100%;
     display: block;
   }
