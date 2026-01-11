@@ -544,22 +544,22 @@ async function runSearchSummary_() {
   const techNo = info.techNo;
 
   if (!info.ok) {
-    setBadge_("你不是師傅（無法查詢）", true);
-    setMeta_("—");
-    renderSummary_(null);
-    renderDetailSummary_([]);
-    return;
-  }
+    if (info.error === "NOT_MASTER") {
+      setBadge_("你不是師傅（無法查詢）", true);
+      setMeta_("—");
+      renderSummary_(null);
+      renderDetailSummary_([]);
+      return;
+    }
+    if (info.error === "MISSING_START") {
+      setBadge_("請選擇開始日期", true);
+      return;
+    }
+    if (info.error === "RANGE_TOO_LONG") {
+      setBadge_("日期區間過長（最多 31 天）", true);
+      return;
+    }
 
-  if (info.error === "MISSING_START") {
-    setBadge_("請選擇開始日期", true);
-    return;
-  }
-  if (info.error === "RANGE_TOO_LONG") {
-    setBadge_("日期區間過長（最多 31 天）", true);
-    return;
-  }
-  if (info.error && info.error !== "NOT_MASTER") {
     setBadge_("日期格式不正確", true);
     return;
   }
@@ -632,6 +632,7 @@ async function runSearchSummary_() {
 
     perfCache_.key = cacheKey;
     perfCache_.summary = { meta, summaryObj, detailAgg };
+    perfCache_.detail = null;
   } catch (e) {
     console.error("[Performance] fetch failed:", e);
 
@@ -662,22 +663,22 @@ async function runSearchDetail_() {
   const techNo = info.techNo;
 
   if (!info.ok) {
-    setBadge_("你不是師傅（無法查詢）", true);
-    setMeta_("—");
-    renderSummary_(null);
-    renderDetailRows_([]);
-    return;
-  }
+    if (info.error === "NOT_MASTER") {
+      setBadge_("你不是師傅（無法查詢）", true);
+      setMeta_("—");
+      renderSummary_(null);
+      renderDetailRows_([]);
+      return;
+    }
+    if (info.error === "MISSING_START") {
+      setBadge_("請選擇開始日期", true);
+      return;
+    }
+    if (info.error === "RANGE_TOO_LONG") {
+      setBadge_("日期區間過長（最多 31 天）", true);
+      return;
+    }
 
-  if (info.error === "MISSING_START") {
-    setBadge_("請選擇開始日期", true);
-    return;
-  }
-  if (info.error === "RANGE_TOO_LONG") {
-    setBadge_("日期區間過長（最多 31 天）", true);
-    return;
-  }
-  if (info.error && info.error !== "NOT_MASTER") {
     setBadge_("日期格式不正確", true);
     return;
   }
@@ -732,6 +733,7 @@ async function runSearchDetail_() {
 
     perfCache_.key = cacheKey;
     perfCache_.detail = { meta, summaryObj: r.summary, detailRows: r.detail };
+    perfCache_.summary = null;
   } catch (e) {
     console.error("[Performance] detail fetch failed:", e);
 
