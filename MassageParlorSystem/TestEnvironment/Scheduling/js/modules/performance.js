@@ -19,6 +19,12 @@ const PERF_FETCH_TIMEOUT_MS = 20000;
 let perfRequestSeq_ = 0;
 let lastAutoSearchAtMs_ = 0;
 
+const perfCache_ = {
+  key: "", // techNo:start~end
+  summary: null, // { meta, summaryObj, detailAgg }
+  detail: null, // { meta, summaryObj, detailRows }
+};
+
 function sleep_(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
@@ -33,6 +39,40 @@ function beginPerfRequest_(text) {
 function endPerfRequest_(seq) {
   // 只允許最後一次查詢關掉 toast（避免舊請求覆蓋新請求的顯示狀態）
   if (seq === perfRequestSeq_) hideLoadingHint();
+}
+
+function makePerfCacheKey_(techNo, startKey, endKey) {
+  return `${String(techNo || "").trim()}:${String(startKey || "").trim()}~${String(endKey || "").trim()}`;
+}
+
+function readRangeFromInputs_() {
+  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+  const startKey = String(dom.perfDateStartInput && dom.perfDateStartInput.value ? dom.perfDateStartInput.value : "").trim();
+  const endKeyRaw = String(dom.perfDateEndInput && dom.perfDateEndInput.value ? dom.perfDateEndInput.value : "").trim();
+  const endKey = endKeyRaw || startKey;
+
+  if (!techNo) return { ok: false, error: "NOT_MASTER", techNo: "", startKey, endKey };
+  if (!startKey) return { ok: false, error: "MISSING_START", techNo, startKey, endKey };
+
+  const range = buildDateKeys_(startKey, endKey, 31);
+  if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", techNo, startKey, endKey };
+
+  // 若使用者輸入反了，自動同步回輸入框
+  if (dom.perfDateStartInput && range.normalizedStart && dom.perfDateStartInput.value !== range.normalizedStart) {
+    dom.perfDateStartInput.value = range.normalizedStart;
+  }
+  if (dom.perfDateEndInput && range.normalizedEnd && dom.perfDateEndInput.value !== range.normalizedEnd) {
+    dom.perfDateEndInput.value = range.normalizedEnd;
+  }
+
+  return {
+    ok: true,
+    techNo,
+    normalizedStart: range.normalizedStart,
+    normalizedEnd: range.normalizedEnd,
+    dateKeys: range.keys,
+    rangeKey: `${range.normalizedStart}~${range.normalizedEnd}`,
+  };
 }
 
 function localDateKeyToday_() {
@@ -500,15 +540,10 @@ async function runSearchSummary_() {
   // 若上一筆查詢卡住或中斷，避免 toast 殘留
   hideLoadingHint();
 
-  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+  const info = readRangeFromInputs_();
+  const techNo = info.techNo;
 
-  const startKey = String(
-    dom.perfDateStartInput && dom.perfDateStartInput.value ? dom.perfDateStartInput.value : ""
-  ).trim();
-  const endKeyRaw = String(dom.perfDateEndInput && dom.perfDateEndInput.value ? dom.perfDateEndInput.value : "").trim();
-  const endKey = endKeyRaw || startKey;
-
-  if (!techNo) {
+  if (!info.ok) {
     setBadge_("你不是師傅（無法查詢）", true);
     setMeta_("—");
     renderSummary_(null);
@@ -516,31 +551,34 @@ async function runSearchSummary_() {
     return;
   }
 
-  if (!startKey) {
+  if (info.error === "MISSING_START") {
     setBadge_("請選擇開始日期", true);
     return;
   }
-
-  const range = buildDateKeys_(startKey, endKey, 31);
-  if (!range.ok) {
-    if (range.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
-    else setBadge_("日期格式不正確", true);
+  if (info.error === "RANGE_TOO_LONG") {
+    setBadge_("日期區間過長（最多 31 天）", true);
+    return;
+  }
+  if (info.error && info.error !== "NOT_MASTER") {
+    setBadge_("日期格式不正確", true);
     return;
   }
 
-  // 若使用者輸入反了，自動同步回輸入框
-  if (dom.perfDateStartInput && range.normalizedStart && dom.perfDateStartInput.value !== range.normalizedStart) {
-    dom.perfDateStartInput.value = range.normalizedStart;
-  }
-  if (dom.perfDateEndInput && range.normalizedEnd && dom.perfDateEndInput.value !== range.normalizedEnd) {
-    dom.perfDateEndInput.value = range.normalizedEnd;
+  const cacheKey = makePerfCacheKey_(techNo, info.normalizedStart, info.normalizedEnd);
+  if (perfCache_.key === cacheKey && perfCache_.summary) {
+    const c = perfCache_.summary;
+    setMeta_(c.meta || "—");
+    setBadge_("已更新", false);
+    renderSummary_(c.summaryObj);
+    renderDetailSummary_(c.detailAgg);
+    return;
   }
 
   setBadge_("查詢中…", false);
   const reqSeq = beginPerfRequest_("查詢業績中…");
 
   try {
-    const keys = range.keys;
+    const keys = info.dateKeys;
     const results = [];
 
     for (let i = 0; i < keys.length; i++) {
@@ -587,8 +625,13 @@ async function runSearchSummary_() {
     setMeta_(meta || "—");
     setBadge_("已更新", false);
 
-    renderSummary_(aggregateSummary_(results.map((x) => x.normalized)));
-    renderDetailSummary_(aggregateDetail_(results.map((x) => x.normalized)));
+    const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
+    const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
+    renderSummary_(summaryObj);
+    renderDetailSummary_(detailAgg);
+
+    perfCache_.key = cacheKey;
+    perfCache_.summary = { meta, summaryObj, detailAgg };
   } catch (e) {
     console.error("[Performance] fetch failed:", e);
 
@@ -615,15 +658,10 @@ async function runSearchDetail_() {
   // 若上一筆查詢卡住或中斷，避免 toast 殘留
   hideLoadingHint();
 
-  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+  const info = readRangeFromInputs_();
+  const techNo = info.techNo;
 
-  const startKey = String(
-    dom.perfDateStartInput && dom.perfDateStartInput.value ? dom.perfDateStartInput.value : ""
-  ).trim();
-  const endKeyRaw = String(dom.perfDateEndInput && dom.perfDateEndInput.value ? dom.perfDateEndInput.value : "").trim();
-  const endKey = endKeyRaw || startKey;
-
-  if (!techNo) {
+  if (!info.ok) {
     setBadge_("你不是師傅（無法查詢）", true);
     setMeta_("—");
     renderSummary_(null);
@@ -631,26 +669,30 @@ async function runSearchDetail_() {
     return;
   }
 
-  if (!startKey) {
+  if (info.error === "MISSING_START") {
     setBadge_("請選擇開始日期", true);
     return;
   }
-
-  const range = buildDateKeys_(startKey, endKey, 31);
-  if (!range.ok) {
-    if (range.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
-    else setBadge_("日期格式不正確", true);
+  if (info.error === "RANGE_TOO_LONG") {
+    setBadge_("日期區間過長（最多 31 天）", true);
+    return;
+  }
+  if (info.error && info.error !== "NOT_MASTER") {
+    setBadge_("日期格式不正確", true);
     return;
   }
 
-  if (dom.perfDateStartInput && range.normalizedStart && dom.perfDateStartInput.value !== range.normalizedStart) {
-    dom.perfDateStartInput.value = range.normalizedStart;
-  }
-  if (dom.perfDateEndInput && range.normalizedEnd && dom.perfDateEndInput.value !== range.normalizedEnd) {
-    dom.perfDateEndInput.value = range.normalizedEnd;
+  const cacheKey = makePerfCacheKey_(techNo, info.normalizedStart, info.normalizedEnd);
+  if (perfCache_.key === cacheKey && perfCache_.detail) {
+    const c = perfCache_.detail;
+    setMeta_(c.meta || "—");
+    setBadge_("已更新", false);
+    renderSummary_(c.summaryObj);
+    renderDetailRows_(c.detailRows);
+    return;
   }
 
-  const rangeKey = `${range.normalizedStart}~${range.normalizedEnd}`;
+  const rangeKey = info.rangeKey;
 
   setBadge_("查詢中…", false);
   const reqSeq = beginPerfRequest_("查詢業績明細中…");
@@ -676,7 +718,7 @@ async function runSearchDetail_() {
 
     const meta = [
       `師傅：${r.techNo || techNo}`,
-      `日期：${range.normalizedStart} ~ ${range.normalizedEnd}`,
+      `日期：${info.normalizedStart} ~ ${info.normalizedEnd}`,
       r.lastUpdatedAt ? `最後更新：${r.lastUpdatedAt}` : "",
     ]
       .filter(Boolean)
@@ -687,6 +729,9 @@ async function runSearchDetail_() {
 
     renderSummary_(r.summary);
     renderDetailRows_(r.detail);
+
+    perfCache_.key = cacheKey;
+    perfCache_.detail = { meta, summaryObj: r.summary, detailRows: r.detail };
   } catch (e) {
     console.error("[Performance] detail fetch failed:", e);
 
@@ -731,6 +776,141 @@ export function initPerformanceUi() {
   // v2: 統計 / 明細
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void runSearchSummary_());
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void runSearchDetail_());
+}
+
+/**
+ * 登入後預載一次業績資料（若功能開通且為師傅）。
+ * - 會同時預載「統計」與「明細」並快取
+ * - 預設渲染為明細（訂單列表），避免使用者還要再點按鈕
+ */
+export async function prefetchPerformanceOnce() {
+  try {
+    // feature off → no-op
+    if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
+
+    ensureDefaultDate_();
+    const info = readRangeFromInputs_();
+    if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
+
+    const cacheKey = makePerfCacheKey_(info.techNo, info.normalizedStart, info.normalizedEnd);
+    if (perfCache_.key === cacheKey && perfCache_.summary && perfCache_.detail) {
+      // 已有完整快取：直接把明細渲染一次（確保 DOM 有資料）
+      renderDetailHeader_("detail");
+      setMeta_(perfCache_.detail.meta || "—");
+      setBadge_("已更新", false);
+      renderSummary_(perfCache_.detail.summaryObj);
+      renderDetailRows_(perfCache_.detail.detailRows);
+      return { ok: true, cached: true };
+    }
+
+    // 先清掉同 key 的舊快取，避免混用
+    perfCache_.key = cacheKey;
+    perfCache_.summary = null;
+    perfCache_.detail = null;
+
+    // 不顯示 top toast（避免打擾）；用初始載入遮罩即可
+    hideLoadingHint();
+
+    const summaryP = (async () => {
+      const keys = info.dateKeys;
+      const results = [];
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+
+        let ok = false;
+        let lastErr = "";
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const raw = await fetchReport_(info.techNo, k);
+          const r = normalizeReportResponse_(raw);
+          if (r.ok) {
+            results.push({ dateKey: k, normalized: r });
+            ok = true;
+            break;
+          }
+          lastErr = String(r.error || "BAD_RESPONSE");
+          if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+            await sleep_(900 + attempt * 600);
+            continue;
+          }
+          break;
+        }
+
+        if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
+      }
+
+      const single = keys.length === 1;
+      const dateMeta = single ? `日期：${keys[0]}` : `日期：${keys[0]} ~ ${keys[keys.length - 1]}`;
+      const last = results.length ? results[results.length - 1].normalized : null;
+      const meta = [
+        `師傅：${(last && last.techNo) || info.techNo}`,
+        dateMeta,
+        last && last.lastUpdatedAt ? `最後更新：${last.lastUpdatedAt}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ｜ ");
+
+      const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
+      const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
+      return { meta, summaryObj, detailAgg };
+    })();
+
+    const detailP = (async () => {
+      let r = null;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const raw = await fetchDetailPerf_(info.techNo, info.rangeKey);
+        r = normalizeDetailPerfResponse_(raw);
+        if (r.ok) break;
+        lastErr = String(r.error || "BAD_RESPONSE");
+        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+          await sleep_(900 + attempt * 600);
+          continue;
+        }
+        break;
+      }
+      if (!r || !r.ok) throw new Error(lastErr || "BAD_RESPONSE");
+
+      const meta = [
+        `師傅：${r.techNo || info.techNo}`,
+        `日期：${info.normalizedStart} ~ ${info.normalizedEnd}`,
+        r.lastUpdatedAt ? `最後更新：${r.lastUpdatedAt}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ｜ ");
+
+      return { meta, summaryObj: r.summary, detailRows: r.detail };
+    })();
+
+    const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
+    if (sumRes.status === "fulfilled") perfCache_.summary = sumRes.value;
+    if (detRes.status === "fulfilled") perfCache_.detail = detRes.value;
+
+    // 預設顯示：明細優先；否則退回統計
+    if (perfCache_.detail) {
+      renderDetailHeader_("detail");
+      setMeta_(perfCache_.detail.meta || "—");
+      setBadge_("已更新", false);
+      renderSummary_(perfCache_.detail.summaryObj);
+      renderDetailRows_(perfCache_.detail.detailRows);
+      return { ok: true, rendered: "detail" };
+    }
+
+    if (perfCache_.summary) {
+      renderDetailHeader_("summary");
+      setMeta_(perfCache_.summary.meta || "—");
+      setBadge_("已更新", false);
+      renderSummary_(perfCache_.summary.summaryObj);
+      renderDetailSummary_(perfCache_.summary.detailAgg);
+      return { ok: true, rendered: "summary" };
+    }
+
+    // 兩者都失敗：維持空狀態
+    setBadge_("查詢失敗", true);
+    return { ok: false, error: "PREFETCH_FAILED" };
+  } catch (e) {
+    console.error("[Performance] prefetch failed:", e);
+    return { ok: false, error: String(e && e.message ? e.message : e) };
+  }
 }
 
 /**

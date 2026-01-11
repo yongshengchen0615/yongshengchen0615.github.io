@@ -18,7 +18,7 @@ import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
-import { initPerformanceUi } from "./modules/performance.js";
+import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 
 let eventsBound = false;
@@ -112,9 +112,16 @@ async function boot() {
   // 初始視圖
   setViewMode(VIEW.MY_STATUS);
 
+  // ✅ 登入後：若「業績」開通，預載一次（不需要點擊按鈕）
+  let perfReady = Promise.resolve();
+  if (String(state.feature && state.feature.performanceEnabled) === "是") {
+    setInitialLoadingProgress(72, "載入業績資料中…");
+    perfReady = prefetchPerformanceOnce();
+  }
+
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");
-  startPolling();
+  startPolling(perfReady);
 }
 
 window.addEventListener("load", () => {

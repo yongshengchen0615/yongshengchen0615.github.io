@@ -125,7 +125,7 @@ function resetPollState() {
  * - 內建自適應間隔：穩定後加長、失敗後退避、資料變更時加速下一次
  * @returns {void}
  */
-export function startPolling() {
+export function startPolling(extraReadyPromise) {
   showInitialLoading("資料載入中…");
   setInitialLoadingProgress(85, "同步資料中…");
 
@@ -145,8 +145,17 @@ export function startPolling() {
   }
 
   // 初次啟動
-  refreshStatusAdaptive(false).then((res) => {
+  refreshStatusAdaptive(false).then(async (res) => {
     updateMyMasterStatusUI();
+
+    // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
+    try {
+      setInitialLoadingProgress(92, "準備中…");
+      await Promise.resolve(extraReadyPromise);
+    } catch {
+      // extraReadyPromise 失敗不應阻擋主流程
+    }
+
     setInitialLoadingProgress(100, "完成");
     hideInitialLoading();
     const next = computeNextInterval(res);
