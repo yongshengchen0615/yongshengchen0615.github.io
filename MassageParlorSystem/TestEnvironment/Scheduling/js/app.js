@@ -113,7 +113,7 @@ async function boot() {
   setViewMode(VIEW.MY_STATUS);
 
   // ✅ 登入後：若「業績」開通，預載一次（不需要點擊按鈕）
-  let perfReady = Promise.resolve();
+  let perfReady = null;
   if (String(state.feature && state.feature.performanceEnabled) === "是") {
     setInitialLoadingProgress(72, "載入業績資料中…");
     perfReady = prefetchPerformanceOnce();
@@ -121,7 +121,10 @@ async function boot() {
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");
-  startPolling(perfReady);
+  // 不要讓「業績預載」阻擋整體進入畫面：改為背景載入。
+  startPolling();
+  // 仍保留背景預載（避免未處理的 promise 被某些環境視為 error）
+  if (perfReady && typeof perfReady.then === "function") perfReady.catch(() => {});
 }
 
 window.addEventListener("load", () => {
