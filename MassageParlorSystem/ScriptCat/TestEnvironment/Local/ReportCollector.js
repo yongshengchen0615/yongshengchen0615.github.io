@@ -3,7 +3,7 @@
 // @namespace    https://local/
 // @version      1.3
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
-// @match        https://yongshengchen0615.github.io/Performance.html
+// @match        https://yspos.youngsong.com.tw/#/performance?tab=P_STATIC
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
