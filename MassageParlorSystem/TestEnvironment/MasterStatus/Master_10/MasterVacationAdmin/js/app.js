@@ -10,7 +10,7 @@ import {
   verifyAdminPassphrase,
   changeAdminPassphrase,
 } from "./modules/api.js";
-import { escapeHtml, ymd, uniqSorted } from "./modules/core.js";
+import { escapeHtml, ymd, ymdSlash, uniqSorted } from "./modules/core.js";
 import { initLiffLoginAndCheckAccess } from "./modules/lineAuth.js";
 
 const els = {
@@ -409,9 +409,10 @@ function render() {
 
   const tbody = table.querySelector("tbody");
   merged.forEach((date) => {
+    const displayDate = ymdSlash(date) || String(date || "");
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${escapeHtml(date)}</td>
+      <td>${escapeHtml(displayDate)}</td>
       <td><button class="btn btn-danger" type="button" data-act="del" data-date="${escapeHtml(date)}">刪除</button></td>
     `;
     tbody.appendChild(tr);
@@ -424,7 +425,8 @@ function render() {
     btn.addEventListener("click", () => {
       const date = String(btn.getAttribute("data-date") || "");
       if (!date) return;
-      if (!confirm(`確定刪除假日：${date}？`)) return;
+      const displayDate = ymdSlash(date) || date;
+      if (!confirm(`確定刪除假日：${displayDate}？`)) return;
 
       // 如果是剛暫存新增的，就直接移除 add
       const idxAdd = state.pendingAdd.findIndex((x) => String(x.date) === date);
@@ -477,7 +479,7 @@ function addHoliday() {
 
   state.pendingAdd.unshift({ type: "holiday", date });
   els.holidayInput.value = "";
-  setText(els.msg, `已暫存新增：${date}`);
+  setText(els.msg, `已暫存新增：${ymdSlash(date) || date}`);
   render();
 }
 
