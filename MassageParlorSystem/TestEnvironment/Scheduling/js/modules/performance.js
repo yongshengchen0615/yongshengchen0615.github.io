@@ -19,11 +19,176 @@ const PERF_FETCH_TIMEOUT_MS = 20000;
 let perfRequestSeq_ = 0;
 let lastAutoSearchAtMs_ = 0;
 
+let perfSelectedMode_ = "detail"; // detail | summary
+let perfPrefetchInFlight_ = null;
+
 const perfCache_ = {
   key: "", // techNo:start~end
   summary: null, // { meta, summaryObj, detailAgg }
   detail: null, // { meta, summaryObj, detailRows }
 };
+
+function hasCacheForKey_(cacheKey) {
+  return perfCache_.key === cacheKey && !!(perfCache_.summary || perfCache_.detail);
+}
+
+function hasFullCacheForKey_(cacheKey) {
+  return perfCache_.key === cacheKey && !!perfCache_.summary && !!perfCache_.detail;
+}
+
+function renderFromCache_(mode, info) {
+  const m = mode === "summary" ? "summary" : "detail";
+  perfSelectedMode_ = m;
+
+  const r = info && info.ok ? info : readRangeFromInputs_();
+  if (!r || !r.ok) {
+    if (r && r.error === "NOT_MASTER") {
+      setBadge_("你不是師傅（無法查詢）", true);
+      setMeta_("—");
+      renderSummary_(null);
+      if (m === "detail") renderDetailRows_([]);
+      else renderDetailSummary_([]);
+      return { ok: false, error: r ? r.error : "BAD_RANGE" };
+    }
+    setBadge_("日期格式不正確", true);
+    return { ok: false, error: r ? r.error : "BAD_RANGE" };
+  }
+
+  const cacheKey = makePerfCacheKey_(r.techNo, r.normalizedStart, r.normalizedEnd);
+  if (!hasCacheForKey_(cacheKey)) {
+    if (perfPrefetchInFlight_) {
+      setBadge_("業績載入中…", false);
+    } else {
+      setBadge_("尚未載入（請按手動重整）", true);
+    }
+    setMeta_(`師傅：${r.techNo} ｜ 日期：${r.normalizedStart} ~ ${r.normalizedEnd}`);
+    renderSummary_(null);
+    if (m === "detail") renderDetailRows_([]);
+    else renderDetailSummary_([]);
+    return { ok: false, error: "CACHE_MISS" };
+  }
+
+  if (m === "summary") {
+    renderDetailHeader_("summary");
+    const c = perfCache_.summary;
+    setMeta_((c && c.meta) || "—");
+    setBadge_("已更新", false);
+    renderSummary_(c ? c.summaryObj : null);
+    renderDetailSummary_(c ? c.detailAgg : []);
+    return { ok: true, rendered: "summary" };
+  }
+
+  renderDetailHeader_("detail");
+  const c = perfCache_.detail;
+  setMeta_((c && c.meta) || "—");
+  setBadge_("已更新", false);
+  renderSummary_(c ? c.summaryObj : null);
+  renderDetailRows_(filterDetailRowsByRange_(c ? c.detailRows : [], r.normalizedStart, r.normalizedEnd));
+  return { ok: true, rendered: "detail" };
+}
+
+async function reloadAndCache_(info, { showToast } = { showToast: true }) {
+  const r = info && info.ok ? info : readRangeFromInputs_();
+  if (!r || !r.ok) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
+
+  const cacheKey = makePerfCacheKey_(r.techNo, r.normalizedStart, r.normalizedEnd);
+  perfCache_.key = cacheKey;
+  perfCache_.summary = null;
+  perfCache_.detail = null;
+
+  if (showToast) hideLoadingHint();
+
+  const summaryP = (async () => {
+    const keys = r.dateKeys;
+    const results = [];
+
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (showToast) showLoadingHint(`查詢業績中…（${i + 1}/${keys.length}）`);
+
+      let ok = false;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const raw = await fetchReport_(r.techNo, k);
+        const nr = normalizeReportResponse_(raw);
+        if (nr.ok) {
+          results.push({ dateKey: k, normalized: nr });
+          ok = true;
+          break;
+        }
+        lastErr = String(nr.error || "BAD_RESPONSE");
+        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+          await sleep_(900 + attempt * 600);
+          continue;
+        }
+        break;
+      }
+      if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
+    }
+
+    const single = keys.length === 1;
+    const dateMeta = single ? `日期：${keys[0]}` : `日期：${keys[0]} ~ ${keys[keys.length - 1]}`;
+    const last = results.length ? results[results.length - 1].normalized : null;
+    const meta = [
+      `師傅：${(last && last.techNo) || r.techNo}`,
+      dateMeta,
+      last && last.lastUpdatedAt ? `最後更新：${last.lastUpdatedAt}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ｜ ");
+
+    const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
+    const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
+    return { meta, summaryObj, detailAgg };
+  })();
+
+  const detailP = (async () => {
+    let rr = null;
+    let lastErr = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (showToast) showLoadingHint(`查詢業績明細中…（${attempt + 1}/3）`);
+      const raw = await fetchDetailPerf_(r.techNo, r.rangeKey);
+      rr = normalizeDetailPerfResponse_(raw);
+      if (rr.ok) break;
+      lastErr = String(rr.error || "BAD_RESPONSE");
+      if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+        await sleep_(900 + attempt * 600);
+        continue;
+      }
+      break;
+    }
+    if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
+
+    const meta = [
+      `師傅：${rr.techNo || r.techNo}`,
+      `日期：${r.normalizedStart} ~ ${r.normalizedEnd}`,
+      rr.lastUpdatedAt ? `最後更新：${rr.lastUpdatedAt}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ｜ ");
+
+    return { meta, summaryObj: rr.summary, detailRows: filterDetailRowsByRange_(rr.detail, r.normalizedStart, r.normalizedEnd) };
+  })();
+
+  try {
+    const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
+    if (sumRes.status === "fulfilled") perfCache_.summary = sumRes.value;
+    if (detRes.status === "fulfilled") perfCache_.detail = detRes.value;
+
+    if (!perfCache_.summary && !perfCache_.detail) {
+      const err = [sumRes, detRes]
+        .map((x) => (x.status === "rejected" ? String(x.reason && x.reason.message ? x.reason.message : x.reason) : ""))
+        .filter(Boolean)[0];
+      throw new Error(err || "RELOAD_FAILED");
+    }
+
+    return { ok: true, cacheKey, partial: !(perfCache_.summary && perfCache_.detail) };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message ? e.message : e) };
+  } finally {
+    if (showToast) hideLoadingHint();
+  }
+}
 
 function sleep_(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
@@ -626,223 +791,12 @@ async function runSearch_() {
 
 async function runSearchSummary_() {
   showError_(false);
-  renderDetailHeader_("summary");
-
-  // 若上一筆查詢卡住或中斷，避免 toast 殘留
-  hideLoadingHint();
-
-  const info = readRangeFromInputs_();
-  const techNo = info.techNo;
-
-  if (!info.ok) {
-    if (info.error === "NOT_MASTER") {
-      setBadge_("你不是師傅（無法查詢）", true);
-      setMeta_("—");
-      renderSummary_(null);
-      renderDetailSummary_([]);
-      return;
-    }
-    if (info.error === "MISSING_START") {
-      setBadge_("請選擇開始日期", true);
-      return;
-    }
-    if (info.error === "RANGE_TOO_LONG") {
-      setBadge_("日期區間過長（最多 31 天）", true);
-      return;
-    }
-
-    setBadge_("日期格式不正確", true);
-    return;
-  }
-
-  const cacheKey = makePerfCacheKey_(techNo, info.normalizedStart, info.normalizedEnd);
-  if (perfCache_.key === cacheKey && perfCache_.summary) {
-    const c = perfCache_.summary;
-    setMeta_(c.meta || "—");
-    setBadge_("已更新", false);
-    renderSummary_(c.summaryObj);
-    renderDetailSummary_(c.detailAgg);
-    return;
-  }
-
-  setBadge_("查詢中…", false);
-  const reqSeq = beginPerfRequest_("查詢業績中…");
-
-  try {
-    const keys = info.dateKeys;
-    const results = [];
-
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (reqSeq === perfRequestSeq_) showLoadingHint(`查詢業績中…（${i + 1}/${keys.length}）`);
-
-      // GAS 可能因 ScriptLock 短暫忙碌回 LOCKED_TRY_LATER：做小幅重試
-      let ok = false;
-      let lastErr = "";
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const raw = await fetchReport_(techNo, k);
-        const r = normalizeReportResponse_(raw);
-        if (r.ok) {
-          results.push({ dateKey: k, normalized: r });
-          ok = true;
-          break;
-        }
-
-        lastErr = String(r.error || "BAD_RESPONSE");
-        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-          if (reqSeq === perfRequestSeq_) showLoadingHint(`系統忙碌，重試中…（${attempt + 1}/2）`);
-          await sleep_(900 + attempt * 600);
-          continue;
-        }
-        break;
-      }
-
-      if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
-    }
-
-    const single = keys.length === 1;
-    const dateMeta = single ? `日期：${keys[0]}` : `日期：${keys[0]} ~ ${keys[keys.length - 1]}`;
-
-    // meta：如果是區間查詢，不顯示「更新次數」避免誤解；最後更新取最後一筆
-    const last = results.length ? results[results.length - 1].normalized : null;
-    const meta = [
-      `師傅：${(last && last.techNo) || techNo}`,
-      dateMeta,
-      last && last.lastUpdatedAt ? `最後更新：${last.lastUpdatedAt}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ｜ ");
-
-    setMeta_(meta || "—");
-    setBadge_("已更新", false);
-
-    const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
-    const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
-    renderSummary_(summaryObj);
-    renderDetailSummary_(detailAgg);
-
-    perfCache_.key = cacheKey;
-    perfCache_.summary = { meta, summaryObj, detailAgg };
-    perfCache_.detail = null;
-  } catch (e) {
-    console.error("[Performance] fetch failed:", e);
-
-    const msg = String(e && e.message ? e.message : e);
-    if (msg.includes("CONFIG_REPORT_API_URL_MISSING")) setBadge_("尚未設定 REPORT_API_URL", true);
-    else if (msg.includes("GAS_HINT_ONLY")) setBadge_("GAS 未實作 getReport_v1（doGet 只回 hint）", true);
-    else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
-    else if (msg.includes("REPORT_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
-    else setBadge_("查詢失敗", true);
-
-    showError_(true);
-    setMeta_("—");
-    renderSummary_(null);
-    renderDetailSummary_([]);
-  } finally {
-    endPerfRequest_(reqSeq);
-  }
+  return renderFromCache_("summary");
 }
 
 async function runSearchDetail_() {
   showError_(false);
-  renderDetailHeader_("detail");
-
-  // 若上一筆查詢卡住或中斷，避免 toast 殘留
-  hideLoadingHint();
-
-  const info = readRangeFromInputs_();
-  const techNo = info.techNo;
-
-  if (!info.ok) {
-    if (info.error === "NOT_MASTER") {
-      setBadge_("你不是師傅（無法查詢）", true);
-      setMeta_("—");
-      renderSummary_(null);
-      renderDetailRows_([]);
-      return;
-    }
-    if (info.error === "MISSING_START") {
-      setBadge_("請選擇開始日期", true);
-      return;
-    }
-    if (info.error === "RANGE_TOO_LONG") {
-      setBadge_("日期區間過長（最多 31 天）", true);
-      return;
-    }
-
-    setBadge_("日期格式不正確", true);
-    return;
-  }
-
-  const cacheKey = makePerfCacheKey_(techNo, info.normalizedStart, info.normalizedEnd);
-  if (perfCache_.key === cacheKey && perfCache_.detail) {
-    const c = perfCache_.detail;
-    setMeta_(c.meta || "—");
-    setBadge_("已更新", false);
-    renderSummary_(c.summaryObj);
-    renderDetailRows_(filterDetailRowsByRange_(c.detailRows, info.normalizedStart, info.normalizedEnd));
-    return;
-  }
-
-  const rangeKey = info.rangeKey;
-
-  setBadge_("查詢中…", false);
-  const reqSeq = beginPerfRequest_("查詢業績明細中…");
-
-  try {
-    let r = null;
-    let lastErr = "";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const raw = await fetchDetailPerf_(techNo, rangeKey);
-      r = normalizeDetailPerfResponse_(raw);
-      if (r.ok) break;
-
-      lastErr = String(r.error || "BAD_RESPONSE");
-      if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-        if (reqSeq === perfRequestSeq_) showLoadingHint(`系統忙碌，重試中…（${attempt + 1}/2）`);
-        await sleep_(900 + attempt * 600);
-        continue;
-      }
-      break;
-    }
-
-    if (!r || !r.ok) throw new Error(lastErr || "BAD_RESPONSE");
-
-    const meta = [
-      `師傅：${r.techNo || techNo}`,
-      `日期：${info.normalizedStart} ~ ${info.normalizedEnd}`,
-      r.lastUpdatedAt ? `最後更新：${r.lastUpdatedAt}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ｜ ");
-
-    setMeta_(meta || "—");
-    setBadge_("已更新", false);
-
-    renderSummary_(r.summary);
-    const filteredDetail = filterDetailRowsByRange_(r.detail, info.normalizedStart, info.normalizedEnd);
-    renderDetailRows_(filteredDetail);
-
-    perfCache_.key = cacheKey;
-    perfCache_.detail = { meta, summaryObj: r.summary, detailRows: filteredDetail };
-    perfCache_.summary = null;
-  } catch (e) {
-    console.error("[Performance] detail fetch failed:", e);
-
-    const msg = String(e && e.message ? e.message : e);
-    if (msg.includes("CONFIG_DETAIL_PERF_API_URL_MISSING")) setBadge_("尚未設定 DETAIL_PERF_API_URL", true);
-    else if (msg.includes("GAS_HINT_ONLY")) setBadge_("GAS 未實作 getDetailPerf_v1（doGet 只回 hint）", true);
-    else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
-    else if (msg.includes("DETAIL_PERF_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
-    else setBadge_("查詢失敗", true);
-
-    showError_(true);
-    setMeta_("—");
-    renderSummary_(null);
-    renderDetailRows_([]);
-  } finally {
-    endPerfRequest_(reqSeq);
-  }
+  return renderFromCache_("detail");
 }
 
 function ensureDefaultDate_() {
@@ -864,12 +818,12 @@ export function togglePerformanceCard() {
 export function initPerformanceUi() {
   ensureDefaultDate_();
 
-  // legacy: 舊版只有一顆查詢
-  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void runSearchSummary_());
+  // legacy: 舊版只有一顆查詢（改為讀快取）
+  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
 
-  // v2: 統計 / 明細
-  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void runSearchSummary_());
-  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void runSearchDetail_());
+  // v2: 統計 / 明細（只讀快取；重新載入由「手動重整」觸發）
+  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
+  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
 }
 
 /**
@@ -887,124 +841,59 @@ export async function prefetchPerformanceOnce() {
     if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
 
     const cacheKey = makePerfCacheKey_(info.techNo, info.normalizedStart, info.normalizedEnd);
-    if (perfCache_.key === cacheKey && perfCache_.summary && perfCache_.detail) {
-      // 已有完整快取：直接把明細渲染一次（確保 DOM 有資料）
-      renderDetailHeader_("detail");
-      setMeta_(perfCache_.detail.meta || "—");
-      setBadge_("已更新", false);
-      renderSummary_(perfCache_.detail.summaryObj);
-      renderDetailRows_(filterDetailRowsByRange_(perfCache_.detail.detailRows, info.normalizedStart, info.normalizedEnd));
+    if (hasFullCacheForKey_(cacheKey)) {
+      // 已有完整快取：不打 API（登入時預載只需確保快取存在）
       return { ok: true, cached: true };
     }
 
-    // 先清掉同 key 的舊快取，避免混用
-    perfCache_.key = cacheKey;
-    perfCache_.summary = null;
-    perfCache_.detail = null;
-
-    // 不顯示 top toast（避免打擾）；用初始載入遮罩即可
-    hideLoadingHint();
-
-    const summaryP = (async () => {
-      const keys = info.dateKeys;
-      const results = [];
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-
-        let ok = false;
-        let lastErr = "";
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const raw = await fetchReport_(info.techNo, k);
-          const r = normalizeReportResponse_(raw);
-          if (r.ok) {
-            results.push({ dateKey: k, normalized: r });
-            ok = true;
-            break;
-          }
-          lastErr = String(r.error || "BAD_RESPONSE");
-          if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-            await sleep_(900 + attempt * 600);
-            continue;
-          }
-          break;
-        }
-
-        if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
-      }
-
-      const single = keys.length === 1;
-      const dateMeta = single ? `日期：${keys[0]}` : `日期：${keys[0]} ~ ${keys[keys.length - 1]}`;
-      const last = results.length ? results[results.length - 1].normalized : null;
-      const meta = [
-        `師傅：${(last && last.techNo) || info.techNo}`,
-        dateMeta,
-        last && last.lastUpdatedAt ? `最後更新：${last.lastUpdatedAt}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ｜ ");
-
-      const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
-      const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
-      return { meta, summaryObj, detailAgg };
-    })();
-
-    const detailP = (async () => {
-      let r = null;
-      let lastErr = "";
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const raw = await fetchDetailPerf_(info.techNo, info.rangeKey);
-        r = normalizeDetailPerfResponse_(raw);
-        if (r.ok) break;
-        lastErr = String(r.error || "BAD_RESPONSE");
-        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-          await sleep_(900 + attempt * 600);
-          continue;
-        }
-        break;
-      }
-      if (!r || !r.ok) throw new Error(lastErr || "BAD_RESPONSE");
-
-      const meta = [
-        `師傅：${r.techNo || info.techNo}`,
-        `日期：${info.normalizedStart} ~ ${info.normalizedEnd}`,
-        r.lastUpdatedAt ? `最後更新：${r.lastUpdatedAt}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ｜ ");
-
-      return { meta, summaryObj: r.summary, detailRows: filterDetailRowsByRange_(r.detail, info.normalizedStart, info.normalizedEnd) };
-    })();
-
-    const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
-    if (sumRes.status === "fulfilled") perfCache_.summary = sumRes.value;
-    if (detRes.status === "fulfilled") perfCache_.detail = detRes.value;
-
-    // 預設顯示：明細優先；否則退回統計
-    if (perfCache_.detail) {
-      renderDetailHeader_("detail");
-      setMeta_(perfCache_.detail.meta || "—");
-      setBadge_("已更新", false);
-      renderSummary_(perfCache_.detail.summaryObj);
-      renderDetailRows_(filterDetailRowsByRange_(perfCache_.detail.detailRows, info.normalizedStart, info.normalizedEnd));
-      return { ok: true, rendered: "detail" };
-    }
-
-    if (perfCache_.summary) {
-      renderDetailHeader_("summary");
-      setMeta_(perfCache_.summary.meta || "—");
-      setBadge_("已更新", false);
-      renderSummary_(perfCache_.summary.summaryObj);
-      renderDetailSummary_(perfCache_.summary.detailAgg);
-      return { ok: true, rendered: "summary" };
-    }
-
-    // 兩者都失敗：維持空狀態
-    setBadge_("查詢失敗", true);
-    return { ok: false, error: "PREFETCH_FAILED" };
+    perfPrefetchInFlight_ = reloadAndCache_(info, { showToast: false });
+    const out = await perfPrefetchInFlight_;
+    return out && out.ok ? { ok: true, prefetched: true } : out;
   } catch (e) {
     console.error("[Performance] prefetch failed:", e);
     return { ok: false, error: String(e && e.message ? e.message : e) };
+  } finally {
+    perfPrefetchInFlight_ = null;
   }
+}
+
+export async function manualRefreshPerformance({ showToast } = { showToast: true }) {
+  if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
+  ensureDefaultDate_();
+
+  const info = readRangeFromInputs_();
+  if (!info.ok) {
+    if (info.error === "NOT_MASTER") {
+      setBadge_("你不是師傅（無法查詢）", true);
+      return { ok: false, error: info.error };
+    }
+    if (info.error === "MISSING_START") {
+      setBadge_("請選擇開始日期", true);
+      return { ok: false, error: info.error };
+    }
+    if (info.error === "RANGE_TOO_LONG") {
+      setBadge_("日期區間過長（最多 31 天）", true);
+      return { ok: false, error: info.error };
+    }
+    setBadge_("日期格式不正確", true);
+    return { ok: false, error: info.error || "BAD_RANGE" };
+  }
+
+  setBadge_("同步中…", false);
+  const res = await reloadAndCache_(info, { showToast: !!showToast });
+  if (!res || !res.ok) {
+    const msg = String(res && res.error ? res.error : "RELOAD_FAILED");
+    if (msg.includes("CONFIG_REPORT_API_URL_MISSING")) setBadge_("尚未設定 REPORT_API_URL", true);
+    else if (msg.includes("CONFIG_DETAIL_PERF_API_URL_MISSING")) setBadge_("尚未設定 DETAIL_PERF_API_URL", true);
+    else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
+    else if (msg.includes("REPORT_TIMEOUT") || msg.includes("DETAIL_PERF_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
+    else setBadge_("同步失敗", true);
+    return res;
+  }
+
+  // 同步完成後：只渲染快取（依使用者最後選的明細/統計）
+  showError_(false);
+  return renderFromCache_(perfSelectedMode_, info);
 }
 
 /**

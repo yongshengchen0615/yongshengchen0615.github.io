@@ -13,6 +13,7 @@ import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
+import { manualRefreshPerformance } from "./performance.js";
 
 const POLL = {
   BASE_MS: 3000,
@@ -137,6 +138,13 @@ export function startPolling(extraReadyPromise) {
 
       const res = await refreshStatusAdaptive(true);
       updateMyMasterStatusUI();
+
+      // 若目前在「業績」視圖：手動重整也要同步更新業績快取（按鈕只讀快取）。
+      if (state.viewMode === "performance" && String(state.feature && state.feature.performanceEnabled) === "是") {
+        try {
+          await manualRefreshPerformance({ showToast: false });
+        } catch {}
+      }
 
       hideLoadingHint();
       const next = computeNextInterval(res);
