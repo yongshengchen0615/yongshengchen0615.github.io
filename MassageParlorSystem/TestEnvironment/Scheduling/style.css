@@ -616,6 +616,19 @@ body {
   background: #ffffff;
 }
 
+/* 排班表欄位對齊/寬度（覆蓋 index.html 的 inline width） */
+.card-table .status-table thead th:nth-child(4),
+.card-table .status-table tbody td:nth-child(4) {
+  text-align: left;
+}
+
+.card-table .status-table thead th:nth-child(5),
+.card-table .status-table tbody td:nth-child(5) {
+  /* 依螢幕寬度自適應（避免擠壓「預約內容」欄） */
+  width: clamp(88px, 14vw, 160px) !important;
+  text-align: right;
+}
+
 /* 空 / Loading / Error 狀態 */
 .state {
   margin-top: 10px;
@@ -750,7 +763,8 @@ body {
 
   .card-table .status-table thead th:nth-child(5),
   .card-table .status-table tbody td:nth-child(5) {
-    width: clamp(84px, 24vw, 120px) !important;
+    /* 行動版：優先保留「預約內容」欄位寬度，第 5 欄必要時縮到更窄 */
+    width: clamp(64px, 18vw, 104px) !important;
   }
 
   /* ✅ 剩餘時間欄位靠右（避免視覺上蓋到預約內容欄位） */
@@ -808,6 +822,18 @@ body {
 
   .card {
     border-radius: 14px;
+  }
+}
+
+/* 更窄螢幕：第 5 欄再縮，避免任何視覺遮擋第 4 欄 */
+@media (max-width: 420px) {
+  .card-table .status-table thead th:nth-child(5),
+  .card-table .status-table tbody td:nth-child(5) {
+    width: clamp(56px, 16vw, 88px) !important;
+  }
+
+  .card-table .status-table tbody td:nth-child(5) .time-badge {
+    padding: 2px 8px;
   }
 }
 
