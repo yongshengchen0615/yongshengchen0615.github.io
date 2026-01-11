@@ -5,11 +5,6 @@
  * - 點擊「業績」按鈕顯示/隱藏 perfCard
  * - 依 state.myMaster.techNo + 日期(或日期區間) 呼叫 REPORT_API_URL(mode=getReport_v1)
  * - 渲染 Summary + Detail
- *
- * ✅ 優化目標：優先不卡（明細很多也不凍結）
- * - 明細改為「分批渲染（chunk + requestAnimationFrame）」避免一次 innerHTML 大量插入造成凍結
- * - 日期/時間格式化做 memoize（同字串只格式化一次）
- * - token 中止舊渲染（切換日期/重整/切模式時不會舊任務繼續畫）
  */
 
 import { dom } from "./dom.js";
@@ -63,16 +58,6 @@ const perfCache_ = {
   key: "", // techNo:start~end
   summary: null, // { meta, summaryObj, detailAgg }
   detail: null, // { meta, summaryObj, detailRows }
-};
-
-// =========================
-// ✅ 分批渲染（避免凍結）
-// =========================
-const PERF_DETAIL_RENDER_ = {
-  token: 0,           // 用於中止舊的渲染任務
-  chunkSize: 160,     // 每幀渲染幾列（可調：120~220）
-  dateCache: new Map(), // 訂單日期格式化快取
-  timeCache: new Map(), // 開工/完工格式化快取
 };
 
 function pad2_(n) {
@@ -212,9 +197,6 @@ function hasFullCacheForKey_(cacheKey) {
 }
 
 function renderFromCache_(mode, info) {
-  // ✅ 切模式時：中止任何正在跑的明細分批渲染
-  PERF_DETAIL_RENDER_.token++;
-
   const m = mode === "summary" ? "summary" : "detail";
   perfSelectedMode_ = m;
 
@@ -265,9 +247,11 @@ function renderFromCache_(mode, info) {
   setMeta_((c && c.meta) || "—");
   setBadge_("已更新", false);
   if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
-
-  // ✅ 明細：改走「分批渲染」而不是一次 innerHTML
-  renderDetailRows_(c ? c.detailRows : []);
+  if (c && c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
+  else {
+    const tmp = detailRowsHtml_(c ? c.detailRows : []);
+    applyDetailTableHtml_(tmp.html, tmp.count);
+  }
   return { ok: true, rendered: "detail" };
 }
 
@@ -279,9 +263,6 @@ async function reloadAndCache_(info, { showToast } = { showToast: true }) {
   perfCache_.key = cacheKey;
   perfCache_.summary = null;
   perfCache_.detail = null;
-
-  // ✅ 有新資料要渲染：先中止任何舊的分批渲染
-  PERF_DETAIL_RENDER_.token++;
 
   if (showToast) hideLoadingHint();
 
@@ -364,20 +345,21 @@ async function reloadAndCache_(info, { showToast } = { showToast: true }) {
       perfCache_.summary = {
         ...v,
         summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
-        ...(v && v.detailAgg
-          ? (() => {
-              const tmp = detailSummaryRowsHtml_(v.detailAgg);
-              return { detailAggHtml: tmp.html, detailAggCount: tmp.count };
-            })()
-          : { detailAggHtml: "", detailAggCount: 0 }),
+        ...(v && v.detailAgg ? (() => {
+          const tmp = detailSummaryRowsHtml_(v.detailAgg);
+          return { detailAggHtml: tmp.html, detailAggCount: tmp.count };
+        })() : { detailAggHtml: "", detailAggCount: 0 }),
       };
     }
     if (detRes.status === "fulfilled") {
       const v = detRes.value;
-      // ✅ 保留原始 rows，渲染時才分批（避免一次性 join 大字串）
+      const rows = v && v.detailRows ? v.detailRows : [];
+      const tmp = detailRowsHtml_(rows);
       perfCache_.detail = {
         ...v,
         summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
+        detailRowsHtml: tmp.html,
+        detailRowsCount: tmp.count,
       };
     }
 
@@ -644,7 +626,6 @@ function renderSummary_(summaryObj) {
 }
 
 function renderDetailSummary_(detailRows) {
-  // ✅ 這是彙總表（10 欄）通常筆數不大，維持一次性渲染即可
   if (!dom.perfDetailRowsEl) return;
 
   const list = Array.isArray(detailRows) ? detailRows : [];
@@ -680,14 +661,10 @@ function renderDetailSummary_(detailRows) {
 }
 
 function renderDetailRows_(detailRows) {
-  // ✅ 明細（13 欄）才是容易卡的地方：改成分批渲染
   if (!dom.perfDetailRowsEl) return;
 
   const list = Array.isArray(detailRows) ? detailRows : [];
   setDetailCount_(list.length);
-
-  // 中止上一輪渲染
-  const myToken = ++PERF_DETAIL_RENDER_.token;
 
   if (!list.length) {
     dom.perfDetailRowsEl.innerHTML = "";
@@ -697,67 +674,78 @@ function renderDetailRows_(detailRows) {
 
   showEmpty_(false);
 
-  // 先清空，UI 立即反應
-  dom.perfDetailRowsEl.innerHTML = "";
+  const pad2 = (n) => String(n).padStart(2, "0");
 
-  // memoize：同字串只格式化一次（大量行數差很大）
-  const fmtDateCached = (v) => {
-    const k = String(v ?? "").trim();
-    if (!k) return "";
-    if (PERF_DETAIL_RENDER_.dateCache.has(k)) return PERF_DETAIL_RENDER_.dateCache.get(k);
-    const out = formatDateYmd_(v);
-    PERF_DETAIL_RENDER_.dateCache.set(k, out);
-    return out;
+  const formatDateYmd_ = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).trim();
+    if (!s) return "";
+
+    // 已是 YYYY-MM-DD / YYYY/MM/DD：直接正規化成 YYYY/MM/DD
+    const m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (m) return `${m[1]}/${m[2]}/${m[3]}`;
+
+    // ISO 或可 parse 的日期
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+    }
+
+    return s;
   };
 
-  const fmtTimeCached = (v) => {
-    const k = String(v ?? "").trim();
-    if (!k) return "";
-    if (PERF_DETAIL_RENDER_.timeCache.has(k)) return PERF_DETAIL_RENDER_.timeCache.get(k);
-    const out = formatTimeTpeHms_(v);
-    PERF_DETAIL_RENDER_.timeCache.set(k, out);
-    return out;
+  const formatTimeHm_ = (v) => {
+    if (v === null || v === undefined) return "";
+
+    // 1) 若是純時間字串：正規化成 HH:mm:ss（補零 + 補秒）
+    if (typeof v === "string") {
+      const s0 = v.trim();
+      if (!s0) return "";
+      const m = s0.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (m) return `${pad2(m[1])}:${m[2]}:${m[3] ? m[3] : "00"}`;
+    }
+
+    // 2) ISO/Date：換算成台北時間並輸出 HH:mm:ss
+    const d = v instanceof Date ? v : new Date(String(v).trim());
+    if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
+
+    // 盡量用 Intl 做時區格式化（快很多：formatter 已 memoize）；不支援時用固定 UTC+8 回退
+    try {
+      if (PERF_TPE_TIME_FMT) {
+        const out = PERF_TPE_TIME_FMT.format(d);
+        if (out) return out;
+      }
+    } catch {
+      // fall through
+    }
+
+    const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
+    const t = new Date(tzMs);
+    return `${pad2(t.getUTCHours())}:${pad2(t.getUTCMinutes())}:${pad2(t.getUTCSeconds())}`;
   };
 
   const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
-
-  const buildRowHtml = (r) => {
-    return (
-      "<tr>" +
-      td(fmtDateCached(r["訂單日期"])) +
-      td(r["訂單編號"] || "") +
-      td(r["序"] ?? "") +
-      td(r["拉牌"] || "") +
-      td(r["服務項目"] || "") +
-      td(r["業績金額"] ?? 0) +
-      td(r["抽成金額"] ?? 0) +
-      td(r["數量"] ?? 0) +
-      td(r["小計"] ?? 0) +
-      td(r["分鐘"] ?? 0) +
-      td(fmtTimeCached(r["開工"])) +
-      td(fmtTimeCached(r["完工"])) +
-      td(r["狀態"] || "") +
-      "</tr>"
-    );
-  };
-
-  let i = 0;
-  const total = list.length;
-  const chunkSize = PERF_DETAIL_RENDER_.chunkSize;
-
-  const renderChunk = () => {
-    if (myToken !== PERF_DETAIL_RENDER_.token) return; // 有新任務就停止
-
-    const end = Math.min(i + chunkSize, total);
-    let html = "";
-    for (; i < end; i++) html += buildRowHtml(list[i] || {});
-
-    dom.perfDetailRowsEl.insertAdjacentHTML("beforeend", html);
-
-    if (i < total) requestAnimationFrame(renderChunk);
-  };
-
-  requestAnimationFrame(renderChunk);
+  dom.perfDetailRowsEl.innerHTML = list
+    .map((r) => {
+      return (
+        "<tr>" +
+        td(formatDateYmd_(r["訂單日期"])) +
+        td(r["訂單編號"] || "") +
+        td(r["序"] ?? "") +
+        td(r["拉牌"] || "") +
+        td(r["服務項目"] || "") +
+        td(r["業績金額"] ?? 0) +
+        td(r["抽成金額"] ?? 0) +
+        td(r["數量"] ?? 0) +
+        td(r["小計"] ?? 0) +
+        td(r["分鐘"] ?? 0) +
+        td(formatTimeHm_(r["開工"])) +
+        td(formatTimeHm_(r["完工"])) +
+        td(r["狀態"] || "") +
+        "</tr>"
+      );
+    })
+    .join("");
 }
 
 function normalizeReportResponse_(data) {
