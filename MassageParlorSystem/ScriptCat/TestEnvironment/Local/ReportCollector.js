@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no button, hash-based)
 // @namespace    https://local/
-// @version      1.3
+// @version      1.4
 // @description  Auto collect techNo + summary + ant-table detail; only send when data changed (clientHash)
-// @match        https://yspos.youngsong.com.tw/#/performance?tab=P_STATIC
+// ✅ Fix: @match 不吃 #fragment → 改成 domain-wide match，再用程式內判斷 location.hash
+// @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
@@ -15,7 +16,22 @@
   "use strict";
 
   /* =========================
-   * 0) Config（與 SnapshotOnly 同讀取方式：@resource + GM_getResourceText）
+   * 0) Page Gate（避免 @match 放寬後在其他頁面誤跑）
+   * ========================= */
+  function isTargetPage_() {
+    // 目標：#/performance?tab=P_STATIC
+    const h = String(location.hash || "");
+    return h.startsWith("#/performance") && h.includes("tab=P_STATIC");
+  }
+
+  // 如果不是目標頁，直接退出（不監聽、不掃DOM、不發request）
+  if (!isTargetPage_()) return;
+
+  // Debug：確認腳本真的有載入
+  console.log("[AUTO_REPORT] loaded:", location.href, "hash=", location.hash);
+
+  /* =========================
+   * 1) Config（與 SnapshotOnly 同讀取方式：@resource + GM_getResourceText）
    * ========================= */
   const GAS_RESOURCE = "gasConfigReportTEL";
 
@@ -56,14 +72,14 @@
   if (!CFG.GAS_URL) {
     console.warn(
       "[AUTO_REPORT] ⚠️ CFG.GAS_URL is empty. Will keep scanning DOM, but will NOT send network requests.\n" +
-        "Check @resource JSON is valid and contains: {\"GAS_URL\":\"https://script.google.com/macros/s/.../exec\"}"
+        'Check @resource JSON is valid and contains: {"GAS_URL":"https://script.google.com/macros/s/.../exec"}'
     );
   }
 
-  // ✅ 2) 資料來源標記（可自訂）
+  // ✅ 資料來源標記（可自訂）
   const SOURCE_NAME = "report_page_v1";
 
-  // ✅ 3) 節流（React/AntD 會頻繁改 DOM）
+  // ✅ 節流（React/AntD 會頻繁改 DOM）
   const THROTTLE_MS = 600;
 
   // =========================
@@ -231,6 +247,9 @@
 
   async function checkAndSend() {
     try {
+      // SPA：hash 可能在同頁切換，避免離開目標頁仍然跑
+      if (!isTargetPage_()) return;
+
       const payload = buildPayload();
 
       // 1) 沒抓到明細 → 不送
@@ -267,4 +286,7 @@
   // 監聽 DOM 變動（React/AntD）
   const observer = new MutationObserver(schedule);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  // SPA hash 切換時也補一槍（更穩）
+  window.addEventListener("hashchange", schedule);
 })();
