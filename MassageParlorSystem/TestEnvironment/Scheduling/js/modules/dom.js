@@ -75,10 +75,15 @@ export const dom = {
 
   // 單日（舊版保留：若 HTML 沒有此欄位則為 null）
   perfDateKeyInput: document.getElementById("perfDateKey"),
+  // legacy: 舊版只有一顆「查詢」按鈕
   perfSearchBtn: document.getElementById("perfSearch"),
+  // v2: 兩顆按鈕（統計/明細）
+  perfSearchSummaryBtn: document.getElementById("perfSearchSummary"),
+  perfSearchDetailBtn: document.getElementById("perfSearchDetail"),
   perfStatusEl: document.getElementById("perfStatus"),
   perfMetaEl: document.getElementById("perfMeta"),
   perfSummaryRowsEl: document.getElementById("perfSummaryRows"),
+  perfDetailHeadRowEl: document.getElementById("perfDetailHeadRow"),
   perfDetailRowsEl: document.getElementById("perfDetailRows"),
   perfEmptyEl: document.getElementById("perfEmpty"),
   perfErrorEl: document.getElementById("perfError"),
