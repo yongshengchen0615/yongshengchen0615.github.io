@@ -3,7 +3,6 @@
 // @namespace    https://local/
 // @version      1.0
 // @description  Auto collect techNo + summary cards + P_DETAIL ant-table rows; send only when changed (clientHash)
-// @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
