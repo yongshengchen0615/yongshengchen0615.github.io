@@ -285,11 +285,47 @@ function renderDetailRows_(detailRows) {
 
   const formatTimeHm_ = (v) => {
     if (v === null || v === undefined) return "";
-    const s = String(v).trim();
-    if (!s) return "";
 
-    // 依需求：開工/完工直接顯示 GAS 回傳值，不做任何時間推算/轉時區。
-    return s;
+    // 1) 若是純時間字串：正規化成 HH:mm:ss（補零 + 補秒）
+    if (typeof v === "string") {
+      const s0 = v.trim();
+      if (!s0) return "";
+      const m = s0.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (m) return `${pad2(m[1])}:${m[2]}:${m[3] ? m[3] : "00"}`;
+    }
+
+    // 2) ISO/Date：換算成台北時間並輸出 HH:mm:ss
+    const d = v instanceof Date ? v : new Date(String(v).trim());
+    if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
+
+    // 盡量用 Intl 做時區格式化；不支援時用固定 UTC+8（台灣無 DST）回退
+    try {
+      if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Asia/Taipei",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).formatToParts(d);
+
+        const get = (type) => {
+          const p = parts.find((x) => x.type === type);
+          return p ? p.value : "";
+        };
+
+        const hh = get("hour");
+        const mm = get("minute");
+        const ss = get("second");
+        if (hh && mm && ss) return `${hh}:${mm}:${ss}`;
+      }
+    } catch (_) {
+      // fall through
+    }
+
+    const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
+    const t = new Date(tzMs);
+    return `${pad2(t.getUTCHours())}:${pad2(t.getUTCMinutes())}:${pad2(t.getUTCSeconds())}`;
   };
 
   const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
