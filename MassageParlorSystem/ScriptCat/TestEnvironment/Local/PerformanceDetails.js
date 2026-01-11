@@ -8,7 +8,7 @@
 // @grant        GM_getResourceText
 // @connect      script.google.com
 // @run-at       document-idle
-// @resource     gasConfigReportTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-report-config-TEL.json
+// @resource     gasConfigPerformanceDetailsTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-PerformanceDetails-config-TEL.json
 // ==/UserScript==
 
 (function () {
@@ -28,7 +28,7 @@
   /* =========================
    * 1) Config（@resource JSON）
    * ========================= */
-  const GAS_RESOURCE = "gasConfigReportTEL";
+  const GAS_RESOURCE = "gasConfigPerformanceDetailsTEL";
   const DEFAULT_CFG = { GAS_URL: "" };
   let CFG = { ...DEFAULT_CFG };
 
