@@ -223,12 +223,50 @@ function renderDetailRows_(detailRows) {
 
   showEmpty_(false);
 
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  const formatDateYmd_ = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).trim();
+    if (!s) return "";
+
+    // 已是 YYYY-MM-DD / YYYY/MM/DD：直接正規化成 YYYY/MM/DD
+    const m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (m) return `${m[1]}/${m[2]}/${m[3]}`;
+
+    // ISO 或可 parse 的日期
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+    }
+
+    return s;
+  };
+
+  const formatTimeHm_ = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).trim();
+    if (!s) return "";
+
+    // 已是 HH:mm 或 HH:mm:ss
+    const m = s.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
+    if (m) return `${pad2(m[1])}:${m[2]}`;
+
+    // ISO 或可 parse 的時間
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+
+    return s;
+  };
+
   const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
   dom.perfDetailRowsEl.innerHTML = list
     .map((r) => {
       return (
         "<tr>" +
-        td(r["訂單日期"] || "") +
+        td(formatDateYmd_(r["訂單日期"])) +
         td(r["訂單編號"] || "") +
         td(r["序"] ?? "") +
         td(r["拉牌"] || "") +
@@ -238,8 +276,8 @@ function renderDetailRows_(detailRows) {
         td(r["數量"] ?? 0) +
         td(r["小計"] ?? 0) +
         td(r["分鐘"] ?? 0) +
-        td(r["開工"] || "") +
-        td(r["完工"] || "") +
+        td(formatTimeHm_(r["開工"])) +
+        td(formatTimeHm_(r["完工"])) +
         td(r["狀態"] || "") +
         "</tr>"
       );
@@ -696,15 +734,13 @@ export function initPerformanceUi() {
 }
 
 /**
- * 切換到「業績」視圖時呼叫：確保日期有值並自動查詢一次。
+ * 切換到「業績」視圖時呼叫：只補預設日期，不自動查詢。
+ * - 使用者按「業績統計 / 業績明細」才會查詢
+ * - 符合「除非重整/手動查詢，否則不需要一直載入」
  */
 export function onShowPerformance() {
   ensureDefaultDate_();
 
-  // 避免使用者頻繁切換視圖時，一直自動觸發查詢造成「查詢中…」反覆出現
-  const now = Date.now();
-  if (now - lastAutoSearchAtMs_ < 8000) return;
-  lastAutoSearchAtMs_ = now;
-
-  void runSearchSummary_();
+  // 進入業績頁時，若之前有殘留 toast，先關掉
+  hideLoadingHint();
 }
