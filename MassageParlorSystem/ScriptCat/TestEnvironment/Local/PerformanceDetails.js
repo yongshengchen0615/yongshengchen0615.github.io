@@ -99,15 +99,35 @@
     return (h >>> 0).toString(16);
   }
 
-  // 26-01-11 => 2026-01-11
-  function normalizeDateYY_(s) {
-    const m = String(s || "").trim().match(/^(\d{2})-(\d{2})-(\d{2})$/);
-    if (!m) return String(s || "").trim();
-    const yy = Number(m[1]);
-    const mm = Number(m[2]);
-    const dd = Number(m[3]);
-    if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return String(s || "").trim();
-    return `${String(2000 + yy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  // Normalize common date formats to YYYY-MM-DD for stable rangeKey
+  // - 26-01-11   => 2026-01-11
+  // - 2026/01/11 => 2026-01-11
+  // - 2026-1-11  => 2026-01-11
+  function normalizeDate_(s) {
+    const raw = String(s || "").trim();
+    if (!raw) return "";
+
+    // yy-mm-dd
+    let m = raw.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const yy = Number(m[1]);
+      const mm = Number(m[2]);
+      const dd = Number(m[3]);
+      if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return raw;
+      return `${String(2000 + yy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    }
+
+    // yyyy/mm/dd or yyyy-mm-dd or yyyy.m.d
+    m = raw.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/);
+    if (m) {
+      const yyyy = Number(m[1]);
+      const mm = Number(m[2]);
+      const dd = Number(m[3]);
+      if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return raw;
+      return `${String(yyyy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    }
+
+    return raw;
   }
 
   /* =========================
@@ -166,7 +186,7 @@
       const tds = Array.from(tr.querySelectorAll("td.ant-table-cell"));
       if (tds.length < 13) continue;
 
-      const orderDate = normalizeDateYY_(text(tds[0]));
+      const orderDate = normalizeDate_(text(tds[0]));
 
       out.push({
         訂單日期: orderDate,
@@ -212,7 +232,7 @@
         if (tds.length < 13) continue;
 
         out.push({
-          訂單日期: normalizeDateYY_(tds[0]),
+          訂單日期: normalizeDate_(tds[0]),
           訂單編號: tds[1],
           序: safeNumber(tds[2]),
           拉牌: tds[3],
@@ -316,6 +336,15 @@
    * ========================= */
   let lastHash = "";
   let timer = null;
+  let lastSkipReason = "";
+
+  function logSkip_(reason, extra) {
+    const msg = String(reason || "");
+    if (!msg) return;
+    if (msg === lastSkipReason) return;
+    lastSkipReason = msg;
+    console.log("[AUTO_PERF] skip:", msg, extra || "");
+  }
 
   async function checkAndSend_() {
     try {
@@ -333,13 +362,29 @@
       });
 
       // 1) 沒抓到明細 → 不送
-      if (!payload.detail.length) return;
+      if (!payload.detail.length) {
+        logSkip_("EMPTY_DETAIL", { pageType: payload.pageType });
+        return;
+      }
+
+      // 1.5) techNo 空（GAS 端會拒絕）
+      if (!String(payload.techNo || "").trim()) {
+        logSkip_("MISSING_TECHNO", { pageType: payload.pageType, pageUrl: payload.pageUrl });
+        return;
+      }
 
       // 2) rangeKey 算不出來 → 不送（key 不穩）
-      if (!payload.rangeKey) return;
+      if (!payload.rangeKey) {
+        const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
+        logSkip_("MISSING_RANGEKEY", { sampleDates });
+        return;
+      }
 
       // 3) hash 沒變 → 不送
-      if (payload.clientHash === lastHash) return;
+      if (payload.clientHash === lastHash) {
+        logSkip_("NO_CHANGE_HASH", { hash: payload.clientHash });
+        return;
+      }
 
       lastHash = payload.clientHash;
 
@@ -347,7 +392,7 @@
       if (res.json && res.json.ok) {
         console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
-        console.warn("[AUTO_PERF] fail:", res.json || res.text);
+        console.warn("[AUTO_PERF] fail:", { status: res.status, body: res.json || res.text });
       }
     } catch (e) {
       console.warn("[AUTO_PERF] error:", e);
