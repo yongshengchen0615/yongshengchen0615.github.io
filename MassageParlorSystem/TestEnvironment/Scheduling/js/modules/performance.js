@@ -14,6 +14,27 @@ import { withQuery, escapeHtml } from "./core.js";
 import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
 import { normalizeTechNo } from "./myMasterStatus.js";
 
+const PERF_FETCH_TIMEOUT_MS = 20000;
+
+let perfRequestSeq_ = 0;
+let lastAutoSearchAtMs_ = 0;
+
+function sleep_(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+function beginPerfRequest_(text) {
+  perfRequestSeq_++;
+  const seq = perfRequestSeq_;
+  showLoadingHint(text);
+  return seq;
+}
+
+function endPerfRequest_(seq) {
+  // 只允許最後一次查詢關掉 toast（避免舊請求覆蓋新請求的顯示狀態）
+  if (seq === perfRequestSeq_) hideLoadingHint();
+}
+
 function localDateKeyToday_() {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
@@ -328,9 +349,7 @@ async function fetchReport_(techNo, dateKey) {
     encodeURIComponent(dateKey);
 
   const url = withQuery(config.REPORT_API_URL, q);
-  const resp = await fetch(url, { method: "GET", cache: "no-store" });
-  if (!resp.ok) throw new Error("REPORT_HTTP_" + resp.status);
-  return await resp.json();
+  return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "REPORT");
 }
 
 async function fetchDetailPerf_(techNo, rangeKey) {
@@ -345,9 +364,34 @@ async function fetchDetailPerf_(techNo, rangeKey) {
     encodeURIComponent(rangeKey);
 
   const url = withQuery(baseUrl, q);
-  const resp = await fetch(url, { method: "GET", cache: "no-store" });
-  if (!resp.ok) throw new Error("DETAIL_PERF_HTTP_" + resp.status);
-  return await resp.json();
+  return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_PERF");
+}
+
+async function fetchJsonWithTimeout_(url, timeoutMs, tag) {
+  const ms = Number(timeoutMs);
+  const safeMs = Number.isFinite(ms) && ms > 0 ? ms : 20000;
+
+  // AbortController 在舊環境可能不存在（best-effort）
+  if (typeof AbortController === "undefined") {
+    const resp = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
+    return await resp.json();
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), safeMs);
+  try {
+    const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
+    return await resp.json();
+  } catch (e) {
+    if (e && (e.name === "AbortError" || String(e).includes("AbortError"))) {
+      throw new Error(`${tag}_TIMEOUT`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function sumNumber_(a, b) {
@@ -415,6 +459,9 @@ async function runSearchSummary_() {
   showError_(false);
   renderDetailHeader_("summary");
 
+  // 若上一筆查詢卡住或中斷，避免 toast 殘留
+  hideLoadingHint();
+
   const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
 
   const startKey = String(
@@ -452,7 +499,7 @@ async function runSearchSummary_() {
   }
 
   setBadge_("查詢中…", false);
-  showLoadingHint("查詢業績中…");
+  const reqSeq = beginPerfRequest_("查詢業績中…");
 
   try {
     const keys = range.keys;
@@ -460,11 +507,30 @@ async function runSearchSummary_() {
 
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i];
-      showLoadingHint(`查詢業績中…（${i + 1}/${keys.length}）`);
-      const raw = await fetchReport_(techNo, k);
-      const r = normalizeReportResponse_(raw);
-      if (!r.ok) throw new Error(String(r.error || "BAD_RESPONSE"));
-      results.push({ dateKey: k, normalized: r });
+      if (reqSeq === perfRequestSeq_) showLoadingHint(`查詢業績中…（${i + 1}/${keys.length}）`);
+
+      // GAS 可能因 ScriptLock 短暫忙碌回 LOCKED_TRY_LATER：做小幅重試
+      let ok = false;
+      let lastErr = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const raw = await fetchReport_(techNo, k);
+        const r = normalizeReportResponse_(raw);
+        if (r.ok) {
+          results.push({ dateKey: k, normalized: r });
+          ok = true;
+          break;
+        }
+
+        lastErr = String(r.error || "BAD_RESPONSE");
+        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+          if (reqSeq === perfRequestSeq_) showLoadingHint(`系統忙碌，重試中…（${attempt + 1}/2）`);
+          await sleep_(900 + attempt * 600);
+          continue;
+        }
+        break;
+      }
+
+      if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
     }
 
     const single = keys.length === 1;
@@ -491,6 +557,8 @@ async function runSearchSummary_() {
     const msg = String(e && e.message ? e.message : e);
     if (msg.includes("CONFIG_REPORT_API_URL_MISSING")) setBadge_("尚未設定 REPORT_API_URL", true);
     else if (msg.includes("GAS_HINT_ONLY")) setBadge_("GAS 未實作 getReport_v1（doGet 只回 hint）", true);
+    else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
+    else if (msg.includes("REPORT_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("查詢失敗", true);
 
     showError_(true);
@@ -498,13 +566,16 @@ async function runSearchSummary_() {
     renderSummary_(null);
     renderDetailSummary_([]);
   } finally {
-    hideLoadingHint();
+    endPerfRequest_(reqSeq);
   }
 }
 
 async function runSearchDetail_() {
   showError_(false);
   renderDetailHeader_("detail");
+
+  // 若上一筆查詢卡住或中斷，避免 toast 殘留
+  hideLoadingHint();
 
   const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
 
@@ -544,12 +615,26 @@ async function runSearchDetail_() {
   const rangeKey = `${range.normalizedStart}~${range.normalizedEnd}`;
 
   setBadge_("查詢中…", false);
-  showLoadingHint("查詢業績明細中…");
+  const reqSeq = beginPerfRequest_("查詢業績明細中…");
 
   try {
-    const raw = await fetchDetailPerf_(techNo, rangeKey);
-    const r = normalizeDetailPerfResponse_(raw);
-    if (!r.ok) throw new Error(String(r.error || "BAD_RESPONSE"));
+    let r = null;
+    let lastErr = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const raw = await fetchDetailPerf_(techNo, rangeKey);
+      r = normalizeDetailPerfResponse_(raw);
+      if (r.ok) break;
+
+      lastErr = String(r.error || "BAD_RESPONSE");
+      if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+        if (reqSeq === perfRequestSeq_) showLoadingHint(`系統忙碌，重試中…（${attempt + 1}/2）`);
+        await sleep_(900 + attempt * 600);
+        continue;
+      }
+      break;
+    }
+
+    if (!r || !r.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
     const meta = [
       `師傅：${r.techNo || techNo}`,
@@ -570,6 +655,8 @@ async function runSearchDetail_() {
     const msg = String(e && e.message ? e.message : e);
     if (msg.includes("CONFIG_DETAIL_PERF_API_URL_MISSING")) setBadge_("尚未設定 DETAIL_PERF_API_URL", true);
     else if (msg.includes("GAS_HINT_ONLY")) setBadge_("GAS 未實作 getDetailPerf_v1（doGet 只回 hint）", true);
+    else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
+    else if (msg.includes("DETAIL_PERF_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("查詢失敗", true);
 
     showError_(true);
@@ -577,7 +664,7 @@ async function runSearchDetail_() {
     renderSummary_(null);
     renderDetailRows_([]);
   } finally {
-    hideLoadingHint();
+    endPerfRequest_(reqSeq);
   }
 }
 
@@ -613,5 +700,11 @@ export function initPerformanceUi() {
  */
 export function onShowPerformance() {
   ensureDefaultDate_();
+
+  // 避免使用者頻繁切換視圖時，一直自動觸發查詢造成「查詢中…」反覆出現
+  const now = Date.now();
+  if (now - lastAutoSearchAtMs_ < 8000) return;
+  lastAutoSearchAtMs_ = now;
+
   void runSearchSummary_();
 }
