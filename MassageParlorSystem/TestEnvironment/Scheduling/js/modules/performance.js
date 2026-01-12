@@ -1,6 +1,9 @@
 /**
  * performance.js（重構整合版｜已套用「Summary 不吃區間、Detail 依訂單日期過濾」）
  *
+ * ✅ 本版再套用 PATCH：
+ * - 修正「訂單日期 +1 天」：訂單日期一律用純日期字串（YYYY-MM-DD）處理，不做時區換算
+ *
  * 功能：師傅業績（統計 / 明細）
  *
  * ✅ 需求整合（你要求的版本）
@@ -11,7 +14,7 @@
  *
  * 2) 業績明細 Detail：
  *    - 仍使用開始/結束日期（最多 31 天）組 rangeKey 向 GAS 查詢
- *    - 顯示時依 GAS row 的「訂單日期」欄位過濾
+ *    - 顯示時依 GAS row 的「訂單日期」欄位過濾（✅ 已改成純日期，不做時區換算）
  *    - 若使用者選到超出資料最大日期（start 或 end > maxKey）=> 顯示所有明細
  *
  * ✅ 行為原則
@@ -99,64 +102,10 @@ function pad2_(n) {
   return String(n).padStart(2, "0");
 }
 
-/** 日期顯示：YYYY/MM/DD（僅顯示用） */
-function formatDateYmd_(v) {
-  if (v === null || v === undefined) return "";
-  const s = String(v).trim();
-  if (!s) return "";
-
-  // ✅ 1) ISO datetime（含 T）/ 含時區資訊：一律用台北時區算日期，避免 -1 天
-  if (s.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(s)) {
-    const dk = toDateKeyTaipei_(s); // "YYYY-MM-DD"
-    if (dk) return dk.replaceAll("-", "/");
-    return s;
-  }
-
-  // ✅ 2) 已是 YYYY-MM-DD / YYYY/MM/DD：正規化成 YYYY/MM/DD
-  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (m) return `${m[1]}/${pad2_(m[2])}/${pad2_(m[3])}`;
-
-  // ✅ 3) 其他格式：才嘗試 new Date（保守）
-  const d = new Date(s);
-  if (!Number.isNaN(d.getTime())) {
-    const dk = toDateKeyTaipei_(d);
-    return dk ? dk.replaceAll("-", "/") : `${d.getFullYear()}/${pad2_(d.getMonth() + 1)}/${pad2_(d.getDate())}`;
-  }
-
-  return s;
-}
-
-/** 時間顯示：台北 HH:mm:ss（僅顯示用） */
-function formatTimeTpeHms_(v) {
-  if (v === null || v === undefined) return "";
-
-  // 純時間字串：補零 + 補秒
-  if (typeof v === "string") {
-    const s0 = v.trim();
-    if (!s0) return "";
-    const m = s0.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-    if (m) return `${pad2_(m[1])}:${m[2]}:${m[3] ? m[3] : "00"}`;
-  }
-
-  const d = v instanceof Date ? v : new Date(String(v).trim());
-  if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
-
-  // 優先用 Intl（已 memoize）
-  try {
-    if (PERF_TPE_TIME_FMT) {
-      const out = PERF_TPE_TIME_FMT.format(d);
-      if (out) return out;
-    }
-  } catch (_) {}
-
-  // fallback：台灣固定 UTC+8
-  const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
-  const t = new Date(tzMs);
-  return `${pad2_(t.getUTCHours())}:${pad2_(t.getUTCMinutes())}:${pad2_(t.getUTCSeconds())}`;
-}
-
 /**
- * 台北日期 key：YYYY-MM-DD（用於比較 / 過濾）
+ * 台北日期 key：YYYY-MM-DD（用於比較 / 轉換 timestamp）
+ * ⚠️ 注意：這個是「時區換算」版本，適用 timestamp（例如開工/完工、lastUpdatedAt）
+ * 訂單日期請改用 orderDateKey_（純日期，不做時區換算）
  */
 function toDateKeyTaipei_(v) {
   if (v === null || v === undefined) return "";
@@ -199,6 +148,64 @@ function toDateKeyTaipei_(v) {
   const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(t.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * ✅ PATCH：訂單日期專用（純日期，不做時區換算）
+ * - 永遠只取 YYYY-MM-DD / YYYY/MM/DD 的日曆日部分
+ * - 避免 GAS 回 ISO datetime 時被換算成隔天 (+1 day)
+ */
+function orderDateKey_(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+
+  // 抓到任何 YYYY-MM-DD / YYYY/MM/DD（包含 ISO datetime 前段）
+  const m = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+
+  // 真的解析不到日期才 fallback（保守）
+  return toDateKeyTaipei_(s);
+}
+
+/** 日期顯示：YYYY/MM/DD（僅顯示用）✅ PATCH：訂單日期不做時區換算 */
+function formatDateYmd_(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v).trim();
+  if (!s) return "";
+
+  const dk = orderDateKey_(s);
+  if (dk) return dk.replaceAll("-", "/");
+
+  return s;
+}
+
+/** 時間顯示：台北 HH:mm:ss（僅顯示用） */
+function formatTimeTpeHms_(v) {
+  if (v === null || v === undefined) return "";
+
+  // 純時間字串：補零 + 補秒
+  if (typeof v === "string") {
+    const s0 = v.trim();
+    if (!s0) return "";
+    const m = s0.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (m) return `${pad2_(m[1])}:${m[2]}:${m[3] ? m[3] : "00"}`;
+  }
+
+  const d = v instanceof Date ? v : new Date(String(v).trim());
+  if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
+
+  // 優先用 Intl（已 memoize）
+  try {
+    if (PERF_TPE_TIME_FMT) {
+      const out = PERF_TPE_TIME_FMT.format(d);
+      if (out) return out;
+    }
+  } catch (_) {}
+
+  // fallback：台灣固定 UTC+8
+  const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
+  const t = new Date(tzMs);
+  return `${pad2_(t.getUTCHours())}:${pad2_(t.getUTCMinutes())}:${pad2_(t.getUTCSeconds())}`;
 }
 
 /* =========================
@@ -434,21 +441,9 @@ function readRangeFromInputs_() {
  * 明細過濾（依 GAS 訂單日期，含「超出範圍顯示全部」）
  * ========================= */
 
-/** 快速取出 row 的日期 key（YYYY-MM-DD） */
+/** 快速取出 row 的日期 key（YYYY-MM-DD）✅ PATCH：訂單日期不做時區換算 */
 function fastDateKeyFromRow_(r) {
-  const raw = String(r && r["訂單日期"] ? r["訂單日期"] : "").trim();
-  if (!raw) return "";
-
-  // ISO datetime / 有時區：用台北時區換算
-  if (raw.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(raw)) {
-    return toDateKeyTaipei_(raw);
-  }
-
-  // Fast path：YYYY-MM-DD / YYYY/MM/DD
-  const m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
-
-  return toDateKeyTaipei_(raw);
+  return orderDateKey_(r && r["訂單日期"]);
 }
 
 /** 找出明細資料最新日期（YYYY-MM-DD） */
