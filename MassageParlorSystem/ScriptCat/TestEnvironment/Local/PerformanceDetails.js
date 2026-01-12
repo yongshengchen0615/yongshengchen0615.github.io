@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send-once when data ready)
+// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send only when ALL data ready)
 // @namespace    https://local/
-// @version      2.1
-// @description  Collect techNo + summary + detail rows; send ASAP when data is ready (send once per page-entry). Commit only after ok:true.
+// @version      2.2
+// @description  Collect techNo + summary + detail rows; send ONLY when all required data is ready (techNo + 3 summary cards + detail rows). Send once per page-entry.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -43,7 +43,6 @@
   }
 
   function stillOnTargetPage_() {
-    // POS 是 SPA，hash 可能切走；GitHub 不會
     if (PAGE === "POS_P_DETAIL") {
       const h = String(location.hash || "");
       return h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
@@ -114,7 +113,7 @@
     return new Date().toISOString();
   }
 
-  // FNV-1a 32-bit（用於避免同一份內容在短時間內被重複送出）
+  // FNV-1a 32-bit
   function makeHash_(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
@@ -124,12 +123,10 @@
     return (h >>> 0).toString(16);
   }
 
-  // 日期正規化：轉成 YYYY-MM-DD，讓 rangeKey 穩定
   function normalizeDate_(s) {
     const raw = String(s || "").trim();
     if (!raw) return "";
 
-    // yy-mm-dd 例如 26-01-11 => 2026-01-11
     let m = raw.match(/^(\d{2})-(\d{2})-(\d{2})$/);
     if (m) {
       const yy = Number(m[1]);
@@ -139,7 +136,6 @@
       return `${String(2000 + yy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
     }
 
-    // yyyy/mm/dd or yyyy-mm-dd or yyyy.m.d
     m = raw.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/);
     if (m) {
       const yyyy = Number(m[1]);
@@ -258,6 +254,41 @@
   }
 
   /* =====================================================
+   * 3.5) ✅ Completeness Checks（偵測到「所有資料」才送）
+   * ===================================================== */
+
+  // summary 必須有三張卡：排班 / 老點 / 總計，且四欄都存在
+  function isSummaryComplete_(summary) {
+    const need = ["排班", "老點", "總計"];
+    for (const k of need) {
+      const c = summary && summary[k];
+      if (!c) return false;
+      // 四欄必須是 number（0 也算有效）
+      if (![c.單數, c.筆數, c.數量, c.金額].every((v) => typeof v === "number" && Number.isFinite(v))) return false;
+    }
+    return true;
+  }
+
+  // detail 每列關鍵欄位要有值（避免表格還在載入、只出現半行）
+  function isDetailComplete_(detail) {
+    if (!Array.isArray(detail) || detail.length <= 0) return false;
+
+    for (const r of detail) {
+      const d = String(r["訂單日期"] || "").trim();
+      const no = String(r["訂單編號"] || "").trim();
+      const item = String(r["服務項目"] || "").trim();
+      const st = String(r["狀態"] || "").trim();
+
+      // 日期至少要有東西（你也可改成必須符合 YYYY-MM-DD）
+      if (!d) return false;
+      if (!no) return false;
+      if (!item) return false;
+      if (!st) return false;
+    }
+    return true;
+  }
+
+  /* =====================================================
    * 4) Build payload（計算 rangeKey + clientHash）
    * ===================================================== */
   function buildPayload_() {
@@ -288,7 +319,6 @@
       detail,
     };
 
-    // 用於「避免短時間重複送出」：不含時間
     payload.clientHash = makeHash_(
       JSON.stringify({
         pageType: payload.pageType,
@@ -328,14 +358,11 @@
   }
 
   /* =====================================================
-   * 6) Auto watch + send ASAP when data ready (send once)
-   *    ✅ 只要抓到資料就送；成功一次就停止（同次進入）
+   * 6) Auto watch + send ONLY when ALL ready (send once)
    * ===================================================== */
   let inFlight = false;
   let pendingHash = "";
   let timer = null;
-
-  // ✅ 成功送過一次就不再送（同次進入頁面）
   let sentOnce = false;
 
   function resetSendState_() {
@@ -344,7 +371,6 @@
     sentOnce = false;
   }
 
-  // 用來避免 console 一直刷同樣 skip 訊息
   let lastSkipReason = "";
   function logSkip_(reason, extra) {
     const msg = String(reason || "");
@@ -357,27 +383,35 @@
     try {
       if (!stillOnTargetPage_()) return;
       if (inFlight) return;
-      if (sentOnce) return; // ✅ 成功一次就不送了
+      if (sentOnce) return;
 
       const payload = buildPayload_();
 
-      if (!payload.detail.length) {
-        logSkip_("EMPTY_DETAIL", { pageType: payload.pageType });
-        return;
-      }
-
+      // ✅ 1) techNo 必須有
       if (!String(payload.techNo || "").trim()) {
         logSkip_("MISSING_TECHNO", { pageType: payload.pageType });
         return;
       }
 
-      if (!payload.rangeKey) {
-        const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
-        logSkip_("MISSING_RANGEKEY", { sampleDates });
+      // ✅ 2) summary 必須完整（三卡四欄）
+      if (!isSummaryComplete_(payload.summary)) {
+        logSkip_("SUMMARY_NOT_READY", { gotKeys: Object.keys(payload.summary || {}) });
         return;
       }
 
-      // 同一份內容正在送 → 不重送
+      // ✅ 3) detail 必須完整（每列關鍵欄位都有）
+      if (!isDetailComplete_(payload.detail)) {
+        logSkip_("DETAIL_NOT_READY", { rows: (payload.detail || []).length });
+        return;
+      }
+
+      // ✅ 4) rangeKey 必須算得出來（表示日期格式已穩定）
+      if (!payload.rangeKey) {
+        const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
+        logSkip_("RANGEKEY_NOT_READY", { sampleDates });
+        return;
+      }
+
       if (payload.clientHash === pendingHash) {
         logSkip_("PENDING_HASH", { hash: payload.clientHash });
         return;
@@ -390,11 +424,10 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        sentOnce = true; // ✅ 只要成功一次就停止
+        sentOnce = true;
         pendingHash = "";
         console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
-        // 失敗不鎖死，讓下一次 mutation/interval 還能再送
         console.warn("[AUTO_PERF] fail:", { status: res && res.status, body: res && (res.json || res.text) });
         pendingHash = "";
       }
@@ -422,14 +455,11 @@
   const observer = new MutationObserver(schedule_);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  // POS 是 SPA：hash 切換要補觸發
   window.addEventListener("hashchange", () => {
-    // 若切回目標頁，允許再送一次
     if (stillOnTargetPage_()) resetSendState_();
     schedule_();
   });
 
-  // 保險：低頻輪詢（更快一些，避免你看一下就關）
   setInterval(() => {
     if (!stillOnTargetPage_()) return;
     schedule_();
