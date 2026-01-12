@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (FAST, one-shot)
 // @namespace    https://local/
-// @version      2.1
-// @description  FAST: detect ready → send once → hard stop
+// @version      2.2
+// @description  FAST: detect ready → send once → hard stop (with clientHash)
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
+// @connect      script.googleusercontent.com
 // @run-at       document-idle
 // @resource     gasConfigReportTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-report-config-TEL.json
 // ==/UserScript==
@@ -34,6 +35,16 @@
     const n = Number(String(v || "").replace(/,/g, ""));
     return Number.isFinite(n) ? n : 0;
   };
+
+  // FNV-1a 32-bit (快、夠用)
+  function fnv1a32(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ("0000000" + h.toString(16)).slice(-8);
+  }
 
   /* ---------- Extract ---------- */
   function getTechNo() {
@@ -98,24 +109,40 @@
 
     if (!techNo || !summary || !detail) return;
 
+    const payload = {
+      mode: "upsertReport_v1",
+      techNo,
+      summary,
+      detail,
+      pageUrl: location.href,
+      pageTitle: document.title || "",
+      source: "scriptcat",
+      clientTsIso: new Date().toISOString(),
+      // ✅ GAS 必填
+      clientHash: fnv1a32(JSON.stringify({ techNo, summary, detail })),
+      // dateKey 可不送；GAS 會用今天（台北）
+      // dateKey: "yyyy-MM-dd",
+    };
+
     GM_xmlhttpRequest({
       method: "POST",
       url: CFG.GAS_URL,
       headers: { "Content-Type": "application/json" },
-      data: JSON.stringify({
-        mode: "upsertReport_v1",
-        techNo,
-        summary,
-        detail,
-        pageUrl: location.href,
-        clientTsIso: new Date().toISOString(),
-      }),
+      data: JSON.stringify(payload),
+      timeout: 15000,
       onload: (res) => {
-        try {
-          const j = JSON.parse(res.responseText || "{}");
-          if (j.ok === true) stopAll();
-        } catch {}
+        const raw = res.responseText || "";
+        let j = null;
+        try { j = JSON.parse(raw); } catch {}
+        if (j && j.ok === true) {
+          stopAll();
+          console.log("[ReportSync] OK", j);
+        } else {
+          console.warn("[ReportSync] FAIL", res.status, raw);
+        }
       },
+      ontimeout: () => console.warn("[ReportSync] TIMEOUT"),
+      onerror: (e) => console.warn("[ReportSync] ERROR", e),
     });
   }
 
