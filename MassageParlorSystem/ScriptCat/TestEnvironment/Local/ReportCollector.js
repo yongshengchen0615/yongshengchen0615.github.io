@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Report Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe)
+// @name         Report Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, stable-ready, keepalive)
 // @namespace    https://local/
-// @version      4.1
-// @description  P_STATIC: SPA-safe start/stop; edge-trigger send when ready; commit hash only after ok:true; pagehide/visibility flush; sessionStorage pending per techNo (multi-tech safe).
+// @version      4.2
+// @description  P_STATIC: stable-ready gate; allowlist GAS_URL; pending per tech; commit hash only after ok:true; pagehide keepalive/beacon best-effort; SPA-safe start/stop.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -30,9 +30,7 @@
   const DEFAULT_CFG = { GAS_URL: "" };
   let CFG = { ...DEFAULT_CFG };
 
-  function safeJsonParse(s) {
-    try { return JSON.parse(s); } catch { return null; }
-  }
+  function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
   function loadJsonOverrides() {
     try {
@@ -48,15 +46,30 @@
     }
   }
 
+  function isAllowedGASUrl_(u) {
+    try {
+      const url = new URL(String(u || ""));
+      if (url.protocol !== "https:") return false;
+      const host = url.hostname.toLowerCase();
+      return host === "script.google.com" || host === "script.googleusercontent.com";
+    } catch {
+      return false;
+    }
+  }
+
   function applyConfigOverrides() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
+    if (CFG.GAS_URL && !isAllowedGASUrl_(CFG.GAS_URL)) {
+      console.warn("[AUTO_REPORT] ⚠️ GAS_URL is not allowlisted. Blocked:", CFG.GAS_URL);
+      CFG.GAS_URL = "";
+    }
   }
 
   applyConfigOverrides();
 
   if (!CFG.GAS_URL) {
     console.warn(
-      "[AUTO_REPORT] ⚠️ CFG.GAS_URL is empty. Will scan, but will NOT send.\n" +
+      "[AUTO_REPORT] ⚠️ CFG.GAS_URL is empty/blocked. Will scan, but will NOT send.\n" +
       'Check @resource JSON: {"GAS_URL":"https://script.google.com/macros/s/.../exec"}'
     );
   }
@@ -64,13 +77,15 @@
   /* =========================
    * 2) Constants / State
    * ========================= */
-  const SOURCE_NAME = "report_page_v2_1";
-  const EDGE_DEBOUNCE_MS = 120;
-  const SCAN_INTERVAL_MS = 1500;
+  const SOURCE_NAME = "report_page_v2_2";
+  const EDGE_DEBOUNCE_MS = 80;         // 更快反應
+  const SCAN_INTERVAL_MS = 1800;       // 降低輪詢壓力（主要靠 mutation）
+  const STABLE_GAP_MS = 250;           // 穩定檢查間隔
+  const MAX_KEEPALIVE_BYTES = 60000;   // keepalive/beacon 安全上限（過大只落地 pending）
 
   // pending base (per-techNo)
-  const PENDING_BASE = "AUTO_REPORT_PENDING_V1";
-  const TECH_MARK_KEY = "AUTO_REPORT_ACTIVE_TECH_V1"; // 記住上次啟用的 techNo（同分頁）
+  const PENDING_BASE = "AUTO_REPORT_PENDING_V2";
+  const TECH_MARK_KEY = "AUTO_REPORT_ACTIVE_TECH_V2";
 
   let started = false;
   let observer = null;
@@ -78,13 +93,18 @@
   let intervalTimer = null;
 
   // multi-tech safe
-  let activeTechNo = "";      // 目前偵測到的 techNo
-  let committedHash = "";     // 只對 activeTechNo 有效
+  let activeTechNo = "";
+  let committedHash = "";
   let sending = false;
   let queued = false;
 
   // 去重 log
   let lastSkipReason = "";
+
+  // stable-ready state
+  let stableTimer = null;
+  let lastProbeSig = "";     // 上一次 probe 的 signature
+  let stableCount = 0;       // 連續穩定次數
 
   /* =========================
    * 3) Utils
@@ -116,8 +136,14 @@
     lastSkipReason = msg;
     console.log("[AUTO_REPORT] skip:", msg, extra || "");
   }
-
   function resetSkip_() { lastSkipReason = ""; }
+
+  function normalizeTech_(t) { return String(t || "").trim(); }
+
+  function hasAntLoading_() {
+    // Ant Design 常見 loading: .ant-spin, .ant-spin-spinning
+    return !!document.querySelector(".ant-spin.ant-spin-spinning, .ant-spin-spinning");
+  }
 
   /* =========================
    * 4) Extractors
@@ -233,14 +259,43 @@
     });
   }
 
+  // best-effort fire-and-forget（切頁/登出用）：不等回應
+  function fireAndForget_(payload) {
+    try {
+      if (!CFG.GAS_URL) return false;
+      const body = JSON.stringify(payload);
+      if (body.length > MAX_KEEPALIVE_BYTES) return false;
+
+      // 1) fetch keepalive（優先）
+      if (typeof fetch === "function") {
+        fetch(CFG.GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+          credentials: "omit",
+        }).catch(() => {});
+        return true;
+      }
+
+      // 2) sendBeacon（備援，拿不到回應）
+      if (navigator && typeof navigator.sendBeacon === "function") {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(CFG.GAS_URL, blob);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   /* =========================
    * 7) Pending per-techNo (sessionStorage)
    * ========================= */
-  function normalizeTech_(t) { return String(t || "").trim(); }
-
   function pendingKeyForTech_(techNo) {
     const t = normalizeTech_(techNo);
-    if (!t) return ""; // 沒 techNo 不存 pending（避免跨師傅風險）
+    if (!t) return "";
     return `${PENDING_BASE}_${t}`;
   }
 
@@ -285,7 +340,6 @@
 
   /* =========================
    * 8) Multi-tech switch guard
-   * - techNo 變更：重置 committedHash、取消 queued、避免跨師傅補送
    * ========================= */
   function ensureActiveTech_(techNo) {
     const t = normalizeTech_(techNo);
@@ -295,23 +349,59 @@
       const prev = activeTechNo;
       activeTechNo = t;
 
-      // 換師傅：重置狀態（避免上一位的 committedHash 影響下一位）
       committedHash = "";
       queued = false;
 
-      // 記錄目前 active tech
       setLastActiveTech_(activeTechNo);
+
+      // reset stable gate
+      lastProbeSig = "";
+      stableCount = 0;
 
       console.log("[AUTO_REPORT] tech switch:", { from: prev || "(none)", to: activeTechNo });
 
-      // 只補送「當前師傅」的 pending
       flushPendingForTech_(activeTechNo);
     }
     return true;
   }
 
   /* =========================
-   * 9) Send core (commit-on-success)
+   * 9) Stable-ready gate
+   * - 避免 table 還在長出來就送/存
+   * ========================= */
+  function probeSignature_() {
+    if (!isTargetPage_()) return "";
+    const techNo = normalizeTech_(extractTechNo());
+    const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
+    const rowCount = tbody ? tbody.querySelectorAll("tr.ant-table-row:not(.ant-table-measure-row)").length : 0;
+    const loading = hasAntLoading_() ? "L1" : "L0";
+    return `${techNo}|R${rowCount}|${loading}`;
+  }
+
+  function scheduleStableCheck_(reason) {
+    if (!started) return;
+    if (stableTimer) clearTimeout(stableTimer);
+
+    stableTimer = setTimeout(() => {
+      stableTimer = null;
+
+      const sig = probeSignature_();
+      if (!sig) return;
+
+      if (sig === lastProbeSig) stableCount++;
+      else stableCount = 0;
+
+      lastProbeSig = sig;
+
+      // 連續兩次一致（= 大約 250ms~500ms 穩定）才送
+      if (stableCount >= 1) {
+        checkAndSendNow_(reason || "stable_ready");
+      }
+    }, STABLE_GAP_MS);
+  }
+
+  /* =========================
+   * 10) Send core (commit-on-success)
    * ========================= */
   function isReady_(payload) {
     if (!payload) return false;
@@ -321,8 +411,13 @@
       return false;
     }
 
-    if (!String(payload.techNo || "").trim()) {
+    if (!normalizeTech_(payload.techNo)) {
       logSkip_("MISSING_TECHNO");
+      return false;
+    }
+
+    if (hasAntLoading_()) {
+      logSkip_("ANT_LOADING");
       return false;
     }
 
@@ -343,7 +438,6 @@
     const pending = loadPendingByTech_(t);
     if (!pending) return;
 
-    // 同 techNo：若已 commit 同 hash，就清掉
     if (pending.hash && pending.hash === committedHash) {
       clearPendingByTech_(t);
       return;
@@ -353,7 +447,7 @@
       sending = true;
       const res = await postToGAS(pending.payload);
       if (res.json && res.json.ok) {
-        committedHash = pending.hash; // ✅ 成功才 commit
+        committedHash = pending.hash;
         clearPendingByTech_(t);
         console.log("[AUTO_REPORT] pending ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", t);
       } else {
@@ -374,18 +468,15 @@
 
     const payload = buildPayload();
 
-    // techNo 還沒出現：不要做任何 pending（避免跨師傅）
     if (!ensureActiveTech_(payload.techNo)) {
       logSkip_("TECH_NOT_READY");
       return;
     }
 
-    // 只要有明細就存 pending（以 techNo 分桶）
-    if (payload.detail && payload.detail.length) {
-      savePending_(payload);
-    }
-
+    // ✅ 只有在「ready」才落地 pending（避免存到半成品）
     if (!isReady_(payload)) return;
+
+    savePending_(payload);
 
     if (payload.clientHash === committedHash) {
       logSkip_("NO_CHANGE_COMMITTED_HASH", { hash: payload.clientHash, techNo: activeTechNo });
@@ -398,7 +489,7 @@
       const res = await postToGAS(payload);
 
       if (res.json && res.json.ok) {
-        committedHash = payload.clientHash; // ✅ success 才 commit
+        committedHash = payload.clientHash;
         clearPendingByTech_(activeTechNo);
         console.log("[AUTO_REPORT] ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", activeTechNo, "reason=", reason || "");
       } else {
@@ -417,19 +508,20 @@
   }
 
   /* =========================
-   * 10) Scheduler (edge-trigger)
+   * 11) Scheduler (mutation + stable gate)
    * ========================= */
   function scheduleEdge_(reason) {
     if (!started) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      checkAndSendNow_(reason || "mutation");
+      // 先做 stable check，真的穩定才送
+      scheduleStableCheck_(reason || "mutation");
     }, EDGE_DEBOUNCE_MS);
   }
 
   /* =========================
-   * 11) Start/Stop for SPA
+   * 12) Start/Stop for SPA
    * ========================= */
   function start_() {
     if (started) return;
@@ -437,7 +529,6 @@
 
     console.log("[AUTO_REPORT] started:", location.href, "hash=", location.hash);
 
-    // 若上一輪（同分頁）有記錄 active tech，先嘗試補送（但仍會在 ensureActiveTech 後再補一次）
     const lastTech = getLastActiveTech_();
     if (lastTech) flushPendingForTech_(lastTech);
 
@@ -456,14 +547,17 @@
   function stop_() {
     if (!started) return;
 
-    // stop 前 best-effort flush
-    checkAndSendNow_("stop");
+    // stop 前：若 ready 就落地 pending；並嘗試 fire-and-forget
+    bestEffortFlushOnLeave_("stop");
 
     started = false;
 
     if (observer) { try { observer.disconnect(); } catch {} observer = null; }
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = null;
+
+    if (stableTimer) clearTimeout(stableTimer);
+    stableTimer = null;
 
     if (intervalTimer) clearInterval(intervalTimer);
     intervalTimer = null;
@@ -481,25 +575,41 @@
   }
 
   /* =========================
-   * 12) Leave/Hide handlers
+   * 13) Leave/Hide handlers (background send)
    * ========================= */
+  function bestEffortFlushOnLeave_(why) {
+    try {
+      if (!isTargetPage_()) return;
+
+      const payload = buildPayload();
+      if (!ensureActiveTech_(payload.techNo)) return;
+
+      // 只有 ready 才落地/發射（避免半成品）
+      if (!isReady_(payload)) return;
+
+      savePending_(payload);
+      fireAndForget_(payload); // 不等回應
+      console.log("[AUTO_REPORT] leave-fire:", why, "techNo=", normalizeTech_(payload.techNo), "hash=", payload.clientHash);
+    } catch {}
+  }
+
   function onVisibilityChange_() {
     if (!started) return;
-    if (document.hidden) checkAndSendNow_("visibility_hidden");
+    if (document.hidden) bestEffortFlushOnLeave_("visibility_hidden");
   }
 
   function onPageHide_() {
     if (!started) return;
-    checkAndSendNow_("pagehide");
+    bestEffortFlushOnLeave_("pagehide");
   }
 
   function onBeforeUnload_() {
     if (!started) return;
-    checkAndSendNow_("beforeunload");
+    bestEffortFlushOnLeave_("beforeunload");
   }
 
   /* =========================
-   * 13) Bootstrap
+   * 14) Bootstrap
    * ========================= */
   window.addEventListener("hashchange", refreshActive_, true);
   refreshActive_();
