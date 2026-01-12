@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (FAST, one-shot)
 // @namespace    https://local/
-// @version      2.0
+// @version      2.1
 // @description  FAST: detect ready → send once → hard stop
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest

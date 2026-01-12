@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (FAST, one-shot)
 // @namespace    https://local/
-// @version      3.0
+// @version      3.1
 // @description  FAST: wait table stable → extract once → send → hard stop
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
