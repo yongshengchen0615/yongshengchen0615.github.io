@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, rangeKey normalized)
 // @namespace    https://local/
-// @version      4.0
+// @version      4.1
 // @description  P_DETAIL: SPA-safe start/stop; edge-trigger send; normalize rangeKey; commit hash only after ok:true; flush on hide; sessionStorage pending per techNo (multi-tech safe).
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html

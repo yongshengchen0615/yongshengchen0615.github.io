@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe)
 // @namespace    https://local/
-// @version      4.0
+// @version      4.1
 // @description  P_STATIC: SPA-safe start/stop; edge-trigger send when ready; commit hash only after ok:true; pagehide/visibility flush; sessionStorage pending per techNo (multi-tech safe).
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
