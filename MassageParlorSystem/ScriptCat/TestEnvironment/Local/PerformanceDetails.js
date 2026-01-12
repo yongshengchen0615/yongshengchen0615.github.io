@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send only when ALL data ready)
 // @namespace    https://local/
-// @version      2.2
+// @version      2.3
 // @description  Collect techNo + summary + detail rows; send ONLY when all required data is ready (techNo + 3 summary cards + detail rows). Send once per page-entry.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
