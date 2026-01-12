@@ -1,29 +1,11 @@
 /**
- * performance.js（重構整合版｜已套用「Summary 不吃區間、Detail 依訂單日期過濾」）
+ * performance.js（完整重構版）
  *
- * ✅ 本版再套用 PATCH：
- * - 修正「訂單日期 +1 天」：訂單日期一律用純日期字串（YYYY-MM-DD）處理，不做時區換算
- * - ✅ 修正「end=1/11 顯示無資料」：
- *   若 GAS 只存某些 rangeKey（例如 1/01~1/12），查 1/01~1/11 會回空
- *   → 前端在 rows 空時，會自動補抓 end 往後 +1~+3 天的 superset，再裁切回使用者範圍
- *
- * 功能：師傅業績（統計 / 明細）
- *
- * ✅ 需求整合（你要求的版本）
- * 1) 業績統計 Summary：
- *    - 不依開始/結束日期查詢
- *    - 直接讀取 GAS 現有「最新可用」資料（用探測法從今天往回找）
- *    - 快取 key 只跟 techNo 有關（不會因為日期改動而失效）
- *
- * 2) 業績明細 Detail：
- *    - 仍使用開始/結束日期（最多 31 天）組 rangeKey 向 GAS 查詢
- *    - 顯示時依 GAS row 的「訂單日期」欄位過濾（✅ 已改成純日期，不做時區換算）
- *    - 若使用者選到超出資料最大日期（start 或 end > maxKey）=> 顯示所有明細
- *
- * ✅ 行為原則
- * - 切換「統計 / 明細」：只渲染快取；若缺資料則按需補抓該半邊
- * - 手動重整：強制抓 Summary + Detail
- * - 登入後預載：只預載 Summary
+ * ✅ 改動：
+ * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS
+ * 2) 前端 cache 重構：SummaryKey=techNo，DetailKey=techNo+start~end
+ * 3) 維持 orderDateKey_ 純日期過濾策略
+ * 4) ✅ 修正你現在 UI 用 YYYY/MM/DD 造成永遠 BAD_DATE → 顯示空
  */
 
 import { dom } from "./dom.js";
@@ -33,19 +15,13 @@ import { withQuery, escapeHtml } from "./core.js";
 import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
 import { normalizeTechNo } from "./myMasterStatus.js";
 
-/* =========================
- * 常數
- * ========================= */
-
 const PERF_FETCH_TIMEOUT_MS = 20000;
 const PERF_TZ = "Asia/Taipei";
 
 /* =========================
  * Intl formatter（memoize）
- * - 避免 iOS / LINE WebView 反覆 new 很慢
  * ========================= */
 
-// 台北時間：HH:mm:ss
 const PERF_TPE_TIME_FMT = (() => {
   try {
     if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
@@ -61,7 +37,6 @@ const PERF_TPE_TIME_FMT = (() => {
   return null;
 })();
 
-// 台北日期：用 formatToParts 組合 YYYY-MM-DD
 const PERF_TPE_DATE_PARTS_FMT = (() => {
   try {
     if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {
@@ -77,58 +52,50 @@ const PERF_TPE_DATE_PARTS_FMT = (() => {
 })();
 
 /* =========================
- * 模組狀態（Module State）
+ * Module State
  * ========================= */
 
 let perfSelectedMode_ = "detail"; // "detail" | "summary"
-let perfPrefetchInFlight_ = null; // Promise | null
+let perfPrefetchInFlight_ = null;
 
-/**
- * 快取（拆分 Summary / Detail 的 key）
- * - SummaryKey：只跟 techNo 有關（LATEST_SUMMARY）
- * - DetailKey ：techNo + start~end
- */
 const perfCache_ = {
   summaryKey: "",
   detailKey: "",
-  // summary: { meta, summaryObj, detailAgg, summaryHtml, detailAggHtml, detailAggCount, latestReportDateKey }
   summary: null,
-  // detail : { meta, summaryObj, detailRows, summaryHtml, detailRowsHtml, detailRowsCount, maxDetailDateKey }
   detail: null,
 };
 
 /* =========================
- * 小工具（格式、日期）
+ * Utils
  * ========================= */
 
 function pad2_(n) {
   return String(n).padStart(2, "0");
 }
 
-/**
- * 台北日期 key：YYYY-MM-DD（用於比較 / 轉換 timestamp）
- * ⚠️ 注意：這個是「時區換算」版本，適用 timestamp（例如開工/完工、lastUpdatedAt）
- * 訂單日期請改用 orderDateKey_（純日期，不做時區換算）
- */
+/** ✅ 把 YYYY/MM/DD or YYYY-M-D 轉成 YYYY-MM-DD（前端 input 防呆） */
+function normalizeInputDateKey_(s) {
+  const v = String(s || "").trim();
+  if (!v) return "";
+  const m = v.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (!m) return "";
+  return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+}
+
+/** 台北日期 key（timestamp 用） */
 function toDateKeyTaipei_(v) {
   if (v === null || v === undefined) return "";
 
-  // Fast path：YYYY-MM-DD / YYYY/MM/DD
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return "";
     const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-    if (m) {
-      const mm = String(m[2]).padStart(2, "0");
-      const dd = String(m[3]).padStart(2, "0");
-      return `${m[1]}-${mm}-${dd}`;
-    }
+    if (m) return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
   }
 
   const d = v instanceof Date ? v : new Date(String(v).trim());
   if (Number.isNaN(d.getTime())) return "";
 
-  // 用 Intl（台北時區）
   try {
     if (PERF_TPE_DATE_PARTS_FMT) {
       const parts = PERF_TPE_DATE_PARTS_FMT.formatToParts(d);
@@ -144,49 +111,28 @@ function toDateKeyTaipei_(v) {
     }
   } catch (_) {}
 
-  // fallback：台灣固定 UTC+8
   const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
   const t = new Date(tzMs);
-  const yyyy = String(t.getUTCFullYear());
-  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(t.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return `${t.getUTCFullYear()}-${pad2_(t.getUTCMonth() + 1)}-${pad2_(t.getUTCDate())}`;
 }
 
-/**
- * ✅ PATCH：訂單日期專用（純日期，不做時區換算）
- * - 永遠只取 YYYY-MM-DD / YYYY/MM/DD 的日曆日部分
- * - 避免 GAS 回 ISO datetime 時被換算成隔天 (+1 day)
- */
+/** ✅ 訂單日期：純日期，不做時區換算 */
 function orderDateKey_(v) {
   const s = String(v ?? "").trim();
   if (!s) return "";
-
-  // 抓到任何 YYYY-MM-DD / YYYY/MM/DD（包含 ISO datetime 前段）
   const m = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
-  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
-
-  // 真的解析不到日期才 fallback（保守）
+  if (m) return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
   return toDateKeyTaipei_(s);
 }
 
-/** 日期顯示：YYYY/MM/DD（僅顯示用）✅ PATCH：訂單日期不做時區換算 */
 function formatDateYmd_(v) {
-  if (v === null || v === undefined) return "";
-  const s = String(v).trim();
-  if (!s) return "";
-
-  const dk = orderDateKey_(s);
-  if (dk) return dk.replaceAll("-", "/");
-
-  return s;
+  const dk = orderDateKey_(v);
+  return dk ? dk.replaceAll("-", "/") : String(v ?? "").trim();
 }
 
-/** 時間顯示：台北 HH:mm:ss（僅顯示用） */
 function formatTimeTpeHms_(v) {
   if (v === null || v === undefined) return "";
 
-  // 純時間字串：補零 + 補秒
   if (typeof v === "string") {
     const s0 = v.trim();
     if (!s0) return "";
@@ -197,7 +143,6 @@ function formatTimeTpeHms_(v) {
   const d = v instanceof Date ? v : new Date(String(v).trim());
   if (Number.isNaN(d.getTime())) return String(v ?? "").trim();
 
-  // 優先用 Intl（已 memoize）
   try {
     if (PERF_TPE_TIME_FMT) {
       const out = PERF_TPE_TIME_FMT.format(d);
@@ -205,14 +150,13 @@ function formatTimeTpeHms_(v) {
     }
   } catch (_) {}
 
-  // fallback：台灣固定 UTC+8
   const tzMs = d.getTime() + 8 * 60 * 60 * 1000;
   const t = new Date(tzMs);
   return `${pad2_(t.getUTCHours())}:${pad2_(t.getUTCMinutes())}:${pad2_(t.getUTCSeconds())}`;
 }
 
 /* =========================
- * DOM helpers（只管畫面）
+ * DOM helpers
  * ========================= */
 
 function setBadge_(text, isError) {
@@ -220,24 +164,19 @@ function setBadge_(text, isError) {
   dom.perfStatusEl.textContent = String(text || "");
   dom.perfStatusEl.style.borderColor = isError ? "rgba(249, 115, 115, 0.65)" : "";
 }
-
 function setMeta_(text) {
   if (dom.perfMetaEl) dom.perfMetaEl.textContent = String(text || "—");
 }
-
 function showError_(show) {
   if (dom.perfErrorEl) dom.perfErrorEl.style.display = show ? "block" : "none";
 }
-
 function showEmpty_(show) {
   if (dom.perfEmptyEl) dom.perfEmptyEl.style.display = show ? "block" : "none";
 }
-
 function setDetailCount_(n) {
   if (dom.perfDetailCountEl) dom.perfDetailCountEl.textContent = `${Number(n) || 0} 筆`;
 }
 
-/** 依模式更新明細表頭 */
 function renderDetailHeader_(mode) {
   if (!dom.perfDetailHeadRowEl) return;
 
@@ -256,7 +195,7 @@ function renderDetailHeader_(mode) {
 }
 
 /* =========================
- * HTML 產生（效能：一次 innerHTML）
+ * HTML builders
  * ========================= */
 
 function summaryRowsHtml_(summaryObj) {
@@ -338,7 +277,7 @@ function applyDetailTableHtml_(html, count) {
 }
 
 /* =========================
- * 日期區間（input 解析 + dateKeys）
+ * Range / inputs
  * ========================= */
 
 function localDateKeyToday_() {
@@ -346,7 +285,6 @@ function localDateKeyToday_() {
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
   return local.toISOString().slice(0, 10);
 }
-
 function localDateKeyMonthStart_() {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
@@ -355,8 +293,18 @@ function localDateKeyMonthStart_() {
   return `${y}-${m}-01`;
 }
 
-function parseDateKey_(s) {
-  const v = String(s || "").trim();
+function ensureDefaultDate_() {
+  const today = localDateKeyToday_();
+  const monthStart = localDateKeyMonthStart_();
+
+  if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = monthStart;
+  if (dom.perfDateEndInput && !dom.perfDateEndInput.value) dom.perfDateEndInput.value = today;
+
+  if (dom.perfDateKeyInput && !dom.perfDateKeyInput.value) dom.perfDateKeyInput.value = today;
+}
+
+function parseDateKey_(key) {
+  const v = String(key || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
   const d = new Date(v + "T00:00:00");
   if (Number.isNaN(d.getTime())) return null;
@@ -368,8 +316,7 @@ function toDateKey_(d) {
   return local.toISOString().slice(0, 10);
 }
 
-/** 產出日期 keys（最多 maxDays 天） */
-function buildDateKeys_(startKey, endKey, maxDays) {
+function normalizeRange_(startKey, endKey, maxDays) {
   const a = parseDateKey_(startKey);
   const b = parseDateKey_(endKey);
   if (!a || !b) return { ok: false, error: "BAD_DATE" };
@@ -390,66 +337,43 @@ function buildDateKeys_(startKey, endKey, maxDays) {
     out.push(toDateKey_(d));
   }
 
-  // 若 end-start 超過限制，out 會提早結束
   if (out.length && out[out.length - 1] !== toDateKey_(end)) {
     return { ok: false, error: "RANGE_TOO_LONG", days: out.length };
   }
 
-  return { ok: true, keys: out, normalizedStart: toDateKey_(start), normalizedEnd: toDateKey_(end) };
+  return { ok: true, normalizedStart: toDateKey_(start), normalizedEnd: toDateKey_(end), dateKeys: out };
 }
 
-function ensureDefaultDate_() {
-  const today = localDateKeyToday_();
-  const monthStart = localDateKeyMonthStart_();
-
-  if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = monthStart;
-  if (dom.perfDateEndInput && !dom.perfDateEndInput.value) dom.perfDateEndInput.value = today;
-
-  // 舊版單日 input（若仍存在就填今天）
-  if (dom.perfDateKeyInput && !dom.perfDateKeyInput.value) dom.perfDateKeyInput.value = today;
-}
-
-/** 從畫面 input 讀取區間（並正規化） */
+/** ✅ 從 UI 讀區間：先 normalizeInputDateKey_ 再驗證（修正 2026/01/01 類型） */
 function readRangeFromInputs_() {
   const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
-  const startKey = String(dom.perfDateStartInput && dom.perfDateStartInput.value ? dom.perfDateStartInput.value : "").trim();
-  const endKeyRaw = String(dom.perfDateEndInput && dom.perfDateEndInput.value ? dom.perfDateEndInput.value : "").trim();
-  const endKey = endKeyRaw || startKey;
+
+  const startRaw = String(dom.perfDateStartInput?.value || "").trim();
+  const endRaw = String(dom.perfDateEndInput?.value || "").trim();
+
+  const startKey = normalizeInputDateKey_(startRaw);
+  const endKey = normalizeInputDateKey_(endRaw || startRaw);
 
   if (!techNo) return { ok: false, error: "NOT_MASTER", techNo: "", startKey, endKey };
   if (!startKey) return { ok: false, error: "MISSING_START", techNo, startKey, endKey };
 
-  const range = buildDateKeys_(startKey, endKey, 31);
+  const range = normalizeRange_(startKey, endKey, 31);
   if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", techNo, startKey, endKey };
 
-  // 使用者輸入反了：同步回 input
-  if (dom.perfDateStartInput && range.normalizedStart && dom.perfDateStartInput.value !== range.normalizedStart) {
-    dom.perfDateStartInput.value = range.normalizedStart;
-  }
-  if (dom.perfDateEndInput && range.normalizedEnd && dom.perfDateEndInput.value !== range.normalizedEnd) {
-    dom.perfDateEndInput.value = range.normalizedEnd;
-  }
+  if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
+  if (dom.perfDateEndInput && dom.perfDateEndInput.value !== range.normalizedEnd) dom.perfDateEndInput.value = range.normalizedEnd;
 
-  return {
-    ok: true,
-    techNo,
-    normalizedStart: range.normalizedStart,
-    normalizedEnd: range.normalizedEnd,
-    dateKeys: range.keys,
-    rangeKey: `${range.normalizedStart}~${range.normalizedEnd}`,
-  };
+  return { ok: true, techNo, startKey: range.normalizedStart, endKey: range.normalizedEnd, dateKeys: range.dateKeys };
 }
 
 /* =========================
- * 明細過濾（依 GAS 訂單日期，含「超出範圍顯示全部」）
+ * Detail filter (order date)
  * ========================= */
 
-/** 快速取出 row 的日期 key（YYYY-MM-DD）✅ PATCH：訂單日期不做時區換算 */
 function fastDateKeyFromRow_(r) {
   return orderDateKey_(r && r["訂單日期"]);
 }
 
-/** 找出明細資料最新日期（YYYY-MM-DD） */
 function getMaxDetailDateKey_(detailRows) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
   let maxKey = "";
@@ -460,10 +384,6 @@ function getMaxDetailDateKey_(detailRows) {
   return maxKey;
 }
 
-/**
- * 區間過濾明細
- * ✅ 規則：若使用者選到最新日期之後（start 或 end > maxKey），直接回傳全部 rows
- */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
   const s = String(startKey || "").trim();
@@ -472,37 +392,35 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 
   const maxKey = knownMaxKey || getMaxDetailDateKey_(rows);
   if (maxKey) {
-    if (e > maxKey || s > maxKey) return rows; // ✅ 超出範圍 => 顯示全部
+    if (e > maxKey || s > maxKey) return rows; // 超出最新日 → 顯示全部（你的規則）
   }
 
   return rows.filter((r) => {
     const dk = fastDateKeyFromRow_(r);
-    if (!dk) return true; // 保守：解析失敗不過濾
+    if (!dk) return true;
     return dk >= s && dk <= e;
   });
 }
 
 /* =========================
- * Cache key helpers（Summary/Detail 分離）
+ * Cache keys
  * ========================= */
 
 function makePerfSummaryKey_(techNo) {
   return `${String(techNo || "").trim()}:LATEST_SUMMARY`;
 }
-
 function makePerfDetailKey_(techNo, startKey, endKey) {
   return `${String(techNo || "").trim()}:${String(startKey || "").trim()}~${String(endKey || "").trim()}`;
 }
 
 /* =========================
- * 渲染（只用快取；缺什麼補什麼）
+ * Render from cache
  * ========================= */
 
 async function renderFromCache_(mode, info) {
   const m = mode === "summary" ? "summary" : "detail";
   perfSelectedMode_ = m;
 
-  // Summary 不吃日期：只需要 techNo
   const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
   if (!techNo) {
     setBadge_("你不是師傅（無法查詢）", true);
@@ -513,33 +431,24 @@ async function renderFromCache_(mode, info) {
     return { ok: false, error: "NOT_MASTER" };
   }
 
-  // Detail 才需要日期區間
   const r = m === "detail" ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
   if (m === "detail" && (!r || !r.ok)) {
-    if (r && r.error === "NOT_MASTER") setBadge_("你不是師傅（無法查詢）", true);
-    else setBadge_("日期格式不正確", true);
+    setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
     setMeta_("—");
     renderSummary_(null);
-    if (m === "detail") renderDetailRows_([]);
-    else renderDetailSummary_([]);
+    renderDetailRows_([]);
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
   const summaryKey = makePerfSummaryKey_(techNo);
-  const detailKey = m === "detail" ? makePerfDetailKey_(r.techNo, r.normalizedStart, r.normalizedEnd) : "";
+  const detailKey = m === "detail" ? makePerfDetailKey_(techNo, r.startKey, r.endKey) : "";
 
   const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
   const hasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
-  // ✅ 按需補抓：缺什麼補什麼（Summary/Detail 分離）
-  if (m === "summary" && !hasSummary) {
-    await reloadAndCache_({ ok: true, techNo }, { showToast: true, fetchSummary: true, fetchDetail: false });
-  }
-  if (m === "detail" && !hasDetail) {
-    await reloadAndCache_(r, { showToast: true, fetchSummary: false, fetchDetail: true });
-  }
+  if (m === "summary" && !hasSummary) await reloadAndCache_({ ok: true, techNo }, { showToast: true, fetchSummary: true, fetchDetail: false });
+  if (m === "detail" && !hasDetail) await reloadAndCache_(r, { showToast: true, fetchSummary: false, fetchDetail: true });
 
-  // 仍無快取：顯示提示
   const nowHasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
   const nowHasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
@@ -554,51 +463,47 @@ async function renderFromCache_(mode, info) {
 
   if (m === "detail" && !nowHasDetail) {
     setBadge_(perfPrefetchInFlight_ ? "業績載入中…" : "尚未載入（請按手動重整）", !perfPrefetchInFlight_);
-    setMeta_(`師傅：${r.techNo} ｜ 日期：${r.normalizedStart} ~ ${r.normalizedEnd}`);
+    setMeta_(`師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey}`);
     renderDetailHeader_("detail");
     renderSummary_(null);
     renderDetailRows_([]);
     return { ok: false, error: "CACHE_MISS_DETAIL" };
   }
 
-  // 真正渲染
   if (m === "summary") {
     renderDetailHeader_("summary");
     const c = perfCache_.summary;
-
     setMeta_((c && c.meta) || "—");
     setBadge_("已更新", false);
 
-    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c?.summaryHtml || summaryRowsHtml_(c?.summaryObj || null);
 
-    if (c && c.detailAggHtml) applyDetailTableHtml_(c.detailAggHtml, Number(c.detailAggCount || 0) || 0);
+    if (c?.detailAggHtml) applyDetailTableHtml_(c.detailAggHtml, Number(c.detailAggCount || 0) || 0);
     else {
-      const tmp = detailSummaryRowsHtml_(c ? c.detailAgg : []);
+      const tmp = detailSummaryRowsHtml_(c?.detailAgg || []);
       applyDetailTableHtml_(tmp.html, tmp.count);
     }
     return { ok: true, rendered: "summary" };
   }
 
-  // detail
   renderDetailHeader_("detail");
   const c = perfCache_.detail;
 
   setMeta_((c && c.meta) || "—");
   setBadge_("已更新", false);
 
-  // 明細模式：summary table 仍顯示（若有）
-  if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
+  if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c?.summaryHtml || summaryRowsHtml_(c?.summaryObj || null);
 
-  if (c && c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
+  if (c?.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
   else {
-    const tmp = detailRowsHtml_(c ? c.detailRows : []);
+    const tmp = detailRowsHtml_(c?.detailRows || []);
     applyDetailTableHtml_(tmp.html, tmp.count);
   }
   return { ok: true, rendered: "detail" };
 }
 
 /* =========================
- * 重新抓資料（支援只抓一半；Summary/Detail key 分離）
+ * Reload / cache
  * ========================= */
 
 function sleep_(ms) {
@@ -609,16 +514,11 @@ function dateKeyMinusDays_(dateKey, days) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
   const d = new Date(dateKey + "T00:00:00");
   if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() - (Number(days) || 0)); // ✅ days 可為負數 => 等同加天數
+  d.setDate(d.getDate() - (Number(days) || 0));
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60 * 1000);
   return local.toISOString().slice(0, 10);
 }
 
-/**
- * 找到「GAS 現有最新統計」的 dateKey
- * - 從今天開始往回找
- * - 找到第一個 ok:true 且不是 hint-only 的回應就停
- */
 async function findLatestReportDateKey_(techNo, maxBackDays = 62) {
   let dk = localDateKeyToday_();
   const limit = Math.max(1, Number(maxBackDays) || 62);
@@ -633,34 +533,24 @@ async function findLatestReportDateKey_(techNo, maxBackDays = 62) {
   return { ok: false, error: "NO_AVAILABLE_REPORT_IN_RANGE" };
 }
 
-/**
- * reloadAndCache_
- * - fetchSummary=true：讀 GAS 最新可用統計（不吃區間）
- * - fetchDetail=true ：讀區間明細（rangeKey）
- */
 async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fetchDetail = true } = {}) {
-  // 取得 techNo
   const techNo = normalizeTechNo((info && info.techNo) || (state.myMaster && state.myMaster.techNo));
   if (!techNo) return { ok: false, error: "NOT_MASTER" };
 
-  // Detail 才需要區間
   const r = fetchDetail ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
   if (fetchDetail && (!r || !r.ok)) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
 
   const summaryKey = makePerfSummaryKey_(techNo);
-  const detailKey = fetchDetail ? makePerfDetailKey_(r.techNo, r.normalizedStart, r.normalizedEnd) : "";
+  const detailKey = fetchDetail ? makePerfDetailKey_(techNo, r.startKey, r.endKey) : "";
 
-  // 只清要抓的那半邊；key 不同也要清
   if (fetchSummary && perfCache_.summaryKey !== summaryKey) perfCache_.summary = null;
   if (fetchDetail && perfCache_.detailKey !== detailKey) perfCache_.detail = null;
 
-  // 更新 key
   perfCache_.summaryKey = summaryKey;
   if (fetchDetail) perfCache_.detailKey = detailKey;
 
   if (showToast) hideLoadingHint();
 
-  // --- Summary（讀 GAS 最新可用）---
   const summaryP = fetchSummary
     ? (async () => {
         if (showToast) showLoadingHint(`查詢業績統計中…（讀取 GAS 最新）`);
@@ -682,31 +572,27 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         const nr = found.normalized;
 
-        const meta = [
-          `師傅：${nr.techNo || techNo}`,
-          `統計來源：GAS 最新可用日期 ${found.dateKey}`,
-          nr.lastUpdatedAt ? `最後更新：${nr.lastUpdatedAt}` : "",
-        ]
+        const meta = [`師傅：${nr.techNo || techNo}`, `統計來源：GAS 最新可用日期 ${found.dateKey}`, nr.lastUpdatedAt ? `最後更新：${nr.lastUpdatedAt}` : ""]
           .filter(Boolean)
           .join(" ｜ ");
 
-        const summaryObj = nr.summary || null;
-        const detailAgg = Array.isArray(nr.detail) ? nr.detail : [];
-
-        return { meta, summaryObj, detailAgg, latestReportDateKey: found.dateKey };
+        return {
+          meta,
+          summaryObj: nr.summary || null,
+          detailAgg: Array.isArray(nr.detail) ? nr.detail : [],
+          latestReportDateKey: found.dateKey,
+        };
       })()
     : Promise.resolve({ skipped: true });
 
-  // --- Detail（區間）---
   const detailP = fetchDetail
     ? (async () => {
         let rr = null;
         let lastErr = "";
 
-        // ① 先照使用者選的 rangeKey 查一次（含 locked 重試）
         for (let attempt = 0; attempt < 3; attempt++) {
           if (showToast) showLoadingHint(`查詢業績明細中…（${attempt + 1}/3）`);
-          const raw = await fetchDetailPerf_(r.techNo, r.rangeKey);
+          const raw = await fetchDetailPerf_(techNo, r.startKey, r.endKey);
           rr = normalizeDetailPerfResponse_(raw);
           if (rr.ok) break;
 
@@ -720,46 +606,13 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
-        // ② 取 rows（可能為空）
-        let rows = Array.isArray(rr.detail) ? rr.detail : [];
-
-        // ✅ PATCH：若 rows 為空，嘗試抓「end 往後延伸」的 superset，再裁切回使用者選的 end
-        //    目的：解決 GAS 只存某些 rangeKey（例如 1/01~1/12），但你查 1/01~1/11 會空的問題
-        if (!rows.length) {
-          const tryForwardDays = 3; // 只試 +1~+3 天（通常足夠）
-          for (let i = 1; i <= tryForwardDays; i++) {
-            const end2 = dateKeyMinusDays_(r.normalizedEnd, -i); // end + i
-            if (!end2) break;
-
-            // 確保仍在 31 天限制內
-            const chk = buildDateKeys_(r.normalizedStart, end2, 31);
-            if (!chk.ok) break;
-
-            const rangeKey2 = `${chk.normalizedStart}~${chk.normalizedEnd}`;
-            if (showToast) showLoadingHint(`明細補抓（superset）… ${rangeKey2}`);
-
-            const raw2 = await fetchDetailPerf_(r.techNo, rangeKey2);
-            const rr2 = normalizeDetailPerfResponse_(raw2);
-            if (rr2 && rr2.ok) {
-              const rows2 = Array.isArray(rr2.detail) ? rr2.detail : [];
-              if (rows2.length) {
-                rows = rows2;
-                break;
-              }
-            }
-          }
-        }
-
-        const meta = [
-          `師傅：${rr.techNo || r.techNo}`,
-          `日期：${r.normalizedStart} ~ ${r.normalizedEnd}`,
-          rr.lastUpdatedAt ? `最後更新：${rr.lastUpdatedAt}` : "",
-        ]
+        const meta = [`師傅：${rr.techNo || techNo}`, `日期：${r.startKey} ~ ${r.endKey}`, rr.lastUpdatedAt ? `最後更新：${rr.lastUpdatedAt}` : ""]
           .filter(Boolean)
           .join(" ｜ ");
 
-        const maxKey = getMaxDetailDateKey_(rows);
-        const filtered = filterDetailRowsByRange_(rows, r.normalizedStart, r.normalizedEnd, maxKey);
+        const rowsAll = Array.isArray(rr.detail) ? rr.detail : [];
+        const maxKey = getMaxDetailDateKey_(rowsAll);
+        const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
 
         return { meta, summaryObj: rr.summary, detailRows: filtered, maxDetailDateKey: maxKey };
       })()
@@ -768,39 +621,32 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
   try {
     const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
 
-    // 寫入 summary cache（含預先產生 HTML）
     if (sumRes.status === "fulfilled") {
       const v = sumRes.value;
       if (!(v && v.skipped)) {
+        const tmp = detailSummaryRowsHtml_(v.detailAgg || []);
         perfCache_.summary = {
           ...v,
-          summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
-          ...(v && v.detailAgg
-            ? (() => {
-                const tmp = detailSummaryRowsHtml_(v.detailAgg);
-                return { detailAggHtml: tmp.html, detailAggCount: tmp.count };
-              })()
-            : { detailAggHtml: "", detailAggCount: 0 }),
+          summaryHtml: summaryRowsHtml_(v.summaryObj || null),
+          detailAggHtml: tmp.html,
+          detailAggCount: tmp.count,
         };
       }
     }
 
-    // 寫入 detail cache（含預先產生 HTML）
     if (detRes.status === "fulfilled") {
       const v = detRes.value;
       if (!(v && v.skipped)) {
-        const rows = v && v.detailRows ? v.detailRows : [];
-        const tmp = detailRowsHtml_(rows);
+        const tmp = detailRowsHtml_(v.detailRows || []);
         perfCache_.detail = {
           ...v,
-          summaryHtml: summaryRowsHtml_(v && v.summaryObj ? v.summaryObj : null),
+          summaryHtml: summaryRowsHtml_(v.summaryObj || null),
           detailRowsHtml: tmp.html,
           detailRowsCount: tmp.count,
         };
       }
     }
 
-    // 兩邊都失敗才算失敗（允許 partial）
     if (!perfCache_.summary && !perfCache_.detail) {
       const err = [sumRes, detRes]
         .map((x) => (x.status === "rejected" ? String(x.reason && x.reason.message ? x.reason.message : x.reason) : ""))
@@ -808,12 +654,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
       throw new Error(err || "RELOAD_FAILED");
     }
 
-    return {
-      ok: true,
-      summaryKey: perfCache_.summaryKey,
-      detailKey: perfCache_.detailKey,
-      partial: !(perfCache_.summary && (fetchDetail ? perfCache_.detail : true)),
-    };
+    return { ok: true, summaryKey: perfCache_.summaryKey, detailKey: perfCache_.detailKey, partial: !(perfCache_.summary && (fetchDetail ? perfCache_.detail : true)) };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
   } finally {
@@ -822,17 +663,12 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 }
 
 /* =========================
- * 渲染入口（把資料丟到 DOM）
+ * Render helpers
  * ========================= */
 
 function renderSummary_(summaryObj) {
   if (!dom.perfSummaryRowsEl) return;
-
-  if (!summaryObj) {
-    dom.perfSummaryRowsEl.innerHTML = '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
-    return;
-  }
-  dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(summaryObj);
+  dom.perfSummaryRowsEl.innerHTML = summaryObj ? summaryRowsHtml_(summaryObj) : '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
 }
 
 function renderDetailSummary_(detailRows) {
@@ -846,20 +682,16 @@ function renderDetailRows_(detailRows) {
 }
 
 /* =========================
- * Response Normalize（統一 GAS 回傳格式）
+ * Normalize responses
  * ========================= */
 
 function normalizeReportResponse_(data) {
   if (!data || data.ok !== true) return { ok: false, error: (data && data.error) || "UNKNOWN" };
 
-  // GAS 只回 hint（沒有資料）→ 轉成明確錯誤
-  {
-    const hasRows = data.summaryRow || data.summary || data.detailRows || data.detail;
-    const hint = String(data.hint || "");
-    if (!hasRows && hint) return { ok: false, error: "GAS_HINT_ONLY" };
-  }
+  const hasRows = data.summaryRow || data.summary || data.detailRows || data.detail;
+  const hint = String(data.hint || "");
+  if (!hasRows && hint) return { ok: false, error: "GAS_HINT_ONLY" };
 
-  const dateKey = String(data.dateKey || data.date || "");
   const techNo = normalizeTechNo(data.techNo || data.masterId || data.tech || "");
   const lastUpdatedAt = String(data.lastUpdatedAt || data.updatedAt || "");
   const updateCount = Number(data.updateCount || 0) || 0;
@@ -876,34 +708,19 @@ function normalizeReportResponse_(data) {
 
   let summaryObj = summaryRow;
   if (summaryRow && !summaryRow["排班"] && (summaryRow["排班_單數"] !== undefined || summaryRow["總計_金額"] !== undefined)) {
-    summaryObj = {
-      排班: coerceCard("排班"),
-      老點: coerceCard("老點"),
-      總計: coerceCard("總計"),
-    };
+    summaryObj = { 排班: coerceCard("排班"), 老點: coerceCard("老點"), 總計: coerceCard("總計") };
   }
 
-  return {
-    ok: true,
-    dateKey,
-    techNo,
-    lastUpdatedAt,
-    updateCount,
-    summary: summaryObj,
-    detail: Array.isArray(detailRows) ? detailRows : [],
-  };
+  return { ok: true, techNo, lastUpdatedAt, updateCount, summary: summaryObj, detail: Array.isArray(detailRows) ? detailRows : [] };
 }
 
 function normalizeDetailPerfResponse_(data) {
   if (!data || data.ok !== true) return { ok: false, error: (data && data.error) || "UNKNOWN" };
 
-  {
-    const hasRows = data.summaryRow || data.summary || data.detailRows || data.detail;
-    const hint = String(data.hint || "");
-    if (!hasRows && hint) return { ok: false, error: "GAS_HINT_ONLY" };
-  }
+  const hasRows = data.summaryRow || data.summary || data.detailRows || data.detail;
+  const hint = String(data.hint || "");
+  if (!hasRows && hint) return { ok: false, error: "GAS_HINT_ONLY" };
 
-  const rangeKey = String(data.rangeKey || "");
   const techNo = normalizeTechNo(data.techNo || data.masterId || data.tech || "");
   const lastUpdatedAt = String(data.lastUpdatedAt || data.updatedAt || "");
   const updateCount = Number(data.updateCount || 0) || 0;
@@ -920,26 +737,14 @@ function normalizeDetailPerfResponse_(data) {
 
   let summaryObj = summaryRow;
   if (summaryRow && !summaryRow["排班"] && (summaryRow["排班_單數"] !== undefined || summaryRow["總計_金額"] !== undefined)) {
-    summaryObj = {
-      排班: coerceCard("排班"),
-      老點: coerceCard("老點"),
-      總計: coerceCard("總計"),
-    };
+    summaryObj = { 排班: coerceCard("排班"), 老點: coerceCard("老點"), 總計: coerceCard("總計") };
   }
 
-  return {
-    ok: true,
-    rangeKey,
-    techNo,
-    lastUpdatedAt,
-    updateCount,
-    summary: summaryObj,
-    detail: Array.isArray(detailRows) ? detailRows : [],
-  };
+  return { ok: true, techNo, lastUpdatedAt, updateCount, summary: summaryObj, detail: Array.isArray(detailRows) ? detailRows : [] };
 }
 
 /* =========================
- * Fetch（帶 timeout）
+ * Fetch
  * ========================= */
 
 async function fetchReport_(techNo, dateKey) {
@@ -949,10 +754,19 @@ async function fetchReport_(techNo, dateKey) {
   return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "REPORT");
 }
 
-async function fetchDetailPerf_(techNo, rangeKey) {
+async function fetchDetailPerf_(techNo, startKey, endKey) {
   const baseUrl = config.DETAIL_PERF_API_URL || config.REPORT_API_URL;
   if (!baseUrl) throw new Error("CONFIG_DETAIL_PERF_API_URL_MISSING");
-  const q = "mode=getDetailPerf_v1" + "&techNo=" + encodeURIComponent(techNo) + "&rangeKey=" + encodeURIComponent(rangeKey);
+
+  const q =
+    "mode=getDetailPerf_v1" +
+    "&techNo=" +
+    encodeURIComponent(techNo) +
+    "&startKey=" +
+    encodeURIComponent(startKey) +
+    "&endKey=" +
+    encodeURIComponent(endKey);
+
   const url = withQuery(baseUrl, q);
   return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_PERF");
 }
@@ -961,7 +775,6 @@ async function fetchJsonWithTimeout_(url, timeoutMs, tag) {
   const ms = Number(timeoutMs);
   const safeMs = Number.isFinite(ms) && ms > 0 ? ms : PERF_FETCH_TIMEOUT_MS;
 
-  // 舊環境沒有 AbortController：退化但可用
   if (typeof AbortController === "undefined") {
     const resp = await fetch(url, { method: "GET", cache: "no-store" });
     if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
@@ -986,35 +799,21 @@ async function fetchJsonWithTimeout_(url, timeoutMs, tag) {
  * Public Exports
  * ========================= */
 
-export function togglePerformanceCard() {
-  // legacy：由 viewSwitch 控制顯示/隱藏（保留函式避免舊版本殘留呼叫出錯）
-}
+export function togglePerformanceCard() {}
 
-/**
- * 初始化業績 UI（只綁事件 + 填預設日期）
- * - 不會自動打 API
- */
 export function initPerformanceUi() {
   ensureDefaultDate_();
 
-  // legacy：舊版只有一顆查詢（改為讀快取）
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
-
-  // v2：統計 / 明細（切換只渲染快取；缺資料會按需補抓）
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
 }
 
-/**
- * 登入後預載一次業績資料（若功能開通且為師傅）
- * ✅ 加速：只預載 Summary（不抓 Detail）
- */
 export async function prefetchPerformanceOnce() {
   try {
     if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
 
     ensureDefaultDate_();
-
     const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
     if (!techNo) return { ok: false, skipped: "NOT_MASTER" };
 
@@ -1032,28 +831,16 @@ export async function prefetchPerformanceOnce() {
   }
 }
 
-/**
- * 手動重整：強制抓 Summary + Detail
- */
 export async function manualRefreshPerformance({ showToast } = { showToast: true }) {
   if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
   ensureDefaultDate_();
 
   const info = readRangeFromInputs_();
   if (!info.ok) {
-    if (info.error === "NOT_MASTER") {
-      setBadge_("你不是師傅（無法查詢）", true);
-      return { ok: false, error: info.error };
-    }
-    if (info.error === "MISSING_START") {
-      setBadge_("請選擇開始日期", true);
-      return { ok: false, error: info.error };
-    }
-    if (info.error === "RANGE_TOO_LONG") {
-      setBadge_("日期區間過長（最多 31 天）", true);
-      return { ok: false, error: info.error };
-    }
-    setBadge_("日期格式不正確", true);
+    if (info.error === "NOT_MASTER") setBadge_("你不是師傅（無法查詢）", true);
+    else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
+    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else setBadge_("日期格式不正確", true);
     return { ok: false, error: info.error || "BAD_RANGE" };
   }
 
@@ -1074,17 +861,9 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
   return await renderFromCache_(perfSelectedMode_, info);
 }
 
-/**
- * 切換到「業績」視圖時呼叫：
- * - 填預設日期
- * - 直接從快取渲染（缺資料會按需補抓）
- */
 export function onShowPerformance() {
   ensureDefaultDate_();
   showError_(false);
-
   void renderFromCache_(perfSelectedMode_);
-
-  // 清除可能殘留的 toast
   hideLoadingHint();
 }
