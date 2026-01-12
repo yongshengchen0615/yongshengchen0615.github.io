@@ -3,6 +3,9 @@
  *
  * ✅ 本版再套用 PATCH：
  * - 修正「訂單日期 +1 天」：訂單日期一律用純日期字串（YYYY-MM-DD）處理，不做時區換算
+ * - ✅ 修正「end=1/11 顯示無資料」：
+ *   若 GAS 只存某些 rangeKey（例如 1/01~1/12），查 1/01~1/11 會回空
+ *   → 前端在 rows 空時，會自動補抓 end 往後 +1~+3 天的 superset，再裁切回使用者範圍
  *
  * 功能：師傅業績（統計 / 明細）
  *
@@ -606,7 +609,7 @@ function dateKeyMinusDays_(dateKey, days) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
   const d = new Date(dateKey + "T00:00:00");
   if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() - (Number(days) || 0));
+  d.setDate(d.getDate() - (Number(days) || 0)); // ✅ days 可為負數 => 等同加天數
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60 * 1000);
   return local.toISOString().slice(0, 10);
 }
@@ -642,7 +645,6 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
   // Detail 才需要區間
   const r = fetchDetail ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
-
   if (fetchDetail && (!r || !r.ok)) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
 
   const summaryKey = makePerfSummaryKey_(techNo);
@@ -701,6 +703,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
         let rr = null;
         let lastErr = "";
 
+        // ① 先照使用者選的 rangeKey 查一次（含 locked 重試）
         for (let attempt = 0; attempt < 3; attempt++) {
           if (showToast) showLoadingHint(`查詢業績明細中…（${attempt + 1}/3）`);
           const raw = await fetchDetailPerf_(r.techNo, r.rangeKey);
@@ -717,6 +720,36 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
+        // ② 取 rows（可能為空）
+        let rows = Array.isArray(rr.detail) ? rr.detail : [];
+
+        // ✅ PATCH：若 rows 為空，嘗試抓「end 往後延伸」的 superset，再裁切回使用者選的 end
+        //    目的：解決 GAS 只存某些 rangeKey（例如 1/01~1/12），但你查 1/01~1/11 會空的問題
+        if (!rows.length) {
+          const tryForwardDays = 3; // 只試 +1~+3 天（通常足夠）
+          for (let i = 1; i <= tryForwardDays; i++) {
+            const end2 = dateKeyMinusDays_(r.normalizedEnd, -i); // end + i
+            if (!end2) break;
+
+            // 確保仍在 31 天限制內
+            const chk = buildDateKeys_(r.normalizedStart, end2, 31);
+            if (!chk.ok) break;
+
+            const rangeKey2 = `${chk.normalizedStart}~${chk.normalizedEnd}`;
+            if (showToast) showLoadingHint(`明細補抓（superset）… ${rangeKey2}`);
+
+            const raw2 = await fetchDetailPerf_(r.techNo, rangeKey2);
+            const rr2 = normalizeDetailPerfResponse_(raw2);
+            if (rr2 && rr2.ok) {
+              const rows2 = Array.isArray(rr2.detail) ? rr2.detail : [];
+              if (rows2.length) {
+                rows = rows2;
+                break;
+              }
+            }
+          }
+        }
+
         const meta = [
           `師傅：${rr.techNo || r.techNo}`,
           `日期：${r.normalizedStart} ~ ${r.normalizedEnd}`,
@@ -725,7 +758,6 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
           .filter(Boolean)
           .join(" ｜ ");
 
-        const rows = Array.isArray(rr.detail) ? rr.detail : [];
         const maxKey = getMaxDetailDateKey_(rows);
         const filtered = filterDetailRowsByRange_(rows, r.normalizedStart, r.normalizedEnd, maxKey);
 
