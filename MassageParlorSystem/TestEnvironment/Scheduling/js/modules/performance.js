@@ -1,21 +1,23 @@
 /**
- * performance.js（重構整合版）
+ * performance.js（重構整合版｜已套用「Summary 不吃區間、Detail 依訂單日期過濾」）
  *
  * 功能：師傅業績（統計 / 明細）
  *
- * ✅ 需求整合
- * 1) 提升業績讀取速度：
- *    - 登入後預載（prefetchPerformanceOnce）只抓「統計 Summary」（小包、快）
- *    - 使用者點「明細」若快取缺明細：只補抓「明細 Detail」（不重抓統計）
+ * ✅ 需求整合（你要求的版本）
+ * 1) 業績統計 Summary：
+ *    - 不依開始/結束日期查詢
+ *    - 直接讀取 GAS 現有「最新可用」資料（用探測法從今天往回找）
+ *    - 快取 key 只跟 techNo 有關（不會因為日期改動而失效）
  *
- * 2) 修正明細日期選到未來：
- *    - 若使用者選的結束日 > 明細資料最新日期（或開始日 > 最新日）
- *      => 直接顯示全部明細（避免顯示「無資料」）
+ * 2) 業績明細 Detail：
+ *    - 仍使用開始/結束日期（最多 31 天）組 rangeKey 向 GAS 查詢
+ *    - 顯示時依 GAS row 的「訂單日期」欄位過濾
+ *    - 若使用者選到超出資料最大日期（start 或 end > maxKey）=> 顯示所有明細
  *
  * ✅ 行為原則
- * - 切換「統計 / 明細」：只渲染快取，不主動打 API
+ * - 切換「統計 / 明細」：只渲染快取；若缺資料則按需補抓該半邊
  * - 手動重整：強制抓 Summary + Detail
- * - 若使用者切到某模式但快取缺該模式資料：按需補抓缺的半邊
+ * - 登入後預載：只預載 Summary
  */
 
 import { dom } from "./dom.js";
@@ -72,17 +74,18 @@ const PERF_TPE_DATE_PARTS_FMT = (() => {
  * 模組狀態（Module State）
  * ========================= */
 
-let perfRequestSeq_ = 0; // 避免舊請求關掉新 toast
 let perfSelectedMode_ = "detail"; // "detail" | "summary"
 let perfPrefetchInFlight_ = null; // Promise | null
 
 /**
- * 快取（同一個 key 只保留一份，避免記憶體膨脹）
- * key = techNo:start~end
+ * 快取（拆分 Summary / Detail 的 key）
+ * - SummaryKey：只跟 techNo 有關（LATEST_SUMMARY）
+ * - DetailKey ：techNo + start~end
  */
 const perfCache_ = {
-  key: "",
-  // summary: { meta, summaryObj, detailAgg, summaryHtml, detailAggHtml, detailAggCount }
+  summaryKey: "",
+  detailKey: "",
+  // summary: { meta, summaryObj, detailAgg, summaryHtml, detailAggHtml, detailAggCount, latestReportDateKey }
   summary: null,
   // detail : { meta, summaryObj, detailRows, summaryHtml, detailRowsHtml, detailRowsCount, maxDetailDateKey }
   detail: null,
@@ -103,11 +106,9 @@ function formatDateYmd_(v) {
   if (!s) return "";
 
   // ✅ 1) ISO datetime（含 T）/ 含時區資訊：一律用台北時區算日期，避免 -1 天
-  // 例：2026-01-10T16:00:00.000Z 在台北其實是 2026-01-11
   if (s.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(s)) {
-    const dk = toDateKeyTaipei_(s); // 會回 "YYYY-MM-DD"
+    const dk = toDateKeyTaipei_(s); // "YYYY-MM-DD"
     if (dk) return dk.replaceAll("-", "/");
-    // fallback：解析失敗就原樣
     return s;
   }
 
@@ -118,7 +119,6 @@ function formatDateYmd_(v) {
   // ✅ 3) 其他格式：才嘗試 new Date（保守）
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
-    // 用台北日期 key 保證一致
     const dk = toDateKeyTaipei_(d);
     return dk ? dk.replaceAll("-", "/") : `${d.getFullYear()}/${pad2_(d.getMonth() + 1)}/${pad2_(d.getDate())}`;
   }
@@ -157,8 +157,6 @@ function formatTimeTpeHms_(v) {
 
 /**
  * 台北日期 key：YYYY-MM-DD（用於比較 / 過濾）
- * - 盡量走 fast path
- * - 不行再走 Intl / fallback
  */
 function toDateKeyTaipei_(v) {
   if (v === null || v === undefined) return "";
@@ -433,15 +431,15 @@ function readRangeFromInputs_() {
 }
 
 /* =========================
- * 明細過濾（含「選到未來」修正）
+ * 明細過濾（依 GAS 訂單日期，含「超出範圍顯示全部」）
  * ========================= */
 
-/** 快速取出 row 的日期 key（YYYY-MM-DD），盡量走字串 fast path */
+/** 快速取出 row 的日期 key（YYYY-MM-DD） */
 function fastDateKeyFromRow_(r) {
   const raw = String(r && r["訂單日期"] ? r["訂單日期"] : "").trim();
   if (!raw) return "";
 
-  // ✅ ISO datetime（含 T 或時區）不要走 regex，直接用台北時區換算
+  // ISO datetime / 有時區：用台北時區換算
   if (raw.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(raw)) {
     return toDateKeyTaipei_(raw);
   }
@@ -466,7 +464,7 @@ function getMaxDetailDateKey_(detailRows) {
 
 /**
  * 區間過濾明細
- * ✅ 修正：如果使用者選到最新日期之後（start 或 end > maxKey），直接回傳全部 rows。
+ * ✅ 規則：若使用者選到最新日期之後（start 或 end > maxKey），直接回傳全部 rows
  */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
@@ -476,80 +474,93 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 
   const maxKey = knownMaxKey || getMaxDetailDateKey_(rows);
   if (maxKey) {
-    // 使用者選到未來：顯示全部，避免「無資料」
-    if (e > maxKey || s > maxKey) return rows;
+    if (e > maxKey || s > maxKey) return rows; // ✅ 超出範圍 => 顯示全部
   }
 
   return rows.filter((r) => {
     const dk = fastDateKeyFromRow_(r);
-    if (!dk) return true; // 保守：日期解析失敗不過濾
+    if (!dk) return true; // 保守：解析失敗不過濾
     return dk >= s && dk <= e;
   });
 }
 
 /* =========================
- * 快取與渲染
+ * Cache key helpers（Summary/Detail 分離）
  * ========================= */
 
-function makePerfCacheKey_(techNo, startKey, endKey) {
+function makePerfSummaryKey_(techNo) {
+  return `${String(techNo || "").trim()}:LATEST_SUMMARY`;
+}
+
+function makePerfDetailKey_(techNo, startKey, endKey) {
   return `${String(techNo || "").trim()}:${String(startKey || "").trim()}~${String(endKey || "").trim()}`;
 }
 
-function hasCacheForKey_(cacheKey) {
-  return perfCache_.key === cacheKey && !!(perfCache_.summary || perfCache_.detail);
-}
+/* =========================
+ * 渲染（只用快取；缺什麼補什麼）
+ * ========================= */
 
-function hasFullCacheForKey_(cacheKey) {
-  return perfCache_.key === cacheKey && !!perfCache_.summary && !!perfCache_.detail;
-}
-
-/**
- * 渲染（只用快取）
- * - 若快取缺「目前需要的半邊」：按需補抓（不重抓另一半）
- */
 async function renderFromCache_(mode, info) {
   const m = mode === "summary" ? "summary" : "detail";
   perfSelectedMode_ = m;
 
-  const r = info && info.ok ? info : readRangeFromInputs_();
-  if (!r || !r.ok) {
-    if (r && r.error === "NOT_MASTER") {
-      setBadge_("你不是師傅（無法查詢）", true);
-      setMeta_("—");
-      renderSummary_(null);
-      if (m === "detail") renderDetailRows_([]);
-      else renderDetailSummary_([]);
-      return { ok: false, error: r ? r.error : "BAD_RANGE" };
-    }
-    setBadge_("日期格式不正確", true);
+  // Summary 不吃日期：只需要 techNo
+  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+  if (!techNo) {
+    setBadge_("你不是師傅（無法查詢）", true);
+    setMeta_("—");
+    renderSummary_(null);
+    if (m === "detail") renderDetailRows_([]);
+    else renderDetailSummary_([]);
+    return { ok: false, error: "NOT_MASTER" };
+  }
+
+  // Detail 才需要日期區間
+  const r = m === "detail" ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
+  if (m === "detail" && (!r || !r.ok)) {
+    if (r && r.error === "NOT_MASTER") setBadge_("你不是師傅（無法查詢）", true);
+    else setBadge_("日期格式不正確", true);
+    setMeta_("—");
+    renderSummary_(null);
+    if (m === "detail") renderDetailRows_([]);
+    else renderDetailSummary_([]);
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
-  const cacheKey = makePerfCacheKey_(r.techNo, r.normalizedStart, r.normalizedEnd);
+  const summaryKey = makePerfSummaryKey_(techNo);
+  const detailKey = m === "detail" ? makePerfDetailKey_(r.techNo, r.normalizedStart, r.normalizedEnd) : "";
 
-  // ✅ 按需補抓：缺什麼補什麼
-  const needSummary = m === "summary";
-  const needDetail = m === "detail";
-  const hasSummary = perfCache_.key === cacheKey && !!perfCache_.summary;
-  const hasDetail = perfCache_.key === cacheKey && !!perfCache_.detail;
+  const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
+  const hasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
-  if (needSummary && !hasSummary) {
-    await reloadAndCache_(r, { showToast: true, fetchSummary: true, fetchDetail: false });
+  // ✅ 按需補抓：缺什麼補什麼（Summary/Detail 分離）
+  if (m === "summary" && !hasSummary) {
+    await reloadAndCache_({ ok: true, techNo }, { showToast: true, fetchSummary: true, fetchDetail: false });
   }
-  if (needDetail && !hasDetail) {
+  if (m === "detail" && !hasDetail) {
     await reloadAndCache_(r, { showToast: true, fetchSummary: false, fetchDetail: true });
   }
 
   // 仍無快取：顯示提示
-  if (!hasCacheForKey_(cacheKey)) {
-    if (perfPrefetchInFlight_) setBadge_("業績載入中…", false);
-    else setBadge_("尚未載入（請按手動重整）", true);
+  const nowHasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
+  const nowHasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
-    setMeta_(`師傅：${r.techNo} ｜ 日期：${r.normalizedStart} ~ ${r.normalizedEnd}`);
+  if (m === "summary" && !nowHasSummary) {
+    setBadge_(perfPrefetchInFlight_ ? "業績載入中…" : "尚未載入（請按手動重整）", !perfPrefetchInFlight_);
+    setMeta_(`師傅：${techNo} ｜ 統計：讀取 GAS 最新`);
+    renderDetailHeader_("summary");
     renderSummary_(null);
-    if (m === "detail") renderDetailRows_([]);
-    else renderDetailSummary_([]);
-    return { ok: false, error: "CACHE_MISS" };
+    renderDetailSummary_([]);
+    return { ok: false, error: "CACHE_MISS_SUMMARY" };
+  }
+
+  if (m === "detail" && !nowHasDetail) {
+    setBadge_(perfPrefetchInFlight_ ? "業績載入中…" : "尚未載入（請按手動重整）", !perfPrefetchInFlight_);
+    setMeta_(`師傅：${r.techNo} ｜ 日期：${r.normalizedStart} ~ ${r.normalizedEnd}`);
+    renderDetailHeader_("detail");
+    renderSummary_(null);
+    renderDetailRows_([]);
+    return { ok: false, error: "CACHE_MISS_DETAIL" };
   }
 
   // 真正渲染
@@ -570,12 +581,14 @@ async function renderFromCache_(mode, info) {
     return { ok: true, rendered: "summary" };
   }
 
+  // detail
   renderDetailHeader_("detail");
   const c = perfCache_.detail;
 
   setMeta_((c && c.meta) || "—");
   setBadge_("已更新", false);
 
+  // 明細模式：summary table 仍顯示（若有）
   if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c && c.summaryHtml ? c.summaryHtml : summaryRowsHtml_(c ? c.summaryObj : null);
 
   if (c && c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
@@ -587,73 +600,103 @@ async function renderFromCache_(mode, info) {
 }
 
 /* =========================
- * 重新抓資料（支援只抓一半）
+ * 重新抓資料（支援只抓一半；Summary/Detail key 分離）
  * ========================= */
 
 function sleep_(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
+function dateKeyMinusDays_(dateKey, days) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
+  const d = new Date(dateKey + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() - (Number(days) || 0));
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+/**
+ * 找到「GAS 現有最新統計」的 dateKey
+ * - 從今天開始往回找
+ * - 找到第一個 ok:true 且不是 hint-only 的回應就停
+ */
+async function findLatestReportDateKey_(techNo, maxBackDays = 62) {
+  let dk = localDateKeyToday_();
+  const limit = Math.max(1, Number(maxBackDays) || 62);
+
+  for (let i = 0; i < limit; i++) {
+    const raw = await fetchReport_(techNo, dk);
+    const nr = normalizeReportResponse_(raw);
+    if (nr && nr.ok) return { ok: true, dateKey: dk, normalized: nr };
+    dk = dateKeyMinusDays_(dk, 1);
+    if (!dk) break;
+  }
+  return { ok: false, error: "NO_AVAILABLE_REPORT_IN_RANGE" };
+}
+
 /**
  * reloadAndCache_
- * - fetchSummary=true：抓 getReport_v1（只用最新日）
- * - fetchDetail=true ：抓 getDetailPerf_v1（區間）
+ * - fetchSummary=true：讀 GAS 最新可用統計（不吃區間）
+ * - fetchDetail=true ：讀區間明細（rangeKey）
  */
 async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fetchDetail = true } = {}) {
-  const r = info && info.ok ? info : readRangeFromInputs_();
-  if (!r || !r.ok) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
+  // 取得 techNo
+  const techNo = normalizeTechNo((info && info.techNo) || (state.myMaster && state.myMaster.techNo));
+  if (!techNo) return { ok: false, error: "NOT_MASTER" };
 
-  const cacheKey = makePerfCacheKey_(r.techNo, r.normalizedStart, r.normalizedEnd);
+  // Detail 才需要區間
+  const r = fetchDetail ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
 
-  // key 變了：兩者都清；key 沒變：只清要重抓的部分
-  const keyChanged = perfCache_.key !== cacheKey;
-  perfCache_.key = cacheKey;
-  if (keyChanged) {
-    perfCache_.summary = null;
-    perfCache_.detail = null;
-  } else {
-    if (fetchSummary) perfCache_.summary = null;
-    if (fetchDetail) perfCache_.detail = null;
-  }
+  if (fetchDetail && (!r || !r.ok)) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
+
+  const summaryKey = makePerfSummaryKey_(techNo);
+  const detailKey = fetchDetail ? makePerfDetailKey_(r.techNo, r.normalizedStart, r.normalizedEnd) : "";
+
+  // 只清要抓的那半邊；key 不同也要清
+  if (fetchSummary && perfCache_.summaryKey !== summaryKey) perfCache_.summary = null;
+  if (fetchDetail && perfCache_.detailKey !== detailKey) perfCache_.detail = null;
+
+  // 更新 key
+  perfCache_.summaryKey = summaryKey;
+  if (fetchDetail) perfCache_.detailKey = detailKey;
 
   if (showToast) hideLoadingHint();
 
-  // --- Summary（最新日）---
+  // --- Summary（讀 GAS 最新可用）---
   const summaryP = fetchSummary
     ? (async () => {
-        const keys = r.dateKeys;
-        const lastKey = keys && keys.length ? keys[keys.length - 1] : r.normalizedEnd;
+        if (showToast) showLoadingHint(`查詢業績統計中…（讀取 GAS 最新）`);
 
-        if (showToast) showLoadingHint(`查詢業績統計中…（最新：${lastKey}）`);
-
-        let nr = null;
+        let found = null;
         let lastErr = "";
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const raw = await fetchReport_(r.techNo, lastKey);
-          nr = normalizeReportResponse_(raw);
-          if (nr.ok) break;
 
-          lastErr = String(nr.error || "BAD_RESPONSE");
-          if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-            await sleep_(900 + attempt * 600);
-            continue;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const res = await findLatestReportDateKey_(techNo, 62);
+          if (res && res.ok) {
+            found = res;
+            break;
           }
-          break;
+          lastErr = String(res && res.error ? res.error : "FIND_LATEST_FAILED");
+          await sleep_(500 + attempt * 300);
         }
-        if (!nr || !nr.ok) throw new Error(lastErr || "BAD_RESPONSE");
+
+        if (!found || !found.ok) throw new Error(lastErr || "FIND_LATEST_FAILED");
+
+        const nr = found.normalized;
 
         const meta = [
-          `師傅：${nr.techNo || r.techNo}`,
-          `日期：${r.normalizedStart} ~ ${r.normalizedEnd}`,
+          `師傅：${nr.techNo || techNo}`,
+          `統計來源：GAS 最新可用日期 ${found.dateKey}`,
           nr.lastUpdatedAt ? `最後更新：${nr.lastUpdatedAt}` : "",
-          `統計基準：${lastKey}（最新）`,
         ]
           .filter(Boolean)
           .join(" ｜ ");
 
         const summaryObj = nr.summary || null;
         const detailAgg = Array.isArray(nr.detail) ? nr.detail : [];
-        return { meta, summaryObj, detailAgg };
+
+        return { meta, summaryObj, detailAgg, latestReportDateKey: found.dateKey };
       })()
     : Promise.resolve({ skipped: true });
 
@@ -662,6 +705,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
     ? (async () => {
         let rr = null;
         let lastErr = "";
+
         for (let attempt = 0; attempt < 3; attempt++) {
           if (showToast) showLoadingHint(`查詢業績明細中…（${attempt + 1}/3）`);
           const raw = await fetchDetailPerf_(r.techNo, r.rangeKey);
@@ -675,6 +719,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
           }
           break;
         }
+
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
         const meta = [
@@ -696,7 +741,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
   try {
     const [sumRes, detRes] = await Promise.allSettled([summaryP, detailP]);
 
-    // 寫入 summary cache（含預先產生 HTML，避免重複計算）
+    // 寫入 summary cache（含預先產生 HTML）
     if (sumRes.status === "fulfilled") {
       const v = sumRes.value;
       if (!(v && v.skipped)) {
@@ -736,7 +781,12 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
       throw new Error(err || "RELOAD_FAILED");
     }
 
-    return { ok: true, cacheKey, partial: !(perfCache_.summary && perfCache_.detail) };
+    return {
+      ok: true,
+      summaryKey: perfCache_.summaryKey,
+      detailKey: perfCache_.detailKey,
+      partial: !(perfCache_.summary && (fetchDetail ? perfCache_.detail : true)),
+    };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
   } finally {
@@ -790,7 +840,6 @@ function normalizeReportResponse_(data) {
   const summaryRow = data.summaryRow || data.summary || null;
   const detailRows = data.detailRows || data.detail || [];
 
-  // summary：支援 nested 或 flat 欄位
   const coerceCard = (prefix) => ({
     單數: Number((summaryRow && summaryRow[`${prefix}_單數`]) ?? 0) || 0,
     筆數: Number((summaryRow && summaryRow[`${prefix}_筆數`]) ?? 0) || 0,
@@ -938,13 +987,14 @@ export async function prefetchPerformanceOnce() {
     if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
 
     ensureDefaultDate_();
-    const info = readRangeFromInputs_();
-    if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
 
-    const cacheKey = makePerfCacheKey_(info.techNo, info.normalizedStart, info.normalizedEnd);
-    if (perfCache_.key === cacheKey && perfCache_.summary) return { ok: true, cached: true };
+    const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+    if (!techNo) return { ok: false, skipped: "NOT_MASTER" };
 
-    perfPrefetchInFlight_ = reloadAndCache_(info, { showToast: false, fetchSummary: true, fetchDetail: false });
+    const summaryKey = makePerfSummaryKey_(techNo);
+    if (perfCache_.summaryKey === summaryKey && perfCache_.summary) return { ok: true, cached: true };
+
+    perfPrefetchInFlight_ = reloadAndCache_({ ok: true, techNo }, { showToast: false, fetchSummary: true, fetchDetail: false });
     const out = await perfPrefetchInFlight_;
     return out && out.ok ? { ok: true, prefetched: true } : out;
   } catch (e) {
@@ -1006,7 +1056,6 @@ export function onShowPerformance() {
   ensureDefaultDate_();
   showError_(false);
 
-  // 進入業績頁：用快取渲染，不阻塞主流程
   void renderFromCache_(perfSelectedMode_);
 
   // 清除可能殘留的 toast
