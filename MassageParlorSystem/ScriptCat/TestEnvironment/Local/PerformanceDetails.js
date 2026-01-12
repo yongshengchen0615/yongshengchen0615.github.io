@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (SPA-safe, always-on watcher)
 // @namespace    https://local/
-// @version      2.7
+// @version      2.8
 // @description  SPA-safe: always start watchers; on each check, detect current page/tab and send when techNo + detail rows are ready. Send once per page-entry; only mark success when GAS returns ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
