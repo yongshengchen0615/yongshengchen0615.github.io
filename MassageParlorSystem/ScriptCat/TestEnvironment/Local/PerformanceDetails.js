@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, P_STATIC-like send rule)
 // @namespace    https://local/
-// @version      2.6
+// @version      2.7
 // @description  Collect techNo + summary + detail rows; send as soon as techNo + detail rows are ready (like P_STATIC). Send once per page-entry; only mark success when GAS returns ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
