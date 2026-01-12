@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, reliable commit)
 // @namespace    https://local/
-// @version      1.8
+// @version      1.9
 // @description  Collect techNo + summary + detail rows from POS(#/performance?tab=P_DETAIL) and GitHub page; send only when changed (clientHash). Commit hash only after ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
