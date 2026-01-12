@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send-once when data ready)
 // @namespace    https://local/
-// @version      2.0
+// @version      2.1
 // @description  Collect techNo + summary + detail rows; send ASAP when data is ready (send once per page-entry). Commit only after ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
