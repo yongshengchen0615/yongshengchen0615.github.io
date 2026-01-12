@@ -393,6 +393,42 @@ body {
   color: rgba(148, 163, 184, 0.8);
 }
 
+/* =========================================================
+ * ✅ iOS / LINE WebView：日期 input 防裁切（核心修正）
+ * - 只影響 type="date"（不動其他 input）
+ * - 右側預留空間給 calendar indicator
+ * - font-size:16 防 iOS 自動放大與字被切
+ * ========================================================= */
+input[type="date"].input{
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  min-height: 44px;            /* iOS 友善點擊高度 */
+  padding: 10px 40px 10px 12px;/* 右側預留給 indicator */
+
+  font-size: 16px;             /* iOS 防自動放大/裁切 */
+  line-height: 1.2;
+
+  -webkit-appearance: none;
+  appearance: none;
+
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+input[type="date"].input::-webkit-date-and-time-value{
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+input[type="date"].input::-webkit-calendar-picker-indicator{
+  opacity: 0.85;
+  cursor: pointer;
+}
+
 /* ✅ 業績查詢：開始/結束日期 + 明細/統計按鈕在各裝置自適應且不溢出 */
 #perfCard .filters {
   width: 100%;
@@ -593,7 +629,6 @@ body {
   font-weight: 500;
   border: 1px solid transparent;
 
-  /* 禁止換行（原本在後段重複宣告，集中在這裡） */
   white-space: nowrap;
   word-break: keep-all;
   overflow-wrap: normal;
@@ -635,8 +670,6 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: rgba(15, 23, 42, 0.95);
   font-size: 12px;
-
-  /* 避免窄螢幕時 badge 溢出蓋到前一欄（Safari table-cell overflow 有時不裁切） */
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -655,7 +688,6 @@ body {
 
 .card-table .status-table thead th:nth-child(5),
 .card-table .status-table tbody td:nth-child(5) {
-  /* 依螢幕寬度自適應（避免擠壓「預約內容」欄） */
   width: clamp(88px, 14vw, 160px) !important;
   text-align: right;
 }
@@ -735,13 +767,17 @@ body {
     font-size: 16px;
   }
 
+  /* ✅ 行動版保險：date input 右側預留固定 */
+  input[type="date"].input{
+    padding-right: 40px;
+  }
+
   /* 業績查詢：行動版讓日期與查詢按鈕同寬 */
   #perfCard .filters {
     grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  /* 兩顆按鈕：在行動版穩定直排（避免 inline button 寬度 100% 時互相擠壓） */
   #perfCard .filters .filter:last-child .filter-label {
     display: none;
   }
@@ -751,15 +787,12 @@ body {
   }
 
   #perfCard .perf-actions .btn {
-    /* Desktop has flex-basis:140px; in column direction it becomes height.
-       Override for mobile to prevent oversized buttons. */
     flex: 0 0 auto;
     height: auto;
     width: 100%;
     display: block;
   }
 
-  /* 業績表格欄位多：行動版優先可橫向捲動 + 略縮字 */
   #perfCard .status-table {
     min-width: 980px;
     font-size: 12px;
@@ -789,25 +822,18 @@ body {
     min-width: 720px;
   }
 
-  /* ✅ 排班表面板（card-table）：行動版維持原本表格樣式，但縮窄欄位避免過寬 */
   .card-table .status-table {
     width: 100%;
     min-width: 0;
     table-layout: fixed;
   }
 
-  /* 行動版：避免任何欄位內容「互相蓋到」 */
   .card-table .status-table th,
   .card-table .status-table td {
     overflow: hidden;
-  }
-
-  .card-table .status-table th,
-  .card-table .status-table td {
     padding: 6px 6px;
   }
 
-  /* 覆蓋 index.html 內 th 的 inline width（需要 !important） */
   .card-table .status-table thead th:nth-child(1),
   .card-table .status-table tbody td:nth-child(1) {
     width: clamp(44px, 12vw, 56px) !important;
@@ -825,22 +851,14 @@ body {
 
   .card-table .status-table thead th:nth-child(5),
   .card-table .status-table tbody td:nth-child(5) {
-    /* 行動版：優先保留「預約內容」欄位寬度，第 5 欄必要時縮到更窄 */
     width: clamp(64px, 18vw, 104px) !important;
-  }
-
-  /* ✅ 剩餘時間欄位靠右（避免視覺上蓋到預約內容欄位） */
-  .card-table .status-table thead th:nth-child(5),
-  .card-table .status-table tbody td:nth-child(5) {
     text-align: right;
   }
 
-  /* 預約內容：不換行，隨欄寬自動截斷（避免窄螢幕上下堆疊/重疊） */
   .card-table .status-table tbody td:nth-child(4) {
     white-space: nowrap;
     text-overflow: ellipsis;
     min-width: 0;
-    /* 視覺分隔：避免和第 5 欄看起來「重疊」 */
     box-shadow: inset -1px 0 0 var(--border);
   }
 
@@ -851,7 +869,6 @@ body {
     min-width: 0;
   }
 
-  /* 狀態 / 剩餘時間：不換行，必要時以省略號顯示 */
   .card-table .status-table tbody td:nth-child(3) .status-pill {
     max-width: 100%;
     overflow: hidden;
@@ -877,7 +894,6 @@ body {
     display: inline-block;
   }
 
-  /* 小螢幕略縮字，提升容納度 */
   .card-table .status-table {
     font-size: 12px;
   }
@@ -889,7 +905,6 @@ body {
 
 /* 更窄螢幕：第 5 欄再縮，避免任何視覺遮擋第 4 欄 */
 @media (max-width: 420px) {
-  /* 超小螢幕：業績表格再縮一點，避免字太擠 */
   #perfCard .card-body {
     padding-left: 14px;
     padding-right: 14px;
@@ -1137,10 +1152,9 @@ body {
   position:absolute;
   left:0; top:0; bottom:0;
   width:6px;
-  /* JS 會寫入 --myStripe；沒寫入時走 fallback（見下方 status-* 設定） */
   background: var(--myStripe, rgba(148, 163, 184, 0.55));
 }
-/* 沒有 token 時的 fallback：用狀態 class 設定 --myStripe */
+
 .my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
 .my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
 .my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
@@ -1156,7 +1170,6 @@ body {
   letter-spacing: .02em;
 }
 
-/* myMasterStatus.js 會把主要內容塞進 #myMasterStatusText（.my-master-text） */
 .my-master-text{
   padding-left: 6px;
   min-width: 0;

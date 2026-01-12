@@ -168,11 +168,13 @@
           <div class="filters" style="margin-bottom:10px;">
             <div class="filter">
               <label for="perfDateStart" class="filter-label">開始日期</label>
-              <input id="perfDateStart" class="input" type="date" />
+              <!-- ✅ A：縮短 iOS 顯示（YYYY-MM-DD）避免撐爆 -->
+              <input id="perfDateStart" class="input" type="date" lang="en-CA" />
             </div>
             <div class="filter">
               <label for="perfDateEnd" class="filter-label">結束日期</label>
-              <input id="perfDateEnd" class="input" type="date" />
+              <!-- ✅ A：縮短 iOS 顯示（YYYY-MM-DD）避免撐爆 -->
+              <input id="perfDateEnd" class="input" type="date" lang="en-CA" />
             </div>
             <div class="filter">
               <label class="filter-label" aria-hidden="true">&nbsp;</label>
