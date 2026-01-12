@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, stable-ready, keepalive)
 // @namespace    https://local/
-// @version      4.2
+// @version      4.3
 // @description  P_DETAIL: stable-ready gate; allowlist GAS_URL; pending per tech; commit after ok:true; pagehide keepalive/beacon best-effort; POS+GitHub.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html

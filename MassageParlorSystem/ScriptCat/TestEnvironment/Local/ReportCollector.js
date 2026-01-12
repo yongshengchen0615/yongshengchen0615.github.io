@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, stable-ready, keepalive)
 // @namespace    https://local/
-// @version      4.2
+// @version      4.3
 // @description  P_STATIC: stable-ready gate; allowlist GAS_URL; pending per tech; commit hash only after ok:true; pagehide keepalive/beacon best-effort; SPA-safe start/stop.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
