@@ -266,49 +266,40 @@ async function reloadAndCache_(info, { showToast } = { showToast: true }) {
 
   if (showToast) hideLoadingHint();
 
-  const summaryP = (async () => {
-    const keys = r.dateKeys;
-    const results = [];
+const summaryP = (async () => {
+  const keys = r.dateKeys;
+  const lastKey = keys && keys.length ? keys[keys.length - 1] : r.normalizedEnd;
 
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (showToast) showLoadingHint(`查詢業績中…（${i + 1}/${keys.length}）`);
+  if (showToast) showLoadingHint(`查詢業績統計中…（最新：${lastKey}）`);
 
-      let ok = false;
-      let lastErr = "";
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const raw = await fetchReport_(r.techNo, k);
-        const nr = normalizeReportResponse_(raw);
-        if (nr.ok) {
-          results.push({ dateKey: k, normalized: nr });
-          ok = true;
-          break;
-        }
-        lastErr = String(nr.error || "BAD_RESPONSE");
-        if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
-          await sleep_(900 + attempt * 600);
-          continue;
-        }
-        break;
-      }
-      if (!ok) throw new Error(lastErr || "BAD_RESPONSE");
+  let nr = null;
+  let lastErr = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const raw = await fetchReport_(r.techNo, lastKey);
+    nr = normalizeReportResponse_(raw);
+    if (nr.ok) break;
+
+    lastErr = String(nr.error || "BAD_RESPONSE");
+    if (lastErr === "LOCKED_TRY_LATER" && attempt < 2) {
+      await sleep_(900 + attempt * 600);
+      continue;
     }
+    break;
+  }
+  if (!nr || !nr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
-    const single = keys.length === 1;
-    const dateMeta = single ? `日期：${keys[0]}` : `日期：${keys[0]} ~ ${keys[keys.length - 1]}`;
-    const last = results.length ? results[results.length - 1].normalized : null;
-    const meta = [
-      `師傅：${(last && last.techNo) || r.techNo}`,
-      dateMeta,
-      last && last.lastUpdatedAt ? `最後更新：${last.lastUpdatedAt}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ｜ ");
+  // meta：仍顯示區間，但「統計」使用最新那天的資料
+  const meta = [
+    `師傅：${nr.techNo || r.techNo}`,
+    `日期：${r.normalizedStart} ~ ${r.normalizedEnd}`,
+    nr.lastUpdatedAt ? `最後更新：${nr.lastUpdatedAt}` : "",
+    `統計基準：${lastKey}（最新）`,
+  ].filter(Boolean).join(" ｜ ");
 
-    const summaryObj = aggregateSummary_(results.map((x) => x.normalized));
-    const detailAgg = aggregateDetail_(results.map((x) => x.normalized));
-    return { meta, summaryObj, detailAgg };
-  })();
+  const summaryObj = nr.summary || null;
+  const detailAgg = Array.isArray(nr.detail) ? nr.detail : []; // 直接用當天的服務項目彙總（不跨日加總）
+  return { meta, summaryObj, detailAgg };
+})();
 
   const detailP = (async () => {
     let rr = null;
