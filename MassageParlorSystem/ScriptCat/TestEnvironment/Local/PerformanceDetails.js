@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send only when ALL data ready)
+// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, P_STATIC-like send rule)
 // @namespace    https://local/
-// @version      2.5
-// @description  Collect techNo + summary + detail rows; send ONLY when all required data is ready (techNo + 3 summary cards + detail rows). Send once per page-entry.
+// @version      2.6
+// @description  Collect techNo + summary + detail rows; send as soon as techNo + detail rows are ready (like P_STATIC). Send once per page-entry; only mark success when GAS returns ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -127,6 +127,7 @@
     const raw = String(s || "").trim();
     if (!raw) return "";
 
+    // 26-01-01 -> 2026-01-01
     let m = raw.match(/^(\d{2})-(\d{2})-(\d{2})$/);
     if (m) {
       const yy = Number(m[1]);
@@ -136,6 +137,7 @@
       return `${String(2000 + yy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
     }
 
+    // 2026/1/1 or 2026-1-1 -> 2026-01-01
     m = raw.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/);
     if (m) {
       const yyyy = Number(m[1]);
@@ -146,6 +148,14 @@
     }
 
     return raw;
+  }
+
+  function todayYmd_() {
+    const d = new Date();
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
   }
 
   /* =====================================================
@@ -180,6 +190,7 @@
   }
 
   function extractSummaryCards_GITHUB_() {
+    // GitHub 靜態頁通常同樣結構
     return extractSummaryCards_POS_();
   }
 
@@ -209,7 +220,7 @@
         分鐘: safeNumber_(text_(tds[9])),
         開工: text_(tds[10]),
         完工: text_(tds[11]),
-        狀態: text_(tds[12]), // ✅ 允許空字串（DOM: <div></div>）
+        狀態: text_(tds[12]), // 允許空字串
       });
     }
     return out;
@@ -219,6 +230,7 @@
     const ant = extractDetailRows_POS_();
     if (ant.length) return ant;
 
+    // fallback：找一般 table（若 GitHub 頁不是 ant-table）
     const tables = Array.from(document.querySelectorAll("table"));
     for (const table of tables) {
       const ths = Array.from(table.querySelectorAll("thead th")).map((th) => text_(th));
@@ -245,7 +257,7 @@
           分鐘: safeNumber_(tds[9]),
           開工: tds[10],
           完工: tds[11],
-          狀態: tds[12], // ✅ 允許空字串
+          狀態: tds[12], // 允許空字串
         });
       }
       if (out.length) return out;
@@ -254,45 +266,14 @@
   }
 
   /* =====================================================
-   * 3.5) ✅ Completeness Checks（偵測到「所有資料」才送）
-   * ===================================================== */
-
-  // summary 必須有三張卡：排班 / 老點 / 總計，且四欄都存在
-  function isSummaryComplete_(summary) {
-    const need = ["排班", "老點", "總計"];
-    for (const k of need) {
-      const c = summary && summary[k];
-      if (!c) return false;
-      // 四欄必須是 number（0 也算有效）
-      if (![c.單數, c.筆數, c.數量, c.金額].every((v) => typeof v === "number" && Number.isFinite(v))) return false;
-    }
-    return true;
-  }
-
-  // detail：只要有資料列，且核心欄位存在（狀態允許空）
-  function isDetailComplete_(detail) {
-    if (!Array.isArray(detail) || detail.length <= 0) return false;
-
-    for (const r of detail) {
-      const d = String(r["訂單日期"] || "").trim();
-      const no = String(r["訂單編號"] || "").trim();
-      const item = String(r["服務項目"] || "").trim();
-
-      if (!d) return false;
-      if (!no) return false;
-      if (!item) return false;
-    }
-    return true;
-  }
-
-  /* =====================================================
-   * 4) Build payload（計算 rangeKey + clientHash）
+   * 4) Build payload（✅ 改成 P_STATIC 風格：不等 summary 完整；rangeKey 可降級）
    * ===================================================== */
   function buildPayload_() {
     const techNo = extractTechNo_();
     const summary = PAGE === "POS_P_DETAIL" ? extractSummaryCards_POS_() : extractSummaryCards_GITHUB_();
     const detail = PAGE === "POS_P_DETAIL" ? extractDetailRows_POS_() : extractDetailRows_GITHUB_();
 
+    // rangeKey：能算就算；算不到就降級，避免卡死不送
     let minDate = "";
     let maxDate = "";
     for (const r of detail) {
@@ -301,7 +282,20 @@
       if (!minDate || d < minDate) minDate = d;
       if (!maxDate || d > maxDate) maxDate = d;
     }
-    const rangeKey = minDate && maxDate ? `${minDate}~${maxDate}` : "";
+
+    let rangeKey = minDate && maxDate ? `${minDate}~${maxDate}` : "";
+
+    // 降級 1：用第一筆日期
+    if (!rangeKey && detail.length) {
+      const d0 = String(detail[0]["訂單日期"] || "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d0)) rangeKey = `${d0}~${d0}`;
+    }
+
+    // 降級 2：再不行就用今天（避免永遠不送）
+    if (!rangeKey) {
+      const t = todayYmd_();
+      rangeKey = `${t}~${t}`;
+    }
 
     const payload = {
       mode: "upsertDetailPerf_v1",
@@ -312,8 +306,8 @@
       clientTsIso: nowIso_(),
       techNo,
       rangeKey,
-      summary,
-      detail,
+      summary, // 不要求三卡齊全
+      detail,  // 只要有列即可
     };
 
     payload.clientHash = makeHash_(
@@ -355,7 +349,7 @@
   }
 
   /* =====================================================
-   * 6) Auto watch + send ONLY when ALL ready (send once)
+   * 6) Auto watch + send（✅ 改成與 P_STATIC 一樣：techNo + detail 有就送）
    * ===================================================== */
   let inFlight = false;
   let pendingHash = "";
@@ -368,64 +362,20 @@
     sentOnce = false;
   }
 
-  let lastSkipReason = "";
-  function logSkip_(reason, extra) {
-    const msg = String(reason || "");
-    if (!msg || msg === lastSkipReason) return;
-    lastSkipReason = msg;
-    console.log("[AUTO_PERF] skip:", msg, extra || "");
-  }
-
   async function checkAndSend_() {
     try {
       if (!stillOnTargetPage_()) return;
       if (inFlight) return;
       if (sentOnce) return;
 
-      // ✅ 快速判斷：ant-table 已經出現真正資料列才做 buildPayload（省效能）
-      const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
-      const tableRows = tbody
-        ? Array.from(tbody.querySelectorAll("tr.ant-table-row")).filter(
-            (tr) => !tr.classList.contains("ant-table-measure-row")
-          )
-        : [];
-      if (!tableRows.length) {
-        logSkip_("TABLE_NOT_READY");
-        return;
-      }
-
       const payload = buildPayload_();
 
-      // ✅ 1) techNo 必須有
-      if (!String(payload.techNo || "").trim()) {
-        logSkip_("MISSING_TECHNO", { pageType: payload.pageType });
-        return;
-      }
-
-      // ✅ 2) summary 必須完整（三卡四欄）
-      if (!isSummaryComplete_(payload.summary)) {
-        logSkip_("SUMMARY_NOT_READY", { gotKeys: Object.keys(payload.summary || {}) });
-        return;
-      }
-
-      // ✅ 3) detail 必須完整（核心欄位有；狀態允許空）
-      if (!isDetailComplete_(payload.detail)) {
-        logSkip_("DETAIL_NOT_READY", { rows: (payload.detail || []).length });
-        return;
-      }
-
-      // ✅ 4) rangeKey 必須算得出來（表示日期格式已穩定）
-      if (!payload.rangeKey) {
-        const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
-        logSkip_("RANGEKEY_NOT_READY", { sampleDates });
-        return;
-      }
+      // ✅ 跟 P_STATIC 一樣：只要明細有列 + techNo 有，就送
+      if (!Array.isArray(payload.detail) || payload.detail.length <= 0) return;
+      if (!String(payload.techNo || "").trim()) return;
 
       // 同一份內容正在送 → 不重送
-      if (payload.clientHash === pendingHash) {
-        logSkip_("PENDING_HASH", { hash: payload.clientHash });
-        return;
-      }
+      if (payload.clientHash === pendingHash) return;
 
       inFlight = true;
       pendingHash = payload.clientHash;
@@ -434,7 +384,7 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        sentOnce = true; // ✅ 成功一次就停止（同次進入頁面）
+        sentOnce = true; // 成功一次就停止（同次進入頁面）
         pendingHash = "";
         console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
@@ -471,7 +421,7 @@
     schedule_();
   });
 
-  // 保險：低頻輪詢（避免你看一下就關）
+  // 保險：低頻輪詢
   setInterval(() => {
     if (!stillOnTargetPage_()) return;
     schedule_();
