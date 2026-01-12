@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS（自動同步報表到 GAS）
 // @namespace    https://local/
-// @version      1.8
-// @description  自動擷取師傅號碼、摘要卡片、明細表，資料有變才送；僅在 GAS 回 ok:true 後才視為成功提交
+// @version      1.9
+// @description  只要擷取到資料就送出（同次開頁只送一次）；僅在 GAS 回 ok:true 後才視為成功提交
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -17,16 +17,11 @@
 
   /* =====================================================
    * 0) Page Gate（頁面閘門）
-   *    目的：@match 放寬成整個 domain，
-   *    但只在指定頁面才真正啟動腳本
    * ===================================================== */
   function isTargetPage_() {
-    // 目標頁面：#/performance?tab=P_STATIC
     const h = String(location.hash || "");
     return h.startsWith("#/performance") && h.includes("tab=P_STATIC");
   }
-
-  // 若不是目標頁，直接結束（不監聽、不掃 DOM、不送 request）
   if (!isTargetPage_()) return;
 
   console.log("[AUTO_REPORT] loaded:", location.href, "hash=", location.hash);
@@ -35,24 +30,13 @@
    * 1) Config（從 @resource JSON 讀取 GAS_URL）
    * ===================================================== */
   const GAS_RESOURCE = "gasConfigReportTEL";
-
-  // 預設設定（若 resource 讀不到，至少不會噴錯）
-  const DEFAULT_CFG = {
-    GAS_URL: "",
-  };
-
+  const DEFAULT_CFG = { GAS_URL: "" };
   let CFG = { ...DEFAULT_CFG };
 
-  // 安全 JSON.parse（避免格式錯誤整支炸掉）
   function safeJsonParse_(s) {
-    try {
-      return JSON.parse(s);
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(s); } catch { return null; }
   }
 
-  // 從 @resource 讀取設定檔
   function loadJsonOverrides_() {
     try {
       if (typeof GM_getResourceText !== "function") return {};
@@ -61,23 +45,18 @@
       if (!parsed || typeof parsed !== "object") return {};
 
       const out = {};
-      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) {
-        out.GAS_URL = parsed.GAS_URL;
-      }
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
       return out;
     } catch {
       return {};
     }
   }
 
-  // 套用設定
   function applyConfigOverrides_() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverrides_() };
   }
-
   applyConfigOverrides_();
 
-  // 若沒設定 GAS_URL，只警告、不送資料
   if (!CFG.GAS_URL) {
     console.warn(
       "[AUTO_REPORT] ⚠️ CFG.GAS_URL is empty.\n" +
@@ -89,19 +68,16 @@
   /* =====================================================
    * 2) 執行期常數
    * ===================================================== */
-  const SOURCE_NAME = "report_page_v1"; // 資料來源標記
-  const THROTTLE_MS = 600;              // 節流時間（避免 React DOM 爆量觸發）
+  const SOURCE_NAME = "report_page_v1";
+  const THROTTLE_MS = 600;
 
   /* =====================================================
    * 3) 工具函式
    * ===================================================== */
-
-  // 取文字並 trim
   function text_(el) {
     return (el && el.textContent ? el.textContent : "").trim();
   }
 
-  // 將數字字串轉為 number（自動去除逗號）
   function safeNumber_(v) {
     const s = String(v ?? "").trim().replace(/,/g, "");
     if (s === "") return 0;
@@ -109,13 +85,11 @@
     return Number.isFinite(n) ? n : 0;
   }
 
-  // 取得 ISO 時間字串（UTC）
   function nowIso_() {
     return new Date().toISOString();
   }
 
-  // 輕量 hash（FNV-1a 32bit）
-  // 用來判斷「資料內容是否有變」
+  // 輕量 hash（保留：用於「避免同一份 payload 被重複送出」）
   function makeHash_(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
@@ -129,8 +103,6 @@
    * 4) 擷取師傅號碼 techNo
    * ===================================================== */
   function extractTechNo_() {
-    // 範例 DOM：
-    // <p class="text-C599F48">師傅號碼：<span>10</span></p>
     const ps = Array.from(document.querySelectorAll("p"));
     const p = ps.find((el) => (el.textContent || "").includes("師傅號碼"));
     if (!p) return "";
@@ -149,7 +121,7 @@
     const out = {};
 
     for (const block of blocks) {
-      const title = text_(block.querySelector("p.mb-2")); // 卡片標題
+      const title = text_(block.querySelector("p.mb-2"));
       const tds = Array.from(block.querySelectorAll("tbody td")).map((td) => text_(td));
       if (!title || tds.length < 4) continue;
 
@@ -203,8 +175,7 @@
     const summary = extractSummaryCards_();
     const detail = extractAntTableRows_();
 
-    // dateKey 留空，交由 GAS 以「台北今天」補齊
-    const dateKey = "";
+    const dateKey = ""; // 交由 GAS 以「台北今天」補齊
 
     const payload = {
       mode: "upsertReport_v1",
@@ -218,7 +189,8 @@
       detail,
     };
 
-    // clientHash 只根據「內容」產生，不能包含時間
+    // 用於「避免同一個畫面在 Mutation 轟炸下重送」
+    // 注意：不把時間放進去，才不會每次都變
     payload.clientHash = makeHash_(
       JSON.stringify({
         techNo: payload.techNo,
@@ -259,27 +231,34 @@
   }
 
   /* =====================================================
-   * 9) 核心邏輯：自動偵測 + 只在成功後 commit hash
+   * 9) 核心邏輯：只要讀取到資料就送（同次進入只送一次）
    * ===================================================== */
-  let lastHash = "";     // 已成功寫入 GAS 的 hash
-  let pendingHash = ""; // 正在嘗試送出的 hash
-  let inFlight = false; // 是否有請求進行中
+  let inFlight = false;
+  let pendingHash = "";
+
+  // ✅ 成功送過一次就不再送（避免你「看一下就關」時被 MutationObserver 洗爆）
+  let sentOnce = false;
+
+  // 若 hashchange 重新進入目標頁，可再送一次
+  function resetSendState_() {
+    inFlight = false;
+    pendingHash = "";
+    sentOnce = false;
+  }
 
   async function checkAndSend_() {
     try {
       if (!isTargetPage_()) return;
       if (inFlight) return;
+      if (sentOnce) return; // ✅ 同次開頁/同次進入：成功後就不送了
 
       const payload = buildPayload_();
 
-      // 沒抓到明細 → 不送
+      // 沒抓到明細 → 不送（等資料載入完成）
       if (!payload.detail.length) return;
 
       // 沒抓到師傅號碼 → 不送
       if (!String(payload.techNo || "").trim()) return;
-
-      // 內容沒變 → 不送
-      if (payload.clientHash === lastHash) return;
 
       // 同一份內容正在送 → 不重送
       if (payload.clientHash === pendingHash) return;
@@ -291,12 +270,17 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        // ✅ 只有成功才視為已同步
-        lastHash = payload.clientHash;
-        pendingHash = "";
-        console.log("[AUTO_REPORT] ok:", res.json.result, "key=", res.json.key, "hash=", lastHash);
+        sentOnce = true; // ✅ 只要成功一次，這次就結束
+        console.log(
+          "[AUTO_REPORT] ok:",
+          res.json.result,
+          "key=",
+          res.json.key,
+          "hash=",
+          payload.clientHash
+        );
       } else {
-        // ❗失敗不 commit，讓下次還能重送
+        // 失敗不鎖死，讓下一次 mutation / interval 還能再送
         console.warn("[AUTO_REPORT] fail:", res);
         pendingHash = "";
       }
@@ -308,7 +292,6 @@
     }
   }
 
-  // 節流排程（避免短時間內大量觸發）
   function debounceSchedule_() {
     if (debounceSchedule_._t) clearTimeout(debounceSchedule_._t);
     debounceSchedule_._t = setTimeout(() => {
@@ -320,24 +303,20 @@
   /* =====================================================
    * 10) 啟動監聽
    * ===================================================== */
-
-  // 頁面載入後先跑一次
   debounceSchedule_();
 
-  // 監聽 DOM 變化（React / AntD 會頻繁改 DOM）
   const observer = new MutationObserver(debounceSchedule_);
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true,
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  window.addEventListener("hashchange", () => {
+    // hash 切換：如果又進入目標 tab，允許再送一次
+    if (isTargetPage_()) resetSendState_();
+    debounceSchedule_();
   });
 
-  // SPA hash 切換時補觸發
-  window.addEventListener("hashchange", debounceSchedule_);
-
-  // 低頻保險輪詢（避免某些更新沒觸發 mutation）
+  // 保險輪詢：若 DOM 更新沒觸發 mutation
   setInterval(() => {
     if (!isTargetPage_()) return;
     debounceSchedule_();
-  }, 4000);
+  }, 1200);
 })();

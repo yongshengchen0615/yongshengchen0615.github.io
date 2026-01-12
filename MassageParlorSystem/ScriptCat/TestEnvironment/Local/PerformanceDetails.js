@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, reliable commit)
+// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send-once when data ready)
 // @namespace    https://local/
-// @version      1.9
-// @description  Collect techNo + summary + detail rows from POS(#/performance?tab=P_DETAIL) and GitHub page; send only when changed (clientHash). Commit hash only after ok:true.
+// @version      2.0
+// @description  Collect techNo + summary + detail rows; send ASAP when data is ready (send once per page-entry). Commit only after ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -114,7 +114,7 @@
     return new Date().toISOString();
   }
 
-  // FNV-1a 32-bit（輕量 hash，用於判斷內容是否變動）
+  // FNV-1a 32-bit（用於避免同一份內容在短時間內被重複送出）
   function makeHash_(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
@@ -156,7 +156,6 @@
    * 3) Extractors（擷取 techNo / summary / detail）
    * ===================================================== */
 
-  // 師傅號碼：<p>師傅號碼：<span>10</span></p>
   function extractTechNo_() {
     const ps = Array.from(document.querySelectorAll("p"));
     const p = ps.find((el) => (el.textContent || "").includes("師傅號碼"));
@@ -165,14 +164,13 @@
     return (span ? span.textContent : "").trim();
   }
 
-  // POS 的 summary cards（div.flex.mb-4）
   function extractSummaryCards_POS_() {
     const flex = document.querySelector("div.flex.mb-4");
     if (!flex) return {};
     const blocks = Array.from(flex.children).filter((d) => d && d.querySelector);
     const out = {};
     for (const block of blocks) {
-      const title = text_(block.querySelector("p.mb-2")); // 排班/老點/總計
+      const title = text_(block.querySelector("p.mb-2"));
       const tds = Array.from(block.querySelectorAll("tbody td")).map((td) => text_(td));
       if (!title || tds.length < 4) continue;
       out[title] = {
@@ -185,12 +183,10 @@
     return out;
   }
 
-  // GitHub summary：先沿用 POS selector，抓不到就 {}
   function extractSummaryCards_GITHUB_() {
     return extractSummaryCards_POS_();
   }
 
-  // POS AntD table（13 欄）
   function extractDetailRows_POS_() {
     const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
     if (!tbody) return [];
@@ -223,7 +219,6 @@
     return out;
   }
 
-  // GitHub：優先吃 ant-table 結構；不行就找一般 <table>（表頭含訂單日期/訂單編號）
   function extractDetailRows_GITHUB_() {
     const ant = extractDetailRows_POS_();
     if (ant.length) return ant;
@@ -270,7 +265,6 @@
     const summary = PAGE === "POS_P_DETAIL" ? extractSummaryCards_POS_() : extractSummaryCards_GITHUB_();
     const detail = PAGE === "POS_P_DETAIL" ? extractDetailRows_POS_() : extractDetailRows_GITHUB_();
 
-    // rangeKey：用訂單日期算 min~max，確保同一個範圍 key 固定
     let minDate = "";
     let maxDate = "";
     for (const r of detail) {
@@ -284,7 +278,7 @@
     const payload = {
       mode: "upsertDetailPerf_v1",
       source: SOURCE_NAME,
-      pageType: PAGE, // 方便 GAS/除錯辨識來源
+      pageType: PAGE,
       pageUrl: location.href,
       pageTitle: document.title,
       clientTsIso: nowIso_(),
@@ -294,7 +288,7 @@
       detail,
     };
 
-    // clientHash：只根據「內容」產生（不能含時間）
+    // 用於「避免短時間重複送出」：不含時間
     payload.clientHash = makeHash_(
       JSON.stringify({
         pageType: payload.pageType,
@@ -334,13 +328,21 @@
   }
 
   /* =====================================================
-   * 6) Auto watch + send only when changed
-   *    ✅ 只有 ok:true 才 commit lastHash（修正核心問題）
+   * 6) Auto watch + send ASAP when data ready (send once)
+   *    ✅ 只要抓到資料就送；成功一次就停止（同次進入）
    * ===================================================== */
-  let lastHash = "";       // 已成功寫入 GAS 的 hash
-  let pendingHash = "";    // 正在嘗試送出的 hash（避免並發重送）
-  let inFlight = false;    // 避免同時多個請求
+  let inFlight = false;
+  let pendingHash = "";
   let timer = null;
+
+  // ✅ 成功送過一次就不再送（同次進入頁面）
+  let sentOnce = false;
+
+  function resetSendState_() {
+    inFlight = false;
+    pendingHash = "";
+    sentOnce = false;
+  }
 
   // 用來避免 console 一直刷同樣 skip 訊息
   let lastSkipReason = "";
@@ -355,35 +357,27 @@
     try {
       if (!stillOnTargetPage_()) return;
       if (inFlight) return;
+      if (sentOnce) return; // ✅ 成功一次就不送了
 
       const payload = buildPayload_();
 
-      // 1) 明細沒有 → 不送（GAS 會擋 EMPTY_DETAIL）
       if (!payload.detail.length) {
         logSkip_("EMPTY_DETAIL", { pageType: payload.pageType });
         return;
       }
 
-      // 2) techNo 沒有 → 不送（GAS 會擋 MISSING_techNo）
       if (!String(payload.techNo || "").trim()) {
         logSkip_("MISSING_TECHNO", { pageType: payload.pageType });
         return;
       }
 
-      // 3) rangeKey 算不出來 → 不送（key 不穩）
       if (!payload.rangeKey) {
         const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
         logSkip_("MISSING_RANGEKEY", { sampleDates });
         return;
       }
 
-      // 4) 已成功同步過同一份內容 → 不送
-      if (payload.clientHash === lastHash) {
-        logSkip_("NO_CHANGE_HASH", { hash: payload.clientHash });
-        return;
-      }
-
-      // 5) 同一份內容正在送 → 不重送
+      // 同一份內容正在送 → 不重送
       if (payload.clientHash === pendingHash) {
         logSkip_("PENDING_HASH", { hash: payload.clientHash });
         return;
@@ -396,13 +390,11 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        // ✅ 成功才 commit（這就是你要修的「GAS 不更新」核心）
-        lastHash = payload.clientHash;
+        sentOnce = true; // ✅ 只要成功一次就停止
         pendingHash = "";
-
-        console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", lastHash);
+        console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
-        // ❗失敗不 commit，讓下次還能重送
+        // 失敗不鎖死，讓下一次 mutation/interval 還能再送
         console.warn("[AUTO_PERF] fail:", { status: res && res.status, body: res && (res.json || res.text) });
         pendingHash = "";
       }
@@ -425,20 +417,21 @@
   /* =====================================================
    * 7) Start（啟動監聽）
    * ===================================================== */
-
-  // 初次執行一次（頁面可能已經渲染好）
   schedule_();
 
-  // DOM 變動監聽（React/AntD / GitHub JS 也可能改 DOM）
   const observer = new MutationObserver(schedule_);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
   // POS 是 SPA：hash 切換要補觸發
-  window.addEventListener("hashchange", schedule_);
+  window.addEventListener("hashchange", () => {
+    // 若切回目標頁，允許再送一次
+    if (stillOnTargetPage_()) resetSendState_();
+    schedule_();
+  });
 
-  // 保險：低頻輪詢（避免某些更新沒觸發 mutation）
+  // 保險：低頻輪詢（更快一些，避免你看一下就關）
   setInterval(() => {
     if (!stillOnTargetPage_()) return;
     schedule_();
-  }, 4000);
+  }, 1200);
 })();
