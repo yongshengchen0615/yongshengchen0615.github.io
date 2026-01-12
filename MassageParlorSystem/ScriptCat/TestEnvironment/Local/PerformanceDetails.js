@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, send only when ALL data ready)
 // @namespace    https://local/
-// @version      2.3
+// @version      2.4
 // @description  Collect techNo + summary + detail rows; send ONLY when all required data is ready (techNo + 3 summary cards + detail rows). Send once per page-entry.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
@@ -209,7 +209,7 @@
         分鐘: safeNumber_(text_(tds[9])),
         開工: text_(tds[10]),
         完工: text_(tds[11]),
-        狀態: text_(tds[12]),
+        狀態: text_(tds[12]), // ✅ 允許空字串（DOM: <div></div>）
       });
     }
     return out;
@@ -245,7 +245,7 @@
           分鐘: safeNumber_(tds[9]),
           開工: tds[10],
           完工: tds[11],
-          狀態: tds[12],
+          狀態: tds[12], // ✅ 允許空字串
         });
       }
       if (out.length) return out;
@@ -269,7 +269,7 @@
     return true;
   }
 
-  // detail 每列關鍵欄位要有值（避免表格還在載入、只出現半行）
+  // detail：只要有資料列，且核心欄位存在（狀態允許空）
   function isDetailComplete_(detail) {
     if (!Array.isArray(detail) || detail.length <= 0) return false;
 
@@ -277,13 +277,10 @@
       const d = String(r["訂單日期"] || "").trim();
       const no = String(r["訂單編號"] || "").trim();
       const item = String(r["服務項目"] || "").trim();
-      const st = String(r["狀態"] || "").trim();
 
-      // 日期至少要有東西（你也可改成必須符合 YYYY-MM-DD）
       if (!d) return false;
       if (!no) return false;
       if (!item) return false;
-      if (!st) return false;
     }
     return true;
   }
@@ -385,6 +382,18 @@
       if (inFlight) return;
       if (sentOnce) return;
 
+      // ✅ 快速判斷：ant-table 已經出現真正資料列才做 buildPayload（省效能）
+      const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
+      const tableRows = tbody
+        ? Array.from(tbody.querySelectorAll("tr.ant-table-row")).filter(
+            (tr) => !tr.classList.contains("ant-table-measure-row")
+          )
+        : [];
+      if (!tableRows.length) {
+        logSkip_("TABLE_NOT_READY");
+        return;
+      }
+
       const payload = buildPayload_();
 
       // ✅ 1) techNo 必須有
@@ -399,7 +408,7 @@
         return;
       }
 
-      // ✅ 3) detail 必須完整（每列關鍵欄位都有）
+      // ✅ 3) detail 必須完整（核心欄位有；狀態允許空）
       if (!isDetailComplete_(payload.detail)) {
         logSkip_("DETAIL_NOT_READY", { rows: (payload.detail || []).length });
         return;
@@ -412,6 +421,7 @@
         return;
       }
 
+      // 同一份內容正在送 → 不重送
       if (payload.clientHash === pendingHash) {
         logSkip_("PENDING_HASH", { hash: payload.clientHash });
         return;
@@ -424,7 +434,7 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        sentOnce = true;
+        sentOnce = true; // ✅ 成功一次就停止（同次進入頁面）
         pendingHash = "";
         console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
@@ -455,11 +465,13 @@
   const observer = new MutationObserver(schedule_);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
+  // POS 是 SPA：hash 切換要補觸發
   window.addEventListener("hashchange", () => {
     if (stillOnTargetPage_()) resetSendState_();
     schedule_();
   });
 
+  // 保險：低頻輪詢（避免你看一下就關）
   setInterval(() => {
     if (!stillOnTargetPage_()) return;
     schedule_();
