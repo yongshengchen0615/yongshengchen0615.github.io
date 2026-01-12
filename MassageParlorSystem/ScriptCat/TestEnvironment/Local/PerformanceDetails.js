@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (ULTRA FAST + STABLE)
+// @name         PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, rangeKey normalized)
 // @namespace    https://local/
-// @version      3.9
-// @description  ULTRA: observer-driven + debounce + stable-hash gate + once-per-hash + backoff retry
+// @version      2.1
+// @description  P_DETAIL: SPA-safe start/stop; edge-trigger send; normalize rangeKey; commit hash only after ok:true; flush on hide; sessionStorage pending per techNo (multi-tech safe).
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -16,294 +16,601 @@
 (function () {
   "use strict";
 
-  /* ---------- Page Detect ---------- */
-  function isDetailPage() {
-    if (location.href.includes("github.io/Performancedetails")) return true;
-    const h = location.hash || "";
-    return h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
+  /* =========================
+   * 0) Detect page
+   * ========================= */
+  function detectPage_() {
+    const href = String(location.href || "");
+
+    // POS：#/performance?tab=P_DETAIL
+    if (href.startsWith("https://yspos.youngsong.com.tw/")) {
+      const h = String(location.hash || "");
+      if (h.startsWith("#/performance") && h.includes("tab=P_DETAIL")) return "POS_P_DETAIL";
+      return "";
+    }
+
+    // GitHub 靜態頁
+    if (href.startsWith("https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html")) {
+      return "GITHUB_PERF_DETAIL";
+    }
+
+    return "";
   }
-  if (!isDetailPage()) return;
 
-  /* ---------- Config ---------- */
-  let CFG = {};
-  try {
-    CFG = JSON.parse(GM_getResourceText("gasConfigPerformanceDetailsTEL") || "{}");
-  } catch {}
-  if (!CFG.GAS_URL) return;
+  function isActiveTarget_() { return !!detectPage_(); }
 
-  /* ---------- Utils ---------- */
-  const text = (el) => (el && el.textContent ? el.textContent : "").trim();
-  const num = (v) => {
-    const n = Number(String(v || "").replace(/,/g, ""));
+  /* =========================
+   * 1) Config
+   * ========================= */
+  const GAS_RESOURCE = "gasConfigPerformanceDetailsTEL";
+  const DEFAULT_CFG = { GAS_URL: "" };
+  let CFG = { ...DEFAULT_CFG };
+
+  function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
+
+  function loadJsonOverrides() {
+    try {
+      if (typeof GM_getResourceText !== "function") return {};
+      const raw = GM_getResourceText(GAS_RESOURCE);
+      const parsed = safeJsonParse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+      const out = {};
+      if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL")) out.GAS_URL = parsed.GAS_URL;
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  function applyConfigOverrides() { CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() }; }
+  applyConfigOverrides();
+
+  if (!CFG.GAS_URL) {
+    console.warn(
+      "[AUTO_PERF] ⚠️ CFG.GAS_URL is empty. Will scan, but will NOT send.\n" +
+      'Check @resource JSON: {"GAS_URL":"https://script.google.com/macros/s/.../exec"}'
+    );
+  }
+
+  /* =========================
+   * 2) Constants / State
+   * ========================= */
+  const SOURCE_NAME = "performance_details_v2_1";
+  const EDGE_DEBOUNCE_MS = 120;
+  const SCAN_INTERVAL_MS = 1500;
+
+  // pending base (per-techNo)
+  const PENDING_BASE = "AUTO_PERF_PENDING_V1";
+  const TECH_MARK_KEY = "AUTO_PERF_ACTIVE_TECH_V1";
+
+  let started = false;
+  let observer = null;
+  let debounceTimer = null;
+  let intervalTimer = null;
+
+  // multi-tech safe
+  let activeTechNo = "";
+  let committedHash = "";
+  let sending = false;
+  let queued = false;
+
+  let lastSkipReason = "";
+
+  /* =========================
+   * 3) Utils
+   * ========================= */
+  function text(el) { return (el && el.textContent ? el.textContent : "").trim(); }
+
+  function safeNumber(v) {
+    const s = String(v ?? "").trim().replace(/,/g, "");
+    if (s === "") return 0;
+    const n = Number(s);
     return Number.isFinite(n) ? n : 0;
-  };
+  }
 
-  function fnv1a32(str) {
-    let h = 0x811c9dc5;
+  function nowIso() { return new Date().toISOString(); }
+
+  function makeHash(str) {
+    let h = 2166136261;
     for (let i = 0; i < str.length; i++) {
       h ^= str.charCodeAt(i);
-      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+      h = Math.imul(h, 16777619);
     }
-    return ("0000000" + h.toString(16)).slice(-8);
+    return (h >>> 0).toString(16);
   }
 
-  function sleepMs(ms) {
-    return new Promise((r) => setTimeout(r, ms));
+  function logSkip_(reason, extra) {
+    const msg = String(reason || "");
+    if (!msg) return;
+    if (msg === lastSkipReason) return;
+    lastSkipReason = msg;
+    console.log("[AUTO_PERF] skip:", msg, extra || "");
   }
+  function resetSkip_() { lastSkipReason = ""; }
 
-  function isRetryableError(j, status) {
-    const err = String((j && (j.error || j.message)) || "");
-    if (status === 429) return true;
-    if (err.includes("LOCKED_TRY_LATER")) return true;
-    if (err.includes("Service invoked too many times")) return true;
-    return false;
-  }
+  function normalizeTech_(t) { return String(t || "").trim(); }
 
-  function isPermanentError(j) {
-    const err = String((j && (j.error || j.message)) || "");
-    return (
-      err.includes("MISSING_") ||
-      err.includes("BAD_MODE") ||
-      err.includes("EMPTY_DETAIL") ||
-      err.includes("EMPTY_BODY")
-    );
-  }
+  // Normalize date formats to YYYY-MM-DD
+  function normalizeDate_(s) {
+    const raw = String(s || "").trim();
+    if (!raw) return "";
 
-  /* ---------- Extract ---------- */
-  function getTechNo() {
-    const p = [...document.querySelectorAll("p")].find((e) =>
-      (e.textContent || "").includes("師傅號碼")
-    );
-    return p?.querySelector("span")?.textContent.trim() || "";
-  }
-
-  function getRows() {
-    const tbody = document.querySelector(".ant-table-tbody");
-    if (!tbody) return [];
-    return [...tbody.querySelectorAll("tr.ant-table-row")];
-  }
-
-  // rangeKey：抓日期區間；抓不到就 today~today
-  function getRangeKey() {
-    const all = [...document.querySelectorAll("input, span, div, p")];
-    const txt = all
-      .map((e) => text(e))
-      .find((t) => /(\d{4}[\/-]\d{2}[\/-]\d{2}).*(\d{4}[\/-]\d{2}[\/-]\d{2})/.test(t));
-    if (txt) {
-      const m = txt.match(/(\d{4}[\/-]\d{2}[\/-]\d{2}).*(\d{4}[\/-]\d{2}[\/-]\d{2})/);
-      if (m) {
-        const a = m[1].replace(/\//g, "-");
-        const b = m[2].replace(/\//g, "-");
-        return `${a}~${b}`;
-      }
+    let m = raw.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const yy = Number(m[1]);
+      const mm = Number(m[2]);
+      const dd = Number(m[3]);
+      if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return raw;
+      return `${String(2000 + yy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
     }
-    const d = new Date();
-    const y = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const today = `${y}-${mm}-${dd}`;
-    return `${today}~${today}`;
+
+    m = raw.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/);
+    if (m) {
+      const yyyy = Number(m[1]);
+      const mm = Number(m[2]);
+      const dd = Number(m[3]);
+      if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return raw;
+      return `${String(yyyy)}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    }
+
+    return raw;
   }
 
-  function extractDetail(rows) {
-    return rows.map((tr) => {
-      const td = tr.querySelectorAll("td");
-      return {
-        訂單日期: text(td[0]),
-        訂單編號: text(td[1]),
-        服務項目: text(td[4]),
-        業績金額: num(text(td[5])),
-        小計: num(text(td[8])),
-        狀態: text(td[12]),
+  function normalizeRangeKey_(rk) {
+    const s = String(rk ?? "").trim();
+    if (!s) return "";
+    const parts = s.split("~").map((x) => String(x || "").trim());
+    if (parts.length !== 2) return s.replaceAll("/", "-");
+
+    const normDate = (d) => {
+      const t = String(d ?? "").trim();
+      const m = t.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+      if (!m) return t.replaceAll("/", "-");
+      const mm = String(m[2]).padStart(2, "0");
+      const dd = String(m[3]).padStart(2, "0");
+      return `${m[1]}-${mm}-${dd}`;
+    };
+
+    return `${normDate(parts[0])}~${normDate(parts[1])}`;
+  }
+
+  /* =========================
+   * 4) Extractors
+   * ========================= */
+  function extractTechNo_() {
+    const ps = Array.from(document.querySelectorAll("p"));
+    const p = ps.find((el) => (el.textContent || "").includes("師傅號碼"));
+    if (!p) return "";
+    const span = p.querySelector("span");
+    return (span ? span.textContent : "").trim();
+  }
+
+  function extractSummaryCards_() {
+    const flex = document.querySelector("div.flex.mb-4");
+    if (!flex) return {};
+    const blocks = Array.from(flex.children).filter((d) => d && d.querySelector);
+    const out = {};
+    for (const block of blocks) {
+      const title = text(block.querySelector("p.mb-2"));
+      const tds = Array.from(block.querySelectorAll("tbody td")).map((td) => text(td));
+      if (!title || tds.length < 4) continue;
+      out[title] = {
+        單數: safeNumber(tds[0]),
+        筆數: safeNumber(tds[1]),
+        數量: safeNumber(tds[2]),
+        金額: safeNumber(tds[3]),
       };
-    });
-  }
-
-  /* ---------- Stable-hash gate (更準、更快) ---------- */
-  // 用「局部指紋」快速判定是否已穩定（避免每次都 full extract）
-  function quickFingerprint(rows) {
-    const pick = [];
-    const n = rows.length;
-    const idxs = [];
-    for (let i = 0; i < Math.min(3, n); i++) idxs.push(i);
-    for (let i = Math.max(0, n - 3); i < n; i++) if (!idxs.includes(i)) idxs.push(i);
-
-    for (const i of idxs) {
-      const td = rows[i].querySelectorAll("td");
-      // 選幾個關鍵欄位組指紋：日期、編號、項目、金額、狀態
-      pick.push(
-        [
-          text(td[0]),
-          text(td[1]),
-          text(td[4]),
-          text(td[5]),
-          text(td[12]),
-        ].join("|")
-      );
     }
-    return fnv1a32(`${n}::${pick.join("||")}`);
+    return out;
   }
 
-  let lastFp = "";
-  let stableHits = 0;
-  const STABLE_NEED = 2;
+  function extractDetailRows_POS_() {
+    const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
+    if (!tbody) return [];
 
-  /* ---------- Once-per-hash ---------- */
-  const KEY = "P_DETAIL";
-  function sessKey(hash) {
-    return `scat:${KEY}:sent:${hash}`;
-  }
-  function wasSent(hash) {
-    try {
-      return sessionStorage.getItem(sessKey(hash)) === "1";
-    } catch {
-      return false;
+    const rows = Array.from(tbody.querySelectorAll("tr.ant-table-row")).filter(
+      (tr) => !tr.classList.contains("ant-table-measure-row")
+    );
+
+    const out = [];
+    for (const tr of rows) {
+      const tds = Array.from(tr.querySelectorAll("td.ant-table-cell"));
+      if (tds.length < 13) continue;
+
+      out.push({
+        訂單日期: normalizeDate_(text(tds[0])),
+        訂單編號: text(tds[1]),
+        序: safeNumber(text(tds[2])),
+        拉牌: text(tds[3]),
+        服務項目: text(tds[4]),
+        業績金額: safeNumber(text(tds[5])),
+        抽成金額: safeNumber(text(tds[6])),
+        數量: safeNumber(text(tds[7])),
+        小計: safeNumber(text(tds[8])),
+        分鐘: safeNumber(text(tds[9])),
+        開工: text(tds[10]),
+        完工: text(tds[11]),
+        狀態: text(tds[12]),
+      });
     }
-  }
-  function markSent(hash) {
-    try {
-      sessionStorage.setItem(sessKey(hash), "1");
-    } catch {}
+    return out;
   }
 
-  /* ---------- Scheduler ---------- */
-  let done = false;
-  let observer = null;
-  let debounceT = null;
+  function extractDetailRows_GITHUB_() {
+    const ant = extractDetailRows_POS_();
+    if (ant.length) return ant;
 
-  // retry state
-  let sending = false;
-  let retryDelay = 600;
-  const RETRY_MAX = 8000;
+    const tables = Array.from(document.querySelectorAll("table"));
+    for (const table of tables) {
+      const ths = Array.from(table.querySelectorAll("thead th")).map((th) => text(th));
+      const hasDate = ths.some((t) => t.includes("訂單") && t.includes("日期")) || ths.includes("訂單日期");
+      const hasNo = ths.some((t) => t.includes("訂單") && t.includes("編號")) || ths.includes("訂單編號");
+      if (!hasDate || !hasNo) continue;
 
-  function stopAll() {
-    done = true;
-    if (observer) observer.disconnect();
-    if (debounceT) clearTimeout(debounceT);
-  }
+      const out = [];
+      const trs = Array.from(table.querySelectorAll("tbody tr"));
+      for (const tr of trs) {
+        const tds = Array.from(tr.querySelectorAll("td")).map((td) => text(td));
+        if (tds.length < 13) continue;
 
-  function scheduleCheck(delayMs = 140) {
-    if (done) return;
-    if (debounceT) clearTimeout(debounceT);
-    debounceT = setTimeout(checkReady, delayMs);
-  }
+        out.push({
+          訂單日期: normalizeDate_(tds[0]),
+          訂單編號: tds[1],
+          序: safeNumber(tds[2]),
+          拉牌: tds[3],
+          服務項目: tds[4],
+          業績金額: safeNumber(tds[5]),
+          抽成金額: safeNumber(tds[6]),
+          數量: safeNumber(tds[7]),
+          小計: safeNumber(tds[8]),
+          分鐘: safeNumber(tds[9]),
+          開工: tds[10],
+          完工: tds[11],
+          狀態: tds[12],
+        });
+      }
 
-  async function checkReady() {
-    if (done || sending || !isDetailPage()) return;
-
-    const techNo = getTechNo();
-    if (!techNo) return;
-
-    const rows = getRows();
-    if (!rows.length) return;
-
-    // hash 穩定判定：同一指紋連續命中 2 次才送
-    const fp = quickFingerprint(rows);
-    if (fp === lastFp) stableHits++;
-    else {
-      lastFp = fp;
-      stableHits = 0;
-      return;
+      if (out.length) return out;
     }
-    if (stableHits < STABLE_NEED) return;
 
-    // 到這裡才做 full extract（省 CPU）
-    const rangeKey = getRangeKey();
-    const detail = extractDetail(rows);
-    const clientHash = fnv1a32(JSON.stringify({ techNo, rangeKey, detail }));
+    return [];
+  }
 
-    if (wasSent(clientHash)) {
-      stopAll();
-      return;
+  /* =========================
+   * 5) Build payload
+   * ========================= */
+  function buildPayload_() {
+    const pageType = detectPage_();
+    const techNo = extractTechNo_();
+    const summary = extractSummaryCards_();
+    const detail = pageType === "POS_P_DETAIL" ? extractDetailRows_POS_() : extractDetailRows_GITHUB_();
+
+    let minDate = "";
+    let maxDate = "";
+    for (const r of detail) {
+      const d = String(r["訂單日期"] || "");
+      if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
     }
+
+    const rawRangeKey = minDate && maxDate ? `${minDate}~${maxDate}` : "";
+    const rangeKey = normalizeRangeKey_(rawRangeKey);
 
     const payload = {
       mode: "upsertDetailPerf_v1",
+      source: SOURCE_NAME,
+      pageType,
+      pageUrl: location.href,
+      pageTitle: document.title,
+      clientTsIso: nowIso(),
       techNo,
       rangeKey,
-      summary: {}, // 目前不抓 summary
+      summary,
       detail,
-      source: "scriptcat",
-      pageUrl: location.href,
-      pageTitle: document.title || "",
-      clientTsIso: new Date().toISOString(),
-      clientHash,
     };
 
-    sending = true;
+    payload.clientHash = makeHash(
+      JSON.stringify({
+        pageType: payload.pageType,
+        techNo: normalizeTech_(payload.techNo),
+        rangeKey: String(payload.rangeKey || "").trim(),
+        summary: payload.summary,
+        detail: payload.detail,
+      })
+    );
 
-    GM_xmlhttpRequest({
-      method: "POST",
-      url: CFG.GAS_URL,
-      headers: { "Content-Type": "application/json" },
-      data: JSON.stringify(payload),
-      timeout: 15000,
-      onload: async (res) => {
-        sending = false;
+    return payload;
+  }
 
-        const raw = res.responseText || "";
-        let j = null;
-        try {
-          j = JSON.parse(raw);
-        } catch {}
-
-        if (j && j.ok === true) {
-          markSent(clientHash);
-          console.log("[P_DETAIL] OK", j);
-          stopAll();
-          return;
-        }
-
-        console.warn("[P_DETAIL] FAIL", res.status, raw);
-
-        // 永久錯：停掉，避免狂送
-        if (isPermanentError(j)) {
-          stopAll();
-          return;
-        }
-
-        // 可重試：退避後再試
-        if (isRetryableError(j, res.status)) {
-          await sleepMs(retryDelay);
-          retryDelay = Math.min(RETRY_MAX, Math.floor(retryDelay * 1.8));
-          scheduleCheck(0);
-          return;
-        }
-
-        // 其他未知錯：延遲再試一次（不狂打）
-        await sleepMs(1200);
-        scheduleCheck(0);
-      },
-      ontimeout: async () => {
-        sending = false;
-        console.warn("[P_DETAIL] TIMEOUT");
-        await sleepMs(retryDelay);
-        retryDelay = Math.min(RETRY_MAX, Math.floor(retryDelay * 1.8));
-        scheduleCheck(0);
-      },
-      onerror: async (e) => {
-        sending = false;
-        console.warn("[P_DETAIL] ERROR", e);
-        await sleepMs(retryDelay);
-        retryDelay = Math.min(RETRY_MAX, Math.floor(retryDelay * 1.8));
-        scheduleCheck(0);
-      },
+  /* =========================
+   * 6) Network
+   * ========================= */
+  function postToGAS_(payload) {
+    return new Promise((resolve, reject) => {
+      if (!CFG.GAS_URL) return resolve({ status: 0, json: { ok: false, error: "CFG_GAS_URL_EMPTY" } });
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: CFG.GAS_URL,
+        headers: { "Content-Type": "application/json" },
+        data: JSON.stringify(payload),
+        onload: (res) => {
+          try {
+            const json = JSON.parse(res.responseText || "{}");
+            resolve({ status: res.status, json });
+          } catch {
+            resolve({ status: res.status, text: res.responseText });
+          }
+        },
+        onerror: reject,
+      });
     });
   }
 
-  // Observer 主導：DOM 變動 → debounce → check
-  observer = new MutationObserver(() => scheduleCheck(140));
-  observer.observe(document.body, { childList: true, subtree: true });
+  /* =========================
+   * 7) Pending per-techNo (sessionStorage)
+   * ========================= */
+  function pendingKeyForTech_(techNo) {
+    const t = normalizeTech_(techNo);
+    if (!t) return "";
+    return `${PENDING_BASE}_${t}`;
+  }
 
-  // 首次快速檢查
-  scheduleCheck(80);
+  function savePending_(payload) {
+    try {
+      const key = pendingKeyForTech_(payload.techNo);
+      if (!key) return;
+      const pack = { techNo: normalizeTech_(payload.techNo), hash: payload.clientHash, payload, ts: Date.now() };
+      sessionStorage.setItem(key, JSON.stringify(pack));
+    } catch {}
+  }
 
-  // fallback：6 秒內每 900ms 檢查一次，之後停（避免長期輪詢）
-  let fallbackCount = 0;
-  const fb = setInterval(() => {
-    if (done) return clearInterval(fb);
-    fallbackCount++;
-    scheduleCheck(60);
-    if (fallbackCount >= 7) clearInterval(fb);
-  }, 900);
+  function clearPendingByTech_(techNo) {
+    try {
+      const key = pendingKeyForTech_(techNo);
+      if (!key) return;
+      sessionStorage.removeItem(key);
+    } catch {}
+  }
+
+  function loadPendingByTech_(techNo) {
+    try {
+      const key = pendingKeyForTech_(techNo);
+      if (!key) return null;
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || !obj.payload || !obj.hash || !obj.techNo) return null;
+      if (normalizeTech_(obj.techNo) !== normalizeTech_(techNo)) return null;
+      return obj;
+    } catch {
+      return null;
+    }
+  }
+
+  function getLastActiveTech_() {
+    try { return normalizeTech_(sessionStorage.getItem(TECH_MARK_KEY)); } catch { return ""; }
+  }
+  function setLastActiveTech_(techNo) {
+    try { sessionStorage.setItem(TECH_MARK_KEY, normalizeTech_(techNo)); } catch {}
+  }
+
+  /* =========================
+   * 8) Multi-tech switch guard
+   * ========================= */
+  function ensureActiveTech_(techNo) {
+    const t = normalizeTech_(techNo);
+    if (!t) return false;
+
+    if (t !== activeTechNo) {
+      const prev = activeTechNo;
+      activeTechNo = t;
+
+      committedHash = "";
+      queued = false;
+
+      setLastActiveTech_(activeTechNo);
+
+      console.log("[AUTO_PERF] tech switch:", { from: prev || "(none)", to: activeTechNo });
+
+      // 只補送當前師傅的 pending
+      flushPendingForTech_(activeTechNo);
+    }
+    return true;
+  }
+
+  /* =========================
+   * 9) Send core (commit-on-success)
+   * ========================= */
+  function isReady_(payload) {
+    if (!payload) return false;
+
+    if (!payload.pageType) {
+      logSkip_("NOT_TARGET_PAGE", { href: location.href, hash: location.hash });
+      return false;
+    }
+
+    if (!normalizeTech_(payload.techNo)) {
+      logSkip_("MISSING_TECHNO", { pageType: payload.pageType });
+      return false;
+    }
+
+    if (!payload.detail || !payload.detail.length) {
+      logSkip_("EMPTY_DETAIL", { pageType: payload.pageType });
+      return false;
+    }
+
+    if (!payload.rangeKey || !/^\d{4}-\d{2}-\d{2}~\d{4}-\d{2}-\d{2}$/.test(payload.rangeKey)) {
+      const sampleDates = payload.detail.slice(0, 3).map((r) => String(r["訂單日期"] || ""));
+      logSkip_("MISSING_OR_BAD_RANGEKEY", { rangeKey: payload.rangeKey, sampleDates });
+      return false;
+    }
+
+    return true;
+  }
+
+  async function flushPendingForTech_(techNo) {
+    const t = normalizeTech_(techNo);
+    if (!t) return;
+    if (!isActiveTarget_()) return;
+    if (sending) return;
+
+    const pending = loadPendingByTech_(t);
+    if (!pending) return;
+
+    if (pending.hash && pending.hash === committedHash) {
+      clearPendingByTech_(t);
+      return;
+    }
+
+    try {
+      sending = true;
+      const res = await postToGAS_(pending.payload);
+      if (res.json && res.json.ok) {
+        committedHash = pending.hash;
+        clearPendingByTech_(t);
+        console.log("[AUTO_PERF] pending ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", t);
+      } else {
+        console.warn("[AUTO_PERF] pending fail:", res.json || res.text, "techNo=", t);
+      }
+    } catch (e) {
+      console.warn("[AUTO_PERF] pending error:", e, "techNo=", t);
+    } finally {
+      sending = false;
+    }
+  }
+
+  async function checkAndSendNow_(reason) {
+    if (!started) return;
+    resetSkip_();
+
+    if (sending) { queued = true; return; }
+
+    const payload = buildPayload_();
+
+    // techNo 還沒 ready：不要存 pending（避免跨師傅）
+    if (!ensureActiveTech_(payload.techNo)) {
+      logSkip_("TECH_NOT_READY", { pageType: payload.pageType });
+      return;
+    }
+
+    // 有明細就存 pending（per-tech）
+    if (payload.detail && payload.detail.length) {
+      savePending_(payload);
+    }
+
+    if (!isReady_(payload)) return;
+
+    if (payload.clientHash === committedHash) {
+      logSkip_("NO_CHANGE_COMMITTED_HASH", { hash: payload.clientHash, techNo: activeTechNo });
+      return;
+    }
+
+    try {
+      sending = true;
+
+      const res = await postToGAS_(payload);
+
+      if (res.json && res.json.ok) {
+        committedHash = payload.clientHash;
+        clearPendingByTech_(activeTechNo);
+        console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", activeTechNo, "reason=", reason || "");
+      } else {
+        console.warn("[AUTO_PERF] fail:", res.json || res.text, "techNo=", activeTechNo, "reason=", reason || "");
+      }
+    } catch (e) {
+      console.warn("[AUTO_PERF] error:", e, "techNo=", activeTechNo, "reason=", reason || "");
+    } finally {
+      sending = false;
+
+      if (queued) {
+        queued = false;
+        setTimeout(() => checkAndSendNow_("queued"), 0);
+      }
+    }
+  }
+
+  /* =========================
+   * 10) Scheduler
+   * ========================= */
+  function scheduleEdge_(reason) {
+    if (!started) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      checkAndSendNow_(reason || "mutation");
+    }, EDGE_DEBOUNCE_MS);
+  }
+
+  /* =========================
+   * 11) Start/Stop
+   * ========================= */
+  function start_() {
+    if (started) return;
+    started = true;
+
+    console.log("[AUTO_PERF] started:", detectPage_(), location.href, "hash=", location.hash);
+
+    const lastTech = getLastActiveTech_();
+    if (lastTech) flushPendingForTech_(lastTech);
+
+    scheduleEdge_("start");
+
+    observer = new MutationObserver(() => scheduleEdge_("mutation"));
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    intervalTimer = setInterval(() => scheduleEdge_("interval"), SCAN_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", onVisibilityChange_, true);
+    window.addEventListener("pagehide", onPageHide_, true);
+    window.addEventListener("beforeunload", onBeforeUnload_, true);
+  }
+
+  function stop_() {
+    if (!started) return;
+
+    checkAndSendNow_("stop");
+
+    started = false;
+
+    if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = null;
+
+    if (intervalTimer) clearInterval(intervalTimer);
+    intervalTimer = null;
+
+    document.removeEventListener("visibilitychange", onVisibilityChange_, true);
+    window.removeEventListener("pagehide", onPageHide_, true);
+    window.removeEventListener("beforeunload", onBeforeUnload_, true);
+
+    console.log("[AUTO_PERF] stopped:", location.href, "hash=", location.hash);
+  }
+
+  function refreshActive_() {
+    if (isActiveTarget_()) start_();
+    else stop_();
+  }
+
+  /* =========================
+   * 12) Leave/Hide handlers
+   * ========================= */
+  function onVisibilityChange_() {
+    if (!started) return;
+    if (document.hidden) checkAndSendNow_("visibility_hidden");
+  }
+  function onPageHide_() {
+    if (!started) return;
+    checkAndSendNow_("pagehide");
+  }
+  function onBeforeUnload_() {
+    if (!started) return;
+    checkAndSendNow_("beforeunload");
+  }
+
+  /* =========================
+   * 13) Bootstrap
+   * ========================= */
+  window.addEventListener("hashchange", refreshActive_, true);
+  refreshActive_();
 })();
