@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, rangeKey normalized)
+// @name         PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, stable-ready, keepalive)
 // @namespace    https://local/
-// @version      4.1
-// @description  P_DETAIL: SPA-safe start/stop; edge-trigger send; normalize rangeKey; commit hash only after ok:true; flush on hide; sessionStorage pending per techNo (multi-tech safe).
+// @version      4.2
+// @description  P_DETAIL: stable-ready gate; allowlist GAS_URL; pending per tech; commit after ok:true; pagehide keepalive/beacon best-effort; POS+GitHub.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -22,14 +22,12 @@
   function detectPage_() {
     const href = String(location.href || "");
 
-    // POS：#/performance?tab=P_DETAIL
     if (href.startsWith("https://yspos.youngsong.com.tw/")) {
       const h = String(location.hash || "");
       if (h.startsWith("#/performance") && h.includes("tab=P_DETAIL")) return "POS_P_DETAIL";
       return "";
     }
 
-    // GitHub 靜態頁
     if (href.startsWith("https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html")) {
       return "GITHUB_PERF_DETAIL";
     }
@@ -62,12 +60,30 @@
     }
   }
 
-  function applyConfigOverrides() { CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() }; }
+  function isAllowedGASUrl_(u) {
+    try {
+      const url = new URL(String(u || ""));
+      if (url.protocol !== "https:") return false;
+      const host = url.hostname.toLowerCase();
+      return host === "script.google.com" || host === "script.googleusercontent.com";
+    } catch {
+      return false;
+    }
+  }
+
+  function applyConfigOverrides() {
+    CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
+    if (CFG.GAS_URL && !isAllowedGASUrl_(CFG.GAS_URL)) {
+      console.warn("[AUTO_PERF] ⚠️ GAS_URL is not allowlisted. Blocked:", CFG.GAS_URL);
+      CFG.GAS_URL = "";
+    }
+  }
+
   applyConfigOverrides();
 
   if (!CFG.GAS_URL) {
     console.warn(
-      "[AUTO_PERF] ⚠️ CFG.GAS_URL is empty. Will scan, but will NOT send.\n" +
+      "[AUTO_PERF] ⚠️ CFG.GAS_URL is empty/blocked. Will scan, but will NOT send.\n" +
       'Check @resource JSON: {"GAS_URL":"https://script.google.com/macros/s/.../exec"}'
     );
   }
@@ -75,26 +91,31 @@
   /* =========================
    * 2) Constants / State
    * ========================= */
-  const SOURCE_NAME = "performance_details_v2_1";
-  const EDGE_DEBOUNCE_MS = 120;
-  const SCAN_INTERVAL_MS = 1500;
+  const SOURCE_NAME = "performance_details_v2_2";
+  const EDGE_DEBOUNCE_MS = 80;
+  const SCAN_INTERVAL_MS = 1800;
+  const STABLE_GAP_MS = 250;
+  const MAX_KEEPALIVE_BYTES = 60000;
 
-  // pending base (per-techNo)
-  const PENDING_BASE = "AUTO_PERF_PENDING_V1";
-  const TECH_MARK_KEY = "AUTO_PERF_ACTIVE_TECH_V1";
+  const PENDING_BASE = "AUTO_PERF_PENDING_V2";
+  const TECH_MARK_KEY = "AUTO_PERF_ACTIVE_TECH_V2";
 
   let started = false;
   let observer = null;
   let debounceTimer = null;
   let intervalTimer = null;
 
-  // multi-tech safe
   let activeTechNo = "";
   let committedHash = "";
   let sending = false;
   let queued = false;
 
   let lastSkipReason = "";
+
+  // stable-ready state
+  let stableTimer = null;
+  let lastProbeSig = "";
+  let stableCount = 0;
 
   /* =========================
    * 3) Utils
@@ -129,6 +150,10 @@
   function resetSkip_() { lastSkipReason = ""; }
 
   function normalizeTech_(t) { return String(t || "").trim(); }
+
+  function hasAntLoading_() {
+    return !!document.querySelector(".ant-spin.ant-spin-spinning, .ant-spin-spinning");
+  }
 
   // Normalize date formats to YYYY-MM-DD
   function normalizeDate_(s) {
@@ -347,8 +372,36 @@
     });
   }
 
+  function fireAndForget_(payload) {
+    try {
+      if (!CFG.GAS_URL) return false;
+      const body = JSON.stringify(payload);
+      if (body.length > MAX_KEEPALIVE_BYTES) return false;
+
+      if (typeof fetch === "function") {
+        fetch(CFG.GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+          credentials: "omit",
+        }).catch(() => {});
+        return true;
+      }
+
+      if (navigator && typeof navigator.sendBeacon === "function") {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(CFG.GAS_URL, blob);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   /* =========================
-   * 7) Pending per-techNo (sessionStorage)
+   * 7) Pending per-techNo
    * ========================= */
   function pendingKeyForTech_(techNo) {
     const t = normalizeTech_(techNo);
@@ -411,16 +464,61 @@
 
       setLastActiveTech_(activeTechNo);
 
+      lastProbeSig = "";
+      stableCount = 0;
+
       console.log("[AUTO_PERF] tech switch:", { from: prev || "(none)", to: activeTechNo });
 
-      // 只補送當前師傅的 pending
       flushPendingForTech_(activeTechNo);
     }
     return true;
   }
 
   /* =========================
-   * 9) Send core (commit-on-success)
+   * 9) Stable-ready gate
+   * ========================= */
+  function probeSignature_() {
+    if (!isActiveTarget_()) return "";
+    const pageType = detectPage_();
+    const techNo = normalizeTech_(extractTechNo_());
+
+    let rowCount = 0;
+    if (pageType === "POS_P_DETAIL") {
+      const tbody = document.querySelector(".ant-table-body tbody.ant-table-tbody");
+      rowCount = tbody ? tbody.querySelectorAll("tr.ant-table-row:not(.ant-table-measure-row)").length : 0;
+    } else {
+      // GitHub：抓第一個符合欄位的 table 的 tbody rowCount（粗略即可）
+      const tBodies = Array.from(document.querySelectorAll("table tbody"));
+      rowCount = tBodies.length ? tBodies[0].querySelectorAll("tr").length : 0;
+    }
+
+    const loading = hasAntLoading_() ? "L1" : "L0";
+    return `${pageType}|${techNo}|R${rowCount}|${loading}`;
+  }
+
+  function scheduleStableCheck_(reason) {
+    if (!started) return;
+    if (stableTimer) clearTimeout(stableTimer);
+
+    stableTimer = setTimeout(() => {
+      stableTimer = null;
+
+      const sig = probeSignature_();
+      if (!sig) return;
+
+      if (sig === lastProbeSig) stableCount++;
+      else stableCount = 0;
+
+      lastProbeSig = sig;
+
+      if (stableCount >= 1) {
+        checkAndSendNow_(reason || "stable_ready");
+      }
+    }, STABLE_GAP_MS);
+  }
+
+  /* =========================
+   * 10) Send core
    * ========================= */
   function isReady_(payload) {
     if (!payload) return false;
@@ -432,6 +530,11 @@
 
     if (!normalizeTech_(payload.techNo)) {
       logSkip_("MISSING_TECHNO", { pageType: payload.pageType });
+      return false;
+    }
+
+    if (hasAntLoading_()) {
+      logSkip_("ANT_LOADING", { pageType: payload.pageType });
       return false;
     }
 
@@ -488,18 +591,15 @@
 
     const payload = buildPayload_();
 
-    // techNo 還沒 ready：不要存 pending（避免跨師傅）
     if (!ensureActiveTech_(payload.techNo)) {
       logSkip_("TECH_NOT_READY", { pageType: payload.pageType });
       return;
     }
 
-    // 有明細就存 pending（per-tech）
-    if (payload.detail && payload.detail.length) {
-      savePending_(payload);
-    }
-
+    // ✅ 只有 ready 才落地 pending
     if (!isReady_(payload)) return;
+
+    savePending_(payload);
 
     if (payload.clientHash === committedHash) {
       logSkip_("NO_CHANGE_COMMITTED_HASH", { hash: payload.clientHash, techNo: activeTechNo });
@@ -531,19 +631,19 @@
   }
 
   /* =========================
-   * 10) Scheduler
+   * 11) Scheduler
    * ========================= */
   function scheduleEdge_(reason) {
     if (!started) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      checkAndSendNow_(reason || "mutation");
+      scheduleStableCheck_(reason || "mutation");
     }, EDGE_DEBOUNCE_MS);
   }
 
   /* =========================
-   * 11) Start/Stop
+   * 12) Start/Stop
    * ========================= */
   function start_() {
     if (started) return;
@@ -569,13 +669,16 @@
   function stop_() {
     if (!started) return;
 
-    checkAndSendNow_("stop");
+    bestEffortFlushOnLeave_("stop");
 
     started = false;
 
     if (observer) { try { observer.disconnect(); } catch {} observer = null; }
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = null;
+
+    if (stableTimer) clearTimeout(stableTimer);
+    stableTimer = null;
 
     if (intervalTimer) clearInterval(intervalTimer);
     intervalTimer = null;
@@ -593,23 +696,40 @@
   }
 
   /* =========================
-   * 12) Leave/Hide handlers
+   * 13) Leave/Hide handlers (background send)
    * ========================= */
+  function bestEffortFlushOnLeave_(why) {
+    try {
+      if (!isActiveTarget_()) return;
+
+      const payload = buildPayload_();
+      if (!ensureActiveTech_(payload.techNo)) return;
+
+      if (!isReady_(payload)) return;
+
+      savePending_(payload);
+      fireAndForget_(payload);
+      console.log("[AUTO_PERF] leave-fire:", why, "pageType=", payload.pageType, "techNo=", normalizeTech_(payload.techNo), "hash=", payload.clientHash);
+    } catch {}
+  }
+
   function onVisibilityChange_() {
     if (!started) return;
-    if (document.hidden) checkAndSendNow_("visibility_hidden");
+    if (document.hidden) bestEffortFlushOnLeave_("visibility_hidden");
   }
+
   function onPageHide_() {
     if (!started) return;
-    checkAndSendNow_("pagehide");
+    bestEffortFlushOnLeave_("pagehide");
   }
+
   function onBeforeUnload_() {
     if (!started) return;
-    checkAndSendNow_("beforeunload");
+    bestEffortFlushOnLeave_("beforeunload");
   }
 
   /* =========================
-   * 13) Bootstrap
+   * 14) Bootstrap
    * ========================= */
   window.addEventListener("hashchange", refreshActive_, true);
   refreshActive_();
