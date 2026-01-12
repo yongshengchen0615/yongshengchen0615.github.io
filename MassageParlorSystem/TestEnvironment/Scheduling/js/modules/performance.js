@@ -102,14 +102,27 @@ function formatDateYmd_(v) {
   const s = String(v).trim();
   if (!s) return "";
 
-  // 已是 YYYY-MM-DD / YYYY/MM/DD：正規化成 YYYY/MM/DD
+  // ✅ 1) ISO datetime（含 T）/ 含時區資訊：一律用台北時區算日期，避免 -1 天
+  // 例：2026-01-10T16:00:00.000Z 在台北其實是 2026-01-11
+  if (s.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(s)) {
+    const dk = toDateKeyTaipei_(s); // 會回 "YYYY-MM-DD"
+    if (dk) return dk.replaceAll("-", "/");
+    // fallback：解析失敗就原樣
+    return s;
+  }
+
+  // ✅ 2) 已是 YYYY-MM-DD / YYYY/MM/DD：正規化成 YYYY/MM/DD
   const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (m) return `${m[1]}/${pad2_(m[2])}/${pad2_(m[3])}`;
 
+  // ✅ 3) 其他格式：才嘗試 new Date（保守）
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) {
-    return `${d.getFullYear()}/${pad2_(d.getMonth() + 1)}/${pad2_(d.getDate())}`;
+    // 用台北日期 key 保證一致
+    const dk = toDateKeyTaipei_(d);
+    return dk ? dk.replaceAll("-", "/") : `${d.getFullYear()}/${pad2_(d.getMonth() + 1)}/${pad2_(d.getDate())}`;
   }
+
   return s;
 }
 
@@ -426,8 +439,17 @@ function readRangeFromInputs_() {
 /** 快速取出 row 的日期 key（YYYY-MM-DD），盡量走字串 fast path */
 function fastDateKeyFromRow_(r) {
   const raw = String(r && r["訂單日期"] ? r["訂單日期"] : "").trim();
+  if (!raw) return "";
+
+  // ✅ ISO datetime（含 T 或時區）不要走 regex，直接用台北時區換算
+  if (raw.includes("T") || /Z$|[+\-]\d{2}:?\d{2}$/.test(raw)) {
+    return toDateKeyTaipei_(raw);
+  }
+
+  // Fast path：YYYY-MM-DD / YYYY/MM/DD
   const m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+
   return toDateKeyTaipei_(raw);
 }
 
