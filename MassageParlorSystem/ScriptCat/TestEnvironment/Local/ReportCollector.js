@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Report Auto Sync -> GAS（自動同步報表到 GAS）
 // @namespace    https://local/
-// @version      1.7
+// @version      1.8
 // @description  自動擷取師傅號碼、摘要卡片、明細表，資料有變才送；僅在 GAS 回 ok:true 後才視為成功提交
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
