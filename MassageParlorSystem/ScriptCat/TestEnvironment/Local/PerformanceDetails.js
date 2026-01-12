@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PerformanceDetails Auto Sync -> GAS (P_DETAIL, P_STATIC-like send rule)
+// @name         PerformanceDetails Auto Sync -> GAS (SPA-safe, always-on watcher)
 // @namespace    https://local/
 // @version      2.7
-// @description  Collect techNo + summary + detail rows; send as soon as techNo + detail rows are ready (like P_STATIC). Send once per page-entry; only mark success when GAS returns ok:true.
+// @description  SPA-safe: always start watchers; on each check, detect current page/tab and send when techNo + detail rows are ready. Send once per page-entry; only mark success when GAS returns ok:true.
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -17,13 +17,8 @@
   "use strict";
 
   /* =====================================================
-   * 0) Page Gate（判斷目前是哪個頁面）
+   * 0) Page Detect（每次 check 時再判斷，不要一開始 return）
    * ===================================================== */
-  const PAGE = detectPage_();
-  if (!PAGE) return;
-
-  console.log("[AUTO_PERF] loaded:", PAGE, location.href, "hash=", location.hash);
-
   function detectPage_() {
     const href = String(location.href || "");
 
@@ -43,11 +38,13 @@
   }
 
   function stillOnTargetPage_() {
-    if (PAGE === "POS_P_DETAIL") {
+    const page = detectPage_();
+    if (page === "POS_P_DETAIL") {
       const h = String(location.hash || "");
       return h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
     }
-    return true;
+    if (page === "GITHUB_PERF_DETAIL") return true;
+    return false;
   }
 
   /* =====================================================
@@ -190,7 +187,6 @@
   }
 
   function extractSummaryCards_GITHUB_() {
-    // GitHub 靜態頁通常同樣結構
     return extractSummaryCards_POS_();
   }
 
@@ -220,7 +216,7 @@
         分鐘: safeNumber_(text_(tds[9])),
         開工: text_(tds[10]),
         完工: text_(tds[11]),
-        狀態: text_(tds[12]), // 允許空字串
+        狀態: text_(tds[12]),
       });
     }
     return out;
@@ -230,7 +226,6 @@
     const ant = extractDetailRows_POS_();
     if (ant.length) return ant;
 
-    // fallback：找一般 table（若 GitHub 頁不是 ant-table）
     const tables = Array.from(document.querySelectorAll("table"));
     for (const table of tables) {
       const ths = Array.from(table.querySelectorAll("thead th")).map((th) => text_(th));
@@ -257,7 +252,7 @@
           分鐘: safeNumber_(tds[9]),
           開工: tds[10],
           完工: tds[11],
-          狀態: tds[12], // 允許空字串
+          狀態: tds[12],
         });
       }
       if (out.length) return out;
@@ -266,14 +261,13 @@
   }
 
   /* =====================================================
-   * 4) Build payload（✅ 改成 P_STATIC 風格：不等 summary 完整；rangeKey 可降級）
+   * 4) Build payload（降級 rangeKey；不等 summary 完整）
    * ===================================================== */
-  function buildPayload_() {
+  function buildPayload_(pageType) {
     const techNo = extractTechNo_();
-    const summary = PAGE === "POS_P_DETAIL" ? extractSummaryCards_POS_() : extractSummaryCards_GITHUB_();
-    const detail = PAGE === "POS_P_DETAIL" ? extractDetailRows_POS_() : extractDetailRows_GITHUB_();
+    const summary = pageType === "POS_P_DETAIL" ? extractSummaryCards_POS_() : extractSummaryCards_GITHUB_();
+    const detail = pageType === "POS_P_DETAIL" ? extractDetailRows_POS_() : extractDetailRows_GITHUB_();
 
-    // rangeKey：能算就算；算不到就降級，避免卡死不送
     let minDate = "";
     let maxDate = "";
     for (const r of detail) {
@@ -284,14 +278,10 @@
     }
 
     let rangeKey = minDate && maxDate ? `${minDate}~${maxDate}` : "";
-
-    // 降級 1：用第一筆日期
     if (!rangeKey && detail.length) {
       const d0 = String(detail[0]["訂單日期"] || "").trim();
       if (/^\d{4}-\d{2}-\d{2}$/.test(d0)) rangeKey = `${d0}~${d0}`;
     }
-
-    // 降級 2：再不行就用今天（避免永遠不送）
     if (!rangeKey) {
       const t = todayYmd_();
       rangeKey = `${t}~${t}`;
@@ -300,14 +290,14 @@
     const payload = {
       mode: "upsertDetailPerf_v1",
       source: SOURCE_NAME,
-      pageType: PAGE,
+      pageType: pageType,
       pageUrl: location.href,
       pageTitle: document.title,
       clientTsIso: nowIso_(),
       techNo,
       rangeKey,
-      summary, // 不要求三卡齊全
-      detail,  // 只要有列即可
+      summary,
+      detail,
     };
 
     payload.clientHash = makeHash_(
@@ -349,12 +339,13 @@
   }
 
   /* =====================================================
-   * 6) Auto watch + send（✅ 改成與 P_STATIC 一樣：techNo + detail 有就送）
+   * 6) Auto watch + send（SPA-safe：每次 check 才判斷是否在目標頁）
    * ===================================================== */
   let inFlight = false;
   let pendingHash = "";
   let timer = null;
   let sentOnce = false;
+  let lastPageType = "";
 
   function resetSendState_() {
     inFlight = false;
@@ -364,17 +355,30 @@
 
   async function checkAndSend_() {
     try {
+      const pageType = detectPage_();
+
+      // 不在目標頁：不送，但保持監聽（SPA 之後可能切進來）
+      if (!pageType) return;
+
+      // 頁型切換：重置（讓同一個頁面切來切去也能再送一次）
+      if (pageType !== lastPageType) {
+        lastPageType = pageType;
+        resetSendState_();
+        console.log("[AUTO_PERF] page enter:", pageType, location.href, "hash=", location.hash);
+      }
+
+      // POS：只有在目標 tab 才送
       if (!stillOnTargetPage_()) return;
+
       if (inFlight) return;
       if (sentOnce) return;
 
-      const payload = buildPayload_();
+      const payload = buildPayload_(pageType);
 
-      // ✅ 跟 P_STATIC 一樣：只要明細有列 + techNo 有，就送
+      // ✅ 與 P_STATIC 一樣：只要 detail 有列 + techNo 有，就送
       if (!Array.isArray(payload.detail) || payload.detail.length <= 0) return;
       if (!String(payload.techNo || "").trim()) return;
 
-      // 同一份內容正在送 → 不重送
       if (payload.clientHash === pendingHash) return;
 
       inFlight = true;
@@ -384,7 +388,7 @@
       const ok = res && res.json && res.json.ok === true;
 
       if (ok) {
-        sentOnce = true; // 成功一次就停止（同次進入頁面）
+        sentOnce = true;
         pendingHash = "";
         console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", payload.clientHash);
       } else {
@@ -408,22 +412,22 @@
   }
 
   /* =====================================================
-   * 7) Start（啟動監聽）
+   * 7) Start（永遠啟動監聽）
    * ===================================================== */
+  console.log("[AUTO_PERF] watcher started (SPA-safe).");
+
   schedule_();
 
   const observer = new MutationObserver(schedule_);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  // POS 是 SPA：hash 切換要補觸發
   window.addEventListener("hashchange", () => {
-    if (stillOnTargetPage_()) resetSendState_();
+    // 只要 hash 變化就排程檢查；不在這裡做 return gate
     schedule_();
   });
 
-  // 保險：低頻輪詢
+  // 保險：低頻輪詢（避免某些情況 DOM 更新不觸發 mutation）
   setInterval(() => {
-    if (!stillOnTargetPage_()) return;
     schedule_();
   }, 1200);
 })();
