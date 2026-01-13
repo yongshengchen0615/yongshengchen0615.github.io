@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Users 後台管理</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- ✅ LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+
+<!-- 初始資料載入遮罩：首批資料準備好前顯示 -->
+<div id="initialLoading" class="initial-loading initial-loading-hidden">
+  <div class="initial-loading-inner" role="status" aria-live="polite">
+    <div class="spinner-lg" aria-hidden="true"></div>
+    <p id="initialLoadingText" class="initial-loading-text">資料載入中…</p>
+    <div class="initial-loading-progress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="initialLoadingBar" class="initial-loading-progress-bar" style="width:0%"></div>
+    </div>
+    <div id="initialLoadingPercent" class="initial-loading-percent">0%</div>
+  </div>
+</div>
+
+<!-- ✅ 管理員門禁 Gate：未通過前會遮住整個頁面 -->
+<div id="authGate" style="
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); backdrop-filter: blur(6px);
+  z-index:9999; padding:18px;">
+  <div style="
+    width:min(520px, 100%); border:1px solid rgba(255,255,255,.12);
+    border-radius:16px; background:rgba(2,6,23,.92); color:#e5e7eb;
+    padding:16px 16px; box-shadow:0 12px 36px rgba(0,0,0,.35);">
+    <div style="font-weight:800; font-size:16px;">管理員驗證中…</div>
+    <div id="authGateMsg" style="margin-top:8px; color:rgba(229,231,235,.75); font-size:13px; line-height:1.5;">
+      請稍候，正在進行 LINE 登入與權限檢查。
+    </div>
+    <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="authRetryBtn" class="btn ghost" type="button">重試</button>
+      <button id="authLogoutBtn" class="btn danger" type="button">登出</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="shell">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand">
+          <div class="brand-mark">U</div>
+          <div class="brand-text">
+            <h1>Users 後台管理</h1>
+            <p id="summaryText">載入中…</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button id="themeToggle" class="btn ghost" type="button" aria-label="切換亮暗主題">切換主題</button>
+        <!-- ✅ JS 會把「儲存全部變更」插在 reloadBtn 前 -->
+        <button id="reloadBtn" class="btn ghost" type="button">重新整理</button>
+      </div>
+    </header>
+
+    <!-- KPI -->
+    <section class="kpi-grid" aria-label="統計資訊">
+      <div class="kpi-card">
+        <div class="kpi-label">總使用者</div>
+        <div class="kpi-value" id="kpiTotal">-</div>
+      </div>
+      <div class="kpi-card success">
+        <div class="kpi-label">通過</div>
+        <div class="kpi-value" id="kpiApproved">-</div>
+      </div>
+      <div class="kpi-card warning">
+        <div class="kpi-label">待審核</div>
+        <div class="kpi-value" id="kpiPending">-</div>
+      </div>
+      <div class="kpi-card danger">
+        <div class="kpi-label">拒絕</div>
+        <div class="kpi-value" id="kpiRejected">-</div>
+      </div>
+      <div class="kpi-card muted">
+        <div class="kpi-label">停用</div>
+        <div class="kpi-value" id="kpiDisabled">-</div>
+      </div>
+      <div class="kpi-card maintenance">
+        <div class="kpi-label">系統維護</div>
+        <div class="kpi-value" id="kpiMaintenance">-</div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <section class="panel">
+      <div class="panel-head">
+        <div class="filters">
+          <div class="search-box" role="search">
+            <span class="icon" aria-hidden="true">⌕</span>
+            <input
+              id="searchInput"
+              class="input"
+              placeholder="搜尋：userId、名稱、師傅編號"
+              autocomplete="off"
+            />
+            <button id="clearSearchBtn" class="btn icon ghost" type="button" aria-label="清除搜尋">✕</button>
+          </div>
+
+          <div class="seg" aria-label="審核狀態篩選">
+            <button class="chip active" data-filter="ALL" type="button">全部</button>
+            <button class="chip" data-filter="通過" type="button">通過</button>
+            <button class="chip" data-filter="待審核" type="button">待審核</button>
+            <button class="chip" data-filter="拒絕" type="button">拒絕</button>
+            <button class="chip" data-filter="停用" type="button">停用</button>
+            <button class="chip" data-filter="系統維護" type="button">系統維護</button>
+          </div>
+        </div>
+
+        <div class="panel-meta">
+          <div id="footerStatus" class="hint">-</div>
+        </div>
+      </div>
+
+      <!-- Bulk bar -->
+      <div id="bulkBar" class="bulkbar" hidden>
+        <div class="bulk-left">
+          <span class="bulk-pill" id="bulkCount">已選取 0 筆</span>
+          <button id="bulkClear" class="btn ghost" type="button">清除選取</button>
+        </div>
+
+        <div class="bulk-right">
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkAudit">批次審核</label>
+            <select id="bulkAudit" class="select">
+              <option value="">不變更</option>
+              <option value="待審核">待審核</option>
+              <option value="通過">通過</option>
+              <option value="拒絕">拒絕</option>
+              <option value="停用">停用</option>
+              <option value="系統維護">系統維護</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkPush">批次推播</label>
+            <select id="bulkPush" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkPersonalStatus">批次個人狀態</label>
+            <select id="bulkPersonalStatus" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkScheduleEnabled">批次排班表</label>
+            <select id="bulkScheduleEnabled" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkPerformanceEnabled">批次業績</label>
+            <select id="bulkPerformanceEnabled" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
+            <label class="bulk-label" for="bulkUsageDays">批次期限(天)</label>
+            <input id="bulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
+          </div>
+
+          <button id="bulkApply" class="btn primary" type="button">套用到選取</button>
+          <button id="bulkDelete" class="btn danger" type="button">批次刪除</button>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap" aria-label="使用者列表">
+        <table>
+          <thead>
+            <tr>
+              <th class="sticky-col col-check">
+                <input id="checkAll" type="checkbox" aria-label="全選" />
+              </th>
+              <th data-sort="index" class="sortable">#</th>
+              <th data-sort="userId" class="sortable">userId</th>
+              <th data-sort="displayName" class="sortable">顯示名稱</th>
+              <th data-sort="createdAt" class="sortable">建立時間</th>
+              <th data-sort="startDate" class="sortable">開始使用</th>
+              <th data-sort="usageDays" class="sortable">期限(天)</th>
+              <th data-sort="expiry" class="sortable">使用狀態</th>
+              <th data-sort="audit" class="sortable">審核狀態</th>
+              <th data-sort="masterCode" class="sortable">師傅編號</th>
+              <th data-sort="isMaster" class="sortable">是否師傅</th>
+              <th data-sort="pushEnabled" class="sortable">是否推播</th>
+              <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th>
+              <th data-sort="scheduleEnabled" class="sortable">排班表開通</th>
+              <th data-sort="performanceEnabled" class="sortable">業績開通</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="16">載入中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
+
+<!-- ✅ 模組化版本：拆分至 js/（保留管理員門禁 + 推播功能開通 gate 修正） -->
+<script src="js/00_state.js?v=20260103" defer></script>
+<script src="js/01_utils.js?v=20260103" defer></script>
+<script src="js/02_config.js?v=20260103" defer></script>
+<script src="js/03_permissions_tabs.js?v=20260103" defer></script>
+<script src="js/04_ui.js?v=20260103" defer></script>
+<script src="js/05_users_sort.js?v=20260103" defer></script>
+<script src="js/06_bulk_table_save.js?v=20260103" defer></script>
+<script src="js/07_api.js?v=20260103" defer></script>
+<script src="js/08_push.js?v=20260103" defer></script>
+<script src="js/09_auth.js?v=20260103" defer></script>
+<script src="js/10_usage_log.js?v=20260107" defer></script>
+<script src="js/99_main.js?v=20260103" defer></script>
+</body>
+</html>
