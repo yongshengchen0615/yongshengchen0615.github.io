@@ -14,7 +14,7 @@
   /*****************************************************************
    * 0) Settings (YOU MUST EDIT)
    *****************************************************************/
-  const GAS_URL = "https://script.google.com/macros/s/XXXXXX/exec"; // TODO: 換成你的 GAS WebApp /exec
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbzAc4BzsBddHhjVEke_uTdDnktv82TTHcxR3KnlQeFOB4EkKaHUixq8Vd8De8vp82mCKw/exec"; // TODO: 換成你的 GAS WebApp /exec
 
   // 你可以先用寬鬆規則抓到「真正的 API URL」後，再縮小範圍
   const CAPTURE_RULES = {
