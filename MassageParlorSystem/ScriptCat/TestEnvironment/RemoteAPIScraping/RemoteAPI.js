@@ -1,443 +1,290 @@
 // ==UserScript==
-// @name         API Spy + GAS Logger (fetch + XHR)
-// @namespace    scriptcat-api-spy-gas
-// @version      1.0.0
-// @description  Observe endpoints, save responses, and ship logs to GAS Sheet for debugging.
-// @match        https://yspos.youngsong.com.tw/#/performance?tab=A_DETAIL
+// @name         YSPOS P_DETAIL Network Capture -> GAS
+// @namespace    https://local/
+// @version      2.0
+// @description  Capture fetch/XHR responses on #/performance?tab=P_DETAIL and send matched payload to GAS (dedupe + SPA-safe)
+// @match        https://yspos.youngsong.com.tw/*
+// @grant        GM_xmlhttpRequest
 // @run-at       document-start
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
-// @grant        GM_getResourceText
-// @resource     gasConfigRemoteAPI gas-config-remoteapi.json
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  /* =========================
-   * CONFIG
-   * ========================= */
-  const DEFAULT_CFG = {
-    // --- UI/local ---
-    MAX_LOGS: 300,
-    PREVIEW_LIMIT: 2000,
-    BODY_LIMIT: 20000,
-    STORE_KEY: "api_spy_logs_v1",
+  /*****************************************************************
+   * 0) Settings (YOU MUST EDIT)
+   *****************************************************************/
+  const GAS_URL = "https://script.google.com/macros/s/XXXXXX/exec"; // TODO: 換成你的 GAS WebApp /exec
 
-    // --- GAS shipper ---
-    GAS_ENDPOINT: "",
-    GAS_API_KEY: "CHANGE_ME",
-    SHIP_ENABLED: true,
+  // 你可以先用寬鬆規則抓到「真正的 API URL」後，再縮小範圍
+  const CAPTURE_RULES = {
+    // 只在這個頁面啟動
+    pageHashMustInclude: "#/performance",
+    pageHashMustInclude2: "tab=P_DETAIL",
 
-    // 批次送出策略
-    SHIP_BATCH_SIZE: 20,     // 每次最多送幾筆
-    SHIP_FLUSH_MS: 2500,     // 有新 log 後，幾秒內批次送
-    SHIP_RETRY_MAX: 6,       // 最多重試次數
-    SHIP_BACKOFF_BASE_MS: 1200,
-    SHIP_QUEUE_KEY: "api_spy_ship_queue_v1"
+    // URL 命中規則：先寬鬆（建議先抓一次，看 console 後再收斂）
+    // 命中任一 substring 就會被記錄/送出
+    urlSubstringsAny: [
+      "/performance",
+      "/perf",
+      "/report",
+      "/detail",
+      "/details",
+      "P_DETAIL",
+      "GetDetail",
+      "getDetail",
+      "api",
+    ],
+
+    // 回應 JSON 命中規則（可選）：若你已知回應結構，可加強判斷
+    // 例如：包含 summary / detail / rows / data 等 key
+    jsonKeysAny: ["detail", "details", "rows", "data", "summary", "list"],
+
+    // 一次最多送出幾筆（避免 payload 太大）
+    maxQueuePerFlush: 10,
+
+    // flush 間隔（ms）
+    flushIntervalMs: 1500,
   };
 
-  let CFG = { ...DEFAULT_CFG };
+  /*****************************************************************
+   * 1) Page gate (SPA-safe)
+   *****************************************************************/
+  function isTargetPage() {
+    const h = String(location.hash || "");
+    return h.includes(CAPTURE_RULES.pageHashMustInclude) && h.includes(CAPTURE_RULES.pageHashMustInclude2);
+  }
 
-  /* =========================
-   * Utils
-   * ========================= */
-  const nowMs = () => Date.now();
-  const safeJsonParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
-  const truncate = (s, n) => (typeof s === "string" && s.length > n ? s.slice(0, n) + "…(truncated)" : s);
-  const toStr = (v) => {
-    if (v == null) return "";
-    if (typeof v === "string") return v;
-    try { return JSON.stringify(v); } catch { return String(v); }
-  };
-  const pickHeaders = (headersObj) => {
-    const out = {};
-    try {
-      if (!headersObj) return out;
-      if (headersObj instanceof Headers) {
-        headersObj.forEach((v, k) => (out[k] = v));
-        return out;
-      }
-      for (const k of Object.keys(headersObj)) out[k] = headersObj[k];
-      return out;
-    } catch {
-      return out;
+  // SPA 切頁監聽
+  let ACTIVE = false;
+  let FLUSH_TIMER = null;
+
+  function startIfNeeded() {
+    const ok = isTargetPage();
+    if (ok && !ACTIVE) {
+      ACTIVE = true;
+      console.log("[P_DETAIL_CAPTURE] START on", location.href);
+      startFlushLoop();
+    } else if (!ok && ACTIVE) {
+      ACTIVE = false;
+      console.log("[P_DETAIL_CAPTURE] STOP on", location.href);
+      stopFlushLoop();
     }
-  };
+  }
 
-  // 讀取專屬 config（gas-config-remoteapi.json）中的 GAS 參數（只允許覆蓋 GAS 相關欄位）
-  const GAS_RESOURCE = "gasConfigRemoteAPI";
+  // hash 變化（SPA）
+  window.addEventListener("hashchange", startIfNeeded, true);
+  // 初次
+  startIfNeeded();
 
-  const loadJsonOverrides = () => {
-    try {
-      if (typeof GM_getResourceText !== "function") return {};
-      const raw = GM_getResourceText(GAS_RESOURCE);
-      const parsed = safeJsonParse(raw);
-      if (!parsed || typeof parsed !== "object") return {};
+  /*****************************************************************
+   * 2) Utilities
+   *****************************************************************/
+  function safeJsonParse(text) {
+    try { return JSON.parse(text); } catch (_) { return null; }
+  }
 
-      const allowed = ["GAS_ENDPOINT", "GAS_API_KEY", "SHIP_ENABLED"];
-      const out = {};
-      for (const k of allowed) {
-        if (Object.prototype.hasOwnProperty.call(parsed, k)) out[k] = parsed[k];
-      }
-      return out;
-    } catch {
-      return {};
-    }
-  };
+  function pickTechNo() {
+    // 盡量從常見地方抓 techNo（你也可以改成更精準的 DOM 解析）
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("techNo")) return qs.get("techNo");
+    const h = String(location.hash || "");
+    const m = h.match(/techNo=([0-9A-Za-z_-]+)/);
+    if (m) return m[1];
+    // 最後嘗試：sessionStorage / localStorage 常見 key（你可依你專案調）
+    return (
+      sessionStorage.getItem("techNo") ||
+      localStorage.getItem("techNo") ||
+      ""
+    );
+  }
 
-  const applyConfigOverrides = () => {
-    const overrides = loadJsonOverrides();
-    CFG = { ...DEFAULT_CFG, ...overrides };
-  };
+  function urlMatches(url) {
+    const u = String(url || "");
+    return CAPTURE_RULES.urlSubstringsAny.some((s) => u.includes(s));
+  }
 
-  /* =========================
-   * Storage (logs + ship queue)
-   * ========================= */
-  const loadVal = async (k, dflt) => {
-    try {
-      const raw = typeof GM_getValue === "function" ? await GM_getValue(k, dflt) : localStorage.getItem(k) || dflt;
-      return raw;
-    } catch {
-      return dflt;
-    }
-  };
-  const saveVal = async (k, v) => {
-    if (typeof GM_setValue === "function") return GM_setValue(k, v);
-    localStorage.setItem(k, v);
-  };
-  const delVal = async (k) => {
-    if (typeof GM_deleteValue === "function") return GM_deleteValue(k);
-    localStorage.removeItem(k);
-  };
+  function jsonLooksLikeTarget(obj) {
+    if (!obj || typeof obj !== "object") return false;
+    // 有任一 key 命中就算
+    const keys = new Set();
+    (function walk(o, depth) {
+      if (!o || typeof o !== "object" || depth > 2) return;
+      Object.keys(o).forEach((k) => keys.add(String(k)));
+      for (const k of Object.keys(o)) walk(o[k], depth + 1);
+    })(obj, 0);
 
-  const loadLogs = async () => {
-    const raw = await loadVal(CFG.STORE_KEY, "[]");
-    const arr = safeJsonParse(raw);
-    return Array.isArray(arr) ? arr : [];
-  };
-  const saveLogs = async (logs) => saveVal(CFG.STORE_KEY, JSON.stringify(logs));
+    return CAPTURE_RULES.jsonKeysAny.some((k) => keys.has(k));
+  }
 
-  const loadShipQueue = async () => {
-    const raw = await loadVal(CFG.SHIP_QUEUE_KEY, "[]");
-    const arr = safeJsonParse(raw);
-    return Array.isArray(arr) ? arr : [];
-  };
-  const saveShipQueue = async (q) => saveVal(CFG.SHIP_QUEUE_KEY, JSON.stringify(q));
+  async function sha1Hex(str) {
+    const enc = new TextEncoder().encode(str);
+    const buf = await crypto.subtle.digest("SHA-1", enc);
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
 
-  /* =========================
-   * UI (minimal: just toast; 你若要保留完整面板我也可再合併)
-   * ========================= */
-  const toast = (msg) => {
-    let el = document.getElementById("__apiSpyToast");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "__apiSpyToast";
-      el.style.cssText =
-        "position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:2147483647;" +
-        "padding:8px 10px;border:1px solid rgba(255,255,255,.14);background:rgba(10,14,20,.88);" +
-        "color:#e5e7eb;border-radius:999px;font:12px system-ui;display:none;" +
-        "box-shadow:0 12px 30px rgba(0,0,0,.35);backdrop-filter: blur(10px);";
-      document.documentElement.appendChild(el);
-    }
-    el.textContent = msg;
-    el.style.display = "block";
-    clearTimeout(toast.__t);
-    toast.__t = setTimeout(() => (el.style.display = "none"), 900);
-  };
+  /*****************************************************************
+   * 3) Queue + Dedup + Flush to GAS
+   *****************************************************************/
+  const QUEUE = [];
+  const SENT_HASH = new Set(); // runtime dedupe（頁面存活期間）
 
-  /* =========================
-   * Shipper (batch to GAS)
-   * ========================= */
-  let shipTimer = null;
-  let shipping = false;
+  function enqueue(item) {
+    QUEUE.push(item);
+  }
 
-  const enqueueForShip = async (entry) => {
-    if (!CFG.SHIP_ENABLED) return;
-    if (!CFG.GAS_ENDPOINT || !CFG.GAS_API_KEY) return;
+  function startFlushLoop() {
+    if (FLUSH_TIMER) return;
+    FLUSH_TIMER = setInterval(flushQueue, CAPTURE_RULES.flushIntervalMs);
+  }
 
-    const q = await loadShipQueue();
-    q.push({
-      entry,
-      retry: 0,
-      nextAt: 0
+  function stopFlushLoop() {
+    if (FLUSH_TIMER) clearInterval(FLUSH_TIMER);
+    FLUSH_TIMER = null;
+  }
+
+  function flushQueue() {
+    if (!ACTIVE) return;
+    if (QUEUE.length === 0) return;
+
+    const batch = QUEUE.splice(0, CAPTURE_RULES.maxQueuePerFlush);
+    const payload = {
+      mode: "captureNetwork_v1",
+      page: location.href,
+      hash: location.hash,
+      ts: new Date().toISOString(),
+      techNo: pickTechNo(),
+      items: batch,
+    };
+
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: GAS_URL,
+      headers: { "Content-Type": "application/json" },
+      data: JSON.stringify(payload),
+      timeout: 30000,
+      onload: (res) => {
+        console.log("[P_DETAIL_CAPTURE] sent", batch.length, "status=", res.status);
+      },
+      onerror: (err) => {
+        console.warn("[P_DETAIL_CAPTURE] send error", err);
+        // 失敗就塞回去（簡單重試）
+        QUEUE.unshift(...batch);
+      },
+      ontimeout: () => {
+        console.warn("[P_DETAIL_CAPTURE] send timeout");
+        QUEUE.unshift(...batch);
+      },
     });
-    await saveShipQueue(q);
-    scheduleFlush();
-  };
+  }
 
-  const scheduleFlush = () => {
-    if (!CFG.SHIP_ENABLED) return;
-    if (shipTimer) return;
-    shipTimer = setTimeout(() => {
-      shipTimer = null;
-      flushShipQueue().catch(() => {});
-    }, CFG.SHIP_FLUSH_MS);
-  };
-
-  const flushShipQueue = async () => {
-    if (shipping) return;
-    shipping = true;
+  /*****************************************************************
+   * 4) Hook fetch
+   *****************************************************************/
+  const _fetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await _fetch.apply(this, args);
 
     try {
-      let q = await loadShipQueue();
-      if (!q.length) return;
+      if (!ACTIVE) return res;
 
-      const now = nowMs();
-      const ready = q.filter(x => (x.nextAt || 0) <= now);
-      if (!ready.length) return;
+      const url = args[0];
+      const opt = args[1] || {};
+      if (!urlMatches(url)) return res;
 
-      const batch = ready.slice(0, CFG.SHIP_BATCH_SIZE);
-      const batchIds = new Set(batch.map(x => x.entry.id));
+      const clone = res.clone();
+      const text = await clone.text();
+      const json = safeJsonParse(text);
 
-      // 先從 queue 移除這批（樂觀鎖），失敗再塞回（避免重複 flush）
-      q = q.filter(x => !batchIds.has(x.entry.id));
-      await saveShipQueue(q);
+      // 若是 JSON 且看起來像目標資料才送（避免送 HTML/JS）
+      if (json && !jsonLooksLikeTarget(json)) return res;
 
-      const payload = {
-        key: CFG.GAS_API_KEY,
-        meta: {
-          pageUrl: location.href,
-          ua: navigator.userAgent
-        },
-        logs: batch.map(x => x.entry)
+      const record = {
+        kind: "fetch",
+        url: String(url),
+        method: String(opt.method || "GET"),
+        requestHeaders: opt.headers || null,
+        requestBody: opt.body || null,
+        status: res.status,
+        response: json || text,
       };
 
-      const res = await fetch(CFG.GAS_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      let ok = false;
-      try {
-        const j = await res.json();
-        ok = !!j && j.ok === true;
-      } catch {
-        ok = res.ok;
+      const hash = await sha1Hex(JSON.stringify(record));
+      if (!SENT_HASH.has(hash)) {
+        SENT_HASH.add(hash);
+        enqueue({ hash, record });
+        console.log("[P_DETAIL_CAPTURE][fetch] captured:", record.url, "status=", record.status);
       }
-
-      if (!ok) {
-        // 送回 queue，並做重試退避
-        const failed = batch.map(x => bumpRetry_(x));
-        const q2 = await loadShipQueue();
-        await saveShipQueue(q2.concat(failed));
-        toast("GAS ship failed (queued)");
-      } else {
-        toast(`GAS ship ok (+${batch.length})`);
-      }
-
-    } finally {
-      shipping = false;
-      // 若還有資料，繼續排下一輪（不爆打）
-      const q = await loadShipQueue();
-      if (q.length) scheduleFlush();
+    } catch (e) {
+      // 不要讓頁面壞掉
+      console.warn("[P_DETAIL_CAPTURE][fetch] hook failed", e);
     }
+
+    return res;
   };
 
-  const bumpRetry_ = (x) => {
-    const retry = (x.retry || 0) + 1;
-    if (retry > CFG.SHIP_RETRY_MAX) {
-      // 超過就丟棄（你也可以改成保留）
-      return null;
-    }
-    const backoff = CFG.SHIP_BACKOFF_BASE_MS * Math.pow(2, retry - 1);
-    const jitter = Math.floor(Math.random() * 500);
-    return {
-      entry: x.entry,
-      retry,
-      nextAt: nowMs() + backoff + jitter
-    };
+  /*****************************************************************
+   * 5) Hook XHR (axios / legacy)
+   *****************************************************************/
+  const _open = XMLHttpRequest.prototype.open;
+  const _send = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this._cap_method = method;
+    this._cap_url = url;
+    return _open.apply(this, arguments);
   };
 
-  /* =========================
-   * Log recorder
-   * ========================= */
-  let logs = [];
-  const newId = () => `${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  XMLHttpRequest.prototype.send = function (body) {
+    try {
+      if (ACTIVE && urlMatches(this._cap_url)) {
+        const xhr = this;
+        const reqBody = body;
 
-  const pushLog = async (entry) => {
-    logs.push(entry);
-    if (logs.length > CFG.MAX_LOGS) logs = logs.slice(logs.length - CFG.MAX_LOGS);
-    await saveLogs(logs);
-    await enqueueForShip(entry);
-  };
+        xhr.addEventListener("load", async function () {
+          try {
+            const text = xhr.responseText;
+            const json = safeJsonParse(text);
 
-  /* =========================
-   * fetch hook
-   * ========================= */
-  const hookFetch = () => {
-    const _fetch = window.fetch;
-    if (typeof _fetch !== "function") return;
+            if (json && !jsonLooksLikeTarget(json)) return;
 
-    window.fetch = async function (input, init) {
-      const t0 = nowMs();
-      let url = "";
-      let method = "GET";
-      let reqHeaders = {};
-      let reqBody = "";
+            const record = {
+              kind: "xhr",
+              url: String(xhr._cap_url),
+              method: String(xhr._cap_method || "GET"),
+              requestBody: reqBody || null,
+              status: xhr.status,
+              response: json || text,
+            };
 
-      try {
-        if (typeof input === "string") url = input;
-        else if (input && input.url) url = input.url;
-
-        method = (init && init.method) || (input && input.method) || "GET";
-        reqHeaders = pickHeaders((init && init.headers) || (input && input.headers));
-        reqBody = init && init.body != null ? truncate(toStr(init.body), CFG.BODY_LIMIT) : "";
-      } catch {}
-
-      const id = newId();
-
-      try {
-        const res = await _fetch.apply(this, arguments);
-        const t1 = nowMs();
-
-        let respText = "";
-        let respHeaders = {};
-        let status = res.status;
-
-        try {
-          respHeaders = pickHeaders(res.headers);
-          const clone = res.clone();
-          respText = await clone.text();
-        } catch (e) {
-          respText = `<<unable to read response: ${e && e.message ? e.message : e}>>`;
-        }
-
-        const entry = {
-          id,
-          type: "fetch",
-          t0,
-          t1,
-          ms: t1 - t0,
-          url,
-          method,
-          status,
-          reqHeaders,
-          reqBody,
-          respHeaders,
-          respText: truncate(respText, CFG.BODY_LIMIT),
-          respPreview: truncate(respText, CFG.PREVIEW_LIMIT),
-          err: ""
-        };
-
-        await pushLog(entry);
-        return res;
-      } catch (e) {
-        const t1 = nowMs();
-        await pushLog({
-          id,
-          type: "fetch",
-          t0,
-          t1,
-          ms: t1 - t0,
-          url,
-          method,
-          status: null,
-          reqHeaders,
-          reqBody,
-          respHeaders: {},
-          respText: "",
-          respPreview: "",
-          err: e && e.message ? e.message : String(e)
+            const hash = await sha1Hex(JSON.stringify(record));
+            if (!SENT_HASH.has(hash)) {
+              SENT_HASH.add(hash);
+              enqueue({ hash, record });
+              console.log("[P_DETAIL_CAPTURE][xhr] captured:", record.url, "status=", record.status);
+            }
+          } catch (e) {
+            console.warn("[P_DETAIL_CAPTURE][xhr] parse failed", e);
+          }
         });
-        throw e;
       }
-    };
+    } catch (e) {
+      console.warn("[P_DETAIL_CAPTURE][xhr] hook failed", e);
+    }
+
+    return _send.apply(this, arguments);
   };
 
-  /* =========================
-   * XHR hook
-   * ========================= */
-  const hookXHR = () => {
-    const XHR = window.XMLHttpRequest;
-    if (!XHR) return;
+  /*****************************************************************
+   * 6) Page lifecycle flush (best-effort)
+   *****************************************************************/
+  window.addEventListener("pagehide", () => {
+    try { flushQueue(); } catch (_) {}
+  });
 
-    const _open = XHR.prototype.open;
-    const _send = XHR.prototype.send;
-    const _setRequestHeader = XHR.prototype.setRequestHeader;
-
-    XHR.prototype.open = function (method, url) {
-      this.__apiSpy = {
-        id: newId(),
-        type: "xhr",
-        t0: nowMs(),
-        url: url,
-        method: method || "GET",
-        reqHeaders: {},
-        reqBody: ""
-      };
-      return _open.apply(this, arguments);
-    };
-
-    XHR.prototype.setRequestHeader = function (k, v) {
-      try {
-        if (this.__apiSpy) this.__apiSpy.reqHeaders[k] = v;
-      } catch {}
-      return _setRequestHeader.apply(this, arguments);
-    };
-
-    XHR.prototype.send = function (body) {
-      try {
-        if (this.__apiSpy) this.__apiSpy.reqBody = body != null ? truncate(toStr(body), CFG.BODY_LIMIT) : "";
-      } catch {}
-
-      const spy = this.__apiSpy;
-
-      const onDone = async () => {
-        try { this.removeEventListener("loadend", onDone); } catch {}
-        if (!spy) return;
-
-        const t1 = nowMs();
-        let respText = "";
-        try {
-          respText = this.responseText != null ? String(this.responseText) : "";
-        } catch (e) {
-          respText = `<<unable to read responseText: ${e && e.message ? e.message : e}>>`;
-        }
-
-        await pushLog({
-          id: spy.id,
-          type: "xhr",
-          t0: spy.t0,
-          t1,
-          ms: t1 - spy.t0,
-          url: spy.url,
-          method: spy.method,
-          status: this.status,
-          reqHeaders: spy.reqHeaders,
-          reqBody: spy.reqBody,
-          respHeaders: {},
-          respText: truncate(respText, CFG.BODY_LIMIT),
-          respPreview: truncate(respText, CFG.PREVIEW_LIMIT),
-          err: this.status === 0 ? "status=0 (可能 CORS/網路/被 abort)" : ""
-        });
-      };
-
-      try { this.addEventListener("loadend", onDone); } catch {}
-      return _send.apply(this, arguments);
-    };
-  };
-
-  /* =========================
-   * Boot
-   * ========================= */
-  const boot = async () => {
-    applyConfigOverrides();
-    logs = await loadLogs();
-    hookFetch();
-    hookXHR();
-
-    // 啟動後也 flush 一次（可能有殘留 queue）
-    if (CFG.SHIP_ENABLED) scheduleFlush();
-
-    // 小提示
-    setTimeout(() => {
-      if (CFG.SHIP_ENABLED) toast("API Spy + GAS ship ready");
-      else toast("API Spy ready");
-    }, 600);
-  };
-
-  boot();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      try { flushQueue(); } catch (_) {}
+    }
+  });
 })();
