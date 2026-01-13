@@ -1,11 +1,15 @@
 /**
- * performance.js（完整重構版）
+ * performance.js（完整可直接貼版本）
  *
  * ✅ 改動：
  * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS
  * 2) 前端 cache 重構：SummaryKey=techNo，DetailKey=techNo+start~end
  * 3) 維持 orderDateKey_ 純日期過濾策略
  * 4) ✅ 修正你現在 UI 用 YYYY/MM/DD 造成永遠 BAD_DATE → 顯示空
+ * 5) ✅ 整合：比較兩張 GAS「最新 Summary」(REPORT vs DETAIL_PERF)
+ *    - REPORT: mode=getLatestSummary_v1&techNo=xx
+ *    - DETAIL_PERF: mode=getLatestSummary_v1&techNo=xx
+ *    - console.table + diff list；並在 meta 附上比較狀態（可關）
  */
 
 import { dom } from "./dom.js";
@@ -17,6 +21,11 @@ import { normalizeTechNo } from "./myMasterStatus.js";
 
 const PERF_FETCH_TIMEOUT_MS = 20000;
 const PERF_TZ = "Asia/Taipei";
+
+/** ✅ 開關：是否在載入 summary 時做「兩張 GAS 最新 Summary 比較」 */
+const PERF_COMPARE_LATEST_ENABLED = true;
+/** ✅ 開關：console debug */
+const PERF_COMPARE_LATEST_DEBUG = true;
 
 /* =========================
  * Intl formatter（memoize）
@@ -414,6 +423,128 @@ function makePerfDetailKey_(techNo, startKey, endKey) {
 }
 
 /* =========================
+ * ✅ Latest Summary Compare (REPORT vs DETAIL_PERF)
+ * ========================= */
+
+function coerceCardFromSummaryRow_(sr, prefix) {
+  return {
+    單數: Number((sr && sr[`${prefix}_單數`]) ?? 0) || 0,
+    筆數: Number((sr && sr[`${prefix}_筆數`]) ?? 0) || 0,
+    數量: Number((sr && sr[`${prefix}_數量`]) ?? 0) || 0,
+    金額: Number((sr && sr[`${prefix}_金額`]) ?? 0) || 0,
+  };
+}
+
+function normLatestReport_(raw) {
+  if (!raw || raw.ok !== true) return { ok: false, error: (raw && raw.error) || "UNKNOWN" };
+  if (String(raw.result || "") === "empty") return { ok: true, empty: true, source: "REPORT" };
+
+  const sr = raw.summaryRow || null;
+  const techNo = normalizeTechNo(raw.techNo || (sr && sr.techNo) || "");
+  const lastUpdatedAt = String(raw.lastUpdatedAt || (sr && sr.lastUpdatedAt) || "");
+  const dateKey = String(raw.dateKey || (sr && sr.dateKey) || "");
+  const detailCount = Number((sr && sr.detailCount) ?? 0) || 0;
+
+  const summaryObj =
+    sr && sr["排班"]
+      ? sr
+      : sr
+      ? { 排班: coerceCardFromSummaryRow_(sr, "排班"), 老點: coerceCardFromSummaryRow_(sr, "老點"), 總計: coerceCardFromSummaryRow_(sr, "總計") }
+      : null;
+
+  return { ok: true, source: "REPORT", techNo, lastUpdatedAt, dateKey, detailCount, summaryObj, raw };
+}
+
+function normLatestDetailPerf_(raw) {
+  if (!raw || raw.ok !== true) return { ok: false, error: (raw && raw.error) || "UNKNOWN" };
+  if (String(raw.result || "") === "empty") return { ok: true, empty: true, source: "DETAIL_PERF" };
+
+  const sr = raw.summaryRow || null;
+  const techNo = normalizeTechNo(raw.techNo || (sr && sr.techNo) || "");
+  const lastUpdatedAt = String(raw.lastUpdatedAt || (sr && sr.lastUpdatedAt) || "");
+  const rangeKey = String(raw.rangeKey || (sr && sr.rangeKey) || "");
+  const detailCount = Number((sr && sr.detailCount) ?? 0) || 0;
+
+  const summaryObj =
+    sr && sr["排班"]
+      ? sr
+      : sr
+      ? { 排班: coerceCardFromSummaryRow_(sr, "排班"), 老點: coerceCardFromSummaryRow_(sr, "老點"), 總計: coerceCardFromSummaryRow_(sr, "總計") }
+      : null;
+
+  return { ok: true, source: "DETAIL_PERF", techNo, lastUpdatedAt, rangeKey, detailCount, summaryObj, raw };
+}
+
+function compareLatest_(rep, det) {
+  const diffs = [];
+  const add = (field, a, b) => {
+    if (String(a ?? "") !== String(b ?? "")) diffs.push({ field, report: a ?? "", detailPerf: b ?? "" });
+  };
+
+  add("techNo", rep.techNo, det.techNo);
+  add("lastUpdatedAt", rep.lastUpdatedAt, det.lastUpdatedAt);
+  add("dateKey / rangeKey", rep.dateKey, det.rangeKey);
+  add("detailCount", rep.detailCount, det.detailCount);
+
+  const keys = ["排班", "老點", "總計"];
+  const sub = ["單數", "筆數", "數量", "金額"];
+  for (const k of keys) {
+    for (const s of sub) {
+      const a = rep.summaryObj && rep.summaryObj[k] ? rep.summaryObj[k][s] : 0;
+      const b = det.summaryObj && det.summaryObj[k] ? det.summaryObj[k][s] : 0;
+      if (Number(a) !== Number(b)) diffs.push({ field: `${k}.${s}`, report: a ?? 0, detailPerf: b ?? 0 });
+    }
+  }
+  return diffs;
+}
+
+async function fetchLatestSummaryReport_(techNo) {
+  if (!config.REPORT_API_URL) throw new Error("CONFIG_REPORT_API_URL_MISSING");
+  const q = "mode=getLatestSummary_v1&techNo=" + encodeURIComponent(techNo);
+  const url = withQuery(config.REPORT_API_URL, q);
+  const raw = await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "REPORT_LATEST");
+  return normLatestReport_(raw);
+}
+
+async function fetchLatestSummaryDetailPerf_(techNo) {
+  const baseUrl = config.DETAIL_PERF_API_URL || config.REPORT_API_URL;
+  if (!baseUrl) throw new Error("CONFIG_DETAIL_PERF_API_URL_MISSING");
+  const q = "mode=getLatestSummary_v1&techNo=" + encodeURIComponent(techNo);
+  const url = withQuery(baseUrl, q);
+  const raw = await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_PERF_LATEST");
+  return normLatestDetailPerf_(raw);
+}
+
+async function fetchAndCompareLatestSummaries_(techNo) {
+  const [a, b] = await Promise.allSettled([fetchLatestSummaryReport_(techNo), fetchLatestSummaryDetailPerf_(techNo)]);
+  const reportLatest = a.status === "fulfilled" ? a.value : { ok: false, error: String(a.reason || "REPORT_LATEST_FAILED") };
+  const detailLatest = b.status === "fulfilled" ? b.value : { ok: false, error: String(b.reason || "DETAIL_LATEST_FAILED") };
+
+  let diffs = [];
+  if (reportLatest.ok && detailLatest.ok && !reportLatest.empty && !detailLatest.empty) diffs = compareLatest_(reportLatest, detailLatest);
+
+  if (PERF_COMPARE_LATEST_DEBUG) {
+    console.table([
+      {
+        techNo,
+        REPORT_ok: reportLatest.ok,
+        REPORT_dateKey: reportLatest.dateKey || "",
+        REPORT_lastUpdatedAt: reportLatest.lastUpdatedAt || "",
+        REPORT_detailCount: reportLatest.detailCount ?? "",
+        DETAIL_ok: detailLatest.ok,
+        DETAIL_rangeKey: detailLatest.rangeKey || "",
+        DETAIL_lastUpdatedAt: detailLatest.lastUpdatedAt || "",
+        DETAIL_detailCount: detailLatest.detailCount ?? "",
+        DIFFS: diffs.length,
+      },
+    ]);
+    if (diffs.length) console.log("[Perf] Latest Summary DIFFS:", diffs);
+  }
+
+  return { reportLatest, detailLatest, diffs };
+}
+
+/* =========================
  * Render from cache
  * ========================= */
 
@@ -510,29 +641,6 @@ function sleep_(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
-function dateKeyMinusDays_(dateKey, days) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
-  const d = new Date(dateKey + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() - (Number(days) || 0));
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-async function findLatestReportDateKey_(techNo, maxBackDays = 62) {
-  let dk = localDateKeyToday_();
-  const limit = Math.max(1, Number(maxBackDays) || 62);
-
-  for (let i = 0; i < limit; i++) {
-    const raw = await fetchReport_(techNo, dk);
-    const nr = normalizeReportResponse_(raw);
-    if (nr && nr.ok) return { ok: true, dateKey: dk, normalized: nr };
-    dk = dateKeyMinusDays_(dk, 1);
-    if (!dk) break;
-  }
-  return { ok: false, error: "NO_AVAILABLE_REPORT_IN_RANGE" };
-}
-
 async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fetchDetail = true } = {}) {
   const techNo = normalizeTechNo((info && info.techNo) || (state.myMaster && state.myMaster.techNo));
   if (!techNo) return { ok: false, error: "NOT_MASTER" };
@@ -555,32 +663,46 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
     ? (async () => {
         if (showToast) showLoadingHint(`查詢業績統計中…（讀取 GAS 最新）`);
 
-        let found = null;
-        let lastErr = "";
+        // ✅ 直接讀 REPORT getLatestSummary_v1；可選：同時比較 DETAIL_PERF latest
+        let rep = null;
+        let diffs = [];
+        let det = null;
 
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const res = await findLatestReportDateKey_(techNo, 62);
-          if (res && res.ok) {
-            found = res;
-            break;
-          }
-          lastErr = String(res && res.error ? res.error : "FIND_LATEST_FAILED");
-          await sleep_(500 + attempt * 300);
+        if (PERF_COMPARE_LATEST_ENABLED) {
+          const cmp = await fetchAndCompareLatestSummaries_(techNo);
+          rep = cmp.reportLatest;
+          det = cmp.detailLatest;
+          diffs = Array.isArray(cmp.diffs) ? cmp.diffs : [];
+        } else {
+          rep = await fetchLatestSummaryReport_(techNo);
         }
 
-        if (!found || !found.ok) throw new Error(lastErr || "FIND_LATEST_FAILED");
+        if (!rep || !rep.ok) throw new Error(String((rep && rep.error) || "REPORT_LATEST_FAILED"));
+        if (rep.empty) throw new Error("REPORT_LATEST_EMPTY");
 
-        const nr = found.normalized;
+        const compareHint =
+          PERF_COMPARE_LATEST_ENABLED && det && det.ok
+            ? diffs.length
+              ? `｜⚠ Summary不一致(${diffs.length})`
+              : `｜✓ Summary一致`
+            : "";
 
-        const meta = [`師傅：${nr.techNo || techNo}`, `統計來源：GAS 最新可用日期 ${found.dateKey}`, nr.lastUpdatedAt ? `最後更新：${nr.lastUpdatedAt}` : ""]
+        const meta = [
+          `師傅：${rep.techNo || techNo}`,
+          `統計來源：REPORT(getLatestSummary_v1) 日期 ${rep.dateKey || "?"}`,
+          rep.lastUpdatedAt ? `最後更新：${rep.lastUpdatedAt}` : "",
+          compareHint,
+        ]
           .filter(Boolean)
           .join(" ｜ ");
 
+        // REPORT latest 只回 summaryRow（沒有 detailAgg）
         return {
           meta,
-          summaryObj: nr.summary || null,
-          detailAgg: Array.isArray(nr.detail) ? nr.detail : [],
-          latestReportDateKey: found.dateKey,
+          summaryObj: rep.summaryObj || null,
+          detailAgg: [],
+          latestReportDateKey: rep.dateKey || "",
+          latestCompareDiffs: diffs,
         };
       })()
     : Promise.resolve({ skipped: true });
@@ -685,35 +807,6 @@ function renderDetailRows_(detailRows) {
  * Normalize responses
  * ========================= */
 
-function normalizeReportResponse_(data) {
-  if (!data || data.ok !== true) return { ok: false, error: (data && data.error) || "UNKNOWN" };
-
-  const hasRows = data.summaryRow || data.summary || data.detailRows || data.detail;
-  const hint = String(data.hint || "");
-  if (!hasRows && hint) return { ok: false, error: "GAS_HINT_ONLY" };
-
-  const techNo = normalizeTechNo(data.techNo || data.masterId || data.tech || "");
-  const lastUpdatedAt = String(data.lastUpdatedAt || data.updatedAt || "");
-  const updateCount = Number(data.updateCount || 0) || 0;
-
-  const summaryRow = data.summaryRow || data.summary || null;
-  const detailRows = data.detailRows || data.detail || [];
-
-  const coerceCard = (prefix) => ({
-    單數: Number((summaryRow && summaryRow[`${prefix}_單數`]) ?? 0) || 0,
-    筆數: Number((summaryRow && summaryRow[`${prefix}_筆數`]) ?? 0) || 0,
-    數量: Number((summaryRow && summaryRow[`${prefix}_數量`]) ?? 0) || 0,
-    金額: Number((summaryRow && summaryRow[`${prefix}_金額`]) ?? 0) || 0,
-  });
-
-  let summaryObj = summaryRow;
-  if (summaryRow && !summaryRow["排班"] && (summaryRow["排班_單數"] !== undefined || summaryRow["總計_金額"] !== undefined)) {
-    summaryObj = { 排班: coerceCard("排班"), 老點: coerceCard("老點"), 總計: coerceCard("總計") };
-  }
-
-  return { ok: true, techNo, lastUpdatedAt, updateCount, summary: summaryObj, detail: Array.isArray(detailRows) ? detailRows : [] };
-}
-
 function normalizeDetailPerfResponse_(data) {
   if (!data || data.ok !== true) return { ok: false, error: (data && data.error) || "UNKNOWN" };
 
@@ -746,13 +839,6 @@ function normalizeDetailPerfResponse_(data) {
 /* =========================
  * Fetch
  * ========================= */
-
-async function fetchReport_(techNo, dateKey) {
-  if (!config.REPORT_API_URL) throw new Error("CONFIG_REPORT_API_URL_MISSING");
-  const q = "mode=getReport_v1" + "&techNo=" + encodeURIComponent(techNo) + "&dateKey=" + encodeURIComponent(dateKey);
-  const url = withQuery(config.REPORT_API_URL, q);
-  return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "REPORT");
-}
 
 async function fetchDetailPerf_(techNo, startKey, endKey) {
   const baseUrl = config.DETAIL_PERF_API_URL || config.REPORT_API_URL;
@@ -866,4 +952,11 @@ export function onShowPerformance() {
   showError_(false);
   void renderFromCache_(perfSelectedMode_);
   hideLoadingHint();
+}
+
+/** ✅ Debug: 手動比較兩張 GAS 最新 Summary（Console 用） */
+export async function debugCompareLatestSummaries() {
+  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
+  if (!techNo) return { ok: false, error: "NOT_MASTER" };
+  return await fetchAndCompareLatestSummaries_(techNo);
 }
