@@ -829,14 +829,8 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
             : (chosen.rangeKey ? `區間 ${chosen.rangeKey}` : "")
           : "";
 
-        const meta = [
-          `師傅：${(chosen && chosen.techNo) || techNo}`,
-          `統計來源：${src}${dateLabel ? " " + dateLabel : ""}`,
-          chosen && chosen.lastUpdatedAt ? `最後更新：${chosen.lastUpdatedAt}` : "",
-          compareHint,
-        ]
-          .filter(Boolean)
-          .join(" ｜ ");
+const meta = `最後更新：${(chosen && chosen.lastUpdatedAt) ? chosen.lastUpdatedAt : "—"}`;
+
 
         return {
           meta,
@@ -869,9 +863,8 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
-        const meta = [`師傅：${rr.techNo || techNo}`, `日期：${r.startKey} ~ ${r.endKey}`, rr.lastUpdatedAt ? `最後更新：${rr.lastUpdatedAt}` : ""]
-          .filter(Boolean)
-          .join(" ｜ ");
+const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
+
 
         const rowsAll = Array.isArray(rr.detail) ? rr.detail : [];
         const maxKey = getMaxDetailDateKey_(rowsAll);
