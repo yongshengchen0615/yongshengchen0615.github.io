@@ -1,18 +1,17 @@
 /**
- * performance.js（完整可貼版本 / 已整合你最後需求）
+ * performance.js（完整可貼版本 / ✅ 登入時預載到快取、進業績面板直接顯示、手動重整才更新）
  *
- * ✅ 功能重點（你要的版本）：
- * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS（DETAIL_PERF）
- * 2) Summary 讀取：同時打兩張 GAS 的 getLatestSummary_v1（REPORT + DETAIL_PERF）
- *    - ✅「永遠兩張都打」(含 _ts cache-buster) 確保拿最新
- *    - ✅ 只要其中一張有資料 → 用「較新/有資料」那張渲染 Summary
- *    - ✅ 只有兩張都沒資料 → 才顯示「查無總覽資料。」
- *    - ✅ 兩張都有資料 → 才做 diff（console）
- * 3) UI 日期輸入：支援 YYYY/MM/DD，自動轉成 YYYY-MM-DD
- * 4) ✅ Summary 表（類別/單數/筆數/數量/金額）：
- *    - 只顯示「最後一次成功載入的 Summary」
- *    - 切換「業績統計/業績明細」不會改動 Summary
- *    - 只有「手動重整」才會更新 Summary/Detail
+ * ✅ 行為規則（你要求的最終版）：
+ * 1) 登入時（呼叫 prefetchPerformanceOnce）會「預載到快取」：
+ *    - 只抓 Detail（明細），不更新 Summary（三卡）  ✅ 符合你原本規則
+ *    - 這樣進入業績面板時可直接顯示明細 + 統計頁服務彙總（由明細快取計算）
+ *
+ * 2) 進入業績面板（onShowPerformance）：
+ *    - 只 render 快取，不打 API
+ *
+ * 3) 只有按「手動重整」：
+ *    - 才會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
+ *    - 並抓最新 Detail（startKey/endKey）
  */
 
 import { dom } from "./dom.js";
@@ -419,6 +418,63 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 }
 
 /* =========================
+ * ✅ Service Summary (from detail cache)
+ * ========================= */
+
+function buildServiceSummaryFromDetail_(detailRows) {
+  const rows = Array.isArray(detailRows) ? detailRows : [];
+  const map = new Map();
+
+  function bucket_(r) {
+    const v = String((r && r["拉牌"]) || "").trim();
+    if (v.includes("老")) return "老點";
+    if (v.includes("排")) return "排班";
+    return "其他";
+  }
+
+  for (const r of rows) {
+    const name = String((r && r["服務項目"]) || "").trim() || "（未命名）";
+    const b = bucket_(r);
+
+    const minutes = Number((r && r["分鐘"]) ?? 0) || 0;
+    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+
+    if (!map.has(name)) {
+      map.set(name, {
+        "服務項目": name,
+        "總筆數": 0,
+        "總節數": 0,
+        "總計金額": 0,
+        "老點筆數": 0,
+        "老點節數": 0,
+        "老點金額": 0,
+        "排班筆數": 0,
+        "排班節數": 0,
+        "排班金額": 0,
+      });
+    }
+
+    const o = map.get(name);
+
+    o["總筆數"] += 1;
+    o["總節數"] += minutes;
+    o["總計金額"] += amount;
+
+    if (b === "老點") {
+      o["老點筆數"] += 1;
+      o["老點節數"] += minutes;
+      o["老點金額"] += amount;
+    } else if (b === "排班") {
+      o["排班筆數"] += 1;
+      o["排班節數"] += minutes;
+      o["排班金額"] += amount;
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => (Number(b["總計金額"]) || 0) - (Number(a["總計金額"]) || 0));
+}
+
+/* =========================
  * Cache keys
  * ========================= */
 
@@ -474,8 +530,6 @@ function compareLatest_(a, b) {
 
 /* =========================
  * ✅ Latest Summary Fetch (ALWAYS HIT NETWORK)
- * - 兩張都打 getLatestSummary_v1
- * - 加 _ts cache-buster，避免任何快取干擾
  * ========================= */
 
 async function fetchLatestSummaryReport_(techNo) {
@@ -537,11 +591,9 @@ async function fetchLatestSummaryDetailPerf_(techNo) {
   };
 }
 
-/** 把 GAS summaryRow（可能是扁平欄位）轉成 {排班:{單數..}, 老點:{..}, 總計:{..}} */
+/** 把 GAS summaryRow 轉成 {排班:{...}, 老點:{...}, 總計:{...}} */
 function normalizeSummaryRowToCards_(summaryRow) {
   if (!summaryRow || typeof summaryRow !== "object") return null;
-
-  // 已經是卡片格式
   if (summaryRow["排班"] && summaryRow["老點"] && summaryRow["總計"]) return summaryRow;
 
   const hasAny =
@@ -581,7 +633,7 @@ async function fetchAndCompareLatestSummaries_(techNo) {
   if (reportHas && detailHas) {
     const rm = parseTpeLastUpdatedMs_(reportLatest.lastUpdatedAt);
     const dm = parseTpeLastUpdatedMs_(detailLatest.lastUpdatedAt);
-    const pickReport = rm >= dm; // 若 dm=0/解析失敗，rm>=dm 仍可保底
+    const pickReport = rm >= dm;
     chosen = pickReport ? reportLatest : detailLatest;
     chosenSource = pickReport ? "REPORT" : "DETAIL_PERF";
   } else if (reportHas) {
@@ -621,7 +673,6 @@ async function fetchAndCompareLatestSummaries_(techNo) {
 
 /* =========================
  * Render from cache
- * ✅ 切換模式不抓資料，只渲染快取
  * ========================= */
 
 async function renderFromCache_(mode, info) {
@@ -665,7 +716,6 @@ async function renderFromCache_(mode, info) {
   const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
   const hasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
-  // ✅ Summary 永遠顯示最後一次成功載入（不因切換而變）
   if (dom.perfSummaryRowsEl) {
     if (hasSummary) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
     else dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
@@ -680,15 +730,22 @@ async function renderFromCache_(mode, info) {
       setBadge_("已載入（快取）", false);
     } else {
       setMeta_(`師傅：${techNo} ｜ 統計：尚未載入`);
-      setBadge_("尚未載入（請按手動重整）", true);
+      setBadge_("已載入（明細快取）", false);
     }
 
-    // Summary 模式：不動明細表（留空）
-    applyDetailTableHtml_("", 0);
-    return { ok: !!hasSummary, rendered: "summary", cached: true };
+    // ✅ 統計頁表格：由明細快取計算服務彙總（不打 API）
+    const baseDetail = perfCache_.detail && Array.isArray(perfCache_.detail.detailRows) ? perfCache_.detail.detailRows : [];
+    if (baseDetail.length) {
+      const summaryRows = buildServiceSummaryFromDetail_(baseDetail);
+      const tmp = detailSummaryRowsHtml_(summaryRows);
+      applyDetailTableHtml_(tmp.html, tmp.count);
+    } else {
+      applyDetailTableHtml_("", 0);
+    }
+
+    return { ok: true, rendered: "summary", cached: true };
   }
 
-  // Detail 模式
   renderDetailHeader_("detail");
 
   if (hasDetail) {
@@ -705,14 +762,14 @@ async function renderFromCache_(mode, info) {
   }
 
   setMeta_(`師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey}`);
-  setBadge_("明細尚未載入（請按手動重整）", true);
+  setBadge_("明細尚未載入（等待登入預載 / 或按手動重整）", true);
   renderDetailRows_([]);
   return { ok: false, rendered: "detail", cached: false };
 }
 
 /* =========================
  * Reload / cache
- * ✅ 只有「手動重整」才會呼叫
+ * - 手動重整才會呼叫（抓最新 Summary+Detail）
  * ========================= */
 
 function sleep_(ms) {
@@ -756,7 +813,6 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
         const reportHas = !!(cmp && cmp.reportHas);
         const detailHas = !!(cmp && cmp.detailHas);
 
-        // ✅ 只有兩張都沒資料 → summaryObj=null 才顯示「查無總覽資料」
         const summaryObj = chosen ? chosen.summaryObj || null : null;
 
         const compareHint =
@@ -871,25 +927,6 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 }
 
 /* =========================
- * Render helpers
- * ========================= */
-
-function renderSummary_(summaryObj) {
-  if (!dom.perfSummaryRowsEl) return;
-  dom.perfSummaryRowsEl.innerHTML = summaryObj ? summaryRowsHtml_(summaryObj) : summaryNotLoadedHtml_();
-}
-
-function renderDetailSummary_(detailRows) {
-  const tmp = detailSummaryRowsHtml_(detailRows || []);
-  applyDetailTableHtml_(tmp.html, tmp.count);
-}
-
-function renderDetailRows_(detailRows) {
-  const tmp = detailRowsHtml_(detailRows || []);
-  applyDetailTableHtml_(tmp.html, tmp.count);
-}
-
-/* =========================
  * Normalize responses
  * ========================= */
 
@@ -985,12 +1022,41 @@ export function initPerformanceUi() {
 }
 
 /**
- * ✅ 符合你規則：不允許 prefetch 自動更新 Summary
- * （避免「不是手動重整」就改動 Summary）
+ * ✅ 登入時預載：同時預載「最新 Summary + Detail」到快取
+ * - 不顯示 toast
+ * - 進入業績面板只 render 快取，不打 API
  */
 export async function prefetchPerformanceOnce() {
-  return { ok: false, skipped: "PREFETCH_DISABLED" };
+  if (String(state.feature && state.feature.performanceEnabled) !== "是") {
+    return { ok: false, skipped: "FEATURE_OFF" };
+  }
+
+  // 防重入（避免登入流程多次觸發）
+  if (perfPrefetchInFlight_) return perfPrefetchInFlight_;
+
+  perfPrefetchInFlight_ = (async () => {
+    ensureDefaultDate_();
+
+    const info = readRangeFromInputs_();
+    if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
+
+    // ✅ 關鍵：登入就把最新 Summary + Detail 塞進快取
+    const res = await reloadAndCache_(info, {
+      showToast: false,
+      fetchSummary: true, // ✅ 讓三卡（類別/單數/筆數/數量/金額）登入就有最新
+      fetchDetail: true,  // ✅ 明細也預載，進頁就能顯示
+    });
+
+    return { ok: !!(res && res.ok), ...res, prefetched: "SUMMARY_AND_DETAIL" };
+  })();
+
+  try {
+    return await perfPrefetchInFlight_;
+  } finally {
+    perfPrefetchInFlight_ = null;
+  }
 }
+
 
 /**
  * ✅ 唯一會抓最新資料的入口（手動重整）
@@ -1010,6 +1076,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 
   setBadge_("同步中…", false);
 
+  // ✅ 手動重整：抓最新 Summary + Detail
   const res = await reloadAndCache_(info, { showToast: !!showToast, fetchSummary: true, fetchDetail: true });
   if (!res || !res.ok) {
     const msg = String(res && res.error ? res.error : "RELOAD_FAILED");
@@ -1028,6 +1095,9 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 export function onShowPerformance() {
   ensureDefaultDate_();
   showError_(false);
+
+  // ✅ 進頁只 render 快取（不打 API）
   void renderFromCache_(perfSelectedMode_);
+
   hideLoadingHint();
 }
