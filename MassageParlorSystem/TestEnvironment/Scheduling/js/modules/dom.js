@@ -9,6 +9,13 @@ export const dom = {
   // Gate / Root
   gateEl: document.getElementById("gate"),
   appRootEl: document.getElementById("appRoot"),
+  initialLoadingEl: document.getElementById("initialLoading"),
+  initialLoadingTextEl: document.getElementById("initialLoadingText"),
+  initialLoadingBarEl: document.getElementById("initialLoadingBar"),
+  initialLoadingPercentEl: document.getElementById("initialLoadingPercent"),
+  initialLoadingProgressEl: document.getElementById("initialLoading")
+    ? document.getElementById("initialLoading").querySelector(".initial-loading-progress")
+    : null,
 
   // Top loading toast
   topLoadingEl: document.getElementById("topLoading"),
@@ -29,6 +36,9 @@ export const dom = {
   emptyStateEl: document.getElementById("emptyState"),
   errorStateEl: document.getElementById("errorState"),
   themeToggleBtn: document.getElementById("themeToggle"),
+  btnMyStatusEl: document.getElementById("btnMyStatus"),
+  btnScheduleEl: document.getElementById("btnSchedule"),
+  btnPerformanceEl: document.getElementById("btnPerformance"),
 
   // Feature / personal tools
   usageBannerEl: document.getElementById("usageBanner"),
@@ -39,7 +49,6 @@ export const dom = {
   personalToolsEl: document.getElementById("personalTools"),
   btnUserManageEl: document.getElementById("btnUserManage"),
   btnPersonalStatusEl: document.getElementById("btnPersonalStatus"),
-  btnVacationEl: document.getElementById("btnVacation"),
 
   // 我的狀態
   myMasterStatusEl: document.getElementById("myMasterStatus"),
@@ -57,4 +66,26 @@ export const dom = {
   filterStatusWrapEl: document.getElementById("filterStatus")
     ? document.getElementById("filterStatus").closest(".filter")
     : null,
+
+  // 業績
+  perfCardEl: document.getElementById("perfCard"),
+  // 日期區間（新版）
+  perfDateStartInput: document.getElementById("perfDateStart"),
+  perfDateEndInput: document.getElementById("perfDateEnd"),
+
+  // 單日（舊版保留：若 HTML 沒有此欄位則為 null）
+  perfDateKeyInput: document.getElementById("perfDateKey"),
+  // legacy: 舊版只有一顆「查詢」按鈕
+  perfSearchBtn: document.getElementById("perfSearch"),
+  // v2: 兩顆按鈕（統計/明細）
+  perfSearchSummaryBtn: document.getElementById("perfSearchSummary"),
+  perfSearchDetailBtn: document.getElementById("perfSearchDetail"),
+  perfStatusEl: document.getElementById("perfStatus"),
+  perfMetaEl: document.getElementById("perfMeta"),
+  perfSummaryRowsEl: document.getElementById("perfSummaryRows"),
+  perfDetailHeadRowEl: document.getElementById("perfDetailHeadRow"),
+  perfDetailRowsEl: document.getElementById("perfDetailRows"),
+  perfEmptyEl: document.getElementById("perfEmpty"),
+  perfErrorEl: document.getElementById("perfError"),
+  perfDetailCountEl: document.getElementById("perfDetailCount"),
 };

@@ -33,7 +33,7 @@ function compareBy_(a, b, key, dir) {
 	const av = get(a);
 	const bv = get(b);
 
-	if (key === "pushEnabled" || key === "personalStatusEnabled" || key === "scheduleEnabled") {
+	if (key === "pushEnabled" || key === "personalStatusEnabled" || key === "scheduleEnabled" || key === "performanceEnabled") {
 		const na = String(av) === "是" ? 1 : 0;
 		const nb = String(bv) === "是" ? 1 : 0;
 		return (na - nb) * sgn;

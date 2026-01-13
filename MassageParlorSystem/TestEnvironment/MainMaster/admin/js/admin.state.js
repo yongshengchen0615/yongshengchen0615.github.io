@@ -30,6 +30,7 @@
  * @property {string} techPushEnabled
  * @property {string} techPersonalStatusEnabled
  * @property {string} techScheduleEnabled
+ * @property {string} techPerformanceEnabled
  */
 
 // 由 config.json 載入
@@ -37,6 +38,8 @@ let ADMIN_API_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
 let API_BASE_URL = "";
+let USAGE_LOG_API_URL = "";
+let TECH_USAGE_LOG_URL = "";
 
 /** @type {AdminRow[]} */
 let allAdmins = [];
@@ -67,6 +70,13 @@ const dirtyMap = new Map();
  * - UI 會被鎖定（按鈕/輸入/篩選 chips），table 內元件也會 disable。
  */
 let savingAll = false;
+
+// KPI 統計快取：避免在搜尋輸入時重複 O(n) 計算
+let statsDirty = true;
+let statsCache = { total: 0, approved: 0, pending: 0, rejected: 0 };
+
+// 管理員索引：大量互動時避免重複 allAdmins.find O(n)
+const adminById = new Map();
 
 // toast 計時器
 let toastTimer = null;

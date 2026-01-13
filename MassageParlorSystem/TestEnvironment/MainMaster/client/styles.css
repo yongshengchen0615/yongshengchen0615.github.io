@@ -21,7 +21,7 @@
   --muted:#64748b;
 
   --bg:#020617;
-  --bg-page:radial-gradient(circle at top,#0f172a 0,#020617 45%,#020617 100%);
+  --bg-page:var(--bg);
   --card:rgba(255,255,255,.03);
   --card2:rgba(0,0,0,.18);
   --border:#1f2937;
@@ -46,7 +46,7 @@
 
 html[data-theme="light"]{
   --bg:#f8fafc;
-  --bg-page:radial-gradient(circle at top,#ffffff 0,#f8fafc 55%,#f8fafc 100%);
+  --bg-page:var(--bg);
   --card:rgba(0,0,0,.02);
   --card2:rgba(255,255,255,.75);
   --border:#e2e8f0;
@@ -77,7 +77,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   padding:14px 14px;
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  background:linear-gradient(180deg, var(--card2), transparent);
+  background:var(--card2);
   box-shadow:var(--shadow-soft);
 }
 .brand{ display:flex; align-items:center; gap:12px; }
@@ -102,7 +102,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .kpi-card{
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  background:linear-gradient(180deg, var(--card), transparent);
+  background:var(--card);
   box-shadow:var(--shadow-soft);
   padding:12px 14px;
 }
@@ -120,7 +120,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
   overflow:hidden;
-  background:linear-gradient(180deg, var(--card2), transparent);
+  background:var(--card2);
   box-shadow:var(--shadow-soft);
 }
 .panel-head{
@@ -235,7 +235,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   gap:12px;
   padding:10px 14px;
   border-bottom:1px solid var(--border);
-  background:linear-gradient(90deg, var(--card2), transparent);
+  background:var(--card2);
 }
 .bulk-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1 1 240px; }
 .bulk-pill{
@@ -384,6 +384,91 @@ input:disabled, select:disabled{ opacity:.55; cursor:not-allowed; }
   color:rgb(167,139,250);
 }
 
+/* 初始資料載入遮罩 */
+.initial-loading{
+  position:fixed;
+  inset:0;
+  z-index:12000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(15, 23, 42, 0.96);
+  color:#e5e7eb;
+  transition:opacity .22s ease, visibility .22s ease;
+}
+
+html[data-theme="light"] .initial-loading{
+  background:#ffffff;
+  color:#0f172a;
+}
+
+.initial-loading-hidden{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+}
+
+.initial-loading-inner{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  padding:24px 28px;
+  border-radius:18px;
+  background:rgba(15, 23, 42, 0.78);
+  border:1px solid rgba(148, 163, 184, 0.35);
+  box-shadow:0 18px 48px rgba(0,0,0,0.35);
+  backdrop-filter:blur(10px);
+}
+
+html[data-theme="light"] .initial-loading-inner{
+  background:rgba(255, 255, 255, 0.86);
+  border-color:rgba(148, 163, 184, 0.45);
+  box-shadow:0 16px 38px rgba(0,0,0,0.12);
+}
+
+.initial-loading-text{ font-size:15px; letter-spacing:.02em; }
+
+.initial-loading-progress{
+  width:min(360px, 72vw);
+  height:10px;
+  border-radius:999px;
+  border:1px solid rgba(148, 163, 184, 0.35);
+  background:rgba(2, 6, 23, 0.35);
+  overflow:hidden;
+}
+
+html[data-theme="light"] .initial-loading-progress{
+  border-color:rgba(148, 163, 184, 0.45);
+  background:rgba(15, 23, 42, 0.06);
+}
+
+.initial-loading-progress-bar{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background:var(--accent);
+  box-shadow:0 0 0 3px rgba(56,189,248,.10);
+  transition:width .22s ease;
+}
+
+.initial-loading-percent{
+  font-size:12px;
+  color:var(--text-sub);
+  font-family:var(--mono);
+}
+
+.spinner-lg{
+  width:32px;
+  height:32px;
+  border-radius:999px;
+  border:3px solid rgba(148, 163, 184, 0.35);
+  border-top-color:var(--accent);
+  animation:spin .85s linear infinite;
+}
+
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
 /* Buttons */
 .btn{
   border:1px solid var(--border);
@@ -512,37 +597,41 @@ input:disabled, select:disabled{ opacity:.55; cursor:not-allowed; }
 /* ALL */
 table[data-view="all"]{}
 
-/* USAGE：顯示 1-9 + 15；隱藏 10-14 */
+/* USAGE：顯示 1-9 + 16；隱藏 10-15 */
 table[data-view="usage"] thead th:nth-child(10),
 table[data-view="usage"] thead th:nth-child(11),
 table[data-view="usage"] thead th:nth-child(12),
 table[data-view="usage"] thead th:nth-child(13),
 table[data-view="usage"] thead th:nth-child(14),
+table[data-view="usage"] thead th:nth-child(15),
 table[data-view="usage"] tbody td:nth-child(10),
 table[data-view="usage"] tbody td:nth-child(11),
 table[data-view="usage"] tbody td:nth-child(12),
 table[data-view="usage"] tbody td:nth-child(13),
-table[data-view="usage"] tbody td:nth-child(14){
+table[data-view="usage"] tbody td:nth-child(14),
+table[data-view="usage"] tbody td:nth-child(15){
   display:none;
 }
 
-/* MASTER：顯示 1-5 + 9-11 + 15；隱藏 6-8 + 12-14 */
+/* MASTER：顯示 1-5 + 9-11 + 16；隱藏 6-8 + 12-15 */
 table[data-view="master"] thead th:nth-child(6),
 table[data-view="master"] thead th:nth-child(7),
 table[data-view="master"] thead th:nth-child(8),
 table[data-view="master"] thead th:nth-child(12),
 table[data-view="master"] thead th:nth-child(13),
 table[data-view="master"] thead th:nth-child(14),
+table[data-view="master"] thead th:nth-child(15),
 table[data-view="master"] tbody td:nth-child(6),
 table[data-view="master"] tbody td:nth-child(7),
 table[data-view="master"] tbody td:nth-child(8),
 table[data-view="master"] tbody td:nth-child(12),
 table[data-view="master"] tbody td:nth-child(13),
-table[data-view="master"] tbody td:nth-child(14){
+table[data-view="master"] tbody td:nth-child(14),
+table[data-view="master"] tbody td:nth-child(15){
   display:none;
 }
 
-/* FEATURES：顯示 1-5 + 9 + 12-14 + 15；隱藏 6-8 + 10-11 */
+/* FEATURES：顯示 1-5 + 9 + 12-15 + 16；隱藏 6-8 + 10-11 */
 table[data-view="features"] thead th:nth-child(6),
 table[data-view="features"] thead th:nth-child(7),
 table[data-view="features"] thead th:nth-child(8),
@@ -569,7 +658,7 @@ table[data-view="features"] tbody td:nth-child(11){
   padding:10px 14px;
   border:1px solid var(--border);
   border-radius:14px;
-  background:linear-gradient(90deg, var(--card2), transparent);
+  background:var(--card2);
 }
 
 .pushbar-left{

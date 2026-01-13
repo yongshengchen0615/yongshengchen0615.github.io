@@ -32,21 +32,28 @@ function showBlocker_(msg, userId, displayName, audit) {
 
   blocker.hidden = false;
 
-  document.getElementById("btnCopyUserId")?.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(String(userId || ""));
-      toast("已複製 userId", "ok");
-    } catch (_) {
-      toast("複製失敗", "err");
-    }
-  });
+  // 避免多次呼叫 showBlocker_ 導致重複綁定 listener
+  const copyBtn = document.getElementById("btnCopyUserId");
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(String(userId || ""));
+        toast("已複製 userId", "ok");
+      } catch (_) {
+        toast("複製失敗", "err");
+      }
+    };
+  }
 
-  document.getElementById("btnCloseLiff")?.addEventListener("click", () => {
-    try {
-      if (liff?.closeWindow) liff.closeWindow();
-    } catch (_) {}
-    blocker.hidden = true;
-  });
+  const closeBtn = document.getElementById("btnCloseLiff");
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      try {
+        if (liff?.closeWindow) liff.closeWindow();
+      } catch (_) {}
+      blocker.hidden = true;
+    };
+  }
 }
 
 /* =========================
@@ -86,7 +93,7 @@ function toggleTheme_() {
 function ynCell_(field, value, label) {
   const v = normalizeYesNo_(value);
   return `
-    <td data-label="${escapeHtml(label || field)}">
+    <td data-label="${escapeHtml(label || field)}" class="yn-cell">
       <button type="button" class="yn-toggle" data-field="${field}" data-val="${v}" aria-label="${field}">
         ${v}
       </button>
@@ -102,63 +109,60 @@ function ynCell_(field, value, label) {
 function render_() {
   const tbody = $("#tbody");
   if (!tbody) return;
-  tbody.innerHTML = "";
-
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="18">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="19">無資料</td></tr>`;
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  // ✅ 大量資料時 innerHTML 一次寫入通常比 createElement/append 更快
+  const rowsHtml = filtered
+    .map((a, i) => {
+      const userId = String(a.userId || "");
+      const isDirty = dirtyMap.has(userId);
+      const auditNow = normalizeAudit_(a.audit);
+      return `
+        <tr data-userid="${escapeHtml(userId)}" class="${isDirty ? "dirty" : ""}">
+          <td class="sticky-col col-check" data-label="選取">
+            <input class="row-check" type="checkbox" ${selectedIds.has(userId) ? "checked" : ""} aria-label="選取此列">
+          </td>
+          <td data-label="#">${i + 1}</td>
 
-  filtered.forEach((a, i) => {
-    const isDirty = dirtyMap.has(a.userId);
-    const tr = document.createElement("tr");
-    tr.dataset.userid = a.userId;
-    if (isDirty) tr.classList.add("dirty");
+          <td data-label="lineUserId"><span style="font-family:var(--mono)">${escapeHtml(userId)}</span></td>
+          <td data-label="lineDisplayName">${escapeHtml(a.displayName)}</td>
 
-    // ✅ 固定 18 欄
-    tr.innerHTML = `
-      <td class="sticky-col col-check" data-label="選取">
-        <input class="row-check" type="checkbox" ${selectedIds.has(a.userId) ? "checked" : ""} aria-label="選取此列">
-      </td>
-      <td data-label="#">${i + 1}</td>
+          <td data-label="審核狀態">
+            <select data-field="audit" class="select" aria-label="審核狀態">
+              ${AUDIT_ENUM.map((v) => `<option value="${v}" ${auditNow === v ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </td>
 
-      <td data-label="lineUserId"><span style="font-family:var(--mono)">${escapeHtml(a.userId)}</span></td>
-      <td data-label="lineDisplayName">${escapeHtml(a.displayName)}</td>
+          <td data-label="建立時間"><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
+          <td data-label="最後登入"><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
 
-      <td data-label="審核狀態">
-        <select data-field="audit" class="select" aria-label="審核狀態">
-          ${AUDIT_ENUM.map((v) => `<option value="${v}" ${normalizeAudit_(a.audit) === v ? "selected" : ""}>${v}</option>`).join("")}
-        </select>
-      </td>
+          ${ynCell_("pushFeatureEnabled", a.pushFeatureEnabled, "推播功能開通")}
+          ${ynCell_("techAudit", a.techAudit, "技師審核狀態")}
+          ${ynCell_("techCreatedAt", a.techCreatedAt, "技師建立時間")}
+          ${ynCell_("techStartDate", a.techStartDate, "技師開始使用日期")}
+          ${ynCell_("techExpiryDate", a.techExpiryDate, "技師使用期限")}
+          ${ynCell_("techMasterNo", a.techMasterNo, "技師師傅編號")}
+          ${ynCell_("techIsMaster", a.techIsMaster, "技師是否師傅")}
+          ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
+          ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
+          ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
+          ${ynCell_("techPerformanceEnabled", a.techPerformanceEnabled, "技師業績開通")}
 
-      <td data-label="建立時間"><span style="font-family:var(--mono)">${escapeHtml(a.createdAt)}</span></td>
-      <td data-label="最後登入"><span style="font-family:var(--mono)">${escapeHtml(a.lastLogin)}</span></td>
+          <td class="sticky-right" data-label="操作">
+            <div class="actions">
+              ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
+              <button class="btn danger btn-del" type="button">刪除</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
 
-      ${ynCell_("pushFeatureEnabled", a.pushFeatureEnabled, "推播功能開通")}
-      ${ynCell_("techAudit", a.techAudit, "技師審核狀態")}
-      ${ynCell_("techCreatedAt", a.techCreatedAt, "技師建立時間")}
-      ${ynCell_("techStartDate", a.techStartDate, "技師開始使用日期")}
-      ${ynCell_("techExpiryDate", a.techExpiryDate, "技師使用期限")}
-      ${ynCell_("techMasterNo", a.techMasterNo, "技師師傅編號")}
-      ${ynCell_("techIsMaster", a.techIsMaster, "技師是否師傅")}
-      ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
-      ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
-      ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
-
-      <td class="sticky-right" data-label="操作">
-        <div class="actions">
-          ${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : ``}
-          <button class="btn danger btn-del" type="button">刪除</button>
-        </div>
-      </td>
-    `;
-
-    frag.appendChild(tr);
-  });
-
-  tbody.appendChild(frag);
+  tbody.innerHTML = rowsHtml;
 
   if (savingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
@@ -169,19 +173,55 @@ function render_() {
  * 更新 KPI 統計資訊。
  * - 統計基準使用 allAdmins（非 filtered）
  */
-function updateStats_() {
-  const total = allAdmins.length;
-  const approved = allAdmins.filter((a) => normalizeAudit_(a.audit) === "通過").length;
-  const pending = allAdmins.filter((a) => normalizeAudit_(a.audit) === "待審核").length;
-  const rejected = allAdmins.filter((a) => normalizeAudit_(a.audit) === "拒絕").length;
+function invalidateStats_() {
+  statsDirty = true;
+}
 
-  setText_("kpiTotal", total);
-  setText_("kpiApproved", approved);
-  setText_("kpiPending", pending);
-  setText_("kpiRejected", rejected);
+function maybeUpdateStats_() {
+  if (!statsDirty) return;
+
+  let approved = 0;
+  let pending = 0;
+  let rejected = 0;
+  let disabled = 0;
+  let maintenance = 0;
+
+  for (const a of allAdmins) {
+    const audit = normalizeAudit_(a.audit);
+    if (audit === "通過") approved += 1;
+    else if (audit === "待審核") pending += 1;
+    else if (audit === "拒絕") rejected += 1;
+    else if (audit === "停用") disabled += 1;
+    else if (audit === "系統維護") maintenance += 1;
+  }
+
+  statsCache = {
+    total: allAdmins.length,
+    approved,
+    pending,
+    rejected,
+    disabled,
+    maintenance,
+  };
+  statsDirty = false;
+
+  setText_("kpiTotal", statsCache.total);
+  setText_("kpiApproved", statsCache.approved);
+  setText_("kpiPending", statsCache.pending);
+  setText_("kpiRejected", statsCache.rejected);
+  setText_("kpiDisabled", statsCache.disabled);
+  setText_("kpiMaintenance", statsCache.maintenance);
 
   const s = $("#summaryText");
-  if (s) s.textContent = `總筆數：${total}（通過 ${approved} / 待審核 ${pending} / 拒絕 ${rejected}）`;
+  if (s)
+    s.textContent =
+      `總筆數：${statsCache.total}（` +
+      `通過 ${statsCache.approved} / ` +
+      `待審核 ${statsCache.pending} / ` +
+      `拒絕 ${statsCache.rejected} / ` +
+      `停用 ${statsCache.disabled} / ` +
+      `系統維護 ${statsCache.maintenance}` +
+      `）`;
 }
 
 /* =========================

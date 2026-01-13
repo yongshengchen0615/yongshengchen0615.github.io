@@ -17,11 +17,19 @@ export const state = {
     foot: [],
   },
 
+  // 資料健康度（用於判斷「太久沒有更新」）
+  dataHealth: {
+    lastDataTimestampMs: null,
+    stale: false,
+    staleSinceMs: null,
+  },
+
   // UI 狀態
   activePanel: "body",
   filterMaster: "",
   filterStatus: "all",
   scheduleUiEnabled: true,
+  viewMode: "schedule", // schedule | myStatus | performance
 
   // 刷新/快照保護
   refreshInFlight: false,
@@ -38,6 +46,7 @@ export const state = {
     pushEnabled: "否",
     personalStatusEnabled: "否",
     scheduleEnabled: "否",
+    performanceEnabled: "否",
   },
 
   // Adaptive polling

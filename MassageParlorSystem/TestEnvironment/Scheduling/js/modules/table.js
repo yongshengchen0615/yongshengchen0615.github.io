@@ -24,6 +24,8 @@ import {
 } from "./core.js";
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { showGate, hideGate } from "./uiHelpers.js";
+import { config } from "./config.js";
 
 /* =========================
  * mapping
@@ -135,7 +137,70 @@ function rowSignature(r) {
     r.bgMaster ?? "",
     r.bgStatus ?? "",
     r.bgAppointment ?? "",
+    // ✅ timestamp 變更也視為資料更新（避免「內容相同但快照有更新」被當成沒變）
+    r.timestamp ?? r.sourceTs ?? r.updatedAt ?? "",
   ].join("|");
+}
+
+function parseTimestampMs_(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const ms = Date.parse(s);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function computeLatestDataTimestampMs_() {
+  let maxMs = null;
+  ["body", "foot"].forEach((panel) => {
+    (state.rawData[panel] || []).forEach((r) => {
+      const ms = parseTimestampMs_(r && (r.timestamp ?? r.sourceTs ?? r.updatedAt));
+      if (ms === null) return;
+      maxMs = maxMs === null ? ms : Math.max(maxMs, ms);
+    });
+  });
+  return maxMs;
+}
+
+function applyStaleSystemGate_() {
+  const maxAge = Number(config.STALE_DATA_MAX_AGE_MS);
+  if (!Number.isFinite(maxAge) || maxAge <= 0) {
+    // disabled
+    if (state.dataHealth && state.dataHealth.stale) {
+      state.dataHealth.stale = false;
+      state.dataHealth.staleSinceMs = null;
+      hideGate();
+    }
+    return;
+  }
+
+  const latestMs = computeLatestDataTimestampMs_();
+  state.dataHealth.lastDataTimestampMs = latestMs;
+
+  // 沒有可解析的 timestamp：不做「過久未更新」判斷（避免誤殺）
+  if (latestMs === null) {
+    if (state.dataHealth && state.dataHealth.stale) {
+      state.dataHealth.stale = false;
+      state.dataHealth.staleSinceMs = null;
+      hideGate();
+    }
+    return;
+  }
+
+  const isStale = Date.now() - latestMs > maxAge;
+
+  if (isStale && !state.dataHealth.stale) {
+    state.dataHealth.stale = true;
+    state.dataHealth.staleSinceMs = Date.now();
+    showGate("總系統異常 無法使用功能", true);
+    if (dom.connectionStatusEl) dom.connectionStatusEl.textContent = "異常";
+    return;
+  }
+
+  if (!isStale && state.dataHealth.stale) {
+    state.dataHealth.stale = false;
+    state.dataHealth.staleSinceMs = null;
+    hideGate();
+  }
 }
 
 function buildStatusSet(rows) {
@@ -273,21 +338,40 @@ function ensureRowDom(panel, row) {
 
   const tdOrder = document.createElement("td");
   tdOrder.className = "cell-order";
+  tdOrder.setAttribute("data-label", "順序");
 
   const tdMaster = document.createElement("td");
   tdMaster.className = "cell-master";
+  tdMaster.setAttribute("data-label", "師傅");
 
   const tdStatus = document.createElement("td");
+  tdStatus.setAttribute("data-label", "狀態");
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "status-pill";
+  tdStatus.appendChild(statusSpan);
+
   const tdAppointment = document.createElement("td");
   tdAppointment.className = "cell-appointment";
+  tdAppointment.setAttribute("data-label", "預約內容");
+  const apptBlock = document.createElement("div");
+  apptBlock.className = "appt-block";
+  tdAppointment.appendChild(apptBlock);
 
   const tdRemaining = document.createElement("td");
+  tdRemaining.setAttribute("data-label", "剩餘時間");
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "time-badge";
+  tdRemaining.appendChild(timeSpan);
 
   tr.appendChild(tdOrder);
   tr.appendChild(tdMaster);
   tr.appendChild(tdStatus);
   tr.appendChild(tdAppointment);
   tr.appendChild(tdRemaining);
+
+  // Cache refs on the DOM node to avoid repeated query/creation
+  tr.__ui = { tdOrder, tdMaster, tdStatus, statusSpan, tdAppointment, apptBlock, tdRemaining, timeSpan };
+  tr.__sig = "";
 
   map.set(key, tr);
   return tr;
@@ -369,12 +453,15 @@ function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
 }
 
 function patchRowDom(tr, row, orderText) {
-  const tds = tr.children;
-  const tdOrder = tds[0];
-  const tdMaster = tds[1];
-  const tdStatus = tds[2];
-  const tdAppointment = tds[3];
-  const tdRemaining = tds[4];
+  const ui = tr.__ui;
+  const tdOrder = ui ? ui.tdOrder : tr.children[0];
+  const tdMaster = ui ? ui.tdMaster : tr.children[1];
+  const tdStatus = ui ? ui.tdStatus : tr.children[2];
+  const statusSpan = ui ? ui.statusSpan : null;
+  const tdAppointment = ui ? ui.tdAppointment : tr.children[3];
+  const apptBlock = ui ? ui.apptBlock : null;
+  const tdRemaining = ui ? ui.tdRemaining : tr.children[4];
+  const timeSpan = ui ? ui.timeSpan : null;
 
   tdOrder.textContent = orderText;
 
@@ -398,24 +485,73 @@ function patchRowDom(tr, row, orderText) {
   applyTextColorFromToken(tdMaster, row.colorMaster);
   applyAppointmentBgFromColorMaster(tdMaster, row.colorMaster);
 
-  tdStatus.innerHTML = "";
-  const statusSpan = document.createElement("span");
-  statusSpan.className = "status-pill " + (row.statusClass || "");
-  statusSpan.textContent = row.status || "";
-  applyPillFromTokens(statusSpan, row.bgStatus, row.colorStatus);
-  tdStatus.appendChild(statusSpan);
+  const pill = statusSpan || (() => {
+    tdStatus.textContent = "";
+    const el = document.createElement("span");
+    el.className = "status-pill";
+    tdStatus.appendChild(el);
+    if (ui) ui.statusSpan = el;
+    return el;
+  })();
+  pill.className = "status-pill " + (row.statusClass || "");
+  pill.textContent = row.status || "";
+  applyPillFromTokens(pill, row.bgStatus, row.colorStatus);
 
   applyAppointmentBgFromColorMaster(tdAppointment, row.colorMaster);
-  tdAppointment.textContent = row.appointment || "";
-  tdAppointment.style.color = "";
-  applyTextColorFromToken(tdAppointment, row.colorAppointment);
+  const ab = apptBlock || (() => {
+    tdAppointment.textContent = "";
+    const el = document.createElement("div");
+    el.className = "appt-block";
+    tdAppointment.appendChild(el);
+    if (ui) ui.apptBlock = el;
+    return el;
+  })();
+  ab.textContent = row.appointment || "";
+  ab.style.color = "";
+  applyTextColorFromToken(ab, row.colorAppointment);
 
-  tdRemaining.innerHTML = "";
-  const timeSpan = document.createElement("span");
-  timeSpan.className = "time-badge";
-  timeSpan.textContent = row.remainingDisplay || "";
-  applyTextColorFromToken(timeSpan, row.colorRemaining);
-  tdRemaining.appendChild(timeSpan);
+  const tb = timeSpan || (() => {
+    tdRemaining.textContent = "";
+    const el = document.createElement("span");
+    el.className = "time-badge";
+    tdRemaining.appendChild(el);
+    if (ui) ui.timeSpan = el;
+    return el;
+  })();
+  tb.className = "time-badge";
+  tb.textContent = row.remainingDisplay || "";
+  applyTextColorFromToken(tb, row.colorRemaining);
+}
+
+function getThemeKey() {
+  return document.documentElement.getAttribute("data-theme") || "dark";
+}
+
+function buildRenderSignature(row, orderText) {
+  if (!row) return getThemeKey() + "|" + String(orderText || "");
+  return (
+    getThemeKey() +
+    "|" +
+    String(orderText || "") +
+    "|" +
+    [
+      row.masterId || "",
+      row.status || "",
+      row.appointment || "",
+      row.remainingDisplay || "",
+      row.statusClass || "",
+
+      row.colorIndex || "",
+      row.colorMaster || "",
+      row.colorStatus || "",
+      row.colorAppointment || "",
+      row.colorRemaining || "",
+
+      row.bgIndex || "",
+      row.bgMaster || "",
+      row.bgStatus || "",
+    ].join("|")
+  );
 }
 
 export function renderIncremental(panel) {
@@ -469,7 +605,11 @@ export function renderIncremental(panel) {
     const tr = ensureRowDom(panel, row);
     if (!tr) return;
 
-    patchRowDom(tr, row, orderText);
+    const sig = buildRenderSignature(row, orderText);
+    if (tr.__sig !== sig) {
+      patchRowDom(tr, row, orderText);
+      tr.__sig = sig;
+    }
     frag.appendChild(tr);
   });
 
@@ -508,7 +648,7 @@ function decideIncomingRows(panel, incomingRows, prevRows, isManual) {
 }
 
 export async function refreshStatus({ isManual } = { isManual: false }) {
-  if (document.hidden) return;
+  if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
   if (state.refreshInFlight) return;
 
   state.refreshInFlight = true;
@@ -552,6 +692,9 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
       if (activeChanged) renderIncremental(state.activePanel);
       else reapplyTableHeaderColorsFromDataset();
     }
+
+    // ✅ 資料過久未更新：顯示 Gate（並阻止操作）；恢復後自動解除
+    applyStaleSystemGate_();
 
     // 永遠更新我的狀態（schedule=否 也要）
     updateMyMasterStatusUI();

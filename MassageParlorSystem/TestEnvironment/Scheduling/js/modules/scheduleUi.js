@@ -72,6 +72,9 @@ export function showNotMasterHint(show) {
 export function applyScheduleUiMode(enabled) {
   state.scheduleUiEnabled = !!enabled;
 
+  // 排班表未開通：不顯示「📋 排班表」按鈕
+  if (dom.btnScheduleEl) dom.btnScheduleEl.style.display = state.scheduleUiEnabled ? "" : "none";
+
   // 面板功能整段隱藏
   if (dom.toolbarEl) dom.toolbarEl.style.display = state.scheduleUiEnabled ? "" : "none";
   if (dom.mainEl) dom.mainEl.style.display = state.scheduleUiEnabled ? "" : "none";
@@ -85,7 +88,7 @@ export function applyScheduleUiMode(enabled) {
   if (dom.filterStatusWrapEl) dom.filterStatusWrapEl.style.display = state.scheduleUiEnabled ? "" : "none";
 
   // 只顯示我的狀態（非師傅仍會被 myMasterStatus 模組控制顯示/隱藏）
-  if (dom.myMasterStatusEl) dom.myMasterStatusEl.style.display = "flex";
+  // 由 viewSwitch/viewMode 控制顯示/隱藏，避免與「我的狀態 / 排班表 / 業績」切換打架。
 
   // 狀態提示文字
   if (dom.connectionStatusEl) {

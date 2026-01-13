@@ -2,9 +2,8 @@
  * personalTools.js
  *
  * 個人狀態快捷按鈕列：
- * - 使用者管理
- * - 休假設定
- * - 個人狀態
+ * - 技師管理員（開啟 技師管理員liff / adminLiff）
+ * - 個人狀態（開啟 個人看板liff / personalBoardLiff）
  *
  * 由 AUTH 的 personalStatusEnabled=是 才顯示。
  */
@@ -29,32 +28,32 @@ function pickField(obj, keys) {
 }
 
 function showPersonalToolsFinal(psRow) {
-  if (!dom.personalToolsEl || !dom.btnUserManageEl || !dom.btnVacationEl || !dom.btnPersonalStatusEl) return;
+  if (!dom.personalToolsEl || !dom.btnUserManageEl || !dom.btnPersonalStatusEl) return;
 
   dom.personalToolsEl.style.display = "flex";
   dom.btnUserManageEl.style.display = "inline-flex";
-  dom.btnVacationEl.style.display = "inline-flex";
   dom.btnPersonalStatusEl.style.display = "inline-flex";
 
-  const manage = pickField(psRow, ["使用者管理liff", "manageLiff", "userManageLiff", "userManageLink"]);
-  const vacation = pickField(psRow, ["休假設定連結", "vacationLink"]);
-  const personal = pickField(psRow, ["個人狀態連結", "personalStatusLink"]);
+  const adminLiff = pickField(psRow, ["adminLiff", "manageLiff", "技師管理員liff"]);
+  const personalBoardLiff = pickField(psRow, ["personalBoardLiff", "personalLiff", "個人看板liff"]);
 
   dom.btnUserManageEl.onclick = () => {
-    if (!manage) return console.error("PersonalStatus 缺少欄位：使用者管理liff", psRow);
-    window.location.href = manage;
-  };
-  dom.btnVacationEl.onclick = () => {
-    if (!vacation) return console.error("PersonalStatus 缺少欄位：休假設定連結", psRow);
-    window.location.href = vacation;
+    if (!adminLiff) {
+      alert("尚未設定『技師管理員』連結，請管理員至後台填入技師管理員liff。 ");
+      return;
+    }
+    window.location.href = adminLiff;
   };
   dom.btnPersonalStatusEl.onclick = () => {
-    if (!personal) return console.error("PersonalStatus 缺少欄位：個人狀態連結", psRow);
-    window.location.href = personal;
+    if (!personalBoardLiff) {
+      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      return;
+    }
+    window.location.href = personalBoardLiff;
   };
 
   // 保留原本的除錯用全域
-  window.__personalLinks = { manage, vacation, personal, psRow };
+  window.__personalLinks = { adminLiff, personalBoardLiff, psRow };
 }
 
 export function hidePersonalTools() {
@@ -70,6 +69,7 @@ export function hidePersonalTools() {
 export async function loadAndShowPersonalTools(userId) {
   try {
     const ps = await fetchPersonalStatusRow(userId);
+    if (ps && ps.ok === false) throw new Error(ps.error || "getPersonalStatus_failed");
     const psRow = (ps && (ps.data || ps.row || ps.payload) ? ps.data || ps.row || ps.payload : ps) || {};
     showPersonalToolsFinal(psRow);
   } catch (e) {

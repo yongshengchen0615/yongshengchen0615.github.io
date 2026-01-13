@@ -274,6 +274,13 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
 export function updateMyMasterStatusUI() {
   if (!dom.myMasterStatusEl) return;
 
+  // ✅ 新版 UX：我的狀態由「視圖切換」控制顯示。
+  // 避免排班表（身體/腳底）在重新渲染時呼叫 updateMyMasterStatusUI()，把面板又強制顯示出來。
+  if (state.viewMode && state.viewMode !== "myStatus") {
+    dom.myMasterStatusEl.style.display = "none";
+    return;
+  }
+
   // 非師傅：schedule=否 顯示提示卡；否則隱藏提示
   if (!state.myMaster.isMaster || !state.myMaster.techNo) {
     if (!state.scheduleUiEnabled) showNotMasterHint(true);
@@ -335,5 +342,6 @@ export function updateMyMasterStatusUI() {
     dom.myMasterStatusEl.style.removeProperty("--myStripe");
   }
 
+  // 顯示由 viewMode 控制（僅 myStatus 視圖會走到這裡）
   dom.myMasterStatusEl.style.display = "flex";
 }

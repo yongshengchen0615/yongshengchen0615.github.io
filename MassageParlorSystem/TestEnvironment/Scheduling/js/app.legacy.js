@@ -30,6 +30,7 @@ let FALLBACK_ORIGIN_CACHE_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
 let ENABLE_LINE_LOGIN = true;
+let POLL_ALLOW_BACKGROUND_ = false;
 
 async function loadConfigJson_() {
   const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
@@ -44,6 +45,11 @@ async function loadConfigJson_() {
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
   ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+
+  // optional: allow background polling (best-effort)
+  if (typeof cfg.POLL_ALLOW_BACKGROUND === "boolean") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND;
+  else if (typeof cfg.POLL_ALLOW_BACKGROUND === "string") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND.trim() === "是";
+  else if (typeof cfg.POLL_ALLOW_BACKGROUND === "number") POLL_ALLOW_BACKGROUND_ = cfg.POLL_ALLOW_BACKGROUND === 1;
 
   if (ENABLE_LINE_LOGIN && !LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
@@ -250,7 +256,7 @@ const usageBannerTextEl = usageBannerEl
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
-const btnVacationEl = document.getElementById("btnVacation");
+// const btnVacationEl = document.getElementById("btnVacation"); // removed: 「複製個人狀態連結」功能已取消
 
 /* ✅ 個人師傅狀態 DOM */
 const myMasterStatusEl = document.getElementById("myMasterStatus");
@@ -882,7 +888,7 @@ function updateMyMasterStatusUI_() {
 /* =========================================================
  * Feature banner
  * ========================================================= */
-let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否" };
+let featureState = { pushEnabled: "否", personalStatusEnabled: "否", scheduleEnabled: "否", performanceEnabled: "否" };
 function normalizeYesNo_(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
 }
@@ -899,15 +905,20 @@ function renderFeatureBanner_() {
   const push = normalizeYesNo_(featureState.pushEnabled);
   const personal = normalizeYesNo_(featureState.personalStatusEnabled);
   const schedule = normalizeYesNo_(featureState.scheduleEnabled);
+  const performance = normalizeYesNo_(featureState.performanceEnabled);
 
-  chipsEl.innerHTML = [buildChip_("叫班提醒", push), buildChip_("個人狀態", personal), buildChip_("排班表", schedule)].join(
-    ""
-  );
+  chipsEl.innerHTML = [
+    buildChip_("叫班提醒", push),
+    buildChip_("排班表", schedule),
+    buildChip_("個人狀態", personal),
+    buildChip_("業績", performance),
+  ].join("");
 }
 function updateFeatureState_(data) {
   featureState.pushEnabled = normalizeYesNo_(data && data.pushEnabled);
   featureState.personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled);
   featureState.scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled);
+  featureState.performanceEnabled = normalizeYesNo_(data && data.performanceEnabled);
   renderFeatureBanner_();
 }
 
@@ -989,31 +1000,31 @@ function pickField_(obj, keys) {
   return "";
 }
 function showPersonalToolsFinal_(psRow) {
-  if (!personalToolsEl || !btnUserManageEl || !btnVacationEl || !btnPersonalStatusEl) return;
+  if (!personalToolsEl || !btnUserManageEl || !btnPersonalStatusEl) return;
 
   personalToolsEl.style.display = "flex";
   btnUserManageEl.style.display = "inline-flex";
-  btnVacationEl.style.display = "inline-flex";
   btnPersonalStatusEl.style.display = "inline-flex";
 
-  const manage = pickField_(psRow, ["使用者管理liff", "manageLiff", "userManageLiff", "userManageLink"]);
-  const vacation = pickField_(psRow, ["休假設定連結", "vacationLink"]);
-  const personal = pickField_(psRow, ["個人狀態連結", "personalStatusLink"]);
+  const adminLiff = pickField_(psRow, ["adminLiff", "manageLiff", "技師管理員liff"]);
+  const personalBoardLiff = pickField_(psRow, ["personalBoardLiff", "personalLiff", "個人看板liff"]);
 
   btnUserManageEl.onclick = () => {
-    if (!manage) return console.error("PersonalStatus 缺少欄位：使用者管理liff", psRow);
-    window.location.href = manage;
-  };
-  btnVacationEl.onclick = () => {
-    if (!vacation) return console.error("PersonalStatus 缺少欄位：休假設定連結", psRow);
-    window.location.href = vacation;
+    if (!adminLiff) {
+      alert("尚未設定『技師管理員』連結，請管理員至後台填入技師管理員liff。 ");
+      return;
+    }
+    window.location.href = adminLiff;
   };
   btnPersonalStatusEl.onclick = () => {
-    if (!personal) return console.error("PersonalStatus 缺少欄位：個人狀態連結", psRow);
-    window.location.href = personal;
+    if (!personalBoardLiff) {
+      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      return;
+    }
+    window.location.href = personalBoardLiff;
   };
 
-  window.__personalLinks = { manage, vacation, personal, psRow };
+  window.__personalLinks = { adminLiff, personalBoardLiff, psRow };
 }
 function hidePersonalTools_() {
   if (personalToolsEl) personalToolsEl.style.display = "none";
@@ -1412,7 +1423,7 @@ function decideIncomingRows_(panel, incomingRows, prevRows, isManual) {
 }
 
 async function refreshStatus(isManual = false) {
-  if (document.hidden) return;
+  if (document.hidden && !POLL_ALLOW_BACKGROUND_) return;
   if (refreshInFlight) return;
 
   refreshInFlight = true;
@@ -1712,6 +1723,13 @@ async function initNoLiffAndGuard() {
     const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
     applyScheduleUiMode_(scheduleOk);
 
+    // ✅ 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
+    const performanceOk = String(result.performanceEnabled || "").trim() === "是";
+    const perfBtn = document.getElementById("btnPerformance");
+    if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
+    const perfCard = document.getElementById("perfCard");
+    if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
+
     // ✅ 立即同步提示（避免首次畫面沒出現）
     if (!scheduleOk) {
       const isMasterNow = !!(myMasterState_.isMaster && myMasterState_.techNo);
@@ -1924,7 +1942,7 @@ function scheduleNextPoll_(ms) {
   const wait = withJitter_(ms, POLL.JITTER_RATIO);
 
   pollTimer = setTimeout(async () => {
-    if (document.hidden) return;
+    if (document.hidden && !POLL_ALLOW_BACKGROUND_) return;
 
     const res = await refreshStatusAdaptive_(false);
     const next = computeNextInterval_(res);

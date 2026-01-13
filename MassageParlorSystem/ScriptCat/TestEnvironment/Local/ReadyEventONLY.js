@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         TEL Ready Event ONLY + TestPlan (same userId / multi masterIds)
 // @namespace    http://scriptcat.org/
-// @version      1.81
+// @version      1.82
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
 // @match        https://yongshengchen0615.github.io/master.html
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigReadyFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-ready-config-local.json
+// @resource     gasConfigReadyTEL https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/Local/gas-ready-config-TEL.json
 // ==/UserScript==
 
 (function () {
@@ -17,7 +17,7 @@
   // =========================
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
-  const GAS_RESOURCE = "gasConfigReadyFED";
+  const GAS_RESOURCE = "gasConfigReadyTEL";
 
   const DEFAULT_CFG = {
     GAS_URL: ""

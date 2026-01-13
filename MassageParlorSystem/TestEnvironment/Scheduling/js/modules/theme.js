@@ -9,8 +9,9 @@
  */
 
 import { dom } from "./dom.js";
-import { reapplyTableHeaderColorsFromDataset } from "./table.js";
+import { renderIncremental, reapplyTableHeaderColorsFromDataset } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { state } from "./state.js";
 
 /**
  * 設定主題。
@@ -26,8 +27,9 @@ export function setTheme(theme) {
 
   if (dom.themeToggleBtn) dom.themeToggleBtn.textContent = finalTheme === "dark" ? "🌙 深色" : "☀️ 淺色";
 
-  // 主題改變後：表頭 token 顏色、我的狀態 token 需要重算
-  reapplyTableHeaderColorsFromDataset();
+  // 主題改變後：表頭 token 顏色、表格列內 token、我的狀態 token 需要重算
+  if (state.scheduleUiEnabled) renderIncremental(state.activePanel);
+  else reapplyTableHeaderColorsFromDataset();
   updateMyMasterStatusUI();
 }
 

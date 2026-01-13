@@ -13,7 +13,7 @@
   --muted:#64748b;
 
   --bg:#020617;
-  --bg-page:radial-gradient(circle at top,#0f172a 0,#020617 45%,#020617 100%);
+  --bg-page:var(--bg);
   --card:rgba(255,255,255,.03);
   --card2:rgba(0,0,0,.18);
   --border:#1f2937;
@@ -33,7 +33,7 @@
 
 html[data-theme="light"]{
   --bg:#f8fafc;
-  --bg-page:radial-gradient(circle at top,#ffffff 0,#f8fafc 55%,#f8fafc 100%);
+  --bg-page:var(--bg);
   --card:rgba(0,0,0,.02);
   --card2:rgba(255,255,255,.75);
   --border:#e2e8f0;
@@ -51,8 +51,10 @@ html[data-theme="light"]{
 }
 
 *{ box-sizing:border-box; word-break: break-word; }
+[hidden]{ display:none !important; }
 html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); background:var(--bg-page); }
 .app{ min-height:100%; padding:var(--pad); display:flex; justify-content:center; }
+.app-hidden{ visibility:hidden; }
 .shell{ width:min(1380px, 100%); display:flex; flex-direction:column; gap:14px; }
 
 .topbar{
@@ -60,7 +62,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   gap:12px; padding:14px 14px;
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  background:linear-gradient(180deg, var(--card2), transparent);
+  background:var(--card2);
   box-shadow:var(--shadow-soft);
 }
 .brand{ display:flex; align-items:center; gap:12px; }
@@ -77,11 +79,22 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .auth-text{ opacity:.95; }
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
+.viewbar{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  background:var(--card2);
+}
+
 .kpi-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
 .kpi-card{
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  background:linear-gradient(180deg, var(--card), transparent);
+  background:var(--card);
   box-shadow:var(--shadow-soft);
   padding:12px 14px;
 }
@@ -97,7 +110,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
   overflow:hidden;
-  background:linear-gradient(180deg, var(--card2), transparent);
+  background:var(--card2);
   box-shadow:var(--shadow-soft);
 }
 .panel-head{
@@ -110,6 +123,28 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .filters{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1 1 520px; }
 .panel-meta .hint{ color:var(--text-sub); font-size:12px; font-family:var(--mono); }
+
+.panel-meta.range{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.panel-meta-group{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.panel-head .panel-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
 
 .search-box{
   display:flex; align-items:center; gap:8px;
@@ -177,7 +212,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   align-items:flex-start; justify-content:space-between;
   gap:12px; padding:10px 14px;
   border-bottom:1px solid var(--border);
-  background:linear-gradient(90deg, var(--card2), transparent);
+  background:var(--card2);
 }
 .bulk-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .bulk-pill{
@@ -258,39 +293,41 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
  * table[data-view="usage" | "master" | "features" | "all"]
  * ========================================================= */
 
-.client-scope table[data-view="all"]{}
-
-/* USAGE：顯示 1-9 + 15；隱藏 10-14 */
+/* USAGE：顯示 1-9 + 16；隱藏 10-15 */
 .client-scope table[data-view="usage"] thead th:nth-child(10),
 .client-scope table[data-view="usage"] thead th:nth-child(11),
 .client-scope table[data-view="usage"] thead th:nth-child(12),
 .client-scope table[data-view="usage"] thead th:nth-child(13),
 .client-scope table[data-view="usage"] thead th:nth-child(14),
+.client-scope table[data-view="usage"] thead th:nth-child(15),
 .client-scope table[data-view="usage"] tbody td:nth-child(10),
 .client-scope table[data-view="usage"] tbody td:nth-child(11),
 .client-scope table[data-view="usage"] tbody td:nth-child(12),
 .client-scope table[data-view="usage"] tbody td:nth-child(13),
-.client-scope table[data-view="usage"] tbody td:nth-child(14){
+.client-scope table[data-view="usage"] tbody td:nth-child(14),
+.client-scope table[data-view="usage"] tbody td:nth-child(15){
   display:none;
 }
 
-/* MASTER：顯示 1-5 + 9-11 + 15；隱藏 6-8 + 12-14 */
+/* MASTER：顯示 1-5 + 9-11 + 16；隱藏 6-8 + 12-15 */
 .client-scope table[data-view="master"] thead th:nth-child(6),
 .client-scope table[data-view="master"] thead th:nth-child(7),
 .client-scope table[data-view="master"] thead th:nth-child(8),
 .client-scope table[data-view="master"] thead th:nth-child(12),
 .client-scope table[data-view="master"] thead th:nth-child(13),
 .client-scope table[data-view="master"] thead th:nth-child(14),
+.client-scope table[data-view="master"] thead th:nth-child(15),
 .client-scope table[data-view="master"] tbody td:nth-child(6),
 .client-scope table[data-view="master"] tbody td:nth-child(7),
 .client-scope table[data-view="master"] tbody td:nth-child(8),
 .client-scope table[data-view="master"] tbody td:nth-child(12),
 .client-scope table[data-view="master"] tbody td:nth-child(13),
-.client-scope table[data-view="master"] tbody td:nth-child(14){
+.client-scope table[data-view="master"] tbody td:nth-child(14),
+.client-scope table[data-view="master"] tbody td:nth-child(15){
   display:none;
 }
 
-/* FEATURES：顯示 1-5 + 9 + 12-14 + 15；隱藏 6-8 + 10-11 */
+/* FEATURES：顯示 1-5 + 9 + 12-15 + 16；隱藏 6-8 + 10-11 */
 .client-scope table[data-view="features"] thead th:nth-child(6),
 .client-scope table[data-view="features"] thead th:nth-child(7),
 .client-scope table[data-view="features"] thead th:nth-child(8),
@@ -328,7 +365,7 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   padding:10px 14px;
   border:1px solid var(--border);
   border-radius:14px;
-  background:linear-gradient(90deg, var(--card2), transparent);
+  background:var(--card2);
 }
 .client-scope .pushbar-left{
   display:flex;
@@ -375,6 +412,8 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   font-size:12px;
   margin-left:8px;
   user-select:none;
+/* 讓「是/否」按鈕像刪除按鈕一樣靠右 */
+td.yn-cell{ text-align:right; }
 }
 .client-scope .audit-badge.pending{ border-color:rgba(245,158,11,.45); background:var(--warning-soft); color:var(--warning); }
 .client-scope .audit-badge.approved{ border-color:rgba(22,163,74,.45); background:var(--success-soft); color:var(--success); }
@@ -425,12 +464,34 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   .client-scope .panel-head{ flex-direction:column; align-items:stretch; }
   .client-scope .search-box{ width: 100%; }
 
+  /* Mobile：避免 filters 在 column 版型被撐高，導致搜尋與 chips 中間大片空白 */
+  .client-scope .filters{ flex:0 0 auto; align-content:flex-start; }
+
   .client-scope .table-wrap{
     overflow: visible;
     padding:12px 14px 14px;
   }
 
-  .client-scope thead{ display:none; }
+  /* Mobile 仍需可操作「全選」：只顯示第一欄的 checkbox（其餘表頭維持隱藏） */
+  .client-scope thead{ display:block; }
+  .client-scope thead tr{ display:block; width:100%; }
+  .client-scope thead th{ display:none; }
+  .client-scope thead th.col-check{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    position:static;
+    width:100%;
+    padding:10px 10px;
+    border-bottom:1px solid var(--border);
+    background:var(--card);
+  }
+  .client-scope thead th.col-check::after{
+    content:" 全選";
+    color:var(--text-sub);
+    font-size:12px;
+  }
+
   .client-scope table,
   .client-scope tbody,
   .client-scope tr,
@@ -609,13 +670,35 @@ tbody td.sticky-col{ background:transparent; }
   .panel-head{ flex-direction:column; align-items:stretch; }
   .search-box{ width:100%; }
 
+  /* Mobile：避免 filters 在 column 版型被撐高，導致搜尋與 chips 中間大片空白 */
+  .filters{ flex:0 0 auto; align-content:flex-start; }
+
   /* Admin 主表格：手機版 table -> card（需搭配 td[data-label]） */
   .responsive-wrap{
     overflow: visible;
-    padding:12px 14px 14px;
+    padding:10px 10px 12px;
   }
 
-  .responsive-table thead{ display:none; }
+  /* Mobile 仍需可操作「全選」：只顯示第一欄的 checkbox（其餘表頭維持隱藏） */
+  .responsive-table thead{ display:block; }
+  .responsive-table thead tr{ display:block; width:100%; }
+  .responsive-table thead th{ display:none; }
+  .responsive-table thead th.col-check{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    position:static;
+    width:100%;
+    padding:10px 10px;
+    border-bottom:1px solid var(--border);
+    background:var(--card);
+  }
+  .responsive-table thead th.col-check::after{
+    content:" 全選";
+    color:var(--text-sub);
+    font-size:12px;
+  }
+
   .responsive-table,
   .responsive-table tbody,
   .responsive-table tr,
@@ -633,21 +716,36 @@ tbody td.sticky-col{ background:transparent; }
     border-bottom:1px solid var(--border-soft);
     white-space: normal !important;
     display:flex;
-    justify-content:space-between;
-    gap:10px;
+    justify-content:flex-start;
+    gap:8px;
     overflow-wrap:anywhere;
     word-break:break-word;
   }
+  /* 手機 card 模式下：標籤在左、是/否按鈕在右 */
+  .responsive-table tbody td.yn-cell{ justify-content:space-between; }
+  .responsive-table tbody td.yn-cell .yn-toggle{ margin-left:auto; }
 
   .responsive-table tbody td::before{
     content: attr(data-label);
     color:var(--text-sub);
     font-size:12px;
-    min-width: 110px;
+    min-width: 88px;
   }
 
   .responsive-table .sticky-col,
   .responsive-table .sticky-right{ position:static; }
+
+  /* Admins 主表：手機 card 模式不使用右側 sticky 欄位群 */
+  #adminsTable thead th:nth-child(n+8):nth-child(-n+18),
+  #adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+    position: static;
+    right: auto;
+    z-index: auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    background: transparent;
+  }
 
   .responsive-table .actions{ justify-content:flex-end; width:100%; flex-wrap:wrap; }
 
@@ -667,6 +765,84 @@ td.sticky-right{
 tbody td.sticky-right{
   background: transparent;
 }
+
+/* === Admins 主表：右側固定「是/否」欄位群（桌機） ===
+ * 欄位順序（1-indexed）：
+ * 1:check,2:#,3:userId,4:name,5:audit,6:createdAt,7:lastLogin,
+ * 8~18:是/否欄位, 19:操作(sticky-right)
+ */
+#adminsTable{
+  --yn-col-w: 96px;
+  --op-col-w: 120px;
+}
+
+/* 操作欄固定寬度，避免每列因內容不同而抖動 */
+#adminsTable th.sticky-right,
+#adminsTable td.sticky-right{
+  width: var(--op-col-w);
+  min-width: var(--op-col-w);
+  max-width: var(--op-col-w);
+}
+
+/* 是/否欄固定寬度 + 內容靠右（桌機） */
+#adminsTable td.yn-cell{ text-align:right; }
+#adminsTable thead th:nth-child(n+8):nth-child(-n+18),
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+  width: var(--yn-col-w);
+  min-width: var(--yn-col-w);
+  max-width: var(--yn-col-w);
+}
+
+/* 右側固定：把 8~18 欄位逐一 sticky 到操作欄左側（避免橫向捲動時找不到） */
+#adminsTable thead th:nth-child(n+8):nth-child(-n+18){
+  position: sticky;
+  z-index: 5;
+  background: var(--bg);
+}
+
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+  position: sticky;
+  z-index: 4;
+  background: inherit;
+}
+
+/* 讓操作欄蓋在最上層，避免邊界重疊 */
+#adminsTable thead th.sticky-right{ z-index: 6; }
+#adminsTable tbody td.sticky-right{ z-index: 5; background: inherit; }
+
+/* 右側 offset：第 18 欄貼著操作欄，往左依序累加 yn 欄寬 */
+#adminsTable thead th:nth-child(18),
+#adminsTable tbody td:nth-child(18){ right: var(--op-col-w); }
+
+#adminsTable thead th:nth-child(17),
+#adminsTable tbody td:nth-child(17){ right: calc(var(--op-col-w) + 1 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(16),
+#adminsTable tbody td:nth-child(16){ right: calc(var(--op-col-w) + 2 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(15),
+#adminsTable tbody td:nth-child(15){ right: calc(var(--op-col-w) + 3 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(14),
+#adminsTable tbody td:nth-child(14){ right: calc(var(--op-col-w) + 4 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(13),
+#adminsTable tbody td:nth-child(13){ right: calc(var(--op-col-w) + 5 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(12),
+#adminsTable tbody td:nth-child(12){ right: calc(var(--op-col-w) + 6 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(11),
+#adminsTable tbody td:nth-child(11){ right: calc(var(--op-col-w) + 7 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(10),
+#adminsTable tbody td:nth-child(10){ right: calc(var(--op-col-w) + 8 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(9),
+#adminsTable tbody td:nth-child(9){ right: calc(var(--op-col-w) + 9 * var(--yn-col-w)); }
+
+#adminsTable thead th:nth-child(8),
+#adminsTable tbody td:nth-child(8){ right: calc(var(--op-col-w) + 10 * var(--yn-col-w)); }
 
 /* === 技師欄位「是/否」切換按鈕（替代 select，避免無法展開/被裁切） === */
 .yn-toggle{
@@ -694,3 +870,88 @@ tbody td.sticky-right{
   color:#fb7185;
 }
 .yn-toggle:focus{ outline:none; box-shadow:var(--focus); }
+
+/* 初始資料載入遮罩 */
+.initial-loading{
+  position:fixed;
+  inset:0;
+  z-index:12000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(15, 23, 42, 0.96);
+  color:#e5e7eb;
+  transition:opacity .22s ease, visibility .22s ease;
+}
+
+html[data-theme="light"] .initial-loading{
+  background:#ffffff;
+  color:#0f172a;
+}
+
+.initial-loading-hidden{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+}
+
+.initial-loading-inner{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  padding:24px 28px;
+  border-radius:18px;
+  background:rgba(15, 23, 42, 0.78);
+  border:1px solid rgba(148, 163, 184, 0.35);
+  box-shadow:0 18px 48px rgba(0,0,0,0.35);
+  backdrop-filter:blur(10px);
+}
+
+html[data-theme="light"] .initial-loading-inner{
+  background:rgba(255, 255, 255, 0.86);
+  border-color:rgba(148, 163, 184, 0.45);
+  box-shadow:0 16px 38px rgba(0,0,0,0.12);
+}
+
+.initial-loading-text{ font-size:15px; letter-spacing:.02em; }
+
+.initial-loading-progress{
+  width:min(360px, 72vw);
+  height:10px;
+  border-radius:999px;
+  border:1px solid rgba(148, 163, 184, 0.35);
+  background:rgba(2, 6, 23, 0.35);
+  overflow:hidden;
+}
+
+html[data-theme="light"] .initial-loading-progress{
+  border-color:rgba(148, 163, 184, 0.45);
+  background:rgba(15, 23, 42, 0.06);
+}
+
+.initial-loading-progress-bar{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background:var(--accent);
+  box-shadow:0 0 0 3px rgba(56,189,248,.10);
+  transition:width .22s ease;
+}
+
+.initial-loading-percent{
+  font-size:12px;
+  color:var(--text-sub);
+  font-family:var(--mono);
+}
+
+.spinner-lg{
+  width:32px;
+  height:32px;
+  border-radius:999px;
+  border:3px solid rgba(148, 163, 184, 0.35);
+  border-top-color:var(--accent);
+  animation:spin .85s linear infinite;
+}
+
+@keyframes spin{ to{ transform: rotate(360deg); } }

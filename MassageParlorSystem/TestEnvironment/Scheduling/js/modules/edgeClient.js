@@ -9,14 +9,18 @@
 
 import { config } from "./config.js";
 import { withQuery, readJsonLS, writeJsonLS } from "./core.js";
+import { logUsageEvent } from "./usageLog.js";
 
-const STATUS_FETCH_TIMEOUT_MS = 8000;
 const EDGE_TRY_MAX = 3;
 const EDGE_FAIL_THRESHOLD = 2;
 const EDGE_REROUTE_TTL_MS = 30 * 60 * 1000;
 
 const EDGE_ROUTE_KEY = "edge_route_override_v1"; // { idx, exp }
 const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
+
+// Keep a stable edge choice for this page session to avoid data flip-flopping
+// across different edges (edges may have slightly different cache/update timing).
+let sessionEdgeIdx = null;
 
 function getOverrideEdgeIndex() {
   const o = readJsonLS(EDGE_ROUTE_KEY);
@@ -54,6 +58,19 @@ function getRandomEdgeIndex() {
   return Math.floor(Math.random() * n);
 }
 
+function getStickyEdgeIndex() {
+  const n = config.EDGE_STATUS_URLS.length || 0;
+  if (!n) return 0;
+
+  const overrideIdx = getOverrideEdgeIndex();
+  if (typeof overrideIdx === "number" && overrideIdx >= 0 && overrideIdx < n) return overrideIdx;
+
+  if (typeof sessionEdgeIdx === "number" && sessionEdgeIdx >= 0 && sessionEdgeIdx < n) return sessionEdgeIdx;
+
+  sessionEdgeIdx = Math.floor(Math.random() * n);
+  return sessionEdgeIdx;
+}
+
 function buildEdgeTryOrder(startIdx) {
   const n = config.EDGE_STATUS_URLS.length;
   const order = [];
@@ -63,7 +80,8 @@ function buildEdgeTryOrder(startIdx) {
 
 async function fetchJsonWithTimeout(url, timeoutMs) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs || STATUS_FETCH_TIMEOUT_MS);
+  const fallbackTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || fallbackTimeout);
 
   try {
     const resp = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
@@ -100,7 +118,10 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
 export async function fetchStatusAll() {
   const jitterBust = Date.now();
 
-  const startIdx = getRandomEdgeIndex();
+  const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
+  const originExtra = typeof config.STATUS_FETCH_ORIGIN_EXTRA_MS === "number" ? config.STATUS_FETCH_ORIGIN_EXTRA_MS : 4000;
+
+  const startIdx = getStickyEdgeIndex();
   const tryEdgeIdxList = buildEdgeTryOrder(startIdx);
 
   for (const idx of tryEdgeIdxList) {
@@ -110,7 +131,7 @@ export async function fetchStatusAll() {
     const url = withQuery(edgeBase, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
 
     try {
-      const data = await fetchJsonWithTimeout(url, STATUS_FETCH_TIMEOUT_MS);
+      const data = await fetchJsonWithTimeout(url, baseTimeout);
 
       const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
@@ -124,6 +145,13 @@ export async function fetchStatusAll() {
         const n = bumpFailCount(idx);
         if (config.EDGE_STATUS_URLS.length > 1 && n >= EDGE_FAIL_THRESHOLD) {
           const nextIdx = (idx + 1) % config.EDGE_STATUS_URLS.length;
+
+          // 切換分流（sticky reroute）
+          logUsageEvent({
+            event: "edge_reroute",
+            detail: `from=${idx};to=${nextIdx};failCount=${n};threshold=${EDGE_FAIL_THRESHOLD}`,
+          });
+
           setOverrideEdgeIndex(nextIdx);
         }
       }
@@ -131,7 +159,7 @@ export async function fetchStatusAll() {
   }
 
   const originUrl = withQuery(config.FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
-  const data = await fetchJsonWithTimeout(originUrl, STATUS_FETCH_TIMEOUT_MS + 4000);
+  const data = await fetchJsonWithTimeout(originUrl, baseTimeout + originExtra);
 
   resetFailCount();
   return {

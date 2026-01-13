@@ -97,7 +97,9 @@ function toAdminRow_(a) {
  * @returns {AdminRow | undefined}
  */
 function getAdminById_(userId) {
-  return allAdmins.find((x) => x.userId === userId);
+  const id = String(userId || "");
+  if (!id) return undefined;
+  return adminById.get(id) || allAdmins.find((x) => x.userId === id);
 }
 
 /**

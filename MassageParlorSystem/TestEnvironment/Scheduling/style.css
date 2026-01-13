@@ -52,13 +52,13 @@ body {
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #0f172a 0, var(--bg) 45%, var(--bg) 100%);
+  background: var(--bg);
   color: var(--text-main);
 }
 
 /* 亮色主題時，背景調整 */
 :root[data-theme="light"] body {
-  background: linear-gradient(180deg, #e5e7eb 0, #f9fafb 40%, #f9fafb 100%);
+  background: var(--bg);
 }
 
 /* Gate 遮罩（登入 / 審核提示） */
@@ -85,7 +85,7 @@ body {
   padding: 20px 22px;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.5);
-  background: radial-gradient(circle at top, #0b1120 0, #020617 60%);
+  background: #0b1120;
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
   text-align: center;
 }
@@ -117,6 +117,15 @@ body {
   max-width: 1080px;
   margin: 0 auto;
   padding: 20px 16px 32px 16px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+}
+
+/* 頁面標題（置頂置中） */
+.page-title {
+  text-align: center;
+  margin: 2px 0 10px 0;
 }
 
 /* =========================================================
@@ -211,9 +220,14 @@ body {
 .app-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.app-header-spacer {
+  display: none;
 }
 
 .app-header-left {
@@ -222,7 +236,7 @@ body {
 
 .app-title {
   margin: 0 0 4px;
-  font-size: 22px;
+  font-size: clamp(18px, 4.6vw, 22px);
   letter-spacing: 0.02em;
 }
 
@@ -236,6 +250,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* Pills & Buttons */
@@ -306,6 +322,7 @@ body {
   padding: 3px;
   border: 1px solid rgba(148, 163, 184, 0.6);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.8);
+  max-width: 100%;
 }
 
 :root[data-theme="light"] .tabs {
@@ -325,7 +342,7 @@ body {
 }
 
 .tab-active {
-  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  background: var(--accent);
   color: #0b1120;
   font-weight: 600;
 }
@@ -346,6 +363,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .filter-label {
@@ -375,9 +393,77 @@ body {
   color: rgba(148, 163, 184, 0.8);
 }
 
+/* =========================================================
+ * ✅ iOS / LINE WebView：日期 input 防裁切（核心修正）
+ * - 只影響 type="date"（不動其他 input）
+ * - 右側預留空間給 calendar indicator
+ * - font-size:16 防 iOS 自動放大與字被切
+ * ========================================================= */
+input[type="date"].input{
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  min-height: 44px;            /* iOS 友善點擊高度 */
+  padding: 10px 40px 10px 12px;/* 右側預留給 indicator */
+
+  font-size: 16px;             /* iOS 防自動放大/裁切 */
+  line-height: 1.2;
+
+  -webkit-appearance: none;
+  appearance: none;
+
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+input[type="date"].input::-webkit-date-and-time-value{
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+input[type="date"].input::-webkit-calendar-picker-indicator{
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+/* ✅ 業績查詢：開始/結束日期 + 明細/統計按鈕在各裝置自適應且不溢出 */
+#perfCard .filters {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+#perfCard .filter {
+  width: 100%;
+  min-width: 0;
+}
+
+#perfCard .input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
+#perfCard .perf-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#perfCard .perf-actions .btn {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 /* 主內容區 */
 .main {
   display: flex;
+  min-width: 0;
 }
 
 /* 卡片 + 表格 */
@@ -385,7 +471,7 @@ body {
   flex: 1;
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.45);
-  background: radial-gradient(circle at top, #0b1120 0, var(--bg-card) 55%);
+  background: var(--bg-card);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
   overflow: hidden;
 }
@@ -449,6 +535,8 @@ body {
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .status-table {
@@ -491,6 +579,20 @@ body {
   font-size: 13px;
 }
 
+/* 預約內容：用內層 block 承載文字（iOS/Safari 對 table-cell overflow 有時不裁切） */
+.cell-appointment {
+  min-width: 0;
+}
+
+.appt-block {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* ✅ bgIndex/bgMaster 背景提示：讓淡色更「像貼紙」 */
 .cell-order,
 .cell-master {
@@ -527,7 +629,6 @@ body {
   font-weight: 500;
   border: 1px solid transparent;
 
-  /* 禁止換行（原本在後段重複宣告，集中在這裡） */
   white-space: nowrap;
   word-break: keep-all;
   overflow-wrap: normal;
@@ -569,10 +670,26 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: rgba(15, 23, 42, 0.95);
   font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :root[data-theme="light"] .time-badge {
   background: #ffffff;
+}
+
+/* 排班表欄位對齊/寬度（覆蓋 index.html 的 inline width） */
+.card-table .status-table thead th:nth-child(4),
+.card-table .status-table tbody td:nth-child(4) {
+  text-align: left;
+}
+
+.card-table .status-table thead th:nth-child(5),
+.card-table .status-table tbody td:nth-child(5) {
+  width: clamp(88px, 14vw, 160px) !important;
+  text-align: right;
 }
 
 /* 空 / Loading / Error 狀態 */
@@ -609,23 +726,209 @@ body {
     align-items: flex-start;
   }
 
+  .app-header-right {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 6px 12px;
+  }
+
   .toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .tabs {
+    width: 100%;
+    display: flex;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
   }
 
   .filters {
     width: 100%;
   }
 
+  .filter {
+    width: 100%;
+  }
+
   .input,
   .select {
     width: 100%;
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  /* ✅ 行動版保險：date input 右側預留固定 */
+  input[type="date"].input{
+    padding-right: 40px;
+  }
+
+  /* 業績查詢：行動版讓日期與查詢按鈕同寬 */
+  #perfCard .filters {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  #perfCard .filters .filter:last-child .filter-label {
+    display: none;
+  }
+
+  #perfCard .perf-actions {
+    flex-direction: column;
+  }
+
+  #perfCard .perf-actions .btn {
+    flex: 0 0 auto;
+    height: auto;
+    width: 100%;
+    display: block;
+  }
+
+  #perfCard .status-table {
+    min-width: 980px;
+    font-size: 12px;
+  }
+
+  #perfCard .status-table th,
+  #perfCard .status-table td {
+    white-space: nowrap;
+    padding: 6px 6px;
+  }
+
+  .main {
+    flex-direction: column;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-header-right {
+    align-self: flex-start;
+  }
+
+  .status-table {
+    width: max-content;
+    min-width: 720px;
+  }
+
+  .card-table .status-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .card-table .status-table th,
+  .card-table .status-table td {
+    overflow: hidden;
+    padding: 6px 6px;
+  }
+
+  .card-table .status-table thead th:nth-child(1),
+  .card-table .status-table tbody td:nth-child(1) {
+    width: clamp(44px, 12vw, 56px) !important;
+  }
+
+  .card-table .status-table thead th:nth-child(2),
+  .card-table .status-table tbody td:nth-child(2) {
+    width: clamp(44px, 12vw, 56px) !important;
+  }
+
+  .card-table .status-table thead th:nth-child(3),
+  .card-table .status-table tbody td:nth-child(3) {
+    width: clamp(84px, 24vw, 120px) !important;
+  }
+
+  .card-table .status-table thead th:nth-child(5),
+  .card-table .status-table tbody td:nth-child(5) {
+    width: clamp(64px, 18vw, 104px) !important;
+    text-align: right;
+  }
+
+  .card-table .status-table tbody td:nth-child(4) {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+    box-shadow: inset -1px 0 0 var(--border);
+  }
+
+  .card-table .status-table tbody td:nth-child(4) .appt-block {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .card-table .status-table tbody td:nth-child(3) .status-pill {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card-table .status-table tbody td:nth-child(5) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .card-table .status-table thead th:nth-child(4) {
+    box-shadow: inset -1px 0 0 var(--border);
+  }
+
+  .time-badge {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
+
+  .card-table .status-table {
+    font-size: 12px;
   }
 
   .card {
     border-radius: 14px;
   }
+}
+
+/* 更窄螢幕：第 5 欄再縮，避免任何視覺遮擋第 4 欄 */
+@media (max-width: 420px) {
+  #perfCard .card-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  #perfCard .status-table {
+    min-width: 880px;
+    font-size: 11px;
+  }
+
+  .card-table .status-table thead th:nth-child(5),
+  .card-table .status-table tbody td:nth-child(5) {
+    width: clamp(56px, 16vw, 88px) !important;
+  }
+
+  .card-table .status-table tbody td:nth-child(5) .time-badge {
+    padding: 2px 8px;
+  }
+}
+
+/* 桌機/平板也讓第 5 欄靠右（排班表卡片內表格） */
+.card-table .status-table thead th:nth-child(5),
+.card-table .status-table tbody td:nth-child(5) {
+  text-align: right;
 }
 
 /* 使用者名稱 + 剩餘天數提示橫幅 */
@@ -662,6 +965,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10000;
+
+  max-width: calc(100vw - 24px);
 
   display: flex;
   align-items: center;
@@ -707,10 +1012,115 @@ body {
   min-width: 86px;
 }
 
+/* =========================================================
+ * 初始資料載入遮罩（含進度）
+ * ========================================================= */
+.initial-loading{
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.94);
+  color: #e5e7eb;
+  transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+:root[data-theme="light"] .initial-loading{
+  background: #ffffff;
+  color: #111827;
+}
+
+.initial-loading-hidden{
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.initial-loading-inner{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 28px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.70);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.35);
+  backdrop-filter: blur(10px);
+}
+
+:root[data-theme="light"] .initial-loading-inner{
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 16px 38px rgba(0,0,0,0.12);
+}
+
+.initial-loading-text{
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.initial-loading-progress{
+  width: min(360px, 72vw);
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(2, 6, 23, 0.35);
+  overflow: hidden;
+}
+
+:root[data-theme="light"] .initial-loading-progress{
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.initial-loading-progress-bar{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.10);
+  transition: width 220ms ease;
+}
+
+.initial-loading-percent{
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+.spinner-lg{
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 3px solid rgba(148, 163, 184, 0.35);
+  border-top-color: var(--accent);
+  animation: spin 0.85s linear infinite;
+}
+
 @media (max-width: 420px){
   .status-table tbody td:nth-child(3),
   .status-table thead th:nth-child(3){
     min-width: 76px;
+  }
+
+  .layout{
+    padding-top: 16px;
+  }
+
+  .card-header{
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .card-body{
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .status-table{
+    min-width: 680px;
   }
 }
 
@@ -742,10 +1152,9 @@ body {
   position:absolute;
   left:0; top:0; bottom:0;
   width:6px;
-  /* JS 會寫入 --myStripe；沒寫入時走 fallback（見下方 status-* 設定） */
   background: var(--myStripe, rgba(148, 163, 184, 0.55));
 }
-/* 沒有 token 時的 fallback：用狀態 class 設定 --myStripe */
+
 .my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
 .my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
 .my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
@@ -761,7 +1170,6 @@ body {
   letter-spacing: .02em;
 }
 
-/* myMasterStatus.js 會把主要內容塞進 #myMasterStatusText（.my-master-text） */
 .my-master-text{
   padding-left: 6px;
   min-width: 0;

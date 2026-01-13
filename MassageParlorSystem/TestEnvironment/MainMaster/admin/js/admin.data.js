@@ -48,6 +48,7 @@ function snapshot_(a) {
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   });
 }
 
@@ -87,6 +88,7 @@ function toAdminRow_(a) {
     techPushEnabled: normalizeYesNo_(a?.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a?.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a?.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a?.techPerformanceEnabled),
   };
 }
 
@@ -97,7 +99,9 @@ function toAdminRow_(a) {
  * @returns {AdminRow | undefined}
  */
 function getAdminById_(userId) {
-  return allAdmins.find((x) => x.userId === userId);
+  const id = String(userId || "");
+  if (!id) return undefined;
+  return adminById.get(id) || allAdmins.find((x) => x.userId === id);
 }
 
 /**
@@ -121,5 +125,6 @@ function toUpdateItem_(a) {
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
+    techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   };
 }

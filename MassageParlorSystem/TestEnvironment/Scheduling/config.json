@@ -18,12 +18,44 @@
   "LIFF_ID": "2008735934-mBO1mD8M",
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
-  "ENABLE_LINE_LOGIN": false,
+  "ENABLE_LINE_LOGIN": true,
   "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
 
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwvgNI1EfBnAPk92PJ8NtdsaTIcN_c-0DxOgIsA6oJHwGWJNgpMCLrKDu-8ZHM18R0g/exec",
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
-  "USAGE_LOG_MIN_INTERVAL_MS": 10000,
-  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。"
+  "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbzuU4eN6-qchYYA43AMNdkiRXbjScOp_XMvrVi1G9AkBgNX3eWXNANNAnGF4sTD7Mnd/exec",
+  "_comment_REPORT_API_URL": "（可選）師傅業績查詢用 GAS Web App URL（report Web App）。report.html 會用它讀取 Report_Summary/Report_Detail。",
+
+  "DETAIL_PERF_API_URL": "https://script.google.com/macros/s/AKfycbwuIkUaV3LHXTmz2CMBd8r1dg4WYFQ75jLdwVGbYCfVSffd95rbW-kUrm4Pw2yfFgSLhQ/exec",
+  "_comment_DETAIL_PERF_API_URL": "（可選）師傅業績『明細』查詢用 GAS Web App URL（DetailPerf Web App）。若留空，前端會退回使用 REPORT_API_URL。",
+
+  "USAGE_LOG_MIN_INTERVAL_MS": 180000,
+  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。",
+
+ "_comment_perf": "=== （可選）效能/更新速度調校：不填則沿用程式預設值 ===",
+
+  "POLL_BASE_MS": 3000,
+  "_comment_POLL_BASE_MS": "輪詢基本間隔（毫秒）。越小越即時，但 GAS/網路負載越高。",
+
+  "POLL_MAX_MS": 8000,
+  "_comment_POLL_MAX_MS": "穩定後輪詢最大間隔（毫秒）。想更即時可調小（例如 8000~12000）。",
+
+  "POLL_CHANGED_BOOST_MS": 3000,
+  "_comment_POLL_CHANGED_BOOST_MS": "偵測到資料變更後，下一次輪詢的間隔（毫秒）。想追更快可設成 3000。",
+
+  "POLL_JITTER_RATIO": 0.2,
+  "_comment_POLL_JITTER_RATIO": "輪詢抖動比例（0~1），用來分散同時請求，避免尖峰。",
+
+  "POLL_ALLOW_BACKGROUND": true,
+  "_comment_POLL_ALLOW_BACKGROUND": "是否允許在背景（切到別的 App / 螢幕鎖定）時仍嘗試輪詢更新。注意：行動裝置/LINE WebView 可能仍會暫停或降頻，屬 best-effort。",
+
+  "STATUS_FETCH_TIMEOUT_MS": 8000,
+  "_comment_STATUS_FETCH_TIMEOUT_MS": "單次狀態 API timeout（毫秒）。調小可加速失敗切換，但太小可能誤判網路慢為失敗。",
+
+  "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
+  "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。",
+
+  "STALE_DATA_MAX_AGE_MS": 0,
+  "_comment_STALE_DATA_MAX_AGE_MS": "（可選）資料超過多久未更新就視為『總系統異常 無法使用功能』（毫秒）。0 或負數=停用。建議 5~30 分鐘。"
 }
