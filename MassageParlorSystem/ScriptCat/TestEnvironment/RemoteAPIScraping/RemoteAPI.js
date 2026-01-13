@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         YSPOS P_DETAIL Capture + Analyze -> GAS (FULL)
+// @name         YSPOS P_DETAIL Capture + Analyze -> GAS (FULL, FIXED)
 // @namespace    https://local/
-// @version      3.1
-// @description  Capture XHR/fetch on #/performance?tab=P_DETAIL; store to NetworkCapture GAS; ALSO forward /api/performance/total/{storeId} (200) response to Analyze GAS to write summary/items tables.
+// @version      3.2
+// @description  Capture XHR/fetch on #/performance?tab=P_DETAIL; store to NetworkCapture GAS; ALSO forward /api/performance/total/{storeId} (200) JSON response to Analyze GAS to write summary/items tables.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @run-at       document-start
+// @connect      script.google.com
+// @connect      script.googleusercontent.com
 // ==/UserScript==
 
 (function () {
@@ -18,8 +20,7 @@
   const GAS_CAPTURE_URL =
     "https://script.google.com/macros/s/AKfycbzAc4BzsBddHhjVEke_uTdDnktv82TTHcxR3KnlQeFOB4EkKaHUixq8Vd8De8vp82mCKw/exec";
 
-  // ② 你新的「分析用 GAS」（analyzePerfTotal_v1）
-  //    如果你還沒部署分析版 GAS，就先部署「Perf Analyzer WebApp」那支，再把 /exec 貼上來
+  // ② 你用來「接收分析結果」的 GAS（analyzePerfTotal_v1）
   const GAS_ANALYZE_URL =
     "https://script.google.com/macros/s/AKfycbzICSr5W_-R8Ntztuq123rAZKu5GVi4dRqz-nquB64nokAVH414EPj0ZKRnG1I0HKUu/exec";
 
@@ -27,24 +28,18 @@
    * 1) Capture Rules
    *****************************************************************/
   const CAPTURE_RULES = {
-    // page gate
     pageHashMustInclude: "#/performance",
     pageHashMustInclude2: "tab=P_DETAIL",
 
-    // 第一輪可放寬抓全量；建議你收斂到 /api/performance/total/ 與 /api/store/downList 等
     urlSubstringsAny: ["/api/"],
 
-    // 如果不想送非 JSON，改成 false
     allowNonJson: false,
 
-    // 佇列與送出節流
     maxQueuePerFlush: 8,
     flushIntervalMs: 1200,
 
-    // 防爆：responseText 截斷（非 JSON 時使用）
     maxTextLen: 12000,
 
-    // Debug
     verbose: true,
   };
 
@@ -53,11 +48,15 @@
    *****************************************************************/
   function isTargetPage() {
     const h = String(location.hash || "");
-    return h.includes(CAPTURE_RULES.pageHashMustInclude) && h.includes(CAPTURE_RULES.pageHashMustInclude2);
+    return (
+      h.includes(CAPTURE_RULES.pageHashMustInclude) &&
+      h.includes(CAPTURE_RULES.pageHashMustInclude2)
+    );
   }
 
   let ACTIVE = false;
   let FLUSH_TIMER = null;
+  let GUARD_TIMER = null;
 
   function log(...args) {
     if (CAPTURE_RULES.verbose) console.log(...args);
@@ -71,12 +70,14 @@
     if (ok && !ACTIVE) {
       ACTIVE = true;
       log("[P_DETAIL_CAPTURE] START on", location.href);
+
       pingGas_(GAS_CAPTURE_URL, "capture");
       if (GAS_ANALYZE_URL && !String(GAS_ANALYZE_URL).includes("PASTE_")) {
         pingGas_(GAS_ANALYZE_URL, "analyze");
       } else {
         warn("[P_DETAIL_CAPTURE] GAS_ANALYZE_URL not set; analyze forwarding disabled.");
       }
+
       startFlushLoop();
     } else if (!ok && ACTIVE) {
       ACTIVE = false;
@@ -85,7 +86,9 @@
     }
   }
 
+  // hashchange + 保險輪詢（避免 SPA 某些情境沒觸發 hashchange）
   window.addEventListener("hashchange", startIfNeeded, true);
+  GUARD_TIMER = setInterval(startIfNeeded, 600);
   startIfNeeded();
 
   /*****************************************************************
@@ -101,16 +104,14 @@
     return str.slice(0, maxLen) + `...<truncated:${str.length - maxLen}>`;
   }
 
-  function stripWS_(s) {
-    return String(s || "").replace(/\s+/g, "");
-  }
-
   function pickTechNo() {
     const qs = new URLSearchParams(location.search);
     if (qs.get("techNo")) return qs.get("techNo");
+
     const h = String(location.hash || "");
     const m = h.match(/techNo=([0-9A-Za-z_-]+)/);
     if (m) return m[1];
+
     return (sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "");
   }
 
@@ -122,10 +123,14 @@
   async function sha1Hex(str) {
     const enc = new TextEncoder().encode(str);
     const buf = await crypto.subtle.digest("SHA-1", enc);
-    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 
   function pingGas_(gasUrl, tag) {
+    if (!gasUrl || String(gasUrl).includes("PASTE_")) return;
+
     GM_xmlhttpRequest({
       method: "GET",
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
@@ -194,8 +199,6 @@
    *    Target: POST /api/performance/total/{storeId}
    *****************************************************************/
   function isPerfTotalApi_(url) {
-    // url 可能是相對路徑 "/api/performance/total/2259"
-    // 或完整 URL "https://.../api/performance/total/2259"
     const u = String(url || "");
     return /\/api\/performance\/total\/\d+/.test(u);
   }
@@ -207,7 +210,6 @@
   }
 
   function extractFromTo_(requestBody) {
-    // requestBody 是字串 JSON： {"size":200,"number":1,"from":"2026-01-01","to":"2026-01-31"}
     let from = "", to = "", size = "", number = "";
     try {
       const obj = JSON.parse(String(requestBody || "{}"));
@@ -220,16 +222,14 @@
   }
 
   function forwardToAnalyze_(record, recordHash) {
-    // Analyze URL 未設定 → 直接跳過
     if (!GAS_ANALYZE_URL || String(GAS_ANALYZE_URL).includes("PASTE_")) return;
 
-    // 只轉送：業績 total API + status 200 + response 是 object(JSON)
     if (!isPerfTotalApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
 
     const storeId = extractStoreId_(record.url);
-    const { from, to } = extractFromTo_(record.requestBody);
+    const { from, to, size, number } = extractFromTo_(record.requestBody);
 
     const payload = {
       mode: "analyzePerfTotal_v1",
@@ -237,11 +237,14 @@
         storeId,
         from,
         to,
+        size,
+        number,
         page: location.href,
+        hash: location.hash,
         capturedAt: new Date().toISOString(),
         recordHash: String(recordHash || ""),
         requestUrl: String(record.url || ""),
-        // techNo: pickTechNo(), // 若你分析表也想存 techNo，可打開
+        techNo: pickTechNo(),
       },
       response: record.response,
     };
@@ -276,7 +279,6 @@
       const text = await clone.text();
       const json = safeJsonParse(text);
 
-      // 非 JSON 是否允許
       if (!json && !CAPTURE_RULES.allowNonJson) return res;
 
       const record = {
@@ -293,11 +295,9 @@
       if (!SENT_HASH.has(hash)) {
         SENT_HASH.add(hash);
 
-        // ① 存 capture log
         enqueue({ hash, record });
         log("[P_DETAIL_CAPTURE][fetch] captured:", record.url, "status=", record.status);
 
-        // ② 轉送分析（只會命中 perf total）
         forwardToAnalyze_(record, hash);
       }
     } catch (e) {
@@ -312,11 +312,20 @@
    *****************************************************************/
   const _open = XMLHttpRequest.prototype.open;
   const _send = XMLHttpRequest.prototype.send;
+  const _setHeader = XMLHttpRequest.prototype.setRequestHeader;
 
   XMLHttpRequest.prototype.open = function (method, url) {
     this._cap_method = method;
     this._cap_url = url;
+    this._cap_reqHeaders = {};
     return _open.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.setRequestHeader = function (k, v) {
+    try {
+      if (this && this._cap_reqHeaders) this._cap_reqHeaders[String(k)] = String(v);
+    } catch (_) {}
+    return _setHeader.apply(this, arguments);
   };
 
   XMLHttpRequest.prototype.send = function (body) {
@@ -329,13 +338,13 @@
           try {
             const text = xhr.responseText;
             const json = safeJsonParse(text);
-
             if (!json && !CAPTURE_RULES.allowNonJson) return;
 
             const record = {
               kind: "xhr",
               url: String(xhr._cap_url),
               method: String(xhr._cap_method || "GET"),
+              requestHeaders: xhr._cap_reqHeaders || null,
               requestBody: reqBody || null,
               status: xhr.status,
               response: json || truncateText_(text, CAPTURE_RULES.maxTextLen),
@@ -345,11 +354,9 @@
             if (!SENT_HASH.has(hash)) {
               SENT_HASH.add(hash);
 
-              // ① 存 capture log
               enqueue({ hash, record });
               log("[P_DETAIL_CAPTURE][xhr] captured:", record.url, "status=", record.status);
 
-              // ② 轉送分析（只會命中 perf total）
               forwardToAnalyze_(record, hash);
             }
           } catch (e) {
