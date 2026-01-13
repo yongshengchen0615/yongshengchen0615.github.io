@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS P_DETAIL Network Capture -> GAS (DEBUG)
 // @namespace    https://local/
-// @version      2.3
+// @version      2.4
 // @description  DEBUG: ping GAS on enter; capture fetch/XHR on #/performance?tab=P_DETAIL; loosen filters first-run; flush logs
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
