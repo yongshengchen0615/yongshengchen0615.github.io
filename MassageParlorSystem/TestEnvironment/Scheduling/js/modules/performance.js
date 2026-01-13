@@ -1,17 +1,20 @@
 /**
- * performance.js（完整可貼版本 / ✅ 登入時預載到快取、進業績面板直接顯示、手動重整才更新）
+ * performance.js（完整可貼版本 / ✅ 登入時預載到快取、改日期直接從快取切範圍、手動重整才更新）
  *
- * ✅ 行為規則（你要求的最終版）：
- * 1) 登入時（呼叫 prefetchPerformanceOnce）會「預載到快取」：
- *    - 只抓 Detail（明細），不更新 Summary（三卡）  ✅ 符合你原本規則
- *    - 這樣進入業績面板時可直接顯示明細 + 統計頁服務彙總（由明細快取計算）
+ * ✅ 你要求的最終行為（已整合）：
+ * 1) 登入時（prefetchPerformanceOnce）預載：
+ *    - 會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
+ *    - 會抓 Detail（startKey/endKey）但「快取存 allRows 原始明細」
  *
  * 2) 進入業績面板（onShowPerformance）：
  *    - 只 render 快取，不打 API
  *
- * 3) 只有按「手動重整」：
- *    - 才會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
- *    - 並抓最新 Detail（startKey/endKey）
+ * 3) 修改開始/結束日期：
+ *    - 直接從快取 allRows 做 filter 顯示，不需要手動重整
+ *    - 若選到超出 allRows 的最新日（maxKey），就顯示「全部 allRows」✅ 你指定規則
+ *
+ * 4) 只有按「手動重整」：
+ *    - 才會重新抓最新 Summary + Detail，更新快取
  */
 
 import { dom } from "./dom.js";
@@ -73,7 +76,8 @@ const perfCache_ = {
   summaryKey: "",
   detailKey: "",
   summary: null, // { meta, summaryObj, summaryHtml, source, lastUpdatedAt }
-  detail: null, // { meta, summaryObj, summaryHtml, detailRows, detailRowsHtml, detailRowsCount }
+  // ✅ detail 快取改成存 allRows + maxKey（不綁 range）
+  detail: null, // { meta, techNo, allRows, maxKey, summaryObj, summaryHtml, lastUpdatedAt }
 };
 
 /* =========================
@@ -218,7 +222,10 @@ function summaryRowsHtml_(summaryObj) {
     { label: "總計", card: summaryObj["總計"] || {} },
   ];
   return cards
-    .map(({ label, card }) => `<tr>${td(label)}${td(card.單數 ?? 0)}${td(card.筆數 ?? 0)}${td(card.數量 ?? 0)}${td(card.金額 ?? 0)}</tr>`)
+    .map(
+      ({ label, card }) =>
+        `<tr>${td(label)}${td(card.單數 ?? 0)}${td(card.筆數 ?? 0)}${td(card.數量 ?? 0)}${td(card.金額 ?? 0)}</tr>`
+    )
     .join("");
 }
 
@@ -233,19 +240,20 @@ function detailSummaryRowsHtml_(detailRows) {
   return {
     count: list.length,
     html: list
-      .map((r) =>
-        "<tr>" +
-        td(r["服務項目"] || "") +
-        td(r["總筆數"] ?? 0) +
-        td(r["總節數"] ?? 0) +
-        td(r["總計金額"] ?? 0) +
-        td(r["老點筆數"] ?? 0) +
-        td(r["老點節數"] ?? 0) +
-        td(r["老點金額"] ?? 0) +
-        td(r["排班筆數"] ?? 0) +
-        td(r["排班節數"] ?? 0) +
-        td(r["排班金額"] ?? 0) +
-        "</tr>"
+      .map(
+        (r) =>
+          "<tr>" +
+          td(r["服務項目"] || "") +
+          td(r["總筆數"] ?? 0) +
+          td(r["總節數"] ?? 0) +
+          td(r["總計金額"] ?? 0) +
+          td(r["老點筆數"] ?? 0) +
+          td(r["老點節數"] ?? 0) +
+          td(r["老點金額"] ?? 0) +
+          td(r["排班筆數"] ?? 0) +
+          td(r["排班節數"] ?? 0) +
+          td(r["排班金額"] ?? 0) +
+          "</tr>"
       )
       .join(""),
   };
@@ -258,22 +266,23 @@ function detailRowsHtml_(detailRows) {
   return {
     count: list.length,
     html: list
-      .map((r) =>
-        "<tr>" +
-        td(formatDateYmd_(r["訂單日期"])) +
-        td(r["訂單編號"] || "") +
-        td(r["序"] ?? "") +
-        td(r["拉牌"] || "") +
-        td(r["服務項目"] || "") +
-        td(r["業績金額"] ?? 0) +
-        td(r["抽成金額"] ?? 0) +
-        td(r["數量"] ?? 0) +
-        td(r["小計"] ?? 0) +
-        td(r["分鐘"] ?? 0) +
-        td(formatTimeTpeHms_(r["開工"])) +
-        td(formatTimeTpeHms_(r["完工"])) +
-        td(r["狀態"] || "") +
-        "</tr>"
+      .map(
+        (r) =>
+          "<tr>" +
+          td(formatDateYmd_(r["訂單日期"])) +
+          td(r["訂單編號"] || "") +
+          td(r["序"] ?? "") +
+          td(r["拉牌"] || "") +
+          td(r["服務項目"] || "") +
+          td(r["業績金額"] ?? 0) +
+          td(r["抽成金額"] ?? 0) +
+          td(r["數量"] ?? 0) +
+          td(r["小計"] ?? 0) +
+          td(r["分鐘"] ?? 0) +
+          td(formatTimeTpeHms_(r["開工"])) +
+          td(formatTimeTpeHms_(r["完工"])) +
+          td(r["狀態"] || "") +
+          "</tr>"
       )
       .join(""),
   };
@@ -289,6 +298,11 @@ function applyDetailTableHtml_(html, count) {
   }
   showEmpty_(false);
   dom.perfDetailRowsEl.innerHTML = html;
+}
+
+function renderDetailRows_(rows) {
+  const tmp = detailRowsHtml_(Array.isArray(rows) ? rows : []);
+  applyDetailTableHtml_(tmp.html, tmp.count);
 }
 
 /* =========================
@@ -399,6 +413,10 @@ function getMaxDetailDateKey_(detailRows) {
   return maxKey;
 }
 
+/**
+ * ✅ 你指定規則：
+ * - 範圍超出 allRows 的最新日 maxKey → 直接顯示全部 rows
+ */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
   const s = String(startKey || "").trim();
@@ -407,7 +425,7 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 
   const maxKey = knownMaxKey || getMaxDetailDateKey_(rows);
   if (maxKey) {
-    if (e > maxKey || s > maxKey) return rows; // 超出最新日 → 顯示全部（你的規則）
+    if (e > maxKey || s > maxKey) return rows; // ✅ 超出最新日 → 顯示全部
   }
 
   return rows.filter((r) => {
@@ -481,8 +499,10 @@ function buildServiceSummaryFromDetail_(detailRows) {
 function makePerfSummaryKey_(techNo) {
   return `${String(techNo || "").trim()}:LATEST_SUMMARY`;
 }
-function makePerfDetailKey_(techNo, startKey, endKey) {
-  return `${String(techNo || "").trim()}:${String(startKey || "").trim()}~${String(endKey || "").trim()}`;
+
+/** ✅ Detail 快取 key 不綁 range：同一師傅只有一份 allRows 原料快取 */
+function makePerfDetailKey_(techNo) {
+  return `${String(techNo || "").trim()}:DETAIL_CACHE`;
 }
 
 /* =========================
@@ -697,6 +717,7 @@ async function renderFromCache_(mode, info) {
     return { ok: false, error: "NOT_MASTER" };
   }
 
+  // ✅ detail 模式要能讀 range（但只用來 filter 快取，不打 API）
   const r = m === "detail" ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
   if (m === "detail" && (!r || !r.ok)) {
     setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
@@ -711,10 +732,15 @@ async function renderFromCache_(mode, info) {
   }
 
   const summaryKey = makePerfSummaryKey_(techNo);
-  const detailKey = m === "detail" ? makePerfDetailKey_(techNo, r.startKey, r.endKey) : "";
+  const detailKey = makePerfDetailKey_(techNo);
 
   const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
-  const hasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
+  const hasDetailRaw =
+    perfCache_.detailKey === detailKey &&
+    !!perfCache_.detail &&
+    perfCache_.detail.techNo === techNo &&
+    Array.isArray(perfCache_.detail.allRows) &&
+    perfCache_.detail.allRows.length > 0;
 
   if (dom.perfSummaryRowsEl) {
     if (hasSummary) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
@@ -734,9 +760,25 @@ async function renderFromCache_(mode, info) {
     }
 
     // ✅ 統計頁表格：由明細快取計算服務彙總（不打 API）
-    const baseDetail = perfCache_.detail && Array.isArray(perfCache_.detail.detailRows) ? perfCache_.detail.detailRows : [];
-    if (baseDetail.length) {
-      const summaryRows = buildServiceSummaryFromDetail_(baseDetail);
+    // 這裡若 range 合法，會用 range 切；不合法就用 allRows
+    const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
+    let baseForSummary = baseAll;
+
+    const rr = (() => {
+      try {
+        return readRangeFromInputs_();
+      } catch (_) {
+        return null;
+      }
+    })();
+
+    if (rr && rr.ok && baseAll.length) {
+      const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
+      baseForSummary = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
+    }
+
+    if (baseForSummary.length) {
+      const summaryRows = buildServiceSummaryFromDetail_(baseForSummary);
       const tmp = detailSummaryRowsHtml_(summaryRows);
       applyDetailTableHtml_(tmp.html, tmp.count);
     } else {
@@ -746,18 +788,20 @@ async function renderFromCache_(mode, info) {
     return { ok: true, rendered: "summary", cached: true };
   }
 
+  // detail mode
   renderDetailHeader_("detail");
 
-  if (hasDetail) {
+  if (hasDetailRaw) {
     const c = perfCache_.detail;
-    setMeta_(c.meta || `師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey} ｜ 快取`);
-    setBadge_("已載入（快取）", false);
+    const rowsAll = c.allRows;
+    const maxKey = c.maxKey || getMaxDetailDateKey_(rowsAll);
+    const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
+    const tmp = detailRowsHtml_(filtered);
 
-    if (c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
-    else {
-      const tmp = detailRowsHtml_(c.detailRows || []);
-      applyDetailTableHtml_(tmp.html, tmp.count);
-    }
+    setMeta_(c.meta || `師傅：${techNo} ｜ 最後更新：—`);
+    setBadge_("已載入（快取切換）", false);
+    applyDetailTableHtml_(tmp.html, tmp.count);
+
     return { ok: true, rendered: "detail", cached: true };
   }
 
@@ -784,13 +828,13 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
   if (fetchDetail && (!r || !r.ok)) return { ok: false, error: (r && r.error) || "BAD_RANGE" };
 
   const summaryKey = makePerfSummaryKey_(techNo);
-  const detailKey = fetchDetail ? makePerfDetailKey_(techNo, r.startKey, r.endKey) : "";
+  const detailKey = makePerfDetailKey_(techNo);
 
   if (fetchSummary && perfCache_.summaryKey !== summaryKey) perfCache_.summary = null;
   if (fetchDetail && perfCache_.detailKey !== detailKey) perfCache_.detail = null;
 
   perfCache_.summaryKey = summaryKey;
-  if (fetchDetail) perfCache_.detailKey = detailKey;
+  perfCache_.detailKey = detailKey;
 
   if (showToast) hideLoadingHint();
 
@@ -822,15 +866,9 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
               : `｜✓ Summary一致`
             : "";
 
-        const src = chosen ? `${cmp.chosenSource}(getLatestSummary_v1)` : "無（兩張皆無資料）";
-        const dateLabel = chosen
-          ? chosen.source === "REPORT"
-            ? (chosen.dateKey ? `日期 ${chosen.dateKey}` : "")
-            : (chosen.rangeKey ? `區間 ${chosen.rangeKey}` : "")
-          : "";
+        void compareHint; // 保留變數（不顯示）
 
-const meta = `最後更新：${(chosen && chosen.lastUpdatedAt) ? chosen.lastUpdatedAt : "—"}`;
-
+        const meta = `最後更新：${chosen && chosen.lastUpdatedAt ? chosen.lastUpdatedAt : "—"}`;
 
         return {
           meta,
@@ -863,22 +901,20 @@ const meta = `最後更新：${(chosen && chosen.lastUpdatedAt) ? chosen.lastUpd
 
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
-const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
+        const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
 
-
+        // ✅ 關鍵：快取存 allRows（原始明細），render 時才做 range filter
         const rowsAll = Array.isArray(rr.detail) ? rr.detail : [];
         const maxKey = getMaxDetailDateKey_(rowsAll);
-        const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
-
-        const tmp = detailRowsHtml_(filtered);
 
         return {
           meta,
+          techNo,
+          lastUpdatedAt: rr.lastUpdatedAt || "",
           summaryObj: rr.summary || null,
           summaryHtml: summaryRowsHtml_(rr.summary || null),
-          detailRows: filtered,
-          detailRowsHtml: tmp.html,
-          detailRowsCount: tmp.count,
+          allRows: rowsAll,
+          maxKey,
         };
       })()
     : Promise.resolve({ skipped: true });
@@ -911,7 +947,12 @@ const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
       throw new Error(err || "RELOAD_FAILED");
     }
 
-    return { ok: true, summaryKey: perfCache_.summaryKey, detailKey: perfCache_.detailKey, partial: !(perfCache_.summary && (fetchDetail ? perfCache_.detail : true)) };
+    return {
+      ok: true,
+      summaryKey: perfCache_.summaryKey,
+      detailKey: perfCache_.detailKey,
+      partial: !(perfCache_.summary && (fetchDetail ? perfCache_.detail : true)),
+    };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
   } finally {
@@ -949,7 +990,14 @@ function normalizeDetailPerfResponse_(data) {
     summaryObj = { 排班: coerceCard("排班"), 老點: coerceCard("老點"), 總計: coerceCard("總計") };
   }
 
-  return { ok: true, techNo, lastUpdatedAt, updateCount, summary: summaryObj, detail: Array.isArray(detailRows) ? detailRows : [] };
+  return {
+    ok: true,
+    techNo,
+    lastUpdatedAt,
+    updateCount,
+    summary: summaryObj,
+    detail: Array.isArray(detailRows) ? detailRows : [],
+  };
 }
 
 /* =========================
@@ -1033,11 +1081,11 @@ export async function prefetchPerformanceOnce() {
     const info = readRangeFromInputs_();
     if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
 
-    // ✅ 關鍵：登入就把最新 Summary + Detail 塞進快取
+    // ✅ 登入就把最新 Summary + Detail 塞進快取（Detail 存 allRows）
     const res = await reloadAndCache_(info, {
       showToast: false,
-      fetchSummary: true, // ✅ 讓三卡（類別/單數/筆數/數量/金額）登入就有最新
-      fetchDetail: true,  // ✅ 明細也預載，進頁就能顯示
+      fetchSummary: true,
+      fetchDetail: true,
     });
 
     return { ok: !!(res && res.ok), ...res, prefetched: "SUMMARY_AND_DETAIL" };
@@ -1049,7 +1097,6 @@ export async function prefetchPerformanceOnce() {
     perfPrefetchInFlight_ = null;
   }
 }
-
 
 /**
  * ✅ 唯一會抓最新資料的入口（手動重整）
@@ -1069,7 +1116,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 
   setBadge_("同步中…", false);
 
-  // ✅ 手動重整：抓最新 Summary + Detail
+  // ✅ 手動重整：抓最新 Summary + Detail（Detail 存 allRows）
   const res = await reloadAndCache_(info, { showToast: !!showToast, fetchSummary: true, fetchDetail: true });
   if (!res || !res.ok) {
     const msg = String(res && res.error ? res.error : "RELOAD_FAILED");
