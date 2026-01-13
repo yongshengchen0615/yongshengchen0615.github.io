@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS Capture ALL fetch/xhr -> GAS (FULL SITE)
 // @namespace    https://local/
-// @version      3.4
+// @version      3.5
 // @description  Capture ALL XHR/fetch on https://yspos.youngsong.com.tw/* (all pages). Store to NetworkCapture GAS. Optional: still forward /api/performance/total/{storeId} (200) to Analyze GAS.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
