@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YSPOS Capture ALL fetch/xhr -> GAS (FULL SITE)
+// @name         YSPOS Capture (MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze
 // @namespace    https://local/
 // @version      3.5
-// @description  Capture ALL XHR/fetch on https://yspos.youngsong.com.tw/* (all pages). Store to NetworkCapture GAS. Optional: still forward /api/performance/total/{storeId} (200) to Analyze GAS.
+// @description  Capture XHR/fetch on 3 pages (#/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @run-at       document-start
@@ -19,51 +19,55 @@
   const GAS_CAPTURE_URL =
     "https://script.google.com/macros/s/AKfycbzAc4BzsBddHhjVEke_uTdDnktv82TTHcxR3KnlQeFOB4EkKaHUixq8Vd8De8vp82mCKw/exec";
 
-  // 若你仍要保留「業績 total」轉送分析就留著；不需要可把 ENABLE_ANALYZE=false
   const GAS_ANALYZE_URL =
     "https://script.google.com/macros/s/AKfycbzICSr5W_-R8Ntztuq123rAZKu5GVi4dRqz-nquB64nokAVH414EPj0ZKRnG1I0HKUu/exec";
 
   /*****************************************************************
-   * 1) Capture Rules (FULL SITE)
+   * 1) Capture Rules
    *****************************************************************/
   const CAPTURE_RULES = {
-    // ✅ 全站抓：不再做 #/performance gate
-    captureAllPages: true,
+    // ✅ 只抓 /api/（最安全、最不爆）
+    urlSubstringsAny: ["/api/"],
 
-    // ✅ 全站抓：不限制 /api，所有 fetch/xhr 都抓（但會排除 GAS 網域避免回捲）
-    captureAllUrls: true,
-
-    // ✅ 非 JSON 也抓（HTML/JS/CSS/文字），但會截斷
-    allowNonJson: true,
+    // 非 JSON 是否允許（建議 false，避免大回應爆表）
+    allowNonJson: false,
 
     // 佇列與送出節流
     maxQueuePerFlush: 8,
     flushIntervalMs: 1200,
 
-    // 防爆：responseText 截斷
+    // response 截斷（非 JSON 時使用）
     maxTextLen: 12000,
 
-    // ✅ 預設脫敏（強烈建議保持 true）
+    // 脫敏
     redactSensitiveHeaders: true,
 
     // Debug
     verbose: true,
   };
 
-  // Analyze 開關（可關掉）
+  // ✅ 分析轉送開關
   const ENABLE_ANALYZE = true;
 
   /*****************************************************************
-   * 2) Page gate (now FULL SITE)
+   * 2) Page gate (3 pages)
    *****************************************************************/
-  function isActiveNow() {
-    // 全站抓就是永遠 active
-    if (CAPTURE_RULES.captureAllPages) return true;
-    return true;
+  function isTargetPage() {
+    const h = String(location.hash || "");
+
+    // 1) Master complex list
+    const isMasterComplex = h.startsWith("#/master") && h.includes("listStatus=COMPLEX");
+
+    // 2) Performance P_DETAIL / P_STATIC
+    const isPerfDetail = h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
+    const isPerfStatic = h.startsWith("#/performance") && h.includes("tab=P_STATIC");
+
+    return isMasterComplex || isPerfDetail || isPerfStatic;
   }
 
   let ACTIVE = false;
   let FLUSH_TIMER = null;
+  let GUARD_TIMER = null;
 
   function log(...args) {
     if (CAPTURE_RULES.verbose) console.log(...args);
@@ -73,23 +77,27 @@
   }
 
   function startIfNeeded() {
-    const ok = isActiveNow();
+    const ok = isTargetPage();
     if (ok && !ACTIVE) {
       ACTIVE = true;
-      log("[YS_CAPTURE_ALL] START on", location.href);
+      log("[YS_CAPTURE] START on", location.href, "hash=", location.hash);
 
       pingGas_(GAS_CAPTURE_URL, "capture");
       if (ENABLE_ANALYZE && GAS_ANALYZE_URL && !String(GAS_ANALYZE_URL).includes("PASTE_")) {
         pingGas_(GAS_ANALYZE_URL, "analyze");
       }
+
       startFlushLoop();
     } else if (!ok && ACTIVE) {
       ACTIVE = false;
-      log("[YS_CAPTURE_ALL] STOP on", location.href);
+      log("[YS_CAPTURE] STOP on", location.href, "hash=", location.hash);
       stopFlushLoop();
     }
   }
 
+  // SPA-safe：hashchange + 輪詢保險
+  window.addEventListener("hashchange", startIfNeeded, true);
+  GUARD_TIMER = setInterval(startIfNeeded, 600);
   startIfNeeded();
 
   /*****************************************************************
@@ -106,7 +114,7 @@
   }
 
   function pickTechNo() {
-    // 保留原邏輯：若後續你抓到 techNo 來源，可寫入 sessionStorage("techNo")
+    // 先嘗試 query/hash
     const qs = new URLSearchParams(location.search);
     if (qs.get("techNo")) return qs.get("techNo");
 
@@ -114,6 +122,7 @@
     const m = h.match(/techNo=([0-9A-Za-z_-]+)/);
     if (m) return m[1];
 
+    // 再嘗試 storage（你未來可以把 techNo 存這裡）
     return (sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "");
   }
 
@@ -126,14 +135,11 @@
     const u = String(url || "");
     if (!u) return false;
 
-    // ✅ 避免回捲：不抓送往 GAS 的請求
+    // 避免回捲：不抓送往 GAS 的請求
     if (isGASUrl_(u)) return false;
 
-    // ✅ 全抓：fetch/xhr 都抓
-    if (CAPTURE_RULES.captureAllUrls) return true;
-
-    // 若你未來想收斂，可改回 substring allowlist
-    return u.includes("/api/");
+    // 只抓 /api/
+    return CAPTURE_RULES.urlSubstringsAny.some((s) => u.includes(s));
   }
 
   async function sha1Hex(str) {
@@ -151,18 +157,16 @@
       method: "GET",
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
       timeout: 15000,
-      onload: (res) => log(`[YS_CAPTURE_ALL] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
-      onerror: (err) => warn(`[YS_CAPTURE_ALL] ping(${tag}) error`, err),
-      ontimeout: () => warn(`[YS_CAPTURE_ALL] ping(${tag}) timeout`),
+      onload: (res) => log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
+      onerror: (err) => warn(`[YS_CAPTURE] ping(${tag}) error`, err),
+      ontimeout: () => warn(`[YS_CAPTURE] ping(${tag}) timeout`),
     });
   }
 
   function sanitizeHeaders_(headers) {
     if (!CAPTURE_RULES.redactSensitiveHeaders) return headers;
 
-    // 支援 object / Headers / array
     const out = {};
-
     try {
       if (!headers) return out;
 
@@ -181,7 +185,6 @@
       }
     } catch (_) {}
 
-    // 脫敏：cookie / token / csrf 類
     const SENSITIVE = [
       "cookie",
       "authorization",
@@ -205,7 +208,7 @@
 
   function enqueue(item) {
     QUEUE.push(item);
-    log("[YS_CAPTURE_ALL] enqueue => queueLen=", QUEUE.length);
+    log("[YS_CAPTURE] enqueue => queueLen=", QUEUE.length);
   }
 
   function startFlushLoop() {
@@ -238,20 +241,20 @@
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify(payload),
       timeout: 30000,
-      onload: (res) => log("[YS_CAPTURE_ALL] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) => log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => {
-        warn("[YS_CAPTURE_ALL] capture send error", err);
+        warn("[YS_CAPTURE] capture send error", err);
         QUEUE.unshift(...batch);
       },
       ontimeout: () => {
-        warn("[YS_CAPTURE_ALL] capture send timeout");
+        warn("[YS_CAPTURE] capture send timeout");
         QUEUE.unshift(...batch);
       },
     });
   }
 
   /*****************************************************************
-   * 5) Optional: Forward perf total -> Analyze GAS
+   * 5) Analyze Forwarding (perf total)
    *****************************************************************/
   function isPerfTotalApi_(url) {
     const u = String(url || "");
@@ -335,7 +338,8 @@
       const text = await clone.text();
       const json = safeJsonParse(text);
 
-      // 非 JSON 也抓：會存截斷文字
+      if (!json && !CAPTURE_RULES.allowNonJson) return res;
+
       const record = {
         kind: "fetch",
         url: String(url),
@@ -349,14 +353,12 @@
       const hash = await sha1Hex(JSON.stringify(record));
       if (!SENT_HASH.has(hash)) {
         SENT_HASH.add(hash);
-
         enqueue({ hash, record });
-        log("[YS_CAPTURE_ALL][fetch] captured:", record.url, "status=", record.status);
-
+        log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status);
         forwardToAnalyze_(record, hash);
       }
     } catch (e) {
-      warn("[YS_CAPTURE_ALL][fetch] hook failed", e);
+      warn("[YS_CAPTURE][fetch] hook failed", e);
     }
 
     return res;
@@ -394,6 +396,8 @@
             const text = xhr.responseText;
             const json = safeJsonParse(text);
 
+            if (!json && !CAPTURE_RULES.allowNonJson) return;
+
             const record = {
               kind: "xhr",
               url: String(xhr._cap_url),
@@ -407,19 +411,17 @@
             const hash = await sha1Hex(JSON.stringify(record));
             if (!SENT_HASH.has(hash)) {
               SENT_HASH.add(hash);
-
               enqueue({ hash, record });
-              log("[YS_CAPTURE_ALL][xhr] captured:", record.url, "status=", record.status);
-
+              log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status);
               forwardToAnalyze_(record, hash);
             }
           } catch (e) {
-            warn("[YS_CAPTURE_ALL][xhr] parse failed", e);
+            warn("[YS_CAPTURE][xhr] parse failed", e);
           }
         });
       }
     } catch (e) {
-      warn("[YS_CAPTURE_ALL][xhr] hook failed", e);
+      warn("[YS_CAPTURE][xhr] hook failed", e);
     }
 
     return _send.apply(this, arguments);
