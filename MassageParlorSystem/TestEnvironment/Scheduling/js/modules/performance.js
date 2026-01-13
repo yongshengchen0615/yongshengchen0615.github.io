@@ -1,15 +1,14 @@
 /**
- * performance.js（完整可直接貼版本）
+ * performance.js（完整可貼版本）
  *
- * ✅ 改動：
- * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS
- * 2) 前端 cache 重構：SummaryKey=techNo，DetailKey=techNo+start~end
- * 3) 維持 orderDateKey_ 純日期過濾策略
- * 4) ✅ 修正你現在 UI 用 YYYY/MM/DD 造成永遠 BAD_DATE → 顯示空
- * 5) ✅ 整合：比較兩張 GAS「最新 Summary」(REPORT vs DETAIL_PERF)
- *    - REPORT: mode=getLatestSummary_v1&techNo=xx
- *    - DETAIL_PERF: mode=getLatestSummary_v1&techNo=xx
- *    - console.table + diff list；並在 meta 附上比較狀態（可關）
+ * ✅ 功能重點（你要的版本）：
+ * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS（DETAIL_PERF）
+ * 2) Summary 讀取：同時打兩張 GAS 的 getLatestSummary_v1（REPORT + DETAIL_PERF）
+ *    - ✅「永遠兩張都打」(含 _ts cache-buster) 確保拿最新
+ *    - ✅ 只要其中一張有資料 → 用「較新/有資料」那張渲染 Summary
+ *    - ✅ 只有兩張都沒資料 → 才顯示「查無總覽資料。」
+ *    - ✅ 兩張都有資料 → 才做 diff（console）
+ * 3) UI 日期輸入：支援 YYYY/MM/DD，自動轉成 YYYY-MM-DD
  */
 
 import { dom } from "./dom.js";
@@ -22,9 +21,9 @@ import { normalizeTechNo } from "./myMasterStatus.js";
 const PERF_FETCH_TIMEOUT_MS = 20000;
 const PERF_TZ = "Asia/Taipei";
 
-/** ✅ 開關：是否在載入 summary 時做「兩張 GAS 最新 Summary 比較」 */
+/** ✅ 開關：是否抓兩張 latest 並比較（建議 true） */
 const PERF_COMPARE_LATEST_ENABLED = true;
-/** ✅ 開關：console debug */
+/** ✅ debug：console.table/console.log */
 const PERF_COMPARE_LATEST_DEBUG = true;
 
 /* =========================
@@ -423,125 +422,201 @@ function makePerfDetailKey_(techNo, startKey, endKey) {
 }
 
 /* =========================
- * ✅ Latest Summary Compare (REPORT vs DETAIL_PERF)
+ * ✅ Latest Summary Compare / Choose
  * ========================= */
 
-function coerceCardFromSummaryRow_(sr, prefix) {
-  return {
-    單數: Number((sr && sr[`${prefix}_單數`]) ?? 0) || 0,
-    筆數: Number((sr && sr[`${prefix}_筆數`]) ?? 0) || 0,
-    數量: Number((sr && sr[`${prefix}_數量`]) ?? 0) || 0,
-    金額: Number((sr && sr[`${prefix}_金額`]) ?? 0) || 0,
-  };
-}
+/** Summary 是否「有資料」：有 summaryObj 就算（你也可改成必須非 0） */
+function hasSummaryData_(x) {
+  if (!x || !x.ok || x.empty) return false;
+  const s = x.summaryObj;
+  if (!s || typeof s !== "object") return false;
 
-function normLatestReport_(raw) {
-  if (!raw || raw.ok !== true) return { ok: false, error: (raw && raw.error) || "UNKNOWN" };
-  if (String(raw.result || "") === "empty") return { ok: true, empty: true, source: "REPORT" };
-
-  const sr = raw.summaryRow || null;
-  const techNo = normalizeTechNo(raw.techNo || (sr && sr.techNo) || "");
-  const lastUpdatedAt = String(raw.lastUpdatedAt || (sr && sr.lastUpdatedAt) || "");
-  const dateKey = String(raw.dateKey || (sr && sr.dateKey) || "");
-  const detailCount = Number((sr && sr.detailCount) ?? 0) || 0;
-
-  const summaryObj =
-    sr && sr["排班"]
-      ? sr
-      : sr
-      ? { 排班: coerceCardFromSummaryRow_(sr, "排班"), 老點: coerceCardFromSummaryRow_(sr, "老點"), 總計: coerceCardFromSummaryRow_(sr, "總計") }
-      : null;
-
-  return { ok: true, source: "REPORT", techNo, lastUpdatedAt, dateKey, detailCount, summaryObj, raw };
-}
-
-function normLatestDetailPerf_(raw) {
-  if (!raw || raw.ok !== true) return { ok: false, error: (raw && raw.error) || "UNKNOWN" };
-  if (String(raw.result || "") === "empty") return { ok: true, empty: true, source: "DETAIL_PERF" };
-
-  const sr = raw.summaryRow || null;
-  const techNo = normalizeTechNo(raw.techNo || (sr && sr.techNo) || "");
-  const lastUpdatedAt = String(raw.lastUpdatedAt || (sr && sr.lastUpdatedAt) || "");
-  const rangeKey = String(raw.rangeKey || (sr && sr.rangeKey) || "");
-  const detailCount = Number((sr && sr.detailCount) ?? 0) || 0;
-
-  const summaryObj =
-    sr && sr["排班"]
-      ? sr
-      : sr
-      ? { 排班: coerceCardFromSummaryRow_(sr, "排班"), 老點: coerceCardFromSummaryRow_(sr, "老點"), 總計: coerceCardFromSummaryRow_(sr, "總計") }
-      : null;
-
-  return { ok: true, source: "DETAIL_PERF", techNo, lastUpdatedAt, rangeKey, detailCount, summaryObj, raw };
-}
-
-function compareLatest_(rep, det) {
-  const diffs = [];
-  const add = (field, a, b) => {
-    if (String(a ?? "") !== String(b ?? "")) diffs.push({ field, report: a ?? "", detailPerf: b ?? "" });
-  };
-
-  add("techNo", rep.techNo, det.techNo);
-  add("lastUpdatedAt", rep.lastUpdatedAt, det.lastUpdatedAt);
-  add("dateKey / rangeKey", rep.dateKey, det.rangeKey);
-  add("detailCount", rep.detailCount, det.detailCount);
-
+  // 只要存在任何卡片就算有資料
   const keys = ["排班", "老點", "總計"];
-  const sub = ["單數", "筆數", "數量", "金額"];
   for (const k of keys) {
-    for (const s of sub) {
-      const a = rep.summaryObj && rep.summaryObj[k] ? rep.summaryObj[k][s] : 0;
-      const b = det.summaryObj && det.summaryObj[k] ? det.summaryObj[k][s] : 0;
-      if (Number(a) !== Number(b)) diffs.push({ field: `${k}.${s}`, report: a ?? 0, detailPerf: b ?? 0 });
+    const card = s[k];
+    if (card && typeof card === "object") return true;
+  }
+  return false;
+}
+
+/** 解析 lastUpdatedAt（yyyy/MM/dd HH:mm:ss）為 ms；失敗回 0 */
+function parseTpeLastUpdatedMs_(s) {
+  const v = String(s || "").trim();
+  const m = v.match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00`;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** 比較兩張 summary（只比 3 張卡的四個欄位） */
+function compareLatest_(a, b) {
+  const out = [];
+  const sa = (a && a.summaryObj) || null;
+  const sb = (b && b.summaryObj) || null;
+  if (!sa || !sb) return out;
+
+  const cats = ["排班", "老點", "總計"];
+  const fields = ["單數", "筆數", "數量", "金額"];
+  for (const c of cats) {
+    const ca = sa[c] || {};
+    const cb = sb[c] || {};
+    for (const f of fields) {
+      const va = Number(ca[f] ?? 0) || 0;
+      const vb = Number(cb[f] ?? 0) || 0;
+      if (va !== vb) out.push({ category: c, field: f, report: va, detailPerf: vb });
     }
   }
-  return diffs;
+  return out;
 }
+
+/* =========================
+ * ✅ Latest Summary Fetch (ALWAYS HIT NETWORK)
+ * - 兩張都打 getLatestSummary_v1
+ * - 加 _ts cache-buster，避免任何快取干擾
+ * ========================= */
 
 async function fetchLatestSummaryReport_(techNo) {
   if (!config.REPORT_API_URL) throw new Error("CONFIG_REPORT_API_URL_MISSING");
-  const q = "mode=getLatestSummary_v1&techNo=" + encodeURIComponent(techNo);
+
+  const q =
+    "mode=getLatestSummary_v1" +
+    "&techNo=" +
+    encodeURIComponent(techNo) +
+    "&_ts=" +
+    encodeURIComponent(String(Date.now()));
+
   const url = withQuery(config.REPORT_API_URL, q);
   const raw = await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "REPORT_LATEST");
-  return normLatestReport_(raw);
+
+  const ok = !!(raw && raw.ok === true);
+  const empty = ok && String(raw.result || "") === "empty";
+  const summaryRow = (raw && raw.summaryRow) || null;
+
+  return {
+    ok,
+    empty,
+    source: "REPORT",
+    techNo: normalizeTechNo(raw && raw.techNo ? raw.techNo : techNo),
+    lastUpdatedAt: String((raw && raw.lastUpdatedAt) || ""),
+    dateKey: String((raw && raw.dateKey) || ""),
+    summaryObj: normalizeSummaryRowToCards_(summaryRow),
+    raw,
+  };
 }
 
 async function fetchLatestSummaryDetailPerf_(techNo) {
   const baseUrl = config.DETAIL_PERF_API_URL || config.REPORT_API_URL;
   if (!baseUrl) throw new Error("CONFIG_DETAIL_PERF_API_URL_MISSING");
-  const q = "mode=getLatestSummary_v1&techNo=" + encodeURIComponent(techNo);
+
+  const q =
+    "mode=getLatestSummary_v1" +
+    "&techNo=" +
+    encodeURIComponent(techNo) +
+    "&_ts=" +
+    encodeURIComponent(String(Date.now()));
+
   const url = withQuery(baseUrl, q);
-  const raw = await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_PERF_LATEST");
-  return normLatestDetailPerf_(raw);
+  const raw = await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_LATEST");
+
+  const ok = !!(raw && raw.ok === true);
+  const empty = ok && String(raw.result || "") === "empty";
+  const summaryRow = (raw && raw.summaryRow) || null;
+
+  return {
+    ok,
+    empty,
+    source: "DETAIL_PERF",
+    techNo: normalizeTechNo(raw && raw.techNo ? raw.techNo : techNo),
+    lastUpdatedAt: String((raw && raw.lastUpdatedAt) || ""),
+    rangeKey: String((raw && raw.rangeKey) || ""),
+    summaryObj: normalizeSummaryRowToCards_(summaryRow),
+    raw,
+  };
 }
 
+/** 把 GAS summaryRow（可能是扁平欄位）轉成 {排班:{單數..}, 老點:{..}, 總計:{..}} */
+function normalizeSummaryRowToCards_(summaryRow) {
+  if (!summaryRow || typeof summaryRow !== "object") return null;
+
+  // 已經是卡片格式
+  if (summaryRow["排班"] && summaryRow["老點"] && summaryRow["總計"]) return summaryRow;
+
+  const coerceCard = (prefix) => ({
+    單數: Number(summaryRow[`${prefix}_單數`] ?? 0) || 0,
+    筆數: Number(summaryRow[`${prefix}_筆數`] ?? 0) || 0,
+    數量: Number(summaryRow[`${prefix}_數量`] ?? 0) || 0,
+    金額: Number(summaryRow[`${prefix}_金額`] ?? 0) || 0,
+  });
+
+  const hasAny =
+    summaryRow["排班_單數"] !== undefined ||
+    summaryRow["老點_單數"] !== undefined ||
+    summaryRow["總計_單數"] !== undefined ||
+    summaryRow["總計_金額"] !== undefined;
+
+  if (!hasAny) return null;
+
+  return {
+    排班: coerceCard("排班"),
+    老點: coerceCard("老點"),
+    總計: coerceCard("總計"),
+  };
+}
+
+/** 同時抓兩張 latest summary，選「有資料且較新」那張 */
 async function fetchAndCompareLatestSummaries_(techNo) {
+  // ✅ 永遠兩張都打
   const [a, b] = await Promise.allSettled([fetchLatestSummaryReport_(techNo), fetchLatestSummaryDetailPerf_(techNo)]);
   const reportLatest = a.status === "fulfilled" ? a.value : { ok: false, error: String(a.reason || "REPORT_LATEST_FAILED") };
   const detailLatest = b.status === "fulfilled" ? b.value : { ok: false, error: String(b.reason || "DETAIL_LATEST_FAILED") };
 
+  const reportHas = hasSummaryData_(reportLatest);
+  const detailHas = hasSummaryData_(detailLatest);
+
+  let chosen = null;
+  let chosenSource = "";
+
+  if (reportHas && detailHas) {
+    const rm = parseTpeLastUpdatedMs_(reportLatest.lastUpdatedAt);
+    const dm = parseTpeLastUpdatedMs_(detailLatest.lastUpdatedAt);
+    const pickReport = rm >= dm;
+    chosen = pickReport ? reportLatest : detailLatest;
+    chosenSource = pickReport ? "REPORT" : "DETAIL_PERF";
+  } else if (reportHas) {
+    chosen = reportLatest;
+    chosenSource = "REPORT";
+  } else if (detailHas) {
+    chosen = detailLatest;
+    chosenSource = "DETAIL_PERF";
+  }
+
   let diffs = [];
-  if (reportLatest.ok && detailLatest.ok && !reportLatest.empty && !detailLatest.empty) diffs = compareLatest_(reportLatest, detailLatest);
+  if (reportHas && detailHas) diffs = compareLatest_(reportLatest, detailLatest);
 
   if (PERF_COMPARE_LATEST_DEBUG) {
     console.table([
       {
         techNo,
-        REPORT_ok: reportLatest.ok,
-        REPORT_dateKey: reportLatest.dateKey || "",
+        REPORT_ok: !!reportLatest.ok,
+        REPORT_empty: !!reportLatest.empty,
         REPORT_lastUpdatedAt: reportLatest.lastUpdatedAt || "",
-        REPORT_detailCount: reportLatest.detailCount ?? "",
-        DETAIL_ok: detailLatest.ok,
-        DETAIL_rangeKey: detailLatest.rangeKey || "",
+        REPORT_dateKey: reportLatest.dateKey || "",
+        REPORT_hasData: reportHas,
+        DETAIL_ok: !!detailLatest.ok,
+        DETAIL_empty: !!detailLatest.empty,
         DETAIL_lastUpdatedAt: detailLatest.lastUpdatedAt || "",
-        DETAIL_detailCount: detailLatest.detailCount ?? "",
+        DETAIL_rangeKey: detailLatest.rangeKey || "",
+        DETAIL_hasData: detailHas,
+        CHOSEN: chosenSource || "NONE",
         DIFFS: diffs.length,
       },
     ]);
-    if (diffs.length) console.log("[Perf] Latest Summary DIFFS:", diffs);
+    if (diffs.length) console.log("[Performance] Latest Summary DIFFS:", diffs);
   }
 
-  return { reportLatest, detailLatest, diffs };
+  return { reportLatest, detailLatest, diffs, chosen, chosenSource, reportHas, detailHas };
 }
 
 /* =========================
@@ -604,16 +679,15 @@ async function renderFromCache_(mode, info) {
   if (m === "summary") {
     renderDetailHeader_("summary");
     const c = perfCache_.summary;
+
     setMeta_((c && c.meta) || "—");
     setBadge_("已更新", false);
 
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c?.summaryHtml || summaryRowsHtml_(c?.summaryObj || null);
 
-    if (c?.detailAggHtml) applyDetailTableHtml_(c.detailAggHtml, Number(c.detailAggCount || 0) || 0);
-    else {
-      const tmp = detailSummaryRowsHtml_(c?.detailAgg || []);
-      applyDetailTableHtml_(tmp.html, tmp.count);
-    }
+    // Summary 模式：detail 表格不一定有資料，這裡維持空
+    applyDetailTableHtml_("", 0);
+
     return { ok: true, rendered: "summary" };
   }
 
@@ -661,48 +735,51 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
   const summaryP = fetchSummary
     ? (async () => {
-        if (showToast) showLoadingHint(`查詢業績統計中…（讀取 GAS 最新）`);
+        if (showToast) showLoadingHint(`查詢業績統計中…（兩張 GAS 最新）`);
 
-        // ✅ 直接讀 REPORT getLatestSummary_v1；可選：同時比較 DETAIL_PERF latest
-        let rep = null;
-        let diffs = [];
-        let det = null;
-
-        if (PERF_COMPARE_LATEST_ENABLED) {
-          const cmp = await fetchAndCompareLatestSummaries_(techNo);
-          rep = cmp.reportLatest;
-          det = cmp.detailLatest;
-          diffs = Array.isArray(cmp.diffs) ? cmp.diffs : [];
-        } else {
-          rep = await fetchLatestSummaryReport_(techNo);
+        let cmp = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            cmp = PERF_COMPARE_LATEST_ENABLED
+              ? await fetchAndCompareLatestSummaries_(techNo)
+              : { chosen: await fetchLatestSummaryReport_(techNo), chosenSource: "REPORT", diffs: [], reportHas: true, detailHas: false };
+            break;
+          } catch (e) {
+            if (attempt === 0) await sleep_(400);
+            else throw e;
+          }
         }
 
-        if (!rep || !rep.ok) throw new Error(String((rep && rep.error) || "REPORT_LATEST_FAILED"));
-        if (rep.empty) throw new Error("REPORT_LATEST_EMPTY");
+        const chosen = cmp && cmp.chosen ? cmp.chosen : null;
+        const summaryObj = chosen ? chosen.summaryObj || null : null; // ✅ 兩張都無 -> null -> UI 顯示 查無總覽資料
 
         const compareHint =
-          PERF_COMPARE_LATEST_ENABLED && det && det.ok
-            ? diffs.length
-              ? `｜⚠ Summary不一致(${diffs.length})`
+          PERF_COMPARE_LATEST_ENABLED && cmp && cmp.reportHas && cmp.detailHas
+            ? cmp.diffs.length
+              ? `｜⚠ Summary不一致(${cmp.diffs.length})`
               : `｜✓ Summary一致`
             : "";
 
+        const src = chosen ? `${cmp.chosenSource}(getLatestSummary_v1)` : "無（兩張皆無資料）";
+        const dateLabel = chosen
+          ? chosen.source === "REPORT"
+            ? (chosen.dateKey ? `日期 ${chosen.dateKey}` : "")
+            : (chosen.rangeKey ? `區間 ${chosen.rangeKey}` : "")
+          : "";
+
         const meta = [
-          `師傅：${rep.techNo || techNo}`,
-          `統計來源：REPORT(getLatestSummary_v1) 日期 ${rep.dateKey || "?"}`,
-          rep.lastUpdatedAt ? `最後更新：${rep.lastUpdatedAt}` : "",
+          `師傅：${(chosen && chosen.techNo) || techNo}`,
+          `統計來源：${src}${dateLabel ? " " + dateLabel : ""}`,
+          chosen && chosen.lastUpdatedAt ? `最後更新：${chosen.lastUpdatedAt}` : "",
           compareHint,
         ]
           .filter(Boolean)
           .join(" ｜ ");
 
-        // REPORT latest 只回 summaryRow（沒有 detailAgg）
         return {
           meta,
-          summaryObj: rep.summaryObj || null,
-          detailAgg: [],
-          latestReportDateKey: rep.dateKey || "",
-          latestCompareDiffs: diffs,
+          summaryObj,
+          summaryHtml: summaryRowsHtml_(summaryObj),
         };
       })()
     : Promise.resolve({ skipped: true });
@@ -736,7 +813,16 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
         const maxKey = getMaxDetailDateKey_(rowsAll);
         const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
 
-        return { meta, summaryObj: rr.summary, detailRows: filtered, maxDetailDateKey: maxKey };
+        const tmp = detailRowsHtml_(filtered);
+
+        return {
+          meta,
+          summaryObj: rr.summary || null,
+          summaryHtml: summaryRowsHtml_(rr.summary || null),
+          detailRows: filtered,
+          detailRowsHtml: tmp.html,
+          detailRowsCount: tmp.count,
+        };
       })()
     : Promise.resolve({ skipped: true });
 
@@ -746,12 +832,10 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
     if (sumRes.status === "fulfilled") {
       const v = sumRes.value;
       if (!(v && v.skipped)) {
-        const tmp = detailSummaryRowsHtml_(v.detailAgg || []);
         perfCache_.summary = {
-          ...v,
-          summaryHtml: summaryRowsHtml_(v.summaryObj || null),
-          detailAggHtml: tmp.html,
-          detailAggCount: tmp.count,
+          meta: v.meta,
+          summaryObj: v.summaryObj || null,
+          summaryHtml: v.summaryHtml || summaryRowsHtml_(v.summaryObj || null),
         };
       }
     }
@@ -759,13 +843,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
     if (detRes.status === "fulfilled") {
       const v = detRes.value;
       if (!(v && v.skipped)) {
-        const tmp = detailRowsHtml_(v.detailRows || []);
-        perfCache_.detail = {
-          ...v,
-          summaryHtml: summaryRowsHtml_(v.summaryObj || null),
-          detailRowsHtml: tmp.html,
-          detailRowsCount: tmp.count,
-        };
+        perfCache_.detail = v;
       }
     }
 
@@ -851,7 +929,9 @@ async function fetchDetailPerf_(techNo, startKey, endKey) {
     "&startKey=" +
     encodeURIComponent(startKey) +
     "&endKey=" +
-    encodeURIComponent(endKey);
+    encodeURIComponent(endKey) +
+    "&_ts=" +
+    encodeURIComponent(String(Date.now())); // ✅ 避免快取
 
   const url = withQuery(baseUrl, q);
   return await fetchJsonWithTimeout_(url, PERF_FETCH_TIMEOUT_MS, "DETAIL_PERF");
@@ -938,7 +1018,8 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
     if (msg.includes("CONFIG_REPORT_API_URL_MISSING")) setBadge_("尚未設定 REPORT_API_URL", true);
     else if (msg.includes("CONFIG_DETAIL_PERF_API_URL_MISSING")) setBadge_("尚未設定 DETAIL_PERF_API_URL", true);
     else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
-    else if (msg.includes("REPORT_TIMEOUT") || msg.includes("DETAIL_PERF_TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
+    else if (msg.includes("REPORT_TIMEOUT") || msg.includes("DETAIL_PERF_TIMEOUT") || msg.includes("REPORT_LATEST_TIMEOUT") || msg.includes("DETAIL_LATEST_TIMEOUT"))
+      setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("同步失敗", true);
     return res;
   }
@@ -952,11 +1033,4 @@ export function onShowPerformance() {
   showError_(false);
   void renderFromCache_(perfSelectedMode_);
   hideLoadingHint();
-}
-
-/** ✅ Debug: 手動比較兩張 GAS 最新 Summary（Console 用） */
-export async function debugCompareLatestSummaries() {
-  const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
-  if (!techNo) return { ok: false, error: "NOT_MASTER" };
-  return await fetchAndCompareLatestSummaries_(techNo);
 }
