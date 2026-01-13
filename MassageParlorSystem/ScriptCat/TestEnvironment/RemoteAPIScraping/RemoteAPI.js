@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS P_DETAIL Network Capture -> GAS
 // @namespace    https://local/
-// @version      2.1
+// @version      2.2
 // @description  Capture fetch/XHR responses on #/performance?tab=P_DETAIL and send matched payload to GAS (dedupe + SPA-safe)
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
