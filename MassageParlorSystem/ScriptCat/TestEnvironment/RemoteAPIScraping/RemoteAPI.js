@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS Capture (MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze
 // @namespace    https://local/
-// @version      3.5
+// @version      3.6
 // @description  Capture XHR/fetch on 3 pages (#/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
