@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS P_DETAIL Capture + Analyze -> GAS (FULL)
 // @namespace    https://local/
-// @version      3.0
+// @version      3.1
 // @description  Capture XHR/fetch on #/performance?tab=P_DETAIL; store to NetworkCapture GAS; ALSO forward /api/performance/total/{storeId} (200) response to Analyze GAS to write summary/items tables.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
