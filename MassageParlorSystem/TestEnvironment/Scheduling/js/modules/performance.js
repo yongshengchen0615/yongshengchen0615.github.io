@@ -1,5 +1,5 @@
 /**
- * performance.js（完整可貼版本）
+ * performance.js（完整可貼版本 / 已整合你最後需求）
  *
  * ✅ 功能重點（你要的版本）：
  * 1) 明細查詢：改用 startKey/endKey 呼叫 GAS（DETAIL_PERF）
@@ -9,6 +9,10 @@
  *    - ✅ 只有兩張都沒資料 → 才顯示「查無總覽資料。」
  *    - ✅ 兩張都有資料 → 才做 diff（console）
  * 3) UI 日期輸入：支援 YYYY/MM/DD，自動轉成 YYYY-MM-DD
+ * 4) ✅ Summary 表（類別/單數/筆數/數量/金額）：
+ *    - 只顯示「最後一次成功載入的 Summary」
+ *    - 切換「業績統計/業績明細」不會改動 Summary
+ *    - 只有「手動重整」才會更新 Summary/Detail
  */
 
 import { dom } from "./dom.js";
@@ -69,8 +73,8 @@ let perfPrefetchInFlight_ = null;
 const perfCache_ = {
   summaryKey: "",
   detailKey: "",
-  summary: null,
-  detail: null,
+  summary: null, // { meta, summaryObj, summaryHtml, source, lastUpdatedAt }
+  detail: null, // { meta, summaryObj, summaryHtml, detailRows, detailRowsHtml, detailRowsCount }
 };
 
 /* =========================
@@ -217,6 +221,10 @@ function summaryRowsHtml_(summaryObj) {
   return cards
     .map(({ label, card }) => `<tr>${td(label)}${td(card.單數 ?? 0)}${td(card.筆數 ?? 0)}${td(card.數量 ?? 0)}${td(card.金額 ?? 0)}</tr>`)
     .join("");
+}
+
+function summaryNotLoadedHtml_() {
+  return '<tr><td colspan="5" style="color:var(--text-sub);">尚未載入（請按手動重整）</td></tr>';
 }
 
 function detailSummaryRowsHtml_(detailRows) {
@@ -425,19 +433,12 @@ function makePerfDetailKey_(techNo, startKey, endKey) {
  * ✅ Latest Summary Compare / Choose
  * ========================= */
 
-/** Summary 是否「有資料」：有 summaryObj 就算（你也可改成必須非 0） */
+/** Summary 是否「有資料」：只要能轉出卡片就算有 */
 function hasSummaryData_(x) {
   if (!x || !x.ok || x.empty) return false;
   const s = x.summaryObj;
   if (!s || typeof s !== "object") return false;
-
-  // 只要存在任何卡片就算有資料
-  const keys = ["排班", "老點", "總計"];
-  for (const k of keys) {
-    const card = s[k];
-    if (card && typeof card === "object") return true;
-  }
-  return false;
+  return !!(s["排班"] || s["老點"] || s["總計"]);
 }
 
 /** 解析 lastUpdatedAt（yyyy/MM/dd HH:mm:ss）為 ms；失敗回 0 */
@@ -543,13 +544,6 @@ function normalizeSummaryRowToCards_(summaryRow) {
   // 已經是卡片格式
   if (summaryRow["排班"] && summaryRow["老點"] && summaryRow["總計"]) return summaryRow;
 
-  const coerceCard = (prefix) => ({
-    單數: Number(summaryRow[`${prefix}_單數`] ?? 0) || 0,
-    筆數: Number(summaryRow[`${prefix}_筆數`] ?? 0) || 0,
-    數量: Number(summaryRow[`${prefix}_數量`] ?? 0) || 0,
-    金額: Number(summaryRow[`${prefix}_金額`] ?? 0) || 0,
-  });
-
   const hasAny =
     summaryRow["排班_單數"] !== undefined ||
     summaryRow["老點_單數"] !== undefined ||
@@ -558,6 +552,13 @@ function normalizeSummaryRowToCards_(summaryRow) {
 
   if (!hasAny) return null;
 
+  const coerceCard = (prefix) => ({
+    單數: Number(summaryRow[`${prefix}_單數`] ?? 0) || 0,
+    筆數: Number(summaryRow[`${prefix}_筆數`] ?? 0) || 0,
+    數量: Number(summaryRow[`${prefix}_數量`] ?? 0) || 0,
+    金額: Number(summaryRow[`${prefix}_金額`] ?? 0) || 0,
+  });
+
   return {
     排班: coerceCard("排班"),
     老點: coerceCard("老點"),
@@ -565,9 +566,8 @@ function normalizeSummaryRowToCards_(summaryRow) {
   };
 }
 
-/** 同時抓兩張 latest summary，選「有資料且較新」那張 */
+/** 同時抓兩張 latest summary，選「有資料且較新」那張；兩張都有才 diff */
 async function fetchAndCompareLatestSummaries_(techNo) {
-  // ✅ 永遠兩張都打
   const [a, b] = await Promise.allSettled([fetchLatestSummaryReport_(techNo), fetchLatestSummaryDetailPerf_(techNo)]);
   const reportLatest = a.status === "fulfilled" ? a.value : { ok: false, error: String(a.reason || "REPORT_LATEST_FAILED") };
   const detailLatest = b.status === "fulfilled" ? b.value : { ok: false, error: String(b.reason || "DETAIL_LATEST_FAILED") };
@@ -581,7 +581,7 @@ async function fetchAndCompareLatestSummaries_(techNo) {
   if (reportHas && detailHas) {
     const rm = parseTpeLastUpdatedMs_(reportLatest.lastUpdatedAt);
     const dm = parseTpeLastUpdatedMs_(detailLatest.lastUpdatedAt);
-    const pickReport = rm >= dm;
+    const pickReport = rm >= dm; // 若 dm=0/解析失敗，rm>=dm 仍可保底
     chosen = pickReport ? reportLatest : detailLatest;
     chosenSource = pickReport ? "REPORT" : "DETAIL_PERF";
   } else if (reportHas) {
@@ -593,7 +593,7 @@ async function fetchAndCompareLatestSummaries_(techNo) {
   }
 
   let diffs = [];
-  if (reportHas && detailHas) diffs = compareLatest_(reportLatest, detailLatest);
+  if (PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas) diffs = compareLatest_(reportLatest, detailLatest);
 
   if (PERF_COMPARE_LATEST_DEBUG) {
     console.table([
@@ -621,6 +621,7 @@ async function fetchAndCompareLatestSummaries_(techNo) {
 
 /* =========================
  * Render from cache
+ * ✅ 切換模式不抓資料，只渲染快取
  * ========================= */
 
 async function renderFromCache_(mode, info) {
@@ -631,9 +632,17 @@ async function renderFromCache_(mode, info) {
   if (!techNo) {
     setBadge_("你不是師傅（無法查詢）", true);
     setMeta_("—");
-    renderSummary_(null);
-    if (m === "detail") renderDetailRows_([]);
-    else renderDetailSummary_([]);
+
+    if (perfCache_.summary && dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
+    else if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+
+    if (m === "detail") {
+      renderDetailHeader_("detail");
+      renderDetailRows_([]);
+    } else {
+      renderDetailHeader_("summary");
+      applyDetailTableHtml_("", 0);
+    }
     return { ok: false, error: "NOT_MASTER" };
   }
 
@@ -641,7 +650,11 @@ async function renderFromCache_(mode, info) {
   if (m === "detail" && (!r || !r.ok)) {
     setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
     setMeta_("—");
-    renderSummary_(null);
+
+    if (perfCache_.summary && dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
+    else if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+
+    renderDetailHeader_("detail");
     renderDetailRows_([]);
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
@@ -652,63 +665,54 @@ async function renderFromCache_(mode, info) {
   const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
   const hasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
 
-  if (m === "summary" && !hasSummary) await reloadAndCache_({ ok: true, techNo }, { showToast: true, fetchSummary: true, fetchDetail: false });
-  if (m === "detail" && !hasDetail) await reloadAndCache_(r, { showToast: true, fetchSummary: false, fetchDetail: true });
-
-  const nowHasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
-  const nowHasDetail = m === "detail" ? perfCache_.detailKey === detailKey && !!perfCache_.detail : false;
-
-  if (m === "summary" && !nowHasSummary) {
-    setBadge_(perfPrefetchInFlight_ ? "業績載入中…" : "尚未載入（請按手動重整）", !perfPrefetchInFlight_);
-    setMeta_(`師傅：${techNo} ｜ 統計：讀取 GAS 最新`);
-    renderDetailHeader_("summary");
-    renderSummary_(null);
-    renderDetailSummary_([]);
-    return { ok: false, error: "CACHE_MISS_SUMMARY" };
-  }
-
-  if (m === "detail" && !nowHasDetail) {
-    setBadge_(perfPrefetchInFlight_ ? "業績載入中…" : "尚未載入（請按手動重整）", !perfPrefetchInFlight_);
-    setMeta_(`師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey}`);
-    renderDetailHeader_("detail");
-    renderSummary_(null);
-    renderDetailRows_([]);
-    return { ok: false, error: "CACHE_MISS_DETAIL" };
+  // ✅ Summary 永遠顯示最後一次成功載入（不因切換而變）
+  if (dom.perfSummaryRowsEl) {
+    if (hasSummary) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
+    else dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
   }
 
   if (m === "summary") {
     renderDetailHeader_("summary");
-    const c = perfCache_.summary;
 
-    setMeta_((c && c.meta) || "—");
-    setBadge_("已更新", false);
+    if (hasSummary) {
+      const c = perfCache_.summary;
+      setMeta_(c.meta || `師傅：${techNo} ｜ 統計：快取`);
+      setBadge_("已載入（快取）", false);
+    } else {
+      setMeta_(`師傅：${techNo} ｜ 統計：尚未載入`);
+      setBadge_("尚未載入（請按手動重整）", true);
+    }
 
-    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c?.summaryHtml || summaryRowsHtml_(c?.summaryObj || null);
-
-    // Summary 模式：detail 表格不一定有資料，這裡維持空
+    // Summary 模式：不動明細表（留空）
     applyDetailTableHtml_("", 0);
-
-    return { ok: true, rendered: "summary" };
+    return { ok: !!hasSummary, rendered: "summary", cached: true };
   }
 
+  // Detail 模式
   renderDetailHeader_("detail");
-  const c = perfCache_.detail;
 
-  setMeta_((c && c.meta) || "—");
-  setBadge_("已更新", false);
+  if (hasDetail) {
+    const c = perfCache_.detail;
+    setMeta_(c.meta || `師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey} ｜ 快取`);
+    setBadge_("已載入（快取）", false);
 
-  if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = c?.summaryHtml || summaryRowsHtml_(c?.summaryObj || null);
-
-  if (c?.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
-  else {
-    const tmp = detailRowsHtml_(c?.detailRows || []);
-    applyDetailTableHtml_(tmp.html, tmp.count);
+    if (c.detailRowsHtml) applyDetailTableHtml_(c.detailRowsHtml, Number(c.detailRowsCount || 0) || 0);
+    else {
+      const tmp = detailRowsHtml_(c.detailRows || []);
+      applyDetailTableHtml_(tmp.html, tmp.count);
+    }
+    return { ok: true, rendered: "detail", cached: true };
   }
-  return { ok: true, rendered: "detail" };
+
+  setMeta_(`師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey}`);
+  setBadge_("明細尚未載入（請按手動重整）", true);
+  renderDetailRows_([]);
+  return { ok: false, rendered: "detail", cached: false };
 }
 
 /* =========================
  * Reload / cache
+ * ✅ 只有「手動重整」才會呼叫
  * ========================= */
 
 function sleep_(ms) {
@@ -735,14 +739,12 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
   const summaryP = fetchSummary
     ? (async () => {
-        if (showToast) showLoadingHint(`查詢業績統計中…（兩張 GAS 最新）`);
+        if (showToast) showLoadingHint(`查詢業績統計中…（兩張 GAS 最新 Summary）`);
 
         let cmp = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            cmp = PERF_COMPARE_LATEST_ENABLED
-              ? await fetchAndCompareLatestSummaries_(techNo)
-              : { chosen: await fetchLatestSummaryReport_(techNo), chosenSource: "REPORT", diffs: [], reportHas: true, detailHas: false };
+            cmp = await fetchAndCompareLatestSummaries_(techNo);
             break;
           } catch (e) {
             if (attempt === 0) await sleep_(400);
@@ -751,10 +753,14 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
         }
 
         const chosen = cmp && cmp.chosen ? cmp.chosen : null;
-        const summaryObj = chosen ? chosen.summaryObj || null : null; // ✅ 兩張都無 -> null -> UI 顯示 查無總覽資料
+        const reportHas = !!(cmp && cmp.reportHas);
+        const detailHas = !!(cmp && cmp.detailHas);
+
+        // ✅ 只有兩張都沒資料 → summaryObj=null 才顯示「查無總覽資料」
+        const summaryObj = chosen ? chosen.summaryObj || null : null;
 
         const compareHint =
-          PERF_COMPARE_LATEST_ENABLED && cmp && cmp.reportHas && cmp.detailHas
+          PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas
             ? cmp.diffs.length
               ? `｜⚠ Summary不一致(${cmp.diffs.length})`
               : `｜✓ Summary一致`
@@ -780,6 +786,8 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
           meta,
           summaryObj,
           summaryHtml: summaryRowsHtml_(summaryObj),
+          source: chosen ? chosen.source : "NONE",
+          lastUpdatedAt: chosen && chosen.lastUpdatedAt ? String(chosen.lastUpdatedAt) : "",
         };
       })()
     : Promise.resolve({ skipped: true });
@@ -836,15 +844,15 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
           meta: v.meta,
           summaryObj: v.summaryObj || null,
           summaryHtml: v.summaryHtml || summaryRowsHtml_(v.summaryObj || null),
+          source: v.source || "",
+          lastUpdatedAt: v.lastUpdatedAt || "",
         };
       }
     }
 
     if (detRes.status === "fulfilled") {
       const v = detRes.value;
-      if (!(v && v.skipped)) {
-        perfCache_.detail = v;
-      }
+      if (!(v && v.skipped)) perfCache_.detail = v;
     }
 
     if (!perfCache_.summary && !perfCache_.detail) {
@@ -868,7 +876,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
 function renderSummary_(summaryObj) {
   if (!dom.perfSummaryRowsEl) return;
-  dom.perfSummaryRowsEl.innerHTML = summaryObj ? summaryRowsHtml_(summaryObj) : '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
+  dom.perfSummaryRowsEl.innerHTML = summaryObj ? summaryRowsHtml_(summaryObj) : summaryNotLoadedHtml_();
 }
 
 function renderDetailSummary_(detailRows) {
@@ -970,33 +978,23 @@ export function togglePerformanceCard() {}
 export function initPerformanceUi() {
   ensureDefaultDate_();
 
+  // ✅ 切換只 render 快取，不抓資料
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
 }
 
+/**
+ * ✅ 符合你規則：不允許 prefetch 自動更新 Summary
+ * （避免「不是手動重整」就改動 Summary）
+ */
 export async function prefetchPerformanceOnce() {
-  try {
-    if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
-
-    ensureDefaultDate_();
-    const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
-    if (!techNo) return { ok: false, skipped: "NOT_MASTER" };
-
-    const summaryKey = makePerfSummaryKey_(techNo);
-    if (perfCache_.summaryKey === summaryKey && perfCache_.summary) return { ok: true, cached: true };
-
-    perfPrefetchInFlight_ = reloadAndCache_({ ok: true, techNo }, { showToast: false, fetchSummary: true, fetchDetail: false });
-    const out = await perfPrefetchInFlight_;
-    return out && out.ok ? { ok: true, prefetched: true } : out;
-  } catch (e) {
-    console.error("[Performance] prefetch failed:", e);
-    return { ok: false, error: String(e && e.message ? e.message : e) };
-  } finally {
-    perfPrefetchInFlight_ = null;
-  }
+  return { ok: false, skipped: "PREFETCH_DISABLED" };
 }
 
+/**
+ * ✅ 唯一會抓最新資料的入口（手動重整）
+ */
 export async function manualRefreshPerformance({ showToast } = { showToast: true }) {
   if (String(state.feature && state.feature.performanceEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
   ensureDefaultDate_();
@@ -1018,8 +1016,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
     if (msg.includes("CONFIG_REPORT_API_URL_MISSING")) setBadge_("尚未設定 REPORT_API_URL", true);
     else if (msg.includes("CONFIG_DETAIL_PERF_API_URL_MISSING")) setBadge_("尚未設定 DETAIL_PERF_API_URL", true);
     else if (msg.includes("LOCKED_TRY_LATER")) setBadge_("系統忙碌，請稍後再試", true);
-    else if (msg.includes("REPORT_TIMEOUT") || msg.includes("DETAIL_PERF_TIMEOUT") || msg.includes("REPORT_LATEST_TIMEOUT") || msg.includes("DETAIL_LATEST_TIMEOUT"))
-      setBadge_("查詢逾時，請稍後再試", true);
+    else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("同步失敗", true);
     return res;
   }
