@@ -1,24 +1,25 @@
 /**
  * performance.js（完整可貼版本 / ✅ 登入時預載到快取、改日期直接從快取切範圍、手動重整才更新）
  *
- * ✅ 最終行為（已整合你指定「兩者都要」最穩方案）：
+ * ✅ 最終行為（已整合 + 修正三卡來源）：
  * 1) 登入時（prefetchPerformanceOnce）預載：
- *    - 會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選，且 bypassCache=1）
- *    - 會抓 Detail（startKey/endKey）但「快取存 allRows 原始明細」
+ *    - 會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
+ *    - 會抓 Detail（startKey/endKey）並「快取存 allRows 原始明細」
  *
  * 2) 進入業績面板（onShowPerformance）：
  *    - 只 render 快取，不打 API
  *
  * 3) 修改開始/結束日期：
- *    - 直接從快取 allRows 做 filter 顯示，不需要手動重整
+ *    - 直接從快取 allRows 做 filter 顯示（detail 表格 + 統計頁服務彙總）
  *    - 若選到超出 allRows 的最新日（maxKey），就顯示「全部 allRows」
  *
  * 4) 只有按「手動重整」：
  *    - 才會重新抓最新 Summary + Detail，更新快取
  *
- * ✅ 關鍵修正（最穩）：
- * - 三卡（排班/老點/總計）「優先改用 allRows 計算」→ 永遠與明細一致
- * - latest summary fetch 加 bypassCache=1（需 GAS 端也支援）
+ * ✅ 關鍵修正（你現在遇到的錯誤）：
+ * - 三卡（排班/老點/總計）「永遠以 GAS summaryRow 對應的卡片」為準：
+ *   優先順序：DETAIL 快取 summaryObj（與 allRows 同步） > LATEST summary 快取 > 尚未載入
+ * - 不再用 allRows 自算三卡，避免跟 GAS 的「單數/筆數/數量/金額」定義不一致造成顯示錯誤
  */
 
 import { dom } from "./dom.js";
@@ -418,7 +419,7 @@ function getMaxDetailDateKey_(detailRows) {
 }
 
 /**
- * ✅ 你指定規則：
+ * ✅ 規則：
  * - 範圍超出 allRows 的最新日 maxKey → 直接顯示全部 rows
  */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
@@ -440,78 +441,7 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 }
 
 /* =========================
- * ✅ Cards Summary (from detail cache allRows)
- * - 讓三卡永遠與明細一致（最穩）
- * ========================= */
-
-function buildCardsSummaryFromDetail_(detailRows) {
-  const rows = Array.isArray(detailRows) ? detailRows : [];
-
-  const initCard = () => ({
-    單數: 0, // unique 訂單編號
-    筆數: 0, // rows count
-    數量: 0,
-    金額: 0,
-    _orders: new Set(), // internal
-  });
-
-  const out = {
-    排班: initCard(),
-    老點: initCard(),
-    總計: initCard(),
-  };
-
-  function bucket_(r) {
-    const v = String((r && r["拉牌"]) || "").trim();
-    // ✅ 更嚴謹：優先判斷關鍵詞（避免「排」被其他字誤判）
-    if (v.includes("老點") || v.includes("老")) return "老點";
-    if (v.includes("排班") || v.includes("排")) return "排班";
-    return "其他";
-  }
-
-  function addRow_(card, r) {
-    card.筆數 += 1;
-
-    const orderNo = String((r && r["訂單編號"]) || "").trim();
-    if (orderNo) card._orders.add(orderNo);
-
-    const qty = Number((r && r["數量"]) ?? 0) || 0;
-    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
-
-    card.數量 += qty;
-    card.金額 += amount;
-  }
-
-  for (const r of rows) {
-    const b = bucket_(r);
-    if (b !== "老點" && b !== "排班") continue;
-
-    addRow_(out[b], r);
-    addRow_(out.總計, r);
-  }
-
-  // 單數 = unique 訂單編號數
-  out.排班.單數 = out.排班._orders.size;
-  out.老點.單數 = out.老點._orders.size;
-  out.總計.單數 = out.總計._orders.size;
-
-  // cleanup internal
-  delete out.排班._orders;
-  delete out.老點._orders;
-  delete out.總計._orders;
-
-  // ✅ 避免浮點尾巴（例如 54.499999999）
-  const fix1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
-  out.排班.數量 = fix1(out.排班.數量);
-  out.老點.數量 = fix1(out.老點.數量);
-  out.總計.數量 = fix1(out.總計.數量);
-
-  return out;
-}
-
-
-/* =========================
- * ✅ Service Summary (from detail cache)
+ * ✅ Service Summary (from detail cache) - 統計頁表格用
  * ========================= */
 
 function buildServiceSummaryFromDetail_(detailRows) {
@@ -565,6 +495,36 @@ function buildServiceSummaryFromDetail_(detailRows) {
   }
 
   return Array.from(map.values()).sort((a, b) => (Number(b["總計金額"]) || 0) - (Number(a["總計金額"]) || 0));
+}
+
+/* =========================
+ * ✅ 三卡來源統一（關鍵修正）
+ * ========================= */
+
+function pickBestCardsForUi_({ techNo }) {
+  // 1) 優先：Detail 快取的 summaryObj（與 allRows 同步、同一份 DetailPerf）
+  if (
+    perfCache_.detail &&
+    perfCache_.detail.techNo === techNo &&
+    perfCache_.detail.summaryObj &&
+    typeof perfCache_.detail.summaryObj === "object" &&
+    (perfCache_.detail.summaryObj["總計"] || perfCache_.detail.summaryObj["排班"] || perfCache_.detail.summaryObj["老點"])
+  ) {
+    return { cards: perfCache_.detail.summaryObj, source: "DETAIL_CACHE_SUMMARY", lastUpdatedAt: perfCache_.detail.lastUpdatedAt || "" };
+  }
+
+  // 2) 次要：Latest Summary 快取（report/detail latest compare 的 chosen）
+  if (
+    perfCache_.summary &&
+    perfCache_.summary.summaryObj &&
+    typeof perfCache_.summary.summaryObj === "object" &&
+    (perfCache_.summary.summaryObj["總計"] || perfCache_.summary.summaryObj["排班"] || perfCache_.summary.summaryObj["老點"])
+  ) {
+    return { cards: perfCache_.summary.summaryObj, source: "LATEST_SUMMARY", lastUpdatedAt: perfCache_.summary.lastUpdatedAt || "" };
+  }
+
+  // 3) 沒有就回 null（避免用 allRows 自算造成跟 GAS 不一致）
+  return { cards: null, source: "NONE", lastUpdatedAt: "" };
 }
 
 /* =========================
@@ -625,7 +585,6 @@ function compareLatest_(a, b) {
 
 /* =========================
  * ✅ Latest Summary Fetch (ALWAYS HIT NETWORK)
- * - 加 bypassCache=1（需 GAS 支援）
  * ========================= */
 
 async function fetchLatestSummaryReport_(techNo) {
@@ -635,7 +594,6 @@ async function fetchLatestSummaryReport_(techNo) {
     "mode=getLatestSummary_v1" +
     "&techNo=" +
     encodeURIComponent(techNo) +
-    "&bypassCache=1" +
     "&_ts=" +
     encodeURIComponent(String(Date.now()));
 
@@ -666,7 +624,6 @@ async function fetchLatestSummaryDetailPerf_(techNo) {
     "mode=getLatestSummary_v1" +
     "&techNo=" +
     encodeURIComponent(techNo) +
-    "&bypassCache=1" +
     "&_ts=" +
     encodeURIComponent(String(Date.now()));
 
@@ -799,6 +756,7 @@ async function renderFromCache_(mode, info) {
   if (m === "detail" && (!r || !r.ok)) {
     setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
     setMeta_("—");
+
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
     renderDetailHeader_("detail");
@@ -809,7 +767,6 @@ async function renderFromCache_(mode, info) {
   const summaryKey = makePerfSummaryKey_(techNo);
   const detailKey = makePerfDetailKey_(techNo);
 
-  const hasSummary = perfCache_.summaryKey === summaryKey && !!perfCache_.summary;
   const hasDetailRaw =
     perfCache_.detailKey === detailKey &&
     !!perfCache_.detail &&
@@ -817,55 +774,26 @@ async function renderFromCache_(mode, info) {
     Array.isArray(perfCache_.detail.allRows) &&
     perfCache_.detail.allRows.length > 0;
 
+  // ✅ 三卡：永遠用 GAS summaryRow 對應的 cards（Detail cache 優先）
+  const pickedCards = pickBestCardsForUi_({ techNo });
+  if (dom.perfSummaryRowsEl) {
+    if (pickedCards.cards) dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(pickedCards.cards);
+    else dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+  }
+
   if (m === "summary") {
     renderDetailHeader_("summary");
 
-    // ✅ meta：有 allRows 就以明細更新時間為準（更符合你要的「永遠一致」）
-    if (hasDetailRaw) {
-      const c = perfCache_.detail;
-      setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
-      setBadge_("已載入（快取）", false);
-    } else if (hasSummary) {
-      const c = perfCache_.summary;
-      setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
-      setBadge_("已載入（快取）", false);
-    } else {
-      setMeta_(`師傅：${techNo} ｜ 統計：尚未載入`);
-      setBadge_("尚未載入（等待登入預載 / 或按手動重整）", true);
-    }
-
-    // ✅ 統計頁三卡：優先由明細 allRows 計算（與明細一致）
-    if (dom.perfSummaryRowsEl) {
-      const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
-      const rr = (() => {
-        try {
-          return readRangeFromInputs_();
-        } catch (_) {
-          return null;
-        }
-      })();
-
-      let baseForCards = baseAll;
-      if (rr && rr.ok && baseAll.length) {
-        const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
-        baseForCards = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
-      }
-
-      if (baseForCards.length) {
-        const cards = buildCardsSummaryFromDetail_(baseForCards);
-        dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(cards);
-      } else if (hasSummary) {
-        dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
-      } else {
-        dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
-      }
-    }
+    // meta：只顯示最後更新
+    const metaLast = pickedCards.lastUpdatedAt ? `最後更新：${pickedCards.lastUpdatedAt}` : "最後更新：—";
+    setMeta_(metaLast);
+    setBadge_(pickedCards.cards ? "已載入（快取）" : "尚未載入（請按手動重整）", !pickedCards.cards);
 
     // ✅ 統計頁表格：由明細快取計算服務彙總（不打 API）
     const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
     let baseForSummary = baseAll;
 
-    const rr2 = (() => {
+    const rr = (() => {
       try {
         return readRangeFromInputs_();
       } catch (_) {
@@ -873,9 +801,9 @@ async function renderFromCache_(mode, info) {
       }
     })();
 
-    if (rr2 && rr2.ok && baseAll.length) {
+    if (rr && rr.ok && baseAll.length) {
       const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
-      baseForSummary = filterDetailRowsByRange_(baseAll, rr2.startKey, rr2.endKey, maxKey);
+      baseForSummary = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
     }
 
     if (baseForSummary.length) {
@@ -899,14 +827,15 @@ async function renderFromCache_(mode, info) {
     const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
     const tmp = detailRowsHtml_(filtered);
 
-    setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
+    // meta：只顯示最後更新
+    setMeta_(c.lastUpdatedAt ? `最後更新：${c.lastUpdatedAt}` : "最後更新：—");
     setBadge_("已載入（快取切換）", false);
     applyDetailTableHtml_(tmp.html, tmp.count);
 
     return { ok: true, rendered: "detail", cached: true };
   }
 
-  setMeta_(`師傅：${techNo} ｜ 日期：${r.startKey} ~ ${r.endKey}`);
+  setMeta_("最後更新：—");
   setBadge_("明細尚未載入（等待登入預載 / 或按手動重整）", true);
   renderDetailRows_([]);
   return { ok: false, rendered: "detail", cached: false };
@@ -914,7 +843,7 @@ async function renderFromCache_(mode, info) {
 
 /* =========================
  * Reload / cache
- * - 手動重整 / 登入預載 會呼叫（抓最新 Summary+Detail）
+ * - 手動重整才會呼叫（抓最新 Summary+Detail）
  * ========================= */
 
 function sleep_(ms) {
@@ -960,14 +889,17 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         const summaryObj = chosen ? chosen.summaryObj || null : null;
 
-        void reportHas;
-        void detailHas;
-
-        // meta 只顯示最後更新時間（你指定）
-        const meta = `最後更新：${chosen && chosen.lastUpdatedAt ? chosen.lastUpdatedAt : "—"}`;
+        // diff 仍保留 console 用（UI 不顯示）
+        const compareHint =
+          PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas
+            ? cmp.diffs.length
+              ? `｜⚠ Summary不一致(${cmp.diffs.length})`
+              : `｜✓ Summary一致`
+            : "";
+        void compareHint;
 
         return {
-          meta,
+          meta: `最後更新：${chosen && chosen.lastUpdatedAt ? chosen.lastUpdatedAt : "—"}`,
           summaryObj,
           summaryHtml: summaryRowsHtml_(summaryObj),
           source: chosen ? chosen.source : "NONE",
@@ -997,17 +929,15 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         if (!rr || !rr.ok) throw new Error(lastErr || "BAD_RESPONSE");
 
-        const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
-
         // ✅ 關鍵：快取存 allRows（原始明細），render 時才做 range filter
         const rowsAll = Array.isArray(rr.detail) ? rr.detail : [];
         const maxKey = getMaxDetailDateKey_(rowsAll);
 
         return {
-          meta,
+          meta: `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`,
           techNo,
           lastUpdatedAt: rr.lastUpdatedAt || "",
-          summaryObj: rr.summary || null,
+          summaryObj: rr.summary || null, // ✅ 這份 summaryObj 會被三卡優先使用
           summaryHtml: summaryRowsHtml_(rr.summary || null),
           allRows: rowsAll,
           maxKey,
@@ -1082,6 +1012,8 @@ function normalizeDetailPerfResponse_(data) {
   });
 
   let summaryObj = summaryRow;
+
+  // ✅ 若是扁平欄位（排班_單數...）→ 轉成三卡物件
   if (summaryRow && !summaryRow["排班"] && (summaryRow["排班_單數"] !== undefined || summaryRow["總計_金額"] !== undefined)) {
     summaryObj = { 排班: coerceCard("排班"), 老點: coerceCard("老點"), 總計: coerceCard("總計") };
   }
