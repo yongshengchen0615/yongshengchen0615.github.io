@@ -24,7 +24,7 @@
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwy6RVFVpdzeaYyKJanWofiIc8bDfUsTVXI5l1wByO_CcOQpaCk2IGrYCyS2E1j5wk/exec",
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
-  "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbzuU4eN6-qchYYA43AMNdkiRXbjScOp_XMvrVi1G9AkBgNX3eWXNANNAnGF4sTD7Mnd/exec",
+  "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbwy6RVFVpdzeaYyKJanWofiIc8bDfUsTVXI5l1wByO_CcOQpaCk2IGrYCyS2E1j5wk/exec",
   "_comment_REPORT_API_URL": "（可選）師傅業績查詢用 GAS Web App URL（report Web App）。report.html 會用它讀取 Report_Summary/Report_Detail。",
 
   "DETAIL_PERF_API_URL": "https://script.google.com/macros/s/AKfycbzt0aElkjPdOBHz-e8_8EYqqpACNCfS-6pCSTxCfh8Ahf_ZcZSGKUdcTO1IoOCUfLypSA/exec",
