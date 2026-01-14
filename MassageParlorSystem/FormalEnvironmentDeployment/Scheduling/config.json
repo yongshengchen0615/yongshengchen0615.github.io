@@ -21,7 +21,7 @@
   "ENABLE_LINE_LOGIN": true,
   "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
 
-  "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbwy6RVFVpdzeaYyKJanWofiIc8bDfUsTVXI5l1wByO_CcOQpaCk2IGrYCyS2E1j5wk/exec",
+  "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
   "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
 
   "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbwy6RVFVpdzeaYyKJanWofiIc8bDfUsTVXI5l1wByO_CcOQpaCk2IGrYCyS2E1j5wk/exec",
