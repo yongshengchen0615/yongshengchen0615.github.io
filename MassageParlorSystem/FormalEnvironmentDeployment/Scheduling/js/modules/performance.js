@@ -1,25 +1,24 @@
 /**
- * performance.js（完整可貼版本 / ✅ 登入時預載到快取、改日期直接從快取切範圍、手動重整才更新）
+ * performance.js（完整可貼可覆蓋版本 / ✅ 登入時預載到快取、改日期即時用快取切範圍、手動重整才更新）
  *
- * ✅ 最終行為（已整合 + 修正三卡來源）：
+ * ✅ 最終行為（你最新要求：所有業績資料都依開始/結束日期，用明細快取 allRows 即時顯示）
  * 1) 登入時（prefetchPerformanceOnce）預載：
- *    - 會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
- *    - 會抓 Detail（startKey/endKey）並「快取存 allRows 原始明細」
+ *    - 抓 latest Summary（兩張 getLatestSummary_v1 比較挑選）✅ 仍會抓，但 UI 不再用它算三卡
+ *    - 抓 Detail（startKey/endKey）並「快取存 allRows 原始明細」
  *
  * 2) 進入業績面板（onShowPerformance）：
  *    - 只 render 快取，不打 API
  *
- * 3) 修改開始/結束日期：
- *    - 直接從快取 allRows 做 filter 顯示（detail 表格 + 統計頁服務彙總）
+ * 3) 修改開始/結束日期（即時切換顯示）：
+ *    - 明細表格：allRows → filter（依訂單日期）→ render
+ *    - 統計頁服務彙總：同一份 filter rows → 推算
+ *    - 三卡（排班/老點/總計）：同一份 filter rows → 推算（✅ 不再用 GAS summaryRow）
  *    - 若選到超出 allRows 的最新日（maxKey），就顯示「全部 allRows」
  *
  * 4) 只有按「手動重整」：
  *    - 才會重新抓最新 Summary + Detail，更新快取
  *
- * ✅ 關鍵修正（你現在遇到的錯誤）：
- * - 三卡（排班/老點/總計）「永遠以 GAS summaryRow 對應的卡片」為準：
- *   優先順序：DETAIL 快取 summaryObj（與 allRows 同步） > LATEST summary 快取 > 尚未載入
- * - 不再用 allRows 自算三卡，避免跟 GAS 的「單數/筆數/數量/金額」定義不一致造成顯示錯誤
+ * ✅ 你要求：移除「開始日期　結束日期　業績」面板（本版已移除所有面板相關程式）
  */
 
 import { dom } from "./dom.js";
@@ -80,8 +79,7 @@ let perfPrefetchInFlight_ = null;
 const perfCache_ = {
   summaryKey: "",
   detailKey: "",
-  summary: null, // { meta, summaryObj, summaryHtml, source, lastUpdatedAt }
-  // ✅ detail 快取改成存 allRows + maxKey（不綁 range）
+  summary: null, // { meta, summaryObj, summaryHtml, source, lastUpdatedAt }  (UI 不再用這個算三卡，但保留快取)
   detail: null, // { meta, techNo, allRows, maxKey, summaryObj, summaryHtml, lastUpdatedAt }
 };
 
@@ -498,33 +496,58 @@ function buildServiceSummaryFromDetail_(detailRows) {
 }
 
 /* =========================
- * ✅ 三卡來源統一（關鍵修正）
+ * ✅ 三卡：由「區間 rows」即時計算
  * ========================= */
 
-function pickBestCardsForUi_({ techNo }) {
-  // 1) 優先：Detail 快取的 summaryObj（與 allRows 同步、同一份 DetailPerf）
-  if (
-    perfCache_.detail &&
-    perfCache_.detail.techNo === techNo &&
-    perfCache_.detail.summaryObj &&
-    typeof perfCache_.detail.summaryObj === "object" &&
-    (perfCache_.detail.summaryObj["總計"] || perfCache_.detail.summaryObj["排班"] || perfCache_.detail.summaryObj["老點"])
-  ) {
-    return { cards: perfCache_.detail.summaryObj, source: "DETAIL_CACHE_SUMMARY", lastUpdatedAt: perfCache_.detail.lastUpdatedAt || "" };
+function buildCardsFromDetailCache_(detailRows) {
+  const rows = Array.isArray(detailRows) ? detailRows : [];
+
+  const initCard = () => ({ 單數: 0, 筆數: 0, 數量: 0, 金額: 0, _orders: new Set() });
+
+  const cards = {
+    排班: initCard(),
+    老點: initCard(),
+    總計: initCard(),
+  };
+
+  function bucket_(r) {
+    const v = String((r && r["拉牌"]) || "").trim();
+    if (v.includes("老")) return "老點";
+    if (v.includes("排")) return "排班";
+    return "其他";
   }
 
-  // 2) 次要：Latest Summary 快取（report/detail latest compare 的 chosen）
-  if (
-    perfCache_.summary &&
-    perfCache_.summary.summaryObj &&
-    typeof perfCache_.summary.summaryObj === "object" &&
-    (perfCache_.summary.summaryObj["總計"] || perfCache_.summary.summaryObj["排班"] || perfCache_.summary.summaryObj["老點"])
-  ) {
-    return { cards: perfCache_.summary.summaryObj, source: "LATEST_SUMMARY", lastUpdatedAt: perfCache_.summary.lastUpdatedAt || "" };
+  for (const r of rows) {
+    const b = bucket_(r);
+
+    const orderNo = String((r && r["訂單編號"]) || "").trim();
+    const qty = Number((r && r["數量"]) ?? 0) || 0;
+    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+
+    // 總計
+    cards.總計.筆數 += 1;
+    cards.總計.數量 += qty;
+    cards.總計.金額 += amount;
+    if (orderNo) cards.總計._orders.add(orderNo);
+
+    // 分類（排班/老點）
+    if (b === "排班" || b === "老點") {
+      const c = cards[b];
+      c.筆數 += 1;
+      c.數量 += qty;
+      c.金額 += amount;
+      if (orderNo) c._orders.add(orderNo);
+    }
   }
 
-  // 3) 沒有就回 null（避免用 allRows 自算造成跟 GAS 不一致）
-  return { cards: null, source: "NONE", lastUpdatedAt: "" };
+  // 單數：訂單編號去重
+  for (const k of ["排班", "老點", "總計"]) {
+    const c = cards[k];
+    c.單數 = c._orders.size;
+    delete c._orders;
+  }
+
+  return cards;
 }
 
 /* =========================
@@ -541,7 +564,34 @@ function makePerfDetailKey_(techNo) {
 }
 
 /* =========================
- * ✅ Latest Summary Compare / Choose
+ * ✅ Cache read helpers（依開始/結束日期取 rows）
+ * ========================= */
+
+function getCachedAllRows_(techNo) {
+  const detailKey = makePerfDetailKey_(techNo);
+  const ok =
+    perfCache_.detailKey === detailKey &&
+    !!perfCache_.detail &&
+    perfCache_.detail.techNo === techNo &&
+    Array.isArray(perfCache_.detail.allRows) &&
+    perfCache_.detail.allRows.length > 0;
+  return ok ? perfCache_.detail : null;
+}
+
+/** ✅ 以快取 allRows 依 start/end 取出「要顯示」的 rows（含超出 maxKey 顯示全部規則） */
+function getRowsForRangeFromCache_(techNo, startKey, endKey) {
+  const c = getCachedAllRows_(techNo);
+  if (!c) return { ok: false, allRows: [], rows: [], maxKey: "", lastUpdatedAt: "" };
+
+  const allRows = c.allRows || [];
+  const maxKey = c.maxKey || getMaxDetailDateKey_(allRows);
+  const rows = filterDetailRowsByRange_(allRows, startKey, endKey, maxKey);
+
+  return { ok: true, allRows, rows, maxKey, lastUpdatedAt: c.lastUpdatedAt || "" };
+}
+
+/* =========================
+ * ✅ Latest Summary Compare / Choose（保留抓取與 debug，但 UI 不再用它顯示三卡）
  * ========================= */
 
 /** Summary 是否「有資料」：只要能轉出卡片就算有 */
@@ -727,7 +777,7 @@ async function fetchAndCompareLatestSummaries_(techNo) {
 }
 
 /* =========================
- * Render from cache
+ * Render from cache（核心：所有業績資料皆依開始/結束日期 → 快取 allRows 即時切換）
  * ========================= */
 
 async function renderFromCache_(mode, info) {
@@ -738,7 +788,6 @@ async function renderFromCache_(mode, info) {
   if (!techNo) {
     setBadge_("你不是師傅（無法查詢）", true);
     setMeta_("—");
-
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
     if (m === "detail") {
@@ -751,61 +800,50 @@ async function renderFromCache_(mode, info) {
     return { ok: false, error: "NOT_MASTER" };
   }
 
-  // ✅ detail 模式要能讀 range（但只用來 filter 快取，不打 API）
-  const r = m === "detail" ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
-  if (m === "detail" && (!r || !r.ok)) {
+  // ✅ 不論 summary/detail，都以「開始/結束日期」作為本次顯示依據
+  const r = info && info.ok ? info : readRangeFromInputs_();
+  if (!r || !r.ok) {
     setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
     setMeta_("—");
-
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
-    renderDetailHeader_("detail");
-    renderDetailRows_([]);
+    if (m === "detail") {
+      renderDetailHeader_("detail");
+      renderDetailRows_([]);
+    } else {
+      renderDetailHeader_("summary");
+      applyDetailTableHtml_("", 0);
+    }
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
-  const summaryKey = makePerfSummaryKey_(techNo);
-  const detailKey = makePerfDetailKey_(techNo);
+  // ✅ 只用快取 allRows → 依區間取 rows
+  const got = getRowsForRangeFromCache_(techNo, r.startKey, r.endKey);
+  const hasCache = !!got.ok;
 
-  const hasDetailRaw =
-    perfCache_.detailKey === detailKey &&
-    !!perfCache_.detail &&
-    perfCache_.detail.techNo === techNo &&
-    Array.isArray(perfCache_.detail.allRows) &&
-    perfCache_.detail.allRows.length > 0;
+  // meta：只顯示最後更新（來自 detail 快取）
+  const lastUpdatedAt = hasCache && got.lastUpdatedAt ? got.lastUpdatedAt : "";
+  setMeta_(lastUpdatedAt ? `最後更新：${lastUpdatedAt}` : "最後更新：—");
 
-  // ✅ 三卡：永遠用 GAS summaryRow 對應的 cards（Detail cache 優先）
-  const pickedCards = pickBestCardsForUi_({ techNo });
+  // ✅ 三卡：永遠用「區間 rows」即時計算
   if (dom.perfSummaryRowsEl) {
-    if (pickedCards.cards) dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(pickedCards.cards);
-    else dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    if (hasCache) {
+      const cardsByRange = buildCardsFromDetailCache_(got.rows);
+      dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(cardsByRange);
+    } else {
+      dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    }
   }
+
+  // badge
+  if (!hasCache) setBadge_("明細尚未載入（等待登入預載 / 或按手動重整）", true);
+  else setBadge_("已載入（快取依日期即時切換）", false);
 
   if (m === "summary") {
     renderDetailHeader_("summary");
 
-    // meta：只顯示最後更新
-    const metaLast = pickedCards.lastUpdatedAt ? `最後更新：${pickedCards.lastUpdatedAt}` : "最後更新：—";
-    setMeta_(metaLast);
-    setBadge_(pickedCards.cards ? "已載入（快取）" : "尚未載入（請按手動重整）", !pickedCards.cards);
-
-    // ✅ 統計頁表格：由明細快取計算服務彙總（不打 API）
-    const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
-    let baseForSummary = baseAll;
-
-    const rr = (() => {
-      try {
-        return readRangeFromInputs_();
-      } catch (_) {
-        return null;
-      }
-    })();
-
-    if (rr && rr.ok && baseAll.length) {
-      const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
-      baseForSummary = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
-    }
-
+    // ✅ 統計頁服務彙總：用區間 rows（不打 API）
+    const baseForSummary = hasCache ? got.rows : [];
     if (baseForSummary.length) {
       const summaryRows = buildServiceSummaryFromDetail_(baseForSummary);
       const tmp = detailSummaryRowsHtml_(summaryRows);
@@ -814,29 +852,19 @@ async function renderFromCache_(mode, info) {
       applyDetailTableHtml_("", 0);
     }
 
-    return { ok: true, rendered: "summary", cached: true };
+    return { ok: true, rendered: "summary", cached: hasCache };
   }
 
   // detail mode
   renderDetailHeader_("detail");
 
-  if (hasDetailRaw) {
-    const c = perfCache_.detail;
-    const rowsAll = c.allRows;
-    const maxKey = c.maxKey || getMaxDetailDateKey_(rowsAll);
-    const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
-    const tmp = detailRowsHtml_(filtered);
-
-    // meta：只顯示最後更新
-    setMeta_(c.lastUpdatedAt ? `最後更新：${c.lastUpdatedAt}` : "最後更新：—");
-    setBadge_("已載入（快取切換）", false);
+  // ✅ 明細表格：用區間 rows（不打 API）
+  if (hasCache) {
+    const tmp = detailRowsHtml_(got.rows);
     applyDetailTableHtml_(tmp.html, tmp.count);
-
     return { ok: true, rendered: "detail", cached: true };
   }
 
-  setMeta_("最後更新：—");
-  setBadge_("明細尚未載入（等待登入預載 / 或按手動重整）", true);
   renderDetailRows_([]);
   return { ok: false, rendered: "detail", cached: false };
 }
@@ -937,7 +965,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
           meta: `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`,
           techNo,
           lastUpdatedAt: rr.lastUpdatedAt || "",
-          summaryObj: rr.summary || null, // ✅ 這份 summaryObj 會被三卡優先使用
+          summaryObj: rr.summary || null,
           summaryHtml: summaryRowsHtml_(rr.summary || null),
           allRows: rowsAll,
           maxKey,
