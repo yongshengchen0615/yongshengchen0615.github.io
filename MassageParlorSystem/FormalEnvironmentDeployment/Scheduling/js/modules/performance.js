@@ -1,22 +1,24 @@
 /**
- * performance.js（完整可貼版本 / ✅ 登入預載「一定最新」、改日期直接從快取切範圍、手動重整才更新）
+ * performance.js（完整可貼版本 / ✅ 登入時預載到快取、改日期直接從快取切範圍、手動重整才更新）
  *
- * ✅ 最終行為（已整合）：
- * 1) 登入時（prefetchPerformanceOnce）預載「一定最新」：
- *    - 先抓最新 Summary（兩張 getLatestSummary_v1 比較挑選）
- *    - 由 chosen 的 dateKey / rangeKey 推導 latestEndKey
- *    - detail 區間固定：當月 1 號 ~ latestEndKey
- *    - 再抓 Detail（startKey/endKey），但快取存 allRows 原始明細 + maxKey
+ * ✅ 最終行為（已整合你指定「兩者都要」最穩方案）：
+ * 1) 登入時（prefetchPerformanceOnce）預載：
+ *    - 會抓最新 Summary（兩張 getLatestSummary_v1 比較挑選，且 bypassCache=1）
+ *    - 會抓 Detail（startKey/endKey）但「快取存 allRows 原始明細」
  *
  * 2) 進入業績面板（onShowPerformance）：
  *    - 只 render 快取，不打 API
  *
  * 3) 修改開始/結束日期：
- *    - 直接從快取 allRows 做 filter 顯示（自動觸發 render，不需按按鈕）
+ *    - 直接從快取 allRows 做 filter 顯示，不需要手動重整
  *    - 若選到超出 allRows 的最新日（maxKey），就顯示「全部 allRows」
  *
  * 4) 只有按「手動重整」：
  *    - 才會重新抓最新 Summary + Detail，更新快取
+ *
+ * ✅ 關鍵修正（最穩）：
+ * - 三卡（排班/老點/總計）「優先改用 allRows 計算」→ 永遠與明細一致
+ * - latest summary fetch 加 bypassCache=1（需 GAS 端也支援）
  */
 
 import { dom } from "./dom.js";
@@ -78,7 +80,7 @@ const perfCache_ = {
   summaryKey: "",
   detailKey: "",
   summary: null, // { meta, summaryObj, summaryHtml, source, lastUpdatedAt }
-  // ✅ detail 快取存 allRows + maxKey（不綁 range）
+  // ✅ detail 快取改成存 allRows + maxKey（不綁 range）
   detail: null, // { meta, techNo, allRows, maxKey, summaryObj, summaryHtml, lastUpdatedAt }
 };
 
@@ -375,7 +377,7 @@ function normalizeRange_(startKey, endKey, maxDays) {
   return { ok: true, normalizedStart: toDateKey_(start), normalizedEnd: toDateKey_(end), dateKeys: out };
 }
 
-/** ✅ 從 UI 讀區間：先 normalizeInputDateKey_ 再驗證 */
+/** ✅ 從 UI 讀區間：先 normalizeInputDateKey_ 再驗證（修正 2026/01/01 類型） */
 function readRangeFromInputs_() {
   const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
 
@@ -416,7 +418,7 @@ function getMaxDetailDateKey_(detailRows) {
 }
 
 /**
- * ✅ 規則：
+ * ✅ 你指定規則：
  * - 範圍超出 allRows 的最新日 maxKey → 直接顯示全部 rows
  */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
@@ -427,7 +429,7 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 
   const maxKey = knownMaxKey || getMaxDetailDateKey_(rows);
   if (maxKey) {
-    if (e > maxKey || s > maxKey) return rows;
+    if (e > maxKey || s > maxKey) return rows; // ✅ 超出最新日 → 顯示全部
   }
 
   return rows.filter((r) => {
@@ -435,6 +437,46 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
     if (!dk) return true;
     return dk >= s && dk <= e;
   });
+}
+
+/* =========================
+ * ✅ Cards Summary (from detail cache allRows)
+ * - 讓三卡永遠與明細一致（最穩）
+ * ========================= */
+
+function buildCardsSummaryFromDetail_(detailRows) {
+  const rows = Array.isArray(detailRows) ? detailRows : [];
+
+  const initCard = () => ({ 單數: 0, 筆數: 0, 數量: 0, 金額: 0 });
+  const out = { 排班: initCard(), 老點: initCard(), 總計: initCard() };
+
+  function bucket_(r) {
+    const v = String((r && r["拉牌"]) || "").trim();
+    if (v.includes("老")) return "老點";
+    if (v.includes("排")) return "排班";
+    return "其他";
+  }
+
+  for (const r of rows) {
+    const b = bucket_(r);
+    if (b !== "老點" && b !== "排班") continue;
+
+    const qty = Number((r && r["數量"]) ?? 0) || 0;
+    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+
+    // 你目前資料模型：每列可視作一筆/一單
+    out[b].單數 += 1;
+    out[b].筆數 += 1;
+    out[b].數量 += qty;
+    out[b].金額 += amount;
+  }
+
+  out.總計.單數 = out.排班.單數 + out.老點.單數;
+  out.總計.筆數 = out.排班.筆數 + out.老點.筆數;
+  out.總計.數量 = out.排班.數量 + out.老點.數量;
+  out.總計.金額 = out.排班.金額 + out.老點.金額;
+
+  return out;
 }
 
 /* =========================
@@ -511,6 +553,7 @@ function makePerfDetailKey_(techNo) {
  * ✅ Latest Summary Compare / Choose
  * ========================= */
 
+/** Summary 是否「有資料」：只要能轉出卡片就算有 */
 function hasSummaryData_(x) {
   if (!x || !x.ok || x.empty) return false;
   const s = x.summaryObj;
@@ -518,6 +561,7 @@ function hasSummaryData_(x) {
   return !!(s["排班"] || s["老點"] || s["總計"]);
 }
 
+/** 解析 lastUpdatedAt（yyyy/MM/dd HH:mm:ss）為 ms；失敗回 0 */
 function parseTpeLastUpdatedMs_(s) {
   const v = String(s || "").trim();
   const m = v.match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
@@ -527,6 +571,7 @@ function parseTpeLastUpdatedMs_(s) {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** 比較兩張 summary（只比 3 張卡的四個欄位） */
 function compareLatest_(a, b) {
   const out = [];
   const sa = (a && a.summaryObj) || null;
@@ -549,6 +594,7 @@ function compareLatest_(a, b) {
 
 /* =========================
  * ✅ Latest Summary Fetch (ALWAYS HIT NETWORK)
+ * - 加 bypassCache=1（需 GAS 支援）
  * ========================= */
 
 async function fetchLatestSummaryReport_(techNo) {
@@ -558,6 +604,7 @@ async function fetchLatestSummaryReport_(techNo) {
     "mode=getLatestSummary_v1" +
     "&techNo=" +
     encodeURIComponent(techNo) +
+    "&bypassCache=1" +
     "&_ts=" +
     encodeURIComponent(String(Date.now()));
 
@@ -588,6 +635,7 @@ async function fetchLatestSummaryDetailPerf_(techNo) {
     "mode=getLatestSummary_v1" +
     "&techNo=" +
     encodeURIComponent(techNo) +
+    "&bypassCache=1" +
     "&_ts=" +
     encodeURIComponent(String(Date.now()));
 
@@ -610,6 +658,7 @@ async function fetchLatestSummaryDetailPerf_(techNo) {
   };
 }
 
+/** 把 GAS summaryRow 轉成 {排班:{...}, 老點:{...}, 總計:{...}} */
 function normalizeSummaryRowToCards_(summaryRow) {
   if (!summaryRow || typeof summaryRow !== "object") return null;
   if (summaryRow["排班"] && summaryRow["老點"] && summaryRow["總計"]) return summaryRow;
@@ -636,6 +685,7 @@ function normalizeSummaryRowToCards_(summaryRow) {
   };
 }
 
+/** 同時抓兩張 latest summary，選「有資料且較新」那張；兩張都有才 diff */
 async function fetchAndCompareLatestSummaries_(techNo) {
   const [a, b] = await Promise.allSettled([fetchLatestSummaryReport_(techNo), fetchLatestSummaryDetailPerf_(techNo)]);
   const reportLatest = a.status === "fulfilled" ? a.value : { ok: false, error: String(a.reason || "REPORT_LATEST_FAILED") };
@@ -689,28 +739,6 @@ async function fetchAndCompareLatestSummaries_(techNo) {
 }
 
 /* =========================
- * ✅ Login Prefetch: derive latest endKey from chosen summary
- * ========================= */
-
-function parseEndKeyFromChosen_(chosen) {
-  if (!chosen) return "";
-  const dk = String(chosen.dateKey || "").trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dk)) return dk;
-
-  const rk = String(chosen.rangeKey || "").trim(); // 2026-01-01~2026-01-13
-  const m = rk.match(/^\d{4}-\d{2}-\d{2}~(\d{4}-\d{2}-\d{2})$/);
-  if (m) return m[1];
-
-  return "";
-}
-
-function monthStartFromKey_(endKey) {
-  const k = String(endKey || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return localDateKeyMonthStart_();
-  return `${k.slice(0, 8)}01`;
-}
-
-/* =========================
  * Render from cache
  * ========================= */
 
@@ -723,8 +751,7 @@ async function renderFromCache_(mode, info) {
     setBadge_("你不是師傅（無法查詢）", true);
     setMeta_("—");
 
-    if (perfCache_.summary && dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
-    else if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
     if (m === "detail") {
       renderDetailHeader_("detail");
@@ -736,13 +763,12 @@ async function renderFromCache_(mode, info) {
     return { ok: false, error: "NOT_MASTER" };
   }
 
+  // ✅ detail 模式要能讀 range（但只用來 filter 快取，不打 API）
   const r = m === "detail" ? (info && info.ok ? info : readRangeFromInputs_()) : { ok: true, techNo };
   if (m === "detail" && (!r || !r.ok)) {
     setBadge_(r && r.error === "MISSING_START" ? "請選擇開始日期" : "日期格式不正確", true);
     setMeta_("—");
-
-    if (perfCache_.summary && dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
-    else if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
     renderDetailHeader_("detail");
     renderDetailRows_([]);
@@ -760,27 +786,55 @@ async function renderFromCache_(mode, info) {
     Array.isArray(perfCache_.detail.allRows) &&
     perfCache_.detail.allRows.length > 0;
 
-  if (dom.perfSummaryRowsEl) {
-    if (hasSummary) dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
-    else dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
-  }
-
   if (m === "summary") {
     renderDetailHeader_("summary");
 
-    if (hasSummary) {
+    // ✅ meta：有 allRows 就以明細更新時間為準（更符合你要的「永遠一致」）
+    if (hasDetailRaw) {
+      const c = perfCache_.detail;
+      setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
+      setBadge_("已載入（快取）", false);
+    } else if (hasSummary) {
       const c = perfCache_.summary;
-      setMeta_(c.meta || `師傅：${techNo} ｜ 統計：快取`);
+      setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
       setBadge_("已載入（快取）", false);
     } else {
       setMeta_(`師傅：${techNo} ｜ 統計：尚未載入`);
-      setBadge_("已載入（明細快取）", false);
+      setBadge_("尚未載入（等待登入預載 / 或按手動重整）", true);
     }
 
+    // ✅ 統計頁三卡：優先由明細 allRows 計算（與明細一致）
+    if (dom.perfSummaryRowsEl) {
+      const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
+      const rr = (() => {
+        try {
+          return readRangeFromInputs_();
+        } catch (_) {
+          return null;
+        }
+      })();
+
+      let baseForCards = baseAll;
+      if (rr && rr.ok && baseAll.length) {
+        const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
+        baseForCards = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
+      }
+
+      if (baseForCards.length) {
+        const cards = buildCardsSummaryFromDetail_(baseForCards);
+        dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(cards);
+      } else if (hasSummary) {
+        dom.perfSummaryRowsEl.innerHTML = perfCache_.summary.summaryHtml || summaryRowsHtml_(perfCache_.summary.summaryObj || null);
+      } else {
+        dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+      }
+    }
+
+    // ✅ 統計頁表格：由明細快取計算服務彙總（不打 API）
     const baseAll = hasDetailRaw ? perfCache_.detail.allRows : [];
     let baseForSummary = baseAll;
 
-    const rr = (() => {
+    const rr2 = (() => {
       try {
         return readRangeFromInputs_();
       } catch (_) {
@@ -788,9 +842,9 @@ async function renderFromCache_(mode, info) {
       }
     })();
 
-    if (rr && rr.ok && baseAll.length) {
+    if (rr2 && rr2.ok && baseAll.length) {
       const maxKey = perfCache_.detail.maxKey || getMaxDetailDateKey_(baseAll);
-      baseForSummary = filterDetailRowsByRange_(baseAll, rr.startKey, rr.endKey, maxKey);
+      baseForSummary = filterDetailRowsByRange_(baseAll, rr2.startKey, rr2.endKey, maxKey);
     }
 
     if (baseForSummary.length) {
@@ -814,7 +868,7 @@ async function renderFromCache_(mode, info) {
     const filtered = filterDetailRowsByRange_(rowsAll, r.startKey, r.endKey, maxKey);
     const tmp = detailRowsHtml_(filtered);
 
-    setMeta_(c.meta || `師傅：${techNo} ｜ 最後更新：—`);
+    setMeta_(c.meta || `最後更新：${c.lastUpdatedAt ? c.lastUpdatedAt : "—"}`);
     setBadge_("已載入（快取切換）", false);
     applyDetailTableHtml_(tmp.html, tmp.count);
 
@@ -829,7 +883,7 @@ async function renderFromCache_(mode, info) {
 
 /* =========================
  * Reload / cache
- * - 只有「登入預載」與「手動重整」會呼叫（抓最新 Summary+Detail）
+ * - 手動重整 / 登入預載 會呼叫（抓最新 Summary+Detail）
  * ========================= */
 
 function sleep_(ms) {
@@ -875,15 +929,10 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         const summaryObj = chosen ? chosen.summaryObj || null : null;
 
-        const compareHint =
-          PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas
-            ? cmp.diffs.length
-              ? `｜⚠ Summary不一致(${cmp.diffs.length})`
-              : `｜✓ Summary一致`
-            : "";
+        void reportHas;
+        void detailHas;
 
-        void compareHint; // 不顯示（保留 debug）
-
+        // meta 只顯示最後更新時間（你指定）
         const meta = `最後更新：${chosen && chosen.lastUpdatedAt ? chosen.lastUpdatedAt : "—"}`;
 
         return {
@@ -919,6 +968,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         const meta = `最後更新：${rr.lastUpdatedAt ? rr.lastUpdatedAt : "—"}`;
 
+        // ✅ 關鍵：快取存 allRows（原始明細），render 時才做 range filter
         const rowsAll = Array.isArray(rr.detail) ? rr.detail : [];
         const maxKey = getMaxDetailDateKey_(rowsAll);
 
@@ -1075,76 +1125,35 @@ export function initPerformanceUi() {
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
-
-  // ✅ 改日期：直接從快取切範圍（不打 API）
-  const onDateChange = () => {
-    try {
-      // normalize + 修正 UI 值
-      const r = readRangeFromInputs_();
-      if (r && r.ok) void renderFromCache_(perfSelectedMode_, r);
-      else void renderFromCache_(perfSelectedMode_);
-    } catch (_) {
-      void renderFromCache_(perfSelectedMode_);
-    }
-  };
-
-  if (dom.perfDateStartInput) {
-    dom.perfDateStartInput.addEventListener("change", onDateChange);
-    dom.perfDateStartInput.addEventListener("input", onDateChange);
-  }
-  if (dom.perfDateEndInput) {
-    dom.perfDateEndInput.addEventListener("change", onDateChange);
-    dom.perfDateEndInput.addEventListener("input", onDateChange);
-  }
 }
 
 /**
- * ✅ 登入時預載「一定最新」：
- * - 先抓 latest summary（兩張比一張）
- * - 用 chosen.dateKey / chosen.rangeKey 推導 latestEndKey
- * - detail 區間：當月 1 號 ~ latestEndKey
+ * ✅ 登入時預載：同時預載「最新 Summary + Detail」到快取
  * - 不顯示 toast
+ * - 進入業績面板只 render 快取，不打 API
  */
 export async function prefetchPerformanceOnce() {
   if (String(state.feature && state.feature.performanceEnabled) !== "是") {
     return { ok: false, skipped: "FEATURE_OFF" };
   }
 
+  // 防重入（避免登入流程多次觸發）
   if (perfPrefetchInFlight_) return perfPrefetchInFlight_;
 
   perfPrefetchInFlight_ = (async () => {
     ensureDefaultDate_();
 
-    const techNo = normalizeTechNo(state.myMaster && state.myMaster.techNo);
-    if (!techNo) return { ok: false, skipped: "NOT_MASTER" };
+    const info = readRangeFromInputs_();
+    if (!info.ok) return { ok: false, skipped: info.error || "BAD_RANGE" };
 
-    // ✅ Step 1) 先拿後端認定的最新 summary
-    let cmp = null;
-    try {
-      cmp = await fetchAndCompareLatestSummaries_(techNo);
-    } catch (_) {
-      cmp = null;
-    }
-
-    const chosen = cmp && cmp.chosen ? cmp.chosen : null;
-    const latestEndKey = parseEndKeyFromChosen_(chosen) || localDateKeyToday_();
-    const startKey = monthStartFromKey_(latestEndKey);
-    const endKey = latestEndKey;
-
-    // ✅ 同步 UI（避免使用者看到舊區間）
-    if (dom.perfDateStartInput) dom.perfDateStartInput.value = startKey;
-    if (dom.perfDateEndInput) dom.perfDateEndInput.value = endKey;
-
-    const info = { ok: true, techNo, startKey, endKey };
-
-    // ✅ Step 2) 用這個「最新區間」預載 summary + detail(allRows)
+    // ✅ 登入就把最新 Summary + Detail 塞進快取（Detail 存 allRows）
     const res = await reloadAndCache_(info, {
       showToast: false,
       fetchSummary: true,
       fetchDetail: true,
     });
 
-    return { ok: !!(res && res.ok), ...res, prefetched: "LOGIN_LATEST_SUMMARY_AND_DETAIL" };
+    return { ok: !!(res && res.ok), ...res, prefetched: "SUMMARY_AND_DETAIL" };
   })();
 
   try {
@@ -1172,6 +1181,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 
   setBadge_("同步中…", false);
 
+  // ✅ 手動重整：抓最新 Summary + Detail（Detail 存 allRows）
   const res = await reloadAndCache_(info, { showToast: !!showToast, fetchSummary: true, fetchDetail: true });
   if (!res || !res.ok) {
     const msg = String(res && res.error ? res.error : "RELOAD_FAILED");
