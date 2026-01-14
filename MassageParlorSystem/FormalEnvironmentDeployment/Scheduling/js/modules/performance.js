@@ -447,37 +447,68 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 function buildCardsSummaryFromDetail_(detailRows) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
 
-  const initCard = () => ({ 單數: 0, 筆數: 0, 數量: 0, 金額: 0 });
-  const out = { 排班: initCard(), 老點: initCard(), 總計: initCard() };
+  const initCard = () => ({
+    單數: 0, // unique 訂單編號
+    筆數: 0, // rows count
+    數量: 0,
+    金額: 0,
+    _orders: new Set(), // internal
+  });
+
+  const out = {
+    排班: initCard(),
+    老點: initCard(),
+    總計: initCard(),
+  };
 
   function bucket_(r) {
     const v = String((r && r["拉牌"]) || "").trim();
-    if (v.includes("老")) return "老點";
-    if (v.includes("排")) return "排班";
+    // ✅ 更嚴謹：優先判斷關鍵詞（避免「排」被其他字誤判）
+    if (v.includes("老點") || v.includes("老")) return "老點";
+    if (v.includes("排班") || v.includes("排")) return "排班";
     return "其他";
+  }
+
+  function addRow_(card, r) {
+    card.筆數 += 1;
+
+    const orderNo = String((r && r["訂單編號"]) || "").trim();
+    if (orderNo) card._orders.add(orderNo);
+
+    const qty = Number((r && r["數量"]) ?? 0) || 0;
+    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+
+    card.數量 += qty;
+    card.金額 += amount;
   }
 
   for (const r of rows) {
     const b = bucket_(r);
     if (b !== "老點" && b !== "排班") continue;
 
-    const qty = Number((r && r["數量"]) ?? 0) || 0;
-    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
-
-    // 你目前資料模型：每列可視作一筆/一單
-    out[b].單數 += 1;
-    out[b].筆數 += 1;
-    out[b].數量 += qty;
-    out[b].金額 += amount;
+    addRow_(out[b], r);
+    addRow_(out.總計, r);
   }
 
-  out.總計.單數 = out.排班.單數 + out.老點.單數;
-  out.總計.筆數 = out.排班.筆數 + out.老點.筆數;
-  out.總計.數量 = out.排班.數量 + out.老點.數量;
-  out.總計.金額 = out.排班.金額 + out.老點.金額;
+  // 單數 = unique 訂單編號數
+  out.排班.單數 = out.排班._orders.size;
+  out.老點.單數 = out.老點._orders.size;
+  out.總計.單數 = out.總計._orders.size;
+
+  // cleanup internal
+  delete out.排班._orders;
+  delete out.老點._orders;
+  delete out.總計._orders;
+
+  // ✅ 避免浮點尾巴（例如 54.499999999）
+  const fix1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
+  out.排班.數量 = fix1(out.排班.數量);
+  out.老點.數量 = fix1(out.老點.數量);
+  out.總計.數量 = fix1(out.總計.數量);
 
   return out;
 }
+
 
 /* =========================
  * ✅ Service Summary (from detail cache)
