@@ -334,12 +334,32 @@ async function loadAdminLogs_() {
     (function setDefaultRange() {
       let minD = null;
       let maxD = null;
+      function extractDateFromRowText(r) {
+        const text = String(JSON.stringify(r || {}));
+        const m1 = text.match(/(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}(?:[T\s]\d{1,2}:\d{2}(:\d{2})?)?)/);
+        if (m1) {
+          const dd = parseDateSafeLogs(m1[1].replace(/\//g, '-'));
+          if (dd) return dd;
+        }
+        const m2 = text.match(/\b(\d{10,13})\b/);
+        if (m2) {
+          const n = Number(m2[1]);
+          const ms = m2[1].length === 10 ? n * 1000 : n;
+          const dd = new Date(ms);
+          if (!Number.isNaN(dd.getTime())) return dd;
+        }
+        return null;
+      }
+
       for (const r of adminLogsAll_) {
-        const d = parseDateSafeLogs(r.ts);
+        let d = parseDateSafeLogs(r.ts);
+        if (!d) d = extractDateFromRowText(r);
         if (!d) continue;
         if (!minD || d < minD) minD = d;
         if (!maxD || d > maxD) maxD = d;
       }
+
+      console.debug('adminLogs setDefaultRange rows=', adminLogsAll_.length, 'minD=', minD, 'maxD=', maxD);
       const startEl = document.getElementById("logsStartDateInput");
       const endEl = document.getElementById("logsEndDateInput");
       const startTimeEl = document.getElementById("logsStartTimeInput");

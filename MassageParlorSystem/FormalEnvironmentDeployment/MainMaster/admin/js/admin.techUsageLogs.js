@@ -309,7 +309,7 @@ function renderTechUsageChart_() {
     if (agg.labels.length > 60 && gran === "hour") {
       console.warn("techUsageChart: too many hourly buckets, falling back to day granularity");
       gran = "day";
-      const agg2 = buildTechChartAggregation_(gran, metric, start, end);
+      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end);
       console.debug("techUsageChart fallback aggregation:", { gran, labels: agg2.labels.length });
       agg.labels = agg2.labels;
       agg.data = agg2.data;
@@ -317,7 +317,7 @@ function renderTechUsageChart_() {
     if (agg.labels.length > 365 && gran !== "month") {
       console.warn("techUsageChart: too many daily buckets, falling back to month granularity");
       gran = "month";
-      const agg2 = buildTechChartAggregation_(gran, metric, start, end);
+      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end);
       agg.labels = agg2.labels;
       agg.data = agg2.data;
     }
@@ -331,7 +331,12 @@ function renderTechUsageChart_() {
       if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
       return { x, y: agg.data[i] };
     });
-    techUsageChart.data.datasets[0].data = points;
+    if (!points.length) {
+      console.warn('techUsageChart: no data points to render');
+      techUsageChart.data.datasets[0].data = [];
+    } else {
+      techUsageChart.data.datasets[0].data = points;
+    }
     techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
   techUsageChart.update();
 }
@@ -372,12 +377,32 @@ async function loadTechUsageLogs_() {
     (function setDefaultRange() {
       let minD = null;
       let maxD = null;
+      function extractDateFromRowText(r) {
+        const text = String(JSON.stringify(r || {}));
+        const m1 = text.match(/(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}(?:[T\s]\d{1,2}:\d{2}(:\d{2})?)?)/);
+        if (m1) {
+          const dd = parseDateSafe(m1[1].replace(/\//g, '-'));
+          if (dd) return dd;
+        }
+        const m2 = text.match(/\b(\d{10,13})\b/);
+        if (m2) {
+          const n = Number(m2[1]);
+          const ms = m2[1].length === 10 ? n * 1000 : n;
+          const dd = new Date(ms);
+          if (!Number.isNaN(dd.getTime())) return dd;
+        }
+        return null;
+      }
+
       for (const r of techUsageLogsAll_) {
-        const d = parseDateSafe(r.serverTime);
+        let d = parseDateSafe(r.serverTime);
+        if (!d) d = extractDateFromRowText(r);
         if (!d) continue;
         if (!minD || d < minD) minD = d;
         if (!maxD || d > maxD) maxD = d;
       }
+
+      console.debug('techUsage setDefaultRange rows=', techUsageLogsAll_.length, 'minD=', minD, 'maxD=', maxD);
       const startEl = document.getElementById("techLogsStartDateInput");
       const endEl = document.getElementById("techLogsEndDateInput");
       const startTimeEl = document.getElementById("techLogsStartTimeInput");
