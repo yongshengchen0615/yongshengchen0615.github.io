@@ -238,8 +238,7 @@ function initAdminLogsChart_() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      parsing: false,
-      normalized: true,
+      parsing: { xAxisKey: 'x', yAxisKey: 'y' },
       scales: {
         x: {
           type: 'time',
@@ -287,13 +286,14 @@ function renderAdminLogsChart_() {
   }
 
   // convert labels/data to {x,y} points (ISO)
-  const points = agg.labels.map((lbl, i) => {
-    let x = lbl;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
-    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-    return { x, y: agg.data[i] };
-  });
+    const points = agg.labels.map((lbl, i) => {
+      let x = lbl;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+      const xd = new Date(String(x));
+      return { x: Number.isFinite(xd.getTime()) ? xd : String(x), y: agg.data[i] };
+    });
 
   adminLogsChart.data.datasets[0].data = points;
   adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
