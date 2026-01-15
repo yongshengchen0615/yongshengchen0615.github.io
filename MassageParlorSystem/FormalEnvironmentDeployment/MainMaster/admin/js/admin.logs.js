@@ -309,6 +309,38 @@ async function loadAdminLogs_() {
     }
 
     adminLogsAll_ = rows.map(normalizeLogRow_).filter((r) => r.ts || r.actorUserId || r.actorDisplayName);
+
+    // set default range inputs to earliest and latest timestamps (include time if available)
+    (function setDefaultRange() {
+      let minD = null;
+      let maxD = null;
+      for (const r of adminLogsAll_) {
+        const d = parseDateSafeLogs(r.ts);
+        if (!d) continue;
+        if (!minD || d < minD) minD = d;
+        if (!maxD || d > maxD) maxD = d;
+      }
+      const startEl = document.getElementById("logsStartDateInput");
+      const endEl = document.getElementById("logsEndDateInput");
+      const startTimeEl = document.getElementById("logsStartTimeInput");
+      const endTimeEl = document.getElementById("logsEndTimeInput");
+      if (minD) {
+        if (startEl) startEl.value = `${minD.getFullYear()}-${pad2_(minD.getMonth() + 1)}-${pad2_(minD.getDate())}`;
+        if (startTimeEl) startTimeEl.value = `${pad2_(minD.getHours())}:${pad2_(minD.getMinutes())}`;
+      } else {
+        if (startEl) startEl.value = "";
+        if (startTimeEl) startTimeEl.value = "";
+      }
+      if (maxD) {
+        if (endEl) endEl.value = `${maxD.getFullYear()}-${pad2_(maxD.getMonth() + 1)}-${pad2_(maxD.getDate())}`;
+        if (endTimeEl) endTimeEl.value = `${pad2_(maxD.getHours())}:${pad2_(maxD.getMinutes())}`;
+      } else {
+        if (endEl) endEl.value = "";
+        if (endTimeEl) endTimeEl.value = "";
+      }
+    })();
+
+    // apply filter and render with defaults
     applyAdminLogsDateFilter_();
     renderAdminLogs_();
 

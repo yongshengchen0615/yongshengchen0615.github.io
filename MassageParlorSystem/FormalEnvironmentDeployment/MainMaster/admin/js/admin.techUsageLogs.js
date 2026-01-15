@@ -348,6 +348,36 @@ async function loadTechUsageLogs_() {
       .map(normalizeTechUsageRow_)
       .filter((r) => r.serverTime || r.userId || r.name || r.detail);
 
+    // set default range inputs to earliest and latest timestamps (include time if available)
+    (function setDefaultRange() {
+      let minD = null;
+      let maxD = null;
+      for (const r of techUsageLogsAll_) {
+        const d = parseDateSafe(r.serverTime);
+        if (!d) continue;
+        if (!minD || d < minD) minD = d;
+        if (!maxD || d > maxD) maxD = d;
+      }
+      const startEl = document.getElementById("techLogsStartDateInput");
+      const endEl = document.getElementById("techLogsEndDateInput");
+      const startTimeEl = document.getElementById("techLogsStartTimeInput");
+      const endTimeEl = document.getElementById("techLogsEndTimeInput");
+      if (minD) {
+        if (startEl) startEl.value = `${minD.getFullYear()}-${pad2_(minD.getMonth() + 1)}-${pad2_(minD.getDate())}`;
+        if (startTimeEl) startTimeEl.value = `${pad2_(minD.getHours())}:${pad2_(minD.getMinutes())}`;
+      } else {
+        if (startEl) startEl.value = "";
+        if (startTimeEl) startTimeEl.value = "";
+      }
+      if (maxD) {
+        if (endEl) endEl.value = `${maxD.getFullYear()}-${pad2_(maxD.getMonth() + 1)}-${pad2_(maxD.getDate())}`;
+        if (endTimeEl) endTimeEl.value = `${pad2_(maxD.getHours())}:${pad2_(maxD.getMinutes())}`;
+      } else {
+        if (endEl) endEl.value = "";
+        if (endTimeEl) endTimeEl.value = "";
+      }
+    })();
+
     applyTechUsageLogsDateFilter_();
 
     renderTechUsageLogs_();
