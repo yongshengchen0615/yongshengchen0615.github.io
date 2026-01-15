@@ -383,6 +383,8 @@ async function loadAdminLogs_() {
     // apply filter and render with defaults
     applyAdminLogsDateFilter_();
     renderAdminLogs_();
+    // 初次載入後也一併繪製圖表（techUsage 有此行，admin 端先前遺漏）
+    try { renderAdminLogsChart_(); } catch (e) { console.warn('renderAdminLogsChart failed', e); }
 
     const { start, end } = logsGetSelectedRange_();
     const rangeLabel = logsBuildRangeLabel_(start, end);
