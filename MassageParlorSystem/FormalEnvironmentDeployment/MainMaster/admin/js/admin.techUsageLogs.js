@@ -12,6 +12,10 @@ let techUsageLogsAll_ = [];
 
 let techUsageLogsLoading_ = false;
 
+// Chart instance for tech usage analytics
+let techUsageChart = null;
+
+
 function techLogsSetFooter_(text) {
   const el = document.getElementById("techLogsFooterStatus");
   if (el) el.textContent = String(text || "-");
@@ -130,6 +134,107 @@ function renderTechUsageLogs_() {
     .join("");
 }
 
+/* ================================
+ * Tech Usage Chart (aggregation + Chart.js)
+ * ================================ */
+
+function parseDateSafe(s) {
+  const str = String(s || "").trim();
+  if (!str) return null;
+  // epoch seconds / ms
+  if (/^\d{10,13}$/.test(str)) {
+    const n = Number(str);
+    const ms = str.length === 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  const d = new Date(str);
+  if (!Number.isNaN(d.getTime())) return d;
+  return null;
+}
+
+function weekKey(d) {
+  // ISO week number
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function monthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "") {
+  const buckets = new Map();
+  const startDate = start ? new Date(start + "T00:00:00") : null;
+  const endDate = end ? new Date(end + "T23:59:59") : null;
+
+  for (const r of techUsageLogsAll_) {
+    const d = parseDateSafe(r.serverTime);
+    if (!d) continue;
+    if (startDate && d < startDate) continue;
+    if (endDate && d > endDate) continue;
+
+    let key;
+    if (granularity === "week") key = weekKey(d);
+    else if (granularity === "month") key = monthKey(d);
+    else key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    if (!buckets.has(key)) buckets.set(key, { count: 0, users: new Set() });
+    const entry = buckets.get(key);
+    entry.count += 1;
+    if (r.userId) entry.users.add(String(r.userId));
+  }
+
+  // convert to sorted arrays
+  const keys = Array.from(buckets.keys()).sort();
+  const labels = keys;
+  const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
+  return { labels, data };
+}
+
+function initTechUsageChart_() {
+  const canvas = document.getElementById("techUsageChartCanvas");
+  if (!canvas || typeof Chart === "undefined") return;
+  const ctx = canvas.getContext("2d");
+  if (techUsageChart) {
+    try { techUsageChart.destroy(); } catch (_) {}
+  }
+  techUsageChart = new Chart(ctx, {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.12)" }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { display: true }, y: { beginAtZero: true } },
+    },
+  });
+}
+
+function renderTechUsageChart_() {
+  const section = document.getElementById("techUsageChartSection");
+  if (!section) return;
+  // show section when data exists
+  section.hidden = techUsageLogsAll_?.length === 0;
+
+  if (!techUsageChart) initTechUsageChart_();
+  if (!techUsageChart) return;
+
+  const gran = String(document.getElementById("techChartGranularity")?.value || "day");
+  const metric = String(document.getElementById("techChartMetric")?.value || "count");
+  const { start, end } = techLogsGetSelectedRange_();
+  const agg = buildTechChartAggregation_(gran, metric, start, end);
+
+  techUsageChart.data.labels = agg.labels;
+  techUsageChart.data.datasets[0].data = agg.data;
+  techUsageChart.data.datasets[0].label = metric === "unique" ? "不同使用者數" : "事件數";
+  techUsageChart.update();
+}
+
+
 async function loadTechUsageLogs_() {
   if (techUsageLogsLoading_) return;
 
@@ -164,6 +269,8 @@ async function loadTechUsageLogs_() {
     applyTechUsageLogsDateFilter_();
 
     renderTechUsageLogs_();
+    // 更新圖表
+    try { renderTechUsageChart_(); } catch (e) { console.warn('renderTechUsageChart failed', e); }
     const { start, end } = techLogsGetSelectedRange_();
     const rangeLabel = techLogsBuildRangeLabel_(start, end);
     techLogsSetFooter_(
@@ -213,4 +320,12 @@ function bindTechUsageLogs_() {
 
   document.getElementById("techLogsStartDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", onRangeChange);
+  
+  // Chart controls
+  initTechUsageChart_();
+  document.getElementById("techChartReloadBtn")?.addEventListener("click", () => renderTechUsageChart_());
+  document.getElementById("techChartGranularity")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techChartMetric")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsStartDateInput")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsEndDateInput")?.addEventListener("change", () => renderTechUsageChart_());
 }
