@@ -233,8 +233,8 @@ function initTechUsageChart_() {
 }
 
 function renderTechUsageChart_() {
-  const section = document.getElementById("techUsageChartSection");
-  if (!section) return;
+  const canvas = document.getElementById("techUsageChartCanvas");
+  if (!canvas) return;
 
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
