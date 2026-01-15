@@ -991,15 +991,51 @@ async function renderFromCache_(mode, info) {
   const lastUpdatedAt = hasCache && got.lastUpdatedAt ? got.lastUpdatedAt : "";
   setMeta_(lastUpdatedAt ? `最後更新：${lastUpdatedAt}` : "最後更新：—");
 
+  // 顯示「當月」老點率 / 排班率（若有快取明細）
+  try {
+    const monthStart = localDateKeyMonthStart_();
+    const monthEnd = localDateKeyToday_();
+    const monthGot = getRowsForRangeFromCache_(techNo, monthStart, monthEnd);
+    if (dom.perfMonthRatesEl) {
+      if (monthGot && monthGot.ok && Array.isArray(monthGot.rows) && monthGot.rows.length) {
+        const monthCards = buildCardsFromDetailCache_(monthGot.rows);
+
+        // 筆數口徑
+        const totalRows = monthCards && monthCards.總計 ? Number(monthCards.總計.筆數 || 0) : 0;
+        const oldRows = monthCards && monthCards.老點 ? Number(monthCards.老點.筆數 || 0) : 0;
+        const schedRows = monthCards && monthCards.排班 ? Number(monthCards.排班.筆數 || 0) : 0;
+        const oldRateRows = totalRows ? Math.round((oldRows / totalRows) * 1000) / 10 : 0;
+        const schedRateRows = totalRows ? Math.round((schedRows / totalRows) * 1000) / 10 : 0;
+
+        // 單數口徑（訂單編號去重）
+        const totalSingles = monthCards && monthCards.總計 ? Number(monthCards.總計.單數 || 0) : 0;
+        const oldSingles = monthCards && monthCards.老點 ? Number(monthCards.老點.單數 || 0) : 0;
+        const schedSingles = monthCards && monthCards.排班 ? Number(monthCards.排班.單數 || 0) : 0;
+        const oldRateSingles = totalSingles ? Math.round((oldSingles / totalSingles) * 1000) / 10 : 0;
+        const schedRateSingles = totalSingles ? Math.round((schedSingles / totalSingles) * 1000) / 10 : 0;
+
+        dom.perfMonthRatesEl.innerHTML =
+          `本月（單數）：老點率 ${oldRateSingles}% ｜ 排班率 ${schedRateSingles}%` +
+          `<br/>` +
+          `本月（筆數）：老點率 ${oldRateRows}% ｜ 排班率 ${schedRateRows}%`;
+      } else {
+        dom.perfMonthRatesEl.textContent = "本月：資料不足";
+      }
+    }
+  } catch (e) {
+    console.error("render month rates error", e);
+  }
+
   // ✅ 三卡：用區間 rows 即時計算（修正版：單數去重）
   if (dom.perfSummaryRowsEl) {
     if (hasCache) {
-      const cardsByRange = buildCardsFromDetailCache_(got.rows);
+    const cardsByRange = buildCardsFromDetailCache_(got.rows);
 
-      // 你原本有「若有 GAS summary 就顯示 GAS」的策略；保留。
-      const displayCards = perfCache_.summary && perfCache_.summary.summaryObj ? perfCache_.summary.summaryObj : cardsByRange;
+    // 使用區間快取計算結果顯示（依開始/結束日期變化）。
+    // 只有在沒有快取可用時才會顯示 GAS 的 latest summary。
+    const displayCards = cardsByRange;
 
-      dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(displayCards);
+    dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(displayCards);
 
       // ✅ debug：如果 GAS 與 cache 計算差異，印出（你排查數量差 +2 用）
       try {
