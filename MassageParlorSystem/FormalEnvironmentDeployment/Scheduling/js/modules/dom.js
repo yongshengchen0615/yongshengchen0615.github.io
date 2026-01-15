@@ -72,6 +72,8 @@ export const dom = {
   // 日期區間（新版）
   perfDateStartInput: document.getElementById("perfDateStart"),
   perfDateEndInput: document.getElementById("perfDateEnd"),
+  // 圖表 canvas
+  perfChartEl: document.getElementById("perfChart"),
 
   // 單日（舊版保留：若 HTML 沒有此欄位則為 null）
   perfDateKeyInput: document.getElementById("perfDateKey"),
