@@ -471,7 +471,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 #perfCard .filters {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Match buttons' min width so inputs share same width logic */
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   align-items: end;
 }
 
