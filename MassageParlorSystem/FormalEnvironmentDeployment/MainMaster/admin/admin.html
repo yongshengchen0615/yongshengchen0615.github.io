@@ -198,6 +198,9 @@
         </div>
 
         <div class="table-wrap responsive-wrap" aria-label="管理員紀錄列表">
+          <div class="chart-wrap" style="padding:12px 14px;">
+            <canvas id="adminLogsChartCanvas" aria-label="管理員紀錄圖表" role="img"></canvas>
+          </div>
           <table class="responsive-table">
             <thead>
               <tr>
@@ -468,11 +471,13 @@
   <script src="js/admin.features.js" defer></script>
 
   <!-- 管理員紀錄（GAS UsageLog） -->
+  <!-- Chart.js (for analytics used by admin logs & tech usage) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+
+  <!-- 管理員紀錄（GAS UsageLog） -->
   <script src="js/admin.logs.js" defer></script>
 
   <!-- 技師使用紀錄（GAS usage_log） -->
-  <!-- Chart.js (for tech usage analytics) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
   <script src="js/admin.techUsageLogs.js" defer></script>
 
   <!-- Users/技師資料管理（獨立區塊，不影響原本 admin 清單） -->

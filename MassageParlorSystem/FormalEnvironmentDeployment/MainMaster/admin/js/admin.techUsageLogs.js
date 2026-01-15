@@ -268,7 +268,7 @@ function initTechUsageChart_() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: { x: { display: true }, y: { beginAtZero: true } },
+      scales: { x: { display: true, ticks: { autoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true } },
     },
   });
 }
@@ -292,6 +292,23 @@ function renderTechUsageChart_() {
 
     // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
     console.debug("techUsageChart aggregation:", { gran, metric, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+
+    // 若 hourly 分桶過多，回退到日或月分桶以避免過密的 x axis
+    if (agg.labels.length > 60 && gran === "hour") {
+      console.warn("techUsageChart: too many hourly buckets, falling back to day granularity");
+      gran = "day";
+      const agg2 = buildTechChartAggregation_(gran, metric, start, end);
+      console.debug("techUsageChart fallback aggregation:", { gran, labels: agg2.labels.length });
+      agg.labels = agg2.labels;
+      agg.data = agg2.data;
+    }
+    if (agg.labels.length > 365 && gran !== "month") {
+      console.warn("techUsageChart: too many daily buckets, falling back to month granularity");
+      gran = "month";
+      const agg2 = buildTechChartAggregation_(gran, metric, start, end);
+      agg.labels = agg2.labels;
+      agg.data = agg2.data;
+    }
 
     techUsageChart.data.labels = agg.labels;
     techUsageChart.data.datasets[0].data = agg.data;

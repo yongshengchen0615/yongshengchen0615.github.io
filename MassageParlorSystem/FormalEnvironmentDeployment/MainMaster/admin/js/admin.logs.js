@@ -12,6 +12,9 @@ let adminLogsAll_ = [];
 
 let adminLogsLoading_ = false;
 
+// Chart instance for admin logs analytics
+let adminLogsChart = null;
+
 function logsSetFooter_(text) {
   const el = document.getElementById("logsFooterStatus");
   if (el) el.textContent = String(text || "-");
@@ -133,6 +136,119 @@ function renderAdminLogs_() {
     .join("");
 }
 
+/* ================================
+ * Admin Logs Chart (aggregation + Chart.js)
+ * ================================ */
+
+function buildAdminChartAggregation_(granularity = "day", metric = "count", start = "", end = "") {
+  const buckets = new Map();
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+  let processed = 0;
+  let skipped = 0;
+
+  function parseDateFlexible(s) {
+    if (!s) return null;
+    if (/^\d{10,13}$/.test(String(s))) {
+      const n = Number(s);
+      const ms = String(s).length === 10 ? n * 1000 : n;
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d;
+    return null;
+  }
+
+  for (const r of adminLogsAll_) {
+    const d = parseDateFlexible(r.ts);
+    if (!d) {
+      skipped += 1;
+      continue;
+    }
+    processed += 1;
+
+    let key;
+    if (granularity === "hour") {
+      key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+    } else if (granularity === "month") {
+      key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}`;
+    } else if (granularity === "week") {
+      // reuse techUsage's weekKey if available
+      if (typeof weekKey === "function") key = weekKey(d);
+      else key = `${d.getFullYear()}-W?`;
+    } else {
+      key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+    }
+
+    if (!buckets.has(key)) buckets.set(key, { count: 0, users: new Set() });
+    const entry = buckets.get(key);
+    entry.count += 1;
+    if (r.actorUserId) entry.users.add(String(r.actorUserId));
+  }
+
+  const keys = Array.from(buckets.keys()).sort();
+  console.debug("buildAdminChartAggregation summary:", { granularity, metric, start, end, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
+  const labels = keys;
+  const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
+  return { labels, data };
+}
+
+function initAdminLogsChart_() {
+  const canvas = document.getElementById("adminLogsChartCanvas");
+  if (!canvas || typeof Chart === "undefined") return;
+  const ctx = canvas.getContext("2d");
+  if (adminLogsChart) {
+    try { adminLogsChart.destroy(); } catch (_) {}
+  }
+  adminLogsChart = new Chart(ctx, {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.12)" }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { display: true, ticks: { autoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true } },
+    },
+  });
+}
+
+function renderAdminLogsChart_() {
+  const canvas = document.getElementById("adminLogsChartCanvas");
+  if (!canvas) return;
+  if (!adminLogsChart) initAdminLogsChart_();
+  if (!adminLogsChart) return;
+
+  const { start, end } = logsGetSelectedRange_();
+  let gran = "day";
+  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+  const metric = "count";
+  const agg = buildAdminChartAggregation_(gran, metric, start, end);
+
+  console.debug("adminLogsChart aggregation:", { gran, metric, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
+
+  // 若 hourly 分桶過多，回退到日或月分桶
+  if (agg.labels.length > 60 && gran === "hour") {
+    console.warn("adminLogsChart: too many hourly buckets, falling back to day granularity");
+    gran = "day";
+    const agg2 = buildAdminChartAggregation_(gran, metric, start, end);
+    console.debug("adminLogsChart fallback aggregation:", { gran, labels: agg2.labels.length });
+    agg.labels = agg2.labels;
+    agg.data = agg2.data;
+  }
+  if (agg.labels.length > 365 && gran !== "month") {
+    console.warn("adminLogsChart: too many daily buckets, falling back to month granularity");
+    gran = "month";
+    const agg2 = buildAdminChartAggregation_(gran, metric, start, end);
+    agg.labels = agg2.labels;
+    agg.data = agg2.data;
+  }
+
+  adminLogsChart.data.labels = agg.labels;
+  adminLogsChart.data.datasets[0].data = agg.data;
+  adminLogsChart.data.datasets[0].label = metric === "unique" ? "不同管理員數" : "事件數";
+  adminLogsChart.update();
+}
+
 async function loadAdminLogs_() {
   if (adminLogsLoading_) return;
 
@@ -214,6 +330,11 @@ function bindAdminLogs_() {
 
   document.getElementById("logsStartDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("logsEndDateInput")?.addEventListener("change", onRangeChange);
+
+  // Initialize chart and re-render when date range changes
+  initAdminLogsChart_();
+  document.getElementById("logsStartDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
+  document.getElementById("logsEndDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
 }
 
 /**
