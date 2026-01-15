@@ -194,6 +194,11 @@
           </div>
 
           <div class="panel-actions" aria-label="管理員紀錄操作">
+            <label for="logsMetricSelect" class="bulk-label">分析</label>
+            <select id="logsMetricSelect" class="select">
+              <option value="count">事件數</option>
+              <option value="unique">不同管理員數</option>
+            </select>
             <button id="logsShowAllBtn" class="btn ghost" type="button">全部</button>
             <button id="logsReloadBtn" class="btn ghost" type="button">重新整理</button>
           </div>
@@ -411,6 +416,11 @@
           </div>
 
           <div class="panel-actions" aria-label="技師使用紀錄操作">
+            <label for="techLogsMetricSelect" class="bulk-label">分析</label>
+            <select id="techLogsMetricSelect" class="select">
+              <option value="count">事件數</option>
+              <option value="unique">不同使用者數</option>
+            </select>
             <button id="techLogsShowAllBtn" class="btn ghost" type="button">全部</button>
             <button id="techLogsReloadBtn" class="btn ghost" type="button">重新整理</button>
           </div>
@@ -475,6 +485,8 @@
   <!-- 管理員紀錄（GAS UsageLog） -->
   <!-- Chart.js (for analytics used by admin logs & tech usage) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1/dist/chartjs-adapter-luxon.min.js" defer></script>
 
   <!-- 管理員紀錄（GAS UsageLog） -->
   <script src="js/admin.logs.js" defer></script>

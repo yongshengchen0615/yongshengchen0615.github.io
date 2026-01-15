@@ -264,11 +264,21 @@ function initTechUsageChart_() {
   }
   techUsageChart = new Chart(ctx, {
     type: "line",
-    data: { labels: [], datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.12)" }] },
+    data: { datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.12)" }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: { x: { display: true, ticks: { autoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true } },
+      parsing: false,
+      normalized: true,
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'day', displayFormats: { hour: 'yyyy-MM-dd HH:mm', day: 'yyyy-MM-dd', month: 'yyyy-MM' } },
+          ticks: { autoSkip: true, maxRotation: 0 }
+        },
+        y: { beginAtZero: true }
+      },
+      plugins: { legend: { display: true } }
     },
   });
 }
@@ -288,10 +298,12 @@ function renderTechUsageChart_() {
     gran = "hour";
   }
   const metric = "count";
-  const agg = buildTechChartAggregation_(gran, metric, start, end);
+  const metricSelect = document.getElementById('techLogsMetricSelect');
+  const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
+  const agg = buildTechChartAggregation_(gran, metricFromUI, start, end);
 
-    // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
-    console.debug("techUsageChart aggregation:", { gran, metric, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+  // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
+  console.debug("techUsageChart aggregation:", { gran, metric: metricFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
 
     // 若 hourly 分桶過多，回退到日或月分桶以避免過密的 x axis
     if (agg.labels.length > 60 && gran === "hour") {
@@ -310,9 +322,17 @@ function renderTechUsageChart_() {
       agg.data = agg2.data;
     }
 
-    techUsageChart.data.labels = agg.labels;
-    techUsageChart.data.datasets[0].data = agg.data;
-  techUsageChart.data.datasets[0].label = metric === "unique" ? "不同使用者數" : "事件數";
+    // convert labels/data to {x,y} points (ISO)
+    const points = agg.labels.map((lbl, i) => {
+      let x = lbl;
+      // normalize label to ISO
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+      return { x, y: agg.data[i] };
+    });
+    techUsageChart.data.datasets[0].data = points;
+    techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
   techUsageChart.update();
 }
 
@@ -441,4 +461,5 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsStartTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsMetricSelect")?.addEventListener("change", () => renderTechUsageChart_());
 }

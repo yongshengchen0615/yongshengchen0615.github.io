@@ -234,11 +234,21 @@ function initAdminLogsChart_() {
   }
   adminLogsChart = new Chart(ctx, {
     type: "line",
-    data: { labels: [], datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.12)" }] },
+    data: { datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.12)" }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: { x: { display: true, ticks: { autoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true } },
+      parsing: false,
+      normalized: true,
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'day', displayFormats: { hour: 'yyyy-MM-dd HH:mm', day: 'yyyy-MM-dd', month: 'yyyy-MM' } },
+          ticks: { autoSkip: true, maxRotation: 0 }
+        },
+        y: { beginAtZero: true }
+      },
+      plugins: { legend: { display: true } }
     },
   });
 }
@@ -255,13 +265,15 @@ function renderAdminLogsChart_() {
   const metric = "count";
   const agg = buildAdminChartAggregation_(gran, metric, start, end);
 
-  console.debug("adminLogsChart aggregation:", { gran, metric, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
+  const metricSelect = document.getElementById('logsMetricSelect');
+  const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
+  console.debug("adminLogsChart aggregation:", { gran, metric: metricFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
 
   // 若 hourly 分桶過多，回退到日或月分桶
   if (agg.labels.length > 60 && gran === "hour") {
     console.warn("adminLogsChart: too many hourly buckets, falling back to day granularity");
     gran = "day";
-    const agg2 = buildAdminChartAggregation_(gran, metric, start, end);
+    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end);
     console.debug("adminLogsChart fallback aggregation:", { gran, labels: agg2.labels.length });
     agg.labels = agg2.labels;
     agg.data = agg2.data;
@@ -269,14 +281,22 @@ function renderAdminLogsChart_() {
   if (agg.labels.length > 365 && gran !== "month") {
     console.warn("adminLogsChart: too many daily buckets, falling back to month granularity");
     gran = "month";
-    const agg2 = buildAdminChartAggregation_(gran, metric, start, end);
+    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end);
     agg.labels = agg2.labels;
     agg.data = agg2.data;
   }
 
-  adminLogsChart.data.labels = agg.labels;
-  adminLogsChart.data.datasets[0].data = agg.data;
-  adminLogsChart.data.datasets[0].label = metric === "unique" ? "不同管理員數" : "事件數";
+  // convert labels/data to {x,y} points (ISO)
+  const points = agg.labels.map((lbl, i) => {
+    let x = lbl;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+    return { x, y: agg.data[i] };
+  });
+
+  adminLogsChart.data.datasets[0].data = points;
+  adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
   adminLogsChart.update();
 }
 
@@ -406,6 +426,7 @@ function bindAdminLogs_() {
   document.getElementById("logsEndDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
   document.getElementById("logsStartTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
   document.getElementById("logsEndTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
+  document.getElementById("logsMetricSelect")?.addEventListener("change", () => renderAdminLogsChart_());
 }
 
 /**
