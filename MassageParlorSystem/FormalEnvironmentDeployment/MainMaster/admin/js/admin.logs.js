@@ -171,7 +171,7 @@ function renderAdminLogs_() {
  * Admin Logs Chart (aggregation + Chart.js)
  * ================================ */
 
-function buildAdminChartAggregation_(granularity = "day", metric = "count", start = "", end = "") {
+function buildAdminChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
   const endDate = end ? new Date(end) : null;
@@ -199,6 +199,9 @@ function buildAdminChartAggregation_(granularity = "day", metric = "count", star
     }
     processed += 1;
 
+    // filter by actor display name when requested
+    if (nameFilter && String(r.actorDisplayName || "") !== String(nameFilter)) continue;
+
     let key;
     if (granularity === "hour") {
       key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
@@ -219,7 +222,7 @@ function buildAdminChartAggregation_(granularity = "day", metric = "count", star
   }
 
   const keys = Array.from(buckets.keys()).sort();
-  console.debug("buildAdminChartAggregation summary:", { granularity, metric, start, end, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
+  console.debug("buildAdminChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
   const labels = keys;
   const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
   return { labels, data };
@@ -262,17 +265,19 @@ function renderAdminLogsChart_() {
   let gran = "day";
   if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
   const metric = "count";
-  const agg = buildAdminChartAggregation_(gran, metric, start, end);
-
   const metricSelect = document.getElementById('logsMetricSelect');
   const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
-  console.debug("adminLogsChart aggregation:", { gran, metric: metricFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
+  const nameSelect = document.getElementById('logsNameSelect');
+  const nameFromUI = nameSelect ? String(nameSelect.value || '') : '';
+  const agg = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+
+  console.debug("adminLogsChart aggregation:", { gran, metric: metricFromUI, nameFilter: nameFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
 
   // 若 hourly 分桶過多，回退到日或月分桶
   if (agg.labels.length > 60 && gran === "hour") {
     console.warn("adminLogsChart: too many hourly buckets, falling back to day granularity");
     gran = "day";
-    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end);
+    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
     console.debug("adminLogsChart fallback aggregation:", { gran, labels: agg2.labels.length });
     agg.labels = agg2.labels;
     agg.data = agg2.data;
@@ -280,7 +285,7 @@ function renderAdminLogsChart_() {
   if (agg.labels.length > 365 && gran !== "month") {
     console.warn("adminLogsChart: too many daily buckets, falling back to month granularity");
     gran = "month";
-    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end);
+    const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
     agg.labels = agg2.labels;
     agg.data = agg2.data;
   }
@@ -380,6 +385,17 @@ async function loadAdminLogs_() {
       }
     })();
 
+    // populate name select (管理員名稱)
+    (function populateNameSelect() {
+      const sel = document.getElementById('logsNameSelect');
+      if (!sel) return;
+      const names = Array.from(new Set(adminLogsAll_.map((r) => String(r.actorDisplayName || '').trim()).filter(Boolean))).sort();
+      // keep existing selection if any
+      const cur = String(sel.value || '');
+      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      if (cur) sel.value = cur;
+    })();
+
     // apply filter and render with defaults
     applyAdminLogsDateFilter_();
     renderAdminLogs_();
@@ -449,6 +465,7 @@ function bindAdminLogs_() {
   document.getElementById("logsStartTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
   document.getElementById("logsEndTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
   document.getElementById("logsMetricSelect")?.addEventListener("change", () => renderAdminLogsChart_());
+  document.getElementById("logsNameSelect")?.addEventListener("change", () => renderAdminLogsChart_());
 }
 
 /**

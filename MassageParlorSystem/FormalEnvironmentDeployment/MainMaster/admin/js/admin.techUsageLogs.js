@@ -185,7 +185,7 @@ function monthKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "") {
+function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
   const endDate = end ? new Date(end) : null;
@@ -231,6 +231,9 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
     if (startDate && d < startDate) continue;
     if (endDate && d > endDate) continue;
 
+    // filter by technician name when requested
+    if (nameFilter && String(r.name || '') !== String(nameFilter)) continue;
+
     let key;
     if (granularity === "week") key = weekKey(d);
     else if (granularity === "month") key = monthKey(d);
@@ -249,7 +252,7 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
   // convert to sorted arrays
   const keys = Array.from(buckets.keys()).sort();
   // DEBUG: aggregation summary
-  console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
+  console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
   const labels = keys;
   const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
   return { labels, data };
@@ -299,16 +302,18 @@ function renderTechUsageChart_() {
   const metric = "count";
   const metricSelect = document.getElementById('techLogsMetricSelect');
   const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
-  const agg = buildTechChartAggregation_(gran, metricFromUI, start, end);
+  const nameSelect = document.getElementById('techLogsNameSelect');
+  const nameFromUI = nameSelect ? String(nameSelect.value || '') : '';
+  const agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
 
   // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
-  console.debug("techUsageChart aggregation:", { gran, metric: metricFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+  console.debug("techUsageChart aggregation:", { gran, metric: metricFromUI, nameFilter: nameFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
 
     // 若 hourly 分桶過多，回退到日或月分桶以避免過密的 x axis
     if (agg.labels.length > 60 && gran === "hour") {
       console.warn("techUsageChart: too many hourly buckets, falling back to day granularity");
       gran = "day";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end);
+      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
       console.debug("techUsageChart fallback aggregation:", { gran, labels: agg2.labels.length });
       agg.labels = agg2.labels;
       agg.data = agg2.data;
@@ -316,7 +321,7 @@ function renderTechUsageChart_() {
     if (agg.labels.length > 365 && gran !== "month") {
       console.warn("techUsageChart: too many daily buckets, falling back to month granularity");
       gran = "month";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end);
+      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
       agg.labels = agg2.labels;
       agg.data = agg2.data;
     }
@@ -423,6 +428,16 @@ async function loadTechUsageLogs_() {
       }
     })();
 
+    // populate technician name select
+    (function populateTechNameSelect() {
+      const sel = document.getElementById('techLogsNameSelect');
+      if (!sel) return;
+      const names = Array.from(new Set(techUsageLogsAll_.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
+      const cur = String(sel.value || '');
+      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      if (cur) sel.value = cur;
+    })();
+
     applyTechUsageLogsDateFilter_();
 
     renderTechUsageLogs_();
@@ -487,4 +502,5 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsStartTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsMetricSelect")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsNameSelect")?.addEventListener("change", () => renderTechUsageChart_());
 }
