@@ -70,3 +70,37 @@ function debounce(fn, wait) {
 function sleep_(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+/**
+ * 嘗試解析各種時間格式並回傳 Date 或 null。
+ * 支援：epoch 秒/毫秒、ISO、常見 yyyy-mm-dd / yyyy/mm/dd 與帶時間的字串。
+ * 回傳值：Date 或 null
+ */
+function parseDateFlexible(s) {
+  const str = String(s || "").trim();
+  if (!str) return null;
+  // pure digits epoch (10 或 13)
+  const mDigits = str.match(/^\d{10,13}$/);
+  if (mDigits) {
+    const n = Number(str);
+    const ms = str.length === 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  // try common date patterns first to avoid inconsistent Date parsing
+  const m1 = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (m1) {
+    const Y = Number(m1[1]);
+    const M = Number(m1[2]) - 1;
+    const D = Number(m1[3]);
+    const hh = Number(m1[4] || 0);
+    const mm = Number(m1[5] || 0);
+    const ss = Number(m1[6] || 0);
+    const d = new Date(Y, M, D, hh, mm, ss);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  // fallback to Date parse
+  const d = new Date(str);
+  if (!Number.isNaN(d.getTime())) return d;
+  return null;
+}

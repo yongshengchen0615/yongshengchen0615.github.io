@@ -15,16 +15,40 @@ let techUsageLogsLoading_ = false;
 // Chart instance for tech usage analytics
 let techUsageChart = null;
 
+// Module-level DOM cache to avoid repeated queries
+let techLogsCanvasEl = null;
+let techLogsMetricSelectEl = null;
+let techLogsNameSelectEl = null;
+let techLogsStartDateEl = null;
+let techLogsEndDateEl = null;
+let techLogsStartTimeEl = null;
+let techLogsEndTimeEl = null;
+let techLogsTbodyEl = null;
+let techLogsFooterEl = null;
+
+function cacheTechDom_() {
+  if (techLogsCanvasEl) return;
+  techLogsCanvasEl = document.getElementById("techUsageChartCanvas");
+  techLogsMetricSelectEl = document.getElementById('techLogsMetricSelect');
+  techLogsNameSelectEl = document.getElementById('techLogsNameSelect');
+  techLogsStartDateEl = document.getElementById('techLogsStartDateInput');
+  techLogsEndDateEl = document.getElementById('techLogsEndDateInput');
+  techLogsStartTimeEl = document.getElementById('techLogsStartTimeInput');
+  techLogsEndTimeEl = document.getElementById('techLogsEndTimeInput');
+  techLogsTbodyEl = document.getElementById('techLogsTbody');
+  techLogsFooterEl = document.getElementById('techLogsFooterStatus');
+}
+
 
 function techLogsSetFooter_(text) {
-  const el = document.getElementById("techLogsFooterStatus");
-  if (el) el.textContent = String(text || "-");
+  cacheTechDom_();
+  if (techLogsFooterEl) techLogsFooterEl.textContent = String(text || "-");
 }
 
 function techLogsSetTbodyMessage_(msg) {
-  const tbody = document.getElementById("techLogsTbody");
-  if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(msg || "-")}</td></tr>`;
+  cacheTechDom_();
+  if (!techLogsTbodyEl) return;
+  techLogsTbodyEl.innerHTML = `<tr><td colspan="5">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function normalizeTechUsageRow_(r) {
@@ -71,12 +95,11 @@ function toDateKey_(ts) {
 }
 
 function techLogsGetSelectedRange_() {
-  const startEl = document.getElementById("techLogsStartDateInput");
-  const endEl = document.getElementById("techLogsEndDateInput");
-  const startDate = String(startEl?.value || "").trim();
-  const endDate = String(endEl?.value || "").trim();
-  const startTime = String(document.getElementById("techLogsStartTimeInput")?.value || "").trim();
-  const endTime = String(document.getElementById("techLogsEndTimeInput")?.value || "").trim();
+  cacheTechDom_();
+  const startDate = String(techLogsStartDateEl?.value || "").trim();
+  const endDate = String(techLogsEndDateEl?.value || "").trim();
+  const startTime = String(techLogsStartTimeEl?.value || "").trim();
+  const endTime = String(techLogsEndTimeEl?.value || "").trim();
 
   let start = startDate;
   let end = endDate;
@@ -92,10 +115,10 @@ function techLogsGetSelectedRange_() {
       const tmp = start;
       start = end;
       end = tmp;
-      if (startEl) startEl.value = startDate || "";
-      if (endEl) endEl.value = endDate || "";
-      if (document.getElementById("techLogsStartTimeInput")) document.getElementById("techLogsStartTimeInput").value = startTime || "";
-      if (document.getElementById("techLogsEndTimeInput")) document.getElementById("techLogsEndTimeInput").value = endTime || "";
+      if (techLogsStartDateEl) techLogsStartDateEl.value = startDate || "";
+      if (techLogsEndDateEl) techLogsEndDateEl.value = endDate || "";
+      if (techLogsStartTimeEl) techLogsStartTimeEl.value = startTime || "";
+      if (techLogsEndTimeEl) techLogsEndTimeEl.value = endTime || "";
     }
   }
 
@@ -129,15 +152,15 @@ function applyTechUsageLogsDateFilter_() {
 }
 
 function renderTechUsageLogs_() {
-  const tbody = document.getElementById("techLogsTbody");
-  if (!tbody) return;
+  cacheTechDom_();
+  if (!techLogsTbodyEl) return;
 
   if (!techUsageLogs_.length) {
-    tbody.innerHTML = `<tr><td colspan="5">無資料</td></tr>`;
+    techLogsTbodyEl.innerHTML = `<tr><td colspan="5">無資料</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = techUsageLogs_
+  techLogsTbodyEl.innerHTML = techUsageLogs_
     .map((r, i) => {
       return `
         <tr>
@@ -157,18 +180,9 @@ function renderTechUsageLogs_() {
  * ================================ */
 
 function parseDateSafe(s) {
-  const str = String(s || "").trim();
-  if (!str) return null;
-  // epoch seconds / ms
-  if (/^\d{10,13}$/.test(str)) {
-    const n = Number(str);
-    const ms = str.length === 10 ? n * 1000 : n;
-    const d = new Date(ms);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  const d = new Date(str);
-  if (!Number.isNaN(d.getTime())) return d;
-  return null;
+  if (typeof parseDateFlexible === 'function') return parseDateFlexible(s);
+  const d = new Date(String(s || ''));
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
 function weekKey(d) {
@@ -186,6 +200,7 @@ function monthKey(d) {
 }
 
 function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
+  const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
   const endDate = end ? new Date(end) : null;
@@ -252,18 +267,22 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
   // convert to sorted arrays
   const keys = Array.from(buckets.keys()).sort();
   // DEBUG: aggregation summary
-  console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
+  const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5), durationMs: Math.round(t1 - t0) });
   const labels = keys;
   const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
   return { labels, data };
 }
 
 function initTechUsageChart_() {
-  const canvas = document.getElementById("techUsageChartCanvas");
-  if (!canvas || typeof Chart === "undefined") return;
-  const ctx = canvas.getContext("2d");
-  if (techUsageChart) {
-    try { techUsageChart.destroy(); } catch (_) {}
+  cacheTechDom_();
+  if (!techLogsCanvasEl || typeof Chart === "undefined") return;
+  const ctx = techLogsCanvasEl.getContext("2d");
+  // reuse existing instance when possible
+  if (techUsageChart && techUsageChart.ctx === ctx) {
+    // keep existing chart
+  } else {
+    try { if (techUsageChart) techUsageChart.destroy(); } catch (_) {}
   }
   techUsageChart = new Chart(ctx, {
     type: "line",
@@ -286,9 +305,8 @@ function initTechUsageChart_() {
 }
 
 function renderTechUsageChart_() {
-  const canvas = document.getElementById("techUsageChartCanvas");
-  if (!canvas) return;
-
+  cacheTechDom_();
+  if (!techLogsCanvasEl) return;
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
 
@@ -300,10 +318,8 @@ function renderTechUsageChart_() {
     gran = "hour";
   }
   const metric = "count";
-  const metricSelect = document.getElementById('techLogsMetricSelect');
-  const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
-  const nameSelect = document.getElementById('techLogsNameSelect');
-  const nameFromUI = nameSelect ? String(nameSelect.value || '') : '';
+  const metricFromUI = techLogsMetricSelectEl ? String(techLogsMetricSelectEl.value || 'count') : 'count';
+  const nameFromUI = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : '';
   const agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
 
   // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
@@ -326,24 +342,30 @@ function renderTechUsageChart_() {
       agg.data = agg2.data;
     }
 
-    // convert labels/data to {x,y} points (ISO)
+    // convert labels/data to {x,y} points using numeric timestamp (ms)
     const points = agg.labels.map((lbl, i) => {
       let x = lbl;
-      // normalize label to ISO
       if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
       if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
       if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-      const xd = new Date(String(x));
-      return { x: Number.isFinite(xd.getTime()) ? xd : String(x), y: agg.data[i] };
+      const d = parseDateSafe(x) || parseDateSafe(lbl);
+      const ms = d ? d.getTime() : null;
+      return { x: ms !== null ? ms : String(x), y: agg.data[i] };
     });
-    if (!points.length) {
-      console.warn('techUsageChart: no data points to render');
-      techUsageChart.data.datasets[0].data = [];
-    } else {
-      techUsageChart.data.datasets[0].data = points;
+    // only update chart when points changed
+    const old = techUsageChart.data.datasets[0].data || [];
+    let same = false;
+    if (old.length === points.length) {
+      same = old.every((o, idx) => {
+        const p = points[idx];
+        return (o.x === p.x || String(o.x) === String(p.x)) && Number(o.y) === Number(p.y);
+      });
     }
-    techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
-  techUsageChart.update();
+    if (!same) {
+      techUsageChart.data.datasets[0].data = points;
+      techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
+      techUsageChart.update();
+    }
 }
 
 
@@ -377,7 +399,6 @@ async function loadTechUsageLogs_() {
     techUsageLogsAll_ = rows
       .map(normalizeTechUsageRow_)
       .filter((r) => r.serverTime || r.userId || r.name || r.detail);
-
     // set default range inputs to earliest and latest timestamps (include time if available)
     (function setDefaultRange() {
       let minD = null;
@@ -427,6 +448,12 @@ async function loadTechUsageLogs_() {
         if (endTimeEl) endTimeEl.value = "";
       }
     })();
+
+    // timing: measure parsing/processing time
+    try {
+      const tAfter = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      console.debug('loadTechUsageLogs: rows=', techUsageLogsAll_.length, 'processedTimeStamp=', tAfter);
+    } catch (_) {}
 
     // populate technician name select
     (function populateTechNameSelect() {
@@ -497,10 +524,12 @@ function bindTechUsageLogs_() {
   
   // Initialize chart and re-render when date range changes
   initTechUsageChart_();
-  document.getElementById("techLogsStartDateInput")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techLogsEndDateInput")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techLogsStartTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techLogsEndTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techLogsMetricSelect")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techLogsNameSelect")?.addEventListener("change", () => renderTechUsageChart_());
+  // debounce chart render to avoid frequent heavy recomputations
+  const debouncedRenderTechChart = debounce(() => renderTechUsageChart_(), 200);
+  document.getElementById("techLogsStartDateInput")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsEndDateInput")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsStartTimeInput")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsEndTimeInput")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsMetricSelect")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsNameSelect")?.addEventListener("change", debouncedRenderTechChart);
 }

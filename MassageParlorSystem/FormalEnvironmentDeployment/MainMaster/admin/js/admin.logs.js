@@ -15,15 +15,39 @@ let adminLogsLoading_ = false;
 // Chart instance for admin logs analytics
 let adminLogsChart = null;
 
+// Module-level DOM cache
+let adminLogsCanvasEl = null;
+let logsMetricSelectEl = null;
+let logsNameSelectEl = null;
+let logsStartDateEl = null;
+let logsEndDateEl = null;
+let logsStartTimeEl = null;
+let logsEndTimeEl = null;
+let logsTbodyEl = null;
+let logsFooterEl = null;
+
+function cacheLogsDom_() {
+  if (adminLogsCanvasEl) return;
+  adminLogsCanvasEl = document.getElementById('adminLogsChartCanvas');
+  logsMetricSelectEl = document.getElementById('logsMetricSelect');
+  logsNameSelectEl = document.getElementById('logsNameSelect');
+  logsStartDateEl = document.getElementById('logsStartDateInput');
+  logsEndDateEl = document.getElementById('logsEndDateInput');
+  logsStartTimeEl = document.getElementById('logsStartTimeInput');
+  logsEndTimeEl = document.getElementById('logsEndTimeInput');
+  logsTbodyEl = document.getElementById('logsTbody');
+  logsFooterEl = document.getElementById('logsFooterStatus');
+}
+
 function logsSetFooter_(text) {
-  const el = document.getElementById("logsFooterStatus");
-  if (el) el.textContent = String(text || "-");
+  cacheLogsDom_();
+  if (logsFooterEl) logsFooterEl.textContent = String(text || "-");
 }
 
 function logsSetTbodyMessage_(msg) {
-  const tbody = document.getElementById("logsTbody");
-  if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="4">${escapeHtml(msg || "-")}</td></tr>`;
+  cacheLogsDom_();
+  if (!logsTbodyEl) return;
+  logsTbodyEl.innerHTML = `<tr><td colspan="4">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function normalizeLogRow_(r) {
@@ -71,27 +95,20 @@ function toDateKey_(ts) {
   return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
 }
 
+// delegate to shared parser in utils for better performance/consistency
 function parseDateSafeLogs(s) {
-  const str = String(s || "").trim();
-  if (!str) return null;
-  if (/^\d{10,13}$/.test(str)) {
-    const n = Number(str);
-    const ms = str.length === 10 ? n * 1000 : n;
-    const d = new Date(ms);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  const d = new Date(str);
-  if (!Number.isNaN(d.getTime())) return d;
-  return null;
+  if (typeof parseDateFlexible === 'function') return parseDateFlexible(s);
+  // fallback
+  const d = new Date(String(s || ''));
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
 function logsGetSelectedRange_() {
-  const startEl = document.getElementById("logsStartDateInput");
-  const endEl = document.getElementById("logsEndDateInput");
-  const startDate = String(startEl?.value || "").trim();
-  const endDate = String(endEl?.value || "").trim();
-  const startTime = String(document.getElementById("logsStartTimeInput")?.value || "").trim();
-  const endTime = String(document.getElementById("logsEndTimeInput")?.value || "").trim();
+  cacheLogsDom_();
+  const startDate = String(logsStartDateEl?.value || "").trim();
+  const endDate = String(logsEndDateEl?.value || "").trim();
+  const startTime = String(logsStartTimeEl?.value || "").trim();
+  const endTime = String(logsEndTimeEl?.value || "").trim();
 
   let start = startDate;
   let end = endDate;
@@ -107,10 +124,10 @@ function logsGetSelectedRange_() {
       const tmp = start;
       start = end;
       end = tmp;
-      if (startEl) startEl.value = startDate || "";
-      if (endEl) endEl.value = endDate || "";
-      if (document.getElementById("logsStartTimeInput")) document.getElementById("logsStartTimeInput").value = startTime || "";
-      if (document.getElementById("logsEndTimeInput")) document.getElementById("logsEndTimeInput").value = endTime || "";
+      if (logsStartDateEl) logsStartDateEl.value = startDate || "";
+      if (logsEndDateEl) logsEndDateEl.value = endDate || "";
+      if (logsStartTimeEl) logsStartTimeEl.value = startTime || "";
+      if (logsEndTimeEl) logsEndTimeEl.value = endTime || "";
     }
   }
 
@@ -145,15 +162,15 @@ function applyAdminLogsDateFilter_() {
 }
 
 function renderAdminLogs_() {
-  const tbody = document.getElementById("logsTbody");
-  if (!tbody) return;
+  cacheLogsDom_();
+  if (!logsTbodyEl) return;
 
   if (!adminLogs_.length) {
-    tbody.innerHTML = `<tr><td colspan="4">無資料</td></tr>`;
+    logsTbodyEl.innerHTML = `<tr><td colspan="4">無資料</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = adminLogs_
+  logsTbodyEl.innerHTML = adminLogs_
     .map((r, i) => {
       return `
         <tr>
@@ -172,6 +189,7 @@ function renderAdminLogs_() {
  * ================================ */
 
 function buildAdminChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
+  const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
   const endDate = end ? new Date(end) : null;
@@ -222,7 +240,8 @@ function buildAdminChartAggregation_(granularity = "day", metric = "count", star
   }
 
   const keys = Array.from(buckets.keys()).sort();
-  console.debug("buildAdminChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
+  const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  console.debug("buildAdminChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5), durationMs: Math.round(t1 - t0) });
   const labels = keys;
   const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
   return { labels, data };
@@ -290,19 +309,31 @@ function renderAdminLogsChart_() {
     agg.data = agg2.data;
   }
 
-  // convert labels/data to {x,y} points (ISO)
-    const points = agg.labels.map((lbl, i) => {
-      let x = lbl;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
-      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-      const xd = new Date(String(x));
-      return { x: Number.isFinite(xd.getTime()) ? xd : String(x), y: agg.data[i] };
-    });
+  // convert labels/data to {x,y} points using numeric timestamp (ms) for performance
+  const points = agg.labels.map((lbl, i) => {
+    let x = lbl;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+    const d = parseDateSafeLogs(x) || parseDateSafeLogs(lbl);
+    const ms = d ? d.getTime() : null;
+    return { x: ms !== null ? ms : String(x), y: agg.data[i] };
+  });
 
-  adminLogsChart.data.datasets[0].data = points;
-  adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
-  adminLogsChart.update();
+  // only update when changed
+  const old = adminLogsChart.data.datasets[0].data || [];
+  let same = false;
+  if (old.length === points.length) {
+    same = old.every((o, idx) => {
+      const p = points[idx];
+      return (o.x === p.x || String(o.x) === String(p.x)) && Number(o.y) === Number(p.y);
+    });
+  }
+  if (!same) {
+    adminLogsChart.data.datasets[0].data = points;
+    adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
+    adminLogsChart.update();
+  }
 }
 
 async function loadAdminLogs_() {
@@ -387,13 +418,17 @@ async function loadAdminLogs_() {
 
     // populate name select (管理員名稱)
     (function populateNameSelect() {
-      const sel = document.getElementById('logsNameSelect');
+      cacheLogsDom_();
+      const sel = logsNameSelectEl || document.getElementById('logsNameSelect');
       if (!sel) return;
       const names = Array.from(new Set(adminLogsAll_.map((r) => String(r.actorDisplayName || '').trim()).filter(Boolean))).sort();
       // keep existing selection if any
       const cur = String(sel.value || '');
       sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
       if (cur) sel.value = cur;
+      // update count badge if present
+      const cnt = document.getElementById('logsNameCount');
+      if (cnt) cnt.textContent = String(names.length || 0);
     })();
 
     // apply filter and render with defaults
@@ -401,6 +436,12 @@ async function loadAdminLogs_() {
     renderAdminLogs_();
     // 初次載入後也一併繪製圖表（techUsage 有此行，admin 端先前遺漏）
     try { renderAdminLogsChart_(); } catch (e) { console.warn('renderAdminLogsChart failed', e); }
+
+    // timing: simple log
+    try {
+      const tAfter = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      console.debug('loadAdminLogs: rows=', adminLogsAll_.length, 'processedTimeStamp=', tAfter);
+    } catch (_) {}
 
     const { start, end } = logsGetSelectedRange_();
     const rangeLabel = logsBuildRangeLabel_(start, end);
@@ -460,12 +501,14 @@ function bindAdminLogs_() {
 
   // Initialize chart and re-render when date range changes
   initAdminLogsChart_();
-  document.getElementById("logsStartDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
-  document.getElementById("logsEndDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
-  document.getElementById("logsStartTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
-  document.getElementById("logsEndTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
-  document.getElementById("logsMetricSelect")?.addEventListener("change", () => renderAdminLogsChart_());
-  document.getElementById("logsNameSelect")?.addEventListener("change", () => renderAdminLogsChart_());
+  // debounce chart render to avoid frequent heavy recomputations
+  const debouncedRenderAdminChart = debounce(() => renderAdminLogsChart_(), 200);
+  document.getElementById("logsStartDateInput")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsEndDateInput")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsStartTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsEndTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsMetricSelect")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsNameSelect")?.addEventListener("change", debouncedRenderAdminChart);
 }
 
 /**
