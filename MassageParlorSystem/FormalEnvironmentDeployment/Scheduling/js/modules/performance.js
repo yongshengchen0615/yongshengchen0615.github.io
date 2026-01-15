@@ -1116,6 +1116,21 @@ export function initPerformanceUi() {
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
+
+  // 當開始/結束日期變更時，立即依快取顯示該範圍資料
+  const onDateInputsChanged = () => {
+    // 讀取 UI 範圍並交給 renderFromCache_（會顯示錯誤或快取內容）
+    void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
+  };
+
+  if (dom.perfDateStartInput) {
+    dom.perfDateStartInput.addEventListener("change", onDateInputsChanged);
+    dom.perfDateStartInput.addEventListener("input", onDateInputsChanged);
+  }
+  if (dom.perfDateEndInput) {
+    dom.perfDateEndInput.addEventListener("change", onDateInputsChanged);
+    dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
+  }
 }
 
 /**
