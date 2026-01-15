@@ -21,6 +21,7 @@ import {
   hexToRgb,
   isLightTheme,
   parseOpacityToken,
+  getRgbaString,
 } from "./core.js";
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
@@ -389,17 +390,19 @@ function applyOrderIndexHighlight(tdOrder, bgToken) {
   if (!tdOrder) return;
 
   const h = normalizeHex6(bgToken);
-  const rgb = hexToRgb(h);
-  if (!rgb) return;
+  if (!h) return;
 
   const aBg = isLightTheme() ? 0.36 : 0.42;
-  tdOrder.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
+  const bgRgba = getRgbaString(h, aBg);
+  if (bgRgba) tdOrder.style.backgroundColor = bgRgba;
 
   const aStripe = 0.92;
-  tdOrder.style.borderLeft = `6px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aStripe})`;
+  const stripeRgba = getRgbaString(h, aStripe);
+  if (stripeRgba) tdOrder.style.borderLeft = `6px solid ${stripeRgba}`;
 
   const aBd = isLightTheme() ? 0.60 : 0.62;
-  tdOrder.style.outline = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
+  const bdRgba = getRgbaString(h, aBd);
+  if (bdRgba) tdOrder.style.outline = `1px solid ${bdRgba}`;
   tdOrder.style.outlineOffset = "-2px";
 
   tdOrder.style.boxShadow = isLightTheme()
@@ -443,13 +446,11 @@ function applyAppointmentBgFromColorMaster(tdAppointment, colorMaster) {
   const bg = extractBgColorFromColorMaster(colorMaster);
   if (!bg) return;
 
-  const rgb = hexToRgb(bg.hex);
-  if (!rgb) return;
-
   const baseAlpha = isLightTheme() ? 0.14 : 0.22;
   const alpha = Math.max(0.06, Math.min(0.40, bg.opacity == null ? baseAlpha : bg.opacity));
 
-  tdAppointment.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  const rgba = getRgbaString(bg.hex, alpha);
+  if (rgba) tdAppointment.style.backgroundColor = rgba;
 }
 
 function patchRowDom(tr, row, orderText) {
@@ -464,16 +465,15 @@ function patchRowDom(tr, row, orderText) {
   const timeSpan = ui ? ui.timeSpan : null;
 
   tdOrder.textContent = orderText;
-
   tdOrder.style.backgroundColor = "";
   tdOrder.style.borderLeft = "";
   tdOrder.style.outline = "";
   tdOrder.style.outlineOffset = "";
   tdOrder.style.boxShadow = "";
-  tdOrder.style.fontWeight = "";
-  tdOrder.style.textShadow = "";
-  tdOrder.style.color = "";
 
+  // color is applied by applyTextColorFromTokenStrong (inline color only);
+  // font-weight and text-shadow are provided by CSS class to avoid frequent
+  // inline changes that cause layout/repaint thrash.
   applyTextColorFromTokenStrong(tdOrder, row.colorIndex);
 
   const isOrderHl = isOrderIndexHighlight(row.bgIndex);
@@ -588,6 +588,8 @@ export function renderIncremental(panel) {
     });
   }
 
+  const RENDER_SLOW_MS = 60; // threshold to warn about slow renders
+  const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
   const displayRows = mapRowsToDisplay(finalRows);
 
   if (dom.emptyStateEl) dom.emptyStateEl.style.display = displayRows.length ? "none" : "block";
@@ -613,7 +615,31 @@ export function renderIncremental(panel) {
     frag.appendChild(tr);
   });
 
+  // 清理不再需要的 row DOM，避免 `rowDomMapByPanel` 隨著加入/移除累積記憶體
+  try {
+    const map = rowDomMapByPanel[panel];
+    const keepKeys = new Set(displayRows.map((r) => buildRowKey(r)));
+    for (const [k, tr] of Array.from(map.entries())) {
+      if (!keepKeys.has(k)) {
+        map.delete(k);
+        try {
+          if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
   dom.tbodyRowsEl.replaceChildren(frag);
+
+  try {
+    const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    const dt = Math.round(t1 - t0);
+    if (dt > RENDER_SLOW_MS) {
+      console.warn(`[Perf] renderIncremental(${panel}) slow: ${dt}ms, rows=${displayRows.length}`);
+    } else {
+      console.debug && console.debug(`[Perf] renderIncremental ${dt}ms`);
+    }
+  } catch (e) {}
 }
 
 /* =========================
@@ -656,7 +682,12 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
   if (isManual && dom.errorStateEl) dom.errorStateEl.style.display = "none";
 
   try {
+    const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
+    const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
+    const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    const dtFetch = Math.round(t1 - t0);
+    if (dtFetch > REFRESH_SLOW_MS) console.warn(`[Perf] fetchStatusAll slow: ${dtFetch}ms`);
 
     const bodyDecision = decideIncomingRows("body", bodyRows, state.rawData.body, isManual);
     const footDecision = decideIncomingRows("foot", footRows, state.rawData.foot, isManual);
