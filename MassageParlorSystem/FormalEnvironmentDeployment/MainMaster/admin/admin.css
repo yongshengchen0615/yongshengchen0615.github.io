@@ -955,3 +955,7 @@ html[data-theme="light"] .initial-loading-progress{
 }
 
 @keyframes spin{ to{ transform: rotate(360deg); } }
+
+/* Tech usage chart styles */
+.chart-wrap{ width:100%; max-width:100%; display:block; }
+.chart-wrap canvas{ width:100% !important; height:360px !important; max-height:520px; }
