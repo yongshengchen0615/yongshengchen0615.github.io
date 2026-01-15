@@ -217,8 +217,6 @@ function initTechUsageChart_() {
 function renderTechUsageChart_() {
   const section = document.getElementById("techUsageChartSection");
   if (!section) return;
-  // show section when data exists
-  section.hidden = techUsageLogsAll_?.length === 0;
 
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;

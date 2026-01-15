@@ -119,7 +119,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (usersKpi) usersKpi.hidden = !isUsers;
         if (usersPanel) usersPanel.hidden = !isUsers;
         if (techUsageLogsPanel) techUsageLogsPanel.hidden = !isTechUsageLogs;
-        if (techUsageChartPanel) techUsageChartPanel.hidden = !isTechUsageLogs;
+        if (techUsageChartPanel) {
+          techUsageChartPanel.hidden = !isTechUsageLogs;
+          techUsageChartPanel.style.display = isTechUsageLogs ? "" : "none";
+        }
 
         // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
         if (summaryText) summaryText.hidden = !isAdmins;
