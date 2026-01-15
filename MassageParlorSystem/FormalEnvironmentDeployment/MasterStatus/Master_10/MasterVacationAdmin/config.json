@@ -4,11 +4,11 @@
     "desc": "頁面標題（顯示用）。"
   },
   "DATE_DB_ENDPOINT": {
-    "value": "https://script.google.com/macros/s/AKfycbzN9WEnLx4RTY1QCMs7ERnsVvdaieqEreu7eDyaq26pBR5xio9s3j4QtlnGKkOmoaIdRg/exec",
+    "value": "https://script.google.com/macros/s/AKfycbzknm6h-BDAc_czJndFr4n_3LcM_XTc5Rl-tUq6KsGt5dUniIwcfGoMmyEr9OsiQ6kgfA/exec",
     "desc": "假日資料庫 DateDB WebApp 的 /exec（只處理 holiday 批次寫入/讀取）。"
   },
   "AUTH_ENDPOINT": {
-    "value": "https://script.google.com/macros/s/AKfycbx3LALMviMxg4kmHMuGC9dSsV1wn6lHZE5JZtE_Bz18kq3629RSU5ALvjKFA38hV2bW/exec",
+    "value": "https://script.google.com/macros/s/AKfycbwt5_B_nfJoBO5zdnbAA51tEay-ZH3YX-NhubTgG_qc9ribjm-dnmn7ZeOm5OP9gAgp1g/exec",
     "desc": "授權/審核 Auth WebApp 的 /exec（支援 request / requests_list / requests_approve / requests_deny / exchange / check）。"
   },
   "MASTER_ID": {

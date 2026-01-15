@@ -9,7 +9,7 @@
   ],
   "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
 
-  "FALLBACK_ORIGIN_CACHE_URL": "hhttps://script.google.com/macros/s/AKfycbxsVPrIB9KzELL8_k5nRDbe8ca7cvcAkOpCiX1eS0k1A5h9845AQf6owdF_03GwmaHMpA/exec",
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxsVPrIB9KzELL8_k5nRDbe8ca7cvcAkOpCiX1eS0k1A5h9845AQf6owdF_03GwmaHMpA/exec",
   "_comment_FALLBACK_ORIGIN_CACHE_URL": "當所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。",
 
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzr-0aAArL9DOxZ1V-8nKmMRMhFZQ_KVuRkwa_Tk92A_WqbJkXoG1R-WA-fybxrBQwd/exec",

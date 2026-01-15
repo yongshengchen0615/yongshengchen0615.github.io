@@ -5,20 +5,20 @@
   },
   "EDGE_STATUS_URLS": {
     "value": [
-      "https://script.google.com/macros/s/AKfycbztjwEaxl6EzpGrcAZp9wGkiyQji6i4UVuxBPljk89Irqvtu2PjLPFSrtuXCVGAuvZCPA/exec"
+      "https://script.google.com/macros/s/AKfycbzZ_lc_DGk-oyzvE1w3uMcT_L7fpDZH6eyYVPGUxI4heP8QvJgIZU-bgg45nbn40jU5mg/exec"
     ],
     "desc": "狀態來源（GAS WebApp /exec）清單。會依序嘗試抓取資料。"
   },
   "FALLBACK_ORIGIN_CACHE_URL": {
-    "value": "https://script.google.com/macros/s/AKfycbxVGG-Of76-4g55Jwa3pa5TSWBPMr83-WEO4UW-Gmya0t35OVtheRgqLOUUfLTDUj6A/exec",
+    "value": "https://script.google.com/macros/s/AKfycbxsVPrIB9KzELL8_k5nRDbe8ca7cvcAkOpCiX1eS0k1A5h9845AQf6owdF_03GwmaHMpA/exec",
     "desc": "備援快取來源（GAS WebApp /exec）。當主要來源失敗時用來加速/補資料（如果你的架構有用到）。"
   },
   "VACATION_DATE_DB_ENDPOINT": {
-    "value": "https://script.google.com/macros/s/AKfycbzN9WEnLx4RTY1QCMs7ERnsVvdaieqEreu7eDyaq26pBR5xio9s3j4QtlnGKkOmoaIdRg/exec",
+    "value": "https://script.google.com/macros/s/AKfycbzknm6h-BDAc_czJndFr4n_3LcM_XTc5Rl-tUq6KsGt5dUniIwcfGoMmyEr9OsiQ6kgfA/exec",
     "desc": "假日資料庫 DateDB WebApp 的 /exec（供看板讀取假日/休假資料使用）。"
   },
   "AUTH_ENDPOINT": {
-    "value": "https://script.google.com/macros/s/AKfycbx3LALMviMxg4kmHMuGC9dSsV1wn6lHZE5JZtE_Bz18kq3629RSU5ALvjKFA38hV2bW/exec",
+    "value": "https://script.google.com/macros/s/AKfycbwt5_B_nfJoBO5zdnbAA51tEay-ZH3YX-NhubTgG_qc9ribjm-dnmn7ZeOm5OP9gAgp1g/exec",
     "desc": "授權/審核 Auth WebApp 的 /exec（看板會用它進行 token→session 兌換與 session 檢查）。"
   },
   "STATUS_FETCH_TIMEOUT_MS": {
