@@ -221,8 +221,9 @@ function renderTechUsageChart_() {
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
 
-  const gran = String(document.getElementById("techChartGranularity")?.value || "day");
-  const metric = String(document.getElementById("techChartMetric")?.value || "count");
+  // fixed defaults: daily event count, controlled by techLogsStartDateInput / techLogsEndDateInput
+  const gran = "day";
+  const metric = "count";
   const { start, end } = techLogsGetSelectedRange_();
   const agg = buildTechChartAggregation_(gran, metric, start, end);
 
@@ -319,11 +320,8 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsStartDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", onRangeChange);
   
-  // Chart controls
+  // Initialize chart and re-render when date range changes
   initTechUsageChart_();
-  document.getElementById("techChartReloadBtn")?.addEventListener("click", () => renderTechUsageChart_());
-  document.getElementById("techChartGranularity")?.addEventListener("change", () => renderTechUsageChart_());
-  document.getElementById("techChartMetric")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsStartDateInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", () => renderTechUsageChart_());
 }
