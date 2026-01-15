@@ -103,6 +103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const usersKpi = document.getElementById("usersKpiSection");
       const usersPanel = document.getElementById("usersPanelSection");
       const techUsageLogsPanel = document.getElementById("techUsageLogsPanelSection");
+      const techUsageChartPanel = document.getElementById("techUsageChartSection");
 
       if (!btnAdmins || !btnUsers || !btnLogs || !btnTechUsageLogs) return;
 
@@ -118,6 +119,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (usersKpi) usersKpi.hidden = !isUsers;
         if (usersPanel) usersPanel.hidden = !isUsers;
         if (techUsageLogsPanel) techUsageLogsPanel.hidden = !isTechUsageLogs;
+        if (techUsageChartPanel) techUsageChartPanel.hidden = !isTechUsageLogs;
 
         // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
         if (summaryText) summaryText.hidden = !isAdmins;
