@@ -234,7 +234,11 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
     let key;
     if (granularity === "week") key = weekKey(d);
     else if (granularity === "month") key = monthKey(d);
-    else key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    else if (granularity === "hour") {
+      key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+    } else {
+      key = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+    }
 
     if (!buckets.has(key)) buckets.set(key, { count: 0, users: new Set() });
     const entry = buckets.get(key);
@@ -276,10 +280,14 @@ function renderTechUsageChart_() {
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
 
-  // fixed defaults: daily event count, controlled by techLogsStartDateInput / techLogsEndDateInput
-  const gran = "day";
-  const metric = "count";
+  // 自動決定分桶：若使用者提供時間（T），改為小時分桶以呈現時間範圍
   const { start, end } = techLogsGetSelectedRange_();
+  let gran = "day";
+  // 若 start 或 end 包含時間部分（ISO 'T'）或使用者填了 time inputs，使用 hour
+  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") {
+    gran = "hour";
+  }
+  const metric = "count";
   const agg = buildTechChartAggregation_(gran, metric, start, end);
 
     // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
