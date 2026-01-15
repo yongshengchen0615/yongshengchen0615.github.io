@@ -73,15 +73,30 @@ function toDateKey_(ts) {
 function techLogsGetSelectedRange_() {
   const startEl = document.getElementById("techLogsStartDateInput");
   const endEl = document.getElementById("techLogsEndDateInput");
-  let start = String(startEl?.value || "").trim();
-  let end = String(endEl?.value || "").trim();
+  const startDate = String(startEl?.value || "").trim();
+  const endDate = String(endEl?.value || "").trim();
+  const startTime = String(document.getElementById("techLogsStartTimeInput")?.value || "").trim();
+  const endTime = String(document.getElementById("techLogsEndTimeInput")?.value || "").trim();
 
-  if (start && end && start > end) {
-    const tmp = start;
-    start = end;
-    end = tmp;
-    if (startEl) startEl.value = start;
-    if (endEl) endEl.value = end;
+  let start = startDate;
+  let end = endDate;
+
+  // combine date + time when provided
+  if (startDate && startTime) start = `${startDate}T${startTime}:00`;
+  if (endDate && endTime) end = `${endDate}T${endTime}:59`;
+
+  if (start && end) {
+    const s = new Date(start);
+    const e = new Date(end);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && s > e) {
+      const tmp = start;
+      start = end;
+      end = tmp;
+      if (startEl) startEl.value = startDate || "";
+      if (endEl) endEl.value = endDate || "";
+      if (document.getElementById("techLogsStartTimeInput")) document.getElementById("techLogsStartTimeInput").value = startTime || "";
+      if (document.getElementById("techLogsEndTimeInput")) document.getElementById("techLogsEndTimeInput").value = endTime || "";
+    }
   }
 
   return { start, end };
@@ -101,11 +116,14 @@ function applyTechUsageLogsDateFilter_() {
     return;
   }
 
+  const sDt = start ? new Date(start) : null;
+  const eDt = end ? new Date(end) : null;
+
   techUsageLogs_ = techUsageLogsAll_.filter((r) => {
-    const k = toDateKey_(r.serverTime);
-    if (!k) return false;
-    if (start && k < start) return false;
-    if (end && k > end) return false;
+    const d = parseDateSafe(r.serverTime);
+    if (!d) return false;
+    if (sDt && d < sDt) return false;
+    if (eDt && d > eDt) return false;
     return true;
   });
 }
@@ -169,8 +187,8 @@ function monthKey(d) {
 
 function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "") {
   const buckets = new Map();
-  const startDate = start ? new Date(start + "T00:00:00") : null;
-  const endDate = end ? new Date(end + "T23:59:59") : null;
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
 
   for (const r of techUsageLogsAll_) {
     const d = parseDateSafe(r.serverTime);
@@ -319,9 +337,13 @@ function bindTechUsageLogs_() {
 
   document.getElementById("techLogsStartDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("techLogsStartTimeInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("techLogsEndTimeInput")?.addEventListener("change", onRangeChange);
   
   // Initialize chart and re-render when date range changes
   initTechUsageChart_();
   document.getElementById("techLogsStartDateInput")?.addEventListener("change", () => renderTechUsageChart_());
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsStartTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
+  document.getElementById("techLogsEndTimeInput")?.addEventListener("change", () => renderTechUsageChart_());
 }
