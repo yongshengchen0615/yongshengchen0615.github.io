@@ -71,19 +71,47 @@ function toDateKey_(ts) {
   return `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
 }
 
+function parseDateSafeLogs(s) {
+  const str = String(s || "").trim();
+  if (!str) return null;
+  if (/^\d{10,13}$/.test(str)) {
+    const n = Number(str);
+    const ms = str.length === 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  const d = new Date(str);
+  if (!Number.isNaN(d.getTime())) return d;
+  return null;
+}
+
 function logsGetSelectedRange_() {
   const startEl = document.getElementById("logsStartDateInput");
   const endEl = document.getElementById("logsEndDateInput");
-  let start = String(startEl?.value || "").trim();
-  let end = String(endEl?.value || "").trim();
+  const startDate = String(startEl?.value || "").trim();
+  const endDate = String(endEl?.value || "").trim();
+  const startTime = String(document.getElementById("logsStartTimeInput")?.value || "").trim();
+  const endTime = String(document.getElementById("logsEndTimeInput")?.value || "").trim();
+
+  let start = startDate;
+  let end = endDate;
+
+  if (startDate && startTime) start = `${startDate}T${startTime}:00`;
+  if (endDate && endTime) end = `${endDate}T${endTime}:59`;
 
   // 若使用者反向選擇，直接交換（並同步回 UI）
-  if (start && end && start > end) {
-    const tmp = start;
-    start = end;
-    end = tmp;
-    if (startEl) startEl.value = start;
-    if (endEl) endEl.value = end;
+  if (start && end) {
+    const s = new Date(start);
+    const e = new Date(end);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && s > e) {
+      const tmp = start;
+      start = end;
+      end = tmp;
+      if (startEl) startEl.value = startDate || "";
+      if (endEl) endEl.value = endDate || "";
+      if (document.getElementById("logsStartTimeInput")) document.getElementById("logsStartTimeInput").value = startTime || "";
+      if (document.getElementById("logsEndTimeInput")) document.getElementById("logsEndTimeInput").value = endTime || "";
+    }
   }
 
   return { start, end };
@@ -104,11 +132,14 @@ function applyAdminLogsDateFilter_() {
     return;
   }
 
+  const sDt = start ? new Date(start) : null;
+  const eDt = end ? new Date(end) : null;
+
   adminLogs_ = adminLogsAll_.filter((r) => {
-    const k = toDateKey_(r.ts);
-    if (!k) return false;
-    if (start && k < start) return false;
-    if (end && k > end) return false;
+    const d = parseDateSafeLogs(r.ts);
+    if (!d) return false;
+    if (sDt && d < sDt) return false;
+    if (eDt && d > eDt) return false;
     return true;
   });
 }
@@ -311,6 +342,10 @@ function bindAdminLogs_() {
     const endEl = document.getElementById("logsEndDateInput");
     if (startEl) startEl.value = "";
     if (endEl) endEl.value = "";
+    const stTime = document.getElementById("logsStartTimeInput");
+    const enTime = document.getElementById("logsEndTimeInput");
+    if (stTime) stTime.value = "";
+    if (enTime) enTime.value = "";
     applyAdminLogsDateFilter_();
     renderAdminLogs_();
     logsSetFooter_(`共 ${adminLogs_.length} 筆`);
@@ -330,11 +365,15 @@ function bindAdminLogs_() {
 
   document.getElementById("logsStartDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("logsEndDateInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("logsStartTimeInput")?.addEventListener("change", onRangeChange);
+  document.getElementById("logsEndTimeInput")?.addEventListener("change", onRangeChange);
 
   // Initialize chart and re-render when date range changes
   initAdminLogsChart_();
   document.getElementById("logsStartDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
   document.getElementById("logsEndDateInput")?.addEventListener("change", () => renderAdminLogsChart_());
+  document.getElementById("logsStartTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
+  document.getElementById("logsEndTimeInput")?.addEventListener("change", () => renderAdminLogsChart_());
 }
 
 /**
