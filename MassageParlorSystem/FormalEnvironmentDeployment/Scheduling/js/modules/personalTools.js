@@ -11,6 +11,7 @@
 import { dom } from "./dom.js";
 import { config } from "./config.js";
 import { withQuery } from "./core.js";
+import { state } from "./state.js";
 
 async function fetchPersonalStatusRow(userId) {
   const url = withQuery(config.AUTH_API_URL, "mode=getPersonalStatus&userId=" + encodeURIComponent(userId));
@@ -58,6 +59,24 @@ function showPersonalToolsFinal(psRow) {
 
 export function hidePersonalTools() {
   if (dom.personalToolsEl) dom.personalToolsEl.style.display = "none";
+}
+
+/**
+ * 根據 feature flag 顯示/隱藏個人工具按鈕（不會 fetch 連結）
+ * @param {boolean} enabled
+ */
+export function setPersonalToolsEnabled(enabled) {
+  if (!dom.btnUserManageEl || !dom.btnPersonalStatusEl) return;
+  if (enabled) {
+    // 預設為 inline-flex（若尚未 load 連結，點擊會提示或由 loadAndShowPersonalTools 覆寫 onclick）
+    dom.btnUserManageEl.style.display = "inline-flex";
+    dom.btnPersonalStatusEl.style.display = "inline-flex";
+    if (dom.personalToolsEl) dom.personalToolsEl.style.display = "flex";
+  } else {
+    dom.btnUserManageEl.style.display = "none";
+    dom.btnPersonalStatusEl.style.display = "none";
+    if (dom.personalToolsEl) dom.personalToolsEl.style.display = "none";
+  }
 }
 
 /**

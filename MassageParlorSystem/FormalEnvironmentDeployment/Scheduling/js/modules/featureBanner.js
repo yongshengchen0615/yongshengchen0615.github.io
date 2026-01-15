@@ -9,6 +9,7 @@
  */
 
 import { state } from "./state.js";
+import { setPersonalToolsEnabled } from "./personalTools.js";
 
 function normalizeYesNo(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
@@ -49,4 +50,10 @@ export function updateFeatureState(data) {
   state.feature.scheduleEnabled = normalizeYesNo(data && data.scheduleEnabled);
   state.feature.performanceEnabled = normalizeYesNo(data && data.performanceEnabled);
   renderFeatureBanner();
+  // 同步顯示/隱藏個人工具按鈕
+  try {
+    setPersonalToolsEnabled(state.feature.personalStatusEnabled === "是");
+  } catch (e) {
+    // ignore
+  }
 }
