@@ -380,6 +380,42 @@
       </section>
 
       <!-- ✅ 技師使用紀錄（僅顯示 serverTime / userId / name / detail） -->
+      <!-- 技師使用紀錄圖表區塊：放於使用紀錄面板上方 -->
+      <div id="techUsageChartSection" class="panel" aria-label="技師使用紀錄圖表" hidden>
+        <div class="panel-head">
+          <div class="panel-title" aria-hidden="true">
+            <div class="panel-title-main">技師使用紀錄分析</div>
+          </div>
+
+          <div class="panel-meta range" aria-label="圖表選項">
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="techChartGranularity">時間粒度</label>
+              <select id="techChartGranularity" class="select">
+                <option value="day">每日</option>
+                <option value="week">每週</option>
+                <option value="month">每月</option>
+              </select>
+            </div>
+            <div class="panel-meta-group">
+              <label class="bulk-label" for="techChartMetric">指標</label>
+              <select id="techChartMetric" class="select">
+                <option value="count">事件數</option>
+                <option value="unique">不同使用者數</option>
+              </select>
+            </div>
+            <div class="panel-meta-group">
+              <button id="techChartReloadBtn" class="btn ghost" type="button">重新整理圖表</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="padding:12px 14px;">
+          <div class="chart-wrap">
+            <canvas id="techUsageChartCanvas" aria-label="技師使用紀錄圖表" role="img"></canvas>
+          </div>
+        </div>
+      </div>
+
       <section id="techUsageLogsPanelSection" class="panel" aria-label="技師使用紀錄" hidden>
         <div class="panel-head">
           <div class="panel-title" aria-hidden="true">
@@ -422,42 +458,6 @@
               <tr><td colspan="5">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
-        </div>
-
-        <!-- 技師使用紀錄圖表區塊 -->
-        <div id="techUsageChartSection" class="panel" aria-label="技師使用紀錄圖表" hidden>
-          <div class="panel-head">
-            <div class="panel-title" aria-hidden="true">
-              <div class="panel-title-main">技師使用紀錄分析</div>
-            </div>
-
-            <div class="panel-meta range" aria-label="圖表選項">
-              <div class="panel-meta-group">
-                <label class="bulk-label" for="techChartGranularity">時間粒度</label>
-                <select id="techChartGranularity" class="select">
-                  <option value="day">每日</option>
-                  <option value="week">每週</option>
-                  <option value="month">每月</option>
-                </select>
-              </div>
-              <div class="panel-meta-group">
-                <label class="bulk-label" for="techChartMetric">指標</label>
-                <select id="techChartMetric" class="select">
-                  <option value="count">事件數</option>
-                  <option value="unique">不同使用者數</option>
-                </select>
-              </div>
-              <div class="panel-meta-group">
-                <button id="techChartReloadBtn" class="btn ghost" type="button">重新整理圖表</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="table-wrap" style="padding:12px 14px;">
-            <div class="chart-wrap">
-              <canvas id="techUsageChartCanvas" aria-label="技師使用紀錄圖表" role="img"></canvas>
-            </div>
-          </div>
         </div>
       </section>
 
