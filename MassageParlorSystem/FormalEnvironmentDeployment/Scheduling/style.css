@@ -394,42 +394,11 @@ body {
 }
 
 /* =========================================================
- * ✅ iOS / LINE WebView：日期 input 防裁切（核心修正）
+ * ✅ iOS / LINE WebView：日期 input 防裁切（採用 TestEnvironment 強化規則）
  * - 只影響 type="date"（不動其他 input）
- * - 右側預留空間給 calendar indicator
- * - font-size:16 防 iOS 自動放大與字被切
-
-/* Table / cells improvements to reduce inline style toggling */
-.cell-order {
-  font-weight: 900;
-  text-shadow: var(--order-text-shadow);
-  transition: background-color 0.16s ease, border-left-color 0.16s ease, color 0.12s ease;
-}
-
-.cell-order.cell-order-highlight {
-  /* visual emphasis when highlighted; specific colors (rgba) still set inline */
-  box-shadow: none;
-}
-
-.status-pill {
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-
-.appt-block {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.time-badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 13px;
-}
+ * - 右側預留空間給 calendar indicator（更大保護）
+ * - 使用相對定位與 indicator 絕對定位以避免遮蔽
+ * - font-size 使用 clamp 以在不同裝置維持可讀性
  * ========================================================= */
 input[type="date"].input{
   width: 100%;
@@ -440,7 +409,7 @@ input[type="date"].input{
   padding: 10px 48px 10px 12px;/* 右側預留給 indicator（加大保護） */
   position: relative;         /* allow pseudo-element positioning */
 
-  font-size: 16px;             /* iOS 防自動放大/裁切 */
+  font-size: clamp(14px, 3.6vw, 16px); /* 自適應字級：最小14、最大16 */
   line-height: 1.2;
 
   -webkit-appearance: none;
@@ -497,6 +466,13 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 #perfCard .perf-actions .btn {
   flex: 1 1 140px;
   min-width: 0;
+}
+
+/* Slightly reduce label font-size on very small screens to avoid overflow */
+@media (max-width: 420px) {
+  .filter-label {
+    font-size: 11px;
+  }
 }
 
 /* Responsive adjustments for small screens: ensure date inputs and actions don't overflow */
