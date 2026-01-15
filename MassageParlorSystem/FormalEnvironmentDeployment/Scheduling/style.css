@@ -438,6 +438,7 @@ input[type="date"].input{
 
   min-height: 44px;            /* iOS 友善點擊高度 */
   padding: 10px 48px 10px 12px;/* 右側預留給 indicator（加大保護） */
+  position: relative;         /* allow pseudo-element positioning */
 
   font-size: 16px;             /* iOS 防自動放大/裁切 */
   line-height: 1.2;
@@ -459,6 +460,11 @@ input[type="date"].input::-webkit-date-and-time-value{
 input[type="date"].input::-webkit-calendar-picker-indicator{
   opacity: 0.85;
   cursor: pointer;
+  /* try to keep the native indicator visually on the right */
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* ✅ 業績查詢：開始/結束日期 + 明細/統計按鈕在各裝置自適應且不溢出 */
@@ -511,6 +517,19 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   /* Single column on very small devices */
   #perfCard .filters {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Extra safety: increase date input right padding on small devices */
+@media (max-width: 720px) {
+  input[type="date"].input{
+    padding-right: 64px;
+  }
+}
+
+@media (max-width: 420px) {
+  input[type="date"].input{
+    padding-right: 72px;
   }
 }
 
