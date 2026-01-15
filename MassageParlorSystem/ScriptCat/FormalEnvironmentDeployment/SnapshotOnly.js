@@ -46,7 +46,7 @@
   // - full: console.log 全量
   // - group: groupCollapsed
   // - off: 幾乎不印（但仍會印重大 error）
-  const LOG_MODE = "group";
+  const LOG_MODE = "off";
 
   // 正式開關
   const ENABLE_SNAPSHOT = true;

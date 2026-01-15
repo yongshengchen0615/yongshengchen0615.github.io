@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FED PerformanceDetails Auto Sync -> GAS (no-leak, SPA-safe, multi-tech safe, stable-ready, keepalive)
 // @namespace    https://local/
-// @version      4.4
-// @description  P_DETAIL: stable-ready gate; allowlist GAS_URL; pending per tech; commit after ok:true; pagehide keepalive/beacon best-effort; POS+GitHub.
+// @version      4.5
+// @description  P_DETAIL: stable-ready gate; allowlist GAS_URL; pending per tech; commit after ok:true; pagehide keepalive/beacon best-effort; POS+GitHub. + code-only log switch
 // @match        https://yspos.youngsong.com.tw/*
 // @match        https://yongshengchen0615.github.io/Performancedetails/Performancedetails.html
 // @grant        GM_xmlhttpRequest
@@ -15,6 +15,19 @@
 
 (function () {
   "use strict";
+
+  /* =========================
+   * 0) LOG SWITCH (code only)
+   * =========================
+   * 你只改這一行：
+   * - true  = 顯示所有 log/warn/error
+   * - false = 完全不顯示
+   */
+  const AUTO_PERF_LOG = false;
+
+  const LOG = (...a) => { if (AUTO_PERF_LOG) console.log("[AUTO_PERF]", ...a); };
+  const WARN = (...a) => { if (AUTO_PERF_LOG) console.warn("[AUTO_PERF]", ...a); };
+  const ERR = (...a) => { if (AUTO_PERF_LOG) console.error("[AUTO_PERF]", ...a); };
 
   /* =========================
    * 0) Detect page
@@ -74,7 +87,7 @@
   function applyConfigOverrides() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverrides() };
     if (CFG.GAS_URL && !isAllowedGASUrl_(CFG.GAS_URL)) {
-      console.warn("[AUTO_PERF] ⚠️ GAS_URL is not allowlisted. Blocked:", CFG.GAS_URL);
+      WARN("⚠️ GAS_URL is not allowlisted. Blocked:", CFG.GAS_URL);
       CFG.GAS_URL = "";
     }
   }
@@ -82,8 +95,8 @@
   applyConfigOverrides();
 
   if (!CFG.GAS_URL) {
-    console.warn(
-      "[AUTO_PERF] ⚠️ CFG.GAS_URL is empty/blocked. Will scan, but will NOT send.\n" +
+    WARN(
+      "⚠️ CFG.GAS_URL is empty/blocked. Will scan, but will NOT send.\n" +
       'Check @resource JSON: {"GAS_URL":"https://script.google.com/macros/s/.../exec"}'
     );
   }
@@ -145,7 +158,7 @@
     if (!msg) return;
     if (msg === lastSkipReason) return;
     lastSkipReason = msg;
-    console.log("[AUTO_PERF] skip:", msg, extra || "");
+    LOG("skip:", msg, extra || "");
   }
   function resetSkip_() { lastSkipReason = ""; }
 
@@ -467,7 +480,7 @@
       lastProbeSig = "";
       stableCount = 0;
 
-      console.log("[AUTO_PERF] tech switch:", { from: prev || "(none)", to: activeTechNo });
+      LOG("tech switch:", { from: prev || "(none)", to: activeTechNo });
 
       flushPendingForTech_(activeTechNo);
     }
@@ -572,12 +585,12 @@
       if (res.json && res.json.ok) {
         committedHash = pending.hash;
         clearPendingByTech_(t);
-        console.log("[AUTO_PERF] pending ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", t);
+        LOG("pending ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", t);
       } else {
-        console.warn("[AUTO_PERF] pending fail:", res.json || res.text, "techNo=", t);
+        WARN("pending fail:", res.json || res.text, "techNo=", t);
       }
     } catch (e) {
-      console.warn("[AUTO_PERF] pending error:", e, "techNo=", t);
+      WARN("pending error:", e, "techNo=", t);
     } finally {
       sending = false;
     }
@@ -614,12 +627,12 @@
       if (res.json && res.json.ok) {
         committedHash = payload.clientHash;
         clearPendingByTech_(activeTechNo);
-        console.log("[AUTO_PERF] ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", activeTechNo, "reason=", reason || "");
+        LOG("ok:", res.json.result, "key=", res.json.key, "hash=", committedHash, "techNo=", activeTechNo, "reason=", reason || "");
       } else {
-        console.warn("[AUTO_PERF] fail:", res.json || res.text, "techNo=", activeTechNo, "reason=", reason || "");
+        WARN("fail:", res.json || res.text, "techNo=", activeTechNo, "reason=", reason || "");
       }
     } catch (e) {
-      console.warn("[AUTO_PERF] error:", e, "techNo=", activeTechNo, "reason=", reason || "");
+      WARN("error:", e, "techNo=", activeTechNo, "reason=", reason || "");
     } finally {
       sending = false;
 
@@ -649,7 +662,7 @@
     if (started) return;
     started = true;
 
-    console.log("[AUTO_PERF] started:", detectPage_(), location.href, "hash=", location.hash);
+    LOG("started:", detectPage_(), location.href, "hash=", location.hash);
 
     const lastTech = getLastActiveTech_();
     if (lastTech) flushPendingForTech_(lastTech);
@@ -687,7 +700,7 @@
     window.removeEventListener("pagehide", onPageHide_, true);
     window.removeEventListener("beforeunload", onBeforeUnload_, true);
 
-    console.log("[AUTO_PERF] stopped:", location.href, "hash=", location.hash);
+    LOG("stopped:", location.href, "hash=", location.hash);
   }
 
   function refreshActive_() {
@@ -709,7 +722,7 @@
 
       savePending_(payload);
       fireAndForget_(payload);
-      console.log("[AUTO_PERF] leave-fire:", why, "pageType=", payload.pageType, "techNo=", normalizeTech_(payload.techNo), "hash=", payload.clientHash);
+      LOG("leave-fire:", why, "pageType=", payload.pageType, "techNo=", normalizeTech_(payload.techNo), "hash=", payload.clientHash);
     } catch {}
   }
 
