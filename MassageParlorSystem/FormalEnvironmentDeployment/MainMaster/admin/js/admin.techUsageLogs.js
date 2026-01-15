@@ -189,10 +189,45 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
   const endDate = end ? new Date(end) : null;
+  let processed = 0;
+  let skipped = 0;
+
+  // 嘗試從多個欄位或 row 內容擷取可解析的日期
+  function extractDateFromRow(r) {
+    // 優先使用常見欄位
+    const cand = [r?.serverTime, r?.ts, r?.time, r?.clientTs, r?.createdAt, r?.date];
+    for (const v of cand) {
+      const d = parseDateSafe(v);
+      if (d) return d;
+    }
+
+    // 嘗試從 detail / name / 其他字串中抓 YYYY-MM-DD 或 YYYY/MM/DD
+    const text = String(JSON.stringify(r || {}));
+    const m1 = text.match(/(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+    if (m1) {
+      const d = parseDateSafe(m1[1].replace(/\//g, "-"));
+      if (d) return d;
+    }
+
+    // 嘗試抓 epoch（10 或 13 位數）
+    const m2 = text.match(/\b(\d{10,13})\b/);
+    if (m2) {
+      const n = Number(m2[1]);
+      const ms = m2[1].length === 10 ? n * 1000 : n;
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+
+    return null;
+  }
 
   for (const r of techUsageLogsAll_) {
-    const d = parseDateSafe(r.serverTime);
-    if (!d) continue;
+    const d = extractDateFromRow(r);
+    if (!d) {
+      skipped += 1;
+      continue;
+    }
+    processed += 1;
     if (startDate && d < startDate) continue;
     if (endDate && d > endDate) continue;
 
@@ -209,6 +244,8 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
 
   // convert to sorted arrays
   const keys = Array.from(buckets.keys()).sort();
+  // DEBUG: aggregation summary
+  console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5) });
   const labels = keys;
   const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
   return { labels, data };
@@ -245,8 +282,11 @@ function renderTechUsageChart_() {
   const { start, end } = techLogsGetSelectedRange_();
   const agg = buildTechChartAggregation_(gran, metric, start, end);
 
-  techUsageChart.data.labels = agg.labels;
-  techUsageChart.data.datasets[0].data = agg.data;
+    // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
+    console.debug("techUsageChart aggregation:", { gran, metric, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+
+    techUsageChart.data.labels = agg.labels;
+    techUsageChart.data.datasets[0].data = agg.data;
   techUsageChart.data.datasets[0].label = metric === "unique" ? "不同使用者數" : "事件數";
   techUsageChart.update();
 }
