@@ -1,25 +1,20 @@
 /**
- * performance.js（可直接覆蓋版）
+ * performance.js（可直接覆蓋版 / ✅ 三卡以 GAS Summary 為準 + ✅ 統計頁節=數量）
  *
- * ✅ 修正版重點（針對你這次「前端 vs GAS 不符」）
- * 1) 前端三卡「單數」改為：訂單編號去重（跟 GAS 一致）
- *    - 單數 = unique(訂單編號)
- *    - 筆數 = 明細列數
+ * ✅ 本版修正重點
+ * A) 三卡（類別/單數/筆數/數量/金額）改為：永遠使用 GAS latest Summary（perfCache_.summary.summaryObj）
+ *    - 目的：前端三卡與 GAS Summary 100% 一致
  *
- * 2) 三卡「數量」提供 3 種口徑（預設用「數量欄位加總」）
- *    - "qty"     : 加總 r["數量"]
- *    - "minutes" : 加總 r["分鐘"]
- *    - "auto"    : 若數量大多缺值 -> 自動改用 分鐘
+ * B) 統計頁（服務彙總表）「總節數/老點節數/排班節數」改為：節 = 數量（r["數量"]）
+ *    - 目的：統計頁欄位語意與 GAS Report_Detail 一致（節數出現 1.5、22.5 之類）
  *
- * 3) 修掉你貼文裡的 bug：
- *    - 移除誤貼在頂層的 `dom.perfSummaryRowsEl.innerHTML = ...`
- *    - 補齊 `PERF_COMPARE_LATEST_ENABLED` 常數（避免 ReferenceError 讓 summary 流程中斷）
+ * C) Meta「最後更新」：優先顯示 Summary 最後更新，其次 Detail
  *
- * 4) 保留你原本行為：
- *    - 登入時預載 Summary+Detail
- *    - 進頁只用快取
- *    - 改日期即時用快取切範圍
- *    - 手動重整才更新快取
+ * ✅ 其他行為維持
+ * - 登入時預載 Summary+Detail 到快取
+ * - 進頁只 render 快取
+ * - 改日期：明細/統計/圖表依 allRows 即時切換（不打 API）
+ * - 手動重整才更新快取
  */
 
 import { dom } from "./dom.js";
@@ -39,11 +34,15 @@ const PERF_COMPARE_LATEST_DEBUG = true;
 
 /**
  * ✅ 三卡「數量」口徑：
- * - "qty"：加總明細欄位「數量」（你原本用法）
+ * - "qty"：加總明細欄位「數量」
  * - "minutes"：加總「分鐘」
  * - "auto"：若多數 rows 的「數量」為空/0，就自動改用「分鐘」
+ *
+ * ⚠️ 本版三卡改以 GAS Summary 為準，所以此設定只會影響：
+ * - 本月老點率/排班率（若你用 detail cache 計算）
+ * - 任何你仍用 detail cache 做的計算（非三卡表格）
  */
-const PERF_CARD_QTY_MODE = "qty"; // "qty" | "minutes" | "auto"
+const PERF_CARD_QTY_MODE = "auto"; // "qty" | "minutes" | "auto"
 
 /* =========================
  * Intl formatter（memoize）
@@ -355,6 +354,7 @@ function renderDetailHeader_(mode) {
     return;
   }
 
+  // ✅ 統計頁：節 = 數量（欄名仍叫節數，對齊 GAS Report_Detail）
   dom.perfDetailHeadRowEl.innerHTML =
     "<th>服務項目</th><th>總筆數</th><th>總節數</th><th>總計金額</th>" +
     "<th>老點筆數</th><th>老點節數</th><th>老點金額</th>" +
@@ -589,6 +589,7 @@ function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
 
 /* =========================
  * ✅ Service Summary (from detail cache) - 統計頁表格用
+ * ✅ 本版：節 = 數量（對齊 GAS Report_Detail）
  * ========================= */
 
 function buildServiceSummaryFromDetail_(detailRows) {
@@ -614,7 +615,8 @@ function buildServiceSummaryFromDetail_(detailRows) {
     const name = String((r && r["服務項目"]) || "").trim() || "（未命名）";
     const b = bucket_(r);
 
-    const minutes = Number((r && r["分鐘"]) ?? 0) || 0;
+    // ✅ 節 = 數量（允許小數 1.5）
+    const qty = Number((r && r["數量"]) ?? 0) || 0;
     const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
 
     if (!map.has(name)) {
@@ -635,16 +637,16 @@ function buildServiceSummaryFromDetail_(detailRows) {
     const o = map.get(name);
 
     o["總筆數"] += 1;
-    o["總節數"] += minutes;
+    o["總節數"] += qty;
     o["總計金額"] += amount;
 
     if (b === "老點") {
       o["老點筆數"] += 1;
-      o["老點節數"] += minutes;
+      o["老點節數"] += qty;
       o["老點金額"] += amount;
     } else {
       o["排班筆數"] += 1;
-      o["排班節數"] += minutes;
+      o["排班節數"] += qty;
       o["排班金額"] += amount;
     }
   }
@@ -653,7 +655,7 @@ function buildServiceSummaryFromDetail_(detailRows) {
 }
 
 /* =========================
- * ✅ 三卡：由「區間 rows」即時計算（修正版：單數去重訂單編號）
+ * ✅ 三卡：由 detail cache 計算（本版三卡顯示改用 GAS，但這裡仍供「本月比率」等使用）
  * ========================= */
 
 function buildCardsFromDetailCache_(detailRows) {
@@ -718,7 +720,7 @@ function buildCardsFromDetailCache_(detailRows) {
     if (orderNo) c._orders.add(orderNo);
   }
 
-  // ✅ 單數：訂單編號去重（跟 GAS 一致）
+  // ✅ 單數：訂單編號去重
   for (const k of ["排班", "老點", "總計"]) {
     const c = cards[k];
     c.單數 = c._orders.size;
@@ -766,6 +768,23 @@ function getRowsForRangeFromCache_(techNo, startKey, endKey) {
   const rows = filterDetailRowsByRange_(allRows, startKey, endKey, maxKey);
 
   return { ok: true, allRows, rows, maxKey, lastUpdatedAt: c.lastUpdatedAt || "" };
+}
+
+/* =========================
+ * ✅ 三卡：GAS Summary 可用判斷
+ * ========================= */
+
+function hasGasCards_(summaryObj) {
+  if (!summaryObj || typeof summaryObj !== "object") return false;
+  const cats = ["排班", "老點", "總計"];
+  for (const c of cats) {
+    const card = summaryObj[c];
+    if (!card || typeof card !== "object") return false;
+    if (card.單數 !== undefined || card.筆數 !== undefined || card.數量 !== undefined || card.金額 !== undefined) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /* =========================
@@ -988,10 +1007,14 @@ async function renderFromCache_(mode, info) {
   const got = getRowsForRangeFromCache_(techNo, r.startKey, r.endKey);
   const hasCache = !!got.ok;
 
-  const lastUpdatedAt = hasCache && got.lastUpdatedAt ? got.lastUpdatedAt : "";
-  setMeta_(lastUpdatedAt ? `最後更新：${lastUpdatedAt}` : "最後更新：—");
+  // ✅ Meta：優先 Summary，再 Detail
+  const gasLast = perfCache_.summary && perfCache_.summary.lastUpdatedAt ? String(perfCache_.summary.lastUpdatedAt) : "";
+  const detLast = hasCache && got.lastUpdatedAt ? String(got.lastUpdatedAt) : "";
+  if (gasLast) setMeta_(`最後更新：${gasLast}（Summary）`);
+  else if (detLast) setMeta_(`最後更新：${detLast}（Detail）`);
+  else setMeta_("最後更新：—");
 
-  // 顯示「當月」老點率 / 排班率（若有快取明細）
+  // 顯示「當月」老點率 / 排班率（用 detail cache 計算；三卡顯示不走這裡）
   try {
     const monthStart = localDateKeyMonthStart_();
     const monthEnd = localDateKeyToday_();
@@ -1026,41 +1049,13 @@ async function renderFromCache_(mode, info) {
     console.error("render month rates error", e);
   }
 
-  // ✅ 三卡：用區間 rows 即時計算（修正版：單數去重）
+  // ✅ 三卡：永遠以 GAS latest Summary 為準（確保與 GAS Summary 一致）
   if (dom.perfSummaryRowsEl) {
-    if (hasCache) {
-    const cardsByRange = buildCardsFromDetailCache_(got.rows);
+    const gasObj = perfCache_.summary && perfCache_.summary.summaryObj ? perfCache_.summary.summaryObj : null;
+    const gasOk = hasGasCards_(gasObj);
 
-    // 使用區間快取計算結果顯示（依開始/結束日期變化）。
-    // 只有在沒有快取可用時才會顯示 GAS 的 latest summary。
-    const displayCards = cardsByRange;
-
-    dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(displayCards);
-
-      // ✅ debug：如果 GAS 與 cache 計算差異，印出（你排查數量差 +2 用）
-      try {
-        if (perfCache_.summary && perfCache_.summary.summaryObj) {
-          const gas = perfCache_.summary.summaryObj || {};
-          const keys = ["排班", "老點", "總計"];
-          const diffs = [];
-          for (const k of keys) {
-            const g = gas[k] || {};
-            const c = cardsByRange[k] || {};
-            const fields = [
-              ["單數", Number(g.單數 || 0), Number(c.單數 || 0)],
-              ["筆數", Number(g.筆數 || 0), Number(c.筆數 || 0)],
-              ["數量", Number(g.數量 || 0), Number(c.數量 || 0)],
-              ["金額", Number(g.金額 || 0), Number(c.金額 || 0)],
-            ];
-            for (const f of fields) {
-              if (f[1] !== f[2]) diffs.push({ 類別: k, 欄位: f[0], GAS: f[1], CACHE: f[2] });
-            }
-          }
-          if (diffs.length) console.warn("[Performance] GAS summary vs cache calc diffs:", diffs);
-        }
-      } catch (e) {
-        console.error("compare summary debug error", e);
-      }
+    if (gasOk) {
+      dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(gasObj);
     } else {
       dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     }
@@ -1149,7 +1144,6 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
 
         const summaryObj = chosen ? chosen.summaryObj || null : null;
 
-        // compareHint 只保留 console 用
         const compareHint =
           PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas
             ? cmp.diffs.length
