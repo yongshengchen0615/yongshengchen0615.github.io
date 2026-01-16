@@ -531,6 +531,10 @@ td.yn-cell{ text-align:right; }
 
 /* 表格內更緊湊 */
 .table-wrap{ overflow:auto; padding:12px 14px 14px; -webkit-overflow-scrolling:touch; }
+
+/* Chart horizontal scroll: allow canvas to be wider than container and enable smooth touch scrolling */
+.chart-wrap{ overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; padding:12px 14px; }
+.chart-wrap canvas{ display:block; max-width:none; /* allow width via inline style */ }
 table{
   width:100%;
   border-collapse:separate;

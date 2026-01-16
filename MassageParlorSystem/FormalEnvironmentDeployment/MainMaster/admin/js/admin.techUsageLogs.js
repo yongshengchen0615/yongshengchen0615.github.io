@@ -356,6 +356,14 @@ function renderTechUsageChart_() {
       const ms = d ? d.getTime() : null;
       return { x: ms !== null ? ms : String(x), y: agg.data[i] };
     });
+    // make canvas horizontally scrollable on mobile when many buckets
+    try {
+      const canvasEl = document.getElementById('techUsageChartCanvas');
+      if (canvasEl && Array.isArray(agg.labels)) {
+        const minW = Math.max(600, agg.labels.length * 40); // 40px per bucket heuristic
+        canvasEl.style.minWidth = `${minW}px`;
+      }
+    } catch (e) { /* ignore */ }
     // only update chart when points changed
     const old = techUsageChart.data.datasets[0].data || [];
     let same = false;

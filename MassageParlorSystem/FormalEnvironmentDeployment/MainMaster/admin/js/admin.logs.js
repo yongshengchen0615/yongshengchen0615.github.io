@@ -311,6 +311,14 @@ function renderAdminLogsChart_() {
     const ms = d ? d.getTime() : null;
     return { x: ms !== null ? ms : String(x), y: agg.data[i] };
   });
+  // make canvas horizontally scrollable on mobile when many buckets
+  try {
+    const canvasEl = document.getElementById('adminLogsChartCanvas');
+    if (canvasEl && Array.isArray(agg.labels)) {
+      const minW = Math.max(600, agg.labels.length * 40); // 40px per bucket heuristic
+      canvasEl.style.minWidth = `${minW}px`;
+    }
+  } catch (e) { /* ignore */ }
 
   // only update when changed
   const old = adminLogsChart.data.datasets[0].data || [];
