@@ -1549,3 +1549,103 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
     justify-content: space-between;
   }
 }
+
+
+/* =========================================================
+ * ✅ PERF Summary (三卡表格) — 緊湊版：類別 / 單數 / 筆數 / 金額
+ * - 不影響其他 .status-table
+ * - 解決你說的「空白太多」
+ * ========================================================= */
+
+/* 建議：給三卡 table 加上這個 class：perf-summary-table */
+.perf-summary-table{
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;               /* ✅ 關鍵：避免欄位被撐開 */
+  font-variant-numeric: tabular-nums;/* ✅ 數字對齊更漂亮 */
+}
+
+/* 緊縮 cell padding + 行高 */
+.perf-summary-table th,
+.perf-summary-table td{
+  padding: 6px 8px;                  /* ✅ 比你目前的 table 更緊 */
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.65);
+}
+:root[data-theme="light"] .perf-summary-table th,
+:root[data-theme="light"] .perf-summary-table td{
+  border-bottom-color: rgba(229, 231, 235, 1);
+}
+
+/* 表頭更小更收斂 */
+.perf-summary-table thead th{
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+
+/* 內容字級略大一點，視覺更清楚 */
+.perf-summary-table tbody td{
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 欄寬配置：類別窄、數字更集中 */
+.perf-summary-table th:first-child,
+.perf-summary-table td:first-child{
+  width: 22%;
+  text-align: left;
+  padding-left: 6px;                 /* ✅ 再縮左邊空白 */
+  letter-spacing: 0.02em;
+}
+
+.perf-summary-table th:nth-child(2),
+.perf-summary-table td:nth-child(2){
+  width: 18%;
+  text-align: right;
+}
+.perf-summary-table th:nth-child(3),
+.perf-summary-table td:nth-child(3){
+  width: 18%;
+  text-align: right;
+}
+.perf-summary-table th:nth-child(4),
+.perf-summary-table td:nth-child(4){
+  width: 42%;
+  text-align: right;
+}
+
+/* 金額欄更突出但不膨脹 */
+.perf-summary-table td:last-child{
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* 最後一列不要底線 */
+.perf-summary-table tbody tr:last-child td{
+  border-bottom-color: transparent;
+}
+
+/* ✅ 行動裝置再壓縮一次 */
+@media (max-width: 420px){
+  .perf-summary-table th,
+  .perf-summary-table td{
+    padding: 5px 6px;
+  }
+  .perf-summary-table tbody td{
+    font-size: 13px;
+  }
+  .perf-summary-table th:first-child,
+  .perf-summary-table td:first-child{
+    width: 24%;
+  }
+  .perf-summary-table th:nth-child(4),
+  .perf-summary-table td:nth-child(4){
+    width: 40%;
+  }
+}

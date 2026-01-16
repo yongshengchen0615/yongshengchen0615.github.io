@@ -1338,6 +1338,8 @@ async function renderFromCache_(mode, info) {
     setMeta_("—");
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
 
+    const tbl = dom.perfSummaryRowsEl?.closest("table");
+if (tbl) tbl.classList.add("perf-summary-table");
     if (m === "detail") {
       renderDetailHeader_("detail");
       renderDetailRows_([]);
