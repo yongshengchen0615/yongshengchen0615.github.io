@@ -388,19 +388,55 @@ async function loadTechUsageLogs_() {
     techLogsSetTbodyMessage_("載入中...");
 
     // 需要 GAS 支援 mode=list 才能讀取
-    const ret = await techUsageLogGet_({ mode: "list", limit: 200 });
-    if (!ret || ret.ok !== true) throw new Error(ret?.error || "list failed");
+    // 嘗試支援多頁回傳：若 GAS 回傳 nextPageToken，使用該 token 續抓；
+    // 若沒有 nextPageToken，但每頁筆數等於 limit，則嘗試使用 offset 分頁（offset += limit）。
+    const perPage = 200;
+    const maxPages = 50; // safety cap to avoid無限迴圈
+    let allRowsRaw = [];
+    let pageToken = null;
+    let offset = 0;
+    for (let page = 0; page < maxPages; page++) {
+      const q = { mode: "list", limit: perPage };
+      if (pageToken) q.pageToken = pageToken;
+      else q.offset = offset;
 
-    // 支援：rows: [{serverTime,userId,name,detail}]
-    // 或 values: [[serverTime,event,userId,name,clientTs,tz,href,detail], ...]
-    let rows = [];
-    if (Array.isArray(ret.rows)) rows = ret.rows;
-    else if (Array.isArray(ret.logs)) rows = ret.logs;
-    else if (Array.isArray(ret.values)) {
-      rows = ret.values.map((v) => ({ serverTime: v?.[0], userId: v?.[2], name: v?.[3], detail: v?.[7] }));
+      const ret = await techUsageLogGet_(q);
+      if (!ret || ret.ok === false) {
+        // 若單頁失敗且尚未取得任何資料，丟錯；若已取得部分資料，中斷並繼續處理
+        if (!allRowsRaw.length) throw new Error(ret?.error || "list failed");
+        break;
+      }
+
+      // 支援：rows: [{serverTime,userId,name,detail}]
+      // 或 logs: same
+      // 或 values: [[serverTime,event,userId,name,clientTs,tz,href,detail], ...]
+      let rows = [];
+      if (Array.isArray(ret.rows)) rows = ret.rows;
+      else if (Array.isArray(ret.logs)) rows = ret.logs;
+      else if (Array.isArray(ret.values)) {
+        rows = ret.values.map((v) => ({ serverTime: v?.[0], userId: v?.[2], name: v?.[3], detail: v?.[7] }));
+      }
+
+      if (rows.length) allRowsRaw.push(...rows);
+
+      // 若 GAS 提供 nextPageToken，使用它；否則若本頁數量等於 perPage，嘗試 offset; 否則結束
+      if (ret.nextPageToken) {
+        pageToken = String(ret.nextPageToken);
+        offset = 0;
+        // 若 nextPageToken 為空或與前一樣，避免無限迴圈
+        if (!pageToken) break;
+        continue;
+      }
+
+      if (rows.length === perPage) {
+        offset += perPage;
+        continue;
+      }
+
+      break;
     }
 
-    techUsageLogsAll_ = rows
+    techUsageLogsAll_ = allRowsRaw
       .map(normalizeTechUsageRow_)
       .filter((r) => r.serverTime || r.userId || r.name || r.detail);
     // set default range inputs to earliest and latest timestamps (include time if available)
