@@ -388,28 +388,21 @@ async function loadTechUsageLogs_() {
     techLogsSetTbodyMessage_("載入中...");
 
     // 需要 GAS 支援 mode=list 才能讀取
-    // 嘗試支援多頁回傳：若 GAS 回傳 nextPageToken，使用該 token 續抓；
-    // 若沒有 nextPageToken，但每頁筆數等於 limit，則嘗試使用 offset 分頁（offset += limit）。
-    const perPage = 200;
-    const maxPages = 50; // safety cap to avoid無限迴圈
+    // 取消固定每頁上限，改為：先嘗試不帶 limit 的單次抓取（若 GAS 回傳全部），
+    // 若 GAS 提供 nextPageToken 則以 token 續抓直到沒有 token 為止。
     let allRowsRaw = [];
     let pageToken = null;
-    let offset = 0;
-    for (let page = 0; page < maxPages; page++) {
-      const q = { mode: "list", limit: perPage };
+
+    do {
+      const q = { mode: "list" };
       if (pageToken) q.pageToken = pageToken;
-      else q.offset = offset;
 
       const ret = await techUsageLogGet_(q);
       if (!ret || ret.ok === false) {
-        // 若單頁失敗且尚未取得任何資料，丟錯；若已取得部分資料，中斷並繼續處理
         if (!allRowsRaw.length) throw new Error(ret?.error || "list failed");
         break;
       }
 
-      // 支援：rows: [{serverTime,userId,name,detail}]
-      // 或 logs: same
-      // 或 values: [[serverTime,event,userId,name,clientTs,tz,href,detail], ...]
       let rows = [];
       if (Array.isArray(ret.rows)) rows = ret.rows;
       else if (Array.isArray(ret.logs)) rows = ret.logs;
@@ -419,22 +412,8 @@ async function loadTechUsageLogs_() {
 
       if (rows.length) allRowsRaw.push(...rows);
 
-      // 若 GAS 提供 nextPageToken，使用它；否則若本頁數量等於 perPage，嘗試 offset; 否則結束
-      if (ret.nextPageToken) {
-        pageToken = String(ret.nextPageToken);
-        offset = 0;
-        // 若 nextPageToken 為空或與前一樣，避免無限迴圈
-        if (!pageToken) break;
-        continue;
-      }
-
-      if (rows.length === perPage) {
-        offset += perPage;
-        continue;
-      }
-
-      break;
-    }
+      pageToken = ret.nextPageToken ? String(ret.nextPageToken) : null;
+    } while (pageToken);
 
     techUsageLogsAll_ = allRowsRaw
       .map(normalizeTechUsageRow_)
