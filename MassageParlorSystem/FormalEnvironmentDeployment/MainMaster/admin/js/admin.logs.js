@@ -196,26 +196,18 @@ function buildAdminChartAggregation_(granularity = "day", metric = "count", star
   let processed = 0;
   let skipped = 0;
 
-  function parseDateFlexible(s) {
-    if (!s) return null;
-    if (/^\d{10,13}$/.test(String(s))) {
-      const n = Number(s);
-      const ms = String(s).length === 10 ? n * 1000 : n;
-      const d = new Date(ms);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d;
-    return null;
-  }
 
   for (const r of adminLogsAll_) {
-    const d = parseDateFlexible(r.ts);
+      const d = parseDateSafeLogs(r.ts);
     if (!d) {
       skipped += 1;
       continue;
     }
     processed += 1;
+
+    // filter by selected date range when provided
+    if (startDate && d < startDate) continue;
+    if (endDate && d > endDate) continue;
 
     // filter by actor display name when requested
     if (nameFilter && String(r.actorDisplayName || "") !== String(nameFilter)) continue;
