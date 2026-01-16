@@ -1467,3 +1467,85 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 
 /* ✅ 我的狀態左側色條吃 GAS token（JS 會寫 --myStripe）
    - 沒有 token 時：使用上方 status-* 的 --myStripe fallback */
+
+
+   /* =========================================================
+ * ✅ Chart Controls: 模式切換 + 顯示勾選
+ * ========================================================= */
+.chart-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 6px 0;
+}
+
+.chart-modes{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-chart-mode{
+  padding: 6px 12px;
+}
+
+.btn-chart-mode.is-active{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
+}
+
+.btn-chart-reset{
+  padding: 6px 12px;
+  opacity: .92;
+}
+
+/* 顯示勾選 */
+.chart-toggle{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 6px 0;
+}
+
+.toggle-chip{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(148,163,184,0.08);
+  user-select:none;
+}
+
+:root[data-theme="light"] .toggle-chip{
+  background: rgba(148,163,184,0.10);
+}
+
+.toggle-chip input{
+  width: 16px;
+  height: 16px;
+}
+
+/* 圖表容器高度：避免過扁 */
+.chart-wrapper{
+  height: clamp(190px, 32vw, 320px);
+}
+
+.chart-wrapper canvas{
+  height: 100% !important;
+}
+
+@media (max-width: 420px){
+  .btn-chart-mode,
+  .btn-chart-reset{
+    width: 100%;
+  }
+
+  .toggle-chip{
+    width: 100%;
+    justify-content: space-between;
+  }
+}

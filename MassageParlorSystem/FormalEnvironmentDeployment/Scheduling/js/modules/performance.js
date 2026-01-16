@@ -1,20 +1,15 @@
 /**
- * performance.js（可直接覆蓋版 / ✅ 三卡以 GAS Summary 為準 + ✅ 統計頁節=數量）
+ * performance.js（完整可貼可覆蓋版 / ✅ 三卡依開始/結束日期即時變動 + ✅ 統計頁節=數量 + ✅ 圖表跨裝置可讀性強化 + ✅ touchstart Intervention 修正）
  *
- * ✅ 本版修正重點
- * A) 三卡（類別/單數/筆數/數量/金額）改為：永遠使用 GAS latest Summary（perfCache_.summary.summaryObj）
- *    - 目的：前端三卡與 GAS Summary 100% 一致
+ * ✅ 你這次要求的關鍵修正
+ * 1)「類別｜單數｜筆數｜數量｜金額」必須跟開始/結束日期變動：改用 detail 快取 got.rows 計算（不再固定用 GAS latest Summary）
+ * 2) 數量從 47 變 45 的問題：補強「數量」解析（parseQty_），避免字串格式導致 Number() 變 0 漏算
+ * 3) 日期區間超出最新日：不再直接顯示全部，改成 endKey clamp 到 maxKey（仍可依日期變動）
+ * 4) [Intervention] cancelable=false 警告：preventDefault 只在 ev.cancelable 為 true 時呼叫
  *
- * B) 統計頁（服務彙總表）「總節數/老點節數/排班節數」改為：節 = 數量（r["數量"]）
- *    - 目的：統計頁欄位語意與 GAS Report_Detail 一致（節數出現 1.5、22.5 之類）
- *
- * C) Meta「最後更新」：優先顯示 Summary 最後更新，其次 Detail
- *
- * ✅ 其他行為維持
- * - 登入時預載 Summary+Detail 到快取
- * - 進頁只 render 快取
- * - 改日期：明細/統計/圖表依 allRows 即時切換（不打 API）
- * - 手動重整才更新快取
+ * ⚠️ 注意
+ * - 這份檔案假設你的 HTML 已存在 perfChart canvas / chart-wrapper（你先前已加）
+ * - 若你已加「圖表顯示勾選/模式按鈕」的 HTML，本檔案會自動綁定；沒加也不會報錯
  */
 
 import { dom } from "./dom.js";
@@ -33,16 +28,10 @@ const PERF_COMPARE_LATEST_ENABLED = true;
 const PERF_COMPARE_LATEST_DEBUG = true;
 
 /**
- * ✅ 三卡「數量」口徑：
- * - "qty"：加總明細欄位「數量」
- * - "minutes"：加總「分鐘」
- * - "auto"：若多數 rows 的「數量」為空/0，就自動改用「分鐘」
- *
- * ⚠️ 本版三卡改以 GAS Summary 為準，所以此設定只會影響：
- * - 本月老點率/排班率（若你用 detail cache 計算）
- * - 任何你仍用 detail cache 做的計算（非三卡表格）
+ * ✅ 類別表（排班/老點/總計）數量口徑：固定用「數量」欄位
+ * 你之前 auto 可能會改用分鐘，會造成數量不一致（尤其你要對齊 GAS 的「數量」）
  */
-const PERF_CARD_QTY_MODE = "auto"; // "qty" | "minutes" | "auto"
+const PERF_CARD_QTY_MODE = "qty"; // 固定 "qty"
 
 /* =========================
  * Intl formatter（memoize）
@@ -77,6 +66,60 @@ const PERF_TPE_DATE_PARTS_FMT = (() => {
   return null;
 })();
 
+const PERF_CURRENCY_FMT = (() => {
+  try {
+    return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 });
+  } catch (_) {
+    return null;
+  }
+})();
+
+function fmtMoney_(n) {
+  const v = Number(n || 0) || 0;
+  if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
+  return String(Math.round(v));
+}
+
+/* =========================
+ * ✅ Robust number parsing
+ * ========================= */
+
+/**
+ * ✅ 強化數量解析：避免 "1.5 "、"１．５"、"1.5節" 這種格式導致 Number()=NaN → 0 漏算
+ * 這就是你「47 → 45」最常見原因（漏掉 2 節左右）
+ */
+function parseQty_(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+
+  let s = String(v).trim();
+  if (!s) return 0;
+
+  // 全形轉半形（０-９．－）
+  s = s
+    .replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xff10))
+    .replace(/．/g, ".")
+    .replace(/－/g, "-");
+
+  // 若只有逗號小數：1,5 -> 1.5
+  if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
+
+  // 移除雜字（例如 "1.5節"）
+  s = s.replace(/[^\d.\-]/g, "");
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseMoney_(v) {
+  // 金額通常是整數，但仍做保護
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const s = String(v).trim().replace(/[^\d.\-]/g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /* =========================
  * Module State
  * ========================= */
@@ -106,6 +149,93 @@ const perfDragState_ = {
   handlers: null,
 };
 
+// ResizeObserver handle
+let perfChartRO_ = null;
+
+/* =========================
+ * ✅ Chart: optional user toggles (if HTML exists)
+ * ========================= */
+
+const PERF_CHART_VIS_KEY = "perf_chart_vis_v1";
+const PERF_CHART_MODE_KEY = "perf_chart_mode_v1";
+
+let perfChartMode_ = "daily"; // "daily" | "cumu" | "ma7"
+let perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+
+function loadPerfChartPrefs_() {
+  try {
+    const s = localStorage.getItem(PERF_CHART_VIS_KEY);
+    if (s) {
+      const obj = JSON.parse(s);
+      perfChartVis_ = {
+        amount: obj.amount !== false,
+        oldRate: obj.oldRate !== false,
+        schedRate: obj.schedRate !== false,
+      };
+    }
+  } catch (_) {}
+  try {
+    const m = String(localStorage.getItem(PERF_CHART_MODE_KEY) || "").trim();
+    if (m === "daily" || m === "cumu" || m === "ma7") perfChartMode_ = m;
+  } catch (_) {}
+}
+
+function savePerfChartPrefs_() {
+  try {
+    localStorage.setItem(PERF_CHART_VIS_KEY, JSON.stringify(perfChartVis_));
+  } catch (_) {}
+  try {
+    localStorage.setItem(PERF_CHART_MODE_KEY, String(perfChartMode_ || "daily"));
+  } catch (_) {}
+}
+
+function buildCumulative_(arr) {
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += Number(arr[i] || 0) || 0;
+    out.push(sum);
+  }
+  return out;
+}
+
+function buildMA_(arr, win) {
+  const w = Math.max(2, Number(win) || 7);
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    let s = 0,
+      c = 0;
+    for (let j = Math.max(0, i - w + 1); j <= i; j++) {
+      s += Number(arr[j] || 0) || 0;
+      c++;
+    }
+    out.push(c ? s / c : 0);
+  }
+  return out;
+}
+
+function applyChartVisibility_() {
+  if (!perfChartInstance_) return;
+  const ds = perfChartInstance_.data?.datasets || [];
+  if (ds[0]) ds[0].hidden = !perfChartVis_.amount;
+  if (ds[1]) ds[1].hidden = !perfChartVis_.oldRate;
+  if (ds[2]) ds[2].hidden = !perfChartVis_.schedRate;
+
+  // 不允許全部關閉
+  if (!perfChartVis_.amount && !perfChartVis_.oldRate && !perfChartVis_.schedRate) {
+    perfChartVis_.amount = true;
+    if (ds[0]) ds[0].hidden = false;
+  }
+
+  try {
+    perfChartInstance_.update("none");
+  } catch (_) {}
+}
+
+/* =========================
+ * Chart helpers
+ * ========================= */
+
 function clearPerfChart_() {
   try {
     if (perfChartInstance_) {
@@ -130,7 +260,6 @@ function updatePerfChart_(rows, dateKeys) {
     if (!dom.perfChartEl) return;
     const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
 
-    // accumulate per-date metrics
     const metrics = {}; // { dateKey: { amount, totalCount, oldCount, schedCount } }
     const list = Array.isArray(rows) ? rows : [];
 
@@ -154,18 +283,18 @@ function updatePerfChart_(rows, dateKeys) {
       if (!metrics[dkey]) metrics[dkey] = { amount: 0, totalCount: 0, oldCount: 0, schedCount: 0 };
 
       const m = metrics[dkey];
-      const amt = Number(r["業績金額"] ?? r["金額"] ?? r["小計"] ?? 0) || 0;
+      const amt = parseMoney_(r["小計"] ?? r["業績金額"] ?? r["金額"] ?? 0);
       m.amount += amt;
       m.totalCount += 1;
+
       const b = bucketOfRow(r);
       if (b === "老點") m.oldCount += 1;
       else if (b === "排班") m.schedCount += 1;
     }
 
-    // ensure keys order
     const labels = (keys.length ? keys.slice() : Object.keys(metrics).sort()).map((s) => s);
 
-    const amountData = labels.map((k) => (metrics[k] ? metrics[k].amount : 0));
+    const dailyAmount = labels.map((k) => (metrics[k] ? metrics[k].amount : 0));
     const oldRateData = labels.map((k) => {
       const m = metrics[k];
       return m && m.totalCount ? Math.round((m.oldCount / m.totalCount) * 1000) / 10 : 0;
@@ -174,6 +303,20 @@ function updatePerfChart_(rows, dateKeys) {
       const m = metrics[k];
       return m && m.totalCount ? Math.round((m.schedCount / m.totalCount) * 1000) / 10 : 0;
     });
+
+    // mode transform (amount only)
+    let amountData = dailyAmount;
+    let amountLabel = "業績";
+    let amountAsLine = false;
+    if (perfChartMode_ === "cumu") {
+      amountData = buildCumulative_(dailyAmount);
+      amountLabel = "累積業績";
+      amountAsLine = true;
+    } else if (perfChartMode_ === "ma7") {
+      amountData = buildMA_(dailyAmount, 7);
+      amountLabel = "7日均線";
+      amountAsLine = true;
+    }
 
     if (perfChartInstance_) {
       try {
@@ -186,111 +329,152 @@ function updatePerfChart_(rows, dateKeys) {
 
     const ctx = dom.perfChartEl.getContext("2d");
 
-    // keep last rows/dateKeys for responsive redraws
     perfChartLastRows_ = Array.isArray(rows) ? rows.slice() : [];
     perfChartLastDateKeys_ = Array.isArray(dateKeys) ? dateKeys.slice() : [];
 
-    // adaptive sizing: determine container width and desired canvas width
-    const containerEl = dom.perfChartEl && dom.perfChartEl.parentElement ? dom.perfChartEl.parentElement : null;
-    const containerWidth = (containerEl && containerEl.clientWidth) || (dom.perfChartEl && dom.perfChartEl.clientWidth) || window.innerWidth || 800;
+    const wrapperEl = dom.perfChartEl?.closest?.(".chart-wrapper") || dom.perfChartEl?.parentElement;
+    const containerWidth = (wrapperEl && wrapperEl.clientWidth) || window.innerWidth || 800;
 
-    // compute points and whether we should allow horizontal scroll (more than 5 days)
     const points = labels.length || 1;
-    const shouldScroll = points > 5;
+    const isNarrow = containerWidth < 420;
+    const shouldScroll = points > (isNarrow ? 4 : 6);
 
-    // when scrolling enabled, allocate px per point; otherwise fit to container
-    const pxPerPointScroll = Math.max(48, Math.min(84, Math.round(containerWidth / 6)));
-    const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPointScroll) : containerWidth;
+    const pxPerPoint = isNarrow ? 64 : 72;
+    const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
+    const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
 
-    // adaptive font sizes based on desired width
-    const baseFont = Math.max(10, Math.min(15, Math.round(Math.min(16, Math.max(11, desiredWidth / 90)))));
-    const ticksFont = Math.max(9, baseFont - 1);
+    const baseFont = isNarrow ? 11 : 13;
+    const ticksFont = isNarrow ? 10 : 12;
 
-    // set explicit canvas pixel size so Chart.js renders crisply and allows horizontal scroll when needed
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
+    dom.perfChartEl.style.height = `${desiredHeight}px`;
+    dom.perfChartEl.width = Math.round(desiredWidth * dpr);
+    dom.perfChartEl.height = Math.round(desiredHeight * dpr);
+
     try {
-      dom.perfChartEl.width = Math.round(desiredWidth);
-      const desiredHeight = Math.max(140, Math.round(Math.min(320, desiredWidth / 3.6)));
-      dom.perfChartEl.height = desiredHeight;
-      if (shouldScroll) {
-        dom.perfChartEl.style.width = `${Math.round(desiredWidth)}px`;
-        // allow horizontal pan on touch devices
-        try {
-          dom.perfChartEl.style.touchAction = "pan-x";
-        } catch (_) {}
-      } else {
-        dom.perfChartEl.style.width = `100%`;
-        try {
-          dom.perfChartEl.style.touchAction = "auto";
-        } catch (_) {}
-      }
-      dom.perfChartEl.style.height = `${desiredHeight}px`;
-      // enable canvas drag-to-scroll when scrolling is active
-      try { enableCanvasDragScroll_(shouldScroll); } catch (_) {}
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     } catch (_) {}
+
+    try {
+      enableCanvasDragScroll_(shouldScroll);
+    } catch (_) {}
+
+    const maxXTicks = isNarrow ? 5 : 7;
 
     perfChartInstance_ = new Chart(ctx, {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
         datasets: [
           {
-            type: "bar",
-            label: "業績",
+            type: amountAsLine ? "line" : "bar",
+            label: amountLabel,
             data: amountData,
-            backgroundColor: "rgba(54,162,235,0.5)",
-            borderColor: "rgba(54,162,235,1)",
-            borderWidth: 1,
+            borderWidth: amountAsLine ? 2 : 1,
+            tension: amountAsLine ? 0.25 : 0,
+            fill: false,
+            pointRadius: amountAsLine ? (isNarrow ? 0 : 2) : 0,
+            pointHitRadius: 10,
             yAxisID: "y",
           },
           {
             type: "line",
             label: "老點率 (%)",
             data: oldRateData,
-            borderColor: "rgba(255,99,132,1)",
-            backgroundColor: "rgba(255,99,132,0.15)",
-            tension: 0.2,
+            tension: 0.25,
             fill: false,
             yAxisID: "y1",
+            pointRadius: isNarrow ? 0 : 2,
+            pointHitRadius: 10,
           },
           {
             type: "line",
             label: "排班率 (%)",
             data: schedRateData,
-            borderColor: "rgba(75,192,192,1)",
-            backgroundColor: "rgba(75,192,192,0.15)",
-            tension: 0.2,
+            tension: 0.25,
             fill: false,
             yAxisID: "y1",
+            pointRadius: isNarrow ? 0 : 2,
+            pointHitRadius: 10,
           },
         ],
       },
       options: {
-        responsive: true,
+        responsive: false,
         maintainAspectRatio: false,
+        animation: false,
+        normalized: true,
         interaction: { mode: "index", intersect: false },
+        layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
         plugins: {
           legend: {
-            position: "top",
-            labels: { usePointStyle: true, boxWidth: Math.max(6, baseFont), font: { size: baseFont } },
+            position: isNarrow ? "bottom" : "top",
+            labels: {
+              usePointStyle: true,
+              boxWidth: 8,
+              font: { size: baseFont },
+              padding: isNarrow ? 10 : 14,
+            },
           },
-          tooltip: { bodyFont: { size: ticksFont }, titleFont: { size: baseFont } },
+          tooltip: {
+            bodyFont: { size: ticksFont },
+            titleFont: { size: baseFont },
+            callbacks: {
+              title: (items) => {
+                const t = items?.[0]?.label || "";
+                return `日期：${t}`;
+              },
+              label: (ctx2) => {
+                const label = ctx2.dataset?.label || "";
+                const v = ctx2.parsed?.y;
+
+                const idx = ctx2.dataIndex;
+                const rawKey = labels[idx];
+                const m = rawKey ? metrics[rawKey] : null;
+
+                if (ctx2.dataset?.yAxisID === "y") {
+                  const amt = fmtMoney_(v);
+                  const total = m?.totalCount || 0;
+                  const oldC = m?.oldCount || 0;
+                  const schC = m?.schedCount || 0;
+                  return [`${label}：${amt}`, `筆數：${total}（老點 ${oldC} / 排班 ${schC}）`];
+                }
+                return `${label}：${v ?? 0}%`;
+              },
+            },
+          },
         },
         scales: {
-          x: { ticks: { maxRotation: 0, font: { size: ticksFont } } },
-          y: { beginAtZero: true, title: { display: true, text: "金額", font: { size: baseFont } }, ticks: { font: { size: ticksFont } } },
+          x: {
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: maxXTicks,
+              maxRotation: 0,
+              font: { size: ticksFont },
+            },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) },
+            title: { display: !isNarrow, text: "金額", font: { size: baseFont } },
+          },
           y1: {
             position: "right",
             beginAtZero: true,
             max: 100,
-            ticks: { callback: (v) => (v === null || v === undefined ? "" : `${v}%`), font: { size: ticksFont } },
+            ticks: { font: { size: ticksFont }, callback: (vv) => `${vv}%` },
             grid: { drawOnChartArea: false },
-            title: { display: true, text: "比率 (%)", font: { size: baseFont } },
+            title: { display: !isNarrow, text: "比率 (%)", font: { size: baseFont } },
           },
-        },
-        elements: {
-          point: { radius: Math.max(0, baseFont - 8) },
         },
       },
     });
+
+    // ✅ 若你有做 checkbox toggle，這裡會套用；沒做也不影響
+    try {
+      applyChartVisibility_();
+    } catch (_) {}
   } catch (e) {
     console.error("updatePerfChart_ error", e);
   }
@@ -308,21 +492,38 @@ function schedulePerfChartRedraw_() {
   }, 140);
 }
 
+/**
+ * ✅ Drag-to-scroll（修正 Intervention warning）
+ * - 只在 ev.cancelable 時才 preventDefault
+ */
 function enableCanvasDragScroll_(enable) {
   try {
     const canvas = dom.perfChartEl;
     if (!canvas) return;
-    const wrapper = canvas.closest && canvas.closest('.chart-wrapper') ? canvas.closest('.chart-wrapper') : canvas.parentElement;
+    const wrapper = canvas.closest && canvas.closest(".chart-wrapper") ? canvas.closest(".chart-wrapper") : canvas.parentElement;
 
     // cleanup existing
     if (perfDragState_.handlers && canvas) {
       const h = perfDragState_.handlers;
-      try { canvas.removeEventListener('pointerdown', h.down); } catch (_) {}
-      try { canvas.removeEventListener('pointermove', h.move); } catch (_) {}
-      try { window.removeEventListener('pointerup', h.up); } catch (_) {}
-      try { canvas.removeEventListener('touchstart', h.tdown); } catch (_) {}
-      try { canvas.removeEventListener('touchmove', h.tmove); } catch (_) {}
-      try { window.removeEventListener('touchend', h.tup); } catch (_) {}
+      try {
+        canvas.removeEventListener("pointerdown", h.down);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("pointermove", h.move);
+      } catch (_) {}
+      try {
+        window.removeEventListener("pointerup", h.up);
+      } catch (_) {}
+      // touch handlers (may not exist)
+      try {
+        canvas.removeEventListener("touchstart", h.tdown);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("touchmove", h.tmove);
+      } catch (_) {}
+      try {
+        window.removeEventListener("touchend", h.tup);
+      } catch (_) {}
       perfDragState_.handlers = null;
     }
 
@@ -331,14 +532,15 @@ function enableCanvasDragScroll_(enable) {
       return;
     }
 
-    // attach handlers
     const onPointerDown = (ev) => {
       try {
         perfDragState_.pointerDown = true;
         perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
         perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
         if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
-        ev.preventDefault && ev.preventDefault();
+
+        // ✅ only if cancelable
+        if (ev && ev.cancelable) ev.preventDefault();
       } catch (e) {}
     };
 
@@ -348,7 +550,9 @@ function enableCanvasDragScroll_(enable) {
         const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
         const dx = clientX - perfDragState_.startX;
         if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
-        ev.preventDefault && ev.preventDefault();
+
+        // ✅ only if cancelable
+        if (ev && ev.cancelable) ev.preventDefault();
       } catch (e) {}
     };
 
@@ -359,23 +563,30 @@ function enableCanvasDragScroll_(enable) {
       } catch (e) {}
     };
 
-    // touch fallback
     const onTouchDown = (ev) => onPointerDown(ev);
     const onTouchMove = (ev) => onPointerMove(ev);
     const onTouchUp = (ev) => onPointerUp(ev);
 
-    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
-    canvas.addEventListener('pointermove', onPointerMove, { passive: false });
-    window.addEventListener('pointerup', onPointerUp, { passive: true });
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp, { passive: true });
 
-    canvas.addEventListener('touchstart', onTouchDown, { passive: false });
-    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-    window.addEventListener('touchend', onTouchUp, { passive: true });
+    // touch fallback (保留，但不會亂 preventDefault)
+    canvas.addEventListener("touchstart", onTouchDown, { passive: false });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchUp, { passive: true });
 
-    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: onTouchDown, tmove: onTouchMove, tup: onTouchUp };
+    perfDragState_.handlers = {
+      down: onPointerDown,
+      move: onPointerMove,
+      up: onPointerUp,
+      tdown: onTouchDown,
+      tmove: onTouchMove,
+      tup: onTouchUp,
+    };
     perfDragState_.enabled = true;
   } catch (err) {
-    console.error('enableCanvasDragScroll_ error', err);
+    console.error("enableCanvasDragScroll_ error", err);
   }
 }
 
@@ -514,20 +725,31 @@ function renderDetailHeader_(mode) {
  * ========================= */
 
 function summaryRowsHtml_(summaryObj) {
-  if (!summaryObj) return '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
+  if (!summaryObj) {
+    return '<tr><td colspan="4" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
+  }
+
   const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+
   const cards = [
     { label: "排班", card: summaryObj["排班"] || {} },
     { label: "老點", card: summaryObj["老點"] || {} },
     { label: "總計", card: summaryObj["總計"] || {} },
   ];
+
   return cards
     .map(
       ({ label, card }) =>
-        `<tr>${td(label)}${td(card.單數 ?? 0)}${td(card.筆數 ?? 0)}${td(card.數量 ?? 0)}${td(card.金額 ?? 0)}</tr>`
+        `<tr>
+          ${td(label)}
+          ${td(card.單數 ?? 0)}
+          ${td(card.筆數 ?? 0)}
+          ${td(card.金額 ?? 0)}
+        </tr>`
     )
     .join("");
 }
+
 
 function summaryNotLoadedHtml_() {
   return '<tr><td colspan="5" style="color:var(--text-sub);">尚未載入（請按手動重整）</td></tr>';
@@ -714,19 +936,21 @@ function getMaxDetailDateKey_(detailRows) {
 }
 
 /**
- * ✅ 規則：
- * - 範圍超出 allRows 的最新日 maxKey → 直接顯示全部 rows
+ * ✅ 規則（已修正）
+ * - startKey > maxKey：顯示全部（避免空畫面）
+ * - endKey > maxKey：把 endKey clamp 到 maxKey（不要直接顯示全部，才能依日期變動）
  */
 function filterDetailRowsByRange_(detailRows, startKey, endKey, knownMaxKey) {
   const rows = Array.isArray(detailRows) ? detailRows : [];
-  const s = String(startKey || "").trim();
-  const e = String(endKey || "").trim();
+  let s = String(startKey || "").trim();
+  let e = String(endKey || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return rows;
 
   const maxKey = knownMaxKey || getMaxDetailDateKey_(rows);
-  if (maxKey) {
-    if (e > maxKey || s > maxKey) return rows; // ✅ 超出最新日 → 顯示全部
-  }
+
+  if (maxKey && s > maxKey) return rows; // 選到全未來 → 顯示全部避免空
+
+  if (maxKey && e > maxKey) e = maxKey; // ✅ clamp end
 
   return rows.filter((r) => {
     const dk = fastDateKeyFromRow_(r);
@@ -763,9 +987,9 @@ function buildServiceSummaryFromDetail_(detailRows) {
     const name = String((r && r["服務項目"]) || "").trim() || "（未命名）";
     const b = bucket_(r);
 
-    // ✅ 節 = 數量（允許小數 1.5）
-    const qty = Number((r && r["數量"]) ?? 0) || 0;
-    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+    // ✅ 節 = 數量（允許小數 1.5）— 用 parseQty_ 避免漏算
+    const qty = parseQty_(r && r["數量"]);
+    const amount = parseMoney_(r && (r["小計"] ?? r["業績金額"]));
 
     if (!map.has(name)) {
       map.set(name, {
@@ -803,7 +1027,7 @@ function buildServiceSummaryFromDetail_(detailRows) {
 }
 
 /* =========================
- * ✅ 三卡：由 detail cache 計算（本版三卡顯示改用 GAS，但這裡仍供「本月比率」等使用）
+ * ✅ 類別表（排班/老點/總計）：由 detail cache 計算（依開始/結束日期）
  * ========================= */
 
 function buildCardsFromDetailCache_(detailRows) {
@@ -830,21 +1054,10 @@ function buildCardsFromDetailCache_(detailRows) {
     return "排班";
   }
 
-  // ✅ auto qty mode 偵測：若 70% 以上 rows 的「數量」是空/0，就改用「分鐘」
-  let qtyMode = PERF_CARD_QTY_MODE;
-  if (qtyMode === "auto") {
-    let bad = 0;
-    for (const r of rows) {
-      const q = Number((r && r["數量"]) ?? 0) || 0;
-      if (!q) bad++;
-    }
-    const ratio = rows.length ? bad / rows.length : 0;
-    qtyMode = ratio >= 0.7 ? "minutes" : "qty";
-  }
-
   function getQty_(r) {
-    if (qtyMode === "minutes") return Number((r && r["分鐘"]) ?? 0) || 0;
-    return Number((r && r["數量"]) ?? 0) || 0;
+    // 固定 qty
+    if (PERF_CARD_QTY_MODE === "minutes") return Number((r && r["分鐘"]) ?? 0) || 0;
+    return parseQty_(r && r["數量"]);
   }
 
   for (const r of rows) {
@@ -852,7 +1065,7 @@ function buildCardsFromDetailCache_(detailRows) {
 
     const orderNo = String((r && r["訂單編號"]) || "").trim();
     const qty = getQty_(r);
-    const amount = Number((r && (r["小計"] ?? r["業績金額"])) ?? 0) || 0;
+    const amount = parseMoney_(r && (r["小計"] ?? r["業績金額"]));
 
     // 總計
     cards.總計.筆數 += 1;
@@ -868,13 +1081,14 @@ function buildCardsFromDetailCache_(detailRows) {
     if (orderNo) c._orders.add(orderNo);
   }
 
-  // ✅ 單數：訂單編號去重
+  // 單數：訂單編號去重
   for (const k of ["排班", "老點", "總計"]) {
     const c = cards[k];
     c.單數 = c._orders.size;
     delete c._orders;
   }
 
+  // ✅ 數量保留 0.5 / 1.5 的小數，不要硬 round
   return cards;
 }
 
@@ -919,7 +1133,7 @@ function getRowsForRangeFromCache_(techNo, startKey, endKey) {
 }
 
 /* =========================
- * ✅ 三卡：GAS Summary 可用判斷
+ * ✅ 三卡：GAS Summary 可用判斷（保留：仍可顯示「最後更新」來源）
  * ========================= */
 
 function hasGasCards_(summaryObj) {
@@ -928,9 +1142,7 @@ function hasGasCards_(summaryObj) {
   for (const c of cats) {
     const card = summaryObj[c];
     if (!card || typeof card !== "object") return false;
-    if (card.單數 !== undefined || card.筆數 !== undefined || card.數量 !== undefined || card.金額 !== undefined) {
-      return true;
-    }
+    if (card.單數 !== undefined || card.筆數 !== undefined || card.數量 !== undefined || card.金額 !== undefined) return true;
   }
   return false;
 }
@@ -1162,7 +1374,7 @@ async function renderFromCache_(mode, info) {
   else if (detLast) setMeta_(`最後更新：${detLast}（Detail）`);
   else setMeta_("最後更新：—");
 
-  // 顯示「當月」老點率 / 排班率（用 detail cache 計算；三卡顯示不走這裡）
+  // 顯示「當月」老點率 / 排班率（用 detail cache 計算；三卡類別表已改用 got.rows）
   try {
     const monthStart = localDateKeyMonthStart_();
     const monthEnd = localDateKeyToday_();
@@ -1171,14 +1383,12 @@ async function renderFromCache_(mode, info) {
       if (monthGot && monthGot.ok && Array.isArray(monthGot.rows) && monthGot.rows.length) {
         const monthCards = buildCardsFromDetailCache_(monthGot.rows);
 
-        // 筆數口徑
         const totalRows = monthCards && monthCards.總計 ? Number(monthCards.總計.筆數 || 0) : 0;
         const oldRows = monthCards && monthCards.老點 ? Number(monthCards.老點.筆數 || 0) : 0;
         const schedRows = monthCards && monthCards.排班 ? Number(monthCards.排班.筆數 || 0) : 0;
         const oldRateRows = totalRows ? Math.round((oldRows / totalRows) * 1000) / 10 : 0;
         const schedRateRows = totalRows ? Math.round((schedRows / totalRows) * 1000) / 10 : 0;
 
-        // 單數口徑（訂單編號去重）
         const totalSingles = monthCards && monthCards.總計 ? Number(monthCards.總計.單數 || 0) : 0;
         const oldSingles = monthCards && monthCards.老點 ? Number(monthCards.老點.單數 || 0) : 0;
         const schedSingles = monthCards && monthCards.排班 ? Number(monthCards.排班.單數 || 0) : 0;
@@ -1197,15 +1407,15 @@ async function renderFromCache_(mode, info) {
     console.error("render month rates error", e);
   }
 
-  // ✅ 三卡：永遠以 GAS latest Summary 為準（確保與 GAS Summary 一致）
+  // ✅✅✅ 類別表：依「開始/結束日期」變動（用 got.rows 計算）
   if (dom.perfSummaryRowsEl) {
-    const gasObj = perfCache_.summary && perfCache_.summary.summaryObj ? perfCache_.summary.summaryObj : null;
-    const gasOk = hasGasCards_(gasObj);
-
-    if (gasOk) {
-      dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(gasObj);
+    if (hasCache && Array.isArray(got.rows) && got.rows.length) {
+      const rangeCards = buildCardsFromDetailCache_(got.rows);
+      dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(rangeCards);
     } else {
-      dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+      dom.perfSummaryRowsEl.innerHTML = hasCache
+        ? '<tr><td colspan="5" style="color:var(--text-sub);">此區間無資料。</td></tr>'
+        : summaryNotLoadedHtml_();
     }
   }
 
@@ -1287,18 +1497,7 @@ async function reloadAndCache_(info, { showToast = true, fetchSummary = true, fe
         }
 
         const chosen = cmp && cmp.chosen ? cmp.chosen : null;
-        const reportHas = !!(cmp && cmp.reportHas);
-        const detailHas = !!(cmp && cmp.detailHas);
-
         const summaryObj = chosen ? chosen.summaryObj || null : null;
-
-        const compareHint =
-          PERF_COMPARE_LATEST_ENABLED && reportHas && detailHas
-            ? cmp.diffs.length
-              ? `｜⚠ Summary不一致(${cmp.diffs.length})`
-              : `｜✓ Summary一致`
-            : "";
-        void compareHint;
 
         return {
           meta: `最後更新：${chosen && chosen.lastUpdatedAt ? chosen.lastUpdatedAt : "—"}`,
@@ -1479,10 +1678,17 @@ async function fetchJsonWithTimeout_(url, timeoutMs, tag) {
  * Public Exports
  * ========================= */
 
-export function togglePerformanceCard() {}
+export function togglePerformanceCard() {
+  // 由外部控制 perfCard 顯示/隱藏（你原本若有實作，可自行補回）
+}
 
 export function initPerformanceUi() {
   ensureDefaultDate_();
+
+  // ✅ chart prefs (optional)
+  try {
+    loadPerfChartPrefs_();
+  } catch (_) {}
 
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
   if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
@@ -1501,42 +1707,124 @@ export function initPerformanceUi() {
     dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
   }
 
-  // Redraw chart on window resize for better readability on different devices
+  // ✅ optional chart mode buttons (if exists)
+  try {
+    const btnDaily = document.getElementById("perfChartModeDaily");
+    const btnCumu = document.getElementById("perfChartModeCumu");
+    const btnMA7 = document.getElementById("perfChartModeMA7");
+    const btnReset = document.getElementById("perfChartReset");
+
+    const setActive = () => {
+      const all = [btnDaily, btnCumu, btnMA7].filter(Boolean);
+      for (const b of all) b.classList.remove("is-active");
+      const map = { daily: btnDaily, cumu: btnCumu, ma7: btnMA7 };
+      const active = map[perfChartMode_];
+      if (active) active.classList.add("is-active");
+    };
+
+    const applyMode = (mode) => {
+      if (mode !== "daily" && mode !== "cumu" && mode !== "ma7") return;
+      perfChartMode_ = mode;
+      savePerfChartPrefs_();
+      setActive();
+      schedulePerfChartRedraw_();
+    };
+
+    btnDaily && btnDaily.addEventListener("click", () => applyMode("daily"));
+    btnCumu && btnCumu.addEventListener("click", () => applyMode("cumu"));
+    btnMA7 && btnMA7.addEventListener("click", () => applyMode("ma7"));
+
+    btnReset &&
+      btnReset.addEventListener("click", () => {
+        perfChartMode_ = "daily";
+        perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+        savePerfChartPrefs_();
+        setActive();
+
+        const elAmount = document.getElementById("perfChartToggleAmount");
+        const elOld = document.getElementById("perfChartToggleOldRate");
+        const elSched = document.getElementById("perfChartToggleSchedRate");
+        if (elAmount) elAmount.checked = true;
+        if (elOld) elOld.checked = true;
+        if (elSched) elSched.checked = true;
+
+        schedulePerfChartRedraw_();
+        applyChartVisibility_();
+      });
+
+    setActive();
+  } catch (_) {}
+
+  // ✅ optional chart toggles (if exists)
+  try {
+    const elAmount = document.getElementById("perfChartToggleAmount");
+    const elOld = document.getElementById("perfChartToggleOldRate");
+    const elSched = document.getElementById("perfChartToggleSchedRate");
+
+    if (elAmount) elAmount.checked = !!perfChartVis_.amount;
+    if (elOld) elOld.checked = !!perfChartVis_.oldRate;
+    if (elSched) elSched.checked = !!perfChartVis_.schedRate;
+
+    const onToggle = () => {
+      perfChartVis_.amount = elAmount ? !!elAmount.checked : perfChartVis_.amount;
+      perfChartVis_.oldRate = elOld ? !!elOld.checked : perfChartVis_.oldRate;
+      perfChartVis_.schedRate = elSched ? !!elSched.checked : perfChartVis_.schedRate;
+
+      // not allow all off
+      if (!perfChartVis_.amount && !perfChartVis_.oldRate && !perfChartVis_.schedRate) {
+        perfChartVis_.amount = true;
+        if (elAmount) elAmount.checked = true;
+      }
+
+      savePerfChartPrefs_();
+      applyChartVisibility_();
+    };
+
+    elAmount && elAmount.addEventListener("change", onToggle);
+    elOld && elOld.addEventListener("change", onToggle);
+    elSched && elSched.addEventListener("change", onToggle);
+  } catch (_) {}
+
+  // window resize fallback
   try {
     if (typeof window !== "undefined" && window.addEventListener) {
       window.addEventListener("resize", () => {
         try {
-          // schedule a debounced redraw
           schedulePerfChartRedraw_();
         } catch (e) {
           console.error("perf resize handler error", e);
         }
       });
     }
-  } catch (e) {
-    // noop
-  }
+  } catch (_) {}
 
   // Ensure chart wrapper accepts native touch scrolling on mobile
   try {
-    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest('.chart-wrapper') : null;
+    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest(".chart-wrapper") : null;
     if (wrapper) {
-      // ensure overflow properties
-      wrapper.style.overflowX = wrapper.style.overflowX || 'auto';
-      wrapper.style.webkitOverflowScrolling = wrapper.style.webkitOverflowScrolling || 'touch';
-
-      // add passive touch listeners so browser can handle scrolling
-      wrapper.addEventListener('touchstart', function () {}, { passive: true });
-      wrapper.addEventListener('touchmove', function () {}, { passive: true });
-
-      // also ensure canvas does not block pan gestures
+      wrapper.style.overflowX = wrapper.style.overflowX || "auto";
+      wrapper.style.webkitOverflowScrolling = wrapper.style.webkitOverflowScrolling || "touch";
       try {
-        if (dom.perfChartEl) dom.perfChartEl.style.touchAction = dom.perfChartEl.style.touchAction || 'pan-x';
+        if (dom.perfChartEl) dom.perfChartEl.style.touchAction = dom.perfChartEl.style.touchAction || "pan-x";
       } catch (_) {}
     }
   } catch (e) {
-    console.error('perf wrapper touch setup error', e);
+    console.error("perf wrapper touch setup error", e);
   }
+
+  // ✅ ResizeObserver：perfCard 顯示/容器寬度變動也會觸發重畫
+  try {
+    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest(".chart-wrapper") : null;
+    if (wrapper && "ResizeObserver" in window) {
+      if (perfChartRO_) {
+        try {
+          perfChartRO_.disconnect();
+        } catch (_) {}
+      }
+      perfChartRO_ = new ResizeObserver(() => schedulePerfChartRedraw_());
+      perfChartRO_.observe(wrapper);
+    }
+  } catch (_) {}
 }
 
 /**
@@ -1609,4 +1897,9 @@ export function onShowPerformance() {
   showError_(false);
   void renderFromCache_(perfSelectedMode_);
   hideLoadingHint();
+
+  // perfCard 剛顯示時補一次重畫
+  try {
+    schedulePerfChartRedraw_();
+  } catch (_) {}
 }

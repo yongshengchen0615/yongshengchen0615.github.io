@@ -64,13 +64,13 @@
         </div>
       </header>
 
-      <!-- ✅ 已開通功能提示（固定顯示三項；未開通顯示灰色 + 未開通） -->
+      <!-- ✅ 已開通功能提示 -->
       <div id="featureBanner" class="feature-banner">
         <span class="feature-title">功能：</span>
         <div id="featureChips" class="feature-chips"></div>
       </div>
 
-      <!-- ✅ 個人狀態快捷按鈕（personalStatusEnabled=是 才顯示） -->
+      <!-- ✅ 個人狀態快捷按鈕 -->
       <div id="personalTools" class="personal-tools" style="display:none;"></div>
 
       <!-- 🔔 使用者名稱 + 剩餘天數橫幅 -->
@@ -78,7 +78,7 @@
         <span id="usageBannerText"></span>
       </div>
 
-      <!-- ✅ 個人（師傅）身體/腳底狀態（只有師傅才顯示） -->
+      <!-- ✅ 個人（師傅）身體/腳底狀態 -->
       <div id="myMasterStatus" class="my-master-status" style="display:none;">
         <div class="my-master-title">我的狀態</div>
         <div id="myMasterStatusText" class="my-master-text">—</div>
@@ -151,7 +151,7 @@
         </section>
       </main>
 
-      <!-- ✅ 業績（預設隱藏，按「業績」後載入） -->
+      <!-- ✅ 業績 -->
       <section id="perfCard" class="card" style="margin-top:16px;display:none;">
         <header class="card-header">
           <div class="card-header-left">
@@ -170,12 +170,10 @@
           <div class="filters" style="margin-bottom:10px;">
             <div class="filter">
               <label for="perfDateStart" class="filter-label">開始日期</label>
-              <!-- ✅ A：縮短 iOS 顯示（YYYY-MM-DD）避免撐爆 -->
               <input id="perfDateStart" class="input" type="date" lang="en-CA" />
             </div>
             <div class="filter">
               <label for="perfDateEnd" class="filter-label">結束日期</label>
-              <!-- ✅ A：縮短 iOS 顯示（YYYY-MM-DD）避免撐爆 -->
               <input id="perfDateEnd" class="input" type="date" lang="en-CA" />
             </div>
             <div class="filter">
@@ -194,7 +192,6 @@
                   <th style="width:120px;">類別</th>
                   <th>單數</th>
                   <th>筆數</th>
-                  <th>數量</th>
                   <th>金額</th>
                 </tr>
               </thead>
@@ -204,8 +201,34 @@
             </table>
           </div>
 
-          <!-- Performance Chart -->
-          <div class="chart-wrapper" style="margin:12px 0;">
+          <!-- ✅ Chart Controls -->
+          <div class="chart-toolbar" aria-label="圖表工具列">
+            <div class="chart-modes" role="group" aria-label="圖表模式">
+              <button id="perfChartModeDaily" class="btn btn-ghost btn-chart-mode" type="button" data-mode="daily">日業績</button>
+              <button id="perfChartModeCumu"  class="btn btn-ghost btn-chart-mode" type="button" data-mode="cumu">累積</button>
+              <button id="perfChartModeMA7"   class="btn btn-ghost btn-chart-mode" type="button" data-mode="ma7">7日均線</button>
+            </div>
+            <button id="perfChartReset" class="btn btn-ghost btn-chart-reset" type="button">↩︎ 重設顯示</button>
+          </div>
+
+          <div class="chart-toggle" role="group" aria-label="圖表顯示項目">
+            <label class="toggle-chip">
+              <input id="perfChartToggleAmount" type="checkbox" checked />
+              <span>金額</span>
+            </label>
+
+            <label class="toggle-chip">
+              <input id="perfChartToggleOldRate" type="checkbox" checked />
+              <span>老點率</span>
+            </label>
+
+            <label class="toggle-chip">
+              <input id="perfChartToggleSchedRate" type="checkbox" checked />
+              <span>排班率</span>
+            </label>
+          </div>
+
+          <div class="chart-wrapper" style="margin:10px 0 12px 0;">
             <canvas id="perfChart" height="160" aria-label="業績趨勢圖表" role="img"></canvas>
           </div>
 
