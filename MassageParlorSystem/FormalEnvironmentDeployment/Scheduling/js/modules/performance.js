@@ -93,6 +93,18 @@ const perfCache_ = {
 
 // Chart instance
 let perfChartInstance_ = null;
+// last rendered data for responsive redraws
+let perfChartLastRows_ = null;
+let perfChartLastDateKeys_ = null;
+let perfChartResizeTimer_ = null;
+// drag-to-scroll state
+const perfDragState_ = {
+  enabled: false,
+  pointerDown: false,
+  startX: 0,
+  startScrollLeft: 0,
+  handlers: null,
+};
 
 function clearPerfChart_() {
   try {
@@ -173,6 +185,49 @@ function updatePerfChart_(rows, dateKeys) {
     if (typeof Chart === "undefined") return;
 
     const ctx = dom.perfChartEl.getContext("2d");
+
+    // keep last rows/dateKeys for responsive redraws
+    perfChartLastRows_ = Array.isArray(rows) ? rows.slice() : [];
+    perfChartLastDateKeys_ = Array.isArray(dateKeys) ? dateKeys.slice() : [];
+
+    // adaptive sizing: determine container width and desired canvas width
+    const containerEl = dom.perfChartEl && dom.perfChartEl.parentElement ? dom.perfChartEl.parentElement : null;
+    const containerWidth = (containerEl && containerEl.clientWidth) || (dom.perfChartEl && dom.perfChartEl.clientWidth) || window.innerWidth || 800;
+
+    // compute points and whether we should allow horizontal scroll (more than 5 days)
+    const points = labels.length || 1;
+    const shouldScroll = points > 5;
+
+    // when scrolling enabled, allocate px per point; otherwise fit to container
+    const pxPerPointScroll = Math.max(48, Math.min(84, Math.round(containerWidth / 6)));
+    const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPointScroll) : containerWidth;
+
+    // adaptive font sizes based on desired width
+    const baseFont = Math.max(10, Math.min(15, Math.round(Math.min(16, Math.max(11, desiredWidth / 90)))));
+    const ticksFont = Math.max(9, baseFont - 1);
+
+    // set explicit canvas pixel size so Chart.js renders crisply and allows horizontal scroll when needed
+    try {
+      dom.perfChartEl.width = Math.round(desiredWidth);
+      const desiredHeight = Math.max(140, Math.round(Math.min(320, desiredWidth / 3.6)));
+      dom.perfChartEl.height = desiredHeight;
+      if (shouldScroll) {
+        dom.perfChartEl.style.width = `${Math.round(desiredWidth)}px`;
+        // allow horizontal pan on touch devices
+        try {
+          dom.perfChartEl.style.touchAction = "pan-x";
+        } catch (_) {}
+      } else {
+        dom.perfChartEl.style.width = `100%`;
+        try {
+          dom.perfChartEl.style.touchAction = "auto";
+        } catch (_) {}
+      }
+      dom.perfChartEl.style.height = `${desiredHeight}px`;
+      // enable canvas drag-to-scroll when scrolling is active
+      try { enableCanvasDragScroll_(shouldScroll); } catch (_) {}
+    } catch (_) {}
+
     perfChartInstance_ = new Chart(ctx, {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
@@ -212,22 +267,115 @@ function updatePerfChart_(rows, dateKeys) {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            position: "top",
+            labels: { usePointStyle: true, boxWidth: Math.max(6, baseFont), font: { size: baseFont } },
+          },
+          tooltip: { bodyFont: { size: ticksFont }, titleFont: { size: baseFont } },
+        },
         scales: {
-          x: { ticks: { maxRotation: 0 } },
-          y: { beginAtZero: true, title: { display: true, text: "金額" } },
+          x: { ticks: { maxRotation: 0, font: { size: ticksFont } } },
+          y: { beginAtZero: true, title: { display: true, text: "金額", font: { size: baseFont } }, ticks: { font: { size: ticksFont } } },
           y1: {
             position: "right",
             beginAtZero: true,
             max: 100,
-            ticks: { callback: (v) => (v === null || v === undefined ? "" : `${v}%`) },
+            ticks: { callback: (v) => (v === null || v === undefined ? "" : `${v}%`), font: { size: ticksFont } },
             grid: { drawOnChartArea: false },
-            title: { display: true, text: "比率 (%)" },
+            title: { display: true, text: "比率 (%)", font: { size: baseFont } },
           },
+        },
+        elements: {
+          point: { radius: Math.max(0, baseFont - 8) },
         },
       },
     });
   } catch (e) {
     console.error("updatePerfChart_ error", e);
+  }
+}
+
+// debounce helper for resize redraw
+function schedulePerfChartRedraw_() {
+  if (perfChartResizeTimer_) clearTimeout(perfChartResizeTimer_);
+  perfChartResizeTimer_ = setTimeout(() => {
+    try {
+      if (perfChartLastRows_) updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_);
+    } catch (e) {
+      console.error("perf chart redraw error", e);
+    }
+  }, 140);
+}
+
+function enableCanvasDragScroll_(enable) {
+  try {
+    const canvas = dom.perfChartEl;
+    if (!canvas) return;
+    const wrapper = canvas.closest && canvas.closest('.chart-wrapper') ? canvas.closest('.chart-wrapper') : canvas.parentElement;
+
+    // cleanup existing
+    if (perfDragState_.handlers && canvas) {
+      const h = perfDragState_.handlers;
+      try { canvas.removeEventListener('pointerdown', h.down); } catch (_) {}
+      try { canvas.removeEventListener('pointermove', h.move); } catch (_) {}
+      try { window.removeEventListener('pointerup', h.up); } catch (_) {}
+      try { canvas.removeEventListener('touchstart', h.tdown); } catch (_) {}
+      try { canvas.removeEventListener('touchmove', h.tmove); } catch (_) {}
+      try { window.removeEventListener('touchend', h.tup); } catch (_) {}
+      perfDragState_.handlers = null;
+    }
+
+    if (!enable) {
+      perfDragState_.enabled = false;
+      return;
+    }
+
+    // attach handlers
+    const onPointerDown = (ev) => {
+      try {
+        perfDragState_.pointerDown = true;
+        perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
+        if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
+        ev.preventDefault && ev.preventDefault();
+      } catch (e) {}
+    };
+
+    const onPointerMove = (ev) => {
+      if (!perfDragState_.pointerDown) return;
+      try {
+        const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        const dx = clientX - perfDragState_.startX;
+        if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
+        ev.preventDefault && ev.preventDefault();
+      } catch (e) {}
+    };
+
+    const onPointerUp = (ev) => {
+      perfDragState_.pointerDown = false;
+      try {
+        if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
+      } catch (e) {}
+    };
+
+    // touch fallback
+    const onTouchDown = (ev) => onPointerDown(ev);
+    const onTouchMove = (ev) => onPointerMove(ev);
+    const onTouchUp = (ev) => onPointerUp(ev);
+
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp, { passive: true });
+
+    canvas.addEventListener('touchstart', onTouchDown, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchUp, { passive: true });
+
+    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: onTouchDown, tmove: onTouchMove, tup: onTouchUp };
+    perfDragState_.enabled = true;
+  } catch (err) {
+    console.error('enableCanvasDragScroll_ error', err);
   }
 }
 
@@ -1351,6 +1499,43 @@ export function initPerformanceUi() {
   if (dom.perfDateEndInput) {
     dom.perfDateEndInput.addEventListener("change", onDateInputsChanged);
     dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
+  }
+
+  // Redraw chart on window resize for better readability on different devices
+  try {
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("resize", () => {
+        try {
+          // schedule a debounced redraw
+          schedulePerfChartRedraw_();
+        } catch (e) {
+          console.error("perf resize handler error", e);
+        }
+      });
+    }
+  } catch (e) {
+    // noop
+  }
+
+  // Ensure chart wrapper accepts native touch scrolling on mobile
+  try {
+    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest('.chart-wrapper') : null;
+    if (wrapper) {
+      // ensure overflow properties
+      wrapper.style.overflowX = wrapper.style.overflowX || 'auto';
+      wrapper.style.webkitOverflowScrolling = wrapper.style.webkitOverflowScrolling || 'touch';
+
+      // add passive touch listeners so browser can handle scrolling
+      wrapper.addEventListener('touchstart', function () {}, { passive: true });
+      wrapper.addEventListener('touchmove', function () {}, { passive: true });
+
+      // also ensure canvas does not block pan gestures
+      try {
+        if (dom.perfChartEl) dom.perfChartEl.style.touchAction = dom.perfChartEl.style.touchAction || 'pan-x';
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.error('perf wrapper touch setup error', e);
   }
 }
 

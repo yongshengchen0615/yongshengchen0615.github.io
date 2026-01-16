@@ -589,6 +589,30 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   overscroll-behavior-x: contain;
 }
 
+/* Chart wrapper: allow horizontal scroll on small screens and touch momentum */
+.chart-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* allow horizontal pan gesture within the wrapper on touch devices */
+.chart-wrapper {
+  touch-action: pan-x;
+}
+
+/* ensure the wrapper can shrink inside flex containers and still allow internal scrolling */
+.chart-wrapper {
+  min-width: 0;
+}
+
+.chart-wrapper canvas {
+  display: block; /* remove inline gap */
+  max-width: none; /* allow explicit canvas width larger than container */
+  height: auto; /* height controlled via canvas height attribute */
+}
+
 .status-table {
   width: 100%;
   border-collapse: collapse;
