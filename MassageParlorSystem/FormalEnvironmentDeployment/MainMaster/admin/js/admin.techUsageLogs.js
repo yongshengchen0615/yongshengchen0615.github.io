@@ -134,7 +134,10 @@ function techLogsBuildRangeLabel_(start, end) {
 
 function applyTechUsageLogsDateFilter_() {
   const { start, end } = techLogsGetSelectedRange_();
-  if (!start && !end) {
+  // 也看到 UI 的名稱選單，若有選擇名稱則一併過濾
+  const nameFilter = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : (document.getElementById('techLogsNameSelect') ? String(document.getElementById('techLogsNameSelect').value || '') : '');
+
+  if (!start && !end && !nameFilter) {
     techUsageLogs_ = techUsageLogsAll_.slice();
     return;
   }
@@ -147,6 +150,7 @@ function applyTechUsageLogsDateFilter_() {
     if (!d) return false;
     if (sDt && d < sDt) return false;
     if (eDt && d > eDt) return false;
+    if (nameFilter && String(r.name || '') !== nameFilter) return false;
     return true;
   });
 }
@@ -500,6 +504,12 @@ function bindTechUsageLogs_() {
     const endEl = document.getElementById("techLogsEndDateInput");
     if (startEl) startEl.value = "";
     if (endEl) endEl.value = "";
+    const stTime = document.getElementById("techLogsStartTimeInput");
+    const enTime = document.getElementById("techLogsEndTimeInput");
+    if (stTime) stTime.value = "";
+    if (enTime) enTime.value = "";
+    const nameSel = document.getElementById('techLogsNameSelect');
+    if (nameSel) nameSel.value = '';
     applyTechUsageLogsDateFilter_();
     renderTechUsageLogs_();
     techLogsSetFooter_(`共 ${techUsageLogs_.length} 筆`);
@@ -521,6 +531,8 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsEndDateInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsStartTimeInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", onRangeChange);
+  // 當使用者選擇名稱時，同步套用到表格過濾
+  document.getElementById('techLogsNameSelect')?.addEventListener('change', onRangeChange);
   
   // Initialize chart and re-render when date range changes
   initTechUsageChart_();
