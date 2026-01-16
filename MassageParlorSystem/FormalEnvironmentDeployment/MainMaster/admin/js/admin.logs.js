@@ -332,6 +332,26 @@ function renderAdminLogsChart_() {
   if (!same) {
     adminLogsChart.data.datasets[0].data = points;
     adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
+    // responsive font sizing based on canvas width
+    try {
+      const canvasEl = document.getElementById('adminLogsChartCanvas');
+      const w = (canvasEl && canvasEl.clientWidth) ? canvasEl.clientWidth : (window.innerWidth || 800);
+      const base = Math.max(10, Math.min(16, Math.round(w / 120)));
+      if (adminLogsChart.options && adminLogsChart.options.scales) {
+        if (adminLogsChart.options.scales.x) adminLogsChart.options.scales.x.ticks = adminLogsChart.options.scales.x.ticks || {};
+        if (adminLogsChart.options.scales.y) adminLogsChart.options.scales.y.ticks = adminLogsChart.options.scales.y.ticks || {};
+        adminLogsChart.options.scales.x.ticks.font = { size: base };
+        adminLogsChart.options.scales.y.ticks.font = { size: Math.max(10, base - 1) };
+      }
+      if (adminLogsChart.options && adminLogsChart.options.plugins) {
+        adminLogsChart.options.plugins.legend = adminLogsChart.options.plugins.legend || {};
+        adminLogsChart.options.plugins.legend.labels = adminLogsChart.options.plugins.legend.labels || {};
+        adminLogsChart.options.plugins.legend.labels.font = { size: base };
+        adminLogsChart.options.plugins.tooltip = adminLogsChart.options.plugins.tooltip || {};
+        adminLogsChart.options.plugins.tooltip.titleFont = { size: Math.max(11, base + 1) };
+        adminLogsChart.options.plugins.tooltip.bodyFont = { size: base };
+      }
+    } catch (e) { /* ignore sizing errors */ }
     adminLogsChart.update();
   }
 }

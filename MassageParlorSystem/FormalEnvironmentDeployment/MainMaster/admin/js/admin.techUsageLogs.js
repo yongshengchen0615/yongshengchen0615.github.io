@@ -376,6 +376,26 @@ function renderTechUsageChart_() {
     if (!same) {
       techUsageChart.data.datasets[0].data = points;
       techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
+      // responsive font sizing based on canvas width
+      try {
+        const canvasEl = document.getElementById('techUsageChartCanvas');
+        const w = (canvasEl && canvasEl.clientWidth) ? canvasEl.clientWidth : (window.innerWidth || 800);
+        const base = Math.max(10, Math.min(16, Math.round(w / 120)));
+        if (techUsageChart.options && techUsageChart.options.scales) {
+          if (techUsageChart.options.scales.x) techUsageChart.options.scales.x.ticks = techUsageChart.options.scales.x.ticks || {};
+          if (techUsageChart.options.scales.y) techUsageChart.options.scales.y.ticks = techUsageChart.options.scales.y.ticks || {};
+          techUsageChart.options.scales.x.ticks.font = { size: base };
+          techUsageChart.options.scales.y.ticks.font = { size: Math.max(10, base - 1) };
+        }
+        if (techUsageChart.options && techUsageChart.options.plugins) {
+          techUsageChart.options.plugins.legend = techUsageChart.options.plugins.legend || {};
+          techUsageChart.options.plugins.legend.labels = techUsageChart.options.plugins.legend.labels || {};
+          techUsageChart.options.plugins.legend.labels.font = { size: base };
+          techUsageChart.options.plugins.tooltip = techUsageChart.options.plugins.tooltip || {};
+          techUsageChart.options.plugins.tooltip.titleFont = { size: Math.max(11, base + 1) };
+          techUsageChart.options.plugins.tooltip.bodyFont = { size: base };
+        }
+      } catch (e) { /* ignore sizing errors */ }
       techUsageChart.update();
     }
 }
