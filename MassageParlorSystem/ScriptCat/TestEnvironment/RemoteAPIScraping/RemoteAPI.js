@@ -231,9 +231,9 @@
       "xsrf-token",
       "x-auth-token",
     ];
-    for (const k of SENSITIVE) {
-      if (k in out) out[k] = "<redacted>";
-    }
+  //  for (const k of SENSITIVE) {
+    //  if (k in out) out[k] = "<redacted>";
+   // }
     return out;
   }
 
