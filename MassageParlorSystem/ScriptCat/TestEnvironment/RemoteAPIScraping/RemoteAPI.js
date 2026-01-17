@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YSPOS Capture (MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze
+// @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked)
 // @namespace    https://local/
-// @version      3.6
-// @description  Capture XHR/fetch on 3 pages (#/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables.
+// @version      3.7
+// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages.
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @run-at       document-start
@@ -39,7 +39,7 @@
     // response 截斷（非 JSON 時使用）
     maxTextLen: 12000,
 
-    // 脫敏
+    // 脫敏（headers）
     redactSensitiveHeaders: true,
 
     // Debug
@@ -50,10 +50,13 @@
   const ENABLE_ANALYZE = true;
 
   /*****************************************************************
-   * 2) Page gate (3 pages)
+   * 2) Page gate (4 pages)
    *****************************************************************/
   function isTargetPage() {
     const h = String(location.hash || "");
+
+    // 0) Master login ✅ 新增
+    const isMasterLogin = h === "#/master-login" || h.startsWith("#/master-login?");
 
     // 1) Master complex list
     const isMasterComplex = h.startsWith("#/master") && h.includes("listStatus=COMPLEX");
@@ -62,7 +65,7 @@
     const isPerfDetail = h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
     const isPerfStatic = h.startsWith("#/performance") && h.includes("tab=P_STATIC");
 
-    return isMasterComplex || isPerfDetail || isPerfStatic;
+    return isMasterLogin || isMasterComplex || isPerfDetail || isPerfStatic;
   }
 
   let ACTIVE = false;
@@ -104,13 +107,44 @@
    * 3) Utilities
    *****************************************************************/
   function safeJsonParse(text) {
-    try { return JSON.parse(text); } catch (_) { return null; }
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return null;
+    }
   }
 
   function truncateText_(s, maxLen) {
     const str = String(s == null ? "" : s);
     if (str.length <= maxLen) return str;
     return str.slice(0, maxLen) + `...<truncated:${str.length - maxLen}>`;
+  }
+
+  // ✅ Tab-scoped sessionKey：串起 login -> 後續頁面
+  const SESSION_KEY_NAME = "YS_CAPTURE_SESSION_KEY";
+  function genSessionKey_() {
+    try {
+      const rnd = new Uint8Array(16);
+      crypto.getRandomValues(rnd);
+      const hex = Array.from(rnd)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      return `sess_${Date.now()}_${hex}`;
+    } catch (_) {
+      return `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+  }
+  function getSessionKey_() {
+    try {
+      let k = sessionStorage.getItem(SESSION_KEY_NAME);
+      if (!k) {
+        k = genSessionKey_();
+        sessionStorage.setItem(SESSION_KEY_NAME, k);
+      }
+      return k;
+    } catch (_) {
+      return genSessionKey_();
+    }
   }
 
   function pickTechNo() {
@@ -123,7 +157,7 @@
     if (m) return m[1];
 
     // 再嘗試 storage（你未來可以把 techNo 存這裡）
-    return (sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "");
+    return sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "";
   }
 
   function isGASUrl_(url) {
@@ -157,7 +191,8 @@
       method: "GET",
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
       timeout: 15000,
-      onload: (res) => log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) =>
+        log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => warn(`[YS_CAPTURE] ping(${tag}) error`, err),
       ontimeout: () => warn(`[YS_CAPTURE] ping(${tag}) timeout`),
     });
@@ -172,7 +207,9 @@
 
       // Headers instance
       if (typeof Headers !== "undefined" && headers instanceof Headers) {
-        headers.forEach((v, k) => { out[String(k).toLowerCase()] = String(v); });
+        headers.forEach((v, k) => {
+          out[String(k).toLowerCase()] = String(v);
+        });
       } else if (Array.isArray(headers)) {
         for (const it of headers) {
           if (!it) continue;
@@ -198,6 +235,16 @@
       if (k in out) out[k] = "<redacted>";
     }
     return out;
+  }
+
+  function normalizeFetchUrl_(input) {
+    try {
+      // 支援 Request 物件，避免漏抓
+      if (typeof Request !== "undefined" && input instanceof Request) return input.url;
+      return String(input || "");
+    } catch (_) {
+      return String(input || "");
+    }
   }
 
   /*****************************************************************
@@ -232,6 +279,7 @@
       hash: location.hash,
       ts: new Date().toISOString(),
       techNo: pickTechNo(),
+      sessionKey: getSessionKey_(), // ✅ 新增：串接 login->後續頁
       items: batch,
     };
 
@@ -241,7 +289,8 @@
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify(payload),
       timeout: 30000,
-      onload: (res) => log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) =>
+        log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => {
         warn("[YS_CAPTURE] capture send error", err);
         QUEUE.unshift(...batch);
@@ -268,7 +317,10 @@
   }
 
   function extractFromTo_(requestBody) {
-    let from = "", to = "", size = "", number = "";
+    let from = "",
+      to = "",
+      size = "",
+      number = "";
     try {
       const obj = JSON.parse(String(requestBody || "{}"));
       from = String(obj.from || "");
@@ -304,6 +356,7 @@
         recordHash: String(recordHash || ""),
         requestUrl: String(record.url || ""),
         techNo: pickTechNo(),
+        sessionKey: getSessionKey_(), // ✅ 新增：同 sessionKey
       },
       response: record.response,
     };
@@ -314,7 +367,8 @@
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify(payload),
       timeout: 30000,
-      onload: (res) => log("[ANALYZE] sent storeId=", storeId, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) =>
+        log("[ANALYZE] sent storeId=", storeId, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => warn("[ANALYZE] send error", err),
       ontimeout: () => warn("[ANALYZE] send timeout"),
     });
@@ -330,7 +384,7 @@
     try {
       if (!ACTIVE) return res;
 
-      const url = args[0];
+      const url = normalizeFetchUrl_(args[0]);
       const opt = args[1] || {};
       if (!urlMatches(url)) return res;
 
@@ -430,10 +484,16 @@
   /*****************************************************************
    * 8) Page lifecycle flush
    *****************************************************************/
-  window.addEventListener("pagehide", () => { try { flushQueue(); } catch (_) {} });
+  window.addEventListener("pagehide", () => {
+    try {
+      flushQueue();
+    } catch (_) {}
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      try { flushQueue(); } catch (_) {}
+      try {
+        flushQueue();
+      } catch (_) {}
     }
   });
 })();
