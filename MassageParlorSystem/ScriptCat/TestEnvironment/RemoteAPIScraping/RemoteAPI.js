@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked)
+// @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
 // @namespace    https://local/
-// @version      3.9
-// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages.
+// @version      4.3
+// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages. ✅ Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @run-at       document-start
@@ -26,10 +26,10 @@
    * 1) Capture Rules
    *****************************************************************/
   const CAPTURE_RULES = {
-    // ✅ 只抓 /api/（最安全、最不爆）
+    // ✅ 只抓 /api/
     urlSubstringsAny: ["/api/"],
 
-    // 非 JSON 是否允許（建議 false，避免大回應爆表）
+    // 非 JSON 是否允許（建議 false）
     allowNonJson: false,
 
     // 佇列與送出節流
@@ -41,6 +41,9 @@
 
     // 脫敏（headers）
     redactSensitiveHeaders: true,
+
+    // ✅ SENT_HASH 上限（避免無限增長）
+    sentHashMax: 3000,
 
     // Debug
     verbose: true,
@@ -55,7 +58,7 @@
   function isTargetPage() {
     const h = String(location.hash || "");
 
-    // 0) Master login ✅ 新增
+    // 0) Master login
     const isMasterLogin = h === "#/master-login" || h.startsWith("#/master-login?");
 
     // 1) Master complex list
@@ -71,6 +74,7 @@
   let ACTIVE = false;
   let FLUSH_TIMER = null;
   let GUARD_TIMER = null;
+  let TECHNO_OBSERVER_STARTED = false;
 
   function log(...args) {
     if (CAPTURE_RULES.verbose) console.log(...args);
@@ -84,6 +88,12 @@
     if (ok && !ACTIVE) {
       ACTIVE = true;
       log("[YS_CAPTURE] START on", location.href, "hash=", location.hash);
+
+      // ✅ 新增：開始監聽 DOM 師傅號碼（SPA 切頁也能抓到）
+      if (!TECHNO_OBSERVER_STARTED) {
+        TECHNO_OBSERVER_STARTED = true;
+        startTechNoObserver_();
+      }
 
       pingGas_(GAS_CAPTURE_URL, "capture");
       if (ENABLE_ANALYZE && GAS_ANALYZE_URL && !String(GAS_ANALYZE_URL).includes("PASTE_")) {
@@ -106,9 +116,16 @@
   /*****************************************************************
    * 3) Utilities
    *****************************************************************/
+  function stripBom_(s) {
+    const str = String(s == null ? "" : s);
+    return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+  }
+
   function safeJsonParse(text) {
     try {
-      return JSON.parse(text);
+      const t = stripBom_(text).trim();
+      if (!t) return null;
+      return JSON.parse(t);
     } catch (_) {
       return null;
     }
@@ -147,8 +164,62 @@
     }
   }
 
+  /*****************************************************************
+   * 3.1) ✅ TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
+   *****************************************************************/
+  let TECHNO_CACHE = "";
+
+  function readTechNoFromDom_() {
+    try {
+      const ps = Array.from(document.querySelectorAll("p.text-C599F48"));
+      for (const p of ps) {
+        const txt = (p.textContent || "").replace(/\s+/g, "");
+        if (!txt.includes("師傅號碼")) continue;
+
+        const sp = p.querySelector("span");
+        const v1 = sp ? String(sp.textContent || "").trim() : "";
+        const v2 = String(txt).replace("師傅號碼：", "").replace("師傅號碼:", "").trim();
+        const v = v1 || v2;
+
+        const m = String(v).match(/\d+/);
+        if (!m) continue;
+        return m[0];
+      }
+    } catch (_) {}
+    return "";
+  }
+
+  function startTechNoObserver_() {
+    const refresh = () => {
+      const v = readTechNoFromDom_();
+      if (v && v !== TECHNO_CACHE) {
+        TECHNO_CACHE = v;
+
+        // 同步到 storage（pickTechNo 也會讀）
+        try {
+          sessionStorage.setItem("techNo", TECHNO_CACHE);
+          localStorage.setItem("techNo", TECHNO_CACHE);
+        } catch (_) {}
+
+        log("[YS_CAPTURE] TECHNO_CACHE updated from DOM =>", TECHNO_CACHE);
+      }
+    };
+
+    // 第一次嘗試
+    try { refresh(); } catch (_) {}
+
+    // MutationObserver：監控整頁
+    try {
+      const mo = new MutationObserver(() => refresh());
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) {
+      // fallback：低頻輪詢
+      setInterval(refresh, 1200);
+    }
+  }
+
   function pickTechNo() {
-    // 先嘗試 query/hash
+    // 1) query/hash
     const qs = new URLSearchParams(location.search);
     if (qs.get("techNo")) return qs.get("techNo");
 
@@ -156,7 +227,10 @@
     const m = h.match(/techNo=([0-9A-Za-z_-]+)/);
     if (m) return m[1];
 
-    // 再嘗試 storage（你未來可以把 techNo 存這裡）
+    // 2) DOM cache
+    if (TECHNO_CACHE) return TECHNO_CACHE;
+
+    // 3) storage
     return sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "";
   }
 
@@ -192,15 +266,18 @@
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
       timeout: 15000,
       onload: (res) =>
-        log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
+        log(
+          `[YS_CAPTURE] ping(${tag}) status=`,
+          res.status,
+          "body=",
+          truncateText_(res.responseText, 200)
+        ),
       onerror: (err) => warn(`[YS_CAPTURE] ping(${tag}) error`, err),
       ontimeout: () => warn(`[YS_CAPTURE] ping(${tag}) timeout`),
     });
   }
 
   function sanitizeHeaders_(headers) {
-    if (!CAPTURE_RULES.redactSensitiveHeaders) return headers;
-
     const out = {};
     try {
       if (!headers) return out;
@@ -222,6 +299,8 @@
       }
     } catch (_) {}
 
+    if (!CAPTURE_RULES.redactSensitiveHeaders) return out;
+
     const SENSITIVE = [
       "cookie",
       "authorization",
@@ -231,9 +310,9 @@
       "xsrf-token",
       "x-auth-token",
     ];
-  //  for (const k of SENSITIVE) {
-    //  if (k in out) out[k] = "<redacted>";
-   // }
+    for (const k of SENSITIVE) {
+      if (k in out) out[k] = "<redacted>";
+    }
     return out;
   }
 
@@ -247,11 +326,49 @@
     }
   }
 
+  function bodyToString_(body) {
+    try {
+      if (body == null) return "";
+      if (typeof body === "string") return body;
+
+      // URLSearchParams
+      if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+        return body.toString();
+      }
+
+      // FormData
+      if (typeof FormData !== "undefined" && body instanceof FormData) {
+        const usp = new URLSearchParams();
+        for (const [k, v] of body.entries()) {
+          usp.append(String(k), String(v));
+        }
+        return usp.toString();
+      }
+
+      // Blob/ArrayBuffer/others: can't reliably stringify
+      return "";
+    } catch (_) {
+      return "";
+    }
+  }
+
   /*****************************************************************
    * 4) Queue + Dedup + Flush to GAS_CAPTURE_URL
    *****************************************************************/
   const QUEUE = [];
   const SENT_HASH = new Set();
+  const SENT_HASH_FIFO = [];
+
+  function addSentHash_(h) {
+    if (SENT_HASH.has(h)) return;
+    SENT_HASH.add(h);
+    SENT_HASH_FIFO.push(h);
+    const max = Number(CAPTURE_RULES.sentHashMax || 0) || 0;
+    if (max > 0 && SENT_HASH_FIFO.length > max) {
+      const old = SENT_HASH_FIFO.splice(0, SENT_HASH_FIFO.length - max);
+      for (const x of old) SENT_HASH.delete(x);
+    }
+  }
 
   function enqueue(item) {
     QUEUE.push(item);
@@ -279,7 +396,7 @@
       hash: location.hash,
       ts: new Date().toISOString(),
       techNo: pickTechNo(),
-      sessionKey: getSessionKey_(), // ✅ 新增：串接 login->後續頁
+      sessionKey: getSessionKey_(),
       items: batch,
     };
 
@@ -290,7 +407,14 @@
       data: JSON.stringify(payload),
       timeout: 30000,
       onload: (res) =>
-        log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+        log(
+          "[YS_CAPTURE] capture sent",
+          batch.length,
+          "status=",
+          res.status,
+          "body=",
+          truncateText_(res.responseText, 200)
+        ),
       onerror: (err) => {
         warn("[YS_CAPTURE] capture send error", err);
         QUEUE.unshift(...batch);
@@ -316,19 +440,52 @@
     return m ? m[1] : "";
   }
 
-  function extractFromTo_(requestBody) {
+  // ✅ 支援 JSON / x-www-form-urlencoded / querystring / URLSearchParams / FormData
+  function extractFromTo_(requestBody, requestUrl) {
     let from = "",
       to = "",
       size = "",
       number = "";
+
+    // 1) body JSON
     try {
-      const obj = JSON.parse(String(requestBody || "{}"));
-      from = String(obj.from || "");
-      to = String(obj.to || "");
-      size = String(obj.size ?? "");
-      number = String(obj.number ?? "");
+      const t = stripBom_(String(requestBody || "")).trim();
+      if (t && (t.startsWith("{") || t.startsWith("["))) {
+        const obj = JSON.parse(t);
+        from = String(obj.from || "");
+        to = String(obj.to || "");
+        size = String(obj.size ?? "");
+        number = String(obj.number ?? "");
+        if (from || to) return { from, to, size, number };
+      }
     } catch (_) {}
-    return { from, to, size, number };
+
+    // 2) body urlencoded / querystring
+    try {
+      const bodyStr = bodyToString_(requestBody) || String(requestBody || "");
+      const bs = stripBom_(bodyStr).trim();
+      if (bs && (bs.includes("=") || bs.includes("&"))) {
+        const usp = new URLSearchParams(bs);
+        from = String(usp.get("from") || "");
+        to = String(usp.get("to") || "");
+        size = String(usp.get("size") || "");
+        number = String(usp.get("number") || "");
+        if (from || to) return { from, to, size, number };
+      }
+    } catch (_) {}
+
+    // 3) requestUrl query
+    try {
+      const u = new URL(String(requestUrl || ""), location.origin);
+      const usp = u.searchParams;
+      from = String(usp.get("from") || "");
+      to = String(usp.get("to") || "");
+      size = String(usp.get("size") || "");
+      number = String(usp.get("number") || "");
+      if (from || to) return { from, to, size, number };
+    } catch (_) {}
+
+    return { from: "", to: "", size: "", number: "" };
   }
 
   function forwardToAnalyze_(record, recordHash) {
@@ -340,7 +497,7 @@
     if (!record.response || typeof record.response !== "object") return;
 
     const storeId = extractStoreId_(record.url);
-    const { from, to, size, number } = extractFromTo_(record.requestBody);
+    const { from, to, size, number } = extractFromTo_(record.requestBody, record.url);
 
     const payload = {
       mode: "analyzePerfTotal_v1",
@@ -356,7 +513,7 @@
         recordHash: String(recordHash || ""),
         requestUrl: String(record.url || ""),
         techNo: pickTechNo(),
-        sessionKey: getSessionKey_(), // ✅ 新增：同 sessionKey
+        sessionKey: getSessionKey_(),
       },
       response: record.response,
     };
@@ -368,7 +525,14 @@
       data: JSON.stringify(payload),
       timeout: 30000,
       onload: (res) =>
-        log("[ANALYZE] sent storeId=", storeId, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+        log(
+          "[ANALYZE] sent storeId=",
+          storeId,
+          "status=",
+          res.status,
+          "body=",
+          truncateText_(res.responseText, 200)
+        ),
       onerror: (err) => warn("[ANALYZE] send error", err),
       ontimeout: () => warn("[ANALYZE] send timeout"),
     });
@@ -406,7 +570,7 @@
 
       const hash = await sha1Hex(JSON.stringify(record));
       if (!SENT_HASH.has(hash)) {
-        SENT_HASH.add(hash);
+        addSentHash_(hash);
         enqueue({ hash, record });
         log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status);
         forwardToAnalyze_(record, hash);
@@ -447,10 +611,21 @@
 
         xhr.addEventListener("load", async function () {
           try {
-            const text = xhr.responseText;
-            const json = safeJsonParse(text);
+            const rt = String(xhr.responseType || "");
+            let json = null;
+            let respOut = "";
 
-            if (!json && !CAPTURE_RULES.allowNonJson) return;
+            // ✅ 只有 text/"" 才用 responseText
+            if (rt === "" || rt === "text") {
+              const text = xhr.responseText;
+              json = safeJsonParse(text);
+              if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
+            } else {
+              respOut = `<non-text responseType:${rt}>`;
+            }
+
+            if (!json && !CAPTURE_RULES.allowNonJson && respOut.startsWith("<non-text")) return;
+            if (!json && !CAPTURE_RULES.allowNonJson && !respOut) return;
 
             const record = {
               kind: "xhr",
@@ -459,12 +634,12 @@
               requestHeaders: sanitizeHeaders_(xhr._cap_reqHeaders || null),
               requestBody: reqBody || null,
               status: xhr.status,
-              response: json || truncateText_(text, CAPTURE_RULES.maxTextLen),
+              response: json || respOut,
             };
 
             const hash = await sha1Hex(JSON.stringify(record));
             if (!SENT_HASH.has(hash)) {
-              SENT_HASH.add(hash);
+              addSentHash_(hash);
               enqueue({ hash, record });
               log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status);
               forwardToAnalyze_(record, hash);
