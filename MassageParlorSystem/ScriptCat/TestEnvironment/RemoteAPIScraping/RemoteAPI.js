@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
 // @namespace    https://local/
-// @version      4.4
+// @version      4.4.1
 // @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages. ✅ Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
@@ -206,7 +206,9 @@
     };
 
     // 第一次嘗試
-    try { refresh(); } catch (_) {}
+    try {
+      refresh();
+    } catch (_) {}
 
     // MutationObserver：監控整頁
     try {
@@ -615,12 +617,28 @@
             let json = null;
             let respOut = "";
 
-            // ✅ 只有 text/"" 才用 responseText
+            // ✅ (1) text / ""：用 responseText 解析
             if (rt === "" || rt === "text") {
               const text = xhr.responseText;
               json = safeJsonParse(text);
               if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
-            } else {
+            }
+            // ✅ (2) json：直接讀 xhr.response（很多框架會用這個）
+            else if (rt === "json") {
+              const r = xhr.response;
+              if (r && typeof r === "object") {
+                json = r;
+              } else if (r != null) {
+                // 少數情況 responseType=json 但回傳是字串
+                const t = String(r);
+                json = safeJsonParse(t);
+                if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
+              } else {
+                respOut = "<null json response>";
+              }
+            }
+            // (3) 其他 responseType：保留原行為
+            else {
               respOut = `<non-text responseType:${rt}>`;
             }
 
