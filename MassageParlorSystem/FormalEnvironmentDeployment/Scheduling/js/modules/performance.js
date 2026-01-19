@@ -1,23 +1,15 @@
 /**
- * performance.js（完整可貼可覆蓋版 / ✅ 改為吃「GAS syncStorePerf_v1」/ ✅ 移除 techNo / ✅ 三卡依區間即時變動 / ✅ 統計頁節=數量 / ✅ 圖表跨裝置可讀性強化 + touchstart Intervention 修正）
+ * performance.js（✅ 最終可貼可覆蓋版）
+ * - ✅ 改為吃「GAS syncStorePerf_v1」
+ * - ✅ 移除 techNo / techId（只用 userId → StoreId 由 GAS 授權表決定）
+ * - ✅ 三卡依區間即時變動（吃 GAS cards；無 cards 則用 rows fallback）
+ * - ✅ 統計頁：節=數量（欄位：總節數/老點節數/排班節數）
+ * - ✅ 圖表跨裝置可讀性強化 + touchstart/pointer Intervention 修正
  *
- * ✅ 你這版要配合的 GAS
- * - POST  config.PERF_SYNC_API_URL
- * - body: { mode:"syncStorePerf_v1", userId, from, to, includeDetail:true }
- * - 回傳: detail.rows（第一筆格式）、detail.cards、detail.serviceSummary、lastUpdatedAt
- *
- * ✅ 你需要確保 config.js / config.json 已有：
- * - PERF_SYNC_API_URL = 你的 GAS Web App URL（syncStorePerf_v1 那支）
- *
- * ✅ 相依（沿用你專案既有）
- * - dom.js: dom.perfStatusEl / perfMetaEl / perfSummaryRowsEl / perfDetailHeadRowEl / perfDetailRowsEl / perfDetailCountEl
- *          dom.perfDateStartInput / perfDateEndInput / perfDateKeyInput
- *          dom.perfSearchBtn / perfSearchSummaryBtn / perfSearchDetailBtn
- *          dom.perfErrorEl / perfEmptyEl / perfChartEl / perfMonthRatesEl
- * - config.js: export const config = { PERF_SYNC_API_URL, ... }
- * - state.js: 需能取得 userId（本檔會用多種 fallback）
- * - core.js: withQuery, escapeHtml, getQueryParam（若你沒有 getQueryParam，請改用你現有取 query 的方法）
- * - uiHelpers.js: showLoadingHint, hideLoadingHint
+ * ✅ 本版關鍵修正（相對你貼的版本）
+ * 1) POST body 改成「真正的 application/x-www-form-urlencoded」：不再用 header=urlencoded + body=JSON 字串（降低環境不一致風險）
+ * 2) 圖表 bucket 判斷只吃「拉牌」欄（避免服務項目名稱誤判）
+ * 3) 本月比率篩選先 normalize 訂單日期（避免 YYYY/MM/DD 字串比較失效）
  */
 
 import { dom } from "./dom.js";
@@ -321,6 +313,7 @@ function summaryRowsHtml_(cards3) {
     .join("");
 }
 
+
 function detailRowsHtml_(detailRows) {
   const list = Array.isArray(detailRows) ? detailRows : [];
   if (!list.length) return { html: "", count: 0 };
@@ -404,7 +397,7 @@ function buildCards3FromRows_(rows) {
   function bucket_(r) {
     const b = String((r && r["拉牌"]) || "").trim();
     if (b === "老點") return "老點";
-    return "排班"; // 其他（女師傅/男師傅/其他）在三卡視角一律視作排班（你若要改再說）
+    return "排班"; // 女師傅/男師傅/其他 → 三卡視角都算排班
   }
 
   for (const r of list) {
@@ -433,22 +426,46 @@ function buildCards3FromRows_(rows) {
 }
 
 function pickCards3_(gasCards, rows) {
-  // ✅ 若 GAS 已回 cards，直接取排班/老點/總計；否則用 rows fallback
+  // ✅ 若 GAS 有 cards：三卡的「排班」= 排班 + 女師傅 + 男師傅 + 其他
   if (gasCards && typeof gasCards === "object") {
-    const hasAny = !!(gasCards["排班"] || gasCards["老點"] || gasCards["總計"]);
+    const hasAny =
+      !!(gasCards["排班"] || gasCards["老點"] || gasCards["總計"] || gasCards["女師傅"] || gasCards["男師傅"] || gasCards["其他"]);
+
     if (hasAny) {
+      const z = (o) => ({
+        單數: Number(o?.單數 || 0) || 0,
+        筆數: Number(o?.筆數 || 0) || 0,
+        數量: Number(o?.數量 || 0) || 0,
+        金額: Number(o?.金額 || 0) || 0,
+      });
+
+      const sched = z(gasCards["排班"]);
+      const female = z(gasCards["女師傅"]);
+      const male = z(gasCards["男師傅"]);
+      const other = z(gasCards["其他"]);
+
+      const mergedSched = {
+        單數: sched.單數 + female.單數 + male.單數 + other.單數,
+        筆數: sched.筆數 + female.筆數 + male.筆數 + other.筆數,
+        數量: sched.數量 + female.數量 + male.數量 + other.數量,
+        金額: sched.金額 + female.金額 + male.金額 + other.金額,
+      };
+
       return {
-        排班: gasCards["排班"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+        排班: mergedSched,
         老點: gasCards["老點"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
         總計: gasCards["總計"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
       };
     }
   }
+
+  // fallback：用 rows 自算（三卡視角女/男/其他也算排班）
   return buildCards3FromRows_(rows);
 }
 
+
 /* =========================
- * Chart (kept)
+ * Chart
  * ========================= */
 
 let perfChartMode_ = "daily"; // "daily" | "cumu" | "ma7"
@@ -647,17 +664,10 @@ function updatePerfChart_(rows, dateKeys) {
     // metrics per date
     const metrics = {}; // { dateKey: { amount, totalCount, oldCount, schedCount } }
 
+    // ✅ 修正：圖表桶判斷只吃「拉牌」欄（避免服務項目誤判）
     function bucketOfRow(r) {
-      const v1 = String((r && r["拉牌"]) || "").trim();
-      const v2 = String((r && r["服務項目"]) || "").trim();
-      const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
-      const n1 = norm(v1);
-      const n2 = norm(v2);
-      const oldTokens = ["老", "老點", "old", "vip"];
-      for (const t of oldTokens) {
-        if (n1.indexOf(t) !== -1 || n2.indexOf(t) !== -1) return "老點";
-      }
-      return "排班";
+      const v = String((r && r["拉牌"]) || "").trim();
+      return v === "老點" ? "老點" : "排班";
     }
 
     function orderDateKey_(v) {
@@ -859,19 +869,29 @@ async function fetchPerfSync_(userId, from, to, includeDetail = true) {
     includeDetail: !!includeDetail,
   };
 
-  const resp = await fetchJsonPostWithTimeout_(url, payload, PERF_FETCH_TIMEOUT_MS, "PERF_SYNC");
+  const resp = await fetchFormPostWithTimeout_(url, payload, PERF_FETCH_TIMEOUT_MS, "PERF_SYNC");
   return resp;
 }
 
-async function fetchJsonPostWithTimeout_(url, bodyObj, timeoutMs, tag) {
+/**
+ * ✅ 最重要修正：真正送 x-www-form-urlencoded（避免 header/body 不一致）
+ */
+async function fetchFormPostWithTimeout_(url, bodyObj, timeoutMs, tag) {
   const ms = Number(timeoutMs);
   const safeMs = Number.isFinite(ms) && ms > 0 ? ms : PERF_FETCH_TIMEOUT_MS;
+
+  const form = new URLSearchParams();
+  Object.keys(bodyObj || {}).forEach((k) => {
+    const v = bodyObj[k];
+    if (v === undefined || v === null) return;
+    form.set(k, typeof v === "boolean" ? (v ? "true" : "false") : String(v));
+  });
 
   if (typeof AbortController === "undefined") {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: JSON.stringify(bodyObj),
+      body: form.toString(),
       cache: "no-store",
     });
     if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
@@ -884,7 +904,7 @@ async function fetchJsonPostWithTimeout_(url, bodyObj, timeoutMs, tag) {
     const resp = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: JSON.stringify(bodyObj),
+      body: form.toString(),
       cache: "no-store",
       signal: ctrl.signal,
     });
@@ -934,7 +954,6 @@ function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) 
 }
 
 function computeMonthRates_(rows) {
-  // rows 為「本月」的 detail rows（第一筆格式）
   const cards3 = buildCards3FromRows_(rows);
   const totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
   const oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
@@ -980,13 +999,8 @@ async function renderFromCache_(mode, info) {
 
     setMeta_("最後更新：—");
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
-    if (m === "detail") {
-      renderDetailHeader_("detail");
-      applyDetailTableHtml_("", 0);
-    } else {
-      renderDetailHeader_("summary");
-      applyDetailTableHtml_("", 0);
-    }
+    renderDetailHeader_(m === "detail" ? "detail" : "summary");
+    applyDetailTableHtml_("", 0);
     clearPerfChart_();
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
@@ -1013,13 +1027,14 @@ async function renderFromCache_(mode, info) {
   const cards3 = pickCards3_(perfCache_.cards, rows);
   renderSummaryTable_(cards3);
 
-  // ✅ 本月比率（用目前 cache rows；若你要「永遠取本月」請改成另打一筆 monthStart~today）
+  // ✅ 本月比率（修正：先 normalize 訂單日期，避免 YYYY/MM/DD 比較失效）
   try {
     const monthStart = localDateKeyMonthStart_();
     const today = localDateKeyToday_();
     const monthRows = rows.filter((x) => {
-      const d = String(x["訂單日期"] || "");
-      return d >= monthStart && d <= today;
+      const raw = String(x["訂單日期"] || "");
+      const dk = normalizeInputDateKey_(raw) || String(raw).slice(0, 10);
+      return dk >= monthStart && dk <= today;
     });
     renderMonthRates_(monthRows);
   } catch (_) {}
@@ -1084,7 +1099,7 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
  * ========================= */
 
 export function togglePerformanceCard() {
-  // 你若原本有用外部控制顯示/隱藏，可在此保留
+  // 保留擴充點
 }
 
 export function initPerformanceUi() {
@@ -1099,7 +1114,7 @@ export function initPerformanceUi() {
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
 
   const onDateInputsChanged = () => {
-    // ✅ 日期改了：只切畫面（不自動同步），避免一直打 API
+    // ✅ 日期改了：只切畫面（不自動同步）
     void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
   };
 
@@ -1112,7 +1127,7 @@ export function initPerformanceUi() {
     dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
   }
 
-  // ✅ optional chart mode buttons (if exists)
+  // ✅ optional chart mode buttons
   try {
     const btnDaily = document.getElementById("perfChartModeDaily");
     const btnCumu = document.getElementById("perfChartModeCumu");
@@ -1160,7 +1175,7 @@ export function initPerformanceUi() {
     setActive();
   } catch (_) {}
 
-  // ✅ optional chart toggles (if exists)
+  // ✅ optional chart toggles
   try {
     const elAmount = document.getElementById("perfChartToggleAmount");
     const elOld = document.getElementById("perfChartToggleOldRate");
@@ -1248,7 +1263,6 @@ export async function prefetchPerformanceOnce() {
     const info = { ok: true, userId, from, to, dateKeys };
     const res = await reloadAndCache_(info, { showToast: false });
 
-    // 預載後直接畫一次
     if (res && res.ok) await renderFromCache_(perfSelectedMode_, info);
 
     return { ok: !!(res && res.ok), ...res, prefetched: "SYNC_STORE_PERF" };
