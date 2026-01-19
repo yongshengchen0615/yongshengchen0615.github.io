@@ -1552,35 +1552,36 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 
 
 /* =========================================================
- * ✅ PERF Summary (三卡表格) — 緊湊版：類別 / 單數 / 筆數 / 金額
+ * ✅ PERF Summary (三卡表格) — 5欄緊湊版：類別 / 單數 / 筆數 / 數量 / 金額
  * - 不影響其他 .status-table
- * - 解決你說的「空白太多」
+ * - 修正：原本是 4 欄欄寬，導致第 4 欄被撐爆 -> 大量空白
  * ========================================================= */
 
-/* 建議：給三卡 table 加上這個 class：perf-summary-table */
+/* 你 JS 已有加：tbl.classList.add("perf-summary-table"); */
 .perf-summary-table{
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;               /* ✅ 關鍵：避免欄位被撐開 */
-  font-variant-numeric: tabular-nums;/* ✅ 數字對齊更漂亮 */
+  table-layout: fixed;               /* ✅ 關鍵：欄寬固定分配 */
+  font-variant-numeric: tabular-nums;
 }
 
-/* 緊縮 cell padding + 行高 */
+/* cell 緊縮 */
 .perf-summary-table th,
 .perf-summary-table td{
-  padding: 6px 8px;                  /* ✅ 比你目前的 table 更緊 */
+  padding: 6px 8px;
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   border-bottom: 1px solid rgba(31, 41, 55, 0.65);
 }
+
 :root[data-theme="light"] .perf-summary-table th,
 :root[data-theme="light"] .perf-summary-table td{
   border-bottom-color: rgba(229, 231, 235, 1);
 }
 
-/* 表頭更小更收斂 */
+/* 表頭 */
 .perf-summary-table thead th{
   font-size: 12px;
   font-weight: 700;
@@ -1589,39 +1590,44 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   padding-bottom: 6px;
 }
 
-/* 內容字級略大一點，視覺更清楚 */
+/* 內容 */
 .perf-summary-table tbody td{
   font-size: 14px;
   font-weight: 600;
 }
 
-/* 欄寬配置：類別窄、數字更集中 */
+/* ✅ 5欄欄寬：類別略窄、四個數字欄平均且靠右 */
 .perf-summary-table th:first-child,
 .perf-summary-table td:first-child{
   width: 22%;
   text-align: left;
-  padding-left: 6px;                 /* ✅ 再縮左邊空白 */
+  padding-left: 6px;
   letter-spacing: 0.02em;
 }
 
 .perf-summary-table th:nth-child(2),
 .perf-summary-table td:nth-child(2){
-  width: 18%;
+  width: 15%;
   text-align: right;
 }
 .perf-summary-table th:nth-child(3),
 .perf-summary-table td:nth-child(3){
-  width: 18%;
+  width: 15%;
   text-align: right;
 }
 .perf-summary-table th:nth-child(4),
 .perf-summary-table td:nth-child(4){
-  width: 42%;
+  width: 16%;
+  text-align: right;
+}
+.perf-summary-table th:nth-child(5),
+.perf-summary-table td:nth-child(5){
+  width: 32%;
   text-align: right;
 }
 
-/* 金額欄更突出但不膨脹 */
-.perf-summary-table td:last-child{
+/* 金額欄更突出 */
+.perf-summary-table tbody td:nth-child(5){
   font-weight: 800;
   letter-spacing: 0.01em;
 }
@@ -1631,7 +1637,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   border-bottom-color: transparent;
 }
 
-/* ✅ 行動裝置再壓縮一次 */
+/* ✅ 小螢幕再壓縮 */
 @media (max-width: 420px){
   .perf-summary-table th,
   .perf-summary-table td{
@@ -1640,12 +1646,14 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   .perf-summary-table tbody td{
     font-size: 13px;
   }
+
   .perf-summary-table th:first-child,
   .perf-summary-table td:first-child{
     width: 24%;
   }
-  .perf-summary-table th:nth-child(4),
-  .perf-summary-table td:nth-child(4){
-    width: 40%;
+
+  .perf-summary-table th:nth-child(5),
+  .perf-summary-table td:nth-child(5){
+    width: 30%;
   }
 }

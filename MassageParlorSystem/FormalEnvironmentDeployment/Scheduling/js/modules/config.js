@@ -33,6 +33,8 @@ export const config = {
   /** （可選）師傅業績「明細」查詢用 GAS Web App URL（DetailPerf Web App）。 */
   DETAIL_PERF_API_URL: "",
 
+  /** 業績同步（storeId 版）GAS Web App URL */
+PERF_SYNC_API_URL: "",
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 
@@ -91,6 +93,8 @@ export async function loadConfigJson() {
   config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
   config.REPORT_API_URL = String(cfg.REPORT_API_URL || "").trim();
   config.DETAIL_PERF_API_URL = String(cfg.DETAIL_PERF_API_URL || "").trim();
+  config.PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
+
   const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
   if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
 
