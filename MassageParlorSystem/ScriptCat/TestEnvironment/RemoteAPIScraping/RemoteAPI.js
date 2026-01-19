@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
 // @namespace    https://local/
-// @version      4.4.1
+// @version      4.5
 // @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages. ✅ Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
