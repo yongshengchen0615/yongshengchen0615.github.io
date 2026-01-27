@@ -30,7 +30,7 @@
   "DETAIL_PERF_API_URL": "https://script.google.com/macros/s/AKfycbzt0aElkjPdOBHz-e8_8EYqqpACNCfS-6pCSTxCfh8Ahf_ZcZSGKUdcTO1IoOCUfLypSA/exec",
   "_comment_DETAIL_PERF_API_URL": "（可選）師傅業績『明細』查詢用 GAS Web App URL（DetailPerf Web App）。若留空，前端會退回使用 REPORT_API_URL。",
 
-  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbyhYB3KCyNUkO5WMBgNPh-UWQs8Qcd2MMR7D9CAIQ-_b-rGsO6hYlafMefc6nT6MsJtJQ/exec",
+  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbw3RGQ80Z0YlUy6-HdnryFChRznY_kaDpNzuPqjM3qnjOZUyfmmBtuPOcadZ5L4KQz7Xg/exec",
   "_comment_PERF_SYNC_API_URL": "✅ 業績同步（storeId版）用 GAS Web App URL：POST mode=syncStorePerf_v1，前端 performance.js 會用這個網址。",
 
 
