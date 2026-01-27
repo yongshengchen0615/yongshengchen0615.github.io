@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX PAGE-GATE + NO STOREID]
 // @namespace    https://local/
-// @version      5.0
+// @version      5.1
 // @description  ✅Capture XHR/fetch to GAS with queue+dedup; ✅PerfTotal Analyze on performance total API; ✅MasterComplex Analyze ONLY on Complex page (page-gate) + ONLY match listStatus=COMPLEX; ✅MasterComplex meta has NO storeId.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
