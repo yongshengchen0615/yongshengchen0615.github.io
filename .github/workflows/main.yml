@@ -39,7 +39,7 @@ jobs:
           # ⭐ 只要維護這裡：要掃描的資料夾（可加多個）
           TARGET_DIRS = [
             "MassageParlorSystem/Development/ScriptCat",
-            "MassageParlorSystem/Development/Shop/TainanFuqianStore/ScriptCat",
+            "MassageParlorSystem/Shop/TainanFuqianStore/ScriptCat",
             # "OtherSystem/Userscripts",
           ]
 
