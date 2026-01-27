@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DSFE Ready Event ONLY + TestPlan (same userId / multi masterIds)
 // @namespace    http://scriptcat.org/
-// @version      1.85
+// @version      1.9
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
