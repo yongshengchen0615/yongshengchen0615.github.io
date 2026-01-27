@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "description": "Admin 審核管理台設定檔",
+    "note": "本檔案為標準 JSON，不可使用 // 或 /* */ 註解",
+    "usage": "由 admin.js 於載入時 fetch 並解析"
+  },
+  
+  "LIFF_ID": "2008811948-yfhobMST",
+  "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
+
+  "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbwV3FEdeXXqrZV9Lqy9OF5r1Wvgx2KlpQsOwRYW5AClDrE8QiBCqTcIZ6d4liNJCuHZ/exec",
+  "_ADMIN_API_URL_DESC": "既有 Admin 管理 GAS（請勿修改）：提供 listAdmins / updateAdminsBatch / deleteAdmin",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbxvDdla9Fq32ROEpxT9ah5XTGNhdHY4LzcDd4su5g3_f07_JvlOg5_cL0jEXZrlSUds/exec",
+  "_AUTH_API_URL_DESC": "全新 Auth GAS：負責 LIFF 登入後的管理員審核、資料寫入與是否允許進入後台",
+
+  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbzr-0aAArL9DOxZ1V-8nKmMRMhFZQ_KVuRkwa_Tk92A_WqbJkXoG1R-WA-fybxrBQwd/exec",
+  "_API_BASE_URL_DESC": "Users API（與 client 相同）：提供 listUsers / updateUsersBatch / deleteUser 等功能",
+
+  "USAGE_LOG_API_URL": "https://script.google.com/macros/s/AKfycbz611C3zFbnbCO2K8RpZje9GE5qU3qQEQsfvBioFp4nji0SfyrVYsdLZgO8UCY3cKzm/exec",
+  "_USAGE_LOG_API_URL_DESC": "管理員紀錄 GAS Web App（UsageLog）：提供 appendUsageLog / listUsageLog",
+
+  "TECH_USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
+  "_TECH_USAGE_LOG_URL_DESC": "技師使用紀錄 GAS Web App（usage_log）：用 GET 讀取（mode=list）與寫入（mode=log）"
+}

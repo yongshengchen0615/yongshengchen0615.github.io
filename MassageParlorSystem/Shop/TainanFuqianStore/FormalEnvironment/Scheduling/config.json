@@ -1,0 +1,65 @@
+{
+  "_comment": "=== 系統設定檔（純 JSON，可直接 JSON.parse）===",
+
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbzZ_lc_DGk-oyzvE1w3uMcT_L7fpDZH6eyYVPGUxI4heP8QvJgIZU-bgg45nbn40jU5mg/exec",
+    "https://script.google.com/macros/s/AKfycby1ZKbWSzbt0XPH6AWzH5GjXmutp3gevqRiTQ34BPEKzfFT5jABiNXcyiG0VbFw2DblDg/exec",
+    "https://script.google.com/macros/s/AKfycbx540FAMWbDrJoyHeZB3yRwPp_kyvovKyslnS2V78rFlSKCYLNGGQSkAhahCTveW0N5/exec",
+    "https://script.google.com/macros/s/AKfycbw2ABr9kTmdJ9GO83qlQP0kimQFHwsJwglOG9DpSXtNdZuOprXjN7OQ3qfhF00PbnrV1g/exec"
+  ],
+  "_comment_EDGE_STATUS_URLS": "Edge 狀態讀取用的 GAS Web App URL 清單；前端可依序或隨機使用。",
+
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxsVPrIB9KzELL8_k5nRDbe8ca7cvcAkOpCiX1eS0k1A5h9845AQf6owdF_03GwmaHMpA/exec",
+  "_comment_FALLBACK_ORIGIN_CACHE_URL": "當所有 Edge 端點失效時使用的後備（Origin Cache）GAS URL。",
+
+  "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzr-0aAArL9DOxZ1V-8nKmMRMhFZQ_KVuRkwa_Tk92A_WqbJkXoG1R-WA-fybxrBQwd/exec",
+  "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
+
+  "LIFF_ID": "2008669658-UGsf3get",
+  "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
+
+  "ENABLE_LINE_LOGIN": true,
+  "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
+
+  "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
+  "_comment_USAGE_LOG_URL": "（可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。",
+
+  "REPORT_API_URL": "https://script.google.com/macros/s/AKfycbwy6RVFVpdzeaYyKJanWofiIc8bDfUsTVXI5l1wByO_CcOQpaCk2IGrYCyS2E1j5wk/exec",
+  "_comment_REPORT_API_URL": "（可選）師傅業績查詢用 GAS Web App URL（report Web App）。report.html 會用它讀取 Report_Summary/Report_Detail。",
+
+  "DETAIL_PERF_API_URL": "https://script.google.com/macros/s/AKfycbzt0aElkjPdOBHz-e8_8EYqqpACNCfS-6pCSTxCfh8Ahf_ZcZSGKUdcTO1IoOCUfLypSA/exec",
+  "_comment_DETAIL_PERF_API_URL": "（可選）師傅業績『明細』查詢用 GAS Web App URL（DetailPerf Web App）。若留空，前端會退回使用 REPORT_API_URL。",
+
+  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbyhYB3KCyNUkO5WMBgNPh-UWQs8Qcd2MMR7D9CAIQ-_b-rGsO6hYlafMefc6nT6MsJtJQ/exec",
+  "_comment_PERF_SYNC_API_URL": "✅ 業績同步（storeId版）用 GAS Web App URL：POST mode=syncStorePerf_v1，前端 performance.js 會用這個網址。",
+
+
+  "USAGE_LOG_MIN_INTERVAL_MS": 180000,
+  "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。",
+
+ "_comment_perf": "=== （可選）效能/更新速度調校：不填則沿用程式預設值 ===",
+
+  "POLL_BASE_MS": 3000,
+  "_comment_POLL_BASE_MS": "輪詢基本間隔（毫秒）。越小越即時，但 GAS/網路負載越高。",
+
+  "POLL_MAX_MS": 8000,
+  "_comment_POLL_MAX_MS": "穩定後輪詢最大間隔（毫秒）。想更即時可調小（例如 8000~12000）。",
+
+  "POLL_CHANGED_BOOST_MS": 3000,
+  "_comment_POLL_CHANGED_BOOST_MS": "偵測到資料變更後，下一次輪詢的間隔（毫秒）。想追更快可設成 3000。",
+
+  "POLL_JITTER_RATIO": 0.2,
+  "_comment_POLL_JITTER_RATIO": "輪詢抖動比例（0~1），用來分散同時請求，避免尖峰。",
+
+  "POLL_ALLOW_BACKGROUND": true,
+  "_comment_POLL_ALLOW_BACKGROUND": "是否允許在背景（切到別的 App / 螢幕鎖定）時仍嘗試輪詢更新。注意：行動裝置/LINE WebView 可能仍會暫停或降頻，屬 best-effort。",
+
+  "STATUS_FETCH_TIMEOUT_MS": 8000,
+  "_comment_STATUS_FETCH_TIMEOUT_MS": "單次狀態 API timeout（毫秒）。調小可加速失敗切換，但太小可能誤判網路慢為失敗。",
+
+  "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
+  "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。",
+
+  "STALE_DATA_MAX_AGE_MS": 0,
+  "_comment_STALE_DATA_MAX_AGE_MS": "（可選）資料超過多久未更新就視為『總系統異常 無法使用功能』（毫秒）。0 或負數=停用。建議 5~30 分鐘。"
+}

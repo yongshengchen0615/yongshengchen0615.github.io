@@ -1,0 +1,1322 @@
+/**
+ * performance.js（✅ 最終可貼可覆蓋版）
+ * - ✅ 改為吃「GAS syncStorePerf_v1」
+ * - ✅ 移除 techNo / techId（只用 userId → StoreId 由 GAS 授權表決定）
+ * - ✅ 三卡依區間即時變動（吃 GAS cards；無 cards 則用 rows fallback）
+ * - ✅ 統計頁：節=數量（欄位：總節數/老點節數/排班節數）
+ * - ✅ 圖表跨裝置可讀性強化 + touchstart/pointer Intervention 修正
+ *
+ * ✅ 本版關鍵修正（相對你貼的版本）
+ * 1) POST body 改成「真正的 application/x-www-form-urlencoded」：不再用 header=urlencoded + body=JSON 字串（降低環境不一致風險）
+ * 2) 圖表 bucket 判斷只吃「拉牌」欄（避免服務項目名稱誤判）
+ * 3) 本月比率篩選先 normalize 訂單日期（避免 YYYY/MM/DD 字串比較失效）
+ */
+
+import { dom } from "./dom.js";
+import { config } from "./config.js";
+import { state } from "./state.js";
+import { withQuery, escapeHtml, getQueryParam } from "./core.js";
+import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
+
+const PERF_FETCH_TIMEOUT_MS = 25000;
+
+/** ✅ 類別表數量口徑：固定用「數量」欄位（節=數量） */
+const PERF_CARD_QTY_MODE = "qty"; // "qty" only
+
+/** ✅ 圖表偏好 key */
+const PERF_CHART_VIS_KEY = "perf_chart_vis_v1";
+const PERF_CHART_MODE_KEY = "perf_chart_mode_v1";
+
+let perfSelectedMode_ = "detail"; // "detail" | "summary"
+let perfPrefetchInFlight_ = null;
+
+const perfCache_ = {
+  key: "", // `${userId}|${from}|${to}`
+  lastUpdatedAt: "",
+  detailRows: [], // 第一筆格式 rows
+  cards: null, // GAS cards
+  serviceSummary: [], // GAS service summary rows
+};
+
+let perfChartInstance_ = null;
+let perfChartLastRows_ = null;
+let perfChartLastDateKeys_ = null;
+let perfChartResizeTimer_ = null;
+let perfChartRO_ = null;
+
+// drag-to-scroll state
+const perfDragState_ = {
+  enabled: false,
+  pointerDown: false,
+  startX: 0,
+  startScrollLeft: 0,
+  handlers: null,
+};
+
+/* =========================
+ * Intl formatter（memoize）
+ * ========================= */
+
+const PERF_CURRENCY_FMT = (() => {
+  try {
+    return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 });
+  } catch (_) {
+    return null;
+  }
+})();
+
+function fmtMoney_(n) {
+  const v = Number(n || 0) || 0;
+  if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
+  return String(Math.round(v));
+}
+
+/* =========================
+ * ✅ Robust parsing
+ * ========================= */
+
+function parseQty_(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+
+  let s = String(v).trim();
+  if (!s) return 0;
+
+  // 全形轉半形（０-９．－）
+  s = s
+    .replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xff10))
+    .replace(/．/g, ".")
+    .replace(/－/g, "-");
+
+  // 若只有逗號小數：1,5 -> 1.5
+  if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
+
+  // 移除雜字（例如 "1.5節"）
+  s = s.replace(/[^\d.\-]/g, "");
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseMoney_(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const s = String(v).trim().replace(/[^\d.\-]/g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/* =========================
+ * UserId resolve
+ * ========================= */
+
+function getUserId_() {
+  // ✅ 依序嘗試：state / localStorage / query
+  const candidates = [
+    state?.user?.userId,
+    state?.userId,
+    state?.auth?.userId,
+    state?.profile?.userId,
+    (() => {
+      try {
+        return localStorage.getItem("userId") || localStorage.getItem("lineUserId") || "";
+      } catch (_) {
+        return "";
+      }
+    })(),
+    (() => {
+      try {
+        return (typeof getQueryParam === "function" && (getQueryParam("userId") || getQueryParam("lineUserId"))) || "";
+      } catch (_) {
+        return "";
+      }
+    })(),
+  ];
+
+  for (const v of candidates) {
+    const s = String(v || "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+/* =========================
+ * Dates / range
+ * ========================= */
+
+function pad2_(n) {
+  return String(n).padStart(2, "0");
+}
+
+function normalizeInputDateKey_(s) {
+  const v = String(s || "").trim();
+  if (!v) return "";
+  const m = v.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (!m) return "";
+  return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+}
+
+function localDateKeyToday_() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+function localDateKeyMonthStart_() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
+function ensureDefaultDate_() {
+  const today = localDateKeyToday_();
+  const monthStart = localDateKeyMonthStart_();
+
+  if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = monthStart;
+  if (dom.perfDateEndInput && !dom.perfDateEndInput.value) dom.perfDateEndInput.value = today;
+
+  if (dom.perfDateKeyInput && !dom.perfDateKeyInput.value) dom.perfDateKeyInput.value = today;
+}
+
+function parseDateKey_(key) {
+  const v = String(key || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(v + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return null;
+  return { key: v, date: d };
+}
+
+function toDateKey_(d) {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 10);
+}
+
+function normalizeRange_(startKey, endKey, maxDays) {
+  const a = parseDateKey_(startKey);
+  const b = parseDateKey_(endKey);
+  if (!a || !b) return { ok: false, error: "BAD_DATE" };
+
+  let start = a.date;
+  let end = b.date;
+  if (end.getTime() < start.getTime()) {
+    const tmp = start;
+    start = end;
+    end = tmp;
+  }
+
+  const out = [];
+  const limit = Number(maxDays) > 0 ? Number(maxDays) : 31;
+  for (let i = 0; i < limit; i++) {
+    const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+    if (d.getTime() > end.getTime()) break;
+    out.push(toDateKey_(d));
+  }
+
+  if (out.length && out[out.length - 1] !== toDateKey_(end)) {
+    return { ok: false, error: "RANGE_TOO_LONG", days: out.length };
+  }
+
+  return { ok: true, normalizedStart: toDateKey_(start), normalizedEnd: toDateKey_(end), dateKeys: out };
+}
+
+function readRangeFromInputs_() {
+  const userId = getUserId_();
+
+  const startRaw = String(dom.perfDateStartInput?.value || "").trim();
+  const endRaw = String(dom.perfDateEndInput?.value || "").trim();
+
+  const startKey = normalizeInputDateKey_(startRaw);
+  const endKey = normalizeInputDateKey_(endRaw || startRaw);
+
+  if (!userId) return { ok: false, error: "MISSING_USERID", userId: "", startKey, endKey };
+  if (!startKey) return { ok: false, error: "MISSING_START", userId, startKey, endKey };
+
+  const range = normalizeRange_(startKey, endKey, 31);
+  if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", userId, startKey, endKey };
+
+  if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
+  if (dom.perfDateEndInput && dom.perfDateEndInput.value !== range.normalizedEnd) dom.perfDateEndInput.value = range.normalizedEnd;
+
+  return { ok: true, userId, from: range.normalizedStart, to: range.normalizedEnd, dateKeys: range.dateKeys };
+}
+
+/* =========================
+ * DOM helpers
+ * ========================= */
+
+function setBadge_(text, isError) {
+  if (!dom.perfStatusEl) return;
+  dom.perfStatusEl.textContent = String(text || "");
+  dom.perfStatusEl.style.borderColor = isError ? "rgba(249, 115, 115, 0.65)" : "";
+}
+function setMeta_(text) {
+  if (dom.perfMetaEl) dom.perfMetaEl.textContent = String(text || "—");
+}
+function showError_(show) {
+  if (dom.perfErrorEl) dom.perfErrorEl.style.display = show ? "block" : "none";
+}
+function showEmpty_(show) {
+  if (dom.perfEmptyEl) dom.perfEmptyEl.style.display = show ? "block" : "none";
+}
+function setDetailCount_(n) {
+  if (dom.perfDetailCountEl) dom.perfDetailCountEl.textContent = `${Number(n) || 0} 筆`;
+}
+
+function renderDetailHeader_(mode) {
+  if (!dom.perfDetailHeadRowEl) return;
+
+  if (mode === "detail") {
+    dom.perfDetailHeadRowEl.innerHTML =
+      "<th>訂單日期</th><th>訂單編號</th><th>序</th><th>拉牌</th><th>服務項目</th>" +
+      "<th>業績金額</th><th>抽成金額</th><th>數量</th><th>小計</th><th>分鐘</th>" +
+      "<th>開工</th><th>完工</th><th>狀態</th>";
+    return;
+  }
+
+  // ✅ 統計頁：節 = 數量（欄名仍叫節數）
+  dom.perfDetailHeadRowEl.innerHTML =
+    "<th>服務項目</th><th>總筆數</th><th>總節數</th><th>總計金額</th>" +
+    "<th>老點筆數</th><th>老點節數</th><th>老點金額</th>" +
+    "<th>排班筆數</th><th>排班節數</th><th>排班金額</th>";
+}
+
+/* =========================
+ * HTML builders
+ * ========================= */
+
+function summaryNotLoadedHtml_() {
+  return '<tr><td colspan="5" style="color:var(--text-sub);">尚未載入（請按手動重整）</td></tr>';
+}
+
+function summaryRowsHtml_(cards3) {
+  if (!cards3) return '<tr><td colspan="5" style="color:var(--text-sub);">查無總覽資料。</td></tr>';
+
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  const rows = [
+    { label: "排班", card: cards3["排班"] || {} },
+    { label: "老點", card: cards3["老點"] || {} },
+    { label: "總計", card: cards3["總計"] || {} },
+  ];
+
+  return rows
+    .map(
+      ({ label, card }) =>
+        `<tr>
+          ${td(label)}
+          ${td(card.單數 ?? 0)}
+          ${td(card.筆數 ?? 0)}
+          ${td(card.數量 ?? 0)}
+          ${td(card.金額 ?? 0)}
+        </tr>`
+    )
+    .join("");
+}
+
+
+function detailRowsHtml_(detailRows) {
+  const list = Array.isArray(detailRows) ? detailRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list
+      .map(
+        (r) =>
+          "<tr>" +
+          td(String(r["訂單日期"] ?? "").replaceAll("-", "/")) +
+          td(r["訂單編號"] || "") +
+          td(r["序"] ?? "") +
+          td(r["拉牌"] || "") +
+          td(r["服務項目"] || "") +
+          td(r["業績金額"] ?? 0) +
+          td(r["抽成金額"] ?? 0) +
+          td(r["數量"] ?? 0) +
+          td(r["小計"] ?? 0) +
+          td(r["分鐘"] ?? 0) +
+          td(r["開工"] ?? "") +
+          td(r["完工"] ?? "") +
+          td(r["狀態"] || "") +
+          "</tr>"
+      )
+      .join(""),
+  };
+}
+
+function detailSummaryRowsHtml_(serviceSummaryRows) {
+  const list = Array.isArray(serviceSummaryRows) ? serviceSummaryRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const headers = [
+    "服務項目",
+    "總筆數",
+    "總節數",
+    "總計金額",
+    "老點筆數",
+    "老點節數",
+    "老點金額",
+    "排班筆數",
+    "排班節數",
+    "排班金額",
+  ];
+
+  const td = (v) => `<td>${escapeHtml(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list
+      .map((r) => "<tr>" + headers.map((h) => td(r[h] ?? 0)).join("") + "</tr>")
+      .join(""),
+  };
+}
+
+function applyDetailTableHtml_(html, count) {
+  if (!dom.perfDetailRowsEl) return;
+  setDetailCount_(count);
+  if (!count) {
+    dom.perfDetailRowsEl.innerHTML = "";
+    showEmpty_(true);
+    return;
+  }
+  showEmpty_(false);
+  dom.perfDetailRowsEl.innerHTML = html;
+}
+
+/* =========================
+ * Cards compute (fallback)
+ * ========================= */
+
+function buildCards3FromRows_(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const init = () => ({ 單數: 0, 筆數: 0, 數量: 0, 金額: 0, _orders: new Set() });
+
+  const cards = {
+    排班: init(),
+    老點: init(),
+    總計: init(),
+  };
+
+  function bucket_(r) {
+    const b = String((r && r["拉牌"]) || "").trim();
+    if (b === "老點") return "老點";
+    return "排班"; // 女師傅/男師傅/其他 → 三卡視角都算排班
+  }
+
+  for (const r of list) {
+    const orderNo = String(r["訂單編號"] || "").trim();
+    const qty = PERF_CARD_QTY_MODE === "minutes" ? Number(r["分鐘"] ?? 0) || 0 : parseQty_(r["數量"]);
+    const amount = parseMoney_(r["小計"] ?? r["業績金額"]);
+
+    const b = bucket_(r);
+
+    cards.總計.筆數 += 1;
+    cards.總計.數量 += qty;
+    cards.總計.金額 += amount;
+    if (orderNo) cards.總計._orders.add(orderNo);
+
+    cards[b].筆數 += 1;
+    cards[b].數量 += qty;
+    cards[b].金額 += amount;
+    if (orderNo) cards[b]._orders.add(orderNo);
+  }
+
+  for (const k of ["排班", "老點", "總計"]) {
+    cards[k].單數 = cards[k]._orders.size;
+    delete cards[k]._orders;
+  }
+  return cards;
+}
+
+function pickCards3_(gasCards, rows) {
+  // ✅ 若 GAS 有 cards：三卡的「排班」= 排班 + 女師傅 + 男師傅 + 其他
+  if (gasCards && typeof gasCards === "object") {
+    const hasAny =
+      !!(gasCards["排班"] || gasCards["老點"] || gasCards["總計"] || gasCards["女師傅"] || gasCards["男師傅"] || gasCards["其他"]);
+
+    if (hasAny) {
+      const z = (o) => ({
+        單數: Number(o?.單數 || 0) || 0,
+        筆數: Number(o?.筆數 || 0) || 0,
+        數量: Number(o?.數量 || 0) || 0,
+        金額: Number(o?.金額 || 0) || 0,
+      });
+
+      const sched = z(gasCards["排班"]);
+      const female = z(gasCards["女師傅"]);
+      const male = z(gasCards["男師傅"]);
+      const other = z(gasCards["其他"]);
+
+      const mergedSched = {
+        單數: sched.單數 + female.單數 + male.單數 + other.單數,
+        筆數: sched.筆數 + female.筆數 + male.筆數 + other.筆數,
+        數量: sched.數量 + female.數量 + male.數量 + other.數量,
+        金額: sched.金額 + female.金額 + male.金額 + other.金額,
+      };
+
+      return {
+        排班: mergedSched,
+        老點: gasCards["老點"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+        總計: gasCards["總計"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+      };
+    }
+  }
+
+  // fallback：用 rows 自算（三卡視角女/男/其他也算排班）
+  return buildCards3FromRows_(rows);
+}
+
+
+/* =========================
+ * Chart
+ * ========================= */
+
+let perfChartMode_ = "daily"; // "daily" | "cumu" | "ma7"
+let perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+
+function loadPerfChartPrefs_() {
+  try {
+    const s = localStorage.getItem(PERF_CHART_VIS_KEY);
+    if (s) {
+      const obj = JSON.parse(s);
+      perfChartVis_ = {
+        amount: obj.amount !== false,
+        oldRate: obj.oldRate !== false,
+        schedRate: obj.schedRate !== false,
+      };
+    }
+  } catch (_) {}
+  try {
+    const m = String(localStorage.getItem(PERF_CHART_MODE_KEY) || "").trim();
+    if (m === "daily" || m === "cumu" || m === "ma7") perfChartMode_ = m;
+  } catch (_) {}
+}
+
+function savePerfChartPrefs_() {
+  try {
+    localStorage.setItem(PERF_CHART_VIS_KEY, JSON.stringify(perfChartVis_));
+  } catch (_) {}
+  try {
+    localStorage.setItem(PERF_CHART_MODE_KEY, String(perfChartMode_ || "daily"));
+  } catch (_) {}
+}
+
+function buildCumulative_(arr) {
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += Number(arr[i] || 0) || 0;
+    out.push(sum);
+  }
+  return out;
+}
+
+function buildMA_(arr, win) {
+  const w = Math.max(2, Number(win) || 7);
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    let s = 0,
+      c = 0;
+    for (let j = Math.max(0, i - w + 1); j <= i; j++) {
+      s += Number(arr[j] || 0) || 0;
+      c++;
+    }
+    out.push(c ? s / c : 0);
+  }
+  return out;
+}
+
+function applyChartVisibility_() {
+  if (!perfChartInstance_) return;
+  const ds = perfChartInstance_.data?.datasets || [];
+  if (ds[0]) ds[0].hidden = !perfChartVis_.amount;
+  if (ds[1]) ds[1].hidden = !perfChartVis_.oldRate;
+  if (ds[2]) ds[2].hidden = !perfChartVis_.schedRate;
+
+  if (!perfChartVis_.amount && !perfChartVis_.oldRate && !perfChartVis_.schedRate) {
+    perfChartVis_.amount = true;
+    if (ds[0]) ds[0].hidden = false;
+  }
+  try {
+    perfChartInstance_.update("none");
+  } catch (_) {}
+}
+
+function clearPerfChart_() {
+  try {
+    if (perfChartInstance_) {
+      try {
+        perfChartInstance_.destroy();
+      } catch (_) {}
+      perfChartInstance_ = null;
+    }
+    if (dom.perfChartEl && dom.perfChartEl.getContext) {
+      const ctx = dom.perfChartEl.getContext("2d");
+      try {
+        ctx.clearRect(0, 0, dom.perfChartEl.width || 0, dom.perfChartEl.height || 0);
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.error("clearPerfChart_ error", e);
+  }
+}
+
+function schedulePerfChartRedraw_() {
+  if (perfChartResizeTimer_) clearTimeout(perfChartResizeTimer_);
+  perfChartResizeTimer_ = setTimeout(() => {
+    try {
+      if (perfChartLastRows_) updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_);
+    } catch (e) {
+      console.error("perf chart redraw error", e);
+    }
+  }, 140);
+}
+
+/**
+ * ✅ Drag-to-scroll（修正 Intervention warning）
+ * - 只在 ev.cancelable 時才 preventDefault
+ */
+function enableCanvasDragScroll_(enable) {
+  try {
+    const canvas = dom.perfChartEl;
+    if (!canvas) return;
+    const wrapper = canvas.closest && canvas.closest(".chart-wrapper") ? canvas.closest(".chart-wrapper") : canvas.parentElement;
+
+    if (perfDragState_.handlers && canvas) {
+      const h = perfDragState_.handlers;
+      try {
+        canvas.removeEventListener("pointerdown", h.down);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("pointermove", h.move);
+      } catch (_) {}
+      try {
+        window.removeEventListener("pointerup", h.up);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("touchstart", h.tdown);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("touchmove", h.tmove);
+      } catch (_) {}
+      try {
+        window.removeEventListener("touchend", h.tup);
+      } catch (_) {}
+      perfDragState_.handlers = null;
+    }
+
+    if (!enable) {
+      perfDragState_.enabled = false;
+      return;
+    }
+
+    const onPointerDown = (ev) => {
+      try {
+        perfDragState_.pointerDown = true;
+        perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
+        if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
+        if (ev && ev.cancelable) ev.preventDefault();
+      } catch (_) {}
+    };
+
+    const onPointerMove = (ev) => {
+      if (!perfDragState_.pointerDown) return;
+      try {
+        const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        const dx = clientX - perfDragState_.startX;
+        if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
+        if (ev && ev.cancelable) ev.preventDefault();
+      } catch (_) {}
+    };
+
+    const onPointerUp = (ev) => {
+      perfDragState_.pointerDown = false;
+      try {
+        if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
+      } catch (_) {}
+    };
+
+    const onTouchDown = (ev) => onPointerDown(ev);
+    const onTouchMove = (ev) => onPointerMove(ev);
+    const onTouchUp = (ev) => onPointerUp(ev);
+
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp, { passive: true });
+
+    canvas.addEventListener("touchstart", onTouchDown, { passive: false });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchUp, { passive: true });
+
+    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: onTouchDown, tmove: onTouchMove, tup: onTouchUp };
+    perfDragState_.enabled = true;
+  } catch (err) {
+    console.error("enableCanvasDragScroll_ error", err);
+  }
+}
+
+function updatePerfChart_(rows, dateKeys) {
+  try {
+    if (!dom.perfChartEl) return;
+    if (typeof Chart === "undefined") return;
+
+    const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
+    const list = Array.isArray(rows) ? rows : [];
+
+    // metrics per date
+    const metrics = {}; // { dateKey: { amount, totalCount, oldCount, schedCount } }
+
+    // ✅ 修正：圖表桶判斷只吃「拉牌」欄（避免服務項目誤判）
+    function bucketOfRow(r) {
+      const v = String((r && r["拉牌"]) || "").trim();
+      return v === "老點" ? "老點" : "排班";
+    }
+
+    function orderDateKey_(v) {
+      const s = String(v ?? "").trim();
+      if (!s) return "";
+      const m = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+      if (m) return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+      return "";
+    }
+
+    for (const r of list) {
+      const dkey = orderDateKey_(r["訂單日期"] || "");
+      if (!dkey) continue;
+
+      if (!metrics[dkey]) metrics[dkey] = { amount: 0, totalCount: 0, oldCount: 0, schedCount: 0 };
+
+      const m = metrics[dkey];
+      const amt = parseMoney_(r["小計"] ?? r["業績金額"] ?? 0);
+      m.amount += amt;
+      m.totalCount += 1;
+
+      const b = bucketOfRow(r);
+      if (b === "老點") m.oldCount += 1;
+      else m.schedCount += 1;
+    }
+
+    const labels = (keys.length ? keys.slice() : Object.keys(metrics).sort()).map((s) => s);
+
+    const dailyAmount = labels.map((k) => (metrics[k] ? metrics[k].amount : 0));
+    const oldRateData = labels.map((k) => {
+      const m = metrics[k];
+      return m && m.totalCount ? Math.round((m.oldCount / m.totalCount) * 1000) / 10 : 0;
+    });
+    const schedRateData = labels.map((k) => {
+      const m = metrics[k];
+      return m && m.totalCount ? Math.round((m.schedCount / m.totalCount) * 1000) / 10 : 0;
+    });
+
+    let amountData = dailyAmount;
+    let amountLabel = "業績";
+    let amountAsLine = false;
+    if (perfChartMode_ === "cumu") {
+      amountData = buildCumulative_(dailyAmount);
+      amountLabel = "累積業績";
+      amountAsLine = true;
+    } else if (perfChartMode_ === "ma7") {
+      amountData = buildMA_(dailyAmount, 7);
+      amountLabel = "7日均線";
+      amountAsLine = true;
+    }
+
+    if (perfChartInstance_) {
+      try {
+        perfChartInstance_.destroy();
+      } catch (_) {}
+      perfChartInstance_ = null;
+    }
+
+    const ctx = dom.perfChartEl.getContext("2d");
+    perfChartLastRows_ = list.slice();
+    perfChartLastDateKeys_ = Array.isArray(dateKeys) ? dateKeys.slice() : [];
+
+    const wrapperEl = dom.perfChartEl?.closest?.(".chart-wrapper") || dom.perfChartEl?.parentElement;
+    const containerWidth = (wrapperEl && wrapperEl.clientWidth) || window.innerWidth || 800;
+
+    const points = labels.length || 1;
+    const isNarrow = containerWidth < 420;
+    const shouldScroll = points > (isNarrow ? 4 : 6);
+
+    const pxPerPoint = isNarrow ? 64 : 72;
+    const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
+    const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
+
+    const baseFont = isNarrow ? 11 : 13;
+    const ticksFont = isNarrow ? 10 : 12;
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
+    dom.perfChartEl.style.height = `${desiredHeight}px`;
+    dom.perfChartEl.width = Math.round(desiredWidth * dpr);
+    dom.perfChartEl.height = Math.round(desiredHeight * dpr);
+
+    try {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } catch (_) {}
+
+    enableCanvasDragScroll_(shouldScroll);
+
+    const maxXTicks = isNarrow ? 5 : 7;
+
+    perfChartInstance_ = new Chart(ctx, {
+      data: {
+        labels: labels.map((s) => String(s).replaceAll("-", "/")),
+        datasets: [
+          {
+            type: amountAsLine ? "line" : "bar",
+            label: amountLabel,
+            data: amountData,
+            borderWidth: amountAsLine ? 2 : 1,
+            tension: amountAsLine ? 0.25 : 0,
+            fill: false,
+            pointRadius: amountAsLine ? (isNarrow ? 0 : 2) : 0,
+            pointHitRadius: 10,
+            yAxisID: "y",
+          },
+          {
+            type: "line",
+            label: "老點率 (%)",
+            data: oldRateData,
+            tension: 0.25,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: isNarrow ? 0 : 2,
+            pointHitRadius: 10,
+          },
+          {
+            type: "line",
+            label: "排班率 (%)",
+            data: schedRateData,
+            tension: 0.25,
+            fill: false,
+            yAxisID: "y1",
+            pointRadius: isNarrow ? 0 : 2,
+            pointHitRadius: 10,
+          },
+        ],
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        animation: false,
+        normalized: true,
+        interaction: { mode: "index", intersect: false },
+        layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
+        plugins: {
+          legend: {
+            position: isNarrow ? "bottom" : "top",
+            labels: { usePointStyle: true, boxWidth: 8, font: { size: baseFont }, padding: isNarrow ? 10 : 14 },
+          },
+          tooltip: {
+            bodyFont: { size: ticksFont },
+            titleFont: { size: baseFont },
+            callbacks: {
+              title: (items) => `日期：${items?.[0]?.label || ""}`,
+              label: (ctx2) => {
+                const label = ctx2.dataset?.label || "";
+                const v = ctx2.parsed?.y;
+                const idx = ctx2.dataIndex;
+                const rawKey = labels[idx];
+                const m = rawKey ? metrics[rawKey] : null;
+
+                if (ctx2.dataset?.yAxisID === "y") {
+                  const amt = fmtMoney_(v);
+                  const total = m?.totalCount || 0;
+                  const oldC = m?.oldCount || 0;
+                  const schC = m?.schedCount || 0;
+                  return [`${label}：${amt}`, `筆數：${total}（老點 ${oldC} / 排班 ${schC}）`];
+                }
+                return `${label}：${v ?? 0}%`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: maxXTicks, maxRotation: 0, font: { size: ticksFont } }, grid: { display: false } },
+          y: { beginAtZero: true, ticks: { font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) }, title: { display: !isNarrow, text: "金額", font: { size: baseFont } } },
+          y1: {
+            position: "right",
+            beginAtZero: true,
+            max: 100,
+            ticks: { font: { size: ticksFont }, callback: (vv) => `${vv}%` },
+            grid: { drawOnChartArea: false },
+            title: { display: !isNarrow, text: "比率 (%)", font: { size: baseFont } },
+          },
+        },
+      },
+    });
+
+    applyChartVisibility_();
+  } catch (e) {
+    console.error("updatePerfChart_ error", e);
+  }
+}
+
+/* =========================
+ * Fetch (POST syncStorePerf_v1)
+ * ========================= */
+
+async function fetchPerfSync_(userId, from, to, includeDetail = true) {
+  if (!config.PERF_SYNC_API_URL) throw new Error("CONFIG_PERF_SYNC_API_URL_MISSING");
+
+  const url = withQuery(config.PERF_SYNC_API_URL, `_ts=${encodeURIComponent(String(Date.now()))}`);
+
+  const payload = {
+    mode: "syncStorePerf_v1",
+    userId,
+    from,
+    to,
+    includeDetail: !!includeDetail,
+  };
+
+  const resp = await fetchFormPostWithTimeout_(url, payload, PERF_FETCH_TIMEOUT_MS, "PERF_SYNC");
+  return resp;
+}
+
+/**
+ * ✅ 最重要修正：真正送 x-www-form-urlencoded（避免 header/body 不一致）
+ */
+async function fetchFormPostWithTimeout_(url, bodyObj, timeoutMs, tag) {
+  const ms = Number(timeoutMs);
+  const safeMs = Number.isFinite(ms) && ms > 0 ? ms : PERF_FETCH_TIMEOUT_MS;
+
+  const form = new URLSearchParams();
+  Object.keys(bodyObj || {}).forEach((k) => {
+    const v = bodyObj[k];
+    if (v === undefined || v === null) return;
+    form.set(k, typeof v === "boolean" ? (v ? "true" : "false") : String(v));
+  });
+
+  if (typeof AbortController === "undefined") {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      cache: "no-store",
+    });
+    if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
+    return await resp.json();
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), safeMs);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) throw new Error(`${tag}_HTTP_${resp.status}`);
+    return await resp.json();
+  } catch (e) {
+    if (e && (e.name === "AbortError" || String(e).includes("AbortError"))) throw new Error(`${tag}_TIMEOUT`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* =========================
+ * Cache + render
+ * ========================= */
+
+function makeCacheKey_(userId, from, to) {
+  return `${String(userId || "").trim()}|${String(from || "").trim()}|${String(to || "").trim()}`;
+}
+
+function renderSummaryTable_(cards3) {
+  if (!dom.perfSummaryRowsEl) return;
+  dom.perfSummaryRowsEl.innerHTML = summaryRowsHtml_(cards3);
+  const tbl = dom.perfSummaryRowsEl?.closest("table");
+  if (tbl) tbl.classList.add("perf-summary-table");
+}
+
+function renderDetailTable_(rows) {
+  renderDetailHeader_("detail");
+  const tmp = detailRowsHtml_(rows);
+  applyDetailTableHtml_(tmp.html, tmp.count);
+}
+
+function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) {
+  renderDetailHeader_("summary");
+  const tmp = detailSummaryRowsHtml_(serviceSummary);
+  applyDetailTableHtml_(tmp.html, tmp.count);
+
+  if (Array.isArray(baseRowsForChart) && baseRowsForChart.length) {
+    try {
+      updatePerfChart_(baseRowsForChart, dateKeys);
+    } catch (_) {}
+  } else {
+    clearPerfChart_();
+  }
+}
+
+function computeMonthRates_(rows) {
+  const cards3 = buildCards3FromRows_(rows);
+  const totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
+  const oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
+  const schedRows = Number(cards3?.排班?.筆數 || 0) || 0;
+
+  const totalSingles = Number(cards3?.總計?.單數 || 0) || 0;
+  const oldSingles = Number(cards3?.老點?.單數 || 0) || 0;
+  const schedSingles = Number(cards3?.排班?.單數 || 0) || 0;
+
+  const oldRateRows = totalRows ? Math.round((oldRows / totalRows) * 1000) / 10 : 0;
+  const schedRateRows = totalRows ? Math.round((schedRows / totalRows) * 1000) / 10 : 0;
+
+  const oldRateSingles = totalSingles ? Math.round((oldSingles / totalSingles) * 1000) / 10 : 0;
+  const schedRateSingles = totalSingles ? Math.round((schedSingles / totalSingles) * 1000) / 10 : 0;
+
+  return { oldRateRows, schedRateRows, oldRateSingles, schedRateSingles };
+}
+
+function renderMonthRates_(monthRows) {
+  if (!dom.perfMonthRatesEl) return;
+  if (!Array.isArray(monthRows) || !monthRows.length) {
+    dom.perfMonthRatesEl.textContent = "本月：資料不足";
+    return;
+  }
+  const r = computeMonthRates_(monthRows);
+  dom.perfMonthRatesEl.innerHTML =
+    `本月（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
+    `<br/>` +
+    `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%`;
+}
+
+async function renderFromCache_(mode, info) {
+  const m = mode === "summary" ? "summary" : "detail";
+  perfSelectedMode_ = m;
+
+  const r = info && info.ok ? info : readRangeFromInputs_();
+  if (!r || !r.ok) {
+    showError_(true);
+    if (r && r.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
+    else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
+    else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else setBadge_("日期格式不正確", true);
+
+    setMeta_("最後更新：—");
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    renderDetailHeader_(m === "detail" ? "detail" : "summary");
+    applyDetailTableHtml_("", 0);
+    clearPerfChart_();
+    return { ok: false, error: r ? r.error : "BAD_RANGE" };
+  }
+
+  const key = makeCacheKey_(r.userId, r.from, r.to);
+  const hasCache = perfCache_.key === key && Array.isArray(perfCache_.detailRows) && perfCache_.detailRows.length > 0;
+
+  if (!hasCache) {
+    setBadge_("尚未載入（請按手動重整）", true);
+    setMeta_("最後更新：—");
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    renderDetailHeader_(m === "detail" ? "detail" : "summary");
+    applyDetailTableHtml_("", 0);
+    clearPerfChart_();
+    showError_(false);
+    return { ok: false, error: "NOT_LOADED" };
+  }
+
+  showError_(false);
+  setBadge_("已載入", false);
+  setMeta_(perfCache_.lastUpdatedAt ? `最後更新：${perfCache_.lastUpdatedAt}` : "最後更新：—");
+
+  const rows = perfCache_.detailRows || [];
+  const cards3 = pickCards3_(perfCache_.cards, rows);
+  renderSummaryTable_(cards3);
+
+  // ✅ 本月比率（修正：先 normalize 訂單日期，避免 YYYY/MM/DD 比較失效）
+  try {
+    const monthStart = localDateKeyMonthStart_();
+    const today = localDateKeyToday_();
+    const monthRows = rows.filter((x) => {
+      const raw = String(x["訂單日期"] || "");
+      const dk = normalizeInputDateKey_(raw) || String(raw).slice(0, 10);
+      return dk >= monthStart && dk <= today;
+    });
+    renderMonthRates_(monthRows);
+  } catch (_) {}
+
+  if (m === "summary") {
+    renderServiceSummaryTable_(perfCache_.serviceSummary || [], rows, r.dateKeys);
+    return { ok: true, rendered: "summary", cached: true };
+  }
+
+  renderDetailTable_(rows);
+  try {
+    updatePerfChart_(rows, r.dateKeys);
+  } catch (_) {}
+  return { ok: true, rendered: "detail", cached: true };
+}
+
+/* =========================
+ * Reload (manual refresh)
+ * ========================= */
+
+async function reloadAndCache_(info, { showToast = true } = {}) {
+  const r = info && info.ok ? info : readRangeFromInputs_();
+  if (!r || !r.ok) return { ok: false, error: r ? r.error : "BAD_RANGE" };
+
+  const userId = r.userId;
+  const from = r.from;
+  const to = r.to;
+
+  const key = makeCacheKey_(userId, from, to);
+
+  if (showToast) showLoadingHint("同步業績中…");
+
+  try {
+    const raw = await fetchPerfSync_(userId, from, to, true);
+
+    if (!raw || raw.ok !== true) {
+      const err = String(raw && raw.error ? raw.error : "SYNC_FAILED");
+      return { ok: false, error: err, raw };
+    }
+
+    const detail = raw.detail || {};
+    const rows = Array.isArray(detail.rows) ? detail.rows : [];
+    const cards = detail.cards || null;
+    const serviceSummary = Array.isArray(detail.serviceSummary) ? detail.serviceSummary : [];
+
+    perfCache_.key = key;
+    perfCache_.lastUpdatedAt = String(raw.lastUpdatedAt || detail.lastUpdatedAt || "");
+    perfCache_.detailRows = rows;
+    perfCache_.cards = cards;
+    perfCache_.serviceSummary = serviceSummary;
+
+    return { ok: true, key, rowsCount: rows.length, serviceSummaryCount: serviceSummary.length, lastUpdatedAt: perfCache_.lastUpdatedAt };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message ? e.message : e) };
+  } finally {
+    if (showToast) hideLoadingHint();
+  }
+}
+
+/* =========================
+ * Public exports
+ * ========================= */
+
+export function togglePerformanceCard() {
+  // 保留擴充點
+}
+
+export function initPerformanceUi() {
+  ensureDefaultDate_();
+
+  try {
+    loadPerfChartPrefs_();
+  } catch (_) {}
+
+  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
+  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
+  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
+
+  const onDateInputsChanged = () => {
+    // ✅ 日期改了：只切畫面（不自動同步）
+    void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
+  };
+
+  if (dom.perfDateStartInput) {
+    dom.perfDateStartInput.addEventListener("change", onDateInputsChanged);
+    dom.perfDateStartInput.addEventListener("input", onDateInputsChanged);
+  }
+  if (dom.perfDateEndInput) {
+    dom.perfDateEndInput.addEventListener("change", onDateInputsChanged);
+    dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
+  }
+
+  // ✅ optional chart mode buttons
+  try {
+    const btnDaily = document.getElementById("perfChartModeDaily");
+    const btnCumu = document.getElementById("perfChartModeCumu");
+    const btnMA7 = document.getElementById("perfChartModeMA7");
+    const btnReset = document.getElementById("perfChartReset");
+
+    const setActive = () => {
+      const all = [btnDaily, btnCumu, btnMA7].filter(Boolean);
+      for (const b of all) b.classList.remove("is-active");
+      const map = { daily: btnDaily, cumu: btnCumu, ma7: btnMA7 };
+      const active = map[perfChartMode_];
+      if (active) active.classList.add("is-active");
+    };
+
+    const applyMode = (mode) => {
+      if (mode !== "daily" && mode !== "cumu" && mode !== "ma7") return;
+      perfChartMode_ = mode;
+      savePerfChartPrefs_();
+      setActive();
+      schedulePerfChartRedraw_();
+    };
+
+    btnDaily && btnDaily.addEventListener("click", () => applyMode("daily"));
+    btnCumu && btnCumu.addEventListener("click", () => applyMode("cumu"));
+    btnMA7 && btnMA7.addEventListener("click", () => applyMode("ma7"));
+
+    btnReset &&
+      btnReset.addEventListener("click", () => {
+        perfChartMode_ = "daily";
+        perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+        savePerfChartPrefs_();
+        setActive();
+
+        const elAmount = document.getElementById("perfChartToggleAmount");
+        const elOld = document.getElementById("perfChartToggleOldRate");
+        const elSched = document.getElementById("perfChartToggleSchedRate");
+        if (elAmount) elAmount.checked = true;
+        if (elOld) elOld.checked = true;
+        if (elSched) elSched.checked = true;
+
+        schedulePerfChartRedraw_();
+        applyChartVisibility_();
+      });
+
+    setActive();
+  } catch (_) {}
+
+  // ✅ optional chart toggles
+  try {
+    const elAmount = document.getElementById("perfChartToggleAmount");
+    const elOld = document.getElementById("perfChartToggleOldRate");
+    const elSched = document.getElementById("perfChartToggleSchedRate");
+
+    if (elAmount) elAmount.checked = !!perfChartVis_.amount;
+    if (elOld) elOld.checked = !!perfChartVis_.oldRate;
+    if (elSched) elSched.checked = !!perfChartVis_.schedRate;
+
+    const onToggle = () => {
+      perfChartVis_.amount = elAmount ? !!elAmount.checked : perfChartVis_.amount;
+      perfChartVis_.oldRate = elOld ? !!elOld.checked : perfChartVis_.oldRate;
+      perfChartVis_.schedRate = elSched ? !!elSched.checked : perfChartVis_.schedRate;
+
+      if (!perfChartVis_.amount && !perfChartVis_.oldRate && !perfChartVis_.schedRate) {
+        perfChartVis_.amount = true;
+        if (elAmount) elAmount.checked = true;
+      }
+
+      savePerfChartPrefs_();
+      applyChartVisibility_();
+    };
+
+    elAmount && elAmount.addEventListener("change", onToggle);
+    elOld && elOld.addEventListener("change", onToggle);
+    elSched && elSched.addEventListener("change", onToggle);
+  } catch (_) {}
+
+  // window resize fallback
+  try {
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("resize", () => schedulePerfChartRedraw_());
+    }
+  } catch (_) {}
+
+  // Ensure chart wrapper accepts native touch scrolling on mobile
+  try {
+    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest(".chart-wrapper") : null;
+    if (wrapper) {
+      wrapper.style.overflowX = wrapper.style.overflowX || "auto";
+      wrapper.style.webkitOverflowScrolling = wrapper.style.webkitOverflowScrolling || "touch";
+      try {
+        if (dom.perfChartEl) dom.perfChartEl.style.touchAction = dom.perfChartEl.style.touchAction || "pan-x";
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.error("perf wrapper touch setup error", e);
+  }
+
+  // ✅ ResizeObserver
+  try {
+    const wrapper = dom.perfChartEl ? dom.perfChartEl.closest(".chart-wrapper") : null;
+    if (wrapper && "ResizeObserver" in window) {
+      if (perfChartRO_) {
+        try {
+          perfChartRO_.disconnect();
+        } catch (_) {}
+      }
+      perfChartRO_ = new ResizeObserver(() => schedulePerfChartRedraw_());
+      perfChartRO_.observe(wrapper);
+    }
+  } catch (_) {}
+}
+
+/**
+ * ✅ 登入時預載：用「當月 1號 ~ 今天」打一筆 sync，快取就有資料可切換
+ */
+export async function prefetchPerformanceOnce() {
+  if (String(state?.feature?.performanceEnabled || "") === "否") {
+    return { ok: false, skipped: "FEATURE_OFF" };
+  }
+
+  if (perfPrefetchInFlight_) return perfPrefetchInFlight_;
+
+  perfPrefetchInFlight_ = (async () => {
+    ensureDefaultDate_();
+
+    const userId = getUserId_();
+    if (!userId) return { ok: false, skipped: "MISSING_USERID" };
+
+    const from = localDateKeyMonthStart_();
+    const to = localDateKeyToday_();
+    const dateKeys = normalizeRange_(from, to, 31).dateKeys;
+
+    const info = { ok: true, userId, from, to, dateKeys };
+    const res = await reloadAndCache_(info, { showToast: false });
+
+    if (res && res.ok) await renderFromCache_(perfSelectedMode_, info);
+
+    return { ok: !!(res && res.ok), ...res, prefetched: "SYNC_STORE_PERF" };
+  })();
+
+  try {
+    return await perfPrefetchInFlight_;
+  } finally {
+    perfPrefetchInFlight_ = null;
+  }
+}
+
+/**
+ * ✅ 唯一會抓最新資料的入口（手動重整）
+ */
+export async function manualRefreshPerformance({ showToast } = { showToast: true }) {
+  if (String(state?.feature?.performanceEnabled || "") === "否") return { ok: false, skipped: "FEATURE_OFF" };
+
+  ensureDefaultDate_();
+  showError_(false);
+
+  const info = readRangeFromInputs_();
+  if (!info.ok) {
+    if (info.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
+    else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
+    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else setBadge_("日期格式不正確", true);
+    return { ok: false, error: info.error || "BAD_RANGE" };
+  }
+
+  setBadge_("同步中…", false);
+
+  const res = await reloadAndCache_(info, { showToast: !!showToast });
+  if (!res || !res.ok) {
+    const msg = String(res && res.error ? res.error : "SYNC_FAILED");
+    if (msg.includes("CONFIG_PERF_SYNC_API_URL_MISSING")) setBadge_("尚未設定 PERF_SYNC_API_URL", true);
+    else if (msg.includes("FEATURE_OFF")) setBadge_("未開通業績功能", true);
+    else if (msg.includes("USER_NOT_FOUND")) setBadge_("未授權（PerformanceAccess 查無 userId）", true);
+    else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
+    else setBadge_("同步失敗", true);
+    showError_(true);
+    return res;
+  }
+
+  return await renderFromCache_(perfSelectedMode_, info);
+}
+
+export function onShowPerformance() {
+  ensureDefaultDate_();
+  showError_(false);
+  void renderFromCache_(perfSelectedMode_);
+  hideLoadingHint();
+
+  try {
+    schedulePerfChartRedraw_();
+  } catch (_) {}
+}

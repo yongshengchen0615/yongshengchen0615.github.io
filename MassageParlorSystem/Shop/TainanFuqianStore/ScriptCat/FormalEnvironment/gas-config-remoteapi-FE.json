@@ -1,0 +1,8 @@
+{
+  "GAS_CAPTURE_URL": "https://script.google.com/macros/s/AKfycbz5ItZw8i-hfEbUF-twj4ewndJVOSZO5qoo3_qUrAVHPFc3aB1qN-t0KfjLnlUvbkTfBw/exec",
+  "GAS_CAPTURE_URL__comment": "【必要】Capture 用 GAS Web App URL（NetworkCapture 入口）。RemoteAPI.js 會把抓到的 /api/ 請求批次 POST 到這裡。",
+  "GAS_ANALYZE_URL": "https://script.google.com/macros/s/AKfycbwn4t57PjGCsBc6P6nTBQQpH9scHgLJF0uTeX9BUBFgoVfHU4tQMSBLwijKqV-P-a62oQ/exec",
+  "GAS_ANALYZE_URL__comment": "【可選】Analyze 用 GAS Web App URL。僅用於轉送 /api/performance/total/{storeId} 的 200 JSON 回應做彙總寫表；不需要可留空字串 \"\"。",
+  "SHIP_ENABLED": true,
+  "SHIP_ENABLED__comment": "【必要】是否啟用送出到 GAS。true=啟用；false=停用（仍會 hook，但不會送出）。"
+}

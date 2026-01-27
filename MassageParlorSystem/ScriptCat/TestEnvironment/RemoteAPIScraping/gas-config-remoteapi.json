@@ -1,8 +1,0 @@
-{
-  "GAS_ENDPOINT": "https://script.google.com/macros/s/請填入你的RemoteAPIID/exec",
-  "GAS_ENDPOINT__comment": "RemoteAPI 抓包腳本專用的 GAS Web App URL",
-  "GAS_API_KEY": "請填入你的SPY_API_KEY",
-  "GAS_API_KEY__comment": "與 RemoteAPI Web App 驗證的密鑰",
-  "SHIP_ENABLED": true,
-  "SHIP_ENABLED__comment": "是否啟用送出到 GAS，true=開啟，false=僅本機紀錄"
-}
