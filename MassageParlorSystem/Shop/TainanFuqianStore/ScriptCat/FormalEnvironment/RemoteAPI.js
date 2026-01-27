@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX ANALYZE]
+// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX ANALYZE + FIX]
 // @namespace    https://local/
-// @version      4.7
-// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Forward perfTotal(200 JSON) to Analyze GAS (PerfTotalSummary/Items). ✅ NEW: Forward master complex list API (200 JSON) to Analyze GAS (MasterComplexLog/Items). Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
-// @match        https://yspos.youngsong.com.tw/*
+// @version      4.7.1
+// @description  ✅FIX: avoid missing injection on http/https; ✅FIX: show injected log always; ✅FIX: loosen page gate to avoid missing login/redirect pages; keep /api/ filter + dedup. Capture XHR/fetch to GAS, forward PerfTotal + MasterComplex to Analyze GAS.
+// @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @run-at       document-start
@@ -14,6 +14,11 @@
 
 (function () {
   "use strict";
+
+  // ✅ FIX#0: injection proof (independent of ACTIVE)
+  try {
+    console.log("[YS_CAPTURE] injected", { href: location.href, host: location.host, hash: location.hash, ua: navigator.userAgent });
+  } catch (_) {}
 
   /*****************************************************************
    * 0) Config (FED-style: @resource + allowlist)
@@ -112,15 +117,12 @@
   const ENABLE_ANALYZE = true;
 
   /*****************************************************************
-   * 2) Page gate (4 pages)
+   * 2) Page gate (FIX)
    *****************************************************************/
+  // ✅ FIX#1: loosen gate — keep hooks active on whole domain.
+  // This prevents missing login/redirect/intermediate pages; still only captures "/api/" via urlMatches().
   function isTargetPage() {
-    const h = String(location.hash || "");
-    const isMasterLogin = h === "#/master-login" || h.startsWith("#/master-login?");
-    const isMasterComplex = h.startsWith("#/master") && h.includes("listStatus=COMPLEX");
-    const isPerfDetail = h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
-    const isPerfStatic = h.startsWith("#/performance") && h.includes("tab=P_STATIC");
-    return isMasterLogin || isMasterComplex || isPerfDetail || isPerfStatic;
+    return location.hostname === "yspos.youngsong.com.tw";
   }
 
   let ACTIVE = false;
@@ -305,8 +307,7 @@
       method: "GET",
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
       timeout: 15000,
-      onload: (res) =>
-        log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) => log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => warn(`[YS_CAPTURE] ping(${tag}) error`, err),
       ontimeout: () => warn(`[YS_CAPTURE] ping(${tag}) timeout`),
     });
@@ -446,8 +447,6 @@
 
   /*****************************************************************
    * 5) Analyze Forwarding
-   *    - PerfTotal (existing)
-   *    - ✅ MasterComplex (NEW)
    *****************************************************************/
   function isPerfTotalApi_(url) {
     const u = String(url || "");
@@ -460,48 +459,31 @@
     return m ? m[1] : "";
   }
 
-  // ✅ MasterComplex 判斷：用「可控寬鬆」規則
-  // 你可以依實際 API 再收斂（例如固定 /api/master 或 /api/master/list 等）
   function isMasterComplexApi_(url) {
     const u = String(url || "");
     if (!u.includes("/api/")) return false;
-
-    // 常見 master complex 會出現在 #/master?listStatus=COMPLEX
-    // 所以 API 多半會帶 listStatus=COMPLEX 或 complex 字樣
     if (u.includes("listStatus=COMPLEX")) return true;
     if (u.includes("COMPLEX")) return true;
-
-    // 若實際 API 是固定 endpoint（你可自行加強）
-    // if (/\/api\/master\b/.test(u)) return true;
-
     return false;
   }
 
-  // ✅ 從 URL path/query 推 storeId（不保證一定有，但有就填）
   function extractStoreIdFromAny_(url) {
     try {
       const u = new URL(String(url || ""), location.origin);
-
-      // 1) query
       const q = u.searchParams;
       const qsKeys = ["storeId", "store_id", "sid"];
       for (const k of qsKeys) {
         const v = String(q.get(k) || "");
         if (v && /^\d+$/.test(v)) return v;
       }
-
-      // 2) path-like digits (最後保險)
-      // 例如 /api/master/complex/3 之類
       const m = u.pathname.match(/\/(\d+)(?:\/|$)/);
       if (m && m[1]) return m[1];
-
       return "";
     } catch (_) {
       return "";
     }
   }
 
-  // ✅ 支援 JSON / x-www-form-urlencoded / querystring / URLSearchParams / FormData
   function extractFromTo_(requestBody, requestUrl) {
     let from = "", to = "", size = "", number = "";
 
@@ -590,13 +572,12 @@
     sendAnalyze_(payload, `perfTotal storeId=${storeId || "?"}`);
   }
 
-  // ✅ NEW: MasterComplex -> analyzeMasterComplex_v1
   function forwardToAnalyzeMasterComplex_(record, recordHash) {
     if (!isMasterComplexApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
 
-    const storeId = extractStoreIdFromAny_(record.url); // 允許空
+    const storeId = extractStoreIdFromAny_(record.url);
     const payload = {
       mode: "analyzeMasterComplex_v1",
       meta: {
@@ -616,16 +597,8 @@
   }
 
   function forwardToAnalyzeAll_(record, recordHash) {
-    try {
-      forwardToAnalyzePerfTotal_(record, recordHash);
-    } catch (e) {
-      warn("[ANALYZE] perfTotal forward failed", e);
-    }
-    try {
-      forwardToAnalyzeMasterComplex_(record, recordHash);
-    } catch (e) {
-      warn("[ANALYZE] masterComplex forward failed", e);
-    }
+    try { forwardToAnalyzePerfTotal_(record, recordHash); } catch (e) { warn("[ANALYZE] perfTotal forward failed", e); }
+    try { forwardToAnalyzeMasterComplex_(record, recordHash); } catch (e) { warn("[ANALYZE] masterComplex forward failed", e); }
   }
 
   /*****************************************************************
@@ -664,10 +637,7 @@
         enqueue({ hash, record });
         log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status);
 
-        // ✅ Analyze forwarding (PerfTotal + MasterComplex)
-        if (json && typeof json === "object") {
-          forwardToAnalyzeAll_(record, hash);
-        }
+        if (json && typeof json === "object") forwardToAnalyzeAll_(record, hash);
       }
     } catch (e) {
       warn("[YS_CAPTURE][fetch] hook failed", e);
@@ -701,8 +671,7 @@
     try {
       if (ACTIVE && urlMatches(this._cap_url)) {
         const xhr = this;
-        const reqBody = body;
-        const reqBodyStr = bodyToString_(reqBody) || (typeof reqBody === "string" ? reqBody : null);
+        const reqBodyStr = bodyToString_(body) || (typeof body === "string" ? body : null);
 
         xhr.addEventListener("load", async function () {
           try {
@@ -716,9 +685,8 @@
               if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
             } else if (rt === "json") {
               const r = xhr.response;
-              if (r && typeof r === "object") {
-                json = r;
-              } else if (r != null) {
+              if (r && typeof r === "object") json = r;
+              else if (r != null) {
                 const t = String(r);
                 json = safeJsonParse(t);
                 if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
@@ -748,10 +716,7 @@
               enqueue({ hash, record });
               log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status);
 
-              // ✅ Analyze forwarding (PerfTotal + MasterComplex)
-              if (json && typeof json === "object") {
-                forwardToAnalyzeAll_(record, hash);
-              }
+              if (json && typeof json === "object") forwardToAnalyzeAll_(record, hash);
             }
           } catch (e) {
             warn("[YS_CAPTURE][xhr] parse failed", e);
@@ -768,16 +733,10 @@
   /*****************************************************************
    * 8) Page lifecycle flush
    *****************************************************************/
-  window.addEventListener("pagehide", () => {
-    try {
-      flushQueue();
-    } catch (_) {}
-  });
+  window.addEventListener("pagehide", () => { try { flushQueue(); } catch (_) {} });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      try {
-        flushQueue();
-      } catch (_) {}
+      try { flushQueue(); } catch (_) {}
     }
   });
 })();
