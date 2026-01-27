@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX ANALYZE + FIX]
+// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX PAGE-GATE + NO STOREID]
 // @namespace    https://local/
-// @version      4.9
-// @description  ✅FIX: avoid missing injection on http/https; ✅FIX: show injected log always; ✅FIX: loosen page gate to avoid missing login/redirect pages; keep /api/ filter + dedup. Capture XHR/fetch to GAS, forward PerfTotal + MasterComplex to Analyze GAS.
+// @version      5.0
+// @description  ✅Capture XHR/fetch to GAS with queue+dedup; ✅PerfTotal Analyze on performance total API; ✅MasterComplex Analyze ONLY on Complex page (page-gate) + ONLY match listStatus=COMPLEX; ✅MasterComplex meta has NO storeId.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -15,9 +15,14 @@
 (function () {
   "use strict";
 
-  // ✅ FIX#0: injection proof (independent of ACTIVE)
+  // ✅ injection proof
   try {
-    console.log("[YS_CAPTURE] injected", { href: location.href, host: location.host, hash: location.hash, ua: navigator.userAgent });
+    console.log("[YS_CAPTURE] injected", {
+      href: location.href,
+      host: location.host,
+      hash: location.hash,
+      ua: navigator.userAgent,
+    });
   } catch (_) {}
 
   /*****************************************************************
@@ -114,13 +119,12 @@
     verbose: true,
   };
 
+  // ✅ analyze flags
   const ENABLE_ANALYZE = true;
 
   /*****************************************************************
-   * 2) Page gate (FIX)
+   * 2) Page gate (loosened)
    *****************************************************************/
-  // ✅ FIX#1: loosen gate — keep hooks active on whole domain.
-  // This prevents missing login/redirect/intermediate pages; still only captures "/api/" via urlMatches().
   function isTargetPage() {
     return location.hostname === "yspos.youngsong.com.tw";
   }
@@ -242,7 +246,9 @@
       if (v && v !== TECHNO_CACHE) {
         TECHNO_CACHE = v;
         try {
+          // 同分頁優先：sessionStorage
           sessionStorage.setItem("techNo", TECHNO_CACHE);
+          // 仍保留 localStorage（你原本需求）；若想避免跨 tab 汙染，可刪這行
           localStorage.setItem("techNo", TECHNO_CACHE);
         } catch (_) {}
         log("[YS_CAPTURE] TECHNO_CACHE updated from DOM =>", TECHNO_CACHE);
@@ -459,33 +465,26 @@
     return m ? m[1] : "";
   }
 
+  // ✅ MasterComplex API: 僅認 listStatus=COMPLEX（收斂誤判）
   function isMasterComplexApi_(url) {
     const u = String(url || "");
     if (!u.includes("/api/")) return false;
-    if (u.includes("listStatus=COMPLEX")) return true;
-    if (u.includes("COMPLEX")) return true;
-    return false;
+    return u.includes("listStatus=COMPLEX");
   }
 
-  function extractStoreIdFromAny_(url) {
-    try {
-      const u = new URL(String(url || ""), location.origin);
-      const q = u.searchParams;
-      const qsKeys = ["storeId", "store_id", "sid"];
-      for (const k of qsKeys) {
-        const v = String(q.get(k) || "");
-        if (v && /^\d+$/.test(v)) return v;
-      }
-      const m = u.pathname.match(/\/(\d+)(?:\/|$)/);
-      if (m && m[1]) return m[1];
-      return "";
-    } catch (_) {
-      return "";
-    }
+  // ✅ MasterComplex Page Gate: 只有在「那個 complex 網頁」才會送 analyzeMasterComplex_v1
+  // 你若未來網址型態不同，只要改這個函數即可。
+  function isMasterComplexPage_() {
+    const h = String(location.hash || "");
+    // 目標：#/master?listStatus=COMPLEX
+    return h.includes("#/master") && h.includes("listStatus=COMPLEX");
   }
 
   function extractFromTo_(requestBody, requestUrl) {
-    let from = "", to = "", size = "", number = "";
+    let from = "",
+      to = "",
+      size = "",
+      number = "";
 
     try {
       const t = stripBom_(String(requestBody || "")).trim();
@@ -573,15 +572,17 @@
   }
 
   function forwardToAnalyzeMasterComplex_(record, recordHash) {
+    // ✅ 關鍵：只在 Complex 的網頁才 analyze（避免在業績頁誤送）
+    if (!isMasterComplexPage_()) return;
+
     if (!isMasterComplexApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
 
-    const storeId = extractStoreIdFromAny_(record.url);
     const payload = {
       mode: "analyzeMasterComplex_v1",
       meta: {
-        storeId,
+        // ✅ 不需要 storeId：避免誤抽/誤污染
         page: location.href,
         hash: location.hash,
         capturedAt: new Date().toISOString(),
@@ -593,12 +594,20 @@
       response: record.response,
     };
 
-    sendAnalyze_(payload, `masterComplex storeId=${storeId || "?"}`);
+    sendAnalyze_(payload, `masterComplex`);
   }
 
   function forwardToAnalyzeAll_(record, recordHash) {
-    try { forwardToAnalyzePerfTotal_(record, recordHash); } catch (e) { warn("[ANALYZE] perfTotal forward failed", e); }
-    try { forwardToAnalyzeMasterComplex_(record, recordHash); } catch (e) { warn("[ANALYZE] masterComplex forward failed", e); }
+    try {
+      forwardToAnalyzePerfTotal_(record, recordHash);
+    } catch (e) {
+      warn("[ANALYZE] perfTotal forward failed", e);
+    }
+    try {
+      forwardToAnalyzeMasterComplex_(record, recordHash);
+    } catch (e) {
+      warn("[ANALYZE] masterComplex forward failed", e);
+    }
   }
 
   /*****************************************************************
@@ -733,10 +742,16 @@
   /*****************************************************************
    * 8) Page lifecycle flush
    *****************************************************************/
-  window.addEventListener("pagehide", () => { try { flushQueue(); } catch (_) {} });
+  window.addEventListener("pagehide", () => {
+    try {
+      flushQueue();
+    } catch (_) {}
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      try { flushQueue(); } catch (_) {}
+      try {
+        flushQueue();
+      } catch (_) {}
     }
   });
 })();
