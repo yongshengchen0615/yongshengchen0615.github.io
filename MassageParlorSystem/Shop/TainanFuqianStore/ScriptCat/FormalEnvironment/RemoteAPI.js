@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX ANALYZE + FIX]
 // @namespace    https://local/
-// @version      4.7.1
+// @version      4.8
 // @description  ✅FIX: avoid missing injection on http/https; ✅FIX: show injected log always; ✅FIX: loosen page gate to avoid missing login/redirect pages; keep /api/ filter + dedup. Capture XHR/fetch to GAS, forward PerfTotal + MasterComplex to Analyze GAS.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
