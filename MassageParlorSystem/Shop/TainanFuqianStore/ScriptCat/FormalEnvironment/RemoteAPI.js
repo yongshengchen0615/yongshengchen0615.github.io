@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FE YSPOS Capture -> GAS + Analyze [MASTER_COMPLEX PAGE-GATE + BROAD API FORWARD] (FULL REPLACE)
 // @namespace    https://local/
-// @version      5.1
+// @version      5.2
 // @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze on /api/performance/total/{storeId}; ✅MasterComplex Analyze ONLY on #/master?listStatus=COMPLEX page, but forwards ANY /api/ JSON(200) response on that page (no storeId).
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
