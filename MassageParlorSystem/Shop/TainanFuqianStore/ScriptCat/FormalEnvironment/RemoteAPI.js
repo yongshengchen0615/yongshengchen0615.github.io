@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         FE YSPOS Capture -> GAS + Analyze [MASTER_COMPLEX PAGE-GATE + BROAD API FORWARD] (FULL REPLACE)
+// @name         FE YSPOS Capture -> GAS + Analyze [MASTER PAGE-GATE + BROAD API FORWARD] (STABLE v5.3) (FULL REPLACE)
 // @namespace    https://local/
-// @version      5.2
-// @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze on /api/performance/total/{storeId}; ✅MasterComplex Analyze ONLY on #/master?listStatus=COMPLEX page, but forwards ANY /api/ JSON(200) response on that page (no storeId).
+// @version      5.3
+// @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze on /api/performance/total/{storeId}; ✅Master Analyze on #/master page (NO listStatus required), forwards ANY /api/ JSON(200) response on that page.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -427,14 +427,13 @@
     return m ? m[1] : "";
   }
 
-  // ✅ Page Gate: ONLY on this page do we forward "master complex analyze"
-  function isMasterComplexPage_() {
+  // ✅ A) 放寬：只要在 #/master 就 forward（不需 listStatus=COMPLEX）
+  function isMasterPage_() {
     const h = String(location.hash || "");
-    return h.includes("#/master") && h.includes("listStatus=COMPLEX");
+    return h.includes("#/master");
   }
 
-  // ✅ BROAD: on complex page, forward ANY /api/ request (still must be json+200)
-  function isMasterComplexApi_(url) {
+  function isMasterBroadApi_(url) {
     const u = String(url || "");
     return u.includes("/api/");
   }
@@ -481,6 +480,27 @@
     } catch (_) {}
 
     return { from: "", to: "", size: "", number: "" };
+  }
+
+  function extractApiPathKey_(url) {
+    // 目的：把 /api/booking/detail/3577 變 /api/booking/detail/:id 方便分類
+    try {
+      const s = String(url || "");
+      if (!s.includes("/api/")) return "";
+      const u = new URL(s, location.origin);
+      const path = u.pathname || "";
+      return path.replace(/\/\d+(?=\/|$)/g, "/:id");
+    } catch (_) {
+      const s = String(url || "");
+      return s.replace(/\?.*$/, "").replace(/\/\d+(?=\/|$)/g, "/:id");
+    }
+  }
+
+  function extractEntityId_(url) {
+    const s = String(url || "").trim();
+    if (!s) return "";
+    const m = s.match(/\/(\d+)(?:\?.*)?$/);
+    return m ? m[1] : "";
   }
 
   function sendAnalyze_(payload, tag) {
@@ -530,19 +550,20 @@
     sendAnalyze_(payload, `perfTotal storeId=${storeId || "?"}`);
   }
 
-  function forwardToAnalyzeMasterComplex_(record, recordHash) {
-    // ✅ only forward on that page
-    if (!isMasterComplexPage_()) return;
+  function forwardToAnalyzeMasterBroad_(record, recordHash) {
+    // ✅ A) 只要 #/master 就送
+    if (!isMasterPage_()) return;
 
-    // ✅ broad api match
-    if (!isMasterComplexApi_(record.url)) return;
-
+    if (!isMasterBroadApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
 
     const payload = {
       mode: "analyzeMasterComplex_v1",
       meta: {
+        storeId: "", // 保留空（很多 API 不是店別）
+        apiPathKey: extractApiPathKey_(record.url),
+        entityId: extractEntityId_(record.url),
         page: location.href,
         hash: location.hash,
         capturedAt: new Date().toISOString(),
@@ -554,7 +575,7 @@
       response: record.response,
     };
 
-    sendAnalyze_(payload, `masterComplex broad-api`);
+    sendAnalyze_(payload, `master broad-api`);
   }
 
   function forwardToAnalyzeAll_(record, recordHash) {
@@ -564,9 +585,9 @@
       warn("[ANALYZE] perfTotal forward failed", e);
     }
     try {
-      forwardToAnalyzeMasterComplex_(record, recordHash);
+      forwardToAnalyzeMasterBroad_(record, recordHash);
     } catch (e) {
-      warn("[ANALYZE] masterComplex forward failed", e);
+      warn("[ANALYZE] master forward failed", e);
     }
   }
 
