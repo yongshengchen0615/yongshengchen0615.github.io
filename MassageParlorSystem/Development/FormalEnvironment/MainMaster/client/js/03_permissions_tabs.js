@@ -20,7 +20,7 @@ function canTech_(permKey) {
 /**
  * 欄位 index（table nth-child）
  * 1:勾選 2:# 3:userId 4:顯示名稱 5:建立時間 6:開始使用 7:期限(天) 8:使用狀態 9:審核狀態
- * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:操作
+ * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:業績開通 16:操作
  */
 const PERM_TO_COLS = {
   techAudit: [9],
@@ -32,6 +32,7 @@ const PERM_TO_COLS = {
   techPushEnabled: [12],
   techPersonalStatusEnabled: [13],
   techScheduleEnabled: [14],
+  techPerformanceEnabled: [15],
 };
 
 function allTechPermsYes_() {
@@ -89,6 +90,7 @@ const PERM_TO_BULK_INPUT_IDS = {
   techPushEnabled: ["bulkPush"],
   techPersonalStatusEnabled: ["bulkPersonalStatus"],
   techScheduleEnabled: ["bulkScheduleEnabled"],
+  techPerformanceEnabled: ["bulkPerformanceEnabled"],
   techExpiryDate: ["bulkUsageDays"],
 };
 
@@ -195,6 +197,8 @@ function canEditUserField_(field) {
       return canTech_("techPersonalStatusEnabled");
     case "scheduleEnabled":
       return canTech_("techScheduleEnabled");
+    case "performanceEnabled":
+      return canTech_("techPerformanceEnabled");
     default:
       return true;
   }

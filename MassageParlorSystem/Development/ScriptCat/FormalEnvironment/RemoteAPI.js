@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
+// @name         DSFE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
 // @namespace    https://local/
 // @version      4.6
 // @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages. ✅ Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
@@ -9,7 +9,7 @@
 // @run-at       document-start
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
-// @resource     gasConfigRemoteAPI https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/TestEnvironment/RemoteAPIScraping/gas-config-remoteapi.json
+// @resource     gasConfigRemoteAPI_DSFE https://yongshengchen0615.github.io/MassageParlorSystem/Development/ScriptCat/FormalEnvironment/gas-config-remoteapi-DSFE.json
 // ==/UserScript==
 
 (function () {
@@ -18,7 +18,7 @@
   /*****************************************************************
    * 0) Config (FED-style: @resource + allowlist)
    *****************************************************************/
-  const GAS_RESOURCE = "gasConfigRemoteAPI";
+  const GAS_RESOURCE = "gasConfigRemoteAPI_DSFE";
   const DEFAULT_CFG = {
     GAS_CAPTURE_URL: "",
     GAS_ANALYZE_URL: "",

@@ -11,8 +11,9 @@ import { state } from "./state.js";
 import { dom } from "./dom.js";
 import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
-import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
+import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
+import { manualRefreshPerformance } from "./performance.js";
 
 const POLL = {
   BASE_MS: 3000,
@@ -53,7 +54,7 @@ function scheduleNextPoll(ms) {
   const wait = withJitter(ms, pc.JITTER_RATIO);
 
   state.pollTimer = setTimeout(async () => {
-    if (document.hidden) return;
+    if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
 
     const res = await refreshStatusAdaptive(false);
     const next = computeNextInterval(res);
@@ -125,7 +126,10 @@ function resetPollState() {
  * - 內建自適應間隔：穩定後加長、失敗後退避、資料變更時加速下一次
  * @returns {void}
  */
-export function startPolling() {
+export function startPolling(extraReadyPromise) {
+  showInitialLoading("資料載入中…");
+  setInitialLoadingProgress(85, "同步資料中…");
+
   // 手動重整
   if (dom.refreshBtn) {
     dom.refreshBtn.addEventListener("click", async () => {
@@ -135,6 +139,13 @@ export function startPolling() {
       const res = await refreshStatusAdaptive(true);
       updateMyMasterStatusUI();
 
+      // 若目前在「業績」視圖：手動重整也要同步更新業績快取（按鈕只讀快取）。
+      if (state.viewMode === "performance" && String(state.feature && state.feature.performanceEnabled) === "是") {
+        try {
+          await manualRefreshPerformance({ showToast: false });
+        } catch {}
+      }
+
       hideLoadingHint();
       const next = computeNextInterval(res);
       scheduleNextPoll(next);
@@ -142,8 +153,19 @@ export function startPolling() {
   }
 
   // 初次啟動
-  refreshStatusAdaptive(false).then((res) => {
+  refreshStatusAdaptive(false).then(async (res) => {
     updateMyMasterStatusUI();
+
+    // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
+    try {
+      setInitialLoadingProgress(92, "準備中…");
+      await Promise.resolve(extraReadyPromise);
+    } catch {
+      // extraReadyPromise 失敗不應阻擋主流程
+    }
+
+    setInitialLoadingProgress(100, "完成");
+    hideInitialLoading();
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   });

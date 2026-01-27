@@ -147,6 +147,18 @@ async function pushSend_() {
 		const okCount = Number(ret?.okCount || 0);
 		const failCount = Number(ret?.failCount || 0);
 
+		// ✅ 使用紀錄：推播（不記錄內容）
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("push_message", {
+				target,
+				requested: userIds.length,
+				includeDisplayName: !!includeDisplayName,
+				messageLength: String(message || "").length,
+				okCount,
+				failCount,
+			});
+		}
+
 		if (failCount === 0) toast(`推播完成：成功 ${okCount} 筆`, "ok");
 		else toast(`推播完成：成功 ${okCount} / 失敗 ${failCount}`, "err");
 

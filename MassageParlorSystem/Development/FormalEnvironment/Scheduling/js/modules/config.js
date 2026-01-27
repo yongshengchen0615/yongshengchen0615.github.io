@@ -27,6 +27,14 @@ export const config = {
   /** （可選）使用頻率紀錄用 GAS Web App URL；留空則不送出任何使用紀錄。 */
   USAGE_LOG_URL: "",
 
+  /** （可選）師傅業績查詢用 GAS Web App URL（report Web App）。 */
+  REPORT_API_URL: "",
+
+  /** （可選）師傅業績「明細」查詢用 GAS Web App URL（DetailPerf Web App）。 */
+  DETAIL_PERF_API_URL: "",
+
+  /** 業績同步（storeId 版）GAS Web App URL */
+PERF_SYNC_API_URL: "",
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 
@@ -44,10 +52,20 @@ export const config = {
   /** 輪詢抖動比例（0~1）。 */
   POLL_JITTER_RATIO: 0.2,
 
+  /** 是否允許在背景（document.hidden=true）時仍嘗試輪詢更新。注意：行動裝置/LINE WebView 可能仍會暫停或降頻。 */
+  POLL_ALLOW_BACKGROUND: false,
+
   /** 單次狀態抓取 timeout（毫秒）。 */
   STATUS_FETCH_TIMEOUT_MS: 8000,
   /** Origin fallback 額外 timeout（毫秒）。 */
   STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
+
+  /**
+   * （可選）資料過久未更新的判定門檻（毫秒）。
+   * - 以資料列的 timestamp/sourceTs/updatedAt 為準
+   * - 設為 0 或負數可停用此判斷
+   */
+  STALE_DATA_MAX_AGE_MS: 10 * 60 * 1000,
 };
 
 /**
@@ -73,6 +91,10 @@ export async function loadConfigJson() {
 
   // optional: usage log
   config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
+  config.REPORT_API_URL = String(cfg.REPORT_API_URL || "").trim();
+  config.DETAIL_PERF_API_URL = String(cfg.DETAIL_PERF_API_URL || "").trim();
+  config.PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
+
   const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
   if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
 
@@ -95,11 +117,21 @@ export async function loadConfigJson() {
   const jitterRatio = Number(cfg.POLL_JITTER_RATIO);
   if (!Number.isNaN(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) config.POLL_JITTER_RATIO = jitterRatio;
 
+  // optional: allow background polling (best-effort)
+  const allowBgRaw = cfg.POLL_ALLOW_BACKGROUND;
+  if (typeof allowBgRaw === "boolean") config.POLL_ALLOW_BACKGROUND = allowBgRaw;
+  else if (typeof allowBgRaw === "string") config.POLL_ALLOW_BACKGROUND = allowBgRaw.trim() === "是";
+  else if (typeof allowBgRaw === "number") config.POLL_ALLOW_BACKGROUND = allowBgRaw === 1;
+
   const fetchTimeout = Number(cfg.STATUS_FETCH_TIMEOUT_MS);
   if (!Number.isNaN(fetchTimeout) && fetchTimeout >= 1000) config.STATUS_FETCH_TIMEOUT_MS = fetchTimeout;
 
   const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
   if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
+
+  // optional: stale data gate
+  const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);
+  if (!Number.isNaN(staleMaxAge)) config.STALE_DATA_MAX_AGE_MS = staleMaxAge;
 
   if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
   if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");

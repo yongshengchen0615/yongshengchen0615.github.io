@@ -30,6 +30,7 @@
  * @property {string} techPushEnabled
  * @property {string} techPersonalStatusEnabled
  * @property {string} techScheduleEnabled
+ * @property {string} techPerformanceEnabled
  */
 
 // 由 config.json 載入
@@ -37,6 +38,8 @@ let ADMIN_API_URL = "";
 let AUTH_API_URL = "";
 let LIFF_ID = "";
 let API_BASE_URL = "";
+let USAGE_LOG_API_URL = "";
+let TECH_USAGE_LOG_URL = "";
 
 /** @type {AdminRow[]} */
 let allAdmins = [];

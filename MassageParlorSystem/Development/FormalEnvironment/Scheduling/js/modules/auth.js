@@ -1,11 +1,16 @@
 /**
- * auth.js
+ * auth.js（完整可貼可覆蓋版）
  *
  * 權限驗證 / Gate 流程：
  * - LIFF 模式：liff.init/login/getProfile
  * - 非 LIFF 模式：從 query/localStorage 取 userId/name
  * - 呼叫 AUTH GAS：check / register
  * - 依 rules 決定是否允許進入
+ *
+ * ✅ 本版修正：
+ * - 取得 userId 後，一律落地到 state + localStorage（userId/displayName）
+ * - 非 LIFF 模式：優先 query/userId，其次 localStorage.userId，再 fallback dev_user
+ * - 避免其他模組（例如 performance.js）讀不到 userId 而報「缺少 userId」
  */
 
 import { config } from "./config.js";
@@ -17,6 +22,62 @@ import { updateFeatureState } from "./featureBanner.js";
 import { applyScheduleUiMode, showNotMasterHint } from "./scheduleUi.js";
 import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js";
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { logUsageEvent } from "./usageLog.js";
+
+/* =====================================================
+ * ✅ Identity helpers（state + localStorage 落地）
+ * ===================================================== */
+
+function setClientIdentity_(userId, displayName) {
+  const uid = String(userId || "").trim();
+  const name = String(displayName || "").trim();
+
+  // state.user（推薦）
+  state.user = state.user || {};
+  state.user.userId = uid;
+  state.user.displayName = name;
+
+  // 兼容：有些舊模組可能讀 state.userId/state.displayName
+  state.userId = uid;
+  state.displayName = name;
+
+  try {
+    localStorage.setItem("userId", uid);
+    localStorage.setItem("displayName", name);
+
+    // 兼容舊 dev key（可保留）
+    if (uid) localStorage.setItem("devUserId", uid);
+    if (name) localStorage.setItem("devDisplayName", name);
+  } catch (_) {}
+}
+
+function getFallbackIdentity_() {
+  // 1) query
+  const qUserId = String(getQueryParam("userId") || getQueryParam("userid") || "").trim();
+  const qName = String(getQueryParam("name") || getQueryParam("displayName") || "").trim();
+  if (qUserId) return { userId: qUserId, displayName: qName || "" };
+
+  // 2) localStorage（正式 key）
+  try {
+    const lsUserId = String(localStorage.getItem("userId") || "").trim();
+    const lsName = String(localStorage.getItem("displayName") || "").trim();
+    if (lsUserId) return { userId: lsUserId, displayName: lsName || "" };
+  } catch (_) {}
+
+  // 3) localStorage（舊 dev key）
+  try {
+    const devUserId = String(localStorage.getItem("devUserId") || "").trim();
+    const devName = String(localStorage.getItem("devDisplayName") || "").trim();
+    if (devUserId) return { userId: devUserId, displayName: devName || "" };
+  } catch (_) {}
+
+  // 4) fallback
+  return { userId: "dev_user", displayName: "使用者" };
+}
+
+/* =====================================================
+ * Existing helpers
+ * ===================================================== */
 
 function normalizeBoolOn(v) {
   if (v === true) return true;
@@ -33,6 +94,7 @@ function normalizeCheckResult(data, displayNameFromClient) {
   const scheduleEnabled = (data && data.scheduleEnabled) || "否";
   const pushEnabled = (data && data.pushEnabled) || "否";
   const personalStatusEnabled = (data && data.personalStatusEnabled) || "否";
+  const performanceEnabled = (data && data.performanceEnabled) || "否";
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -63,6 +125,7 @@ function normalizeCheckResult(data, displayNameFromClient) {
     scheduleEnabled,
     pushEnabled,
     personalStatusEnabled,
+    performanceEnabled,
     remainingDays,
     flags,
     messages,
@@ -181,6 +244,15 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
     r.status = "pending";
     r.audit = r.audit || "待審核";
     r.justRegistered = true;
+
+    // 使用者第一次送出審核（自動註冊）
+    logUsageEvent({
+      event: "audit_first_request",
+      userId,
+      displayName: r.displayName || displayNameFromClient || "",
+      detail: "auto_register",
+    });
+
     return r;
   } catch (e) {
     console.error("[Register] 寫入 AUTH GAS 失敗：", e);
@@ -205,7 +277,15 @@ async function registerUser(userId, displayName) {
 }
 
 async function onAuthorized({ userId, displayName, result }) {
+  // ✅ 落地身份（給其他模組用）
+  setClientIdentity_(userId, displayName);
+
+  // features
   updateFeatureState(result);
+
+  // 確保 state.myMaster 存在
+  state.myMaster = state.myMaster || {};
+  state.feature = state.feature || {};
 
   // 記錄師傅身分
   state.myMaster.isMaster = !!result.isMaster;
@@ -215,6 +295,13 @@ async function onAuthorized({ userId, displayName, result }) {
   const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
   applyScheduleUiMode(scheduleOk);
 
+  // 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
+  const performanceOk = String(result.performanceEnabled || "").trim() === "是";
+  const perfBtn = document.getElementById("btnPerformance");
+  if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
+  const perfCard = document.getElementById("perfCard");
+  if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
+
   // 立即同步提示（避免首次畫面沒出現）
   if (!scheduleOk) {
     const isMasterNow = !!(state.myMaster.isMaster && state.myMaster.techNo);
@@ -223,9 +310,37 @@ async function onAuthorized({ userId, displayName, result }) {
     showNotMasterHint(false);
   }
 
+  // 紀錄審核狀態（每次開啟/驗證都會嘗試送出；由 USAGE_LOG_MIN_INTERVAL_MS 節流）
+  try {
+    logUsageEvent({
+      event: "audit_status",
+      userId,
+      displayName: result.displayName || displayName,
+      detail: JSON.stringify({
+        status: result.status,
+        audit: result.audit,
+        remainingDays: result.remainingDays,
+        scheduleEnabled: result.scheduleEnabled,
+        pushEnabled: result.pushEnabled,
+        personalStatusEnabled: result.personalStatusEnabled,
+        performanceEnabled: result.performanceEnabled,
+      }),
+    });
+  } catch {}
+
   // Gate 規則
   const gate = decideGateAction(result);
   if (!gate.allow) {
+    // 使用者開啟時仍在審核中
+    if (gate.ruleId === "PENDING") {
+      logUsageEvent({
+        event: "audit_pending_open",
+        userId,
+        displayName: result.displayName || displayName,
+        detail: String(result.audit || "pending") + (result.justRegistered ? "|justRegistered" : ""),
+      });
+    }
+
     hidePersonalTools();
     if (dom.myMasterStatusEl) dom.myMasterStatusEl.style.display = "none";
     showNotMasterHint(false);
@@ -253,24 +368,24 @@ async function onAuthorized({ userId, displayName, result }) {
 
 /**
  * 非 LIFF 模式初始化 + 權限驗證（Gate）。
- * - 會從 query 讀取 `userId` / `name`，或讀 localStorage (devUserId/devDisplayName)
+ * - 會從 query 讀取 `userId` / `name`，或讀 localStorage
  * - 會呼叫 AUTH API 確認是否允許進入
- *
- * @returns {Promise<{ok:boolean, userId?:string, displayName?:string, result?:any}>}
  */
 export async function initNoLiffAndGuard() {
   showGate("✅ 未啟用 LINE 登入\n正在確認使用權限…");
 
   try {
-    const userId =
-      String(getQueryParam("userId") || "").trim() ||
-      String(localStorage.getItem("devUserId") || "").trim() ||
-      "dev_user";
+    const fb = getFallbackIdentity_();
+    const userId = String(fb.userId || "").trim();
+    const displayName = String(fb.displayName || "").trim();
 
-    const displayName =
-      String(getQueryParam("name") || "").trim() ||
-      String(localStorage.getItem("devDisplayName") || "").trim() ||
-      "使用者";
+    if (!userId) {
+      showGate("缺少 userId（未登入/未取得 profile）", true);
+      return { ok: false };
+    }
+
+    // ✅ 先落地（避免後續模組搶先讀）
+    setClientIdentity_(userId, displayName);
 
     const result = await checkOrRegisterUser(userId, displayName);
     return await onAuthorized({ userId, displayName, result });
@@ -288,9 +403,6 @@ export async function initNoLiffAndGuard() {
  * LIFF 模式初始化 + 權限驗證（Gate）。
  * - 會做 liff.init / login / getProfile
  * - 會呼叫 AUTH API 確認是否允許進入
- *
- * @returns {Promise<{ok:boolean, userId?:string, displayName?:string, result?:any}>}
- *   ok=true 表示可進入主畫面；ok=false 代表仍停留在 gate（或已觸發 liff.login）。
  */
 export async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
@@ -308,13 +420,16 @@ export async function initLiffAndGuard() {
     const ctx = window.liff.getContext();
     const profile = await window.liff.getProfile();
 
-    const userId = profile.userId || (ctx && ctx.userId) || "";
-    const displayName = profile.displayName || "";
+    const userId = String(profile.userId || (ctx && ctx.userId) || "").trim();
+    const displayName = String(profile.displayName || "").trim();
 
     if (!userId) {
-      showGate("無法取得使用者 ID，請重新開啟 LIFF。", true);
+      showGate("缺少 userId（未登入/未取得 profile）", true);
       return { ok: false };
     }
+
+    // ✅ 先落地（避免後續模組搶先讀）
+    setClientIdentity_(userId, displayName);
 
     showGate("正在確認使用權限…");
     const result = await checkOrRegisterUser(userId, displayName);

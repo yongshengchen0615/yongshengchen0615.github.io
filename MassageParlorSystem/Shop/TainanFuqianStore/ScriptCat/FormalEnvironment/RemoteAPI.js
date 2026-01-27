@@ -9,7 +9,7 @@
 // @run-at       document-start
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
-// @resource     gasConfigRemoteAPI https://yongshengchen0615.github.io/MassageParlorSystem/Shop/TainanFuqianStore/ScriptCat/FormalEnvironment/gas-config-remoteapi-FE.json
+// @resource     gasConfigRemoteAPI_FE https://yongshengchen0615.github.io/MassageParlorSystem/Shop/TainanFuqianStore/ScriptCat/FormalEnvironment/gas-config-remoteapi-FE.json
 // ==/UserScript==
 
 (function () {
@@ -18,7 +18,7 @@
   /*****************************************************************
    * 0) Config (FED-style: @resource + allowlist)
    *****************************************************************/
-  const GAS_RESOURCE = "gasConfigRemoteAPI";
+  const GAS_RESOURCE = "gasConfigRemoteAPI_FE";
   const DEFAULT_CFG = {
     GAS_CAPTURE_URL: "",
     GAS_ANALYZE_URL: "",

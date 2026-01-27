@@ -155,6 +155,11 @@ export function isLightTheme() {
 
 export function hexToRgb(hex) {
   if (!hex) return null;
+  // cache parsed hex -> rgb to avoid repeated parsing
+  const k = String(hex).toLowerCase();
+  if (!hexToRgb._cache) hexToRgb._cache = new Map();
+  if (hexToRgb._cache.has(k)) return hexToRgb._cache.get(k);
+
   let s = String(hex).replace("#", "").trim();
   if (s.length === 3) s = s.split("").map((ch) => ch + ch).join("");
   if (s.length !== 6) return null;
@@ -162,7 +167,33 @@ export function hexToRgb(hex) {
   const g = parseInt(s.slice(2, 4), 16);
   const b = parseInt(s.slice(4, 6), 16);
   if ([r, g, b].some((v) => Number.isNaN(v))) return null;
-  return { r, g, b };
+  const out = { r, g, b };
+  // keep cache bounded
+  const CACHE_MAX = 1024;
+  if (hexToRgb._cache.size >= CACHE_MAX) hexToRgb._cache.clear();
+  hexToRgb._cache.set(k, out);
+  return out;
+}
+
+/**
+ * 取得 rgba 字串（例如 "rgba(12,34,56,0.12)")，包含快取
+ * @param {string} hex like "#abcdef"
+ * @param {number} alpha between 0-1
+ * @returns {string|null}
+ */
+export function getRgbaString(hex, alpha) {
+  if (!hex) return null;
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const a = Number.isFinite(Number(alpha)) ? Number(alpha) : 1;
+  const key = `${hex}|${a}`;
+  if (!getRgbaString._cache) getRgbaString._cache = new Map();
+  if (getRgbaString._cache.has(key)) return getRgbaString._cache.get(key);
+  const s = `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  const CACHE_MAX = 2048;
+  if (getRgbaString._cache.size >= CACHE_MAX) getRgbaString._cache.clear();
+  getRgbaString._cache.set(key, s);
+  return s;
 }
 
 export function normalizeHex6(maybe) {
@@ -211,7 +242,15 @@ export function parseOpacityToken(token) {
 
 export function parseColorToken(str) {
   if (!str) return { hex: null, opacity: null };
-  const tokens = String(str).split(/\s+/).filter(Boolean);
+
+  // Simple cache to avoid repeated regex and parse work for identical tokens.
+  // Tokens are usually short strings (e.g. "bg-CFF0000 bg-opacity-20").
+  const key = String(str);
+  if (parseColorToken._cache && parseColorToken._cache.has(key)) {
+    return parseColorToken._cache.get(key);
+  }
+
+  const tokens = key.split(/\s+/).filter(Boolean);
 
   let hex = null;
   let opacity = null;
@@ -228,11 +267,20 @@ export function parseColorToken(str) {
   }
 
   if (!hex) {
-    const h = normalizeHex6(String(str));
+    const h = normalizeHex6(key);
     if (h) hex = h;
   }
 
-  return { hex, opacity };
+  const out = { hex, opacity };
+  if (!parseColorToken._cache) parseColorToken._cache = new Map();
+  // keep cache size bounded to avoid unbounded memory growth
+  const CACHE_MAX = 512;
+  if (parseColorToken._cache.size >= CACHE_MAX) {
+    // simple eviction: clear entire cache when full (keeps implementation simple)
+    parseColorToken._cache.clear();
+  }
+  parseColorToken._cache.set(key, out);
+  return out;
 }
 
 /**
@@ -242,44 +290,42 @@ export function parseColorToken(str) {
  */
 export function applyPillFromTokens(pillEl, bgToken, textToken) {
   if (!pillEl) return;
-
   pillEl.style.background = "";
   pillEl.style.border = "";
   pillEl.style.color = "";
 
   const bg = parseColorToken(bgToken);
   if (bg.hex) {
-    const rgb = hexToRgb(bg.hex);
-    if (rgb) {
-      let aBg = bg.opacity;
-      if (aBg == null) aBg = isLightTheme() ? 0.10 : 0.16;
-      aBg = clamp(aBg, 0.03, 0.35);
+    let aBg = bg.opacity;
+    if (aBg == null) aBg = isLightTheme() ? 0.10 : 0.16;
+    aBg = clamp(aBg, 0.03, 0.35);
 
-      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
-      const aBd = clamp(aBg + (isLightTheme() ? 0.12 : 0.18), 0.12, 0.55);
-      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
-    }
+    const bgRgba = getRgbaString(bg.hex, aBg);
+    if (bgRgba) pillEl.style.background = bgRgba;
+
+    const aBd = clamp(aBg + (isLightTheme() ? 0.12 : 0.18), 0.12, 0.55);
+    const bdRgba = getRgbaString(bg.hex, aBd);
+    if (bdRgba) pillEl.style.border = `1px solid ${bdRgba}`;
   }
 
   const fg = parseColorToken(textToken);
   if (fg.hex) {
-    const rgb = hexToRgb(fg.hex);
-    if (rgb) {
-      const minAlpha = isLightTheme() ? 0.85 : 0.70;
-      let aText = fg.opacity == null ? 1 : fg.opacity;
-      aText = clamp(aText, minAlpha, 1);
-      pillEl.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
-    }
+    const minAlpha = isLightTheme() ? 0.85 : 0.70;
+    let aText = fg.opacity == null ? 1 : fg.opacity;
+    aText = clamp(aText, minAlpha, 1);
+
+    const txtRgba = getRgbaString(fg.hex, aText);
+    if (txtRgba) pillEl.style.color = aText < 1 ? txtRgba : fg.hex;
   }
 
   if (!bg.hex && fg.hex) {
-    const rgb = hexToRgb(fg.hex);
-    if (rgb) {
-      const aBg = isLightTheme() ? 0.08 : 0.14;
-      pillEl.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${aBg})`;
-      const aBd = isLightTheme() ? 0.22 : 0.32;
-      pillEl.style.border = `1px solid rgba(${rgb.r},${rgb.g},${rgb.b},${aBd})`;
-    }
+    const aBg = isLightTheme() ? 0.08 : 0.14;
+    const bgRgba = getRgbaString(fg.hex, aBg);
+    if (bgRgba) pillEl.style.background = bgRgba;
+
+    const aBd = isLightTheme() ? 0.22 : 0.32;
+    const bdRgba = getRgbaString(fg.hex, aBd);
+    if (bdRgba) pillEl.style.border = `1px solid ${bdRgba}`;
   }
 }
 
@@ -287,13 +333,13 @@ export function applyPillFromTokens(pillEl, bgToken, textToken) {
 export function tokenToStripe(bgToken, textToken) {
   const bg = parseColorToken(bgToken);
   if (bg.hex) {
-    const rgb = hexToRgb(bg.hex);
-    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+    const s = getRgbaString(bg.hex, 0.9);
+    if (s) return s;
   }
   const fg = parseColorToken(textToken);
   if (fg.hex) {
-    const rgb = hexToRgb(fg.hex);
-    if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.90)`;
+    const s = getRgbaString(fg.hex, 0.9);
+    if (s) return s;
   }
   return "";
 }
@@ -305,18 +351,15 @@ export function tokenToStripe(bgToken, textToken) {
 export function applyTextColorFromToken(el, token) {
   if (!el) return;
   el.style.color = "";
-
   const fg = parseColorToken(token);
   if (!fg.hex) return;
-
-  const rgb = hexToRgb(fg.hex);
-  if (!rgb) return;
 
   const minAlpha = isLightTheme() ? 0.90 : 0.78;
   let aText = fg.opacity == null ? 1 : fg.opacity;
   aText = clamp(aText, minAlpha, 1);
 
-  el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
+  const rgba = getRgbaString(fg.hex, aText);
+  if (rgba) el.style.color = aText < 1 ? rgba : fg.hex;
 }
 
 /**
@@ -329,17 +372,11 @@ export function applyTextColorFromTokenStrong(el, token) {
 
   const fg = parseColorToken(token);
   if (!fg.hex) return;
-
-  const rgb = hexToRgb(fg.hex);
-  if (!rgb) return;
-
   const minAlpha = isLightTheme() ? 0.97 : 0.94;
   let aText = fg.opacity == null ? 1 : fg.opacity;
   aText = clamp(aText, minAlpha, 1);
-
-  el.style.color = aText < 1 ? `rgba(${rgb.r},${rgb.g},${rgb.b},${aText})` : fg.hex;
-  el.style.fontWeight = "900";
-  el.style.textShadow = isLightTheme()
-    ? "0 1px 0 rgba(0,0,0,0.10)"
-    : "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10)";
+  const rgba = getRgbaString(fg.hex, aText);
+  if (rgba) el.style.color = aText < 1 ? rgba : fg.hex;
+  // Styling such as font-weight and text-shadow are applied via CSS class
+  // to avoid frequent inline style changes causing layout thrashing.
 }

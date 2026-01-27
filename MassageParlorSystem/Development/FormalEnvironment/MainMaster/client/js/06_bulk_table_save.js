@@ -82,6 +82,7 @@ async function bulkApply_() {
 	const scheduleEnabled = canEditUserField_?.("scheduleEnabled")
 		? document.getElementById("bulkScheduleEnabled")?.value || ""
 		: "";
+	const performanceEnabled = document.getElementById("bulkPerformanceEnabled")?.value || "";
 
 	const usageDaysRaw = canEditUserField_?.("usageDays") ? String(document.getElementById("bulkUsageDays")?.value || "").trim() : "";
 	const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
@@ -90,7 +91,7 @@ async function bulkApply_() {
 		return;
 	}
 
-	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !usageDaysRaw) {
+	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw) {
 		toast("請先選擇要套用的批次欄位", "err");
 		return;
 	}
@@ -110,6 +111,7 @@ async function bulkApply_() {
 
 		if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
 		if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
+		if (performanceEnabled) u.performanceEnabled = performanceEnabled;
 
 		markDirty_(id, u);
 	});
@@ -159,6 +161,11 @@ async function bulkDelete_() {
 	if (failCount === 0) toast(`批次刪除完成：${okCount} 筆`, "ok");
 	else toast(`批次刪除：成功 ${okCount} / 失敗 ${failCount}`, "err");
 
+	// ✅ 使用紀錄：批次刪除
+	if (typeof usageLogFire_ === "function") {
+		usageLogFire_("users_delete_bulk", { requested: ids.length, okCount, failCount });
+	}
+
 	await loadUsers();
 }
 
@@ -172,7 +179,7 @@ function renderTable() {
 
 	if (!filteredUsers.length) {
 		const tr = document.createElement("tr");
-		tr.innerHTML = `<td colspan="15">無資料</td>`;
+		tr.innerHTML = `<td colspan="16">無資料</td>`;
 		tbody.appendChild(tr);
 		return;
 	}
@@ -184,6 +191,7 @@ function renderTable() {
 		const pushEnabled = (u.pushEnabled || "否") === "是" ? "是" : "否";
 		const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
 		const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
+		const performanceEnabled = (u.performanceEnabled || "否") === "是" ? "是" : "否";
 
 		const audit = normalizeAudit_(u.audit);
 		const isMaster = u.masterCode ? "是" : "否";
@@ -246,6 +254,13 @@ function renderTable() {
 				<select data-field="scheduleEnabled" aria-label="排班表開通">
 					<option value="否" ${scheduleEnabled === "否" ? "selected" : ""}>否</option>
 					<option value="是" ${scheduleEnabled === "是" ? "selected" : ""}>是</option>
+				</select>
+			</td>
+
+			<td data-label="業績開通">
+				<select data-field="performanceEnabled" aria-label="業績開通">
+					<option value="否" ${performanceEnabled === "否" ? "selected" : ""}>否</option>
+					<option value="是" ${performanceEnabled === "是" ? "selected" : ""}>是</option>
 				</select>
 			</td>
 
@@ -363,6 +378,7 @@ function handleRowFieldChange_(fieldEl) {
 	else if (field === "pushEnabled") u.pushEnabled = String(value || "否");
 	else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
 	else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
+	else if (field === "performanceEnabled") u.performanceEnabled = String(value || "否");
 
 	const audit = normalizeAudit_(u.audit);
 	const pushSel = row.querySelector('select[data-field="pushEnabled"]');
@@ -441,6 +457,11 @@ async function handleRowDelete_(row, userId, delBtn) {
 
 	if (ok) {
 		toast("刪除完成", "ok");
+
+		// ✅ 使用紀錄：單筆刪除
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("users_delete_one", { userId });
+		}
 		selectedIds.delete(userId);
 
 		allUsers = allUsers.filter((x) => x.userId !== userId);
@@ -482,6 +503,7 @@ async function saveAllDirty_() {
 					pushEnabled: finalPush,
 					personalStatusEnabled: u.personalStatusEnabled || "否",
 					scheduleEnabled: u.scheduleEnabled || "否",
+					performanceEnabled: u.performanceEnabled || "否",
 				};
 			});
 
@@ -489,6 +511,15 @@ async function saveAllDirty_() {
 			(document.getElementById("footerStatus").textContent = `儲存中：1/1（共 ${items.length} 筆）`);
 
 		const ret = await updateUsersBatch(items);
+
+		// ✅ 使用紀錄：儲存全部（不含敏感內容）
+		if (typeof usageLogFire_ === "function") {
+			usageLogFire_("users_update_batch", {
+				items: items.length,
+				okCount: Number(ret?.okCount || 0),
+				failCount: Number(ret?.failCount || 0),
+			});
+		}
 
 		if (ret && ret.okCount) {
 			const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));
@@ -506,6 +537,7 @@ async function saveAllDirty_() {
 				u.pushEnabled = it.audit !== "通過" ? "否" : it.pushEnabled;
 				u.personalStatusEnabled = it.personalStatusEnabled;
 				u.scheduleEnabled = it.scheduleEnabled;
+				u.performanceEnabled = it.performanceEnabled;
 
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
@@ -584,6 +616,7 @@ function snapshot_(u) {
 		pushEnabled: (u.pushEnabled || "否") === "是" ? "是" : "否",
 		personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
 		scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
+		performanceEnabled: (u.performanceEnabled || "否") === "是" ? "是" : "否",
 	});
 }
 

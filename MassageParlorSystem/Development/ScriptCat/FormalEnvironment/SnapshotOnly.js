@@ -1,23 +1,23 @@
 // ==UserScript==
-// @name         FE Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr)
-// @namespace    http://scriptcat.org/
-// @version      1.84
-// @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）
+// @name         DSFE Body+Foot Snapshot ONLY (Queue + InFlight + Exponential Backoff, GM_xhr) - FULL DEBUG
+// @namespace    DSFE http://scriptcat.org/
+// @version      1.83
+// @description  身體/腳底 snapshot_v1：change-only + 單一佇列 + in-flight 防重送 + ACK 才 commit + 指數退避重試；只用 GM_xmlhttpRequest（可驗證回應）+ 加強偵測/除錯
 // @match        http://yspos.youngsong.com.tw/*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigSnapshotFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironment/gas-snapshot-config-fed.json
+// @resource     gasConfigSnapshotDSFE https://yongshengchen0615.github.io/MassageParlorSystem/Development/ScriptCat/FormalEnvironment/gas-snapshot-config-DSFE.json
 // ==/UserScript==
 
 (function () {
   "use strict";
 
   /* =========================
-   * 0) Config------
+   * 0) Config
    * ========================= */
-  const GAS_RESOURCE = "gasConfigSnapshotFED";
+  const GAS_RESOURCE = "gasConfigSnapshotDSFE";
 
   const DEFAULT_CFG = {
     GAS_URL: ""
@@ -43,13 +43,24 @@
   const BACKOFF_JITTER_MS = 250;      // 抖動避免同時重送
 
   // LOG_MODE: "full" | "group" | "off"
-  const LOG_MODE = "group";
+  // - full: console.log 全量
+  // - group: groupCollapsed
+  // - off: 幾乎不印（但仍會印重大 error）
+  const LOG_MODE = "off";
 
   // 正式開關
   const ENABLE_SNAPSHOT = true;
 
   applyConfigOverrides();
   console.log("[SnapshotQ] 🟢 start (Queue + InFlight + Backoff)");
+  console.log("[SnapshotQ] CFG =", CFG);
+
+  if (!CFG.GAS_URL) {
+    console.warn(
+      "[SnapshotQ] ⚠️ CFG.GAS_URL is empty. Will keep scanning DOM and logging, but will NOT send network requests.\n" +
+      "Check @resource JSON is valid and contains: {\"GAS_URL\":\"https://script.google.com/macros/s/.../exec\"}"
+    );
+  }
 
   /* =========================
    * 1) Utils
@@ -83,9 +94,6 @@
   }
   function randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
-  }
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
   }
   function logGroup(title, obj) {
     if (LOG_MODE === "off") return;
@@ -172,9 +180,8 @@
 
   function scanPanel(panelEl) {
     if (!panelEl) return [];
-    const rows = panelEl.querySelectorAll(
-      ".flex.justify-center.items-center.flex-1.border-b.border-gray-400"
-    );
+    // ✅ 放寬：不要綁死 border-gray-400
+    const rows = panelEl.querySelectorAll(".flex.justify-center.items-center.flex-1.border-b");
     const list = [];
     rows.forEach((row) => {
       const r = parseRow(row);
@@ -263,28 +270,16 @@
   /* =========================
    * 4) Queue + InFlight + Backoff state
    * ========================= */
-
-  // 已 ACK 的最新 hash（代表後端確實收到了）
   let lastAckHash = "";
-
-  // 最後一次 ACK 成功時間（控制 MIN_SEND_GAP）
   let lastAckMs = 0;
-
-  // 心跳：避免長時間 unchanged 卡死（或後端被重置）
   let lastHeartbeatMs = 0;
-
-  // in-flight
   let inFlight = false;
 
-  // 單一佇列：只保留「最新的一筆」(latest-wins)
-  // job = { hash, payload, meta:{ts, bodyCount, footCount}, attempt, nextTryMs }
-  let queuedJob = null;
-
-  // 如果在 inFlight 時又偵測到變更，先暫存「最新 hash」避免重複 enqueue
+  // latest-wins single queue
+  let queuedJob = null; // { hash, payload, meta, attempt, nextTryMs }
   let latestSeenHash = "";
 
   function computeBackoffMs(attempt) {
-    // attempt: 1,2,3...
     const exp = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * Math.pow(2, attempt - 1));
     const jitter = randInt(0, BACKOFF_JITTER_MS);
     return Math.min(BACKOFF_MAX_MS, exp + jitter);
@@ -293,18 +288,14 @@
   function canSendNow() {
     const nowMs = Date.now();
     if (inFlight) return false;
-    // 節流：以 ACK 成功為基準
     if (nowMs - lastAckMs < MIN_SEND_GAP_MS) return false;
-    // 若有 nextTryMs（退避）也要尊重
     if (queuedJob && queuedJob.nextTryMs && nowMs < queuedJob.nextTryMs) return false;
     return true;
   }
 
   function enqueueLatest(payload, hash, meta) {
-    // 如果這筆已經 ACK 過，就不用排
     if (hash && hash === lastAckHash) return;
 
-    // latest-wins：永遠用最新 hash 覆蓋舊 job
     const nowMs = Date.now();
     const base = queuedJob && queuedJob.hash === hash ? queuedJob : null;
 
@@ -313,20 +304,19 @@
       payload,
       meta,
       attempt: base ? base.attempt : 0,
-      nextTryMs: base ? base.nextTryMs : nowMs, // 預設可立刻嘗試（但仍受 canSendNow）
+      nextTryMs: base ? base.nextTryMs : nowMs,
     };
   }
 
   async function pumpQueue(reason) {
     try {
-      if (!ENABLE_SNAPSHOT || !CFG.GAS_URL) return;
+      if (!ENABLE_SNAPSHOT) return;
+      if (!CFG.GAS_URL) return;          // ✅ 沒 URL 不送
       if (!queuedJob) return;
       if (!canSendNow()) return;
 
-      // 取 job
       const job = queuedJob;
 
-      // 若 job hash 已經被 ACK（極端競態）直接丟掉
       if (job.hash === lastAckHash) {
         queuedJob = null;
         return;
@@ -335,48 +325,37 @@
       inFlight = true;
 
       const title = `[SnapshotQ] 📤 send ${reason || ""} attempt=${job.attempt + 1} hash=${job.hash} body=${job.meta.bodyCount} foot=${job.meta.footCount} ts=${job.meta.ts}`;
-
-      // 送前 log（可關）
       logGroup(title, { meta: job.meta, queued: true });
 
       try {
         const res = await postJsonGMWithAck(CFG.GAS_URL, job.payload);
 
-        // ✅ ACK 成功
         lastAckHash = job.hash;
         lastAckMs = Date.now();
         inFlight = false;
 
-        // 只有在 queuedJob 仍是同一筆 hash 時才清掉（避免 inFlight 期間被新 hash 覆蓋）
         if (queuedJob && queuedJob.hash === job.hash) queuedJob = null;
 
         logGroup(`[SnapshotQ] ✅ ACK hash=${job.hash}`, res);
 
-        // ACK 後立刻再 pump：如果在飛行中已產生新 job，可接著送（仍受 MIN_SEND_GAP 控制）
         pumpQueue("post-ack");
       } catch (err) {
         inFlight = false;
 
-        // 決策：哪些錯誤要退避重試？
-        // - LOCK_TIMEOUT / TIMEOUT / NETWORK_ERROR：重試
-        // - Unknown mode / NO_POST_DATA 這種程式錯：不重試（但你的後端是固定 snapshot_v1，正常不會）
         const errMsg = (err && (err.error || err.code)) || "UNKNOWN_ERR";
-        const shouldRetry = true; // snapshot 通常都應該重試（最新狀態）
+        const shouldRetry = true;
 
         if (!queuedJob || queuedJob.hash !== job.hash) {
-          // 已被新 hash 覆蓋，這筆失敗不用管
           console.warn("[SnapshotQ] ⚠️ failed but superseded by newer job:", err);
           return;
         }
 
         if (!shouldRetry) {
           console.error("[SnapshotQ] ❌ non-retryable:", err);
-          // 丟棄這筆，避免卡死
           queuedJob = null;
           return;
         }
 
-        // 退避重試（attempt+1）
         queuedJob.attempt = (queuedJob.attempt || 0) + 1;
         const backoff = computeBackoffMs(queuedJob.attempt);
         queuedJob.nextTryMs = Date.now() + backoff;
@@ -386,7 +365,6 @@
           err
         );
 
-        // 安排下一次 pump（不靠 tick 也會跑）
         setTimeout(() => pumpQueue("backoff"), backoff + 5);
       }
     } catch (e) {
@@ -396,11 +374,11 @@
   }
 
   /* =========================
-   * 5) tick: scan -> change-only -> enqueue latest -> pump
+   * 5) tick: scan -> change-only -> enqueue -> pump
    * ========================= */
   function tick() {
     try {
-      if (!ENABLE_SNAPSHOT || !CFG.GAS_URL) return;
+      if (!ENABLE_SNAPSHOT) return;
 
       const ts = nowIso();
       const bodyPanel = findBodyPanel();
@@ -409,6 +387,16 @@
       const bodyRowsRaw = scanPanel(bodyPanel);
       const footRowsRaw = scanPanel(footPanel);
 
+      // ✅ 無論能不能送，都先印掃描狀態（解決你現在「沒偵測」的黑盒問題）
+      if (LOG_MODE !== "off") {
+        console.log(
+          `[SnapshotQ] scan ts=${ts} GAS_URL=${CFG.GAS_URL ? "OK" : "EMPTY"} bodyPanel=${!!bodyPanel} footPanel=${!!footPanel} bodyRows=${bodyRowsRaw.length} footRows=${footRowsRaw.length}`
+        );
+      }
+
+      // ✅ 沒 URL：只掃不送
+      if (!CFG.GAS_URL) return;
+
       const bodyStable = stableRowsForHash(bodyRowsRaw);
       const footStable = stableRowsForHash(footRowsRaw);
 
@@ -416,8 +404,6 @@
       latestSeenHash = snapshotHash;
 
       const nowMs = Date.now();
-
-      // 心跳：長時間 unchanged 也要送一次（避免卡死/後端重置）
       const heartbeatDue = nowMs - lastHeartbeatMs >= HEARTBEAT_MS;
 
       const changedSinceAck = snapshotHash !== lastAckHash;
@@ -446,7 +432,6 @@
         pumpQueue(heartbeatDue && !changedSinceAck ? "heartbeat" : "changed");
       } else {
         if (LOG_MODE !== "off") console.log(`[SnapshotQ] ⏸ unchanged (${ts})`);
-        // 即使沒變更，也嘗試 pump（可能有 backoff 到期）
         pumpQueue("unchanged");
       }
     } catch (e) {
@@ -455,24 +440,20 @@
   }
 
   /* =========================
-   * 6) lifecycle hooks
+   * 6) lifecycle
    * ========================= */
   function start() {
     console.log("[SnapshotQ] ▶️ start loop", INTERVAL_MS, "ms");
     tick();
     setInterval(tick, INTERVAL_MS);
 
-    // 回前景：立刻掃 + pump
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
-        try {
-          tick();
-        } catch (e) {}
+        try { tick(); } catch (_) {}
         pumpQueue("visibility");
       }
     });
 
-    // 離開頁面：嘗試最後 pump（注意：GM 不保證 beforeunload 內能完成，但至少會觸發一次）
     window.addEventListener("pagehide", () => pumpQueue("pagehide"));
     window.addEventListener("beforeunload", () => pumpQueue("beforeunload"));
   }

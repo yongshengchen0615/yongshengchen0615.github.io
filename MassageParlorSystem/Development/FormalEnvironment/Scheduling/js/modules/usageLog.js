@@ -3,13 +3,23 @@
  *
  * 使用頻率紀錄（可選）：
  * - 透過 config.USAGE_LOG_URL 指向一個 GAS Web App
- * - 預設只在「授權通過後」送出一次 app_open
- * - 內建節流：同一 userId 在一定時間內只送一次（避免重整/回前景狂打）
+ * - 事件以 GET query string 方式送出（mode=log&event=...）
+ * - 內建節流：同一 userId + event 在一定時間內只送一次（避免重整/回前景狂打）
  */
 
 import { config } from "./config.js";
 
 const LS_KEY_PREFIX = "usageLog:lastSent:";
+
+function getFallbackUserFromWindow() {
+  try {
+    const uid = String(window.currentUserId || "").trim();
+    const name = String(window.currentDisplayName || "").trim();
+    return { userId: uid, displayName: name };
+  } catch {
+    return { userId: "", displayName: "" };
+  }
+}
 
 function nowMs() {
   return Date.now();
@@ -68,32 +78,57 @@ async function fireAndForgetGet(url) {
  * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>} 送出結果；skipped 表示被略過。
  */
 export async function logAppOpen({ userId, displayName } = {}) {
+  return await logUsageEvent({ event: "app_open", userId, displayName });
+}
+
+/**
+ * 記錄一次 usage event。
+ * - 只有在 config.USAGE_LOG_URL 有填時才會送
+ * - 同一 userId + event 會依 config.USAGE_LOG_MIN_INTERVAL_MS 節流
+ *
+ * @param {Object} args
+ * @param {string} args.event 事件名稱（必填）
+ * @param {string} [args.userId] 使用者唯一 ID（通常是 LIFF userId）；空值會略過不送。
+ * @param {string} [args.displayName] 顯示名稱（可選）
+ * @param {string} [args.detail] 事件附加資訊（可選）
+ * @param {boolean} [args.noThrottle] 是否略過節流（預設 false）；適合 UI 切換等高頻事件。
+ * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>}
+ */
+export async function logUsageEvent({ event, userId, displayName, detail, noThrottle } = {}) {
   const base = String(config.USAGE_LOG_URL || "").trim();
   if (!base) return { ok: false, skipped: true, reason: "NO_URL" };
 
-  const uid = String(userId || "").trim();
+  const ev = String(event || "").trim();
+  if (!ev) return { ok: false, skipped: true, reason: "NO_EVENT" };
+
+  const fallback = getFallbackUserFromWindow();
+  const uid = String(userId || fallback.userId || "").trim();
   if (!uid) return { ok: false, skipped: true, reason: "NO_USER" };
 
-  const minIntervalMs = Number(config.USAGE_LOG_MIN_INTERVAL_MS) || 0;
-  const key = LS_KEY_PREFIX + uid;
-  const last = safeReadNumberLS(key);
+  const name = String(displayName || fallback.displayName || "").trim();
   const t = nowMs();
 
-  if (last && minIntervalMs > 0 && t - last < minIntervalMs) {
-    return { ok: false, skipped: true, reason: "THROTTLED" };
-  }
+  const skipThrottle = noThrottle === true;
+  if (!skipThrottle) {
+    const minIntervalMs = Number(config.USAGE_LOG_MIN_INTERVAL_MS) || 0;
+    const key = LS_KEY_PREFIX + uid + ":" + ev;
+    const last = safeReadNumberLS(key);
+    if (last && minIntervalMs > 0 && t - last < minIntervalMs) {
+      return { ok: false, skipped: true, reason: "THROTTLED" };
+    }
 
-  // 先寫入，避免短時間內重入重送
-  safeWriteNumberLS(key, t);
+    safeWriteNumberLS(key, t);
+  }
 
   const url = buildUrl(base, {
     mode: "log",
-    event: "app_open",
+    event: ev,
     userId: uid,
-    name: String(displayName || "").trim(),
+    name,
     ts: String(t),
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     href: location.href,
+    detail: String(detail || "").trim(),
   });
 
   if (!url) return { ok: false, skipped: true, reason: "BAD_URL" };

@@ -1,9 +1,0 @@
-{
-  "_comment": "Users 後台設定檔（標準 JSON）。禁止 // 或 /* */ 註解，改用 _comment 欄位。",
-
-  "_comment_api": "GAS Web App /exec 位址，前端所有 Users API 由此進入",
-  "API_BASE_URL": "https://script.google.com/macros/s/AKfycbxciJzh9cRdjdxqQ-iq_mx-bCsETzyasBBKkzGmibkVG_bc4pjASwrR0Kxmo037Xg7Z/exec",
-
-  "_comment_view": "預設欄位分頁：all / usage / master / features（localStorage users_view 會優先）",
-  "DEFAULT_VIEW": "usage"
-}

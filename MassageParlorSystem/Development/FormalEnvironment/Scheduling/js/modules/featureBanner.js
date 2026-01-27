@@ -1,13 +1,15 @@
 /**
  * featureBanner.js
  *
- * 功能開通提示列（固定顯示三項 chip）：
+ * 功能開通提示列（固定顯示 chip）：
  * - 叫班提醒
  * - 個人狀態
  * - 排班表
+ * - 業績
  */
 
 import { state } from "./state.js";
+import { setPersonalToolsEnabled } from "./personalTools.js";
 
 function normalizeYesNo(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
@@ -27,10 +29,14 @@ function renderFeatureBanner() {
   const push = normalizeYesNo(state.feature.pushEnabled);
   const personal = normalizeYesNo(state.feature.personalStatusEnabled);
   const schedule = normalizeYesNo(state.feature.scheduleEnabled);
+    const performance = normalizeYesNo(state.feature.performanceEnabled);
 
-  chipsEl.innerHTML = [buildChip("叫班提醒", push), buildChip("個人狀態", personal), buildChip("排班表", schedule)].join(
-    ""
-  );
+    chipsEl.innerHTML = [
+      buildChip("叫班提醒", push),
+      buildChip("排班表", schedule),
+      buildChip("個人狀態", personal),
+      buildChip("業績", performance),
+    ].join("");
 }
 
 /**
@@ -42,5 +48,12 @@ export function updateFeatureState(data) {
   state.feature.pushEnabled = normalizeYesNo(data && data.pushEnabled);
   state.feature.personalStatusEnabled = normalizeYesNo(data && data.personalStatusEnabled);
   state.feature.scheduleEnabled = normalizeYesNo(data && data.scheduleEnabled);
+  state.feature.performanceEnabled = normalizeYesNo(data && data.performanceEnabled);
   renderFeatureBanner();
+  // 同步顯示/隱藏個人工具按鈕
+  try {
+    setPersonalToolsEnabled(state.feature.personalStatusEnabled === "是");
+  } catch (e) {
+    // ignore
+  }
 }

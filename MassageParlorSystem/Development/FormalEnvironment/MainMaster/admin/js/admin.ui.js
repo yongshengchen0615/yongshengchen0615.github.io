@@ -93,7 +93,7 @@ function toggleTheme_() {
 function ynCell_(field, value, label) {
   const v = normalizeYesNo_(value);
   return `
-    <td data-label="${escapeHtml(label || field)}">
+    <td data-label="${escapeHtml(label || field)}" class="yn-cell">
       <button type="button" class="yn-toggle" data-field="${field}" data-val="${v}" aria-label="${field}">
         ${v}
       </button>
@@ -110,7 +110,7 @@ function render_() {
   const tbody = $("#tbody");
   if (!tbody) return;
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="18">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="19">無資料</td></tr>`;
     return;
   }
 
@@ -149,6 +149,7 @@ function render_() {
           ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
           ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
           ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
+          ${ynCell_("techPerformanceEnabled", a.techPerformanceEnabled, "技師業績開通")}
 
           <td class="sticky-right" data-label="操作">
             <div class="actions">
@@ -182,12 +183,16 @@ function maybeUpdateStats_() {
   let approved = 0;
   let pending = 0;
   let rejected = 0;
+  let disabled = 0;
+  let maintenance = 0;
 
   for (const a of allAdmins) {
     const audit = normalizeAudit_(a.audit);
     if (audit === "通過") approved += 1;
     else if (audit === "待審核") pending += 1;
     else if (audit === "拒絕") rejected += 1;
+    else if (audit === "停用") disabled += 1;
+    else if (audit === "系統維護") maintenance += 1;
   }
 
   statsCache = {
@@ -195,6 +200,8 @@ function maybeUpdateStats_() {
     approved,
     pending,
     rejected,
+    disabled,
+    maintenance,
   };
   statsDirty = false;
 
@@ -202,10 +209,19 @@ function maybeUpdateStats_() {
   setText_("kpiApproved", statsCache.approved);
   setText_("kpiPending", statsCache.pending);
   setText_("kpiRejected", statsCache.rejected);
+  setText_("kpiDisabled", statsCache.disabled);
+  setText_("kpiMaintenance", statsCache.maintenance);
 
   const s = $("#summaryText");
   if (s)
-    s.textContent = `總筆數：${statsCache.total}（通過 ${statsCache.approved} / 待審核 ${statsCache.pending} / 拒絕 ${statsCache.rejected}）`;
+    s.textContent =
+      `總筆數：${statsCache.total}（` +
+      `通過 ${statsCache.approved} / ` +
+      `待審核 ${statsCache.pending} / ` +
+      `拒絕 ${statsCache.rejected} / ` +
+      `停用 ${statsCache.disabled} / ` +
+      `系統維護 ${statsCache.maintenance}` +
+      `）`;
 }
 
 /* =========================

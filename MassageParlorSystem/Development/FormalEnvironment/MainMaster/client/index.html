@@ -11,6 +11,18 @@
 </head>
 <body>
 
+<!-- 初始資料載入遮罩：首批資料準備好前顯示 -->
+<div id="initialLoading" class="initial-loading initial-loading-hidden">
+  <div class="initial-loading-inner" role="status" aria-live="polite">
+    <div class="spinner-lg" aria-hidden="true"></div>
+    <p id="initialLoadingText" class="initial-loading-text">資料載入中…</p>
+    <div class="initial-loading-progress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="initialLoadingBar" class="initial-loading-progress-bar" style="width:0%"></div>
+    </div>
+    <div id="initialLoadingPercent" class="initial-loading-percent">0%</div>
+  </div>
+</div>
+
 <!-- ✅ 管理員門禁 Gate：未通過前會遮住整個頁面 -->
 <div id="authGate" style="
   position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
@@ -160,6 +172,15 @@
           </div>
 
           <div class="bulk-group">
+            <label class="bulk-label" for="bulkPerformanceEnabled">批次業績</label>
+            <select id="bulkPerformanceEnabled" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
             <label class="bulk-label" for="bulkUsageDays">批次期限(天)</label>
             <input id="bulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
           </div>
@@ -190,11 +211,12 @@
               <th data-sort="pushEnabled" class="sortable">是否推播</th>
               <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th>
               <th data-sort="scheduleEnabled" class="sortable">排班表開通</th>
+              <th data-sort="performanceEnabled" class="sortable">業績開通</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="15">載入中...</td></tr>
+            <tr><td colspan="16">載入中...</td></tr>
           </tbody>
         </table>
       </div>
@@ -216,6 +238,7 @@
 <script src="js/07_api.js?v=20260103" defer></script>
 <script src="js/08_push.js?v=20260103" defer></script>
 <script src="js/09_auth.js?v=20260103" defer></script>
+<script src="js/10_usage_log.js?v=20260107" defer></script>
 <script src="js/99_main.js?v=20260103" defer></script>
 </body>
 </html>

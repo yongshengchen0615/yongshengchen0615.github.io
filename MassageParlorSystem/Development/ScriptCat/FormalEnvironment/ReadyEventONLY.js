@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FE Ready Event ONLY + TestPlan (same userId / multi masterIds)
+// @name         DSFE Ready Event ONLY + TestPlan (same userId / multi masterIds)
 // @namespace    http://scriptcat.org/
 // @version      1.85
 // @description  ✅正式：偵測「非準備→準備」立刻送 ready_event_v1；✅TestPlan：可排程幾秒後送幾筆（支援多個 masterId 平均分配→多個 userId）；✅附壓測模組（可關閉）
@@ -8,7 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
 // @connect      script.google.com
-// @resource     gasConfigReadyFED https://yongshengchen0615.github.io/MassageParlorSystem/ScriptCat/FormalEnvironment/gas-ready-config-fed.json
+// @resource     gasConfigReadyDSFE https://yongshengchen0615.github.io/MassageParlorSystem/Development/ScriptCat/FormalEnvironment/gas-ready-config-DSFE.json
 // ==/UserScript==
 
 (function () {
@@ -17,62 +17,63 @@
   // =========================
   // ✅ 1) 你的 GAS Web App 端點（/exec）
   // =========================
-  const GAS_RESOURCE = "gasConfigReadyFED";
+  const GAS_RESOURCE = "gasConfigReadyDSFE";
 
   const DEFAULT_CFG = {
-    GAS_URL: ""
+    GAS_URL: "",
   };
 
   let CFG = { ...DEFAULT_CFG };
 
   // =========================
-  // ✅ 2) 正式掃描設定（定時掃描 DOM）
+  // ✅ 2) 正式掃描設定（定時掃描 DOM）— 最佳化參數
   // =========================
-  const INTERVAL_MS = 500; // 2000ms=2秒
-  const LOG_MODE = "group"; // "full" | "group" | "off"
+  const INTERVAL_MS = 1000; // ✅ 建議 1000ms：更快抓到狀態轉換（降低短抖漏判）
+  const LOG_MODE = "group"; // ✅ 建議 group：方便觀察且不易刷爆（穩定後可改 off）
   const ENABLE_READY_EVENT = true;
-  const READY_EVENT_DEDUP_MS = 2000; // 2000ms=2秒
+  const READY_EVENT_DEDUP_MS = 3500; // ✅ 建議 3500ms：略大於掃描頻率，抗 UI 抖動重送
+
+  // =========================
+  // 🧹 可選：Console 自動清理（避免長跑刷爆 DevTools）
+  // =========================
+  const AUTO_CLEAR_CONSOLE = true; // 上線通常 false；Debug 長跑可 true
+  const CONSOLE_CLEAR_INTERVAL_MS = 5 * 60 * 1000; // 5 分鐘
 
   applyConfigOverrides();
-  console.log("[ReadyOnly] 🟢 start (GM_xmlhttpRequest mode)");
+  console.log("[ReadyOnly] start (GM_xmlhttpRequest mode)");
 
   // =========================
-  // ✅ 3) TestPlan：測試排程（支援多個 masterId 平均分配）
+  // ✅ 3) TestPlan：測試排程（支援多個 masterId 平均分配）— 最佳化參數
   // =========================
-  // 用途：你可以設定「幾秒後開始」+「送幾筆」+「每筆間隔」
-  //      並用 fixedMasterIds 設定多個 techNo，測試人數會平均分配到這些 masterId 上
-  // 前提：GAS 端是用 masterId/techNo 去 Users 表找到 userId
   const TEST_PLAN = {
     enabled: false,
     autorun: false,
 
     // ✅ 多個 masterId 平均分配（Round-robin）
-    // 例：count=12 時，大約 10/08/12 各 4 筆
     fixedMasterIds: ["10"],
 
-    // ✅ 也支援權重（可選）
-    // fixedMasterIds: [{ id: "10", w: 3 }, { id: "08", w: 1 }],
-
+    // ✅ 建議：分段注入 + 700~900ms 間隔（更接近真實、降低 429）
     list: [
-      { name: "batch-1", afterSec: 3, count: 10, gapMs: 800, panel: "body" },
-      { name: "batch-2", afterSec: 6, count: 2, gapMs: 800, panel: "body" },
+      { name: "batch-1", afterSec: 3, count: 12, gapMs: 700, panel: "body" },
+      { name: "batch-2", afterSec: 10, count: 8, gapMs: 700, panel: "body" },
+      { name: "batch-3", afterSec: 20, count: 6, gapMs: 900, panel: "foot" },
     ],
 
-    timeoutMs: 45000,
+    timeoutMs: 20000,
   };
 
   // =========================
-  // ✅ 4) 壓力測試設定（保留）
+  // ✅ 4) 壓力測試設定（保留）— 最佳化參數
   // =========================
   const STRESS = {
     enabled: false,
     autorun: false,
     delayMs: 1500,
-    count: 30,
+    count: 60, // ✅ 建議 60：較能測出排隊/退避穩態
     panel: "body",
-    burst: false,
-    gapMs: 120,
-    timeoutMs: 45000,
+    burst: false, // ✅ 建議 false：測穩態吞吐，不做瞬間爆破
+    gapMs: 200, // ✅ 建議 180~250；此處取 200
+    timeoutMs: 20000,
     masterPrefix: "T",
   };
 
@@ -203,7 +204,7 @@
   // =========================
   // ✅ 9) 送出：GM_xmlhttpRequest
   // =========================
-  const DEFAULT_TIMEOUT_MS = 8000;
+  const DEFAULT_TIMEOUT_MS = 12000; // ✅ 建議 12000：降低 GAS 偶發延遲造成 timeout 誤判
 
   function postJsonGM(url, payload, timeoutMs) {
     if (!url) return;
@@ -218,21 +219,21 @@
         onload: function (res) {
           if (LOG_MODE === "full") {
             const txt = (res.responseText || "").replace(/\s+/g, " ").slice(0, 200);
-            console.log("[ReadyOnly] ✅", res.status, "resp:", txt);
+            console.log("[ReadyOnly] ok", res.status, "resp:", txt);
           }
         },
         onerror: function (err) {
-          console.error("[ReadyOnly] ❌ GM POST failed:", err);
+          console.error("[ReadyOnly] GM POST failed:", err);
         },
         ontimeout: function () {
           console.error(
-            "[ReadyOnly] ❌ GM POST timeout",
+            "[ReadyOnly] GM POST timeout",
             "(timeout_ms=" + (timeoutMs || DEFAULT_TIMEOUT_MS) + ")"
           );
         },
       });
     } catch (e) {
-      console.error("[ReadyOnly] ❌ GM exception:", e);
+      console.error("[ReadyOnly] GM exception:", e);
     }
   }
 
@@ -251,14 +252,14 @@
 
         if (LOG_MODE !== "off") {
           console.warn(
-            `[ReadyOnly] ⚠️ sendBeacon failed${tag ? " (" + tag + ")" : ""} → fallback GM`
+            `[ReadyOnly] sendBeacon failed${tag ? " (" + tag + ")" : ""} -> fallback GM`
           );
         }
       }
     } catch (e) {
       if (LOG_MODE !== "off") {
         console.warn(
-          `[ReadyOnly] ⚠️ sendBeacon error${tag ? " (" + tag + ")" : ""} → fallback GM`,
+          `[ReadyOnly] sendBeacon error${tag ? " (" + tag + ")" : ""} -> fallback GM`,
           e
         );
       }
@@ -315,11 +316,11 @@
           remaining: row.remaining ?? "",
           bgStatus: row.bgStatus ?? "",
           colorStatus: row.colorStatus ?? "",
-          source: "prod", // ✅建議明確標記正式
+          source: "prod",
         };
 
         postBeaconFirst(CFG.GAS_URL, evt, "ready_event", DEFAULT_TIMEOUT_MS);
-        logGroup(`[ReadyOnly] ⚡ ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
+        logGroup(`[ReadyOnly] ready_event ${payloadTs} ${panel} master=${masterId}`, evt);
       }
     }
 
@@ -340,7 +341,7 @@
       bodyRows.forEach((r) => maybeSendReadyEvent("body", r, ts));
       footRows.forEach((r) => maybeSendReadyEvent("foot", r, ts));
     } catch (e) {
-      console.error("[ReadyOnly] 🔥 tick error:", e);
+      console.error("[ReadyOnly] tick error:", e);
     }
   }
 
@@ -395,20 +396,20 @@
     };
 
     if (!evt.masterId) {
-      console.error("[TestPlan] ❌ missing masterId (請設定 TEST_PLAN.fixedMasterIds)");
+      console.error("[TestPlan] missing masterId (請設定 TEST_PLAN.fixedMasterIds)");
       return;
     }
 
     if (LOG_MODE !== "off")
       console.log(
-        `[TestPlan] ▶ send job=${jobName} seq=${seq} masterId=${evt.masterId} ts=${ts}`
+        `[TestPlan] send job=${jobName} seq=${seq} masterId=${evt.masterId} ts=${ts}`
       );
 
     postJsonGM(CFG.GAS_URL, evt, TEST_PLAN.timeoutMs || 45000);
   }
 
   function runTestPlan() {
-    if (!CFG.GAS_URL) return console.error("[TestPlan] ❌ missing GAS_URL");
+    if (!CFG.GAS_URL) return console.error("[TestPlan] missing GAS_URL");
     if (!TEST_PLAN.enabled) return console.warn("[TestPlan] TEST_PLAN.enabled=false");
     if (!Array.isArray(TEST_PLAN.list) || TEST_PLAN.list.length === 0)
       return console.warn("[TestPlan] list is empty");
@@ -425,13 +426,13 @@
 
     if (!pool.length) {
       console.error(
-        "[TestPlan] ❌ TEST_PLAN.fixedMasterIds is empty（請設定多個 masterId，例如 ['10','08']）"
+        "[TestPlan] TEST_PLAN.fixedMasterIds is empty（請設定多個 masterId，例如 ['10','08']）"
       );
       return;
     }
 
     console.log(
-      `[TestPlan] 🚀 start: masterIdPool=${JSON.stringify(pool)}, jobs=${TEST_PLAN.list.length}`
+      `[TestPlan] start: masterIdPool=${JSON.stringify(pool)}, jobs=${TEST_PLAN.list.length}`
     );
 
     TEST_PLAN.list.forEach((job) => {
@@ -445,7 +446,7 @@
 
       setTimeout(() => {
         console.log(
-          `[TestPlan] ▶ run job=${name} panel=${panel} count=${count} gapMs=${gapMs} afterSec=${afterSec}`
+          `[TestPlan] run job=${name} panel=${panel} count=${count} gapMs=${gapMs} afterSec=${afterSec}`
         );
 
         for (let i = 0; i < count; i++) {
@@ -453,7 +454,7 @@
           const d = gapMs > 0 ? i * gapMs : 0;
 
           setTimeout(() => {
-            const masterId = pickMasterIdForTest_(pool); // ✅平均分配
+            const masterId = pickMasterIdForTest_(pool);
             sendOneTestPlan(name, panel, seq, masterId);
           }, d);
         }
@@ -486,7 +487,7 @@
       source: "stress",
     };
 
-    if (LOG_MODE !== "off") console.log("[Stress] ▶ send", masterId, ts);
+    if (LOG_MODE !== "off") console.log("[Stress] send", masterId, ts);
     postJsonGM(CFG.GAS_URL, evt, STRESS.timeoutMs);
   }
 
@@ -495,7 +496,7 @@
     if (!STRESS.enabled) return console.warn("[Stress] STRESS.enabled=false");
 
     console.log(
-      `[Stress] 🚀 start: count=${STRESS.count}, burst=${STRESS.burst}, gap=${STRESS.gapMs}ms, timeout=${STRESS.timeoutMs}ms, panel=${STRESS.panel}`
+      `[Stress] start: count=${STRESS.count}, burst=${STRESS.burst}, gap=${STRESS.gapMs}ms, timeout=${STRESS.timeoutMs}ms, panel=${STRESS.panel}`
     );
 
     if (STRESS.burst) {
@@ -511,7 +512,17 @@
   // ✅ 14) start：啟動正式掃描 + 掛載測試入口
   // =========================
   function start() {
-    console.log("[ReadyOnly] ▶️ start loop", INTERVAL_MS, "ms");
+    console.log("[ReadyOnly] start loop", INTERVAL_MS, "ms");
+
+    // 可選：定時清空 console（避免長跑淹沒）
+    if (AUTO_CLEAR_CONSOLE && typeof console.clear === "function") {
+      setInterval(() => {
+        try {
+          console.clear();
+          console.log("[ReadyOnly] console auto-cleared");
+        } catch {}
+      }, CONSOLE_CLEAR_INTERVAL_MS);
+    }
 
     tick();
     setInterval(tick, INTERVAL_MS);
