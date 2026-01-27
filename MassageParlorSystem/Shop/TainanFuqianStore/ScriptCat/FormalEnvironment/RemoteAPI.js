@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO]
+// @name         FE YSPOS Capture (MASTER_LOGIN + MASTER_COMPLEX + P_DETAIL + P_STATIC) -> GAS + Analyze (sessionKey linked) [FULL REPLACE + DOM TECHNO + MASTER_COMPLEX ANALYZE]
 // @namespace    https://local/
-// @version      4.6
-// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Also forward /api/performance/total/{storeId} (200 JSON) to Analyze GAS to write summary/items tables. Adds tab-scoped sessionKey to link login->later pages. ✅ Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
+// @version      4.7
+// @description  Capture XHR/fetch on 4 pages (#/master-login, #/master?listStatus=COMPLEX, #/performance?tab=P_DETAIL, #/performance?tab=P_STATIC). Store to NetworkCapture GAS. Forward perfTotal(200 JSON) to Analyze GAS (PerfTotalSummary/Items). ✅ NEW: Forward master complex list API (200 JSON) to Analyze GAS (MasterComplexLog/Items). Also read TechNo from DOM: <p class="text-C599F48">師傅號碼：<span>10</span></p>
 // @match        https://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -26,6 +26,21 @@
   };
   let CFG = { ...DEFAULT_CFG };
 
+  function stripBom_(s) {
+    const str = String(s == null ? "" : s);
+    return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+  }
+
+  function safeJsonParse(text) {
+    try {
+      const t = stripBom_(text).trim();
+      if (!t) return null;
+      return JSON.parse(t);
+    } catch (_) {
+      return null;
+    }
+  }
+
   function loadJsonOverridesCfg_() {
     try {
       if (typeof GM_getResourceText !== "function") return {};
@@ -34,13 +49,11 @@
       if (!parsed || typeof parsed !== "object") return {};
 
       const out = {};
-
-      // preferred keys
       if (Object.prototype.hasOwnProperty.call(parsed, "GAS_CAPTURE_URL")) out.GAS_CAPTURE_URL = parsed.GAS_CAPTURE_URL;
       if (Object.prototype.hasOwnProperty.call(parsed, "GAS_ANALYZE_URL")) out.GAS_ANALYZE_URL = parsed.GAS_ANALYZE_URL;
       if (Object.prototype.hasOwnProperty.call(parsed, "SHIP_ENABLED")) out.SHIP_ENABLED = !!parsed.SHIP_ENABLED;
 
-      // legacy compatibility keys
+      // legacy keys
       if (Object.prototype.hasOwnProperty.call(parsed, "GAS_ENDPOINT") && !out.GAS_CAPTURE_URL) out.GAS_CAPTURE_URL = parsed.GAS_ENDPOINT;
       if (Object.prototype.hasOwnProperty.call(parsed, "GAS_URL") && !out.GAS_CAPTURE_URL) out.GAS_CAPTURE_URL = parsed.GAS_URL;
 
@@ -64,11 +77,9 @@
   function applyConfigOverrides_() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverridesCfg_() };
 
-    // normalize
     CFG.GAS_CAPTURE_URL = String(CFG.GAS_CAPTURE_URL || "").trim();
     CFG.GAS_ANALYZE_URL = String(CFG.GAS_ANALYZE_URL || "").trim();
 
-    // allowlist
     if (CFG.GAS_CAPTURE_URL && !isAllowedGASUrl_(CFG.GAS_CAPTURE_URL)) {
       console.warn("[YS_CAPTURE] ⚠️ GAS_CAPTURE_URL is not allowlisted. Blocked:", CFG.GAS_CAPTURE_URL);
       CFG.GAS_CAPTURE_URL = "";
@@ -85,30 +96,19 @@
    * 1) Capture Rules
    *****************************************************************/
   const CAPTURE_RULES = {
-    // ✅ 只抓 /api/
     urlSubstringsAny: ["/api/"],
-
-    // 非 JSON 是否允許（建議 false）
     allowNonJson: false,
 
-    // 佇列與送出節流
     maxQueuePerFlush: 8,
     flushIntervalMs: 1200,
 
-    // response 截斷（非 JSON 時使用）
     maxTextLen: 12000,
-
-    // 脫敏（headers）
     redactSensitiveHeaders: true,
 
-    // ✅ SENT_HASH 上限（避免無限增長）
     sentHashMax: 3000,
-
-    // Debug
     verbose: true,
   };
 
-  // ✅ 分析轉送開關
   const ENABLE_ANALYZE = true;
 
   /*****************************************************************
@@ -116,17 +116,10 @@
    *****************************************************************/
   function isTargetPage() {
     const h = String(location.hash || "");
-
-    // 0) Master login
     const isMasterLogin = h === "#/master-login" || h.startsWith("#/master-login?");
-
-    // 1) Master complex list
     const isMasterComplex = h.startsWith("#/master") && h.includes("listStatus=COMPLEX");
-
-    // 2) Performance P_DETAIL / P_STATIC
     const isPerfDetail = h.startsWith("#/performance") && h.includes("tab=P_DETAIL");
     const isPerfStatic = h.startsWith("#/performance") && h.includes("tab=P_STATIC");
-
     return isMasterLogin || isMasterComplex || isPerfDetail || isPerfStatic;
   }
 
@@ -159,7 +152,6 @@
       ACTIVE = true;
       log("[YS_CAPTURE] START on", location.href, "hash=", location.hash);
 
-      // ✅ 新增：開始監聽 DOM 師傅號碼（SPA 切頁也能抓到）
       if (!TECHNO_OBSERVER_STARTED) {
         TECHNO_OBSERVER_STARTED = true;
         startTechNoObserver_();
@@ -178,7 +170,6 @@
     }
   }
 
-  // SPA-safe：hashchange + 輪詢保險
   window.addEventListener("hashchange", startIfNeeded, true);
   setInterval(startIfNeeded, 600);
   startIfNeeded();
@@ -186,28 +177,12 @@
   /*****************************************************************
    * 3) Utilities
    *****************************************************************/
-  function stripBom_(s) {
-    const str = String(s == null ? "" : s);
-    return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
-  }
-
-  function safeJsonParse(text) {
-    try {
-      const t = stripBom_(text).trim();
-      if (!t) return null;
-      return JSON.parse(t);
-    } catch (_) {
-      return null;
-    }
-  }
-
   function truncateText_(s, maxLen) {
     const str = String(s == null ? "" : s);
     if (str.length <= maxLen) return str;
     return str.slice(0, maxLen) + `...<truncated:${str.length - maxLen}>`;
   }
 
-  // ✅ Tab-scoped sessionKey：串起 login -> 後續頁面
   const SESSION_KEY_NAME = "YS_CAPTURE_SESSION_KEY";
   function genSessionKey_() {
     try {
@@ -264,34 +239,27 @@
       const v = readTechNoFromDom_();
       if (v && v !== TECHNO_CACHE) {
         TECHNO_CACHE = v;
-
-        // 同步到 storage（pickTechNo 也會讀）
         try {
           sessionStorage.setItem("techNo", TECHNO_CACHE);
           localStorage.setItem("techNo", TECHNO_CACHE);
         } catch (_) {}
-
         log("[YS_CAPTURE] TECHNO_CACHE updated from DOM =>", TECHNO_CACHE);
       }
     };
 
-    // 第一次嘗試
     try {
       refresh();
     } catch (_) {}
 
-    // MutationObserver：監控整頁
     try {
       const mo = new MutationObserver(() => refresh());
       mo.observe(document.documentElement, { childList: true, subtree: true });
     } catch (_) {
-      // fallback：低頻輪詢
       setInterval(refresh, 1200);
     }
   }
 
   function pickTechNo() {
-    // 1) query/hash
     const qs = new URLSearchParams(location.search);
     if (qs.get("techNo")) return qs.get("techNo");
 
@@ -299,10 +267,8 @@
     const m = h.match(/techNo=([0-9A-Za-z_-]+)/);
     if (m) return m[1];
 
-    // 2) DOM cache
     if (TECHNO_CACHE) return TECHNO_CACHE;
 
-    // 3) storage
     return sessionStorage.getItem("techNo") || localStorage.getItem("techNo") || "";
   }
 
@@ -312,7 +278,6 @@
       const host = u.hostname.toLowerCase();
       return host === "script.google.com" || host === "script.googleusercontent.com";
     } catch (_) {
-      // fallback: keep legacy behavior for odd/relative URLs
       const s = String(url || "");
       return s.includes("script.google.com") || s.includes("script.googleusercontent.com");
     }
@@ -321,11 +286,7 @@
   function urlMatches(url) {
     const u = String(url || "");
     if (!u) return false;
-
-    // 避免回捲：不抓送往 GAS 的請求
     if (isGoogleScriptHost_(u)) return false;
-
-    // 只抓 /api/
     return CAPTURE_RULES.urlSubstringsAny.some((s) => u.includes(s));
   }
 
@@ -345,12 +306,7 @@
       url: gasUrl + "?mode=ping&ts=" + Date.now(),
       timeout: 15000,
       onload: (res) =>
-        log(
-          `[YS_CAPTURE] ping(${tag}) status=`,
-          res.status,
-          "body=",
-          truncateText_(res.responseText, 200)
-        ),
+        log(`[YS_CAPTURE] ping(${tag}) status=`, res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => warn(`[YS_CAPTURE] ping(${tag}) error`, err),
       ontimeout: () => warn(`[YS_CAPTURE] ping(${tag}) timeout`),
     });
@@ -361,7 +317,6 @@
     try {
       if (!headers) return out;
 
-      // Headers instance
       if (typeof Headers !== "undefined" && headers instanceof Headers) {
         headers.forEach((v, k) => {
           out[String(k).toLowerCase()] = String(v);
@@ -380,15 +335,7 @@
 
     if (!CAPTURE_RULES.redactSensitiveHeaders) return out;
 
-    const SENSITIVE = [
-      "cookie",
-      "authorization",
-      "x-csrf-token",
-      "x-xsrf-token",
-      "csrf-token",
-      "xsrf-token",
-      "x-auth-token",
-    ];
+    const SENSITIVE = ["cookie", "authorization", "x-csrf-token", "x-xsrf-token", "csrf-token", "xsrf-token", "x-auth-token"];
     for (const k of SENSITIVE) {
       if (k in out) out[k] = "<redacted>";
     }
@@ -397,7 +344,6 @@
 
   function normalizeFetchUrl_(input) {
     try {
-      // 支援 Request 物件，避免漏抓
       if (typeof Request !== "undefined" && input instanceof Request) return input.url;
       return String(input || "");
     } catch (_) {
@@ -410,21 +356,16 @@
       if (body == null) return "";
       if (typeof body === "string") return body;
 
-      // URLSearchParams
       if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
         return body.toString();
       }
 
-      // FormData
       if (typeof FormData !== "undefined" && body instanceof FormData) {
         const usp = new URLSearchParams();
-        for (const [k, v] of body.entries()) {
-          usp.append(String(k), String(v));
-        }
+        for (const [k, v] of body.entries()) usp.append(String(k), String(v));
         return usp.toString();
       }
 
-      // Blob/ArrayBuffer/others: can't reliably stringify
       return "";
     } catch (_) {
       return "";
@@ -468,7 +409,6 @@
     if (!ACTIVE) return;
     if (QUEUE.length === 0) return;
 
-    // Guard: if config becomes invalid after start, stop leaking memory.
     if (!CFG.SHIP_ENABLED || !CFG.GAS_CAPTURE_URL) {
       warn("[YS_CAPTURE] capture disabled (missing URL / SHIP_ENABLED=false). Dropping queued items:", QUEUE.length);
       QUEUE.length = 0;
@@ -492,15 +432,7 @@
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify(payload),
       timeout: 30000,
-      onload: (res) =>
-        log(
-          "[YS_CAPTURE] capture sent",
-          batch.length,
-          "status=",
-          res.status,
-          "body=",
-          truncateText_(res.responseText, 200)
-        ),
+      onload: (res) => log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
       onerror: (err) => {
         warn("[YS_CAPTURE] capture send error", err);
         QUEUE.unshift(...batch);
@@ -513,27 +445,66 @@
   }
 
   /*****************************************************************
-   * 5) Analyze Forwarding (perf total)
+   * 5) Analyze Forwarding
+   *    - PerfTotal (existing)
+   *    - ✅ MasterComplex (NEW)
    *****************************************************************/
   function isPerfTotalApi_(url) {
     const u = String(url || "");
     return /\/api\/performance\/total\/\d+/.test(u);
   }
 
-  function extractStoreId_(url) {
+  function extractStoreIdFromPerfTotal_(url) {
     const u = String(url || "");
     const m = u.match(/\/api\/performance\/total\/(\d+)/);
     return m ? m[1] : "";
   }
 
+  // ✅ MasterComplex 判斷：用「可控寬鬆」規則
+  // 你可以依實際 API 再收斂（例如固定 /api/master 或 /api/master/list 等）
+  function isMasterComplexApi_(url) {
+    const u = String(url || "");
+    if (!u.includes("/api/")) return false;
+
+    // 常見 master complex 會出現在 #/master?listStatus=COMPLEX
+    // 所以 API 多半會帶 listStatus=COMPLEX 或 complex 字樣
+    if (u.includes("listStatus=COMPLEX")) return true;
+    if (u.includes("COMPLEX")) return true;
+
+    // 若實際 API 是固定 endpoint（你可自行加強）
+    // if (/\/api\/master\b/.test(u)) return true;
+
+    return false;
+  }
+
+  // ✅ 從 URL path/query 推 storeId（不保證一定有，但有就填）
+  function extractStoreIdFromAny_(url) {
+    try {
+      const u = new URL(String(url || ""), location.origin);
+
+      // 1) query
+      const q = u.searchParams;
+      const qsKeys = ["storeId", "store_id", "sid"];
+      for (const k of qsKeys) {
+        const v = String(q.get(k) || "");
+        if (v && /^\d+$/.test(v)) return v;
+      }
+
+      // 2) path-like digits (最後保險)
+      // 例如 /api/master/complex/3 之類
+      const m = u.pathname.match(/\/(\d+)(?:\/|$)/);
+      if (m && m[1]) return m[1];
+
+      return "";
+    } catch (_) {
+      return "";
+    }
+  }
+
   // ✅ 支援 JSON / x-www-form-urlencoded / querystring / URLSearchParams / FormData
   function extractFromTo_(requestBody, requestUrl) {
-    let from = "",
-      to = "",
-      size = "",
-      number = "";
+    let from = "", to = "", size = "", number = "";
 
-    // 1) body JSON
     try {
       const t = stripBom_(String(requestBody || "")).trim();
       if (t && (t.startsWith("{") || t.startsWith("["))) {
@@ -546,7 +517,6 @@
       }
     } catch (_) {}
 
-    // 2) body urlencoded / querystring
     try {
       const bodyStr = bodyToString_(requestBody) || String(requestBody || "");
       const bs = stripBom_(bodyStr).trim();
@@ -560,7 +530,6 @@
       }
     } catch (_) {}
 
-    // 3) requestUrl query
     try {
       const u = new URL(String(requestUrl || ""), location.origin);
       const usp = u.searchParams;
@@ -574,16 +543,29 @@
     return { from: "", to: "", size: "", number: "" };
   }
 
-  function forwardToAnalyze_(record, recordHash) {
+  function sendAnalyze_(payload, tag) {
     if (!ENABLE_ANALYZE) return;
     if (!CFG.SHIP_ENABLED) return;
     if (!CFG.GAS_ANALYZE_URL || String(CFG.GAS_ANALYZE_URL).includes("PASTE_")) return;
 
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: CFG.GAS_ANALYZE_URL,
+      headers: { "Content-Type": "application/json" },
+      data: JSON.stringify(payload),
+      timeout: 30000,
+      onload: (res) => log(`[ANALYZE:${tag}] status=`, res.status, "body=", truncateText_(res.responseText, 200)),
+      onerror: (err) => warn(`[ANALYZE:${tag}] send error`, err),
+      ontimeout: () => warn(`[ANALYZE:${tag}] send timeout`),
+    });
+  }
+
+  function forwardToAnalyzePerfTotal_(record, recordHash) {
     if (!isPerfTotalApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
 
-    const storeId = extractStoreId_(record.url);
+    const storeId = extractStoreIdFromPerfTotal_(record.url);
     const { from, to, size, number } = extractFromTo_(record.requestBody, record.url);
 
     const payload = {
@@ -605,24 +587,45 @@
       response: record.response,
     };
 
-    GM_xmlhttpRequest({
-      method: "POST",
-      url: CFG.GAS_ANALYZE_URL,
-      headers: { "Content-Type": "application/json" },
-      data: JSON.stringify(payload),
-      timeout: 30000,
-      onload: (res) =>
-        log(
-          "[ANALYZE] sent storeId=",
-          storeId,
-          "status=",
-          res.status,
-          "body=",
-          truncateText_(res.responseText, 200)
-        ),
-      onerror: (err) => warn("[ANALYZE] send error", err),
-      ontimeout: () => warn("[ANALYZE] send timeout"),
-    });
+    sendAnalyze_(payload, `perfTotal storeId=${storeId || "?"}`);
+  }
+
+  // ✅ NEW: MasterComplex -> analyzeMasterComplex_v1
+  function forwardToAnalyzeMasterComplex_(record, recordHash) {
+    if (!isMasterComplexApi_(record.url)) return;
+    if (Number(record.status) !== 200) return;
+    if (!record.response || typeof record.response !== "object") return;
+
+    const storeId = extractStoreIdFromAny_(record.url); // 允許空
+    const payload = {
+      mode: "analyzeMasterComplex_v1",
+      meta: {
+        storeId,
+        page: location.href,
+        hash: location.hash,
+        capturedAt: new Date().toISOString(),
+        recordHash: String(recordHash || ""),
+        requestUrl: String(record.url || ""),
+        techNo: pickTechNo(),
+        sessionKey: getSessionKey_(),
+      },
+      response: record.response,
+    };
+
+    sendAnalyze_(payload, `masterComplex storeId=${storeId || "?"}`);
+  }
+
+  function forwardToAnalyzeAll_(record, recordHash) {
+    try {
+      forwardToAnalyzePerfTotal_(record, recordHash);
+    } catch (e) {
+      warn("[ANALYZE] perfTotal forward failed", e);
+    }
+    try {
+      forwardToAnalyzeMasterComplex_(record, recordHash);
+    } catch (e) {
+      warn("[ANALYZE] masterComplex forward failed", e);
+    }
   }
 
   /*****************************************************************
@@ -660,7 +663,11 @@
         addSentHash_(hash);
         enqueue({ hash, record });
         log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status);
-        forwardToAnalyze_(record, hash);
+
+        // ✅ Analyze forwarding (PerfTotal + MasterComplex)
+        if (json && typeof json === "object") {
+          forwardToAnalyzeAll_(record, hash);
+        }
       }
     } catch (e) {
       warn("[YS_CAPTURE][fetch] hook failed", e);
@@ -703,28 +710,22 @@
             let json = null;
             let respOut = "";
 
-            // ✅ (1) text / ""：用 responseText 解析
             if (rt === "" || rt === "text") {
               const text = xhr.responseText;
               json = safeJsonParse(text);
               if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
-            }
-            // ✅ (2) json：直接讀 xhr.response（很多框架會用這個）
-            else if (rt === "json") {
+            } else if (rt === "json") {
               const r = xhr.response;
               if (r && typeof r === "object") {
                 json = r;
               } else if (r != null) {
-                // 少數情況 responseType=json 但回傳是字串
                 const t = String(r);
                 json = safeJsonParse(t);
                 if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
               } else {
                 respOut = "<null json response>";
               }
-            }
-            // (3) 其他 responseType：保留原行為
-            else {
+            } else {
               respOut = `<non-text responseType:${rt}>`;
             }
 
@@ -746,7 +747,11 @@
               addSentHash_(hash);
               enqueue({ hash, record });
               log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status);
-              forwardToAnalyze_(record, hash);
+
+              // ✅ Analyze forwarding (PerfTotal + MasterComplex)
+              if (json && typeof json === "object") {
+                forwardToAnalyzeAll_(record, hash);
+              }
             }
           } catch (e) {
             warn("[YS_CAPTURE][xhr] parse failed", e);
