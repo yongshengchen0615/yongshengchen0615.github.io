@@ -60,6 +60,6 @@
   "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
   "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。",
 
-  "STALE_DATA_MAX_AGE_MS": 300000,
+  "STALE_DATA_MAX_AGE_MS": 0,
   "_comment_STALE_DATA_MAX_AGE_MS": "（可選）資料超過多久未更新就視為『總系統異常 無法使用功能』（毫秒）。0 或負數=停用。建議 5~30 分鐘。"
 }
