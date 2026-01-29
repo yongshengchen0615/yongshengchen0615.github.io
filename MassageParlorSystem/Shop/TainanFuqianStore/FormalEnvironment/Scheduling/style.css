@@ -54,6 +54,8 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text-main);
+  /* 阻止整個頁面出現水平滾動條，內部可滾動元件仍保留各自 overflow 設定 */
+  overflow-x: hidden;
 }
 
 /* 亮色主題時，背景調整 */
@@ -151,7 +153,34 @@ body {
   background: #ffffff;
 }
 
+/* 父容器上的漸層提示（不隨內部水平滾動移動） */
+.feature-banner {
+  position: relative;
+}
+.feature-banner::before,
+.feature-banner::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  z-index: 3;
+}
+.feature-banner::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg) 0%, rgba(0,0,0,0) 60%);
+}
+
 .feature-title {
+  color: var(--text-sub);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 把左側漸層綁在標題右側，確保漸層從「功能：」右邊開始 */
+.feature-title {
+  /* 保留基本文字樣式，已移除左側漸層覆蓋 */
   color: var(--text-sub);
   font-size: 12px;
   white-space: nowrap;
@@ -167,19 +196,27 @@ body {
   /* 在 flex container 裡允許正確溢出 */
   flex: 1 1 auto;
   min-width: 0;
+  /* 確保 chips 在漸層下方，且不受 z-index 遮蔽互動 */
+  position: relative;
+  z-index: 1;
 }
 
-/* 美化水平滾動條（WebKit） */
+/* 左右漸層提示（提示可水平滑動） */
+.feature-chips {
+  /* keep as the scrolling container; gradients are on parent so they don't move */
+}
+
+/* 隱藏水平滾動條但保留滑動（行動裝置/桌面皆適用） */
+.feature-chips {
+  -ms-overflow-style: none; /* IE 10+ */
+  scrollbar-width: none; /* Firefox */
+}
 .feature-chips::-webkit-scrollbar {
-  height: 6px;
+  height: 0; /* WebKit: 讓 scroll bar 不佔空間 */
+  display: none;
 }
-.feature-chips::-webkit-scrollbar-track {
-  background: transparent;
-}
-.feature-chips::-webkit-scrollbar-thumb {
-  background: rgba(148,163,184,0.24);
-  border-radius: 4px;
-}
+.feature-chips::-webkit-scrollbar-track { background: transparent; }
+.feature-chips::-webkit-scrollbar-thumb { background: transparent; }
 
 /* Firefox: 更好的滾動手感與隱藏滾動條時補強 */
 @supports (scrollbar-width: thin) {
@@ -193,7 +230,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -202,6 +239,7 @@ body {
   /* 不換行文字，並避免在父 flex 容器被壓縮 */
   white-space: nowrap;
   flex: 0 0 auto;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
 
 :root[data-theme="light"] .feature-chip {
@@ -289,6 +327,23 @@ body {
   min-width: 0;
 }
 
+/* 把 header 漸層放在 app-header（父容器）上，確保不隨右側按鈕列滾動 */
+.app-header {
+  position: relative;
+}
+.app-header::before,
+.app-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  z-index: 3;
+}
+.app-header::before { left: 0; background: linear-gradient(90deg, var(--bg) 0%, rgba(0,0,0,0) 70%); }
+.app-header::after  { right: 0; background: linear-gradient(270deg, var(--bg) 0%, rgba(0,0,0,0) 70%); }
+
 /* 美化 header 右側滾動條（WebKit） */
 .app-header-right::-webkit-scrollbar {
   height: 6px;
@@ -298,6 +353,22 @@ body {
 
 .app-header-right .btn,
 .app-header-right .pill { flex: 0 0 auto; white-space: nowrap; }
+
+/* header 兩側漸層提示 */
+.app-header-right::before,
+.app-header-right::after { display: none; }
+
+/* 增加 header 按鈕點擊面積 */
+.app-header-right .btn { padding: 8px 14px; }
+
+/* 隱藏右上按鈕列的滾動條但保留滑動 */
+.app-header-right {
+  -ms-overflow-style: none; /* IE 10+ */
+  scrollbar-width: none; /* Firefox */
+}
+.app-header-right::-webkit-scrollbar { height: 0; display: none; }
+.app-header-right::-webkit-scrollbar-track { background: transparent; }
+.app-header-right::-webkit-scrollbar-thumb { background: transparent; }
 
 /* Pills & Buttons */
 .pill {
