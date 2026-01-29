@@ -159,7 +159,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initUsersPanel_ === "function") initUsersPanel_();
 
     setInitialLoadingProgress_(10, "讀取設定中…");
-    await loadConfig_();
+    const cfg = await loadConfig_();
     setInitialLoadingProgress_(18, "初始化介面中…");
     initTheme_();
 
@@ -179,13 +179,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
-    // 先通過 LIFF + AUTH Gate 才載入資料
+    // 先通過 LIFF + AUTH Gate（可由 config.json 的 USE_LIFF 控制）才載入資料
     setInitialLoadingProgress_(28, "管理員驗證中…");
     if (typeof uSetFooter_ === "function") uSetFooter_("管理員驗證中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
 
-    await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
-    setInitialLoadingProgress_(40, "驗證通過，準備載入資料…");
+    if (typeof USE_LIFF === "undefined" || USE_LIFF) {
+      await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
+      setInitialLoadingProgress_(40, "驗證通過，準備載入資料…");
+    } else {
+      // 跳過 LIFF（測試模式）
+      setInitialLoadingProgress_(40, "跳過 LIFF（測試模式）");
+      setAuthText_("跳過 LIFF（測試模式）");
+      me.userId = String(cfg.DEBUG_USER_ID || "LOCAL_TEST").trim();
+      me.displayName = String(cfg.DEBUG_DISPLAY_NAME || "Local Tester").trim();
+      me.audit = String(cfg.DEBUG_USER_AUDIT || "通過").trim();
+      setAuthText_(`${me.displayName}（${me.audit}）`);
+    }
 
     // ✅ 驗證通過後記一筆（不阻擋）
     if (typeof appendAdminUsageLog_ === "function") appendAdminUsageLog_();
