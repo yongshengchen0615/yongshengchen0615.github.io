@@ -209,8 +209,8 @@
         </div>
 
         <div class="table-wrap responsive-wrap" aria-label="管理員紀錄列表">
-          <div class="chart-wrap" style="padding:12px 14px;">
-            <canvas id="adminLogsChartCanvas" aria-label="管理員紀錄圖表" role="img"></canvas>
+          <div class="chart-wrap" style="padding:12px 14px; overflow:auto; -webkit-overflow-scrolling: touch;">
+            <div id="adminLogsChartCanvas" aria-label="管理員紀錄圖表" role="img" style="width:100%;height:360px;min-width:320px;"></div>
           </div>
           <table class="responsive-table">
             <thead>
@@ -435,8 +435,8 @@
         </div>
 
         <div class="table-wrap" style="padding:12px 14px;">
-          <div class="chart-wrap">
-            <canvas id="techUsageChartCanvas" aria-label="技師使用紀錄圖表" role="img"></canvas>
+          <div class="chart-wrap" style="overflow:auto; -webkit-overflow-scrolling: touch;">
+            <div id="techUsageChartCanvas" aria-label="技師使用紀錄圖表" role="img" style="width:100%;height:360px;min-width:320px;"></div>
           </div>
         </div>
 
@@ -490,11 +490,8 @@
   <script src="js/admin.ui.js" defer></script>
   <script src="js/admin.features.js" defer></script>
 
-  <!-- 管理員紀錄（GAS UsageLog） -->
-  <!-- Chart.js (for analytics used by admin logs & tech usage) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1/dist/chartjs-adapter-luxon.min.js" defer></script>
+  <!-- ECharts (used by admin logs & tech usage) -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer></script>
 
   <!-- 管理員紀錄（GAS UsageLog） -->
   <script src="js/admin.logs.js" defer></script>

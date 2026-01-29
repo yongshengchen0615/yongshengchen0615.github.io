@@ -14,6 +14,7 @@ let techUsageLogsLoading_ = false;
 
 // Chart instance for tech usage analytics
 let techUsageChart = null;
+let techUsageChartObserver = null;
 
 // Module-level DOM cache to avoid repeated queries
 let techLogsCanvasEl = null;
@@ -280,32 +281,62 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
 
 function initTechUsageChart_() {
   cacheTechDom_();
-  if (!techLogsCanvasEl || typeof Chart === "undefined") return;
-  const ctx = techLogsCanvasEl.getContext("2d");
-  // reuse existing instance when possible
-  if (techUsageChart && techUsageChart.ctx === ctx) {
-    // keep existing chart
-  } else {
-    try { if (techUsageChart) techUsageChart.destroy(); } catch (_) {}
+  if (!techLogsCanvasEl || typeof echarts === "undefined") return;
+  try { if (techUsageChart && typeof techUsageChart.dispose === 'function') techUsageChart.dispose(); } catch (_) {}
+  try {
+    techUsageChart = echarts.init(techLogsCanvasEl, null, { renderer: 'canvas', devicePixelRatio: window.devicePixelRatio || 1 });
+  } catch (e) {
+    console.warn('echarts init failed', e);
+    techUsageChart = null;
+    return;
   }
-  techUsageChart = new Chart(ctx, {
-    type: "line",
-    data: { datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.12)" }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      parsing: { xAxisKey: 'x', yAxisKey: 'y' },
-      scales: {
-        x: {
-          type: 'time',
-          time: { unit: 'day', displayFormats: { hour: 'yyyy-MM-dd HH:mm', day: 'yyyy-MM-dd', month: 'yyyy-MM' } },
-          ticks: { autoSkip: true, maxRotation: 0 }
-        },
-        y: { beginAtZero: true }
-      },
-      plugins: { legend: { display: true } }
-    },
-  });
+  const baseOption = {
+    color: ['#06b6d4'],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: (params) => {
+      const p = Array.isArray(params) ? params[0] : params;
+      if (!p) return '';
+      // safely extract timestamp and value from various shapes
+      let ts = null;
+      let val = null;
+      if (p.data && Array.isArray(p.data)) {
+        ts = p.data[0];
+        val = p.data[1];
+      } else if (p.value && Array.isArray(p.value)) {
+        ts = p.value[0];
+        val = p.value[1];
+      } else if (p.data != null) {
+        val = p.data;
+      } else if (p.value != null) {
+        val = p.value;
+      }
+      let label = p.name || '';
+      if (ts != null) {
+        const d = new Date(ts);
+        if (!Number.isNaN(d.getTime())) {
+          label = `${d.getFullYear()}-${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}` + (d.getHours() || d.getMinutes() ? ` ${pad2_(d.getHours())}:${pad2_(d.getMinutes())}` : '');
+        }
+      }
+      const seriesName = p.seriesName || '';
+      return `${label}${seriesName ? '<br/>' + seriesName + ': ' : ''}${val != null ? val : '-'}`;
+    } },
+    legend: { data: [] },
+    grid: { left: '8%', right: '6%', bottom: '14%' },
+    xAxis: { type: 'time', boundaryGap: false, axisLabel: { formatter: null, rotate: 0, interval: 'auto' } },
+    yAxis: { type: 'value', min: 0 },
+    series: [{ name: '事件數', type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: [], sampling: 'lttb', large: false }],
+    dataZoom: []
+  };
+  techUsageChart.setOption(baseOption);
+  // resize handling: prefer ResizeObserver for container changes
+  try {
+    if (techUsageChartObserver && typeof techUsageChartObserver.disconnect === 'function') techUsageChartObserver.disconnect();
+    if (typeof ResizeObserver !== 'undefined') {
+      techUsageChartObserver = new ResizeObserver(() => techUsageChart && techUsageChart.resize());
+      techUsageChartObserver.observe(techLogsCanvasEl);
+    } else {
+      window.addEventListener('resize', () => techUsageChart && techUsageChart.resize());
+    }
+  } catch (_) {}
 }
 
 function renderTechUsageChart_() {
@@ -314,90 +345,80 @@ function renderTechUsageChart_() {
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
 
-  // 自動決定分桶：若使用者提供時間（T），改為小時分桶以呈現時間範圍
   const { start, end } = techLogsGetSelectedRange_();
   let gran = "day";
-  // 若 start 或 end 包含時間部分（ISO 'T'）或使用者填了 time inputs，使用 hour
-  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") {
-    gran = "hour";
-  }
-  const metric = "count";
+  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
   const metricFromUI = techLogsMetricSelectEl ? String(techLogsMetricSelectEl.value || 'count') : 'count';
   const nameFromUI = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : '';
-  const agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  let agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
 
-  // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
-  console.debug("techUsageChart aggregation:", { gran, metric: metricFromUI, nameFilter: nameFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+  if (agg.labels.length > 60 && gran === "hour") {
+    gran = "day";
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  }
+  if (agg.labels.length > 365 && gran !== "month") {
+    gran = "month";
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  }
 
-    // 若 hourly 分桶過多，回退到日或月分桶以避免過密的 x axis
-    if (agg.labels.length > 60 && gran === "hour") {
-      console.warn("techUsageChart: too many hourly buckets, falling back to day granularity");
-      gran = "day";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-      console.debug("techUsageChart fallback aggregation:", { gran, labels: agg2.labels.length });
-      agg.labels = agg2.labels;
-      agg.data = agg2.data;
-    }
-    if (agg.labels.length > 365 && gran !== "month") {
-      console.warn("techUsageChart: too many daily buckets, falling back to month granularity");
-      gran = "month";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-      agg.labels = agg2.labels;
-      agg.data = agg2.data;
-    }
+  // build series data as [ [timestamp, value], ... ]
+  const seriesData = agg.labels.map((lbl, i) => {
+    let x = lbl;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+    const d = parseDateSafe(x) || parseDateSafe(lbl);
+    const ms = d ? d.getTime() : null;
+    return [ ms !== null ? ms : String(x), agg.data[i] ];
+  });
 
-    // convert labels/data to {x,y} points using numeric timestamp (ms)
-    const points = agg.labels.map((lbl, i) => {
-      let x = lbl;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
-      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-      const d = parseDateSafe(x) || parseDateSafe(lbl);
-      const ms = d ? d.getTime() : null;
-      return { x: ms !== null ? ms : String(x), y: agg.data[i] };
-    });
-    // make canvas horizontally scrollable on mobile when many buckets
-    try {
-      const canvasEl = document.getElementById('techUsageChartCanvas');
-      if (canvasEl && Array.isArray(agg.labels)) {
-        const minW = Math.max(600, agg.labels.length * 40); // 40px per bucket heuristic
-        canvasEl.style.minWidth = `${minW}px`;
-      }
-    } catch (e) { /* ignore */ }
-    // only update chart when points changed
-    const old = techUsageChart.data.datasets[0].data || [];
-    let same = false;
-    if (old.length === points.length) {
-      same = old.every((o, idx) => {
-        const p = points[idx];
-        return (o.x === p.x || String(o.x) === String(p.x)) && Number(o.y) === Number(p.y);
-      });
+  try {
+    const canvasEl = document.getElementById('techUsageChartCanvas');
+    if (canvasEl && Array.isArray(agg.labels)) {
+      const minW = Math.max(600, agg.labels.length * 40);
+      canvasEl.style.minWidth = `${minW}px`;
     }
-    if (!same) {
-      techUsageChart.data.datasets[0].data = points;
-      techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
-      // responsive font sizing based on canvas width
-      try {
-        const canvasEl = document.getElementById('techUsageChartCanvas');
-        const w = (canvasEl && canvasEl.clientWidth) ? canvasEl.clientWidth : (window.innerWidth || 800);
-        const base = Math.max(10, Math.min(16, Math.round(w / 120)));
-        if (techUsageChart.options && techUsageChart.options.scales) {
-          if (techUsageChart.options.scales.x) techUsageChart.options.scales.x.ticks = techUsageChart.options.scales.x.ticks || {};
-          if (techUsageChart.options.scales.y) techUsageChart.options.scales.y.ticks = techUsageChart.options.scales.y.ticks || {};
-          techUsageChart.options.scales.x.ticks.font = { size: base };
-          techUsageChart.options.scales.y.ticks.font = { size: Math.max(10, base - 1) };
-        }
-        if (techUsageChart.options && techUsageChart.options.plugins) {
-          techUsageChart.options.plugins.legend = techUsageChart.options.plugins.legend || {};
-          techUsageChart.options.plugins.legend.labels = techUsageChart.options.plugins.legend.labels || {};
-          techUsageChart.options.plugins.legend.labels.font = { size: base };
-          techUsageChart.options.plugins.tooltip = techUsageChart.options.plugins.tooltip || {};
-          techUsageChart.options.plugins.tooltip.titleFont = { size: Math.max(11, base + 1) };
-          techUsageChart.options.plugins.tooltip.bodyFont = { size: base };
-        }
-      } catch (e) { /* ignore sizing errors */ }
-      techUsageChart.update();
-    }
+  } catch (e) { /* ignore */ }
+
+  // update option with responsiveness helpers
+  const seriesName = metricFromUI === 'unique' ? '不同使用者數' : '事件數';
+  const maxVisible = 120;
+  const total = seriesData.length;
+  const dataZoom = [];
+  if (total > maxVisible) {
+    const startPct = Math.max(0, ((total - maxVisible) / total) * 100);
+    dataZoom.push({ type: 'slider', start: startPct, end: 100, handleSize: 8 });
+    // enable wheel/inside zoom for touch/desktop
+    dataZoom.push({ type: 'inside', start: startPct, end: 100 });
+  }
+
+  const useLarge = total > 800;
+  const sampling = total > 300 ? 'lttb' : false;
+
+  // compute responsive label settings
+  const containerWidth = (techLogsCanvasEl && techLogsCanvasEl.clientWidth) ? techLogsCanvasEl.clientWidth : (window.innerWidth || 360);
+  const approxTickWidth = 60; // px per tick heuristic
+  const maxTicks = Math.max(4, Math.floor(containerWidth / approxTickWidth));
+  const step = Math.max(1, Math.ceil(total / maxTicks));
+  const axisInterval = Math.max(0, step - 1);
+  const rotate = total > maxTicks ? 45 : 0;
+  const fontSize = Math.max(9, Math.min(14, Math.round(containerWidth / 80)));
+
+  const axisFormatter = (val) => {
+    const d = new Date(val);
+    if (gran === 'hour') return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+    if (gran === 'month') return `${d.getFullYear()}-${pad2_(d.getMonth()+1)}`;
+    // day
+    return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}`;
+  };
+
+  const option = {
+    legend: { data: [seriesName] },
+    xAxis: { type: 'time', axisLabel: { formatter: axisFormatter, rotate: rotate, interval: axisInterval, showMinLabel: true, showMaxLabel: true, fontSize: fontSize } },
+    series: [{ name: seriesName, type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: seriesData, large: useLarge, sampling: sampling }],
+    dataZoom: dataZoom
+  };
+  try { techUsageChart.setOption(option, { notMerge: false }); } catch (e) { console.warn('echarts setOption failed', e); }
 }
 
 
