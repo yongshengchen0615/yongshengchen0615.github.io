@@ -44,31 +44,36 @@
         <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
       </header>
 
-      <!-- 連線狀態 / 深色 / 手動重整（移到功能欄位上方） -->
+      <!-- ✅ 已開通功能提示 -->
+      <div id="featureBanner" class="feature-banner">
+        <span class="feature-title">功能：</span>
+        <div id="featureChips" class="feature-chips"></div>
+      </div>
+
+      <!-- 連線狀態 / 深色 / 手動重整 -->
       <header class="app-header">
         <div class="app-header-spacer" aria-hidden="true"></div>
 
         <div class="app-header-right">
           <div class="pill pill-status">
             <span class="pill-dot"></span>
-            <span class="pill-text" id="connectionStatus">連線中…</span>
+            <span class="pill-text" id="connectionStatus">已連線（分流 1）</span>
           </div>
 
+          <!-- 常用功能（順序：深色 / 我的狀態 / 排班表 / 手動重整） -->
           <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
           <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
           <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
+          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
+
+          <!-- 其他次要功能保留於同一列，超出時可水平滑動，不會換行 -->
           <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
           <button id="btnUserManage" class="btn btn-ghost" type="button">👤 技師管理員</button>
           <button id="btnPersonalStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 技師休假與狀態</button>
-          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
         </div>
       </header>
 
-      <!-- ✅ 已開通功能提示 -->
-      <div id="featureBanner" class="feature-banner">
-        <span class="feature-title">功能：</span>
-        <div id="featureChips" class="feature-chips"></div>
-      </div>
+      
 
       <!-- ✅ 個人狀態快捷按鈕 -->
       <div id="personalTools" class="personal-tools" style="display:none;"></div>
