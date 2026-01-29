@@ -204,7 +204,7 @@ body {
   background: rgba(255, 255, 255, 0.7);
 }
 
-/* ✅ 個人狀態：快捷按鈕列 */
+/* ✅ 技師休假與狀態：快捷按鈕列 */
 .personal-tools{
   margin: 6px 0 12px 0;
   display: flex;

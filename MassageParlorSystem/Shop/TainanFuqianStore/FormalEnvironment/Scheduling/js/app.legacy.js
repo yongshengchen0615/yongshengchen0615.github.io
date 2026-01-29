@@ -256,7 +256,7 @@ const usageBannerTextEl = usageBannerEl
 const personalToolsEl = document.getElementById("personalTools");
 const btnUserManageEl = document.getElementById("btnUserManage");
 const btnPersonalStatusEl = document.getElementById("btnPersonalStatus");
-// const btnVacationEl = document.getElementById("btnVacation"); // removed: 「複製個人狀態連結」功能已取消
+// const btnVacationEl = document.getElementById("btnVacation"); // removed: 「複製技師休假與狀態連結」功能已取消
 
 /* ✅ 個人師傅狀態 DOM */
 const myMasterStatusEl = document.getElementById("myMasterStatus");
@@ -371,7 +371,7 @@ function applyScheduleUiMode_(enabled) {
 }
 
 /* =========================================================
- * ✅ 使用者（師傅）個人狀態 - state
+ * ✅ 使用者（師傅）技師休假與狀態 - state
  * ========================================================= */
 const myMasterState_ = {
   isMaster: false,
@@ -910,7 +910,7 @@ function renderFeatureBanner_() {
   chipsEl.innerHTML = [
     buildChip_("叫班提醒", push),
     buildChip_("排班表", schedule),
-    buildChip_("個人狀態", personal),
+    buildChip_("技師休假與狀態", personal),
     buildChip_("業績", performance),
   ].join("");
 }
@@ -1018,7 +1018,7 @@ function showPersonalToolsFinal_(psRow) {
   };
   btnPersonalStatusEl.onclick = () => {
     if (!personalBoardLiff) {
-      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      alert("尚未設定『技師休假與狀態』連結，請管理員至後台填入個人看板liff。 ");
       return;
     }
     window.location.href = personalBoardLiff;

@@ -3,7 +3,7 @@
  *
  * 功能開通提示列（固定顯示 chip）：
  * - 叫班提醒
- * - 個人狀態
+* - 技師休假與狀態
  * - 排班表
  * - 業績
  */
@@ -22,6 +22,10 @@ function buildChip(label, enabled) {
   return `<span class="${cls}">${label}${badge}</span>`;
 }
 
+function buildChipAlways(label) {
+  return `<span class="feature-chip">${label}</span>`;
+}
+
 function renderFeatureBanner() {
   const chipsEl = document.getElementById("featureChips");
   if (!chipsEl) return;
@@ -32,10 +36,11 @@ function renderFeatureBanner() {
     const performance = normalizeYesNo(state.feature.performanceEnabled);
 
     chipsEl.innerHTML = [
-      buildChip("叫班提醒", push),
-      buildChip("排班表", schedule),
-      buildChip("個人狀態", personal),
-      buildChip("業績", performance),
+        buildChipAlways("我的狀態"),
+        buildChip("叫班提醒", push),
+        buildChip("排班表", schedule),
+      buildChip("技師休假與狀態", personal),
+        buildChip("業績", performance),
     ].join("");
 }
 

@@ -3,7 +3,7 @@
  *
  * 個人狀態快捷按鈕列：
  * - 技師管理員（開啟 技師管理員liff / adminLiff）
- * - 個人狀態（開啟 個人看板liff / personalBoardLiff）
+ * - 技師休假與狀態（開啟 個人看板liff / personalBoardLiff）
  *
  * 由 AUTH 的 personalStatusEnabled=是 才顯示。
  */
@@ -47,7 +47,7 @@ function showPersonalToolsFinal(psRow) {
   };
   dom.btnPersonalStatusEl.onclick = () => {
     if (!personalBoardLiff) {
-      alert("尚未設定『個人狀態』連結，請管理員至後台填入個人看板liff。 ");
+      alert("尚未設定『技師休假與狀態』連結，請管理員至後台填入個人看板liff。 ");
       return;
     }
     window.location.href = personalBoardLiff;
