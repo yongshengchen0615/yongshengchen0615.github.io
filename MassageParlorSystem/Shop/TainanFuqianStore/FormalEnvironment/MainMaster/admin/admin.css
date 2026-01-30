@@ -780,6 +780,28 @@ tbody td.sticky-col{ background:transparent; }
   #techUsageLogsPanelSection .panel-actions .btn{ width:100%; }
 }
 
+/* Admin Logs panel mobile layout (match tech usage) */
+@media (max-width: 720px){
+  #adminLogsPanelSection .panel-actions{
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap:8px;
+    align-items:center;
+    justify-items:stretch;
+  }
+  #adminLogsPanelSection .panel-actions .bulk-label{ display:none; }
+  #adminLogsPanelSection .panel-actions .select,
+  #adminLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
+@media (max-width: 420px){
+  #adminLogsPanelSection .panel-actions{
+    grid-template-columns: 1fr;
+  }
+  #adminLogsPanelSection .panel-actions .select,
+  #adminLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
 /* === 固定最右操作欄（避免刪除按鈕跑位） === */
 th.sticky-right,
 td.sticky-right{

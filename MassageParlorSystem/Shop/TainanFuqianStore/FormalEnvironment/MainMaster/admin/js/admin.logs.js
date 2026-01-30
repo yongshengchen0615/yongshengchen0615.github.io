@@ -20,6 +20,7 @@ let adminLogsChartObserver = null;
 let adminLogsCanvasEl = null;
 let logsMetricSelectEl = null;
 let logsNameSelectEl = null;
+let logsGranularitySelectEl = null;
 let logsStartDateEl = null;
 let logsEndDateEl = null;
 let logsStartTimeEl = null;
@@ -32,6 +33,7 @@ function cacheLogsDom_() {
   adminLogsCanvasEl = document.getElementById('adminLogsChartCanvas');
   logsMetricSelectEl = document.getElementById('logsMetricSelect');
   logsNameSelectEl = document.getElementById('logsNameSelect');
+  logsGranularitySelectEl = document.getElementById('logsGranularitySelect');
   logsStartDateEl = document.getElementById('logsStartDateInput');
   logsEndDateEl = document.getElementById('logsEndDateInput');
   logsStartTimeEl = document.getElementById('logsStartTimeInput');
@@ -136,9 +138,28 @@ function logsGetSelectedRange_() {
 }
 
 function logsBuildRangeLabel_(start, end) {
-  if (start && end) return start === end ? start : `${start} ~ ${end}`;
-  if (start) return `>= ${start}`;
-  if (end) return `<= ${end}`;
+  function formatForFooter(s) {
+    const str = String(s || '').trim();
+    if (!str) return '';
+    const d = parseDateSafeLogs(str);
+    if (d) {
+      const hasTime = /[T\s]\d{1,2}:\d{2}/.test(str);
+      const Y = d.getFullYear();
+      const M = pad2_(d.getMonth() + 1);
+      const D = pad2_(d.getDate());
+      const h = pad2_(d.getHours());
+      const m = pad2_(d.getMinutes());
+      const sec = pad2_(d.getSeconds());
+      return hasTime ? `${Y}-${M}-${D} ${h}:${m}:${sec}` : `${Y}-${M}-${D}`;
+    }
+    return str.replace('T', ' ');
+  }
+
+  const fs = formatForFooter(start);
+  const fe = formatForFooter(end);
+  if (fs && fe) return fs === fe ? fs : `${fs} ~ ${fe}`;
+  if (fs) return `>= ${fs}`;
+  if (fe) return `<= ${fe}`;
   return "";
 }
 
@@ -173,10 +194,26 @@ function renderAdminLogs_() {
 
   logsTbodyEl.innerHTML = adminLogs_
     .map((r, i) => {
+      // format ts to YYYY-MM-DD HH:MM:SS (if time present) or YYYY-MM-DD
+      let tsDisplay = String(r.ts || '');
+      try {
+        const d = parseDateSafeLogs(r.ts);
+        if (d) {
+          const Y = d.getFullYear();
+          const M = pad2_(d.getMonth() + 1);
+          const D = pad2_(d.getDate());
+          const h = pad2_(d.getHours());
+          const m = pad2_(d.getMinutes());
+          const s = pad2_(d.getSeconds());
+          const hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(r.ts));
+          tsDisplay = hasTime ? `${Y}-${M}-${D} ${h}:${m}:${s}` : `${Y}-${M}-${D}`;
+        }
+      } catch (_) {}
+
       return `
         <tr>
           <td data-label="#">${i + 1}</td>
-          <td data-label="ts"><span style="font-family:var(--mono)">${escapeHtml(r.ts)}</span></td>
+          <td data-label="ts"><span style="font-family:var(--mono)">${escapeHtml(tsDisplay)}</span></td>
           <td data-label="actorUserId"><span style="font-family:var(--mono)">${escapeHtml(r.actorUserId)}</span></td>
           <td data-label="actorDisplayName">${escapeHtml(r.actorDisplayName)}</td>
         </tr>
@@ -305,8 +342,14 @@ function renderAdminLogsChart_() {
   if (!adminLogsChart) return;
 
   const { start, end } = logsGetSelectedRange_();
-  let gran = "day";
-  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+  const granFromUI = logsGranularitySelectEl ? String(logsGranularitySelectEl.value || 'auto') : 'auto';
+  let gran = 'day';
+  if (granFromUI && granFromUI !== 'auto') {
+    gran = granFromUI;
+  } else {
+    if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+    else gran = 'day';
+  }
   const metricSelect = document.getElementById('logsMetricSelect');
   const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
   const nameSelect = document.getElementById('logsNameSelect');
@@ -462,14 +505,18 @@ async function loadAdminLogs_() {
       cacheLogsDom_();
       const sel = logsNameSelectEl || document.getElementById('logsNameSelect');
       if (!sel) return;
-      const names = Array.from(new Set(adminLogsAll_.map((r) => String(r.actorDisplayName || '').trim()).filter(Boolean))).sort();
-      // keep existing selection if any
+      // 統計每位管理員的事件數，並依事件數降冪排序
+      const counts = adminLogsAll_.reduce((m, r) => {
+        const nm = String(r.actorDisplayName || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
       const cur = String(sel.value || '');
-      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      sel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(String(o.count))}) ${escapeHtml(o.name)}</option>`).join('');
       if (cur) sel.value = cur;
-      // update count badge if present
-      const cnt = document.getElementById('logsNameCount');
-      if (cnt) cnt.textContent = String(names.length || 0);
     })();
 
     // apply filter and render with defaults
@@ -550,6 +597,7 @@ function bindAdminLogs_() {
   document.getElementById("logsEndTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsMetricSelect")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsNameSelect")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsGranularitySelect")?.addEventListener("change", debouncedRenderAdminChart);
 }
 
 /**
