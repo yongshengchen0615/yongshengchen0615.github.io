@@ -36,14 +36,14 @@ function bindEventsOnce() {
   if (dom.tabBodyBtn) {
     dom.tabBodyBtn.addEventListener("click", () => {
       const from = state.activePanel || "";
-      logUsageEvent({ event: "panel_switch", detail: `${from}->body`, noThrottle: true });
+      logUsageEvent({ event: "panel_switch", detail: `${from}->body`, noThrottle: true, eventCn: "分頁切換" });
       setActivePanel("body");
     });
   }
   if (dom.tabFootBtn) {
     dom.tabFootBtn.addEventListener("click", () => {
       const from = state.activePanel || "";
-      logUsageEvent({ event: "panel_switch", detail: `${from}->foot`, noThrottle: true });
+      logUsageEvent({ event: "panel_switch", detail: `${from}->foot`, noThrottle: true, eventCn: "分頁切換" });
       setActivePanel("foot");
     });
   }

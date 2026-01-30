@@ -149,7 +149,8 @@ export async function fetchStatusAll() {
           // 切換分流（sticky reroute）
           logUsageEvent({
             event: "edge_reroute",
-            detail: `from=${idx};to=${nextIdx};failCount=${n};threshold=${EDGE_FAIL_THRESHOLD}`,
+            detail: JSON.stringify({ from: idx, to: nextIdx, failCount: n, threshold: EDGE_FAIL_THRESHOLD }),
+            eventCn: "Edge分流切換",
           });
 
           setOverrideEdgeIndex(nextIdx);

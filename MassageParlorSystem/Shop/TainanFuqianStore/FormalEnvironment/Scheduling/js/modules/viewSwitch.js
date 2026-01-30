@@ -72,21 +72,21 @@ export function initViewSwitch() {
   if (dom.btnMyStatusEl) {
     dom.btnMyStatusEl.addEventListener("click", () => {
       const from = state.viewMode || "";
-      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.MY_STATUS}`, noThrottle: true });
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.MY_STATUS}`, noThrottle: true, eventCn: "視圖切換" });
       setViewMode(VIEW.MY_STATUS);
     });
   }
   if (dom.btnScheduleEl) {
     dom.btnScheduleEl.addEventListener("click", () => {
       const from = state.viewMode || "";
-      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.SCHEDULE}`, noThrottle: true });
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.SCHEDULE}`, noThrottle: true, eventCn: "視圖切換" });
       setViewMode(VIEW.SCHEDULE);
     });
   }
   if (dom.btnPerformanceEl) {
     dom.btnPerformanceEl.addEventListener("click", () => {
       const from = state.viewMode || "";
-      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.PERFORMANCE}`, noThrottle: true });
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.PERFORMANCE}`, noThrottle: true, eventCn: "視圖切換" });
       setViewMode(VIEW.PERFORMANCE);
     });
   }

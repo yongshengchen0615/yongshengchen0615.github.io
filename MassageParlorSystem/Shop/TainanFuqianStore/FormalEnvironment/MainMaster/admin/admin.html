@@ -425,6 +425,10 @@
               <option value="count">事件數</option>
               <option value="unique">不同使用者數</option>
             </select>
+            <label for="techLogsEventSelect" class="bulk-label">事件類型</label>
+            <select id="techLogsEventSelect" class="select">
+              <option value="">全部</option>
+            </select>
             <label for="techLogsNameSelect" class="bulk-label">名稱</label>
             <select id="techLogsNameSelect" class="select">
               <option value="">全部</option>
@@ -446,13 +450,14 @@
               <tr>
                 <th>#</th>
                 <th>serverTime</th>
+                <th>eventCn</th>
                 <th>userId</th>
                 <th>name</th>
                 <th>detail</th>
               </tr>
             </thead>
             <tbody id="techLogsTbody">
-              <tr><td colspan="5">等待管理員驗證後載入...</td></tr>
+              <tr><td colspan="6">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
         </div>

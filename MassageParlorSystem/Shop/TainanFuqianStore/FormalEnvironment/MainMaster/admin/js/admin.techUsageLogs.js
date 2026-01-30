@@ -1,13 +1,13 @@
 /* ================================
  * Admin - 技師使用紀錄（usage_log）
- * - 顯示欄位：serverTime / userId / name / detail
+ * - 顯示欄位：serverTime / eventCn / userId / name / detail
  * - 透過 TECH_USAGE_LOG_URL 呼叫 GAS（GET）：mode=list
  * ================================ */
 
-/** @type {{serverTime:string, userId:string, name:string, detail:string}[]} */
+/** @type {{serverTime:string, eventCn?:string, userId:string, name:string, detail:string, parsedDetail?:object}[]} */
 let techUsageLogs_ = [];
 
-/** @type {{serverTime:string, userId:string, name:string, detail:string}[]} */
+/** @type {{serverTime:string, eventCn?:string, userId:string, name:string, detail:string, parsedDetail?:object}[]} */
 let techUsageLogsAll_ = [];
 
 let techUsageLogsLoading_ = false;
@@ -20,6 +20,7 @@ let techUsageChartObserver = null;
 let techLogsCanvasEl = null;
 let techLogsMetricSelectEl = null;
 let techLogsNameSelectEl = null;
+let techLogsEventSelectEl = null;
 let techLogsStartDateEl = null;
 let techLogsEndDateEl = null;
 let techLogsStartTimeEl = null;
@@ -32,6 +33,7 @@ function cacheTechDom_() {
   techLogsCanvasEl = document.getElementById("techUsageChartCanvas");
   techLogsMetricSelectEl = document.getElementById('techLogsMetricSelect');
   techLogsNameSelectEl = document.getElementById('techLogsNameSelect');
+  techLogsEventSelectEl = document.getElementById('techLogsEventSelect');
   techLogsStartDateEl = document.getElementById('techLogsStartDateInput');
   techLogsEndDateEl = document.getElementById('techLogsEndDateInput');
   techLogsStartTimeEl = document.getElementById('techLogsStartTimeInput');
@@ -49,7 +51,7 @@ function techLogsSetFooter_(text) {
 function techLogsSetTbodyMessage_(msg) {
   cacheTechDom_();
   if (!techLogsTbodyEl) return;
-  techLogsTbodyEl.innerHTML = `<tr><td colspan="5">${escapeHtml(msg || "-")}</td></tr>`;
+  techLogsTbodyEl.innerHTML = `<tr><td colspan="6">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function normalizeTechUsageRow_(r) {
@@ -57,8 +59,21 @@ function normalizeTechUsageRow_(r) {
   const serverTime = String(r?.serverTime ?? r?.ts ?? r?.time ?? "");
   const userId = String(r?.userId ?? r?.lineUserId ?? "");
   const name = String(r?.name ?? r?.displayName ?? "");
-  const detail = String(r?.detail ?? "");
-  return { serverTime, userId, name, detail };
+  const eventCn = String(r?.eventCn ?? r?.event_cn ?? r?.event ?? "");
+  const detailRaw = r?.detail ?? "";
+  const detail = String(detailRaw);
+  // 嘗試解析 detail 為 JSON，方便前端顯示結構化內容
+  let parsedDetail = null;
+  try {
+    if (detail && typeof detail === 'string' && detail.trim().startsWith('{')) {
+      parsedDetail = JSON.parse(detail);
+    } else if (detailRaw && typeof detailRaw === 'object') {
+      parsedDetail = detailRaw;
+    }
+  } catch (e) {
+    parsedDetail = null;
+  }
+  return { serverTime, userId, name, eventCn, detail, parsedDetail };
 }
 
 function pad2_(n) {
@@ -137,6 +152,7 @@ function applyTechUsageLogsDateFilter_() {
   const { start, end } = techLogsGetSelectedRange_();
   // 也看到 UI 的名稱選單，若有選擇名稱則一併過濾
   const nameFilter = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : (document.getElementById('techLogsNameSelect') ? String(document.getElementById('techLogsNameSelect').value || '') : '');
+  const eventFilter = techLogsEventSelectEl ? String(techLogsEventSelectEl.value || '') : (document.getElementById('techLogsEventSelect') ? String(document.getElementById('techLogsEventSelect').value || '') : '');
 
   if (!start && !end && !nameFilter) {
     techUsageLogs_ = techUsageLogsAll_.slice();
@@ -152,6 +168,7 @@ function applyTechUsageLogsDateFilter_() {
     if (sDt && d < sDt) return false;
     if (eDt && d > eDt) return false;
     if (nameFilter && String(r.name || '') !== nameFilter) return false;
+    if (eventFilter && String((r.eventCn || r.event || '') || '') !== eventFilter) return false;
     return true;
   });
 }
@@ -161,19 +178,24 @@ function renderTechUsageLogs_() {
   if (!techLogsTbodyEl) return;
 
   if (!techUsageLogs_.length) {
-    techLogsTbodyEl.innerHTML = `<tr><td colspan="5">無資料</td></tr>`;
+    techLogsTbodyEl.innerHTML = `<tr><td colspan="6">無資料</td></tr>`;
     return;
   }
 
   techLogsTbodyEl.innerHTML = techUsageLogs_
     .map((r, i) => {
+      const detailHtml = (r && r.parsedDetail)
+        ? `<pre class="tech-log-json" style="white-space:pre-wrap;max-width:36rem;overflow:auto;margin:0">${escapeHtml(JSON.stringify(r.parsedDetail, null, 2))}</pre>`
+        : `<span style="white-space:pre-wrap;max-width:36rem;display:inline-block">${escapeHtml(r.detail)}</span>`;
+
       return `
         <tr>
           <td data-label="#">${i + 1}</td>
           <td data-label="serverTime"><span style="font-family:var(--mono)">${escapeHtml(r.serverTime)}</span></td>
+          <td data-label="eventCn">${escapeHtml(r.eventCn || '')}</td>
           <td data-label="userId"><span style="font-family:var(--mono)">${escapeHtml(r.userId)}</span></td>
           <td data-label="name">${escapeHtml(r.name)}</td>
-          <td data-label="detail">${escapeHtml(r.detail)}</td>
+          <td data-label="detail">${detailHtml}</td>
         </tr>
       `;
     })
@@ -204,7 +226,7 @@ function monthKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
+function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "", eventFilter = "") {
   const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
@@ -253,6 +275,8 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
 
     // filter by technician name when requested
     if (nameFilter && String(r.name || '') !== String(nameFilter)) continue;
+    // filter by event type when requested
+    if (eventFilter && String((r.eventCn || r.event || '') || '') !== String(eventFilter)) continue;
 
     let key;
     if (granularity === "week") key = weekKey(d);
@@ -350,15 +374,16 @@ function renderTechUsageChart_() {
   if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
   const metricFromUI = techLogsMetricSelectEl ? String(techLogsMetricSelectEl.value || 'count') : 'count';
   const nameFromUI = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : '';
-  let agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  const eventFromUI = techLogsEventSelectEl ? String(techLogsEventSelectEl.value || '') : '';
+  let agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
 
   if (agg.labels.length > 60 && gran === "hour") {
     gran = "day";
-    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
   }
   if (agg.labels.length > 365 && gran !== "month") {
     gran = "month";
-    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
   }
 
   // build series data as [ [timestamp, value], ... ]
@@ -437,14 +462,19 @@ async function loadTechUsageLogs_() {
     techLogsSetTbodyMessage_("載入中...");
 
     // 需要 GAS 支援 mode=list 才能讀取
-    // 取消固定每頁上限，改為：先嘗試不帶 limit 的單次抓取（若 GAS 回傳全部），
-    // 若 GAS 提供 nextPageToken 則以 token 續抓直到沒有 token 為止。
+    // 支援兩種分頁風格：
+    // 1) token-based: 回傳 nextPageToken
+    // 2) offset-based: 回傳 nextOffset（此 repo 的 GAS 使用 nextOffset）
+    // 我們每次以固定 limit 分頁抓取，直到沒有 nextPageToken / nextOffset
     let allRowsRaw = [];
     let pageToken = null;
+    let offset = 0;
+    const perPage = 2000; // 每頁上限，可調整
 
-    do {
-      const q = { mode: "list" };
+    while (true) {
+      const q = { mode: "list", limit: perPage };
       if (pageToken) q.pageToken = pageToken;
+      else if (offset) q.offset = offset;
 
       const ret = await techUsageLogGet_(q);
       if (!ret || ret.ok === false) {
@@ -456,13 +486,42 @@ async function loadTechUsageLogs_() {
       if (Array.isArray(ret.rows)) rows = ret.rows;
       else if (Array.isArray(ret.logs)) rows = ret.logs;
       else if (Array.isArray(ret.values)) {
-        rows = ret.values.map((v) => ({ serverTime: v?.[0], userId: v?.[2], name: v?.[3], detail: v?.[7] }));
+        // values correspond to HEADERS: serverTime,event,eventCn,userId,name,clientTs,clientIso,tz,href,detail
+        rows = ret.values.map((v) => ({
+          serverTime: v?.[0],
+          event: v?.[1],
+          eventCn: v?.[2],
+          userId: v?.[3],
+          name: v?.[4],
+          clientTs: v?.[5],
+          clientIso: v?.[6],
+          tz: v?.[7],
+          href: v?.[8],
+          detail: v?.[9],
+        }));
       }
 
       if (rows.length) allRowsRaw.push(...rows);
 
-      pageToken = ret.nextPageToken ? String(ret.nextPageToken) : null;
-    } while (pageToken);
+      // token-based pagination
+      if (ret.nextPageToken) {
+        pageToken = String(ret.nextPageToken);
+        continue;
+      }
+
+      // offset-based pagination (nextOffset 表示已回傳的筆數)
+      if (ret.nextOffset !== undefined && ret.nextOffset !== null) {
+        const no = Number(ret.nextOffset);
+        if (!Number.isNaN(no) && no > offset) {
+          offset = no;
+          pageToken = null;
+          continue;
+        }
+      }
+
+      // 若兩者皆無，結束
+      break;
+    }
 
     techUsageLogsAll_ = allRowsRaw
       .map(normalizeTechUsageRow_)
@@ -523,14 +582,24 @@ async function loadTechUsageLogs_() {
       console.debug('loadTechUsageLogs: rows=', techUsageLogsAll_.length, 'processedTimeStamp=', tAfter);
     } catch (_) {}
 
-    // populate technician name select
-    (function populateTechNameSelect() {
-      const sel = document.getElementById('techLogsNameSelect');
-      if (!sel) return;
-      const names = Array.from(new Set(techUsageLogsAll_.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
-      const cur = String(sel.value || '');
-      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
-      if (cur) sel.value = cur;
+    // populate event type select and technician name select
+    (function populateTechEventAndNameSelect() {
+      const evtSel = document.getElementById('techLogsEventSelect');
+      if (evtSel) {
+        const events = Array.from(new Set(techUsageLogsAll_.map((r) => String(r.eventCn || r.event || '').trim()).filter(Boolean))).sort();
+        const curEvt = String(evtSel.value || '');
+        evtSel.innerHTML = '<option value="">全部</option>' + events.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
+        if (curEvt) evtSel.value = curEvt;
+      }
+
+      const nameSel = document.getElementById('techLogsNameSelect');
+      if (!nameSel) return;
+      const selectedEvent = evtSel ? String(evtSel.value || '') : '';
+      const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
+      const names = Array.from(new Set(filtered.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
+      const cur = String(nameSel.value || '');
+      nameSel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      if (cur) nameSel.value = cur;
     })();
 
     applyTechUsageLogsDateFilter_();
@@ -597,6 +666,20 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", onRangeChange);
   // 當使用者選擇名稱時，同步套用到表格過濾
   document.getElementById('techLogsNameSelect')?.addEventListener('change', onRangeChange);
+  document.getElementById('techLogsEventSelect')?.addEventListener('change', () => {
+    // when event type changes, repopulate name select to match event, then apply filter
+    const evtSel = document.getElementById('techLogsEventSelect');
+    const nameSel = document.getElementById('techLogsNameSelect');
+    if (nameSel) {
+      const selectedEvent = evtSel ? String(evtSel.value || '') : '';
+      const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
+      const names = Array.from(new Set(filtered.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
+      const cur = String(nameSel.value || '');
+      nameSel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      if (cur) nameSel.value = cur;
+    }
+    onRangeChange();
+  });
   
   // Initialize chart and re-render when date range changes
   initTechUsageChart_();
@@ -608,4 +691,5 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsMetricSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsNameSelect")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsEventSelect")?.addEventListener("change", debouncedRenderTechChart);
 }

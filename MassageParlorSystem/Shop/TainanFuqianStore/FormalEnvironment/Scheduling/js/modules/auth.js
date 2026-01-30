@@ -251,6 +251,7 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
       userId,
       displayName: r.displayName || displayNameFromClient || "",
       detail: "auto_register",
+      eventCn: "首次註冊申請",
     });
 
     return r;
@@ -325,6 +326,7 @@ async function onAuthorized({ userId, displayName, result }) {
         personalStatusEnabled: result.personalStatusEnabled,
         performanceEnabled: result.performanceEnabled,
       }),
+      eventCn: "審核狀態",
     });
   } catch {}
 
@@ -338,6 +340,7 @@ async function onAuthorized({ userId, displayName, result }) {
         userId,
         displayName: result.displayName || displayName,
         detail: String(result.audit || "pending") + (result.justRegistered ? "|justRegistered" : ""),
+        eventCn: "待審核開啟",
       });
     }
 

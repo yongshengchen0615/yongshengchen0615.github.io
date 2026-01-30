@@ -26,6 +26,7 @@ import {
 import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showGate, hideGate } from "./uiHelpers.js";
+import { logUsageEvent } from "./usageLog.js";
 import { config } from "./config.js";
 
 /* =========================
@@ -194,6 +195,15 @@ function applyStaleSystemGate_() {
     state.dataHealth.staleSinceMs = Date.now();
     showGate("總系統異常 無法使用功能", true);
     if (dom.connectionStatusEl) dom.connectionStatusEl.textContent = "異常";
+    try {
+      // send event to GAS (via config.USAGE_LOG_URL) for monitoring/alerting
+      const lastTs = Number(state.dataHealth.lastDataTimestampMs || latestMs) || null;
+      const payload = {
+        lastDataTimestampMs: lastTs,
+        lastDataIso: lastTs ? new Date(lastTs).toISOString() : "",
+      };
+      logUsageEvent({ event: "system_stale", detail: JSON.stringify(payload), noThrottle: true, eventCn: "系統資料過期" }).catch(() => {});
+    } catch (e) {}
     return;
   }
 
@@ -201,6 +211,15 @@ function applyStaleSystemGate_() {
     state.dataHealth.stale = false;
     state.dataHealth.staleSinceMs = null;
     hideGate();
+    try {
+      // send recovery event to GAS for monitoring
+      const lastTs = Number(state.dataHealth.lastDataTimestampMs || latestMs) || null;
+      const payload = {
+        lastDataTimestampMs: lastTs,
+        lastDataIso: lastTs ? new Date(lastTs).toISOString() : "",
+      };
+      logUsageEvent({ event: "system_recovered", detail: JSON.stringify(payload), noThrottle: true, eventCn: "系統資料恢復" }).catch(() => {});
+    } catch (e) {}
   }
 }
 
