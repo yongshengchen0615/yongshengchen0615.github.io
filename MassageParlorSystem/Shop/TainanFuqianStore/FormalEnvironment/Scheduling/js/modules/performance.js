@@ -758,18 +758,84 @@ function updatePerfChart_(rows, dateKeys) {
 
     const maxXTicks = isNarrow ? 5 : 7;
 
+    // ensure minimum readable width like admin charts
+    try {
+      const minW = Math.max(600, labels.length * 40);
+      dom.perfChartEl.style.minWidth = `${minW}px`;
+    } catch (_) {}
+
+    // helper: show a floating detail panel when user clicks a data point
+    function showClickDetailPanel(idx) {
+      try {
+        const wrapperEl = dom.perfChartEl?.closest?.('.chart-wrapper') || dom.perfChartEl?.parentElement;
+        if (!wrapperEl) return;
+        // remove existing
+        const old = wrapperEl.querySelector('.perf-click-panel');
+        if (old) old.remove();
+
+        const rawKey = labels[idx];
+        const m = rawKey ? metrics[rawKey] : null;
+        const dateLabel = rawKey ? String(rawKey).replaceAll('-', '/') : '—';
+
+        const panel = document.createElement('div');
+        panel.className = 'perf-click-panel';
+        panel.setAttribute('role', 'dialog');
+
+        const rowsForDate = list.filter((r) => {
+          const dk = String(r['訂單日期'] || '').replaceAll('/', '-').slice(0, 10);
+          return dk === rawKey;
+        });
+
+        const amount = m ? fmtMoney_(m.amount) : '0';
+        const total = m ? (m.totalCount || 0) : 0;
+        const oldC = m ? (m.oldCount || 0) : 0;
+        const schC = m ? (m.schedCount || 0) : 0;
+
+        let html = `<div class="perf-click-panel-inner"><div class="perf-click-panel-head"><strong>${escapeHtml(dateLabel)}</strong><button class="perf-click-panel-close" aria-label="關閉">✕</button></div>`;
+        html += `<div class="perf-click-panel-body">`;
+        html += `<div class="perf-click-metrics">金額：<strong>${escapeHtml(String(amount))}</strong>，筆數：<strong>${total}</strong>（老點 ${oldC} / 排班 ${schC}）</div>`;
+        if (rowsForDate && rowsForDate.length) {
+          html += '<div class="perf-click-list"><table class="status-table small"><thead><tr><th>編號</th><th>拉牌</th><th>服務項目</th><th>小計</th></tr></thead><tbody>';
+          const sample = rowsForDate.slice(0, 20);
+          for (let i = 0; i < sample.length; i++) {
+            const r = sample[i];
+            html += `<tr><td>${escapeHtml(String(r['訂單編號'] || r['序'] || ''))}</td><td>${escapeHtml(String(r['拉牌'] || ''))}</td><td>${escapeHtml(String(r['服務項目'] || ''))}</td><td>${escapeHtml(String(r['小計'] ?? r['業績金額'] ?? ''))}</td></tr>`;
+          }
+          if (rowsForDate.length > sample.length) html += `<tr><td colspan="4">還有 ${rowsForDate.length - sample.length} 筆，請查明細</td></tr>`;
+          html += '</tbody></table></div>';
+        } else {
+          html += '<div class="perf-click-empty">查無明細</div>';
+        }
+        html += '</div></div>';
+        panel.innerHTML = html;
+
+        wrapperEl.appendChild(panel);
+
+        const btn = panel.querySelector('.perf-click-panel-close');
+        if (btn) btn.addEventListener('click', () => panel.remove());
+
+        // close when clicking outside
+        const onDocClick = (ev) => { if (!panel.contains(ev.target)) { panel.remove(); document.removeEventListener('pointerdown', onDocClick); } };
+        setTimeout(() => document.addEventListener('pointerdown', onDocClick), 50);
+      } catch (e) {
+        console.error('showClickDetailPanel error', e);
+      }
+    }
+
     perfChartInstance_ = new Chart(ctx, {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
         datasets: [
           {
-            type: amountAsLine ? "line" : "bar",
+            type: "line",
             label: amountLabel,
             data: amountData,
-            borderWidth: amountAsLine ? 2 : 1,
-            tension: amountAsLine ? 0.25 : 0,
-            fill: false,
-            pointRadius: amountAsLine ? (isNarrow ? 0 : 2) : 0,
+            borderWidth: 2,
+            tension: 0.25,
+            fill: true,
+            backgroundColor: "rgba(6,182,212,0.12)",
+            borderColor: "#06b6d4",
+            pointRadius: 0,
             pointHitRadius: 10,
             yAxisID: "y",
           },
@@ -779,6 +845,8 @@ function updatePerfChart_(rows, dateKeys) {
             data: oldRateData,
             tension: 0.25,
             fill: false,
+            borderColor: "#f59e0b",
+            backgroundColor: "rgba(245,158,11,0.06)",
             yAxisID: "y1",
             pointRadius: isNarrow ? 0 : 2,
             pointHitRadius: 10,
@@ -789,6 +857,8 @@ function updatePerfChart_(rows, dateKeys) {
             data: schedRateData,
             tension: 0.25,
             fill: false,
+            borderColor: "#10b981",
+            backgroundColor: "rgba(16,185,129,0.06)",
             yAxisID: "y1",
             pointRadius: isNarrow ? 0 : 2,
             pointHitRadius: 10,
@@ -830,9 +900,42 @@ function updatePerfChart_(rows, dateKeys) {
               },
             },
           },
+          // allow click to open detail panel
+          tooltip: {
+            enabled: true
+          }
+        },
+        onClick: function (evt, activeEls) {
+          try {
+            if (!Array.isArray(activeEls) || !activeEls.length) return;
+            const el = activeEls[0];
+            const idx = el.index != null ? el.index : el._index;
+            if (typeof idx === 'number') showClickDetailPanel(idx);
+          } catch (e) { console.warn('chart onClick error', e); }
         },
         scales: {
-          x: { ticks: { autoSkip: true, maxTicksLimit: maxXTicks, maxRotation: 0, font: { size: ticksFont } }, grid: { display: false } },
+          x: {
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: maxXTicks,
+              maxRotation: 0,
+              font: { size: ticksFont },
+              callback: function (val, idx, ticks) {
+                try {
+                  const raw = this.getLabelForValue(val) || this.chart.data.labels[idx];
+                  const d = new Date(String(raw).replace(/\//g, "-"));
+                  if (isNaN(d.getTime())) return String(raw);
+                  // prefer month/day for day granularity, show hour if present
+                  const hasTime = /\d{1,2}:\d{2}/.test(String(raw));
+                  if (hasTime) return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+                  return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+                } catch (e) {
+                  return String(val);
+                }
+              },
+            },
+            grid: { display: false },
+          },
           y: { beginAtZero: true, ticks: { font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) }, title: { display: !isNarrow, text: "金額", font: { size: baseFont } } },
           y1: {
             position: "right",
