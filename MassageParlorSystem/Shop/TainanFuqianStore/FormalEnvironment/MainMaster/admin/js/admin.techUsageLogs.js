@@ -208,11 +208,26 @@ function renderTechUsageLogs_() {
       const detailHtml = (r && r.parsedDetail)
         ? `<pre class="tech-log-json" style="white-space:pre-wrap;max-width:36rem;overflow:auto;margin:0">${escapeHtml(JSON.stringify(r.parsedDetail, null, 2))}</pre>`
         : `<span style="white-space:pre-wrap;max-width:36rem;display:inline-block">${escapeHtml(r.detail)}</span>`;
+      // format serverTime to YYYY-MM-DD HH:MM:SS (if time present) or YYYY-MM-DD
+      let serverTimeDisplay = String(r.serverTime || '');
+      try {
+        const d = parseDateSafe(r.serverTime);
+        if (d) {
+          const Y = d.getFullYear();
+          const M = pad2_(d.getMonth() + 1);
+          const D = pad2_(d.getDate());
+          const h = pad2_(d.getHours());
+          const m = pad2_(d.getMinutes());
+          const s = pad2_(d.getSeconds());
+          const hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(r.serverTime));
+          serverTimeDisplay = hasTime ? `${Y}-${M}-${D} ${h}:${m}:${s}` : `${Y}-${M}-${D}`;
+        }
+      } catch (_) {}
 
       return `
         <tr>
           <td data-label="#">${i + 1}</td>
-          <td data-label="serverTime"><span style="font-family:var(--mono)">${escapeHtml(r.serverTime)}</span></td>
+          <td data-label="serverTime"><span style="font-family:var(--mono)">${escapeHtml(serverTimeDisplay)}</span></td>
           <td data-label="eventCn">${escapeHtml(r.eventCn || '')}</td>
           <td data-label="userId"><span style="font-family:var(--mono)">${escapeHtml(r.userId)}</span></td>
           <td data-label="name">${escapeHtml(r.name)}</td>
