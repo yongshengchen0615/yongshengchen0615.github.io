@@ -136,10 +136,25 @@ export async function fetchStatusAll() {
       const body = Array.isArray(data.body) ? data.body : [];
       const foot = Array.isArray(data.foot) ? data.foot : [];
 
-      if (body.length === 0 && foot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
+      // try to obtain a top-level timestamp (edge server time or json meta)
+      const dataTs = data.timestamp || (data.bodyMeta && data.bodyMeta.timestamp) || (data.footMeta && data.footMeta.timestamp) || null;
+
+      // annotate rows with a source timestamp when individual rows lack one
+      function annotateRows(rows) {
+        return (rows || []).map((r) => {
+          r = r || {};
+          if (!r.timestamp && !r.sourceTs && !r.updatedAt && dataTs) r.sourceTs = dataTs;
+          return r;
+        });
+      }
+
+      const annotatedBody = annotateRows(body);
+      const annotatedFoot = annotateRows(foot);
+
+      if (annotatedBody.length === 0 && annotatedFoot.length === 0) throw new Error("EDGE_SHEET_EMPTY");
 
       resetFailCount();
-      return { source: "edge", edgeIdx: idx, bodyRows: body, footRows: foot };
+      return { source: "edge", edgeIdx: idx, bodyRows: annotatedBody, footRows: annotatedFoot, dataTimestamp: dataTs };
     } catch (e) {
       if (idx === startIdx) {
         const n = bumpFailCount(idx);
@@ -162,11 +177,22 @@ export async function fetchStatusAll() {
   const originUrl = withQuery(config.FALLBACK_ORIGIN_CACHE_URL, "mode=sheet_all&v=" + encodeURIComponent(jitterBust));
   const data = await fetchJsonWithTimeout(originUrl, baseTimeout + originExtra);
 
+  // annotate origin rows similarly
+  const originDataTs = data.timestamp || (data.bodyMeta && data.bodyMeta.timestamp) || (data.footMeta && data.footMeta.timestamp) || null;
+  function annotateOriginRows(rows) {
+    return (rows || []).map((r) => {
+      r = r || {};
+      if (!r.timestamp && !r.sourceTs && !r.updatedAt && originDataTs) r.sourceTs = originDataTs;
+      return r;
+    });
+  }
+
   resetFailCount();
   return {
     source: "origin",
     edgeIdx: null,
-    bodyRows: Array.isArray(data.body) ? data.body : [],
-    footRows: Array.isArray(data.foot) ? data.foot : [],
+    bodyRows: annotateOriginRows(Array.isArray(data.body) ? data.body : []),
+    footRows: annotateOriginRows(Array.isArray(data.foot) ? data.foot : []),
+    dataTimestamp: originDataTs,
   };
 }

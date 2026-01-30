@@ -175,7 +175,15 @@ function applyStaleSystemGate_() {
     return;
   }
 
-  const latestMs = computeLatestDataTimestampMs_();
+  // combine row timestamps with any server-provided fetch timestamp
+  let latestMs = computeLatestDataTimestampMs_();
+  try {
+    const fetchMs = Number(state.dataHealth && state.dataHealth.fetchDataTimestampMs);
+    if (Number.isFinite(fetchMs)) {
+      if (latestMs === null || fetchMs > latestMs) latestMs = fetchMs;
+    }
+  } catch (e) {}
+
   state.dataHealth.lastDataTimestampMs = latestMs;
 
   // 沒有可解析的 timestamp：不做「過久未更新」判斷（避免誤殺）
@@ -703,7 +711,7 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
   try {
     const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
     const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-    const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
+    const { source, edgeIdx, bodyRows, footRows, dataTimestamp } = await fetchStatusAll();
     const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     const dtFetch = Math.round(t1 - t0);
     if (dtFetch > REFRESH_SLOW_MS) console.warn(`[Perf] fetchStatusAll slow: ${dtFetch}ms`);
@@ -744,6 +752,13 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
     }
 
     // ✅ 資料過久未更新：顯示 Gate（並阻止操作）；恢復後自動解除
+    // store server-provided timestamp (if any) so stale check can consider it
+    try {
+      if (!state.dataHealth) state.dataHealth = {};
+      const ms = parseTimestampMs_(dataTimestamp);
+      state.dataHealth.fetchDataTimestampMs = Number.isFinite(ms) ? ms : null;
+    } catch (e) {}
+
     applyStaleSystemGate_();
 
     // 永遠更新我的狀態（schedule=否 也要）
