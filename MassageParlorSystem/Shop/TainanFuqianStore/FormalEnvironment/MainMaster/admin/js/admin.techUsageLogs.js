@@ -20,6 +20,7 @@ let techUsageChartObserver = null;
 let techLogsCanvasEl = null;
 let techLogsMetricSelectEl = null;
 let techLogsNameSelectEl = null;
+let techLogsGranularitySelectEl = null;
 let techLogsEventSelectEl = null;
 let techLogsStartDateEl = null;
 let techLogsEndDateEl = null;
@@ -33,6 +34,7 @@ function cacheTechDom_() {
   techLogsCanvasEl = document.getElementById("techUsageChartCanvas");
   techLogsMetricSelectEl = document.getElementById('techLogsMetricSelect');
   techLogsNameSelectEl = document.getElementById('techLogsNameSelect');
+  techLogsGranularitySelectEl = document.getElementById('techLogsGranularitySelect');
   techLogsEventSelectEl = document.getElementById('techLogsEventSelect');
   techLogsStartDateEl = document.getElementById('techLogsStartDateInput');
   techLogsEndDateEl = document.getElementById('techLogsEndDateInput');
@@ -389,8 +391,15 @@ function renderTechUsageChart_() {
   if (!techUsageChart) return;
 
   const { start, end } = techLogsGetSelectedRange_();
-  let gran = "day";
-  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+  // 粒度可由 UI 指定（auto/ hour/ day/ week/ month）
+  const granFromUI = techLogsGranularitySelectEl ? String(techLogsGranularitySelectEl.value || 'auto') : 'auto';
+  let gran = 'day';
+  if (granFromUI && granFromUI !== 'auto') {
+    gran = granFromUI;
+  } else {
+    if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+    else gran = 'day';
+  }
   const metricFromUI = techLogsMetricSelectEl ? String(techLogsMetricSelectEl.value || 'count') : 'count';
   const nameFromUI = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : '';
   const eventFromUI = techLogsEventSelectEl ? String(techLogsEventSelectEl.value || '') : '';
@@ -734,4 +743,5 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsMetricSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsNameSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsEventSelect")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsGranularitySelect")?.addEventListener("change", debouncedRenderTechChart);
 }

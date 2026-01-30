@@ -758,6 +758,28 @@ tbody td.sticky-col{ background:transparent; }
   .responsive-table tbody td select{ max-width: 60%; }
 }
 
+/* Tech Usage panel: 更友善的行動裝置排列 */
+@media (max-width: 720px){
+  #techUsageLogsPanelSection .panel-actions{
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap:8px;
+    align-items:center;
+    justify-items:stretch;
+  }
+  #techUsageLogsPanelSection .panel-actions .bulk-label{ display:none; }
+  #techUsageLogsPanelSection .panel-actions .select,
+  #techUsageLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
+@media (max-width: 420px){
+  #techUsageLogsPanelSection .panel-actions{
+    grid-template-columns: 1fr;
+  }
+  #techUsageLogsPanelSection .panel-actions .select,
+  #techUsageLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
 /* === 固定最右操作欄（避免刪除按鈕跑位） === */
 th.sticky-right,
 td.sticky-right{
