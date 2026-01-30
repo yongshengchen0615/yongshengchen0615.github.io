@@ -586,9 +586,17 @@ async function loadTechUsageLogs_() {
     (function populateTechEventAndNameSelect() {
       const evtSel = document.getElementById('techLogsEventSelect');
       if (evtSel) {
-        const events = Array.from(new Set(techUsageLogsAll_.map((r) => String(r.eventCn || r.event || '').trim()).filter(Boolean))).sort();
+        // 統計每個事件類型的次數，並依次數降冪排序（同數則依名稱升冪）
+        const eventCounts = techUsageLogsAll_.reduce((m, r) => {
+          const ev = String(r.eventCn || r.event || '').trim();
+          if (!ev) return m;
+          m[ev] = (m[ev] || 0) + 1;
+          return m;
+        }, {});
+        const eventsArr = Object.keys(eventCounts).map(k => ({ name: k, count: eventCounts[k] }));
+        eventsArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
         const curEvt = String(evtSel.value || '');
-        evtSel.innerHTML = '<option value="">全部</option>' + events.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join('');
+        evtSel.innerHTML = '<option value="">全部</option>' + eventsArr.map(e => `<option value="${escapeHtml(e.name)}">(${escapeHtml(String(e.count))}) ${escapeHtml(e.name)}</option>`).join('');
         if (curEvt) evtSel.value = curEvt;
       }
 
@@ -596,9 +604,17 @@ async function loadTechUsageLogs_() {
       if (!nameSel) return;
       const selectedEvent = evtSel ? String(evtSel.value || '') : '';
       const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
-      const names = Array.from(new Set(filtered.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
+      // 統計每位技師的事件數，並依事件數降冪排序（同數則依名稱升冪）
+      const counts = filtered.reduce((m, r) => {
+        const nm = String(r.name || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
       const cur = String(nameSel.value || '');
-      nameSel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      nameSel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(o.count)}) ${escapeHtml(o.name)}</option>`).join('');
       if (cur) nameSel.value = cur;
     })();
 
@@ -673,9 +689,16 @@ function bindTechUsageLogs_() {
     if (nameSel) {
       const selectedEvent = evtSel ? String(evtSel.value || '') : '';
       const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
-      const names = Array.from(new Set(filtered.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
+      const counts = filtered.reduce((m, r) => {
+        const nm = String(r.name || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
       const cur = String(nameSel.value || '');
-      nameSel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      nameSel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(o.count)}) ${escapeHtml(o.name)}</option>`).join('');
       if (cur) nameSel.value = cur;
     }
     onRangeChange();
