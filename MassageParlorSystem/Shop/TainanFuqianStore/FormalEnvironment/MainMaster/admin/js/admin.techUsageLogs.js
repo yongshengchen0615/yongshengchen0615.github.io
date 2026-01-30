@@ -142,9 +142,28 @@ function techLogsGetSelectedRange_() {
 }
 
 function techLogsBuildRangeLabel_(start, end) {
-  if (start && end) return start === end ? start : `${start} ~ ${end}`;
-  if (start) return `>= ${start}`;
-  if (end) return `<= ${end}`;
+  function formatForFooter(s) {
+    const str = String(s || '').trim();
+    if (!str) return '';
+    const d = parseDateSafe(str);
+    if (d) {
+      const hasTime = /[T\s]\d{1,2}:\d{2}/.test(str);
+      const Y = d.getFullYear();
+      const M = pad2_(d.getMonth() + 1);
+      const D = pad2_(d.getDate());
+      const h = pad2_(d.getHours());
+      const m = pad2_(d.getMinutes());
+      const sec = pad2_(d.getSeconds());
+      return hasTime ? `${Y}-${M}-${D} ${h}:${m}:${sec}` : `${Y}-${M}-${D}`;
+    }
+    return str.replace('T', ' ');
+  }
+
+  const fs = formatForFooter(start);
+  const fe = formatForFooter(end);
+  if (fs && fe) return fs === fe ? fs : `${fs} ~ ${fe}`;
+  if (fs) return `>= ${fs}`;
+  if (fe) return `<= ${fe}`;
   return "";
 }
 
