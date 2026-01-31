@@ -68,6 +68,11 @@ function showBlocker_(msg, userId, displayName, audit) {
 function initTheme_() {
   const saved = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
+  // 同步頂部切換按鈕文字（與 schedule 模組顯示一致）
+  try {
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = saved === "dark" ? "🌙 深色" : "☀️ 淺色";
+  } catch (_) {}
 }
 
 /**
@@ -79,6 +84,11 @@ function toggleTheme_() {
   const next = cur === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
   localStorage.setItem("theme", next);
+  // 更新頂部按鈕文字以反映新主題
+  try {
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = next === "dark" ? "🌙 深色" : "☀️ 淺色";
+  } catch (_) {}
 }
 
 /* =========================
