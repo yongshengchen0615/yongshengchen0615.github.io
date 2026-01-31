@@ -1,4 +1,4 @@
-import { installConsoleFilter } from "./modules/core.js";
+import { installConsoleFilter, debounce } from "./modules/core.js";
 import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
@@ -16,9 +16,10 @@ function bindEventsOnce() {
   if (eventsBound) return;
   eventsBound = true;
 
-  const rerenderDebounced = () => {
-    // noop for now; table module handles its own rendering triggers
-  };
+  const rerenderDebounced = debounce(() => {
+    // trigger table re-evaluation for current active panel (applies filters)
+    try { setActivePanel(state.activePanel); } catch (e) { console.error("rerenderDebounced error", e); }
+  }, 150);
 
   if (dom.tabBodyBtn) {
     dom.tabBodyBtn.addEventListener("click", () => {
