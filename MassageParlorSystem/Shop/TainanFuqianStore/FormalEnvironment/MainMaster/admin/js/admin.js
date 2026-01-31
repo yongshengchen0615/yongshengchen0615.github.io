@@ -48,8 +48,12 @@ function showApp_() {
 function showInitialLoading_(text) {
   if (!initialLoadingEl) return;
   if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
+  // ensure overlay is visible (clear any display:none set by fallback hide)
+  try {
+    initialLoadingEl.style.display = "";
+  } catch (_) {}
   initialLoadingEl.classList.remove("initial-loading-hidden");
-  hideApp_();
+  // 不在此隱藏主畫面；保持主畫面可見並讓遮罩蓋住它，避免在切換遮罩時出現空白畫面。
 
   // 避免「先顯示 0%」：一顯示遮罩就先推進度
   setInitialLoadingProgress_(Math.max(1, Number(initialLoadingProgressEl?.getAttribute?.("aria-valuenow")) || 1));
@@ -59,6 +63,57 @@ function hideInitialLoading_(text) {
   if (!initialLoadingEl) return;
   if (initialLoadingTextEl && text) initialLoadingTextEl.textContent = text;
   initialLoadingEl.classList.add("initial-loading-hidden");
+
+  // handle CSS transition/animation: remove from flow after transition ends,
+  // otherwise fallback to next rAF+timeout to set display:none so user isn't left with invisible overlay
+  try {
+    const el = initialLoadingEl;
+    const cs = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    const durStr = (cs && (cs.transitionDuration || cs.animationDuration)) || "0s";
+    let maxMs = 0;
+    durStr.split(",").forEach((s) => {
+      const t = String(s || "").trim();
+      if (!t) return;
+      if (t.endsWith("ms")) maxMs = Math.max(maxMs, Number(t.replace(/ms$/, "")));
+      else if (t.endsWith("s")) maxMs = Math.max(maxMs, Number(t.replace(/s$/, "")) * 1000);
+    });
+
+    const cleanup = () => {
+      try {
+        el.style.display = "none";
+      } catch (_) {}
+      try {
+        el.removeEventListener("transitionend", onEnd);
+        el.removeEventListener("animationend", onEnd);
+      } catch (_) {}
+    };
+
+    const onEnd = (ev) => {
+      cleanup();
+    };
+
+    if (maxMs > 20) {
+      el.addEventListener("transitionend", onEnd);
+      el.addEventListener("animationend", onEnd);
+      // safety fallback in case transitionend/animationend not fired
+      setTimeout(() => {
+        try {
+          cleanup();
+        } catch (_) {}
+      }, maxMs + 60);
+    } else {
+      // no transition: hide immediately on next frame
+      if (typeof requestAnimationFrame !== "undefined") {
+        requestAnimationFrame(() => setTimeout(() => (el.style.display = "none"), 32));
+      } else {
+        setTimeout(() => (el.style.display = "none"), 32);
+      }
+    }
+  } catch (e) {
+    try {
+      initialLoadingEl.style.display = "none";
+    } catch (_) {}
+  }
 }
 
 function setInitialLoadingProgress_(percent, text) {
@@ -110,6 +165,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 先顯示初始載入遮罩，避免白畫面/閃爍
   showInitialLoading_();
   setInitialLoadingProgress_(5);
+  // 使主畫面在遮罩下可見，避免遮罩關閉時出現短暫空白
+  try { showApp_(); } catch (_) {}
 
   try {
     const withTimeout_ = (promise, ms, label) => {
@@ -264,98 +321,61 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ 驗證通過後記一筆（不阻擋）
     if (typeof appendAdminUsageLog_ === "function") appendAdminUsageLog_();
 
-    // ✅ 驗證通過後，直接並行載入所有資料（admins + users）
+    // ✅ 驗證通過後，直接並行啟動所有模組，再以事件驅動等待每個模組完成 render
     if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("載入 Users 資料中...");
 
     setInitialLoadingProgress_(50, "載入資料中…");
 
-    const tasks = [];
-    if (typeof loadAdmins_ === "function") {
-      tasks.push(
-        (async () => {
-          await loadAdmins_();
-          return "admins";
-        })()
-      );
-    }
-
-    if (typeof bootUsersPanel_ === "function") {
-      tasks.push(
-        (async () => {
-          await bootUsersPanel_();
-          return "users";
-        })()
-      );
-    }
-
-    // 管理員紀錄 / 技師使用紀錄：登入後一次載入（切換頁面不重新打 API）
-    if (typeof loadAdminLogs_ === "function") {
-      tasks.push(
-        (async () => {
-          await loadAdminLogs_();
-          return "adminLogs";
-        })()
-      );
-    }
-
-    if (typeof loadTechUsageLogs_ === "function") {
-      tasks.push(
-        (async () => {
-          await loadTechUsageLogs_();
-          return "techUsageLogs";
-        })()
-      );
-    }
-
-    // include schedule boot promise (if schedule module registers it)
-    try {
-      if (window.__scheduleBootPromise && typeof window.__scheduleBootPromise.then === "function") {
-        tasks.push(
-          Promise.resolve(window.__scheduleBootPromise)
-            .then(() => {
-              return "schedule";
-            })
-            .catch((e) => {
-              console.warn("schedule boot failed", e);
-              return "schedule";
-            })
-        );
-      }
-    } catch (e) {
-      console.warn("checking schedule boot promise failed", e);
-    }
-
-    // 進度：用「完成的任務數」估算（避免卡住在某一步）
-    const total = Math.max(1, tasks.length);
+    // 使用純事件驅動：先註冊監聽，再啟動模組；當收到所有預期的 render 事件後才結束 loading
+    const expected = ["admins", "adminLogs", "users", "techUsageLogs", "schedule"];
+    const expectedSet = new Set(expected);
     let done = 0;
-    const trackedTasks = tasks.map((t) =>
-      Promise.resolve(t)
-        .catch((e) => {
-          throw e;
-        })
-        .finally(() => {
-          done += 1;
-          // 50% ~ 95%：隨任務完成推進
-          const p = 50 + (done / total) * 45;
-          setInitialLoadingProgress_(p, `載入資料中…（${done}/${total}）`);
-        })
-    );
 
-    const results = await Promise.allSettled(trackedTasks);
-    const rejected = results.filter((r) => r.status === "rejected");
-    let allSucceeded = true;
-    let reasonText = "";
-    if (rejected.length) {
-      allSucceeded = false;
-      reasonText = rejected
-        .map((r) => String(r.reason?.message || r.reason))
-        .filter(Boolean)
-        .slice(0, 2)
-        .join("；");
-      toast(`部分資料載入失敗：${reasonText || "請查看 console"}`, "err");
-    }
+    const masterPromise = new Promise((resolve) => {
+      const onEvent = (ev) => {
+        try {
+          const name = String(ev?.detail || "");
+          if (!name) return;
+          if (expectedSet.has(name)) {
+            // remove to avoid double-counting
+            expectedSet.delete(name);
+            done += 1;
+            const p = 50 + (done / expected.length) * 45;
+            setInitialLoadingProgress_(p, `載入資料中…（${done}/${expected.length}）`);
+            if (expectedSet.size === 0) {
+              window.removeEventListener("admin:rendered", onEvent);
+              return resolve({ ok: true });
+            }
+          }
+        } catch (e) {}
+      };
 
+      window.addEventListener("admin:rendered", onEvent);
+
+      // also listen to schedule boot promise in case it resolves without dispatch (safety)
+      if (window.__scheduleBootPromise && typeof window.__scheduleBootPromise.then === "function") {
+        Promise.resolve(window.__scheduleBootPromise).then(() => {
+          // dispatch synthetic event if schedule hasn't been received yet
+          try {
+            window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'schedule' }));
+          } catch (e) {}
+        });
+      }
+
+      // start modules after listener is attached
+      try {
+        if (typeof loadAdmins_ === "function") loadAdmins_().catch((e) => console.warn("loadAdmins_ failed", e));
+        if (typeof bootUsersPanel_ === "function") bootUsersPanel_().catch((e) => console.warn("bootUsersPanel_ failed", e));
+        if (typeof loadAdminLogs_ === "function") loadAdminLogs_().catch((e) => console.warn("loadAdminLogs_ failed", e));
+        if (typeof loadTechUsageLogs_ === "function") loadTechUsageLogs_().catch((e) => console.warn("loadTechUsageLogs_ failed", e));
+      } catch (e) {
+        console.warn("start modules failed", e);
+      }
+    });
+
+    const results = await masterPromise;
+    const allSucceeded = !!results.ok;
     setInitialLoadingProgress_(100, allSucceeded ? "完成" : "載入失敗");
 
     if (allSucceeded) {
@@ -422,8 +442,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_(msg);
   } finally {
     // 不論成功或失敗，都要把遮罩收起來（避免卡住頁面）
-    // 並在首批資料流程結束後再顯示主畫面
-    showApp_();
-    hideInitialLoading_();
+    // 先印出 overlay 狀態以便除錯（可在瀏覽器 console 檢查）
+    try {
+      try {
+        const il = document.getElementById("initialLoading");
+        const appEl = document.querySelector(".app");
+        const blocker = document.getElementById("blocker");
+        const scheduleGate = document.getElementById("gate");
+        console.debug("[overlay-debug] initialLoading:", !!il, "aria-valuenow=", il?.querySelector?.(".initial-loading-progress")?.getAttribute("aria-valuenow"));
+        console.debug("[overlay-debug] app has .app-hidden:", !!appEl && appEl.classList.contains("app-hidden"));
+        console.debug("[overlay-debug] blocker present & hidden:", !!blocker, blocker ? blocker.hidden : undefined);
+        console.debug("[overlay-debug] schedule gate present & gate-hidden:", !!scheduleGate, scheduleGate ? scheduleGate.classList.contains("gate-hidden") : undefined);
+      } catch (e) {
+        console.debug("[overlay-debug] inspect failed", e);
+      }
+
+      // 在關閉遮罩前短暫等待一個 frame + 小延遲，確保 DOM/圖表有機會 repaint
+      await new Promise((res) => {
+        if (typeof requestAnimationFrame !== "undefined") return requestAnimationFrame(() => setTimeout(res, 40));
+        return setTimeout(res, 40);
+      });
+    } catch (_) {}
+
+    // 關閉前再次印一次狀態
+    try {
+      const il2 = document.getElementById("initialLoading");
+      const appEl2 = document.querySelector(".app");
+      const blocker2 = document.getElementById("blocker");
+      console.debug("[overlay-debug-after] initialLoading present:", !!il2, "app-hidden:", !!appEl2 && appEl2.classList.contains("app-hidden"), "blocker.hidden:", blocker2 ? blocker2.hidden : undefined);
+    } catch (_) {}
+
+    // 注意：不要在此處無條件顯示主畫面或關閉遮罩，
+    // 初始載入應以事件驅動完成為準（見上方的 allSucceeded 處理）。
+    console.debug("[overlay-debug] final: leaving overlay state to event-driven handlers");
   }
 });

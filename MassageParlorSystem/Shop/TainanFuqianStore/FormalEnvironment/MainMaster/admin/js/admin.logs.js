@@ -538,6 +538,20 @@ async function loadAdminLogs_() {
         ? `共 ${adminLogs_.length} 筆（${rangeLabel}）/ 總 ${adminLogsAll_.length} 筆`
         : `共 ${adminLogs_.length} 筆`
     );
+    // notify that admin logs rendered (dispatch on next rAF to ensure repaint/chart init)
+    try {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'adminLogs' }));
+          } catch (e) {}
+        });
+      } else {
+        try {
+          window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'adminLogs' }));
+        } catch (e) {}
+      }
+    } catch (e) {}
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);

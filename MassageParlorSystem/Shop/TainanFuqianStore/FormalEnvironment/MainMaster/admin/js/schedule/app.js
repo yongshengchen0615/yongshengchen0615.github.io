@@ -104,8 +104,17 @@ async function boot() {
   startPolling();
 
   // mark schedule boot as ready (non-blocking for further inits)
-  try {
+    try {
     if (window.__resolveScheduleBoot) window.__resolveScheduleBoot("schedule");
+    try {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => {
+          try { window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'schedule' })); } catch (_) {}
+        });
+      } else {
+        try { window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'schedule' })); } catch (_) {}
+      }
+    } catch (_) {}
   } catch (e) {
     console.warn("__resolveScheduleBoot failed", e);
   }

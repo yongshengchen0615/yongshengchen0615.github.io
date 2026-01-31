@@ -547,6 +547,21 @@ function uRender_() {
   if (uSavingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
+
+  // notify that users render completed (dispatch on next rAF to ensure repaint)
+  try {
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => {
+        try {
+          window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'users' }));
+        } catch (e) {}
+      });
+    } else {
+      try {
+        window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'users' }));
+      } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 async function uApiListUsers_() {
@@ -612,6 +627,10 @@ async function uLoadUsers_() {
 
     uApplyFilters_();
     toast("Users 資料已更新", "ok");
+    // notify that users rendered
+    try {
+      window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'users' }));
+    } catch (e) {}
   } catch (e) {
     console.error(e);
     toast("Users 讀取失敗", "err");

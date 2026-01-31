@@ -673,6 +673,20 @@ async function loadTechUsageLogs_() {
         ? `共 ${techUsageLogs_.length} 筆（${rangeLabel}）/ 總 ${techUsageLogsAll_.length} 筆`
         : `共 ${techUsageLogs_.length} 筆`
     );
+    // notify that tech usage logs rendered (dispatch on next rAF to ensure repaint/chart init)
+    try {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'techUsageLogs' }));
+          } catch (e) {}
+        });
+      } else {
+        try {
+          window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'techUsageLogs' }));
+        } catch (e) {}
+      }
+    } catch (e) {}
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);

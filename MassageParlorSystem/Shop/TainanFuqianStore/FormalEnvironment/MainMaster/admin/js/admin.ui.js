@@ -167,6 +167,22 @@ function render_() {
   if (savingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
+
+  // notify that admins render completed (dispatch on next rAF to ensure repaint)
+  try {
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => {
+        try {
+          window.dispatchEvent(new CustomEvent("admin:rendered", { detail: "admins" }));
+        } catch (e) {}
+      });
+    } else {
+      // fallback
+      try {
+        window.dispatchEvent(new CustomEvent("admin:rendered", { detail: "admins" }));
+      } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 /**
