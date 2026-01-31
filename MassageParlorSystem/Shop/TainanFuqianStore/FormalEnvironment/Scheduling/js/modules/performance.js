@@ -470,6 +470,7 @@ function pickCards3_(gasCards, rows) {
 
 let perfChartMode_ = "daily"; // "daily" | "cumu" | "ma7"
 let perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+let perfChartType_ = "line"; // "line" | "bar"
 
 function loadPerfChartPrefs_() {
   try {
@@ -487,6 +488,10 @@ function loadPerfChartPrefs_() {
     const m = String(localStorage.getItem(PERF_CHART_MODE_KEY) || "").trim();
     if (m === "daily" || m === "cumu" || m === "ma7") perfChartMode_ = m;
   } catch (_) {}
+  try {
+    const t = String(localStorage.getItem(PERF_CHART_VIS_KEY + "_type") || "").trim();
+    if (t === "line" || t === "bar") perfChartType_ = t;
+  } catch (_) {}
 }
 
 function savePerfChartPrefs_() {
@@ -495,6 +500,9 @@ function savePerfChartPrefs_() {
   } catch (_) {}
   try {
     localStorage.setItem(PERF_CHART_MODE_KEY, String(perfChartMode_ || "daily"));
+  } catch (_) {}
+  try {
+    localStorage.setItem(PERF_CHART_VIS_KEY + "_type", String(perfChartType_ || "line"));
   } catch (_) {}
 }
 
@@ -741,8 +749,15 @@ function updatePerfChart_(rows, dateKeys) {
     const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
     const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
 
-    const baseFont = isNarrow ? 11 : 13;
-    const ticksFont = isNarrow ? 10 : 12;
+      // 根據容器寬度動態計算字型大小，讓文字在手機/平板/桌面間自適應
+      const baseFontRaw = isNarrow ? 13 : 15;
+      const ticksFontRaw = isNarrow ? 12 : 14;
+      // scale factor: 1 at 420px, grows on wider screens but capped to avoid excessively large text
+      const scaleFactor = Math.max(0.9, Math.min(1.6, containerWidth / 420));
+      const baseFont = Math.round(baseFontRaw * scaleFactor);
+      const ticksFont = Math.round(ticksFontRaw * scaleFactor);
+      const legendBoxWidth = Math.max(8, Math.round(8 * Math.min(1.4, scaleFactor)));
+      const axisTitleFontSize = Math.round(baseFont * 1.05);
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
@@ -826,43 +841,89 @@ function updatePerfChart_(rows, dateKeys) {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
         datasets: [
-          {
-            type: "line",
-            label: amountLabel,
-            data: amountData,
-            borderWidth: 2,
-            tension: 0.25,
-            fill: true,
-            backgroundColor: "rgba(6,182,212,0.12)",
-            borderColor: "#06b6d4",
-            pointRadius: 0,
-            pointHitRadius: 10,
-            yAxisID: "y",
-          },
-          {
-            type: "line",
-            label: "老點率 (%)",
-            data: oldRateData,
-            tension: 0.25,
-            fill: false,
-            borderColor: "#f59e0b",
-            backgroundColor: "rgba(245,158,11,0.06)",
-            yAxisID: "y1",
-            pointRadius: isNarrow ? 0 : 2,
-            pointHitRadius: 10,
-          },
-          {
-            type: "line",
-            label: "排班率 (%)",
-            data: schedRateData,
-            tension: 0.25,
-            fill: false,
-            borderColor: "#10b981",
-            backgroundColor: "rgba(16,185,129,0.06)",
-            yAxisID: "y1",
-            pointRadius: isNarrow ? 0 : 2,
-            pointHitRadius: 10,
-          },
+          (function(){
+            const common = {
+              label: amountLabel,
+              data: amountData,
+              yAxisID: "y",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: 'rgba(6,182,212,0.16)',
+                borderColor: '#06b6d4',
+                borderWidth: 1,
+                barThickness: 'flex',
+                maxBarThickness: 48,
+                categoryPercentage: 0.75,
+                barPercentage: 0.9,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              borderWidth: Math.max(2, Math.round(2 * Math.min(1.6, Math.max(1, legendBoxWidth/8)))),
+              tension: 0.25,
+              fill: true,
+              backgroundColor: 'rgba(6,182,212,0.12)',
+              borderColor: '#06b6d4',
+              pointRadius: 0,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function(){
+            const common = {
+              data: oldRateData,
+              label: "老點率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: '#f59e0b66',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              tension: 0.25,
+              fill: false,
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245,158,11,0.06)',
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function(){
+            const common = {
+              data: schedRateData,
+              label: "排班率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: '#10b98166',
+                borderColor: '#10b981',
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              tension: 0.25,
+              fill: false,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.06)',
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
         ],
       },
       options: {
@@ -875,7 +936,7 @@ function updatePerfChart_(rows, dateKeys) {
         plugins: {
           legend: {
             position: isNarrow ? "bottom" : "top",
-            labels: { usePointStyle: true, boxWidth: 8, font: { size: baseFont }, padding: isNarrow ? 10 : 14 },
+            labels: { usePointStyle: true, boxWidth: legendBoxWidth, font: { size: baseFont }, padding: isNarrow ? 10 : 14, color: textColor },
           },
           tooltip: {
             bodyFont: { size: ticksFont },
@@ -954,6 +1015,24 @@ function updatePerfChart_(rows, dateKeys) {
     console.error("updatePerfChart_ error", e);
   }
 }
+    // 取得主題文字顏色與次要文字顏色（CSS 變數）作為 chart 字色，fallback 為深/次色
+    const css = (typeof window !== 'undefined' && window.getComputedStyle) ? window.getComputedStyle(document.documentElement) : null;
+    const textColor = (css && css.getPropertyValue('--text-main')) ? css.getPropertyValue('--text-main').trim() : '#111827';
+    const subColorRaw = (css && css.getPropertyValue('--text-sub')) ? css.getPropertyValue('--text-sub').trim() : '#6b7280';
+    // create faint grid color from subColor
+    const gridColor = (() => {
+      try {
+        // if color is hex, convert; otherwise fallback to rgba with low opacity
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
+          const hex = subColorRaw.replace('#', '');
+          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
+          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
+          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
+          return `rgba(${r},${g},${b},0.10)`;
+        }
+      } catch (_) {}
+      return `${subColorRaw}33`;
+    })();
 
 /* =========================
  * Fetch (POST syncStorePerf_v1)
@@ -1235,6 +1314,7 @@ export function initPerformanceUi() {
     const btnDaily = document.getElementById("perfChartModeDaily");
     const btnCumu = document.getElementById("perfChartModeCumu");
     const btnMA7 = document.getElementById("perfChartModeMA7");
+    const btnBar = document.getElementById("perfChartModeBar");
     const btnReset = document.getElementById("perfChartReset");
 
     const setActive = () => {
@@ -1243,6 +1323,10 @@ export function initPerformanceUi() {
       const map = { daily: btnDaily, cumu: btnCumu, ma7: btnMA7 };
       const active = map[perfChartMode_];
       if (active) active.classList.add("is-active");
+      if (btnBar) {
+        if (perfChartType_ === 'bar') btnBar.classList.add('is-active');
+        else btnBar.classList.remove('is-active');
+      }
     };
 
     const applyMode = (mode) => {
@@ -1256,6 +1340,14 @@ export function initPerformanceUi() {
     btnDaily && btnDaily.addEventListener("click", () => applyMode("daily"));
     btnCumu && btnCumu.addEventListener("click", () => applyMode("cumu"));
     btnMA7 && btnMA7.addEventListener("click", () => applyMode("ma7"));
+    if (btnBar) {
+      btnBar.addEventListener('click', () => {
+        perfChartType_ = perfChartType_ === 'bar' ? 'line' : 'bar';
+        savePerfChartPrefs_();
+        setActive();
+        schedulePerfChartRedraw_();
+      });
+    }
 
     btnReset &&
       btnReset.addEventListener("click", () => {
