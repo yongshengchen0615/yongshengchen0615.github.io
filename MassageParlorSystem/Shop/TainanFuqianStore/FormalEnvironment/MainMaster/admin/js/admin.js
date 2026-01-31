@@ -69,13 +69,46 @@ function setInitialLoadingProgress_(percent, text) {
   if (initialLoadingProgressEl) initialLoadingProgressEl.setAttribute("aria-valuenow", String(Math.round(p)));
 }
 
+// 隱藏排班面板內的 loading / empty / error 提示，避免只剩背景畫面
+function hideScheduleStates_() {
+  try {
+    const scheduleSection = document.getElementById("schedulePanelSection");
+    // hide any .initial-loading inside schedule panel (there's a duplicated id there)
+    if (scheduleSection) {
+      scheduleSection.querySelectorAll(".initial-loading").forEach((el) => el.classList.add("initial-loading-hidden"));
+      const top = scheduleSection.querySelector("#topLoading");
+      if (top) top.classList.add("hidden");
+      const empty = scheduleSection.querySelector("#emptyState");
+      if (empty) empty.style.display = "none";
+      const loading = scheduleSection.querySelector("#loadingState");
+      if (loading) loading.style.display = "none";
+      const error = scheduleSection.querySelector("#errorState");
+      if (error) error.style.display = "none";
+      const gate = scheduleSection.querySelector("#gate");
+      if (gate) gate.classList.add("gate-hidden");
+    }
+
+    // also hide any global-top ones (fallback)
+    const globalTop = document.getElementById("topLoading");
+    if (globalTop) globalTop.classList.add("hidden");
+    const globalEmpty = document.getElementById("emptyState");
+    if (globalEmpty) globalEmpty.style.display = "none";
+    const globalLoading = document.getElementById("loadingState");
+    if (globalLoading) globalLoading.style.display = "none";
+    const globalError = document.getElementById("errorState");
+    if (globalError) globalError.style.display = "none";
+  } catch (e) {
+    console.warn("hideScheduleStates_ failed", e);
+  }
+}
+
 // defer 腳本會在 DOM 解析後、DOMContentLoaded 前執行。
 // admin.html 的 loading 預設可見，因此這裡先把 0% 推進到初始值，避免看到 0%。
 setInitialLoadingProgress_(1);
 
 document.addEventListener("DOMContentLoaded", async () => {
   // 先顯示初始載入遮罩，避免白畫面/閃爍
-  showInitialLoading_("資料載入中…");
+  showInitialLoading_();
   setInitialLoadingProgress_(5);
 
   try {
@@ -86,6 +119,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       return Promise.race([promise, timeout]).finally(() => timer && clearTimeout(timer));
     };
+
+    // collection of view buttons (disabled until initial data loaded)
+    const __viewButtons = [];
 
     const initListViewToggle_ = () => {
       const btnAdmins = document.getElementById("viewAdminsBtn");
@@ -108,6 +144,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const schedulePanel = document.getElementById("schedulePanelSection");
 
       if (!btnAdmins || !btnUsers || !btnLogs || !btnTechUsageLogs) return;
+
+      // disable view buttons until initial data is fully loaded
+      [btnAdmins, btnLogs, btnUsers, btnTechUsageLogs, btnSchedule].forEach((b) => {
+        if (!b) return;
+        b.disabled = true;
+        b.classList.add("btn--disabled");
+        __viewButtons.push(b);
+      });
 
       const setView_ = (view) => {
         const isAdmins = view === "admins";
@@ -164,6 +208,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       btnUsers.addEventListener("click", () => setView_("users"));
       btnTechUsageLogs.addEventListener("click", () => setView_("techUsageLogs"));
       if (btnSchedule) btnSchedule.addEventListener("click", () => setView_("schedule"));
+    };
+
+    // expose small helper to enable view buttons after initial data load
+    const enableViewButtons_ = () => {
+      __viewButtons.forEach((b) => {
+        if (!b) return;
+        b.disabled = false;
+        b.classList.remove("btn--disabled");
+      });
     };
 
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡住
@@ -255,6 +308,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
     }
 
+    // include schedule boot promise (if schedule module registers it)
+    try {
+      if (window.__scheduleBootPromise && typeof window.__scheduleBootPromise.then === "function") {
+        tasks.push(
+          Promise.resolve(window.__scheduleBootPromise)
+            .then(() => {
+              return "schedule";
+            })
+            .catch((e) => {
+              console.warn("schedule boot failed", e);
+              return "schedule";
+            })
+        );
+      }
+    } catch (e) {
+      console.warn("checking schedule boot promise failed", e);
+    }
+
     // 進度：用「完成的任務數」估算（避免卡住在某一步）
     const total = Math.max(1, tasks.length);
     let done = 0;
@@ -273,8 +344,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const results = await Promise.allSettled(trackedTasks);
     const rejected = results.filter((r) => r.status === "rejected");
+    let allSucceeded = true;
+    let reasonText = "";
     if (rejected.length) {
-      const reasonText = rejected
+      allSucceeded = false;
+      reasonText = rejected
         .map((r) => String(r.reason?.message || r.reason))
         .filter(Boolean)
         .slice(0, 2)
@@ -282,7 +356,42 @@ document.addEventListener("DOMContentLoaded", async () => {
       toast(`部分資料載入失敗：${reasonText || "請查看 console"}`, "err");
     }
 
-    setInitialLoadingProgress_(100, "完成");
+    setInitialLoadingProgress_(100, allSucceeded ? "完成" : "載入失敗");
+
+    if (allSucceeded) {
+      // ensure schedule-specific loading states are cleared
+      hideScheduleStates_();
+      // 只有全部成功才啟用切換並顯示主畫面
+      try {
+        if (typeof enableViewButtons_ === "function") enableViewButtons_();
+      } catch (e) {
+        console.warn("enableViewButtons_ failed", e);
+      }
+
+      showApp_();
+      hideInitialLoading_();
+    } else {
+      // 若有任務失敗：隱藏 initial loading，顯示 blocker（含錯誤訊息），避免只顯示背景
+      try {
+        // 顯示主畫面以便 blocker overlay 可見在上方
+        // clear schedule states first
+        hideScheduleStates_();
+        showApp_();
+        hideInitialLoading_();
+
+        if (typeof showBlocker_ === "function") {
+          showBlocker_(`部分資料載入失敗：${reasonText || "請查看 console"}`);
+        } else {
+          // fallback: 顯示 toast 並保持主畫面
+          toast(`部分資料載入失敗：${reasonText || "請查看 console"}`, "err");
+        }
+      } catch (e) {
+        console.warn("showBlocker_ failed", e);
+        // fallback ensure loading is hidden so user isn't left with blank overlay
+        hideInitialLoading_();
+        showApp_();
+      }
+    }
   } catch (e) {
     const code = String(e?.code || "");
     const message = String(e?.message || e);

@@ -1287,6 +1287,103 @@ html[data-theme="light"] .initial-loading-progress{
   text-overflow:ellipsis;
 }
 
+/* =========================
+ * Schedule status colors (sync with GAS palette)
+ * Classes produced by scheduling JS: status-shift, status-busy, status-booked, status-free, status-other
+ * Apply to both `.status-pill` and container `.my-master-status` for consistency
+ * ========================= */
+#schedulePanelSection .status-pill,
+#schedulePanelSection .my-master-status {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--card2);
+  color:var(--text);
+  font-weight:600;
+  font-size:13px;
+}
+
+#schedulePanelSection .status-pill.status-shift,
+#schedulePanelSection .my-master-status.status-shift{
+  border-color: rgba(22,163,74,.35);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+#schedulePanelSection .status-pill.status-busy,
+#schedulePanelSection .my-master-status.status-busy{
+  border-color: rgba(239,68,68,.35);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+#schedulePanelSection .status-pill.status-booked,
+#schedulePanelSection .my-master-status.status-booked{
+  border-color: rgba(56,189,248,.35);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+#schedulePanelSection .status-pill.status-free,
+#schedulePanelSection .my-master-status.status-free{
+  border-color: rgba(100,116,139,.25);
+  background: rgba(100,116,139,.06);
+  color: var(--muted);
+}
+
+#schedulePanelSection .status-pill.status-other,
+#schedulePanelSection .my-master-status.status-other{
+  border-color: rgba(148,163,184,.18);
+  background: var(--card);
+  color: var(--text-sub);
+}
+
+/* Light theme overrides: ensure sufficient contrast on light backgrounds */
+html[data-theme="light"] #schedulePanelSection .status-pill,
+html[data-theme="light"] #schedulePanelSection .my-master-status {
+  border-color: rgba(148,163,184,.35);
+  background: rgba(255,255,255,.9);
+  color: var(--text);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-shift,
+html[data-theme="light"] #schedulePanelSection .my-master-status.status-shift{
+  border-color: rgba(22,163,74,.45);
+  background: rgba(22,163,74,.08);
+  color: rgba(22,163,74,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-busy,
+html[data-theme="light"] #schedulePanelSection .my-master-status.status-busy{
+  border-color: rgba(239,68,68,.45);
+  background: rgba(239,68,68,.06);
+  color: rgba(239,68,68,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-booked,
+html[data-theme="light"] #schedulePanelSection .my-master-status.status-booked{
+  border-color: rgba(56,189,248,.45);
+  background: rgba(56,189,248,.06);
+  color: rgba(7,89,133,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-free,
+html[data-theme="light"] #schedulePanelSection .my-master-status.status-free{
+  border-color: rgba(100,116,139,.3);
+  background: rgba(100,116,139,.06);
+  color: rgba(55,65,81,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-other,
+html[data-theme="light"] #schedulePanelSection .my-master-status.status-other{
+  border-color: rgba(148,163,184,.25);
+  background: rgba(247,249,250,1);
+  color: var(--text-sub);
+}
+
 /* ------------------------------------------------------------------
  * Schedule panel — targeted fixes for mobile vertical-text and spacing
  * - Force horizontal writing mode for the schedule panel only (minimal scope)
@@ -1334,6 +1431,34 @@ html[data-theme="light"] .initial-loading-progress{
 #schedulePanelSection .filters{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 #schedulePanelSection .filters .form-control, #schedulePanelSection .filters .btn{ min-height:40px; }
 
+/* Align search & status filter labels and controls in schedule toolbar */
+#schedulePanelSection .filters .filter{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#schedulePanelSection .filters .filter .filter-label{
+  display:inline-block;
+  width:84px; /* fixed label width so controls align */
+  color:var(--text-sub);
+  font-size:12px;
+}
+#schedulePanelSection .filters .filter .input,
+#schedulePanelSection .filters .filter .select{
+  min-width:140px;
+}
+
+@media (max-width: 720px){
+  /* stack filters on small screens */
+  #schedulePanelSection .filters .filter{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  #schedulePanelSection .filters .filter .filter-label{ width:auto; }
+  #schedulePanelSection .filters .filter .input,
+  #schedulePanelSection .filters .filter .select{ min-width:100%; width:100%; }
+}
+
 /* subtle focus ring for keyboard users */
 #schedulePanelSection .btn:focus, #schedulePanelSection .form-control:focus{
   outline:2px solid rgba(100,150,255,0.18);
@@ -1353,3 +1478,50 @@ html[data-theme="light"] .initial-loading-progress{
 }
 
 /* end UI 排版優化 */
+
+/* ------------------------------------------------------------------
+ * Mobile fixes for schedule table
+ * - reduce fixed first-column width on narrow screens
+ * - allow status / appt / time badges to wrap safely
+ * - prefer horizontal scroll when necessary but avoid content overflow
+ * ------------------------------------------------------------------ */
+@media (max-width: 520px) {
+  /* allow the schedule table to shrink to container width when possible */
+  #schedulePanelSection .status-table {
+    min-width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  /* shrink the left column (order/id) so it doesn't push content off-screen */
+  #schedulePanelSection .status-table tbody td:first-child,
+  #schedulePanelSection .status-table thead th:first-child {
+    width: clamp(44px, 12vw, 72px) !important;
+    max-width: 72px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  /* allow status and appointment cells to wrap instead of forcing overflow */
+  #schedulePanelSection .status-table tbody td:nth-child(3),
+  #schedulePanelSection .status-table tbody td:nth-child(4),
+  #schedulePanelSection .status-table tbody td:nth-child(5) {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  /* make pills and badges wrap safely and reduce padding slightly */
+  #schedulePanelSection .status-pill,
+  #schedulePanelSection .appt-block,
+  #schedulePanelSection .time-badge {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    font-size: 12px !important;
+    display: inline-block !important;
+  }
+
+  /* slightly reduce row padding for narrow screens */
+  #schedulePanelSection .status-table tbody td { padding: 10px 8px !important; }
+}

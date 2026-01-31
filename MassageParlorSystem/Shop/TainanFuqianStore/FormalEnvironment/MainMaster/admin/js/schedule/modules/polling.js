@@ -111,7 +111,7 @@ function resetPollState() {
 }
 
 export function startPolling(extraReadyPromise) {
-  showInitialLoading("資料載入中…");
+  showInitialLoading();
   setInitialLoadingProgress(85, "同步資料中…");
 
   if (dom.refreshBtn) {

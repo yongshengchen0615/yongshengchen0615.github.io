@@ -16,7 +16,7 @@ export function setInitialLoadingProgress(percent, text) {
 
 export function showInitialLoading(text) {
   if (!dom.initialLoadingEl) return;
-  if (dom.initialLoadingTextEl) dom.initialLoadingTextEl.textContent = text || "資料載入中…";
+  if (dom.initialLoadingTextEl) dom.initialLoadingTextEl.textContent = text || "";
   dom.initialLoadingEl.classList.remove("initial-loading-hidden");
 }
 
@@ -27,7 +27,7 @@ export function hideInitialLoading() {
 
 export function showLoadingHint(text) {
   if (!dom.topLoadingEl) return;
-  if (dom.topLoadingTextEl) dom.topLoadingTextEl.textContent = text || "資料載入中…";
+  if (dom.topLoadingTextEl) dom.topLoadingTextEl.textContent = text || "";
   dom.topLoadingEl.classList.remove("hidden");
 }
 

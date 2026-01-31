@@ -11,7 +11,14 @@ import { logAppOpen } from "./modules/usageLog.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 
 let eventsBound = false;
-
+ 
+// expose a global promise so the host page can await schedule boot progress
+if (!window.__scheduleBootPromise) {
+  window.__scheduleBootPromise = new Promise((resolve, reject) => {
+    window.__resolveScheduleBoot = resolve;
+    window.__rejectScheduleBoot = reject;
+  });
+}
 function bindEventsOnce() {
   if (eventsBound) return;
   eventsBound = true;
@@ -33,7 +40,12 @@ function bindEventsOnce() {
   }
 
   if (dom.filterMasterInput) {
+    // support both input (if element supports) and change (select)
     dom.filterMasterInput.addEventListener("input", (e) => {
+      state.filterMaster = e.target.value || "";
+      rerenderDebounced();
+    });
+    dom.filterMasterInput.addEventListener("change", (e) => {
       state.filterMaster = e.target.value || "";
       rerenderDebounced();
     });
@@ -50,7 +62,7 @@ async function boot() {
   installConsoleFilter();
   initTheme();
 
-  showInitialLoading("資料載入中…");
+  showInitialLoading();
   setInitialLoadingProgress(5, "啟動中…");
 
   try {
@@ -90,6 +102,13 @@ async function boot() {
 
   setInitialLoadingProgress(78, "載入排班資料中…");
   startPolling();
+
+  // mark schedule boot as ready (non-blocking for further inits)
+  try {
+    if (window.__resolveScheduleBoot) window.__resolveScheduleBoot("schedule");
+  } catch (e) {
+    console.warn("__resolveScheduleBoot failed", e);
+  }
 }
 
 window.addEventListener("load", () => {

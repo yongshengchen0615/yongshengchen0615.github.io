@@ -78,6 +78,51 @@ export function rebuildStatusFilterOptions() {
   state.filterStatus = dom.filterStatusSelect.value;
 }
 
+export function rebuildMasterFilterOptions() {
+  if (!dom.filterMasterInput) return;
+
+  const masters = new Set();
+  ["body", "foot"].forEach((type) => {
+    (state.rawData[type] || []).forEach((r) => {
+      const m = String(r.masterId || "").trim();
+      if (m) masters.add(m);
+    });
+  });
+
+  const prev = dom.filterMasterInput.value || "";
+
+  // clear and build options
+  dom.filterMasterInput.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "全部師傅";
+  dom.filterMasterInput.appendChild(optAll);
+
+  // sort numerically when possible, otherwise lexicographically
+  const arr = Array.from(masters);
+  arr.sort((a, b) => {
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) return parseInt(a, 10) - parseInt(b, 10);
+    return a.localeCompare(b);
+  });
+
+  for (const m of arr) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    dom.filterMasterInput.appendChild(opt);
+  }
+
+  // restore previous if present
+  if (prev && Array.from(dom.filterMasterInput.options).some((o) => o.value === prev)) {
+    dom.filterMasterInput.value = prev;
+    state.filterMaster = prev;
+  } else {
+    dom.filterMasterInput.value = "";
+    state.filterMaster = "";
+  }
+}
+
 function applyFilters(list) {
   return list.filter((row) => {
     if (state.filterMaster) {
@@ -674,6 +719,7 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
     if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+    if (bodyDiff.changed || footDiff.changed) rebuildMasterFilterOptions();
 
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = state.activePanel === "body" ? bodyDiff.changed : footDiff.changed;
