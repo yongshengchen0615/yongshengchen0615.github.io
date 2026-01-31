@@ -1873,7 +1873,7 @@ if (tabBodyBtn) tabBodyBtn.addEventListener("click", () => setActivePanel("body"
 if (tabFootBtn) tabFootBtn.addEventListener("click", () => setActivePanel("foot"));
 
 if (filterMasterInput) {
-  filterMasterInput.addEventListener("input", (e) => {
+  filterMasterInput.addEventListener("change", (e) => {
     filterMaster = e.target.value || "";
     renderIncremental_(activePanel);
     updateMyMasterStatusUI_();

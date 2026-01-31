@@ -99,7 +99,9 @@
         <div class="filters">
           <div class="filter">
             <label for="filterMaster" class="filter-label">師傅搜尋</label>
-            <input id="filterMaster" class="input" type="text" placeholder="輸入師傅編號，例如 07" />
+            <select id="filterMaster" class="select">
+              <option value="">全部師傅</option>
+            </select>
           </div>
 
           <div class="filter">
@@ -117,7 +119,7 @@
           <header class="card-header">
             <div class="card-header-left">
               <h2 id="panelTitle" class="card-title">身體面板</h2>
-              <p class="card-subtitle">依「順序」排序，可透過上方輸入框篩選指定師傅</p>
+              <p class="card-subtitle">依「順序」排序，可透過上方下拉選單篩選指定師傅</p>
             </div>
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>

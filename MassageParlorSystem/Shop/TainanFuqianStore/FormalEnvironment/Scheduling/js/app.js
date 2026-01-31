@@ -50,7 +50,7 @@ function bindEventsOnce() {
 
   // Filters
   if (dom.filterMasterInput) {
-    dom.filterMasterInput.addEventListener("input", (e) => {
+    dom.filterMasterInput.addEventListener("change", (e) => {
       state.filterMaster = e.target.value || "";
       rerenderDebounced();
     });

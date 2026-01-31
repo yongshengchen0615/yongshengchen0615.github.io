@@ -99,6 +99,48 @@ export function rebuildStatusFilterOptions() {
   state.filterStatus = dom.filterStatusSelect.value;
 }
 
+/**
+ * 依目前 rawData 重新建立「師傅篩選」下拉選單。
+ * - 保留使用者原本選擇（若該師傅仍存在）
+ * - 會同步更新 state.filterMaster
+ */
+export function rebuildMasterFilterOptions() {
+  if (!dom.filterMasterInput) return;
+
+  const masters = new Set();
+  ["body", "foot"].forEach((type) => {
+    (state.rawData[type] || []).forEach((r) => {
+      const m = normalizeText(r.masterId);
+      if (m) masters.add(m);
+    });
+  });
+
+  const previous = dom.filterMasterInput.value || "";
+  dom.filterMasterInput.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "全部師傅";
+  dom.filterMasterInput.appendChild(optAll);
+
+  // sort masters for stable order (numeric if possible)
+  const masterList = Array.from(masters);
+  masterList.sort((a, b) => {
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) return parseInt(a, 10) - parseInt(b, 10);
+    return String(a).localeCompare(String(b));
+  });
+
+  for (const m of masterList) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    dom.filterMasterInput.appendChild(opt);
+  }
+
+  dom.filterMasterInput.value = previous && masters.has(previous) ? previous : "";
+  state.filterMaster = dom.filterMasterInput.value || "";
+}
+
 function applyFilters(list) {
   return list.filter((row) => {
     if (state.filterMaster) {
@@ -722,10 +764,29 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
     const bodyDiff = diffMergePanelRows(state.rawData.body, bodyDecision.rows);
     const footDiff = diffMergePanelRows(state.rawData.foot, footDecision.rows);
 
+    // capture previous master set for comparison
+    const prevMasterSet = new Set();
+    ["body", "foot"].forEach((type) => {
+      (state.rawData[type] || []).forEach((r) => {
+        const m = normalizeText(r.masterId);
+        if (m) prevMasterSet.add(m);
+      });
+    });
+
     if (bodyDiff.changed) state.rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
     if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+
+    // rebuild master options only when master set changed
+    const nextMasterSet = new Set();
+    ["body", "foot"].forEach((type) => {
+      (state.rawData[type] || []).forEach((r) => {
+        const m = normalizeText(r.masterId);
+        if (m) nextMasterSet.add(m);
+      });
+    });
+    if (!setEquals(prevMasterSet, nextMasterSet)) rebuildMasterFilterOptions();
 
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = state.activePanel === "body" ? bodyDiff.changed : footDiff.changed;
