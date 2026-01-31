@@ -531,6 +531,9 @@ td.yn-cell{ text-align:right; }
 
 /* 表格內更緊湊 */
 .table-wrap{ overflow:auto; padding:12px 14px 14px; -webkit-overflow-scrolling:touch; }
+/* For the schedule card table specifically: prevent horizontal scrolling
+  and instead shrink cell paddings/font and clip overflow on overflow. */
+.table-wrapper{ overflow-x: hidden; }
 
 /* Chart horizontal scroll: allow canvas to be wider than container and enable smooth touch scrolling */
 .chart-wrap{ overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; padding:12px 14px; }
@@ -580,17 +583,19 @@ tbody td{
   table-layout: fixed; /* predictable column sizing */
 }
 .status-table th, .status-table td{
-  /* No wrapping and no truncation for all status-table cells; content
-     will extend and produce horizontal scroll if needed. */
+  /* Force single-line, reduce padding/font to attempt to fit; if still
+     too long, content will be clipped (no horizontal scroll). */
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: clip;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 .status-table th:nth-child(1), .status-table td:nth-child(1){ width:6%; min-width:56px; max-width:80px; }
-.status-table th:nth-child(2), .status-table td:nth-child(2){ width:18%; min-width:80px; max-width:220px; text-align:left; }
-.status-table th:nth-child(3), .status-table td:nth-child(3){ width:18%; min-width:100px; max-width:220px; text-align:left; }
-.status-table th:nth-child(4), .status-table td:nth-child(4){ width:42%; min-width:140px; text-align:left; white-space:nowrap; overflow-wrap:normal; }
-.status-table th:nth-child(5), .status-table td:nth-child(5){ width:16%; min-width:80px; max-width:160px; text-align:left; }
+.status-table th:nth-child(2), .status-table td:nth-child(2){ width:18%; min-width:60px; max-width:220px; text-align:left; }
+.status-table th:nth-child(3), .status-table td:nth-child(3){ width:18%; min-width:70px; max-width:220px; text-align:left; }
+.status-table th:nth-child(4), .status-table td:nth-child(4){ width:42%; min-width:100px; text-align:left; white-space:nowrap; overflow-wrap:normal; }
+.status-table th:nth-child(5), .status-table td:nth-child(5){ width:16%; min-width:60px; max-width:160px; text-align:left; }
 
 @media (max-width: 720px){
   /* On small screens allow content to wrap and avoid fixed layout */
@@ -1120,13 +1125,23 @@ html[data-theme="light"] .initial-loading-progress{
   display: inline-block;
 }
 
-@media (max-width: 420px) {
-  #schedulePanelSection .card-body {
-    padding-left: 14px;
-    padding-right: 14px;
+@media (max-width: 720px){
+  /* On small screens, further reduce font-size and padding to fit more
+     content horizontally; still no horizontal scroll and content will
+     be clipped if it overflows. */
+  .status-table th, .status-table td{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding: 4px 6px;
+    font-size: 11px;
   }
-
-  #schedulePanelSection .card-table .status-table {
+  @media (max-width: 420px){
+    .status-table th, .status-table td{
+      padding: 3px 6px;
+      font-size: 10px;
+    }
+  }
     font-size: 11px;
   }
 
