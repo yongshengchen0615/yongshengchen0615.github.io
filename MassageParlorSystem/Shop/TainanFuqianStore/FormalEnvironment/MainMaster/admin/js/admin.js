@@ -89,9 +89,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const initListViewToggle_ = () => {
       const btnAdmins = document.getElementById("viewAdminsBtn");
-      const btnLogs = document.getElementById("viewAdminLogsBtn");
-      const btnUsers = document.getElementById("viewUsersBtn");
-      const btnTechUsageLogs = document.getElementById("viewTechUsageLogsBtn");
+        const btnLogs = document.getElementById("viewAdminLogsBtn");
+        const btnUsers = document.getElementById("viewUsersBtn");
+        const btnTechUsageLogs = document.getElementById("viewTechUsageLogsBtn");
+        const btnSchedule = document.getElementById("viewScheduleBtn");
 
       const summaryText = document.getElementById("summaryText");
       const reloadBtn = document.getElementById("reloadBtn");
@@ -104,6 +105,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const usersPanel = document.getElementById("usersPanelSection");
       const techUsageLogsPanel = document.getElementById("techUsageLogsPanelSection");
       const techUsageChartPanel = document.getElementById("techUsageChartSection");
+      const schedulePanel = document.getElementById("schedulePanelSection");
 
       if (!btnAdmins || !btnUsers || !btnLogs || !btnTechUsageLogs) return;
 
@@ -112,6 +114,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const isLogs = view === "logs";
         const isUsers = view === "users";
         const isTechUsageLogs = view === "techUsageLogs";
+        const isSchedule = view === "schedule";
 
         if (adminsKpi) adminsKpi.hidden = !isAdmins;
         if (adminsPanel) adminsPanel.hidden = !isAdmins;
@@ -119,6 +122,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (usersKpi) usersKpi.hidden = !isUsers;
         if (usersPanel) usersPanel.hidden = !isUsers;
         if (techUsageLogsPanel) techUsageLogsPanel.hidden = !isTechUsageLogs;
+        if (schedulePanel) schedulePanel.hidden = !isSchedule;
         if (techUsageChartPanel) {
           techUsageChartPanel.hidden = !isTechUsageLogs;
           techUsageChartPanel.style.display = isTechUsageLogs ? "" : "none";
@@ -144,6 +148,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         btnTechUsageLogs.classList.toggle("primary", isTechUsageLogs);
         btnTechUsageLogs.classList.toggle("ghost", !isTechUsageLogs);
         btnTechUsageLogs.setAttribute("aria-pressed", isTechUsageLogs ? "true" : "false");
+
+        if (btnSchedule) {
+          btnSchedule.classList.toggle("primary", isSchedule);
+          btnSchedule.classList.toggle("ghost", !isSchedule);
+          btnSchedule.setAttribute("aria-pressed", isSchedule ? "true" : "false");
+        }
       };
 
       // 預設顯示管理員切面（符合「切換」的直覺：一次只看一個名單）
@@ -153,6 +163,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       btnLogs.addEventListener("click", () => setView_("logs"));
       btnUsers.addEventListener("click", () => setView_("users"));
       btnTechUsageLogs.addEventListener("click", () => setView_("techUsageLogs"));
+      if (btnSchedule) btnSchedule.addEventListener("click", () => setView_("schedule"));
     };
 
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡住

@@ -45,6 +45,7 @@
         <button id="viewAdminLogsBtn" class="btn ghost" type="button" aria-pressed="false">管理員紀錄</button>
         <button id="viewUsersBtn" class="btn ghost" type="button" aria-pressed="false">技師名單</button>
         <button id="viewTechUsageLogsBtn" class="btn ghost" type="button" aria-pressed="false">技師使用紀錄</button>
+        <button id="viewScheduleBtn" class="btn ghost" type="button" aria-pressed="false">排班表</button>
       </div>
 
       <section id="adminsKpiSection" class="kpi-grid" aria-label="統計資訊">
@@ -72,6 +73,111 @@
         <div class="kpi-card maintenance">
           <div class="kpi-label">系統維護</div>
           <div class="kpi-value" id="kpiMaintenance">-</div>
+        </div>
+      </section>
+
+      <!-- 排班表面板（移植自 Scheduling，結構與 class 與原專案一致） -->
+      <section id="schedulePanelSection" aria-label="排班表" hidden>
+        <div id="gate" class="gate gate-hidden">初始化中…</div>
+
+        <div id="initialLoading" class="initial-loading initial-loading-hidden">
+          <div class="initial-loading-inner" role="status" aria-live="polite">
+            <div class="spinner-lg" aria-hidden="true"></div>
+            <p id="initialLoadingText" class="initial-loading-text">資料載入中…</p>
+            <div class="initial-loading-progress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="initialLoadingBar" class="initial-loading-progress-bar" style="width:0%"></div>
+            </div>
+            <div id="initialLoadingPercent" class="initial-loading-percent">0%</div>
+          </div>
+        </div>
+
+        <div id="topLoading" class="top-loading hidden" aria-live="polite" aria-atomic="true">
+          <span class="top-loading-spinner" aria-hidden="true"></span>
+          <span class="top-loading-text">資料載入中…</span>
+        </div>
+
+        <div class="layout">
+          <header class="page-title">
+            <!-- title intentionally removed -->
+          </header>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+            <div class="pill pill-status">
+              <span class="pill-dot"></span>
+              <span class="pill-text" id="connectionStatus">尚未連線</span>
+            </div>
+            <div>
+              <button id="refreshBtn" class="btn ghost" type="button">🔄 重新整理</button>
+            </div>
+          </div>
+
+          <div id="myMasterStatus" class="my-master-status" style="display:none;">
+            <div class="my-master-title">我的狀態</div>
+            <div id="myMasterStatusText" class="my-master-text">—</div>
+          </div>
+
+          <section class="toolbar">
+            <div class="tabs">
+              <button id="tabBody" class="tab tab-active" type="button">身體面板</button>
+              <button id="tabFoot" class="tab" type="button">腳底面板</button>
+            </div>
+
+            <div class="filters">
+              <div class="filter">
+                <label for="filterMaster" class="filter-label">師傅搜尋</label>
+                <input id="filterMaster" class="input" type="text" placeholder="輸入師傅編號，例如 07" />
+              </div>
+              <div class="filter">
+                <label for="filterStatus" class="filter-label">狀態篩選</label>
+                <select id="filterStatus" class="select">
+                  <option value="all">全部狀態</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <main class="main">
+            <section class="card card-table">
+              <header class="card-header">
+                <div class="card-header-left">
+                  <h2 id="panelTitle" class="card-title">身體面板</h2>
+                </div>
+                <div class="card-header-right">
+                  <span id="lastUpdate" class="badge">尚未更新</span>
+                </div>
+              </header>
+
+              <div class="card-body">
+                <div class="table-wrapper">
+                  <table class="status-table">
+                    <thead>
+                      <tr>
+                        <th style="width: 80px;">順序</th>
+                        <th style="width: 80px;">師傅</th>
+                        <th style="width: 160px;">狀態</th>
+                        <th>預約內容</th>
+                        <th style="width: 160px;">剩餘時間</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbodyRows"></tbody>
+                  </table>
+                </div>
+
+                <div id="emptyState" class="state state-empty">
+                  <p>目前沒有任何資料。</p>
+                </div>
+
+                <div id="loadingState" class="state state-loading">
+                  <div class="spinner"></div>
+                  <p>資料載入中，請稍候…</p>
+                </div>
+
+                <div id="errorState" class="state state-error">
+                  <p>無法取得資料，請稍後再試或使用右上角「手動重整」。</p>
+                </div>
+              </div>
+            </section>
+          </main>
         </div>
       </section>
 
@@ -525,5 +631,8 @@
 
   <!-- 入口檔（DOMContentLoaded 初始化） -->
   <script src="js/admin.js" defer></script>
+  
+  <!-- 移植的排班表模組（以 ES module 載入，已移除登入認證） -->
+  <script type="module" src="js/schedule/app.js" defer></script>
 </body>
 </html>

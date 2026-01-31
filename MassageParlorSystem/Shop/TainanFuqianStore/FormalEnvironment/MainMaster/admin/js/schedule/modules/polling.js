@@ -1,0 +1,159 @@
+import { state } from "./state.js";
+import { dom } from "./dom.js";
+import { refreshStatus } from "./table.js";
+import { updateMyMasterStatusUI } from "./myMasterStatus.js";
+import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
+import { config } from "./config.js";
+import { manualRefreshPerformance } from "./performance.js";
+
+const POLL = {
+  BASE_MS: 3000,
+  MAX_MS: 20000,
+  FAIL_MAX_MS: 60000,
+  STABLE_UP_AFTER: 3,
+  CHANGED_BOOST_MS: 4500,
+  JITTER_RATIO: 0.2,
+};
+
+function getPollCfg() {
+  return {
+    BASE_MS: Number(config.POLL_BASE_MS) || POLL.BASE_MS,
+    MAX_MS: Number(config.POLL_MAX_MS) || POLL.MAX_MS,
+    FAIL_MAX_MS: Number(config.POLL_FAIL_MAX_MS) || POLL.FAIL_MAX_MS,
+    STABLE_UP_AFTER: Number(config.POLL_STABLE_UP_AFTER) || POLL.STABLE_UP_AFTER,
+    CHANGED_BOOST_MS: Number(config.POLL_CHANGED_BOOST_MS) || POLL.CHANGED_BOOST_MS,
+    JITTER_RATIO: typeof config.POLL_JITTER_RATIO === "number" ? config.POLL_JITTER_RATIO : POLL.JITTER_RATIO,
+  };
+}
+
+function withJitter(ms, ratio) {
+  const r = typeof ratio === "number" ? ratio : 0.15;
+  const delta = ms * r;
+  const j = (Math.random() * 2 - 1) * delta;
+  return Math.max(800, Math.floor(ms + j));
+}
+
+function clearPoll() {
+  if (state.pollTimer) clearTimeout(state.pollTimer);
+  state.pollTimer = null;
+}
+
+function scheduleNextPoll(ms) {
+  clearPoll();
+  const pc = getPollCfg();
+  const wait = withJitter(ms, pc.JITTER_RATIO);
+
+  state.pollTimer = setTimeout(async () => {
+    if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
+
+    const res = await refreshStatusAdaptive(false);
+    const next = computeNextInterval(res);
+    scheduleNextPoll(next);
+  }, wait);
+}
+
+function computeNextInterval(res) {
+  const pc = getPollCfg();
+  const ok = !!(res && res.ok);
+  const changed = !!(res && res.changed);
+
+  if (!ok) {
+    state.poll.failStreak += 1;
+    state.poll.successStreak = 0;
+
+    const backoff = Math.min(pc.FAIL_MAX_MS, pc.BASE_MS * Math.pow(2, state.poll.failStreak));
+    state.poll.nextMs = Math.max(pc.BASE_MS, backoff);
+    return state.poll.nextMs;
+  }
+
+  state.poll.successStreak += 1;
+  state.poll.failStreak = 0;
+
+  if (changed) {
+    state.poll.nextMs = Math.max(pc.BASE_MS, Math.min(pc.MAX_MS, pc.CHANGED_BOOST_MS));
+    return state.poll.nextMs;
+  }
+
+  if (state.poll.successStreak < pc.STABLE_UP_AFTER) {
+    state.poll.nextMs = Math.max(pc.BASE_MS, state.poll.nextMs);
+    return state.poll.nextMs;
+  }
+
+  const s = state.poll.successStreak;
+  let target;
+  if (s < 6) target = 5000;
+  else if (s < 10) target = 8000;
+  else if (s < 16) target = 12000;
+  else target = POLL.MAX_MS;
+
+  state.poll.nextMs = Math.min(pc.MAX_MS, Math.max(pc.BASE_MS, target));
+  return state.poll.nextMs;
+}
+
+async function refreshStatusAdaptive(isManual) {
+  try {
+    const beforeBody = state.rawData.body;
+    const beforeFoot = state.rawData.foot;
+
+    await refreshStatus({ isManual });
+
+    const changed = beforeBody !== state.rawData.body || beforeFoot !== state.rawData.foot;
+    return { ok: true, changed };
+  } catch (e) {
+    return { ok: false, changed: false };
+  }
+}
+
+function resetPollState() {
+  state.poll.successStreak = 0;
+  state.poll.failStreak = 0;
+  state.poll.nextMs = getPollCfg().BASE_MS;
+}
+
+export function startPolling(extraReadyPromise) {
+  showInitialLoading("資料載入中…");
+  setInitialLoadingProgress(85, "同步資料中…");
+
+  if (dom.refreshBtn) {
+    dom.refreshBtn.addEventListener("click", async () => {
+      resetPollState();
+      showLoadingHint("同步資料中…");
+
+      const res = await refreshStatusAdaptive(true);
+      updateMyMasterStatusUI();
+
+      if (state.viewMode === "performance" && String(state.feature && state.feature.performanceEnabled) === "是") {
+        try {
+          await manualRefreshPerformance({ showToast: false });
+        } catch {}
+      }
+
+      hideLoadingHint();
+      const next = computeNextInterval(res);
+      scheduleNextPoll(next);
+    });
+  }
+
+  refreshStatusAdaptive(false).then(async (res) => {
+    updateMyMasterStatusUI();
+
+    try {
+      setInitialLoadingProgress(92, "準備中…");
+      await Promise.resolve(extraReadyPromise);
+    } catch {}
+
+    setInitialLoadingProgress(100, "完成");
+    hideInitialLoading();
+    const next = computeNextInterval(res);
+    scheduleNextPoll(next);
+  });
+
+  document.addEventListener("visibilitychange", async () => {
+    if (!document.hidden) {
+      resetPollState();
+      const res = await refreshStatusAdaptive(false);
+      const next = computeNextInterval(res);
+      scheduleNextPoll(next);
+    }
+  });
+}
