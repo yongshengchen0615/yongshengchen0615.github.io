@@ -1,0 +1,1385 @@
+/****************************************************
+ * ✅ Users + PersonalStatus + PerformanceAccess（最小完整最終版 / HARDENED + BATCH）- INTEGRATED
+ *
+ * ✅ 你這次要求的變更（重要）
+ * - 原本：師傅編號(masterCode)=PerfTotalSummary.TechNo → 查 PerfTotalSummary.StoreId
+ * - 改成：師傅編號(masterCode)=NetworkCapture.TechNo → 從 NetworkCapture 推導/取得 StoreId
+ *
+ * ✅ NetworkCapture 支援多種欄位格式（自動容錯）
+ * - 若 NetworkCapture 直接有欄位：TechNo / StoreId → 直接用
+ * - 若沒有 StoreId 欄位：
+ *   會嘗試從 RequestUrl 抽：.../detail/{storeId} 或 .../detail/{storeId}?...
+ * - 若沒有 TechNo 欄位：
+ *   會嘗試從 Response 抽 TechNo（regex：TechNo / techno / 師傅號碼 等常見格式）
+ *
+ * ✅ Cache
+ * - TechNo → StoreId map：ScriptCache 5 分鐘
+ *
+ * ✅ PushMessage / Users / PersonalStatus / PerformanceAccess 規則維持不變
+ ****************************************************/
+
+/* =========================
+ * CONFIG
+ * ========================= */
+var CONFIG = {
+  TZ: "Asia/Taipei",
+
+  DEFAULT_USAGE_DAYS: 7,
+  DEFAULT_AUDIT: "待審核",
+  DEFAULT_PUSH_ENABLED: "否",
+  DEFAULT_PERSONAL_STATUS_ENABLED: "否",
+  DEFAULT_SCHEDULE_ENABLED: "否",
+  DEFAULT_PERFORMANCE_ENABLED: "否",
+
+  SHEET_USERS: "Users",
+  SHEET_PERSONAL_STATUS: "PersonalStatus",
+
+  // ✅ PerformanceAccess sheet
+  SHEET_PERFORMANCE_ACCESS: "PerformanceAccess",
+  PERFORMANCE_ACCESS_HEADERS: ["userId", "displayName", "師傅編號", "StoreId"],
+
+  // ✅ 改成：師傅編號 → StoreId 對照來源：NetworkCapture
+  SHEET_NETWORK_CAPTURE: "NetworkCapture",
+
+  // NetworkCapture 常見欄位名稱（自動容錯：不分大小寫）
+  NC_COL_TECHNO: "TechNo",
+  NC_COL_STOREID: "StoreId",
+  NC_COL_REQUESTURL: "RequestUrl",
+  NC_COL_RESPONSE: "Response",
+  NC_COL_CAPTUREDAT: "CapturedAt",
+
+  // 掃描 NetworkCapture 的最大列數（避免全表過大）
+  // 會從「最後一列往上」取這個數量做 mapping（通常最新資料最準）
+  NC_SCAN_MAX_ROWS: 5000,
+
+  // batch 上限（避免 payload 過大、執行超時）
+  BATCH_MAX_ITEMS: 200,
+
+  // （可選）推播 API 防濫用：把 Script Properties 設定 PUSH_SECRET
+  PUSH_SECRET_PROP: "PUSH_SECRET"
+};
+
+/* =========================
+ * ENUM + RULES
+ * ========================= */
+var AUDIT_ENUM = ["待審核", "通過", "拒絕", "停用", "系統維護", "其他"];
+
+function normalizeAudit_(v) {
+  var s = String(v || "").trim();
+  if (!s) return CONFIG.DEFAULT_AUDIT || "待審核";
+  return AUDIT_ENUM.indexOf(s) >= 0 ? s : "其他";
+}
+
+function normalizeYesNo_(v, defaultNo) {
+  var s = String(v || "").trim();
+  if (s === "是" || s === "否") return s;
+  return defaultNo === "是" ? "是" : "否";
+}
+
+/** 🔒 audit ≠ 通過 → pushEnabled 必為 否 */
+function enforcePushByAudit_(audit, pushEnabled) {
+  var a = normalizeAudit_(audit);
+  if (a !== "通過") return "否";
+  return String(pushEnabled || "").trim() === "是" ? "是" : "否";
+}
+
+function auditToStatus_(audit) {
+  switch (normalizeAudit_(audit)) {
+    case "通過":
+      return "approved";
+    case "待審核":
+      return "pending";
+    case "拒絕":
+      return "rejected";
+    case "停用":
+      return "disabled";
+    case "系統維護":
+      return "maintenance";
+    default:
+      return "other";
+  }
+}
+
+/* =========================
+ * Output helper
+ * ========================= */
+function jsonOut_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+
+/* =========================
+ * Date helpers（到期計算）
+ * ========================= */
+var ONE_DAY_MS_ = 24 * 60 * 60 * 1000;
+
+function dateKeyTpe_(d) {
+  return Utilities.formatDate(new Date(d), CONFIG.TZ, "yyyy-MM-dd");
+}
+function startOfDayTpe_(d) {
+  var key = dateKeyTpe_(d);
+  var p = key.split("-");
+  return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+}
+function safeDayFromKeyTpe_(key) {
+  var p = String(key || "").split("-");
+  if (p.length !== 3) return null;
+  var y = parseInt(p[0], 10);
+  var m = parseInt(p[1], 10) - 1;
+  var d = parseInt(p[2], 10);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  var dt = new Date(y, m, d);
+  dt.setHours(12, 0, 0, 0);
+  return dt;
+}
+function parseDateLoose_(raw) {
+  if (!raw) return null;
+  raw = String(raw).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return safeDayFromKeyTpe_(raw);
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    var dIso = new Date(raw);
+    if (!isNaN(dIso.getTime())) {
+      dIso.setHours(12, 0, 0, 0);
+      return dIso;
+    }
+  }
+
+  var d2 = new Date(raw);
+  if (isNaN(d2.getTime())) return null;
+  d2.setHours(12, 0, 0, 0);
+  return d2;
+}
+
+function calcRemainingDaysByDate_(startDate, usageDaysRaw) {
+  if (!startDate) return null;
+
+  var usageDays = parseInt(usageDaysRaw, 10);
+  if (isNaN(usageDays) || usageDays <= 0) return null;
+
+  var startDay = startOfDayTpe_(startDate);
+  var todayDay = startOfDayTpe_(new Date());
+
+  // ✅ 對齊前端：最後可用日 = start + (usageDays - 1)
+  var lastUsableDay = new Date(startDay.getTime() + (usageDays - 1) * ONE_DAY_MS_);
+  return Math.floor((lastUsableDay.getTime() - todayDay.getTime()) / ONE_DAY_MS_);
+}
+
+/* =========================
+ * Sheets (Users / PersonalStatus / PerformanceAccess)
+ * ========================= */
+function getOrCreateUserSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(CONFIG.SHEET_USERS);
+
+  var expected = [
+    "userId",
+    "displayName",
+    "審核狀態",
+    "建立時間",
+    "開始使用日期",
+    "使用期限",
+    "師傅編號",
+    "是否師傅",
+    "是否推播",
+    "個人狀態開通",
+    "排班表開通",
+    "業績開通"
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_USERS);
+    sheet.appendRow(expected);
+    return sheet;
+  }
+
+  var r = sheet.getRange(1, 1, 1, expected.length);
+  var header = r.getValues()[0];
+  var needFix = false;
+  for (var i = 0; i < expected.length; i++) {
+    if (String(header[i] || "").trim() !== expected[i]) {
+      needFix = true;
+      break;
+    }
+  }
+  if (needFix) r.setValues([expected]);
+
+  return sheet;
+}
+
+/**
+ * ✅ PersonalStatus 新版：5 欄
+ * userId | displayName | 師傅編號 | 技師管理員liff | 個人看板liff
+ */
+function getOrCreatePersonalStatusSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(CONFIG.SHEET_PERSONAL_STATUS);
+
+  var expected = ["userId", "displayName", "師傅編號", "技師管理員liff", "個人看板liff"];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_PERSONAL_STATUS);
+    sheet.appendRow(expected);
+    return sheet;
+  }
+
+  var r = sheet.getRange(1, 1, 1, expected.length);
+  var header = r.getValues()[0];
+  var needFix = false;
+  for (var i = 0; i < expected.length; i++) {
+    if (String(header[i] || "").trim() !== expected[i]) {
+      needFix = true;
+      break;
+    }
+  }
+  if (needFix) r.setValues([expected]);
+
+  return sheet;
+}
+
+/**
+ * ✅ PerformanceAccess（新版 4 欄）
+ * userId | displayName | 師傅編號 | StoreId
+ */
+function getOrCreatePerformanceAccessSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(CONFIG.SHEET_PERFORMANCE_ACCESS);
+
+  var expected = (CONFIG.PERFORMANCE_ACCESS_HEADERS || ["userId", "displayName", "師傅編號", "StoreId"]).slice();
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_PERFORMANCE_ACCESS);
+    sheet.appendRow(expected);
+    return sheet;
+  }
+
+  var r = sheet.getRange(1, 1, 1, expected.length);
+  var header = r.getValues()[0];
+  var needFix = false;
+  for (var i = 0; i < expected.length; i++) {
+    if (String(header[i] || "").trim() !== expected[i]) {
+      needFix = true;
+      break;
+    }
+  }
+  if (needFix) r.setValues([expected]);
+
+  return sheet;
+}
+
+/* =========================
+ * NetworkCapture lookup (TechNo -> StoreId)
+ * ========================= */
+
+function getNetworkCaptureSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  return ss.getSheetByName(CONFIG.SHEET_NETWORK_CAPTURE);
+}
+
+function findHeaderIndex_(headerRow, name) {
+  var target = String(name || "").trim().toLowerCase();
+  for (var i = 0; i < headerRow.length; i++) {
+    var h = String(headerRow[i] || "").trim().toLowerCase();
+    if (h === target) return i;
+  }
+  return -1;
+}
+
+function findHeaderIndexAny_(headerRow, candidates) {
+  for (var i = 0; i < candidates.length; i++) {
+    var idx = findHeaderIndex_(headerRow, candidates[i]);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+/** 從 RequestUrl 抽 storeId（支援常見 detail 路徑） */
+function extractStoreIdFromRequestUrl_(url) {
+  url = String(url || "").trim();
+  if (!url) return "";
+
+  // 例：/api/booking/detail/2259
+  // 例：/api/performance/detail/2259?from=...&to=...
+  var m = url.match(/\/detail\/(\d+)(?:\b|\/|\?|#|$)/i);
+  if (m && m[1]) return String(m[1]).trim();
+
+  // 例：.../detail/2259/xxx
+  var m2 = url.match(/\/detail\/(\d+)\//i);
+  if (m2 && m2[1]) return String(m2[1]).trim();
+
+  return "";
+}
+
+/** 從 Response 文字抽 TechNo（容錯多格式） */
+function extractTechNoFromResponse_(respText) {
+  var s = String(respText || "").trim();
+  if (!s) return "";
+
+  // JSON 常見： "TechNo":"10" / "TechNo":10 / "techno": "10"
+  var m1 = s.match(/"TechNo"\s*:\s*"?(\d+)"?/i);
+  if (m1 && m1[1]) return String(m1[1]).trim();
+
+  var m2 = s.match(/"techno"\s*:\s*"?(\d+)"?/i);
+  if (m2 && m2[1]) return String(m2[1]).trim();
+
+  // 可能是中文文字：師傅號碼：10 / 師傅號碼=10
+  var m3 = s.match(/師傅號碼\s*[:：=]\s*(\d+)/i);
+  if (m3 && m3[1]) return String(m3[1]).trim();
+
+  // 可能是 TechNo=10 / techno=10
+  var m4 = s.match(/\bTechNo\s*=\s*(\d+)\b/i);
+  if (m4 && m4[1]) return String(m4[1]).trim();
+  var m5 = s.match(/\btechno\s*=\s*(\d+)\b/i);
+  if (m5 && m5[1]) return String(m5[1]).trim();
+
+  return "";
+}
+
+/**
+ * ✅ 從 NetworkCapture 建立 TechNo -> StoreId 的 map
+ * - 優先：直接讀欄位 TechNo / StoreId
+ * - 若沒有 StoreId 欄：改從 RequestUrl 抽 storeId
+ * - 若沒有 TechNo 欄：改從 Response 抽 TechNo
+ * - 同一個 TechNo 若多筆：保留「最後掃到的」(通常是最新列)
+ */
+function buildTechNoToStoreIdMapFromNetworkCapture_() {
+  var sheet = getNetworkCaptureSheet_();
+  if (!sheet) return {};
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 2) return {};
+
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  // TechNo 欄位容錯
+  var techIdx = findHeaderIndexAny_(header, [
+    CONFIG.NC_COL_TECHNO || "TechNo",
+    "techno",
+    "TechNO",
+    "師傅編號",
+    "師傅號碼",
+    "MasterCode",
+    "masterCode"
+  ]);
+
+  // StoreId 欄位容錯
+  var storeIdx = findHeaderIndexAny_(header, [
+    CONFIG.NC_COL_STOREID || "StoreId",
+    "storeid",
+    "StoreID",
+    "Store",
+    "StoreNo"
+  ]);
+
+  // RequestUrl / Response 欄位（作為 fallback）
+  var reqIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_REQUESTURL || "RequestUrl", "requesturl", "url", "RequestURL"]);
+  var respIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_RESPONSE || "Response", "response", "Body", "body"]);
+
+  // CapturedAt（若存在，可用來決定更新策略；本版用「越後面越新」即可）
+  var capIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_CAPTUREDAT || "CapturedAt", "capturedat", "time", "Time"]);
+
+  // 從尾巴往上掃（只掃 NC_SCAN_MAX_ROWS）
+  var scanMax = CONFIG.NC_SCAN_MAX_ROWS || 5000;
+  var startRow = Math.max(2, lastRow - scanMax + 1);
+  var numRows = lastRow - startRow + 1;
+
+  var values = sheet.getRange(startRow, 1, numRows, lastCol).getValues();
+
+  var map = {}; // techno -> storeId
+
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+
+    var techNo = "";
+    if (techIdx >= 0) techNo = String(row[techIdx] || "").trim();
+    if (!techNo && respIdx >= 0) techNo = extractTechNoFromResponse_(row[respIdx]);
+
+    if (!techNo) continue;
+
+    var storeId = "";
+    if (storeIdx >= 0) storeId = String(row[storeIdx] || "").trim();
+    if (!storeId && reqIdx >= 0) storeId = extractStoreIdFromRequestUrl_(row[reqIdx]);
+
+    if (!storeId) continue;
+
+    // 保留最後掃到的（通常越後面越新）
+    map[techNo] = storeId;
+  }
+
+  return map;
+}
+
+/**
+ * 用師傅編號(masterCode) = NetworkCapture.TechNo 查 StoreId
+ */
+function lookupStoreIdByTechNo_(masterCode) {
+  var techNo = String(masterCode || "").trim();
+  if (!techNo) return "";
+
+  // 用 CacheService 減少每次掃表（5 分鐘快取）
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = "techno_storeid_map_from_networkcapture_v1";
+    var cached = cache.get(key);
+    var map = cached ? JSON.parse(cached) : null;
+
+    if (!map) {
+      map = buildTechNoToStoreIdMapFromNetworkCapture_();
+      cache.put(key, JSON.stringify(map), 300);
+    }
+
+    return String(map[techNo] || "").trim();
+  } catch (e) {
+    var map2 = buildTechNoToStoreIdMapFromNetworkCapture_();
+    return String(map2[techNo] || "").trim();
+  }
+}
+
+/* =========================
+ * Data access (memory-first)
+ * ========================= */
+function readUsersTable_() {
+  var sheet = getOrCreateUserSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { sheet: sheet, values: [], rowMap: {} };
+
+  // ✅ 12 欄（含業績開通）
+  var values = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+  var rowMap = {};
+  for (var i = 0; i < values.length; i++) {
+    var uid = String(values[i][0] || "").trim();
+    if (uid) rowMap[uid] = i;
+  }
+  return { sheet: sheet, values: values, rowMap: rowMap };
+}
+
+function writeUsersTable_(sheet, values) {
+  if (!values || !values.length) return;
+  sheet.getRange(2, 1, values.length, 12).setValues(values);
+}
+
+/* =========================
+ * Expire rule (in-memory)
+ * - 同步 audit & pushEnabled
+ * ========================= */
+function applyExpireRuleToValues_(values) {
+  var changed = [];
+  if (!values || !values.length) return changed;
+
+  for (var i = 0; i < values.length; i++) {
+    var userId = String(values[i][0] || "").trim();
+    if (!userId) continue;
+
+    var audit = normalizeAudit_(values[i][2]);
+    if (audit !== "通過") continue;
+
+    var startDate = values[i][4];
+    var usageDaysRaw = values[i][5];
+    if (!startDate) continue;
+
+    var rd = calcRemainingDaysByDate_(startDate, usageDaysRaw);
+    if (typeof rd === "number" && rd < 0) {
+      values[i][2] = normalizeAudit_(CONFIG.DEFAULT_AUDIT);
+      values[i][8] = "否";
+      changed.push(userId);
+    }
+  }
+  return changed;
+}
+
+/* =========================
+ * Generic find/delete helpers
+ * ========================= */
+function findRowIndexByUserId_(sheet, userId) {
+  var last = sheet.getLastRow();
+  if (last < 2) return 0;
+
+  userId = String(userId || "").trim();
+  if (!userId) return 0;
+
+  var ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || "").trim() === userId) return i + 2;
+  }
+  return 0;
+}
+
+function deleteRowByUserId_(sheet, userId) {
+  var row = findRowIndexByUserId_(sheet, userId);
+  if (row) {
+    sheet.deleteRow(row);
+    return true;
+  }
+  return false;
+}
+
+/* =========================
+ * PersonalStatus helpers（新版 5 欄）
+ * ========================= */
+function findPersonalStatusRowIndex_(sheet, userId) {
+  return findRowIndexByUserId_(sheet, userId);
+}
+
+/** ✅ 個人狀態開通=否 → 刪除整列 */
+function deletePersonalStatusRowByUserId_(userId) {
+  var ps = getOrCreatePersonalStatusSheet_();
+  var row = findPersonalStatusRowIndex_(ps, userId);
+  if (row) {
+    ps.deleteRow(row);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * upsert：維護 userId / displayName / 師傅編號，不動 liff（避免覆蓋）
+ */
+function upsertPersonalStatusRow_(userId, displayName, masterCode) {
+  userId = String(userId || "").trim();
+  displayName = String(displayName || "").trim();
+  masterCode = String(masterCode || "").trim();
+  if (!userId) return { ok: false, error: "Missing userId" };
+
+  var sheet = getOrCreatePersonalStatusSheet_();
+  var row = findPersonalStatusRowIndex_(sheet, userId);
+
+  if (!row) {
+    sheet.appendRow([userId, displayName, masterCode, "", ""]);
+    return { ok: true, action: "inserted" };
+  }
+
+  // 更新 displayName / 師傅編號（不改 liff；空值不覆蓋避免清空）
+  if (displayName !== "") sheet.getRange(row, 2).setValue(displayName);
+  if (masterCode !== "") sheet.getRange(row, 3).setValue(masterCode);
+  return { ok: true, action: "updated" };
+}
+
+/* =========================
+ * PerformanceAccess helpers（新版 4 欄）
+ * ========================= */
+function upsertPerformanceAccessRow_(userId, displayName, masterCode, storeId) {
+  userId = String(userId || "").trim();
+  displayName = String(displayName || "").trim();
+  masterCode = String(masterCode || "").trim();
+  storeId = String(storeId || "").trim();
+
+  if (!userId) return { ok: false, error: "Missing userId" };
+
+  var sheet = getOrCreatePerformanceAccessSheet_();
+  var row = findRowIndexByUserId_(sheet, userId);
+
+  if (!row) {
+    sheet.appendRow([userId, displayName, masterCode, storeId]);
+    return { ok: true, action: "inserted" };
+  }
+
+  // 空值不覆蓋避免清空
+  if (displayName !== "") sheet.getRange(row, 2).setValue(displayName);
+  if (masterCode !== "") sheet.getRange(row, 3).setValue(masterCode);
+
+  // storeId 只有有給才覆蓋，避免誤清空
+  if (storeId !== "") sheet.getRange(row, 4).setValue(storeId);
+
+  return { ok: true, action: "updated" };
+}
+
+/* =========================
+ * Sync rules
+ * ========================= */
+function syncPersonalStatusByEnabled_(userId, displayName, masterCode, enabledYesNo) {
+  var enabled = String(enabledYesNo || "否").trim() === "是";
+  if (enabled) {
+    upsertPersonalStatusRow_(userId, displayName, masterCode);
+    return { ok: true, action: "ensure" };
+  } else {
+    var deleted = deletePersonalStatusRowByUserId_(userId);
+    return { ok: true, action: deleted ? "deleted" : "none" };
+  }
+}
+
+/**
+ * ✅ 業績開通=是：
+ *   若前端沒給 storeId，則用 masterCode(師傅編號)=NetworkCapture.TechNo 去推導/查 StoreId 自動寫入
+ */
+function syncPerformanceAccessByEnabled_(userId, displayName, masterCode, enabledYesNo, storeId) {
+  var enabled = String(enabledYesNo || "否").trim() === "是";
+
+  if (enabled) {
+    var sid = String(storeId || "").trim();
+
+    // ✅ 若前端沒給 storeId，就用 師傅編號(masterCode)=NetworkCapture.TechNo 查 StoreId
+    if (!sid) {
+      sid = lookupStoreIdByTechNo_(masterCode);
+    }
+
+    // ✅ 若仍查不到，就照舊 upsert（StoreId 可能空，等待後續補資料）
+    return upsertPerformanceAccessRow_(userId, displayName, masterCode, sid);
+  } else {
+    var sheet = getOrCreatePerformanceAccessSheet_();
+    var deleted = deleteRowByUserId_(sheet, userId);
+    return { ok: true, action: deleted ? "deleted" : "none" };
+  }
+}
+
+/* =========================
+ * ✅ check 核心邏輯：回傳純 object（避免 getContent/parse）
+ * ========================= */
+function buildCheckResult_(userId) {
+  userId = String(userId || "").trim();
+
+  var db = readUsersTable_();
+  var values = db.values;
+
+  applyExpireRuleToValues_(values);
+  writeUsersTable_(db.sheet, values);
+
+  if (!userId) {
+    return {
+      ok: true,
+      userId: "",
+      status: "none",
+      audit: "",
+      displayName: "",
+      remainingDays: null,
+      masterCode: "",
+      isMaster: "否",
+      pushEnabled: "否",
+      personalStatusEnabled: "否",
+      scheduleEnabled: "否",
+      performanceEnabled: "否"
+    };
+  }
+
+  var idx = db.rowMap[userId];
+  if (typeof idx !== "number") {
+    return {
+      ok: true,
+      userId: userId,
+      status: "none",
+      audit: "",
+      displayName: "",
+      remainingDays: null,
+      masterCode: "",
+      isMaster: "否",
+      pushEnabled: "否",
+      personalStatusEnabled: "否",
+      scheduleEnabled: "否",
+      performanceEnabled: "否"
+    };
+  }
+
+  var row = values[idx];
+
+  var displayName = String(row[1] || "").trim();
+  var audit = normalizeAudit_(row[2]);
+  var startDate = row[4];
+  var usageDays = row[5];
+
+  var masterCode = String(row[6] || "").trim();
+  var pushEnabled = enforcePushByAudit_(audit, row[8]);
+  var personalStatusEnabled = normalizeYesNo_(row[9], "否");
+  var scheduleEnabled = normalizeYesNo_(row[10], "否");
+  var performanceEnabled = normalizeYesNo_(row[11], "否");
+
+  var remainingDays = calcRemainingDaysByDate_(startDate, usageDays);
+
+  return {
+    ok: true,
+    userId: userId,
+    status: auditToStatus_(audit),
+    audit: audit,
+    displayName: displayName,
+    remainingDays: remainingDays,
+    masterCode: masterCode,
+    isMaster: masterCode ? "是" : "否",
+    pushEnabled: pushEnabled,
+    personalStatusEnabled: personalStatusEnabled,
+    scheduleEnabled: scheduleEnabled,
+    performanceEnabled: performanceEnabled
+  };
+}
+
+/* =========================
+ * APIs
+ * ========================= */
+
+function handleCheck_(e) {
+  var userId = String((e && e.parameter && e.parameter.userId) || "").trim();
+  return jsonOut_(buildCheckResult_(userId));
+}
+
+function handleRegister_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  var displayName = String((data && data.displayName) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var db = readUsersTable_();
+  var values = db.values;
+  var idx = db.rowMap[userId];
+
+  var now = new Date();
+  var auditInit = normalizeAudit_(CONFIG.DEFAULT_AUDIT);
+
+  if (typeof idx === "number") {
+    var row = values[idx];
+
+    if (displayName) row[1] = displayName;
+
+    var auditNow = normalizeAudit_(row[2]);
+    if (!String(row[2] || "").trim()) {
+      auditNow = auditInit;
+      row[2] = auditNow;
+    }
+
+    if (!row[3]) row[3] = now;
+
+    if (!row[4]) row[4] = safeDayFromKeyTpe_(dateKeyTpe_(now)) || now;
+    if (!row[5]) row[5] = CONFIG.DEFAULT_USAGE_DAYS;
+
+    if (!String(row[9] || "").trim()) row[9] = CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED;
+    if (!String(row[10] || "").trim()) row[10] = CONFIG.DEFAULT_SCHEDULE_ENABLED;
+    if (!String(row[11] || "").trim()) row[11] = CONFIG.DEFAULT_PERFORMANCE_ENABLED;
+
+    row[8] = enforcePushByAudit_(auditNow, row[8]);
+
+    var masterCode = String(row[6] || "").trim();
+
+    syncPersonalStatusByEnabled_(
+      userId,
+      String(row[1] || "").trim(),
+      masterCode,
+      String(row[9] || "否")
+    );
+
+    // ✅ 業績：若 enabled=是，會自動用 masterCode→NetworkCapture 查 StoreId
+    syncPerformanceAccessByEnabled_(
+      userId,
+      String(row[1] || "").trim(),
+      masterCode,
+      String(row[11] || "否"),
+      ""
+    );
+  } else {
+    var newRow = [
+      userId,
+      displayName,
+      auditInit,
+      now,
+      safeDayFromKeyTpe_(dateKeyTpe_(now)) || now,
+      CONFIG.DEFAULT_USAGE_DAYS,
+      "",
+      "否",
+      enforcePushByAudit_(auditInit, CONFIG.DEFAULT_PUSH_ENABLED),
+      CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED,
+      CONFIG.DEFAULT_SCHEDULE_ENABLED,
+      CONFIG.DEFAULT_PERFORMANCE_ENABLED
+    ];
+    values.push(newRow);
+
+    syncPersonalStatusByEnabled_(userId, displayName, "", CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED);
+    syncPerformanceAccessByEnabled_(userId, displayName, "", CONFIG.DEFAULT_PERFORMANCE_ENABLED, "");
+  }
+
+  applyExpireRuleToValues_(values);
+  writeUsersTable_(db.sheet, values);
+
+  return jsonOut_({ ok: true, userId: userId });
+}
+
+function handleListUsers_() {
+  var db = readUsersTable_();
+  var values = db.values;
+
+  applyExpireRuleToValues_(values);
+  writeUsersTable_(db.sheet, values);
+
+  var tz = CONFIG.TZ;
+
+  var users = values.map(function (r) {
+    var userId = String(r[0] || "").trim();
+    var displayName = String(r[1] || "").trim();
+    var audit = normalizeAudit_(r[2]);
+
+    var createdAt = r[3];
+    var startDate = r[4];
+    var usageDays = r[5];
+
+    var masterCode = String(r[6] || "").trim();
+    var isMaster = masterCode ? "是" : "否";
+
+    var pushEnabled = enforcePushByAudit_(audit, r[8]);
+    var personalStatusEnabled = normalizeYesNo_(r[9], "否");
+    var scheduleEnabled = normalizeYesNo_(r[10], "否");
+    var performanceEnabled = normalizeYesNo_(r[11], "否");
+
+    return {
+      userId: userId,
+      displayName: displayName,
+      audit: audit,
+      createdAt: createdAt ? Utilities.formatDate(new Date(createdAt), tz, "yyyy-MM-dd HH:mm:ss") : "",
+      startDate: startDate ? Utilities.formatDate(new Date(startDate), tz, "yyyy-MM-dd") : "",
+      usageDays: usageDays || "",
+      masterCode: masterCode,
+      isMaster: isMaster,
+      pushEnabled: pushEnabled,
+      personalStatusEnabled: personalStatusEnabled,
+      scheduleEnabled: scheduleEnabled,
+      performanceEnabled: performanceEnabled
+    };
+  });
+
+  return jsonOut_({ ok: true, userId: "", users: users });
+}
+
+function handleUpdateUser_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var db = readUsersTable_();
+  var values = db.values;
+  var idx = db.rowMap[userId];
+  if (typeof idx !== "number") return jsonOut_({ ok: false, userId: userId, error: "User not found" });
+
+  var row = values[idx];
+
+  var audit = normalizeAudit_((data && data.audit) || row[2]);
+  var startDateRaw = String((data && data.startDate) || "").trim();
+  var usageDaysRaw = String((data && data.usageDays) || "").trim();
+  var masterCode = String((data && data.masterCode) || "").trim();
+
+  var pushEnabled = enforcePushByAudit_(audit, data && data.pushEnabled);
+
+  var personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled, "否");
+  var scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled, "否");
+  var performanceEnabled = normalizeYesNo_(data && data.performanceEnabled, "否");
+
+  row[2] = audit;
+
+  if (startDateRaw) {
+    var d = parseDateLoose_(startDateRaw);
+    row[4] = d ? d : "";
+  } else {
+    row[4] = "";
+  }
+
+  if (usageDaysRaw) {
+    var n = parseInt(usageDaysRaw, 10);
+    row[5] = !isNaN(n) && n > 0 ? n : "";
+  } else {
+    row[5] = "";
+  }
+
+  row[6] = masterCode;
+  row[7] = masterCode ? "是" : "否";
+
+  row[8] = pushEnabled;
+  row[9] = personalStatusEnabled;
+  row[10] = scheduleEnabled;
+  row[11] = performanceEnabled;
+
+  syncPersonalStatusByEnabled_(
+    userId,
+    String(row[1] || "").trim(),
+    String(row[6] || "").trim(),
+    personalStatusEnabled
+  );
+
+  // ✅ 如果前端有傳 storeId 仍會優先使用；沒有就 masterCode→NetworkCapture 查
+  var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
+  syncPerformanceAccessByEnabled_(
+    userId,
+    String(row[1] || "").trim(),
+    String(row[6] || "").trim(),
+    performanceEnabled,
+    storeId
+  );
+
+  applyExpireRuleToValues_(values);
+  writeUsersTable_(db.sheet, values);
+
+  return jsonOut_({ ok: true, userId: userId });
+}
+
+function handleUpdateUsersBatch_(data) {
+  var items = data && data.items ? data.items : null;
+
+  // 允許 items 以 JSON 字串傳入（GET/POST 都可）
+  if (typeof items === "string") {
+    try { items = JSON.parse(items); } catch (e) {}
+  }
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return jsonOut_({ ok: false, userId: "", error: "Missing items" });
+  }
+  if (items.length > (CONFIG.BATCH_MAX_ITEMS || 200)) {
+    return jsonOut_({ ok: false, userId: "", error: "Too many items" });
+  }
+
+  var db = readUsersTable_();
+  var values = db.values;
+  var rowMap = db.rowMap;
+
+  if (!values.length) return jsonOut_({ ok: false, userId: "", error: "No users" });
+
+  var okCount = 0;
+  var fail = [];
+  var updatedUserIds = [];
+
+  for (var k = 0; k < items.length; k++) {
+    try {
+      var it = items[k] || {};
+      var userId = String(it.userId || "").trim();
+      if (!userId) throw new Error("Missing userId");
+
+      var idx = rowMap[userId];
+      if (typeof idx !== "number") throw new Error("User not found");
+
+      var row = values[idx];
+
+      var audit = normalizeAudit_(it.audit);
+      var startDateRaw = String(it.startDate || "").trim();
+      var usageDaysRaw = String(it.usageDays || "").trim();
+      var masterCode = String(it.masterCode || "").trim();
+
+      var pushEnabled = enforcePushByAudit_(audit, it.pushEnabled);
+
+      var personalStatusEnabled = normalizeYesNo_(it.personalStatusEnabled, "否");
+      var scheduleEnabled = normalizeYesNo_(it.scheduleEnabled, "否");
+      var performanceEnabled = normalizeYesNo_(it.performanceEnabled, "否");
+
+      row[2] = audit;
+
+      if (startDateRaw) {
+        var d = parseDateLoose_(startDateRaw);
+        row[4] = d ? d : "";
+      } else {
+        row[4] = "";
+      }
+
+      if (usageDaysRaw) {
+        var n = parseInt(usageDaysRaw, 10);
+        row[5] = !isNaN(n) && n > 0 ? n : "";
+      } else {
+        row[5] = "";
+      }
+
+      row[6] = masterCode;
+      row[7] = masterCode ? "是" : "否";
+
+      row[8] = pushEnabled;
+      row[9] = personalStatusEnabled;
+      row[10] = scheduleEnabled;
+      row[11] = performanceEnabled;
+
+      syncPersonalStatusByEnabled_(
+        userId,
+        String(row[1] || "").trim(),
+        String(row[6] || "").trim(),
+        personalStatusEnabled
+      );
+
+      var storeId = String((it && (it.storeId || it.StoreId)) || "").trim();
+      syncPerformanceAccessByEnabled_(
+        userId,
+        String(row[1] || "").trim(),
+        String(row[6] || "").trim(),
+        performanceEnabled,
+        storeId
+      );
+
+      okCount++;
+      updatedUserIds.push(userId);
+    } catch (err) {
+      fail.push({
+        index: k,
+        userId: (items[k] && items[k].userId) || "",
+        error: String(err)
+      });
+    }
+  }
+
+  applyExpireRuleToValues_(values);
+  writeUsersTable_(db.sheet, values);
+
+  return jsonOut_({
+    ok: fail.length === 0,
+    userId: "",
+    okCount: okCount,
+    failCount: fail.length,
+    updatedUserIds: updatedUserIds,
+    fail: fail
+  });
+}
+
+function handleDeleteUser_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var sheet = getOrCreateUserSheet_();
+  var last = sheet.getLastRow();
+  if (last < 2) return jsonOut_({ ok: false, userId: userId, error: "No users" });
+
+  var ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  var row = 0;
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || "").trim() === userId) {
+      row = i + 2;
+      break;
+    }
+  }
+  if (!row) return jsonOut_({ ok: false, userId: userId, error: "User not found" });
+
+  sheet.deleteRow(row);
+
+  deletePersonalStatusRowByUserId_(userId);
+  deleteRowByUserId_(getOrCreatePerformanceAccessSheet_(), userId);
+
+  return jsonOut_({ ok: true, userId: userId, deleted: true });
+}
+
+/**
+ * ✅ getPersonalStatus（mode 名稱保留）
+ */
+function handleGetPersonalStatus_(e) {
+  var userId = String((e && e.parameter && e.parameter.userId) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var check = buildCheckResult_(userId);
+  var audit = normalizeAudit_(check.audit);
+
+  if (audit !== "通過") return jsonOut_({ ok: false, userId: userId, error: "Not approved" });
+  if (String(check.personalStatusEnabled || "否") !== "是")
+    return jsonOut_({ ok: false, userId: userId, error: "PersonalStatus disabled" });
+
+  var ps = getOrCreatePersonalStatusSheet_();
+  var row = findPersonalStatusRowIndex_(ps, userId);
+  if (!row) return jsonOut_({ ok: false, userId: userId, error: "PersonalStatus row not found" });
+
+  var adminLiff = String(ps.getRange(row, 4).getValue() || "").trim();
+  var personalBoardLiff = String(ps.getRange(row, 5).getValue() || "").trim();
+
+  return jsonOut_({
+    ok: true,
+    userId: userId,
+    adminLiff: adminLiff,
+    personalBoardLiff: personalBoardLiff
+  });
+}
+
+/**
+ * ✅ getUserManageLink（mode 名稱保留）
+ */
+function handleGetUserManageLink_(e) {
+  var userId = String((e && e.parameter && e.parameter.userId) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var check = buildCheckResult_(userId);
+  var audit = normalizeAudit_(check.audit);
+  if (audit !== "通過") return jsonOut_({ ok: false, userId: userId, error: "Not approved" });
+
+  var ps = getOrCreatePersonalStatusSheet_();
+  var row = findPersonalStatusRowIndex_(ps, userId);
+  if (!row) return jsonOut_({ ok: false, userId: userId, error: "PersonalStatus row not found" });
+
+  var adminLiff = String(ps.getRange(row, 4).getValue() || "").trim();
+  var personalBoardLiff = String(ps.getRange(row, 5).getValue() || "").trim();
+
+  return jsonOut_({ ok: true, userId: userId, adminLiff: adminLiff, personalBoardLiff: personalBoardLiff });
+}
+
+/**
+ * ✅ updatePersonalStatusLinks（mode 名稱保留）
+ */
+function handleUpdatePersonalStatusLinks_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var adminLiff = String((data && (data.adminLiff || data.manageLiff || data["技師管理員liff"])) || "").trim();
+  var personalBoardLiff = String(
+    (data && (data.personalBoardLiff || data.personalLiff || data["個人看板liff"])) || ""
+  ).trim();
+
+  var ps = getOrCreatePersonalStatusSheet_();
+  var row = findPersonalStatusRowIndex_(ps, userId);
+  if (!row) {
+    ps.appendRow([userId, "", "", "", ""]);
+    row = ps.getLastRow();
+  }
+
+  if (adminLiff !== "") ps.getRange(row, 4).setValue(adminLiff);
+  if (personalBoardLiff !== "") ps.getRange(row, 5).setValue(personalBoardLiff);
+
+  return jsonOut_({ ok: true, userId: userId });
+}
+
+function handleSyncPersonalStatusRow_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  var displayName = String((data && data.displayName) || "").trim();
+  var masterCode = String((data && (data.masterCode || data["師傅編號"])) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+
+  var r = upsertPersonalStatusRow_(userId, displayName, masterCode);
+  r.userId = userId;
+  return jsonOut_(r);
+}
+
+/* =========================
+ * ✅ PushMessage API
+ * ========================= */
+
+function handlePushMessage_(data) {
+  try {
+    // （可選）secret 防濫用：如果有設定 PUSH_SECRET，就必須帶 data.secret
+    var secretExpected = PropertiesService.getScriptProperties().getProperty(CONFIG.PUSH_SECRET_PROP);
+    if (secretExpected) {
+      var secretGot = String((data && data.secret) || "").trim();
+      if (!secretGot || secretGot !== String(secretExpected).trim()) {
+        return jsonOut_({ ok: false, userId: "", error: "Invalid secret" });
+      }
+    }
+
+    var token = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_ACCESS_TOKEN");
+    if (!token) return jsonOut_({ ok: false, userId: "", error: "Missing LINE_CHANNEL_ACCESS_TOKEN" });
+
+    var userIds = [];
+    if (data && Array.isArray(data.userIds)) userIds = data.userIds;
+    else if (data && data.userIds) userIds = data.userIds;
+    else if (data && data.userId) userIds = [data.userId];
+
+    if (typeof userIds === "string") {
+      userIds = userIds.split(/[\s,]+/).filter(function (x) {
+        return String(x || "").trim();
+      });
+    }
+
+    if (!Array.isArray(userIds) || userIds.length === 0)
+      return jsonOut_({ ok: false, userId: "", error: "Missing userIds" });
+
+    var seen = {};
+    userIds = userIds
+      .map(function (x) {
+        return String(x || "").trim();
+      })
+      .filter(function (x) {
+        return x && !seen[x] && (seen[x] = true);
+      });
+
+    if (userIds.length === 0) return jsonOut_({ ok: false, userId: "", error: "Missing userIds" });
+
+    var message = String((data && data.message) || "").trim();
+    if (!message) return jsonOut_({ ok: false, userId: "", error: "Missing message" });
+
+    var includeDisplayName = String((data && data.includeDisplayName) || "否").trim() === "是";
+
+    var nameMap = {};
+    if (includeDisplayName) nameMap = getDisplayNameMapFromUsers_(userIds);
+
+    var okCount = 0;
+    var fail = [];
+
+    if (!includeDisplayName && userIds.length > 1) {
+      var chunks = chunk_(userIds, 450);
+      for (var i = 0; i < chunks.length; i++) {
+        var ids = chunks[i];
+        var r = lineMulticast_(token, ids, message);
+        if (r.ok) okCount += ids.length;
+        else {
+          for (var j = 0; j < ids.length; j++) {
+            var uid = String(ids[j] || "").trim();
+            if (!uid) continue;
+            var rr = linePush_(token, uid, message);
+            if (rr.ok) okCount++;
+            else fail.push({ userId: uid, error: rr.error || "push_failed" });
+          }
+        }
+      }
+    } else {
+      for (var k = 0; k < userIds.length; k++) {
+        var uid2 = String(userIds[k] || "").trim();
+        if (!uid2) continue;
+
+        var prefix = "";
+        if (includeDisplayName) {
+          var dn = String(nameMap[uid2] || "").trim();
+          if (dn) prefix = dn + "：";
+        }
+
+        var text = prefix ? prefix + message : message;
+
+        var r2 = linePush_(token, uid2, text);
+        if (r2.ok) okCount++;
+        else fail.push({ userId: uid2, error: r2.error || "push_failed" });
+      }
+    }
+
+    return jsonOut_({
+      ok: fail.length === 0,
+      userId: "",
+      okCount: okCount,
+      failCount: fail.length,
+      fail: fail
+    });
+  } catch (e) {
+    return jsonOut_({ ok: false, userId: "", error: String(e) });
+  }
+}
+
+function getDisplayNameMapFromUsers_(userIds) {
+  var db = readUsersTable_();
+  var values = db.values || [];
+
+  var need = {};
+  for (var i = 0; i < userIds.length; i++) {
+    var uid = String(userIds[i] || "").trim();
+    if (uid) need[uid] = true;
+  }
+
+  var map = {};
+  for (var r = 0; r < values.length; r++) {
+    var row = values[r];
+    var id = String(row[0] || "").trim();
+    if (!id || !need[id]) continue;
+    map[id] = String(row[1] || "").trim();
+  }
+  return map;
+}
+
+function linePush_(token, userId, text) {
+  try {
+    var url = "https://api.line.me/v2/bot/message/push";
+    var payload = {
+      to: userId,
+      messages: [{ type: "text", text: String(text || "") }]
+    };
+
+    var res = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: { Authorization: "Bearer " + token },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) return { ok: true };
+    return { ok: false, error: "HTTP_" + code + " " + res.getContentText() };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+function lineMulticast_(token, userIds, text) {
+  try {
+    var url = "https://api.line.me/v2/bot/message/multicast";
+    var payload = {
+      to: userIds,
+      messages: [{ type: "text", text: String(text || "") }]
+    };
+
+    var res = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: { Authorization: "Bearer " + token },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code >= 200 && code < 300) return { ok: true };
+    return { ok: false, error: "HTTP_" + code + " " + res.getContentText() };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+function chunk_(arr, size) {
+  var out = [];
+  for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/* =========================
+ * doGet / doPost
+ * ========================= */
+function doGet(e) {
+  if (e && e.parameter && e.parameter._cors === "preflight") {
+    return jsonOut_({ ok: true, userId: "", preflight: true });
+  }
+
+  var mode = String((e && e.parameter && e.parameter.mode) || "").toLowerCase();
+
+  if (mode === "check") return handleCheck_(e);
+  if (mode === "register") return handleRegister_(e.parameter);
+  if (mode === "listusers") return handleListUsers_();
+
+  if (mode === "updateuser") return handleUpdateUser_(e.parameter);
+  if (mode === "updateusersbatch") return handleUpdateUsersBatch_(e.parameter);
+  if (mode === "deleteuser") return handleDeleteUser_(e.parameter);
+
+  if (mode === "getpersonalstatus") return handleGetPersonalStatus_(e);
+  if (mode === "getusermanagelink") return handleGetUserManageLink_(e);
+  if (mode === "updatepersonalstatuslinks") return handleUpdatePersonalStatusLinks_(e.parameter);
+  if (mode === "syncpersonalstatusrow") return handleSyncPersonalStatusRow_(e.parameter);
+
+  if (mode === "pushmessage") return handlePushMessage_(e.parameter);
+
+  return jsonOut_({
+    ok: false,
+    userId: String((e && e.parameter && e.parameter.userId) || "").trim(),
+    error: "invalid_mode"
+  });
+}
+
+function doPost(e) {
+  if (
+    e.postData &&
+    e.postData.type &&
+    e.postData.type.indexOf("text/plain") === 0 &&
+    e.postData.contents === "_cors_preflight_"
+  ) {
+    return jsonOut_({ ok: true, userId: "", preflight: true });
+  }
+
+  var data = {};
+  var mode = "";
+  var raw = "";
+  var ctype = "";
+
+  try {
+    ctype = e.postData && e.postData.type ? String(e.postData.type) : "";
+    raw = e.postData && typeof e.postData.contents === "string" ? e.postData.contents : "";
+
+    if (ctype.indexOf("application/json") === 0) {
+      data = JSON.parse(raw || "{}");
+      mode = String(data.mode || "").toLowerCase();
+    } else if (raw && raw.trim().charAt(0) === "{") {
+      data = JSON.parse(raw);
+      mode = String(data.mode || "").toLowerCase();
+    } else {
+      data = e.parameter || {};
+      mode = String(data.mode || "").toLowerCase();
+    }
+  } catch (err) {
+    return jsonOut_({ ok: false, userId: "", error: "Invalid JSON" });
+  }
+
+  if (mode === "check") return handleCheck_({ parameter: data });
+  if (mode === "register") return handleRegister_(data);
+  if (mode === "listusers") return handleListUsers_();
+
+  if (mode === "updateuser") return handleUpdateUser_(data);
+  if (mode === "updateusersbatch") return handleUpdateUsersBatch_(data);
+  if (mode === "deleteuser") return handleDeleteUser_(data);
+
+  if (mode === "getpersonalstatus") return handleGetPersonalStatus_({ parameter: data });
+  if (mode === "getusermanagelink") return handleGetUserManageLink_({ parameter: data });
+  if (mode === "updatepersonalstatuslinks") return handleUpdatePersonalStatusLinks_(data);
+  if (mode === "syncpersonalstatusrow") return handleSyncPersonalStatusRow_(data);
+
+  if (mode === "pushmessage") return handlePushMessage_(data);
+
+  return jsonOut_({ ok: false, userId: String((data && data.userId) || "").trim(), error: "invalid_mode" });
+}
