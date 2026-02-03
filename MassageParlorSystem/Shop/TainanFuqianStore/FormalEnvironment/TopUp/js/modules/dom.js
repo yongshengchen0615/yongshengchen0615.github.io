@@ -27,6 +27,11 @@ export const dom = {
   summaryBadge: document.getElementById("summaryBadge"),
   lastUpdate: document.getElementById("lastUpdate"),
 
+  selectAll: document.getElementById("selectAll"),
+  batchVoidBtn: document.getElementById("batchVoidBtn"),
+  batchDeleteBtn: document.getElementById("batchDeleteBtn"),
+  selectedCount: document.getElementById("selectedCount"),
+
   tbodyRows: document.getElementById("tbodyRows"),
   emptyState: document.getElementById("emptyState"),
   loadingState: document.getElementById("loadingState"),

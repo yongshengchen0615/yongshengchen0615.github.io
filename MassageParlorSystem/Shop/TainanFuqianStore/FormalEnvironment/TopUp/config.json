@@ -17,7 +17,7 @@
   "DEBUG_DISPLAY_NAME": "測試使用者",
 
   "PAGE_TITLE": "儲值序號後台",
-  "PAGE_SUBTITLE": "序號管理 / 匯入 / 核銷 / 作廢",
+  "PAGE_SUBTITLE": "序號管理 / 匯入 / 作廢",
 
   "LIST_LIMIT": 300
 }

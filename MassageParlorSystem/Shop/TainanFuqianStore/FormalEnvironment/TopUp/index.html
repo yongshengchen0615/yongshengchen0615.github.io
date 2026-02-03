@@ -27,7 +27,7 @@
     <div class="layout">
       <header class="page-title">
         <h1 class="app-title">儲值序號後台</h1>
-        <p class="app-subtitle" id="subtitle">序號管理 / 核銷 / 作廢</p>
+        <p class="app-subtitle" id="subtitle">序號管理 / 作廢</p>
       </header>
 
       <header class="app-header">
@@ -114,9 +114,6 @@
                 <div class="form-actions">
                   <button id="genBtn" class="btn btn-primary" type="button">➕ 產生序號</button>
                 </div>
-
-                <div class="hint">會回傳本次批次產生的序號（可直接複製）。</div>
-                <textarea id="genOutput" class="textarea" rows="6" placeholder="產生結果會出現在這裡…" readonly></textarea>
               </div>
             </div>
           </div>
@@ -129,6 +126,13 @@
               <p class="card-subtitle">可用/已核銷/已作廢；支援搜尋與快速操作</p>
             </div>
             <div class="card-header-right">
+              <label class="select-all" for="selectAll">
+                <input id="selectAll" type="checkbox" aria-label="全選（僅可用序號）" />
+                <span>全選</span>
+              </label>
+              <span id="selectedCount" class="badge">已選 0</span>
+              <button id="batchVoidBtn" class="btn btn-danger" type="button" disabled>批次作廢</button>
+              <button id="batchDeleteBtn" class="btn btn-danger" type="button" disabled>批次刪除</button>
               <span id="lastUpdate" class="badge">尚未更新</span>
             </div>
           </header>
@@ -138,11 +142,13 @@
               <table class="status-table">
                 <thead>
                   <tr>
+                    <th style="width: 54px;">選取</th>
                     <th style="width: 220px;">序號</th>
                     <th style="width: 90px;">面額</th>
                     <th style="width: 110px;">狀態</th>
                     <th style="width: 170px;">建立時間</th>
                     <th style="width: 170px;">核銷時間</th>
+                    <th style="width: 240px;">核銷備註</th>
                     <th>備註</th>
                     <th style="width: 220px;">操作</th>
                   </tr>

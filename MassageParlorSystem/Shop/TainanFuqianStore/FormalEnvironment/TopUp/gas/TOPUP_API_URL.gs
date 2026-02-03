@@ -45,6 +45,8 @@ function doGet(e) {
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
         "POST text/plain JSON {mode:'serials_void', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_reactivate', serial, actor?}",
+        "POST text/plain JSON {mode:'serials_delete', serial, note?, actor?}",
+        "POST text/plain JSON {mode:'serials_delete_batch', serials, note?, actor?}",
       ],
       sheets: {
         admins: SHEET_ADMINS,
@@ -126,6 +128,20 @@ function doPost(e) {
     if (mode === "serials_reactivate") {
       const serial = normalizeSerial_(payload.serial);
       const res = serialsReactivate_({ serial, actor: gate.user });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (mode === "serials_delete") {
+      const serial = normalizeSerial_(payload.serial);
+      const note = normalizeNote_(payload.note);
+      const res = serialsDelete_({ serial, note, actor: gate.user });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (mode === "serials_delete_batch") {
+      const serials = Array.isArray(payload.serials) ? payload.serials : [];
+      const note = normalizeNote_(payload.note);
+      const res = serialsDeleteBatch_({ serials, note, actor: gate.user });
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
@@ -284,6 +300,7 @@ function serialsList_({ filters, limit }) {
     const rowNote = String(row[3] || "");
     const createdAtMs = Number(row[4]) || 0;
     const usedAtMs = Number(row[7]) || 0;
+    const usedNote = String(row[9] || "");
     const voidAtMs = Number(row[10]) || 0;
 
     if (q) {
@@ -301,6 +318,7 @@ function serialsList_({ filters, limit }) {
       note: rowNote,
       createdAtMs,
       usedAtMs,
+      usedNote,
       voidAtMs,
     });
 
@@ -507,6 +525,85 @@ function serialsReactivate_({ serial, actor }) {
     logOp_("serials_reactivate", serial, { serial, actor });
 
     return { serial, status: STATUS_ACTIVE, reactivatedAtMs: now };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function serialsDelete_({ serial, note, actor }) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+    const idx = findSerialRowIndex_(sh, serial);
+    if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
+
+    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
+
+    sh.deleteRow(idx);
+
+    logOp_("serials_delete", serial, { serial, note, actor, status });
+
+    return { serial, deleted: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function serialsDeleteBatch_({ serials, note, actor }) {
+  const list = (serials || []).map((s) => String(s || "").trim()).filter(Boolean);
+  const uniq = Array.from(new Set(list));
+  if (!uniq.length) return { deleted: [], failed: [] };
+  if (uniq.length > 500) throw new Error("TOO_MANY_SERIALS");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+    const values = sh.getDataRange().getValues();
+
+    const indexBySerial = new Map();
+    for (let r = 2; r <= values.length; r++) {
+      const s = String(values[r - 1][0] || "").trim();
+      if (s) indexBySerial.set(s, r);
+    }
+
+    const rowsToDelete = [];
+    const deleted = [];
+    const failed = [];
+
+    for (let i = 0; i < uniq.length; i++) {
+      const serial = uniq[i];
+      const idx = indexBySerial.get(serial) || -1;
+      if (idx < 2) {
+        failed.push({ serial, error: "SERIAL_NOT_FOUND" });
+        continue;
+      }
+      const row = values[idx - 1];
+      const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
+
+      rowsToDelete.push({ idx, serial, status });
+    }
+
+    // delete from bottom to top to avoid index shift
+    rowsToDelete.sort((a, b) => b.idx - a.idx);
+    for (let i = 0; i < rowsToDelete.length; i++) {
+      const it = rowsToDelete[i];
+      sh.deleteRow(it.idx);
+      deleted.push(it.serial);
+    }
+
+    logOp_("serials_delete_batch", "", {
+      count: uniq.length,
+      deletedCount: deleted.length,
+      failedCount: failed.length,
+      note,
+      actor,
+      serials: uniq,
+    });
+
+    return { deleted, failed };
   } finally {
     lock.releaseLock();
   }
