@@ -1226,8 +1226,84 @@ html[data-theme="light"] .initial-loading-progress{
 /* table wrapper to match scheduling */
 #schedulePanelSection .table-wrapper, #schedulePanelSection .table-wrap{ overflow:auto; -webkit-overflow-scrolling:touch; }
 
-/* small adjustments for my-master-status within panel */
-#schedulePanelSection .my-master-status{ background: rgba(15,23,42,0.65); border-radius:16px; border:1px solid rgba(148,163,184,.55); padding:10px 14px; }
+/* ===== 師傅狀態卡（移植自 Scheduling：左側色條 + 內容區） ===== */
+#schedulePanelSection .my-master-status{
+  margin: 0 0 14px 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+html[data-theme="light"] #schedulePanelSection .my-master-status{
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+#schedulePanelSection .my-master-status::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--myStripe, rgba(148, 163, 184, 0.55));
+}
+
+/* fallback stripe colors (JS 會用 token 覆蓋 --myStripe) */
+#schedulePanelSection .my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
+#schedulePanelSection .my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
+#schedulePanelSection .my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
+#schedulePanelSection .my-master-status.status-free{ --myStripe: rgba(34, 197, 94, 0.9); }
+#schedulePanelSection .my-master-status.status-other{ --myStripe: rgba(148, 163, 184, 0.7); }
+
+#schedulePanelSection .my-master-title{
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+  padding-top: 2px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+#schedulePanelSection .my-master-text{
+  padding-left: 6px;
+  min-width: 0;
+}
+
+#schedulePanelSection .my-master-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#schedulePanelSection .my-master-controls{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#schedulePanelSection .my-master-controls .filter-label{
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+#schedulePanelSection .my-master-controls .select{
+  min-width: 140px;
+  min-height: 40px;
+}
 
 /* ensure headings/text use scheduling tokens */
 #schedulePanelSection .card-title, #schedulePanelSection .app-title { color: var(--text-main); }
@@ -1267,12 +1343,29 @@ html[data-theme="light"] .initial-loading-progress{
 
   /* theme/usage banners flatten */
   #schedulePanelSection .feature-banner,
-  #schedulePanelSection .usage-banner,
-  #schedulePanelSection .my-master-status {
+  #schedulePanelSection .usage-banner {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
+  }
+
+  #schedulePanelSection .my-master-head{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  #schedulePanelSection .my-master-controls{
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  #schedulePanelSection .my-master-controls .select{
+    width: 100%;
+    min-width: 0;
   }
 }
 
@@ -1367,7 +1460,7 @@ html[data-theme="light"] .initial-loading-progress{
  * Apply to both `.status-pill` and container `.my-master-status` for consistency
  * ========================= */
 #schedulePanelSection .status-pill,
-#schedulePanelSection .my-master-status {
+#schedulePanelSection .status-pill {
   display:inline-flex;
   align-items:center;
   gap:8px;
@@ -1381,35 +1474,35 @@ html[data-theme="light"] .initial-loading-progress{
 }
 
 #schedulePanelSection .status-pill.status-shift,
-#schedulePanelSection .my-master-status.status-shift{
+#schedulePanelSection .status-pill.status-shift{
   border-color: rgba(22,163,74,.35);
   background: var(--success-soft);
   color: var(--success);
 }
 
 #schedulePanelSection .status-pill.status-busy,
-#schedulePanelSection .my-master-status.status-busy{
+#schedulePanelSection .status-pill.status-busy{
   border-color: rgba(239,68,68,.35);
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 #schedulePanelSection .status-pill.status-booked,
-#schedulePanelSection .my-master-status.status-booked{
+#schedulePanelSection .status-pill.status-booked{
   border-color: rgba(56,189,248,.35);
   background: var(--accent-soft);
   color: var(--accent);
 }
 
 #schedulePanelSection .status-pill.status-free,
-#schedulePanelSection .my-master-status.status-free{
+#schedulePanelSection .status-pill.status-free{
   border-color: rgba(100,116,139,.25);
   background: rgba(100,116,139,.06);
   color: var(--muted);
 }
 
 #schedulePanelSection .status-pill.status-other,
-#schedulePanelSection .my-master-status.status-other{
+#schedulePanelSection .status-pill.status-other{
   border-color: rgba(148,163,184,.18);
   background: var(--card);
   color: var(--text-sub);
@@ -1417,42 +1510,42 @@ html[data-theme="light"] .initial-loading-progress{
 
 /* Light theme overrides: ensure sufficient contrast on light backgrounds */
 html[data-theme="light"] #schedulePanelSection .status-pill,
-html[data-theme="light"] #schedulePanelSection .my-master-status {
+html[data-theme="light"] #schedulePanelSection .status-pill {
   border-color: rgba(148,163,184,.35);
   background: rgba(255,255,255,.9);
   color: var(--text);
 }
 
 html[data-theme="light"] #schedulePanelSection .status-pill.status-shift,
-html[data-theme="light"] #schedulePanelSection .my-master-status.status-shift{
+html[data-theme="light"] #schedulePanelSection .status-pill.status-shift{
   border-color: rgba(22,163,74,.45);
   background: rgba(22,163,74,.08);
   color: rgba(22,163,74,1);
 }
 
 html[data-theme="light"] #schedulePanelSection .status-pill.status-busy,
-html[data-theme="light"] #schedulePanelSection .my-master-status.status-busy{
+html[data-theme="light"] #schedulePanelSection .status-pill.status-busy{
   border-color: rgba(239,68,68,.45);
   background: rgba(239,68,68,.06);
   color: rgba(239,68,68,1);
 }
 
 html[data-theme="light"] #schedulePanelSection .status-pill.status-booked,
-html[data-theme="light"] #schedulePanelSection .my-master-status.status-booked{
+html[data-theme="light"] #schedulePanelSection .status-pill.status-booked{
   border-color: rgba(56,189,248,.45);
   background: rgba(56,189,248,.06);
   color: rgba(7,89,133,1);
 }
 
 html[data-theme="light"] #schedulePanelSection .status-pill.status-free,
-html[data-theme="light"] #schedulePanelSection .my-master-status.status-free{
+html[data-theme="light"] #schedulePanelSection .status-pill.status-free{
   border-color: rgba(100,116,139,.3);
   background: rgba(100,116,139,.06);
   color: rgba(55,65,81,1);
 }
 
 html[data-theme="light"] #schedulePanelSection .status-pill.status-other,
-html[data-theme="light"] #schedulePanelSection .my-master-status.status-other{
+html[data-theme="light"] #schedulePanelSection .status-pill.status-other{
   border-color: rgba(148,163,184,.25);
   background: rgba(247,249,250,1);
   color: var(--text-sub);

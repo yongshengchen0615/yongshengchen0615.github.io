@@ -243,26 +243,33 @@ function makeMyPanelRowHTML(label, row, shiftRankObj) {
 export function updateMyMasterStatusUI() {
   if (!dom.myMasterStatusEl) return;
 
-  if (state.viewMode && state.viewMode !== "myStatus") {
-    dom.myMasterStatusEl.style.display = "none";
+  // Admin schedule: allow selecting any master to view status.
+  // Priority: dropdown -> state.statusViewer.techNo -> (fallback) filterMaster -> myMaster.techNo
+  const selectedRaw =
+    (dom.statusMasterSelect && dom.statusMasterSelect.value) ||
+    (state.statusViewer && state.statusViewer.techNo) ||
+    state.filterMaster ||
+    (state.myMaster && state.myMaster.techNo) ||
+    "";
+  const targetTechNo = normalizeTechNo(selectedRaw);
+
+  // In admin view we don't show the "not master" hint card.
+  try { showNotMasterHint(false); } catch {}
+
+  if (!targetTechNo) {
+    dom.myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
+    dom.myMasterStatusEl.classList.add("status-other");
+    dom.myMasterStatusEl.style.removeProperty("--myStripe");
+    if (dom.myMasterStatusTextEl) dom.myMasterStatusTextEl.textContent = "請先選擇師傅編號";
+    dom.myMasterStatusEl.style.display = "flex";
     return;
   }
 
-  if (!state.myMaster.isMaster || !state.myMaster.techNo) {
-    if (state.viewMode === "myStatus") showNotMasterHint(true);
-    else showNotMasterHint(false);
+  const bodyRow = findRowByTechNo(state.rawData.body, targetTechNo);
+  const footRow = findRowByTechNo(state.rawData.foot, targetTechNo);
 
-    dom.myMasterStatusEl.style.display = "none";
-    return;
-  }
-
-  showNotMasterHint(false);
-
-  const bodyRow = findRowByTechNo(state.rawData.body, state.myMaster.techNo);
-  const footRow = findRowByTechNo(state.rawData.foot, state.myMaster.techNo);
-
-  const bodyShiftRank = getShiftRank(state.rawData.body, state.myMaster.techNo);
-  const footShiftRank = getShiftRank(state.rawData.foot, state.myMaster.techNo);
+  const bodyShiftRank = getShiftRank(state.rawData.body, targetTechNo);
+  const footShiftRank = getShiftRank(state.rawData.foot, targetTechNo);
 
   dom.myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
   dom.myMasterStatusEl.classList.add("status-other");
@@ -274,7 +281,7 @@ export function updateMyMasterStatusUI() {
       <div class="myms-head">
         <div class="myms-tech">
           <span class="myms-tech-badge">師傅</span>
-          <span> ${escapeHtml(state.myMaster.techNo)} </span>
+          <span> ${escapeHtml(targetTechNo)} </span>
         </div>
       </div>
 
@@ -301,8 +308,17 @@ export function updateMyMasterStatusUI() {
     const stripe = tokenToStripe(dominant.bgStatus, dominant.colorStatus);
     if (stripe) dom.myMasterStatusEl.style.setProperty("--myStripe", stripe);
     else dom.myMasterStatusEl.style.removeProperty("--myStripe");
+
+    // apply container semantic class for subtle background tuning
+    try {
+      const cls = classifyMyStatusClass(dominant.status, parseRemainingNumber(dominant));
+      dom.myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
+      dom.myMasterStatusEl.classList.add(cls || "status-other");
+    } catch {}
   } else {
     dom.myMasterStatusEl.style.removeProperty("--myStripe");
+    dom.myMasterStatusEl.classList.remove("status-shift", "status-busy", "status-booked", "status-free", "status-other");
+    dom.myMasterStatusEl.classList.add("status-other");
   }
 
   dom.myMasterStatusEl.style.display = "flex";

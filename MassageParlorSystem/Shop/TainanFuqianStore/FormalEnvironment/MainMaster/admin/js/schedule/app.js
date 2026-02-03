@@ -9,6 +9,7 @@ import { setActivePanel } from "./modules/table.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen } from "./modules/usageLog.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
+import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 
 let eventsBound = false;
  
@@ -43,10 +44,27 @@ function bindEventsOnce() {
     // support both input (if element supports) and change (select)
     dom.filterMasterInput.addEventListener("input", (e) => {
       state.filterMaster = e.target.value || "";
+      // convenience: follow master filter to status viewer (only when user actively filters to a single master)
+      if (dom.statusMasterSelect) {
+        const v = state.filterMaster;
+        if (v && Array.from(dom.statusMasterSelect.options).some((o) => o.value === v)) {
+          dom.statusMasterSelect.value = v;
+          state.statusViewer.techNo = v;
+          updateMyMasterStatusUI();
+        }
+      }
       rerenderDebounced();
     });
     dom.filterMasterInput.addEventListener("change", (e) => {
       state.filterMaster = e.target.value || "";
+      if (dom.statusMasterSelect) {
+        const v = state.filterMaster;
+        if (v && Array.from(dom.statusMasterSelect.options).some((o) => o.value === v)) {
+          dom.statusMasterSelect.value = v;
+          state.statusViewer.techNo = v;
+          updateMyMasterStatusUI();
+        }
+      }
       rerenderDebounced();
     });
   }
@@ -54,6 +72,14 @@ function bindEventsOnce() {
     dom.filterStatusSelect.addEventListener("change", (e) => {
       state.filterStatus = e.target.value || "all";
       rerenderDebounced();
+    });
+  }
+
+  if (dom.statusMasterSelect) {
+    dom.statusMasterSelect.addEventListener("change", (e) => {
+      const v = e.target.value || "";
+      state.statusViewer.techNo = v;
+      updateMyMasterStatusUI();
     });
   }
 }

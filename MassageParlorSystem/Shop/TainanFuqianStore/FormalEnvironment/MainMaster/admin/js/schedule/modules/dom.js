@@ -41,6 +41,7 @@ export const dom = {
 
   myMasterStatusEl: document.getElementById("myMasterStatus"),
   myMasterStatusTextEl: document.getElementById("myMasterStatusText"),
+  statusMasterSelect: document.getElementById("statusMasterSelect"),
 
   toolbarEl: document.querySelector(".toolbar"),
   mainEl: document.querySelector("main.main"),

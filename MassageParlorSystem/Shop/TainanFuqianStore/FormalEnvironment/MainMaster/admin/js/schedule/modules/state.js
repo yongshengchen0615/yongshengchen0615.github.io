@@ -24,6 +24,10 @@ export const state = {
     techNo: "",
   },
 
+  statusViewer: {
+    techNo: "",
+  },
+
   feature: {
     pushEnabled: "否",
     personalStatusEnabled: "否",

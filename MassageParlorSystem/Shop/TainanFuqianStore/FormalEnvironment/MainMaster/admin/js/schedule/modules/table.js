@@ -121,6 +121,36 @@ export function rebuildMasterFilterOptions() {
     dom.filterMasterInput.value = "";
     state.filterMaster = "";
   }
+
+  // also rebuild status viewer select (admin-only feature)
+  if (dom.statusMasterSelect) {
+    const prevStatus = dom.statusMasterSelect.value || (state.statusViewer && state.statusViewer.techNo) || "";
+
+    dom.statusMasterSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "請選擇";
+    dom.statusMasterSelect.appendChild(opt);
+
+    for (const m of arr) {
+      const o = document.createElement("option");
+      o.value = m;
+      o.textContent = m;
+      dom.statusMasterSelect.appendChild(o);
+    }
+
+    const hasPrev = prevStatus && Array.from(dom.statusMasterSelect.options).some((o) => o.value === prevStatus);
+    if (hasPrev) {
+      dom.statusMasterSelect.value = prevStatus;
+      if (state.statusViewer) state.statusViewer.techNo = prevStatus;
+    } else if (state.statusViewer && !state.statusViewer.techNo && arr.length) {
+      // first-time default: pick the first master so admin can see status immediately
+      dom.statusMasterSelect.value = arr[0];
+      state.statusViewer.techNo = arr[0];
+    } else {
+      dom.statusMasterSelect.value = "";
+    }
+  }
 }
 
 function applyFilters(list) {
