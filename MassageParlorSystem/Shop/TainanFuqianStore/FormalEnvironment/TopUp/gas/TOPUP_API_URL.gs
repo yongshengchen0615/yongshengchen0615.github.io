@@ -412,7 +412,8 @@ function serialsRedeem_({ serial, note, actor }) {
     row[2] = STATUS_USED;
     row[7] = now;
     row[8] = actor.userId;
-    row[9] = note;
+    // UsedNote: 僅保留核銷者 displayName（依需求不存其他備註）
+    row[9] = String(actor && actor.displayName ? actor.displayName : "").trim();
     row[15] = now;
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
@@ -449,15 +450,14 @@ function serialsRedeemPublic_({ serial, note, user }) {
     row[7] = now;
     row[8] = userId;
 
-    // UsedNote: keep caller note + displayName (best-effort)
-    const meta = displayName ? `displayName=${displayName}` : "";
-    const finalNote = [String(note || "").trim(), meta].filter(Boolean).join(" | ");
+    // UsedNote: 僅保留核銷者 displayName（依需求不存其他備註）
+    const finalNote = String(displayName || "").trim();
     row[9] = finalNote;
     row[15] = now;
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
 
-    logOp_("serials_redeem_public", serial, { serial, note: finalNote, user: { userId, displayName } });
+    logOp_("serials_redeem_public", serial, { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } });
 
     return { serial, amount, status: STATUS_USED, usedAtMs: now, usedBy: userId };
   } finally {
