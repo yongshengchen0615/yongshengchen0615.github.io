@@ -38,6 +38,7 @@ export const dom = {
   themeToggleBtn: document.getElementById("themeToggle"),
   btnMyStatusEl: document.getElementById("btnMyStatus"),
   btnScheduleEl: document.getElementById("btnSchedule"),
+  btnTopupEl: document.getElementById("btnTopup"),
   btnPerformanceEl: document.getElementById("btnPerformance"),
 
   // Feature / personal tools

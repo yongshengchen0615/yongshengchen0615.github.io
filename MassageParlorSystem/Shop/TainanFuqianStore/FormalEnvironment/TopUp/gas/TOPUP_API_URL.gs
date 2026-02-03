@@ -78,8 +78,14 @@ function doPost(e) {
     if (mode === "serials_redeem_public") {
       const serial = normalizeSerial_(payload.serial);
       const note = normalizeNote_(payload.note);
-      const userId = normalizeUserId_(payload.userId);
-      const displayName = normalizeDisplayName_(payload.displayName);
+      // ✅ 放寬：只要任何欄位提供 userId 即可（支援測試 local_dev）
+      const userId = normalizeUserId_(
+        payload.userId ||
+          payload.userID ||
+          payload.uid ||
+          (payload.user && (payload.user.userId || payload.user.userID || payload.user.uid))
+      );
+      const displayName = normalizeDisplayName_(payload.displayName || (payload.user && payload.user.displayName));
       const res = serialsRedeemPublic_({ serial, note, user: { userId, displayName } });
       return json_({ ok: true, ...res, now: Date.now() });
     }

@@ -1247,6 +1247,16 @@ body { font-size: 1rem; line-height: 1.45; }
   color: var(--text-main);
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+#usageBannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-usage-topup {
+  white-space: nowrap;
 }
 
 :root[data-theme="light"] .usage-banner {

@@ -23,6 +23,17 @@ import { applyScheduleUiMode, showNotMasterHint } from "./scheduleUi.js";
 import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js";
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { logUsageEvent } from "./usageLog.js";
+import { isTopupEnabled, runTopupFlow } from "./topup.js";
+
+// Gate overlay actions (event delegation)
+if (dom.gateEl) {
+  dom.gateEl.addEventListener("click", async (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest("#gateTopupBtn") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    await runTopupFlow({ context: "gate", reloadOnSuccess: true });
+  });
+}
 
 /* =====================================================
  * ✅ Identity helpers（state + localStorage 落地）
@@ -190,7 +201,12 @@ function decideGateAction(r) {
       action: () => {
         let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
         msg += "原因：使用期限已到期或未設定期限。\n";
-        msg += "\n請聯絡管理員協助開通或延長使用期限。";
+        if (isTopupEnabled()) {
+          msg += "\n你可以先使用儲值序號延長期限：\n";
+          msg += '<div style="margin-top:12px;"><button id="gateTopupBtn" class="btn btn-ghost" type="button">💳 輸入序號儲值</button></div>';
+        } else {
+          msg += "\n請聯絡管理員協助開通或延長使用期限。";
+        }
         return { allow: false, message: msg };
       },
     },
@@ -280,6 +296,13 @@ async function registerUser(userId, displayName) {
 async function onAuthorized({ userId, displayName, result }) {
   // ✅ 落地身份（給其他模組用）
   setClientIdentity_(userId, displayName);
+
+  // 讓其他模組可取到最新剩餘天數（儲值成功後也會更新 banner）
+  try {
+    state.user = state.user || {};
+    state.user.remainingDays = result.remainingDays;
+    state.user.audit = result.audit;
+  } catch (_) {}
 
   // features
   updateFeatureState(result);

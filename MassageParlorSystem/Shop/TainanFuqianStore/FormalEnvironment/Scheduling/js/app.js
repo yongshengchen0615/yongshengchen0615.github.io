@@ -20,6 +20,7 @@ import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
+import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
 
 let eventsBound = false;
 
@@ -61,6 +62,13 @@ function bindEventsOnce() {
       rerenderDebounced();
     });
   }
+
+  // TopUp
+  if (dom.btnTopupEl) {
+    dom.btnTopupEl.addEventListener("click", async () => {
+      await runTopupFlow({ context: "app", reloadOnSuccess: false });
+    });
+  }
 }
 
 async function boot() {
@@ -84,6 +92,9 @@ async function boot() {
   setInitialLoadingProgress(28, "初始化介面中…");
 
   bindEventsOnce();
+
+  // 儲值入口（是否顯示取決於 config.TOPUP_API_URL）
+  if (dom.btnTopupEl) dom.btnTopupEl.style.display = isTopupEnabled() ? "" : "none";
 
   // Auth / Gate
   setInitialLoadingProgress(45, "登入 / 權限檢查中…");
