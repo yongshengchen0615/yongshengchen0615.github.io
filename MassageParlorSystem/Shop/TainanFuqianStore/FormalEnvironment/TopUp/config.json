@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "description": "TopUp 儲值序號後台設定檔（標準 JSON，不可使用註解）",
+    "note": "填入部署後的 GAS Web App /exec URL 與（可選）LIFF 參數"
+  },
+
+  "TOPUP_API_URL": "https://script.google.com/macros/s/AKfycbwAIv5DEllNzT4xhsNSXjbTV6ziio1Na_UO_QdK_4masenoneEGoR5RVohMd5MaF4e_3g/exec",
+  "_TOPUP_API_URL_DESC": "TopUp 序號管理 GAS Web App（/exec）",
+
+  "USE_LIFF": false,
+  "_USE_LIFF_DESC": "是否使用 LINE LIFF 取得 userId；false 時可用 query/localStorage/debug",
+
+  "LIFF_ID": "",
+  "_LIFF_ID_DESC": "USE_LIFF=true 時必填",
+
+  "DEBUG_USER_ID": "dev_user",
+  "DEBUG_DISPLAY_NAME": "測試使用者",
+
+  "PAGE_TITLE": "儲值序號後台",
+  "PAGE_SUBTITLE": "序號管理 / 匯入 / 核銷 / 作廢",
+
+  "LIST_LIMIT": 300
+}

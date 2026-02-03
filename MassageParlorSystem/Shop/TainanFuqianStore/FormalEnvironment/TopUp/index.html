@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>儲值序號後台</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
+
+  <!-- LIFF SDK（可在 config.json 關閉 USE_LIFF） -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body>
+  <!-- 授權 / Gate 遮罩 -->
+  <div id="gate" class="gate gate-hidden">
+    初始化中…
+  </div>
+
+  <!-- Top Loading Hint -->
+  <div id="topLoading" class="top-loading hidden" aria-live="polite" aria-atomic="true">
+    <span class="top-loading-spinner" aria-hidden="true"></span>
+    <span id="topLoadingText" class="top-loading-text">處理中…</span>
+  </div>
+
+  <div id="appRoot" class="app-root app-hidden">
+    <div class="layout">
+      <header class="page-title">
+        <h1 class="app-title">儲值序號後台</h1>
+        <p class="app-subtitle" id="subtitle">序號管理 / 核銷 / 作廢</p>
+      </header>
+
+      <header class="app-header">
+        <div class="app-header-left">
+          <div class="pill pill-status">
+            <span class="pill-dot"></span>
+            <span class="pill-text" id="authText">尚未登入</span>
+          </div>
+        </div>
+
+        <div class="app-header-right">
+          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
+          <button id="reloadBtn" class="btn btn-ghost" type="button">🔄 重新整理</button>
+          <button id="exportBtn" class="btn btn-ghost" type="button">⬇️ 匯出 CSV</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="搜尋與篩選">
+        <div class="filters">
+          <div class="filter" style="min-width:260px;flex:1;">
+            <label for="searchInput" class="filter-label">搜尋序號</label>
+            <input id="searchInput" class="input" placeholder="輸入序號（支援部分比對）" autocomplete="off" />
+          </div>
+
+          <div class="filter" style="min-width:160px;">
+            <label for="statusSelect" class="filter-label">狀態</label>
+            <select id="statusSelect" class="select">
+              <option value="all">全部</option>
+              <option value="active">可用</option>
+              <option value="used">已核銷</option>
+              <option value="void">已作廢</option>
+            </select>
+          </div>
+
+          <div class="filter" style="min-width:160px;">
+            <label for="amountSelect" class="filter-label">面額</label>
+            <select id="amountSelect" class="select">
+              <option value="all">全部</option>
+              <option value="1000">1000</option>
+              <option value="1200">1200</option>
+              <option value="1500">1500</option>
+              <option value="2000">2000</option>
+              <option value="3000">3000</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <main class="main">
+        <section class="card" aria-label="建立序號">
+          <header class="card-header">
+            <div class="card-header-left">
+              <h2 class="card-title">建立序號</h2>
+              <p class="card-subtitle">支援批次產生</p>
+            </div>
+            <div class="card-header-right">
+              <span id="summaryBadge" class="badge">—</span>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="grid-2">
+              <div class="panel">
+                <div class="panel-title">批次產生</div>
+
+                <div class="form-row">
+                  <div class="field">
+                    <label class="filter-label" for="genAmount">面額</label>
+                    <input id="genAmount" class="input" type="number" min="1" step="1" value="1000" />
+                  </div>
+                  <div class="field">
+                    <label class="filter-label" for="genCount">數量</label>
+                    <input id="genCount" class="input" type="number" min="1" max="500" step="1" value="10" />
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="field" style="flex:1;">
+                    <label class="filter-label" for="genNote">備註（選填）</label>
+                    <input id="genNote" class="input" placeholder="例如：2026/2 活動" />
+                  </div>
+                </div>
+
+                <div class="form-actions">
+                  <button id="genBtn" class="btn btn-primary" type="button">➕ 產生序號</button>
+                </div>
+
+                <div class="hint">會回傳本次批次產生的序號（可直接複製）。</div>
+                <textarea id="genOutput" class="textarea" rows="6" placeholder="產生結果會出現在這裡…" readonly></textarea>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card card-table" aria-label="序號列表" style="margin-top:16px;">
+          <header class="card-header">
+            <div class="card-header-left">
+              <h2 class="card-title">序號列表</h2>
+              <p class="card-subtitle">可用/已核銷/已作廢；支援搜尋與快速操作</p>
+            </div>
+            <div class="card-header-right">
+              <span id="lastUpdate" class="badge">尚未更新</span>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th style="width: 220px;">序號</th>
+                    <th style="width: 90px;">面額</th>
+                    <th style="width: 110px;">狀態</th>
+                    <th style="width: 170px;">建立時間</th>
+                    <th style="width: 170px;">核銷時間</th>
+                    <th>備註</th>
+                    <th style="width: 220px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyRows"></tbody>
+              </table>
+            </div>
+
+            <div id="emptyState" class="state state-empty" style="display:none;">
+              <p>目前沒有符合條件的序號。</p>
+            </div>
+
+            <div id="loadingState" class="state state-loading" style="display:none;">
+              <div class="spinner"></div>
+              <p>資料載入中，請稍候…</p>
+            </div>
+
+            <div id="errorState" class="state state-error" style="display:none;">
+              <p>無法取得資料，請稍後再試。</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="hint">提示：若使用非 LIFF 模式，可在 URL 加上 <span class="mono">?userId=xxx&name=yyy</span> 進行測試。</div>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
