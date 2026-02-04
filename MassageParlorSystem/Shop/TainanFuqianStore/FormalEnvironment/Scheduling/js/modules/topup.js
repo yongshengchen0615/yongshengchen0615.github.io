@@ -12,6 +12,34 @@ import { config } from "./config.js";
 import { state } from "./state.js";
 import { showLoadingHint, hideLoadingHint, updateUsageBanner, showGate } from "./uiHelpers.js";
 import { updateFeatureState } from "./featureBanner.js";
+import { logUsageEvent } from "./usageLog.js";
+
+function safeOneLine_(s, maxLen = 240) {
+  const v = String(s ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\u0000-\u001F\u007F]+/g, " ")
+    .trim();
+  if (!v) return "";
+  return v.length > maxLen ? v.slice(0, maxLen) + "…" : v;
+}
+
+function fireTopupEvent_({ event, userId, displayName, detailObj, detailText, eventCn }) {
+  try {
+    const detail = detailText
+      ? safeOneLine_(detailText)
+      : detailObj
+        ? safeOneLine_(JSON.stringify(detailObj))
+        : "";
+    logUsageEvent({
+      event,
+      userId,
+      displayName,
+      detail,
+      noThrottle: true,
+      eventCn: eventCn || "儲值",
+    }).catch(() => {});
+  } catch (_) {}
+}
 
 function postTextPlainJson_(url, bodyObj) {
   return fetch(url, {
@@ -186,6 +214,17 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
   const userIdSafe = String(identity.userId || "").trim();
   const displayNameSafe = String(identity.displayName || "").trim();
 
+  // 使用者主動點擊進來的入口（gate/app）
+  if (userIdSafe) {
+    fireTopupEvent_({
+      event: "topup_open",
+      userId: userIdSafe,
+      displayName: displayNameSafe,
+      detailObj: { context, reloadOnSuccess: !!reloadOnSuccess },
+      eventCn: "儲值開啟",
+    });
+  }
+
   // Debug: help diagnose USER_ID_REQUIRED reported from TopUp GAS
   try {
     console.log("[TopUp] identity", {
@@ -210,10 +249,32 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
   }
 
   const serial = (prompt("請輸入儲值序號", "") ?? "").trim();
-  if (!serial) return { ok: false, cancelled: true };
+  if (!serial) {
+    fireTopupEvent_({
+      event: "topup_cancel",
+      userId: userIdSafe,
+      displayName: displayNameSafe,
+      detailObj: { context, reason: "empty_or_cancel" },
+      eventCn: "儲值取消",
+    });
+    return { ok: false, cancelled: true };
+  }
+
+  fireTopupEvent_({
+    event: "topup_submit",
+    userId: userIdSafe,
+    displayName: displayNameSafe,
+    detailObj: { context, serialLen: serial.length },
+    eventCn: "儲值送出",
+  });
 
   showLoadingHint("儲值核銷中…");
+  let stage = "redeem";
   try {
+    let addDays = null;
+    let currentRemainingDays = null;
+    let newRemainingDays = null;
+
     // 1) redeem serial → amount
     const redeemPayload = {
       mode: "serials_redeem_public",
@@ -239,13 +300,14 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     if (!Number.isFinite(amount) || amount < 0) throw new Error("INVALID_AMOUNT");
 
     // 2) read current auth status (contains remainingDays & feature flags)
+    stage = "auth_check";
     const check = await authCheck_(userIdSafe, displayNameSafe);
     const currentRd = Number(check?.remainingDays);
-    const currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
+    currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
 
     // 規則：TopUp 的 amount 直接視為「增加天數」；amount=0 代表不加天數
-    const addDays = Math.floor(amount);
-    const newRemainingDays = currentRemainingDays + addDays;
+    addDays = Math.floor(amount);
+    newRemainingDays = currentRemainingDays + addDays;
 
     // 3) write back to AUTH Users
     // 注意：AUTH updateuser 若不帶 startDate/usageDays，後端會清空欄位。
@@ -298,6 +360,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, effRedeemSchedule);
     const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, effRedeemPerformance);
 
+    stage = "auth_update";
     await authUpdateUser_({
       userId: userIdSafe,
       audit: check?.audit,
@@ -313,6 +376,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     });
 
     // 4) verify + update banner
+    stage = "auth_check2";
     const check2 = await authCheck_(userIdSafe, displayNameSafe);
     updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
     // 同步前端功能提示列（避免不重整時畫面仍顯示未開通）
@@ -326,6 +390,27 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     } catch (_) {}
 
     hideLoadingHint();
+
+    fireTopupEvent_({
+      event: "topup_success",
+      userId: userIdSafe,
+      displayName: displayNameSafe,
+      detailObj: {
+        context,
+        addDays,
+        remainingDaysBefore: currentRemainingDays,
+        remainingDaysAfter: check2?.remainingDays,
+        syncEnabled,
+        features: {
+          pushEnabled: newPushEnabled,
+          personalStatusEnabled: newPersonalStatusEnabled,
+          scheduleEnabled: newScheduleEnabled,
+          performanceEnabled: newPerformanceEnabled,
+        },
+        reloadOnSuccess: !!reloadOnSuccess,
+      },
+      eventCn: "儲值成功",
+    });
 
     const msg = `儲值成功\n\n序號：${serial}\n增加天數：${addDays} 天`;
     if (reloadOnSuccess) {
@@ -343,6 +428,19 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     if (errMsg === "USER_ID_REQUIRED") {
       errMsg = "USER_ID_REQUIRED（TopUp 收到的 userId 是空的）\n" + "目前本機計算 userId=" + (userIdSafe || "(empty)");
     }
+
+    fireTopupEvent_({
+      event: "topup_fail",
+      userId: userIdSafe,
+      displayName: displayNameSafe,
+      detailObj: {
+        context,
+        stage: typeof stage === "string" ? stage : "unknown",
+        error: safeOneLine_(errMsg, 300),
+      },
+      eventCn: "儲值失敗",
+    });
+
     if (context === "gate") showGate("⚠ 儲值失敗\n" + errMsg, true);
     else alert("儲值失敗：" + errMsg);
     return { ok: false, error: errMsg };
