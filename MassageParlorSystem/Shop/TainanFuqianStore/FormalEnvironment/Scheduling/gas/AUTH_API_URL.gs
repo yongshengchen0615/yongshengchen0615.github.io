@@ -897,21 +897,27 @@ function handleUpdateUser_(data) {
   // ✅ PATCH: 同步衍生表時，用更新後的 row[1]
   var dn = String(row[1] || "").trim();
 
-  syncPersonalStatusByEnabled_(
-    userId,
-    dn,
-    String(row[6] || "").trim(),
-    personalStatusEnabled
-  );
+  // ✅ 可選：跳過衍生表同步（TopUp 不同步時只加天數）
+  var skipSyncRaw = String((data && (data.skipSync || data.skip_sync || data.noSync || data.nosync)) || "").trim();
+  var skipSync = skipSyncRaw === "1" || skipSyncRaw === "true" || skipSyncRaw === "TRUE" || skipSyncRaw === "是";
 
-  var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
-  syncPerformanceAccessByEnabled_(
-    userId,
-    dn,
-    String(row[6] || "").trim(),
-    performanceEnabled,
-    storeId
-  );
+  if (!skipSync) {
+    syncPersonalStatusByEnabled_(
+      userId,
+      dn,
+      String(row[6] || "").trim(),
+      personalStatusEnabled
+    );
+
+    var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
+    syncPerformanceAccessByEnabled_(
+      userId,
+      dn,
+      String(row[6] || "").trim(),
+      performanceEnabled,
+      storeId
+    );
+  }
 
   applyExpireRuleToValues_(values);
   writeUsersTable_(db.sheet, values);

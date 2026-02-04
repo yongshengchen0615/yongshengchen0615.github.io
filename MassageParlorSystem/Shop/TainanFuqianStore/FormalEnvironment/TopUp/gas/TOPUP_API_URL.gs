@@ -40,7 +40,7 @@ function doGet(e) {
       endpoints: [
         "POST text/plain JSON {mode:'adminUpsertAndCheck', userId, displayName}",
         "POST text/plain JSON {mode:'serials_list', filters?, limit?}",
-        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, actor?}",
+        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, syncEnabled?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
         "POST text/plain JSON {mode:'serials_sync_used_note_public', userId, displayName}",
@@ -353,6 +353,9 @@ function serialsList_({ filters, limit }) {
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
+    // Backward compatible: missing SyncEnabled means "sync on".
+    const syncEnabledRaw = parseFeatureCell_(row[20]);
+    const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
 
     if (q) {
       const hay = (serial + " " + rowNote).toLowerCase();
@@ -371,11 +374,13 @@ function serialsList_({ filters, limit }) {
       usedAtMs,
       usedNote,
       voidAtMs,
+      syncEnabled,
       pushEnabled,
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
       features: {
+        syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
@@ -405,6 +410,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
     const personalStatusEnabled = encodeFeatureCell_(f.personalStatusEnabled);
     const scheduleEnabled = encodeFeatureCell_(f.scheduleEnabled);
     const performanceEnabled = encodeFeatureCell_(f.performanceEnabled);
+    const syncEnabled = encodeFeatureCell_(f.syncEnabled);
 
     const existing = buildExistingSerialSet_(sh);
 
@@ -444,6 +450,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        syncEnabled,
       ]);
 
       out.push({
@@ -452,11 +459,13 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         status: STATUS_ACTIVE,
         note,
         createdAtMs: now,
+        syncEnabled: !!f.syncEnabled,
         pushEnabled: !!f.pushEnabled,
         personalStatusEnabled: !!f.personalStatusEnabled,
         scheduleEnabled: !!f.scheduleEnabled,
         performanceEnabled: !!f.performanceEnabled,
         features: {
+          syncEnabled: !!f.syncEnabled,
           pushEnabled: !!f.pushEnabled,
           personalStatusEnabled: !!f.personalStatusEnabled,
           scheduleEnabled: !!f.scheduleEnabled,
@@ -473,6 +482,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
       count,
       note,
       flags: {
+        syncEnabled: !!(flags && flags.syncEnabled),
         pushEnabled: !!(flags && flags.pushEnabled),
         personalStatusEnabled: !!(flags && flags.personalStatusEnabled),
         scheduleEnabled: !!(flags && flags.scheduleEnabled),
@@ -523,6 +533,9 @@ function serialsRedeem_({ serial, note, actor }) {
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
+    // Backward compatible: missing SyncEnabled means "sync on".
+    const syncEnabledRaw = parseFeatureCell_(row[20]);
+    const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
 
     return {
       serial,
@@ -530,11 +543,13 @@ function serialsRedeem_({ serial, note, actor }) {
       status: STATUS_USED,
       usedAtMs: now,
       usedBy: actor.userId,
+      syncEnabled,
       pushEnabled,
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
       features: {
+        syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
@@ -589,6 +604,9 @@ function serialsRedeemPublic_({ serial, note, user }) {
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
+    // Backward compatible: missing SyncEnabled means "sync on".
+    const syncEnabledRaw = parseFeatureCell_(row[20]);
+    const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
 
     return {
       serial,
@@ -596,11 +614,13 @@ function serialsRedeemPublic_({ serial, note, user }) {
       status: STATUS_USED,
       usedAtMs: now,
       usedBy: userId,
+      syncEnabled,
       pushEnabled,
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
       features: {
+        syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
@@ -806,6 +826,7 @@ function serialsHeaders_() {
     "PersonalStatusEnabled",
     "ScheduleEnabled",
     "PerformanceEnabled",
+    "SyncEnabled",
   ];
 }
 
@@ -815,6 +836,7 @@ function normalizeSerialFeatureFlags_(payload) {
 
   // Default to true to avoid accidentally generating "no feature" serials when older clients call serials_generate.
   return {
+    syncEnabled: normalizeFeatureFlag_(p.syncEnabled !== undefined ? p.syncEnabled : f.syncEnabled, true),
     pushEnabled: normalizeFeatureFlag_(p.pushEnabled !== undefined ? p.pushEnabled : f.pushEnabled, true),
     personalStatusEnabled: normalizeFeatureFlag_(p.personalStatusEnabled !== undefined ? p.personalStatusEnabled : f.personalStatusEnabled, true),
     scheduleEnabled: normalizeFeatureFlag_(p.scheduleEnabled !== undefined ? p.scheduleEnabled : f.scheduleEnabled, true),

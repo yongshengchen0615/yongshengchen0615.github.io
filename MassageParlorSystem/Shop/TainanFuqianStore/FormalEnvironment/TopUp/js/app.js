@@ -47,6 +47,7 @@ function bindEventsOnce() {
       const note = String(dom.genNote?.value || "").trim();
 
       // 功能開通設定（預設 true，以維持既有使用習慣；若 UI 元件不存在則回落到 true）
+      const syncEnabled = dom.genSyncEnabled ? !!dom.genSyncEnabled.checked : true;
       const pushEnabled = dom.genPushEnabled ? !!dom.genPushEnabled.checked : true;
       const personalStatusEnabled = dom.genPersonalStatusEnabled ? !!dom.genPersonalStatusEnabled.checked : true;
       const scheduleEnabled = dom.genScheduleEnabled ? !!dom.genScheduleEnabled.checked : true;
@@ -61,6 +62,7 @@ function bindEventsOnce() {
         amount,
         count,
         note,
+        syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
@@ -500,6 +502,7 @@ function renderRows_(rows) {
   const resolveFeatureFlags_ = (row) => {
     const src = row?.features && typeof row.features === "object" ? row.features : row;
     return {
+      syncEnabled: getBoolOrNull_(src?.syncEnabled),
       pushEnabled: getBoolOrNull_(src?.pushEnabled),
       personalStatusEnabled: getBoolOrNull_(src?.personalStatusEnabled),
       scheduleEnabled: getBoolOrNull_(src?.scheduleEnabled),
@@ -509,6 +512,7 @@ function renderRows_(rows) {
 
   const renderFeatBadges_ = (flags) => {
     const items = [
+      { key: "syncEnabled", label: "同步" },
       { key: "pushEnabled", label: "推播" },
       { key: "personalStatusEnabled", label: "個人" },
       { key: "scheduleEnabled", label: "排班" },

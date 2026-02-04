@@ -74,6 +74,26 @@ function pickRedeemFlagTri_(redeem, key) {
   return null;
 }
 
+function normalizeSyncEnabled_(redeem) {
+  if (!redeem) return true;
+  let v = redeem.syncEnabled;
+  if (v === undefined && redeem.features && typeof redeem.features === "object") v = redeem.features.syncEnabled;
+  // Backward compatible default: treat missing as enabled
+  if (v === undefined || v === null || v === "") return true;
+
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+
+  const s = String(v ?? "").trim();
+  if (!s) return true;
+  if (s === "是") return true;
+  if (s === "否") return false;
+  const sl = s.toLowerCase();
+  if (sl === "true" || sl === "y" || sl === "yes" || sl === "on") return true;
+  if (sl === "false" || sl === "n" || sl === "no" || sl === "off") return false;
+  return true;
+}
+
 function mergeYesNo_(currentYesNo, redeemTri) {
   if (redeemTri === null) return isYes_(currentYesNo) ? "是" : "否";
   return redeemTri ? "是" : "否";
@@ -266,10 +286,17 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     const redeemSchedule = pickRedeemFlagTri_(redeem, "scheduleEnabled");
     const redeemPerformance = pickRedeemFlagTri_(redeem, "performanceEnabled");
 
-    const newPushEnabled = mergeYesNo_(check?.pushEnabled, redeemPush);
-    const newPersonalStatusEnabled = mergeYesNo_(check?.personalStatusEnabled, redeemPersonal);
-    const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, redeemSchedule);
-    const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, redeemPerformance);
+    // 若序號設定「不同步」，則僅增加天數，不套用功能開通設定
+    const syncEnabled = normalizeSyncEnabled_(redeem);
+    const effRedeemPush = syncEnabled ? redeemPush : null;
+    const effRedeemPersonal = syncEnabled ? redeemPersonal : null;
+    const effRedeemSchedule = syncEnabled ? redeemSchedule : null;
+    const effRedeemPerformance = syncEnabled ? redeemPerformance : null;
+
+    const newPushEnabled = mergeYesNo_(check?.pushEnabled, effRedeemPush);
+    const newPersonalStatusEnabled = mergeYesNo_(check?.personalStatusEnabled, effRedeemPersonal);
+    const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, effRedeemSchedule);
+    const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, effRedeemPerformance);
 
     await authUpdateUser_({
       userId: userIdSafe,
@@ -279,6 +306,8 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       personalStatusEnabled: newPersonalStatusEnabled,
       scheduleEnabled: newScheduleEnabled,
       performanceEnabled: newPerformanceEnabled,
+      // 若序號設定不同步，後端只更新 Users（天數/欄位），不觸發衍生表同步
+      skipSync: syncEnabled ? 0 : 1,
       startDate,
       usageDays,
     });
