@@ -25,8 +25,13 @@ function postTextPlainJson_(url, bodyObj) {
 // 注意：測試環境會用 local_dev 等非 LINE userId。
 // 需求：只要有 userId 就可以儲值 → 需要 TopUp GAS 部署版本放寬驗證（見 TopUp/gas/TOPUP_API_URL.gs）。
 
-async function authCheck_(userId) {
-  const url = config.AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
+async function authCheck_(userId, displayName) {
+  const url =
+    config.AUTH_API_URL +
+    "?mode=check&userId=" +
+    encodeURIComponent(userId) +
+    "&displayName=" +
+    encodeURIComponent(displayName || "");
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("AUTH_CHECK_HTTP_" + resp.status);
   return await resp.json();
@@ -168,7 +173,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_AMOUNT");
 
     // 2) read current auth status (contains remainingDays & feature flags)
-    const check = await authCheck_(userIdSafe);
+    const check = await authCheck_(userIdSafe, displayNameSafe);
     const currentRd = Number(check?.remainingDays);
     const currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
 
@@ -194,7 +199,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     });
 
     // 4) verify + update banner
-    const check2 = await authCheck_(userIdSafe);
+    const check2 = await authCheck_(userIdSafe, displayNameSafe);
     updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
 
     hideLoadingHint();

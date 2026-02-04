@@ -240,7 +240,12 @@ function decideGateAction(r) {
 }
 
 async function checkOrRegisterUser(userId, displayNameFromClient) {
-  const url = config.AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
+  const url =
+    config.AUTH_API_URL +
+    "?mode=check&userId=" +
+    encodeURIComponent(userId) +
+    "&displayName=" +
+    encodeURIComponent(displayNameFromClient || "");
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("Check HTTP " + resp.status);
 

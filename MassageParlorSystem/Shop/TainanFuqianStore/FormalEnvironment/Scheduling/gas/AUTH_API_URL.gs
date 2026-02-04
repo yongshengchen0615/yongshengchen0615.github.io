@@ -1,21 +1,17 @@
 /****************************************************
  * ✅ Users + PersonalStatus + PerformanceAccess（最小完整最終版 / HARDENED + BATCH）- INTEGRATED
  *
- * ✅ 你這次要求的變更（重要）
- * - 原本：師傅編號(masterCode)=PerfTotalSummary.TechNo → 查 PerfTotalSummary.StoreId
- * - 改成：師傅編號(masterCode)=NetworkCapture.TechNo → 從 NetworkCapture 推導/取得 StoreId
+ * ✅ PATCH (2026-02-04)
+ * - updateUser / updateUsersBatch：若 payload 帶 displayName/name → 更新 Users.displayName
+ *   並同步更新 PersonalStatus / PerformanceAccess 的 displayName（依 enabled）
+ * - topup：applyTopupToUser_ 更新 Users.displayName 後，
+ *   立即同步 PersonalStatus / PerformanceAccess（依 Users 欄位 enabled）
  *
- * ✅ NetworkCapture 支援多種欄位格式（自動容錯）
- * - 若 NetworkCapture 直接有欄位：TechNo / StoreId → 直接用
- * - 若沒有 StoreId 欄位：
- *   會嘗試從 RequestUrl 抽：.../detail/{storeId} 或 .../detail/{storeId}?...
- * - 若沒有 TechNo 欄位：
- *   會嘗試從 Response 抽 TechNo（regex：TechNo / techno / 師傅號碼 等常見格式）
+ * ✅ 你這次要求的變更（重要）
+ * - 改成：師傅編號(masterCode)=NetworkCapture.TechNo → 從 NetworkCapture 推導/取得 StoreId
  *
  * ✅ Cache
  * - TechNo → StoreId map：ScriptCache 5 分鐘
- *
- * ✅ PushMessage / Users / PersonalStatus / PerformanceAccess 規則維持不變
  ****************************************************/
 
 /* =========================
@@ -49,11 +45,19 @@ var CONFIG = {
   NC_COL_CAPTUREDAT: "CapturedAt",
 
   // 掃描 NetworkCapture 的最大列數（避免全表過大）
-  // 會從「最後一列往上」取這個數量做 mapping（通常最新資料最準）
   NC_SCAN_MAX_ROWS: 5000,
 
   // batch 上限（避免 payload 過大、執行超時）
   BATCH_MAX_ITEMS: 200,
+
+  /* =========================
+   * ✅ TopUp（儲值）
+   * ========================= */
+  SHEET_TOPUP_LOG: "TopUpLog",
+  TOPUP_API_URL_PROP: "TOPUP_API_URL",
+  TOPUP_AMOUNT_TO_DAYS_JSON_PROP: "TOPUP_AMOUNT_TO_DAYS_JSON",
+  TOPUP_AMOUNT_TO_DAYS_RATIO_PROP: "TOPUP_AMOUNT_TO_DAYS_RATIO",
+  TOPUP_MAX_ADD_DAYS: 3660,
 
   // （可選）推播 API 防濫用：把 Script Properties 設定 PUSH_SECRET
   PUSH_SECRET_PROP: "PUSH_SECRET"
@@ -300,12 +304,9 @@ function extractStoreIdFromRequestUrl_(url) {
   url = String(url || "").trim();
   if (!url) return "";
 
-  // 例：/api/booking/detail/2259
-  // 例：/api/performance/detail/2259?from=...&to=...
   var m = url.match(/\/detail\/(\d+)(?:\b|\/|\?|#|$)/i);
   if (m && m[1]) return String(m[1]).trim();
 
-  // 例：.../detail/2259/xxx
   var m2 = url.match(/\/detail\/(\d+)\//i);
   if (m2 && m2[1]) return String(m2[1]).trim();
 
@@ -317,18 +318,15 @@ function extractTechNoFromResponse_(respText) {
   var s = String(respText || "").trim();
   if (!s) return "";
 
-  // JSON 常見： "TechNo":"10" / "TechNo":10 / "techno": "10"
   var m1 = s.match(/"TechNo"\s*:\s*"?(\d+)"?/i);
   if (m1 && m1[1]) return String(m1[1]).trim();
 
   var m2 = s.match(/"techno"\s*:\s*"?(\d+)"?/i);
   if (m2 && m2[1]) return String(m2[1]).trim();
 
-  // 可能是中文文字：師傅號碼：10 / 師傅號碼=10
   var m3 = s.match(/師傅號碼\s*[:：=]\s*(\d+)/i);
   if (m3 && m3[1]) return String(m3[1]).trim();
 
-  // 可能是 TechNo=10 / techno=10
   var m4 = s.match(/\bTechNo\s*=\s*(\d+)\b/i);
   if (m4 && m4[1]) return String(m4[1]).trim();
   var m5 = s.match(/\btechno\s*=\s*(\d+)\b/i);
@@ -339,10 +337,6 @@ function extractTechNoFromResponse_(respText) {
 
 /**
  * ✅ 從 NetworkCapture 建立 TechNo -> StoreId 的 map
- * - 優先：直接讀欄位 TechNo / StoreId
- * - 若沒有 StoreId 欄：改從 RequestUrl 抽 storeId
- * - 若沒有 TechNo 欄：改從 Response 抽 TechNo
- * - 同一個 TechNo 若多筆：保留「最後掃到的」(通常是最新列)
  */
 function buildTechNoToStoreIdMapFromNetworkCapture_() {
   var sheet = getNetworkCaptureSheet_();
@@ -354,7 +348,6 @@ function buildTechNoToStoreIdMapFromNetworkCapture_() {
 
   var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
-  // TechNo 欄位容錯
   var techIdx = findHeaderIndexAny_(header, [
     CONFIG.NC_COL_TECHNO || "TechNo",
     "techno",
@@ -365,7 +358,6 @@ function buildTechNoToStoreIdMapFromNetworkCapture_() {
     "masterCode"
   ]);
 
-  // StoreId 欄位容錯
   var storeIdx = findHeaderIndexAny_(header, [
     CONFIG.NC_COL_STOREID || "StoreId",
     "storeid",
@@ -374,14 +366,9 @@ function buildTechNoToStoreIdMapFromNetworkCapture_() {
     "StoreNo"
   ]);
 
-  // RequestUrl / Response 欄位（作為 fallback）
   var reqIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_REQUESTURL || "RequestUrl", "requesturl", "url", "RequestURL"]);
   var respIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_RESPONSE || "Response", "response", "Body", "body"]);
 
-  // CapturedAt（若存在，可用來決定更新策略；本版用「越後面越新」即可）
-  var capIdx = findHeaderIndexAny_(header, [CONFIG.NC_COL_CAPTUREDAT || "CapturedAt", "capturedat", "time", "Time"]);
-
-  // 從尾巴往上掃（只掃 NC_SCAN_MAX_ROWS）
   var scanMax = CONFIG.NC_SCAN_MAX_ROWS || 5000;
   var startRow = Math.max(2, lastRow - scanMax + 1);
   var numRows = lastRow - startRow + 1;
@@ -396,16 +383,13 @@ function buildTechNoToStoreIdMapFromNetworkCapture_() {
     var techNo = "";
     if (techIdx >= 0) techNo = String(row[techIdx] || "").trim();
     if (!techNo && respIdx >= 0) techNo = extractTechNoFromResponse_(row[respIdx]);
-
     if (!techNo) continue;
 
     var storeId = "";
     if (storeIdx >= 0) storeId = String(row[storeIdx] || "").trim();
     if (!storeId && reqIdx >= 0) storeId = extractStoreIdFromRequestUrl_(row[reqIdx]);
-
     if (!storeId) continue;
 
-    // 保留最後掃到的（通常越後面越新）
     map[techNo] = storeId;
   }
 
@@ -419,7 +403,6 @@ function lookupStoreIdByTechNo_(masterCode) {
   var techNo = String(masterCode || "").trim();
   if (!techNo) return "";
 
-  // 用 CacheService 減少每次掃表（5 分鐘快取）
   try {
     var cache = CacheService.getScriptCache();
     var key = "techno_storeid_map_from_networkcapture_v1";
@@ -446,7 +429,6 @@ function readUsersTable_() {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return { sheet: sheet, values: [], rowMap: {} };
 
-  // ✅ 12 欄（含業績開通）
   var values = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
   var rowMap = {};
   for (var i = 0; i < values.length; i++) {
@@ -482,7 +464,6 @@ function applyExpireRuleToValues_(values) {
 
     var rd = calcRemainingDaysByDate_(startDate, usageDaysRaw);
     if (typeof rd === "number" && rd < 0) {
-      values[i][2] = normalizeAudit_(CONFIG.DEFAULT_AUDIT);
       values[i][8] = "否";
       changed.push(userId);
     }
@@ -551,7 +532,6 @@ function upsertPersonalStatusRow_(userId, displayName, masterCode) {
     return { ok: true, action: "inserted" };
   }
 
-  // 更新 displayName / 師傅編號（不改 liff；空值不覆蓋避免清空）
   if (displayName !== "") sheet.getRange(row, 2).setValue(displayName);
   if (masterCode !== "") sheet.getRange(row, 3).setValue(masterCode);
   return { ok: true, action: "updated" };
@@ -576,11 +556,8 @@ function upsertPerformanceAccessRow_(userId, displayName, masterCode, storeId) {
     return { ok: true, action: "inserted" };
   }
 
-  // 空值不覆蓋避免清空
   if (displayName !== "") sheet.getRange(row, 2).setValue(displayName);
   if (masterCode !== "") sheet.getRange(row, 3).setValue(masterCode);
-
-  // storeId 只有有給才覆蓋，避免誤清空
   if (storeId !== "") sheet.getRange(row, 4).setValue(storeId);
 
   return { ok: true, action: "updated" };
@@ -609,13 +586,9 @@ function syncPerformanceAccessByEnabled_(userId, displayName, masterCode, enable
 
   if (enabled) {
     var sid = String(storeId || "").trim();
-
-    // ✅ 若前端沒給 storeId，就用 師傅編號(masterCode)=NetworkCapture.TechNo 查 StoreId
     if (!sid) {
       sid = lookupStoreIdByTechNo_(masterCode);
     }
-
-    // ✅ 若仍查不到，就照舊 upsert（StoreId 可能空，等待後續補資料）
     return upsertPerformanceAccessRow_(userId, displayName, masterCode, sid);
   } else {
     var sheet = getOrCreatePerformanceAccessSheet_();
@@ -627,13 +600,37 @@ function syncPerformanceAccessByEnabled_(userId, displayName, masterCode, enable
 /* =========================
  * ✅ check 核心邏輯：回傳純 object（避免 getContent/parse）
  * ========================= */
-function buildCheckResult_(userId) {
+function buildCheckResult_(userId, displayNameCandidate) {
   userId = String(userId || "").trim();
+  displayNameCandidate = String(displayNameCandidate || "").trim();
 
   var db = readUsersTable_();
   var values = db.values;
 
   applyExpireRuleToValues_(values);
+
+  // ✅ 若 check 時前端有帶 displayName，且使用者已存在 → 同步更新 Users.displayName
+  // 並依 enabled 同步 PersonalStatus / PerformanceAccess 的 displayName
+  if (userId && displayNameCandidate) {
+    var idx2 = db.rowMap[userId];
+    if (typeof idx2 === "number") {
+      var row2 = values[idx2];
+      var oldDn = String(row2[1] || "").trim();
+      if (oldDn !== displayNameCandidate) {
+        row2[1] = displayNameCandidate;
+        try {
+          var masterCode2 = String(row2[6] || "").trim();
+          var psEnabled2 = normalizeYesNo_(row2[9], "否");
+          var perfEnabled2 = normalizeYesNo_(row2[11], "否");
+          syncPersonalStatusByEnabled_(userId, displayNameCandidate, masterCode2, psEnabled2);
+          syncPerformanceAccessByEnabled_(userId, displayNameCandidate, masterCode2, perfEnabled2, "");
+        } catch (eSyncName) {
+          // best-effort
+        }
+      }
+    }
+  }
+
   writeUsersTable_(db.sheet, values);
 
   if (!userId) {
@@ -708,7 +705,8 @@ function buildCheckResult_(userId) {
 
 function handleCheck_(e) {
   var userId = String((e && e.parameter && e.parameter.userId) || "").trim();
-  return jsonOut_(buildCheckResult_(userId));
+  var displayName = String((e && e.parameter && (e.parameter.displayName || e.parameter.name)) || "").trim();
+  return jsonOut_(buildCheckResult_(userId, displayName));
 }
 
 function handleRegister_(data) {
@@ -754,7 +752,6 @@ function handleRegister_(data) {
       String(row[9] || "否")
     );
 
-    // ✅ 業績：若 enabled=是，會自動用 masterCode→NetworkCapture 查 StoreId
     syncPerformanceAccessByEnabled_(
       userId,
       String(row[1] || "").trim(),
@@ -834,6 +831,10 @@ function handleListUsers_() {
   return jsonOut_({ ok: true, userId: "", users: users });
 }
 
+/* =========================================================
+ * ✅ PATCH: updateUser 允許更新 displayName（並同步衍生表）
+ * - 支援 data.displayName / data.name
+ * ========================================================= */
 function handleUpdateUser_(data) {
   var userId = String((data && data.userId) || "").trim();
   if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
@@ -844,6 +845,10 @@ function handleUpdateUser_(data) {
   if (typeof idx !== "number") return jsonOut_({ ok: false, userId: userId, error: "User not found" });
 
   var row = values[idx];
+
+  // ✅ PATCH: 若 payload 帶 displayName/name → 更新 Users.displayName
+  var newDisplayName = String((data && (data.displayName || data.name)) || "").trim();
+  if (newDisplayName) row[1] = newDisplayName;
 
   var audit = normalizeAudit_((data && data.audit) || row[2]);
   var startDateRaw = String((data && data.startDate) || "").trim();
@@ -880,18 +885,20 @@ function handleUpdateUser_(data) {
   row[10] = scheduleEnabled;
   row[11] = performanceEnabled;
 
+  // ✅ PATCH: 同步衍生表時，用更新後的 row[1]
+  var dn = String(row[1] || "").trim();
+
   syncPersonalStatusByEnabled_(
     userId,
-    String(row[1] || "").trim(),
+    dn,
     String(row[6] || "").trim(),
     personalStatusEnabled
   );
 
-  // ✅ 如果前端有傳 storeId 仍會優先使用；沒有就 masterCode→NetworkCapture 查
   var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
   syncPerformanceAccessByEnabled_(
     userId,
-    String(row[1] || "").trim(),
+    dn,
     String(row[6] || "").trim(),
     performanceEnabled,
     storeId
@@ -903,10 +910,13 @@ function handleUpdateUser_(data) {
   return jsonOut_({ ok: true, userId: userId });
 }
 
+/* =========================================================
+ * ✅ PATCH: updateUsersBatch 允許更新 displayName（並同步衍生表）
+ * - items[k].displayName / items[k].name
+ * ========================================================= */
 function handleUpdateUsersBatch_(data) {
   var items = data && data.items ? data.items : null;
 
-  // 允許 items 以 JSON 字串傳入（GET/POST 都可）
   if (typeof items === "string") {
     try { items = JSON.parse(items); } catch (e) {}
   }
@@ -938,6 +948,10 @@ function handleUpdateUsersBatch_(data) {
       if (typeof idx !== "number") throw new Error("User not found");
 
       var row = values[idx];
+
+      // ✅ PATCH: 若 payload 帶 displayName/name → 更新 Users.displayName
+      var dnNew = String((it.displayName || it.name) || "").trim();
+      if (dnNew) row[1] = dnNew;
 
       var audit = normalizeAudit_(it.audit);
       var startDateRaw = String(it.startDate || "").trim();
@@ -974,9 +988,12 @@ function handleUpdateUsersBatch_(data) {
       row[10] = scheduleEnabled;
       row[11] = performanceEnabled;
 
+      // ✅ PATCH: 同步衍生表時用更新後的 row[1]
+      var dn = String(row[1] || "").trim();
+
       syncPersonalStatusByEnabled_(
         userId,
-        String(row[1] || "").trim(),
+        dn,
         String(row[6] || "").trim(),
         personalStatusEnabled
       );
@@ -984,7 +1001,7 @@ function handleUpdateUsersBatch_(data) {
       var storeId = String((it && (it.storeId || it.StoreId)) || "").trim();
       syncPerformanceAccessByEnabled_(
         userId,
-        String(row[1] || "").trim(),
+        dn,
         String(row[6] || "").trim(),
         performanceEnabled,
         storeId
@@ -1132,7 +1149,6 @@ function handleSyncPersonalStatusRow_(data) {
 
 function handlePushMessage_(data) {
   try {
-    // （可選）secret 防濫用：如果有設定 PUSH_SECRET，就必須帶 data.secret
     var secretExpected = PropertiesService.getScriptProperties().getProperty(CONFIG.PUSH_SECRET_PROP);
     if (secretExpected) {
       var secretGot = String((data && data.secret) || "").trim();
@@ -1302,6 +1318,292 @@ function chunk_(arr, size) {
 }
 
 /* =========================
+ * ✅ TopUp（儲值）
+ * ========================= */
+
+function getTopupApiUrl_() {
+  var key = CONFIG.TOPUP_API_URL_PROP || "TOPUP_API_URL";
+  var url = PropertiesService.getScriptProperties().getProperty(key);
+  url = String(url || "").trim();
+  if (!url) throw new Error("TOPUP_API_URL_NOT_SET");
+  return url;
+}
+
+function parseJsonSafe_(text) {
+  try {
+    return JSON.parse(String(text || "") || "{}");
+  } catch (e) {
+    return null;
+  }
+}
+
+function mapTopupAmountToDays_(amount) {
+  var n = Number(amount);
+  if (!isFinite(n) || n <= 0) return 0;
+
+  var sp = PropertiesService.getScriptProperties();
+
+  var mapKey = CONFIG.TOPUP_AMOUNT_TO_DAYS_JSON_PROP || "TOPUP_AMOUNT_TO_DAYS_JSON";
+  var mapRaw = String(sp.getProperty(mapKey) || "").trim();
+  if (mapRaw) {
+    var m = parseJsonSafe_(mapRaw);
+    if (m && (m[String(n)] !== undefined || m[String(Math.round(n))] !== undefined)) {
+      var v = m[String(n)];
+      if (v === undefined) v = m[String(Math.round(n))];
+      var dn = parseInt(v, 10);
+      if (!isNaN(dn) && dn > 0) return dn;
+    }
+  }
+
+  var ratioKey = CONFIG.TOPUP_AMOUNT_TO_DAYS_RATIO_PROP || "TOPUP_AMOUNT_TO_DAYS_RATIO";
+  var ratioRaw = String(sp.getProperty(ratioKey) || "").trim();
+  if (ratioRaw) {
+    var ratio = Number(ratioRaw);
+    if (isFinite(ratio) && ratio > 0) {
+      var dn2 = Math.round(n * ratio);
+      if (dn2 > 0) return dn2;
+    }
+  }
+
+  return Math.round(n);
+}
+
+function getOrCreateTopupLogSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var name = String(CONFIG.SHEET_TOPUP_LOG || "TopUpLog").trim() || "TopUpLog";
+  var sheet = ss.getSheetByName(name);
+
+  var expected = [
+    "AtMs",
+    "userId",
+    "displayName",
+    "serial",
+    "amount",
+    "daysAdded",
+    "oldRemainingDays",
+    "newRemainingDays",
+    "detailJson"
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(expected);
+    try {
+      sheet.setFrozenRows(1);
+    } catch (e) {}
+    return sheet;
+  }
+
+  try {
+    var header = sheet.getRange(1, 1, 1, expected.length).getValues()[0];
+    for (var i = 0; i < expected.length; i++) {
+      if (!String(header[i] || "").trim()) sheet.getRange(1, i + 1).setValue(expected[i]);
+    }
+  } catch (e2) {}
+
+  return sheet;
+}
+
+function safeJsonStringify_(o) {
+  try {
+    return JSON.stringify(o);
+  } catch (e) {
+    return "{}";
+  }
+}
+
+function redeemSerialViaTopup_(serial, userId, displayName) {
+  serial = String(serial || "").trim();
+  userId = String(userId || "").trim();
+  displayName = String(displayName || "").trim();
+  if (!serial) throw new Error("SERIAL_REQUIRED");
+  if (!userId) throw new Error("USER_ID_REQUIRED");
+
+  var url = getTopupApiUrl_();
+  var payload = {
+    mode: "serials_redeem_public",
+    serial: serial,
+    userId: userId,
+    displayName: displayName,
+    note: "Scheduling topupRedeem_v1"
+  };
+
+  var res = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "text/plain; charset=utf-8",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = res.getResponseCode();
+  var text = res.getContentText();
+  var obj = parseJsonSafe_(text);
+
+  if (code < 200 || code >= 300) {
+    var err = new Error("TOPUP_HTTP_" + code);
+    err.details = { http: code, body: String(text || "").slice(0, 300) };
+    throw err;
+  }
+
+  if (!obj || obj.ok !== true) {
+    var err2 = new Error(String((obj && obj.error) || "TOPUP_REDEEM_FAILED"));
+    err2.details = {
+      sent: { mode: "serials_redeem_public", serial: serial, userId: userId, displayName: displayName },
+      topup: obj || null
+    };
+    if (obj && obj.details) err2.details.topupDetails = obj.details;
+    throw err2;
+  }
+
+  return obj;
+}
+
+/* =========================================================
+ * ✅ PATCH: TopUp 後同步衍生表（PersonalStatus / PerformanceAccess）
+ * - 依 Users row[9]/row[11] 是否開通
+ * - displayName 更新後，以 Users 為唯一真相同步出去
+ * ========================================================= */
+function applyTopupToUser_(userId, displayName, daysAdded, meta) {
+  userId = String(userId || "").trim();
+  displayName = String(displayName || "").trim();
+
+  var dn = parseInt(daysAdded, 10);
+  if (isNaN(dn) || dn <= 0) throw new Error("DAYS_ADDED_INVALID");
+  var maxDays = parseInt(CONFIG.TOPUP_MAX_ADD_DAYS || 3660, 10);
+  if (!isNaN(maxDays) && maxDays > 0) dn = Math.min(dn, maxDays);
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    var db = readUsersTable_();
+    var values = db.values;
+    var idx = db.rowMap[userId];
+
+    var now = new Date();
+    var today = safeDayFromKeyTpe_(dateKeyTpe_(now)) || now;
+
+    if (typeof idx !== "number") {
+      var auditInit = normalizeAudit_(CONFIG.DEFAULT_AUDIT);
+      var newRow = [
+        userId,
+        displayName,
+        auditInit,
+        now,
+        today,
+        CONFIG.DEFAULT_USAGE_DAYS,
+        "",
+        "否",
+        enforcePushByAudit_(auditInit, CONFIG.DEFAULT_PUSH_ENABLED),
+        CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED,
+        CONFIG.DEFAULT_SCHEDULE_ENABLED,
+        CONFIG.DEFAULT_PERFORMANCE_ENABLED
+      ];
+      values.push(newRow);
+      idx = values.length - 1;
+    }
+
+    var row = values[idx];
+
+    // ✅ 若有帶 displayName → 更新 Users.displayName
+    if (displayName) row[1] = displayName;
+
+    var oldRemaining = calcRemainingDaysByDate_(row[4], row[5]);
+    var baseRemaining = 0;
+    if (typeof oldRemaining === "number" && !isNaN(oldRemaining)) baseRemaining = Math.max(0, oldRemaining);
+
+    var newRemaining = baseRemaining + dn;
+
+    row[4] = today;
+    row[5] = Math.max(1, Math.round(newRemaining + 1));
+
+    row[8] = enforcePushByAudit_(normalizeAudit_(row[2]), row[8]);
+
+    writeUsersTable_(db.sheet, values);
+
+    var newRemaining2 = calcRemainingDaysByDate_(row[4], row[5]);
+
+    // ✅ PATCH: TopUp 後同步衍生表（名稱一致化）
+    try {
+      var uid = String(row[0] || "").trim();
+      var dnFinal = String(row[1] || "").trim();
+      var masterCode = String(row[6] || "").trim();
+      var psEnabled = String(row[9] || "否").trim();
+      var perfEnabled = String(row[11] || "否").trim();
+
+      syncPersonalStatusByEnabled_(uid, dnFinal, masterCode, psEnabled);
+      syncPerformanceAccessByEnabled_(uid, dnFinal, masterCode, perfEnabled, "");
+    } catch (eSync) {
+      // best-effort：不同步也不影響儲值成功
+    }
+
+    try {
+      var sh = getOrCreateTopupLogSheet_();
+      sh.appendRow([
+        Date.now(),
+        userId,
+        String(row[1] || "").trim(),
+        String((meta && meta.serial) || ""),
+        Number((meta && meta.amount) || 0),
+        dn,
+        oldRemaining === null || oldRemaining === undefined ? "" : oldRemaining,
+        newRemaining2 === null || newRemaining2 === undefined ? "" : newRemaining2,
+        safeJsonStringify_(meta || {})
+      ]);
+    } catch (e) {}
+
+    return {
+      ok: true,
+      oldRemainingDays: oldRemaining,
+      newRemainingDays: newRemaining2,
+      daysAdded: dn
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleTopupRedeem_(data) {
+  var userId = String((data && data.userId) || "").trim();
+  var displayName = String((data && data.displayName) || "").trim();
+  var serial = String((data && data.serial) || "").trim();
+  if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
+  if (!serial) return jsonOut_({ ok: false, userId: userId, error: "Missing serial" });
+
+  try {
+    var topupRes = redeemSerialViaTopup_(serial, userId, displayName);
+
+    var amount = Number(topupRes.amount);
+    var daysAdded = mapTopupAmountToDays_(amount);
+    if (!daysAdded || daysAdded <= 0) {
+      var e1 = new Error("TOPUP_AMOUNT_NOT_SUPPORTED");
+      e1.details = { amount: amount };
+      throw e1;
+    }
+
+    var applied = applyTopupToUser_(userId, displayName, daysAdded, {
+      serial: serial,
+      amount: amount,
+      daysAdded: daysAdded,
+      topup: topupRes
+    });
+
+    var r = buildCheckResult_(userId);
+    r.topup = {
+      serial: serial,
+      amount: amount,
+      daysAdded: applied.daysAdded,
+      oldRemainingDays: applied.oldRemainingDays,
+      newRemainingDays: applied.newRemainingDays
+    };
+    return jsonOut_(r);
+  } catch (e) {
+    var out = { ok: false, userId: userId, error: String(e && e.message ? e.message : e) };
+    if (e && e.details) out.details = e.details;
+    return jsonOut_(out);
+  }
+}
+
+/* =========================
  * doGet / doPost
  * ========================= */
 function doGet(e) {
@@ -1380,6 +1682,8 @@ function doPost(e) {
   if (mode === "syncpersonalstatusrow") return handleSyncPersonalStatusRow_(data);
 
   if (mode === "pushmessage") return handlePushMessage_(data);
+
+  if (mode === "topupredeem_v1") return handleTopupRedeem_(data);
 
   return jsonOut_({ ok: false, userId: String((data && data.userId) || "").trim(), error: "invalid_mode" });
 }
