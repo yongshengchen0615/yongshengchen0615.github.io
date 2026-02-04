@@ -21,8 +21,15 @@ function bindEventsOnce() {
 
   const filterChanged = debounce(() => loadSerials(), 220);
   dom.searchInput?.addEventListener("input", filterChanged);
-  dom.statusSelect?.addEventListener("change", filterChanged);
-  dom.amountSelect?.addEventListener("change", filterChanged);
+
+  const onStatusSelectChanged = (ev) => {
+    const target = ev?.target;
+    const v = String(target?.value || "all");
+    if (dom.listStatusSelect && dom.listStatusSelect !== target) dom.listStatusSelect.value = v;
+    filterChanged();
+  };
+
+  dom.listStatusSelect?.addEventListener("change", onStatusSelectChanged);
   dom.noteSelect?.addEventListener("change", () => {
     applyClientFiltersAndRender_();
   });
@@ -249,14 +256,12 @@ function bindEventsOnce() {
 
 function getFilters_() {
   const q = String(dom.searchInput?.value || "").trim();
-  const status = String(dom.statusSelect?.value || "all");
-  const amountRaw = String(dom.amountSelect?.value || "all");
-  const amount = amountRaw === "all" ? null : Number(amountRaw);
+  const status = String(dom.listStatusSelect?.value || "all");
 
   return {
     q,
     status,
-    amount: Number.isFinite(amount) ? amount : null,
+    amount: null,
   };
 }
 

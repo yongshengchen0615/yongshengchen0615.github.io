@@ -14,8 +14,7 @@ export const dom = {
   reloadBtn: document.getElementById("reloadBtn"),
 
   searchInput: document.getElementById("searchInput"),
-  statusSelect: document.getElementById("statusSelect"),
-  amountSelect: document.getElementById("amountSelect"),
+  listStatusSelect: document.getElementById("listStatusSelect"),
   noteSelect: document.getElementById("noteSelect"),
 
   genAmount: document.getElementById("genAmount"),
