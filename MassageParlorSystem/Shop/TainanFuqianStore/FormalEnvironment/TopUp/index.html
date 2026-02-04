@@ -41,7 +41,6 @@
         <div class="app-header-right">
           <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
           <button id="reloadBtn" class="btn btn-ghost" type="button">🔄 重新整理</button>
-          <button id="exportBtn" class="btn btn-ghost" type="button">⬇️ 匯出 CSV</button>
         </div>
       </header>
 
@@ -125,9 +124,15 @@
             </div>
             <div class="card-header-right">
               <label class="select-all" for="selectAll">
-                <input id="selectAll" type="checkbox" aria-label="全選（僅可用序號）" />
+                <input id="selectAll" type="checkbox" aria-label="全選（目前列表）" />
                 <span>全選</span>
               </label>
+              <div class="header-filter">
+                <label for="noteSelect" class="filter-label">備註</label>
+                <select id="noteSelect" class="select">
+                  <option value="all">全部</option>
+                </select>
+              </div>
               <span id="selectedCount" class="badge">已選 0</span>
               <button id="batchVoidBtn" class="btn btn-danger" type="button" disabled>批次作廢</button>
               <button id="batchDeleteBtn" class="btn btn-danger" type="button" disabled>批次刪除</button>
@@ -147,7 +152,7 @@
                     <th style="width: 170px;">建立時間</th>
                     <th style="width: 170px;">核銷時間</th>
                     <th style="width: 240px;">核銷備註</th>
-                    <th>備註</th>
+                    <th style="min-width: 220px;">備註</th>
                     <th style="width: 220px;">操作</th>
                   </tr>
                 </thead>

@@ -151,9 +151,14 @@ body{
   box-shadow: 0 16px 48px rgba(0,0,0,.35);
 }
 :root[data-theme="light"] .card{box-shadow: 0 10px 30px rgba(17,24,39,.08)}
-.card-header{display:flex;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(148,163,184,.16);flex-wrap:wrap;align-items:flex-start}
+.card-header{display:flex;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(148,163,184,.16);flex-wrap:wrap;align-items:center}
 .card-header-left{flex:1 1 320px;min-width:240px}
-.card-header-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto}
+.card-header-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;row-gap:8px}
+.badge{white-space:nowrap}
+
+.header-filter{display:flex;align-items:center;gap:6px;min-width:0}
+.header-filter .filter-label{white-space:nowrap}
+.card-header-right .header-filter .select{width:200px;max-width:280px}
 .card-title{margin:0;font-size:16px}
 .card-subtitle{margin:6px 0 0;font-size:12px;color:var(--text-sub)}
 .card-body{padding:14px 16px}
@@ -178,7 +183,7 @@ body{
 .status-table{width:100%;border-collapse:collapse;min-width:1080px}
 .status-table th,
 .status-table td{padding:10px 10px;border-bottom:1px solid rgba(148,163,184,.14);vertical-align:top}
-.status-table thead th{position:sticky;top:0;background: rgba(2, 6, 23, 0.95);backdrop-filter: blur(8px);text-align:left;font-size:12px;color:var(--text-sub)}
+.status-table thead th{position:sticky;top:0;background: rgba(2, 6, 23, 0.95);backdrop-filter: blur(8px);text-align:left;font-size:12px;color:var(--text-sub);white-space:nowrap}
 :root[data-theme="light"] .status-table thead th{background: rgba(255,255,255,0.95)}
 
 .status-table thead th:first-child{text-align:center}
@@ -212,6 +217,16 @@ body{
 /* Action buttons inside table */
 .row-actions{display:flex;gap:8px;flex-wrap:wrap}
 
+/* Table cell value wrappers (used for notes to avoid vertical wrapping in responsive flex layout) */
+.status-table .cell-value{display:block}
+.status-table .cell-note{
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 /* =========================================================
  * Responsive
  * - 小螢幕將表格轉成卡片式（不必橫向捲動）
@@ -225,6 +240,9 @@ body{
     width: 100%;
     justify-content: flex-start;
   }
+
+  .header-filter{width:100%;flex-direction:column;align-items:stretch;gap:4px}
+  .card-header-right .header-filter .select{width:100%;max-width:100%}
   .card-header-right .btn {
     width: auto;
   }
@@ -287,6 +305,25 @@ body{
     gap: 12px;
     padding: 10px 12px;
     border-bottom: 1px solid rgba(148, 163, 184, .12);
+  }
+
+  .status-table td .cell-value{
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+  }
+
+  /* Notes: stack label/value so text has full width (avoid 1-char-per-line look) */
+  .status-table td.td-note{
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+  .status-table td.td-note::before{
+    max-width: 100%;
+  }
+  .status-table td.td-note .cell-value{
+    text-align: left;
   }
   .status-table tr td:last-child {
     border-bottom: none;

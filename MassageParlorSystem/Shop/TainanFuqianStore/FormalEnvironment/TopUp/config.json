@@ -7,7 +7,7 @@
   "TOPUP_API_URL": "https://script.google.com/macros/s/AKfycbwAIv5DEllNzT4xhsNSXjbTV6ziio1Na_UO_QdK_4masenoneEGoR5RVohMd5MaF4e_3g/exec",
   "_TOPUP_API_URL_DESC": "TopUp 序號管理 GAS Web App（/exec）",
 
-  "USE_LIFF": false,
+  "USE_LIFF": true,
   "_USE_LIFF_DESC": "是否使用 LINE LIFF 取得 userId；false 時可用 query/localStorage/debug",
 
   "LIFF_ID": "2008811948-kXLhxGOi",

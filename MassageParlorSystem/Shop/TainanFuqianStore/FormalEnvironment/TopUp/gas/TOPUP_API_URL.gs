@@ -43,6 +43,7 @@ function doGet(e) {
         "POST text/plain JSON {mode:'serials_generate', amount, count, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
+        "POST text/plain JSON {mode:'serials_sync_used_note_public', userId, displayName}",
         "POST text/plain JSON {mode:'serials_void', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_reactivate', serial, actor?}",
         "POST text/plain JSON {mode:'serials_delete', serial, note?, actor?}",
@@ -90,6 +91,24 @@ function doPost(e) {
       const displayName = normalizeDisplayName_(payload.displayName || (payload.user && payload.user.displayName));
       const res = serialsRedeemPublic_({ serial, note, user: { userId, displayName } });
       return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    // ✅ Public UsedNote sync (no admin gate): for Scheduling / end-users to sync name changes
+    if (mode === "serials_sync_used_note_public") {
+      const userId = normalizeUserId_(
+        payload.userId ||
+          payload.userID ||
+          payload.uid ||
+          (payload.user && (payload.user.userId || payload.user.userID || payload.user.uid))
+      );
+      const displayName = normalizeDisplayName_(payload.displayName || (payload.user && payload.user.displayName));
+      if (!userId) throw new Error("USER_ID_REQUIRED");
+
+      const r = syncSerialUsedNoteForUser_({ userId, displayName });
+      try {
+        logOp_("serials_sync_used_note_public", "", { user: { userId, displayName }, updated: r && r.updated ? r.updated : 0 });
+      } catch (_) {}
+      return json_({ ok: true, ...(r || { updated: 0 }), now: Date.now() });
     }
 
     // All other modes require allowed admin
@@ -213,6 +232,12 @@ function adminUpsertAndCheck_({ userId, displayName }) {
     rg.setValues([values]);
   }
 
+  // Best effort: sync historical UsedNote (Serials) for this userId.
+  // So name changes reflect across previously redeemed rows.
+  try {
+    syncSerialUsedNoteForUser_({ userId, displayName: displayName || oldName });
+  } catch (_) {}
+
   const allowed = audit === AUDIT_APPROVED;
   return {
     allowed,
@@ -246,9 +271,23 @@ function requireAllowedAdmin_({ userId, displayName }) {
     const audit = String(row[2] || DEFAULT_AUDIT).trim() || DEFAULT_AUDIT;
     const role = String(row[3] || "admin").trim() || "admin";
 
-    // touch lastSeen
+    // If caller provides a new displayName, sync it back to sheet.
+    // (So name changes are reflected without requiring a separate upsert call.)
+    const newName = normalizeDisplayName_(displayName);
+    const oldName = String(row[1] || "").trim();
+    const now = Date.now();
     try {
-      sh.getRange(r, 7).setValue(Date.now());
+      const updates = [];
+      if (newName && newName !== oldName) updates.push({ col: 2, value: newName });
+      updates.push({ col: 6, value: now }); // UpdatedAtMs
+      updates.push({ col: 7, value: now }); // LastSeenAtMs
+
+      if (updates.length) {
+        const rg = sh.getRange(r, 1, 1, 8);
+        const values = rg.getValues()[0];
+        for (let i = 0; i < updates.length; i++) values[updates[i].col - 1] = updates[i].value;
+        rg.setValues([values]);
+      }
     } catch (_) {}
 
     if (audit !== AUDIT_APPROVED) {
@@ -257,9 +296,14 @@ function requireAllowedAdmin_({ userId, displayName }) {
       throw err;
     }
 
+    // Best effort: sync historical UsedNote (Serials) for this admin.
+    try {
+      syncSerialUsedNoteForUser_({ userId: userIdNorm, displayName: newName || oldName });
+    } catch (_) {}
+
     return {
       ok: true,
-      user: { userId: userIdNorm, displayName: String(displayName || row[1] || "").trim(), audit, role },
+      user: { userId: userIdNorm, displayName: String(newName || oldName || "").trim(), audit, role },
     };
   }
 
@@ -418,6 +462,12 @@ function serialsRedeem_({ serial, note, actor }) {
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
 
+    // Sync displayName changes across all redeemed rows by this user.
+    // (So if a user/admin changes name, historical UsedNote will be updated too.)
+    try {
+      syncSerialUsedNoteForUser_({ userId: actor.userId, displayName: actor.displayName });
+    } catch (_) {}
+
     logOp_("serials_redeem", serial, { serial, note, actor });
 
     return { serial, amount, status: STATUS_USED, usedAtMs: now, usedBy: actor.userId };
@@ -457,12 +507,46 @@ function serialsRedeemPublic_({ serial, note, user }) {
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
 
+    // Sync displayName changes across all redeemed rows by this user.
+    // (So if a user changes name, historical UsedNote will be updated too.)
+    try {
+      syncSerialUsedNoteForUser_({ userId, displayName });
+    } catch (_) {}
+
     logOp_("serials_redeem_public", serial, { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } });
 
     return { serial, amount, status: STATUS_USED, usedAtMs: now, usedBy: userId };
   } finally {
     lock.releaseLock();
   }
+}
+
+function syncSerialUsedNoteForUser_({ userId, displayName }) {
+  const uid = normalizeUserId_(userId);
+  const name = normalizeDisplayName_(displayName);
+  if (!uid || !name) return { updated: 0 };
+
+  const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return { updated: 0 };
+
+  // Only touch UsedBy + UsedNote columns for speed.
+  const numRows = lastRow - 1;
+  const rg = sh.getRange(2, 9, numRows, 2);
+  const values = rg.getValues();
+  let updated = 0;
+
+  for (let i = 0; i < values.length; i++) {
+    const usedBy = String(values[i][0] || "").trim();
+    if (usedBy !== uid) continue;
+    const cur = String(values[i][1] || "").trim();
+    if (cur === name) continue;
+    values[i][1] = name;
+    updated++;
+  }
+
+  if (updated > 0) rg.setValues(values);
+  return { updated };
 }
 
 function serialsVoid_({ serial, note, actor }) {

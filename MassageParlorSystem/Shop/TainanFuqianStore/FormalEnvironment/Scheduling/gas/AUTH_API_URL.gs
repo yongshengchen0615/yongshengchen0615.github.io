@@ -627,6 +627,13 @@ function buildCheckResult_(userId, displayNameCandidate) {
         } catch (eSyncName) {
           // best-effort
         }
+
+        // ✅ PATCH: Scheduling 使用者改名時，同步 TopUp Serials.UsedNote
+        try {
+          syncTopupSerialUsedNoteName_(userId, displayNameCandidate);
+        } catch (eTopupSync) {
+          // best-effort
+        }
       }
     }
   }
@@ -846,6 +853,8 @@ function handleUpdateUser_(data) {
 
   var row = values[idx];
 
+  var oldDisplayName = String(row[1] || "").trim();
+
   // ✅ PATCH: 若 payload 帶 displayName/name → 更新 Users.displayName
   var newDisplayName = String((data && (data.displayName || data.name)) || "").trim();
   if (newDisplayName) row[1] = newDisplayName;
@@ -907,6 +916,12 @@ function handleUpdateUser_(data) {
   applyExpireRuleToValues_(values);
   writeUsersTable_(db.sheet, values);
 
+  // ✅ PATCH: 若有更新 displayName，則同步 TopUp Serials.UsedNote
+  try {
+    var dnAfter = String(row[1] || "").trim();
+    if (newDisplayName && dnAfter && dnAfter !== oldDisplayName) syncTopupSerialUsedNoteName_(userId, dnAfter);
+  } catch (eTopupSync2) {}
+
   return jsonOut_({ ok: true, userId: userId });
 }
 
@@ -948,6 +963,8 @@ function handleUpdateUsersBatch_(data) {
       if (typeof idx !== "number") throw new Error("User not found");
 
       var row = values[idx];
+
+      var oldDn = String(row[1] || "").trim();
 
       // ✅ PATCH: 若 payload 帶 displayName/name → 更新 Users.displayName
       var dnNew = String((it.displayName || it.name) || "").trim();
@@ -1009,6 +1026,12 @@ function handleUpdateUsersBatch_(data) {
 
       okCount++;
       updatedUserIds.push(userId);
+
+      // ✅ PATCH: 若有更新 displayName，則同步 TopUp Serials.UsedNote
+      try {
+        var dnAfter = String(row[1] || "").trim();
+        if (dnNew && dnAfter && dnAfter !== oldDn) syncTopupSerialUsedNoteName_(userId, dnAfter);
+      } catch (eTopupSync3) {}
     } catch (err) {
       fail.push({
         index: k,
@@ -1458,6 +1481,43 @@ function redeemSerialViaTopup_(serial, userId, displayName) {
   return obj;
 }
 
+// ✅ Sync TopUp Serials.UsedNote name for Scheduling users
+// Best-effort: failure should not break Scheduling flows.
+function syncTopupSerialUsedNoteName_(userId, displayName) {
+  userId = String(userId || "").trim();
+  displayName = String(displayName || "").trim();
+  if (!userId || !displayName) return { ok: true, skipped: true };
+
+  var url = "";
+  try {
+    url = getTopupApiUrl_();
+  } catch (e) {
+    return { ok: true, skipped: true, reason: "TOPUP_API_URL_NOT_SET" };
+  }
+
+  try {
+    var payload = {
+      mode: "serials_sync_used_note_public",
+      userId: userId,
+      displayName: displayName,
+      note: "Scheduling syncUsedNote_v1"
+    };
+
+    var res = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "text/plain; charset=utf-8",
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var obj = parseJsonSafe_(res.getContentText());
+    if (obj && obj.ok === true) return obj;
+    return { ok: false, error: String((obj && obj.error) || "TOPUP_SYNC_FAILED") };
+  } catch (e2) {
+    return { ok: false, error: String(e2 && e2.message ? e2.message : e2) };
+  }
+}
+
 /* =========================================================
  * ✅ PATCH: TopUp 後同步衍生表（PersonalStatus / PerformanceAccess）
  * - 依 Users row[9]/row[11] 是否開通
@@ -1535,6 +1595,11 @@ function applyTopupToUser_(userId, displayName, daysAdded, meta) {
     } catch (eSync) {
       // best-effort：不同步也不影響儲值成功
     }
+
+    // ✅ PATCH: TopUp 後同步 TopUp Serials.UsedNote（Scheduling 使用者名稱一致化）
+    try {
+      syncTopupSerialUsedNoteName_(String(row[0] || "").trim(), String(row[1] || "").trim());
+    } catch (eTopupSync4) {}
 
     try {
       var sh = getOrCreateTopupLogSheet_();

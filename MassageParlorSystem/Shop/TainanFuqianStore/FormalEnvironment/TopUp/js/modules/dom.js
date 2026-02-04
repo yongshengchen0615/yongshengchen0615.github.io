@@ -12,11 +12,11 @@ export const dom = {
 
   themeToggleBtn: document.getElementById("themeToggle"),
   reloadBtn: document.getElementById("reloadBtn"),
-  exportBtn: document.getElementById("exportBtn"),
 
   searchInput: document.getElementById("searchInput"),
   statusSelect: document.getElementById("statusSelect"),
   amountSelect: document.getElementById("amountSelect"),
+  noteSelect: document.getElementById("noteSelect"),
 
   genAmount: document.getElementById("genAmount"),
   genCount: document.getElementById("genCount"),
