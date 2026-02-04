@@ -964,12 +964,24 @@ function normalizeLimit_(v) {
 
 function generateSerial_() {
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + "|" + Date.now() + "|" + Math.random());
-  // use first 10 bytes
-  const raw = bytes.slice(0, 10);
+  // use first 16 bytes (higher entropy)
+  const raw = bytes.slice(0, 16);
   const b32 = crockfordBase32_(raw);
-  // format: TP-XXXX-XXXX-XXXX
-  const body = b32.slice(0, 12);
-  return "TP-" + body.slice(0, 4) + "-" + body.slice(4, 8) + "-" + body.slice(8, 12);
+  // format: TP-XXXX-XXXX-XXXX-XXXX-XXXX
+  // (20 chars Crockford Base32 = 100 bits)
+  const body = b32.slice(0, 20);
+  return (
+    "TP-" +
+    body.slice(0, 4) +
+    "-" +
+    body.slice(4, 8) +
+    "-" +
+    body.slice(8, 12) +
+    "-" +
+    body.slice(12, 16) +
+    "-" +
+    body.slice(16, 20)
+  );
 }
 
 function crockfordBase32_(bytes) {
