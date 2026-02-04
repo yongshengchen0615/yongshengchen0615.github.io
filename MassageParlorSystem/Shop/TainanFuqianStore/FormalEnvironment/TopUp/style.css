@@ -309,6 +309,7 @@ body{
 .status-table th.col-select{width:52px}
 .status-table th.col-serial{width:220px}
 .status-table th.col-amount{width:64px}
+.status-table th.col-features{width:168px}
 .status-table th.col-status{width:78px}
 .status-table th.col-created{width:118px}
 .status-table th.col-used{width:118px}
@@ -316,8 +317,8 @@ body{
 
 /* Cell wrapping rules to avoid horizontal scrolling */
 .status-table td{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
-.status-table td:nth-child(5),
-.status-table td:nth-child(6){white-space:nowrap;font-variant-numeric: tabular-nums;font-size:11px}
+.status-table td:nth-child(6),
+.status-table td:nth-child(7){white-space:nowrap;font-variant-numeric: tabular-nums;font-size:11px}
 .status-table td.mono{white-space:normal;overflow-wrap:anywhere;word-break:break-word;font-size:11px}
 
 /* Desktop-only column alignment for a cleaner, designed table */
@@ -333,19 +334,33 @@ body{
 
   /* Body alignment by column order */
   .status-table td:nth-child(1),
-  .status-table td:nth-child(4),
-  .status-table td:nth-child(9){ text-align:center }
-  .status-table td:nth-child(3){ text-align:right; font-variant-numeric: tabular-nums }
   .status-table td:nth-child(5),
-  .status-table td:nth-child(6){ text-align:center }
+  .status-table td:nth-child(10){ text-align:center }
+  .status-table td:nth-child(3){ text-align:right; font-variant-numeric: tabular-nums }
+  .status-table td:nth-child(6),
+  .status-table td:nth-child(7){ text-align:center }
 
   /* Keep chips centered and stable */
-  .status-table td:nth-child(4) .chip{justify-content:center;min-width:64px}
+  .status-table td:nth-child(5) .chip{justify-content:center;min-width:64px}
 
   /* Notes are long: keep left aligned for readability */
-  .status-table td:nth-child(7),
-  .status-table td:nth-child(8){ text-align:left }
+  .status-table td:nth-child(8),
+  .status-table td:nth-child(9){ text-align:left }
 }
+
+/* 功能 badges */
+.feat-badges{display:flex;flex-wrap:wrap;gap:6px}
+.feat{
+  display:inline-flex;align-items:center;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:11px;
+  border:1px solid rgba(148,163,184,.28);
+  white-space:nowrap;
+}
+.feat-on{background: rgba(52,211,153,.10); border-color: rgba(52,211,153,.30); color: var(--text-main)}
+.feat-off{background: rgba(249,115,115,.10); border-color: rgba(249,115,115,.28); color: var(--text-main)}
+.feat-unknown{background: rgba(148,163,184,.10); border-color: rgba(148,163,184,.25); color: var(--text-sub)}
 
 /* Compact action buttons so the 操作 column fits without scrolling */
 .status-table .row-actions{max-width:100%}
@@ -363,8 +378,8 @@ body{
   .status-table{font-size:11px}
   .status-table th,
   .status-table td{padding:8px 6px}
-  .status-table td:nth-child(5),
-  .status-table td:nth-child(6){font-size:10.5px}
+  .status-table td:nth-child(6),
+  .status-table td:nth-child(7){font-size:10.5px}
   .status-table td.mono{font-size:10.5px}
 }
 

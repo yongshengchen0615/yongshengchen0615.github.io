@@ -11,6 +11,7 @@
 import { config } from "./config.js";
 import { state } from "./state.js";
 import { showLoadingHint, hideLoadingHint, updateUsageBanner, showGate } from "./uiHelpers.js";
+import { updateFeatureState } from "./featureBanner.js";
 
 function postTextPlainJson_(url, bodyObj) {
   return fetch(url, {
@@ -45,11 +46,55 @@ async function authUpdateUser_(payload) {
   return ret;
 }
 
+function isYes_(v) {
+  if (v === true || v === 1 || v === "1") return true;
+  const s = String(v ?? "").trim();
+  if (!s) return false;
+  if (s === "是") return true;
+  const sl = s.toLowerCase();
+  return sl === "true" || sl === "y" || sl === "yes" || sl === "on";
+}
+
+function pickRedeemFlagTri_(redeem, key) {
+  if (!redeem) return null;
+  let v = redeem[key];
+  if (v === undefined && redeem.features && typeof redeem.features === "object") v = redeem.features[key];
+  if (v === undefined || v === null || v === "") return null;
+
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (s === "是") return true;
+  if (s === "否") return false;
+  const sl = s.toLowerCase();
+  if (sl === "true" || sl === "y" || sl === "yes" || sl === "on") return true;
+  if (sl === "false" || sl === "n" || sl === "no" || sl === "off") return false;
+  return null;
+}
+
+function mergeYesNo_(currentYesNo, redeemTri) {
+  if (redeemTri === null) return isYes_(currentYesNo) ? "是" : "否";
+  return redeemTri ? "是" : "否";
+}
+
 function yyyyMmDdTpe_() {
   // Scheduling 端目前沒有 tz helper；以使用者裝置當地日期即可（AUTH 端會 parse loose）。
   const d = new Date();
   const pad = (x) => String(x).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function yyyyMmDdAddDays_(baseKey, deltaDays) {
+  const key = String(baseKey || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return yyyyMmDdTpe_();
+  const [y, m, d] = key.split("-").map((x) => Number(x));
+  const dt = new Date(y, m - 1, d);
+  const add = Number(deltaDays) || 0;
+  dt.setDate(dt.getDate() + add);
+  const pad = (x) => String(x).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
 function getIdentitySync_() {
@@ -170,30 +215,70 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     }
 
     const amount = Number(redeem.amount);
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_AMOUNT");
+    // 允許 amount=0：代表只同步功能開通設定，不增加天數
+    if (!Number.isFinite(amount) || amount < 0) throw new Error("INVALID_AMOUNT");
 
     // 2) read current auth status (contains remainingDays & feature flags)
     const check = await authCheck_(userIdSafe, displayNameSafe);
     const currentRd = Number(check?.remainingDays);
     const currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
 
-    // 規則：TopUp 的 amount 直接視為「增加天數」
+    // 規則：TopUp 的 amount 直接視為「增加天數」；amount=0 代表不加天數
     const addDays = Math.floor(amount);
     const newRemainingDays = currentRemainingDays + addDays;
 
     // 3) write back to AUTH Users
-    // remainingDays = usageDays - 1 (when startDate=today) → usageDays = remainingDays + 1
-    const usageDays = Math.max(1, Math.floor(newRemainingDays) + 1);
-    const startDate = yyyyMmDdTpe_();
+    // 注意：AUTH updateuser 若不帶 startDate/usageDays，後端會清空欄位。
+    // 因此即使 amount=0，也要送一組能「維持現況 remainingDays」的 startDate/usageDays。
+    let startDate = yyyyMmDdTpe_();
+    let usageDays = 1;
+
+    if (addDays > 0) {
+      // 走既有模式：把 remainingDays rebased 到 today，維持/延長到期日
+      usageDays = Math.max(1, Math.floor(newRemainingDays) + 1);
+      startDate = yyyyMmDdTpe_();
+    } else {
+      // amount=0：只改功能，不改到期狀態
+      // 若 remainingDays >= 0：用 startDate=today, usageDays=remaining+1 保持不變
+      // 若 remainingDays < 0：用 usageDays=1, startDate=today+remainingDays 保持「過期幅度」不變
+      if (Number.isFinite(currentRemainingDays)) {
+        if (currentRemainingDays >= 0) {
+          usageDays = Math.max(1, Math.floor(currentRemainingDays) + 1);
+          startDate = yyyyMmDdTpe_();
+        } else {
+          usageDays = 1;
+          startDate = yyyyMmDdAddDays_(yyyyMmDdTpe_(), Math.floor(currentRemainingDays));
+        }
+      } else {
+        // remainingDays 無法判定：保守做法是清空會讓 remainingDays=null（不建議，但避免誤延長）
+        // 仍送出最小安全值：usageDays=1, startDate=today-9999（等同長期過期）
+        usageDays = 1;
+        startDate = yyyyMmDdAddDays_(yyyyMmDdTpe_(), -9999);
+      }
+    }
+
+    // AUTH 端欄位是「是/否」，且 updateuser 若漏帶會被重設。
+    // 規則：
+    // - 若序號有明確帶回 true/false → 覆寫
+    // - 若序號未設定（null/undefined/空白）→ 沿用原本 check 值
+    const redeemPush = pickRedeemFlagTri_(redeem, "pushEnabled");
+    const redeemPersonal = pickRedeemFlagTri_(redeem, "personalStatusEnabled");
+    const redeemSchedule = pickRedeemFlagTri_(redeem, "scheduleEnabled");
+    const redeemPerformance = pickRedeemFlagTri_(redeem, "performanceEnabled");
+
+    const newPushEnabled = mergeYesNo_(check?.pushEnabled, redeemPush);
+    const newPersonalStatusEnabled = mergeYesNo_(check?.personalStatusEnabled, redeemPersonal);
+    const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, redeemSchedule);
+    const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, redeemPerformance);
 
     await authUpdateUser_({
       userId: userIdSafe,
       audit: check?.audit,
       masterCode: check?.masterCode,
-      pushEnabled: check?.pushEnabled,
-      personalStatusEnabled: check?.personalStatusEnabled,
-      scheduleEnabled: check?.scheduleEnabled,
-      performanceEnabled: check?.performanceEnabled,
+      pushEnabled: newPushEnabled,
+      personalStatusEnabled: newPersonalStatusEnabled,
+      scheduleEnabled: newScheduleEnabled,
+      performanceEnabled: newPerformanceEnabled,
       startDate,
       usageDays,
     });
@@ -201,6 +286,15 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     // 4) verify + update banner
     const check2 = await authCheck_(userIdSafe, displayNameSafe);
     updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
+    // 同步前端功能提示列（避免不重整時畫面仍顯示未開通）
+    try {
+      updateFeatureState(check2 || {
+        pushEnabled: newPushEnabled,
+        personalStatusEnabled: newPersonalStatusEnabled,
+        scheduleEnabled: newScheduleEnabled,
+        performanceEnabled: newPerformanceEnabled,
+      });
+    } catch (_) {}
 
     hideLoadingHint();
 

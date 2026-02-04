@@ -19,7 +19,7 @@ import { dom } from "./dom.js";
 import { getQueryParam } from "./core.js";
 import { showGate, openApp, updateUsageBanner } from "./uiHelpers.js";
 import { updateFeatureState } from "./featureBanner.js";
-import { applyScheduleUiMode, showNotMasterHint } from "./scheduleUi.js";
+import { showNotMasterHint } from "./scheduleUi.js";
 import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js";
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { logUsageEvent } from "./usageLog.js";
@@ -309,10 +309,7 @@ async function onAuthorized({ userId, displayName, result }) {
     state.user.audit = result.audit;
   } catch (_) {}
 
-  // features
-  updateFeatureState(result);
-
-  // 確保 state.myMaster 存在
+  // 確保 state.myMaster 存在（給 scheduleUi/feature UI 判斷用）
   state.myMaster = state.myMaster || {};
   state.feature = state.feature || {};
 
@@ -320,24 +317,8 @@ async function onAuthorized({ userId, displayName, result }) {
   state.myMaster.isMaster = !!result.isMaster;
   state.myMaster.techNo = normalizeTechNo(result.techNo || result.masterCode || "");
 
-  // 排班表開通=否：只顯示我的狀態
-  const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
-  applyScheduleUiMode(scheduleOk);
-
-  // 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
-  const performanceOk = String(result.performanceEnabled || "").trim() === "是";
-  const perfBtn = document.getElementById("btnPerformance");
-  if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
-  const perfCard = document.getElementById("perfCard");
-  if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
-
-  // 立即同步提示（避免首次畫面沒出現）
-  if (!scheduleOk) {
-    const isMasterNow = !!(state.myMaster.isMaster && state.myMaster.techNo);
-    showNotMasterHint(!isMasterNow);
-  } else {
-    showNotMasterHint(false);
-  }
+  // features（會同步 chips + 功能按鈕顯示/排班 UI）
+  updateFeatureState(result);
 
   // 紀錄審核狀態（每次開啟/驗證都會嘗試送出；由 USAGE_LOG_MIN_INTERVAL_MS 節流）
   try {

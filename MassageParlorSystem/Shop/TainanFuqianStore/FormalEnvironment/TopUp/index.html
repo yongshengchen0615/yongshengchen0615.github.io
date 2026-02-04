@@ -64,7 +64,7 @@
                 <div class="form-row">
                   <div class="field">
                     <label class="filter-label" for="genAmount">面額</label>
-                    <input id="genAmount" class="input" type="number" min="1" step="1" value="30" />
+                    <input id="genAmount" class="input" type="number" min="0" step="1" value="30" />
                   </div>
                   <div class="field">
                     <label class="filter-label" for="genCount">數量</label>
@@ -76,6 +76,28 @@
                   <div class="field" style="flex:1;">
                     <label class="filter-label" for="genNote">備註（選填）</label>
                     <input id="genNote" class="input" placeholder="例如：2026/2 活動" />
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="field" style="min-width: 220px;">
+                    <label class="filter-label">功能開通設定</label>
+                    <label class="select-all" for="genPushEnabled" style="height:auto; padding:8px 10px;">
+                      <input id="genPushEnabled" type="checkbox" checked />
+                      <span>是否推播</span>
+                    </label>
+                    <label class="select-all" for="genPersonalStatusEnabled" style="height:auto; padding:8px 10px; margin-top:6px;">
+                      <input id="genPersonalStatusEnabled" type="checkbox" checked />
+                      <span>個人狀態開通</span>
+                    </label>
+                    <label class="select-all" for="genScheduleEnabled" style="height:auto; padding:8px 10px; margin-top:6px;">
+                      <input id="genScheduleEnabled" type="checkbox" checked />
+                      <span>排班表開通</span>
+                    </label>
+                    <label class="select-all" for="genPerformanceEnabled" style="height:auto; padding:8px 10px; margin-top:6px;">
+                      <input id="genPerformanceEnabled" type="checkbox" checked />
+                      <span>業績開通</span>
+                    </label>
                   </div>
                 </div>
 
@@ -139,6 +161,7 @@
                     <th class="col-select">選取</th>
                     <th class="col-serial">序號</th>
                     <th class="col-amount">面額</th>
+                    <th class="col-features">功能</th>
                     <th class="col-status">狀態</th>
                     <th class="col-created">建立時間</th>
                     <th class="col-used">核銷時間</th>

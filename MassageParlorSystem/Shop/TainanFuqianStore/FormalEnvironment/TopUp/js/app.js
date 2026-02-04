@@ -40,7 +40,13 @@ function bindEventsOnce() {
       const count = Number(dom.genCount?.value || 0);
       const note = String(dom.genNote?.value || "").trim();
 
-      if (!Number.isFinite(amount) || amount <= 0) throw new Error("面額不正確");
+      // 功能開通設定（預設 true，以維持既有使用習慣；若 UI 元件不存在則回落到 true）
+      const pushEnabled = dom.genPushEnabled ? !!dom.genPushEnabled.checked : true;
+      const personalStatusEnabled = dom.genPersonalStatusEnabled ? !!dom.genPersonalStatusEnabled.checked : true;
+      const scheduleEnabled = dom.genScheduleEnabled ? !!dom.genScheduleEnabled.checked : true;
+      const performanceEnabled = dom.genPerformanceEnabled ? !!dom.genPerformanceEnabled.checked : true;
+
+      if (!Number.isFinite(amount) || amount < 0) throw new Error("面額不正確");
       if (!Number.isFinite(count) || count <= 0 || count > 500) throw new Error("數量需在 1~500");
 
       showTopLoading("產生序號中…");
@@ -49,6 +55,10 @@ function bindEventsOnce() {
         amount,
         count,
         note,
+        pushEnabled,
+        personalStatusEnabled,
+        scheduleEnabled,
+        performanceEnabled,
         actor: state.me,
       });
       if (!ret.ok) throw new Error(ret.error || "generate failed");
@@ -400,6 +410,48 @@ function fmtTs_(ms) {
 function renderRows_(rows) {
   if (!dom.tbodyRows) return;
 
+  const getBoolOrNull_ = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    if (v === true || v === 1 || v === "1") return true;
+    if (v === false || v === 0 || v === "0") return false;
+    const s = String(v).trim().toLowerCase();
+    if (!s) return null;
+    if (s === "true" || s === "y" || s === "yes" || s === "on") return true;
+    if (s === "false" || s === "n" || s === "no" || s === "off") return false;
+    return null;
+  };
+
+  const resolveFeatureFlags_ = (row) => {
+    const src = row?.features && typeof row.features === "object" ? row.features : row;
+    return {
+      pushEnabled: getBoolOrNull_(src?.pushEnabled),
+      personalStatusEnabled: getBoolOrNull_(src?.personalStatusEnabled),
+      scheduleEnabled: getBoolOrNull_(src?.scheduleEnabled),
+      performanceEnabled: getBoolOrNull_(src?.performanceEnabled),
+    };
+  };
+
+  const renderFeatBadges_ = (flags) => {
+    const items = [
+      { key: "pushEnabled", label: "推播" },
+      { key: "personalStatusEnabled", label: "個人" },
+      { key: "scheduleEnabled", label: "排班" },
+      { key: "performanceEnabled", label: "業績" },
+    ];
+
+    const html = items
+      .map((it) => {
+        const v = flags[it.key];
+        if (v === null) return `<span class="feat feat-unknown">${escapeHtml_(it.label)}：—</span>`;
+        return v
+          ? `<span class="feat feat-on">${escapeHtml_(it.label)}：開</span>`
+          : `<span class="feat feat-off">${escapeHtml_(it.label)}：關</span>`;
+      })
+      .join(" ");
+
+    return `<div class="feat-badges">${html}</div>`;
+  };
+
   const html = rows
     .map((r) => {
       const serial = String(r.serial || "");
@@ -407,6 +459,8 @@ function renderRows_(rows) {
       const status = String(r.status || "");
       const note = String(r.note || "");
       const usedNote = String(r.usedNote || "");
+
+      const flags = resolveFeatureFlags_(r);
 
       const createdAt = fmtTs_(r.createdAtMs);
       const usedAt = fmtTs_(r.usedAtMs);
@@ -445,6 +499,7 @@ function renderRows_(rows) {
           </td>
           <td class="mono" data-label="序號">${escapeHtml_(serial)}</td>
           <td data-label="面額">${escapeHtml_(amount)}</td>
+          <td class="td-features" data-label="功能">${renderFeatBadges_(flags)}</td>
           <td data-label="狀態">${chip}</td>
           <td data-label="建立時間">${escapeHtml_(createdAt)}</td>
           <td data-label="核銷時間">${escapeHtml_(usedAt)}</td>

@@ -20,6 +20,10 @@ export const dom = {
   genAmount: document.getElementById("genAmount"),
   genCount: document.getElementById("genCount"),
   genNote: document.getElementById("genNote"),
+  genPushEnabled: document.getElementById("genPushEnabled"),
+  genPersonalStatusEnabled: document.getElementById("genPersonalStatusEnabled"),
+  genScheduleEnabled: document.getElementById("genScheduleEnabled"),
+  genPerformanceEnabled: document.getElementById("genPerformanceEnabled"),
   genBtn: document.getElementById("genBtn"),
   genOutput: document.getElementById("genOutput"),
 

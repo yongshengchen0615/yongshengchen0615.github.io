@@ -40,7 +40,7 @@ function doGet(e) {
       endpoints: [
         "POST text/plain JSON {mode:'adminUpsertAndCheck', userId, displayName}",
         "POST text/plain JSON {mode:'serials_list', filters?, limit?}",
-        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, actor?}",
+        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
         "POST text/plain JSON {mode:'serials_sync_used_note_public', userId, displayName}",
@@ -126,7 +126,8 @@ function doPost(e) {
       const amount = normalizeAmount_(payload.amount);
       const count = normalizeCount_(payload.count, MAX_GENERATE_COUNT);
       const note = normalizeNote_(payload.note);
-      const res = serialsGenerate_({ amount, count, note, actor: gate.user });
+      const flags = normalizeSerialFeatureFlags_(payload);
+      const res = serialsGenerate_({ amount, count, note, flags, actor: gate.user });
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
@@ -347,6 +348,12 @@ function serialsList_({ filters, limit }) {
     const usedNote = String(row[9] || "");
     const voidAtMs = Number(row[10]) || 0;
 
+    // Feature flags (may be blank for older rows)
+    const pushEnabled = parseFeatureCell_(row[16]);
+    const personalStatusEnabled = parseFeatureCell_(row[17]);
+    const scheduleEnabled = parseFeatureCell_(row[18]);
+    const performanceEnabled = parseFeatureCell_(row[19]);
+
     if (q) {
       const hay = (serial + " " + rowNote).toLowerCase();
       if (hay.indexOf(q) === -1) continue;
@@ -364,6 +371,16 @@ function serialsList_({ filters, limit }) {
       usedAtMs,
       usedNote,
       voidAtMs,
+      pushEnabled,
+      personalStatusEnabled,
+      scheduleEnabled,
+      performanceEnabled,
+      features: {
+        pushEnabled,
+        personalStatusEnabled,
+        scheduleEnabled,
+        performanceEnabled,
+      },
     });
 
     if (out.length >= limit) break;
@@ -375,13 +392,19 @@ function serialsList_({ filters, limit }) {
   return { serials: out };
 }
 
-function serialsGenerate_({ amount, count, note, actor }) {
+function serialsGenerate_({ amount, count, note, flags, actor }) {
   const lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
     const now = Date.now();
     const batchId = "B" + now + "-" + shortId_();
+
+    const f = flags || {};
+    const pushEnabled = encodeFeatureCell_(f.pushEnabled);
+    const personalStatusEnabled = encodeFeatureCell_(f.personalStatusEnabled);
+    const scheduleEnabled = encodeFeatureCell_(f.scheduleEnabled);
+    const performanceEnabled = encodeFeatureCell_(f.performanceEnabled);
 
     const existing = buildExistingSerialSet_(sh);
 
@@ -417,9 +440,29 @@ function serialsGenerate_({ amount, count, note, actor }) {
         "", // ReactivatedAtMs
         "", // ReactivatedBy
         now, // UpdatedAtMs
+        pushEnabled,
+        personalStatusEnabled,
+        scheduleEnabled,
+        performanceEnabled,
       ]);
 
-      out.push({ serial, amount, status: STATUS_ACTIVE, note, createdAtMs: now });
+      out.push({
+        serial,
+        amount,
+        status: STATUS_ACTIVE,
+        note,
+        createdAtMs: now,
+        pushEnabled: !!f.pushEnabled,
+        personalStatusEnabled: !!f.personalStatusEnabled,
+        scheduleEnabled: !!f.scheduleEnabled,
+        performanceEnabled: !!f.performanceEnabled,
+        features: {
+          pushEnabled: !!f.pushEnabled,
+          personalStatusEnabled: !!f.personalStatusEnabled,
+          scheduleEnabled: !!f.scheduleEnabled,
+          performanceEnabled: !!f.performanceEnabled,
+        },
+      });
     }
 
     if (rowsToAppend.length) sh.getRange(sh.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
@@ -429,6 +472,12 @@ function serialsGenerate_({ amount, count, note, actor }) {
       amount,
       count,
       note,
+      flags: {
+        pushEnabled: !!(flags && flags.pushEnabled),
+        personalStatusEnabled: !!(flags && flags.personalStatusEnabled),
+        scheduleEnabled: !!(flags && flags.scheduleEnabled),
+        performanceEnabled: !!(flags && flags.performanceEnabled),
+      },
       actor,
     });
 
@@ -470,7 +519,28 @@ function serialsRedeem_({ serial, note, actor }) {
 
     logOp_("serials_redeem", serial, { serial, note, actor });
 
-    return { serial, amount, status: STATUS_USED, usedAtMs: now, usedBy: actor.userId };
+    const pushEnabled = parseFeatureCell_(row[16]);
+    const personalStatusEnabled = parseFeatureCell_(row[17]);
+    const scheduleEnabled = parseFeatureCell_(row[18]);
+    const performanceEnabled = parseFeatureCell_(row[19]);
+
+    return {
+      serial,
+      amount,
+      status: STATUS_USED,
+      usedAtMs: now,
+      usedBy: actor.userId,
+      pushEnabled,
+      personalStatusEnabled,
+      scheduleEnabled,
+      performanceEnabled,
+      features: {
+        pushEnabled,
+        personalStatusEnabled,
+        scheduleEnabled,
+        performanceEnabled,
+      },
+    };
   } finally {
     lock.releaseLock();
   }
@@ -515,7 +585,28 @@ function serialsRedeemPublic_({ serial, note, user }) {
 
     logOp_("serials_redeem_public", serial, { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } });
 
-    return { serial, amount, status: STATUS_USED, usedAtMs: now, usedBy: userId };
+    const pushEnabled = parseFeatureCell_(row[16]);
+    const personalStatusEnabled = parseFeatureCell_(row[17]);
+    const scheduleEnabled = parseFeatureCell_(row[18]);
+    const performanceEnabled = parseFeatureCell_(row[19]);
+
+    return {
+      serial,
+      amount,
+      status: STATUS_USED,
+      usedAtMs: now,
+      usedBy: userId,
+      pushEnabled,
+      personalStatusEnabled,
+      scheduleEnabled,
+      performanceEnabled,
+      features: {
+        pushEnabled,
+        personalStatusEnabled,
+        scheduleEnabled,
+        performanceEnabled,
+      },
+    };
   } finally {
     lock.releaseLock();
   }
@@ -711,7 +802,51 @@ function serialsHeaders_() {
     "ReactivatedAtMs",
     "ReactivatedBy",
     "UpdatedAtMs",
+    "PushEnabled",
+    "PersonalStatusEnabled",
+    "ScheduleEnabled",
+    "PerformanceEnabled",
   ];
+}
+
+function normalizeSerialFeatureFlags_(payload) {
+  const p = payload || {};
+  const f = (p.features && typeof p.features === "object") ? p.features : {};
+
+  // Default to true to avoid accidentally generating "no feature" serials when older clients call serials_generate.
+  return {
+    pushEnabled: normalizeFeatureFlag_(p.pushEnabled !== undefined ? p.pushEnabled : f.pushEnabled, true),
+    personalStatusEnabled: normalizeFeatureFlag_(p.personalStatusEnabled !== undefined ? p.personalStatusEnabled : f.personalStatusEnabled, true),
+    scheduleEnabled: normalizeFeatureFlag_(p.scheduleEnabled !== undefined ? p.scheduleEnabled : f.scheduleEnabled, true),
+    performanceEnabled: normalizeFeatureFlag_(p.performanceEnabled !== undefined ? p.performanceEnabled : f.performanceEnabled, true),
+  };
+}
+
+function normalizeFeatureFlag_(v, defaultValue) {
+  if (v === null || v === undefined || v === "") return !!defaultValue;
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  const s = String(v).trim().toLowerCase();
+  if (!s) return !!defaultValue;
+  if (s === "true" || s === "1" || s === "y" || s === "yes" || s === "on") return true;
+  if (s === "false" || s === "0" || s === "n" || s === "no" || s === "off") return false;
+  return !!defaultValue;
+}
+
+function encodeFeatureCell_(b) {
+  return b ? 1 : 0;
+}
+
+function parseFeatureCell_(cellValue) {
+  // Return boolean when explicitly set, else null.
+  if (cellValue === null || cellValue === undefined || cellValue === "") return null;
+  if (cellValue === true || cellValue === 1 || cellValue === "1") return true;
+  if (cellValue === false || cellValue === 0 || cellValue === "0") return false;
+  const s = String(cellValue).trim().toLowerCase();
+  if (!s) return null;
+  if (s === "true" || s === "y" || s === "yes" || s === "on") return true;
+  if (s === "false" || s === "n" || s === "no" || s === "off") return false;
+  return null;
 }
 
 function findSerialRowIndex_(sh, serial) {
@@ -768,7 +903,7 @@ function normalizeDisplayName_(v) {
 
 function normalizeAmount_(v) {
   const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) throw new Error("AMOUNT_INVALID");
+  if (!Number.isFinite(n) || n < 0) throw new Error("AMOUNT_INVALID");
   if (n > 1000000) throw new Error("AMOUNT_TOO_LARGE");
   return Math.round(n);
 }
