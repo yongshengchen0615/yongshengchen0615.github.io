@@ -7,11 +7,13 @@ import { apiPost } from "./modules/api.js";
 import { state } from "./modules/state.js";
 import { debounce } from "./modules/core.js";
 
+const CACHE_STALE_MS = 25_000;
+
 function bindEventsOnce() {
   if (state._eventsBound) return;
   state._eventsBound = true;
 
-  const reload = () => loadSerials();
+  const reload = () => loadSerials({ showLoading: true, force: true });
 
   dom.themeToggleBtn?.addEventListener("click", () => {
     // theme.js handles it
@@ -19,7 +21,10 @@ function bindEventsOnce() {
 
   dom.reloadBtn?.addEventListener("click", reload);
 
-  const filterChanged = debounce(() => loadSerials(), 220);
+  const filterChanged = debounce(() => {
+    applyClientFiltersAndRender_(Date.now());
+    maybeRefreshSerialsInBackground_();
+  }, 120);
   dom.searchInput?.addEventListener("input", filterChanged);
 
   const onStatusSelectChanged = (ev) => {
@@ -31,7 +36,8 @@ function bindEventsOnce() {
 
   dom.listStatusSelect?.addEventListener("change", onStatusSelectChanged);
   dom.noteSelect?.addEventListener("change", () => {
-    applyClientFiltersAndRender_();
+    applyClientFiltersAndRender_(Date.now());
+    maybeRefreshSerialsInBackground_();
   });
 
   dom.genBtn?.addEventListener("click", async () => {
@@ -80,7 +86,7 @@ function bindEventsOnce() {
       }
 
       toast(copied ? `已產生 ${list.length} 筆（已複製）` : `已產生 ${list.length} 筆`, "ok");
-      await loadSerials();
+      await loadSerials({ showLoading: true, force: true });
     } catch (e) {
       console.error(e);
       toast(String(e.message || e), "err");
@@ -135,7 +141,7 @@ function bindEventsOnce() {
 
       state.selectedSerials.clear();
       syncBatchUi_();
-      await loadSerials();
+      await loadSerials({ showLoading: true, force: true });
     } catch (e) {
       console.error(e);
       toast(String(e.message || e), "err");
@@ -184,7 +190,7 @@ function bindEventsOnce() {
 
       state.selectedSerials.clear();
       syncBatchUi_();
-      await loadSerials();
+      await loadSerials({ showLoading: true, force: true });
     } catch (e) {
       console.error(e);
       toast(String(e.message || e), "err");
@@ -215,7 +221,7 @@ function bindEventsOnce() {
         const ret = await apiPost({ mode: "serials_void", serial, note: String(note || "").trim(), actor: state.me });
         if (!ret.ok) throw new Error(ret.error || "void failed");
         toast("已作廢", "ok");
-        await loadSerials();
+        await loadSerials({ showLoading: true, force: true });
         return;
       }
 
@@ -229,7 +235,7 @@ function bindEventsOnce() {
         state.selectedSerials.delete(String(serial));
         syncBatchUi_();
         toast("已刪除", "ok");
-        await loadSerials();
+        await loadSerials({ showLoading: true, force: true });
         return;
       }
 
@@ -240,7 +246,7 @@ function bindEventsOnce() {
         const ret = await apiPost({ mode: "serials_reactivate", serial, actor: state.me });
         if (!ret.ok) throw new Error(ret.error || "reactivate failed");
         toast("已恢復", "ok");
-        await loadSerials();
+        await loadSerials({ showLoading: true, force: true });
         return;
       }
     } catch (e) {
@@ -265,41 +271,87 @@ function bindEventsOnce() {
 }
 
 function getFilters_() {
+  // UI filters（僅用於前端快取過濾）
   const q = String(dom.searchInput?.value || "").trim();
   const status = String(dom.listStatusSelect?.value || "all");
-
-  return {
-    q,
-    status,
-    amount: null,
-  };
+  const note = String(dom.noteSelect?.value || "all");
+  return { q, status, note };
 }
 
-async function loadSerials() {
-  dom.emptyState.style.display = "none";
-  dom.errorState.style.display = "none";
-  dom.loadingState.style.display = "flex";
+function getServerFetchFilters_() {
+  // 以「全部」作為快取母資料，避免切狀態/搜尋就重新打 API。
+  // 若未來需要伺服器端搜尋/狀態篩選，再另外提供「強制伺服器篩選」模式。
+  return { q: "", status: "all", amount: null };
+}
+
+function maybeRefreshSerialsInBackground_() {
+  if (state._refreshing) return;
+  const fetchedAt = Number(state.cache?.fetchedAtMs) || 0;
+  const hasCache = Array.isArray(state.cache?.rows) && state.cache.rows.length > 0;
+  if (!hasCache) return;
+  if (Date.now() - fetchedAt < CACHE_STALE_MS) return;
+
+  // 背景更新：不顯示 loadingState，成功後用同一份 UI filters 重新渲染
+  loadSerials({ showLoading: false, force: false }).catch((e) => {
+    // silent background refresh failure
+    console.warn("background refresh failed", e);
+  });
+}
+
+async function loadSerials(opts) {
+  const showLoading = opts?.showLoading !== false;
+  const force = opts?.force === true;
+
+  // 若已有快取且非強制，先用快取即時渲染（避免 UI 閃爍）
+  const hasCache = Array.isArray(state.cache?.rows) && state.cache.rows.length > 0;
+  if (hasCache && !force) {
+    state._lastRows = state.cache.rows;
+    updateNoteOptions_(state._lastRows);
+    applyClientFiltersAndRender_(state.cache.nowMs || Date.now());
+  }
+
+  if (showLoading) {
+    dom.emptyState.style.display = "none";
+    dom.errorState.style.display = "none";
+    dom.loadingState.style.display = "flex";
+  } else {
+    dom.errorState.style.display = "none";
+  }
 
   try {
+    const seq = ++state._refreshSeq;
+    state._refreshing = true;
+
     const ret = await apiPost({
       mode: "serials_list",
-      filters: getFilters_(),
+      filters: getServerFetchFilters_(),
       limit: Math.max(1, config.LIST_LIMIT || 300),
       actor: state.me,
     });
     if (!ret.ok) throw new Error(ret.error || "list failed");
 
+    // 若期間又發起了新一輪刷新，忽略舊結果
+    if (seq !== state._refreshSeq) return;
+
     const rows = Array.isArray(ret.serials) ? ret.serials : [];
     state._lastRows = rows;
-    updateNoteOptions_(rows);
-    applyClientFiltersAndRender_(ret.now || Date.now());
+    state.cache.rows = rows;
+    state.cache.nowMs = Number(ret.now || Date.now());
+    state.cache.fetchedAtMs = Date.now();
 
-    dom.loadingState.style.display = "none";
+    updateNoteOptions_(rows);
+    applyClientFiltersAndRender_(state.cache.nowMs);
+
+    if (showLoading) dom.loadingState.style.display = "none";
   } catch (e) {
     console.error(e);
-    dom.loadingState.style.display = "none";
-    dom.errorState.style.display = "block";
-    toast("讀取序號失敗", "err");
+    if (showLoading) {
+      dom.loadingState.style.display = "none";
+      dom.errorState.style.display = "block";
+      toast("讀取序號失敗", "err");
+    }
+  } finally {
+    state._refreshing = false;
   }
 }
 
@@ -354,10 +406,34 @@ function updateNoteOptions_(rows) {
 }
 
 function getClientFilteredRows_(rows) {
-  const selected = String(dom.noteSelect?.value || "all");
-  if (selected === "all") return rows;
-  if (selected === "__EMPTY__") return (rows || []).filter((r) => !normalizeNote_(r?.note));
-  return (rows || []).filter((r) => normalizeNote_(r?.note) === selected);
+  const { q, status, note } = getFilters_();
+
+  let out = Array.isArray(rows) ? rows : [];
+
+  // 狀態（active/used/void）
+  if (status && status !== "all") {
+    out = out.filter((r) => String(r?.status || "") === status);
+  }
+
+  // 備註（下拉）
+  if (note && note !== "all") {
+    if (note === "__EMPTY__") out = out.filter((r) => !normalizeNote_(r?.note));
+    else out = out.filter((r) => normalizeNote_(r?.note) === note);
+  }
+
+  // 搜尋（前端部分比對：序號/備註/核銷備註/面額）
+  const needle = String(q || "").trim().toLowerCase();
+  if (needle) {
+    out = out.filter((r) => {
+      const serial = String(r?.serial || "").toLowerCase();
+      const noteText = String(r?.note || "").toLowerCase();
+      const usedNote = String(r?.usedNote || "").toLowerCase();
+      const amount = String(r?.amount ?? "").toLowerCase();
+      return serial.includes(needle) || noteText.includes(needle) || usedNote.includes(needle) || amount.includes(needle);
+    });
+  }
+
+  return out;
 }
 
 function applyClientFiltersAndRender_(nowMs) {
