@@ -8,7 +8,7 @@
   "LIFF_ID": "2008811948-yfhobMST",
   "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
 
-  "USE_LIFF":true,
+  "USE_LIFF":false,
   "_USE_LIFF_DESC": "是否透過 LIFF 進行登入與授權（設定為 false 可在本機/測試環境跳過 LIFF）",
 
   "DEBUG_USER_ID": "qqqqqqqq",
@@ -34,6 +34,9 @@
 
   "TECH_USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
   "_TECH_USAGE_LOG_URL_DESC": "技師使用紀錄 GAS Web App（usage_log）：用 GET 讀取（mode=list）與寫入（mode=log)",
+
+  "TECH_USAGE_LOG_ADMIN_KEY": "00000000",
+  "_TECH_USAGE_LOG_ADMIN_KEY_DESC": "技師使用紀錄 GAS Web App 管理金鑰：用於刪除功能（mode=deleteByName）。需與 GAS 端 ADMIN_KEY（或 ScriptProperties.ADMIN_KEY）一致；留空則前端不允許刪除。",
 
   "EDGE_STATUS_URLS": [
     "https://script.google.com/macros/s/AKfycbzZ_lc_DGk-oyzvE1w3uMcT_L7fpDZH6eyYVPGUxI4heP8QvJgIZU-bgg45nbn40jU5mg/exec",
