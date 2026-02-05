@@ -28,6 +28,9 @@ let techLogsStartTimeEl = null;
 let techLogsEndTimeEl = null;
 let techLogsTbodyEl = null;
 let techLogsFooterEl = null;
+let techLogsDeleteByNameBtnEl = null;
+
+let techUsageLogsDeleting_ = false;
 
 function cacheTechDom_() {
   if (techLogsCanvasEl) return;
@@ -42,6 +45,24 @@ function cacheTechDom_() {
   techLogsEndTimeEl = document.getElementById('techLogsEndTimeInput');
   techLogsTbodyEl = document.getElementById('techLogsTbody');
   techLogsFooterEl = document.getElementById('techLogsFooterStatus');
+  techLogsDeleteByNameBtnEl = document.getElementById('techLogsDeleteByNameBtn');
+}
+
+function techLogsGetSelectedName_() {
+  cacheTechDom_();
+  const v = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '').trim() : '';
+  return v;
+}
+
+function techLogsUpdateDeleteBtnState_() {
+  cacheTechDom_();
+  if (!techLogsDeleteByNameBtnEl) return;
+  const name = techLogsGetSelectedName_();
+  const hasKey = typeof TECH_USAGE_LOG_ADMIN_KEY === 'string' && TECH_USAGE_LOG_ADMIN_KEY.trim();
+  techLogsDeleteByNameBtnEl.disabled = techUsageLogsDeleting_ || techUsageLogsLoading_ || !name || !hasKey;
+  techLogsDeleteByNameBtnEl.title = !hasKey
+    ? '尚未設定 TECH_USAGE_LOG_ADMIN_KEY，刪除功能停用'
+    : (!name ? '請先在「名稱」選擇技師' : '刪除該技師的所有使用紀錄');
 }
 
 
@@ -500,6 +521,7 @@ async function loadTechUsageLogs_() {
   }
 
   techUsageLogsLoading_ = true;
+  techLogsUpdateDeleteBtnState_();
   try {
     techLogsSetFooter_("載入中...");
     techLogsSetTbodyMessage_("載入中...");
@@ -699,11 +721,94 @@ async function loadTechUsageLogs_() {
     toast("讀取技師使用紀錄失敗", "err");
   } finally {
     techUsageLogsLoading_ = false;
+    techLogsUpdateDeleteBtnState_();
+  }
+}
+
+async function deleteTechUsageLogsByName_() {
+  cacheTechDom_();
+  const name = techLogsGetSelectedName_();
+  if (!name) {
+    toast('請先選擇名稱', 'err');
+    return;
+  }
+  if (!TECH_USAGE_LOG_URL) {
+    toast('尚未設定 TECH_USAGE_LOG_URL', 'err');
+    return;
+  }
+  if (!TECH_USAGE_LOG_ADMIN_KEY || !String(TECH_USAGE_LOG_ADMIN_KEY).trim()) {
+    toast('尚未設定刪除金鑰（TECH_USAGE_LOG_ADMIN_KEY）', 'err');
+    return;
+  }
+  if (techUsageLogsDeleting_) return;
+
+  // 先用前端資料估算筆數（載入時已抓全量分頁），並用 GAS dryRun 再確認一次授權 + 匹配數
+  const localCount = techUsageLogsAll_.filter(r => String(r?.name || '') === name).length;
+
+  techUsageLogsDeleting_ = true;
+  techLogsUpdateDeleteBtnState_();
+  try {
+    techLogsSetFooter_(`刪除檢查中（${escapeHtml(name)}）...`);
+    const dry = await techUsageLogPost_({
+      mode: 'deleteByName',
+      key: String(TECH_USAGE_LOG_ADMIN_KEY || ''),
+      name: name,
+      dryRun: 1,
+    });
+    if (!dry || dry.ok === false) {
+      throw new Error(dry?.error || 'delete dryRun failed');
+    }
+    const matched = Number(dry.matched ?? dry.match ?? localCount);
+    const matchedSafe = Number.isFinite(matched) ? matched : localCount;
+
+    const confirmText = `確定要刪除「${name}」的使用紀錄嗎？\n預計刪除：${matchedSafe} 筆（前端估算 ${localCount} 筆）\n\n此動作不可復原。`;
+    const ok = window.confirm(confirmText);
+    if (!ok) {
+      toast('已取消刪除', 'ok');
+      return;
+    }
+
+    let deletedTotal = 0;
+    let remaining = matchedSafe;
+    const perRun = 800;
+    const maxLoops = 50;
+
+    for (let i = 0; i < maxLoops; i++) {
+      techLogsSetFooter_(`刪除中：${deletedTotal}/${matchedSafe}（剩餘 ${Math.max(0, remaining)}）`);
+      const ret = await techUsageLogPost_({
+        mode: 'deleteByName',
+        key: String(TECH_USAGE_LOG_ADMIN_KEY || ''),
+        name: name,
+        limit: perRun,
+      });
+      if (!ret || ret.ok === false) {
+        throw new Error(ret?.error || 'delete failed');
+      }
+      const deleted = Number(ret.deleted || 0);
+      deletedTotal += Number.isFinite(deleted) ? deleted : 0;
+      remaining = Number(ret.remaining ?? 0);
+      if (!Number.isFinite(remaining) || remaining <= 0) break;
+      // 避免連續打爆 GAS
+      await sleep_(220);
+    }
+
+    toast(`已刪除「${name}」使用紀錄：${deletedTotal} 筆`, 'ok');
+    // 刪除後重新載入最新列表
+    await loadTechUsageLogs_();
+  } catch (e) {
+    console.error(e);
+    toast(`刪除失敗：${String(e?.message || e)}`, 'err');
+    techLogsSetFooter_('刪除失敗');
+  } finally {
+    techUsageLogsDeleting_ = false;
+    techLogsUpdateDeleteBtnState_();
   }
 }
 
 function bindTechUsageLogs_() {
   document.getElementById("techLogsReloadBtn")?.addEventListener("click", () => loadTechUsageLogs_());
+
+  document.getElementById('techLogsDeleteByNameBtn')?.addEventListener('click', () => deleteTechUsageLogsByName_());
 
   document.getElementById("techLogsShowAllBtn")?.addEventListener("click", () => {
     const startEl = document.getElementById("techLogsStartDateInput");
@@ -716,6 +821,7 @@ function bindTechUsageLogs_() {
     if (enTime) enTime.value = "";
     const nameSel = document.getElementById('techLogsNameSelect');
     if (nameSel) nameSel.value = '';
+    techLogsUpdateDeleteBtnState_();
     applyTechUsageLogsDateFilter_();
     renderTechUsageLogs_();
     techLogsSetFooter_(`共 ${techUsageLogs_.length} 筆`);
@@ -738,7 +844,10 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsStartTimeInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", onRangeChange);
   // 當使用者選擇名稱時，同步套用到表格過濾
-  document.getElementById('techLogsNameSelect')?.addEventListener('change', onRangeChange);
+  document.getElementById('techLogsNameSelect')?.addEventListener('change', () => {
+    techLogsUpdateDeleteBtnState_();
+    onRangeChange();
+  });
   document.getElementById('techLogsEventSelect')?.addEventListener('change', () => {
     // when event type changes, repopulate name select to match event, then apply filter
     const evtSel = document.getElementById('techLogsEventSelect');
@@ -758,6 +867,7 @@ function bindTechUsageLogs_() {
       nameSel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(o.count)}) ${escapeHtml(o.name)}</option>`).join('');
       if (cur) nameSel.value = cur;
     }
+    techLogsUpdateDeleteBtnState_();
     onRangeChange();
   });
   
@@ -773,4 +883,7 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsNameSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsEventSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsGranularitySelect")?.addEventListener("change", debouncedRenderTechChart);
+
+  // initial state
+  techLogsUpdateDeleteBtnState_();
 }

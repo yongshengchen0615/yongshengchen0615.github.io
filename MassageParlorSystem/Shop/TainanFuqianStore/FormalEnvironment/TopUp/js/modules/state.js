@@ -10,6 +10,8 @@ export const state = {
 
   _refreshSeq: 0,
   _refreshing: false,
+  _pendingListPromise: null,
+  _storageCacheHydrated: false,
 
   selectedSerials: new Set(),
   _visibleSelectableSerials: [],

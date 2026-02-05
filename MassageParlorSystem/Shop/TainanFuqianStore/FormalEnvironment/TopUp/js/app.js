@@ -8,6 +8,41 @@ import { state } from "./modules/state.js";
 import { debounce } from "./modules/core.js";
 
 const CACHE_STALE_MS = 25_000;
+const SERIALS_CACHE_STORAGE_KEY = "topup_serials_cache_v1";
+const SERIALS_CACHE_MAX_ROWS = 1200;
+
+function hydrateSerialsCacheFromStorageOnce_() {
+  if (state._storageCacheHydrated) return;
+  state._storageCacheHydrated = true;
+
+  try {
+    const raw = localStorage.getItem(SERIALS_CACHE_STORAGE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    const rows = Array.isArray(obj?.rows) ? obj.rows : [];
+    if (!rows.length) return;
+
+    state.cache.rows = rows.slice(0, SERIALS_CACHE_MAX_ROWS);
+    state.cache.nowMs = Number(obj?.nowMs) || 0;
+    state.cache.fetchedAtMs = Number(obj?.fetchedAtMs) || 0;
+  } catch (_) {
+    // ignore storage errors
+  }
+}
+
+function persistSerialsCacheToStorage_() {
+  try {
+    const rows = Array.isArray(state.cache?.rows) ? state.cache.rows : [];
+    const payload = {
+      fetchedAtMs: Number(state.cache?.fetchedAtMs) || Date.now(),
+      nowMs: Number(state.cache?.nowMs) || Date.now(),
+      rows: rows.slice(0, SERIALS_CACHE_MAX_ROWS),
+    };
+    localStorage.setItem(SERIALS_CACHE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_) {
+    // ignore storage errors
+  }
+}
 
 function bindEventsOnce() {
   if (state._eventsBound) return;
@@ -304,6 +339,8 @@ async function loadSerials(opts) {
   const showLoading = opts?.showLoading !== false;
   const force = opts?.force === true;
 
+  hydrateSerialsCacheFromStorageOnce_();
+
   // 若已有快取且非強制，先用快取即時渲染（避免 UI 閃爍）
   const hasCache = Array.isArray(state.cache?.rows) && state.cache.rows.length > 0;
   if (hasCache && !force) {
@@ -312,7 +349,22 @@ async function loadSerials(opts) {
     applyClientFiltersAndRender_(state.cache.nowMs || Date.now());
   }
 
-  if (showLoading) {
+  const fetchedAt = Number(state.cache?.fetchedAtMs) || 0;
+  const cacheFresh = hasCache && fetchedAt > 0 && Date.now() - fetchedAt < CACHE_STALE_MS;
+  if (!force && cacheFresh) {
+    if (showLoading) dom.loadingState.style.display = "none";
+    return;
+  }
+
+  // 去重：非強制情況若已有 pending list request，直接共用
+  if (!force && state._pendingListPromise) {
+    await state._pendingListPromise;
+    return;
+  }
+
+  const showLoadingUi = showLoading && !hasCache;
+
+  if (showLoadingUi) {
     dom.emptyState.style.display = "none";
     dom.errorState.style.display = "none";
     dom.loadingState.style.display = "flex";
@@ -320,40 +372,50 @@ async function loadSerials(opts) {
     dom.errorState.style.display = "none";
   }
 
-  try {
-    const seq = ++state._refreshSeq;
-    state._refreshing = true;
+  const p = (async () => {
+    try {
+      const seq = ++state._refreshSeq;
+      state._refreshing = true;
 
-    const ret = await apiPost({
-      mode: "serials_list",
-      filters: getServerFetchFilters_(),
-      limit: Math.max(1, config.LIST_LIMIT || 300),
-      actor: state.me,
-    });
-    if (!ret.ok) throw new Error(ret.error || "list failed");
+      const ret = await apiPost({
+        mode: "serials_list",
+        filters: getServerFetchFilters_(),
+        limit: Math.max(1, config.LIST_LIMIT || 300),
+        actor: state.me,
+      });
+      if (!ret.ok) throw new Error(ret.error || "list failed");
 
-    // 若期間又發起了新一輪刷新，忽略舊結果
-    if (seq !== state._refreshSeq) return;
+      // 若期間又發起了新一輪刷新，忽略舊結果
+      if (seq !== state._refreshSeq) return;
 
-    const rows = Array.isArray(ret.serials) ? ret.serials : [];
-    state._lastRows = rows;
-    state.cache.rows = rows;
-    state.cache.nowMs = Number(ret.now || Date.now());
-    state.cache.fetchedAtMs = Date.now();
+      const rows = Array.isArray(ret.serials) ? ret.serials : [];
+      state._lastRows = rows;
+      state.cache.rows = rows;
+      state.cache.nowMs = Number(ret.now || Date.now());
+      state.cache.fetchedAtMs = Date.now();
+      persistSerialsCacheToStorage_();
 
-    updateNoteOptions_(rows);
-    applyClientFiltersAndRender_(state.cache.nowMs);
+      updateNoteOptions_(rows);
+      applyClientFiltersAndRender_(state.cache.nowMs);
 
-    if (showLoading) dom.loadingState.style.display = "none";
-  } catch (e) {
-    console.error(e);
-    if (showLoading) {
-      dom.loadingState.style.display = "none";
-      dom.errorState.style.display = "block";
-      toast("讀取序號失敗", "err");
+      if (showLoadingUi) dom.loadingState.style.display = "none";
+    } catch (e) {
+      console.error(e);
+      if (showLoadingUi) {
+        dom.loadingState.style.display = "none";
+        dom.errorState.style.display = "block";
+        toast("讀取序號失敗", "err");
+      }
+    } finally {
+      state._refreshing = false;
     }
+  })();
+
+  if (!force) state._pendingListPromise = p;
+  try {
+    await p;
   } finally {
-    state._refreshing = false;
+    if (state._pendingListPromise === p) state._pendingListPromise = null;
   }
 }
 
@@ -660,7 +722,10 @@ async function boot() {
     hideGate();
     dom.appRoot?.classList.remove("app-hidden");
 
-    await loadSerials();
+    // 先用 localStorage 快取（若有）快速呈現；沒有快取則正常顯示 loading
+    hydrateSerialsCacheFromStorageOnce_();
+    const hasCache = Array.isArray(state.cache?.rows) && state.cache.rows.length > 0;
+    await loadSerials({ showLoading: !hasCache, force: false });
   } catch (e) {
     console.error(e);
     showGate("⚠ 初始化失敗\n" + String(e.message || e), true);

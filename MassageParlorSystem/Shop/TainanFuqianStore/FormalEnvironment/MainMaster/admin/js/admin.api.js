@@ -24,6 +24,7 @@ async function loadConfig_() {
   API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
   USAGE_LOG_API_URL = String(cfg.USAGE_LOG_API_URL || "").trim();
   TECH_USAGE_LOG_URL = String(cfg.TECH_USAGE_LOG_URL || "").trim();
+  TECH_USAGE_LOG_ADMIN_KEY = String(cfg.TECH_USAGE_LOG_ADMIN_KEY || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
   if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
@@ -49,6 +50,22 @@ async function techUsageLogGet_(params) {
   });
 
   const res = await fetch(url.toString(), { cache: "no-store" });
+  return await res.json().catch(() => ({}));
+}
+
+/**
+ * 呼叫「技師使用紀錄」GAS（POST JSON）。
+ * - 用於需要修改資料的操作（例如 deleteByName）
+ * @param {Record<string, any>} bodyObj
+ */
+async function techUsageLogPost_(bodyObj) {
+  if (!TECH_USAGE_LOG_URL) return { ok: false, error: "missing TECH_USAGE_LOG_URL" };
+  const res = await fetch(TECH_USAGE_LOG_URL, {
+    method: "POST",
+    // 用 text/plain 避免觸發 CORS preflight（GAS Web App 通常不回 OPTIONS 的 CORS headers）
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj || {}),
+  });
   return await res.json().catch(() => ({}));
 }
 

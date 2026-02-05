@@ -6,7 +6,7 @@
  * - 業務邏輯分散在 js/modules/*.js
  */
 
-import { debounce, installConsoleFilter } from "./modules/core.js";
+import { debounce, installConsoleFilter, preconnectUrl } from "./modules/core.js";
 import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
@@ -82,6 +82,11 @@ async function boot() {
     setInitialLoadingProgress(12, "讀取設定中…");
     await loadConfigJson();
     sanitizeEdgeUrls();
+
+    // 預熱網路連線：AUTH / TOPUP / USAGE_LOG 常是同一個 GAS 網域，先 preconnect 可降低首次儲值/驗證延遲。
+    preconnectUrl(config.AUTH_API_URL);
+    preconnectUrl(config.TOPUP_API_URL);
+    preconnectUrl(config.USAGE_LOG_URL);
   } catch (e) {
     console.error("[Config] load failed:", e);
     hideInitialLoading();

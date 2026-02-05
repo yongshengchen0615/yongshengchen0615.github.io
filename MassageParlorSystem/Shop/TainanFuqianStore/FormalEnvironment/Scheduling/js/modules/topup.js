@@ -30,14 +30,35 @@ function fireTopupEvent_({ event, userId, displayName, detailObj, detailText, ev
       : detailObj
         ? safeOneLine_(JSON.stringify(detailObj))
         : "";
-    logUsageEvent({
-      event,
-      userId,
-      displayName,
-      detail,
-      noThrottle: true,
-      eventCn: eventCn || "儲值",
-    }).catch(() => {});
+
+    // 延後送出：避免與 redeem/auth 關鍵路徑 fetch 競爭同一個 GAS 網域連線。
+    const send = () => {
+      logUsageEvent({
+        event,
+        userId,
+        displayName,
+        detail,
+        noThrottle: true,
+        eventCn: eventCn || "儲值",
+      }).catch(() => {});
+    };
+
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(
+        () => {
+          try {
+            send();
+          } catch (_) {}
+        },
+        { timeout: 1500 }
+      );
+    } else {
+      setTimeout(() => {
+        try {
+          send();
+        } catch (_) {}
+      }, 0);
+    }
   } catch (_) {}
 }
 
@@ -86,6 +107,23 @@ function postTextPlainJson_(url, bodyObj) {
     TOPUP_FETCH_TIMEOUT_MS,
     "INVALID_JSON"
   );
+}
+
+function sleep_(ms) {
+  return new Promise((r) => setTimeout(r, Math.max(0, Number(ms) || 0)));
+}
+
+async function redeemWithFastRetry_(topupUrl, redeemPayload) {
+  // 只重試「明顯是鎖競爭/偶發 timeout」的情況，避免延長真正失敗的等待。
+  const first = await postTextPlainJson_(topupUrl, redeemPayload);
+  if (first && first.ok === true) return first;
+
+  const err = String(first && first.error ? first.error : "").trim();
+  if (err !== "BUSY_TRY_AGAIN" && err !== "TIMEOUT") return first;
+
+  // 小退避：讓對方鎖釋放
+  await sleep_(err === "BUSY_TRY_AGAIN" ? 220 : 160);
+  return await postTextPlainJson_(topupUrl, redeemPayload);
 }
 
 // 注意：測試環境會用 local_dev 等非 LINE userId。
@@ -347,7 +385,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       user: { userId: userIdSafe, displayName: displayNameSafe }, // compat
       note: `Scheduling|origUserId=${encodeURIComponent(userIdSafe)}`,
     };
-    const redeem = await postTextPlainJson_(config.TOPUP_API_URL, redeemPayload);
+    const redeem = await redeemWithFastRetry_(config.TOPUP_API_URL, redeemPayload);
     if (!redeem || redeem.ok !== true) {
       const e = new Error(redeem?.error || "REDEEM_FAILED");
       // attach some debug context (won't be sent to server)
@@ -452,16 +490,22 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     hideLoadingHint();
 
     // background verify (best-effort)
-    authCheck_(userIdSafe, displayNameSafe)
-      .then((check2) => {
-        try {
-          updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
-        } catch (_) {}
-        try {
-          updateFeatureState(check2);
-        } catch (_) {}
-      })
-      .catch(() => {});
+    // - Gate 情境通常會 reload：不需要再驗證一次，避免多餘往返
+    // - 用 setTimeout 讓 alert/reload 先跑，減少成功體感延遲
+    if (!reloadOnSuccess) {
+      setTimeout(() => {
+        authCheck_(userIdSafe, displayNameSafe)
+          .then((check2) => {
+            try {
+              updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
+            } catch (_) {}
+            try {
+              updateFeatureState(check2);
+            } catch (_) {}
+          })
+          .catch(() => {});
+      }, 0);
+    }
 
     fireTopupEvent_({
       event: "topup_success",

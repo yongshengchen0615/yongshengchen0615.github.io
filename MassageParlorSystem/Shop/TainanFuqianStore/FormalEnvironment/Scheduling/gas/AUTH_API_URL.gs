@@ -438,6 +438,80 @@ function readUsersTable_() {
   return { sheet: sheet, values: values, rowMap: rowMap };
 }
 
+/* =========================
+ * ✅ Fast user row lookup (CacheService + TextFinder)
+ * - 只針對單一 userId 的 check/updateuser 走快路徑
+ * - 避免每次都讀寫整張 Users 表
+ * ========================= */
+
+function cacheGet_(k) {
+  try {
+    return CacheService.getScriptCache().get(String(k || ""));
+  } catch (e) {
+    return null;
+  }
+}
+
+function cachePut_(k, v, ttlSec) {
+  try {
+    CacheService.getScriptCache().put(String(k || ""), String(v || ""), Math.max(1, parseInt(ttlSec || 300, 10)));
+  } catch (e) {}
+}
+
+function findUserRowIndexFast_(sheet, userId) {
+  userId = String(userId || "").trim();
+  if (!userId) return 0;
+
+  var last = sheet.getLastRow();
+  if (last < 2) return 0;
+
+  var cacheKey = "USR_ROW|" + userId;
+  var cached = cacheGet_(cacheKey);
+  if (cached) {
+    var r0 = parseInt(cached, 10);
+    if (!isNaN(r0) && r0 >= 2 && r0 <= last) {
+      try {
+        var v0 = String(sheet.getRange(r0, 1).getValue() || "").trim();
+        if (v0 === userId) return r0;
+      } catch (e0) {
+        // ignore and fallback
+      }
+    }
+  }
+
+  // TextFinder on column A (userId)
+  try {
+    var rg = sheet.getRange(2, 1, last - 1, 1);
+    var cell = rg.createTextFinder(userId).matchEntireCell(true).findNext();
+    if (cell) {
+      var r = cell.getRow();
+      cachePut_(cacheKey, String(r), 900);
+      return r;
+    }
+  } catch (e1) {
+    // ignore
+  }
+
+  // Fallback: scan IDs (slower)
+  var ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || "").trim() === userId) {
+      var r2 = i + 2;
+      cachePut_(cacheKey, String(r2), 900);
+      return r2;
+    }
+  }
+  return 0;
+}
+
+function readUserRowFast_(userId) {
+  var sheet = getOrCreateUserSheet_();
+  var rowIndex = findUserRowIndexFast_(sheet, userId);
+  if (!rowIndex) return { sheet: sheet, rowIndex: 0, row: null };
+  var row = sheet.getRange(rowIndex, 1, 1, 12).getValues()[0];
+  return { sheet: sheet, rowIndex: rowIndex, row: row };
+}
+
 function writeUsersTable_(sheet, values) {
   if (!values || !values.length) return;
   sheet.getRange(2, 1, values.length, 12).setValues(values);
@@ -603,43 +677,6 @@ function syncPerformanceAccessByEnabled_(userId, displayName, masterCode, enable
 function buildCheckResult_(userId, displayNameCandidate) {
   userId = String(userId || "").trim();
   displayNameCandidate = String(displayNameCandidate || "").trim();
-
-  var db = readUsersTable_();
-  var values = db.values;
-
-  applyExpireRuleToValues_(values);
-
-  // ✅ 若 check 時前端有帶 displayName，且使用者已存在 → 同步更新 Users.displayName
-  // 並依 enabled 同步 PersonalStatus / PerformanceAccess 的 displayName
-  if (userId && displayNameCandidate) {
-    var idx2 = db.rowMap[userId];
-    if (typeof idx2 === "number") {
-      var row2 = values[idx2];
-      var oldDn = String(row2[1] || "").trim();
-      if (oldDn !== displayNameCandidate) {
-        row2[1] = displayNameCandidate;
-        try {
-          var masterCode2 = String(row2[6] || "").trim();
-          var psEnabled2 = normalizeYesNo_(row2[9], "否");
-          var perfEnabled2 = normalizeYesNo_(row2[11], "否");
-          syncPersonalStatusByEnabled_(userId, displayNameCandidate, masterCode2, psEnabled2);
-          syncPerformanceAccessByEnabled_(userId, displayNameCandidate, masterCode2, perfEnabled2, "");
-        } catch (eSyncName) {
-          // best-effort
-        }
-
-        // ✅ PATCH: Scheduling 使用者改名時，同步 TopUp Serials.UsedNote
-        try {
-          syncTopupSerialUsedNoteName_(userId, displayNameCandidate);
-        } catch (eTopupSync) {
-          // best-effort
-        }
-      }
-    }
-  }
-
-  writeUsersTable_(db.sheet, values);
-
   if (!userId) {
     return {
       ok: true,
@@ -657,8 +694,10 @@ function buildCheckResult_(userId, displayNameCandidate) {
     };
   }
 
-  var idx = db.rowMap[userId];
-  if (typeof idx !== "number") {
+  var got = readUserRowFast_(userId);
+  var sheet = got.sheet;
+  var rowIndex = got.rowIndex;
+  if (!rowIndex || !got.row) {
     return {
       ok: true,
       userId: userId,
@@ -675,7 +714,36 @@ function buildCheckResult_(userId, displayNameCandidate) {
     };
   }
 
-  var row = values[idx];
+  var row = got.row;
+
+  // ✅ 若 check 時前端有帶 displayName，且使用者已存在 → 只更新該列（避免全表寫回）
+  if (displayNameCandidate) {
+    var oldDn = String(row[1] || "").trim();
+    if (oldDn !== displayNameCandidate) {
+      row[1] = displayNameCandidate;
+      try {
+        sheet.getRange(rowIndex, 2).setValue(displayNameCandidate);
+      } catch (eDnWrite) {}
+
+      // best-effort: 同步衍生表 displayName（依 enabled）
+      try {
+        var masterCode2 = String(row[6] || "").trim();
+        var psEnabled2 = normalizeYesNo_(row[9], "否");
+        var perfEnabled2 = normalizeYesNo_(row[11], "否");
+        syncPersonalStatusByEnabled_(userId, displayNameCandidate, masterCode2, psEnabled2);
+        syncPerformanceAccessByEnabled_(userId, displayNameCandidate, masterCode2, perfEnabled2, "");
+      } catch (eSyncName) {}
+
+      // ✅ PATCH: Scheduling 使用者改名時，同步 TopUp Serials.UsedNote（節流，避免阻塞）
+      try {
+        var ck = "TOPUP_SYNC_DN|" + userId;
+        if (!cacheGet_(ck)) {
+          cachePut_(ck, "1", 6 * 60 * 60);
+          syncTopupSerialUsedNoteName_(userId, displayNameCandidate);
+        }
+      } catch (eTopupSync) {}
+    }
+  }
 
   var displayName = String(row[1] || "").trim();
   var audit = normalizeAudit_(row[2]);
@@ -689,6 +757,14 @@ function buildCheckResult_(userId, displayNameCandidate) {
   var performanceEnabled = normalizeYesNo_(row[11], "否");
 
   var remainingDays = calcRemainingDaysByDate_(startDate, usageDays);
+
+  // ✅ 與舊版 expire rule 對齊：通過但已過期 → pushEnabled 強制為 否（必要時只更新單一欄位）
+  if (audit === "通過" && typeof remainingDays === "number" && remainingDays < 0) {
+    pushEnabled = "否";
+    try {
+      if (String(row[8] || "").trim() !== "否") sheet.getRange(rowIndex, 9).setValue("否");
+    } catch (ePushWrite) {}
+  }
 
   return {
     ok: true,
@@ -846,12 +922,12 @@ function handleUpdateUser_(data) {
   var userId = String((data && data.userId) || "").trim();
   if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
 
-  var db = readUsersTable_();
-  var values = db.values;
-  var idx = db.rowMap[userId];
-  if (typeof idx !== "number") return jsonOut_({ ok: false, userId: userId, error: "User not found" });
+  var got = readUserRowFast_(userId);
+  if (!got.rowIndex || !got.row) return jsonOut_({ ok: false, userId: userId, error: "User not found" });
 
-  var row = values[idx];
+  var sheet = got.sheet;
+  var rowIndex = got.rowIndex;
+  var row = got.row;
 
   var oldDisplayName = String(row[1] || "").trim();
 
@@ -919,13 +995,25 @@ function handleUpdateUser_(data) {
     );
   }
 
-  applyExpireRuleToValues_(values);
-  writeUsersTable_(db.sheet, values);
+  // ✅ 與舊版 expire rule 對齊：僅針對此 user 計算/強制 pushEnabled
+  try {
+    var rd2 = calcRemainingDaysByDate_(row[4], row[5]);
+    if (String(row[2] || "").trim() === "通過" && typeof rd2 === "number" && rd2 < 0) row[8] = "否";
+  } catch (eExp) {}
+
+  // 只寫回該列（避免整張 Users setValues）
+  sheet.getRange(rowIndex, 1, 1, 12).setValues([row]);
 
   // ✅ PATCH: 若有更新 displayName，則同步 TopUp Serials.UsedNote
   try {
     var dnAfter = String(row[1] || "").trim();
-    if (newDisplayName && dnAfter && dnAfter !== oldDisplayName) syncTopupSerialUsedNoteName_(userId, dnAfter);
+    if (newDisplayName && dnAfter && dnAfter !== oldDisplayName) {
+      var ck2 = "TOPUP_SYNC_DN|" + userId;
+      if (!cacheGet_(ck2)) {
+        cachePut_(ck2, "1", 6 * 60 * 60);
+        syncTopupSerialUsedNoteName_(userId, dnAfter);
+      }
+    }
   } catch (eTopupSync2) {}
 
   return jsonOut_({ ok: true, userId: userId });

@@ -499,9 +499,10 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
 
 function serialsRedeem_({ serial, note, actor }) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  // 限時搶鎖：避免高併發時使用者卡住太久
+  const locked = lock.tryLock(8000);
+  if (!locked) throw new Error("BUSY_TRY_AGAIN");
   let res = null;
-  let syncArgs = null;
   let logDetail = null;
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
@@ -551,17 +552,13 @@ function serialsRedeem_({ serial, note, actor }) {
         performanceEnabled,
       },
     };
-
-    syncArgs = { userId: actor.userId, displayName: actor.displayName };
     logDetail = { serial, note, actor };
   } finally {
     lock.releaseLock();
   }
 
   // Best-effort side effects outside lock to reduce queueing.
-  try {
-    if (syncArgs && syncArgs.userId && syncArgs.displayName) syncSerialUsedNoteForUser_(syncArgs);
-  } catch (_) {}
+  // ✅ 速度優先：redeem 不再做 UsedNote 全表同步（改由 serials_sync_used_note_public 或 admin login 觸發）。
   try {
     logOp_("serials_redeem", serial, logDetail);
   } catch (_) {}
@@ -576,9 +573,10 @@ function serialsRedeemPublic_({ serial, note, user }) {
   if (!userId) throw new Error("USER_ID_REQUIRED");
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  // 限時搶鎖：避免高併發時使用者卡住太久
+  const locked = lock.tryLock(8000);
+  if (!locked) throw new Error("BUSY_TRY_AGAIN");
   let res = null;
-  let syncArgs = null;
   let logDetail = null;
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
@@ -630,17 +628,13 @@ function serialsRedeemPublic_({ serial, note, user }) {
         performanceEnabled,
       },
     };
-
-    syncArgs = { userId, displayName };
     logDetail = { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } };
   } finally {
     lock.releaseLock();
   }
 
   // Best-effort side effects outside lock to reduce queueing.
-  try {
-    if (syncArgs && syncArgs.userId && syncArgs.displayName) syncSerialUsedNoteForUser_(syncArgs);
-  } catch (_) {}
+  // ✅ 速度優先：redeem_public 不再做 UsedNote 全表同步（改由 serials_sync_used_note_public 觸發）。
   try {
     logOp_("serials_redeem_public", serial, logDetail);
   } catch (_) {}
