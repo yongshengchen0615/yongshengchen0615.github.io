@@ -20,6 +20,9 @@ import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
 
 const PERF_FETCH_TIMEOUT_MS = 25000;
 
+// ✅ 日期區間上限：3 個月（以 93 天近似，避免 GAS 同步過久/逾時）
+const PERF_MAX_RANGE_DAYS = 93;
+
 /** ✅ 類別表數量口徑：固定用「數量」欄位（節=數量） */
 const PERF_CARD_QTY_MODE = "qty"; // "qty" only
 
@@ -206,7 +209,7 @@ function normalizeRange_(startKey, endKey, maxDays) {
   }
 
   const out = [];
-  const limit = Number(maxDays) > 0 ? Number(maxDays) : 31;
+  const limit = Number(maxDays) > 0 ? Number(maxDays) : PERF_MAX_RANGE_DAYS;
   for (let i = 0; i < limit; i++) {
     const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
     if (d.getTime() > end.getTime()) break;
@@ -232,7 +235,7 @@ function readRangeFromInputs_() {
   if (!userId) return { ok: false, error: "MISSING_USERID", userId: "", startKey, endKey };
   if (!startKey) return { ok: false, error: "MISSING_START", userId, startKey, endKey };
 
-  const range = normalizeRange_(startKey, endKey, 31);
+  const range = normalizeRange_(startKey, endKey, PERF_MAX_RANGE_DAYS);
   if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", userId, startKey, endKey };
 
   if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
@@ -1176,7 +1179,7 @@ async function renderFromCache_(mode, info) {
     showError_(true);
     if (r && r.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
     else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
-    else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
 
     setMeta_("最後更新：—");
@@ -1453,7 +1456,7 @@ export async function prefetchPerformanceOnce() {
 
     const from = localDateKeyMonthStart_();
     const to = localDateKeyToday_();
-    const dateKeys = normalizeRange_(from, to, 31).dateKeys;
+    const dateKeys = normalizeRange_(from, to, PERF_MAX_RANGE_DAYS).dateKeys;
 
     const info = { ok: true, userId, from, to, dateKeys };
     const res = await reloadAndCache_(info, { showToast: false });
@@ -1483,7 +1486,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
   if (!info.ok) {
     if (info.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
     else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
-    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
     return { ok: false, error: info.error || "BAD_RANGE" };
   }
