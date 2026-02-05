@@ -500,6 +500,9 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
 function serialsRedeem_({ serial, note, actor }) {
   const lock = LockService.getScriptLock();
   lock.waitLock(25000);
+  let res = null;
+  let syncArgs = null;
+  let logDetail = null;
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
     const idx = findSerialRowIndex_(sh, serial);
@@ -521,14 +524,6 @@ function serialsRedeem_({ serial, note, actor }) {
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
 
-    // Sync displayName changes across all redeemed rows by this user.
-    // (So if a user/admin changes name, historical UsedNote will be updated too.)
-    try {
-      syncSerialUsedNoteForUser_({ userId: actor.userId, displayName: actor.displayName });
-    } catch (_) {}
-
-    logOp_("serials_redeem", serial, { serial, note, actor });
-
     const pushEnabled = parseFeatureCell_(row[16]);
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
@@ -537,7 +532,7 @@ function serialsRedeem_({ serial, note, actor }) {
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
 
-    return {
+    res = {
       serial,
       amount,
       status: STATUS_USED,
@@ -556,9 +551,22 @@ function serialsRedeem_({ serial, note, actor }) {
         performanceEnabled,
       },
     };
+
+    syncArgs = { userId: actor.userId, displayName: actor.displayName };
+    logDetail = { serial, note, actor };
   } finally {
     lock.releaseLock();
   }
+
+  // Best-effort side effects outside lock to reduce queueing.
+  try {
+    if (syncArgs && syncArgs.userId && syncArgs.displayName) syncSerialUsedNoteForUser_(syncArgs);
+  } catch (_) {}
+  try {
+    logOp_("serials_redeem", serial, logDetail);
+  } catch (_) {}
+
+  return res;
 }
 
 function serialsRedeemPublic_({ serial, note, user }) {
@@ -569,6 +577,9 @@ function serialsRedeemPublic_({ serial, note, user }) {
 
   const lock = LockService.getScriptLock();
   lock.waitLock(25000);
+  let res = null;
+  let syncArgs = null;
+  let logDetail = null;
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
     const idx = findSerialRowIndex_(sh, serial);
@@ -592,14 +603,6 @@ function serialsRedeemPublic_({ serial, note, user }) {
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
 
-    // Sync displayName changes across all redeemed rows by this user.
-    // (So if a user changes name, historical UsedNote will be updated too.)
-    try {
-      syncSerialUsedNoteForUser_({ userId, displayName });
-    } catch (_) {}
-
-    logOp_("serials_redeem_public", serial, { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } });
-
     const pushEnabled = parseFeatureCell_(row[16]);
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
@@ -608,7 +611,7 @@ function serialsRedeemPublic_({ serial, note, user }) {
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
 
-    return {
+    res = {
       serial,
       amount,
       status: STATUS_USED,
@@ -627,9 +630,22 @@ function serialsRedeemPublic_({ serial, note, user }) {
         performanceEnabled,
       },
     };
+
+    syncArgs = { userId, displayName };
+    logDetail = { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } };
   } finally {
     lock.releaseLock();
   }
+
+  // Best-effort side effects outside lock to reduce queueing.
+  try {
+    if (syncArgs && syncArgs.userId && syncArgs.displayName) syncSerialUsedNoteForUser_(syncArgs);
+  } catch (_) {}
+  try {
+    logOp_("serials_redeem_public", serial, logDetail);
+  } catch (_) {}
+
+  return res;
 }
 
 function syncSerialUsedNoteForUser_({ userId, displayName }) {
@@ -872,10 +888,26 @@ function parseFeatureCell_(cellValue) {
 }
 
 function findSerialRowIndex_(sh, serial) {
-  const values = sh.getDataRange().getValues();
-  for (let r = 2; r <= values.length; r++) {
-    const rowSerial = String(values[r - 1][0] || "").trim();
-    if (rowSerial === serial) return r;
+  const s = String(serial || "").trim();
+  if (!s) return -1;
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return -1;
+
+  // Fast path: TextFinder on column A (Serial)
+  try {
+    const rg = sh.getRange(2, 1, lastRow - 1, 1);
+    const cell = rg.createTextFinder(s).matchEntireCell(true).findNext();
+    if (cell) return cell.getRow();
+  } catch (_) {
+    // fallback below
+  }
+
+  // Fallback: scan values (slower)
+  const values = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    const rowSerial = String(values[i][0] || "").trim();
+    if (rowSerial === s) return i + 2;
   }
   return -1;
 }

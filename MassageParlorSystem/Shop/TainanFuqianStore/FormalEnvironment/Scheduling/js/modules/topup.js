@@ -41,14 +41,51 @@ function fireTopupEvent_({ event, userId, displayName, detailObj, detailText, ev
   } catch (_) {}
 }
 
+const TOPUP_FETCH_TIMEOUT_MS = 12000;
+const AUTH_FETCH_TIMEOUT_MS = 12000;
+
+async function fetchJsonWithTimeout_(url, fetchInit, timeoutMs, invalidJsonError) {
+  const ms = Math.max(0, Number(timeoutMs) || 0);
+  let ctrl = null;
+  let t = null;
+
+  try {
+    if (typeof AbortController !== "undefined" && ms > 0) {
+      ctrl = new AbortController();
+      t = setTimeout(() => {
+        try {
+          ctrl.abort();
+        } catch (_) {}
+      }, ms);
+    }
+
+    const init = ctrl ? { ...(fetchInit || {}), signal: ctrl.signal } : (fetchInit || {});
+    const resp = await fetch(url, init);
+    const data = await resp.json().catch(() => ({ ok: false, error: invalidJsonError || "INVALID_JSON" }));
+    // 讓呼叫端可以依需要處理 HTTP code（目前仍以 data.ok 為主）
+    data.__httpOk = resp.ok;
+    data.__httpStatus = resp.status;
+    return data;
+  } catch (e) {
+    // AbortController aborted
+    const msg = String(e?.name || "") === "AbortError" ? "TIMEOUT" : String(e?.message || e || "FETCH_FAILED");
+    return { ok: false, error: msg };
+  } finally {
+    if (t) clearTimeout(t);
+  }
+}
+
 function postTextPlainJson_(url, bodyObj) {
-  return fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(bodyObj || {}),
-  })
-    .then((r) => r.json())
-    .catch(() => ({ ok: false, error: "INVALID_JSON" }));
+  return fetchJsonWithTimeout_(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(bodyObj || {}),
+    },
+    TOPUP_FETCH_TIMEOUT_MS,
+    "INVALID_JSON"
+  );
 }
 
 // 注意：測試環境會用 local_dev 等非 LINE userId。
@@ -61,15 +98,32 @@ async function authCheck_(userId, displayName) {
     encodeURIComponent(userId) +
     "&displayName=" +
     encodeURIComponent(displayName || "");
-  const resp = await fetch(url, { method: "GET", cache: "no-store" });
-  if (!resp.ok) throw new Error("AUTH_CHECK_HTTP_" + resp.status);
-  return await resp.json();
+  const ret = await fetchJsonWithTimeout_(
+    url,
+    { method: "GET", cache: "no-store" },
+    AUTH_FETCH_TIMEOUT_MS,
+    "INVALID_JSON"
+  );
+  if (!ret || ret.ok !== true) {
+    const suffix = ret && ret.__httpStatus ? "_" + ret.__httpStatus : "";
+    throw new Error((ret && ret.error ? String(ret.error) : "AUTH_CHECK_FAILED") + suffix);
+  }
+  return ret;
 }
 
 async function authUpdateUser_(payload) {
   // 注意：AUTH 的 updateuser 若沒帶 personalStatusEnabled/scheduleEnabled... 會被重設為「否」
   // 因此這裡務必帶上 check 回傳的既有值。
-  const ret = await postTextPlainJson_(config.AUTH_API_URL, { mode: "updateuser", ...(payload || {}) });
+  const ret = await fetchJsonWithTimeout_(
+    config.AUTH_API_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ mode: "updateuser", ...(payload || {}) }),
+    },
+    AUTH_FETCH_TIMEOUT_MS,
+    "INVALID_JSON"
+  );
   if (!ret || ret.ok !== true) throw new Error(ret?.error || "AUTH_UPDATEUSER_FAILED");
   return ret;
 }
@@ -275,6 +329,12 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     let currentRemainingDays = null;
     let newRemainingDays = null;
 
+    // redeem + auth_check 可併行：縮短關鍵路徑等待（redeem 失敗時 check 結果會被丟棄）
+    stage = "redeem+auth_check";
+    const checkPromise = authCheck_(userIdSafe, displayNameSafe)
+      .then((r) => ({ ok: true, value: r }))
+      .catch((err) => ({ ok: false, error: err }));
+
     // 1) redeem serial → amount
     const redeemPayload = {
       mode: "serials_redeem_public",
@@ -301,7 +361,9 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
 
     // 2) read current auth status (contains remainingDays & feature flags)
     stage = "auth_check";
-    const check = await authCheck_(userIdSafe, displayNameSafe);
+    const checkWrap = await checkPromise;
+    if (!checkWrap.ok) throw checkWrap.error || new Error("AUTH_CHECK_FAILED");
+    const check = checkWrap.value;
     const currentRd = Number(check?.remainingDays);
     currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
 
@@ -375,13 +437,11 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       usageDays,
     });
 
-    // 4) verify + update banner
-    stage = "auth_check2";
-    const check2 = await authCheck_(userIdSafe, displayNameSafe);
-    updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
-    // 同步前端功能提示列（避免不重整時畫面仍顯示未開通）
+    // 4) 先用本地計算值更新 UI，最後驗證改成背景執行（少一次關鍵路徑往返）
+    stage = "ui_update";
+    updateUsageBanner(displayNameSafe, newRemainingDays);
     try {
-      updateFeatureState(check2 || {
+      updateFeatureState({
         pushEnabled: newPushEnabled,
         personalStatusEnabled: newPersonalStatusEnabled,
         scheduleEnabled: newScheduleEnabled,
@@ -391,6 +451,18 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
 
     hideLoadingHint();
 
+    // background verify (best-effort)
+    authCheck_(userIdSafe, displayNameSafe)
+      .then((check2) => {
+        try {
+          updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
+        } catch (_) {}
+        try {
+          updateFeatureState(check2);
+        } catch (_) {}
+      })
+      .catch(() => {});
+
     fireTopupEvent_({
       event: "topup_success",
       userId: userIdSafe,
@@ -399,7 +471,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
         context,
         addDays,
         remainingDaysBefore: currentRemainingDays,
-        remainingDaysAfter: check2?.remainingDays,
+        remainingDaysAfter: newRemainingDays,
         syncEnabled,
         features: {
           pushEnabled: newPushEnabled,
@@ -408,6 +480,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
           performanceEnabled: newPerformanceEnabled,
         },
         reloadOnSuccess: !!reloadOnSuccess,
+        verified: false,
       },
       eventCn: "儲值成功",
     });
