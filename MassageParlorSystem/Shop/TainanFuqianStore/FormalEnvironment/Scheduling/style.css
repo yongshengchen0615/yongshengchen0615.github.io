@@ -104,6 +104,8 @@ body {
   font-size: 14px;
 }
 
+
+
 /* 主要 layout */
 .app-root {
   opacity: 1;
@@ -199,6 +201,54 @@ body {
   /* 確保 chips 在漸層下方，且不受 z-index 遮蔽互動 */
   position: relative;
   z-index: 1;
+}
+
+/* =========================================================
+ * ✅ 當日首次提示：左右滑動提示動畫（功能 chips 列）
+ * ========================================================= */
+@keyframes swipeHintArrowLeft {
+  0%   { opacity: 0.0; transform: translate(6px, -50%); }
+  35%  { opacity: 0.85; transform: translate(0px, -50%); }
+  70%  { opacity: 0.25; transform: translate(-7px, -50%); }
+  100% { opacity: 0.0; transform: translate(-7px, -50%); }
+}
+
+@keyframes swipeHintArrowRight {
+  0%   { opacity: 0.0; transform: translate(-6px, -50%); }
+  35%  { opacity: 0.85; transform: translate(0px, -50%); }
+  70%  { opacity: 0.25; transform: translate(7px, -50%); }
+  100% { opacity: 0.0; transform: translate(7px, -50%); }
+}
+
+.feature-chips.swipe-hint::before,
+.feature-chips.swipe-hint::after {
+  display: block;
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(2, 6, 23, 0.55);
+  color: var(--text-sub);
+  font-size: 14px;
+  line-height: 24px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+  /* transform/opacity 交給 keyframes（避免互相覆蓋） */
+}
+
+.feature-chips.swipe-hint::before {
+  content: "‹";
+  left: 2px;
+  animation: swipeHintArrowLeft 1.25s ease-in-out infinite;
+}
+
+.feature-chips.swipe-hint::after {
+  content: "›";
+  right: 2px;
+  animation: swipeHintArrowRight 1.25s ease-in-out infinite;
 }
 
 /* 左右漸層提示（提示可水平滑動） */
@@ -325,6 +375,7 @@ body {
   -webkit-overflow-scrolling: touch;
   justify-content: center;
   min-width: 0;
+  position: relative;
 }
 
 /* 把 header 漸層放在 app-header（父容器）上，確保不隨右側按鈕列滾動 */
@@ -357,6 +408,50 @@ body {
 /* header 兩側漸層提示 */
 .app-header-right::before,
 .app-header-right::after { display: none; }
+
+/* =========================================================
+ * ✅ 當日首次提示：左右滑動提示動畫（右上按鈕列）
+ * ========================================================= */
+.app-header-right.swipe-hint::before,
+.app-header-right.swipe-hint::after {
+  display: block;
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text-sub);
+  font-size: 16px;
+  line-height: 28px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 6;
+  /* transform/opacity 交給 keyframes（避免互相覆蓋） */
+}
+
+.app-header-right.swipe-hint::before {
+  content: "‹";
+  left: 6px;
+  animation: swipeHintArrowLeft 1.25s ease-in-out infinite;
+}
+
+.app-header-right.swipe-hint::after {
+  content: "›";
+  right: 6px;
+  animation: swipeHintArrowRight 1.25s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-header-right.swipe-hint::before,
+  .app-header-right.swipe-hint::after,
+  .feature-chips.swipe-hint::before,
+  .feature-chips.swipe-hint::after {
+    animation: none;
+    opacity: 0.7;
+  }
+}
 
 /* 增加 header 按鈕點擊面積 */
 .app-header-right .btn { padding: 8px 14px; }

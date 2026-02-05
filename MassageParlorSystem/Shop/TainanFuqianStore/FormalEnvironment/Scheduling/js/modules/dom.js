@@ -41,6 +41,10 @@ export const dom = {
   btnTopupEl: document.getElementById("btnTopup"),
   btnPerformanceEl: document.getElementById("btnPerformance"),
 
+  // 可水平滑動的控制列
+  appHeaderRightEl: document.querySelector(".app-header-right"),
+  featureChipsEl: document.getElementById("featureChips"),
+
   // Feature / personal tools
   usageBannerEl: document.getElementById("usageBanner"),
   usageBannerTextEl: document.getElementById("usageBanner")

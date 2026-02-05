@@ -14,6 +14,7 @@ import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
 import { manualRefreshPerformance } from "./performance.js";
+import { maybeShowDailyFirstOpenHint } from "./dailyHint.js";
 
 const POLL = {
   BASE_MS: 3000,
@@ -166,6 +167,14 @@ export function startPolling(extraReadyPromise) {
 
     setInitialLoadingProgress(100, "完成");
     hideInitialLoading();
+
+      // ✅ 當日第一次開啟提示 + 左右滑動提示動畫
+      try {
+        maybeShowDailyFirstOpenHint();
+      } catch {
+        // ignore
+      }
+
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   });
