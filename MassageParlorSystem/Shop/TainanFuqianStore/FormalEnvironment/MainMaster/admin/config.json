@@ -38,6 +38,9 @@
   "TECH_USAGE_LOG_ADMIN_KEY": "00000000",
   "_TECH_USAGE_LOG_ADMIN_KEY_DESC": "技師使用紀錄 GAS Web App 管理金鑰：用於刪除功能（mode=deleteByName）。需與 GAS 端 ADMIN_KEY（或 ScriptProperties.ADMIN_KEY）一致；留空則前端不允許刪除。",
 
+  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbw3RGQ80Z0YlUy6-HdnryFChRznY_kaDpNzuPqjM3qnjOZUyfmmBtuPOcadZ5L4KQz7Xg/exec",
+  "_PERF_SYNC_API_URL_DESC": "業績同步（storeId 版）GAS Web App URL：POST mode=syncStorePerf_v1（Scheduling 的 performance.js 同步來源）。",
+
   "EDGE_STATUS_URLS": [
     "https://script.google.com/macros/s/AKfycbzZ_lc_DGk-oyzvE1w3uMcT_L7fpDZH6eyYVPGUxI4heP8QvJgIZU-bgg45nbn40jU5mg/exec",
     "https://script.google.com/macros/s/AKfycby1ZKbWSzbt0XPH6AWzH5GjXmutp3gevqRiTQ34BPEKzfFT5jABiNXcyiG0VbFw2DblDg/exec",

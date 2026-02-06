@@ -46,6 +46,7 @@
         <button id="viewUsersBtn" class="btn ghost" type="button" aria-pressed="false">技師名單</button>
         <button id="viewTechUsageLogsBtn" class="btn ghost" type="button" aria-pressed="false">技師使用紀錄</button>
         <button id="viewScheduleBtn" class="btn ghost" type="button" aria-pressed="false">排班表</button>
+        <button id="viewPerformanceBtn" class="btn ghost" type="button" aria-pressed="false">業績查詢</button>
       </div>
 
       <section id="adminsKpiSection" class="kpi-grid" aria-label="統計資訊">
@@ -596,6 +597,138 @@
         </div>
       </section>
 
+      <!-- ✅ 業績查詢（移植 Scheduling） -->
+      <section id="performancePanelSection" class="panel" aria-label="業績查詢" hidden>
+        <div class="panel-head">
+          <div class="panel-title" aria-hidden="true">
+            <div class="panel-title-main">業績查詢</div>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div class="filters perf-filters">
+            <div class="filter">
+              <label for="perfTechNoSelect" class="filter-label">師傅編號</label>
+              <select id="perfTechNoSelect" class="select">
+                <option value="">（預設）本人/不指定</option>
+              </select>
+            </div>
+            <div class="filter">
+              <label for="perfDateStart" class="filter-label">開始日期</label>
+              <input id="perfDateStart" class="input" type="date" lang="en-CA" />
+            </div>
+            <div class="filter">
+              <label for="perfDateEnd" class="filter-label">結束日期</label>
+              <input id="perfDateEnd" class="input" type="date" lang="en-CA" />
+            </div>
+            <div class="filter">
+              <label class="filter-label" aria-hidden="true">&nbsp;</label>
+              <div class="perf-actions">
+                <button id="perfSearchSummary" class="btn ghost" type="button">業績統計</button>
+                <button id="perfSearchDetail" class="btn ghost" type="button">業績明細</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px;">
+            <header class="card-header">
+              <div class="card-header-left">
+                <h2 class="card-title">師傅業績</h2>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <p id="perfMeta" class="card-subtitle">—</p>
+                  <p id="perfMonthRates" class="card-subtitle" style="font-weight:600;">—</p>
+                </div>
+              </div>
+              <div class="card-header-right">
+                <span id="perfStatus" class="badge">尚未查詢</span>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="table-wrapper" style="margin-bottom:12px;">
+                <table class="status-table">
+                  <thead>
+                    <tr>
+                      <th style="width:120px;">類別</th>
+                      <th>單數</th>
+                      <th>筆數</th>
+                      <th>數量</th>
+                      <th>金額</th>
+                    </tr>
+                  </thead>
+                  <tbody id="perfSummaryRows">
+                    <tr><td colspan="5" style="color:var(--text-sub);">請先查詢。</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="chart-toolbar" aria-label="圖表工具列">
+                <div class="chart-modes" role="group" aria-label="圖表模式">
+                  <button id="perfChartModeDaily" class="btn ghost btn-chart-mode" type="button" data-mode="daily">日業績</button>
+                  <button id="perfChartModeCumu"  class="btn ghost btn-chart-mode" type="button" data-mode="cumu">累積</button>
+                  <button id="perfChartModeMA7"   class="btn ghost btn-chart-mode" type="button" data-mode="ma7">7日均線</button>
+                  <button id="perfChartModeBar"  class="btn ghost btn-chart-mode" type="button" data-mode="bar">柱狀圖</button>
+                </div>
+                <button id="perfChartReset" class="btn ghost btn-chart-reset" type="button">↩︎ 重設顯示</button>
+              </div>
+
+              <div class="chart-toggle" role="group" aria-label="圖表顯示項目">
+                <label class="toggle-chip">
+                  <input id="perfChartToggleAmount" type="checkbox" checked />
+                  <span>金額</span>
+                </label>
+
+                <label class="toggle-chip">
+                  <input id="perfChartToggleOldRate" type="checkbox" checked />
+                  <span>老點率</span>
+                </label>
+
+                <label class="toggle-chip">
+                  <input id="perfChartToggleSchedRate" type="checkbox" checked />
+                  <span>排班率</span>
+                </label>
+              </div>
+
+              <div class="chart-wrapper" style="margin:10px 0 12px 0;">
+                <canvas id="perfChart" height="160" aria-label="業績趨勢圖表" role="img"></canvas>
+              </div>
+
+              <div class="table-wrapper">
+                <table class="status-table">
+                  <thead>
+                    <tr id="perfDetailHeadRow">
+                      <th>服務項目</th>
+                      <th>總筆數</th>
+                      <th>總節數</th>
+                      <th>總計金額</th>
+                      <th>老點筆數</th>
+                      <th>老點節數</th>
+                      <th>老點金額</th>
+                      <th>排班筆數</th>
+                      <th>排班節數</th>
+                      <th>排班金額</th>
+                    </tr>
+                  </thead>
+                  <tbody id="perfDetailRows"></tbody>
+                </table>
+              </div>
+
+              <div id="perfEmpty" class="state state-empty" style="display:none;">
+                <p>查無明細資料。</p>
+              </div>
+
+              <div id="perfError" class="state state-error" style="display:none;">
+                <p>無法取得業績資料，請稍後再試。</p>
+              </div>
+
+              <div style="margin-top:10px;">
+                <span id="perfDetailCount" class="badge">0 筆</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 
@@ -628,6 +761,9 @@
   <script src="js/admin.ui.js" defer></script>
   <script src="js/admin.features.js" defer></script>
 
+  <!-- Chart.js CDN (performance) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+
   <!-- ECharts (used by admin logs & tech usage) -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer></script>
 
@@ -636,6 +772,9 @@
 
   <!-- 技師使用紀錄（GAS usage_log） -->
   <script src="js/admin.techUsageLogs.js" defer></script>
+
+  <!-- 業績查詢（移植 Scheduling） -->
+  <script src="js/admin.performance.js" defer></script>
 
   <!-- Users/技師資料管理（獨立區塊，不影響原本 admin 清單） -->
   <script src="js/admin.users.js" defer></script>

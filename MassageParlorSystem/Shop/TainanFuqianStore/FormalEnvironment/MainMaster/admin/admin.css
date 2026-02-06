@@ -1445,6 +1445,176 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   background: rgba(255,255,255,0.03);
 }
 
+/* ===== Performance panel (Scheduling移植) ===== */
+#performancePanelSection .panel-body{
+  padding:12px 14px;
+}
+
+#performancePanelSection .card{
+  border-radius:16px;
+  border:1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  overflow:hidden;
+}
+
+#performancePanelSection .card-header{
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+#performancePanelSection .card-title{ font-size:16px; margin:0; }
+#performancePanelSection .card-subtitle{ color: var(--text-sub); font-size:12px; margin:0; }
+
+#performancePanelSection .badge{
+  border:1px solid var(--border);
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:12px;
+  color:var(--text-sub);
+}
+
+#performancePanelSection .filters.perf-filters{
+  width:100%;
+  display:grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  align-items:end;
+  gap:10px;
+}
+
+#performancePanelSection .perf-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+#performancePanelSection .perf-actions .btn{
+  flex:1 1 140px;
+  min-width:0;
+}
+
+@media (max-width: 720px){
+  #performancePanelSection .filters.perf-filters{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #performancePanelSection .perf-actions{
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 420px){
+  #performancePanelSection .filters.perf-filters{
+    grid-template-columns: 1fr;
+  }
+}
+
+#performancePanelSection .status-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+#performancePanelSection .status-table th,
+#performancePanelSection .status-table td{
+  padding:8px 10px;
+  border-bottom:1px solid var(--border-soft);
+  font-size:12px;
+}
+
+#performancePanelSection .table-wrapper{ overflow:auto; }
+
+#performancePanelSection .chart-toolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+
+#performancePanelSection .chart-modes{ display:flex; gap:6px; flex-wrap:wrap; }
+
+#performancePanelSection .btn-chart-mode,
+#performancePanelSection .btn-chart-reset{
+  padding:6px 10px;
+  font-size:12px;
+}
+
+#performancePanelSection .chart-toggle{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+
+#performancePanelSection .toggle-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 8px;
+  border-radius:16px;
+  background: var(--card);
+  border:1px solid var(--border-soft);
+  font-size:12px;
+}
+
+#performancePanelSection .chart-wrapper{ overflow-x:auto; -webkit-overflow-scrolling: touch; }
+
+/* perf summary table */
+#performancePanelSection .perf-summary-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+#performancePanelSection .perf-summary-table th,
+#performancePanelSection .perf-summary-table td{
+  padding:6px 8px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  border-bottom:1px solid var(--border-soft);
+}
+
+#performancePanelSection .perf-summary-table thead th{
+  font-size:12px;
+  font-weight:700;
+  color:var(--text-sub);
+}
+
+#performancePanelSection .perf-summary-table tbody td{
+  font-size:13px;
+  font-weight:600;
+}
+
+#performancePanelSection .perf-summary-table th:first-child,
+#performancePanelSection .perf-summary-table td:first-child{
+  width:22%;
+  text-align:left;
+}
+
+#performancePanelSection .perf-summary-table th:nth-child(2),
+#performancePanelSection .perf-summary-table td:nth-child(2),
+#performancePanelSection .perf-summary-table th:nth-child(3),
+#performancePanelSection .perf-summary-table td:nth-child(3),
+#performancePanelSection .perf-summary-table th:nth-child(4),
+#performancePanelSection .perf-summary-table td:nth-child(4){
+  width:15%;
+  text-align:right;
+}
+
+#performancePanelSection .perf-summary-table th:nth-child(5),
+#performancePanelSection .perf-summary-table td:nth-child(5){
+  width:33%;
+  text-align:right;
+  font-weight:800;
+}
+
 /* cap widths for key columns to prevent overflow */
 #schedulePanelSection .status-table tbody td:first-child{
   width:220px;

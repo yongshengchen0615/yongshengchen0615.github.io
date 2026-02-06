@@ -186,6 +186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const btnUsers = document.getElementById("viewUsersBtn");
         const btnTechUsageLogs = document.getElementById("viewTechUsageLogsBtn");
         const btnSchedule = document.getElementById("viewScheduleBtn");
+        const btnPerformance = document.getElementById("viewPerformanceBtn");
 
       const summaryText = document.getElementById("summaryText");
       const reloadBtn = document.getElementById("reloadBtn");
@@ -199,11 +200,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       const techUsageLogsPanel = document.getElementById("techUsageLogsPanelSection");
       const techUsageChartPanel = document.getElementById("techUsageChartSection");
       const schedulePanel = document.getElementById("schedulePanelSection");
+      const performancePanel = document.getElementById("performancePanelSection");
 
       if (!btnAdmins || !btnUsers || !btnLogs || !btnTechUsageLogs) return;
 
       // disable view buttons until initial data is fully loaded
-      [btnAdmins, btnLogs, btnUsers, btnTechUsageLogs, btnSchedule].forEach((b) => {
+      [btnAdmins, btnLogs, btnUsers, btnTechUsageLogs, btnSchedule, btnPerformance].forEach((b) => {
         if (!b) return;
         b.disabled = true;
         b.classList.add("btn--disabled");
@@ -216,6 +218,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const isUsers = view === "users";
         const isTechUsageLogs = view === "techUsageLogs";
         const isSchedule = view === "schedule";
+        const isPerformance = view === "performance";
 
         if (adminsKpi) adminsKpi.hidden = !isAdmins;
         if (adminsPanel) adminsPanel.hidden = !isAdmins;
@@ -224,6 +227,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (usersPanel) usersPanel.hidden = !isUsers;
         if (techUsageLogsPanel) techUsageLogsPanel.hidden = !isTechUsageLogs;
         if (schedulePanel) schedulePanel.hidden = !isSchedule;
+        if (performancePanel) performancePanel.hidden = !isPerformance;
         if (techUsageChartPanel) {
           techUsageChartPanel.hidden = !isTechUsageLogs;
           techUsageChartPanel.style.display = isTechUsageLogs ? "" : "none";
@@ -255,6 +259,18 @@ document.addEventListener("DOMContentLoaded", async () => {
           btnSchedule.classList.toggle("ghost", !isSchedule);
           btnSchedule.setAttribute("aria-pressed", isSchedule ? "true" : "false");
         }
+
+        if (btnPerformance) {
+          btnPerformance.classList.toggle("primary", isPerformance);
+          btnPerformance.classList.toggle("ghost", !isPerformance);
+          btnPerformance.setAttribute("aria-pressed", isPerformance ? "true" : "false");
+        }
+
+        if (isPerformance && typeof onShowPerformance === "function") {
+          try {
+            onShowPerformance();
+          } catch (_) {}
+        }
       };
 
       // 預設顯示管理員切面（符合「切換」的直覺：一次只看一個名單）
@@ -265,6 +281,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       btnUsers.addEventListener("click", () => setView_("users"));
       btnTechUsageLogs.addEventListener("click", () => setView_("techUsageLogs"));
       if (btnSchedule) btnSchedule.addEventListener("click", () => setView_("schedule"));
+      if (btnPerformance) btnPerformance.addEventListener("click", () => setView_("performance"));
     };
 
     // expose small helper to enable view buttons after initial data load
@@ -292,6 +309,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 技師使用紀錄
     if (typeof bindTechUsageLogs_ === "function") bindTechUsageLogs_();
+
+    // 業績查詢（移植 Scheduling）
+    if (typeof initPerformanceUi === "function") initPerformanceUi();
 
     // 事件綁定（僅做一次）
     bindTopbar_();
@@ -329,6 +349,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 使用純事件驅動：先註冊監聽，再啟動模組；當收到所有預期的 render 事件後才結束 loading
     const expected = ["admins", "adminLogs", "users", "techUsageLogs", "schedule"];
+    if (document.getElementById("performancePanelSection")) expected.push("performance");
     const expectedSet = new Set(expected);
     let done = 0;
 
@@ -352,6 +373,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       window.addEventListener("admin:rendered", onEvent);
+
+      // performance panel doesn't have async load; dispatch after listener attached
+      try {
+        if (document.getElementById("performancePanelSection")) {
+          setTimeout(() => {
+            try {
+              window.dispatchEvent(new CustomEvent("admin:rendered", { detail: "performance" }));
+            } catch (e) {}
+          }, 0);
+        }
+      } catch (_) {}
 
       // also listen to schedule boot promise in case it resolves without dispatch (safety)
       if (window.__scheduleBootPromise && typeof window.__scheduleBootPromise.then === "function") {

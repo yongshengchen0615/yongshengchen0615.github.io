@@ -25,6 +25,7 @@ async function loadConfig_() {
   USAGE_LOG_API_URL = String(cfg.USAGE_LOG_API_URL || "").trim();
   TECH_USAGE_LOG_URL = String(cfg.TECH_USAGE_LOG_URL || "").trim();
   TECH_USAGE_LOG_ADMIN_KEY = String(cfg.TECH_USAGE_LOG_ADMIN_KEY || "").trim();
+  PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
   if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
