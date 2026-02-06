@@ -554,52 +554,16 @@ function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) 
   }
 }
 
-function computeMonthRates_(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  const looksLikeDetail = list.some((r) => r && (r["訂單編號"] || r["拉牌"] || r["服務項目"]));
+function computeRangeRates_(rows) {
+  // ✅ 對齊 Scheduling：統一用 buildCards3FromRows_ 取單數/筆數，再計算比率
+  const cards3 = buildCards3FromRows_(rows);
+  const totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
+  const oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
+  const schedRows = Number(cards3?.排班?.筆數 || 0) || 0;
 
-  let totalRows = 0;
-  let oldRows = 0;
-  let schedRows = 0;
-  let totalSingles = 0;
-  let oldSingles = 0;
-  let schedSingles = 0;
-
-  if (looksLikeDetail) {
-    const allOrders = new Set();
-    const oldOrders = new Set();
-    const schedOrders = new Set();
-
-    for (const r of list) {
-      if (!r) continue;
-      const pull = String(r["拉牌"] || "").trim();
-      const orderNo = String(r["訂單編號"] || "").trim();
-      const isOld = pull === "老點";
-
-      totalRows += 1;
-      if (isOld) oldRows += 1;
-      else schedRows += 1; // Scheduling: 非老點一律視為排班
-
-      if (orderNo) {
-        allOrders.add(orderNo);
-        if (isOld) oldOrders.add(orderNo);
-        else schedOrders.add(orderNo);
-      }
-    }
-
-    totalSingles = allOrders.size;
-    oldSingles = oldOrders.size;
-    schedSingles = schedOrders.size;
-  } else {
-    const cards3 = buildCards3FromRows_(list);
-    totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
-    oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
-    schedRows = Number(cards3?.排班?.筆數 || 0) || 0;
-
-    totalSingles = Number(cards3?.總計?.單數 || 0) || 0;
-    oldSingles = Number(cards3?.老點?.單數 || 0) || 0;
-    schedSingles = Number(cards3?.排班?.單數 || 0) || 0;
-  }
+  const totalSingles = Number(cards3?.總計?.單數 || 0) || 0;
+  const oldSingles = Number(cards3?.老點?.單數 || 0) || 0;
+  const schedSingles = Number(cards3?.排班?.單數 || 0) || 0;
 
   const oldRateRows = totalRows ? Math.round((oldRows / totalRows) * 1000) / 10 : 0;
   const schedRateRows = totalRows ? Math.round((schedRows / totalRows) * 1000) / 10 : 0;
@@ -610,17 +574,18 @@ function computeMonthRates_(rows) {
   return { oldRateRows, schedRateRows, oldRateSingles, schedRateSingles };
 }
 
-function renderMonthRates_(monthRows) {
+function renderRangeRates_(rangeRows) {
   if (!dom.perfMonthRatesEl) return;
-  if (!Array.isArray(monthRows) || !monthRows.length) {
-    dom.perfMonthRatesEl.textContent = "本月：資料不足";
+  const list = Array.isArray(rangeRows) ? rangeRows : [];
+  if (!list.length) {
+    dom.perfMonthRatesEl.textContent = "—";
     return;
   }
-  const r = computeMonthRates_(monthRows);
+  const r = computeRangeRates_(list);
   dom.perfMonthRatesEl.innerHTML =
-    `本月（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
+    `區間（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
     `<br/>` +
-    `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%`;
+    `區間（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%`;
 }
 
 /* =========================
@@ -1261,6 +1226,7 @@ async function renderFromCache_(mode, info) {
     else setBadge_("日期格式不正確", true);
 
     setMeta_("最後更新：—");
+    if (dom.perfMonthRatesEl) dom.perfMonthRatesEl.textContent = "—";
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
@@ -1272,6 +1238,7 @@ async function renderFromCache_(mode, info) {
   if (perfCache_.key !== key) {
     setBadge_("尚未載入（請按『業績統計/業績明細』）", true);
     setMeta_("最後更新：—");
+    if (dom.perfMonthRatesEl) dom.perfMonthRatesEl.textContent = "—";
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
@@ -1289,14 +1256,8 @@ async function renderFromCache_(mode, info) {
   renderSummaryTable_(cards3);
 
   try {
-    const monthStart = localDateKeyMonthStart_();
-    const today = localDateKeyToday_();
-    const monthRows = rows.filter((x) => {
-      const raw = String(x["訂單日期"] || "");
-      const dk = normalizeInputDateKey_(raw) || String(raw).slice(0, 10);
-      return dk >= monthStart && dk <= today;
-    });
-    renderMonthRates_(monthRows);
+    // ✅ 不強制算本月：改為以「載入資料（查詢區間）」計算老點率/排班率
+    renderRangeRates_(rows);
   } catch (_) {}
 
   if (m === "summary") {
