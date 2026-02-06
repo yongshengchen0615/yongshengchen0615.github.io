@@ -328,7 +328,23 @@ function summaryRowsHtml_(cards3) {
 function detailRowsHtml_(detailRows) {
   const list = Array.isArray(detailRows) ? detailRows : [];
   if (!list.length) return { html: "", count: 0 };
-  const td = (v) => `<td>${perfEscapeHtml_(String(v ?? ""))}</td>`;
+  const headers = [
+    "訂單日期",
+    "訂單編號",
+    "序",
+    "拉牌",
+    "服務項目",
+    "業績金額",
+    "抽成金額",
+    "數量",
+    "小計",
+    "分鐘",
+    "開工",
+    "完工",
+    "狀態",
+  ];
+
+  const td = (label, v) => `<td data-label="${perfEscapeHtml_(label)}">${perfEscapeHtml_(String(v ?? ""))}</td>`;
   return {
     count: list.length,
     html: list
@@ -336,19 +352,19 @@ function detailRowsHtml_(detailRows) {
         const dateText = String(r["訂單日期"] ?? "").replace(/-/g, "/");
         return (
           "<tr>" +
-          td(dateText) +
-          td(r["訂單編號"] || "") +
-          td(r["序"] ?? "") +
-          td(r["拉牌"] || "") +
-          td(r["服務項目"] || "") +
-          td(r["業績金額"] ?? 0) +
-          td(r["抽成金額"] ?? 0) +
-          td(r["數量"] ?? 0) +
-          td(r["小計"] ?? 0) +
-          td(r["分鐘"] ?? 0) +
-          td(r["開工"] ?? "") +
-          td(r["完工"] ?? "") +
-          td(r["狀態"] || "") +
+          td(headers[0], dateText) +
+          td(headers[1], r["訂單編號"] || "") +
+          td(headers[2], r["序"] ?? "") +
+          td(headers[3], r["拉牌"] || "") +
+          td(headers[4], r["服務項目"] || "") +
+          td(headers[5], r["業績金額"] ?? 0) +
+          td(headers[6], r["抽成金額"] ?? 0) +
+          td(headers[7], r["數量"] ?? 0) +
+          td(headers[8], r["小計"] ?? 0) +
+          td(headers[9], r["分鐘"] ?? 0) +
+          td(headers[10], r["開工"] ?? "") +
+          td(headers[11], r["完工"] ?? "") +
+          td(headers[12], r["狀態"] || "") +
           "</tr>"
         );
       })
@@ -372,10 +388,12 @@ function detailSummaryRowsHtml_(serviceSummaryRows) {
     "排班金額",
   ];
 
-  const td = (v) => `<td>${perfEscapeHtml_(String(v ?? ""))}</td>`;
+  const td = (label, v) => `<td data-label="${perfEscapeHtml_(label)}">${perfEscapeHtml_(String(v ?? ""))}</td>`;
   return {
     count: list.length,
-    html: list.map((r) => "<tr>" + headers.map((h) => td(r[h] ?? 0)).join("") + "</tr>").join(""),
+    html: list
+      .map((r) => "<tr>" + headers.map((h) => td(h, r[h] ?? 0)).join("") + "</tr>")
+      .join(""),
   };
 }
 
@@ -556,9 +574,10 @@ function loadPerfChartPrefs_() {
     if (s) {
       const o = JSON.parse(s);
       perfChartVis_ = {
-        amount: !!o.amount,
-        oldRate: !!o.oldRate,
-        schedRate: !!o.schedRate,
+        // 參照 Scheduling：undefined 視為 true（避免舊版/缺欄位偏好導致全部被關閉）
+        amount: o && typeof o === "object" ? o.amount !== false : true,
+        oldRate: o && typeof o === "object" ? o.oldRate !== false : true,
+        schedRate: o && typeof o === "object" ? o.schedRate !== false : true,
       };
     }
   } catch (_) {}
@@ -584,14 +603,20 @@ function savePerfChartPrefs_() {
 
 function applyChartVisibility_() {
   if (!perfChartInstance_) return;
-  const ds = perfChartInstance_.data && perfChartInstance_.data.datasets ? perfChartInstance_.data.datasets : [];
-  ds.forEach((d) => {
-    if (!d || !d._tag) return;
-    if (d._tag === "amount") d.hidden = !perfChartVis_.amount;
-    if (d._tag === "oldRate") d.hidden = !perfChartVis_.oldRate;
-    if (d._tag === "schedRate") d.hidden = !perfChartVis_.schedRate;
-  });
-  perfChartInstance_.update();
+  const ds = perfChartInstance_.data?.datasets || [];
+  if (ds[0]) ds[0].hidden = !perfChartVis_.amount;
+  if (ds[1]) ds[1].hidden = !perfChartVis_.oldRate;
+  if (ds[2]) ds[2].hidden = !perfChartVis_.schedRate;
+
+  if (!perfChartVis_.amount && !perfChartVis_.oldRate && !perfChartVis_.schedRate) {
+    perfChartVis_.amount = true;
+    if (ds[0]) ds[0].hidden = false;
+  }
+  try {
+    perfChartInstance_.update("none");
+  } catch (_) {
+    perfChartInstance_.update();
+  }
 }
 
 function clearPerfChart_() {
@@ -610,191 +635,487 @@ function schedulePerfChartRedraw_() {
     try {
       updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_);
     } catch (_) {}
-  }, 120);
+  }, 140);
 }
 
-function buildChartBuckets_(rows, dateKeys) {
-  const buckets = {};
-  dateKeys.forEach((k) => (buckets[k] = { amount: 0, old: 0, sched: 0, total: 0 }));
-
-  for (const r of rows || []) {
-    const rawDate = String(r["訂單日期"] || r["日期"] || "");
-    const dk = normalizeInputDateKey_(rawDate) || rawDate.slice(0, 10);
-    if (!buckets[dk]) continue;
-
-    const amt = parseMoney_(r["金額"] || r["金額合計"] || 0);
-    const tag = String(r["拉牌"] || "");
-    const isOld = tag.includes("老點");
-    const isSched = tag.includes("排班");
-
-    buckets[dk].amount += amt;
-    buckets[dk].total += 1;
-    if (isOld) buckets[dk].old += 1;
-    if (isSched) buckets[dk].sched += 1;
+function buildCumulative_(arr) {
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += Number(arr[i] || 0) || 0;
+    out.push(sum);
   }
-
-  return buckets;
+  return out;
 }
 
-function calcOldRate_(b) {
-  return b.total ? Math.round((b.old / b.total) * 1000) / 10 : 0;
+function buildMA_(arr, win) {
+  const w = Math.max(2, Number(win) || 7);
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    let s = 0,
+      c = 0;
+    for (let j = Math.max(0, i - w + 1); j <= i; j++) {
+      s += Number(arr[j] || 0) || 0;
+      c++;
+    }
+    out.push(c ? s / c : 0);
+  }
+  return out;
 }
-function calcSchedRate_(b) {
-  return b.total ? Math.round((b.sched / b.total) * 1000) / 10 : 0;
-}
 
-function applyChartData_(buckets, dateKeys, mode) {
-  const labels = [];
-  const amount = [];
-  const oldRate = [];
-  const schedRate = [];
+/**
+ * ✅ Drag-to-scroll（對齊 Scheduling，修正 Intervention warning）
+ * - 只在 ev.cancelable 時才 preventDefault
+ */
+function enableCanvasDragScroll_(enable) {
+  try {
+    const canvas = dom.perfChartEl;
+    if (!canvas) return;
+    const wrapper = canvas.closest && canvas.closest(".chart-wrapper") ? canvas.closest(".chart-wrapper") : canvas.parentElement;
 
-  let cumAmount = 0;
-  const amountHist = [];
-
-  dateKeys.forEach((k) => {
-    const b = buckets[k] || { amount: 0, total: 0, old: 0, sched: 0 };
-    const amt = Number(b.amount) || 0;
-    const oldR = calcOldRate_(b);
-    const schedR = calcSchedRate_(b);
-
-    labels.push(k.slice(5));
-    amountHist.push(amt);
-
-    if (mode === "cumu") {
-      cumAmount += amt;
-      amount.push(cumAmount);
-    } else if (mode === "ma7") {
-      const idx = amountHist.length - 1;
-      const from = Math.max(0, idx - 6);
-      const slice = amountHist.slice(from, idx + 1);
-      const avg = slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
-      amount.push(Math.round(avg));
-    } else {
-      amount.push(amt);
+    if (perfDragState_.handlers && canvas) {
+      const h = perfDragState_.handlers;
+      try {
+        canvas.removeEventListener("pointerdown", h.down);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("pointermove", h.move);
+      } catch (_) {}
+      try {
+        window.removeEventListener("pointerup", h.up);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("touchstart", h.tdown);
+      } catch (_) {}
+      try {
+        canvas.removeEventListener("touchmove", h.tmove);
+      } catch (_) {}
+      try {
+        window.removeEventListener("touchend", h.tup);
+      } catch (_) {}
+      perfDragState_.handlers = null;
     }
 
-    oldRate.push(oldR);
-    schedRate.push(schedR);
-  });
+    if (!enable) {
+      perfDragState_.enabled = false;
+      return;
+    }
 
-  return { labels, amount, oldRate, schedRate };
+    const onPointerDown = (ev) => {
+      try {
+        perfDragState_.pointerDown = true;
+        perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
+        if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
+        if (ev && ev.cancelable) ev.preventDefault();
+      } catch (_) {}
+    };
+
+    const onPointerMove = (ev) => {
+      if (!perfDragState_.pointerDown) return;
+      try {
+        const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        const dx = clientX - perfDragState_.startX;
+        if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
+        if (ev && ev.cancelable) ev.preventDefault();
+      } catch (_) {}
+    };
+
+    const onPointerUp = (ev) => {
+      perfDragState_.pointerDown = false;
+      try {
+        if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
+      } catch (_) {}
+    };
+
+    const onTouchDown = (ev) => onPointerDown(ev);
+    const onTouchMove = (ev) => onPointerMove(ev);
+    const onTouchUp = (ev) => onPointerUp(ev);
+
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp, { passive: true });
+
+    canvas.addEventListener("touchstart", onTouchDown, { passive: false });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchUp, { passive: true });
+
+    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: onTouchDown, tmove: onTouchMove, tup: onTouchUp };
+    perfDragState_.enabled = true;
+  } catch (err) {
+    console.error("enableCanvasDragScroll_ error", err);
+  }
 }
 
 function updatePerfChart_(rows, dateKeys) {
-  if (!dom.perfChartEl) return;
-  if (typeof Chart === "undefined") return;
+  try {
+    if (!dom.perfChartEl) return;
+    if (typeof Chart === "undefined") return;
 
-  perfChartLastRows_ = rows;
-  perfChartLastDateKeys_ = dateKeys;
+    const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
+    const list = Array.isArray(rows) ? rows : [];
 
-  const buckets = buildChartBuckets_(rows, dateKeys);
-  const data = applyChartData_(buckets, dateKeys, perfChartMode_);
+    const metrics = {}; // { dateKey: { amount, totalCount, oldCount, schedCount } }
 
-  const wrapperEl = dom.perfChartEl.closest(".chart-wrapper");
-  const containerWidth = (wrapperEl && wrapperEl.clientWidth) || window.innerWidth || 800;
-  const chartWidth = Math.max(600, Math.min(containerWidth, 1200));
+    // ✅ 對齊 Scheduling：桶判斷只吃「拉牌」欄
+    function bucketOfRow(r) {
+      const v = String((r && r["拉牌"]) || "").trim();
+      return v === "老點" ? "老點" : "排班";
+    }
 
-  dom.perfChartEl.width = chartWidth;
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  dom.perfChartEl.width = Math.floor(chartWidth * dpr);
-  dom.perfChartEl.height = Math.floor(200 * dpr);
-  dom.perfChartEl.style.width = `${chartWidth}px`;
-  dom.perfChartEl.style.height = `200px`;
+    function orderDateKey_(v) {
+      const s = String(v ?? "").trim();
+      if (!s) return "";
+      const m = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+      if (m) return `${m[1]}-${pad2_(m[2])}-${pad2_(m[3])}`;
+      return "";
+    }
 
-  const css = window.getComputedStyle ? window.getComputedStyle(document.documentElement) : null;
-  const textColor = (css && css.getPropertyValue("--text")) ? css.getPropertyValue("--text").trim() : "#111827";
-  const subColorRaw = (css && css.getPropertyValue("--text-sub")) ? css.getPropertyValue("--text-sub").trim() : "#6b7280";
-  const gridColor = (() => {
+    for (const r of list) {
+      const dkey = orderDateKey_(r["訂單日期"] || "");
+      if (!dkey) continue;
+
+      if (!metrics[dkey]) metrics[dkey] = { amount: 0, totalCount: 0, oldCount: 0, schedCount: 0 };
+
+      const m = metrics[dkey];
+      const amt = parseMoney_(r["小計"] ?? r["業績金額"] ?? 0);
+      m.amount += amt;
+      m.totalCount += 1;
+
+      const b = bucketOfRow(r);
+      if (b === "老點") m.oldCount += 1;
+      else m.schedCount += 1;
+    }
+
+    const labels = (keys.length ? keys.slice() : Object.keys(metrics).sort()).map((s) => s);
+
+    const dailyAmount = labels.map((k) => (metrics[k] ? metrics[k].amount : 0));
+    const oldRateData = labels.map((k) => {
+      const m = metrics[k];
+      return m && m.totalCount ? Math.round((m.oldCount / m.totalCount) * 1000) / 10 : 0;
+    });
+    const schedRateData = labels.map((k) => {
+      const m = metrics[k];
+      return m && m.totalCount ? Math.round((m.schedCount / m.totalCount) * 1000) / 10 : 0;
+    });
+
+    let amountData = dailyAmount;
+    let amountLabel = "業績";
+    if (perfChartMode_ === "cumu") {
+      amountData = buildCumulative_(dailyAmount);
+      amountLabel = "累積業績";
+    } else if (perfChartMode_ === "ma7") {
+      amountData = buildMA_(dailyAmount, 7);
+      amountLabel = "7日均線";
+    }
+
+    clearPerfChart_();
+
+    const ctx = dom.perfChartEl.getContext("2d");
+    if (!ctx) return;
+    perfChartLastRows_ = list.slice();
+    perfChartLastDateKeys_ = Array.isArray(dateKeys) ? dateKeys.slice() : [];
+
+    const wrapperEl = dom.perfChartEl?.closest?.(".chart-wrapper") || dom.perfChartEl?.parentElement;
+    const containerWidth = (wrapperEl && wrapperEl.clientWidth) || window.innerWidth || 800;
+
+    const points = labels.length || 1;
+    const isNarrow = containerWidth < 420;
+    const shouldScroll = points > (isNarrow ? 4 : 6);
+
+    const pxPerPoint = isNarrow ? 64 : 72;
+    const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
+    const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
+
+    const baseFontRaw = isNarrow ? 13 : 15;
+    const ticksFontRaw = isNarrow ? 12 : 14;
+    const scaleFactor = Math.max(0.9, Math.min(1.6, containerWidth / 420));
+    const baseFont = Math.round(baseFontRaw * scaleFactor);
+    const ticksFont = Math.round(ticksFontRaw * scaleFactor);
+    const legendBoxWidth = Math.max(8, Math.round(8 * Math.min(1.4, scaleFactor)));
+
+    const css = window.getComputedStyle ? window.getComputedStyle(document.documentElement) : null;
+    const textColor = (() => {
+      const v = (css && (css.getPropertyValue("--text-main") || css.getPropertyValue("--text"))) ? (css.getPropertyValue("--text-main") || css.getPropertyValue("--text")).trim() : "";
+      return v || "#111827";
+    })();
+    const subColorRaw = (css && css.getPropertyValue("--text-sub")) ? css.getPropertyValue("--text-sub").trim() : "#6b7280";
+    const gridColor = (() => {
+      try {
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
+          const hex = subColorRaw.replace("#", "");
+          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
+          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
+          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
+          return `rgba(${r},${g},${b},0.10)`;
+        }
+      } catch (_) {}
+      return `${subColorRaw}33`;
+    })();
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
+    dom.perfChartEl.style.height = `${desiredHeight}px`;
+    dom.perfChartEl.width = Math.round(desiredWidth * dpr);
+    dom.perfChartEl.height = Math.round(desiredHeight * dpr);
+
     try {
-      if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
-        const hex = subColorRaw.replace("#", "");
-        const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
-        const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
-        const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
-        return `rgba(${r},${g},${b},0.10)`;
-      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     } catch (_) {}
-    return `${subColorRaw}33`;
-  })();
 
-  const baseFont = 12;
-  const ticksFont = 11;
+    enableCanvasDragScroll_(shouldScroll);
 
-  const datasets = [
-    {
-      type: perfChartType_ === "bar" ? "bar" : "line",
-      label: "金額",
-      data: data.amount,
-      borderColor: "#38bdf8",
-      backgroundColor: perfChartType_ === "bar" ? "rgba(56,189,248,0.2)" : "transparent",
-      tension: 0.25,
-      yAxisID: "y",
-      _tag: "amount",
-    },
-    {
-      type: "line",
-      label: "老點率",
-      data: data.oldRate,
-      borderColor: "#f59e0b",
-      backgroundColor: "transparent",
-      tension: 0.25,
-      yAxisID: "y1",
-      _tag: "oldRate",
-    },
-    {
-      type: "line",
-      label: "排班率",
-      data: data.schedRate,
-      borderColor: "#22c55e",
-      backgroundColor: "transparent",
-      tension: 0.25,
-      yAxisID: "y1",
-      _tag: "schedRate",
-    },
-  ];
+    const maxXTicks = isNarrow ? 5 : 7;
 
-  clearPerfChart_();
+    try {
+      const minW = Math.max(600, labels.length * 40);
+      dom.perfChartEl.style.minWidth = `${minW}px`;
+    } catch (_) {}
 
-  perfChartInstance_ = new Chart(dom.perfChartEl.getContext("2d"), {
-    data: {
-      labels: data.labels,
-      datasets,
-    },
-    options: {
-      responsive: false,
-      animation: false,
-      plugins: {
-        legend: {
-          display: true,
-          labels: { color: textColor, font: { size: baseFont } },
-        },
-        tooltip: { enabled: true },
+    function showClickDetailPanel(idx) {
+      try {
+        const w = dom.perfChartEl?.closest?.(".chart-wrapper") || dom.perfChartEl?.parentElement;
+        if (!w) return;
+        const old = w.querySelector(".perf-click-panel");
+        if (old) old.remove();
+
+        const rawKey = labels[idx];
+        const m = rawKey ? metrics[rawKey] : null;
+        const dateLabel = rawKey ? String(rawKey).replaceAll("-", "/") : "—";
+
+        const panel = document.createElement("div");
+        panel.className = "perf-click-panel";
+        panel.setAttribute("role", "dialog");
+
+        const rowsForDate = list.filter((r) => {
+          const dk = String(r["訂單日期"] || "").replaceAll("/", "-").slice(0, 10);
+          return dk === rawKey;
+        });
+
+        const amount = m ? fmtMoney_(m.amount) : "0";
+        const total = m ? (m.totalCount || 0) : 0;
+        const oldC = m ? (m.oldCount || 0) : 0;
+        const schC = m ? (m.schedCount || 0) : 0;
+
+        let html = `<div class="perf-click-panel-inner"><div class="perf-click-panel-head"><strong>${perfEscapeHtml_(dateLabel)}</strong><button class="perf-click-panel-close" aria-label="關閉">✕</button></div>`;
+        html += `<div class="perf-click-panel-body">`;
+        html += `<div class="perf-click-metrics">金額：<strong>${perfEscapeHtml_(String(amount))}</strong>，筆數：<strong>${total}</strong>（老點 ${oldC} / 排班 ${schC}）</div>`;
+        if (rowsForDate && rowsForDate.length) {
+          html += '<div class="perf-click-list"><table class="status-table small"><thead><tr><th>編號</th><th>拉牌</th><th>服務項目</th><th>小計</th></tr></thead><tbody>';
+          const sample = rowsForDate.slice(0, 20);
+          for (let i = 0; i < sample.length; i++) {
+            const r = sample[i];
+            html += `<tr><td>${perfEscapeHtml_(String(r["訂單編號"] || r["序"] || ""))}</td><td>${perfEscapeHtml_(String(r["拉牌"] || ""))}</td><td>${perfEscapeHtml_(String(r["服務項目"] || ""))}</td><td>${perfEscapeHtml_(String(r["小計"] ?? r["業績金額"] ?? ""))}</td></tr>`;
+          }
+          if (rowsForDate.length > sample.length) html += `<tr><td colspan="4">還有 ${rowsForDate.length - sample.length} 筆，請查明細</td></tr>`;
+          html += "</tbody></table></div>";
+        } else {
+          html += '<div class="perf-click-empty">查無明細</div>';
+        }
+        html += "</div></div>";
+        panel.innerHTML = html;
+
+        w.appendChild(panel);
+
+        const btn = panel.querySelector(".perf-click-panel-close");
+        if (btn) btn.addEventListener("click", () => panel.remove());
+
+        const onDocClick = (ev) => {
+          if (!panel.contains(ev.target)) {
+            panel.remove();
+            document.removeEventListener("pointerdown", onDocClick);
+          }
+        };
+        setTimeout(() => document.addEventListener("pointerdown", onDocClick), 50);
+      } catch (e) {
+        console.error("showClickDetailPanel error", e);
+      }
+    }
+
+    perfChartInstance_ = new Chart(ctx, {
+      data: {
+        labels: labels.map((s) => String(s).replaceAll("-", "/")),
+        datasets: [
+          (function () {
+            const common = {
+              label: amountLabel,
+              data: amountData,
+              yAxisID: "y",
+            };
+            if (perfChartType_ === "bar") {
+              return Object.assign({}, common, {
+                type: "bar",
+                backgroundColor: "rgba(6,182,212,0.16)",
+                borderColor: "#06b6d4",
+                borderWidth: 1,
+                barThickness: "flex",
+                maxBarThickness: 48,
+                categoryPercentage: 0.75,
+                barPercentage: 0.9,
+              });
+            }
+            return Object.assign({}, common, {
+              type: "line",
+              borderWidth: Math.max(2, Math.round(2 * Math.min(1.6, Math.max(1, legendBoxWidth / 8)))),
+              tension: 0.25,
+              fill: true,
+              backgroundColor: "rgba(6,182,212,0.12)",
+              borderColor: "#06b6d4",
+              pointRadius: 0,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function () {
+            const common = {
+              data: oldRateData,
+              label: "老點率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === "bar") {
+              return Object.assign({}, common, {
+                type: "bar",
+                backgroundColor: "#f59e0b66",
+                borderColor: "#f59e0b",
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: "line",
+              tension: 0.25,
+              fill: false,
+              borderColor: "#f59e0b",
+              backgroundColor: "rgba(245,158,11,0.06)",
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function () {
+            const common = {
+              data: schedRateData,
+              label: "排班率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === "bar") {
+              return Object.assign({}, common, {
+                type: "bar",
+                backgroundColor: "#10b98166",
+                borderColor: "#10b981",
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: "line",
+              tension: 0.25,
+              fill: false,
+              borderColor: "#10b981",
+              backgroundColor: "rgba(16,185,129,0.06)",
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
+        ],
       },
-      scales: {
-        x: {
-          ticks: { color: subColorRaw, font: { size: ticksFont } },
-          grid: { display: false },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        animation: false,
+        normalized: true,
+        interaction: { mode: "index", intersect: false },
+        layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
+        plugins: {
+          legend: {
+            position: isNarrow ? "bottom" : "top",
+            labels: {
+              usePointStyle: true,
+              boxWidth: legendBoxWidth,
+              font: { size: baseFont },
+              padding: isNarrow ? 10 : 14,
+              color: textColor,
+            },
+          },
+          tooltip: {
+            bodyFont: { size: ticksFont },
+            titleFont: { size: baseFont },
+            callbacks: {
+              title: (items) => `日期：${items?.[0]?.label || ""}`,
+              label: (ctx2) => {
+                const label = ctx2.dataset?.label || "";
+                const v = ctx2.parsed?.y;
+                const idx = ctx2.dataIndex;
+                const rawKey = labels[idx];
+                const m = rawKey ? metrics[rawKey] : null;
+
+                if (ctx2.dataset?.yAxisID === "y") {
+                  const amt = fmtMoney_(v);
+                  const total = m?.totalCount || 0;
+                  const oldC = m?.oldCount || 0;
+                  const schC = m?.schedCount || 0;
+                  return [`${label}：${amt}`, `筆數：${total}（老點 ${oldC} / 排班 ${schC}）`];
+                }
+                return `${label}：${v ?? 0}%`;
+              },
+            },
+          },
         },
-        y: {
-          beginAtZero: true,
-          ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) },
-          title: { display: true, text: "金額", font: { size: baseFont } },
-          grid: { color: gridColor },
+        onClick: function (evt, activeEls) {
+          try {
+            if (!Array.isArray(activeEls) || !activeEls.length) return;
+            const el = activeEls[0];
+            const idx = el.index != null ? el.index : el._index;
+            if (typeof idx === "number") showClickDetailPanel(idx);
+          } catch (e) {
+            console.warn("chart onClick error", e);
+          }
         },
-        y1: {
-          position: "right",
-          beginAtZero: true,
-          max: 100,
-          ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => `${vv}%` },
-          grid: { drawOnChartArea: false },
-          title: { display: true, text: "比率 (%)", font: { size: baseFont } },
+        scales: {
+          x: {
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: maxXTicks,
+              maxRotation: 0,
+              color: subColorRaw,
+              font: { size: ticksFont },
+              callback: function (val, idx) {
+                try {
+                  const raw = this.getLabelForValue(val) || this.chart.data.labels[idx];
+                  const d = new Date(String(raw).replace(/\//g, "-"));
+                  if (isNaN(d.getTime())) return String(raw);
+                  return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+                } catch (e) {
+                  return String(val);
+                }
+              },
+            },
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) },
+            title: { display: !isNarrow, text: "金額", font: { size: baseFont } },
+            grid: { color: gridColor },
+          },
+          y1: {
+            position: "right",
+            beginAtZero: true,
+            max: 100,
+            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => `${vv}%` },
+            grid: { drawOnChartArea: false },
+            title: { display: !isNarrow, text: "比率 (%)", font: { size: baseFont } },
+          },
         },
       },
-    },
-  });
+    });
 
-  applyChartVisibility_();
+    applyChartVisibility_();
+  } catch (e) {
+    console.error("updatePerfChart_ error", e);
+  }
 }
 
 /* =========================

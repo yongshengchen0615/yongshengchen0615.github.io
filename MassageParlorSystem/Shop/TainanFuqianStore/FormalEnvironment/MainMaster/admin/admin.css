@@ -1479,6 +1479,19 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   gap:12px;
 }
 
+@media (max-width: 520px){
+  /* Better header wrap on phones */
+  #performancePanelSection .card-header{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  #performancePanelSection .card-header-right{
+    display:flex;
+    justify-content:flex-start;
+  }
+}
+
 #performancePanelSection .card-title{ font-size:16px; margin:0; }
 #performancePanelSection .card-subtitle{ color: var(--text-sub); font-size:12px; margin:0; }
 
@@ -1629,6 +1642,80 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 
 #performancePanelSection .table-wrapper{ overflow:auto; }
 
+/* Performance detail table: card view on small screens
+ * - avoids horizontal scrolling for 10+ columns
+ * - requires td[data-label] (added in admin.performance.js)
+ */
+@media (max-width: 720px){
+  #performancePanelSection table.perf-detail-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0 10px;
+  }
+
+  #performancePanelSection table.perf-detail-table thead{
+    display:none;
+  }
+
+  #performancePanelSection table.perf-detail-table,
+  #performancePanelSection table.perf-detail-table tbody,
+  #performancePanelSection table.perf-detail-table tr,
+  #performancePanelSection table.perf-detail-table td{
+    display:block;
+  }
+
+  #performancePanelSection table.perf-detail-table tr{
+    border:1px solid var(--border-soft);
+    background:var(--card);
+    border-radius:14px;
+    padding:10px 12px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.10);
+    overflow:hidden;
+  }
+
+  #performancePanelSection table.perf-detail-table td{
+    padding:8px 0;
+    border-bottom:1px dashed var(--border-soft);
+    font-size:13px;
+    line-height:1.25;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  #performancePanelSection table.perf-detail-table td:last-child{
+    border-bottom:none;
+    padding-bottom:2px;
+  }
+
+  #performancePanelSection table.perf-detail-table td::before{
+    content: attr(data-label);
+    flex: 0 0 92px;
+    max-width: 92px;
+    color:var(--text-sub);
+    font-size:12px;
+    font-weight:600;
+  }
+
+  #performancePanelSection table.perf-detail-table td{
+    text-align:right;
+  }
+
+  /* Make key text fields align left for readability */
+  #performancePanelSection table.perf-detail-table td[data-label="訂單日期"],
+  #performancePanelSection table.perf-detail-table td[data-label="訂單編號"],
+  #performancePanelSection table.perf-detail-table td[data-label="服務項目"],
+  #performancePanelSection table.perf-detail-table td[data-label="狀態"],
+  #performancePanelSection table.perf-detail-table td[data-label="拉牌"]{
+    text-align:left;
+  }
+
+  #performancePanelSection table.perf-detail-table td[data-label="服務項目"]{
+    font-weight:700;
+  }
+}
+
 #performancePanelSection .chart-toolbar{
   display:flex;
   align-items:center;
@@ -1643,6 +1730,11 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #performancePanelSection .btn-chart-reset{
   padding:6px 10px;
   font-size:12px;
+}
+
+#performancePanelSection .btn-chart-mode.is-active{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
 }
 
 #performancePanelSection .chart-toggle{
@@ -1664,7 +1756,46 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   font-size:12px;
 }
 
-#performancePanelSection .chart-wrapper{ overflow-x:auto; -webkit-overflow-scrolling: touch; }
+#performancePanelSection .chart-wrapper{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  min-width: 0;
+}
+
+#performancePanelSection .chart-wrapper canvas{
+  display:block;
+  max-width:none;
+  height:auto;
+}
+
+/* Click detail panel (align Scheduling) */
+#performancePanelSection .perf-click-panel{
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 40;
+  min-width: 280px;
+  max-width: 48%;
+  background: var(--card-bg, #fff);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  border-radius: 8px;
+  overflow: auto;
+}
+#performancePanelSection .perf-click-panel-inner{ padding: 10px; }
+#performancePanelSection .perf-click-panel-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+#performancePanelSection .perf-click-panel-close{ background:transparent; border:0; font-size:14px; cursor:pointer; }
+#performancePanelSection .perf-click-panel-body{ font-size: 13px; color: var(--text-primary); }
+#performancePanelSection .perf-click-metrics{ margin-bottom:8px; }
+#performancePanelSection .perf-click-list .status-table.small{ width:100%; font-size:12px; }
+#performancePanelSection .perf-click-empty{ color:var(--text-sub); padding:6px 0; }
+
+@media (max-width: 640px){
+  #performancePanelSection .perf-click-panel{ right: 8px; left: 8px; max-width: none; }
+}
 
 /* perf summary table */
 #performancePanelSection .perf-summary-table{
