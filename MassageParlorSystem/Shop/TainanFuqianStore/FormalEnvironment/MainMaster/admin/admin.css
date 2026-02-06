@@ -1493,7 +1493,8 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #performancePanelSection .filters.perf-filters{
   width:100%;
   display:grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  /* auto-fit: adapt smoothly across devices without hard breakpoints */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   align-items:end;
   gap:10px;
 }
@@ -1576,7 +1577,16 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   #performancePanelSection .filters.perf-filters{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  #performancePanelSection .perf-actions{
+
+  /* Mobile layout order:
+   * Row 1: TechNo (full)
+   * Row 2: Start | End (together)
+   * Row 3: Actions (full)
+   */
+  #performancePanelSection .perf-tech-cell{ grid-column: 1 / -1; }
+
+  /* Make the action cell span full row on mobile */
+  #performancePanelSection .perf-actions-cell{
     grid-column: 1 / -1;
   }
 
@@ -1587,12 +1597,22 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 
 @media (max-width: 420px){
   #performancePanelSection .filters.perf-filters{
-    grid-template-columns: 1fr;
+    /* Keep Start/End together on phones */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  /* Stack buttons full-width on very small screens */
+  #performancePanelSection .perf-actions{ gap:8px; }
+  #performancePanelSection .perf-actions .btn{ flex:1 1 100%; }
 
   #performancePanelSection input[type="date"].input{
     padding-right:72px;
   }
+}
+
+@media (max-width: 340px){
+  /* Extreme small screens: fall back to 1 column to prevent overflow */
+  #performancePanelSection .filters.perf-filters{ grid-template-columns: 1fr; }
 }
 
 #performancePanelSection .status-table{
