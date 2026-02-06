@@ -1613,6 +1613,39 @@ function syncTopupSerialUsedNoteName_(userId, displayName) {
 }
 
 /* =========================================================
+ * ✅ TopUp feature flags helpers
+ * - TopUp WebApp 可能回傳 tri-state：true/false/null(未設定)
+ * - syncEnabled：missing/null → default true（向下相容）
+ * ========================================================= */
+function pickTopupFlagTri_(obj, key) {
+  if (!obj) return null;
+  var v = obj[key];
+  if ((v === undefined || v === null || v === "") && obj.features && typeof obj.features === "object") {
+    v = obj.features[key];
+  }
+  if (v === undefined || v === null || v === "") return null;
+
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+
+  var s = String(v || "").trim();
+  if (!s) return null;
+  if (s === "是") return true;
+  if (s === "否") return false;
+  var sl = s.toLowerCase();
+  if (sl === "true" || sl === "y" || sl === "yes" || sl === "on") return true;
+  if (sl === "false" || sl === "n" || sl === "no" || sl === "off") return false;
+  return null;
+}
+
+function normalizeTopupSyncEnabled_(obj) {
+  var tri = pickTopupFlagTri_(obj, "syncEnabled");
+  // Backward compatible default: treat missing as enabled
+  if (tri === null) return true;
+  return !!tri;
+}
+
+/* =========================================================
  * ✅ PATCH: TopUp 後同步衍生表（PersonalStatus / PerformanceAccess）
  * - 依 Users row[9]/row[11] 是否開通
  * - displayName 更新後，以 Users 為唯一真相同步出去
@@ -1622,9 +1655,13 @@ function applyTopupToUser_(userId, displayName, daysAdded, meta) {
   displayName = String(displayName || "").trim();
 
   var dn = parseInt(daysAdded, 10);
-  if (isNaN(dn) || dn <= 0) throw new Error("DAYS_ADDED_INVALID");
+  // ✅ allow dn=0: feature sync only (no extra days)
+  if (isNaN(dn) || dn < 0) throw new Error("DAYS_ADDED_INVALID");
   var maxDays = parseInt(CONFIG.TOPUP_MAX_ADD_DAYS || 3660, 10);
   if (!isNaN(maxDays) && maxDays > 0) dn = Math.min(dn, maxDays);
+
+  var topup = meta && meta.topup ? meta.topup : null;
+  var syncEnabled = normalizeTopupSyncEnabled_(topup);
 
   var lock = LockService.getScriptLock();
   lock.waitLock(25000);
@@ -1638,13 +1675,22 @@ function applyTopupToUser_(userId, displayName, daysAdded, meta) {
 
     if (typeof idx !== "number") {
       var auditInit = normalizeAudit_(CONFIG.DEFAULT_AUDIT);
+
+      // dn=0 且新用戶：避免「功能同步序號」意外給到預設天數 → 建立為長期過期狀態
+      var initStart = today;
+      var initUsage = CONFIG.DEFAULT_USAGE_DAYS;
+      if (dn === 0) {
+        initStart = new Date(today.getTime() - 9999 * ONE_DAY_MS_);
+        initUsage = 1;
+      }
+
       var newRow = [
         userId,
         displayName,
         auditInit,
         now,
-        today,
-        CONFIG.DEFAULT_USAGE_DAYS,
+        initStart,
+        initUsage,
         "",
         "否",
         enforcePushByAudit_(auditInit, CONFIG.DEFAULT_PUSH_ENABLED),
@@ -1661,15 +1707,33 @@ function applyTopupToUser_(userId, displayName, daysAdded, meta) {
     // ✅ 若有帶 displayName → 更新 Users.displayName
     if (displayName) row[1] = displayName;
 
+    // ✅ 若 TopUp 序號有帶功能旗標，且 syncEnabled=TRUE → 同步寫回 Users 功能欄位
+    // - tri-state：null 表示「不覆寫」
+    if (syncEnabled) {
+      var pushTri = pickTopupFlagTri_(topup, "pushEnabled");
+      var psTri = pickTopupFlagTri_(topup, "personalStatusEnabled");
+      var schedTri = pickTopupFlagTri_(topup, "scheduleEnabled");
+      var perfTri = pickTopupFlagTri_(topup, "performanceEnabled");
+
+      if (psTri !== null) row[9] = psTri ? "是" : "否";
+      if (schedTri !== null) row[10] = schedTri ? "是" : "否";
+      if (perfTri !== null) row[11] = perfTri ? "是" : "否";
+
+      if (pushTri !== null) row[8] = pushTri ? "是" : "否";
+    }
+
     var oldRemaining = calcRemainingDaysByDate_(row[4], row[5]);
     var baseRemaining = 0;
     if (typeof oldRemaining === "number" && !isNaN(oldRemaining)) baseRemaining = Math.max(0, oldRemaining);
 
-    var newRemaining = baseRemaining + dn;
+    // dn=0：不改到期（僅同步功能/名稱）
+    if (dn > 0) {
+      var newRemaining = baseRemaining + dn;
+      row[4] = today;
+      row[5] = Math.max(1, Math.round(newRemaining + 1));
+    }
 
-    row[4] = today;
-    row[5] = Math.max(1, Math.round(newRemaining + 1));
-
+    // ✅ 永遠維持 push 強制規則
     row[8] = enforcePushByAudit_(normalizeAudit_(row[2]), row[8]);
 
     writeUsersTable_(db.sheet, values);
@@ -1684,8 +1748,11 @@ function applyTopupToUser_(userId, displayName, daysAdded, meta) {
       var psEnabled = String(row[9] || "否").trim();
       var perfEnabled = String(row[11] || "否").trim();
 
-      syncPersonalStatusByEnabled_(uid, dnFinal, masterCode, psEnabled);
-      syncPerformanceAccessByEnabled_(uid, dnFinal, masterCode, perfEnabled, "");
+      // TopUp 序號 syncEnabled=FALSE → 不觸發衍生表同步（與前端 skipSync 對齊）
+      if (syncEnabled) {
+        syncPersonalStatusByEnabled_(uid, dnFinal, masterCode, psEnabled);
+        syncPerformanceAccessByEnabled_(uid, dnFinal, masterCode, perfEnabled, "");
+      }
     } catch (eSync) {
       // best-effort：不同步也不影響儲值成功
     }
@@ -1733,9 +1800,10 @@ function handleTopupRedeem_(data) {
 
     var amount = Number(topupRes.amount);
     var daysAdded = mapTopupAmountToDays_(amount);
-    if (!daysAdded || daysAdded <= 0) {
+    // ✅ allow daysAdded=0: feature sync only (no extra days)
+    if (!isFinite(daysAdded) || daysAdded < 0) {
       var e1 = new Error("TOPUP_AMOUNT_NOT_SUPPORTED");
-      e1.details = { amount: amount };
+      e1.details = { amount: amount, daysAdded: daysAdded };
       throw e1;
     }
 
