@@ -609,11 +609,9 @@ tbody td{
 }
 .status-table th:nth-child(5), .status-table td:nth-child(5){ width:16%; min-width:60px; max-width:160px; text-align:left; }
 
-/* Performance: allow service name to wrap (summary: col 1, detail: col 5) */
-#performancePanelSection #perfDetailHeadRow th:nth-child(1),
-#performancePanelSection #perfDetailRows td:nth-child(1),
-#performancePanelSection #perfDetailHeadRow th:nth-child(5),
-#performancePanelSection #perfDetailRows td:nth-child(5){
+/* Performance (detail mode): allow service name (col 5) to wrap if needed */
+#performancePanelSection table.perf-detail-table--detail #perfDetailHeadRow th:nth-child(5),
+#performancePanelSection table.perf-detail-table--detail #perfDetailRows td:nth-child(5){
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -1458,6 +1456,14 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 }
 
 /* ===== Performance panel (Scheduling移植) ===== */
+#performancePanelSection{
+  --perf-fs-title: clamp(16px, 1.2vw, 18px);
+  --perf-fs-text: clamp(12px, 0.9vw, 14px);
+  --perf-fs-sub: clamp(11px, 0.85vw, 13px);
+  --perf-fs-badge: clamp(11px, 0.85vw, 13px);
+  --perf-fs-table: clamp(12px, 0.9vw, 14px);
+}
+
 #performancePanelSection .panel-body{
   padding:12px 14px;
 }
@@ -1492,14 +1498,14 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   }
 }
 
-#performancePanelSection .card-title{ font-size:16px; margin:0; }
-#performancePanelSection .card-subtitle{ color: var(--text-sub); font-size:12px; margin:0; }
+#performancePanelSection .card-title{ font-size: var(--perf-fs-title); margin:0; line-height:1.2; }
+#performancePanelSection .card-subtitle{ color: var(--text-sub); font-size: var(--perf-fs-sub); margin:0; line-height:1.25; }
 
 #performancePanelSection .badge{
   border:1px solid var(--border);
   padding:4px 8px;
   border-radius:999px;
-  font-size:12px;
+  font-size:var(--perf-fs-badge);
   color:var(--text-sub);
 }
 
@@ -1522,7 +1528,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 }
 
 #performancePanelSection .filter-label{
-  font-size:12px;
+  font-size:var(--perf-fs-sub);
   color:var(--text-sub);
 }
 
@@ -1537,7 +1543,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   background:var(--input-bg);
   color:var(--text);
   padding:7px 10px;
-  font-size:13px;
+  font-size:var(--perf-fs-text);
   outline:none;
 }
 
@@ -1637,34 +1643,68 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #performancePanelSection .status-table td{
   padding:8px 10px;
   border-bottom:1px solid var(--border-soft);
-  font-size:12px;
+  font-size:var(--perf-fs-table);
+  line-height:1.25;
 }
 
 #performancePanelSection .table-wrapper{ overflow:auto; }
 
-/* Performance detail table: card view on small screens
- * - avoids horizontal scrolling for 10+ columns
+/* =========================
+ * Performance summary (10 cols): match Scheduling table layout
+ * - keep thead visible on mobile
+ * - allow horizontal scroll via .table-wrapper
+ * - neutralize schedule-table column width constraints
+ * ========================= */
+#performancePanelSection table.perf-detail-table--summary{
+  table-layout: auto;
+}
+
+#performancePanelSection table.perf-detail-table--summary th,
+#performancePanelSection table.perf-detail-table--summary td{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (max-width: 720px){
+  #performancePanelSection table.perf-detail-table--summary{
+    width: max-content;
+    min-width: 980px;
+    font-size: 12px;
+  }
+
+  #performancePanelSection table.perf-detail-table--summary th,
+  #performancePanelSection table.perf-detail-table--summary td{
+    padding: 6px 6px;
+  }
+}
+
+/* Performance detail table: card view on small screens (detail mode only)
+ * - improves readability for 13+ columns
  * - requires td[data-label] (added in admin.performance.js)
  */
 @media (max-width: 720px){
-  #performancePanelSection table.perf-detail-table{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail{
     width:100%;
     border-collapse:separate;
     border-spacing:0 10px;
   }
 
-  #performancePanelSection table.perf-detail-table thead{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail thead{
     display:none;
   }
 
-  #performancePanelSection table.perf-detail-table,
-  #performancePanelSection table.perf-detail-table tbody,
-  #performancePanelSection table.perf-detail-table tr,
-  #performancePanelSection table.perf-detail-table td{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail,
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tbody,
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tr,
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
     display:block;
   }
 
-  #performancePanelSection table.perf-detail-table tr{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tr{
     border:1px solid var(--border-soft);
     background:var(--card);
     border-radius:14px;
@@ -1673,10 +1713,10 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
     overflow:hidden;
   }
 
-  #performancePanelSection table.perf-detail-table td{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
     padding:8px 0;
     border-bottom:1px dashed var(--border-soft);
-    font-size:13px;
+    font-size:var(--perf-fs-text);
     line-height:1.25;
     display:flex;
     justify-content:space-between;
@@ -1684,34 +1724,34 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
     gap:12px;
   }
 
-  #performancePanelSection table.perf-detail-table td:last-child{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td:last-child{
     border-bottom:none;
     padding-bottom:2px;
   }
 
-  #performancePanelSection table.perf-detail-table td::before{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td::before{
     content: attr(data-label);
-    flex: 0 0 92px;
-    max-width: 92px;
+    flex: 0 0 clamp(84px, 22vw, 108px);
+    max-width: clamp(84px, 22vw, 108px);
     color:var(--text-sub);
-    font-size:12px;
+    font-size:var(--perf-fs-sub);
     font-weight:600;
   }
 
-  #performancePanelSection table.perf-detail-table td{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
     text-align:right;
   }
 
   /* Make key text fields align left for readability */
-  #performancePanelSection table.perf-detail-table td[data-label="訂單日期"],
-  #performancePanelSection table.perf-detail-table td[data-label="訂單編號"],
-  #performancePanelSection table.perf-detail-table td[data-label="服務項目"],
-  #performancePanelSection table.perf-detail-table td[data-label="狀態"],
-  #performancePanelSection table.perf-detail-table td[data-label="拉牌"]{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="訂單日期"],
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="訂單編號"],
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="服務項目"],
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="狀態"],
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="拉牌"]{
     text-align:left;
   }
 
-  #performancePanelSection table.perf-detail-table td[data-label="服務項目"]{
+  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="服務項目"]{
     font-weight:700;
   }
 }
@@ -1729,7 +1769,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #performancePanelSection .btn-chart-mode,
 #performancePanelSection .btn-chart-reset{
   padding:6px 10px;
-  font-size:12px;
+  font-size:var(--perf-fs-text);
 }
 
 #performancePanelSection .btn-chart-mode.is-active{
@@ -1753,7 +1793,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   border-radius:16px;
   background: var(--card);
   border:1px solid var(--border-soft);
-  font-size:12px;
+  font-size:var(--perf-fs-sub);
 }
 
 #performancePanelSection .chart-wrapper{
@@ -1788,7 +1828,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #performancePanelSection .perf-click-panel-inner{ padding: 10px; }
 #performancePanelSection .perf-click-panel-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
 #performancePanelSection .perf-click-panel-close{ background:transparent; border:0; font-size:14px; cursor:pointer; }
-#performancePanelSection .perf-click-panel-body{ font-size: 13px; color: var(--text-primary); }
+#performancePanelSection .perf-click-panel-body{ font-size: var(--perf-fs-text); color: var(--text-primary, var(--text)); }
 #performancePanelSection .perf-click-metrics{ margin-bottom:8px; }
 #performancePanelSection .perf-click-list .status-table.small{ width:100%; font-size:12px; }
 #performancePanelSection .perf-click-empty{ color:var(--text-sub); padding:6px 0; }

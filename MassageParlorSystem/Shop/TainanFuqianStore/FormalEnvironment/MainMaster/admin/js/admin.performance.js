@@ -305,9 +305,9 @@ function summaryRowsHtml_(cards3) {
   const sched = get("排班");
 
   const rows = [
-    ["總計", total.單數, total.筆數, total.數量, total.金額],
-    ["老點", old.單數, old.筆數, old.數量, old.金額],
     ["排班", sched.單數, sched.筆數, sched.數量, sched.金額],
+    ["老點", old.單數, old.筆數, old.數量, old.金額],
+    ["總計", total.單數, total.筆數, total.數量, total.金額],
   ];
 
   return rows
@@ -438,32 +438,94 @@ function renderDetailHeader_(mode) {
   }
 }
 
-function pickCards3_(cards, rows) {
-  if (cards && cards["總計"] && cards["老點"] && cards["排班"]) return cards;
-  return buildCards3FromRows_(rows || []);
-}
-
 function buildCards3FromRows_(rows) {
-  const sum = {
-    "總計": { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
-    "老點": { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
-    "排班": { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+  const list = Array.isArray(rows) ? rows : [];
+  const init = () => ({ 單數: 0, 筆數: 0, 數量: 0, 金額: 0, _orders: new Set() });
+
+  const cards = {
+    排班: init(),
+    老點: init(),
+    總計: init(),
   };
 
-  for (const r of rows || []) {
-    const scope = String(r["類別"] || r["分類"] || "總計");
-
-    const target = sum[scope] || sum["總計"];
-    target.單數 += parseQty_(r["單數"] || 0);
-    target.筆數 += parseQty_(r["筆數"] || 0);
-    target.數量 += parseQty_(r["數量"] || 0);
-    target.金額 += parseMoney_(r["金額"] || 0);
+  function bucket_(r) {
+    const b = String((r && r["拉牌"]) || "").trim();
+    if (b === "老點") return "老點";
+    return "排班"; // 女師傅/男師傅/其他 → 三卡視角都算排班
   }
 
-  return sum;
+  for (const r of list) {
+    if (!r) continue;
+    const orderNo = String(r["訂單編號"] || "").trim();
+    const qty = PERF_CARD_QTY_MODE === "minutes" ? Number(r["分鐘"] ?? 0) || 0 : parseQty_(r["數量"]);
+    const amount = parseMoney_(r["小計"] ?? r["業績金額"]);
+    const b = bucket_(r);
+
+    cards.總計.筆數 += 1;
+    cards.總計.數量 += qty;
+    cards.總計.金額 += amount;
+    if (orderNo) cards.總計._orders.add(orderNo);
+
+    cards[b].筆數 += 1;
+    cards[b].數量 += qty;
+    cards[b].金額 += amount;
+    if (orderNo) cards[b]._orders.add(orderNo);
+  }
+
+  for (const k of ["排班", "老點", "總計"]) {
+    cards[k].單數 = cards[k]._orders.size;
+    delete cards[k]._orders;
+  }
+  return cards;
+}
+
+function pickCards3_(gasCards, rows) {
+  // ✅ 若 GAS 有 cards：三卡的「排班」= 排班 + 女師傅 + 男師傅 + 其他
+  if (gasCards && typeof gasCards === "object") {
+    const hasAny =
+      !!(gasCards["排班"] || gasCards["老點"] || gasCards["總計"] || gasCards["女師傅"] || gasCards["男師傅"] || gasCards["其他"]);
+
+    if (hasAny) {
+      const z = (o) => ({
+        單數: parseQty_(o?.單數 || 0),
+        筆數: parseQty_(o?.筆數 || 0),
+        數量: parseQty_(o?.數量 || 0),
+        金額: parseMoney_(o?.金額 || 0),
+      });
+
+      const sched = z(gasCards["排班"]);
+      const female = z(gasCards["女師傅"]);
+      const male = z(gasCards["男師傅"]);
+      const other = z(gasCards["其他"]);
+
+      const mergedSched = {
+        單數: sched.單數 + female.單數 + male.單數 + other.單數,
+        筆數: sched.筆數 + female.筆數 + male.筆數 + other.筆數,
+        數量: sched.數量 + female.數量 + male.數量 + other.數量,
+        金額: sched.金額 + female.金額 + male.金額 + other.金額,
+      };
+
+      return {
+        排班: mergedSched,
+        老點: gasCards["老點"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+        總計: gasCards["總計"] || { 單數: 0, 筆數: 0, 數量: 0, 金額: 0 },
+      };
+    }
+  }
+
+  // fallback：用 rows 自算（三卡視角女/男/其他也算排班）
+  return buildCards3FromRows_(rows);
 }
 
 function applyDetailTableHtmlFrom_(rows, mode) {
+  try {
+    const table = dom.perfDetailHeadRowEl?.closest("table");
+    if (table) {
+      const isSummary = mode === "summary";
+      table.classList.toggle("perf-detail-table--summary", isSummary);
+      table.classList.toggle("perf-detail-table--detail", !isSummary);
+    }
+  } catch (_) {}
   renderDetailHeader_(mode);
   const tmp = mode === "summary" ? detailSummaryRowsHtml_(rows) : detailRowsHtml_(rows);
   applyDetailTableHtml_(tmp.html, tmp.count);
