@@ -161,7 +161,7 @@ async function loadTechNoOptions_() {
 
     const list = Array.isArray(data.techNos) ? data.techNos : [];
     const options = [
-      { value: "", text: "（預設）本人/不指定" },
+      { value: "", text: "請選擇" },
       ...list.map((v) => ({ value: String(v), text: String(v) })),
     ];
 
@@ -205,6 +205,7 @@ function ensureDefaultDate_() {
   const today = localDateKeyToday_();
   const monthStart = localDateKeyMonthStart_();
 
+  // 參照 Scheduling：不持久化日期，空值時填入「本月 1 號 ~ 今天」
   if (dom.perfDateStartInput && !dom.perfDateStartInput.value) dom.perfDateStartInput.value = monthStart;
   if (dom.perfDateEndInput && !dom.perfDateEndInput.value) dom.perfDateEndInput.value = today;
 
@@ -265,7 +266,7 @@ function readRangeFromInputs_() {
   if (!startKey) return { ok: false, error: "MISSING_START", techNo, startKey, endKey };
 
   const range = normalizeRange_(startKey, endKey, PERF_MAX_RANGE_DAYS);
-  if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", userId, startKey, endKey };
+  if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", techNo, startKey, endKey };
 
   if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
   if (dom.perfDateEndInput && dom.perfDateEndInput.value !== range.normalizedEnd) dom.perfDateEndInput.value = range.normalizedEnd;
@@ -289,6 +290,10 @@ function showEmpty_(show) {
 }
 function setDetailCount_(n) {
   if (dom.perfDetailCountEl) dom.perfDetailCountEl.textContent = `${Number(n || 0)} 筆`;
+}
+
+function summaryNotLoadedHtml_() {
+  return `<tr><td colspan="5" style="color:var(--text-sub);">請先查詢。</td></tr>`;
 }
 
 function summaryRowsHtml_(cards3) {
@@ -489,15 +494,16 @@ function computeMonthRates_(rows) {
       if (!r) continue;
       const pull = String(r["拉牌"] || "").trim();
       const orderNo = String(r["訂單編號"] || "").trim();
+      const isOld = pull === "老點";
 
       totalRows += 1;
-      if (pull.includes("老點")) oldRows += 1;
-      if (pull.includes("排班")) schedRows += 1;
+      if (isOld) oldRows += 1;
+      else schedRows += 1; // Scheduling: 非老點一律視為排班
 
       if (orderNo) {
         allOrders.add(orderNo);
-        if (pull.includes("老點")) oldOrders.add(orderNo);
-        if (pull.includes("排班")) schedOrders.add(orderNo);
+        if (isOld) oldOrders.add(orderNo);
+        else schedOrders.add(orderNo);
       }
     }
 
@@ -870,11 +876,20 @@ async function renderFromCache_(mode, info) {
       else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
     else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
+
+    setMeta_("最後更新：—");
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
+    renderDetailHeader_(m === "detail" ? "detail" : "summary");
+    applyDetailTableHtml_("", 0);
+    clearPerfChart_();
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
   const key = makeCacheKey_(r.techNo, r.from, r.to);
   if (perfCache_.key !== key) {
+    setBadge_("尚未載入（請按『業績統計/業績明細』）", true);
+    setMeta_("最後更新：—");
+    if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
     clearPerfChart_();
@@ -1037,6 +1052,7 @@ function initPerformanceUi() {
   if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", (e) => void manualRefreshPerformance_({ showToast: true, force: !!(e && (e.shiftKey || e.altKey || e.metaKey)), mode: "detail" }));
 
   const onDateInputsChanged = () => {
+    if (!getTechNo_()) return; // 參照 Scheduling：日期改了只切畫面，不強制同步/顯示錯誤
     void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
   };
 

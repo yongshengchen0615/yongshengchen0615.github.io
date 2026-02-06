@@ -1498,6 +1498,69 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   gap:10px;
 }
 
+/* Match Scheduling: filter layout + labels + inputs */
+#performancePanelSection .filter{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  width:100%;
+}
+
+#performancePanelSection .filter-label{
+  font-size:12px;
+  color:var(--text-sub);
+}
+
+#performancePanelSection .input,
+#performancePanelSection .select{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--input-bg);
+  color:var(--text);
+  padding:7px 10px;
+  font-size:13px;
+  outline:none;
+}
+
+#performancePanelSection .input:focus,
+#performancePanelSection .select:focus{
+  box-shadow:var(--focus);
+  border-color:rgba(56,189,248,.45);
+}
+
+/* iOS / LINE WebView: date input indicator safety (match Scheduling) */
+#performancePanelSection input[type="date"].input{
+  min-height:44px;
+  padding:10px 48px 10px 12px;
+  position:relative;
+  line-height:1.2;
+  -webkit-appearance:none;
+  appearance:none;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+
+#performancePanelSection input[type="date"].input::-webkit-date-and-time-value{
+  text-align:left;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+#performancePanelSection input[type="date"].input::-webkit-calendar-picker-indicator{
+  opacity:0.85;
+  cursor:pointer;
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+}
+
 #performancePanelSection .perf-actions{
   display:flex;
   gap:10px;
@@ -1516,11 +1579,19 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   #performancePanelSection .perf-actions{
     grid-column: 1 / -1;
   }
+
+  #performancePanelSection input[type="date"].input{
+    padding-right:64px;
+  }
 }
 
 @media (max-width: 420px){
   #performancePanelSection .filters.perf-filters{
     grid-template-columns: 1fr;
+  }
+
+  #performancePanelSection input[type="date"].input{
+    padding-right:72px;
   }
 }
 
