@@ -534,6 +534,7 @@ td.yn-cell{ text-align:right; }
 /* For the schedule card table specifically: prevent horizontal scrolling
   and instead shrink cell paddings/font and clip overflow on overflow. */
 .table-wrapper{ overflow-x: hidden; }
+#performancePanelSection .table-wrapper{ overflow-x: auto; }
 
 /* Chart horizontal scroll: allow canvas to be wider than container and enable smooth touch scrolling */
 .chart-wrap{ overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; padding:12px 14px; }
@@ -607,6 +608,17 @@ tbody td{
   word-break: break-word;
 }
 .status-table th:nth-child(5), .status-table td:nth-child(5){ width:16%; min-width:60px; max-width:160px; text-align:left; }
+
+/* Performance: allow service name to wrap (summary: col 1, detail: col 5) */
+#performancePanelSection #perfDetailHeadRow th:nth-child(1),
+#performancePanelSection #perfDetailRows td:nth-child(1),
+#performancePanelSection #perfDetailHeadRow th:nth-child(5),
+#performancePanelSection #perfDetailRows td:nth-child(5){
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+}
 
 @media (max-width: 720px){
   /* On small screens allow content to wrap and avoid fixed layout */

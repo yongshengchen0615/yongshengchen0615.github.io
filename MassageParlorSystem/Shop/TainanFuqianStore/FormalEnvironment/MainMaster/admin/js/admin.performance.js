@@ -36,7 +36,6 @@ const PERF_CHART_MODE_KEY = "admin_perf_chart_mode_v1";
 let perfSelectedMode_ = "detail";
 let perfPrefetchInFlight_ = null;
 let perfSelectedTechNo_ = "";
-let perfTechNoToUserIdMap_ = null;
 
 const perfCache_ = {
   key: "",
@@ -140,34 +139,10 @@ function parseMoney_(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function getUserId_() {
-  if (perfSelectedTechNo_) {
-    const uid = perfTechNoToUserIdMap_ ? String(perfTechNoToUserIdMap_[perfSelectedTechNo_] || "").trim() : "";
-    return uid;
-  }
-  const candidates = [
-    (typeof me !== "undefined" && me && me.userId) ? me.userId : "",
-    (() => {
-      try {
-        return localStorage.getItem("userId") || localStorage.getItem("lineUserId") || "";
-      } catch (_) {
-        return "";
-      }
-    })(),
-    (() => {
-      try {
-        return perfGetQueryParam_("userId") || perfGetQueryParam_("lineUserId") || "";
-      } catch (_) {
-        return "";
-      }
-    })(),
-  ];
-
-  for (const v of candidates) {
-    const s = String(v || "").trim();
-    if (s) return s;
-  }
-  return "";
+function getTechNo_() {
+  if (perfSelectedTechNo_) return String(perfSelectedTechNo_ || "").trim();
+  const v = String(dom.perfTechNoSelect?.value || "").trim();
+  return v;
 }
 
 async function loadTechNoOptions_() {
@@ -197,35 +172,6 @@ async function loadTechNoOptions_() {
     return { ok: true, count: list.length };
   } catch (e) {
     console.warn("loadTechNoOptions_ failed", e);
-    return { ok: false, error: String(e?.message || e) };
-  }
-}
-
-async function loadTechNoToUserIdMap_() {
-  const apiBase = perfGetApiBaseUrl_();
-  if (!apiBase) return { ok: false, error: "MISSING_API_BASE_URL" };
-
-  try {
-    const res = await fetch(apiBase, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ mode: "listUsers" }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!data || data.ok !== true) throw new Error(data?.error || "listUsers failed");
-
-    const users = Array.isArray(data.users) ? data.users : [];
-    const map = {};
-    users.forEach((u) => {
-      const masterCode = String(u.masterCode || u.mastercode || u.techNo || "").trim();
-      const userId = String(u.userId || u.userid || "").trim();
-      if (masterCode && userId) map[masterCode] = userId;
-    });
-
-    perfTechNoToUserIdMap_ = map;
-    return { ok: true, count: Object.keys(map).length };
-  } catch (e) {
-    console.warn("loadTechNoToUserIdMap_ failed", e);
     return { ok: false, error: String(e?.message || e) };
   }
 }
@@ -307,7 +253,7 @@ function normalizeRange_(startKey, endKey, maxDays) {
 }
 
 function readRangeFromInputs_() {
-  const userId = getUserId_();
+  const techNo = getTechNo_();
 
   const startRaw = String(dom.perfDateStartInput?.value || "").trim();
   const endRaw = String(dom.perfDateEndInput?.value || "").trim();
@@ -315,8 +261,8 @@ function readRangeFromInputs_() {
   const startKey = normalizeInputDateKey_(startRaw);
   const endKey = normalizeInputDateKey_(endRaw || startRaw);
 
-  if (!userId) return { ok: false, error: "MISSING_USERID", userId: "", startKey, endKey };
-  if (!startKey) return { ok: false, error: "MISSING_START", userId, startKey, endKey };
+  if (!techNo) return { ok: false, error: "MISSING_TECHNO", techNo: "", startKey, endKey };
+  if (!startKey) return { ok: false, error: "MISSING_START", techNo, startKey, endKey };
 
   const range = normalizeRange_(startKey, endKey, PERF_MAX_RANGE_DAYS);
   if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", userId, startKey, endKey };
@@ -324,7 +270,7 @@ function readRangeFromInputs_() {
   if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
   if (dom.perfDateEndInput && dom.perfDateEndInput.value !== range.normalizedEnd) dom.perfDateEndInput.value = range.normalizedEnd;
 
-  return { ok: true, userId, from: range.normalizedStart, to: range.normalizedEnd, dateKeys: range.dateKeys };
+  return { ok: true, techNo, from: range.normalizedStart, to: range.normalizedEnd, dateKeys: range.dateKeys };
 }
 
 function setBadge_(text, isError) {
@@ -374,68 +320,58 @@ function summaryRowsHtml_(cards3) {
     .join("");
 }
 
-function detailRowsHtml_(rows) {
-  const out = [];
-  let count = 0;
-
-  for (const r of rows || []) {
-    const service = String(r["服務項目"] || r["項目"] || r["類別"] || "");
-    if (!service) continue;
-    count += 1;
-
-    out.push(`
-      <tr>
-        <td>${perfEscapeHtml_(service)}</td>
-        <td>${fmtMoney_(r["總筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["總節數"] || 0)}</td>
-        <td>${fmtMoney_(r["總計金額"] || 0)}</td>
-        <td>${fmtMoney_(r["老點筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["老點節數"] || 0)}</td>
-        <td>${fmtMoney_(r["老點金額"] || 0)}</td>
-        <td>${fmtMoney_(r["排班筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["排班節數"] || 0)}</td>
-        <td>${fmtMoney_(r["排班金額"] || 0)}</td>
-      </tr>
-    `);
-  }
-
-  if (!out.length) {
-    return { html: "", count: 0 };
-  }
-
-  return { html: out.join(""), count };
+function detailRowsHtml_(detailRows) {
+  const list = Array.isArray(detailRows) ? detailRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const td = (v) => `<td>${perfEscapeHtml_(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list
+      .map((r) => {
+        const dateText = String(r["訂單日期"] ?? "").replace(/-/g, "/");
+        return (
+          "<tr>" +
+          td(dateText) +
+          td(r["訂單編號"] || "") +
+          td(r["序"] ?? "") +
+          td(r["拉牌"] || "") +
+          td(r["服務項目"] || "") +
+          td(r["業績金額"] ?? 0) +
+          td(r["抽成金額"] ?? 0) +
+          td(r["數量"] ?? 0) +
+          td(r["小計"] ?? 0) +
+          td(r["分鐘"] ?? 0) +
+          td(r["開工"] ?? "") +
+          td(r["完工"] ?? "") +
+          td(r["狀態"] || "") +
+          "</tr>"
+        );
+      })
+      .join(""),
+  };
 }
 
-function detailSummaryRowsHtml_(rows) {
-  const out = [];
-  let count = 0;
+function detailSummaryRowsHtml_(serviceSummaryRows) {
+  const list = Array.isArray(serviceSummaryRows) ? serviceSummaryRows : [];
+  if (!list.length) return { html: "", count: 0 };
+  const headers = [
+    "服務項目",
+    "總筆數",
+    "總節數",
+    "總計金額",
+    "老點筆數",
+    "老點節數",
+    "老點金額",
+    "排班筆數",
+    "排班節數",
+    "排班金額",
+  ];
 
-  for (const r of rows || []) {
-    const service = String(r["服務項目"] || r["項目"] || r["類別"] || "");
-    if (!service) continue;
-    count += 1;
-
-    out.push(`
-      <tr>
-        <td>${perfEscapeHtml_(service)}</td>
-        <td>${fmtMoney_(r["總筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["總節數"] || 0)}</td>
-        <td>${fmtMoney_(r["總計金額"] || 0)}</td>
-        <td>${fmtMoney_(r["老點筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["老點節數"] || 0)}</td>
-        <td>${fmtMoney_(r["老點金額"] || 0)}</td>
-        <td>${fmtMoney_(r["排班筆數"] || 0)}</td>
-        <td>${fmtMoney_(r["排班節數"] || 0)}</td>
-        <td>${fmtMoney_(r["排班金額"] || 0)}</td>
-      </tr>
-    `);
-  }
-
-  if (!out.length) {
-    return { html: "", count: 0 };
-  }
-
-  return { html: out.join(""), count };
+  const td = (v) => `<td>${perfEscapeHtml_(String(v ?? ""))}</td>`;
+  return {
+    count: list.length,
+    html: list.map((r) => "<tr>" + headers.map((h) => td(r[h] ?? 0)).join("") + "</tr>").join(""),
+  };
 }
 
 function applyDetailTableHtml_(html, count) {
@@ -462,16 +398,19 @@ function renderDetailHeader_(mode) {
     `;
   } else {
     dom.perfDetailHeadRowEl.innerHTML = `
+      <th>訂單日期</th>
+      <th>訂單編號</th>
+      <th>序</th>
+      <th>拉牌</th>
       <th>服務項目</th>
-      <th>總筆數</th>
-      <th>總節數</th>
-      <th>總計金額</th>
-      <th>老點筆數</th>
-      <th>老點節數</th>
-      <th>老點金額</th>
-      <th>排班筆數</th>
-      <th>排班節數</th>
-      <th>排班金額</th>
+      <th>業績金額</th>
+      <th>抽成金額</th>
+      <th>數量</th>
+      <th>小計</th>
+      <th>分鐘</th>
+      <th>開工</th>
+      <th>完工</th>
+      <th>狀態</th>
     `;
   }
 }
@@ -531,14 +470,50 @@ function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) 
 }
 
 function computeMonthRates_(rows) {
-  const cards3 = buildCards3FromRows_(rows);
-  const totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
-  const oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
-  const schedRows = Number(cards3?.排班?.筆數 || 0) || 0;
+  const list = Array.isArray(rows) ? rows : [];
+  const looksLikeDetail = list.some((r) => r && (r["訂單編號"] || r["拉牌"] || r["服務項目"]));
 
-  const totalSingles = Number(cards3?.總計?.單數 || 0) || 0;
-  const oldSingles = Number(cards3?.老點?.單數 || 0) || 0;
-  const schedSingles = Number(cards3?.排班?.單數 || 0) || 0;
+  let totalRows = 0;
+  let oldRows = 0;
+  let schedRows = 0;
+  let totalSingles = 0;
+  let oldSingles = 0;
+  let schedSingles = 0;
+
+  if (looksLikeDetail) {
+    const allOrders = new Set();
+    const oldOrders = new Set();
+    const schedOrders = new Set();
+
+    for (const r of list) {
+      if (!r) continue;
+      const pull = String(r["拉牌"] || "").trim();
+      const orderNo = String(r["訂單編號"] || "").trim();
+
+      totalRows += 1;
+      if (pull.includes("老點")) oldRows += 1;
+      if (pull.includes("排班")) schedRows += 1;
+
+      if (orderNo) {
+        allOrders.add(orderNo);
+        if (pull.includes("老點")) oldOrders.add(orderNo);
+        if (pull.includes("排班")) schedOrders.add(orderNo);
+      }
+    }
+
+    totalSingles = allOrders.size;
+    oldSingles = oldOrders.size;
+    schedSingles = schedOrders.size;
+  } else {
+    const cards3 = buildCards3FromRows_(list);
+    totalRows = Number(cards3?.總計?.筆數 || 0) || 0;
+    oldRows = Number(cards3?.老點?.筆數 || 0) || 0;
+    schedRows = Number(cards3?.排班?.筆數 || 0) || 0;
+
+    totalSingles = Number(cards3?.總計?.單數 || 0) || 0;
+    oldSingles = Number(cards3?.老點?.單數 || 0) || 0;
+    schedSingles = Number(cards3?.排班?.單數 || 0) || 0;
+  }
 
   const oldRateRows = totalRows ? Math.round((oldRows / totalRows) * 1000) / 10 : 0;
   const schedRateRows = totalRows ? Math.round((schedRows / totalRows) * 1000) / 10 : 0;
@@ -819,7 +794,7 @@ function updatePerfChart_(rows, dateKeys) {
 /* =========================
  * Fetch (POST syncStorePerf_v1)
  * ========================= */
-async function fetchPerfSync_(userId, from, to, includeDetail = true) {
+async function fetchPerfSync_(techNo, from, to, includeDetail = true) {
   const perfUrl = perfGetSyncUrl_();
   if (!perfUrl) throw new Error("CONFIG_PERF_SYNC_API_URL_MISSING");
 
@@ -827,10 +802,11 @@ async function fetchPerfSync_(userId, from, to, includeDetail = true) {
 
   const payload = {
     mode: "syncStorePerf_v1",
-    userId,
+    techNo,
     from,
     to,
     includeDetail: !!includeDetail,
+    bypassAccess: true,
   };
 
   const resp = await fetchFormPostWithTimeout_(url, payload, PERF_FETCH_TIMEOUT_MS, "PERF_SYNC");
@@ -879,8 +855,8 @@ async function fetchFormPostWithTimeout_(url, bodyObj, timeoutMs, tag) {
   }
 }
 
-function makeCacheKey_(userId, from, to) {
-  return `${String(userId || "").trim()}|${String(from || "").trim()}|${String(to || "").trim()}`;
+function makeCacheKey_(techNo, from, to) {
+  return `${String(techNo || "").trim()}|${String(from || "").trim()}|${String(to || "").trim()}`;
 }
 
 async function renderFromCache_(mode, info) {
@@ -890,17 +866,14 @@ async function renderFromCache_(mode, info) {
   const r = info && info.ok ? info : readRangeFromInputs_();
   if (!r || !r.ok) {
     showError_(true);
-    if (r && r.error === "MISSING_USERID") {
-      if (perfSelectedTechNo_) setBadge_("找不到該師傅編號對應的 userId", true);
-      else setBadge_("缺少 userId（未登入/未取得 profile）", true);
-    }
-    else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
+    if (r && r.error === "MISSING_TECHNO") setBadge_("請選擇師傅編號", true);
+      else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
     else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
-  const key = makeCacheKey_(r.userId, r.from, r.to);
+  const key = makeCacheKey_(r.techNo, r.from, r.to);
   if (perfCache_.key !== key) {
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
@@ -944,16 +917,24 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
   const r = info && info.ok ? info : readRangeFromInputs_();
   if (!r || !r.ok) return { ok: false, error: r ? r.error : "BAD_RANGE" };
 
-  const userId = r.userId;
+  const techNo = r.techNo;
   const from = r.from;
   const to = r.to;
 
-  const key = makeCacheKey_(userId, from, to);
+  const key = makeCacheKey_(techNo, from, to);
 
   if (showToast) showLoadingHint("同步業績中…");
 
-  try {
-    const raw = await fetchPerfSync_(userId, from, to, true);
+  if (perfPrefetchInFlight_ && perfPrefetchInFlight_.key === key) {
+    try {
+      return await perfPrefetchInFlight_.promise;
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e) };
+    }
+  }
+
+  const task = (async () => {
+    const raw = await fetchPerfSync_(techNo, from, to, true);
 
     if (!raw || raw.ok !== true) {
       const err = String(raw && raw.error ? raw.error : "SYNC_FAILED");
@@ -972,24 +953,39 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
     perfCache_.serviceSummary = serviceSummary;
 
     return { ok: true, key, rowsCount: rows.length, serviceSummaryCount: serviceSummary.length, lastUpdatedAt: perfCache_.lastUpdatedAt };
+  })();
+
+  perfPrefetchInFlight_ = { key, promise: task };
+  try {
+    return await task;
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
   } finally {
+    if (perfPrefetchInFlight_ && perfPrefetchInFlight_.key === key) perfPrefetchInFlight_ = null;
     if (showToast) hideLoadingHint();
   }
 }
 
-async function manualRefreshPerformance_({ showToast } = { showToast: true }) {
+async function manualRefreshPerformance_({ showToast, force = false, mode } = { showToast: true }) {
   ensureDefaultDate_();
   showError_(false);
 
+  if (mode === "summary" || mode === "detail") perfSelectedMode_ = mode;
+
   const info = readRangeFromInputs_();
   if (!info.ok) {
-    if (info.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
+    if (info.error === "MISSING_TECHNO") setBadge_("請選擇師傅編號", true);
     else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
     else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
     return { ok: false, error: info.error || "BAD_RANGE" };
+  }
+
+  const key = makeCacheKey_(info.techNo, info.from, info.to);
+  const hasCache = perfCache_.key === key && Array.isArray(perfCache_.detailRows) && perfCache_.detailRows.length > 0;
+  if (!force && hasCache) {
+    setBadge_("已載入", false);
+    return await renderFromCache_(perfSelectedMode_, info);
   }
 
   setBadge_("同步中…", false);
@@ -998,7 +994,8 @@ async function manualRefreshPerformance_({ showToast } = { showToast: true }) {
   if (!res || !res.ok) {
     const msg = String(res && res.error ? res.error : "SYNC_FAILED");
     if (msg.includes("CONFIG_PERF_SYNC_API_URL_MISSING")) setBadge_("尚未設定 PERF_SYNC_API_URL", true);
-    else if (msg.includes("USER_NOT_FOUND")) setBadge_("未授權（PerformanceAccess 查無 userId）", true);
+    else if (msg.includes("MISSING_TECHNO")) setBadge_("請選擇師傅編號", true);
+    else if (msg.includes("TECHNO_NOT_FOUND") || msg.includes("STOREID_NOT_FOUND")) setBadge_("NetworkCapture 查無對應 StoreId", true);
     else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("同步失敗", true);
     showError_(true);
@@ -1021,16 +1018,12 @@ function onShowPerformance() {
 
 function initPerformanceUi() {
   ensureDefaultDate_();
-  // TechNo dropdown + mapping
+  // TechNo dropdown
   loadTechNoOptions_();
-  loadTechNoToUserIdMap_();
 
   if (dom.perfTechNoSelect) {
     dom.perfTechNoSelect.addEventListener("change", (e) => {
       perfSelectedTechNo_ = String(e?.target?.value || "").trim();
-      if (perfSelectedTechNo_ && perfTechNoToUserIdMap_ && !perfTechNoToUserIdMap_[perfSelectedTechNo_]) {
-        setBadge_("找不到該師傅編號對應的 userId", true);
-      }
       void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
     });
   }
@@ -1039,9 +1032,9 @@ function initPerformanceUi() {
     loadPerfChartPrefs_();
   } catch (_) {}
 
-  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void manualRefreshPerformance_({ showToast: true }));
-  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void manualRefreshPerformance_({ showToast: true }));
-  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void manualRefreshPerformance_({ showToast: true }));
+  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", (e) => void manualRefreshPerformance_({ showToast: true, force: !!(e && (e.shiftKey || e.altKey || e.metaKey)), mode: perfSelectedMode_ }));
+  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", (e) => void manualRefreshPerformance_({ showToast: true, force: !!(e && (e.shiftKey || e.altKey || e.metaKey)), mode: "summary" }));
+  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", (e) => void manualRefreshPerformance_({ showToast: true, force: !!(e && (e.shiftKey || e.altKey || e.metaKey)), mode: "detail" }));
 
   const onDateInputsChanged = () => {
     void renderFromCache_(perfSelectedMode_, readRangeFromInputs_());
