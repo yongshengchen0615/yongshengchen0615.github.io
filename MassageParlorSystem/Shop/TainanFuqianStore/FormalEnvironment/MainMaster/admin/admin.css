@@ -1682,77 +1682,34 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   }
 }
 
-/* Performance detail table: card view on small screens (detail mode only)
- * - improves readability for 13+ columns
- * - requires td[data-label] (added in admin.performance.js)
+/* Performance detail (detail mode): keep the same scrollable table layout as summary
+ * - keep thead visible on mobile
+ * - allow horizontal scroll via .table-wrapper
  */
+#performancePanelSection table.perf-detail-table--detail{
+  table-layout: auto;
+}
+
+#performancePanelSection table.perf-detail-table--detail th,
+#performancePanelSection table.perf-detail-table--detail td{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
 @media (max-width: 720px){
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail{
-    width:100%;
-    border-collapse:separate;
-    border-spacing:0 10px;
+  #performancePanelSection table.perf-detail-table--detail{
+    width: max-content;
+    min-width: 1180px;
+    font-size: 12px;
   }
 
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail thead{
-    display:none;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail,
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tbody,
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tr,
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
-    display:block;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail tr{
-    border:1px solid var(--border-soft);
-    background:var(--card);
-    border-radius:14px;
-    padding:10px 12px;
-    box-shadow: 0 6px 16px rgba(0,0,0,.10);
-    overflow:hidden;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
-    padding:8px 0;
-    border-bottom:1px dashed var(--border-soft);
-    font-size:var(--perf-fs-text);
-    line-height:1.25;
-    display:flex;
-    justify-content:space-between;
-    align-items:flex-start;
-    gap:12px;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td:last-child{
-    border-bottom:none;
-    padding-bottom:2px;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td::before{
-    content: attr(data-label);
-    flex: 0 0 clamp(84px, 22vw, 108px);
-    max-width: clamp(84px, 22vw, 108px);
-    color:var(--text-sub);
-    font-size:var(--perf-fs-sub);
-    font-weight:600;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td{
-    text-align:right;
-  }
-
-  /* Make key text fields align left for readability */
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="訂單日期"],
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="訂單編號"],
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="服務項目"],
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="狀態"],
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="拉牌"]{
-    text-align:left;
-  }
-
-  #performancePanelSection table.perf-detail-table.perf-detail-table--detail td[data-label="服務項目"]{
-    font-weight:700;
+  #performancePanelSection table.perf-detail-table--detail th,
+  #performancePanelSection table.perf-detail-table--detail td{
+    padding: 6px 6px;
   }
 }
 
