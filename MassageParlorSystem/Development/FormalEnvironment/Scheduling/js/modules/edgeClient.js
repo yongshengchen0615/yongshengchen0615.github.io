@@ -22,6 +22,44 @@ const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
 // across different edges (edges may have slightly different cache/update timing).
 let sessionEdgeIdx = null;
 
+// Status snapshot cache (for faster initial paint)
+const STATUS_SNAPSHOT_KEY = "status_snapshot_v1"; // { t, source, edgeIdx, dataTimestamp, bodyRows, footRows }
+const STATUS_SNAPSHOT_DEFAULT_MAX_AGE_MS = 2 * 60 * 1000;
+let statusSnapshotMem_ = null;
+
+let fetchAllInFlight_ = null;
+
+function safeReadSnapshot_() {
+  if (statusSnapshotMem_ && typeof statusSnapshotMem_.t === "number") return statusSnapshotMem_;
+  const s = readJsonLS(STATUS_SNAPSHOT_KEY);
+  if (!s || typeof s.t !== "number") return null;
+  statusSnapshotMem_ = s;
+  return s;
+}
+
+function safeWriteSnapshot_(snap) {
+  try {
+    statusSnapshotMem_ = snap;
+    writeJsonLS(STATUS_SNAPSHOT_KEY, snap);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * 取得最近一次成功的快取快照（若仍在有效時間內）。
+ * - 用於初次進入時先顯示「上一筆資料」，再背景同步最新。
+ */
+export function getCachedStatusSnapshot({ maxAgeMs } = {}) {
+  const snap = safeReadSnapshot_();
+  if (!snap) return null;
+  const age = Date.now() - Number(snap.t || 0);
+  const limit = Number.isFinite(Number(maxAgeMs)) ? Number(maxAgeMs) : STATUS_SNAPSHOT_DEFAULT_MAX_AGE_MS;
+  if (limit > 0 && age > limit) return null;
+  if (!Array.isArray(snap.bodyRows) || !Array.isArray(snap.footRows)) return null;
+  return snap;
+}
+
 function getOverrideEdgeIndex() {
   const o = readJsonLS(EDGE_ROUTE_KEY);
   if (!o || typeof o.idx !== "number") return null;
@@ -103,19 +141,7 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
   }
 }
 
-/**
- * 取得身體/腳底面板資料（含 failover）
- * - 會先嘗試 Edge（多個端點 + timeout + sticky reroute）
- * - Edge 全部失敗才打 fallback origin cache
- *
- * 回傳格式固定：
- * - source: "edge" | "origin"（資料來源）
- * - edgeIdx: number | null（使用的 edge 索引；origin 時為 null）
- * - bodyRows / footRows: Array（原始列資料）
- *
- * @returns {Promise<{source:"edge"|"origin", edgeIdx:number|null, bodyRows:any[], footRows:any[]}>}
- */
-export async function fetchStatusAll() {
+async function doFetchStatusAll_() {
   const jitterBust = Date.now();
 
   const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
@@ -195,4 +221,44 @@ export async function fetchStatusAll() {
     footRows: annotateOriginRows(Array.isArray(data.foot) ? data.foot : []),
     dataTimestamp: originDataTs,
   };
+}
+
+/**
+ * 取得身體/腳底面板資料（含 failover）
+ * - 會先嘗試 Edge（多個端點 + timeout + sticky reroute）
+ * - Edge 全部失敗才打 fallback origin cache
+ *
+ * 回傳格式固定：
+ * - source: "edge" | "origin"（資料來源）
+ * - edgeIdx: number | null（使用的 edge 索引；origin 時為 null）
+ * - bodyRows / footRows: Array（原始列資料）
+ *
+ * @returns {Promise<{source:"edge"|"origin", edgeIdx:number|null, bodyRows:any[], footRows:any[]}>}
+ */
+export async function fetchStatusAll({ force } = {}) {
+  if (!force && fetchAllInFlight_) return fetchAllInFlight_;
+
+  fetchAllInFlight_ = (async () => {
+    const res = await doFetchStatusAll_();
+    // persist snapshot for fast initial paint
+    try {
+      safeWriteSnapshot_({
+        t: Date.now(),
+        source: res.source,
+        edgeIdx: res.edgeIdx,
+        dataTimestamp: res.dataTimestamp || null,
+        bodyRows: Array.isArray(res.bodyRows) ? res.bodyRows : [],
+        footRows: Array.isArray(res.footRows) ? res.footRows : [],
+      });
+    } catch {
+      // ignore
+    }
+    return res;
+  })();
+
+  try {
+    return await fetchAllInFlight_;
+  } finally {
+    fetchAllInFlight_ = null;
+  }
 }

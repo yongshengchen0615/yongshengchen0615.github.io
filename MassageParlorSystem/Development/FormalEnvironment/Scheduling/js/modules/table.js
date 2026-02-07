@@ -23,7 +23,7 @@ import {
   parseOpacityToken,
   getRgbaString,
 } from "./core.js";
-import { fetchStatusAll } from "./edgeClient.js";
+import { fetchStatusAll, getCachedStatusSnapshot } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showGate, hideGate } from "./uiHelpers.js";
 import { logUsageEvent } from "./usageLog.js";
@@ -191,6 +191,77 @@ function parseTimestampMs_(v) {
   if (!s) return null;
   const ms = Date.parse(s);
   return Number.isFinite(ms) ? ms : null;
+}
+
+function fmtHm_(d) {
+  try {
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 用最近一次成功快照快速顯示（不阻塞 UI）。
+ * - 只影響前端顯示；不會跳過後續的正式同步
+ */
+export function hydrateStatusFromCache({ maxAgeMs } = {}) {
+  const snap = getCachedStatusSnapshot({ maxAgeMs });
+  if (!snap) return false;
+
+  const bodyRows = Array.isArray(snap.bodyRows) ? snap.bodyRows : [];
+  const footRows = Array.isArray(snap.footRows) ? snap.footRows : [];
+
+  const bodyDiff = diffMergePanelRows(state.rawData.body, bodyRows);
+  const footDiff = diffMergePanelRows(state.rawData.foot, footRows);
+
+  if (bodyDiff.changed) state.rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+  if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+
+  if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+  rebuildMasterFilterOptions();
+
+  // UI hints: cached data
+  try {
+    if (dom.connectionStatusEl) {
+      if (!state.scheduleUiEnabled) {
+        dom.connectionStatusEl.textContent = "排班表未開通（僅顯示我的狀態）";
+      } else if (snap.source === "edge" && typeof snap.edgeIdx === "number") {
+        dom.connectionStatusEl.textContent = `快取（分流 ${snap.edgeIdx + 1}）`;
+      } else {
+        dom.connectionStatusEl.textContent = "快取（主站）";
+      }
+    }
+  } catch {}
+
+  try {
+    if (dom.lastUpdateEl) {
+      const t = new Date(Number(snap.t) || Date.now());
+      dom.lastUpdateEl.textContent = "快取：" + fmtHm_(t);
+    }
+  } catch {}
+
+  // store cached fetch timestamp for stale checks (best-effort)
+  try {
+    if (!state.dataHealth) state.dataHealth = {};
+    const ms = parseTimestampMs_(snap.dataTimestamp);
+    state.dataHealth.fetchDataTimestampMs = Number.isFinite(ms) ? ms : null;
+  } catch {}
+
+  if (state.scheduleUiEnabled) {
+    try {
+      renderIncremental(state.activePanel);
+    } catch {}
+  }
+
+  // keep my status in sync with current rawData
+  try {
+    updateMyMasterStatusUI();
+  } catch {}
+
+  return true;
 }
 
 function computeLatestDataTimestampMs_() {
