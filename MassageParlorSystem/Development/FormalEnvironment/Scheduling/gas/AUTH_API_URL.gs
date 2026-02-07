@@ -50,6 +50,12 @@ var CONFIG = {
   // batch 上限（避免 payload 過大、執行超時）
   BATCH_MAX_ITEMS: 200,
 
+  // ✅ 業績同步（無授權）轉發 URL（ScriptProperties: PERF_SYNC_FORWARD_URL）
+  PERF_SYNC_FORWARD_URL_PROP: "PERF_SYNC_FORWARD_URL",
+
+  // ✅ 業績同步（無授權）轉發 userId（ScriptProperties: PERF_SYNC_FORWARD_USER_ID）
+  PERF_SYNC_FORWARD_USER_ID_PROP: "PERF_SYNC_FORWARD_USER_ID",
+
   /* =========================
    * ✅ TopUp（儲值）
    * ========================= */
@@ -111,6 +117,22 @@ function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
     ContentService.MimeType.JSON
   );
+}
+
+function getPerfSyncForwardUrl_() {
+  var key = CONFIG.PERF_SYNC_FORWARD_URL_PROP || "PERF_SYNC_FORWARD_URL";
+  var url = PropertiesService.getScriptProperties().getProperty(key);
+  url = String(url || "").trim();
+  if (!url) throw new Error("PERF_SYNC_FORWARD_URL_NOT_SET");
+  return url;
+}
+
+function getPerfSyncForwardUserId_() {
+  var key = CONFIG.PERF_SYNC_FORWARD_USER_ID_PROP || "PERF_SYNC_FORWARD_USER_ID";
+  var uid = PropertiesService.getScriptProperties().getProperty(key);
+  uid = String(uid || "").trim();
+  if (!uid) throw new Error("PERF_SYNC_FORWARD_USER_ID_NOT_SET");
+  return uid;
 }
 
 /* =========================
@@ -421,6 +443,89 @@ function lookupStoreIdByTechNo_(masterCode) {
   }
 }
 
+/**
+ * ✅ 取得 NetworkCapture 中的 TechNo 清單
+ * 回傳排序後的不重複列表
+ */
+function handleListTechNos_() {
+  try {
+    var map = buildTechNoToStoreIdMapFromNetworkCapture_();
+    var keys = Object.keys(map || {});
+    keys.sort(function (a, b) {
+      if (/^\d+$/.test(a) && /^\d+$/.test(b)) return parseInt(a, 10) - parseInt(b, 10);
+      return String(a).localeCompare(String(b));
+    });
+    return jsonOut_({ ok: true, techNos: keys, total: keys.length });
+  } catch (e) {
+    return jsonOut_({ ok: false, error: String(e && e.message ? e.message : e) });
+  }
+}
+
+/**
+ * ✅ 取得指定 TechNo 對應的 StoreId（來自 NetworkCapture）
+ */
+function handleGetStoreIdByTechNo_(data) {
+  try {
+    var techNo = String((data && (data.techNo || data.TechNo)) || "").trim();
+    if (!techNo) return jsonOut_({ ok: false, error: "Missing techNo" });
+    var storeId = lookupStoreIdByTechNo_(techNo);
+    return jsonOut_({ ok: true, techNo: techNo, storeId: storeId });
+  } catch (e) {
+    return jsonOut_({ ok: false, error: String(e && e.message ? e.message : e) });
+  }
+}
+
+/**
+ * ✅ 業績同步（無授權）：只需 storeId/techNo
+ * - 若未給 storeId，會用 NetworkCapture 由 techNo 推導
+ * - 轉發到 ScriptProperties.PERF_SYNC_FORWARD_URL
+ */
+function handleSyncStorePerf_v1_(data) {
+  try {
+    var techNo = String((data && (data.techNo || data.TechNo)) || "").trim();
+    var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
+    var from = String((data && data.from) || "").trim();
+    var to = String((data && data.to) || "").trim();
+    var includeDetail = String((data && data.includeDetail) || "").trim();
+
+    if (!storeId && techNo) storeId = lookupStoreIdByTechNo_(techNo);
+    if (!storeId) return jsonOut_({ ok: false, error: "MISSING_STOREID" });
+
+    var url = getPerfSyncForwardUrl_();
+    var userId = String((data && data.userId) || "").trim();
+    if (!userId) {
+      userId = getPerfSyncForwardUserId_();
+    }
+
+    var payload = {
+      mode: "syncStorePerf_v1",
+      userId: userId,
+      storeId: storeId,
+      techNo: techNo,
+      from: from,
+      to: to,
+      includeDetail: includeDetail
+    };
+
+    var res = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/x-www-form-urlencoded",
+      payload: payload,
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    var text = res.getContentText();
+    if (code < 200 || code >= 300) {
+      return jsonOut_({ ok: false, error: "PERF_SYNC_HTTP_" + code, body: String(text || "").slice(0, 500) });
+    }
+
+    return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return jsonOut_({ ok: false, error: String(e && e.message ? e.message : e) });
+  }
+}
+
 /* =========================
  * Data access (memory-first)
  * ========================= */
@@ -635,6 +740,67 @@ function upsertPerformanceAccessRow_(userId, displayName, masterCode, storeId) {
   if (storeId !== "") sheet.getRange(row, 4).setValue(storeId);
 
   return { ok: true, action: "updated" };
+}
+
+/**
+ * ✅ 由 PerformanceAccess 依 TechNo(師傅編號) 查 userId
+ */
+function findPerformanceAccessByTechNo_(techNo) {
+  techNo = String(techNo || "").trim();
+  if (!techNo) return null;
+
+  var sheet = getOrCreatePerformanceAccessSheet_();
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return null;
+
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  var userIdx = findHeaderIndexAny_(header, ["userId", "userid", "UserId"]);
+  var nameIdx = findHeaderIndexAny_(header, ["displayName", "name", "姓名", "暱稱"]);
+  var techIdx = findHeaderIndexAny_(header, ["師傅編號", "masterCode", "MasterCode", "TechNo", "techno"]);
+  var storeIdx = findHeaderIndexAny_(header, ["StoreId", "storeid", "StoreID"]);
+
+  if (techIdx < 0) return null;
+
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var t = String(row[techIdx] || "").trim();
+    if (!t || t !== techNo) continue;
+
+    return {
+      userId: userIdx >= 0 ? String(row[userIdx] || "").trim() : "",
+      displayName: nameIdx >= 0 ? String(row[nameIdx] || "").trim() : "",
+      techNo: t,
+      storeId: storeIdx >= 0 ? String(row[storeIdx] || "").trim() : ""
+    };
+  }
+
+  return null;
+}
+
+/**
+ * ✅ 由 TechNo 查 PerformanceAccess userId
+ */
+function handleGetPerformanceUserIdByTechNo_(data) {
+  try {
+    var techNo = String((data && (data.techNo || data.TechNo)) || "").trim();
+    if (!techNo) return jsonOut_({ ok: false, error: "Missing techNo" });
+
+    var row = findPerformanceAccessByTechNo_(techNo);
+    if (!row || !row.userId) return jsonOut_({ ok: false, error: "USER_NOT_FOUND", techNo: techNo });
+
+    return jsonOut_({
+      ok: true,
+      techNo: techNo,
+      userId: row.userId,
+      displayName: row.displayName || "",
+      storeId: row.storeId || ""
+    });
+  } catch (e) {
+    return jsonOut_({ ok: false, error: String(e && e.message ? e.message : e) });
+  }
 }
 
 /* =========================
@@ -1854,6 +2020,10 @@ function doGet(e) {
   if (mode === "syncpersonalstatusrow") return handleSyncPersonalStatusRow_(e.parameter);
 
   if (mode === "pushmessage") return handlePushMessage_(e.parameter);
+  if (mode === "listtechnos") return handleListTechNos_();
+  if (mode === "getstoreidbytechno") return handleGetStoreIdByTechNo_(e.parameter);
+  if (mode === "getperformanceuseridbytechno") return handleGetPerformanceUserIdByTechNo_(e.parameter);
+  if (mode === "syncstoreperf_v1") return handleSyncStorePerf_v1_(e.parameter);
 
   return jsonOut_({
     ok: false,
@@ -1909,6 +2079,11 @@ function doPost(e) {
   if (mode === "syncpersonalstatusrow") return handleSyncPersonalStatusRow_(data);
 
   if (mode === "pushmessage") return handlePushMessage_(data);
+
+  if (mode === "listtechnos") return handleListTechNos_();
+  if (mode === "getstoreidbytechno") return handleGetStoreIdByTechNo_(data);
+  if (mode === "getperformanceuseridbytechno") return handleGetPerformanceUserIdByTechNo_(data);
+  if (mode === "syncstoreperf_v1") return handleSyncStorePerf_v1_(data);
 
   if (mode === "topupredeem_v1") return handleTopupRedeem_(data);
 

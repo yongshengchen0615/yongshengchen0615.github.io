@@ -18,15 +18,9 @@ import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
+import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
-
-let perfModPromise_ = null;
-async function loadPerformanceModule_() {
-  if (perfModPromise_) return perfModPromise_;
-  perfModPromise_ = import("./modules/performance.js");
-  return perfModPromise_;
-}
 
 let eventsBound = false;
 
@@ -93,15 +87,6 @@ async function boot() {
     preconnectUrl(config.AUTH_API_URL);
     preconnectUrl(config.TOPUP_API_URL);
     preconnectUrl(config.USAGE_LOG_URL);
-
-    // ✅ 資料同步端點預熱（降低首次輪詢延遲）
-    if (config.FALLBACK_ORIGIN_CACHE_URL) preconnectUrl(config.FALLBACK_ORIGIN_CACHE_URL);
-    try {
-      const edges = Array.isArray(config.EDGE_STATUS_URLS) ? config.EDGE_STATUS_URLS : [];
-      for (let i = 0; i < Math.min(2, edges.length); i++) {
-        if (edges[i]) preconnectUrl(edges[i]);
-      }
-    } catch {}
   } catch (e) {
     console.error("[Config] load failed:", e);
     hideInitialLoading();
@@ -128,6 +113,9 @@ async function boot() {
 
   setInitialLoadingProgress(62, "準備功能模組中…");
 
+  // 業績 UI（同頁面顯示）
+  initPerformanceUi();
+
   // 同頁面三視圖切換
   initViewSwitch();
 
@@ -144,17 +132,7 @@ async function boot() {
   let perfReady = null;
   if (String(state.feature && state.feature.performanceEnabled) === "是") {
     setInitialLoadingProgress(72, "載入業績資料中…");
-    try {
-      const perf = await loadPerformanceModule_();
-      // bind events & load prefs once
-      try {
-        perf.initPerformanceUi && perf.initPerformanceUi();
-      } catch {}
-      perfReady = perf.prefetchPerformanceOnce ? perf.prefetchPerformanceOnce() : null;
-    } catch (e) {
-      console.error("[Perf] module load/prefetch failed:", e);
-      perfReady = null;
-    }
+    perfReady = prefetchPerformanceOnce();
   }
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）

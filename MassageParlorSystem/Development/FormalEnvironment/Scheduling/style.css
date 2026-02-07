@@ -58,16 +58,6 @@ body {
   overflow-x: hidden;
 }
 
-/* 動畫/轉場：尊重系統「減少動態效果」設定，降低耗電與暈眩風險 */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
 /* 亮色主題時，背景調整 */
 :root[data-theme="light"] body {
   background: var(--bg);
@@ -747,16 +737,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   overflow: hidden;
 }
 
-/* Offscreen rendering optimization (best-effort)
- * - 支援的瀏覽器可跳過離屏區塊的 layout/paint
- * - 不支援時會被忽略，無副作用
- */
-.card-table,
-#perfCard {
-  content-visibility: auto;
-  contain-intrinsic-size: 800px;
-}
-
 :root[data-theme="light"] .card {
   background: #ffffff;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
@@ -818,8 +798,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* isolate heavy table updates (reduce reflow/paint spillover) */
-  contain: layout paint;
 }
 
 /* Chart wrapper: allow horizontal scroll on small screens and touch momentum */

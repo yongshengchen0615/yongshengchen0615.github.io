@@ -51,11 +51,6 @@ function doGet(e) {
     const mode = (e && e.parameter && e.parameter.mode) || "ping";
     if (mode === "ping") return jsonResponse_({ ok: true, mode, ts: new Date().toISOString() });
 
-    if (mode === "meta_v1") {
-      const meta = handleMetaV1_();
-      return jsonResponse_({ ok: true, mode, ...meta, ts: new Date().toISOString() });
-    }
-
     if (mode === "sheet_all") {
       const data = handleSheetAll_();
       return jsonResponse_({ ok: true, mode, ...data, ts: new Date().toISOString() });
@@ -65,22 +60,6 @@ function doGet(e) {
   } catch (err) {
     return jsonResponse_({ ok: false, error: errToString_(err) });
   }
-}
-
-function handleMetaV1_() {
-  const shBodyJson = getOrCreateSheet_(CONFIG.SHEET_BODY_JSON);
-  const shFootJson = getOrCreateSheet_(CONFIG.SHEET_FOOT_JSON);
-  ensureHeader_(shBodyJson, CONFIG.JSON_HEADERS);
-  ensureHeader_(shFootJson, CONFIG.JSON_HEADERS);
-
-  const bodyObj = readSingleJsonRow_(shBodyJson);
-  const footObj = readSingleJsonRow_(shFootJson);
-
-  const bodyMeta = { timestamp: bodyObj.timestamp || "", hash: bodyObj.hash || "" };
-  const footMeta = { timestamp: footObj.timestamp || "", hash: footObj.hash || "" };
-  const timestamp = bodyMeta.timestamp || footMeta.timestamp || "";
-
-  return { source: "origin_meta", timestamp, bodyMeta, footMeta };
 }
 
 function doPost(e) {

@@ -13,14 +13,8 @@ import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
+import { manualRefreshPerformance } from "./performance.js";
 import { maybeShowDailyFirstOpenHint } from "./dailyHint.js";
-
-let perfModPromise_ = null;
-async function loadPerformanceModule_() {
-  if (perfModPromise_) return perfModPromise_;
-  perfModPromise_ = import("./performance.js");
-  return perfModPromise_;
-}
 
 const POLL = {
   BASE_MS: 3000,
@@ -63,9 +57,7 @@ function scheduleNextPoll(ms) {
   state.pollTimer = setTimeout(async () => {
     if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
 
-    const hasMeta = !!(state.dataHealth && state.dataHealth.meta && state.dataHealth.meta.bodyMeta && state.dataHealth.meta.footMeta);
-    const preferMeta = hasMeta;
-    const res = await refreshStatusAdaptive(false, { preferMeta });
+    const res = await refreshStatusAdaptive(false);
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   }, wait);
@@ -109,13 +101,12 @@ function computeNextInterval(res) {
   return state.poll.nextMs;
 }
 
-async function refreshStatusAdaptive(isManual, opts) {
+async function refreshStatusAdaptive(isManual) {
   try {
     const beforeBody = state.rawData.body;
     const beforeFoot = state.rawData.foot;
 
-    const preferMeta = !!(opts && opts.preferMeta);
-    await refreshStatus({ isManual, preferMeta });
+    await refreshStatus({ isManual });
 
     const changed = beforeBody !== state.rawData.body || beforeFoot !== state.rawData.foot;
     return { ok: true, changed };
@@ -152,8 +143,7 @@ export function startPolling(extraReadyPromise) {
       // 若目前在「業績」視圖：手動重整也要同步更新業績快取（按鈕只讀快取）。
       if (state.viewMode === "performance" && String(state.feature && state.feature.performanceEnabled) === "是") {
         try {
-          const perf = await loadPerformanceModule_();
-          if (perf && perf.manualRefreshPerformance) await perf.manualRefreshPerformance({ showToast: false });
+          await manualRefreshPerformance({ showToast: false });
         } catch {}
       }
 
@@ -164,7 +154,7 @@ export function startPolling(extraReadyPromise) {
   }
 
   // 初次啟動
-  refreshStatusAdaptive(false, { preferMeta: false }).then(async (res) => {
+  refreshStatusAdaptive(false).then(async (res) => {
     updateMyMasterStatusUI();
 
     // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
@@ -193,8 +183,7 @@ export function startPolling(extraReadyPromise) {
   document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) {
       resetPollState();
-      const hasMeta = !!(state.dataHealth && state.dataHealth.meta && state.dataHealth.meta.bodyMeta && state.dataHealth.meta.footMeta);
-      const res = await refreshStatusAdaptive(false, { preferMeta: hasMeta });
+      const res = await refreshStatusAdaptive(false);
       const next = computeNextInterval(res);
       scheduleNextPoll(next);
     }
