@@ -9,7 +9,7 @@
 
 import { state } from "./state.js";
 import { dom } from "./dom.js";
-import { refreshStatus } from "./table.js";
+import { refreshStatus, hydrateStatusFromCache } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
@@ -131,6 +131,34 @@ export function startPolling(extraReadyPromise) {
   showInitialLoading("資料載入中…");
   setInitialLoadingProgress(85, "同步資料中…");
 
+  try {
+    performance && performance.mark && performance.mark("poll:start");
+  } catch {}
+
+  // ✅ 先用快取快照快速顯示（若有）：縮短「白屏/遮罩」時間
+  // - 仍會在背景立刻同步最新資料
+  const hydrated = (() => {
+    try {
+      return hydrateStatusFromCache({ maxAgeMs: 2 * 60 * 1000 });
+    } catch {
+      return false;
+    }
+  })();
+
+  if (hydrated) {
+    try {
+      setInitialLoadingProgress(90, "已載入上次資料，正在同步最新資料…");
+      hideInitialLoading();
+      showLoadingHint("同步最新資料中…");
+
+      try {
+        performance && performance.mark && performance.mark("status:cached_paint");
+      } catch {}
+    } catch {
+      // ignore
+    }
+  }
+
   // 手動重整
   if (dom.refreshBtn) {
     dom.refreshBtn.addEventListener("click", async () => {
@@ -155,25 +183,49 @@ export function startPolling(extraReadyPromise) {
 
   // 初次啟動
   refreshStatusAdaptive(false).then(async (res) => {
+    try {
+      performance && performance.mark && performance.mark("status:first_sync_done");
+    } catch {}
+
+    // optional: log key timings for validation
+    try {
+      if (localStorage && localStorage.getItem("debugPerf") === "1" && performance && performance.measure) {
+        performance.measure("t_boot_to_auth_ok", "app:boot_start", "app:auth_ok");
+        performance.measure("t_boot_to_cached_paint", "app:boot_start", "status:cached_paint");
+        performance.measure("t_boot_to_first_sync", "app:boot_start", "status:first_sync_done");
+        const m = performance.getEntriesByType("measure").slice(-8);
+        console.log("[PerfMeasures]", m.map((x) => ({ name: x.name, ms: Math.round(x.duration) })));
+      }
+    } catch {}
+
     updateMyMasterStatusUI();
 
     // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
+    // - 若已用快取顯示 UI，就不要再阻塞遮罩
     try {
-      setInitialLoadingProgress(92, "準備中…");
+      if (!hydrated) setInitialLoadingProgress(92, "準備中…");
       await Promise.resolve(extraReadyPromise);
     } catch {
       // extraReadyPromise 失敗不應阻擋主流程
     }
 
-    setInitialLoadingProgress(100, "完成");
-    hideInitialLoading();
+    if (!hydrated) {
+      setInitialLoadingProgress(100, "完成");
+      hideInitialLoading();
+    }
+
+    try {
+      hideLoadingHint();
+    } catch {
+      // ignore
+    }
 
       // ✅ 當日第一次開啟提示 + 左右滑動提示動畫
-      try {
-        maybeShowDailyFirstOpenHint();
-      } catch {
-        // ignore
-      }
+    try {
+      maybeShowDailyFirstOpenHint();
+    } catch {
+      // ignore
+    }
 
     const next = computeNextInterval(res);
     scheduleNextPoll(next);

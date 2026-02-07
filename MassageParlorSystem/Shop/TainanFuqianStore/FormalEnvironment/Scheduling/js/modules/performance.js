@@ -47,6 +47,47 @@ let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
 
+// Chart.js loader (lazy)
+const CHARTJS_SRC = "https://cdn.jsdelivr.net/npm/chart.js";
+let chartJsReady_ = null;
+
+function loadScriptOnce_(src) {
+  if (!src) return Promise.reject(new Error("MISSING_SRC"));
+  return new Promise((resolve, reject) => {
+    try {
+      const existing = document.querySelector(`script[data-src="${src}"]`);
+      if (existing && window.Chart) return resolve(true);
+
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.crossOrigin = "anonymous";
+      s.setAttribute("data-src", src);
+      s.onload = () => resolve(true);
+      s.onerror = () => reject(new Error("SCRIPT_LOAD_FAILED"));
+      document.head.appendChild(s);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function ensureChartJs_() {
+  if (window.Chart) return true;
+  if (!chartJsReady_) {
+    chartJsReady_ = loadScriptOnce_(CHARTJS_SRC)
+      .then(() => {
+        if (!window.Chart) throw new Error("CHARTJS_GLOBAL_MISSING");
+        return true;
+      })
+      .catch((e) => {
+        chartJsReady_ = null;
+        throw e;
+      });
+  }
+  return await chartJsReady_;
+}
+
 // drag-to-scroll state
 const perfDragState_ = {
   enabled: false,
@@ -573,7 +614,11 @@ function schedulePerfChartRedraw_() {
   if (perfChartResizeTimer_) clearTimeout(perfChartResizeTimer_);
   perfChartResizeTimer_ = setTimeout(() => {
     try {
-      if (perfChartLastRows_) updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_);
+      if (perfChartLastRows_) {
+        Promise.resolve(updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_)).catch((e) => {
+          console.error("perf chart redraw error", e);
+        });
+      }
     } catch (e) {
       console.error("perf chart redraw error", e);
     }
@@ -664,10 +709,16 @@ function enableCanvasDragScroll_(enable) {
   }
 }
 
-function updatePerfChart_(rows, dateKeys) {
+async function updatePerfChart_(rows, dateKeys) {
   try {
     if (!dom.perfChartEl) return;
-    if (typeof Chart === "undefined") return;
+
+    try {
+      await ensureChartJs_();
+    } catch (e) {
+      console.error("[Perf] Chart.js load failed:", e);
+      return;
+    }
 
     const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
     const list = Array.isArray(rows) ? rows : [];
@@ -1131,7 +1182,7 @@ function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) 
 
   if (Array.isArray(baseRowsForChart) && baseRowsForChart.length) {
     try {
-      updatePerfChart_(baseRowsForChart, dateKeys);
+      Promise.resolve(updatePerfChart_(baseRowsForChart, dateKeys)).catch(() => {});
     } catch (_) {}
   } else {
     clearPerfChart_();
@@ -1231,7 +1282,7 @@ async function renderFromCache_(mode, info) {
 
   renderDetailTable_(rows);
   try {
-    updatePerfChart_(rows, r.dateKeys);
+    Promise.resolve(updatePerfChart_(rows, r.dateKeys)).catch(() => {});
   } catch (_) {}
   return { ok: true, rendered: "detail", cached: true };
 }
