@@ -57,7 +57,8 @@ function scheduleNextPoll(ms) {
   state.pollTimer = setTimeout(async () => {
     if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
 
-    const preferMeta = state.poll.successStreak >= pc.STABLE_UP_AFTER;
+    const hasMeta = !!(state.dataHealth && state.dataHealth.meta && state.dataHealth.meta.bodyMeta && state.dataHealth.meta.footMeta);
+    const preferMeta = hasMeta;
     const res = await refreshStatusAdaptive(false, { preferMeta });
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
@@ -185,7 +186,8 @@ export function startPolling(extraReadyPromise) {
   document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) {
       resetPollState();
-      const res = await refreshStatusAdaptive(false, { preferMeta: false });
+      const hasMeta = !!(state.dataHealth && state.dataHealth.meta && state.dataHealth.meta.bodyMeta && state.dataHealth.meta.footMeta);
+      const res = await refreshStatusAdaptive(false, { preferMeta: hasMeta });
       const next = computeNextInterval(res);
       scheduleNextPoll(next);
     }

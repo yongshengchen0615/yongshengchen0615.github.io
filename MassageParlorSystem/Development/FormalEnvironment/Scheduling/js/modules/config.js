@@ -63,6 +63,9 @@ PERF_SYNC_API_URL: "",
   /** Origin fallback 額外 timeout（毫秒）。 */
   STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
 
+  /** （可選）是否輸出詳細效能 debug log（預設關閉，避免大量 console 影響效能）。 */
+  PERF_LOG: false,
+
   /**
    * （可選）資料過久未更新的判定門檻（毫秒）。
    * - 以資料列的 timestamp/sourceTs/updatedAt 為準
@@ -132,6 +135,12 @@ export async function loadConfigJson() {
 
   const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
   if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
+
+  // optional: perf log
+  const perfRaw = cfg.PERF_LOG;
+  if (typeof perfRaw === "boolean") config.PERF_LOG = perfRaw;
+  else if (typeof perfRaw === "string") config.PERF_LOG = perfRaw.trim() === "是";
+  else if (typeof perfRaw === "number") config.PERF_LOG = perfRaw === 1;
 
   // optional: stale data gate
   const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);

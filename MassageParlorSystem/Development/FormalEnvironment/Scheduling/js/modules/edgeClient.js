@@ -22,6 +22,18 @@ const EDGE_FAIL_KEY = "edge_route_failcount_v1"; // { idx, n, t }
 // across different edges (edges may have slightly different cache/update timing).
 let sessionEdgeIdx = null;
 
+// Short TTL cache + in-flight coalescing
+// - 避免 visibilitychange / poll / manual refresh 同時觸發造成重複請求
+// - TTL 只需涵蓋「同一瞬間的連續觸發」，不會明顯降低資料新鮮度
+const META_CACHE_TTL_MS = 1200;
+const ALL_CACHE_TTL_MS = 700;
+
+let metaInFlight_ = null;
+let metaCache_ = { t: 0, res: null };
+
+let allInFlight_ = null;
+let allCache_ = { t: 0, res: null };
+
 function getOverrideEdgeIndex() {
   const o = readJsonLS(EDGE_ROUTE_KEY);
   if (!o || typeof o.idx !== "number") return null;
@@ -135,6 +147,13 @@ function metaEquals_(a, b) {
  * @returns {Promise<{source:"edge"|"origin", edgeIdx:number|null, meta:{timestamp:any, bodyMeta:{timestamp:string,hash:string}, footMeta:{timestamp:string,hash:string}}}>}
  */
 export async function fetchStatusMeta() {
+  try {
+    const now = Date.now();
+    if (metaCache_.res && now - metaCache_.t < META_CACHE_TTL_MS) return metaCache_.res;
+    if (metaInFlight_) return metaInFlight_;
+  } catch {}
+
+  metaInFlight_ = (async () => {
   const jitterBust = Date.now();
 
   const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
@@ -174,6 +193,15 @@ export async function fetchStatusMeta() {
   const meta = normalizeMeta_(data);
   resetFailCount();
   return { source: "origin", edgeIdx: null, meta };
+  })();
+
+  try {
+    const res = await metaInFlight_;
+    metaCache_ = { t: Date.now(), res };
+    return res;
+  } finally {
+    metaInFlight_ = null;
+  }
 }
 
 /**
@@ -189,6 +217,13 @@ export async function fetchStatusMeta() {
  * @returns {Promise<{source:"edge"|"origin", edgeIdx:number|null, bodyRows:any[], footRows:any[]}>}
  */
 export async function fetchStatusAll() {
+  try {
+    const now = Date.now();
+    if (allCache_.res && now - allCache_.t < ALL_CACHE_TTL_MS) return allCache_.res;
+    if (allInFlight_) return allInFlight_;
+  } catch {}
+
+  allInFlight_ = (async () => {
   const jitterBust = Date.now();
 
   const baseTimeout = typeof config.STATUS_FETCH_TIMEOUT_MS === "number" ? config.STATUS_FETCH_TIMEOUT_MS : 8000;
@@ -280,6 +315,15 @@ export async function fetchStatusAll() {
     bodyMeta: originMeta.bodyMeta,
     footMeta: originMeta.footMeta,
   };
+  })();
+
+  try {
+    const res = await allInFlight_;
+    allCache_ = { t: Date.now(), res };
+    return res;
+  } finally {
+    allInFlight_ = null;
+  }
 }
 
 /**
