@@ -21,8 +21,14 @@ import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
+import { fetchStatusAll } from "./modules/edgeClient.js";
 
 let eventsBound = false;
+
+try {
+  // Perf timeline: app start
+  performance && performance.mark && performance.mark("app:boot_start");
+} catch (_) {}
 
 function bindEventsOnce() {
   if (eventsBound) return;
@@ -75,6 +81,10 @@ async function boot() {
   installConsoleFilter();
   initTheme();
 
+  try {
+    performance && performance.mark && performance.mark("app:boot_begin");
+  } catch (_) {}
+
   showInitialLoading("資料載入中…");
   setInitialLoadingProgress(5, "啟動中…");
 
@@ -83,10 +93,20 @@ async function boot() {
     await loadConfigJson();
     sanitizeEdgeUrls();
 
+    try {
+      performance && performance.mark && performance.mark("app:config_ready");
+    } catch (_) {}
+
     // 預熱網路連線：AUTH / TOPUP / USAGE_LOG 常是同一個 GAS 網域，先 preconnect 可降低首次儲值/驗證延遲。
     preconnectUrl(config.AUTH_API_URL);
     preconnectUrl(config.TOPUP_API_URL);
     preconnectUrl(config.USAGE_LOG_URL);
+
+    // ✅ 不阻塞：先暖機一次狀態請求（AUTH 進行的同時就能開始走 DNS/TLS/edge failover）
+    // - 不會更新 UI；edgeClient 內部會寫入快取供 startPolling 快速顯示。
+    try {
+      fetchStatusAll().catch(() => {});
+    } catch (_) {}
   } catch (e) {
     console.error("[Config] load failed:", e);
     hideInitialLoading();
@@ -110,6 +130,10 @@ async function boot() {
     hideInitialLoading();
     return;
   }
+
+  try {
+    performance && performance.mark && performance.mark("app:auth_ok");
+  } catch (_) {}
 
   setInitialLoadingProgress(62, "準備功能模組中…");
 
@@ -143,10 +167,9 @@ async function boot() {
   if (perfReady && typeof perfReady.then === "function") perfReady.catch(() => {});
 }
 
-window.addEventListener("load", () => {
-  boot().catch((e) => {
-    console.error("[Boot] failed:", e);
-    hideInitialLoading();
-    showGate("⚠ 初始化失敗，請稍後再試。", true);
-  });
+// Module scripts are deferred by default; DOM is ready when this runs.
+boot().catch((e) => {
+  console.error("[Boot] failed:", e);
+  hideInitialLoading();
+  showGate("⚠ 初始化失敗，請稍後再試。", true);
 });

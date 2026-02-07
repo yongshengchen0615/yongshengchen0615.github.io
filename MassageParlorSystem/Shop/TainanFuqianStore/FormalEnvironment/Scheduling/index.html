@@ -8,8 +8,13 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="data:," />
 
+  <!-- Network hints (reduce first-request DNS/TLS latency) -->
+  <link rel="preconnect" href="https://script.google.com" crossorigin="anonymous" />
+  <link rel="preconnect" href="https://static.line-scdn.net" crossorigin="anonymous" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="anonymous" />
+
   <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
   <!-- 授權 / 判斷登入 / 審核狀態遮罩 -->
@@ -278,8 +283,7 @@
     </div>
   </div>
 
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js is lazy-loaded by performance.js when needed -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -23,6 +23,64 @@ function safeOneLine_(s, maxLen = 240) {
   return v.length > maxLen ? v.slice(0, maxLen) + "…" : v;
 }
 
+function extractErrorCode_(msg) {
+  const s = String(msg || "").trim();
+  if (!s) return "";
+
+  // Prefer first token-like chunk (e.g. SERIAL_ALREADY_USED, AUTH_CHECK_FAILED_500)
+  const m = s.match(/^([A-Za-z0-9_\-]{3,64})/);
+  if (!m) return "";
+  return String(m[1] || "").trim();
+}
+
+function formatTopupErrorMessage_(rawMessage, stage) {
+  const msg = String(rawMessage || "").trim() || "儲值失敗";
+  const code = extractErrorCode_(msg);
+  const st = String(stage || "").trim();
+
+  // If we failed after redeem, user may have consumed the serial already.
+  const maybeRedeemed = st === "auth_update" || st === "ui_update";
+
+  const commonNext = "\n\n建議：\n- 請確認網路正常後重試\n- 若持續失敗，請聯絡管理員協助";
+
+  switch (code) {
+    case "SERIAL_ALREADY_USED":
+      return (
+        "此序號已被使用（已核銷過）。\n\n" +
+        "請改用新的儲值序號。\n" +
+        "若你確定未使用過，請把『序號末 6 碼』提供給管理員查核。"
+      );
+    case "SERIAL_NOT_FOUND":
+    case "SERIAL_INVALID":
+    case "INVALID_SERIAL":
+      return "找不到此序號或序號格式不正確。\n\n請重新確認輸入（注意 0/O、1/I）。";
+    case "SERIAL_EXPIRED":
+      return "此序號已過期，無法核銷。\n\n請改用新的儲值序號或聯絡管理員。";
+    case "BUSY_TRY_AGAIN":
+      return "系統忙碌，請稍後再試。";
+    case "TIMEOUT":
+      return "連線逾時，請檢查網路後再試。";
+    case "AUTH_CHECK_FAILED":
+    case "AUTH_UPDATEUSER_FAILED":
+      return (
+        "儲值同步失敗（權限/天數更新未完成）。\n\n" +
+        "請先『重新整理』確認剩餘天數是否已更新。\n" +
+        "若仍未更新，請聯絡管理員協助補同步。"
+      );
+    default:
+      if (maybeRedeemed) {
+        return (
+          "儲值流程在同步階段失敗。\n\n" +
+          "注意：序號可能已核銷成功，但更新使用天數失敗。\n" +
+          "請先重新整理確認剩餘天數；若未更新請聯絡管理員。\n\n" +
+          "錯誤：" +
+          msg
+        );
+      }
+      return msg + commonNext;
+  }
+}
+
 function fireTopupEvent_({ event, userId, displayName, detailObj, detailText, eventCn }) {
   try {
     const detail = detailText
@@ -546,6 +604,8 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       errMsg = "USER_ID_REQUIRED（TopUp 收到的 userId 是空的）\n" + "目前本機計算 userId=" + (userIdSafe || "(empty)");
     }
 
+    const userMsg = formatTopupErrorMessage_(errMsg, stage);
+
     fireTopupEvent_({
       event: "topup_fail",
       userId: userIdSafe,
@@ -558,8 +618,8 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       eventCn: "儲值失敗",
     });
 
-    if (context === "gate") showGate("⚠ 儲值失敗\n" + errMsg, true);
-    else alert("儲值失敗：" + errMsg);
-    return { ok: false, error: errMsg };
+    if (context === "gate") showGate("⚠ 儲值失敗\n\n" + userMsg, true);
+    else alert("儲值失敗：\n\n" + userMsg);
+    return { ok: false, error: errMsg, userMessage: userMsg };
   }
 }
