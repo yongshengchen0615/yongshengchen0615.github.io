@@ -100,7 +100,7 @@ export function applyScheduleUiMode(enabled) {
 
   // schedule=否：清掉表格（避免閃一下）
   if (!state.scheduleUiEnabled) {
-    if (dom.tbodyRowsEl) dom.tbodyRowsEl.innerHTML = "";
+    if (dom.tbodyRowsEl) dom.tbodyRowsEl.textContent = "";
     if (dom.emptyStateEl) dom.emptyStateEl.style.display = "none";
     if (dom.errorStateEl) dom.errorStateEl.style.display = "none";
 

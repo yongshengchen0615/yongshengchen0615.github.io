@@ -747,6 +747,16 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   overflow: hidden;
 }
 
+/* Offscreen rendering optimization (best-effort)
+ * - 支援的瀏覽器可跳過離屏區塊的 layout/paint
+ * - 不支援時會被忽略，無副作用
+ */
+.card-table,
+#perfCard {
+  content-visibility: auto;
+  contain-intrinsic-size: 800px;
+}
+
 :root[data-theme="light"] .card {
   background: #ffffff;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);

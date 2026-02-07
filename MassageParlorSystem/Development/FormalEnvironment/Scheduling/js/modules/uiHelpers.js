@@ -69,12 +69,26 @@ export function showGate(message, isError) {
   if (!dom.gateEl) return;
   dom.gateEl.classList.remove("gate-hidden");
   dom.gateEl.style.pointerEvents = "auto";
-  dom.gateEl.innerHTML =
-    '<div class="gate-message' +
-    (isError ? " gate-message-error" : "") +
-    '"><p>' +
-    String(message || "").replace(/\n/g, "<br>") +
-    "</p></div>";
+
+  // 避免 innerHTML：更安全、也減少 HTML parse 成本
+  try {
+    dom.gateEl.textContent = "";
+  } catch {
+    // ignore
+  }
+
+  const box = document.createElement("div");
+  box.className = "gate-message" + (isError ? " gate-message-error" : "");
+
+  const p = document.createElement("p");
+  const parts = String(message || "").split(/\n/);
+  for (let i = 0; i < parts.length; i++) {
+    if (i) p.appendChild(document.createElement("br"));
+    p.appendChild(document.createTextNode(parts[i]));
+  }
+
+  box.appendChild(p);
+  dom.gateEl.appendChild(box);
 }
 
 /** 隱藏 Gate（恢復可操作主畫面）。 */

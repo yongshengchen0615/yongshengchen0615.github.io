@@ -101,14 +101,37 @@ export function loadScriptOnce(src, opts) {
   const url = String(src || "").trim();
   if (!url) return Promise.reject(new Error("SCRIPT_SRC_MISSING"));
 
+  let cacheKey = url;
+  try {
+    cacheKey = new URL(url, location.href).href;
+  } catch {}
+
   try {
     if (!loadScriptOnce._cache) loadScriptOnce._cache = new Map();
-    if (loadScriptOnce._cache.has(url)) return loadScriptOnce._cache.get(url);
+    if (loadScriptOnce._cache.has(cacheKey)) return loadScriptOnce._cache.get(cacheKey);
   } catch {}
 
   const p = new Promise((resolve, reject) => {
     try {
-      const exist = document.querySelector(`script[src="${CSS.escape(url)}"]`);
+      // 避免依賴 CSS.escape（部分 WebView/舊版 Safari 可能缺），改用遍歷比對。
+      const exist = (() => {
+        const scripts = document.getElementsByTagName("script");
+        let target = url;
+        try {
+          target = new URL(url, location.href).href;
+        } catch {}
+
+        for (const sc of scripts) {
+          const scSrc = sc.getAttribute("src") || "";
+          if (!scSrc) continue;
+          try {
+            if (new URL(scSrc, location.href).href === target) return sc;
+          } catch {
+            if (scSrc === url) return sc;
+          }
+        }
+        return null;
+      })();
       if (exist) {
         // 已存在：假設很快就會 ready；用 load/error 事件保守等待
         if (exist.getAttribute("data-loaded") === "1") return resolve(true);
@@ -151,7 +174,7 @@ export function loadScriptOnce(src, opts) {
   });
 
   try {
-    loadScriptOnce._cache.set(url, p);
+    loadScriptOnce._cache.set(cacheKey, p);
   } catch {}
   return p;
 }

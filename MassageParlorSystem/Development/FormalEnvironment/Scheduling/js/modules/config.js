@@ -37,7 +37,7 @@ export const config = {
   DETAIL_PERF_API_URL: "",
 
   /** 業績同步（storeId 版）GAS Web App URL */
-PERF_SYNC_API_URL: "",
+  PERF_SYNC_API_URL: "",
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 
@@ -82,7 +82,8 @@ PERF_SYNC_API_URL: "",
  * @returns {Promise<void>} 載入成功則 resolve；失敗會 throw。
  */
 export async function loadConfigJson() {
-  const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
+  // 用 no-cache 允許 conditional request（304），避免每次都強制重新下載。
+  const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-cache" });
   if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
 
   const cfg = await resp.json();
@@ -94,7 +95,10 @@ export async function loadConfigJson() {
   config.AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   config.TOPUP_API_URL = String(cfg.TOPUP_API_URL || "").trim();
   config.LIFF_ID = String(cfg.LIFF_ID || "").trim();
-  config.ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+  // 若未提供欄位，保留預設值（避免 undefined → false）
+  if (cfg.ENABLE_LINE_LOGIN !== undefined) {
+    config.ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+  }
 
   // optional: usage log
   config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();

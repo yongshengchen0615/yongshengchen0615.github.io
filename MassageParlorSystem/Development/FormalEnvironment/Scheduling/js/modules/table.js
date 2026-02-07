@@ -81,7 +81,7 @@ export function rebuildStatusFilterOptions() {
   });
 
   const previous = dom.filterStatusSelect.value || "all";
-  dom.filterStatusSelect.innerHTML = "";
+  dom.filterStatusSelect.textContent = "";
 
   const optAll = document.createElement("option");
   optAll.value = "all";
@@ -116,7 +116,7 @@ export function rebuildMasterFilterOptions() {
   });
 
   const previous = dom.filterMasterInput.value || "";
-  dom.filterMasterInput.innerHTML = "";
+  dom.filterMasterInput.textContent = "";
 
   const optAll = document.createElement("option");
   optAll.value = "";
