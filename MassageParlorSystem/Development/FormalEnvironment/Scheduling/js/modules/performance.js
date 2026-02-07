@@ -614,7 +614,11 @@ function schedulePerfChartRedraw_() {
   if (perfChartResizeTimer_) clearTimeout(perfChartResizeTimer_);
   perfChartResizeTimer_ = setTimeout(() => {
     try {
-      if (perfChartLastRows_) updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_);
+      if (perfChartLastRows_) {
+        Promise.resolve(updatePerfChart_(perfChartLastRows_, perfChartLastDateKeys_)).catch((e) => {
+          console.error("perf chart redraw error", e);
+        });
+      }
     } catch (e) {
       console.error("perf chart redraw error", e);
     }
@@ -705,10 +709,16 @@ function enableCanvasDragScroll_(enable) {
   }
 }
 
-function updatePerfChart_(rows, dateKeys) {
+async function updatePerfChart_(rows, dateKeys) {
   try {
     if (!dom.perfChartEl) return;
-    if (typeof Chart === "undefined") return;
+
+    try {
+      await ensureChartJs_();
+    } catch (e) {
+      console.error("[Perf] Chart.js load failed:", e);
+      return;
+    }
 
     const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
     const list = Array.isArray(rows) ? rows : [];
@@ -879,14 +889,6 @@ function updatePerfChart_(rows, dateKeys) {
       } catch (e) {
         console.error('showClickDetailPanel error', e);
       }
-    }
-
-    try {
-      await ensureChartJs_();
-    } catch (e) {
-      console.error("[Perf] Chart.js load failed:", e);
-      setBadge_("圖表載入失敗", true);
-      return;
     }
 
     perfChartInstance_ = new Chart(ctx, {
@@ -1180,7 +1182,7 @@ function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) 
 
   if (Array.isArray(baseRowsForChart) && baseRowsForChart.length) {
     try {
-      updatePerfChart_(baseRowsForChart, dateKeys);
+      Promise.resolve(updatePerfChart_(baseRowsForChart, dateKeys)).catch(() => {});
     } catch (_) {}
   } else {
     clearPerfChart_();
@@ -1280,7 +1282,7 @@ async function renderFromCache_(mode, info) {
 
   renderDetailTable_(rows);
   try {
-    updatePerfChart_(rows, r.dateKeys);
+    Promise.resolve(updatePerfChart_(rows, r.dateKeys)).catch(() => {});
   } catch (_) {}
   return { ok: true, rendered: "detail", cached: true };
 }
