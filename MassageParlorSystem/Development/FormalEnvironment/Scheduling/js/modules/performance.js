@@ -47,6 +47,47 @@ let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
 
+// Chart.js loader (lazy)
+const CHARTJS_SRC = "https://cdn.jsdelivr.net/npm/chart.js";
+let chartJsReady_ = null;
+
+function loadScriptOnce_(src) {
+  if (!src) return Promise.reject(new Error("MISSING_SRC"));
+  return new Promise((resolve, reject) => {
+    try {
+      const existing = document.querySelector(`script[data-src="${src}"]`);
+      if (existing && window.Chart) return resolve(true);
+
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.crossOrigin = "anonymous";
+      s.setAttribute("data-src", src);
+      s.onload = () => resolve(true);
+      s.onerror = () => reject(new Error("SCRIPT_LOAD_FAILED"));
+      document.head.appendChild(s);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function ensureChartJs_() {
+  if (window.Chart) return true;
+  if (!chartJsReady_) {
+    chartJsReady_ = loadScriptOnce_(CHARTJS_SRC)
+      .then(() => {
+        if (!window.Chart) throw new Error("CHARTJS_GLOBAL_MISSING");
+        return true;
+      })
+      .catch((e) => {
+        chartJsReady_ = null;
+        throw e;
+      });
+  }
+  return await chartJsReady_;
+}
+
 // drag-to-scroll state
 const perfDragState_ = {
   enabled: false,
@@ -838,6 +879,14 @@ function updatePerfChart_(rows, dateKeys) {
       } catch (e) {
         console.error('showClickDetailPanel error', e);
       }
+    }
+
+    try {
+      await ensureChartJs_();
+    } catch (e) {
+      console.error("[Perf] Chart.js load failed:", e);
+      setBadge_("圖表載入失敗", true);
+      return;
     }
 
     perfChartInstance_ = new Chart(ctx, {
