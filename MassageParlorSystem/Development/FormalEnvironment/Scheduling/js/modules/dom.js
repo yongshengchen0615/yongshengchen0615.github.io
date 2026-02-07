@@ -38,7 +38,12 @@ export const dom = {
   themeToggleBtn: document.getElementById("themeToggle"),
   btnMyStatusEl: document.getElementById("btnMyStatus"),
   btnScheduleEl: document.getElementById("btnSchedule"),
+  btnTopupEl: document.getElementById("btnTopup"),
   btnPerformanceEl: document.getElementById("btnPerformance"),
+
+  // 可水平滑動的控制列
+  appHeaderRightEl: document.querySelector(".app-header-right"),
+  featureChipsEl: document.getElementById("featureChips"),
 
   // Feature / personal tools
   usageBannerEl: document.getElementById("usageBanner"),

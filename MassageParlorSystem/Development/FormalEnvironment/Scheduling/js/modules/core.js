@@ -38,6 +38,54 @@ export function withQuery(base, extraQuery) {
   return b + (b.includes("?") ? "&" : "?") + q.replace(/^\?/, "");
 }
 
+/* =========================
+ * Network warm-up (preconnect)
+ * ========================= */
+
+function toOrigin_(url) {
+  try {
+    const u = new URL(String(url || ""), location.href);
+    if (!u.origin || u.origin === "null") return "";
+    if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+    return u.origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 盡量提早建立到目標 origin 的連線（DNS/TLS），縮短第一個 fetch 的等待。
+ * - 只做 <link rel="preconnect"> / dns-prefetch，不會送出實際 API 請求
+ */
+export function preconnectUrl(url) {
+  const origin = toOrigin_(url);
+  if (!origin) return;
+
+  try {
+    if (!preconnectUrl._seen) preconnectUrl._seen = new Set();
+    if (preconnectUrl._seen.has(origin)) return;
+    preconnectUrl._seen.add(origin);
+  } catch {}
+
+  try {
+    const head = document.head || document.getElementsByTagName("head")[0];
+    if (!head) return;
+
+    const dns = document.createElement("link");
+    dns.rel = "dns-prefetch";
+    dns.href = origin;
+    head.appendChild(dns);
+
+    const pc = document.createElement("link");
+    pc.rel = "preconnect";
+    pc.href = origin;
+    pc.crossOrigin = "anonymous";
+    head.appendChild(pc);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * 取得 URL query string 參數。
  * @param {string} k 參數名稱。

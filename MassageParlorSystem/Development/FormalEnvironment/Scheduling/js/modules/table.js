@@ -23,9 +23,10 @@ import {
   parseOpacityToken,
   getRgbaString,
 } from "./core.js";
-import { fetchStatusAll } from "./edgeClient.js";
+import { fetchStatusAllMaybe } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showGate, hideGate } from "./uiHelpers.js";
+import { logUsageEvent } from "./usageLog.js";
 import { config } from "./config.js";
 
 /* =========================
@@ -96,6 +97,48 @@ export function rebuildStatusFilterOptions() {
 
   dom.filterStatusSelect.value = previous !== "all" && statuses.has(previous) ? previous : "all";
   state.filterStatus = dom.filterStatusSelect.value;
+}
+
+/**
+ * 依目前 rawData 重新建立「師傅篩選」下拉選單。
+ * - 保留使用者原本選擇（若該師傅仍存在）
+ * - 會同步更新 state.filterMaster
+ */
+export function rebuildMasterFilterOptions() {
+  if (!dom.filterMasterInput) return;
+
+  const masters = new Set();
+  ["body", "foot"].forEach((type) => {
+    (state.rawData[type] || []).forEach((r) => {
+      const m = normalizeText(r.masterId);
+      if (m) masters.add(m);
+    });
+  });
+
+  const previous = dom.filterMasterInput.value || "";
+  dom.filterMasterInput.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "全部師傅";
+  dom.filterMasterInput.appendChild(optAll);
+
+  // sort masters for stable order (numeric if possible)
+  const masterList = Array.from(masters);
+  masterList.sort((a, b) => {
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) return parseInt(a, 10) - parseInt(b, 10);
+    return String(a).localeCompare(String(b));
+  });
+
+  for (const m of masterList) {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    dom.filterMasterInput.appendChild(opt);
+  }
+
+  dom.filterMasterInput.value = previous && masters.has(previous) ? previous : "";
+  state.filterMaster = dom.filterMasterInput.value || "";
 }
 
 function applyFilters(list) {
@@ -174,7 +217,15 @@ function applyStaleSystemGate_() {
     return;
   }
 
-  const latestMs = computeLatestDataTimestampMs_();
+  // combine row timestamps with any server-provided fetch timestamp
+  let latestMs = computeLatestDataTimestampMs_();
+  try {
+    const fetchMs = Number(state.dataHealth && state.dataHealth.fetchDataTimestampMs);
+    if (Number.isFinite(fetchMs)) {
+      if (latestMs === null || fetchMs > latestMs) latestMs = fetchMs;
+    }
+  } catch (e) {}
+
   state.dataHealth.lastDataTimestampMs = latestMs;
 
   // 沒有可解析的 timestamp：不做「過久未更新」判斷（避免誤殺）
@@ -194,6 +245,15 @@ function applyStaleSystemGate_() {
     state.dataHealth.staleSinceMs = Date.now();
     showGate("總系統異常 無法使用功能", true);
     if (dom.connectionStatusEl) dom.connectionStatusEl.textContent = "異常";
+    try {
+      // send event to GAS (via config.USAGE_LOG_URL) for monitoring/alerting
+      const lastTs = Number(state.dataHealth.lastDataTimestampMs || latestMs) || null;
+      const payload = {
+        lastDataTimestampMs: lastTs,
+        lastDataIso: lastTs ? new Date(lastTs).toISOString() : "",
+      };
+      logUsageEvent({ event: "system_stale", detail: JSON.stringify(payload), noThrottle: true, eventCn: "系統資料過期" }).catch(() => {});
+    } catch (e) {}
     return;
   }
 
@@ -201,6 +261,15 @@ function applyStaleSystemGate_() {
     state.dataHealth.stale = false;
     state.dataHealth.staleSinceMs = null;
     hideGate();
+    try {
+      // send recovery event to GAS for monitoring
+      const lastTs = Number(state.dataHealth.lastDataTimestampMs || latestMs) || null;
+      const payload = {
+        lastDataTimestampMs: lastTs,
+        lastDataIso: lastTs ? new Date(lastTs).toISOString() : "",
+      };
+      logUsageEvent({ event: "system_recovered", detail: JSON.stringify(payload), noThrottle: true, eventCn: "系統資料恢復" }).catch(() => {});
+    } catch (e) {}
   }
 }
 
@@ -673,7 +742,7 @@ function decideIncomingRows(panel, incomingRows, prevRows, isManual) {
   return { rows: prev, accepted: false };
 }
 
-export async function refreshStatus({ isManual } = { isManual: false }) {
+export async function refreshStatus({ isManual, preferMeta } = { isManual: false, preferMeta: false }) {
   if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
   if (state.refreshInFlight) return;
 
@@ -684,10 +753,44 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
   try {
     const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
     const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-    const { source, edgeIdx, bodyRows, footRows } = await fetchStatusAll();
+    if (!state.dataHealth) state.dataHealth = {};
+    const prevMeta = state.dataHealth.meta || null;
+    const res = await fetchStatusAllMaybe({ previousMeta: prevMeta, preferMeta: !!preferMeta && !isManual });
+    const { source, edgeIdx, bodyRows, footRows, dataTimestamp, bodyMeta, footMeta, skipped } = res;
     const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     const dtFetch = Math.round(t1 - t0);
     if (dtFetch > REFRESH_SLOW_MS) console.warn(`[Perf] fetchStatusAll slow: ${dtFetch}ms`);
+
+    // persist latest meta for next poll comparisons
+    try {
+      state.dataHealth.meta = {
+        bodyMeta: bodyMeta || (prevMeta && prevMeta.bodyMeta) || { timestamp: "", hash: "" },
+        footMeta: footMeta || (prevMeta && prevMeta.footMeta) || { timestamp: "", hash: "" },
+      };
+    } catch (e) {}
+
+    // store server-provided timestamp (if any) so stale check can consider it
+    try {
+      const ms = parseTimestampMs_(dataTimestamp);
+      state.dataHealth.fetchDataTimestampMs = Number.isFinite(ms) ? ms : null;
+    } catch (e) {}
+
+    // ✅ no change: skip diff/render, but still run stale gate & my status
+    if (skipped) {
+      if (dom.connectionStatusEl) {
+        if (!state.scheduleUiEnabled) {
+          dom.connectionStatusEl.textContent = "排班表未開通（僅顯示我的狀態）";
+        } else if (source === "edge" && typeof edgeIdx === "number") {
+          dom.connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
+        } else {
+          dom.connectionStatusEl.textContent = "已連線（主站）";
+        }
+      }
+
+      applyStaleSystemGate_();
+      updateMyMasterStatusUI();
+      return;
+    }
 
     const bodyDecision = decideIncomingRows("body", bodyRows, state.rawData.body, isManual);
     const footDecision = decideIncomingRows("foot", footRows, state.rawData.foot, isManual);
@@ -695,10 +798,29 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
     const bodyDiff = diffMergePanelRows(state.rawData.body, bodyDecision.rows);
     const footDiff = diffMergePanelRows(state.rawData.foot, footDecision.rows);
 
+    // capture previous master set for comparison
+    const prevMasterSet = new Set();
+    ["body", "foot"].forEach((type) => {
+      (state.rawData[type] || []).forEach((r) => {
+        const m = normalizeText(r.masterId);
+        if (m) prevMasterSet.add(m);
+      });
+    });
+
     if (bodyDiff.changed) state.rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
     if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
+
+    // rebuild master options only when master set changed
+    const nextMasterSet = new Set();
+    ["body", "foot"].forEach((type) => {
+      (state.rawData[type] || []).forEach((r) => {
+        const m = normalizeText(r.masterId);
+        if (m) nextMasterSet.add(m);
+      });
+    });
+    if (!setEquals(prevMasterSet, nextMasterSet)) rebuildMasterFilterOptions();
 
     const anyChanged = bodyDiff.changed || footDiff.changed;
     const activeChanged = state.activePanel === "body" ? bodyDiff.changed : footDiff.changed;
@@ -723,7 +845,6 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
       if (activeChanged) renderIncremental(state.activePanel);
       else reapplyTableHeaderColorsFromDataset();
     }
-
     // ✅ 資料過久未更新：顯示 Gate（並阻止操作）；恢復後自動解除
     applyStaleSystemGate_();
 

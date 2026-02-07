@@ -6,7 +6,7 @@
  * - 業務邏輯分散在 js/modules/*.js
  */
 
-import { debounce, installConsoleFilter } from "./modules/core.js";
+import { debounce, installConsoleFilter, preconnectUrl } from "./modules/core.js";
 import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
@@ -20,6 +20,7 @@ import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
+import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
 
 let eventsBound = false;
 
@@ -36,21 +37,21 @@ function bindEventsOnce() {
   if (dom.tabBodyBtn) {
     dom.tabBodyBtn.addEventListener("click", () => {
       const from = state.activePanel || "";
-      logUsageEvent({ event: "panel_switch", detail: `${from}->body`, noThrottle: true });
+      logUsageEvent({ event: "panel_switch", detail: `${from}->body`, noThrottle: true, eventCn: "分頁切換" });
       setActivePanel("body");
     });
   }
   if (dom.tabFootBtn) {
     dom.tabFootBtn.addEventListener("click", () => {
       const from = state.activePanel || "";
-      logUsageEvent({ event: "panel_switch", detail: `${from}->foot`, noThrottle: true });
+      logUsageEvent({ event: "panel_switch", detail: `${from}->foot`, noThrottle: true, eventCn: "分頁切換" });
       setActivePanel("foot");
     });
   }
 
   // Filters
   if (dom.filterMasterInput) {
-    dom.filterMasterInput.addEventListener("input", (e) => {
+    dom.filterMasterInput.addEventListener("change", (e) => {
       state.filterMaster = e.target.value || "";
       rerenderDebounced();
     });
@@ -59,6 +60,13 @@ function bindEventsOnce() {
     dom.filterStatusSelect.addEventListener("change", (e) => {
       state.filterStatus = e.target.value || "all";
       rerenderDebounced();
+    });
+  }
+
+  // TopUp
+  if (dom.btnTopupEl) {
+    dom.btnTopupEl.addEventListener("click", async () => {
+      await runTopupFlow({ context: "app", reloadOnSuccess: false });
     });
   }
 }
@@ -74,6 +82,20 @@ async function boot() {
     setInitialLoadingProgress(12, "讀取設定中…");
     await loadConfigJson();
     sanitizeEdgeUrls();
+
+    // 預熱網路連線：AUTH / TOPUP / USAGE_LOG 常是同一個 GAS 網域，先 preconnect 可降低首次儲值/驗證延遲。
+    preconnectUrl(config.AUTH_API_URL);
+    preconnectUrl(config.TOPUP_API_URL);
+    preconnectUrl(config.USAGE_LOG_URL);
+
+    // ✅ 資料同步端點預熱（降低首次輪詢延遲）
+    if (config.FALLBACK_ORIGIN_CACHE_URL) preconnectUrl(config.FALLBACK_ORIGIN_CACHE_URL);
+    try {
+      const edges = Array.isArray(config.EDGE_STATUS_URLS) ? config.EDGE_STATUS_URLS : [];
+      for (let i = 0; i < Math.min(2, edges.length); i++) {
+        if (edges[i]) preconnectUrl(edges[i]);
+      }
+    } catch {}
   } catch (e) {
     console.error("[Config] load failed:", e);
     hideInitialLoading();
@@ -84,6 +106,9 @@ async function boot() {
   setInitialLoadingProgress(28, "初始化介面中…");
 
   bindEventsOnce();
+
+  // 儲值入口（是否顯示取決於 config.TOPUP_API_URL）
+  if (dom.btnTopupEl) dom.btnTopupEl.style.display = isTopupEnabled() ? "" : "none";
 
   // Auth / Gate
   setInitialLoadingProgress(45, "登入 / 權限檢查中…");

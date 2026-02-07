@@ -44,39 +44,45 @@
         <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
       </header>
 
-      <!-- 連線狀態 / 深色 / 手動重整（移到功能欄位上方） -->
-      <header class="app-header">
-        <div class="app-header-spacer" aria-hidden="true"></div>
-
-        <div class="app-header-right">
-          <div class="pill pill-status">
-            <span class="pill-dot"></span>
-            <span class="pill-text" id="connectionStatus">連線中…</span>
-          </div>
-
-          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
-          <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
-          <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
-          <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
-          <button id="btnUserManage" class="btn btn-ghost" type="button">👤 技師管理員</button>
-          <button id="btnPersonalStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 個人狀態</button>
-          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
-        </div>
-      </header>
-
       <!-- ✅ 已開通功能提示 -->
       <div id="featureBanner" class="feature-banner">
         <span class="feature-title">功能：</span>
         <div id="featureChips" class="feature-chips"></div>
       </div>
 
-      <!-- ✅ 個人狀態快捷按鈕 -->
-      <div id="personalTools" class="personal-tools" style="display:none;"></div>
-
-      <!-- 🔔 使用者名稱 + 剩餘天數橫幅 -->
+      <!-- 🔔 使用者名稱 + 剩餘天數橫幅（移至控制列上方） -->
       <div id="usageBanner" class="usage-banner" style="display:none;">
         <span id="usageBannerText"></span>
+        <button id="btnTopup" class="btn btn-ghost btn-usage-topup" type="button" style="display:none;">💳 儲值</button>
       </div>
+
+      <!-- 連線狀態 / 深色 / 手動重整 -->
+      <header class="app-header">
+        <div class="app-header-spacer" aria-hidden="true"></div>
+
+        <div class="app-header-right">
+          <div class="pill pill-status">
+            <span class="pill-dot"></span>
+            <span class="pill-text" id="connectionStatus">已連線（分流 1）</span>
+          </div>
+
+          <!-- 常用功能（順序：深色 / 我的狀態 / 排班表 / 手動重整） -->
+          <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
+          <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
+          <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
+          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
+
+          <!-- 其他次要功能保留於同一列，超出時可水平滑動，不會換行 -->
+          <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
+          <button id="btnUserManage" class="btn btn-ghost" type="button">👤 技師管理員</button>
+          <button id="btnPersonalStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 技師休假與狀態</button>
+        </div>
+      </header>
+
+      
+
+      <!-- ✅ 個人狀態快捷按鈕 -->
+      <div id="personalTools" class="personal-tools" style="display:none;"></div>
 
       <!-- ✅ 個人（師傅）身體/腳底狀態 -->
       <div id="myMasterStatus" class="my-master-status" style="display:none;">
@@ -94,7 +100,9 @@
         <div class="filters">
           <div class="filter">
             <label for="filterMaster" class="filter-label">師傅搜尋</label>
-            <input id="filterMaster" class="input" type="text" placeholder="輸入師傅編號，例如 07" />
+            <select id="filterMaster" class="select">
+              <option value="">全部師傅</option>
+            </select>
           </div>
 
           <div class="filter">
@@ -112,7 +120,7 @@
           <header class="card-header">
             <div class="card-header-left">
               <h2 id="panelTitle" class="card-title">身體面板</h2>
-              <p class="card-subtitle">依「順序」排序，可透過上方輸入框篩選指定師傅</p>
+              <p class="card-subtitle">依「順序」排序，可透過上方下拉選單篩選指定師傅</p>
             </div>
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>
@@ -208,6 +216,7 @@
               <button id="perfChartModeDaily" class="btn btn-ghost btn-chart-mode" type="button" data-mode="daily">日業績</button>
               <button id="perfChartModeCumu"  class="btn btn-ghost btn-chart-mode" type="button" data-mode="cumu">累積</button>
               <button id="perfChartModeMA7"   class="btn btn-ghost btn-chart-mode" type="button" data-mode="ma7">7日均線</button>
+                <button id="perfChartModeBar"  class="btn btn-ghost btn-chart-mode" type="button" data-mode="bar">柱狀圖</button>
             </div>
             <button id="perfChartReset" class="btn btn-ghost btn-chart-reset" type="button">↩︎ 重設顯示</button>
           </div>

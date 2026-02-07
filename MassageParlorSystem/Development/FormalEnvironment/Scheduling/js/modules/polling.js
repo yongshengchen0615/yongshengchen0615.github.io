@@ -14,6 +14,7 @@ import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
 import { manualRefreshPerformance } from "./performance.js";
+import { maybeShowDailyFirstOpenHint } from "./dailyHint.js";
 
 const POLL = {
   BASE_MS: 3000,
@@ -56,7 +57,8 @@ function scheduleNextPoll(ms) {
   state.pollTimer = setTimeout(async () => {
     if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
 
-    const res = await refreshStatusAdaptive(false);
+    const preferMeta = state.poll.successStreak >= pc.STABLE_UP_AFTER;
+    const res = await refreshStatusAdaptive(false, { preferMeta });
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   }, wait);
@@ -100,12 +102,13 @@ function computeNextInterval(res) {
   return state.poll.nextMs;
 }
 
-async function refreshStatusAdaptive(isManual) {
+async function refreshStatusAdaptive(isManual, opts) {
   try {
     const beforeBody = state.rawData.body;
     const beforeFoot = state.rawData.foot;
 
-    await refreshStatus({ isManual });
+    const preferMeta = !!(opts && opts.preferMeta);
+    await refreshStatus({ isManual, preferMeta });
 
     const changed = beforeBody !== state.rawData.body || beforeFoot !== state.rawData.foot;
     return { ok: true, changed };
@@ -153,7 +156,7 @@ export function startPolling(extraReadyPromise) {
   }
 
   // 初次啟動
-  refreshStatusAdaptive(false).then(async (res) => {
+  refreshStatusAdaptive(false, { preferMeta: false }).then(async (res) => {
     updateMyMasterStatusUI();
 
     // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
@@ -166,6 +169,14 @@ export function startPolling(extraReadyPromise) {
 
     setInitialLoadingProgress(100, "完成");
     hideInitialLoading();
+
+      // ✅ 當日第一次開啟提示 + 左右滑動提示動畫
+      try {
+        maybeShowDailyFirstOpenHint();
+      } catch {
+        // ignore
+      }
+
     const next = computeNextInterval(res);
     scheduleNextPoll(next);
   });
@@ -174,7 +185,7 @@ export function startPolling(extraReadyPromise) {
   document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) {
       resetPollState();
-      const res = await refreshStatusAdaptive(false);
+      const res = await refreshStatusAdaptive(false, { preferMeta: false });
       const next = computeNextInterval(res);
       scheduleNextPoll(next);
     }

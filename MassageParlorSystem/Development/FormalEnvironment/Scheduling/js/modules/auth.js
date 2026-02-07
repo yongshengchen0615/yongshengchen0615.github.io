@@ -19,10 +19,21 @@ import { dom } from "./dom.js";
 import { getQueryParam } from "./core.js";
 import { showGate, openApp, updateUsageBanner } from "./uiHelpers.js";
 import { updateFeatureState } from "./featureBanner.js";
-import { applyScheduleUiMode, showNotMasterHint } from "./scheduleUi.js";
+import { showNotMasterHint } from "./scheduleUi.js";
 import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js";
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { logUsageEvent } from "./usageLog.js";
+import { isTopupEnabled, runTopupFlow } from "./topup.js";
+
+// Gate overlay actions (event delegation)
+if (dom.gateEl) {
+  dom.gateEl.addEventListener("click", async (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest("#gateTopupBtn") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    await runTopupFlow({ context: "gate", reloadOnSuccess: true });
+  });
+}
 
 /* =====================================================
  * ✅ Identity helpers（state + localStorage 落地）
@@ -190,7 +201,12 @@ function decideGateAction(r) {
       action: () => {
         let msg = "此帳號已通過審核，但目前無法使用看板。\n\n";
         msg += "原因：使用期限已到期或未設定期限。\n";
-        msg += "\n請聯絡管理員協助開通或延長使用期限。";
+        if (isTopupEnabled()) {
+          msg += "\n你可以先使用儲值序號延長期限：\n";
+          msg += '<div style="margin-top:12px;"><button id="gateTopupBtn" class="btn btn-ghost" type="button">💳 輸入序號儲值</button></div>';
+        } else {
+          msg += "\n請聯絡管理員協助開通或延長使用期限。";
+        }
         return { allow: false, message: msg };
       },
     },
@@ -224,7 +240,12 @@ function decideGateAction(r) {
 }
 
 async function checkOrRegisterUser(userId, displayNameFromClient) {
-  const url = config.AUTH_API_URL + "?mode=check&userId=" + encodeURIComponent(userId);
+  const url =
+    config.AUTH_API_URL +
+    "?mode=check&userId=" +
+    encodeURIComponent(userId) +
+    "&displayName=" +
+    encodeURIComponent(displayNameFromClient || "");
   const resp = await fetch(url, { method: "GET", cache: "no-store" });
   if (!resp.ok) throw new Error("Check HTTP " + resp.status);
 
@@ -251,6 +272,7 @@ async function checkOrRegisterUser(userId, displayNameFromClient) {
       userId,
       displayName: r.displayName || displayNameFromClient || "",
       detail: "auto_register",
+      eventCn: "首次註冊申請",
     });
 
     return r;
@@ -280,10 +302,14 @@ async function onAuthorized({ userId, displayName, result }) {
   // ✅ 落地身份（給其他模組用）
   setClientIdentity_(userId, displayName);
 
-  // features
-  updateFeatureState(result);
+  // 讓其他模組可取到最新剩餘天數（儲值成功後也會更新 banner）
+  try {
+    state.user = state.user || {};
+    state.user.remainingDays = result.remainingDays;
+    state.user.audit = result.audit;
+  } catch (_) {}
 
-  // 確保 state.myMaster 存在
+  // 確保 state.myMaster 存在（給 scheduleUi/feature UI 判斷用）
   state.myMaster = state.myMaster || {};
   state.feature = state.feature || {};
 
@@ -291,24 +317,8 @@ async function onAuthorized({ userId, displayName, result }) {
   state.myMaster.isMaster = !!result.isMaster;
   state.myMaster.techNo = normalizeTechNo(result.techNo || result.masterCode || "");
 
-  // 排班表開通=否：只顯示我的狀態
-  const scheduleOk = String(result.scheduleEnabled || "").trim() === "是";
-  applyScheduleUiMode(scheduleOk);
-
-  // 業績開通=否：不顯示業績按鈕/區塊（若此版本沒有相關 DOM，則不影響）
-  const performanceOk = String(result.performanceEnabled || "").trim() === "是";
-  const perfBtn = document.getElementById("btnPerformance");
-  if (perfBtn) perfBtn.style.display = performanceOk ? "" : "none";
-  const perfCard = document.getElementById("perfCard");
-  if (perfCard) perfCard.style.display = performanceOk ? "" : "none";
-
-  // 立即同步提示（避免首次畫面沒出現）
-  if (!scheduleOk) {
-    const isMasterNow = !!(state.myMaster.isMaster && state.myMaster.techNo);
-    showNotMasterHint(!isMasterNow);
-  } else {
-    showNotMasterHint(false);
-  }
+  // features（會同步 chips + 功能按鈕顯示/排班 UI）
+  updateFeatureState(result);
 
   // 紀錄審核狀態（每次開啟/驗證都會嘗試送出；由 USAGE_LOG_MIN_INTERVAL_MS 節流）
   try {
@@ -325,6 +335,7 @@ async function onAuthorized({ userId, displayName, result }) {
         personalStatusEnabled: result.personalStatusEnabled,
         performanceEnabled: result.performanceEnabled,
       }),
+      eventCn: "審核狀態",
     });
   } catch {}
 
@@ -338,6 +349,7 @@ async function onAuthorized({ userId, displayName, result }) {
         userId,
         displayName: result.displayName || displayName,
         detail: String(result.audit || "pending") + (result.justRegistered ? "|justRegistered" : ""),
+        eventCn: "待審核開啟",
       });
     }
 

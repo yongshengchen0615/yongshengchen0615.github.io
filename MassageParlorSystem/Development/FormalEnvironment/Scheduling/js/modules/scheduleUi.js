@@ -72,13 +72,16 @@ export function showNotMasterHint(show) {
 export function applyScheduleUiMode(enabled) {
   state.scheduleUiEnabled = !!enabled;
 
+  const viewMode = String(state.viewMode || "");
+  const showScheduleNow = state.scheduleUiEnabled && viewMode === "schedule";
+
   // 排班表未開通：不顯示「📋 排班表」按鈕
   if (dom.btnScheduleEl) dom.btnScheduleEl.style.display = state.scheduleUiEnabled ? "" : "none";
 
-  // 面板功能整段隱藏
-  if (dom.toolbarEl) dom.toolbarEl.style.display = state.scheduleUiEnabled ? "" : "none";
-  if (dom.mainEl) dom.mainEl.style.display = state.scheduleUiEnabled ? "" : "none";
-  if (dom.cardTableEl) dom.cardTableEl.style.display = state.scheduleUiEnabled ? "" : "none";
+  // 面板顯示由 viewSwitch 控制；此處依 viewMode 做一次「同步」避免互相覆寫
+  if (dom.toolbarEl) dom.toolbarEl.style.display = showScheduleNow ? "" : "none";
+  if (dom.mainEl) dom.mainEl.style.display = showScheduleNow ? "" : "none";
+  if (dom.cardTableEl) dom.cardTableEl.style.display = showScheduleNow ? "" : "none";
 
   // 面板操作也隱藏（避免誤觸）
   if (dom.refreshBtn) dom.refreshBtn.style.display = state.scheduleUiEnabled ? "" : "none";

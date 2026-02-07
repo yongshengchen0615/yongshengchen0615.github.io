@@ -3,13 +3,16 @@
  *
  * 功能開通提示列（固定顯示 chip）：
  * - 叫班提醒
- * - 個人狀態
+* - 技師休假與狀態
  * - 排班表
  * - 業績
  */
 
+import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { applyScheduleUiMode } from "./scheduleUi.js";
 import { setPersonalToolsEnabled } from "./personalTools.js";
+import { setViewMode, VIEW } from "./viewSwitch.js";
 
 function normalizeYesNo(v) {
   return String(v || "").trim() === "是" ? "是" : "否";
@@ -22,6 +25,10 @@ function buildChip(label, enabled) {
   return `<span class="${cls}">${label}${badge}</span>`;
 }
 
+function buildChipAlways(label) {
+  return `<span class="feature-chip">${label}</span>`;
+}
+
 function renderFeatureBanner() {
   const chipsEl = document.getElementById("featureChips");
   if (!chipsEl) return;
@@ -29,14 +36,50 @@ function renderFeatureBanner() {
   const push = normalizeYesNo(state.feature.pushEnabled);
   const personal = normalizeYesNo(state.feature.personalStatusEnabled);
   const schedule = normalizeYesNo(state.feature.scheduleEnabled);
-    const performance = normalizeYesNo(state.feature.performanceEnabled);
+  const performance = normalizeYesNo(state.feature.performanceEnabled);
 
     chipsEl.innerHTML = [
-      buildChip("叫班提醒", push),
-      buildChip("排班表", schedule),
-      buildChip("個人狀態", personal),
-      buildChip("業績", performance),
+        buildChipAlways("我的狀態"),
+        buildChip("叫班提醒", push),
+        buildChip("排班表", schedule),
+      buildChip("技師休假與狀態", personal),
+        buildChip("業績", performance),
     ].join("");
+}
+
+function applyFeatureUi_() {
+  const scheduleOk = normalizeYesNo(state.feature.scheduleEnabled) === "是";
+  const performanceOk = normalizeYesNo(state.feature.performanceEnabled) === "是";
+  const personalOk = normalizeYesNo(state.feature.personalStatusEnabled) === "是";
+
+  // 個人工具按鈕（技師管理員/休假與狀態）
+  try {
+    setPersonalToolsEnabled(personalOk);
+  } catch {
+    // ignore
+  }
+
+  // 排班表（按鈕 + 面板 UI）
+  try {
+    applyScheduleUiMode(scheduleOk);
+  } catch {
+    // ignore
+  }
+
+  // 業績（按鈕）
+  if (dom.btnPerformanceEl) dom.btnPerformanceEl.style.display = performanceOk ? "" : "none";
+
+  // 若功能關閉且目前正在該視圖：切回我的狀態，避免空白畫面
+  try {
+    const vm = String(state.viewMode || "");
+    if (!scheduleOk && vm === VIEW.SCHEDULE) setViewMode(VIEW.MY_STATUS);
+    if (!performanceOk && vm === VIEW.PERFORMANCE) setViewMode(VIEW.MY_STATUS);
+  } catch {
+    // ignore
+  }
+
+  // 防呆：關閉業績時，確保業績卡片不可見
+  if (!performanceOk && dom.perfCardEl) dom.perfCardEl.style.display = "none";
 }
 
 /**
@@ -50,10 +93,5 @@ export function updateFeatureState(data) {
   state.feature.scheduleEnabled = normalizeYesNo(data && data.scheduleEnabled);
   state.feature.performanceEnabled = normalizeYesNo(data && data.performanceEnabled);
   renderFeatureBanner();
-  // 同步顯示/隱藏個人工具按鈕
-  try {
-    setPersonalToolsEnabled(state.feature.personalStatusEnabled === "是");
-  } catch (e) {
-    // ignore
-  }
+  applyFeatureUi_();
 }

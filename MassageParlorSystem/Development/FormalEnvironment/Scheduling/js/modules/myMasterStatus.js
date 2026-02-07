@@ -281,9 +281,9 @@ export function updateMyMasterStatusUI() {
     return;
   }
 
-  // 非師傅：schedule=否 顯示提示卡；否則隱藏提示
+  // 非師傅：若目前為「我的狀態」視圖則顯示提示卡，否則隱藏提示
   if (!state.myMaster.isMaster || !state.myMaster.techNo) {
-    if (!state.scheduleUiEnabled) showNotMasterHint(true);
+    if (state.viewMode === "myStatus") showNotMasterHint(true);
     else showNotMasterHint(false);
 
     dom.myMasterStatusEl.style.display = "none";

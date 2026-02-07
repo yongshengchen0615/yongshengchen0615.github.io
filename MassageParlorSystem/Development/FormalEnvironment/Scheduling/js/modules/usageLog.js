@@ -78,7 +78,7 @@ async function fireAndForgetGet(url) {
  * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>} 送出結果；skipped 表示被略過。
  */
 export async function logAppOpen({ userId, displayName } = {}) {
-  return await logUsageEvent({ event: "app_open", userId, displayName });
+  return await logUsageEvent({ event: "app_open", userId, displayName, eventCn: "開啟應用" });
 }
 
 /**
@@ -94,7 +94,7 @@ export async function logAppOpen({ userId, displayName } = {}) {
  * @param {boolean} [args.noThrottle] 是否略過節流（預設 false）；適合 UI 切換等高頻事件。
  * @returns {Promise<{ok:boolean, skipped?:boolean, reason?:string}>}
  */
-export async function logUsageEvent({ event, userId, displayName, detail, noThrottle } = {}) {
+export async function logUsageEvent({ event, userId, displayName, detail, noThrottle, eventCn } = {}) {
   const base = String(config.USAGE_LOG_URL || "").trim();
   if (!base) return { ok: false, skipped: true, reason: "NO_URL" };
 
@@ -129,6 +129,7 @@ export async function logUsageEvent({ event, userId, displayName, detail, noThro
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     href: location.href,
     detail: String(detail || "").trim(),
+    eventCn: String(eventCn || "").trim(),
   });
 
   if (!url) return { ok: false, skipped: true, reason: "BAD_URL" };

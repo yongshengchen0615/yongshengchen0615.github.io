@@ -15,10 +15,13 @@
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzr-0aAArL9DOxZ1V-8nKmMRMhFZQ_KVuRkwa_Tk92A_WqbJkXoG1R-WA-fybxrBQwd/exec",
   "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
 
-  "LIFF_ID": "2008669658-UGsf3get",
+  "TOPUP_API_URL": "https://script.google.com/macros/s/AKfycbwAIv5DEllNzT4xhsNSXjbTV6ziio1Na_UO_QdK_4masenoneEGoR5RVohMd5MaF4e_3g/exec",
+  "_comment_TOPUP_API_URL": "（可選）儲值序號 GAS Web App URL（TopUp）。Scheduling 會用 mode=serials_redeem_public 核銷序號，並把回傳 amount 視為『增加的使用天數』。",
+
+  "LIFF_ID": "2008735934-mBO1mD8M",
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
-  "ENABLE_LINE_LOGIN": true,
+  "ENABLE_LINE_LOGIN": false,
   "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
 
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
@@ -30,7 +33,7 @@
   "DETAIL_PERF_API_URL": "https://script.google.com/macros/s/AKfycbzt0aElkjPdOBHz-e8_8EYqqpACNCfS-6pCSTxCfh8Ahf_ZcZSGKUdcTO1IoOCUfLypSA/exec",
   "_comment_DETAIL_PERF_API_URL": "（可選）師傅業績『明細』查詢用 GAS Web App URL（DetailPerf Web App）。若留空，前端會退回使用 REPORT_API_URL。",
 
-  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbyhYB3KCyNUkO5WMBgNPh-UWQs8Qcd2MMR7D9CAIQ-_b-rGsO6hYlafMefc6nT6MsJtJQ/exec",
+  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbw3RGQ80Z0YlUy6-HdnryFChRznY_kaDpNzuPqjM3qnjOZUyfmmBtuPOcadZ5L4KQz7Xg/exec",
   "_comment_PERF_SYNC_API_URL": "✅ 業績同步（storeId版）用 GAS Web App URL：POST mode=syncStorePerf_v1，前端 performance.js 會用這個網址。",
 
 
@@ -60,6 +63,6 @@
   "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
   "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。",
 
-  "STALE_DATA_MAX_AGE_MS": 0,
+  "STALE_DATA_MAX_AGE_MS": 900000,
   "_comment_STALE_DATA_MAX_AGE_MS": "（可選）資料超過多久未更新就視為『總系統異常 無法使用功能』（毫秒）。0 或負數=停用。建議 5~30 分鐘。"
 }

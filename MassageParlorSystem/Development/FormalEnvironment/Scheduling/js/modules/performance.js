@@ -20,6 +20,9 @@ import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
 
 const PERF_FETCH_TIMEOUT_MS = 25000;
 
+// ✅ 日期區間上限：3 個月（以 93 天近似，避免 GAS 同步過久/逾時）
+const PERF_MAX_RANGE_DAYS = 93;
+
 /** ✅ 類別表數量口徑：固定用「數量」欄位（節=數量） */
 const PERF_CARD_QTY_MODE = "qty"; // "qty" only
 
@@ -206,7 +209,7 @@ function normalizeRange_(startKey, endKey, maxDays) {
   }
 
   const out = [];
-  const limit = Number(maxDays) > 0 ? Number(maxDays) : 31;
+  const limit = Number(maxDays) > 0 ? Number(maxDays) : PERF_MAX_RANGE_DAYS;
   for (let i = 0; i < limit; i++) {
     const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
     if (d.getTime() > end.getTime()) break;
@@ -232,7 +235,7 @@ function readRangeFromInputs_() {
   if (!userId) return { ok: false, error: "MISSING_USERID", userId: "", startKey, endKey };
   if (!startKey) return { ok: false, error: "MISSING_START", userId, startKey, endKey };
 
-  const range = normalizeRange_(startKey, endKey, 31);
+  const range = normalizeRange_(startKey, endKey, PERF_MAX_RANGE_DAYS);
   if (!range.ok) return { ok: false, error: range.error || "BAD_RANGE", userId, startKey, endKey };
 
   if (dom.perfDateStartInput && dom.perfDateStartInput.value !== range.normalizedStart) dom.perfDateStartInput.value = range.normalizedStart;
@@ -470,6 +473,7 @@ function pickCards3_(gasCards, rows) {
 
 let perfChartMode_ = "daily"; // "daily" | "cumu" | "ma7"
 let perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
+let perfChartType_ = "line"; // "line" | "bar"
 
 function loadPerfChartPrefs_() {
   try {
@@ -487,6 +491,10 @@ function loadPerfChartPrefs_() {
     const m = String(localStorage.getItem(PERF_CHART_MODE_KEY) || "").trim();
     if (m === "daily" || m === "cumu" || m === "ma7") perfChartMode_ = m;
   } catch (_) {}
+  try {
+    const t = String(localStorage.getItem(PERF_CHART_VIS_KEY + "_type") || "").trim();
+    if (t === "line" || t === "bar") perfChartType_ = t;
+  } catch (_) {}
 }
 
 function savePerfChartPrefs_() {
@@ -495,6 +503,9 @@ function savePerfChartPrefs_() {
   } catch (_) {}
   try {
     localStorage.setItem(PERF_CHART_MODE_KEY, String(perfChartMode_ || "daily"));
+  } catch (_) {}
+  try {
+    localStorage.setItem(PERF_CHART_VIS_KEY + "_type", String(perfChartType_ || "line"));
   } catch (_) {}
 }
 
@@ -741,8 +752,15 @@ function updatePerfChart_(rows, dateKeys) {
     const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
     const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
 
-    const baseFont = isNarrow ? 11 : 13;
-    const ticksFont = isNarrow ? 10 : 12;
+      // 根據容器寬度動態計算字型大小，讓文字在手機/平板/桌面間自適應
+      const baseFontRaw = isNarrow ? 13 : 15;
+      const ticksFontRaw = isNarrow ? 12 : 14;
+      // scale factor: 1 at 420px, grows on wider screens but capped to avoid excessively large text
+      const scaleFactor = Math.max(0.9, Math.min(1.6, containerWidth / 420));
+      const baseFont = Math.round(baseFontRaw * scaleFactor);
+      const ticksFont = Math.round(ticksFontRaw * scaleFactor);
+      const legendBoxWidth = Math.max(8, Math.round(8 * Math.min(1.4, scaleFactor)));
+      const axisTitleFontSize = Math.round(baseFont * 1.05);
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
@@ -758,41 +776,157 @@ function updatePerfChart_(rows, dateKeys) {
 
     const maxXTicks = isNarrow ? 5 : 7;
 
+    // ensure minimum readable width like admin charts
+    try {
+      const minW = Math.max(600, labels.length * 40);
+      dom.perfChartEl.style.minWidth = `${minW}px`;
+    } catch (_) {}
+
+    // helper: show a floating detail panel when user clicks a data point
+    function showClickDetailPanel(idx) {
+      try {
+        const wrapperEl = dom.perfChartEl?.closest?.('.chart-wrapper') || dom.perfChartEl?.parentElement;
+        if (!wrapperEl) return;
+        // remove existing
+        const old = wrapperEl.querySelector('.perf-click-panel');
+        if (old) old.remove();
+
+        const rawKey = labels[idx];
+        const m = rawKey ? metrics[rawKey] : null;
+        const dateLabel = rawKey ? String(rawKey).replaceAll('-', '/') : '—';
+
+        const panel = document.createElement('div');
+        panel.className = 'perf-click-panel';
+        panel.setAttribute('role', 'dialog');
+
+        const rowsForDate = list.filter((r) => {
+          const dk = String(r['訂單日期'] || '').replaceAll('/', '-').slice(0, 10);
+          return dk === rawKey;
+        });
+
+        const amount = m ? fmtMoney_(m.amount) : '0';
+        const total = m ? (m.totalCount || 0) : 0;
+        const oldC = m ? (m.oldCount || 0) : 0;
+        const schC = m ? (m.schedCount || 0) : 0;
+
+        let html = `<div class="perf-click-panel-inner"><div class="perf-click-panel-head"><strong>${escapeHtml(dateLabel)}</strong><button class="perf-click-panel-close" aria-label="關閉">✕</button></div>`;
+        html += `<div class="perf-click-panel-body">`;
+        html += `<div class="perf-click-metrics">金額：<strong>${escapeHtml(String(amount))}</strong>，筆數：<strong>${total}</strong>（老點 ${oldC} / 排班 ${schC}）</div>`;
+        if (rowsForDate && rowsForDate.length) {
+          html += '<div class="perf-click-list"><table class="status-table small"><thead><tr><th>編號</th><th>拉牌</th><th>服務項目</th><th>小計</th></tr></thead><tbody>';
+          const sample = rowsForDate.slice(0, 20);
+          for (let i = 0; i < sample.length; i++) {
+            const r = sample[i];
+            html += `<tr><td>${escapeHtml(String(r['訂單編號'] || r['序'] || ''))}</td><td>${escapeHtml(String(r['拉牌'] || ''))}</td><td>${escapeHtml(String(r['服務項目'] || ''))}</td><td>${escapeHtml(String(r['小計'] ?? r['業績金額'] ?? ''))}</td></tr>`;
+          }
+          if (rowsForDate.length > sample.length) html += `<tr><td colspan="4">還有 ${rowsForDate.length - sample.length} 筆，請查明細</td></tr>`;
+          html += '</tbody></table></div>';
+        } else {
+          html += '<div class="perf-click-empty">查無明細</div>';
+        }
+        html += '</div></div>';
+        panel.innerHTML = html;
+
+        wrapperEl.appendChild(panel);
+
+        const btn = panel.querySelector('.perf-click-panel-close');
+        if (btn) btn.addEventListener('click', () => panel.remove());
+
+        // close when clicking outside
+        const onDocClick = (ev) => { if (!panel.contains(ev.target)) { panel.remove(); document.removeEventListener('pointerdown', onDocClick); } };
+        setTimeout(() => document.addEventListener('pointerdown', onDocClick), 50);
+      } catch (e) {
+        console.error('showClickDetailPanel error', e);
+      }
+    }
+
     perfChartInstance_ = new Chart(ctx, {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
         datasets: [
-          {
-            type: amountAsLine ? "line" : "bar",
-            label: amountLabel,
-            data: amountData,
-            borderWidth: amountAsLine ? 2 : 1,
-            tension: amountAsLine ? 0.25 : 0,
-            fill: false,
-            pointRadius: amountAsLine ? (isNarrow ? 0 : 2) : 0,
-            pointHitRadius: 10,
-            yAxisID: "y",
-          },
-          {
-            type: "line",
-            label: "老點率 (%)",
-            data: oldRateData,
-            tension: 0.25,
-            fill: false,
-            yAxisID: "y1",
-            pointRadius: isNarrow ? 0 : 2,
-            pointHitRadius: 10,
-          },
-          {
-            type: "line",
-            label: "排班率 (%)",
-            data: schedRateData,
-            tension: 0.25,
-            fill: false,
-            yAxisID: "y1",
-            pointRadius: isNarrow ? 0 : 2,
-            pointHitRadius: 10,
-          },
+          (function(){
+            const common = {
+              label: amountLabel,
+              data: amountData,
+              yAxisID: "y",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: 'rgba(6,182,212,0.16)',
+                borderColor: '#06b6d4',
+                borderWidth: 1,
+                barThickness: 'flex',
+                maxBarThickness: 48,
+                categoryPercentage: 0.75,
+                barPercentage: 0.9,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              borderWidth: Math.max(2, Math.round(2 * Math.min(1.6, Math.max(1, legendBoxWidth/8)))),
+              tension: 0.25,
+              fill: true,
+              backgroundColor: 'rgba(6,182,212,0.12)',
+              borderColor: '#06b6d4',
+              pointRadius: 0,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function(){
+            const common = {
+              data: oldRateData,
+              label: "老點率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: '#f59e0b66',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              tension: 0.25,
+              fill: false,
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245,158,11,0.06)',
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
+          (function(){
+            const common = {
+              data: schedRateData,
+              label: "排班率 (%)",
+              yAxisID: "y1",
+            };
+            if (perfChartType_ === 'bar') {
+              return Object.assign({}, common, {
+                type: 'bar',
+                backgroundColor: '#10b98166',
+                borderColor: '#10b981',
+                borderWidth: 1,
+                maxBarThickness: 36,
+                barPercentage: 0.48,
+                categoryPercentage: 0.6,
+              });
+            }
+            return Object.assign({}, common, {
+              type: 'line',
+              tension: 0.25,
+              fill: false,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.06)',
+              pointRadius: isNarrow ? 0 : 2,
+              pointHitRadius: 10,
+            });
+          })(),
         ],
       },
       options: {
@@ -805,7 +939,7 @@ function updatePerfChart_(rows, dateKeys) {
         plugins: {
           legend: {
             position: isNarrow ? "bottom" : "top",
-            labels: { usePointStyle: true, boxWidth: 8, font: { size: baseFont }, padding: isNarrow ? 10 : 14 },
+            labels: { usePointStyle: true, boxWidth: legendBoxWidth, font: { size: baseFont }, padding: isNarrow ? 10 : 14, color: textColor },
           },
           tooltip: {
             bodyFont: { size: ticksFont },
@@ -830,9 +964,42 @@ function updatePerfChart_(rows, dateKeys) {
               },
             },
           },
+          // allow click to open detail panel
+          tooltip: {
+            enabled: true
+          }
+        },
+        onClick: function (evt, activeEls) {
+          try {
+            if (!Array.isArray(activeEls) || !activeEls.length) return;
+            const el = activeEls[0];
+            const idx = el.index != null ? el.index : el._index;
+            if (typeof idx === 'number') showClickDetailPanel(idx);
+          } catch (e) { console.warn('chart onClick error', e); }
         },
         scales: {
-          x: { ticks: { autoSkip: true, maxTicksLimit: maxXTicks, maxRotation: 0, font: { size: ticksFont } }, grid: { display: false } },
+          x: {
+            ticks: {
+              autoSkip: true,
+              maxTicksLimit: maxXTicks,
+              maxRotation: 0,
+              font: { size: ticksFont },
+              callback: function (val, idx, ticks) {
+                try {
+                  const raw = this.getLabelForValue(val) || this.chart.data.labels[idx];
+                  const d = new Date(String(raw).replace(/\//g, "-"));
+                  if (isNaN(d.getTime())) return String(raw);
+                  // prefer month/day for day granularity, show hour if present
+                  const hasTime = /\d{1,2}:\d{2}/.test(String(raw));
+                  if (hasTime) return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+                  return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
+                } catch (e) {
+                  return String(val);
+                }
+              },
+            },
+            grid: { display: false },
+          },
           y: { beginAtZero: true, ticks: { font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) }, title: { display: !isNarrow, text: "金額", font: { size: baseFont } } },
           y1: {
             position: "right",
@@ -851,6 +1018,24 @@ function updatePerfChart_(rows, dateKeys) {
     console.error("updatePerfChart_ error", e);
   }
 }
+    // 取得主題文字顏色與次要文字顏色（CSS 變數）作為 chart 字色，fallback 為深/次色
+    const css = (typeof window !== 'undefined' && window.getComputedStyle) ? window.getComputedStyle(document.documentElement) : null;
+    const textColor = (css && css.getPropertyValue('--text-main')) ? css.getPropertyValue('--text-main').trim() : '#111827';
+    const subColorRaw = (css && css.getPropertyValue('--text-sub')) ? css.getPropertyValue('--text-sub').trim() : '#6b7280';
+    // create faint grid color from subColor
+    const gridColor = (() => {
+      try {
+        // if color is hex, convert; otherwise fallback to rgba with low opacity
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
+          const hex = subColorRaw.replace('#', '');
+          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
+          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
+          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
+          return `rgba(${r},${g},${b},0.10)`;
+        }
+      } catch (_) {}
+      return `${subColorRaw}33`;
+    })();
 
 /* =========================
  * Fetch (POST syncStorePerf_v1)
@@ -994,7 +1179,7 @@ async function renderFromCache_(mode, info) {
     showError_(true);
     if (r && r.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
     else if (r && r.error === "MISSING_START") setBadge_("請選擇開始日期", true);
-    else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
 
     setMeta_("最後更新：—");
@@ -1132,6 +1317,7 @@ export function initPerformanceUi() {
     const btnDaily = document.getElementById("perfChartModeDaily");
     const btnCumu = document.getElementById("perfChartModeCumu");
     const btnMA7 = document.getElementById("perfChartModeMA7");
+    const btnBar = document.getElementById("perfChartModeBar");
     const btnReset = document.getElementById("perfChartReset");
 
     const setActive = () => {
@@ -1140,6 +1326,10 @@ export function initPerformanceUi() {
       const map = { daily: btnDaily, cumu: btnCumu, ma7: btnMA7 };
       const active = map[perfChartMode_];
       if (active) active.classList.add("is-active");
+      if (btnBar) {
+        if (perfChartType_ === 'bar') btnBar.classList.add('is-active');
+        else btnBar.classList.remove('is-active');
+      }
     };
 
     const applyMode = (mode) => {
@@ -1153,6 +1343,14 @@ export function initPerformanceUi() {
     btnDaily && btnDaily.addEventListener("click", () => applyMode("daily"));
     btnCumu && btnCumu.addEventListener("click", () => applyMode("cumu"));
     btnMA7 && btnMA7.addEventListener("click", () => applyMode("ma7"));
+    if (btnBar) {
+      btnBar.addEventListener('click', () => {
+        perfChartType_ = perfChartType_ === 'bar' ? 'line' : 'bar';
+        savePerfChartPrefs_();
+        setActive();
+        schedulePerfChartRedraw_();
+      });
+    }
 
     btnReset &&
       btnReset.addEventListener("click", () => {
@@ -1258,7 +1456,7 @@ export async function prefetchPerformanceOnce() {
 
     const from = localDateKeyMonthStart_();
     const to = localDateKeyToday_();
-    const dateKeys = normalizeRange_(from, to, 31).dateKeys;
+    const dateKeys = normalizeRange_(from, to, PERF_MAX_RANGE_DAYS).dateKeys;
 
     const info = { ok: true, userId, from, to, dateKeys };
     const res = await reloadAndCache_(info, { showToast: false });
@@ -1288,7 +1486,7 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
   if (!info.ok) {
     if (info.error === "MISSING_USERID") setBadge_("缺少 userId（未登入/未取得 profile）", true);
     else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
-    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 31 天）", true);
+    else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
     return { ok: false, error: info.error || "BAD_RANGE" };
   }
