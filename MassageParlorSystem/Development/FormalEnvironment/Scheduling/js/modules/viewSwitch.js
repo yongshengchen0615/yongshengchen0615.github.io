@@ -11,8 +11,14 @@ import { dom } from "./dom.js";
 import { state } from "./state.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { renderIncremental } from "./table.js";
-import { onShowPerformance } from "./performance.js";
 import { logUsageEvent } from "./usageLog.js";
+
+let perfModPromise_ = null;
+async function loadPerformanceModule_() {
+  if (perfModPromise_) return perfModPromise_;
+  perfModPromise_ = import("./performance.js");
+  return perfModPromise_;
+}
 
 export const VIEW = {
   SCHEDULE: "schedule",
@@ -48,7 +54,19 @@ function showPerformance_(show) {
   if (!dom.perfCardEl) return;
 
   dom.perfCardEl.style.display = show ? "" : "none";
-  if (show) onShowPerformance();
+  if (show) {
+    // lazy-load performance module (large)
+    loadPerformanceModule_()
+      .then((perf) => {
+        try {
+          perf.initPerformanceUi && perf.initPerformanceUi();
+        } catch {}
+        try {
+          perf.onShowPerformance && perf.onShowPerformance();
+        } catch {}
+      })
+      .catch((e) => console.error("[Perf] module load failed:", e));
+  }
 }
 
 export function setViewMode(mode) {

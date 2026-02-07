@@ -13,8 +13,14 @@ import { refreshStatus } from "./table.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showLoadingHint, hideLoadingHint, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./uiHelpers.js";
 import { config } from "./config.js";
-import { manualRefreshPerformance } from "./performance.js";
 import { maybeShowDailyFirstOpenHint } from "./dailyHint.js";
+
+let perfModPromise_ = null;
+async function loadPerformanceModule_() {
+  if (perfModPromise_) return perfModPromise_;
+  perfModPromise_ = import("./performance.js");
+  return perfModPromise_;
+}
 
 const POLL = {
   BASE_MS: 3000,
@@ -146,7 +152,8 @@ export function startPolling(extraReadyPromise) {
       // 若目前在「業績」視圖：手動重整也要同步更新業績快取（按鈕只讀快取）。
       if (state.viewMode === "performance" && String(state.feature && state.feature.performanceEnabled) === "是") {
         try {
-          await manualRefreshPerformance({ showToast: false });
+          const perf = await loadPerformanceModule_();
+          if (perf && perf.manualRefreshPerformance) await perf.manualRefreshPerformance({ showToast: false });
         } catch {}
       }
 

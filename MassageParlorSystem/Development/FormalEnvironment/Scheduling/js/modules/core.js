@@ -86,6 +86,76 @@ export function preconnectUrl(url) {
   }
 }
 
+/* =========================
+ * Dynamic script loader
+ * ========================= */
+
+/**
+ * 動態載入外部 script（同 URL 只載入一次）。
+ * - 適用：LIFF SDK、Chart.js 等大型依賴，避免阻塞首屏。
+ * @param {string} src
+ * @param {{id?:string, crossOrigin?:string, referrerPolicy?:string}} [opts]
+ * @returns {Promise<boolean>}
+ */
+export function loadScriptOnce(src, opts) {
+  const url = String(src || "").trim();
+  if (!url) return Promise.reject(new Error("SCRIPT_SRC_MISSING"));
+
+  try {
+    if (!loadScriptOnce._cache) loadScriptOnce._cache = new Map();
+    if (loadScriptOnce._cache.has(url)) return loadScriptOnce._cache.get(url);
+  } catch {}
+
+  const p = new Promise((resolve, reject) => {
+    try {
+      const exist = document.querySelector(`script[src="${CSS.escape(url)}"]`);
+      if (exist) {
+        // 已存在：假設很快就會 ready；用 load/error 事件保守等待
+        if (exist.getAttribute("data-loaded") === "1") return resolve(true);
+        exist.addEventListener("load", () => resolve(true), { once: true });
+        exist.addEventListener("error", () => reject(new Error("SCRIPT_LOAD_FAILED")), { once: true });
+        return;
+      }
+
+      const s = document.createElement("script");
+      s.src = url;
+      // 外部 SDK 多為 UMD，全域掛載；async 可避免阻塞
+      s.async = true;
+      if (opts && opts.id) s.id = String(opts.id);
+      if (opts && opts.crossOrigin) s.crossOrigin = String(opts.crossOrigin);
+      if (opts && opts.referrerPolicy) s.referrerPolicy = String(opts.referrerPolicy);
+
+      s.addEventListener(
+        "load",
+        () => {
+          try {
+            s.setAttribute("data-loaded", "1");
+          } catch {}
+          resolve(true);
+        },
+        { once: true }
+      );
+      s.addEventListener(
+        "error",
+        () => {
+          reject(new Error("SCRIPT_LOAD_FAILED"));
+        },
+        { once: true }
+      );
+
+      const head = document.head || document.getElementsByTagName("head")[0] || document.documentElement;
+      head.appendChild(s);
+    } catch (e) {
+      reject(e);
+    }
+  });
+
+  try {
+    loadScriptOnce._cache.set(url, p);
+  } catch {}
+  return p;
+}
+
 /**
  * 取得 URL query string 參數。
  * @param {string} k 參數名稱。

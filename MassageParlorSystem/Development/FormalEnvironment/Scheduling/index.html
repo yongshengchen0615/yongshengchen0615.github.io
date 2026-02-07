@@ -3,13 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
   <title>Body & Foot Panel Dashboard</title>
+
+  <!-- Network hints (reduce first-request latency) -->
+  <link rel="dns-prefetch" href="//script.google.com" />
+  <link rel="preconnect" href="https://script.google.com" crossorigin />
+  <link rel="dns-prefetch" href="//cdn.jsdelivr.net" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="dns-prefetch" href="//static.line-scdn.net" />
+  <link rel="preconnect" href="https://static.line-scdn.net" crossorigin />
 
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="data:," />
 
-  <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- LIFF SDK / Chart.js 由 JS 按需動態載入，避免阻塞首屏 -->
 </head>
 <body>
   <!-- 授權 / 判斷登入 / 審核狀態遮罩 -->
@@ -278,8 +286,6 @@
     </div>
   </div>
 
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -15,10 +15,29 @@
 import { dom } from "./dom.js";
 import { config } from "./config.js";
 import { state } from "./state.js";
-import { withQuery, escapeHtml, getQueryParam } from "./core.js";
+import { withQuery, escapeHtml, getQueryParam, loadScriptOnce } from "./core.js";
 import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
 
 const PERF_FETCH_TIMEOUT_MS = 25000;
+const CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js";
+
+let chartJsReadyPromise_ = null;
+function ensureChartJsLoaded_() {
+  if (typeof Chart !== "undefined") return Promise.resolve(true);
+  if (chartJsReadyPromise_) return chartJsReadyPromise_;
+
+  chartJsReadyPromise_ = loadScriptOnce(CHART_JS_URL, { id: "chartjs", crossOrigin: "anonymous" })
+    .then(() => {
+      if (typeof Chart === "undefined") throw new Error("CHARTJS_NOT_AVAILABLE");
+      return true;
+    })
+    .catch((e) => {
+      chartJsReadyPromise_ = null;
+      throw e;
+    });
+
+  return chartJsReadyPromise_;
+}
 
 // ✅ 日期區間上限：3 個月（以 93 天近似，避免 GAS 同步過久/逾時）
 const PERF_MAX_RANGE_DAYS = 93;
@@ -46,6 +65,8 @@ let perfChartLastRows_ = null;
 let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
+
+let perfUiInitialized_ = false;
 
 // drag-to-scroll state
 const perfDragState_ = {
@@ -667,7 +688,18 @@ function enableCanvasDragScroll_(enable) {
 function updatePerfChart_(rows, dateKeys) {
   try {
     if (!dom.perfChartEl) return;
-    if (typeof Chart === "undefined") return;
+    if (typeof Chart === "undefined") {
+      ensureChartJsLoaded_()
+        .then(() => {
+          try {
+            schedulePerfChartRedraw_();
+          } catch {}
+        })
+        .catch((e) => {
+          console.error("[Perf] Chart.js load failed:", e);
+        });
+      return;
+    }
 
     const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
     const list = Array.isArray(rows) ? rows : [];
@@ -1288,6 +1320,9 @@ export function togglePerformanceCard() {
 }
 
 export function initPerformanceUi() {
+  if (perfUiInitialized_) return;
+  perfUiInitialized_ = true;
+
   ensureDefaultDate_();
 
   try {
