@@ -18,31 +18,6 @@ var CONFIG = {
 };
 
 /* ===========================
- * Hash helpers (MD5)
- * =========================== */
-function md5Hex_(s) {
-  var bytes = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.MD5,
-    String(s == null ? "" : s),
-    Utilities.Charset.UTF_8
-  );
-  var out = [];
-  for (var i = 0; i < bytes.length; i++) {
-    var b = (bytes[i] + 256) % 256;
-    out.push((b < 16 ? "0" : "") + b.toString(16));
-  }
-  return out.join("");
-}
-
-function stableJson_(obj) {
-  try {
-    return JSON.stringify(obj == null ? null : obj);
-  } catch (e) {
-    return "";
-  }
-}
-
-/* ===========================
  * Utils
  * =========================== */
 function json_(o) {
@@ -322,26 +297,18 @@ function doPost(e) {
     var hasBody = Array.isArray(data.body);
     var hasFoot = Array.isArray(data.foot);
 
-    // ✅ compute hashes once per push (used by meta_v1 and to avoid useless full fetch)
-    var bodyHash = hasBody ? md5Hex_(stableJson_(data.body)) : "";
-    var footHash = hasFoot ? md5Hex_(stableJson_(data.foot)) : "";
-
     // cache + mirror sheet
     if (hasBody) {
       cachePut_("EDGE::body::latest", { ts: ts, rows: data.body });
-      cachePut_("EDGE::body::hash", bodyHash);
       writePanelToSheet_(CONFIG.SHEET_BODY, ts, data.body);
     }
 
     if (hasFoot) {
       cachePut_("EDGE::foot::latest", { ts: ts, rows: data.foot });
-      cachePut_("EDGE::foot::hash", footHash);
       writePanelToSheet_(CONFIG.SHEET_FOOT, ts, data.foot);
     }
 
     cachePut_("EDGE::meta::timestamp", ts);
-    cachePut_("EDGE::meta::bodyHash", bodyHash);
-    cachePut_("EDGE::meta::footHash", footHash);
 
     appendPushLog_(
       ts,
@@ -374,20 +341,6 @@ function doGet(e) {
   var mode = String(q.mode || "").trim();
   var panel = String(q.panel || "").trim();
 
-  // ✅ NEW: lightweight meta for polling
-  if (mode === "meta_v1") {
-    var ts = cacheGet_("EDGE::meta::timestamp") || "";
-    var bh = cacheGet_("EDGE::meta::bodyHash") || cacheGet_("EDGE::body::hash") || "";
-    var fh = cacheGet_("EDGE::meta::footHash") || cacheGet_("EDGE::foot::hash") || "";
-    return json_({
-      ok: true,
-      source: "edge_meta",
-      timestamp: ts,
-      bodyMeta: { timestamp: ts, hash: bh },
-      footMeta: { timestamp: ts, hash: fh }
-    });
-  }
-
   // ✅ NEW: for app.js
   if (mode === "cache_one") {
     return handleCacheOne_(q.masterId);
@@ -395,18 +348,12 @@ function doGet(e) {
 
   // ✅ existing: sheet_all
   if (mode === "sheet_all") {
-    var ts2 = cacheGet_("EDGE::meta::timestamp") || "";
-    var bh2 = cacheGet_("EDGE::meta::bodyHash") || cacheGet_("EDGE::body::hash") || "";
-    var fh2 = cacheGet_("EDGE::meta::footHash") || cacheGet_("EDGE::foot::hash") || "";
     return json_({
       ok: true,
       source: "edge_sheet",
-      // ✅ use last pushed timestamp (stable) instead of server-now
-      timestamp: ts2 || isoNow_(),
+      timestamp: isoNow_(),
       body: readPanelSheetAsRows_(CONFIG.SHEET_BODY),
-      foot: readPanelSheetAsRows_(CONFIG.SHEET_FOOT),
-      bodyMeta: { timestamp: ts2, hash: bh2 },
-      footMeta: { timestamp: ts2, hash: fh2 }
+      foot: readPanelSheetAsRows_(CONFIG.SHEET_FOOT)
     });
   }
 

@@ -16,7 +16,7 @@
 import { config } from "./config.js";
 import { state } from "./state.js";
 import { dom } from "./dom.js";
-import { getQueryParam, loadScriptOnce } from "./core.js";
+import { getQueryParam } from "./core.js";
 import { showGate, openApp, updateUsageBanner } from "./uiHelpers.js";
 import { updateFeatureState } from "./featureBanner.js";
 import { showNotMasterHint } from "./scheduleUi.js";
@@ -24,8 +24,6 @@ import { hidePersonalTools, loadAndShowPersonalTools } from "./personalTools.js"
 import { parseIsMaster, parseTechNo, normalizeTechNo, updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { logUsageEvent } from "./usageLog.js";
 import { isTopupEnabled, runTopupFlow } from "./topup.js";
-
-const LIFF_SDK_URL = "https://static.line-scdn.net/liff/edge/2/sdk.js";
 
 // Gate overlay actions (event delegation)
 if (dom.gateEl) {
@@ -422,10 +420,6 @@ export async function initLiffAndGuard() {
   showGate("正在啟動 LIFF…");
 
   try {
-    if (!window.liff) {
-      // 按需載入 LIFF SDK，避免未啟用登入時也下載/阻塞
-      await loadScriptOnce(LIFF_SDK_URL, { id: "liff-sdk", crossOrigin: "anonymous" });
-    }
     if (!window.liff) throw new Error("LIFF_SDK_MISSING");
     await window.liff.init({ liffId: config.LIFF_ID });
 

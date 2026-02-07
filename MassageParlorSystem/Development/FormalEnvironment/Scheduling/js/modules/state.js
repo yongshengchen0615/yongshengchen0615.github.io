@@ -33,11 +33,6 @@ export const state = {
 
   // 刷新/快照保護
   refreshInFlight: false,
-  // 若刷新期間又被觸發（poll/visibilitychange/手動重整同時發生），合併成「結束後再跑一次」
-  refreshQueued: false,
-  refreshQueuedOpts: null,
-  refreshQueuedPromise: null,
-  refreshQueuedResolve: null,
   emptyStreak: { body: 0, foot: 0 },
 
   // 我的師傅狀態（由 AUTH 回傳決定）

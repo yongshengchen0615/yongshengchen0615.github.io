@@ -23,7 +23,7 @@ import {
   parseOpacityToken,
   getRgbaString,
 } from "./core.js";
-import { fetchStatusAllMaybe } from "./edgeClient.js";
+import { fetchStatusAll } from "./edgeClient.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { showGate, hideGate } from "./uiHelpers.js";
 import { logUsageEvent } from "./usageLog.js";
@@ -81,7 +81,7 @@ export function rebuildStatusFilterOptions() {
   });
 
   const previous = dom.filterStatusSelect.value || "all";
-  dom.filterStatusSelect.textContent = "";
+  dom.filterStatusSelect.innerHTML = "";
 
   const optAll = document.createElement("option");
   optAll.value = "all";
@@ -116,7 +116,7 @@ export function rebuildMasterFilterOptions() {
   });
 
   const previous = dom.filterMasterInput.value || "";
-  dom.filterMasterInput.textContent = "";
+  dom.filterMasterInput.innerHTML = "";
 
   const optAll = document.createElement("option");
   optAll.value = "";
@@ -292,17 +292,6 @@ function diffMergePanelRows(prevRows, incomingRows) {
   const prev = Array.isArray(prevRows) ? prevRows : [];
   const nextIn = Array.isArray(incomingRows) ? incomingRows : [];
 
-  function getCachedSig(row) {
-    try {
-      if (row && typeof row.__rowSig === "string") return row.__rowSig;
-    } catch {}
-    const sig = rowSignature(row);
-    try {
-      if (row) row.__rowSig = sig;
-    } catch {}
-    return sig;
-  }
-
   const prevMap = new Map();
   prev.forEach((r) => {
     const id = String((r && r.masterId) || "").trim();
@@ -318,23 +307,16 @@ function diffMergePanelRows(prevRows, incomingRows) {
 
     const old = prevMap.get(id);
     if (!old) {
-      const created = { ...nr };
-      try {
-        created.__rowSig = rowSignature(created);
-      } catch {}
-      nextRows.push(created);
+      nextRows.push({ ...nr });
       changed = true;
       continue;
     }
 
-    const oldSig = getCachedSig(old);
+    const oldSig = rowSignature(old);
     const newSig = rowSignature(nr);
 
     if (oldSig !== newSig) {
       Object.assign(old, nr);
-      try {
-        old.__rowSig = newSig;
-      } catch {}
       changed = true;
     }
 
@@ -724,7 +706,7 @@ export function renderIncremental(panel) {
     if (dt > RENDER_SLOW_MS) {
       console.warn(`[Perf] renderIncremental(${panel}) slow: ${dt}ms, rows=${displayRows.length}`);
     } else {
-      if (config.PERF_LOG && console.debug) console.debug(`[Perf] renderIncremental ${dt}ms`);
+      console.debug && console.debug(`[Perf] renderIncremental ${dt}ms`);
     }
   } catch (e) {}
 }
@@ -760,27 +742,9 @@ function decideIncomingRows(panel, incomingRows, prevRows, isManual) {
   return { rows: prev, accepted: false };
 }
 
-export async function refreshStatus({ isManual, preferMeta } = { isManual: false, preferMeta: false }) {
+export async function refreshStatus({ isManual } = { isManual: false }) {
   if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
-  if (state.refreshInFlight) {
-    // coalesce: 在刷新期間再觸發，結束後補跑一次（以免 visibilitychange + poll 疊加）
-    state.refreshQueued = true;
-    const prev = state.refreshQueuedOpts || { isManual: false, preferMeta: false };
-    state.refreshQueuedOpts = {
-      // 只要其中一次是手動，就視為手動（手動刷新不應被 meta-skip 掉）
-      isManual: Boolean(prev.isManual || isManual),
-      // preferMeta 只在非手動時生效；這裡先做 OR 合併，實際使用時仍會被 !isManual 擋住
-      preferMeta: Boolean(prev.preferMeta || preferMeta),
-    };
-
-    // 若外部 caller 需要 await（例如：手動重整按鈕），回傳一個會在補跑完成後才 resolve 的 promise
-    if (!state.refreshQueuedPromise) {
-      state.refreshQueuedPromise = new Promise((resolve) => {
-        state.refreshQueuedResolve = resolve;
-      });
-    }
-    return state.refreshQueuedPromise;
-  }
+  if (state.refreshInFlight) return;
 
   state.refreshInFlight = true;
 
@@ -789,44 +753,10 @@ export async function refreshStatus({ isManual, preferMeta } = { isManual: false
   try {
     const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
     const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-    if (!state.dataHealth) state.dataHealth = {};
-    const prevMeta = state.dataHealth.meta || null;
-    const res = await fetchStatusAllMaybe({ previousMeta: prevMeta, preferMeta: !!preferMeta && !isManual });
-    const { source, edgeIdx, bodyRows, footRows, dataTimestamp, bodyMeta, footMeta, skipped } = res;
+    const { source, edgeIdx, bodyRows, footRows, dataTimestamp } = await fetchStatusAll();
     const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     const dtFetch = Math.round(t1 - t0);
     if (dtFetch > REFRESH_SLOW_MS) console.warn(`[Perf] fetchStatusAll slow: ${dtFetch}ms`);
-
-    // persist latest meta for next poll comparisons
-    try {
-      state.dataHealth.meta = {
-        bodyMeta: bodyMeta || (prevMeta && prevMeta.bodyMeta) || { timestamp: "", hash: "" },
-        footMeta: footMeta || (prevMeta && prevMeta.footMeta) || { timestamp: "", hash: "" },
-      };
-    } catch (e) {}
-
-    // store server-provided timestamp (if any) so stale check can consider it
-    try {
-      const ms = parseTimestampMs_(dataTimestamp);
-      state.dataHealth.fetchDataTimestampMs = Number.isFinite(ms) ? ms : null;
-    } catch (e) {}
-
-    // ✅ no change: skip diff/render, but still run stale gate & my status
-    if (skipped) {
-      if (dom.connectionStatusEl) {
-        if (!state.scheduleUiEnabled) {
-          dom.connectionStatusEl.textContent = "排班表未開通（僅顯示我的狀態）";
-        } else if (source === "edge" && typeof edgeIdx === "number") {
-          dom.connectionStatusEl.textContent = `已連線（分流 ${edgeIdx + 1}）`;
-        } else {
-          dom.connectionStatusEl.textContent = "已連線（主站）";
-        }
-      }
-
-      applyStaleSystemGate_();
-      updateMyMasterStatusUI();
-      return;
-    }
 
     const bodyDecision = decideIncomingRows("body", bodyRows, state.rawData.body, isManual);
     const footDecision = decideIncomingRows("foot", footRows, state.rawData.foot, isManual);
@@ -843,22 +773,8 @@ export async function refreshStatus({ isManual, preferMeta } = { isManual: false
       });
     });
 
-    if (bodyDiff.changed) {
-      try {
-        bodyDiff.nextRows.forEach((r, i) => {
-          if (r) r._gasSeq = i;
-        });
-      } catch {}
-      state.rawData.body = bodyDiff.nextRows;
-    }
-    if (footDiff.changed) {
-      try {
-        footDiff.nextRows.forEach((r, i) => {
-          if (r) r._gasSeq = i;
-        });
-      } catch {}
-      state.rawData.foot = footDiff.nextRows;
-    }
+    if (bodyDiff.changed) state.rawData.body = bodyDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
+    if (footDiff.changed) state.rawData.foot = footDiff.nextRows.map((r, i) => ({ ...r, _gasSeq: i }));
 
     if (bodyDiff.statusChanged || footDiff.statusChanged) rebuildStatusFilterOptions();
 
@@ -895,7 +811,15 @@ export async function refreshStatus({ isManual, preferMeta } = { isManual: false
       if (activeChanged) renderIncremental(state.activePanel);
       else reapplyTableHeaderColorsFromDataset();
     }
+
     // ✅ 資料過久未更新：顯示 Gate（並阻止操作）；恢復後自動解除
+    // store server-provided timestamp (if any) so stale check can consider it
+    try {
+      if (!state.dataHealth) state.dataHealth = {};
+      const ms = parseTimestampMs_(dataTimestamp);
+      state.dataHealth.fetchDataTimestampMs = Number.isFinite(ms) ? ms : null;
+    } catch (e) {}
+
     applyStaleSystemGate_();
 
     // 永遠更新我的狀態（schedule=否 也要）
@@ -907,36 +831,6 @@ export async function refreshStatus({ isManual, preferMeta } = { isManual: false
     throw err;
   } finally {
     state.refreshInFlight = false;
-
-    // 若刷新期間又被觸發，結束後立即補跑一次（合併多次觸發）
-    if (state.refreshQueued) {
-      const nextOpts = state.refreshQueuedOpts || { isManual: false, preferMeta: false };
-      const resolveQueued = state.refreshQueuedResolve;
-
-      state.refreshQueued = false;
-      state.refreshQueuedOpts = null;
-      state.refreshQueuedResolve = null;
-      const queuedPromise = state.refreshQueuedPromise;
-      state.refreshQueuedPromise = null;
-
-      setTimeout(() => {
-        refreshStatus(nextOpts)
-          .then(() => {
-            try {
-              resolveQueued && resolveQueued(true);
-            } catch {}
-          })
-          .catch(() => {
-            try {
-              resolveQueued && resolveQueued(false);
-            } catch {}
-          })
-          .finally(() => {
-            // ensure no dangling promise refs
-            void queuedPromise;
-          });
-      }, 0);
-    }
   }
 }
 
