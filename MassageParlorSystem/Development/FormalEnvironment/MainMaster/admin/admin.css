@@ -919,6 +919,11 @@ tbody td.sticky-right{
   max-width: var(--yn-col-w);
 }
 
+/* 右側是/否欄位：表頭置中（維持單行顯示） */
+#adminsTable thead th:nth-child(n+8):nth-child(-n+19){
+  text-align: center;
+}
+
 /* 右側固定：把 8~19 欄位逐一 sticky 到操作欄左側（避免橫向捲動時找不到） */
 #adminsTable thead th:nth-child(n+8):nth-child(-n+19){
   position: sticky;
