@@ -14,11 +14,13 @@ let adminLogsLoading_ = false;
 
 // Chart instance for admin logs analytics
 let adminLogsChart = null;
+let adminLogsChartObserver = null;
 
 // Module-level DOM cache
 let adminLogsCanvasEl = null;
 let logsMetricSelectEl = null;
 let logsNameSelectEl = null;
+let logsGranularitySelectEl = null;
 let logsStartDateEl = null;
 let logsEndDateEl = null;
 let logsStartTimeEl = null;
@@ -31,6 +33,7 @@ function cacheLogsDom_() {
   adminLogsCanvasEl = document.getElementById('adminLogsChartCanvas');
   logsMetricSelectEl = document.getElementById('logsMetricSelect');
   logsNameSelectEl = document.getElementById('logsNameSelect');
+  logsGranularitySelectEl = document.getElementById('logsGranularitySelect');
   logsStartDateEl = document.getElementById('logsStartDateInput');
   logsEndDateEl = document.getElementById('logsEndDateInput');
   logsStartTimeEl = document.getElementById('logsStartTimeInput');
@@ -135,9 +138,28 @@ function logsGetSelectedRange_() {
 }
 
 function logsBuildRangeLabel_(start, end) {
-  if (start && end) return start === end ? start : `${start} ~ ${end}`;
-  if (start) return `>= ${start}`;
-  if (end) return `<= ${end}`;
+  function formatForFooter(s) {
+    const str = String(s || '').trim();
+    if (!str) return '';
+    const d = parseDateSafeLogs(str);
+    if (d) {
+      const hasTime = /[T\s]\d{1,2}:\d{2}/.test(str);
+      const Y = d.getFullYear();
+      const M = pad2_(d.getMonth() + 1);
+      const D = pad2_(d.getDate());
+      const h = pad2_(d.getHours());
+      const m = pad2_(d.getMinutes());
+      const sec = pad2_(d.getSeconds());
+      return hasTime ? `${Y}-${M}-${D} ${h}:${m}:${sec}` : `${Y}-${M}-${D}`;
+    }
+    return str.replace('T', ' ');
+  }
+
+  const fs = formatForFooter(start);
+  const fe = formatForFooter(end);
+  if (fs && fe) return fs === fe ? fs : `${fs} ~ ${fe}`;
+  if (fs) return `>= ${fs}`;
+  if (fe) return `<= ${fe}`;
   return "";
 }
 
@@ -172,10 +194,26 @@ function renderAdminLogs_() {
 
   logsTbodyEl.innerHTML = adminLogs_
     .map((r, i) => {
+      // format ts to YYYY-MM-DD HH:MM:SS (if time present) or YYYY-MM-DD
+      let tsDisplay = String(r.ts || '');
+      try {
+        const d = parseDateSafeLogs(r.ts);
+        if (d) {
+          const Y = d.getFullYear();
+          const M = pad2_(d.getMonth() + 1);
+          const D = pad2_(d.getDate());
+          const h = pad2_(d.getHours());
+          const m = pad2_(d.getMinutes());
+          const s = pad2_(d.getSeconds());
+          const hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(r.ts));
+          tsDisplay = hasTime ? `${Y}-${M}-${D} ${h}:${m}:${s}` : `${Y}-${M}-${D}`;
+        }
+      } catch (_) {}
+
       return `
         <tr>
           <td data-label="#">${i + 1}</td>
-          <td data-label="ts"><span style="font-family:var(--mono)">${escapeHtml(r.ts)}</span></td>
+          <td data-label="ts"><span style="font-family:var(--mono)">${escapeHtml(tsDisplay)}</span></td>
           <td data-label="actorUserId"><span style="font-family:var(--mono)">${escapeHtml(r.actorUserId)}</span></td>
           <td data-label="actorDisplayName">${escapeHtml(r.actorDisplayName)}</td>
         </tr>
@@ -240,120 +278,146 @@ function buildAdminChartAggregation_(granularity = "day", metric = "count", star
 }
 
 function initAdminLogsChart_() {
-  const canvas = document.getElementById("adminLogsChartCanvas");
-  if (!canvas || typeof Chart === "undefined") return;
-  const ctx = canvas.getContext("2d");
-  if (adminLogsChart) {
-    try { adminLogsChart.destroy(); } catch (_) {}
+  cacheLogsDom_();
+  if (!adminLogsCanvasEl || typeof echarts === 'undefined') return;
+  try { if (adminLogsChart && typeof adminLogsChart.dispose === 'function') adminLogsChart.dispose(); } catch (_) {}
+  try {
+    adminLogsChart = echarts.init(adminLogsCanvasEl, null, { renderer: 'canvas', devicePixelRatio: window.devicePixelRatio || 1 });
+  } catch (e) {
+    console.warn('echarts init failed', e);
+    adminLogsChart = null;
+    return;
   }
-  adminLogsChart = new Chart(ctx, {
-    type: "line",
-    data: { datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.12)" }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      parsing: { xAxisKey: 'x', yAxisKey: 'y' },
-      scales: {
-        x: {
-          type: 'time',
-          time: { unit: 'day', displayFormats: { hour: 'yyyy-MM-dd HH:mm', day: 'yyyy-MM-dd', month: 'yyyy-MM' } },
-          ticks: { autoSkip: true, maxRotation: 0 }
-        },
-        y: { beginAtZero: true }
-      },
-      plugins: { legend: { display: true } }
-    },
-  });
+  const baseOption = {
+    color: ['#f59e0b'],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: (params) => {
+      const p = Array.isArray(params) ? params[0] : params;
+      if (!p) return '';
+      let ts = null;
+      let val = null;
+      if (p.data && Array.isArray(p.data)) {
+        ts = p.data[0];
+        val = p.data[1];
+      } else if (p.value && Array.isArray(p.value)) {
+        ts = p.value[0];
+        val = p.value[1];
+      } else if (p.data != null) {
+        val = p.data;
+      } else if (p.value != null) {
+        val = p.value;
+      }
+      let label = p.name || '';
+      if (ts != null) {
+        const d = new Date(ts);
+        if (!Number.isNaN(d.getTime())) {
+          label = `${d.getFullYear()}-${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}` + (d.getHours() || d.getMinutes() ? ` ${pad2_(d.getHours())}:${pad2_(d.getMinutes())}` : '');
+        }
+      }
+      const seriesName = p.seriesName || '';
+      return `${label}${seriesName ? '<br/>' + seriesName + ': ' : ''}${val != null ? val : '-'}`;
+    } },
+    legend: { data: [] },
+    grid: { left: '8%', right: '6%', bottom: '14%' },
+    xAxis: { type: 'time', boundaryGap: false, axisLabel: { formatter: null, rotate: 0, interval: 'auto' } },
+    yAxis: { type: 'value', min: 0 },
+    series: [{ name: '事件數', type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#f59e0b' }, areaStyle: { color: 'rgba(245,158,11,0.12)' }, data: [], sampling: 'lttb', large: false }],
+    dataZoom: []
+  };
+  adminLogsChart.setOption(baseOption);
+  try {
+    if (adminLogsChartObserver && typeof adminLogsChartObserver.disconnect === 'function') adminLogsChartObserver.disconnect();
+    if (typeof ResizeObserver !== 'undefined') {
+      adminLogsChartObserver = new ResizeObserver(() => adminLogsChart && adminLogsChart.resize());
+      adminLogsChartObserver.observe(adminLogsCanvasEl);
+    } else {
+      window.addEventListener('resize', () => adminLogsChart && adminLogsChart.resize());
+    }
+  } catch (_) {}
 }
 
 function renderAdminLogsChart_() {
-  const canvas = document.getElementById("adminLogsChartCanvas");
-  if (!canvas) return;
+  const el = document.getElementById("adminLogsChartCanvas");
+  if (!el) return;
   if (!adminLogsChart) initAdminLogsChart_();
   if (!adminLogsChart) return;
 
   const { start, end } = logsGetSelectedRange_();
-  let gran = "day";
-  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
-  const metric = "count";
+  const granFromUI = logsGranularitySelectEl ? String(logsGranularitySelectEl.value || 'auto') : 'auto';
+  let gran = 'day';
+  if (granFromUI && granFromUI !== 'auto') {
+    gran = granFromUI;
+  } else {
+    if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+    else gran = 'day';
+  }
   const metricSelect = document.getElementById('logsMetricSelect');
   const metricFromUI = metricSelect ? String(metricSelect.value || 'count') : 'count';
   const nameSelect = document.getElementById('logsNameSelect');
   const nameFromUI = nameSelect ? String(nameSelect.value || '') : '';
-  const agg = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  let agg = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
 
-  console.debug("adminLogsChart aggregation:", { gran, metric: metricFromUI, nameFilter: nameFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: adminLogsAll_.length });
-
-  // 若 hourly 分桶過多，回退到日或月分桶
   if (agg.labels.length > 60 && gran === "hour") {
-    console.warn("adminLogsChart: too many hourly buckets, falling back to day granularity");
     gran = "day";
     const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-    console.debug("adminLogsChart fallback aggregation:", { gran, labels: agg2.labels.length });
-    agg.labels = agg2.labels;
-    agg.data = agg2.data;
+    agg = agg2;
   }
   if (agg.labels.length > 365 && gran !== "month") {
-    console.warn("adminLogsChart: too many daily buckets, falling back to month granularity");
     gran = "month";
     const agg2 = buildAdminChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-    agg.labels = agg2.labels;
-    agg.data = agg2.data;
+    agg = agg2;
   }
 
-  // convert labels/data to {x,y} points using numeric timestamp (ms) for performance
-  const points = agg.labels.map((lbl, i) => {
+  const seriesData = agg.labels.map((lbl, i) => {
     let x = lbl;
     if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
     if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
     if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
     const d = parseDateSafeLogs(x) || parseDateSafeLogs(lbl);
     const ms = d ? d.getTime() : null;
-    return { x: ms !== null ? ms : String(x), y: agg.data[i] };
+    return [ ms !== null ? ms : String(x), agg.data[i] ];
   });
-  // make canvas horizontally scrollable on mobile when many buckets
-  try {
-    const canvasEl = document.getElementById('adminLogsChartCanvas');
-    if (canvasEl && Array.isArray(agg.labels)) {
-      const minW = Math.max(600, agg.labels.length * 40); // 40px per bucket heuristic
-      canvasEl.style.minWidth = `${minW}px`;
-    }
-  } catch (e) { /* ignore */ }
 
-  // only update when changed
-  const old = adminLogsChart.data.datasets[0].data || [];
-  let same = false;
-  if (old.length === points.length) {
-    same = old.every((o, idx) => {
-      const p = points[idx];
-      return (o.x === p.x || String(o.x) === String(p.x)) && Number(o.y) === Number(p.y);
-    });
+  try {
+    const minW = Math.max(600, agg.labels.length * 40);
+    el.style.minWidth = `${minW}px`;
+  } catch (e) {}
+
+  const total = seriesData.length;
+  const containerWidth = (adminLogsCanvasEl && adminLogsCanvasEl.clientWidth) ? adminLogsCanvasEl.clientWidth : (window.innerWidth || 360);
+  const approxTickWidth = 60;
+  const maxTicks = Math.max(4, Math.floor(containerWidth / approxTickWidth));
+  const step = Math.max(1, Math.ceil(total / maxTicks));
+  const axisInterval = Math.max(0, step - 1);
+  const rotate = total > maxTicks ? 45 : 0;
+  const fontSize = Math.max(9, Math.min(14, Math.round(containerWidth / 80)));
+
+  const dataZoom = [];
+  const maxVisible = 120;
+  if (total > maxVisible) {
+    const startPct = Math.max(0, ((total - maxVisible) / total) * 100);
+    dataZoom.push({ type: 'slider', start: startPct, end: 100, handleSize: 8 });
+    dataZoom.push({ type: 'inside', start: startPct, end: 100 });
   }
-  if (!same) {
-    adminLogsChart.data.datasets[0].data = points;
-    adminLogsChart.data.datasets[0].label = metricFromUI === "unique" ? "不同管理員數" : "事件數";
-    // responsive font sizing based on canvas width
-    try {
-      const canvasEl = document.getElementById('adminLogsChartCanvas');
-      const w = (canvasEl && canvasEl.clientWidth) ? canvasEl.clientWidth : (window.innerWidth || 800);
-      const base = Math.max(10, Math.min(16, Math.round(w / 120)));
-      if (adminLogsChart.options && adminLogsChart.options.scales) {
-        if (adminLogsChart.options.scales.x) adminLogsChart.options.scales.x.ticks = adminLogsChart.options.scales.x.ticks || {};
-        if (adminLogsChart.options.scales.y) adminLogsChart.options.scales.y.ticks = adminLogsChart.options.scales.y.ticks || {};
-        adminLogsChart.options.scales.x.ticks.font = { size: base };
-        adminLogsChart.options.scales.y.ticks.font = { size: Math.max(10, base - 1) };
-      }
-      if (adminLogsChart.options && adminLogsChart.options.plugins) {
-        adminLogsChart.options.plugins.legend = adminLogsChart.options.plugins.legend || {};
-        adminLogsChart.options.plugins.legend.labels = adminLogsChart.options.plugins.legend.labels || {};
-        adminLogsChart.options.plugins.legend.labels.font = { size: base };
-        adminLogsChart.options.plugins.tooltip = adminLogsChart.options.plugins.tooltip || {};
-        adminLogsChart.options.plugins.tooltip.titleFont = { size: Math.max(11, base + 1) };
-        adminLogsChart.options.plugins.tooltip.bodyFont = { size: base };
-      }
-    } catch (e) { /* ignore sizing errors */ }
-    adminLogsChart.update();
-  }
+
+  const useLarge = total > 800;
+  const sampling = total > 300 ? 'lttb' : false;
+
+  const seriesName = metricFromUI === "unique" ? "不同管理員數" : "事件數";
+
+  const axisFormatter = (val) => {
+    const d = new Date(val);
+    if (gran === 'hour') return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+    if (gran === 'month') return `${d.getFullYear()}-${pad2_(d.getMonth()+1)}`;
+    return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}`;
+  };
+
+  const option = {
+    legend: { data: [seriesName] },
+    xAxis: { type: 'time', axisLabel: { formatter: axisFormatter, rotate: rotate, interval: axisInterval, showMinLabel: true, showMaxLabel: true, fontSize: fontSize } },
+    series: [{ name: seriesName, type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#f59e0b' }, areaStyle: { color: 'rgba(245,158,11,0.12)' }, data: seriesData, large: useLarge, sampling: sampling }],
+    dataZoom: dataZoom
+  };
+  try { adminLogsChart.setOption(option, { notMerge: false }); } catch (e) { console.warn('echarts setOption failed', e); }
 }
 
 async function loadAdminLogs_() {
@@ -441,14 +505,18 @@ async function loadAdminLogs_() {
       cacheLogsDom_();
       const sel = logsNameSelectEl || document.getElementById('logsNameSelect');
       if (!sel) return;
-      const names = Array.from(new Set(adminLogsAll_.map((r) => String(r.actorDisplayName || '').trim()).filter(Boolean))).sort();
-      // keep existing selection if any
+      // 統計每位管理員的事件數，並依事件數降冪排序
+      const counts = adminLogsAll_.reduce((m, r) => {
+        const nm = String(r.actorDisplayName || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
       const cur = String(sel.value || '');
-      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      sel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(String(o.count))}) ${escapeHtml(o.name)}</option>`).join('');
       if (cur) sel.value = cur;
-      // update count badge if present
-      const cnt = document.getElementById('logsNameCount');
-      if (cnt) cnt.textContent = String(names.length || 0);
     })();
 
     // apply filter and render with defaults
@@ -470,6 +538,20 @@ async function loadAdminLogs_() {
         ? `共 ${adminLogs_.length} 筆（${rangeLabel}）/ 總 ${adminLogsAll_.length} 筆`
         : `共 ${adminLogs_.length} 筆`
     );
+    // notify that admin logs rendered (dispatch on next rAF to ensure repaint/chart init)
+    try {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'adminLogs' }));
+          } catch (e) {}
+        });
+      } else {
+        try {
+          window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'adminLogs' }));
+        } catch (e) {}
+      }
+    } catch (e) {}
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);
@@ -529,6 +611,7 @@ function bindAdminLogs_() {
   document.getElementById("logsEndTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsMetricSelect")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsNameSelect")?.addEventListener("change", debouncedRenderAdminChart);
+  document.getElementById("logsGranularitySelect")?.addEventListener("change", debouncedRenderAdminChart);
 }
 
 /**

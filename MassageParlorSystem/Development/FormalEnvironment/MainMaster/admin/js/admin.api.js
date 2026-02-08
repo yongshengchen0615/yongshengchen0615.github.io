@@ -14,13 +14,23 @@ async function loadConfig_() {
   ADMIN_API_URL = String(cfg.ADMIN_API_URL || "").trim();
   AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
   LIFF_ID = String(cfg.LIFF_ID || "").trim();
+  // 是否使用 LIFF；預設為 true（若在 config.json 明確設為 false，則跳過 LIFF）
+  USE_LIFF = cfg.USE_LIFF === false ? false : true;
+
+  // 可選的測試帳號設定（當 USE_LIFF 為 false 時使用）
+  DEBUG_USER_ID = String(cfg.DEBUG_USER_ID || "").trim();
+  DEBUG_DISPLAY_NAME = String(cfg.DEBUG_DISPLAY_NAME || "").trim();
+  DEBUG_USER_AUDIT = String(cfg.DEBUG_USER_AUDIT || "通過").trim();
   API_BASE_URL = String(cfg.API_BASE_URL || "").trim();
   USAGE_LOG_API_URL = String(cfg.USAGE_LOG_API_URL || "").trim();
   TECH_USAGE_LOG_URL = String(cfg.TECH_USAGE_LOG_URL || "").trim();
+  TECH_USAGE_LOG_ADMIN_KEY = String(cfg.TECH_USAGE_LOG_ADMIN_KEY || "").trim();
+  PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
 
   if (!ADMIN_API_URL) throw new Error("config.json missing ADMIN_API_URL");
   if (!AUTH_API_URL) throw new Error("config.json missing AUTH_API_URL");
-  if (!LIFF_ID) throw new Error("config.json missing LIFF_ID");
+  // 僅在 USE_LIFF = true 時檢查 LIFF_ID
+  if (USE_LIFF && !LIFF_ID) throw new Error("config.json missing LIFF_ID");
   if (!API_BASE_URL) throw new Error("config.json missing API_BASE_URL");
 
   return cfg;
@@ -41,6 +51,22 @@ async function techUsageLogGet_(params) {
   });
 
   const res = await fetch(url.toString(), { cache: "no-store" });
+  return await res.json().catch(() => ({}));
+}
+
+/**
+ * 呼叫「技師使用紀錄」GAS（POST JSON）。
+ * - 用於需要修改資料的操作（例如 deleteByName）
+ * @param {Record<string, any>} bodyObj
+ */
+async function techUsageLogPost_(bodyObj) {
+  if (!TECH_USAGE_LOG_URL) return { ok: false, error: "missing TECH_USAGE_LOG_URL" };
+  const res = await fetch(TECH_USAGE_LOG_URL, {
+    method: "POST",
+    // 用 text/plain 避免觸發 CORS preflight（GAS Web App 通常不回 OPTIONS 的 CORS headers）
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(bodyObj || {}),
+  });
   return await res.json().catch(() => ({}));
 }
 

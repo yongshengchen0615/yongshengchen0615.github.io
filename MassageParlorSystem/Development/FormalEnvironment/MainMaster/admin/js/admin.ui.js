@@ -68,6 +68,11 @@ function showBlocker_(msg, userId, displayName, audit) {
 function initTheme_() {
   const saved = localStorage.getItem("theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
+  // 同步頂部切換按鈕文字（與 schedule 模組顯示一致）
+  try {
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = saved === "dark" ? "🌙 深色" : "☀️ 淺色";
+  } catch (_) {}
 }
 
 /**
@@ -79,6 +84,11 @@ function toggleTheme_() {
   const next = cur === "dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
   localStorage.setItem("theme", next);
+  // 更新頂部按鈕文字以反映新主題
+  try {
+    const btn = document.getElementById("themeToggle");
+    if (btn) btn.textContent = next === "dark" ? "🌙 深色" : "☀️ 淺色";
+  } catch (_) {}
 }
 
 /* =========================
@@ -148,6 +158,7 @@ function render_() {
           ${ynCell_("techIsMaster", a.techIsMaster, "技師是否師傅")}
           ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
           ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
+          ${ynCell_("techAppointmentQueryEnabled", a.techAppointmentQueryEnabled, "技師預約查詢開通")}
           ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
           ${ynCell_("techPerformanceEnabled", a.techPerformanceEnabled, "技師業績開通")}
 
@@ -167,6 +178,22 @@ function render_() {
   if (savingAll) {
     tbody.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
   }
+
+  // notify that admins render completed (dispatch on next rAF to ensure repaint)
+  try {
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => {
+        try {
+          window.dispatchEvent(new CustomEvent("admin:rendered", { detail: "admins" }));
+        } catch (e) {}
+      });
+    } else {
+      // fallback
+      try {
+        window.dispatchEvent(new CustomEvent("admin:rendered", { detail: "admins" }));
+      } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 /**

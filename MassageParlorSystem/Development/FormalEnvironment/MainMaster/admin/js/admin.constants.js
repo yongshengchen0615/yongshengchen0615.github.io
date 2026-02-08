@@ -42,6 +42,7 @@ const TECH_TOGGLE_FIELDS = new Set([
   "techIsMaster",
   "techPushEnabled",
   "techPersonalStatusEnabled",
+  "techAppointmentQueryEnabled",
   "techScheduleEnabled",
   "techPerformanceEnabled",
 ]);

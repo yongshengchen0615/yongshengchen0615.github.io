@@ -1,42 +1,68 @@
 /* ================================
  * Admin - 技師使用紀錄（usage_log）
- * - 顯示欄位：serverTime / userId / name / detail
+ * - 顯示欄位：serverTime / eventCn / userId / name / detail
  * - 透過 TECH_USAGE_LOG_URL 呼叫 GAS（GET）：mode=list
  * ================================ */
 
-/** @type {{serverTime:string, userId:string, name:string, detail:string}[]} */
+/** @type {{serverTime:string, eventCn?:string, userId:string, name:string, detail:string, parsedDetail?:object}[]} */
 let techUsageLogs_ = [];
 
-/** @type {{serverTime:string, userId:string, name:string, detail:string}[]} */
+/** @type {{serverTime:string, eventCn?:string, userId:string, name:string, detail:string, parsedDetail?:object}[]} */
 let techUsageLogsAll_ = [];
 
 let techUsageLogsLoading_ = false;
 
 // Chart instance for tech usage analytics
 let techUsageChart = null;
+let techUsageChartObserver = null;
 
 // Module-level DOM cache to avoid repeated queries
 let techLogsCanvasEl = null;
 let techLogsMetricSelectEl = null;
 let techLogsNameSelectEl = null;
+let techLogsGranularitySelectEl = null;
+let techLogsEventSelectEl = null;
 let techLogsStartDateEl = null;
 let techLogsEndDateEl = null;
 let techLogsStartTimeEl = null;
 let techLogsEndTimeEl = null;
 let techLogsTbodyEl = null;
 let techLogsFooterEl = null;
+let techLogsDeleteByNameBtnEl = null;
+
+let techUsageLogsDeleting_ = false;
 
 function cacheTechDom_() {
   if (techLogsCanvasEl) return;
   techLogsCanvasEl = document.getElementById("techUsageChartCanvas");
   techLogsMetricSelectEl = document.getElementById('techLogsMetricSelect');
   techLogsNameSelectEl = document.getElementById('techLogsNameSelect');
+  techLogsGranularitySelectEl = document.getElementById('techLogsGranularitySelect');
+  techLogsEventSelectEl = document.getElementById('techLogsEventSelect');
   techLogsStartDateEl = document.getElementById('techLogsStartDateInput');
   techLogsEndDateEl = document.getElementById('techLogsEndDateInput');
   techLogsStartTimeEl = document.getElementById('techLogsStartTimeInput');
   techLogsEndTimeEl = document.getElementById('techLogsEndTimeInput');
   techLogsTbodyEl = document.getElementById('techLogsTbody');
   techLogsFooterEl = document.getElementById('techLogsFooterStatus');
+  techLogsDeleteByNameBtnEl = document.getElementById('techLogsDeleteByNameBtn');
+}
+
+function techLogsGetSelectedName_() {
+  cacheTechDom_();
+  const v = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '').trim() : '';
+  return v;
+}
+
+function techLogsUpdateDeleteBtnState_() {
+  cacheTechDom_();
+  if (!techLogsDeleteByNameBtnEl) return;
+  const name = techLogsGetSelectedName_();
+  const hasKey = typeof TECH_USAGE_LOG_ADMIN_KEY === 'string' && TECH_USAGE_LOG_ADMIN_KEY.trim();
+  techLogsDeleteByNameBtnEl.disabled = techUsageLogsDeleting_ || techUsageLogsLoading_ || !name || !hasKey;
+  techLogsDeleteByNameBtnEl.title = !hasKey
+    ? '尚未設定 TECH_USAGE_LOG_ADMIN_KEY，刪除功能停用'
+    : (!name ? '請先在「名稱」選擇技師' : '刪除該技師的所有使用紀錄');
 }
 
 
@@ -48,7 +74,7 @@ function techLogsSetFooter_(text) {
 function techLogsSetTbodyMessage_(msg) {
   cacheTechDom_();
   if (!techLogsTbodyEl) return;
-  techLogsTbodyEl.innerHTML = `<tr><td colspan="5">${escapeHtml(msg || "-")}</td></tr>`;
+  techLogsTbodyEl.innerHTML = `<tr><td colspan="6">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function normalizeTechUsageRow_(r) {
@@ -56,8 +82,21 @@ function normalizeTechUsageRow_(r) {
   const serverTime = String(r?.serverTime ?? r?.ts ?? r?.time ?? "");
   const userId = String(r?.userId ?? r?.lineUserId ?? "");
   const name = String(r?.name ?? r?.displayName ?? "");
-  const detail = String(r?.detail ?? "");
-  return { serverTime, userId, name, detail };
+  const eventCn = String(r?.eventCn ?? r?.event_cn ?? r?.event ?? "");
+  const detailRaw = r?.detail ?? "";
+  const detail = String(detailRaw);
+  // 嘗試解析 detail 為 JSON，方便前端顯示結構化內容
+  let parsedDetail = null;
+  try {
+    if (detail && typeof detail === 'string' && detail.trim().startsWith('{')) {
+      parsedDetail = JSON.parse(detail);
+    } else if (detailRaw && typeof detailRaw === 'object') {
+      parsedDetail = detailRaw;
+    }
+  } catch (e) {
+    parsedDetail = null;
+  }
+  return { serverTime, userId, name, eventCn, detail, parsedDetail };
 }
 
 function pad2_(n) {
@@ -126,9 +165,28 @@ function techLogsGetSelectedRange_() {
 }
 
 function techLogsBuildRangeLabel_(start, end) {
-  if (start && end) return start === end ? start : `${start} ~ ${end}`;
-  if (start) return `>= ${start}`;
-  if (end) return `<= ${end}`;
+  function formatForFooter(s) {
+    const str = String(s || '').trim();
+    if (!str) return '';
+    const d = parseDateSafe(str);
+    if (d) {
+      const hasTime = /[T\s]\d{1,2}:\d{2}/.test(str);
+      const Y = d.getFullYear();
+      const M = pad2_(d.getMonth() + 1);
+      const D = pad2_(d.getDate());
+      const h = pad2_(d.getHours());
+      const m = pad2_(d.getMinutes());
+      const sec = pad2_(d.getSeconds());
+      return hasTime ? `${Y}-${M}-${D} ${h}:${m}:${sec}` : `${Y}-${M}-${D}`;
+    }
+    return str.replace('T', ' ');
+  }
+
+  const fs = formatForFooter(start);
+  const fe = formatForFooter(end);
+  if (fs && fe) return fs === fe ? fs : `${fs} ~ ${fe}`;
+  if (fs) return `>= ${fs}`;
+  if (fe) return `<= ${fe}`;
   return "";
 }
 
@@ -136,6 +194,7 @@ function applyTechUsageLogsDateFilter_() {
   const { start, end } = techLogsGetSelectedRange_();
   // 也看到 UI 的名稱選單，若有選擇名稱則一併過濾
   const nameFilter = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : (document.getElementById('techLogsNameSelect') ? String(document.getElementById('techLogsNameSelect').value || '') : '');
+  const eventFilter = techLogsEventSelectEl ? String(techLogsEventSelectEl.value || '') : (document.getElementById('techLogsEventSelect') ? String(document.getElementById('techLogsEventSelect').value || '') : '');
 
   if (!start && !end && !nameFilter) {
     techUsageLogs_ = techUsageLogsAll_.slice();
@@ -151,6 +210,7 @@ function applyTechUsageLogsDateFilter_() {
     if (sDt && d < sDt) return false;
     if (eDt && d > eDt) return false;
     if (nameFilter && String(r.name || '') !== nameFilter) return false;
+    if (eventFilter && String((r.eventCn || r.event || '') || '') !== eventFilter) return false;
     return true;
   });
 }
@@ -160,19 +220,39 @@ function renderTechUsageLogs_() {
   if (!techLogsTbodyEl) return;
 
   if (!techUsageLogs_.length) {
-    techLogsTbodyEl.innerHTML = `<tr><td colspan="5">無資料</td></tr>`;
+    techLogsTbodyEl.innerHTML = `<tr><td colspan="6">無資料</td></tr>`;
     return;
   }
 
   techLogsTbodyEl.innerHTML = techUsageLogs_
     .map((r, i) => {
+      const detailHtml = (r && r.parsedDetail)
+        ? `<pre class="tech-log-json" style="white-space:pre-wrap;max-width:36rem;overflow:auto;margin:0">${escapeHtml(JSON.stringify(r.parsedDetail, null, 2))}</pre>`
+        : `<span style="white-space:pre-wrap;max-width:36rem;display:inline-block">${escapeHtml(r.detail)}</span>`;
+      // format serverTime to YYYY-MM-DD HH:MM:SS (if time present) or YYYY-MM-DD
+      let serverTimeDisplay = String(r.serverTime || '');
+      try {
+        const d = parseDateSafe(r.serverTime);
+        if (d) {
+          const Y = d.getFullYear();
+          const M = pad2_(d.getMonth() + 1);
+          const D = pad2_(d.getDate());
+          const h = pad2_(d.getHours());
+          const m = pad2_(d.getMinutes());
+          const s = pad2_(d.getSeconds());
+          const hasTime = /[T\s]\d{1,2}:\d{2}/.test(String(r.serverTime));
+          serverTimeDisplay = hasTime ? `${Y}-${M}-${D} ${h}:${m}:${s}` : `${Y}-${M}-${D}`;
+        }
+      } catch (_) {}
+
       return `
         <tr>
           <td data-label="#">${i + 1}</td>
-          <td data-label="serverTime"><span style="font-family:var(--mono)">${escapeHtml(r.serverTime)}</span></td>
+          <td data-label="serverTime"><span style="font-family:var(--mono)">${escapeHtml(serverTimeDisplay)}</span></td>
+          <td data-label="eventCn">${escapeHtml(r.eventCn || '')}</td>
           <td data-label="userId"><span style="font-family:var(--mono)">${escapeHtml(r.userId)}</span></td>
           <td data-label="name">${escapeHtml(r.name)}</td>
-          <td data-label="detail">${escapeHtml(r.detail)}</td>
+          <td data-label="detail">${detailHtml}</td>
         </tr>
       `;
     })
@@ -203,7 +283,7 @@ function monthKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "") {
+function buildTechChartAggregation_(granularity = "day", metric = "count", start = "", end = "", nameFilter = "", eventFilter = "") {
   const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   const buckets = new Map();
   const startDate = start ? new Date(start) : null;
@@ -252,6 +332,8 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
 
     // filter by technician name when requested
     if (nameFilter && String(r.name || '') !== String(nameFilter)) continue;
+    // filter by event type when requested
+    if (eventFilter && String((r.eventCn || r.event || '') || '') !== String(eventFilter)) continue;
 
     let key;
     if (granularity === "week") key = weekKey(d);
@@ -280,32 +362,62 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
 
 function initTechUsageChart_() {
   cacheTechDom_();
-  if (!techLogsCanvasEl || typeof Chart === "undefined") return;
-  const ctx = techLogsCanvasEl.getContext("2d");
-  // reuse existing instance when possible
-  if (techUsageChart && techUsageChart.ctx === ctx) {
-    // keep existing chart
-  } else {
-    try { if (techUsageChart) techUsageChart.destroy(); } catch (_) {}
+  if (!techLogsCanvasEl || typeof echarts === "undefined") return;
+  try { if (techUsageChart && typeof techUsageChart.dispose === 'function') techUsageChart.dispose(); } catch (_) {}
+  try {
+    techUsageChart = echarts.init(techLogsCanvasEl, null, { renderer: 'canvas', devicePixelRatio: window.devicePixelRatio || 1 });
+  } catch (e) {
+    console.warn('echarts init failed', e);
+    techUsageChart = null;
+    return;
   }
-  techUsageChart = new Chart(ctx, {
-    type: "line",
-    data: { datasets: [{ label: "事件數", data: [], fill: true, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.12)" }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      parsing: { xAxisKey: 'x', yAxisKey: 'y' },
-      scales: {
-        x: {
-          type: 'time',
-          time: { unit: 'day', displayFormats: { hour: 'yyyy-MM-dd HH:mm', day: 'yyyy-MM-dd', month: 'yyyy-MM' } },
-          ticks: { autoSkip: true, maxRotation: 0 }
-        },
-        y: { beginAtZero: true }
-      },
-      plugins: { legend: { display: true } }
-    },
-  });
+  const baseOption = {
+    color: ['#06b6d4'],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: (params) => {
+      const p = Array.isArray(params) ? params[0] : params;
+      if (!p) return '';
+      // safely extract timestamp and value from various shapes
+      let ts = null;
+      let val = null;
+      if (p.data && Array.isArray(p.data)) {
+        ts = p.data[0];
+        val = p.data[1];
+      } else if (p.value && Array.isArray(p.value)) {
+        ts = p.value[0];
+        val = p.value[1];
+      } else if (p.data != null) {
+        val = p.data;
+      } else if (p.value != null) {
+        val = p.value;
+      }
+      let label = p.name || '';
+      if (ts != null) {
+        const d = new Date(ts);
+        if (!Number.isNaN(d.getTime())) {
+          label = `${d.getFullYear()}-${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}` + (d.getHours() || d.getMinutes() ? ` ${pad2_(d.getHours())}:${pad2_(d.getMinutes())}` : '');
+        }
+      }
+      const seriesName = p.seriesName || '';
+      return `${label}${seriesName ? '<br/>' + seriesName + ': ' : ''}${val != null ? val : '-'}`;
+    } },
+    legend: { data: [] },
+    grid: { left: '8%', right: '6%', bottom: '14%' },
+    xAxis: { type: 'time', boundaryGap: false, axisLabel: { formatter: null, rotate: 0, interval: 'auto' } },
+    yAxis: { type: 'value', min: 0 },
+    series: [{ name: '事件數', type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: [], sampling: 'lttb', large: false }],
+    dataZoom: []
+  };
+  techUsageChart.setOption(baseOption);
+  // resize handling: prefer ResizeObserver for container changes
+  try {
+    if (techUsageChartObserver && typeof techUsageChartObserver.disconnect === 'function') techUsageChartObserver.disconnect();
+    if (typeof ResizeObserver !== 'undefined') {
+      techUsageChartObserver = new ResizeObserver(() => techUsageChart && techUsageChart.resize());
+      techUsageChartObserver.observe(techLogsCanvasEl);
+    } else {
+      window.addEventListener('resize', () => techUsageChart && techUsageChart.resize());
+    }
+  } catch (_) {}
 }
 
 function renderTechUsageChart_() {
@@ -314,90 +426,88 @@ function renderTechUsageChart_() {
   if (!techUsageChart) initTechUsageChart_();
   if (!techUsageChart) return;
 
-  // 自動決定分桶：若使用者提供時間（T），改為小時分桶以呈現時間範圍
   const { start, end } = techLogsGetSelectedRange_();
-  let gran = "day";
-  // 若 start 或 end 包含時間部分（ISO 'T'）或使用者填了 time inputs，使用 hour
-  if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") {
-    gran = "hour";
+  // 粒度可由 UI 指定（auto/ hour/ day/ week/ month）
+  const granFromUI = techLogsGranularitySelectEl ? String(techLogsGranularitySelectEl.value || 'auto') : 'auto';
+  let gran = 'day';
+  if (granFromUI && granFromUI !== 'auto') {
+    gran = granFromUI;
+  } else {
+    if ((String(start).includes("T") || String(end).includes("T")) && String(start || end).trim() !== "") gran = "hour";
+    else gran = 'day';
   }
-  const metric = "count";
   const metricFromUI = techLogsMetricSelectEl ? String(techLogsMetricSelectEl.value || 'count') : 'count';
   const nameFromUI = techLogsNameSelectEl ? String(techLogsNameSelectEl.value || '') : '';
-  const agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
+  const eventFromUI = techLogsEventSelectEl ? String(techLogsEventSelectEl.value || '') : '';
+  let agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
 
-  // DEBUG: 輸出聚合結果以便排查 labels/data 為何為空
-  console.debug("techUsageChart aggregation:", { gran, metric: metricFromUI, nameFilter: nameFromUI, start, end, labels: agg.labels, data: agg.data, totalRows: techUsageLogsAll_.length });
+  if (agg.labels.length > 60 && gran === "hour") {
+    gran = "day";
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
+  }
+  if (agg.labels.length > 365 && gran !== "month") {
+    gran = "month";
+    agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
+  }
 
-    // 若 hourly 分桶過多，回退到日或月分桶以避免過密的 x axis
-    if (agg.labels.length > 60 && gran === "hour") {
-      console.warn("techUsageChart: too many hourly buckets, falling back to day granularity");
-      gran = "day";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-      console.debug("techUsageChart fallback aggregation:", { gran, labels: agg2.labels.length });
-      agg.labels = agg2.labels;
-      agg.data = agg2.data;
-    }
-    if (agg.labels.length > 365 && gran !== "month") {
-      console.warn("techUsageChart: too many daily buckets, falling back to month granularity");
-      gran = "month";
-      const agg2 = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI);
-      agg.labels = agg2.labels;
-      agg.data = agg2.data;
-    }
+  // build series data as [ [timestamp, value], ... ]
+  const seriesData = agg.labels.map((lbl, i) => {
+    let x = lbl;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+    const d = parseDateSafe(x) || parseDateSafe(lbl);
+    const ms = d ? d.getTime() : null;
+    return [ ms !== null ? ms : String(x), agg.data[i] ];
+  });
 
-    // convert labels/data to {x,y} points using numeric timestamp (ms)
-    const points = agg.labels.map((lbl, i) => {
-      let x = lbl;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
-      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-      const d = parseDateSafe(x) || parseDateSafe(lbl);
-      const ms = d ? d.getTime() : null;
-      return { x: ms !== null ? ms : String(x), y: agg.data[i] };
-    });
-    // make canvas horizontally scrollable on mobile when many buckets
-    try {
-      const canvasEl = document.getElementById('techUsageChartCanvas');
-      if (canvasEl && Array.isArray(agg.labels)) {
-        const minW = Math.max(600, agg.labels.length * 40); // 40px per bucket heuristic
-        canvasEl.style.minWidth = `${minW}px`;
-      }
-    } catch (e) { /* ignore */ }
-    // only update chart when points changed
-    const old = techUsageChart.data.datasets[0].data || [];
-    let same = false;
-    if (old.length === points.length) {
-      same = old.every((o, idx) => {
-        const p = points[idx];
-        return (o.x === p.x || String(o.x) === String(p.x)) && Number(o.y) === Number(p.y);
-      });
+  try {
+    const canvasEl = document.getElementById('techUsageChartCanvas');
+    if (canvasEl && Array.isArray(agg.labels)) {
+      const minW = Math.max(600, agg.labels.length * 40);
+      canvasEl.style.minWidth = `${minW}px`;
     }
-    if (!same) {
-      techUsageChart.data.datasets[0].data = points;
-      techUsageChart.data.datasets[0].label = metricFromUI === "unique" ? "不同使用者數" : "事件數";
-      // responsive font sizing based on canvas width
-      try {
-        const canvasEl = document.getElementById('techUsageChartCanvas');
-        const w = (canvasEl && canvasEl.clientWidth) ? canvasEl.clientWidth : (window.innerWidth || 800);
-        const base = Math.max(10, Math.min(16, Math.round(w / 120)));
-        if (techUsageChart.options && techUsageChart.options.scales) {
-          if (techUsageChart.options.scales.x) techUsageChart.options.scales.x.ticks = techUsageChart.options.scales.x.ticks || {};
-          if (techUsageChart.options.scales.y) techUsageChart.options.scales.y.ticks = techUsageChart.options.scales.y.ticks || {};
-          techUsageChart.options.scales.x.ticks.font = { size: base };
-          techUsageChart.options.scales.y.ticks.font = { size: Math.max(10, base - 1) };
-        }
-        if (techUsageChart.options && techUsageChart.options.plugins) {
-          techUsageChart.options.plugins.legend = techUsageChart.options.plugins.legend || {};
-          techUsageChart.options.plugins.legend.labels = techUsageChart.options.plugins.legend.labels || {};
-          techUsageChart.options.plugins.legend.labels.font = { size: base };
-          techUsageChart.options.plugins.tooltip = techUsageChart.options.plugins.tooltip || {};
-          techUsageChart.options.plugins.tooltip.titleFont = { size: Math.max(11, base + 1) };
-          techUsageChart.options.plugins.tooltip.bodyFont = { size: base };
-        }
-      } catch (e) { /* ignore sizing errors */ }
-      techUsageChart.update();
-    }
+  } catch (e) { /* ignore */ }
+
+  // update option with responsiveness helpers
+  const seriesName = metricFromUI === 'unique' ? '不同使用者數' : '事件數';
+  const maxVisible = 120;
+  const total = seriesData.length;
+  const dataZoom = [];
+  if (total > maxVisible) {
+    const startPct = Math.max(0, ((total - maxVisible) / total) * 100);
+    dataZoom.push({ type: 'slider', start: startPct, end: 100, handleSize: 8 });
+    // enable wheel/inside zoom for touch/desktop
+    dataZoom.push({ type: 'inside', start: startPct, end: 100 });
+  }
+
+  const useLarge = total > 800;
+  const sampling = total > 300 ? 'lttb' : false;
+
+  // compute responsive label settings
+  const containerWidth = (techLogsCanvasEl && techLogsCanvasEl.clientWidth) ? techLogsCanvasEl.clientWidth : (window.innerWidth || 360);
+  const approxTickWidth = 60; // px per tick heuristic
+  const maxTicks = Math.max(4, Math.floor(containerWidth / approxTickWidth));
+  const step = Math.max(1, Math.ceil(total / maxTicks));
+  const axisInterval = Math.max(0, step - 1);
+  const rotate = total > maxTicks ? 45 : 0;
+  const fontSize = Math.max(9, Math.min(14, Math.round(containerWidth / 80)));
+
+  const axisFormatter = (val) => {
+    const d = new Date(val);
+    if (gran === 'hour') return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
+    if (gran === 'month') return `${d.getFullYear()}-${pad2_(d.getMonth()+1)}`;
+    // day
+    return `${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}`;
+  };
+
+  const option = {
+    legend: { data: [seriesName] },
+    xAxis: { type: 'time', axisLabel: { formatter: axisFormatter, rotate: rotate, interval: axisInterval, showMinLabel: true, showMaxLabel: true, fontSize: fontSize } },
+    series: [{ name: seriesName, type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: seriesData, large: useLarge, sampling: sampling }],
+    dataZoom: dataZoom
+  };
+  try { techUsageChart.setOption(option, { notMerge: false }); } catch (e) { console.warn('echarts setOption failed', e); }
 }
 
 
@@ -411,19 +521,25 @@ async function loadTechUsageLogs_() {
   }
 
   techUsageLogsLoading_ = true;
+  techLogsUpdateDeleteBtnState_();
   try {
     techLogsSetFooter_("載入中...");
     techLogsSetTbodyMessage_("載入中...");
 
     // 需要 GAS 支援 mode=list 才能讀取
-    // 取消固定每頁上限，改為：先嘗試不帶 limit 的單次抓取（若 GAS 回傳全部），
-    // 若 GAS 提供 nextPageToken 則以 token 續抓直到沒有 token 為止。
+    // 支援兩種分頁風格：
+    // 1) token-based: 回傳 nextPageToken
+    // 2) offset-based: 回傳 nextOffset（此 repo 的 GAS 使用 nextOffset）
+    // 我們每次以固定 limit 分頁抓取，直到沒有 nextPageToken / nextOffset
     let allRowsRaw = [];
     let pageToken = null;
+    let offset = 0;
+    const perPage = 2000; // 每頁上限，可調整
 
-    do {
-      const q = { mode: "list" };
+    while (true) {
+      const q = { mode: "list", limit: perPage };
       if (pageToken) q.pageToken = pageToken;
+      else if (offset) q.offset = offset;
 
       const ret = await techUsageLogGet_(q);
       if (!ret || ret.ok === false) {
@@ -435,13 +551,42 @@ async function loadTechUsageLogs_() {
       if (Array.isArray(ret.rows)) rows = ret.rows;
       else if (Array.isArray(ret.logs)) rows = ret.logs;
       else if (Array.isArray(ret.values)) {
-        rows = ret.values.map((v) => ({ serverTime: v?.[0], userId: v?.[2], name: v?.[3], detail: v?.[7] }));
+        // values correspond to HEADERS: serverTime,event,eventCn,userId,name,clientTs,clientIso,tz,href,detail
+        rows = ret.values.map((v) => ({
+          serverTime: v?.[0],
+          event: v?.[1],
+          eventCn: v?.[2],
+          userId: v?.[3],
+          name: v?.[4],
+          clientTs: v?.[5],
+          clientIso: v?.[6],
+          tz: v?.[7],
+          href: v?.[8],
+          detail: v?.[9],
+        }));
       }
 
       if (rows.length) allRowsRaw.push(...rows);
 
-      pageToken = ret.nextPageToken ? String(ret.nextPageToken) : null;
-    } while (pageToken);
+      // token-based pagination
+      if (ret.nextPageToken) {
+        pageToken = String(ret.nextPageToken);
+        continue;
+      }
+
+      // offset-based pagination (nextOffset 表示已回傳的筆數)
+      if (ret.nextOffset !== undefined && ret.nextOffset !== null) {
+        const no = Number(ret.nextOffset);
+        if (!Number.isNaN(no) && no > offset) {
+          offset = no;
+          pageToken = null;
+          continue;
+        }
+      }
+
+      // 若兩者皆無，結束
+      break;
+    }
 
     techUsageLogsAll_ = allRowsRaw
       .map(normalizeTechUsageRow_)
@@ -502,14 +647,40 @@ async function loadTechUsageLogs_() {
       console.debug('loadTechUsageLogs: rows=', techUsageLogsAll_.length, 'processedTimeStamp=', tAfter);
     } catch (_) {}
 
-    // populate technician name select
-    (function populateTechNameSelect() {
-      const sel = document.getElementById('techLogsNameSelect');
-      if (!sel) return;
-      const names = Array.from(new Set(techUsageLogsAll_.map((r) => String(r.name || '').trim()).filter(Boolean))).sort();
-      const cur = String(sel.value || '');
-      sel.innerHTML = '<option value="">全部</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
-      if (cur) sel.value = cur;
+    // populate event type select and technician name select
+    (function populateTechEventAndNameSelect() {
+      const evtSel = document.getElementById('techLogsEventSelect');
+      if (evtSel) {
+        // 統計每個事件類型的次數，並依次數降冪排序（同數則依名稱升冪）
+        const eventCounts = techUsageLogsAll_.reduce((m, r) => {
+          const ev = String(r.eventCn || r.event || '').trim();
+          if (!ev) return m;
+          m[ev] = (m[ev] || 0) + 1;
+          return m;
+        }, {});
+        const eventsArr = Object.keys(eventCounts).map(k => ({ name: k, count: eventCounts[k] }));
+        eventsArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+        const curEvt = String(evtSel.value || '');
+        evtSel.innerHTML = '<option value="">全部</option>' + eventsArr.map(e => `<option value="${escapeHtml(e.name)}">(${escapeHtml(String(e.count))}) ${escapeHtml(e.name)}</option>`).join('');
+        if (curEvt) evtSel.value = curEvt;
+      }
+
+      const nameSel = document.getElementById('techLogsNameSelect');
+      if (!nameSel) return;
+      const selectedEvent = evtSel ? String(evtSel.value || '') : '';
+      const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
+      // 統計每位技師的事件數，並依事件數降冪排序（同數則依名稱升冪）
+      const counts = filtered.reduce((m, r) => {
+        const nm = String(r.name || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+      const cur = String(nameSel.value || '');
+      nameSel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(o.count)}) ${escapeHtml(o.name)}</option>`).join('');
+      if (cur) nameSel.value = cur;
     })();
 
     applyTechUsageLogsDateFilter_();
@@ -524,6 +695,20 @@ async function loadTechUsageLogs_() {
         ? `共 ${techUsageLogs_.length} 筆（${rangeLabel}）/ 總 ${techUsageLogsAll_.length} 筆`
         : `共 ${techUsageLogs_.length} 筆`
     );
+    // notify that tech usage logs rendered (dispatch on next rAF to ensure repaint/chart init)
+    try {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => {
+          try {
+            window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'techUsageLogs' }));
+          } catch (e) {}
+        });
+      } else {
+        try {
+          window.dispatchEvent(new CustomEvent('admin:rendered', { detail: 'techUsageLogs' }));
+        } catch (e) {}
+      }
+    } catch (e) {}
   } catch (e) {
     console.error(e);
     const msg = String(e?.message || e);
@@ -536,11 +721,94 @@ async function loadTechUsageLogs_() {
     toast("讀取技師使用紀錄失敗", "err");
   } finally {
     techUsageLogsLoading_ = false;
+    techLogsUpdateDeleteBtnState_();
+  }
+}
+
+async function deleteTechUsageLogsByName_() {
+  cacheTechDom_();
+  const name = techLogsGetSelectedName_();
+  if (!name) {
+    toast('請先選擇名稱', 'err');
+    return;
+  }
+  if (!TECH_USAGE_LOG_URL) {
+    toast('尚未設定 TECH_USAGE_LOG_URL', 'err');
+    return;
+  }
+  if (!TECH_USAGE_LOG_ADMIN_KEY || !String(TECH_USAGE_LOG_ADMIN_KEY).trim()) {
+    toast('尚未設定刪除金鑰（TECH_USAGE_LOG_ADMIN_KEY）', 'err');
+    return;
+  }
+  if (techUsageLogsDeleting_) return;
+
+  // 先用前端資料估算筆數（載入時已抓全量分頁），並用 GAS dryRun 再確認一次授權 + 匹配數
+  const localCount = techUsageLogsAll_.filter(r => String(r?.name || '') === name).length;
+
+  techUsageLogsDeleting_ = true;
+  techLogsUpdateDeleteBtnState_();
+  try {
+    techLogsSetFooter_(`刪除檢查中（${escapeHtml(name)}）...`);
+    const dry = await techUsageLogPost_({
+      mode: 'deleteByName',
+      key: String(TECH_USAGE_LOG_ADMIN_KEY || ''),
+      name: name,
+      dryRun: 1,
+    });
+    if (!dry || dry.ok === false) {
+      throw new Error(dry?.error || 'delete dryRun failed');
+    }
+    const matched = Number(dry.matched ?? dry.match ?? localCount);
+    const matchedSafe = Number.isFinite(matched) ? matched : localCount;
+
+    const confirmText = `確定要刪除「${name}」的使用紀錄嗎？\n預計刪除：${matchedSafe} 筆（前端估算 ${localCount} 筆）\n\n此動作不可復原。`;
+    const ok = window.confirm(confirmText);
+    if (!ok) {
+      toast('已取消刪除', 'ok');
+      return;
+    }
+
+    let deletedTotal = 0;
+    let remaining = matchedSafe;
+    const perRun = 800;
+    const maxLoops = 50;
+
+    for (let i = 0; i < maxLoops; i++) {
+      techLogsSetFooter_(`刪除中：${deletedTotal}/${matchedSafe}（剩餘 ${Math.max(0, remaining)}）`);
+      const ret = await techUsageLogPost_({
+        mode: 'deleteByName',
+        key: String(TECH_USAGE_LOG_ADMIN_KEY || ''),
+        name: name,
+        limit: perRun,
+      });
+      if (!ret || ret.ok === false) {
+        throw new Error(ret?.error || 'delete failed');
+      }
+      const deleted = Number(ret.deleted || 0);
+      deletedTotal += Number.isFinite(deleted) ? deleted : 0;
+      remaining = Number(ret.remaining ?? 0);
+      if (!Number.isFinite(remaining) || remaining <= 0) break;
+      // 避免連續打爆 GAS
+      await sleep_(220);
+    }
+
+    toast(`已刪除「${name}」使用紀錄：${deletedTotal} 筆`, 'ok');
+    // 刪除後重新載入最新列表
+    await loadTechUsageLogs_();
+  } catch (e) {
+    console.error(e);
+    toast(`刪除失敗：${String(e?.message || e)}`, 'err');
+    techLogsSetFooter_('刪除失敗');
+  } finally {
+    techUsageLogsDeleting_ = false;
+    techLogsUpdateDeleteBtnState_();
   }
 }
 
 function bindTechUsageLogs_() {
   document.getElementById("techLogsReloadBtn")?.addEventListener("click", () => loadTechUsageLogs_());
+
+  document.getElementById('techLogsDeleteByNameBtn')?.addEventListener('click', () => deleteTechUsageLogsByName_());
 
   document.getElementById("techLogsShowAllBtn")?.addEventListener("click", () => {
     const startEl = document.getElementById("techLogsStartDateInput");
@@ -553,6 +821,7 @@ function bindTechUsageLogs_() {
     if (enTime) enTime.value = "";
     const nameSel = document.getElementById('techLogsNameSelect');
     if (nameSel) nameSel.value = '';
+    techLogsUpdateDeleteBtnState_();
     applyTechUsageLogsDateFilter_();
     renderTechUsageLogs_();
     techLogsSetFooter_(`共 ${techUsageLogs_.length} 筆`);
@@ -575,7 +844,32 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsStartTimeInput")?.addEventListener("change", onRangeChange);
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", onRangeChange);
   // 當使用者選擇名稱時，同步套用到表格過濾
-  document.getElementById('techLogsNameSelect')?.addEventListener('change', onRangeChange);
+  document.getElementById('techLogsNameSelect')?.addEventListener('change', () => {
+    techLogsUpdateDeleteBtnState_();
+    onRangeChange();
+  });
+  document.getElementById('techLogsEventSelect')?.addEventListener('change', () => {
+    // when event type changes, repopulate name select to match event, then apply filter
+    const evtSel = document.getElementById('techLogsEventSelect');
+    const nameSel = document.getElementById('techLogsNameSelect');
+    if (nameSel) {
+      const selectedEvent = evtSel ? String(evtSel.value || '') : '';
+      const filtered = selectedEvent ? techUsageLogsAll_.filter(r => String((r.eventCn || r.event || '') || '') === selectedEvent) : techUsageLogsAll_;
+      const counts = filtered.reduce((m, r) => {
+        const nm = String(r.name || '').trim();
+        if (!nm) return m;
+        m[nm] = (m[nm] || 0) + 1;
+        return m;
+      }, {});
+      const nameArr = Object.keys(counts).map(n => ({ name: n, count: counts[n] }));
+      nameArr.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+      const cur = String(nameSel.value || '');
+      nameSel.innerHTML = '<option value="">全部</option>' + nameArr.map(o => `<option value="${escapeHtml(o.name)}">(${escapeHtml(o.count)}) ${escapeHtml(o.name)}</option>`).join('');
+      if (cur) nameSel.value = cur;
+    }
+    techLogsUpdateDeleteBtnState_();
+    onRangeChange();
+  });
   
   // Initialize chart and re-render when date range changes
   initTechUsageChart_();
@@ -587,4 +881,9 @@ function bindTechUsageLogs_() {
   document.getElementById("techLogsEndTimeInput")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsMetricSelect")?.addEventListener("change", debouncedRenderTechChart);
   document.getElementById("techLogsNameSelect")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsEventSelect")?.addEventListener("change", debouncedRenderTechChart);
+  document.getElementById("techLogsGranularitySelect")?.addEventListener("change", debouncedRenderTechChart);
+
+  // initial state
+  techLogsUpdateDeleteBtnState_();
 }

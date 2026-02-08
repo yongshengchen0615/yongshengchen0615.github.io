@@ -531,6 +531,10 @@ td.yn-cell{ text-align:right; }
 
 /* 表格內更緊湊 */
 .table-wrap{ overflow:auto; padding:12px 14px 14px; -webkit-overflow-scrolling:touch; }
+/* For the schedule card table specifically: prevent horizontal scrolling
+  and instead shrink cell paddings/font and clip overflow on overflow. */
+.table-wrapper{ overflow-x: hidden; }
+#performancePanelSection .table-wrapper{ overflow-x: auto; }
 
 /* Chart horizontal scroll: allow canvas to be wider than container and enable smooth touch scrolling */
 .chart-wrap{ overflow-x:auto; overflow-y:visible; -webkit-overflow-scrolling:touch; padding:12px 14px; }
@@ -561,6 +565,76 @@ tbody td{
   font-size:12px;
   white-space:nowrap;
   vertical-align:middle;
+}
+/* Ensure the schedule table never wraps or ellipsizes content; allow
+   horizontal scrolling via the outer .table-wrap so full text is shown. */
+.status-table th:nth-child(5),
+.status-table td:nth-child(5) {
+  white-space: nowrap;
+  word-break: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  min-width: 80px;
+  text-align: left;
+}
+/* Responsive widths for schedule columns (順序, 師傅, 狀態, 預約內容, 剩餘時間) */
+.status-table{
+  width:100%;
+  table-layout: auto; /* let browser size columns based on content */
+}
+.status-table th, .status-table td{
+  /* Force single-line, reduce padding/font to attempt to fit; if still
+     too long, content will be clipped (no horizontal scroll). */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.status-table th:nth-child(1), .status-table td:nth-child(1){ width:6%; min-width:56px; max-width:80px; }
+.status-table th:nth-child(2), .status-table td:nth-child(2){ width:18%; min-width:60px; max-width:220px; text-align:left; }
+.status-table th:nth-child(3), .status-table td:nth-child(3){ width:18%; min-width:70px; max-width:220px; text-align:left; }
+.status-table th:nth-child(4), .status-table td:nth-child(4){
+  /* Allow appointment content to wrap and expand vertically so full
+     content is visible without horizontal scrolling. */
+  width: auto;
+  min-width: 100px;
+  max-width: none;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.status-table th:nth-child(5), .status-table td:nth-child(5){ width:16%; min-width:60px; max-width:160px; text-align:left; }
+
+/* Performance (detail mode): allow service name (col 5) to wrap if needed */
+#performancePanelSection table.perf-detail-table--detail #perfDetailHeadRow th:nth-child(5),
+#performancePanelSection table.perf-detail-table--detail #perfDetailRows td:nth-child(5){
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+}
+
+@media (max-width: 720px){
+  /* On small screens allow content to wrap and avoid fixed layout */
+  .status-table{ table-layout: auto; }
+  .status-table th, .status-table td{
+    /* keep compact cells for most columns */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+  /* But allow the appointment column to wrap on small screens */
+  .status-table td:nth-child(4), .status-table th:nth-child(4){
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+  .status-table td:nth-child(5){ text-align:left; }
 }
 tbody tr:nth-child(odd){ background: rgba(255,255,255,.02); }
 tbody tr:nth-child(even){ background: rgba(0,0,0,.14); }
@@ -756,6 +830,50 @@ tbody td.sticky-col{ background:transparent; }
   /* 避免內容撐爆右側 */
   .responsive-table tbody td input,
   .responsive-table tbody td select{ max-width: 60%; }
+}
+
+/* Tech Usage panel: 更友善的行動裝置排列 */
+@media (max-width: 720px){
+  #techUsageLogsPanelSection .panel-actions{
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap:8px;
+    align-items:center;
+    justify-items:stretch;
+  }
+  #techUsageLogsPanelSection .panel-actions .bulk-label{ display:none; }
+  #techUsageLogsPanelSection .panel-actions .select,
+  #techUsageLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
+@media (max-width: 420px){
+  #techUsageLogsPanelSection .panel-actions{
+    grid-template-columns: 1fr;
+  }
+  #techUsageLogsPanelSection .panel-actions .select,
+  #techUsageLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
+/* Admin Logs panel mobile layout (match tech usage) */
+@media (max-width: 720px){
+  #adminLogsPanelSection .panel-actions{
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap:8px;
+    align-items:center;
+    justify-items:stretch;
+  }
+  #adminLogsPanelSection .panel-actions .bulk-label{ display:none; }
+  #adminLogsPanelSection .panel-actions .select,
+  #adminLogsPanelSection .panel-actions .btn{ width:100%; }
+}
+
+@media (max-width: 420px){
+  #adminLogsPanelSection .panel-actions{
+    grid-template-columns: 1fr;
+  }
+  #adminLogsPanelSection .panel-actions .select,
+  #adminLogsPanelSection .panel-actions .btn{ width:100%; }
 }
 
 /* === 固定最右操作欄（避免刪除按鈕跑位） === */
@@ -963,3 +1081,1015 @@ html[data-theme="light"] .initial-loading-progress{
 /* Tech usage chart styles */
 .chart-wrap{ width:100%; max-width:100%; display:block; }
 .chart-wrap canvas{ width:100% !important; height:360px !important; max-height:520px; }
+
+/* ======= Scheduling: 專用排班樣式（scoped to schedule panel） ======= */
+#schedulePanelSection .card-table .status-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+#schedulePanelSection .card-table .status-table th,
+#schedulePanelSection .card-table .status-table td {
+  overflow: hidden;
+  padding: 6px 6px;
+}
+
+#schedulePanelSection .card-table .status-table thead th:nth-child(1),
+#schedulePanelSection .card-table .status-table tbody td:nth-child(1) {
+  width: clamp(44px, 12vw, 56px) !important;
+}
+
+#schedulePanelSection .card-table .status-table thead th:nth-child(2),
+#schedulePanelSection .card-table .status-table tbody td:nth-child(2) {
+  width: clamp(44px, 12vw, 56px) !important;
+}
+
+#schedulePanelSection .card-table .status-table thead th:nth-child(3),
+#schedulePanelSection .card-table .status-table tbody td:nth-child(3) {
+  width: clamp(84px, 24vw, 120px) !important;
+}
+
+#schedulePanelSection .card-table .status-table thead th:nth-child(5),
+#schedulePanelSection .card-table .status-table tbody td:nth-child(5) {
+  width: clamp(64px, 18vw, 104px) !important;
+  text-align: right;
+}
+
+#schedulePanelSection .card-table .status-table tbody td:nth-child(4) {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
+#schedulePanelSection .card-table .status-table tbody td:nth-child(4) .appt-block {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+#schedulePanelSection .card-table .status-table tbody td:nth-child(3) .status-pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#schedulePanelSection .card-table .status-table tbody td:nth-child(5) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+#schedulePanelSection .time-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+@media (max-width: 720px){
+  /* On small screens, further reduce font-size and padding to fit more
+     content horizontally; still no horizontal scroll and content will
+     be clipped if it overflows. */
+  .status-table th, .status-table td{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+  @media (max-width: 420px){
+    .status-table th, .status-table td{
+      padding: 3px 6px;
+      font-size: 10px;
+    }
+  }
+    font-size: 11px;
+  }
+
+  #schedulePanelSection .card-table .status-table thead th:nth-child(5),
+  #schedulePanelSection .card-table .status-table tbody td:nth-child(5) {
+    width: clamp(56px, 16vw, 88px) !important;
+  }
+
+  #schedulePanelSection .card-table .status-table tbody td:nth-child(5) .time-badge {
+    padding: 2px 8px;
+  }
+
+  /* ensure table retains a reasonable min-width for horizontal scroll on small screens */
+  #schedulePanelSection .status-table {
+    min-width: 680px;
+  }
+}
+
+/* end scheduling scoped styles */
+
+/* ===== Scheduling theme vars (scoped) ===== */
+#schedulePanelSection {
+  --bg: #020617;
+  --bg-card: #020617;
+  --bg-soft: #020617;
+  --border: #1f2937;
+  --text-main: #e5e7eb;
+  --text-sub: #9ca3af;
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.15);
+  --danger: #f97373;
+  --muted: #4b5563;
+  --radius-lg: 16px;
+  --order-bg: rgba(148, 163, 184, 0.14);
+  --order-border: rgba(148, 163, 184, 0.30);
+  --order-text-shadow: 0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(255,255,255,0.10);
+}
+
+/* Tabs (Scheduling style) */
+#schedulePanelSection .tab {
+  border:1px solid var(--border);
+  background:var(--bg-card);
+  color:var(--text-sub);
+  font-size:13px;
+  padding:8px 12px;
+  border-radius:999px;
+  cursor:pointer;
+}
+#schedulePanelSection .tab.tab-active{
+  color:var(--accent);
+  border-color:rgba(56,189,248,.45);
+  background:var(--accent-soft);
+}
+
+/* Buttons styling to match Scheduling */
+#schedulePanelSection .btn {
+  padding:6px 12px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:var(--bg-card);
+  color:var(--text-main);
+}
+#schedulePanelSection .btn.ghost{ background:transparent; }
+
+/* table wrapper to match scheduling */
+#schedulePanelSection .table-wrapper, #schedulePanelSection .table-wrap{ overflow:auto; -webkit-overflow-scrolling:touch; }
+
+/* ===== 師傅狀態卡（移植自 Scheduling：左側色條 + 內容區） ===== */
+#schedulePanelSection .my-master-status{
+  margin: 0 0 14px 0;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+html[data-theme="light"] #schedulePanelSection .my-master-status{
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+#schedulePanelSection .my-master-status::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--myStripe, rgba(148, 163, 184, 0.55));
+}
+
+/* fallback stripe colors (JS 會用 token 覆蓋 --myStripe) */
+#schedulePanelSection .my-master-status.status-shift{ --myStripe: rgba(250, 204, 21, 0.9); }
+#schedulePanelSection .my-master-status.status-busy{ --myStripe: rgba(248, 113, 113, 0.9); }
+#schedulePanelSection .my-master-status.status-booked{ --myStripe: rgba(56, 189, 248, 0.9); }
+#schedulePanelSection .my-master-status.status-free{ --myStripe: rgba(34, 197, 94, 0.9); }
+#schedulePanelSection .my-master-status.status-other{ --myStripe: rgba(148, 163, 184, 0.7); }
+
+#schedulePanelSection .my-master-title{
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+  padding-top: 2px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+#schedulePanelSection .my-master-text{
+  padding-left: 6px;
+  min-width: 0;
+}
+
+#schedulePanelSection .my-master-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#schedulePanelSection .my-master-controls{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#schedulePanelSection .my-master-controls .filter-label{
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+#schedulePanelSection .my-master-controls .select{
+  min-width: 140px;
+  min-height: 40px;
+}
+
+/* ensure headings/text use scheduling tokens */
+#schedulePanelSection .card-title, #schedulePanelSection .app-title { color: var(--text-main); }
+
+/* Mobile: 移除卡片樣式，讓排班呈現與 Scheduling 專案一致 */
+@media (max-width: 420px) {
+  /* container visual resets */
+  #schedulePanelSection .panel,
+  #schedulePanelSection .card,
+  #schedulePanelSection .panel-head,
+  #schedulePanelSection .panel-body,
+  #schedulePanelSection .card-body,
+  #schedulePanelSection .card-table {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* reduce paddings to match Scheduling mobile compact layout */
+  #schedulePanelSection .panel-head,
+  #schedulePanelSection .panel-body,
+  #schedulePanelSection .card-body {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  /* make header stack and remove extra spacing */
+  #schedulePanelSection .card-header {
+    flex-direction: column !important;
+    gap: 6px !important;
+    align-items: flex-start !important;
+  }
+
+  /* ensure table remains horizontally scrollable but visually flat */
+  #schedulePanelSection .status-table { min-width: 680px; }
+
+  /* theme/usage banners flatten */
+  #schedulePanelSection .feature-banner,
+  #schedulePanelSection .usage-banner {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  #schedulePanelSection .my-master-head{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  #schedulePanelSection .my-master-controls{
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  #schedulePanelSection .my-master-controls .select{
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* ===== UI 排版優化（schedule panel 專用） ===== */
+#schedulePanelSection .tab{
+  font-size:14px;
+  padding:10px 14px;
+  min-height:44px;
+}
+
+#schedulePanelSection .btn{
+  min-height:44px;
+  padding:10px 14px;
+  font-size:14px;
+  border-radius:10px;
+}
+
+#schedulePanelSection .card-title{ font-size:16px; margin:0; }
+
+#schedulePanelSection .status-table thead th{ padding:10px 8px; font-size:13px; }
+#schedulePanelSection .status-table tbody td{ padding:12px 8px; font-size:14px; }
+
+/* improve touch target and row spacing */
+#schedulePanelSection .status-table tbody tr{ min-height:56px; }
+
+@media (max-width: 420px){
+  #schedulePanelSection .status-table tbody td{ padding:12px 10px; font-size:13px; }
+  #schedulePanelSection .tab{ font-size:13px; padding:8px 12px; }
+  #schedulePanelSection .btn{ min-height:44px; padding:12px 14px; }
+
+  /* compress header spacing on narrow screens */
+  #schedulePanelSection .card-header{ padding:8px 6px; }
+  #schedulePanelSection .card-body{ padding:6px 6px; }
+
+  /* make controls full-width for easier tapping */
+  #schedulePanelSection .tab, #schedulePanelSection .btn{ width:100%; box-sizing:border-box; }
+}
+
+/* Visual help: slightly stronger header contrast for readability */
+#schedulePanelSection .card-header{ background: linear-gradient(180deg, rgba(0,0,0,0.04), transparent); }
+
+/* ensure horizontal scroll shows enough padding */
+#schedulePanelSection .table-wrapper{ padding-bottom:12px; }
+
+/* Header contrast and time-badge */
+#schedulePanelSection .status-table thead th{
+  background: var(--bg-card);
+  color: var(--text-main);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+#schedulePanelSection .time-badge{
+  background: rgba(255,255,255,0.03);
+  color: var(--text-sub);
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:12px;
+}
+
+#schedulePanelSection .status-pill{ opacity:0.98; font-weight:600; }
+#schedulePanelSection .appt-block .token{ filter: saturate(1.06); }
+
+/* --- Layout refinements --- */
+/* sticky header for long lists */
+#schedulePanelSection .status-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  backdrop-filter: blur(4px) saturate(1.02);
+}
+
+/* zebra stripes and hover for better scanability */
+#schedulePanelSection .status-table tbody tr:nth-child(even){
+  background: rgba(0,0,0,0.02);
+}
+#schedulePanelSection .status-table tbody tr:hover{
+  background: rgba(255,255,255,0.03);
+}
+
+/* ===== Performance panel (Scheduling移植) ===== */
+#performancePanelSection{
+  --perf-fs-title: clamp(16px, 1.2vw, 18px);
+  --perf-fs-text: clamp(12px, 0.9vw, 14px);
+  --perf-fs-sub: clamp(11px, 0.85vw, 13px);
+  --perf-fs-badge: clamp(11px, 0.85vw, 13px);
+  --perf-fs-table: clamp(12px, 0.9vw, 14px);
+}
+
+#performancePanelSection .panel-body{
+  padding:12px 14px;
+}
+
+#performancePanelSection .card{
+  border-radius:16px;
+  border:1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+  overflow:hidden;
+}
+
+#performancePanelSection .card-header{
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+@media (max-width: 520px){
+  /* Better header wrap on phones */
+  #performancePanelSection .card-header{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  #performancePanelSection .card-header-right{
+    display:flex;
+    justify-content:flex-start;
+  }
+}
+
+#performancePanelSection .card-title{ font-size: var(--perf-fs-title); margin:0; line-height:1.2; }
+#performancePanelSection .card-subtitle{ color: var(--text-sub); font-size: var(--perf-fs-sub); margin:0; line-height:1.25; }
+
+#performancePanelSection .badge{
+  border:1px solid var(--border);
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:var(--perf-fs-badge);
+  color:var(--text-sub);
+}
+
+#performancePanelSection .filters.perf-filters{
+  width:100%;
+  display:grid;
+  /* auto-fit: adapt smoothly across devices without hard breakpoints */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items:end;
+  gap:10px;
+}
+
+/* Match Scheduling: filter layout + labels + inputs */
+#performancePanelSection .filter{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  width:100%;
+}
+
+#performancePanelSection .filter-label{
+  font-size:var(--perf-fs-sub);
+  color:var(--text-sub);
+}
+
+#performancePanelSection .input,
+#performancePanelSection .select{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--input-bg);
+  color:var(--text);
+  padding:7px 10px;
+  font-size:var(--perf-fs-text);
+  outline:none;
+}
+
+#performancePanelSection .input:focus,
+#performancePanelSection .select:focus{
+  box-shadow:var(--focus);
+  border-color:rgba(56,189,248,.45);
+}
+
+/* iOS / LINE WebView: date input indicator safety (match Scheduling) */
+#performancePanelSection input[type="date"].input{
+  min-height:44px;
+  padding:10px 48px 10px 12px;
+  position:relative;
+  line-height:1.2;
+  -webkit-appearance:none;
+  appearance:none;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+
+#performancePanelSection input[type="date"].input::-webkit-date-and-time-value{
+  text-align:left;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+#performancePanelSection input[type="date"].input::-webkit-calendar-picker-indicator{
+  opacity:0.85;
+  cursor:pointer;
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+}
+
+#performancePanelSection .perf-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+#performancePanelSection .perf-actions .btn{
+  flex:1 1 140px;
+  min-width:0;
+}
+
+@media (max-width: 720px){
+  #performancePanelSection .filters.perf-filters{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Mobile layout order:
+   * Row 1: TechNo (full)
+   * Row 2: Start | End (together)
+   * Row 3: Actions (full)
+   */
+  #performancePanelSection .perf-tech-cell{ grid-column: 1 / -1; }
+
+  /* Make the action cell span full row on mobile */
+  #performancePanelSection .perf-actions-cell{
+    grid-column: 1 / -1;
+  }
+
+  #performancePanelSection input[type="date"].input{
+    padding-right:64px;
+  }
+}
+
+@media (max-width: 420px){
+  #performancePanelSection .filters.perf-filters{
+    /* Keep Start/End together on phones */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Stack buttons full-width on very small screens */
+  #performancePanelSection .perf-actions{ gap:8px; }
+  #performancePanelSection .perf-actions .btn{ flex:1 1 100%; }
+
+  #performancePanelSection input[type="date"].input{
+    padding-right:72px;
+  }
+}
+
+@media (max-width: 340px){
+  /* Extreme small screens: fall back to 1 column to prevent overflow */
+  #performancePanelSection .filters.perf-filters{ grid-template-columns: 1fr; }
+}
+
+#performancePanelSection .status-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+#performancePanelSection .status-table th,
+#performancePanelSection .status-table td{
+  padding:8px 10px;
+  border-bottom:1px solid var(--border-soft);
+  font-size:var(--perf-fs-table);
+  line-height:1.25;
+}
+
+#performancePanelSection .table-wrapper{ overflow:auto; }
+
+/* =========================
+ * Performance summary (10 cols): match Scheduling table layout
+ * - keep thead visible on mobile
+ * - allow horizontal scroll via .table-wrapper
+ * - neutralize schedule-table column width constraints
+ * ========================= */
+#performancePanelSection table.perf-detail-table--summary{
+  table-layout: auto;
+}
+
+#performancePanelSection table.perf-detail-table--summary th,
+#performancePanelSection table.perf-detail-table--summary td{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (max-width: 720px){
+  #performancePanelSection table.perf-detail-table--summary{
+    width: max-content;
+    min-width: 980px;
+    font-size: 12px;
+  }
+
+  #performancePanelSection table.perf-detail-table--summary th,
+  #performancePanelSection table.perf-detail-table--summary td{
+    padding: 6px 6px;
+  }
+}
+
+/* Performance detail (detail mode): keep the same scrollable table layout as summary
+ * - keep thead visible on mobile
+ * - allow horizontal scroll via .table-wrapper
+ */
+#performancePanelSection table.perf-detail-table--detail{
+  table-layout: auto;
+}
+
+#performancePanelSection table.perf-detail-table--detail th,
+#performancePanelSection table.perf-detail-table--detail td{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (max-width: 720px){
+  #performancePanelSection table.perf-detail-table--detail{
+    width: max-content;
+    min-width: 1180px;
+    font-size: 12px;
+  }
+
+  #performancePanelSection table.perf-detail-table--detail th,
+  #performancePanelSection table.perf-detail-table--detail td{
+    padding: 6px 6px;
+  }
+}
+
+#performancePanelSection .chart-toolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+
+#performancePanelSection .chart-modes{ display:flex; gap:6px; flex-wrap:wrap; }
+
+#performancePanelSection .btn-chart-mode,
+#performancePanelSection .btn-chart-reset{
+  padding:6px 10px;
+  font-size:var(--perf-fs-text);
+}
+
+#performancePanelSection .btn-chart-mode.is-active{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
+}
+
+#performancePanelSection .chart-toggle{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+
+#performancePanelSection .toggle-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 8px;
+  border-radius:16px;
+  background: var(--card);
+  border:1px solid var(--border-soft);
+  font-size:var(--perf-fs-sub);
+}
+
+#performancePanelSection .chart-wrapper{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  min-width: 0;
+}
+
+#performancePanelSection .chart-wrapper canvas{
+  display:block;
+  max-width:none;
+  height:auto;
+}
+
+/* Click detail panel (align Scheduling) */
+#performancePanelSection .perf-click-panel{
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 40;
+  min-width: 280px;
+  max-width: 48%;
+  background: var(--card-bg, #fff);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  border-radius: 8px;
+  overflow: auto;
+}
+#performancePanelSection .perf-click-panel-inner{ padding: 10px; }
+#performancePanelSection .perf-click-panel-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+#performancePanelSection .perf-click-panel-close{ background:transparent; border:0; font-size:14px; cursor:pointer; }
+#performancePanelSection .perf-click-panel-body{ font-size: var(--perf-fs-text); color: var(--text-primary, var(--text)); }
+#performancePanelSection .perf-click-metrics{ margin-bottom:8px; }
+#performancePanelSection .perf-click-list .status-table.small{ width:100%; font-size:12px; }
+#performancePanelSection .perf-click-empty{ color:var(--text-sub); padding:6px 0; }
+
+@media (max-width: 640px){
+  #performancePanelSection .perf-click-panel{ right: 8px; left: 8px; max-width: none; }
+}
+
+/* perf summary table */
+#performancePanelSection .perf-summary-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+#performancePanelSection .perf-summary-table th,
+#performancePanelSection .perf-summary-table td{
+  padding:6px 8px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  border-bottom:1px solid var(--border-soft);
+}
+
+#performancePanelSection .perf-summary-table thead th{
+  font-size:12px;
+  font-weight:700;
+  color:var(--text-sub);
+}
+
+#performancePanelSection .perf-summary-table tbody td{
+  font-size:13px;
+  font-weight:600;
+}
+
+#performancePanelSection .perf-summary-table th:first-child,
+#performancePanelSection .perf-summary-table td:first-child{
+  width:22%;
+  text-align:left;
+}
+
+#performancePanelSection .perf-summary-table th:nth-child(2),
+#performancePanelSection .perf-summary-table td:nth-child(2),
+#performancePanelSection .perf-summary-table th:nth-child(3),
+#performancePanelSection .perf-summary-table td:nth-child(3),
+#performancePanelSection .perf-summary-table th:nth-child(4),
+#performancePanelSection .perf-summary-table td:nth-child(4){
+  width:15%;
+  text-align:right;
+}
+
+#performancePanelSection .perf-summary-table th:nth-child(5),
+#performancePanelSection .perf-summary-table td:nth-child(5){
+  width:33%;
+  text-align:right;
+  font-weight:800;
+}
+
+/* cap widths for key columns to prevent overflow */
+#schedulePanelSection .status-table tbody td:first-child{
+  width:220px;
+  max-width:220px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* =========================
+ * Schedule status colors (sync with GAS palette)
+ * Classes produced by scheduling JS: status-shift, status-busy, status-booked, status-free, status-other
+ * Apply to both `.status-pill` and container `.my-master-status` for consistency
+ * ========================= */
+#schedulePanelSection .status-pill,
+#schedulePanelSection .status-pill {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--card2);
+  color:var(--text);
+  font-weight:600;
+  font-size:13px;
+}
+
+#schedulePanelSection .status-pill.status-shift,
+#schedulePanelSection .status-pill.status-shift{
+  border-color: rgba(22,163,74,.35);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+#schedulePanelSection .status-pill.status-busy,
+#schedulePanelSection .status-pill.status-busy{
+  border-color: rgba(239,68,68,.35);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+#schedulePanelSection .status-pill.status-booked,
+#schedulePanelSection .status-pill.status-booked{
+  border-color: rgba(56,189,248,.35);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+#schedulePanelSection .status-pill.status-free,
+#schedulePanelSection .status-pill.status-free{
+  border-color: rgba(100,116,139,.25);
+  background: rgba(100,116,139,.06);
+  color: var(--muted);
+}
+
+#schedulePanelSection .status-pill.status-other,
+#schedulePanelSection .status-pill.status-other{
+  border-color: rgba(148,163,184,.18);
+  background: var(--card);
+  color: var(--text-sub);
+}
+
+/* Light theme overrides: ensure sufficient contrast on light backgrounds */
+html[data-theme="light"] #schedulePanelSection .status-pill,
+html[data-theme="light"] #schedulePanelSection .status-pill {
+  border-color: rgba(148,163,184,.35);
+  background: rgba(255,255,255,.9);
+  color: var(--text);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-shift,
+html[data-theme="light"] #schedulePanelSection .status-pill.status-shift{
+  border-color: rgba(22,163,74,.45);
+  background: rgba(22,163,74,.08);
+  color: rgba(22,163,74,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-busy,
+html[data-theme="light"] #schedulePanelSection .status-pill.status-busy{
+  border-color: rgba(239,68,68,.45);
+  background: rgba(239,68,68,.06);
+  color: rgba(239,68,68,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-booked,
+html[data-theme="light"] #schedulePanelSection .status-pill.status-booked{
+  border-color: rgba(56,189,248,.45);
+  background: rgba(56,189,248,.06);
+  color: rgba(7,89,133,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-free,
+html[data-theme="light"] #schedulePanelSection .status-pill.status-free{
+  border-color: rgba(100,116,139,.3);
+  background: rgba(100,116,139,.06);
+  color: rgba(55,65,81,1);
+}
+
+html[data-theme="light"] #schedulePanelSection .status-pill.status-other,
+html[data-theme="light"] #schedulePanelSection .status-pill.status-other{
+  border-color: rgba(148,163,184,.25);
+  background: rgba(247,249,250,1);
+  color: var(--text-sub);
+}
+
+/* ------------------------------------------------------------------
+ * Schedule panel — targeted fixes for mobile vertical-text and spacing
+ * - Force horizontal writing mode for the schedule panel only (minimal scope)
+ * - Normalize word-break/overflow-wrap and improve touch targets
+ * - Keep desktop/tablet behavior intact via narrow selectors
+ * ------------------------------------------------------------------ */
+#schedulePanelSection{
+  font-size:14px; /* slightly larger for readability */
+  line-height:1.45;
+}
+
+#schedulePanelSection, #schedulePanelSection * {
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+  -webkit-text-size-adjust: 100% !important;
+}
+
+#schedulePanelSection .status-table thead th,
+#schedulePanelSection .status-table tbody td{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 720px){
+  /* mobile card mode: allow label/value wrapping but prevent one-char-per-line */
+  #schedulePanelSection .status-table tbody td{
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    padding:12px 12px !important;
+    font-size:14px !important;
+  }
+}
+#schedulePanelSection .status-table tbody td:nth-child(2){
+  width:140px;
+  max-width:160px;
+  white-space:nowrap;
+}
+
+/* Filters / controls spacing */
+#schedulePanelSection .filters{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+#schedulePanelSection .filters .form-control, #schedulePanelSection .filters .btn{ min-height:40px; }
+
+/* Align search & status filter labels and controls in schedule toolbar */
+#schedulePanelSection .filters .filter{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#schedulePanelSection .filters .filter .filter-label{
+  display:inline-block;
+  width:84px; /* fixed label width so controls align */
+  color:var(--text-sub);
+  font-size:12px;
+}
+#schedulePanelSection .filters .filter .input,
+#schedulePanelSection .filters .filter .select{
+  min-width:140px;
+}
+
+@media (max-width: 720px){
+  /* stack filters on small screens */
+  #schedulePanelSection .filters .filter{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  #schedulePanelSection .filters .filter .filter-label{ width:auto; }
+  #schedulePanelSection .filters .filter .input,
+  #schedulePanelSection .filters .filter .select{ min-width:100%; width:100%; }
+}
+
+/* subtle focus ring for keyboard users */
+#schedulePanelSection .btn:focus, #schedulePanelSection .form-control:focus{
+  outline:2px solid rgba(100,150,255,0.18);
+  outline-offset:2px;
+}
+
+/* last update alignment */
+#schedulePanelSection .lastUpdate{ text-align:right; font-size:13px; color:var(--text-sub); }
+
+@media (max-width: 420px){
+  /* slightly larger tap targets on very small screens */
+  #schedulePanelSection .status-table tbody td{ padding:14px 12px; }
+  #schedulePanelSection .status-table tbody tr{ min-height:64px; }
+
+  /* collapse some wide columns visually by allowing wrap */
+  #schedulePanelSection .status-table tbody td{ white-space:normal; }
+}
+
+/* end UI 排版優化 */
+
+/* ------------------------------------------------------------------
+ * Mobile fixes for schedule table
+ * - reduce fixed first-column width on narrow screens
+ * - allow status / appt / time badges to wrap safely
+ * - prefer horizontal scroll when necessary but avoid content overflow
+ * ------------------------------------------------------------------ */
+@media (max-width: 520px) {
+  /* allow the schedule table to shrink to container width when possible */
+  #schedulePanelSection .status-table {
+    min-width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  /* shrink the left column (order/id) so it doesn't push content off-screen */
+  #schedulePanelSection .status-table tbody td:first-child,
+  #schedulePanelSection .status-table thead th:first-child {
+    width: clamp(44px, 12vw, 72px) !important;
+    max-width: 72px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  /* allow status and appointment cells to wrap instead of forcing overflow */
+  #schedulePanelSection .status-table tbody td:nth-child(3),
+  #schedulePanelSection .status-table tbody td:nth-child(4),
+  #schedulePanelSection .status-table tbody td:nth-child(5) {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  /* make pills and badges wrap safely and reduce padding slightly */
+  #schedulePanelSection .status-pill,
+  #schedulePanelSection .appt-block,
+  #schedulePanelSection .time-badge {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    font-size: 12px !important;
+    display: inline-block !important;
+  }
+
+  /* slightly reduce row padding for narrow screens */
+  #schedulePanelSection .status-table tbody td { padding: 10px 8px !important; }
+}

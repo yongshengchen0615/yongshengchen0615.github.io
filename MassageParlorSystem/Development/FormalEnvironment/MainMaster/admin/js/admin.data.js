@@ -47,6 +47,7 @@ function snapshot_(a) {
     techIsMaster: normalizeYesNo_(a.techIsMaster),
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a.techAppointmentQueryEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   });
@@ -87,6 +88,7 @@ function toAdminRow_(a) {
     techIsMaster: normalizeYesNo_(a?.techIsMaster),
     techPushEnabled: normalizeYesNo_(a?.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a?.techPersonalStatusEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a?.techAppointmentQueryEnabled),
     techScheduleEnabled: normalizeYesNo_(a?.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a?.techPerformanceEnabled),
   };
@@ -124,6 +126,7 @@ function toUpdateItem_(a) {
     techIsMaster: normalizeYesNo_(a.techIsMaster),
     techPushEnabled: normalizeYesNo_(a.techPushEnabled),
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a.techAppointmentQueryEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
   };

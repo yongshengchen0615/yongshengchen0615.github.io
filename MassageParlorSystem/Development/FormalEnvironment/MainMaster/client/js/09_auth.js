@@ -14,9 +14,9 @@ function setAdminPermsFromCheck_(check) {
 		techIsMaster: check.techIsMaster,
 		techPushEnabled: check.techPushEnabled,
 		techPersonalStatusEnabled: check.techPersonalStatusEnabled,
+		techAppointmentQueryEnabled: check.techAppointmentQueryEnabled,
 		techScheduleEnabled: check.techScheduleEnabled,
 		techPerformanceEnabled: check.techPerformanceEnabled,
-		bookingEnabled: check.bookingEnabled,
 	};
 }
 
