@@ -62,7 +62,21 @@ async function liffGate_() {
     throw err;
   }
 
-  const profile = await liff.getProfile();
+  let profile;
+  try {
+    profile = await liff.getProfile();
+  } catch (err) {
+    console.error("liff.getProfile error:", err);
+    // Provide clearer instruction for permission issues
+    const msg = String(err?.message || err || "").toLowerCase();
+    if (msg.includes("permission") || msg.includes("scope")) {
+      throw new Error(
+        "LIFF 權限錯誤：請在 LINE Developers 的 LIFF 應用設定中加入所需 scopes（例如 profile、openid、email），並確認 `LIFF_ID` 正確對應。 原始錯誤: " + String(err)
+      );
+    }
+    throw err;
+  }
+
   me.userId = String(profile.userId || "").trim();
   me.displayName = String(profile.displayName || "").trim();
 
