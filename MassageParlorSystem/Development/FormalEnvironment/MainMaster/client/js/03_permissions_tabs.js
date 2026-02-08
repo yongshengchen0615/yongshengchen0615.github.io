@@ -20,7 +20,7 @@ function canTech_(permKey) {
 /**
  * 欄位 index（table nth-child）
  * 1:勾選 2:# 3:userId 4:顯示名稱 5:建立時間 6:開始使用 7:期限(天) 8:使用狀態 9:審核狀態
- * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:業績開通 16:操作
+ * 10:師傅編號 11:是否師傅 12:是否推播 13:個人狀態開通 14:排班表開通 15:業績開通 16:預約查詢開通 17:操作
  */
 const PERM_TO_COLS = {
   techAudit: [9],
@@ -31,9 +31,9 @@ const PERM_TO_COLS = {
   techIsMaster: [11],
   techPushEnabled: [12],
   techPersonalStatusEnabled: [13],
+  techAppointmentQueryEnabled: [16],
   techScheduleEnabled: [14],
   techPerformanceEnabled: [15],
-  techAppointmentQueryEnabled: [],
 };
 
 function allTechPermsYes_() {
@@ -83,6 +83,7 @@ function applyColumnPermissions_() {
  * - 批次審核 -> 技師審核狀態 (techAudit)
  * - 批次推播 -> 技師是否推播 (techPushEnabled)
  * - 批次個人狀態 -> 技師個人狀態開通 (techPersonalStatusEnabled)
+ * - 批次預約查詢 -> 技師預約查詢開通 (techAppointmentQueryEnabled)
  * - 批次排班表 -> 技師排班表開通 (techScheduleEnabled)
  * - 批次期限(天) -> 技師使用期限 (techExpiryDate)
  */
@@ -90,9 +91,9 @@ const PERM_TO_BULK_INPUT_IDS = {
   techAudit: ["bulkAudit"],
   techPushEnabled: ["bulkPush"],
   techPersonalStatusEnabled: ["bulkPersonalStatus"],
+  techAppointmentQueryEnabled: ["bulkBookingEnabled"],
   techScheduleEnabled: ["bulkScheduleEnabled"],
   techPerformanceEnabled: ["bulkPerformanceEnabled"],
-  techAppointmentQueryEnabled: [],
   techExpiryDate: ["bulkUsageDays"],
 };
 
@@ -197,6 +198,8 @@ function canEditUserField_(field) {
       return canTech_("techPushEnabled");
     case "personalStatusEnabled":
       return canTech_("techPersonalStatusEnabled");
+    case "bookingEnabled":
+      return canTech_("techAppointmentQueryEnabled");
     case "scheduleEnabled":
       return canTech_("techScheduleEnabled");
     case "performanceEnabled":

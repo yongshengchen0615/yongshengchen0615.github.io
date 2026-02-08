@@ -293,23 +293,25 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
  * table[data-view="usage" | "master" | "features" | "all"]
  * ========================================================= */
 
-/* USAGE：顯示 1-9 + 16；隱藏 10-15 */
+/* USAGE：顯示 1-9 + 17；隱藏 10-16 */
 .client-scope table[data-view="usage"] thead th:nth-child(10),
 .client-scope table[data-view="usage"] thead th:nth-child(11),
 .client-scope table[data-view="usage"] thead th:nth-child(12),
 .client-scope table[data-view="usage"] thead th:nth-child(13),
 .client-scope table[data-view="usage"] thead th:nth-child(14),
 .client-scope table[data-view="usage"] thead th:nth-child(15),
+.client-scope table[data-view="usage"] thead th:nth-child(16),
 .client-scope table[data-view="usage"] tbody td:nth-child(10),
 .client-scope table[data-view="usage"] tbody td:nth-child(11),
 .client-scope table[data-view="usage"] tbody td:nth-child(12),
 .client-scope table[data-view="usage"] tbody td:nth-child(13),
 .client-scope table[data-view="usage"] tbody td:nth-child(14),
-.client-scope table[data-view="usage"] tbody td:nth-child(15){
+.client-scope table[data-view="usage"] tbody td:nth-child(15),
+.client-scope table[data-view="usage"] tbody td:nth-child(16){
   display:none;
 }
 
-/* MASTER：顯示 1-5 + 9-11 + 16；隱藏 6-8 + 12-15 */
+/* MASTER：顯示 1-5 + 9-11 + 17；隱藏 6-8 + 12-16 */
 .client-scope table[data-view="master"] thead th:nth-child(6),
 .client-scope table[data-view="master"] thead th:nth-child(7),
 .client-scope table[data-view="master"] thead th:nth-child(8),
@@ -317,13 +319,15 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .client-scope table[data-view="master"] thead th:nth-child(13),
 .client-scope table[data-view="master"] thead th:nth-child(14),
 .client-scope table[data-view="master"] thead th:nth-child(15),
+.client-scope table[data-view="master"] thead th:nth-child(16),
 .client-scope table[data-view="master"] tbody td:nth-child(6),
 .client-scope table[data-view="master"] tbody td:nth-child(7),
 .client-scope table[data-view="master"] tbody td:nth-child(8),
 .client-scope table[data-view="master"] tbody td:nth-child(12),
 .client-scope table[data-view="master"] tbody td:nth-child(13),
 .client-scope table[data-view="master"] tbody td:nth-child(14),
-.client-scope table[data-view="master"] tbody td:nth-child(15){
+.client-scope table[data-view="master"] tbody td:nth-child(15),
+.client-scope table[data-view="master"] tbody td:nth-child(16){
   display:none;
 }
 
@@ -814,8 +818,8 @@ tbody td.sticky-col{ background:transparent; }
   .responsive-table .sticky-right{ position:static; }
 
   /* Admins 主表：手機 card 模式不使用右側 sticky 欄位群 */
-  #adminsTable thead th:nth-child(n+8):nth-child(-n+18),
-  #adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+  #adminsTable thead th:nth-child(n+8):nth-child(-n+19),
+  #adminsTable tbody td:nth-child(n+8):nth-child(-n+19){
     position: static;
     right: auto;
     z-index: auto;
@@ -891,7 +895,7 @@ tbody td.sticky-right{
 /* === Admins 主表：右側固定「是/否」欄位群（桌機） ===
  * 欄位順序（1-indexed）：
  * 1:check,2:#,3:userId,4:name,5:audit,6:createdAt,7:lastLogin,
- * 8~18:是/否欄位, 19:操作(sticky-right)
+ * 8~19:是/否欄位, 20:操作(sticky-right)
  */
 #adminsTable{
   --yn-col-w: 96px;
@@ -908,21 +912,21 @@ tbody td.sticky-right{
 
 /* 是/否欄固定寬度 + 內容靠右（桌機） */
 #adminsTable td.yn-cell{ text-align:right; }
-#adminsTable thead th:nth-child(n+8):nth-child(-n+18),
-#adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+#adminsTable thead th:nth-child(n+8):nth-child(-n+19),
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+19){
   width: var(--yn-col-w);
   min-width: var(--yn-col-w);
   max-width: var(--yn-col-w);
 }
 
-/* 右側固定：把 8~18 欄位逐一 sticky 到操作欄左側（避免橫向捲動時找不到） */
-#adminsTable thead th:nth-child(n+8):nth-child(-n+18){
+/* 右側固定：把 8~19 欄位逐一 sticky 到操作欄左側（避免橫向捲動時找不到） */
+#adminsTable thead th:nth-child(n+8):nth-child(-n+19){
   position: sticky;
   z-index: 5;
   background: var(--bg);
 }
 
-#adminsTable tbody td:nth-child(n+8):nth-child(-n+18){
+#adminsTable tbody td:nth-child(n+8):nth-child(-n+19){
   position: sticky;
   z-index: 4;
   background: inherit;
@@ -932,39 +936,42 @@ tbody td.sticky-right{
 #adminsTable thead th.sticky-right{ z-index: 6; }
 #adminsTable tbody td.sticky-right{ z-index: 5; background: inherit; }
 
-/* 右側 offset：第 18 欄貼著操作欄，往左依序累加 yn 欄寬 */
+/* 右側 offset：第 19 欄貼著操作欄，往左依序累加 yn 欄寬 */
+#adminsTable thead th:nth-child(19),
+#adminsTable tbody td:nth-child(19){ right: var(--op-col-w); }
+
 #adminsTable thead th:nth-child(18),
-#adminsTable tbody td:nth-child(18){ right: var(--op-col-w); }
+#adminsTable tbody td:nth-child(18){ right: calc(var(--op-col-w) + 1 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(17),
-#adminsTable tbody td:nth-child(17){ right: calc(var(--op-col-w) + 1 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(17){ right: calc(var(--op-col-w) + 2 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(16),
-#adminsTable tbody td:nth-child(16){ right: calc(var(--op-col-w) + 2 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(16){ right: calc(var(--op-col-w) + 3 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(15),
-#adminsTable tbody td:nth-child(15){ right: calc(var(--op-col-w) + 3 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(15){ right: calc(var(--op-col-w) + 4 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(14),
-#adminsTable tbody td:nth-child(14){ right: calc(var(--op-col-w) + 4 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(14){ right: calc(var(--op-col-w) + 5 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(13),
-#adminsTable tbody td:nth-child(13){ right: calc(var(--op-col-w) + 5 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(13){ right: calc(var(--op-col-w) + 6 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(12),
-#adminsTable tbody td:nth-child(12){ right: calc(var(--op-col-w) + 6 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(12){ right: calc(var(--op-col-w) + 7 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(11),
-#adminsTable tbody td:nth-child(11){ right: calc(var(--op-col-w) + 7 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(11){ right: calc(var(--op-col-w) + 8 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(10),
-#adminsTable tbody td:nth-child(10){ right: calc(var(--op-col-w) + 8 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(10){ right: calc(var(--op-col-w) + 9 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(9),
-#adminsTable tbody td:nth-child(9){ right: calc(var(--op-col-w) + 9 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(9){ right: calc(var(--op-col-w) + 10 * var(--yn-col-w)); }
 
 #adminsTable thead th:nth-child(8),
-#adminsTable tbody td:nth-child(8){ right: calc(var(--op-col-w) + 10 * var(--yn-col-w)); }
+#adminsTable tbody td:nth-child(8){ right: calc(var(--op-col-w) + 11 * var(--yn-col-w)); }
 
 /* === 技師欄位「是/否」切換按鈕（替代 select，避免無法展開/被裁切） === */
 .yn-toggle{

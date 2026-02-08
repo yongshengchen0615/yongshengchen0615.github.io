@@ -250,6 +250,7 @@ function updateAdminsBatch_(items) {
           techIsMaster,
           techPushEnabled,
           techPersonalStatusEnabled,
+          techAppointmentQueryEnabled,
           techScheduleEnabled,
           techPerformanceEnabled,
         ]);
