@@ -93,7 +93,9 @@ function renderTable_(rows) {
   const rest = [...keySet].filter((k) => !presentCore.includes(k)).sort((a, b) => String(a).localeCompare(String(b)));
 
   // UI 欄位過多會很難看：最多顯示 12 欄
-  const keys = [...presentCore, ...rest].slice(0, 12);
+  // 不顯示內部或不需暴露的欄位
+  const HIDDEN_KEYS = new Set(["bookingDetailId", "id"]);
+  const keys = [...presentCore, ...rest].filter((k) => !HIDDEN_KEYS.has(k)).slice(0, 12);
 
   dom.bookingHeadRowEl.innerHTML = keys.map((k) => `<th>${HEADER_ZH[k] || k}</th>`).join("");
 
