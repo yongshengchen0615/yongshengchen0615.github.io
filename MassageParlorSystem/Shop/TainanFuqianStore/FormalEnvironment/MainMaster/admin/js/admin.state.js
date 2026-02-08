@@ -31,6 +31,7 @@
  * @property {string} techPersonalStatusEnabled
  * @property {string} techScheduleEnabled
  * @property {string} techPerformanceEnabled
+ * @property {string} techAppointmentQueryEnabled
  */
 
 // 由 config.json 載入

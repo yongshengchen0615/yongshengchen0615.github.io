@@ -49,6 +49,7 @@ function snapshot_(a) {
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a.techAppointmentQueryEnabled),
   });
 }
 
@@ -89,6 +90,7 @@ function toAdminRow_(a) {
     techPersonalStatusEnabled: normalizeYesNo_(a?.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a?.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a?.techPerformanceEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a?.techAppointmentQueryEnabled),
   };
 }
 
@@ -126,5 +128,6 @@ function toUpdateItem_(a) {
     techPersonalStatusEnabled: normalizeYesNo_(a.techPersonalStatusEnabled),
     techScheduleEnabled: normalizeYesNo_(a.techScheduleEnabled),
     techPerformanceEnabled: normalizeYesNo_(a.techPerformanceEnabled),
+    techAppointmentQueryEnabled: normalizeYesNo_(a.techAppointmentQueryEnabled),
   };
 }

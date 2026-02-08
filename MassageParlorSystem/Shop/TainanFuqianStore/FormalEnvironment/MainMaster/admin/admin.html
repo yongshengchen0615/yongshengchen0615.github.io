@@ -264,23 +264,24 @@
                 <th>最後登入</th>
 
                 <!-- 新欄位（接在後面） -->
-                <th>推播功能開通</th>
-                <th>技師審核狀態</th>
-                <th>技師建立時間</th>
-                <th>技師開始使用日期</th>
-                <th>技師使用期限</th>
-                <th>技師師傅編號</th>
-                <th>技師是否師傅</th>
-                <th>技師是否推播</th>
-                <th>技師個人狀態開通</th>
-                <th>技師排班表開通</th>
-                <th>技師業績開通</th>
+                <th title="推播功能開通">推播</th>
+                <th title="技師審核狀態">技師審核</th>
+                <th title="技師建立時間">建立</th>
+                <th title="技師開始使用日期">開始日</th>
+                <th title="技師使用期限">期限</th>
+                <th title="技師師傅編號">師傅編號</th>
+                <th title="技師是否師傅">是否師傅</th>
+                <th title="技師是否推播">是否推播</th>
+                <th title="技師個人狀態開通">個人狀態</th>
+                <th title="技師排班表開通">排班表</th>
+                <th title="技師業績開通">業績</th>
+                <th title="技師預約查詢開通">預約查詢</th>
 
                 <th class="sticky-right">操作</th>
               </tr>
             </thead>
             <tbody id="tbody">
-              <tr><td colspan="19">載入中...</td></tr>
+              <tr><td colspan="20">載入中...</td></tr>
             </tbody>
           </table>
         </div>
@@ -474,6 +475,15 @@
             </div>
 
             <div class="bulk-group">
+              <label class="bulk-label" for="uBulkBookingEnabled">批次預約查詢</label>
+              <select id="uBulkBookingEnabled" class="select">
+                <option value="">不變更</option>
+                <option value="是">開啟</option>
+                <option value="否">關閉</option>
+              </select>
+            </div>
+
+            <div class="bulk-group">
               <label class="bulk-label" for="uBulkUsageDays">批次期限(天)</label>
               <input id="uBulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
             </div>
@@ -508,11 +518,12 @@
                 <th>個人狀態開通</th>
                 <th>排班表開通</th>
                 <th>業績開通</th>
+                <th>預約查詢開通</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody id="uTbody">
-              <tr><td colspan="16">等待管理員驗證後載入...</td></tr>
+              <tr><td colspan="17">等待管理員驗證後載入...</td></tr>
             </tbody>
           </table>
         </div>

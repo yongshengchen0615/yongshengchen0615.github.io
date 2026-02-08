@@ -41,7 +41,7 @@ let pushingNow = false;
 function uSetTbodyMessage_(msg) {
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="16">${escapeHtml(msg || "-")}</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="17">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function uNormalizeYesNo_(v) {
@@ -58,6 +58,7 @@ function uSnapshot_(u) {
     masterCode: String(u.masterCode || ""),
     pushEnabled: uNormalizeYesNo_(u.pushEnabled || "否"),
     personalStatusEnabled: uNormalizeYesNo_(u.personalStatusEnabled || "否"),
+    bookingEnabled: uNormalizeYesNo_(u.bookingEnabled || "否"),
     scheduleEnabled: uNormalizeYesNo_(u.scheduleEnabled || "否"),
     performanceEnabled: uNormalizeYesNo_(u.performanceEnabled || "否"),
   });
@@ -124,6 +125,7 @@ function uSetLock_(locked) {
     "uBulkAudit",
     "uBulkPush",
     "uBulkPersonalStatus",
+    "uBulkBookingEnabled",
     "uBulkScheduleEnabled",
     "uBulkPerformanceEnabled",
     "uBulkUsageDays",
@@ -451,7 +453,7 @@ function uRender_() {
   const tbody = document.getElementById("uTbody");
   if (!tbody) return;
   if (!uFiltered.length) {
-    tbody.innerHTML = `<tr><td colspan="16">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="17">無資料</td></tr>`;
     return;
   }
 
@@ -464,6 +466,7 @@ function uRender_() {
 
       const pushEnabled = uNormalizeYesNo_(u.pushEnabled || "否");
       const personalStatusEnabled = uNormalizeYesNo_(u.personalStatusEnabled || "否");
+      const bookingEnabled = uNormalizeYesNo_(u.bookingEnabled || "否");
       const scheduleEnabled = uNormalizeYesNo_(u.scheduleEnabled || "否");
       const performanceEnabled = uNormalizeYesNo_(u.performanceEnabled || "否");
 
@@ -529,6 +532,13 @@ function uRender_() {
             <select data-field="performanceEnabled" aria-label="業績開通">
               <option value="否" ${performanceEnabled === "否" ? "selected" : ""}>否</option>
               <option value="是" ${performanceEnabled === "是" ? "selected" : ""}>是</option>
+            </select>
+          </td>
+
+          <td data-label="預約查詢開通">
+            <select data-field="bookingEnabled" aria-label="預約查詢開通">
+              <option value="否" ${bookingEnabled === "否" ? "selected" : ""}>否</option>
+              <option value="是" ${bookingEnabled === "是" ? "selected" : ""}>是</option>
             </select>
           </td>
 
@@ -610,6 +620,7 @@ async function uLoadUsers_() {
       audit: normalizeAudit_(u.audit),
       pushEnabled: uNormalizeYesNo_(u.pushEnabled || "否"),
       personalStatusEnabled: uNormalizeYesNo_(u.personalStatusEnabled || "否"),
+      bookingEnabled: uNormalizeYesNo_(u.bookingEnabled || "否"),
       scheduleEnabled: uNormalizeYesNo_(u.scheduleEnabled || "否"),
       performanceEnabled: uNormalizeYesNo_(u.performanceEnabled || "否"),
     }));
@@ -660,6 +671,7 @@ async function uBulkApply_() {
   let audit = String(document.getElementById("uBulkAudit")?.value || "").trim();
   let pushEnabled = String(document.getElementById("uBulkPush")?.value || "").trim();
   let personalStatusEnabled = String(document.getElementById("uBulkPersonalStatus")?.value || "").trim();
+  let bookingEnabled = String(document.getElementById("uBulkBookingEnabled")?.value || "").trim();
   let scheduleEnabled = String(document.getElementById("uBulkScheduleEnabled")?.value || "").trim();
   let performanceEnabled = String(document.getElementById("uBulkPerformanceEnabled")?.value || "").trim();
   let usageDaysRaw = String(document.getElementById("uBulkUsageDays")?.value || "").trim();
@@ -679,7 +691,16 @@ async function uBulkApply_() {
     }
   }
 
-  if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw && !startDate) {
+  if (
+    !audit &&
+    !pushEnabled &&
+    !personalStatusEnabled &&
+    !bookingEnabled &&
+    !scheduleEnabled &&
+    !performanceEnabled &&
+    !usageDaysRaw &&
+    !startDate
+  ) {
     toast("請先選擇要套用的批次欄位", "err");
     return;
   }
@@ -695,6 +716,7 @@ async function uBulkApply_() {
     if (startDate) u.startDate = startDate;
     if (usageDaysRaw) u.usageDays = String(usageDays);
     if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
+    if (bookingEnabled) u.bookingEnabled = bookingEnabled;
     if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
     if (performanceEnabled) u.performanceEnabled = performanceEnabled;
 
@@ -772,6 +794,7 @@ async function uSaveAllDirty_() {
           masterCode: String(u.masterCode || ""),
           pushEnabled: finalPush,
           personalStatusEnabled: uNormalizeYesNo_(u.personalStatusEnabled || "否"),
+          bookingEnabled: uNormalizeYesNo_(u.bookingEnabled || "否"),
           scheduleEnabled: uNormalizeYesNo_(u.scheduleEnabled || "否"),
           performanceEnabled: uNormalizeYesNo_(u.performanceEnabled || "否"),
         };
@@ -796,6 +819,7 @@ async function uSaveAllDirty_() {
       u.masterCode = it.masterCode;
       u.pushEnabled = it.audit !== "通過" ? "否" : it.pushEnabled;
       u.personalStatusEnabled = it.personalStatusEnabled;
+      u.bookingEnabled = it.bookingEnabled;
       u.scheduleEnabled = it.scheduleEnabled;
       u.performanceEnabled = it.performanceEnabled;
 
@@ -961,6 +985,8 @@ function uBind_() {
       u.pushEnabled = uNormalizeYesNo_(v);
     } else if (field === "personalStatusEnabled") {
       u.personalStatusEnabled = uNormalizeYesNo_(v);
+    } else if (field === "bookingEnabled") {
+      u.bookingEnabled = uNormalizeYesNo_(v);
     } else if (field === "scheduleEnabled") {
       u.scheduleEnabled = uNormalizeYesNo_(v);
     } else if (field === "performanceEnabled") {

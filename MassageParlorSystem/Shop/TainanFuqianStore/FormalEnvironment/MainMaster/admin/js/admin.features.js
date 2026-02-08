@@ -62,9 +62,37 @@ async function liffGate_() {
     throw err;
   }
 
-  const profile = await liff.getProfile();
-  me.userId = String(profile.userId || "").trim();
-  me.displayName = String(profile.displayName || "").trim();
+  try {
+    const profile = await liff.getProfile();
+    me.userId = String(profile.userId || "").trim();
+    me.displayName = String(profile.displayName || "").trim();
+  } catch (e) {
+    // fallback：若 LIFF app 有 openid scope，可用 idToken.sub
+    const token = (() => {
+      try {
+        return liff.getDecodedIDToken && liff.getDecodedIDToken();
+      } catch (_) {
+        return null;
+      }
+    })();
+
+    if (token && token.sub) {
+      me.userId = String(token.sub || "").trim();
+      me.displayName = String(token.name || "").trim();
+    } else {
+      setAuthText_("LIFF 權限不足（缺少 profile/openid scope）");
+      showBlocker_(
+        "LIFF 權限不足：目前 LIFF App scope 未包含 profile（建議同時包含 openid）。\n\n請到 LINE Developers → 你的 Channel → LIFF → Scopes 勾選 profile/openid，然後重新開啟此頁。",
+        "-",
+        "-",
+        "-"
+      );
+      const err = new Error("LIFF_SCOPE_MISSING");
+      err.code = "LIFF_SCOPE_MISSING";
+      err.original = e;
+      throw err;
+    }
+  }
 
   if (!me.userId) throw new Error("LIFF missing userId");
 
