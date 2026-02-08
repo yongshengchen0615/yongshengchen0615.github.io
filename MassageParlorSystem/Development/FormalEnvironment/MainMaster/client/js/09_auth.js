@@ -20,6 +20,29 @@ function setAdminPermsFromCheck_(check) {
 	};
 }
 
+async function getLiffIdentity_() {
+	// 主要走 profile（需要 LIFF scope: profile）
+	try {
+		const profile = await liff.getProfile();
+		return { userId: String(profile.userId || "").trim(), displayName: String(profile.displayName || "").trim() };
+	} catch (e) {
+		// fallback：若有 openid scope，可用 idToken.sub
+		try {
+			const token = liff.getDecodedIDToken && liff.getDecodedIDToken();
+			if (token && token.sub) {
+				return { userId: String(token.sub || "").trim(), displayName: String(token.name || "").trim() };
+			}
+		} catch (_) {
+			// ignore
+		}
+
+		const err = new Error("LIFF_SCOPE_MISSING");
+		err.code = "LIFF_SCOPE_MISSING";
+		err.original = e;
+		throw err;
+	}
+}
+
 async function refreshAdminPerms_() {
 	try {
 		if (!adminProfile?.userId) return false;
@@ -70,8 +93,9 @@ async function adminAuthBoot_() {
 			return false;
 		}
 
-		const profile = await liff.getProfile();
-		adminProfile = { userId: profile.userId, displayName: profile.displayName || "" };
+		const ident = await getLiffIdentity_();
+		if (!ident.userId) throw new Error("LIFF missing userId");
+		adminProfile = { userId: ident.userId, displayName: ident.displayName || "" };
 
 		const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName);
 
@@ -122,6 +146,14 @@ async function adminAuthBoot_() {
 		toast(`管理員：${adminProfile.displayName}（已通過）`, "ok");
 		return true;
 	} catch (err) {
+		if (err && err.code === "LIFF_SCOPE_MISSING") {
+			showAuthGate_(
+				true,
+				"LIFF 權限不足：目前 LIFF App 沒有提供取得使用者資訊的權限。\n\n請到 LINE Developers → 你的 Channel → LIFF → Scopes 勾選：profile（建議同時勾選 openid 以利備援）。\n\n調整後請重新開啟此頁。"
+			);
+			setEditingEnabled_(false);
+			return false;
+		}
 		console.warn("adminAuthBoot blocked:", err);
 		return false;
 	}
