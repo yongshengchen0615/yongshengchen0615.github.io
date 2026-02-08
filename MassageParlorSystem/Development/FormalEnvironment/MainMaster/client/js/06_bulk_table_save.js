@@ -82,7 +82,12 @@ async function bulkApply_() {
 	const scheduleEnabled = canEditUserField_?.("scheduleEnabled")
 		? document.getElementById("bulkScheduleEnabled")?.value || ""
 		: "";
-	const performanceEnabled = document.getElementById("bulkPerformanceEnabled")?.value || "";
+	const performanceEnabled = canEditUserField_?.("performanceEnabled")
+		? document.getElementById("bulkPerformanceEnabled")?.value || ""
+		: "";
+	const bookingEnabled = canEditUserField_?.("bookingEnabled")
+		? document.getElementById("bulkBookingEnabled")?.value || ""
+		: "";
 
 	const usageDaysRaw = canEditUserField_?.("usageDays") ? String(document.getElementById("bulkUsageDays")?.value || "").trim() : "";
 	const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
@@ -91,7 +96,7 @@ async function bulkApply_() {
 		return;
 	}
 
-	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw) {
+	if (!audit && !pushEnabled && !personalStatusEnabled && !bookingEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw) {
 		toast("請先選擇要套用的批次欄位", "err");
 		return;
 	}
@@ -110,6 +115,7 @@ async function bulkApply_() {
 		else if (pushEnabled) u.pushEnabled = pushEnabled;
 
 		if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
+		if (bookingEnabled) u.bookingEnabled = bookingEnabled;
 		if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 		if (performanceEnabled) u.performanceEnabled = performanceEnabled;
 
@@ -179,7 +185,7 @@ function renderTable() {
 
 	if (!filteredUsers.length) {
 		const tr = document.createElement("tr");
-		tr.innerHTML = `<td colspan="16">無資料</td>`;
+		tr.innerHTML = `<td colspan="17">無資料</td>`;
 		tbody.appendChild(tr);
 		return;
 	}
@@ -192,6 +198,7 @@ function renderTable() {
 		const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
 		const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
 		const performanceEnabled = (u.performanceEnabled || "否") === "是" ? "是" : "否";
+		const bookingEnabled = (u.bookingEnabled || "否") === "是" ? "是" : "否";
 
 		const audit = normalizeAudit_(u.audit);
 		const isMaster = u.masterCode ? "是" : "否";
@@ -261,6 +268,13 @@ function renderTable() {
 				<select data-field="performanceEnabled" aria-label="業績開通">
 					<option value="否" ${performanceEnabled === "否" ? "selected" : ""}>否</option>
 					<option value="是" ${performanceEnabled === "是" ? "selected" : ""}>是</option>
+				</select>
+			</td>
+
+			<td data-label="預約查詢開通">
+				<select data-field="bookingEnabled" aria-label="預約查詢開通">
+					<option value="否" ${bookingEnabled === "否" ? "selected" : ""}>否</option>
+					<option value="是" ${bookingEnabled === "是" ? "selected" : ""}>是</option>
 				</select>
 			</td>
 
@@ -377,6 +391,7 @@ function handleRowFieldChange_(fieldEl) {
 	else if (field === "audit") u.audit = normalizeAudit_(value || "待審核");
 	else if (field === "pushEnabled") u.pushEnabled = String(value || "否");
 	else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
+	else if (field === "bookingEnabled") u.bookingEnabled = String(value || "否");
 	else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 	else if (field === "performanceEnabled") u.performanceEnabled = String(value || "否");
 
@@ -504,6 +519,7 @@ async function saveAllDirty_() {
 					personalStatusEnabled: u.personalStatusEnabled || "否",
 					scheduleEnabled: u.scheduleEnabled || "否",
 					performanceEnabled: u.performanceEnabled || "否",
+					bookingEnabled: u.bookingEnabled || "否",
 				};
 			});
 
@@ -538,6 +554,7 @@ async function saveAllDirty_() {
 				u.personalStatusEnabled = it.personalStatusEnabled;
 				u.scheduleEnabled = it.scheduleEnabled;
 				u.performanceEnabled = it.performanceEnabled;
+				u.bookingEnabled = it.bookingEnabled;
 
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
@@ -617,6 +634,7 @@ function snapshot_(u) {
 		personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
 		scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
 		performanceEnabled: (u.performanceEnabled || "否") === "是" ? "是" : "否",
+		bookingEnabled: (u.bookingEnabled || "否") === "是" ? "是" : "否",
 	});
 }
 

@@ -120,7 +120,7 @@ function render_() {
   const tbody = $("#tbody");
   if (!tbody) return;
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="19">無資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="20">無資料</td></tr>`;
     return;
   }
 
@@ -158,9 +158,9 @@ function render_() {
           ${ynCell_("techIsMaster", a.techIsMaster, "技師是否師傅")}
           ${ynCell_("techPushEnabled", a.techPushEnabled, "技師是否推播")}
           ${ynCell_("techPersonalStatusEnabled", a.techPersonalStatusEnabled, "技師個人狀態開通")}
-          ${ynCell_("techAppointmentQueryEnabled", a.techAppointmentQueryEnabled, "技師預約查詢開通")}
           ${ynCell_("techScheduleEnabled", a.techScheduleEnabled, "技師排班表開通")}
           ${ynCell_("techPerformanceEnabled", a.techPerformanceEnabled, "技師業績開通")}
+          ${ynCell_("techAppointmentQueryEnabled", a.techAppointmentQueryEnabled, "技師預約查詢開通")}
 
           <td class="sticky-right" data-label="操作">
             <div class="actions">

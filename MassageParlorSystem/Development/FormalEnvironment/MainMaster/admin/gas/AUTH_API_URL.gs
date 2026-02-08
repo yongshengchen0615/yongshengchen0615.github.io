@@ -111,6 +111,7 @@ function upsertAndCheck_(userId, displayName) {
       NO, // 技師是否師傅
       NO, // 技師是否推播
       NO, // 技師個人狀態開通
+      NO, // 技師預約查詢開通
       NO, // 技師排班表開通
       NO, // 技師業績開通
     ]);
@@ -131,6 +132,7 @@ function upsertAndCheck_(userId, displayName) {
       techIsMaster: NO,
       techPushEnabled: NO,
       techPersonalStatusEnabled: NO,
+      techAppointmentQueryEnabled: NO,
       techScheduleEnabled: NO,
       techPerformanceEnabled: NO,
     };
@@ -191,6 +193,7 @@ function listAdmins_() {
       techIsMaster: String(data[r][idx.techIsMaster] ?? ""),
       techPushEnabled: String(data[r][idx.techPushEnabled] ?? ""),
       techPersonalStatusEnabled: String(data[r][idx.techPersonalStatusEnabled] ?? ""),
+      techAppointmentQueryEnabled: String(data[r][idx.techAppointmentQueryEnabled] ?? ""),
       techScheduleEnabled: String(data[r][idx.techScheduleEnabled] ?? ""),
       techPerformanceEnabled: String(data[r][idx.techPerformanceEnabled] ?? ""),
     });
@@ -237,6 +240,7 @@ function updateAdminsBatch_(items) {
       const techIsMaster = String(it.techIsMaster ?? "否");
       const techPushEnabled = String(it.techPushEnabled ?? "否");
       const techPersonalStatusEnabled = String(it.techPersonalStatusEnabled ?? "否");
+      const techAppointmentQueryEnabled = String(it.techAppointmentQueryEnabled ?? "否");
       const techScheduleEnabled = String(it.techScheduleEnabled ?? "否");
       const techPerformanceEnabled = String(it.techPerformanceEnabled ?? "否");
 
@@ -260,6 +264,7 @@ function updateAdminsBatch_(items) {
           techIsMaster,
           techPushEnabled,
           techPersonalStatusEnabled,
+          techAppointmentQueryEnabled,
           techScheduleEnabled,
           techPerformanceEnabled,
         ]);
@@ -287,6 +292,8 @@ function updateAdminsBatch_(items) {
       if (idx.techPushEnabled !== -1) sh.getRange(sheetRow, idx.techPushEnabled + 1).setValue(techPushEnabled);
       if (idx.techPersonalStatusEnabled !== -1)
         sh.getRange(sheetRow, idx.techPersonalStatusEnabled + 1).setValue(techPersonalStatusEnabled);
+      if (idx.techAppointmentQueryEnabled !== -1)
+        sh.getRange(sheetRow, idx.techAppointmentQueryEnabled + 1).setValue(techAppointmentQueryEnabled);
       if (idx.techScheduleEnabled !== -1) sh.getRange(sheetRow, idx.techScheduleEnabled + 1).setValue(techScheduleEnabled);
       if (idx.techPerformanceEnabled !== -1)
         sh.getRange(sheetRow, idx.techPerformanceEnabled + 1).setValue(techPerformanceEnabled);
@@ -363,6 +370,7 @@ function getOrCreateAdminsSheet_(ss) {
     "技師是否師傅",
     "技師是否推播",
     "技師個人狀態開通",
+    "技師預約查詢開通",
     "技師排班表開通",
     "技師業績開通",
   ];
@@ -398,6 +406,7 @@ function getOrCreateAdminsSheet_(ss) {
       fillDefaultIfEmpty_(sh, idx2.techIsMaster, lastRow, "否");
       fillDefaultIfEmpty_(sh, idx2.techPushEnabled, lastRow, "否");
       fillDefaultIfEmpty_(sh, idx2.techPersonalStatusEnabled, lastRow, "否");
+      fillDefaultIfEmpty_(sh, idx2.techAppointmentQueryEnabled, lastRow, "否");
       fillDefaultIfEmpty_(sh, idx2.techScheduleEnabled, lastRow, "否");
       fillDefaultIfEmpty_(sh, idx2.techPerformanceEnabled, lastRow, "否");
     }
@@ -445,6 +454,7 @@ function indexMap_(header) {
     techIsMaster: header.indexOf("技師是否師傅"),
     techPushEnabled: header.indexOf("技師是否推播"),
     techPersonalStatusEnabled: header.indexOf("技師個人狀態開通"),
+    techAppointmentQueryEnabled: header.indexOf("技師預約查詢開通"),
     techScheduleEnabled: header.indexOf("技師排班表開通"),
     techPerformanceEnabled: header.indexOf("技師業績開通"),
   };
@@ -483,9 +493,10 @@ function readPerms_(row, idx) {
     techMasterNo: get("techMasterNo"),
     techIsMaster: get("techIsMaster"),
     techPushEnabled: get("techPushEnabled"),
-    techPersonalStatusEnabled: get("techPersonalStatusEnabled"),
-    techScheduleEnabled: get("techScheduleEnabled"),
-    techPerformanceEnabled: get("techPerformanceEnabled"),
+      techPersonalStatusEnabled: get("techPersonalStatusEnabled"),
+      techAppointmentQueryEnabled: get("techAppointmentQueryEnabled"),
+      techScheduleEnabled: get("techScheduleEnabled"),
+      techPerformanceEnabled: get("techPerformanceEnabled"),
   };
 }
 
