@@ -83,6 +83,7 @@ async function bulkApply_() {
 		? document.getElementById("bulkScheduleEnabled")?.value || ""
 		: "";
 	const performanceEnabled = document.getElementById("bulkPerformanceEnabled")?.value || "";
+	const bookingEnabled = document.getElementById("bulkBookingEnabled")?.value || "";
 
 	const usageDaysRaw = canEditUserField_?.("usageDays") ? String(document.getElementById("bulkUsageDays")?.value || "").trim() : "";
 	const usageDays = usageDaysRaw ? Number(usageDaysRaw) : null;
@@ -91,7 +92,7 @@ async function bulkApply_() {
 		return;
 	}
 
-	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !usageDaysRaw) {
+	if (!audit && !pushEnabled && !personalStatusEnabled && !scheduleEnabled && !performanceEnabled && !bookingEnabled && !usageDaysRaw) {
 		toast("請先選擇要套用的批次欄位", "err");
 		return;
 	}
@@ -112,6 +113,7 @@ async function bulkApply_() {
 		if (personalStatusEnabled) u.personalStatusEnabled = personalStatusEnabled;
 		if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 		if (performanceEnabled) u.performanceEnabled = performanceEnabled;
+		if (bookingEnabled) u.bookingEnabled = bookingEnabled;
 
 		markDirty_(id, u);
 	});
@@ -179,7 +181,7 @@ function renderTable() {
 
 	if (!filteredUsers.length) {
 		const tr = document.createElement("tr");
-		tr.innerHTML = `<td colspan="16">無資料</td>`;
+		tr.innerHTML = `<td colspan="17">無資料</td>`;
 		tbody.appendChild(tr);
 		return;
 	}
@@ -192,6 +194,7 @@ function renderTable() {
 		const personalStatusEnabled = (u.personalStatusEnabled || "否") === "是" ? "是" : "否";
 		const scheduleEnabled = (u.scheduleEnabled || "否") === "是" ? "是" : "否";
 		const performanceEnabled = (u.performanceEnabled || "否") === "是" ? "是" : "否";
+		const bookingEnabled = (u.bookingEnabled || "否") === "是" ? "是" : "否";
 
 		const audit = normalizeAudit_(u.audit);
 		const isMaster = u.masterCode ? "是" : "否";
@@ -264,9 +267,17 @@ function renderTable() {
 				</select>
 			</td>
 
+			<td data-label="預約查詢開通">
+				<select data-field="bookingEnabled" aria-label="預約查詢開通">
+					<option value="否" ${bookingEnabled === "否" ? "selected" : ""}>否</option>
+					<option value="是" ${bookingEnabled === "是" ? "selected" : ""}>是</option>
+				</select>
+			</td>
+
 			<td data-label="操作">
 				<div class="actions">
 					${isDirty ? `<span class="dirty-dot" title="未儲存"></span>` : `<span class="row-hint">-</span>`}
+					<button class="btn secondary btn-booking" type="button">查預約</button>
 					<button class="btn danger btn-del" type="button">刪除</button>
 				</div>
 			</td>
@@ -337,10 +348,53 @@ function bindTableDelegation_() {
 		const userId = row?.dataset.userid;
 		if (!userId) return;
 
+		if (btn.classList.contains("btn-booking")) {
+			await handleRowBooking_(row, userId, btn);
+			return;
+		}
+
 		if (btn.classList.contains("btn-del")) {
 			await handleRowDelete_(row, userId, btn);
 		}
 	});
+}
+
+async function handleRowBooking_(row, userId, btn) {
+	const u = allUsers.find((x) => x.userId === userId);
+	if (!u) return;
+
+	const today = new Date();
+	const def = today.toISOString().slice(0,10);
+	const from = prompt('請輸入起始日期（YYYY-MM-DD）', def);
+	if (!from) return;
+	const to = prompt('請輸入結束日期（YYYY-MM-DD）', from);
+	if (!to) return;
+
+	try {
+		btn.disabled = true;
+		const old = btn.textContent;
+		btn.textContent = '查詢中...';
+
+		const params = { userId: userId, from: from, to: to };
+		if (u.masterCode) params.techNo = u.masterCode;
+
+		const res = await bookingQuery_(params);
+		if (!res || !res.ok) {
+			toast('查詢失敗：' + (res && res.error ? res.error : '未知錯誤'), 'err');
+			return;
+		}
+
+		const rows = res.rows || [];
+		const count = rows.length;
+		const preview = count > 0 ? JSON.stringify(rows.slice(0, 20), null, 2) : '無資料';
+		alert(`預約查詢：共 ${count} 筆\n\n${preview}`);
+	} catch (e) {
+		console.error('handleRowBooking_ error', e);
+		toast('查詢失敗（請看 console）', 'err');
+	} finally {
+		btn.disabled = false;
+		btn.textContent = '查預約';
+	}
 }
 
 function handleRowFieldChange_(fieldEl) {
@@ -379,6 +433,7 @@ function handleRowFieldChange_(fieldEl) {
 	else if (field === "personalStatusEnabled") u.personalStatusEnabled = String(value || "否");
 	else if (field === "scheduleEnabled") u.scheduleEnabled = String(value || "否");
 	else if (field === "performanceEnabled") u.performanceEnabled = String(value || "否");
+	else if (field === "bookingEnabled") u.bookingEnabled = String(value || "否");
 
 	const audit = normalizeAudit_(u.audit);
 	const pushSel = row.querySelector('select[data-field="pushEnabled"]');
@@ -504,6 +559,7 @@ async function saveAllDirty_() {
 					personalStatusEnabled: u.personalStatusEnabled || "否",
 					scheduleEnabled: u.scheduleEnabled || "否",
 					performanceEnabled: u.performanceEnabled || "否",
+					bookingEnabled: u.bookingEnabled || "否",
 				};
 			});
 
@@ -538,6 +594,7 @@ async function saveAllDirty_() {
 				u.personalStatusEnabled = it.personalStatusEnabled;
 				u.scheduleEnabled = it.scheduleEnabled;
 				u.performanceEnabled = it.performanceEnabled;
+				u.bookingEnabled = it.bookingEnabled;
 
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
@@ -617,6 +674,7 @@ function snapshot_(u) {
 		personalStatusEnabled: (u.personalStatusEnabled || "否") === "是" ? "是" : "否",
 		scheduleEnabled: (u.scheduleEnabled || "否") === "是" ? "是" : "否",
 		performanceEnabled: (u.performanceEnabled || "否") === "是" ? "是" : "否",
+		bookingEnabled: (u.bookingEnabled || "否") === "是" ? "是" : "否",
 	});
 }
 

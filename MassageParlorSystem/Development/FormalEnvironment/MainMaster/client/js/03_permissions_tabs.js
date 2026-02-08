@@ -33,6 +33,7 @@ const PERM_TO_COLS = {
   techPersonalStatusEnabled: [13],
   techScheduleEnabled: [14],
   techPerformanceEnabled: [15],
+  bookingEnabled: [16],
 };
 
 function allTechPermsYes_() {
@@ -92,6 +93,7 @@ const PERM_TO_BULK_INPUT_IDS = {
   techScheduleEnabled: ["bulkScheduleEnabled"],
   techPerformanceEnabled: ["bulkPerformanceEnabled"],
   techExpiryDate: ["bulkUsageDays"],
+  bookingEnabled: ["bulkBookingEnabled"],
 };
 
 function applyBulkPermissions_() {
@@ -199,6 +201,8 @@ function canEditUserField_(field) {
       return canTech_("techScheduleEnabled");
     case "performanceEnabled":
       return canTech_("techPerformanceEnabled");
+    case "bookingEnabled":
+      return canTech_("bookingEnabled");
     default:
       return true;
   }
