@@ -246,6 +246,17 @@ export async function runBookingQueryOnce({ reason }) {
         noThrottle: true,
       });
     } catch {}
+    // 發送前端事件，供同頁或外部 embedder 監聽（例如監控或整合）
+    try {
+      const evDetail = { from, to, rowsCount: rows.length, cached: !!res.cached, reason: reason || "" };
+      try {
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+          window.dispatchEvent(new CustomEvent("booking:queried", { detail: evDetail }));
+        } else if (typeof document !== "undefined" && typeof document.dispatchEvent === "function") {
+          document.dispatchEvent(new CustomEvent("booking:queried", { detail: evDetail }));
+        }
+      } catch {}
+    } catch {}
   } catch (e) {
     setStatus_("查詢失敗", "err");
     setMeta_(String(e && e.message ? e.message : e));
