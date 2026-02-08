@@ -18,7 +18,7 @@ import { setActivePanel, renderIncremental } from "./modules/table.js";
 import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
-import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
+import { initPerformanceUi, prefetchPerformanceOnce, manualRefreshPerformance } from "./modules/performance.js";
 import { initBookingUi } from "./modules/bookingQuery.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
@@ -74,6 +74,20 @@ function bindEventsOnce() {
   if (dom.btnTopupEl) {
     dom.btnTopupEl.addEventListener("click", async () => {
       await runTopupFlow({ context: "app", reloadOnSuccess: false });
+    });
+  }
+
+  // Performance manual refresh (prominent button in perf card)
+  if (dom.perfRefreshBtn) {
+    dom.perfRefreshBtn.addEventListener("click", async () => {
+      try {
+        await manualRefreshPerformance({ showToast: true });
+        try {
+          logUsageEvent({ event: "perf_manual_refresh", noThrottle: true, eventCn: "業績手動重整" });
+        } catch {}
+      } catch (e) {
+        // ignore - performance module shows error badge
+      }
     });
   }
 }

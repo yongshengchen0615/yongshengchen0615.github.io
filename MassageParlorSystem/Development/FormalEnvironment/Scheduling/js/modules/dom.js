@@ -89,6 +89,7 @@ export const dom = {
   perfSearchSummaryBtn: document.getElementById("perfSearchSummary"),
   perfSearchDetailBtn: document.getElementById("perfSearchDetail"),
   perfStatusEl: document.getElementById("perfStatus"),
+  perfRefreshBtn: document.getElementById("perfRefreshBtn"),
   perfMetaEl: document.getElementById("perfMeta"),
   perfMonthRatesEl: document.getElementById("perfMonthRates"),
   perfSummaryRowsEl: document.getElementById("perfSummaryRows"),

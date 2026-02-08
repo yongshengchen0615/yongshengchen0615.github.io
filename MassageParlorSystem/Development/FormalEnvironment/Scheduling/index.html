@@ -75,7 +75,6 @@
           <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
           <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
           <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
-          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
 
           <!-- 其他次要功能保留於同一列，超出時可水平滑動，不會換行 -->
           <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
@@ -130,6 +129,7 @@
             </div>
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>
+              <button id="refreshBtn" class="btn btn-ghost" type="button" title="手動重整">🔄 重整排班</button>
             </div>
           </header>
 
@@ -177,6 +177,7 @@
           </div>
           <div class="card-header-right">
             <span id="perfStatus" class="badge">尚未查詢</span>
+            <button id="perfRefreshBtn" class="btn btn-ghost" type="button" title="重整業績">🔄 重整業績</button>
           </div>
         </header>
 
