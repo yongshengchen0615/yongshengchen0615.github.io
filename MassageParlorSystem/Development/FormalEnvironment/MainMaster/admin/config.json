@@ -5,8 +5,20 @@
     "usage": "由 admin.js 於載入時 fetch 並解析"
   },
   
-  "LIFF_ID": "2008804969-F1dWlRmH",
+  "LIFF_ID": "2008811948-yfhobMST",
   "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
+
+  "USE_LIFF":true,
+  "_USE_LIFF_DESC": "是否透過 LIFF 進行登入與授權（設定為 false 可在本機/測試環境跳過 LIFF）",
+
+  "DEBUG_USER_ID": "qqqqqqqq",
+  "_DEBUG_USER_ID_DESC": "當 USE_LIFF 為 false 時，可指定一個測試用 userId（選用）",
+
+  "DEBUG_DISPLAY_NAME": "測試使用者",
+  "_DEBUG_DISPLAY_NAME_DESC": "當 USE_LIFF 為 false 時，可指定測試用顯示名稱（選用）",
+
+  "DEBUG_USER_AUDIT": "通過",
+  "_DEBUG_USER_AUDIT_DESC": "當 USE_LIFF 為 false 時，測試用帳號的審核狀態（預設 '通過'）",
 
   "ADMIN_API_URL": "https://script.google.com/macros/s/AKfycbwV3FEdeXXqrZV9Lqy9OF5r1Wvgx2KlpQsOwRYW5AClDrE8QiBCqTcIZ6d4liNJCuHZ/exec",
   "_ADMIN_API_URL_DESC": "既有 Admin 管理 GAS（請勿修改）：提供 listAdmins / updateAdminsBatch / deleteAdmin",
@@ -21,5 +33,28 @@
   "_USAGE_LOG_API_URL_DESC": "管理員紀錄 GAS Web App（UsageLog）：提供 appendUsageLog / listUsageLog",
 
   "TECH_USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
-  "_TECH_USAGE_LOG_URL_DESC": "技師使用紀錄 GAS Web App（usage_log）：用 GET 讀取（mode=list）與寫入（mode=log）"
+  "_TECH_USAGE_LOG_URL_DESC": "技師使用紀錄 GAS Web App（usage_log）：用 GET 讀取（mode=list）與寫入（mode=log)",
+
+  "TECH_USAGE_LOG_ADMIN_KEY": "00000000",
+  "_TECH_USAGE_LOG_ADMIN_KEY_DESC": "技師使用紀錄 GAS Web App 管理金鑰：用於刪除功能（mode=deleteByName）。需與 GAS 端 ADMIN_KEY（或 ScriptProperties.ADMIN_KEY）一致；留空則前端不允許刪除。",
+
+  "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbw3RGQ80Z0YlUy6-HdnryFChRznY_kaDpNzuPqjM3qnjOZUyfmmBtuPOcadZ5L4KQz7Xg/exec",
+  "_PERF_SYNC_API_URL_DESC": "業績同步（storeId 版）GAS Web App URL：POST mode=syncStorePerf_v1（Scheduling 的 performance.js 同步來源）。",
+
+  "EDGE_STATUS_URLS": [
+    "https://script.google.com/macros/s/AKfycbzZ_lc_DGk-oyzvE1w3uMcT_L7fpDZH6eyYVPGUxI4heP8QvJgIZU-bgg45nbn40jU5mg/exec",
+    "https://script.google.com/macros/s/AKfycby1ZKbWSzbt0XPH6AWzH5GjXmutp3gevqRiTQ34BPEKzfFT5jABiNXcyiG0VbFw2DblDg/exec",
+    "https://script.google.com/macros/s/AKfycbx540FAMWbDrJoyHeZB3yRwPp_kyvovKyslnS2V78rFlSKCYLNGGQSkAhahCTveW0N5/exec",
+    "https://script.google.com/macros/s/AKfycbw2ABr9kTmdJ9GO83qlQP0kimQFHwsJwglOG9DpSXtNdZuOprXjN7OQ3qfhF00PbnrV1g/exec"
+  ],
+
+  "FALLBACK_ORIGIN_CACHE_URL": "https://script.google.com/macros/s/AKfycbxsVPrIB9KzELL8_k5nRDbe8ca7cvcAkOpCiX1eS0k1A5h9845AQf6owdF_03GwmaHMpA/exec",
+
+  "POLL_BASE_MS": 3000,
+  "POLL_MAX_MS": 8000,
+  "POLL_CHANGED_BOOST_MS": 3000,
+  "POLL_JITTER_RATIO": 0.2,
+  "STATUS_FETCH_TIMEOUT_MS": 8000,
+  "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
+  "STALE_DATA_MAX_AGE_MS": 900000
 }

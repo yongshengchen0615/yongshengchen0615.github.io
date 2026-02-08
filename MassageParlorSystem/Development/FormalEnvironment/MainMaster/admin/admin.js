@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Users/技師資料管理（獨立區塊）：先初始化 UI，避免後續流程失敗時卡在預設「載入中」
     if (typeof initUsersPanel_ === "function") initUsersPanel_();
 
-    await loadConfig_();
+    const cfg = await loadConfig_();
     initTheme_();
 
     // 事件綁定（僅做一次）
@@ -67,10 +67,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindBulk_();
     bindTableDelegation_();
 
-    // 先通過 LIFF + AUTH Gate 才載入資料
+    // 先通過 LIFF + AUTH Gate（可由 config.json 的 USE_LIFF 控制）才載入資料
     if (typeof uSetFooter_ === "function") uSetFooter_("管理員驗證中...");
     if (typeof uSetTbodyMessage_ === "function") uSetTbodyMessage_("管理員驗證中...");
-    await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
+
+    if (typeof USE_LIFF === "undefined" || USE_LIFF) {
+      await withTimeout_(liffGate_(), 15000, "LIFF/管理員驗證");
+    } else {
+      // 跳過 LIFF（測試模式）：使用可選的 config.debug 設定或預設值
+      setAuthText_("跳過 LIFF（測試模式）");
+      me.userId = String(cfg.DEBUG_USER_ID || "LOCAL_TEST").trim();
+      me.displayName = String(cfg.DEBUG_DISPLAY_NAME || "Local Tester").trim();
+      me.audit = String(cfg.DEBUG_USER_AUDIT || "通過").trim();
+      setAuthText_(`${me.displayName}（${me.audit}）`);
+    }
+
     await loadAdmins_();
 
     // Users 資料（不影響 admin 清單）
