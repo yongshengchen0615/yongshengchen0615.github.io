@@ -134,3 +134,20 @@ async function adminGetSpreadsheetId_() {
   }
 }
 
+async function bookingQuery_(params) {
+  try {
+    if (!API_BASE_URL) throw new Error("API_BASE_URL not initialized");
+
+    const body = Object.assign({ mode: "bookingquery_v1" }, params || {});
+    const res = await fetch(API_BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    return await res.json().catch(() => ({}));
+  } catch (err) {
+    console.error("bookingQuery_ error:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+

@@ -181,6 +181,15 @@
           </div>
 
           <div class="bulk-group">
+            <label class="bulk-label" for="bulkBookingEnabled">批次預約查詢</label>
+            <select id="bulkBookingEnabled" class="select">
+              <option value="">不變更</option>
+              <option value="是">開啟</option>
+              <option value="否">關閉</option>
+            </select>
+          </div>
+
+          <div class="bulk-group">
             <label class="bulk-label" for="bulkUsageDays">批次期限(天)</label>
             <input id="bulkUsageDays" class="select" type="number" min="1" placeholder="不變更" />
           </div>
@@ -212,11 +221,12 @@
               <th data-sort="personalStatusEnabled" class="sortable">個人狀態開通</th>
               <th data-sort="scheduleEnabled" class="sortable">排班表開通</th>
               <th data-sort="performanceEnabled" class="sortable">業績開通</th>
+              <th data-sort="bookingEnabled" class="sortable">預約查詢開通</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr><td colspan="16">載入中...</td></tr>
+            <tr><td colspan="17">載入中...</td></tr>
           </tbody>
         </table>
       </div>

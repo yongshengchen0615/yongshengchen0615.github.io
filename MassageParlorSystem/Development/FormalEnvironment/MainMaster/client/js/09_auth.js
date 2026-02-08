@@ -16,6 +16,7 @@ function setAdminPermsFromCheck_(check) {
 		techPersonalStatusEnabled: check.techPersonalStatusEnabled,
 		techScheduleEnabled: check.techScheduleEnabled,
 		techPerformanceEnabled: check.techPerformanceEnabled,
+		bookingEnabled: check.bookingEnabled,
 	};
 }
 
