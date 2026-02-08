@@ -106,6 +106,9 @@ function normalizeCheckResult(data, displayNameFromClient) {
   const pushEnabled = (data && data.pushEnabled) || "否";
   const personalStatusEnabled = (data && data.personalStatusEnabled) || "否";
   const performanceEnabled = (data && data.performanceEnabled) || "否";
+  const bookingEnabled = (data && data.bookingEnabled) || "否";
+
+  const storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
 
   let remainingDays = null;
   if (data && data.remainingDays !== undefined && data.remainingDays !== null) {
@@ -137,6 +140,8 @@ function normalizeCheckResult(data, displayNameFromClient) {
     pushEnabled,
     personalStatusEnabled,
     performanceEnabled,
+    bookingEnabled,
+    storeId,
     remainingDays,
     flags,
     messages,
@@ -307,6 +312,10 @@ async function onAuthorized({ userId, displayName, result }) {
     state.user = state.user || {};
     state.user.remainingDays = result.remainingDays;
     state.user.audit = result.audit;
+    state.user.storeId = String(result.storeId || "").trim();
+
+    // 兼容：有些模組可能讀 state.storeId
+    state.storeId = state.user.storeId;
   } catch (_) {}
 
   // 確保 state.myMaster 存在（給 scheduleUi/feature UI 判斷用）
@@ -334,6 +343,7 @@ async function onAuthorized({ userId, displayName, result }) {
         pushEnabled: result.pushEnabled,
         personalStatusEnabled: result.personalStatusEnabled,
         performanceEnabled: result.performanceEnabled,
+        bookingEnabled: result.bookingEnabled,
       }),
       eventCn: "審核狀態",
     });

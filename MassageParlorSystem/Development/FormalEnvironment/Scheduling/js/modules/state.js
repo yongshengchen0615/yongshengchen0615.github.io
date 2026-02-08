@@ -47,6 +47,7 @@ export const state = {
     personalStatusEnabled: "否",
     scheduleEnabled: "否",
     performanceEnabled: "否",
+    bookingEnabled: "否",
   },
 
   // Adaptive polling

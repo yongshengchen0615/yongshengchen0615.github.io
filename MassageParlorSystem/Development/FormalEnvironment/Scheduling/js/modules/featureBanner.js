@@ -10,6 +10,7 @@
 
 import { dom } from "./dom.js";
 import { state } from "./state.js";
+import { config } from "./config.js";
 import { applyScheduleUiMode } from "./scheduleUi.js";
 import { setPersonalToolsEnabled } from "./personalTools.js";
 import { setViewMode, VIEW } from "./viewSwitch.js";
@@ -37,6 +38,7 @@ function renderFeatureBanner() {
   const personal = normalizeYesNo(state.feature.personalStatusEnabled);
   const schedule = normalizeYesNo(state.feature.scheduleEnabled);
   const performance = normalizeYesNo(state.feature.performanceEnabled);
+  const booking = normalizeYesNo(state.feature.bookingEnabled);
 
     chipsEl.innerHTML = [
         buildChipAlways("我的狀態"),
@@ -44,6 +46,7 @@ function renderFeatureBanner() {
         buildChip("排班表", schedule),
       buildChip("技師休假與狀態", personal),
         buildChip("業績", performance),
+        buildChip("預約查詢", booking),
     ].join("");
 }
 
@@ -51,6 +54,8 @@ function applyFeatureUi_() {
   const scheduleOk = normalizeYesNo(state.feature.scheduleEnabled) === "是";
   const performanceOk = normalizeYesNo(state.feature.performanceEnabled) === "是";
   const personalOk = normalizeYesNo(state.feature.personalStatusEnabled) === "是";
+  const bookingOk = normalizeYesNo(state.feature.bookingEnabled) === "是";
+  const bookingUrlOk = !!String(config.BOOKING_API_URL || "").trim();
 
   // 個人工具按鈕（技師管理員/休假與狀態）
   try {
@@ -69,17 +74,24 @@ function applyFeatureUi_() {
   // 業績（按鈕）
   if (dom.btnPerformanceEl) dom.btnPerformanceEl.style.display = performanceOk ? "" : "none";
 
+  // 預約查詢（按鈕）
+  if (dom.btnBookingEl) dom.btnBookingEl.style.display = bookingOk && bookingUrlOk ? "" : "none";
+
   // 若功能關閉且目前正在該視圖：切回我的狀態，避免空白畫面
   try {
     const vm = String(state.viewMode || "");
     if (!scheduleOk && vm === VIEW.SCHEDULE) setViewMode(VIEW.MY_STATUS);
     if (!performanceOk && vm === VIEW.PERFORMANCE) setViewMode(VIEW.MY_STATUS);
+    if ((!bookingOk || !bookingUrlOk) && vm === VIEW.BOOKING) setViewMode(VIEW.MY_STATUS);
   } catch {
     // ignore
   }
 
   // 防呆：關閉業績時，確保業績卡片不可見
   if (!performanceOk && dom.perfCardEl) dom.perfCardEl.style.display = "none";
+
+  // 防呆：關閉預約查詢時，確保預約卡片不可見
+  if ((!bookingOk || !bookingUrlOk) && dom.bookingCardEl) dom.bookingCardEl.style.display = "none";
 }
 
 /**
@@ -92,6 +104,7 @@ export function updateFeatureState(data) {
   state.feature.personalStatusEnabled = normalizeYesNo(data && data.personalStatusEnabled);
   state.feature.scheduleEnabled = normalizeYesNo(data && data.scheduleEnabled);
   state.feature.performanceEnabled = normalizeYesNo(data && data.performanceEnabled);
+  state.feature.bookingEnabled = normalizeYesNo(data && data.bookingEnabled);
   renderFeatureBanner();
   applyFeatureUi_();
 }

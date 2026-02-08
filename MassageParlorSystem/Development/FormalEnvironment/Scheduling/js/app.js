@@ -19,6 +19,7 @@ import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi, prefetchPerformanceOnce } from "./modules/performance.js";
+import { initBookingUi } from "./modules/bookingQuery.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
 import { fetchStatusAll } from "./modules/edgeClient.js";
@@ -139,6 +140,9 @@ async function boot() {
 
   // 業績 UI（同頁面顯示）
   initPerformanceUi();
+
+  // 預約查詢 UI（同頁面顯示）
+  initBookingUi();
 
   // 同頁面三視圖切換
   initViewSwitch();
