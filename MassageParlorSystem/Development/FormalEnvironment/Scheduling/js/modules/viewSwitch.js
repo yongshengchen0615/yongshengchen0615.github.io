@@ -12,12 +12,14 @@ import { state } from "./state.js";
 import { updateMyMasterStatusUI } from "./myMasterStatus.js";
 import { renderIncremental } from "./table.js";
 import { onShowPerformance } from "./performance.js";
+import { onShowBooking } from "./bookingQuery.js";
 import { logUsageEvent } from "./usageLog.js";
 
 export const VIEW = {
   SCHEDULE: "schedule",
   MY_STATUS: "myStatus",
   PERFORMANCE: "performance",
+  BOOKING: "booking",
 };
 
 function showScheduleUI_(show) {
@@ -51,14 +53,21 @@ function showPerformance_(show) {
   if (show) onShowPerformance();
 }
 
+function showBooking_(show) {
+  if (!dom.bookingCardEl) return;
+  dom.bookingCardEl.style.display = show ? "" : "none";
+  if (show) onShowBooking();
+}
+
 export function setViewMode(mode) {
-  const m = mode === VIEW.MY_STATUS || mode === VIEW.PERFORMANCE ? mode : VIEW.SCHEDULE;
+  const m = mode === VIEW.MY_STATUS || mode === VIEW.PERFORMANCE || mode === VIEW.BOOKING ? mode : VIEW.SCHEDULE;
   state.viewMode = m;
 
   // 互斥顯示
   showScheduleUI_(m === VIEW.SCHEDULE);
   showMyStatus_(m === VIEW.MY_STATUS);
   showPerformance_(m === VIEW.PERFORMANCE);
+  showBooking_(m === VIEW.BOOKING);
 
   // 需要顯示排班表時補一次 render（避免切回來仍是舊 DOM）
   if (m === VIEW.SCHEDULE && state.scheduleUiEnabled) {
@@ -88,6 +97,14 @@ export function initViewSwitch() {
       const from = state.viewMode || "";
       logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.PERFORMANCE}`, noThrottle: true, eventCn: "視圖切換" });
       setViewMode(VIEW.PERFORMANCE);
+    });
+  }
+
+  if (dom.btnBookingEl) {
+    dom.btnBookingEl.addEventListener("click", () => {
+      const from = state.viewMode || "";
+      logUsageEvent({ event: "view_switch", detail: `${from}->${VIEW.BOOKING}`, noThrottle: true, eventCn: "視圖切換" });
+      setViewMode(VIEW.BOOKING);
     });
   }
 }

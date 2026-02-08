@@ -40,6 +40,7 @@ export const dom = {
   btnScheduleEl: document.getElementById("btnSchedule"),
   btnTopupEl: document.getElementById("btnTopup"),
   btnPerformanceEl: document.getElementById("btnPerformance"),
+  btnBookingEl: document.getElementById("btnBooking"),
 
   // 可水平滑動的控制列
   appHeaderRightEl: document.querySelector(".app-header-right"),
@@ -96,4 +97,14 @@ export const dom = {
   perfEmptyEl: document.getElementById("perfEmpty"),
   perfErrorEl: document.getElementById("perfError"),
   perfDetailCountEl: document.getElementById("perfDetailCount"),
+
+  // 預約查詢
+  bookingCardEl: document.getElementById("bookingCard"),
+  bookingDateStartInput: document.getElementById("bookingDateStart"),
+  bookingDateEndInput: document.getElementById("bookingDateEnd"),
+  bookingSearchBtn: document.getElementById("bookingSearch"),
+  bookingStatusEl: document.getElementById("bookingStatus"),
+  bookingMetaEl: document.getElementById("bookingMeta"),
+  bookingHeadRowEl: document.getElementById("bookingHeadRow"),
+  bookingRowsEl: document.getElementById("bookingRows"),
 };
