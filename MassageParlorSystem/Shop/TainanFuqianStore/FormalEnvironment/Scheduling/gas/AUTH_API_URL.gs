@@ -26,6 +26,7 @@ var CONFIG = {
   DEFAULT_PERSONAL_STATUS_ENABLED: "否",
   DEFAULT_SCHEDULE_ENABLED: "否",
   DEFAULT_PERFORMANCE_ENABLED: "否",
+  DEFAULT_BOOKING_ENABLED: "否",
 
   SHEET_USERS: "Users",
   SHEET_PERSONAL_STATUS: "PersonalStatus",
@@ -66,8 +67,204 @@ var CONFIG = {
   TOPUP_MAX_ADD_DAYS: 3660,
 
   // （可選）推播 API 防濫用：把 Script Properties 設定 PUSH_SECRET
-  PUSH_SECRET_PROP: "PUSH_SECRET"
+  PUSH_SECRET_PROP: "PUSH_SECRET",
+
+  // ✅ YSPOS booking/detail 查詢
+  YSPOS_BASE: "https://yspos.youngsong.com.tw",
+  YSPOS_PAGE_SIZE: 200,
+  YSPOS_MAX_PAGES: 300,
+  YSPOS_CACHE_TTL_SEC: 20,
+  YSPOS_BEARER_PROP: "YSPOS_BEARER"
 };
+
+/* =========================
+ * Booking Query (booking/detail)
+ * ========================= */
+
+function normalizeDateKeyStrict_(v) {
+  var s = String(v || "").trim();
+  if (!s) return "";
+  var m = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (!m) return "";
+  return m[1] + "-" + String(m[2]).padStart(2, "0") + "-" + String(m[3]).padStart(2, "0");
+}
+
+function safeJsonParseSoft_(t) {
+  try {
+    return JSON.parse(String(t || ""));
+  } catch (e) {
+    return null;
+  }
+}
+
+function sha1_(str) {
+  var raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, str, Utilities.Charset.UTF_8);
+  return raw
+    .map(function (b) {
+      var v = (b < 0 ? b + 256 : b).toString(16);
+      return v.length === 1 ? "0" + v : v;
+    })
+    .join("");
+}
+
+function getYsposBearerToken_() {
+  var key = CONFIG.YSPOS_BEARER_PROP || "YSPOS_BEARER";
+  var raw = PropertiesService.getScriptProperties().getProperty(key);
+  if (!raw || !String(raw).trim()) throw new Error("Missing Script Property: " + key);
+  raw = String(raw).trim();
+  return raw.indexOf("Bearer ") === 0 ? raw : "Bearer " + raw;
+}
+
+function extractMetaTotals_(json) {
+  var d = json && json.data ? json.data : null;
+  if (!d) return null;
+  return {
+    total: d.total || null,
+    old: d.old || null,
+    schedule: d.schedule || null,
+    totalElements: d.totalElements,
+    totalPages: d.totalPages
+  };
+}
+
+function fetchPagedBookingDetail_(storeId, from, to, pageSize) {
+  storeId = String(storeId || "").trim();
+  from = String(from || "").trim();
+  to = String(to || "").trim();
+  if (!storeId) return { ok: false, error: "MISSING_STOREID" };
+  if (!from) return { ok: false, error: "MISSING_FROM" };
+  if (!to) return { ok: false, error: "MISSING_TO" };
+
+  var size = parseInt(pageSize || CONFIG.YSPOS_PAGE_SIZE || 200, 10);
+  if (isNaN(size) || size <= 0) size = 200;
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "yspos:bookingdetail:" + storeId + ":" + from + ":" + to + ":" + size;
+  try {
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      var obj = safeJsonParseSoft_(cached);
+      if (obj && Array.isArray(obj.rows)) return { ok: true, cached: true, rows: obj.rows, meta: obj.meta || null, recordHash: obj.recordHash || "" };
+    }
+  } catch (eCache) {}
+
+  var token = getYsposBearerToken_();
+  var url = String(CONFIG.YSPOS_BASE || "https://yspos.youngsong.com.tw").replace(/\/$/, "") + "/api/booking/detail/" + encodeURIComponent(storeId);
+
+  var pageModes = [
+    { name: "oneBased", numberFn: function (p) { return p + 1; } },
+    { name: "zeroBased", numberFn: function (p) { return p; } }
+  ];
+
+  for (var mi = 0; mi < pageModes.length; mi++) {
+    var mode = pageModes[mi];
+    var page = 0;
+    var modeFailed = false;
+    var all = [];
+    var lastJson = null;
+
+    while (true) {
+      var payload = { size: size, number: mode.numberFn(page), from: from, to: to };
+      var res = UrlFetchApp.fetch(url, {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(payload),
+        headers: { accept: "application/json, text/plain, */*", authorization: token },
+        muteHttpExceptions: true
+      });
+
+      if (res.getResponseCode() !== 200) {
+        modeFailed = true;
+        break;
+      }
+
+      var json = safeJsonParseSoft_(res.getContentText());
+      if (!json || json.success !== true) {
+        modeFailed = true;
+        break;
+      }
+
+      lastJson = json;
+      var data = json.data || {};
+      var content = Array.isArray(data.content) ? data.content : [];
+      for (var i = 0; i < content.length; i++) all.push(content[i]);
+
+      if (data.last === true || content.length === 0) break;
+
+      page += 1;
+      if (page > (CONFIG.YSPOS_MAX_PAGES || 300)) throw new Error("Pagination overflow");
+    }
+
+    if (!modeFailed) {
+      var meta = extractMetaTotals_(lastJson);
+      var recordHash = sha1_(JSON.stringify({ meta: meta || null, rows: all || [] }));
+      var out = { rows: all, meta: meta, recordHash: recordHash };
+      try {
+        cache.put(cacheKey, JSON.stringify(out), parseInt(CONFIG.YSPOS_CACHE_TTL_SEC || 20, 10));
+      } catch (ePut) {}
+      return { ok: true, cached: false, rows: all, meta: meta, recordHash: recordHash };
+    }
+  }
+
+  return { ok: false, error: "FETCH_FAILED", storeId: storeId, from: from, to: to };
+}
+
+function handleBookingQuery_v1_(data) {
+  try {
+    var userId = String((data && data.userId) || "").trim();
+    var from = normalizeDateKeyStrict_((data && data.from) || "");
+    var to = normalizeDateKeyStrict_((data && (data.to || data.from)) || "");
+
+    if (!userId) return jsonOut_({ ok: false, userId: "", error: "MISSING_USERID" });
+    if (!from) return jsonOut_({ ok: false, userId: userId, error: "MISSING_FROM" });
+    if (!to) return jsonOut_({ ok: false, userId: userId, error: "MISSING_TO" });
+
+    var check = buildCheckResult_(userId);
+    if (!check || check.ok !== true) return jsonOut_({ ok: false, userId: userId, error: "AUTH_CHECK_FAILED" });
+
+    // ✅ 必須通過審核且未過期（前端 gate 也會擋，但這裡再保護一次）
+    var rd = check.remainingDays;
+    var notExpired = typeof rd === "number" && !isNaN(rd) ? rd >= 0 : false;
+    if (String(check.status || "") !== "approved" || !notExpired) {
+      return jsonOut_({ ok: false, userId: userId, error: "NOT_ALLOWED" });
+    }
+
+    if (String(check.bookingEnabled || "否").trim() !== "是") {
+      return jsonOut_({ ok: false, userId: userId, error: "FEATURE_OFF" });
+    }
+
+    // storeId 決策：允許管理端指定 storeId；否則用 masterCode(=TechNo) 從 NetworkCapture 推導
+    var storeId = String((data && (data.storeId || data.StoreId)) || "").trim();
+    if (!storeId) {
+      var techNo = String((data && (data.techNo || data.masterCode || data.techno)) || check.masterCode || "").trim();
+      if (!techNo) return jsonOut_({ ok: false, userId: userId, error: "MISSING_TECHNO" });
+      storeId = lookupStoreIdByTechNo_(techNo);
+      if (!storeId) return jsonOut_({ ok: false, userId: userId, error: "STOREID_NOT_FOUND", techNo: techNo });
+    }
+
+    var pageSize = parseInt((data && data.pageSize) || "", 10);
+    if (isNaN(pageSize) || pageSize <= 0) pageSize = CONFIG.YSPOS_PAGE_SIZE || 200;
+
+    var res = fetchPagedBookingDetail_(storeId, from, to, pageSize);
+    if (!res.ok) return jsonOut_(Object.assign({ ok: false, userId: userId }, res));
+
+    return jsonOut_({
+      ok: true,
+      userId: userId,
+      mode: "bookingQuery_v1",
+      storeId: storeId,
+      from: from,
+      to: to,
+      cached: res.cached === true,
+      recordHash: res.recordHash || "",
+      meta: res.meta || null,
+      rowsCount: Array.isArray(res.rows) ? res.rows.length : 0,
+      rows: res.rows || []
+    });
+  } catch (e) {
+    return jsonOut_({ ok: false, userId: String((data && data.userId) || "").trim(), error: String(e && e.message ? e.message : e) });
+  }
+}
 
 /* =========================
  * ENUM + RULES
@@ -212,7 +409,8 @@ function getOrCreateUserSheet_() {
     "是否推播",
     "個人狀態開通",
     "排班表開通",
-    "業績開通"
+    "業績開通",
+    "預約查詢開通"
   ];
 
   if (!sheet) {
@@ -534,7 +732,7 @@ function readUsersTable_() {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return { sheet: sheet, values: [], rowMap: {} };
 
-  var values = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
   var rowMap = {};
   for (var i = 0; i < values.length; i++) {
     var uid = String(values[i][0] || "").trim();
@@ -613,13 +811,13 @@ function readUserRowFast_(userId) {
   var sheet = getOrCreateUserSheet_();
   var rowIndex = findUserRowIndexFast_(sheet, userId);
   if (!rowIndex) return { sheet: sheet, rowIndex: 0, row: null };
-  var row = sheet.getRange(rowIndex, 1, 1, 12).getValues()[0];
+  var row = sheet.getRange(rowIndex, 1, 1, 13).getValues()[0];
   return { sheet: sheet, rowIndex: rowIndex, row: row };
 }
 
 function writeUsersTable_(sheet, values) {
   if (!values || !values.length) return;
-  sheet.getRange(2, 1, values.length, 12).setValues(values);
+  sheet.getRange(2, 1, values.length, 13).setValues(values);
 }
 
 /* =========================
@@ -781,6 +979,33 @@ function findPerformanceAccessByTechNo_(techNo) {
 }
 
 /**
+ * ✅ 由 PerformanceAccess 依 userId 取 StoreId（若欄位存在）
+ * - 用於：check 回傳 storeId，讓前端可直接呼叫 booking API
+ */
+function getStoreIdByUserIdFromPerformanceAccess_(userId) {
+  try {
+    userId = String(userId || "").trim();
+    if (!userId) return "";
+
+    var sheet = getOrCreatePerformanceAccessSheet_();
+    var row = findRowIndexByUserId_(sheet, userId);
+    if (!row) return "";
+
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 1) return "";
+
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var storeIdx = findHeaderIndexAny_(header, ["StoreId", "storeid", "StoreID"]);
+    if (storeIdx < 0) return "";
+
+    var v = sheet.getRange(row, storeIdx + 1).getValue();
+    return String(v || "").trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+/**
  * ✅ 由 TechNo 查 PerformanceAccess userId
  */
 function handleGetPerformanceUserIdByTechNo_(data) {
@@ -852,11 +1077,13 @@ function buildCheckResult_(userId, displayNameCandidate) {
       displayName: "",
       remainingDays: null,
       masterCode: "",
+      storeId: "",
       isMaster: "否",
       pushEnabled: "否",
       personalStatusEnabled: "否",
       scheduleEnabled: "否",
-      performanceEnabled: "否"
+      performanceEnabled: "否",
+      bookingEnabled: "否"
     };
   }
 
@@ -872,11 +1099,13 @@ function buildCheckResult_(userId, displayNameCandidate) {
       displayName: "",
       remainingDays: null,
       masterCode: "",
+      storeId: "",
       isMaster: "否",
       pushEnabled: "否",
       personalStatusEnabled: "否",
       scheduleEnabled: "否",
-      performanceEnabled: "否"
+      performanceEnabled: "否",
+      bookingEnabled: "否"
     };
   }
 
@@ -921,6 +1150,18 @@ function buildCheckResult_(userId, displayNameCandidate) {
   var personalStatusEnabled = normalizeYesNo_(row[9], "否");
   var scheduleEnabled = normalizeYesNo_(row[10], "否");
   var performanceEnabled = normalizeYesNo_(row[11], "否");
+  var bookingEnabled = normalizeYesNo_(row[12], "否");
+
+  // ✅ storeId：優先 PerformanceAccess.userId→StoreId；否則用 masterCode(=TechNo) 從 NetworkCapture 推導
+  var storeId = "";
+  try {
+    storeId = getStoreIdByUserIdFromPerformanceAccess_(userId);
+  } catch (eSid1) {}
+  if (!storeId && masterCode) {
+    try {
+      storeId = lookupStoreIdByTechNo_(masterCode);
+    } catch (eSid2) {}
+  }
 
   var remainingDays = calcRemainingDaysByDate_(startDate, usageDays);
 
@@ -940,11 +1181,13 @@ function buildCheckResult_(userId, displayNameCandidate) {
     displayName: displayName,
     remainingDays: remainingDays,
     masterCode: masterCode,
+    storeId: storeId,
     isMaster: masterCode ? "是" : "否",
     pushEnabled: pushEnabled,
     personalStatusEnabled: personalStatusEnabled,
     scheduleEnabled: scheduleEnabled,
-    performanceEnabled: performanceEnabled
+    performanceEnabled: performanceEnabled,
+    bookingEnabled: bookingEnabled
   };
 }
 
@@ -989,6 +1232,7 @@ function handleRegister_(data) {
     if (!String(row[9] || "").trim()) row[9] = CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED;
     if (!String(row[10] || "").trim()) row[10] = CONFIG.DEFAULT_SCHEDULE_ENABLED;
     if (!String(row[11] || "").trim()) row[11] = CONFIG.DEFAULT_PERFORMANCE_ENABLED;
+    if (!String(row[12] || "").trim()) row[12] = CONFIG.DEFAULT_BOOKING_ENABLED;
 
     row[8] = enforcePushByAudit_(auditNow, row[8]);
 
@@ -1021,7 +1265,8 @@ function handleRegister_(data) {
       enforcePushByAudit_(auditInit, CONFIG.DEFAULT_PUSH_ENABLED),
       CONFIG.DEFAULT_PERSONAL_STATUS_ENABLED,
       CONFIG.DEFAULT_SCHEDULE_ENABLED,
-      CONFIG.DEFAULT_PERFORMANCE_ENABLED
+      CONFIG.DEFAULT_PERFORMANCE_ENABLED,
+      CONFIG.DEFAULT_BOOKING_ENABLED
     ];
     values.push(newRow);
 
@@ -1060,6 +1305,7 @@ function handleListUsers_() {
     var personalStatusEnabled = normalizeYesNo_(r[9], "否");
     var scheduleEnabled = normalizeYesNo_(r[10], "否");
     var performanceEnabled = normalizeYesNo_(r[11], "否");
+    var bookingEnabled = normalizeYesNo_(r[12], "否");
 
     return {
       userId: userId,
@@ -1073,7 +1319,8 @@ function handleListUsers_() {
       pushEnabled: pushEnabled,
       personalStatusEnabled: personalStatusEnabled,
       scheduleEnabled: scheduleEnabled,
-      performanceEnabled: performanceEnabled
+      performanceEnabled: performanceEnabled,
+      bookingEnabled: bookingEnabled
     };
   });
 
@@ -1111,6 +1358,10 @@ function handleUpdateUser_(data) {
   var personalStatusEnabled = normalizeYesNo_(data && data.personalStatusEnabled, "否");
   var scheduleEnabled = normalizeYesNo_(data && data.scheduleEnabled, "否");
   var performanceEnabled = normalizeYesNo_(data && data.performanceEnabled, "否");
+  var bookingEnabled = normalizeYesNo_(row[12], "否");
+  if (data && data.bookingEnabled !== undefined && data.bookingEnabled !== null && String(data.bookingEnabled).trim() !== "") {
+    bookingEnabled = normalizeYesNo_(data.bookingEnabled, "否");
+  }
 
   row[2] = audit;
 
@@ -1135,6 +1386,7 @@ function handleUpdateUser_(data) {
   row[9] = personalStatusEnabled;
   row[10] = scheduleEnabled;
   row[11] = performanceEnabled;
+  row[12] = bookingEnabled;
 
   // ✅ PATCH: 同步衍生表時，用更新後的 row[1]
   var dn = String(row[1] || "").trim();
@@ -1168,7 +1420,7 @@ function handleUpdateUser_(data) {
   } catch (eExp) {}
 
   // 只寫回該列（避免整張 Users setValues）
-  sheet.getRange(rowIndex, 1, 1, 12).setValues([row]);
+  sheet.getRange(rowIndex, 1, 1, 13).setValues([row]);
 
   // ✅ PATCH: 若有更新 displayName，則同步 TopUp Serials.UsedNote
   try {
@@ -1240,6 +1492,10 @@ function handleUpdateUsersBatch_(data) {
       var personalStatusEnabled = normalizeYesNo_(it.personalStatusEnabled, "否");
       var scheduleEnabled = normalizeYesNo_(it.scheduleEnabled, "否");
       var performanceEnabled = normalizeYesNo_(it.performanceEnabled, "否");
+      var bookingEnabled = normalizeYesNo_(row[12], "否");
+      if (it && it.bookingEnabled !== undefined && it.bookingEnabled !== null && String(it.bookingEnabled).trim() !== "") {
+        bookingEnabled = normalizeYesNo_(it.bookingEnabled, "否");
+      }
 
       row[2] = audit;
 
@@ -1264,6 +1520,7 @@ function handleUpdateUsersBatch_(data) {
       row[9] = personalStatusEnabled;
       row[10] = scheduleEnabled;
       row[11] = performanceEnabled;
+      row[12] = bookingEnabled;
 
       // ✅ PATCH: 同步衍生表時用更新後的 row[1]
       var dn = String(row[1] || "").trim();
@@ -2084,6 +2341,8 @@ function doPost(e) {
   if (mode === "getstoreidbytechno") return handleGetStoreIdByTechNo_(data);
   if (mode === "getperformanceuseridbytechno") return handleGetPerformanceUserIdByTechNo_(data);
   if (mode === "syncstoreperf_v1") return handleSyncStorePerf_v1_(data);
+
+  if (mode === "bookingquery_v1") return handleBookingQuery_v1_(data);
 
   if (mode === "topupredeem_v1") return handleTopupRedeem_(data);
 

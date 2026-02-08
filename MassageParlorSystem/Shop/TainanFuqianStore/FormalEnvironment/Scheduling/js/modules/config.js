@@ -17,6 +17,9 @@ export const config = {
   /** 權限驗證用 GAS API：支援 check / register / getPersonalStatus 等 mode。 */
   AUTH_API_URL: "",
 
+  /** （可選）預約查詢用 GAS Web App URL（bookingQuery_v1）。 */
+  BOOKING_API_URL: "",
+
   /** （可選）儲值序號 GAS Web App URL（TopUp）。若留空則不顯示儲值入口。 */
   TOPUP_API_URL: "",
 
@@ -37,7 +40,7 @@ export const config = {
   DETAIL_PERF_API_URL: "",
 
   /** 業績同步（storeId 版）GAS Web App URL */
-PERF_SYNC_API_URL: "",
+  PERF_SYNC_API_URL: "",
   /** （可選）同一 userId 最小送出間隔（毫秒）；避免重整/回前景狂送。 */
   USAGE_LOG_MIN_INTERVAL_MS: 30 * 60 * 1000,
 
@@ -89,6 +92,7 @@ export async function loadConfigJson() {
 
   config.FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
   config.AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
+  config.BOOKING_API_URL = String(cfg.BOOKING_API_URL || "").trim();
   config.TOPUP_API_URL = String(cfg.TOPUP_API_URL || "").trim();
   config.LIFF_ID = String(cfg.LIFF_ID || "").trim();
   config.ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);

@@ -75,10 +75,10 @@
           <button id="themeToggle" class="btn btn-ghost" type="button">🌙 深色</button>
           <button id="btnMyStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 我的狀態</button>
           <button id="btnSchedule" class="btn btn-ghost" type="button">📋 排班表</button>
-          <button id="refreshBtn" class="btn btn-ghost" type="button">🔄 手動重整</button>
 
           <!-- 其他次要功能保留於同一列，超出時可水平滑動，不會換行 -->
           <button id="btnPerformance" class="btn btn-ghost" type="button">📈 業績</button>
+          <button id="btnBooking" class="btn btn-ghost" type="button" style="display:none;">📅 預約查詢</button>
           <button id="btnUserManage" class="btn btn-ghost" type="button">👤 技師管理員</button>
           <button id="btnPersonalStatus" class="btn btn-ghost" type="button">🧑‍⚕️ 技師休假與狀態</button>
         </div>
@@ -129,6 +129,7 @@
             </div>
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>
+              <button id="refreshBtn" class="btn btn-ghost" type="button" title="手動重整">🔄 重整排班</button>
             </div>
           </header>
 
@@ -176,6 +177,7 @@
           </div>
           <div class="card-header-right">
             <span id="perfStatus" class="badge">尚未查詢</span>
+            <button id="perfRefreshBtn" class="btn btn-ghost" type="button" title="重整業績">🔄 重整業績</button>
           </div>
         </header>
 
@@ -277,6 +279,49 @@
 
           <div style="margin-top:10px;">
             <span id="perfDetailCount" class="badge">0 筆</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ✅ 預約查詢 -->
+      <section id="bookingCard" class="card" style="margin-top:16px;display:none;">
+        <header class="card-header">
+          <div class="card-header-left">
+            <h2 class="card-title">預約查詢</h2>
+            <p id="bookingMeta" class="card-subtitle">—</p>
+          </div>
+          <div class="card-header-right">
+            <span id="bookingStatus" class="badge">尚未查詢</span>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="filters" style="margin-bottom:10px;">
+            <div class="filter">
+              <label for="bookingDateStart" class="filter-label">開始日期</label>
+              <input id="bookingDateStart" class="input" type="date" lang="en-CA" />
+            </div>
+            <div class="filter">
+              <label for="bookingDateEnd" class="filter-label">結束日期</label>
+              <input id="bookingDateEnd" class="input" type="date" lang="en-CA" />
+            </div>
+            <div class="filter">
+              <label class="filter-label" aria-hidden="true">&nbsp;</label>
+              <div class="perf-actions">
+                <button id="bookingSearch" class="btn btn-ghost" type="button">查詢</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="status-table">
+              <thead>
+                <tr id="bookingHeadRow"></tr>
+              </thead>
+              <tbody id="bookingRows">
+                <tr><td style="color:var(--text-sub);">請先查詢。</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>

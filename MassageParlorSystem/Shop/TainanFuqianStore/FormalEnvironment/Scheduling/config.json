@@ -15,6 +15,9 @@
   "AUTH_API_URL": "https://script.google.com/macros/s/AKfycbzr-0aAArL9DOxZ1V-8nKmMRMhFZQ_KVuRkwa_Tk92A_WqbJkXoG1R-WA-fybxrBQwd/exec",
   "_comment_AUTH_API_URL": "權限驗證 API，用於檢查使用者是否允許存取（常搭配 LIFF / 網頁存取控管）。",
 
+  "BOOKING_API_URL": "https://script.google.com/macros/s/AKfycbxtvg4lzEIwwYRqXDvrkn-4-QIzTBavJYJgqxtGBfPU2A-jnn0GF-WBijARe6G6jlhP/exec",
+  "_comment_BOOKING_API_URL": "✅ 預約查詢用 GAS Web App URL（部署 BOOKING_DETAIL_ONLY_RAW_DYNAMIC_ZH.gs）。前端會用 POST mode=bookingQuery_v1 直接查詢預約資料。",
+
   "TOPUP_API_URL": "https://script.google.com/macros/s/AKfycbwAIv5DEllNzT4xhsNSXjbTV6ziio1Na_UO_QdK_4masenoneEGoR5RVohMd5MaF4e_3g/exec",
   "_comment_TOPUP_API_URL": "（可選）儲值序號 GAS Web App URL（TopUp）。Scheduling 會用 mode=serials_redeem_public 核銷序號，並把回傳 amount 視為『增加的使用天數』。",
 
