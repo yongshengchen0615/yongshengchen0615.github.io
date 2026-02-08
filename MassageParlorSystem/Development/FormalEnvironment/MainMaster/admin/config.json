@@ -8,7 +8,7 @@
   "LIFF_ID": "2008804969-F1dWlRmH",
   "_LIFF_ID_DESC": "LINE LIFF 應用程式 ID，用於 LIFF 初始化與取得使用者身份",
 
-  "USE_LIFF": false,
+  "USE_LIFF": true,
   "_USE_LIFF_DESC": "是否透過 LIFF 進行登入與授權（設定為 false 可在本機/測試環境跳過 LIFF）",
 
   "DEBUG_USER_ID": "qqqqqqqq",
