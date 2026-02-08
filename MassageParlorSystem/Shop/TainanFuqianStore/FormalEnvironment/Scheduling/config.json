@@ -22,6 +22,7 @@
   "_comment_TOPUP_API_URL": "（可選）儲值序號 GAS Web App URL（TopUp）。Scheduling 會用 mode=serials_redeem_public 核銷序號，並把回傳 amount 視為『增加的使用天數』。",
 
   "LIFF_ID": "2008669658-UGsf3get",
+  
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
   "ENABLE_LINE_LOGIN": true,
