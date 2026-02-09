@@ -62,8 +62,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 			applyFilters();
 		});
 
-		document.getElementById("topbarLogoutBtn")?.addEventListener("click", () => adminLogout_());
-
 		// ✅ Gate buttons
 		document.getElementById("authRetryBtn")?.addEventListener("click", () => adminAuthBoot_());
 		document.getElementById("authLogoutBtn")?.addEventListener("click", () => adminLogout_());

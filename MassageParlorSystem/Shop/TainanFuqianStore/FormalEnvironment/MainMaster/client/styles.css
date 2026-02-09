@@ -294,6 +294,52 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   #bulkApply, #bulkDelete{ width:100%; padding:10px 12px; }
 }
 
+/* ===== Small screens: global layout tightening ===== */
+@media (max-width: 720px){
+  .shell{ gap:12px; }
+
+  /* Topbar: stack nicely */
+  .topbar{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .topbar-left{ width:100%; }
+  .topbar-right{
+    width:100%;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .brand{ gap:10px; }
+  .brand-mark{ width:36px; height:36px; border-radius:11px; }
+  .brand-text h1{ font-size:15px; }
+
+  /* Admin badge: allow full width when needed */
+  .admin-badge{
+    flex: 1 1 100%;
+    max-width:none;
+    justify-content:space-between;
+  }
+
+  /* KPI: denser cards */
+  .kpi-grid{ grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .kpi-card{ padding:10px 12px; }
+  .kpi-value{ font-size:18px; }
+
+  /* Filters: chips become horizontal-scroll instead of multi-line wrap */
+  .filters{ gap:10px; }
+  .seg{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:2px;
+  }
+  .chip{ flex:0 0 auto; }
+
+  /* Bulk bar: keep controls readable */
+  .bulk-right{ justify-content:flex-start; }
+  .bulk-group{ flex:1 1 180px; }
+}
+
 /* ===== Table (desktop/tablet) ===== */
 .table-wrap{
   overflow:auto; /* ✅ 桌機/平板必要時可橫滑 */
@@ -589,6 +635,15 @@ html[data-theme="light"] .initial-loading-progress{
   tbody td select{
     max-width: 60%;
   }
+}
+
+@media (max-width: 420px){
+  /* Very small phones: labels a bit narrower; inputs get more room */
+  @supports (selector(tbody td::before)){
+    tbody td::before{ min-width: 92px; }
+  }
+  tbody td input,
+  tbody td select{ max-width: 68%; }
 }
 
 /* ===== Mobile Select All ===== */

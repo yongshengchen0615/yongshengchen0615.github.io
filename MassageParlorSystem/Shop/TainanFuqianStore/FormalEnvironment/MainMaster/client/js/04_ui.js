@@ -30,12 +30,10 @@ function updateThemeButtonText_() {
 function renderAdminBadge_() {
 	const badge = document.getElementById("adminBadge");
 	const nameEl = document.getElementById("adminBadgeName");
-	const logoutBtn = document.getElementById("topbarLogoutBtn");
 	if (!badge || !nameEl) return;
 
 	const isAuthed = !!(adminProfile && adminProfile.userId);
 	badge.hidden = !isAuthed;
-	if (logoutBtn) logoutBtn.hidden = !isAuthed;
 
 	if (!isAuthed) {
 		nameEl.textContent = "-";
