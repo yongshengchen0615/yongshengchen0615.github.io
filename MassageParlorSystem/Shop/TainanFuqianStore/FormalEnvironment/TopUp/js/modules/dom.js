@@ -25,6 +25,7 @@ export const dom = {
   genPersonalStatusEnabled: document.getElementById("genPersonalStatusEnabled"),
   genScheduleEnabled: document.getElementById("genScheduleEnabled"),
   genPerformanceEnabled: document.getElementById("genPerformanceEnabled"),
+  genBookingEnabled: document.getElementById("genBookingEnabled"),
   genBtn: document.getElementById("genBtn"),
   genOutput: document.getElementById("genOutput"),
 

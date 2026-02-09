@@ -505,6 +505,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     const redeemPersonal = pickRedeemFlagTri_(redeem, "personalStatusEnabled");
     const redeemSchedule = pickRedeemFlagTri_(redeem, "scheduleEnabled");
     const redeemPerformance = pickRedeemFlagTri_(redeem, "performanceEnabled");
+    const redeemBooking = pickRedeemFlagTri_(redeem, "bookingEnabled");
 
     // 若序號設定「不同步」，則僅增加天數，不套用功能開通設定
     const syncEnabled = normalizeSyncEnabled_(redeem);
@@ -512,11 +513,13 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     const effRedeemPersonal = syncEnabled ? redeemPersonal : null;
     const effRedeemSchedule = syncEnabled ? redeemSchedule : null;
     const effRedeemPerformance = syncEnabled ? redeemPerformance : null;
+    const effRedeemBooking = syncEnabled ? redeemBooking : null;
 
     const newPushEnabled = mergeYesNo_(check?.pushEnabled, effRedeemPush);
     const newPersonalStatusEnabled = mergeYesNo_(check?.personalStatusEnabled, effRedeemPersonal);
     const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, effRedeemSchedule);
     const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, effRedeemPerformance);
+    const newBookingEnabled = mergeYesNo_(check?.bookingEnabled, effRedeemBooking);
 
     stage = "auth_update";
     await authUpdateUser_({
@@ -527,6 +530,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       personalStatusEnabled: newPersonalStatusEnabled,
       scheduleEnabled: newScheduleEnabled,
       performanceEnabled: newPerformanceEnabled,
+      bookingEnabled: newBookingEnabled,
       // 若序號設定不同步，後端只更新 Users（天數/欄位），不觸發衍生表同步
       skipSync: syncEnabled ? 0 : 1,
       startDate,
@@ -542,6 +546,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
         personalStatusEnabled: newPersonalStatusEnabled,
         scheduleEnabled: newScheduleEnabled,
         performanceEnabled: newPerformanceEnabled,
+        bookingEnabled: newBookingEnabled,
       });
     } catch (_) {}
 
@@ -580,6 +585,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
           personalStatusEnabled: newPersonalStatusEnabled,
           scheduleEnabled: newScheduleEnabled,
           performanceEnabled: newPerformanceEnabled,
+          bookingEnabled: newBookingEnabled,
         },
         reloadOnSuccess: !!reloadOnSuccess,
         verified: false,

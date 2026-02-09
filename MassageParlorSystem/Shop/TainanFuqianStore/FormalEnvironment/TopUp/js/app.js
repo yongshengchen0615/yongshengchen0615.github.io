@@ -87,6 +87,7 @@ function bindEventsOnce() {
       const personalStatusEnabled = dom.genPersonalStatusEnabled ? !!dom.genPersonalStatusEnabled.checked : true;
       const scheduleEnabled = dom.genScheduleEnabled ? !!dom.genScheduleEnabled.checked : true;
       const performanceEnabled = dom.genPerformanceEnabled ? !!dom.genPerformanceEnabled.checked : true;
+      const bookingEnabled = dom.genBookingEnabled ? !!dom.genBookingEnabled.checked : true;
 
       if (!Number.isFinite(amount) || amount < 0) throw new Error("面額不正確");
       if (!Number.isFinite(count) || count <= 0 || count > 500) throw new Error("數量需在 1~500");
@@ -102,6 +103,7 @@ function bindEventsOnce() {
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
         actor: state.me,
       });
       if (!ret.ok) throw new Error(ret.error || "generate failed");
@@ -569,6 +571,7 @@ function renderRows_(rows) {
       personalStatusEnabled: getBoolOrNull_(src?.personalStatusEnabled),
       scheduleEnabled: getBoolOrNull_(src?.scheduleEnabled),
       performanceEnabled: getBoolOrNull_(src?.performanceEnabled),
+      bookingEnabled: getBoolOrNull_(src?.bookingEnabled),
     };
   };
 
@@ -579,6 +582,7 @@ function renderRows_(rows) {
       { key: "personalStatusEnabled", label: "個人" },
       { key: "scheduleEnabled", label: "排班" },
       { key: "performanceEnabled", label: "業績" },
+      { key: "bookingEnabled", label: "預約" },
     ];
 
     const html = items

@@ -40,7 +40,7 @@ function doGet(e) {
       endpoints: [
         "POST text/plain JSON {mode:'adminUpsertAndCheck', userId, displayName}",
         "POST text/plain JSON {mode:'serials_list', filters?, limit?}",
-        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, syncEnabled?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, actor?}",
+        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, syncEnabled?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, bookingEnabled?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
         "POST text/plain JSON {mode:'serials_sync_used_note_public', userId, displayName}",
@@ -356,6 +356,7 @@ function serialsList_({ filters, limit }) {
     // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     if (q) {
       const hay = (serial + " " + rowNote).toLowerCase();
@@ -379,12 +380,14 @@ function serialsList_({ filters, limit }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     });
 
@@ -411,6 +414,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
     const scheduleEnabled = encodeFeatureCell_(f.scheduleEnabled);
     const performanceEnabled = encodeFeatureCell_(f.performanceEnabled);
     const syncEnabled = encodeFeatureCell_(f.syncEnabled);
+    const bookingEnabled = encodeFeatureCell_(f.bookingEnabled);
 
     const existing = buildExistingSerialSet_(sh);
 
@@ -451,6 +455,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         scheduleEnabled,
         performanceEnabled,
         syncEnabled,
+        bookingEnabled,
       ]);
 
       out.push({
@@ -464,12 +469,14 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         personalStatusEnabled: !!f.personalStatusEnabled,
         scheduleEnabled: !!f.scheduleEnabled,
         performanceEnabled: !!f.performanceEnabled,
+        bookingEnabled: !!f.bookingEnabled,
         features: {
           syncEnabled: !!f.syncEnabled,
           pushEnabled: !!f.pushEnabled,
           personalStatusEnabled: !!f.personalStatusEnabled,
           scheduleEnabled: !!f.scheduleEnabled,
           performanceEnabled: !!f.performanceEnabled,
+          bookingEnabled: !!f.bookingEnabled,
         },
       });
     }
@@ -487,6 +494,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         personalStatusEnabled: !!(flags && flags.personalStatusEnabled),
         scheduleEnabled: !!(flags && flags.scheduleEnabled),
         performanceEnabled: !!(flags && flags.performanceEnabled),
+        bookingEnabled: !!(flags && flags.bookingEnabled),
       },
       actor,
     });
@@ -532,6 +540,7 @@ function serialsRedeem_({ serial, note, actor }) {
     // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     res = {
       serial,
@@ -544,12 +553,14 @@ function serialsRedeem_({ serial, note, actor }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     };
     logDetail = { serial, note, actor };
@@ -608,6 +619,7 @@ function serialsRedeemPublic_({ serial, note, user }) {
     // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     res = {
       serial,
@@ -620,12 +632,14 @@ function serialsRedeemPublic_({ serial, note, user }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     };
     logDetail = { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } };
@@ -837,6 +851,7 @@ function serialsHeaders_() {
     "ScheduleEnabled",
     "PerformanceEnabled",
     "SyncEnabled",
+    "BookingEnabled",
   ];
 }
 
@@ -851,6 +866,7 @@ function normalizeSerialFeatureFlags_(payload) {
     personalStatusEnabled: normalizeFeatureFlag_(p.personalStatusEnabled !== undefined ? p.personalStatusEnabled : f.personalStatusEnabled, true),
     scheduleEnabled: normalizeFeatureFlag_(p.scheduleEnabled !== undefined ? p.scheduleEnabled : f.scheduleEnabled, true),
     performanceEnabled: normalizeFeatureFlag_(p.performanceEnabled !== undefined ? p.performanceEnabled : f.performanceEnabled, true),
+    bookingEnabled: normalizeFeatureFlag_(p.bookingEnabled !== undefined ? p.bookingEnabled : f.bookingEnabled, true),
   };
 }
 
