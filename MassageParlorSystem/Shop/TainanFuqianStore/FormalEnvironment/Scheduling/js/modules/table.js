@@ -462,6 +462,17 @@ export function reapplyTableHeaderColorsFromDataset() {
  * Incremental render
  * ========================= */
 const rowDomMapByPanel = { body: new Map(), foot: new Map() };
+const lastRenderKeysByPanel = { body: [], foot: [] };
+
+function arrayShallowEqual_(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 function buildRowKey(row) {
   return String((row && row.masterId) || "").trim();
@@ -737,7 +748,8 @@ export function renderIncremental(panel) {
 
   applyTableHeaderColorsFromRows(displayRows);
 
-  const frag = document.createDocumentFragment();
+  const trs = [];
+  const keysInOrder = [];
 
   displayRows.forEach((row, idx) => {
     const showGasSortInOrderCol = !useDisplayOrder;
@@ -747,12 +759,15 @@ export function renderIncremental(panel) {
     const tr = ensureRowDom(panel, row);
     if (!tr) return;
 
+    const k = buildRowKey(row);
+    keysInOrder.push(k);
+
     const sig = buildRenderSignature(row, orderText);
     if (tr.__sig !== sig) {
       patchRowDom(tr, row, orderText);
       tr.__sig = sig;
     }
-    frag.appendChild(tr);
+    trs.push(tr);
   });
 
   // 清理不再需要的 row DOM，避免 `rowDomMapByPanel` 隨著加入/移除累積記憶體
@@ -769,7 +784,30 @@ export function renderIncremental(panel) {
     }
   } catch (e) {}
 
-  dom.tbodyRowsEl.replaceChildren(frag);
+  // Avoid rebuilding the whole tbody when the key order did not change.
+  // Frequent polling can update timestamps without any visible cell changes;
+  // doing replaceChildren every time causes unnecessary style/layout work.
+  const prevKeys = lastRenderKeysByPanel[panel] || [];
+  const orderChanged = !arrayShallowEqual_(prevKeys, keysInOrder) || dom.tbodyRowsEl.childElementCount !== trs.length;
+
+  if (orderChanged) {
+    const frag = document.createDocumentFragment();
+    for (const tr of trs) frag.appendChild(tr);
+    dom.tbodyRowsEl.replaceChildren(frag);
+  } else {
+    // Safety: ensure DOM order remains correct without full rebuild.
+    // insertBefore will no-op when already in place.
+    const children = dom.tbodyRowsEl.children;
+    for (let i = 0; i < trs.length; i++) {
+      const tr = trs[i];
+      const cur = children[i];
+      if (cur !== tr) {
+        dom.tbodyRowsEl.insertBefore(tr, cur || null);
+      }
+    }
+  }
+
+  lastRenderKeysByPanel[panel] = keysInOrder;
 
   try {
     const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();

@@ -7,6 +7,10 @@
 
 const CONFIG_JSON_URL = "./config.json";
 
+const CONFIG_FETCH_TIMEOUT_MS_DEFAULT = 8000;
+
+let configLoadInFlight_ = null;
+
 export const config = {
   /** Edge 狀態讀取用的 GAS Web App URL 清單（會先經 sanitizeEdgeUrls 清理/去重）。 */
   EDGE_STATUS_URLS: [],
@@ -79,6 +83,9 @@ export const config = {
    * - 設為 0 或負數可停用此判斷
    */
   STALE_DATA_MAX_AGE_MS: 10 * 60 * 1000,
+
+  /** （可選）啟動時載入 config.json 的 timeout（毫秒）。 */
+  CONFIG_FETCH_TIMEOUT_MS: CONFIG_FETCH_TIMEOUT_MS_DEFAULT,
 };
 
 /**
@@ -89,81 +96,108 @@ export const config = {
  * @returns {Promise<void>} 載入成功則 resolve；失敗會 throw。
  */
 export async function loadConfigJson() {
-  const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store" });
-  if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
+  if (configLoadInFlight_) return configLoadInFlight_;
 
-  const cfg = await resp.json();
+  configLoadInFlight_ = (async () => {
+    const ctrl = new AbortController();
+    const timeoutMs = Number(config.CONFIG_FETCH_TIMEOUT_MS) || CONFIG_FETCH_TIMEOUT_MS_DEFAULT;
+    const t = setTimeout(() => ctrl.abort(), Math.max(1000, timeoutMs));
 
-  const edges = Array.isArray(cfg.EDGE_STATUS_URLS) ? cfg.EDGE_STATUS_URLS : [];
-  config.EDGE_STATUS_URLS = edges.map((u) => String(u || "").trim()).filter(Boolean);
+    try {
+      const resp = await fetch(CONFIG_JSON_URL, { method: "GET", cache: "no-store", signal: ctrl.signal });
+      if (!resp.ok) throw new Error("CONFIG_HTTP_" + resp.status);
 
-  config.FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
-  config.AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
-  config.BOOKING_API_URL = String(cfg.BOOKING_API_URL || "").trim();
-  config.TOPUP_API_URL = String(cfg.TOPUP_API_URL || "").trim();
-  config.LIFF_ID = String(cfg.LIFF_ID || "").trim();
-  config.ENABLE_LINE_LOGIN = Boolean(cfg.ENABLE_LINE_LOGIN);
+      const cfg = await resp.json();
 
-  // optional: usage log
-  config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
-  config.REPORT_API_URL = String(cfg.REPORT_API_URL || "").trim();
-  config.DETAIL_PERF_API_URL = String(cfg.DETAIL_PERF_API_URL || "").trim();
-  config.PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
+      const edges = Array.isArray(cfg.EDGE_STATUS_URLS) ? cfg.EDGE_STATUS_URLS : [];
+      config.EDGE_STATUS_URLS = edges.map((u) => String(u || "").trim()).filter(Boolean);
 
-  const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
-  if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
+      config.FALLBACK_ORIGIN_CACHE_URL = String(cfg.FALLBACK_ORIGIN_CACHE_URL || "").trim();
+      config.AUTH_API_URL = String(cfg.AUTH_API_URL || "").trim();
+      config.BOOKING_API_URL = String(cfg.BOOKING_API_URL || "").trim();
+      config.TOPUP_API_URL = String(cfg.TOPUP_API_URL || "").trim();
+      config.LIFF_ID = String(cfg.LIFF_ID || "").trim();
 
-  // optional: polling & fetch tuning
-  const pollBase = Number(cfg.POLL_BASE_MS);
-  if (!Number.isNaN(pollBase) && pollBase >= 800) config.POLL_BASE_MS = pollBase;
+      // ENABLE_LINE_LOGIN 預設為 true；只有在 config.json 明確指定時才覆寫
+      const enableLineRaw = cfg.ENABLE_LINE_LOGIN;
+      if (typeof enableLineRaw === "boolean") config.ENABLE_LINE_LOGIN = enableLineRaw;
+      else if (typeof enableLineRaw === "string") config.ENABLE_LINE_LOGIN = enableLineRaw.trim() === "是";
+      else if (typeof enableLineRaw === "number") config.ENABLE_LINE_LOGIN = enableLineRaw === 1;
 
-  const pollMax = Number(cfg.POLL_MAX_MS);
-  if (!Number.isNaN(pollMax) && pollMax >= config.POLL_BASE_MS) config.POLL_MAX_MS = pollMax;
+      // optional: usage log
+      config.USAGE_LOG_URL = String(cfg.USAGE_LOG_URL || "").trim();
+      config.REPORT_API_URL = String(cfg.REPORT_API_URL || "").trim();
+      config.DETAIL_PERF_API_URL = String(cfg.DETAIL_PERF_API_URL || "").trim();
+      config.PERF_SYNC_API_URL = String(cfg.PERF_SYNC_API_URL || "").trim();
 
-  const pollFailMax = Number(cfg.POLL_FAIL_MAX_MS);
-  if (!Number.isNaN(pollFailMax) && pollFailMax >= config.POLL_BASE_MS) config.POLL_FAIL_MAX_MS = pollFailMax;
+      const minMs = Number(cfg.USAGE_LOG_MIN_INTERVAL_MS);
+      if (!Number.isNaN(minMs) && minMs > 0) config.USAGE_LOG_MIN_INTERVAL_MS = minMs;
 
-  const stableUpAfter = Number(cfg.POLL_STABLE_UP_AFTER);
-  if (!Number.isNaN(stableUpAfter) && stableUpAfter >= 1) config.POLL_STABLE_UP_AFTER = stableUpAfter;
+      // optional: polling & fetch tuning
+      const pollBase = Number(cfg.POLL_BASE_MS);
+      if (!Number.isNaN(pollBase) && pollBase >= 800) config.POLL_BASE_MS = pollBase;
 
-  const changedBoost = Number(cfg.POLL_CHANGED_BOOST_MS);
-  if (!Number.isNaN(changedBoost) && changedBoost >= config.POLL_BASE_MS) config.POLL_CHANGED_BOOST_MS = changedBoost;
+      const pollMax = Number(cfg.POLL_MAX_MS);
+      if (!Number.isNaN(pollMax) && pollMax >= config.POLL_BASE_MS) config.POLL_MAX_MS = pollMax;
 
-  const jitterRatio = Number(cfg.POLL_JITTER_RATIO);
-  if (!Number.isNaN(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) config.POLL_JITTER_RATIO = jitterRatio;
+      const pollFailMax = Number(cfg.POLL_FAIL_MAX_MS);
+      if (!Number.isNaN(pollFailMax) && pollFailMax >= config.POLL_BASE_MS) config.POLL_FAIL_MAX_MS = pollFailMax;
 
-  // optional: allow background polling (best-effort)
-  const allowBgRaw = cfg.POLL_ALLOW_BACKGROUND;
-  if (typeof allowBgRaw === "boolean") config.POLL_ALLOW_BACKGROUND = allowBgRaw;
-  else if (typeof allowBgRaw === "string") config.POLL_ALLOW_BACKGROUND = allowBgRaw.trim() === "是";
-  else if (typeof allowBgRaw === "number") config.POLL_ALLOW_BACKGROUND = allowBgRaw === 1;
+      const stableUpAfter = Number(cfg.POLL_STABLE_UP_AFTER);
+      if (!Number.isNaN(stableUpAfter) && stableUpAfter >= 1) config.POLL_STABLE_UP_AFTER = stableUpAfter;
 
-  const fetchTimeout = Number(cfg.STATUS_FETCH_TIMEOUT_MS);
-  if (!Number.isNaN(fetchTimeout) && fetchTimeout >= 1000) config.STATUS_FETCH_TIMEOUT_MS = fetchTimeout;
+      const changedBoost = Number(cfg.POLL_CHANGED_BOOST_MS);
+      if (!Number.isNaN(changedBoost) && changedBoost >= config.POLL_BASE_MS) config.POLL_CHANGED_BOOST_MS = changedBoost;
 
-  const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
-  if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
+      const jitterRatio = Number(cfg.POLL_JITTER_RATIO);
+      if (!Number.isNaN(jitterRatio) && jitterRatio >= 0 && jitterRatio <= 1) config.POLL_JITTER_RATIO = jitterRatio;
 
-  // optional: hedged requests
-  const hedgeEnabled = cfg.STATUS_FETCH_HEDGE_ENABLED;
-  if (typeof hedgeEnabled === "boolean") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled;
-  else if (typeof hedgeEnabled === "string") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled.trim() === "是";
-  else if (typeof hedgeEnabled === "number") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled === 1;
+      // optional: allow background polling (best-effort)
+      const allowBgRaw = cfg.POLL_ALLOW_BACKGROUND;
+      if (typeof allowBgRaw === "boolean") config.POLL_ALLOW_BACKGROUND = allowBgRaw;
+      else if (typeof allowBgRaw === "string") config.POLL_ALLOW_BACKGROUND = allowBgRaw.trim() === "是";
+      else if (typeof allowBgRaw === "number") config.POLL_ALLOW_BACKGROUND = allowBgRaw === 1;
 
-  const hedgeDelay = Number(cfg.STATUS_FETCH_HEDGE_DELAY_MS);
-  if (!Number.isNaN(hedgeDelay) && hedgeDelay >= 0) config.STATUS_FETCH_HEDGE_DELAY_MS = hedgeDelay;
+      const fetchTimeout = Number(cfg.STATUS_FETCH_TIMEOUT_MS);
+      if (!Number.isNaN(fetchTimeout) && fetchTimeout >= 1000) config.STATUS_FETCH_TIMEOUT_MS = fetchTimeout;
 
-  const hedgeMax = Number(cfg.STATUS_FETCH_HEDGE_MAX_PARALLEL);
-  if (!Number.isNaN(hedgeMax) && hedgeMax >= 1) config.STATUS_FETCH_HEDGE_MAX_PARALLEL = Math.min(3, Math.floor(hedgeMax));
+      const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
+      if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
 
-  // optional: stale data gate
-  const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);
-  if (!Number.isNaN(staleMaxAge)) config.STALE_DATA_MAX_AGE_MS = staleMaxAge;
+      // optional: hedged requests
+      const hedgeEnabled = cfg.STATUS_FETCH_HEDGE_ENABLED;
+      if (typeof hedgeEnabled === "boolean") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled;
+      else if (typeof hedgeEnabled === "string") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled.trim() === "是";
+      else if (typeof hedgeEnabled === "number") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled === 1;
 
-  if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
-  if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
-  if (!config.FALLBACK_ORIGIN_CACHE_URL) throw new Error("CONFIG_FALLBACK_ORIGIN_CACHE_URL_MISSING");
-  if (!config.EDGE_STATUS_URLS.length) throw new Error("CONFIG_EDGE_STATUS_URLS_EMPTY");
+      const hedgeDelay = Number(cfg.STATUS_FETCH_HEDGE_DELAY_MS);
+      if (!Number.isNaN(hedgeDelay) && hedgeDelay >= 0) config.STATUS_FETCH_HEDGE_DELAY_MS = hedgeDelay;
+
+      const hedgeMax = Number(cfg.STATUS_FETCH_HEDGE_MAX_PARALLEL);
+      if (!Number.isNaN(hedgeMax) && hedgeMax >= 1) config.STATUS_FETCH_HEDGE_MAX_PARALLEL = Math.min(3, Math.floor(hedgeMax));
+
+      // optional: stale data gate
+      const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);
+      if (!Number.isNaN(staleMaxAge)) config.STALE_DATA_MAX_AGE_MS = staleMaxAge;
+
+      // optional: config fetch timeout
+      const cfgTimeout = Number(cfg.CONFIG_FETCH_TIMEOUT_MS);
+      if (!Number.isNaN(cfgTimeout) && cfgTimeout >= 1000) config.CONFIG_FETCH_TIMEOUT_MS = cfgTimeout;
+
+      if (config.ENABLE_LINE_LOGIN && !config.LIFF_ID) throw new Error("CONFIG_LIFF_ID_MISSING");
+      if (!config.AUTH_API_URL) throw new Error("CONFIG_AUTH_API_URL_MISSING");
+      if (!config.FALLBACK_ORIGIN_CACHE_URL) throw new Error("CONFIG_FALLBACK_ORIGIN_CACHE_URL_MISSING");
+      if (!config.EDGE_STATUS_URLS.length) throw new Error("CONFIG_EDGE_STATUS_URLS_EMPTY");
+    } finally {
+      clearTimeout(t);
+    }
+  })();
+
+  try {
+    await configLoadInFlight_;
+  } finally {
+    configLoadInFlight_ = null;
+  }
 }
 
 /**

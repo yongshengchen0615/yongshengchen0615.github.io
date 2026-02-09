@@ -55,7 +55,11 @@ function scheduleNextPoll(ms) {
   const wait = withJitter(ms, pc.JITTER_RATIO);
 
   state.pollTimer = setTimeout(async () => {
-    if (document.hidden && !config.POLL_ALLOW_BACKGROUND) return;
+    if (document.hidden && !config.POLL_ALLOW_BACKGROUND) {
+      // 背景輪詢關閉：停掉 timer，等待回前景事件 kick。
+      clearPoll();
+      return;
+    }
 
     const res = await refreshStatusAdaptive(false);
     const next = computeNextInterval(res);
@@ -84,7 +88,7 @@ function computeNextInterval(res) {
     // ✅ 即時性優先：偵測到變更後，下一次直接用 BASE 再抓一次
     // - 常見情境：短時間連續變更（師傅狀態、預約等）
     // - 代價：只有在「確定有變更」時才會更密集
-    state.poll.nextMs = pc.BASE_MS;
+    state.poll.nextMs = Math.max(pc.BASE_MS, Number(pc.CHANGED_BOOST_MS) || pc.BASE_MS);
     return state.poll.nextMs;
   }
 
@@ -205,9 +209,14 @@ export function startPolling(extraReadyPromise) {
 
     // 允許 boot() 在初次載入時額外等待其他資料（例如：業績預載）
     // - 若已用快取顯示 UI，就不要再阻塞遮罩
+    // - 即使沒有快取，也要限制等待時間，避免卡在遮罩太久
     try {
       if (!hydrated) setInitialLoadingProgress(92, "準備中…");
-      await Promise.resolve(extraReadyPromise);
+      const EXTRA_WAIT_MAX_MS = 1500;
+      await Promise.race([
+        Promise.resolve(extraReadyPromise),
+        new Promise((resolve) => setTimeout(resolve, EXTRA_WAIT_MAX_MS)),
+      ]);
     } catch {
       // extraReadyPromise 失敗不應阻擋主流程
     }
