@@ -31,6 +31,15 @@ const STATUS_VOID = "void";
 const MAX_GENERATE_COUNT = 500;
 const MAX_LIST_LIMIT = 1000;
 
+// OpsLog 留存策略
+// - 最多保留 N 筆資料列（不含標題列），超過就從最舊的開始刪（第 2 列起）。
+// - 目標：避免 OpsLog 無限長大導致查詢/寫入變慢或超出試算表限制。
+const MAX_OPS_LOG_ROWS = 5000;
+// DetailJson 避免單格過大（Google Sheets 單格上限約 50k chars，保守抓 30k）
+const MAX_OPS_DETAIL_CHARS = 30000;
+// 安全閥：一次最多刪除的筆數（避免超大表格時一次刪太多導致執行時間過長）
+const OPSLOG_TRIM_CHUNK = 2000;
+
 function doGet(e) {
   try {
     return json_({
@@ -61,9 +70,11 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let payload = null;
+  let mode = "";
   try {
-    const payload = readJsonBody_(e);
-    const mode = String(payload.mode || "").trim();
+    payload = readJsonBody_(e);
+    mode = String(payload.mode || "").trim();
     if (!mode) throw new Error("MODE_REQUIRED");
 
     // Ensure sheets exist early
@@ -74,6 +85,10 @@ function doPost(e) {
       const userId = normalizeUserId_(payload.userId);
       const displayName = normalizeDisplayName_(payload.displayName);
       const res = adminUpsertAndCheck_({ userId, displayName });
+      // ✅ 也記一筆 OpsLog（best-effort；寫入失敗不影響回應）
+      try {
+        logOp_("admin_upsert_and_check", "", { user: { userId, displayName }, allowed: !!res.allowed, audit: res.audit, created: !!res.created });
+      } catch (_) {}
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
@@ -119,6 +134,10 @@ function doPost(e) {
       const filters = normalizeListFilters_(payload.filters);
       const limit = normalizeLimit_(payload.limit);
       const res = serialsList_({ filters, limit });
+      // ✅ list 也留痕（便於追查誰在大量查詢/用什麼條件查）
+      try {
+        logOp_("serials_list", "", { filters, limit, actor: gate.user, resultCount: Array.isArray(res && res.items) ? res.items.length : undefined });
+      } catch (_) {}
       return json_({ ok: true, ...res, now: Date.now(), actor: gate.user });
     }
 
@@ -167,6 +186,23 @@ function doPost(e) {
 
     return json_({ ok: false, error: "UNSUPPORTED_MODE", mode, now: Date.now() });
   } catch (err) {
+    // ✅ 例外也盡量記錄（包含 INVALID_JSON）
+    // - 注意：不能讓 log 再噴錯影響主流程，因此全部包在 try/catch
+    try {
+      ensureSheets_();
+      const message = err && err.message ? String(err.message) : "ERROR";
+      const stack = String(err && err.stack ? err.stack : "")
+        .split("\n")
+        .slice(0, 8)
+        .join("\n");
+      const raw = err && err.raw ? String(err.raw) : "";
+      logOp_("error", "", {
+        mode: String(mode || ""),
+        error: message,
+        stack,
+        raw,
+      });
+    } catch (_) {}
     return jsonError_(err);
   }
 }
@@ -943,8 +979,36 @@ function logOp_(action, serial, detail) {
   const actorUserId = detail && detail.actor && detail.actor.userId ? String(detail.actor.userId) : "";
   const actorName = detail && detail.actor && detail.actor.displayName ? String(detail.actor.displayName) : "";
 
-  const json = safeJsonStringify_(detail || {});
+  // DetailJson 可能很長：先序列化，再截斷，避免單格超限導致 appendRow 失敗
+  const json = truncateString_(safeJsonStringify_(detail || {}), MAX_OPS_DETAIL_CHARS);
   sh.appendRow([now, String(action || ""), String(serial || ""), actorUserId, actorName, json]);
+
+  // 實施留存策略：超過上限就刪最舊資料列（標題列保留）
+  try {
+    trimOpsLog_(sh, MAX_OPS_LOG_ROWS);
+  } catch (_) {}
+}
+
+function trimOpsLog_(sh, maxRows) {
+  // maxRows：資料列上限（不含標題列）
+  const keep = Math.max(1, Number(maxRows) || 1);
+  const lastRow = sh.getLastRow();
+  const maxSheetRows = keep + 1; // + header
+  if (lastRow <= maxSheetRows) return;
+
+  // 從第 2 列開始刪（第 1 列是標題）
+  const excess = lastRow - maxSheetRows;
+  const toDelete = Math.min(excess, OPSLOG_TRIM_CHUNK);
+  if (toDelete > 0) sh.deleteRows(2, toDelete);
+}
+
+function truncateString_(s, maxLen) {
+  // 以字元長度截斷（保留尾綴標記），避免 JSON 過大寫入失敗
+  const str = String(s || "");
+  const m = Math.max(0, Number(maxLen) || 0);
+  if (!m) return "";
+  if (str.length <= m) return str;
+  return str.slice(0, Math.max(0, m - 12)) + "...<truncated>";
 }
 
 /* =====================================================
