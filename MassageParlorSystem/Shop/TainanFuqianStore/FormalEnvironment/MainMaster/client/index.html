@@ -59,6 +59,11 @@
       </div>
 
       <div class="topbar-right">
+        <div id="adminBadge" class="admin-badge" hidden>
+          <span class="admin-badge-label">登入者</span>
+          <span id="adminBadgeName" class="admin-badge-name">-</span>
+        </div>
+        <button id="topbarLogoutBtn" class="btn danger" type="button" hidden>登出</button>
         <button id="themeToggle" class="btn ghost" type="button" aria-label="切換亮暗主題">切換主題</button>
         <!-- ✅ JS 會把「儲存全部變更」插在 reloadBtn 前 -->
         <button id="reloadBtn" class="btn ghost" type="button">重新整理</button>

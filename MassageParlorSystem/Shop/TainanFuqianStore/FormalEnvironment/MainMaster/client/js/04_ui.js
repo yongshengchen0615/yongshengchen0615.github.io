@@ -26,6 +26,29 @@ function updateThemeButtonText_() {
 	btn.textContent = current === "dark" ? "亮色" : "暗色";
 }
 
+/* ========= Admin Badge ========= */
+function renderAdminBadge_() {
+	const badge = document.getElementById("adminBadge");
+	const nameEl = document.getElementById("adminBadgeName");
+	const logoutBtn = document.getElementById("topbarLogoutBtn");
+	if (!badge || !nameEl) return;
+
+	const isAuthed = !!(adminProfile && adminProfile.userId);
+	badge.hidden = !isAuthed;
+	if (logoutBtn) logoutBtn.hidden = !isAuthed;
+
+	if (!isAuthed) {
+		nameEl.textContent = "-";
+		badge.title = "";
+		return;
+	}
+
+	const displayName = String(adminProfile.displayName || "").trim();
+	const fallback = String(adminProfile.userId || "").trim();
+	nameEl.textContent = displayName || fallback || "-";
+	badge.title = fallback ? `userId：${fallback}` : "";
+}
+
 /* ========= UI Lock ========= */
 function setEditingEnabled_(enabled) {
 	const lock = !enabled;

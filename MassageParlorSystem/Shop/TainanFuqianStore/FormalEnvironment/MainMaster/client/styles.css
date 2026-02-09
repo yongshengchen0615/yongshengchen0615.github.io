@@ -93,6 +93,26 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 .brand-text p{ margin:4px 0 0; color:var(--text-sub); font-size:12px; font-family:var(--mono); }
 .topbar-right{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
+.admin-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(56,189,248,.35);
+  background:var(--accent-soft);
+  color:var(--text);
+  font-size:12px;
+  max-width: clamp(160px, 28vw, 320px);
+}
+.admin-badge-label{ color:var(--text-sub); }
+.admin-badge-name{
+  font-weight:800;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
 /* ===== KPI (✅ auto-fit) ===== */
 .kpi-grid{
   display:grid;

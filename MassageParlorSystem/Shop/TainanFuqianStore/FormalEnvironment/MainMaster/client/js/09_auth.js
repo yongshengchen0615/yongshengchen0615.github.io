@@ -96,6 +96,7 @@ async function adminAuthBoot_() {
 		const ident = await getLiffIdentity_();
 		if (!ident.userId) throw new Error("LIFF missing userId");
 		adminProfile = { userId: ident.userId, displayName: ident.displayName || "" };
+		if (typeof renderAdminBadge_ === "function") renderAdminBadge_();
 
 		const check = await adminCheckAccess_(adminProfile.userId, adminProfile.displayName);
 
@@ -132,6 +133,7 @@ async function adminAuthBoot_() {
 
 		showAuthGate_(false);
 		setEditingEnabled_(true);
+		if (typeof renderAdminBadge_ === "function") renderAdminBadge_();
 
 		// ✅ 使用紀錄：登入成功
 		if (typeof usageLogFire_ === "function") {
@@ -170,6 +172,7 @@ async function adminLogout_() {
 
 		adminProfile = null;
 		adminPerms = null;
+		if (typeof renderAdminBadge_ === "function") renderAdminBadge_();
 		setEditingEnabled_(false);
 		if (typeof applyBulkPermissions_ === "function") applyBulkPermissions_();
 		ensurePushPanel_();
