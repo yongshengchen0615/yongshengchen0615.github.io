@@ -1181,9 +1181,6 @@ html[data-theme="light"] .initial-loading-progress{
       font-size: 10px;
     }
   }
-    font-size: 11px;
-  }
-
   #schedulePanelSection .card-table .status-table thead th:nth-child(5),
   #schedulePanelSection .card-table .status-table tbody td:nth-child(5) {
     width: clamp(56px, 16vw, 88px) !important;
@@ -1298,6 +1295,173 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
 #schedulePanelSection .my-master-text{
   padding-left: 6px;
   min-width: 0;
+}
+
+/* ===== 我的狀態（師傅狀態）內容排版 =====
+ * DOM 由 js/schedule/modules/myMasterStatus.js 動態產生（.myms*）
+ * 目標：狀態/剩餘/順位/預約內容排列一致、長字可控、手機不擠壓
+ */
+#schedulePanelSection .myms{
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+}
+
+#schedulePanelSection .myms-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-width:0;
+}
+
+#schedulePanelSection .myms-tech{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  min-width:0;
+  font-variant-numeric: tabular-nums;
+}
+
+#schedulePanelSection .myms-tech-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,.25);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap !important;
+}
+
+html[data-theme="light"] #schedulePanelSection .myms-tech-badge{
+  background: rgba(2,6,23,0.03);
+  border-color: rgba(148,163,184,.35);
+}
+
+#schedulePanelSection .myms-row{
+  display:grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items:start;
+}
+
+#schedulePanelSection .myms-row + .myms-row{
+  padding-top: 10px;
+  border-top: 1px dashed rgba(148,163,184,0.20);
+}
+
+#schedulePanelSection .myms-label{
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--text-sub);
+  letter-spacing: .02em;
+  white-space: nowrap !important;
+  padding-top: 6px;
+}
+
+#schedulePanelSection .myms-right{ min-width:0; }
+
+#schedulePanelSection .myms-line{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width:0;
+}
+
+#schedulePanelSection .myms-line1 .status-pill{
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+#schedulePanelSection .myms-rem{
+  display:inline-flex;
+  align-items:center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,.20);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme="light"] #schedulePanelSection .myms-rem{
+  background: rgba(2,6,23,0.03);
+  border-color: rgba(148,163,184,.32);
+}
+
+#schedulePanelSection .myms-rem.is-warn{
+  border-color: rgba(245,158,11,.38);
+  background: rgba(245,158,11,.10);
+  color: rgba(245,158,11,1);
+}
+
+#schedulePanelSection .myms-rem.is-expired{
+  border-color: rgba(239,68,68,.40);
+  background: rgba(239,68,68,.10);
+  color: var(--danger);
+}
+
+#schedulePanelSection .myms-rank{
+  display:inline-flex;
+  align-items:center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,.20);
+  background: rgba(56,189,248,.08);
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap !important;
+}
+
+#schedulePanelSection .myms-rank.is-top3{
+  border-color: rgba(56,189,248,.45);
+  background: rgba(56,189,248,.14);
+  color: var(--accent);
+}
+
+#schedulePanelSection .myms-line-appt{ align-items:flex-start; }
+
+#schedulePanelSection .myms-appt-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(56,189,248,.30);
+  background: rgba(56,189,248,.10);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap !important;
+}
+
+#schedulePanelSection .myms-appt-text{
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+@media (max-width: 420px){
+  #schedulePanelSection .myms-row{
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  #schedulePanelSection .myms-label{ padding-top: 0; }
+  #schedulePanelSection .myms-appt-text{ -webkit-line-clamp: 4; }
 }
 
 #schedulePanelSection .my-master-head{
@@ -1884,6 +2048,7 @@ html[data-theme="light"] #schedulePanelSection .my-master-status{
   color:var(--text);
   font-weight:600;
   font-size:13px;
+  white-space: nowrap !important;
 }
 
 #schedulePanelSection .status-pill.status-shift,
