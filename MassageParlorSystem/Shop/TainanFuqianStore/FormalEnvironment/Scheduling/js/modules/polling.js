@@ -166,6 +166,21 @@ export function startPolling(extraReadyPromise) {
     }
   }
 
+  // ✅ 快速進入畫面：若沒有快取可用，就不要讓 full-screen 遮罩卡太久。
+  // - 先顯示短暫遮罩避免閃爍
+  // - 接著改用 top toast + 卡片內 loading（table.js 會顯示 #loadingState）
+  if (!hydrated) {
+    try {
+      const FAST_ENTER_DELAY_MS = 250;
+      setTimeout(() => {
+        try {
+          hideInitialLoading();
+          showLoadingHint("同步資料中…");
+        } catch {}
+      }, FAST_ENTER_DELAY_MS);
+    } catch {}
+  }
+
   // 手動重整
   if (dom.refreshBtn) {
     dom.refreshBtn.addEventListener("click", async () => {

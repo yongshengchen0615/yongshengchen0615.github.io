@@ -34,6 +34,7 @@ export const dom = {
   lastUpdateEl: document.getElementById("lastUpdate"),
   tbodyRowsEl: document.getElementById("tbodyRows"),
   emptyStateEl: document.getElementById("emptyState"),
+  loadingStateEl: document.getElementById("loadingState"),
   errorStateEl: document.getElementById("errorState"),
   themeToggleBtn: document.getElementById("themeToggle"),
   btnMyStatusEl: document.getElementById("btnMyStatus"),

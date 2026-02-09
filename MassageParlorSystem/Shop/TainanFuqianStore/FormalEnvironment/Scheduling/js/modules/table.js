@@ -858,6 +858,13 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
   state.refreshInFlight = true;
 
   if (isManual && dom.errorStateEl) dom.errorStateEl.style.display = "none";
+  if (state.scheduleUiEnabled) {
+    try {
+      if (dom.loadingStateEl) dom.loadingStateEl.style.display = "flex";
+      if (dom.emptyStateEl) dom.emptyStateEl.style.display = "none";
+      if (dom.errorStateEl) dom.errorStateEl.style.display = "none";
+    } catch {}
+  }
 
   try {
     const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
@@ -939,6 +946,9 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
     if (dom.errorStateEl && state.scheduleUiEnabled) dom.errorStateEl.style.display = "block";
     throw err;
   } finally {
+    try {
+      if (dom.loadingStateEl) dom.loadingStateEl.style.display = "none";
+    } catch {}
     state.refreshInFlight = false;
   }
 }
