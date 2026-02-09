@@ -56,6 +56,7 @@ let perfChartRO_ = null;
 let perfChartLastLayout_ = { isNarrow: false };
 
 let perfDetailUi_ = null; // { overlayEl, panelEl, closeBtn, onKeydown }
+let perfScrollLock_ = null; // { y, bodyTop }
 
 const perfDragState_ = {
   enabled: false,
@@ -168,19 +169,60 @@ function perfSetChartOverlay_(state, text) {
   `;
 }
 
+function perfLockScroll_() {
+  try {
+    if (perfScrollLock_) return;
+    const y = window.scrollY || window.pageYOffset || 0;
+    perfScrollLock_ = { y, bodyTop: `-${y}px` };
+
+    document.documentElement.classList.add("perf-modal-open");
+    document.body.classList.add("perf-modal-open");
+
+    // iOS Safari: overflow hidden 常常不可靠；用 body fixed 比較穩
+    document.body.style.position = "fixed";
+    document.body.style.top = perfScrollLock_.bodyTop;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  } catch (_) {}
+}
+
+function perfUnlockScroll_() {
+  try {
+    const saved = perfScrollLock_;
+    perfScrollLock_ = null;
+
+    document.documentElement.classList.remove("perf-modal-open");
+    document.body.classList.remove("perf-modal-open");
+
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+
+    if (saved && typeof saved.y === "number") {
+      window.scrollTo(0, saved.y);
+    }
+  } catch (_) {}
+}
+
 function perfCloseDetail_() {
   try {
     const ui = perfDetailUi_;
-    if (!ui || !ui.overlayEl || !ui.panelEl) return;
-    ui.overlayEl.setAttribute("aria-hidden", "true");
-    ui.overlayEl.classList.remove("is-open");
-    ui.panelEl.classList.remove("is-open");
-    ui.panelEl.classList.remove("is-sheet");
-    ui.panelEl.classList.remove("is-popover");
-    ui.panelEl.removeAttribute("style");
-    ui.panelEl.setAttribute("aria-hidden", "true");
-    // unlock scroll
-    document.documentElement.classList.remove("perf-modal-open");
+    if (ui && ui.overlayEl) {
+      ui.overlayEl.setAttribute("aria-hidden", "true");
+      ui.overlayEl.classList.remove("is-open");
+    }
+    if (ui && ui.panelEl) {
+      ui.panelEl.classList.remove("is-open");
+      ui.panelEl.classList.remove("is-sheet");
+      ui.panelEl.classList.remove("is-popover");
+      ui.panelEl.removeAttribute("style");
+      ui.panelEl.setAttribute("aria-hidden", "true");
+    }
+    // unlock scroll (always)
+    perfUnlockScroll_();
   } catch (_) {}
 }
 
@@ -284,12 +326,12 @@ function perfOpenDetail_(payload) {
       ui.panelEl.classList.add("is-sheet");
       ui.panelEl.classList.remove("is-popover");
       // lock scroll on mobile to avoid background scroll
-      document.documentElement.classList.add("perf-modal-open");
+      perfLockScroll_();
       ui.panelEl.removeAttribute("style");
     } else {
       ui.panelEl.classList.add("is-popover");
       ui.panelEl.classList.remove("is-sheet");
-      document.documentElement.classList.remove("perf-modal-open");
+      perfUnlockScroll_();
 
       // position near click
       const x = Number(anchor?.x);
