@@ -260,7 +260,7 @@ function renderTechUsageLogs_() {
 }
 
 /* ================================
- * Tech Usage Chart (aggregation + Chart.js)
+ * Tech Usage Chart (aggregation + ECharts)
  * ================================ */
 
 function parseDateSafe(s) {
@@ -356,8 +356,12 @@ function buildTechChartAggregation_(granularity = "day", metric = "count", start
   const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   console.debug("buildTechChartAggregation summary:", { granularity, metric, start, end, nameFilter, processed, skipped, bucketCount: keys.length, sampleKeys: keys.slice(0,5), durationMs: Math.round(t1 - t0) });
   const labels = keys;
-  const data = keys.map((k) => (metric === "unique" ? buckets.get(k).users.size : buckets.get(k).count));
-  return { labels, data };
+
+  const countData = keys.map((k) => buckets.get(k).count);
+  const uniqueData = keys.map((k) => buckets.get(k).users.size);
+  const data = metric === "unique" ? uniqueData : countData;
+  // 保留既有 data（依 metric），同時額外提供 count/unique 兩組序列方便同圖顯示
+  return { labels, data, countData, uniqueData };
 }
 
 function initTechUsageChart_() {
@@ -372,39 +376,52 @@ function initTechUsageChart_() {
     return;
   }
   const baseOption = {
-    color: ['#06b6d4'],
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: (params) => {
-      const p = Array.isArray(params) ? params[0] : params;
-      if (!p) return '';
-      // safely extract timestamp and value from various shapes
-      let ts = null;
-      let val = null;
-      if (p.data && Array.isArray(p.data)) {
-        ts = p.data[0];
-        val = p.data[1];
-      } else if (p.value && Array.isArray(p.value)) {
-        ts = p.value[0];
-        val = p.value[1];
-      } else if (p.data != null) {
-        val = p.data;
-      } else if (p.value != null) {
-        val = p.value;
-      }
-      let label = p.name || '';
-      if (ts != null) {
-        const d = new Date(ts);
-        if (!Number.isNaN(d.getTime())) {
-          label = `${d.getFullYear()}-${pad2_(d.getMonth()+1)}-${pad2_(d.getDate())}` + (d.getHours() || d.getMinutes() ? ` ${pad2_(d.getHours())}:${pad2_(d.getMinutes())}` : '');
+    color: ['#06b6d4', '#f97316'],
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (params) => {
+        const arr = Array.isArray(params) ? params : (params ? [params] : []);
+        if (!arr.length) return '';
+
+        // use the first point to build the shared label
+        const p0 = arr[0];
+        let ts = null;
+        if (p0?.data && Array.isArray(p0.data)) ts = p0.data[0];
+        else if (p0?.value && Array.isArray(p0.value)) ts = p0.value[0];
+
+        let label = p0?.name || '';
+        if (ts != null) {
+          const d = new Date(ts);
+          if (!Number.isNaN(d.getTime())) {
+            label = `${d.getFullYear()}-${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}` + (d.getHours() || d.getMinutes() ? ` ${pad2_(d.getHours())}:${pad2_(d.getMinutes())}` : '');
+          }
         }
+
+        const lines = arr.map((p) => {
+          let v = null;
+          if (p?.data && Array.isArray(p.data)) v = p.data[1];
+          else if (p?.value && Array.isArray(p.value)) v = p.value[1];
+          else if (p?.data != null) v = p.data;
+          else if (p?.value != null) v = p.value;
+          const seriesName = p?.seriesName || '';
+          return `${escapeHtml(seriesName)}: ${v != null ? v : '-'}`;
+        });
+
+        return `${escapeHtml(label)}<br/>${lines.join('<br/>')}`;
       }
-      const seriesName = p.seriesName || '';
-      return `${label}${seriesName ? '<br/>' + seriesName + ': ' : ''}${val != null ? val : '-'}`;
-    } },
-    legend: { data: [] },
+    },
+    legend: { data: ['事件數', '不同使用者數'] },
     grid: { left: '8%', right: '6%', bottom: '14%' },
     xAxis: { type: 'time', boundaryGap: false, axisLabel: { formatter: null, rotate: 0, interval: 'auto' } },
-    yAxis: { type: 'value', min: 0 },
-    series: [{ name: '事件數', type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: [], sampling: 'lttb', large: false }],
+    yAxis: [
+      { type: 'value', name: '事件數', min: 0, position: 'left' },
+      { type: 'value', name: '不同使用者數', min: 0, position: 'right', splitLine: { show: false } }
+    ],
+    series: [
+      { name: '事件數', type: 'line', smooth: true, showSymbol: false, yAxisIndex: 0, itemStyle: { color: '#06b6d4' }, lineStyle: { width: 2, type: 'solid' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: [], sampling: 'lttb', large: false },
+      { name: '不同使用者數', type: 'line', smooth: true, showSymbol: false, yAxisIndex: 1, itemStyle: { color: '#f97316' }, lineStyle: { width: 2, type: 'dashed' }, data: [], sampling: 'lttb', large: false }
+    ],
     dataZoom: []
   };
   techUsageChart.setOption(baseOption);
@@ -450,16 +467,23 @@ function renderTechUsageChart_() {
     agg = buildTechChartAggregation_(gran, metricFromUI, start, end, nameFromUI, eventFromUI);
   }
 
-  // build series data as [ [timestamp, value], ... ]
-  const seriesData = agg.labels.map((lbl, i) => {
-    let x = lbl;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
-    if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
-    const d = parseDateSafe(x) || parseDateSafe(lbl);
-    const ms = d ? d.getTime() : null;
-    return [ ms !== null ? ms : String(x), agg.data[i] ];
-  });
+  function toSeriesData_(labels, values) {
+    const vals = Array.isArray(values) ? values : [];
+    return (Array.isArray(labels) ? labels : []).map((lbl, i) => {
+      let x = lbl;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) x = `${lbl}T00:00:00`;
+      if (/^\d{4}-\d{2}$/.test(lbl)) x = `${lbl}-01T00:00:00`;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(lbl)) x = lbl.replace(' ', 'T') + ':00';
+      const d = parseDateSafe(x) || parseDateSafe(lbl);
+      const ms = d ? d.getTime() : null;
+      return [ms !== null ? ms : String(x), vals[i] ?? 0];
+    });
+  }
+
+  const countData = Array.isArray(agg.countData) ? agg.countData : (metricFromUI === 'count' ? agg.data : []);
+  const uniqueData = Array.isArray(agg.uniqueData) ? agg.uniqueData : (metricFromUI === 'unique' ? agg.data : []);
+  const seriesDataCount = toSeriesData_(agg.labels, countData);
+  const seriesDataUnique = toSeriesData_(agg.labels, uniqueData);
 
   try {
     const canvasEl = document.getElementById('techUsageChartCanvas');
@@ -470,9 +494,17 @@ function renderTechUsageChart_() {
   } catch (e) { /* ignore */ }
 
   // update option with responsiveness helpers
-  const seriesName = metricFromUI === 'unique' ? '不同使用者數' : '事件數';
+  const primaryMetric = metricFromUI === 'unique' ? 'unique' : 'count';
+  const nameCount = '事件數';
+  const nameUnique = '不同使用者數';
+  const primaryName = primaryMetric === 'unique' ? nameUnique : nameCount;
+  const secondaryName = primaryMetric === 'unique' ? nameCount : nameUnique;
+
+  const primaryColor = '#06b6d4';
+  const secondaryColor = '#f97316';
+
   const maxVisible = 120;
-  const total = seriesData.length;
+  const total = seriesDataCount.length;
   const dataZoom = [];
   if (total > maxVisible) {
     const startPct = Math.max(0, ((total - maxVisible) / total) * 100);
@@ -502,9 +534,39 @@ function renderTechUsageChart_() {
   };
 
   const option = {
-    legend: { data: [seriesName] },
+    legend: { data: [primaryName, secondaryName] },
     xAxis: { type: 'time', axisLabel: { formatter: axisFormatter, rotate: rotate, interval: axisInterval, showMinLabel: true, showMaxLabel: true, fontSize: fontSize } },
-    series: [{ name: seriesName, type: 'line', smooth: true, showSymbol: false, itemStyle: { color: '#06b6d4' }, areaStyle: { color: 'rgba(6,182,212,0.12)' }, data: seriesData, large: useLarge, sampling: sampling }],
+    yAxis: [
+      { type: 'value', name: primaryName, min: 0, position: 'left' },
+      { type: 'value', name: secondaryName, min: 0, position: 'right', splitLine: { show: false } }
+    ],
+    series: [
+      {
+        name: primaryName,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        yAxisIndex: 0,
+        itemStyle: { color: primaryColor },
+        lineStyle: { width: 2, type: 'solid' },
+        areaStyle: { color: 'rgba(6,182,212,0.12)' },
+        data: primaryMetric === 'unique' ? seriesDataUnique : seriesDataCount,
+        large: useLarge,
+        sampling: sampling
+      },
+      {
+        name: secondaryName,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        yAxisIndex: 1,
+        itemStyle: { color: secondaryColor },
+        lineStyle: { width: 2, type: 'dashed' },
+        data: primaryMetric === 'unique' ? seriesDataCount : seriesDataUnique,
+        large: useLarge,
+        sampling: sampling
+      }
+    ],
     dataZoom: dataZoom
   };
   try { techUsageChart.setOption(option, { notMerge: false }); } catch (e) { console.warn('echarts setOption failed', e); }
