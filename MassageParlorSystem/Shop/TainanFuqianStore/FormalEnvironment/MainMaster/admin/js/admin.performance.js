@@ -11,6 +11,8 @@ const dom = {
   perfDateStartInput: document.getElementById("perfDateStart"),
   perfDateEndInput: document.getElementById("perfDateEnd"),
   perfChartEl: document.getElementById("perfChart"),
+  perfChartOverlayEl: document.getElementById("perfChartOverlay"),
+  perfChartHintEl: document.getElementById("perfChartHint"),
 
   perfDateKeyInput: document.getElementById("perfDateKey"),
   perfSearchBtn: document.getElementById("perfSearch"),
@@ -51,18 +53,32 @@ let perfChartLastRows_ = null;
 let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
+let perfChartLastLayout_ = { isNarrow: false };
+
+let perfDetailUi_ = null; // { overlayEl, panelEl, closeBtn, onKeydown }
 
 const perfDragState_ = {
   enabled: false,
   pointerDown: false,
+  dragging: false,
   startX: 0,
+  startY: 0,
   startScrollLeft: 0,
+  suppressClickUntil: 0,
   handlers: null,
 };
 
 const PERF_CURRENCY_FMT = (() => {
   try {
     return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 });
+  } catch (_) {
+    return null;
+  }
+})();
+
+const PERF_CURRENCY_TICK_FMT = (() => {
+  try {
+    return new Intl.NumberFormat("zh-TW", { notation: "compact", maximumFractionDigits: 1 });
   } catch (_) {
     return null;
   }
@@ -115,6 +131,260 @@ function fmtMoney_(n) {
   const v = Number(n || 0) || 0;
   if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
   return String(Math.round(v));
+}
+
+function fmtCurrencyFull_(n) {
+  return `NT$${fmtMoney_(n)}`;
+}
+
+function fmtCurrencyTick_(n) {
+  const v = Number(n || 0) || 0;
+  if (PERF_CURRENCY_TICK_FMT) return PERF_CURRENCY_TICK_FMT.format(v);
+  // fallback: keep it short-ish
+  if (Math.abs(v) >= 1000000) return `${Math.round(v / 100000) / 10}M`;
+  if (Math.abs(v) >= 10000) return `${Math.round(v / 1000) / 10}萬`;
+  return fmtMoney_(v);
+}
+
+function perfSetChartOverlay_(state, text) {
+  const el = dom.perfChartOverlayEl || document.getElementById("perfChartOverlay");
+  if (!el) return;
+
+  const s = String(state || "");
+  if (s === "hidden") {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+
+  el.hidden = false;
+  const msg = String(text || "").trim();
+  const showSpinner = s === "loading";
+  el.innerHTML = `
+    <div class="perf-chart-overlay-inner" data-state="${perfEscapeHtml_(s)}">
+      ${showSpinner ? '<span class="spinner-sm" aria-hidden="true"></span>' : ""}
+      <div class="perf-chart-overlay-text">${perfEscapeHtml_(msg || "")}</div>
+    </div>
+  `;
+}
+
+function perfCloseDetail_() {
+  try {
+    const ui = perfDetailUi_;
+    if (!ui || !ui.overlayEl || !ui.panelEl) return;
+    ui.overlayEl.setAttribute("aria-hidden", "true");
+    ui.overlayEl.classList.remove("is-open");
+    ui.panelEl.classList.remove("is-open");
+    ui.panelEl.classList.remove("is-sheet");
+    ui.panelEl.classList.remove("is-popover");
+    ui.panelEl.removeAttribute("style");
+    ui.panelEl.setAttribute("aria-hidden", "true");
+    // unlock scroll
+    document.documentElement.classList.remove("perf-modal-open");
+  } catch (_) {}
+}
+
+function perfEnsureDetailUi_() {
+  if (perfDetailUi_ && perfDetailUi_.overlayEl && perfDetailUi_.panelEl) return perfDetailUi_;
+
+  const overlayEl = document.createElement("div");
+  overlayEl.className = "perf-detail-overlay";
+  overlayEl.setAttribute("aria-hidden", "true");
+
+  const panelEl = document.createElement("div");
+  panelEl.className = "perf-detail-panel";
+  panelEl.setAttribute("role", "dialog");
+  panelEl.setAttribute("aria-modal", "true");
+  panelEl.setAttribute("aria-hidden", "true");
+
+  panelEl.innerHTML = `
+    <div class="perf-detail-panel-inner">
+      <div class="perf-detail-handle" aria-hidden="true"></div>
+      <div class="perf-detail-head">
+        <div class="perf-detail-title" id="perfDetailTitle">—</div>
+        <button class="perf-detail-close" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="perf-detail-meta" id="perfDetailMeta">—</div>
+      <div class="perf-detail-body" id="perfDetailBody"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlayEl);
+  document.body.appendChild(panelEl);
+
+  const closeBtn = panelEl.querySelector(".perf-detail-close");
+  const onKeydown = (ev) => {
+    if (!ev) return;
+    if (ev.key === "Escape") {
+      perfCloseDetail_();
+    }
+  };
+
+  overlayEl.addEventListener("click", () => perfCloseDetail_(), { passive: true });
+  if (closeBtn) closeBtn.addEventListener("click", () => perfCloseDetail_(), { passive: true });
+  document.addEventListener("keydown", onKeydown, { passive: true });
+
+  perfDetailUi_ = { overlayEl, panelEl, closeBtn, onKeydown };
+  return perfDetailUi_;
+}
+
+function perfOpenDetail_(payload) {
+  try {
+    const ui = perfEnsureDetailUi_();
+    if (!ui) return;
+
+    const dateLabel = String(payload?.dateLabel || "—");
+    const metricsText = String(payload?.metricsText || "");
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const anchor = payload?.anchor || null; // { x, y }
+
+    const titleEl = ui.panelEl.querySelector("#perfDetailTitle");
+    const metaEl = ui.panelEl.querySelector("#perfDetailMeta");
+    const bodyEl = ui.panelEl.querySelector("#perfDetailBody");
+    if (titleEl) titleEl.textContent = dateLabel;
+    if (metaEl) metaEl.textContent = metricsText || "—";
+
+    if (bodyEl) {
+      if (!rows.length) {
+        bodyEl.innerHTML = `<div class="perf-detail-empty">查無明細（可切換日期區間或到『業績明細』表格檢查）。</div>`;
+      } else {
+        const sample = rows.slice(0, 40);
+        const itemsHtml = sample
+          .map((r) => {
+            const id = String(r["訂單編號"] || r["序"] || r["訂單"] || "");
+            const bucket = String(r["拉牌"] || "");
+            const svc = String(r["服務項目"] || "");
+            const money = String(r["小計"] ?? r["業績金額"] ?? "");
+            return `
+              <div class="perf-detail-item">
+                <div class="perf-detail-item-top">
+                  <div class="perf-detail-item-id">${perfEscapeHtml_(id || "—")}</div>
+                  <div class="perf-detail-item-badge" data-bucket="${perfEscapeHtml_(bucket)}">${perfEscapeHtml_(bucket || "—")}</div>
+                  <div class="perf-detail-item-money">${perfEscapeHtml_(money)}</div>
+                </div>
+                <div class="perf-detail-item-svc">${perfEscapeHtml_(svc || "—")}</div>
+              </div>
+            `;
+          })
+          .join("");
+
+        const moreHtml = rows.length > sample.length ? `<div class="perf-detail-more">還有 ${rows.length - sample.length} 筆，請查看下方『業績明細』表格。</div>` : "";
+        bodyEl.innerHTML = `<div class="perf-detail-list">${itemsHtml}</div>${moreHtml}`;
+      }
+    }
+
+    const isMobile = window.matchMedia ? window.matchMedia("(max-width: 640px)").matches : !!perfChartLastLayout_?.isNarrow;
+
+    ui.overlayEl.classList.add("is-open");
+    ui.overlayEl.setAttribute("aria-hidden", "false");
+    ui.panelEl.classList.add("is-open");
+    ui.panelEl.setAttribute("aria-hidden", "false");
+
+    if (isMobile) {
+      ui.panelEl.classList.add("is-sheet");
+      ui.panelEl.classList.remove("is-popover");
+      // lock scroll on mobile to avoid background scroll
+      document.documentElement.classList.add("perf-modal-open");
+      ui.panelEl.removeAttribute("style");
+    } else {
+      ui.panelEl.classList.add("is-popover");
+      ui.panelEl.classList.remove("is-sheet");
+      document.documentElement.classList.remove("perf-modal-open");
+
+      // position near click
+      const x = Number(anchor?.x);
+      const y = Number(anchor?.y);
+      const hasXY = Number.isFinite(x) && Number.isFinite(y);
+      const baseLeft = hasXY ? x + 12 : Math.round(window.innerWidth * 0.6);
+      const baseTop = hasXY ? y + 12 : Math.round(window.innerHeight * 0.18);
+      ui.panelEl.style.left = `${Math.round(baseLeft)}px`;
+      ui.panelEl.style.top = `${Math.round(baseTop)}px`;
+
+      // clamp into viewport after layout
+      requestAnimationFrame(() => {
+        try {
+          const rect = ui.panelEl.getBoundingClientRect();
+          const pad = 10;
+          let left = rect.left;
+          let top = rect.top;
+          if (rect.right > window.innerWidth - pad) left -= rect.right - (window.innerWidth - pad);
+          if (rect.bottom > window.innerHeight - pad) top -= rect.bottom - (window.innerHeight - pad);
+          if (left < pad) left = pad;
+          if (top < pad) top = pad;
+          ui.panelEl.style.left = `${Math.round(left)}px`;
+          ui.panelEl.style.top = `${Math.round(top)}px`;
+        } catch (_) {}
+      });
+    }
+
+    // focus close button for accessibility
+    try {
+      if (ui.closeBtn && ui.closeBtn.focus) ui.closeBtn.focus();
+    } catch (_) {}
+  } catch (e) {
+    console.error("perfOpenDetail_ error", e);
+  }
+}
+
+function perfClearClickPanel_() {
+  perfCloseDetail_();
+}
+
+function localDateKeyNDaysAgo_(daysAgo) {
+  const n = Math.max(0, Number(daysAgo) || 0);
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return toDateKey_(d);
+}
+
+function localDateKeyMonthRange_(which) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-based
+  if (which === "this") {
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 0);
+    return { start: toDateKey_(start), end: toDateKey_(end) };
+  }
+  // last month
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0);
+  return { start: toDateKey_(start), end: toDateKey_(end) };
+}
+
+function perfApplyQuickRange_(rangeId) {
+  const id = String(rangeId || "").trim();
+  let start = "";
+  let end = "";
+
+  if (id === "d7") {
+    end = localDateKeyToday_();
+    start = localDateKeyNDaysAgo_(6);
+  } else if (id === "d30") {
+    end = localDateKeyToday_();
+    start = localDateKeyNDaysAgo_(29);
+  } else if (id === "thisMonth") {
+    const r = localDateKeyMonthRange_("this");
+    start = r.start;
+    end = localDateKeyToday_();
+  } else if (id === "lastMonth") {
+    const r = localDateKeyMonthRange_("last");
+    start = r.start;
+    end = r.end;
+  }
+
+  if (!start || !end) return;
+  if (dom.perfDateStartInput) dom.perfDateStartInput.value = start;
+  if (dom.perfDateEndInput) dom.perfDateEndInput.value = end;
+
+  if (!getTechNo_()) {
+    setBadge_("請先選擇師傅編號", true);
+    perfSetChartOverlay_("idle", "請先選擇師傅編號，再查詢業績。\n（可先套用日期區間）");
+    return;
+  }
+
+  // 減少操作步驟：快速區間 → 直接查詢
+  void manualRefreshPerformance_({ showToast: true, force: false, mode: perfSelectedMode_ });
 }
 
 function parseQty_(v) {
@@ -640,6 +910,26 @@ function applyChartVisibility_() {
     perfChartVis_.amount = true;
     if (ds[0]) ds[0].hidden = false;
   }
+
+  // UX: 依顯示項目自動隱藏/顯示座標軸，避免空白軸干擾
+  try {
+    const scales = perfChartInstance_.options?.scales;
+    const isNarrow = !!perfChartLastLayout_?.isNarrow;
+    const showY = !!perfChartVis_.amount;
+    const showY1 = !!(perfChartVis_.oldRate || perfChartVis_.schedRate);
+
+    if (scales?.y) {
+      scales.y.display = showY;
+      if (scales.y.ticks) scales.y.ticks.display = showY;
+      if (scales.y.title) scales.y.title.display = !isNarrow && showY;
+    }
+    if (scales?.y1) {
+      scales.y1.display = showY1;
+      if (scales.y1.ticks) scales.y1.ticks.display = showY1;
+      if (scales.y1.title) scales.y1.title.display = !isNarrow && showY1;
+    }
+  } catch (_) {}
+
   try {
     perfChartInstance_.update("none");
   } catch (_) {
@@ -654,6 +944,7 @@ function clearPerfChart_() {
     } catch (_) {}
   }
   perfChartInstance_ = null;
+  perfClearClickPanel_();
 }
 
 function schedulePerfChartRedraw_() {
@@ -732,10 +1023,11 @@ function enableCanvasDragScroll_(enable) {
     const onPointerDown = (ev) => {
       try {
         perfDragState_.pointerDown = true;
+        perfDragState_.dragging = false;
         perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        perfDragState_.startY = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
         perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
         if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
-        if (ev && ev.cancelable) ev.preventDefault();
       } catch (_) {}
     };
 
@@ -743,14 +1035,28 @@ function enableCanvasDragScroll_(enable) {
       if (!perfDragState_.pointerDown) return;
       try {
         const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        const clientY = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
         const dx = clientX - perfDragState_.startX;
+        const dy = clientY - perfDragState_.startY;
+
+        // 門檻：避免輕觸就觸發拖曳，導致點擊命中錯誤
+        if (!perfDragState_.dragging) {
+          const adx = Math.abs(dx);
+          const ady = Math.abs(dy);
+          if (adx >= 8 && adx > ady) perfDragState_.dragging = true;
+          else return;
+        }
+
         if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
         if (ev && ev.cancelable) ev.preventDefault();
       } catch (_) {}
     };
 
     const onPointerUp = (ev) => {
+      const wasDragging = !!perfDragState_.dragging;
       perfDragState_.pointerDown = false;
+      perfDragState_.dragging = false;
+      if (wasDragging) perfDragState_.suppressClickUntil = Date.now() + 260;
       try {
         if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
       } catch (_) {}
@@ -851,6 +1157,14 @@ function updatePerfChart_(rows, dateKeys) {
     const isNarrow = containerWidth < 420;
     const shouldScroll = points > (isNarrow ? 4 : 6);
 
+    perfChartLastLayout_ = { isNarrow: !!isNarrow, shouldScroll: !!shouldScroll, points };
+
+    if (dom.perfChartHintEl) {
+      dom.perfChartHintEl.textContent = shouldScroll
+        ? "提示：可左右拖曳圖表，點選日期可看當日明細。"
+        : "提示：點選日期可看當日明細。";
+    }
+
     const pxPerPoint = isNarrow ? 64 : 72;
     const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
     const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
@@ -882,38 +1196,32 @@ function updatePerfChart_(rows, dateKeys) {
     })();
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    // 重要：Canvas 事件座標計算依賴 DOM/CSS 尺寸一致。
+    // 讓 Chart.js 自己做 retina scaling，不在這裡手動乘 DPR/ctx.setTransform。
     dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
     dom.perfChartEl.style.height = `${desiredHeight}px`;
-    dom.perfChartEl.width = Math.round(desiredWidth * dpr);
-    dom.perfChartEl.height = Math.round(desiredHeight * dpr);
-
-    try {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    } catch (_) {}
+    dom.perfChartEl.width = Math.round(shouldScroll ? desiredWidth : containerWidth);
+    dom.perfChartEl.height = Math.round(desiredHeight);
 
     enableCanvasDragScroll_(shouldScroll);
 
     const maxXTicks = isNarrow ? 5 : 7;
 
+    // 避免少量點數也被強制 minWidth 造成常態橫向捲動
     try {
-      const minW = Math.max(600, labels.length * 40);
-      dom.perfChartEl.style.minWidth = `${minW}px`;
+      if (shouldScroll) {
+        const minW = Math.max(containerWidth, labels.length * 48);
+        dom.perfChartEl.style.minWidth = `${Math.round(minW)}px`;
+      } else {
+        dom.perfChartEl.style.minWidth = "";
+      }
     } catch (_) {}
 
     function showClickDetailPanel(idx) {
       try {
-        const w = dom.perfChartEl?.closest?.(".chart-wrapper") || dom.perfChartEl?.parentElement;
-        if (!w) return;
-        const old = w.querySelector(".perf-click-panel");
-        if (old) old.remove();
-
         const rawKey = labels[idx];
         const m = rawKey ? metrics[rawKey] : null;
         const dateLabel = rawKey ? String(rawKey).replaceAll("-", "/") : "—";
-
-        const panel = document.createElement("div");
-        panel.className = "perf-click-panel";
-        panel.setAttribute("role", "dialog");
 
         const rowsForDate = list.filter((r) => {
           const dk = String(r["訂單日期"] || "").replaceAll("/", "-").slice(0, 10);
@@ -925,40 +1233,21 @@ function updatePerfChart_(rows, dateKeys) {
         const oldC = m ? (m.oldCount || 0) : 0;
         const schC = m ? (m.schedCount || 0) : 0;
 
-        let html = `<div class="perf-click-panel-inner"><div class="perf-click-panel-head"><strong>${perfEscapeHtml_(dateLabel)}</strong><button class="perf-click-panel-close" aria-label="關閉">✕</button></div>`;
-        html += `<div class="perf-click-panel-body">`;
-        html += `<div class="perf-click-metrics">金額：<strong>${perfEscapeHtml_(String(amount))}</strong>，筆數：<strong>${total}</strong>（老點 ${oldC} / 排班 ${schC}）</div>`;
-        if (rowsForDate && rowsForDate.length) {
-          html += '<div class="perf-click-list"><table class="status-table small"><thead><tr><th>編號</th><th>拉牌</th><th>服務項目</th><th>小計</th></tr></thead><tbody>';
-          const sample = rowsForDate.slice(0, 20);
-          for (let i = 0; i < sample.length; i++) {
-            const r = sample[i];
-            html += `<tr><td>${perfEscapeHtml_(String(r["訂單編號"] || r["序"] || ""))}</td><td>${perfEscapeHtml_(String(r["拉牌"] || ""))}</td><td>${perfEscapeHtml_(String(r["服務項目"] || ""))}</td><td>${perfEscapeHtml_(String(r["小計"] ?? r["業績金額"] ?? ""))}</td></tr>`;
-          }
-          if (rowsForDate.length > sample.length) html += `<tr><td colspan="4">還有 ${rowsForDate.length - sample.length} 筆，請查明細</td></tr>`;
-          html += "</tbody></table></div>";
-        } else {
-          html += '<div class="perf-click-empty">查無明細</div>';
-        }
-        html += "</div></div>";
-        panel.innerHTML = html;
+        const metricsText = `金額 ${amount}｜筆數 ${total}（老點 ${oldC} / 排班 ${schC}）`;
 
-        w.appendChild(panel);
-
-        const btn = panel.querySelector(".perf-click-panel-close");
-        if (btn) btn.addEventListener("click", () => panel.remove());
-
-        const onDocClick = (ev) => {
-          if (!panel.contains(ev.target)) {
-            panel.remove();
-            document.removeEventListener("pointerdown", onDocClick);
-          }
-        };
-        setTimeout(() => document.addEventListener("pointerdown", onDocClick), 50);
+        perfOpenDetail_({
+          dateLabel,
+          metricsText,
+          rows: rowsForDate,
+          anchor: perfLastClickPos_,
+        });
       } catch (e) {
         console.error("showClickDetailPanel error", e);
       }
     }
+
+    // track last click position for desktop popover placement
+    let perfLastClickPos_ = null;
 
     perfChartInstance_ = new Chart(ctx, {
       data: {
@@ -1054,6 +1343,7 @@ function updatePerfChart_(rows, dateKeys) {
         maintainAspectRatio: false,
         animation: false,
         normalized: true,
+        devicePixelRatio: dpr,
         interaction: { mode: "index", intersect: false },
         layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
         plugins: {
@@ -1080,19 +1370,32 @@ function updatePerfChart_(rows, dateKeys) {
                 const m = rawKey ? metrics[rawKey] : null;
 
                 if (ctx2.dataset?.yAxisID === "y") {
-                  const amt = fmtMoney_(v);
+                  const amt = fmtCurrencyFull_(v);
                   const total = m?.totalCount || 0;
                   const oldC = m?.oldCount || 0;
                   const schC = m?.schedCount || 0;
                   return [`${label}：${amt}`, `筆數：${total}（老點 ${oldC} / 排班 ${schC}）`];
                 }
-                return `${label}：${v ?? 0}%`;
+                const pv = Number(v ?? 0) || 0;
+                return `${label}：${Math.round(pv * 10) / 10}%`;
               },
             },
           },
         },
         onClick: function (evt, activeEls) {
           try {
+            if (perfDragState_ && perfDragState_.suppressClickUntil && Date.now() < perfDragState_.suppressClickUntil) return;
+
+            try {
+              const n = evt && (evt.native || evt.event || evt);
+              const x = n && typeof n.x === "number" ? n.x : n && typeof n.clientX === "number" ? n.clientX : null;
+              const y = n && typeof n.y === "number" ? n.y : n && typeof n.clientY === "number" ? n.clientY : null;
+              if (typeof x === "number" && typeof y === "number") perfLastClickPos_ = { x, y };
+              else perfLastClickPos_ = null;
+            } catch (_) {
+              perfLastClickPos_ = null;
+            }
+
             if (!Array.isArray(activeEls) || !activeEls.length) return;
             const el = activeEls[0];
             const idx = el.index != null ? el.index : el._index;
@@ -1124,7 +1427,7 @@ function updatePerfChart_(rows, dateKeys) {
           },
           y: {
             beginAtZero: true,
-            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) },
+            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => fmtCurrencyTick_(vv) },
             title: { display: !isNarrow, text: "金額", font: { size: baseFont } },
             grid: { color: gridColor },
           },
@@ -1141,8 +1444,10 @@ function updatePerfChart_(rows, dateKeys) {
     });
 
     applyChartVisibility_();
+    perfSetChartOverlay_("hidden");
   } catch (e) {
     console.error("updatePerfChart_ error", e);
+    perfSetChartOverlay_("error", "圖表渲染失敗，請稍後再試。\n（可先切換日期區間或重新查詢）");
   }
 }
 
@@ -1232,6 +1537,7 @@ async function renderFromCache_(mode, info) {
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
     clearPerfChart_();
+    perfSetChartOverlay_("idle", "請選擇師傅與日期區間，然後按『業績統計/業績明細』。\n（可用上方快速區間快速套用）");
     return { ok: false, error: r ? r.error : "BAD_RANGE" };
   }
 
@@ -1244,6 +1550,7 @@ async function renderFromCache_(mode, info) {
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
     applyDetailTableHtml_("", 0);
     clearPerfChart_();
+    perfSetChartOverlay_("idle", "尚未查詢。\n請按『業績統計/業績明細』開始查詢。");
     showError_(false);
     return { ok: false, error: "NOT_LOADED" };
   }
@@ -1254,6 +1561,10 @@ async function renderFromCache_(mode, info) {
   setMeta_(lastQueriedText ? `最後查詢：${lastQueriedText}` : "最後查詢：—");
 
   const rows = perfCache_.detailRows || [];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    clearPerfChart_();
+    perfSetChartOverlay_("empty", "此區間沒有業績資料。\n可嘗試調整日期範圍或切換師傅。");
+  }
   const cards3 = pickCards3_(perfCache_.cards, rows);
   renderSummaryTable_(cards3);
 
@@ -1269,7 +1580,11 @@ async function renderFromCache_(mode, info) {
 
   renderDetailTable_(rows);
   try {
-    updatePerfChart_(rows, r.dateKeys);
+    if (Array.isArray(rows) && rows.length) updatePerfChart_(rows, r.dateKeys);
+    else {
+      clearPerfChart_();
+      perfSetChartOverlay_("empty", "此區間沒有業績資料。\n可嘗試調整日期範圍或切換師傅。");
+    }
   } catch (_) {}
   return { ok: true, rendered: "detail", cached: true };
 }
@@ -1338,6 +1653,7 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
 async function manualRefreshPerformance_({ showToast, force = false, mode } = { showToast: true }) {
   ensureDefaultDate_();
   showError_(false);
+  perfClearClickPanel_();
 
   if (mode === "summary" || mode === "detail") perfSelectedMode_ = mode;
 
@@ -1347,6 +1663,7 @@ async function manualRefreshPerformance_({ showToast, force = false, mode } = { 
     else if (info.error === "MISSING_START") setBadge_("請選擇開始日期", true);
     else if (info.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
+    perfSetChartOverlay_("idle", "請先選擇師傅與日期區間再查詢。");
     return { ok: false, error: info.error || "BAD_RANGE" };
   }
 
@@ -1358,6 +1675,7 @@ async function manualRefreshPerformance_({ showToast, force = false, mode } = { 
   }
 
   setBadge_("同步中…", false);
+  perfSetChartOverlay_("loading", "同步中…");
 
   const res = await reloadAndCache_(info, { showToast: !!showToast });
   if (!res || !res.ok) {
@@ -1368,6 +1686,7 @@ async function manualRefreshPerformance_({ showToast, force = false, mode } = { 
     else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
     else setBadge_("同步失敗", true);
     showError_(true);
+    perfSetChartOverlay_("error", "查詢失敗，請稍後再試。\n（可嘗試縮短日期區間或重新查詢）");
     return res;
   }
 
@@ -1399,6 +1718,17 @@ function initPerformanceUi() {
 
   try {
     loadPerfChartPrefs_();
+  } catch (_) {}
+
+  // Quick ranges
+  try {
+    const root = document.getElementById("performancePanelSection");
+    const btns = root ? root.querySelectorAll(".perf-range-chip") : [];
+    if (btns && btns.length) {
+      btns.forEach((b) => {
+        b.addEventListener("click", () => perfApplyQuickRange_(b.getAttribute("data-range")));
+      });
+    }
   } catch (_) {}
 
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", (e) => void manualRefreshPerformance_({ showToast: true, force: !!(e && (e.shiftKey || e.altKey || e.metaKey)), mode: perfSelectedMode_ }));
@@ -1525,6 +1855,11 @@ function initPerformanceUi() {
   } catch (e) {
     console.error("perf wrapper touch setup error", e);
   }
+
+  // Default overlay state
+  try {
+    perfSetChartOverlay_("idle", "請先選擇師傅與日期區間，然後按『業績統計/業績明細』。\n（可用快速區間縮短操作）");
+  } catch (_) {}
 
   try {
     const wrapper = dom.perfChartEl ? dom.perfChartEl.closest(".chart-wrapper") : null;

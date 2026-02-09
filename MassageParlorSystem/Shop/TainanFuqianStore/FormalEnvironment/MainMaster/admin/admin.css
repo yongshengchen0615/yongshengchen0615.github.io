@@ -1694,6 +1694,39 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
   gap:10px;
 }
 
+#performancePanelSection .perf-quick-range{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+#performancePanelSection .perf-range-chip{
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text-sub);
+  font-size:var(--perf-fs-sub);
+  padding:7px 10px;
+  border-radius:999px;
+  cursor:pointer;
+  line-height:1;
+  user-select:none;
+}
+
+#performancePanelSection .perf-range-chip:hover{
+  border-color:rgba(56,189,248,.45);
+  color:var(--text);
+}
+
+#performancePanelSection .perf-range-chip:active{
+  transform: translateY(0.5px);
+}
+
+#performancePanelSection .perf-range-chip:focus-visible{
+  outline:none;
+  box-shadow:var(--focus);
+  border-color:rgba(56,189,248,.45);
+}
+
 /* Match Scheduling: filter layout + labels + inputs */
 #performancePanelSection .filter{
   display:flex;
@@ -1918,6 +1951,12 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
   margin-bottom:6px;
 }
 
+#performancePanelSection .perf-chart-hint{
+  margin: 2px 0 6px 0;
+  font-size: var(--perf-fs-sub);
+  color: var(--text-sub);
+}
+
 #performancePanelSection .toggle-chip{
   display:inline-flex;
   align-items:center;
@@ -1931,6 +1970,7 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
 
 #performancePanelSection .chart-wrapper{
   width:100%;
+  position:relative;
   overflow-x:auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
@@ -1944,6 +1984,44 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
   height:auto;
 }
 
+#performancePanelSection .perf-chart-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px;
+  pointer-events:none;
+  background: linear-gradient(180deg, rgba(2,6,23,0.05), rgba(2,6,23,0.10));
+  color: var(--text-sub);
+  text-align:center;
+}
+
+html[data-theme="light"] #performancePanelSection .perf-chart-overlay{
+  background: linear-gradient(180deg, rgba(15,23,42,0.02), rgba(15,23,42,0.04));
+}
+
+#performancePanelSection .perf-chart-overlay-inner{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  max-width: 520px;
+}
+
+#performancePanelSection .perf-chart-overlay-text{
+  font-size: var(--perf-fs-text);
+  color: var(--text-sub);
+}
+
+#performancePanelSection .spinner-sm{
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  border:2px solid rgba(148, 163, 184, 0.35);
+  border-top-color:var(--accent);
+  animation:spin .85s linear infinite;
+}
+
 /* Click detail panel (align Scheduling) */
 #performancePanelSection .perf-click-panel{
   position: absolute;
@@ -1952,9 +2030,9 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
   z-index: 40;
   min-width: 280px;
   max-width: 48%;
-  background: var(--card-bg, #fff);
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  background: var(--card2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
   border-radius: 8px;
   overflow: auto;
 }
@@ -1968,6 +2046,207 @@ html[data-theme="light"] #schedulePanelSection .myms-rem{
 
 @media (max-width: 640px){
   #performancePanelSection .perf-click-panel{ right: 8px; left: 8px; max-width: none; }
+}
+
+/* ===== Performance: chart click detail overlay (responsive) ===== */
+html.perf-modal-open,
+html.perf-modal-open body{
+  overflow:hidden;
+}
+
+.perf-detail-overlay{
+  position:fixed;
+  inset:0;
+  z-index: 2000;
+  background: rgba(2,6,23,0.46);
+  backdrop-filter: blur(2px);
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .16s ease;
+}
+
+html[data-theme="light"] .perf-detail-overlay{
+  background: rgba(15,23,42,0.28);
+}
+
+.perf-detail-overlay.is-open{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.perf-detail-panel{
+  position:fixed;
+  z-index: 2001;
+  opacity:0;
+  pointer-events:none;
+  transform: translateY(8px);
+  transition: opacity .16s ease, transform .16s ease;
+  color: var(--text);
+}
+
+.perf-detail-panel.is-open{
+  opacity:1;
+  pointer-events:auto;
+  transform: translateY(0);
+}
+
+.perf-detail-panel.is-popover{
+  width: min(520px, calc(100vw - 20px));
+  max-height: min(72vh, 680px);
+}
+
+.perf-detail-panel.is-sheet{
+  left:0;
+  right:0;
+  bottom:0;
+  width: 100vw;
+  max-height: 82vh;
+  transform: translateY(14px);
+}
+
+.perf-detail-panel-inner{
+  background: var(--card2);
+  border:1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  border-radius: 14px;
+  overflow:hidden;
+}
+
+.perf-detail-panel.is-sheet .perf-detail-panel-inner{
+  border-left:0;
+  border-right:0;
+  border-bottom:0;
+  border-radius: 16px 16px 0 0;
+}
+
+.perf-detail-handle{
+  display:none;
+}
+
+.perf-detail-panel.is-sheet .perf-detail-handle{
+  display:block;
+  width:44px;
+  height:5px;
+  border-radius:999px;
+  background: rgba(148,163,184,0.38);
+  margin:10px auto 6px;
+}
+
+.perf-detail-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 12px;
+  border-bottom:1px solid var(--border);
+}
+
+.perf-detail-title{
+  font-weight:800;
+  font-size: 14px;
+  letter-spacing:.2px;
+}
+
+.perf-detail-close{
+  border:1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  cursor:pointer;
+}
+
+.perf-detail-close:hover{
+  border-color: rgba(56,189,248,.45);
+}
+
+.perf-detail-meta{
+  padding: 8px 12px;
+  color: var(--text-sub);
+  font-size: 12px;
+  border-bottom:1px solid var(--border-soft);
+  font-family: var(--mono);
+}
+
+.perf-detail-body{
+  padding: 10px 12px 12px;
+  overflow:auto;
+  max-height: calc(82vh - 104px);
+}
+
+.perf-detail-empty{
+  color: var(--text-sub);
+  font-size: 13px;
+  padding: 6px 2px;
+}
+
+.perf-detail-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.perf-detail-item{
+  border: 1px solid var(--border-soft);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 10px;
+}
+
+.perf-detail-item-top{
+  display:grid;
+  grid-template-columns: 1fr auto auto;
+  gap:8px;
+  align-items:center;
+}
+
+.perf-detail-item-id{
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-sub);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.perf-detail-item-money{
+  font-weight:800;
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+}
+
+.perf-detail-item-badge{
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  color: var(--text-sub);
+  background: rgba(100,116,139,0.12);
+}
+
+.perf-detail-item-badge[data-bucket="老點"]{
+  border-color: rgba(245,158,11,0.38);
+  background: rgba(245,158,11,0.14);
+  color: #f59e0b;
+}
+
+.perf-detail-item-badge[data-bucket="排班"]{
+  border-color: rgba(16,185,129,0.32);
+  background: rgba(16,185,129,0.14);
+  color: #10b981;
+}
+
+.perf-detail-item-svc{
+  margin-top:6px;
+  font-size: 13px;
+  line-height:1.25;
+}
+
+.perf-detail-more{
+  margin-top:10px;
+  color: var(--text-sub);
+  font-size: 12px;
 }
 
 /* perf summary table */

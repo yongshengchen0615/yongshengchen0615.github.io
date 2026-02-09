@@ -632,6 +632,15 @@
               <label for="perfDateEnd" class="filter-label">結束日期</label>
               <input id="perfDateEnd" class="input" type="date" lang="en-CA" />
             </div>
+            <div class="filter perf-quick-cell">
+              <label class="filter-label">快速區間</label>
+              <div class="perf-quick-range" role="group" aria-label="快速套用日期區間">
+                <button class="perf-range-chip" type="button" data-range="d7">近7天</button>
+                <button class="perf-range-chip" type="button" data-range="d30">近30天</button>
+                <button class="perf-range-chip" type="button" data-range="thisMonth">本月</button>
+                <button class="perf-range-chip" type="button" data-range="lastMonth">上月</button>
+              </div>
+            </div>
               <div class="filter perf-actions-cell">
               <label class="filter-label" aria-hidden="true">&nbsp;</label>
               <div class="perf-actions">
@@ -700,8 +709,11 @@
                 </label>
               </div>
 
+              <div id="perfChartHint" class="perf-chart-hint" aria-live="polite">提示：可左右拖曳圖表，點選日期可看當日明細。</div>
+
               <div class="chart-wrapper" style="margin:10px 0 12px 0;">
                 <canvas id="perfChart" height="160" aria-label="業績趨勢圖表" role="img"></canvas>
+                <div id="perfChartOverlay" class="perf-chart-overlay" aria-live="polite" aria-atomic="true" hidden></div>
               </div>
 
               <div class="table-wrapper">
