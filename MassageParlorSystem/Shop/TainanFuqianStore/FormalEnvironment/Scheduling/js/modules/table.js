@@ -824,7 +824,7 @@ export async function refreshStatus({ isManual } = { isManual: false }) {
   try {
     const REFRESH_SLOW_MS = 400; // threshold to warn about slow refresh
     const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-    const { source, edgeIdx, bodyRows, footRows, dataTimestamp } = await fetchStatusAll();
+    const { source, edgeIdx, bodyRows, footRows, dataTimestamp } = await fetchStatusAll({ isManual: !!isManual });
     const t1 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     const dtFetch = Math.round(t1 - t0);
     if (dtFetch > REFRESH_SLOW_MS) console.warn(`[Perf] fetchStatusAll slow: ${dtFetch}ms`);

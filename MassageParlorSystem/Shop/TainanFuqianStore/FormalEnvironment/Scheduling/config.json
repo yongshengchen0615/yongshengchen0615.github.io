@@ -46,14 +46,14 @@
 
  "_comment_perf": "=== （可選）效能/更新速度調校：不填則沿用程式預設值 ===",
 
-  "POLL_BASE_MS": 3000,
+  "POLL_BASE_MS": 2500,
   "_comment_POLL_BASE_MS": "輪詢基本間隔（毫秒）。越小越即時，但 GAS/網路負載越高。",
 
-  "POLL_MAX_MS": 8000,
-  "_comment_POLL_MAX_MS": "穩定後輪詢最大間隔（毫秒）。想更即時可調小（例如 8000~12000）。",
+  "POLL_MAX_MS": 6000,
+  "_comment_POLL_MAX_MS": "穩定後輪詢最大間隔（毫秒）。即時性優先可調小（例如 5000~8000）。",
 
-  "POLL_CHANGED_BOOST_MS": 3000,
-  "_comment_POLL_CHANGED_BOOST_MS": "偵測到資料變更後，下一次輪詢的間隔（毫秒）。想追更快可設成 3000。",
+  "POLL_CHANGED_BOOST_MS": 2500,
+  "_comment_POLL_CHANGED_BOOST_MS": "偵測到資料變更後，下一次輪詢的間隔（毫秒）。即時性優先可設成與 POLL_BASE_MS 相同。",
 
   "POLL_JITTER_RATIO": 0.2,
   "_comment_POLL_JITTER_RATIO": "輪詢抖動比例（0~1），用來分散同時請求，避免尖峰。",
@@ -63,6 +63,15 @@
 
   "STATUS_FETCH_TIMEOUT_MS": 8000,
   "_comment_STATUS_FETCH_TIMEOUT_MS": "單次狀態 API timeout（毫秒）。調小可加速失敗切換，但太小可能誤判網路慢為失敗。",
+
+  "STATUS_FETCH_HEDGE_ENABLED": true,
+  "_comment_STATUS_FETCH_HEDGE_ENABLED": "（可選）是否啟用 hedged requests（同時嘗試第 2 個 edge，降低尾延遲）。",
+
+  "STATUS_FETCH_HEDGE_DELAY_MS": 300,
+  "_comment_STATUS_FETCH_HEDGE_DELAY_MS": "（可選）啟動第 2 個 edge 的延遲（毫秒）。想更即時可調小（例如 250~450）。",
+
+  "STATUS_FETCH_HEDGE_MAX_PARALLEL": 2,
+  "_comment_STATUS_FETCH_HEDGE_MAX_PARALLEL": "（可選）hedge 最大並行數（建議 2，避免對 GAS 壓力過大）。",
 
   "STATUS_FETCH_ORIGIN_EXTRA_MS": 4000,
   "_comment_STATUS_FETCH_ORIGIN_EXTRA_MS": "Origin fallback 額外 timeout（毫秒）。",

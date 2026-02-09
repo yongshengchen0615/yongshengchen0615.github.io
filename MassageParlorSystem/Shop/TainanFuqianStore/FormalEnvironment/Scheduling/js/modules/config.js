@@ -66,6 +66,13 @@ export const config = {
   /** Origin fallback 額外 timeout（毫秒）。 */
   STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
 
+  /** （可選）是否啟用 hedged requests（同時嘗試第 2 個 edge，降低尾延遲）。 */
+  STATUS_FETCH_HEDGE_ENABLED: true,
+  /** （可選）啟動第 2 個 edge 的延遲（毫秒）。 */
+  STATUS_FETCH_HEDGE_DELAY_MS: 450,
+  /** （可選）hedge 最大並行數（建議 2，避免對 GAS 壓力過大）。 */
+  STATUS_FETCH_HEDGE_MAX_PARALLEL: 2,
+
   /**
    * （可選）資料過久未更新的判定門檻（毫秒）。
    * - 以資料列的 timestamp/sourceTs/updatedAt 為準
@@ -136,6 +143,18 @@ export async function loadConfigJson() {
 
   const originExtra = Number(cfg.STATUS_FETCH_ORIGIN_EXTRA_MS);
   if (!Number.isNaN(originExtra) && originExtra >= 0) config.STATUS_FETCH_ORIGIN_EXTRA_MS = originExtra;
+
+  // optional: hedged requests
+  const hedgeEnabled = cfg.STATUS_FETCH_HEDGE_ENABLED;
+  if (typeof hedgeEnabled === "boolean") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled;
+  else if (typeof hedgeEnabled === "string") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled.trim() === "是";
+  else if (typeof hedgeEnabled === "number") config.STATUS_FETCH_HEDGE_ENABLED = hedgeEnabled === 1;
+
+  const hedgeDelay = Number(cfg.STATUS_FETCH_HEDGE_DELAY_MS);
+  if (!Number.isNaN(hedgeDelay) && hedgeDelay >= 0) config.STATUS_FETCH_HEDGE_DELAY_MS = hedgeDelay;
+
+  const hedgeMax = Number(cfg.STATUS_FETCH_HEDGE_MAX_PARALLEL);
+  if (!Number.isNaN(hedgeMax) && hedgeMax >= 1) config.STATUS_FETCH_HEDGE_MAX_PARALLEL = Math.min(3, Math.floor(hedgeMax));
 
   // optional: stale data gate
   const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);

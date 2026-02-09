@@ -81,7 +81,10 @@ function computeNextInterval(res) {
   state.poll.failStreak = 0;
 
   if (changed) {
-    state.poll.nextMs = Math.max(pc.BASE_MS, Math.min(pc.MAX_MS, pc.CHANGED_BOOST_MS));
+    // ✅ 即時性優先：偵測到變更後，下一次直接用 BASE 再抓一次
+    // - 常見情境：短時間連續變更（師傅狀態、預約等）
+    // - 代價：只有在「確定有變更」時才會更密集
+    state.poll.nextMs = pc.BASE_MS;
     return state.poll.nextMs;
   }
 
@@ -232,12 +235,34 @@ export function startPolling(extraReadyPromise) {
   });
 
   // 從背景回來時立即刷新
-  document.addEventListener("visibilitychange", async () => {
-    if (!document.hidden) {
+  let lastKickMs_ = 0;
+  async function kickImmediateRefresh_(reason) {
+    try {
+      const now = Date.now();
+      if (now - lastKickMs_ < 1200) return; // throttle
+      lastKickMs_ = now;
+
       resetPollState();
+      clearPoll();
       const res = await refreshStatusAdaptive(false);
       const next = computeNextInterval(res);
       scheduleNextPoll(next);
+    } catch (e) {
+      // ignore (adaptive loop will handle retries)
     }
+  }
+
+  document.addEventListener("visibilitychange", async () => {
+    if (!document.hidden) await kickImmediateRefresh_("visibility");
   });
+
+  // 有些環境（特別是某些 WebView）focus/online 比 visibilitychange 更可靠
+  try {
+    window.addEventListener("focus", () => {
+      if (!document.hidden) kickImmediateRefresh_("focus");
+    });
+    window.addEventListener("online", () => {
+      if (!document.hidden) kickImmediateRefresh_("online");
+    });
+  } catch {}
 }
