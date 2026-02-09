@@ -40,6 +40,7 @@ let perfSelectedTechNo_ = "";
 const perfCache_ = {
   key: "",
   lastUpdatedAt: "",
+  lastQueriedAt: "",
   detailRows: [],
   cards: null,
   serviceSummary: [],
@@ -1225,7 +1226,7 @@ async function renderFromCache_(mode, info) {
     else if (r && r.error === "RANGE_TOO_LONG") setBadge_("日期區間過長（最多 93 天 / 約 3 個月）", true);
     else setBadge_("日期格式不正確", true);
 
-    setMeta_("最後更新：—");
+    setMeta_("最後查詢：—");
     if (dom.perfMonthRatesEl) dom.perfMonthRatesEl.textContent = "—";
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
@@ -1237,7 +1238,7 @@ async function renderFromCache_(mode, info) {
   const key = makeCacheKey_(r.techNo, r.from, r.to);
   if (perfCache_.key !== key) {
     setBadge_("尚未載入（請按『業績統計/業績明細』）", true);
-    setMeta_("最後更新：—");
+    setMeta_("最後查詢：—");
     if (dom.perfMonthRatesEl) dom.perfMonthRatesEl.textContent = "—";
     if (dom.perfSummaryRowsEl) dom.perfSummaryRowsEl.innerHTML = summaryNotLoadedHtml_();
     renderDetailHeader_(m === "detail" ? "detail" : "summary");
@@ -1249,7 +1250,8 @@ async function renderFromCache_(mode, info) {
 
   showError_(false);
   setBadge_("已載入", false);
-  setMeta_(perfCache_.lastUpdatedAt ? `最後更新：${perfCache_.lastUpdatedAt}` : "最後更新：—");
+  const lastQueriedText = perfCache_.lastQueriedAt ? formatDateTimeLocal(perfCache_.lastQueriedAt) : "";
+  setMeta_(lastQueriedText ? `最後查詢：${lastQueriedText}` : "最後查詢：—");
 
   const rows = perfCache_.detailRows || [];
   const cards3 = pickCards3_(perfCache_.cards, rows);
@@ -1307,11 +1309,19 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
 
     perfCache_.key = key;
     perfCache_.lastUpdatedAt = String(raw.lastUpdatedAt || detail.lastUpdatedAt || "");
+    perfCache_.lastQueriedAt = String(Date.now());
     perfCache_.detailRows = rows;
     perfCache_.cards = cards;
     perfCache_.serviceSummary = serviceSummary;
 
-    return { ok: true, key, rowsCount: rows.length, serviceSummaryCount: serviceSummary.length, lastUpdatedAt: perfCache_.lastUpdatedAt };
+    return {
+      ok: true,
+      key,
+      rowsCount: rows.length,
+      serviceSummaryCount: serviceSummary.length,
+      lastUpdatedAt: perfCache_.lastUpdatedAt,
+      lastQueriedAt: perfCache_.lastQueriedAt,
+    };
   })();
 
   perfPrefetchInFlight_ = { key, promise: task };

@@ -104,3 +104,28 @@ function parseDateFlexible(s) {
   if (!Number.isNaN(d.getTime())) return d;
   return null;
 }
+
+/**
+ * 將各種時間輸入格式化為本機時間字串。
+ * 預設輸出：YYYY/MM/DD HH:mm:ss
+ * - input 支援：Date、epoch 秒/毫秒、ISO、yyyy-mm-dd/yy/mm/dd 字串
+ * - 若無法解析，回傳原字串（trim 後）
+ * @param {any} input
+ * @param {{withSeconds?: boolean}} [opts]
+ */
+function formatDateTimeLocal(input, opts = {}) {
+  const withSeconds = opts.withSeconds !== false;
+  const raw = String(input ?? "").trim();
+  if (!raw) return "";
+
+  const d = input instanceof Date ? input : parseDateFlexible(raw);
+  if (!d) return raw;
+
+  const Y = String(d.getFullYear());
+  const M = String(d.getMonth() + 1).padStart(2, "0");
+  const D = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${Y}/${M}/${D} ${hh}:${mm}${withSeconds ? `:${ss}` : ""}`;
+}

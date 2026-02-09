@@ -109,10 +109,108 @@ const PERF_CURRENCY_FMT = (() => {
   }
 })();
 
+const PERF_DATETIME_FMT = (() => {
+  try {
+    return new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch (_) {
+    return null;
+  }
+})();
+
 function fmtMoney_(n) {
   const v = Number(n || 0) || 0;
   if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
   return String(Math.round(v));
+}
+
+function parseToTimestampMs_(v) {
+  if (v === null || v === undefined) return NaN;
+  if (typeof v === "number" && Number.isFinite(v)) {
+    // Heuristic: 10-digit seconds vs 13-digit ms
+    if (v > 0 && v < 1e12) return Math.round(v * 1000);
+    return Math.round(v);
+  }
+
+  const s = String(v).trim();
+  if (!s) return NaN;
+
+  // Pure numeric timestamp
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (!Number.isFinite(n)) return NaN;
+    if (n > 0 && n < 1e12) return Math.round(n * 1000);
+    return Math.round(n);
+  }
+
+  // Prefer parsing timezone-less date strings ourselves (avoid Date.parse engine differences)
+  // Supports: YYYY/MM/DD HH:mm(:ss) or YYYY-MM-DD HH:mm(:ss) or with 'T'
+  const isPlainLocalLike =
+    /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/.test(s) &&
+    !/[zZ]$/.test(s) &&
+    !/([+\-]\d{2}:?\d{2})$/.test(s);
+
+  if (isPlainLocalLike) {
+    const m = s.match(
+      /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/
+    );
+    if (m) {
+      const year = Number(m[1]);
+      const month = Number(m[2]);
+      const day = Number(m[3]);
+      const hour = Number(m[4] || 0);
+      const minute = Number(m[5] || 0);
+      const second = Number(m[6] || 0);
+      if (![year, month, day, hour, minute, second].every((x) => Number.isFinite(x))) return NaN;
+
+      // Treat as Asia/Taipei wall-clock time (UTC+8)
+      return Date.UTC(year, month - 1, day, hour - 8, minute, second);
+    }
+  }
+
+  // ISO / RFC / Date.parse-able (includes Z / offset)
+  const ms = Date.parse(s);
+  if (Number.isFinite(ms)) return ms;
+
+  // Last resort: looser fallback parse
+  const m2 = s.match(
+    /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2}))(?::(\d{1,2}))?)?/
+  );
+  if (!m2) return NaN;
+
+  const year2 = Number(m2[1]);
+  const month2 = Number(m2[2]);
+  const day2 = Number(m2[3]);
+  const hour2 = Number(m2[4] || 0);
+  const minute2 = Number(m2[5] || 0);
+  const second2 = Number(m2[6] || 0);
+  if (![year2, month2, day2, hour2, minute2, second2].every((x) => Number.isFinite(x))) return NaN;
+
+  return Date.UTC(year2, month2 - 1, day2, hour2 - 8, minute2, second2);
+}
+
+function fmtTaipeiDateTime_(input) {
+  const ms = parseToTimestampMs_(input);
+  if (!Number.isFinite(ms)) return "";
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return "";
+
+  if (PERF_DATETIME_FMT) {
+    // zh-TW sometimes includes comma in some engines; normalize to a space
+    return PERF_DATETIME_FMT.format(d).replace(/,\s*/g, " ").trim();
+  }
+
+  // Fallback (still local time; best-effort)
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /* =========================
@@ -1257,7 +1355,10 @@ async function renderFromCache_(mode, info) {
 
   showError_(false);
   setBadge_("已載入", false);
-  setMeta_(perfCache_.lastUpdatedAt ? `最後更新：${perfCache_.lastUpdatedAt}` : "最後更新：—");
+  {
+    const last = fmtTaipeiDateTime_(perfCache_.lastUpdatedAt);
+    setMeta_(last ? `最後更新：${last}` : "最後更新：—");
+  }
 
   const rows = perfCache_.detailRows || [];
   const cards3 = pickCards3_(perfCache_.cards, rows);
