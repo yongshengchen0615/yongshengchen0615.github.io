@@ -240,7 +240,7 @@ function maybeUpdateStats_() {
   setText_("kpiMaintenance", statsCache.maintenance);
 
   const s = $("#summaryText");
-  if (s)
+  if (s && !s.hidden)
     s.textContent =
       `總筆數：${statsCache.total}（` +
       `通過 ${statsCache.approved} / ` +

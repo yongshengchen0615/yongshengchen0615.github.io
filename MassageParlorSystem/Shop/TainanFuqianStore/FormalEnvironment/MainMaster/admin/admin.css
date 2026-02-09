@@ -90,6 +90,23 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   background:var(--card2);
 }
 
+/* Small screens: keep view tabs in one row and allow horizontal scroll
+   to avoid a very tall multi-line tab bar. */
+@media (max-width: 720px){
+  .viewbar{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scroll-snap-type:x proximity;
+    padding:10px 10px;
+  }
+  .viewbar .btn{
+    flex:0 0 auto;
+    white-space:nowrap;
+    scroll-snap-align:start;
+  }
+}
+
 .kpi-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
 .kpi-card{
   border:1px solid var(--border);
@@ -175,6 +192,17 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 }
 .chip:hover{ border-color:rgba(56,189,248,.45); color:var(--text); }
 .chip:disabled{ opacity:.55; cursor:not-allowed; }
+
+/* Small screens: chips become a scroll row instead of many wrapped lines. */
+@media (max-width: 600px){
+  .seg{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:2px; /* keep scroll bar off content */
+  }
+  .chip{ flex:0 0 auto; white-space:nowrap; }
+}
 
 /* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
  * 但樣式需與 client 專案的 .chip 完全一致。
@@ -416,9 +444,10 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   font-size:12px;
   margin-left:8px;
   user-select:none;
-/* 讓「是/否」按鈕像刪除按鈕一樣靠右 */
-td.yn-cell{ text-align:right; }
 }
+
+/* 讓「是/否」按鈕像刪除按鈕一樣靠右（client-scope） */
+.client-scope td.yn-cell{ text-align:right; }
 .client-scope .audit-badge.pending{ border-color:rgba(245,158,11,.45); background:var(--warning-soft); color:var(--warning); }
 .client-scope .audit-badge.approved{ border-color:rgba(22,163,74,.45); background:var(--success-soft); color:var(--success); }
 .client-scope .audit-badge.rejected{ border-color:rgba(239,68,68,.45); background:var(--danger-soft); color:var(--danger); }
@@ -900,6 +929,35 @@ tbody td.sticky-right{
 #adminsTable{
   --yn-col-w: 96px;
   --op-col-w: 120px;
+}
+
+/* Tablet/laptop widths: the 8~19 sticky group is too wide and can cover
+   most of the table. Disable sticky for that group so horizontal scrolling
+   remains usable while keeping the rightmost action column sticky. */
+@media (max-width: 1200px){
+  #adminsTable{ --yn-col-w: 88px; --op-col-w: 112px; }
+
+  #adminsTable thead th:nth-child(n+8):nth-child(-n+19),
+  #adminsTable tbody td:nth-child(n+8):nth-child(-n+19){
+    position: static;
+    right: auto;
+    z-index: auto;
+    background: inherit;
+  }
+}
+
+@media (max-width: 520px){
+  /* Admin panel actions: stack buttons full-width on very small screens */
+  #adminsPanelSection .panel-actions{ width:100%; }
+  #adminsPanelSection #reloadBtn,
+  #adminsPanelSection #saveAllBtn{ width:100%; padding:10px 12px; }
+
+  /* Bulk bar: make primary actions thumb-friendly */
+  #bulkBar .bulk-right{ width:100%; justify-content:flex-start; }
+  #bulkBar #bulkApply,
+  #bulkBar #bulkDelete{ width:100%; padding:10px 12px; }
+  #bulkBar .bulk-group{ width:100%; }
+  #bulkBar .bulk-group .select{ width:100%; }
 }
 
 /* 操作欄固定寬度，避免每列因內容不同而抖動 */

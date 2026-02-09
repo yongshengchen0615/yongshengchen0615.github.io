@@ -234,7 +234,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         // 額外隱藏「不屬於該切面」的頂部 UI，避免混淆
-        if (summaryText) summaryText.hidden = !isAdmins;
+        // 管理員名單已用 KPI 呈現統計，頂部不再顯示「總筆數…」摘要
+        if (summaryText) {
+          summaryText.hidden = true;
+          summaryText.textContent = "";
+        }
         if (reloadBtn) reloadBtn.hidden = !isAdmins;
         if (saveAllBtn) saveAllBtn.hidden = !isAdmins;
 
