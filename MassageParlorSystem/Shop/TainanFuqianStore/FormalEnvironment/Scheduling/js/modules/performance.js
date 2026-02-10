@@ -1061,13 +1061,35 @@ function enableCanvasDragScroll_(enable) {
       perfDragState_.handlers = null;
     }
 
-    if (!enable) {
+    // On touch devices, prefer native overflow scrolling.
+    // Custom touchmove handlers (even cancelable) can cause noticeable jank.
+    const allowCustomDrag = !!enable && !isTouchLike_();
+
+    if (!allowCustomDrag) {
       perfDragState_.enabled = false;
       return;
     }
 
+    let rafId = 0;
+    let pendingScrollLeft = null;
+    const flushScroll = () => {
+      rafId = 0;
+      if (pendingScrollLeft === null) return;
+      try {
+        if (wrapper) wrapper.scrollLeft = pendingScrollLeft;
+      } catch (_) {}
+      pendingScrollLeft = null;
+    };
+    const scheduleScroll = (nextLeft) => {
+      pendingScrollLeft = nextLeft;
+      if (rafId) return;
+      rafId = requestAnimationFrame(flushScroll);
+    };
+
     const onPointerDown = (ev) => {
       try {
+        // Only enable drag-to-scroll for mouse. Touch/pen should use native scroll.
+        if (ev && ev.pointerType && ev.pointerType !== "mouse") return;
         perfDragState_.pointerDown = true;
         perfDragState_.dragging = false;
         perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
@@ -1080,6 +1102,7 @@ function enableCanvasDragScroll_(enable) {
     const onPointerMove = (ev) => {
       if (!perfDragState_.pointerDown) return;
       try {
+        if (ev && ev.pointerType && ev.pointerType !== "mouse") return;
         const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
         const clientY = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
         const dx = clientX - perfDragState_.startX;
@@ -1092,8 +1115,7 @@ function enableCanvasDragScroll_(enable) {
           if (adx >= 8 && adx > ady) perfDragState_.dragging = true;
           else return;
         }
-        if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
-        if (ev && ev.cancelable) ev.preventDefault();
+        if (wrapper) scheduleScroll(Math.round(perfDragState_.startScrollLeft - dx));
       } catch (_) {}
     };
 
@@ -1105,21 +1127,19 @@ function enableCanvasDragScroll_(enable) {
       try {
         if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
       } catch (_) {}
+
+      try {
+        if (rafId) cancelAnimationFrame(rafId);
+      } catch (_) {}
+      rafId = 0;
+      pendingScrollLeft = null;
     };
 
-    const onTouchDown = (ev) => onPointerDown(ev);
-    const onTouchMove = (ev) => onPointerMove(ev);
-    const onTouchUp = (ev) => onPointerUp(ev);
-
-    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
-    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: true });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerup", onPointerUp, { passive: true });
 
-    canvas.addEventListener("touchstart", onTouchDown, { passive: false });
-    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("touchend", onTouchUp, { passive: true });
-
-    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: onTouchDown, tmove: onTouchMove, tup: onTouchUp };
+    perfDragState_.handlers = { down: onPointerDown, move: onPointerMove, up: onPointerUp, tdown: null, tmove: null, tup: null };
     perfDragState_.enabled = true;
   } catch (err) {
     console.error("enableCanvasDragScroll_ error", err);
@@ -1311,6 +1331,8 @@ async function updatePerfChart_(rows, dateKeys) {
     // track last click position for desktop popover placement
     let perfLastClickPos_ = null;
 
+    const touchLike = isTouchLike_();
+
     perfChartInstance_ = new Chart(ctx, {
       data: {
         labels: labels.map((s) => String(s).replaceAll("-", "/")),
@@ -1406,6 +1428,7 @@ async function updatePerfChart_(rows, dateKeys) {
         animation: false,
         normalized: true,
         devicePixelRatio: dpr,
+        ...(touchLike ? { events: ["click"] } : {}),
         interaction: { mode: "index", intersect: false },
         layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
         plugins: {

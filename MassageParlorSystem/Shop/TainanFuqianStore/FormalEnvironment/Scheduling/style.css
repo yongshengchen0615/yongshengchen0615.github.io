@@ -903,7 +903,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 
 /* Accessibility: ensure chart wrapper keyboard scroll */
 .chart-wrapper:focus { outline: none; }
-.chart-wrapper { scroll-behavior: smooth; }
+.chart-wrapper {
+  scroll-behavior: auto;
+  /* Prefer native panning on touch devices (avoid scroll blocking) */
+  touch-action: pan-x;
+}
 
 .chart-hint {
   margin: 6px 0 10px 0;
