@@ -770,6 +770,19 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   color: var(--text-sub);
 }
 
+/* Perf header: keep on single line but scale text size on smaller screens
+   instead of truncating with ellipsis, let font-size shrink responsively */
+#perfMeta,
+#perfMonthRates {
+  white-space: nowrap;
+  min-width: 0;
+  /* allow the element to shrink in flex containers */
+  flex: 1 1 auto;
+  /* responsive font-size: smallest 12px, scales with viewport, max 15px */
+  font-size: clamp(12px, 2.4vw, 15px);
+  line-height: 1.1;
+}
+
 .card-header-right {
   display: flex;
   align-items: center;
