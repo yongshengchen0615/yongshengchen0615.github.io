@@ -101,6 +101,10 @@
     maxQueuePerFlush: 16,
     flushIntervalMs: 1200,
     maxTextLen: 12000,
+    // When FULL_CAPTURE is enabled, try to return full bodies (but still capped)
+    FULL_CAPTURE: true,
+    FULL_CAPTURE_MAX_TEXT_LEN: 1000000,
+    FULL_CAPTURE_MAX_BINARY_BYTES: 200000,
     redactSensitiveHeaders: true,
     sentHashMax: 3000,
     verbose: true,
@@ -179,8 +183,13 @@
    *****************************************************************/
   function truncateText_(s, maxLen) {
     const str = String(s == null ? "" : s);
-    if (str.length <= maxLen) return str;
-    return str.slice(0, maxLen) + `...<truncated:${str.length - maxLen}>`;
+    // If FULL_CAPTURE enabled, allow much larger max (but still cap)
+    const effectiveMax = (CAPTURE_RULES && CAPTURE_RULES.FULL_CAPTURE)
+      ? Math.max(Number(maxLen || 0), Number(CAPTURE_RULES.FULL_CAPTURE_MAX_TEXT_LEN || 1000000))
+      : Number(maxLen || 0);
+    if (effectiveMax <= 0) return str;
+    if (str.length <= effectiveMax) return str;
+    return str.slice(0, effectiveMax) + `...<truncated:${str.length - effectiveMax}>`;
   }
 
   const SESSION_KEY_NAME = "YS_CAPTURE_SESSION_KEY";
@@ -321,10 +330,7 @@
           const v = l.slice(idx + 1).trim();
           out[k] = v;
         }
-        // redact if needed below
-      } else
-
-      if (typeof Headers !== "undefined" && headers instanceof Headers) {
+      } else if (typeof Headers !== "undefined" && headers instanceof Headers) {
         headers.forEach((v, k) => (out[String(k).toLowerCase()] = String(v)));
       } else if (Array.isArray(headers)) {
         for (const it of headers) {
@@ -334,15 +340,18 @@
       } else if (typeof headers === "object") {
         for (const k of Object.keys(headers)) out[String(k).toLowerCase()] = String(headers[k]);
       }
-    } catch (_) {}
+    } catch (_) {
+      return out;
+    }
 
+    // If FULL_CAPTURE is enabled, do not redact headers (user consent)
+    if (CAPTURE_RULES.FULL_CAPTURE) return out;
     if (!CAPTURE_RULES.redactSensitiveHeaders) return out;
 
     const SENSITIVE = ["cookie", "authorization", "x-csrf-token", "x-xsrf-token", "csrf-token", "xsrf-token", "x-auth-token"];
     for (const k of SENSITIVE) if (k in out) out[k] = "<redacted>";
     return out;
   }
-
   function normalizeFetchUrl_(input) {
     try {
       if (typeof Request !== "undefined" && input instanceof Request) return input.url;
@@ -351,7 +360,6 @@
       return String(input || "");
     }
   }
-
   function bodyToString_(body) {
     try {
       if (body == null) return "";
@@ -364,8 +372,12 @@
         for (const [k, v] of body.entries()) usp.append(String(k), String(v));
         return usp.toString();
       }
-
-      return "";
+      // other types (ArrayBuffer, Blob, Object) - try JSON stringify
+      try {
+        return JSON.stringify(body);
+      } catch (_) {
+        return String(body || "");
+      }
     } catch (_) {
       return "";
     }
@@ -434,6 +446,7 @@
 
   function scrubBody_(s) {
     try {
+      if (CAPTURE_RULES.FULL_CAPTURE) return String(s == null ? "" : s);
       let out = String(s == null ? "" : s);
       // Email
       out = out.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted_email>");
@@ -776,8 +789,8 @@
         // try binary fallback
         try {
           const buf = await clone.arrayBuffer();
-          const max = 1024;
-          const len = Math.min(buf.byteLength, max);
+            const max = (CAPTURE_RULES.FULL_CAPTURE ? Math.max(1024, Number(CAPTURE_RULES.FULL_CAPTURE_MAX_BINARY_BYTES || 200000)) : 1024);
+            const len = Math.min(buf.byteLength, max);
           const view = new Uint8Array(buf.slice(0, len));
           let binStr = "";
           for (let i = 0; i < view.length; i++) binStr += String.fromCharCode(view[i]);
@@ -813,6 +826,11 @@
           href: location.href,
         }
       };
+      // indicate full-capture consent and timestamp
+      if (CAPTURE_RULES.FULL_CAPTURE) {
+        record.fullCapture = true;
+        record.consentAt = new Date().toISOString();
+      }
 
       const hash = await sha1Hex(JSON.stringify(record));
       if (!SENT_HASH.has(hash)) {
@@ -913,6 +931,10 @@
               timingMs: durationMs,
               client: { ua: navigator.userAgent || '', href: location.href }
             };
+            if (CAPTURE_RULES.FULL_CAPTURE) {
+              record.fullCapture = true;
+              record.consentAt = new Date().toISOString();
+            }
 
             const hash = await sha1Hex(JSON.stringify(record));
             if (!SENT_HASH.has(hash)) {
