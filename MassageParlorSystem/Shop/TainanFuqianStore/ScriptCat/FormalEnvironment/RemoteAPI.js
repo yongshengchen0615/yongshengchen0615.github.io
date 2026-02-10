@@ -90,8 +90,15 @@
    *****************************************************************/
   const CAPTURE_RULES = {
     urlSubstringsAny: ["/api/"],
-    allowNonJson: false,
-    maxQueuePerFlush: 8,
+    // allow capturing non-JSON responses (text/html, xml, etc.)
+    allowNonJson: true,
+    // capture response headers as well (redacted if sensitive)
+    captureResponseHeaders: true,
+    // persist queue to localStorage to avoid data loss on page close
+    persistQueue: true,
+    // persist sent hashes to sessionStorage to avoid duplicate across reloads
+    persistSentHash: true,
+    maxQueuePerFlush: 16,
     flushIntervalMs: 1200,
     maxTextLen: 12000,
     redactSensitiveHeaders: true,
@@ -100,6 +107,10 @@
   };
 
   const ENABLE_ANALYZE = true;
+  
+  // Backoff state for GAS 429 handling
+  let BACKOFF_UNTIL_MS = 0;
+  let BACKOFF_EXPONENT = 0;
 
   /*****************************************************************
    * 2) Page gate
@@ -135,6 +146,12 @@
       }
       ACTIVE = true;
       log("[YS_CAPTURE] START on", location.href, "hash=", location.hash);
+
+      // restore persisted state
+      try {
+        loadSentHashFromStorage_();
+        loadQueueFromStorage_();
+      } catch (e) {}
 
       if (!TECHNO_OBSERVER_STARTED) {
         TECHNO_OBSERVER_STARTED = true;
@@ -294,6 +311,19 @@
     try {
       if (!headers) return out;
 
+      if (typeof headers === 'string') {
+        // parse raw header string from XHR.getAllResponseHeaders()
+        const lines = headers.split(/\r?\n/);
+        for (const l of lines) {
+          const idx = l.indexOf(":");
+          if (idx <= 0) continue;
+          const k = l.slice(0, idx).trim().toLowerCase();
+          const v = l.slice(idx + 1).trim();
+          out[k] = v;
+        }
+        // redact if needed below
+      } else
+
       if (typeof Headers !== "undefined" && headers instanceof Headers) {
         headers.forEach((v, k) => (out[String(k).toLowerCase()] = String(v)));
       } else if (Array.isArray(headers)) {
@@ -348,6 +378,75 @@
   const SENT_HASH = new Set();
   const SENT_HASH_FIFO = [];
 
+  // Persistence keys
+  const STORAGE_KEY_QUEUE = "YS_CAPTURE_QUEUE_V1";
+  const STORAGE_KEY_SENT = "YS_CAPTURE_SENT_V1";
+
+  function saveQueueToStorage_() {
+    try {
+      if (!CAPTURE_RULES.persistQueue) return;
+      const toSave = QUEUE.slice(0, 1000); // cap
+      try {
+        localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(toSave));
+      } catch (e) {}
+    } catch (e) {}
+  }
+
+  function loadQueueFromStorage_() {
+    try {
+      if (!CAPTURE_RULES.persistQueue) return;
+      const raw = localStorage.getItem(STORAGE_KEY_QUEUE);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return;
+      // prepend to in-memory queue
+      while (arr.length) {
+        QUEUE.unshift(arr.pop());
+      }
+    } catch (e) {}
+  }
+
+  function saveSentHashToStorage_() {
+    try {
+      if (!CAPTURE_RULES.persistSentHash) return;
+      const arr = Array.from(SENT_HASH_FIFO || []).slice(-CAPTURE_RULES.sentHashMax);
+      try {
+        sessionStorage.setItem(STORAGE_KEY_SENT, JSON.stringify(arr));
+      } catch (e) {}
+    } catch (e) {}
+  }
+
+  function loadSentHashFromStorage_() {
+    try {
+      if (!CAPTURE_RULES.persistSentHash) return;
+      const raw = sessionStorage.getItem(STORAGE_KEY_SENT);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return;
+      for (const h of arr) {
+        if (!SENT_HASH.has(h)) {
+          SENT_HASH.add(h);
+          SENT_HASH_FIFO.push(h);
+        }
+      }
+    } catch (e) {}
+  }
+
+  function scrubBody_(s) {
+    try {
+      let out = String(s == null ? "" : s);
+      // Email
+      out = out.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted_email>");
+      // Phone (simple)
+      out = out.replace(/\+?\d{2,4}[\s-]?\d{6,12}/g, "<redacted_phone>");
+      // ID numbers (simple generic)
+      out = out.replace(/\b\d{6,20}\b/g, "<redacted_id>");
+      return out;
+    } catch (e) {
+      return String(s || "");
+    }
+  }
+
   function addSentHash_(h) {
     if (SENT_HASH.has(h)) return;
     SENT_HASH.add(h);
@@ -357,11 +456,17 @@
       const old = SENT_HASH_FIFO.splice(0, SENT_HASH_FIFO.length - max);
       for (const x of old) SENT_HASH.delete(x);
     }
+    try {
+      saveSentHashToStorage_();
+    } catch (e) {}
   }
 
   function enqueue(item) {
     QUEUE.push(item);
     log("[YS_CAPTURE] enqueue => queueLen=", QUEUE.length);
+    try {
+      saveQueueToStorage_();
+    } catch (e) {}
   }
 
   function startFlushLoop() {
@@ -376,6 +481,7 @@
 
   function flushQueue() {
     if (!ACTIVE) return;
+    if (Date.now() < (BACKOFF_UNTIL_MS || 0)) return; // in backoff
     if (QUEUE.length === 0) return;
 
     if (!CFG.SHIP_ENABLED || !CFG.GAS_CAPTURE_URL) {
@@ -401,14 +507,67 @@
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify(payload),
       timeout: 30000,
-      onload: (res) => log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200)),
+      onload: (res) => {
+        try {
+          log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200));
+          const code = Number(res.status || 0);
+          // handle 429/backoff
+          if (code === 429) {
+            // try read Retry-After header
+            try {
+              const hdr = (res.responseHeaders || res.getAllResponseHeaders && res.getAllResponseHeaders()) || res.headers || {};
+              let ra = 0;
+              if (hdr) {
+                // GM_xmlhttpRequest response doesn't always expose headers in same shape; try parse body for Retry-After
+                const raMatch = String(res.responseText || "").match(/Retry-After:\s*(\d+)/i);
+                if (raMatch) ra = Number(raMatch[1]);
+              }
+              // exponential fallback
+              BACKOFF_EXPONENT = Math.min(6, (BACKOFF_EXPONENT || 0) + 1);
+              const base = ra && ra > 0 ? ra * 1000 : Math.pow(2, BACKOFF_EXPONENT) * 1000;
+              BACKOFF_UNTIL_MS = Date.now() + base;
+              warn("[YS_CAPTURE] entering backoff until", new Date(BACKOFF_UNTIL_MS).toISOString());
+            } catch (e) {}
+            QUEUE.unshift(...batch);
+            try { saveQueueToStorage_(); } catch (e) {}
+            return;
+          }
+
+          if (code >= 200 && code < 300) {
+            // success, clear exponent
+            BACKOFF_EXPONENT = 0;
+            // remove persisted items already removed from queue
+            try { saveQueueToStorage_(); } catch (e) {}
+            return;
+          }
+
+          // server error -> requeue and increase backoff
+          if (code >= 500) {
+            BACKOFF_EXPONENT = Math.min(6, (BACKOFF_EXPONENT || 0) + 1);
+            BACKOFF_UNTIL_MS = Date.now() + Math.pow(2, BACKOFF_EXPONENT) * 1000;
+            QUEUE.unshift(...batch);
+            try { saveQueueToStorage_(); } catch (e) {}
+            return;
+          }
+
+          // other statuses: requeue conservative
+          QUEUE.unshift(...batch);
+          try { saveQueueToStorage_(); } catch (e) {}
+        } catch (e) {
+          warn('[YS_CAPTURE] onload handler error', e);
+          QUEUE.unshift(...batch);
+          try { saveQueueToStorage_(); } catch (e) {}
+        }
+      },
       onerror: (err) => {
         warn("[YS_CAPTURE] capture send error", err);
         QUEUE.unshift(...batch);
+        try { saveQueueToStorage_(); } catch (e) {}
       },
       ontimeout: () => {
         warn("[YS_CAPTURE] capture send timeout");
         QUEUE.unshift(...batch);
+        try { saveQueueToStorage_(); } catch (e) {}
       },
     });
   }
@@ -596,6 +755,7 @@
    *****************************************************************/
   const _fetch = window.fetch;
   window.fetch = async function (...args) {
+    const startTs = Date.now();
     const res = await _fetch.apply(this, args);
 
     try {
@@ -606,26 +766,59 @@
       if (!urlMatches(url)) return res;
 
       const clone = res.clone();
-      const text = await clone.text();
-      const json = safeJsonParse(text);
+      let text = "";
+      let json = null;
+      let binarySummary = null;
+      try {
+        text = await clone.text();
+        json = safeJsonParse(text);
+      } catch (e) {
+        // try binary fallback
+        try {
+          const buf = await clone.arrayBuffer();
+          const max = 1024;
+          const len = Math.min(buf.byteLength, max);
+          const view = new Uint8Array(buf.slice(0, len));
+          let binStr = "";
+          for (let i = 0; i < view.length; i++) binStr += String.fromCharCode(view[i]);
+          const b64 = btoa(binStr);
+          binarySummary = { mime: (clone.headers && clone.headers.get ? clone.headers.get('content-type') : '') || '', size: buf.byteLength, b64: b64.slice(0, 2048) };
+        } catch (e2) {
+          // ignore
+        }
+      }
 
-      if (!json && !CAPTURE_RULES.allowNonJson) return res;
+      if (!json && !CAPTURE_RULES.allowNonJson && !binarySummary) return res;
 
+      const respHeaders = CAPTURE_RULES.captureResponseHeaders && clone.headers ? sanitizeHeaders_(clone.headers) : {};
+
+      let respOut = json && typeof json === 'object' ? json : (text ? truncateText_(text, CAPTURE_RULES.maxTextLen) : (binarySummary ? binarySummary : ''));
+
+      const durationMs = Date.now() - startTs;
+
+      // scrub request/response bodies
+      const reqBody = bodyToString_(opt.body) || (typeof opt.body === 'string' ? opt.body : null);
       const record = {
         kind: "fetch",
         url: String(url),
         method: String(opt.method || "GET"),
         requestHeaders: sanitizeHeaders_(opt.headers || null),
-        requestBody: bodyToString_(opt.body) || (typeof opt.body === "string" ? opt.body : null),
+        requestBody: scrubBody_(reqBody),
         status: res.status,
-        response: json || truncateText_(text, CAPTURE_RULES.maxTextLen),
+        response: typeof respOut === 'string' ? scrubBody_(respOut) : respOut,
+        responseHeaders: respHeaders,
+        timingMs: durationMs,
+        client: {
+          ua: navigator.userAgent || '',
+          href: location.href,
+        }
       };
 
       const hash = await sha1Hex(JSON.stringify(record));
       if (!SENT_HASH.has(hash)) {
         addSentHash_(hash);
         enqueue({ hash, record });
-        log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status);
+        log("[YS_CAPTURE][fetch] captured:", record.url, "status=", record.status, "dur=", durationMs);
 
         if (json && typeof json === "object") forwardToAnalyzeAll_(record, hash);
       }
@@ -662,49 +855,70 @@
       if (ACTIVE && urlMatches(this._cap_url)) {
         const xhr = this;
         const reqBodyStr = bodyToString_(body) || (typeof body === "string" ? body : null);
+        const startTs = Date.now();
+        xhr._cap_startTs = startTs;
 
         xhr.addEventListener("load", async function () {
           try {
             const rt = String(xhr.responseType || "");
             let json = null;
             let respOut = "";
+            let binarySummary = null;
 
-            if (rt === "" || rt === "text") {
-              const text = xhr.responseText;
-              json = safeJsonParse(text);
-              if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
-            } else if (rt === "json") {
-              const r = xhr.response;
-              if (r && typeof r === "object") json = r;
-              else if (r != null) {
-                const t = String(r);
-                json = safeJsonParse(t);
-                if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
+            try {
+              if (rt === "" || rt === "text") {
+                const text = xhr.responseText;
+                json = safeJsonParse(text);
+                if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
+              } else if (rt === "json") {
+                const r = xhr.response;
+                if (r && typeof r === "object") json = r;
+                else if (r != null) {
+                  const t = String(r);
+                  json = safeJsonParse(t);
+                  if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
+                } else {
+                  respOut = "<null json response>";
+                }
               } else {
-                respOut = "<null json response>";
+                // attempt to get textual representation or size
+                try {
+                  const hdrs = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : "";
+                  const m = String(hdrs || "").match(/content-type:\s*([^\r\n]+)/i);
+                  const mime = m ? m[1] : '';
+                  // fallback: report non-text response type
+                  respOut = `<non-text responseType:${rt} mime:${mime}>`;
+                } catch (e) {
+                  respOut = `<non-text responseType:${rt}>`;
+                }
               }
-            } else {
-              respOut = `<non-text responseType:${rt}>`;
-            }
+            } catch (e) {}
 
-            if (!json && !CAPTURE_RULES.allowNonJson && respOut.startsWith("<non-text")) return;
             if (!json && !CAPTURE_RULES.allowNonJson && !respOut) return;
+
+            const rawHdrs = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : null;
+            const respHeaders = CAPTURE_RULES.captureResponseHeaders ? sanitizeHeaders_(rawHdrs) : {};
+
+            const durationMs = Date.now() - (xhr._cap_startTs || Date.now());
 
             const record = {
               kind: "xhr",
               url: String(xhr._cap_url),
               method: String(xhr._cap_method || "GET"),
               requestHeaders: sanitizeHeaders_(xhr._cap_reqHeaders || null),
-              requestBody: reqBodyStr,
+              requestBody: scrubBody_(reqBodyStr),
               status: xhr.status,
-              response: json || respOut,
+              response: typeof respOut === 'string' ? scrubBody_(respOut) : respOut || json,
+              responseHeaders: respHeaders,
+              timingMs: durationMs,
+              client: { ua: navigator.userAgent || '', href: location.href }
             };
 
             const hash = await sha1Hex(JSON.stringify(record));
             if (!SENT_HASH.has(hash)) {
               addSentHash_(hash);
               enqueue({ hash, record });
-              log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status);
+              log("[YS_CAPTURE][xhr] captured:", record.url, "status=", record.status, "dur=", durationMs);
 
               if (json && typeof json === "object") forwardToAnalyzeAll_(record, hash);
             }
