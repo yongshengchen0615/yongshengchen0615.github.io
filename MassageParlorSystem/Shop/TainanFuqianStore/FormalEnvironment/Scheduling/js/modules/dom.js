@@ -81,6 +81,8 @@ export const dom = {
   perfDateEndInput: document.getElementById("perfDateEnd"),
   // 圖表 canvas
   perfChartEl: document.getElementById("perfChart"),
+  // 圖表提示文字
+  perfChartHintEl: document.getElementById("perfChartHint"),
 
   // 單日（舊版保留：若 HTML 沒有此欄位則為 null）
   perfDateKeyInput: document.getElementById("perfDateKey"),

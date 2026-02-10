@@ -31,6 +31,7 @@ function buildChipAlways(label) {
 }
 
 function renderFeatureBanner() {
+  const bannerEl = document.getElementById("featureBanner");
   const chipsEl = document.getElementById("featureChips");
   if (!chipsEl) return;
 
@@ -40,14 +41,21 @@ function renderFeatureBanner() {
   const performance = normalizeYesNo(state.feature.performanceEnabled);
   const booking = normalizeYesNo(state.feature.bookingEnabled);
 
-    chipsEl.innerHTML = [
-        buildChipAlways("我的狀態"),
-        buildChip("叫班提醒", push),
-        buildChip("排班表", schedule),
-      buildChip("技師休假與狀態", personal),
-        buildChip("業績", performance),
-        buildChip("預約查詢", booking),
-    ].join("");
+  // 若預約查詢 URL 沒設定，即使後端回傳「是」也視為不可用（等同未開通顯示）。
+  const bookingUrlOk = !!String(config.BOOKING_API_URL || "").trim();
+
+  const disabledChips = [];
+  // 需求：未開通功能不需要額外「未開通樣式」→ 一律用一般 chip 呈現。
+  if (push !== "是") disabledChips.push(buildChipAlways("叫班提醒"));
+  if (schedule !== "是") disabledChips.push(buildChipAlways("排班表"));
+  if (personal !== "是") disabledChips.push(buildChipAlways("技師休假與狀態"));
+  if (performance !== "是") disabledChips.push(buildChipAlways("業績"));
+  if (booking !== "是" || !bookingUrlOk) disabledChips.push(buildChipAlways("預約查詢"));
+
+  chipsEl.innerHTML = disabledChips.join("");
+
+  // 全部已開通：整段隱藏，避免空白佔位。
+  if (bannerEl) bannerEl.style.display = disabledChips.length ? "flex" : "none";
 }
 
 function applyFeatureUi_() {

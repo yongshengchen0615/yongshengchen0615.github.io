@@ -52,16 +52,16 @@
         <p class="app-subtitle">即時監控身體 / 腳底師傅狀態與剩餘時間</p>
       </header>
 
-      <!-- ✅ 已開通功能提示 -->
-      <div id="featureBanner" class="feature-banner">
-        <span class="feature-title">功能：</span>
-        <div id="featureChips" class="feature-chips"></div>
-      </div>
-
       <!-- 🔔 使用者名稱 + 剩餘天數橫幅（移至控制列上方） -->
       <div id="usageBanner" class="usage-banner" style="display:none;">
         <span id="usageBannerText"></span>
         <button id="btnTopup" class="btn btn-ghost btn-usage-topup" type="button" style="display:none;">💳 儲值</button>
+      </div>
+
+      <!-- ✅ 未開通功能提示 -->
+      <div id="featureBanner" class="feature-banner">
+        <span class="feature-title">未開通功能：</span>
+        <div id="featureChips" class="feature-chips"></div>
       </div>
 
       <!-- 連線狀態 / 深色 / 手動重整 -->
@@ -251,6 +251,8 @@
           <div class="chart-wrapper" style="margin:10px 0 12px 0;">
             <canvas id="perfChart" height="160" aria-label="業績趨勢圖表" role="img"></canvas>
           </div>
+
+          <div id="perfChartHint" class="chart-hint" aria-live="polite"></div>
 
           <div class="table-wrapper">
             <table class="status-table">

@@ -46,6 +46,34 @@ let perfChartLastRows_ = null;
 let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
+let perfChartLastLayout_ = null; // { isNarrow, shouldScroll, points }
+
+let perfDetailUi_ = null;
+let perfScrollLockPrev_ = null;
+
+function isTouchLike_() {
+  try {
+    if (typeof window === "undefined") return false;
+    return (
+      (typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches) ||
+      (typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0)
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function isIOSLike_() {
+  try {
+    const ua = String(navigator?.userAgent || "");
+    const isIOS = /iP(hone|od|ad)/.test(ua);
+    // iPadOS 13+ reports as Mac but has touch
+    const isIPadOS = /Macintosh/.test(ua) && isTouchLike_();
+    return isIOS || isIPadOS;
+  } catch (_) {
+    return false;
+  }
+}
 
 // Chart.js loader (lazy)
 const CHARTJS_SRC = "https://cdn.jsdelivr.net/npm/chart.js";
@@ -92,8 +120,11 @@ async function ensureChartJs_() {
 const perfDragState_ = {
   enabled: false,
   pointerDown: false,
+  dragging: false,
   startX: 0,
+  startY: 0,
   startScrollLeft: 0,
+  suppressClickUntil: 0,
   handlers: null,
 };
 
@@ -130,6 +161,280 @@ function fmtMoney_(n) {
   const v = Number(n || 0) || 0;
   if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
   return String(Math.round(v));
+}
+
+function fmtCurrencyFull_(n) {
+  return `NT$${fmtMoney_(n)}`;
+}
+
+function fmtCurrencyTick_(n) {
+  const v = Number(n || 0) || 0;
+  const av = Math.abs(v);
+  if (av >= 1000000) return `${Math.round((v / 1000000) * 10) / 10}M`;
+  if (av >= 1000) return `${Math.round((v / 1000) * 10) / 10}K`;
+  return fmtMoney_(v);
+}
+
+function perfLockScroll_() {
+  try {
+    const html = document.documentElement;
+    if (!html) return;
+    const body = document.body;
+    if (!perfScrollLockPrev_) {
+      perfScrollLockPrev_ = {
+        htmlClass: html.className || "",
+        htmlOverflow: html.style ? html.style.overflow : "",
+        bodyOverflow: body && body.style ? body.style.overflow : "",
+        bodyPosition: body && body.style ? body.style.position : "",
+        bodyTop: body && body.style ? body.style.top : "",
+        bodyLeft: body && body.style ? body.style.left : "",
+        bodyRight: body && body.style ? body.style.right : "",
+        bodyWidth: body && body.style ? body.style.width : "",
+        scrollY: typeof window !== "undefined" ? (window.scrollY || window.pageYOffset || 0) : 0,
+      };
+    }
+    html.classList.add("perf-modal-open");
+
+    // iOS: overflow:hidden often breaks inner scroll; use body fixed technique
+    if (isIOSLike_() && body && body.style) {
+      const y = Number(perfScrollLockPrev_?.scrollY || 0) || 0;
+      body.style.position = "fixed";
+      body.style.top = `${-y}px`;
+      body.style.left = "0";
+      body.style.right = "0";
+      body.style.width = "100%";
+      return;
+    }
+
+    // Others: overflow hidden is OK
+    try {
+      html.style.overflow = "hidden";
+    } catch (_) {}
+    try {
+      if (body && body.style) body.style.overflow = "hidden";
+    } catch (_) {}
+  } catch (_) {}
+}
+
+function perfUnlockScroll_() {
+  try {
+    const html = document.documentElement;
+    if (!html) return;
+    const hadModalClass = html.classList.contains("perf-modal-open");
+    html.classList.remove("perf-modal-open");
+
+    const body = document.body;
+    const prev = perfScrollLockPrev_;
+    if (prev) {
+      // iOS fixed-body restore
+      if (isIOSLike_() && body && body.style) {
+        try {
+          body.style.position = prev.bodyPosition || "";
+          body.style.top = prev.bodyTop || "";
+          body.style.left = prev.bodyLeft || "";
+          body.style.right = prev.bodyRight || "";
+          body.style.width = prev.bodyWidth || "";
+        } catch (_) {}
+
+        // Also restore any overflow styles (in case other code touched them)
+        try {
+          html.style.overflow = prev.htmlOverflow || "";
+        } catch (_) {}
+        try {
+          if (body && body.style) body.style.overflow = prev.bodyOverflow || "";
+        } catch (_) {}
+
+        try {
+          const y = Number(prev.scrollY || 0) || 0;
+          window.scrollTo(0, y);
+        } catch (_) {}
+
+        perfScrollLockPrev_ = null;
+        return;
+      }
+
+      try {
+        html.style.overflow = prev.htmlOverflow || "";
+      } catch (_) {}
+      try {
+        if (body && body.style) body.style.overflow = prev.bodyOverflow || "";
+      } catch (_) {}
+      perfScrollLockPrev_ = null;
+    } else {
+      try {
+        html.style.overflow = "";
+      } catch (_) {}
+      try {
+        if (body && body.style) body.style.overflow = "";
+      } catch (_) {}
+
+      // Defensive: if modal class existed but we lost prev state, ensure body isn't left fixed.
+      if (hadModalClass && body && body.style && body.style.position === "fixed") {
+        try {
+          body.style.position = "";
+          body.style.top = "";
+          body.style.left = "";
+          body.style.right = "";
+          body.style.width = "";
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+function perfEnsureDetailUi_() {
+  if (perfDetailUi_ && perfDetailUi_.overlayEl && perfDetailUi_.panelEl) return perfDetailUi_;
+
+  const overlayEl = document.createElement("div");
+  overlayEl.className = "perf-detail-overlay";
+  overlayEl.setAttribute("aria-hidden", "true");
+
+  const panelEl = document.createElement("div");
+  panelEl.className = "perf-detail-panel";
+  panelEl.setAttribute("role", "dialog");
+  panelEl.setAttribute("aria-modal", "true");
+  panelEl.setAttribute("aria-hidden", "true");
+
+  panelEl.innerHTML = `
+    <div class="perf-detail-panel-inner">
+      <div class="perf-detail-handle" aria-hidden="true"></div>
+      <div class="perf-detail-head">
+        <div class="perf-detail-title" id="perfDetailTitle">—</div>
+        <button class="perf-detail-close" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="perf-detail-meta" id="perfDetailMeta">—</div>
+      <div class="perf-detail-body" id="perfDetailBody"></div>
+    </div>
+  `;
+
+  document.body.appendChild(overlayEl);
+  document.body.appendChild(panelEl);
+
+  const closeBtn = panelEl.querySelector(".perf-detail-close");
+  const onKeydown = (ev) => {
+    if (!ev) return;
+    if (ev.key === "Escape") perfCloseDetail_();
+  };
+
+  overlayEl.addEventListener("click", () => perfCloseDetail_(), { passive: true });
+  if (closeBtn) closeBtn.addEventListener("click", () => perfCloseDetail_(), { passive: true });
+  document.addEventListener("keydown", onKeydown, { passive: true });
+
+  perfDetailUi_ = { overlayEl, panelEl, closeBtn, onKeydown };
+  return perfDetailUi_;
+}
+
+function perfCloseDetail_() {
+  try {
+    const ui = perfDetailUi_;
+    if (ui) {
+      ui.overlayEl.classList.remove("is-open");
+      ui.overlayEl.setAttribute("aria-hidden", "true");
+      ui.panelEl.classList.remove("is-open", "is-sheet", "is-popover");
+      ui.panelEl.setAttribute("aria-hidden", "true");
+      try {
+        ui.panelEl.removeAttribute("style");
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.error("perfCloseDetail_ error", e);
+  } finally {
+    perfUnlockScroll_();
+  }
+}
+
+function perfOpenDetail_(payload) {
+  try {
+    const ui = perfEnsureDetailUi_();
+    if (!ui) return;
+
+    const dateLabel = String(payload?.dateLabel || "—");
+    const metricsText = String(payload?.metricsText || "");
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const anchor = payload?.anchor || null; // { x, y }
+
+    const titleEl = ui.panelEl.querySelector("#perfDetailTitle");
+    const metaEl = ui.panelEl.querySelector("#perfDetailMeta");
+    const bodyEl = ui.panelEl.querySelector("#perfDetailBody");
+    if (titleEl) titleEl.textContent = dateLabel;
+    if (metaEl) metaEl.textContent = metricsText || "—";
+
+    if (bodyEl) {
+      if (!rows.length) {
+        bodyEl.innerHTML = `<div class="perf-detail-empty">查無明細（可切換日期區間或到『業績明細』表格檢查）。</div>`;
+      } else {
+        const sample = rows.slice(0, 40);
+        const itemsHtml = sample
+          .map((r) => {
+            const id = String(r["訂單編號"] || r["序"] || r["訂單"] || "");
+            const bucket = String(r["拉牌"] || "");
+            const svc = String(r["服務項目"] || "");
+            const money = String(r["小計"] ?? r["業績金額"] ?? "");
+            return `
+              <div class="perf-detail-item">
+                <div class="perf-detail-item-top">
+                  <div class="perf-detail-item-id">${escapeHtml(id || "—")}</div>
+                  <div class="perf-detail-item-badge" data-bucket="${escapeHtml(bucket)}">${escapeHtml(bucket || "—")}</div>
+                  <div class="perf-detail-item-money">${escapeHtml(money)}</div>
+                </div>
+                <div class="perf-detail-item-svc">${escapeHtml(svc || "—")}</div>
+              </div>
+            `;
+          })
+          .join("");
+
+        const moreHtml = rows.length > sample.length ? `<div class="perf-detail-more">還有 ${rows.length - sample.length} 筆，請查看下方『業績明細』表格。</div>` : "";
+        bodyEl.innerHTML = `<div class="perf-detail-list">${itemsHtml}</div>${moreHtml}`;
+      }
+    }
+
+    const isMobile = window.matchMedia ? window.matchMedia("(max-width: 640px)").matches : !!perfChartLastLayout_?.isNarrow;
+
+    ui.overlayEl.classList.add("is-open");
+    ui.overlayEl.setAttribute("aria-hidden", "false");
+    ui.panelEl.classList.add("is-open");
+    ui.panelEl.setAttribute("aria-hidden", "false");
+
+    if (isMobile) {
+      ui.panelEl.classList.add("is-sheet");
+      ui.panelEl.classList.remove("is-popover");
+      perfLockScroll_();
+      ui.panelEl.removeAttribute("style");
+    } else {
+      ui.panelEl.classList.add("is-popover");
+      ui.panelEl.classList.remove("is-sheet");
+      perfUnlockScroll_();
+
+      const x = Number(anchor?.x);
+      const y = Number(anchor?.y);
+      const hasXY = Number.isFinite(x) && Number.isFinite(y);
+      const baseLeft = hasXY ? x + 12 : Math.round(window.innerWidth * 0.6);
+      const baseTop = hasXY ? y + 12 : Math.round(window.innerHeight * 0.18);
+      ui.panelEl.style.left = `${Math.round(baseLeft)}px`;
+      ui.panelEl.style.top = `${Math.round(baseTop)}px`;
+
+      requestAnimationFrame(() => {
+        try {
+          const rect = ui.panelEl.getBoundingClientRect();
+          const pad = 10;
+          let left = rect.left;
+          let top = rect.top;
+          if (rect.right > window.innerWidth - pad) left -= rect.right - (window.innerWidth - pad);
+          if (rect.bottom > window.innerHeight - pad) top -= rect.bottom - (window.innerHeight - pad);
+          if (left < pad) left = pad;
+          if (top < pad) top = pad;
+          ui.panelEl.style.left = `${Math.round(left)}px`;
+          ui.panelEl.style.top = `${Math.round(top)}px`;
+        } catch (_) {}
+      });
+    }
+
+    try {
+      if (ui.closeBtn && ui.closeBtn.focus) ui.closeBtn.focus();
+    } catch (_) {}
+  } catch (e) {
+    console.error("perfOpenDetail_ error", e);
+  }
 }
 
 function parseToTimestampMs_(v) {
@@ -764,10 +1069,11 @@ function enableCanvasDragScroll_(enable) {
     const onPointerDown = (ev) => {
       try {
         perfDragState_.pointerDown = true;
+        perfDragState_.dragging = false;
         perfDragState_.startX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        perfDragState_.startY = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
         perfDragState_.startScrollLeft = wrapper ? wrapper.scrollLeft : 0;
         if (ev.pointerId && canvas.setPointerCapture) canvas.setPointerCapture(ev.pointerId);
-        if (ev && ev.cancelable) ev.preventDefault();
       } catch (_) {}
     };
 
@@ -775,14 +1081,27 @@ function enableCanvasDragScroll_(enable) {
       if (!perfDragState_.pointerDown) return;
       try {
         const clientX = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+        const clientY = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
         const dx = clientX - perfDragState_.startX;
+        const dy = clientY - perfDragState_.startY;
+
+        // 門檻：避免輕觸就觸發拖曳，導致點擊命中錯誤
+        if (!perfDragState_.dragging) {
+          const adx = Math.abs(dx);
+          const ady = Math.abs(dy);
+          if (adx >= 8 && adx > ady) perfDragState_.dragging = true;
+          else return;
+        }
         if (wrapper) wrapper.scrollLeft = Math.round(perfDragState_.startScrollLeft - dx);
         if (ev && ev.cancelable) ev.preventDefault();
       } catch (_) {}
     };
 
     const onPointerUp = (ev) => {
+      const wasDragging = !!perfDragState_.dragging;
       perfDragState_.pointerDown = false;
+      perfDragState_.dragging = false;
+      if (wasDragging) perfDragState_.suppressClickUntil = Date.now() + 260;
       try {
         if (ev.pointerId && canvas.releasePointerCapture) canvas.releasePointerCapture(ev.pointerId);
       } catch (_) {}
@@ -897,6 +1216,14 @@ async function updatePerfChart_(rows, dateKeys) {
     const isNarrow = containerWidth < 420;
     const shouldScroll = points > (isNarrow ? 4 : 6);
 
+    perfChartLastLayout_ = { isNarrow: !!isNarrow, shouldScroll: !!shouldScroll, points };
+
+    if (dom.perfChartHintEl) {
+      dom.perfChartHintEl.textContent = shouldScroll
+        ? "提示：可左右拖曳圖表，點選日期可看當日明細。"
+        : "提示：點選日期可看當日明細。";
+    }
+
     const pxPerPoint = isNarrow ? 64 : 72;
     const desiredWidth = shouldScroll ? Math.max(containerWidth, points * pxPerPoint) : containerWidth;
     const desiredHeight = isNarrow ? 190 : Math.max(200, Math.round(Math.min(320, desiredWidth / 3.2)));
@@ -909,85 +1236,80 @@ async function updatePerfChart_(rows, dateKeys) {
       const baseFont = Math.round(baseFontRaw * scaleFactor);
       const ticksFont = Math.round(ticksFontRaw * scaleFactor);
       const legendBoxWidth = Math.max(8, Math.round(8 * Math.min(1.4, scaleFactor)));
-      const axisTitleFontSize = Math.round(baseFont * 1.05);
+      const css = window.getComputedStyle ? window.getComputedStyle(document.documentElement) : null;
+      const textColor = (() => {
+        const v = (css && (css.getPropertyValue("--text-main") || css.getPropertyValue("--text")))
+          ? (css.getPropertyValue("--text-main") || css.getPropertyValue("--text")).trim()
+          : "";
+        return v || "#111827";
+      })();
+      const subColorRaw = (css && css.getPropertyValue("--text-sub")) ? css.getPropertyValue("--text-sub").trim() : "#6b7280";
+      const gridColor = (() => {
+        try {
+          if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
+            const hex = subColorRaw.replace("#", "");
+            const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
+            const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
+            const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
+            return `rgba(${r},${g},${b},0.10)`;
+          }
+        } catch (_) {}
+        return `${subColorRaw}33`;
+      })();
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    // 重要：Canvas 事件座標計算依賴 DOM/CSS 尺寸一致。
+    // 讓 Chart.js 自己做 retina scaling，不在這裡手動乘 DPR/ctx.setTransform。
     dom.perfChartEl.style.width = shouldScroll ? `${Math.round(desiredWidth)}px` : "100%";
     dom.perfChartEl.style.height = `${desiredHeight}px`;
-    dom.perfChartEl.width = Math.round(desiredWidth * dpr);
-    dom.perfChartEl.height = Math.round(desiredHeight * dpr);
-
-    try {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    } catch (_) {}
+    dom.perfChartEl.width = Math.round(shouldScroll ? desiredWidth : containerWidth);
+    dom.perfChartEl.height = Math.round(desiredHeight);
 
     enableCanvasDragScroll_(shouldScroll);
 
     const maxXTicks = isNarrow ? 5 : 7;
 
-    // ensure minimum readable width like admin charts
     try {
-      const minW = Math.max(600, labels.length * 40);
-      dom.perfChartEl.style.minWidth = `${minW}px`;
+      if (shouldScroll) {
+        const minW = Math.max(containerWidth, labels.length * 48);
+        dom.perfChartEl.style.minWidth = `${Math.round(minW)}px`;
+      } else {
+        dom.perfChartEl.style.minWidth = "";
+      }
     } catch (_) {}
 
-    // helper: show a floating detail panel when user clicks a data point
+    // helper: open admin-style detail panel when user clicks a data point
     function showClickDetailPanel(idx) {
       try {
-        const wrapperEl = dom.perfChartEl?.closest?.('.chart-wrapper') || dom.perfChartEl?.parentElement;
-        if (!wrapperEl) return;
-        // remove existing
-        const old = wrapperEl.querySelector('.perf-click-panel');
-        if (old) old.remove();
-
         const rawKey = labels[idx];
         const m = rawKey ? metrics[rawKey] : null;
-        const dateLabel = rawKey ? String(rawKey).replaceAll('-', '/') : '—';
-
-        const panel = document.createElement('div');
-        panel.className = 'perf-click-panel';
-        panel.setAttribute('role', 'dialog');
+        const dateLabel = rawKey ? String(rawKey).replaceAll("-", "/") : "—";
 
         const rowsForDate = list.filter((r) => {
           const dk = String(r['訂單日期'] || '').replaceAll('/', '-').slice(0, 10);
           return dk === rawKey;
         });
 
-        const amount = m ? fmtMoney_(m.amount) : '0';
+        const amount = m ? fmtMoney_(m.amount) : "0";
         const total = m ? (m.totalCount || 0) : 0;
         const oldC = m ? (m.oldCount || 0) : 0;
         const schC = m ? (m.schedCount || 0) : 0;
 
-        let html = `<div class="perf-click-panel-inner"><div class="perf-click-panel-head"><strong>${escapeHtml(dateLabel)}</strong><button class="perf-click-panel-close" aria-label="關閉">✕</button></div>`;
-        html += `<div class="perf-click-panel-body">`;
-        html += `<div class="perf-click-metrics">金額：<strong>${escapeHtml(String(amount))}</strong>，筆數：<strong>${total}</strong>（老點 ${oldC} / 排班 ${schC}）</div>`;
-        if (rowsForDate && rowsForDate.length) {
-          html += '<div class="perf-click-list"><table class="status-table small"><thead><tr><th>編號</th><th>拉牌</th><th>服務項目</th><th>小計</th></tr></thead><tbody>';
-          const sample = rowsForDate.slice(0, 20);
-          for (let i = 0; i < sample.length; i++) {
-            const r = sample[i];
-            html += `<tr><td>${escapeHtml(String(r['訂單編號'] || r['序'] || ''))}</td><td>${escapeHtml(String(r['拉牌'] || ''))}</td><td>${escapeHtml(String(r['服務項目'] || ''))}</td><td>${escapeHtml(String(r['小計'] ?? r['業績金額'] ?? ''))}</td></tr>`;
-          }
-          if (rowsForDate.length > sample.length) html += `<tr><td colspan="4">還有 ${rowsForDate.length - sample.length} 筆，請查明細</td></tr>`;
-          html += '</tbody></table></div>';
-        } else {
-          html += '<div class="perf-click-empty">查無明細</div>';
-        }
-        html += '</div></div>';
-        panel.innerHTML = html;
+        const metricsText = `金額 ${amount}｜筆數 ${total}（老點 ${oldC} / 排班 ${schC}）`;
 
-        wrapperEl.appendChild(panel);
-
-        const btn = panel.querySelector('.perf-click-panel-close');
-        if (btn) btn.addEventListener('click', () => panel.remove());
-
-        // close when clicking outside
-        const onDocClick = (ev) => { if (!panel.contains(ev.target)) { panel.remove(); document.removeEventListener('pointerdown', onDocClick); } };
-        setTimeout(() => document.addEventListener('pointerdown', onDocClick), 50);
+        perfOpenDetail_({
+          dateLabel,
+          metricsText,
+          rows: rowsForDate,
+          anchor: perfLastClickPos_,
+        });
       } catch (e) {
-        console.error('showClickDetailPanel error', e);
+        console.error("showClickDetailPanel error", e);
       }
     }
+
+    // track last click position for desktop popover placement
+    let perfLastClickPos_ = null;
 
     perfChartInstance_ = new Chart(ctx, {
       data: {
@@ -1083,12 +1405,19 @@ async function updatePerfChart_(rows, dateKeys) {
         maintainAspectRatio: false,
         animation: false,
         normalized: true,
+        devicePixelRatio: dpr,
         interaction: { mode: "index", intersect: false },
         layout: { padding: { top: 6, right: 10, bottom: 4, left: 6 } },
         plugins: {
           legend: {
             position: isNarrow ? "bottom" : "top",
-            labels: { usePointStyle: true, boxWidth: legendBoxWidth, font: { size: baseFont }, padding: isNarrow ? 10 : 14, color: textColor },
+            labels: {
+              usePointStyle: true,
+              boxWidth: legendBoxWidth,
+              font: { size: baseFont },
+              padding: isNarrow ? 10 : 14,
+              color: textColor,
+            },
           },
           tooltip: {
             bodyFont: { size: ticksFont },
@@ -1103,28 +1432,39 @@ async function updatePerfChart_(rows, dateKeys) {
                 const m = rawKey ? metrics[rawKey] : null;
 
                 if (ctx2.dataset?.yAxisID === "y") {
-                  const amt = fmtMoney_(v);
+                  const amt = fmtCurrencyFull_(v);
                   const total = m?.totalCount || 0;
                   const oldC = m?.oldCount || 0;
                   const schC = m?.schedCount || 0;
                   return [`${label}：${amt}`, `筆數：${total}（老點 ${oldC} / 排班 ${schC}）`];
                 }
-                return `${label}：${v ?? 0}%`;
+                const pv = Number(v ?? 0) || 0;
+                return `${label}：${Math.round(pv * 10) / 10}%`;
               },
             },
           },
-          // allow click to open detail panel
-          tooltip: {
-            enabled: true
-          }
         },
         onClick: function (evt, activeEls) {
           try {
+            if (perfDragState_ && perfDragState_.suppressClickUntil && Date.now() < perfDragState_.suppressClickUntil) return;
+
+            try {
+              const n = evt && (evt.native || evt.event || evt);
+              const x = n && typeof n.x === "number" ? n.x : n && typeof n.clientX === "number" ? n.clientX : null;
+              const y = n && typeof n.y === "number" ? n.y : n && typeof n.clientY === "number" ? n.clientY : null;
+              if (typeof x === "number" && typeof y === "number") perfLastClickPos_ = { x, y };
+              else perfLastClickPos_ = null;
+            } catch (_) {
+              perfLastClickPos_ = null;
+            }
+
             if (!Array.isArray(activeEls) || !activeEls.length) return;
             const el = activeEls[0];
             const idx = el.index != null ? el.index : el._index;
-            if (typeof idx === 'number') showClickDetailPanel(idx);
-          } catch (e) { console.warn('chart onClick error', e); }
+            if (typeof idx === "number") showClickDetailPanel(idx);
+          } catch (e) {
+            console.warn("chart onClick error", e);
+          }
         },
         scales: {
           x: {
@@ -1132,15 +1472,13 @@ async function updatePerfChart_(rows, dateKeys) {
               autoSkip: true,
               maxTicksLimit: maxXTicks,
               maxRotation: 0,
+              color: subColorRaw,
               font: { size: ticksFont },
-              callback: function (val, idx, ticks) {
+              callback: function (val, idx) {
                 try {
                   const raw = this.getLabelForValue(val) || this.chart.data.labels[idx];
                   const d = new Date(String(raw).replace(/\//g, "-"));
                   if (isNaN(d.getTime())) return String(raw);
-                  // prefer month/day for day granularity, show hour if present
-                  const hasTime = /\d{1,2}:\d{2}/.test(String(raw));
-                  if (hasTime) return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())} ${pad2_(d.getHours())}:00`;
                   return `${pad2_(d.getMonth() + 1)}-${pad2_(d.getDate())}`;
                 } catch (e) {
                   return String(val);
@@ -1149,12 +1487,17 @@ async function updatePerfChart_(rows, dateKeys) {
             },
             grid: { display: false },
           },
-          y: { beginAtZero: true, ticks: { font: { size: ticksFont }, callback: (vv) => fmtMoney_(vv) }, title: { display: !isNarrow, text: "金額", font: { size: baseFont } } },
+          y: {
+            beginAtZero: true,
+            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => fmtCurrencyTick_(vv) },
+            title: { display: !isNarrow, text: "金額", font: { size: baseFont } },
+            grid: { color: gridColor },
+          },
           y1: {
             position: "right",
             beginAtZero: true,
             max: 100,
-            ticks: { font: { size: ticksFont }, callback: (vv) => `${vv}%` },
+            ticks: { color: subColorRaw, font: { size: ticksFont }, callback: (vv) => `${vv}%` },
             grid: { drawOnChartArea: false },
             title: { display: !isNarrow, text: "比率 (%)", font: { size: baseFont } },
           },
@@ -1167,24 +1510,6 @@ async function updatePerfChart_(rows, dateKeys) {
     console.error("updatePerfChart_ error", e);
   }
 }
-    // 取得主題文字顏色與次要文字顏色（CSS 變數）作為 chart 字色，fallback 為深/次色
-    const css = (typeof window !== 'undefined' && window.getComputedStyle) ? window.getComputedStyle(document.documentElement) : null;
-    const textColor = (css && css.getPropertyValue('--text-main')) ? css.getPropertyValue('--text-main').trim() : '#111827';
-    const subColorRaw = (css && css.getPropertyValue('--text-sub')) ? css.getPropertyValue('--text-sub').trim() : '#6b7280';
-    // create faint grid color from subColor
-    const gridColor = (() => {
-      try {
-        // if color is hex, convert; otherwise fallback to rgba with low opacity
-        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(subColorRaw)) {
-          const hex = subColorRaw.replace('#', '');
-          const r = parseInt(hex.length === 3 ? hex[0] + hex[0] : hex.substring(0, 2), 16);
-          const g = parseInt(hex.length === 3 ? hex[1] + hex[1] : hex.substring(2, 4), 16);
-          const b = parseInt(hex.length === 3 ? hex[2] + hex[2] : hex.substring(4, 6), 16);
-          return `rgba(${r},${g},${b},0.10)`;
-        }
-      } catch (_) {}
-      return `${subColorRaw}33`;
-    })();
 
 /* =========================
  * Fetch (POST syncStorePerf_v1)

@@ -133,7 +133,7 @@ body {
 }
 
 /* =========================================================
- * ✅ 已開通功能提示（固定顯示三項；未開通灰色 + 未開通 badge）
+ * ✅ 未開通功能提示（只顯示未開通；灰色 + 未開通 badge）
  * ========================================================= */
 .feature-banner {
   margin: 6px 0 10px 0;
@@ -821,11 +821,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-}
-
-/* allow horizontal pan gesture within the wrapper on touch devices */
-.chart-wrapper {
-  touch-action: pan-x;
+  position: relative;
 }
 
 /* ensure the wrapper can shrink inside flex containers and still allow internal scrolling */
@@ -895,6 +891,244 @@ input[type="date"].input::-webkit-calendar-picker-indicator{
 /* Accessibility: ensure chart wrapper keyboard scroll */
 .chart-wrapper:focus { outline: none; }
 .chart-wrapper { scroll-behavior: smooth; }
+
+.chart-hint {
+  margin: 6px 0 10px 0;
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+/* ===== Performance: chart click detail overlay (match admin) ===== */
+
+
+.perf-detail-overlay{
+  position:fixed;
+  inset:0;
+  z-index: 2000;
+  background: rgba(2,6,23,0.46);
+  backdrop-filter: blur(2px);
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .16s ease;
+}
+
+.perf-detail-overlay{ touch-action: none; }
+
+html[data-theme="light"] .perf-detail-overlay{
+  background: rgba(15,23,42,0.28);
+}
+
+.perf-detail-overlay.is-open{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.perf-detail-panel{
+  position:fixed;
+  z-index: 2001;
+  opacity:0;
+  pointer-events:none;
+  transform: translateY(8px);
+  transition: opacity .16s ease, transform .16s ease;
+  color: var(--text-main, #e5e7eb);
+}
+
+.perf-detail-panel.is-open{
+  opacity:1;
+  pointer-events:auto;
+  transform: translateY(0);
+}
+
+.perf-detail-panel.is-popover{
+  width: min(520px, calc(100vw - 20px));
+  max-height: min(72vh, 680px);
+}
+
+.perf-detail-panel.is-sheet{
+  left:0;
+  right:0;
+  bottom:0;
+  width: 100vw;
+  max-height: 82vh;
+  transform: translateY(14px);
+  touch-action: pan-y;
+}
+
+.perf-detail-panel-inner{
+  /* match admin variables: --card2 / --border / --shadow-soft */
+  background: rgba(0,0,0,.18);
+  border:1px solid #1f2937;
+  box-shadow: 0 10px 28px rgba(0,0,0,.16);
+  border-radius: 14px;
+  overflow:hidden;
+}
+
+html[data-theme="light"] .perf-detail-panel-inner{
+  background: rgba(255,255,255,.75);
+  border-color: #e2e8f0;
+  box-shadow: 0 10px 28px rgba(2,6,23,.08);
+}
+
+.perf-detail-panel.is-sheet .perf-detail-panel-inner{
+  border-left:0;
+  border-right:0;
+  border-bottom:0;
+  border-radius: 16px 16px 0 0;
+}
+
+.perf-detail-handle{ display:none; }
+
+.perf-detail-panel.is-sheet .perf-detail-handle{
+  display:block;
+  width:44px;
+  height:5px;
+  border-radius:999px;
+  background: rgba(148,163,184,0.38);
+  margin:10px auto 6px;
+}
+
+.perf-detail-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 12px;
+  border-bottom:1px solid #1f2937;
+}
+
+html[data-theme="light"] .perf-detail-head{
+  border-bottom-color:#e2e8f0;
+}
+
+.perf-detail-title{
+  font-weight:800;
+  font-size: 14px;
+  letter-spacing:.2px;
+}
+
+.perf-detail-close{
+  border:1px solid #1f2937;
+  background: rgba(255,255,255,.03);
+  color: var(--text-main, #e5e7eb);
+  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  cursor:pointer;
+}
+
+html[data-theme="light"] .perf-detail-close{
+  border-color:#e2e8f0;
+  background: rgba(0,0,0,.02);
+  color: var(--text-main, #111827);
+}
+
+.perf-detail-close:hover{
+  border-color: rgba(56,189,248,.45);
+}
+
+.perf-detail-meta{
+  padding: 8px 12px;
+  color: var(--text-sub);
+  font-size: 12px;
+  border-bottom:1px solid rgba(31,41,55,.6);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace);
+}
+
+html[data-theme="light"] .perf-detail-meta{
+  border-bottom-color: rgba(226,232,240,.75);
+}
+
+.perf-detail-body{
+  padding: 10px 12px 12px;
+  overflow:auto;
+  max-height: calc(82vh - 104px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.perf-detail-empty{
+  color: var(--text-sub);
+  font-size: 13px;
+  padding: 6px 2px;
+}
+
+.perf-detail-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.perf-detail-item{
+  border: 1px solid rgba(31,41,55,.6);
+  background: rgba(255,255,255,.03);
+  border-radius: 12px;
+  padding: 10px 10px;
+}
+
+html[data-theme="light"] .perf-detail-item{
+  border-color: rgba(226,232,240,.75);
+  background: rgba(0,0,0,.02);
+}
+
+.perf-detail-item-top{
+  display:grid;
+  grid-template-columns: 1fr auto auto;
+  gap:8px;
+  align-items:center;
+}
+
+.perf-detail-item-id{
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace);
+  font-size: 12px;
+  color: var(--text-sub);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.perf-detail-item-money{
+  font-weight:800;
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+}
+
+.perf-detail-item-badge{
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border, rgba(0,0,0,0.08));
+  color: var(--text-sub);
+  background: rgba(100,116,139,0.12);
+}
+
+.perf-detail-item-badge[data-bucket="老點"]{
+  border-color: rgba(245,158,11,0.38);
+  background: rgba(245,158,11,0.14);
+  color: #f59e0b;
+}
+
+.perf-detail-item-badge[data-bucket="排班"]{
+  border-color: rgba(16,185,129,0.32);
+  background: rgba(16,185,129,0.14);
+  color: #10b981;
+}
+
+.perf-detail-item-svc{
+  margin-top:6px;
+  font-size: 13px;
+  line-height:1.25;
+  color: var(--text-main, #e5e7eb);
+}
+
+html[data-theme="light"] .perf-detail-item-svc{
+  color: var(--text-main, #111827);
+}
+
+.perf-detail-more{
+  margin-top:10px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
 
 /* Responsive typography: adapt base font and key UI text across devices */
 :root {
