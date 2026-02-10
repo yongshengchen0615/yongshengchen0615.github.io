@@ -19,7 +19,7 @@ import { updateMyMasterStatusUI } from "./modules/myMasterStatus.js";
 import { startPolling } from "./modules/polling.js";
 import { logAppOpen, logUsageEvent } from "./modules/usageLog.js";
 import { initPerformanceUi, prefetchPerformanceOnce, manualRefreshPerformance } from "./modules/performance.js";
-import { initBookingUi } from "./modules/bookingQuery.js";
+import { initBookingUi, prefetchBookingOnce } from "./modules/bookingQuery.js";
 import { initViewSwitch, setViewMode, VIEW } from "./modules/viewSwitch.js";
 import { isTopupEnabled, runTopupFlow } from "./modules/topup.js";
 import { fetchStatusAll } from "./modules/edgeClient.js";
@@ -176,13 +176,27 @@ async function boot() {
     setInitialLoadingProgress(72, "載入業績資料中…");
     perfReady = prefetchPerformanceOnce();
   }
+  // ✅ 登入後：若「預約查詢」開通，預載一次（不需要點擊按鈕）
+  let bookingReady = null;
+  if (String(state.feature && state.feature.bookingEnabled) === "是") {
+    setInitialLoadingProgress(74, "載入預約資料中…");
+    bookingReady = prefetchBookingOnce();
+  }
 
   // 開始輪詢（排班表未開通也要輪詢：只更新我的狀態/提示）
   setInitialLoadingProgress(78, "載入排班資料中…");
   // 需求：切到業績面板時要「馬上可看」→ 初始載入期間把業績預載做完，再進主畫面。
-  startPolling(perfReady);
-  // 避免未處理的 promise 被某些環境視為 error（startPolling 內部會 await，但仍保守處理）
-  if (perfReady && typeof perfReady.then === "function") perfReady.catch(() => {});
+  // combine optional prefetch promises so startPolling can wait a short time for them
+  let extraReady = null;
+  const _ps = [];
+  if (perfReady) _ps.push(perfReady);
+  if (bookingReady) _ps.push(bookingReady);
+  if (_ps.length === 1) extraReady = _ps[0];
+  else if (_ps.length > 1) extraReady = Promise.all(_ps);
+
+  startPolling(extraReady);
+  // 避免未處理的 promise 被某些環境視為 error
+  if (extraReady && typeof extraReady.then === "function") extraReady.catch(() => {});
 }
 
 // Module scripts are deferred by default; DOM is ready when this runs.

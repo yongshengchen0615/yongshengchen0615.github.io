@@ -9,6 +9,10 @@ import { dom } from "./dom.js";
 import { state } from "./state.js";
 import { logUsageEvent } from "./usageLog.js";
 
+// simple in-memory cache + in-flight guard for prefetch
+let bookingPrefetchInFlight_ = null;
+const bookingCache_ = { key: "", lastUpdatedAt: "", rows: [] };
+
 const HEADER_ZH = {
   bookingTime: "預約時間",
   bookingDetailId: "預約明細ID",
@@ -190,6 +194,58 @@ export function initBookingUi() {
 export function onShowBooking() {
   // 顯示時補日期預設
   ensureDefaultDates_();
+  // 若有快取且對應目前日期範圍，直接渲染（避免切換時等待）
+  try {
+    const userId = pickUserId_();
+    const from = String((dom.bookingDateStartInput && dom.bookingDateStartInput.value) || "").trim();
+    const to = String((dom.bookingDateEndInput && dom.bookingDateEndInput.value) || from || "").trim();
+    const key = `${userId}|${from}|${to}`;
+    if (bookingCache_.key === key && Array.isArray(bookingCache_.rows)) {
+      setStatus_(`已載入（${bookingCache_.rows.length} 筆）`, "ok");
+      setMeta_(`${from} ~ ${to}`);
+      renderTable_(bookingCache_.rows);
+    }
+  } catch (_) {}
+}
+
+/**
+ * 預載（登入時 background prefetch，不更新 UI）
+ */
+export async function prefetchBookingOnce() {
+  if (String(state.feature && state.feature.bookingEnabled) !== "是") return { ok: false, skipped: "FEATURE_OFF" };
+  if (bookingPrefetchInFlight_) return bookingPrefetchInFlight_;
+
+  bookingPrefetchInFlight_ = (async () => {
+    try {
+      ensureDefaultDates_();
+      const userId = pickUserId_();
+      if (!userId) return { ok: false, skipped: "MISSING_USERID" };
+      const from = String((dom.bookingDateStartInput && dom.bookingDateStartInput.value) || "").trim();
+      const to = String((dom.bookingDateEndInput && dom.bookingDateEndInput.value) || from || "").trim();
+
+      const key = `${userId}|${from}|${to}`;
+      try {
+        const res = await postBookingQuery_({ userId, from, to });
+        if (res && res.ok === true && Array.isArray(res.rows)) {
+          bookingCache_.key = key;
+          bookingCache_.rows = res.rows.slice();
+          bookingCache_.lastUpdatedAt = String(res.lastUpdatedAt || "");
+          return { ok: true, cached: true, rowsCount: res.rows.length };
+        }
+        return { ok: false, error: res && (res.error || res.message) ? (res.error || res.message) : "NO_DATA" };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message ? e.message : e) };
+      }
+    } finally {
+      bookingPrefetchInFlight_ = null;
+    }
+  })();
+
+  try {
+    return await bookingPrefetchInFlight_;
+  } finally {
+    bookingPrefetchInFlight_ = null;
+  }
 }
 
 export async function runBookingQueryOnce({ reason }) {
