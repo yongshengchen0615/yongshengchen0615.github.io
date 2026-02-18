@@ -85,6 +85,23 @@ const PERF_CURRENCY_TICK_FMT = (() => {
   }
 })();
 
+const PERF_INT_FMT = (() => {
+  try {
+    return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 });
+  } catch (_) {
+    return null;
+  }
+})();
+
+const PERF_QTY_FMT = (() => {
+  try {
+    // 數量/節數可能有 0.5 之類的小數，不能用整數格式四捨五入。
+    return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 });
+  } catch (_) {
+    return null;
+  }
+})();
+
 function perfEscapeHtml_(s) {
   if (typeof escapeHtml === "function") return escapeHtml(s);
   return String(s ?? "")
@@ -132,6 +149,20 @@ function fmtMoney_(n) {
   const v = Number(n || 0) || 0;
   if (PERF_CURRENCY_FMT) return PERF_CURRENCY_FMT.format(v);
   return String(Math.round(v));
+}
+
+function fmtInt_(n) {
+  const v = Number(n || 0) || 0;
+  if (PERF_INT_FMT) return PERF_INT_FMT.format(v);
+  return String(Math.round(v));
+}
+
+function fmtQty_(n) {
+  const vRaw = Number(n || 0);
+  const v = Number.isFinite(vRaw) ? vRaw : 0;
+  if (PERF_QTY_FMT) return PERF_QTY_FMT.format(v);
+  // fallback: keep decimals without forcing trailing zeros
+  return String(Math.round(v * 100) / 100);
 }
 
 function fmtCurrencyFull_(n) {
@@ -628,9 +659,9 @@ function summaryRowsHtml_(cards3) {
       (r) => `
       <tr>
         <td>${perfEscapeHtml_(r[0])}</td>
-        <td>${fmtMoney_(r[1])}</td>
-        <td>${fmtMoney_(r[2])}</td>
-        <td>${fmtMoney_(r[3])}</td>
+        <td>${fmtInt_(r[1])}</td>
+        <td>${fmtInt_(r[2])}</td>
+        <td>${fmtQty_(r[3])}</td>
         <td>${fmtMoney_(r[4])}</td>
       </tr>
     `
