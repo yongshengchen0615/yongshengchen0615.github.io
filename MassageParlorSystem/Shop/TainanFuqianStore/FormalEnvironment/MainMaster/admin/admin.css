@@ -2309,9 +2309,11 @@ html[data-theme="light"] .perf-detail-overlay{
 
 /* perf summary table */
 #performancePanelSection .perf-summary-table{
-  width:100%;
+  /* Let the table grow wider than the container so .table-wrapper can scroll. */
+  width:max-content;
+  min-width:100%;
   border-collapse:collapse;
-  table-layout:fixed;
+  table-layout:auto;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2320,8 +2322,8 @@ html[data-theme="light"] .perf-detail-overlay{
   padding:6px 8px;
   line-height:1.15;
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  overflow:visible;
+  text-overflow:clip;
   border-bottom:1px solid var(--border-soft);
 }
 
@@ -2338,7 +2340,7 @@ html[data-theme="light"] .perf-detail-overlay{
 
 #performancePanelSection .perf-summary-table th:first-child,
 #performancePanelSection .perf-summary-table td:first-child{
-  width:22%;
+  min-width:120px;
   text-align:left;
 }
 
@@ -2348,13 +2350,13 @@ html[data-theme="light"] .perf-detail-overlay{
 #performancePanelSection .perf-summary-table td:nth-child(3),
 #performancePanelSection .perf-summary-table th:nth-child(4),
 #performancePanelSection .perf-summary-table td:nth-child(4){
-  width:15%;
+  min-width:72px;
   text-align:right;
 }
 
 #performancePanelSection .perf-summary-table th:nth-child(5),
 #performancePanelSection .perf-summary-table td:nth-child(5){
-  width:33%;
+  min-width:140px;
   text-align:right;
   font-weight:800;
 }

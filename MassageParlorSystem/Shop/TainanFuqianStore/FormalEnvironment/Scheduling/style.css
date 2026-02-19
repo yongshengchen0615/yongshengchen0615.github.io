@@ -1459,15 +1459,54 @@ body { font-size: 1rem; line-height: 1.45; }
     display: block;
   }
 
-  #perfCard .status-table {
+  /* ✅ 業績明細表：欄位多，行動版保留水平滑動 */
+  #perfCard .perf-detail-table {
     min-width: 980px;
     font-size: 12px;
   }
 
-  #perfCard .status-table th,
-  #perfCard .status-table td {
+  #perfCard .perf-detail-table th,
+  #perfCard .perf-detail-table td {
     white-space: nowrap;
     padding: 6px 6px;
+  }
+
+  /* ✅ 業績統計表：僅 5 欄，行動版改為緊湊顯示（減少水平滑動距離） */
+  #perfCard .perf-summary-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  #perfCard .perf-summary-table th,
+  #perfCard .perf-summary-table td {
+    padding: 6px 6px;
+  }
+
+  #perfCard .perf-summary-table th:nth-child(1),
+  #perfCard .perf-summary-table td:nth-child(1) {
+    width: clamp(64px, 26vw, 96px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #perfCard .perf-summary-table th:nth-child(2),
+  #perfCard .perf-summary-table td:nth-child(2),
+  #perfCard .perf-summary-table th:nth-child(3),
+  #perfCard .perf-summary-table td:nth-child(3),
+  #perfCard .perf-summary-table th:nth-child(4),
+  #perfCard .perf-summary-table td:nth-child(4) {
+    width: clamp(44px, 14vw, 68px);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  #perfCard .perf-summary-table th:nth-child(5),
+  #perfCard .perf-summary-table td:nth-child(5) {
+    width: clamp(68px, 22vw, 108px);
+    text-align: right;
+    white-space: nowrap;
   }
 
   .main {
@@ -1576,9 +1615,18 @@ body { font-size: 1rem; line-height: 1.45; }
     padding-right: 14px;
   }
 
-  #perfCard .status-table {
+  #perfCard .perf-detail-table {
     min-width: 880px;
     font-size: 11px;
+  }
+
+  #perfCard .perf-summary-table {
+    font-size: 11px;
+  }
+
+  #perfCard .perf-summary-table th,
+  #perfCard .perf-summary-table td {
+    padding: 5px 5px;
   }
 
   .card-table .status-table thead th:nth-child(5),
