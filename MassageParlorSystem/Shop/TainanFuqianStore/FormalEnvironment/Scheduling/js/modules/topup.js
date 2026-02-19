@@ -550,8 +550,6 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       });
     } catch (_) {}
 
-    hideLoadingHint();
-
     // background verify (best-effort)
     // - Gate 情境通常會 reload：不需要再驗證一次，避免多餘往返
     // - 用 setTimeout 讓 alert/reload 先跑，減少成功體感延遲
@@ -595,16 +593,19 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
 
     const msg = `儲值成功\n\n序號：${serial}\n增加天數：${addDays} 天`;
     if (reloadOnSuccess) {
+      // 讓使用者看到結果訊息後再關閉 loading，避免中間空窗像是卡住。
       alert(msg + "\n\n將重新整理以重新驗證權限。");
+      hideLoadingHint();
       location.reload();
       return { ok: true, reloaded: true };
     }
 
+    // 讓使用者看到結果訊息後再關閉 loading，避免中間空窗像是卡住。
     alert(msg);
+    hideLoadingHint();
     return { ok: true, addDays, newRemainingDays };
   } catch (e) {
     console.error("[TopUp] failed:", e);
-    hideLoadingHint();
     let errMsg = String(e?.message || e || "儲值失敗");
     if (errMsg === "USER_ID_REQUIRED") {
       errMsg = "USER_ID_REQUIRED（TopUp 收到的 userId 是空的）\n" + "目前本機計算 userId=" + (userIdSafe || "(empty)");
@@ -624,8 +625,15 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
       eventCn: "儲值失敗",
     });
 
-    if (context === "gate") showGate("⚠ 儲值失敗\n\n" + userMsg, true);
-    else alert("儲值失敗：\n\n" + userMsg);
+    if (context === "gate") {
+      // 先顯示錯誤訊息，再關閉 loading（避免瞬間消失造成困惑）
+      showGate("⚠ 儲值失敗\n\n" + userMsg, true);
+      hideLoadingHint();
+    } else {
+      // alert 會 block UI；等使用者看到訊息/關掉後再關閉 loading。
+      alert("儲值失敗：\n\n" + userMsg);
+      hideLoadingHint();
+    }
     return { ok: false, error: errMsg, userMessage: userMsg };
   }
 }
