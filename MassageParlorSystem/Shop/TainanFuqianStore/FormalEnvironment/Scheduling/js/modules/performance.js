@@ -17,6 +17,7 @@ import { config } from "./config.js";
 import { state } from "./state.js";
 import { withQuery, escapeHtml, getQueryParam } from "./core.js";
 import { holdLoadingHint } from "./uiHelpers.js";
+import { logUsageEvent } from "./usageLog.js";
 
 const PERF_FETCH_TIMEOUT_MS = 25000;
 
@@ -1932,9 +1933,21 @@ export function initPerformanceUi() {
     }
   } catch (_) {}
 
-  if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));
-  if (dom.perfSearchSummaryBtn) dom.perfSearchSummaryBtn.addEventListener("click", () => void renderFromCache_("summary"));
-  if (dom.perfSearchDetailBtn) dom.perfSearchDetailBtn.addEventListener("click", () => void renderFromCache_("detail"));
+  if (dom.perfSearchBtn)
+    dom.perfSearchBtn.addEventListener("click", () => {
+      try { const uid = getUserId_(); void logUsageEvent({ event: "perf_search_summary", userId: uid, eventCn: "業績統計按下" }); } catch (_) {}
+      void renderFromCache_("summary");
+    });
+  if (dom.perfSearchSummaryBtn)
+    dom.perfSearchSummaryBtn.addEventListener("click", () => {
+      try { const uid = getUserId_(); void logUsageEvent({ event: "perf_search_summary", userId: uid, eventCn: "業績統計按下" }); } catch (_) {}
+      void renderFromCache_("summary");
+    });
+  if (dom.perfSearchDetailBtn)
+    dom.perfSearchDetailBtn.addEventListener("click", () => {
+      try { const uid = getUserId_(); void logUsageEvent({ event: "perf_search_detail", userId: uid, eventCn: "業績明細按下" }); } catch (_) {}
+      void renderFromCache_("detail");
+    });
 
   const onDateInputsChanged = () => {
     // ✅ 日期改了：只切畫面（不自動同步）
@@ -1957,6 +1970,10 @@ export function initPerformanceUi() {
     const todayIdx = periodIndexForDate_(new Date());
     if (btnPrev)
       btnPrev.addEventListener("click", () => {
+        try {
+          const uid = getUserId_();
+          void logUsageEvent({ event: "perf_click_prev_period", userId: uid, detail: "上期", eventCn: "上期點擊" });
+        } catch (_) {}
         void applyPeriodIndex_(todayIdx - 1);
         try {
           btnPrev.classList && btnPrev.classList.add("is-active");
@@ -1965,6 +1982,10 @@ export function initPerformanceUi() {
       });
     if (btnThis)
       btnThis.addEventListener("click", () => {
+        try {
+          const uid = getUserId_();
+          void logUsageEvent({ event: "perf_click_this_period", userId: uid, detail: "本期", eventCn: "本期點擊" });
+        } catch (_) {}
         void applyPeriodIndex_(todayIdx);
         try {
           btnThis.classList && btnThis.classList.add("is-active");
@@ -1980,6 +2001,10 @@ export function initPerformanceUi() {
     if (btnMonth)
       btnMonth.addEventListener("click", async () => {
         try {
+          const uid = getUserId_();
+          void logUsageEvent({ event: "perf_click_month", userId: uid, detail: "本月", eventCn: "本月點擊" });
+        } catch (_) {}
+        try {
           const now = new Date();
           const y = now.getFullYear();
           const m = now.getMonth() + 1;
@@ -1989,9 +2014,9 @@ export function initPerformanceUi() {
           const endKey = `${y}-${pad(m)}-${pad(last)}`;
           if (dom.perfDateStartInput) dom.perfDateStartInput.value = startKey;
           if (dom.perfDateEndInput) dom.perfDateEndInput.value = endKey;
-          try { btnMonth.classList && btnMonth.classList.add('is-active'); } catch(_){}
-          try { btnPrev && btnPrev.classList && btnPrev.classList.remove('is-active'); } catch(_){}
-          try { btnThis && btnThis.classList && btnThis.classList.remove('is-active'); } catch(_){}
+          try { btnMonth.classList && btnMonth.classList.add('is-active'); } catch(_){ }
+          try { btnPrev && btnPrev.classList && btnPrev.classList.remove('is-active'); } catch(_){ }
+          try { btnThis && btnThis.classList && btnThis.classList.remove('is-active'); } catch(_){ }
           await manualRefreshPerformance({ showToast: true });
         } catch (_) {}
       });
@@ -1999,6 +2024,10 @@ export function initPerformanceUi() {
     const btnLastMonth = document.getElementById("perfPeriodLastMonth");
     if (btnLastMonth)
       btnLastMonth.addEventListener("click", async () => {
+        try {
+          const uid = getUserId_();
+          void logUsageEvent({ event: "perf_click_last_month", userId: uid, detail: "上個月", eventCn: "上個月點擊" });
+        } catch (_) {}
         try {
           const now = new Date();
           let y = now.getFullYear();
@@ -2045,6 +2074,7 @@ export function initPerformanceUi() {
 
     const applyMode = (mode) => {
       if (mode !== "daily" && mode !== "cumu" && mode !== "ma7") return;
+      try { const uid = getUserId_(); void logUsageEvent({ event: "perf_chart_mode", userId: uid, detail: mode, eventCn: "圖表模式切換" }); } catch(_){}
       perfChartMode_ = mode;
       savePerfChartPrefs_();
       setActive();
@@ -2057,6 +2087,7 @@ export function initPerformanceUi() {
     if (btnBar) {
       btnBar.addEventListener('click', () => {
         perfChartType_ = perfChartType_ === 'bar' ? 'line' : 'bar';
+        try { const uid = getUserId_(); void logUsageEvent({ event: "perf_chart_type_toggle", userId: uid, detail: perfChartType_, eventCn: "圖表類型切換" }); } catch(_){}
         savePerfChartPrefs_();
         setActive();
         schedulePerfChartRedraw_();
@@ -2065,6 +2096,7 @@ export function initPerformanceUi() {
 
     btnReset &&
       btnReset.addEventListener("click", () => {
+        try { const uid = getUserId_(); void logUsageEvent({ event: "perf_chart_reset", userId: uid, eventCn: "圖表重設" }); } catch(_){}
         perfChartMode_ = "daily";
         perfChartVis_ = { amount: true, oldRate: true, schedRate: true };
         savePerfChartPrefs_();
@@ -2080,6 +2112,25 @@ export function initPerformanceUi() {
         schedulePerfChartRedraw_();
         applyChartVisibility_();
       });
+
+    // Chart visibility toggles
+    try {
+      const elAmount = document.getElementById("perfChartToggleAmount");
+      const elOld = document.getElementById("perfChartToggleOldRate");
+      const elSched = document.getElementById("perfChartToggleSchedRate");
+      const bindToggle = (el, key) => {
+        if (!el) return;
+        el.addEventListener('change', () => {
+          try { const uid = getUserId_(); void logUsageEvent({ event: "perf_chart_toggle", userId: uid, detail: `${key}:${el.checked}`, eventCn: "圖表顯示切換" }); } catch(_){}
+          perfChartVis_[key] = !!el.checked;
+          savePerfChartPrefs_();
+          schedulePerfChartRedraw_();
+        });
+      };
+      bindToggle(elAmount, 'amount');
+      bindToggle(elOld, 'oldRate');
+      bindToggle(elSched, 'schedRate');
+    } catch(_) {}
 
     setActive();
   } catch (_) {}
