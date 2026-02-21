@@ -16,7 +16,7 @@ import { dom } from "./dom.js";
 import { config } from "./config.js";
 import { state } from "./state.js";
 import { withQuery, escapeHtml, getQueryParam } from "./core.js";
-import { showLoadingHint, hideLoadingHint } from "./uiHelpers.js";
+import { holdLoadingHint } from "./uiHelpers.js";
 
 const PERF_FETCH_TIMEOUT_MS = 25000;
 
@@ -1621,18 +1621,24 @@ function renderDetailTable_(rows) {
   applyDetailTableHtml_(tmp.html, tmp.count);
 }
 
-function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys) {
+function renderServiceSummaryTable_(serviceSummary, baseRowsForChart, dateKeys, opts) {
   renderDetailHeader_("summary");
   const tmp = detailSummaryRowsHtml_(serviceSummary);
   applyDetailTableHtml_(tmp.html, tmp.count);
 
   if (Array.isArray(baseRowsForChart) && baseRowsForChart.length) {
     try {
-      Promise.resolve(updatePerfChart_(baseRowsForChart, dateKeys)).catch(() => {});
-    } catch (_) {}
+      const p = updatePerfChart_(baseRowsForChart, dateKeys);
+      if (opts && opts.awaitChart) return p;
+      Promise.resolve(p).catch(() => {});
+    } catch (_) {
+      // ignore
+    }
   } else {
     clearPerfChart_();
   }
+
+  return null;
 }
 
 function computeMonthRates_(rows) {
@@ -1667,9 +1673,11 @@ function renderMonthRates_(monthRows) {
     `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%`;
 }
 
-async function renderFromCache_(mode, info) {
+async function renderFromCache_(mode, info, opts) {
   const m = mode === "summary" ? "summary" : "detail";
   perfSelectedMode_ = m;
+
+  const awaitChart = !!(opts && opts.awaitChart);
 
   const r = info && info.ok ? info : readRangeFromInputs_();
   if (!r || !r.ok) {
@@ -1725,22 +1733,36 @@ async function renderFromCache_(mode, info) {
   } catch (_) {}
 
   if (m === "summary") {
-    renderServiceSummaryTable_(perfCache_.serviceSummary || [], rows, r.dateKeys);
-    return { ok: true, rendered: "summary", cached: true };
+    const p = renderServiceSummaryTable_(perfCache_.serviceSummary || [], rows, r.dateKeys, { awaitChart });
+    if (awaitChart && p && typeof p.then === "function") {
+      try {
+        await p;
+      } catch (_) {}
+    }
+    return { ok: true, rendered: "summary", cached: true, chartAwaited: awaitChart };
   }
 
   renderDetailTable_(rows);
+  let chartPromise = null;
   try {
-    Promise.resolve(updatePerfChart_(rows, r.dateKeys)).catch(() => {});
-  } catch (_) {}
-  return { ok: true, rendered: "detail", cached: true };
+    chartPromise = updatePerfChart_(rows, r.dateKeys);
+    if (!awaitChart) Promise.resolve(chartPromise).catch(() => {});
+  } catch (_) {
+    chartPromise = null;
+  }
+  if (awaitChart && chartPromise && typeof chartPromise.then === "function") {
+    try {
+      await chartPromise;
+    } catch (_) {}
+  }
+  return { ok: true, rendered: "detail", cached: true, chartAwaited: awaitChart };
 }
 
 /* =========================
  * Reload (manual refresh)
  * ========================= */
 
-async function reloadAndCache_(info, { showToast = true } = {}) {
+async function reloadAndCache_(info) {
   const r = info && info.ok ? info : readRangeFromInputs_();
   if (!r || !r.ok) return { ok: false, error: r ? r.error : "BAD_RANGE" };
 
@@ -1749,8 +1771,6 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
   const to = r.to;
 
   const key = makeCacheKey_(userId, from, to);
-
-  if (showToast) showLoadingHint("同步業績中…");
 
   try {
     const raw = await fetchPerfSync_(userId, from, to, true);
@@ -1774,8 +1794,6 @@ async function reloadAndCache_(info, { showToast = true } = {}) {
     return { ok: true, key, rowsCount: rows.length, serviceSummaryCount: serviceSummary.length, lastUpdatedAt: perfCache_.lastUpdatedAt };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
-  } finally {
-    if (showToast) hideLoadingHint();
   }
 }
 
@@ -1959,7 +1977,7 @@ export async function prefetchPerformanceOnce() {
     const dateKeys = normalizeRange_(from, to, PERF_MAX_RANGE_DAYS).dateKeys;
 
     const info = { ok: true, userId, from, to, dateKeys };
-    const res = await reloadAndCache_(info, { showToast: false });
+    const res = await reloadAndCache_(info);
 
     if (res && res.ok) await renderFromCache_(perfSelectedMode_, info);
 
@@ -1993,26 +2011,40 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
 
   setBadge_("同步中…", false);
 
-  const res = await reloadAndCache_(info, { showToast: !!showToast });
-  if (!res || !res.ok) {
-    const msg = String(res && res.error ? res.error : "SYNC_FAILED");
-    if (msg.includes("CONFIG_PERF_SYNC_API_URL_MISSING")) setBadge_("尚未設定 PERF_SYNC_API_URL", true);
-    else if (msg.includes("FEATURE_OFF")) setBadge_("未開通業績功能", true);
-    else if (msg.includes("USER_NOT_FOUND")) setBadge_("未授權（PerformanceAccess 查無 userId）", true);
-    else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
-    else setBadge_("同步失敗", true);
-    showError_(true);
-    return res;
-  }
+  const needToast = !!showToast;
+  const releaseLoading = needToast ? holdLoadingHint("同步資料中…") : null;
 
-  return await renderFromCache_(perfSelectedMode_, info);
+  try {
+    const res = await reloadAndCache_(info);
+    if (!res || !res.ok) {
+      const msg = String(res && res.error ? res.error : "SYNC_FAILED");
+      if (msg.includes("CONFIG_PERF_SYNC_API_URL_MISSING")) setBadge_("尚未設定 PERF_SYNC_API_URL", true);
+      else if (msg.includes("FEATURE_OFF")) setBadge_("未開通業績功能", true);
+      else if (msg.includes("USER_NOT_FOUND")) setBadge_("未授權（PerformanceAccess 查無 userId）", true);
+      else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
+      else setBadge_("同步失敗", true);
+      showError_(true);
+      return res;
+    }
+
+    // ✅ 需要 toast 時：等到圖表也 render 完（Chart.js lazy load 完成）才隱藏
+    return await renderFromCache_(perfSelectedMode_, info, { awaitChart: needToast });
+  } finally {
+    if (releaseLoading) releaseLoading();
+  }
 }
 
 export function onShowPerformance() {
   ensureDefaultDate_();
   showError_(false);
-  void renderFromCache_(perfSelectedMode_);
-  hideLoadingHint();
+  const releaseLoading = holdLoadingHint("同步資料中…");
+  (async () => {
+    try {
+      await renderFromCache_(perfSelectedMode_, null, { awaitChart: true });
+    } finally {
+      releaseLoading();
+    }
+  })();
 
   try {
     schedulePerfChartRedraw_();

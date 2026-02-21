@@ -8,6 +8,7 @@ import { config } from "./config.js";
 import { dom } from "./dom.js";
 import { state } from "./state.js";
 import { logUsageEvent } from "./usageLog.js";
+import { holdLoadingHint } from "./uiHelpers.js";
 
 // simple in-memory cache + in-flight guard for prefetch
 let bookingPrefetchInFlight_ = null;
@@ -278,6 +279,8 @@ export async function runBookingQueryOnce({ reason }) {
   setMeta_("");
   clearTable_();
 
+  const releaseLoading = holdLoadingHint("同步資料中…");
+
   try {
     const t0 = Date.now();
     const res = await postBookingQuery_({ userId, from, to });
@@ -318,5 +321,7 @@ export async function runBookingQueryOnce({ reason }) {
   } catch (e) {
     setStatus_("查詢失敗", "err");
     setMeta_(String(e && e.message ? e.message : e));
+  } finally {
+    releaseLoading();
   }
 }

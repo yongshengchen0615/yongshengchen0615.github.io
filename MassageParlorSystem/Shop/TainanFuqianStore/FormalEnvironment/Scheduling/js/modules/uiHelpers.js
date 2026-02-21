@@ -10,6 +10,13 @@
 
 import { dom } from "./dom.js";
 
+let loadingHintHolds_ = 0;
+
+function hideLoadingHintForce_() {
+  if (!dom.topLoadingEl) return;
+  dom.topLoadingEl.classList.add("hidden");
+}
+
 function clampPercent_(percent) {
   const p = Number(percent);
   if (!Number.isFinite(p)) return 0;
@@ -57,7 +64,30 @@ export function showLoadingHint(text) {
 /** 隱藏頂部載入提示。 */
 export function hideLoadingHint() {
   if (!dom.topLoadingEl) return;
-  dom.topLoadingEl.classList.add("hidden");
+
+  // ✅ If any flow is holding the toast, don't hide it.
+  if ((loadingHintHolds_ | 0) > 0) return;
+  hideLoadingHintForce_();
+}
+
+/**
+ * Hold the top loading hint until the returned release() is called.
+ * - Prevents other modules from hiding the toast prematurely.
+ * - Safe to call release multiple times.
+ * @param {string} [text]
+ * @returns {() => void} release
+ */
+export function holdLoadingHint(text) {
+  loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) + 1);
+  showLoadingHint(text);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) - 1);
+    if ((loadingHintHolds_ | 0) === 0) hideLoadingHintForce_();
+  };
 }
 
 /**
