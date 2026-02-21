@@ -11,7 +11,7 @@ import { loadConfigJson, sanitizeEdgeUrls } from "./modules/config.js";
 import { config } from "./modules/config.js";
 import { dom } from "./modules/dom.js";
 import { state } from "./modules/state.js";
-import { showGate, showInitialLoading, hideInitialLoading, setInitialLoadingProgress } from "./modules/uiHelpers.js";
+import { showGate, showInitialLoading, hideInitialLoading, setInitialLoadingProgress, holdLoadingHint } from "./modules/uiHelpers.js";
 import { initTheme } from "./modules/theme.js";
 import { initLiffAndGuard, initNoLiffAndGuard } from "./modules/auth.js";
 import { setActivePanel, renderIncremental } from "./modules/table.js";
@@ -92,6 +92,28 @@ function bindEventsOnce() {
       }
     });
   }
+
+  // Auto-refresh when perf date inputs change (debounced)
+  const perfDateAutoRefresh = debounce(async () => {
+    const release = holdLoadingHint("同步資料中…");
+    try {
+      await manualRefreshPerformance({ showToast: false });
+      try {
+        const from = (dom.perfDateStartInput && dom.perfDateStartInput.value) || "";
+        const to = (dom.perfDateEndInput && dom.perfDateEndInput.value) || "";
+        logUsageEvent({ event: "perf_auto_refresh", detail: `${from}->${to}`, noThrottle: true, eventCn: "業績自動重整" });
+      } catch {}
+    } catch (e) {
+      // ignore - performance module will show errors if needed
+    } finally {
+      try {
+        release();
+      } catch (_) {}
+    }
+  }, 700);
+
+  if (dom.perfDateStartInput) dom.perfDateStartInput.addEventListener("change", perfDateAutoRefresh);
+  if (dom.perfDateEndInput) dom.perfDateEndInput.addEventListener("change", perfDateAutoRefresh);
 }
 
 async function boot() {
