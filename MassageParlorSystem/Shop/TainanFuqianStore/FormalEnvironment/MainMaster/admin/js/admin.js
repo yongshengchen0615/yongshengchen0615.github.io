@@ -344,6 +344,28 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // ✅ 驗證通過後記一筆（不阻擋）
     if (typeof appendAdminUsageLog_ === "function") appendAdminUsageLog_();
+    // 非阻塞：管理員進入時觸發 PerformanceAccess StoreId 同步（使用 debug=true 回傳變更明細）
+    try {
+      (async () => {
+        try {
+          if (!API_BASE_URL) return;
+          const res = await fetch(API_BASE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ mode: "syncperfaccessstoreids", debug: true }),
+          });
+          const resp = await res.json().catch(() => ({}));
+          console.debug("syncperfaccessstoreids result:", resp);
+          if (resp && resp.ok && resp.updated && Number(resp.updated) > 0) {
+            try { toast(`PerformanceAccess StoreId 已更新 ${resp.updated} 筆`, "ok"); } catch (_) {}
+          }
+        } catch (e) {
+          console.warn("syncperfaccessstoreids error", e);
+        }
+      })();
+    } catch (eSyncCall) {
+      console.warn("failed to start syncperfaccessstoreids", eSyncCall);
+    }
 
     // ✅ 驗證通過後，直接並行啟動所有模組，再以事件驅動等待每個模組完成 render
     if (typeof uSetFooter_ === "function") uSetFooter_("載入 Users 資料中...");

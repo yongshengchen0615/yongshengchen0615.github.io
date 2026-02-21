@@ -1062,12 +1062,85 @@ function syncPerformanceAccessByEnabled_(userId, displayName, masterCode, enable
   }
 }
 
+/**
+ * 每次頁面進入時可呼叫：比對 PerformanceAccess.師傅編號 -> NetworkCapture.TechNo 推導的 StoreId
+ * 若不一致則更新 PerformanceAccess 的 StoreId 欄位
+ */
+function handleSyncPerformanceAccessStoreIds_(data) {
+  try {
+    var sheet = getOrCreatePerformanceAccessSheet_();
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return jsonOut_({ ok: true, checked: 0, updated: 0 });
+
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var techIdx = findHeaderIndexAny_(header, ["師傅編號", "masterCode", "MasterCode", "TechNo", "techno"]);
+    var storeIdx = findHeaderIndexAny_(header, ["StoreId", "storeid", "StoreID"]);
+    if (techIdx < 0 || storeIdx < 0) return jsonOut_({ ok: false, error: "MISSING_COLUMNS" });
+
+    var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var checked = 0;
+    var updated = 0;
+    var changes = [];
+
+    // build map once to ensure consistent derived values and reduce repeated cache ops
+    var ncMap = {};
+    try {
+      ncMap = buildTechNoToStoreIdMapFromNetworkCapture_() || {};
+    } catch (eMap) {
+      ncMap = {};
+    }
+
+    var userIdx = findHeaderIndexAny_(header, ["userId", "userid", "UserId"]);
+    var debug = data && (String(data.debug || "").trim() === "1" || String(data.debug || "").toLowerCase() === "true" || data.debug === true);
+
+    for (var i = 0; i < values.length; i++) {
+      var row = values[i];
+      var tech = String(row[techIdx] || "").trim();
+      if (!tech) continue;
+      checked++;
+
+      var currentStore = String(row[storeIdx] || "").trim();
+      var derived = String(ncMap[tech] || "").trim();
+      if (!derived) {
+        // fallback to lookup function (which may build cache)
+        derived = lookupStoreIdByTechNo_(tech);
+      }
+      if (!derived) continue;
+
+      if (String(derived) !== String(currentStore)) {
+        try {
+          sheet.getRange(i + 2, storeIdx + 1).setValue(derived);
+          updated++;
+          if (debug && changes.length < 200) {
+            changes.push({ row: i + 2, userId: userIdx >= 0 ? String(row[userIdx] || "").trim() : "", tech: tech, oldStore: currentStore, newStore: derived });
+          }
+        } catch (eWrite) {
+          if (debug && changes.length < 200) {
+            changes.push({ row: i + 2, userId: userIdx >= 0 ? String(row[userIdx] || "").trim() : "", tech: tech, oldStore: currentStore, newStore: derived, error: String(eWrite && eWrite.message ? eWrite.message : eWrite) });
+          }
+        }
+      }
+    }
+
+    // invalidate cache used by lookup
+    try { CacheService.getScriptCache().remove("techno_storeid_map_from_networkcapture_v1"); } catch (eCache) {}
+
+    var out = { ok: true, checked: checked, updated: updated };
+    if (debug) out.changes = changes;
+    return jsonOut_(out);
+  } catch (e) {
+    return jsonOut_({ ok: false, error: String(e && e.message ? e.message : e) });
+  }
+}
+
 /* =========================
  * ✅ check 核心邏輯：回傳純 object（避免 getContent/parse）
  * ========================= */
-function buildCheckResult_(userId, displayNameCandidate) {
+function buildCheckResult_(userId, displayNameCandidate, debug) {
   userId = String(userId || "").trim();
   displayNameCandidate = String(displayNameCandidate || "").trim();
+  debug = debug === true || String(debug || "").trim() === "1" || String(debug || "").toLowerCase() === "true";
   if (!userId) {
     return {
       ok: true,
@@ -1163,6 +1236,40 @@ function buildCheckResult_(userId, displayNameCandidate) {
     } catch (eSid2) {}
   }
 
+  // Perf sync diagnostics
+  var perfSync = { attempted: false, perfCurrent: "", derived: "", updated: false };
+
+  // 確保 PerformanceAccess 的 StoreId 與 NetworkCapture 推導一致：若 masterCode 存在且推導到的 storeId 與 PerformanceAccess 不同，則更新 PerformanceAccess
+  try {
+    if (masterCode) {
+      var derivedSid = "";
+      try { derivedSid = lookupStoreIdByTechNo_(masterCode); } catch (eDer) { derivedSid = ""; }
+      if (derivedSid) {
+        perfSync.attempted = true;
+        perfSync.derived = String(derivedSid || "").trim();
+        try {
+          var perfCurrent = getStoreIdByUserIdFromPerformanceAccess_(userId);
+          perfSync.perfCurrent = String(perfCurrent || "").trim();
+          if (String(perfCurrent || "").trim() !== String(derivedSid).trim()) {
+            // 只在不同時寫入，避免不必要的更新
+            try {
+              upsertPerformanceAccessRow_(userId, displayName, masterCode, derivedSid);
+              storeId = String(derivedSid).trim();
+              perfSync.updated = true;
+            } catch (eUp) {
+              // ignore write failure
+            }
+          } else {
+            // 如果 perfCurrent 為空但上面 storeId 可能已用 lookup 填入，確保回傳值正確
+            if (!storeId) storeId = String(derivedSid).trim();
+          }
+        } catch (ePerfGet) {
+          // ignore
+        }
+      }
+    }
+  } catch (eSyncPerf) {}
+
   var remainingDays = calcRemainingDaysByDate_(startDate, usageDays);
 
   // ✅ 與舊版 expire rule 對齊：通過但已過期 → pushEnabled 強制為 否（必要時只更新單一欄位）
@@ -1173,7 +1280,7 @@ function buildCheckResult_(userId, displayNameCandidate) {
     } catch (ePushWrite) {}
   }
 
-  return {
+    var outObj = {
     ok: true,
     userId: userId,
     status: auditToStatus_(audit),
@@ -1188,7 +1295,10 @@ function buildCheckResult_(userId, displayNameCandidate) {
     scheduleEnabled: scheduleEnabled,
     performanceEnabled: performanceEnabled,
     bookingEnabled: bookingEnabled
-  };
+    };
+
+    if (debug) outObj.perfSync = perfSync;
+    return outObj;
 }
 
 /* =========================
@@ -1198,7 +1308,8 @@ function buildCheckResult_(userId, displayNameCandidate) {
 function handleCheck_(e) {
   var userId = String((e && e.parameter && e.parameter.userId) || "").trim();
   var displayName = String((e && e.parameter && (e.parameter.displayName || e.parameter.name)) || "").trim();
-  return jsonOut_(buildCheckResult_(userId, displayName));
+  var debug = e && e.parameter && (String(e.parameter.debug || "").trim() === "1" || String(e.parameter.debug || "").toLowerCase() === "true");
+  return jsonOut_(buildCheckResult_(userId, displayName, debug));
 }
 
 function handleRegister_(data) {
@@ -2281,6 +2392,7 @@ function doGet(e) {
   if (mode === "getstoreidbytechno") return handleGetStoreIdByTechNo_(e.parameter);
   if (mode === "getperformanceuseridbytechno") return handleGetPerformanceUserIdByTechNo_(e.parameter);
   if (mode === "syncstoreperf_v1") return handleSyncStorePerf_v1_(e.parameter);
+  if (mode === "syncperfaccessstoreids" || mode === "syncperformanceaccessstoreids") return handleSyncPerformanceAccessStoreIds_(e.parameter);
 
   return jsonOut_({
     ok: false,
@@ -2341,6 +2453,7 @@ function doPost(e) {
   if (mode === "getstoreidbytechno") return handleGetStoreIdByTechNo_(data);
   if (mode === "getperformanceuseridbytechno") return handleGetPerformanceUserIdByTechNo_(data);
   if (mode === "syncstoreperf_v1") return handleSyncStorePerf_v1_(data);
+  if (mode === "syncperfaccessstoreids" || mode === "syncperformanceaccessstoreids") return handleSyncPerformanceAccessStoreIds_(data);
 
   if (mode === "bookingquery_v1") return handleBookingQuery_v1_(data);
 
