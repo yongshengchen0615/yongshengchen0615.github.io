@@ -83,7 +83,9 @@ function bindEventsOnce() {
       try {
         await manualRefreshPerformance({ showToast: true });
         try {
-          logUsageEvent({ event: "perf_manual_refresh", noThrottle: true, eventCn: "業績手動重整" });
+          const from = (dom.perfDateStartInput && dom.perfDateStartInput.value) || "";
+          const to = (dom.perfDateEndInput && dom.perfDateEndInput.value) || "";
+          logUsageEvent({ event: "perf_manual_refresh", detail: `${from}->${to}`, noThrottle: true, eventCn: "業績手動重整" });
         } catch {}
       } catch (e) {
         // ignore - performance module shows error badge
