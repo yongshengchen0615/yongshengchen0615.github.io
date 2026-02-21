@@ -67,6 +67,8 @@ export const config = {
 
   /** 單次狀態抓取 timeout（毫秒）。 */
   STATUS_FETCH_TIMEOUT_MS: 8000,
+  /** 是否啟用業績圖表（true/false）。預設 true。 */
+  ENABLE_PERF_CHARTS: true,
   /** Origin fallback 額外 timeout（毫秒）。 */
   STATUS_FETCH_ORIGIN_EXTRA_MS: 4000,
 
@@ -179,6 +181,12 @@ export async function loadConfigJson() {
       // optional: stale data gate
       const staleMaxAge = Number(cfg.STALE_DATA_MAX_AGE_MS);
       if (!Number.isNaN(staleMaxAge)) config.STALE_DATA_MAX_AGE_MS = staleMaxAge;
+
+      // optional: enable perf charts
+      const chartsRaw = cfg.ENABLE_PERF_CHARTS;
+      if (typeof chartsRaw === "boolean") config.ENABLE_PERF_CHARTS = chartsRaw;
+      else if (typeof chartsRaw === "string") config.ENABLE_PERF_CHARTS = chartsRaw.trim().toLowerCase() === "true" || chartsRaw.trim() === "是";
+      else if (typeof chartsRaw === "number") config.ENABLE_PERF_CHARTS = chartsRaw === 1;
 
       // optional: config fetch timeout
       const cfgTimeout = Number(cfg.CONFIG_FETCH_TIMEOUT_MS);

@@ -47,6 +47,7 @@ let perfChartLastDateKeys_ = null;
 let perfChartResizeTimer_ = null;
 let perfChartRO_ = null;
 let perfChartLastLayout_ = null; // { isNarrow, shouldScroll, points }
+let perfChartsDisabled_ = false;
 
 let perfDetailUi_ = null;
 let perfScrollLockPrev_ = null;
@@ -101,6 +102,13 @@ function loadScriptOnce_(src) {
 }
 
 async function ensureChartJs_() {
+  // Respect config flag: if charts are disabled, short-circuit and return false
+  try {
+    if (config && (config.ENABLE_PERF_CHARTS === false || String(config.ENABLE_PERF_CHARTS).toLowerCase() === "false")) {
+      return false;
+    }
+  } catch (_) {}
+
   if (window.Chart) return true;
   if (!chartJsReady_) {
     chartJsReady_ = loadScriptOnce_(CHARTJS_SRC)
@@ -1150,12 +1158,41 @@ async function updatePerfChart_(rows, dateKeys) {
   try {
     if (!dom.perfChartEl) return;
 
+    if (perfChartsDisabled_) {
+      try {
+        if (dom.perfChartEl) dom.perfChartEl.style.display = "none";
+        if (dom.perfChartHintEl) dom.perfChartHintEl.textContent = "圖表功能已停用。";
+      } catch (_) {}
+      return;
+    }
+
+    // If config disables charts, show hint and skip rendering
     try {
-      await ensureChartJs_();
+      const chartsEnabled = !(config && (config.ENABLE_PERF_CHARTS === false || String(config.ENABLE_PERF_CHARTS).toLowerCase() === "false"));
+      if (!chartsEnabled) {
+        try {
+          if (dom.perfChartEl) dom.perfChartEl.style.display = "none";
+          if (dom.perfChartHintEl) dom.perfChartHintEl.textContent = "圖表功能已停用。";
+        } catch (_) {}
+        return;
+      }
+    } catch (_) {}
+
+    try {
+      const ok = await ensureChartJs_();
+      if (!ok) {
+        if (dom.perfChartHintEl) dom.perfChartHintEl.textContent = "圖表無法載入。";
+        return;
+      }
     } catch (e) {
       console.error("[Perf] Chart.js load failed:", e);
       return;
     }
+
+    // ensure canvas visible when charts enabled
+    try {
+      if (dom.perfChartEl) dom.perfChartEl.style.display = "";
+    } catch (_) {}
 
     const keys = Array.isArray(dateKeys) && dateKeys.length ? dateKeys.slice() : [];
     const list = Array.isArray(rows) ? rows : [];
@@ -1810,6 +1847,43 @@ export function initPerformanceUi() {
 
   try {
     loadPerfChartPrefs_();
+  } catch (_) {}
+
+  // Respect config flag: disable all chart UI and rendering when false
+  try {
+    if (config && (config.ENABLE_PERF_CHARTS === false || String(config.ENABLE_PERF_CHARTS).toLowerCase() === "false")) {
+      perfChartsDisabled_ = true;
+      try {
+        const hideSel = [
+          '.chart-toolbar',
+          '.chart-toggle',
+          '.chart-wrapper',
+          '#perfChart',
+          '#perfChartHint',
+          '#perfChartModeDaily',
+          '#perfChartModeCumu',
+          '#perfChartModeMA7',
+          '#perfChartModeBar',
+          '#perfChartReset',
+          '#perfChartToggleAmount',
+          '#perfChartToggleOldRate',
+          '#perfChartToggleSchedRate'
+        ].join(',');
+        const els = document.querySelectorAll(hideSel);
+        for (const el of els) {
+          try { el.style && (el.style.display = 'none'); } catch (_) {}
+        }
+        if (dom.perfChartHintEl) dom.perfChartHintEl.textContent = "圖表功能已停用。";
+      } catch (_) {}
+
+      // destroy any existing chart instance
+      try {
+        if (perfChartInstance_) {
+          try { perfChartInstance_.destroy(); } catch (_) {}
+          perfChartInstance_ = null;
+        }
+      } catch (_) {}
+    }
   } catch (_) {}
 
   if (dom.perfSearchBtn) dom.perfSearchBtn.addEventListener("click", () => void renderFromCache_("summary"));

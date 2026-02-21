@@ -40,6 +40,9 @@
   "PERF_SYNC_API_URL": "https://script.google.com/macros/s/AKfycbw3RGQ80Z0YlUy6-HdnryFChRznY_kaDpNzuPqjM3qnjOZUyfmmBtuPOcadZ5L4KQz7Xg/exec",
   "_comment_PERF_SYNC_API_URL": "✅ 業績同步（storeId版）用 GAS Web App URL：POST mode=syncStorePerf_v1，前端 performance.js 會用這個網址。",
 
+  "ENABLE_PERF_CHARTS": false,
+  "_comment_ENABLE_PERF_CHARTS": "是否在業績頁面顯示圖表（true=啟用；false=停用，將跳過 Chart.js 載入與圖表渲染）。",
+
 
   "USAGE_LOG_MIN_INTERVAL_MS": 180000,
   "_comment_USAGE_LOG_MIN_INTERVAL_MS": "（可選）同一使用者『開啟紀錄』最小送出間隔（毫秒）。預設 30 分鐘，避免重整/回前景造成暴增。",
