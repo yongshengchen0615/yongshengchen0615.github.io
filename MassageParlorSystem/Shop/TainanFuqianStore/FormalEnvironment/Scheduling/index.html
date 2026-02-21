@@ -130,6 +130,8 @@
               <h2 id="panelTitle" class="card-title">身體面板</h2>
               <p class="card-subtitle">依「順序」排序，可透過上方下拉選單篩選指定師傅</p>
             </div>
+
+            
             <div class="card-header-right">
               <span id="lastUpdate" class="badge">尚未更新</span>
               <button id="refreshBtn" class="btn btn-ghost" type="button" title="手動重整">🔄 重整排班</button>
@@ -193,6 +195,15 @@
             <div class="filter">
               <label for="perfDateEnd" class="filter-label">結束日期</label>
               <input id="perfDateEnd" class="input" type="date" lang="en-CA" />
+            </div>
+            <div class="filter">
+              <label class="filter-label" aria-hidden="true">期別</label>
+              <div class="perf-periods">
+                <button id="perfPeriodLastMonth" class="btn btn-ghost" type="button">上個月</button>
+                <button id="perfPeriodMonth" class="btn btn-ghost" type="button">本月</button>
+                <button id="perfPeriodPrev" class="btn btn-ghost" type="button">上期</button>
+                <button id="perfPeriodThis" class="btn btn-ghost" type="button">本期</button>
+              </div>
             </div>
             <div class="filter">
               <label class="filter-label" aria-hidden="true">&nbsp;</label>

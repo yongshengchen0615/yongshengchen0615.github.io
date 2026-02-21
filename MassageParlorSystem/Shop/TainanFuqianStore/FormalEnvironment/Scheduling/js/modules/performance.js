@@ -1842,6 +1842,52 @@ export function togglePerformanceCard() {
   // 保留擴充點
 }
 
+// ====== 期別工具函式：每月 1~15 為上半月、16~月底為下半月 ======
+function lastDayOfMonth_(year, month) {
+  // month: 1-12
+  try {
+    return new Date(year, month, 0).getDate();
+  } catch (_) {
+    return 31;
+  }
+}
+
+function periodIndexForDate_(d) {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1; // 1-12
+  const day = d.getDate();
+  const half = day <= 15 ? 1 : 2;
+  return y * 24 + (m - 1) * 2 + (half - 1);
+}
+
+function rangeForPeriodIndex_(idx) {
+  // idx -> {startKey, endKey}
+  const year = Math.floor(idx / 24);
+  let rem = idx % 24;
+  if (rem < 0) {
+    // handle negative modulo
+    const borrow = Math.ceil(Math.abs(rem) / 24);
+    return rangeForPeriodIndex_(idx + borrow * 24);
+  }
+  const month = Math.floor(rem / 2) + 1; // 1-12
+  const half = (rem % 2) + 1; // 1 or 2
+  const pad = (n) => String(n).padStart(2, "0");
+  if (half === 1) {
+    return { startKey: `${year}-${pad(month)}-01`, endKey: `${year}-${pad(month)}-15` };
+  }
+  const last = lastDayOfMonth_(year, month);
+  return { startKey: `${year}-${pad(month)}-16`, endKey: `${year}-${pad(month)}-${pad(last)}` };
+}
+
+async function applyPeriodIndex_(idx) {
+  const r = rangeForPeriodIndex_(idx);
+  if (dom.perfDateStartInput) dom.perfDateStartInput.value = r.startKey;
+  if (dom.perfDateEndInput) dom.perfDateEndInput.value = r.endKey;
+  try {
+    await manualRefreshPerformance({ showToast: true });
+  } catch (_) {}
+}
+
 export function initPerformanceUi() {
   ensureDefaultDate_();
 
@@ -1903,6 +1949,79 @@ export function initPerformanceUi() {
     dom.perfDateEndInput.addEventListener("change", onDateInputsChanged);
     dom.perfDateEndInput.addEventListener("input", onDateInputsChanged);
   }
+
+  // 期別按鈕（上期 / 本期）事件綁定
+  try {
+    const btnPrev = document.getElementById("perfPeriodPrev");
+    const btnThis = document.getElementById("perfPeriodThis");
+    const todayIdx = periodIndexForDate_(new Date());
+    if (btnPrev)
+      btnPrev.addEventListener("click", () => {
+        void applyPeriodIndex_(todayIdx - 1);
+        try {
+          btnPrev.classList && btnPrev.classList.add("is-active");
+          btnThis && btnThis.classList && btnThis.classList.remove("is-active");
+        } catch (_) {}
+      });
+    if (btnThis)
+      btnThis.addEventListener("click", () => {
+        void applyPeriodIndex_(todayIdx);
+        try {
+          btnThis.classList && btnThis.classList.add("is-active");
+          btnPrev && btnPrev.classList && btnPrev.classList.remove("is-active");
+        } catch (_) {}
+      });
+    // default active
+    try {
+      if (btnThis) btnThis.classList.add("is-active");
+    } catch (_) {}
+    // 本月按鈕
+    const btnMonth = document.getElementById("perfPeriodMonth");
+    if (btnMonth)
+      btnMonth.addEventListener("click", async () => {
+        try {
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = now.getMonth() + 1;
+          const pad = (n) => String(n).padStart(2, "0");
+          const startKey = `${y}-${pad(m)}-01`;
+          const last = lastDayOfMonth_(y, m);
+          const endKey = `${y}-${pad(m)}-${pad(last)}`;
+          if (dom.perfDateStartInput) dom.perfDateStartInput.value = startKey;
+          if (dom.perfDateEndInput) dom.perfDateEndInput.value = endKey;
+          try { btnMonth.classList && btnMonth.classList.add('is-active'); } catch(_){}
+          try { btnPrev && btnPrev.classList && btnPrev.classList.remove('is-active'); } catch(_){}
+          try { btnThis && btnThis.classList && btnThis.classList.remove('is-active'); } catch(_){}
+          await manualRefreshPerformance({ showToast: true });
+        } catch (_) {}
+      });
+    // 上個月按鈕
+    const btnLastMonth = document.getElementById("perfPeriodLastMonth");
+    if (btnLastMonth)
+      btnLastMonth.addEventListener("click", async () => {
+        try {
+          const now = new Date();
+          let y = now.getFullYear();
+          let m = now.getMonth() + 1;
+          m = m - 1;
+          if (m === 0) {
+            m = 12;
+            y = y - 1;
+          }
+          const pad = (n) => String(n).padStart(2, "0");
+          const startKey = `${y}-${pad(m)}-01`;
+          const last = lastDayOfMonth_(y, m);
+          const endKey = `${y}-${pad(m)}-${pad(last)}`;
+          if (dom.perfDateStartInput) dom.perfDateStartInput.value = startKey;
+          if (dom.perfDateEndInput) dom.perfDateEndInput.value = endKey;
+          try { btnLastMonth.classList && btnLastMonth.classList.add('is-active'); } catch(_){}
+          try { btnMonth && btnMonth.classList && btnMonth.classList.remove('is-active'); } catch(_){}
+          try { btnPrev && btnPrev.classList && btnPrev.classList.remove('is-active'); } catch(_){}
+          try { btnThis && btnThis.classList && btnThis.classList.remove('is-active'); } catch(_){}
+          await manualRefreshPerformance({ showToast: true });
+        } catch (_) {}
+      });
+  } catch (_) {}
 
   // ✅ optional chart mode buttons
   try {
