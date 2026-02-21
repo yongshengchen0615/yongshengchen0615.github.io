@@ -204,6 +204,33 @@
     </div>
   </div>
 
+  <!-- Edit Modal -->
+  <div id="editModal" class="modal-backdrop" style="display:none;">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+      <div class="modal-content">
+        <h3 id="editModalTitle">修改序號功能</h3>
+        <form id="editModalForm">
+          <div class="form-row modal-fields" style="flex-direction:column;gap:8px;padding:8px 0;">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <label class="filter-label" for="modal_amount" style="margin:0;min-width:56px;">面額</label>
+              <input id="modal_amount" class="input" type="number" min="0" step="1" style="width:140px;" />
+            </div>
+            <label class="select-all"><input type="checkbox" id="modal_syncEnabled" /> <span>同步</span></label>
+            <label class="select-all"><input type="checkbox" id="modal_pushEnabled" /> <span>推播</span></label>
+            <label class="select-all"><input type="checkbox" id="modal_personalStatusEnabled" /> <span>個人狀態</span></label>
+            <label class="select-all"><input type="checkbox" id="modal_scheduleEnabled" /> <span>排班表</span></label>
+            <label class="select-all"><input type="checkbox" id="modal_performanceEnabled" /> <span>業績</span></label>
+            <label class="select-all"><input type="checkbox" id="modal_bookingEnabled" /> <span>預約查詢</span></label>
+          </div>
+          <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+            <button type="button" id="editModalCancel" class="btn btn-ghost">取消</button>
+            <button type="submit" id="editModalSave" class="btn btn-primary">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

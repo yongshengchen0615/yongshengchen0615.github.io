@@ -41,4 +41,17 @@ export const dom = {
   emptyState: document.getElementById("emptyState"),
   loadingState: document.getElementById("loadingState"),
   errorState: document.getElementById("errorState"),
+  // Edit modal
+  editModal: document.getElementById("editModal"),
+  editModalTitle: document.getElementById("editModalTitle"),
+  editModalForm: document.getElementById("editModalForm"),
+  modal_amount: document.getElementById("modal_amount"),
+  modal_syncEnabled: document.getElementById("modal_syncEnabled"),
+  modal_pushEnabled: document.getElementById("modal_pushEnabled"),
+  modal_personalStatusEnabled: document.getElementById("modal_personalStatusEnabled"),
+  modal_scheduleEnabled: document.getElementById("modal_scheduleEnabled"),
+  modal_performanceEnabled: document.getElementById("modal_performanceEnabled"),
+  modal_bookingEnabled: document.getElementById("modal_bookingEnabled"),
+  editModalSave: document.getElementById("editModalSave"),
+  editModalCancel: document.getElementById("editModalCancel"),
 };

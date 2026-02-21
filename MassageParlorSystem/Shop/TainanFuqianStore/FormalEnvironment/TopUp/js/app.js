@@ -278,6 +278,11 @@ function bindEventsOnce() {
         return;
       }
 
+      if (action === "edit") {
+        openEditModal(String(serial));
+        return;
+      }
+
       if (action === "reactivate") {
         const ok = confirm(`確定恢復為可用？\n\n序號：${serial}`);
         if (!ok) return;
@@ -306,6 +311,25 @@ function bindEventsOnce() {
     else state.selectedSerials.delete(serial);
 
     syncBatchUi_();
+  });
+
+  // modal cancel / submit handlers (implemented via functions below)
+  dom.editModalCancel?.addEventListener("click", () => {
+    try {
+      if (dom.editModal) dom.editModal.style.display = "none";
+    } catch (_) {}
+  });
+
+  dom.editModalForm?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      await handleModalSave();
+    } catch (e) {
+      console.error(e);
+      toast(String(e.message || e), "err");
+    } finally {
+      hideTopLoading();
+    }
   });
 }
 
@@ -622,6 +646,7 @@ function renderRows_(rows) {
         status === "active"
           ? `
             <button class="btn btn-small btn-ghost" data-action="copy" data-serial="${escapeHtml_(serial)}" type="button">複製</button>
+            <button class="btn btn-small btn-ghost" data-action="edit" data-serial="${escapeHtml_(serial)}" type="button">修改</button>
             <button class="btn btn-small btn-danger" data-action="void" data-serial="${escapeHtml_(serial)}" type="button">作廢</button>
             <button class="btn btn-small btn-danger" data-action="delete" data-serial="${escapeHtml_(serial)}" type="button">刪除</button>
           `
@@ -707,6 +732,135 @@ function syncBatchUi_() {
     dom.selectAll.disabled = total === 0;
   }
 }
+
+// --- Edit modal helpers ---
+let _editingSerial = null;
+let _editingOriginalFeatures = {};
+let _editingOriginalAmount = null;
+
+function _toBoolOrNull(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v === true || v === 1 || v === "1") return true;
+  const s = String(v).trim().toLowerCase();
+  if (!s) return null;
+  if (["true", "y", "yes", "on", "1"].includes(s)) return true;
+  if (["false", "n", "no", "off", "0"].includes(s)) return false;
+  return null;
+}
+
+function openEditModal(serial) {
+  const rows = Array.isArray(state._lastRows) ? state._lastRows : [];
+  const row = rows.find((r) => String(r?.serial || "") === String(serial));
+  if (!row) return toast("找不到序號資料", "err");
+
+  const src = row?.features && typeof row.features === "object" ? row.features : row;
+
+  const keys = [
+    "syncEnabled",
+    "pushEnabled",
+    "personalStatusEnabled",
+    "scheduleEnabled",
+    "performanceEnabled",
+    "bookingEnabled",
+  ];
+
+  _editingSerial = String(serial);
+  _editingOriginalFeatures = {};
+
+  for (const k of keys) {
+    const val = _toBoolOrNull(src?.[k]);
+    _editingOriginalFeatures[k] = val;
+    try {
+      const el = dom[`modal_${k}`];
+      if (el) el.checked = val === true;
+    } catch (_) {}
+  }
+
+  // amount
+  try {
+    const amt = Number(row.amount || 0) || 0;
+    _editingOriginalAmount = amt;
+    if (dom.modal_amount) dom.modal_amount.value = String(amt);
+  } catch (_) {
+    _editingOriginalAmount = null;
+  }
+
+  if (dom.editModalTitle) dom.editModalTitle.textContent = `修改：${serial}`;
+  if (dom.editModal) dom.editModal.style.display = "flex";
+}
+
+function closeEditModal() {
+  try {
+    if (dom.editModal) dom.editModal.style.display = "none";
+  } catch (_) {}
+  _editingSerial = null;
+  _editingOriginalFeatures = {};
+}
+
+async function handleModalSave() {
+  if (!_editingSerial) return;
+  const keys = [
+    "syncEnabled",
+    "pushEnabled",
+    "personalStatusEnabled",
+    "scheduleEnabled",
+    "performanceEnabled",
+    "bookingEnabled",
+  ];
+
+  const changes = {};
+  for (const k of keys) {
+    const el = dom[`modal_${k}`];
+    const cur = el ? !!el.checked : false;
+    const orig = _editingOriginalFeatures[k];
+    // treat null(original) as false for comparison if needed
+    const origNormalized = orig === true ? true : false;
+    if (cur !== origNormalized) changes[k] = cur;
+  }
+
+  // check amount change
+  try {
+    if (dom.modal_amount) {
+      const newAmtRaw = dom.modal_amount.value;
+      const newAmt = newAmtRaw === undefined || newAmtRaw === null || String(newAmtRaw).trim() === "" ? null : Number(newAmtRaw);
+      if (newAmt !== null && Number.isFinite(newAmt)) {
+        const origAmt = _editingOriginalAmount === null ? null : Number(_editingOriginalAmount);
+        if (origAmt === null || Number(newAmt) !== Number(origAmt)) {
+          // include amount change as top-level amount
+          changes.__amount = Math.round(newAmt);
+        }
+      }
+    }
+  } catch (_) {}
+
+  if (!Object.keys(changes).length) {
+    toast("未修改任何設定", "err");
+    return closeEditModal();
+  }
+
+    showTopLoading("更新中…");
+    try {
+      const body = { mode: "serials_update_features", serial: _editingSerial, features: {}, actor: state.me };
+      // move features from changes (keys other than __amount)
+      for (const k of Object.keys(changes || {})) {
+        if (k === "__amount") continue;
+        body.features[k] = changes[k];
+      }
+      if (changes.__amount !== undefined) body.amount = changes.__amount;
+
+      const ret = await apiPost(body);
+    if (!ret?.ok) throw new Error(ret?.error || "update failed");
+    toast("已更新", "ok");
+    closeEditModal();
+    await loadSerials({ showLoading: true, force: true });
+  } catch (e) {
+    console.error(e);
+    throw e;
+  } finally {
+    hideTopLoading();
+  }
+}
+
 
 async function boot() {
   initTheme();

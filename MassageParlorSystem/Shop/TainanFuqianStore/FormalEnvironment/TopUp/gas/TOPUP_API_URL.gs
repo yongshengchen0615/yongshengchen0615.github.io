@@ -57,6 +57,7 @@ function doGet(e) {
         "POST text/plain JSON {mode:'serials_reactivate', serial, actor?}",
         "POST text/plain JSON {mode:'serials_delete', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_delete_batch', serials, note?, actor?}",
+        "POST text/plain JSON {mode:'serials_update_features', serial, features, actor?}",
       ],
       sheets: {
         admins: SHEET_ADMINS,
@@ -181,6 +182,14 @@ function doPost(e) {
       const serials = Array.isArray(payload.serials) ? payload.serials : [];
       const note = normalizeNote_(payload.note);
       const res = serialsDeleteBatch_({ serials, note, actor: gate.user });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
+
+    if (mode === "serials_update_features") {
+      const serial = normalizeSerial_(payload.serial);
+      const features = payload.features && typeof payload.features === "object" ? payload.features : {};
+      const amount = payload.amount !== undefined ? payload.amount : null;
+      const res = serialsUpdateFeatures_({ serial, features, amount, actor: gate.user });
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
@@ -859,6 +868,75 @@ function serialsDeleteBatch_({ serials, note, actor }) {
     });
 
     return { deleted, failed };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function serialsUpdateFeatures_({ serial, features, amount, actor }) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+    const idx = findSerialRowIndex_(sh, serial);
+    if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
+
+    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
+    if (status !== STATUS_ACTIVE) throw new Error("SERIAL_NOT_ACTIVE");
+
+    const now = Date.now();
+    // support optional amount update (explicit param takes precedence)
+    const amtProvided = (amount !== undefined && amount !== null) ? amount : ((typeof features === 'object' && features.__amount !== undefined) ? features.__amount : undefined);
+
+    // Column indices (0-based) based on serialsHeaders_()
+    const mapIdx = {
+      PushEnabled: 16,
+      pushEnabled: 16,
+      PersonalStatusEnabled: 17,
+      personalStatusEnabled: 17,
+      ScheduleEnabled: 18,
+      scheduleEnabled: 18,
+      PerformanceEnabled: 19,
+      performanceEnabled: 19,
+      SyncEnabled: 20,
+      syncEnabled: 20,
+      BookingEnabled: 21,
+      bookingEnabled: 21,
+    };
+
+    // Only update keys provided in `features`
+    for (var k in features) {
+      if (!features.hasOwnProperty(k)) continue;
+      var idxCol = mapIdx[k];
+      if (idxCol === undefined) continue;
+      var val = features[k];
+      // Normalize truthy/falsey using existing helper
+      var normalized = normalizeFeatureFlag_(val, false);
+      row[idxCol] = encodeFeatureCell_(normalized);
+    }
+
+    // record updated timestamp
+    row[15] = now;
+
+    // If amount provided separately (backward-compatible), update it
+    if (amtProvided !== undefined) {
+      try {
+        const newAmt = normalizeAmount_(amtProvided);
+        row[1] = newAmt;
+      } catch (_) {
+        // ignore invalid amount to avoid failing entire op
+      }
+    }
+
+
+    sh.getRange(idx, 1, 1, row.length).setValues([row]);
+
+    const logDetail = { serial: serial, features: features, actor: actor };
+    if (amtProvided !== undefined) logDetail.amount = amtProvided;
+    logOp_("serials_update_features", serial, logDetail);
+
+    return { serial: serial, updatedAtMs: now };
   } finally {
     lock.releaseLock();
   }
