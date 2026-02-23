@@ -1,10 +1,12 @@
 /**
- * TopUp Serial Admin WebApp
+ * TopUp Serial Admin WebApp (Optimized vB)
  *
- * Features
- * - Admin gate: mode=adminUpsertAndCheck (self-register -> pending; approved -> allowed)
- * - Serials: list / generate / redeem / void / reactivate
- * - Op logs
+ * ✅ 方案 B：縮短「鎖內時間」提升吞吐（多人同時核銷不同序號）
+ * - 核銷（redeem / redeem_public）鎖改為：
+ *   1) 搶鎖成功後：只做「必要讀取 + 必要寫入」，避免整列讀寫
+ *   2) 寫入改成少量 range（3 次寫入：Status、Used(3欄)、UpdatedAt）
+ *   3) OpsLog trim 改為低頻觸發（避免每次 append 都 deleteRows）
+ * - BUSY_TRY_AGAIN：回傳 retryAfterMs（方便前端退避重試）
  *
  * Deploy
  * - Deploy as Web App
@@ -31,6 +33,15 @@ const STATUS_VOID = "void";
 const MAX_GENERATE_COUNT = 500;
 const MAX_LIST_LIMIT = 1000;
 
+// OpsLog 留存策略
+const MAX_OPS_LOG_ROWS = 5000;
+const MAX_OPS_DETAIL_CHARS = 30000;
+const OPSLOG_TRIM_CHUNK = 2000;
+
+// ✅ 低頻 trim（每 N 次 append 才 trim 一次）
+const OPSLOG_TRIM_EVERY_N_APPENDS = 50;
+const PROP_OPSLOG_APPEND_COUNT = "OPSLOG_APPEND_COUNT_V1";
+
 function doGet(e) {
   try {
     return json_({
@@ -40,7 +51,7 @@ function doGet(e) {
       endpoints: [
         "POST text/plain JSON {mode:'adminUpsertAndCheck', userId, displayName}",
         "POST text/plain JSON {mode:'serials_list', filters?, limit?}",
-        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, syncEnabled?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, actor?}",
+        "POST text/plain JSON {mode:'serials_generate', amount, count, note?, syncEnabled?, pushEnabled?, personalStatusEnabled?, scheduleEnabled?, performanceEnabled?, bookingEnabled?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_redeem_public', serial, userId, displayName?, note?}",
         "POST text/plain JSON {mode:'serials_sync_used_note_public', userId, displayName}",
@@ -48,6 +59,7 @@ function doGet(e) {
         "POST text/plain JSON {mode:'serials_reactivate', serial, actor?}",
         "POST text/plain JSON {mode:'serials_delete', serial, note?, actor?}",
         "POST text/plain JSON {mode:'serials_delete_batch', serials, note?, actor?}",
+        "POST text/plain JSON {mode:'serials_update_features', serial, features, actor?}",
       ],
       sheets: {
         admins: SHEET_ADMINS,
@@ -61,12 +73,13 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let payload = null;
+  let mode = "";
   try {
-    const payload = readJsonBody_(e);
-    const mode = String(payload.mode || "").trim();
+    payload = readJsonBody_(e);
+    mode = String(payload.mode || "").trim();
     if (!mode) throw new Error("MODE_REQUIRED");
 
-    // Ensure sheets exist early
     ensureSheets_();
 
     // Auth
@@ -74,14 +87,21 @@ function doPost(e) {
       const userId = normalizeUserId_(payload.userId);
       const displayName = normalizeDisplayName_(payload.displayName);
       const res = adminUpsertAndCheck_({ userId, displayName });
+      try {
+        logOp_("admin_upsert_and_check", "", {
+          user: { userId, displayName },
+          allowed: !!res.allowed,
+          audit: res.audit,
+          created: !!res.created,
+        });
+      } catch (_) {}
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
-    // ✅ Public redeem (no admin gate): for end-users to redeem a serial by themselves
+    // ✅ Public redeem (no admin gate)
     if (mode === "serials_redeem_public") {
       const serial = normalizeSerial_(payload.serial);
       const note = normalizeNote_(payload.note);
-      // ✅ 放寬：只要任何欄位提供 userId 即可（支援測試 local_dev）
       const userId = normalizeUserId_(
         payload.userId ||
           payload.userID ||
@@ -93,7 +113,7 @@ function doPost(e) {
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
-    // ✅ Public UsedNote sync (no admin gate): for Scheduling / end-users to sync name changes
+    // ✅ Public UsedNote sync (no admin gate)
     if (mode === "serials_sync_used_note_public") {
       const userId = normalizeUserId_(
         payload.userId ||
@@ -119,6 +139,14 @@ function doPost(e) {
       const filters = normalizeListFilters_(payload.filters);
       const limit = normalizeLimit_(payload.limit);
       const res = serialsList_({ filters, limit });
+      try {
+        logOp_("serials_list", "", {
+          filters,
+          limit,
+          actor: gate.user,
+          resultCount: Array.isArray(res && res.serials) ? res.serials.length : undefined,
+        });
+      } catch (_) {}
       return json_({ ok: true, ...res, now: Date.now(), actor: gate.user });
     }
 
@@ -165,8 +193,26 @@ function doPost(e) {
       return json_({ ok: true, ...res, now: Date.now() });
     }
 
+    if (mode === "serials_update_features") {
+      const serial = normalizeSerial_(payload.serial);
+      const features = payload.features && typeof payload.features === "object" ? payload.features : {};
+      const amount = payload.amount !== undefined ? payload.amount : null;
+      const res = serialsUpdateFeatures_({ serial, features, amount, actor: gate.user });
+      return json_({ ok: true, ...res, now: Date.now() });
+    }
+
     return json_({ ok: false, error: "UNSUPPORTED_MODE", mode, now: Date.now() });
   } catch (err) {
+    try {
+      ensureSheets_();
+      const message = err && err.message ? String(err.message) : "ERROR";
+      const stack = String(err && err.stack ? err.stack : "")
+        .split("\n")
+        .slice(0, 8)
+        .join("\n");
+      const raw = err && err.raw ? String(err.raw) : "";
+      logOp_("error", "", { mode: String(mode || ""), error: message, stack, raw });
+    } catch (_) {}
     return jsonError_(err);
   }
 }
@@ -192,8 +238,7 @@ function adminUpsertAndCheck_({ userId, displayName }) {
   const now = Date.now();
   const rows = sh.getDataRange().getValues();
 
-  // Find existing row by userId
-  let rowIndex = -1; // 1-based in sheet
+  let rowIndex = -1;
   for (let r = 2; r <= rows.length; r++) {
     const row = rows[r - 1];
     if (String(row[0] || "").trim() === userId) {
@@ -203,7 +248,6 @@ function adminUpsertAndCheck_({ userId, displayName }) {
   }
 
   if (rowIndex === -1) {
-    // New admin registration (pending by default)
     sh.appendRow([userId, displayName, DEFAULT_AUDIT, "admin", now, now, now, ""]);
     logOp_("admin_register", "", { userId, displayName, audit: DEFAULT_AUDIT });
     return {
@@ -214,12 +258,10 @@ function adminUpsertAndCheck_({ userId, displayName }) {
     };
   }
 
-  // Existing
   const row = rows[rowIndex - 1];
   const audit = String(row[2] || DEFAULT_AUDIT).trim() || DEFAULT_AUDIT;
   const role = String(row[3] || "admin").trim() || "admin";
 
-  // Update displayName (best effort), updatedAt, lastSeen
   const oldName = String(row[1] || "").trim();
   const updates = [];
   if (displayName && displayName !== oldName) updates.push({ col: 2, value: displayName });
@@ -233,8 +275,6 @@ function adminUpsertAndCheck_({ userId, displayName }) {
     rg.setValues([values]);
   }
 
-  // Best effort: sync historical UsedNote (Serials) for this userId.
-  // So name changes reflect across previously redeemed rows.
   try {
     syncSerialUsedNoteForUser_({ userId, displayName: displayName || oldName });
   } catch (_) {}
@@ -272,16 +312,15 @@ function requireAllowedAdmin_({ userId, displayName }) {
     const audit = String(row[2] || DEFAULT_AUDIT).trim() || DEFAULT_AUDIT;
     const role = String(row[3] || "admin").trim() || "admin";
 
-    // If caller provides a new displayName, sync it back to sheet.
-    // (So name changes are reflected without requiring a separate upsert call.)
     const newName = normalizeDisplayName_(displayName);
     const oldName = String(row[1] || "").trim();
     const now = Date.now();
+
     try {
       const updates = [];
       if (newName && newName !== oldName) updates.push({ col: 2, value: newName });
-      updates.push({ col: 6, value: now }); // UpdatedAtMs
-      updates.push({ col: 7, value: now }); // LastSeenAtMs
+      updates.push({ col: 6, value: now });
+      updates.push({ col: 7, value: now });
 
       if (updates.length) {
         const rg = sh.getRange(r, 1, 1, 8);
@@ -297,7 +336,6 @@ function requireAllowedAdmin_({ userId, displayName }) {
       throw err;
     }
 
-    // Best effort: sync historical UsedNote (Serials) for this admin.
     try {
       syncSerialUsedNoteForUser_({ userId: userIdNorm, displayName: newName || oldName });
     } catch (_) {}
@@ -308,7 +346,6 @@ function requireAllowedAdmin_({ userId, displayName }) {
     };
   }
 
-  // Not found: require caller to first call adminUpsertAndCheck
   const err = new Error("ADMIN_NOT_REGISTERED");
   err.details = { userId: userIdNorm };
   throw err;
@@ -348,14 +385,13 @@ function serialsList_({ filters, limit }) {
     const usedNote = String(row[9] || "");
     const voidAtMs = Number(row[10]) || 0;
 
-    // Feature flags (may be blank for older rows)
     const pushEnabled = parseFeatureCell_(row[16]);
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
-    // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     if (q) {
       const hay = (serial + " " + rowNote).toLowerCase();
@@ -379,21 +415,21 @@ function serialsList_({ filters, limit }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     });
 
     if (out.length >= limit) break;
   }
 
-  // Sort by createdAt desc (values are already append order; but keep safe)
   out.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-
   return { serials: out };
 }
 
@@ -411,6 +447,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
     const scheduleEnabled = encodeFeatureCell_(f.scheduleEnabled);
     const performanceEnabled = encodeFeatureCell_(f.performanceEnabled);
     const syncEnabled = encodeFeatureCell_(f.syncEnabled);
+    const bookingEnabled = encodeFeatureCell_(f.bookingEnabled);
 
     const existing = buildExistingSerialSet_(sh);
 
@@ -437,20 +474,21 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         now,
         actor.userId,
         batchId,
-        "", // UsedAtMs
-        "", // UsedBy
-        "", // UsedNote
-        "", // VoidAtMs
-        "", // VoidBy
-        "", // VoidNote
-        "", // ReactivatedAtMs
-        "", // ReactivatedBy
-        now, // UpdatedAtMs
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        now,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
         syncEnabled,
+        bookingEnabled,
       ]);
 
       out.push({
@@ -464,17 +502,21 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         personalStatusEnabled: !!f.personalStatusEnabled,
         scheduleEnabled: !!f.scheduleEnabled,
         performanceEnabled: !!f.performanceEnabled,
+        bookingEnabled: !!f.bookingEnabled,
         features: {
           syncEnabled: !!f.syncEnabled,
           pushEnabled: !!f.pushEnabled,
           personalStatusEnabled: !!f.personalStatusEnabled,
           scheduleEnabled: !!f.scheduleEnabled,
           performanceEnabled: !!f.performanceEnabled,
+          bookingEnabled: !!f.bookingEnabled,
         },
       });
     }
 
-    if (rowsToAppend.length) sh.getRange(sh.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    if (rowsToAppend.length) {
+      sh.getRange(sh.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    }
 
     logOp_("serials_generate", "", {
       batchId,
@@ -487,6 +529,7 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
         personalStatusEnabled: !!(flags && flags.personalStatusEnabled),
         scheduleEnabled: !!(flags && flags.scheduleEnabled),
         performanceEnabled: !!(flags && flags.performanceEnabled),
+        bookingEnabled: !!(flags && flags.bookingEnabled),
       },
       actor,
     });
@@ -497,41 +540,56 @@ function serialsGenerate_({ amount, count, note, flags, actor }) {
   }
 }
 
+/**
+ * ✅ 核銷（Admin）
+ * - 鎖內只做必要 IO（讀少、寫少）
+ */
 function serialsRedeem_({ serial, note, actor }) {
   const lock = LockService.getScriptLock();
-  // 限時搶鎖：避免高併發時使用者卡住太久
   const locked = lock.tryLock(8000);
-  if (!locked) throw new Error("BUSY_TRY_AGAIN");
+  if (!locked) {
+    const e = new Error("BUSY_TRY_AGAIN");
+    e.details = { retryAfterMs: 900 + Math.floor(Math.random() * 800) };
+    throw e;
+  }
+
   let res = null;
   let logDetail = null;
+
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+
+    // 1) 找 row（鎖內做，避免同時 delete/shift）
     const idx = findSerialRowIndex_(sh, serial);
     if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
 
-    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
-    const amount = Number(row[1]) || 0;
-    const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
+    // 2) 只讀必要欄位（一次讀 1..22 仍是單次 IO，避免多次 getValue）
+    //    欄位索引（1-based col）：A=1 ... V=22
+    const row = sh.getRange(idx, 1, 1, 22).getValues()[0];
+
+    const amount = Number(row[1]) || 0; // B
+    const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE; // C
     if (status === STATUS_USED) throw new Error("SERIAL_ALREADY_USED");
     if (status === STATUS_VOID) throw new Error("SERIAL_VOID");
 
     const now = Date.now();
-    row[2] = STATUS_USED;
-    row[7] = now;
-    row[8] = actor.userId;
-    // UsedNote: 僅保留核銷者 displayName（依需求不存其他備註）
-    row[9] = String(actor && actor.displayName ? actor.displayName : "").trim();
-    row[15] = now;
 
-    sh.getRange(idx, 1, 1, row.length).setValues([row]);
+    // 3) 寫回「必要欄位」：C、H~J、P（3 次寫入）
+    // C: Status
+    sh.getRange(idx, 3, 1, 1).setValues([[STATUS_USED]]);
+    // H~J: UsedAtMs, UsedBy, UsedNote
+    sh.getRange(idx, 8, 1, 3).setValues([[now, actor.userId, String(actor && actor.displayName ? actor.displayName : "").trim()]]);
+    // P: UpdatedAtMs
+    sh.getRange(idx, 16, 1, 1).setValues([[now]]);
 
+    // 4) Feature flags（從讀到的 row 解析；不需要再讀一次）
     const pushEnabled = parseFeatureCell_(row[16]);
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
-    // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     res = {
       serial,
@@ -544,21 +602,22 @@ function serialsRedeem_({ serial, note, actor }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     };
+
     logDetail = { serial, note, actor };
   } finally {
     lock.releaseLock();
   }
 
-  // Best-effort side effects outside lock to reduce queueing.
-  // ✅ 速度優先：redeem 不再做 UsedNote 全表同步（改由 serials_sync_used_note_public 或 admin login 觸發）。
   try {
     logOp_("serials_redeem", serial, logDetail);
   } catch (_) {}
@@ -566,6 +625,10 @@ function serialsRedeem_({ serial, note, actor }) {
   return res;
 }
 
+/**
+ * ✅ 核銷（Public）
+ * - 同樣縮短鎖內時間
+ */
 function serialsRedeemPublic_({ serial, note, user }) {
   const u = user || {};
   const userId = normalizeUserId_(u.userId);
@@ -573,41 +636,42 @@ function serialsRedeemPublic_({ serial, note, user }) {
   if (!userId) throw new Error("USER_ID_REQUIRED");
 
   const lock = LockService.getScriptLock();
-  // 限時搶鎖：避免高併發時使用者卡住太久
   const locked = lock.tryLock(8000);
-  if (!locked) throw new Error("BUSY_TRY_AGAIN");
+  if (!locked) {
+    const e = new Error("BUSY_TRY_AGAIN");
+    e.details = { retryAfterMs: 900 + Math.floor(Math.random() * 800) };
+    throw e;
+  }
+
   let res = null;
   let logDetail = null;
+
   try {
     const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
     const idx = findSerialRowIndex_(sh, serial);
     if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
 
-    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const row = sh.getRange(idx, 1, 1, 22).getValues()[0];
+
     const amount = Number(row[1]) || 0;
     const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
     if (status === STATUS_USED) throw new Error("SERIAL_ALREADY_USED");
     if (status === STATUS_VOID) throw new Error("SERIAL_VOID");
 
     const now = Date.now();
-    row[2] = STATUS_USED;
-    row[7] = now;
-    row[8] = userId;
-
-    // UsedNote: 僅保留核銷者 displayName（依需求不存其他備註）
     const finalNote = String(displayName || "").trim();
-    row[9] = finalNote;
-    row[15] = now;
 
-    sh.getRange(idx, 1, 1, row.length).setValues([row]);
+    sh.getRange(idx, 3, 1, 1).setValues([[STATUS_USED]]);
+    sh.getRange(idx, 8, 1, 3).setValues([[now, userId, finalNote]]);
+    sh.getRange(idx, 16, 1, 1).setValues([[now]]);
 
     const pushEnabled = parseFeatureCell_(row[16]);
     const personalStatusEnabled = parseFeatureCell_(row[17]);
     const scheduleEnabled = parseFeatureCell_(row[18]);
     const performanceEnabled = parseFeatureCell_(row[19]);
-    // Backward compatible: missing SyncEnabled means "sync on".
     const syncEnabledRaw = parseFeatureCell_(row[20]);
     const syncEnabled = syncEnabledRaw === null ? true : syncEnabledRaw;
+    const bookingEnabled = parseFeatureCell_(row[21]);
 
     res = {
       serial,
@@ -620,21 +684,22 @@ function serialsRedeemPublic_({ serial, note, user }) {
       personalStatusEnabled,
       scheduleEnabled,
       performanceEnabled,
+      bookingEnabled,
       features: {
         syncEnabled,
         pushEnabled,
         personalStatusEnabled,
         scheduleEnabled,
         performanceEnabled,
+        bookingEnabled,
       },
     };
+
     logDetail = { serial, note: String(note || "").trim(), usedNote: finalNote, user: { userId, displayName } };
   } finally {
     lock.releaseLock();
   }
 
-  // Best-effort side effects outside lock to reduce queueing.
-  // ✅ 速度優先：redeem_public 不再做 UsedNote 全表同步（改由 serials_sync_used_note_public 觸發）。
   try {
     logOp_("serials_redeem_public", serial, logDetail);
   } catch (_) {}
@@ -651,7 +716,6 @@ function syncSerialUsedNoteForUser_({ userId, displayName }) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return { updated: 0 };
 
-  // Only touch UsedBy + UsedNote columns for speed.
   const numRows = lastRow - 1;
   const rg = sh.getRange(2, 9, numRows, 2);
   const values = rg.getValues();
@@ -678,12 +742,13 @@ function serialsVoid_({ serial, note, actor }) {
     const idx = findSerialRowIndex_(sh, serial);
     if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
 
-    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const row = sh.getRange(idx, 1, 1, 22).getValues()[0];
     const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
     if (status === STATUS_USED) throw new Error("SERIAL_ALREADY_USED");
     if (status === STATUS_VOID) return { serial, status: STATUS_VOID, already: true };
 
     const now = Date.now();
+    // 仍保持整列寫回（void/reactivate/delete 本來較少發生，不是併發熱點）
     row[2] = STATUS_VOID;
     row[10] = now;
     row[11] = actor.userId;
@@ -691,7 +756,6 @@ function serialsVoid_({ serial, note, actor }) {
     row[15] = now;
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
-
     logOp_("serials_void", serial, { serial, note, actor });
 
     return { serial, status: STATUS_VOID, voidAtMs: now };
@@ -708,25 +772,22 @@ function serialsReactivate_({ serial, actor }) {
     const idx = findSerialRowIndex_(sh, serial);
     if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
 
-    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const row = sh.getRange(idx, 1, 1, 22).getValues()[0];
     const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
     if (status !== STATUS_VOID) throw new Error("SERIAL_NOT_VOID");
 
     const now = Date.now();
     row[2] = STATUS_ACTIVE;
 
-    // clear void fields
     row[10] = "";
     row[11] = "";
     row[12] = "";
 
-    // record reactivate
     row[13] = now;
     row[14] = actor.userId;
     row[15] = now;
 
     sh.getRange(idx, 1, 1, row.length).setValues([row]);
-
     logOp_("serials_reactivate", serial, { serial, actor });
 
     return { serial, status: STATUS_ACTIVE, reactivatedAtMs: now };
@@ -743,13 +804,12 @@ function serialsDelete_({ serial, note, actor }) {
     const idx = findSerialRowIndex_(sh, serial);
     if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
 
-    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const row = sh.getRange(idx, 1, 1, 22).getValues()[0];
     const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
 
     sh.deleteRow(idx);
 
     logOp_("serials_delete", serial, { serial, note, actor, status });
-
     return { serial, deleted: true };
   } finally {
     lock.releaseLock();
@@ -787,11 +847,9 @@ function serialsDeleteBatch_({ serials, note, actor }) {
       }
       const row = values[idx - 1];
       const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
-
       rowsToDelete.push({ idx, serial, status });
     }
 
-    // delete from bottom to top to avoid index shift
     rowsToDelete.sort((a, b) => b.idx - a.idx);
     for (let i = 0; i < rowsToDelete.length; i++) {
       const it = rowsToDelete[i];
@@ -809,6 +867,71 @@ function serialsDeleteBatch_({ serials, note, actor }) {
     });
 
     return { deleted, failed };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function serialsUpdateFeatures_({ serial, features, amount, actor }) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const sh = ensureSheet_(SHEET_SERIALS, serialsHeaders_());
+    const idx = findSerialRowIndex_(sh, serial);
+    if (idx < 2) throw new Error("SERIAL_NOT_FOUND");
+
+    const row = sh.getRange(idx, 1, 1, serialsHeaders_().length).getValues()[0];
+    const status = String(row[2] || STATUS_ACTIVE).trim() || STATUS_ACTIVE;
+    if (status !== STATUS_ACTIVE) throw new Error("SERIAL_NOT_ACTIVE");
+
+    const now = Date.now();
+    const amtProvided =
+      amount !== undefined && amount !== null
+        ? amount
+        : typeof features === "object" && features.__amount !== undefined
+        ? features.__amount
+        : undefined;
+
+    const mapIdx = {
+      PushEnabled: 16,
+      pushEnabled: 16,
+      PersonalStatusEnabled: 17,
+      personalStatusEnabled: 17,
+      ScheduleEnabled: 18,
+      scheduleEnabled: 18,
+      PerformanceEnabled: 19,
+      performanceEnabled: 19,
+      SyncEnabled: 20,
+      syncEnabled: 20,
+      BookingEnabled: 21,
+      bookingEnabled: 21,
+    };
+
+    for (var k in features) {
+      if (!features.hasOwnProperty(k)) continue;
+      var idxCol = mapIdx[k];
+      if (idxCol === undefined) continue;
+      var val = features[k];
+      var normalized = normalizeFeatureFlag_(val, false);
+      row[idxCol] = encodeFeatureCell_(normalized);
+    }
+
+    row[15] = now;
+
+    if (amtProvided !== undefined) {
+      try {
+        const newAmt = normalizeAmount_(amtProvided);
+        row[1] = newAmt;
+      } catch (_) {}
+    }
+
+    sh.getRange(idx, 1, 1, row.length).setValues([row]);
+
+    const logDetail = { serial: serial, features: features, actor: actor };
+    if (amtProvided !== undefined) logDetail.amount = amtProvided;
+    logOp_("serials_update_features", serial, logDetail);
+
+    return { serial: serial, updatedAtMs: now };
   } finally {
     lock.releaseLock();
   }
@@ -837,20 +960,20 @@ function serialsHeaders_() {
     "ScheduleEnabled",
     "PerformanceEnabled",
     "SyncEnabled",
+    "BookingEnabled",
   ];
 }
 
 function normalizeSerialFeatureFlags_(payload) {
   const p = payload || {};
-  const f = (p.features && typeof p.features === "object") ? p.features : {};
-
-  // Default to true to avoid accidentally generating "no feature" serials when older clients call serials_generate.
+  const f = p.features && typeof p.features === "object" ? p.features : {};
   return {
     syncEnabled: normalizeFeatureFlag_(p.syncEnabled !== undefined ? p.syncEnabled : f.syncEnabled, true),
     pushEnabled: normalizeFeatureFlag_(p.pushEnabled !== undefined ? p.pushEnabled : f.pushEnabled, true),
     personalStatusEnabled: normalizeFeatureFlag_(p.personalStatusEnabled !== undefined ? p.personalStatusEnabled : f.personalStatusEnabled, true),
     scheduleEnabled: normalizeFeatureFlag_(p.scheduleEnabled !== undefined ? p.scheduleEnabled : f.scheduleEnabled, true),
     performanceEnabled: normalizeFeatureFlag_(p.performanceEnabled !== undefined ? p.performanceEnabled : f.performanceEnabled, true),
+    bookingEnabled: normalizeFeatureFlag_(p.bookingEnabled !== undefined ? p.bookingEnabled : f.bookingEnabled, true),
   };
 }
 
@@ -870,7 +993,6 @@ function encodeFeatureCell_(b) {
 }
 
 function parseFeatureCell_(cellValue) {
-  // Return boolean when explicitly set, else null.
   if (cellValue === null || cellValue === undefined || cellValue === "") return null;
   if (cellValue === true || cellValue === 1 || cellValue === "1") return true;
   if (cellValue === false || cellValue === 0 || cellValue === "0") return false;
@@ -888,16 +1010,12 @@ function findSerialRowIndex_(sh, serial) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return -1;
 
-  // Fast path: TextFinder on column A (Serial)
   try {
     const rg = sh.getRange(2, 1, lastRow - 1, 1);
     const cell = rg.createTextFinder(s).matchEntireCell(true).findNext();
     if (cell) return cell.getRow();
-  } catch (_) {
-    // fallback below
-  }
+  } catch (_) {}
 
-  // Fallback: scan values (slower)
   const values = sh.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < values.length; i++) {
     const rowSerial = String(values[i][0] || "").trim();
@@ -927,8 +1045,44 @@ function logOp_(action, serial, detail) {
   const actorUserId = detail && detail.actor && detail.actor.userId ? String(detail.actor.userId) : "";
   const actorName = detail && detail.actor && detail.actor.displayName ? String(detail.actor.displayName) : "";
 
-  const json = safeJsonStringify_(detail || {});
+  const json = truncateString_(safeJsonStringify_(detail || {}), MAX_OPS_DETAIL_CHARS);
   sh.appendRow([now, String(action || ""), String(serial || ""), actorUserId, actorName, json]);
+
+  // ✅ 低頻 trim：避免每次 append 都 deleteRows（高併發下很拖）
+  try {
+    if (shouldTrimOpsLog_()) trimOpsLog_(sh, MAX_OPS_LOG_ROWS);
+  } catch (_) {}
+}
+
+function shouldTrimOpsLog_() {
+  const ps = PropertiesService.getScriptProperties();
+  const cur = Number(ps.getProperty(PROP_OPSLOG_APPEND_COUNT) || "0") || 0;
+  const next = cur + 1;
+  if (next >= OPSLOG_TRIM_EVERY_N_APPENDS) {
+    ps.setProperty(PROP_OPSLOG_APPEND_COUNT, "0");
+    return true;
+  }
+  ps.setProperty(PROP_OPSLOG_APPEND_COUNT, String(next));
+  return false;
+}
+
+function trimOpsLog_(sh, maxRows) {
+  const keep = Math.max(1, Number(maxRows) || 1);
+  const lastRow = sh.getLastRow();
+  const maxSheetRows = keep + 1; // + header
+  if (lastRow <= maxSheetRows) return;
+
+  const excess = lastRow - maxSheetRows;
+  const toDelete = Math.min(excess, OPSLOG_TRIM_CHUNK);
+  if (toDelete > 0) sh.deleteRows(2, toDelete);
+}
+
+function truncateString_(s, maxLen) {
+  const str = String(s || "");
+  const m = Math.max(0, Number(maxLen) || 0);
+  if (!m) return "";
+  if (str.length <= m) return str;
+  return str.slice(0, Math.max(0, m - 12)) + "...<truncated>";
 }
 
 /* =====================================================
@@ -975,7 +1129,6 @@ function normalizeSerial_(v) {
   const s = String(v || "").trim().toUpperCase();
   if (!s) throw new Error("SERIAL_REQUIRED");
   if (s.length > 80) throw new Error("SERIAL_TOO_LONG");
-  // allow A-Z0-9- only
   const cleaned = s.replace(/[^A-Z0-9-]/g, "");
   if (!cleaned) throw new Error("SERIAL_INVALID");
   return cleaned;
@@ -1011,12 +1164,12 @@ function normalizeLimit_(v) {
  * ===================================================== */
 
 function generateSerial_() {
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + "|" + Date.now() + "|" + Math.random());
-  // use first 16 bytes (higher entropy)
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    Utilities.getUuid() + "|" + Date.now() + "|" + Math.random()
+  );
   const raw = bytes.slice(0, 16);
   const b32 = crockfordBase32_(raw);
-  // format: TP-XXXX-XXXX-XXXX-XXXX-XXXX
-  // (20 chars Crockford Base32 = 100 bits)
   const body = b32.slice(0, 20);
   return (
     "TP-" +
@@ -1086,7 +1239,6 @@ function ensureSheet_(name, headers) {
     sh.setFrozenRows(1);
     sh.autoResizeColumns(1, Math.min(headers.length, 12));
   } else {
-    // Backfill missing headers (best effort)
     for (let i = 0; i < headers.length; i++) {
       const want = headers[i];
       const cur = String(firstRow[i] || "").trim();
@@ -1115,15 +1267,11 @@ function json_(obj) {
 
 function jsonError_(err) {
   const message = err && err.message ? String(err.message) : "ERROR";
-  const out = {
-    ok: false,
-    error: message,
-    now: Date.now(),
-  };
+  const out = { ok: false, error: message, now: Date.now() };
 
+  // ✅ 如果有 details（例如 BUSY 的 retryAfterMs），回傳給前端
   if (err && err.details) out.details = err.details;
 
-  // Avoid leaking too much, but keep some info for debugging
   try {
     out.stack = String(err && err.stack ? err.stack : "").split("\n").slice(0, 6).join("\n");
   } catch (_) {}
