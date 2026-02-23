@@ -62,7 +62,13 @@ function formatBookingTimeNoSeconds(v) {
 
 function setStatus_(text, tone) {
   if (!dom.bookingStatusEl) return;
-  dom.bookingStatusEl.textContent = String(text || "");
+  let out = String(text || "");
+  try {
+    if (String(tone || "") === "err" && /查詢失敗|同步失敗/.test(out)) {
+      out = `${out}（總公司系統異常）`;
+    }
+  } catch (_) {}
+  dom.bookingStatusEl.textContent = out;
   dom.bookingStatusEl.className = "badge" + (tone ? ` badge-${tone}` : "");
 }
 

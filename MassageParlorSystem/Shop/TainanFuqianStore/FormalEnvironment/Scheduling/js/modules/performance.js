@@ -703,7 +703,13 @@ function readRangeFromInputs_() {
 
 function setBadge_(text, isError) {
   if (!dom.perfStatusEl) return;
-  dom.perfStatusEl.textContent = String(text || "");
+  let out = String(text || "");
+  try {
+    if (isError && /同步失敗|查詢失敗/.test(out)) {
+      out = `${out}（總公司系統異常）`;
+    }
+  } catch (_) {}
+  dom.perfStatusEl.textContent = out;
   dom.perfStatusEl.style.borderColor = isError ? "rgba(249, 115, 115, 0.65)" : "";
 }
 function setMeta_(text) {
