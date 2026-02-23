@@ -411,7 +411,19 @@ function uApplyFilters_() {
 
   uFiltered = uAll.filter((u) => {
     const audit = normalizeAudit_(u.audit);
-    if (filter !== "ALL" && audit !== filter) return false;
+
+    // 支援 special filter: 已過期 / 使用中 → 根據使用期限判斷
+    if (filter !== "ALL") {
+      if (filter === "已過期") {
+        const expiry = uGetExpiryInfo_(u);
+        if (expiry.cls !== "expired") return false;
+      } else if (filter === "使用中") {
+        const expiry = uGetExpiryInfo_(u);
+        if (expiry.cls !== "active") return false;
+      } else {
+        if (audit !== filter) return false;
+      }
+    }
 
     if (keywordRaw) {
       const hay = `${u.userId} ${u.displayName || ""} ${u.masterCode || ""}`.toLowerCase();
@@ -442,6 +454,8 @@ function uAuditClass_(audit) {
       return "rejected";
     case "停用":
       return "disabled";
+    case "已過期":
+      return "expired";
     case "系統維護":
       return "maintenance";
     default:
