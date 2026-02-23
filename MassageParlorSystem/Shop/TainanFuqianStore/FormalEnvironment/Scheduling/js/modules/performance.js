@@ -1831,7 +1831,19 @@ async function reloadAndCache_(info) {
 
     return { ok: true, key, rowsCount: rows.length, serviceSummaryCount: serviceSummary.length, lastUpdatedAt: perfCache_.lastUpdatedAt };
   } catch (e) {
-    return { ok: false, error: String(e && e.message ? e.message : e) };
+    const msg = String(e && e.message ? e.message : e);
+    try {
+      console.error("perf reloadAndCache_ error:", msg, { userId, from, to });
+    } catch (_) {}
+    try {
+      logUsageEvent({
+        event: "perf_sync_failed",
+        detail: JSON.stringify({ error: msg, userId, from, to }),
+        eventCn: "業績同步失敗",
+        noThrottle: true,
+      });
+    } catch (_) {}
+    return { ok: false, error: msg };
   }
 }
 
@@ -2268,6 +2280,14 @@ export async function manualRefreshPerformance({ showToast } = { showToast: true
       else if (msg.includes("TIMEOUT")) setBadge_("查詢逾時，請稍後再試", true);
       else setBadge_("同步失敗", true);
       showError_(true);
+      try {
+        logUsageEvent({
+          event: "perf_sync_failed",
+          detail: JSON.stringify({ error: msg, userId: info && info.userId, from: info && info.from, to: info && info.to }),
+          eventCn: "業績同步失敗",
+          noThrottle: true,
+        });
+      } catch (_) {}
       return res;
     }
 

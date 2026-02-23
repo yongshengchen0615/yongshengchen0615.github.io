@@ -235,7 +235,19 @@ export async function prefetchBookingOnce() {
         }
         return { ok: false, error: res && (res.error || res.message) ? (res.error || res.message) : "NO_DATA" };
       } catch (e) {
-        return { ok: false, error: String(e && e.message ? e.message : e) };
+        const msg = String(e && e.message ? e.message : e);
+        try {
+          console.error("booking prefetch error:", msg, { userId, from, to });
+        } catch (_) {}
+        try {
+          logUsageEvent({
+            event: "booking_prefetch_failed",
+            detail: JSON.stringify({ error: msg, userId, from, to }),
+            eventCn: "預約預載失敗",
+            noThrottle: true,
+          });
+        } catch (_) {}
+        return { ok: false, error: msg };
       }
     } finally {
       bookingPrefetchInFlight_ = null;
@@ -288,6 +300,14 @@ export async function runBookingQueryOnce({ reason }) {
     if (!res || res.ok !== true) {
       const err = (res && (res.error || res.message)) || "UNKNOWN";
       setStatus_("查詢失敗：" + err, "err");
+      try {
+        logUsageEvent({
+          event: "booking_query_failed",
+          detail: JSON.stringify({ error: err, userId, from, to, reason: reason || "" }),
+          eventCn: "預約查詢失敗",
+          noThrottle: true,
+        });
+      } catch (_) {}
       return;
     }
 
@@ -321,6 +341,18 @@ export async function runBookingQueryOnce({ reason }) {
   } catch (e) {
     setStatus_("查詢失敗", "err");
     setMeta_(String(e && e.message ? e.message : e));
+    try {
+      const msg = String(e && e.message ? e.message : e);
+      console.error("booking query error:", msg, { userId, from, to, reason });
+    } catch (_) {}
+    try {
+      logUsageEvent({
+        event: "booking_query_failed",
+        detail: JSON.stringify({ error: String(e && e.message ? e.message : e), userId, from, to, reason: reason || "" }),
+        eventCn: "預約查詢失敗",
+        noThrottle: true,
+      });
+    } catch (_) {}
   } finally {
     releaseLoading();
   }
