@@ -54,9 +54,11 @@ function logsSetTbodyMessage_(msg) {
 }
 
 function normalizeLogRow_(r) {
-  const ts = String(r?.ts ?? "");
-  const actorUserId = String(r?.actorUserId ?? r?.userId ?? "");
-  const actorDisplayName = String(r?.actorDisplayName ?? r?.displayName ?? "");
+  // 支援多種後端/格式：直接欄位、values 映射、或 nested actor 物件
+  const ts = String(r?.ts ?? r?.tsText ?? r?.tsIso ?? "");
+  const actor = r?.actor;
+  const actorUserId = String(r?.actorUserId ?? r?.userId ?? actor?.userId ?? actor?.id ?? "");
+  const actorDisplayName = String(r?.actorDisplayName ?? r?.displayName ?? actor?.displayName ?? actor?.name ?? "");
   return { ts, actorUserId, actorDisplayName };
 }
 
@@ -167,7 +169,13 @@ function applyAdminLogsDateFilter_() {
   const { start, end } = logsGetSelectedRange_();
 
   if (!start && !end) {
-    adminLogs_ = adminLogsAll_.slice();
+    // 若沒選日期範圍，仍要節選名稱（若有選）
+    const nameFilter = (logsNameSelectEl && String(logsNameSelectEl.value || "").trim()) || "";
+    if (nameFilter) {
+      adminLogs_ = adminLogsAll_.filter((r) => String(r.actorDisplayName || "") === nameFilter);
+    } else {
+      adminLogs_ = adminLogsAll_.slice();
+    }
     return;
   }
 
@@ -179,6 +187,11 @@ function applyAdminLogsDateFilter_() {
     if (!d) return false;
     if (sDt && d < sDt) return false;
     if (eDt && d > eDt) return false;
+    // 也套用名稱過濾（若使用者選了名稱）
+    const nameFilter = (logsNameSelectEl && String(logsNameSelectEl.value || "").trim()) || "";
+    if (nameFilter) {
+      return String(r.actorDisplayName || "") === nameFilter;
+    }
     return true;
   });
 }
@@ -610,7 +623,14 @@ function bindAdminLogs_() {
   document.getElementById("logsStartTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsEndTimeInput")?.addEventListener("change", debouncedRenderAdminChart);
   document.getElementById("logsMetricSelect")?.addEventListener("change", debouncedRenderAdminChart);
-  document.getElementById("logsNameSelect")?.addEventListener("change", debouncedRenderAdminChart);
+  const nameSel = document.getElementById("logsNameSelect");
+  if (nameSel) {
+    // 當使用者選擇名稱時，同步更新表格與圖表
+    nameSel.addEventListener("change", () => {
+      onRangeChange();
+      debouncedRenderAdminChart();
+    });
+  }
   document.getElementById("logsGranularitySelect")?.addEventListener("change", debouncedRenderAdminChart);
 }
 
