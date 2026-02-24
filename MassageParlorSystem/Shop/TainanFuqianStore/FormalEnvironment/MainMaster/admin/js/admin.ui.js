@@ -270,6 +270,26 @@ function bindChips_() {
   });
 }
 
+// 防止點擊 chip 後整個 .seg 被意外改為縱向排列（某些瀏覽器或環境會有重排行為）
+// 監聽 .seg 內的 click，並確保其保持水平排版
+document.addEventListener("click", (e) => {
+  try {
+    // 僅在小於等於 720px 寬度時啟用（視為行動裝置／窄螢幕）
+    if (!(window.matchMedia && window.matchMedia("(max-width: 720px)").matches)) return;
+
+    const btn = e.target instanceof Element ? e.target.closest(".seg button, .seg .chip, .seg .u-chip") : null;
+    if (!btn) return;
+    const seg = btn.closest(".seg");
+    if (!seg) return;
+    // 強制維持水平排列，避免在某些環境點擊後被重排成縱向
+    seg.style.flexDirection = "row";
+    seg.style.flexWrap = "nowrap";
+    seg.style.alignItems = "center";
+  } catch (e) {
+    // ignore
+  }
+});
+
 /**
  * 同步「全選」checkbox 狀態：checked / indeterminate
  */

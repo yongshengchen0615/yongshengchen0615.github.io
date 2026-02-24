@@ -286,6 +286,20 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   .seg > button{ pointer-events: auto !important; }
 }
 
+/* Desktop: 保證在寬螢幕（非行動）下 .seg 水平不換行，避免點擊或動態變更導致縱向堆疊 */
+@media (min-width: 721px){
+  .seg{
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .seg > *{
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
 /* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
  * 但樣式需與 client 專案的 .chip 完全一致。
  */
