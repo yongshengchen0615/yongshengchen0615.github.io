@@ -349,3 +349,62 @@ function updateRowDirtyStateUI_(row, userId) {
   refreshSaveAllButton_();
   updateFooter_();
 }
+
+/* =========================
+ * Chips horizontal-scroll helpers
+ * - 自動計算相鄰 .panel-actions 寬度並設定 .seg 的 padding-right
+ * - 在 window.resize、DOM 變動或初始載入時更新
+ * ========================= */
+
+function adjustSegPaddingForAll_() {
+  try {
+    document.querySelectorAll(".panel-head").forEach((ph) => {
+      const seg = ph.querySelector(".seg");
+      const actions = ph.querySelector(".panel-actions");
+      if (!seg) return;
+
+      // default padding to ensure last chip not flush to edge
+      let extra = 16;
+
+      if (actions) {
+        const aRect = actions.getBoundingClientRect();
+        const pRect = ph.getBoundingClientRect();
+        // if actions appears to the right of seg (same row), reserve its width
+        if (aRect.width > 8 && aRect.left >= pRect.left) {
+          extra = Math.max(extra, Math.ceil(aRect.width) + 12);
+        }
+      }
+
+      // apply as inline style so it overrides static CSS and adapts per device
+      seg.style.paddingRight = extra + "px";
+    });
+  } catch (e) {
+    // silent
+  }
+}
+
+// debounce helper
+let __adjustSegRaf = null;
+function scheduleAdjustSeg_() {
+  if (__adjustSegRaf) cancelAnimationFrame(__adjustSegRaf);
+  __adjustSegRaf = requestAnimationFrame(() => {
+    adjustSegPaddingForAll_();
+    __adjustSegRaf = null;
+  });
+}
+
+// run on initial load
+if (typeof window !== "undefined") {
+  window.addEventListener("load", scheduleAdjustSeg_, { passive: true });
+  window.addEventListener("resize", scheduleAdjustSeg_, { passive: true });
+
+  // observe panel-head mutations (order/visibility changes when switching views)
+  const obs = new MutationObserver((mutations) => {
+    scheduleAdjustSeg_();
+  });
+  const phs = document.querySelectorAll(".panel-head");
+  phs.forEach((el) => obs.observe(el, { attributes: true, childList: false, subtree: false }));
+
+  // also listen to a custom event when views render (admin.js dispatches admin:rendered)
+  window.addEventListener("admin:rendered", scheduleAdjustSeg_, { passive: true });
+}

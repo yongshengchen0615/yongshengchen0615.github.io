@@ -204,6 +204,88 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   .chip{ flex:0 0 auto; white-space:nowrap; }
 }
 
+
+/* Very small screens: use horizontal scrolling (nowrap) so chips remain
+   on a single line and can be horizontally scrolled on mobile devices. */
+@media (max-width: 420px){
+  .seg{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:2px; /* keep scroll bar off content */
+    gap:8px;
+    scroll-snap-type: x proximity;
+  }
+  .seg::-webkit-scrollbar{ height:8px; }
+  .seg::-webkit-scrollbar-thumb{ background: rgba(255,255,255,.06); border-radius:8px; }
+
+  .chip, .client-scope .u-chip{
+    white-space:nowrap;
+    flex:0 0 auto;
+    word-break:normal;
+    scroll-snap-align:start;
+  }
+}
+
+/* Ensure flex children can shrink and allow the .seg container to overflow
+   horizontally. This prevents parent flex items from preventing scroll. */
+@media (max-width: 720px){
+  /* let filters shrink and not force a minimum width */
+  .filters{ min-width: 0; flex: 1 1 0; }
+
+  /* seg should fill available width but allow horizontal overflow/scroll */
+  .seg{
+    min-width: 0;
+    width: 100%;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    touch-action: pan-x;
+    padding-bottom:2px;
+    gap:8px;
+    scroll-snap-type: x proximity;
+  }
+
+  .seg::-webkit-scrollbar{ height:8px; }
+  .seg::-webkit-scrollbar-thumb{ background: rgba(255,255,255,.06); border-radius:8px; }
+
+  /* ensure buttons don't shrink and align to snap points */
+  .seg > button{
+    flex:0 0 auto;
+    white-space:nowrap;
+    scroll-snap-align:start;
+  }
+}
+
+/* On narrow screens, move the actions row below filters so chips have full
+   horizontal space and are not obscured by action buttons. Add right padding
+   to .seg to ensure last chip can scroll into view. */
+@media (max-width: 720px){
+  .panel-head .panel-actions{ flex:0 0 100%; order:2; justify-content:flex-end; }
+  .panel-head .filters{ order:1; }
+  /* give more room so the last chip can scroll fully into view */
+  .seg{ padding-right: 96px; }
+
+  /* ensure panel-meta does not sit between filters and actions and take space */
+  .panel-head .panel-meta{ order:3; flex:0 0 100%; }
+  .panel-head .panel-actions{ order:4; }
+}
+
+/* Stronger overrides for environments where parent rules block scrolling.
+   Use !important carefully to ensure mobile browsers treat .seg as scrollable. */
+@media (max-width: 720px){
+  .filters{ overflow: visible !important; }
+  .seg{
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x !important;
+    overscroll-behavior-x: contain !important;
+    scrollbar-width: thin !important;
+  }
+
+  .seg > button{ pointer-events: auto !important; }
+}
+
 /* Users 區塊使用獨立的 chip class（避免被既有 admin JS 綁定影響）
  * 但樣式需與 client 專案的 .chip 完全一致。
  */
@@ -462,6 +544,39 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
 /* Sticky left col hover backgrounds (client behavior) */
 .client-scope tbody tr:hover td.sticky-col{ background:rgba(56,189,248,.08); }
 .client-scope tbody tr.dirty:hover td.sticky-col{ background:rgba(245,158,11,.10); }
+
+/* 行動裝置：讓狀態篩選（chips）可水平滑動，提供流暢的 touch scroll 體驗。
+   針對 Admin 與 Users (client-scope / #usersPanelSection) 的 chips 都適用。 */
+@media (max-width: 720px) {
+  /* 針對常見容器：filters / seg / client-scope seg / users panel */
+  .filters, .seg, .client-scope .seg, #usersPanelSection .filters, #usersPanelSection .seg {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    scroll-behavior: smooth;
+  }
+
+  /* 將 chips 轉為 inline-block，使其在單行內可水平排列並可滑動 */
+  .filters .chip, .seg .chip, .client-scope .seg .chip, .client-scope .u-chip, #usersPanelSection .u-chip {
+    display: inline-block;
+    vertical-align: middle;
+    white-space: normal;
+    margin-right: 8px;
+  }
+
+  /* 小調整：保持可點擊範圍一致並微幅收窄以利更多項目同時顯示 */
+  .filters .chip, .seg .chip { padding-left:10px; padding-right:10px; }
+
+  /* 美化滾動條（WebKit）— 在桌機/模擬時看起來更好 */
+  .filters::-webkit-scrollbar, .seg::-webkit-scrollbar, .client-scope .seg::-webkit-scrollbar, #usersPanelSection .seg::-webkit-scrollbar {
+    height: 8px;
+  }
+  .filters::-webkit-scrollbar-thumb, .seg::-webkit-scrollbar-thumb, .client-scope .seg::-webkit-scrollbar-thumb, #usersPanelSection .seg::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.08);
+    border-radius: 4px;
+  }
+}
 
 /* Inputs (client styles date/number too) */
 .client-scope input[type="date"],
