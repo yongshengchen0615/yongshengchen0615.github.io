@@ -621,6 +621,24 @@ html,body{ height:100%; margin:0; font-family:var(--sans); color:var(--text); ba
   .client-scope #uBulkDelete{ width:100%; padding:10px 12px; }
 }
 
+/* Fix: 在非常窄的行動裝置上，確保 Users panel 的操作按鈕可見且不會被隱藏 */
+@media (max-width: 520px){
+  #usersPanelSection .panel-actions {
+    display: flex !important;
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    box-sizing: border-box;
+    padding-top: 8px;
+  }
+
+  #usersPanelSection .panel-actions .btn {
+    flex: 0 0 auto !important;
+    min-width: 120px;
+  }
+}
+
 /* ===== Mobile readability: table -> card (client behavior) ===== */
 @media (max-width: 720px){
   .client-scope .panel-head{ flex-direction:column; align-items:stretch; }
