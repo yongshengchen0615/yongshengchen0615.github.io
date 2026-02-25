@@ -181,9 +181,21 @@ function todayKey_() {
 }
 
 function ensureDefaultDates_() {
-  const t = todayKey_();
-  if (dom.bookingDateStartInput && !dom.bookingDateStartInput.value) dom.bookingDateStartInput.value = t;
-  if (dom.bookingDateEndInput && !dom.bookingDateEndInput.value) dom.bookingDateEndInput.value = t;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-based month
+  const first = new Date(y, m, 1);
+  const last = new Date(y, m + 1, 0); // last day of current month
+  const fmt = (d) => {
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+  };
+  const startKey = fmt(first);
+  const endKey = fmt(last);
+  if (dom.bookingDateStartInput && !dom.bookingDateStartInput.value) dom.bookingDateStartInput.value = startKey;
+  if (dom.bookingDateEndInput && !dom.bookingDateEndInput.value) dom.bookingDateEndInput.value = endKey;
 }
 
 export function initBookingUi() {
