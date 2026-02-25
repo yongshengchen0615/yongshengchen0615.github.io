@@ -1701,7 +1701,15 @@ function computeMonthRates_(rows) {
   const oldRateSingles = totalSingles ? Math.round((oldSingles / totalSingles) * 1000) / 10 : 0;
   const schedRateSingles = totalSingles ? Math.round((schedSingles / totalSingles) * 1000) / 10 : 0;
 
-  return { oldRateRows, schedRateRows, oldRateSingles, schedRateSingles };
+  // 新增：數量（節數/數量）為基底的比率
+  const totalQty = Number(cards3?.總計?.數量 || 0) || 0;
+  const oldQty = Number(cards3?.老點?.數量 || 0) || 0;
+  const schedQty = Number(cards3?.排班?.數量 || 0) || 0;
+
+  const oldRateQty = totalQty ? Math.round((oldQty / totalQty) * 1000) / 10 : 0;
+  const schedRateQty = totalQty ? Math.round((schedQty / totalQty) * 1000) / 10 : 0;
+
+  return { oldRateRows, schedRateRows, oldRateSingles, schedRateSingles, oldRateQty, schedRateQty };
 }
 
 function renderMonthRates_(monthRows) {
@@ -1714,7 +1722,9 @@ function renderMonthRates_(monthRows) {
   dom.perfMonthRatesEl.innerHTML =
     `本月（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
     `<br/>` +
-    `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%`;
+    `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%` +
+    `<br/>` +
+    `本月（數量）：老點率 ${r.oldRateQty}% ｜ 排班率 ${r.schedRateQty}%`;
 }
 
 async function renderFromCache_(mode, info, opts) {
