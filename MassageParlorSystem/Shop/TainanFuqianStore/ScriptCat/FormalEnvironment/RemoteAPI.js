@@ -59,16 +59,16 @@
       return {};
     }
   }
-  function isAllowedGASUrl_(u) {
-    try {
-      const url = new URL(String(u || ""));
-      if (url.protocol !== "http:") return false;
-      const host = url.hostname.toLowerCase();
-      return host === "script.google.com" || host === "script.googleusercontent.com";
-    } catch {
-      return false;
-    }
+function isAllowedGASUrl_(u) {
+  try {
+    const url = new URL(String(u || ""));
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false; // ✅ allow both
+    const host = url.hostname.toLowerCase();
+    return host === "script.google.com" || host === "script.googleusercontent.com";
+  } catch {
+    return false;
   }
+}
   function applyConfigOverrides_() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverridesCfg_() };
     CFG.GAS_CAPTURE_URL = String(CFG.GAS_CAPTURE_URL || "").trim();
