@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FE YSPOS Capture -> GAS + Analyze [STABLE HARDENED v6.0] (FULL REPLACE)
 // @namespace    https://local/
-// @version      6.0
+// @version      6.1
 // @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze; ✅Master Broad Analyze; ✅HTTP/HTTPS safe; ✅sha1 fallback; ✅XHR JSON fix; ✅Sensitive headers always redacted.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
