@@ -1712,19 +1712,20 @@ function computeMonthRates_(rows) {
   return { oldRateRows, schedRateRows, oldRateSingles, schedRateSingles, oldRateQty, schedRateQty };
 }
 
-function renderMonthRates_(monthRows) {
+function renderMonthRates_(monthRows, titleLabel) {
   if (!dom.perfMonthRatesEl) return;
+  const label = String(titleLabel || "本月");
   if (!Array.isArray(monthRows) || !monthRows.length) {
-    dom.perfMonthRatesEl.textContent = "本月：資料不足";
+    dom.perfMonthRatesEl.textContent = `${label}：資料不足`;
     return;
   }
   const r = computeMonthRates_(monthRows);
   dom.perfMonthRatesEl.innerHTML =
-    `本月（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
+    `${label}（單數）：老點率 ${r.oldRateSingles}% ｜ 排班率 ${r.schedRateSingles}%` +
     `<br/>` +
-    `本月（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%` +
+    `${label}（筆數）：老點率 ${r.oldRateRows}% ｜ 排班率 ${r.schedRateRows}%` +
     `<br/>` +
-    `本月（數量）：老點率 ${r.oldRateQty}% ｜ 排班率 ${r.schedRateQty}%`;
+    `${label}（數量）：老點率 ${r.oldRateQty}% ｜ 排班率 ${r.schedRateQty}%`;
 }
 
 async function renderFromCache_(mode, info, opts) {
@@ -1776,14 +1777,48 @@ async function renderFromCache_(mode, info, opts) {
 
   // ✅ 本月比率（修正：先 normalize 訂單日期，避免 YYYY/MM/DD 比較失效）
   try {
-    const monthStart = localDateKeyMonthStart_();
-    const today = localDateKeyToday_();
+    // Use the current query range (r.from/r.to) for computing the displayed month rates
+    const fromKey = String(r.from || localDateKeyMonthStart_());
+    const toKey = String(r.to || localDateKeyToday_());
     const monthRows = rows.filter((x) => {
       const raw = String(x["訂單日期"] || "");
       const dk = normalizeInputDateKey_(raw) || String(raw).slice(0, 10);
-      return dk >= monthStart && dk <= today;
+      return dk >= fromKey && dk <= toKey;
     });
-    renderMonthRates_(monthRows);
+
+    // Decide a friendly label: 本月 / 上個月 / YYYY/MM when possible
+    let label = `${fromKey}~${toKey}`;
+    try {
+      const curStart = localDateKeyMonthStart_();
+      const curEnd = localDateKeyToday_();
+      if (fromKey === curStart && toKey === curEnd) {
+        label = "本月";
+      } else {
+        const now = new Date();
+        let y = now.getFullYear();
+        let m = now.getMonth() + 1;
+        m = m - 1;
+        if (m === 0) {
+          m = 12;
+          y = y - 1;
+        }
+        const pad = (n) => String(n).padStart(2, "0");
+        const lastStart = `${y}-${pad(m)}-01`;
+        const lastEnd = `${y}-${pad(m)}-${pad(lastDayOfMonth_(y, m))}`;
+        if (fromKey === lastStart && toKey === lastEnd) {
+          label = "上個月";
+        } else {
+          // same month within range? show YYYY/MM
+          try {
+            const fm = fromKey.slice(0, 7);
+            const tm = toKey.slice(0, 7);
+            if (fm === tm) label = fm.replace("-", "/");
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    renderMonthRates_(monthRows, label);
   } catch (_) {}
 
   if (m === "summary") {
@@ -1916,7 +1951,7 @@ async function applyPeriodIndex_(idx) {
     await manualRefreshPerformance({ showToast: true });
   } catch (_) {}
 }
-
+          await manualRefreshPerformance({ showToast: true });
 export function initPerformanceUi() {
   ensureDefaultDate_();
 
