@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         FE YSPOS Capture -> GAS + Analyze [MASTER PAGE-GATE + BROAD API FORWARD] (STABLE v5.3) (FULL REPLACE)
+// @name         FE YSPOS Capture -> GAS + Analyze [STABLE HARDENED v6.0] (FULL REPLACE)
 // @namespace    https://local/
-// @version      5.9
-// @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze on /api/performance/total/{storeId}; ✅Master Analyze on #/master page (NO listStatus required), forwards ANY /api/ JSON(200) response on that page.
+// @version      6.0
+// @description  ✅Capture XHR/fetch to GAS; ✅PerfTotal Analyze; ✅Master Broad Analyze; ✅HTTP/HTTPS safe; ✅sha1 fallback; ✅XHR JSON fix; ✅Sensitive headers always redacted.
 // @match        *://yspos.youngsong.com.tw/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getResourceText
@@ -59,26 +59,39 @@
       return {};
     }
   }
-  
 
-
-
-  
-
-function isAllowedGASUrl_(u) {
-  try {
-    const url = new URL(String(u || ""));
-    if (url.protocol !== "https:" && url.protocol !== "http:") return false; // ✅ allow both
-    const host = url.hostname.toLowerCase();
-    return host === "script.google.com" || host === "script.googleusercontent.com";
-  } catch {
-    return false;
+  // ✅ Allow http/https, but only for Google Script hosts
+  function isAllowedGASUrl_(u) {
+    try {
+      const url = new URL(String(u || ""));
+      if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+      const host = url.hostname.toLowerCase();
+      return host === "script.google.com" || host === "script.googleusercontent.com";
+    } catch {
+      return false;
+    }
   }
-}
+
+  // ✅ Upgrade http -> https for GAS hosts (more stable + safer)
+  function forceHttpsIfGoogleScript_(u) {
+    try {
+      const url = new URL(String(u || ""));
+      const host = url.hostname.toLowerCase();
+      const isGasHost = host === "script.google.com" || host === "script.googleusercontent.com";
+      if (isGasHost && url.protocol === "http:") {
+        url.protocol = "https:";
+        return url.toString();
+      }
+      return String(u || "");
+    } catch {
+      return String(u || "");
+    }
+  }
+
   function applyConfigOverrides_() {
     CFG = { ...DEFAULT_CFG, ...loadJsonOverridesCfg_() };
-    CFG.GAS_CAPTURE_URL = String(CFG.GAS_CAPTURE_URL || "").trim();
-    CFG.GAS_ANALYZE_URL = String(CFG.GAS_ANALYZE_URL || "").trim();
+    CFG.GAS_CAPTURE_URL = forceHttpsIfGoogleScript_(String(CFG.GAS_CAPTURE_URL || "").trim());
+    CFG.GAS_ANALYZE_URL = forceHttpsIfGoogleScript_(String(CFG.GAS_ANALYZE_URL || "").trim());
 
     if (CFG.GAS_CAPTURE_URL && !isAllowedGASUrl_(CFG.GAS_CAPTURE_URL)) {
       console.warn("[YS_CAPTURE] ⚠️ GAS_CAPTURE_URL not allowlisted. Blocked:", CFG.GAS_CAPTURE_URL);
@@ -96,28 +109,28 @@ function isAllowedGASUrl_(u) {
    *****************************************************************/
   const CAPTURE_RULES = {
     urlSubstringsAny: ["/api/"],
-    // allow capturing non-JSON responses (text/html, xml, etc.)
     allowNonJson: true,
-    // capture response headers as well (redacted if sensitive)
     captureResponseHeaders: true,
-    // persist queue to localStorage to avoid data loss on page close
     persistQueue: true,
-    // persist sent hashes to sessionStorage to avoid duplicate across reloads
     persistSentHash: true,
     maxQueuePerFlush: 16,
     flushIntervalMs: 1200,
+
     maxTextLen: 12000,
-    // When FULL_CAPTURE is enabled, try to return full bodies (but still capped)
+
+    // FULL capture still allowed, but sensitive headers always redacted.
     FULL_CAPTURE: true,
     FULL_CAPTURE_MAX_TEXT_LEN: 1000000,
     FULL_CAPTURE_MAX_BINARY_BYTES: 200000,
+
+    // ✅ We still redact sensitive headers even when FULL_CAPTURE=true
     redactSensitiveHeaders: true,
     sentHashMax: 3000,
     verbose: true,
   };
 
   const ENABLE_ANALYZE = true;
-  
+
   // Backoff state for GAS 429 handling
   let BACKOFF_UNTIL_MS = 0;
   let BACKOFF_EXPONENT = 0;
@@ -189,7 +202,6 @@ function isAllowedGASUrl_(u) {
    *****************************************************************/
   function truncateText_(s, maxLen) {
     const str = String(s == null ? "" : s);
-    // If FULL_CAPTURE enabled, allow much larger max (but still cap)
     const effectiveMax = (CAPTURE_RULES && CAPTURE_RULES.FULL_CAPTURE)
       ? Math.max(Number(maxLen || 0), Number(CAPTURE_RULES.FULL_CAPTURE_MAX_TEXT_LEN || 1000000))
       : Number(maxLen || 0);
@@ -260,9 +272,7 @@ function isAllowedGASUrl_(u) {
       }
     };
 
-    try {
-      refresh();
-    } catch (_) {}
+    try { refresh(); } catch (_) {}
 
     try {
       const mo = new MutationObserver(() => refresh());
@@ -302,10 +312,29 @@ function isAllowedGASUrl_(u) {
     return CAPTURE_RULES.urlSubstringsAny.some((s) => u.includes(s));
   }
 
+  // ✅ Stable hash: use crypto.subtle if available, else fallback (works on http)
   async function sha1Hex(str) {
-    const enc = new TextEncoder().encode(str);
-    const buf = await crypto.subtle.digest("SHA-1", enc);
-    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    try {
+      const c = (typeof crypto !== "undefined") ? crypto : null;
+      if (c && c.subtle && typeof c.subtle.digest === "function") {
+        const enc = new TextEncoder().encode(str);
+        const buf = await c.subtle.digest("SHA-1", enc);
+        return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+    } catch (e) {
+      // fall through
+    }
+
+    // Fallback: 64-bit FNV-1a-ish (string) -> hex
+    // Not cryptographic, but stable for dedup.
+    let h1 = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h1 ^= str.charCodeAt(i);
+      h1 = Math.imul(h1, 0x01000193);
+    }
+    // force unsigned
+    const hex = (h1 >>> 0).toString(16).padStart(8, "0");
+    return "f_" + hex;
   }
 
   function pingGas_(gasUrl, tag) {
@@ -321,13 +350,13 @@ function isAllowedGASUrl_(u) {
     });
   }
 
+  // ✅ Sensitive headers always redacted (even FULL_CAPTURE)
   function sanitizeHeaders_(headers) {
     const out = {};
     try {
       if (!headers) return out;
 
-      if (typeof headers === 'string') {
-        // parse raw header string from XHR.getAllResponseHeaders()
+      if (typeof headers === "string") {
         const lines = headers.split(/\r?\n/);
         for (const l of lines) {
           const idx = l.indexOf(":");
@@ -350,14 +379,13 @@ function isAllowedGASUrl_(u) {
       return out;
     }
 
-    // If FULL_CAPTURE is enabled, do not redact headers (user consent)
-    if (CAPTURE_RULES.FULL_CAPTURE) return out;
     if (!CAPTURE_RULES.redactSensitiveHeaders) return out;
 
-    const SENSITIVE = ["cookie", "authorization", "x-csrf-token", "x-xsrf-token", "csrf-token", "xsrf-token", "x-auth-token"];
+    const SENSITIVE = ["cookie", "authorization", "x-csrf-token", "x-xsrf-token", "csrf-token", "xsrf-token", "x-auth-token", "set-cookie"];
     for (const k of SENSITIVE) if (k in out) out[k] = "<redacted>";
     return out;
   }
+
   function normalizeFetchUrl_(input) {
     try {
       if (typeof Request !== "undefined" && input instanceof Request) return input.url;
@@ -366,6 +394,7 @@ function isAllowedGASUrl_(u) {
       return String(input || "");
     }
   }
+
   function bodyToString_(body) {
     try {
       if (body == null) return "";
@@ -378,7 +407,6 @@ function isAllowedGASUrl_(u) {
         for (const [k, v] of body.entries()) usp.append(String(k), String(v));
         return usp.toString();
       }
-      // other types (ArrayBuffer, Blob, Object) - try JSON stringify
       try {
         return JSON.stringify(body);
       } catch (_) {
@@ -389,6 +417,23 @@ function isAllowedGASUrl_(u) {
     }
   }
 
+  function scrubBody_(s) {
+    try {
+      // Even in FULL_CAPTURE, we keep bodies as-is (your choice),
+      // but headers are always redacted. If you want body redaction too,
+      // turn this on by removing the early return.
+      if (CAPTURE_RULES.FULL_CAPTURE) return String(s == null ? "" : s);
+
+      let out = String(s == null ? "" : s);
+      out = out.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted_email>");
+      out = out.replace(/\+?\d{2,4}[\s-]?\d{6,12}/g, "<redacted_phone>");
+      out = out.replace(/\b\d{6,20}\b/g, "<redacted_id>");
+      return out;
+    } catch (e) {
+      return String(s || "");
+    }
+  }
+
   /*****************************************************************
    * 4) Queue + Dedup + Flush to GAS_CAPTURE_URL
    *****************************************************************/
@@ -396,17 +441,39 @@ function isAllowedGASUrl_(u) {
   const SENT_HASH = new Set();
   const SENT_HASH_FIFO = [];
 
-  // Persistence keys
   const STORAGE_KEY_QUEUE = "YS_CAPTURE_QUEUE_V1";
   const STORAGE_KEY_SENT = "YS_CAPTURE_SENT_V1";
 
   function saveQueueToStorage_() {
     try {
       if (!CAPTURE_RULES.persistQueue) return;
-      const toSave = QUEUE.slice(0, 1000); // cap
-      try {
-        localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(toSave));
-      } catch (e) {}
+
+      // ✅ protect localStorage: don't persist extremely large payloads
+      // store only first N items, and if item too large, shrink record.response to summary
+      const MAX_ITEMS = 300;
+      const MAX_ITEM_BYTES = 80 * 1024; // 80KB per item (approx)
+
+      const toSave = QUEUE.slice(0, MAX_ITEMS).map((it) => {
+        try {
+          const s = JSON.stringify(it);
+          if (s.length <= MAX_ITEM_BYTES) return it;
+
+          // shrink response
+          const shrunk = JSON.parse(JSON.stringify(it));
+          const r = shrunk && shrunk.record ? shrunk.record : null;
+          if (r && r.response && typeof r.response === "object") {
+            r.response = { _shrunk: true, _keys: Object.keys(r.response).slice(0, 50) };
+          } else if (r && typeof r.response === "string") {
+            r.response = truncateText_(r.response, 4000);
+          }
+          r._persistShrunk = true;
+          return shrunk;
+        } catch (_) {
+          return it;
+        }
+      });
+
+      localStorage.setItem(STORAGE_KEY_QUEUE, JSON.stringify(toSave));
     } catch (e) {}
   }
 
@@ -417,7 +484,6 @@ function isAllowedGASUrl_(u) {
       if (!raw) return;
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return;
-      // prepend to in-memory queue
       while (arr.length) {
         QUEUE.unshift(arr.pop());
       }
@@ -428,9 +494,7 @@ function isAllowedGASUrl_(u) {
     try {
       if (!CAPTURE_RULES.persistSentHash) return;
       const arr = Array.from(SENT_HASH_FIFO || []).slice(-CAPTURE_RULES.sentHashMax);
-      try {
-        sessionStorage.setItem(STORAGE_KEY_SENT, JSON.stringify(arr));
-      } catch (e) {}
+      sessionStorage.setItem(STORAGE_KEY_SENT, JSON.stringify(arr));
     } catch (e) {}
   }
 
@@ -450,22 +514,6 @@ function isAllowedGASUrl_(u) {
     } catch (e) {}
   }
 
-  function scrubBody_(s) {
-    try {
-      if (CAPTURE_RULES.FULL_CAPTURE) return String(s == null ? "" : s);
-      let out = String(s == null ? "" : s);
-      // Email
-      out = out.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted_email>");
-      // Phone (simple)
-      out = out.replace(/\+?\d{2,4}[\s-]?\d{6,12}/g, "<redacted_phone>");
-      // ID numbers (simple generic)
-      out = out.replace(/\b\d{6,20}\b/g, "<redacted_id>");
-      return out;
-    } catch (e) {
-      return String(s || "");
-    }
-  }
-
   function addSentHash_(h) {
     if (SENT_HASH.has(h)) return;
     SENT_HASH.add(h);
@@ -475,17 +523,13 @@ function isAllowedGASUrl_(u) {
       const old = SENT_HASH_FIFO.splice(0, SENT_HASH_FIFO.length - max);
       for (const x of old) SENT_HASH.delete(x);
     }
-    try {
-      saveSentHashToStorage_();
-    } catch (e) {}
+    try { saveSentHashToStorage_(); } catch (e) {}
   }
 
   function enqueue(item) {
     QUEUE.push(item);
     log("[YS_CAPTURE] enqueue => queueLen=", QUEUE.length);
-    try {
-      saveQueueToStorage_();
-    } catch (e) {}
+    try { saveQueueToStorage_(); } catch (e) {}
   }
 
   function startFlushLoop() {
@@ -500,7 +544,7 @@ function isAllowedGASUrl_(u) {
 
   function flushQueue() {
     if (!ACTIVE) return;
-    if (Date.now() < (BACKOFF_UNTIL_MS || 0)) return; // in backoff
+    if (Date.now() < (BACKOFF_UNTIL_MS || 0)) return;
     if (QUEUE.length === 0) return;
 
     if (!CFG.SHIP_ENABLED || !CFG.GAS_CAPTURE_URL) {
@@ -530,37 +574,23 @@ function isAllowedGASUrl_(u) {
         try {
           log("[YS_CAPTURE] capture sent", batch.length, "status=", res.status, "body=", truncateText_(res.responseText, 200));
           const code = Number(res.status || 0);
-          // handle 429/backoff
+
           if (code === 429) {
-            // try read Retry-After header
-            try {
-              const hdr = (res.responseHeaders || res.getAllResponseHeaders && res.getAllResponseHeaders()) || res.headers || {};
-              let ra = 0;
-              if (hdr) {
-                // GM_xmlhttpRequest response doesn't always expose headers in same shape; try parse body for Retry-After
-                const raMatch = String(res.responseText || "").match(/Retry-After:\s*(\d+)/i);
-                if (raMatch) ra = Number(raMatch[1]);
-              }
-              // exponential fallback
-              BACKOFF_EXPONENT = Math.min(6, (BACKOFF_EXPONENT || 0) + 1);
-              const base = ra && ra > 0 ? ra * 1000 : Math.pow(2, BACKOFF_EXPONENT) * 1000;
-              BACKOFF_UNTIL_MS = Date.now() + base;
-              warn("[YS_CAPTURE] entering backoff until", new Date(BACKOFF_UNTIL_MS).toISOString());
-            } catch (e) {}
+            BACKOFF_EXPONENT = Math.min(6, (BACKOFF_EXPONENT || 0) + 1);
+            const base = Math.pow(2, BACKOFF_EXPONENT) * 1000;
+            BACKOFF_UNTIL_MS = Date.now() + base;
+            warn("[YS_CAPTURE] 429 backoff until", new Date(BACKOFF_UNTIL_MS).toISOString());
             QUEUE.unshift(...batch);
             try { saveQueueToStorage_(); } catch (e) {}
             return;
           }
 
           if (code >= 200 && code < 300) {
-            // success, clear exponent
             BACKOFF_EXPONENT = 0;
-            // remove persisted items already removed from queue
             try { saveQueueToStorage_(); } catch (e) {}
             return;
           }
 
-          // server error -> requeue and increase backoff
           if (code >= 500) {
             BACKOFF_EXPONENT = Math.min(6, (BACKOFF_EXPONENT || 0) + 1);
             BACKOFF_UNTIL_MS = Date.now() + Math.pow(2, BACKOFF_EXPONENT) * 1000;
@@ -569,11 +599,10 @@ function isAllowedGASUrl_(u) {
             return;
           }
 
-          // other statuses: requeue conservative
           QUEUE.unshift(...batch);
           try { saveQueueToStorage_(); } catch (e) {}
         } catch (e) {
-          warn('[YS_CAPTURE] onload handler error', e);
+          warn("[YS_CAPTURE] onload handler error", e);
           QUEUE.unshift(...batch);
           try { saveQueueToStorage_(); } catch (e) {}
         }
@@ -605,7 +634,6 @@ function isAllowedGASUrl_(u) {
     return m ? m[1] : "";
   }
 
-  // ✅ A) 放寬：只要在 #/master 就 forward（不需 listStatus=COMPLEX）
   function isMasterPage_() {
     const h = String(location.hash || "");
     return h.includes("#/master");
@@ -617,10 +645,7 @@ function isAllowedGASUrl_(u) {
   }
 
   function extractFromTo_(requestBody, requestUrl) {
-    let from = "",
-      to = "",
-      size = "",
-      number = "";
+    let from = "", to = "", size = "", number = "";
 
     try {
       const t = stripBom_(String(requestBody || "")).trim();
@@ -661,7 +686,6 @@ function isAllowedGASUrl_(u) {
   }
 
   function extractApiPathKey_(url) {
-    // 目的：把 /api/booking/detail/3577 變 /api/booking/detail/:id 方便分類
     try {
       const s = String(url || "");
       if (!s.includes("/api/")) return "";
@@ -729,9 +753,7 @@ function isAllowedGASUrl_(u) {
   }
 
   function forwardToAnalyzeMasterBroad_(record, recordHash) {
-    // ✅ A) 只要 #/master 就送
     if (!isMasterPage_()) return;
-
     if (!isMasterBroadApi_(record.url)) return;
     if (Number(record.status) !== 200) return;
     if (!record.response || typeof record.response !== "object") return;
@@ -739,7 +761,7 @@ function isAllowedGASUrl_(u) {
     const payload = {
       mode: "analyzeMasterComplex_v1",
       meta: {
-        storeId: "", // 保留空（很多 API 不是店別）
+        storeId: "",
         apiPathKey: extractApiPathKey_(record.url),
         entityId: extractEntityId_(record.url),
         page: location.href,
@@ -757,16 +779,8 @@ function isAllowedGASUrl_(u) {
   }
 
   function forwardToAnalyzeAll_(record, recordHash) {
-    try {
-      forwardToAnalyzePerfTotal_(record, recordHash);
-    } catch (e) {
-      warn("[ANALYZE] perfTotal forward failed", e);
-    }
-    try {
-      forwardToAnalyzeMasterBroad_(record, recordHash);
-    } catch (e) {
-      warn("[ANALYZE] master forward failed", e);
-    }
+    try { forwardToAnalyzePerfTotal_(record, recordHash); } catch (e) { warn("[ANALYZE] perfTotal forward failed", e); }
+    try { forwardToAnalyzeMasterBroad_(record, recordHash); } catch (e) { warn("[ANALYZE] master forward failed", e); }
   }
 
   /*****************************************************************
@@ -788,35 +802,33 @@ function isAllowedGASUrl_(u) {
       let text = "";
       let json = null;
       let binarySummary = null;
+
       try {
         text = await clone.text();
         json = safeJsonParse(text);
       } catch (e) {
-        // try binary fallback
         try {
           const buf = await clone.arrayBuffer();
-            const max = (CAPTURE_RULES.FULL_CAPTURE ? Math.max(1024, Number(CAPTURE_RULES.FULL_CAPTURE_MAX_BINARY_BYTES || 200000)) : 1024);
-            const len = Math.min(buf.byteLength, max);
+          const max = (CAPTURE_RULES.FULL_CAPTURE ? Math.max(1024, Number(CAPTURE_RULES.FULL_CAPTURE_MAX_BINARY_BYTES || 200000)) : 1024);
+          const len = Math.min(buf.byteLength, max);
           const view = new Uint8Array(buf.slice(0, len));
           let binStr = "";
           for (let i = 0; i < view.length; i++) binStr += String.fromCharCode(view[i]);
           const b64 = btoa(binStr);
-          binarySummary = { mime: (clone.headers && clone.headers.get ? clone.headers.get('content-type') : '') || '', size: buf.byteLength, b64: b64.slice(0, 2048) };
-        } catch (e2) {
-          // ignore
-        }
+          binarySummary = { mime: (clone.headers && clone.headers.get ? clone.headers.get("content-type") : "") || "", size: buf.byteLength, b64: b64.slice(0, 2048) };
+        } catch (e2) {}
       }
 
       if (!json && !CAPTURE_RULES.allowNonJson && !binarySummary) return res;
 
       const respHeaders = CAPTURE_RULES.captureResponseHeaders && clone.headers ? sanitizeHeaders_(clone.headers) : {};
-
-      let respOut = json && typeof json === 'object' ? json : (text ? truncateText_(text, CAPTURE_RULES.maxTextLen) : (binarySummary ? binarySummary : ''));
+      let respOut = (json && typeof json === "object")
+        ? json
+        : (text ? truncateText_(text, CAPTURE_RULES.maxTextLen) : (binarySummary ? binarySummary : ""));
 
       const durationMs = Date.now() - startTs;
 
-      // scrub request/response bodies
-      const reqBody = bodyToString_(opt.body) || (typeof opt.body === 'string' ? opt.body : null);
+      const reqBody = bodyToString_(opt.body) || (typeof opt.body === "string" ? opt.body : null);
       const record = {
         kind: "fetch",
         url: String(url),
@@ -824,15 +836,12 @@ function isAllowedGASUrl_(u) {
         requestHeaders: sanitizeHeaders_(opt.headers || null),
         requestBody: scrubBody_(reqBody),
         status: res.status,
-        response: typeof respOut === 'string' ? scrubBody_(respOut) : respOut,
+        response: (typeof respOut === "string") ? scrubBody_(respOut) : respOut,
         responseHeaders: respHeaders,
         timingMs: durationMs,
-        client: {
-          ua: navigator.userAgent || '',
-          href: location.href,
-        }
+        client: { ua: navigator.userAgent || "", href: location.href },
       };
-      // indicate full-capture consent and timestamp
+
       if (CAPTURE_RULES.FULL_CAPTURE) {
         record.fullCapture = true;
         record.consentAt = new Date().toISOString();
@@ -886,44 +895,38 @@ function isAllowedGASUrl_(u) {
           try {
             const rt = String(xhr.responseType || "");
             let json = null;
-            let respOut = "";
-            let binarySummary = null;
+            let respText = "";
+            let respNonJson = "";
 
             try {
               if (rt === "" || rt === "text") {
                 const text = xhr.responseText;
                 json = safeJsonParse(text);
-                if (!json) respOut = truncateText_(text, CAPTURE_RULES.maxTextLen);
+                respText = text;
               } else if (rt === "json") {
                 const r = xhr.response;
                 if (r && typeof r === "object") json = r;
-                else if (r != null) {
-                  const t = String(r);
-                  json = safeJsonParse(t);
-                  if (!json) respOut = truncateText_(t, CAPTURE_RULES.maxTextLen);
-                } else {
-                  respOut = "<null json response>";
-                }
+                else if (r != null) json = safeJsonParse(String(r));
               } else {
-                // attempt to get textual representation or size
-                try {
-                  const hdrs = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : "";
-                  const m = String(hdrs || "").match(/content-type:\s*([^\r\n]+)/i);
-                  const mime = m ? m[1] : '';
-                  // fallback: report non-text response type
-                  respOut = `<non-text responseType:${rt} mime:${mime}>`;
-                } catch (e) {
-                  respOut = `<non-text responseType:${rt}>`;
-                }
+                const hdrs = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : "";
+                const m = String(hdrs || "").match(/content-type:\s*([^\r\n]+)/i);
+                const mime = m ? m[1] : "";
+                respNonJson = `<non-text responseType:${rt} mime:${mime}>`;
               }
             } catch (e) {}
 
-            if (!json && !CAPTURE_RULES.allowNonJson && !respOut) return;
+            // ✅ allow non-json
+            if (!json && !CAPTURE_RULES.allowNonJson && !respText && !respNonJson) return;
 
             const rawHdrs = xhr.getAllResponseHeaders ? xhr.getAllResponseHeaders() : null;
             const respHeaders = CAPTURE_RULES.captureResponseHeaders ? sanitizeHeaders_(rawHdrs) : {};
-
             const durationMs = Date.now() - (xhr._cap_startTs || Date.now());
+
+            // ✅ FIX: if json exists, record.response must be json (not empty string)
+            let responseOut;
+            if (json && typeof json === "object") responseOut = json;
+            else if (respText) responseOut = truncateText_(respText, CAPTURE_RULES.maxTextLen);
+            else responseOut = respNonJson || "";
 
             const record = {
               kind: "xhr",
@@ -932,11 +935,12 @@ function isAllowedGASUrl_(u) {
               requestHeaders: sanitizeHeaders_(xhr._cap_reqHeaders || null),
               requestBody: scrubBody_(reqBodyStr),
               status: xhr.status,
-              response: typeof respOut === 'string' ? scrubBody_(respOut) : respOut || json,
+              response: (typeof responseOut === "string") ? scrubBody_(responseOut) : responseOut,
               responseHeaders: respHeaders,
               timingMs: durationMs,
-              client: { ua: navigator.userAgent || '', href: location.href }
+              client: { ua: navigator.userAgent || "", href: location.href },
             };
+
             if (CAPTURE_RULES.FULL_CAPTURE) {
               record.fullCapture = true;
               record.consentAt = new Date().toISOString();
@@ -951,7 +955,7 @@ function isAllowedGASUrl_(u) {
               if (json && typeof json === "object") forwardToAnalyzeAll_(record, hash);
             }
           } catch (e) {
-            warn("[YS_CAPTURE][xhr] parse failed", e);
+            warn("[YS_CAPTURE][xhr] handler failed", e);
           }
         });
       }
@@ -966,15 +970,11 @@ function isAllowedGASUrl_(u) {
    * 8) lifecycle flush
    *****************************************************************/
   window.addEventListener("pagehide", () => {
-    try {
-      flushQueue();
-    } catch (_) {}
+    try { flushQueue(); } catch (_) {}
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      try {
-        flushQueue();
-      } catch (_) {}
+      try { flushQueue(); } catch (_) {}
     }
   });
 })();
