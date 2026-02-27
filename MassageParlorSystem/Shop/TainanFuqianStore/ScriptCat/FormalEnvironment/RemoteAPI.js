@@ -59,6 +59,12 @@
       return {};
     }
   }
+  
+
+
+
+  
+
 function isAllowedGASUrl_(u) {
   try {
     const url = new URL(String(u || ""));
