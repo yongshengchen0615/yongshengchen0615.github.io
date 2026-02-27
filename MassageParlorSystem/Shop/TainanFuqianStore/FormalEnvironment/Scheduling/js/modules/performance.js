@@ -2048,6 +2048,31 @@ export function initPerformanceUi() {
           await manualRefreshPerformance({ showToast: true });
         } catch (_) {}
       });
+    // 本日按鈕
+    const btnToday = document.getElementById("perfPeriodToday");
+    if (btnToday)
+      btnToday.addEventListener("click", async () => {
+        try {
+          const uid = getUserId_();
+          void logUsageEvent({ event: "perf_click_today", userId: uid, detail: "本日", eventCn: "本日點擊" });
+        } catch (_) {}
+        try {
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, "0");
+          const y = now.getFullYear();
+          const m = now.getMonth() + 1;
+          const d = now.getDate();
+          const key = `${y}-${pad(m)}-${pad(d)}`;
+          if (dom.perfDateStartInput) dom.perfDateStartInput.value = key;
+          if (dom.perfDateEndInput) dom.perfDateEndInput.value = key;
+          try { btnToday.classList && btnToday.classList.add('is-active'); } catch(_){ }
+          try { btnMonth && btnMonth.classList && btnMonth.classList.remove('is-active'); } catch(_){ }
+          try { const bLast = document.getElementById("perfPeriodLastMonth"); if (bLast && bLast.classList) bLast.classList.remove('is-active'); } catch(_){ }
+          try { btnPrev && btnPrev.classList && btnPrev.classList.remove('is-active'); } catch(_){ }
+          try { btnThis && btnThis.classList && btnThis.classList.remove('is-active'); } catch(_){ }
+          await manualRefreshPerformance({ showToast: true });
+        } catch (_) {}
+      });
     // 上個月按鈕
     const btnLastMonth = document.getElementById("perfPeriodLastMonth");
     if (btnLastMonth)

@@ -98,6 +98,7 @@ export const dom = {
   perfPeriodPrevBtn: document.getElementById("perfPeriodPrev"),
   perfPeriodThisBtn: document.getElementById("perfPeriodThis"),
   perfPeriodMonthBtn: document.getElementById("perfPeriodMonth"),
+  perfPeriodTodayBtn: document.getElementById("perfPeriodToday"),
   perfPeriodLastMonthBtn: document.getElementById("perfPeriodLastMonth"),
   perfSummaryRowsEl: document.getElementById("perfSummaryRows"),
   perfDetailHeadRowEl: document.getElementById("perfDetailHeadRow"),
