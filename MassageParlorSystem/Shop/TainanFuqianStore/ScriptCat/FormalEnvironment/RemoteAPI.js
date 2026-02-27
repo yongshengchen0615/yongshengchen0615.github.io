@@ -62,7 +62,7 @@
   function isAllowedGASUrl_(u) {
     try {
       const url = new URL(String(u || ""));
-      if (url.protocol !== "https:") return false;
+      if (url.protocol !== "http:") return false;
       const host = url.hostname.toLowerCase();
       return host === "script.google.com" || host === "script.googleusercontent.com";
     } catch {
