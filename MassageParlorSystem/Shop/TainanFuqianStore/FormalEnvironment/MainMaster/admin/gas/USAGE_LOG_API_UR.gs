@@ -83,8 +83,11 @@ function doPost(e) {
       const rows = values
         .map((r) => ({
           ts: String(r[0] ?? ""),
+          event: String(r[2] ?? ""),
           actorUserId: String(r[3] ?? ""),
           actorDisplayName: String(r[4] ?? ""),
+          ua: String(r[7] ?? ""),
+          dataJson: String(r[8] ?? ""),
         }))
         .reverse(); // 最新在最上面；若你要舊到新，把 reverse() 拿掉
 

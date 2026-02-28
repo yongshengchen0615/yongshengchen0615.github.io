@@ -119,6 +119,40 @@ async function bulkApply_() {
 		if (scheduleEnabled) u.scheduleEnabled = scheduleEnabled;
 		if (performanceEnabled) u.performanceEnabled = performanceEnabled;
 
+		// 發送本地變更細節事件（包含哪些欄位實際改變及前後值）
+		try {
+			const prevSnapStr = originalMap.get(id) || "";
+			let prev = {};
+			if (prevSnapStr) {
+				try {
+					prev = JSON.parse(prevSnapStr);
+				} catch (_) {}
+			}
+			const after = JSON.parse(snapshot_(u));
+			const fields = [
+				"audit",
+				"startDate",
+				"usageDays",
+				"masterCode",
+				"pushEnabled",
+				"personalStatusEnabled",
+				"scheduleEnabled",
+				"performanceEnabled",
+				"bookingEnabled",
+			];
+			const changes = {};
+			for (const f of fields) {
+				const before = prev?.[f] ?? "";
+				const afterV = after?.[f] ?? "";
+				if (String(before) !== String(afterV)) changes[f] = { before, after: afterV };
+			}
+			if (Object.keys(changes).length && typeof emitEvent_ === "function") {
+				emitEvent_("user:changed", { userId: id, changes });
+			}
+		} catch (e) {
+			console.warn("emit bulkApply change failed", e);
+		}
+
 		markDirty_(id, u);
 	});
 
@@ -547,6 +581,8 @@ async function saveAllDirty_() {
 
 		if (ret && ret.okCount) {
 			const failedSet = new Set((ret.fail || []).map((x) => String(x.userId || "").trim()));
+			const updatedIds = [];
+			const updatedDetails = [];
 			items.forEach((it) => {
 				const id = it.userId;
 				if (!id || failedSet.has(id)) return;
@@ -564,8 +600,46 @@ async function saveAllDirty_() {
 				u.performanceEnabled = it.performanceEnabled;
 				u.bookingEnabled = it.bookingEnabled;
 
+				// 計算變更前後並發送更新事件
+				let changes = {};
+				try {
+					const prevSnapStr = originalMap.get(id) || "";
+					let prev = {};
+					if (prevSnapStr) {
+						try {
+							prev = JSON.parse(prevSnapStr);
+						} catch (_) {}
+					}
+					const after = JSON.parse(snapshot_(u));
+					const fields = [
+						"audit",
+						"startDate",
+						"usageDays",
+						"masterCode",
+						"pushEnabled",
+						"personalStatusEnabled",
+						"scheduleEnabled",
+						"performanceEnabled",
+						"bookingEnabled",
+					];
+					for (const f of fields) {
+						const before = prev?.[f] ?? "";
+						const afterV = after?.[f] ?? "";
+						if (String(before) !== String(afterV)) changes[f] = { before, after: afterV };
+					}
+				} catch (e) {
+					console.warn("compute changes failed", e);
+				}
+
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
+				updatedIds.push(id);
+
+				if (typeof emitEvent_ === "function") {
+					emitEvent_("user:updated", { userId: id, changes });
+				}
+
+				if (Object.keys(changes).length) updatedDetails.push({ userId: id, changes });
 			});
 
 			if (typeof emitEvent_ === "function") {
@@ -573,6 +647,19 @@ async function saveAllDirty_() {
 					items: items.length,
 					okCount: Number(ret.okCount || 0),
 					failCount: Number(ret.failCount || 0),
+					updatedIds,
+					updatedDetails,
+				});
+			}
+
+			// 使用紀錄：包含被修改的技師 ID 及變更摘要
+			if (typeof usageLogFire_ === "function") {
+				usageLogFire_("users_update_batch", {
+					items: items.length,
+					okCount: Number(ret.okCount || 0),
+					failCount: Number(ret.failCount || 0),
+					updatedIds,
+					updatedDetails,
 				});
 			}
 
