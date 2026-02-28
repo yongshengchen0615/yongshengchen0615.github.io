@@ -50,7 +50,7 @@ function logsSetFooter_(text) {
 function logsSetTbodyMessage_(msg) {
   cacheLogsDom_();
   if (!logsTbodyEl) return;
-  logsTbodyEl.innerHTML = `<tr><td colspan="4">${escapeHtml(msg || "-")}</td></tr>`;
+  logsTbodyEl.innerHTML = `<tr><td colspan="7">${escapeHtml(msg || "-")}</td></tr>`;
 }
 
 function normalizeLogRow_(r) {
@@ -59,7 +59,23 @@ function normalizeLogRow_(r) {
   const actor = r?.actor;
   const actorUserId = String(r?.actorUserId ?? r?.userId ?? actor?.userId ?? actor?.id ?? "");
   const actorDisplayName = String(r?.actorDisplayName ?? r?.displayName ?? actor?.displayName ?? actor?.name ?? "");
-  return { ts, actorUserId, actorDisplayName };
+  const event = String(r?.event ?? r?.eventName ?? r?.event_cn ?? r?.eventCn ?? "");
+  const ua = String(r?.ua ?? "");
+  const dataJsonRaw = r?.dataJson ?? r?.data ?? r?.detail ?? "";
+  let dataJson = "";
+  let parsedData = null;
+  try {
+    if (typeof dataJsonRaw === 'string') {
+      dataJson = dataJsonRaw;
+      if (dataJson.trim().startsWith('{') || dataJson.trim().startsWith('[')) parsedData = JSON.parse(dataJson);
+    } else if (dataJsonRaw && typeof dataJsonRaw === 'object') {
+      parsedData = dataJsonRaw;
+      dataJson = JSON.stringify(dataJsonRaw);
+    }
+  } catch (e) {
+    parsedData = null;
+  }
+  return { ts, actorUserId, actorDisplayName, event, ua, dataJson, parsedData };
 }
 
 function pad2_(n) {
@@ -201,7 +217,7 @@ function renderAdminLogs_() {
   if (!logsTbodyEl) return;
 
   if (!adminLogs_.length) {
-    logsTbodyEl.innerHTML = `<tr><td colspan="4">無資料</td></tr>`;
+    logsTbodyEl.innerHTML = `<tr><td colspan="7">無資料</td></tr>`;
     return;
   }
 
@@ -229,6 +245,9 @@ function renderAdminLogs_() {
           <td data-label="ts"><span style="font-family:var(--mono)">${escapeHtml(tsDisplay)}</span></td>
           <td data-label="actorUserId"><span style="font-family:var(--mono)">${escapeHtml(r.actorUserId)}</span></td>
           <td data-label="actorDisplayName">${escapeHtml(r.actorDisplayName)}</td>
+          <td data-label="event">${escapeHtml(r.event)}</td>
+          <td data-label="ua"><span style="font-family:var(--mono)">${escapeHtml(r.ua)}</span></td>
+          <td data-label="dataJson"><span style="font-family:var(--mono)">${escapeHtml(r.dataJson ? (r.dataJson.length > 200 ? r.dataJson.slice(0,200) + '…' : r.dataJson) : '')}</span></td>
         </tr>
       `;
     })
@@ -639,17 +658,34 @@ function bindAdminLogs_() {
  * - 只送：ts / actor
  */
 async function appendAdminUsageLog_() {
+  // 可攜帶 (event, data) 或單一 object 參數 { event, data }
+  // 用法：appendAdminUsageLog_("login") 或 appendAdminUsageLog_({ event: 'update', data: {...} })
+  const args = Array.from(arguments);
+  let event = "";
+  let data = {};
+  if (args.length === 1 && args[0] && typeof args[0] === 'object') {
+    event = String(args[0].event || args[0].type || "").trim();
+    data = args[0].data || {};
+  } else if (args.length >= 1 && typeof args[0] === 'string') {
+    event = String(args[0] || "").trim();
+    data = args[1] || {};
+  }
+
   if (!USAGE_LOG_API_URL) return;
   if (!me?.userId) return;
 
   try {
-    await usageLogPost_({
+    const body = {
       mode: "appendUsageLog",
       ts: new Date().toISOString(),
       actor: { userId: me.userId, displayName: me.displayName },
-    });
+    };
+    if (event) body.event = event;
+    if (data && typeof data === 'object' && Object.keys(data).length) body.data = data;
+
+    // 非阻塞但仍嘗試發送以利後端審計
+    await usageLogPost_(body);
   } catch (e) {
-    // 不阻擋主流程
     console.warn("appendUsageLog failed", e);
   }
 }

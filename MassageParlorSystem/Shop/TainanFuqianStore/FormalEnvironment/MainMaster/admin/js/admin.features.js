@@ -280,6 +280,20 @@ async function bulkDelete_() {
       failCount ? "err" : "ok"
     );
 
+    // 審計：記錄批次刪除結果（非阻塞）
+    try {
+      if (typeof appendAdminUsageLog_ === "function") {
+        appendAdminUsageLog_("bulkDeleteAdmins", {
+          okCount: okCount,
+          failCount: failCount,
+          idsCount: ids.length,
+          idsSample: ids.slice(0, 20),
+        });
+      }
+    } catch (e) {
+      console.warn("appendAdminUsageLog for bulkDeleteAdmins failed", e);
+    }
+
     await loadAdmins_();
   } finally {
     setLock_(false);
@@ -379,6 +393,15 @@ function bindTableDelegation_() {
       const ret = await apiPost_({ mode: "deleteAdmin", userId: id }).catch(() => ({}));
       if (ret && ret.ok) {
         toast("刪除完成", "ok");
+        // 審計：記錄單筆刪除（非阻塞）
+        try {
+          if (typeof appendAdminUsageLog_ === "function") {
+            appendAdminUsageLog_("deleteAdmin", { userId: id, displayName: a?.displayName || "" });
+          }
+        } catch (e) {
+          console.warn("appendAdminUsageLog for deleteAdmin failed", e);
+        }
+
         await loadAdmins_();
       } else {
         toast("刪除失敗", "err");
@@ -426,6 +449,19 @@ async function saveAllDirty_() {
       ret.failCount ? `儲存完成：成功 ${ret.okCount} / 失敗 ${ret.failCount}` : `全部儲存完成：${ret.okCount} 筆`,
       ret.failCount ? "err" : "ok"
     );
+    // 審計：記錄此次批次儲存結果（非阻塞）
+    try {
+      if (typeof appendAdminUsageLog_ === "function") {
+        appendAdminUsageLog_("updateAdminsBatch", {
+          okCount: Number(ret.okCount || 0),
+          failCount: Number(ret.failCount || 0),
+          itemsCount: items.length,
+          failed: ret.fail || [],
+        });
+      }
+    } catch (e) {
+      console.warn("appendAdminUsageLog for updateAdminsBatch failed", e);
+    }
   } catch (e) {
     console.error(e);
     toast("儲存失敗", "err");
