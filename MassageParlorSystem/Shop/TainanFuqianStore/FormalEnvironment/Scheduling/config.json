@@ -18,14 +18,16 @@
   "BOOKING_API_URL": "https://script.google.com/macros/s/AKfycbxtvg4lzEIwwYRqXDvrkn-4-QIzTBavJYJgqxtGBfPU2A-jnn0GF-WBijARe6G6jlhP/exec",
   "_comment_BOOKING_API_URL": "✅ 預約查詢用 GAS Web App URL（部署 BOOKING_DETAIL_ONLY_RAW_DYNAMIC_ZH.gs）。前端會用 POST mode=bookingQuery_v1 直接查詢預約資料。",
 
-  "TOPUP_API_URL": "https://script.google.com/macros/s/AKfycbwAIv5DEllNzT4xhsNSXjbTV6ziio1Na_UO_QdK_4masenoneEGoR5RVohMd5MaF4e_3g/exec",
-  "_comment_TOPUP_API_URL": "（可選）儲值序號 GAS Web App URL（TopUp）。Scheduling 會用 mode=serials_redeem_public 核銷序號，並把回傳 amount 視為『增加的使用天數』。",
+  "TOPUP_API_URL": "",
+  "TOPUP_ENABLED": true,
+  "_comment_TOPUP_ENABLED": "是否在前端顯示儲值入口。實際核銷由 AUTH server 端呼叫 TopUp (TOPUP_API_URL)；若 true，前端會顯示儲值按鈕，但不會暴露 TopUp URL。",
+  "_comment_TOPUP_API_URL": "（已移除／若需 server-side 呼叫，請在 AUTH 的 Script Properties 設定 TOPUP_API_URL）。",
 
   "LIFF_ID": "2008669658-UGsf3get",
   
   "_comment_LIFF_ID": "LINE LIFF 應用程式 ID，供 liff.init({ liffId }) 使用。",
 
-  "ENABLE_LINE_LOGIN": true,
+  "ENABLE_LINE_LOGIN": false,
   "_comment_ENABLE_LINE_LOGIN": "是否啟用 LINE LIFF 登入流程；false 時跳過 liff.init/login，方便本機/測試。",
 
   "USAGE_LOG_URL": "https://script.google.com/macros/s/AKfycbzLcz-kg3l2mV53LCnLvZNQ9P4Uo3-TP2TU3XHJC6HS7VMp_5xGX2hd-TDxXb812p2H/exec",
