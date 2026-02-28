@@ -11,10 +11,37 @@
 import { dom } from "./dom.js";
 
 let loadingHintHolds_ = 0;
+// keyed holds: map key -> {count, el}
+const loadingHintKeys_ = new Map();
 
 function hideLoadingHintForce_() {
   if (!dom.topLoadingEl) return;
   dom.topLoadingEl.classList.add("hidden");
+}
+
+function removeSubByKey_(key) {
+  try {
+    const sel = `[data-top-loading-key="${String(key)}"]`;
+    const el = document.querySelector(sel);
+    if (el) el.remove();
+  } catch (_) {}
+}
+
+function removeAllSubs_() {
+  try {
+    const subs = document.querySelectorAll('.top-loading-sub');
+    subs.forEach((s) => s.remove());
+  } catch (_) {}
+}
+
+function removeAnonSubs_() {
+  try {
+    const subs = document.querySelectorAll('.top-loading-sub');
+    subs.forEach((s) => {
+      const k = s.getAttribute && s.getAttribute('data-top-loading-key');
+      if (!k || String(k).startsWith('sub-')) s.remove();
+    });
+  } catch (_) {}
 }
 
 function clampPercent_(percent) {
@@ -57,15 +84,44 @@ export function hideInitialLoading() {
  */
 export function showLoadingHint(text) {
   if (!dom.topLoadingEl) return;
-  if (dom.topLoadingTextEl) dom.topLoadingTextEl.textContent = text || "資料載入中…";
-  dom.topLoadingEl.classList.remove("hidden");
+  const txt = text || "資料載入中…";
+  // If primary toast is not visible, update it and show.
+  if (dom.topLoadingEl.classList.contains('hidden')) {
+    if (dom.topLoadingTextEl) dom.topLoadingTextEl.textContent = txt;
+    dom.topLoadingEl.classList.remove("hidden");
+    return;
+  }
+
+  // Primary already visible: create a generic secondary toast (no key).
+  try {
+    const parent = dom.topLoadingEl.parentNode || document.body;
+    const existingSubs = parent.querySelectorAll('.top-loading-sub').length;
+    const sub = document.createElement('div');
+    sub.className = 'top-loading top-loading-sub';
+    sub.setAttribute('data-top-loading-key', `sub-${Date.now()}-${existingSubs}`);
+    // position it slightly lower than primary based on existing count
+    const baseTop = 10; // matches CSS top for .top-loading
+    const gap = 44;
+    sub.style.position = 'fixed';
+    sub.style.top = `${baseTop + (existingSubs + 1) * gap}px`;
+    sub.style.left = '50%';
+    sub.style.transform = 'translateX(-50%)';
+    sub.style.zIndex = String(10000 - 1 - existingSubs); // slightly below primary stacking-wise
+    sub.style.pointerEvents = 'none';
+    sub.innerHTML = `<span class="top-loading-spinner" aria-hidden="true"></span><span class="top-loading-text">${String(txt)}</span>`;
+    parent.appendChild(sub);
+  } catch (_) {}
 }
 
 /** 隱藏頂部載入提示。 */
 export function hideLoadingHint() {
   if (!dom.topLoadingEl) return;
 
-  // ✅ If any flow is holding the toast, don't hide it.
+  // Only hide primary (default) toast if no default holds remain.
+  // Remove anonymous secondary toasts created via `showLoadingHint`.
+  removeAnonSubs_();
+
+  // Only hide primary (default) toast if no default holds remain.
   if ((loadingHintHolds_ | 0) > 0) return;
   hideLoadingHintForce_();
 }
@@ -78,15 +134,76 @@ export function hideLoadingHint() {
  * @returns {() => void} release
  */
 export function holdLoadingHint(text) {
-  loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) + 1);
-  showLoadingHint(text);
+  // Backward-compatible: accept optional key as second arg
+  const args = Array.from(arguments || []);
+  const msg = String(args[0] || text || "資料載入中…");
+  const key = args[1] || null;
+
+  if (!key) {
+    loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) + 1);
+    showLoadingHint(msg);
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) - 1);
+      if ((loadingHintHolds_ | 0) === 0) hideLoadingHintForce_();
+    };
+  }
+
+  // Keyed hold: create or increment.
+  const existing = loadingHintKeys_.get(key) || { count: 0, el: null };
+  existing.count = Math.max(0, existing.count + 1);
+  loadingHintKeys_.set(key, existing);
+
+  // create element if missing
+  if (!existing.el) {
+    try {
+      const parent = dom.topLoadingEl ? dom.topLoadingEl.parentNode : document.body;
+      const subsBefore = parent.querySelectorAll('.top-loading-sub').length;
+      const sub = document.createElement('div');
+      sub.className = 'top-loading top-loading-sub';
+      sub.setAttribute('data-top-loading-key', String(key));
+      sub.style.position = 'fixed';
+      const baseTop = 10;
+      const gap = 44;
+      // If primary hidden, place at top; otherwise place below existing subs
+      const primaryVisible = dom.topLoadingEl && !dom.topLoadingEl.classList.contains('hidden');
+      const offsetIndex = primaryVisible ? subsBefore + 1 : 0;
+      sub.style.top = `${baseTop + offsetIndex * gap}px`;
+      sub.style.left = '50%';
+      sub.style.transform = 'translateX(-50%)';
+      sub.style.zIndex = String(10000 - 1 - offsetIndex);
+      sub.style.pointerEvents = 'none';
+      sub.innerHTML = `<span class="top-loading-spinner" aria-hidden="true"></span><span class="top-loading-text">${String(msg)}</span>`;
+      parent.appendChild(sub);
+      existing.el = sub;
+      loadingHintKeys_.set(key, existing);
+    } catch (_) {}
+  } else {
+    // update text if exists
+    try {
+      const txtEl = existing.el.querySelector('.top-loading-text');
+      if (txtEl) txtEl.textContent = msg;
+    } catch (_) {}
+  }
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    loadingHintHolds_ = Math.max(0, (loadingHintHolds_ | 0) - 1);
-    if ((loadingHintHolds_ | 0) === 0) hideLoadingHintForce_();
+    const cur = loadingHintKeys_.get(key) || { count: 0, el: null };
+    cur.count = Math.max(0, cur.count - 1);
+    if (cur.count === 0) {
+      // remove element
+      try {
+        if (cur.el) cur.el.remove();
+      } catch (_) {}
+      loadingHintKeys_.delete(key);
+    } else {
+      loadingHintKeys_.set(key, cur);
+    }
   };
 }
 

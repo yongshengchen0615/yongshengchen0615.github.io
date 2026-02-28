@@ -10,7 +10,7 @@
 
 import { config } from "./config.js";
 import { state } from "./state.js";
-import { showLoadingHint, hideLoadingHint, updateUsageBanner, showGate } from "./uiHelpers.js";
+import { showLoadingHint, hideLoadingHint, holdLoadingHint, updateUsageBanner, showGate } from "./uiHelpers.js";
 import { updateFeatureState } from "./featureBanner.js";
 import { logUsageEvent } from "./usageLog.js";
 
@@ -423,7 +423,7 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     eventCn: "儲值送出",
   });
 
-  showLoadingHint("儲值核銷中…");
+  const releaseTopup = holdLoadingHint("儲值核銷中…", "topup");
   let stage = "redeem";
   try {
     let addDays = null;
@@ -503,14 +503,14 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     if (reloadOnSuccess) {
       // 讓使用者看到結果訊息後再關閉 loading，避免中間空窗像是卡住。
       alert(msg + "\n\n將重新整理以重新驗證權限。");
-      hideLoadingHint();
+      try { releaseTopup(); } catch (_) {}
       location.reload();
       return { ok: true, reloaded: true };
     }
 
     // 讓使用者看到結果訊息後再關閉 loading，避免中間空窗像是卡住。
     alert(msg);
-    hideLoadingHint();
+    try { releaseTopup(); } catch (_) {}
     return { ok: true, addDays, newRemainingDays };
   } catch (e) {
     console.error("[TopUp] failed:", e);
@@ -536,11 +536,11 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     if (context === "gate") {
       // 先顯示錯誤訊息，再關閉 loading（避免瞬間消失造成困惑）
       showGate("⚠ 儲值失敗\n\n" + userMsg, true);
-      hideLoadingHint();
+      try { releaseTopup(); } catch (_) {}
     } else {
       // alert 會 block UI；等使用者看到訊息/關掉後再關閉 loading。
       alert("儲值失敗：\n\n" + userMsg);
-      hideLoadingHint();
+      try { releaseTopup(); } catch (_) {}
     }
     return { ok: false, error: errMsg, userMessage: userMsg };
   }
