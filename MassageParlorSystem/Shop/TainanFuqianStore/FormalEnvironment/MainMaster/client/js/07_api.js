@@ -102,6 +102,23 @@ async function adminUpdateAdminsBatch_(items) {
   }
 }
 
+// 補充：在成功回應時記錄操作（非同步、fire-and-forget）
+async function adminUpdateAdminsBatchWithLog_(items) {
+  const ret = await adminUpdateAdminsBatch_(items);
+  try {
+    if (ret && ret.ok && typeof usageLogFire_ === 'function') {
+      usageLogFire_('admin_update_admins_batch', {
+        items: Array.isArray(items) ? items.length : 0,
+        okCount: Number(ret.okCount || 0),
+        failCount: Number(ret.failCount || 0),
+      });
+    }
+  } catch (e) {
+    console.warn('usageLogFire_ for adminUpdateAdminsBatchWithLog failed', e);
+  }
+  return ret;
+}
+
 async function adminDeleteAdmin_(userId) {
   try {
     if (!ADMIN_API_URL) throw new Error("ADMIN_API_URL not initialized");
@@ -111,7 +128,15 @@ async function adminDeleteAdmin_(userId) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ mode: "deleteAdmin", userId: String(userId || "").trim() }),
     });
-    return await res.json().catch(() => ({}));
+    const json = await res.json().catch(() => ({}));
+    try {
+      if (json && json.ok && typeof usageLogFire_ === 'function') {
+        usageLogFire_('admin_delete_admin', { userId: String(userId || "").trim() });
+      }
+    } catch (e) {
+      console.warn('usageLogFire_ for adminDeleteAdmin_ failed', e);
+    }
+    return json;
   } catch (err) {
     console.error("adminDeleteAdmin_ error:", err);
     return { ok: false, error: String(err) };
