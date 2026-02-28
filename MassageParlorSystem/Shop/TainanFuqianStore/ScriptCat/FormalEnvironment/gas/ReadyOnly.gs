@@ -554,19 +554,19 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
   const panel = String(payload.panel || "").trim();
   const masterId = String(payload.masterId || "").trim();
 
-  // ✅ queue payload 必填驗證（避免 masterId 空導致 NO_TARGET techNo=(norm=)）
   if (!panel || !masterId) {
     appendReadyLog_(
       makeReadyLogRow_(payload, {
         ts,
-        panel: panel || String(payload.panel || ""),
-        masterId: masterId || String(payload.masterId || ""),
+        panel,
+        masterId,
         pushCode: "BAD_PAYLOAD",
-        pushResp: `Queue row missing required: ${!panel ? "panel " : ""}${!masterId ? "masterId" : ""}`.trim(),
+        pushResp: "Queue row missing required: panel/masterId",
         pushedCount: 0,
         targetCount: 0,
       })
     );
+
     updateQueueRowByMap_(sh, rowNumber, headerMap, {
       qStatus: "DONE",
       lastCode: "BAD_PAYLOAD",
@@ -578,7 +578,6 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
 
   const retryCount = Number(getByHeader_(row, headerMap, "retryCount")) || 0;
 
-  // server-side dedup（queue 也維持；測試可 bypass）
   const bypass = isDedupBypassed_(payload);
   const cache = CacheService.getScriptCache();
   const dedupKey = `ready::${panel}::${masterId}`;
@@ -596,6 +595,7 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
           targetCount: 0,
         })
       );
+
       updateQueueRowByMap_(sh, rowNumber, headerMap, {
         qStatus: "DONE",
         lastCode: "DEDUP",
@@ -607,10 +607,11 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
     cache.put(dedupKey, "1", CONFIG.READY_DEDUP_SEC);
   }
 
-  const allowedTargets = getAllowedTargetsForTech_(techIndex, masterId).slice(0, CONFIG.MAX_PUSH_TARGETS);
+  const allowedTargets = getAllowedTargetsForTech_(techIndex, masterId)
+    .slice(0, CONFIG.MAX_PUSH_TARGETS);
 
   let pushedCount = 0;
-  let lastCode = "SKIP";
+  let lastCode = "";
   let lastResp = "";
   let finalStatus = "DONE";
   let nextAt = "";
@@ -619,21 +620,20 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
   if (!CONFIG.LINE_PUSH_ENABLED) {
     lastCode = "SKIP";
     lastResp = "LINE_PUSH_ENABLED=false";
-    finalStatus = "DONE";
   } else if (!allowedTargets.length) {
     lastCode = "NO_TARGET";
     lastResp = `No allowed targets for techNo=${masterId} (norm=${normTechNo_(masterId)})`;
-    finalStatus = "DONE";
   } else {
     const msg = buildReadyMessage_(payload, { ts, panel, masterId });
-    // Rate gate: if global per-minute quota reached, delay this queue row
-    const estimatedPushes = Math.ceil(allowedTargets.length / Math.max(1, CONFIG.MULTICAST_BATCH_SIZE || 450));
+
+    const estimatedPushes = Math.ceil(
+      allowedTargets.length / Math.max(1, CONFIG.MULTICAST_BATCH_SIZE || 450)
+    );
+
     if (!isPushAllowedNow_(estimatedPushes)) {
-      // schedule next retry with backoff
       const nextRetry = retryCount + 1;
       if (nextRetry > CONFIG.RETRY_MAX) {
         finalStatus = "DEAD";
-        nextAt = "";
         lastCode = "RATE_LIMIT_DROP";
         lastResp = "Rate limit exceeded, giving up";
       } else {
@@ -643,54 +643,30 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
         lastResp = "Exceeded max pushes per minute, delayed";
       }
     } else {
-      pushRes = pushLineMulticastBatchedDetailed_(allowedTargets.map((t) => t.userId), msg);
-      pushedCount = pushRes.okCount;
-      if (pushedCount > 0) {
-        try {
-          incrPushCount_(pushedCount);
-        } catch (e) {}
-      }
+      pushRes = pushLineMulticastBatchedDetailed_(
+        allowedTargets.map((t) => t.userId),
+        msg
+      );
 
+      pushedCount = pushRes.okCount || 0;
       lastCode = String(pushRes.lastCode || "");
       lastResp = String(pushRes.lastResp || "");
+
+      if (pushedCount > 0) {
+        incrPushCount_(pushedCount);
+      }
 
       if (shouldRetryCode_(lastCode)) {
         const nextRetry = retryCount + 1;
         if (nextRetry > CONFIG.RETRY_MAX) {
           finalStatus = "DEAD";
-          nextAt = "";
         } else {
           finalStatus = "RETRY";
-          if (pushRes && pushRes.lastRetryAfterSec) {
-            nextAt = formatTsTaipei_(new Date(Date.now() + Number(pushRes.lastRetryAfterSec) * 1000));
-          } else {
-            nextAt = computeNextAtTaipei_(nextRetry);
-          }
-        }
-      } else {
-        finalStatus = "DONE";
-        nextAt = "";
-      }
-    }
-    lastCode = String(pushRes.lastCode || "");
-    lastResp = String(pushRes.lastResp || "");
-
-    if (shouldRetryCode_(lastCode)) {
-      const nextRetry = retryCount + 1;
-      if (nextRetry > CONFIG.RETRY_MAX) {
-        finalStatus = "DEAD";
-        nextAt = "";
-      } else {
-        finalStatus = "RETRY";
-        if (pushRes && pushRes.lastRetryAfterSec) {
-          nextAt = formatTsTaipei_(new Date(Date.now() + Number(pushRes.lastRetryAfterSec) * 1000));
-        } else {
-          nextAt = computeNextAtTaipei_(nextRetry);
+          nextAt = pushRes.lastRetryAfterSec
+            ? formatTsTaipei_(new Date(Date.now() + pushRes.lastRetryAfterSec * 1000))
+            : computeNextAtTaipei_(nextRetry);
         }
       }
-    } else {
-      finalStatus = "DONE";
-      nextAt = "";
     }
   }
 
@@ -703,15 +679,14 @@ function processOneQueueRow_(sh, rowNumber, row, payload, techIndex, headerMap) 
       pushResp: truncate_((bypass ? "[DEDUP_BYPASS] " : "") + lastResp, 45000),
       pushedCount,
       targetCount: allowedTargets.length,
-
-      pushStartAt: pushRes && pushRes.pushStartAt ? pushRes.pushStartAt : "",
-      pushEndAt: pushRes && pushRes.pushEndAt ? pushRes.pushEndAt : "",
-      pushDurationMs: pushRes && pushRes.pushDurationMs !== undefined ? pushRes.pushDurationMs : "",
+      pushStartAt: pushRes?.pushStartAt || "",
+      pushEndAt: pushRes?.pushEndAt || "",
+      pushDurationMs: pushRes?.pushDurationMs ?? "",
     })
   );
 
   updateQueueRowByMap_(sh, rowNumber, headerMap, {
-    retryCount: shouldRetryCode_(lastCode) ? retryCount + 1 : retryCount,
+    retryCount: finalStatus === "RETRY" ? retryCount + 1 : retryCount,
     nextAt,
     qStatus: finalStatus,
     lastCode,
@@ -772,61 +747,67 @@ function compactQueueBestEffort_(sh) {
 function getQueueStats_() {
   const sh = getOrCreateSheet_(CONFIG.SHEET_QUEUE);
   ensureHeader_(sh, CONFIG.QUEUE_HEADERS);
+
   const lastRow = sh.getLastRow();
   const queueRows = Math.max(0, lastRow - 1);
 
-  // Also collect recent ReadyLog metrics for monitoring
-  const metrics = { recentWindowMin: 5, recentPushes: 0, recent429: 0, recent5xx: 0, avgPushDurationMs: 0 };
+  const metrics = {
+    recentWindowMin: 5,
+    recentPushes: 0,
+    recent429: 0,
+    recent5xx: 0,
+    avgPushDurationMs: 0,
+  };
+
   try {
     const shLog = getOrCreateSheet_(CONFIG.SHEET_READY_LOG);
     ensureHeader_(shLog, CONFIG.READY_HEADERS);
+
+    const headerMap = buildHeaderMap_(shLog, CONFIG.READY_HEADERS);
+
     const lastRowLog = shLog.getLastRow();
     const dataRows = Math.max(0, lastRowLog - 1);
-    if (dataRows > 0) {
-      const scan = Math.min(1000, dataRows);
-      const lastCol = Math.max(shLog.getLastColumn(), CONFIG.READY_HEADERS.length);
-      const vals = shLog.getRange(lastRowLog - scan + 1, 1, scan, lastCol).getDisplayValues();
+    if (!dataRows) return { queueRows, ...metrics };
 
-      const now = Date.now();
-      const windowMs = Math.max(1, Number(metrics.recentWindowMin || 5)) * 60 * 1000;
+    const scan = Math.min(1000, dataRows);
+    const lastCol = shLog.getLastColumn();
+    const vals = shLog.getRange(lastRowLog - scan + 1, 1, scan, lastCol).getDisplayValues();
 
-      let durSum = 0;
-      let durCount = 0;
+    const now = Date.now();
+    const windowMs = metrics.recentWindowMin * 60 * 1000;
 
-      for (let i = 0; i < vals.length; i++) {
-        const row = vals[i];
-        const tsStr = String(row[0] || "").trim();
-        const pushCode = String(row[9] || "").trim();
-        const pushResp = String(row[10] || "").trim();
-        const pushDuration = Number(row[15] || 0);
-        const pushStartAt = String(row[13] || "").trim();
+    let durSum = 0;
+    let durCount = 0;
 
-        // parse timestamp or pushStartAt for recency
-        let t = null;
-        if (pushStartAt) t = parseDateLoose_(pushStartAt);
-        if (!t && tsStr) t = parseDateLoose_(tsStr);
-        if (!t) continue;
-        const tMs = t.getTime();
-        if (now - tMs <= windowMs) {
-          // count as recent
-          metrics.recentPushes += pushCode && pushCode !== "" ? 1 : 0;
-          // check codes
-          if (/^429/.test(pushCode) || /429/.test(pushResp)) metrics.recent429++;
-          if (/^5\d\d/.test(pushCode) || /"status"\s*:\s*5\d\d/.test(pushResp)) metrics.recent5xx++;
-          if (pushDuration && !isNaN(pushDuration) && pushDuration > 0) {
-            durSum += Number(pushDuration);
-            durCount++;
-          }
+    for (let i = 0; i < vals.length; i++) {
+      const row = vals[i];
+
+      const pushCode = String(getByHeader_(row, headerMap, "pushCode") || "").trim();
+      const pushResp = String(getByHeader_(row, headerMap, "pushResp") || "").trim();
+      const pushDuration = Number(getByHeader_(row, headerMap, "pushDurationMs") || 0);
+      const tsStr = String(getByHeader_(row, headerMap, "pushStartAt") ||
+                           getByHeader_(row, headerMap, "timestamp") || "").trim();
+
+      const t = parseDateLoose_(tsStr);
+      if (!t) continue;
+
+      if (now - t.getTime() <= windowMs) {
+        if (pushCode) metrics.recentPushes++;
+        if (/429/.test(pushCode) || /429/.test(pushResp)) metrics.recent429++;
+        if (/^5\d\d$/.test(pushCode)) metrics.recent5xx++;
+
+        if (pushDuration > 0) {
+          durSum += pushDuration;
+          durCount++;
         }
       }
-
-      metrics.avgPushDurationMs = durCount ? Math.round(durSum / durCount) : 0;
     }
-  } catch (e) {
-    // ignore metrics errors
-  }
 
-  return Object.assign({ queueRows }, metrics);
+    metrics.avgPushDurationMs = durCount ? Math.round(durSum / durCount) : 0;
+
+  } catch (e) {}
+
+  return { queueRows, ...metrics };
 }
 
 /* ===========================
