@@ -113,6 +113,9 @@ async function adminUpdateAdminsBatchWithLog_(items) {
         failCount: Number(ret.failCount || 0),
       });
     }
+    if (ret && ret.ok && typeof emitEvent_ === 'function') {
+      emitEvent_('admin:update_batch', { items: Array.isArray(items) ? items.length : 0, okCount: Number(ret.okCount || 0), failCount: Number(ret.failCount || 0) });
+    }
   } catch (e) {
     console.warn('usageLogFire_ for adminUpdateAdminsBatchWithLog failed', e);
   }
@@ -132,6 +135,9 @@ async function adminDeleteAdmin_(userId) {
     try {
       if (json && json.ok && typeof usageLogFire_ === 'function') {
         usageLogFire_('admin_delete_admin', { userId: String(userId || "").trim() });
+      }
+      if (json && json.ok && typeof emitEvent_ === 'function') {
+        emitEvent_('admin:deleted', { userId: String(userId || '').trim() });
       }
     } catch (e) {
       console.warn('usageLogFire_ for adminDeleteAdmin_ failed', e);

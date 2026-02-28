@@ -172,6 +172,10 @@ async function bulkDelete_() {
 		usageLogFire_("users_delete_bulk", { requested: ids.length, okCount, failCount });
 	}
 
+	if (typeof emitEvent_ === "function") {
+		emitEvent_("users:deleted_bulk", { requested: ids.length, okCount, failCount });
+	}
+
 	await loadUsers();
 }
 
@@ -484,6 +488,10 @@ async function handleRowDelete_(row, userId, delBtn) {
 		originalMap.delete(userId);
 		dirtyMap.delete(userId);
 
+		if (typeof emitEvent_ === "function") {
+			emitEvent_("user:deleted", { userId });
+		}
+
 		applyFilters();
 	} else {
 		toast("刪除失敗", "err");
@@ -559,6 +567,14 @@ async function saveAllDirty_() {
 				originalMap.set(id, snapshot_(u));
 				dirtyMap.delete(id);
 			});
+
+			if (typeof emitEvent_ === "function") {
+				emitEvent_("users:updated_batch", {
+					items: items.length,
+					okCount: Number(ret.okCount || 0),
+					failCount: Number(ret.failCount || 0),
+				});
+			}
 
 			applyFilters();
 		} else {
@@ -641,6 +657,16 @@ function snapshot_(u) {
 function markDirty_(userId, u) {
 	const orig = originalMap.get(userId) || "";
 	const now = snapshot_(u);
-	if (orig !== now) dirtyMap.set(userId, true);
-	else dirtyMap.delete(userId);
+	const wasDirty = dirtyMap.has(userId);
+	if (orig !== now) {
+		if (!wasDirty) {
+			dirtyMap.set(userId, true);
+			if (typeof emitEvent_ === "function") emitEvent_("user:dirty", { userId, dirty: true });
+		}
+	} else {
+		if (wasDirty) {
+			dirtyMap.delete(userId);
+			if (typeof emitEvent_ === "function") emitEvent_("user:dirty", { userId, dirty: false });
+		}
+	}
 }

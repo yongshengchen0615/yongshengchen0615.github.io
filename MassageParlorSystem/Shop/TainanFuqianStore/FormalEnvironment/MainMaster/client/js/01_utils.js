@@ -52,3 +52,13 @@ function toTime_(v) {
   return isNaN(t) ? 0 : t;
 }
 
+// Client-side event emitter for UI changes. Use `window.addEventListener` to listen.
+function emitEvent_(name, detail) {
+  try {
+    const ev = new CustomEvent(String(name || ""), { detail: detail ?? {} });
+    window.dispatchEvent(ev);
+  } catch (err) {
+    console.warn("emitEvent_ failed:", err);
+  }
+}
+
