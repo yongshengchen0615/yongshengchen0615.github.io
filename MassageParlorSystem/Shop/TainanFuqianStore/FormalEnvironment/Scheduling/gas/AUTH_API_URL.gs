@@ -2217,7 +2217,6 @@ function handleTopupRedeem_(data) {
   var serial = String((data && data.serial) || "").trim();
   if (!userId) return jsonOut_({ ok: false, userId: "", error: "Missing userId" });
   if (!serial) return jsonOut_({ ok: false, userId: userId, error: "Missing serial" });
-
   try {
     var topupRes = redeemSerialViaTopup_(serial, userId, displayName);
 
@@ -2230,22 +2229,74 @@ function handleTopupRedeem_(data) {
       throw e1;
     }
 
-    var applied = applyTopupToUser_(userId, displayName, daysAdded, {
-      serial: serial,
-      amount: amount,
-      daysAdded: daysAdded,
-      topup: topupRes
-    });
+    // Try to apply TopUp to Users. If apply fails, record failure and attempt safe compensation.
+    try {
+      var applied = applyTopupToUser_(userId, displayName, daysAdded, {
+        serial: serial,
+        amount: amount,
+        daysAdded: daysAdded,
+        topup: topupRes
+      });
 
-    var r = buildCheckResult_(userId);
-    r.topup = {
-      serial: serial,
-      amount: amount,
-      daysAdded: applied.daysAdded,
-      oldRemainingDays: applied.oldRemainingDays,
-      newRemainingDays: applied.newRemainingDays
-    };
-    return jsonOut_(r);
+      var r = buildCheckResult_(userId);
+      r.topup = {
+        serial: serial,
+        amount: amount,
+        daysAdded: applied.daysAdded,
+        oldRemainingDays: applied.oldRemainingDays,
+        newRemainingDays: applied.newRemainingDays
+      };
+      return jsonOut_(r);
+    } catch (eApply) {
+      // Log failure to TopUpLog sheet for investigation
+      try {
+        var sh = getOrCreateTopupLogSheet_();
+        sh.appendRow([
+          Date.now(),
+          userId,
+          String(displayName || "").trim(),
+          String(serial || "").trim(),
+          Number(amount) || 0,
+          Number(daysAdded) || 0,
+          "", // oldRemainingDays unknown here
+          "", // newRemainingDays unknown
+          safeJsonStringify_({ error: String(eApply && eApply.message ? eApply.message : eApply), stack: String(eApply && eApply.stack ? eApply.stack : ""), topup: topupRes })
+        ]);
+      } catch (_) {}
+
+      // Attempt compensation: try to reactivate the serial via TopUp admin API if admin actor configured
+      try {
+        var sp = PropertiesService.getScriptProperties();
+        var adminUid = String(sp.getProperty('TOPUP_ADMIN_USERID') || '').trim();
+        var adminName = String(sp.getProperty('TOPUP_ADMIN_DISPLAYNAME') || '').trim() || 'AUTH';
+        if (adminUid) {
+          try {
+            var url = getTopupApiUrl_();
+            var payload = { mode: 'serials_reactivate', serial: String(serial || ''), actor: { userId: adminUid, displayName: adminName } };
+            var resp = UrlFetchApp.fetch(url, {
+              method: 'post',
+              contentType: 'text/plain; charset=utf-8',
+              payload: JSON.stringify(payload),
+              muteHttpExceptions: true
+            });
+            var respObj = parseJsonSafe_(resp.getContentText());
+            try {
+              var sh2 = getOrCreateTopupLogSheet_();
+              sh2.appendRow([Date.now(), userId, displayName, serial, amount, daysAdded, '', '', safeJsonStringify_({ reactivate: respObj })]);
+            } catch (_) {}
+          } catch (eReact) {
+            try {
+              var sh3 = getOrCreateTopupLogSheet_();
+              sh3.appendRow([Date.now(), userId, displayName, serial, amount, daysAdded, '', '', safeJsonStringify_({ reactivateError: String(eReact && eReact.message ? eReact.message : eReact) })]);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      var out = { ok: false, userId: userId, error: String(eApply && eApply.message ? eApply.message : eApply) };
+      if (eApply && eApply.details) out.details = eApply.details;
+      return jsonOut_(out);
+    }
   } catch (e) {
     var out = { ok: false, userId: userId, error: String(e && e.message ? e.message : e) };
     if (e && e.details) out.details = e.details;

@@ -344,7 +344,12 @@ async function ensureIdentity_() {
 }
 
 export function isTopupEnabled() {
-  return !!String(config.TOPUP_API_URL || "").trim();
+  // Frontend visibility: controlled by TOPUP_ENABLED flag or presence of AUTH API.
+  // Actual TopUp server URL should be stored in AUTH Script Properties (TOPUP_API_URL) and
+  // not exposed to the client.
+  if (typeof config.TOPUP_ENABLED !== "undefined") return !!config.TOPUP_ENABLED;
+  // Backward compatible fallback: enable if AUTH_API_URL present
+  return !!String(config.AUTH_API_URL || "").trim();
 }
 
 /**
@@ -425,148 +430,51 @@ export async function runTopupFlow({ context = "app", reloadOnSuccess = false } 
     let currentRemainingDays = null;
     let newRemainingDays = null;
 
-    // redeem + auth_check 可併行：縮短關鍵路徑等待（redeem 失敗時 check 結果會被丟棄）
-    stage = "redeem+auth_check";
-    const checkPromise = authCheck_(userIdSafe, displayNameSafe)
-      .then((r) => ({ ok: true, value: r }))
-      .catch((err) => ({ ok: false, error: err }));
-
-    // 1) redeem serial → amount
-    const redeemPayload = {
-      mode: "serials_redeem_public",
+    // Use server-to-server flow: ask AUTH to redeem and apply TopUp atomically.
+    // AUTH will call TopUp WebApp server-side, apply days/features to Users,
+    // and return a fresh check result including `topup` info.
+    stage = "auth_redeem";
+    const authRedeemPayload = {
+      mode: "topupredeem_v1",
       serial,
-      // 只要有 userId 就可以儲值（含 local_dev）
       userId: userIdSafe,
-      userID: userIdSafe, // compat
-      uid: userIdSafe, // compat
       displayName: displayNameSafe,
-      user: { userId: userIdSafe, displayName: displayNameSafe }, // compat
       note: `Scheduling|origUserId=${encodeURIComponent(userIdSafe)}`,
     };
-    const redeem = await redeemWithFastRetry_(config.TOPUP_API_URL, redeemPayload);
-    if (!redeem || redeem.ok !== true) {
-      const e = new Error(redeem?.error || "REDEEM_FAILED");
-      // attach some debug context (won't be sent to server)
-      e.details = { userId: userIdSafe, hasDisplayName: !!displayNameSafe };
+
+    const authRet = await postTextPlainJson_(config.AUTH_API_URL, authRedeemPayload);
+    if (!authRet || authRet.ok !== true) {
+      const e = new Error(authRet?.error || "REDEEM_FAILED");
+      e.details = { userId: userIdSafe };
       throw e;
     }
 
-    const amount = Number(redeem.amount);
-    // 允許 amount=0：代表只同步功能開通設定，不增加天數
+    // authRet is the full check result; authRet.topup contains serial/amount/daysAdded/old/new remaining
+    const topupInfo = authRet.topup || {};
+    const amount = Number(topupInfo.amount) || 0;
     if (!Number.isFinite(amount) || amount < 0) throw new Error("INVALID_AMOUNT");
 
-    // 2) read current auth status (contains remainingDays & feature flags)
-    stage = "auth_check";
-    const checkWrap = await checkPromise;
-    if (!checkWrap.ok) throw checkWrap.error || new Error("AUTH_CHECK_FAILED");
-    const check = checkWrap.value;
-    const currentRd = Number(check?.remainingDays);
-    currentRemainingDays = Number.isFinite(currentRd) ? currentRd : 0;
+    addDays = Number(topupInfo.daysAdded) || Math.floor(amount) || 0;
+    currentRemainingDays = Number(topupInfo.oldRemainingDays) || 0;
+    newRemainingDays = Number(topupInfo.newRemainingDays) || Number(authRet?.remainingDays) || currentRemainingDays + addDays;
 
-    // 規則：TopUp 的 amount 直接視為「增加天數」；amount=0 代表不加天數
-    addDays = Math.floor(amount);
-    newRemainingDays = currentRemainingDays + addDays;
-
-    // 3) write back to AUTH Users
-    // 注意：AUTH updateuser 若不帶 startDate/usageDays，後端會清空欄位。
-    // 因此即使 amount=0，也要送一組能「維持現況 remainingDays」的 startDate/usageDays。
-    let startDate = yyyyMmDdTpe_();
-    let usageDays = 1;
-
-    if (addDays > 0) {
-      // 走既有模式：把 remainingDays rebased 到 today，維持/延長到期日
-      usageDays = Math.max(1, Math.floor(newRemainingDays) + 1);
-      startDate = yyyyMmDdTpe_();
-    } else {
-      // amount=0：只改功能，不改到期狀態
-      // 若 remainingDays >= 0：用 startDate=today, usageDays=remaining+1 保持不變
-      // 若 remainingDays < 0：用 usageDays=1, startDate=today+remainingDays 保持「過期幅度」不變
-      if (Number.isFinite(currentRemainingDays)) {
-        if (currentRemainingDays >= 0) {
-          usageDays = Math.max(1, Math.floor(currentRemainingDays) + 1);
-          startDate = yyyyMmDdTpe_();
-        } else {
-          usageDays = 1;
-          startDate = yyyyMmDdAddDays_(yyyyMmDdTpe_(), Math.floor(currentRemainingDays));
-        }
-      } else {
-        // remainingDays 無法判定：保守做法是清空會讓 remainingDays=null（不建議，但避免誤延長）
-        // 仍送出最小安全值：usageDays=1, startDate=today-9999（等同長期過期）
-        usageDays = 1;
-        startDate = yyyyMmDdAddDays_(yyyyMmDdTpe_(), -9999);
-      }
-    }
-
-    // AUTH 端欄位是「是/否」，且 updateuser 若漏帶會被重設。
-    // 規則：
-    // - 若序號有明確帶回 true/false → 覆寫
-    // - 若序號未設定（null/undefined/空白）→ 沿用原本 check 值
-    const redeemPush = pickRedeemFlagTri_(redeem, "pushEnabled");
-    const redeemPersonal = pickRedeemFlagTri_(redeem, "personalStatusEnabled");
-    const redeemSchedule = pickRedeemFlagTri_(redeem, "scheduleEnabled");
-    const redeemPerformance = pickRedeemFlagTri_(redeem, "performanceEnabled");
-    const redeemBooking = pickRedeemFlagTri_(redeem, "bookingEnabled");
-
-    // 若序號設定「不同步」，則僅增加天數，不套用功能開通設定
-    const syncEnabled = normalizeSyncEnabled_(redeem);
-    const effRedeemPush = syncEnabled ? redeemPush : null;
-    const effRedeemPersonal = syncEnabled ? redeemPersonal : null;
-    const effRedeemSchedule = syncEnabled ? redeemSchedule : null;
-    const effRedeemPerformance = syncEnabled ? redeemPerformance : null;
-    const effRedeemBooking = syncEnabled ? redeemBooking : null;
-
-    const newPushEnabled = mergeYesNo_(check?.pushEnabled, effRedeemPush);
-    const newPersonalStatusEnabled = mergeYesNo_(check?.personalStatusEnabled, effRedeemPersonal);
-    const newScheduleEnabled = mergeYesNo_(check?.scheduleEnabled, effRedeemSchedule);
-    const newPerformanceEnabled = mergeYesNo_(check?.performanceEnabled, effRedeemPerformance);
-    const newBookingEnabled = mergeYesNo_(check?.bookingEnabled, effRedeemBooking);
-
-    stage = "auth_update";
-    await authUpdateUser_({
-      userId: userIdSafe,
-      audit: check?.audit,
-      masterCode: check?.masterCode,
-      pushEnabled: newPushEnabled,
-      personalStatusEnabled: newPersonalStatusEnabled,
-      scheduleEnabled: newScheduleEnabled,
-      performanceEnabled: newPerformanceEnabled,
-      bookingEnabled: newBookingEnabled,
-      // 若序號設定不同步，後端只更新 Users（天數/欄位），不觸發衍生表同步
-      skipSync: syncEnabled ? 0 : 1,
-      startDate,
-      usageDays,
-    });
-
-    // 4) 先用本地計算值更新 UI，最後驗證改成背景執行（少一次關鍵路徑往返）
+    // Update UI from authoritative check result returned by AUTH
     stage = "ui_update";
-    updateUsageBanner(displayNameSafe, newRemainingDays);
     try {
-      updateFeatureState({
-        pushEnabled: newPushEnabled,
-        personalStatusEnabled: newPersonalStatusEnabled,
-        scheduleEnabled: newScheduleEnabled,
-        performanceEnabled: newPerformanceEnabled,
-        bookingEnabled: newBookingEnabled,
-      });
+      updateUsageBanner(authRet?.displayName || displayNameSafe, newRemainingDays);
     } catch (_) {}
 
-    // background verify (best-effort)
-    // - Gate 情境通常會 reload：不需要再驗證一次，避免多餘往返
-    // - 用 setTimeout 讓 alert/reload 先跑，減少成功體感延遲
-    if (!reloadOnSuccess) {
-      setTimeout(() => {
-        authCheck_(userIdSafe, displayNameSafe)
-          .then((check2) => {
-            try {
-              updateUsageBanner(check2?.displayName || displayNameSafe, check2?.remainingDays);
-            } catch (_) {}
-            try {
-              updateFeatureState(check2);
-            } catch (_) {}
-          })
-          .catch(() => {});
-      }, 0);
-    }
+    try {
+      updateFeatureState(authRet);
+    } catch (_) {}
+
+    // derive feature flags from AUTH authoritative response to include in analytics event
+    const syncEnabled = (topupInfo && typeof topupInfo.syncEnabled !== 'undefined') ? topupInfo.syncEnabled : null;
+    const newPushEnabled = authRet?.pushEnabled ?? null;
+    const newPersonalStatusEnabled = authRet?.personalStatusEnabled ?? null;
+    const newScheduleEnabled = authRet?.scheduleEnabled ?? null;
+    const newPerformanceEnabled = authRet?.performanceEnabled ?? null;
+    const newBookingEnabled = authRet?.bookingEnabled ?? null;
 
     fireTopupEvent_({
       event: "topup_success",

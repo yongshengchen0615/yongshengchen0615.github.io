@@ -136,9 +136,9 @@ async function boot() {
       performance && performance.mark && performance.mark("app:config_ready");
     } catch (_) {}
 
-    // 預熱網路連線：AUTH / TOPUP / USAGE_LOG 常是同一個 GAS 網域，先 preconnect 可降低首次儲值/驗證延遲。
+    // 預熱網路連線：AUTH / USAGE_LOG 常是同一個 GAS 網域，先 preconnect 可降低首次驗證/紀錄延遲。
     preconnectUrl(config.AUTH_API_URL);
-    preconnectUrl(config.TOPUP_API_URL);
+    if (config.TOPUP_API_URL && String(config.TOPUP_API_URL).trim()) preconnectUrl(config.TOPUP_API_URL);
     preconnectUrl(config.USAGE_LOG_URL);
 
     // ✅ 不阻塞：先暖機一次狀態請求（AUTH 進行的同時就能開始走 DNS/TLS/edge failover）
@@ -157,7 +157,7 @@ async function boot() {
 
   bindEventsOnce();
 
-  // 儲值入口（是否顯示取決於 config.TOPUP_API_URL）
+  // 儲值入口（是否顯示取決於 isTopupEnabled）
   if (dom.btnTopupEl) dom.btnTopupEl.style.display = isTopupEnabled() ? "" : "none";
 
   // Auth / Gate
