@@ -17,11 +17,34 @@
       <header class="hero">
         <div class="hero__content">
           <p class="eyebrow">Beauty Booking</p>
-          <h1>選擇你的技師、服務與可預約時段</h1>
+          <h1>快速完成你的預約安排</h1>
           <p class="hero__lead">
-            此頁提供客人自行預約。所有技師、服務項目、上班時間與預約資料都會透過 Google Apps Script 寫入 Google Sheets。
+              直接依照技師、服務、日期與可用時段完成預約。你可以一次勾選多個服務項目，系統會自動加總總時長與總金額。
           </p>
+          <div class="flow-steps" aria-label="預約流程">
+            <span class="flow-step">1. 選擇技師</span>
+            <span class="flow-step">2. 選擇服務</span>
+            <span class="flow-step">3. 挑選日期與時段</span>
+            <span class="flow-step">4. 送出預約</span>
+          </div>
         </div>
+        <aside class="hero__meta">
+          <div class="hero-stat">
+            <span>可預約技師</span>
+            <strong id="heroTechnicianCount">0</strong>
+            <small>目前啟用中</small>
+          </div>
+          <div class="hero-stat">
+            <span>可預約服務</span>
+            <strong id="heroServiceCount">0</strong>
+            <small>依後台同步</small>
+          </div>
+          <div class="hero-stat hero-stat--wide">
+            <span>最近可預約日</span>
+            <strong id="heroNextAvailableDate">尚未載入</strong>
+            <small>會隨班表與預約狀態更新</small>
+          </div>
+        </aside>
       </header>
 
       <main class="content-grid">
@@ -30,6 +53,7 @@
             <div>
               <p class="eyebrow">Booking Form</p>
               <h2>填寫預約資訊</h2>
+              <p class="section-copy">先選技師，系統會自動過濾這位技師可提供的服務、日期與時段。</p>
             </div>
           </div>
 
@@ -37,11 +61,13 @@
             <label class="field">
               <span>姓名</span>
               <input name="customerName" type="text" placeholder="請輸入姓名" required />
+              <small>將用於預約資料與現場確認。</small>
             </label>
 
             <label class="field">
               <span>電話</span>
               <input name="phone" type="tel" placeholder="09xxxxxxxx" required />
+              <small>若時間異動，店家可透過此電話聯繫。</small>
             </label>
 
             <label class="field">
@@ -49,10 +75,11 @@
               <select name="technicianId" id="technicianSelect" required></select>
             </label>
 
-            <label class="field">
-              <span>服務項目</span>
-              <select name="serviceId" id="serviceSelect" required></select>
-            </label>
+            <div class="field field--full">
+                <span>服務項目</span>
+              <div id="serviceSelect" class="service-picker"></div>
+              <small>可同時勾選多個服務，系統會自動加總總時長與總金額。</small>
+            </div>
 
             <label class="field">
               <span>日期</span>
@@ -70,11 +97,14 @@
             </label>
 
             <div class="summary" id="bookingSummary">
-              <h3>預約摘要</h3>
+              <div class="summary__header">
+                <h3>預約摘要</h3>
+                <span class="summary__badge">即時更新</span>
+              </div>
               <p>尚未選定完整預約資訊。</p>
             </div>
 
-            <button type="submit" class="button button--primary button--wide">送出預約</button>
+            <button type="submit" id="bookingSubmitButton" class="button button--primary button--wide">送出預約</button>
           </form>
         </section>
 
@@ -83,9 +113,27 @@
             <div>
               <p class="eyebrow">Status</p>
               <h2>系統訊息</h2>
+              <p class="section-copy">目前的預約狀態與可預約概況會顯示在這裡。</p>
             </div>
           </div>
           <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
+          <div class="overview-card">
+            <h3>當前選擇概況</h3>
+            <dl class="overview-list">
+              <div>
+                <dt>目前技師</dt>
+                <dd id="overviewTechnician">尚未選擇</dd>
+              </div>
+              <div>
+                <dt>可選服務</dt>
+                <dd id="overviewServiceCount">0 項</dd>
+              </div>
+              <div>
+                <dt>可預約日期</dt>
+                <dd id="overviewDateCount">0 天</dd>
+              </div>
+            </dl>
+          </div>
           <div class="tips">
             <h3>使用提醒</h3>
             <ul>

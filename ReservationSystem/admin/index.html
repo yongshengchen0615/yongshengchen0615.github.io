@@ -15,13 +15,34 @@
   <body>
     <div class="admin-shell">
       <header class="admin-hero">
-        <div>
+        <div class="hero-main panel">
           <p class="eyebrow">Admin Console</p>
-          <h1>技師、服務與班表管理</h1>
+          <h1>技師、服務、班表與預約管理中心</h1>
           <p class="hero-copy">
-            管理員可以直接維護技師可服務項目、每日上班時間與查看預約資料。所有設定與紀錄都透過 GAS 寫入 Google Sheets。
+            在同一個頁面完成技師設定、服務上架、班表維護與預約調整。系統會直接同步到 GAS 與 Google Sheets。
           </p>
+          <div class="hero-tags" aria-label="管理流程">
+            <span class="hero-tag">先新增服務</span>
+            <span class="hero-tag">再建立技師</span>
+            <span class="hero-tag">綁定技師服務</span>
+            <span class="hero-tag">最後設定班表</span>
+          </div>
         </div>
+        <aside class="hero-side panel">
+          <div class="quick-card">
+            <p class="eyebrow">Workflow</p>
+            <h2>今日操作重點</h2>
+            <ul class="quick-list">
+              <li>服務停用後，前台不會再顯示該項目。</li>
+              <li>技師服務項目請在下方獨立區塊設定。</li>
+              <li>預約清單點擊編輯後才會展開編輯表單。</li>
+            </ul>
+          </div>
+          <div class="sync-card">
+            <span>最後同步時間</span>
+            <strong id="lastSyncLabel">尚未同步</strong>
+          </div>
+        </aside>
       </header>
 
       <main class="dashboard">
@@ -29,29 +50,64 @@
           <div class="stat-card">
             <span>技師</span>
             <strong id="technicianStat">0</strong>
+            <small id="technicianMeta">0 位啟用中</small>
           </div>
           <div class="stat-card">
             <span>服務</span>
             <strong id="serviceStat">0</strong>
+            <small id="serviceMeta">0 項啟用中</small>
           </div>
           <div class="stat-card">
             <span>班表</span>
             <strong id="scheduleStat">0</strong>
+            <small id="scheduleMeta">0 筆可預約</small>
           </div>
           <div class="stat-card">
             <span>預約</span>
             <strong id="reservationStat">0</strong>
+            <small id="reservationMeta">尚無資料</small>
+          </div>
+        </section>
+
+        <section class="panel command-bar" aria-label="快速操作台">
+          <div class="command-main">
+            <div>
+              <p class="eyebrow">Navigator</p>
+              <h2>快速操作台</h2>
+              <p class="section-copy">直接跳到指定模組，並隨時掌握目前資料量、待處理預約與下一步操作。</p>
+            </div>
+            <div class="command-actions">
+              <a class="button button--secondary" href="#serviceSection">服務</a>
+              <a class="button button--secondary" href="#technicianSection">技師</a>
+              <a class="button button--secondary" href="#scheduleSection">班表</a>
+              <a class="button button--secondary" href="#reservationSection">預約</a>
+              <button type="button" id="refreshDashboardButton" class="button button--primary">重新同步資料</button>
+            </div>
+          </div>
+          <div class="workflow-strip">
+            <div class="workflow-card">
+              <span>目前資料概況</span>
+              <strong id="workflowSummary">尚未載入</strong>
+            </div>
+            <div class="workflow-card">
+              <span>建議下一步</span>
+              <strong id="workflowHint">請先同步資料</strong>
+            </div>
           </div>
         </section>
 
         <section class="panel two-column">
-          <div>
+          <div id="serviceSection" class="section-block">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Service</p>
                 <h2>服務項目管理</h2>
+                <p class="section-copy">維護服務名稱、時長、價格與啟用狀態。</p>
               </div>
-              <span id="serviceFormMode" class="mode-badge">新增模式</span>
+              <div class="section-header-side">
+                <p id="serviceResultLabel" class="section-result">顯示 0 / 0 項</p>
+                <span id="serviceFormMode" class="mode-badge">新增模式</span>
+              </div>
             </div>
             <form id="serviceForm" class="stack-form">
               <input type="hidden" name="serviceId" />
@@ -72,20 +128,63 @@
                 <span>啟用此服務</span>
               </label>
               <div class="form-actions">
-                <button type="submit" id="serviceSubmitButton" class="button button--primary">新增服務</button>
+                <button type="button" id="serviceSubmitButton" class="button button--primary">新增服務</button>
                 <button type="button" id="serviceResetButton" class="button button--secondary">清空表單</button>
               </div>
             </form>
+            <div class="toolbar">
+              <label class="field field--compact">
+                <span>搜尋服務</span>
+                <input id="serviceSearchInput" type="text" placeholder="輸入服務名稱關鍵字" />
+              </label>
+            </div>
             <div id="serviceTable" class="data-list"></div>
+            <section id="serviceEditPanel" class="sub-panel is-hidden">
+              <div class="section-header section-header--tight">
+                <div>
+                  <p class="eyebrow">Service Editor</p>
+                  <h3>編輯服務項目</h3>
+                  <p class="section-copy">點擊清單中的編輯後，會在這裡展開修改表單。</p>
+                </div>
+                <span id="serviceEditMode" class="mode-badge is-hidden">編輯模式</span>
+              </div>
+              <form id="serviceEditForm" class="stack-form">
+                <input type="hidden" name="serviceId" />
+                <label class="field">
+                  <span>服務名稱</span>
+                  <input name="name" type="text" placeholder="例如：剪髮、染髮、手部凝膠" required />
+                </label>
+                <label class="field">
+                  <span>服務時間（分鐘）</span>
+                  <input name="durationMinutes" type="number" min="10" step="5" required />
+                </label>
+                <label class="field">
+                  <span>價格</span>
+                  <input name="price" type="number" min="0" step="50" required />
+                </label>
+                <label class="checkbox-field">
+                  <input name="active" type="checkbox" checked />
+                  <span>啟用此服務</span>
+                </label>
+                <div class="form-actions">
+                  <button type="submit" id="serviceEditSubmitButton" class="button button--primary">更新服務</button>
+                  <button type="button" id="serviceEditResetButton" class="button button--secondary">取消編輯</button>
+                </div>
+              </form>
+            </section>
           </div>
 
-          <div>
+          <div id="technicianSection" class="section-block">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Technician</p>
                 <h2>技師管理</h2>
+                <p class="section-copy">建立技師基本資料，再到下方綁定該技師可提供的服務。</p>
               </div>
-              <span id="technicianFormMode" class="mode-badge">新增模式</span>
+              <div class="section-header-side">
+                <p id="technicianResultLabel" class="section-result">顯示 0 / 0 位</p>
+                <span id="technicianFormMode" class="mode-badge">新增模式</span>
+              </div>
             </div>
             <form id="technicianForm" class="stack-form">
               <input type="hidden" name="technicianId" />
@@ -107,6 +206,7 @@
                 <div>
                   <p class="eyebrow">Technician Services</p>
                   <h3>技師服務項目</h3>
+                  <p class="section-copy">選擇技師後，勾選這位技師目前可承接的服務。</p>
                 </div>
               </div>
               <form id="technicianServiceForm" class="stack-form">
@@ -124,16 +224,59 @@
                 </div>
               </form>
             </div>
+            <div class="toolbar toolbar--split">
+              <label class="field field--compact">
+                <span>搜尋技師</span>
+                <input id="technicianSearchInput" type="text" placeholder="60 位技師時可用名稱快速搜尋" />
+              </label>
+              <label class="field field--compact">
+                <span>技師狀態</span>
+                <select id="technicianStatusFilter">
+                  <option value="all">全部</option>
+                  <option value="active">只看啟用</option>
+                  <option value="inactive">只看停用</option>
+                </select>
+              </label>
+            </div>
             <div id="technicianTable" class="data-list"></div>
+            <section id="technicianEditPanel" class="sub-panel is-hidden">
+              <div class="section-header section-header--tight">
+                <div>
+                  <p class="eyebrow">Technician Editor</p>
+                  <h3>編輯技師資料</h3>
+                  <p class="section-copy">點擊清單中的編輯後，會在這裡展開修改表單。</p>
+                </div>
+                <span id="technicianEditMode" class="mode-badge is-hidden">編輯模式</span>
+              </div>
+              <form id="technicianEditForm" class="stack-form">
+                <input type="hidden" name="technicianId" />
+                <label class="field">
+                  <span>技師名稱</span>
+                  <input name="name" type="text" placeholder="例如：Mia、Vivi、Ken" required />
+                </label>
+                <label class="checkbox-field">
+                  <input name="active" type="checkbox" checked />
+                  <span>啟用此技師</span>
+                </label>
+                <div class="form-actions">
+                  <button type="submit" id="technicianEditSubmitButton" class="button button--primary">更新技師</button>
+                  <button type="button" id="technicianEditResetButton" class="button button--secondary">取消編輯</button>
+                </div>
+              </form>
+            </section>
           </div>
         </section>
 
         <section class="panel two-column two-column--wide">
-          <div>
+          <div id="scheduleSection" class="section-block">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Schedule</p>
                 <h2>班表設定</h2>
+                <p class="section-copy">設定每日可預約時段，前台只會顯示仍可預約的時間。</p>
+              </div>
+              <div class="section-header-side">
+                <p id="scheduleResultLabel" class="section-result">0 筆班表</p>
               </div>
             </div>
             <form id="scheduleForm" class="stack-form">
@@ -142,35 +285,68 @@
                 <select name="technicianId" id="scheduleTechnicianSelect" required></select>
               </label>
               <label class="field">
-                <span>日期</span>
+                <span>起始日期</span>
                 <input name="date" type="date" required />
               </label>
               <label class="field">
+                <span>結束日期</span>
+                <input name="endDate" type="date" />
+              </label>
+              <label class="field">
                 <span>上班時間</span>
-                <input name="startTime" type="time" value="10:00" required />
+                <input name="startTime" type="time" value="00:00" required />
               </label>
               <label class="field">
                 <span>下班時間</span>
-                <input name="endTime" type="time" value="18:00" required />
+                <input name="endTime" type="time" value="23:59" required />
               </label>
               <label class="checkbox-field">
                 <input name="isWorking" type="checkbox" checked />
                 <span>當日可預約</span>
               </label>
+              <div class="form-actions">
+                <button type="button" id="scheduleAllDayButton" class="button button--secondary">套用 24 小時</button>
+                <button type="button" id="scheduleDayShiftButton" class="button button--secondary">套用熱門日班</button>
+              </div>
               <button type="submit" class="button button--primary">儲存班表</button>
             </form>
             <div id="scheduleTable" class="data-list"></div>
           </div>
 
-          <div>
+          <div id="reservationSection" class="section-block">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Reservation</p>
                 <h2>預約清單</h2>
+                <p class="section-copy">查看最新預約，必要時可直接修改預約狀態、時間或刪除。</p>
               </div>
-              <span id="reservationFormMode" class="mode-badge is-hidden">編輯模式</span>
+              <div class="section-header-side">
+                <p id="reservationResultLabel" class="section-result">顯示 0 / 0 筆</p>
+                <span id="reservationFormMode" class="mode-badge is-hidden">編輯模式</span>
+              </div>
             </div>
-            <p id="reservationEditorHint" class="helper-text">預設不顯示預約編輯表單，點擊清單中的編輯後才會展開。</p>
+            <p id="reservationEditorHint" class="helper-text">預設不顯示預約編輯表單，點擊清單中的編輯後會在本區塊展開。</p>
+            <div class="toolbar toolbar--split">
+              <label class="field field--compact">
+                <span>搜尋預約</span>
+                <input id="reservationSearchInput" type="text" placeholder="搜尋客人姓名、電話、技師或服務" />
+              </label>
+              <label class="field field--compact">
+                <span>狀態篩選</span>
+                <select id="reservationStatusFilter">
+                  <option value="all">全部狀態</option>
+                  <option value="已預約">已預約</option>
+                  <option value="已完成">已完成</option>
+                  <option value="已取消">已取消</option>
+                </select>
+              </label>
+              <label class="field field--compact">
+                <span>技師篩選</span>
+                <select id="reservationTechnicianFilter">
+                  <option value="">全部技師</option>
+                </select>
+              </label>
+            </div>
             <form id="reservationForm" class="stack-form is-hidden">
               <input type="hidden" name="reservationId" />
               <label class="field">
@@ -185,10 +361,10 @@
                 <span>技師</span>
                 <select name="technicianId" id="reservationTechnicianSelect" required></select>
               </label>
-              <label class="field">
+              <div class="field">
                 <span>服務項目</span>
-                <select name="serviceId" id="reservationServiceSelect" required></select>
-              </label>
+                <div id="reservationServiceSelect" class="checkbox-grid"></div>
+              </div>
               <label class="field">
                 <span>日期</span>
                 <input name="date" type="date" required />
@@ -200,9 +376,9 @@
               <label class="field">
                 <span>狀態</span>
                 <select name="status" required>
-                  <option value="booked">booked</option>
-                  <option value="completed">completed</option>
-                  <option value="cancelled">cancelled</option>
+                  <option value="已預約">已預約</option>
+                  <option value="已完成">已完成</option>
+                  <option value="已取消">已取消</option>
                 </select>
               </label>
               <label class="field">
@@ -223,9 +399,10 @@
             <div>
               <p class="eyebrow">System</p>
               <h2>系統訊息</h2>
+              <p class="section-copy">這裡會顯示資料同步、儲存成功或錯誤提示。</p>
             </div>
           </div>
-          <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
+          <div id="statusBox" class="status-box" role="status" aria-live="polite">尚未連線到 GAS。</div>
         </section>
       </main>
     </div>

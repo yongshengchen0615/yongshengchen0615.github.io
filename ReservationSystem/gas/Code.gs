@@ -109,7 +109,16 @@ function getAdminData_() {
   var technicianMap = indexBy_(technicians, 'technicianId');
 
   reservations = reservations.map(function(item) {
-    item.serviceName = serviceMap[item.serviceId] ? serviceMap[item.serviceId].name : '';
+    var reservationServices = getReservationServices_(item, serviceMap);
+    item.serviceName = reservationServices.map(function(service) {
+      return service.name;
+    }).join('、');
+    item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
+      return sum + Number(service.durationMinutes || 0);
+    }, 0);
+    item.totalPrice = reservationServices.reduce(function(sum, service) {
+      return sum + Number(service.price || 0);
+    }, 0);
     item.technicianName = technicianMap[item.technicianId] ? technicianMap[item.technicianId].name : '';
     return item;
   });
@@ -126,7 +135,6 @@ function createReservation_(payload) {
   validateRequired_(payload.customerName, 'customerName');
   validateRequired_(payload.phone, 'phone');
   validateRequired_(payload.technicianId, 'technicianId');
-  validateRequired_(payload.serviceId, 'serviceId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
 
@@ -137,18 +145,27 @@ function createReservation_(payload) {
 
   var serviceMap = indexBy_(services, 'serviceId');
   var technicianMap = indexBy_(technicians, 'technicianId');
-  var service = serviceMap[payload.serviceId];
+  var serviceIds = normalizeServiceIds_(payload.serviceIds || payload.serviceId);
+  var selectedServices = getServicesByIds_(serviceIds, serviceMap);
   var technician = technicianMap[payload.technicianId];
 
-  if (!service || !toBoolean_(service.active)) {
-    throw new Error('服務項目不存在或未啟用');
+  if (!serviceIds.length) {
+    throw new Error('請至少選擇一個服務項目');
   }
+
   if (!technician || !toBoolean_(technician.active)) {
     throw new Error('技師不存在或未啟用');
   }
-  if (technician.serviceIds.indexOf(payload.serviceId) === -1) {
-    throw new Error('此技師不可服務該項目');
-  }
+
+  serviceIds.forEach(function(serviceId) {
+    var service = serviceMap[serviceId];
+    if (!service || !toBoolean_(service.active)) {
+      throw new Error('服務項目不存在或未啟用');
+    }
+    if (technician.serviceIds.indexOf(serviceId) === -1) {
+      throw new Error('此技師不可服務所選的其中一個項目');
+    }
+  });
 
   var schedule = schedules.find(function(item) {
     return item.technicianId === payload.technicianId && item.date === payload.date;
@@ -158,16 +175,18 @@ function createReservation_(payload) {
     throw new Error('該日期沒有可預約班表');
   }
 
-  var serviceDuration = Number(service.durationMinutes);
+  var serviceDuration = selectedServices.reduce(function(sum, service) {
+    return sum + Number(service.durationMinutes || 0);
+  }, 0);
   var reservationStart = timeToMinutes_(payload.startTime);
   var reservationEnd = reservationStart + serviceDuration;
 
-  if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > timeToMinutes_(schedule.endTime)) {
+  if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
     throw new Error('預約時段不在班表範圍內');
   }
 
   var hasConflict = reservations.some(function(item) {
-    if (item.technicianId !== payload.technicianId || item.date !== payload.date || item.status === 'cancelled') {
+    if (item.technicianId !== payload.technicianId || item.date !== payload.date || isReservationCancelled_(item.status)) {
       return false;
     }
     var existingStart = timeToMinutes_(item.startTime);
@@ -184,11 +203,11 @@ function createReservation_(payload) {
     customerName: String(payload.customerName).trim(),
     phone: String(payload.phone).trim(),
     technicianId: payload.technicianId,
-    serviceId: payload.serviceId,
+    serviceId: serviceIds.join(','),
     date: payload.date,
     startTime: payload.startTime,
     endTime: minutesToTime_(reservationEnd),
-    status: 'booked',
+    status: '已預約',
     note: payload.note || '',
     createdAt: toIsoString_(new Date()),
   };
@@ -324,7 +343,6 @@ function saveReservation_(payload) {
   validateRequired_(payload.customerName, 'customerName');
   validateRequired_(payload.phone, 'phone');
   validateRequired_(payload.technicianId, 'technicianId');
-  validateRequired_(payload.serviceId, 'serviceId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
 
@@ -334,30 +352,41 @@ function saveReservation_(payload) {
   var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
   var serviceMap = indexBy_(services, 'serviceId');
   var technicianMap = indexBy_(technicians, 'technicianId');
-  var service = serviceMap[payload.serviceId];
+  var serviceIds = normalizeServiceIds_(payload.serviceIds || payload.serviceId);
+  var selectedServices = getServicesByIds_(serviceIds, serviceMap);
   var technician = technicianMap[payload.technicianId];
-  var status = String(payload.status || 'booked');
+  var status = normalizeReservationStatus_(payload.status || '已預約');
   var existing = reservations.find(function(item) {
     return item.reservationId === String(payload.reservationId || '');
   });
 
-  if (!service) {
-    throw new Error('服務項目不存在');
+  if (!serviceIds.length) {
+    throw new Error('請至少選擇一個服務項目');
   }
   if (!technician) {
     throw new Error('技師不存在');
   }
-  if (technician.serviceIds.indexOf(payload.serviceId) === -1) {
-    throw new Error('此技師不可服務該項目');
-  }
+
+  serviceIds.forEach(function(serviceId) {
+    if (!serviceMap[serviceId]) {
+      throw new Error('服務項目不存在');
+    }
+    if (technician.serviceIds.indexOf(serviceId) === -1) {
+      throw new Error('此技師不可服務所選的其中一個項目');
+    }
+  });
 
   var reservationStart = timeToMinutes_(payload.startTime);
-  var reservationEnd = reservationStart + Number(service.durationMinutes || 0);
+  var reservationEnd = reservationStart + selectedServices.reduce(function(sum, service) {
+    return sum + Number(service.durationMinutes || 0);
+  }, 0);
 
-  if (status !== 'cancelled') {
-    if (!toBoolean_(service.active)) {
-      throw new Error('服務項目未啟用');
-    }
+  if (!isReservationCancelled_(status)) {
+    serviceIds.forEach(function(serviceId) {
+      if (!toBoolean_(serviceMap[serviceId].active)) {
+        throw new Error('服務項目未啟用');
+      }
+    });
     if (!toBoolean_(technician.active)) {
       throw new Error('技師未啟用');
     }
@@ -369,7 +398,7 @@ function saveReservation_(payload) {
       throw new Error('該日期沒有可預約班表');
     }
 
-    if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > timeToMinutes_(schedule.endTime)) {
+    if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
       throw new Error('預約時段不在班表範圍內');
     }
 
@@ -377,7 +406,7 @@ function saveReservation_(payload) {
       if (item.reservationId === String(payload.reservationId || '')) {
         return false;
       }
-      if (item.technicianId !== payload.technicianId || item.date !== payload.date || item.status === 'cancelled') {
+      if (item.technicianId !== payload.technicianId || item.date !== payload.date || isReservationCancelled_(item.status)) {
         return false;
       }
       var existingStart = timeToMinutes_(item.startTime);
@@ -395,7 +424,7 @@ function saveReservation_(payload) {
     customerName: String(payload.customerName).trim(),
     phone: String(payload.phone).trim(),
     technicianId: payload.technicianId,
-    serviceId: payload.serviceId,
+    serviceId: serviceIds.join(','),
     date: payload.date,
     startTime: payload.startTime,
     endTime: minutesToTime_(reservationEnd),
@@ -424,7 +453,7 @@ function deleteService_(payload) {
   }
 
   var linkedReservation = reservations.find(function(item) {
-    return item.serviceId === serviceId;
+    return item.serviceIds.indexOf(serviceId) !== -1;
   });
   if (linkedReservation) {
     throw new Error('此服務已有歷史預約紀錄，不能直接刪除');
@@ -675,31 +704,94 @@ function normalizeSchedule_(item) {
 }
 
 function normalizeReservation_(item) {
+  var serviceIds = normalizeServiceIds_(item.serviceIds || item.serviceId);
   return {
     reservationId: String(item.reservationId || ''),
     customerName: String(item.customerName || ''),
     phone: String(item.phone || ''),
     technicianId: String(item.technicianId || ''),
     serviceId: String(item.serviceId || ''),
+    serviceIds: serviceIds,
     date: normalizeDateString_(item.date),
     startTime: normalizeTimeString_(item.startTime),
     endTime: normalizeTimeString_(item.endTime),
-    status: String(item.status || 'booked'),
+    status: normalizeReservationStatus_(item.status || '已預約'),
     note: String(item.note || ''),
     createdAt: String(item.createdAt || ''),
   };
 }
 
+function normalizeReservationStatus_(value) {
+  var status = String(value || '').trim();
+
+  if (!status) {
+    return '已預約';
+  }
+
+  if (status === 'booked' || status === '已預約') {
+    return '已預約';
+  }
+
+  if (status === 'completed' || status === '已完成') {
+    return '已完成';
+  }
+
+  if (status === 'cancelled' || status === '已取消') {
+    return '已取消';
+  }
+
+  return status;
+}
+
+function isReservationCancelled_(status) {
+  return normalizeReservationStatus_(status) === '已取消';
+}
+
 function getReservationOccupiedEndMinutes_(reservation, serviceMap) {
   var reservedStart = timeToMinutes_(reservation.startTime);
-  var service = serviceMap[reservation.serviceId];
-  var calculatedEnd = reservedStart + Number(service && service.durationMinutes ? service.durationMinutes : 0);
+  var calculatedEnd = reservedStart + getReservationServices_(reservation, serviceMap).reduce(function(sum, service) {
+    return sum + Number(service && service.durationMinutes ? service.durationMinutes : 0);
+  }, 0);
 
   if (!reservation.endTime) {
     return calculatedEnd;
   }
 
   return Math.max(timeToMinutes_(reservation.endTime), calculatedEnd);
+}
+
+function getScheduleEndMinutes_(timeText) {
+  if (String(timeText || '') === '23:59') {
+    return 24 * 60;
+  }
+
+  return timeToMinutes_(timeText);
+}
+
+function normalizeServiceIds_(value) {
+  if (Array.isArray(value)) {
+    return value.map(function(item) {
+      return String(item || '').trim();
+    }).filter(function(item, index, list) {
+      return item && list.indexOf(item) === index;
+    });
+  }
+
+  return String(value || '').split(',').map(function(item) {
+    return item.trim();
+  }).filter(function(item, index, list) {
+    return item && list.indexOf(item) === index;
+  });
+}
+
+function getServicesByIds_(serviceIds, serviceMap) {
+  return normalizeServiceIds_(serviceIds).map(function(serviceId) {
+    return serviceMap[serviceId];
+  }).filter(Boolean);
+}
+
+function getReservationServices_(reservation, serviceMap) {
+  return getServicesByIds_(reservation.serviceIds || reservation.serviceId, serviceMap);
 }
 
 function normalizeDateString_(value) {
