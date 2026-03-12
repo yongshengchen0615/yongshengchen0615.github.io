@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>美業預約系統 | 客戶端</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Outfit:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero__content">
+          <p class="eyebrow">Beauty Booking</p>
+          <h1>選擇你的技師、服務與可預約時段</h1>
+          <p class="hero__lead">
+            此頁提供客人自行預約。所有技師、服務項目、上班時間與預約資料都會透過 Google Apps Script 寫入 Google Sheets。
+          </p>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel booking-panel">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">Booking Form</p>
+              <h2>填寫預約資訊</h2>
+            </div>
+          </div>
+
+          <form id="bookingForm" class="form-grid">
+            <label class="field">
+              <span>姓名</span>
+              <input name="customerName" type="text" placeholder="請輸入姓名" required />
+            </label>
+
+            <label class="field">
+              <span>電話</span>
+              <input name="phone" type="tel" placeholder="09xxxxxxxx" required />
+            </label>
+
+            <label class="field">
+              <span>技師</span>
+              <select name="technicianId" id="technicianSelect" required></select>
+            </label>
+
+            <label class="field">
+              <span>服務項目</span>
+              <select name="serviceId" id="serviceSelect" required></select>
+            </label>
+
+            <label class="field">
+              <span>日期</span>
+              <select name="date" id="dateSelect" required></select>
+            </label>
+
+            <label class="field">
+              <span>時段</span>
+              <select name="startTime" id="timeSelect" required></select>
+            </label>
+
+            <label class="field field--full">
+              <span>備註</span>
+              <textarea name="note" rows="4" placeholder="可填寫想要的風格、需求或其他說明"></textarea>
+            </label>
+
+            <div class="summary" id="bookingSummary">
+              <h3>預約摘要</h3>
+              <p>尚未選定完整預約資訊。</p>
+            </div>
+
+            <button type="submit" class="button button--primary button--wide">送出預約</button>
+          </form>
+        </section>
+
+        <section class="panel panel--side">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">Status</p>
+              <h2>系統訊息</h2>
+            </div>
+          </div>
+          <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
+          <div class="tips">
+            <h3>使用提醒</h3>
+            <ul>
+              <li>只有在班表內且尚未被預約的時段會顯示。</li>
+              <li>服務時間會依照管理員設定的分鐘數計算。</li>
+              <li>若技師停用或服務停用，前台不會顯示。</li>
+            </ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
