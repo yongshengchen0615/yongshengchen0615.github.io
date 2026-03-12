@@ -13,6 +13,10 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="topLoadingBar" class="top-loading is-hidden" role="status" aria-live="polite" aria-busy="false" data-type="info">
+      <span class="top-loading__spinner" aria-hidden="true"></span>
+      <strong id="topLoadingLabel">處理中...</strong>
+    </div>
     <div class="admin-shell">
       <header class="admin-hero">
         <div class="hero-main panel">
@@ -29,15 +33,6 @@
           </div>
         </div>
         <aside class="hero-side panel">
-          <div class="quick-card">
-            <p class="eyebrow">Workflow</p>
-            <h2>今日操作重點</h2>
-            <ul class="quick-list">
-              <li>服務停用後，前台不會再顯示該項目。</li>
-              <li>技師服務項目請在下方獨立區塊設定。</li>
-              <li>預約清單點擊編輯後才會展開編輯表單。</li>
-            </ul>
-          </div>
           <div class="sync-card">
             <span>最後同步時間</span>
             <strong id="lastSyncLabel">尚未同步</strong>
@@ -77,10 +72,10 @@
               <p class="section-copy">直接跳到指定模組，並隨時掌握目前資料量、待處理預約與下一步操作。</p>
             </div>
             <div class="command-actions">
-              <a class="button button--secondary" href="#serviceSection">服務</a>
-              <a class="button button--secondary" href="#technicianSection">技師</a>
-              <a class="button button--secondary" href="#scheduleSection">班表</a>
-              <a class="button button--secondary" href="#reservationSection">預約</a>
+              <button type="button" class="button button--secondary page-tab is-active" data-page-trigger="service">服務</button>
+              <button type="button" class="button button--secondary page-tab" data-page-trigger="technician">技師</button>
+              <button type="button" class="button button--secondary page-tab" data-page-trigger="schedule">班表</button>
+              <button type="button" class="button button--secondary page-tab" data-page-trigger="reservation">預約</button>
               <button type="button" id="refreshDashboardButton" class="button button--primary">重新同步資料</button>
             </div>
           </div>
@@ -96,8 +91,8 @@
           </div>
         </section>
 
-        <section class="panel two-column">
-          <div id="serviceSection" class="section-block">
+        <section class="page-stack" aria-label="管理分頁內容">
+          <section id="serviceSection" class="panel section-block admin-page-panel is-active" data-admin-page="service">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Service</p>
@@ -116,6 +111,10 @@
                 <input name="name" type="text" placeholder="例如：剪髮、染髮、手部凝膠" required />
               </label>
               <label class="field">
+                <span>服務類別</span>
+                <input name="category" type="text" list="serviceCategorySuggestions" placeholder="例如：剪髮、染髮、美甲、護理" />
+              </label>
+              <label class="field">
                 <span>服務時間（分鐘）</span>
                 <input name="durationMinutes" type="number" min="10" step="5" required />
               </label>
@@ -132,12 +131,19 @@
                 <button type="button" id="serviceResetButton" class="button button--secondary">清空表單</button>
               </div>
             </form>
-            <div class="toolbar">
+            <div class="toolbar toolbar--split">
               <label class="field field--compact">
                 <span>搜尋服務</span>
                 <input id="serviceSearchInput" type="text" placeholder="輸入服務名稱關鍵字" />
               </label>
+              <label class="field field--compact">
+                <span>服務類別</span>
+                <select id="serviceCategoryFilter">
+                  <option value="">全部類別</option>
+                </select>
+              </label>
             </div>
+            <datalist id="serviceCategorySuggestions"></datalist>
             <div id="serviceTable" class="data-list"></div>
             <section id="serviceEditPanel" class="sub-panel is-hidden">
               <div class="section-header section-header--tight">
@@ -153,6 +159,10 @@
                 <label class="field">
                   <span>服務名稱</span>
                   <input name="name" type="text" placeholder="例如：剪髮、染髮、手部凝膠" required />
+                </label>
+                <label class="field">
+                  <span>服務類別</span>
+                  <input name="category" type="text" list="serviceCategorySuggestions" placeholder="例如：剪髮、染髮、美甲、護理" />
                 </label>
                 <label class="field">
                   <span>服務時間（分鐘）</span>
@@ -172,9 +182,9 @@
                 </div>
               </form>
             </section>
-          </div>
+          </section>
 
-          <div id="technicianSection" class="section-block">
+          <section id="technicianSection" class="panel section-block admin-page-panel is-hidden" data-admin-page="technician">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Technician</p>
@@ -192,6 +202,25 @@
                 <span>技師名稱</span>
                 <input name="name" type="text" placeholder="例如：Mia、Vivi、Ken" required />
               </label>
+              <div class="toolbar toolbar--split toolbar--inline">
+                <label class="field field--compact">
+                  <span>服務分類</span>
+                  <select id="technicianFormServiceCategorySelect">
+                    <option value="">全部分類</option>
+                  </select>
+                </label>
+                <div class="field field--compact">
+                  <span>分類批次操作</span>
+                  <div class="form-actions form-actions--compact">
+                    <button type="button" id="technicianFormSelectVisibleButton" class="button button--secondary">全選目前分類</button>
+                    <button type="button" id="technicianFormClearVisibleButton" class="button button--secondary">清除此分類</button>
+                  </div>
+                </div>
+              </div>
+              <div class="field">
+                <span>可服務項目</span>
+                <div id="technicianFormServiceCheckboxes" class="checkbox-grid"></div>
+              </div>
               <label class="checkbox-field">
                 <input name="active" type="checkbox" checked />
                 <span>啟用此技師</span>
@@ -201,33 +230,12 @@
                 <button type="button" id="technicianResetButton" class="button button--secondary">清空表單</button>
               </div>
             </form>
-            <div class="sub-panel">
-              <div class="section-header section-header--tight">
-                <div>
-                  <p class="eyebrow">Technician Services</p>
-                  <h3>技師服務項目</h3>
-                  <p class="section-copy">選擇技師後，勾選這位技師目前可承接的服務。</p>
-                </div>
-              </div>
-              <form id="technicianServiceForm" class="stack-form">
-                <label class="field">
-                  <span>技師</span>
-                  <select id="technicianServiceTechnicianSelect" name="technicianId" required></select>
-                </label>
-                <div class="field">
-                  <span>可服務項目</span>
-                  <div id="serviceCheckboxes" class="checkbox-grid"></div>
-                </div>
-                <div class="form-actions">
-                  <button type="submit" class="button button--primary">儲存技師服務項目</button>
-                  <button type="button" id="technicianServiceResetButton" class="button button--secondary">重新載入技師服務</button>
-                </div>
-              </form>
-            </div>
             <div class="toolbar toolbar--split">
               <label class="field field--compact">
                 <span>搜尋技師</span>
-                <input id="technicianSearchInput" type="text" placeholder="60 位技師時可用名稱快速搜尋" />
+                <select id="technicianSearchSelect">
+                  <option value="">全部技師</option>
+                </select>
               </label>
               <label class="field field--compact">
                 <span>技師狀態</span>
@@ -254,6 +262,25 @@
                   <span>技師名稱</span>
                   <input name="name" type="text" placeholder="例如：Mia、Vivi、Ken" required />
                 </label>
+                <div class="toolbar toolbar--split toolbar--inline">
+                  <label class="field field--compact">
+                    <span>服務分類</span>
+                    <select id="technicianEditServiceCategorySelect">
+                      <option value="">全部分類</option>
+                    </select>
+                  </label>
+                  <div class="field field--compact">
+                    <span>分類批次操作</span>
+                    <div class="form-actions form-actions--compact">
+                      <button type="button" id="technicianEditSelectVisibleButton" class="button button--secondary">全選目前分類</button>
+                      <button type="button" id="technicianEditClearVisibleButton" class="button button--secondary">清除此分類</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="field">
+                  <span>可服務項目</span>
+                  <div id="technicianEditServiceCheckboxes" class="checkbox-grid"></div>
+                </div>
                 <label class="checkbox-field">
                   <input name="active" type="checkbox" checked />
                   <span>啟用此技師</span>
@@ -264,11 +291,11 @@
                 </div>
               </form>
             </section>
-          </div>
+          </section>
         </section>
 
-        <section class="panel two-column two-column--wide">
-          <div id="scheduleSection" class="section-block">
+        <section class="page-stack" aria-label="管理分頁內容">
+          <section id="scheduleSection" class="panel section-block admin-page-panel is-hidden" data-admin-page="schedule">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Schedule</p>
@@ -278,6 +305,42 @@
               <div class="section-header-side">
                 <p id="scheduleResultLabel" class="section-result">0 筆班表</p>
               </div>
+            </div>
+            <div class="schedule-workspace">
+              <section class="schedule-card">
+                <div class="schedule-calendar-toolbar">
+                  <button type="button" id="schedulePrevMonthButton" class="button button--secondary">上個月</button>
+                  <div class="schedule-calendar-title">
+                    <p class="eyebrow">Calendar</p>
+                    <h3 id="scheduleCalendarLabel">0000 年 00 月</h3>
+                  </div>
+                  <div class="schedule-calendar-actions">
+                    <button type="button" id="scheduleTodayButton" class="button button--secondary">今天</button>
+                    <button type="button" id="scheduleNextMonthButton" class="button button--secondary">下個月</button>
+                  </div>
+                </div>
+                <div class="schedule-weekdays" aria-hidden="true">
+                  <span>日</span>
+                  <span>一</span>
+                  <span>二</span>
+                  <span>三</span>
+                  <span>四</span>
+                  <span>五</span>
+                  <span>六</span>
+                </div>
+                <div id="scheduleCalendarGrid" class="schedule-calendar-grid"></div>
+              </section>
+
+              <section class="schedule-card schedule-day-card">
+                <div class="section-header section-header--tight">
+                  <div>
+                    <p class="eyebrow">Selected Day</p>
+                    <h3 id="scheduleSelectedDateLabel">請先選擇日期</h3>
+                    <p id="scheduleSelectedDateMeta" class="section-copy">選取日曆日期後，會顯示當天所有技師的排班狀態。</p>
+                  </div>
+                </div>
+                <div id="scheduleTable" class="schedule-day-list"></div>
+              </section>
             </div>
             <form id="scheduleForm" class="stack-form">
               <label class="field">
@@ -307,13 +370,13 @@
               <div class="form-actions">
                 <button type="button" id="scheduleAllDayButton" class="button button--secondary">套用 24 小時</button>
                 <button type="button" id="scheduleDayShiftButton" class="button button--secondary">套用熱門日班</button>
+                <button type="button" id="scheduleResetButton" class="button button--secondary">清空班表表單</button>
               </div>
               <button type="submit" class="button button--primary">儲存班表</button>
             </form>
-            <div id="scheduleTable" class="data-list"></div>
-          </div>
+          </section>
 
-          <div id="reservationSection" class="section-block">
+          <section id="reservationSection" class="panel section-block admin-page-panel is-hidden" data-admin-page="reservation">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Reservation</p>
@@ -391,19 +454,9 @@
               </div>
             </form>
             <div id="reservationTable" class="table-wrap"></div>
-          </div>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">System</p>
-              <h2>系統訊息</h2>
-              <p class="section-copy">這裡會顯示資料同步、儲存成功或錯誤提示。</p>
-            </div>
-          </div>
-          <div id="statusBox" class="status-box" role="status" aria-live="polite">尚未連線到 GAS。</div>
-        </section>
       </main>
     </div>
 

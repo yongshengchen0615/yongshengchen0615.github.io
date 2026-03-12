@@ -227,10 +227,11 @@ function saveService_(payload) {
     price: Number(payload.price || 0),
     active: toBoolean_(payload.active),
     updatedAt: toIsoString_(new Date()),
+    category: normalizeCategoryValue_(payload.category),
   };
 
   upsertRecord_(SHEETS.services, 'serviceId', record);
-  return record;
+  return normalizeService_(record);
 }
 
 function saveTechnician_(payload) {
@@ -518,7 +519,7 @@ function deleteReservation_(payload) {
 
 function initializeSheets_() {
   ensureSheet_(SHEETS.config, ['key', 'value']);
-  ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt']);
+  ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
   ensureSheet_(SHEETS.reservations, ['reservationId', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
@@ -673,7 +674,13 @@ function normalizeService_(item) {
     price: Number(item.price || 0),
     active: toBoolean_(item.active),
     updatedAt: String(item.updatedAt || ''),
+    category: normalizeCategoryValue_(item.category),
   };
+}
+
+function normalizeCategoryValue_(value) {
+  var text = String(value || '').trim();
+  return text || '未分類';
 }
 
 function normalizeTechnician_(item) {

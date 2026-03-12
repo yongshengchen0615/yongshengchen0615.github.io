@@ -1,6 +1,7 @@
 const ADMIN_STORAGE_KEYS = {
   gasUrl: "beauty-booking-gas-url",
   password: "beauty-booking-admin-password",
+  serviceCategories: "beauty-booking-service-categories",
 };
 const CONFIG_PATH = "./config.json";
 
@@ -13,29 +14,41 @@ const state = {
   technicians: [],
   schedules: [],
   reservations: [],
+  serviceCategoryMap: {},
   filters: {
     serviceKeyword: "",
-    technicianKeyword: "",
+    serviceCategory: "",
+    technicianId: "",
     technicianStatus: "all",
+    technicianServiceCategory: "",
     reservationKeyword: "",
     reservationStatus: "all",
     reservationTechnicianId: "",
   },
   ui: {
     busyCount: 0,
+    activePage: "service",
+    scheduleCalendarMonth: formatLocalDate(new Date()).slice(0, 7),
+    selectedScheduleDate: formatLocalDate(new Date()),
   },
 };
 
 const elements = {
+  topLoadingBar: document.querySelector("#topLoadingBar"),
+  topLoadingLabel: document.querySelector("#topLoadingLabel"),
+  serviceCategorySuggestions: document.querySelector("#serviceCategorySuggestions"),
   refreshDashboardButton: document.querySelector("#refreshDashboardButton"),
   workflowSummary: document.querySelector("#workflowSummary"),
   workflowHint: document.querySelector("#workflowHint"),
+  pageTabs: Array.from(document.querySelectorAll("[data-page-trigger]")),
+  pagePanels: Array.from(document.querySelectorAll("[data-admin-page]")),
   serviceForm: document.querySelector("#serviceForm"),
   serviceFormMode: document.querySelector("#serviceFormMode"),
   serviceResultLabel: document.querySelector("#serviceResultLabel"),
   serviceSubmitButton: document.querySelector("#serviceSubmitButton"),
   serviceResetButton: document.querySelector("#serviceResetButton"),
   serviceSearchInput: document.querySelector("#serviceSearchInput"),
+  serviceCategoryFilter: document.querySelector("#serviceCategoryFilter"),
   serviceEditPanel: document.querySelector("#serviceEditPanel"),
   serviceEditForm: document.querySelector("#serviceEditForm"),
   serviceEditMode: document.querySelector("#serviceEditMode"),
@@ -45,17 +58,30 @@ const elements = {
   technicianResultLabel: document.querySelector("#technicianResultLabel"),
   technicianSubmitButton: document.querySelector("#technicianSubmitButton"),
   technicianResetButton: document.querySelector("#technicianResetButton"),
-  technicianSearchInput: document.querySelector("#technicianSearchInput"),
+  technicianFormServiceCategorySelect: document.querySelector("#technicianFormServiceCategorySelect"),
+  technicianFormSelectVisibleButton: document.querySelector("#technicianFormSelectVisibleButton"),
+  technicianFormClearVisibleButton: document.querySelector("#technicianFormClearVisibleButton"),
+  technicianFormServiceCheckboxes: document.querySelector("#technicianFormServiceCheckboxes"),
+  technicianSearchSelect: document.querySelector("#technicianSearchSelect"),
   technicianStatusFilter: document.querySelector("#technicianStatusFilter"),
   technicianEditPanel: document.querySelector("#technicianEditPanel"),
   technicianEditForm: document.querySelector("#technicianEditForm"),
   technicianEditMode: document.querySelector("#technicianEditMode"),
   technicianEditResetButton: document.querySelector("#technicianEditResetButton"),
-  technicianServiceForm: document.querySelector("#technicianServiceForm"),
-  technicianServiceTechnicianSelect: document.querySelector("#technicianServiceTechnicianSelect"),
-  technicianServiceResetButton: document.querySelector("#technicianServiceResetButton"),
+  technicianEditServiceCategorySelect: document.querySelector("#technicianEditServiceCategorySelect"),
+  technicianEditSelectVisibleButton: document.querySelector("#technicianEditSelectVisibleButton"),
+  technicianEditClearVisibleButton: document.querySelector("#technicianEditClearVisibleButton"),
+  technicianEditServiceCheckboxes: document.querySelector("#technicianEditServiceCheckboxes"),
   scheduleForm: document.querySelector("#scheduleForm"),
+  scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
+  scheduleCalendarLabel: document.querySelector("#scheduleCalendarLabel"),
+  scheduleCalendarGrid: document.querySelector("#scheduleCalendarGrid"),
+  schedulePrevMonthButton: document.querySelector("#schedulePrevMonthButton"),
+  scheduleTodayButton: document.querySelector("#scheduleTodayButton"),
+  scheduleNextMonthButton: document.querySelector("#scheduleNextMonthButton"),
+  scheduleSelectedDateLabel: document.querySelector("#scheduleSelectedDateLabel"),
+  scheduleSelectedDateMeta: document.querySelector("#scheduleSelectedDateMeta"),
   scheduleAllDayButton: document.querySelector("#scheduleAllDayButton"),
   scheduleDayShiftButton: document.querySelector("#scheduleDayShiftButton"),
   reservationForm: document.querySelector("#reservationForm"),
@@ -71,7 +97,6 @@ const elements = {
   technicianTable: document.querySelector("#technicianTable"),
   scheduleTable: document.querySelector("#scheduleTable"),
   reservationTable: document.querySelector("#reservationTable"),
-  serviceCheckboxes: document.querySelector("#serviceCheckboxes"),
   scheduleTechnicianSelect: document.querySelector("#scheduleTechnicianSelect"),
   reservationTechnicianSelect: document.querySelector("#reservationTechnicianSelect"),
   reservationServiceSelect: document.querySelector("#reservationServiceSelect"),
@@ -84,7 +109,6 @@ const elements = {
   reservationStat: document.querySelector("#reservationStat"),
   reservationMeta: document.querySelector("#reservationMeta"),
   lastSyncLabel: document.querySelector("#lastSyncLabel"),
-  statusBox: document.querySelector("#statusBox"),
 };
 
 function normalizeGasUrl(value) {
@@ -93,6 +117,106 @@ function normalizeGasUrl(value) {
 
 function normalizePassword(value) {
   return String(value || "").trim();
+}
+
+function normalizeCategory(value) {
+  return String(value || "").trim() || "未分類";
+}
+
+function loadServiceCategoryMap() {
+  try {
+    const rawValue = localStorage.getItem(ADMIN_STORAGE_KEYS.serviceCategories);
+    const parsed = rawValue ? JSON.parse(rawValue) : {};
+    state.serviceCategoryMap = parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    state.serviceCategoryMap = {};
+  }
+}
+
+function persistServiceCategoryMap() {
+  localStorage.setItem(ADMIN_STORAGE_KEYS.serviceCategories, JSON.stringify(state.serviceCategoryMap));
+}
+
+function getServiceCategory(service) {
+  if (!service) {
+    return "未分類";
+  }
+
+  return normalizeCategory(state.serviceCategoryMap[service.serviceId] || service.category);
+}
+
+function assignServiceCategory(serviceId, category) {
+  if (!serviceId) {
+    return;
+  }
+
+  state.serviceCategoryMap[serviceId] = normalizeCategory(category);
+  persistServiceCategoryMap();
+}
+
+function removeServiceCategory(serviceId) {
+  if (!serviceId || !Object.prototype.hasOwnProperty.call(state.serviceCategoryMap, serviceId)) {
+    return;
+  }
+
+  delete state.serviceCategoryMap[serviceId];
+  persistServiceCategoryMap();
+}
+
+function getServiceCategoryOptions() {
+  return Array.from(new Set(state.services.map((service) => getServiceCategory(service)))).sort((left, right) =>
+    left.localeCompare(right, "zh-Hant")
+  );
+}
+
+function refreshCategorySelectOptions(select, placeholder, selectedValue = "") {
+  if (!select) {
+    return;
+  }
+
+  setOptions(
+    select,
+    getServiceCategoryOptions().map((category) => ({ value: category, label: category })),
+    placeholder
+  );
+
+  const normalizedValue = normalizeCategory(selectedValue);
+  if (selectedValue && getServiceCategoryOptions().includes(normalizedValue)) {
+    select.value = normalizedValue;
+  }
+}
+
+function refreshServiceCategorySuggestions() {
+  const categories = getServiceCategoryOptions();
+  if (!elements.serviceCategorySuggestions) {
+    return;
+  }
+
+  elements.serviceCategorySuggestions.innerHTML = categories
+    .map((category) => `<option value="${category}"></option>`)
+    .join("");
+}
+
+function syncSavedServiceCategory(payload) {
+  if (!payload) {
+    return;
+  }
+
+  if (payload.serviceId) {
+    assignServiceCategory(payload.serviceId, payload.category);
+    return;
+  }
+
+  const matchedService = state.services.find((service) => {
+    return service.name === payload.name
+      && Number(service.durationMinutes) === Number(payload.durationMinutes)
+      && Number(service.price) === Number(payload.price);
+  });
+
+  if (matchedService) {
+    assignServiceCategory(matchedService.serviceId, payload.category);
+    matchedService.category = normalizeCategory(payload.category);
+  }
 }
 
 async function loadConfigFromJson() {
@@ -132,8 +256,19 @@ function applyPasswordPreference() {
 }
 
 function setStatus(message, type = "info") {
-  elements.statusBox.textContent = message;
-  elements.statusBox.dataset.type = type;
+  const nextType = type || "info";
+  const isLoading = nextType === "loading";
+
+  if (elements.topLoadingBar && elements.topLoadingLabel) {
+    elements.topLoadingLabel.textContent = message || "處理中...";
+    elements.topLoadingBar.dataset.type = nextType;
+    elements.topLoadingBar.classList.toggle("is-hidden", !message);
+    elements.topLoadingBar.setAttribute("aria-busy", String(isLoading));
+  }
+}
+
+function setLoadingStatus(message) {
+  setStatus(message, "loading");
 }
 
 function startBusyState() {
@@ -159,11 +294,36 @@ function scrollToPanel(panel) {
     return;
   }
 
+  const panelPage = panel.closest("[data-admin-page]");
+  if (panelPage) {
+    setActivePage(panelPage.dataset.adminPage);
+  }
+
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
   panel.classList.remove("is-flash");
   window.requestAnimationFrame(() => {
     panel.classList.add("is-flash");
     window.setTimeout(() => panel.classList.remove("is-flash"), 900);
+  });
+}
+
+function setActivePage(pageName) {
+  if (!pageName) {
+    return;
+  }
+
+  state.ui.activePage = pageName;
+
+  elements.pageTabs.forEach((button) => {
+    const isActive = button.dataset.pageTrigger === pageName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+
+  elements.pagePanels.forEach((panel) => {
+    const isActive = panel.dataset.adminPage === pageName;
+    panel.classList.toggle("is-hidden", !isActive);
+    panel.classList.toggle("is-active", isActive);
   });
 }
 
@@ -193,22 +353,104 @@ function formatLocalDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-function getFilteredServices() {
-  if (!state.filters.serviceKeyword) {
-    return state.services;
+function parseLocalDate(value) {
+  if (!value) {
+    return null;
   }
 
-  return state.services.filter((item) => matchesKeyword(item.name, state.filters.serviceKeyword));
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatMonthLabel(monthKey) {
+  const [year, month] = String(monthKey).split("-");
+  return `${year} 年 ${month} 月`;
+}
+
+function getMonthBoundary(monthKey) {
+  const [yearText, monthText] = String(monthKey).split("-");
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+
+  return {
+    firstDay: new Date(year, monthIndex, 1),
+    lastDay: new Date(year, monthIndex + 1, 0),
+  };
+}
+
+function shiftMonth(monthKey, offset) {
+  const { firstDay } = getMonthBoundary(monthKey);
+  const shifted = new Date(firstDay.getFullYear(), firstDay.getMonth() + offset, 1);
+  return formatLocalDate(shifted).slice(0, 7);
+}
+
+function getSchedulesForDate(dateText) {
+  return state.schedules
+    .filter((item) => item.date === dateText)
+    .slice()
+    .sort((left, right) => {
+      const leftTechnician = getTechnicianById(left.technicianId)?.name || left.technicianId;
+      const rightTechnician = getTechnicianById(right.technicianId)?.name || right.technicianId;
+      return `${leftTechnician}-${left.startTime}`.localeCompare(`${rightTechnician}-${right.startTime}`, "zh-Hant");
+    });
+}
+
+function updateSelectedScheduleDate(dateText) {
+  if (!dateText) {
+    return;
+  }
+
+  state.ui.selectedScheduleDate = dateText;
+  state.ui.scheduleCalendarMonth = dateText.slice(0, 7);
+}
+
+function resetScheduleForm() {
+  const selectedDate = state.ui.selectedScheduleDate || formatLocalDate(new Date());
+
+  elements.scheduleForm.reset();
+  elements.scheduleForm.date.value = selectedDate;
+  elements.scheduleForm.endDate.value = selectedDate;
+  elements.scheduleForm.startTime.value = "00:00";
+  elements.scheduleForm.endTime.value = "23:59";
+  elements.scheduleForm.isWorking.checked = true;
+}
+
+function fillScheduleForm(schedule) {
+  if (!schedule) {
+    resetScheduleForm();
+    return;
+  }
+
+  elements.scheduleForm.technicianId.value = schedule.technicianId;
+  elements.scheduleForm.date.value = schedule.date;
+  elements.scheduleForm.endDate.value = schedule.date;
+  elements.scheduleForm.startTime.value = schedule.startTime;
+  elements.scheduleForm.endTime.value = schedule.endTime;
+  elements.scheduleForm.isWorking.checked = Boolean(schedule.isWorking);
+  updateSelectedScheduleDate(schedule.date);
+  scrollToPanel(elements.scheduleForm);
+}
+
+function getFilteredServices() {
+  return state.services.filter((item) => {
+    const matchesName = !state.filters.serviceKeyword || matchesKeyword(item.name, state.filters.serviceKeyword);
+    const matchesCategory = !state.filters.serviceCategory || getServiceCategory(item) === state.filters.serviceCategory;
+    return matchesName && matchesCategory;
+  });
 }
 
 function getFilteredTechnicians() {
   return state.technicians.filter((item) => {
-    const matchesName = !state.filters.technicianKeyword || matchesKeyword(item.name, state.filters.technicianKeyword);
+    const matchesTechnician = !state.filters.technicianId || item.technicianId === state.filters.technicianId;
     const matchesStatus = state.filters.technicianStatus === "all"
       || (state.filters.technicianStatus === "active" && item.active)
       || (state.filters.technicianStatus === "inactive" && !item.active);
 
-    return matchesName && matchesStatus;
+    return matchesTechnician && matchesStatus;
   });
 }
 
@@ -290,6 +532,7 @@ function updateReservationFormMode() {
 function resetServiceForm() {
   elements.serviceForm.reset();
   elements.serviceForm.serviceId.value = "";
+  elements.serviceForm.category.value = "";
   elements.serviceForm.active.checked = true;
   updateServiceFormMode();
 }
@@ -301,6 +544,7 @@ function isEditingServiceInline() {
 function resetServiceEditForm() {
   elements.serviceEditForm.reset();
   elements.serviceEditForm.serviceId.value = "";
+  elements.serviceEditForm.category.value = "";
   elements.serviceEditForm.active.checked = true;
   elements.serviceEditPanel.classList.add("is-hidden");
   elements.serviceEditMode.classList.add("is-hidden");
@@ -310,6 +554,9 @@ function resetTechnicianForm() {
   elements.technicianForm.reset();
   elements.technicianForm.technicianId.value = "";
   elements.technicianForm.active.checked = true;
+  refreshCategorySelectOptions(elements.technicianFormServiceCategorySelect, "全部分類");
+  elements.technicianFormServiceCategorySelect.value = "";
+  renderServiceSelectionCheckboxes(elements.technicianFormServiceCheckboxes, [], "");
   updateTechnicianFormMode();
 }
 
@@ -321,38 +568,103 @@ function resetTechnicianEditForm() {
   elements.technicianEditForm.reset();
   elements.technicianEditForm.technicianId.value = "";
   elements.technicianEditForm.active.checked = true;
+  refreshCategorySelectOptions(elements.technicianEditServiceCategorySelect, "全部分類");
+  elements.technicianEditServiceCategorySelect.value = "";
+  renderServiceSelectionCheckboxes(elements.technicianEditServiceCheckboxes, [], "");
   elements.technicianEditPanel.classList.add("is-hidden");
   elements.technicianEditMode.classList.add("is-hidden");
+}
+
+function getSelectedServiceIdsFromContainer(container) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll('input[name="serviceIds"]:checked')).map((input) => input.value);
+}
+
+function getServicesByCategoryFilter(categoryFilter = "") {
+  return categoryFilter
+    ? state.services.filter((service) => getServiceCategory(service) === categoryFilter)
+    : state.services;
+}
+
+function renderServiceSelectionCheckboxes(container, selectedIds = [], categoryFilter = "") {
+  if (!container) {
+    return;
+  }
+
+  const checked = new Set(selectedIds || []);
+  if (!state.services.length) {
+    container.innerHTML = '<div class="empty-state">請先建立服務項目。</div>';
+    return;
+  }
+
+  const visibleServices = getServicesByCategoryFilter(categoryFilter);
+  if (!visibleServices.length) {
+    container.innerHTML = '<div class="empty-state">目前分類沒有可選服務。</div>';
+    return;
+  }
+
+  const groupedServices = visibleServices.reduce((result, service) => {
+    const category = getServiceCategory(service);
+    if (!result[category]) {
+      result[category] = [];
+    }
+    result[category].push(service);
+    return result;
+  }, {});
+
+  container.innerHTML = Object.entries(groupedServices)
+    .sort(([left], [right]) => left.localeCompare(right, "zh-Hant"))
+    .map(
+      ([category, services]) => `
+        <section class="service-category-group">
+          <div class="section-header section-header--tight">
+            <h4 class="service-category-title">${category}</h4>
+            <span class="service-category-meta">${services.length} 項</span>
+          </div>
+          <div class="service-category-grid">
+            ${services
+              .map(
+                (service) => `
+                  <label class="checkbox-pill">
+                    <input type="checkbox" name="serviceIds" value="${service.serviceId}" ${
+                      checked.has(service.serviceId) ? "checked" : ""
+                    } />
+                    <span>${service.name}</span>
+                  </label>
+                `
+              )
+              .join("")}
+          </div>
+        </section>
+      `
+    )
+    .join("");
+}
+
+function syncTechnicianServiceSelection(selectElement, container, selectedIds = []) {
+  const categoryFilter = selectElement?.value || "";
+  refreshCategorySelectOptions(selectElement, "全部分類", categoryFilter);
+  renderServiceSelectionCheckboxes(container, selectedIds, categoryFilter);
+}
+
+function setVisibleServiceSelection(container, checkedState) {
+  if (!container) {
+    return 0;
+  }
+
+  const visibleCheckboxes = Array.from(container.querySelectorAll('input[name="serviceIds"]'));
+  visibleCheckboxes.forEach((input) => {
+    input.checked = checkedState;
+  });
+  return visibleCheckboxes.length;
 }
 
 function setSchedulePreset(startTime, endTime) {
   elements.scheduleForm.startTime.value = startTime;
   elements.scheduleForm.endTime.value = endTime;
-}
-
-function resetTechnicianServiceForm() {
-  setOptions(
-    elements.technicianServiceTechnicianSelect,
-    state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
-    "請選擇技師"
-  );
-  renderServiceCheckboxes();
-}
-
-function fillTechnicianServiceForm(technicianId) {
-  const technician = getTechnicianById(technicianId);
-  if (!technician) {
-    resetTechnicianServiceForm();
-    return;
-  }
-
-  setOptions(
-    elements.technicianServiceTechnicianSelect,
-    state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
-    "請選擇技師"
-  );
-  elements.technicianServiceTechnicianSelect.value = technician.technicianId;
-  renderServiceCheckboxes(technician.serviceIds || []);
 }
 
 function getAllowedReservationServices(technicianId) {
@@ -553,32 +865,11 @@ function updateWorkspaceOverview() {
   elements.workflowHint.textContent = "資料狀態完整，可持續維護服務、班表與預約。";
 }
 
-function renderServiceCheckboxes(selectedIds = []) {
-  const checked = new Set(selectedIds);
-  if (!state.services.length) {
-    elements.serviceCheckboxes.innerHTML = '<div class="empty-state">請先建立服務項目。</div>';
-    return;
-  }
-
-  elements.serviceCheckboxes.innerHTML = state.services
-    .map(
-      (service) => `
-        <label class="checkbox-pill">
-          <input type="checkbox" name="serviceIds" value="${service.serviceId}" ${
-            checked.has(service.serviceId) ? "checked" : ""
-          } />
-          <span>${service.name}</span>
-        </label>
-      `
-    )
-    .join("");
-}
-
 function renderServiceTable() {
   const services = getFilteredServices();
   elements.serviceResultLabel.textContent = `顯示 ${services.length} / ${state.services.length} 項`;
   if (!services.length) {
-    elements.serviceTable.innerHTML = `<div class="empty-state">${state.filters.serviceKeyword ? "找不到符合搜尋條件的服務項目。" : "尚無服務項目。"}</div>`;
+    elements.serviceTable.innerHTML = `<div class="empty-state">${state.filters.serviceKeyword || state.filters.serviceCategory ? "找不到符合篩選條件的服務項目。" : "尚無服務項目。"}</div>`;
     return;
   }
 
@@ -587,6 +878,7 @@ function renderServiceTable() {
       <thead>
         <tr>
           <th>名稱</th>
+          <th>類別</th>
           <th>時長</th>
           <th>價格</th>
           <th>狀態</th>
@@ -599,6 +891,7 @@ function renderServiceTable() {
             (service) => `
               <tr>
                 <td data-label="名稱">${service.name}</td>
+                <td data-label="類別">${getServiceCategory(service)}</td>
                 <td data-label="時長">${service.durationMinutes} 分鐘</td>
                 <td data-label="價格">NT$ ${Number(service.price || 0).toLocaleString("zh-TW")}</td>
                 <td data-label="狀態">${getActiveStatusPill(service.active)}</td>
@@ -617,11 +910,46 @@ function renderServiceTable() {
   `;
 }
 
+function getGroupedServiceMarkup(serviceIds = []) {
+  const groupedServices = serviceIds
+    .map((serviceId) => getServiceById(serviceId))
+    .filter(Boolean)
+    .reduce((result, service) => {
+      const category = getServiceCategory(service);
+      if (!result[category]) {
+        result[category] = [];
+      }
+      result[category].push(service);
+      return result;
+    }, {});
+
+  const categoryNames = Object.keys(groupedServices).sort((left, right) => left.localeCompare(right, "zh-Hant"));
+  if (!categoryNames.length) {
+    return '<span class="helper-text">尚未綁定</span>';
+  }
+
+  return categoryNames
+    .map((category) => {
+      const items = groupedServices[category]
+        .sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"))
+        .map((service) => `<li>${service.name}</li>`)
+        .join("");
+
+      return `
+        <div class="service-list-group">
+          <p class="service-list-group-title">${category}</p>
+          <ul class="service-list">${items}</ul>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function renderTechnicianTable() {
   const technicians = getFilteredTechnicians();
   elements.technicianResultLabel.textContent = `顯示 ${technicians.length} / ${state.technicians.length} 位`;
   if (!technicians.length) {
-    elements.technicianTable.innerHTML = `<div class="empty-state">${state.filters.technicianKeyword || state.filters.technicianStatus !== "all" ? "找不到符合條件的技師資料。" : "尚無技師資料。"}</div>`;
+    elements.technicianTable.innerHTML = `<div class="empty-state">${state.filters.technicianId || state.filters.technicianStatus !== "all" ? "找不到符合條件的技師資料。" : "尚無技師資料。"}</div>`;
     return;
   }
 
@@ -638,15 +966,10 @@ function renderTechnicianTable() {
       <tbody>
         ${technicians
           .map((technician) => {
-            const serviceList = (technician.serviceIds || [])
-              .map((serviceId) => getServiceById(serviceId)?.name)
-              .filter(Boolean)
-              .map((name) => `<li>${name}</li>`)
-              .join("");
             return `
               <tr>
                 <td data-label="技師">${technician.name}</td>
-                <td data-label="可服務項目">${serviceList ? `<ul class="service-list">${serviceList}</ul>` : "<span class=\"helper-text\">尚未綁定</span>"}</td>
+                <td data-label="可服務項目">${getGroupedServiceMarkup(technician.serviceIds || [])}</td>
                 <td data-label="狀態">${getActiveStatusPill(technician.active)}</td>
                 <td data-label="操作" class="table-cell-actions">
                   <div class="table-actions">
@@ -666,37 +989,98 @@ function renderTechnicianTable() {
 function renderScheduleTable() {
   const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
   elements.scheduleResultLabel.textContent = `${workingSchedules} 筆可預約 / 共 ${state.schedules.length} 筆`;
-  if (!state.schedules.length) {
-    elements.scheduleTable.innerHTML = '<div class="empty-state">尚無班表資料。</div>';
+  renderScheduleCalendar();
+  renderSelectedScheduleDetail();
+}
+
+function renderScheduleCalendar() {
+  const monthKey = state.ui.scheduleCalendarMonth;
+  const { firstDay, lastDay } = getMonthBoundary(monthKey);
+  const selectedDate = state.ui.selectedScheduleDate;
+  const todayText = formatLocalDate(new Date());
+  const cells = [];
+
+  elements.scheduleCalendarLabel.textContent = formatMonthLabel(monthKey);
+
+  for (let index = 0; index < firstDay.getDay(); index += 1) {
+    cells.push('<div class="schedule-day--empty" aria-hidden="true"></div>');
+  }
+
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    const dateText = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const schedules = getSchedulesForDate(dateText);
+    const workingCount = schedules.filter((item) => item.isWorking).length;
+    const offCount = schedules.length - workingCount;
+    const classes = ["schedule-day"];
+
+    if (dateText === todayText) {
+      classes.push("is-today");
+    }
+    if (dateText === selectedDate) {
+      classes.push("is-selected");
+    }
+    if (workingCount) {
+      classes.push("has-schedule");
+    } else if (schedules.length) {
+      classes.push("has-off-only");
+    }
+
+    cells.push(`
+      <div class="${classes.join(" ")}">
+        <button type="button" class="schedule-day__button" data-schedule-date="${dateText}">
+          <span class="schedule-day__number">${day}</span>
+          <span class="schedule-day__meta">
+            <span class="schedule-day__count">${schedules.length ? `${schedules.length} 位技師` : "尚無排班"}</span>
+            <span class="schedule-day__status">${workingCount ? `${workingCount} 位可預約` : offCount ? `${offCount} 位休假` : ""}</span>
+          </span>
+        </button>
+      </div>
+    `);
+  }
+
+  elements.scheduleCalendarGrid.innerHTML = cells.join("");
+}
+
+function renderSelectedScheduleDetail() {
+  const selectedDate = state.ui.selectedScheduleDate;
+  const schedules = getSchedulesForDate(selectedDate);
+
+  if (!selectedDate) {
+    elements.scheduleSelectedDateLabel.textContent = "請先選擇日期";
+    elements.scheduleSelectedDateMeta.textContent = "選取日曆日期後，會顯示當天所有技師的排班狀態。";
+    elements.scheduleTable.innerHTML = '<div class="empty-state">尚未選取日期。</div>';
     return;
   }
 
-  elements.scheduleTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>日期</th>
-          <th>技師</th>
-          <th>時段</th>
-          <th>狀態</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${state.schedules
-          .slice()
-          .sort((left, right) => `${left.date}-${left.technicianId}`.localeCompare(`${right.date}-${right.technicianId}`))
-          .map((schedule) => `
-            <tr>
-              <td data-label="日期">${schedule.date}</td>
-              <td data-label="技師">${getTechnicianById(schedule.technicianId)?.name || schedule.technicianId}</td>
-              <td data-label="時段">${schedule.startTime} - ${schedule.endTime}</td>
-              <td data-label="狀態">${getScheduleStatusPill(schedule.isWorking)}</td>
-            </tr>
-          `)
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  elements.scheduleSelectedDateLabel.textContent = selectedDate;
+  elements.scheduleSelectedDateMeta.textContent = schedules.length
+    ? `當天共有 ${schedules.length} 筆班表，點擊編輯即可直接帶入下方表單。`
+    : "當天尚未建立班表，可直接用下方表單新增。";
+
+  if (!schedules.length) {
+    elements.scheduleTable.innerHTML = '<div class="empty-state">這一天尚未建立任何技師班表。</div>';
+    return;
+  }
+
+  elements.scheduleTable.innerHTML = schedules
+    .map((schedule) => {
+      const technicianName = getTechnicianById(schedule.technicianId)?.name || schedule.technicianId;
+      return `
+        <article class="schedule-entry">
+          <div class="schedule-entry__top">
+            <div class="schedule-entry__title">
+              <strong>${technicianName}</strong>
+              <span class="schedule-entry__time">${schedule.startTime} - ${schedule.endTime}</span>
+            </div>
+            ${getScheduleStatusPill(schedule.isWorking)}
+          </div>
+          <div class="table-actions">
+            <button type="button" class="button button--ghost" data-edit-schedule="${schedule.date}::${schedule.technicianId}">編輯這筆班表</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderReservationTable() {
@@ -751,7 +1135,9 @@ function renderReservationTable() {
 function refreshTechnicianOptions() {
   const selectedScheduleTechnicianId = elements.scheduleTechnicianSelect.value;
   const selectedReservationTechnicianId = elements.reservationTechnicianSelect.value;
-  const selectedTechnicianServiceTechnicianId = elements.technicianServiceTechnicianSelect.value;
+  const selectedTechnicianSearchId = elements.technicianSearchSelect.value;
+  const selectedServiceCategory = elements.serviceCategoryFilter.value;
+  const categoryOptions = getServiceCategoryOptions();
 
   setOptions(
     elements.scheduleTechnicianSelect,
@@ -768,9 +1154,9 @@ function refreshTechnicianOptions() {
   );
 
   setOptions(
-    elements.technicianServiceTechnicianSelect,
+    elements.technicianSearchSelect,
     state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
-    "請選擇技師"
+    "全部技師"
   );
 
   setOptions(
@@ -778,6 +1164,10 @@ function refreshTechnicianOptions() {
     state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
     "全部技師"
   );
+
+  refreshCategorySelectOptions(elements.serviceCategoryFilter, "全部類別", selectedServiceCategory || state.filters.serviceCategory);
+  refreshCategorySelectOptions(elements.technicianFormServiceCategorySelect, "全部分類", elements.technicianFormServiceCategorySelect?.value || "");
+  refreshCategorySelectOptions(elements.technicianEditServiceCategorySelect, "全部分類", elements.technicianEditServiceCategorySelect?.value || "");
 
   if (state.technicians.some((item) => item.technicianId === selectedScheduleTechnicianId && item.active)) {
     elements.scheduleTechnicianSelect.value = selectedScheduleTechnicianId;
@@ -787,8 +1177,17 @@ function refreshTechnicianOptions() {
     elements.reservationTechnicianSelect.value = selectedReservationTechnicianId;
   }
 
-  if (state.technicians.some((item) => item.technicianId === selectedTechnicianServiceTechnicianId)) {
-    elements.technicianServiceTechnicianSelect.value = selectedTechnicianServiceTechnicianId;
+  if (state.technicians.some((item) => item.technicianId === selectedTechnicianSearchId)) {
+    elements.technicianSearchSelect.value = selectedTechnicianSearchId;
+  } else if (state.technicians.some((item) => item.technicianId === state.filters.technicianId)) {
+    elements.technicianSearchSelect.value = state.filters.technicianId;
+  }
+
+  if (categoryOptions.includes(state.filters.serviceCategory)) {
+    elements.serviceCategoryFilter.value = state.filters.serviceCategory;
+  } else {
+    state.filters.serviceCategory = "";
+    elements.serviceCategoryFilter.value = "";
   }
 
   if (state.technicians.some((item) => item.technicianId === state.filters.reservationTechnicianId)) {
@@ -797,9 +1196,12 @@ function refreshTechnicianOptions() {
 }
 
 function renderAll() {
+  if (!state.ui.selectedScheduleDate) {
+    state.ui.selectedScheduleDate = formatLocalDate(new Date());
+  }
   updateStats();
   updateWorkspaceOverview();
-  renderServiceCheckboxes();
+  refreshServiceCategorySuggestions();
   renderServiceTable();
   renderTechnicianTable();
   renderScheduleTable();
@@ -807,6 +1209,11 @@ function renderAll() {
   refreshTechnicianOptions();
   updateServiceFormMode();
   updateTechnicianFormMode();
+  syncTechnicianServiceSelection(
+    elements.technicianFormServiceCategorySelect,
+    elements.technicianFormServiceCheckboxes,
+    getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes)
+  );
   if (isEditingServiceInline()) {
     const service = getServiceById(elements.serviceEditForm.serviceId.value);
     if (service) {
@@ -823,12 +1230,6 @@ function renderAll() {
       resetTechnicianEditForm();
     }
   }
-  const technicianServiceTechnicianId = elements.technicianServiceTechnicianSelect.value;
-  if (technicianServiceTechnicianId && getTechnicianById(technicianServiceTechnicianId)) {
-    fillTechnicianServiceForm(technicianServiceTechnicianId);
-  } else {
-    resetTechnicianServiceForm();
-  }
   if (isEditingReservation()) {
     const reservation = state.reservations.find(
       (item) => item.reservationId === elements.reservationForm.reservationId.value
@@ -844,13 +1245,16 @@ function renderAll() {
 }
 
 async function loadAdminData() {
-  setStatus("正在載入管理資料...");
+  setLoadingStatus("正在載入管理資料...");
   const result = await requestApi("GET", { action: "adminData" });
   if (!result.ok) {
     throw new Error(result.message || "載入失敗");
   }
 
-  state.services = result.data.services || [];
+  state.services = (result.data.services || []).map((service) => ({
+    ...service,
+    category: normalizeCategory(service.category || state.serviceCategoryMap[service.serviceId]),
+  }));
   state.technicians = result.data.technicians || [];
   state.schedules = result.data.schedules || [];
   state.reservations = result.data.reservations || [];
@@ -860,10 +1264,12 @@ async function loadAdminData() {
 }
 
 async function saveServiceForm(form) {
+  setLoadingStatus("正在儲存服務資料...");
   const formData = new FormData(form);
   const payload = {
     serviceId: formData.get("serviceId") || "",
     name: formData.get("name").trim(),
+    category: normalizeCategory(formData.get("category")),
     durationMinutes: Number(formData.get("durationMinutes")),
     price: Number(formData.get("price")),
     active: formData.get("active") === "on",
@@ -874,7 +1280,10 @@ async function saveServiceForm(form) {
     throw new Error(result.message || "儲存服務失敗");
   }
 
-  return payload;
+  return {
+    ...result.data,
+    category: payload.category,
+  };
 }
 
 async function submitService(event) {
@@ -883,19 +1292,24 @@ async function submitService(event) {
 
   resetServiceForm();
   await loadAdminData();
+  syncSavedServiceCategory(payload);
+  renderAll();
   setStatus(payload.serviceId ? "服務已更新。" : "服務已新增。", "success");
 }
 
 async function submitServiceEdit(event) {
   event.preventDefault();
-  await saveServiceForm(elements.serviceEditForm);
+  const payload = await saveServiceForm(elements.serviceEditForm);
 
   resetServiceEditForm();
   await loadAdminData();
+  syncSavedServiceCategory(payload);
+  renderAll();
   setStatus("服務已更新。", "success");
 }
 
 async function saveTechnicianForm(form) {
+  setLoadingStatus("正在儲存技師資料...");
   const formData = new FormData(form);
   const payload = {
     technicianId: formData.get("technicianId") || "",
@@ -908,47 +1322,49 @@ async function saveTechnicianForm(form) {
     throw new Error(result.message || "儲存技師失敗");
   }
 
-  return payload;
+  return result.data;
 }
 
-async function submitTechnician(event) {
-  event.preventDefault();
-  const payload = await saveTechnicianForm(elements.technicianForm);
-
-  resetTechnicianForm();
-  await loadAdminData();
-  setStatus(payload.technicianId ? "技師已更新。" : "技師已新增。", "success");
-}
-
-async function submitTechnicianEdit(event) {
-  event.preventDefault();
-  await saveTechnicianForm(elements.technicianEditForm);
-
-  resetTechnicianEditForm();
-  await loadAdminData();
-  setStatus("技師已更新。", "success");
-}
-
-async function submitTechnicianServices(event) {
-  event.preventDefault();
-  const formData = new FormData(elements.technicianServiceForm);
-  const payload = {
-    technicianId: formData.get("technicianId"),
-    serviceIds: formData.getAll("serviceIds"),
-  };
-
+async function saveTechnicianServicesPayload(payload) {
   const result = await requestApi("POST", {}, { action: "saveTechnicianServices", payload });
   if (!result.ok) {
     throw new Error(result.message || "儲存技師服務項目失敗");
   }
 
+  return result.data;
+}
+
+async function submitTechnician(event) {
+  event.preventDefault();
+  const serviceIds = getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes);
+  const technician = await saveTechnicianForm(elements.technicianForm);
+  await saveTechnicianServicesPayload({
+    technicianId: technician.technicianId,
+    serviceIds,
+  });
+
+  resetTechnicianForm();
   await loadAdminData();
-  fillTechnicianServiceForm(payload.technicianId);
-  setStatus("技師服務項目已更新。", "success");
+  setStatus("技師已新增，並同步更新可服務項目。", "success");
+}
+
+async function submitTechnicianEdit(event) {
+  event.preventDefault();
+  const technician = await saveTechnicianForm(elements.technicianEditForm);
+  const serviceIds = getSelectedServiceIdsFromContainer(elements.technicianEditServiceCheckboxes);
+  await saveTechnicianServicesPayload({
+    technicianId: technician.technicianId,
+    serviceIds,
+  });
+
+  resetTechnicianEditForm();
+  await loadAdminData();
+  setStatus("技師與可服務項目已更新。", "success");
 }
 
 async function submitSchedule(event) {
   event.preventDefault();
+  setLoadingStatus("正在儲存班表...");
   const formData = new FormData(elements.scheduleForm);
   const startDate = formData.get("date");
   const endDate = formData.get("endDate") || startDate;
@@ -969,11 +1385,9 @@ async function submitSchedule(event) {
     }
   }
 
-  elements.scheduleForm.reset();
-  elements.scheduleForm.isWorking.checked = true;
-  elements.scheduleForm.startTime.value = "00:00";
-  elements.scheduleForm.endTime.value = "23:59";
+  updateSelectedScheduleDate(startDate);
   await loadAdminData();
+  resetScheduleForm();
   setStatus(scheduleDates.length > 1 ? `已套用 ${scheduleDates.length} 天班表。` : "班表已儲存。", "success");
 }
 
@@ -998,6 +1412,7 @@ async function submitReservation(event) {
     return;
   }
 
+  setLoadingStatus("正在更新預約資料...");
   const result = await requestApi("POST", {}, { action: "saveReservation", payload });
   if (!result.ok) {
     throw new Error(result.message || "儲存預約失敗");
@@ -1013,6 +1428,7 @@ function fillServiceForm(serviceId) {
   if (!service) return;
   elements.serviceEditForm.serviceId.value = service.serviceId;
   elements.serviceEditForm.name.value = service.name;
+  elements.serviceEditForm.category.value = getServiceCategory(service);
   elements.serviceEditForm.durationMinutes.value = service.durationMinutes;
   elements.serviceEditForm.price.value = service.price;
   elements.serviceEditForm.active.checked = Boolean(service.active);
@@ -1027,9 +1443,13 @@ function fillTechnicianForm(technicianId) {
   elements.technicianEditForm.technicianId.value = technician.technicianId;
   elements.technicianEditForm.name.value = technician.name;
   elements.technicianEditForm.active.checked = Boolean(technician.active);
+  syncTechnicianServiceSelection(
+    elements.technicianEditServiceCategorySelect,
+    elements.technicianEditServiceCheckboxes,
+    technician.serviceIds || []
+  );
   elements.technicianEditPanel.classList.remove("is-hidden");
   elements.technicianEditMode.classList.remove("is-hidden");
-  fillTechnicianServiceForm(technicianId);
   scrollToPanel(elements.technicianEditPanel);
 }
 
@@ -1054,6 +1474,7 @@ async function deleteService(serviceId, serviceName) {
   const confirmed = window.confirm(`確定要刪除服務「${serviceName}」嗎？`);
   if (!confirmed) return;
 
+  setLoadingStatus("正在刪除服務資料...");
   const result = await requestApi("POST", {}, {
     action: "deleteService",
     payload: { serviceId },
@@ -1068,6 +1489,7 @@ async function deleteService(serviceId, serviceName) {
   if (elements.serviceEditForm.serviceId.value === serviceId) {
     resetServiceEditForm();
   }
+  removeServiceCategory(serviceId);
   await loadAdminData();
   setStatus("服務已刪除。", "success");
 }
@@ -1076,6 +1498,7 @@ async function deleteTechnician(technicianId, technicianName) {
   const confirmed = window.confirm(`確定要刪除技師「${technicianName}」嗎？`);
   if (!confirmed) return;
 
+  setLoadingStatus("正在刪除技師資料...");
   const result = await requestApi("POST", {}, {
     action: "deleteTechnician",
     payload: { technicianId },
@@ -1102,6 +1525,7 @@ async function deleteReservation(reservationId, customerName) {
   const confirmed = window.confirm(`確定要刪除 ${customerName} 的預約嗎？${detailText}`);
   if (!confirmed) return;
 
+  setLoadingStatus("正在刪除預約資料...");
   const result = await requestApi("POST", {}, {
     action: "deleteReservation",
     payload: { reservationId },
@@ -1118,6 +1542,14 @@ async function deleteReservation(reservationId, customerName) {
 }
 
 function bindEvents() {
+  elements.pageTabs.forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextPage = button.dataset.pageTrigger;
+      setActivePage(nextPage);
+      setStatus(`已切換到${button.textContent.trim()}頁面。`, "info");
+    });
+  });
+
   elements.serviceSubmitButton.addEventListener("click", async (event) => {
     try {
       await submitService(event);
@@ -1151,14 +1583,6 @@ function bindEvents() {
   elements.technicianEditForm.addEventListener("submit", async (event) => {
     try {
       await submitTechnicianEdit(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.technicianServiceForm.addEventListener("submit", async (event) => {
-    try {
-      await submitTechnicianServices(event);
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -1200,26 +1624,55 @@ function bindEvents() {
     setStatus("已取消技師編輯。", "info");
   });
 
-  elements.technicianServiceResetButton.addEventListener("click", () => {
-    fillTechnicianServiceForm(elements.technicianServiceTechnicianSelect.value);
-    setStatus("技師服務項目已重新載入。", "info");
-  });
-
-  elements.technicianServiceTechnicianSelect.addEventListener("change", (event) => {
-    fillTechnicianServiceForm(event.target.value);
-    if (event.target.value) {
-      setStatus("已切換技師，可直接調整服務項目。", "info");
-    }
-  });
-
   elements.serviceSearchInput.addEventListener("input", (event) => {
     state.filters.serviceKeyword = event.target.value;
     renderServiceTable();
   });
 
-  elements.technicianSearchInput.addEventListener("input", (event) => {
-    state.filters.technicianKeyword = event.target.value;
+  elements.serviceCategoryFilter.addEventListener("change", (event) => {
+    state.filters.serviceCategory = event.target.value;
+    renderServiceTable();
+  });
+
+  elements.technicianSearchSelect.addEventListener("change", (event) => {
+    state.filters.technicianId = event.target.value;
     renderTechnicianTable();
+  });
+
+  elements.technicianFormServiceCategorySelect.addEventListener("change", () => {
+    syncTechnicianServiceSelection(
+      elements.technicianFormServiceCategorySelect,
+      elements.technicianFormServiceCheckboxes,
+      getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes)
+    );
+  });
+
+  elements.technicianEditServiceCategorySelect.addEventListener("change", () => {
+    syncTechnicianServiceSelection(
+      elements.technicianEditServiceCategorySelect,
+      elements.technicianEditServiceCheckboxes,
+      getSelectedServiceIdsFromContainer(elements.technicianEditServiceCheckboxes)
+    );
+  });
+
+  elements.technicianFormSelectVisibleButton.addEventListener("click", () => {
+    const count = setVisibleServiceSelection(elements.technicianFormServiceCheckboxes, true);
+    setStatus(count ? "已全選目前分類服務。" : "目前分類沒有可勾選的服務項目。", count ? "info" : "info");
+  });
+
+  elements.technicianFormClearVisibleButton.addEventListener("click", () => {
+    const count = setVisibleServiceSelection(elements.technicianFormServiceCheckboxes, false);
+    setStatus(count ? "已清除目前分類服務。" : "目前分類沒有可清除的服務項目。", count ? "info" : "info");
+  });
+
+  elements.technicianEditSelectVisibleButton.addEventListener("click", () => {
+    const count = setVisibleServiceSelection(elements.technicianEditServiceCheckboxes, true);
+    setStatus(count ? "已全選目前分類服務。" : "目前分類沒有可勾選的服務項目。", count ? "info" : "info");
+  });
+
+  elements.technicianEditClearVisibleButton.addEventListener("click", () => {
+    const count = setVisibleServiceSelection(elements.technicianEditServiceCheckboxes, false);
+    setStatus(count ? "已清除目前分類服務。" : "目前分類沒有可清除的服務項目。", count ? "info" : "info");
   });
 
   elements.technicianStatusFilter.addEventListener("change", (event) => {
@@ -1247,14 +1700,68 @@ function bindEvents() {
     setStatus("已套用 24 小時班表預設。", "info");
   });
 
+  elements.scheduleResetButton.addEventListener("click", () => {
+    resetScheduleForm();
+    setStatus("班表表單已重設。", "info");
+  });
+
   elements.scheduleDayShiftButton.addEventListener("click", () => {
     setSchedulePreset("08:00", "20:00");
     setStatus("已套用熱門日班預設。", "info");
   });
 
+  elements.schedulePrevMonthButton.addEventListener("click", () => {
+    state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, -1);
+    state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
+    renderScheduleTable();
+  });
+
+  elements.scheduleTodayButton.addEventListener("click", () => {
+    const todayText = formatLocalDate(new Date());
+    updateSelectedScheduleDate(todayText);
+    renderScheduleTable();
+    resetScheduleForm();
+    setStatus(`已切換到 ${todayText}。`, "info");
+  });
+
+  elements.scheduleNextMonthButton.addEventListener("click", () => {
+    state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, 1);
+    state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
+    renderScheduleTable();
+  });
+
+  elements.scheduleCalendarGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-schedule-date]");
+    if (!button) {
+      return;
+    }
+
+    updateSelectedScheduleDate(button.dataset.scheduleDate);
+    renderScheduleTable();
+    resetScheduleForm();
+    setStatus(`已選擇 ${button.dataset.scheduleDate}，可查看或新增當日班表。`, "info");
+  });
+
+  elements.scheduleTable.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-edit-schedule]");
+    if (!button) {
+      return;
+    }
+
+    const [dateText, technicianId] = button.dataset.editSchedule.split("::");
+    const schedule = state.schedules.find((item) => item.date === dateText && item.technicianId === technicianId);
+    if (!schedule) {
+      setStatus("找不到這筆班表資料。", "error");
+      return;
+    }
+
+    fillScheduleForm(schedule);
+    setStatus("已載入班表資料，可直接修改。", "info");
+  });
+
   elements.refreshDashboardButton.addEventListener("click", async () => {
     try {
-      setStatus("正在重新同步資料...", "info");
+      setLoadingStatus("正在重新同步資料...");
       await loadAdminData();
     } catch (error) {
       setStatus(error.message, "error");
@@ -1335,12 +1842,14 @@ async function initializeApp() {
   await loadConfigFromJson();
   applyGasUrlPreference();
   applyPasswordPreference();
+  loadServiceCategoryMap();
   bindEvents();
+  setActivePage(state.ui.activePage);
   resetServiceForm();
   resetServiceEditForm();
   resetTechnicianForm();
   resetTechnicianEditForm();
-  resetTechnicianServiceForm();
+  resetScheduleForm();
   resetReservationForm();
 
   if (state.gasUrl && state.password) {
