@@ -19,7 +19,7 @@
           <p class="eyebrow">Beauty Booking</p>
           <h1>快速完成你的預約安排</h1>
           <p class="hero__lead">
-              直接依照技師、服務、日期與可用時段完成預約。你可以一次勾選多個服務項目，系統會自動加總總時長與總金額。
+              先透過 LINE 完成登入與審核，再依照技師、服務、日期與可用時段完成預約。你可以一次勾選多個服務項目，系統會自動加總總時長與總金額。
           </p>
           <div class="flow-steps" aria-label="預約流程">
             <span class="flow-step">1. 選擇技師</span>
@@ -58,6 +58,10 @@
           </div>
 
           <form id="bookingForm" class="form-grid">
+            <div id="approvalGate" class="approval-gate field field--full">
+              需先完成 LINE 登入並通過審核，才可送出預約。
+            </div>
+
             <label class="field">
               <span>姓名</span>
               <input name="customerName" type="text" placeholder="請輸入姓名" required />
@@ -111,9 +115,23 @@
         <section class="panel panel--side">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">Status</p>
-              <h2>系統訊息</h2>
-              <p class="section-copy">目前的預約狀態與可預約概況會顯示在這裡。</p>
+              <p class="eyebrow">LINE Identity</p>
+              <h2>登入與審核狀態</h2>
+              <p class="section-copy">前台採用 LIFF 登入，管理員通過審核後才可正式送出預約。</p>
+            </div>
+          </div>
+          <div class="profile-card">
+            <div class="profile-card__header">
+              <img id="userAvatar" class="profile-card__avatar is-hidden" alt="LINE 使用者頭像" />
+              <div>
+                <strong id="userDisplayName">尚未登入 LINE</strong>
+                <div id="userStatusBadge" class="status-badge">未登入</div>
+              </div>
+            </div>
+            <p id="userStatusText" class="profile-card__copy">請先使用 LINE 登入，系統會自動送出審核。</p>
+            <div class="profile-card__actions">
+              <button type="button" id="loginButton" class="button button--secondary">LINE 登入</button>
+              <button type="button" id="refreshUserButton" class="button button--ghost">重新檢查狀態</button>
             </div>
           </div>
           <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
@@ -146,6 +164,7 @@
       </main>
     </div>
 
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@ const SHEETS = {
   services: 'Services',
   technicians: 'Technicians',
   schedules: 'Schedules',
+  users: 'Users',
   reservations: 'Reservations',
 };
 
@@ -32,11 +33,19 @@ function doPost(e) {
     var body = parseRequestBody_(e);
     var action = body.action;
 
+    if (action === 'syncLineUser') {
+      return jsonResponse_({ ok: true, data: syncLineUser_(body.payload || {}) });
+    }
+
     if (action === 'createReservation') {
       return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
     }
 
     verifyAdmin_(body.password);
+
+    if (action === 'reviewUser') {
+      return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
+    }
 
     if (action === 'saveService') {
       return jsonResponse_({ ok: true, data: saveService_(body.payload || {}) });
@@ -104,9 +113,11 @@ function getAdminData_() {
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
   var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
   var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
   var serviceMap = indexBy_(services, 'serviceId');
   var technicianMap = indexBy_(technicians, 'technicianId');
+  var userMap = indexBy_(users, 'userId');
 
   reservations = reservations.map(function(item) {
     var reservationServices = getReservationServices_(item, serviceMap);
@@ -120,6 +131,7 @@ function getAdminData_() {
       return sum + Number(service.price || 0);
     }, 0);
     item.technicianName = technicianMap[item.technicianId] ? technicianMap[item.technicianId].name : '';
+    item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
     return item;
   });
 
@@ -127,8 +139,63 @@ function getAdminData_() {
     services: services,
     technicians: technicians,
     schedules: schedules,
+    users: users,
     reservations: reservations,
   };
+}
+
+function syncLineUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+
+  var userId = String(payload.userId || '').trim();
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+  var existing = users.find(function(item) {
+    return item.userId === userId;
+  });
+  var nowText = toIsoString_(new Date());
+  var status = existing ? existing.status : '待審核';
+
+  var record = {
+    userId: userId,
+    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
+    pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
+    status: normalizeUserStatus_(status),
+    note: existing ? existing.note : '',
+    createdAt: existing ? existing.createdAt : nowText,
+    updatedAt: nowText,
+    lastLoginAt: nowText,
+  };
+
+  upsertRecord_(SHEETS.users, 'userId', record);
+  return normalizeUser_(record);
+}
+
+function reviewUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+  validateRequired_(payload.status, 'status');
+
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+  var existing = users.find(function(item) {
+    return item.userId === String(payload.userId || '').trim();
+  });
+
+  if (!existing) {
+    throw new Error('找不到用戶');
+  }
+
+  var record = {
+    userId: existing.userId,
+    displayName: existing.displayName,
+    pictureUrl: existing.pictureUrl,
+    status: normalizeUserStatus_(payload.status),
+    note: String(payload.note || existing.note || '').trim(),
+    createdAt: existing.createdAt,
+    updatedAt: toIsoString_(new Date()),
+    lastLoginAt: existing.lastLoginAt,
+  };
+
+  upsertRecord_(SHEETS.users, 'userId', record);
+  return normalizeUser_(record);
 }
 
 function createReservation_(payload) {
@@ -137,20 +204,32 @@ function createReservation_(payload) {
   validateRequired_(payload.technicianId, 'technicianId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
+  validateRequired_(payload.userId, 'userId');
 
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
   var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
   var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
 
   var serviceMap = indexBy_(services, 'serviceId');
   var technicianMap = indexBy_(technicians, 'technicianId');
+  var userMap = indexBy_(users, 'userId');
   var serviceIds = normalizeServiceIds_(payload.serviceIds || payload.serviceId);
   var selectedServices = getServicesByIds_(serviceIds, serviceMap);
   var technician = technicianMap[payload.technicianId];
+  var user = userMap[String(payload.userId || '').trim()];
 
   if (!serviceIds.length) {
     throw new Error('請至少選擇一個服務項目');
+  }
+
+  if (!user) {
+    throw new Error('找不到用戶資料，請重新登入 LINE');
+  }
+
+  if (!isUserApproved_(user.status)) {
+    throw new Error('此 LINE 帳號尚未通過審核，暫時無法預約');
   }
 
   if (!technician || !toBoolean_(technician.active)) {
@@ -200,6 +279,8 @@ function createReservation_(payload) {
 
   var record = {
     reservationId: createId_('RES'),
+    userId: user.userId,
+    userDisplayName: user.displayName,
     customerName: String(payload.customerName).trim(),
     phone: String(payload.phone).trim(),
     technicianId: payload.technicianId,
@@ -422,6 +503,8 @@ function saveReservation_(payload) {
 
   var record = {
     reservationId: existing && existing.reservationId ? existing.reservationId : createId_('RES'),
+    userId: String(payload.userId || existing && existing.userId || '').trim(),
+    userDisplayName: String(payload.userDisplayName || existing && existing.userDisplayName || '').trim(),
     customerName: String(payload.customerName).trim(),
     phone: String(payload.phone).trim(),
     technicianId: payload.technicianId,
@@ -522,7 +605,8 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
-  ensureSheet_(SHEETS.reservations, ['reservationId', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
+  ensureSheet_(SHEETS.users, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
+  ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -714,6 +798,8 @@ function normalizeReservation_(item) {
   var serviceIds = normalizeServiceIds_(item.serviceIds || item.serviceId);
   return {
     reservationId: String(item.reservationId || ''),
+    userId: String(item.userId || ''),
+    userDisplayName: String(item.userDisplayName || ''),
     customerName: String(item.customerName || ''),
     phone: String(item.phone || ''),
     technicianId: String(item.technicianId || ''),
@@ -726,6 +812,49 @@ function normalizeReservation_(item) {
     note: String(item.note || ''),
     createdAt: String(item.createdAt || ''),
   };
+}
+
+function normalizeUser_(item) {
+  return {
+    userId: String(item.userId || ''),
+    displayName: String(item.displayName || '').trim() || 'LINE 使用者',
+    pictureUrl: String(item.pictureUrl || '').trim(),
+    status: normalizeUserStatus_(item.status),
+    note: String(item.note || '').trim(),
+    createdAt: String(item.createdAt || ''),
+    updatedAt: String(item.updatedAt || ''),
+    lastLoginAt: String(item.lastLoginAt || ''),
+  };
+}
+
+function normalizeUserStatus_(value) {
+  var status = String(value || '').trim();
+
+  if (!status) {
+    return '待審核';
+  }
+
+  if (status === 'pending' || status === '待審核') {
+    return '待審核';
+  }
+
+  if (status === 'approved' || status === '已通過') {
+    return '已通過';
+  }
+
+  if (status === 'rejected' || status === '已拒絕') {
+    return '已拒絕';
+  }
+
+  if (status === 'disabled' || status === '已停用') {
+    return '已停用';
+  }
+
+  return status;
+}
+
+function isUserApproved_(status) {
+  return normalizeUserStatus_(status) === '已通過';
 }
 
 function normalizeReservationStatus_(value) {

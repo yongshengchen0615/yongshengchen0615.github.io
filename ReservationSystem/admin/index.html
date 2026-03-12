@@ -76,6 +76,7 @@
               <button type="button" class="button button--secondary page-tab" data-page-trigger="technician">技師</button>
               <button type="button" class="button button--secondary page-tab" data-page-trigger="schedule">班表</button>
               <button type="button" class="button button--secondary page-tab" data-page-trigger="reservation">預約</button>
+              <button type="button" class="button button--secondary page-tab" data-page-trigger="user">用戶審核</button>
               <button type="button" id="refreshDashboardButton" class="button button--primary">重新同步資料</button>
             </div>
           </div>
@@ -454,6 +455,38 @@
               </div>
             </form>
             <div id="reservationTable" class="table-wrap"></div>
+          </section>
+
+          <section id="userSection" class="panel section-block admin-page-panel is-hidden" data-admin-page="user">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">User Review</p>
+                <h2>LINE 用戶審核</h2>
+                <p class="section-copy">前台使用者透過 LIFF 登入後會自動進入這份清單，只有已通過的帳號才能送出預約。</p>
+              </div>
+              <div class="section-header-side">
+                <p id="userResultLabel" class="section-result">顯示 0 / 0 位</p>
+              </div>
+            </div>
+            <div class="toolbar toolbar--split">
+              <label class="field field--compact">
+                <span>搜尋用戶</span>
+                <input id="userSearchInput" type="text" placeholder="搜尋顯示名稱、User ID 或備註" />
+              </label>
+              <label class="field field--compact">
+                <span>審核狀態</span>
+                <select id="userStatusFilter">
+                  <option value="all">全部狀態</option>
+                  <option value="待審核">待審核</option>
+                  <option value="已通過">已通過</option>
+                  <option value="已拒絕">已拒絕</option>
+                  <option value="已停用">已停用</option>
+                </select>
+              </label>
+            </div>
+            <div id="userReviewSummary" class="review-summary"></div>
+            <p class="helper-text">點擊通過、拒絕或停用時，可同步填寫審核備註。</p>
+            <div id="userTable" class="table-wrap"></div>
           </section>
         </section>
 

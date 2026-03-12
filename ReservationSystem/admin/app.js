@@ -13,6 +13,7 @@ const state = {
   services: [],
   technicians: [],
   schedules: [],
+  users: [],
   reservations: [],
   serviceCategoryMap: {},
   filters: {
@@ -24,6 +25,8 @@ const state = {
     reservationKeyword: "",
     reservationStatus: "all",
     reservationTechnicianId: "",
+    userKeyword: "",
+    userStatus: "all",
   },
   ui: {
     busyCount: 0,
@@ -93,10 +96,15 @@ const elements = {
   reservationSearchInput: document.querySelector("#reservationSearchInput"),
   reservationStatusFilter: document.querySelector("#reservationStatusFilter"),
   reservationTechnicianFilter: document.querySelector("#reservationTechnicianFilter"),
+  userSearchInput: document.querySelector("#userSearchInput"),
+  userStatusFilter: document.querySelector("#userStatusFilter"),
+  userResultLabel: document.querySelector("#userResultLabel"),
+  userReviewSummary: document.querySelector("#userReviewSummary"),
   serviceTable: document.querySelector("#serviceTable"),
   technicianTable: document.querySelector("#technicianTable"),
   scheduleTable: document.querySelector("#scheduleTable"),
   reservationTable: document.querySelector("#reservationTable"),
+  userTable: document.querySelector("#userTable"),
   scheduleTechnicianSelect: document.querySelector("#scheduleTechnicianSelect"),
   reservationTechnicianSelect: document.querySelector("#reservationTechnicianSelect"),
   reservationServiceSelect: document.querySelector("#reservationServiceSelect"),
@@ -465,6 +473,15 @@ function getFilteredReservations() {
   });
 }
 
+function getFilteredUsers() {
+  return state.users.filter((item) => {
+    const text = `${item.displayName} ${item.userId} ${item.note || ""}`;
+    const matchesText = !state.filters.userKeyword || matchesKeyword(text, state.filters.userKeyword);
+    const matchesStatus = state.filters.userStatus === "all" || item.status === state.filters.userStatus;
+    return matchesText && matchesStatus;
+  });
+}
+
 function enumerateDateRange(startDate, endDate) {
   const result = [];
   const start = new Date(`${startDate}T00:00:00`);
@@ -797,6 +814,40 @@ function getReservationStatusPill(status) {
   return getStatusPill(status || "已預約", "booked");
 }
 
+function getUserStatusPill(status) {
+  if (status === "已通過") {
+    return getStatusPill(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusPill(status, "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusPill(status, "disabled");
+  }
+  return getStatusPill(status || "待審核", "pending");
+}
+
+function formatDateTimeText(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "未紀錄";
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return text;
+  }
+
+  return date.toLocaleString("zh-TW", {
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function getReservationConfirmationSummary(payload) {
   const technicianName = getTechnicianById(payload.technicianId)?.name || payload.technicianId;
   const serviceNames = (payload.serviceIds || [])
@@ -828,9 +879,10 @@ function updateWorkspaceOverview() {
   const activeServices = state.services.filter((item) => item.active).length;
   const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
   const pendingReservations = state.reservations.filter((item) => item.status === "已預約").length;
+  const pendingUsers = state.users.filter((item) => item.status === "待審核").length;
 
   if (elements.workflowSummary) {
-    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約`;
+    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約、${pendingUsers} 位待審核用戶`;
   }
 
   if (!elements.workflowHint) {
@@ -854,6 +906,11 @@ function updateWorkspaceOverview() {
 
   if (!workingSchedules) {
     elements.workflowHint.textContent = "請建立可預約班表，否則前台不會出現可選時段。";
+    return;
+  }
+
+  if (pendingUsers) {
+    elements.workflowHint.textContent = `目前有 ${pendingUsers} 位 LINE 用戶待審核，通過後才能在前台送出預約。`;
     return;
   }
 
@@ -1132,6 +1189,111 @@ function renderReservationTable() {
   `;
 }
 
+function renderUserReviewSummary() {
+  if (!elements.userReviewSummary) {
+    return;
+  }
+
+  const pendingCount = state.users.filter((item) => item.status === "待審核").length;
+  const approvedCount = state.users.filter((item) => item.status === "已通過").length;
+  const rejectedCount = state.users.filter((item) => item.status === "已拒絕").length;
+  const disabledCount = state.users.filter((item) => item.status === "已停用").length;
+
+  elements.userReviewSummary.innerHTML = `
+    <article class="review-card">
+      <span>待審核</span>
+      <strong>${pendingCount}</strong>
+      <small>新登入用戶預設會先進入這個狀態</small>
+    </article>
+    <article class="review-card">
+      <span>已通過</span>
+      <strong>${approvedCount}</strong>
+      <small>可直接在前台送出預約</small>
+    </article>
+    <article class="review-card">
+      <span>已拒絕 / 已停用</span>
+      <strong>${rejectedCount + disabledCount}</strong>
+      <small>拒絕或停用後，前台送單會被阻擋</small>
+    </article>
+  `;
+}
+
+function renderUserTable() {
+  const users = getFilteredUsers();
+  const statusOrder = {
+    "待審核": 0,
+    "已通過": 1,
+    "已拒絕": 2,
+    "已停用": 3,
+  };
+
+  if (elements.userResultLabel) {
+    elements.userResultLabel.textContent = `顯示 ${users.length} / ${state.users.length} 位`;
+  }
+
+  renderUserReviewSummary();
+
+  if (!elements.userTable) {
+    return;
+  }
+
+  if (!users.length) {
+    elements.userTable.innerHTML = `<div class="empty-state">${state.filters.userKeyword || state.filters.userStatus !== "all" ? "找不到符合條件的用戶。" : "尚無任何 LINE 用戶登入紀錄。"}</div>`;
+    return;
+  }
+
+  elements.userTable.innerHTML = `
+    <table class="list-table">
+      <thead>
+        <tr>
+          <th>用戶</th>
+          <th>狀態</th>
+          <th>最後登入</th>
+          <th>備註</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${users
+          .slice()
+          .sort((left, right) => {
+            const leftRank = statusOrder[left.status] ?? 9;
+            const rightRank = statusOrder[right.status] ?? 9;
+            if (leftRank !== rightRank) {
+              return leftRank - rightRank;
+            }
+            return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
+          })
+          .map((user) => `
+            <tr>
+              <td data-label="用戶">
+                <div class="user-cell">
+                  ${user.pictureUrl ? `<img class="user-avatar" src="${user.pictureUrl}" alt="${user.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${user.displayName.slice(0, 1) || "L"}</div>`}
+                  <div class="user-cell__meta">
+                    <strong>${user.displayName}</strong>
+                    <small>${user.userId}</small>
+                  </div>
+                </div>
+              </td>
+              <td data-label="狀態">${getUserStatusPill(user.status)}</td>
+              <td data-label="最後登入">${formatDateTimeText(user.lastLoginAt)}</td>
+              <td data-label="備註">${user.note || '<span class="helper-text">尚無備註</span>'}</td>
+              <td data-label="操作" class="table-cell-actions">
+                <div class="table-actions stacked-actions">
+                  <button type="button" class="button button--ghost" data-review-user="${user.userId}" data-review-status="已通過">通過</button>
+                  <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="待審核">設待審核</button>
+                  <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="已拒絕">拒絕</button>
+                  <button type="button" class="button button--danger" data-review-user="${user.userId}" data-review-status="已停用">停用</button>
+                </div>
+              </td>
+            </tr>
+          `)
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
 function refreshTechnicianOptions() {
   const selectedScheduleTechnicianId = elements.scheduleTechnicianSelect.value;
   const selectedReservationTechnicianId = elements.reservationTechnicianSelect.value;
@@ -1206,6 +1368,7 @@ function renderAll() {
   renderTechnicianTable();
   renderScheduleTable();
   renderReservationTable();
+  renderUserTable();
   refreshTechnicianOptions();
   updateServiceFormMode();
   updateTechnicianFormMode();
@@ -1257,6 +1420,7 @@ async function loadAdminData() {
   }));
   state.technicians = result.data.technicians || [];
   state.schedules = result.data.schedules || [];
+  state.users = result.data.users || [];
   state.reservations = result.data.reservations || [];
   renderAll();
   updateLastSyncTime();
@@ -1541,6 +1705,35 @@ async function deleteReservation(reservationId, customerName) {
   setStatus("預約已刪除。", "success");
 }
 
+async function reviewUser(userId, status) {
+  const user = state.users.find((item) => item.userId === userId);
+  if (!user) {
+    throw new Error("找不到用戶資料");
+  }
+
+  const note = window.prompt(`請輸入「${user.displayName}」的審核備註：`, user.note || "");
+  if (note === null) {
+    setStatus("已取消用戶審核操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新用戶審核狀態...");
+  const result = await requestApi("POST", {}, {
+    action: "reviewUser",
+    payload: {
+      userId,
+      status,
+      note,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新用戶審核失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`已將 ${user.displayName} 設為${status}。`, "success");
+}
+
 function bindEvents() {
   elements.pageTabs.forEach((button) => {
     button.addEventListener("click", () => {
@@ -1695,6 +1888,16 @@ function bindEvents() {
     renderReservationTable();
   });
 
+  elements.userSearchInput.addEventListener("input", (event) => {
+    state.filters.userKeyword = event.target.value;
+    renderUserTable();
+  });
+
+  elements.userStatusFilter.addEventListener("change", (event) => {
+    state.filters.userStatus = event.target.value;
+    renderUserTable();
+  });
+
   elements.scheduleAllDayButton.addEventListener("click", () => {
     setSchedulePreset("00:00", "23:59");
     setStatus("已套用 24 小時班表預設。", "info");
@@ -1832,6 +2035,19 @@ function bindEvents() {
         deleteButton.dataset.deleteReservation,
         deleteButton.dataset.customerName
       );
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.userTable.addEventListener("click", async (event) => {
+    const reviewButton = event.target.closest("[data-review-user]");
+    if (!reviewButton) {
+      return;
+    }
+
+    try {
+      await reviewUser(reviewButton.dataset.reviewUser, reviewButton.dataset.reviewStatus);
     } catch (error) {
       setStatus(error.message, "error");
     }
