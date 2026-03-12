@@ -335,49 +335,46 @@ function createReservation_(payload) {
 
   var matchedTechnician = null;
   var matchedSchedule = null;
+  var matchedEvaluation = null;
 
   candidateTechnicians.some(function(technician) {
-    var schedule = schedules.find(function(item) {
-      return item.technicianId === technician.technicianId && item.date === reservationDate && toBoolean_(item.isWorking);
+    var evaluation = evaluateReservationForTechnician_({
+      technicianId: technician.technicianId,
+      reservationDate: reservationDate,
+      reservationStart: reservationStart,
+      reservationEnd: reservationEnd,
+      schedules: schedules,
+      reservations: reservations,
+      serviceMap: serviceMap,
     });
 
-    if (!schedule) {
-      return false;
-    }
-
-    if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
-      return false;
-    }
-
-    var hasConflict = reservations.some(function(item) {
-      if (item.technicianId !== technician.technicianId || item.date !== reservationDate || isReservationCancelled_(item.status)) {
-        return false;
-      }
-      var existingStart = timeToMinutes_(item.startTime);
-      var existingEnd = getReservationOccupiedEndMinutes_(item, serviceMap);
-      return reservationStart < existingEnd && existingStart < reservationEnd;
-    });
-
-    if (hasConflict) {
+    if (!evaluation.ok) {
       return false;
     }
 
     matchedTechnician = technician;
-    matchedSchedule = schedule;
+    matchedSchedule = evaluation.schedule;
+    matchedEvaluation = evaluation;
     return true;
   });
 
   if (!matchedTechnician || !matchedSchedule) {
     if (requestedTechnicianId) {
-      var requestedSchedule = schedules.find(function(item) {
-        return item.technicianId === requestedTechnicianId && item.date === reservationDate && toBoolean_(item.isWorking);
+      var requestedEvaluation = evaluateReservationForTechnician_({
+        technicianId: requestedTechnicianId,
+        reservationDate: reservationDate,
+        reservationStart: reservationStart,
+        reservationEnd: reservationEnd,
+        schedules: schedules,
+        reservations: reservations,
+        serviceMap: serviceMap,
       });
 
-      if (!requestedSchedule) {
+      if (requestedEvaluation.reason === 'no-schedule') {
         throw new Error('該日期沒有可預約班表');
       }
 
-      if (reservationStart < timeToMinutes_(requestedSchedule.startTime) || reservationEnd > getScheduleEndMinutes_(requestedSchedule.endTime)) {
+      if (requestedEvaluation.reason === 'out-of-range') {
         throw new Error('預約時段不在班表範圍內');
       }
 
@@ -433,10 +430,6 @@ function saveTechnician_(payload) {
 
   var technicianStartTime = normalizeTimeString_(payload.startTime);
   var technicianEndTime = normalizeTimeString_(payload.endTime);
-
-  if (timeToMinutes_(technicianStartTime) >= timeToMinutes_(technicianEndTime)) {
-    throw new Error('下班時間必須晚於上班時間');
-  }
 
   var technicianId = String(payload.technicianId || '');
   var technicianName = String(payload.name).trim();
@@ -519,10 +512,6 @@ function saveSchedule_(payload) {
   var scheduleStartTime = normalizeTimeString_(payload.startTime);
   var scheduleEndTime = normalizeTimeString_(payload.endTime);
 
-  if (timeToMinutes_(scheduleStartTime) >= timeToMinutes_(scheduleEndTime)) {
-    throw new Error('下班時間必須晚於上班時間');
-  }
-
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
   var exists = technicians.some(function(item) {
     return item.technicianId === payload.technicianId;
@@ -604,30 +593,26 @@ function saveReservation_(payload) {
       throw new Error('技師未啟用');
     }
 
-    var schedule = schedules.find(function(item) {
-      return item.technicianId === payload.technicianId && item.date === payload.date && toBoolean_(item.isWorking);
-    });
-    if (!schedule) {
-      throw new Error('該日期沒有可預約班表');
-    }
-
-    if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
-      throw new Error('預約時段不在班表範圍內');
-    }
-
-    var hasConflict = reservations.some(function(item) {
-      if (item.reservationId === String(payload.reservationId || '')) {
-        return false;
-      }
-      if (item.technicianId !== payload.technicianId || item.date !== payload.date || isReservationCancelled_(item.status)) {
-        return false;
-      }
-      var existingStart = timeToMinutes_(item.startTime);
-      var existingEnd = getReservationOccupiedEndMinutes_(item, serviceMap);
-      return reservationStart < existingEnd && existingStart < reservationEnd;
+    var evaluation = evaluateReservationForTechnician_({
+      technicianId: payload.technicianId,
+      reservationDate: normalizeDateString_(payload.date),
+      reservationStart: reservationStart,
+      reservationEnd: reservationEnd,
+      schedules: schedules,
+      reservations: reservations,
+      serviceMap: serviceMap,
+      ignoreReservationId: String(payload.reservationId || ''),
     });
 
-    if (hasConflict) {
+    if (!evaluation.ok) {
+      if (evaluation.reason === 'no-schedule') {
+        throw new Error('該日期沒有可預約班表');
+      }
+
+      if (evaluation.reason === 'out-of-range') {
+        throw new Error('預約時段不在班表範圍內');
+      }
+
       throw new Error('此時段已被預約，請重新選擇');
     }
   }
@@ -1139,15 +1124,145 @@ function getReservationOccupiedEndMinutes_(reservation, serviceMap) {
     return calculatedEnd;
   }
 
-  return Math.max(timeToMinutes_(reservation.endTime), calculatedEnd);
-}
-
-function getScheduleEndMinutes_(timeText) {
-  if (String(timeText || '') === '23:59') {
-    return 24 * 60;
+  var storedEnd = timeToMinutes_(reservation.endTime);
+  if (storedEnd <= reservedStart) {
+    storedEnd += 24 * 60;
   }
 
-  return timeToMinutes_(timeText);
+  return Math.max(storedEnd, calculatedEnd);
+}
+
+function getShiftEndMinutes_(startTime, endTime) {
+  var shiftStart = timeToMinutes_(startTime);
+  var shiftEnd = String(endTime || '') === '23:59' ? 24 * 60 : timeToMinutes_(endTime);
+
+  if (shiftEnd <= shiftStart) {
+    shiftEnd += 24 * 60;
+  }
+
+  return shiftEnd;
+}
+
+function isOvernightShift_(startTime, endTime) {
+  return getShiftEndMinutes_(startTime, endTime) > 24 * 60;
+}
+
+function addDaysToDateString_(dateText, offsetDays) {
+  var baseDate = new Date(String(dateText) + 'T00:00:00');
+  baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
+  return normalizeDateString_(baseDate);
+}
+
+function getScheduleCoverageForDate_(schedule, actualDate) {
+  var scheduleDate = normalizeDateString_(schedule.date);
+  var shiftStart = timeToMinutes_(schedule.startTime);
+  var shiftEnd = getShiftEndMinutes_(schedule.startTime, schedule.endTime);
+
+  if (scheduleDate === actualDate) {
+    return {
+      start: shiftStart,
+      end: shiftEnd,
+    };
+  }
+
+  if (isOvernightShift_(schedule.startTime, schedule.endTime) && addDaysToDateString_(scheduleDate, 1) === actualDate) {
+    return {
+      start: 0,
+      end: shiftEnd - 24 * 60,
+    };
+  }
+
+  return null;
+}
+
+function getReservationCoverageForDate_(reservation, serviceMap, actualDate) {
+  var reservationDate = normalizeDateString_(reservation.date);
+  var reservationStart = timeToMinutes_(reservation.startTime);
+  var reservationEnd = getReservationOccupiedEndMinutes_(reservation, serviceMap);
+
+  if (reservationDate === actualDate) {
+    return {
+      start: reservationStart,
+      end: reservationEnd,
+    };
+  }
+
+  if (addDaysToDateString_(reservationDate, 1) === actualDate && reservationEnd > 24 * 60) {
+    return {
+      start: 0,
+      end: reservationEnd - 24 * 60,
+    };
+  }
+
+  return null;
+}
+
+function evaluateReservationForTechnician_(options) {
+  var technicianId = String(options.technicianId || '');
+  var reservationDate = normalizeDateString_(options.reservationDate);
+  var reservationStart = Number(options.reservationStart || 0);
+  var reservationEnd = Number(options.reservationEnd || 0);
+  var schedules = (options.schedules || []).filter(function(item) {
+    return item.technicianId === technicianId && toBoolean_(item.isWorking);
+  });
+  var reservations = options.reservations || [];
+  var serviceMap = options.serviceMap || {};
+  var ignoreReservationId = String(options.ignoreReservationId || '');
+  var hasSchedule = false;
+  var withinScheduleWindow = false;
+  var matchedSchedule = null;
+
+  schedules.some(function(schedule) {
+    var coverage = getScheduleCoverageForDate_(schedule, reservationDate);
+    if (!coverage) {
+      return false;
+    }
+
+    hasSchedule = true;
+
+    if (reservationStart < coverage.start || reservationEnd > coverage.end) {
+      return false;
+    }
+
+    withinScheduleWindow = true;
+
+    var hasConflict = reservations.some(function(item) {
+      if (item.reservationId === ignoreReservationId || item.technicianId !== technicianId || isReservationCancelled_(item.status)) {
+        return false;
+      }
+
+      var reservationCoverage = getReservationCoverageForDate_(item, serviceMap, reservationDate);
+      if (!reservationCoverage) {
+        return false;
+      }
+
+      return reservationStart < reservationCoverage.end && reservationCoverage.start < reservationEnd;
+    });
+
+    if (hasConflict) {
+      return false;
+    }
+
+    matchedSchedule = schedule;
+    return true;
+  });
+
+  if (matchedSchedule) {
+    return {
+      ok: true,
+      schedule: matchedSchedule,
+    };
+  }
+
+  if (!hasSchedule) {
+    return { ok: false, reason: 'no-schedule' };
+  }
+
+  if (!withinScheduleWindow) {
+    return { ok: false, reason: 'out-of-range' };
+  }
+
+  return { ok: false, reason: 'conflict' };
 }
 
 function normalizeServiceIds_(value) {
@@ -1260,8 +1375,9 @@ function timeToMinutes_(timeText) {
 }
 
 function minutesToTime_(totalMinutes) {
-  var hours = Math.floor(totalMinutes / 60);
-  var minutes = totalMinutes % 60;
+  var normalizedMinutes = ((Number(totalMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  var hours = Math.floor(normalizedMinutes / 60);
+  var minutes = normalizedMinutes % 60;
   return pad2_(hours) + ':' + pad2_(minutes);
 }
 

@@ -407,16 +407,60 @@ function getScheduleForTechnicianAndDate(technicianId, date) {
   return getSchedulesForTechnician(technicianId).find((item) => item.date === date);
 }
 
-function getScheduleEndMinutes(timeText) {
-  if (timeText === "23:59") {
-    return 24 * 60;
+function getShiftEndMinutes(startTime, endTime) {
+  const shiftStart = toMinutes(startTime);
+  let shiftEnd = endTime === "23:59" ? 24 * 60 : toMinutes(endTime);
+
+  if (shiftEnd <= shiftStart) {
+    shiftEnd += 24 * 60;
   }
-  return toMinutes(timeText);
+
+  return shiftEnd;
 }
 
-function getReservationsForTechnicianAndDate(technicianId, date) {
+function isOvernightShift(startTime, endTime) {
+  return getShiftEndMinutes(startTime, endTime) > 24 * 60;
+}
+
+function addDaysToDate(dateText, offsetDays) {
+  const baseDate = new Date(`${dateText}T00:00:00`);
+  baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
+  const year = baseDate.getFullYear();
+  const month = String(baseDate.getMonth() + 1).padStart(2, "0");
+  const day = String(baseDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getScheduleCoverageForDate(schedule, actualDate) {
+  const shiftStart = toMinutes(schedule.startTime);
+  const shiftEnd = getShiftEndMinutes(schedule.startTime, schedule.endTime);
+
+  if (schedule.date === actualDate) {
+    return {
+      start: shiftStart,
+      end: shiftEnd,
+    };
+  }
+
+  if (isOvernightShift(schedule.startTime, schedule.endTime) && addDaysToDate(schedule.date, 1) === actualDate) {
+    return {
+      start: 0,
+      end: shiftEnd - 24 * 60,
+    };
+  }
+
+  return null;
+}
+
+function getSchedulesForTechnicianOnDate(technicianId, actualDate) {
+  return getSchedulesForTechnician(technicianId).filter((schedule) => Boolean(getScheduleCoverageForDate(schedule, actualDate)));
+}
+
+function getReservationsForTechnicianNearDate(technicianId, date) {
   return state.reservations.filter(
-    (item) => item.technicianId === technicianId && item.date === date && item.status !== "已取消"
+    (item) => item.technicianId === technicianId
+      && item.status !== "已取消"
+      && (item.date === date || addDaysToDate(item.date, 1) === date)
   );
 }
 
@@ -428,7 +472,33 @@ function getReservationOccupiedEnd(item) {
     return calculatedEnd;
   }
 
-  return Math.max(toMinutes(item.endTime), calculatedEnd);
+  let storedEnd = toMinutes(item.endTime);
+  if (storedEnd <= reservedStart) {
+    storedEnd += 24 * 60;
+  }
+
+  return Math.max(storedEnd, calculatedEnd);
+}
+
+function getReservationCoverageForDate(item, actualDate) {
+  const reservationStart = toMinutes(item.startTime);
+  const reservationEnd = getReservationOccupiedEnd(item);
+
+  if (item.date === actualDate) {
+    return {
+      start: reservationStart,
+      end: reservationEnd,
+    };
+  }
+
+  if (addDaysToDate(item.date, 1) === actualDate && reservationEnd > 24 * 60) {
+    return {
+      start: 0,
+      end: reservationEnd - 24 * 60,
+    };
+  }
+
+  return null;
 }
 
 function toMinutes(timeText) {
@@ -437,32 +507,36 @@ function toMinutes(timeText) {
 }
 
 function toTimeText(totalMinutes) {
-  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
-  const minutes = String(totalMinutes % 60).padStart(2, "0");
+  const normalizedMinutes = ((Number(totalMinutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours = String(Math.floor(normalizedMinutes / 60)).padStart(2, "0");
+  const minutes = String(normalizedMinutes % 60).padStart(2, "0");
   return `${hours}:${minutes}`;
 }
 
 function getAvailableDates(technicianId, serviceIds = state.selectedServiceIds) {
   const eligibleTechnicians = getEligibleTechnicians(serviceIds, technicianId);
-  const schedules = eligibleTechnicians.flatMap((technician) => getSchedulesForTechnician(technician.technicianId));
+  const scheduleDates = [];
+
+  eligibleTechnicians.forEach((technician) => {
+    getSchedulesForTechnician(technician.technicianId).forEach((schedule) => {
+      scheduleDates.push(schedule.date);
+      if (isOvernightShift(schedule.startTime, schedule.endTime)) {
+        scheduleDates.push(addDaysToDate(schedule.date, 1));
+      }
+    });
+  });
+
+  const dates = Array.from(new Set(scheduleDates)).sort((left, right) => left.localeCompare(right));
   if (!serviceIds.length) {
-    return Array.from(new Set(schedules.map((item) => item.date))).sort((left, right) => left.localeCompare(right));
+    return dates;
   }
 
-  return Array.from(
-    new Set(
-      schedules
-        .filter((item) => getAvailableTimeSlots(technicianId, serviceIds, item.date).length > 0)
-        .map((item) => item.date)
-    )
-  ).sort((left, right) => left.localeCompare(right));
+  return dates.filter((date) => getAvailableTimeSlots(technicianId, serviceIds, date).length > 0);
 }
 
 function hasConflict(candidateStart, candidateEnd, reservations) {
   return reservations.some((item) => {
-    const reservedStart = toMinutes(item.startTime);
-    const reservedEnd = getReservationOccupiedEnd(item);
-    return candidateStart < reservedEnd && reservedStart < candidateEnd;
+    return candidateStart < item.end && item.start < candidateEnd;
   });
 }
 
@@ -475,27 +549,29 @@ function getAvailableTimeSlots(technicianId, serviceIds, date) {
   const slotMap = new Map();
 
   eligibleTechnicians.forEach((technician) => {
-    const schedule = getScheduleForTechnicianAndDate(technician.technicianId, date);
-    if (!schedule) {
-      return;
-    }
+    const reservations = getReservationsForTechnicianNearDate(technician.technicianId, date)
+      .map((item) => getReservationCoverageForDate(item, date))
+      .filter(Boolean);
 
-    const shiftStart = toMinutes(schedule.startTime);
-    const shiftEnd = getScheduleEndMinutes(schedule.endTime);
-    const reservations = getReservationsForTechnicianAndDate(technician.technicianId, date);
+    getSchedulesForTechnicianOnDate(technician.technicianId, date).forEach((schedule) => {
+      const coverage = getScheduleCoverageForDate(schedule, date);
+      if (!coverage) {
+        return;
+      }
 
-    for (let current = shiftStart; current + serviceDuration <= shiftEnd; current += SLOT_INTERVAL_MINUTES) {
-      const end = current + serviceDuration;
-      if (!hasConflict(current, end, reservations)) {
-        const timeValue = toTimeText(current);
-        if (!slotMap.has(timeValue)) {
-          slotMap.set(timeValue, {
-            value: timeValue,
-            label: `${timeValue} - ${toTimeText(end)}`,
-          });
+      for (let current = coverage.start; current + serviceDuration <= coverage.end; current += SLOT_INTERVAL_MINUTES) {
+        const end = current + serviceDuration;
+        if (!hasConflict(current, end, reservations)) {
+          const timeValue = toTimeText(current);
+          if (!slotMap.has(timeValue)) {
+            slotMap.set(timeValue, {
+              value: timeValue,
+              label: `${timeValue} - ${toTimeText(end)}`,
+            });
+          }
         }
       }
-    }
+    });
   });
 
   return Array.from(slotMap.values()).sort((left, right) => left.value.localeCompare(right.value));
