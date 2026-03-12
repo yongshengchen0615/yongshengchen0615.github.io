@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
 const CONFIG_PATH = "./config.json";
 const SLOT_INTERVAL_MINUTES = 30;
 const AUTO_SYNC_INTERVAL_MS = 30000;
+const UNSPECIFIED_TECHNICIAN_VALUE = "__ANY_TECHNICIAN__";
 
 const state = {
   gasUrl: "",
@@ -123,6 +124,10 @@ function setOptions(select, options, placeholder) {
   });
 }
 
+function isSpecificTechnicianSelected(technicianId) {
+  return Boolean(technicianId) && technicianId !== UNSPECIFIED_TECHNICIAN_VALUE;
+}
+
 function isApprovedUser() {
   return state.user?.status === "已通過";
 }
@@ -178,7 +183,7 @@ function updateAccessView() {
 
   if (canEnterBooking) {
     elements.bookingPanelTitle.textContent = "填寫預約資訊";
-    elements.bookingPanelCopy.textContent = "先選技師，系統會自動過濾這位技師可提供的服務、日期與時段。";
+    elements.bookingPanelCopy.textContent = "可指定技師，也可選擇不指定技師，讓系統自動安排可服務且有空檔的技師。";
     fillBookingContactFields();
     return;
   }
@@ -286,10 +291,28 @@ function getServiceCategory(service) {
   return String(service?.category || "").trim() || "未分類";
 }
 
+function getEligibleTechnicians(serviceIds = [], technicianId = state.selectedTechnicianId) {
+  const normalizedServiceIds = normalizeServiceIds(serviceIds);
+  const baseTechnicians = isSpecificTechnicianSelected(technicianId)
+    ? getActiveTechnicians().filter((item) => item.technicianId === technicianId)
+    : getActiveTechnicians();
+
+  if (!normalizedServiceIds.length) {
+    return baseTechnicians;
+  }
+
+  return baseTechnicians.filter((technician) => {
+    return normalizedServiceIds.every((serviceId) => (technician.serviceIds || []).includes(serviceId));
+  });
+}
+
 function getAllowedServices(technicianId) {
-  const technician = getTechnicianById(technicianId);
-  if (!technician) return [];
-  const allowed = new Set(technician.serviceIds || []);
+  const eligibleTechnicians = getEligibleTechnicians([], technicianId);
+  if (!eligibleTechnicians.length) return [];
+
+  const allowed = new Set(
+    eligibleTechnicians.flatMap((technician) => technician.serviceIds || [])
+  );
   return getActiveServices().filter((service) => allowed.has(service.serviceId));
 }
 
@@ -320,11 +343,11 @@ function formatServiceLabel(service) {
 }
 
 function renderServiceOptions(selectedIds = []) {
-  const allowedServices = state.selectedTechnicianId ? getAllowedServices(state.selectedTechnicianId) : [];
+  const allowedServices = getAllowedServices(state.selectedTechnicianId);
   const checked = new Set(normalizeServiceIds(selectedIds));
 
   if (!allowedServices.length) {
-    elements.serviceSelect.innerHTML = '<div class="empty-state">請先選擇技師，或確認這位技師已有可預約服務。</div>';
+    elements.serviceSelect.innerHTML = '<div class="empty-state">目前沒有符合條件的可預約服務，請改選技師或稍後再試。</div>';
     return;
   }
 
@@ -380,6 +403,10 @@ function getSchedulesForTechnician(technicianId) {
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
+function getScheduleForTechnicianAndDate(technicianId, date) {
+  return getSchedulesForTechnician(technicianId).find((item) => item.date === date);
+}
+
 function getScheduleEndMinutes(timeText) {
   if (timeText === "23:59") {
     return 24 * 60;
@@ -416,14 +443,19 @@ function toTimeText(totalMinutes) {
 }
 
 function getAvailableDates(technicianId, serviceIds = state.selectedServiceIds) {
-  const schedules = getSchedulesForTechnician(technicianId);
+  const eligibleTechnicians = getEligibleTechnicians(serviceIds, technicianId);
+  const schedules = eligibleTechnicians.flatMap((technician) => getSchedulesForTechnician(technician.technicianId));
   if (!serviceIds.length) {
-    return schedules.map((item) => item.date);
+    return Array.from(new Set(schedules.map((item) => item.date))).sort((left, right) => left.localeCompare(right));
   }
 
-  return schedules
-    .filter((item) => getAvailableTimeSlots(technicianId, serviceIds, item.date).length > 0)
-    .map((item) => item.date);
+  return Array.from(
+    new Set(
+      schedules
+        .filter((item) => getAvailableTimeSlots(technicianId, serviceIds, item.date).length > 0)
+        .map((item) => item.date)
+    )
+  ).sort((left, right) => left.localeCompare(right));
 }
 
 function hasConflict(candidateStart, candidateEnd, reservations) {
@@ -436,27 +468,37 @@ function hasConflict(candidateStart, candidateEnd, reservations) {
 
 function getAvailableTimeSlots(technicianId, serviceIds, date) {
   const metrics = getServiceMetrics(serviceIds);
-  const schedule = getSchedulesForTechnician(technicianId).find((item) => item.date === date);
+  if (!metrics.services.length) return [];
 
-  if (!metrics.services.length || !schedule) return [];
-
-  const shiftStart = toMinutes(schedule.startTime);
-  const shiftEnd = getScheduleEndMinutes(schedule.endTime);
   const serviceDuration = metrics.totalDuration;
-  const reservations = getReservationsForTechnicianAndDate(technicianId, date);
-  const slots = [];
+  const eligibleTechnicians = getEligibleTechnicians(serviceIds, technicianId);
+  const slotMap = new Map();
 
-  for (let current = shiftStart; current + serviceDuration <= shiftEnd; current += SLOT_INTERVAL_MINUTES) {
-    const end = current + serviceDuration;
-    if (!hasConflict(current, end, reservations)) {
-      slots.push({
-        value: toTimeText(current),
-        label: `${toTimeText(current)} - ${toTimeText(end)}`,
-      });
+  eligibleTechnicians.forEach((technician) => {
+    const schedule = getScheduleForTechnicianAndDate(technician.technicianId, date);
+    if (!schedule) {
+      return;
     }
-  }
 
-  return slots;
+    const shiftStart = toMinutes(schedule.startTime);
+    const shiftEnd = getScheduleEndMinutes(schedule.endTime);
+    const reservations = getReservationsForTechnicianAndDate(technician.technicianId, date);
+
+    for (let current = shiftStart; current + serviceDuration <= shiftEnd; current += SLOT_INTERVAL_MINUTES) {
+      const end = current + serviceDuration;
+      if (!hasConflict(current, end, reservations)) {
+        const timeValue = toTimeText(current);
+        if (!slotMap.has(timeValue)) {
+          slotMap.set(timeValue, {
+            value: timeValue,
+            label: `${timeValue} - ${toTimeText(end)}`,
+          });
+        }
+      }
+    }
+  });
+
+  return Array.from(slotMap.values()).sort((left, right) => left.value.localeCompare(right.value));
 }
 
 function getNextAvailableDate() {
@@ -481,9 +523,9 @@ function updateDashboard() {
   const activeTechnicians = getActiveTechnicians();
   const activeServices = getActiveServices();
   const selectedTechnician = getTechnicianById(state.selectedTechnicianId);
-  const availableServices = state.selectedTechnicianId ? getAllowedServices(state.selectedTechnicianId) : [];
+  const availableServices = getAllowedServices(state.selectedTechnicianId);
   const selectedMetrics = getServiceMetrics(state.selectedServiceIds);
-  const availableDates = state.selectedTechnicianId && state.selectedServiceIds.length
+  const availableDates = state.selectedServiceIds.length
     ? getAvailableDates(state.selectedTechnicianId, state.selectedServiceIds)
     : [];
 
@@ -491,7 +533,9 @@ function updateDashboard() {
   elements.heroServiceCount.textContent = String(activeServices.length);
   elements.heroNextAvailableDate.textContent = getNextAvailableDate();
 
-  elements.overviewTechnician.textContent = selectedTechnician ? selectedTechnician.name : "尚未選擇";
+  elements.overviewTechnician.textContent = isSpecificTechnicianSelected(state.selectedTechnicianId)
+    ? selectedTechnician?.name || "尚未選擇"
+    : "不指定技師，由系統安排";
   elements.overviewServiceCount.textContent = `${selectedMetrics.services.length} / ${availableServices.length} 項`;
   elements.overviewDateCount.textContent = `${availableDates.length} 天`;
 }
@@ -508,7 +552,7 @@ function updateSummary() {
   const date = formData.get("date");
   const time = formData.get("startTime");
 
-  if (!technician || !metrics.services.length || !date || !time) {
+  if (!metrics.services.length || !date || !time) {
     elements.bookingSummary.innerHTML = `
       <div class="summary__header">
         <h3>預約摘要</h3>
@@ -527,7 +571,7 @@ function updateSummary() {
       <span class="summary__badge">即時更新</span>
     </div>
     <dl class="summary__rows">
-      <div class="summary__row"><dt>技師</dt><dd>${technician.name}</dd></div>
+      <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? technician?.name || "未指定" : "不指定，由系統安排"}</dd></div>
       <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
       <div class="summary__row"><dt>日期</dt><dd>${date}</dd></div>
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
@@ -560,14 +604,14 @@ function updateAvailabilityStatus() {
     return;
   }
 
-  if (!state.selectedTechnicianId) {
-    setStatus("請先選擇技師。", "info");
-    return;
-  }
-
   const allowedServices = getAllowedServices(state.selectedTechnicianId);
   if (!allowedServices.length) {
-    setStatus("這位技師目前沒有啟用中的服務項目。", "info");
+    setStatus(
+      isSpecificTechnicianSelected(state.selectedTechnicianId)
+        ? "這位技師目前沒有啟用中的服務項目。"
+        : "目前沒有可由系統安排的服務項目。",
+      "info"
+    );
     return;
   }
 
@@ -598,18 +642,21 @@ function refreshSelects() {
   const previousDate = elements.dateSelect.value;
   const previousTime = elements.timeSelect.value;
 
-  const technicianOptions = getActiveTechnicians()
+  const technicianOptions = [
+    { value: UNSPECIFIED_TECHNICIAN_VALUE, label: "不指定技師，由系統安排" },
+    ...getActiveTechnicians()
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"))
     .map((item) => ({
       value: item.technicianId,
       label: item.name,
-    }));
+    })),
+  ];
   setOptions(elements.technicianSelect, technicianOptions, "請選擇技師");
   if (technicianOptions.some((item) => item.value === state.selectedTechnicianId)) {
     elements.technicianSelect.value = state.selectedTechnicianId;
   } else if (technicianOptions.length) {
-    elements.technicianSelect.value = technicianOptions[0].value;
+    elements.technicianSelect.value = UNSPECIFIED_TECHNICIAN_VALUE;
   } else {
     elements.technicianSelect.value = "";
   }
@@ -620,7 +667,7 @@ function refreshSelects() {
   renderServiceOptions(state.selectedServiceIds);
   state.selectedServiceIds = getSelectedServiceIds();
 
-  const dates = state.selectedTechnicianId
+  const dates = state.selectedServiceIds.length
     ? getAvailableDates(state.selectedTechnicianId, state.selectedServiceIds)
     : [];
   setOptions(
@@ -636,7 +683,7 @@ function refreshSelects() {
   }
 
   const currentDate = elements.dateSelect.value;
-  const timeSlots = state.selectedTechnicianId && state.selectedServiceIds.length && currentDate
+  const timeSlots = state.selectedServiceIds.length && currentDate
     ? getAvailableTimeSlots(state.selectedTechnicianId, state.selectedServiceIds, currentDate)
     : [];
   setOptions(elements.timeSelect, timeSlots, "請選擇時段");
@@ -653,7 +700,7 @@ function refreshSelects() {
 }
 
 function syncDateAndTimeOptions() {
-  const dates = state.selectedTechnicianId
+  const dates = state.selectedServiceIds.length
     ? getAvailableDates(state.selectedTechnicianId, state.selectedServiceIds)
     : [];
   const previousDate = elements.dateSelect.value;
@@ -669,7 +716,7 @@ function syncDateAndTimeOptions() {
   }
 
   const selectedDate = elements.dateSelect.value;
-  const timeSlots = state.selectedTechnicianId && state.selectedServiceIds.length && selectedDate
+  const timeSlots = state.selectedServiceIds.length && selectedDate
     ? getAvailableTimeSlots(state.selectedTechnicianId, state.selectedServiceIds, selectedDate)
     : [];
   const previousTime = elements.timeSelect.value;
@@ -832,7 +879,7 @@ async function loadPublicData(options = {}) {
     state.reservations = result.data.reservations || [];
 
     if (!getActiveTechnicians().some((item) => item.technicianId === state.selectedTechnicianId)) {
-      state.selectedTechnicianId = getActiveTechnicians()[0]?.technicianId || "";
+      state.selectedTechnicianId = UNSPECIFIED_TECHNICIAN_VALUE;
     }
 
     const allowedServiceIds = new Set(getAllowedServices(state.selectedTechnicianId).map((item) => item.serviceId));
@@ -894,7 +941,7 @@ async function submitBooking(event) {
     userDisplayName: state.user.displayName,
     customerName: formData.get("customerName").trim(),
     phone: normalizePhoneInput(formData.get("phone") || ""),
-    technicianId: formData.get("technicianId"),
+    technicianId: isSpecificTechnicianSelected(formData.get("technicianId")) ? formData.get("technicianId") : "",
     serviceIds,
     date: formData.get("date"),
     startTime: formData.get("startTime"),
@@ -913,9 +960,12 @@ async function submitBooking(event) {
       throw new Error(result.message || "預約失敗");
     }
 
-    setStatus(`預約成功，預約編號：${result.data.reservationId}`, "success");
+    setStatus(
+      `預約成功，預約編號：${result.data.reservationId}${result.data.technicianName ? `，已安排 ${result.data.technicianName}` : ""}`,
+      "success"
+    );
     elements.bookingForm.reset();
-    state.selectedTechnicianId = payload.technicianId;
+    state.selectedTechnicianId = payload.technicianId || UNSPECIFIED_TECHNICIAN_VALUE;
     state.selectedServiceIds = [];
     await loadPublicData();
     fillBookingContactFields();

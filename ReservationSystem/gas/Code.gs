@@ -252,7 +252,6 @@ function reviewUser_(payload) {
 function createReservation_(payload) {
   validateRequired_(payload.customerName, 'customerName');
   validateRequired_(payload.phone, 'phone');
-  validateRequired_(payload.technicianId, 'technicianId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
   validateRequired_(payload.userId, 'userId');
@@ -270,8 +269,10 @@ function createReservation_(payload) {
   var userMap = indexBy_(users, 'userId');
   var serviceIds = normalizeServiceIds_(payload.serviceIds || payload.serviceId);
   var selectedServices = getServicesByIds_(serviceIds, serviceMap);
-  var technician = technicianMap[payload.technicianId];
+  var requestedTechnicianId = String(payload.technicianId || '').trim();
   var user = userMap[String(payload.userId || '').trim()];
+  var reservationDate = normalizeDateString_(payload.date);
+  var reservationStartTime = normalizeTimeString_(payload.startTime);
 
   if (!serviceIds.length) {
     throw new Error('請至少選擇一個服務項目');
@@ -289,49 +290,101 @@ function createReservation_(payload) {
     throw new Error('此 LINE 帳號尚未通過審核，暫時無法預約');
   }
 
-  if (!technician || !toBoolean_(technician.active)) {
-    throw new Error('技師不存在或未啟用');
-  }
-
   serviceIds.forEach(function(serviceId) {
     var service = serviceMap[serviceId];
     if (!service || !toBoolean_(service.active)) {
       throw new Error('服務項目不存在或未啟用');
     }
-    if (technician.serviceIds.indexOf(serviceId) === -1) {
-      throw new Error('此技師不可服務所選的其中一個項目');
-    }
   });
-
-  var schedule = schedules.find(function(item) {
-    return item.technicianId === payload.technicianId && item.date === payload.date;
-  });
-
-  if (!schedule || !toBoolean_(schedule.isWorking)) {
-    throw new Error('該日期沒有可預約班表');
-  }
 
   var serviceDuration = selectedServices.reduce(function(sum, service) {
     return sum + Number(service.durationMinutes || 0);
   }, 0);
-  var reservationStart = timeToMinutes_(payload.startTime);
+  var reservationStart = timeToMinutes_(reservationStartTime);
   var reservationEnd = reservationStart + serviceDuration;
 
-  if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
-    throw new Error('預約時段不在班表範圍內');
+  var candidateTechnicians = technicians
+    .filter(function(item) {
+      if (!toBoolean_(item.active)) {
+        return false;
+      }
+
+      if (requestedTechnicianId && item.technicianId !== requestedTechnicianId) {
+        return false;
+      }
+
+      return serviceIds.every(function(serviceId) {
+        return item.serviceIds.indexOf(serviceId) !== -1;
+      });
+    })
+    .sort(function(left, right) {
+      return left.name.localeCompare(right.name, 'zh-Hant') || left.technicianId.localeCompare(right.technicianId);
+    });
+
+  if (requestedTechnicianId && !candidateTechnicians.length) {
+    if (!technicianMap[requestedTechnicianId] || !toBoolean_(technicianMap[requestedTechnicianId].active)) {
+      throw new Error('技師不存在或未啟用');
+    }
+
+    throw new Error('此技師不可服務所選的其中一個項目');
   }
 
-  var hasConflict = reservations.some(function(item) {
-    if (item.technicianId !== payload.technicianId || item.date !== payload.date || isReservationCancelled_(item.status)) {
+  if (!candidateTechnicians.length) {
+    throw new Error('目前沒有技師可提供所選服務');
+  }
+
+  var matchedTechnician = null;
+  var matchedSchedule = null;
+
+  candidateTechnicians.some(function(technician) {
+    var schedule = schedules.find(function(item) {
+      return item.technicianId === technician.technicianId && item.date === reservationDate && toBoolean_(item.isWorking);
+    });
+
+    if (!schedule) {
       return false;
     }
-    var existingStart = timeToMinutes_(item.startTime);
-    var existingEnd = getReservationOccupiedEndMinutes_(item, serviceMap);
-    return reservationStart < existingEnd && existingStart < reservationEnd;
+
+    if (reservationStart < timeToMinutes_(schedule.startTime) || reservationEnd > getScheduleEndMinutes_(schedule.endTime)) {
+      return false;
+    }
+
+    var hasConflict = reservations.some(function(item) {
+      if (item.technicianId !== technician.technicianId || item.date !== reservationDate || isReservationCancelled_(item.status)) {
+        return false;
+      }
+      var existingStart = timeToMinutes_(item.startTime);
+      var existingEnd = getReservationOccupiedEndMinutes_(item, serviceMap);
+      return reservationStart < existingEnd && existingStart < reservationEnd;
+    });
+
+    if (hasConflict) {
+      return false;
+    }
+
+    matchedTechnician = technician;
+    matchedSchedule = schedule;
+    return true;
   });
 
-  if (hasConflict) {
-    throw new Error('此時段已被預約，請重新選擇');
+  if (!matchedTechnician || !matchedSchedule) {
+    if (requestedTechnicianId) {
+      var requestedSchedule = schedules.find(function(item) {
+        return item.technicianId === requestedTechnicianId && item.date === reservationDate && toBoolean_(item.isWorking);
+      });
+
+      if (!requestedSchedule) {
+        throw new Error('該日期沒有可預約班表');
+      }
+
+      if (reservationStart < timeToMinutes_(requestedSchedule.startTime) || reservationEnd > getScheduleEndMinutes_(requestedSchedule.endTime)) {
+        throw new Error('預約時段不在班表範圍內');
+      }
+
+      throw new Error('此時段已被預約，請重新選擇');
+    }
+
+    throw new Error('目前沒有符合條件的技師可安排此時段');
   }
 
   var record = {
@@ -340,10 +393,10 @@ function createReservation_(payload) {
     userDisplayName: user.displayName,
     customerName: String(payload.customerName || user.customerName).trim(),
     phone: normalizedPhone,
-    technicianId: payload.technicianId,
+    technicianId: matchedTechnician.technicianId,
     serviceId: serviceIds.join(','),
-    date: payload.date,
-    startTime: payload.startTime,
+    date: reservationDate,
+    startTime: reservationStartTime,
     endTime: minutesToTime_(reservationEnd),
     status: '已預約',
     note: payload.note || '',
@@ -351,6 +404,7 @@ function createReservation_(payload) {
   };
 
   appendRecord_(SHEETS.reservations, record);
+  record.technicianName = matchedTechnician.name;
   return record;
 }
 
