@@ -51,6 +51,15 @@ textarea {
   margin-bottom: 28px;
 }
 
+.top-status-grid {
+  margin-bottom: 24px;
+}
+
+.top-status-panel {
+  display: grid;
+  gap: 18px;
+}
+
 .hero__content,
 .hero__meta,
 .panel {
@@ -456,6 +465,10 @@ textarea:focus {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.top-status-panel .profile-card__actions .button {
+  min-width: 160px;
 }
 
 .profile-card__copy {

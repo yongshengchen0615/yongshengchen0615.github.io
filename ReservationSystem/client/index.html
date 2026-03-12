@@ -47,6 +47,33 @@
         </aside>
       </header>
 
+      <section class="top-status-grid">
+        <section class="panel top-status-panel">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">LINE Identity</p>
+              <h2>登入與審核狀態</h2>
+              <p class="section-copy">前台採用 LIFF 登入，管理員通過審核後才可正式送出預約。</p>
+            </div>
+          </div>
+          <div class="profile-card">
+            <div class="profile-card__header">
+              <img id="userAvatar" class="profile-card__avatar is-hidden" alt="LINE 使用者頭像" />
+              <div>
+                <strong id="userDisplayName">尚未登入 LINE</strong>
+                <div id="userStatusBadge" class="status-badge">未登入</div>
+              </div>
+            </div>
+            <p id="userStatusText" class="profile-card__copy">請先使用 LINE 登入，系統會自動送出審核。</p>
+            <div class="profile-card__actions">
+              <button type="button" id="loginButton" class="button button--secondary">LINE 登入</button>
+              <button type="button" id="refreshUserButton" class="button button--ghost">重新檢查狀態</button>
+            </div>
+          </div>
+          <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
+        </section>
+      </section>
+
       <main class="content-grid">
         <section class="panel booking-panel">
           <div class="panel__header">
@@ -141,26 +168,11 @@
         <section class="panel panel--side">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">LINE Identity</p>
-              <h2>登入與審核狀態</h2>
-              <p class="section-copy">前台採用 LIFF 登入，管理員通過審核後才可正式送出預約。</p>
+              <p class="eyebrow">Booking Overview</p>
+              <h2>預約概況與提醒</h2>
+              <p class="section-copy">登入審核狀態已移至上方，這裡保留目前選擇摘要與使用提醒。</p>
             </div>
           </div>
-          <div class="profile-card">
-            <div class="profile-card__header">
-              <img id="userAvatar" class="profile-card__avatar is-hidden" alt="LINE 使用者頭像" />
-              <div>
-                <strong id="userDisplayName">尚未登入 LINE</strong>
-                <div id="userStatusBadge" class="status-badge">未登入</div>
-              </div>
-            </div>
-            <p id="userStatusText" class="profile-card__copy">請先使用 LINE 登入，系統會自動送出審核。</p>
-            <div class="profile-card__actions">
-              <button type="button" id="loginButton" class="button button--secondary">LINE 登入</button>
-              <button type="button" id="refreshUserButton" class="button button--ghost">重新檢查狀態</button>
-            </div>
-          </div>
-          <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
           <div class="overview-card">
             <h3>當前選擇概況</h3>
             <dl class="overview-list">
