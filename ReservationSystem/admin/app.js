@@ -33,6 +33,7 @@ const state = {
     activePage: "service",
     scheduleCalendarMonth: formatLocalDate(new Date()).slice(0, 7),
     selectedScheduleDate: formatLocalDate(new Date()),
+    editingScheduleKey: "",
   },
 };
 
@@ -56,25 +57,14 @@ const elements = {
   serviceEditForm: document.querySelector("#serviceEditForm"),
   serviceEditMode: document.querySelector("#serviceEditMode"),
   serviceEditResetButton: document.querySelector("#serviceEditResetButton"),
-  technicianForm: document.querySelector("#technicianForm"),
-  technicianFormMode: document.querySelector("#technicianFormMode"),
   technicianResultLabel: document.querySelector("#technicianResultLabel"),
-  technicianSubmitButton: document.querySelector("#technicianSubmitButton"),
-  technicianResetButton: document.querySelector("#technicianResetButton"),
-  technicianFormServiceCategorySelect: document.querySelector("#technicianFormServiceCategorySelect"),
-  technicianFormSelectVisibleButton: document.querySelector("#technicianFormSelectVisibleButton"),
-  technicianFormClearVisibleButton: document.querySelector("#technicianFormClearVisibleButton"),
-  technicianFormServiceCheckboxes: document.querySelector("#technicianFormServiceCheckboxes"),
   technicianSearchSelect: document.querySelector("#technicianSearchSelect"),
   technicianStatusFilter: document.querySelector("#technicianStatusFilter"),
-  technicianEditPanel: document.querySelector("#technicianEditPanel"),
-  technicianEditForm: document.querySelector("#technicianEditForm"),
-  technicianEditMode: document.querySelector("#technicianEditMode"),
-  technicianEditResetButton: document.querySelector("#technicianEditResetButton"),
-  technicianEditServiceCategorySelect: document.querySelector("#technicianEditServiceCategorySelect"),
-  technicianEditSelectVisibleButton: document.querySelector("#technicianEditSelectVisibleButton"),
-  technicianEditClearVisibleButton: document.querySelector("#technicianEditClearVisibleButton"),
-  technicianEditServiceCheckboxes: document.querySelector("#technicianEditServiceCheckboxes"),
+  technicianBulkSelectionMeta: document.querySelector("#technicianBulkSelectionMeta"),
+  technicianBulkAddRowButton: document.querySelector("#technicianBulkAddRowButton"),
+  technicianBulkSaveButton: document.querySelector("#technicianBulkSaveButton"),
+  technicianBulkDeleteButton: document.querySelector("#technicianBulkDeleteButton"),
+  technicianBulkTable: document.querySelector("#technicianBulkTable"),
   scheduleForm: document.querySelector("#scheduleForm"),
   scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
@@ -85,8 +75,11 @@ const elements = {
   scheduleNextMonthButton: document.querySelector("#scheduleNextMonthButton"),
   scheduleSelectedDateLabel: document.querySelector("#scheduleSelectedDateLabel"),
   scheduleSelectedDateMeta: document.querySelector("#scheduleSelectedDateMeta"),
-  scheduleAllDayButton: document.querySelector("#scheduleAllDayButton"),
-  scheduleDayShiftButton: document.querySelector("#scheduleDayShiftButton"),
+  scheduleEditTimePanel: document.querySelector("#scheduleEditTimePanel"),
+  scheduleEditModeLabel: document.querySelector("#scheduleEditModeLabel"),
+  scheduleSelectAllTechniciansButton: document.querySelector("#scheduleSelectAllTechniciansButton"),
+  scheduleClearTechniciansButton: document.querySelector("#scheduleClearTechniciansButton"),
+  scheduleTechnicianSelectionMeta: document.querySelector("#scheduleTechnicianSelectionMeta"),
   reservationForm: document.querySelector("#reservationForm"),
   reservationFormMode: document.querySelector("#reservationFormMode"),
   reservationResultLabel: document.querySelector("#reservationResultLabel"),
@@ -101,11 +94,10 @@ const elements = {
   userResultLabel: document.querySelector("#userResultLabel"),
   userReviewSummary: document.querySelector("#userReviewSummary"),
   serviceTable: document.querySelector("#serviceTable"),
-  technicianTable: document.querySelector("#technicianTable"),
   scheduleTable: document.querySelector("#scheduleTable"),
   reservationTable: document.querySelector("#reservationTable"),
   userTable: document.querySelector("#userTable"),
-  scheduleTechnicianSelect: document.querySelector("#scheduleTechnicianSelect"),
+  scheduleTechnicianCheckboxes: document.querySelector("#scheduleTechnicianCheckboxes"),
   reservationTechnicianSelect: document.querySelector("#reservationTechnicianSelect"),
   reservationServiceSelect: document.querySelector("#reservationServiceSelect"),
   technicianStat: document.querySelector("#technicianStat"),
@@ -422,9 +414,13 @@ function resetScheduleForm() {
   elements.scheduleForm.reset();
   elements.scheduleForm.date.value = selectedDate;
   elements.scheduleForm.endDate.value = selectedDate;
-  elements.scheduleForm.startTime.value = "00:00";
-  elements.scheduleForm.endTime.value = "23:59";
   elements.scheduleForm.isWorking.checked = true;
+  elements.scheduleForm.startTime.value = "09:00";
+  elements.scheduleForm.endTime.value = "18:00";
+  state.ui.editingScheduleKey = "";
+  elements.scheduleEditTimePanel.classList.add("is-hidden");
+  elements.scheduleEditModeLabel.textContent = "編輯這筆班表的臨時上下班時間";
+  syncScheduleTechnicianSelection([]);
 }
 
 function fillScheduleForm(schedule) {
@@ -433,12 +429,15 @@ function fillScheduleForm(schedule) {
     return;
   }
 
-  elements.scheduleForm.technicianId.value = schedule.technicianId;
   elements.scheduleForm.date.value = schedule.date;
   elements.scheduleForm.endDate.value = schedule.date;
   elements.scheduleForm.startTime.value = schedule.startTime;
   elements.scheduleForm.endTime.value = schedule.endTime;
   elements.scheduleForm.isWorking.checked = Boolean(schedule.isWorking);
+  state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
+  elements.scheduleEditTimePanel.classList.remove("is-hidden");
+  elements.scheduleEditModeLabel.textContent = `正在編輯 ${getTechnicianById(schedule.technicianId)?.name || schedule.technicianId} 的班表時段`;
+  syncScheduleTechnicianSelection([schedule.technicianId]);
   updateSelectedScheduleDate(schedule.date);
   scrollToPanel(elements.scheduleForm);
 }
@@ -515,10 +514,6 @@ function isEditingService() {
   return Boolean(elements.serviceForm.serviceId.value);
 }
 
-function isEditingTechnician() {
-  return Boolean(elements.technicianForm.technicianId.value);
-}
-
 function isEditingReservation() {
   return Boolean(elements.reservationForm.reservationId.value);
 }
@@ -527,12 +522,6 @@ function updateServiceFormMode() {
   elements.serviceFormMode.textContent = "新增模式";
   elements.serviceSubmitButton.textContent = "新增服務";
   elements.serviceResetButton.textContent = "清空表單";
-}
-
-function updateTechnicianFormMode() {
-  elements.technicianFormMode.textContent = "新增模式";
-  elements.technicianSubmitButton.textContent = "新增技師";
-  elements.technicianResetButton.textContent = "清空表單";
 }
 
 function updateReservationFormMode() {
@@ -567,37 +556,90 @@ function resetServiceEditForm() {
   elements.serviceEditMode.classList.add("is-hidden");
 }
 
-function resetTechnicianForm() {
-  elements.technicianForm.reset();
-  elements.technicianForm.technicianId.value = "";
-  elements.technicianForm.active.checked = true;
-  refreshCategorySelectOptions(elements.technicianFormServiceCategorySelect, "全部分類");
-  elements.technicianFormServiceCategorySelect.value = "";
-  renderServiceSelectionCheckboxes(elements.technicianFormServiceCheckboxes, [], "");
-  updateTechnicianFormMode();
-}
-
-function isEditingTechnicianInline() {
-  return Boolean(elements.technicianEditForm.technicianId.value);
-}
-
-function resetTechnicianEditForm() {
-  elements.technicianEditForm.reset();
-  elements.technicianEditForm.technicianId.value = "";
-  elements.technicianEditForm.active.checked = true;
-  refreshCategorySelectOptions(elements.technicianEditServiceCategorySelect, "全部分類");
-  elements.technicianEditServiceCategorySelect.value = "";
-  renderServiceSelectionCheckboxes(elements.technicianEditServiceCheckboxes, [], "");
-  elements.technicianEditPanel.classList.add("is-hidden");
-  elements.technicianEditMode.classList.add("is-hidden");
-}
-
 function getSelectedServiceIdsFromContainer(container) {
   if (!container) {
     return [];
   }
 
   return Array.from(container.querySelectorAll('input[name="serviceIds"]:checked')).map((input) => input.value);
+}
+
+function getSelectedScheduleTechnicianIds() {
+  if (!elements.scheduleTechnicianCheckboxes) {
+    return [];
+  }
+
+  return Array.from(elements.scheduleTechnicianCheckboxes.querySelectorAll('input[name="scheduleTechnicianIds"]:checked')).map(
+    (input) => input.value
+  );
+}
+
+function updateScheduleTechnicianSelectionMeta() {
+  if (!elements.scheduleTechnicianSelectionMeta) {
+    return;
+  }
+
+  const activeTechnicians = state.technicians.filter((item) => item.active);
+  const selectedCount = getSelectedScheduleTechnicianIds().length;
+
+  if (!activeTechnicians.length) {
+    elements.scheduleTechnicianSelectionMeta.textContent = "目前沒有啟用中的技師可排班";
+    return;
+  }
+
+  if (!selectedCount) {
+    elements.scheduleTechnicianSelectionMeta.textContent = `尚未選擇技師，共 ${activeTechnicians.length} 位可排班`;
+    return;
+  }
+
+  elements.scheduleTechnicianSelectionMeta.textContent = `已選擇 ${selectedCount} 位技師，共 ${activeTechnicians.length} 位可排班`;
+}
+
+function renderScheduleTechnicianCheckboxes(selectedIds = []) {
+  if (!elements.scheduleTechnicianCheckboxes) {
+    return;
+  }
+
+  const checked = new Set(selectedIds || []);
+  const activeTechnicians = state.technicians.filter((item) => item.active);
+
+  if (!activeTechnicians.length) {
+    elements.scheduleTechnicianCheckboxes.innerHTML = '<div class="empty-state">目前沒有啟用中的技師，請先到技師管理啟用。</div>';
+    updateScheduleTechnicianSelectionMeta();
+    return;
+  }
+
+  elements.scheduleTechnicianCheckboxes.innerHTML = activeTechnicians
+    .map(
+      (technician) => `
+        <label class="checkbox-pill">
+          <input type="checkbox" name="scheduleTechnicianIds" value="${technician.technicianId}" ${
+            checked.has(technician.technicianId) ? "checked" : ""
+          } />
+          <span>${technician.name}</span>
+        </label>
+      `
+    )
+    .join("");
+
+  updateScheduleTechnicianSelectionMeta();
+}
+
+function syncScheduleTechnicianSelection(selectedIds = []) {
+  renderScheduleTechnicianCheckboxes(selectedIds);
+}
+
+function setScheduleTechnicianSelection(checkedState) {
+  if (!elements.scheduleTechnicianCheckboxes) {
+    return 0;
+  }
+
+  const checkboxes = Array.from(elements.scheduleTechnicianCheckboxes.querySelectorAll('input[name="scheduleTechnicianIds"]'));
+  checkboxes.forEach((input) => {
+    input.checked = checkedState;
+  });
+  updateScheduleTechnicianSelectionMeta();
+  return checkboxes.length;
 }
 
 function getServicesByCategoryFilter(categoryFilter = "") {
@@ -677,11 +719,6 @@ function setVisibleServiceSelection(container, checkedState) {
     input.checked = checkedState;
   });
   return visibleCheckboxes.length;
-}
-
-function setSchedulePreset(startTime, endTime) {
-  elements.scheduleForm.startTime.value = startTime;
-  elements.scheduleForm.endTime.value = endTime;
 }
 
 function getAllowedReservationServices(technicianId) {
@@ -851,6 +888,15 @@ function formatDateTimeText(value) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function getReservationConfirmationSummary(payload) {
   const technicianName = getTechnicianById(payload.technicianId)?.name || payload.technicianId;
   const serviceNames = (payload.serviceIds || [])
@@ -923,6 +969,261 @@ function updateWorkspaceOverview() {
   }
 
   elements.workflowHint.textContent = "資料狀態完整，可持續維護服務、班表與預約。";
+}
+
+function getTechnicianScheduleTimeLabel(technicianId) {
+  const technician = getTechnicianById(technicianId);
+  if (!technician) {
+    return "未設定預設時段";
+  }
+
+  return `${technician.startTime} - ${technician.endTime}`;
+}
+
+function getBulkTechnicianRows() {
+  if (!elements.technicianBulkTable) {
+    return [];
+  }
+
+  return Array.from(elements.technicianBulkTable.querySelectorAll("[data-bulk-technician-row]"));
+}
+
+function getBulkTechnicianServiceIds(row) {
+  const checkboxContainer = row?.querySelector("[data-bulk-service-checkboxes]");
+  if (checkboxContainer && checkboxContainer.childElementCount) {
+    return getSelectedServiceIdsFromContainer(checkboxContainer);
+  }
+
+  return String(row?.dataset.serviceIds || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function getBulkTechnicianServicesLabel(serviceIds = []) {
+  if (!serviceIds.length) {
+    return "未綁定服務";
+  }
+
+  return serviceIds
+    .map((serviceId) => getServiceById(serviceId)?.name || serviceId)
+    .join("、");
+}
+
+function getBulkTechnicianServiceCategoryOptions(selectedValue = "") {
+  const normalizedValue = String(selectedValue || "");
+  return [
+    '<option value="">全部分類</option>',
+    ...getServiceCategoryOptions().map(
+      (category) =>
+        `<option value="${escapeHtml(category)}" ${normalizedValue === category ? "selected" : ""}>${escapeHtml(category)}</option>`
+    ),
+  ].join("");
+}
+
+function syncBulkTechnicianServiceSummary(row) {
+  if (!row) {
+    return;
+  }
+
+  const serviceIds = getBulkTechnicianServiceIds(row);
+  const summaryLabel = row.querySelector("[data-bulk-service-summary]");
+  const detailLabel = row.querySelector("[data-bulk-service-label]");
+  row.dataset.serviceIds = serviceIds.join(",");
+
+  if (summaryLabel) {
+    summaryLabel.textContent = serviceIds.length ? `${serviceIds.length} 項服務` : "未綁定服務";
+  }
+
+  if (detailLabel) {
+    const text = getBulkTechnicianServicesLabel(serviceIds);
+    detailLabel.textContent = text;
+    detailLabel.title = text;
+  }
+}
+
+function renderBulkTechnicianServiceEditor(row) {
+  if (!row) {
+    return;
+  }
+
+  const container = row.querySelector("[data-bulk-service-checkboxes]");
+  const categorySelect = row.querySelector("[data-bulk-service-category]");
+  if (!container || !categorySelect) {
+    return;
+  }
+
+  const selectedIds = getBulkTechnicianServiceIds(row);
+  renderServiceSelectionCheckboxes(container, selectedIds, categorySelect.value || "");
+  syncBulkTechnicianServiceSummary(row);
+}
+
+function toggleBulkTechnicianServiceEditor(row) {
+  if (!row) {
+    return;
+  }
+
+  const editor = row.querySelector("[data-bulk-service-editor]");
+  if (!editor) {
+    return;
+  }
+
+  const willOpen = editor.classList.contains("is-hidden");
+  editor.classList.toggle("is-hidden", !willOpen);
+  if (willOpen) {
+    renderBulkTechnicianServiceEditor(row);
+  }
+}
+
+function createBulkTechnicianRowMarkup(technician = null) {
+  const technicianId = technician?.technicianId || "";
+  const serviceIds = technician?.serviceIds || [];
+  const serviceSummary = serviceIds.length ? `${serviceIds.length} 項服務` : "未綁定服務";
+  const technicianName = technician?.name || "";
+  const startTime = technician?.startTime || "09:00";
+  const endTime = technician?.endTime || "18:00";
+
+  return `
+    <tr data-bulk-technician-row data-technician-id="${escapeHtml(technicianId)}" data-service-ids="${escapeHtml(serviceIds.join(","))}">
+      <td data-label="勾選">
+        <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
+      </td>
+      <td data-label="技師名稱">
+        <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
+      </td>
+      <td data-label="上班時間">
+        <input type="time" name="startTime" value="${escapeHtml(startTime)}" />
+      </td>
+      <td data-label="下班時間">
+        <input type="time" name="endTime" value="${escapeHtml(endTime)}" />
+      </td>
+      <td data-label="啟用">
+        <label class="checkbox-field checkbox-field--compact">
+          <input type="checkbox" name="active" ${technician?.active !== false ? "checked" : ""} />
+          <span>${technician?.active !== false ? "啟用" : "停用"}</span>
+        </label>
+      </td>
+      <td data-label="服務項目">
+        <div class="bulk-technician-services">
+          <strong data-bulk-service-summary>${serviceSummary}</strong>
+          <small data-bulk-service-label title="${escapeHtml(getBulkTechnicianServicesLabel(serviceIds))}">${escapeHtml(getBulkTechnicianServicesLabel(serviceIds))}</small>
+          <div class="form-actions form-actions--compact bulk-technician-services__actions">
+            <button type="button" class="button button--ghost" data-bulk-toggle-services>編輯服務</button>
+            <button type="button" class="button button--secondary" data-bulk-select-visible-services>全選目前分類</button>
+            <button type="button" class="button button--secondary" data-bulk-clear-visible-services>清除此分類</button>
+          </div>
+          <div class="bulk-technician-services__editor is-hidden" data-bulk-service-editor>
+            <label class="field field--compact">
+              <span>服務分類</span>
+              <select data-bulk-service-category>
+                ${getBulkTechnicianServiceCategoryOptions()}
+              </select>
+            </label>
+            <div class="checkbox-grid bulk-technician-services__grid" data-bulk-service-checkboxes></div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function updateBulkTechnicianSelectionMeta() {
+  if (!elements.technicianBulkSelectionMeta) {
+    return;
+  }
+
+  const rows = getBulkTechnicianRows();
+  const checkedCount = rows.filter((row) => row.querySelector('input[name="bulkTechnicianSelected"]')?.checked).length;
+  elements.technicianBulkSelectionMeta.textContent = checkedCount
+    ? `已勾選 ${checkedCount} 位技師`
+    : `共 ${rows.length} 列，尚未勾選任何技師`;
+}
+
+function renderTechnicianBulkTable() {
+  if (!elements.technicianBulkTable) {
+    return;
+  }
+
+  const technicians = getFilteredTechnicians();
+  elements.technicianBulkTable.innerHTML = `
+    <table class="list-table bulk-technician-table">
+      <thead>
+        <tr>
+          <th>勾選</th>
+          <th>技師名稱</th>
+          <th>上班時間</th>
+          <th>下班時間</th>
+          <th>啟用</th>
+          <th>服務項目</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${technicians.map((technician) => createBulkTechnicianRowMarkup(technician)).join("")}
+      </tbody>
+    </table>
+  `;
+
+  getBulkTechnicianRows().forEach((row) => {
+    renderBulkTechnicianServiceEditor(row);
+    const editor = row.querySelector("[data-bulk-service-editor]");
+    if (editor) {
+      editor.classList.add("is-hidden");
+    }
+  });
+  updateBulkTechnicianSelectionMeta();
+}
+
+function appendTechnicianBulkRow(technician = null) {
+  if (!elements.technicianBulkTable) {
+    return;
+  }
+
+  const tbody = elements.technicianBulkTable.querySelector("tbody");
+  if (!tbody) {
+    renderTechnicianBulkTable();
+    return;
+  }
+
+  tbody.insertAdjacentHTML("beforeend", createBulkTechnicianRowMarkup(technician));
+  const row = tbody.lastElementChild;
+  if (row) {
+    renderBulkTechnicianServiceEditor(row);
+    const editor = row.querySelector("[data-bulk-service-editor]");
+    if (editor) {
+      editor.classList.add("is-hidden");
+    }
+  }
+  updateBulkTechnicianSelectionMeta();
+}
+
+function readBulkTechnicianRow(row) {
+  const technicianId = String(row.dataset.technicianId || "").trim();
+  const name = row.querySelector('input[name="name"]')?.value.trim() || "";
+  const startTime = row.querySelector('input[name="startTime"]')?.value || "";
+  const endTime = row.querySelector('input[name="endTime"]')?.value || "";
+  const active = Boolean(row.querySelector('input[name="active"]')?.checked);
+  const serviceIds = getBulkTechnicianServiceIds(row);
+
+  if (!technicianId && !name && !startTime && !endTime) {
+    return null;
+  }
+
+  if (!name) {
+    throw new Error("批量技師資料中有未填寫的技師名稱");
+  }
+
+  if (!startTime || !endTime) {
+    throw new Error(`技師 ${name} 的上下班時間未填寫完整`);
+  }
+
+  return {
+    technicianId,
+    name,
+    startTime,
+    endTime,
+    active,
+    serviceIds,
+  };
 }
 
 function renderServiceTable() {
@@ -1003,47 +1304,6 @@ function getGroupedServiceMarkup(serviceIds = []) {
       `;
     })
     .join("");
-}
-
-function renderTechnicianTable() {
-  const technicians = getFilteredTechnicians();
-  elements.technicianResultLabel.textContent = `顯示 ${technicians.length} / ${state.technicians.length} 位`;
-  if (!technicians.length) {
-    elements.technicianTable.innerHTML = `<div class="empty-state">${state.filters.technicianId || state.filters.technicianStatus !== "all" ? "找不到符合條件的技師資料。" : "尚無技師資料。"}</div>`;
-    return;
-  }
-
-  elements.technicianTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>技師</th>
-          <th>可服務項目</th>
-          <th>狀態</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${technicians
-          .map((technician) => {
-            return `
-              <tr>
-                <td data-label="技師">${technician.name}</td>
-                <td data-label="可服務項目">${getGroupedServiceMarkup(technician.serviceIds || [])}</td>
-                <td data-label="狀態">${getActiveStatusPill(technician.active)}</td>
-                <td data-label="操作" class="table-cell-actions">
-                  <div class="table-actions">
-                    <button type="button" class="button button--ghost" data-edit-technician="${technician.technicianId}">編輯</button>
-                    <button type="button" class="button button--danger" data-delete-technician="${technician.technicianId}" data-technician-name="${technician.name}">刪除</button>
-                  </div>
-                </td>
-              </tr>
-            `;
-          })
-          .join("")}
-      </tbody>
-    </table>
-  `;
 }
 
 function renderScheduleTable() {
@@ -1136,6 +1396,7 @@ function renderSelectedScheduleDetail() {
           </div>
           <div class="table-actions">
             <button type="button" class="button button--ghost" data-edit-schedule="${schedule.date}::${schedule.technicianId}">編輯這筆班表</button>
+            <button type="button" class="button button--danger" data-delete-schedule="${schedule.date}::${schedule.technicianId}" data-technician-name="${technicianName}">刪除這筆班表</button>
           </div>
         </article>
       `;
@@ -1298,6 +1559,7 @@ function renderUserTable() {
                   <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="待審核">設待審核</button>
                   <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="已拒絕">拒絕</button>
                   <button type="button" class="button button--danger" data-review-user="${user.userId}" data-review-status="已停用">停用</button>
+                  <button type="button" class="button button--danger" data-delete-user="${user.userId}" data-user-name="${user.displayName}">刪除</button>
                 </div>
               </td>
             </tr>
@@ -1309,18 +1571,16 @@ function renderUserTable() {
 }
 
 function refreshTechnicianOptions() {
-  const selectedScheduleTechnicianId = elements.scheduleTechnicianSelect.value;
+  const selectedScheduleTechnicianIds = getSelectedScheduleTechnicianIds();
   const selectedReservationTechnicianId = elements.reservationTechnicianSelect.value;
   const selectedTechnicianSearchId = elements.technicianSearchSelect.value;
   const selectedServiceCategory = elements.serviceCategoryFilter.value;
   const categoryOptions = getServiceCategoryOptions();
 
-  setOptions(
-    elements.scheduleTechnicianSelect,
-    state.technicians
-      .filter((item) => item.active)
-      .map((item) => ({ value: item.technicianId, label: item.name })),
-    "請選擇技師"
+  syncScheduleTechnicianSelection(
+    selectedScheduleTechnicianIds.filter((technicianId) =>
+      state.technicians.some((item) => item.technicianId === technicianId && item.active)
+    )
   );
 
   setOptions(
@@ -1342,13 +1602,6 @@ function refreshTechnicianOptions() {
   );
 
   refreshCategorySelectOptions(elements.serviceCategoryFilter, "全部類別", selectedServiceCategory || state.filters.serviceCategory);
-  refreshCategorySelectOptions(elements.technicianFormServiceCategorySelect, "全部分類", elements.technicianFormServiceCategorySelect?.value || "");
-  refreshCategorySelectOptions(elements.technicianEditServiceCategorySelect, "全部分類", elements.technicianEditServiceCategorySelect?.value || "");
-
-  if (state.technicians.some((item) => item.technicianId === selectedScheduleTechnicianId && item.active)) {
-    elements.scheduleTechnicianSelect.value = selectedScheduleTechnicianId;
-  }
-
   if (state.technicians.some((item) => item.technicianId === selectedReservationTechnicianId)) {
     elements.reservationTechnicianSelect.value = selectedReservationTechnicianId;
   }
@@ -1379,32 +1632,18 @@ function renderAll() {
   updateWorkspaceOverview();
   refreshServiceCategorySuggestions();
   renderServiceTable();
-  renderTechnicianTable();
+  renderTechnicianBulkTable();
   renderScheduleTable();
   renderReservationTable();
   renderUserTable();
   refreshTechnicianOptions();
   updateServiceFormMode();
-  updateTechnicianFormMode();
-  syncTechnicianServiceSelection(
-    elements.technicianFormServiceCategorySelect,
-    elements.technicianFormServiceCheckboxes,
-    getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes)
-  );
   if (isEditingServiceInline()) {
     const service = getServiceById(elements.serviceEditForm.serviceId.value);
     if (service) {
       fillServiceForm(service.serviceId);
     } else {
       resetServiceEditForm();
-    }
-  }
-  if (isEditingTechnicianInline()) {
-    const technician = getTechnicianById(elements.technicianEditForm.technicianId.value);
-    if (technician) {
-      fillTechnicianForm(technician.technicianId);
-    } else {
-      resetTechnicianEditForm();
     }
   }
   if (isEditingReservation()) {
@@ -1419,6 +1658,15 @@ function renderAll() {
   } else {
     resetReservationForm();
   }
+}
+
+async function saveTechnicianPayload(payload) {
+  const result = await requestApi("POST", {}, { action: "saveTechnician", payload });
+  if (!result.ok) {
+    throw new Error(result.message || "儲存技師失敗");
+  }
+
+  return result.data;
 }
 
 async function loadAdminData() {
@@ -1486,23 +1734,6 @@ async function submitServiceEdit(event) {
   setStatus("服務已更新。", "success");
 }
 
-async function saveTechnicianForm(form) {
-  setLoadingStatus("正在儲存技師資料...");
-  const formData = new FormData(form);
-  const payload = {
-    technicianId: formData.get("technicianId") || "",
-    name: formData.get("name").trim(),
-    active: formData.get("active") === "on",
-  };
-
-  const result = await requestApi("POST", {}, { action: "saveTechnician", payload });
-  if (!result.ok) {
-    throw new Error(result.message || "儲存技師失敗");
-  }
-
-  return result.data;
-}
-
 async function saveTechnicianServicesPayload(payload) {
   const result = await requestApi("POST", {}, { action: "saveTechnicianServices", payload });
   if (!result.ok) {
@@ -1512,61 +1743,62 @@ async function saveTechnicianServicesPayload(payload) {
   return result.data;
 }
 
-async function submitTechnician(event) {
-  event.preventDefault();
-  const serviceIds = getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes);
-  const technician = await saveTechnicianForm(elements.technicianForm);
-  await saveTechnicianServicesPayload({
-    technicianId: technician.technicianId,
-    serviceIds,
-  });
-
-  resetTechnicianForm();
-  await loadAdminData();
-  setStatus("技師已新增，並同步更新可服務項目。", "success");
-}
-
-async function submitTechnicianEdit(event) {
-  event.preventDefault();
-  const technician = await saveTechnicianForm(elements.technicianEditForm);
-  const serviceIds = getSelectedServiceIdsFromContainer(elements.technicianEditServiceCheckboxes);
-  await saveTechnicianServicesPayload({
-    technicianId: technician.technicianId,
-    serviceIds,
-  });
-
-  resetTechnicianEditForm();
-  await loadAdminData();
-  setStatus("技師與可服務項目已更新。", "success");
-}
-
 async function submitSchedule(event) {
   event.preventDefault();
   setLoadingStatus("正在儲存班表...");
   const formData = new FormData(elements.scheduleForm);
+  const technicianIds = getSelectedScheduleTechnicianIds();
   const startDate = formData.get("date");
   const endDate = formData.get("endDate") || startDate;
   const scheduleDates = enumerateDateRange(startDate, endDate);
+  const isEditingSchedule = Boolean(state.ui.editingScheduleKey);
+
+  if (!technicianIds.length) {
+    throw new Error("請至少選擇一位技師");
+  }
+
+  if (isEditingSchedule && technicianIds.length !== 1) {
+    throw new Error("編輯班表時一次只能修改一位技師");
+  }
+
+  if (isEditingSchedule && scheduleDates.length !== 1) {
+    throw new Error("編輯班表時一次只能修改單一天");
+  }
 
   for (const scheduleDate of scheduleDates) {
-    const payload = {
-      technicianId: formData.get("technicianId"),
-      date: scheduleDate,
-      startTime: formData.get("startTime"),
-      endTime: formData.get("endTime"),
-      isWorking: formData.get("isWorking") === "on",
-    };
+    for (const technicianId of technicianIds) {
+      const technician = getTechnicianById(technicianId);
+      if (!technician) {
+        throw new Error("找不到技師預設班別");
+      }
 
-    const result = await requestApi("POST", {}, { action: "saveSchedule", payload });
-    if (!result.ok) {
-      throw new Error(result.message || "儲存班表失敗");
+      const payload = {
+        technicianId,
+        date: scheduleDate,
+        startTime: isEditingSchedule ? formData.get("startTime") : technician.startTime,
+        endTime: isEditingSchedule ? formData.get("endTime") : technician.endTime,
+        isWorking: formData.get("isWorking") === "on",
+      };
+
+      const result = await requestApi("POST", {}, { action: "saveSchedule", payload });
+      if (!result.ok) {
+        throw new Error(result.message || "儲存班表失敗");
+      }
     }
   }
 
   updateSelectedScheduleDate(startDate);
   await loadAdminData();
   resetScheduleForm();
-  setStatus(scheduleDates.length > 1 ? `已套用 ${scheduleDates.length} 天班表。` : "班表已儲存。", "success");
+  const scheduleCount = scheduleDates.length * technicianIds.length;
+  setStatus(
+    isEditingSchedule
+      ? "班表時段已更新。"
+      : scheduleCount > 1
+      ? `已為 ${technicianIds.length} 位技師套用 ${scheduleDates.length} 天班表，共 ${scheduleCount} 筆。`
+      : "班表已儲存。",
+    "success"
+  );
 }
 
 async function submitReservation(event) {
@@ -1613,22 +1845,6 @@ function fillServiceForm(serviceId) {
   elements.serviceEditPanel.classList.remove("is-hidden");
   elements.serviceEditMode.classList.remove("is-hidden");
   scrollToPanel(elements.serviceEditPanel);
-}
-
-function fillTechnicianForm(technicianId) {
-  const technician = getTechnicianById(technicianId);
-  if (!technician) return;
-  elements.technicianEditForm.technicianId.value = technician.technicianId;
-  elements.technicianEditForm.name.value = technician.name;
-  elements.technicianEditForm.active.checked = Boolean(technician.active);
-  syncTechnicianServiceSelection(
-    elements.technicianEditServiceCategorySelect,
-    elements.technicianEditServiceCheckboxes,
-    technician.serviceIds || []
-  );
-  elements.technicianEditPanel.classList.remove("is-hidden");
-  elements.technicianEditMode.classList.remove("is-hidden");
-  scrollToPanel(elements.technicianEditPanel);
 }
 
 function fillReservationForm(reservationId) {
@@ -1685,14 +1901,77 @@ async function deleteTechnician(technicianId, technicianName) {
     throw new Error(result.message || "刪除技師失敗");
   }
 
-  if (elements.technicianForm.technicianId.value === technicianId) {
-    resetTechnicianForm();
-  }
-  if (elements.technicianEditForm.technicianId.value === technicianId) {
-    resetTechnicianEditForm();
-  }
   await loadAdminData();
   setStatus("技師已刪除。", "success");
+}
+
+async function submitBulkTechnicians() {
+  setLoadingStatus("正在批量儲存技師資料...");
+  const rows = getBulkTechnicianRows();
+  const payloads = rows
+    .map((row) => readBulkTechnicianRow(row))
+    .filter(Boolean);
+
+  if (!payloads.length) {
+    throw new Error("目前沒有可儲存的技師資料");
+  }
+
+  for (const payload of payloads) {
+    const technician = await saveTechnicianPayload({
+      technicianId: payload.technicianId,
+      name: payload.name,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      active: payload.active,
+    });
+
+    await saveTechnicianServicesPayload({
+      technicianId: technician.technicianId,
+      serviceIds: payload.serviceIds,
+    });
+  }
+
+  await loadAdminData();
+  setStatus(`已批量儲存 ${payloads.length} 位技師。`, "success");
+}
+
+async function deleteBulkTechnicians() {
+  const rows = getBulkTechnicianRows().filter((row) => row.querySelector('input[name="bulkTechnicianSelected"]')?.checked);
+
+  if (!rows.length) {
+    setStatus("請先勾選要刪除的技師。", "info");
+    return;
+  }
+
+  const savedRows = rows.filter((row) => String(row.dataset.technicianId || "").trim());
+  const draftRows = rows.filter((row) => !String(row.dataset.technicianId || "").trim());
+  const confirmed = window.confirm(`確定要刪除勾選的 ${rows.length} 列技師資料嗎？`);
+  if (!confirmed) {
+    setStatus("已取消批量刪除。", "info");
+    return;
+  }
+
+  draftRows.forEach((row) => row.remove());
+
+  if (savedRows.length) {
+    setLoadingStatus("正在批量刪除技師資料...");
+    for (const row of savedRows) {
+      const technicianId = row.dataset.technicianId;
+      const result = await requestApi("POST", {}, {
+        action: "deleteTechnician",
+        payload: { technicianId },
+      });
+      if (!result.ok) {
+        throw new Error(result.message || "批量刪除技師失敗");
+      }
+    }
+
+    await loadAdminData();
+  } else {
+    updateBulkTechnicianSelectionMeta();
+  }
+
+  setStatus(`已刪除 ${rows.length} 列技師資料。`, "success");
 }
 
 async function deleteReservation(reservationId, customerName) {
@@ -1717,6 +1996,38 @@ async function deleteReservation(reservationId, customerName) {
   }
   await loadAdminData();
   setStatus("預約已刪除。", "success");
+}
+
+async function deleteSchedule(scheduleDate, technicianId, technicianName) {
+  const schedule = state.schedules.find((item) => item.date === scheduleDate && item.technicianId === technicianId);
+  const displayName = technicianName || getTechnicianById(technicianId)?.name || technicianId;
+  const detailText = schedule
+    ? `\n\n日期：${schedule.date}\n時間：${schedule.startTime} - ${schedule.endTime}\n技師：${displayName}`
+    : `\n\n日期：${scheduleDate}\n技師：${displayName}`;
+  const confirmed = window.confirm(`確定要刪除這筆班表嗎？${detailText}`);
+  if (!confirmed) {
+    return;
+  }
+
+  setLoadingStatus("正在刪除班表資料...");
+  const result = await requestApi("POST", {}, {
+    action: "deleteSchedule",
+    payload: {
+      technicianId,
+      date: scheduleDate,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "刪除班表失敗");
+  }
+
+  if (state.ui.editingScheduleKey === `${scheduleDate}::${technicianId}`) {
+    resetScheduleForm();
+  }
+
+  updateSelectedScheduleDate(scheduleDate);
+  await loadAdminData();
+  setStatus("班表已刪除。", "success");
 }
 
 async function reviewUser(userId, status) {
@@ -1748,6 +2059,30 @@ async function reviewUser(userId, status) {
   setStatus(`已將 ${user.displayName} 設為${status}。`, "success");
 }
 
+async function deleteUser(userId, userName) {
+  const user = state.users.find((item) => item.userId === userId);
+  const displayName = userName || user?.displayName || userId;
+  const detailText = user
+    ? `\n\n稱呼：${user.customerName || "未填寫"}\n電話：${user.phone || "未填寫"}\n狀態：${user.status}`
+    : "";
+  const confirmed = window.confirm(`確定要刪除用戶「${displayName}」嗎？${detailText}`);
+  if (!confirmed) {
+    return;
+  }
+
+  setLoadingStatus("正在刪除用戶資料...");
+  const result = await requestApi("POST", {}, {
+    action: "deleteUser",
+    payload: { userId },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "刪除用戶失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`用戶 ${displayName} 已刪除。`, "success");
+}
+
 function bindEvents() {
   elements.pageTabs.forEach((button) => {
     button.addEventListener("click", () => {
@@ -1771,25 +2106,9 @@ function bindEvents() {
     }
   });
 
-  elements.technicianForm.addEventListener("submit", async (event) => {
-    try {
-      await submitTechnician(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
   elements.serviceEditForm.addEventListener("submit", async (event) => {
     try {
       await submitServiceEdit(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.technicianEditForm.addEventListener("submit", async (event) => {
-    try {
-      await submitTechnicianEdit(event);
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -1821,16 +2140,6 @@ function bindEvents() {
     setStatus("已取消服務編輯。", "info");
   });
 
-  elements.technicianResetButton.addEventListener("click", () => {
-    resetTechnicianForm();
-    setStatus("技師表單已重設。", "info");
-  });
-
-  elements.technicianEditResetButton.addEventListener("click", () => {
-    resetTechnicianEditForm();
-    setStatus("已取消技師編輯。", "info");
-  });
-
   elements.serviceSearchInput.addEventListener("input", (event) => {
     state.filters.serviceKeyword = event.target.value;
     renderServiceTable();
@@ -1843,48 +2152,85 @@ function bindEvents() {
 
   elements.technicianSearchSelect.addEventListener("change", (event) => {
     state.filters.technicianId = event.target.value;
-    renderTechnicianTable();
-  });
-
-  elements.technicianFormServiceCategorySelect.addEventListener("change", () => {
-    syncTechnicianServiceSelection(
-      elements.technicianFormServiceCategorySelect,
-      elements.technicianFormServiceCheckboxes,
-      getSelectedServiceIdsFromContainer(elements.technicianFormServiceCheckboxes)
-    );
-  });
-
-  elements.technicianEditServiceCategorySelect.addEventListener("change", () => {
-    syncTechnicianServiceSelection(
-      elements.technicianEditServiceCategorySelect,
-      elements.technicianEditServiceCheckboxes,
-      getSelectedServiceIdsFromContainer(elements.technicianEditServiceCheckboxes)
-    );
-  });
-
-  elements.technicianFormSelectVisibleButton.addEventListener("click", () => {
-    const count = setVisibleServiceSelection(elements.technicianFormServiceCheckboxes, true);
-    setStatus(count ? "已全選目前分類服務。" : "目前分類沒有可勾選的服務項目。", count ? "info" : "info");
-  });
-
-  elements.technicianFormClearVisibleButton.addEventListener("click", () => {
-    const count = setVisibleServiceSelection(elements.technicianFormServiceCheckboxes, false);
-    setStatus(count ? "已清除目前分類服務。" : "目前分類沒有可清除的服務項目。", count ? "info" : "info");
-  });
-
-  elements.technicianEditSelectVisibleButton.addEventListener("click", () => {
-    const count = setVisibleServiceSelection(elements.technicianEditServiceCheckboxes, true);
-    setStatus(count ? "已全選目前分類服務。" : "目前分類沒有可勾選的服務項目。", count ? "info" : "info");
-  });
-
-  elements.technicianEditClearVisibleButton.addEventListener("click", () => {
-    const count = setVisibleServiceSelection(elements.technicianEditServiceCheckboxes, false);
-    setStatus(count ? "已清除目前分類服務。" : "目前分類沒有可清除的服務項目。", count ? "info" : "info");
+    renderTechnicianBulkTable();
   });
 
   elements.technicianStatusFilter.addEventListener("change", (event) => {
     state.filters.technicianStatus = event.target.value;
-    renderTechnicianTable();
+    renderTechnicianBulkTable();
+  });
+
+  elements.technicianBulkAddRowButton.addEventListener("click", () => {
+    appendTechnicianBulkRow();
+    setStatus("已新增一列批量技師資料。", "info");
+  });
+
+  elements.technicianBulkSaveButton.addEventListener("click", async () => {
+    try {
+      await submitBulkTechnicians();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.technicianBulkDeleteButton.addEventListener("click", async () => {
+    try {
+      await deleteBulkTechnicians();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.technicianBulkTable.addEventListener("change", (event) => {
+    if (event.target.matches('input[name="bulkTechnicianSelected"]')) {
+      updateBulkTechnicianSelectionMeta();
+      return;
+    }
+
+    if (event.target.matches('input[name="active"]')) {
+      const row = event.target.closest("[data-bulk-technician-row]");
+      const label = row?.querySelector('.checkbox-field--compact span');
+      if (label) {
+        label.textContent = event.target.checked ? "啟用" : "停用";
+      }
+      return;
+    }
+
+    if (event.target.matches("[data-bulk-service-category]")) {
+      const row = event.target.closest("[data-bulk-technician-row]");
+      renderBulkTechnicianServiceEditor(row);
+      return;
+    }
+
+    if (event.target.matches('[data-bulk-service-checkboxes] input[name="serviceIds"]')) {
+      const row = event.target.closest("[data-bulk-technician-row]");
+      syncBulkTechnicianServiceSummary(row);
+    }
+  });
+
+  elements.technicianBulkTable.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-bulk-technician-row]");
+    if (!row) {
+      return;
+    }
+
+    if (event.target.closest("[data-bulk-toggle-services]")) {
+      toggleBulkTechnicianServiceEditor(row);
+      return;
+    }
+
+    if (event.target.closest("[data-bulk-select-visible-services]")) {
+      const count = setVisibleServiceSelection(row.querySelector("[data-bulk-service-checkboxes]"), true);
+      syncBulkTechnicianServiceSummary(row);
+      setStatus(count ? "已全選此列目前分類服務。" : "目前分類沒有可勾選的服務項目。", "info");
+      return;
+    }
+
+    if (event.target.closest("[data-bulk-clear-visible-services]")) {
+      const count = setVisibleServiceSelection(row.querySelector("[data-bulk-service-checkboxes]"), false);
+      syncBulkTechnicianServiceSummary(row);
+      setStatus(count ? "已清除此列目前分類服務。" : "目前分類沒有可清除的服務項目。", "info");
+    }
   });
 
   elements.reservationSearchInput.addEventListener("input", (event) => {
@@ -1912,19 +2258,23 @@ function bindEvents() {
     renderUserTable();
   });
 
-  elements.scheduleAllDayButton.addEventListener("click", () => {
-    setSchedulePreset("00:00", "23:59");
-    setStatus("已套用 24 小時班表預設。", "info");
-  });
-
   elements.scheduleResetButton.addEventListener("click", () => {
     resetScheduleForm();
     setStatus("班表表單已重設。", "info");
   });
 
-  elements.scheduleDayShiftButton.addEventListener("click", () => {
-    setSchedulePreset("08:00", "20:00");
-    setStatus("已套用熱門日班預設。", "info");
+  elements.scheduleSelectAllTechniciansButton.addEventListener("click", () => {
+    const count = setScheduleTechnicianSelection(true);
+    setStatus(count ? `已全選 ${count} 位啟用技師。` : "目前沒有可選擇的技師。", "info");
+  });
+
+  elements.scheduleClearTechniciansButton.addEventListener("click", () => {
+    const count = setScheduleTechnicianSelection(false);
+    setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
+  });
+
+  elements.scheduleTechnicianCheckboxes.addEventListener("change", () => {
+    updateScheduleTechnicianSelectionMeta();
   });
 
   elements.schedulePrevMonthButton.addEventListener("click", () => {
@@ -1959,21 +2309,32 @@ function bindEvents() {
     setStatus(`已選擇 ${button.dataset.scheduleDate}，可查看或新增當日班表。`, "info");
   });
 
-  elements.scheduleTable.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-edit-schedule]");
-    if (!button) {
+  elements.scheduleTable.addEventListener("click", async (event) => {
+    const editButton = event.target.closest("[data-edit-schedule]");
+    if (editButton) {
+      const [dateText, technicianId] = editButton.dataset.editSchedule.split("::");
+      const schedule = state.schedules.find((item) => item.date === dateText && item.technicianId === technicianId);
+      if (!schedule) {
+        setStatus("找不到這筆班表資料。", "error");
+        return;
+      }
+
+      fillScheduleForm(schedule);
+      setStatus("已載入班表資料，可直接修改。", "info");
       return;
     }
 
-    const [dateText, technicianId] = button.dataset.editSchedule.split("::");
-    const schedule = state.schedules.find((item) => item.date === dateText && item.technicianId === technicianId);
-    if (!schedule) {
-      setStatus("找不到這筆班表資料。", "error");
+    const deleteButton = event.target.closest("[data-delete-schedule]");
+    if (!deleteButton) {
       return;
     }
 
-    fillScheduleForm(schedule);
-    setStatus("已載入班表資料，可直接修改。", "info");
+    try {
+      const [dateText, technicianId] = deleteButton.dataset.deleteSchedule.split("::");
+      await deleteSchedule(dateText, technicianId, deleteButton.dataset.technicianName);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
   });
 
   elements.refreshDashboardButton.addEventListener("click", async () => {
@@ -2012,27 +2373,6 @@ function bindEvents() {
     }
   });
 
-  elements.technicianTable.addEventListener("click", async (event) => {
-    const editButton = event.target.closest("[data-edit-technician]");
-    if (editButton) {
-      fillTechnicianForm(editButton.dataset.editTechnician);
-      setStatus("已載入技師資料，可直接修改。", "info");
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-technician]");
-    if (!deleteButton) return;
-
-    try {
-      await deleteTechnician(
-        deleteButton.dataset.deleteTechnician,
-        deleteButton.dataset.technicianName
-      );
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
   elements.reservationTable.addEventListener("click", async (event) => {
     const editButton = event.target.closest("[data-edit-reservation]");
     if (editButton) {
@@ -2056,12 +2396,22 @@ function bindEvents() {
 
   elements.userTable.addEventListener("click", async (event) => {
     const reviewButton = event.target.closest("[data-review-user]");
-    if (!reviewButton) {
+    if (reviewButton) {
+      try {
+        await reviewUser(reviewButton.dataset.reviewUser, reviewButton.dataset.reviewStatus);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-user]");
+    if (!deleteButton) {
       return;
     }
 
     try {
-      await reviewUser(reviewButton.dataset.reviewUser, reviewButton.dataset.reviewStatus);
+      await deleteUser(deleteButton.dataset.deleteUser, deleteButton.dataset.userName);
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -2077,8 +2427,6 @@ async function initializeApp() {
   setActivePage(state.ui.activePage);
   resetServiceForm();
   resetServiceEditForm();
-  resetTechnicianForm();
-  resetTechnicianEditForm();
   resetScheduleForm();
   resetReservationForm();
 

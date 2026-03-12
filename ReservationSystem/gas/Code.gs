@@ -51,6 +51,10 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
     }
 
+    if (action === 'deleteUser') {
+      return jsonResponse_({ ok: true, data: deleteUser_(body.payload || {}) });
+    }
+
     if (action === 'saveService') {
       return jsonResponse_({ ok: true, data: saveService_(body.payload || {}) });
     }
@@ -77,6 +81,10 @@ function doPost(e) {
 
     if (action === 'deleteTechnician') {
       return jsonResponse_({ ok: true, data: deleteTechnician_(body.payload || {}) });
+    }
+
+    if (action === 'deleteSchedule') {
+      return jsonResponse_({ ok: true, data: deleteSchedule_(body.payload || {}) });
     }
 
     if (action === 'deleteReservation') {
@@ -182,6 +190,7 @@ function submitUserApplication_(payload) {
   validateRequired_(payload.phone, 'phone');
 
   var userId = String(payload.userId || '').trim();
+  var normalizedPhone = normalizePhone_(payload.phone, true);
   var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
   var existing = users.find(function(item) {
     return item.userId === userId;
@@ -197,7 +206,7 @@ function submitUserApplication_(payload) {
     userId: userId,
     displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
     customerName: String(payload.customerName || existing && existing.customerName || '').trim(),
-    phone: String(payload.phone || existing && existing.phone || '').trim(),
+    phone: normalizedPhone,
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
     status: normalizeUserStatus_(nextStatus),
     note: existing ? existing.note : '',
@@ -247,6 +256,8 @@ function createReservation_(payload) {
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
   validateRequired_(payload.userId, 'userId');
+
+  var normalizedPhone = normalizePhone_(payload.phone, true);
 
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
@@ -328,7 +339,7 @@ function createReservation_(payload) {
     userId: user.userId,
     userDisplayName: user.displayName,
     customerName: String(payload.customerName || user.customerName).trim(),
-    phone: String(payload.phone || user.phone).trim(),
+    phone: normalizedPhone,
     technicianId: payload.technicianId,
     serviceId: serviceIds.join(','),
     date: payload.date,
@@ -363,6 +374,15 @@ function saveService_(payload) {
 
 function saveTechnician_(payload) {
   validateRequired_(payload.name, 'name');
+  validateRequired_(payload.startTime, 'startTime');
+  validateRequired_(payload.endTime, 'endTime');
+
+  var technicianStartTime = normalizeTimeString_(payload.startTime);
+  var technicianEndTime = normalizeTimeString_(payload.endTime);
+
+  if (timeToMinutes_(technicianStartTime) >= timeToMinutes_(technicianEndTime)) {
+    throw new Error('下班時間必須晚於上班時間');
+  }
 
   var technicianId = String(payload.technicianId || '');
   var technicianName = String(payload.name).trim();
@@ -382,6 +402,8 @@ function saveTechnician_(payload) {
     technicianId: technicianId || createId_('TEC'),
     name: technicianName,
     serviceIds: existing ? existing.serviceIds.join(',') : '',
+    startTime: technicianStartTime,
+    endTime: technicianEndTime,
     active: toBoolean_(payload.active),
     updatedAt: toIsoString_(new Date()),
   };
@@ -423,6 +445,8 @@ function saveTechnicianServices_(payload) {
     technicianId: technician.technicianId,
     name: technician.name,
     serviceIds: serviceIds.join(','),
+    startTime: technician.startTime,
+    endTime: technician.endTime,
     active: technician.active,
     updatedAt: toIsoString_(new Date()),
   };
@@ -437,7 +461,11 @@ function saveSchedule_(payload) {
   validateRequired_(payload.startTime, 'startTime');
   validateRequired_(payload.endTime, 'endTime');
 
-  if (timeToMinutes_(payload.startTime) >= timeToMinutes_(payload.endTime)) {
+  var scheduleDate = normalizeDateString_(payload.date);
+  var scheduleStartTime = normalizeTimeString_(payload.startTime);
+  var scheduleEndTime = normalizeTimeString_(payload.endTime);
+
+  if (timeToMinutes_(scheduleStartTime) >= timeToMinutes_(scheduleEndTime)) {
     throw new Error('下班時間必須晚於上班時間');
   }
 
@@ -450,15 +478,16 @@ function saveSchedule_(payload) {
   }
 
   var existing = getTableRecords_(SHEETS.schedules).find(function(item) {
-    return item.technicianId === payload.technicianId && item.date === payload.date;
+    return String(item.technicianId || '') === String(payload.technicianId || '')
+      && normalizeDateString_(item.date) === scheduleDate;
   });
 
   var record = {
     scheduleId: existing && existing.scheduleId ? existing.scheduleId : createId_('SCH'),
     technicianId: payload.technicianId,
-    date: payload.date,
-    startTime: payload.startTime,
-    endTime: payload.endTime,
+    date: scheduleDate,
+    startTime: scheduleStartTime,
+    endTime: scheduleEndTime,
     isWorking: toBoolean_(payload.isWorking),
     updatedAt: toIsoString_(new Date()),
   };
@@ -473,6 +502,8 @@ function saveReservation_(payload) {
   validateRequired_(payload.technicianId, 'technicianId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
+
+  var normalizedPhone = normalizePhone_(payload.phone, true);
 
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
@@ -552,7 +583,7 @@ function saveReservation_(payload) {
     userId: String(payload.userId || existing && existing.userId || '').trim(),
     userDisplayName: String(payload.userDisplayName || existing && existing.userDisplayName || '').trim(),
     customerName: String(payload.customerName).trim(),
-    phone: String(payload.phone).trim(),
+    phone: normalizedPhone,
     technicianId: payload.technicianId,
     serviceId: serviceIds.join(','),
     date: payload.date,
@@ -600,6 +631,8 @@ function deleteService_(payload) {
         serviceIds: item.serviceIds.filter(function(id) {
           return id !== serviceId;
         }).join(','),
+        startTime: item.startTime,
+        endTime: item.endTime,
         active: item.active,
         updatedAt: toIsoString_(new Date()),
       };
@@ -639,6 +672,42 @@ function deleteTechnician_(payload) {
   return { technicianId: technicianId };
 }
 
+function deleteSchedule_(payload) {
+  validateRequired_(payload.technicianId, 'technicianId');
+  validateRequired_(payload.date, 'date');
+
+  var technicianId = String(payload.technicianId || '').trim();
+  var scheduleDate = normalizeDateString_(payload.date);
+  var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+
+  var exists = schedules.some(function(item) {
+    return item.technicianId === technicianId && item.date === scheduleDate;
+  });
+
+  if (!exists) {
+    throw new Error('找不到班表');
+  }
+
+  var linkedReservation = reservations.find(function(item) {
+    return item.technicianId === technicianId && item.date === scheduleDate;
+  });
+
+  if (linkedReservation) {
+    throw new Error('此班表已有預約紀錄，不能直接刪除');
+  }
+
+  deleteRecordsByPredicate_(SHEETS.schedules, function(item) {
+    return String(item.technicianId || '').trim() === technicianId
+      && normalizeDateString_(item.date) === scheduleDate;
+  });
+
+  return {
+    technicianId: technicianId,
+    date: scheduleDate,
+  };
+}
+
 function deleteReservation_(payload) {
   validateRequired_(payload.reservationId, 'reservationId');
   var reservationId = String(payload.reservationId);
@@ -646,13 +715,42 @@ function deleteReservation_(payload) {
   return { reservationId: reservationId };
 }
 
+function deleteUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+
+  var userId = String(payload.userId || '').trim();
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+
+  var existing = users.find(function(item) {
+    return item.userId === userId;
+  });
+
+  if (!existing) {
+    throw new Error('找不到用戶');
+  }
+
+  var linkedReservation = reservations.find(function(item) {
+    return String(item.userId || '') === userId;
+  });
+
+  if (linkedReservation) {
+    throw new Error('此用戶已有歷史預約紀錄，不能直接刪除');
+  }
+
+  deleteRecord_(SHEETS.users, 'userId', userId);
+  return { userId: userId };
+}
+
 function initializeSheets_() {
   ensureSheet_(SHEETS.config, ['key', 'value']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
-  ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'active', 'updatedAt']);
+  ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
   ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
+  ensurePlainTextColumns_(SHEETS.users, ['phone']);
+  ensurePlainTextColumns_(SHEETS.reservations, ['phone']);
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -672,6 +770,25 @@ function ensureSheet_(sheetName, headers) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     }
   }
+}
+
+function ensurePlainTextColumns_(sheetName, columnNames) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet || sheet.getLastColumn() === 0) {
+    return;
+  }
+
+  var headers = getSheetHeaders_(sheet);
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+
+  columnNames.forEach(function(columnName) {
+    var columnIndex = headers.indexOf(columnName);
+    if (columnIndex === -1) {
+      return;
+    }
+
+    sheet.getRange(2, columnIndex + 1, rowCount, 1).setNumberFormat('@');
+  });
 }
 
 function getTableRecords_(sheetName) {
@@ -727,21 +844,42 @@ function upsertRecordByComposite_(sheetName, keys, record) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var headers = getSheetHeaders_(sheet);
   var data = getTableRecords_(sheetName);
-  var rowIndex = data.findIndex(function(item) {
-    return keys.every(function(key) {
-      return String(item[key]) === String(record[key]);
-    });
-  });
+  var matchedRowIndexes = [];
   var row = headers.map(function(header) {
     return record[header] !== undefined ? record[header] : '';
   });
 
-  if (rowIndex === -1) {
+  data.forEach(function(item, index) {
+    var isMatch = keys.every(function(key) {
+      return normalizeCompositeKeyValue_(item[key]) === normalizeCompositeKeyValue_(record[key]);
+    });
+
+    if (isMatch) {
+      matchedRowIndexes.push(index);
+    }
+  });
+
+  if (!matchedRowIndexes.length) {
     sheet.appendRow(row);
     return;
   }
 
-  sheet.getRange(rowIndex + 2, 1, 1, headers.length).setValues([row]);
+  sheet.getRange(matchedRowIndexes[0] + 2, 1, 1, headers.length).setValues([row]);
+
+  matchedRowIndexes
+    .slice(1)
+    .reverse()
+    .forEach(function(rowIndex) {
+      sheet.deleteRow(rowIndex + 2);
+    });
+}
+
+function normalizeCompositeKeyValue_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  return String(value || '').trim();
 }
 
 function deleteRecord_(sheetName, primaryKey, value) {
@@ -823,6 +961,8 @@ function normalizeTechnician_(item) {
         return value.trim();
       })
       .filter(String),
+    startTime: normalizeTimeString_(item.startTime || '09:00'),
+    endTime: normalizeTimeString_(item.endTime || '18:00'),
     active: toBoolean_(item.active),
     updatedAt: String(item.updatedAt || ''),
   };
@@ -847,7 +987,7 @@ function normalizeReservation_(item) {
     userId: String(item.userId || ''),
     userDisplayName: String(item.userDisplayName || ''),
     customerName: String(item.customerName || ''),
-    phone: String(item.phone || ''),
+    phone: normalizePhoneValue_(item.phone),
     technicianId: String(item.technicianId || ''),
     serviceId: String(item.serviceId || ''),
     serviceIds: serviceIds,
@@ -865,7 +1005,7 @@ function normalizeUser_(item) {
     userId: String(item.userId || ''),
     displayName: String(item.displayName || '').trim() || 'LINE 使用者',
     customerName: String(item.customerName || '').trim(),
-    phone: String(item.phone || '').trim(),
+    phone: normalizePhoneValue_(item.phone),
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeUserStatus_(item.status),
     note: String(item.note || '').trim(),
@@ -998,6 +1138,42 @@ function normalizeTimeString_(value) {
     return text.slice(0, 5);
   }
   return text;
+}
+
+function normalizePhone_(value, isRequired) {
+  var normalized = normalizePhoneValue_(value);
+
+  if (!normalized) {
+    if (isRequired) {
+      throw new Error('phone is required');
+    }
+    return '';
+  }
+
+  if (!/^[0-9+\-()# ]+$/.test(normalized)) {
+    throw new Error('電話號碼只能包含數字與常見電話符號（+ - ( ) # 空白）');
+  }
+
+  if (!/[0-9]/.test(normalized)) {
+    throw new Error('電話號碼至少需要包含一個數字');
+  }
+
+  return normalized;
+}
+
+function normalizePhoneValue_(value) {
+  return String(value || '')
+    .replace(/[０-９]/g, function(char) {
+      return String.fromCharCode(char.charCodeAt(0) - 65248);
+    })
+    .replace(/＋/g, '+')
+    .replace(/－/g, '-')
+    .replace(/（/g, '(')
+    .replace(/）/g, ')')
+    .replace(/＃/g, '#')
+    .replace(/[\u3000\t\n\r]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function jsonResponse_(payload) {

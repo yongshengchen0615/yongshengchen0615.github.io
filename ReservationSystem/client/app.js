@@ -59,6 +59,19 @@ function normalizeLiffId(value) {
   return String(value || "").trim();
 }
 
+function normalizePhoneInput(value) {
+  return String(value || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 65248))
+    .replace(/＋/g, "+")
+    .replace(/－/g, "-")
+    .replace(/（/g, "(")
+    .replace(/）/g, ")")
+    .replace(/＃/g, "#")
+    .replace(/[\u3000\t\n\r]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function loadConfigFromJson() {
   try {
     const response = await fetch(CONFIG_PATH, { cache: "no-store" });
@@ -145,7 +158,7 @@ function fillApplicationForm() {
   }
 
   elements.applicationForm.customerName.value = state.user?.customerName || state.profile?.displayName || "";
-  elements.applicationForm.phone.value = state.user?.phone || "";
+  elements.applicationForm.phone.value = normalizePhoneInput(state.user?.phone || "");
 }
 
 function fillBookingContactFields() {
@@ -154,7 +167,7 @@ function fillBookingContactFields() {
   }
 
   elements.bookingForm.customerName.value = state.user?.customerName || state.profile?.displayName || "";
-  elements.bookingForm.phone.value = state.user?.phone || "";
+  elements.bookingForm.phone.value = normalizePhoneInput(state.user?.phone || "");
 }
 
 function updateAccessView() {
@@ -269,6 +282,10 @@ function getServiceById(serviceId) {
   return state.services.find((item) => item.serviceId === serviceId);
 }
 
+function getServiceCategory(service) {
+  return String(service?.category || "").trim() || "未分類";
+}
+
 function getAllowedServices(technicianId) {
   const technician = getTechnicianById(technicianId);
   if (!technician) return [];
@@ -298,6 +315,10 @@ function getServiceMetrics(serviceIds) {
   };
 }
 
+function formatServiceLabel(service) {
+  return `[${getServiceCategory(service)}] ${service.name}`;
+}
+
 function renderServiceOptions(selectedIds = []) {
   const allowedServices = state.selectedTechnicianId ? getAllowedServices(state.selectedTechnicianId) : [];
   const checked = new Set(normalizeServiceIds(selectedIds));
@@ -307,17 +328,45 @@ function renderServiceOptions(selectedIds = []) {
     return;
   }
 
+  const groupedServices = allowedServices.reduce((result, service) => {
+    const category = getServiceCategory(service);
+    if (!result[category]) {
+      result[category] = [];
+    }
+    result[category].push(service);
+    return result;
+  }, {});
+
   elements.serviceSelect.innerHTML = `
-    <div class="checkbox-grid">
-      ${allowedServices
+    <div class="service-category-list">
+      ${Object.entries(groupedServices)
+        .sort(([left], [right]) => left.localeCompare(right, "zh-Hant"))
         .map(
-          (service) => `
-            <label class="checkbox-pill">
-              <input type="checkbox" name="serviceIds" value="${service.serviceId}" ${
-                checked.has(service.serviceId) ? "checked" : ""
-              } />
-              <span>${service.name}<small>${service.durationMinutes} 分鐘 / NT$ ${Number(service.price || 0).toLocaleString("zh-TW")}</small></span>
-            </label>
+          ([category, services]) => `
+            <section class="service-category-block">
+              <div class="service-category-block__header">
+                <strong>${category}</strong>
+                <small>${services.length} 項服務</small>
+              </div>
+              <div class="checkbox-grid">
+                ${services
+                  .map(
+                    (service) => `
+                      <label class="checkbox-pill checkbox-pill--service">
+                        <input type="checkbox" name="serviceIds" value="${service.serviceId}" ${
+                          checked.has(service.serviceId) ? "checked" : ""
+                        } />
+                        <span>
+                          <strong>${service.name}</strong>
+                          <small class="service-category-tag">${category}</small>
+                          <small>${service.durationMinutes} 分鐘 / NT$ ${Number(service.price || 0).toLocaleString("zh-TW")}</small>
+                        </span>
+                      </label>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </section>
           `
         )
         .join("")}
@@ -479,7 +528,7 @@ function updateSummary() {
     </div>
     <dl class="summary__rows">
       <div class="summary__row"><dt>技師</dt><dd>${technician.name}</dd></div>
-      <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => service.name).join("、")}</dd></div>
+      <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
       <div class="summary__row"><dt>日期</dt><dd>${date}</dd></div>
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
       <div class="summary__row"><dt>總時長</dt><dd>${metrics.totalDuration} 分鐘</dd></div>
@@ -696,7 +745,9 @@ async function submitUserApplication(event) {
 
   const formData = new FormData(elements.applicationForm);
   const customerName = String(formData.get("customerName") || "").trim();
-  const phone = String(formData.get("phone") || "").trim();
+  const phone = normalizePhoneInput(formData.get("phone") || "");
+
+  elements.applicationForm.phone.value = phone;
 
   if (!customerName || !phone) {
     setStatus("稱呼與電話號碼都必須填寫，才能送出審核。", "error");
@@ -842,13 +893,15 @@ async function submitBooking(event) {
     userId: state.user.userId,
     userDisplayName: state.user.displayName,
     customerName: formData.get("customerName").trim(),
-    phone: formData.get("phone").trim(),
+    phone: normalizePhoneInput(formData.get("phone") || ""),
     technicianId: formData.get("technicianId"),
     serviceIds,
     date: formData.get("date"),
     startTime: formData.get("startTime"),
     note: formData.get("note").trim(),
   };
+
+  elements.bookingForm.phone.value = payload.phone;
 
   setStatus("正在送出預約...");
   setBookingSubmitting(true);
@@ -872,6 +925,12 @@ async function submitBooking(event) {
 }
 
 function bindEvents() {
+  [elements.applicationForm?.phone, elements.bookingForm?.phone].filter(Boolean).forEach((input) => {
+    input.addEventListener("blur", () => {
+      input.value = normalizePhoneInput(input.value);
+    });
+  });
+
   elements.applicationForm.addEventListener("submit", async (event) => {
     try {
       await submitUserApplication(event);

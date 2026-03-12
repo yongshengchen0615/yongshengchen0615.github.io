@@ -190,47 +190,12 @@
               <div>
                 <p class="eyebrow">Technician</p>
                 <h2>技師管理</h2>
-                <p class="section-copy">建立技師基本資料，再到下方綁定該技師可提供的服務。</p>
+                <p class="section-copy">在同一張批量表格內新增、修改、刪除技師，並直接設定班別與服務項目。</p>
               </div>
               <div class="section-header-side">
                 <p id="technicianResultLabel" class="section-result">顯示 0 / 0 位</p>
-                <span id="technicianFormMode" class="mode-badge">新增模式</span>
               </div>
             </div>
-            <form id="technicianForm" class="stack-form">
-              <input type="hidden" name="technicianId" />
-              <label class="field">
-                <span>技師名稱</span>
-                <input name="name" type="text" placeholder="例如：Mia、Vivi、Ken" required />
-              </label>
-              <div class="toolbar toolbar--split toolbar--inline">
-                <label class="field field--compact">
-                  <span>服務分類</span>
-                  <select id="technicianFormServiceCategorySelect">
-                    <option value="">全部分類</option>
-                  </select>
-                </label>
-                <div class="field field--compact">
-                  <span>分類批次操作</span>
-                  <div class="form-actions form-actions--compact">
-                    <button type="button" id="technicianFormSelectVisibleButton" class="button button--secondary">全選目前分類</button>
-                    <button type="button" id="technicianFormClearVisibleButton" class="button button--secondary">清除此分類</button>
-                  </div>
-                </div>
-              </div>
-              <div class="field">
-                <span>可服務項目</span>
-                <div id="technicianFormServiceCheckboxes" class="checkbox-grid"></div>
-              </div>
-              <label class="checkbox-field">
-                <input name="active" type="checkbox" checked />
-                <span>啟用此技師</span>
-              </label>
-              <div class="form-actions">
-                <button type="submit" id="technicianSubmitButton" class="button button--primary">新增技師</button>
-                <button type="button" id="technicianResetButton" class="button button--secondary">清空表單</button>
-              </div>
-            </form>
             <div class="toolbar toolbar--split">
               <label class="field field--compact">
                 <span>搜尋技師</span>
@@ -247,50 +212,21 @@
                 </select>
               </label>
             </div>
-            <div id="technicianTable" class="data-list"></div>
-            <section id="technicianEditPanel" class="sub-panel is-hidden">
+            <section class="sub-panel technician-bulk-panel">
               <div class="section-header section-header--tight">
                 <div>
-                  <p class="eyebrow">Technician Editor</p>
-                  <h3>編輯技師資料</h3>
-                  <p class="section-copy">點擊清單中的編輯後，會在這裡展開修改表單。</p>
+                  <p class="eyebrow">Bulk Technician</p>
+                  <h3>批量新增 / 修改 / 刪除技師</h3>
+                  <p class="section-copy">可直接在下方表格連續新增多位技師、批量修改名稱與班別，或勾選後批量刪除。</p>
                 </div>
-                <span id="technicianEditMode" class="mode-badge is-hidden">編輯模式</span>
+                <p id="technicianBulkSelectionMeta" class="section-result">尚未勾選任何技師</p>
               </div>
-              <form id="technicianEditForm" class="stack-form">
-                <input type="hidden" name="technicianId" />
-                <label class="field">
-                  <span>技師名稱</span>
-                  <input name="name" type="text" placeholder="例如：Mia、Vivi、Ken" required />
-                </label>
-                <div class="toolbar toolbar--split toolbar--inline">
-                  <label class="field field--compact">
-                    <span>服務分類</span>
-                    <select id="technicianEditServiceCategorySelect">
-                      <option value="">全部分類</option>
-                    </select>
-                  </label>
-                  <div class="field field--compact">
-                    <span>分類批次操作</span>
-                    <div class="form-actions form-actions--compact">
-                      <button type="button" id="technicianEditSelectVisibleButton" class="button button--secondary">全選目前分類</button>
-                      <button type="button" id="technicianEditClearVisibleButton" class="button button--secondary">清除此分類</button>
-                    </div>
-                  </div>
-                </div>
-                <div class="field">
-                  <span>可服務項目</span>
-                  <div id="technicianEditServiceCheckboxes" class="checkbox-grid"></div>
-                </div>
-                <label class="checkbox-field">
-                  <input name="active" type="checkbox" checked />
-                  <span>啟用此技師</span>
-                </label>
-                <div class="form-actions">
-                  <button type="submit" id="technicianEditSubmitButton" class="button button--primary">更新技師</button>
-                  <button type="button" id="technicianEditResetButton" class="button button--secondary">取消編輯</button>
-                </div>
-              </form>
+              <div class="form-actions">
+                <button type="button" id="technicianBulkAddRowButton" class="button button--secondary">新增一列</button>
+                <button type="button" id="technicianBulkSaveButton" class="button button--primary">儲存批量變更</button>
+                <button type="button" id="technicianBulkDeleteButton" class="button button--danger">刪除勾選技師</button>
+              </div>
+              <div id="technicianBulkTable" class="table-wrap"></div>
             </section>
           </section>
         </section>
@@ -344,10 +280,17 @@
               </section>
             </div>
             <form id="scheduleForm" class="stack-form">
-              <label class="field">
-                <span>技師</span>
-                <select name="technicianId" id="scheduleTechnicianSelect" required></select>
-              </label>
+              <div class="field">
+                <div class="field__header">
+                  <span>技師</span>
+                  <small id="scheduleTechnicianSelectionMeta" class="helper-text">尚未選擇技師</small>
+                </div>
+                <div class="form-actions form-actions--compact">
+                  <button type="button" id="scheduleSelectAllTechniciansButton" class="button button--secondary">全選啟用技師</button>
+                  <button type="button" id="scheduleClearTechniciansButton" class="button button--secondary">清空技師</button>
+                </div>
+                <div id="scheduleTechnicianCheckboxes" class="checkbox-grid checkbox-grid--technicians"></div>
+              </div>
               <label class="field">
                 <span>起始日期</span>
                 <input name="date" type="date" required />
@@ -356,21 +299,31 @@
                 <span>結束日期</span>
                 <input name="endDate" type="date" />
               </label>
-              <label class="field">
-                <span>上班時間</span>
-                <input name="startTime" type="time" value="00:00" required />
-              </label>
-              <label class="field">
-                <span>下班時間</span>
-                <input name="endTime" type="time" value="23:59" required />
-              </label>
+              <div class="schedule-time-hint">
+                <strong>班表時段會自動使用技師頁設定的預設上下班時間。</strong>
+                <span>若同時勾選多位技師，系統會依各技師自己的預設時段建立班表。</span>
+              </div>
+              <div id="scheduleEditTimePanel" class="schedule-time-editor is-hidden">
+                <div class="field__header">
+                  <strong id="scheduleEditModeLabel">編輯這筆班表的臨時上下班時間</strong>
+                  <small class="helper-text">只會套用在目前編輯的單筆班表</small>
+                </div>
+                <div class="field-group field-group--times">
+                  <label class="field">
+                    <span>臨時上班時間</span>
+                    <input name="startTime" type="time" value="09:00" />
+                  </label>
+                  <label class="field">
+                    <span>臨時下班時間</span>
+                    <input name="endTime" type="time" value="18:00" />
+                  </label>
+                </div>
+              </div>
               <label class="checkbox-field">
                 <input name="isWorking" type="checkbox" checked />
                 <span>當日可預約</span>
               </label>
               <div class="form-actions">
-                <button type="button" id="scheduleAllDayButton" class="button button--secondary">套用 24 小時</button>
-                <button type="button" id="scheduleDayShiftButton" class="button button--secondary">套用熱門日班</button>
                 <button type="button" id="scheduleResetButton" class="button button--secondary">清空班表表單</button>
               </div>
               <button type="submit" class="button button--primary">儲存班表</button>
