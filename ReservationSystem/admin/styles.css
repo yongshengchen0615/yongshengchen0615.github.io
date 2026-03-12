@@ -350,7 +350,7 @@ h1 {
 
 .review-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -809,6 +809,11 @@ textarea {
 .status-pill--approved {
   background: rgba(82, 194, 166, 0.14);
   color: var(--brand);
+}
+
+.status-pill--draft {
+  background: rgba(146, 178, 200, 0.14);
+  color: var(--muted);
 }
 
 .status-pill--pending {

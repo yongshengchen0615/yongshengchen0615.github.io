@@ -201,6 +201,15 @@ h1 {
   gap: 16px;
 }
 
+.application-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.summary--application {
+  margin-bottom: 0;
+}
+
 .field {
   display: grid;
   gap: 8px;

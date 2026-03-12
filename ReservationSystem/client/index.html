@@ -51,13 +51,39 @@
         <section class="panel booking-panel">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">Booking Form</p>
-              <h2>填寫預約資訊</h2>
-              <p class="section-copy">先選技師，系統會自動過濾這位技師可提供的服務、日期與時段。</p>
+              <p class="eyebrow">Booking Access</p>
+              <h2 id="bookingPanelTitle">送出審核申請</h2>
+              <p id="bookingPanelCopy" class="section-copy">先登入 LINE，並填寫稱呼與電話送出審核。管理員通過後才可進入預約畫面。</p>
             </div>
           </div>
 
-          <form id="bookingForm" class="form-grid">
+          <section id="applicationPanel" class="application-panel">
+            <div class="summary summary--application">
+              <div class="summary__header">
+                <h3>進入預約前需完成審核</h3>
+                <span class="summary__badge">先送審</span>
+              </div>
+              <p id="applicationStatusText">請先填寫稱呼與電話號碼，送出給管理員審核。</p>
+            </div>
+
+            <form id="applicationForm" class="form-grid">
+              <label class="field">
+                <span>稱呼</span>
+                <input name="customerName" type="text" placeholder="例如：小安、王小姐" required />
+                <small>管理員會依這個稱呼辨識你的申請。</small>
+              </label>
+
+              <label class="field">
+                <span>電話號碼</span>
+                <input name="phone" type="tel" placeholder="09xxxxxxxx" required />
+                <small>未填寫電話將無法送出審核。</small>
+              </label>
+
+              <button type="submit" id="applicationSubmitButton" class="button button--primary button--wide">送出審核申請</button>
+            </form>
+          </section>
+
+          <form id="bookingForm" class="form-grid is-hidden">
             <div id="approvalGate" class="approval-gate field field--full">
               需先完成 LINE 登入並通過審核，才可送出預約。
             </div>

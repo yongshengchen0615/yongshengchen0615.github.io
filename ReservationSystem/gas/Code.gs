@@ -37,6 +37,10 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: syncLineUser_(body.payload || {}) });
     }
 
+    if (action === 'submitUserApplication') {
+      return jsonResponse_({ ok: true, data: submitUserApplication_(body.payload || {}) });
+    }
+
     if (action === 'createReservation') {
       return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
     }
@@ -153,17 +157,53 @@ function syncLineUser_(payload) {
     return item.userId === userId;
   });
   var nowText = toIsoString_(new Date());
-  var status = existing ? existing.status : '待審核';
+  var status = existing ? existing.status : '未送審核';
 
   var record = {
     userId: userId,
     displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
+    customerName: String(existing && existing.customerName || '').trim(),
+    phone: String(existing && existing.phone || '').trim(),
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
     status: normalizeUserStatus_(status),
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
     lastLoginAt: nowText,
+  };
+
+  upsertRecord_(SHEETS.users, 'userId', record);
+  return normalizeUser_(record);
+}
+
+function submitUserApplication_(payload) {
+  validateRequired_(payload.userId, 'userId');
+  validateRequired_(payload.customerName, 'customerName');
+  validateRequired_(payload.phone, 'phone');
+
+  var userId = String(payload.userId || '').trim();
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+  var existing = users.find(function(item) {
+    return item.userId === userId;
+  });
+  var nowText = toIsoString_(new Date());
+  var nextStatus = '待審核';
+
+  if (existing && (existing.status === '已通過' || existing.status === '已停用' || existing.status === '已拒絕')) {
+    nextStatus = existing.status;
+  }
+
+  var record = {
+    userId: userId,
+    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
+    customerName: String(payload.customerName || existing && existing.customerName || '').trim(),
+    phone: String(payload.phone || existing && existing.phone || '').trim(),
+    pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
+    status: normalizeUserStatus_(nextStatus),
+    note: existing ? existing.note : '',
+    createdAt: existing ? existing.createdAt : nowText,
+    updatedAt: nowText,
+    lastLoginAt: existing ? existing.lastLoginAt : nowText,
   };
 
   upsertRecord_(SHEETS.users, 'userId', record);
@@ -186,6 +226,8 @@ function reviewUser_(payload) {
   var record = {
     userId: existing.userId,
     displayName: existing.displayName,
+    customerName: existing.customerName,
+    phone: existing.phone,
     pictureUrl: existing.pictureUrl,
     status: normalizeUserStatus_(payload.status),
     note: String(payload.note || existing.note || '').trim(),
@@ -226,6 +268,10 @@ function createReservation_(payload) {
 
   if (!user) {
     throw new Error('找不到用戶資料，請重新登入 LINE');
+  }
+
+  if (!String(user.customerName || '').trim() || !String(user.phone || '').trim()) {
+    throw new Error('請先完成稱呼與電話送審資料');
   }
 
   if (!isUserApproved_(user.status)) {
@@ -281,8 +327,8 @@ function createReservation_(payload) {
     reservationId: createId_('RES'),
     userId: user.userId,
     userDisplayName: user.displayName,
-    customerName: String(payload.customerName).trim(),
-    phone: String(payload.phone).trim(),
+    customerName: String(payload.customerName || user.customerName).trim(),
+    phone: String(payload.phone || user.phone).trim(),
     technicianId: payload.technicianId,
     serviceId: serviceIds.join(','),
     date: payload.date,
@@ -605,7 +651,7 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
-  ensureSheet_(SHEETS.users, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
+  ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
 }
 
@@ -818,6 +864,8 @@ function normalizeUser_(item) {
   return {
     userId: String(item.userId || ''),
     displayName: String(item.displayName || '').trim() || 'LINE 使用者',
+    customerName: String(item.customerName || '').trim(),
+    phone: String(item.phone || '').trim(),
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeUserStatus_(item.status),
     note: String(item.note || '').trim(),
@@ -831,7 +879,11 @@ function normalizeUserStatus_(value) {
   var status = String(value || '').trim();
 
   if (!status) {
-    return '待審核';
+    return '未送審核';
+  }
+
+  if (status === 'draft' || status === '未送審核') {
+    return '未送審核';
   }
 
   if (status === 'pending' || status === '待審核') {

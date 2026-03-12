@@ -22,6 +22,12 @@ const state = {
 };
 
 const elements = {
+  applicationPanel: document.querySelector("#applicationPanel"),
+  applicationForm: document.querySelector("#applicationForm"),
+  applicationSubmitButton: document.querySelector("#applicationSubmitButton"),
+  applicationStatusText: document.querySelector("#applicationStatusText"),
+  bookingPanelTitle: document.querySelector("#bookingPanelTitle"),
+  bookingPanelCopy: document.querySelector("#bookingPanelCopy"),
   bookingForm: document.querySelector("#bookingForm"),
   technicianSelect: document.querySelector("#technicianSelect"),
   serviceSelect: document.querySelector("#serviceSelect"),
@@ -129,6 +135,46 @@ function updateSubmitState() {
   elements.bookingSubmitButton.textContent = "需先通過審核";
 }
 
+function hasCompletedApplication() {
+  return Boolean(state.user && state.user.customerName && state.user.phone);
+}
+
+function fillApplicationForm() {
+  if (!elements.applicationForm) {
+    return;
+  }
+
+  elements.applicationForm.customerName.value = state.user?.customerName || state.profile?.displayName || "";
+  elements.applicationForm.phone.value = state.user?.phone || "";
+}
+
+function fillBookingContactFields() {
+  if (!elements.bookingForm) {
+    return;
+  }
+
+  elements.bookingForm.customerName.value = state.user?.customerName || state.profile?.displayName || "";
+  elements.bookingForm.phone.value = state.user?.phone || "";
+}
+
+function updateAccessView() {
+  const canEnterBooking = isApprovedUser() && hasCompletedApplication();
+
+  elements.applicationPanel.classList.toggle("is-hidden", canEnterBooking);
+  elements.bookingForm.classList.toggle("is-hidden", !canEnterBooking);
+
+  if (canEnterBooking) {
+    elements.bookingPanelTitle.textContent = "填寫預約資訊";
+    elements.bookingPanelCopy.textContent = "先選技師，系統會自動過濾這位技師可提供的服務、日期與時段。";
+    fillBookingContactFields();
+    return;
+  }
+
+  elements.bookingPanelTitle.textContent = "送出審核申請";
+  elements.bookingPanelCopy.textContent = "先登入 LINE，並填寫稱呼與電話送出審核。管理員通過後才可進入預約畫面。";
+  fillApplicationForm();
+}
+
 function renderUserState() {
   if (!state.profile) {
     elements.userDisplayName.textContent = "尚未登入 LINE";
@@ -138,6 +184,10 @@ function renderUserState() {
     elements.userAvatar.classList.add("is-hidden");
     elements.loginButton.textContent = "LINE 登入";
     setApprovalGate("需先完成 LINE 登入，若尚未通過審核則需等待管理員通過。", "info");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = "請先登入 LINE，再填寫稱呼與電話送出審核。";
+    }
+    updateAccessView();
     updateSubmitState();
     return;
   }
@@ -157,6 +207,10 @@ function renderUserState() {
     elements.userStatusBadge.dataset.tone = "pending";
     elements.userStatusText.textContent = "正在同步你的 LINE 身分與審核狀態。";
     setApprovalGate("正在確認用戶狀態，若尚未通過審核則需等待管理員通過。", "pending");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = "正在讀取你的送審資料。";
+    }
+    updateAccessView();
     updateSubmitState();
     return;
   }
@@ -167,16 +221,35 @@ function renderUserState() {
     elements.userStatusBadge.dataset.tone = "approved";
     elements.userStatusText.textContent = "你的 LINE 帳號已通過審核，可以直接預約。";
     setApprovalGate("已通過審核，可以開始預約。", "approved");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = "你的送審資料已通過，系統會自動帶入稱呼與電話。";
+    }
   } else if (state.user.status === "待審核") {
     elements.userStatusBadge.dataset.tone = "pending";
     elements.userStatusText.textContent = "你已完成 LINE 登入，目前需等待管理員通過審核。";
     setApprovalGate("目前為待審核狀態，請等待管理員通過後再預約。", "pending");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = hasCompletedApplication()
+        ? "你的稱呼與電話已送出，正在等待管理員審核。"
+        : "請先填寫稱呼與電話，送出審核申請。";
+    }
+  } else if (state.user.status === "未送審核") {
+    elements.userStatusBadge.dataset.tone = "muted";
+    elements.userStatusText.textContent = "請先填寫稱呼與電話送出審核，通過後才可進入預約畫面。";
+    setApprovalGate("尚未送出審核資料，請先填寫稱呼與電話。", "info");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = "請先填寫稱呼與電話，送出給管理員審核。";
+    }
   } else {
     elements.userStatusBadge.dataset.tone = "blocked";
     elements.userStatusText.textContent = state.user.note || "此 LINE 帳號目前無法預約，請聯絡店家。";
     setApprovalGate("此帳號目前不可預約，請聯絡管理員或店家。", "blocked");
+    if (elements.applicationStatusText) {
+      elements.applicationStatusText.textContent = state.user.note || "此申請目前不可進入預約畫面，若需協助請聯絡店家。";
+    }
   }
 
+  updateAccessView();
   updateSubmitState();
 }
 
@@ -613,6 +686,53 @@ async function syncLineUser() {
   return result.data;
 }
 
+async function submitUserApplication(event) {
+  event.preventDefault();
+
+  if (!state.profile) {
+    setStatus("請先完成 LINE 登入。", "error");
+    return;
+  }
+
+  const formData = new FormData(elements.applicationForm);
+  const customerName = String(formData.get("customerName") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
+
+  if (!customerName || !phone) {
+    setStatus("稱呼與電話號碼都必須填寫，才能送出審核。", "error");
+    return;
+  }
+
+  elements.applicationSubmitButton.disabled = true;
+  elements.applicationSubmitButton.textContent = "送審中...";
+  setStatus("正在送出審核申請...", "info");
+
+  try {
+    const result = await requestApi("POST", {}, {
+      action: "submitUserApplication",
+      payload: {
+        userId: state.profile.userId,
+        displayName: state.profile.displayName,
+        pictureUrl: state.profile.pictureUrl || "",
+        customerName,
+        phone,
+      },
+    });
+
+    if (!result.ok) {
+      throw new Error(result.message || "送出審核申請失敗");
+    }
+
+    state.user = result.data;
+    renderUserState();
+    updateAvailabilityStatus();
+    setStatus(state.user.status === "已通過" ? "資料已更新，可直接進入預約畫面。" : "審核申請已送出，請等待管理員通過。", "success");
+  } finally {
+    elements.applicationSubmitButton.disabled = false;
+    elements.applicationSubmitButton.textContent = state.user?.status === "已通過" ? "更新聯絡資料" : "送出審核申請";
+  }
+}
+
 async function ensureLiffSession() {
   if (!state.liffId) {
     throw new Error("請先在 client/config.json 設定 liffId。");
@@ -631,9 +751,6 @@ async function ensureLiffSession() {
   }
 
   state.profile = await window.liff.getProfile();
-  if (!elements.bookingForm.customerName.value) {
-    elements.bookingForm.customerName.value = state.profile.displayName || "";
-  }
 
   renderUserState();
   await syncLineUser();
@@ -745,18 +862,24 @@ async function submitBooking(event) {
 
     setStatus(`預約成功，預約編號：${result.data.reservationId}`, "success");
     elements.bookingForm.reset();
-    if (state.profile) {
-      elements.bookingForm.customerName.value = state.profile.displayName || "";
-    }
     state.selectedTechnicianId = payload.technicianId;
     state.selectedServiceIds = [];
     await loadPublicData();
+    fillBookingContactFields();
   } finally {
     setBookingSubmitting(false);
   }
 }
 
 function bindEvents() {
+  elements.applicationForm.addEventListener("submit", async (event) => {
+    try {
+      await submitUserApplication(event);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   elements.technicianSelect.addEventListener("change", (event) => {
     state.selectedTechnicianId = event.target.value;
     state.selectedServiceIds = [];
@@ -833,6 +956,7 @@ async function initializeApp() {
   bindEvents();
   startAutoSync();
   renderUserState();
+  updateAccessView();
 
   if (!state.gasUrl) {
     refreshSelects();

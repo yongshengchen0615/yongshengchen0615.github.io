@@ -475,7 +475,7 @@ function getFilteredReservations() {
 
 function getFilteredUsers() {
   return state.users.filter((item) => {
-    const text = `${item.displayName} ${item.userId} ${item.note || ""}`;
+    const text = `${item.displayName} ${item.customerName || ""} ${item.phone || ""} ${item.userId} ${item.note || ""}`;
     const matchesText = !state.filters.userKeyword || matchesKeyword(text, state.filters.userKeyword);
     const matchesStatus = state.filters.userStatus === "all" || item.status === state.filters.userStatus;
     return matchesText && matchesStatus;
@@ -815,6 +815,9 @@ function getReservationStatusPill(status) {
 }
 
 function getUserStatusPill(status) {
+  if (status === "未送審核") {
+    return getStatusPill(status, "draft");
+  }
   if (status === "已通過") {
     return getStatusPill(status, "approved");
   }
@@ -1194,6 +1197,7 @@ function renderUserReviewSummary() {
     return;
   }
 
+  const draftCount = state.users.filter((item) => item.status === "未送審核").length;
   const pendingCount = state.users.filter((item) => item.status === "待審核").length;
   const approvedCount = state.users.filter((item) => item.status === "已通過").length;
   const rejectedCount = state.users.filter((item) => item.status === "已拒絕").length;
@@ -1201,9 +1205,14 @@ function renderUserReviewSummary() {
 
   elements.userReviewSummary.innerHTML = `
     <article class="review-card">
+      <span>未送審核</span>
+      <strong>${draftCount}</strong>
+      <small>已登入 LINE，但尚未填寫稱呼與電話</small>
+    </article>
+    <article class="review-card">
       <span>待審核</span>
       <strong>${pendingCount}</strong>
-      <small>新登入用戶預設會先進入這個狀態</small>
+      <small>已送出完整申請，等待管理員審核</small>
     </article>
     <article class="review-card">
       <span>已通過</span>
@@ -1221,6 +1230,7 @@ function renderUserReviewSummary() {
 function renderUserTable() {
   const users = getFilteredUsers();
   const statusOrder = {
+    "未送審核": 0,
     "待審核": 0,
     "已通過": 1,
     "已拒絕": 2,
@@ -1247,6 +1257,8 @@ function renderUserTable() {
       <thead>
         <tr>
           <th>用戶</th>
+          <th>稱呼</th>
+          <th>電話</th>
           <th>狀態</th>
           <th>最後登入</th>
           <th>備註</th>
@@ -1275,6 +1287,8 @@ function renderUserTable() {
                   </div>
                 </div>
               </td>
+              <td data-label="稱呼">${user.customerName || '<span class="helper-text">尚未填寫</span>'}</td>
+              <td data-label="電話">${user.phone || '<span class="helper-text">尚未填寫</span>'}</td>
               <td data-label="狀態">${getUserStatusPill(user.status)}</td>
               <td data-label="最後登入">${formatDateTimeText(user.lastLoginAt)}</td>
               <td data-label="備註">${user.note || '<span class="helper-text">尚無備註</span>'}</td>
