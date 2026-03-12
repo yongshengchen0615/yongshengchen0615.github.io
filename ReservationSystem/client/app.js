@@ -8,12 +8,16 @@ const AUTO_SYNC_INTERVAL_MS = 30000;
 const state = {
   gasUrl: "",
   configGasUrl: "",
+  liffId: "",
   technicians: [],
   services: [],
   schedules: [],
   reservations: [],
   selectedTechnicianId: "",
   selectedServiceIds: [],
+  profile: null,
+  user: null,
+  isSubmittingBooking: false,
   isLoadingPublicData: false,
 };
 
@@ -24,6 +28,7 @@ const elements = {
   dateSelect: document.querySelector("#dateSelect"),
   timeSelect: document.querySelector("#timeSelect"),
   statusBox: document.querySelector("#statusBox"),
+  approvalGate: document.querySelector("#approvalGate"),
   bookingSummary: document.querySelector("#bookingSummary"),
   bookingSubmitButton: document.querySelector("#bookingSubmitButton"),
   heroTechnicianCount: document.querySelector("#heroTechnicianCount"),
@@ -32,13 +37,23 @@ const elements = {
   overviewTechnician: document.querySelector("#overviewTechnician"),
   overviewServiceCount: document.querySelector("#overviewServiceCount"),
   overviewDateCount: document.querySelector("#overviewDateCount"),
+  userAvatar: document.querySelector("#userAvatar"),
+  userDisplayName: document.querySelector("#userDisplayName"),
+  userStatusBadge: document.querySelector("#userStatusBadge"),
+  userStatusText: document.querySelector("#userStatusText"),
+  loginButton: document.querySelector("#loginButton"),
+  refreshUserButton: document.querySelector("#refreshUserButton"),
 };
 
 function normalizeGasUrl(value) {
   return String(value || "").trim();
 }
 
-async function loadGasUrlFromConfig() {
+function normalizeLiffId(value) {
+  return String(value || "").trim();
+}
+
+async function loadConfigFromJson() {
   try {
     const response = await fetch(CONFIG_PATH, { cache: "no-store" });
     if (!response.ok) {
@@ -47,8 +62,10 @@ async function loadGasUrlFromConfig() {
 
     const config = await response.json();
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
+    state.liffId = normalizeLiffId(config.liffId);
   } catch (error) {
     state.configGasUrl = "";
+    state.liffId = "";
   }
 }
 
@@ -67,6 +84,11 @@ function setStatus(message, type = "info") {
   elements.statusBox.dataset.type = type;
 }
 
+function setApprovalGate(message, tone = "info") {
+  elements.approvalGate.textContent = message;
+  elements.approvalGate.dataset.tone = tone;
+}
+
 function setOptions(select, options, placeholder) {
   select.innerHTML = "";
   const placeholderOption = document.createElement("option");
@@ -80,6 +102,82 @@ function setOptions(select, options, placeholder) {
     item.textContent = option.label;
     select.appendChild(item);
   });
+}
+
+function isApprovedUser() {
+  return state.user?.status === "已通過";
+}
+
+function updateSubmitState() {
+  if (state.isSubmittingBooking) {
+    elements.bookingSubmitButton.disabled = true;
+    elements.bookingSubmitButton.textContent = "送出中...";
+    return;
+  }
+
+  elements.bookingSubmitButton.disabled = !isApprovedUser();
+  if (isApprovedUser()) {
+    elements.bookingSubmitButton.textContent = "送出預約";
+    return;
+  }
+
+  if (state.user?.status === "待審核") {
+    elements.bookingSubmitButton.textContent = "等待管理員審核";
+    return;
+  }
+
+  elements.bookingSubmitButton.textContent = "需先通過審核";
+}
+
+function renderUserState() {
+  if (!state.profile) {
+    elements.userDisplayName.textContent = "尚未登入 LINE";
+    elements.userStatusBadge.textContent = "未登入";
+    elements.userStatusBadge.dataset.tone = "muted";
+    elements.userStatusText.textContent = "進入頁面後會直接要求 LINE 登入。";
+    elements.userAvatar.classList.add("is-hidden");
+    elements.loginButton.textContent = "LINE 登入";
+    setApprovalGate("需先完成 LINE 登入，若尚未通過審核則需等待管理員通過。", "info");
+    updateSubmitState();
+    return;
+  }
+
+  elements.userDisplayName.textContent = state.profile.displayName || "LINE 使用者";
+  elements.loginButton.textContent = "切換 LINE 帳號";
+
+  if (state.profile.pictureUrl) {
+    elements.userAvatar.src = state.profile.pictureUrl;
+    elements.userAvatar.classList.remove("is-hidden");
+  } else {
+    elements.userAvatar.classList.add("is-hidden");
+  }
+
+  if (!state.user) {
+    elements.userStatusBadge.textContent = "同步中";
+    elements.userStatusBadge.dataset.tone = "pending";
+    elements.userStatusText.textContent = "正在同步你的 LINE 身分與審核狀態。";
+    setApprovalGate("正在確認用戶狀態，若尚未通過審核則需等待管理員通過。", "pending");
+    updateSubmitState();
+    return;
+  }
+
+  elements.userStatusBadge.textContent = state.user.status;
+
+  if (state.user.status === "已通過") {
+    elements.userStatusBadge.dataset.tone = "approved";
+    elements.userStatusText.textContent = "你的 LINE 帳號已通過審核，可以直接預約。";
+    setApprovalGate("已通過審核，可以開始預約。", "approved");
+  } else if (state.user.status === "待審核") {
+    elements.userStatusBadge.dataset.tone = "pending";
+    elements.userStatusText.textContent = "你已完成 LINE 登入，目前需等待管理員通過審核。";
+    setApprovalGate("目前為待審核狀態，請等待管理員通過後再預約。", "pending");
+  } else {
+    elements.userStatusBadge.dataset.tone = "blocked";
+    elements.userStatusText.textContent = state.user.note || "此 LINE 帳號目前無法預約，請聯絡店家。";
+    setApprovalGate("此帳號目前不可預約，請聯絡管理員或店家。", "blocked");
+  }
+
+  updateSubmitState();
 }
 
 function getActiveTechnicians() {
@@ -226,11 +324,7 @@ function getAvailableTimeSlots(technicianId, serviceIds, date) {
   const reservations = getReservationsForTechnicianAndDate(technicianId, date);
   const slots = [];
 
-  for (
-    let current = shiftStart;
-    current + serviceDuration <= shiftEnd;
-    current += SLOT_INTERVAL_MINUTES
-  ) {
+  for (let current = shiftStart; current + serviceDuration <= shiftEnd; current += SLOT_INTERVAL_MINUTES) {
     const end = current + serviceDuration;
     if (!hasConflict(current, end, reservations)) {
       slots.push({
@@ -281,8 +375,8 @@ function updateDashboard() {
 }
 
 function setBookingSubmitting(isSubmitting) {
-  elements.bookingSubmitButton.disabled = isSubmitting;
-  elements.bookingSubmitButton.textContent = isSubmitting ? "送出中..." : "送出預約";
+  state.isSubmittingBooking = isSubmitting;
+  updateSubmitState();
 }
 
 function updateSummary() {
@@ -323,6 +417,21 @@ function updateSummary() {
 }
 
 function updateAvailabilityStatus() {
+  if (!state.profile) {
+    setStatus("進入頁面後需先完成 LINE 登入。", "info");
+    return;
+  }
+
+  if (!state.user || state.user.status === "待審核") {
+    setStatus("你已完成 LINE 登入，請等待管理員審核通過。", "info");
+    return;
+  }
+
+  if (!isApprovedUser()) {
+    setStatus("此 LINE 帳號目前無法預約，請聯絡店家。", "error");
+    return;
+  }
+
   const activeTechnicians = getActiveTechnicians();
   if (!activeTechnicians.length) {
     setStatus("目前沒有可預約的技師。", "info");
@@ -371,8 +480,8 @@ function refreshSelects() {
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"))
     .map((item) => ({
-    value: item.technicianId,
-    label: item.name,
+      value: item.technicianId,
+      label: item.name,
     }));
   setOptions(elements.technicianSelect, technicianOptions, "請選擇技師");
   if (technicianOptions.some((item) => item.value === state.selectedTechnicianId)) {
@@ -449,7 +558,7 @@ function syncDateAndTimeOptions() {
     elements.timeSelect.value = timeSlots[0].value;
   }
 
-  if (!timeSlots.length && selectedDate) {
+  if (!timeSlots.length && selectedDate && isApprovedUser()) {
     setStatus("該日期已無可預約時段，請改選其他日期。", "info");
   }
 
@@ -480,6 +589,57 @@ async function requestApi(method, params = {}, body = null) {
   return response.json();
 }
 
+async function syncLineUser() {
+  if (!state.profile) {
+    return null;
+  }
+
+  const result = await requestApi("POST", {}, {
+    action: "syncLineUser",
+    payload: {
+      userId: state.profile.userId,
+      displayName: state.profile.displayName,
+      pictureUrl: state.profile.pictureUrl || "",
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "同步 LINE 用戶失敗");
+  }
+
+  state.user = result.data;
+  renderUserState();
+  updateAvailabilityStatus();
+  return result.data;
+}
+
+async function ensureLiffSession() {
+  if (!state.liffId) {
+    throw new Error("請先在 client/config.json 設定 liffId。");
+  }
+
+  if (!window.liff) {
+    throw new Error("LIFF SDK 載入失敗。");
+  }
+
+  await window.liff.init({ liffId: state.liffId });
+
+  if (!window.liff.isLoggedIn()) {
+    setStatus("正在導向 LINE 登入...", "info");
+    window.liff.login({ redirectUri: window.location.href });
+    return false;
+  }
+
+  state.profile = await window.liff.getProfile();
+  if (!elements.bookingForm.customerName.value) {
+    elements.bookingForm.customerName.value = state.profile.displayName || "";
+  }
+
+  renderUserState();
+  await syncLineUser();
+  return true;
+}
+
 async function loadPublicData(options = {}) {
   const { silent = false } = options;
   if (state.isLoadingPublicData) {
@@ -487,7 +647,7 @@ async function loadPublicData(options = {}) {
   }
 
   state.isLoadingPublicData = true;
-  if (!silent) {
+  if (!silent && isApprovedUser()) {
     setStatus("正在載入可預約資料...");
   }
 
@@ -512,15 +672,47 @@ async function loadPublicData(options = {}) {
 
     refreshSelects();
     if (!silent) {
-      setStatus("資料已更新，可以開始預約。", "success");
+      updateAvailabilityStatus();
     }
   } finally {
     state.isLoadingPublicData = false;
   }
 }
 
+async function refreshUserAndData(options = {}) {
+  const { silent = false } = options;
+
+  if (state.profile) {
+    try {
+      await syncLineUser();
+    } catch (error) {
+      if (!silent) {
+        setStatus(error.message, "error");
+      }
+    }
+  }
+
+  await loadPublicData({ silent });
+}
+
 async function submitBooking(event) {
   event.preventDefault();
+
+  if (!state.profile) {
+    setStatus("請先完成 LINE 登入。", "error");
+    return;
+  }
+
+  if (!state.user || state.user.status === "待審核") {
+    setStatus("你已完成 LINE 登入，請等待管理員審核通過。", "error");
+    return;
+  }
+
+  if (!isApprovedUser()) {
+    setStatus("此 LINE 帳號目前無法預約，請聯絡店家。", "error");
+    return;
+  }
+
   const formData = new FormData(elements.bookingForm);
   const serviceIds = normalizeServiceIds(state.selectedServiceIds);
 
@@ -530,6 +722,8 @@ async function submitBooking(event) {
   }
 
   const payload = {
+    userId: state.user.userId,
+    userDisplayName: state.user.displayName,
     customerName: formData.get("customerName").trim(),
     phone: formData.get("phone").trim(),
     technicianId: formData.get("technicianId"),
@@ -551,6 +745,9 @@ async function submitBooking(event) {
 
     setStatus(`預約成功，預約編號：${result.data.reservationId}`, "success");
     elements.bookingForm.reset();
+    if (state.profile) {
+      elements.bookingForm.customerName.value = state.profile.displayName || "";
+    }
     state.selectedTechnicianId = payload.technicianId;
     state.selectedServiceIds = [];
     await loadPublicData();
@@ -586,37 +783,73 @@ function bindEvents() {
     }
   });
 
+  elements.loginButton.addEventListener("click", async () => {
+    try {
+      if (!state.liffId) {
+        throw new Error("請先在 client/config.json 設定 liffId。");
+      }
+
+      await window.liff.init({ liffId: state.liffId });
+      if (window.liff.isLoggedIn()) {
+        window.liff.logout();
+        window.location.reload();
+        return;
+      }
+
+      window.liff.login({ redirectUri: window.location.href });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.refreshUserButton.addEventListener("click", async () => {
+    try {
+      await refreshUserAndData({ silent: false });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   window.addEventListener("focus", () => {
-    loadPublicData({ silent: true }).catch(() => {});
+    refreshUserAndData({ silent: true }).catch(() => {});
   });
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      loadPublicData({ silent: true }).catch(() => {});
+      refreshUserAndData({ silent: true }).catch(() => {});
     }
   });
 }
 
 function startAutoSync() {
   window.setInterval(() => {
-    loadPublicData({ silent: true }).catch(() => {});
+    refreshUserAndData({ silent: true }).catch(() => {});
   }, AUTO_SYNC_INTERVAL_MS);
 }
 
 async function initializeApp() {
-  await loadGasUrlFromConfig();
+  await loadConfigFromJson();
   applyGasUrlPreference();
   bindEvents();
   startAutoSync();
+  renderUserState();
 
-  if (state.gasUrl) {
-    loadPublicData().catch((error) => setStatus(error.message, "error"));
+  if (!state.gasUrl) {
+    refreshSelects();
+    setStatus("尚未找到 GAS Web App URL，請檢查 client/config.json。", "info");
+    updateDashboard();
     return;
   }
 
-  refreshSelects();
-  setStatus("尚未找到 GAS Web App URL，請檢查 client/config.json。", "info");
-  updateDashboard();
+  const isLoggedIn = await ensureLiffSession();
+  if (!isLoggedIn) {
+    return;
+  }
+
+  await loadPublicData();
 }
 
-initializeApp();
+initializeApp().catch((error) => {
+  console.error(error);
+  setStatus("初始化應用程式時發生錯誤，請稍後再試。", "error");
+});
