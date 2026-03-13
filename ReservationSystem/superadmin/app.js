@@ -384,7 +384,7 @@ function renderAdminTable() {
     return;
   }
 
-  const rows = state.adminUsers
+  const cards = state.adminUsers
     .slice()
     .sort((left, right) => {
       if (left.isSuperAdmin !== right.isSuperAdmin) {
@@ -510,72 +510,67 @@ async function refreshIdentity() {
   state.adminUser = null;
   renderAccessState();
 
-  const isLoggedIn = await ensureLiffSession();
-  if (!isLoggedIn) {
+        <article class="permission-card">
+          <div class="permission-card__header">
     return;
   }
 
   await syncAdminUser();
   await loadSuperAdminData();
-}
 
 async function updateAdminPermission(userId, updates, options = {}) {
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  if (!adminUser) {
-    throw new Error("找不到管理員資料");
+            <div class="permission-card__meta">
+              <div class="status-pill-group">${identityPills.join("")}</div>
+              <div class="permission-meta-item">
+                <span class="permission-meta-item__label">最後登入</span>
+                <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
   }
 
-  const payload = {
-    userId,
-    canManageAdmins: Object.prototype.hasOwnProperty.call(updates, "canManageAdmins")
-      ? updates.canManageAdmins
-      : adminUser.canManageAdmins,
-    pagePermissions: Object.prototype.hasOwnProperty.call(updates, "pagePermissions")
-      ? updates.pagePermissions
-      : (adminUser.pagePermissions || []),
-  };
+          </div>
 
-  const confirmMessage = options.confirmMessage || `確定要更新「${adminUser.displayName}」的 admin 權限嗎？`;
-  const confirmed = window.confirm(confirmMessage);
-  if (!confirmed) {
-    setStatus(options.cancelMessage || "已取消權限變更。", "info");
-    return;
-  }
+          <div class="permission-card__grid">
+            <section class="permission-section">
+              <span class="permission-section__label">管理員修改權限</span>
+              ${renderAdminManagePermissionEditor(adminUser)}
+            </section>
 
-  showLoading(options.loadingMessage || "正在更新 admin 權限...", "loading");
-  const result = await requestApi("POST", {}, {
+            <section class="permission-section">
+              <span class="permission-section__label">頁面權限</span>
+              <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+              <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
+            </section>
+
+            <section class="permission-section permission-section--wide">
+              <span class="permission-section__label">頁面權限設定</span>
+              ${renderPagePermissionEditor(adminUser)}
+            </section>
+
+            <section class="permission-section">
+              <span class="permission-section__label">備註</span>
+              <div class="permission-note">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</div>
+            </section>
+
+            <section class="permission-section">
+              <span class="permission-section__label">操作</span>
+              <div class="table-actions table-actions--stack">
+                <div class="action-group">
+                  <span class="action-group__label">審核狀態</span>
+                  <div class="table-actions table-actions--grid">${statusButtons}</div>
+                </div>
+                <div class="action-group">
+                  <span class="action-group__label">帳號操作</span>
+                  <div class="table-actions">${deleteButton}</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </article>
     action: "updateAdminPermission",
     payload,
   });
 
   if (!result.ok) {
-    throw new Error(result.message || "更新權限失敗");
-  }
-
-  await loadSuperAdminData();
-  setStatus(options.successMessage || `已更新 ${adminUser.displayName} 的 admin 權限。`, "success");
-}
-
-function getRowPagePermissions(row) {
-  return Array.from(row.querySelectorAll('[data-page-permission-checkbox]:checked')).map((input) => input.value);
-}
-
-async function reviewAdminUser(userId, status) {
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  if (!adminUser) {
-    throw new Error("找不到管理員資料");
-  }
-
-  const confirmed = window.confirm(`確定要將「${adminUser.displayName}」的 admin 狀態設為「${status}」嗎？`);
-  if (!confirmed) {
-    setStatus("已取消審核狀態變更。", "info");
-    return;
-  }
-
-  showLoading("正在更新 admin 審核狀態...", "loading");
-  const result = await requestApi("POST", {}, {
-    action: "reviewAdminUser",
-    payload: {
+    <div class="permission-card-list">${cards}</div>
       userId,
       status,
     },

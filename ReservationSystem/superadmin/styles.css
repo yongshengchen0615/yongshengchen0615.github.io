@@ -286,53 +286,80 @@ h1 {
   gap: 16px;
 }
 
-.table-scroll {
-  overflow-x: auto;
-  overflow-y: visible;
-  padding-bottom: 6px;
-  scrollbar-width: thin;
+.permission-card-list {
+  display: grid;
+  gap: 18px;
 }
 
-.list-table {
-  width: 100%;
-  min-width: 1842px;
-  border-collapse: separate;
-  border-spacing: 0 14px;
+.permission-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(146, 178, 200, 0.12);
+  border-radius: 22px;
+  background: rgba(7, 17, 24, 0.58);
 }
 
-.list-table th,
-.list-table td {
-  padding: 14px 12px;
-  text-align: left;
-  vertical-align: top;
+.permission-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(146, 178, 200, 0.12);
 }
 
-.list-table th {
-  padding-top: 0;
-  padding-bottom: 8px;
+.permission-card__meta {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.permission-meta-item {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.permission-meta-item__label {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.list-table tbody td {
-  border-top: 1px solid rgba(146, 178, 200, 0.12);
-  border-bottom: 1px solid rgba(146, 178, 200, 0.12);
-  background: rgba(7, 17, 24, 0.58);
+.permission-card__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
 }
 
-.list-table tbody td:first-child {
-  border-left: 1px solid rgba(146, 178, 200, 0.12);
-  border-top-left-radius: 18px;
-  border-bottom-left-radius: 18px;
+.permission-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(146, 178, 200, 0.1);
+  border-radius: 18px;
+  background: rgba(5, 15, 22, 0.34);
 }
 
-.list-table tbody td:last-child {
-  border-right: 1px solid rgba(146, 178, 200, 0.12);
-  border-top-right-radius: 18px;
-  border-bottom-right-radius: 18px;
+.permission-section--wide {
+  grid-column: 1 / -1;
+}
+
+.permission-section__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.permission-note {
+  min-height: 48px;
+  line-height: 1.6;
 }
 
 .user-cell {
@@ -352,15 +379,6 @@ h1 {
 .user-cell__meta {
   display: grid;
   gap: 6px;
-}
-
-.cell-pages,
-.cell-note,
-.cell-last-login,
-.cell-status,
-.cell-editor,
-.cell-actions {
-  line-height: 1.55;
 }
 
 .button {
@@ -392,9 +410,7 @@ h1 {
 .summary-card strong,
 .user-cell__meta strong,
 .user-cell__meta small,
-.helper-text,
-.list-table th,
-.list-table td {
+.helper-text {
   overflow-wrap: anywhere;
 }
 
@@ -552,6 +568,20 @@ h1 {
   .summary-card {
     flex: 1 1 220px;
   }
+
+  .permission-card__header {
+    flex-direction: column;
+  }
+
+  .permission-card__meta {
+    width: 100%;
+    min-width: 0;
+    justify-items: start;
+  }
+
+  .permission-meta-item {
+    text-align: left;
+  }
 }
 
 @media (max-width: 720px) {
@@ -606,48 +636,22 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .permission-card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .permission-card__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .permission-section,
+  .permission-section--wide {
+    grid-column: auto;
+  }
+
   .access-panel__actions .button {
     flex: 1;
-  }
-
-  .list-table,
-  .list-table thead,
-  .list-table tbody,
-  .list-table tr,
-  .list-table th,
-  .list-table td {
-    display: block;
-  }
-
-  .list-table thead {
-    display: none;
-  }
-
-  .list-table tr {
-    padding: 0;
-    margin-bottom: 16px;
-    border: 1px solid rgba(146, 178, 200, 0.12);
-    border-radius: 18px;
-    background: rgba(7, 17, 24, 0.58);
-    overflow: hidden;
-  }
-
-  .list-table td {
-    padding: 12px 14px;
-    border: 0;
-    display: grid;
-    grid-template-columns: minmax(84px, 110px) minmax(0, 1fr);
-    gap: 12px;
-    align-items: start;
-    background: transparent;
-  }
-
-  .list-table td::before {
-    content: attr(data-label);
-    color: var(--muted);
-    font-size: 0.82rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
   }
 
   .identity-card {
@@ -657,16 +661,6 @@ h1 {
   .summary-card {
     min-width: unset;
     flex: 1 1 160px;
-  }
-
-  .table-scroll {
-    overflow: visible;
-    padding-bottom: 0;
-  }
-
-  .list-table {
-    min-width: 0;
-    border-spacing: 0;
   }
 }
 
@@ -696,8 +690,11 @@ h1 {
     border-radius: 18px;
   }
 
-  .list-table td {
-    grid-template-columns: 1fr;
-    gap: 6px;
+  .permission-card {
+    padding: 14px;
+  }
+
+  .permission-section {
+    padding: 14px;
   }
 }
