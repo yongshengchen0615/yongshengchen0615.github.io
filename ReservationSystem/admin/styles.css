@@ -17,6 +17,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -26,9 +27,12 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text);
   font-family: "Manrope", "Noto Sans TC", sans-serif;
   overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
   background:
     radial-gradient(circle at top right, rgba(82, 194, 166, 0.15), transparent 22%),
     radial-gradient(circle at left center, rgba(255, 188, 102, 0.08), transparent 18%),
@@ -37,6 +41,7 @@ body {
 
 body.is-locked {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body.is-busy {
@@ -110,16 +115,24 @@ select {
   font: inherit;
 }
 
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
 .admin-shell {
   width: min(1360px, calc(100% - 32px));
   margin: 0 auto;
   padding: 28px 0 40px;
+  padding-top: max(28px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
 }
 
 .access-shell {
   width: min(1360px, calc(100% - 32px));
   margin: 0 auto;
-  padding-top: 28px;
+  padding-top: max(28px, env(safe-area-inset-top, 0px));
 }
 
 .access-panel {
@@ -942,6 +955,7 @@ textarea {
   border: 0;
   border-radius: 999px;
   padding: 14px 18px;
+  min-height: 48px;
   cursor: pointer;
   text-decoration: none;
   line-height: 1.4;
@@ -953,6 +967,11 @@ textarea {
 .button:hover {
   transform: translateY(-2px);
   filter: brightness(1.05);
+}
+
+.button:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
 }
 
 .button:disabled {
@@ -1273,6 +1292,20 @@ textarea {
 
   .command-main {
     display: block;
+    position: relative;
+  }
+
+  .command-main::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 48px;
+    background: linear-gradient(to right, transparent, rgba(14, 26, 36, 0.92));
+    pointer-events: none;
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    z-index: 1;
   }
 
   .command-bar {
@@ -1526,13 +1559,14 @@ textarea {
 
 @media (max-width: 640px) {
   .admin-shell {
-    width: min(100% - 20px, 100%);
-    padding-top: 18px;
+    width: min(100% - 16px, 100%);
+    padding-top: max(18px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   }
 
   .access-shell {
-    width: min(100% - 20px, 100%);
-    padding-top: 18px;
+    width: min(100% - 16px, 100%);
+    padding-top: max(18px, env(safe-area-inset-top, 0px));
   }
 
   .command-actions {
@@ -1550,7 +1584,7 @@ textarea {
   }
 
   .top-loading {
-    top: 10px;
+    top: max(10px, env(safe-area-inset-top, 0px));
     padding: 12px 14px;
     border-radius: 18px;
   }
@@ -1563,7 +1597,15 @@ textarea {
 
   h1 {
     max-width: none;
-    font-size: 2.6rem;
+    font-size: 2.4rem;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  .section-copy {
+    font-size: 0.9rem;
   }
 
   .hero-tags {
@@ -1574,6 +1616,21 @@ textarea {
   .sync-card,
   .stat-card {
     border-radius: 18px;
+  }
+
+  .stat-card strong {
+    font-size: 1.6rem;
+  }
+
+  .list-table td {
+    padding: 10px 0;
+  }
+
+  .button,
+  .form-actions .button,
+  .table-actions .button {
+    min-height: 48px;
+    font-size: 0.92rem;
   }
 }
 
@@ -1587,6 +1644,7 @@ textarea {
   .panel,
   .access-identity-card {
     padding: 16px;
+    border-radius: 20px;
   }
 
   .schedule-card,
@@ -1596,7 +1654,7 @@ textarea {
   }
 
   h1 {
-    font-size: 2.15rem;
+    font-size: 1.95rem;
   }
 
   .schedule-weekdays,
@@ -1629,5 +1687,16 @@ textarea {
 
   .schedule-calendar-actions {
     grid-template-columns: 1fr;
+  }
+
+  .button,
+  .form-actions .button,
+  .table-actions .button {
+    min-height: 48px;
+    padding: 12px 14px;
+  }
+
+  .eyebrow {
+    font-size: 0.76rem;
   }
 }

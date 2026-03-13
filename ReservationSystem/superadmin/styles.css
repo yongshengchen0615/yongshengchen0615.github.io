@@ -17,13 +17,22 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text);
   font-family: "Manrope", "Noto Sans TC", sans-serif;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
   background:
     radial-gradient(circle at top right, rgba(82, 194, 166, 0.15), transparent 22%),
     radial-gradient(circle at left center, rgba(255, 188, 102, 0.08), transparent 18%),
@@ -84,11 +93,12 @@ button {
 }
 
 .access-shell {
-  padding-top: 28px;
+  padding-top: max(28px, env(safe-area-inset-top, 0px));
 }
 
 .superadmin-shell {
   padding: 24px 0 40px;
+  padding-bottom: max(40px, env(safe-area-inset-bottom, 0px));
   display: grid;
   gap: 22px;
 }
@@ -301,13 +311,26 @@ h1 {
 
 .button {
   border: 1px solid transparent;
-  padding: 10px 16px;
+  border-radius: 999px;
+  padding: 12px 16px;
+  min-height: 48px;
   cursor: pointer;
   color: var(--text);
   background: rgba(146, 178, 200, 0.08);
   line-height: 1.4;
   text-align: center;
   white-space: normal;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.button:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
 }
 
 .section-copy,
@@ -384,14 +407,46 @@ h1 {
 }
 
 @media (max-width: 720px) {
+  .access-shell,
+  .superadmin-shell {
+    width: min(100% - 16px, 100%);
+  }
+
   .panel {
     padding: 22px;
+    border-radius: 22px;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 6vw, 2.8rem);
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  .section-copy {
+    font-size: 0.9rem;
+  }
+
+  .eyebrow {
+    font-size: 0.76rem;
   }
 
   .button,
   .table-actions .button {
     width: 100%;
     justify-content: center;
+    min-height: 52px;
+    font-size: 0.95rem;
+  }
+
+  .access-panel__actions {
+    width: 100%;
+  }
+
+  .access-panel__actions .button {
+    flex: 1;
   }
 
   .list-table,
@@ -427,5 +482,46 @@ h1 {
     font-size: 0.82rem;
     font-weight: 800;
     letter-spacing: 0.04em;
+  }
+
+  .identity-card {
+    padding: 18px;
+  }
+
+  .summary-card {
+    min-width: unset;
+    flex: 1 1 160px;
+  }
+}
+
+@media (max-width: 480px) {
+  .access-shell,
+  .superadmin-shell {
+    width: calc(100% - 12px);
+  }
+
+  .panel {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+  }
+
+  .identity-card {
+    padding: 14px;
+  }
+
+  .top-loading {
+    width: calc(100% - 16px);
+    top: max(10px, env(safe-area-inset-top, 0px));
+    padding: 12px 14px;
+    border-radius: 18px;
+  }
+
+  .list-table td {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }
