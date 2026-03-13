@@ -65,11 +65,12 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: updateAdminPermission_(body.payload || {}, body.adminUserId) });
     }
 
-    verifyAdminAccess_(body.adminUserId);
-
     if (action === 'reviewAdminUser') {
-      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId) });
+      ensureAdminStatusReviewer_(body.adminUserId);
+      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
     }
+
+    verifyAdminAccess_(body.adminUserId);
 
     if (action === 'deleteAdminUser') {
       return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
@@ -346,11 +347,13 @@ function reviewUser_(payload) {
   return normalizeUser_(record);
 }
 
-function reviewAdminUser_(payload, actorUserId) {
+function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
   validateRequired_(payload.userId, 'userId');
   validateRequired_(payload.status, 'status');
 
-  ensureAdminPermissionManager_(actorUserId);
+  if (!skipPermissionCheck) {
+    ensureAdminPermissionManager_(actorUserId);
+  }
 
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var existing = adminUsers.find(function(item) {
@@ -1250,6 +1253,15 @@ function ensureAdminPermissionManager_(actorUserId) {
   }
 
   throw new Error('你沒有管理其他管理員權限的授權，請改由最高管理員設定');
+}
+
+function ensureAdminStatusReviewer_(actorUserId) {
+  var approvedSuperAdmin = findApprovedSuperAdmin_(actorUserId);
+  if (approvedSuperAdmin) {
+    return approvedSuperAdmin;
+  }
+
+  return ensureAdminPermissionManager_(actorUserId);
 }
 
 function normalizeService_(item) {

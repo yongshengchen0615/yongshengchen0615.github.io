@@ -333,6 +333,12 @@ function renderAdminTable() {
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
     .map((adminUser) => {
+      const statusButtons = `
+        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">設待審核</button>
+        <button type="button" class="button button--primary" data-review-admin="${adminUser.userId}" data-review-status="已通過">通過</button>
+        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
+        <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
+      `;
       const actionButton = adminUser.canManageAdmins
         ? `<button type="button" class="button button--danger" data-admin-permission="${adminUser.userId}" data-can-manage-admins="false">收回權限</button>`
         : `<button type="button" class="button button--primary" data-admin-permission="${adminUser.userId}" data-can-manage-admins="true">授予權限</button>`;
@@ -352,7 +358,7 @@ function renderAdminTable() {
           <td>${getPermissionPill(adminUser)}</td>
           <td>${formatDateTimeText(adminUser.lastLoginAt)}</td>
           <td>${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
-          <td><div class="table-actions">${actionButton}</div></td>
+          <td><div class="table-actions">${statusButtons}${actionButton}</div></td>
         </tr>
       `;
     })
@@ -437,6 +443,35 @@ async function updateAdminPermission(userId, canManageAdmins) {
   setStatus(`已${actionLabel}${adminUser.displayName}的管理員修改權限。`, "success");
 }
 
+async function reviewAdminUser(userId, status) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const confirmed = window.confirm(`確定要將「${adminUser.displayName}」的 admin 狀態設為「${status}」嗎？`);
+  if (!confirmed) {
+    setStatus("已取消審核狀態變更。", "info");
+    return;
+  }
+
+  showLoading("正在更新 admin 審核狀態...", "loading");
+  const result = await requestApi("POST", {}, {
+    action: "reviewAdminUser",
+    payload: {
+      userId,
+      status,
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "更新 admin 審核狀態失敗");
+  }
+
+  await loadSuperAdminData();
+  setStatus(`已將${adminUser.displayName}設為${status}。`, "success");
+}
+
 function bindEvents() {
   elements.loginButton?.addEventListener("click", () => {
     refreshIdentity().catch((error) => setStatus(error.message, "error"));
@@ -467,6 +502,14 @@ function bindEvents() {
   });
 
   elements.adminPermissionTable?.addEventListener("click", (event) => {
+    const reviewButton = event.target.closest("[data-review-admin]");
+    if (reviewButton) {
+      reviewAdminUser(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus).catch((error) => {
+        setStatus(error.message, "error");
+      });
+      return;
+    }
+
     const button = event.target.closest("[data-admin-permission]");
     if (!button) {
       return;
