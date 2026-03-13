@@ -120,17 +120,19 @@
               <button type="button" id="calendarNextButton" class="button button--secondary calendar-toolbar__button">下個月</button>
             </div>
 
-            <div class="calendar-weekdays" aria-hidden="true">
-              <span>日</span>
-              <span>一</span>
-              <span>二</span>
-              <span>三</span>
-              <span>四</span>
-              <span>五</span>
-              <span>六</span>
-            </div>
+            <div class="calendar-grid-shell">
+              <div class="calendar-weekdays" aria-hidden="true">
+                <span>日</span>
+                <span>一</span>
+                <span>二</span>
+                <span>三</span>
+                <span>四</span>
+                <span>五</span>
+                <span>六</span>
+              </div>
 
-            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="技師班表與預約日曆"></div>
+              <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="技師班表與預約日曆"></div>
+            </div>
 
             <section id="calendarDetail" class="calendar-detail is-hidden" aria-live="polite">
               <div class="calendar-detail__header">

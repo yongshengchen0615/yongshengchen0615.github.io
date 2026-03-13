@@ -367,6 +367,11 @@ h1 {
   gap: 16px;
 }
 
+.calendar-grid-shell {
+  display: grid;
+  gap: 10px;
+}
+
 .calendar-toolbar,
 .calendar-legend,
 .calendar-legend__item,
@@ -692,10 +697,22 @@ h1 {
     gap: 8px;
   }
 
+  .calendar-grid-shell {
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .calendar-grid-shell .calendar-weekdays,
+  .calendar-grid-shell .calendar-grid {
+    min-width: 560px;
+  }
+
   .calendar-day,
   .calendar-day--empty {
-    min-height: 92px;
-    padding: 12px 10px;
+    min-height: 78px;
+    padding: 10px 8px;
+    gap: 10px;
   }
 
   .calendar-toolbar__button {
@@ -811,10 +828,15 @@ h1 {
     font-size: 0.76rem;
   }
 
+  .calendar-grid-shell .calendar-weekdays,
+  .calendar-grid-shell .calendar-grid {
+    min-width: 520px;
+  }
+
   .calendar-day,
   .calendar-day--empty {
-    min-height: 82px;
-    padding: 10px 8px;
+    min-height: 72px;
+    padding: 8px 6px;
   }
 
   .calendar-day__number {
