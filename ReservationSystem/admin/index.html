@@ -17,7 +17,35 @@
       <span class="top-loading__spinner" aria-hidden="true"></span>
       <strong id="topLoadingLabel">處理中...</strong>
     </div>
-    <div class="admin-shell">
+    <section class="access-shell">
+      <div class="panel access-panel">
+        <div class="access-panel__main">
+          <div>
+            <p class="eyebrow">Admin Access</p>
+            <h2>LINE 管理員登入與審核</h2>
+            <p class="section-copy">後台需先使用 LIFF 完成 LINE 登入，且管理員帳號經審核通過後才可載入管理資料。</p>
+          </div>
+          <div class="access-panel__actions">
+            <button type="button" id="adminLoginButton" class="button button--primary">LINE 登入</button>
+            <button type="button" id="adminRefreshIdentityButton" class="button button--secondary">重新檢查狀態</button>
+            <button type="button" id="adminLogoutButton" class="button button--ghost">登出</button>
+          </div>
+        </div>
+        <div class="access-identity-card">
+          <div class="access-identity-card__header">
+            <img id="adminAvatar" class="access-identity-card__avatar is-hidden" alt="管理員 LINE 頭像" />
+            <div>
+              <strong id="adminDisplayName">尚未登入 LINE</strong>
+              <div id="adminStatusBadge" class="status-badge">未登入</div>
+            </div>
+          </div>
+          <p id="adminStatusText" class="section-copy">請先登入 LINE，系統會同步你的管理員狀態。</p>
+          <div id="adminApprovalGate" class="approval-banner" data-tone="info">需先完成 LINE 登入並通過管理員審核，才可使用後台。</div>
+        </div>
+      </div>
+    </section>
+
+    <div id="adminContent" class="admin-shell is-hidden">
       <header class="admin-hero">
         <div class="hero-main panel">
           <p class="eyebrow">Admin Console</p>
@@ -90,6 +118,21 @@
               <strong id="workflowHint">請先同步資料</strong>
             </div>
           </div>
+        </section>
+
+        <section id="adminReviewSection" class="panel section-block">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Admin Review</p>
+              <h2>管理員存取審核</h2>
+              <p class="section-copy">已登入但尚未通過審核的管理員會出現在這裡，需由既有已通過的管理員審核後才能使用後台。</p>
+              <p id="adminAccessPermissionHint" class="helper-text">只有被最高管理員授權的 admin，才能在這裡修改其他管理員狀態。</p>
+            </div>
+            <div class="section-header-side">
+              <p id="adminAccessSummary" class="section-result">尚無管理員資料</p>
+            </div>
+          </div>
+          <div id="adminAccessTable" class="data-list"></div>
         </section>
 
         <section class="page-stack" aria-label="管理分頁內容">
@@ -447,6 +490,7 @@
       </main>
     </div>
 
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

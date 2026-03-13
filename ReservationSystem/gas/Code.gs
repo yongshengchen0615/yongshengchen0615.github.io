@@ -1,5 +1,6 @@
 const SHEETS = {
   config: 'Config',
+  adminUsers: 'AdminUsers',
   services: 'Services',
   technicians: 'Technicians',
   schedules: 'Schedules',
@@ -17,8 +18,13 @@ function doGet(e) {
     }
 
     if (action === 'adminData') {
-      verifyAdmin_(getRequestValue_(e, 'password'));
+      verifyAdminAccess_(getRequestValue_(e, 'adminUserId'));
       return jsonResponse_({ ok: true, data: getAdminData_() });
+    }
+
+    if (action === 'superAdminData') {
+      verifySuperAdminAccess_(getRequestValue_(e, 'adminUserId'));
+      return jsonResponse_({ ok: true, data: getSuperAdminData_() });
     }
 
     return jsonResponse_({ ok: true, message: 'Beauty reservation GAS API is running.' });
@@ -37,6 +43,10 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: syncLineUser_(body.payload || {}) });
     }
 
+    if (action === 'syncAdminUser') {
+      return jsonResponse_({ ok: true, data: syncAdminUser_(body.payload || {}) });
+    }
+
     if (action === 'submitUserApplication') {
       return jsonResponse_({ ok: true, data: submitUserApplication_(body.payload || {}) });
     }
@@ -45,7 +55,20 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
     }
 
-    verifyAdmin_(body.password);
+    if (action === 'updateAdminPermission') {
+      verifySuperAdminAccess_(body.adminUserId);
+      return jsonResponse_({ ok: true, data: updateAdminPermission_(body.payload || {}, body.adminUserId) });
+    }
+
+    verifyAdminAccess_(body.adminUserId);
+
+    if (action === 'reviewAdminUser') {
+      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId) });
+    }
+
+    if (action === 'deleteAdminUser') {
+      return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
+    }
 
     if (action === 'reviewUser') {
       return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
@@ -122,6 +145,7 @@ function getPublicData_() {
 }
 
 function getAdminData_() {
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
   var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
@@ -148,11 +172,18 @@ function getAdminData_() {
   });
 
   return {
+    adminUsers: adminUsers,
     services: services,
     technicians: technicians,
     schedules: schedules,
     users: users,
     reservations: reservations,
+  };
+}
+
+function getSuperAdminData_() {
+  return {
+    adminUsers: getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_),
   };
 }
 
@@ -182,6 +213,42 @@ function syncLineUser_(payload) {
 
   upsertRecord_(SHEETS.users, 'userId', record);
   return normalizeUser_(record);
+}
+
+function syncAdminUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+
+  var userId = String(payload.userId || '').trim();
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var existing = adminUsers.find(function(item) {
+    return item.userId === userId;
+  });
+  var nowText = toIsoString_(new Date());
+  var nextStatus = isBootstrapAdmin_(userId)
+    ? '已通過'
+    : existing && existing.status
+      ? existing.status
+      : '待審核';
+  var nextCanManageAdmins = isSuperAdmin_(userId)
+    ? true
+    : existing && existing.canManageAdmins !== undefined
+      ? normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, userId)
+      : normalizeAdminPermissionValue_('', nextStatus, userId);
+
+  var record = {
+    userId: userId,
+    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 管理員').trim() || 'LINE 管理員',
+    pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
+    status: normalizeAdminStatus_(nextStatus),
+    canManageAdmins: nextCanManageAdmins,
+    note: existing ? existing.note : '',
+    createdAt: existing ? existing.createdAt : nowText,
+    updatedAt: nowText,
+    lastLoginAt: nowText,
+  };
+
+  upsertRecord_(SHEETS.adminUsers, 'userId', record);
+  return normalizeAdminUser_(record);
 }
 
 function submitUserApplication_(payload) {
@@ -247,6 +314,78 @@ function reviewUser_(payload) {
 
   upsertRecord_(SHEETS.users, 'userId', record);
   return normalizeUser_(record);
+}
+
+function reviewAdminUser_(payload, actorUserId) {
+  validateRequired_(payload.userId, 'userId');
+  validateRequired_(payload.status, 'status');
+
+  ensureAdminPermissionManager_(actorUserId);
+
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var existing = adminUsers.find(function(item) {
+    return item.userId === String(payload.userId || '').trim();
+  });
+
+  if (!existing) {
+    throw new Error('找不到管理員');
+  }
+
+  var nextStatus = normalizeAdminStatus_(payload.status);
+  if (String(actorUserId || '').trim() === existing.userId && nextStatus !== '已通過') {
+    throw new Error('不能將自己改成不可使用的管理員狀態');
+  }
+
+  if (existing.status === '已通過' && nextStatus !== '已通過') {
+    ensureApprovedAdminRemains_(existing.userId);
+  }
+
+  var record = {
+    userId: existing.userId,
+    displayName: existing.displayName,
+    pictureUrl: existing.pictureUrl,
+    status: nextStatus,
+    canManageAdmins: normalizeAdminPermissionValue_(existing.canManageAdmins, nextStatus, existing.userId),
+    note: String(payload.note || existing.note || '').trim(),
+    createdAt: existing.createdAt,
+    updatedAt: toIsoString_(new Date()),
+    lastLoginAt: existing.lastLoginAt,
+  };
+
+  upsertRecord_(SHEETS.adminUsers, 'userId', record);
+  return normalizeAdminUser_(record);
+}
+
+function updateAdminPermission_(payload, actorUserId) {
+  validateRequired_(payload.userId, 'userId');
+
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var existing = adminUsers.find(function(item) {
+    return item.userId === String(payload.userId || '').trim();
+  });
+
+  if (!existing) {
+    throw new Error('找不到管理員');
+  }
+
+  var canManageAdmins = isSuperAdmin_(existing.userId)
+    ? true
+    : toBoolean_(payload.canManageAdmins);
+
+  var record = {
+    userId: existing.userId,
+    displayName: existing.displayName,
+    pictureUrl: existing.pictureUrl,
+    status: existing.status,
+    canManageAdmins: canManageAdmins,
+    note: String(payload.note || existing.note || '').trim(),
+    createdAt: existing.createdAt,
+    updatedAt: toIsoString_(new Date()),
+    lastLoginAt: existing.lastLoginAt,
+  };
+
+  upsertRecord_(SHEETS.adminUsers, 'userId', record);
+  return normalizeAdminUser_(record);
 }
 
 function createReservation_(payload) {
@@ -625,8 +764,8 @@ function saveReservation_(payload) {
     phone: normalizedPhone,
     technicianId: payload.technicianId,
     serviceId: serviceIds.join(','),
-    date: payload.date,
-    startTime: payload.startTime,
+    date: normalizeDateString_(payload.date),
+    startTime: normalizeTimeString_(payload.startTime),
     endTime: minutesToTime_(reservationEnd),
     status: status,
     note: payload.note || '',
@@ -728,8 +867,19 @@ function deleteSchedule_(payload) {
     throw new Error('找不到班表');
   }
 
-  var linkedReservation = reservations.find(function(item) {
+  var schedule = schedules.find(function(item) {
     return item.technicianId === technicianId && item.date === scheduleDate;
+  });
+
+  var nextDate = isOvernightShift_(schedule.startTime, schedule.endTime)
+    ? addDaysToDateString_(scheduleDate, 1)
+    : '';
+
+  var linkedReservation = reservations.find(function(item) {
+    if (item.technicianId !== technicianId) return false;
+    if (item.date === scheduleDate) return true;
+    if (nextDate && item.date === nextDate) return true;
+    return false;
   });
 
   if (linkedReservation) {
@@ -781,8 +931,36 @@ function deleteUser_(payload) {
   return { userId: userId };
 }
 
+function deleteAdminUser_(payload, actorUserId) {
+  validateRequired_(payload.userId, 'userId');
+
+  ensureAdminPermissionManager_(actorUserId);
+
+  var userId = String(payload.userId || '').trim();
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var existing = adminUsers.find(function(item) {
+    return item.userId === userId;
+  });
+
+  if (!existing) {
+    throw new Error('找不到管理員');
+  }
+
+  if (String(actorUserId || '').trim() === userId) {
+    throw new Error('不能刪除自己的管理員帳號');
+  }
+
+  if (existing.status === '已通過') {
+    ensureApprovedAdminRemains_(userId);
+  }
+
+  deleteRecord_(SHEETS.adminUsers, 'userId', userId);
+  return { userId: userId };
+}
+
 function initializeSheets_() {
   ensureSheet_(SHEETS.config, ['key', 'value']);
+  ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
@@ -966,11 +1144,45 @@ function getRequestValue_(e, key) {
   return e && e.parameter ? e.parameter[key] : '';
 }
 
-function verifyAdmin_(password) {
-  var adminPassword = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD') || 'admin1234';
-  if (!password || password !== adminPassword) {
-    throw new Error('管理密碼錯誤');
+function verifyAdminAccess_(adminUserId) {
+  validateRequired_(adminUserId, 'adminUserId');
+
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var adminUser = adminUsers.find(function(item) {
+    return item.userId === String(adminUserId || '').trim();
+  });
+
+  if (!adminUser) {
+    throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
   }
+
+  if (!isAdminApproved_(adminUser.status)) {
+    if (normalizeAdminStatus_(adminUser.status) === '待審核') {
+      throw new Error('管理員帳號待審核，尚不可使用後台');
+    }
+
+    throw new Error(adminUser.note || '此管理員帳號目前不可使用後台');
+  }
+
+  return adminUser;
+}
+
+function verifySuperAdminAccess_(adminUserId) {
+  var adminUser = verifyAdminAccess_(adminUserId);
+  if (!isSuperAdmin_(adminUser.userId)) {
+    throw new Error('此 LINE 帳號沒有最高管理員權限');
+  }
+
+  return adminUser;
+}
+
+function ensureAdminPermissionManager_(actorUserId) {
+  var actor = verifyAdminAccess_(actorUserId);
+  if (isSuperAdmin_(actor.userId) || actor.canManageAdmins) {
+    return actor;
+  }
+
+  throw new Error('你沒有管理其他管理員權限的授權，請改由最高管理員設定');
 }
 
 function normalizeService_(item) {
@@ -1054,6 +1266,69 @@ function normalizeUser_(item) {
   };
 }
 
+function normalizeAdminUser_(item) {
+  var userId = String(item.userId || '').trim();
+  return {
+    userId: userId,
+    displayName: String(item.displayName || '').trim() || 'LINE 管理員',
+    pictureUrl: String(item.pictureUrl || '').trim(),
+    status: normalizeAdminStatus_(item.status),
+    canManageAdmins: normalizeAdminPermissionValue_(item.canManageAdmins, item.status, userId),
+    isSuperAdmin: isSuperAdmin_(userId),
+    note: String(item.note || '').trim(),
+    createdAt: String(item.createdAt || ''),
+    updatedAt: String(item.updatedAt || ''),
+    lastLoginAt: String(item.lastLoginAt || ''),
+  };
+}
+
+function normalizeAdminPermissionValue_(value, status, userId) {
+  if (isSuperAdmin_(userId)) {
+    return true;
+  }
+
+  var text = String(value || '').trim().toLowerCase();
+  if (text === 'true' || text === '1' || text === 'yes') {
+    return true;
+  }
+
+  if (text === 'false' || text === '0' || text === 'no') {
+    return false;
+  }
+
+  return normalizeAdminStatus_(status) === '已通過';
+}
+
+function normalizeAdminStatus_(value) {
+  var status = String(value || '').trim();
+
+  if (!status) {
+    return '待審核';
+  }
+
+  if (status === 'pending' || status === '待審核') {
+    return '待審核';
+  }
+
+  if (status === 'approved' || status === '已通過') {
+    return '已通過';
+  }
+
+  if (status === 'rejected' || status === '已拒絕') {
+    return '已拒絕';
+  }
+
+  if (status === 'disabled' || status === '已停用') {
+    return '已停用';
+  }
+
+  return status;
+}
+
+function isAdminApproved_(status) {
+  return normalizeAdminStatus_(status) === '已通過';
+}
+
 function normalizeUserStatus_(value) {
   var status = String(value || '').trim();
 
@@ -1086,6 +1361,42 @@ function normalizeUserStatus_(value) {
 
 function isUserApproved_(status) {
   return normalizeUserStatus_(status) === '已通過';
+}
+
+function isBootstrapAdmin_(userId) {
+  return parseCsvProperty_('ADMIN_APPROVED_LINE_USER_IDS').indexOf(String(userId || '').trim()) !== -1;
+}
+
+function isSuperAdmin_(userId) {
+  var normalizedUserId = String(userId || '').trim();
+  var configuredSuperAdmins = parseCsvProperty_('SUPER_ADMIN_LINE_USER_IDS');
+  if (configuredSuperAdmins.length) {
+    return configuredSuperAdmins.indexOf(normalizedUserId) !== -1;
+  }
+
+  return isBootstrapAdmin_(normalizedUserId);
+}
+
+function ensureApprovedAdminRemains_(excludedUserId) {
+  var approvedCount = getTableRecords_(SHEETS.adminUsers)
+    .map(normalizeAdminUser_)
+    .filter(function(item) {
+      return item.userId !== String(excludedUserId || '').trim() && isAdminApproved_(item.status);
+    })
+    .length;
+
+  if (!approvedCount) {
+    throw new Error('至少需保留一位已通過的管理員');
+  }
+}
+
+function parseCsvProperty_(propertyName) {
+  return String(PropertiesService.getScriptProperties().getProperty(propertyName) || '')
+    .split(',')
+    .map(function(item) {
+      return String(item || '').trim();
+    })
+    .filter(String);
 }
 
 function normalizeReservationStatus_(value) {
@@ -1226,17 +1537,25 @@ function evaluateReservationForTechnician_(options) {
 
     withinScheduleWindow = true;
 
+    var nextDate = addDaysToDateString_(reservationDate, 1);
     var hasConflict = reservations.some(function(item) {
       if (item.reservationId === ignoreReservationId || item.technicianId !== technicianId || isReservationCancelled_(item.status)) {
         return false;
       }
 
       var reservationCoverage = getReservationCoverageForDate_(item, serviceMap, reservationDate);
-      if (!reservationCoverage) {
-        return false;
+      if (reservationCoverage) {
+        return reservationStart < reservationCoverage.end && reservationCoverage.start < reservationEnd;
       }
 
-      return reservationStart < reservationCoverage.end && reservationCoverage.start < reservationEnd;
+      // 跨日衝突偵測：新預約跨午夜時，檢查隔日已有的預約
+      if (normalizeDateString_(item.date) === nextDate) {
+        var itemStart = timeToMinutes_(item.startTime) + 24 * 60;
+        var itemEnd = getReservationOccupiedEndMinutes_(item, serviceMap) + 24 * 60;
+        return reservationStart < itemEnd && itemStart < reservationEnd;
+      }
+
+      return false;
     });
 
     if (hasConflict) {

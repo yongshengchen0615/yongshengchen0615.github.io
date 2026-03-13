@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>美業預約系統 | 最高管理員</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="topLoadingBar" class="top-loading is-hidden" role="status" aria-live="polite" aria-busy="false" data-type="info">
+      <span class="top-loading__spinner" aria-hidden="true"></span>
+      <strong id="topLoadingLabel">處理中...</strong>
+    </div>
+
+    <section class="access-shell">
+      <div class="panel access-panel">
+        <div class="access-panel__main">
+          <div>
+            <p class="eyebrow">Super Admin Access</p>
+            <h1>最高管理員權限中心</h1>
+            <p class="section-copy">只有最高管理員可登入此頁，並設定哪些 admin 管理員能修改其他管理員的權限。</p>
+          </div>
+          <div class="access-panel__actions">
+            <button type="button" id="loginButton" class="button button--primary">LINE 登入</button>
+            <button type="button" id="refreshButton" class="button button--secondary">重新整理</button>
+            <button type="button" id="logoutButton" class="button button--ghost">登出</button>
+          </div>
+        </div>
+
+        <div class="identity-card">
+          <div class="identity-card__header">
+            <img id="avatar" class="identity-card__avatar is-hidden" alt="最高管理員頭像" />
+            <div>
+              <strong id="displayName">尚未登入 LINE</strong>
+              <div id="statusBadge" class="status-badge" data-tone="muted">未登入</div>
+            </div>
+          </div>
+          <p id="statusText" class="section-copy">請先登入 LINE，系統會確認你是否屬於最高管理員名單。</p>
+          <div id="approvalBanner" class="approval-banner" data-tone="info">此頁僅提供最高管理員設定 admin 的管理員修改權限。</div>
+        </div>
+      </div>
+    </section>
+
+    <main id="superAdminContent" class="superadmin-shell is-hidden">
+      <section class="panel hero-panel">
+        <div>
+          <p class="eyebrow">Authority Matrix</p>
+          <h2>admin 管理員權限名單</h2>
+          <p class="section-copy">可開啟或收回「管理其他管理員」權限。最高管理員身分本身由 GAS Script Properties 的 SUPER_ADMIN_LINE_USER_IDS 控制。</p>
+        </div>
+        <div class="hero-meta">
+          <div class="summary-card">
+            <span>權限摘要</span>
+            <strong id="summaryLabel">尚未載入</strong>
+          </div>
+          <div class="summary-card">
+            <span>最後同步</span>
+            <strong id="lastSyncLabel">尚未同步</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Permission Control</p>
+            <h2>管理員修改權限</h2>
+            <p class="section-copy">這裡只控制 admin 專案中誰可以審核、停用或刪除其他管理員帳號。</p>
+          </div>
+        </div>
+        <div id="adminPermissionTable" class="data-list"></div>
+      </section>
+    </main>
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

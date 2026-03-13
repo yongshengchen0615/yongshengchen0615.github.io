@@ -35,6 +35,10 @@ body {
     linear-gradient(160deg, #071118 0%, #0f1a24 45%, #152938 100%);
 }
 
+body.is-locked {
+  min-height: 100vh;
+}
+
 body.is-busy {
   cursor: progress;
 }
@@ -110,6 +114,79 @@ select {
   width: min(1360px, calc(100% - 32px));
   margin: 0 auto;
   padding: 28px 0 40px;
+}
+
+.access-shell {
+  width: min(1360px, calc(100% - 32px));
+  margin: 0 auto;
+  padding-top: 28px;
+}
+
+.access-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.access-panel__main {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.access-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.access-identity-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid rgba(146, 178, 200, 0.14);
+  border-radius: var(--radius-md);
+  background: rgba(5, 15, 22, 0.36);
+}
+
+.access-identity-card__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.access-identity-card__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(146, 178, 200, 0.18);
+}
+
+.approval-banner {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(146, 178, 200, 0.18);
+  background: rgba(19, 38, 52, 0.78);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.approval-banner[data-tone="approved"] {
+  border-color: rgba(82, 194, 166, 0.24);
+  background: rgba(82, 194, 166, 0.12);
+}
+
+.approval-banner[data-tone="pending"] {
+  border-color: rgba(255, 188, 102, 0.26);
+  background: rgba(255, 188, 102, 0.12);
+}
+
+.approval-banner[data-tone="blocked"] {
+  border-color: rgba(255, 107, 107, 0.22);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffd8d8;
 }
 
 .admin-hero {
@@ -290,6 +367,40 @@ h1 {
   font-size: 0.9rem;
   font-weight: 700;
   text-align: right;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(146, 178, 200, 0.18);
+  background: rgba(19, 38, 52, 0.9);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.status-badge[data-tone="approved"] {
+  border-color: rgba(82, 194, 166, 0.24);
+  background: rgba(82, 194, 166, 0.14);
+}
+
+.status-badge[data-tone="pending"] {
+  border-color: rgba(255, 188, 102, 0.26);
+  background: rgba(255, 188, 102, 0.12);
+}
+
+.status-badge[data-tone="blocked"] {
+  border-color: rgba(255, 107, 107, 0.22);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffd8d8;
+}
+
+.status-badge[data-tone="muted"] {
+  color: var(--muted);
 }
 
 .command-bar {

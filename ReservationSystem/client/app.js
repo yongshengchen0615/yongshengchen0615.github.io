@@ -549,9 +549,20 @@ function getAvailableTimeSlots(technicianId, serviceIds, date) {
   const slotMap = new Map();
 
   eligibleTechnicians.forEach((technician) => {
-    const reservations = getReservationsForTechnicianNearDate(technician.technicianId, date)
+    const baseCoverages = getReservationsForTechnicianNearDate(technician.technicianId, date)
       .map((item) => getReservationCoverageForDate(item, date))
       .filter(Boolean);
+
+    // 跨日衝突偵測：當班表跨午夜時，也需排除隔日已有的預約
+    const nextDate = addDaysToDate(date, 1);
+    const nextDayCoverages = state.reservations
+      .filter((item) => item.technicianId === technician.technicianId && item.status !== "已取消" && item.date === nextDate)
+      .map((item) => ({
+        start: toMinutes(item.startTime) + 24 * 60,
+        end: getReservationOccupiedEnd(item) + 24 * 60,
+      }));
+
+    const reservations = baseCoverages.concat(nextDayCoverages);
 
     getSchedulesForTechnicianOnDate(technician.technicianId, date).forEach((schedule) => {
       const coverage = getScheduleCoverageForDate(schedule, date);

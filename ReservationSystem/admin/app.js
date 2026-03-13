@@ -1,6 +1,5 @@
 const ADMIN_STORAGE_KEYS = {
   gasUrl: "beauty-booking-gas-url",
-  password: "beauty-booking-admin-password",
   serviceCategories: "beauty-booking-service-categories",
 };
 const CONFIG_PATH = "./config.json";
@@ -8,8 +7,10 @@ const CONFIG_PATH = "./config.json";
 const state = {
   gasUrl: "",
   configGasUrl: "",
-  password: "",
-  configPassword: "",
+  liffId: "",
+  profile: null,
+  adminUser: null,
+  adminUsers: [],
   services: [],
   technicians: [],
   schedules: [],
@@ -40,6 +41,18 @@ const state = {
 const elements = {
   topLoadingBar: document.querySelector("#topLoadingBar"),
   topLoadingLabel: document.querySelector("#topLoadingLabel"),
+  adminContent: document.querySelector("#adminContent"),
+  adminLoginButton: document.querySelector("#adminLoginButton"),
+  adminRefreshIdentityButton: document.querySelector("#adminRefreshIdentityButton"),
+  adminLogoutButton: document.querySelector("#adminLogoutButton"),
+  adminAvatar: document.querySelector("#adminAvatar"),
+  adminDisplayName: document.querySelector("#adminDisplayName"),
+  adminStatusBadge: document.querySelector("#adminStatusBadge"),
+  adminStatusText: document.querySelector("#adminStatusText"),
+  adminApprovalGate: document.querySelector("#adminApprovalGate"),
+  adminAccessPermissionHint: document.querySelector("#adminAccessPermissionHint"),
+  adminAccessSummary: document.querySelector("#adminAccessSummary"),
+  adminAccessTable: document.querySelector("#adminAccessTable"),
   serviceCategorySuggestions: document.querySelector("#serviceCategorySuggestions"),
   refreshDashboardButton: document.querySelector("#refreshDashboardButton"),
   workflowSummary: document.querySelector("#workflowSummary"),
@@ -115,7 +128,7 @@ function normalizeGasUrl(value) {
   return String(value || "").trim();
 }
 
-function normalizePassword(value) {
+function normalizeLiffId(value) {
   return String(value || "").trim();
 }
 
@@ -228,10 +241,10 @@ async function loadConfigFromJson() {
 
     const config = await response.json();
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
-    state.configPassword = normalizePassword(config.adminPassword);
+    state.liffId = normalizeLiffId(config.liffId);
   } catch (error) {
     state.configGasUrl = "";
-    state.configPassword = "";
+    state.liffId = "";
   }
 }
 
@@ -245,14 +258,174 @@ function applyGasUrlPreference() {
   }
 }
 
-function applyPasswordPreference() {
-  const savedPassword = normalizePassword(localStorage.getItem(ADMIN_STORAGE_KEYS.password));
-  if (state.configPassword) {
-    state.password = state.configPassword;
-    localStorage.setItem(ADMIN_STORAGE_KEYS.password, state.password);
-  } else {
-    state.password = savedPassword;
+function isApprovedAdmin() {
+  return state.adminUser?.status === "已通過";
+}
+
+function canManageAdminAccess() {
+  return Boolean(state.adminUser?.canManageAdmins);
+}
+
+function getCurrentAdminUserId() {
+  return String(state.profile?.userId || state.adminUser?.userId || "").trim();
+}
+
+function setAdminContentAccess(canAccess) {
+  if (elements.adminContent) {
+    elements.adminContent.classList.toggle("is-hidden", !canAccess);
   }
+
+  document.body.classList.toggle("is-locked", !canAccess);
+}
+
+function setAdminApprovalMessage(message, tone = "info") {
+  if (!elements.adminApprovalGate) {
+    return;
+  }
+
+  elements.adminApprovalGate.textContent = message;
+  elements.adminApprovalGate.dataset.tone = tone;
+}
+
+function renderAdminAccessState() {
+  if (!elements.adminDisplayName || !elements.adminStatusBadge || !elements.adminStatusText) {
+    return;
+  }
+
+  if (!state.profile) {
+    elements.adminDisplayName.textContent = "尚未登入 LINE";
+    elements.adminStatusBadge.textContent = "未登入";
+    elements.adminStatusBadge.dataset.tone = "muted";
+    elements.adminStatusText.textContent = "管理員後台需使用 LINE LIFF 登入，並由既有管理員審核通過後才可使用。";
+    setAdminApprovalMessage("需先完成 LINE 登入並通過管理員審核，才可使用後台。", "info");
+    elements.adminLoginButton.textContent = "LINE 登入";
+    elements.adminLogoutButton.disabled = true;
+    if (elements.adminAvatar) {
+      elements.adminAvatar.classList.add("is-hidden");
+    }
+    setAdminContentAccess(false);
+    return;
+  }
+
+  elements.adminDisplayName.textContent = state.profile.displayName || "LINE 管理員";
+  elements.adminLoginButton.textContent = "切換 LINE 帳號";
+  elements.adminLogoutButton.disabled = false;
+
+  if (state.profile.pictureUrl && elements.adminAvatar) {
+    elements.adminAvatar.src = state.profile.pictureUrl;
+    elements.adminAvatar.classList.remove("is-hidden");
+  } else if (elements.adminAvatar) {
+    elements.adminAvatar.classList.add("is-hidden");
+  }
+
+  if (!state.adminUser) {
+    elements.adminStatusBadge.textContent = "同步中";
+    elements.adminStatusBadge.dataset.tone = "pending";
+    elements.adminStatusText.textContent = "正在同步你的管理員資料與審核狀態。";
+    setAdminApprovalMessage("正在確認管理員存取權限...", "pending");
+    setAdminContentAccess(false);
+    return;
+  }
+
+  elements.adminStatusBadge.textContent = state.adminUser.status;
+
+  if (state.adminUser.status === "已通過") {
+    elements.adminStatusBadge.dataset.tone = "approved";
+    elements.adminStatusText.textContent = "你已通過管理員審核，可使用後台管理功能。";
+    setAdminApprovalMessage("已通過管理員審核，後台資料載入後即可使用。", "approved");
+    setAdminContentAccess(true);
+    return;
+  }
+
+  if (state.adminUser.status === "待審核") {
+    elements.adminStatusBadge.dataset.tone = "pending";
+    elements.adminStatusText.textContent = "你已完成 LINE 登入，但仍需等待既有管理員審核通過。";
+    setAdminApprovalMessage("目前為待審核狀態，需由已通過的管理員審核後才能使用後台。", "pending");
+    setAdminContentAccess(false);
+    return;
+  }
+
+  elements.adminStatusBadge.dataset.tone = "blocked";
+  elements.adminStatusText.textContent = state.adminUser.note || "此 LINE 帳號目前不可使用管理後台。";
+  setAdminApprovalMessage(state.adminUser.note || "此管理員帳號目前不可使用後台，請聯絡既有管理員。", "blocked");
+  setAdminContentAccess(false);
+}
+
+async function ensureLiffSession() {
+  if (!state.liffId) {
+    throw new Error("請先在 admin/config.json 設定 liffId。");
+  }
+
+  if (!window.liff) {
+    throw new Error("LIFF SDK 載入失敗。");
+  }
+
+  await window.liff.init({ liffId: state.liffId });
+
+  if (!window.liff.isLoggedIn()) {
+    setStatus("正在導向 LINE 登入...", "info");
+    window.liff.login({ redirectUri: window.location.href });
+    return false;
+  }
+
+  state.profile = await window.liff.getProfile();
+  renderAdminAccessState();
+  return true;
+}
+
+async function syncAdminUser() {
+  if (!state.profile) {
+    return null;
+  }
+
+  const result = await requestApi("POST", {}, {
+    action: "syncAdminUser",
+    payload: {
+      userId: state.profile.userId,
+      displayName: state.profile.displayName,
+      pictureUrl: state.profile.pictureUrl || "",
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "同步管理員 LINE 身分失敗");
+  }
+
+  state.adminUser = result.data;
+  renderAdminAccessState();
+  return result.data;
+}
+
+async function refreshAdminIdentity(options = {}) {
+  const { loadData = true } = options;
+
+  setLoadingStatus("正在確認管理員 LINE 身分...");
+  state.adminUser = null;
+  renderAdminAccessState();
+
+  const isLoggedIn = await ensureLiffSession();
+  if (!isLoggedIn) {
+    return false;
+  }
+
+  await syncAdminUser();
+
+  if (isApprovedAdmin()) {
+    if (loadData) {
+      await loadAdminData();
+    } else {
+      setStatus("管理員身分已更新。", "success");
+    }
+    return true;
+  }
+
+  setStatus(
+    state.adminUser?.status === "待審核"
+      ? "管理員帳號尚待審核，通過前無法使用後台。"
+      : state.adminUser?.note || "此管理員帳號目前不可使用後台。",
+    state.adminUser?.status === "待審核" ? "info" : "error"
+  );
+  return false;
 }
 
 function setStatus(message, type = "info") {
@@ -391,6 +564,69 @@ function shiftMonth(monthKey, offset) {
 function getSchedulesForDate(dateText) {
   return state.schedules
     .filter((item) => item.date === dateText)
+    .slice()
+    .sort((left, right) => {
+      const leftTechnician = getTechnicianById(left.technicianId)?.name || left.technicianId;
+      const rightTechnician = getTechnicianById(right.technicianId)?.name || right.technicianId;
+      return `${leftTechnician}-${left.startTime}`.localeCompare(`${rightTechnician}-${right.startTime}`, "zh-Hant");
+    });
+}
+
+function toMinutes(timeText) {
+  const [hours, minutes] = String(timeText).split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function isOvernightShift(startTime, endTime) {
+  const start = toMinutes(startTime);
+  let end = endTime === "23:59" ? 24 * 60 : toMinutes(endTime);
+  if (end <= start) end += 24 * 60;
+  return end > 24 * 60;
+}
+
+function addDaysToDate(dateText, offsetDays) {
+  const baseDate = new Date(`${dateText}T00:00:00`);
+  baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
+  return formatLocalDate(baseDate);
+}
+
+function getSchedulesCoveringDate(dateText) {
+  const prevDate = addDaysToDate(dateText, -1);
+  return state.schedules
+    .filter((item) => {
+      if (item.date === dateText) return true;
+      if (item.date === prevDate && item.isWorking && isOvernightShift(item.startTime, item.endTime)) return true;
+      return false;
+    })
+    .slice()
+    .sort((left, right) => {
+      const leftTechnician = getTechnicianById(left.technicianId)?.name || left.technicianId;
+      const rightTechnician = getTechnicianById(right.technicianId)?.name || right.technicianId;
+      return `${leftTechnician}-${left.startTime}`.localeCompare(`${rightTechnician}-${right.startTime}`, "zh-Hant");
+    });
+}
+
+function isOvernightShift(startTime, endTime) {
+  const start = toMinutes(startTime);
+  let end = endTime === "23:59" ? 24 * 60 : toMinutes(endTime);
+  if (end <= start) end += 24 * 60;
+  return end > 24 * 60;
+}
+
+function addDaysToDate(dateText, offsetDays) {
+  const baseDate = new Date(`${dateText}T00:00:00`);
+  baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
+  return formatLocalDate(baseDate);
+}
+
+function getSchedulesCoveringDate(dateText) {
+  const prevDate = addDaysToDate(dateText, -1);
+  return state.schedules
+    .filter((item) => {
+      if (item.date === dateText) return true;
+      if (item.date === prevDate && item.isWorking && isOvernightShift(item.startTime, item.endTime)) return true;
+      return false;
+    })
     .slice()
     .sort((left, right) => {
       const leftTechnician = getTechnicianById(left.technicianId)?.name || left.technicianId;
@@ -782,8 +1018,10 @@ async function requestApi(method, params = {}, body = null) {
   if (!state.gasUrl) {
     throw new Error("請先在 admin/config.json 設定 GAS Web App URL");
   }
-  if (!state.password) {
-    throw new Error("請先在 admin/config.json 設定管理密碼");
+
+  const adminUserId = getCurrentAdminUserId();
+  if (!adminUserId) {
+    throw new Error("請先完成 LINE 登入");
   }
 
   startBusyState();
@@ -791,7 +1029,7 @@ async function requestApi(method, params = {}, body = null) {
   try {
     if (method === "GET") {
       const url = new URL(state.gasUrl);
-      Object.entries({ ...params, password: state.password }).forEach(([key, value]) => {
+      Object.entries({ ...params, adminUserId }).forEach(([key, value]) => {
         url.searchParams.set(key, value);
       });
       const response = await fetch(url.toString());
@@ -803,7 +1041,7 @@ async function requestApi(method, params = {}, body = null) {
       headers: {
         "Content-Type": "text/plain;charset=utf-8",
       },
-      body: JSON.stringify({ ...body, password: state.password }),
+      body: JSON.stringify({ ...body, adminUserId }),
     });
     return response.json();
   } finally {
@@ -865,6 +1103,29 @@ function getUserStatusPill(status) {
     return getStatusPill(status, "disabled");
   }
   return getStatusPill(status || "待審核", "pending");
+}
+
+function getAdminStatusPill(status) {
+  if (status === "已通過") {
+    return getStatusPill(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusPill(status, "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusPill(status, "disabled");
+  }
+  return getStatusPill(status || "待審核", "pending");
+}
+
+function getAdminPermissionPill(adminUser) {
+  if (adminUser?.isSuperAdmin) {
+    return getStatusPill("最高管理員", "approved");
+  }
+
+  return adminUser?.canManageAdmins
+    ? getStatusPill("可管理管理員", "active")
+    : getStatusPill("僅一般 admin", "inactive");
 }
 
 function formatDateTimeText(value) {
@@ -1328,7 +1589,7 @@ function renderScheduleCalendar() {
 
   for (let day = 1; day <= lastDay.getDate(); day += 1) {
     const dateText = `${monthKey}-${String(day).padStart(2, "0")}`;
-    const schedules = getSchedulesForDate(dateText);
+    const schedules = getSchedulesCoveringDate(dateText);
     const workingCount = schedules.filter((item) => item.isWorking).length;
     const offCount = schedules.length - workingCount;
     const classes = ["schedule-day"];
@@ -1363,7 +1624,7 @@ function renderScheduleCalendar() {
 
 function renderSelectedScheduleDetail() {
   const selectedDate = state.ui.selectedScheduleDate;
-  const schedules = getSchedulesForDate(selectedDate);
+  const schedules = getSchedulesCoveringDate(selectedDate);
 
   if (!selectedDate) {
     elements.scheduleSelectedDateLabel.textContent = "請先選擇日期";
@@ -1374,7 +1635,7 @@ function renderSelectedScheduleDetail() {
 
   elements.scheduleSelectedDateLabel.textContent = selectedDate;
   elements.scheduleSelectedDateMeta.textContent = schedules.length
-    ? `當天共有 ${schedules.length} 筆班表，點擊編輯即可直接帶入下方表單。`
+    ? `當天共有 ${schedules.length} 筆班表覆蓋，點擊編輯即可直接帶入下方表單。`
     : "當天尚未建立班表，可直接用下方表單新增。";
 
   if (!schedules.length) {
@@ -1385,12 +1646,19 @@ function renderSelectedScheduleDetail() {
   elements.scheduleTable.innerHTML = schedules
     .map((schedule) => {
       const technicianName = getTechnicianById(schedule.technicianId)?.name || schedule.technicianId;
+      const overnight = isOvernightShift(schedule.startTime, schedule.endTime);
+      const isFromPrevDay = schedule.date !== selectedDate;
+      const timeLabel = isFromPrevDay
+        ? `${schedule.startTime} - ${schedule.endTime} (前日跨日)`
+        : overnight
+          ? `${schedule.startTime} - ${schedule.endTime} (跨日)`
+          : `${schedule.startTime} - ${schedule.endTime}`;
       return `
         <article class="schedule-entry">
           <div class="schedule-entry__top">
             <div class="schedule-entry__title">
               <strong>${technicianName}</strong>
-              <span class="schedule-entry__time">${schedule.startTime} - ${schedule.endTime}</span>
+              <span class="schedule-entry__time">${timeLabel}</span>
             </div>
             ${getScheduleStatusPill(schedule.isWorking)}
           </div>
@@ -1485,6 +1753,98 @@ function renderUserReviewSummary() {
       <strong>${rejectedCount + disabledCount}</strong>
       <small>拒絕或停用後，前台送單會被阻擋</small>
     </article>
+  `;
+}
+
+function renderAdminAccessTable() {
+  if (!elements.adminAccessTable || !elements.adminAccessSummary) {
+    return;
+  }
+
+  if (elements.adminAccessPermissionHint) {
+    elements.adminAccessPermissionHint.textContent = canManageAdminAccess()
+      ? "你目前可在這裡修改其他管理員狀態。"
+      : "你目前只能檢視管理員名單；若要修改權限，請由最高管理員在 superadmin 設定。";
+  }
+
+  const adminUsers = (state.adminUsers || []).slice().sort((left, right) => {
+    const rank = {
+      "待審核": 0,
+      "已通過": 1,
+      "已拒絕": 2,
+      "已停用": 3,
+    };
+    const leftRank = rank[left.status] ?? 9;
+    const rightRank = rank[right.status] ?? 9;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return String(right.updatedAt || right.lastLoginAt || "").localeCompare(
+      String(left.updatedAt || left.lastLoginAt || "")
+    );
+  });
+
+  const pendingCount = adminUsers.filter((item) => item.status === "待審核").length;
+  const approvedCount = adminUsers.filter((item) => item.status === "已通過").length;
+  const permissionManagers = adminUsers.filter((item) => item.canManageAdmins).length;
+  elements.adminAccessSummary.textContent = `待審核 ${pendingCount} 位 / 已通過 ${approvedCount} 位 / 可管理管理員 ${permissionManagers} 位 / 共 ${adminUsers.length} 位`;
+
+  if (!adminUsers.length) {
+    elements.adminAccessTable.innerHTML = '<div class="empty-state">尚無任何管理員登入紀錄。</div>';
+    return;
+  }
+
+  const canEditAdmins = canManageAdminAccess();
+
+  elements.adminAccessTable.innerHTML = `
+    <table class="list-table admin-access-table">
+      <thead>
+        <tr>
+          <th>管理員</th>
+          <th>狀態</th>
+          <th>管理員修改權限</th>
+          <th>最後登入</th>
+          <th>備註</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${adminUsers
+          .map(
+            (adminUser) => `
+              <tr>
+                <td data-label="管理員">
+                  <div class="user-cell">
+                    ${adminUser.pictureUrl ? `<img class="user-avatar" src="${adminUser.pictureUrl}" alt="${adminUser.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${adminUser.displayName.slice(0, 1) || "A"}</div>`}
+                    <div class="user-cell__meta">
+                      <strong>${adminUser.displayName}</strong>
+                      <small>${adminUser.userId}</small>
+                    </div>
+                  </div>
+                </td>
+                <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
+                <td data-label="管理員修改權限">${getAdminPermissionPill(adminUser)}</td>
+                <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
+                <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
+                <td data-label="操作" class="table-cell-actions">
+                  ${canEditAdmins
+                    ? `<div class="table-actions stacked-actions">
+                        <button type="button" class="button button--ghost" data-review-admin="${adminUser.userId}" data-review-status="已通過">通過</button>
+                        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">設待審核</button>
+                        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
+                        <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
+                        <button type="button" class="button button--danger" data-delete-admin="${adminUser.userId}" data-admin-name="${adminUser.displayName}">刪除</button>
+                      </div>`
+                    : '<span class="helper-text">僅可檢視</span>'}
+                </td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -1628,6 +1988,7 @@ function renderAll() {
   if (!state.ui.selectedScheduleDate) {
     state.ui.selectedScheduleDate = formatLocalDate(new Date());
   }
+  renderAdminAccessTable();
   updateStats();
   updateWorkspaceOverview();
   refreshServiceCategorySuggestions();
@@ -1680,6 +2041,8 @@ async function loadAdminData() {
     ...service,
     category: normalizeCategory(service.category || state.serviceCategoryMap[service.serviceId]),
   }));
+  state.adminUsers = result.data.adminUsers || [];
+  state.adminUser = state.adminUsers.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
   state.technicians = result.data.technicians || [];
   state.schedules = result.data.schedules || [];
   state.users = result.data.users || [];
@@ -2059,6 +2422,45 @@ async function reviewUser(userId, status) {
   setStatus(`已將 ${user.displayName} 設為${status}。`, "success");
 }
 
+async function reviewAdminUser(userId, status) {
+  if (!canManageAdminAccess()) {
+    throw new Error("你沒有管理其他管理員的授權，請由最高管理員在 superadmin 設定。");
+  }
+
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const note = window.prompt(`請輸入「${adminUser.displayName}」的管理員審核備註：`, adminUser.note || "");
+  if (note === null) {
+    setStatus("已取消管理員審核操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新管理員審核狀態...");
+  const result = await requestApi("POST", {}, {
+    action: "reviewAdminUser",
+    payload: {
+      userId,
+      status,
+      note,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新管理員審核失敗");
+  }
+
+  await loadAdminData();
+
+  if (state.adminUser?.userId === userId) {
+    state.adminUser = result.data;
+    renderAdminAccessState();
+  }
+
+  setStatus(`已將管理員 ${adminUser.displayName} 設為${status}。`, "success");
+}
+
 async function deleteUser(userId, userName) {
   const user = state.users.find((item) => item.userId === userId);
   const displayName = userName || user?.displayName || userId;
@@ -2083,7 +2485,76 @@ async function deleteUser(userId, userName) {
   setStatus(`用戶 ${displayName} 已刪除。`, "success");
 }
 
+async function deleteAdminUser(userId, adminName) {
+  if (!canManageAdminAccess()) {
+    throw new Error("你沒有管理其他管理員的授權，請由最高管理員在 superadmin 設定。");
+  }
+
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  const displayName = adminName || adminUser?.displayName || userId;
+  const detailText = adminUser
+    ? `\n\n狀態：${adminUser.status}\n最後登入：${formatDateTimeText(adminUser.lastLoginAt)}`
+    : "";
+  const confirmed = window.confirm(`確定要刪除管理員「${displayName}」嗎？${detailText}`);
+  if (!confirmed) {
+    return;
+  }
+
+  setLoadingStatus("正在刪除管理員資料...");
+  const result = await requestApi("POST", {}, {
+    action: "deleteAdminUser",
+    payload: { userId },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "刪除管理員失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`管理員 ${displayName} 已刪除。`, "success");
+}
+
 function bindEvents() {
+  elements.adminLoginButton.addEventListener("click", async () => {
+    try {
+      await refreshAdminIdentity();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.adminRefreshIdentityButton.addEventListener("click", async () => {
+    try {
+      await refreshAdminIdentity();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.adminLogoutButton.addEventListener("click", async () => {
+    try {
+      if (!state.liffId) {
+        throw new Error("請先在 admin/config.json 設定 liffId。");
+      }
+
+      if (!window.liff) {
+        throw new Error("LIFF SDK 載入失敗。");
+      }
+
+      await window.liff.init({ liffId: state.liffId });
+      if (window.liff.isLoggedIn()) {
+        window.liff.logout();
+      }
+
+      state.profile = null;
+      state.adminUser = null;
+      state.adminUsers = [];
+      renderAdminAccessState();
+      setStatus("已登出 LINE 帳號。", "info");
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   elements.pageTabs.forEach((button) => {
     button.addEventListener("click", () => {
       const nextPage = button.dataset.pageTrigger;
@@ -2416,26 +2887,49 @@ function bindEvents() {
       setStatus(error.message, "error");
     }
   });
+
+  elements.adminAccessTable.addEventListener("click", async (event) => {
+    const reviewButton = event.target.closest("[data-review-admin]");
+    if (reviewButton) {
+      try {
+        await reviewAdminUser(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-admin]");
+    if (!deleteButton) {
+      return;
+    }
+
+    try {
+      await deleteAdminUser(deleteButton.dataset.deleteAdmin, deleteButton.dataset.adminName);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
 }
 
 async function initializeApp() {
   await loadConfigFromJson();
   applyGasUrlPreference();
-  applyPasswordPreference();
   loadServiceCategoryMap();
   bindEvents();
+  renderAdminAccessState();
   setActivePage(state.ui.activePage);
   resetServiceForm();
   resetServiceEditForm();
   resetScheduleForm();
   resetReservationForm();
 
-  if (state.gasUrl && state.password) {
-    loadAdminData().catch((error) => setStatus(error.message, "error"));
+  if (state.gasUrl && state.liffId) {
+    refreshAdminIdentity().catch((error) => setStatus(error.message, "error"));
     return;
   }
 
-  setStatus("請檢查 admin/config.json 內的 gasWebAppUrl 與 adminPassword。", "info");
+  setStatus("請檢查 admin/config.json 內的 gasWebAppUrl 與 liffId。", "info");
 }
 
 initializeApp();
