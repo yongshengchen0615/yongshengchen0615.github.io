@@ -18,6 +18,7 @@ const state = {
   lastSyncText: "",
   ui: {
     busyCount: 0,
+    configError: "",
   },
 };
 
@@ -44,6 +45,71 @@ function normalizeGasUrl(value) {
 
 function normalizeLiffId(value) {
   return String(value || "").trim();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#96;");
+}
+
+function sanitizeTone(value, fallback = "pending") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return /^[a-z-]+$/.test(normalized) ? normalized : fallback;
+}
+
+function sanitizeImageUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  try {
+    const url = new URL(text, window.location.href);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function getDisplayText(value, fallback = "") {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function getErrorMessage(error, fallback) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function parseJsonResponse(response, fallbackMessage) {
+  const rawText = await response.text();
+  let data = null;
+
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch (error) {
+      throw new Error(`${fallbackMessage}：伺服器回傳的資料格式無法解析。`);
+    }
+  }
+
+  if (!response.ok) {
+    const message = typeof data?.message === "string" && data.message.trim() ? data.message.trim() : `${fallbackMessage}（HTTP ${response.status}）`;
+    throw new Error(message);
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error(`${fallbackMessage}：伺服器未回傳有效資料。`);
+  }
+
+  return data;
 }
 
 function getCurrentAdminUserId() {
@@ -170,18 +236,16 @@ function renderAccessState() {
 async function loadConfigFromJson() {
   try {
     const response = await fetch(CONFIG_PATH, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`config load failed: ${response.status}`);
-    }
-
-    const config = await response.json();
+    const config = await parseJsonResponse(response, "讀取設定檔失敗");
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
     state.liffId = normalizeLiffId(config.liffId);
     state.gasUrl = state.configGasUrl;
+    state.ui.configError = "";
   } catch (error) {
     state.configGasUrl = "";
     state.gasUrl = "";
     state.liffId = "";
+    state.ui.configError = getErrorMessage(error, "讀取設定檔失敗");
   }
 }
 
@@ -227,7 +291,7 @@ async function requestApi(method, params = {}, body = null) {
       });
       url.searchParams.set("_ts", String(Date.now()));
       const response = await fetch(url.toString(), { cache: "no-store" });
-      return response.json();
+      return parseJsonResponse(response, "讀取資料失敗");
     }
 
     const response = await fetch(state.gasUrl, {
@@ -237,7 +301,7 @@ async function requestApi(method, params = {}, body = null) {
       },
       body: JSON.stringify({ ...body, adminUserId }),
     });
-    return response.json();
+    return parseJsonResponse(response, "送出資料失敗");
   } finally {
     endBusyState();
   }
@@ -282,7 +346,7 @@ function formatDateTimeText(value) {
 }
 
 function getStatusPill(label, tone) {
-  return `<span class="status-pill status-pill--${tone}">${label}</span>`;
+  return `<span class="status-pill status-pill--${sanitizeTone(tone, "pending")}">${escapeHtml(label)}</span>`;
 }
 
 function getAdminStatusPill(status) {
@@ -332,7 +396,7 @@ function renderAdminManagePermissionEditor(adminUser) {
     <div class="admin-permission-editor">
       ${getPermissionPill(adminUser)}
       <p class="helper-text">${helperText}</p>
-      <button type="button" class="${buttonClass}" data-admin-permission="${adminUser.userId}" data-can-manage-admins="${String(!canManageAdmins)}">${buttonLabel}</button>
+      <button type="button" class="${buttonClass}" data-admin-permission="${escapeAttribute(adminUser.userId)}" data-can-manage-admins="${String(!canManageAdmins)}">${buttonLabel}</button>
     </div>
   `;
 }
@@ -358,7 +422,7 @@ function renderPagePermissionEditor(adminUser) {
       <div class="permission-checkbox-grid">${checkboxes}</div>
       <div class="permission-editor__footer">
         <span class="helper-text">未勾選的頁面在 admin 後台不會顯示，也無法執行對應操作。</span>
-        <button type="button" class="button button--primary" data-save-page-permissions="${adminUser.userId}">儲存頁面權限</button>
+        <button type="button" class="button button--primary" data-save-page-permissions="${escapeAttribute(adminUser.userId)}">儲存頁面權限</button>
       </div>
     </div>
   `;
@@ -399,15 +463,22 @@ function renderAdminTable() {
     })
     .map((adminUser) => {
       const isCurrentUser = adminUser.userId === getCurrentAdminUserId();
+      const displayName = escapeHtml(getDisplayText(adminUser.displayName, "未命名管理員"));
+      const userId = escapeHtml(getDisplayText(adminUser.userId, "無 userId"));
+      const userIdAttribute = escapeAttribute(adminUser.userId);
+      const note = getDisplayText(adminUser.note);
+      const safePictureUrl = sanitizeImageUrl(adminUser.pictureUrl);
+      const avatarAlt = escapeAttribute(getDisplayText(adminUser.displayName, "管理員頭像"));
+      const avatarFallback = escapeHtml(getDisplayText(adminUser.displayName, "A").slice(0, 1).toUpperCase());
       const statusButtons = `
-        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">待審核</button>
-        <button type="button" class="button button--primary" data-review-admin="${adminUser.userId}" data-review-status="已通過">通過</button>
-        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
-        <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
+        <button type="button" class="button button--secondary" data-review-admin="${userIdAttribute}" data-review-status="待審核">待審核</button>
+        <button type="button" class="button button--primary" data-review-admin="${userIdAttribute}" data-review-status="已通過">通過</button>
+        <button type="button" class="button button--secondary" data-review-admin="${userIdAttribute}" data-review-status="已拒絕">拒絕</button>
+        <button type="button" class="button button--danger" data-review-admin="${userIdAttribute}" data-review-status="已停用">停用</button>
       `;
       const deleteButton = isCurrentUser
         ? `<span class="helper-text">目前登入帳號不可刪除</span>`
-        : `<button type="button" class="button button--danger" data-delete-admin="${adminUser.userId}">刪除管理員</button>`;
+        : `<button type="button" class="button button--danger" data-delete-admin="${userIdAttribute}">刪除管理員</button>`;
       const identityPills = [getAdminStatusPill(adminUser.status)];
 
       if (adminUser.isSuperAdmin) {
@@ -422,10 +493,10 @@ function renderAdminTable() {
         <tr class="admin-row">
           <td class="cell-admin" data-label="管理員">
             <div class="user-cell">
-              ${adminUser.pictureUrl ? `<img class="user-avatar" src="${adminUser.pictureUrl}" alt="${adminUser.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${adminUser.displayName.slice(0, 1) || "A"}</div>`}
+              ${safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(safePictureUrl)}" alt="${avatarAlt}" />` : `<div class="user-avatar user-avatar--placeholder">${avatarFallback}</div>`}
               <div class="user-cell__meta">
-                <strong>${adminUser.displayName}</strong>
-                <small>${adminUser.userId}</small>
+                <strong>${displayName}</strong>
+                <small>${userId}</small>
                 <div class="status-pill-group">${identityPills.join("")}</div>
               </div>
             </div>
@@ -438,7 +509,7 @@ function renderAdminTable() {
           </td>
           <td class="cell-editor" data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
           <td class="cell-last-login" data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
-          <td class="cell-note" data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
+          <td class="cell-note" data-label="備註">${note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>'}</td>
           <td class="cell-actions" data-label="操作">
             <div class="table-actions table-actions--stack">
               <div class="action-group">
@@ -722,7 +793,7 @@ async function initializeApp() {
     return;
   }
 
-  setStatus("請檢查 superadmin/config.json 內的 gasWebAppUrl 與 liffId。", "info");
+  setStatus(state.ui.configError || "請檢查 superadmin/config.json 內的 gasWebAppUrl 與 liffId。", "info");
 }
 
 initializeApp();
