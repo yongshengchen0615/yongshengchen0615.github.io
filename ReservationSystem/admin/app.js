@@ -6,6 +6,7 @@ const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
 const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user"];
 const vueApi = window.Vue || null;
+const flatpickrApi = window.flatpickr || null;
 const frameworkEnabled = Boolean(vueApi);
 const { createApp, reactive } = vueApi || {};
 
@@ -171,6 +172,68 @@ const elements = {
   reservationMeta: document.querySelector("#reservationMeta"),
   lastSyncLabel: document.querySelector("#lastSyncLabel"),
 };
+
+function createTimePickerOptions() {
+  return {
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: "H:i",
+    time_24hr: true,
+    minuteIncrement: 5,
+    allowInput: false,
+    disableMobile: true,
+  };
+}
+
+function initializeTimePicker(input) {
+  if (!flatpickrApi || !input || input._flatpickr) {
+    return;
+  }
+
+  flatpickrApi(input, createTimePickerOptions());
+}
+
+function initializeTimePickers(container = document) {
+  if (!flatpickrApi || !container) {
+    return;
+  }
+
+  container.querySelectorAll("[data-time-picker]").forEach((input) => {
+    initializeTimePicker(input);
+  });
+}
+
+function destroyTimePickers(container = document) {
+  if (!container) {
+    return;
+  }
+
+  container.querySelectorAll("[data-time-picker]").forEach((input) => {
+    if (input._flatpickr) {
+      input._flatpickr.destroy();
+    }
+  });
+}
+
+function syncTimePickerValue(input, value) {
+  if (!input) {
+    return;
+  }
+
+  const normalizedValue = String(value || "").trim();
+  input.value = normalizedValue;
+
+  if (!input._flatpickr) {
+    return;
+  }
+
+  if (!normalizedValue) {
+    input._flatpickr.clear();
+    return;
+  }
+
+  input._flatpickr.setDate(normalizedValue, false, "H:i");
+}
 
 function normalizeGasUrl(value) {
   return String(value || "").trim();
@@ -732,8 +795,8 @@ function resetScheduleForm() {
   elements.scheduleForm.date.value = selectedDate;
   elements.scheduleForm.endDate.value = selectedDate;
   elements.scheduleForm.isWorking.checked = true;
-  elements.scheduleForm.startTime.value = "09:00";
-  elements.scheduleForm.endTime.value = "18:00";
+  syncTimePickerValue(elements.scheduleForm.startTime, "09:00");
+  syncTimePickerValue(elements.scheduleForm.endTime, "18:00");
   state.ui.editingScheduleKey = "";
   elements.scheduleEditTimePanel.classList.add("is-hidden");
   elements.scheduleEditModeLabel.textContent = "編輯這筆班表的臨時上下班時間";
@@ -748,8 +811,8 @@ function fillScheduleForm(schedule) {
 
   elements.scheduleForm.date.value = schedule.date;
   elements.scheduleForm.endDate.value = schedule.date;
-  elements.scheduleForm.startTime.value = schedule.startTime;
-  elements.scheduleForm.endTime.value = schedule.endTime;
+  syncTimePickerValue(elements.scheduleForm.startTime, schedule.startTime);
+  syncTimePickerValue(elements.scheduleForm.endTime, schedule.endTime);
   elements.scheduleForm.isWorking.checked = Boolean(schedule.isWorking);
   state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
   elements.scheduleEditTimePanel.classList.remove("is-hidden");
@@ -1931,10 +1994,10 @@ const bulkTechnicianModule = {
           <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
         </td>
         <td data-label="上班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <input type="time" name="startTime" class="bulk-technician-table__time-input" value="${escapeHtml(startTime)}" />
+          <input type="text" name="startTime" class="bulk-technician-table__time-input" value="${escapeHtml(startTime)}" data-time-picker autocomplete="off" />
         </td>
         <td data-label="下班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <input type="time" name="endTime" class="bulk-technician-table__time-input" value="${escapeHtml(endTime)}" />
+          <input type="text" name="endTime" class="bulk-technician-table__time-input" value="${escapeHtml(endTime)}" data-time-picker autocomplete="off" />
         </td>
         <td data-label="啟用" class="bulk-technician-table__cell bulk-technician-table__cell--active">
           <label class="checkbox-field checkbox-field--compact">
@@ -1972,6 +2035,7 @@ const bulkTechnicianModule = {
     }
 
     this.renderServiceEditor(row);
+    initializeTimePickers(row);
     const editor = row.querySelector("[data-bulk-service-editor]");
     if (editor) {
       editor.classList.add("is-hidden");
@@ -1994,6 +2058,8 @@ const bulkTechnicianModule = {
     if (!elements.technicianBulkTable) {
       return;
     }
+
+    destroyTimePickers(elements.technicianBulkTable);
 
     const technicians = getFilteredTechnicians();
     if (elements.technicianResultLabel) {
@@ -3405,6 +3471,7 @@ async function initializeApp() {
   await loadConfigFromJson();
   applyGasUrlPreference();
   loadServiceCategoryMap();
+  initializeTimePickers(document);
   mountFrameworkApps();
   bindEvents();
   renderAdminAccessState();
