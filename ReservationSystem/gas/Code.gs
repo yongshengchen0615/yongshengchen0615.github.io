@@ -225,22 +225,15 @@ function syncAdminUser_(payload) {
   validateRequired_(payload.userId, 'userId');
 
   var userId = String(payload.userId || '').trim();
-  var resolvedSuperAdmin = findResolvedSuperAdmin_(userId);
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var existing = adminUsers.find(function(item) {
     return item.userId === userId;
   });
 
-  if (resolvedSuperAdmin) {
-    return buildAdminIdentityFromSuperAdmin_(resolvedSuperAdmin, existing);
-  }
-
   var nowText = toIsoString_(new Date());
   var nextStatus = existing && existing.status
     ? existing.status
-    : isBootstrapAdmin_(userId)
-      ? '已通過'
-      : '待審核';
+    : '待審核';
   var nextCanManageAdmins = isSuperAdmin_(userId)
     ? true
     : existing && existing.canManageAdmins !== undefined
@@ -271,14 +264,13 @@ function syncSuperAdminUser_(payload) {
   var existing = superAdmins.find(function(item) {
     return item.userId === userId;
   });
-  var configuredSuperAdmin = isConfiguredSuperAdmin_(userId);
   var nowText = toIsoString_(new Date());
 
   var record = {
     userId: userId,
     displayName: String(payload.displayName || existing && existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
-    status: normalizeAdminStatus_(existing && existing.status ? existing.status : configuredSuperAdmin ? '已通過' : '待審核'),
+    status: normalizeAdminStatus_(existing && existing.status ? existing.status : '待審核'),
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
@@ -286,7 +278,6 @@ function syncSuperAdminUser_(payload) {
   };
 
   upsertRecord_(SHEETS.superAdmins, 'userId', record);
-  deleteRecordIfExists_(SHEETS.adminUsers, 'userId', userId);
   return normalizeSuperAdminUser_(record);
 }
 
@@ -1213,18 +1204,7 @@ function verifyAdminAccess_(adminUserId) {
   });
 
   if (!adminUser) {
-    var resolvedSuperAdmin = findApprovedSuperAdmin_(adminUserId);
-    if (resolvedSuperAdmin) {
-      return buildAdminIdentityFromSuperAdmin_(resolvedSuperAdmin, null);
-    }
-  }
-
-  if (!adminUser) {
     throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
-  }
-
-  if (isSuperAdmin_(adminUser.userId)) {
-    return adminUser;
   }
 
   if (!isAdminApproved_(adminUser.status)) {
@@ -1472,13 +1452,9 @@ function isBootstrapAdmin_(userId) {
 function isSuperAdmin_(userId) {
   var normalizedUserId = String(userId || '').trim();
   var resolvedSuperAdmins = getApprovedSuperAdminUsers_();
-  if (resolvedSuperAdmins.length) {
-    return resolvedSuperAdmins.some(function(item) {
-      return item.userId === normalizedUserId;
-    });
-  }
-
-  return isConfiguredSuperAdmin_(normalizedUserId);
+  return resolvedSuperAdmins.some(function(item) {
+    return item.userId === normalizedUserId;
+  });
 }
 
 function isConfiguredSuperAdmin_(userId) {
@@ -1496,72 +1472,13 @@ function getStoredSuperAdminUsers_() {
 }
 
 function getApprovedSuperAdminUsers_() {
-  var storedSuperAdmins = getStoredSuperAdminUsers_();
-  var merged = storedSuperAdmins.filter(function(item) {
+  return getStoredSuperAdminUsers_().filter(function(item) {
     return isAdminApproved_(item.status);
   });
-  var storedMap = indexBy_(storedSuperAdmins, 'userId');
-  var configuredIds = parseCsvProperty_('SUPER_ADMIN_LINE_USER_IDS');
-  var fallbackIds = configuredIds.length ? configuredIds : parseCsvProperty_('ADMIN_APPROVED_LINE_USER_IDS');
-
-  fallbackIds.forEach(function(userId) {
-    var normalizedUserId = String(userId || '').trim();
-    var existing = storedMap[normalizedUserId];
-
-    if (!normalizedUserId) {
-      return;
-    }
-
-    if (merged.some(function(item) { return item.userId === normalizedUserId; })) {
-      return;
-    }
-
-    merged.push(normalizeSuperAdminUser_({
-      userId: normalizedUserId,
-      displayName: existing && existing.displayName ? existing.displayName : 'LINE 最高管理員',
-      pictureUrl: existing && existing.pictureUrl ? existing.pictureUrl : '',
-      status: '已通過',
-      note: existing && existing.note ? existing.note : '',
-      createdAt: existing && existing.createdAt ? existing.createdAt : '',
-      updatedAt: existing && existing.updatedAt ? existing.updatedAt : '',
-      lastLoginAt: existing && existing.lastLoginAt ? existing.lastLoginAt : '',
-    }));
-  });
-
-  return merged;
 }
 
 function getResolvedSuperAdminUsers_() {
-  var storedSuperAdmins = getStoredSuperAdminUsers_();
-  var configuredIds = parseCsvProperty_('SUPER_ADMIN_LINE_USER_IDS');
-  var fallbackIds = configuredIds.length ? configuredIds : parseCsvProperty_('ADMIN_APPROVED_LINE_USER_IDS');
-  var merged = storedSuperAdmins.slice();
-
-  fallbackIds.forEach(function(userId) {
-    var normalizedUserId = String(userId || '').trim();
-    if (!normalizedUserId) {
-      return;
-    }
-
-    var exists = merged.some(function(item) {
-      return item.userId === normalizedUserId;
-    });
-
-    if (!exists) {
-      merged.push(normalizeSuperAdminUser_({
-        userId: normalizedUserId,
-        displayName: 'LINE 最高管理員',
-        pictureUrl: '',
-        status: '已通過',
-        note: '',
-        createdAt: '',
-        updatedAt: '',
-        lastLoginAt: '',
-      }));
-    }
-  });
-
-  return merged;
+  return getStoredSuperAdminUsers_();
 }
 
 function findResolvedSuperAdmin_(userId) {
