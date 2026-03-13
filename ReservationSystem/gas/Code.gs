@@ -320,8 +320,8 @@ function syncAdminUser_(payload) {
         displayName: String(payload.displayName || approvedSuperAdmin.displayName || existing.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
         pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || existing.pictureUrl || '').trim(),
         status: STATUS_APPROVED,
-        canManageAdmins: true,
-        pagePermissions: serializeAdminPagePermissions_(getAllAdminPagePermissions_(), existing.userId),
+        canManageAdmins: normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, existing.userId),
+        pagePermissions: serializeAdminPagePermissions_(normalizeStoredAdminPagePermissions_(existing.pagePermissions, existing.userId), existing.userId),
         note: String(approvedSuperAdmin.note || existing.note || '').trim(),
         createdAt: existing.createdAt,
         updatedAt: nowText,
@@ -337,6 +337,8 @@ function syncAdminUser_(payload) {
       displayName: String(payload.displayName || approvedSuperAdmin.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
       pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || '').trim(),
       status: STATUS_APPROVED,
+      canManageAdmins: false,
+      pagePermissions: ADMIN_PAGE_PERMISSION_NONE,
       note: String(approvedSuperAdmin.note || '').trim(),
       createdAt: String(approvedSuperAdmin.createdAt || ''),
       updatedAt: nowText,
@@ -1918,7 +1920,7 @@ function normalizeAdminPermissionValue_(value, status, userId) {
     return false;
   }
 
-  return normalizeAdminStatus_(status) === STATUS_APPROVED;
+  return false;
 }
 
 function getAllAdminPagePermissions_() {
@@ -1968,7 +1970,7 @@ function normalizeAdminPagePermissionList_(value) {
 function normalizeStoredAdminPagePermissions_(value, userId) {
   var text = String(value || '').trim();
   if (!text) {
-    return getAllAdminPagePermissions_();
+    return [];
   }
 
   return normalizeAdminPagePermissionList_(text);
@@ -2137,13 +2139,17 @@ function findApprovedSuperAdmin_(userId) {
 }
 
 function buildAdminIdentityFromSuperAdmin_(superAdminUser, adminUser) {
+  var normalizedAdminUserId = String(superAdminUser.userId || adminUser && adminUser.userId || '').trim();
+  var resolvedCanManageAdmins = normalizeAdminPermissionValue_(adminUser && adminUser.canManageAdmins, adminUser && adminUser.status, normalizedAdminUserId);
+  var resolvedPagePermissions = normalizeStoredAdminPagePermissions_(adminUser && adminUser.pagePermissions, normalizedAdminUserId);
+
   return {
-    userId: String(superAdminUser.userId || adminUser && adminUser.userId || '').trim(),
+    userId: normalizedAdminUserId,
     displayName: String(superAdminUser.displayName || adminUser && adminUser.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
     pictureUrl: String(superAdminUser.pictureUrl || adminUser && adminUser.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(superAdminUser.status || adminUser && adminUser.status || STATUS_APPROVED),
-    canManageAdmins: true,
-    pagePermissions: getAllAdminPagePermissions_(),
+    canManageAdmins: resolvedCanManageAdmins,
+    pagePermissions: resolvedPagePermissions,
     isSuperAdmin: true,
     note: String(superAdminUser.note || adminUser && adminUser.note || '').trim(),
     createdAt: String(superAdminUser.createdAt || adminUser && adminUser.createdAt || ''),

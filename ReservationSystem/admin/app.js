@@ -4,6 +4,7 @@ const ADMIN_STORAGE_KEYS = {
 };
 const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
+const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user"];
 
 const state = {
   gasUrl: "",
@@ -56,6 +57,7 @@ const elements = {
   refreshDashboardButton: document.querySelector("#refreshDashboardButton"),
   workflowSummary: document.querySelector("#workflowSummary"),
   workflowHint: document.querySelector("#workflowHint"),
+  noPagePermissionNotice: document.querySelector("#noPagePermissionNotice"),
   pageTabs: Array.from(document.querySelectorAll("[data-page-trigger]")),
   pagePanels: Array.from(document.querySelectorAll("[data-admin-page]")),
   serviceForm: document.querySelector("#serviceForm"),
@@ -494,24 +496,48 @@ function scrollToPanel(panel) {
   });
 }
 
-function setActivePage(pageName, options = {}) {
-  if (!pageName) {
+function getAllowedAdminPages() {
+  const pagePermissions = Array.isArray(state.adminUser?.pagePermissions)
+    ? state.adminUser.pagePermissions
+    : [];
+
+  return ADMIN_PAGE_KEYS.filter((pageKey) => pagePermissions.includes(pageKey));
+}
+
+function updateNoPagePermissionNotice(allowedPages) {
+  if (!elements.noPagePermissionNotice) {
     return;
   }
 
-  state.ui.activePage = pageName;
+  const shouldShow = isApprovedAdmin() && allowedPages.length === 0;
+  elements.noPagePermissionNotice.classList.toggle("is-hidden", !shouldShow);
+}
+
+function setActivePage(pageName, options = {}) {
+  const allowedPages = getAllowedAdminPages();
+  const nextPage = allowedPages.includes(pageName) ? pageName : allowedPages[0] || "";
+
+  state.ui.activePage = nextPage;
 
   elements.pageTabs.forEach((button) => {
-    const isActive = button.dataset.pageTrigger === pageName;
+    const buttonPage = button.dataset.pageTrigger;
+    const isAllowed = allowedPages.includes(buttonPage);
+    const isActive = isAllowed && buttonPage === nextPage;
+    button.classList.toggle("is-hidden", !isAllowed);
     button.classList.toggle("active", isActive);
+    button.disabled = !isAllowed;
     button.setAttribute("aria-pressed", String(isActive));
   });
 
   elements.pagePanels.forEach((panel) => {
-    const isActive = panel.dataset.adminPage === pageName;
+    const panelPage = panel.dataset.adminPage;
+    const isAllowed = allowedPages.includes(panelPage);
+    const isActive = isAllowed && panelPage === nextPage;
     panel.classList.toggle("is-hidden", !isActive);
     panel.classList.toggle("is-active", isActive);
   });
+
+  updateNoPagePermissionNotice(allowedPages);
 }
 
 function setOptions(select, options, placeholder) {
