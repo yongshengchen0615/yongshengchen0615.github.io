@@ -199,6 +199,15 @@ h1 {
   margin-bottom: 22px;
 }
 
+.panel__header > div,
+.summary__header > h3,
+.profile-card__header > div,
+.reservation-status-item__rows dd,
+.overview-list dd,
+.summary__row dd {
+  min-width: 0;
+}
+
 .section-copy {
   margin: 10px 0 0;
   line-height: 1.7;
@@ -341,6 +350,9 @@ textarea:focus {
   border-radius: 999px;
   padding: 14px 18px;
   cursor: pointer;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
   transition: transform 0.2s ease, filter 0.2s ease;
 }
 
@@ -396,6 +408,23 @@ textarea:focus {
 .overview-list dd {
   color: var(--muted);
   line-height: 1.7;
+}
+
+.hero__lead,
+.section-copy,
+.summary p,
+.status-box,
+.profile-card__copy,
+.reservation-status-item__rows dt,
+.reservation-status-item__rows dd,
+.overview-list dt,
+.overview-list dd,
+.tips li,
+.flow-step,
+.summary__badge,
+.status-badge,
+.button {
+  overflow-wrap: anywhere;
 }
 
 .summary__header {
@@ -745,6 +774,20 @@ textarea:focus {
   .summary__row dd,
   .overview-list dd {
     text-align: left;
+  }
+
+  .reservation-status-item__rows div {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reservation-status-item__rows dd {
+    width: 100%;
+    text-align: left;
+  }
+
+  .reservation-status-item__status-row dd {
+    justify-content: flex-start;
   }
 
   .checkbox-grid {

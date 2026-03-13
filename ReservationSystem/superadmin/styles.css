@@ -168,6 +168,18 @@ h1 {
   line-height: 1.06;
 }
 
+.access-panel__main > div,
+.section-header > div,
+.hero-meta,
+.summary-card,
+.user-cell,
+.user-cell__meta,
+.table-actions,
+.list-table th,
+.list-table td {
+  min-width: 0;
+}
+
 .section-copy,
 .data-list,
 .helper-text,
@@ -290,6 +302,22 @@ h1 {
   cursor: pointer;
   color: var(--text);
   background: rgba(146, 178, 200, 0.08);
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+}
+
+.section-copy,
+.approval-banner,
+.summary-card strong,
+.user-cell__meta strong,
+.user-cell__meta small,
+.helper-text,
+.status-badge,
+.status-pill,
+.list-table th,
+.list-table td {
+  overflow-wrap: anywhere;
 }
 
 .button:disabled {
@@ -359,6 +387,12 @@ h1 {
     padding: 22px;
   }
 
+  .button,
+  .table-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .list-table,
   .list-table thead,
   .list-table tbody,
@@ -380,5 +414,17 @@ h1 {
   .list-table td {
     padding: 8px 0;
     border: 0;
+    display: grid;
+    grid-template-columns: minmax(84px, 110px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .list-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
   }
 }

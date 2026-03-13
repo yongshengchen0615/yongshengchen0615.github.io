@@ -244,6 +244,21 @@ h1 {
   line-height: 1.06;
 }
 
+.access-panel__main > div,
+.command-main > div,
+.section-header > div,
+.section-header-side,
+.workflow-card,
+.review-card,
+.schedule-entry__title,
+.user-cell,
+.user-cell__meta,
+.table-actions,
+.list-table th,
+.list-table td {
+  min-width: 0;
+}
+
 .hero-copy,
 .data-list,
 .table-wrap,
@@ -912,6 +927,9 @@ textarea {
   padding: 14px 18px;
   cursor: pointer;
   text-decoration: none;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
   transition: transform 0.2s ease, filter 0.2s ease;
 }
 
@@ -965,6 +983,7 @@ textarea {
   text-align: left;
   border-bottom: 1px solid rgba(146, 178, 200, 0.12);
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .list-table th {
@@ -1089,6 +1108,20 @@ textarea {
 .user-cell__meta small {
   color: var(--muted);
   word-break: break-all;
+}
+
+.hero-copy,
+.section-copy,
+.section-result,
+.workflow-card strong,
+.review-card small,
+.schedule-entry__time,
+.service-list li,
+.helper-text,
+.status-badge,
+.status-pill,
+.approval-banner {
+  overflow-wrap: anywhere;
 }
 
 .user-avatar {
@@ -1286,6 +1319,11 @@ textarea {
   }
 
   .table-cell-actions {
+    min-width: 0;
+  }
+
+  .bulk-technician-table input[type="text"],
+  .bulk-technician-table input[type="time"] {
     min-width: 0;
   }
 

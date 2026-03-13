@@ -346,7 +346,7 @@ function renderAdminTable() {
 
       return `
         <tr>
-          <td>
+          <td data-label="管理員">
             <div class="user-cell">
               ${adminUser.pictureUrl ? `<img class="user-avatar" src="${adminUser.pictureUrl}" alt="${adminUser.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${adminUser.displayName.slice(0, 1) || "A"}</div>`}
               <div class="user-cell__meta">
@@ -355,11 +355,11 @@ function renderAdminTable() {
               </div>
             </div>
           </td>
-          <td>${getAdminStatusPill(adminUser.status)}</td>
-          <td>${getPermissionPill(adminUser)}</td>
-          <td>${formatDateTimeText(adminUser.lastLoginAt)}</td>
-          <td>${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
-          <td><div class="table-actions">${statusButtons}${actionButton}</div></td>
+          <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
+          <td data-label="管理員修改權限">${getPermissionPill(adminUser)}</td>
+          <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
+          <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
+          <td data-label="操作"><div class="table-actions">${statusButtons}${actionButton}</div></td>
         </tr>
       `;
     })
