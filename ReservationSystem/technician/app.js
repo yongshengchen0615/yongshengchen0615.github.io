@@ -9,6 +9,10 @@ const state = {
   services: [],
   schedules: [],
   reservations: [],
+  calendar: {
+    currentMonth: getMonthKeyFromDate(new Date()),
+    selectedDate: "",
+  },
   ui: {
     busyCount: 0,
   },
@@ -37,9 +41,80 @@ const elements = {
   scheduleCountStat: document.querySelector("#scheduleCountStat"),
   reservationCountStat: document.querySelector("#reservationCountStat"),
   serviceList: document.querySelector("#serviceList"),
-  scheduleList: document.querySelector("#scheduleList"),
-  reservationList: document.querySelector("#reservationList"),
+  calendarPrevButton: document.querySelector("#calendarPrevButton"),
+  calendarNextButton: document.querySelector("#calendarNextButton"),
+  calendarMonthLabel: document.querySelector("#calendarMonthLabel"),
+  calendarGrid: document.querySelector("#calendarGrid"),
+  calendarDetail: document.querySelector("#calendarDetail"),
+  calendarDetailTitle: document.querySelector("#calendarDetailTitle"),
+  calendarDetailContent: document.querySelector("#calendarDetailContent"),
+  calendarCloseButton: document.querySelector("#calendarCloseButton"),
 };
+
+function padNumber(value) {
+  return String(value).padStart(2, "0");
+}
+
+function getMonthKeyFromDate(date) {
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}`;
+}
+
+function parseMonthKey(monthKey) {
+  const [yearText, monthText] = String(monthKey || "").split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+
+  if (!year || !month) {
+    const today = new Date();
+    return { year: today.getFullYear(), month: today.getMonth() + 1 };
+  }
+
+  return { year, month };
+}
+
+function shiftMonthKey(monthKey, delta) {
+  const { year, month } = parseMonthKey(monthKey);
+  return getMonthKeyFromDate(new Date(year, month - 1 + delta, 1));
+}
+
+function getDateKey(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const matched = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (matched) {
+    return `${matched[1]}-${padNumber(matched[2])}-${padNumber(matched[3])}`;
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}`;
+}
+
+function createLocalDateFromKey(dateKey) {
+  const [yearText, monthText, dayText] = String(dateKey || "").split("-");
+  return new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+}
+
+function formatMonthLabel(monthKey) {
+  const { year, month } = parseMonthKey(monthKey);
+  return `${year} 年 ${padNumber(month)} 月`;
+}
+
+function formatCalendarDateLabel(dateKey) {
+  const date = createLocalDateFromKey(dateKey);
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 星期${weekday}`;
+}
+
+function getMonthKeyFromDateKey(dateKey) {
+  return String(dateKey || "").slice(0, 7);
+}
 
 function normalizeGasUrl(value) {
   return String(value || "").trim();
@@ -357,65 +432,193 @@ function renderServices() {
     .join("");
 }
 
-function renderSchedules() {
-  if (!elements.scheduleList) {
-    return;
-  }
+function getCalendarDataMap() {
+  const dataMap = new Map();
 
-  if (!state.schedules.length) {
-    elements.scheduleList.innerHTML = '<div class="empty-state">目前尚無任何班表設定。</div>';
-    return;
-  }
+  const ensureEntry = (dateKey) => {
+    if (!dataMap.has(dateKey)) {
+      dataMap.set(dateKey, {
+        schedules: [],
+        reservations: [],
+      });
+    }
+    return dataMap.get(dateKey);
+  };
 
-  const upcomingSchedules = state.schedules.slice(0, 12);
-  elements.scheduleList.innerHTML = upcomingSchedules
-    .map((schedule) => `
-      <article class="timeline-item">
-        <strong>${escapeHtml(schedule.date)}</strong>
-        <small>${escapeHtml(schedule.startTime)} - ${escapeHtml(schedule.endTime)}</small>
-        <div class="timeline-item__meta">
-          ${getStatusPill(schedule.isWorking ? "可預約" : "休假")}
-        </div>
-      </article>
-    `)
-    .join("");
+  state.schedules.forEach((schedule) => {
+    const dateKey = getDateKey(schedule.date);
+    if (!dateKey) {
+      return;
+    }
+    ensureEntry(dateKey).schedules.push(schedule);
+  });
+
+  state.reservations.forEach((reservation) => {
+    const dateKey = getDateKey(reservation.date);
+    if (!dateKey) {
+      return;
+    }
+    ensureEntry(dateKey).reservations.push(reservation);
+  });
+
+  dataMap.forEach((entry) => {
+    entry.schedules.sort((left, right) => String(left.startTime || "").localeCompare(String(right.startTime || ""), "zh-TW"));
+    entry.reservations.sort((left, right) => String(left.startTime || "").localeCompare(String(right.startTime || ""), "zh-TW"));
+  });
+
+  return dataMap;
 }
 
-function renderReservations() {
-  if (!elements.reservationList) {
+function getCalendarMonthBounds(dataMap) {
+  let minMonthKey = getMonthKeyFromDate(new Date());
+  let maxMonthKey = minMonthKey;
+
+  dataMap.forEach((_, dateKey) => {
+    const monthKey = getMonthKeyFromDateKey(dateKey);
+    if (monthKey < minMonthKey) {
+      minMonthKey = monthKey;
+    }
+    if (monthKey > maxMonthKey) {
+      maxMonthKey = monthKey;
+    }
+  });
+
+  return { minMonthKey, maxMonthKey };
+}
+
+function syncCalendarMonthWithData() {
+  const dataMap = getCalendarDataMap();
+  const monthKeys = [...new Set([...dataMap.keys()].map((dateKey) => getMonthKeyFromDateKey(dateKey)))].sort();
+  const currentMonthKey = getMonthKeyFromDate(new Date());
+
+  if (!monthKeys.length) {
+    state.calendar.currentMonth = currentMonthKey;
+    state.calendar.selectedDate = "";
     return;
   }
 
-  if (!state.reservations.length) {
-    elements.reservationList.innerHTML = '<div class="empty-state">目前沒有指派到你名下的預約紀錄。</div>';
+  const matchingUpcomingMonth = monthKeys.find((monthKey) => monthKey >= currentMonthKey);
+  state.calendar.currentMonth = matchingUpcomingMonth || monthKeys[monthKeys.length - 1];
+
+  if (state.calendar.selectedDate && getMonthKeyFromDateKey(state.calendar.selectedDate) !== state.calendar.currentMonth) {
+    state.calendar.selectedDate = "";
+  }
+}
+
+function renderCalendarDetail(dataMap) {
+  if (!elements.calendarDetail || !elements.calendarDetailTitle || !elements.calendarDetailContent) {
     return;
   }
 
-  elements.reservationList.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>日期</th>
-          <th>時段</th>
-          <th>服務</th>
-          <th>狀態</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${state.reservations
-          .slice(0, 16)
-          .map((reservation) => `
-            <tr>
-              <td data-label="日期">${escapeHtml(reservation.date)}</td>
-              <td data-label="時段">${escapeHtml(reservation.startTime)} - ${escapeHtml(reservation.endTime)}</td>
-              <td data-label="服務">${escapeHtml(reservation.serviceName || "未設定")}</td>
-              <td data-label="狀態">${getStatusPill(reservation.status)}</td>
-            </tr>
-          `)
-          .join("")}
-      </tbody>
-    </table>
+  if (!state.calendar.selectedDate) {
+    elements.calendarDetail.classList.add("is-hidden");
+    elements.calendarDetailTitle.textContent = "請先選擇日期";
+    elements.calendarDetailContent.innerHTML = "";
+    return;
+  }
+
+  const entry = dataMap.get(state.calendar.selectedDate) || { schedules: [], reservations: [] };
+  elements.calendarDetail.classList.remove("is-hidden");
+  elements.calendarDetailTitle.textContent = formatCalendarDateLabel(state.calendar.selectedDate);
+  elements.calendarDetailContent.innerHTML = `
+    <section class="calendar-detail-block">
+      <div class="calendar-detail-block__header">
+        <strong>班表安排</strong>
+        <span class="hero-tag">${entry.schedules.length} 筆</span>
+      </div>
+      ${entry.schedules.length
+        ? `<div class="calendar-detail-list">${entry.schedules
+            .map(
+              (schedule) => `
+                <article class="calendar-detail-card">
+                  <div>
+                    <strong>${escapeHtml(schedule.startTime)} - ${escapeHtml(schedule.endTime)}</strong>
+                    <p>${escapeHtml(schedule.note || "班表已同步")}</p>
+                  </div>
+                  ${getStatusPill(schedule.isWorking ? "可預約" : "休假")}
+                </article>
+              `
+            )
+            .join("")}</div>`
+        : '<div class="empty-state">當日沒有班表資料。</div>'}
+    </section>
+    <section class="calendar-detail-block">
+      <div class="calendar-detail-block__header">
+        <strong>預約安排</strong>
+        <span class="hero-tag">${entry.reservations.length} 筆</span>
+      </div>
+      ${entry.reservations.length
+        ? `<div class="calendar-detail-list">${entry.reservations
+            .map(
+              (reservation) => `
+                <article class="calendar-detail-card">
+                  <div>
+                    <strong>${escapeHtml(reservation.startTime)} - ${escapeHtml(reservation.endTime)}</strong>
+                    <p>${escapeHtml(reservation.serviceName || "未設定服務")}</p>
+                  </div>
+                  ${getStatusPill(reservation.status)}
+                </article>
+              `
+            )
+            .join("")}</div>`
+        : '<div class="empty-state">當日沒有預約安排。</div>'}
+    </section>
   `;
+}
+
+function renderCalendar() {
+  if (!elements.calendarGrid || !elements.calendarMonthLabel || !elements.calendarPrevButton || !elements.calendarNextButton) {
+    return;
+  }
+
+  const dataMap = getCalendarDataMap();
+  const { minMonthKey, maxMonthKey } = getCalendarMonthBounds(dataMap);
+  const { year, month } = parseMonthKey(state.calendar.currentMonth);
+  const firstDayIndex = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const totalCells = Math.ceil((firstDayIndex + daysInMonth) / 7) * 7;
+  const dayCells = [];
+
+  for (let cellIndex = 0; cellIndex < totalCells; cellIndex += 1) {
+    const dayNumber = cellIndex - firstDayIndex + 1;
+    if (dayNumber < 1 || dayNumber > daysInMonth) {
+      dayCells.push('<div class="calendar-day calendar-day--empty" aria-hidden="true"></div>');
+      continue;
+    }
+
+    const dateKey = `${year}-${padNumber(month)}-${padNumber(dayNumber)}`;
+    const entry = dataMap.get(dateKey) || { schedules: [], reservations: [] };
+    const isToday = dateKey === getDateKey(new Date());
+    const isSelected = dateKey === state.calendar.selectedDate;
+    const scheduleCount = entry.schedules.length;
+    const reservationCount = entry.reservations.length;
+
+    dayCells.push(`
+      <button
+        type="button"
+        class="calendar-day${isToday ? " calendar-day--today" : ""}${isSelected ? " calendar-day--selected" : ""}${scheduleCount ? " calendar-day--has-schedule" : ""}${reservationCount ? " calendar-day--has-reservation" : ""}"
+        data-date="${dateKey}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+      >
+        <span class="calendar-day__number">${dayNumber}</span>
+        <span class="calendar-day__badges">
+          ${scheduleCount ? `<span class="calendar-day__badge calendar-day__badge--schedule">班表 ${scheduleCount}</span>` : ""}
+          ${reservationCount ? `<span class="calendar-day__badge calendar-day__badge--reservation">預約 ${reservationCount}</span>` : ""}
+        </span>
+      </button>
+    `);
+  }
+
+  elements.calendarMonthLabel.textContent = formatMonthLabel(state.calendar.currentMonth);
+  elements.calendarPrevButton.disabled = state.calendar.currentMonth <= minMonthKey;
+  elements.calendarNextButton.disabled = state.calendar.currentMonth >= maxMonthKey;
+  elements.calendarGrid.innerHTML = dayCells.join("");
+
+  if (state.calendar.selectedDate && getMonthKeyFromDateKey(state.calendar.selectedDate) !== state.calendar.currentMonth) {
+    state.calendar.selectedDate = "";
+  }
+
+  renderCalendarDetail(dataMap);
 }
 
 function renderSummary() {
@@ -439,8 +642,7 @@ function renderSummary() {
 function renderAll() {
   renderSummary();
   renderServices();
-  renderSchedules();
-  renderReservations();
+  renderCalendar();
 }
 
 async function loadTechnicianData() {
@@ -453,6 +655,7 @@ async function loadTechnicianData() {
   state.services = result.data.services || [];
   state.schedules = result.data.schedules || [];
   state.reservations = result.data.reservations || [];
+  syncCalendarMonthWithData();
   renderAccessState();
   renderAll();
   setStatus("技師資料已同步。", "success");
@@ -527,12 +730,41 @@ function bindEvents() {
       state.services = [];
       state.schedules = [];
       state.reservations = [];
+      state.calendar.currentMonth = getMonthKeyFromDate(new Date());
+      state.calendar.selectedDate = "";
       renderAccessState();
       renderAll();
       setStatus("已登出 LINE 帳號。", "info");
     } catch (error) {
       setStatus(error.message, "error");
     }
+  });
+
+  elements.calendarPrevButton?.addEventListener("click", () => {
+    state.calendar.currentMonth = shiftMonthKey(state.calendar.currentMonth, -1);
+    state.calendar.selectedDate = "";
+    renderCalendar();
+  });
+
+  elements.calendarNextButton?.addEventListener("click", () => {
+    state.calendar.currentMonth = shiftMonthKey(state.calendar.currentMonth, 1);
+    state.calendar.selectedDate = "";
+    renderCalendar();
+  });
+
+  elements.calendarGrid?.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-date]");
+    if (!target) {
+      return;
+    }
+
+    state.calendar.selectedDate = target.dataset.date || "";
+    renderCalendar();
+  });
+
+  elements.calendarCloseButton?.addEventListener("click", () => {
+    state.calendar.selectedDate = "";
+    renderCalendar();
   });
 }
 

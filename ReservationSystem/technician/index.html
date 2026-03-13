@@ -100,26 +100,49 @@
           <div id="serviceList" class="card-list"></div>
         </section>
 
-        <section class="panel section-panel">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Schedules</p>
-              <h2>近期班表</h2>
-              <p class="section-copy">只顯示最近的班表資料，讓你快速確認近期安排。</p>
-            </div>
-          </div>
-          <div id="scheduleList" class="timeline-list"></div>
-        </section>
-
         <section class="panel section-panel section-panel--full">
-          <div class="section-header">
+          <div class="section-header section-header--stack">
             <div>
-              <p class="eyebrow">Reservations</p>
-              <h2>我的預約安排</h2>
-              <p class="section-copy">查看目前指派到你名下的預約與狀態。</p>
+              <p class="eyebrow">Calendar</p>
+              <h2>近期班表與我的預約安排</h2>
+              <p class="section-copy">以日曆整合近期班表與預約安排，點選日期即可查看當日明細。</p>
+            </div>
+            <div class="calendar-legend" aria-label="日曆圖例">
+              <span class="calendar-legend__item"><span class="calendar-dot calendar-dot--schedule" aria-hidden="true"></span>班表</span>
+              <span class="calendar-legend__item"><span class="calendar-dot calendar-dot--reservation" aria-hidden="true"></span>預約</span>
             </div>
           </div>
-          <div id="reservationList" class="table-wrap"></div>
+
+          <div class="calendar-shell">
+            <div class="calendar-toolbar">
+              <button type="button" id="calendarPrevButton" class="button button--secondary calendar-toolbar__button">上個月</button>
+              <strong id="calendarMonthLabel" class="calendar-month-label">月份載入中</strong>
+              <button type="button" id="calendarNextButton" class="button button--secondary calendar-toolbar__button">下個月</button>
+            </div>
+
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>日</span>
+              <span>一</span>
+              <span>二</span>
+              <span>三</span>
+              <span>四</span>
+              <span>五</span>
+              <span>六</span>
+            </div>
+
+            <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="技師班表與預約日曆"></div>
+
+            <section id="calendarDetail" class="calendar-detail is-hidden" aria-live="polite">
+              <div class="calendar-detail__header">
+                <div>
+                  <p class="eyebrow">Details</p>
+                  <h3 id="calendarDetailTitle">請先選擇日期</h3>
+                </div>
+                <button type="button" id="calendarCloseButton" class="button button--ghost">關閉</button>
+              </div>
+              <div id="calendarDetailContent" class="calendar-detail__content"></div>
+            </section>
+          </div>
         </section>
       </section>
     </main>
