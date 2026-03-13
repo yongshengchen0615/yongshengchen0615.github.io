@@ -439,6 +439,102 @@ function updateSummary() {
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
 
+function getAdminViewModel(adminUser) {
+  const isCurrentUser = adminUser.userId === getCurrentAdminUserId();
+  const displayName = escapeHtml(getDisplayText(adminUser.displayName, "未命名管理員"));
+  const userId = escapeHtml(getDisplayText(adminUser.userId, "無 userId"));
+  const userIdAttribute = escapeAttribute(adminUser.userId);
+  const note = getDisplayText(adminUser.note);
+  const safePictureUrl = sanitizeImageUrl(adminUser.pictureUrl);
+  const avatarAlt = escapeAttribute(getDisplayText(adminUser.displayName, "管理員頭像"));
+  const avatarFallback = escapeHtml(getDisplayText(adminUser.displayName, "A").slice(0, 1).toUpperCase());
+  const identityPills = [getAdminStatusPill(adminUser.status)];
+
+  if (adminUser.isSuperAdmin) {
+    identityPills.push(getStatusPill("最高管理員", "super"));
+  }
+
+  if (isCurrentUser) {
+    identityPills.push(getStatusPill("目前登入", "permission"));
+  }
+
+  return {
+    isCurrentUser,
+    displayName,
+    userId,
+    userIdAttribute,
+    note,
+    safePictureUrl,
+    avatarAlt,
+    avatarFallback,
+    identityPills,
+  };
+}
+
+function getReviewButtonsMarkup(userIdAttribute) {
+  return `
+    <button type="button" class="button button--secondary button--compact" data-review-admin="${userIdAttribute}" data-review-status="待審核">待審核</button>
+    <button type="button" class="button button--primary button--compact" data-review-admin="${userIdAttribute}" data-review-status="已通過">通過</button>
+    <button type="button" class="button button--secondary button--compact" data-review-admin="${userIdAttribute}" data-review-status="已拒絕">拒絕</button>
+    <button type="button" class="button button--danger button--compact" data-review-admin="${userIdAttribute}" data-review-status="已停用">停用</button>
+  `;
+}
+
+function renderAdminMobileCard(adminUser, viewModel, statusButtons, deleteButton) {
+  return `
+    <article class="admin-mobile-card">
+      <div class="admin-mobile-card__top">
+        <div class="user-cell">
+          ${viewModel.safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(viewModel.safePictureUrl)}" alt="${viewModel.avatarAlt}" />` : `<div class="user-avatar user-avatar--placeholder">${viewModel.avatarFallback}</div>`}
+          <div class="user-cell__meta">
+            <strong>${viewModel.displayName}</strong>
+            <small>${viewModel.userId}</small>
+          </div>
+        </div>
+        <div class="status-pill-group">${viewModel.identityPills.join("")}</div>
+      </div>
+
+      <div class="admin-mobile-card__stats">
+        <div class="admin-mobile-card__metric">
+          <span class="admin-mobile-card__metric-label">管理狀態</span>
+          <div class="status-pill-group">${getPermissionPill(adminUser)}</div>
+        </div>
+        <div class="admin-mobile-card__metric">
+          <span class="admin-mobile-card__metric-label">最後登入</span>
+          <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
+        </div>
+      </div>
+
+      <section class="admin-mobile-card__section">
+        <span class="admin-mobile-card__section-label">管理員修改權限</span>
+        ${renderAdminManagePermissionEditor(adminUser)}
+      </section>
+
+      <section class="admin-mobile-card__section">
+        <span class="admin-mobile-card__section-label">頁面權限摘要</span>
+        <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+        <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
+      </section>
+
+      <section class="admin-mobile-card__section">
+        <span class="admin-mobile-card__section-label">頁面權限設定</span>
+        ${renderPagePermissionEditor(adminUser)}
+      </section>
+
+      <section class="admin-mobile-card__section">
+        <span class="admin-mobile-card__section-label">備註</span>
+        <div class="admin-mobile-card__note">${viewModel.note ? escapeHtml(viewModel.note) : '<span class="helper-text">尚無備註</span>'}</div>
+      </section>
+
+      <section class="admin-mobile-card__section">
+        <span class="admin-mobile-card__section-label">審核與帳號操作</span>
+        <div class="table-actions table-actions--grid">${statusButtons}</div>
+        <div class="table-actions">${deleteButton}</div>
+      </section>
+    </article>
+  `;
+}
+
 function renderAdminTable() {
   if (!elements.adminPermissionTable) {
     return;
@@ -450,7 +546,7 @@ function renderAdminTable() {
     return;
   }
 
-  const cards = state.adminUsers
+  const entries = state.adminUsers
     .slice()
     .sort((left, right) => {
       if (left.isSuperAdmin !== right.isSuperAdmin) {
@@ -464,56 +560,59 @@ function renderAdminTable() {
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
     .map((adminUser) => {
-      const isCurrentUser = adminUser.userId === getCurrentAdminUserId();
-      const displayName = escapeHtml(getDisplayText(adminUser.displayName, "未命名管理員"));
-      const userId = escapeHtml(getDisplayText(adminUser.userId, "無 userId"));
-      const userIdAttribute = escapeAttribute(adminUser.userId);
-      const note = getDisplayText(adminUser.note);
-      const safePictureUrl = sanitizeImageUrl(adminUser.pictureUrl);
-      const avatarAlt = escapeAttribute(getDisplayText(adminUser.displayName, "管理員頭像"));
-      const avatarFallback = escapeHtml(getDisplayText(adminUser.displayName, "A").slice(0, 1).toUpperCase());
-      const statusButtons = `
-        <button type="button" class="button button--secondary" data-review-admin="${userIdAttribute}" data-review-status="待審核">待審核</button>
-        <button type="button" class="button button--primary" data-review-admin="${userIdAttribute}" data-review-status="已通過">通過</button>
-        <button type="button" class="button button--secondary" data-review-admin="${userIdAttribute}" data-review-status="已拒絕">拒絕</button>
-        <button type="button" class="button button--danger" data-review-admin="${userIdAttribute}" data-review-status="已停用">停用</button>
-      `;
-      const deleteButton = isCurrentUser
+      const viewModel = getAdminViewModel(adminUser);
+      const statusButtons = getReviewButtonsMarkup(viewModel.userIdAttribute);
+      const deleteButton = viewModel.isCurrentUser
         ? `<span class="helper-text">目前登入帳號不可刪除</span>`
-        : `<button type="button" class="button button--danger" data-delete-admin="${userIdAttribute}">刪除管理員</button>`;
-      const identityPills = [getAdminStatusPill(adminUser.status)];
+        : `<button type="button" class="button button--danger button--compact" data-delete-admin="${viewModel.userIdAttribute}">刪除管理員</button>`;
 
-      if (adminUser.isSuperAdmin) {
-        identityPills.push(getStatusPill("最高管理員", "super"));
-      }
-
-      if (isCurrentUser) {
-        identityPills.push(getStatusPill("目前登入", "permission"));
-      }
-
-      return `
+      return {
+        row: `
         <tr class="admin-row">
           <td class="cell-admin" data-label="管理員">
-            <div class="user-cell">
-              ${safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(safePictureUrl)}" alt="${avatarAlt}" />` : `<div class="user-avatar user-avatar--placeholder">${avatarFallback}</div>`}
-              <div class="user-cell__meta">
-                <strong>${displayName}</strong>
-                <small>${userId}</small>
-                <div class="status-pill-group">${identityPills.join("")}</div>
+            <div class="table-cell-card table-cell-card--admin">
+              <div class="user-cell">
+              ${viewModel.safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(viewModel.safePictureUrl)}" alt="${viewModel.avatarAlt}" />` : `<div class="user-avatar user-avatar--placeholder">${viewModel.avatarFallback}</div>`}
+                <div class="user-cell__meta">
+                  <strong>${viewModel.displayName}</strong>
+                  <small>${viewModel.userId}</small>
+                  <div class="status-pill-group">${viewModel.identityPills.join("")}</div>
+                </div>
               </div>
             </div>
           </td>
-          <td class="cell-status" data-label="管理狀態">${getPermissionPill(adminUser)}</td>
-          <td class="cell-editor" data-label="管理員修改權限設定">${renderAdminManagePermissionEditor(adminUser)}</td>
-          <td class="cell-pages" data-label="頁面權限">
-            <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
-            <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
+          <td class="cell-status" data-label="管理狀態">
+            <div class="table-cell-card table-cell-card--compact table-chip-stack">
+              ${getPermissionPill(adminUser)}
+              <span class="table-meta__subtext">權限層級</span>
+            </div>
           </td>
-          <td class="cell-editor" data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
-          <td class="cell-last-login" data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
-          <td class="cell-note" data-label="備註">${note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>'}</td>
+          <td class="cell-editor" data-label="管理員修改權限設定">
+            <div class="table-cell-card">${renderAdminManagePermissionEditor(adminUser)}</div>
+          </td>
+          <td class="cell-pages" data-label="頁面權限">
+            <div class="table-cell-card table-cell-card--compact">
+              <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+              <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
+            </div>
+          </td>
+          <td class="cell-editor" data-label="頁面權限設定">
+            <div class="table-cell-card">${renderPagePermissionEditor(adminUser)}</div>
+          </td>
+          <td class="cell-last-login" data-label="最後登入">
+            <div class="table-cell-card table-cell-card--compact table-meta">
+              <span class="table-meta__label">最近活動</span>
+              <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
+            </div>
+          </td>
+          <td class="cell-note" data-label="備註">
+            <div class="table-cell-card table-cell-card--compact table-note">
+              <span class="table-meta__label">內部備註</span>
+              <div>${viewModel.note ? escapeHtml(viewModel.note) : '<span class="helper-text">尚無備註</span>'}</div>
+            </div>
+          </td>
           <td class="cell-actions" data-label="操作">
-            <div class="table-actions table-actions--stack vstack gap-3">
+            <div class="table-cell-card table-cell-card--actions table-actions table-actions--stack vstack gap-3">
               <div class="action-group">
                 <span class="action-group__label">審核狀態</span>
                 <div class="table-actions table-actions--grid">${statusButtons}</div>
@@ -525,37 +624,51 @@ function renderAdminTable() {
             </div>
           </td>
         </tr>
-      `;
+      `,
+        card: renderAdminMobileCard(adminUser, viewModel, statusButtons, deleteButton),
+      };
     })
-    .join("");
+    ;
+
+  const desktopRows = entries.map((entry) => entry.row).join("");
+  const mobileCards = entries.map((entry) => entry.card).join("");
 
   elements.adminPermissionTable.innerHTML = `
-    <div class="table-scroll table-responsive">
-      <table class="list-table list-table--permissions table align-middle mb-0">
-        <colgroup>
-          <col style="width: 280px;" />
-          <col style="width: 156px;" />
-          <col style="width: 260px;" />
-          <col style="width: 220px;" />
-          <col style="width: 310px;" />
-          <col style="width: 156px;" />
-          <col style="width: 220px;" />
-          <col style="width: 240px;" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>管理員</th>
-            <th>管理狀態</th>
-            <th>管理員修改權限設定</th>
-            <th>頁面權限</th>
-            <th>頁面權限設定</th>
-            <th>最後登入</th>
-            <th>備註</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>${cards}</tbody>
-      </table>
+    <div class="responsive-data-shell">
+      <div class="responsive-hint">
+        <span class="responsive-hint__pill">Adaptive</span>
+        <span class="helper-text">系統會依螢幕尺寸切換成完整矩陣或卡片式操作版面。</span>
+      </div>
+      <div class="desktop-table-view">
+        <div class="table-scroll table-responsive">
+          <table class="list-table list-table--permissions table align-middle mb-0">
+            <colgroup>
+              <col style="width: 280px;" />
+              <col style="width: 156px;" />
+              <col style="width: 260px;" />
+              <col style="width: 220px;" />
+              <col style="width: 310px;" />
+              <col style="width: 156px;" />
+              <col style="width: 220px;" />
+              <col style="width: 240px;" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>管理員</th>
+                <th>管理狀態</th>
+                <th>管理員修改權限設定</th>
+                <th>頁面權限</th>
+                <th>頁面權限設定</th>
+                <th>最後登入</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>${desktopRows}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="mobile-card-list">${mobileCards}</div>
     </div>
   `;
 
