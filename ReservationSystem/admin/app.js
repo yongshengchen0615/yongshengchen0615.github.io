@@ -405,9 +405,6 @@ function renderAdminAccessState() {
     return;
   }
 
-  const normalizedStatus = String(state.adminUser?.status || "").trim();
-  const isApprovedSuperAdmin = Boolean(state.adminUser?.isSuperAdmin) && normalizedStatus === "已通過";
-
   if (!state.profile) {
     elements.adminDisplayName.textContent = "尚未登入 LINE";
     elements.adminStatusBadge.textContent = "未登入";
@@ -443,16 +440,6 @@ function renderAdminAccessState() {
     return;
   }
 
-  if (isApprovedSuperAdmin) {
-    elements.adminStatusBadge.textContent = "最高管理員";
-    elements.adminStatusBadge.dataset.tone = "approved";
-    elements.adminStatusText.textContent = "你已通過 admin 審核，並保有最高管理員身分，可使用 admin 後台。";
-    setAdminApprovalMessage("已通過 AdminUsers 審核，可使用 admin 後台。", "approved");
-    setAdminContentAccess(true);
-    applyAdminPageAccess();
-    return;
-  }
-
   elements.adminStatusBadge.textContent = state.adminUser.status;
 
   if (state.adminUser.status === "已通過") {
@@ -471,15 +458,8 @@ function renderAdminAccessState() {
 
   if (state.adminUser.status === "待審核") {
     elements.adminStatusBadge.dataset.tone = "pending";
-    elements.adminStatusText.textContent = state.adminUser.isSuperAdmin
-      ? "你已完成 LINE 登入，也具有最高管理員身分，但仍需等待 AdminUsers 的 admin 審核通過。"
-      : "你已完成 LINE 登入，但仍需等待既有管理員審核通過。";
-    setAdminApprovalMessage(
-      state.adminUser.isSuperAdmin
-        ? "此帳號雖已在 SuperAdmins 中，但仍需通過 AdminUsers 審核後才能使用 admin 後台。"
-        : "目前為待審核狀態，需由已通過的管理員審核後才能使用後台。",
-      "pending"
-    );
+    elements.adminStatusText.textContent = "你已完成 LINE 登入，但仍需等待既有管理員審核通過。";
+    setAdminApprovalMessage("目前為待審核狀態，需由已通過的管理員審核後才能使用後台。", "pending");
     setAdminContentAccess(false);
     return;
   }
@@ -560,9 +540,7 @@ async function refreshAdminIdentity(options = {}) {
 
   setStatus(
     state.adminUser?.status === "待審核"
-      ? state.adminUser?.isSuperAdmin
-        ? "此帳號仍待 AdminUsers 審核，通過前無法使用 admin 後台。"
-        : "管理員帳號尚待審核，通過前無法使用後台。"
+      ? "管理員帳號尚待審核，通過前無法使用後台。"
       : state.adminUser?.note || "此管理員帳號目前不可使用後台。",
     state.adminUser?.status === "待審核" ? "info" : "error"
   );
@@ -1347,10 +1325,6 @@ function getAdminStatusPill(status) {
 }
 
 function getAdminPermissionPill(adminUser) {
-  if (adminUser?.isSuperAdmin) {
-    return getStatusPill("最高管理員", "approved");
-  }
-
   return adminUser?.canManageAdmins
     ? getStatusPill("可管理管理員", "active")
     : getStatusPill("僅一般 admin", "inactive");
