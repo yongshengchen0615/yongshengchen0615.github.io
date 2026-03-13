@@ -480,85 +480,71 @@ function getReviewButtonsMarkup(userIdAttribute) {
   `;
 }
 
-function renderAdminAccordionCard(adminUser, viewModel, statusButtons, deleteButton, index) {
-  const collapseId = `admin-panel-${index}`;
-  const headingId = `admin-heading-${index}`;
-  const isExpanded = index === 0;
-
+function renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteButton) {
   return `
-    <article class="accordion-item admin-accordion-item" data-admin-card="${viewModel.userIdAttribute}">
-      <h3 class="accordion-header" id="${headingId}">
-        <button class="accordion-button admin-accordion-trigger${isExpanded ? "" : " collapsed"}" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${isExpanded ? "true" : "false"}" aria-controls="${collapseId}">
-          <span class="accordion-preview">
-            <span class="accordion-preview__identity">
-              <span class="user-cell">
-                ${viewModel.safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(viewModel.safePictureUrl)}" alt="${viewModel.avatarAlt}" />` : `<span class="user-avatar user-avatar--placeholder">${viewModel.avatarFallback}</span>`}
-                <span class="user-cell__meta">
-                  <strong data-admin-name>${viewModel.displayName}</strong>
-                  <small>${viewModel.userId}</small>
-                  <span class="status-pill-group">${viewModel.identityPills.join("")}</span>
-                </span>
-              </span>
-            </span>
-            <span class="accordion-preview__summary">
-              <span class="accordion-summary-chip">
-                <span class="accordion-summary-chip__label">管理狀態</span>
-                ${getPermissionPill(adminUser)}
-              </span>
-              <span class="accordion-summary-chip">
-                <span class="accordion-summary-chip__label">頁面權限</span>
-                <strong>${getPagePermissionSummary(adminUser)}</strong>
-              </span>
-              <span class="accordion-summary-chip">
-                <span class="accordion-summary-chip__label">最後登入</span>
-                <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
-              </span>
-            </span>
-          </span>
-        </button>
-      </h3>
-      <div id="${collapseId}" class="accordion-collapse collapse${isExpanded ? " show" : ""}" aria-labelledby="${headingId}" data-bs-parent="#adminAccordionList">
-        <div class="accordion-body admin-accordion-body">
-          <div class="admin-accordion-grid">
-            <section class="admin-detail-card">
-              <span class="admin-detail-card__label">管理員修改權限</span>
-              ${renderAdminManagePermissionEditor(adminUser)}
-            </section>
-            <section class="admin-detail-card">
-              <span class="admin-detail-card__label">頁面權限摘要</span>
-              <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
-              <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
-            </section>
-            <section class="admin-detail-card admin-detail-card--wide">
-              <span class="admin-detail-card__label">頁面權限設定</span>
-              ${renderPagePermissionEditor(adminUser)}
-            </section>
-            <section class="admin-detail-card">
-              <span class="admin-detail-card__label">最後登入</span>
-              <div class="table-meta">
-                <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
-                <span class="table-meta__subtext">最近活動時間</span>
-              </div>
-            </section>
-            <section class="admin-detail-card">
-              <span class="admin-detail-card__label">備註</span>
-              <div class="table-note">${viewModel.note ? escapeHtml(viewModel.note) : '<span class="helper-text">尚無備註</span>'}</div>
-            </section>
-            <section class="admin-detail-card admin-detail-card--wide">
-              <span class="admin-detail-card__label">審核與帳號操作</span>
-              <div class="admin-actions-grid">
-                <div class="action-group action-group--panel">
-                  <span class="action-group__label">審核狀態</span>
-                  <div class="table-actions table-actions--grid">${statusButtons}</div>
-                </div>
-                <div class="action-group action-group--panel">
-                  <span class="action-group__label">帳號操作</span>
-                  <div class="table-actions">${deleteButton}</div>
-                </div>
-              </div>
-            </section>
+    <article class="admin-management-card" data-admin-card="${viewModel.userIdAttribute}">
+      <header class="admin-management-card__header">
+        <div class="admin-management-card__identity">
+          <div class="user-cell">
+            ${viewModel.safePictureUrl ? `<img class="user-avatar" src="${escapeAttribute(viewModel.safePictureUrl)}" alt="${viewModel.avatarAlt}" />` : `<span class="user-avatar user-avatar--placeholder">${viewModel.avatarFallback}</span>`}
+            <div class="user-cell__meta">
+              <strong data-admin-name>${viewModel.displayName}</strong>
+              <small>${viewModel.userId}</small>
+              <div class="status-pill-group">${viewModel.identityPills.join("")}</div>
+            </div>
           </div>
         </div>
+        <div class="admin-management-card__summary">
+          <div class="admin-summary-block">
+            <span class="admin-summary-block__label">管理狀態</span>
+            <div class="status-pill-group">${getPermissionPill(adminUser)}</div>
+          </div>
+          <div class="admin-summary-block">
+            <span class="admin-summary-block__label">頁面權限</span>
+            <strong>${getPagePermissionSummary(adminUser)}</strong>
+          </div>
+          <div class="admin-summary-block">
+            <span class="admin-summary-block__label">最後登入</span>
+            <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
+          </div>
+        </div>
+      </header>
+
+      <div class="admin-management-card__grid">
+        <section class="admin-work-panel admin-work-panel--permission">
+          <span class="admin-work-panel__label">管理員修改權限設定</span>
+          ${renderAdminManagePermissionEditor(adminUser)}
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--pages">
+          <span class="admin-work-panel__label">頁面權限</span>
+          <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+          <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--meta">
+          <span class="admin-work-panel__label">備註</span>
+          <div class="table-note">${viewModel.note ? escapeHtml(viewModel.note) : '<span class="helper-text">尚無備註</span>'}</div>
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--editor admin-work-panel--wide">
+          <span class="admin-work-panel__label">頁面權限設定</span>
+          ${renderPagePermissionEditor(adminUser)}
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--actions admin-work-panel--wide">
+          <span class="admin-work-panel__label">操作</span>
+          <div class="admin-actions-grid">
+            <div class="action-group action-group--panel">
+              <span class="action-group__label">審核狀態</span>
+              <div class="table-actions table-actions--grid">${statusButtons}</div>
+            </div>
+            <div class="action-group action-group--panel">
+              <span class="action-group__label">帳號操作</span>
+              <div class="table-actions">${deleteButton}</div>
+            </div>
+          </div>
+        </section>
       </div>
     </article>
   `;
@@ -592,14 +578,14 @@ function renderAdminTable() {
 
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
-    .map((adminUser, index) => {
+    .map((adminUser) => {
       const viewModel = getAdminViewModel(adminUser);
       const statusButtons = getReviewButtonsMarkup(viewModel.userIdAttribute);
       const deleteButton = viewModel.isCurrentUser
         ? `<span class="helper-text">目前登入帳號不可刪除</span>`
         : `<button type="button" class="button button--danger button--compact" data-delete-admin="${viewModel.userIdAttribute}">刪除管理員</button>`;
 
-      return renderAdminAccordionCard(adminUser, viewModel, statusButtons, deleteButton, index);
+      return renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteButton);
     })
     ;
   const accordionItems = entries.join("");
@@ -607,10 +593,10 @@ function renderAdminTable() {
   elements.adminPermissionTable.innerHTML = `
     <div class="responsive-data-shell">
       <div class="responsive-hint">
-        <span class="responsive-hint__pill">Bootstrap</span>
-        <span class="helper-text">改用 Accordion + Card 版型，先看摘要，再展開編輯權限與操作。</span>
+        <span class="responsive-hint__pill">Management Board</span>
+        <span class="helper-text">改成管理工作卡版型，把狀態、權限、備註與操作拆成清楚區塊。</span>
       </div>
-      <div class="accordion admin-accordion-list" id="adminAccordionList">
+      <div class="admin-management-board" id="adminAccordionList">
         ${accordionItems}
       </div>
     </div>
