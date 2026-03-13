@@ -138,6 +138,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: stretch;
   gap: 12px;
 }
 
@@ -479,7 +480,7 @@ h1 {
 
 .review-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -734,6 +735,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -1010,6 +1012,7 @@ textarea {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: stretch;
 }
 
 .table-cell-actions {
@@ -1121,6 +1124,11 @@ textarea {
   gap: 4px;
 }
 
+.user-cell__meta strong,
+.user-cell__meta small {
+  overflow-wrap: anywhere;
+}
+
 .user-cell__meta small {
   color: var(--muted);
   word-break: break-all;
@@ -1219,6 +1227,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .service-category-grid {
+    grid-template-columns: 1fr;
+  }
+
   .schedule-workspace {
     grid-template-columns: 1fr;
   }
@@ -1250,6 +1262,13 @@ textarea {
 
   .section-result {
     text-align: left;
+  }
+
+  .access-panel__actions,
+  .form-actions,
+  .table-actions,
+  .schedule-calendar-actions {
+    width: 100%;
   }
 
   .command-main {
@@ -1304,7 +1323,15 @@ textarea {
   }
 
   .schedule-calendar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-content: stretch;
+  }
+
+  .schedule-card,
+  .data-list,
+  .table-wrap {
+    padding: 14px;
   }
 
   .schedule-calendar-shell {
@@ -1376,6 +1403,17 @@ textarea {
     justify-content: center;
   }
 
+  .access-panel__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .checkbox-grid,
+  .checkbox-grid--technicians,
+  .service-category-grid {
+    grid-template-columns: 1fr;
+  }
+
   .command-actions .button,
   .command-actions .page-tab,
   .command-actions #refreshDashboardButton {
@@ -1430,9 +1468,14 @@ textarea {
   .list-table td {
     display: grid;
     grid-template-columns: minmax(72px, 96px) minmax(0, 1fr);
+    align-items: start;
     gap: 12px;
     padding: 10px 0;
     border-bottom: 1px solid rgba(146, 178, 200, 0.12);
+  }
+
+  .list-table td > * {
+    min-width: 0;
   }
 
   .list-table td:last-child {
@@ -1463,6 +1506,10 @@ textarea {
 
   .service-list {
     padding-left: 16px;
+  }
+
+  .user-cell {
+    align-items: flex-start;
   }
 
   .schedule-weekdays,
@@ -1542,6 +1589,12 @@ textarea {
     padding: 16px;
   }
 
+  .schedule-card,
+  .data-list,
+  .table-wrap {
+    padding: 12px;
+  }
+
   h1 {
     font-size: 2.15rem;
   }
@@ -1572,5 +1625,9 @@ textarea {
 
   .list-table td::before {
     margin-bottom: 2px;
+  }
+
+  .schedule-calendar-actions {
+    grid-template-columns: 1fr;
   }
 }
