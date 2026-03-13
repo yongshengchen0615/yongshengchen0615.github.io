@@ -908,6 +908,18 @@ h1 {
   min-width: 120px;
 }
 
+.bulk-technician-table input[type="time"] {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-technician-table input[type="time"]::-webkit-date-and-time-value,
+.bulk-technician-table input[type="time"]::-webkit-datetime-edit {
+  white-space: nowrap;
+}
+
 .bulk-technician-table {
   table-layout: fixed;
 }
