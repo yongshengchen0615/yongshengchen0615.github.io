@@ -218,7 +218,8 @@ async function requestApi(method, params = {}, body = null) {
       Object.entries({ ...params, adminUserId }).forEach(([key, value]) => {
         url.searchParams.set(key, value);
       });
-      const response = await fetch(url.toString());
+      url.searchParams.set("_ts", String(Date.now()));
+      const response = await fetch(url.toString(), { cache: "no-store" });
       return response.json();
     }
 

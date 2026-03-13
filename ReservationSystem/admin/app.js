@@ -1103,7 +1103,8 @@ async function requestApi(method, params = {}, body = null) {
       Object.entries({ ...params, adminUserId }).forEach(([key, value]) => {
         url.searchParams.set(key, value);
       });
-      const response = await fetch(url.toString());
+      url.searchParams.set("_ts", String(Date.now()));
+      const response = await fetch(url.toString(), { cache: "no-store" });
       return response.json();
     }
 
@@ -2111,6 +2112,7 @@ async function submitSchedule(event) {
     throw new Error("編輯班表時一次只能修改單一天");
   }
 
+  const items = [];
   for (const scheduleDate of scheduleDates) {
     for (const technicianId of technicianIds) {
       const technician = getTechnicianById(technicianId);
@@ -2118,19 +2120,19 @@ async function submitSchedule(event) {
         throw new Error("找不到技師預設班別");
       }
 
-      const payload = {
+      items.push({
         technicianId,
         date: scheduleDate,
         startTime: isEditingSchedule ? formData.get("startTime") : technician.startTime,
         endTime: isEditingSchedule ? formData.get("endTime") : technician.endTime,
         isWorking: formData.get("isWorking") === "on",
-      };
-
-      const result = await requestApi("POST", {}, { action: "saveSchedule", payload });
-      if (!result.ok) {
-        throw new Error(result.message || "儲存班表失敗");
-      }
+      });
     }
+  }
+
+  const result = await requestApi("POST", {}, { action: "batchSaveSchedules", payload: { items } });
+  if (!result.ok) {
+    throw new Error(result.message || "儲存班表失敗");
   }
 
   updateSelectedScheduleDate(startDate);
@@ -2270,19 +2272,14 @@ async function submitBulkTechnicians() {
     throw new Error("目前沒有可儲存的技師資料");
   }
 
-  for (const payload of payloads) {
-    const technician = await saveTechnicianPayload({
-      technicianId: payload.technicianId,
-      name: payload.name,
-      startTime: payload.startTime,
-      endTime: payload.endTime,
-      active: payload.active,
-    });
-
-    await saveTechnicianServicesPayload({
-      technicianId: technician.technicianId,
-      serviceIds: payload.serviceIds,
-    });
+  const result = await requestApi("POST", {}, {
+    action: "batchSaveTechnicians",
+    payload: {
+      items: payloads,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "批量儲存技師失敗");
   }
 
   await loadAdminData();
@@ -2309,15 +2306,14 @@ async function deleteBulkTechnicians() {
 
   if (savedRows.length) {
     setLoadingStatus("正在批量刪除技師資料...");
-    for (const row of savedRows) {
-      const technicianId = row.dataset.technicianId;
-      const result = await requestApi("POST", {}, {
-        action: "deleteTechnician",
-        payload: { technicianId },
-      });
-      if (!result.ok) {
-        throw new Error(result.message || "批量刪除技師失敗");
-      }
+    const result = await requestApi("POST", {}, {
+      action: "batchDeleteTechnicians",
+      payload: {
+        technicianIds: savedRows.map((row) => row.dataset.technicianId),
+      },
+    });
+    if (!result.ok) {
+      throw new Error(result.message || "批量刪除技師失敗");
     }
 
     await loadAdminData();

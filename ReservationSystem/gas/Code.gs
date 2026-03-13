@@ -14,7 +14,18 @@ const TEXT_COLUMNS_BY_SHEET = {
   Reservations: ['phone'],
 };
 
+const DATA_CACHE_TTL_SECONDS = {
+  publicData: 20,
+  adminData: 12,
+  superAdminData: 12,
+};
+
+const DATA_VERSION_PROPERTY = 'DATA_CACHE_VERSION';
+
+var REQUEST_CONTEXT_ = null;
+
 function doGet(e) {
+  beginRequestContext_();
   try {
     initializeSheets_();
     var action = getRequestValue_(e, 'action');
@@ -36,10 +47,13 @@ function doGet(e) {
     return jsonResponse_({ ok: true, message: 'Beauty reservation GAS API is running.' });
   } catch (error) {
     return jsonResponse_({ ok: false, message: error.message });
+  } finally {
+    endRequestContext_();
   }
 }
 
 function doPost(e) {
+  beginRequestContext_();
   try {
     initializeSheets_();
     var body = parseRequestBody_(e);
@@ -63,6 +77,18 @@ function doPost(e) {
 
     if (action === 'createReservation') {
       return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
+    }
+
+    if (action === 'batchSaveSchedules') {
+      return jsonResponse_({ ok: true, data: batchSaveSchedules_(body.payload || {}) });
+    }
+
+    if (action === 'batchSaveTechnicians') {
+      return jsonResponse_({ ok: true, data: batchSaveTechnicians_(body.payload || {}) });
+    }
+
+    if (action === 'batchDeleteTechnicians') {
+      return jsonResponse_({ ok: true, data: batchDeleteTechnicians_(body.payload || {}) });
     }
 
     if (action === 'updateAdminPermission') {
@@ -129,75 +155,83 @@ function doPost(e) {
     throw new Error('Unsupported action: ' + action);
   } catch (error) {
     return jsonResponse_({ ok: false, message: error.message });
+  } finally {
+    endRequestContext_();
   }
 }
 
 function getPublicData_() {
-  var services = getTableRecords_(SHEETS.services).filter(function(item) {
-    return toBoolean_(item.active);
-  });
-  var technicians = getTableRecords_(SHEETS.technicians)
-    .map(normalizeTechnician_)
-    .filter(function(item) {
+  return getCachedDataset_('publicData', function() {
+    var services = getTableRecords_(SHEETS.services).filter(function(item) {
       return toBoolean_(item.active);
     });
-  var schedules = getTableRecords_(SHEETS.schedules)
-    .map(normalizeSchedule_)
-    .filter(function(item) {
-      return toBoolean_(item.isWorking);
-    });
-  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+    var technicians = getTableRecords_(SHEETS.technicians)
+      .map(normalizeTechnician_)
+      .filter(function(item) {
+        return toBoolean_(item.active);
+      });
+    var schedules = getTableRecords_(SHEETS.schedules)
+      .map(normalizeSchedule_)
+      .filter(function(item) {
+        return toBoolean_(item.isWorking);
+      });
+    var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
 
-  return {
-    services: services.map(normalizeService_),
-    technicians: technicians,
-    schedules: schedules,
-    reservations: reservations,
-  };
+    return {
+      services: services.map(normalizeService_),
+      technicians: technicians,
+      schedules: schedules,
+      reservations: reservations,
+    };
+  }, DATA_CACHE_TTL_SECONDS.publicData);
 }
 
 function getAdminData_() {
-  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
-  var services = getTableRecords_(SHEETS.services).map(normalizeService_);
-  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
-  var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
-  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
-  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
-  var serviceMap = indexBy_(services, 'serviceId');
-  var technicianMap = indexBy_(technicians, 'technicianId');
-  var userMap = indexBy_(users, 'userId');
+  return getCachedDataset_('adminData', function() {
+    var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+    var services = getTableRecords_(SHEETS.services).map(normalizeService_);
+    var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+    var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+    var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+    var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+    var serviceMap = indexBy_(services, 'serviceId');
+    var technicianMap = indexBy_(technicians, 'technicianId');
+    var userMap = indexBy_(users, 'userId');
 
-  reservations = reservations.map(function(item) {
-    var reservationServices = getReservationServices_(item, serviceMap);
-    item.serviceName = reservationServices.map(function(service) {
-      return service.name;
-    }).join('、');
-    item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
-      return sum + Number(service.durationMinutes || 0);
-    }, 0);
-    item.totalPrice = reservationServices.reduce(function(sum, service) {
-      return sum + Number(service.price || 0);
-    }, 0);
-    item.technicianName = getReservationTechnicianLabel_(item, technicianMap);
-    item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
-    return item;
-  });
+    reservations = reservations.map(function(item) {
+      var reservationServices = getReservationServices_(item, serviceMap);
+      item.serviceName = reservationServices.map(function(service) {
+        return service.name;
+      }).join('、');
+      item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
+        return sum + Number(service.durationMinutes || 0);
+      }, 0);
+      item.totalPrice = reservationServices.reduce(function(sum, service) {
+        return sum + Number(service.price || 0);
+      }, 0);
+      item.technicianName = getReservationTechnicianLabel_(item, technicianMap);
+      item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
+      return item;
+    });
 
-  return {
-    adminUsers: adminUsers,
-    services: services,
-    technicians: technicians,
-    schedules: schedules,
-    users: users,
-    reservations: reservations,
-  };
+    return {
+      adminUsers: adminUsers,
+      services: services,
+      technicians: technicians,
+      schedules: schedules,
+      users: users,
+      reservations: reservations,
+    };
+  }, DATA_CACHE_TTL_SECONDS.adminData);
 }
 
 function getSuperAdminData_() {
-  return {
-    adminUsers: getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_),
-    superAdmins: getResolvedSuperAdminUsers_(),
-  };
+  return getCachedDataset_('superAdminData', function() {
+    return {
+      adminUsers: getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_),
+      superAdmins: getResolvedSuperAdminUsers_(),
+    };
+  }, DATA_CACHE_TTL_SECONDS.superAdminData);
 }
 
 function syncLineUser_(payload) {
@@ -584,6 +618,52 @@ function createReservation_(payload) {
   appendRecord_(SHEETS.reservations, record);
   record.technicianName = assignmentType || matchedTechnician.name;
   return record;
+}
+
+function batchSaveSchedules_(payload) {
+  var items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    throw new Error('沒有可儲存的班表資料');
+  }
+
+  return items.map(function(item) {
+    return saveSchedule_(item || {});
+  });
+}
+
+function batchSaveTechnicians_(payload) {
+  var items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    throw new Error('沒有可儲存的技師資料');
+  }
+
+  return items.map(function(item) {
+    var normalizedItem = item || {};
+    var technician = saveTechnician_({
+      technicianId: normalizedItem.technicianId,
+      name: normalizedItem.name,
+      startTime: normalizedItem.startTime,
+      endTime: normalizedItem.endTime,
+      active: normalizedItem.active,
+    });
+
+    return saveTechnicianServices_({
+      technicianId: technician.technicianId,
+      serviceIds: normalizedItem.serviceIds || [],
+    });
+  });
+}
+
+function batchDeleteTechnicians_(payload) {
+  var technicianIds = Array.isArray(payload.technicianIds) ? payload.technicianIds : [];
+  if (!technicianIds.length) {
+    throw new Error('沒有可刪除的技師資料');
+  }
+
+  return technicianIds.map(function(technicianId) {
+    deleteTechnician_({ technicianId: technicianId });
+    return String(technicianId || '').trim();
+  });
 }
 
 function saveService_(payload) {
@@ -1019,10 +1099,12 @@ function ensureSheet_(sheetName, headers) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
+    markDataMutated_(true);
   }
 
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    markDataMutated_(true);
   } else {
     var currentHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
     var needsHeaderFix = headers.some(function(header, index) {
@@ -1030,6 +1112,7 @@ function ensureSheet_(sheetName, headers) {
     });
     if (needsHeaderFix) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      markDataMutated_(true);
     }
   }
 }
@@ -1054,64 +1137,50 @@ function ensurePlainTextColumns_(sheetName, columnNames) {
 }
 
 function getTableRecords_(sheetName) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet || sheet.getLastRow() < 2) {
-    return [];
-  }
-
-  var rawValues = sheet.getDataRange().getValues();
-  var displayValues = sheet.getDataRange().getDisplayValues();
-  var headers = rawValues.shift();
-  displayValues.shift();
-  return rawValues.reduce(function(records, row, rowIndex) {
-    if (row.join('') === '') {
-      return records;
-    }
-
-    var displayRow = displayValues[rowIndex] || [];
-      var record = {};
-    headers.forEach(function(header, index) {
-        record[header] = isTextColumn_(sheetName, header)
-          ? normalizeSheetTextValue_(displayRow[index])
-          : row[index];
-      });
-    records.push(record);
-    return records;
-  }, []);
+  return getTableSnapshot_(sheetName).records.slice();
 }
 
 function appendRecord_(sheetName, record) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  var headers = getSheetHeaders_(sheet);
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
+  var headers = snapshot.headers;
   var row = buildSheetRow_(sheetName, headers, record);
   sheet.appendRow(row);
+  snapshot.records.push(buildRecordFromSheetRow_(sheetName, headers, row));
+  markDataMutated_(false);
 }
 
 function upsertRecord_(sheetName, primaryKey, record) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  var headers = getSheetHeaders_(sheet);
-  var data = getTableRecords_(sheetName);
-  var rowIndex = data.findIndex(function(item) {
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
+  var headers = snapshot.headers;
+  var rowIndex = snapshot.records.findIndex(function(item) {
     return String(item[primaryKey]) === String(record[primaryKey]);
   });
   var row = buildSheetRow_(sheetName, headers, record);
+  var nextRecord = buildRecordFromSheetRow_(sheetName, headers, row);
 
   if (rowIndex === -1) {
     sheet.appendRow(row);
+    snapshot.records.push(nextRecord);
+    markDataMutated_(false);
     return;
   }
 
   sheet.getRange(rowIndex + 2, 1, 1, headers.length).setValues([row]);
+  snapshot.records[rowIndex] = nextRecord;
+  markDataMutated_(false);
 }
 
 function upsertRecordByComposite_(sheetName, keys, record) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  var headers = getSheetHeaders_(sheet);
-  var data = getTableRecords_(sheetName);
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
+  var headers = snapshot.headers;
   var matchedRowIndexes = [];
   var row = buildSheetRow_(sheetName, headers, record);
+  var nextRecord = buildRecordFromSheetRow_(sheetName, headers, row);
 
-  data.forEach(function(item, index) {
+  snapshot.records.forEach(function(item, index) {
     var isMatch = keys.every(function(key) {
       return normalizeCompositeKeyValue_(item[key]) === normalizeCompositeKeyValue_(record[key]);
     });
@@ -1123,17 +1192,23 @@ function upsertRecordByComposite_(sheetName, keys, record) {
 
   if (!matchedRowIndexes.length) {
     sheet.appendRow(row);
+    snapshot.records.push(nextRecord);
+    markDataMutated_(false);
     return;
   }
 
   sheet.getRange(matchedRowIndexes[0] + 2, 1, 1, headers.length).setValues([row]);
+  snapshot.records[matchedRowIndexes[0]] = nextRecord;
 
   matchedRowIndexes
     .slice(1)
     .reverse()
     .forEach(function(rowIndex) {
       sheet.deleteRow(rowIndex + 2);
+      snapshot.records.splice(rowIndex, 1);
     });
+
+  markDataMutated_(false);
 }
 
 function normalizeCompositeKeyValue_(value) {
@@ -1145,9 +1220,9 @@ function normalizeCompositeKeyValue_(value) {
 }
 
 function deleteRecord_(sheetName, primaryKey, value) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  var data = getTableRecords_(sheetName);
-  var rowIndex = data.findIndex(function(item) {
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
+  var rowIndex = snapshot.records.findIndex(function(item) {
     return String(item[primaryKey]) === String(value);
   });
 
@@ -1156,16 +1231,18 @@ function deleteRecord_(sheetName, primaryKey, value) {
   }
 
   sheet.deleteRow(rowIndex + 2);
+  snapshot.records.splice(rowIndex, 1);
+  markDataMutated_(false);
 }
 
 function deleteRecordIfExists_(sheetName, primaryKey, value) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet || sheet.getLastRow() < 2) {
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
+  if (!sheet || !snapshot.records.length) {
     return false;
   }
 
-  var data = getTableRecords_(sheetName);
-  var rowIndex = data.findIndex(function(item) {
+  var rowIndex = snapshot.records.findIndex(function(item) {
     return String(item[primaryKey]) === String(value);
   });
 
@@ -1174,27 +1251,40 @@ function deleteRecordIfExists_(sheetName, primaryKey, value) {
   }
 
   sheet.deleteRow(rowIndex + 2);
+  snapshot.records.splice(rowIndex, 1);
+  markDataMutated_(false);
   return true;
 }
 
 function deleteRecordsByPredicate_(sheetName, predicate) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  var data = getTableRecords_(sheetName);
+  var snapshot = getTableSnapshot_(sheetName);
+  var sheet = snapshot.sheet;
   var rowIndexes = [];
 
-  data.forEach(function(item, index) {
+  snapshot.records.forEach(function(item, index) {
     if (predicate(item)) {
       rowIndexes.push(index + 2);
     }
   });
 
+  if (!rowIndexes.length) {
+    return;
+  }
+
   rowIndexes.reverse().forEach(function(rowIndex) {
     sheet.deleteRow(rowIndex);
+    snapshot.records.splice(rowIndex - 2, 1);
   });
+
+  markDataMutated_(false);
 }
 
 function getSheetHeaders_(sheet) {
-  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!sheet) {
+    return [];
+  }
+
+  return getTableSnapshot_(sheet.getName()).headers.slice();
 }
 
 function isTextColumn_(sheetName, columnName) {
@@ -1213,6 +1303,135 @@ function buildSheetRow_(sheetName, headers, record) {
       ? normalizeSheetTextValue_(value)
       : value;
   });
+}
+
+function beginRequestContext_() {
+  REQUEST_CONTEXT_ = {
+    tables: {},
+    mutated: false,
+  };
+}
+
+function endRequestContext_() {
+  if (REQUEST_CONTEXT_ && REQUEST_CONTEXT_.mutated) {
+    bumpDataVersion_();
+  }
+
+  REQUEST_CONTEXT_ = null;
+}
+
+function markDataMutated_(clearTables) {
+  if (!REQUEST_CONTEXT_) {
+    bumpDataVersion_();
+    return;
+  }
+
+  REQUEST_CONTEXT_.mutated = true;
+  if (clearTables) {
+    REQUEST_CONTEXT_.tables = {};
+  }
+}
+
+function getCachedDataset_(cacheKey, builder, ttlSeconds) {
+  var cache = CacheService.getScriptCache();
+  var version = getDataVersion_();
+  var resolvedTtl = Math.max(Number(ttlSeconds || 0), 1);
+  var namespacedKey = [cacheKey, version].join(':');
+  var cachedValue = null;
+
+  try {
+    cachedValue = cache.get(namespacedKey);
+    if (cachedValue) {
+      return JSON.parse(cachedValue);
+    }
+  } catch (error) {
+    cachedValue = null;
+  }
+
+  var value = builder();
+
+  try {
+    cache.put(namespacedKey, JSON.stringify(value), resolvedTtl);
+  } catch (error) {
+    // 資料量超過 CacheService 限制時直接退回即時計算結果。
+  }
+
+  return value;
+}
+
+function getDataVersion_() {
+  var properties = PropertiesService.getScriptProperties();
+  var currentValue = String(properties.getProperty(DATA_VERSION_PROPERTY) || '').trim();
+
+  if (currentValue) {
+    return currentValue;
+  }
+
+  currentValue = String(Date.now());
+  properties.setProperty(DATA_VERSION_PROPERTY, currentValue);
+  return currentValue;
+}
+
+function bumpDataVersion_() {
+  PropertiesService.getScriptProperties().setProperty(
+    DATA_VERSION_PROPERTY,
+    [String(Date.now()), String(Math.floor(Math.random() * 1000000))].join('-')
+  );
+}
+
+function getTableSnapshot_(sheetName) {
+  if (REQUEST_CONTEXT_ && REQUEST_CONTEXT_.tables[sheetName]) {
+    return REQUEST_CONTEXT_.tables[sheetName];
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var snapshot = {
+    sheet: sheet,
+    headers: [],
+    records: [],
+  };
+
+  if (sheet && sheet.getLastColumn() > 0) {
+    var lastRow = sheet.getLastRow();
+    var lastColumn = sheet.getLastColumn();
+    var range = sheet.getRange(1, 1, Math.max(lastRow, 1), lastColumn);
+    var rawValues = range.getValues();
+    var displayValues = hasTextColumns_(sheetName) ? range.getDisplayValues() : null;
+    snapshot.headers = rawValues[0] || [];
+
+    for (var rowIndex = 1; rowIndex < rawValues.length; rowIndex += 1) {
+      var row = rawValues[rowIndex];
+      if (row.join('') === '') {
+        continue;
+      }
+
+      snapshot.records.push(buildRecordFromSourceRow_(sheetName, snapshot.headers, row, displayValues ? displayValues[rowIndex] : null));
+    }
+  }
+
+  if (REQUEST_CONTEXT_) {
+    REQUEST_CONTEXT_.tables[sheetName] = snapshot;
+  }
+
+  return snapshot;
+}
+
+function hasTextColumns_(sheetName) {
+  return Boolean((TEXT_COLUMNS_BY_SHEET[sheetName] || []).length);
+}
+
+function buildRecordFromSheetRow_(sheetName, headers, row) {
+  return buildRecordFromSourceRow_(sheetName, headers, row, row);
+}
+
+function buildRecordFromSourceRow_(sheetName, headers, row, displayRow) {
+  var record = {};
+  headers.forEach(function(header, index) {
+    record[header] = isTextColumn_(sheetName, header)
+      ? normalizeSheetTextValue_(displayRow ? displayRow[index] : row[index])
+      : row[index];
+  });
+  return record;
 }
 
 function parseRequestBody_(e) {

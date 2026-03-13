@@ -3,7 +3,8 @@ const STORAGE_KEYS = {
 };
 const CONFIG_PATH = "./config.json";
 const SLOT_INTERVAL_MINUTES = 30;
-const AUTO_SYNC_INTERVAL_MS = 30000;
+const AUTO_SYNC_INTERVAL_MS = 120000;
+const MIN_SILENT_REFRESH_INTERVAL_MS = 20000;
 const UNSPECIFIED_TECHNICIAN_VALUE = "__ANY_TECHNICIAN__";
 
 const state = {
@@ -20,6 +21,7 @@ const state = {
   user: null,
   isSubmittingBooking: false,
   isLoadingPublicData: false,
+  lastSilentRefreshAt: 0,
 };
 
 const elements = {
@@ -1131,7 +1133,20 @@ async function loadPublicData(options = {}) {
 }
 
 async function refreshUserAndData(options = {}) {
-  const { silent = false } = options;
+  const { silent = false, force = false } = options;
+
+  if (silent && !force) {
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - state.lastSilentRefreshAt < MIN_SILENT_REFRESH_INTERVAL_MS) {
+      return;
+    }
+
+    state.lastSilentRefreshAt = now;
+  }
 
   if (state.profile) {
     try {
@@ -1313,6 +1328,10 @@ function bindEvents() {
 
 function startAutoSync() {
   window.setInterval(() => {
+    if (!state.profile || state.isSubmittingBooking || state.isLoadingPublicData || document.visibilityState !== "visible") {
+      return;
+    }
+
     refreshUserAndData({ silent: true }).catch(() => {});
   }, AUTO_SYNC_INTERVAL_MS);
 }
