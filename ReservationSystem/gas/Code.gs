@@ -378,11 +378,9 @@ function syncAdminUser_(payload) {
   var nextStatus = existing && existing.status
     ? existing.status
     : '待審核';
-  var nextCanManageAdmins = isSuperAdmin_(userId)
-    ? true
-    : existing && existing.canManageAdmins !== undefined
-      ? normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, userId)
-      : normalizeAdminPermissionValue_('', nextStatus, userId);
+  var nextCanManageAdmins = existing && existing.canManageAdmins !== undefined
+    ? normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, userId)
+    : normalizeAdminPermissionValue_('', nextStatus, userId);
 
   var record = {
     userId: userId,
@@ -632,12 +630,8 @@ function updateAdminPermission_(payload, actorUserId) {
     throw new Error('找不到管理員');
   }
 
-  var canManageAdmins = isSuperAdmin_(existing.userId)
-    ? true
-    : toBoolean_(payload.canManageAdmins);
-  var nextPagePermissions = isSuperAdmin_(existing.userId)
-    ? getAllAdminPagePermissions_()
-    : normalizeAdminPagePermissionList_(payload.pagePermissions);
+  var canManageAdmins = toBoolean_(payload.canManageAdmins);
+  var nextPagePermissions = normalizeAdminPagePermissionList_(payload.pagePermissions);
 
   var record = {
     userId: existing.userId,
@@ -1937,10 +1931,6 @@ function normalizeSuperAdminUser_(item) {
 }
 
 function normalizeAdminPermissionValue_(value, status, userId) {
-  if (isSuperAdmin_(userId)) {
-    return true;
-  }
-
   var text = String(value || '').trim().toLowerCase();
   if (text === 'true' || text === '1' || text === 'yes') {
     return true;
@@ -1998,10 +1988,6 @@ function normalizeAdminPagePermissionList_(value) {
 }
 
 function normalizeStoredAdminPagePermissions_(value, userId) {
-  if (isSuperAdmin_(userId)) {
-    return getAllAdminPagePermissions_();
-  }
-
   var text = String(value || '').trim();
   if (!text) {
     return getAllAdminPagePermissions_();
@@ -2011,10 +1997,6 @@ function normalizeStoredAdminPagePermissions_(value, userId) {
 }
 
 function serializeAdminPagePermissions_(value, userId) {
-  if (isSuperAdmin_(userId)) {
-    return getAllAdminPagePermissions_().join(',');
-  }
-
   var pagePermissions = normalizeAdminPagePermissionList_(value);
   return pagePermissions.length ? pagePermissions.join(',') : ADMIN_PAGE_PERMISSION_NONE;
 }
@@ -2022,10 +2004,6 @@ function serializeAdminPagePermissions_(value, userId) {
 function hasAdminPagePermission_(adminUser, pageKey) {
   if (!adminUser) {
     return false;
-  }
-
-  if (isSuperAdmin_(adminUser.userId) || adminUser.isSuperAdmin) {
-    return true;
   }
 
   return (adminUser.pagePermissions || []).indexOf(String(pageKey || '').trim()) !== -1;

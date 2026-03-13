@@ -299,10 +299,6 @@ function getAdminStatusPill(status) {
 }
 
 function getPermissionPill(adminUser) {
-  if (adminUser.isSuperAdmin) {
-    return getStatusPill("最高管理員", "super");
-  }
-
   return adminUser.canManageAdmins
     ? getStatusPill("可管理管理員", "permission")
     : getStatusPill("僅一般 admin", "locked");
@@ -320,15 +316,6 @@ function getPagePermissionPills(adminUser) {
 }
 
 function renderAdminManagePermissionEditor(adminUser) {
-  if (adminUser.isSuperAdmin) {
-    return `
-      <div class="admin-permission-editor admin-permission-editor--readonly">
-        ${getPermissionPill(adminUser)}
-        <p class="helper-text">最高管理員固定可管理其他管理員，無法在此收回。</p>
-      </div>
-    `;
-  }
-
   const canManageAdmins = Boolean(adminUser.canManageAdmins);
   const buttonClass = canManageAdmins ? "button button--danger" : "button button--primary";
   const buttonLabel = canManageAdmins ? "收回管理員修改權限" : "授予管理員修改權限";
@@ -346,15 +333,6 @@ function renderAdminManagePermissionEditor(adminUser) {
 }
 
 function renderPagePermissionEditor(adminUser) {
-  if (adminUser.isSuperAdmin) {
-    return `
-      <div class="permission-editor permission-editor--readonly">
-        <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
-        <p class="helper-text">最高管理員固定擁有全部 admin 頁面權限。</p>
-      </div>
-    `;
-  }
-
   const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
   const checkboxes = ADMIN_PAGE_OPTIONS.map((option) => {
     const checked = permissions.includes(option.key) ? "checked" : "";
@@ -381,7 +359,7 @@ function updateSummary() {
   const allAdmins = state.adminUsers.length;
   const permissionManagers = state.adminUsers.filter((item) => item.canManageAdmins).length;
   const superAdmins = state.superAdmins.length;
-  const restrictedAdmins = state.adminUsers.filter((item) => !item.isSuperAdmin && Array.isArray(item.pagePermissions) && item.pagePermissions.length < ADMIN_PAGE_OPTIONS.length).length;
+  const restrictedAdmins = state.adminUsers.filter((item) => Array.isArray(item.pagePermissions) && item.pagePermissions.length < ADMIN_PAGE_OPTIONS.length).length;
   elements.summaryLabel.textContent = `最高管理員 ${superAdmins} 位 / 可管理管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位 / 全部 ${allAdmins} 位`;
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
