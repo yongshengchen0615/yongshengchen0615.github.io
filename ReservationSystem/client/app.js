@@ -112,10 +112,12 @@ function setApprovalGate(message, tone = "info") {
 
 function setOptions(select, options, placeholder) {
   select.innerHTML = "";
-  const placeholderOption = document.createElement("option");
-  placeholderOption.value = "";
-  placeholderOption.textContent = placeholder;
-  select.appendChild(placeholderOption);
+  if (placeholder) {
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = placeholder;
+    select.appendChild(placeholderOption);
+  }
 
   options.forEach((option) => {
     const item = document.createElement("option");
@@ -841,7 +843,7 @@ function refreshSelects() {
       label: item.name,
     })),
   ];
-  setOptions(elements.technicianSelect, technicianOptions, "請選擇技師");
+  setOptions(elements.technicianSelect, technicianOptions);
   if (technicianOptions.some((item) => item.value === state.selectedTechnicianId)) {
     elements.technicianSelect.value = state.selectedTechnicianId;
   } else if (technicianOptions.length) {
