@@ -277,17 +277,62 @@ h1 {
   font-size: 1.1rem;
 }
 
+.table-panel {
+  overflow: hidden;
+}
+
+.data-list {
+  display: grid;
+  gap: 16px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
 .list-table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: 1842px;
+  border-collapse: separate;
+  border-spacing: 0 14px;
 }
 
 .list-table th,
 .list-table td {
   padding: 14px 12px;
-  border-bottom: 1px solid rgba(146, 178, 200, 0.12);
   text-align: left;
   vertical-align: top;
+}
+
+.list-table th {
+  padding-top: 0;
+  padding-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.list-table tbody td {
+  border-top: 1px solid rgba(146, 178, 200, 0.12);
+  border-bottom: 1px solid rgba(146, 178, 200, 0.12);
+  background: rgba(7, 17, 24, 0.58);
+}
+
+.list-table tbody td:first-child {
+  border-left: 1px solid rgba(146, 178, 200, 0.12);
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
+}
+
+.list-table tbody td:last-child {
+  border-right: 1px solid rgba(146, 178, 200, 0.12);
+  border-top-right-radius: 18px;
+  border-bottom-right-radius: 18px;
 }
 
 .user-cell {
@@ -307,6 +352,15 @@ h1 {
 .user-cell__meta {
   display: grid;
   gap: 6px;
+}
+
+.cell-pages,
+.cell-note,
+.cell-last-login,
+.cell-status,
+.cell-editor,
+.cell-actions {
+  line-height: 1.55;
 }
 
 .button {
@@ -373,6 +427,29 @@ h1 {
   gap: 10px;
 }
 
+.table-actions--stack {
+  display: grid;
+  gap: 14px;
+}
+
+.table-actions--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.action-group {
+  display: grid;
+  gap: 10px;
+}
+
+.action-group__label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .status-pill-group {
   display: flex;
   flex-wrap: wrap;
@@ -387,6 +464,11 @@ h1 {
 .permission-editor {
   display: grid;
   gap: 12px;
+}
+
+.editor-summary {
+  display: grid;
+  gap: 4px;
 }
 
 .admin-permission-editor {
@@ -433,6 +515,10 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.helper-text--compact {
+  margin: 10px 0 0;
 }
 
 .empty-state {
@@ -516,6 +602,10 @@ h1 {
     align-items: stretch;
   }
 
+  .table-actions--grid {
+    grid-template-columns: 1fr;
+  }
+
   .access-panel__actions .button {
     flex: 1;
   }
@@ -534,17 +624,22 @@ h1 {
   }
 
   .list-table tr {
-    padding: 14px 0;
-    border-bottom: 1px solid rgba(146, 178, 200, 0.12);
+    padding: 0;
+    margin-bottom: 16px;
+    border: 1px solid rgba(146, 178, 200, 0.12);
+    border-radius: 18px;
+    background: rgba(7, 17, 24, 0.58);
+    overflow: hidden;
   }
 
   .list-table td {
-    padding: 8px 0;
+    padding: 12px 14px;
     border: 0;
     display: grid;
     grid-template-columns: minmax(84px, 110px) minmax(0, 1fr);
     gap: 12px;
     align-items: start;
+    background: transparent;
   }
 
   .list-table td::before {
@@ -562,6 +657,16 @@ h1 {
   .summary-card {
     min-width: unset;
     flex: 1 1 160px;
+  }
+
+  .table-scroll {
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .list-table {
+    min-width: 0;
+    border-spacing: 0;
   }
 }
 

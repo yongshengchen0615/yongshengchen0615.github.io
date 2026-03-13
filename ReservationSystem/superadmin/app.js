@@ -315,10 +315,15 @@ function getPagePermissionPills(adminUser) {
     .join("");
 }
 
+function getPagePermissionSummary(adminUser) {
+  const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
+  return `已開啟 ${permissions.length} / ${ADMIN_PAGE_OPTIONS.length} 個頁面`;
+}
+
 function renderAdminManagePermissionEditor(adminUser) {
   const canManageAdmins = Boolean(adminUser.canManageAdmins);
   const buttonClass = canManageAdmins ? "button button--danger" : "button button--primary";
-  const buttonLabel = canManageAdmins ? "收回管理員修改權限" : "授予管理員修改權限";
+  const buttonLabel = canManageAdmins ? "收回修改權限" : "授予修改權限";
   const helperText = canManageAdmins
     ? "此管理員目前可在 admin 後台管理其他管理員帳號。"
     : "授權後，此管理員可在 admin 後台管理其他管理員帳號。";
@@ -346,6 +351,10 @@ function renderPagePermissionEditor(adminUser) {
 
   return `
     <div class="permission-editor">
+      <div class="editor-summary">
+        <strong>${getPagePermissionSummary(adminUser)}</strong>
+        <span class="helper-text">可直接勾選要顯示在 admin 後台的功能頁。</span>
+      </div>
       <div class="permission-checkbox-grid">${checkboxes}</div>
       <div class="permission-editor__footer">
         <span class="helper-text">未勾選的頁面在 admin 後台不會顯示，也無法執行對應操作。</span>
@@ -389,59 +398,92 @@ function renderAdminTable() {
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
     .map((adminUser) => {
+      const isCurrentUser = adminUser.userId === getCurrentAdminUserId();
       const statusButtons = `
-        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">設待審核</button>
+        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">待審核</button>
         <button type="button" class="button button--primary" data-review-admin="${adminUser.userId}" data-review-status="已通過">通過</button>
         <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
         <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
       `;
-      const deleteButton = adminUser.userId === getCurrentAdminUserId()
+      const deleteButton = isCurrentUser
         ? `<span class="helper-text">目前登入帳號不可刪除</span>`
         : `<button type="button" class="button button--danger" data-delete-admin="${adminUser.userId}">刪除管理員</button>`;
+      const identityPills = [getAdminStatusPill(adminUser.status)];
+
+      if (adminUser.isSuperAdmin) {
+        identityPills.push(getStatusPill("最高管理員", "super"));
+      }
+
+      if (isCurrentUser) {
+        identityPills.push(getStatusPill("目前登入", "permission"));
+      }
 
       return `
-        <tr>
-          <td data-label="管理員">
+        <tr class="admin-row">
+          <td class="cell-admin" data-label="管理員">
             <div class="user-cell">
               ${adminUser.pictureUrl ? `<img class="user-avatar" src="${adminUser.pictureUrl}" alt="${adminUser.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${adminUser.displayName.slice(0, 1) || "A"}</div>`}
               <div class="user-cell__meta">
                 <strong>${adminUser.displayName}</strong>
                 <small>${adminUser.userId}</small>
+                <div class="status-pill-group">${identityPills.join("")}</div>
               </div>
             </div>
           </td>
-          <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
-          <td data-label="管理員修改權限">${getPermissionPill(adminUser)}</td>
-          <td data-label="管理員修改權限設定">${renderAdminManagePermissionEditor(adminUser)}</td>
-          <td data-label="頁面權限">
+          <td class="cell-status" data-label="管理狀態">${getPermissionPill(adminUser)}</td>
+          <td class="cell-editor" data-label="管理員修改權限設定">${renderAdminManagePermissionEditor(adminUser)}</td>
+          <td class="cell-pages" data-label="頁面權限">
             <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+            <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
           </td>
-          <td data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
-          <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
-          <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
-          <td data-label="操作"><div class="table-actions">${statusButtons}${deleteButton}</div></td>
+          <td class="cell-editor" data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
+          <td class="cell-last-login" data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
+          <td class="cell-note" data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
+          <td class="cell-actions" data-label="操作">
+            <div class="table-actions table-actions--stack">
+              <div class="action-group">
+                <span class="action-group__label">審核狀態</span>
+                <div class="table-actions table-actions--grid">${statusButtons}</div>
+              </div>
+              <div class="action-group">
+                <span class="action-group__label">帳號操作</span>
+                <div class="table-actions">${deleteButton}</div>
+              </div>
+            </div>
+          </td>
         </tr>
       `;
     })
     .join("");
 
   elements.adminPermissionTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>管理員</th>
-          <th>狀態</th>
-          <th>管理員修改權限</th>
-          <th>管理員修改權限設定</th>
-          <th>頁面權限</th>
-          <th>頁面權限設定</th>
-          <th>最後登入</th>
-          <th>備註</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="list-table list-table--permissions">
+        <colgroup>
+          <col style="width: 280px;" />
+          <col style="width: 156px;" />
+          <col style="width: 260px;" />
+          <col style="width: 220px;" />
+          <col style="width: 310px;" />
+          <col style="width: 156px;" />
+          <col style="width: 220px;" />
+          <col style="width: 240px;" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>管理員</th>
+            <th>管理狀態</th>
+            <th>管理員修改權限設定</th>
+            <th>頁面權限</th>
+            <th>頁面權限設定</th>
+            <th>最後登入</th>
+            <th>備註</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 
   updateSummary();
