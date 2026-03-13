@@ -80,8 +80,10 @@ const elements = {
   refreshDashboardButton: document.querySelector("#refreshDashboardButton"),
   workflowSummary: document.querySelector("#workflowSummary"),
   workflowHint: document.querySelector("#workflowHint"),
+  adminPagePermissionNotice: document.querySelector("#adminPagePermissionNotice"),
   pageTabs: Array.from(document.querySelectorAll("[data-page-trigger]")),
   pagePanels: Array.from(document.querySelectorAll("[data-admin-page]")),
+  pageScopedElements: Array.from(document.querySelectorAll("[data-admin-page-scope]")),
   serviceForm: document.querySelector("#serviceForm"),
   serviceFormMode: document.querySelector("#serviceFormMode"),
   serviceResultLabel: document.querySelector("#serviceResultLabel"),
@@ -183,6 +185,22 @@ function isAdminPageAllowed(pageKey) {
   return getAllowedAdminPages().includes(pageKey);
 }
 
+function getScopedAdminPages(scopeValue) {
+  return String(scopeValue || "")
+    .split(",")
+    .map((pageKey) => pageKey.trim())
+    .filter((pageKey) => getAllAdminPageKeys().includes(pageKey));
+}
+
+function isAnyScopedAdminPageAllowed(scopeValue) {
+  const scopedPages = getScopedAdminPages(scopeValue);
+  if (!scopedPages.length) {
+    return true;
+  }
+
+  return scopedPages.some((pageKey) => isAdminPageAllowed(pageKey));
+}
+
 function getFirstAllowedAdminPage() {
   return getAllowedAdminPages()[0] || "";
 }
@@ -200,11 +218,12 @@ function assertAdminActionAccess(action) {
 
 function applyAdminPageAccess() {
   const allowedPages = new Set(getAllowedAdminPages());
+  const shouldApplyVisibility = Boolean(state.adminUser) && state.adminUser.status === "已通過";
 
   elements.pageTabs.forEach((button) => {
     const pageKey = button.dataset.pageTrigger;
     const isAllowed = allowedPages.has(pageKey);
-    button.classList.toggle("is-hidden", Boolean(state.adminUser) && !isAllowed);
+    button.classList.toggle("is-hidden", shouldApplyVisibility && !isAllowed);
   });
 
   elements.pagePanels.forEach((panel) => {
@@ -214,6 +233,16 @@ function applyAdminPageAccess() {
       panel.classList.remove("is-active");
     }
   });
+
+  elements.pageScopedElements.forEach((element) => {
+    const isAllowed = isAnyScopedAdminPageAllowed(element.dataset.adminPageScope);
+    element.classList.toggle("is-hidden", shouldApplyVisibility && !isAllowed);
+  });
+
+  if (elements.adminPagePermissionNotice) {
+    const shouldShowNotice = shouldApplyVisibility && allowedPages.size === 0;
+    elements.adminPagePermissionNotice.classList.toggle("is-hidden", !shouldShowNotice);
+  }
 
   const fallbackPage = allowedPages.has(state.ui.activePage) ? state.ui.activePage : getFirstAllowedAdminPage();
   if (fallbackPage) {
