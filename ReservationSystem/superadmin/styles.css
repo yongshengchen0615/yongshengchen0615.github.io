@@ -227,6 +227,9 @@ h1 {
   background: rgba(19, 38, 52, 0.9);
   font-size: 0.88rem;
   font-weight: 700;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .status-badge[data-tone="approved"],
@@ -313,8 +316,6 @@ h1 {
 .user-cell__meta strong,
 .user-cell__meta small,
 .helper-text,
-.status-badge,
-.status-pill,
 .list-table th,
 .list-table td {
   overflow-wrap: anywhere;
