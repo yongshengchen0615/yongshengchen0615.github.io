@@ -903,6 +903,15 @@ h1 {
   min-width: 120px;
 }
 
+.bulk-technician-table__time-cell,
+.bulk-technician-table__time-input {
+  min-width: 0;
+}
+
+.bulk-technician-table__time-input {
+  max-width: 100%;
+}
+
 .bulk-technician-services {
   display: grid;
   gap: 6px;
@@ -1187,6 +1196,16 @@ h1 {
   .bulk-technician-table input[type="text"],
   .bulk-technician-table input[type="time"] {
     min-width: 0;
+  }
+
+  .bulk-technician-table__time-cell {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .bulk-technician-table__time-input {
+    width: 100%;
+    min-inline-size: 0;
   }
 
   .user-cell {

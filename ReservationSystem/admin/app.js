@@ -1484,11 +1484,11 @@ function createBulkTechnicianRowMarkup(technician = null) {
       <td data-label="技師名稱">
         <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
       </td>
-      <td data-label="上班時間">
-        <input type="time" name="startTime" value="${escapeHtml(startTime)}" />
+      <td data-label="上班時間" class="bulk-technician-table__time-cell">
+        <input type="time" name="startTime" class="bulk-technician-table__time-input" value="${escapeHtml(startTime)}" />
       </td>
-      <td data-label="下班時間">
-        <input type="time" name="endTime" value="${escapeHtml(endTime)}" />
+      <td data-label="下班時間" class="bulk-technician-table__time-cell">
+        <input type="time" name="endTime" class="bulk-technician-table__time-input" value="${escapeHtml(endTime)}" />
       </td>
       <td data-label="啟用">
         <label class="checkbox-field checkbox-field--compact">
