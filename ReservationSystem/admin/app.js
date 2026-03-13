@@ -259,7 +259,7 @@ function applyGasUrlPreference() {
 }
 
 function isApprovedAdmin() {
-  return state.adminUser?.status === "已通過";
+  return state.adminUser?.status === "已通過" || Boolean(state.adminUser?.isSuperAdmin);
 }
 
 function canManageAdminAccess() {
@@ -324,6 +324,15 @@ function renderAdminAccessState() {
     elements.adminStatusText.textContent = "正在同步你的管理員資料與審核狀態。";
     setAdminApprovalMessage("正在確認管理員存取權限...", "pending");
     setAdminContentAccess(false);
+    return;
+  }
+
+  if (state.adminUser.isSuperAdmin) {
+    elements.adminStatusBadge.textContent = "最高管理員";
+    elements.adminStatusBadge.dataset.tone = "approved";
+    elements.adminStatusText.textContent = "你是最高管理員，可直接使用後台與管理管理員權限。";
+    setAdminApprovalMessage("已以最高管理員身分登入，可直接使用後台。", "approved");
+    setAdminContentAccess(true);
     return;
   }
 

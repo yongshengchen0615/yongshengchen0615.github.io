@@ -1162,6 +1162,10 @@ function verifyAdminAccess_(adminUserId) {
     throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
   }
 
+  if (isSuperAdmin_(adminUser.userId)) {
+    return adminUser;
+  }
+
   if (!isAdminApproved_(adminUser.status)) {
     if (normalizeAdminStatus_(adminUser.status) === '待審核') {
       throw new Error('管理員帳號待審核，尚不可使用後台');
@@ -1174,7 +1178,17 @@ function verifyAdminAccess_(adminUserId) {
 }
 
 function verifySuperAdminAccess_(adminUserId) {
-  var adminUser = verifyAdminAccess_(adminUserId);
+  validateRequired_(adminUserId, 'adminUserId');
+
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var adminUser = adminUsers.find(function(item) {
+    return item.userId === String(adminUserId || '').trim();
+  });
+
+  if (!adminUser) {
+    throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
+  }
+
   if (!isSuperAdmin_(adminUser.userId)) {
     throw new Error('此 LINE 帳號沒有最高管理員權限');
   }

@@ -30,6 +30,7 @@
 - 使用獨立的 `superadmin/` 頁面登入
 - 可設定哪些 admin 具備「管理其他管理員」的權限
 - 最高管理員名單可由 `AdminUsers.isSuperAdmin` 直接控制，未設定時才 fallback 到 GAS Script Properties 的 `SUPER_ADMIN_LINE_USER_IDS`
+- 最高管理員不受一般 admin 的 `status` 待審核限制，可直接進入後台
 
 ### GAS / Google Sheets
 - 所有技師、服務、班表、預約資料皆透過 GAS 寫入與讀取
@@ -69,6 +70,7 @@
 8. 執行身分建議設為你自己，存取權限可依需求設定。
 9. 若要直接停用或恢復最高管理員，可在 `AdminUsers` 工作表直接修改該帳號的 `status`；系統同步登入時不會再自動覆寫既有狀態。
 10. 若要直接指定或取消最高管理員，可在 `AdminUsers` 工作表直接修改 `isSuperAdmin` 為 `true` 或 `false`。
+11. 最高管理員登入 admin 或 superadmin 頁面時，會略過一般管理員待審核檢查。
 
 ## 工作表欄位
 
