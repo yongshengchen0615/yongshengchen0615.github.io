@@ -1854,6 +1854,11 @@ function renderScheduleCalendar() {
     const schedules = getSchedulesCoveringDate(dateText);
     const workingCount = schedules.filter((item) => item.isWorking).length;
     const offCount = schedules.length - workingCount;
+    const compactStatus = workingCount
+      ? `${workingCount} 可約`
+      : schedules.length
+        ? `${offCount} 休假`
+        : "無班";
     const classes = ["schedule-day"];
 
     if (dateText === todayText) {
@@ -1872,6 +1877,7 @@ function renderScheduleCalendar() {
       <div class="${classes.join(" ")}">
         <button type="button" class="schedule-day__button" data-schedule-date="${dateText}">
           <span class="schedule-day__number">${day}</span>
+          <span class="schedule-day__summary">${compactStatus}</span>
           <span class="schedule-day__meta">
             <span class="schedule-day__count">${schedules.length ? `${schedules.length} 位技師` : "尚無排班"}</span>
             <span class="schedule-day__status">${workingCount ? `${workingCount} 位可預約` : offCount ? `${offCount} 位休假` : ""}</span>

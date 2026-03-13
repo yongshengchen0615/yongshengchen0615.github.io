@@ -429,6 +429,10 @@ h1 {
   display: block;
 }
 
+.command-scroll {
+  width: 100%;
+}
+
 .command-actions {
   display: flex;
   align-items: center;
@@ -569,6 +573,10 @@ h1 {
   justify-content: flex-end;
 }
 
+.schedule-calendar-shell {
+  width: 100%;
+}
+
 .schedule-weekdays,
 .schedule-calendar-grid {
   display: grid;
@@ -624,6 +632,14 @@ h1 {
 .schedule-day__number {
   font-size: 1rem;
   font-weight: 800;
+}
+
+.schedule-day__summary {
+  display: none;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .schedule-day__meta {
@@ -1244,19 +1260,26 @@ textarea {
     overflow: hidden;
   }
 
-  .command-actions {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
+  .command-scroll {
     overflow-x: auto;
+    overflow-y: hidden;
     margin: 0 -28px;
     padding: 0 28px 6px;
-    scroll-snap-type: x proximity;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
   }
 
-  .command-actions::-webkit-scrollbar {
+  .command-scroll::-webkit-scrollbar {
     display: none;
+  }
+
+  .command-actions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    min-width: max-content;
+    scroll-snap-type: x proximity;
   }
 
   .workflow-strip {
@@ -1275,6 +1298,62 @@ textarea {
 
   .schedule-calendar-actions {
     justify-content: stretch;
+  }
+
+  .schedule-calendar-shell {
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0 -8px;
+    padding: 0 8px 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+
+  .schedule-calendar-shell::-webkit-scrollbar {
+    display: none;
+  }
+
+  .schedule-weekdays,
+  .schedule-calendar-grid {
+    min-width: 560px;
+    gap: 6px;
+  }
+
+  .schedule-weekdays {
+    margin-bottom: 6px;
+  }
+
+  .schedule-day,
+  .schedule-day--empty,
+  .schedule-day__button {
+    min-height: 76px;
+  }
+
+  .schedule-day__button {
+    gap: 6px;
+    padding: 8px;
+    align-content: center;
+  }
+
+  .schedule-day__number {
+    font-size: 0.92rem;
+  }
+
+  .schedule-day__summary {
+    display: block;
+    font-size: 0.72rem;
+  }
+
+  .schedule-day__meta {
+    display: none;
+  }
+
+  .schedule-day__count,
+  .schedule-day__status {
+    font-size: 0.72rem;
+    line-height: 1.3;
   }
 
   .mode-badge {
@@ -1385,7 +1464,7 @@ textarea {
   .schedule-day,
   .schedule-day--empty,
   .schedule-day__button {
-    min-height: 84px;
+    min-height: 76px;
   }
 }
 
@@ -1401,8 +1480,22 @@ textarea {
   }
 
   .command-actions {
+    min-width: max-content;
+  }
+
+  .command-scroll {
     margin: 0 -20px;
     padding: 0 20px 6px;
+  }
+
+  .schedule-calendar-shell {
+    margin: 0 -4px;
+    padding: 0 4px 4px;
+  }
+
+  .schedule-weekdays,
+  .schedule-calendar-grid {
+    min-width: 520px;
   }
 
   .top-loading {
@@ -1447,6 +1540,25 @@ textarea {
 
   h1 {
     font-size: 2.15rem;
+  }
+
+  .schedule-weekdays,
+  .schedule-calendar-grid {
+    min-width: 500px;
+  }
+
+  .schedule-day,
+  .schedule-day--empty,
+  .schedule-day__button {
+    min-height: 72px;
+  }
+
+  .schedule-day__button {
+    padding: 7px;
+  }
+
+  .schedule-day__summary {
+    font-size: 0.7rem;
   }
 
   .list-table td {
