@@ -1263,12 +1263,13 @@ textarea {
   .command-scroll {
     overflow-x: auto;
     overflow-y: hidden;
-    margin: 0 -28px;
-    padding: 0 28px 6px;
+    max-width: 100%;
+    padding: 0 0 6px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     touch-action: pan-x;
+    scroll-padding-inline: 0 20px;
   }
 
   .command-scroll::-webkit-scrollbar {
@@ -1279,7 +1280,13 @@ textarea {
     display: inline-flex;
     flex-wrap: nowrap;
     min-width: max-content;
+    padding-right: 20px;
     scroll-snap-type: x proximity;
+  }
+
+  .command-actions::after {
+    content: "";
+    flex: 0 0 10px;
   }
 
   .workflow-strip {
@@ -1303,8 +1310,8 @@ textarea {
   .schedule-calendar-shell {
     overflow-x: auto;
     overflow-y: hidden;
-    margin: 0 -8px;
-    padding: 0 8px 4px;
+    max-width: 100%;
+    padding: 0 0 4px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
@@ -1317,7 +1324,9 @@ textarea {
 
   .schedule-weekdays,
   .schedule-calendar-grid {
-    min-width: 560px;
+    width: max-content;
+    min-width: 0;
+    grid-template-columns: repeat(7, minmax(72px, 72px));
     gap: 6px;
   }
 
@@ -1481,21 +1490,16 @@ textarea {
 
   .command-actions {
     min-width: max-content;
-  }
-
-  .command-scroll {
-    margin: 0 -20px;
-    padding: 0 20px 6px;
+    padding-right: 16px;
   }
 
   .schedule-calendar-shell {
-    margin: 0 -4px;
-    padding: 0 4px 4px;
+    padding: 0 0 4px;
   }
 
   .schedule-weekdays,
   .schedule-calendar-grid {
-    min-width: 520px;
+    grid-template-columns: repeat(7, minmax(68px, 68px));
   }
 
   .top-loading {
@@ -1544,7 +1548,7 @@ textarea {
 
   .schedule-weekdays,
   .schedule-calendar-grid {
-    min-width: 500px;
+    grid-template-columns: repeat(7, minmax(64px, 64px));
   }
 
   .schedule-day,
