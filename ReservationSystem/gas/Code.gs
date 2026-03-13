@@ -9,6 +9,29 @@ const SHEETS = {
   reservations: 'Reservations',
 };
 
+/* ---------- Status Constants ---------- */
+const STATUS_APPROVED = '已通過';
+const STATUS_PENDING = '待審核';
+const STATUS_REJECTED = '已拒絕';
+const STATUS_DISABLED = '已停用';
+const STATUS_DRAFT = '未送審核';
+const STATUS_UNLINKED = '未綁定';
+
+const RESERVATION_STATUS_BOOKED = '已預約';
+const RESERVATION_STATUS_COMPLETED = '已完成';
+const RESERVATION_STATUS_CANCELLED = '已取消';
+
+const ASSIGNMENT_TYPE_ON_SITE = '現場安排';
+const ASSIGNMENT_TYPE_DESIGNATED = '指定技師';
+
+const DEFAULT_DISPLAY_NAME_USER = 'LINE 使用者';
+const DEFAULT_DISPLAY_NAME_ADMIN = 'LINE 管理員';
+const DEFAULT_DISPLAY_NAME_TECHNICIAN = 'LINE 技師';
+const DEFAULT_DISPLAY_NAME_SUPER_ADMIN = 'LINE 最高管理員';
+
+const MINUTES_PER_DAY = 24 * 60;
+const SERVICE_NAME_SEPARATOR = '、';
+
 const ADMIN_PAGE_KEYS = ['service', 'technician', 'schedule', 'reservation', 'user'];
 const ADMIN_PAGE_PERMISSION_NONE = '__NONE__';
 const ADMIN_ACTION_PAGE_MAP = {
@@ -83,129 +106,61 @@ function doPost(e) {
     initializeSheets_();
     var body = parseRequestBody_(e);
     var action = body.action;
+    var payload = body.payload || {};
 
-    if (action === 'syncLineUser') {
-      return jsonResponse_({ ok: true, data: syncLineUser_(body.payload || {}) });
+    /* --- Public actions (no admin required) --- */
+    var publicActions = {
+      syncLineUser:         function() { return syncLineUser_(payload); },
+      syncAdminUser:        function() { return syncAdminUser_(payload); },
+      syncTechnicianUser:   function() { return syncTechnicianUser_(payload); },
+      syncSuperAdminUser:   function() { return syncSuperAdminUser_(payload); },
+      submitUserApplication:function() { return submitUserApplication_(payload); },
+      createReservation:    function() { return createReservation_(payload); },
+    };
+
+    if (publicActions[action]) {
+      return jsonResponse_({ ok: true, data: publicActions[action]() });
     }
 
-    if (action === 'syncAdminUser') {
-      return jsonResponse_({ ok: true, data: syncAdminUser_(body.payload || {}) });
-    }
+    /* --- Super-admin actions --- */
+    var superAdminActions = {
+      updateAdminPermission:   function() { return updateAdminPermission_(payload, body.adminUserId); },
+      reviewAdminUser:         function() { return reviewAdminUser_(payload, body.adminUserId, true); },
+      updateAdminReviewStatus: function() { return reviewAdminUser_(payload, body.adminUserId, true); },
+      deleteAdminUser:         function() { return deleteAdminUser_(payload, body.adminUserId); },
+    };
 
-    if (action === 'syncTechnicianUser') {
-      return jsonResponse_({ ok: true, data: syncTechnicianUser_(body.payload || {}) });
-    }
-
-    if (action === 'syncSuperAdminUser') {
-      return jsonResponse_({ ok: true, data: syncSuperAdminUser_(body.payload || {}) });
-    }
-
-    if (action === 'submitUserApplication') {
-      return jsonResponse_({ ok: true, data: submitUserApplication_(body.payload || {}) });
-    }
-
-    if (action === 'createReservation') {
-      return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
-    }
-
-    if (action === 'updateAdminPermission') {
+    if (superAdminActions[action]) {
       verifySuperAdminAccess_(body.adminUserId);
-      return jsonResponse_({ ok: true, data: updateAdminPermission_(body.payload || {}, body.adminUserId) });
+      return jsonResponse_({ ok: true, data: superAdminActions[action]() });
     }
 
-    if (action === 'reviewAdminUser') {
-      verifySuperAdminAccess_(body.adminUserId);
-      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
-    }
-
-    if (action === 'updateAdminReviewStatus') {
-      verifySuperAdminAccess_(body.adminUserId);
-      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
-    }
-
-    if (action === 'deleteAdminUser') {
-      verifySuperAdminAccess_(body.adminUserId);
-      return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
-    }
-
+    /* --- Admin actions (with page permission) --- */
     var adminActor = verifyAdminAccess_(body.adminUserId);
+    var adminActions = {
+      reviewUser:            function() { return reviewUser_(payload); },
+      reviewTechnician:      function() { return reviewTechnician_(payload); },
+      deleteUser:            function() { return deleteUser_(payload); },
+      saveService:           function() { return saveService_(payload); },
+      saveTechnician:        function() { return saveTechnician_(payload); },
+      saveTechnicianServices:function() { return saveTechnicianServices_(payload); },
+      saveSchedule:          function() { return saveSchedule_(payload); },
+      saveReservation:       function() { return saveReservation_(payload); },
+      deleteService:         function() { return deleteService_(payload); },
+      deleteTechnician:      function() { return deleteTechnician_(payload); },
+      deleteSchedule:        function() { return deleteSchedule_(payload); },
+      deleteReservation:     function() { return deleteReservation_(payload); },
+      batchSaveSchedules:    function() { return batchSaveSchedules_(payload); },
+      batchSaveTechnicians:  function() { return batchSaveTechnicians_(payload); },
+      batchDeleteTechnicians:function() { return batchDeleteTechnicians_(payload); },
+    };
 
-    if (action === 'reviewUser') {
+    if (adminActions[action]) {
       ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
+      return jsonResponse_({ ok: true, data: adminActions[action]() });
     }
 
-    if (action === 'reviewTechnician') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: reviewTechnician_(body.payload || {}) });
-    }
-
-    if (action === 'deleteUser') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: deleteUser_(body.payload || {}) });
-    }
-
-    if (action === 'saveService') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: saveService_(body.payload || {}) });
-    }
-
-    if (action === 'saveTechnician') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: saveTechnician_(body.payload || {}) });
-    }
-
-    if (action === 'saveTechnicianServices') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: saveTechnicianServices_(body.payload || {}) });
-    }
-
-    if (action === 'saveSchedule') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: saveSchedule_(body.payload || {}) });
-    }
-
-    if (action === 'saveReservation') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: saveReservation_(body.payload || {}) });
-    }
-
-    if (action === 'deleteService') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: deleteService_(body.payload || {}) });
-    }
-
-    if (action === 'deleteTechnician') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: deleteTechnician_(body.payload || {}) });
-    }
-
-    if (action === 'deleteSchedule') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: deleteSchedule_(body.payload || {}) });
-    }
-
-    if (action === 'deleteReservation') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: deleteReservation_(body.payload || {}) });
-    }
-
-    if (action === 'batchSaveSchedules') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: batchSaveSchedules_(body.payload || {}) });
-    }
-
-    if (action === 'batchSaveTechnicians') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: batchSaveTechnicians_(body.payload || {}) });
-    }
-
-    if (action === 'batchDeleteTechnicians') {
-      ensureAdminActionAccess_(adminActor, action);
-      return jsonResponse_({ ok: true, data: batchDeleteTechnicians_(body.payload || {}) });
-    }
-
-    throw new Error('Unsupported action: ' + action);
+    throw new Error('不支援的操作類型');
   } catch (error) {
     return jsonResponse_({ ok: false, message: error.message });
   } finally {
@@ -253,19 +208,7 @@ function getAdminData_(adminUser) {
     var userMap = indexBy_(users, 'userId');
 
     reservations = reservations.map(function(item) {
-      var reservationServices = getReservationServices_(item, serviceMap);
-      item.serviceName = reservationServices.map(function(service) {
-        return service.name;
-      }).join('、');
-      item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
-        return sum + Number(service.durationMinutes || 0);
-      }, 0);
-      item.totalPrice = reservationServices.reduce(function(sum, service) {
-        return sum + Number(service.price || 0);
-      }, 0);
-      item.technicianName = getReservationTechnicianLabel_(item, technicianMap);
-      item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
-      return item;
+      return enrichReservation_(item, serviceMap, technicianMap, userMap);
     });
 
     var currentAdminUser = adminUsers.find(function(item) {
@@ -313,18 +256,7 @@ function getTechnicianData_(technicianUser) {
           return reservation.technicianId === technicianId;
         })
         .map(function(item) {
-          var reservationServices = getReservationServices_(item, serviceMap);
-          item.serviceName = reservationServices.map(function(service) {
-            return service.name;
-          }).join('、');
-          item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
-            return sum + Number(service.durationMinutes || 0);
-          }, 0);
-          item.totalPrice = reservationServices.reduce(function(sum, service) {
-            return sum + Number(service.price || 0);
-          }, 0);
-          item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
-          return item;
+          return enrichReservation_(item, serviceMap, null, userMap);
         })
         .sort(function(left, right) {
           return (String(right.date) + ' ' + String(right.startTime)).localeCompare(String(left.date) + ' ' + String(left.startTime));
@@ -351,11 +283,11 @@ function syncLineUser_(payload) {
     return item.userId === userId;
   });
   var nowText = toIsoString_(new Date());
-  var status = existing ? existing.status : '未送審核';
+  var status = existing ? existing.status : STATUS_DRAFT;
 
   var record = {
     userId: userId,
-    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
+    displayName: String(payload.displayName || existing && existing.displayName || DEFAULT_DISPLAY_NAME_USER).trim() || DEFAULT_DISPLAY_NAME_USER,
     customerName: String(existing && existing.customerName || '').trim(),
     phone: String(existing && existing.phone || '').trim(),
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
@@ -385,9 +317,9 @@ function syncAdminUser_(payload) {
     if (existing) {
       var mergedAdminRecord = {
         userId: existing.userId,
-        displayName: String(payload.displayName || approvedSuperAdmin.displayName || existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+        displayName: String(payload.displayName || approvedSuperAdmin.displayName || existing.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
         pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || existing.pictureUrl || '').trim(),
-        status: '已通過',
+        status: STATUS_APPROVED,
         canManageAdmins: true,
         pagePermissions: serializeAdminPagePermissions_(getAllAdminPagePermissions_(), existing.userId),
         note: String(approvedSuperAdmin.note || existing.note || '').trim(),
@@ -402,9 +334,9 @@ function syncAdminUser_(payload) {
 
     return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, {
       userId: userId,
-      displayName: String(payload.displayName || approvedSuperAdmin.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+      displayName: String(payload.displayName || approvedSuperAdmin.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
       pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || '').trim(),
-      status: '已通過',
+      status: STATUS_APPROVED,
       note: String(approvedSuperAdmin.note || '').trim(),
       createdAt: String(approvedSuperAdmin.createdAt || ''),
       updatedAt: nowText,
@@ -414,14 +346,14 @@ function syncAdminUser_(payload) {
 
   var nextStatus = existing && existing.status
     ? existing.status
-    : '待審核';
+    : STATUS_PENDING;
   var nextCanManageAdmins = existing && existing.canManageAdmins !== undefined
     ? normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, userId)
     : normalizeAdminPermissionValue_('', nextStatus, userId);
 
   var record = {
     userId: userId,
-    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 管理員').trim() || 'LINE 管理員',
+    displayName: String(payload.displayName || existing && existing.displayName || DEFAULT_DISPLAY_NAME_ADMIN).trim() || DEFAULT_DISPLAY_NAME_ADMIN,
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(nextStatus),
     canManageAdmins: nextCanManageAdmins,
@@ -472,9 +404,9 @@ function syncTechnicianUser_(payload) {
     active: existing ? existing.active : false,
     updatedAt: nowText,
     lineUserId: userId,
-    profileDisplayName: String(payload.displayName || existing && existing.profileDisplayName || existing && existing.name || 'LINE 技師').trim() || 'LINE 技師',
+    profileDisplayName: String(payload.displayName || existing && existing.profileDisplayName || existing && existing.name || DEFAULT_DISPLAY_NAME_TECHNICIAN).trim() || DEFAULT_DISPLAY_NAME_TECHNICIAN,
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
-    reviewStatus: existing && existing.lineUserId ? normalizeTechnicianStatus_(existing.status, userId) : '待審核',
+    reviewStatus: existing && existing.lineUserId ? normalizeTechnicianStatus_(existing.status, userId) : STATUS_PENDING,
     reviewNote: existing ? existing.note : '',
     lastLoginAt: nowText,
   };
@@ -495,9 +427,9 @@ function syncSuperAdminUser_(payload) {
 
   var record = {
     userId: userId,
-    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+    displayName: String(payload.displayName || existing && existing.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
-    status: normalizeAdminStatus_(existing && existing.status ? existing.status : '待審核'),
+    status: normalizeAdminStatus_(existing && existing.status ? existing.status : STATUS_PENDING),
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
@@ -520,15 +452,15 @@ function submitUserApplication_(payload) {
     return item.userId === userId;
   });
   var nowText = toIsoString_(new Date());
-  var nextStatus = '待審核';
+  var nextStatus = STATUS_PENDING;
 
-  if (existing && (existing.status === '已通過' || existing.status === '已停用' || existing.status === '已拒絕')) {
+  if (existing && (existing.status === STATUS_APPROVED || existing.status === STATUS_DISABLED || existing.status === STATUS_REJECTED)) {
     nextStatus = existing.status;
   }
 
   var record = {
     userId: userId,
-    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 使用者').trim() || 'LINE 使用者',
+    displayName: String(payload.displayName || existing && existing.displayName || DEFAULT_DISPLAY_NAME_USER).trim() || DEFAULT_DISPLAY_NAME_USER,
     customerName: String(payload.customerName || existing && existing.customerName || '').trim(),
     phone: normalizedPhone,
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
@@ -630,11 +562,11 @@ function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
   }
 
   var nextStatus = normalizeAdminStatus_(payload.status);
-  if (!actorIsApprovedSuperAdmin && String(actorUserId || '').trim() === existing.userId && nextStatus !== '已通過') {
+  if (!actorIsApprovedSuperAdmin && String(actorUserId || '').trim() === existing.userId && nextStatus !== STATUS_APPROVED) {
     throw new Error('不能將自己改成不可使用的管理員狀態');
   }
 
-  if (existing.status === '已通過' && nextStatus !== '已通過') {
+  if (existing.status === STATUS_APPROVED && nextStatus !== STATUS_APPROVED) {
     ensureApprovedAdminRemains_(existing.userId);
   }
 
@@ -695,6 +627,8 @@ function createReservation_(payload) {
   validateRequired_(payload.userId, 'userId');
 
   var normalizedPhone = normalizePhone_(payload.phone, true);
+  var customerName = sanitizeTextInput_(payload.customerName);
+  var note = sanitizeTextInput_(payload.note || '');
 
   var services = getTableRecords_(SHEETS.services).map(normalizeService_);
   var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
@@ -820,13 +754,13 @@ function createReservation_(payload) {
     throw new Error('目前沒有符合條件的技師可安排此時段');
   }
 
-  var assignmentType = requestedTechnicianId ? '' : '現場安排';
+  var assignmentType = requestedTechnicianId ? '' : ASSIGNMENT_TYPE_ON_SITE;
 
   var record = {
     reservationId: createId_('RES'),
     userId: user.userId,
     userDisplayName: user.displayName,
-    customerName: String(payload.customerName || user.customerName).trim(),
+    customerName: customerName || String(user.customerName).trim(),
     phone: normalizedPhone,
     technicianId: matchedTechnician.technicianId,
     assignmentType: assignmentType,
@@ -834,8 +768,8 @@ function createReservation_(payload) {
     date: reservationDate,
     startTime: reservationStartTime,
     endTime: minutesToTime_(reservationEnd),
-    status: '已預約',
-    note: payload.note || '',
+    status: RESERVATION_STATUS_BOOKED,
+    note: note,
     createdAt: toIsoString_(new Date()),
   };
 
@@ -1054,7 +988,7 @@ function saveReservation_(payload) {
   var serviceIds = normalizeServiceIds_(payload.serviceIds || payload.serviceId);
   var selectedServices = getServicesByIds_(serviceIds, serviceMap);
   var technician = technicianMap[payload.technicianId];
-  var status = normalizeReservationStatus_(payload.status || '已預約');
+  var status = normalizeReservationStatus_(payload.status || RESERVATION_STATUS_BOOKED);
   var existing = reservations.find(function(item) {
     return item.reservationId === String(payload.reservationId || '');
   });
@@ -1118,7 +1052,7 @@ function saveReservation_(payload) {
     reservationId: existing && existing.reservationId ? existing.reservationId : createId_('RES'),
     userId: String(payload.userId || existing && existing.userId || '').trim(),
     userDisplayName: String(payload.userDisplayName || existing && existing.userDisplayName || '').trim(),
-    customerName: String(payload.customerName).trim(),
+    customerName: sanitizeTextInput_(String(payload.customerName).trim()),
     phone: normalizedPhone,
     technicianId: payload.technicianId,
     assignmentType: String(payload.assignmentType || '').trim() || '',
@@ -1127,7 +1061,7 @@ function saveReservation_(payload) {
     startTime: normalizeTimeString_(payload.startTime),
     endTime: minutesToTime_(reservationEnd),
     status: status,
-    note: payload.note || '',
+    note: sanitizeTextInput_(payload.note || ''),
     createdAt: existing && existing.createdAt ? existing.createdAt : toIsoString_(new Date()),
   };
 
@@ -1309,7 +1243,7 @@ function deleteAdminUser_(payload, actorUserId) {
     throw new Error('不能刪除自己的管理員帳號');
   }
 
-  if (existing.status === '已通過') {
+  if (existing.status === STATUS_APPROVED) {
     ensureApprovedAdminRemains_(userId);
   }
 
@@ -1735,7 +1669,7 @@ function verifyAdminAccess_(adminUserId) {
   }
 
   if (!isAdminApproved_(adminUser.status)) {
-    if (normalizeAdminStatus_(adminUser.status) === '待審核') {
+    if (normalizeAdminStatus_(adminUser.status) === STATUS_PENDING) {
       throw new Error('管理員帳號待審核，尚不可使用後台');
     }
 
@@ -1758,7 +1692,7 @@ function verifyTechnicianAccess_(technicianUserId) {
   }
 
   if (!isTechnicianApproved_(technician.status)) {
-    if (normalizeTechnicianStatus_(technician.status, technician.lineUserId) === '待審核') {
+    if (normalizeTechnicianStatus_(technician.status, technician.lineUserId) === STATUS_PENDING) {
       throw new Error('技師帳號待審核，尚不可使用技師頁面');
     }
 
@@ -1783,7 +1717,7 @@ function verifySuperAdminAccess_(adminUserId) {
   });
 
   if (storedSuperAdmin) {
-    if (normalizeAdminStatus_(storedSuperAdmin.status) === '待審核') {
+    if (normalizeAdminStatus_(storedSuperAdmin.status) === STATUS_PENDING) {
       throw new Error('此 LINE 帳號的最高管理員資格待審核，請在 SuperAdmins 工作表將 status 改為 已通過，或改用既有最高管理員登入。');
     }
 
@@ -1835,7 +1769,7 @@ function ensureAdminStatusReviewer_(actorUserId) {
   }
 
   if (!isAdminApproved_(actor.status)) {
-    if (normalizeAdminStatus_(actor.status) === '待審核') {
+    if (normalizeAdminStatus_(actor.status) === STATUS_PENDING) {
       throw new Error('管理員帳號待審核，尚不可修改其他管理員的審核狀態');
     }
 
@@ -1883,8 +1817,8 @@ function normalizeTechnician_(item) {
     updatedAt: String(item.updatedAt || ''),
     lineUserId: lineUserId,
     userId: lineUserId,
-    profileDisplayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || 'LINE 技師',
-    displayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || 'LINE 技師',
+    profileDisplayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || DEFAULT_DISPLAY_NAME_TECHNICIAN,
+    displayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || DEFAULT_DISPLAY_NAME_TECHNICIAN,
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeTechnicianStatus_(item.reviewStatus, lineUserId),
     note: String(item.reviewNote || '').trim(),
@@ -1920,7 +1854,7 @@ function normalizeReservation_(item) {
     date: normalizeDateString_(item.date),
     startTime: normalizeTimeString_(item.startTime),
     endTime: normalizeTimeString_(item.endTime),
-    status: normalizeReservationStatus_(item.status || '已預約'),
+    status: normalizeReservationStatus_(item.status || RESERVATION_STATUS_BOOKED),
     note: String(item.note || ''),
     createdAt: String(item.createdAt || ''),
   };
@@ -1929,7 +1863,7 @@ function normalizeReservation_(item) {
 function normalizeUser_(item) {
   return {
     userId: String(item.userId || ''),
-    displayName: String(item.displayName || '').trim() || 'LINE 使用者',
+    displayName: String(item.displayName || '').trim() || DEFAULT_DISPLAY_NAME_USER,
     customerName: String(item.customerName || '').trim(),
     phone: normalizePhoneValue_(item.phone),
     pictureUrl: String(item.pictureUrl || '').trim(),
@@ -1945,7 +1879,7 @@ function normalizeAdminUser_(item) {
   var userId = String(item.userId || '').trim();
   return {
     userId: userId,
-    displayName: String(item.displayName || '').trim() || 'LINE 管理員',
+    displayName: String(item.displayName || '').trim() || DEFAULT_DISPLAY_NAME_ADMIN,
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(item.status),
     canManageAdmins: normalizeAdminPermissionValue_(item.canManageAdmins, item.status, userId),
@@ -1961,7 +1895,7 @@ function normalizeAdminUser_(item) {
 function normalizeSuperAdminUser_(item) {
   return {
     userId: String(item.userId || '').trim(),
-    displayName: String(item.displayName || '').trim() || 'LINE 最高管理員',
+    displayName: String(item.displayName || '').trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(item.status),
     note: String(item.note || '').trim(),
@@ -1984,7 +1918,7 @@ function normalizeAdminPermissionValue_(value, status, userId) {
     return false;
   }
 
-  return normalizeAdminStatus_(status) === '已通過';
+  return normalizeAdminStatus_(status) === STATUS_APPROVED;
 }
 
 function getAllAdminPagePermissions_() {
@@ -2057,30 +1991,30 @@ function normalizeAdminStatus_(value) {
   var status = String(value || '').trim();
 
   if (!status) {
-    return '待審核';
+    return STATUS_PENDING;
   }
 
-  if (status === 'pending' || status === '待審核') {
-    return '待審核';
+  if (status === 'pending' || status === STATUS_PENDING) {
+    return STATUS_PENDING;
   }
 
-  if (status === 'approved' || status === '已通過') {
-    return '已通過';
+  if (status === 'approved' || status === STATUS_APPROVED) {
+    return STATUS_APPROVED;
   }
 
-  if (status === 'rejected' || status === '已拒絕') {
-    return '已拒絕';
+  if (status === 'rejected' || status === STATUS_REJECTED) {
+    return STATUS_REJECTED;
   }
 
-  if (status === 'disabled' || status === '已停用') {
-    return '已停用';
+  if (status === 'disabled' || status === STATUS_DISABLED) {
+    return STATUS_DISABLED;
   }
 
   return status;
 }
 
 function isAdminApproved_(status) {
-  return normalizeAdminStatus_(status) === '已通過';
+  return normalizeAdminStatus_(status) === STATUS_APPROVED;
 }
 
 function normalizeTechnicianStatus_(value, lineUserId) {
@@ -2088,68 +2022,68 @@ function normalizeTechnicianStatus_(value, lineUserId) {
   var hasLineIdentity = Boolean(String(lineUserId || '').trim());
 
   if (!status) {
-    return hasLineIdentity ? '待審核' : '未綁定';
+    return hasLineIdentity ? STATUS_PENDING : STATUS_UNLINKED;
   }
 
-  if (status === 'unlinked' || status === '未綁定') {
-    return '未綁定';
+  if (status === 'unlinked' || status === STATUS_UNLINKED) {
+    return STATUS_UNLINKED;
   }
 
-  if (status === 'pending' || status === '待審核') {
-    return '待審核';
+  if (status === 'pending' || status === STATUS_PENDING) {
+    return STATUS_PENDING;
   }
 
-  if (status === 'approved' || status === '已通過') {
-    return '已通過';
+  if (status === 'approved' || status === STATUS_APPROVED) {
+    return STATUS_APPROVED;
   }
 
-  if (status === 'rejected' || status === '已拒絕') {
-    return '已拒絕';
+  if (status === 'rejected' || status === STATUS_REJECTED) {
+    return STATUS_REJECTED;
   }
 
-  if (status === 'disabled' || status === '已停用') {
-    return '已停用';
+  if (status === 'disabled' || status === STATUS_DISABLED) {
+    return STATUS_DISABLED;
   }
 
   return status;
 }
 
 function isTechnicianApproved_(status) {
-  return normalizeTechnicianStatus_(status, 'linked') === '已通過';
+  return normalizeTechnicianStatus_(status, 'linked') === STATUS_APPROVED;
 }
 
 function normalizeUserStatus_(value) {
   var status = String(value || '').trim();
 
   if (!status) {
-    return '未送審核';
+    return STATUS_DRAFT;
   }
 
-  if (status === 'draft' || status === '未送審核') {
-    return '未送審核';
+  if (status === 'draft' || status === STATUS_DRAFT) {
+    return STATUS_DRAFT;
   }
 
-  if (status === 'pending' || status === '待審核') {
-    return '待審核';
+  if (status === 'pending' || status === STATUS_PENDING) {
+    return STATUS_PENDING;
   }
 
-  if (status === 'approved' || status === '已通過') {
-    return '已通過';
+  if (status === 'approved' || status === STATUS_APPROVED) {
+    return STATUS_APPROVED;
   }
 
-  if (status === 'rejected' || status === '已拒絕') {
-    return '已拒絕';
+  if (status === 'rejected' || status === STATUS_REJECTED) {
+    return STATUS_REJECTED;
   }
 
-  if (status === 'disabled' || status === '已停用') {
-    return '已停用';
+  if (status === 'disabled' || status === STATUS_DISABLED) {
+    return STATUS_DISABLED;
   }
 
   return status;
 }
 
 function isUserApproved_(status) {
-  return normalizeUserStatus_(status) === '已通過';
+  return normalizeUserStatus_(status) === STATUS_APPROVED;
 }
 
 function isBootstrapAdmin_(userId) {
@@ -2205,9 +2139,9 @@ function findApprovedSuperAdmin_(userId) {
 function buildAdminIdentityFromSuperAdmin_(superAdminUser, adminUser) {
   return {
     userId: String(superAdminUser.userId || adminUser && adminUser.userId || '').trim(),
-    displayName: String(superAdminUser.displayName || adminUser && adminUser.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+    displayName: String(superAdminUser.displayName || adminUser && adminUser.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
     pictureUrl: String(superAdminUser.pictureUrl || adminUser && adminUser.pictureUrl || '').trim(),
-    status: normalizeAdminStatus_(superAdminUser.status || adminUser && adminUser.status || '已通過'),
+    status: normalizeAdminStatus_(superAdminUser.status || adminUser && adminUser.status || STATUS_APPROVED),
     canManageAdmins: true,
     pagePermissions: getAllAdminPagePermissions_(),
     isSuperAdmin: true,
@@ -2289,19 +2223,19 @@ function normalizeReservationStatus_(value) {
   var status = String(value || '').trim();
 
   if (!status) {
-    return '已預約';
+    return RESERVATION_STATUS_BOOKED;
   }
 
-  if (status === 'booked' || status === '已預約') {
-    return '已預約';
+  if (status === 'booked' || status === RESERVATION_STATUS_BOOKED) {
+    return RESERVATION_STATUS_BOOKED;
   }
 
-  if (status === 'completed' || status === '已完成') {
-    return '已完成';
+  if (status === 'completed' || status === RESERVATION_STATUS_COMPLETED) {
+    return RESERVATION_STATUS_COMPLETED;
   }
 
-  if (status === 'cancelled' || status === '已取消') {
-    return '已取消';
+  if (status === 'cancelled' || status === RESERVATION_STATUS_CANCELLED) {
+    return RESERVATION_STATUS_CANCELLED;
   }
 
   return status;
@@ -2314,22 +2248,22 @@ function normalizeReservationAssignmentType_(value, technicianId) {
   }
 
   if (!String(technicianId || '').trim()) {
-    return '現場安排';
+    return ASSIGNMENT_TYPE_ON_SITE;
   }
 
   return '';
 }
 
 function getReservationTechnicianLabel_(reservation, technicianMap) {
-  if (normalizeReservationAssignmentType_(reservation.assignmentType, reservation.technicianId) === '現場安排') {
-    return '現場安排';
+  if (normalizeReservationAssignmentType_(reservation.assignmentType, reservation.technicianId) === ASSIGNMENT_TYPE_ON_SITE) {
+    return ASSIGNMENT_TYPE_ON_SITE;
   }
 
   return technicianMap[reservation.technicianId] ? technicianMap[reservation.technicianId].name : '';
 }
 
 function isReservationCancelled_(status) {
-  return normalizeReservationStatus_(status) === '已取消';
+  return normalizeReservationStatus_(status) === RESERVATION_STATUS_CANCELLED;
 }
 
 function getReservationOccupiedEndMinutes_(reservation, serviceMap) {
@@ -2515,6 +2449,34 @@ function getServicesByIds_(serviceIds, serviceMap) {
 
 function getReservationServices_(reservation, serviceMap) {
   return getServicesByIds_(reservation.serviceIds || reservation.serviceId, serviceMap);
+}
+
+/**
+ * Enrich a single reservation with computed display fields.
+ * Centralizes the duplicated serviceName/totalDuration/totalPrice
+ * enrichment pattern used in getAdminData_ and getTechnicianData_.
+ */
+function enrichReservation_(item, serviceMap, technicianMap, userMap) {
+  var services = getReservationServices_(item, serviceMap);
+  item.serviceName = services.map(function(s) { return s.name; }).join(SERVICE_NAME_SEPARATOR);
+  item.totalDurationMinutes = services.reduce(function(sum, s) { return sum + Number(s.durationMinutes || 0); }, 0);
+  item.totalPrice = services.reduce(function(sum, s) { return sum + Number(s.price || 0); }, 0);
+  if (technicianMap) {
+    item.technicianName = getReservationTechnicianLabel_(item, technicianMap);
+  }
+  if (userMap) {
+    item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
+  }
+  return item;
+}
+
+/**
+ * Sanitize user-provided text to prevent Google Sheets formula injection.
+ * Strips leading =, +, -, @ characters that Sheets interprets as formulas.
+ */
+function sanitizeTextInput_(value) {
+  var text = String(value || '').trim();
+  return text.replace(/^[=+\-@]+/, '');
 }
 
 function normalizeDateString_(value) {

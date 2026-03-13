@@ -446,6 +446,19 @@ h1 {
   border: 1px solid rgba(146, 178, 200, 0.18);
   border-radius: 0.85rem;
   background: rgba(5, 15, 22, 0.48);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.checkbox-pill:hover {
+  border-color: rgba(82, 194, 166, 0.24);
+  background: rgba(82, 194, 166, 0.06);
+}
+
+.checkbox-pill:has(input:checked) {
+  border-color: rgba(82, 194, 166, 0.32);
+  background: rgba(82, 194, 166, 0.1);
+  box-shadow: 0 2px 8px rgba(82, 194, 166, 0.08);
 }
 
 .checkbox-pill input {
@@ -983,10 +996,10 @@ h1 {
 }
 
 /* ==========================================================================
-   Responsive (≤ 1040px)
+   Responsive (≤ 1024px – Tablet)
    ========================================================================== */
 
-@media (max-width: 1040px) {
+@media (max-width: 1024px) {
   .admin-shell {
     width: min(100% - 24px, 100%);
   }
@@ -1005,10 +1018,10 @@ h1 {
 }
 
 /* ==========================================================================
-   Responsive (≤ 760px)
+   Responsive (≤ 768px – Mobile)
    ========================================================================== */
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .review-summary {
     grid-template-columns: 1fr;
   }
@@ -1182,10 +1195,10 @@ h1 {
 }
 
 /* ==========================================================================
-   Responsive (≤ 640px)
+   Responsive (≤ 576px – Small Mobile)
    ========================================================================== */
 
-@media (max-width: 640px) {
+@media (max-width: 576px) {
   .admin-shell {
     width: min(100% - 16px, 100%);
     padding-top: max(18px, env(safe-area-inset-top, 0px));
@@ -1274,5 +1287,73 @@ h1 {
 
   h1 {
     font-size: 1.95rem;
+  }
+}
+
+/* ==========================================================================
+   Accessibility: Focus & Motion
+   ========================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(82, 194, 166, 0.18);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 0;
+  border-color: var(--brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  :root {
+    --line: rgba(146, 178, 200, 0.4);
+  }
+
+  .status-pill,
+  .status-badge {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Touch target minimum 44px */
+@media (pointer: coarse) {
+  .button,
+  .nav-link {
+    min-height: 44px;
+  }
+
+  .list-table td .button {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
   }
 }

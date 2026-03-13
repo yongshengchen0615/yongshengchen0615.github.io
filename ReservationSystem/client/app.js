@@ -777,6 +777,7 @@ function updateDashboard() {
 
 function setBookingSubmitting(isSubmitting) {
   state.isSubmittingBooking = isSubmitting;
+  elements.bookingSubmitButton.classList.toggle("button--submitting", isSubmitting);
   updateSubmitState();
 }
 

@@ -773,35 +773,6 @@ function getSchedulesCoveringDate(dateText) {
     });
 }
 
-function isOvernightShift(startTime, endTime) {
-  const start = toMinutes(startTime);
-  let end = endTime === "23:59" ? 24 * 60 : toMinutes(endTime);
-  if (end <= start) end += 24 * 60;
-  return end > 24 * 60;
-}
-
-function addDaysToDate(dateText, offsetDays) {
-  const baseDate = new Date(`${dateText}T00:00:00`);
-  baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
-  return formatLocalDate(baseDate);
-}
-
-function getSchedulesCoveringDate(dateText) {
-  const prevDate = addDaysToDate(dateText, -1);
-  return state.schedules
-    .filter((item) => {
-      if (item.date === dateText) return true;
-      if (item.date === prevDate && item.isWorking && isOvernightShift(item.startTime, item.endTime)) return true;
-      return false;
-    })
-    .slice()
-    .sort((left, right) => {
-      const leftTechnician = getTechnicianById(left.technicianId)?.name || left.technicianId;
-      const rightTechnician = getTechnicianById(right.technicianId)?.name || right.technicianId;
-      return `${leftTechnician}-${left.startTime}`.localeCompare(`${rightTechnician}-${right.startTime}`, "zh-Hant");
-    });
-}
-
 function updateSelectedScheduleDate(dateText) {
   if (!dateText) {
     return;
