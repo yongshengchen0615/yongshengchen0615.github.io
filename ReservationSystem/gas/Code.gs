@@ -118,6 +118,11 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
     }
 
+    if (action === 'updateAdminReviewStatus') {
+      verifySuperAdminAccess_(body.adminUserId);
+      return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
+    }
+
     if (action === 'deleteAdminUser') {
       verifySuperAdminAccess_(body.adminUserId);
       return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
@@ -369,12 +374,44 @@ function syncAdminUser_(payload) {
   validateRequired_(payload.userId, 'userId');
 
   var userId = String(payload.userId || '').trim();
+  var nowText = toIsoString_(new Date());
+  var approvedSuperAdmin = findApprovedSuperAdmin_(userId);
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var existing = adminUsers.find(function(item) {
     return item.userId === userId;
   });
 
-  var nowText = toIsoString_(new Date());
+  if (approvedSuperAdmin) {
+    if (existing) {
+      var mergedAdminRecord = {
+        userId: existing.userId,
+        displayName: String(payload.displayName || approvedSuperAdmin.displayName || existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+        pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || existing.pictureUrl || '').trim(),
+        status: '已通過',
+        canManageAdmins: true,
+        pagePermissions: serializeAdminPagePermissions_(getAllAdminPagePermissions_(), existing.userId),
+        note: String(approvedSuperAdmin.note || existing.note || '').trim(),
+        createdAt: existing.createdAt,
+        updatedAt: nowText,
+        lastLoginAt: nowText,
+      };
+
+      upsertRecord_(SHEETS.adminUsers, 'userId', mergedAdminRecord);
+      return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, normalizeAdminUser_(mergedAdminRecord));
+    }
+
+    return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, {
+      userId: userId,
+      displayName: String(payload.displayName || approvedSuperAdmin.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+      pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || '').trim(),
+      status: '已通過',
+      note: String(approvedSuperAdmin.note || '').trim(),
+      createdAt: String(approvedSuperAdmin.createdAt || ''),
+      updatedAt: nowText,
+      lastLoginAt: nowText,
+    });
+  }
+
   var nextStatus = existing && existing.status
     ? existing.status
     : '待審核';
@@ -1681,10 +1718,17 @@ function getRequestValue_(e, key) {
 function verifyAdminAccess_(adminUserId) {
   validateRequired_(adminUserId, 'adminUserId');
 
+  var normalizedUserId = String(adminUserId || '').trim();
+  var approvedSuperAdmin = findApprovedSuperAdmin_(normalizedUserId);
+
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var adminUser = adminUsers.find(function(item) {
-    return item.userId === String(adminUserId || '').trim();
+    return item.userId === normalizedUserId;
   });
+
+  if (approvedSuperAdmin) {
+    return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, adminUser);
+  }
 
   if (!adminUser) {
     throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
