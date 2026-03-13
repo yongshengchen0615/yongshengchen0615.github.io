@@ -66,15 +66,16 @@ function doPost(e) {
     }
 
     if (action === 'reviewAdminUser') {
-      ensureAdminStatusReviewer_(body.adminUserId);
+      verifySuperAdminAccess_(body.adminUserId);
       return jsonResponse_({ ok: true, data: reviewAdminUser_(body.payload || {}, body.adminUserId, true) });
     }
 
-    verifyAdminAccess_(body.adminUserId);
-
     if (action === 'deleteAdminUser') {
+      verifySuperAdminAccess_(body.adminUserId);
       return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
     }
+
+    verifyAdminAccess_(body.adminUserId);
 
     if (action === 'reviewUser') {
       return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
@@ -351,6 +352,8 @@ function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
   validateRequired_(payload.userId, 'userId');
   validateRequired_(payload.status, 'status');
 
+  var actorIsApprovedSuperAdmin = Boolean(findApprovedSuperAdmin_(actorUserId));
+
   if (!skipPermissionCheck) {
     ensureAdminPermissionManager_(actorUserId);
   }
@@ -365,7 +368,7 @@ function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
   }
 
   var nextStatus = normalizeAdminStatus_(payload.status);
-  if (String(actorUserId || '').trim() === existing.userId && nextStatus !== '已通過') {
+  if (!actorIsApprovedSuperAdmin && String(actorUserId || '').trim() === existing.userId && nextStatus !== '已通過') {
     throw new Error('不能將自己改成不可使用的管理員狀態');
   }
 
@@ -967,7 +970,7 @@ function deleteUser_(payload) {
 function deleteAdminUser_(payload, actorUserId) {
   validateRequired_(payload.userId, 'userId');
 
-  ensureAdminPermissionManager_(actorUserId);
+  verifySuperAdminAccess_(actorUserId);
 
   var userId = String(payload.userId || '').trim();
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
@@ -1261,7 +1264,28 @@ function ensureAdminStatusReviewer_(actorUserId) {
     return approvedSuperAdmin;
   }
 
-  return ensureAdminPermissionManager_(actorUserId);
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var actor = adminUsers.find(function(item) {
+    return item.userId === String(actorUserId || '').trim();
+  });
+
+  if (!actor) {
+    throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
+  }
+
+  if (!isAdminApproved_(actor.status)) {
+    if (normalizeAdminStatus_(actor.status) === '待審核') {
+      throw new Error('管理員帳號待審核，尚不可修改其他管理員的審核狀態');
+    }
+
+    throw new Error(actor.note || '此管理員帳號目前不可修改其他管理員的審核狀態');
+  }
+
+  if (actor.canManageAdmins) {
+    return actor;
+  }
+
+  throw new Error('你沒有管理其他管理員審核狀態的授權，請由最高管理員在 superadmin 設定。');
 }
 
 function normalizeService_(item) {
@@ -1568,9 +1592,16 @@ function ensureApprovedAdminRemains_(excludedUserId) {
     })
     .length;
 
-  if (!approvedCount) {
-    throw new Error('至少需保留一位已通過的管理員');
+  if (approvedCount) {
+    return;
   }
+
+  var approvedSuperAdminCount = getApprovedSuperAdminUsers_().length;
+  if (approvedSuperAdminCount) {
+    return;
+  }
+
+  throw new Error('至少需保留一位已通過的管理員或最高管理員');
 }
 
 function parseCsvProperty_(propertyName) {

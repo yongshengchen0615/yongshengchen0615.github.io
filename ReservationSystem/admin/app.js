@@ -50,9 +50,6 @@ const elements = {
   adminStatusBadge: document.querySelector("#adminStatusBadge"),
   adminStatusText: document.querySelector("#adminStatusText"),
   adminApprovalGate: document.querySelector("#adminApprovalGate"),
-  adminAccessPermissionHint: document.querySelector("#adminAccessPermissionHint"),
-  adminAccessSummary: document.querySelector("#adminAccessSummary"),
-  adminAccessTable: document.querySelector("#adminAccessTable"),
   serviceCategorySuggestions: document.querySelector("#serviceCategorySuggestions"),
   refreshDashboardButton: document.querySelector("#refreshDashboardButton"),
   workflowSummary: document.querySelector("#workflowSummary"),
@@ -262,10 +259,6 @@ function isApprovedAdmin() {
   return state.adminUser?.status === "已通過";
 }
 
-function canManageAdminAccess() {
-  return Boolean(state.adminUser?.canManageAdmins);
-}
-
 function getCurrentAdminUserId() {
   return String(state.profile?.userId || state.adminUser?.userId || "").trim();
 }
@@ -333,7 +326,7 @@ function renderAdminAccessState() {
   if (isApprovedSuperAdmin) {
     elements.adminStatusBadge.textContent = "最高管理員";
     elements.adminStatusBadge.dataset.tone = "approved";
-    elements.adminStatusText.textContent = "你已通過 admin 審核，並保有最高管理員身分，可使用後台與管理管理員權限。";
+    elements.adminStatusText.textContent = "你已通過 admin 審核，並保有最高管理員身分，可使用 admin 後台。";
     setAdminApprovalMessage("已通過 AdminUsers 審核，可使用 admin 後台。", "approved");
     setAdminContentAccess(true);
     return;
@@ -1777,98 +1770,6 @@ function renderUserReviewSummary() {
   `;
 }
 
-function renderAdminAccessTable() {
-  if (!elements.adminAccessTable || !elements.adminAccessSummary) {
-    return;
-  }
-
-  if (elements.adminAccessPermissionHint) {
-    elements.adminAccessPermissionHint.textContent = canManageAdminAccess()
-      ? "你目前可在這裡修改其他管理員狀態。"
-      : "你目前只能檢視管理員名單；若要修改權限，請由最高管理員在 superadmin 設定。";
-  }
-
-  const adminUsers = (state.adminUsers || []).slice().sort((left, right) => {
-    const rank = {
-      "待審核": 0,
-      "已通過": 1,
-      "已拒絕": 2,
-      "已停用": 3,
-    };
-    const leftRank = rank[left.status] ?? 9;
-    const rightRank = rank[right.status] ?? 9;
-
-    if (leftRank !== rightRank) {
-      return leftRank - rightRank;
-    }
-
-    return String(right.updatedAt || right.lastLoginAt || "").localeCompare(
-      String(left.updatedAt || left.lastLoginAt || "")
-    );
-  });
-
-  const pendingCount = adminUsers.filter((item) => item.status === "待審核").length;
-  const approvedCount = adminUsers.filter((item) => item.status === "已通過").length;
-  const permissionManagers = adminUsers.filter((item) => item.canManageAdmins).length;
-  elements.adminAccessSummary.textContent = `待審核 ${pendingCount} 位 / 已通過 ${approvedCount} 位 / 可管理管理員 ${permissionManagers} 位 / 共 ${adminUsers.length} 位`;
-
-  if (!adminUsers.length) {
-    elements.adminAccessTable.innerHTML = '<div class="empty-state">尚無任何管理員登入紀錄。</div>';
-    return;
-  }
-
-  const canEditAdmins = canManageAdminAccess();
-
-  elements.adminAccessTable.innerHTML = `
-    <table class="list-table admin-access-table">
-      <thead>
-        <tr>
-          <th>管理員</th>
-          <th>狀態</th>
-          <th>管理員修改權限</th>
-          <th>最後登入</th>
-          <th>備註</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${adminUsers
-          .map(
-            (adminUser) => `
-              <tr>
-                <td data-label="管理員">
-                  <div class="user-cell">
-                    ${adminUser.pictureUrl ? `<img class="user-avatar" src="${adminUser.pictureUrl}" alt="${adminUser.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${adminUser.displayName.slice(0, 1) || "A"}</div>`}
-                    <div class="user-cell__meta">
-                      <strong>${adminUser.displayName}</strong>
-                      <small>${adminUser.userId}</small>
-                    </div>
-                  </div>
-                </td>
-                <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
-                <td data-label="管理員修改權限">${getAdminPermissionPill(adminUser)}</td>
-                <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
-                <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
-                <td data-label="操作" class="table-cell-actions">
-                  ${canEditAdmins
-                    ? `<div class="table-actions stacked-actions">
-                        <button type="button" class="button button--ghost" data-review-admin="${adminUser.userId}" data-review-status="已通過">通過</button>
-                        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="待審核">設待審核</button>
-                        <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
-                        <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
-                        <button type="button" class="button button--danger" data-delete-admin="${adminUser.userId}" data-admin-name="${adminUser.displayName}">刪除</button>
-                      </div>`
-                    : '<span class="helper-text">僅可檢視</span>'}
-                </td>
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
-}
-
 function renderUserTable() {
   const users = getFilteredUsers();
   const statusOrder = {
@@ -2009,7 +1910,6 @@ function renderAll() {
   if (!state.ui.selectedScheduleDate) {
     state.ui.selectedScheduleDate = formatLocalDate(new Date());
   }
-  renderAdminAccessTable();
   updateStats();
   updateWorkspaceOverview();
   refreshServiceCategorySuggestions();
@@ -2443,45 +2343,6 @@ async function reviewUser(userId, status) {
   setStatus(`已將 ${user.displayName} 設為${status}。`, "success");
 }
 
-async function reviewAdminUser(userId, status) {
-  if (!canManageAdminAccess()) {
-    throw new Error("你沒有管理其他管理員的授權，請由最高管理員在 superadmin 設定。");
-  }
-
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  if (!adminUser) {
-    throw new Error("找不到管理員資料");
-  }
-
-  const note = window.prompt(`請輸入「${adminUser.displayName}」的管理員審核備註：`, adminUser.note || "");
-  if (note === null) {
-    setStatus("已取消管理員審核操作。", "info");
-    return;
-  }
-
-  setLoadingStatus("正在更新管理員審核狀態...");
-  const result = await requestApi("POST", {}, {
-    action: "reviewAdminUser",
-    payload: {
-      userId,
-      status,
-      note,
-    },
-  });
-  if (!result.ok) {
-    throw new Error(result.message || "更新管理員審核失敗");
-  }
-
-  await loadAdminData();
-
-  if (state.adminUser?.userId === userId) {
-    state.adminUser = result.data;
-    renderAdminAccessState();
-  }
-
-  setStatus(`已將管理員 ${adminUser.displayName} 設為${status}。`, "success");
-}
-
 async function deleteUser(userId, userName) {
   const user = state.users.find((item) => item.userId === userId);
   const displayName = userName || user?.displayName || userId;
@@ -2504,34 +2365,6 @@ async function deleteUser(userId, userName) {
 
   await loadAdminData();
   setStatus(`用戶 ${displayName} 已刪除。`, "success");
-}
-
-async function deleteAdminUser(userId, adminName) {
-  if (!canManageAdminAccess()) {
-    throw new Error("你沒有管理其他管理員的授權，請由最高管理員在 superadmin 設定。");
-  }
-
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  const displayName = adminName || adminUser?.displayName || userId;
-  const detailText = adminUser
-    ? `\n\n狀態：${adminUser.status}\n最後登入：${formatDateTimeText(adminUser.lastLoginAt)}`
-    : "";
-  const confirmed = window.confirm(`確定要刪除管理員「${displayName}」嗎？${detailText}`);
-  if (!confirmed) {
-    return;
-  }
-
-  setLoadingStatus("正在刪除管理員資料...");
-  const result = await requestApi("POST", {}, {
-    action: "deleteAdminUser",
-    payload: { userId },
-  });
-  if (!result.ok) {
-    throw new Error(result.message || "刪除管理員失敗");
-  }
-
-  await loadAdminData();
-  setStatus(`管理員 ${displayName} 已刪除。`, "success");
 }
 
 function bindEvents() {
@@ -2909,28 +2742,6 @@ function bindEvents() {
     }
   });
 
-  elements.adminAccessTable.addEventListener("click", async (event) => {
-    const reviewButton = event.target.closest("[data-review-admin]");
-    if (reviewButton) {
-      try {
-        await reviewAdminUser(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus);
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-admin]");
-    if (!deleteButton) {
-      return;
-    }
-
-    try {
-      await deleteAdminUser(deleteButton.dataset.deleteAdmin, deleteButton.dataset.adminName);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
 }
 
 async function initializeApp() {
