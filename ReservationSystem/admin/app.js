@@ -3,6 +3,7 @@ const ADMIN_STORAGE_KEYS = {
   serviceCategories: "beauty-booking-service-categories",
 };
 const CONFIG_PATH = "./config.json";
+const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
 
 const state = {
   gasUrl: "",
@@ -772,6 +773,49 @@ function getReservationTechnicianLabel(reservation) {
   return reservation.technicianName || getTechnicianById(reservation.technicianId)?.name || reservation.technicianId || "現場安排";
 }
 
+function isOnsiteAssignmentSelected(value) {
+  return String(value || "") === ONSITE_ASSIGNMENT_VALUE;
+}
+
+function getReservationTechnicianOptions() {
+  return [
+    { value: ONSITE_ASSIGNMENT_VALUE, label: "現場安排" },
+    ...state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
+  ];
+}
+
+function getReservationAssignedTechnicianId() {
+  return String(elements.reservationForm.dataset.assignedTechnicianId || "").trim();
+}
+
+function setReservationAssignedTechnicianId(technicianId) {
+  elements.reservationForm.dataset.assignedTechnicianId = String(technicianId || "").trim();
+}
+
+function getReservationSubmissionTechnician() {
+  const selectedValue = elements.reservationTechnicianSelect.value;
+  if (isOnsiteAssignmentSelected(selectedValue)) {
+    return {
+      technicianId: getReservationAssignedTechnicianId(),
+      assignmentType: "現場安排",
+    };
+  }
+
+  return {
+    technicianId: selectedValue,
+    assignmentType: "",
+  };
+}
+
+function getReservationServiceFilterTechnicianId() {
+  const selectedValue = elements.reservationTechnicianSelect.value;
+  if (isOnsiteAssignmentSelected(selectedValue)) {
+    return getReservationAssignedTechnicianId();
+  }
+
+  return selectedValue;
+}
+
 function isEditingService() {
   return Boolean(elements.serviceForm.serviceId.value);
 }
@@ -1004,7 +1048,7 @@ function getSelectedReservationServiceIds() {
 }
 
 function renderReservationServiceOptions(selectedServiceIds = []) {
-  const technicianId = elements.reservationTechnicianSelect.value;
+  const technicianId = getReservationServiceFilterTechnicianId();
   const services = technicianId ? getAllowedReservationServices(technicianId) : state.services;
   const checked = new Set(selectedServiceIds || []);
 
@@ -1031,9 +1075,10 @@ function resetReservationForm() {
   elements.reservationForm.reset();
   elements.reservationForm.reservationId.value = "";
   elements.reservationForm.status.value = "已預約";
+  setReservationAssignedTechnicianId("");
   setOptions(
     elements.reservationTechnicianSelect,
-    state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
+    getReservationTechnicianOptions(),
     "請選擇技師"
   );
   renderReservationServiceOptions();
@@ -1185,7 +1230,9 @@ function escapeHtml(value) {
 }
 
 function getReservationConfirmationSummary(payload) {
-  const technicianName = getTechnicianById(payload.technicianId)?.name || payload.technicianId;
+  const technicianName = payload.assignmentType === "現場安排"
+    ? "現場安排"
+    : getTechnicianById(payload.technicianId)?.name || payload.technicianId;
   const serviceNames = (payload.serviceIds || [])
     .map((serviceId) => getServiceById(serviceId)?.name || serviceId)
     .join("、");
@@ -1879,7 +1926,7 @@ function refreshTechnicianOptions() {
 
   setOptions(
     elements.reservationTechnicianSelect,
-    state.technicians.map((item) => ({ value: item.technicianId, label: item.name })),
+    getReservationTechnicianOptions(),
     "請選擇技師"
   );
 
@@ -1896,7 +1943,10 @@ function refreshTechnicianOptions() {
   );
 
   refreshCategorySelectOptions(elements.serviceCategoryFilter, "全部類別", selectedServiceCategory || state.filters.serviceCategory);
-  if (state.technicians.some((item) => item.technicianId === selectedReservationTechnicianId)) {
+  if (
+    isOnsiteAssignmentSelected(selectedReservationTechnicianId)
+    || state.technicians.some((item) => item.technicianId === selectedReservationTechnicianId)
+  ) {
     elements.reservationTechnicianSelect.value = selectedReservationTechnicianId;
   }
 
@@ -2100,11 +2150,16 @@ async function submitSchedule(event) {
 async function submitReservation(event) {
   event.preventDefault();
   const formData = new FormData(elements.reservationForm);
+  const reservationTechnician = getReservationSubmissionTechnician();
+  if (!reservationTechnician.technicianId) {
+    throw new Error("現場安排需先保留一位實際技師，請先改選技師後再切回現場安排。");
+  }
   const payload = {
     reservationId: formData.get("reservationId") || "",
     customerName: formData.get("customerName").trim(),
     phone: formData.get("phone").trim(),
-    technicianId: formData.get("technicianId"),
+    technicianId: reservationTechnician.technicianId,
+    assignmentType: reservationTechnician.assignmentType,
     serviceIds: getSelectedReservationServiceIds(),
     date: formData.get("date"),
     startTime: formData.get("startTime"),
@@ -2154,7 +2209,10 @@ function fillReservationForm(reservationId) {
   elements.reservationForm.startTime.value = reservation.startTime;
   elements.reservationForm.status.value = reservation.status || "已預約";
   elements.reservationForm.note.value = reservation.note || "";
-  elements.reservationTechnicianSelect.value = reservation.technicianId;
+  setReservationAssignedTechnicianId(reservation.technicianId);
+  elements.reservationTechnicianSelect.value = reservation.assignmentType === "現場安排"
+    ? ONSITE_ASSIGNMENT_VALUE
+    : reservation.technicianId;
   renderReservationServiceOptions(reservation.serviceIds || String(reservation.serviceId || "").split(","));
   updateReservationFormMode();
   scrollToPanel(elements.reservationForm);
@@ -2689,6 +2747,9 @@ function bindEvents() {
   });
 
   elements.reservationTechnicianSelect.addEventListener("change", () => {
+    if (!isOnsiteAssignmentSelected(elements.reservationTechnicianSelect.value)) {
+      setReservationAssignedTechnicianId(elements.reservationTechnicianSelect.value);
+    }
     renderReservationServiceOptions(getSelectedReservationServiceIds());
   });
 
