@@ -239,7 +239,21 @@
                   <option value="inactive">只看停用</option>
                 </select>
               </label>
+              <label class="field field--compact">
+                <span>LINE 審核狀態</span>
+                <select id="technicianReviewStatusFilter">
+                  <option value="all">全部狀態</option>
+                  <option value="未綁定">未綁定</option>
+                  <option value="待審核">待審核</option>
+                  <option value="已通過">已通過</option>
+                  <option value="已拒絕">已拒絕</option>
+                  <option value="已停用">已停用</option>
+                </select>
+              </label>
             </div>
+            <div id="technicianReviewSummary" class="review-summary"></div>
+            <p class="helper-text">技師首次進入 technician 頁面後，會在此出現 LINE 帳號。審核通過後才能讀取技師端資料。</p>
+            <div id="technicianReviewTable" class="table-wrap"></div>
             <section class="sub-panel technician-bulk-panel">
               <div class="section-header section-header--tight">
                 <div>

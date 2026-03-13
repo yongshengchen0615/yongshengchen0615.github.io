@@ -23,6 +23,7 @@ const state = {
     serviceCategory: "",
     technicianId: "",
     technicianStatus: "all",
+    technicianReviewStatus: "all",
     technicianServiceCategory: "",
     reservationKeyword: "",
     reservationStatus: "all",
@@ -71,6 +72,9 @@ const elements = {
   technicianResultLabel: document.querySelector("#technicianResultLabel"),
   technicianSearchSelect: document.querySelector("#technicianSearchSelect"),
   technicianStatusFilter: document.querySelector("#technicianStatusFilter"),
+  technicianReviewStatusFilter: document.querySelector("#technicianReviewStatusFilter"),
+  technicianReviewSummary: document.querySelector("#technicianReviewSummary"),
+  technicianReviewTable: document.querySelector("#technicianReviewTable"),
   technicianBulkSelectionMeta: document.querySelector("#technicianBulkSelectionMeta"),
   technicianBulkAddRowButton: document.querySelector("#technicianBulkAddRowButton"),
   technicianBulkSaveButton: document.querySelector("#technicianBulkSaveButton"),
@@ -712,6 +716,19 @@ function getFilteredTechnicians() {
   });
 }
 
+function getFilteredTechnicianAccounts() {
+  return state.technicians.filter((item) => {
+    const matchesTechnician = !state.filters.technicianId || item.technicianId === state.filters.technicianId;
+    const matchesActive = state.filters.technicianStatus === "all"
+      || (state.filters.technicianStatus === "active" && item.active)
+      || (state.filters.technicianStatus === "inactive" && !item.active);
+    const matchesReviewStatus = state.filters.technicianReviewStatus === "all"
+      || item.status === state.filters.technicianReviewStatus;
+
+    return matchesTechnician && matchesActive && matchesReviewStatus;
+  });
+}
+
 function getFilteredReservations() {
   return state.reservations.filter((item) => {
     const text = `${item.customerName} ${item.phone} ${item.technicianName || ""} ${item.serviceName || ""}`;
@@ -1177,6 +1194,22 @@ function getUserStatusPill(status) {
   return getStatusPill(status || "待審核", "pending");
 }
 
+function getTechnicianReviewStatusPill(status) {
+  if (status === "未綁定") {
+    return getStatusPill(status, "draft");
+  }
+  if (status === "已通過") {
+    return getStatusPill(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusPill(status, "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusPill(status, "disabled");
+  }
+  return getStatusPill(status || "待審核", "pending");
+}
+
 function getAdminStatusPill(status) {
   if (status === "已通過") {
     return getStatusPill(status, "approved");
@@ -1264,9 +1297,10 @@ function updateWorkspaceOverview() {
   const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
   const pendingReservations = state.reservations.filter((item) => item.status === "已預約").length;
   const pendingUsers = state.users.filter((item) => item.status === "待審核").length;
+  const pendingTechnicians = state.technicians.filter((item) => item.status === "待審核").length;
 
   if (elements.workflowSummary) {
-    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約、${pendingUsers} 位待審核用戶`;
+    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約、${pendingUsers} 位待審核用戶、${pendingTechnicians} 位待審核技師`;
   }
 
   if (!elements.workflowHint) {
@@ -1295,6 +1329,11 @@ function updateWorkspaceOverview() {
 
   if (pendingUsers) {
     elements.workflowHint.textContent = `目前有 ${pendingUsers} 位 LINE 用戶待審核，通過後才能在前台送出預約。`;
+    return;
+  }
+
+  if (pendingTechnicians) {
+    elements.workflowHint.textContent = `目前有 ${pendingTechnicians} 位技師待審核，通過後才能登入 technician 頁面。`;
     return;
   }
 
@@ -1480,6 +1519,9 @@ function renderTechnicianBulkTable() {
   }
 
   const technicians = getFilteredTechnicians();
+  if (elements.technicianResultLabel) {
+    elements.technicianResultLabel.textContent = `顯示 ${technicians.length} / ${state.technicians.length} 位`;
+  }
   elements.technicianBulkTable.innerHTML = `
     <table class="list-table bulk-technician-table">
       <thead>
@@ -1506,6 +1548,131 @@ function renderTechnicianBulkTable() {
     }
   });
   updateBulkTechnicianSelectionMeta();
+}
+
+function renderTechnicianReviewSummary() {
+  if (!elements.technicianReviewSummary) {
+    return;
+  }
+
+  const unlinkedCount = state.technicians.filter((item) => item.status === "未綁定").length;
+  const pendingCount = state.technicians.filter((item) => item.status === "待審核").length;
+  const approvedCount = state.technicians.filter((item) => item.status === "已通過").length;
+  const rejectedCount = state.technicians.filter((item) => item.status === "已拒絕").length;
+  const disabledCount = state.technicians.filter((item) => item.status === "已停用").length;
+
+  elements.technicianReviewSummary.innerHTML = `
+    <article class="review-card">
+      <span>未綁定</span>
+      <strong>${unlinkedCount}</strong>
+      <small>尚未有技師完成 technician 頁面的 LINE 登入</small>
+    </article>
+    <article class="review-card">
+      <span>待審核</span>
+      <strong>${pendingCount}</strong>
+      <small>已登入 LINE，等待 admin 審核通過</small>
+    </article>
+    <article class="review-card">
+      <span>已通過</span>
+      <strong>${approvedCount}</strong>
+      <small>可進入 technician 頁面查看自己的資料</small>
+    </article>
+    <article class="review-card">
+      <span>已拒絕 / 已停用</span>
+      <strong>${rejectedCount + disabledCount}</strong>
+      <small>登入後會被阻擋，需重新調整狀態</small>
+    </article>
+  `;
+}
+
+function renderTechnicianReviewTable() {
+  if (!elements.technicianReviewTable) {
+    return;
+  }
+
+  const technicians = getFilteredTechnicianAccounts();
+  const statusOrder = {
+    "待審核": 0,
+    "未綁定": 1,
+    "已通過": 2,
+    "已拒絕": 3,
+    "已停用": 4,
+  };
+
+  renderTechnicianReviewSummary();
+
+  if (!technicians.length) {
+    elements.technicianReviewTable.innerHTML = `<div class="empty-state">${state.filters.technicianId || state.filters.technicianStatus !== "all" || state.filters.technicianReviewStatus !== "all" ? "找不到符合條件的技師帳號。" : "尚無任何技師 LINE 登入紀錄。"}</div>`;
+    return;
+  }
+
+  elements.technicianReviewTable.innerHTML = `
+    <table class="list-table">
+      <thead>
+        <tr>
+          <th>技師</th>
+          <th>LINE 帳號</th>
+          <th>服務 / 班別</th>
+          <th>技師狀態</th>
+          <th>最後登入</th>
+          <th>備註</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${technicians
+          .slice()
+          .sort((left, right) => {
+            const leftRank = statusOrder[left.status] ?? 9;
+            const rightRank = statusOrder[right.status] ?? 9;
+            if (leftRank !== rightRank) {
+              return leftRank - rightRank;
+            }
+            return String(right.lastLoginAt || right.updatedAt || "").localeCompare(String(left.lastLoginAt || left.updatedAt || ""));
+          })
+          .map((technician) => {
+            const canReview = Boolean(technician.lineUserId);
+            const lineDisplay = technician.lineUserId
+              ? `
+                <div class="user-cell">
+                  ${technician.pictureUrl ? `<img class="user-avatar" src="${technician.pictureUrl}" alt="${technician.profileDisplayName || technician.name}" />` : `<div class="user-avatar user-avatar--placeholder">${(technician.profileDisplayName || technician.name || "T").slice(0, 1)}</div>`}
+                  <div class="user-cell__meta">
+                    <strong>${technician.profileDisplayName || technician.name}</strong>
+                    <small>${technician.lineUserId}</small>
+                  </div>
+                </div>
+              `
+              : '<span class="helper-text">尚未登入 technician 頁面</span>';
+
+            return `
+              <tr>
+                <td data-label="技師">
+                  <div class="user-cell__meta">
+                    <strong>${technician.name}</strong>
+                    <small>${technician.technicianId}</small>
+                  </div>
+                </td>
+                <td data-label="LINE 帳號">${lineDisplay}</td>
+                <td data-label="服務 / 班別">${getBulkTechnicianServicesLabel(technician.serviceIds)}<br /><span class="helper-text">${technician.startTime} - ${technician.endTime} / ${technician.active ? "啟用" : "停用"}</span></td>
+                <td data-label="技師狀態">${getTechnicianReviewStatusPill(technician.status)}</td>
+                <td data-label="最後登入">${formatDateTimeText(technician.lastLoginAt)}</td>
+                <td data-label="備註">${technician.note || '<span class="helper-text">尚無備註</span>'}</td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div class="table-actions stacked-actions">
+                    <button type="button" class="button button--ghost" data-focus-technician="${technician.technicianId}">前往設定</button>
+                    <button type="button" class="button button--ghost" data-review-technician="${technician.technicianId}" data-review-technician-status="已通過" ${canReview ? "" : "disabled"}>通過</button>
+                    <button type="button" class="button button--secondary" data-review-technician="${technician.technicianId}" data-review-technician-status="待審核" ${canReview ? "" : "disabled"}>設待審核</button>
+                    <button type="button" class="button button--secondary" data-review-technician="${technician.technicianId}" data-review-technician-status="已拒絕" ${canReview ? "" : "disabled"}>拒絕</button>
+                    <button type="button" class="button button--danger" data-review-technician="${technician.technicianId}" data-review-technician-status="已停用" ${canReview ? "" : "disabled"}>停用</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          })
+          .join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 function appendTechnicianBulkRow(technician = null) {
@@ -1967,6 +2134,10 @@ function refreshTechnicianOptions() {
   if (state.technicians.some((item) => item.technicianId === state.filters.reservationTechnicianId)) {
     elements.reservationTechnicianFilter.value = state.filters.reservationTechnicianId;
   }
+
+  if (elements.technicianReviewStatusFilter) {
+    elements.technicianReviewStatusFilter.value = state.filters.technicianReviewStatus || "all";
+  }
 }
 
 function renderAll() {
@@ -1977,6 +2148,7 @@ function renderAll() {
   updateWorkspaceOverview();
   refreshServiceCategorySuggestions();
   renderServiceTable();
+  renderTechnicianReviewTable();
   renderTechnicianBulkTable();
   renderScheduleTable();
   renderReservationTable();
@@ -2380,6 +2552,51 @@ async function deleteSchedule(scheduleDate, technicianId, technicianName) {
   setStatus("班表已刪除。", "success");
 }
 
+async function reviewTechnician(technicianId, status) {
+  const technician = state.technicians.find((item) => item.technicianId === technicianId);
+  if (!technician) {
+    throw new Error("找不到技師資料");
+  }
+
+  if (!technician.lineUserId) {
+    setStatus("此技師尚未完成 LINE 登入，暫時無法審核。", "info");
+    return;
+  }
+
+  const note = window.prompt(`請輸入「${technician.name}」的技師審核備註：`, technician.note || "");
+  if (note === null) {
+    setStatus("已取消技師審核操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新技師審核狀態...");
+  const result = await requestApi("POST", {}, {
+    action: "reviewTechnician",
+    payload: {
+      technicianId,
+      status,
+      note,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新技師審核失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`已將 ${technician.name} 設為${status}。`, "success");
+}
+
+function focusTechnicianSettings(technicianId) {
+  state.filters.technicianId = technicianId;
+  if (elements.technicianSearchSelect) {
+    elements.technicianSearchSelect.value = technicianId;
+  }
+  renderTechnicianReviewTable();
+  renderTechnicianBulkTable();
+  scrollToPanel(elements.technicianBulkTable);
+  setStatus("已定位到這位技師的設定列。", "info");
+}
+
 async function reviewUser(userId, status) {
   const user = state.users.find((item) => item.userId === userId);
   if (!user) {
@@ -2543,12 +2760,19 @@ function bindEvents() {
 
   elements.technicianSearchSelect.addEventListener("change", (event) => {
     state.filters.technicianId = event.target.value;
+    renderTechnicianReviewTable();
     renderTechnicianBulkTable();
   });
 
   elements.technicianStatusFilter.addEventListener("change", (event) => {
     state.filters.technicianStatus = event.target.value;
+    renderTechnicianReviewTable();
     renderTechnicianBulkTable();
+  });
+
+  elements.technicianReviewStatusFilter.addEventListener("change", (event) => {
+    state.filters.technicianReviewStatus = event.target.value;
+    renderTechnicianReviewTable();
   });
 
   elements.technicianBulkAddRowButton.addEventListener("click", () => {
@@ -2621,6 +2845,25 @@ function bindEvents() {
       const count = setVisibleServiceSelection(row.querySelector("[data-bulk-service-checkboxes]"), false);
       syncBulkTechnicianServiceSummary(row);
       setStatus(count ? "已清除此列目前分類服務。" : "目前分類沒有可清除的服務項目。", "info");
+    }
+  });
+
+  elements.technicianReviewTable.addEventListener("click", async (event) => {
+    const focusButton = event.target.closest("[data-focus-technician]");
+    if (focusButton) {
+      focusTechnicianSettings(focusButton.dataset.focusTechnician);
+      return;
+    }
+
+    const reviewButton = event.target.closest("[data-review-technician]");
+    if (!reviewButton) {
+      return;
+    }
+
+    try {
+      await reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus);
+    } catch (error) {
+      setStatus(error.message, "error");
     }
   });
 

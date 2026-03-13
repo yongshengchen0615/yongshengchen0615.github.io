@@ -34,6 +34,11 @@ function doGet(e) {
       return jsonResponse_({ ok: true, data: getPublicData_() });
     }
 
+    if (action === 'technicianData') {
+      var technicianUser = verifyTechnicianAccess_(getRequestValue_(e, 'technicianUserId'));
+      return jsonResponse_({ ok: true, data: getTechnicianData_(technicianUser) });
+    }
+
     if (action === 'adminData') {
       verifyAdminAccess_(getRequestValue_(e, 'adminUserId'));
       return jsonResponse_({ ok: true, data: getAdminData_() });
@@ -65,6 +70,10 @@ function doPost(e) {
 
     if (action === 'syncAdminUser') {
       return jsonResponse_({ ok: true, data: syncAdminUser_(body.payload || {}) });
+    }
+
+    if (action === 'syncTechnicianUser') {
+      return jsonResponse_({ ok: true, data: syncTechnicianUser_(body.payload || {}) });
     }
 
     if (action === 'syncSuperAdminUser') {
@@ -110,6 +119,10 @@ function doPost(e) {
 
     if (action === 'reviewUser') {
       return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
+    }
+
+    if (action === 'reviewTechnician') {
+      return jsonResponse_({ ok: true, data: reviewTechnician_(body.payload || {}) });
     }
 
     if (action === 'deleteUser') {
@@ -225,6 +238,53 @@ function getAdminData_() {
   }, DATA_CACHE_TTL_SECONDS.adminData);
 }
 
+function getTechnicianData_(technicianUser) {
+  return getCachedDataset_('technicianData:' + String(technicianUser.technicianId || ''), function() {
+    var services = getTableRecords_(SHEETS.services).map(normalizeService_);
+    var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+    var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+    var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+    var serviceMap = indexBy_(services, 'serviceId');
+    var userMap = indexBy_(users, 'userId');
+    var technicianId = String(technicianUser.technicianId || '').trim();
+
+    return {
+      technician: technicianUser,
+      services: services.filter(function(service) {
+        return technicianUser.serviceIds.indexOf(service.serviceId) !== -1;
+      }),
+      schedules: schedules
+        .filter(function(schedule) {
+          return schedule.technicianId === technicianId;
+        })
+        .sort(function(left, right) {
+          return (String(left.date) + ' ' + String(left.startTime)).localeCompare(String(right.date) + ' ' + String(right.startTime));
+        }),
+      reservations: reservations
+        .filter(function(reservation) {
+          return reservation.technicianId === technicianId;
+        })
+        .map(function(item) {
+          var reservationServices = getReservationServices_(item, serviceMap);
+          item.serviceName = reservationServices.map(function(service) {
+            return service.name;
+          }).join('、');
+          item.totalDurationMinutes = reservationServices.reduce(function(sum, service) {
+            return sum + Number(service.durationMinutes || 0);
+          }, 0);
+          item.totalPrice = reservationServices.reduce(function(sum, service) {
+            return sum + Number(service.price || 0);
+          }, 0);
+          item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
+          return item;
+        })
+        .sort(function(left, right) {
+          return (String(right.date) + ' ' + String(right.startTime)).localeCompare(String(left.date) + ' ' + String(left.startTime));
+        }),
+    };
+  }, DATA_CACHE_TTL_SECONDS.adminData);
+}
+
 function getSuperAdminData_() {
   return getCachedDataset_('superAdminData', function() {
     return {
@@ -295,6 +355,53 @@ function syncAdminUser_(payload) {
 
   upsertRecord_(SHEETS.adminUsers, 'userId', record);
   return normalizeAdminUser_(record);
+}
+
+function syncTechnicianUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+
+  var userId = String(payload.userId || '').trim();
+  var technicianId = String(payload.technicianId || '').trim();
+  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+  var existing = technicians.find(function(item) {
+    return item.lineUserId === userId;
+  });
+
+  if (!existing && technicianId) {
+    existing = technicians.find(function(item) {
+      return item.technicianId === technicianId && !String(item.lineUserId || '').trim();
+    });
+  }
+
+  if (!existing) {
+    var displayName = String(payload.displayName || '').trim();
+    var matches = technicians.filter(function(item) {
+      return !String(item.lineUserId || '').trim() && item.name === displayName;
+    });
+    if (matches.length === 1) {
+      existing = matches[0];
+    }
+  }
+
+  var nowText = toIsoString_(new Date());
+  var record = {
+    technicianId: existing && existing.technicianId ? existing.technicianId : createId_('TEC'),
+    name: String(existing && existing.name || payload.displayName || '技師').trim() || '技師',
+    serviceIds: existing ? existing.serviceIds.join(',') : '',
+    startTime: existing ? existing.startTime : '09:00',
+    endTime: existing ? existing.endTime : '18:00',
+    active: existing ? existing.active : false,
+    updatedAt: nowText,
+    lineUserId: userId,
+    profileDisplayName: String(payload.displayName || existing && existing.profileDisplayName || existing && existing.name || 'LINE 技師').trim() || 'LINE 技師',
+    pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
+    reviewStatus: existing && existing.lineUserId ? normalizeTechnicianStatus_(existing.status, userId) : '待審核',
+    reviewNote: existing ? existing.note : '',
+    lastLoginAt: nowText,
+  };
+
+  upsertRecord_(SHEETS.technicians, 'technicianId', record);
+  return normalizeTechnician_(record);
 }
 
 function syncSuperAdminUser_(payload) {
@@ -385,6 +492,43 @@ function reviewUser_(payload) {
 
   upsertRecord_(SHEETS.users, 'userId', record);
   return normalizeUser_(record);
+}
+
+function reviewTechnician_(payload) {
+  validateRequired_(payload.technicianId, 'technicianId');
+  validateRequired_(payload.status, 'status');
+
+  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+  var existing = technicians.find(function(item) {
+    return item.technicianId === String(payload.technicianId || '').trim();
+  });
+
+  if (!existing) {
+    throw new Error('找不到技師');
+  }
+
+  if (!String(existing.lineUserId || '').trim()) {
+    throw new Error('此技師尚未完成 LINE 登入，無法審核');
+  }
+
+  var record = {
+    technicianId: existing.technicianId,
+    name: existing.name,
+    serviceIds: existing.serviceIds.join(','),
+    startTime: existing.startTime,
+    endTime: existing.endTime,
+    active: existing.active,
+    updatedAt: toIsoString_(new Date()),
+    lineUserId: existing.lineUserId,
+    profileDisplayName: existing.profileDisplayName,
+    pictureUrl: existing.pictureUrl,
+    reviewStatus: normalizeTechnicianStatus_(payload.status, existing.lineUserId),
+    reviewNote: String(payload.note || existing.note || '').trim(),
+    lastLoginAt: existing.lastLoginAt,
+  };
+
+  upsertRecord_(SHEETS.technicians, 'technicianId', record);
+  return normalizeTechnician_(record);
 }
 
 function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
@@ -714,6 +858,12 @@ function saveTechnician_(payload) {
     endTime: technicianEndTime,
     active: toBoolean_(payload.active),
     updatedAt: toIsoString_(new Date()),
+    lineUserId: existing ? existing.lineUserId : '',
+    profileDisplayName: existing ? existing.profileDisplayName : '',
+    pictureUrl: existing ? existing.pictureUrl : '',
+    reviewStatus: existing ? existing.status : '',
+    reviewNote: existing ? existing.note : '',
+    lastLoginAt: existing ? existing.lastLoginAt : '',
   };
 
   upsertRecord_(SHEETS.technicians, 'technicianId', record);
@@ -757,6 +907,12 @@ function saveTechnicianServices_(payload) {
     endTime: technician.endTime,
     active: technician.active,
     updatedAt: toIsoString_(new Date()),
+    lineUserId: technician.lineUserId,
+    profileDisplayName: technician.profileDisplayName,
+    pictureUrl: technician.pictureUrl,
+    reviewStatus: technician.status,
+    reviewNote: technician.note,
+    lastLoginAt: technician.lastLoginAt,
   };
 
   upsertRecord_(SHEETS.technicians, 'technicianId', record);
@@ -1086,7 +1242,7 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.superAdmins, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
-  ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt']);
+  ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt', 'lineUserId', 'profileDisplayName', 'pictureUrl', 'reviewStatus', 'reviewNote', 'lastLoginAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
   ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'assignmentType', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
@@ -1502,6 +1658,29 @@ function verifyAdminAccess_(adminUserId) {
   return adminUser;
 }
 
+function verifyTechnicianAccess_(technicianUserId) {
+  validateRequired_(technicianUserId, 'technicianUserId');
+
+  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+  var technician = technicians.find(function(item) {
+    return item.lineUserId === String(technicianUserId || '').trim();
+  });
+
+  if (!technician) {
+    throw new Error('找不到技師登入紀錄，請先使用 LINE 登入');
+  }
+
+  if (!isTechnicianApproved_(technician.status)) {
+    if (normalizeTechnicianStatus_(technician.status, technician.lineUserId) === '待審核') {
+      throw new Error('技師帳號待審核，尚不可使用技師頁面');
+    }
+
+    throw new Error(technician.note || '此技師帳號目前不可使用技師頁面');
+  }
+
+  return technician;
+}
+
 function verifySuperAdminAccess_(adminUserId) {
   validateRequired_(adminUserId, 'adminUserId');
 
@@ -1584,6 +1763,7 @@ function normalizeCategoryValue_(value) {
 }
 
 function normalizeTechnician_(item) {
+  var lineUserId = String(item.lineUserId || '').trim();
   return {
     technicianId: String(item.technicianId || ''),
     name: String(item.name || ''),
@@ -1597,6 +1777,14 @@ function normalizeTechnician_(item) {
     endTime: normalizeTimeString_(item.endTime || '18:00'),
     active: toBoolean_(item.active),
     updatedAt: String(item.updatedAt || ''),
+    lineUserId: lineUserId,
+    userId: lineUserId,
+    profileDisplayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || 'LINE 技師',
+    displayName: String(item.profileDisplayName || '').trim() || String(item.name || '').trim() || 'LINE 技師',
+    pictureUrl: String(item.pictureUrl || '').trim(),
+    status: normalizeTechnicianStatus_(item.reviewStatus, lineUserId),
+    note: String(item.reviewNote || '').trim(),
+    lastLoginAt: String(item.lastLoginAt || ''),
   };
 }
 
@@ -1725,6 +1913,41 @@ function normalizeAdminStatus_(value) {
 
 function isAdminApproved_(status) {
   return normalizeAdminStatus_(status) === '已通過';
+}
+
+function normalizeTechnicianStatus_(value, lineUserId) {
+  var status = String(value || '').trim();
+  var hasLineIdentity = Boolean(String(lineUserId || '').trim());
+
+  if (!status) {
+    return hasLineIdentity ? '待審核' : '未綁定';
+  }
+
+  if (status === 'unlinked' || status === '未綁定') {
+    return '未綁定';
+  }
+
+  if (status === 'pending' || status === '待審核') {
+    return '待審核';
+  }
+
+  if (status === 'approved' || status === '已通過') {
+    return '已通過';
+  }
+
+  if (status === 'rejected' || status === '已拒絕') {
+    return '已拒絕';
+  }
+
+  if (status === 'disabled' || status === '已停用') {
+    return '已停用';
+  }
+
+  return status;
+}
+
+function isTechnicianApproved_(status) {
+  return normalizeTechnicianStatus_(status, 'linked') === '已通過';
 }
 
 function normalizeUserStatus_(value) {
