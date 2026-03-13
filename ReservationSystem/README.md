@@ -29,7 +29,7 @@
 ### 最高管理員端
 - 使用獨立的 `superadmin/` 頁面登入
 - 可設定哪些 admin 具備「管理其他管理員」的權限
-- 最高管理員名單由 GAS Script Properties 的 `SUPER_ADMIN_LINE_USER_IDS` 控制
+- 最高管理員名單可由 `AdminUsers.isSuperAdmin` 直接控制，未設定時才 fallback 到 GAS Script Properties 的 `SUPER_ADMIN_LINE_USER_IDS`
 
 ### GAS / Google Sheets
 - 所有技師、服務、班表、預約資料皆透過 GAS 寫入與讀取
@@ -63,10 +63,12 @@
   - `ADMIN_APPROVED_LINE_USER_IDS=已通過審核的管理員 LINE userId，逗號分隔`
   - `SUPER_ADMIN_LINE_USER_IDS=最高管理員的 LINE userId，逗號分隔`
 4. 第一次啟用 admin 後台時，至少要先把一位管理員的 LINE userId 寫入 `ADMIN_APPROVED_LINE_USER_IDS`，作為 bootstrap 管理員。
-5. 建議同步設定 `SUPER_ADMIN_LINE_USER_IDS`；若未設定，系統會先以 `ADMIN_APPROVED_LINE_USER_IDS` 作為最高管理員 fallback。
+5. 可直接在 `AdminUsers` 工作表把 `isSuperAdmin` 設為 `true` 指定最高管理員；若工作表未設定任何最高管理員，系統才會讀取 `SUPER_ADMIN_LINE_USER_IDS`，再沒有時才 fallback 到 `ADMIN_APPROVED_LINE_USER_IDS`。
 6. 之後其他管理員可先登入 admin 頁面進入待審核，再由具有管理員修改權限的 admin 或最高管理員進行設定。
 7. 以網頁應用程式方式部署。
 8. 執行身分建議設為你自己，存取權限可依需求設定。
+9. 若要直接停用或恢復最高管理員，可在 `AdminUsers` 工作表直接修改該帳號的 `status`；系統同步登入時不會再自動覆寫既有狀態。
+10. 若要直接指定或取消最高管理員，可在 `AdminUsers` 工作表直接修改 `isSuperAdmin` 為 `true` 或 `false`。
 
 ## 工作表欄位
 
@@ -127,6 +129,7 @@
 - `pictureUrl`
 - `status`
 - `canManageAdmins`
+- `isSuperAdmin`
 - `note`
 - `createdAt`
 - `updatedAt`
@@ -146,7 +149,8 @@
 ## 注意事項
 
 - 管理員後台改為 LIFF 登入 + 管理員審核機制，第一次需先在 Script Properties 設定 `ADMIN_APPROVED_LINE_USER_IDS`。
-- 若要明確區分最高管理員，請額外設定 `SUPER_ADMIN_LINE_USER_IDS`。
+- 若 `AdminUsers` 已有 `isSuperAdmin=true` 的帳號，superadmin 驗證會優先以工作表為準。
+- 若工作表未設定任何最高管理員，才會使用 `SUPER_ADMIN_LINE_USER_IDS`。
 - 前台建立預約時，GAS 會再次檢查用戶是否為「已通過」，所以即使前端被繞過也無法直接送單。
 - 若要上正式環境，建議再加上 Google Login 或更嚴格的身份驗證。
 - 若需要取消預約、黑名單、LINE 通知、Email 通知，可在此基礎上繼續擴充。

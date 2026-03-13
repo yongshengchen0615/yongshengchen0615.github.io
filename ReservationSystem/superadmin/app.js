@@ -134,7 +134,7 @@ function renderAccessState() {
   elements.statusBadge.textContent = state.adminUser.status || "無權限";
   elements.statusBadge.dataset.tone = "blocked";
   elements.statusText.textContent = "此 LINE 帳號不是最高管理員。";
-  setApprovalMessage("請在 GAS Script Properties 的 SUPER_ADMIN_LINE_USER_IDS 設定此帳號，或改用既有最高管理員登入。", "blocked");
+  setApprovalMessage("請在 AdminUsers 工作表把此帳號的 isSuperAdmin 設為 true，或改用既有最高管理員登入。", "blocked");
   setContentAccess(false);
 }
 
