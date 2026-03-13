@@ -397,9 +397,7 @@ function renderReservations() {
         <tr>
           <th>日期</th>
           <th>時段</th>
-          <th>客人</th>
           <th>服務</th>
-          <th>電話</th>
           <th>狀態</th>
         </tr>
       </thead>
@@ -410,9 +408,7 @@ function renderReservations() {
             <tr>
               <td data-label="日期">${escapeHtml(reservation.date)}</td>
               <td data-label="時段">${escapeHtml(reservation.startTime)} - ${escapeHtml(reservation.endTime)}</td>
-              <td data-label="客人">${escapeHtml(reservation.customerName || reservation.userDisplayName || "未填寫")}</td>
               <td data-label="服務">${escapeHtml(reservation.serviceName || "未設定")}</td>
-              <td data-label="電話">${escapeHtml(reservation.phone || "未填寫")}</td>
               <td data-label="狀態">${getStatusPill(reservation.status)}</td>
             </tr>
           `)
