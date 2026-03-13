@@ -413,13 +413,9 @@ function renderReservationStatusList() {
       const serviceNames = getReservationServiceNames(reservation);
       return `
         <article class="reservation-status-item">
-          <div class="reservation-status-item__header">
-            <strong>${reservation.reservationId || "未建立預約編號"}</strong>
-            <span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservation.status || "未設定"}</span>
-          </div>
           <dl class="reservation-status-item__rows">
             <div><dt>預約編號</dt><dd>${reservation.reservationId || "-"}</dd></div>
-            <div><dt>預約狀態</dt><dd>${reservation.status || "未設定"}</dd></div>
+            <div class="reservation-status-item__status-row"><dt>預約狀態</dt><dd><span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservation.status || "未設定"}</span></dd></div>
             <div><dt>預約日期</dt><dd>${reservation.date || "未定日期"}</dd></div>
             <div><dt>預約時段</dt><dd>${getReservationTimeLabel(reservation)}</dd></div>
             <div><dt>技師</dt><dd>${getReservationTechnicianLabel(reservation)}</dd></div>

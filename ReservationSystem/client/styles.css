@@ -453,13 +453,6 @@ textarea:focus {
   background: rgba(255, 255, 255, 0.82);
 }
 
-.reservation-status-item__header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .reservation-status-item__rows {
   display: grid;
   gap: 10px;
@@ -487,6 +480,11 @@ textarea:focus {
   margin: 0;
   font-weight: 600;
   text-align: right;
+}
+
+.reservation-status-item__status-row dd {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .overview-list {
