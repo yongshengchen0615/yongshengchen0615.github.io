@@ -579,7 +579,7 @@ async function reviewAdminUser(userId, status) {
 
   showLoading("正在更新管理員審核狀態...", "loading");
   const result = await requestApi("POST", {}, {
-    action: "updateAdminReviewStatus",
+    action: "reviewAdminUser",
     payload: {
       userId,
       status,
