@@ -1855,9 +1855,9 @@ function renderScheduleCalendar() {
     const workingCount = schedules.filter((item) => item.isWorking).length;
     const offCount = schedules.length - workingCount;
     const compactStatus = workingCount
-      ? `${workingCount} 可約`
+      ? `${workingCount}可約`
       : schedules.length
-        ? `${offCount} 休假`
+        ? `${offCount}休`
         : "無班";
     const classes = ["schedule-day"];
 

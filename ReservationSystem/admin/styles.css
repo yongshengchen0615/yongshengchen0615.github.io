@@ -485,6 +485,7 @@ h1 {
 
 .schedule-calendar-shell {
   width: 100%;
+  min-width: 0;
 }
 
 .schedule-weekdays,
@@ -1024,43 +1025,50 @@ h1 {
   }
 
   .schedule-calendar-shell {
-    overflow-x: auto;
-    overflow-y: hidden;
-    max-width: 100%;
-    padding: 0 0 4px;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x;
-  }
-
-  .schedule-calendar-shell::-webkit-scrollbar {
-    display: none;
+    overflow: visible;
+    padding: 0;
   }
 
   .schedule-weekdays,
   .schedule-calendar-grid {
-    width: max-content;
+    width: 100%;
     min-width: 0;
-    grid-template-columns: repeat(7, minmax(72px, 72px));
-    gap: 6px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .schedule-weekdays span {
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
   }
 
   .schedule-day,
-  .schedule-day--empty,
-  .schedule-day__button {
-    min-height: 76px;
+  .schedule-day--empty {
+    min-height: auto;
+    aspect-ratio: 1;
+    border-radius: 0.8rem;
   }
 
   .schedule-day__button {
-    gap: 6px;
-    padding: 8px;
+    height: 100%;
+    min-height: 0;
+    gap: 4px;
+    padding: 6px 4px;
     align-content: center;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .schedule-day__number {
+    font-size: 0.9rem;
+    line-height: 1;
   }
 
   .schedule-day__summary {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.6rem;
+    line-height: 1.15;
+    word-break: keep-all;
   }
 
   .schedule-day__meta {
@@ -1191,7 +1199,11 @@ h1 {
 
   .schedule-weekdays,
   .schedule-calendar-grid {
-    grid-template-columns: repeat(7, minmax(68px, 68px));
+    gap: 3px;
+  }
+
+  .schedule-weekdays span {
+    font-size: 0.62rem;
   }
 
   .top-loading {
@@ -1229,23 +1241,22 @@ h1 {
     padding: 12px;
   }
 
-  .schedule-weekdays,
-  .schedule-calendar-grid {
-    grid-template-columns: repeat(7, minmax(64px, 64px));
-  }
-
   .schedule-day,
-  .schedule-day--empty,
-  .schedule-day__button {
-    min-height: 72px;
+  .schedule-day--empty {
+    border-radius: 0.7rem;
   }
 
   .schedule-day__button {
-    padding: 7px;
+    gap: 2px;
+    padding: 5px 3px;
+  }
+
+  .schedule-day__number {
+    font-size: 0.82rem;
   }
 
   .schedule-day__summary {
-    font-size: 0.7rem;
+    font-size: 0.54rem;
   }
 
   .list-table td {
