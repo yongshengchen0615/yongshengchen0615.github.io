@@ -96,6 +96,7 @@ body.is-busy {
 input,
 select,
 textarea {
+  box-sizing: border-box;
   width: 100%;
   border: 1px solid rgba(146, 178, 200, 0.2);
   border-radius: 0.75rem;
