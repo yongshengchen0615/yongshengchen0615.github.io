@@ -1145,8 +1145,8 @@ function appendRecord_(sheetName, record) {
   var sheet = snapshot.sheet;
   var headers = snapshot.headers;
   var row = buildSheetRow_(sheetName, headers, record);
-  sheet.appendRow(row);
-  snapshot.records.push(buildRecordFromSheetRow_(sheetName, headers, row));
+  writeSheetRow_(sheetName, sheet, sheet.getLastRow() + 1, headers, row);
+  snapshot.records.push(buildRecordFromRecord_(sheetName, headers, record));
   markDataMutated_(false);
 }
 
@@ -1158,16 +1158,16 @@ function upsertRecord_(sheetName, primaryKey, record) {
     return String(item[primaryKey]) === String(record[primaryKey]);
   });
   var row = buildSheetRow_(sheetName, headers, record);
-  var nextRecord = buildRecordFromSheetRow_(sheetName, headers, row);
+  var nextRecord = buildRecordFromRecord_(sheetName, headers, record);
 
   if (rowIndex === -1) {
-    sheet.appendRow(row);
+    writeSheetRow_(sheetName, sheet, sheet.getLastRow() + 1, headers, row);
     snapshot.records.push(nextRecord);
     markDataMutated_(false);
     return;
   }
 
-  sheet.getRange(rowIndex + 2, 1, 1, headers.length).setValues([row]);
+  writeSheetRow_(sheetName, sheet, rowIndex + 2, headers, row);
   snapshot.records[rowIndex] = nextRecord;
   markDataMutated_(false);
 }
@@ -1178,7 +1178,7 @@ function upsertRecordByComposite_(sheetName, keys, record) {
   var headers = snapshot.headers;
   var matchedRowIndexes = [];
   var row = buildSheetRow_(sheetName, headers, record);
-  var nextRecord = buildRecordFromSheetRow_(sheetName, headers, row);
+  var nextRecord = buildRecordFromRecord_(sheetName, headers, record);
 
   snapshot.records.forEach(function(item, index) {
     var isMatch = keys.every(function(key) {
@@ -1191,13 +1191,13 @@ function upsertRecordByComposite_(sheetName, keys, record) {
   });
 
   if (!matchedRowIndexes.length) {
-    sheet.appendRow(row);
+    writeSheetRow_(sheetName, sheet, sheet.getLastRow() + 1, headers, row);
     snapshot.records.push(nextRecord);
     markDataMutated_(false);
     return;
   }
 
-  sheet.getRange(matchedRowIndexes[0] + 2, 1, 1, headers.length).setValues([row]);
+  writeSheetRow_(sheetName, sheet, matchedRowIndexes[0] + 2, headers, row);
   snapshot.records[matchedRowIndexes[0]] = nextRecord;
 
   matchedRowIndexes
@@ -1300,8 +1300,42 @@ function buildSheetRow_(sheetName, headers, record) {
   return headers.map(function(header) {
     var value = record[header] !== undefined ? record[header] : '';
     return isTextColumn_(sheetName, header)
+      ? buildSheetTextCellValue_(value)
+      : value;
+  });
+}
+
+function buildSheetTextCellValue_(value) {
+  return "'" + normalizeSheetTextValue_(value);
+}
+
+function buildRecordFromRecord_(sheetName, headers, record) {
+  var normalizedRecord = {};
+
+  headers.forEach(function(header) {
+    var value = record[header] !== undefined ? record[header] : '';
+    normalizedRecord[header] = isTextColumn_(sheetName, header)
       ? normalizeSheetTextValue_(value)
       : value;
+  });
+
+  return normalizedRecord;
+}
+
+function writeSheetRow_(sheetName, sheet, rowNumber, headers, row) {
+  var range = sheet.getRange(rowNumber, 1, 1, headers.length);
+
+  ensureTextFormatForRow_(sheetName, range, headers);
+  range.setValues([row]);
+}
+
+function ensureTextFormatForRow_(sheetName, range, headers) {
+  headers.forEach(function(header, index) {
+    if (!isTextColumn_(sheetName, header)) {
+      return;
+    }
+
+    range.getCell(1, index + 1).setNumberFormat('@');
   });
 }
 

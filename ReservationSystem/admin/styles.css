@@ -396,6 +396,8 @@ h1 {
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 700;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .status-badge[data-tone="approved"] {
@@ -1010,6 +1012,7 @@ textarea {
   font-size: 0.84rem;
   font-weight: 700;
   white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .status-pill--active,
@@ -1118,8 +1121,6 @@ textarea {
 .schedule-entry__time,
 .service-list li,
 .helper-text,
-.status-badge,
-.status-pill,
 .approval-banner {
   overflow-wrap: anywhere;
 }
