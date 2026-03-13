@@ -481,7 +481,7 @@ function renderAdminTable() {
             <th>操作</th>
           </tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${cards}</tbody>
       </table>
     </div>
   `;
