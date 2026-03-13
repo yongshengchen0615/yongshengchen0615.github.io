@@ -1453,6 +1453,7 @@ function createBulkTechnicianRowMarkup(technician = null) {
   const technicianId = technician?.technicianId || "";
   const serviceIds = technician?.serviceIds || [];
   const serviceSummary = serviceIds.length ? `${serviceIds.length} 項服務` : "未綁定服務";
+  const lineName = technician?.profileDisplayName || "";
   const technicianName = technician?.name || "";
   const startTime = technician?.startTime || "09:00";
   const endTime = technician?.endTime || "18:00";
@@ -1461,6 +1462,9 @@ function createBulkTechnicianRowMarkup(technician = null) {
     <tr data-bulk-technician-row data-technician-id="${escapeHtml(technicianId)}" data-service-ids="${escapeHtml(serviceIds.join(","))}">
       <td data-label="勾選">
         <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
+      </td>
+      <td data-label="LINE 名稱">
+        <input type="text" value="${escapeHtml(lineName)}" placeholder="尚未綁定 LINE" readonly />
       </td>
       <td data-label="技師名稱">
         <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
@@ -1527,6 +1531,7 @@ function renderTechnicianBulkTable() {
       <thead>
         <tr>
           <th>勾選</th>
+          <th>LINE 名稱</th>
           <th>技師名稱</th>
           <th>上班時間</th>
           <th>下班時間</th>

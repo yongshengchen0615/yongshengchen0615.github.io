@@ -288,6 +288,10 @@ function getTechnicianById(technicianId) {
   return state.technicians.find((item) => item.technicianId === technicianId);
 }
 
+function getTechnicianDisplayName(technician) {
+  return String(technician?.name || technician?.profileDisplayName || "").trim() || "未指定";
+}
+
 function getServiceById(serviceId) {
   return state.services.find((item) => item.serviceId === serviceId);
 }
@@ -389,7 +393,7 @@ function getReservationTechnicianLabel(reservation) {
   }
 
   const technician = getTechnicianById(reservation?.technicianId);
-  return technician?.name || "現場安排 / 未指定";
+  return technician ? getTechnicianDisplayName(technician) : "現場安排 / 未指定";
 }
 
 function renderReservationStatusList() {
@@ -764,7 +768,7 @@ function updateDashboard() {
   elements.heroNextAvailableDate.textContent = getNextAvailableDate();
 
   elements.overviewTechnician.textContent = isSpecificTechnicianSelected(state.selectedTechnicianId)
-    ? selectedTechnician?.name || "尚未選擇"
+    ? getTechnicianDisplayName(selectedTechnician)
     : "不指定技師，由現場安排";
   elements.overviewServiceCount.textContent = `${selectedMetrics.services.length} / ${availableServices.length} 項`;
   elements.overviewDateCount.textContent = `${availableDates.length} 天`;
@@ -802,7 +806,7 @@ function updateSummary() {
       <span class="summary__badge">即時更新</span>
     </div>
     <dl class="summary__rows">
-      <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? technician?.name || "未指定" : "不指定，由現場安排"}</dd></div>
+      <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? getTechnicianDisplayName(technician) : "不指定技師，由現場安排"}</dd></div>
       <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
       <div class="summary__row"><dt>日期</dt><dd>${date}</dd></div>
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
@@ -879,10 +883,10 @@ function refreshSelects() {
     { value: UNSPECIFIED_TECHNICIAN_VALUE, label: "不指定技師，由現場安排" },
     ...getActiveTechnicians()
     .slice()
-    .sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"))
+    .sort((left, right) => getTechnicianDisplayName(left).localeCompare(getTechnicianDisplayName(right), "zh-Hant"))
     .map((item) => ({
       value: item.technicianId,
-      label: item.name,
+      label: getTechnicianDisplayName(item),
     })),
   ];
   setOptions(elements.technicianSelect, technicianOptions);
