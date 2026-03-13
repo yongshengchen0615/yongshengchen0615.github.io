@@ -393,7 +393,7 @@ function renderAdminManagePermissionEditor(adminUser) {
     : "授權後，此管理員可在 admin 後台管理其他管理員帳號。";
 
   return `
-    <div class="admin-permission-editor">
+    <div class="admin-permission-editor vstack gap-3">
       ${getPermissionPill(adminUser)}
       <p class="helper-text">${helperText}</p>
       <button type="button" class="${buttonClass}" data-admin-permission="${escapeAttribute(adminUser.userId)}" data-can-manage-admins="${String(!canManageAdmins)}">${buttonLabel}</button>
@@ -406,21 +406,23 @@ function renderPagePermissionEditor(adminUser) {
   const checkboxes = ADMIN_PAGE_OPTIONS.map((option) => {
     const checked = permissions.includes(option.key) ? "checked" : "";
     return `
-      <label class="permission-checkbox">
-        <input type="checkbox" data-page-permission-checkbox value="${option.key}" ${checked} />
-        <span>${option.label}</span>
-      </label>
+      <div class="col">
+        <label class="permission-checkbox h-100">
+          <input type="checkbox" data-page-permission-checkbox value="${option.key}" ${checked} />
+          <span>${option.label}</span>
+        </label>
+      </div>
     `;
   }).join("");
 
   return `
-    <div class="permission-editor">
+    <div class="permission-editor vstack gap-3">
       <div class="editor-summary">
         <strong>${getPagePermissionSummary(adminUser)}</strong>
         <span class="helper-text">可直接勾選要顯示在 admin 後台的功能頁。</span>
       </div>
-      <div class="permission-checkbox-grid">${checkboxes}</div>
-      <div class="permission-editor__footer">
+      <div class="permission-checkbox-grid row row-cols-1 row-cols-md-2 g-2">${checkboxes}</div>
+      <div class="permission-editor__footer d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
         <span class="helper-text">未勾選的頁面在 admin 後台不會顯示，也無法執行對應操作。</span>
         <button type="button" class="button button--primary" data-save-page-permissions="${escapeAttribute(adminUser.userId)}">儲存頁面權限</button>
       </div>
@@ -511,7 +513,7 @@ function renderAdminTable() {
           <td class="cell-last-login" data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
           <td class="cell-note" data-label="備註">${note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>'}</td>
           <td class="cell-actions" data-label="操作">
-            <div class="table-actions table-actions--stack">
+            <div class="table-actions table-actions--stack vstack gap-3">
               <div class="action-group">
                 <span class="action-group__label">審核狀態</span>
                 <div class="table-actions table-actions--grid">${statusButtons}</div>
@@ -528,8 +530,8 @@ function renderAdminTable() {
     .join("");
 
   elements.adminPermissionTable.innerHTML = `
-    <div class="table-scroll">
-      <table class="list-table list-table--permissions">
+    <div class="table-scroll table-responsive">
+      <table class="list-table list-table--permissions table align-middle mb-0">
         <colgroup>
           <col style="width: 280px;" />
           <col style="width: 156px;" />
