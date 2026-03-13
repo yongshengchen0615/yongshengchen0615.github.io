@@ -6,9 +6,14 @@ const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
 const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user"];
 const vueApi = window.Vue || null;
-const flatpickrApi = window.flatpickr || null;
 const frameworkEnabled = Boolean(vueApi);
 const { createApp, reactive } = vueApi || {};
+const TIME_WHEEL_ITEM_HEIGHT = 52;
+const TIME_WHEEL_MINUTE_STEP = 5;
+const TIME_WHEEL_HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const TIME_WHEEL_MINUTES = Array.from({ length: 60 / TIME_WHEEL_MINUTE_STEP }, (_, index) =>
+  String(index * TIME_WHEEL_MINUTE_STEP).padStart(2, "0")
+);
 
 const frameworkView = frameworkEnabled
   ? reactive({
@@ -171,68 +176,214 @@ const elements = {
   reservationStat: document.querySelector("#reservationStat"),
   reservationMeta: document.querySelector("#reservationMeta"),
   lastSyncLabel: document.querySelector("#lastSyncLabel"),
+  timeWheelSheet: document.querySelector("#timeWheelSheet"),
+  timeWheelBackdrop: document.querySelector("#timeWheelBackdrop"),
+  timeWheelCloseButton: document.querySelector("#timeWheelCloseButton"),
+  timeWheelConfirmButton: document.querySelector("#timeWheelConfirmButton"),
+  timeWheelNowButton: document.querySelector("#timeWheelNowButton"),
+  timeWheelHourList: document.querySelector("#timeWheelHourList"),
+  timeWheelMinuteList: document.querySelector("#timeWheelMinuteList"),
+  timeWheelValueLabel: document.querySelector("#timeWheelValueLabel"),
 };
 
-function createTimePickerOptions() {
+const timeWheelState = {
+  activeInput: null,
+  activeTrigger: null,
+  hour: "09",
+  minute: "00",
+};
+
+function normalizeTimeValue(value, fallback = "09:00") {
+  const matched = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!matched) {
+    return fallback;
+  }
+
+  const hours = Number(matched[1]);
+  const minutes = Number(matched[2]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return fallback;
+  }
+
+  const normalizedMinutes = Math.round(minutes / TIME_WHEEL_MINUTE_STEP) * TIME_WHEEL_MINUTE_STEP;
+  const clampedMinutes = normalizedMinutes >= 60 ? 55 : normalizedMinutes;
+  return `${String(hours).padStart(2, "0")}:${String(clampedMinutes).padStart(2, "0")}`;
+}
+
+function getTimeWheelFieldParts(source) {
+  const field = source?.closest(".time-wheel-field");
+  if (!field) {
+    return { field: null, input: null, trigger: null };
+  }
+
   return {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 5,
-    allowInput: false,
-    disableMobile: true,
+    field,
+    input: field.querySelector('input[type="hidden"]'),
+    trigger: field.querySelector("[data-time-wheel-trigger]"),
   };
 }
 
-function initializeTimePicker(input) {
-  if (!flatpickrApi || !input || input._flatpickr) {
+function syncTimeWheelField(source, value) {
+  const { input, trigger } = getTimeWheelFieldParts(source);
+  if (!input || !trigger) {
     return;
   }
 
-  flatpickrApi(input, createTimePickerOptions());
+  const normalizedValue = normalizeTimeValue(value);
+  input.value = normalizedValue;
+  trigger.textContent = normalizedValue;
+  trigger.dataset.timeValue = normalizedValue;
 }
 
-function initializeTimePickers(container = document) {
-  if (!flatpickrApi || !container) {
-    return;
-  }
-
-  container.querySelectorAll("[data-time-picker]").forEach((input) => {
-    initializeTimePicker(input);
-  });
-}
-
-function destroyTimePickers(container = document) {
+function renderTimeWheelList(container, values, type) {
   if (!container) {
     return;
   }
 
-  container.querySelectorAll("[data-time-picker]").forEach((input) => {
-    if (input._flatpickr) {
-      input._flatpickr.destroy();
-    }
-  });
+  container.innerHTML = values
+    .map(
+      (value) => `
+        <button type="button" class="time-wheel-list__item" data-time-wheel-item="${type}" data-time-wheel-value="${value}">${value}</button>
+      `
+    )
+    .join("");
 }
 
-function syncTimePickerValue(input, value) {
-  if (!input) {
+function ensureTimeWheelLists() {
+  if (!elements.timeWheelHourList || !elements.timeWheelMinuteList) {
     return;
   }
 
-  const normalizedValue = String(value || "").trim();
-  input.value = normalizedValue;
+  if (!elements.timeWheelHourList.childElementCount) {
+    renderTimeWheelList(elements.timeWheelHourList, TIME_WHEEL_HOURS, "hour");
+  }
 
-  if (!input._flatpickr) {
+  if (!elements.timeWheelMinuteList.childElementCount) {
+    renderTimeWheelList(elements.timeWheelMinuteList, TIME_WHEEL_MINUTES, "minute");
+  }
+}
+
+function updateTimeWheelLabel() {
+  if (elements.timeWheelValueLabel) {
+    elements.timeWheelValueLabel.textContent = `${timeWheelState.hour}:${timeWheelState.minute}`;
+  }
+}
+
+function updateTimeWheelSelection(scrollToValue = false) {
+  const hourValue = timeWheelState.hour;
+  const minuteValue = timeWheelState.minute;
+
+  [elements.timeWheelHourList, elements.timeWheelMinuteList].forEach((container) => {
+    if (!container) {
+      return;
+    }
+
+    container.querySelectorAll("[data-time-wheel-value]").forEach((button) => {
+      const isHour = button.dataset.timeWheelItem === "hour";
+      const isSelected = button.dataset.timeWheelValue === (isHour ? hourValue : minuteValue);
+      button.classList.toggle("is-selected", isSelected);
+      button.setAttribute("aria-pressed", String(isSelected));
+    });
+  });
+
+  if (scrollToValue) {
+    const hourIndex = TIME_WHEEL_HOURS.indexOf(hourValue);
+    const minuteIndex = TIME_WHEEL_MINUTES.indexOf(minuteValue);
+    if (elements.timeWheelHourList && hourIndex >= 0) {
+      elements.timeWheelHourList.scrollTo({ top: hourIndex * TIME_WHEEL_ITEM_HEIGHT, behavior: "auto" });
+    }
+    if (elements.timeWheelMinuteList && minuteIndex >= 0) {
+      elements.timeWheelMinuteList.scrollTo({ top: minuteIndex * TIME_WHEEL_ITEM_HEIGHT, behavior: "auto" });
+    }
+  }
+
+  updateTimeWheelLabel();
+}
+
+function closeTimeWheelPicker() {
+  if (!elements.timeWheelSheet) {
     return;
   }
 
-  if (!normalizedValue) {
-    input._flatpickr.clear();
+  elements.timeWheelSheet.classList.add("is-hidden");
+  elements.timeWheelSheet.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("is-sheet-open");
+  timeWheelState.activeInput = null;
+  timeWheelState.activeTrigger = null;
+}
+
+function openTimeWheelPicker(trigger) {
+  const { input, trigger: targetTrigger } = getTimeWheelFieldParts(trigger);
+  if (!input || !targetTrigger || !elements.timeWheelSheet) {
     return;
   }
 
-  input._flatpickr.setDate(normalizedValue, false, "H:i");
+  ensureTimeWheelLists();
+  const [hour, minute] = normalizeTimeValue(input.value || targetTrigger.dataset.timeValue || "09:00").split(":");
+  timeWheelState.activeInput = input;
+  timeWheelState.activeTrigger = targetTrigger;
+  timeWheelState.hour = hour;
+  timeWheelState.minute = minute;
+  updateTimeWheelSelection(true);
+
+  elements.timeWheelSheet.classList.remove("is-hidden");
+  elements.timeWheelSheet.setAttribute("aria-hidden", "false");
+  document.body.classList.add("is-sheet-open");
+}
+
+function applyTimeWheelValue() {
+  if (!timeWheelState.activeInput || !timeWheelState.activeTrigger) {
+    closeTimeWheelPicker();
+    return;
+  }
+
+  const value = `${timeWheelState.hour}:${timeWheelState.minute}`;
+  syncTimeWheelField(timeWheelState.activeTrigger, value);
+  timeWheelState.activeInput.dispatchEvent(new Event("change", { bubbles: true }));
+  closeTimeWheelPicker();
+}
+
+function getTimeWheelScrollValue(container, values) {
+  const index = Math.max(0, Math.min(values.length - 1, Math.round(container.scrollTop / TIME_WHEEL_ITEM_HEIGHT)));
+  return values[index];
+}
+
+function handleTimeWheelScroll(container) {
+  if (!container) {
+    return;
+  }
+
+  window.clearTimeout(container._timeWheelTimerId);
+  container._timeWheelTimerId = window.setTimeout(() => {
+    const type = container.dataset.timeWheelList;
+    const values = type === "hour" ? TIME_WHEEL_HOURS : TIME_WHEEL_MINUTES;
+    const nextValue = getTimeWheelScrollValue(container, values);
+    if (type === "hour") {
+      timeWheelState.hour = nextValue;
+    } else {
+      timeWheelState.minute = nextValue;
+    }
+
+    updateTimeWheelSelection();
+    const nextIndex = values.indexOf(nextValue);
+    container.scrollTo({ top: nextIndex * TIME_WHEEL_ITEM_HEIGHT, behavior: "smooth" });
+  }, 90);
+}
+
+function initializeTimeWheelFields(container = document) {
+  if (!container) {
+    return;
+  }
+
+  container.querySelectorAll(".time-wheel-field").forEach((field) => {
+    const input = field.querySelector('input[type="hidden"]');
+    const trigger = field.querySelector("[data-time-wheel-trigger]");
+    if (!input || !trigger) {
+      return;
+    }
+
+    syncTimeWheelField(trigger, input.value || trigger.dataset.timeValue || "09:00");
+  });
 }
 
 function normalizeGasUrl(value) {
@@ -795,8 +946,8 @@ function resetScheduleForm() {
   elements.scheduleForm.date.value = selectedDate;
   elements.scheduleForm.endDate.value = selectedDate;
   elements.scheduleForm.isWorking.checked = true;
-  syncTimePickerValue(elements.scheduleForm.startTime, "09:00");
-  syncTimePickerValue(elements.scheduleForm.endTime, "18:00");
+  syncTimeWheelField(elements.scheduleForm.startTime, "09:00");
+  syncTimeWheelField(elements.scheduleForm.endTime, "18:00");
   state.ui.editingScheduleKey = "";
   elements.scheduleEditTimePanel.classList.add("is-hidden");
   elements.scheduleEditModeLabel.textContent = "編輯這筆班表的臨時上下班時間";
@@ -811,8 +962,8 @@ function fillScheduleForm(schedule) {
 
   elements.scheduleForm.date.value = schedule.date;
   elements.scheduleForm.endDate.value = schedule.date;
-  syncTimePickerValue(elements.scheduleForm.startTime, schedule.startTime);
-  syncTimePickerValue(elements.scheduleForm.endTime, schedule.endTime);
+  syncTimeWheelField(elements.scheduleForm.startTime, schedule.startTime);
+  syncTimeWheelField(elements.scheduleForm.endTime, schedule.endTime);
   elements.scheduleForm.isWorking.checked = Boolean(schedule.isWorking);
   state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
   elements.scheduleEditTimePanel.classList.remove("is-hidden");
@@ -1994,10 +2145,16 @@ const bulkTechnicianModule = {
           <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
         </td>
         <td data-label="上班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <input type="text" name="startTime" class="bulk-technician-table__time-input" value="${escapeHtml(startTime)}" data-time-picker autocomplete="off" />
+          <div class="time-wheel-field time-wheel-field--compact">
+            <input type="hidden" name="startTime" value="${escapeHtml(startTime)}" />
+            <button type="button" class="time-wheel-trigger time-wheel-trigger--compact" data-time-wheel-trigger>${escapeHtml(startTime)}</button>
+          </div>
         </td>
         <td data-label="下班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <input type="text" name="endTime" class="bulk-technician-table__time-input" value="${escapeHtml(endTime)}" data-time-picker autocomplete="off" />
+          <div class="time-wheel-field time-wheel-field--compact">
+            <input type="hidden" name="endTime" value="${escapeHtml(endTime)}" />
+            <button type="button" class="time-wheel-trigger time-wheel-trigger--compact" data-time-wheel-trigger>${escapeHtml(endTime)}</button>
+          </div>
         </td>
         <td data-label="啟用" class="bulk-technician-table__cell bulk-technician-table__cell--active">
           <label class="checkbox-field checkbox-field--compact">
@@ -2035,7 +2192,7 @@ const bulkTechnicianModule = {
     }
 
     this.renderServiceEditor(row);
-    initializeTimePickers(row);
+    initializeTimeWheelFields(row);
     const editor = row.querySelector("[data-bulk-service-editor]");
     if (editor) {
       editor.classList.add("is-hidden");
@@ -2058,8 +2215,6 @@ const bulkTechnicianModule = {
     if (!elements.technicianBulkTable) {
       return;
     }
-
-    destroyTimePickers(elements.technicianBulkTable);
 
     const technicians = getFilteredTechnicians();
     if (elements.technicianResultLabel) {
@@ -3134,6 +3289,51 @@ async function deleteUser(userId, userName) {
 }
 
 function bindEvents() {
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-time-wheel-trigger]");
+    if (trigger) {
+      openTimeWheelPicker(trigger);
+      return;
+    }
+
+    const optionButton = event.target.closest("[data-time-wheel-item]");
+    if (optionButton) {
+      const type = optionButton.dataset.timeWheelItem;
+      const value = optionButton.dataset.timeWheelValue;
+      if (type === "hour") {
+        timeWheelState.hour = value;
+      } else {
+        timeWheelState.minute = value;
+      }
+
+      updateTimeWheelSelection();
+      const container = type === "hour" ? elements.timeWheelHourList : elements.timeWheelMinuteList;
+      const values = type === "hour" ? TIME_WHEEL_HOURS : TIME_WHEEL_MINUTES;
+      const nextIndex = values.indexOf(value);
+      if (container && nextIndex >= 0) {
+        container.scrollTo({ top: nextIndex * TIME_WHEEL_ITEM_HEIGHT, behavior: "smooth" });
+      }
+    }
+  });
+
+  elements.timeWheelBackdrop?.addEventListener("click", closeTimeWheelPicker);
+  elements.timeWheelCloseButton?.addEventListener("click", closeTimeWheelPicker);
+  elements.timeWheelConfirmButton?.addEventListener("click", applyTimeWheelValue);
+  elements.timeWheelNowButton?.addEventListener("click", () => {
+    const now = new Date();
+    timeWheelState.hour = String(now.getHours()).padStart(2, "0");
+    const roundedMinutes = Math.floor(now.getMinutes() / TIME_WHEEL_MINUTE_STEP) * TIME_WHEEL_MINUTE_STEP;
+    timeWheelState.minute = String(roundedMinutes).padStart(2, "0");
+    updateTimeWheelSelection(true);
+  });
+  elements.timeWheelHourList?.addEventListener("scroll", () => handleTimeWheelScroll(elements.timeWheelHourList));
+  elements.timeWheelMinuteList?.addEventListener("scroll", () => handleTimeWheelScroll(elements.timeWheelMinuteList));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && elements.timeWheelSheet && !elements.timeWheelSheet.classList.contains("is-hidden")) {
+      closeTimeWheelPicker();
+    }
+  });
+
   elements.adminLoginButton.addEventListener("click", async () => {
     try {
       await refreshAdminIdentity();
@@ -3471,7 +3671,8 @@ async function initializeApp() {
   await loadConfigFromJson();
   applyGasUrlPreference();
   loadServiceCategoryMap();
-  initializeTimePickers(document);
+  initializeTimeWheelFields(document);
+  ensureTimeWheelLists();
   mountFrameworkApps();
   bindEvents();
   renderAdminAccessState();

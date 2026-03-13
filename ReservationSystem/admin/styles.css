@@ -107,10 +107,6 @@ textarea {
   font-size: 16px;
 }
 
-input[data-time-picker] {
-  cursor: pointer;
-}
-
 input:focus,
 select:focus,
 textarea:focus {
@@ -485,6 +481,181 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.time-wheel-field {
+  display: grid;
+}
+
+.time-wheel-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(146, 178, 200, 0.2);
+  border-radius: 0.75rem;
+  background: rgba(5, 15, 22, 0.62);
+  color: var(--bs-body-color);
+  font: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.time-wheel-trigger::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(169, 187, 200, 0.9);
+  border-bottom: 2px solid rgba(169, 187, 200, 0.9);
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.time-wheel-trigger:hover {
+  border-color: rgba(82, 194, 166, 0.26);
+  background: rgba(82, 194, 166, 0.08);
+}
+
+.time-wheel-trigger:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.time-wheel-trigger--compact {
+  min-height: 48px;
+}
+
+.time-wheel-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  align-items: end;
+}
+
+.time-wheel-sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(2, 8, 12, 0.58);
+}
+
+.time-wheel-sheet__panel {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 1.25rem 1.25rem 0 0;
+  border: 1px solid rgba(146, 178, 200, 0.16);
+  background: rgba(15, 26, 36, 0.98);
+  box-shadow: 0 -18px 50px rgba(1, 8, 12, 0.42);
+  backdrop-filter: blur(18px);
+}
+
+.time-wheel-sheet__handle {
+  width: 52px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: rgba(169, 187, 200, 0.38);
+}
+
+.time-wheel-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.time-wheel-sheet__value {
+  color: var(--brand);
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-wheel-sheet__body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.time-wheel-sheet__indicator {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 52px;
+  border: 1px solid rgba(82, 194, 166, 0.18);
+  border-radius: 1rem;
+  background: rgba(82, 194, 166, 0.08);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.time-wheel-sheet__separator {
+  position: relative;
+  z-index: 1;
+  color: var(--brand);
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-wheel-list {
+  position: relative;
+  z-index: 1;
+  height: 260px;
+  overflow-y: auto;
+  padding-block: 104px;
+  scrollbar-width: none;
+  scroll-snap-type: y mandatory;
+  scroll-padding-block: 104px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 1) 20%, rgba(0, 0, 0, 1) 80%, transparent 100%);
+}
+
+.time-wheel-list::-webkit-scrollbar {
+  display: none;
+}
+
+.time-wheel-list__item {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 52px;
+  border: 0;
+  background: transparent;
+  color: rgba(169, 187, 200, 0.72);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  scroll-snap-align: center;
+}
+
+.time-wheel-list__item.is-selected {
+  color: var(--bs-body-color);
+}
+
+.time-wheel-sheet__footer {
+  display: flex;
+  gap: 10px;
+}
+
+body.is-sheet-open {
+  overflow: hidden;
 }
 
 /* ==========================================================================
@@ -908,13 +1079,11 @@ h1 {
 }
 
 .bulk-technician-table input[type="text"],
-.bulk-technician-table input[type="time"],
-.bulk-technician-table input[data-time-picker] {
+.bulk-technician-table input[type="time"] {
   min-width: 120px;
 }
 
-.bulk-technician-table input[type="time"],
-.bulk-technician-table input[data-time-picker] {
+.bulk-technician-table input[type="time"] {
   display: block;
   width: 100%;
   white-space: nowrap;
@@ -922,9 +1091,7 @@ h1 {
 }
 
 .bulk-technician-table input[type="time"]::-webkit-date-and-time-value,
-.bulk-technician-table input[type="time"]::-webkit-datetime-edit,
-.bulk-technician-table input[data-time-picker]::-webkit-date-and-time-value,
-.bulk-technician-table input[data-time-picker]::-webkit-datetime-edit {
+.bulk-technician-table input[type="time"]::-webkit-datetime-edit {
   white-space: nowrap;
 }
 
@@ -947,39 +1114,6 @@ h1 {
 
 .bulk-technician-table__time-input {
   max-width: 100%;
-}
-
-.flatpickr-calendar {
-  border: 1px solid rgba(146, 178, 200, 0.18);
-  border-radius: 1rem;
-  background: rgba(15, 26, 36, 0.98);
-  box-shadow: 0 24px 50px rgba(1, 8, 12, 0.42);
-}
-
-.flatpickr-time {
-  border-top: 1px solid rgba(146, 178, 200, 0.12);
-}
-
-.flatpickr-time .flatpickr-time-separator,
-.flatpickr-time input,
-.flatpickr-time .flatpickr-am-pm {
-  color: var(--bs-body-color);
-  font-weight: 700;
-}
-
-.flatpickr-time input:hover,
-.flatpickr-time .flatpickr-am-pm:hover,
-.flatpickr-time input:focus,
-.flatpickr-time .flatpickr-am-pm:focus {
-  background: rgba(82, 194, 166, 0.12);
-}
-
-.numInputWrapper span.arrowUp:after {
-  border-bottom-color: var(--muted);
-}
-
-.numInputWrapper span.arrowDown:after {
-  border-top-color: var(--muted);
 }
 
 .bulk-technician-services {
@@ -1315,6 +1449,20 @@ h1 {
     min-inline-size: 0;
   }
 
+  .time-wheel-sheet__panel {
+    width: 100%;
+  }
+
+  .time-wheel-sheet__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .time-wheel-sheet__footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
   .bulk-technician-services {
     gap: 8px;
   }
@@ -1398,6 +1546,10 @@ h1 {
   .bulk-technician-services small {
     font-size: 0.82rem;
   }
+
+  .time-wheel-sheet__body {
+    gap: 8px;
+  }
 }
 
 /* ==========================================================================
@@ -1462,6 +1614,16 @@ h1 {
   .bulk-technician-services__editor {
     padding: 9px;
     border-radius: 0.75rem;
+  }
+
+  .time-wheel-list {
+    height: 236px;
+    padding-block: 92px;
+    scroll-padding-block: 92px;
+  }
+
+  .time-wheel-list__item {
+    font-size: 1.2rem;
   }
 
   .eyebrow {
