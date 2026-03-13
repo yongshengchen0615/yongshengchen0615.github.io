@@ -510,67 +510,77 @@ async function refreshIdentity() {
   state.adminUser = null;
   renderAccessState();
 
-        <article class="permission-card">
-          <div class="permission-card__header">
+  const isLoggedIn = await ensureLiffSession();
+  if (!isLoggedIn) {
     return;
   }
 
   await syncAdminUser();
-  await loadSuperAdminData();
 
-async function updateAdminPermission(userId, updates, options = {}) {
-            <div class="permission-card__meta">
-              <div class="status-pill-group">${identityPills.join("")}</div>
-              <div class="permission-meta-item">
-                <span class="permission-meta-item__label">最後登入</span>
-                <strong>${formatDateTimeText(adminUser.lastLoginAt)}</strong>
+  if (!state.adminUser?.isSuperAdmin) {
+    setStatus(state.adminUser?.note || "此 LINE 帳號不是最高管理員。", "error");
+    return;
   }
 
-          </div>
+  if (state.adminUser.status !== "已通過") {
+    setStatus(
+      state.adminUser.status === "待審核"
+        ? "此 LINE 帳號尚未通過最高管理員審核。"
+        : state.adminUser.note || "此 LINE 帳號目前不可使用最高管理員後台。",
+      state.adminUser.status === "待審核" ? "info" : "error"
+    );
+    return;
+  }
 
-          <div class="permission-card__grid">
-            <section class="permission-section">
-              <span class="permission-section__label">管理員修改權限</span>
-              ${renderAdminManagePermissionEditor(adminUser)}
-            </section>
+  await loadSuperAdminData();
+}
 
-            <section class="permission-section">
-              <span class="permission-section__label">頁面權限</span>
-              <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
-              <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
-            </section>
+function getRowPagePermissions(row) {
+  return Array.from(row.querySelectorAll('[data-page-permission-checkbox]:checked'))
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
 
-            <section class="permission-section permission-section--wide">
-              <span class="permission-section__label">頁面權限設定</span>
-              ${renderPagePermissionEditor(adminUser)}
-            </section>
+async function updateAdminPermission(userId, updates, options = {}) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
 
-            <section class="permission-section">
-              <span class="permission-section__label">備註</span>
-              <div class="permission-note">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</div>
-            </section>
+  const { confirmMessage, loadingMessage, successMessage } = options;
+  if (confirmMessage && !window.confirm(confirmMessage)) {
+    setStatus("已取消更新。", "info");
+    return;
+  }
 
-            <section class="permission-section">
-              <span class="permission-section__label">操作</span>
-              <div class="table-actions table-actions--stack">
-                <div class="action-group">
-                  <span class="action-group__label">審核狀態</span>
-                  <div class="table-actions table-actions--grid">${statusButtons}</div>
-                </div>
-                <div class="action-group">
-                  <span class="action-group__label">帳號操作</span>
-                  <div class="table-actions">${deleteButton}</div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </article>
+  showLoading(loadingMessage || "正在更新管理員權限...", "loading");
+  const payload = {
+    userId,
+    ...updates,
+  };
+  const result = await requestApi("POST", {}, {
     action: "updateAdminPermission",
     payload,
   });
 
   if (!result.ok) {
-    <div class="permission-card-list">${cards}</div>
+    throw new Error(result.message || "更新 admin 權限失敗");
+  }
+
+  await loadSuperAdminData();
+  setStatus(successMessage || `已更新 ${adminUser.displayName} 的權限。`, "success");
+}
+
+async function reviewAdminUser(userId, status) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  showLoading("正在更新管理員審核狀態...", "loading");
+  const result = await requestApi("POST", {}, {
+    action: "updateAdminReviewStatus",
+    payload: {
       userId,
       status,
     },
