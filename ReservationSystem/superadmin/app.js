@@ -7,6 +7,7 @@ const state = {
   profile: null,
   adminUser: null,
   adminUsers: [],
+  superAdmins: [],
   lastSyncText: "",
   ui: {
     busyCount: 0,
@@ -134,7 +135,7 @@ function renderAccessState() {
   elements.statusBadge.textContent = state.adminUser.status || "無權限";
   elements.statusBadge.dataset.tone = "blocked";
   elements.statusText.textContent = "此 LINE 帳號不是最高管理員。";
-  setApprovalMessage("請在 AdminUsers 工作表把此帳號的 isSuperAdmin 設為 true，或改用既有最高管理員登入。", "blocked");
+  setApprovalMessage("請在 SuperAdmins 工作表新增此帳號，或改用既有最高管理員登入。", "blocked");
   setContentAccess(false);
 }
 
@@ -215,7 +216,7 @@ async function requestApi(method, params = {}, body = null) {
 
 async function syncAdminUser() {
   const result = await requestApi("POST", {}, {
-    action: "syncAdminUser",
+    action: "syncSuperAdminUser",
     payload: {
       userId: state.profile.userId,
       displayName: state.profile.displayName,
@@ -281,7 +282,7 @@ function getPermissionPill(adminUser) {
 function updateSummary() {
   const allAdmins = state.adminUsers.length;
   const permissionManagers = state.adminUsers.filter((item) => item.canManageAdmins).length;
-  const superAdmins = state.adminUsers.filter((item) => item.isSuperAdmin).length;
+  const superAdmins = state.superAdmins.length;
   elements.summaryLabel.textContent = `最高管理員 ${superAdmins} 位 / 可管理管理員 ${permissionManagers} 位 / 全部 ${allAdmins} 位`;
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
@@ -311,11 +312,9 @@ function renderAdminTable() {
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
     .map((adminUser) => {
-      const actionButton = adminUser.isSuperAdmin
-        ? '<span class="helper-text">由 Script Properties 控制</span>'
-        : adminUser.canManageAdmins
-          ? `<button type="button" class="button button--danger" data-admin-permission="${adminUser.userId}" data-can-manage-admins="false">收回權限</button>`
-          : `<button type="button" class="button button--primary" data-admin-permission="${adminUser.userId}" data-can-manage-admins="true">授予權限</button>`;
+      const actionButton = adminUser.canManageAdmins
+        ? `<button type="button" class="button button--danger" data-admin-permission="${adminUser.userId}" data-can-manage-admins="false">收回權限</button>`
+        : `<button type="button" class="button button--primary" data-admin-permission="${adminUser.userId}" data-can-manage-admins="true">授予權限</button>`;
 
       return `
         <tr>
@@ -365,7 +364,8 @@ async function loadSuperAdminData() {
   }
 
   state.adminUsers = result.data.adminUsers || [];
-  state.adminUser = state.adminUsers.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
+  state.superAdmins = result.data.superAdmins || [];
+  state.adminUser = state.superAdmins.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
   state.lastSyncText = formatDateTimeText(new Date().toISOString());
   renderAccessState();
   renderAdminTable();
@@ -435,6 +435,7 @@ function bindEvents() {
       state.profile = null;
       state.adminUser = null;
       state.adminUsers = [];
+      state.superAdmins = [];
       state.lastSyncText = "";
       renderAccessState();
       renderAdminTable();

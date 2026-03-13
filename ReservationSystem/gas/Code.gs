@@ -1,6 +1,7 @@
 const SHEETS = {
   config: 'Config',
   adminUsers: 'AdminUsers',
+  superAdmins: 'SuperAdmins',
   services: 'Services',
   technicians: 'Technicians',
   schedules: 'Schedules',
@@ -45,6 +46,10 @@ function doPost(e) {
 
     if (action === 'syncAdminUser') {
       return jsonResponse_({ ok: true, data: syncAdminUser_(body.payload || {}) });
+    }
+
+    if (action === 'syncSuperAdminUser') {
+      return jsonResponse_({ ok: true, data: syncSuperAdminUser_(body.payload || {}) });
     }
 
     if (action === 'submitUserApplication') {
@@ -184,6 +189,7 @@ function getAdminData_() {
 function getSuperAdminData_() {
   return {
     adminUsers: getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_),
+    superAdmins: getResolvedSuperAdminUsers_(),
   };
 }
 
@@ -219,10 +225,16 @@ function syncAdminUser_(payload) {
   validateRequired_(payload.userId, 'userId');
 
   var userId = String(payload.userId || '').trim();
+  var resolvedSuperAdmin = findResolvedSuperAdmin_(userId);
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
   var existing = adminUsers.find(function(item) {
     return item.userId === userId;
   });
+
+  if (resolvedSuperAdmin) {
+    return buildAdminIdentityFromSuperAdmin_(resolvedSuperAdmin, existing);
+  }
+
   var nowText = toIsoString_(new Date());
   var nextStatus = existing && existing.status
     ? existing.status
@@ -234,9 +246,6 @@ function syncAdminUser_(payload) {
     : existing && existing.canManageAdmins !== undefined
       ? normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, userId)
       : normalizeAdminPermissionValue_('', nextStatus, userId);
-  var nextIsSuperAdmin = existing
-    ? normalizeSuperAdminValue_(existing.isSuperAdmin, userId)
-    : normalizeSuperAdminValue_('', userId);
 
   var record = {
     userId: userId,
@@ -244,7 +253,6 @@ function syncAdminUser_(payload) {
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(nextStatus),
     canManageAdmins: nextCanManageAdmins,
-    isSuperAdmin: nextIsSuperAdmin,
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
@@ -253,6 +261,45 @@ function syncAdminUser_(payload) {
 
   upsertRecord_(SHEETS.adminUsers, 'userId', record);
   return normalizeAdminUser_(record);
+}
+
+function syncSuperAdminUser_(payload) {
+  validateRequired_(payload.userId, 'userId');
+
+  var userId = String(payload.userId || '').trim();
+  var superAdmins = getStoredSuperAdminUsers_();
+  var existing = superAdmins.find(function(item) {
+    return item.userId === userId;
+  });
+  var configuredSuperAdmin = isConfiguredSuperAdmin_(userId);
+  var nowText = toIsoString_(new Date());
+
+  if (!existing && !configuredSuperAdmin) {
+    return normalizeSuperAdminUser_({
+      userId: userId,
+      displayName: String(payload.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+      pictureUrl: String(payload.pictureUrl || '').trim(),
+      status: '待審核',
+      note: '',
+      createdAt: nowText,
+      updatedAt: nowText,
+      lastLoginAt: nowText,
+    });
+  }
+
+  var record = {
+    userId: userId,
+    displayName: String(payload.displayName || existing && existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+    pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
+    status: normalizeAdminStatus_(existing && existing.status ? existing.status : '已通過'),
+    note: existing ? existing.note : '',
+    createdAt: existing ? existing.createdAt : nowText,
+    updatedAt: nowText,
+    lastLoginAt: nowText,
+  };
+
+  upsertRecord_(SHEETS.superAdmins, 'userId', record);
+  return normalizeSuperAdminUser_(record);
 }
 
 function submitUserApplication_(payload) {
@@ -350,7 +397,6 @@ function reviewAdminUser_(payload, actorUserId) {
     pictureUrl: existing.pictureUrl,
     status: nextStatus,
     canManageAdmins: normalizeAdminPermissionValue_(existing.canManageAdmins, nextStatus, existing.userId),
-    isSuperAdmin: normalizeSuperAdminValue_(existing.isSuperAdmin, existing.userId),
     note: String(payload.note || existing.note || '').trim(),
     createdAt: existing.createdAt,
     updatedAt: toIsoString_(new Date()),
@@ -383,7 +429,6 @@ function updateAdminPermission_(payload, actorUserId) {
     pictureUrl: existing.pictureUrl,
     status: existing.status,
     canManageAdmins: canManageAdmins,
-    isSuperAdmin: normalizeSuperAdminValue_(existing.isSuperAdmin, existing.userId),
     note: String(payload.note || existing.note || '').trim(),
     createdAt: existing.createdAt,
     updatedAt: toIsoString_(new Date()),
@@ -966,7 +1011,8 @@ function deleteAdminUser_(payload, actorUserId) {
 
 function initializeSheets_() {
   ensureSheet_(SHEETS.config, ['key', 'value']);
-  ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'isSuperAdmin', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
+  ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
+  ensureSheet_(SHEETS.superAdmins, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
@@ -974,6 +1020,7 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
   ensurePlainTextColumns_(SHEETS.users, ['phone']);
   ensurePlainTextColumns_(SHEETS.reservations, ['phone']);
+  migrateLegacySuperAdmins_();
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -1159,6 +1206,13 @@ function verifyAdminAccess_(adminUserId) {
   });
 
   if (!adminUser) {
+    var resolvedSuperAdmin = findResolvedSuperAdmin_(adminUserId);
+    if (resolvedSuperAdmin) {
+      return buildAdminIdentityFromSuperAdmin_(resolvedSuperAdmin, null);
+    }
+  }
+
+  if (!adminUser) {
     throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
   }
 
@@ -1180,17 +1234,10 @@ function verifyAdminAccess_(adminUserId) {
 function verifySuperAdminAccess_(adminUserId) {
   validateRequired_(adminUserId, 'adminUserId');
 
-  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
-  var adminUser = adminUsers.find(function(item) {
-    return item.userId === String(adminUserId || '').trim();
-  });
+  var adminUser = findResolvedSuperAdmin_(adminUserId);
 
   if (!adminUser) {
-    throw new Error('找不到管理員登入紀錄，請先使用 LINE 登入');
-  }
-
-  if (!isSuperAdmin_(adminUser.userId)) {
-    throw new Error('此 LINE 帳號沒有最高管理員權限');
+    throw new Error('找不到最高管理員登入紀錄，請先使用 LINE 登入');
   }
 
   return adminUser;
@@ -1294,11 +1341,26 @@ function normalizeAdminUser_(item) {
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(item.status),
     canManageAdmins: normalizeAdminPermissionValue_(item.canManageAdmins, item.status, userId),
-    isSuperAdmin: normalizeSuperAdminValue_(item.isSuperAdmin, userId),
+    isSuperAdmin: isSuperAdmin_(userId),
     note: String(item.note || '').trim(),
     createdAt: String(item.createdAt || ''),
     updatedAt: String(item.updatedAt || ''),
     lastLoginAt: String(item.lastLoginAt || ''),
+  };
+}
+
+function normalizeSuperAdminUser_(item) {
+  return {
+    userId: String(item.userId || '').trim(),
+    displayName: String(item.displayName || '').trim() || 'LINE 最高管理員',
+    pictureUrl: String(item.pictureUrl || '').trim(),
+    status: normalizeAdminStatus_(item.status),
+    note: String(item.note || '').trim(),
+    createdAt: String(item.createdAt || ''),
+    updatedAt: String(item.updatedAt || ''),
+    lastLoginAt: String(item.lastLoginAt || ''),
+    isSuperAdmin: true,
+    canManageAdmins: true,
   };
 }
 
@@ -1317,21 +1379,6 @@ function normalizeAdminPermissionValue_(value, status, userId) {
   }
 
   return normalizeAdminStatus_(status) === '已通過';
-}
-
-function normalizeSuperAdminValue_(value, userId) {
-  var normalizedUserId = String(userId || '').trim();
-  var text = String(value || '').trim().toLowerCase();
-
-  if (text === 'true' || text === '1' || text === 'yes' || text === 'on') {
-    return true;
-  }
-
-  if (text === 'false' || text === '0' || text === 'no' || text === 'off') {
-    return false;
-  }
-
-  return isConfiguredSuperAdmin_(normalizedUserId);
 }
 
 function normalizeAdminStatus_(value) {
@@ -1404,9 +1451,11 @@ function isBootstrapAdmin_(userId) {
 
 function isSuperAdmin_(userId) {
   var normalizedUserId = String(userId || '').trim();
-  var sheetSuperAdmins = getSheetSuperAdminUserIds_();
-  if (sheetSuperAdmins.length) {
-    return sheetSuperAdmins.indexOf(normalizedUserId) !== -1;
+  var resolvedSuperAdmins = getResolvedSuperAdminUsers_();
+  if (resolvedSuperAdmins.length) {
+    return resolvedSuperAdmins.some(function(item) {
+      return item.userId === normalizedUserId;
+    });
   }
 
   return isConfiguredSuperAdmin_(normalizedUserId);
@@ -1422,15 +1471,96 @@ function isConfiguredSuperAdmin_(userId) {
   return isBootstrapAdmin_(normalizedUserId);
 }
 
-function getSheetSuperAdminUserIds_() {
-  return getTableRecords_(SHEETS.adminUsers)
+function getStoredSuperAdminUsers_() {
+  return getTableRecords_(SHEETS.superAdmins).map(normalizeSuperAdminUser_);
+}
+
+function getResolvedSuperAdminUsers_() {
+  var storedSuperAdmins = getStoredSuperAdminUsers_();
+  var configuredIds = parseCsvProperty_('SUPER_ADMIN_LINE_USER_IDS');
+  var fallbackIds = configuredIds.length ? configuredIds : parseCsvProperty_('ADMIN_APPROVED_LINE_USER_IDS');
+  var merged = storedSuperAdmins.slice();
+
+  fallbackIds.forEach(function(userId) {
+    var normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) {
+      return;
+    }
+
+    var exists = merged.some(function(item) {
+      return item.userId === normalizedUserId;
+    });
+
+    if (!exists) {
+      merged.push(normalizeSuperAdminUser_({
+        userId: normalizedUserId,
+        displayName: 'LINE 最高管理員',
+        pictureUrl: '',
+        status: '已通過',
+        note: '',
+        createdAt: '',
+        updatedAt: '',
+        lastLoginAt: '',
+      }));
+    }
+  });
+
+  return merged;
+}
+
+function findResolvedSuperAdmin_(userId) {
+  var normalizedUserId = String(userId || '').trim();
+  return getResolvedSuperAdminUsers_().find(function(item) {
+    return item.userId === normalizedUserId;
+  }) || null;
+}
+
+function buildAdminIdentityFromSuperAdmin_(superAdminUser, adminUser) {
+  return {
+    userId: String(superAdminUser.userId || adminUser && adminUser.userId || '').trim(),
+    displayName: String(superAdminUser.displayName || adminUser && adminUser.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
+    pictureUrl: String(superAdminUser.pictureUrl || adminUser && adminUser.pictureUrl || '').trim(),
+    status: normalizeAdminStatus_(superAdminUser.status || adminUser && adminUser.status || '已通過'),
+    canManageAdmins: true,
+    isSuperAdmin: true,
+    note: String(superAdminUser.note || adminUser && adminUser.note || '').trim(),
+    createdAt: String(superAdminUser.createdAt || adminUser && adminUser.createdAt || ''),
+    updatedAt: String(superAdminUser.updatedAt || adminUser && adminUser.updatedAt || ''),
+    lastLoginAt: String(superAdminUser.lastLoginAt || adminUser && adminUser.lastLoginAt || ''),
+  };
+}
+
+function migrateLegacySuperAdmins_() {
+  var adminSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.adminUsers);
+  if (!adminSheet || adminSheet.getLastRow() < 2) {
+    return;
+  }
+
+  var headers = getSheetHeaders_(adminSheet);
+  var legacyIndex = headers.indexOf('isSuperAdmin');
+  if (legacyIndex === -1) {
+    return;
+  }
+
+  getTableRecords_(SHEETS.adminUsers)
     .filter(function(item) {
       return normalizeRawBoolean_(item.isSuperAdmin);
     })
-    .map(function(item) {
-      return String(item.userId || '').trim();
-    })
-    .filter(String);
+    .forEach(function(item) {
+      var normalizedRecord = normalizeAdminUser_(item);
+      var superAdminRecord = {
+        userId: normalizedRecord.userId,
+        displayName: normalizedRecord.displayName,
+        pictureUrl: normalizedRecord.pictureUrl,
+        status: normalizedRecord.status,
+        note: normalizedRecord.note,
+        createdAt: normalizedRecord.createdAt,
+        updatedAt: normalizedRecord.updatedAt,
+        lastLoginAt: normalizedRecord.lastLoginAt,
+      };
+
+      upsertRecord_(SHEETS.superAdmins, 'userId', superAdminRecord);
+    });
 }
 
 function normalizeRawBoolean_(value) {
