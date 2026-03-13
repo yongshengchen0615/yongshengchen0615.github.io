@@ -175,10 +175,6 @@ function getAllowedAdminPages() {
     return getAllAdminPageKeys();
   }
 
-  if (state.adminUser.isSuperAdmin) {
-    return getAllAdminPageKeys();
-  }
-
   const permissions = Array.isArray(state.adminUser.pagePermissions) ? state.adminUser.pagePermissions : [];
   return permissions.filter((pageKey) => getAllAdminPageKeys().includes(pageKey));
 }
@@ -193,7 +189,7 @@ function getFirstAllowedAdminPage() {
 
 function assertAdminActionAccess(action) {
   const pageKey = ADMIN_ACTION_PAGE_MAP[action];
-  if (!pageKey || !state.adminUser || state.adminUser.isSuperAdmin) {
+  if (!pageKey || !state.adminUser) {
     return;
   }
 
