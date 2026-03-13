@@ -524,7 +524,7 @@ function setActivePage(pageName) {
 
   elements.pageTabs.forEach((button) => {
     const isActive = button.dataset.pageTrigger === pageName;
-    button.classList.toggle("active", isActive);
+    button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
 
