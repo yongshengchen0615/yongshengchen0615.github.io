@@ -426,16 +426,13 @@ h1 {
 }
 
 .command-main {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 18px;
+  display: block;
 }
 
 .command-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -1174,13 +1171,24 @@ textarea {
 }
 
 @media (max-width: 1040px) {
-  .admin-hero,
-  .stats-panel {
+  .admin-hero {
     grid-template-columns: 1fr;
+  }
+
+  .stats-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-shell {
     width: min(100% - 24px, 100%);
+  }
+
+  .access-panel__main {
+    flex-direction: column;
+  }
+
+  .access-panel__actions {
+    justify-content: flex-start;
   }
 
   .stats-panel {
@@ -1232,12 +1240,17 @@ textarea {
     display: block;
   }
 
+  .command-bar {
+    overflow: hidden;
+  }
+
   .command-actions {
     flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;
     margin: 0 -28px;
     padding: 0 28px 6px;
+    scroll-snap-type: x proximity;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
@@ -1246,7 +1259,6 @@ textarea {
     display: none;
   }
 
-  .command-main > div:first-child,
   .workflow-strip {
     display: none;
   }
@@ -1282,7 +1294,12 @@ textarea {
     width: auto;
     min-width: max-content;
     flex: 0 0 auto;
+    scroll-snap-align: start;
     white-space: nowrap;
+  }
+
+  .stats-panel {
+    grid-template-columns: 1fr;
   }
 
   .list-table,
@@ -1378,6 +1395,11 @@ textarea {
     padding-top: 18px;
   }
 
+  .access-shell {
+    width: min(100% - 20px, 100%);
+    padding-top: 18px;
+  }
+
   .command-actions {
     margin: 0 -20px;
     padding: 0 20px 6px;
@@ -1408,5 +1430,31 @@ textarea {
   .sync-card,
   .stat-card {
     border-radius: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-loading {
+    width: calc(100% - 16px);
+  }
+
+  .hero-main,
+  .hero-side,
+  .panel,
+  .access-identity-card {
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 2.15rem;
+  }
+
+  .list-table td {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .list-table td::before {
+    margin-bottom: 2px;
   }
 }
