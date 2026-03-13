@@ -451,12 +451,28 @@ function setStatus(message, type = "info") {
   const nextType = type || "info";
   const isLoading = nextType === "loading";
 
+  window.clearTimeout(setStatus.timerId);
+
   if (elements.topLoadingBar && elements.topLoadingLabel) {
     elements.topLoadingLabel.textContent = message || "處理中...";
     elements.topLoadingBar.dataset.type = nextType;
     elements.topLoadingBar.classList.toggle("is-hidden", !message);
     elements.topLoadingBar.setAttribute("aria-busy", String(isLoading));
   }
+
+  if (!message) {
+    return;
+  }
+
+  const hideDelay = isLoading ? 4000 : nextType === "error" ? 4800 : 2600;
+  setStatus.timerId = window.setTimeout(() => {
+    if (!elements.topLoadingBar) {
+      return;
+    }
+
+    elements.topLoadingBar.classList.add("is-hidden");
+    elements.topLoadingBar.setAttribute("aria-busy", "false");
+  }, hideDelay);
 }
 
 function setLoadingStatus(message) {
