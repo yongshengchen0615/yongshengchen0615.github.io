@@ -1,4 +1,11 @@
 const CONFIG_PATH = "./config.json";
+const ADMIN_PAGE_OPTIONS = [
+  { key: "service", label: "服務" },
+  { key: "technician", label: "技師" },
+  { key: "schedule", label: "班表" },
+  { key: "reservation", label: "預約" },
+  { key: "user", label: "用戶審核" },
+];
 
 const state = {
   gasUrl: "",
@@ -101,7 +108,7 @@ function renderAccessState() {
     elements.statusBadge.textContent = "未登入";
     elements.statusBadge.dataset.tone = "muted";
     elements.statusText.textContent = "請先登入 LINE，系統會確認你是否屬於最高管理員。";
-    setApprovalMessage("此頁僅提供最高管理員設定 admin 的管理員修改權限。", "info");
+    setApprovalMessage("此頁僅提供最高管理員設定 admin 的頁面權限與管理員修改權限。", "info");
     elements.logoutButton.disabled = true;
     setContentAccess(false);
     return;
@@ -129,8 +136,8 @@ function renderAccessState() {
   if (isApprovedSuperAdmin) {
     elements.statusBadge.textContent = "最高管理員";
     elements.statusBadge.dataset.tone = "approved";
-    elements.statusText.textContent = "你可管理 admin 專案中誰有權修改其他管理員。";
-    setApprovalMessage("已通過最高管理員驗證，可管理 admin 管理員修改權限。", "approved");
+    elements.statusText.textContent = "你可管理 admin 專案中各管理員的頁面權限與管理員修改權限。";
+    setApprovalMessage("已通過最高管理員驗證，可管理 admin 的頁面權限與管理員修改權限。", "approved");
     setContentAccess(true);
     return;
   }
@@ -301,11 +308,55 @@ function getPermissionPill(adminUser) {
     : getStatusPill("僅一般 admin", "locked");
 }
 
+function getPagePermissionPills(adminUser) {
+  const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
+  if (!permissions.length) {
+    return '<span class="helper-text">未指派任何頁面</span>';
+  }
+
+  return ADMIN_PAGE_OPTIONS.filter((option) => permissions.includes(option.key))
+    .map((option) => `<span class="status-pill status-pill--page">${option.label}</span>`)
+    .join("");
+}
+
+function renderPagePermissionEditor(adminUser) {
+  if (adminUser.isSuperAdmin) {
+    return `
+      <div class="permission-editor permission-editor--readonly">
+        <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+        <p class="helper-text">最高管理員固定擁有全部 admin 頁面權限。</p>
+      </div>
+    `;
+  }
+
+  const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
+  const checkboxes = ADMIN_PAGE_OPTIONS.map((option) => {
+    const checked = permissions.includes(option.key) ? "checked" : "";
+    return `
+      <label class="permission-checkbox">
+        <input type="checkbox" data-page-permission-checkbox value="${option.key}" ${checked} />
+        <span>${option.label}</span>
+      </label>
+    `;
+  }).join("");
+
+  return `
+    <div class="permission-editor">
+      <div class="permission-checkbox-grid">${checkboxes}</div>
+      <div class="permission-editor__footer">
+        <span class="helper-text">未勾選的頁面在 admin 後台不會顯示，也無法執行對應操作。</span>
+        <button type="button" class="button button--primary" data-save-page-permissions="${adminUser.userId}">儲存頁面權限</button>
+      </div>
+    </div>
+  `;
+}
+
 function updateSummary() {
   const allAdmins = state.adminUsers.length;
   const permissionManagers = state.adminUsers.filter((item) => item.canManageAdmins).length;
   const superAdmins = state.superAdmins.length;
-  elements.summaryLabel.textContent = `最高管理員 ${superAdmins} 位 / 可管理管理員 ${permissionManagers} 位 / 全部 ${allAdmins} 位`;
+  const restrictedAdmins = state.adminUsers.filter((item) => !item.isSuperAdmin && Array.isArray(item.pagePermissions) && item.pagePermissions.length < ADMIN_PAGE_OPTIONS.length).length;
+  elements.summaryLabel.textContent = `最高管理員 ${superAdmins} 位 / 可管理管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位 / 全部 ${allAdmins} 位`;
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
 
@@ -357,6 +408,10 @@ function renderAdminTable() {
           </td>
           <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
           <td data-label="管理員修改權限">${getPermissionPill(adminUser)}</td>
+          <td data-label="頁面權限">
+            <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
+          </td>
+          <td data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
           <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
           <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
           <td data-label="操作"><div class="table-actions">${statusButtons}${actionButton}</div></td>
@@ -372,6 +427,8 @@ function renderAdminTable() {
           <th>管理員</th>
           <th>狀態</th>
           <th>管理員修改權限</th>
+          <th>頁面權限</th>
+          <th>頁面權限設定</th>
           <th>最後登入</th>
           <th>備註</th>
           <th>操作</th>
@@ -414,26 +471,33 @@ async function refreshIdentity() {
   await loadSuperAdminData();
 }
 
-async function updateAdminPermission(userId, canManageAdmins) {
+async function updateAdminPermission(userId, updates, options = {}) {
   const adminUser = state.adminUsers.find((item) => item.userId === userId);
   if (!adminUser) {
     throw new Error("找不到管理員資料");
   }
 
-  const actionLabel = canManageAdmins ? "授予" : "收回";
-  const confirmed = window.confirm(`確定要${actionLabel}「${adminUser.displayName}」的管理員修改權限嗎？`);
+  const payload = {
+    userId,
+    canManageAdmins: Object.prototype.hasOwnProperty.call(updates, "canManageAdmins")
+      ? updates.canManageAdmins
+      : adminUser.canManageAdmins,
+    pagePermissions: Object.prototype.hasOwnProperty.call(updates, "pagePermissions")
+      ? updates.pagePermissions
+      : (adminUser.pagePermissions || []),
+  };
+
+  const confirmMessage = options.confirmMessage || `確定要更新「${adminUser.displayName}」的 admin 權限嗎？`;
+  const confirmed = window.confirm(confirmMessage);
   if (!confirmed) {
-    setStatus("已取消權限變更。", "info");
+    setStatus(options.cancelMessage || "已取消權限變更。", "info");
     return;
   }
 
-  showLoading("正在更新管理員修改權限...", "loading");
+  showLoading(options.loadingMessage || "正在更新 admin 權限...", "loading");
   const result = await requestApi("POST", {}, {
     action: "updateAdminPermission",
-    payload: {
-      userId,
-      canManageAdmins,
-    },
+    payload,
   });
 
   if (!result.ok) {
@@ -441,7 +505,11 @@ async function updateAdminPermission(userId, canManageAdmins) {
   }
 
   await loadSuperAdminData();
-  setStatus(`已${actionLabel}${adminUser.displayName}的管理員修改權限。`, "success");
+  setStatus(options.successMessage || `已更新 ${adminUser.displayName} 的 admin 權限。`, "success");
+}
+
+function getRowPagePermissions(row) {
+  return Array.from(row.querySelectorAll('[data-page-permission-checkbox]:checked')).map((input) => input.value);
 }
 
 async function reviewAdminUser(userId, status) {
@@ -512,11 +580,43 @@ function bindEvents() {
     }
 
     const button = event.target.closest("[data-admin-permission]");
-    if (!button) {
+    if (button) {
+      const canManageAdmins = button.dataset.canManageAdmins === "true";
+      const actionLabel = canManageAdmins ? "授予" : "收回";
+      updateAdminPermission(
+        button.dataset.adminPermission,
+        { canManageAdmins },
+        {
+          confirmMessage: `確定要${actionLabel}「${button.closest("tr")?.querySelector("strong")?.textContent || "此管理員"}」的管理員修改權限嗎？`,
+          loadingMessage: "正在更新管理員修改權限...",
+          successMessage: `已${actionLabel}${button.closest("tr")?.querySelector("strong")?.textContent || "該管理員"}的管理員修改權限。`,
+        }
+      ).catch((error) => {
+        setStatus(error.message, "error");
+      });
       return;
     }
 
-    updateAdminPermission(button.dataset.adminPermission, button.dataset.canManageAdmins === "true").catch((error) => {
+    const savePageButton = event.target.closest("[data-save-page-permissions]");
+    if (!savePageButton) {
+      return;
+    }
+
+    const row = savePageButton.closest("tr");
+    if (!row) {
+      setStatus("找不到管理員列資料。", "error");
+      return;
+    }
+
+    updateAdminPermission(
+      savePageButton.dataset.savePagePermissions,
+      { pagePermissions: getRowPagePermissions(row) },
+      {
+        confirmMessage: `確定要更新「${row.querySelector("strong")?.textContent || "此管理員"}」的頁面權限嗎？`,
+        loadingMessage: "正在更新頁面權限...",
+        successMessage: `已更新${row.querySelector("strong")?.textContent || "該管理員"}的頁面權限。`,
+      }
+    ).catch((error) => {
       setStatus(error.message, "error");
     });
   });

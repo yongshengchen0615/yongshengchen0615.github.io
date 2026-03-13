@@ -4,6 +4,30 @@ const ADMIN_STORAGE_KEYS = {
 };
 const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
+const ADMIN_PAGE_OPTIONS = [
+  { key: "service", label: "服務" },
+  { key: "technician", label: "技師" },
+  { key: "schedule", label: "班表" },
+  { key: "reservation", label: "預約" },
+  { key: "user", label: "用戶審核" },
+];
+const ADMIN_ACTION_PAGE_MAP = {
+  saveService: "service",
+  deleteService: "service",
+  saveTechnician: "technician",
+  saveTechnicianServices: "technician",
+  deleteTechnician: "technician",
+  batchSaveTechnicians: "technician",
+  batchDeleteTechnicians: "technician",
+  reviewTechnician: "technician",
+  saveSchedule: "schedule",
+  deleteSchedule: "schedule",
+  batchSaveSchedules: "schedule",
+  saveReservation: "reservation",
+  deleteReservation: "reservation",
+  reviewUser: "user",
+  deleteUser: "user",
+};
 
 const state = {
   gasUrl: "",
@@ -136,6 +160,72 @@ function normalizeLiffId(value) {
 
 function normalizeCategory(value) {
   return String(value || "").trim() || "未分類";
+}
+
+function getAdminPageLabel(pageKey) {
+  return ADMIN_PAGE_OPTIONS.find((item) => item.key === pageKey)?.label || pageKey || "頁面";
+}
+
+function getAllAdminPageKeys() {
+  return ADMIN_PAGE_OPTIONS.map((item) => item.key);
+}
+
+function getAllowedAdminPages() {
+  if (!state.adminUser) {
+    return getAllAdminPageKeys();
+  }
+
+  if (state.adminUser.isSuperAdmin) {
+    return getAllAdminPageKeys();
+  }
+
+  const permissions = Array.isArray(state.adminUser.pagePermissions) ? state.adminUser.pagePermissions : [];
+  return permissions.filter((pageKey) => getAllAdminPageKeys().includes(pageKey));
+}
+
+function isAdminPageAllowed(pageKey) {
+  return getAllowedAdminPages().includes(pageKey);
+}
+
+function getFirstAllowedAdminPage() {
+  return getAllowedAdminPages()[0] || "";
+}
+
+function assertAdminActionAccess(action) {
+  const pageKey = ADMIN_ACTION_PAGE_MAP[action];
+  if (!pageKey || !state.adminUser || state.adminUser.isSuperAdmin) {
+    return;
+  }
+
+  if (!isAdminPageAllowed(pageKey)) {
+    throw new Error(`你目前沒有「${getAdminPageLabel(pageKey)}」頁面的權限。`);
+  }
+}
+
+function applyAdminPageAccess() {
+  const allowedPages = new Set(getAllowedAdminPages());
+
+  elements.pageTabs.forEach((button) => {
+    const pageKey = button.dataset.pageTrigger;
+    const isAllowed = allowedPages.has(pageKey);
+    button.classList.toggle("is-hidden", Boolean(state.adminUser) && !isAllowed);
+  });
+
+  elements.pagePanels.forEach((panel) => {
+    const pageKey = panel.dataset.adminPage;
+    if (!allowedPages.has(pageKey)) {
+      panel.classList.add("is-hidden");
+      panel.classList.remove("is-active");
+    }
+  });
+
+  const fallbackPage = allowedPages.has(state.ui.activePage) ? state.ui.activePage : getFirstAllowedAdminPage();
+  if (fallbackPage) {
+    setActivePage(fallbackPage, { skipPermissionCheck: true });
+    return;
+  }
+
+  state.ui.activePage = "";
 }
 
 function loadServiceCategoryMap() {
@@ -334,6 +424,7 @@ function renderAdminAccessState() {
     elements.adminStatusText.textContent = "你已通過 admin 審核，並保有最高管理員身分，可使用 admin 後台。";
     setAdminApprovalMessage("已通過 AdminUsers 審核，可使用 admin 後台。", "approved");
     setAdminContentAccess(true);
+    applyAdminPageAccess();
     return;
   }
 
@@ -341,9 +432,15 @@ function renderAdminAccessState() {
 
   if (state.adminUser.status === "已通過") {
     elements.adminStatusBadge.dataset.tone = "approved";
-    elements.adminStatusText.textContent = "你已通過管理員審核，可使用後台管理功能。";
-    setAdminApprovalMessage("已通過管理員審核，後台資料載入後即可使用。", "approved");
+    if (getAllowedAdminPages().length) {
+      elements.adminStatusText.textContent = "你已通過管理員審核，可使用已授權的後台頁面。";
+      setAdminApprovalMessage("已通過管理員審核，後台資料載入後即可使用。", "approved");
+    } else {
+      elements.adminStatusText.textContent = "你已通過管理員審核，但目前尚未被指派任何 admin 頁面權限。";
+      setAdminApprovalMessage("請由最高管理員在 superadmin 指派此帳號可使用的 admin 頁面。", "pending");
+    }
     setAdminContentAccess(true);
+    applyAdminPageAccess();
     return;
   }
 
@@ -515,9 +612,19 @@ function scrollToPanel(panel) {
   });
 }
 
-function setActivePage(pageName) {
+function setActivePage(pageName, options = {}) {
+  const { skipPermissionCheck = false } = options;
+
   if (!pageName) {
     return;
+  }
+
+  if (!skipPermissionCheck && state.adminUser && !isAdminPageAllowed(pageName)) {
+    const fallbackPage = getFirstAllowedAdminPage();
+    if (!fallbackPage) {
+      return;
+    }
+    pageName = fallbackPage;
   }
 
   state.ui.activePage = pageName;
@@ -1131,6 +1238,10 @@ async function requestApi(method, params = {}, body = null) {
   startBusyState();
 
   try {
+    if (method !== "GET" && body?.action) {
+      assertAdminActionAccess(body.action);
+    }
+
     if (method === "GET") {
       const url = new URL(state.gasUrl);
       Object.entries({ ...params, adminUserId }).forEach(([key, value]) => {
@@ -2225,11 +2336,13 @@ async function loadAdminData() {
     category: normalizeCategory(service.category || state.serviceCategoryMap[service.serviceId]),
   }));
   state.adminUsers = result.data.adminUsers || [];
-  state.adminUser = state.adminUsers.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
+  state.adminUser = result.data.currentAdminUser || state.adminUsers.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
   state.technicians = result.data.technicians || [];
   state.schedules = result.data.schedules || [];
   state.users = result.data.users || [];
   state.reservations = result.data.reservations || [];
+  renderAdminAccessState();
+  applyAdminPageAccess();
   renderAll();
   updateLastSyncTime();
   setStatus("管理資料已同步。", "success");

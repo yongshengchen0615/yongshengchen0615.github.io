@@ -9,6 +9,26 @@ const SHEETS = {
   reservations: 'Reservations',
 };
 
+const ADMIN_PAGE_KEYS = ['service', 'technician', 'schedule', 'reservation', 'user'];
+const ADMIN_PAGE_PERMISSION_NONE = '__NONE__';
+const ADMIN_ACTION_PAGE_MAP = {
+  saveService: 'service',
+  deleteService: 'service',
+  saveTechnician: 'technician',
+  saveTechnicianServices: 'technician',
+  deleteTechnician: 'technician',
+  batchSaveTechnicians: 'technician',
+  batchDeleteTechnicians: 'technician',
+  reviewTechnician: 'technician',
+  saveSchedule: 'schedule',
+  deleteSchedule: 'schedule',
+  batchSaveSchedules: 'schedule',
+  saveReservation: 'reservation',
+  deleteReservation: 'reservation',
+  reviewUser: 'user',
+  deleteUser: 'user',
+};
+
 const TEXT_COLUMNS_BY_SHEET = {
   Users: ['phone'],
   Reservations: ['phone'],
@@ -40,8 +60,8 @@ function doGet(e) {
     }
 
     if (action === 'adminData') {
-      verifyAdminAccess_(getRequestValue_(e, 'adminUserId'));
-      return jsonResponse_({ ok: true, data: getAdminData_() });
+      var adminUser = verifyAdminAccess_(getRequestValue_(e, 'adminUserId'));
+      return jsonResponse_({ ok: true, data: getAdminData_(adminUser) });
     }
 
     if (action === 'superAdminData') {
@@ -88,18 +108,6 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: createReservation_(body.payload || {}) });
     }
 
-    if (action === 'batchSaveSchedules') {
-      return jsonResponse_({ ok: true, data: batchSaveSchedules_(body.payload || {}) });
-    }
-
-    if (action === 'batchSaveTechnicians') {
-      return jsonResponse_({ ok: true, data: batchSaveTechnicians_(body.payload || {}) });
-    }
-
-    if (action === 'batchDeleteTechnicians') {
-      return jsonResponse_({ ok: true, data: batchDeleteTechnicians_(body.payload || {}) });
-    }
-
     if (action === 'updateAdminPermission') {
       verifySuperAdminAccess_(body.adminUserId);
       return jsonResponse_({ ok: true, data: updateAdminPermission_(body.payload || {}, body.adminUserId) });
@@ -115,54 +123,81 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: deleteAdminUser_(body.payload || {}, body.adminUserId) });
     }
 
-    verifyAdminAccess_(body.adminUserId);
+    var adminActor = verifyAdminAccess_(body.adminUserId);
 
     if (action === 'reviewUser') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: reviewUser_(body.payload || {}) });
     }
 
     if (action === 'reviewTechnician') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: reviewTechnician_(body.payload || {}) });
     }
 
     if (action === 'deleteUser') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: deleteUser_(body.payload || {}) });
     }
 
     if (action === 'saveService') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: saveService_(body.payload || {}) });
     }
 
     if (action === 'saveTechnician') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: saveTechnician_(body.payload || {}) });
     }
 
     if (action === 'saveTechnicianServices') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: saveTechnicianServices_(body.payload || {}) });
     }
 
     if (action === 'saveSchedule') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: saveSchedule_(body.payload || {}) });
     }
 
     if (action === 'saveReservation') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: saveReservation_(body.payload || {}) });
     }
 
     if (action === 'deleteService') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: deleteService_(body.payload || {}) });
     }
 
     if (action === 'deleteTechnician') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: deleteTechnician_(body.payload || {}) });
     }
 
     if (action === 'deleteSchedule') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: deleteSchedule_(body.payload || {}) });
     }
 
     if (action === 'deleteReservation') {
+      ensureAdminActionAccess_(adminActor, action);
       return jsonResponse_({ ok: true, data: deleteReservation_(body.payload || {}) });
+    }
+
+    if (action === 'batchSaveSchedules') {
+      ensureAdminActionAccess_(adminActor, action);
+      return jsonResponse_({ ok: true, data: batchSaveSchedules_(body.payload || {}) });
+    }
+
+    if (action === 'batchSaveTechnicians') {
+      ensureAdminActionAccess_(adminActor, action);
+      return jsonResponse_({ ok: true, data: batchSaveTechnicians_(body.payload || {}) });
+    }
+
+    if (action === 'batchDeleteTechnicians') {
+      ensureAdminActionAccess_(adminActor, action);
+      return jsonResponse_({ ok: true, data: batchDeleteTechnicians_(body.payload || {}) });
     }
 
     throw new Error('Unsupported action: ' + action);
@@ -199,8 +234,9 @@ function getPublicData_() {
   }, DATA_CACHE_TTL_SECONDS.publicData);
 }
 
-function getAdminData_() {
-  return getCachedDataset_('adminData', function() {
+function getAdminData_(adminUser) {
+  var permissionsKey = (adminUser && adminUser.pagePermissions || []).join('|') || ADMIN_PAGE_PERMISSION_NONE;
+  return getCachedDataset_('adminData:' + String(adminUser && adminUser.userId || '') + ':' + permissionsKey, function() {
     var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
     var services = getTableRecords_(SHEETS.services).map(normalizeService_);
     var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
@@ -227,13 +263,20 @@ function getAdminData_() {
       return item;
     });
 
+    var currentAdminUser = adminUsers.find(function(item) {
+      return item.userId === String(adminUser && adminUser.userId || '').trim();
+    }) || adminUser;
+    var canViewServices = hasAdminPagePermission_(currentAdminUser, 'service') || hasAdminPagePermission_(currentAdminUser, 'technician') || hasAdminPagePermission_(currentAdminUser, 'reservation');
+    var canViewTechnicians = hasAdminPagePermission_(currentAdminUser, 'technician') || hasAdminPagePermission_(currentAdminUser, 'schedule') || hasAdminPagePermission_(currentAdminUser, 'reservation');
+
     return {
-      adminUsers: adminUsers,
-      services: services,
-      technicians: technicians,
-      schedules: schedules,
-      users: users,
-      reservations: reservations,
+      adminUsers: currentAdminUser ? [currentAdminUser] : [],
+      currentAdminUser: currentAdminUser,
+      services: canViewServices ? services : [],
+      technicians: canViewTechnicians ? technicians : [],
+      schedules: hasAdminPagePermission_(currentAdminUser, 'schedule') ? schedules : [],
+      users: hasAdminPagePermission_(currentAdminUser, 'user') ? users : [],
+      reservations: hasAdminPagePermission_(currentAdminUser, 'reservation') ? reservations : [],
     };
   }, DATA_CACHE_TTL_SECONDS.adminData);
 }
@@ -347,6 +390,7 @@ function syncAdminUser_(payload) {
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(nextStatus),
     canManageAdmins: nextCanManageAdmins,
+    pagePermissions: serializeAdminPagePermissions_(normalizeStoredAdminPagePermissions_(existing && existing.pagePermissions, userId), userId),
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
@@ -565,6 +609,7 @@ function reviewAdminUser_(payload, actorUserId, skipPermissionCheck) {
     pictureUrl: existing.pictureUrl,
     status: nextStatus,
     canManageAdmins: normalizeAdminPermissionValue_(existing.canManageAdmins, nextStatus, existing.userId),
+    pagePermissions: serializeAdminPagePermissions_(normalizeStoredAdminPagePermissions_(existing.pagePermissions, existing.userId), existing.userId),
     note: String(payload.note || existing.note || '').trim(),
     createdAt: existing.createdAt,
     updatedAt: toIsoString_(new Date()),
@@ -590,6 +635,9 @@ function updateAdminPermission_(payload, actorUserId) {
   var canManageAdmins = isSuperAdmin_(existing.userId)
     ? true
     : toBoolean_(payload.canManageAdmins);
+  var nextPagePermissions = isSuperAdmin_(existing.userId)
+    ? getAllAdminPagePermissions_()
+    : normalizeAdminPagePermissionList_(payload.pagePermissions);
 
   var record = {
     userId: existing.userId,
@@ -597,6 +645,7 @@ function updateAdminPermission_(payload, actorUserId) {
     pictureUrl: existing.pictureUrl,
     status: existing.status,
     canManageAdmins: canManageAdmins,
+    pagePermissions: serializeAdminPagePermissions_(nextPagePermissions, existing.userId),
     note: String(payload.note || existing.note || '').trim(),
     createdAt: existing.createdAt,
     updatedAt: toIsoString_(new Date()),
@@ -1239,7 +1288,7 @@ function deleteAdminUser_(payload, actorUserId) {
 
 function initializeSheets_() {
   ensureSheet_(SHEETS.config, ['key', 'value']);
-  ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
+  ensureSheet_(SHEETS.adminUsers, ['userId', 'displayName', 'pictureUrl', 'status', 'canManageAdmins', 'pagePermissions', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.superAdmins, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt', 'lineUserId', 'profileDisplayName', 'pictureUrl', 'reviewStatus', 'reviewNote', 'lastLoginAt']);
@@ -1715,6 +1764,23 @@ function ensureAdminPermissionManager_(actorUserId) {
   throw new Error('你沒有管理其他管理員權限的授權，請改由最高管理員設定');
 }
 
+function ensureAdminActionAccess_(adminUser, action) {
+  var pageKey = ADMIN_ACTION_PAGE_MAP[action];
+  if (!pageKey) {
+    return adminUser;
+  }
+
+  return ensureAdminPageAccess_(adminUser, pageKey, action);
+}
+
+function ensureAdminPageAccess_(adminUser, pageKey, actionLabel) {
+  if (hasAdminPagePermission_(adminUser, pageKey)) {
+    return adminUser;
+  }
+
+  throw new Error('你目前沒有「' + getAdminPageLabel_(pageKey) + '」頁面的權限，無法執行 ' + String(actionLabel || '此操作') + '。');
+}
+
 function ensureAdminStatusReviewer_(actorUserId) {
   var approvedSuperAdmin = findApprovedSuperAdmin_(actorUserId);
   if (approvedSuperAdmin) {
@@ -1845,6 +1911,7 @@ function normalizeAdminUser_(item) {
     pictureUrl: String(item.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(item.status),
     canManageAdmins: normalizeAdminPermissionValue_(item.canManageAdmins, item.status, userId),
+    pagePermissions: normalizeStoredAdminPagePermissions_(item.pagePermissions, userId),
     isSuperAdmin: isSuperAdmin_(userId),
     note: String(item.note || '').trim(),
     createdAt: String(item.createdAt || ''),
@@ -1865,6 +1932,7 @@ function normalizeSuperAdminUser_(item) {
     lastLoginAt: String(item.lastLoginAt || ''),
     isSuperAdmin: true,
     canManageAdmins: true,
+    pagePermissions: getAllAdminPagePermissions_(),
   };
 }
 
@@ -1883,6 +1951,84 @@ function normalizeAdminPermissionValue_(value, status, userId) {
   }
 
   return normalizeAdminStatus_(status) === '已通過';
+}
+
+function getAllAdminPagePermissions_() {
+  return ADMIN_PAGE_KEYS.slice();
+}
+
+function getAdminPageLabel_(pageKey) {
+  if (pageKey === 'service') {
+    return '服務';
+  }
+  if (pageKey === 'technician') {
+    return '技師';
+  }
+  if (pageKey === 'schedule') {
+    return '班表';
+  }
+  if (pageKey === 'reservation') {
+    return '預約';
+  }
+  if (pageKey === 'user') {
+    return '用戶審核';
+  }
+  return String(pageKey || '頁面');
+}
+
+function normalizeAdminPagePermissionList_(value) {
+  var rawList = [];
+
+  if (Object.prototype.toString.call(value) === '[object Array]') {
+    rawList = value;
+  } else {
+    var text = String(value || '').trim();
+    if (!text || text === ADMIN_PAGE_PERMISSION_NONE) {
+      rawList = [];
+    } else {
+      rawList = text.split(',');
+    }
+  }
+
+  return ADMIN_PAGE_KEYS.filter(function(pageKey) {
+    return rawList.some(function(item) {
+      return String(item || '').trim() === pageKey;
+    });
+  });
+}
+
+function normalizeStoredAdminPagePermissions_(value, userId) {
+  if (isSuperAdmin_(userId)) {
+    return getAllAdminPagePermissions_();
+  }
+
+  var text = String(value || '').trim();
+  if (!text) {
+    return getAllAdminPagePermissions_();
+  }
+
+  return normalizeAdminPagePermissionList_(text);
+}
+
+function serializeAdminPagePermissions_(value, userId) {
+  if (isSuperAdmin_(userId)) {
+    return getAllAdminPagePermissions_().join(',');
+  }
+
+  var pagePermissions = normalizeAdminPagePermissionList_(value);
+  return pagePermissions.length ? pagePermissions.join(',') : ADMIN_PAGE_PERMISSION_NONE;
+}
+
+function hasAdminPagePermission_(adminUser, pageKey) {
+  if (!adminUser) {
+    return false;
+  }
+
+  if (isSuperAdmin_(adminUser.userId) || adminUser.isSuperAdmin) {
+    return true;
+  }
+
+  return (adminUser.pagePermissions || []).indexOf(String(pageKey || '').trim()) !== -1;
 }
 
 function normalizeAdminStatus_(value) {
@@ -2041,6 +2187,7 @@ function buildAdminIdentityFromSuperAdmin_(superAdminUser, adminUser) {
     pictureUrl: String(superAdminUser.pictureUrl || adminUser && adminUser.pictureUrl || '').trim(),
     status: normalizeAdminStatus_(superAdminUser.status || adminUser && adminUser.status || '已通過'),
     canManageAdmins: true,
+    pagePermissions: getAllAdminPagePermissions_(),
     isSuperAdmin: true,
     note: String(superAdminUser.note || adminUser && adminUser.note || '').trim(),
     createdAt: String(superAdminUser.createdAt || adminUser && adminUser.createdAt || ''),

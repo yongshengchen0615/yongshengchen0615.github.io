@@ -24,7 +24,7 @@
           <div>
             <p class="eyebrow">Super Admin Access</p>
             <h1>最高管理員權限中心</h1>
-            <p class="section-copy">只有最高管理員可登入此頁，並設定哪些 admin 管理員能修改其他管理員的權限。</p>
+            <p class="section-copy">只有最高管理員可登入此頁，並設定各 admin 可使用哪些後台頁面，以及是否能管理其他管理員。</p>
           </div>
           <div class="access-panel__actions">
             <button type="button" id="loginButton" class="button button--primary">LINE 登入</button>
@@ -42,7 +42,7 @@
             </div>
           </div>
           <p id="statusText" class="section-copy">請先登入 LINE，系統會確認你是否屬於最高管理員名單。</p>
-          <div id="approvalBanner" class="approval-banner" data-tone="info">此頁僅提供最高管理員設定 admin 的管理員修改權限。</div>
+          <div id="approvalBanner" class="approval-banner" data-tone="info">此頁僅提供最高管理員設定 admin 的頁面權限與管理員修改權限。</div>
         </div>
       </div>
     </section>
@@ -52,7 +52,7 @@
         <div>
           <p class="eyebrow">Authority Matrix</p>
           <h2>admin 管理員權限名單</h2>
-          <p class="section-copy">可開啟或收回「管理其他管理員」權限。所有帳號都必須先在 SuperAdmins 工作表審核通過，才可使用此頁。</p>
+          <p class="section-copy">可設定每位 admin 能否使用服務、技師、班表、預約、用戶審核頁面，並控制是否可管理其他管理員。</p>
         </div>
         <div class="hero-meta">
           <div class="summary-card">
@@ -70,8 +70,8 @@
         <div class="section-header">
           <div>
             <p class="eyebrow">Permission Control</p>
-            <h2>管理員修改權限</h2>
-            <p class="section-copy">這裡只控制 admin 專案中誰可以審核、停用或刪除其他管理員帳號。</p>
+            <h2>管理員與頁面權限</h2>
+            <p class="section-copy">先決定 admin 可操作哪些頁面，再視需要授權其管理其他管理員帳號。</p>
           </div>
         </div>
         <div id="adminPermissionTable" class="data-list"></div>
