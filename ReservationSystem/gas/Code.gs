@@ -9,6 +9,11 @@ const SHEETS = {
   reservations: 'Reservations',
 };
 
+const TEXT_COLUMNS_BY_SHEET = {
+  Users: ['phone'],
+  Reservations: ['phone'],
+};
+
 function doGet(e) {
   try {
     initializeSheets_();
@@ -1052,27 +1057,31 @@ function getTableRecords_(sheetName) {
     return [];
   }
 
-  var values = sheet.getDataRange().getValues();
-  var headers = values.shift();
-  return values
-    .filter(function(row) {
-      return row.join('') !== '';
-    })
-    .map(function(row) {
+  var rawValues = sheet.getDataRange().getValues();
+  var displayValues = sheet.getDataRange().getDisplayValues();
+  var headers = rawValues.shift();
+  displayValues.shift();
+  return rawValues.reduce(function(records, row, rowIndex) {
+    if (row.join('') === '') {
+      return records;
+    }
+
+    var displayRow = displayValues[rowIndex] || [];
       var record = {};
-      headers.forEach(function(header, index) {
-        record[header] = row[index];
+    headers.forEach(function(header, index) {
+        record[header] = isTextColumn_(sheetName, header)
+          ? normalizeSheetTextValue_(displayRow[index])
+          : row[index];
       });
-      return record;
-    });
+    records.push(record);
+    return records;
+  }, []);
 }
 
 function appendRecord_(sheetName, record) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var headers = getSheetHeaders_(sheet);
-  var row = headers.map(function(header) {
-    return record[header] !== undefined ? record[header] : '';
-  });
+  var row = buildSheetRow_(sheetName, headers, record);
   sheet.appendRow(row);
 }
 
@@ -1083,9 +1092,7 @@ function upsertRecord_(sheetName, primaryKey, record) {
   var rowIndex = data.findIndex(function(item) {
     return String(item[primaryKey]) === String(record[primaryKey]);
   });
-  var row = headers.map(function(header) {
-    return record[header] !== undefined ? record[header] : '';
-  });
+  var row = buildSheetRow_(sheetName, headers, record);
 
   if (rowIndex === -1) {
     sheet.appendRow(row);
@@ -1100,9 +1107,7 @@ function upsertRecordByComposite_(sheetName, keys, record) {
   var headers = getSheetHeaders_(sheet);
   var data = getTableRecords_(sheetName);
   var matchedRowIndexes = [];
-  var row = headers.map(function(header) {
-    return record[header] !== undefined ? record[header] : '';
-  });
+  var row = buildSheetRow_(sheetName, headers, record);
 
   data.forEach(function(item, index) {
     var isMatch = keys.every(function(key) {
@@ -1188,6 +1193,24 @@ function deleteRecordsByPredicate_(sheetName, predicate) {
 
 function getSheetHeaders_(sheet) {
   return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+}
+
+function isTextColumn_(sheetName, columnName) {
+  var columns = TEXT_COLUMNS_BY_SHEET[sheetName] || [];
+  return columns.indexOf(String(columnName || '').trim()) !== -1;
+}
+
+function normalizeSheetTextValue_(value) {
+  return String(value === undefined || value === null ? '' : value).trim();
+}
+
+function buildSheetRow_(sheetName, headers, record) {
+  return headers.map(function(header) {
+    var value = record[header] !== undefined ? record[header] : '';
+    return isTextColumn_(sheetName, header)
+      ? normalizeSheetTextValue_(value)
+      : value;
+  });
 }
 
 function parseRequestBody_(e) {

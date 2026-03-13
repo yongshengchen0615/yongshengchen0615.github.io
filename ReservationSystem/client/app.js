@@ -44,6 +44,7 @@ const elements = {
   overviewTechnician: document.querySelector("#overviewTechnician"),
   overviewServiceCount: document.querySelector("#overviewServiceCount"),
   overviewDateCount: document.querySelector("#overviewDateCount"),
+  reservationStatusList: document.querySelector("#reservationStatusList"),
   userAvatar: document.querySelector("#userAvatar"),
   userDisplayName: document.querySelector("#userDisplayName"),
   userStatusBadge: document.querySelector("#userStatusBadge"),
@@ -289,6 +290,90 @@ function getServiceById(serviceId) {
 
 function getServiceCategory(service) {
   return String(service?.category || "").trim() || "未分類";
+}
+
+function getCurrentUserReservations() {
+  const userId = String(state.profile?.userId || state.user?.userId || "").trim();
+  if (!userId) {
+    return [];
+  }
+
+  return state.reservations
+    .filter((item) => String(item.userId || "").trim() === userId)
+    .slice()
+    .sort((left, right) => {
+      const leftKey = `${left.date || ""} ${left.startTime || ""}`;
+      const rightKey = `${right.date || ""} ${right.startTime || ""}`;
+      return rightKey.localeCompare(leftKey);
+    });
+}
+
+function getReservationStatusTone(status) {
+  if (status === "已預約") {
+    return "pending";
+  }
+
+  if (status === "已完成") {
+    return "approved";
+  }
+
+  if (status === "已取消") {
+    return "blocked";
+  }
+
+  return "muted";
+}
+
+function getReservationServiceNames(reservation) {
+  const serviceIds = Array.isArray(reservation.serviceIds)
+    ? reservation.serviceIds
+    : String(reservation.serviceId || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  return serviceIds
+    .map((serviceId) => getServiceById(serviceId))
+    .filter(Boolean)
+    .map((service) => service.name);
+}
+
+function renderReservationStatusList() {
+  if (!elements.reservationStatusList) {
+    return;
+  }
+
+  if (!state.profile) {
+    elements.reservationStatusList.innerHTML = '<p class="empty-state">登入後會顯示你的預約狀態。</p>';
+    return;
+  }
+
+  const reservations = getCurrentUserReservations();
+  if (!reservations.length) {
+    elements.reservationStatusList.innerHTML = '<p class="empty-state">目前沒有你的預約紀錄。</p>';
+    return;
+  }
+
+  elements.reservationStatusList.innerHTML = reservations
+    .map((reservation) => {
+      const technician = getTechnicianById(reservation.technicianId);
+      const serviceNames = getReservationServiceNames(reservation);
+      return `
+        <article class="reservation-status-item">
+          <div class="reservation-status-item__header">
+            <strong>${reservation.date || "未定日期"} ${reservation.startTime || ""}${reservation.endTime ? ` - ${reservation.endTime}` : ""}</strong>
+            <span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservation.status || "未設定"}</span>
+          </div>
+          <dl class="reservation-status-item__rows">
+            <div><dt>預約編號</dt><dd>${reservation.reservationId || "-"}</dd></div>
+            <div><dt>技師</dt><dd>${technician?.name || "系統安排 / 未指定"}</dd></div>
+            <div><dt>服務</dt><dd>${serviceNames.length ? serviceNames.join("、") : "未指定"}</dd></div>
+            <div><dt>備註</dt><dd>${reservation.note || "無"}</dd></div>
+          </dl>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function getEligibleTechnicians(serviceIds = [], technicianId = state.selectedTechnicianId) {
@@ -625,6 +710,7 @@ function updateDashboard() {
     : "不指定技師，由系統安排";
   elements.overviewServiceCount.textContent = `${selectedMetrics.services.length} / ${availableServices.length} 項`;
   elements.overviewDateCount.textContent = `${availableDates.length} 天`;
+  renderReservationStatusList();
 }
 
 function setBookingSubmitting(isSubmitting) {
