@@ -399,14 +399,20 @@ function getEligibleTechnicians(serviceIds = [], technicianId = state.selectedTe
   });
 }
 
-function getAllowedServices(technicianId) {
-  const eligibleTechnicians = getEligibleTechnicians([], technicianId);
+function getAllowedServices(technicianId, selectedServiceIds = []) {
+  const normalizedSelectedServiceIds = normalizeServiceIds(selectedServiceIds);
+  const eligibleTechnicians = getEligibleTechnicians(normalizedSelectedServiceIds, technicianId);
   if (!eligibleTechnicians.length) return [];
 
-  const allowed = new Set(
-    eligibleTechnicians.flatMap((technician) => technician.serviceIds || [])
-  );
-  return getActiveServices().filter((service) => allowed.has(service.serviceId));
+  return getActiveServices().filter((service) => {
+    const combinedServiceIds = normalizedSelectedServiceIds.includes(service.serviceId)
+      ? normalizedSelectedServiceIds
+      : normalizedSelectedServiceIds.concat(service.serviceId);
+
+    return eligibleTechnicians.some((technician) => {
+      return combinedServiceIds.every((serviceId) => (technician.serviceIds || []).includes(serviceId));
+    });
+  });
 }
 
 function normalizeServiceIds(serviceIds) {
@@ -436,7 +442,7 @@ function formatServiceLabel(service) {
 }
 
 function renderServiceOptions(selectedIds = []) {
-  const allowedServices = getAllowedServices(state.selectedTechnicianId);
+  const allowedServices = getAllowedServices(state.selectedTechnicianId, selectedIds);
   const checked = new Set(normalizeServiceIds(selectedIds));
 
   if (!allowedServices.length) {
@@ -703,7 +709,7 @@ function updateDashboard() {
   const activeTechnicians = getActiveTechnicians();
   const activeServices = getActiveServices();
   const selectedTechnician = getTechnicianById(state.selectedTechnicianId);
-  const availableServices = getAllowedServices(state.selectedTechnicianId);
+  const availableServices = getAllowedServices(state.selectedTechnicianId, state.selectedServiceIds);
   const selectedMetrics = getServiceMetrics(state.selectedServiceIds);
   const availableDates = state.selectedServiceIds.length
     ? getAvailableDates(state.selectedTechnicianId, state.selectedServiceIds)
@@ -785,12 +791,14 @@ function updateAvailabilityStatus() {
     return;
   }
 
-  const allowedServices = getAllowedServices(state.selectedTechnicianId);
+  const allowedServices = getAllowedServices(state.selectedTechnicianId, state.selectedServiceIds);
   if (!allowedServices.length) {
     setStatus(
-      isSpecificTechnicianSelected(state.selectedTechnicianId)
-        ? "這位技師目前沒有啟用中的服務項目。"
-        : "目前沒有可由現場安排的服務項目。",
+      state.selectedServiceIds.length
+        ? "目前沒有單一技師可同時服務這組項目，請減少服務項目或改選技師。"
+        : isSpecificTechnicianSelected(state.selectedTechnicianId)
+          ? "這位技師目前沒有啟用中的服務項目。"
+          : "目前沒有可由現場安排的服務項目。",
       "info"
     );
     return;
@@ -843,7 +851,7 @@ function refreshSelects() {
   }
   state.selectedTechnicianId = elements.technicianSelect.value;
 
-  const allowedServiceIds = new Set(getAllowedServices(state.selectedTechnicianId).map((item) => item.serviceId));
+  const allowedServiceIds = new Set(getAllowedServices(state.selectedTechnicianId, state.selectedServiceIds).map((item) => item.serviceId));
   state.selectedServiceIds = normalizeServiceIds(state.selectedServiceIds).filter((serviceId) => allowedServiceIds.has(serviceId));
   renderServiceOptions(state.selectedServiceIds);
   state.selectedServiceIds = getSelectedServiceIds();
@@ -925,7 +933,8 @@ async function requestApi(method, params = {}, body = null) {
   if (method === "GET") {
     const url = new URL(state.gasUrl);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-    const response = await fetch(url.toString());
+    url.searchParams.set("_ts", String(Date.now()));
+    const response = await fetch(url.toString(), { cache: "no-store" });
     return response.json();
   }
 
@@ -1063,7 +1072,7 @@ async function loadPublicData(options = {}) {
       state.selectedTechnicianId = UNSPECIFIED_TECHNICIAN_VALUE;
     }
 
-    const allowedServiceIds = new Set(getAllowedServices(state.selectedTechnicianId).map((item) => item.serviceId));
+    const allowedServiceIds = new Set(getAllowedServices(state.selectedTechnicianId, state.selectedServiceIds).map((item) => item.serviceId));
     state.selectedServiceIds = normalizeServiceIds(state.selectedServiceIds).filter((serviceId) => allowedServiceIds.has(serviceId));
 
     refreshSelects();
@@ -1141,6 +1150,13 @@ async function submitBooking(event) {
       throw new Error(result.message || "預約失敗");
     }
 
+    state.reservations = [
+      result.data,
+      ...state.reservations.filter((item) => item.reservationId !== result.data.reservationId),
+    ];
+    renderReservationStatusList();
+    updateDashboard();
+
     setStatus(
       `預約成功，預約編號：${result.data.reservationId}${result.data.assignmentType === "現場安排" ? "，技師將於現場安排" : result.data.technicianName ? `，已安排 ${result.data.technicianName}` : ""}`,
       "success"
@@ -1148,7 +1164,14 @@ async function submitBooking(event) {
     elements.bookingForm.reset();
     state.selectedTechnicianId = payload.technicianId || UNSPECIFIED_TECHNICIAN_VALUE;
     state.selectedServiceIds = [];
-    await loadPublicData();
+    try {
+      await loadPublicData();
+    } catch (refreshError) {
+      setStatus(
+        `預約已送出，預約編號：${result.data.reservationId}。但重新同步最新資料失敗，請稍後手動重新整理。`,
+        "success"
+      );
+    }
     fillBookingContactFields();
   } finally {
     setBookingSubmitting(false);
@@ -1181,7 +1204,15 @@ function bindEvents() {
       return;
     }
 
-    state.selectedServiceIds = getSelectedServiceIds();
+    const nextSelectedServiceIds = getSelectedServiceIds();
+    if (nextSelectedServiceIds.length && !getEligibleTechnicians(nextSelectedServiceIds, state.selectedTechnicianId).length) {
+      event.target.checked = false;
+      setStatus("目前沒有單一技師可同時服務這組項目，請減少服務項目或改選技師。", "info");
+      return;
+    }
+
+    state.selectedServiceIds = nextSelectedServiceIds;
+    renderServiceOptions(state.selectedServiceIds);
     syncDateAndTimeOptions();
   });
 
