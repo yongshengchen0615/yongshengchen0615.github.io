@@ -1921,28 +1921,28 @@ const bulkTechnicianModule = {
 
     return `
       <tr data-bulk-technician-row data-technician-id="${escapeHtml(technicianId)}" data-service-ids="${escapeHtml(serviceIds.join(","))}">
-        <td data-label="勾選">
+        <td data-label="勾選" class="bulk-technician-table__cell bulk-technician-table__cell--select">
           <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
         </td>
-        <td data-label="LINE 名稱">
+        <td data-label="LINE 名稱" class="bulk-technician-table__cell bulk-technician-table__cell--line-name">
           <input type="text" value="${escapeHtml(lineName)}" placeholder="尚未綁定 LINE" readonly />
         </td>
-        <td data-label="技師名稱">
+        <td data-label="技師名稱" class="bulk-technician-table__cell bulk-technician-table__cell--name">
           <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
         </td>
-        <td data-label="上班時間" class="bulk-technician-table__time-cell">
+        <td data-label="上班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
           <input type="time" name="startTime" class="bulk-technician-table__time-input" value="${escapeHtml(startTime)}" />
         </td>
-        <td data-label="下班時間" class="bulk-technician-table__time-cell">
+        <td data-label="下班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
           <input type="time" name="endTime" class="bulk-technician-table__time-input" value="${escapeHtml(endTime)}" />
         </td>
-        <td data-label="啟用">
+        <td data-label="啟用" class="bulk-technician-table__cell bulk-technician-table__cell--active">
           <label class="checkbox-field checkbox-field--compact">
             <input type="checkbox" name="active" ${technician?.active !== false ? "checked" : ""} />
             <span>${technician?.active !== false ? "啟用" : "停用"}</span>
           </label>
         </td>
-        <td data-label="服務項目">
+        <td data-label="服務項目" class="bulk-technician-table__cell bulk-technician-table__cell--services">
           <div class="bulk-technician-services">
             <strong data-bulk-service-summary>${serviceSummary}</strong>
             <small data-bulk-service-label title="${escapeHtml(serviceLabel)}">${escapeHtml(serviceLabel)}</small>

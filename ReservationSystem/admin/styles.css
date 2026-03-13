@@ -907,6 +907,18 @@ h1 {
   min-width: 120px;
 }
 
+.bulk-technician-table {
+  table-layout: fixed;
+}
+
+.bulk-technician-table__cell {
+  min-width: 0;
+}
+
+.bulk-technician-table__cell--line-name input[readonly] {
+  text-overflow: ellipsis;
+}
+
 .bulk-technician-table__time-cell,
 .bulk-technician-table__time-input {
   min-width: 0;
@@ -919,10 +931,12 @@ h1 {
 .bulk-technician-services {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .bulk-technician-services__actions {
   margin-top: 2px;
+  align-items: stretch;
 }
 
 .bulk-technician-services__editor {
@@ -940,11 +954,14 @@ h1 {
 
 .bulk-technician-services strong {
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .bulk-technician-services small {
   color: var(--muted);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ==========================================================================
@@ -1202,6 +1219,38 @@ h1 {
     min-width: 0;
   }
 
+  .bulk-technician-table tbody {
+    gap: 14px;
+  }
+
+  .bulk-technician-table tr {
+    gap: 0;
+  }
+
+  .bulk-technician-table td {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .bulk-technician-table td::before {
+    margin-bottom: 2px;
+  }
+
+  .bulk-technician-table__cell--select {
+    justify-items: start;
+  }
+
+  .bulk-technician-table__cell--select input {
+    width: auto;
+    min-width: 20px;
+    min-height: 20px;
+  }
+
+  .bulk-technician-table__cell--active .checkbox-field--compact {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .bulk-technician-table__time-cell {
     grid-template-columns: 1fr;
     gap: 6px;
@@ -1210,6 +1259,25 @@ h1 {
   .bulk-technician-table__time-input {
     width: 100%;
     min-inline-size: 0;
+  }
+
+  .bulk-technician-services {
+    gap: 8px;
+  }
+
+  .bulk-technician-services__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .bulk-technician-services__actions .button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .bulk-technician-services__editor {
+    padding: 10px;
   }
 
   .user-cell {
@@ -1255,6 +1323,26 @@ h1 {
   h1 {
     max-width: none;
     font-size: 2.2rem;
+  }
+
+  .technician-bulk-panel {
+    gap: 12px;
+  }
+
+  .bulk-technician-table tbody {
+    gap: 12px;
+  }
+
+  .bulk-technician-table tr {
+    padding: 12px;
+  }
+
+  .bulk-technician-services strong {
+    font-size: 0.88rem;
+  }
+
+  .bulk-technician-services small {
+    font-size: 0.82rem;
   }
 }
 
@@ -1302,6 +1390,24 @@ h1 {
 
   .list-table td::before {
     margin-bottom: 2px;
+  }
+
+  .bulk-technician-table tr {
+    padding: 10px;
+    border-radius: 0.85rem;
+  }
+
+  .bulk-technician-table td {
+    padding: 8px 0;
+  }
+
+  .bulk-technician-services__actions {
+    gap: 6px;
+  }
+
+  .bulk-technician-services__editor {
+    padding: 9px;
+    border-radius: 0.75rem;
   }
 
   .eyebrow {
