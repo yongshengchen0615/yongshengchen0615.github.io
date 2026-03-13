@@ -2170,6 +2170,9 @@ function renderAll() {
   if (!state.ui.selectedScheduleDate) {
     state.ui.selectedScheduleDate = formatLocalDate(new Date());
   }
+
+  setActivePage(state.ui.activePage);
+
   updateStats();
   updateWorkspaceOverview();
   refreshServiceCategorySuggestions();
