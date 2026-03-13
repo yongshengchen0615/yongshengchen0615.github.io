@@ -5,6 +5,49 @@ const ADMIN_STORAGE_KEYS = {
 const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
 const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user"];
+const vueApi = window.Vue || null;
+const frameworkEnabled = Boolean(vueApi);
+const { createApp, reactive } = vueApi || {};
+
+const frameworkView = frameworkEnabled
+  ? reactive({
+      service: {
+        rows: [],
+        emptyMessage: "尚無服務項目。",
+      },
+      technicianReview: {
+        summary: {
+          unlinkedCount: 0,
+          pendingCount: 0,
+          approvedCount: 0,
+          blockedCount: 0,
+        },
+        rows: [],
+        emptyMessage: "尚無任何技師 LINE 登入紀錄。",
+      },
+      schedule: {
+        days: [],
+        entries: [],
+        emptyMessage: "尚未選取日期。",
+      },
+      reservation: {
+        rows: [],
+        emptyMessage: "尚無預約紀錄。",
+      },
+      userReview: {
+        summary: {
+          draftCount: 0,
+          pendingCount: 0,
+          approvedCount: 0,
+          blockedCount: 0,
+        },
+        rows: [],
+        emptyMessage: "尚無任何 LINE 用戶登入紀錄。",
+      },
+    })
+  : null;
+
+let frameworkMounted = false;
 
 const state = {
   gasUrl: "",
@@ -1179,6 +1222,63 @@ function getStatusPill(label, tone) {
   return `<span class="status-pill status-pill--${tone}">${label}</span>`;
 }
 
+function getStatusDescriptor(label, tone) {
+  return { label, tone };
+}
+
+function getActiveStatusDescriptor(isActive) {
+  return isActive ? getStatusDescriptor("啟用", "active") : getStatusDescriptor("停用", "inactive");
+}
+
+function getScheduleStatusDescriptor(isWorking) {
+  return isWorking ? getStatusDescriptor("可預約", "working") : getStatusDescriptor("休假", "off");
+}
+
+function getReservationStatusDescriptor(status) {
+  if (status === "已完成") {
+    return getStatusDescriptor(status, "completed");
+  }
+  if (status === "已取消") {
+    return getStatusDescriptor(status, "cancelled");
+  }
+
+  return getStatusDescriptor(status || "已預約", "booked");
+}
+
+function getUserStatusDescriptor(status) {
+  if (status === "未送審核") {
+    return getStatusDescriptor(status, "draft");
+  }
+  if (status === "已通過") {
+    return getStatusDescriptor(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusDescriptor(status, "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusDescriptor(status, "disabled");
+  }
+
+  return getStatusDescriptor(status || "待審核", "pending");
+}
+
+function getTechnicianReviewStatusDescriptor(status) {
+  if (status === "未綁定") {
+    return getStatusDescriptor(status, "draft");
+  }
+  if (status === "已通過") {
+    return getStatusDescriptor(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusDescriptor(status, "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusDescriptor(status, "disabled");
+  }
+
+  return getStatusDescriptor(status || "待審核", "pending");
+}
+
 function getActiveStatusPill(isActive) {
   return isActive ? getStatusPill("啟用", "active") : getStatusPill("停用", "inactive");
 }
@@ -1358,6 +1458,350 @@ function updateWorkspaceOverview() {
   }
 
   elements.workflowHint.textContent = "資料狀態完整，可持續維護服務、班表與預約。";
+}
+
+function mountFrameworkApps() {
+  if (!frameworkEnabled || frameworkMounted) {
+    return;
+  }
+
+  if (elements.serviceTable) {
+    createApp({
+      setup() {
+        return frameworkView.service;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <table v-else class="list-table">
+            <thead>
+              <tr>
+                <th>名稱</th>
+                <th>類別</th>
+                <th>時長</th>
+                <th>價格</th>
+                <th>狀態</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.serviceId">
+                <td data-label="名稱">{{ row.name }}</td>
+                <td data-label="類別">{{ row.category }}</td>
+                <td data-label="時長">{{ row.durationLabel }}</td>
+                <td data-label="價格">{{ row.priceLabel }}</td>
+                <td data-label="狀態">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div class="table-actions">
+                    <button type="button" class="button button--ghost" :data-edit-service="row.serviceId">編輯</button>
+                    <button type="button" class="button button--danger" :data-delete-service="row.serviceId" :data-service-name="row.name">刪除</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+    }).mount(elements.serviceTable);
+  }
+
+  if (elements.technicianReviewSummary) {
+    createApp({
+      setup() {
+        return frameworkView.technicianReview;
+      },
+      template: `
+        <div v-cloak>
+          <article class="review-card">
+            <span>未綁定</span>
+            <strong>{{ summary.unlinkedCount }}</strong>
+            <small>尚未有技師完成 technician 頁面的 LINE 登入</small>
+          </article>
+          <article class="review-card">
+            <span>待審核</span>
+            <strong>{{ summary.pendingCount }}</strong>
+            <small>已登入 LINE，等待 admin 審核通過</small>
+          </article>
+          <article class="review-card">
+            <span>已通過</span>
+            <strong>{{ summary.approvedCount }}</strong>
+            <small>可進入 technician 頁面查看自己的資料</small>
+          </article>
+          <article class="review-card">
+            <span>已拒絕 / 已停用</span>
+            <strong>{{ summary.blockedCount }}</strong>
+            <small>登入後會被阻擋，需重新調整狀態</small>
+          </article>
+        </div>
+      `,
+    }).mount(elements.technicianReviewSummary);
+  }
+
+  if (elements.technicianReviewTable) {
+    createApp({
+      setup() {
+        return frameworkView.technicianReview;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <table v-else class="list-table">
+            <thead>
+              <tr>
+                <th>技師</th>
+                <th>LINE 帳號</th>
+                <th>服務 / 班別</th>
+                <th>技師狀態</th>
+                <th>最後登入</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.technicianId">
+                <td data-label="技師">
+                  <div class="user-cell__meta">
+                    <strong>{{ row.name }}</strong>
+                    <small>{{ row.technicianId }}</small>
+                  </div>
+                </td>
+                <td data-label="LINE 帳號">
+                  <div v-if="row.lineUserId" class="user-cell">
+                    <img v-if="row.pictureUrl" class="user-avatar" :src="row.pictureUrl" :alt="row.lineDisplayName" />
+                    <div v-else class="user-avatar user-avatar--placeholder">{{ row.lineInitial }}</div>
+                    <div class="user-cell__meta">
+                      <strong>{{ row.lineDisplayName }}</strong>
+                      <small>{{ row.lineUserId }}</small>
+                    </div>
+                  </div>
+                  <span v-else class="helper-text">尚未登入 technician 頁面</span>
+                </td>
+                <td data-label="服務 / 班別">
+                  <div>{{ row.serviceLabel }}</div>
+                  <span class="helper-text">{{ row.scheduleMeta }}</span>
+                </td>
+                <td data-label="技師狀態">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="最後登入">{{ row.lastLoginAtText }}</td>
+                <td data-label="備註">
+                  <span v-if="row.note">{{ row.note }}</span>
+                  <span v-else class="helper-text">尚無備註</span>
+                </td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div class="table-actions stacked-actions">
+                    <button type="button" class="button button--ghost" :data-focus-technician="row.technicianId">前往設定</button>
+                    <button type="button" class="button button--ghost" :data-review-technician="row.technicianId" data-review-technician-status="已通過" :disabled="!row.canReview">通過</button>
+                    <button type="button" class="button button--secondary" :data-review-technician="row.technicianId" data-review-technician-status="待審核" :disabled="!row.canReview">設待審核</button>
+                    <button type="button" class="button button--secondary" :data-review-technician="row.technicianId" data-review-technician-status="已拒絕" :disabled="!row.canReview">拒絕</button>
+                    <button type="button" class="button button--danger" :data-review-technician="row.technicianId" data-review-technician-status="已停用" :disabled="!row.canReview">停用</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+    }).mount(elements.technicianReviewTable);
+  }
+
+  if (elements.scheduleCalendarGrid) {
+    createApp({
+      setup() {
+        return frameworkView.schedule;
+      },
+      template: `
+        <template v-for="cell in days" :key="cell.key">
+          <div v-if="cell.isEmpty" class="schedule-day--empty" aria-hidden="true"></div>
+          <div v-else :class="cell.classes">
+            <button type="button" class="schedule-day__button" :data-schedule-date="cell.dateText">
+              <span class="schedule-day__number">{{ cell.day }}</span>
+              <span class="schedule-day__summary">{{ cell.compactStatus }}</span>
+              <span class="schedule-day__meta">
+                <span class="schedule-day__count">{{ cell.countLabel }}</span>
+                <span class="schedule-day__status">{{ cell.statusLabel }}</span>
+              </span>
+            </button>
+          </div>
+        </template>
+      `,
+    }).mount(elements.scheduleCalendarGrid);
+  }
+
+  if (elements.scheduleTable) {
+    createApp({
+      setup() {
+        return frameworkView.schedule;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <template v-else>
+            <article v-for="entry in entries" :key="entry.key" class="schedule-entry">
+              <div class="schedule-entry__top">
+                <div class="schedule-entry__title">
+                  <strong>{{ entry.technicianName }}</strong>
+                  <span class="schedule-entry__time">{{ entry.timeLabel }}</span>
+                </div>
+                <span class="status-pill" :class="'status-pill--' + entry.status.tone">{{ entry.status.label }}</span>
+              </div>
+              <div class="table-actions">
+                <button type="button" class="button button--ghost" :data-edit-schedule="entry.key">編輯這筆班表</button>
+                <button type="button" class="button button--danger" :data-delete-schedule="entry.key" :data-technician-name="entry.technicianName">刪除這筆班表</button>
+              </div>
+            </article>
+          </template>
+        </div>
+      `,
+    }).mount(elements.scheduleTable);
+  }
+
+  if (elements.reservationTable) {
+    createApp({
+      setup() {
+        return frameworkView.reservation;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <table v-else class="list-table">
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>時段</th>
+                <th>客人</th>
+                <th>電話</th>
+                <th>技師</th>
+                <th>服務</th>
+                <th>狀態</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.reservationId">
+                <td data-label="日期">{{ row.date }}</td>
+                <td data-label="時段">{{ row.timeLabel }}</td>
+                <td data-label="客人">{{ row.customerName }}</td>
+                <td data-label="電話">{{ row.phone }}</td>
+                <td data-label="技師">{{ row.technicianLabel }}</td>
+                <td data-label="服務">{{ row.serviceLabel }}</td>
+                <td data-label="狀態">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div class="table-actions">
+                    <button type="button" class="button button--ghost" :data-edit-reservation="row.reservationId">編輯</button>
+                    <button type="button" class="button button--danger" :data-delete-reservation="row.reservationId" :data-customer-name="row.customerName">刪除</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+    }).mount(elements.reservationTable);
+  }
+
+  if (elements.userReviewSummary) {
+    createApp({
+      setup() {
+        return frameworkView.userReview;
+      },
+      template: `
+        <div v-cloak>
+          <article class="review-card">
+            <span>未送審核</span>
+            <strong>{{ summary.draftCount }}</strong>
+            <small>已登入 LINE，但尚未填寫稱呼與電話</small>
+          </article>
+          <article class="review-card">
+            <span>待審核</span>
+            <strong>{{ summary.pendingCount }}</strong>
+            <small>已送出完整申請，等待管理員審核</small>
+          </article>
+          <article class="review-card">
+            <span>已通過</span>
+            <strong>{{ summary.approvedCount }}</strong>
+            <small>可直接在前台送出預約</small>
+          </article>
+          <article class="review-card">
+            <span>已拒絕 / 已停用</span>
+            <strong>{{ summary.blockedCount }}</strong>
+            <small>拒絕或停用後，前台送單會被阻擋</small>
+          </article>
+        </div>
+      `,
+    }).mount(elements.userReviewSummary);
+  }
+
+  if (elements.userTable) {
+    createApp({
+      setup() {
+        return frameworkView.userReview;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <table v-else class="list-table">
+            <thead>
+              <tr>
+                <th>用戶</th>
+                <th>稱呼</th>
+                <th>電話</th>
+                <th>狀態</th>
+                <th>最後登入</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.userId">
+                <td data-label="用戶">
+                  <div class="user-cell">
+                    <img v-if="row.pictureUrl" class="user-avatar" :src="row.pictureUrl" :alt="row.displayName" />
+                    <div v-else class="user-avatar user-avatar--placeholder">{{ row.initial }}</div>
+                    <div class="user-cell__meta">
+                      <strong>{{ row.displayName }}</strong>
+                      <small>{{ row.userId }}</small>
+                    </div>
+                  </div>
+                </td>
+                <td data-label="稱呼">
+                  <span v-if="row.customerName">{{ row.customerName }}</span>
+                  <span v-else class="helper-text">尚未填寫</span>
+                </td>
+                <td data-label="電話">
+                  <span v-if="row.phone">{{ row.phone }}</span>
+                  <span v-else class="helper-text">尚未填寫</span>
+                </td>
+                <td data-label="狀態">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="最後登入">{{ row.lastLoginAtText }}</td>
+                <td data-label="備註">
+                  <span v-if="row.note">{{ row.note }}</span>
+                  <span v-else class="helper-text">尚無備註</span>
+                </td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div class="table-actions stacked-actions">
+                    <button type="button" class="button button--ghost" :data-review-user="row.userId" data-review-status="已通過">通過</button>
+                    <button type="button" class="button button--secondary" :data-review-user="row.userId" data-review-status="待審核">設待審核</button>
+                    <button type="button" class="button button--secondary" :data-review-user="row.userId" data-review-status="已拒絕">拒絕</button>
+                    <button type="button" class="button button--danger" :data-review-user="row.userId" data-review-status="已停用">停用</button>
+                    <button type="button" class="button button--danger" :data-delete-user="row.userId" :data-user-name="row.displayName">刪除</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+    }).mount(elements.userTable);
+  }
+
+  frameworkMounted = true;
 }
 
 function getTechnicianScheduleTimeLabel(technicianId) {
@@ -1777,42 +2221,22 @@ const bulkTechnicianModule = {
 };
 
 function renderTechnicianReviewSummary() {
-  if (!elements.technicianReviewSummary) {
+  if (!elements.technicianReviewSummary || !frameworkView) {
     return;
   }
 
-  const unlinkedCount = state.technicians.filter((item) => item.status === "未綁定").length;
-  const pendingCount = state.technicians.filter((item) => item.status === "待審核").length;
-  const approvedCount = state.technicians.filter((item) => item.status === "已通過").length;
-  const rejectedCount = state.technicians.filter((item) => item.status === "已拒絕").length;
-  const disabledCount = state.technicians.filter((item) => item.status === "已停用").length;
-
-  elements.technicianReviewSummary.innerHTML = `
-    <article class="review-card">
-      <span>未綁定</span>
-      <strong>${unlinkedCount}</strong>
-      <small>尚未有技師完成 technician 頁面的 LINE 登入</small>
-    </article>
-    <article class="review-card">
-      <span>待審核</span>
-      <strong>${pendingCount}</strong>
-      <small>已登入 LINE，等待 admin 審核通過</small>
-    </article>
-    <article class="review-card">
-      <span>已通過</span>
-      <strong>${approvedCount}</strong>
-      <small>可進入 technician 頁面查看自己的資料</small>
-    </article>
-    <article class="review-card">
-      <span>已拒絕 / 已停用</span>
-      <strong>${rejectedCount + disabledCount}</strong>
-      <small>登入後會被阻擋，需重新調整狀態</small>
-    </article>
-  `;
+  frameworkView.technicianReview.summary = {
+    unlinkedCount: state.technicians.filter((item) => item.status === "未綁定").length,
+    pendingCount: state.technicians.filter((item) => item.status === "待審核").length,
+    approvedCount: state.technicians.filter((item) => item.status === "已通過").length,
+    blockedCount:
+      state.technicians.filter((item) => item.status === "已拒絕").length
+      + state.technicians.filter((item) => item.status === "已停用").length,
+  };
 }
 
 function renderTechnicianReviewTable() {
-  if (!elements.technicianReviewTable) {
+  if (!elements.technicianReviewTable || !frameworkView) {
     return;
   }
 
@@ -1828,122 +2252,64 @@ function renderTechnicianReviewTable() {
   renderTechnicianReviewSummary();
 
   if (!technicians.length) {
-    elements.technicianReviewTable.innerHTML = `<div class="empty-state">${state.filters.technicianId || state.filters.technicianStatus !== "all" || state.filters.technicianReviewStatus !== "all" ? "找不到符合條件的技師帳號。" : "尚無任何技師 LINE 登入紀錄。"}</div>`;
+    frameworkView.technicianReview.rows = [];
+    frameworkView.technicianReview.emptyMessage = state.filters.technicianId || state.filters.technicianStatus !== "all" || state.filters.technicianReviewStatus !== "all"
+      ? "找不到符合條件的技師帳號。"
+      : "尚無任何技師 LINE 登入紀錄。";
     return;
   }
 
-  elements.technicianReviewTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>技師</th>
-          <th>LINE 帳號</th>
-          <th>服務 / 班別</th>
-          <th>技師狀態</th>
-          <th>最後登入</th>
-          <th>備註</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${technicians
-          .slice()
-          .sort((left, right) => {
-            const leftRank = statusOrder[left.status] ?? 9;
-            const rightRank = statusOrder[right.status] ?? 9;
-            if (leftRank !== rightRank) {
-              return leftRank - rightRank;
-            }
-            return String(right.lastLoginAt || right.updatedAt || "").localeCompare(String(left.lastLoginAt || left.updatedAt || ""));
-          })
-          .map((technician) => {
-            const canReview = Boolean(technician.lineUserId);
-            const lineDisplay = technician.lineUserId
-              ? `
-                <div class="user-cell">
-                  ${technician.pictureUrl ? `<img class="user-avatar" src="${technician.pictureUrl}" alt="${technician.profileDisplayName || technician.name}" />` : `<div class="user-avatar user-avatar--placeholder">${(technician.profileDisplayName || technician.name || "T").slice(0, 1)}</div>`}
-                  <div class="user-cell__meta">
-                    <strong>${technician.profileDisplayName || technician.name}</strong>
-                    <small>${technician.lineUserId}</small>
-                  </div>
-                </div>
-              `
-              : '<span class="helper-text">尚未登入 technician 頁面</span>';
-
-            return `
-              <tr>
-                <td data-label="技師">
-                  <div class="user-cell__meta">
-                    <strong>${technician.name}</strong>
-                    <small>${technician.technicianId}</small>
-                  </div>
-                </td>
-                <td data-label="LINE 帳號">${lineDisplay}</td>
-                <td data-label="服務 / 班別">${getBulkTechnicianServicesLabel(technician.serviceIds)}<br /><span class="helper-text">${technician.startTime} - ${technician.endTime} / ${technician.active ? "啟用" : "停用"}</span></td>
-                <td data-label="技師狀態">${getTechnicianReviewStatusPill(technician.status)}</td>
-                <td data-label="最後登入">${formatDateTimeText(technician.lastLoginAt)}</td>
-                <td data-label="備註">${technician.note || '<span class="helper-text">尚無備註</span>'}</td>
-                <td data-label="操作" class="table-cell-actions">
-                  <div class="table-actions stacked-actions">
-                    <button type="button" class="button button--ghost" data-focus-technician="${technician.technicianId}">前往設定</button>
-                    <button type="button" class="button button--ghost" data-review-technician="${technician.technicianId}" data-review-technician-status="已通過" ${canReview ? "" : "disabled"}>通過</button>
-                    <button type="button" class="button button--secondary" data-review-technician="${technician.technicianId}" data-review-technician-status="待審核" ${canReview ? "" : "disabled"}>設待審核</button>
-                    <button type="button" class="button button--secondary" data-review-technician="${technician.technicianId}" data-review-technician-status="已拒絕" ${canReview ? "" : "disabled"}>拒絕</button>
-                    <button type="button" class="button button--danger" data-review-technician="${technician.technicianId}" data-review-technician-status="已停用" ${canReview ? "" : "disabled"}>停用</button>
-                  </div>
-                </td>
-              </tr>
-            `;
-          })
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  frameworkView.technicianReview.rows = technicians
+    .slice()
+    .sort((left, right) => {
+      const leftRank = statusOrder[left.status] ?? 9;
+      const rightRank = statusOrder[right.status] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return String(right.lastLoginAt || right.updatedAt || "").localeCompare(String(left.lastLoginAt || left.updatedAt || ""));
+    })
+    .map((technician) => ({
+      technicianId: technician.technicianId,
+      name: technician.name,
+      lineUserId: technician.lineUserId || "",
+      lineDisplayName: technician.profileDisplayName || technician.name,
+      lineInitial: (technician.profileDisplayName || technician.name || "T").slice(0, 1),
+      pictureUrl: technician.pictureUrl || "",
+      serviceLabel: getBulkTechnicianServicesLabel(technician.serviceIds),
+      scheduleMeta: `${technician.startTime} - ${technician.endTime} / ${technician.active ? "啟用" : "停用"}`,
+      status: getTechnicianReviewStatusDescriptor(technician.status),
+      lastLoginAtText: formatDateTimeText(technician.lastLoginAt),
+      note: technician.note || "",
+      canReview: Boolean(technician.lineUserId),
+    }));
+  frameworkView.technicianReview.emptyMessage = "";
 }
 
 function renderServiceTable() {
   const services = getFilteredServices();
   elements.serviceResultLabel.textContent = `顯示 ${services.length} / ${state.services.length} 項`;
-  if (!services.length) {
-    elements.serviceTable.innerHTML = `<div class="empty-state">${state.filters.serviceKeyword || state.filters.serviceCategory ? "找不到符合篩選條件的服務項目。" : "尚無服務項目。"}</div>`;
+  if (!frameworkView) {
     return;
   }
 
-  elements.serviceTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>名稱</th>
-          <th>類別</th>
-          <th>時長</th>
-          <th>價格</th>
-          <th>狀態</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${services
-          .map(
-            (service) => `
-              <tr>
-                <td data-label="名稱">${service.name}</td>
-                <td data-label="類別">${getServiceCategory(service)}</td>
-                <td data-label="時長">${service.durationMinutes} 分鐘</td>
-                <td data-label="價格">NT$ ${Number(service.price || 0).toLocaleString("zh-TW")}</td>
-                <td data-label="狀態">${getActiveStatusPill(service.active)}</td>
-                <td data-label="操作" class="table-cell-actions">
-                  <div class="table-actions">
-                    <button type="button" class="button button--ghost" data-edit-service="${service.serviceId}">編輯</button>
-                    <button type="button" class="button button--danger" data-delete-service="${service.serviceId}" data-service-name="${service.name}">刪除</button>
-                  </div>
-                </td>
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  if (!services.length) {
+    frameworkView.service.rows = [];
+    frameworkView.service.emptyMessage = state.filters.serviceKeyword || state.filters.serviceCategory
+      ? "找不到符合篩選條件的服務項目。"
+      : "尚無服務項目。";
+    return;
+  }
+
+  frameworkView.service.rows = services.map((service) => ({
+    serviceId: service.serviceId,
+    name: service.name,
+    category: getServiceCategory(service),
+    durationLabel: `${service.durationMinutes} 分鐘`,
+    priceLabel: `NT$ ${Number(service.price || 0).toLocaleString("zh-TW")}`,
+    status: getActiveStatusDescriptor(service.active),
+  }));
+  frameworkView.service.emptyMessage = "";
 }
 
 function getGroupedServiceMarkup(serviceIds = []) {
@@ -1998,7 +2364,10 @@ function renderScheduleCalendar() {
   elements.scheduleCalendarLabel.textContent = formatMonthLabel(monthKey);
 
   for (let index = 0; index < firstDay.getDay(); index += 1) {
-    cells.push('<div class="schedule-day--empty" aria-hidden="true"></div>');
+    cells.push({
+      key: `empty-${index}`,
+      isEmpty: true,
+    });
   }
 
   for (let day = 1; day <= lastDay.getDate(); day += 1) {
@@ -2025,31 +2394,35 @@ function renderScheduleCalendar() {
       classes.push("has-off-only");
     }
 
-    cells.push(`
-      <div class="${classes.join(" ")}">
-        <button type="button" class="schedule-day__button" data-schedule-date="${dateText}">
-          <span class="schedule-day__number">${day}</span>
-          <span class="schedule-day__summary">${compactStatus}</span>
-          <span class="schedule-day__meta">
-            <span class="schedule-day__count">${schedules.length ? `${schedules.length} 位技師` : "尚無排班"}</span>
-            <span class="schedule-day__status">${workingCount ? `${workingCount} 位可預約` : offCount ? `${offCount} 位休假` : ""}</span>
-          </span>
-        </button>
-      </div>
-    `);
+    cells.push({
+      key: dateText,
+      isEmpty: false,
+      dateText,
+      day,
+      compactStatus,
+      countLabel: schedules.length ? `${schedules.length} 位技師` : "尚無排班",
+      statusLabel: workingCount ? `${workingCount} 位可預約` : offCount ? `${offCount} 位休假` : "",
+      classes,
+    });
   }
 
-  elements.scheduleCalendarGrid.innerHTML = cells.join("");
+  if (frameworkView) {
+    frameworkView.schedule.days = cells;
+  }
 }
 
 function renderSelectedScheduleDetail() {
   const selectedDate = state.ui.selectedScheduleDate;
   const schedules = getSchedulesCoveringDate(selectedDate);
+  if (!frameworkView) {
+    return;
+  }
 
   if (!selectedDate) {
     elements.scheduleSelectedDateLabel.textContent = "請先選擇日期";
     elements.scheduleSelectedDateMeta.textContent = "選取日曆日期後，會顯示當天所有技師的排班狀態。";
-    elements.scheduleTable.innerHTML = '<div class="empty-state">尚未選取日期。</div>';
+    frameworkView.schedule.entries = [];
+    frameworkView.schedule.emptyMessage = "尚未選取日期。";
     return;
   }
 
@@ -2059,121 +2432,75 @@ function renderSelectedScheduleDetail() {
     : "當天尚未建立班表，可直接用下方表單新增。";
 
   if (!schedules.length) {
-    elements.scheduleTable.innerHTML = '<div class="empty-state">這一天尚未建立任何技師班表。</div>';
+    frameworkView.schedule.entries = [];
+    frameworkView.schedule.emptyMessage = "這一天尚未建立任何技師班表。";
     return;
   }
 
-  elements.scheduleTable.innerHTML = schedules
-    .map((schedule) => {
-      const technicianName = getTechnicianById(schedule.technicianId)?.name || schedule.technicianId;
-      const overnight = isOvernightShift(schedule.startTime, schedule.endTime);
-      const isFromPrevDay = schedule.date !== selectedDate;
-      const timeLabel = isFromPrevDay
-        ? `${schedule.startTime} - ${schedule.endTime} (前日跨日)`
-        : overnight
-          ? `${schedule.startTime} - ${schedule.endTime} (跨日)`
-          : `${schedule.startTime} - ${schedule.endTime}`;
-      return `
-        <article class="schedule-entry">
-          <div class="schedule-entry__top">
-            <div class="schedule-entry__title">
-              <strong>${technicianName}</strong>
-              <span class="schedule-entry__time">${timeLabel}</span>
-            </div>
-            ${getScheduleStatusPill(schedule.isWorking)}
-          </div>
-          <div class="table-actions">
-            <button type="button" class="button button--ghost" data-edit-schedule="${schedule.date}::${schedule.technicianId}">編輯這筆班表</button>
-            <button type="button" class="button button--danger" data-delete-schedule="${schedule.date}::${schedule.technicianId}" data-technician-name="${technicianName}">刪除這筆班表</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  frameworkView.schedule.entries = schedules.map((schedule) => {
+    const technicianName = getTechnicianById(schedule.technicianId)?.name || schedule.technicianId;
+    const overnight = isOvernightShift(schedule.startTime, schedule.endTime);
+    const isFromPrevDay = schedule.date !== selectedDate;
+    const timeLabel = isFromPrevDay
+      ? `${schedule.startTime} - ${schedule.endTime} (前日跨日)`
+      : overnight
+        ? `${schedule.startTime} - ${schedule.endTime} (跨日)`
+        : `${schedule.startTime} - ${schedule.endTime}`;
+
+    return {
+      key: `${schedule.date}::${schedule.technicianId}`,
+      technicianName,
+      timeLabel,
+      status: getScheduleStatusDescriptor(schedule.isWorking),
+    };
+  });
+  frameworkView.schedule.emptyMessage = "";
 }
 
 function renderReservationTable() {
   const reservations = getFilteredReservations();
   elements.reservationResultLabel.textContent = `顯示 ${reservations.length} / ${state.reservations.length} 筆`;
-  if (!reservations.length) {
-    elements.reservationTable.innerHTML = `<div class="empty-state">${state.filters.reservationKeyword || state.filters.reservationStatus !== "all" || state.filters.reservationTechnicianId ? "找不到符合條件的預約紀錄。" : "尚無預約紀錄。"}</div>`;
+  if (!frameworkView) {
     return;
   }
 
-  elements.reservationTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>日期</th>
-          <th>時段</th>
-          <th>客人</th>
-          <th>電話</th>
-          <th>技師</th>
-          <th>服務</th>
-          <th>狀態</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${reservations
-          .slice()
-          .sort((left, right) => `${right.date}-${right.startTime}`.localeCompare(`${left.date}-${left.startTime}`))
-          .map((reservation) => `
-            <tr>
-              <td data-label="日期">${reservation.date}</td>
-              <td data-label="時段">${reservation.startTime} - ${reservation.endTime}</td>
-              <td data-label="客人">${reservation.customerName}</td>
-              <td data-label="電話">${reservation.phone}</td>
-              <td data-label="技師">${getReservationTechnicianLabel(reservation)}</td>
-              <td data-label="服務">${reservation.serviceName || reservation.serviceId}</td>
-              <td data-label="狀態">${getReservationStatusPill(reservation.status)}</td>
-              <td data-label="操作" class="table-cell-actions">
-                <div class="table-actions">
-                  <button type="button" class="button button--ghost" data-edit-reservation="${reservation.reservationId}">編輯</button>
-                  <button type="button" class="button button--danger" data-delete-reservation="${reservation.reservationId}" data-customer-name="${reservation.customerName}">刪除</button>
-                </div>
-              </td>
-            </tr>
-          `)
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  if (!reservations.length) {
+    frameworkView.reservation.rows = [];
+    frameworkView.reservation.emptyMessage = state.filters.reservationKeyword || state.filters.reservationStatus !== "all" || state.filters.reservationTechnicianId
+      ? "找不到符合條件的預約紀錄。"
+      : "尚無預約紀錄。";
+    return;
+  }
+
+  frameworkView.reservation.rows = reservations
+    .slice()
+    .sort((left, right) => `${right.date}-${right.startTime}`.localeCompare(`${left.date}-${left.startTime}`))
+    .map((reservation) => ({
+      reservationId: reservation.reservationId,
+      date: reservation.date,
+      timeLabel: `${reservation.startTime} - ${reservation.endTime}`,
+      customerName: reservation.customerName,
+      phone: reservation.phone,
+      technicianLabel: getReservationTechnicianLabel(reservation),
+      serviceLabel: reservation.serviceName || reservation.serviceId,
+      status: getReservationStatusDescriptor(reservation.status),
+    }));
+  frameworkView.reservation.emptyMessage = "";
 }
 
 function renderUserReviewSummary() {
-  if (!elements.userReviewSummary) {
+  if (!elements.userReviewSummary || !frameworkView) {
     return;
   }
 
-  const draftCount = state.users.filter((item) => item.status === "未送審核").length;
-  const pendingCount = state.users.filter((item) => item.status === "待審核").length;
-  const approvedCount = state.users.filter((item) => item.status === "已通過").length;
-  const rejectedCount = state.users.filter((item) => item.status === "已拒絕").length;
-  const disabledCount = state.users.filter((item) => item.status === "已停用").length;
-
-  elements.userReviewSummary.innerHTML = `
-    <article class="review-card">
-      <span>未送審核</span>
-      <strong>${draftCount}</strong>
-      <small>已登入 LINE，但尚未填寫稱呼與電話</small>
-    </article>
-    <article class="review-card">
-      <span>待審核</span>
-      <strong>${pendingCount}</strong>
-      <small>已送出完整申請，等待管理員審核</small>
-    </article>
-    <article class="review-card">
-      <span>已通過</span>
-      <strong>${approvedCount}</strong>
-      <small>可直接在前台送出預約</small>
-    </article>
-    <article class="review-card">
-      <span>已拒絕 / 已停用</span>
-      <strong>${rejectedCount + disabledCount}</strong>
-      <small>拒絕或停用後，前台送單會被阻擋</small>
-    </article>
-  `;
+  frameworkView.userReview.summary = {
+    draftCount: state.users.filter((item) => item.status === "未送審核").length,
+    pendingCount: state.users.filter((item) => item.status === "待審核").length,
+    approvedCount: state.users.filter((item) => item.status === "已通過").length,
+    blockedCount:
+      state.users.filter((item) => item.status === "已拒絕").length
+      + state.users.filter((item) => item.status === "已停用").length,
+  };
 }
 
 function renderUserTable() {
@@ -2192,70 +2519,40 @@ function renderUserTable() {
 
   renderUserReviewSummary();
 
-  if (!elements.userTable) {
+  if (!elements.userTable || !frameworkView) {
     return;
   }
 
   if (!users.length) {
-    elements.userTable.innerHTML = `<div class="empty-state">${state.filters.userKeyword || state.filters.userStatus !== "all" ? "找不到符合條件的用戶。" : "尚無任何 LINE 用戶登入紀錄。"}</div>`;
+    frameworkView.userReview.rows = [];
+    frameworkView.userReview.emptyMessage = state.filters.userKeyword || state.filters.userStatus !== "all"
+      ? "找不到符合條件的用戶。"
+      : "尚無任何 LINE 用戶登入紀錄。";
     return;
   }
 
-  elements.userTable.innerHTML = `
-    <table class="list-table">
-      <thead>
-        <tr>
-          <th>用戶</th>
-          <th>稱呼</th>
-          <th>電話</th>
-          <th>狀態</th>
-          <th>最後登入</th>
-          <th>備註</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${users
-          .slice()
-          .sort((left, right) => {
-            const leftRank = statusOrder[left.status] ?? 9;
-            const rightRank = statusOrder[right.status] ?? 9;
-            if (leftRank !== rightRank) {
-              return leftRank - rightRank;
-            }
-            return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
-          })
-          .map((user) => `
-            <tr>
-              <td data-label="用戶">
-                <div class="user-cell">
-                  ${user.pictureUrl ? `<img class="user-avatar" src="${user.pictureUrl}" alt="${user.displayName}" />` : `<div class="user-avatar user-avatar--placeholder">${user.displayName.slice(0, 1) || "L"}</div>`}
-                  <div class="user-cell__meta">
-                    <strong>${user.displayName}</strong>
-                    <small>${user.userId}</small>
-                  </div>
-                </div>
-              </td>
-              <td data-label="稱呼">${user.customerName || '<span class="helper-text">尚未填寫</span>'}</td>
-              <td data-label="電話">${user.phone || '<span class="helper-text">尚未填寫</span>'}</td>
-              <td data-label="狀態">${getUserStatusPill(user.status)}</td>
-              <td data-label="最後登入">${formatDateTimeText(user.lastLoginAt)}</td>
-              <td data-label="備註">${user.note || '<span class="helper-text">尚無備註</span>'}</td>
-              <td data-label="操作" class="table-cell-actions">
-                <div class="table-actions stacked-actions">
-                  <button type="button" class="button button--ghost" data-review-user="${user.userId}" data-review-status="已通過">通過</button>
-                  <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="待審核">設待審核</button>
-                  <button type="button" class="button button--secondary" data-review-user="${user.userId}" data-review-status="已拒絕">拒絕</button>
-                  <button type="button" class="button button--danger" data-review-user="${user.userId}" data-review-status="已停用">停用</button>
-                  <button type="button" class="button button--danger" data-delete-user="${user.userId}" data-user-name="${user.displayName}">刪除</button>
-                </div>
-              </td>
-            </tr>
-          `)
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  frameworkView.userReview.rows = users
+    .slice()
+    .sort((left, right) => {
+      const leftRank = statusOrder[left.status] ?? 9;
+      const rightRank = statusOrder[right.status] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
+    })
+    .map((user) => ({
+      userId: user.userId,
+      displayName: user.displayName,
+      pictureUrl: user.pictureUrl || "",
+      initial: user.displayName.slice(0, 1) || "L",
+      customerName: user.customerName || "",
+      phone: user.phone || "",
+      status: getUserStatusDescriptor(user.status),
+      lastLoginAtText: formatDateTimeText(user.lastLoginAt),
+      note: user.note || "",
+    }));
+  frameworkView.userReview.emptyMessage = "";
 }
 
 function refreshTechnicianOptions() {
@@ -3108,6 +3405,7 @@ async function initializeApp() {
   await loadConfigFromJson();
   applyGasUrlPreference();
   loadServiceCategoryMap();
+  mountFrameworkApps();
   bindEvents();
   renderAdminAccessState();
   setActivePage(state.ui.activePage);
