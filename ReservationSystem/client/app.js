@@ -304,10 +304,51 @@ function getCurrentUserReservations() {
     .filter((item) => String(item.userId || "").trim() === userId)
     .slice()
     .sort((left, right) => {
-      const leftKey = `${left.date || ""} ${left.startTime || ""}`;
-      const rightKey = `${right.date || ""} ${right.startTime || ""}`;
-      return rightKey.localeCompare(leftKey);
+      const leftValue = getReservationSortValue(left);
+      const rightValue = getReservationSortValue(right);
+
+      if (leftValue !== rightValue) {
+        return rightValue - leftValue;
+      }
+
+      return String(right.reservationId || "").localeCompare(String(left.reservationId || ""));
     });
+}
+
+function getReservationSortValue(reservation) {
+  const normalizedDate = String(reservation?.date || "").trim();
+  const normalizedTime = String(reservation?.startTime || "00:00").trim();
+  const dateMatch = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = normalizedTime.match(/^(\d{2}):(\d{2})$/);
+
+  if (!dateMatch) {
+    return 0;
+  }
+
+  const [, yearText, monthText, dayText] = dateMatch;
+  const hours = timeMatch ? Number(timeMatch[1]) : 0;
+  const minutes = timeMatch ? Number(timeMatch[2]) : 0;
+
+  return new Date(
+    Number(yearText),
+    Number(monthText) - 1,
+    Number(dayText),
+    hours,
+    minutes,
+    0,
+    0,
+  ).getTime();
+}
+
+function getReservationTimeLabel(reservation) {
+  const startTime = String(reservation?.startTime || "").trim();
+  const endTime = String(reservation?.endTime || "").trim();
+
+  if (startTime && endTime) {
+    return `${startTime} - ${endTime}`;
+  }
+
+  return startTime || "未指定";
 }
 
 function getReservationStatusTone(status) {
@@ -371,11 +412,14 @@ function renderReservationStatusList() {
       return `
         <article class="reservation-status-item">
           <div class="reservation-status-item__header">
-            <strong>${reservation.date || "未定日期"} ${reservation.startTime || ""}${reservation.endTime ? ` - ${reservation.endTime}` : ""}</strong>
+            <strong>${reservation.reservationId || "未建立預約編號"}</strong>
             <span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservation.status || "未設定"}</span>
           </div>
           <dl class="reservation-status-item__rows">
             <div><dt>預約編號</dt><dd>${reservation.reservationId || "-"}</dd></div>
+            <div><dt>預約狀態</dt><dd>${reservation.status || "未設定"}</dd></div>
+            <div><dt>預約日期</dt><dd>${reservation.date || "未定日期"}</dd></div>
+            <div><dt>預約時段</dt><dd>${getReservationTimeLabel(reservation)}</dd></div>
             <div><dt>技師</dt><dd>${getReservationTechnicianLabel(reservation)}</dd></div>
             <div><dt>服務</dt><dd>${serviceNames.length ? serviceNames.join("、") : "未指定"}</dd></div>
             <div><dt>備註</dt><dd>${reservation.note || "無"}</dd></div>
