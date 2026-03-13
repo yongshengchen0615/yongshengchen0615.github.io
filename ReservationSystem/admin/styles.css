@@ -1229,11 +1229,26 @@ textarea {
   }
 
   .command-main {
-    flex-direction: column;
+    display: block;
   }
 
   .command-actions {
-    justify-content: stretch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    margin: 0 -28px;
+    padding: 0 28px 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .command-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .command-main > div:first-child,
+  .workflow-strip {
+    display: none;
   }
 
   .review-summary {
@@ -1259,6 +1274,15 @@ textarea {
   .table-actions .button {
     width: 100%;
     justify-content: center;
+  }
+
+  .command-actions .button,
+  .command-actions .page-tab,
+  .command-actions #refreshDashboardButton {
+    width: auto;
+    min-width: max-content;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .list-table,
@@ -1352,6 +1376,11 @@ textarea {
   .admin-shell {
     width: min(100% - 20px, 100%);
     padding-top: 18px;
+  }
+
+  .command-actions {
+    margin: 0 -20px;
+    padding: 0 20px 6px;
   }
 
   .top-loading {
