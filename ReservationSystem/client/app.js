@@ -184,7 +184,7 @@ function updateAccessView() {
 
   if (canEnterBooking) {
     elements.bookingPanelTitle.textContent = "填寫預約資訊";
-    elements.bookingPanelCopy.textContent = "可指定技師，也可選擇不指定技師，讓系統自動安排可服務且有空檔的技師。";
+    elements.bookingPanelCopy.textContent = "可指定技師，也可選擇不指定技師，改由現場安排。";
     fillBookingContactFields();
     return;
   }
@@ -338,6 +338,15 @@ function getReservationServiceNames(reservation) {
     .map((service) => service.name);
 }
 
+function getReservationTechnicianLabel(reservation) {
+  if (reservation?.assignmentType === "現場安排") {
+    return "現場安排";
+  }
+
+  const technician = getTechnicianById(reservation?.technicianId);
+  return technician?.name || "現場安排 / 未指定";
+}
+
 function renderReservationStatusList() {
   if (!elements.reservationStatusList) {
     return;
@@ -356,7 +365,6 @@ function renderReservationStatusList() {
 
   elements.reservationStatusList.innerHTML = reservations
     .map((reservation) => {
-      const technician = getTechnicianById(reservation.technicianId);
       const serviceNames = getReservationServiceNames(reservation);
       return `
         <article class="reservation-status-item">
@@ -366,7 +374,7 @@ function renderReservationStatusList() {
           </div>
           <dl class="reservation-status-item__rows">
             <div><dt>預約編號</dt><dd>${reservation.reservationId || "-"}</dd></div>
-            <div><dt>技師</dt><dd>${technician?.name || "系統安排 / 未指定"}</dd></div>
+            <div><dt>技師</dt><dd>${getReservationTechnicianLabel(reservation)}</dd></div>
             <div><dt>服務</dt><dd>${serviceNames.length ? serviceNames.join("、") : "未指定"}</dd></div>
             <div><dt>備註</dt><dd>${reservation.note || "無"}</dd></div>
           </dl>
@@ -707,7 +715,7 @@ function updateDashboard() {
 
   elements.overviewTechnician.textContent = isSpecificTechnicianSelected(state.selectedTechnicianId)
     ? selectedTechnician?.name || "尚未選擇"
-    : "不指定技師，由系統安排";
+    : "不指定技師，由現場安排";
   elements.overviewServiceCount.textContent = `${selectedMetrics.services.length} / ${availableServices.length} 項`;
   elements.overviewDateCount.textContent = `${availableDates.length} 天`;
   renderReservationStatusList();
@@ -744,7 +752,7 @@ function updateSummary() {
       <span class="summary__badge">即時更新</span>
     </div>
     <dl class="summary__rows">
-      <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? technician?.name || "未指定" : "不指定，由系統安排"}</dd></div>
+      <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? technician?.name || "未指定" : "不指定，由現場安排"}</dd></div>
       <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
       <div class="summary__row"><dt>日期</dt><dd>${date}</dd></div>
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
@@ -782,7 +790,7 @@ function updateAvailabilityStatus() {
     setStatus(
       isSpecificTechnicianSelected(state.selectedTechnicianId)
         ? "這位技師目前沒有啟用中的服務項目。"
-        : "目前沒有可由系統安排的服務項目。",
+        : "目前沒有可由現場安排的服務項目。",
       "info"
     );
     return;
@@ -816,7 +824,7 @@ function refreshSelects() {
   const previousTime = elements.timeSelect.value;
 
   const technicianOptions = [
-    { value: UNSPECIFIED_TECHNICIAN_VALUE, label: "不指定技師，由系統安排" },
+    { value: UNSPECIFIED_TECHNICIAN_VALUE, label: "不指定技師，由現場安排" },
     ...getActiveTechnicians()
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"))
@@ -1134,7 +1142,7 @@ async function submitBooking(event) {
     }
 
     setStatus(
-      `預約成功，預約編號：${result.data.reservationId}${result.data.technicianName ? `，已安排 ${result.data.technicianName}` : ""}`,
+      `預約成功，預約編號：${result.data.reservationId}${result.data.assignmentType === "現場安排" ? "，技師將於現場安排" : result.data.technicianName ? `，已安排 ${result.data.technicianName}` : ""}`,
       "success"
     );
     elements.bookingForm.reset();

@@ -760,6 +760,18 @@ function getTechnicianById(technicianId) {
   return state.technicians.find((item) => item.technicianId === technicianId);
 }
 
+function getReservationTechnicianLabel(reservation) {
+  if (!reservation) {
+    return "現場安排";
+  }
+
+  if (reservation.assignmentType === "現場安排") {
+    return "現場安排";
+  }
+
+  return reservation.technicianName || getTechnicianById(reservation.technicianId)?.name || reservation.technicianId || "現場安排";
+}
+
 function isEditingService() {
   return Boolean(elements.serviceForm.serviceId.value);
 }
@@ -1718,7 +1730,7 @@ function renderReservationTable() {
               <td data-label="時段">${reservation.startTime} - ${reservation.endTime}</td>
               <td data-label="客人">${reservation.customerName}</td>
               <td data-label="電話">${reservation.phone}</td>
-              <td data-label="技師">${reservation.technicianName || reservation.technicianId}</td>
+              <td data-label="技師">${getReservationTechnicianLabel(reservation)}</td>
               <td data-label="服務">${reservation.serviceName || reservation.serviceId}</td>
               <td data-label="狀態">${getReservationStatusPill(reservation.status)}</td>
               <td data-label="操作" class="table-cell-actions">
@@ -2261,7 +2273,7 @@ async function deleteBulkTechnicians() {
 async function deleteReservation(reservationId, customerName) {
   const reservation = state.reservations.find((item) => item.reservationId === reservationId);
   const detailText = reservation
-    ? `\n\n日期：${reservation.date}\n時間：${reservation.startTime} - ${reservation.endTime}\n技師：${reservation.technicianName || reservation.technicianId}\n服務：${reservation.serviceName || reservation.serviceId}`
+    ? `\n\n日期：${reservation.date}\n時間：${reservation.startTime} - ${reservation.endTime}\n技師：${getReservationTechnicianLabel(reservation)}\n服務：${reservation.serviceName || reservation.serviceId}`
     : "";
   const confirmed = window.confirm(`確定要刪除 ${customerName} 的預約嗎？${detailText}`);
   if (!confirmed) return;

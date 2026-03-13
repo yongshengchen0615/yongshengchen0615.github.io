@@ -178,7 +178,7 @@ function getAdminData_() {
     item.totalPrice = reservationServices.reduce(function(sum, service) {
       return sum + Number(service.price || 0);
     }, 0);
-    item.technicianName = technicianMap[item.technicianId] ? technicianMap[item.technicianId].name : '';
+    item.technicianName = getReservationTechnicianLabel_(item, technicianMap);
     item.userStatus = userMap[item.userId] ? userMap[item.userId].status : '';
     return item;
   });
@@ -515,7 +515,6 @@ function createReservation_(payload) {
 
   var matchedTechnician = null;
   var matchedSchedule = null;
-  var matchedEvaluation = null;
 
   candidateTechnicians.some(function(technician) {
     var evaluation = evaluateReservationForTechnician_({
@@ -534,7 +533,6 @@ function createReservation_(payload) {
 
     matchedTechnician = technician;
     matchedSchedule = evaluation.schedule;
-    matchedEvaluation = evaluation;
     return true;
   });
 
@@ -564,6 +562,8 @@ function createReservation_(payload) {
     throw new Error('目前沒有符合條件的技師可安排此時段');
   }
 
+  var assignmentType = requestedTechnicianId ? '' : '現場安排';
+
   var record = {
     reservationId: createId_('RES'),
     userId: user.userId,
@@ -571,6 +571,7 @@ function createReservation_(payload) {
     customerName: String(payload.customerName || user.customerName).trim(),
     phone: normalizedPhone,
     technicianId: matchedTechnician.technicianId,
+    assignmentType: assignmentType,
     serviceId: serviceIds.join(','),
     date: reservationDate,
     startTime: reservationStartTime,
@@ -581,7 +582,7 @@ function createReservation_(payload) {
   };
 
   appendRecord_(SHEETS.reservations, record);
-  record.technicianName = matchedTechnician.name;
+  record.technicianName = assignmentType || matchedTechnician.name;
   return record;
 }
 
@@ -804,6 +805,7 @@ function saveReservation_(payload) {
     customerName: String(payload.customerName).trim(),
     phone: normalizedPhone,
     technicianId: payload.technicianId,
+    assignmentType: String(payload.assignmentType || '').trim() || '',
     serviceId: serviceIds.join(','),
     date: normalizeDateString_(payload.date),
     startTime: normalizeTimeString_(payload.startTime),
@@ -1007,7 +1009,7 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
   ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
-  ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
+  ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'assignmentType', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
   ensurePlainTextColumns_(SHEETS.users, ['phone']);
   ensurePlainTextColumns_(SHEETS.reservations, ['phone']);
   migrateLegacySuperAdmins_();
@@ -1359,6 +1361,7 @@ function normalizeSchedule_(item) {
 
 function normalizeReservation_(item) {
   var serviceIds = normalizeServiceIds_(item.serviceIds || item.serviceId);
+  var assignmentType = normalizeReservationAssignmentType_(item.assignmentType, item.technicianId);
   return {
     reservationId: String(item.reservationId || ''),
     userId: String(item.userId || ''),
@@ -1366,6 +1369,7 @@ function normalizeReservation_(item) {
     customerName: String(item.customerName || ''),
     phone: normalizePhoneValue_(item.phone),
     technicianId: String(item.technicianId || ''),
+    assignmentType: assignmentType,
     serviceId: String(item.serviceId || ''),
     serviceIds: serviceIds,
     date: normalizeDateString_(item.date),
@@ -1656,6 +1660,27 @@ function normalizeReservationStatus_(value) {
   }
 
   return status;
+}
+
+function normalizeReservationAssignmentType_(value, technicianId) {
+  var assignmentType = String(value || '').trim();
+  if (assignmentType) {
+    return assignmentType;
+  }
+
+  if (!String(technicianId || '').trim()) {
+    return '現場安排';
+  }
+
+  return '';
+}
+
+function getReservationTechnicianLabel_(reservation, technicianMap) {
+  if (normalizeReservationAssignmentType_(reservation.assignmentType, reservation.technicianId) === '現場安排') {
+    return '現場安排';
+  }
+
+  return technicianMap[reservation.technicianId] ? technicianMap[reservation.technicianId].name : '';
 }
 
 function isReservationCancelled_(status) {
