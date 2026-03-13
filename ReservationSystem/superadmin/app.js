@@ -93,6 +93,9 @@ function renderAccessState() {
     return;
   }
 
+  const normalizedStatus = String(state.adminUser?.status || "").trim();
+  const isApprovedSuperAdmin = Boolean(state.adminUser?.isSuperAdmin) && normalizedStatus === "已通過";
+
   if (!state.profile) {
     elements.displayName.textContent = "尚未登入 LINE";
     elements.statusBadge.textContent = "未登入";
@@ -123,7 +126,7 @@ function renderAccessState() {
     return;
   }
 
-  if (state.adminUser.isSuperAdmin) {
+  if (isApprovedSuperAdmin) {
     elements.statusBadge.textContent = "最高管理員";
     elements.statusBadge.dataset.tone = "approved";
     elements.statusText.textContent = "你可管理 admin 專案中誰有權修改其他管理員。";
@@ -132,10 +135,28 @@ function renderAccessState() {
     return;
   }
 
+  if (normalizedStatus === "待審核") {
+    elements.statusBadge.textContent = "待審核";
+    elements.statusBadge.dataset.tone = "pending";
+    elements.statusText.textContent = "此 LINE 帳號已寫入 SuperAdmins，但尚未通過最高管理員審核。";
+    setApprovalMessage("請在 SuperAdmins 工作表將此帳號的 status 改為 已通過，或改用既有最高管理員登入。", "pending");
+    setContentAccess(false);
+    return;
+  }
+
+  if (normalizedStatus === "已拒絕" || normalizedStatus === "已停用") {
+    elements.statusBadge.textContent = normalizedStatus;
+    elements.statusBadge.dataset.tone = "blocked";
+    elements.statusText.textContent = "此 LINE 帳號目前不可使用最高管理員後台。";
+    setApprovalMessage(state.adminUser.note || "請確認 SuperAdmins 工作表中的 status 設定，或改用既有最高管理員登入。", "blocked");
+    setContentAccess(false);
+    return;
+  }
+
   elements.statusBadge.textContent = state.adminUser.status || "無權限";
   elements.statusBadge.dataset.tone = "blocked";
   elements.statusText.textContent = "此 LINE 帳號不是最高管理員。";
-  setApprovalMessage("請在 SuperAdmins 工作表新增此帳號，或改用既有最高管理員登入。", "blocked");
+  setApprovalMessage("請先在 SuperAdmins 工作表新增此帳號，並將 status 改為 已通過，或改用既有最高管理員登入。", "blocked");
   setContentAccess(false);
 }
 

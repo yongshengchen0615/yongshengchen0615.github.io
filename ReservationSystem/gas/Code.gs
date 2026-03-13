@@ -274,24 +274,11 @@ function syncSuperAdminUser_(payload) {
   var configuredSuperAdmin = isConfiguredSuperAdmin_(userId);
   var nowText = toIsoString_(new Date());
 
-  if (!existing && !configuredSuperAdmin) {
-    return normalizeSuperAdminUser_({
-      userId: userId,
-      displayName: String(payload.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
-      pictureUrl: String(payload.pictureUrl || '').trim(),
-      status: '待審核',
-      note: '',
-      createdAt: nowText,
-      updatedAt: nowText,
-      lastLoginAt: nowText,
-    });
-  }
-
   var record = {
     userId: userId,
     displayName: String(payload.displayName || existing && existing.displayName || 'LINE 最高管理員').trim() || 'LINE 最高管理員',
     pictureUrl: String(payload.pictureUrl || existing && existing.pictureUrl || '').trim(),
-    status: normalizeAdminStatus_(existing && existing.status ? existing.status : '已通過'),
+    status: normalizeAdminStatus_(existing && existing.status ? existing.status : configuredSuperAdmin ? '已通過' : '待審核'),
     note: existing ? existing.note : '',
     createdAt: existing ? existing.createdAt : nowText,
     updatedAt: nowText,
@@ -299,6 +286,7 @@ function syncSuperAdminUser_(payload) {
   };
 
   upsertRecord_(SHEETS.superAdmins, 'userId', record);
+  deleteRecordIfExists_(SHEETS.adminUsers, 'userId', userId);
   return normalizeSuperAdminUser_(record);
 }
 
@@ -1166,6 +1154,25 @@ function deleteRecord_(sheetName, primaryKey, value) {
   sheet.deleteRow(rowIndex + 2);
 }
 
+function deleteRecordIfExists_(sheetName, primaryKey, value) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return false;
+  }
+
+  var data = getTableRecords_(sheetName);
+  var rowIndex = data.findIndex(function(item) {
+    return String(item[primaryKey]) === String(value);
+  });
+
+  if (rowIndex === -1) {
+    return false;
+  }
+
+  sheet.deleteRow(rowIndex + 2);
+  return true;
+}
+
 function deleteRecordsByPredicate_(sheetName, predicate) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var data = getTableRecords_(sheetName);
@@ -1206,7 +1213,7 @@ function verifyAdminAccess_(adminUserId) {
   });
 
   if (!adminUser) {
-    var resolvedSuperAdmin = findResolvedSuperAdmin_(adminUserId);
+    var resolvedSuperAdmin = findApprovedSuperAdmin_(adminUserId);
     if (resolvedSuperAdmin) {
       return buildAdminIdentityFromSuperAdmin_(resolvedSuperAdmin, null);
     }
@@ -1234,13 +1241,26 @@ function verifyAdminAccess_(adminUserId) {
 function verifySuperAdminAccess_(adminUserId) {
   validateRequired_(adminUserId, 'adminUserId');
 
-  var adminUser = findResolvedSuperAdmin_(adminUserId);
+  var normalizedUserId = String(adminUserId || '').trim();
+  var approvedSuperAdmin = findApprovedSuperAdmin_(normalizedUserId);
 
-  if (!adminUser) {
-    throw new Error('找不到最高管理員登入紀錄，請先使用 LINE 登入');
+  if (approvedSuperAdmin) {
+    return approvedSuperAdmin;
   }
 
-  return adminUser;
+  var storedSuperAdmin = getStoredSuperAdminUsers_().find(function(item) {
+    return item.userId === normalizedUserId;
+  });
+
+  if (storedSuperAdmin) {
+    if (normalizeAdminStatus_(storedSuperAdmin.status) === '待審核') {
+      throw new Error('此 LINE 帳號的最高管理員資格待審核，請在 SuperAdmins 工作表將 status 改為 已通過，或改用既有最高管理員登入。');
+    }
+
+    throw new Error(storedSuperAdmin.note || '此 LINE 帳號的最高管理員資格目前不可使用，請確認 SuperAdmins 工作表中的 status。');
+  }
+
+  throw new Error('此 LINE 帳號不是最高管理員。請先在 SuperAdmins 工作表新增此帳號，並將 status 設為 已通過，或改用既有最高管理員登入。');
 }
 
 function ensureAdminPermissionManager_(actorUserId) {
@@ -1451,7 +1471,7 @@ function isBootstrapAdmin_(userId) {
 
 function isSuperAdmin_(userId) {
   var normalizedUserId = String(userId || '').trim();
-  var resolvedSuperAdmins = getResolvedSuperAdminUsers_();
+  var resolvedSuperAdmins = getApprovedSuperAdminUsers_();
   if (resolvedSuperAdmins.length) {
     return resolvedSuperAdmins.some(function(item) {
       return item.userId === normalizedUserId;
@@ -1473,6 +1493,42 @@ function isConfiguredSuperAdmin_(userId) {
 
 function getStoredSuperAdminUsers_() {
   return getTableRecords_(SHEETS.superAdmins).map(normalizeSuperAdminUser_);
+}
+
+function getApprovedSuperAdminUsers_() {
+  var storedSuperAdmins = getStoredSuperAdminUsers_();
+  var merged = storedSuperAdmins.filter(function(item) {
+    return isAdminApproved_(item.status);
+  });
+  var storedMap = indexBy_(storedSuperAdmins, 'userId');
+  var configuredIds = parseCsvProperty_('SUPER_ADMIN_LINE_USER_IDS');
+  var fallbackIds = configuredIds.length ? configuredIds : parseCsvProperty_('ADMIN_APPROVED_LINE_USER_IDS');
+
+  fallbackIds.forEach(function(userId) {
+    var normalizedUserId = String(userId || '').trim();
+    var existing = storedMap[normalizedUserId];
+
+    if (!normalizedUserId) {
+      return;
+    }
+
+    if (merged.some(function(item) { return item.userId === normalizedUserId; })) {
+      return;
+    }
+
+    merged.push(normalizeSuperAdminUser_({
+      userId: normalizedUserId,
+      displayName: existing && existing.displayName ? existing.displayName : 'LINE 最高管理員',
+      pictureUrl: existing && existing.pictureUrl ? existing.pictureUrl : '',
+      status: '已通過',
+      note: existing && existing.note ? existing.note : '',
+      createdAt: existing && existing.createdAt ? existing.createdAt : '',
+      updatedAt: existing && existing.updatedAt ? existing.updatedAt : '',
+      lastLoginAt: existing && existing.lastLoginAt ? existing.lastLoginAt : '',
+    }));
+  });
+
+  return merged;
 }
 
 function getResolvedSuperAdminUsers_() {
@@ -1511,6 +1567,13 @@ function getResolvedSuperAdminUsers_() {
 function findResolvedSuperAdmin_(userId) {
   var normalizedUserId = String(userId || '').trim();
   return getResolvedSuperAdminUsers_().find(function(item) {
+    return item.userId === normalizedUserId;
+  }) || null;
+}
+
+function findApprovedSuperAdmin_(userId) {
+  var normalizedUserId = String(userId || '').trim();
+  return getApprovedSuperAdminUsers_().find(function(item) {
     return item.userId === normalizedUserId;
   }) || null;
 }
