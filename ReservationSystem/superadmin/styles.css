@@ -389,7 +389,16 @@ h1 {
   gap: 12px;
 }
 
+.admin-permission-editor {
+  display: grid;
+  gap: 12px;
+}
+
 .permission-editor--readonly {
+  gap: 10px;
+}
+
+.admin-permission-editor--readonly {
   gap: 10px;
 }
 

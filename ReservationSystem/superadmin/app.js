@@ -319,6 +319,32 @@ function getPagePermissionPills(adminUser) {
     .join("");
 }
 
+function renderAdminManagePermissionEditor(adminUser) {
+  if (adminUser.isSuperAdmin) {
+    return `
+      <div class="admin-permission-editor admin-permission-editor--readonly">
+        ${getPermissionPill(adminUser)}
+        <p class="helper-text">最高管理員固定可管理其他管理員，無法在此收回。</p>
+      </div>
+    `;
+  }
+
+  const canManageAdmins = Boolean(adminUser.canManageAdmins);
+  const buttonClass = canManageAdmins ? "button button--danger" : "button button--primary";
+  const buttonLabel = canManageAdmins ? "收回管理員修改權限" : "授予管理員修改權限";
+  const helperText = canManageAdmins
+    ? "此管理員目前可在 admin 後台管理其他管理員帳號。"
+    : "授權後，此管理員可在 admin 後台管理其他管理員帳號。";
+
+  return `
+    <div class="admin-permission-editor">
+      ${getPermissionPill(adminUser)}
+      <p class="helper-text">${helperText}</p>
+      <button type="button" class="${buttonClass}" data-admin-permission="${adminUser.userId}" data-can-manage-admins="${String(!canManageAdmins)}">${buttonLabel}</button>
+    </div>
+  `;
+}
+
 function renderPagePermissionEditor(adminUser) {
   if (adminUser.isSuperAdmin) {
     return `
@@ -391,9 +417,9 @@ function renderAdminTable() {
         <button type="button" class="button button--secondary" data-review-admin="${adminUser.userId}" data-review-status="已拒絕">拒絕</button>
         <button type="button" class="button button--danger" data-review-admin="${adminUser.userId}" data-review-status="已停用">停用</button>
       `;
-      const actionButton = adminUser.canManageAdmins
-        ? `<button type="button" class="button button--danger" data-admin-permission="${adminUser.userId}" data-can-manage-admins="false">收回權限</button>`
-        : `<button type="button" class="button button--primary" data-admin-permission="${adminUser.userId}" data-can-manage-admins="true">授予權限</button>`;
+      const deleteButton = adminUser.userId === getCurrentAdminUserId()
+        ? `<span class="helper-text">目前登入帳號不可刪除</span>`
+        : `<button type="button" class="button button--danger" data-delete-admin="${adminUser.userId}">刪除管理員</button>`;
 
       return `
         <tr>
@@ -408,13 +434,14 @@ function renderAdminTable() {
           </td>
           <td data-label="狀態">${getAdminStatusPill(adminUser.status)}</td>
           <td data-label="管理員修改權限">${getPermissionPill(adminUser)}</td>
+          <td data-label="管理員修改權限設定">${renderAdminManagePermissionEditor(adminUser)}</td>
           <td data-label="頁面權限">
             <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
           </td>
           <td data-label="頁面權限設定">${renderPagePermissionEditor(adminUser)}</td>
           <td data-label="最後登入">${formatDateTimeText(adminUser.lastLoginAt)}</td>
           <td data-label="備註">${adminUser.note || '<span class="helper-text">尚無備註</span>'}</td>
-          <td data-label="操作"><div class="table-actions">${statusButtons}${actionButton}</div></td>
+          <td data-label="操作"><div class="table-actions">${statusButtons}${deleteButton}</div></td>
         </tr>
       `;
     })
@@ -427,6 +454,7 @@ function renderAdminTable() {
           <th>管理員</th>
           <th>狀態</th>
           <th>管理員修改權限</th>
+          <th>管理員修改權限設定</th>
           <th>頁面權限</th>
           <th>頁面權限設定</th>
           <th>最後登入</th>
@@ -541,6 +569,34 @@ async function reviewAdminUser(userId, status) {
   setStatus(`已將${adminUser.displayName}設為${status}。`, "success");
 }
 
+async function deleteAdminUser(userId) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const confirmed = window.confirm(
+    `確定要刪除管理員「${adminUser.displayName}」嗎？\n\n此操作會移除 AdminUsers 內的管理員登入紀錄，刪除後需重新登入並重新審核才能再次使用 admin 後台。`
+  );
+  if (!confirmed) {
+    setStatus("已取消刪除管理員。", "info");
+    return;
+  }
+
+  showLoading("正在刪除管理員...", "loading");
+  const result = await requestApi("POST", {}, {
+    action: "deleteAdminUser",
+    payload: { userId },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "刪除管理員失敗");
+  }
+
+  await loadSuperAdminData();
+  setStatus(`已刪除管理員 ${adminUser.displayName}。`, "success");
+}
+
 function bindEvents() {
   elements.loginButton?.addEventListener("click", () => {
     refreshIdentity().catch((error) => setStatus(error.message, "error"));
@@ -592,6 +648,14 @@ function bindEvents() {
           successMessage: `已${actionLabel}${button.closest("tr")?.querySelector("strong")?.textContent || "該管理員"}的管理員修改權限。`,
         }
       ).catch((error) => {
+        setStatus(error.message, "error");
+      });
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-admin]");
+    if (deleteButton) {
+      deleteAdminUser(deleteButton.dataset.deleteAdmin).catch((error) => {
         setStatus(error.message, "error");
       });
       return;
