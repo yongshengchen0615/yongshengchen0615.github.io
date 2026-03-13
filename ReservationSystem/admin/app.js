@@ -58,6 +58,7 @@ const elements = {
   workflowSummary: document.querySelector("#workflowSummary"),
   workflowHint: document.querySelector("#workflowHint"),
   noPagePermissionNotice: document.querySelector("#noPagePermissionNotice"),
+  pageScopedElements: Array.from(document.querySelectorAll("[data-admin-page-scope]")),
   pageTabs: Array.from(document.querySelectorAll("[data-page-trigger]")),
   pagePanels: Array.from(document.querySelectorAll("[data-admin-page]")),
   serviceForm: document.querySelector("#serviceForm"),
@@ -513,11 +514,37 @@ function updateNoPagePermissionNotice(allowedPages) {
   elements.noPagePermissionNotice.classList.toggle("is-hidden", !shouldShow);
 }
 
+function elementMatchesAdminPageScope(element, allowedPages) {
+  const rawScope = String(element?.dataset.adminPageScope || "").trim();
+  if (!rawScope) {
+    return true;
+  }
+
+  const scopes = rawScope
+    .split(",")
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+
+  if (!scopes.length) {
+    return true;
+  }
+
+  return scopes.some((scope) => allowedPages.includes(scope));
+}
+
+function updateScopedAdminElements(allowedPages) {
+  elements.pageScopedElements.forEach((element) => {
+    const isAllowed = elementMatchesAdminPageScope(element, allowedPages);
+    element.classList.toggle("is-hidden", !isAllowed);
+  });
+}
+
 function setActivePage(pageName, options = {}) {
   const allowedPages = getAllowedAdminPages();
   const nextPage = allowedPages.includes(pageName) ? pageName : allowedPages[0] || "";
 
   state.ui.activePage = nextPage;
+  updateScopedAdminElements(allowedPages);
 
   elements.pageTabs.forEach((button) => {
     const buttonPage = button.dataset.pageTrigger;
