@@ -36,11 +36,14 @@ const elements = {
   technicianSelect: document.querySelector("#technicianSelect"),
   serviceSelect: document.querySelector("#serviceSelect"),
   dateSelect: document.querySelector("#dateSelect"),
+  dateScheduleHint: document.querySelector("#dateScheduleHint"),
   timeSelect: document.querySelector("#timeSelect"),
   statusBox: document.querySelector("#statusBox"),
   approvalGate: document.querySelector("#approvalGate"),
   bookingSummary: document.querySelector("#bookingSummary"),
   bookingSubmitButton: document.querySelector("#bookingSubmitButton"),
+  reservationHistoryCopy: document.querySelector("#reservationHistoryCopy"),
+  reservationHistoryList: document.querySelector("#reservationHistoryList"),
   userAvatar: document.querySelector("#userAvatar"),
   userDisplayName: document.querySelector("#userDisplayName"),
   userStatusBadge: document.querySelector("#userStatusBadge"),
@@ -81,6 +84,24 @@ function formatDisplayDate(dateText) {
   const date = new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
   const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
   return `${normalizedDate} (${weekdays[date.getDay()]})`;
+}
+
+function formatDateTimeText(dateText, startTime, endTime) {
+  const dateLabel = formatDisplayDate(dateText);
+  if (!startTime) {
+    return dateLabel;
+  }
+
+  return `${dateLabel} ${startTime}${endTime ? ` - ${endTime}` : ""}`;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function loadConfigFromJson() {
@@ -207,6 +228,113 @@ function updateAccessView() {
   fillApplicationForm();
 }
 
+function getUserReservations() {
+  const currentUserId = String(state.user?.userId || state.profile?.userId || "").trim();
+  if (!currentUserId) {
+    return [];
+  }
+
+  return state.reservations
+    .filter((item) => String(item.userId || "").trim() === currentUserId)
+    .slice()
+    .sort((left, right) => {
+      const rightKey = `${String(right.date || "")} ${String(right.startTime || "")}`;
+      const leftKey = `${String(left.date || "")} ${String(left.startTime || "")}`;
+      return rightKey.localeCompare(leftKey, "zh-Hant");
+    });
+}
+
+function getReservationStatusTone(status) {
+  if (status === "已完成") {
+    return "approved";
+  }
+
+  if (status === "已取消") {
+    return "blocked";
+  }
+
+  return "pending";
+}
+
+function getReservationServiceSummary(reservation) {
+  const metrics = getServiceMetrics(reservation.serviceIds || String(reservation.serviceId || "").split(","));
+  const serviceNames = metrics.services.length
+    ? metrics.services.map((service) => formatServiceLabel(service)).join("、")
+    : String(reservation.serviceName || "").trim() || "未指定服務";
+
+  return {
+    serviceNames,
+    totalDuration: metrics.totalDuration || Math.max(toMinutes(reservation.endTime || reservation.startTime || "00:00") - toMinutes(reservation.startTime || "00:00"), 0),
+    totalPrice: metrics.services.length ? metrics.totalPrice : null,
+  };
+}
+
+function getReservationTechnicianLabel(reservation) {
+  if (reservation.assignmentType === "現場安排") {
+    return "現場安排";
+  }
+
+  const technician = getTechnicianById(reservation.technicianId);
+  return reservation.technicianName || getTechnicianDisplayName(technician);
+}
+
+function renderReservationHistory() {
+  if (!elements.reservationHistoryList || !elements.reservationHistoryCopy) {
+    return;
+  }
+
+  if (!state.profile) {
+    elements.reservationHistoryCopy.textContent = "登入後可查看自己的預約狀態、預約時間與服務內容。";
+    elements.reservationHistoryList.innerHTML = '<div class="empty-state">請先完成 LINE 登入後查看預約紀錄。</div>';
+    return;
+  }
+
+  if (!state.user) {
+    elements.reservationHistoryCopy.textContent = "系統正在同步你的預約紀錄。";
+    elements.reservationHistoryList.innerHTML = '<div class="empty-state">正在讀取你的預約紀錄。</div>';
+    return;
+  }
+
+  const reservations = getUserReservations();
+  if (!reservations.length) {
+    elements.reservationHistoryCopy.textContent = "這裡會列出你送出過的預約，方便你確認目前狀態。";
+    elements.reservationHistoryList.innerHTML = '<div class="empty-state">目前還沒有你的預約紀錄。</div>';
+    return;
+  }
+
+  elements.reservationHistoryCopy.textContent = `目前共有 ${reservations.length} 筆預約紀錄，最新的預約會顯示在最前面。`;
+  elements.reservationHistoryList.innerHTML = reservations
+    .map((reservation) => {
+      const serviceSummary = getReservationServiceSummary(reservation);
+      const technicianLabel = getReservationTechnicianLabel(reservation);
+      const reservationId = escapeHtml(reservation.reservationId || "未提供編號");
+      const reservationStatus = escapeHtml(reservation.status || "已預約");
+      const reservationTime = escapeHtml(formatDateTimeText(reservation.date, reservation.startTime, reservation.endTime));
+      const technicianText = escapeHtml(technicianLabel);
+      const serviceText = escapeHtml(serviceSummary.serviceNames);
+      const customerName = escapeHtml(reservation.customerName || state.user.customerName || "未提供");
+      const noteText = reservation.note ? escapeHtml(reservation.note) : "";
+      return `
+        <article class="reservation-status-item">
+          <div class="summary__header">
+            <h3>${reservationId}</h3>
+            <span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservationStatus}</span>
+          </div>
+          <dl class="reservation-status-item__rows">
+            <div><dt>預約時間</dt><dd>${reservationTime}</dd></div>
+            <div><dt>技師</dt><dd>${technicianText}</dd></div>
+            <div><dt>服務</dt><dd>${serviceText}</dd></div>
+            <div><dt>總時長</dt><dd>${serviceSummary.totalDuration ? `${serviceSummary.totalDuration} 分鐘` : "未提供"}</dd></div>
+            <div><dt>金額</dt><dd>${serviceSummary.totalPrice !== null ? `NT$ ${Number(serviceSummary.totalPrice).toLocaleString("zh-TW")}` : "依現場確認"}</dd></div>
+            <div><dt>聯絡人</dt><dd>${customerName}</dd></div>
+            ${reservation.note ? `<div><dt>備註</dt><dd>${noteText}</dd></div>` : ""}
+          </dl>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderUserState() {
   if (!state.profile) {
     elements.userDisplayName.textContent = "尚未登入 LINE";
@@ -221,6 +349,7 @@ function renderUserState() {
     }
     updateAccessView();
     updateSubmitState();
+    renderReservationHistory();
     return;
   }
 
@@ -244,6 +373,7 @@ function renderUserState() {
     }
     updateAccessView();
     updateSubmitState();
+    renderReservationHistory();
     return;
   }
 
@@ -283,6 +413,7 @@ function renderUserState() {
 
   updateAccessView();
   updateSubmitState();
+  renderReservationHistory();
 }
 
 function getActiveTechnicians() {
@@ -508,6 +639,82 @@ function getSchedulesForTechnicianOnDate(technicianId, actualDate) {
   return getSchedulesForTechnician(technicianId).filter((schedule) => Boolean(getScheduleCoverageForDate(schedule, actualDate)));
 }
 
+function getTechnicianScheduleCoveragesOnDate(technicianId, actualDate) {
+  return getSchedulesForTechnicianOnDate(technicianId, actualDate)
+    .map((schedule) => getScheduleCoverageForDate(schedule, actualDate))
+    .filter(Boolean)
+    .sort((left, right) => left.start - right.start);
+}
+
+function formatScheduleCoverageLabel(coverage) {
+  if (!coverage) {
+    return "";
+  }
+
+  return `${toTimeText(coverage.start)} - ${toTimeText(coverage.end)}${coverage.end > 24 * 60 ? " (跨日)" : ""}`;
+}
+
+function getTechnicianWorkingHoursText(technicianId, actualDate) {
+  if (!isSpecificTechnicianSelected(technicianId) || !actualDate) {
+    return "";
+  }
+
+  return getTechnicianScheduleCoveragesOnDate(technicianId, actualDate)
+    .map((coverage) => formatScheduleCoverageLabel(coverage))
+    .filter(Boolean)
+    .join("、");
+}
+
+function updateDateScheduleHint() {
+  if (!elements.dateScheduleHint) {
+    return;
+  }
+
+  const technicianId = elements.technicianSelect?.value || state.selectedTechnicianId;
+  const date = elements.dateSelect?.value || "";
+
+  if (!isSpecificTechnicianSelected(technicianId)) {
+    elements.dateScheduleHint.classList.add("is-hidden");
+    elements.dateScheduleHint.innerHTML = "";
+    delete elements.dateScheduleHint.dataset.tone;
+    return;
+  }
+
+  const technician = getTechnicianById(technicianId);
+  const technicianName = getTechnicianDisplayName(technician);
+
+  if (!date) {
+    elements.dateScheduleHint.classList.remove("is-hidden");
+    elements.dateScheduleHint.dataset.tone = "muted";
+    elements.dateScheduleHint.innerHTML = `<strong>${escapeHtml(technicianName)} 班表</strong><span>選擇日期後會顯示當日上班時段。</span>`;
+    return;
+  }
+
+  const workingHoursText = getTechnicianWorkingHoursText(technicianId, date);
+  elements.dateScheduleHint.classList.remove("is-hidden");
+  elements.dateScheduleHint.dataset.tone = workingHoursText ? "info" : "muted";
+  elements.dateScheduleHint.innerHTML = workingHoursText
+    ? `<strong>${escapeHtml(formatDisplayDate(date))} 班表</strong><span>${escapeHtml(technicianName)}：${escapeHtml(workingHoursText)}</span>`
+    : `<strong>${escapeHtml(formatDisplayDate(date))} 班表</strong><span>${escapeHtml(technicianName)} 當日未排班。</span>`;
+}
+
+function evaluateReservationWithinTechnicianSchedule(technicianId, actualDate, startTime, durationMinutes) {
+  const coverages = getTechnicianScheduleCoveragesOnDate(technicianId, actualDate);
+  if (!coverages.length) {
+    return { ok: false, reason: "no-schedule" };
+  }
+
+  const reservationStart = toMinutes(startTime);
+  const reservationEnd = reservationStart + Number(durationMinutes || 0);
+  const isWithinCoverage = coverages.some((coverage) => {
+    return reservationStart >= coverage.start && reservationEnd <= coverage.end;
+  });
+
+  return isWithinCoverage
+    ? { ok: true }
+    : { ok: false, reason: "out-of-range" };
+}
+
 function getReservationsForTechnicianNearDate(technicianId, date) {
   return state.reservations.filter(
     (item) => item.technicianId === technicianId
@@ -670,7 +877,7 @@ function setBookingSubmitting(isSubmitting) {
   updateSubmitState();
 }
 
-function renderPendingSummary(metrics, date, time) {
+function renderPendingSummary(metrics, date, time, technicianId) {
   let lead = "先從 Step 1 開始，選擇技師，再勾選至少一個服務項目。";
 
   if (metrics.services.length && !date) {
@@ -690,6 +897,13 @@ function renderPendingSummary(metrics, date, time) {
     rows.push(`<div class="summary__row"><dt>日期</dt><dd>${formatDisplayDate(date)}</dd></div>`);
   }
 
+  if (date && isSpecificTechnicianSelected(technicianId)) {
+    const workingHoursText = getTechnicianWorkingHoursText(technicianId, date);
+    rows.push(
+      `<div class="summary__row"><dt>班表</dt><dd>${workingHoursText || "當日未排班"}</dd></div>`
+    );
+  }
+
   return `
     <div class="summary__header">
       <h3>預約摘要</h3>
@@ -704,16 +918,21 @@ function updateSummary() {
   const formData = new FormData(elements.bookingForm);
   const technician = getTechnicianById(formData.get("technicianId"));
   const metrics = getServiceMetrics(state.selectedServiceIds);
+  const technicianId = formData.get("technicianId");
   const date = formData.get("date");
   const time = formData.get("startTime");
 
   if (!metrics.services.length || !date || !time) {
-    elements.bookingSummary.innerHTML = renderPendingSummary(metrics, date, time);
+    elements.bookingSummary.innerHTML = renderPendingSummary(metrics, date, time, technicianId);
+    updateDateScheduleHint();
     updateDashboard();
     return;
   }
 
   const endTime = toTimeText(toMinutes(time) + metrics.totalDuration);
+  const workingHoursText = isSpecificTechnicianSelected(technicianId)
+    ? getTechnicianWorkingHoursText(technicianId, date)
+    : "";
   elements.bookingSummary.innerHTML = `
     <div class="summary__header">
       <h3>預約摘要</h3>
@@ -723,11 +942,13 @@ function updateSummary() {
       <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? getTechnicianDisplayName(technician) : "不指定技師，由現場安排"}</dd></div>
       <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
       <div class="summary__row"><dt>日期</dt><dd>${formatDisplayDate(date)}</dd></div>
+      ${workingHoursText ? `<div class="summary__row"><dt>班表</dt><dd>${workingHoursText}</dd></div>` : ""}
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
       <div class="summary__row"><dt>總時長</dt><dd>${metrics.totalDuration} 分鐘</dd></div>
       <div class="summary__row"><dt>總金額</dt><dd>NT$ ${Number(metrics.totalPrice || 0).toLocaleString("zh-TW")}</dd></div>
     </dl>
   `;
+  updateDateScheduleHint();
   updateDashboard();
 }
 
@@ -773,7 +994,12 @@ function updateAvailabilityStatus() {
 
   const availableDates = getAvailableDates(state.selectedTechnicianId, state.selectedServiceIds);
   if (!availableDates.length) {
-    setStatus("目前沒有可預約日期，請聯絡店家或稍後再試。", "info");
+    setStatus(
+      isSpecificTechnicianSelected(state.selectedTechnicianId)
+        ? "這位技師目前沒有符合服務條件的可預約日期。"
+        : "目前沒有可預約日期，請聯絡店家或稍後再試。",
+      "info"
+    );
     return;
   }
 
@@ -782,6 +1008,17 @@ function updateAvailabilityStatus() {
     ? getAvailableTimeSlots(state.selectedTechnicianId, state.selectedServiceIds, selectedDate)
     : [];
   if (!availableTimeSlots.length) {
+    if (isSpecificTechnicianSelected(state.selectedTechnicianId) && selectedDate) {
+      const workingHoursText = getTechnicianWorkingHoursText(state.selectedTechnicianId, selectedDate);
+      setStatus(
+        workingHoursText
+          ? `這位技師在 ${formatDisplayDate(selectedDate)} 的上班時間為 ${workingHoursText}，目前此區間已無可預約時段。`
+          : `這位技師在 ${formatDisplayDate(selectedDate)} 未排班，請改選其他日期。`,
+        "info"
+      );
+      return;
+    }
+
     setStatus("當日已無可預約時段，請改選其他日期。", "info");
     return;
   }
@@ -845,6 +1082,7 @@ function refreshSelects() {
     elements.timeSelect.value = timeSlots[0].value;
   }
 
+  updateDateScheduleHint();
   updateSummary();
   updateAvailabilityStatus();
   updateDashboard();
@@ -879,9 +1117,20 @@ function syncDateAndTimeOptions() {
   }
 
   if (!timeSlots.length && selectedDate && isApprovedUser()) {
-    setStatus("該日期已無可預約時段，請改選其他日期。", "info");
+    if (isSpecificTechnicianSelected(state.selectedTechnicianId)) {
+      const workingHoursText = getTechnicianWorkingHoursText(state.selectedTechnicianId, selectedDate);
+      setStatus(
+        workingHoursText
+          ? `這位技師在 ${formatDisplayDate(selectedDate)} 的上班時間為 ${workingHoursText}，目前此區間已無可預約時段。`
+          : `這位技師在 ${formatDisplayDate(selectedDate)} 未排班，請改選其他日期。`,
+        "info"
+      );
+    } else {
+      setStatus("該日期已無可預約時段，請改選其他日期。", "info");
+    }
   }
 
+  updateDateScheduleHint();
   updateSummary();
   updateAvailabilityStatus();
   updateDashboard();
@@ -1049,6 +1298,7 @@ async function loadPublicData(options = {}) {
     state.selectedServiceIds = normalizeServiceIds(state.selectedServiceIds).filter((serviceId) => allowedServiceIds.has(serviceId));
 
     refreshSelects();
+    renderReservationHistory();
     if (!silent) {
       updateAvailabilityStatus();
     }
@@ -1106,6 +1356,7 @@ async function submitBooking(event) {
 
   const formData = new FormData(elements.bookingForm);
   const serviceIds = normalizeServiceIds(state.selectedServiceIds);
+  const metrics = getServiceMetrics(serviceIds);
 
   if (!serviceIds.length) {
     setStatus("請先選擇至少一個服務項目。", "error");
@@ -1123,6 +1374,26 @@ async function submitBooking(event) {
     startTime: formData.get("startTime"),
     note: formData.get("note").trim(),
   };
+
+  if (payload.technicianId) {
+    const technicianScheduleEvaluation = evaluateReservationWithinTechnicianSchedule(
+      payload.technicianId,
+      payload.date,
+      payload.startTime,
+      metrics.totalDuration
+    );
+
+    if (!technicianScheduleEvaluation.ok) {
+      syncDateAndTimeOptions();
+      setStatus(
+        technicianScheduleEvaluation.reason === "no-schedule"
+          ? "所選技師在該日期未排班，請改選其他日期。"
+          : "所選時段不在該技師當日上班時間內，請重新選擇。",
+        "error"
+      );
+      return;
+    }
+  }
 
   if (isExpiredDateTime(payload.date, payload.startTime)) {
     syncDateAndTimeOptions();
@@ -1147,6 +1418,7 @@ async function submitBooking(event) {
       ...state.reservations.filter((item) => item.reservationId !== result.data.reservationId),
     ];
     updateDashboard();
+    renderReservationHistory();
 
     setStatus(
       `預約成功，預約編號：${result.data.reservationId}${result.data.assignmentType === "現場安排" ? "，技師將於現場安排" : result.data.technicianName ? `，已安排 ${result.data.technicianName}` : ""}`,

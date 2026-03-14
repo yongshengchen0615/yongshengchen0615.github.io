@@ -159,15 +159,16 @@
                 </div>
               </div>
 
-              <div class="booking-section__grid">
-                <label class="field">
-                  <span>日期</span>
+              <div class="booking-section__grid schedule-selection-grid">
+                <label class="field schedule-field schedule-field--date">
+                  <span class="schedule-field__label">日期</span>
                   <select name="date" id="dateSelect" required></select>
                   <small>只會顯示目前仍可預約的日期。</small>
+                  <div id="dateScheduleHint" class="date-schedule-hint is-hidden" aria-live="polite"></div>
                 </label>
 
-                <label class="field">
-                  <span>時段</span>
+                <label class="field schedule-field schedule-field--time">
+                  <span class="schedule-field__label">時段</span>
                   <select name="startTime" id="timeSelect" required></select>
                   <small>系統會依服務總長度過濾可預約的時段。</small>
                 </label>
@@ -213,6 +214,20 @@
 
             <button type="submit" id="bookingSubmitButton" class="button button--primary button--wide">送出預約</button>
           </form>
+        </section>
+
+        <section class="panel reservation-history-panel">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">My Reservations</p>
+              <h2>我的預約紀錄</h2>
+              <p id="reservationHistoryCopy" class="section-copy">登入後可查看自己的預約狀態、預約時間與服務內容。</p>
+            </div>
+          </div>
+
+          <div id="reservationHistoryList" class="reservation-status-list">
+            <div class="empty-state">正在準備預約紀錄。</div>
+          </div>
         </section>
       </main>
     </div>
