@@ -323,7 +323,7 @@
               </section>
             </div>
             <form id="scheduleForm" class="d-grid gap-3 mt-3">
-              <div class="field">
+              <div id="scheduleTechnicianField" class="field">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <span>技師</span>
                   <small id="scheduleTechnicianSelectionMeta" class="text-body-secondary">尚未選擇技師</small>
@@ -338,7 +338,7 @@
               <label class="field"><span>結束日期</span><input name="endDate" type="date" /></label>
               <div class="schedule-time-hint">
                 <strong>班表時段會自動使用技師頁設定的預設上下班時間。</strong>
-                <span>若同時勾選多位技師，系統會依各技師自己的預設時段建立班表。</span>
+                <span>新增班表時，未勾選的啟用技師會自動記錄為休假；已勾選者則依各技師自己的預設時段建立班表。</span>
               </div>
               <div id="scheduleEditTimePanel" class="schedule-time-editor is-hidden">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -366,7 +366,6 @@
                   </div>
                 </div>
               </div>
-              <label class="checkbox-field"><input name="isWorking" type="checkbox" checked /><span>當日可預約</span></label>
               <div class="d-flex gap-2 flex-wrap">
                 <button type="button" id="scheduleResetButton" class="button button--secondary">清空班表表單</button>
                 <button type="submit" class="button button--primary">儲存班表</button>

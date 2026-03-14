@@ -197,7 +197,7 @@ function updateAccessView() {
 
   if (canEnterBooking) {
     elements.bookingPanelTitle.textContent = "填寫預約資訊";
-    elements.bookingPanelCopy.textContent = "可指定熟悉技師，也可選擇不指定技師，由現場安排。";
+    elements.bookingPanelCopy.textContent = "依序選擇技師、服務、日期時段，再確認聯絡資料即可送出；也可選擇不指定技師，由現場安排。";
     fillBookingContactFields();
     return;
   }
@@ -670,6 +670,36 @@ function setBookingSubmitting(isSubmitting) {
   updateSubmitState();
 }
 
+function renderPendingSummary(metrics, date, time) {
+  let lead = "先從 Step 1 開始，選擇技師，再勾選至少一個服務項目。";
+
+  if (metrics.services.length && !date) {
+    lead = "已選好技師與服務，接著請從 Step 2 挑選可預約日期。";
+  } else if (metrics.services.length && date && !time) {
+    lead = "日期已選定，接著請選擇可預約時段。";
+  }
+
+  const rows = [];
+  if (metrics.services.length) {
+    rows.push(`<div class="summary__row"><dt>已選服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>`);
+    rows.push(`<div class="summary__row"><dt>總時長</dt><dd>${metrics.totalDuration} 分鐘</dd></div>`);
+    rows.push(`<div class="summary__row"><dt>預估金額</dt><dd>NT$ ${Number(metrics.totalPrice || 0).toLocaleString("zh-TW")}</dd></div>`);
+  }
+
+  if (date) {
+    rows.push(`<div class="summary__row"><dt>日期</dt><dd>${formatDisplayDate(date)}</dd></div>`);
+  }
+
+  return `
+    <div class="summary__header">
+      <h3>預約摘要</h3>
+      <span class="summary__badge">即時整理</span>
+    </div>
+    <p class="summary__lead">${lead}</p>
+    ${rows.length ? `<dl class="summary__rows">${rows.join("")}</dl>` : ""}
+  `;
+}
+
 function updateSummary() {
   const formData = new FormData(elements.bookingForm);
   const technician = getTechnicianById(formData.get("technicianId"));
@@ -678,13 +708,7 @@ function updateSummary() {
   const time = formData.get("startTime");
 
   if (!metrics.services.length || !date || !time) {
-    elements.bookingSummary.innerHTML = `
-      <div class="summary__header">
-        <h3>預約摘要</h3>
-        <span class="summary__badge">即時整理</span>
-      </div>
-      <p>尚未選定完整預約資訊。</p>
-    `;
+    elements.bookingSummary.innerHTML = renderPendingSummary(metrics, date, time);
     updateDashboard();
     return;
   }

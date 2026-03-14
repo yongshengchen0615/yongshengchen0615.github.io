@@ -107,6 +107,7 @@ const state = {
     scheduleCalendarMonth: formatLocalDate(new Date()).slice(0, 7),
     selectedScheduleDate: formatLocalDate(new Date()),
     editingScheduleKey: "",
+    editingScheduleIsWorking: true,
   },
 };
 
@@ -162,6 +163,7 @@ const elements = {
   scheduleNextMonthButton: document.querySelector("#scheduleNextMonthButton"),
   scheduleSelectedDateLabel: document.querySelector("#scheduleSelectedDateLabel"),
   scheduleSelectedDateMeta: document.querySelector("#scheduleSelectedDateMeta"),
+  scheduleTechnicianField: document.querySelector("#scheduleTechnicianField"),
   scheduleEditTimePanel: document.querySelector("#scheduleEditTimePanel"),
   scheduleEditModeLabel: document.querySelector("#scheduleEditModeLabel"),
   scheduleSelectAllTechniciansButton: document.querySelector("#scheduleSelectAllTechniciansButton"),
@@ -988,12 +990,13 @@ function resetScheduleForm() {
   elements.scheduleForm.reset();
   elements.scheduleForm.date.value = selectedDate;
   elements.scheduleForm.endDate.value = selectedDate;
-  elements.scheduleForm.isWorking.checked = true;
   syncTimeWheelField(elements.scheduleForm.startTime, "09:00");
   syncTimeWheelField(elements.scheduleForm.endTime, "18:00");
   state.ui.editingScheduleKey = "";
+  state.ui.editingScheduleIsWorking = true;
   elements.scheduleEditTimePanel.classList.add("is-hidden");
   elements.scheduleEditModeLabel.textContent = "編輯這筆班表的臨時上下班時間";
+  elements.scheduleTechnicianField?.classList.remove("is-hidden");
   syncScheduleTechnicianSelection([]);
 }
 
@@ -1007,10 +1010,11 @@ function fillScheduleForm(schedule) {
   elements.scheduleForm.endDate.value = schedule.date;
   syncTimeWheelField(elements.scheduleForm.startTime, schedule.startTime);
   syncTimeWheelField(elements.scheduleForm.endTime, schedule.endTime);
-  elements.scheduleForm.isWorking.checked = Boolean(schedule.isWorking);
   state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
+  state.ui.editingScheduleIsWorking = Boolean(schedule.isWorking);
   elements.scheduleEditTimePanel.classList.remove("is-hidden");
   elements.scheduleEditModeLabel.textContent = `正在編輯 ${getTechnicianById(schedule.technicianId)?.name || schedule.technicianId} 的班表時段`;
+  elements.scheduleTechnicianField?.classList.add("is-hidden");
   syncScheduleTechnicianSelection([schedule.technicianId]);
   updateSelectedScheduleDate(schedule.date);
   scrollToPanel(elements.scheduleForm);
@@ -3249,13 +3253,19 @@ async function submitSchedule(event) {
   setLoadingStatus("正在儲存班表...");
   const formData = new FormData(elements.scheduleForm);
   const technicianIds = getSelectedScheduleTechnicianIds();
+  const activeTechnicians = state.technicians.filter((item) => item.active);
   const startDate = formData.get("date");
   const endDate = formData.get("endDate") || startDate;
   const scheduleDates = enumerateDateRange(startDate, endDate);
   const isEditingSchedule = Boolean(state.ui.editingScheduleKey);
+  const selectedTechnicianIds = isEditingSchedule
+    ? technicianIds
+    : activeTechnicians.map((item) => item.technicianId);
+  const checkedTechnicianIds = new Set(technicianIds);
+  const editingScheduleIsWorking = state.ui.editingScheduleIsWorking;
 
-  if (!technicianIds.length) {
-    throw new Error("請至少選擇一位技師");
+  if (!selectedTechnicianIds.length) {
+    throw new Error(isEditingSchedule ? "請至少選擇一位技師" : "目前沒有啟用中的技師可建立班表");
   }
 
   if (isEditingSchedule && technicianIds.length !== 1) {
@@ -3268,7 +3278,7 @@ async function submitSchedule(event) {
 
   const items = [];
   for (const scheduleDate of scheduleDates) {
-    for (const technicianId of technicianIds) {
+    for (const technicianId of selectedTechnicianIds) {
       const technician = getTechnicianById(technicianId);
       if (!technician) {
         throw new Error("找不到技師預設班別");
@@ -3279,7 +3289,7 @@ async function submitSchedule(event) {
         date: scheduleDate,
         startTime: isEditingSchedule ? formData.get("startTime") : technician.startTime,
         endTime: isEditingSchedule ? formData.get("endTime") : technician.endTime,
-        isWorking: formData.get("isWorking") === "on",
+        isWorking: isEditingSchedule ? editingScheduleIsWorking : checkedTechnicianIds.has(technicianId),
       });
     }
   }
@@ -3292,13 +3302,13 @@ async function submitSchedule(event) {
   updateSelectedScheduleDate(startDate);
   await loadAdminData();
   resetScheduleForm();
-  const scheduleCount = scheduleDates.length * technicianIds.length;
+  const selectedCount = technicianIds.length;
   setStatus(
     isEditingSchedule
       ? "班表時段已更新。"
-      : scheduleCount > 1
-      ? `已為 ${technicianIds.length} 位技師套用 ${scheduleDates.length} 天班表，共 ${scheduleCount} 筆。`
-      : "班表已儲存。",
+      : selectedCount
+        ? "已新增班表，未勾選的啟用技師已標記為休假。"
+        : "已將所有啟用技師標記為休假。",
     "success"
   );
 }

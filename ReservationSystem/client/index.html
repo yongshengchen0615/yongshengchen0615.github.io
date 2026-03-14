@@ -104,44 +104,104 @@
               需先完成 LINE 登入並通過審核，才可送出預約。
             </div>
 
-            <label class="field">
-              <span>姓名</span>
-              <input name="customerName" type="text" placeholder="請輸入姓名" required />
-              <small>將用於預約資料與現場確認。</small>
-            </label>
+            <section class="booking-guide field--full" aria-labelledby="bookingGuideTitle">
+              <div class="booking-guide__header">
+                <div>
+                  <p class="eyebrow">How To Book</p>
+                  <h3 id="bookingGuideTitle">照這個順序填，預約最快</h3>
+                </div>
+                <span class="summary__badge">3 個步驟</span>
+              </div>
+              <ol class="booking-guide__list">
+                <li>
+                  <strong>先選技師</strong>
+                  <span>可指定熟悉技師，或選擇不指定技師，由現場安排。</span>
+                </li>
+                <li>
+                  <strong>再選服務</strong>
+                  <span>系統會依技師可提供的項目，過濾出可選的服務內容。</span>
+                </li>
+                <li>
+                  <strong>最後確認時段與聯絡資料</strong>
+                  <span>日期、時段與聯絡方式確認完成後，就能直接送出預約。</span>
+                </li>
+              </ol>
+            </section>
 
-            <label class="field">
-              <span>電話</span>
-              <input name="phone" type="tel" placeholder="09xxxxxxxx" required />
-              <small>若時間異動，店家可透過此電話聯繫。</small>
-            </label>
+            <section class="booking-section field--full" aria-labelledby="bookingStepServiceTitle">
+              <div class="booking-section__intro">
+                <span class="booking-section__step">Step 1</span>
+                <div>
+                  <h3 id="bookingStepServiceTitle">選擇技師與服務</h3>
+                  <p>先選擇是否指定技師，再從可提供的服務中挑選本次要預約的項目。</p>
+                </div>
+              </div>
 
-            <label class="field">
-              <span>技師</span>
-              <select name="technicianId" id="technicianSelect" required></select>
-              <small>可指定熟悉技師，或選擇不指定技師，改由現場安排。</small>
-            </label>
+              <label class="field field--full">
+                <span>技師</span>
+                <select name="technicianId" id="technicianSelect" required></select>
+                <small>如有熟悉技師可直接指定，否則可選擇不指定技師，由現場安排。</small>
+              </label>
 
-            <div class="field field--full">
+              <div class="field field--full">
                 <span>服務項目</span>
-              <div id="serviceSelect" class="service-picker"></div>
-              <small>可同時勾選多個服務，系統會自動加總總時長與總金額。</small>
-            </div>
+                <div id="serviceSelect" class="service-picker"></div>
+                <small>可同時勾選多個服務，系統會自動加總總時長與總金額。</small>
+              </div>
+            </section>
 
-            <label class="field">
-              <span>日期</span>
-              <select name="date" id="dateSelect" required></select>
-            </label>
+            <section class="booking-section field--full" aria-labelledby="bookingStepScheduleTitle">
+              <div class="booking-section__intro">
+                <span class="booking-section__step">Step 2</span>
+                <div>
+                  <h3 id="bookingStepScheduleTitle">選擇日期與時段</h3>
+                  <p>選完服務後，再挑一個有空的日期與時段，系統會自動計算結束時間。</p>
+                </div>
+              </div>
 
-            <label class="field">
-              <span>時段</span>
-              <select name="startTime" id="timeSelect" required></select>
-            </label>
+              <div class="booking-section__grid">
+                <label class="field">
+                  <span>日期</span>
+                  <select name="date" id="dateSelect" required></select>
+                  <small>只會顯示目前仍可預約的日期。</small>
+                </label>
 
-            <label class="field field--full">
-              <span>備註</span>
-              <textarea name="note" rows="4" placeholder="可填寫想要的風格、需求或其他說明"></textarea>
-            </label>
+                <label class="field">
+                  <span>時段</span>
+                  <select name="startTime" id="timeSelect" required></select>
+                  <small>系統會依服務總長度過濾可預約的時段。</small>
+                </label>
+              </div>
+            </section>
+
+            <section class="booking-section field--full" aria-labelledby="bookingStepContactTitle">
+              <div class="booking-section__intro">
+                <span class="booking-section__step">Step 3</span>
+                <div>
+                  <h3 id="bookingStepContactTitle">確認聯絡資訊</h3>
+                  <p>填寫現場辨識名稱與聯絡電話，必要時也可補充需求備註。</p>
+                </div>
+              </div>
+
+              <div class="booking-section__grid">
+                <label class="field">
+                  <span>姓名</span>
+                  <input name="customerName" type="text" placeholder="請輸入姓名" required />
+                  <small>將用於預約資料與現場確認。</small>
+                </label>
+
+                <label class="field">
+                  <span>電話</span>
+                  <input name="phone" type="tel" placeholder="09xxxxxxxx" required />
+                  <small>若時間異動，店家可透過此電話聯繫。</small>
+                </label>
+              </div>
+
+              <label class="field field--full">
+                <span>備註</span>
+                <textarea name="note" rows="4" placeholder="可填寫想要的風格、需求或其他說明"></textarea>
+              </label>
+            </section>
 
             <div class="summary" id="bookingSummary">
               <div class="summary__header">
