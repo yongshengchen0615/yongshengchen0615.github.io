@@ -3,6 +3,7 @@ const ADMIN_PAGE_OPTIONS = [
   { key: "service", label: "服務" },
   { key: "technician", label: "技師" },
   { key: "schedule", label: "班表" },
+  { key: "leave", label: "休假" },
   { key: "reservation", label: "預約" },
   { key: "user", label: "用戶審核" },
 ];
@@ -175,7 +176,7 @@ function renderAccessState() {
     elements.statusBadge.textContent = "未登入";
     elements.statusBadge.dataset.tone = "muted";
     elements.statusText.textContent = "請先登入 LINE，系統會確認你是否屬於最高管理員。";
-    setApprovalMessage("此頁僅提供最高管理員設定 admin 的頁面權限。", "info");
+    setApprovalMessage("此頁提供最高管理員審核 admin 帳號，並設定管理權限與頁面權限。", "info");
     elements.logoutButton.disabled = true;
     setContentAccess(false);
     return;
@@ -203,8 +204,8 @@ function renderAccessState() {
   if (isApprovedSuperAdmin) {
     elements.statusBadge.textContent = "最高管理員";
     elements.statusBadge.dataset.tone = "approved";
-    elements.statusText.textContent = "你可管理 admin 專案中各管理員的頁面權限。";
-    setApprovalMessage("已通過最高管理員驗證，可管理 admin 的頁面權限。", "approved");
+    elements.statusText.textContent = "你可管理 admin 專案中各管理員的審核狀態、管理權限與頁面權限。";
+    setApprovalMessage("已通過最高管理員驗證，可管理 admin 的審核狀態、管理權限與頁面權限。", "approved");
     setContentAccess(true);
     return;
   }
@@ -375,6 +376,36 @@ function getAdminStatusPill(status) {
   return getStatusPill(status || "待審核", "pending");
 }
 
+function getAdminStatusSummary(adminUser) {
+  return `目前狀態：${getDisplayText(adminUser.status, "待審核")}`;
+}
+
+function renderAdminStatusEditor(adminUser) {
+  const currentStatus = getDisplayText(adminUser.status, "待審核");
+  const options = ["待審核", "已通過", "已拒絕", "已停用"];
+  const radios = options
+    .map((status) => {
+      const checked = currentStatus === status ? "checked" : "";
+      return `
+        <label class="permission-checkbox">
+          <input type="radio" name="adminStatus-${escapeAttribute(adminUser.userId)}" data-admin-status-radio value="${escapeAttribute(status)}" ${checked} disabled />
+          <span>${escapeHtml(status)}</span>
+        </label>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="permission-editor vstack gap-3">
+      <div class="editor-summary">
+        <strong>${getAdminStatusSummary(adminUser)}</strong>
+        <span class="helper-text">可由最高管理員直接調整此 admin 是否通過審核與是否停用。</span>
+      </div>
+      <div class="permission-checkbox-grid">${radios}</div>
+    </div>
+  `;
+}
+
 function getPagePermissionSummary(adminUser) {
   const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
   return `已開啟 ${permissions.length} / ${ADMIN_PAGE_OPTIONS.length} 個頁面`;
@@ -444,10 +475,11 @@ function renderAdminNoteEditor(adminUser) {
 
 function updateSummary() {
   const allAdmins = state.adminUsers.length;
+  const approvedAdmins = state.adminUsers.filter((item) => item.status === "已通過").length;
+  const pendingAdmins = state.adminUsers.filter((item) => item.status === "待審核").length;
   const permissionManagers = state.adminUsers.filter((item) => item.canManageAdmins).length;
   const restrictedAdmins = state.adminUsers.filter((item) => Array.isArray(item.pagePermissions) && item.pagePermissions.length < ADMIN_PAGE_OPTIONS.length).length;
-  const fullyEnabledAdmins = state.adminUsers.filter((item) => Array.isArray(item.pagePermissions) && item.pagePermissions.length === ADMIN_PAGE_OPTIONS.length).length;
-  elements.summaryLabel.textContent = `全部 ${allAdmins} 位 / 可修改管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位 / 全開頁面 ${fullyEnabledAdmins} 位`;
+  elements.summaryLabel.textContent = `全部 ${allAdmins} 位 / 已通過 ${approvedAdmins} 位 / 待審核 ${pendingAdmins} 位 / 可修改管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位`;
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
 
@@ -521,6 +553,11 @@ function renderAdminManagementCard(adminUser, viewModel) {
             <button type="button" class="button button--primary" data-save-admin="${viewModel.userIdAttribute}" disabled>儲存管理員</button>
             <button type="button" class="button button--ghost" data-cancel-admin-edit="${viewModel.userIdAttribute}" disabled>取消修改</button>
           </div>
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--wide">
+          <span class="admin-work-panel__label">審核狀態</span>
+          ${renderAdminStatusEditor(adminUser)}
         </section>
 
         <section class="admin-work-panel admin-work-panel--wide">
@@ -645,6 +682,10 @@ function getRowAdminNote(row) {
   return noteField ? String(noteField.value || "").trim() : "";
 }
 
+function getRowAdminStatus(row) {
+  return row.querySelector("[data-admin-status-radio]:checked")?.value || "待審核";
+}
+
 function getRowCanManageAdmins(row) {
   const checkbox = row.querySelector("[data-manage-admins-checkbox]");
   return Boolean(checkbox?.checked);
@@ -662,6 +703,11 @@ function resetAdminCardFields(card) {
     noteField.value = adminUser.note || "";
   }
 
+  const currentStatus = getDisplayText(adminUser.status, "待審核");
+  card.querySelectorAll("[data-admin-status-radio]").forEach((radio) => {
+    radio.checked = String(radio.value || "") === currentStatus;
+  });
+
   const manageAdminsCheckbox = card.querySelector("[data-manage-admins-checkbox]");
   if (manageAdminsCheckbox) {
     manageAdminsCheckbox.checked = Boolean(adminUser.canManageAdmins);
@@ -676,7 +722,7 @@ function resetAdminCardFields(card) {
 function setAdminCardEditing(card, isEditing) {
   card.classList.toggle("is-editing", isEditing);
 
-  card.querySelectorAll("[data-page-permission-checkbox], [data-admin-note], [data-manage-admins-checkbox]").forEach((field) => {
+  card.querySelectorAll("[data-page-permission-checkbox], [data-admin-note], [data-manage-admins-checkbox], [data-admin-status-radio]").forEach((field) => {
     field.disabled = !isEditing;
   });
 
@@ -725,6 +771,86 @@ async function updateAdminPermission(userId, updates, options = {}) {
 
   await loadSuperAdminData();
   setStatus(successMessage || `已更新 ${adminUser.displayName} 的權限。`, "success");
+}
+
+async function updateAdminReviewStatus(userId, status, note, options = {}) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const { loadingMessage, successMessage } = options;
+  showLoading(loadingMessage || "正在更新管理員審核狀態...", "loading");
+  const result = await requestApi("POST", {}, {
+    action: "updateAdminReviewStatus",
+    payload: {
+      userId,
+      status,
+      note,
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "更新管理員審核狀態失敗");
+  }
+
+  if (successMessage) {
+    setStatus(successMessage, "success");
+  }
+}
+
+async function saveAdminCard(card, userId) {
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const nextStatus = getRowAdminStatus(card);
+  const nextNote = getRowAdminNote(card);
+  const nextCanManageAdmins = getRowCanManageAdmins(card);
+  const nextPagePermissions = getRowPagePermissions(card);
+
+  if (!window.confirm(`確定要更新「${getDisplayText(adminUser.displayName, "此管理員")}」的管理員設定嗎？`)) {
+    setStatus("已取消更新。", "info");
+    return;
+  }
+
+  const statusChanged = getDisplayText(adminUser.status, "待審核") !== nextStatus;
+  const noteChanged = getDisplayText(adminUser.note) !== nextNote;
+  const canManageChanged = Boolean(adminUser.canManageAdmins) !== nextCanManageAdmins;
+  const currentPermissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions.join(",") : "";
+  const nextPermissions = nextPagePermissions.join(",");
+  const pagePermissionsChanged = currentPermissions !== nextPermissions;
+
+  if (statusChanged) {
+    await updateAdminReviewStatus(userId, nextStatus, nextNote, {
+      loadingMessage: "正在更新管理員審核狀態...",
+    });
+  }
+
+  if (noteChanged || canManageChanged || pagePermissionsChanged) {
+    await updateAdminPermission(
+      userId,
+      {
+        canManageAdmins: nextCanManageAdmins,
+        note: nextNote,
+        pagePermissions: nextPagePermissions,
+      },
+      {
+        loadingMessage: statusChanged ? "正在同步管理員其餘設定..." : "正在儲存管理員設定...",
+        successMessage: `已更新${getDisplayText(adminUser.displayName, "該管理員")}的管理員設定。`,
+      }
+    );
+    return;
+  }
+
+  if (statusChanged) {
+    await loadSuperAdminData();
+    setStatus(`已更新${getDisplayText(adminUser.displayName, "該管理員")}的審核狀態。`, "success");
+    return;
+  }
+
+  setStatus("沒有可儲存的變更。", "info");
 }
 
 function bindEvents() {
@@ -798,19 +924,7 @@ function bindEvents() {
       return;
     }
 
-    updateAdminPermission(
-      saveButton.dataset.saveAdmin,
-      {
-        canManageAdmins: getRowCanManageAdmins(card),
-        note: getRowAdminNote(card),
-        pagePermissions: getRowPagePermissions(card),
-      },
-      {
-        confirmMessage: `確定要更新「${getAdminCardName(saveButton)}」的管理員設定嗎？`,
-        loadingMessage: "正在儲存管理員設定...",
-        successMessage: `已更新${getAdminCardName(saveButton) || "該管理員"}的管理員設定。`,
-      }
-    ).catch((error) => {
+    saveAdminCard(card, saveButton.dataset.saveAdmin).catch((error) => {
       setAdminCardEditing(card, true);
       setStatus(error.message, "error");
     });

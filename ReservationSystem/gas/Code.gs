@@ -5,6 +5,7 @@ const SHEETS = {
   services: 'Services',
   technicians: 'Technicians',
   schedules: 'Schedules',
+  leaveRequests: 'LeaveRequests',
   users: 'Users',
   reservations: 'Reservations',
 };
@@ -17,9 +18,17 @@ const STATUS_DISABLED = '已停用';
 const STATUS_DRAFT = '未送審核';
 const STATUS_UNLINKED = '未綁定';
 
+const LEAVE_STATUS_PENDING = '待審核';
+const LEAVE_STATUS_APPROVED = '已通過';
+const LEAVE_STATUS_REJECTED = '已拒絕';
+const LEAVE_STATUS_CANCELLED = '已取消';
+
 const RESERVATION_STATUS_BOOKED = '已預約';
 const RESERVATION_STATUS_COMPLETED = '已完成';
 const RESERVATION_STATUS_CANCELLED = '已取消';
+
+const RESERVATION_CONFIRMATION_CONFIRMED = '已確認';
+const RESERVATION_CONFIRMATION_PENDING = '待確認';
 
 const ASSIGNMENT_TYPE_ON_SITE = '現場安排';
 const ASSIGNMENT_TYPE_DESIGNATED = '指定技師';
@@ -32,7 +41,7 @@ const DEFAULT_DISPLAY_NAME_SUPER_ADMIN = 'LINE 最高管理員';
 const MINUTES_PER_DAY = 24 * 60;
 const SERVICE_NAME_SEPARATOR = '、';
 
-const ADMIN_PAGE_KEYS = ['service', 'technician', 'schedule', 'reservation', 'user'];
+const ADMIN_PAGE_KEYS = ['service', 'technician', 'schedule', 'leave', 'reservation', 'user'];
 const ADMIN_PAGE_PERMISSION_NONE = '__NONE__';
 const ADMIN_ACTION_PAGE_MAP = {
   saveService: 'service',
@@ -46,6 +55,7 @@ const ADMIN_ACTION_PAGE_MAP = {
   saveSchedule: 'schedule',
   deleteSchedule: 'schedule',
   batchSaveSchedules: 'schedule',
+  reviewLeaveRequest: 'leave',
   saveReservation: 'reservation',
   deleteReservation: 'reservation',
   reviewUser: 'user',
@@ -122,6 +132,21 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: publicActions[action]() });
     }
 
+    if (action === 'confirmReservationByTechnician') {
+      var technicianActor = verifyTechnicianAccess_(body.technicianUserId);
+      return jsonResponse_({ ok: true, data: confirmReservationByTechnician_(payload, technicianActor) });
+    }
+
+    if (action === 'submitLeaveRequest') {
+      var leaveRequester = verifyTechnicianAccess_(body.technicianUserId);
+      return jsonResponse_({ ok: true, data: submitLeaveRequest_(payload, leaveRequester) });
+    }
+
+    if (action === 'cancelLeaveRequest') {
+      var leaveCanceller = verifyTechnicianAccess_(body.technicianUserId);
+      return jsonResponse_({ ok: true, data: cancelLeaveRequest_(payload, leaveCanceller) });
+    }
+
     /* --- Super-admin actions --- */
     var superAdminActions = {
       updateAdminPermission:   function() { return updateAdminPermission_(payload, body.adminUserId); },
@@ -152,6 +177,7 @@ function doPost(e) {
     var adminActions = {
       reviewUser:            function() { return reviewUser_(payload); },
       reviewTechnician:      function() { return reviewTechnician_(payload); },
+      reviewLeaveRequest:    function() { return reviewLeaveRequest_(payload, adminActor); },
       deleteUser:            function() { return deleteUser_(payload); },
       saveService:           function() { return saveService_(payload); },
       saveTechnician:        function() { return saveTechnician_(payload); },
@@ -214,6 +240,7 @@ function getAdminData_(adminUser) {
     var services = getTableRecords_(SHEETS.services).map(normalizeService_);
     var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
     var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+    var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
     var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
     var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
     var serviceMap = indexBy_(services, 'serviceId');
@@ -237,6 +264,7 @@ function getAdminData_(adminUser) {
       services: canViewServices ? services : [],
       technicians: canViewTechnicians ? technicians : [],
       schedules: hasAdminPagePermission_(currentAdminUser, 'schedule') ? schedules : [],
+      leaveRequests: hasAdminPagePermission_(currentAdminUser, 'leave') || hasAdminPagePermission_(currentAdminUser, 'schedule') ? leaveRequests : [],
       users: hasAdminPagePermission_(currentAdminUser, 'user') ? users : [],
       reservations: hasAdminPagePermission_(currentAdminUser, 'reservation') ? reservations : [],
     };
@@ -247,6 +275,7 @@ function getTechnicianData_(technicianUser) {
   return getCachedDataset_('technicianData:' + String(technicianUser.technicianId || ''), function() {
     var services = getTableRecords_(SHEETS.services).map(normalizeService_);
     var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+    var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
     var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
     var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
     var serviceMap = indexBy_(services, 'serviceId');
@@ -274,6 +303,13 @@ function getTechnicianData_(technicianUser) {
         })
         .sort(function(left, right) {
           return (String(right.date) + ' ' + String(right.startTime)).localeCompare(String(left.date) + ' ' + String(left.startTime));
+        }),
+      leaveRequests: leaveRequests
+        .filter(function(item) {
+          return item.technicianId === technicianId;
+        })
+        .sort(function(left, right) {
+          return (String(right.createdAt || right.startDate) + ' ' + String(right.leaveRequestId)).localeCompare(String(left.createdAt || left.startDate) + ' ' + String(left.leaveRequestId));
         }),
     };
   }, DATA_CACHE_TTL_SECONDS.adminData);
@@ -792,6 +828,7 @@ function createReservation_(payload) {
     startTime: reservationStartTime,
     endTime: minutesToTime_(reservationEnd),
     status: RESERVATION_STATUS_BOOKED,
+    technicianConfirmedAt: '',
     note: note,
     createdAt: toIsoString_(new Date()),
   };
@@ -1084,12 +1121,203 @@ function saveReservation_(payload) {
     startTime: normalizeTimeString_(payload.startTime),
     endTime: minutesToTime_(reservationEnd),
     status: status,
+    technicianConfirmedAt: existing && !shouldResetReservationTechnicianConfirmation_(existing, {
+      technicianId: payload.technicianId,
+      assignmentType: String(payload.assignmentType || '').trim() || '',
+      serviceIds: serviceIds,
+      date: normalizeDateString_(payload.date),
+      startTime: normalizeTimeString_(payload.startTime),
+    })
+      ? String(existing.technicianConfirmedAt || '').trim()
+      : '',
     note: sanitizeTextInput_(payload.note || ''),
     createdAt: existing && existing.createdAt ? existing.createdAt : toIsoString_(new Date()),
   };
 
   upsertRecord_(SHEETS.reservations, 'reservationId', record);
   return record;
+}
+
+function confirmReservationByTechnician_(payload, technicianUser) {
+  validateRequired_(payload.reservationId, 'reservationId');
+
+  var reservationId = String(payload.reservationId || '').trim();
+  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+  var reservation = reservations.find(function(item) {
+    return item.reservationId === reservationId;
+  });
+
+  if (!reservation) {
+    throw new Error('找不到預約資料');
+  }
+
+  if (reservation.technicianId !== String(technicianUser && technicianUser.technicianId || '').trim()) {
+    throw new Error('你只能確認自己的預約');
+  }
+
+  if (normalizeReservationStatus_(reservation.status) !== RESERVATION_STATUS_BOOKED) {
+    throw new Error('只有狀態為已預約的紀錄可以確認');
+  }
+
+  var record = {
+    reservationId: reservation.reservationId,
+    userId: reservation.userId,
+    userDisplayName: reservation.userDisplayName,
+    customerName: sanitizeTextInput_(reservation.customerName),
+    phone: normalizePhone_(reservation.phone, false),
+    technicianId: reservation.technicianId,
+    assignmentType: reservation.assignmentType,
+    serviceId: reservation.serviceId,
+    date: reservation.date,
+    startTime: reservation.startTime,
+    endTime: reservation.endTime,
+    status: reservation.status,
+    technicianConfirmedAt: toIsoString_(new Date()),
+    note: sanitizeTextInput_(reservation.note || ''),
+    createdAt: reservation.createdAt,
+  };
+
+  upsertRecord_(SHEETS.reservations, 'reservationId', record);
+
+  var services = getTableRecords_(SHEETS.services).map(normalizeService_);
+  var users = getTableRecords_(SHEETS.users).map(normalizeUser_);
+  return enrichReservation_(normalizeReservation_(record), indexBy_(services, 'serviceId'), null, indexBy_(users, 'userId'));
+}
+
+function submitLeaveRequest_(payload, technicianUser) {
+  validateRequired_(payload.startDate, 'startDate');
+
+  var technicianId = String(technicianUser && technicianUser.technicianId || '').trim();
+  var startDate = normalizeDateString_(payload.startDate);
+  var endDate = normalizeDateString_(payload.endDate || payload.startDate);
+  var reason = sanitizeTextInput_(payload.reason || '');
+  var leaveDates = enumerateDateRangeStrings_(startDate, endDate);
+  var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
+
+  if (leaveDates.length > 31) {
+    throw new Error('單次最多可申請 31 天休假');
+  }
+
+  var duplicated = leaveRequests.find(function(item) {
+    if (item.technicianId !== technicianId) {
+      return false;
+    }
+
+    if (item.status !== LEAVE_STATUS_PENDING && item.status !== LEAVE_STATUS_APPROVED) {
+      return false;
+    }
+
+    return rangesOverlap_(item.startDate, item.endDate, startDate, endDate);
+  });
+
+  if (duplicated) {
+    throw new Error('此日期區間已有待審核或已通過的休假申請');
+  }
+
+  var nowText = toIsoString_(new Date());
+  var record = {
+    leaveRequestId: createId_('LEV'),
+    technicianId: technicianId,
+    technicianName: String(technicianUser && technicianUser.name || technicianUser && technicianUser.displayName || '').trim(),
+    lineUserId: String(technicianUser && technicianUser.lineUserId || technicianUser && technicianUser.userId || '').trim(),
+    startDate: startDate,
+    endDate: endDate,
+    reason: reason,
+    status: LEAVE_STATUS_PENDING,
+    reviewNote: '',
+    createdAt: nowText,
+    updatedAt: nowText,
+    reviewedAt: '',
+    reviewedBy: '',
+  };
+
+  appendRecord_(SHEETS.leaveRequests, record);
+  return normalizeLeaveRequest_(record);
+}
+
+function cancelLeaveRequest_(payload, technicianUser) {
+  validateRequired_(payload.leaveRequestId, 'leaveRequestId');
+
+  var leaveRequestId = String(payload.leaveRequestId || '').trim();
+  var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
+  var leaveRequest = leaveRequests.find(function(item) {
+    return item.leaveRequestId === leaveRequestId;
+  });
+
+  if (!leaveRequest) {
+    throw new Error('找不到休假申請');
+  }
+
+  if (leaveRequest.technicianId !== String(technicianUser && technicianUser.technicianId || '').trim()) {
+    throw new Error('你只能取消自己的休假申請');
+  }
+
+  if (leaveRequest.status !== LEAVE_STATUS_PENDING) {
+    throw new Error('只有待審核的休假申請可以取消');
+  }
+
+  var record = {
+    leaveRequestId: leaveRequest.leaveRequestId,
+    technicianId: leaveRequest.technicianId,
+    technicianName: leaveRequest.technicianName,
+    lineUserId: leaveRequest.lineUserId,
+    startDate: leaveRequest.startDate,
+    endDate: leaveRequest.endDate,
+    reason: sanitizeTextInput_(leaveRequest.reason || ''),
+    status: LEAVE_STATUS_CANCELLED,
+    reviewNote: leaveRequest.reviewNote,
+    createdAt: leaveRequest.createdAt,
+    updatedAt: toIsoString_(new Date()),
+    reviewedAt: leaveRequest.reviewedAt,
+    reviewedBy: leaveRequest.reviewedBy,
+  };
+
+  upsertRecord_(SHEETS.leaveRequests, 'leaveRequestId', record);
+  return normalizeLeaveRequest_(record);
+}
+
+function reviewLeaveRequest_(payload, adminUser) {
+  validateRequired_(payload.leaveRequestId, 'leaveRequestId');
+  validateRequired_(payload.status, 'status');
+
+  var leaveRequestId = String(payload.leaveRequestId || '').trim();
+  var nextStatus = normalizeLeaveRequestStatus_(payload.status);
+  var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
+  var leaveRequest = leaveRequests.find(function(item) {
+    return item.leaveRequestId === leaveRequestId;
+  });
+
+  if (!leaveRequest) {
+    throw new Error('找不到休假申請');
+  }
+
+  if (leaveRequest.status !== LEAVE_STATUS_PENDING) {
+    throw new Error('此休假申請已完成審核');
+  }
+
+  if (nextStatus === LEAVE_STATUS_APPROVED) {
+    applyLeaveRequestToSchedules_(leaveRequest);
+  }
+
+  var reviewTime = toIsoString_(new Date());
+  var record = {
+    leaveRequestId: leaveRequest.leaveRequestId,
+    technicianId: leaveRequest.technicianId,
+    technicianName: leaveRequest.technicianName,
+    lineUserId: leaveRequest.lineUserId,
+    startDate: leaveRequest.startDate,
+    endDate: leaveRequest.endDate,
+    reason: sanitizeTextInput_(leaveRequest.reason || ''),
+    status: nextStatus,
+    reviewNote: sanitizeTextInput_(payload.note || leaveRequest.reviewNote || ''),
+    createdAt: leaveRequest.createdAt,
+    updatedAt: reviewTime,
+    reviewedAt: reviewTime,
+    reviewedBy: String(adminUser && adminUser.userId || '').trim(),
+  };
+
+  upsertRecord_(SHEETS.leaveRequests, 'leaveRequestId', record);
+  return normalizeLeaveRequest_(record);
 }
 
 function deleteService_(payload) {
@@ -1160,6 +1388,10 @@ function deleteTechnician_(payload) {
 
   deleteRecordsByPredicate_(SHEETS.schedules, function(item) {
     return String(item.technicianId) === technicianId;
+  });
+
+  deleteRecordsByPredicate_(SHEETS.leaveRequests, function(item) {
+    return String(item.technicianId || '').trim() === technicianId;
   });
 
   deleteRecord_(SHEETS.technicians, 'technicianId', technicianId);
@@ -1306,8 +1538,9 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt', 'lineUserId', 'profileDisplayName', 'pictureUrl', 'reviewStatus', 'reviewNote', 'lastLoginAt']);
   ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
+  ensureSheet_(SHEETS.leaveRequests, ['leaveRequestId', 'technicianId', 'technicianName', 'lineUserId', 'startDate', 'endDate', 'reason', 'status', 'reviewNote', 'createdAt', 'updatedAt', 'reviewedAt', 'reviewedBy']);
   ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
-  ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'assignmentType', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'note', 'createdAt']);
+  ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'assignmentType', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'technicianConfirmedAt', 'note', 'createdAt']);
   ensurePlainTextColumns_(SHEETS.users, ['phone']);
   ensurePlainTextColumns_(SHEETS.reservations, ['phone']);
   migrateLegacySuperAdmins_();
@@ -1886,6 +2119,24 @@ function normalizeSchedule_(item) {
   };
 }
 
+function normalizeLeaveRequest_(item) {
+  return {
+    leaveRequestId: String(item.leaveRequestId || ''),
+    technicianId: String(item.technicianId || ''),
+    technicianName: String(item.technicianName || ''),
+    lineUserId: String(item.lineUserId || '').trim(),
+    startDate: normalizeDateString_(item.startDate),
+    endDate: normalizeDateString_(item.endDate || item.startDate),
+    reason: String(item.reason || '').trim(),
+    status: normalizeLeaveRequestStatus_(item.status),
+    reviewNote: String(item.reviewNote || '').trim(),
+    createdAt: String(item.createdAt || ''),
+    updatedAt: String(item.updatedAt || ''),
+    reviewedAt: String(item.reviewedAt || ''),
+    reviewedBy: String(item.reviewedBy || '').trim(),
+  };
+}
+
 function normalizeReservation_(item) {
   var serviceIds = normalizeServiceIds_(item.serviceIds || item.serviceId);
   var assignmentType = normalizeReservationAssignmentType_(item.assignmentType, item.technicianId);
@@ -1903,9 +2154,15 @@ function normalizeReservation_(item) {
     startTime: normalizeTimeString_(item.startTime),
     endTime: normalizeTimeString_(item.endTime),
     status: normalizeReservationStatus_(item.status || RESERVATION_STATUS_BOOKED),
+    technicianConfirmedAt: normalizeReservationConfirmationTimestamp_(item.technicianConfirmedAt),
+    technicianConfirmationStatus: getReservationTechnicianConfirmationStatus_(item),
     note: String(item.note || ''),
     createdAt: String(item.createdAt || ''),
   };
+}
+
+function normalizeReservationConfirmationTimestamp_(value) {
+  return String(value || '').trim();
 }
 
 function normalizeUser_(item) {
@@ -1983,6 +2240,9 @@ function getAdminPageLabel_(pageKey) {
   if (pageKey === 'schedule') {
     return '班表';
   }
+  if (pageKey === 'leave') {
+    return '休假';
+  }
   if (pageKey === 'reservation') {
     return '預約';
   }
@@ -2032,7 +2292,38 @@ function hasAdminPagePermission_(adminUser, pageKey) {
     return false;
   }
 
+  if (String(pageKey || '').trim() === 'leave') {
+    return (adminUser.pagePermissions || []).indexOf('leave') !== -1
+      || (adminUser.pagePermissions || []).indexOf('schedule') !== -1;
+  }
+
   return (adminUser.pagePermissions || []).indexOf(String(pageKey || '').trim()) !== -1;
+}
+
+function normalizeLeaveRequestStatus_(value) {
+  var status = String(value || '').trim();
+
+  if (!status) {
+    return LEAVE_STATUS_PENDING;
+  }
+
+  if (status === 'pending' || status === LEAVE_STATUS_PENDING) {
+    return LEAVE_STATUS_PENDING;
+  }
+
+  if (status === 'approved' || status === LEAVE_STATUS_APPROVED) {
+    return LEAVE_STATUS_APPROVED;
+  }
+
+  if (status === 'rejected' || status === LEAVE_STATUS_REJECTED) {
+    return LEAVE_STATUS_REJECTED;
+  }
+
+  if (status === 'cancelled' || status === LEAVE_STATUS_CANCELLED) {
+    return LEAVE_STATUS_CANCELLED;
+  }
+
+  return status;
 }
 
 function normalizeAdminStatus_(value) {
@@ -2293,6 +2584,12 @@ function normalizeReservationStatus_(value) {
   return status;
 }
 
+function getReservationTechnicianConfirmationStatus_(reservation) {
+  return normalizeReservationConfirmationTimestamp_(reservation && reservation.technicianConfirmedAt)
+    ? RESERVATION_CONFIRMATION_CONFIRMED
+    : RESERVATION_CONFIRMATION_PENDING;
+}
+
 function normalizeReservationAssignmentType_(value, technicianId) {
   var assignmentType = String(value || '').trim();
   if (assignmentType) {
@@ -2316,6 +2613,23 @@ function getReservationTechnicianLabel_(reservation, technicianMap) {
 
 function isReservationCancelled_(status) {
   return normalizeReservationStatus_(status) === RESERVATION_STATUS_CANCELLED;
+}
+
+function shouldResetReservationTechnicianConfirmation_(existingReservation, nextReservation) {
+  if (!existingReservation || !normalizeReservationConfirmationTimestamp_(existingReservation.technicianConfirmedAt)) {
+    return false;
+  }
+
+  var existingAssignmentType = normalizeReservationAssignmentType_(existingReservation.assignmentType, existingReservation.technicianId);
+  var nextAssignmentType = normalizeReservationAssignmentType_(nextReservation.assignmentType, nextReservation.technicianId);
+  var existingServiceIds = normalizeServiceIds_(existingReservation.serviceIds || existingReservation.serviceId).join(',');
+  var nextServiceIds = normalizeServiceIds_(nextReservation.serviceIds || nextReservation.serviceId).join(',');
+
+  return String(existingReservation.technicianId || '').trim() !== String(nextReservation.technicianId || '').trim()
+    || existingAssignmentType !== nextAssignmentType
+    || existingServiceIds !== nextServiceIds
+    || normalizeDateString_(existingReservation.date) !== normalizeDateString_(nextReservation.date)
+    || normalizeTimeString_(existingReservation.startTime) !== normalizeTimeString_(nextReservation.startTime);
 }
 
 function getReservationOccupiedEndMinutes_(reservation, serviceMap) {
@@ -2355,6 +2669,80 @@ function addDaysToDateString_(dateText, offsetDays) {
   var baseDate = new Date(String(dateText) + 'T00:00:00');
   baseDate.setDate(baseDate.getDate() + Number(offsetDays || 0));
   return normalizeDateString_(baseDate);
+}
+
+function enumerateDateRangeStrings_(startDate, endDate) {
+  var normalizedStartDate = normalizeDateString_(startDate);
+  var normalizedEndDate = normalizeDateString_(endDate || startDate);
+  var start = new Date(String(normalizedStartDate) + 'T00:00:00');
+  var end = new Date(String(normalizedEndDate) + 'T00:00:00');
+  var result = [];
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    throw new Error('日期區間不正確');
+  }
+
+  while (start <= end) {
+    result.push(normalizeDateString_(start));
+    start.setDate(start.getDate() + 1);
+    if (result.length > 366) {
+      throw new Error('日期區間過長');
+    }
+  }
+
+  return result;
+}
+
+function rangesOverlap_(leftStart, leftEnd, rightStart, rightEnd) {
+  return normalizeDateString_(leftStart) <= normalizeDateString_(rightEnd)
+    && normalizeDateString_(rightStart) <= normalizeDateString_(leftEnd);
+}
+
+function applyLeaveRequestToSchedules_(leaveRequest) {
+  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+  var technician = technicians.find(function(item) {
+    return item.technicianId === String(leaveRequest && leaveRequest.technicianId || '').trim();
+  });
+  var services = getTableRecords_(SHEETS.services).map(normalizeService_);
+  var reservations = getTableRecords_(SHEETS.reservations).map(normalizeReservation_);
+  var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+  var serviceMap = indexBy_(services, 'serviceId');
+  var leaveDates = enumerateDateRangeStrings_(leaveRequest.startDate, leaveRequest.endDate);
+  var nowText = toIsoString_(new Date());
+
+  if (!technician) {
+    throw new Error('找不到休假申請對應的技師');
+  }
+
+  var conflictedReservation = reservations.find(function(item) {
+    if (item.technicianId !== technician.technicianId || isReservationCancelled_(item.status)) {
+      return false;
+    }
+
+    return leaveDates.some(function(leaveDate) {
+      return Boolean(getReservationCoverageForDate_(item, serviceMap, leaveDate));
+    });
+  });
+
+  if (conflictedReservation) {
+    throw new Error('此休假區間已有預約紀錄，請先調整預約後再審核通過');
+  }
+
+  leaveDates.forEach(function(leaveDate) {
+    var existingSchedule = schedules.find(function(item) {
+      return item.technicianId === technician.technicianId && item.date === leaveDate;
+    });
+
+    upsertRecordByComposite_(SHEETS.schedules, ['technicianId', 'date'], {
+      scheduleId: existingSchedule && existingSchedule.scheduleId ? existingSchedule.scheduleId : createId_('SCH'),
+      technicianId: technician.technicianId,
+      date: leaveDate,
+      startTime: existingSchedule && existingSchedule.startTime ? existingSchedule.startTime : technician.startTime,
+      endTime: existingSchedule && existingSchedule.endTime ? existingSchedule.endTime : technician.endTime,
+      isWorking: false,
+      updatedAt: nowText,
+    });
+  });
 }
 
 function getScheduleCoverageForDate_(schedule, actualDate) {

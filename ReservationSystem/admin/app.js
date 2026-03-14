@@ -4,11 +4,12 @@ const ADMIN_STORAGE_KEYS = {
 };
 const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
-const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user", "admin"];
+const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "leave", "reservation", "user", "admin"];
 const ADMIN_PAGE_OPTIONS = [
   { key: "service", label: "服務" },
   { key: "technician", label: "技師" },
   { key: "schedule", label: "班表" },
+  { key: "leave", label: "休假" },
   { key: "reservation", label: "預約" },
   { key: "user", label: "用戶審核" },
 ];
@@ -42,6 +43,16 @@ const frameworkView = frameworkEnabled
         days: [],
         entries: [],
         emptyMessage: "尚未選取日期。",
+      },
+      leaveRequest: {
+        summary: {
+          pendingCount: 0,
+          approvedCount: 0,
+          rejectedCount: 0,
+          cancelledCount: 0,
+        },
+        rows: [],
+        emptyMessage: "尚無休假申請。",
       },
       reservation: {
         rows: [],
@@ -83,6 +94,7 @@ const state = {
   services: [],
   technicians: [],
   schedules: [],
+  leaveRequests: [],
   users: [],
   reservations: [],
   serviceCategoryMap: {},
@@ -161,6 +173,9 @@ const elements = {
   scheduleForm: document.querySelector("#scheduleForm"),
   scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
+  leaveRequestResultLabel: document.querySelector("#leaveRequestResultLabel"),
+  leaveRequestSummary: document.querySelector("#leaveRequestSummary"),
+  leaveRequestTable: document.querySelector("#leaveRequestTable"),
   scheduleCalendarLabel: document.querySelector("#scheduleCalendarLabel"),
   scheduleCalendarGrid: document.querySelector("#scheduleCalendarGrid"),
   schedulePrevMonthButton: document.querySelector("#schedulePrevMonthButton"),
@@ -806,6 +821,9 @@ function getAllowedAdminPages() {
     : [];
 
   const allowed = ADMIN_PAGE_KEYS.filter((pageKey) => pagePermissions.includes(pageKey));
+  if (allowed.includes("schedule") && !allowed.includes("leave")) {
+    allowed.push("leave");
+  }
   if (state.adminUser?.canManageAdmins && !allowed.includes("admin")) {
     allowed.push("admin");
   }
@@ -1491,6 +1509,7 @@ function updateStats() {
   const activeServices = state.services.filter((item) => item.active).length;
   const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
   const bookedReservations = state.reservations.filter((item) => item.status === "已預約").length;
+  const confirmedReservations = state.reservations.filter((item) => item.technicianConfirmedAt).length;
   const completedReservations = state.reservations.filter((item) => item.status === "已完成").length;
   const cancelledReservations = state.reservations.filter((item) => item.status === "已取消").length;
 
@@ -1501,7 +1520,7 @@ function updateStats() {
   elements.scheduleStat.textContent = String(state.schedules.length);
   elements.scheduleMeta.textContent = `${workingSchedules} 筆可預約`;
   elements.reservationStat.textContent = String(state.reservations.length);
-  elements.reservationMeta.textContent = `已預約 ${bookedReservations} / 已完成 ${completedReservations} / 已取消 ${cancelledReservations}`;
+  elements.reservationMeta.textContent = `已預約 ${bookedReservations} / 技師已確認 ${confirmedReservations} / 已完成 ${completedReservations} / 已取消 ${cancelledReservations}`;
 
   if (elements.adminStat) {
     const approvedAdmins = state.adminUsers.filter((item) => item.status === "已通過").length;
@@ -1524,6 +1543,20 @@ function getActiveStatusDescriptor(isActive) {
 
 function getScheduleStatusDescriptor(isWorking) {
   return isWorking ? getStatusDescriptor("可預約", "working") : getStatusDescriptor("休假", "off");
+}
+
+function getLeaveRequestStatusDescriptor(status) {
+  if (status === "已通過") {
+    return getStatusDescriptor(status, "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusDescriptor(status, "rejected");
+  }
+  if (status === "已取消") {
+    return getStatusDescriptor(status, "cancelled");
+  }
+
+  return getStatusDescriptor(status || "待審核", "pending");
 }
 
 function getReservationStatusDescriptor(status) {
@@ -1587,6 +1620,22 @@ function getReservationStatusPill(status) {
     return getStatusPill(status, "cancelled");
   }
   return getStatusPill(status || "已預約", "booked");
+}
+
+function getReservationTechnicianConfirmationDescriptor(reservation) {
+  if (reservation?.technicianConfirmedAt) {
+    return {
+      label: "已確認",
+      tone: "approved",
+      detail: formatDateTimeText(reservation.technicianConfirmedAt),
+    };
+  }
+
+  return {
+    label: "待確認",
+    tone: "pending",
+    detail: "技師尚未確認",
+  };
 }
 
 function getUserStatusPill(status) {
@@ -1705,9 +1754,10 @@ function updateWorkspaceOverview() {
   const pendingReservations = state.reservations.filter((item) => item.status === "已預約").length;
   const pendingUsers = state.users.filter((item) => item.status === "待審核").length;
   const pendingTechnicians = state.technicians.filter((item) => item.status === "待審核").length;
+  const pendingLeaveRequests = state.leaveRequests.filter((item) => item.status === "待審核").length;
 
   if (elements.workflowSummary) {
-    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約、${pendingUsers} 位待審核用戶、${pendingTechnicians} 位待審核技師`;
+    elements.workflowSummary.textContent = `${activeTechnicians} 位啟用技師、${activeServices} 項啟用服務、${pendingReservations} 筆待處理預約、${pendingUsers} 位待審核用戶、${pendingTechnicians} 位待審核技師、${pendingLeaveRequests} 筆待審核休假`;
   }
 
   if (!elements.workflowHint) {
@@ -1741,6 +1791,11 @@ function updateWorkspaceOverview() {
 
   if (pendingTechnicians) {
     elements.workflowHint.textContent = `目前有 ${pendingTechnicians} 位技師待審核，通過後才能登入 technician 頁面。`;
+    return;
+  }
+
+  if (pendingLeaveRequests) {
+    elements.workflowHint.textContent = `目前有 ${pendingLeaveRequests} 筆休假申請待審核，通過後會直接同步到班表。`;
     return;
   }
 
@@ -1952,6 +2007,88 @@ function mountFrameworkApps() {
     }).mount(elements.scheduleTable);
   }
 
+  if (elements.leaveRequestSummary) {
+    createApp({
+      setup() {
+        return frameworkView.leaveRequest;
+      },
+      template: `
+        <div v-cloak>
+          <article class="review-card">
+            <span>待審核</span>
+            <strong>{{ summary.pendingCount }}</strong>
+            <small>等待 admin 審核後才會寫入班表</small>
+          </article>
+          <article class="review-card">
+            <span>已通過</span>
+            <strong>{{ summary.approvedCount }}</strong>
+            <small>已同步進入班表日曆</small>
+          </article>
+          <article class="review-card">
+            <span>已拒絕</span>
+            <strong>{{ summary.rejectedCount }}</strong>
+            <small>技師可重新送出新的休假申請</small>
+          </article>
+          <article class="review-card">
+            <span>已取消</span>
+            <strong>{{ summary.cancelledCount }}</strong>
+            <small>技師在審核前自行取消</small>
+          </article>
+        </div>
+      `,
+    }).mount(elements.leaveRequestSummary);
+  }
+
+  if (elements.leaveRequestTable) {
+    createApp({
+      setup() {
+        return frameworkView.leaveRequest;
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <table v-else class="list-table">
+            <thead>
+              <tr>
+                <th>技師</th>
+                <th>日期</th>
+                <th>原因</th>
+                <th>狀態</th>
+                <th>送出時間</th>
+                <th>審核備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.leaveRequestId">
+                <td data-label="技師">
+                  <div class="user-cell__meta">
+                    <strong>{{ row.technicianName }}</strong>
+                    <small>{{ row.technicianId }}</small>
+                  </div>
+                </td>
+                <td data-label="日期">{{ row.dateLabel }}</td>
+                <td data-label="原因">{{ row.reason || '未填寫' }}</td>
+                <td data-label="狀態">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="送出時間">{{ row.createdAtText }}</td>
+                <td data-label="審核備註">{{ row.reviewNote || '尚無備註' }}</td>
+                <td data-label="操作" class="table-cell-actions">
+                  <div v-if="row.canReview" class="table-actions stacked-actions">
+                    <button type="button" class="button button--ghost" :data-review-leave-request="row.leaveRequestId" data-review-leave-status="已通過">通過</button>
+                    <button type="button" class="button button--danger" :data-review-leave-request="row.leaveRequestId" data-review-leave-status="已拒絕">拒絕</button>
+                  </div>
+                  <span v-else class="helper-text">已完成審核</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `,
+    }).mount(elements.leaveRequestTable);
+  }
+
   if (elements.reservationTable) {
     createApp({
       setup() {
@@ -1970,6 +2107,7 @@ function mountFrameworkApps() {
                 <th>技師</th>
                 <th>服務</th>
                 <th>狀態</th>
+                <th>技師確認</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -1983,6 +2121,12 @@ function mountFrameworkApps() {
                 <td data-label="服務">{{ row.serviceLabel }}</td>
                 <td data-label="狀態">
                   <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                </td>
+                <td data-label="技師確認">
+                  <div class="table-status-stack">
+                    <span class="status-pill" :class="'status-pill--' + row.confirmation.tone">{{ row.confirmation.label }}</span>
+                    <small>{{ row.confirmation.detail }}</small>
+                  </div>
                 </td>
                 <td data-label="操作" class="table-cell-actions">
                   <div class="table-actions">
@@ -2880,6 +3024,79 @@ function renderScheduleTable() {
   renderSelectedScheduleDetail();
 }
 
+function getLeaveRequestDateLabel(leaveRequest) {
+  if (!leaveRequest) {
+    return "";
+  }
+
+  if (leaveRequest.startDate === leaveRequest.endDate) {
+    return leaveRequest.startDate;
+  }
+
+  return `${leaveRequest.startDate} 至 ${leaveRequest.endDate}`;
+}
+
+function renderLeaveRequestSummary() {
+  if (!elements.leaveRequestSummary || !frameworkView) {
+    return;
+  }
+
+  frameworkView.leaveRequest.summary = {
+    pendingCount: state.leaveRequests.filter((item) => item.status === "待審核").length,
+    approvedCount: state.leaveRequests.filter((item) => item.status === "已通過").length,
+    rejectedCount: state.leaveRequests.filter((item) => item.status === "已拒絕").length,
+    cancelledCount: state.leaveRequests.filter((item) => item.status === "已取消").length,
+  };
+}
+
+function renderLeaveRequestTable() {
+  if (elements.leaveRequestResultLabel) {
+    elements.leaveRequestResultLabel.textContent = `顯示 ${state.leaveRequests.length} / ${state.leaveRequests.length} 筆`;
+  }
+
+  renderLeaveRequestSummary();
+
+  if (!elements.leaveRequestTable || !frameworkView) {
+    return;
+  }
+
+  if (!state.leaveRequests.length) {
+    frameworkView.leaveRequest.rows = [];
+    frameworkView.leaveRequest.emptyMessage = "尚無休假申請。";
+    return;
+  }
+
+  frameworkView.leaveRequest.rows = state.leaveRequests
+    .slice()
+    .sort((left, right) => {
+      const statusRank = {
+        "待審核": 0,
+        "已通過": 1,
+        "已拒絕": 2,
+        "已取消": 3,
+      };
+      const leftRank = statusRank[left.status] ?? 9;
+      const rightRank = statusRank[right.status] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      return String(right.createdAt || right.startDate).localeCompare(String(left.createdAt || left.startDate));
+    })
+    .map((leaveRequest) => ({
+      leaveRequestId: leaveRequest.leaveRequestId,
+      technicianId: leaveRequest.technicianId,
+      technicianName: leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId,
+      dateLabel: getLeaveRequestDateLabel(leaveRequest),
+      reason: leaveRequest.reason || "",
+      status: getLeaveRequestStatusDescriptor(leaveRequest.status),
+      createdAtText: formatDateTimeText(leaveRequest.createdAt),
+      reviewNote: leaveRequest.reviewNote || "",
+      canReview: leaveRequest.status === "待審核",
+    }));
+  frameworkView.leaveRequest.emptyMessage = "";
+}
+
 function renderScheduleCalendar() {
   const monthKey = state.ui.scheduleCalendarMonth;
   const { firstDay, lastDay } = getMonthBoundary(monthKey);
@@ -3010,6 +3227,7 @@ function renderReservationTable() {
       technicianLabel: getReservationTechnicianLabel(reservation),
       serviceLabel: reservation.serviceName || reservation.serviceId,
       status: getReservationStatusDescriptor(reservation.status),
+      confirmation: getReservationTechnicianConfirmationDescriptor(reservation),
     }));
   frameworkView.reservation.emptyMessage = "";
 }
@@ -3286,6 +3504,7 @@ function renderAll() {
   renderTechnicianReviewTable();
   bulkTechnicianModule.renderTable();
   renderScheduleTable();
+  renderLeaveRequestTable();
   renderReservationTable();
   renderUserTable();
   renderAdminManagementTable();
@@ -3337,6 +3556,7 @@ async function loadAdminData() {
   state.adminUser = result.data.currentAdminUser || state.adminUsers.find((item) => item.userId === getCurrentAdminUserId()) || state.adminUser;
   state.technicians = result.data.technicians || [];
   state.schedules = result.data.schedules || [];
+  state.leaveRequests = result.data.leaveRequests || [];
   state.users = result.data.users || [];
   state.reservations = result.data.reservations || [];
   renderAdminAccessState();
@@ -3705,6 +3925,48 @@ async function reviewUser(userId, status) {
 
   await loadAdminData();
   setStatus(`已將 ${user.displayName} 設為${status}。`, "success");
+}
+
+async function reviewLeaveRequest(leaveRequestId, status) {
+  const leaveRequest = state.leaveRequests.find((item) => item.leaveRequestId === leaveRequestId);
+  if (!leaveRequest) {
+    throw new Error("找不到休假申請資料");
+  }
+
+  if (leaveRequest.status !== "待審核") {
+    setStatus("這筆休假申請已完成審核。", "info");
+    return;
+  }
+
+  const note = window.prompt(
+    `請輸入「${leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId}」的休假審核備註：`,
+    leaveRequest.reviewNote || ""
+  );
+  if (note === null) {
+    setStatus("已取消休假審核操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新休假審核狀態...");
+  const result = await requestApi("POST", {}, {
+    action: "reviewLeaveRequest",
+    payload: {
+      leaveRequestId,
+      status,
+      note,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新休假審核失敗");
+  }
+
+  await loadAdminData();
+  setStatus(
+    status === "已通過"
+      ? "休假已審核通過，並同步寫入班表。"
+      : "休假申請已更新為已拒絕。",
+    "success"
+  );
 }
 
 async function deleteUser(userId, userName) {
@@ -4224,6 +4486,19 @@ function bindEvents() {
     try {
       const [dateText, technicianId] = deleteButton.dataset.deleteSchedule.split("::");
       await deleteSchedule(dateText, technicianId, deleteButton.dataset.technicianName);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.leaveRequestTable?.addEventListener("click", async (event) => {
+    const reviewButton = event.target.closest("[data-review-leave-request]");
+    if (!reviewButton) {
+      return;
+    }
+
+    try {
+      await reviewLeaveRequest(reviewButton.dataset.reviewLeaveRequest, reviewButton.dataset.reviewLeaveStatus);
     } catch (error) {
       setStatus(error.message, "error");
     }

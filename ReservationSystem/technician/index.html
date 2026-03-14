@@ -100,6 +100,35 @@
           <div id="serviceList" class="card-list"></div>
         </section>
 
+        <section class="panel section-panel">
+          <div class="section-header section-header--stack">
+            <div>
+              <p class="eyebrow">Leave</p>
+              <h2>休假申請</h2>
+              <p class="section-copy">送出休假日期後，會進入 admin 審核；通過後會直接同步到班表日曆。</p>
+            </div>
+            <strong id="leaveRequestMeta" class="calendar-month-label">尚無申請紀錄</strong>
+          </div>
+          <form id="leaveRequestForm" class="leave-form">
+            <label class="leave-form__field">
+              <span>開始日期</span>
+              <input name="startDate" type="date" required />
+            </label>
+            <label class="leave-form__field">
+              <span>結束日期</span>
+              <input name="endDate" type="date" required />
+            </label>
+            <label class="leave-form__field leave-form__field--full">
+              <span>原因</span>
+              <textarea name="reason" rows="3" placeholder="例如：個人事假、家庭行程、進修課程"></textarea>
+            </label>
+            <div class="leave-form__actions">
+              <button type="submit" class="button button--primary">送出休假申請</button>
+            </div>
+          </form>
+          <div id="leaveRequestList" class="card-list leave-request-list"></div>
+        </section>
+
         <section class="panel section-panel section-panel--full">
           <div class="section-header section-header--stack">
             <div>
@@ -109,6 +138,7 @@
             </div>
             <div class="calendar-legend" aria-label="日曆圖例">
               <span class="calendar-legend__item"><span class="calendar-dot calendar-dot--schedule" aria-hidden="true"></span>班表</span>
+              <span class="calendar-legend__item"><span class="calendar-dot calendar-dot--leave" aria-hidden="true"></span>休假</span>
               <span class="calendar-legend__item"><span class="calendar-dot calendar-dot--reservation" aria-hidden="true"></span>預約</span>
             </div>
           </div>

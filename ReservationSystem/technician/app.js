@@ -9,6 +9,7 @@ const state = {
   technician: null,
   services: [],
   schedules: [],
+  leaveRequests: [],
   reservations: [],
   calendar: {
     currentMonth: getMonthKeyFromDate(new Date()),
@@ -42,6 +43,9 @@ const elements = {
   scheduleCountStat: document.querySelector("#scheduleCountStat"),
   reservationCountStat: document.querySelector("#reservationCountStat"),
   serviceList: document.querySelector("#serviceList"),
+  leaveRequestForm: document.querySelector("#leaveRequestForm"),
+  leaveRequestMeta: document.querySelector("#leaveRequestMeta"),
+  leaveRequestList: document.querySelector("#leaveRequestList"),
   calendarPrevButton: document.querySelector("#calendarPrevButton"),
   calendarNextButton: document.querySelector("#calendarNextButton"),
   calendarMonthLabel: document.querySelector("#calendarMonthLabel"),
@@ -240,6 +244,22 @@ function getStatusPill(status) {
     return '<span class="status-pill status-pill--cancelled">已取消</span>';
   }
   return `<span class="status-pill status-pill--draft">${status || "未設定"}</span>`;
+}
+
+function getReservationConfirmationDescriptor(reservation) {
+  if (reservation?.technicianConfirmedAt) {
+    return {
+      label: "技師已確認",
+      tone: "approved",
+      timeText: formatDateTimeText(reservation.technicianConfirmedAt),
+    };
+  }
+
+  return {
+    label: "待技師確認",
+    tone: "pending",
+    timeText: "尚未確認",
+  };
 }
 
 function escapeHtml(value) {
@@ -445,6 +465,107 @@ function renderServices() {
     .join("");
 }
 
+function getLeaveRequestStatusPill(status) {
+  if (status === "已通過") {
+    return '<span class="status-pill status-pill--approved">已通過</span>';
+  }
+  if (status === "已拒絕") {
+    return '<span class="status-pill status-pill--rejected">已拒絕</span>';
+  }
+  if (status === "已取消") {
+    return '<span class="status-pill status-pill--cancelled">已取消</span>';
+  }
+
+  return '<span class="status-pill status-pill--pending">待審核</span>';
+}
+
+function getLeaveRequestDateLabel(leaveRequest) {
+  if (!leaveRequest) {
+    return "";
+  }
+
+  if (leaveRequest.startDate === leaveRequest.endDate) {
+    return leaveRequest.startDate;
+  }
+
+  return `${leaveRequest.startDate} 至 ${leaveRequest.endDate}`;
+}
+
+function renderLeaveRequests() {
+  if (!elements.leaveRequestList || !elements.leaveRequestMeta) {
+    return;
+  }
+
+  const pendingCount = state.leaveRequests.filter((item) => item.status === "待審核").length;
+  elements.leaveRequestMeta.textContent = state.leaveRequests.length
+    ? `共 ${state.leaveRequests.length} 筆，待審核 ${pendingCount} 筆`
+    : "尚無申請紀錄";
+
+  if (!state.leaveRequests.length) {
+    elements.leaveRequestList.innerHTML = '<div class="empty-state">目前沒有休假申請，送出後會在這裡看到審核狀態。</div>';
+    return;
+  }
+
+  elements.leaveRequestList.innerHTML = state.leaveRequests
+    .map(
+      (leaveRequest) => `
+        <article class="service-card leave-request-card">
+          <div class="leave-request-card__header">
+            <strong>${escapeHtml(getLeaveRequestDateLabel(leaveRequest))}</strong>
+            ${getLeaveRequestStatusPill(leaveRequest.status)}
+          </div>
+          <p>${escapeHtml(leaveRequest.reason || "未填寫原因")}</p>
+          <div class="service-card__meta">
+            <span class="hero-tag">送出：${escapeHtml(formatDateTimeText(leaveRequest.createdAt))}</span>
+            ${leaveRequest.reviewNote ? `<span class="hero-tag">審核備註：${escapeHtml(leaveRequest.reviewNote)}</span>` : ""}
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+async function submitLeaveRequest(event) {
+  event.preventDefault();
+
+  if (!elements.leaveRequestForm) {
+    return;
+  }
+
+  const formData = new FormData(elements.leaveRequestForm);
+  const startDate = String(formData.get("startDate") || "").trim();
+  const endDate = String(formData.get("endDate") || startDate).trim();
+  const reason = String(formData.get("reason") || "").trim();
+
+  if (!startDate) {
+    throw new Error("請先選擇休假開始日期");
+  }
+
+  if (endDate < startDate) {
+    throw new Error("休假結束日期不可早於開始日期");
+  }
+
+  showLoading("正在送出休假申請...", "loading");
+  const result = await requestApi("POST", {}, {
+    action: "submitLeaveRequest",
+    payload: {
+      startDate,
+      endDate,
+      reason,
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "送出休假申請失敗");
+  }
+
+  elements.leaveRequestForm.reset();
+  elements.leaveRequestForm.startDate.value = startDate;
+  elements.leaveRequestForm.endDate.value = endDate;
+  await loadTechnicianData();
+  setStatus("休假申請已送出，等待 admin 審核。", "success");
+}
+
 function getCalendarDataMap() {
   const dataMap = new Map();
 
@@ -563,15 +684,28 @@ function renderCalendarDetail(dataMap) {
       ${entry.reservations.length
         ? `<div class="calendar-detail-list">${entry.reservations
             .map(
-              (reservation) => `
+              (reservation) => {
+                const confirmation = getReservationConfirmationDescriptor(reservation);
+                const canConfirm = reservation.status === "已預約" && !reservation.technicianConfirmedAt;
+                return `
                 <article class="calendar-detail-card">
-                  <div>
+                  <div class="calendar-detail-card__main">
                     <strong>${escapeHtml(reservation.startTime)} - ${escapeHtml(reservation.endTime)}</strong>
                     <p>${escapeHtml(reservation.serviceName || "未設定服務")}</p>
+                    <div class="calendar-detail-card__meta">
+                      <span class="status-pill status-pill--${confirmation.tone}">${confirmation.label}</span>
+                      <small>${escapeHtml(confirmation.timeText)}</small>
+                    </div>
                   </div>
-                  ${getStatusPill(reservation.status)}
+                  <div class="calendar-detail-card__side">
+                    ${getStatusPill(reservation.status)}
+                    ${canConfirm
+                      ? `<button type="button" class="button button--secondary button--compact" data-confirm-reservation="${escapeHtml(reservation.reservationId)}">確認已查看</button>`
+                      : ""}
+                  </div>
                 </article>
-              `
+              `;
+              }
             )
             .join("")}</div>`
         : '<div class="empty-state">當日沒有預約安排。</div>'}
@@ -603,19 +737,21 @@ function renderCalendar() {
     const entry = dataMap.get(dateKey) || { schedules: [], reservations: [] };
     const isToday = dateKey === getDateKey(new Date());
     const isSelected = dateKey === state.calendar.selectedDate;
-    const scheduleCount = entry.schedules.length;
+    const workingScheduleCount = entry.schedules.filter((schedule) => schedule.isWorking).length;
+    const leaveCount = entry.schedules.filter((schedule) => !schedule.isWorking).length;
     const reservationCount = entry.reservations.length;
 
     dayCells.push(`
       <button
         type="button"
-        class="calendar-day${isToday ? " calendar-day--today" : ""}${isSelected ? " calendar-day--selected" : ""}${scheduleCount ? " calendar-day--has-schedule" : ""}${reservationCount ? " calendar-day--has-reservation" : ""}"
+        class="calendar-day${isToday ? " calendar-day--today" : ""}${isSelected ? " calendar-day--selected" : ""}${workingScheduleCount ? " calendar-day--has-schedule" : ""}${leaveCount ? " calendar-day--has-leave" : ""}${reservationCount ? " calendar-day--has-reservation" : ""}"
         data-date="${dateKey}"
         aria-pressed="${isSelected ? "true" : "false"}"
       >
         <span class="calendar-day__number">${dayNumber}</span>
         <span class="calendar-day__badges">
-          ${scheduleCount ? `<span class="calendar-day__badge calendar-day__badge--schedule">班表 ${scheduleCount}</span>` : ""}
+          ${workingScheduleCount ? `<span class="calendar-day__badge calendar-day__badge--schedule">班表 ${workingScheduleCount}</span>` : ""}
+          ${leaveCount ? `<span class="calendar-day__badge calendar-day__badge--leave">休假 ${leaveCount}</span>` : ""}
           ${reservationCount ? `<span class="calendar-day__badge calendar-day__badge--reservation">預約 ${reservationCount}</span>` : ""}
         </span>
       </button>
@@ -655,6 +791,7 @@ function renderSummary() {
 function renderAll() {
   renderSummary();
   renderServices();
+  renderLeaveRequests();
   renderCalendar();
 }
 
@@ -667,11 +804,31 @@ async function loadTechnicianData() {
   state.technician = result.data.technician || state.technician;
   state.services = result.data.services || [];
   state.schedules = result.data.schedules || [];
+  state.leaveRequests = result.data.leaveRequests || [];
   state.reservations = result.data.reservations || [];
   syncCalendarMonthWithData();
   renderAccessState();
   renderAll();
   setStatus("技師資料已同步。", "success");
+}
+
+async function confirmReservationByTechnician(reservationId) {
+  const result = await requestApi("POST", {}, {
+    action: "confirmReservationByTechnician",
+    payload: {
+      reservationId,
+    },
+  });
+
+  if (!result.ok) {
+    throw new Error(result.message || "確認預約失敗");
+  }
+
+  state.reservations = state.reservations.map((reservation) =>
+    reservation.reservationId === reservationId ? { ...reservation, ...result.data } : reservation
+  );
+  renderAll();
+  setStatus("已確認這筆預約，admin 端會同步看到。", "success");
 }
 
 async function refreshTechnicianIdentity(options = {}) {
@@ -744,6 +901,7 @@ function bindEvents() {
       state.technician = null;
       state.services = [];
       state.schedules = [];
+      state.leaveRequests = [];
       state.reservations = [];
       state.calendar.currentMonth = getMonthKeyFromDate(new Date());
       state.calendar.selectedDate = "";
@@ -781,11 +939,40 @@ function bindEvents() {
     state.calendar.selectedDate = "";
     renderCalendar();
   });
+
+  elements.calendarDetailContent?.addEventListener("click", async (event) => {
+    const confirmButton = event.target.closest("[data-confirm-reservation]");
+    if (!confirmButton) {
+      return;
+    }
+
+    try {
+      confirmButton.disabled = true;
+      await confirmReservationByTechnician(confirmButton.dataset.confirmReservation || "");
+    } catch (error) {
+      setStatus(error.message, "error");
+    } finally {
+      confirmButton.disabled = false;
+    }
+  });
+
+  elements.leaveRequestForm?.addEventListener("submit", async (event) => {
+    try {
+      await submitLeaveRequest(event);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
 }
 
 async function initializeApp() {
   await loadConfigFromJson();
   bindEvents();
+  if (elements.leaveRequestForm) {
+    const today = getDateKey(new Date());
+    elements.leaveRequestForm.startDate.value = today;
+    elements.leaveRequestForm.endDate.value = today;
+  }
   renderAccessState();
   renderAll();
 

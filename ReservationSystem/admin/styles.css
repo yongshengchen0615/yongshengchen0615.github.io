@@ -969,6 +969,15 @@ body.is-sheet-open {
   align-items: stretch;
 }
 
+.table-status-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.table-status-stack small {
+  color: var(--muted);
+}
+
 .table-cell-actions {
   min-width: 160px;
 }

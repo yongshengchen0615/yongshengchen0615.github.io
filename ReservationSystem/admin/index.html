@@ -143,10 +143,11 @@
                 <button type="button" class="nav-link active page-tab" data-page-trigger="service">服務</button>
                 <button type="button" class="nav-link page-tab" data-page-trigger="technician">技師</button>
                 <button type="button" class="nav-link page-tab" data-page-trigger="schedule">班表</button>
+                <button type="button" class="nav-link page-tab" data-page-trigger="leave">休假</button>
                 <button type="button" class="nav-link page-tab" data-page-trigger="reservation">預約</button>
                 <button type="button" class="nav-link page-tab" data-page-trigger="user">用戶審核</button>
                 <button type="button" class="nav-link page-tab" data-page-trigger="admin">管理員</button>
-                <button type="button" id="refreshDashboardButton" class="button button--primary ms-auto flex-shrink-0" data-admin-page-scope="service,technician,schedule,reservation,user,admin">重新同步資料</button>
+                <button type="button" id="refreshDashboardButton" class="button button--primary ms-auto flex-shrink-0" data-admin-page-scope="service,technician,schedule,leave,reservation,user,admin">重新同步資料</button>
               </div>
             </div>
           </div>
@@ -389,6 +390,24 @@
             </form>
           </div>
         </section>
+
+          <!-- ===== Leave Section ===== -->
+          <section id="leaveSection" class="card glass-card admin-page-panel is-hidden" data-admin-page="leave">
+            <div class="card-body p-4">
+              <div class="d-sm-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                  <p class="eyebrow">Leave Review</p>
+                  <h2>休假審核</h2>
+                  <p class="text-body-secondary">技師送出的休假申請會集中在這裡。審核通過後，系統會直接把休假寫入班表日曆。</p>
+                </div>
+                <div class="text-sm-end">
+                  <p id="leaveRequestResultLabel" class="text-body-secondary fw-bold mb-0">顯示 0 / 0 筆</p>
+                </div>
+              </div>
+              <div id="leaveRequestSummary" class="review-summary mb-3"></div>
+              <div id="leaveRequestTable" class="table-wrap"></div>
+            </div>
+          </section>
 
         <!-- ===== Reservation Section ===== -->
         <section id="reservationSection" class="card glass-card admin-page-panel is-hidden" data-admin-page="reservation">

@@ -30,7 +30,7 @@
           <div class="col-12 col-xl-7">
             <p class="eyebrow">Super Admin Access</p>
             <h1>最高管理員權限中心</h1>
-            <p class="section-copy">只有最高管理員可登入此頁，並設定各 admin 可使用哪些後台頁面。</p>
+            <p class="section-copy">只有最高管理員可登入此頁，並設定各 admin 的審核狀態、管理權限與可使用的後台頁面。</p>
           </div>
           <div class="access-panel__actions col-12 col-xl-5 d-grid gap-2 d-sm-flex justify-content-xl-end align-items-stretch">
             <button type="button" id="loginButton" class="button button--primary">LINE 登入</button>
@@ -48,7 +48,7 @@
             </div>
           </div>
           <p id="statusText" class="section-copy">請先登入 LINE，系統會確認你是否屬於最高管理員名單。</p>
-          <div id="approvalBanner" class="approval-banner" data-tone="info">此頁僅提供最高管理員設定 admin 的頁面權限。</div>
+          <div id="approvalBanner" class="approval-banner" data-tone="info">此頁提供最高管理員審核 admin 帳號，並設定管理權限與頁面權限。</div>
         </div>
       </div>
     </section>
@@ -58,7 +58,7 @@
         <div class="col-12 col-xl-7">
           <p class="eyebrow">Authority Matrix</p>
           <h2>admin 頁面權限設定</h2>
-          <p class="section-copy">可設定每位 admin 能否使用服務、技師、班表、預約、用戶審核頁面。</p>
+          <p class="section-copy">可設定每位 admin 是否通過審核，以及能否使用服務、技師、班表、休假、預約、用戶審核頁面。</p>
         </div>
         <div class="hero-meta col-12 col-xl-5 row g-3">
           <div class="col-12 col-sm-6 col-xl-12 col-xxl-6">
@@ -80,8 +80,8 @@
         <div class="section-header">
           <div>
             <p class="eyebrow">Permission Control</p>
-            <h2>頁面權限設定</h2>
-            <p class="section-copy">先點擊修改管理員，再一次儲存該 admin 的備註與頁面權限設定。</p>
+            <h2>管理員審核與權限設定</h2>
+            <p class="section-copy">先點擊修改管理員，再一次儲存該 admin 的審核狀態、備註與頁面權限設定。</p>
           </div>
         </div>
         <div id="adminPermissionTable" class="data-list"></div>
