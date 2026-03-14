@@ -194,7 +194,7 @@
             </div>
             <datalist id="serviceCategorySuggestions"></datalist>
             <div id="serviceTable" class="data-list"></div>
-            <section id="serviceEditPanel" class="sub-panel is-hidden">
+            <section id="serviceEditPanel" class="sub-panel service-edit-panel is-hidden">
               <div class="d-sm-flex justify-content-between align-items-start gap-3 mb-3">
                 <div>
                   <p class="eyebrow">Service Editor</p>
@@ -203,14 +203,16 @@
                 </div>
                 <span id="serviceEditMode" class="mode-badge is-hidden">編輯模式</span>
               </div>
-              <form id="serviceEditForm" class="d-grid gap-3">
+              <form id="serviceEditForm" class="service-edit-form">
                 <input type="hidden" name="serviceId" />
-                <label class="field"><span>服務名稱</span><input name="name" type="text" placeholder="例如：剪髮、染髮、手部凝膠" required /></label>
-                <label class="field"><span>服務類別</span><input name="category" type="text" list="serviceCategorySuggestions" placeholder="例如：剪髮、染髮、美甲、護理" /></label>
-                <label class="field"><span>服務時間（分鐘）</span><input name="durationMinutes" type="number" min="10" step="5" required /></label>
-                <label class="field"><span>價格</span><input name="price" type="number" min="0" step="50" required /></label>
-                <label class="checkbox-field"><input name="active" type="checkbox" checked /><span>啟用此服務</span></label>
-                <div class="d-flex gap-2 flex-wrap">
+                <div class="service-edit-form__grid">
+                  <label class="field"><span>服務名稱</span><input name="name" type="text" placeholder="例如：剪髮、染髮、手部凝膠" required /></label>
+                  <label class="field"><span>服務類別</span><input name="category" type="text" list="serviceCategorySuggestions" placeholder="例如：剪髮、染髮、美甲、護理" /></label>
+                  <label class="field"><span>服務時間（分鐘）</span><input name="durationMinutes" type="number" min="10" step="5" required /></label>
+                  <label class="field"><span>價格</span><input name="price" type="number" min="0" step="50" required /></label>
+                </div>
+                <label class="checkbox-field service-edit-form__status"><input name="active" type="checkbox" checked /><span>啟用此服務</span></label>
+                <div class="d-flex gap-2 flex-wrap service-edit-form__actions">
                   <button type="submit" id="serviceEditSubmitButton" class="button button--primary">更新服務</button>
                   <button type="button" id="serviceEditResetButton" class="button button--secondary">取消編輯</button>
                 </div>
@@ -258,24 +260,38 @@
                 </label>
               </div>
             </div>
-            <div id="technicianReviewSummary" class="review-summary"></div>
-            <p class="text-body-secondary small mb-3">技師首次進入 technician 頁面後，會在此出現 LINE 帳號。審核通過後才能讀取技師端資料。</p>
-            <div id="technicianReviewTable" class="table-wrap mb-4"></div>
-            <section class="sub-panel technician-bulk-panel">
+            <section class="technician-bulk-panel">
               <div class="d-sm-flex justify-content-between align-items-start gap-3 mb-3">
                 <div>
-                  <p class="eyebrow">Bulk Technician</p>
-                  <h3>批量新增 / 修改 / 刪除技師</h3>
-                  <p class="text-body-secondary">可直接在下方表格查看 LINE 名稱、修改技師名稱與班別，或勾選後批量刪除。</p>
+                  <p class="eyebrow">Technician Workspace</p>
+                  <h3>整合技師帳號與服務班別管理</h3>
+                  <p class="text-body-secondary">同一張表內查看 LINE 帳號、審核狀態、最後登入、備註，並直接修改技師名稱、班別與服務項目。<br /><small class="text-body-secondary">點擊下方狀態卡片可快速篩選對應審核狀態</small></p>
                 </div>
                 <p id="technicianBulkSelectionMeta" class="text-body-secondary fw-bold mb-0">尚未勾選任何技師</p>
               </div>
-              <div class="d-flex gap-2 flex-wrap mb-3">
-                <button type="button" id="technicianBulkAddRowButton" class="button button--secondary">新增一列</button>
-                <button type="button" id="technicianBulkSaveButton" class="button button--primary">儲存批量變更</button>
-                <button type="button" id="technicianBulkDeleteButton" class="button button--danger">刪除勾選技師</button>
+              <div id="technicianReviewSummary" class="review-summary review-summary--clickable"></div>
+              <div class="technician-action-bar">
+                <div class="technician-action-bar__left">
+                  <button type="button" id="technicianBulkAddRowButton" class="button button--secondary"><i class="bi bi-plus-lg"></i> 新增一列</button>
+                  <button type="button" id="technicianBulkSaveButton" class="button button--primary"><i class="bi bi-check2-all"></i> 儲存批量變更</button>
+                  <button type="button" id="technicianBulkDeleteButton" class="button button--danger"><i class="bi bi-trash3"></i> 刪除勾選技師</button>
+                </div>
+                <div class="technician-action-bar__right">
+                  <label class="checkbox-field checkbox-field--compact" id="technicianSelectAllLabel">
+                    <input type="checkbox" id="technicianSelectAllCheckbox" />
+                    <span>全選 / 取消全選</span>
+                  </label>
+                </div>
               </div>
+              <p class="text-body-secondary small mb-3">技師首次進入 technician 頁面後，LINE 帳號會顯示在此表中；審核通過後才能讀取技師端資料。</p>
               <div id="technicianBulkTable" class="table-wrap"></div>
+              <div id="technicianStickyBar" class="technician-sticky-bar">
+                <span id="technicianStickyMeta" class="technician-sticky-bar__meta">尚未勾選</span>
+                <div class="technician-sticky-bar__actions">
+                  <button type="button" id="technicianStickySaveButton" class="button button--primary button--compact"><i class="bi bi-check2-all"></i> 儲存變更</button>
+                  <button type="button" id="technicianStickyDeleteButton" class="button button--danger button--compact"><i class="bi bi-trash3"></i> 刪除勾選</button>
+                </div>
+              </div>
             </section>
           </div>
         </section>

@@ -153,6 +153,11 @@ const elements = {
   technicianBulkSaveButton: document.querySelector("#technicianBulkSaveButton"),
   technicianBulkDeleteButton: document.querySelector("#technicianBulkDeleteButton"),
   technicianBulkTable: document.querySelector("#technicianBulkTable"),
+  technicianSelectAllCheckbox: document.querySelector("#technicianSelectAllCheckbox"),
+  technicianStickyBar: document.querySelector("#technicianStickyBar"),
+  technicianStickyMeta: document.querySelector("#technicianStickyMeta"),
+  technicianStickySaveButton: document.querySelector("#technicianStickySaveButton"),
+  technicianStickyDeleteButton: document.querySelector("#technicianStickyDeleteButton"),
   scheduleForm: document.querySelector("#scheduleForm"),
   scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
@@ -1034,8 +1039,10 @@ function getFilteredTechnicians() {
     const matchesStatus = state.filters.technicianStatus === "all"
       || (state.filters.technicianStatus === "active" && item.active)
       || (state.filters.technicianStatus === "inactive" && !item.active);
+    const matchesReviewStatus = state.filters.technicianReviewStatus === "all"
+      || item.status === state.filters.technicianReviewStatus;
 
-    return matchesTechnician && matchesStatus;
+    return matchesTechnician && matchesStatus && matchesReviewStatus;
   });
 }
 
@@ -1199,6 +1206,7 @@ function resetServiceEditForm() {
   elements.serviceEditForm.category.value = "";
   elements.serviceEditForm.active.checked = true;
   elements.serviceEditPanel.classList.add("is-hidden");
+  elements.serviceEditMode.textContent = "編輯模式";
   elements.serviceEditMode.classList.add("is-hidden");
 }
 
@@ -1324,24 +1332,41 @@ function renderServiceSelectionCheckboxes(container, selectedIds = [], categoryF
     .sort(([left], [right]) => left.localeCompare(right, "zh-Hant"))
     .map(
       ([category, services]) => `
-        <section class="service-category-group">
-          <div class="section-header section-header--tight">
-            <h4 class="service-category-title">${category}</h4>
-            <span class="service-category-meta">${services.length} 項</span>
-          </div>
-          <div class="service-category-grid">
-            ${services
-              .map(
-                (service) => `
-                  <label class="checkbox-pill">
-                    <input type="checkbox" name="serviceIds" value="${service.serviceId}" ${
-                      checked.has(service.serviceId) ? "checked" : ""
-                    } />
-                    <span>${service.name}</span>
-                  </label>
-                `
-              )
-              .join("")}
+        <section class="bulk-service-category card border shadow-sm">
+          <div class="card-body p-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <h4 class="service-category-title mb-0">${escapeHtml(category)}</h4>
+              <span class="badge rounded-pill text-bg-secondary">${services.length} 項</span>
+            </div>
+            <div class="bulk-service-category__grid row g-2">
+              ${services
+                .map((service) => {
+                  const durationMinutes = Number(service.durationMinutes || 0);
+                  const price = Number(service.price || 0).toLocaleString("zh-TW");
+
+                  return `
+                    <div class="col-12 col-xxl-6">
+                      <label class="bulk-service-option card h-100 border-0 shadow-sm">
+                        <div class="card-body p-3">
+                          <div class="form-check m-0 d-flex align-items-start gap-2">
+                            <input class="form-check-input mt-1" type="checkbox" name="serviceIds" value="${escapeHtml(service.serviceId)}" ${
+                              checked.has(service.serviceId) ? "checked" : ""
+                            } />
+                            <span class="bulk-service-option__content">
+                              <strong>${escapeHtml(service.name)}</strong>
+                              <span class="bulk-service-option__meta">
+                                <span class="bulk-service-option__badge">${durationMinutes} 分鐘</span>
+                                <span class="bulk-service-option__badge">NT$ ${price}</span>
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>
           </div>
         </section>
       `
@@ -1781,22 +1806,22 @@ function mountFrameworkApps() {
       },
       template: `
         <div v-cloak>
-          <article class="review-card">
+          <article class="review-card" data-filter-review-status="未綁定" role="button" tabindex="0" title="點擊篩選未綁定技師">
             <span>未綁定</span>
             <strong>{{ summary.unlinkedCount }}</strong>
             <small>尚未有技師完成 technician 頁面的 LINE 登入</small>
           </article>
-          <article class="review-card">
+          <article class="review-card" data-filter-review-status="待審核" role="button" tabindex="0" title="點擊篩選待審核技師">
             <span>待審核</span>
             <strong>{{ summary.pendingCount }}</strong>
             <small>已登入 LINE，等待 admin 審核通過</small>
           </article>
-          <article class="review-card">
+          <article class="review-card" data-filter-review-status="已通過" role="button" tabindex="0" title="點擊篩選已通過技師">
             <span>已通過</span>
             <strong>{{ summary.approvedCount }}</strong>
             <small>可進入 technician 頁面查看自己的資料</small>
           </article>
-          <article class="review-card">
+          <article class="review-card" data-filter-review-status="已拒絕" role="button" tabindex="0" title="點擊篩選已拒絕/已停用技師">
             <span>已拒絕 / 已停用</span>
             <strong>{{ summary.blockedCount }}</strong>
             <small>登入後會被阻擋，需重新調整狀態</small>
@@ -1846,8 +1871,10 @@ function mountFrameworkApps() {
                   <span v-else class="helper-text">尚未登入 technician 頁面</span>
                 </td>
                 <td data-label="服務 / 班別">
-                  <div>{{ row.serviceLabel }}</div>
-                  <span class="helper-text">{{ row.scheduleMeta }}</span>
+                  <div class="review-service-cell">
+                    <span class="review-service-cell__names" :title="row.serviceLabel">{{ row.serviceLabel || '尚未綁定服務' }}</span>
+                    <span class="review-service-cell__meta">{{ row.scheduleMeta }}</span>
+                  </div>
                 </td>
                 <td data-label="技師狀態">
                   <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
@@ -2191,6 +2218,45 @@ function getBulkTechnicianServicesLabel(serviceIds = []) {
     .join("、");
 }
 
+function getBulkTechnicianLineAccountMarkup(technician, technicianName) {
+  const lineUserId = technician?.lineUserId || "";
+  const lineDisplayName = technician?.profileDisplayName || "";
+  const pictureUrl = technician?.pictureUrl || "";
+  const lineInitial = escapeHtml((lineDisplayName || technicianName || "T").slice(0, 1));
+
+  if (!lineUserId) {
+    return '<div class="bulk-technician-empty">尚未登入 technician 頁面</div>';
+  }
+
+  return `
+    <div class="user-cell bulk-technician-line-account">
+      ${pictureUrl
+        ? `<img class="user-avatar" src="${escapeHtml(pictureUrl)}" alt="${escapeHtml(lineDisplayName || technicianName)}" />`
+        : `<div class="user-avatar user-avatar--placeholder">${lineInitial}</div>`}
+      <div class="user-cell__meta">
+        <strong>${escapeHtml(lineDisplayName || technicianName || "未命名 LINE 使用者")}</strong>
+        <small>${escapeHtml(lineUserId)}</small>
+      </div>
+    </div>
+  `;
+}
+
+function getBulkTechnicianReviewActionsMarkup(technicianId, canReview) {
+  if (!technicianId) {
+    return '<div class="bulk-technician-empty">新列需先儲存後才可審核</div>';
+  }
+
+  const disabled = canReview ? "" : "disabled";
+  return `
+    <div class="bulk-technician-row-actions d-grid gap-2">
+      <button type="button" class="btn btn-sm btn-outline-success" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已通過" ${disabled}>通過</button>
+      <button type="button" class="btn btn-sm btn-outline-warning" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="待審核" ${disabled}>設待審核</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已拒絕" ${disabled}>拒絕</button>
+      <button type="button" class="btn btn-sm btn-outline-danger" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已停用" ${disabled}>停用</button>
+    </div>
+  `;
+}
+
 const bulkTechnicianModule = {
   getRows() {
     if (!elements.technicianBulkTable) {
@@ -2260,23 +2326,6 @@ const bulkTechnicianModule = {
     this.syncServiceSummary(row);
   },
 
-  toggleServiceEditor(row) {
-    if (!row) {
-      return;
-    }
-
-    const editor = row.querySelector("[data-bulk-service-editor]");
-    if (!editor) {
-      return;
-    }
-
-    const willOpen = editor.classList.contains("is-hidden");
-    editor.classList.toggle("is-hidden", !willOpen);
-    if (willOpen) {
-      this.renderServiceEditor(row);
-    }
-  },
-
   createRowMarkup(technician = null) {
     const technicianId = technician?.technicianId || "";
     const serviceIds = technician?.serviceIds || [];
@@ -2286,55 +2335,99 @@ const bulkTechnicianModule = {
     const technicianName = technician?.name || "";
     const startTime = technician?.startTime || "09:00";
     const endTime = technician?.endTime || "18:00";
+    const reviewStatus = technician?.status || "未綁定";
+    const active = technician?.active !== false;
+    const lastLoginAtText = formatDateTimeText(technician?.lastLoginAt);
+    const note = technician?.note || "";
+    const canReview = Boolean(technician?.lineUserId && technicianId);
 
     return `
       <tr data-bulk-technician-row data-technician-id="${escapeHtml(technicianId)}" data-service-ids="${escapeHtml(serviceIds.join(","))}">
-        <td data-label="勾選" class="bulk-technician-table__cell bulk-technician-table__cell--select">
-          <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
-        </td>
-        <td data-label="LINE 名稱" class="bulk-technician-table__cell bulk-technician-table__cell--line-name">
-          <input type="text" value="${escapeHtml(lineName)}" placeholder="尚未綁定 LINE" readonly />
-        </td>
-        <td data-label="技師名稱" class="bulk-technician-table__cell bulk-technician-table__cell--name">
-          <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
-        </td>
-        <td data-label="上班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <div class="time-wheel-field time-wheel-field--compact">
-            <input type="hidden" name="startTime" value="${escapeHtml(startTime)}" />
-            <button type="button" class="time-wheel-trigger time-wheel-trigger--compact" data-time-wheel-trigger>${escapeHtml(startTime)}</button>
-          </div>
-        </td>
-        <td data-label="下班時間" class="bulk-technician-table__cell bulk-technician-table__cell--time bulk-technician-table__time-cell">
-          <div class="time-wheel-field time-wheel-field--compact">
-            <input type="hidden" name="endTime" value="${escapeHtml(endTime)}" />
-            <button type="button" class="time-wheel-trigger time-wheel-trigger--compact" data-time-wheel-trigger>${escapeHtml(endTime)}</button>
-          </div>
-        </td>
-        <td data-label="啟用" class="bulk-technician-table__cell bulk-technician-table__cell--active">
-          <label class="checkbox-field checkbox-field--compact">
-            <input type="checkbox" name="active" ${technician?.active !== false ? "checked" : ""} />
-            <span>${technician?.active !== false ? "啟用" : "停用"}</span>
-          </label>
-        </td>
-        <td data-label="服務項目" class="bulk-technician-table__cell bulk-technician-table__cell--services">
-          <div class="bulk-technician-services">
-            <strong data-bulk-service-summary>${serviceSummary}</strong>
-            <small data-bulk-service-label title="${escapeHtml(serviceLabel)}">${escapeHtml(serviceLabel)}</small>
-            <div class="form-actions form-actions--compact bulk-technician-services__actions">
-              <button type="button" class="button button--ghost" data-bulk-toggle-services>編輯服務</button>
-              <button type="button" class="button button--secondary" data-bulk-select-visible-services>全選目前分類</button>
-              <button type="button" class="button button--secondary" data-bulk-clear-visible-services>清除此分類</button>
-            </div>
-            <div class="bulk-technician-services__editor is-hidden" data-bulk-service-editor>
-              <label class="field field--compact">
-                <span>服務分類</span>
-                <select data-bulk-service-category>
-                  ${this.getServiceCategoryOptions()}
-                </select>
-              </label>
-              <div class="checkbox-grid bulk-technician-services__grid" data-bulk-service-checkboxes></div>
+        <td data-label="技師" class="bulk-technician-table__cell bulk-technician-table__cell--identity">
+          <div class="bulk-technician-profile">
+            <label class="bulk-technician-profile__select">
+              <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
+              <span>勾選</span>
+            </label>
+            <div class="bulk-technician-profile__body">
+              <div class="bulk-technician-profile__meta">
+                <span class="bulk-technician-profile__label">技師名稱</span>
+                <small>${escapeHtml(technicianId || "新列")}</small>
+              </div>
+              <input type="text" name="name" value="${escapeHtml(technicianName)}" placeholder="輸入技師名稱" />
             </div>
           </div>
+        </td>
+        <td data-label="LINE 帳號" class="bulk-technician-table__cell bulk-technician-table__cell--line">
+          ${getBulkTechnicianLineAccountMarkup(technician, technicianName || lineName)}
+        </td>
+        <td data-label="服務 / 班別" class="bulk-technician-table__cell bulk-technician-table__cell--services">
+          <div class="shift-service-cell">
+            <div class="shift-service-cell__time">
+              <span class="shift-service-cell__time-label">預設班別</span>
+              <div class="shift-service-cell__time-row">
+                <div class="time-wheel-field time-wheel-field--compact shift-service-cell__time-picker">
+                  <input type="hidden" name="startTime" value="${escapeHtml(startTime)}" />
+                  <button type="button" class="time-wheel-trigger time-wheel-trigger--inline" data-time-wheel-trigger>${escapeHtml(startTime)}</button>
+                </div>
+                <span class="shift-service-cell__time-sep">–</span>
+                <div class="time-wheel-field time-wheel-field--compact shift-service-cell__time-picker">
+                  <input type="hidden" name="endTime" value="${escapeHtml(endTime)}" />
+                  <button type="button" class="time-wheel-trigger time-wheel-trigger--inline" data-time-wheel-trigger>${escapeHtml(endTime)}</button>
+                </div>
+              </div>
+            </div>
+            <div class="shift-service-cell__services">
+              <div class="shift-service-cell__summary">
+                <span class="shift-service-cell__count" data-bulk-service-summary>${serviceSummary}</span>
+                <span class="shift-service-cell__names" data-bulk-service-label title="${escapeHtml(serviceLabel)}">${escapeHtml(serviceLabel || '點擊下方編輯綁定服務')}</span>
+              </div>
+              <button type="button" class="shift-service-cell__edit-btn" data-toggle-service-editor>
+                <i class="bi bi-pencil-square"></i> 編輯服務
+              </button>
+            </div>
+            <div class="shift-service-cell__editor" data-bulk-service-editor>
+              <div class="shift-service-cell__editor-head">
+                <div class="shift-service-cell__editor-filter">
+                  <label class="shift-service-cell__editor-label">服務分類</label>
+                  <select data-bulk-service-category>
+                    ${this.getServiceCategoryOptions()}
+                  </select>
+                </div>
+                <div class="shift-service-cell__editor-actions">
+                  <button type="button" class="shift-service-cell__editor-btn" data-bulk-select-visible-services>全選</button>
+                  <button type="button" class="shift-service-cell__editor-btn" data-bulk-clear-visible-services>清除</button>
+                </div>
+              </div>
+              <div class="shift-service-cell__editor-grid" data-bulk-service-checkboxes></div>
+            </div>
+          </div>
+        </td>
+        <td data-label="技師狀態" class="bulk-technician-table__cell bulk-technician-table__cell--status">
+          <div class="bulk-technician-status-panel">
+            <div class="bulk-technician-status-panel__pills">
+              ${getTechnicianReviewStatusPill(reviewStatus)}
+              ${getActiveStatusPill(active)}
+            </div>
+            <label class="checkbox-field checkbox-field--compact bulk-technician-status-panel__toggle">
+              <input type="checkbox" name="active" ${active ? "checked" : ""} />
+              <span>${active ? "目前啟用" : "目前停用"}</span>
+            </label>
+          </div>
+        </td>
+        <td data-label="最後登入" class="bulk-technician-table__cell bulk-technician-table__cell--login">
+          <div class="bulk-technician-meta-card">
+            <strong>${escapeHtml(lastLoginAtText)}</strong>
+            <small>${escapeHtml(lineName || "尚未綁定 LINE 顯示名稱")}</small>
+          </div>
+        </td>
+        <td data-label="備註" class="bulk-technician-table__cell bulk-technician-table__cell--note">
+          <div class="bulk-technician-note">
+            ${note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>'}
+          </div>
+        </td>
+        <td data-label="操作" class="bulk-technician-table__cell bulk-technician-table__cell--actions table-cell-actions">
+          ${getBulkTechnicianReviewActionsMarkup(technicianId, canReview)}
         </td>
       </tr>
     `;
@@ -2345,12 +2438,7 @@ const bulkTechnicianModule = {
       return;
     }
 
-    this.renderServiceEditor(row);
     initializeTimeWheelFields(row);
-    const editor = row.querySelector("[data-bulk-service-editor]");
-    if (editor) {
-      editor.classList.add("is-hidden");
-    }
   },
 
   updateSelectionMeta() {
@@ -2360,9 +2448,22 @@ const bulkTechnicianModule = {
 
     const rows = this.getRows();
     const checkedCount = rows.filter((row) => row.querySelector('input[name="bulkTechnicianSelected"]')?.checked).length;
-    elements.technicianBulkSelectionMeta.textContent = checkedCount
+    const metaText = checkedCount
       ? `已勾選 ${checkedCount} 位技師`
       : `共 ${rows.length} 列，尚未勾選任何技師`;
+    elements.technicianBulkSelectionMeta.textContent = metaText;
+
+    if (elements.technicianSelectAllCheckbox) {
+      elements.technicianSelectAllCheckbox.checked = rows.length > 0 && checkedCount === rows.length;
+      elements.technicianSelectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < rows.length;
+    }
+
+    if (elements.technicianStickyBar) {
+      elements.technicianStickyBar.classList.toggle("is-visible", checkedCount > 0);
+    }
+    if (elements.technicianStickyMeta) {
+      elements.technicianStickyMeta.textContent = checkedCount ? `已勾選 ${checkedCount} 位技師` : "尚未勾選";
+    }
   },
 
   renderTable() {
@@ -2375,17 +2476,30 @@ const bulkTechnicianModule = {
       elements.technicianResultLabel.textContent = `顯示 ${technicians.length} / ${state.technicians.length} 位`;
     }
 
+    if (!technicians.length) {
+      const hasFilters = state.filters.technicianId || state.filters.technicianStatus !== "all" || state.filters.technicianReviewStatus !== "all";
+      elements.technicianBulkTable.innerHTML = hasFilters
+        ? '<div class="empty-state" style="padding:20px;text-align:center;">找不到符合條件的技師，請嘗試調整篩選條件。</div>'
+        : `<div class="technician-empty-guide">
+            <div class="technician-empty-guide__icon"><i class="bi bi-person-plus"></i></div>
+            <p class="technician-empty-guide__title">尚無技師資料</p>
+            <p class="technician-empty-guide__text">點擊上方「新增一列」按鈕建立第一位技師，<br />或等待技師透過 LINE 登入 technician 頁面後自動出現。</p>
+          </div>`;
+      this.updateSelectionMeta();
+      return;
+    }
+
     elements.technicianBulkTable.innerHTML = `
       <table class="list-table bulk-technician-table">
         <thead>
           <tr>
-            <th>勾選</th>
-            <th>LINE 名稱</th>
-            <th>技師名稱</th>
-            <th>上班時間</th>
-            <th>下班時間</th>
-            <th>啟用</th>
-            <th>服務項目</th>
+            <th>技師</th>
+            <th>LINE 帳號</th>
+            <th>服務 / 班別</th>
+            <th>技師狀態</th>
+            <th>最後登入</th>
+            <th>備註</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -2515,9 +2629,14 @@ const bulkTechnicianModule = {
 
     if (event.target.matches('input[name="active"]')) {
       const row = event.target.closest("[data-bulk-technician-row]");
-      const label = row?.querySelector('.checkbox-field--compact span');
+      const label = row?.querySelector('.bulk-technician-status-panel__toggle span');
       if (label) {
-        label.textContent = event.target.checked ? "啟用" : "停用";
+        label.textContent = event.target.checked ? "目前啟用" : "目前停用";
+      }
+      const pills = row?.querySelector('.bulk-technician-status-panel__pills');
+      if (pills) {
+        const current = state.technicians.find((item) => item.technicianId === row.dataset.technicianId);
+        pills.innerHTML = `${getTechnicianReviewStatusPill(current?.status || "未綁定")}${getActiveStatusPill(event.target.checked)}`;
       }
       return;
     }
@@ -2540,8 +2659,26 @@ const bulkTechnicianModule = {
       return;
     }
 
-    if (event.target.closest("[data-bulk-toggle-services]")) {
-      this.toggleServiceEditor(row);
+    const reviewButton = event.target.closest("[data-review-technician]");
+    if (reviewButton) {
+      reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus)
+        .catch((error) => setStatus(error.message, "error"));
+      return;
+    }
+
+    const toggleButton = event.target.closest("[data-toggle-service-editor]");
+    if (toggleButton) {
+      const editor = row.querySelector("[data-bulk-service-editor]");
+      if (editor) {
+        const isOpen = editor.classList.toggle("is-expanded");
+        toggleButton.classList.toggle("is-open", isOpen);
+        toggleButton.innerHTML = isOpen
+          ? '<i class="bi bi-chevron-up"></i> 收合'
+          : '<i class="bi bi-pencil-square"></i> 編輯服務';
+        if (isOpen && !editor.querySelector("[data-bulk-service-checkboxes]")?.childElementCount) {
+          this.renderServiceEditor(row);
+        }
+      }
       return;
     }
 
@@ -2608,10 +2745,20 @@ function renderTechnicianReviewSummary() {
       state.technicians.filter((item) => item.status === "已拒絕").length
       + state.technicians.filter((item) => item.status === "已停用").length,
   };
+
+  window.requestAnimationFrame(() => {
+    if (!elements.technicianReviewSummary) {
+      return;
+    }
+    const activeStatus = state.filters.technicianReviewStatus;
+    elements.technicianReviewSummary.querySelectorAll("[data-filter-review-status]").forEach((el) => {
+      el.classList.toggle("is-active-filter", el.dataset.filterReviewStatus === activeStatus);
+    });
+  });
 }
 
 function renderTechnicianReviewTable() {
-  if (!elements.technicianReviewTable || !frameworkView) {
+  if (!frameworkView) {
     return;
   }
 
@@ -2625,6 +2772,10 @@ function renderTechnicianReviewTable() {
   };
 
   renderTechnicianReviewSummary();
+
+  if (!elements.technicianReviewTable) {
+    return;
+  }
 
   if (!technicians.length) {
     frameworkView.technicianReview.rows = [];
@@ -3360,6 +3511,7 @@ function fillServiceForm(serviceId) {
   elements.serviceEditForm.price.value = service.price;
   elements.serviceEditForm.active.checked = Boolean(service.active);
   elements.serviceEditPanel.classList.remove("is-hidden");
+  elements.serviceEditMode.textContent = `編輯：${service.name}`;
   elements.serviceEditMode.classList.remove("is-hidden");
   scrollToPanel(elements.serviceEditPanel);
 }
@@ -3829,27 +3981,89 @@ function bindEvents() {
   elements.technicianReviewStatusFilter.addEventListener("change", (event) => {
     state.filters.technicianReviewStatus = event.target.value;
     renderTechnicianReviewTable();
+    bulkTechnicianModule.renderTable();
   });
   bulkTechnicianModule.bindEvents();
 
-  elements.technicianReviewTable.addEventListener("click", async (event) => {
-    const focusButton = event.target.closest("[data-focus-technician]");
-    if (focusButton) {
-      focusTechnicianSettings(focusButton.dataset.focusTechnician);
-      return;
-    }
+  if (elements.technicianSelectAllCheckbox) {
+    elements.technicianSelectAllCheckbox.addEventListener("change", () => {
+      const checkedState = elements.technicianSelectAllCheckbox.checked;
+      bulkTechnicianModule.getRows().forEach((row) => {
+        const checkbox = row.querySelector('input[name="bulkTechnicianSelected"]');
+        if (checkbox) {
+          checkbox.checked = checkedState;
+        }
+      });
+      bulkTechnicianModule.updateSelectionMeta();
+    });
+  }
 
-    const reviewButton = event.target.closest("[data-review-technician]");
-    if (!reviewButton) {
-      return;
-    }
+  if (elements.technicianStickySaveButton) {
+    elements.technicianStickySaveButton.addEventListener("click", async () => {
+      try {
+        await bulkTechnicianModule.submit();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  }
 
-    try {
-      await reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+  if (elements.technicianStickyDeleteButton) {
+    elements.technicianStickyDeleteButton.addEventListener("click", async () => {
+      try {
+        await bulkTechnicianModule.deleteSelected();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  }
+
+  if (elements.technicianReviewSummary) {
+    elements.technicianReviewSummary.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-filter-review-status]");
+      if (!card) {
+        return;
+      }
+
+      const clickedStatus = card.dataset.filterReviewStatus;
+      const isSameFilter = state.filters.technicianReviewStatus === clickedStatus;
+      const nextStatus = isSameFilter ? "all" : clickedStatus;
+
+      state.filters.technicianReviewStatus = nextStatus;
+      if (elements.technicianReviewStatusFilter) {
+        elements.technicianReviewStatusFilter.value = nextStatus === "已拒絕" ? "已拒絕" : nextStatus;
+      }
+
+      elements.technicianReviewSummary.querySelectorAll("[data-filter-review-status]").forEach((el) => {
+        el.classList.toggle("is-active-filter", el.dataset.filterReviewStatus === nextStatus);
+      });
+
+      renderTechnicianReviewTable();
+      bulkTechnicianModule.renderTable();
+      setStatus(isSameFilter ? "已清除篩選。" : `已篩選：${clickedStatus}`, "info");
+    });
+  }
+
+  if (elements.technicianReviewTable) {
+    elements.technicianReviewTable.addEventListener("click", async (event) => {
+      const focusButton = event.target.closest("[data-focus-technician]");
+      if (focusButton) {
+        focusTechnicianSettings(focusButton.dataset.focusTechnician);
+        return;
+      }
+
+      const reviewButton = event.target.closest("[data-review-technician]");
+      if (!reviewButton) {
+        return;
+      }
+
+      try {
+        await reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  }
 
   elements.reservationSearchInput.addEventListener("input", (event) => {
     state.filters.reservationKeyword = event.target.value;
