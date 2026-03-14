@@ -382,18 +382,21 @@ function syncAdminUser_(payload) {
       return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, normalizeAdminUser_(mergedAdminRecord));
     }
 
-    return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, {
+    var initialAdminRecord = {
       userId: userId,
       displayName: String(payload.displayName || approvedSuperAdmin.displayName || DEFAULT_DISPLAY_NAME_SUPER_ADMIN).trim() || DEFAULT_DISPLAY_NAME_SUPER_ADMIN,
       pictureUrl: String(payload.pictureUrl || approvedSuperAdmin.pictureUrl || '').trim(),
       status: STATUS_APPROVED,
       canManageAdmins: false,
-      pagePermissions: ADMIN_PAGE_PERMISSION_NONE,
+      pagePermissions: serializeAdminPagePermissions_([], userId),
       note: String(approvedSuperAdmin.note || '').trim(),
-      createdAt: String(approvedSuperAdmin.createdAt || ''),
+      createdAt: String(approvedSuperAdmin.createdAt || nowText),
       updatedAt: nowText,
       lastLoginAt: nowText,
-    });
+    };
+
+    upsertRecord_(SHEETS.adminUsers, 'userId', initialAdminRecord);
+    return buildAdminIdentityFromSuperAdmin_(approvedSuperAdmin, normalizeAdminUser_(initialAdminRecord));
   }
 
   var nextStatus = existing && existing.status
@@ -2477,8 +2480,12 @@ function findApprovedSuperAdmin_(userId) {
 
 function buildAdminIdentityFromSuperAdmin_(superAdminUser, adminUser) {
   var normalizedAdminUserId = String(superAdminUser.userId || adminUser && adminUser.userId || '').trim();
-  var resolvedCanManageAdmins = normalizeAdminPermissionValue_(adminUser && adminUser.canManageAdmins, adminUser && adminUser.status, normalizedAdminUserId);
-  var resolvedPagePermissions = normalizeStoredAdminPagePermissions_(adminUser && adminUser.pagePermissions, normalizedAdminUserId);
+  var resolvedCanManageAdmins = adminUser
+    ? normalizeAdminPermissionValue_(adminUser.canManageAdmins, adminUser.status, normalizedAdminUserId)
+    : false;
+  var resolvedPagePermissions = adminUser
+    ? normalizeStoredAdminPagePermissions_(adminUser.pagePermissions, normalizedAdminUserId)
+    : [];
 
   return {
     userId: normalizedAdminUserId,
