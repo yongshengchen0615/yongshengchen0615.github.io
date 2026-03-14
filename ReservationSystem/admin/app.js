@@ -4,7 +4,14 @@ const ADMIN_STORAGE_KEYS = {
 };
 const CONFIG_PATH = "./config.json";
 const ONSITE_ASSIGNMENT_VALUE = "__ONSITE_ASSIGNMENT__";
-const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user"];
+const ADMIN_PAGE_KEYS = ["service", "technician", "schedule", "reservation", "user", "admin"];
+const ADMIN_PAGE_OPTIONS = [
+  { key: "service", label: "服務" },
+  { key: "technician", label: "技師" },
+  { key: "schedule", label: "班表" },
+  { key: "reservation", label: "預約" },
+  { key: "user", label: "用戶審核" },
+];
 const vueApi = window.Vue || null;
 const frameworkEnabled = Boolean(vueApi);
 const { createApp, reactive } = vueApi || {};
@@ -50,6 +57,16 @@ const frameworkView = frameworkEnabled
         rows: [],
         emptyMessage: "尚無任何 LINE 用戶登入紀錄。",
       },
+      adminManagement: {
+        summary: {
+          totalCount: 0,
+          approvedCount: 0,
+          pendingCount: 0,
+          canManageCount: 0,
+        },
+        rows: [],
+        emptyMessage: "尚無任何管理員登入紀錄。",
+      },
     })
   : null;
 
@@ -59,6 +76,7 @@ const state = {
   gasUrl: "",
   configGasUrl: "",
   liffId: "",
+  liffLoginRequired: true,
   profile: null,
   adminUser: null,
   adminUsers: [],
@@ -80,6 +98,8 @@ const state = {
     reservationTechnicianId: "",
     userKeyword: "",
     userStatus: "all",
+    adminKeyword: "",
+    adminStatus: "all",
   },
   ui: {
     busyCount: 0,
@@ -160,6 +180,13 @@ const elements = {
   userStatusFilter: document.querySelector("#userStatusFilter"),
   userResultLabel: document.querySelector("#userResultLabel"),
   userReviewSummary: document.querySelector("#userReviewSummary"),
+  adminSearchInput: document.querySelector("#adminSearchInput"),
+  adminStatusFilter: document.querySelector("#adminStatusFilter"),
+  adminResultLabel: document.querySelector("#adminResultLabel"),
+  adminManagementSummary: document.querySelector("#adminManagementSummary"),
+  adminManagementTable: document.querySelector("#adminManagementTable"),
+  adminStat: document.querySelector("#adminStat"),
+  adminMeta: document.querySelector("#adminMeta"),
   serviceTable: document.querySelector("#serviceTable"),
   scheduleTable: document.querySelector("#scheduleTable"),
   reservationTable: document.querySelector("#reservationTable"),
@@ -504,9 +531,11 @@ async function loadConfigFromJson() {
     const config = await response.json();
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
     state.liffId = normalizeLiffId(config.liffId);
+    state.liffLoginRequired = config.liffLoginRequired !== false;
   } catch (error) {
     state.configGasUrl = "";
     state.liffId = "";
+    state.liffLoginRequired = true;
   }
 }
 
@@ -610,6 +639,16 @@ function renderAdminAccessState() {
 }
 
 async function ensureLiffSession() {
+  if (!state.liffLoginRequired) {
+    state.profile = {
+      userId: "TEST_ADMIN_USER",
+      displayName: "測試管理員",
+      pictureUrl: "",
+    };
+    renderAdminAccessState();
+    return true;
+  }
+
   if (!state.liffId) {
     throw new Error("請先在 admin/config.json 設定 liffId。");
   }
@@ -759,7 +798,11 @@ function getAllowedAdminPages() {
     ? state.adminUser.pagePermissions
     : [];
 
-  return ADMIN_PAGE_KEYS.filter((pageKey) => pagePermissions.includes(pageKey));
+  const allowed = ADMIN_PAGE_KEYS.filter((pageKey) => pagePermissions.includes(pageKey));
+  if (state.adminUser?.canManageAdmins && !allowed.includes("admin")) {
+    allowed.push("admin");
+  }
+  return allowed;
 }
 
 function updateNoPagePermissionNotice(allowedPages) {
@@ -1430,6 +1473,12 @@ function updateStats() {
   elements.scheduleMeta.textContent = `${workingSchedules} 筆可預約`;
   elements.reservationStat.textContent = String(state.reservations.length);
   elements.reservationMeta.textContent = `已預約 ${bookedReservations} / 已完成 ${completedReservations} / 已取消 ${cancelledReservations}`;
+
+  if (elements.adminStat) {
+    const approvedAdmins = state.adminUsers.filter((item) => item.status === "已通過").length;
+    elements.adminStat.textContent = String(state.adminUsers.length);
+    elements.adminMeta.textContent = `${approvedAdmins} 位已通過`;
+  }
 }
 
 function getStatusPill(label, tone) {
@@ -2013,6 +2062,107 @@ function mountFrameworkApps() {
         </div>
       `,
     }).mount(elements.userTable);
+  }
+
+  if (elements.adminManagementSummary) {
+    createApp({
+      setup() {
+        return frameworkView.adminManagement;
+      },
+      template: `
+        <div v-cloak>
+          <article class="review-card">
+            <span>全部管理員</span>
+            <strong>{{ summary.totalCount }}</strong>
+            <small>所有已登入的管理員帳號</small>
+          </article>
+          <article class="review-card">
+            <span>已通過</span>
+            <strong>{{ summary.approvedCount }}</strong>
+            <small>可使用 admin 後台</small>
+          </article>
+          <article class="review-card">
+            <span>待審核</span>
+            <strong>{{ summary.pendingCount }}</strong>
+            <small>等待審核中</small>
+          </article>
+          <article class="review-card">
+            <span>可管理管理員</span>
+            <strong>{{ summary.canManageCount }}</strong>
+            <small>擁有管理員修改權限</small>
+          </article>
+        </div>
+      `,
+    }).mount(elements.adminManagementSummary);
+  }
+
+  if (elements.adminManagementTable) {
+    createApp({
+      setup() {
+        return frameworkView.adminManagement;
+      },
+      methods: {
+        pageOptions() {
+          return ADMIN_PAGE_OPTIONS;
+        },
+      },
+      template: `
+        <div v-cloak>
+          <div v-if="emptyMessage" class="empty-state">{{ emptyMessage }}</div>
+          <div v-else class="admin-mgmt-list">
+            <article v-for="row in rows" :key="row.userId" class="admin-mgmt-card" :data-admin-mgmt-card="row.userId">
+              <header class="admin-mgmt-card__header">
+                <div class="user-cell">
+                  <img v-if="row.pictureUrl" class="user-avatar" :src="row.pictureUrl" :alt="row.displayName" />
+                  <div v-else class="user-avatar user-avatar--placeholder">{{ row.initial }}</div>
+                  <div class="user-cell__meta">
+                    <strong>{{ row.displayName }}</strong>
+                    <small>{{ row.userId }}</small>
+                  </div>
+                </div>
+                <div class="admin-mgmt-card__pills">
+                  <span class="status-pill" :class="'status-pill--' + row.status.tone">{{ row.status.label }}</span>
+                  <span v-if="row.canManageAdmins" class="status-pill status-pill--active">可管理管理員</span>
+                  <span v-else class="status-pill status-pill--inactive">僅一般 admin</span>
+                  <span v-if="row.isCurrentUser" class="status-pill status-pill--active">目前登入</span>
+                </div>
+              </header>
+              <div class="admin-mgmt-card__body">
+                <div class="admin-mgmt-card__info">
+                  <div><span class="text-body-secondary">頁面權限：</span>{{ row.pagePermissionLabels }}</div>
+                  <div><span class="text-body-secondary">最後登入：</span>{{ row.lastLoginAtText }}</div>
+                  <div v-if="row.note"><span class="text-body-secondary">備註：</span>{{ row.note }}</div>
+                </div>
+                <details class="admin-mgmt-card__details">
+                  <summary class="button button--secondary button--compact">頁面權限設定</summary>
+                  <div class="admin-mgmt-card__page-editor">
+                    <label v-for="opt in pageOptions()" :key="opt.key" class="permission-checkbox-inline">
+                      <input type="checkbox" data-admin-page-checkbox :value="opt.key" :checked="row.pagePermissionLabels.includes(opt.label)" />
+                      <span>{{ opt.label }}</span>
+                    </label>
+                    <button type="button" class="button button--primary button--compact" :data-save-admin-pages="row.userId">儲存頁面權限</button>
+                  </div>
+                </details>
+              </div>
+              <footer class="admin-mgmt-card__actions">
+                <div class="table-actions stacked-actions">
+                  <button type="button" class="button button--ghost" :data-review-admin="row.userId" data-review-status="已通過">通過</button>
+                  <button type="button" class="button button--secondary button--compact" :data-review-admin="row.userId" data-review-status="待審核">設待審核</button>
+                  <button type="button" class="button button--secondary button--compact" :data-review-admin="row.userId" data-review-status="已拒絕">拒絕</button>
+                  <button type="button" class="button button--danger button--compact" :data-review-admin="row.userId" data-review-status="已停用">停用</button>
+                </div>
+                <div class="table-actions">
+                  <button v-if="!row.canManageAdmins" type="button" class="button button--primary button--compact" :data-toggle-admin-permission="row.userId" data-can-manage-admins="true">授予修改權限</button>
+                  <button v-else type="button" class="button button--danger button--compact" :data-toggle-admin-permission="row.userId" data-can-manage-admins="false">收回修改權限</button>
+                  <button v-if="!row.isCurrentUser" type="button" class="button button--danger button--compact" :data-delete-admin="row.userId">刪除管理員</button>
+                  <span v-else class="helper-text">目前登入帳號不可刪除</span>
+                </div>
+              </footer>
+            </article>
+          </div>
+        </div>
+      `,
+    }).mount(elements.adminManagementTable);
   }
 
   frameworkMounted = true;
@@ -2776,6 +2926,136 @@ function renderUserTable() {
   frameworkView.userReview.emptyMessage = "";
 }
 
+function getFilteredAdminUsers() {
+  const adminUsers = getOtherAdminUsers();
+  return adminUsers.filter((admin) => {
+    if (state.filters.adminKeyword) {
+      const keyword = state.filters.adminKeyword.toLowerCase();
+      if (
+        !matchesKeyword(admin.displayName, keyword) &&
+        !matchesKeyword(admin.userId, keyword) &&
+        !matchesKeyword(admin.note, keyword)
+      ) {
+        return false;
+      }
+    }
+
+    if (state.filters.adminStatus !== "all" && admin.status !== state.filters.adminStatus) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getOtherAdminUsers() {
+  const currentUserId = getCurrentAdminUserId();
+  return state.adminUsers.filter((admin) => {
+    if (currentUserId && admin.userId === currentUserId) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getAdminManagementStatusDescriptor(status) {
+  if (status === "已通過") {
+    return getStatusDescriptor("已通過", "approved");
+  }
+  if (status === "已拒絕") {
+    return getStatusDescriptor("已拒絕", "rejected");
+  }
+  if (status === "已停用") {
+    return getStatusDescriptor("已停用", "disabled");
+  }
+  return getStatusDescriptor(status || "待審核", "pending");
+}
+
+function renderAdminManagementSummary() {
+  if (!elements.adminManagementSummary || !frameworkView) {
+    return;
+  }
+
+  const adminUsers = getOtherAdminUsers();
+
+  frameworkView.adminManagement.summary = {
+    totalCount: adminUsers.length,
+    approvedCount: adminUsers.filter((item) => item.status === "已通過").length,
+    pendingCount: adminUsers.filter((item) => item.status === "待審核").length,
+    canManageCount: adminUsers.filter((item) => item.canManageAdmins).length,
+  };
+}
+
+function renderAdminManagementTable() {
+  const admins = getFilteredAdminUsers();
+  const adminUsers = getOtherAdminUsers();
+  const currentUserId = getCurrentAdminUserId();
+  const statusOrder = {
+    "待審核": 0,
+    "已通過": 1,
+    "已拒絕": 2,
+    "已停用": 3,
+  };
+
+  if (elements.adminResultLabel) {
+    elements.adminResultLabel.textContent = `顯示 ${admins.length} / ${adminUsers.length} 位`;
+  }
+
+  renderAdminManagementSummary();
+
+  if (!elements.adminManagementTable || !frameworkView) {
+    return;
+  }
+
+  if (!admins.length) {
+    frameworkView.adminManagement.rows = [];
+    frameworkView.adminManagement.emptyMessage = state.filters.adminKeyword || state.filters.adminStatus !== "all"
+      ? "找不到符合條件的管理員。"
+      : "尚無任何管理員登入紀錄。";
+    return;
+  }
+
+  frameworkView.adminManagement.rows = admins
+    .slice()
+    .sort((left, right) => {
+      if (left.canManageAdmins !== right.canManageAdmins) {
+        return left.canManageAdmins ? -1 : 1;
+      }
+      const leftRank = statusOrder[left.status] ?? 9;
+      const rightRank = statusOrder[right.status] ?? 9;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
+    })
+    .map((admin) => ({
+      userId: admin.userId,
+      displayName: admin.displayName,
+      pictureUrl: admin.pictureUrl || "",
+      initial: (admin.displayName || "A").slice(0, 1).toUpperCase(),
+      status: getAdminManagementStatusDescriptor(admin.status),
+      canManageAdmins: Boolean(admin.canManageAdmins),
+      pagePermissionLabels: getAdminPagePermissionLabels(admin),
+      lastLoginAtText: formatDateTimeText(admin.lastLoginAt),
+      note: admin.note || "",
+      isCurrentUser: admin.userId === currentUserId,
+    }));
+  frameworkView.adminManagement.emptyMessage = "";
+}
+
+function getAdminPagePermissionLabels(admin) {
+  const permissions = Array.isArray(admin.pagePermissions) ? admin.pagePermissions : [];
+  if (!permissions.length) {
+    return "未指派頁面";
+  }
+
+  return ADMIN_PAGE_OPTIONS
+    .filter((option) => permissions.includes(option.key))
+    .map((option) => option.label)
+    .join("、");
+}
+
 function refreshTechnicianOptions() {
   const selectedScheduleTechnicianIds = getSelectedScheduleTechnicianIds();
   const selectedReservationTechnicianId = elements.reservationTechnicianSelect.value;
@@ -2853,6 +3133,7 @@ function renderAll() {
   renderScheduleTable();
   renderReservationTable();
   renderUserTable();
+  renderAdminManagementTable();
   refreshTechnicianOptions();
   updateServiceFormMode();
   if (isEditingServiceInline()) {
@@ -3288,6 +3569,86 @@ async function deleteUser(userId, userName) {
   setStatus(`用戶 ${displayName} 已刪除。`, "success");
 }
 
+async function adminReviewAdmin(userId, status) {
+  const admin = state.adminUsers.find((item) => item.userId === userId);
+  if (!admin) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const note = window.prompt(`請輸入「${admin.displayName}」的審核備註：`, admin.note || "");
+  if (note === null) {
+    setStatus("已取消管理員審核操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新管理員審核狀態...");
+  const result = await requestApi("POST", {}, {
+    action: "adminReviewAdmin",
+    payload: { userId, status, note },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新管理員審核失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`已將 ${admin.displayName} 設為${status}。`, "success");
+}
+
+async function adminUpdateAdminPermission(userId, updates) {
+  const admin = state.adminUsers.find((item) => item.userId === userId);
+  if (!admin) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const actionLabel = updates.canManageAdmins !== undefined
+    ? (updates.canManageAdmins ? "授予管理員修改權限" : "收回管理員修改權限")
+    : "更新頁面權限";
+
+  if (!window.confirm(`確定要對「${admin.displayName}」${actionLabel}嗎？`)) {
+    setStatus("已取消操作。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在更新管理員權限...");
+  const result = await requestApi("POST", {}, {
+    action: "adminUpdateAdminPermission",
+    payload: { userId, ...updates },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "更新管理員權限失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`已更新 ${admin.displayName} 的權限。`, "success");
+}
+
+async function adminDeleteAdmin(userId) {
+  const admin = state.adminUsers.find((item) => item.userId === userId);
+  if (!admin) {
+    throw new Error("找不到管理員資料");
+  }
+
+  const confirmed = window.confirm(
+    `確定要刪除管理員「${admin.displayName}」嗎？\n\n此操作會移除管理員登入紀錄，刪除後需重新登入並重新審核才能再次使用 admin 後台。`
+  );
+  if (!confirmed) {
+    setStatus("已取消刪除管理員。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在刪除管理員...");
+  const result = await requestApi("POST", {}, {
+    action: "adminDeleteAdmin",
+    payload: { userId },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "刪除管理員失敗");
+  }
+
+  await loadAdminData();
+  setStatus(`已刪除管理員 ${admin.displayName}。`, "success");
+}
+
 function bindEvents() {
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest("[data-time-wheel-trigger]");
@@ -3352,17 +3713,19 @@ function bindEvents() {
 
   elements.adminLogoutButton.addEventListener("click", async () => {
     try {
-      if (!state.liffId) {
-        throw new Error("請先在 admin/config.json 設定 liffId。");
-      }
+      if (state.liffLoginRequired) {
+        if (!state.liffId) {
+          throw new Error("請先在 admin/config.json 設定 liffId。");
+        }
 
-      if (!window.liff) {
-        throw new Error("LIFF SDK 載入失敗。");
-      }
+        if (!window.liff) {
+          throw new Error("LIFF SDK 載入失敗。");
+        }
 
-      await window.liff.init({ liffId: state.liffId });
-      if (window.liff.isLoggedIn()) {
-        window.liff.logout();
+        await window.liff.init({ liffId: state.liffId });
+        if (window.liff.isLoggedIn()) {
+          window.liff.logout();
+        }
       }
 
       state.profile = null;
@@ -3501,6 +3864,66 @@ function bindEvents() {
   elements.userStatusFilter.addEventListener("change", (event) => {
     state.filters.userStatus = event.target.value;
     renderUserTable();
+  });
+
+  elements.adminSearchInput?.addEventListener("input", (event) => {
+    state.filters.adminKeyword = event.target.value;
+    renderAdminManagementTable();
+  });
+
+  elements.adminStatusFilter?.addEventListener("change", (event) => {
+    state.filters.adminStatus = event.target.value;
+    renderAdminManagementTable();
+  });
+
+  elements.adminManagementTable?.addEventListener("click", async (event) => {
+    const reviewButton = event.target.closest("[data-review-admin]");
+    if (reviewButton) {
+      try {
+        await adminReviewAdmin(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const permButton = event.target.closest("[data-toggle-admin-permission]");
+    if (permButton) {
+      try {
+        const canManageAdmins = permButton.dataset.canManageAdmins === "true";
+        await adminUpdateAdminPermission(permButton.dataset.toggleAdminPermission, { canManageAdmins });
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const savePageButton = event.target.closest("[data-save-admin-pages]");
+    if (savePageButton) {
+      try {
+        const card = savePageButton.closest("[data-admin-mgmt-card]");
+        if (!card) {
+          setStatus("找不到管理員卡片。", "error");
+          return;
+        }
+        const pagePermissions = Array.from(card.querySelectorAll("[data-admin-page-checkbox]:checked"))
+          .map((input) => String(input.value || "").trim())
+          .filter(Boolean);
+        await adminUpdateAdminPermission(savePageButton.dataset.saveAdminPages, { pagePermissions });
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-admin]");
+    if (deleteButton) {
+      try {
+        await adminDeleteAdmin(deleteButton.dataset.deleteAdmin);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
   });
 
   elements.scheduleResetButton.addEventListener("click", () => {

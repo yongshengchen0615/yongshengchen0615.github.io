@@ -11,6 +11,7 @@ const state = {
   gasUrl: "",
   configGasUrl: "",
   liffId: "",
+  liffLoginRequired: true,
   technicians: [],
   services: [],
   schedules: [],
@@ -99,9 +100,11 @@ async function loadConfigFromJson() {
     const config = await response.json();
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
     state.liffId = normalizeLiffId(config.liffId);
+    state.liffLoginRequired = config.liffLoginRequired !== false;
   } catch (error) {
     state.configGasUrl = "";
     state.liffId = "";
+    state.liffLoginRequired = true;
   }
 }
 
@@ -1084,6 +1087,17 @@ async function submitUserApplication(event) {
 }
 
 async function ensureLiffSession() {
+  if (!state.liffLoginRequired) {
+    state.profile = {
+      userId: "TEST_CLIENT_USER",
+      displayName: "測試用戶",
+      pictureUrl: "",
+    };
+    renderUserState();
+    await syncLineUser();
+    return true;
+  }
+
   if (!state.liffId) {
     throw new Error("請先在 client/config.json 設定 liffId。");
   }
@@ -1304,6 +1318,14 @@ function bindEvents() {
 
   elements.loginButton.addEventListener("click", async () => {
     try {
+      if (!state.liffLoginRequired) {
+        state.profile = null;
+        state.user = null;
+        renderUserState();
+        setStatus("測試模式：已重置登入狀態。", "info");
+        return;
+      }
+
       if (!state.liffId) {
         throw new Error("請先在 client/config.json 設定 liffId。");
       }

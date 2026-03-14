@@ -4,6 +4,7 @@ const state = {
   gasUrl: "",
   configGasUrl: "",
   liffId: "",
+  liffLoginRequired: true,
   profile: null,
   technician: null,
   services: [],
@@ -261,14 +262,26 @@ async function loadConfigFromJson() {
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
     state.gasUrl = state.configGasUrl;
     state.liffId = normalizeLiffId(config.liffId);
+    state.liffLoginRequired = config.liffLoginRequired !== false;
   } catch (error) {
     state.configGasUrl = "";
     state.gasUrl = "";
     state.liffId = "";
+    state.liffLoginRequired = true;
   }
 }
 
 async function ensureLiffSession() {
+  if (!state.liffLoginRequired) {
+    state.profile = {
+      userId: "TEST_TECHNICIAN_USER",
+      displayName: "測試技師",
+      pictureUrl: "",
+    };
+    renderAccessState();
+    return true;
+  }
+
   if (!state.liffId) {
     throw new Error("請先在 technician/config.json 設定 liffId。");
   }
@@ -712,17 +725,19 @@ function bindEvents() {
 
   elements.logoutButton.addEventListener("click", async () => {
     try {
-      if (!state.liffId) {
-        throw new Error("請先在 technician/config.json 設定 liffId。");
-      }
+      if (state.liffLoginRequired) {
+        if (!state.liffId) {
+          throw new Error("請先在 technician/config.json 設定 liffId。");
+        }
 
-      if (!window.liff) {
-        throw new Error("LIFF SDK 載入失敗。");
-      }
+        if (!window.liff) {
+          throw new Error("LIFF SDK 載入失敗。");
+        }
 
-      await window.liff.init({ liffId: state.liffId });
-      if (window.liff.isLoggedIn()) {
-        window.liff.logout();
+        await window.liff.init({ liffId: state.liffId });
+        if (window.liff.isLoggedIn()) {
+          window.liff.logout();
+        }
       }
 
       state.profile = null;

@@ -1702,3 +1702,97 @@ textarea:focus-visible {
     height: 22px;
   }
 }
+
+/* ==========================================================================
+   Admin Management Cards
+   ========================================================================== */
+
+.admin-mgmt-list {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-mgmt-card {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(146, 178, 200, 0.12);
+  background: rgba(5, 15, 22, 0.4);
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.admin-mgmt-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-mgmt-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.admin-mgmt-card__body {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-mgmt-card__info {
+  display: grid;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.admin-mgmt-card__details {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(146, 178, 200, 0.08);
+  padding: 2px;
+}
+
+.admin-mgmt-card__details[open] {
+  padding: 12px;
+}
+
+.admin-mgmt-card__details summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.admin-mgmt-card__page-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.permission-checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(146, 178, 200, 0.12);
+  background: rgba(19, 38, 52, 0.6);
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: border-color 0.15s;
+}
+
+.permission-checkbox-inline:hover {
+  border-color: rgba(146, 178, 200, 0.3);
+}
+
+.admin-mgmt-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(146, 178, 200, 0.08);
+  padding-top: 14px;
+}

@@ -135,6 +135,18 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: superAdminActions[action]() });
     }
 
+    /* --- Admin permission manager actions (canManageAdmins) --- */
+    var adminPermActions = {
+      adminReviewAdmin:            function() { return reviewAdminUser_(payload, body.adminUserId, true); },
+      adminUpdateAdminPermission:  function() { return updateAdminPermission_(payload, body.adminUserId); },
+      adminDeleteAdmin:            function() { return deleteAdminUserByPermManager_(payload, body.adminUserId); },
+    };
+
+    if (adminPermActions[action]) {
+      ensureAdminPermissionManager_(body.adminUserId);
+      return jsonResponse_({ ok: true, data: adminPermActions[action]() });
+    }
+
     /* --- Admin actions (with page permission) --- */
     var adminActor = verifyAdminAccess_(body.adminUserId);
     var adminActions = {
@@ -196,7 +208,8 @@ function getPublicData_() {
 
 function getAdminData_(adminUser) {
   var permissionsKey = (adminUser && adminUser.pagePermissions || []).join('|') || ADMIN_PAGE_PERMISSION_NONE;
-  return getCachedDataset_('adminData:' + String(adminUser && adminUser.userId || '') + ':' + permissionsKey, function() {
+  var manageAdminsKey = adminUser && adminUser.canManageAdmins ? 'manage' : 'basic';
+  return getCachedDataset_('adminData:' + String(adminUser && adminUser.userId || '') + ':' + permissionsKey + ':' + manageAdminsKey, function() {
     var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
     var services = getTableRecords_(SHEETS.services).map(normalizeService_);
     var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
@@ -216,9 +229,10 @@ function getAdminData_(adminUser) {
     }) || adminUser;
     var canViewServices = hasAdminPagePermission_(currentAdminUser, 'service') || hasAdminPagePermission_(currentAdminUser, 'technician') || hasAdminPagePermission_(currentAdminUser, 'reservation');
     var canViewTechnicians = hasAdminPagePermission_(currentAdminUser, 'technician') || hasAdminPagePermission_(currentAdminUser, 'schedule') || hasAdminPagePermission_(currentAdminUser, 'reservation');
+    var visibleAdminUsers = currentAdminUser && currentAdminUser.canManageAdmins ? adminUsers : (currentAdminUser ? [currentAdminUser] : []);
 
     return {
-      adminUsers: currentAdminUser ? [currentAdminUser] : [],
+      adminUsers: visibleAdminUsers,
       currentAdminUser: currentAdminUser,
       services: canViewServices ? services : [],
       technicians: canViewTechnicians ? technicians : [],
@@ -1230,6 +1244,31 @@ function deleteAdminUser_(payload, actorUserId) {
   validateRequired_(payload.userId, 'userId');
 
   verifySuperAdminAccess_(actorUserId);
+
+  var userId = String(payload.userId || '').trim();
+  var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);
+  var existing = adminUsers.find(function(item) {
+    return item.userId === userId;
+  });
+
+  if (!existing) {
+    throw new Error('找不到管理員');
+  }
+
+  if (String(actorUserId || '').trim() === userId) {
+    throw new Error('不能刪除自己的管理員帳號');
+  }
+
+  if (existing.status === STATUS_APPROVED) {
+    ensureApprovedAdminRemains_(userId);
+  }
+
+  deleteRecord_(SHEETS.adminUsers, 'userId', userId);
+  return { userId: userId };
+}
+
+function deleteAdminUserByPermManager_(payload, actorUserId) {
+  validateRequired_(payload.userId, 'userId');
 
   var userId = String(payload.userId || '').trim();
   var adminUsers = getTableRecords_(SHEETS.adminUsers).map(normalizeAdminUser_);

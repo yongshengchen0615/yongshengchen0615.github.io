@@ -11,6 +11,7 @@ const state = {
   gasUrl: "",
   configGasUrl: "",
   liffId: "",
+  liffLoginRequired: true,
   profile: null,
   adminUser: null,
   adminUsers: [],
@@ -239,17 +240,29 @@ async function loadConfigFromJson() {
     const config = await parseJsonResponse(response, "讀取設定檔失敗");
     state.configGasUrl = normalizeGasUrl(config.gasWebAppUrl || config.gasUrl);
     state.liffId = normalizeLiffId(config.liffId);
+    state.liffLoginRequired = config.liffLoginRequired !== false;
     state.gasUrl = state.configGasUrl;
     state.ui.configError = "";
   } catch (error) {
     state.configGasUrl = "";
     state.gasUrl = "";
     state.liffId = "";
+    state.liffLoginRequired = true;
     state.ui.configError = getErrorMessage(error, "讀取設定檔失敗");
   }
 }
 
 async function ensureLiffSession() {
+  if (!state.liffLoginRequired) {
+    state.profile = {
+      userId: "TEST_SUPERADMIN_USER",
+      displayName: "測試最高管理員",
+      pictureUrl: "",
+    };
+    renderAccessState();
+    return true;
+  }
+
   if (!state.liffId) {
     throw new Error("請先在 superadmin/config.json 設定 liffId。");
   }
@@ -749,9 +762,11 @@ function bindEvents() {
 
   elements.logoutButton?.addEventListener("click", async () => {
     try {
-      await window.liff.init({ liffId: state.liffId });
-      if (window.liff.isLoggedIn()) {
-        window.liff.logout();
+      if (state.liffLoginRequired) {
+        await window.liff.init({ liffId: state.liffId });
+        if (window.liff.isLoggedIn()) {
+          window.liff.logout();
+        }
       }
 
       state.profile = null;
