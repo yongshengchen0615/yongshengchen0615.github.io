@@ -76,6 +76,19 @@ function normalizePhoneInput(value) {
     .trim();
 }
 
+function formatDisplayDate(dateText) {
+  const normalizedDate = String(dateText || "").trim();
+  const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return normalizedDate || "未指定";
+  }
+
+  const [, yearText, monthText, dayText] = match;
+  const date = new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  return `${normalizedDate} (${weekdays[date.getDay()]})`;
+}
+
 async function loadConfigFromJson() {
   try {
     const response = await fetch(CONFIG_PATH, { cache: "no-store" });
@@ -188,13 +201,13 @@ function updateAccessView() {
 
   if (canEnterBooking) {
     elements.bookingPanelTitle.textContent = "填寫預約資訊";
-    elements.bookingPanelCopy.textContent = "可指定技師，也可選擇不指定技師，改由現場安排。";
+    elements.bookingPanelCopy.textContent = "可指定熟悉技師，也可選擇不指定技師，由現場安排。";
     fillBookingContactFields();
     return;
   }
 
   elements.bookingPanelTitle.textContent = "送出審核申請";
-  elements.bookingPanelCopy.textContent = "先登入 LINE，並填寫稱呼與電話送出審核。管理員通過後才可進入預約畫面。";
+  elements.bookingPanelCopy.textContent = "先完成 LINE 登入，再填寫稱呼與電話送出審核。管理員通過後才可正式預約。";
   fillApplicationForm();
 }
 
@@ -203,7 +216,7 @@ function renderUserState() {
     elements.userDisplayName.textContent = "尚未登入 LINE";
     elements.userStatusBadge.textContent = "未登入";
     elements.userStatusBadge.dataset.tone = "muted";
-    elements.userStatusText.textContent = "進入頁面後會直接要求 LINE 登入。";
+    elements.userStatusText.textContent = "請先完成 LINE 登入，系統才能同步你的預約資格。";
     elements.userAvatar.classList.add("is-hidden");
     elements.loginButton.textContent = "LINE 登入";
     setApprovalGate("需先完成 LINE 登入，若尚未通過審核則需等待管理員通過。", "info");
@@ -242,14 +255,14 @@ function renderUserState() {
 
   if (state.user.status === "已通過") {
     elements.userStatusBadge.dataset.tone = "approved";
-    elements.userStatusText.textContent = "你的 LINE 帳號已通過審核，可以直接預約。";
+    elements.userStatusText.textContent = "你的 LINE 帳號已通過審核，可以直接進入預約流程。";
     setApprovalGate("已通過審核，可以開始預約。", "approved");
     if (elements.applicationStatusText) {
-      elements.applicationStatusText.textContent = "你的送審資料已通過，系統會自動帶入稱呼與電話。";
+      elements.applicationStatusText.textContent = "你的審核已通過，系統會自動帶入稱呼與電話。";
     }
   } else if (state.user.status === "待審核") {
     elements.userStatusBadge.dataset.tone = "pending";
-    elements.userStatusText.textContent = "你已完成 LINE 登入，目前需等待管理員通過審核。";
+    elements.userStatusText.textContent = "你已完成登入，目前正在等待管理員審核。";
     setApprovalGate("目前為待審核狀態，請等待管理員通過後再預約。", "pending");
     if (elements.applicationStatusText) {
       elements.applicationStatusText.textContent = hasCompletedApplication()
@@ -258,7 +271,7 @@ function renderUserState() {
     }
   } else if (state.user.status === "未送審核") {
     elements.userStatusBadge.dataset.tone = "muted";
-    elements.userStatusText.textContent = "請先填寫稱呼與電話送出審核，通過後才可進入預約畫面。";
+    elements.userStatusText.textContent = "請先填寫稱呼與電話送出審核，通過後才可開始預約。";
     setApprovalGate("尚未送出審核資料，請先填寫稱呼與電話。", "info");
     if (elements.applicationStatusText) {
       elements.applicationStatusText.textContent = "請先填寫稱呼與電話，送出給管理員審核。";
@@ -420,7 +433,7 @@ function renderReservationStatusList() {
           <dl class="reservation-status-item__rows">
             <div><dt>預約編號</dt><dd>${reservation.reservationId || "-"}</dd></div>
             <div class="reservation-status-item__status-row"><dt>預約狀態</dt><dd><span class="status-badge" data-tone="${getReservationStatusTone(reservation.status)}">${reservation.status || "未設定"}</span></dd></div>
-            <div><dt>預約日期</dt><dd>${reservation.date || "未定日期"}</dd></div>
+            <div><dt>預約日期</dt><dd>${formatDisplayDate(reservation.date)}</dd></div>
             <div><dt>預約時段</dt><dd>${getReservationTimeLabel(reservation)}</dd></div>
             <div><dt>技師</dt><dd>${getReservationTechnicianLabel(reservation)}</dd></div>
             <div><dt>服務</dt><dd>${serviceNames.length ? serviceNames.join("、") : "未指定"}</dd></div>
@@ -765,7 +778,7 @@ function updateDashboard() {
 
   elements.heroTechnicianCount.textContent = String(activeTechnicians.length);
   elements.heroServiceCount.textContent = String(activeServices.length);
-  elements.heroNextAvailableDate.textContent = getNextAvailableDate();
+  elements.heroNextAvailableDate.textContent = formatDisplayDate(getNextAvailableDate());
 
   elements.overviewTechnician.textContent = isSpecificTechnicianSelected(state.selectedTechnicianId)
     ? getTechnicianDisplayName(selectedTechnician)
@@ -792,7 +805,7 @@ function updateSummary() {
     elements.bookingSummary.innerHTML = `
       <div class="summary__header">
         <h3>預約摘要</h3>
-        <span class="summary__badge">即時更新</span>
+        <span class="summary__badge">即時整理</span>
       </div>
       <p>尚未選定完整預約資訊。</p>
     `;
@@ -804,12 +817,12 @@ function updateSummary() {
   elements.bookingSummary.innerHTML = `
     <div class="summary__header">
       <h3>預約摘要</h3>
-      <span class="summary__badge">即時更新</span>
+      <span class="summary__badge">即時整理</span>
     </div>
     <dl class="summary__rows">
       <div class="summary__row"><dt>技師</dt><dd>${isSpecificTechnicianSelected(formData.get("technicianId")) ? getTechnicianDisplayName(technician) : "不指定技師，由現場安排"}</dd></div>
       <div class="summary__row"><dt>服務</dt><dd>${metrics.services.map((service) => formatServiceLabel(service)).join("、")}</dd></div>
-      <div class="summary__row"><dt>日期</dt><dd>${date}</dd></div>
+      <div class="summary__row"><dt>日期</dt><dd>${formatDisplayDate(date)}</dd></div>
       <div class="summary__row"><dt>時段</dt><dd>${time} - ${endTime}</dd></div>
       <div class="summary__row"><dt>總時長</dt><dd>${metrics.totalDuration} 分鐘</dd></div>
       <div class="summary__row"><dt>總金額</dt><dd>NT$ ${Number(metrics.totalPrice || 0).toLocaleString("zh-TW")}</dd></div>
@@ -910,7 +923,7 @@ function refreshSelects() {
     : [];
   setOptions(
     elements.dateSelect,
-    dates.map((item) => ({ value: item, label: item })),
+    dates.map((item) => ({ value: item, label: formatDisplayDate(item) })),
     "請選擇日期"
   );
 
@@ -944,7 +957,7 @@ function syncDateAndTimeOptions() {
   const previousDate = elements.dateSelect.value;
   setOptions(
     elements.dateSelect,
-    dates.map((item) => ({ value: item, label: item })),
+    dates.map((item) => ({ value: item, label: formatDisplayDate(item) })),
     "請選擇日期"
   );
   if (dates.includes(previousDate)) {
@@ -1102,7 +1115,7 @@ async function loadPublicData(options = {}) {
 
   state.isLoadingPublicData = true;
   if (!silent && isApprovedUser()) {
-    setStatus("正在載入可預約資料...");
+    setStatus("正在同步可預約資料...");
   }
 
   try {

@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>美業預約系統 | 客戶端</title>
+    <meta
+      name="description"
+      content="透過 LINE 登入完成審核後，即可依照技師、服務、日期與時段快速完成預約。"
+    />
     <script>
       if (window.location.protocol !== "file:" && !window.location.pathname.endsWith("/") && !/\.[^/]+$/.test(window.location.pathname)) {
         window.location.replace(`${window.location.pathname}/${window.location.search}${window.location.hash}`);
@@ -22,15 +26,29 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero__content">
-          <p class="eyebrow">Beauty Booking</p>
-          <h1>快速完成你的預約安排</h1>
+          <p class="eyebrow">Beauty Reservation</p>
+          <h1>把登入、審核與預約一次完成</h1>
           <p class="hero__lead">
-              先透過 LINE 完成登入與審核，再依照技師、服務、日期與可用時段完成預約。你可以一次勾選多個服務項目，系統會自動加總總時長與總金額。
+            先用 LINE 完成登入並送出審核，通過後即可選擇技師、服務、日期與時段完成預約。支援多選服務，系統會自動計算總時長與總金額。
           </p>
+          <div class="hero-highlights" aria-label="預約重點">
+            <article class="hero-highlight">
+              <strong>先登入再送審</strong>
+              <span>首次使用只需補上稱呼與電話即可提出審核。</span>
+            </article>
+            <article class="hero-highlight">
+              <strong>服務可多選</strong>
+              <span>可同時勾選多個項目，系統會自動整合時間與費用。</span>
+            </article>
+            <article class="hero-highlight">
+              <strong>空檔即時更新</strong>
+              <span>僅顯示班表內且尚未被預約的可用時段。</span>
+            </article>
+          </div>
           <div class="flow-steps" aria-label="預約流程">
-            <span class="flow-step">1. 選擇技師</span>
-            <span class="flow-step">2. 選擇服務</span>
-            <span class="flow-step">3. 挑選日期與時段</span>
+            <span class="flow-step">1. LINE 登入</span>
+            <span class="flow-step">2. 完成審核</span>
+            <span class="flow-step">3. 選擇服務與時段</span>
             <span class="flow-step">4. 送出預約</span>
           </div>
         </div>
@@ -57,9 +75,9 @@
         <section class="panel top-status-panel">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">LINE Identity</p>
-              <h2>登入與審核狀態</h2>
-              <p class="section-copy">前台採用 LIFF 登入，管理員通過審核後才可正式送出預約。</p>
+              <p class="eyebrow">LINE Access</p>
+              <h2>登入與預約資格</h2>
+              <p class="section-copy">這裡會顯示你的 LINE 登入狀態、審核進度，以及是否已可進入預約流程。</p>
             </div>
           </div>
           <div class="profile-card">
@@ -73,10 +91,10 @@
             <p id="userStatusText" class="profile-card__copy">請先使用 LINE 登入，系統會自動送出審核。</p>
             <div class="profile-card__actions">
               <button type="button" id="loginButton" class="button button--secondary">LINE 登入</button>
-              <button type="button" id="refreshUserButton" class="button button--ghost">重新檢查狀態</button>
+              <button type="button" id="refreshUserButton" class="button button--ghost">同步最新狀態</button>
             </div>
           </div>
-          <div id="statusBox" class="status-box">尚未連線到 GAS。</div>
+          <div id="statusBox" class="status-box" role="status" aria-live="polite">正在準備系統連線資訊。</div>
         </section>
       </section>
 
@@ -84,17 +102,17 @@
         <section class="panel booking-panel">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">Booking Access</p>
+              <p class="eyebrow">Booking Entry</p>
               <h2 id="bookingPanelTitle">送出審核申請</h2>
-              <p id="bookingPanelCopy" class="section-copy">先登入 LINE，並填寫稱呼與電話送出審核。管理員通過後才可進入預約畫面。</p>
+              <p id="bookingPanelCopy" class="section-copy">先完成 LINE 登入，再填寫稱呼與電話送出審核。管理員通過後才可正式預約。</p>
             </div>
           </div>
 
           <section id="applicationPanel" class="application-panel">
             <div class="summary summary--application">
               <div class="summary__header">
-                <h3>進入預約前需完成審核</h3>
-                <span class="summary__badge">先送審</span>
+                <h3>先完成審核，再進入預約</h3>
+                <span class="summary__badge">必要步驟</span>
               </div>
               <p id="applicationStatusText">請先填寫稱呼與電話號碼，送出給管理員審核。</p>
             </div>
@@ -117,6 +135,17 @@
           </section>
 
           <form id="bookingForm" class="form-grid is-hidden">
+            <div class="booking-notes field field--full" aria-label="預約前提醒">
+              <article class="booking-note">
+                <strong>預約前確認</strong>
+                <p>請先選擇服務，再挑選日期與時段，系統才會顯示對應空檔。</p>
+              </article>
+              <article class="booking-note">
+                <strong>現場安排也可預約</strong>
+                <p>若沒有指定技師需求，可選擇不指定技師，由現場安排。</p>
+              </article>
+            </div>
+
             <div id="approvalGate" class="approval-gate field field--full">
               需先完成 LINE 登入並通過審核，才可送出預約。
             </div>
@@ -163,7 +192,7 @@
             <div class="summary" id="bookingSummary">
               <div class="summary__header">
                 <h3>預約摘要</h3>
-                <span class="summary__badge">即時更新</span>
+                <span class="summary__badge">即時整理</span>
               </div>
               <p>尚未選定完整預約資訊。</p>
             </div>
@@ -175,10 +204,19 @@
         <section class="panel panel--side">
           <div class="panel__header">
             <div>
-              <p class="eyebrow">Booking Overview</p>
+              <p class="eyebrow">Booking Snapshot</p>
               <h2>預約概況與提醒</h2>
-              <p class="section-copy">登入審核狀態已移至上方，這裡保留目前選擇摘要與使用提醒。</p>
+              <p class="section-copy">這裡整理你目前的選擇、個人預約狀態，以及預約時最常需要注意的事項。</p>
             </div>
+          </div>
+          <div class="overview-card journey-card">
+            <h3>本次流程重點</h3>
+            <ol class="journey-list">
+              <li>確認登入與審核狀態。</li>
+              <li>選擇技師或改由現場安排。</li>
+              <li>勾選服務後，再挑選日期與時段。</li>
+              <li>送出前檢查摘要與聯絡資訊。</li>
+            </ol>
           </div>
           <div class="overview-card">
             <h3>當前選擇概況</h3>
@@ -204,11 +242,11 @@
             </div>
           </div>
           <div class="tips">
-            <h3>使用提醒</h3>
+            <h3>預約提醒</h3>
             <ul>
-              <li>只有在班表內且尚未被預約的時段會顯示。</li>
-              <li>服務時間會依照管理員設定的分鐘數計算。</li>
-              <li>若技師停用或服務停用，前台不會顯示。</li>
+              <li>只有班表內且尚未被預約的時段才會顯示。</li>
+              <li>總時長與總金額會依你勾選的服務即時更新。</li>
+              <li>若技師或服務已停用，前台將不會顯示。</li>
             </ul>
           </div>
         </section>

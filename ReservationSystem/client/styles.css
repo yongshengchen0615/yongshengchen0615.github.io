@@ -86,6 +86,12 @@ textarea {
   backdrop-filter: blur(18px);
 }
 
+.hero__content > *,
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
 .hero__content {
   padding: 42px;
 }
@@ -139,6 +145,32 @@ h1 {
   margin-top: 20px;
   color: var(--muted);
   line-height: 1.8;
+}
+
+.hero-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.hero-highlight {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(107, 79, 48, 0.1);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.hero-highlight strong {
+  font-size: 0.98rem;
+}
+
+.hero-highlight span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
 .flow-steps {
@@ -196,6 +228,12 @@ h1 {
   gap: 24px;
 }
 
+.panel--side {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
 .booking-panel,
 .panel--side {
   grid-column: span 1;
@@ -203,6 +241,16 @@ h1 {
 
 .panel {
   padding: 28px;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 120px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent);
+  pointer-events: none;
 }
 
 .panel__header {
@@ -236,6 +284,31 @@ h1 {
 .application-panel {
   display: grid;
   gap: 16px;
+}
+
+.booking-notes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.booking-note {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(107, 79, 48, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.booking-note strong {
+  font-size: 0.95rem;
+}
+
+.booking-note p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .summary--application {
@@ -531,6 +604,22 @@ textarea:focus {
   margin-top: 18px;
 }
 
+.journey-card {
+  background: linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(255, 245, 235, 0.88));
+}
+
+.journey-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.journey-list li {
+  line-height: 1.6;
+}
+
 .reservation-status-list {
   display: grid;
   gap: 12px;
@@ -736,6 +825,10 @@ textarea:focus {
   .content-grid {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 0.8fr);
   }
+
+  .hero-highlights {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -746,6 +839,10 @@ textarea:focus {
   .hero,
   .content-grid,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-notes {
     grid-template-columns: 1fr;
   }
 
@@ -774,6 +871,10 @@ textarea:focus {
   .booking-panel {
     grid-column: span 1;
   }
+
+  .panel--side {
+    position: static;
+  }
 }
 
 @media (max-width: 680px) {
@@ -787,6 +888,15 @@ textarea:focus {
   .hero__meta,
   .panel {
     padding: 20px;
+  }
+
+  .hero-highlights {
+    gap: 10px;
+  }
+
+  .hero-highlight {
+    padding: 14px 16px;
+    border-radius: 18px;
   }
 
   .hero__content::after {
@@ -905,6 +1015,10 @@ textarea:focus {
   .checkbox-grid {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .booking-note {
+    padding: 14px 16px;
   }
 
   .checkbox-pill {
