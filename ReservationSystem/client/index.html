@@ -27,24 +27,6 @@
       <header class="hero">
         <div class="hero__content">
           <p class="eyebrow">Beauty Reservation</p>
-          <h1>把登入、審核與預約一次完成</h1>
-          <p class="hero__lead">
-            先用 LINE 完成登入並送出審核，通過後即可選擇技師、服務、日期與時段完成預約。支援多選服務，系統會自動計算總時長與總金額。
-          </p>
-          <div class="hero-highlights" aria-label="預約重點">
-            <article class="hero-highlight">
-              <strong>先登入再送審</strong>
-              <span>首次使用只需補上稱呼與電話即可提出審核。</span>
-            </article>
-            <article class="hero-highlight">
-              <strong>服務可多選</strong>
-              <span>可同時勾選多個項目，系統會自動整合時間與費用。</span>
-            </article>
-            <article class="hero-highlight">
-              <strong>空檔即時更新</strong>
-              <span>僅顯示班表內且尚未被預約的可用時段。</span>
-            </article>
-          </div>
           <div class="flow-steps" aria-label="預約流程">
             <span class="flow-step">1. LINE 登入</span>
             <span class="flow-step">2. 完成審核</span>
@@ -52,23 +34,6 @@
             <span class="flow-step">4. 送出預約</span>
           </div>
         </div>
-        <aside class="hero__meta">
-          <div class="hero-stat">
-            <span>可預約技師</span>
-            <strong id="heroTechnicianCount">0</strong>
-            <small>目前啟用中</small>
-          </div>
-          <div class="hero-stat">
-            <span>可預約服務</span>
-            <strong id="heroServiceCount">0</strong>
-            <small>依後台同步</small>
-          </div>
-          <div class="hero-stat hero-stat--wide">
-            <span>最近可預約日</span>
-            <strong id="heroNextAvailableDate">尚未載入</strong>
-            <small>會隨班表與預約狀態更新</small>
-          </div>
-        </aside>
       </header>
 
       <section class="top-status-grid">
@@ -135,17 +100,6 @@
           </section>
 
           <form id="bookingForm" class="form-grid is-hidden">
-            <div class="booking-notes field field--full" aria-label="預約前提醒">
-              <article class="booking-note">
-                <strong>預約前確認</strong>
-                <p>請先選擇服務，再挑選日期與時段，系統才會顯示對應空檔。</p>
-              </article>
-              <article class="booking-note">
-                <strong>現場安排也可預約</strong>
-                <p>若沒有指定技師需求，可選擇不指定技師，由現場安排。</p>
-              </article>
-            </div>
-
             <div id="approvalGate" class="approval-gate field field--full">
               需先完成 LINE 登入並通過審核，才可送出預約。
             </div>
@@ -199,56 +153,6 @@
 
             <button type="submit" id="bookingSubmitButton" class="button button--primary button--wide">送出預約</button>
           </form>
-        </section>
-
-        <section class="panel panel--side">
-          <div class="panel__header">
-            <div>
-              <p class="eyebrow">Booking Snapshot</p>
-              <h2>預約概況與提醒</h2>
-              <p class="section-copy">這裡整理你目前的選擇、個人預約狀態，以及預約時最常需要注意的事項。</p>
-            </div>
-          </div>
-          <div class="overview-card journey-card">
-            <h3>本次流程重點</h3>
-            <ol class="journey-list">
-              <li>確認登入與審核狀態。</li>
-              <li>選擇技師或改由現場安排。</li>
-              <li>勾選服務後，再挑選日期與時段。</li>
-              <li>送出前檢查摘要與聯絡資訊。</li>
-            </ol>
-          </div>
-          <div class="overview-card">
-            <h3>當前選擇概況</h3>
-            <dl class="overview-list">
-              <div>
-                <dt>目前技師</dt>
-                <dd id="overviewTechnician">尚未選擇</dd>
-              </div>
-              <div>
-                <dt>可選服務</dt>
-                <dd id="overviewServiceCount">0 項</dd>
-              </div>
-              <div>
-                <dt>可預約日期</dt>
-                <dd id="overviewDateCount">0 天</dd>
-              </div>
-            </dl>
-          </div>
-          <div class="overview-card reservation-status-card">
-            <h3>我的預約狀態</h3>
-            <div id="reservationStatusList" class="reservation-status-list">
-              <p class="empty-state">登入後會顯示你的預約狀態。</p>
-            </div>
-          </div>
-          <div class="tips">
-            <h3>預約提醒</h3>
-            <ul>
-              <li>只有班表內且尚未被預約的時段才會顯示。</li>
-              <li>總時長與總金額會依你勾選的服務即時更新。</li>
-              <li>若技師或服務已停用，前台將不會顯示。</li>
-            </ul>
-          </div>
         </section>
       </main>
     </div>

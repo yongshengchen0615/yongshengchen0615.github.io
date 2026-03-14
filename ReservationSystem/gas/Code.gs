@@ -615,8 +615,15 @@ function updateAdminPermission_(payload, actorUserId) {
     throw new Error('找不到管理員');
   }
 
-  var canManageAdmins = toBoolean_(payload.canManageAdmins);
-  var nextPagePermissions = normalizeAdminPagePermissionList_(payload.pagePermissions);
+  var hasCanManageAdmins = Object.prototype.hasOwnProperty.call(payload, 'canManageAdmins');
+  var hasPagePermissions = Object.prototype.hasOwnProperty.call(payload, 'pagePermissions');
+  var hasNote = Object.prototype.hasOwnProperty.call(payload, 'note');
+  var canManageAdmins = hasCanManageAdmins
+    ? toBoolean_(payload.canManageAdmins)
+    : normalizeAdminPermissionValue_(existing.canManageAdmins, existing.status, existing.userId);
+  var nextPagePermissions = hasPagePermissions
+    ? normalizeAdminPagePermissionList_(payload.pagePermissions)
+    : normalizeStoredAdminPagePermissions_(existing.pagePermissions, existing.userId);
 
   var record = {
     userId: existing.userId,
@@ -625,7 +632,7 @@ function updateAdminPermission_(payload, actorUserId) {
     status: existing.status,
     canManageAdmins: canManageAdmins,
     pagePermissions: serializeAdminPagePermissions_(nextPagePermissions, existing.userId),
-    note: String(payload.note || existing.note || '').trim(),
+    note: hasNote ? sanitizeTextInput_(payload.note || '') : String(existing.note || '').trim(),
     createdAt: existing.createdAt,
     updatedAt: toIsoString_(new Date()),
     lastLoginAt: existing.lastLoginAt,

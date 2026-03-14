@@ -470,7 +470,7 @@ h1 {
 
 .admin-management-card__summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -495,7 +495,7 @@ h1 {
 
 .admin-management-card__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -512,17 +512,15 @@ h1 {
   grid-column: 1 / -1;
 }
 
-.admin-actions-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: 14px;
+.admin-card-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.action-group--panel {
-  padding: 14px;
-  border: 1px solid rgba(146, 178, 200, 0.1);
-  border-radius: 16px;
-  background: rgba(7, 17, 24, 0.48);
+.admin-management-card.is-editing {
+  border-color: rgba(82, 194, 166, 0.24);
+  box-shadow: 0 22px 44px rgba(1, 8, 12, 0.28);
 }
 
 .mobile-card-list {
@@ -792,11 +790,6 @@ h1 {
   gap: 14px;
 }
 
-.table-actions--grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .desktop-table-view .action-group {
   padding: 12px;
   border: 1px solid rgba(146, 178, 200, 0.1);
@@ -833,21 +826,61 @@ h1 {
   gap: 12px;
 }
 
+.note-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.note-editor__field {
+  display: grid;
+  gap: 10px;
+}
+
+.note-editor__textarea {
+  width: 100%;
+  min-height: 108px;
+  padding: 12px 14px;
+  border: 1px solid rgba(146, 178, 200, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 15, 22, 0.28);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.note-editor__textarea::placeholder {
+  color: rgba(169, 187, 200, 0.72);
+}
+
+.note-editor__textarea:focus {
+  outline: 0;
+  border-color: rgba(82, 194, 166, 0.36);
+  box-shadow: 0 0 0 3px rgba(82, 194, 166, 0.12);
+}
+
+.note-editor__textarea:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.note-editor__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note-editor__footer .button {
+  flex-shrink: 0;
+}
+
 .editor-summary {
   display: grid;
   gap: 4px;
 }
 
-.admin-permission-editor {
-  display: grid;
-  gap: 12px;
-}
-
 .permission-editor--readonly {
-  gap: 10px;
-}
-
-.admin-permission-editor--readonly {
   gap: 10px;
 }
 
@@ -875,6 +908,14 @@ h1 {
   border: 1px solid rgba(146, 178, 200, 0.16);
   border-radius: var(--radius-sm);
   background: rgba(5, 15, 22, 0.28);
+}
+
+.permission-checkbox--single {
+  max-width: 360px;
+}
+
+.permission-checkbox:has(input:disabled) {
+  opacity: 0.6;
 }
 
 .permission-checkbox input {

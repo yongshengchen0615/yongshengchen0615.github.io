@@ -175,7 +175,7 @@ function renderAccessState() {
     elements.statusBadge.textContent = "未登入";
     elements.statusBadge.dataset.tone = "muted";
     elements.statusText.textContent = "請先登入 LINE，系統會確認你是否屬於最高管理員。";
-    setApprovalMessage("此頁僅提供最高管理員設定 admin 的頁面權限與管理員修改權限。", "info");
+    setApprovalMessage("此頁僅提供最高管理員設定 admin 的頁面權限。", "info");
     elements.logoutButton.disabled = true;
     setContentAccess(false);
     return;
@@ -203,8 +203,8 @@ function renderAccessState() {
   if (isApprovedSuperAdmin) {
     elements.statusBadge.textContent = "最高管理員";
     elements.statusBadge.dataset.tone = "approved";
-    elements.statusText.textContent = "你可管理 admin 專案中各管理員的頁面權限與管理員修改權限。";
-    setApprovalMessage("已通過最高管理員驗證，可管理 admin 的頁面權限與管理員修改權限。", "approved");
+    elements.statusText.textContent = "你可管理 admin 專案中各管理員的頁面權限。";
+    setApprovalMessage("已通過最高管理員驗證，可管理 admin 的頁面權限。", "approved");
     setContentAccess(true);
     return;
   }
@@ -375,41 +375,27 @@ function getAdminStatusPill(status) {
   return getStatusPill(status || "待審核", "pending");
 }
 
-function getPermissionPill(adminUser) {
-  return adminUser.canManageAdmins
-    ? getStatusPill("可管理管理員", "permission")
-    : getStatusPill("僅一般 admin", "locked");
-}
-
-function getPagePermissionPills(adminUser) {
-  const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
-  if (!permissions.length) {
-    return '<span class="helper-text">未指派任何頁面</span>';
-  }
-
-  return ADMIN_PAGE_OPTIONS.filter((option) => permissions.includes(option.key))
-    .map((option) => `<span class="status-pill status-pill--page">${option.label}</span>`)
-    .join("");
-}
-
 function getPagePermissionSummary(adminUser) {
   const permissions = Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : [];
   return `已開啟 ${permissions.length} / ${ADMIN_PAGE_OPTIONS.length} 個頁面`;
 }
 
-function renderAdminManagePermissionEditor(adminUser) {
-  const canManageAdmins = Boolean(adminUser.canManageAdmins);
-  const buttonClass = canManageAdmins ? "button button--danger" : "button button--primary";
-  const buttonLabel = canManageAdmins ? "收回修改權限" : "授予修改權限";
-  const helperText = canManageAdmins
-    ? "此管理員目前可在 admin 後台管理其他管理員帳號。"
-    : "授權後，此管理員可在 admin 後台管理其他管理員帳號。";
+function getManageAdminPermissionLabel(adminUser) {
+  return adminUser.canManageAdmins ? "可修改管理員" : "不可修改管理員";
+}
 
+function renderManageAdminEditor(adminUser) {
+  const checked = adminUser.canManageAdmins ? "checked" : "";
   return `
-    <div class="admin-permission-editor vstack gap-3">
-      ${getPermissionPill(adminUser)}
-      <p class="helper-text">${helperText}</p>
-      <button type="button" class="${buttonClass}" data-admin-permission="${escapeAttribute(adminUser.userId)}" data-can-manage-admins="${String(!canManageAdmins)}">${buttonLabel}</button>
+    <div class="permission-editor vstack gap-3">
+      <div class="editor-summary">
+        <strong>${getManageAdminPermissionLabel(adminUser)}</strong>
+        <span class="helper-text">開啟後，此管理員可在 admin 後台修改其他管理員資料。</span>
+      </div>
+      <label class="permission-checkbox permission-checkbox--single">
+        <input type="checkbox" data-manage-admins-checkbox ${checked} disabled />
+        <span>允許管理員修改權限設定</span>
+      </label>
     </div>
   `;
 }
@@ -421,7 +407,7 @@ function renderPagePermissionEditor(adminUser) {
     return `
       <div class="col">
         <label class="permission-checkbox h-100">
-          <input type="checkbox" data-page-permission-checkbox value="${option.key}" ${checked} />
+          <input type="checkbox" data-page-permission-checkbox value="${option.key}" ${checked} disabled />
           <span>${option.label}</span>
         </label>
       </div>
@@ -432,12 +418,25 @@ function renderPagePermissionEditor(adminUser) {
     <div class="permission-editor vstack gap-3">
       <div class="editor-summary">
         <strong>${getPagePermissionSummary(adminUser)}</strong>
-        <span class="helper-text">可直接勾選要顯示在 admin 後台的功能頁。</span>
+        <span class="helper-text">進入修改模式後，可勾選要顯示在 admin 後台的功能頁。</span>
       </div>
       <div class="permission-checkbox-grid row row-cols-1 row-cols-md-2 g-2">${checkboxes}</div>
       <div class="permission-editor__footer d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
         <span class="helper-text">未勾選的頁面在 admin 後台不會顯示，也無法執行對應操作。</span>
-        <button type="button" class="button button--primary" data-save-page-permissions="${escapeAttribute(adminUser.userId)}">儲存頁面權限</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminNoteEditor(adminUser) {
+  return `
+    <div class="note-editor vstack gap-3">
+      <label class="note-editor__field">
+        <span class="helper-text">可填寫此管理員的備註說明，會同步保存到 AdminUsers。</span>
+        <textarea class="note-editor__textarea" data-admin-note rows="3" placeholder="輸入備註內容" disabled>${escapeHtml(adminUser.note || "")}</textarea>
+      </label>
+      <div class="note-editor__footer d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
+        <span class="helper-text">留空後儲存，會清除既有備註。</span>
       </div>
     </div>
   `;
@@ -446,9 +445,9 @@ function renderPagePermissionEditor(adminUser) {
 function updateSummary() {
   const allAdmins = state.adminUsers.length;
   const permissionManagers = state.adminUsers.filter((item) => item.canManageAdmins).length;
-  const superAdmins = state.superAdmins.length;
   const restrictedAdmins = state.adminUsers.filter((item) => Array.isArray(item.pagePermissions) && item.pagePermissions.length < ADMIN_PAGE_OPTIONS.length).length;
-  elements.summaryLabel.textContent = `最高管理員 ${superAdmins} 位 / 可管理管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位 / 全部 ${allAdmins} 位`;
+  const fullyEnabledAdmins = state.adminUsers.filter((item) => Array.isArray(item.pagePermissions) && item.pagePermissions.length === ADMIN_PAGE_OPTIONS.length).length;
+  elements.summaryLabel.textContent = `全部 ${allAdmins} 位 / 可修改管理員 ${permissionManagers} 位 / 受限頁面 ${restrictedAdmins} 位 / 全開頁面 ${fullyEnabledAdmins} 位`;
   elements.lastSyncLabel.textContent = state.lastSyncText || "尚未同步";
 }
 
@@ -484,16 +483,7 @@ function getAdminViewModel(adminUser) {
   };
 }
 
-function getReviewButtonsMarkup(userIdAttribute) {
-  return `
-    <button type="button" class="button button--secondary button--compact" data-review-admin="${userIdAttribute}" data-review-status="待審核">待審核</button>
-    <button type="button" class="button button--primary button--compact" data-review-admin="${userIdAttribute}" data-review-status="已通過">通過</button>
-    <button type="button" class="button button--secondary button--compact" data-review-admin="${userIdAttribute}" data-review-status="已拒絕">拒絕</button>
-    <button type="button" class="button button--danger button--compact" data-review-admin="${userIdAttribute}" data-review-status="已停用">停用</button>
-  `;
-}
-
-function renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteButton) {
+function renderAdminManagementCard(adminUser, viewModel) {
   return `
     <article class="admin-management-card" data-admin-card="${viewModel.userIdAttribute}">
       <header class="admin-management-card__header">
@@ -509,8 +499,8 @@ function renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteBu
         </div>
         <div class="admin-management-card__summary">
           <div class="admin-summary-block">
-            <span class="admin-summary-block__label">管理狀態</span>
-            <div class="status-pill-group">${getPermissionPill(adminUser)}</div>
+            <span class="admin-summary-block__label">管理員修改權限</span>
+            <strong>${getManageAdminPermissionLabel(adminUser)}</strong>
           </div>
           <div class="admin-summary-block">
             <span class="admin-summary-block__label">頁面權限</span>
@@ -524,39 +514,28 @@ function renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteBu
       </header>
 
       <div class="admin-management-card__grid">
-        <section class="admin-work-panel admin-work-panel--permission">
+        <section class="admin-work-panel admin-work-panel--wide">
+          <span class="admin-work-panel__label">管理員設定</span>
+          <div class="admin-card-toolbar">
+            <button type="button" class="button button--secondary" data-edit-admin="${viewModel.userIdAttribute}">修改管理員</button>
+            <button type="button" class="button button--primary" data-save-admin="${viewModel.userIdAttribute}" disabled>儲存管理員</button>
+            <button type="button" class="button button--ghost" data-cancel-admin-edit="${viewModel.userIdAttribute}" disabled>取消修改</button>
+          </div>
+        </section>
+
+        <section class="admin-work-panel admin-work-panel--wide">
           <span class="admin-work-panel__label">管理員修改權限設定</span>
-          ${renderAdminManagePermissionEditor(adminUser)}
+          ${renderManageAdminEditor(adminUser)}
         </section>
 
-        <section class="admin-work-panel admin-work-panel--pages">
-          <span class="admin-work-panel__label">頁面權限</span>
-          <div class="status-pill-group">${getPagePermissionPills(adminUser)}</div>
-          <p class="helper-text helper-text--compact">${getPagePermissionSummary(adminUser)}</p>
-        </section>
-
-        <section class="admin-work-panel admin-work-panel--meta">
+        <section class="admin-work-panel admin-work-panel--wide">
           <span class="admin-work-panel__label">備註</span>
-          <div class="table-note">${viewModel.note ? escapeHtml(viewModel.note) : '<span class="helper-text">尚無備註</span>'}</div>
+          ${renderAdminNoteEditor(adminUser)}
         </section>
 
         <section class="admin-work-panel admin-work-panel--editor admin-work-panel--wide">
           <span class="admin-work-panel__label">頁面權限設定</span>
           ${renderPagePermissionEditor(adminUser)}
-        </section>
-
-        <section class="admin-work-panel admin-work-panel--actions admin-work-panel--wide">
-          <span class="admin-work-panel__label">操作</span>
-          <div class="admin-actions-grid">
-            <div class="action-group action-group--panel">
-              <span class="action-group__label">審核狀態</span>
-              <div class="table-actions table-actions--grid">${statusButtons}</div>
-            </div>
-            <div class="action-group action-group--panel">
-              <span class="action-group__label">帳號操作</span>
-              <div class="table-actions">${deleteButton}</div>
-            </div>
-          </div>
         </section>
       </div>
     </article>
@@ -585,20 +564,11 @@ function renderAdminTable() {
         return left.isSuperAdmin ? -1 : 1;
       }
 
-      if (left.canManageAdmins !== right.canManageAdmins) {
-        return left.canManageAdmins ? -1 : 1;
-      }
-
       return String(right.updatedAt || right.lastLoginAt || "").localeCompare(String(left.updatedAt || left.lastLoginAt || ""));
     })
     .map((adminUser) => {
       const viewModel = getAdminViewModel(adminUser);
-      const statusButtons = getReviewButtonsMarkup(viewModel.userIdAttribute);
-      const deleteButton = viewModel.isCurrentUser
-        ? `<span class="helper-text">目前登入帳號不可刪除</span>`
-        : `<button type="button" class="button button--danger button--compact" data-delete-admin="${viewModel.userIdAttribute}">刪除管理員</button>`;
-
-      return renderAdminManagementCard(adminUser, viewModel, statusButtons, deleteButton);
+      return renderAdminManagementCard(adminUser, viewModel);
     })
     ;
   const accordionItems = entries.join("");
@@ -607,7 +577,7 @@ function renderAdminTable() {
     <div class="responsive-data-shell">
       <div class="responsive-hint">
         <span class="responsive-hint__pill">Management Board</span>
-        <span class="helper-text">改成管理工作卡版型，把狀態、權限、備註與操作拆成清楚區塊。</span>
+        <span class="helper-text">每張卡片先開啟修改模式，再一次儲存管理員資料。</span>
       </div>
       <div class="admin-management-board" id="adminAccordionList">
         ${accordionItems}
@@ -670,6 +640,63 @@ function getRowPagePermissions(row) {
     .filter(Boolean);
 }
 
+function getRowAdminNote(row) {
+  const noteField = row.querySelector("[data-admin-note]");
+  return noteField ? String(noteField.value || "").trim() : "";
+}
+
+function getRowCanManageAdmins(row) {
+  const checkbox = row.querySelector("[data-manage-admins-checkbox]");
+  return Boolean(checkbox?.checked);
+}
+
+function resetAdminCardFields(card) {
+  const userId = String(card.dataset.adminCard || "").trim();
+  const adminUser = state.adminUsers.find((item) => item.userId === userId);
+  if (!adminUser) {
+    return;
+  }
+
+  const noteField = card.querySelector("[data-admin-note]");
+  if (noteField) {
+    noteField.value = adminUser.note || "";
+  }
+
+  const manageAdminsCheckbox = card.querySelector("[data-manage-admins-checkbox]");
+  if (manageAdminsCheckbox) {
+    manageAdminsCheckbox.checked = Boolean(adminUser.canManageAdmins);
+  }
+
+  const pagePermissionSet = new Set(Array.isArray(adminUser.pagePermissions) ? adminUser.pagePermissions : []);
+  card.querySelectorAll("[data-page-permission-checkbox]").forEach((checkbox) => {
+    checkbox.checked = pagePermissionSet.has(String(checkbox.value || "").trim());
+  });
+}
+
+function setAdminCardEditing(card, isEditing) {
+  card.classList.toggle("is-editing", isEditing);
+
+  card.querySelectorAll("[data-page-permission-checkbox], [data-admin-note], [data-manage-admins-checkbox]").forEach((field) => {
+    field.disabled = !isEditing;
+  });
+
+  const editButton = card.querySelector("[data-edit-admin]");
+  const saveButton = card.querySelector("[data-save-admin]");
+  const cancelButton = card.querySelector("[data-cancel-admin-edit]");
+
+  if (editButton) {
+    editButton.disabled = isEditing;
+  }
+
+  if (saveButton) {
+    saveButton.disabled = !isEditing;
+  }
+
+  if (cancelButton) {
+    cancelButton.disabled = !isEditing;
+  }
+}
+
 async function updateAdminPermission(userId, updates, options = {}) {
   const adminUser = state.adminUsers.find((item) => item.userId === userId);
   if (!adminUser) {
@@ -698,57 +725,6 @@ async function updateAdminPermission(userId, updates, options = {}) {
 
   await loadSuperAdminData();
   setStatus(successMessage || `已更新 ${adminUser.displayName} 的權限。`, "success");
-}
-
-async function reviewAdminUser(userId, status) {
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  if (!adminUser) {
-    throw new Error("找不到管理員資料");
-  }
-
-  showLoading("正在更新管理員審核狀態...", "loading");
-  const result = await requestApi("POST", {}, {
-    action: "reviewAdminUser",
-    payload: {
-      userId,
-      status,
-    },
-  });
-
-  if (!result.ok) {
-    throw new Error(result.message || "更新 admin 審核狀態失敗");
-  }
-
-  await loadSuperAdminData();
-  setStatus(`已將${adminUser.displayName}設為${status}。`, "success");
-}
-
-async function deleteAdminUser(userId) {
-  const adminUser = state.adminUsers.find((item) => item.userId === userId);
-  if (!adminUser) {
-    throw new Error("找不到管理員資料");
-  }
-
-  const confirmed = window.confirm(
-    `確定要刪除管理員「${adminUser.displayName}」嗎？\n\n此操作會移除 AdminUsers 內的管理員登入紀錄，刪除後需重新登入並重新審核才能再次使用 admin 後台。`
-  );
-  if (!confirmed) {
-    setStatus("已取消刪除管理員。", "info");
-    return;
-  }
-
-  showLoading("正在刪除管理員...", "loading");
-  const result = await requestApi("POST", {}, {
-    action: "deleteAdminUser",
-    payload: { userId },
-  });
-
-  if (!result.ok) {
-    throw new Error(result.message || "刪除管理員失敗");
-  }
-
-  await loadSuperAdminData();
-  setStatus(`已刪除管理員 ${adminUser.displayName}。`, "success");
 }
 
 function bindEvents() {
@@ -783,60 +759,59 @@ function bindEvents() {
   });
 
   elements.adminPermissionTable?.addEventListener("click", (event) => {
-    const reviewButton = event.target.closest("[data-review-admin]");
-    if (reviewButton) {
-      reviewAdminUser(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus).catch((error) => {
-        setStatus(error.message, "error");
-      });
+    const editButton = event.target.closest("[data-edit-admin]");
+    if (editButton) {
+      const card = editButton.closest("[data-admin-card]");
+      if (!card) {
+        setStatus("找不到管理員卡片資料。", "error");
+        return;
+      }
+
+      setAdminCardEditing(card, true);
+      card.querySelector("[data-admin-note]")?.focus();
+      setStatus(`已開啟${getAdminCardName(editButton) || "該管理員"}的編輯模式。`, "info");
       return;
     }
 
-    const button = event.target.closest("[data-admin-permission]");
-    if (button) {
-      const canManageAdmins = button.dataset.canManageAdmins === "true";
-      const actionLabel = canManageAdmins ? "授予" : "收回";
-      updateAdminPermission(
-        button.dataset.adminPermission,
-        { canManageAdmins },
-        {
-          confirmMessage: `確定要${actionLabel}「${getAdminCardName(button)}」的管理員修改權限嗎？`,
-          loadingMessage: "正在更新管理員修改權限...",
-          successMessage: `已${actionLabel}${getAdminCardName(button) || "該管理員"}的管理員修改權限。`,
-        }
-      ).catch((error) => {
-        setStatus(error.message, "error");
-      });
+    const cancelButton = event.target.closest("[data-cancel-admin-edit]");
+    if (cancelButton) {
+      const card = cancelButton.closest("[data-admin-card]");
+      if (!card) {
+        setStatus("找不到管理員卡片資料。", "error");
+        return;
+      }
+
+      resetAdminCardFields(card);
+      setAdminCardEditing(card, false);
+      setStatus(`已取消${getAdminCardName(cancelButton) || "該管理員"}的修改。`, "info");
       return;
     }
 
-    const deleteButton = event.target.closest("[data-delete-admin]");
-    if (deleteButton) {
-      deleteAdminUser(deleteButton.dataset.deleteAdmin).catch((error) => {
-        setStatus(error.message, "error");
-      });
+    const saveButton = event.target.closest("[data-save-admin]");
+    if (!saveButton) {
       return;
     }
 
-    const savePageButton = event.target.closest("[data-save-page-permissions]");
-    if (!savePageButton) {
-      return;
-    }
-
-    const card = savePageButton.closest("[data-admin-card]");
+    const card = saveButton.closest("[data-admin-card]");
     if (!card) {
       setStatus("找不到管理員卡片資料。", "error");
       return;
     }
 
     updateAdminPermission(
-      savePageButton.dataset.savePagePermissions,
-      { pagePermissions: getRowPagePermissions(card) },
+      saveButton.dataset.saveAdmin,
       {
-        confirmMessage: `確定要更新「${getAdminCardName(savePageButton)}」的頁面權限嗎？`,
-        loadingMessage: "正在更新頁面權限...",
-        successMessage: `已更新${getAdminCardName(savePageButton) || "該管理員"}的頁面權限。`,
+        canManageAdmins: getRowCanManageAdmins(card),
+        note: getRowAdminNote(card),
+        pagePermissions: getRowPagePermissions(card),
+      },
+      {
+        confirmMessage: `確定要更新「${getAdminCardName(saveButton)}」的管理員設定嗎？`,
+        loadingMessage: "正在儲存管理員設定...",
+        successMessage: `已更新${getAdminCardName(saveButton) || "該管理員"}的管理員設定。`,
       }
     ).catch((error) => {
+      setAdminCardEditing(card, true);
       setStatus(error.message, "error");
     });
   });
