@@ -118,6 +118,7 @@ const state = {
     activePage: "service",
     scheduleCalendarMonth: formatLocalDate(new Date()).slice(0, 7),
     selectedScheduleDate: formatLocalDate(new Date()),
+    selectedScheduleDeleteKeys: [],
     editingScheduleKey: "",
     editingScheduleIsWorking: true,
   },
@@ -161,11 +162,11 @@ const elements = {
   technicianReviewSummary: document.querySelector("#technicianReviewSummary"),
   technicianReviewTable: document.querySelector("#technicianReviewTable"),
   technicianBulkSelectionMeta: document.querySelector("#technicianBulkSelectionMeta"),
-  technicianBulkSaveButton: document.querySelector("#technicianBulkSaveButton"),
   technicianBulkTable: document.querySelector("#technicianBulkTable"),
   technicianStickyBar: document.querySelector("#technicianStickyBar"),
   technicianStickyMeta: document.querySelector("#technicianStickyMeta"),
   technicianStickySaveButton: document.querySelector("#technicianStickySaveButton"),
+  technicianStickyCancelButton: document.querySelector("#technicianStickyCancelButton"),
   scheduleForm: document.querySelector("#scheduleForm"),
   scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
@@ -185,6 +186,10 @@ const elements = {
   scheduleSelectAllTechniciansButton: document.querySelector("#scheduleSelectAllTechniciansButton"),
   scheduleClearTechniciansButton: document.querySelector("#scheduleClearTechniciansButton"),
   scheduleTechnicianSelectionMeta: document.querySelector("#scheduleTechnicianSelectionMeta"),
+  scheduleBatchSelectionMeta: document.querySelector("#scheduleBatchSelectionMeta"),
+  scheduleSelectAllEntriesButton: document.querySelector("#scheduleSelectAllEntriesButton"),
+  scheduleClearEntriesButton: document.querySelector("#scheduleClearEntriesButton"),
+  scheduleBatchDeleteButton: document.querySelector("#scheduleBatchDeleteButton"),
   reservationForm: document.querySelector("#reservationForm"),
   reservationFormMode: document.querySelector("#reservationFormMode"),
   reservationResultLabel: document.querySelector("#reservationResultLabel"),
@@ -1001,6 +1006,7 @@ function updateSelectedScheduleDate(dateText) {
 
   state.ui.selectedScheduleDate = dateText;
   state.ui.scheduleCalendarMonth = dateText.slice(0, 7);
+  state.ui.selectedScheduleDeleteKeys = [];
 }
 
 function resetScheduleForm() {
@@ -1240,6 +1246,78 @@ function getSelectedScheduleTechnicianIds() {
   return Array.from(elements.scheduleTechnicianCheckboxes.querySelectorAll('input[name="scheduleTechnicianIds"]:checked')).map(
     (input) => input.value
   );
+}
+
+function getScheduleEntryKey(schedule) {
+  return `${schedule.date}::${schedule.technicianId}`;
+}
+
+function parseScheduleEntryKey(key) {
+  const [date, technicianId] = String(key || "").split("::");
+  return {
+    date: String(date || "").trim(),
+    technicianId: String(technicianId || "").trim(),
+  };
+}
+
+function getSelectedScheduleDeleteKeys() {
+  return Array.isArray(state.ui.selectedScheduleDeleteKeys) ? state.ui.selectedScheduleDeleteKeys.slice() : [];
+}
+
+function setSelectedScheduleDeleteKeys(keys = []) {
+  state.ui.selectedScheduleDeleteKeys = Array.from(
+    new Set(
+      (keys || [])
+        .map((key) => String(key || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getSelectableScheduleEntries(dateText = state.ui.selectedScheduleDate) {
+  return getSchedulesCoveringDate(dateText);
+}
+
+function syncScheduleEntrySelection(availableSchedules = getSelectableScheduleEntries()) {
+  const availableKeys = new Set(availableSchedules.map((schedule) => getScheduleEntryKey(schedule)));
+  const nextKeys = getSelectedScheduleDeleteKeys().filter((key) => availableKeys.has(key));
+  setSelectedScheduleDeleteKeys(nextKeys);
+  updateScheduleBatchSelectionMeta(availableSchedules);
+}
+
+function updateScheduleBatchSelectionMeta(availableSchedules = getSelectableScheduleEntries()) {
+  if (!elements.scheduleBatchSelectionMeta) {
+    return;
+  }
+
+  const totalCount = availableSchedules.length;
+  const selectedCount = getSelectedScheduleDeleteKeys().length;
+
+  if (!totalCount) {
+    elements.scheduleBatchSelectionMeta.textContent = "當天沒有可批量移除的班表";
+  } else if (!selectedCount) {
+    elements.scheduleBatchSelectionMeta.textContent = `尚未選取班表，共 ${totalCount} 筆`;
+  } else {
+    elements.scheduleBatchSelectionMeta.textContent = `已選取 ${selectedCount} / ${totalCount} 筆班表`;
+  }
+
+  if (elements.scheduleBatchDeleteButton) {
+    elements.scheduleBatchDeleteButton.disabled = selectedCount === 0;
+  }
+  if (elements.scheduleSelectAllEntriesButton) {
+    elements.scheduleSelectAllEntriesButton.disabled = totalCount === 0;
+  }
+  if (elements.scheduleClearEntriesButton) {
+    elements.scheduleClearEntriesButton.disabled = totalCount === 0 || selectedCount === 0;
+  }
+}
+
+function setScheduleEntrySelection(checkedState) {
+  const schedules = getSelectableScheduleEntries();
+  const nextKeys = checkedState ? schedules.map((schedule) => getScheduleEntryKey(schedule)) : [];
+  setSelectedScheduleDeleteKeys(nextKeys);
+  renderSelectedScheduleDetail();
+  return schedules.length;
 }
 
 function updateScheduleTechnicianSelectionMeta() {
@@ -1988,9 +2066,18 @@ function mountFrameworkApps() {
           <template v-else>
             <article v-for="entry in entries" :key="entry.key" class="schedule-entry">
               <div class="schedule-entry__top">
-                <div class="schedule-entry__title">
-                  <strong>{{ entry.technicianName }}</strong>
-                  <span class="schedule-entry__time">{{ entry.timeLabel }}</span>
+                <div class="schedule-entry__select">
+                  <input
+                    type="checkbox"
+                    class="schedule-entry__checkbox"
+                    :data-schedule-select="entry.key"
+                    :checked="entry.selected"
+                    :aria-label="'選取 ' + entry.technicianName + ' 的班表'"
+                  />
+                  <div class="schedule-entry__title">
+                    <strong>{{ entry.technicianName }}</strong>
+                    <span class="schedule-entry__time">{{ entry.timeLabel }}</span>
+                  </div>
                 </div>
                 <span class="status-pill" :class="'status-pill--' + entry.status.tone">{{ entry.status.label }}</span>
               </div>
@@ -2073,11 +2160,16 @@ function mountFrameworkApps() {
                 <td data-label="送出時間">{{ row.createdAtText }}</td>
                 <td data-label="審核備註">{{ row.reviewNote || '尚無備註' }}</td>
                 <td data-label="操作" class="table-cell-actions">
-                  <div v-if="row.canReview" class="table-actions stacked-actions">
-                    <button type="button" class="button button--ghost" :data-review-leave-request="row.leaveRequestId" data-review-leave-status="已通過">通過</button>
-                    <button type="button" class="button button--danger" :data-review-leave-request="row.leaveRequestId" data-review-leave-status="已拒絕">拒絕</button>
+                  <div class="table-actions stacked-actions">
+                    <select class="table-actions__select" :data-leave-request-status-select="row.leaveRequestId" :value="row.statusValue">
+                      <option value="待審核">待審核</option>
+                      <option value="已通過">已通過</option>
+                      <option value="已拒絕">已拒絕</option>
+                      <option value="已取消">已取消</option>
+                    </select>
+                    <button type="button" class="button button--ghost" :data-save-leave-request-status="row.leaveRequestId">更新狀態</button>
+                    <button type="button" class="button button--danger" :data-delete-leave-request="row.leaveRequestId">刪除休假</button>
                   </div>
-                  <span v-else class="helper-text">已完成審核</span>
                 </td>
               </tr>
             </tbody>
@@ -2919,6 +3011,71 @@ const bulkTechnicianModule = {
     setStatus(`已儲存 ${payloads.length} 列技師變更。`, "success");
   },
 
+  cancelChanges() {
+    const rows = this.getDirtyRows();
+    if (!rows.length) {
+      setStatus("目前沒有可取消的變更。", "info");
+      return;
+    }
+
+    const confirmed = window.confirm(`確定要取消 ${rows.length} 列變更並還原為上次同步的內容？`);
+    if (!confirmed) {
+      setStatus("已取消還原操作。", "info");
+      return;
+    }
+
+    rows.forEach((row) => {
+      const originalId = String(row.dataset.originalTechnicianId || "").trim();
+      if (!originalId) {
+        row.remove();
+        return;
+      }
+
+      const originalName = String(row.dataset.originalName || "");
+      const originalStart = String(row.dataset.originalStartTime || "09:00");
+      const originalEnd = String(row.dataset.originalEndTime || "18:00");
+      const originalActive = String(row.dataset.originalActive || "true") === "true";
+      const originalServiceIds = String(row.dataset.originalServiceIds || "");
+      const originalStatus = String(row.dataset.originalReviewStatus || "未綁定");
+      const originalNote = String(row.dataset.originalReviewNote || "");
+
+      const nameInput = row.querySelector('input[name="name"]');
+      if (nameInput) nameInput.value = originalName;
+
+      const hiddenStart = row.querySelector('input[name="startTime"]');
+      const hiddenEnd = row.querySelector('input[name="endTime"]');
+      const triggers = row.querySelectorAll('[data-time-wheel-trigger]');
+      if (hiddenStart) hiddenStart.value = originalStart;
+      if (hiddenEnd) hiddenEnd.value = originalEnd;
+      if (triggers && triggers.length >= 2) {
+        triggers[0].textContent = originalStart;
+        triggers[0].dataset.timeValue = originalStart;
+        triggers[1].textContent = originalEnd;
+        triggers[1].dataset.timeValue = originalEnd;
+      }
+
+      const activeInput = row.querySelector('input[name="active"]');
+      if (activeInput) activeInput.checked = !!originalActive;
+
+      row.dataset.serviceIds = originalServiceIds;
+      const checkboxContainer = row.querySelector('[data-bulk-service-checkboxes]');
+      if (checkboxContainer && checkboxContainer.childElementCount) {
+        const ids = originalServiceIds.split(',').map(v => v.trim()).filter(Boolean);
+        checkboxContainer.querySelectorAll('input[name="serviceIds"]').forEach((input) => {
+          input.checked = ids.includes(input.value);
+        });
+      }
+
+      row.dataset.reviewStatus = originalStatus;
+      row.dataset.reviewNote = originalNote;
+
+      this.syncRowUi(row);
+    });
+
+    this.updateSelectionMeta();
+    setStatus(`已還原 ${rows.length} 列變更。`, "success");
+  },
+
   handleChange(event) {
     if (event.target.matches('input[name="name"], input[name="startTime"], input[name="endTime"]')) {
       const row = event.target.closest("[data-bulk-technician-row]");
@@ -3035,17 +3192,29 @@ const bulkTechnicianModule = {
   },
 
   bindEvents() {
-    if (!elements.technicianBulkSaveButton || !elements.technicianBulkTable) {
+    if (!elements.technicianBulkTable) {
       return;
     }
 
-    elements.technicianBulkSaveButton.addEventListener("click", async () => {
-      try {
-        await this.submit();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
+    if (elements.technicianBulkSaveButton) {
+      elements.technicianBulkSaveButton.addEventListener("click", async () => {
+        try {
+          await this.submit();
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+    }
+
+    if (elements.technicianBulkCancelButton) {
+      elements.technicianBulkCancelButton.addEventListener("click", async () => {
+        try {
+          this.cancelChanges();
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+    }
 
     elements.technicianBulkTable.addEventListener("change", (event) => {
       this.handleChange(event);
@@ -3276,10 +3445,10 @@ function renderLeaveRequestTable() {
       technicianName: leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId,
       dateLabel: getLeaveRequestDateLabel(leaveRequest),
       reason: leaveRequest.reason || "",
+      statusValue: leaveRequest.status || "待審核",
       status: getLeaveRequestStatusDescriptor(leaveRequest.status),
       createdAtText: formatDateTimeText(leaveRequest.createdAt),
       reviewNote: leaveRequest.reviewNote || "",
-      canReview: leaveRequest.status === "待審核",
     }));
   frameworkView.leaveRequest.emptyMessage = "";
 }
@@ -3358,24 +3527,32 @@ function renderSelectedScheduleDetail() {
     elements.scheduleSelectedDateMeta.textContent = "選取日曆日期後，會顯示當天所有技師的排班狀態。";
     frameworkView.schedule.entries = [];
     frameworkView.schedule.emptyMessage = "尚未選取日期。";
+    setSelectedScheduleDeleteKeys([]);
+    updateScheduleBatchSelectionMeta([]);
     return;
   }
 
   elements.scheduleSelectedDateLabel.textContent = selectedDate;
   elements.scheduleSelectedDateMeta.textContent = schedules.length
-    ? `當天共有 ${schedules.length} 筆班表覆蓋，點擊編輯即可直接帶入下方表單。`
+    ? `當天共有 ${schedules.length} 筆班表覆蓋，可多選後批量移除，或點擊編輯直接帶入下方表單。`
     : "當天尚未建立班表，可直接用下方表單新增。";
 
   if (!schedules.length) {
     frameworkView.schedule.entries = [];
     frameworkView.schedule.emptyMessage = "這一天尚未建立任何技師班表。";
+    setSelectedScheduleDeleteKeys([]);
+    updateScheduleBatchSelectionMeta([]);
     return;
   }
+
+  syncScheduleEntrySelection(schedules);
+  const selectedKeys = new Set(getSelectedScheduleDeleteKeys());
 
   frameworkView.schedule.entries = schedules.map((schedule) => {
     const technicianName = getTechnicianById(schedule.technicianId)?.name || schedule.technicianId;
     const overnight = isOvernightShift(schedule.startTime, schedule.endTime);
     const isFromPrevDay = schedule.date !== selectedDate;
+    const key = getScheduleEntryKey(schedule);
     const timeLabel = isFromPrevDay
       ? `${schedule.startTime} - ${schedule.endTime} (前日跨日)`
       : overnight
@@ -3383,13 +3560,15 @@ function renderSelectedScheduleDetail() {
         : `${schedule.startTime} - ${schedule.endTime}`;
 
     return {
-      key: `${schedule.date}::${schedule.technicianId}`,
+      key,
       technicianName,
       timeLabel,
       status: getScheduleStatusDescriptor(schedule.isWorking),
+      selected: selectedKeys.has(key),
     };
   });
   frameworkView.schedule.emptyMessage = "";
+  updateScheduleBatchSelectionMeta(schedules);
 }
 
 function renderReservationTable() {
@@ -4045,6 +4224,58 @@ async function deleteSchedule(scheduleDate, technicianId, technicianName) {
   setStatus("班表已刪除。", "success");
 }
 
+async function batchDeleteSchedules(scheduleItems) {
+  const items = Array.isArray(scheduleItems)
+    ? scheduleItems
+      .map((item) => ({
+        technicianId: String(item?.technicianId || "").trim(),
+        date: String(item?.date || "").trim(),
+      }))
+      .filter((item) => item.technicianId && item.date)
+    : [];
+
+  if (!items.length) {
+    throw new Error("請先選擇要移除的班表");
+  }
+
+  const previewText = items
+    .slice(0, 5)
+    .map((item) => {
+      const schedule = state.schedules.find(
+        (entry) => entry.technicianId === item.technicianId && entry.date === item.date
+      );
+      const technicianName = getTechnicianById(item.technicianId)?.name || item.technicianId;
+      const timeText = schedule ? ` ${schedule.startTime} - ${schedule.endTime}` : "";
+      return `${item.date}｜${technicianName}${timeText}`;
+    })
+    .join("\n");
+  const remainCount = items.length > 5 ? `\n... 另 ${items.length - 5} 筆` : "";
+  const confirmed = window.confirm(`確定要批量移除 ${items.length} 筆班表嗎？\n\n${previewText}${remainCount}`);
+  if (!confirmed) {
+    setStatus("已取消批量移除班表。", "info");
+    return;
+  }
+
+  setLoadingStatus(`正在批量移除 ${items.length} 筆班表...`);
+  const result = await requestApi("POST", {}, {
+    action: "batchDeleteSchedules",
+    payload: { items },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "批量移除班表失敗");
+  }
+
+  const deletedKeys = new Set(items.map((item) => `${item.date}::${item.technicianId}`));
+  if (state.ui.editingScheduleKey && deletedKeys.has(state.ui.editingScheduleKey)) {
+    resetScheduleForm();
+  }
+
+  setSelectedScheduleDeleteKeys([]);
+  await loadAdminData();
+  updateScheduleBatchSelectionMeta([]);
+  setStatus(`已批量移除 ${items.length} 筆班表。`, "success");
+}
+
 async function reviewTechnician(technicianId, status, presetNote = null) {
   const technician = state.technicians.find((item) => item.technicianId === technicianId);
   if (!technician) {
@@ -4127,38 +4358,74 @@ async function reviewLeaveRequest(leaveRequestId, status) {
     throw new Error("找不到休假申請資料");
   }
 
-  if (leaveRequest.status !== "待審核") {
-    setStatus("這筆休假申請已完成審核。", "info");
-    return;
-  }
+  const nextStatus = String(status || "").trim() || "待審核";
+  const statusLabel = `${leaveRequest.status || "待審核"} -> ${nextStatus}`;
 
   const note = window.prompt(
-    `請輸入「${leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId}」的休假審核備註：`,
+    `請輸入「${leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId}」的休假備註（${statusLabel}）：`,
     leaveRequest.reviewNote || ""
   );
   if (note === null) {
-    setStatus("已取消休假審核操作。", "info");
+    setStatus("已取消休假狀態更新。", "info");
     return;
   }
 
-  setLoadingStatus("正在更新休假審核狀態...");
+  setLoadingStatus("正在更新休假狀態...");
   const result = await requestApi("POST", {}, {
     action: "reviewLeaveRequest",
     payload: {
       leaveRequestId,
-      status,
+      status: nextStatus,
       note,
     },
   });
   if (!result.ok) {
-    throw new Error(result.message || "更新休假審核失敗");
+    throw new Error(result.message || "更新休假狀態失敗");
+  }
+
+  await loadAdminData();
+  if (nextStatus === "已通過") {
+    setStatus("休假狀態已更新為已通過，並同步寫入班表。", "success");
+    return;
+  }
+
+  if (leaveRequest.status === "已通過") {
+    setStatus(`休假狀態已更新為${nextStatus}，並同步回復班表。`, "success");
+    return;
+  }
+
+  setStatus(`休假狀態已更新為${nextStatus}。`, "success");
+}
+
+async function deleteLeaveRequest(leaveRequestId) {
+  const leaveRequest = state.leaveRequests.find((item) => item.leaveRequestId === leaveRequestId);
+  if (!leaveRequest) {
+    throw new Error("找不到休假申請資料");
+  }
+
+  const technicianName = leaveRequest.technicianName || getTechnicianById(leaveRequest.technicianId)?.name || leaveRequest.technicianId;
+  const detailText = `\n\n技師：${technicianName}\n日期：${getLeaveRequestDateLabel(leaveRequest)}\n目前狀態：${leaveRequest.status}`;
+  const syncHint = leaveRequest.status === "已通過" ? "\n刪除後會同步回復班表。" : "";
+  const confirmed = window.confirm(`確定要刪除這筆休假申請嗎？${detailText}${syncHint}`);
+  if (!confirmed) {
+    setStatus("已取消刪除休假申請。", "info");
+    return;
+  }
+
+  setLoadingStatus("正在刪除休假申請...");
+  const result = await requestApi("POST", {}, {
+    action: "deleteLeaveRequest",
+    payload: { leaveRequestId },
+  });
+  if (!result.ok) {
+    throw new Error(result.message || "刪除休假申請失敗");
   }
 
   await loadAdminData();
   setStatus(
-    status === "已通過"
-      ? "休假已審核通過，並同步寫入班表。"
-      : "休假申請已更新為已拒絕。",
+    leaveRequest.status === "已通過"
+      ? "休假申請已刪除，並同步回復班表。"
+      : "休假申請已刪除。",
     "success"
   );
 }
@@ -4450,6 +4717,15 @@ function bindEvents() {
       }
     });
   }
+  if (elements.technicianStickyCancelButton) {
+    elements.technicianStickyCancelButton.addEventListener("click", () => {
+      try {
+        bulkTechnicianModule.cancelChanges();
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  }
 
   if (elements.technicianReviewSummary) {
     elements.technicianReviewSummary.addEventListener("click", (event) => {
@@ -4618,6 +4894,25 @@ function bindEvents() {
     setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
   });
 
+  elements.scheduleSelectAllEntriesButton?.addEventListener("click", () => {
+    const count = setScheduleEntrySelection(true);
+    setStatus(count ? `已全選當日 ${count} 筆班表。` : "當天沒有可選擇的班表。", "info");
+  });
+
+  elements.scheduleClearEntriesButton?.addEventListener("click", () => {
+    const count = setScheduleEntrySelection(false);
+    setStatus(count ? "已清空班表勾選。" : "目前沒有可清空的班表。", "info");
+  });
+
+  elements.scheduleBatchDeleteButton?.addEventListener("click", async () => {
+    try {
+      const items = getSelectedScheduleDeleteKeys().map((key) => parseScheduleEntryKey(key));
+      await batchDeleteSchedules(items);
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   elements.scheduleTechnicianCheckboxes.addEventListener("change", () => {
     updateScheduleTechnicianSelectionMeta();
   });
@@ -4682,16 +4977,48 @@ function bindEvents() {
     }
   });
 
-  elements.leaveRequestTable?.addEventListener("click", async (event) => {
-    const reviewButton = event.target.closest("[data-review-leave-request]");
-    if (!reviewButton) {
+  elements.scheduleTable.addEventListener("change", (event) => {
+    const selectionInput = event.target.closest("[data-schedule-select]");
+    if (!selectionInput) {
       return;
     }
 
-    try {
-      await reviewLeaveRequest(reviewButton.dataset.reviewLeaveRequest, reviewButton.dataset.reviewLeaveStatus);
-    } catch (error) {
-      setStatus(error.message, "error");
+    const currentKeys = new Set(getSelectedScheduleDeleteKeys());
+    if (selectionInput.checked) {
+      currentKeys.add(selectionInput.dataset.scheduleSelect);
+    } else {
+      currentKeys.delete(selectionInput.dataset.scheduleSelect);
+    }
+
+    setSelectedScheduleDeleteKeys(Array.from(currentKeys));
+    updateScheduleBatchSelectionMeta();
+  });
+
+  elements.leaveRequestTable?.addEventListener("click", async (event) => {
+    const saveButton = event.target.closest("[data-save-leave-request-status]");
+    if (saveButton) {
+      const leaveRequestId = saveButton.dataset.saveLeaveRequestStatus;
+      const select = elements.leaveRequestTable.querySelector(`[data-leave-request-status-select="${leaveRequestId}"]`);
+      if (!select) {
+        setStatus("找不到休假狀態欄位。", "error");
+        return;
+      }
+
+      try {
+        await reviewLeaveRequest(leaveRequestId, select.value);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-leave-request]");
+    if (deleteButton) {
+      try {
+        await deleteLeaveRequest(deleteButton.dataset.deleteLeaveRequest);
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
     }
   });
 

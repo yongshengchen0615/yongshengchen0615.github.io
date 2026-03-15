@@ -55,7 +55,9 @@ const ADMIN_ACTION_PAGE_MAP = {
   saveSchedule: 'schedule',
   deleteSchedule: 'schedule',
   batchSaveSchedules: 'schedule',
+  batchDeleteSchedules: 'schedule',
   reviewLeaveRequest: 'leave',
+  deleteLeaveRequest: 'leave',
   saveReservation: 'reservation',
   deleteReservation: 'reservation',
   reviewUser: 'user',
@@ -178,6 +180,7 @@ function doPost(e) {
       reviewUser:            function() { return reviewUser_(payload); },
       reviewTechnician:      function() { return reviewTechnician_(payload); },
       reviewLeaveRequest:    function() { return reviewLeaveRequest_(payload, adminActor); },
+      deleteLeaveRequest:    function() { return deleteLeaveRequest_(payload); },
       deleteUser:            function() { return deleteUser_(payload); },
       saveService:           function() { return saveService_(payload); },
       saveTechnician:        function() { return saveTechnician_(payload); },
@@ -189,6 +192,7 @@ function doPost(e) {
       deleteSchedule:        function() { return deleteSchedule_(payload); },
       deleteReservation:     function() { return deleteReservation_(payload); },
       batchSaveSchedules:    function() { return batchSaveSchedules_(payload); },
+      batchDeleteSchedules:  function() { return batchDeleteSchedules_(payload); },
       batchSaveTechnicians:  function() { return batchSaveTechnicians_(payload); },
       batchDeleteTechnicians:function() { return batchDeleteTechnicians_(payload); },
     };
@@ -852,6 +856,26 @@ function batchSaveSchedules_(payload) {
   });
 }
 
+function batchDeleteSchedules_(payload) {
+  var items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    throw new Error('沒有可刪除的班表資料');
+  }
+
+  var validatedItems = items.map(function(item) {
+    return validateScheduleDeletion_(item || {});
+  });
+
+  validatedItems.forEach(function(item) {
+    deleteRecordsByPredicate_(SHEETS.schedules, function(record) {
+      return String(record.technicianId || '').trim() === item.technicianId
+        && normalizeDateString_(record.date) === item.date;
+    });
+  });
+
+  return validatedItems;
+}
+
 function batchSaveTechnicians_(payload) {
   var items = Array.isArray(payload.items) ? payload.items : [];
   if (!items.length) {
@@ -1042,6 +1066,11 @@ function saveSchedule_(payload) {
     endTime: scheduleEndTime,
     isWorking: toBoolean_(payload.isWorking),
     updatedAt: toIsoString_(new Date()),
+    leaveSourceType: payload.leaveSourceType !== undefined ? String(payload.leaveSourceType || '') : String(existing && existing.leaveSourceType || ''),
+    leaveSourceId: payload.leaveSourceId !== undefined ? String(payload.leaveSourceId || '') : String(existing && existing.leaveSourceId || ''),
+    leaveOriginalStartTime: payload.leaveOriginalStartTime !== undefined ? String(payload.leaveOriginalStartTime || '') : String(existing && existing.leaveOriginalStartTime || ''),
+    leaveOriginalEndTime: payload.leaveOriginalEndTime !== undefined ? String(payload.leaveOriginalEndTime || '') : String(existing && existing.leaveOriginalEndTime || ''),
+    leaveOriginalIsWorking: payload.leaveOriginalIsWorking !== undefined ? String(payload.leaveOriginalIsWorking || '') : String(existing && existing.leaveOriginalIsWorking || ''),
   };
 
   upsertRecordByComposite_(SHEETS.schedules, ['technicianId', 'date'], record);
@@ -1294,6 +1323,92 @@ function cancelLeaveRequest_(payload, technicianUser) {
   return normalizeLeaveRequest_(record);
 }
 
+function syncLeaveRequestScheduleState_(leaveRequest, nextStatus) {
+  if (leaveRequest.status !== LEAVE_STATUS_APPROVED && nextStatus === LEAVE_STATUS_APPROVED) {
+    applyLeaveRequestToSchedules_(leaveRequest);
+    return;
+  }
+
+  if (leaveRequest.status === LEAVE_STATUS_APPROVED && nextStatus !== LEAVE_STATUS_APPROVED) {
+    revertLeaveRequestSchedules_(leaveRequest);
+  }
+}
+
+function revertLeaveRequestSchedules_(leaveRequest) {
+  var technicians = getTableRecords_(SHEETS.technicians).map(normalizeTechnician_);
+  var technician = technicians.find(function(item) {
+    return item.technicianId === String(leaveRequest && leaveRequest.technicianId || '').trim();
+  });
+  var schedules = getTableRecords_(SHEETS.schedules).map(normalizeSchedule_);
+  var leaveDates = enumerateDateRangeStrings_(leaveRequest.startDate, leaveRequest.endDate);
+  var nowText = toIsoString_(new Date());
+
+  if (!technician) {
+    throw new Error('找不到休假申請對應的技師');
+  }
+
+  leaveDates.forEach(function(leaveDate) {
+    var existingSchedule = schedules.find(function(item) {
+      return item.technicianId === technician.technicianId && item.date === leaveDate;
+    });
+
+    if (!existingSchedule) {
+      return;
+    }
+
+    var isLinkedLeaveSchedule = existingSchedule.leaveSourceType === 'leave-request'
+      && existingSchedule.leaveSourceId === String(leaveRequest.leaveRequestId || '').trim();
+    var hasOriginalState = Boolean(
+      existingSchedule.leaveOriginalStartTime
+      || existingSchedule.leaveOriginalEndTime
+      || existingSchedule.leaveOriginalIsWorking !== ''
+    );
+
+    if (isLinkedLeaveSchedule && !hasOriginalState) {
+      deleteRecordsByPredicate_(SHEETS.schedules, function(item) {
+        return String(item.technicianId || '').trim() === technician.technicianId
+          && normalizeDateString_(item.date) === leaveDate;
+      });
+      return;
+    }
+
+    if (isLinkedLeaveSchedule) {
+      upsertRecordByComposite_(SHEETS.schedules, ['technicianId', 'date'], {
+        scheduleId: existingSchedule.scheduleId || createId_('SCH'),
+        technicianId: technician.technicianId,
+        date: leaveDate,
+        startTime: existingSchedule.leaveOriginalStartTime || technician.startTime,
+        endTime: existingSchedule.leaveOriginalEndTime || technician.endTime,
+        isWorking: toBoolean_(existingSchedule.leaveOriginalIsWorking),
+        updatedAt: nowText,
+        leaveSourceType: '',
+        leaveSourceId: '',
+        leaveOriginalStartTime: '',
+        leaveOriginalEndTime: '',
+        leaveOriginalIsWorking: '',
+      });
+      return;
+    }
+
+    if (!existingSchedule.isWorking) {
+      upsertRecordByComposite_(SHEETS.schedules, ['technicianId', 'date'], {
+        scheduleId: existingSchedule.scheduleId || createId_('SCH'),
+        technicianId: technician.technicianId,
+        date: leaveDate,
+        startTime: existingSchedule.startTime || technician.startTime,
+        endTime: existingSchedule.endTime || technician.endTime,
+        isWorking: true,
+        updatedAt: nowText,
+        leaveSourceType: '',
+        leaveSourceId: '',
+        leaveOriginalStartTime: '',
+        leaveOriginalEndTime: '',
+        leaveOriginalIsWorking: '',
+      });
+    }
+  });
+}
+
 function reviewLeaveRequest_(payload, adminUser) {
   validateRequired_(payload.leaveRequestId, 'leaveRequestId');
   validateRequired_(payload.status, 'status');
@@ -1309,13 +1424,11 @@ function reviewLeaveRequest_(payload, adminUser) {
     throw new Error('找不到休假申請');
   }
 
-  if (leaveRequest.status !== LEAVE_STATUS_PENDING) {
-    throw new Error('此休假申請已完成審核');
+  if ([LEAVE_STATUS_PENDING, LEAVE_STATUS_APPROVED, LEAVE_STATUS_REJECTED, LEAVE_STATUS_CANCELLED].indexOf(nextStatus) === -1) {
+    throw new Error('不支援的休假狀態');
   }
 
-  if (nextStatus === LEAVE_STATUS_APPROVED) {
-    applyLeaveRequestToSchedules_(leaveRequest);
-  }
+  syncLeaveRequestScheduleState_(leaveRequest, nextStatus);
 
   var reviewTime = toIsoString_(new Date());
   var record = {
@@ -1330,12 +1443,33 @@ function reviewLeaveRequest_(payload, adminUser) {
     reviewNote: sanitizeTextInput_(payload.note || leaveRequest.reviewNote || ''),
     createdAt: leaveRequest.createdAt,
     updatedAt: reviewTime,
-    reviewedAt: reviewTime,
-    reviewedBy: String(adminUser && adminUser.userId || '').trim(),
+    reviewedAt: nextStatus === LEAVE_STATUS_PENDING ? '' : reviewTime,
+    reviewedBy: nextStatus === LEAVE_STATUS_PENDING ? '' : String(adminUser && adminUser.userId || '').trim(),
   };
 
   upsertRecord_(SHEETS.leaveRequests, 'leaveRequestId', record);
   return normalizeLeaveRequest_(record);
+}
+
+function deleteLeaveRequest_(payload) {
+  validateRequired_(payload.leaveRequestId, 'leaveRequestId');
+
+  var leaveRequestId = String(payload.leaveRequestId || '').trim();
+  var leaveRequests = getTableRecords_(SHEETS.leaveRequests).map(normalizeLeaveRequest_);
+  var leaveRequest = leaveRequests.find(function(item) {
+    return item.leaveRequestId === leaveRequestId;
+  });
+
+  if (!leaveRequest) {
+    throw new Error('找不到休假申請');
+  }
+
+  if (leaveRequest.status === LEAVE_STATUS_APPROVED) {
+    revertLeaveRequestSchedules_(leaveRequest);
+  }
+
+  deleteRecord_(SHEETS.leaveRequests, 'leaveRequestId', leaveRequestId);
+  return { leaveRequestId: leaveRequestId };
 }
 
 function deleteService_(payload) {
@@ -1417,6 +1551,17 @@ function deleteTechnician_(payload) {
 }
 
 function deleteSchedule_(payload) {
+  var validated = validateScheduleDeletion_(payload);
+
+  deleteRecordsByPredicate_(SHEETS.schedules, function(item) {
+    return String(item.technicianId || '').trim() === validated.technicianId
+      && normalizeDateString_(item.date) === validated.date;
+  });
+
+  return validated;
+}
+
+function validateScheduleDeletion_(payload) {
   validateRequired_(payload.technicianId, 'technicianId');
   validateRequired_(payload.date, 'date');
 
@@ -1451,11 +1596,6 @@ function deleteSchedule_(payload) {
   if (linkedReservation) {
     throw new Error('此班表已有預約紀錄，不能直接刪除');
   }
-
-  deleteRecordsByPredicate_(SHEETS.schedules, function(item) {
-    return String(item.technicianId || '').trim() === technicianId
-      && normalizeDateString_(item.date) === scheduleDate;
-  });
 
   return {
     technicianId: technicianId,
@@ -1555,7 +1695,7 @@ function initializeSheets_() {
   ensureSheet_(SHEETS.superAdmins, ['userId', 'displayName', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.services, ['serviceId', 'name', 'durationMinutes', 'price', 'active', 'updatedAt', 'category']);
   ensureSheet_(SHEETS.technicians, ['technicianId', 'name', 'serviceIds', 'startTime', 'endTime', 'active', 'updatedAt', 'lineUserId', 'profileDisplayName', 'pictureUrl', 'reviewStatus', 'reviewNote', 'lastLoginAt']);
-  ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt']);
+  ensureSheet_(SHEETS.schedules, ['scheduleId', 'technicianId', 'date', 'startTime', 'endTime', 'isWorking', 'updatedAt', 'leaveSourceType', 'leaveSourceId', 'leaveOriginalStartTime', 'leaveOriginalEndTime', 'leaveOriginalIsWorking']);
   ensureSheet_(SHEETS.leaveRequests, ['leaveRequestId', 'technicianId', 'technicianName', 'lineUserId', 'startDate', 'endDate', 'reason', 'status', 'reviewNote', 'createdAt', 'updatedAt', 'reviewedAt', 'reviewedBy']);
   ensureSheet_(SHEETS.users, ['userId', 'displayName', 'customerName', 'phone', 'pictureUrl', 'status', 'note', 'createdAt', 'updatedAt', 'lastLoginAt']);
   ensureSheet_(SHEETS.reservations, ['reservationId', 'userId', 'userDisplayName', 'customerName', 'phone', 'technicianId', 'assignmentType', 'serviceId', 'date', 'startTime', 'endTime', 'status', 'technicianConfirmedAt', 'note', 'createdAt']);
@@ -2134,6 +2274,11 @@ function normalizeSchedule_(item) {
     endTime: normalizeTimeString_(item.endTime),
     isWorking: toBoolean_(item.isWorking),
     updatedAt: String(item.updatedAt || ''),
+    leaveSourceType: String(item.leaveSourceType || '').trim(),
+    leaveSourceId: String(item.leaveSourceId || '').trim(),
+    leaveOriginalStartTime: String(item.leaveOriginalStartTime || '').trim(),
+    leaveOriginalEndTime: String(item.leaveOriginalEndTime || '').trim(),
+    leaveOriginalIsWorking: String(item.leaveOriginalIsWorking || '').trim(),
   };
 }
 
@@ -2755,6 +2900,10 @@ function applyLeaveRequestToSchedules_(leaveRequest) {
       return item.technicianId === technician.technicianId && item.date === leaveDate;
     });
 
+    var hasSameLeaveBackup = existingSchedule
+      && existingSchedule.leaveSourceType === 'leave-request'
+      && existingSchedule.leaveSourceId === String(leaveRequest.leaveRequestId || '').trim();
+
     upsertRecordByComposite_(SHEETS.schedules, ['technicianId', 'date'], {
       scheduleId: existingSchedule && existingSchedule.scheduleId ? existingSchedule.scheduleId : createId_('SCH'),
       technicianId: technician.technicianId,
@@ -2763,6 +2912,23 @@ function applyLeaveRequestToSchedules_(leaveRequest) {
       endTime: existingSchedule && existingSchedule.endTime ? existingSchedule.endTime : technician.endTime,
       isWorking: false,
       updatedAt: nowText,
+      leaveSourceType: 'leave-request',
+      leaveSourceId: String(leaveRequest.leaveRequestId || '').trim(),
+      leaveOriginalStartTime: hasSameLeaveBackup
+        ? existingSchedule.leaveOriginalStartTime
+        : existingSchedule && existingSchedule.startTime
+          ? existingSchedule.startTime
+          : '',
+      leaveOriginalEndTime: hasSameLeaveBackup
+        ? existingSchedule.leaveOriginalEndTime
+        : existingSchedule && existingSchedule.endTime
+          ? existingSchedule.endTime
+          : '',
+      leaveOriginalIsWorking: hasSameLeaveBackup
+        ? existingSchedule.leaveOriginalIsWorking
+        : existingSchedule
+          ? String(existingSchedule.isWorking)
+          : '',
     });
   });
 }

@@ -272,15 +272,14 @@
               </div>
               <div id="technicianReviewSummary" class="review-summary review-summary--clickable"></div>
               <div class="technician-action-bar">
-                <div class="technician-action-bar__left">
-                  <button type="button" id="technicianBulkSaveButton" class="button button--primary"><i class="bi bi-check2-all"></i> 儲存批量變更</button>
-                </div>
+                <div class="technician-action-bar__left"></div>
               </div>
               <p class="text-body-secondary small mb-3">技師首次進入 technician 頁面後，LINE 帳號會顯示在此表中；審核通過後才能讀取技師端資料。</p>
               <div id="technicianBulkTable" class="table-wrap"></div>
               <div id="technicianStickyBar" class="technician-sticky-bar">
                 <span id="technicianStickyMeta" class="technician-sticky-bar__meta">目前沒有待儲存的變更</span>
                 <div class="technician-sticky-bar__actions">
+                  <button type="button" id="technicianStickyCancelButton" class="button button--secondary button--compact">取消變更</button>
                   <button type="button" id="technicianStickySaveButton" class="button button--primary button--compact"><i class="bi bi-check2-all"></i> 儲存變更</button>
                 </div>
               </div>
@@ -326,6 +325,17 @@
                   <p class="eyebrow mb-1">Selected Day</p>
                   <h3 id="scheduleSelectedDateLabel" class="mb-1">請先選擇日期</h3>
                   <p id="scheduleSelectedDateMeta" class="text-body-secondary mb-0">選取日曆日期後，會顯示當天所有技師的排班狀態。</p>
+                </div>
+                <div class="schedule-selection-bar mb-3">
+                  <div>
+                    <strong>批量移除班表</strong>
+                    <p id="scheduleBatchSelectionMeta" class="text-body-secondary mb-0">尚未選取班表</p>
+                  </div>
+                  <div class="schedule-selection-bar__actions">
+                    <button type="button" id="scheduleSelectAllEntriesButton" class="button button--secondary">全選當日班表</button>
+                    <button type="button" id="scheduleClearEntriesButton" class="button button--secondary">清空勾選</button>
+                    <button type="button" id="scheduleBatchDeleteButton" class="button button--danger" disabled>批量移除</button>
+                  </div>
                 </div>
                 <div id="scheduleTable" class="schedule-day-list"></div>
               </section>

@@ -658,7 +658,6 @@ function renderCalendarDetail(dataMap) {
     <section class="calendar-detail-block">
       <div class="calendar-detail-block__header">
         <strong>班表安排</strong>
-        <span class="hero-tag">${entry.schedules.length} 筆</span>
       </div>
       ${entry.schedules.length
         ? `<div class="calendar-detail-list">${entry.schedules
@@ -750,8 +749,8 @@ function renderCalendar() {
       >
         <span class="calendar-day__number">${dayNumber}</span>
         <span class="calendar-day__badges">
-          ${workingScheduleCount ? `<span class="calendar-day__badge calendar-day__badge--schedule">班表 ${workingScheduleCount}</span>` : ""}
-          ${leaveCount ? `<span class="calendar-day__badge calendar-day__badge--leave">休假 ${leaveCount}</span>` : ""}
+          ${workingScheduleCount ? '<span class="calendar-day__badge calendar-day__badge--schedule">班表</span>' : ""}
+          ${leaveCount ? '<span class="calendar-day__badge calendar-day__badge--leave">休假</span>' : ""}
           ${reservationCount ? `<span class="calendar-day__badge calendar-day__badge--reservation">預約 ${reservationCount}</span>` : ""}
         </span>
       </button>

@@ -399,6 +399,11 @@ h1 {
   color: var(--brand);
 }
 
+.technician-action-bar__left .button + .button,
+.technician-sticky-bar__actions .button + .button {
+  margin-left: 0.5rem;
+}
+
 .button--danger {
   background: rgba(255, 107, 107, 0.16);
   color: #ff9d9d;
@@ -810,6 +815,30 @@ body.is-sheet-open {
   gap: 12px;
 }
 
+.schedule-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(146, 178, 200, 0.12);
+  border-radius: 1rem;
+  background: rgba(5, 15, 22, 0.28);
+}
+
+.schedule-selection-bar strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+}
+
+.schedule-selection-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .schedule-entry {
   display: grid;
   gap: 10px;
@@ -824,6 +853,20 @@ body.is-sheet-open {
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.schedule-entry__select {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.schedule-entry__checkbox {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
 }
 
 .schedule-entry__title {
@@ -2048,6 +2091,19 @@ body.is-sheet-open {
   .schedule-entry__top {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .schedule-selection-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .schedule-selection-bar__actions {
+    justify-content: stretch;
+  }
+
+  .schedule-selection-bar__actions .button {
+    width: 100%;
   }
 
   .schedule-card,
