@@ -1028,3 +1028,47 @@ select:focus-visible {
     min-height: 44px;
   }
 }
+
+/* ==========================================================================
+   Responsive overflow fixes (prevent cards from overflowing on small screens)
+   ========================================================================== */
+
+/* Ensure flex/grid children can shrink instead of forcing container width */
+.panel,
+.content-grid > *,
+.hero-grid > *,
+.stats-grid > *,
+.card-list > * {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Media and long content should never overflow their container */
+img,
+video,
+iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Better line breaking for long words/strings */
+* {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Allow horizontal scrolling where wide tables/grids are expected */
+.table-wrap,
+.calendar-grid-shell,
+.card-list {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 480px) {
+  /* Reduce heavy shadows and padding that may contribute to visual overflow */
+  .panel {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
