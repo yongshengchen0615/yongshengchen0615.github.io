@@ -161,15 +161,11 @@ const elements = {
   technicianReviewSummary: document.querySelector("#technicianReviewSummary"),
   technicianReviewTable: document.querySelector("#technicianReviewTable"),
   technicianBulkSelectionMeta: document.querySelector("#technicianBulkSelectionMeta"),
-  technicianBulkAddRowButton: document.querySelector("#technicianBulkAddRowButton"),
   technicianBulkSaveButton: document.querySelector("#technicianBulkSaveButton"),
-  technicianBulkDeleteButton: document.querySelector("#technicianBulkDeleteButton"),
   technicianBulkTable: document.querySelector("#technicianBulkTable"),
-  technicianSelectAllCheckbox: document.querySelector("#technicianSelectAllCheckbox"),
   technicianStickyBar: document.querySelector("#technicianStickyBar"),
   technicianStickyMeta: document.querySelector("#technicianStickyMeta"),
   technicianStickySaveButton: document.querySelector("#technicianStickySaveButton"),
-  technicianStickyDeleteButton: document.querySelector("#technicianStickyDeleteButton"),
   scheduleForm: document.querySelector("#scheduleForm"),
   scheduleResetButton: document.querySelector("#scheduleResetButton"),
   scheduleResultLabel: document.querySelector("#scheduleResultLabel"),
@@ -1942,10 +1938,12 @@ function mountFrameworkApps() {
                 <td data-label="操作" class="table-cell-actions">
                   <div class="table-actions stacked-actions">
                     <button type="button" class="button button--ghost" :data-focus-technician="row.technicianId">前往設定</button>
-                    <button type="button" class="button button--ghost" :data-review-technician="row.technicianId" data-review-technician-status="已通過" :disabled="!row.canReview">通過</button>
-                    <button type="button" class="button button--secondary" :data-review-technician="row.technicianId" data-review-technician-status="待審核" :disabled="!row.canReview">設待審核</button>
-                    <button type="button" class="button button--secondary" :data-review-technician="row.technicianId" data-review-technician-status="已拒絕" :disabled="!row.canReview">拒絕</button>
-                    <button type="button" class="button button--danger" :data-review-technician="row.technicianId" data-review-technician-status="已停用" :disabled="!row.canReview">停用</button>
+                    <select class="table-actions__select" v-bind:data-review-technician-select="row.technicianId" v-bind:value="row.status.label" :disabled="!row.canReview">
+                      <option value="已通過">已通過</option>
+                      <option value="待審核">待審核</option>
+                      <option value="已拒絕">已拒絕</option>
+                      <option value="已停用">已停用</option>
+                    </select>
                   </div>
                 </td>
               </tr>
@@ -2387,18 +2385,35 @@ function getBulkTechnicianLineAccountMarkup(technician, technicianName) {
 
 function getBulkTechnicianReviewActionsMarkup(technicianId, canReview) {
   if (!technicianId) {
-    return '<div class="bulk-technician-empty">新列需先儲存後才可審核</div>';
+    return `
+      <div class="bulk-technician-row-actions d-grid gap-2">
+        <div class="bulk-technician-empty">新列需先儲存後才可審核</div>
+        <button type="button" class="button button--danger button--compact" data-delete-technician-row>移除此列</button>
+      </div>
+    `;
   }
 
   const disabled = canReview ? "" : "disabled";
   return `
     <div class="bulk-technician-row-actions d-grid gap-2">
-      <button type="button" class="btn btn-sm btn-outline-success" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已通過" ${disabled}>通過</button>
-      <button type="button" class="btn btn-sm btn-outline-warning" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="待審核" ${disabled}>設待審核</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已拒絕" ${disabled}>拒絕</button>
-      <button type="button" class="btn btn-sm btn-outline-danger" data-review-technician="${escapeHtml(technicianId)}" data-review-technician-status="已停用" ${disabled}>停用</button>
+      <select class="bulk-technician-row-actions__select" data-review-technician-select="${escapeHtml(technicianId)}" ${disabled}>
+        <option value="已通過">已通過</option>
+        <option value="待審核">待審核</option>
+        <option value="已拒絕">已拒絕</option>
+        <option value="已停用">已停用</option>
+      </select>
+      <button type="button" class="button button--danger button--compact" data-delete-technician-row="${escapeHtml(technicianId)}">刪除技師</button>
+      <small class="bulk-technician-row-actions__meta" data-bulk-review-meta>尚未調整審核狀態</small>
     </div>
   `;
+}
+
+function areArraysEqual(left = [], right = []) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
 }
 
 const bulkTechnicianModule = {
@@ -2420,6 +2435,153 @@ const bulkTechnicianModule = {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
+  },
+
+  getRowDraft(row) {
+    return {
+      technicianId: String(row?.dataset.technicianId || "").trim(),
+      name: row?.querySelector('input[name="name"]')?.value.trim() || "",
+      startTime: row?.querySelector('input[name="startTime"]')?.value || "09:00",
+      endTime: row?.querySelector('input[name="endTime"]')?.value || "18:00",
+      active: Boolean(row?.querySelector('input[name="active"]')?.checked),
+      serviceIds: this.getServiceIds(row),
+      status: String(row?.dataset.reviewStatus || "未綁定"),
+      note: String(row?.dataset.reviewNote || "").trim(),
+    };
+  },
+
+  getOriginalRowDraft(row) {
+    return {
+      technicianId: String(row?.dataset.originalTechnicianId || "").trim(),
+      name: String(row?.dataset.originalName || ""),
+      startTime: String(row?.dataset.originalStartTime || "09:00"),
+      endTime: String(row?.dataset.originalEndTime || "18:00"),
+      active: String(row?.dataset.originalActive || "true") === "true",
+      serviceIds: String(row?.dataset.originalServiceIds || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+      status: String(row?.dataset.originalReviewStatus || "未綁定"),
+      note: String(row?.dataset.originalReviewNote || "").trim(),
+    };
+  },
+
+  isRowDirty(row) {
+    const current = this.getRowDraft(row);
+    const original = this.getOriginalRowDraft(row);
+
+    return current.name !== original.name
+      || current.startTime !== original.startTime
+      || current.endTime !== original.endTime
+      || current.active !== original.active
+      || current.status !== original.status
+      || current.note !== original.note
+      || !areArraysEqual(current.serviceIds, original.serviceIds);
+  },
+
+  syncRowDirtyState(row) {
+    if (!row) {
+      return false;
+    }
+
+    const dirty = this.isRowDirty(row);
+    row.dataset.rowState = dirty ? "dirty" : "clean";
+    return dirty;
+  },
+
+  syncRowStatusPanel(row) {
+    if (!row) {
+      return;
+    }
+
+    const pills = row.querySelector('.bulk-technician-status-panel__pills');
+    const active = Boolean(row.querySelector('input[name="active"]')?.checked);
+    const reviewStatus = String(row.dataset.reviewStatus || "未綁定");
+    if (pills) {
+      pills.innerHTML = `${getTechnicianReviewStatusPill(reviewStatus)}${getActiveStatusPill(active)}`;
+    }
+  },
+
+  syncRowNote(row) {
+    if (!row) {
+      return;
+    }
+
+    const noteContainer = row.querySelector('[data-bulk-note]');
+    const note = String(row.dataset.reviewNote || "").trim();
+    if (noteContainer) {
+      noteContainer.innerHTML = note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>';
+    }
+  },
+
+  syncRowReviewMeta(row) {
+    if (!row) {
+      return;
+    }
+
+    const meta = row.querySelector('[data-bulk-review-meta]');
+    if (!meta) {
+      return;
+    }
+
+    const dirty = this.isRowDirty(row);
+    const currentStatus = String(row.dataset.reviewStatus || "未綁定");
+    const currentNote = String(row.dataset.reviewNote || "").trim();
+    const originalStatus = String(row.dataset.originalReviewStatus || "未綁定");
+    const originalNote = String(row.dataset.originalReviewNote || "").trim();
+    const reviewChanged = currentStatus !== originalStatus || currentNote !== originalNote;
+
+    if (!dirty) {
+      meta.textContent = "尚未調整審核狀態";
+      return;
+    }
+
+    if (reviewChanged) {
+      meta.textContent = currentNote ? `待儲存：${currentStatus} / 已更新備註` : `待儲存：${currentStatus}`;
+      return;
+    }
+
+    meta.textContent = "此列尚有未儲存變更";
+  },
+
+  syncRowReviewSelect(row) {
+    if (!row) {
+      return;
+    }
+
+    const select = row.querySelector('[data-review-technician-select]');
+    if (select) {
+      select.value = String(row.dataset.reviewStatus || "待審核");
+    }
+  },
+
+  syncRowUi(row) {
+    this.syncServiceSummary(row);
+    this.syncRowStatusPanel(row);
+    this.syncRowNote(row);
+    this.syncRowReviewSelect(row);
+    this.syncRowReviewMeta(row);
+    this.syncRowDirtyState(row);
+  },
+
+  getDirtyRows() {
+    return this.getRows().filter((row) => this.isRowDirty(row));
+  },
+
+  refreshDraftState() {
+    this.getRows().forEach((row) => this.syncRowUi(row));
+    this.updateSelectionMeta();
+  },
+
+  updateActionButtons() {
+    const dirtyCount = this.getDirtyRows().length;
+
+    if (elements.technicianBulkSaveButton) {
+      elements.technicianBulkSaveButton.disabled = dirtyCount === 0;
+    }
+    if (elements.technicianStickySaveButton) {
+      elements.technicianStickySaveButton.disabled = dirtyCount === 0;
+    }
   },
 
   getServiceCategoryOptions(selectedValue = "") {
@@ -2486,13 +2648,24 @@ const bulkTechnicianModule = {
     const canReview = Boolean(technician?.lineUserId && technicianId);
 
     return `
-      <tr data-bulk-technician-row data-technician-id="${escapeHtml(technicianId)}" data-service-ids="${escapeHtml(serviceIds.join(","))}">
+      <tr
+        data-bulk-technician-row
+        data-technician-id="${escapeHtml(technicianId)}"
+        data-service-ids="${escapeHtml(serviceIds.join(","))}"
+        data-review-status="${escapeHtml(reviewStatus)}"
+        data-review-note="${escapeHtml(note)}"
+        data-original-technician-id="${escapeHtml(technicianId)}"
+        data-original-name="${escapeHtml(technicianName)}"
+        data-original-start-time="${escapeHtml(startTime)}"
+        data-original-end-time="${escapeHtml(endTime)}"
+        data-original-active="${active ? "true" : "false"}"
+        data-original-service-ids="${escapeHtml(serviceIds.join(","))}"
+        data-original-review-status="${escapeHtml(reviewStatus)}"
+        data-original-review-note="${escapeHtml(note)}"
+        data-row-state="clean"
+      >
         <td data-label="技師" class="bulk-technician-table__cell bulk-technician-table__cell--identity">
           <div class="bulk-technician-profile">
-            <label class="bulk-technician-profile__select">
-              <input type="checkbox" name="bulkTechnicianSelected" value="${escapeHtml(technicianId)}" />
-              <span>勾選</span>
-            </label>
             <div class="bulk-technician-profile__body">
               <div class="bulk-technician-profile__meta">
                 <span class="bulk-technician-profile__label">技師名稱</span>
@@ -2566,7 +2739,7 @@ const bulkTechnicianModule = {
           </div>
         </td>
         <td data-label="備註" class="bulk-technician-table__cell bulk-technician-table__cell--note">
-          <div class="bulk-technician-note">
+          <div class="bulk-technician-note" data-bulk-note>
             ${note ? escapeHtml(note) : '<span class="helper-text">尚無備註</span>'}
           </div>
         </td>
@@ -2583,6 +2756,7 @@ const bulkTechnicianModule = {
     }
 
     initializeTimeWheelFields(row);
+    this.syncRowUi(row);
   },
 
   updateSelectionMeta() {
@@ -2591,23 +2765,24 @@ const bulkTechnicianModule = {
     }
 
     const rows = this.getRows();
-    const checkedCount = rows.filter((row) => row.querySelector('input[name="bulkTechnicianSelected"]')?.checked).length;
-    const metaText = checkedCount
-      ? `已勾選 ${checkedCount} 位技師`
-      : `共 ${rows.length} 列，尚未勾選任何技師`;
+    const dirtyCount = rows.filter((row) => this.isRowDirty(row)).length;
+    const metaText = dirtyCount
+      ? `共 ${rows.length} 列，${dirtyCount} 列待儲存`
+      : `共 ${rows.length} 列，目前沒有待儲存的變更`;
     elements.technicianBulkSelectionMeta.textContent = metaText;
 
-    if (elements.technicianSelectAllCheckbox) {
-      elements.technicianSelectAllCheckbox.checked = rows.length > 0 && checkedCount === rows.length;
-      elements.technicianSelectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < rows.length;
-    }
-
     if (elements.technicianStickyBar) {
-      elements.technicianStickyBar.classList.toggle("is-visible", checkedCount > 0);
+      elements.technicianStickyBar.classList.toggle("is-visible", dirtyCount > 0);
     }
     if (elements.technicianStickyMeta) {
-      elements.technicianStickyMeta.textContent = checkedCount ? `已勾選 ${checkedCount} 位技師` : "尚未勾選";
+      if (dirtyCount) {
+        elements.technicianStickyMeta.textContent = `${dirtyCount} 列待儲存`;
+      } else {
+        elements.technicianStickyMeta.textContent = "目前沒有待儲存的變更";
+      }
     }
+
+    this.updateActionButtons();
   },
 
   renderTable() {
@@ -2627,7 +2802,7 @@ const bulkTechnicianModule = {
         : `<div class="technician-empty-guide">
             <div class="technician-empty-guide__icon"><i class="bi bi-person-plus"></i></div>
             <p class="technician-empty-guide__title">尚無技師資料</p>
-            <p class="technician-empty-guide__text">點擊上方「新增一列」按鈕建立第一位技師，<br />或等待技師透過 LINE 登入 technician 頁面後自動出現。</p>
+            <p class="technician-empty-guide__text">等待技師透過 LINE 登入 technician 頁面後自動出現，<br />或由既有技師資料同步到此列表。</p>
           </div>`;
       this.updateSelectionMeta();
       return;
@@ -2661,10 +2836,28 @@ const bulkTechnicianModule = {
       return;
     }
 
-    const tbody = elements.technicianBulkTable.querySelector("tbody");
+    let tbody = elements.technicianBulkTable.querySelector("tbody");
     if (!tbody) {
-      this.renderTable();
-      return;
+      elements.technicianBulkTable.innerHTML = `
+        <table class="list-table bulk-technician-table">
+          <thead>
+            <tr>
+              <th>技師</th>
+              <th>LINE 帳號</th>
+              <th>服務 / 班別</th>
+              <th>技師狀態</th>
+              <th>最後登入</th>
+              <th>備註</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      `;
+      tbody = elements.technicianBulkTable.querySelector("tbody");
+      if (!tbody) {
+        return;
+      }
     }
 
     tbody.insertAdjacentHTML("beforeend", this.createRowMarkup(technician));
@@ -2674,14 +2867,9 @@ const bulkTechnicianModule = {
   },
 
   readRow(row) {
-    const technicianId = String(row.dataset.technicianId || "").trim();
-    const name = row.querySelector('input[name="name"]')?.value.trim() || "";
-    const startTime = row.querySelector('input[name="startTime"]')?.value || "";
-    const endTime = row.querySelector('input[name="endTime"]')?.value || "";
-    const active = Boolean(row.querySelector('input[name="active"]')?.checked);
-    const serviceIds = this.getServiceIds(row);
+    const { technicianId, name, startTime, endTime, active, serviceIds, status, note } = this.getRowDraft(row);
 
-    if (!technicianId && !name && !startTime && !endTime) {
+    if (!this.isRowDirty(row)) {
       return null;
     }
 
@@ -2700,17 +2888,21 @@ const bulkTechnicianModule = {
       endTime,
       active,
       serviceIds,
+      status,
+      note,
     };
   },
 
   async submit() {
+    this.refreshDraftState();
     setLoadingStatus("正在批量儲存技師資料...");
-    const payloads = this.getRows()
+    const payloads = this.getDirtyRows()
       .map((row) => this.readRow(row))
       .filter(Boolean);
 
     if (!payloads.length) {
-      throw new Error("目前沒有可儲存的技師資料");
+      setStatus("目前沒有待儲存的技師變更。", "info");
+      return;
     }
 
     const result = await requestApi("POST", {}, {
@@ -2724,49 +2916,13 @@ const bulkTechnicianModule = {
     }
 
     await loadAdminData();
-    setStatus(`已批量儲存 ${payloads.length} 位技師。`, "success");
-  },
-
-  async deleteSelected() {
-    const rows = this.getRows().filter((row) => row.querySelector('input[name="bulkTechnicianSelected"]')?.checked);
-
-    if (!rows.length) {
-      setStatus("請先勾選要刪除的技師。", "info");
-      return;
-    }
-
-    const savedRows = rows.filter((row) => String(row.dataset.technicianId || "").trim());
-    const draftRows = rows.filter((row) => !String(row.dataset.technicianId || "").trim());
-    const confirmed = window.confirm(`確定要刪除勾選的 ${rows.length} 列技師資料嗎？`);
-    if (!confirmed) {
-      setStatus("已取消批量刪除。", "info");
-      return;
-    }
-
-    draftRows.forEach((row) => row.remove());
-
-    if (savedRows.length) {
-      setLoadingStatus("正在批量刪除技師資料...");
-      const result = await requestApi("POST", {}, {
-        action: "batchDeleteTechnicians",
-        payload: {
-          technicianIds: savedRows.map((row) => row.dataset.technicianId),
-        },
-      });
-      if (!result.ok) {
-        throw new Error(result.message || "批量刪除技師失敗");
-      }
-
-      await loadAdminData();
-    } else {
-      this.updateSelectionMeta();
-    }
-
-    setStatus(`已刪除 ${rows.length} 列技師資料。`, "success");
+    setStatus(`已儲存 ${payloads.length} 列技師變更。`, "success");
   },
 
   handleChange(event) {
-    if (event.target.matches('input[name="bulkTechnicianSelected"]')) {
+    if (event.target.matches('input[name="name"], input[name="startTime"], input[name="endTime"]')) {
+      const row = event.target.closest("[data-bulk-technician-row]");
+      this.syncRowUi(row);
       this.updateSelectionMeta();
       return;
     }
@@ -2777,11 +2933,8 @@ const bulkTechnicianModule = {
       if (label) {
         label.textContent = event.target.checked ? "目前啟用" : "目前停用";
       }
-      const pills = row?.querySelector('.bulk-technician-status-panel__pills');
-      if (pills) {
-        const current = state.technicians.find((item) => item.technicianId === row.dataset.technicianId);
-        pills.innerHTML = `${getTechnicianReviewStatusPill(current?.status || "未綁定")}${getActiveStatusPill(event.target.checked)}`;
-      }
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
       return;
     }
 
@@ -2793,7 +2946,36 @@ const bulkTechnicianModule = {
 
     if (event.target.matches('[data-bulk-service-checkboxes] input[name="serviceIds"]')) {
       const row = event.target.closest("[data-bulk-technician-row]");
-      this.syncServiceSummary(row);
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
+      return;
+    }
+
+    if (event.target.matches('[data-review-technician-select]')) {
+      const row = event.target.closest("[data-bulk-technician-row]");
+      const technicianId = event.target.dataset.reviewTechnicianSelect;
+      const current = state.technicians.find((item) => item.technicianId === technicianId);
+      if (!current?.lineUserId) {
+        event.target.value = String(row?.dataset.reviewStatus || current?.status || "未綁定");
+        setStatus("此技師尚未完成 LINE 登入，暫時無法審核。", "info");
+        return;
+      }
+
+      const nextStatus = event.target.value;
+      const currentNote = String(row?.dataset.reviewNote || current.note || "");
+      const displayName = row?.querySelector('input[name="name"]')?.value.trim() || current.name;
+      const note = window.prompt(`請輸入「${displayName}」的技師審核備註：`, currentNote);
+      if (note === null) {
+        event.target.value = String(row?.dataset.reviewStatus || current.status || "待審核");
+        setStatus("已取消技師審核操作。", "info");
+        return;
+      }
+
+      row.dataset.reviewStatus = nextStatus;
+      row.dataset.reviewNote = note.trim();
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
+      setStatus(`已暫存 ${displayName} 的審核變更，按下「儲存批量變更」後才會同步到 GAS。`, "info");
     }
   },
 
@@ -2803,9 +2985,19 @@ const bulkTechnicianModule = {
       return;
     }
 
-    const reviewButton = event.target.closest("[data-review-technician]");
-    if (reviewButton) {
-      reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus)
+    const deleteButton = event.target.closest("[data-delete-technician-row]");
+    if (deleteButton) {
+      const technicianId = String(row.dataset.technicianId || "").trim();
+      const technicianName = row.querySelector('input[name="name"]')?.value.trim() || technicianId || "未命名技師";
+
+      if (!technicianId) {
+        row.remove();
+        this.updateSelectionMeta();
+        setStatus("已移除尚未儲存的新列。", "info");
+        return;
+      }
+
+      deleteTechnician(technicianId, technicianName)
         .catch((error) => setStatus(error.message, "error"));
       return;
     }
@@ -2828,27 +3020,24 @@ const bulkTechnicianModule = {
 
     if (event.target.closest("[data-bulk-select-visible-services]")) {
       const count = setVisibleServiceSelection(row.querySelector("[data-bulk-service-checkboxes]"), true);
-      this.syncServiceSummary(row);
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
       setStatus(count ? "已全選此列目前分類服務。" : "目前分類沒有可勾選的服務項目。", "info");
       return;
     }
 
     if (event.target.closest("[data-bulk-clear-visible-services]")) {
       const count = setVisibleServiceSelection(row.querySelector("[data-bulk-service-checkboxes]"), false);
-      this.syncServiceSummary(row);
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
       setStatus(count ? "已清除此列目前分類服務。" : "目前分類沒有可清除的服務項目。", "info");
     }
   },
 
   bindEvents() {
-    if (!elements.technicianBulkAddRowButton || !elements.technicianBulkSaveButton || !elements.technicianBulkDeleteButton || !elements.technicianBulkTable) {
+    if (!elements.technicianBulkSaveButton || !elements.technicianBulkTable) {
       return;
     }
-
-    elements.technicianBulkAddRowButton.addEventListener("click", () => {
-      this.appendRow();
-      setStatus("已新增一列批量技師資料。", "info");
-    });
 
     elements.technicianBulkSaveButton.addEventListener("click", async () => {
       try {
@@ -2858,16 +3047,18 @@ const bulkTechnicianModule = {
       }
     });
 
-    elements.technicianBulkDeleteButton.addEventListener("click", async () => {
-      try {
-        await this.deleteSelected();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-
     elements.technicianBulkTable.addEventListener("change", (event) => {
       this.handleChange(event);
+    });
+
+    elements.technicianBulkTable.addEventListener("input", (event) => {
+      if (!event.target.matches('input[name="name"]')) {
+        return;
+      }
+
+      const row = event.target.closest("[data-bulk-technician-row]");
+      this.syncRowUi(row);
+      this.updateSelectionMeta();
     });
 
     elements.technicianBulkTable.addEventListener("click", (event) => {
@@ -3015,10 +3206,6 @@ function getGroupedServiceMarkup(serviceIds = []) {
       `;
     })
     .join("");
-}
-
-function renderScheduleTable() {
-  const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
   elements.scheduleResultLabel.textContent = `${workingSchedules} 筆可預約 / 共 ${state.schedules.length} 筆`;
   renderScheduleCalendar();
   renderSelectedScheduleDetail();
@@ -3152,6 +3339,11 @@ function renderScheduleCalendar() {
   if (frameworkView) {
     frameworkView.schedule.days = cells;
   }
+}
+
+function renderScheduleTable() {
+  renderScheduleCalendar();
+  renderSelectedScheduleDetail();
 }
 
 function renderSelectedScheduleDetail() {
@@ -3853,7 +4045,7 @@ async function deleteSchedule(scheduleDate, technicianId, technicianName) {
   setStatus("班表已刪除。", "success");
 }
 
-async function reviewTechnician(technicianId, status) {
+async function reviewTechnician(technicianId, status, presetNote = null) {
   const technician = state.technicians.find((item) => item.technicianId === technicianId);
   if (!technician) {
     throw new Error("找不到技師資料");
@@ -3864,7 +4056,9 @@ async function reviewTechnician(technicianId, status) {
     return;
   }
 
-  const note = window.prompt(`請輸入「${technician.name}」的技師審核備註：`, technician.note || "");
+  const note = presetNote === null
+    ? window.prompt(`請輸入「${technician.name}」的技師審核備註：`, technician.note || "")
+    : String(presetNote);
   if (note === null) {
     setStatus("已取消技師審核操作。", "info");
     return;
@@ -4247,33 +4441,10 @@ function bindEvents() {
   });
   bulkTechnicianModule.bindEvents();
 
-  if (elements.technicianSelectAllCheckbox) {
-    elements.technicianSelectAllCheckbox.addEventListener("change", () => {
-      const checkedState = elements.technicianSelectAllCheckbox.checked;
-      bulkTechnicianModule.getRows().forEach((row) => {
-        const checkbox = row.querySelector('input[name="bulkTechnicianSelected"]');
-        if (checkbox) {
-          checkbox.checked = checkedState;
-        }
-      });
-      bulkTechnicianModule.updateSelectionMeta();
-    });
-  }
-
   if (elements.technicianStickySaveButton) {
     elements.technicianStickySaveButton.addEventListener("click", async () => {
       try {
         await bulkTechnicianModule.submit();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-  }
-
-  if (elements.technicianStickyDeleteButton) {
-    elements.technicianStickyDeleteButton.addEventListener("click", async () => {
-      try {
-        await bulkTechnicianModule.deleteSelected();
       } catch (error) {
         setStatus(error.message, "error");
       }
@@ -4313,15 +4484,35 @@ function bindEvents() {
         focusTechnicianSettings(focusButton.dataset.focusTechnician);
         return;
       }
+    });
 
-      const reviewButton = event.target.closest("[data-review-technician]");
-      if (!reviewButton) {
+    elements.technicianReviewTable.addEventListener("change", async (event) => {
+      const reviewSelect = event.target.closest("[data-review-technician-select]");
+      if (!reviewSelect) {
+        return;
+      }
+
+      const technicianId = reviewSelect.dataset.reviewTechnicianSelect;
+      const technician = state.technicians.find((item) => item.technicianId === technicianId);
+      if (!technician?.lineUserId) {
+        reviewSelect.value = technician?.status || "未綁定";
+        setStatus("此技師尚未完成 LINE 登入，暫時無法審核。", "info");
+        return;
+      }
+
+      const previousStatus = technician.status || "待審核";
+      const nextStatus = reviewSelect.value;
+      const note = window.prompt(`請輸入「${technician.name}」的技師審核備註：`, technician.note || "");
+      if (note === null) {
+        reviewSelect.value = previousStatus;
+        setStatus("已取消技師審核操作。", "info");
         return;
       }
 
       try {
-        await reviewTechnician(reviewButton.dataset.reviewTechnician, reviewButton.dataset.reviewTechnicianStatus);
+        await reviewTechnician(technicianId, nextStatus, note);
       } catch (error) {
+        reviewSelect.value = previousStatus;
         setStatus(error.message, "error");
       }
     });

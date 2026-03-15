@@ -860,17 +860,15 @@ function batchSaveTechnicians_(payload) {
 
   return items.map(function(item) {
     var normalizedItem = item || {};
-    var technician = saveTechnician_({
+    return saveTechnician_({
       technicianId: normalizedItem.technicianId,
       name: normalizedItem.name,
       startTime: normalizedItem.startTime,
       endTime: normalizedItem.endTime,
       active: normalizedItem.active,
-    });
-
-    return saveTechnicianServices_({
-      technicianId: technician.technicianId,
       serviceIds: normalizedItem.serviceIds || [],
+      status: normalizedItem.status,
+      note: normalizedItem.note,
     });
   });
 }
@@ -922,24 +920,41 @@ function saveTechnician_(payload) {
   var duplicate = technicians.find(function(item) {
     return item.name === technicianName && item.technicianId !== technicianId;
   });
+  var hasServiceIds = Object.prototype.hasOwnProperty.call(payload, 'serviceIds');
+  var hasStatus = Object.prototype.hasOwnProperty.call(payload, 'status');
+  var hasNote = Object.prototype.hasOwnProperty.call(payload, 'note');
+  var lineUserId = existing ? existing.lineUserId : '';
+  var normalizedServiceIds = existing ? existing.serviceIds.slice() : [];
 
   if (duplicate) {
     throw new Error('技師名稱已存在，請直接編輯原有技師');
   }
 
+  if (hasServiceIds) {
+    var services = getTableRecords_(SHEETS.services).map(normalizeService_);
+    var serviceMap = indexBy_(services, 'serviceId');
+    normalizedServiceIds = normalizeServiceIds_(payload.serviceIds || []);
+
+    normalizedServiceIds.forEach(function(serviceId) {
+      if (!serviceMap[serviceId]) {
+        throw new Error('包含不存在的服務項目');
+      }
+    });
+  }
+
   var record = {
     technicianId: technicianId || createId_('TEC'),
     name: technicianName,
-    serviceIds: existing ? existing.serviceIds.join(',') : '',
+    serviceIds: normalizedServiceIds.join(','),
     startTime: technicianStartTime,
     endTime: technicianEndTime,
     active: toBoolean_(payload.active),
     updatedAt: toIsoString_(new Date()),
-    lineUserId: existing ? existing.lineUserId : '',
+    lineUserId: lineUserId,
     profileDisplayName: existing ? existing.profileDisplayName : '',
     pictureUrl: existing ? existing.pictureUrl : '',
-    reviewStatus: existing ? existing.status : '',
-    reviewNote: existing ? existing.note : '',
+    reviewStatus: hasStatus ? normalizeTechnicianStatus_(payload.status, lineUserId) : (existing ? existing.status : ''),
+    reviewNote: hasNote ? sanitizeTextInput_(payload.note || '') : (existing ? existing.note : ''),
     lastLoginAt: existing ? existing.lastLoginAt : '',
   };
 

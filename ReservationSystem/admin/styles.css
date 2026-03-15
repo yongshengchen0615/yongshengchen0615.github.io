@@ -1232,13 +1232,6 @@ body.is-sheet-open {
   flex-wrap: wrap;
 }
 
-/* Bulk technician row selection highlight */
-.bulk-technician-table tr[data-bulk-technician-row]:has(input[name="bulkTechnicianSelected"]:checked) {
-  border-color: rgba(82, 194, 166, 0.32) !important;
-  background: rgba(82, 194, 166, 0.06) !important;
-  box-shadow: inset 3px 0 0 var(--brand);
-}
-
 /* Collapsible service editor */
 .bulk-technician-services__editor {
   max-height: 0;
@@ -1706,13 +1699,35 @@ body.is-sheet-open {
   align-items: flex-start;
 }
 
-.bulk-technician-row-actions .btn {
+.bulk-technician-row-actions .btn,
+.bulk-technician-row-actions .button,
+.bulk-technician-row-actions__select {
   width: 100%;
-  justify-content: center;
+}
+
+.bulk-technician-row-actions__select,
+.table-actions__select {
+  min-width: 0;
+  width: 100%;
+}
+
+.bulk-technician-row-actions__meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .bulk-technician-row-actions .btn:disabled {
   opacity: 0.45;
+}
+
+.bulk-technician-table tr[data-row-state="dirty"] {
+  box-shadow: inset 0 0 0 1px rgba(255, 188, 102, 0.22);
+}
+
+.bulk-technician-table tr[data-row-state="dirty"] .bulk-technician-profile__meta small {
+  color: var(--warn);
 }
 
 .bulk-technician-table__time-cell,

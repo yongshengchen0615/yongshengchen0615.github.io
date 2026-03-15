@@ -268,29 +268,20 @@
                   <h3>整合技師帳號與服務班別管理</h3>
                   <p class="text-body-secondary">同一張表內查看 LINE 帳號、審核狀態、最後登入、備註，並直接修改技師名稱、班別與服務項目。<br /><small class="text-body-secondary">點擊下方狀態卡片可快速篩選對應審核狀態</small></p>
                 </div>
-                <p id="technicianBulkSelectionMeta" class="text-body-secondary fw-bold mb-0">尚未勾選任何技師</p>
+                <p id="technicianBulkSelectionMeta" class="text-body-secondary fw-bold mb-0">目前沒有待儲存的變更</p>
               </div>
               <div id="technicianReviewSummary" class="review-summary review-summary--clickable"></div>
               <div class="technician-action-bar">
                 <div class="technician-action-bar__left">
-                  <button type="button" id="technicianBulkAddRowButton" class="button button--secondary"><i class="bi bi-plus-lg"></i> 新增一列</button>
                   <button type="button" id="technicianBulkSaveButton" class="button button--primary"><i class="bi bi-check2-all"></i> 儲存批量變更</button>
-                  <button type="button" id="technicianBulkDeleteButton" class="button button--danger"><i class="bi bi-trash3"></i> 刪除勾選技師</button>
-                </div>
-                <div class="technician-action-bar__right">
-                  <label class="checkbox-field checkbox-field--compact" id="technicianSelectAllLabel">
-                    <input type="checkbox" id="technicianSelectAllCheckbox" />
-                    <span>全選 / 取消全選</span>
-                  </label>
                 </div>
               </div>
               <p class="text-body-secondary small mb-3">技師首次進入 technician 頁面後，LINE 帳號會顯示在此表中；審核通過後才能讀取技師端資料。</p>
               <div id="technicianBulkTable" class="table-wrap"></div>
               <div id="technicianStickyBar" class="technician-sticky-bar">
-                <span id="technicianStickyMeta" class="technician-sticky-bar__meta">尚未勾選</span>
+                <span id="technicianStickyMeta" class="technician-sticky-bar__meta">目前沒有待儲存的變更</span>
                 <div class="technician-sticky-bar__actions">
                   <button type="button" id="technicianStickySaveButton" class="button button--primary button--compact"><i class="bi bi-check2-all"></i> 儲存變更</button>
-                  <button type="button" id="technicianStickyDeleteButton" class="button button--danger button--compact"><i class="bi bi-trash3"></i> 刪除勾選</button>
                 </div>
               </div>
             </section>
