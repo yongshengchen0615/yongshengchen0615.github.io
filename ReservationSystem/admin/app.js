@@ -1162,8 +1162,9 @@ function setReservationAssignedTechnicianId(technicianId) {
 function getReservationSubmissionTechnician() {
   const selectedValue = elements.reservationTechnicianSelect.value;
   if (isOnsiteAssignmentSelected(selectedValue)) {
+    // 當選擇「現場安排」時，送出空的 technicianId 以移除指定技師關聯
     return {
-      technicianId: getReservationAssignedTechnicianId(),
+      technicianId: "",
       assignmentType: "現場安排",
     };
   }
@@ -4059,9 +4060,7 @@ async function submitReservation(event) {
   event.preventDefault();
   const formData = new FormData(elements.reservationForm);
   const reservationTechnician = getReservationSubmissionTechnician();
-  if (!reservationTechnician.technicianId) {
-    throw new Error("現場安排需先保留一位實際技師，請先改選技師後再切回現場安排。");
-  }
+  // allow empty technicianId when assignmentType is 現場安排 so backend will clear technician association
   const payload = {
     reservationId: formData.get("reservationId") || "",
     customerName: formData.get("customerName").trim(),

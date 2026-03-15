@@ -773,29 +773,54 @@ function createReservation_(payload) {
 
   var matchedTechnician = null;
   var matchedSchedule = null;
+  var anyAvailable = false;
 
-  candidateTechnicians.some(function(technician) {
-    var evaluation = evaluateReservationForTechnician_({
-      technicianId: technician.technicianId,
-      reservationDate: reservationDate,
-      reservationStart: reservationStart,
-      reservationEnd: reservationEnd,
-      schedules: schedules,
-      reservations: reservations,
-      serviceMap: serviceMap,
+  if (requestedTechnicianId) {
+    candidateTechnicians.some(function(technician) {
+      var evaluation = evaluateReservationForTechnician_({
+        technicianId: technician.technicianId,
+        reservationDate: reservationDate,
+        reservationStart: reservationStart,
+        reservationEnd: reservationEnd,
+        schedules: schedules,
+        reservations: reservations,
+        serviceMap: serviceMap,
+      });
+
+      if (!evaluation.ok) {
+        return false;
+      }
+
+      matchedTechnician = technician;
+      matchedSchedule = evaluation.schedule;
+      anyAvailable = true;
+      return true;
     });
+  } else {
+    // 當用戶未指定技師時，只需確認是否有任何可安排的技師存在，
+    // 但不將特定技師指派到該預約（保留為「現場安排」）。
+    candidateTechnicians.some(function(technician) {
+      var evaluation = evaluateReservationForTechnician_({
+        technicianId: technician.technicianId,
+        reservationDate: reservationDate,
+        reservationStart: reservationStart,
+        reservationEnd: reservationEnd,
+        schedules: schedules,
+        reservations: reservations,
+        serviceMap: serviceMap,
+      });
 
-    if (!evaluation.ok) {
-      return false;
-    }
+      if (!evaluation.ok) {
+        return false;
+      }
 
-    matchedTechnician = technician;
-    matchedSchedule = evaluation.schedule;
-    return true;
-  });
+      anyAvailable = true;
+      return true;
+    });
+  }
 
-  if (!matchedTechnician || !matchedSchedule) {
-    if (requestedTechnicianId) {
+  if (requestedTechnicianId) {
+    if (!matchedTechnician || !matchedSchedule) {
       var requestedEvaluation = evaluateReservationForTechnician_({
         technicianId: requestedTechnicianId,
         reservationDate: reservationDate,
@@ -816,8 +841,10 @@ function createReservation_(payload) {
 
       throw new Error('此時段已被預約，請重新選擇');
     }
-
-    throw new Error('目前沒有符合條件的技師可安排此時段');
+  } else {
+    if (!anyAvailable) {
+      throw new Error('目前沒有符合條件的技師可安排此時段');
+    }
   }
 
   var assignmentType = requestedTechnicianId ? '' : ASSIGNMENT_TYPE_ON_SITE;
@@ -828,7 +855,7 @@ function createReservation_(payload) {
     userDisplayName: user.displayName,
     customerName: customerName || String(user.customerName).trim(),
     phone: normalizedPhone,
-    technicianId: matchedTechnician.technicianId,
+    technicianId: requestedTechnicianId ? matchedTechnician.technicianId : '',
     assignmentType: assignmentType,
     serviceId: serviceIds.join(','),
     date: reservationDate,
@@ -1080,9 +1107,12 @@ function saveSchedule_(payload) {
 function saveReservation_(payload) {
   validateRequired_(payload.customerName, 'customerName');
   validateRequired_(payload.phone, 'phone');
-  validateRequired_(payload.technicianId, 'technicianId');
   validateRequired_(payload.date, 'date');
   validateRequired_(payload.startTime, 'startTime');
+  var assignmentType = String(payload.assignmentType || '').trim() || '';
+  if (assignmentType !== ASSIGNMENT_TYPE_ON_SITE) {
+    validateRequired_(payload.technicianId, 'technicianId');
+  }
 
   var normalizedPhone = normalizePhone_(payload.phone, true);
 
@@ -1103,7 +1133,7 @@ function saveReservation_(payload) {
   if (!serviceIds.length) {
     throw new Error('請至少選擇一個服務項目');
   }
-  if (!technician) {
+  if (assignmentType !== ASSIGNMENT_TYPE_ON_SITE && !technician) {
     throw new Error('技師不存在');
   }
 
@@ -1111,7 +1141,7 @@ function saveReservation_(payload) {
     if (!serviceMap[serviceId]) {
       throw new Error('服務項目不存在');
     }
-    if (technician.serviceIds.indexOf(serviceId) === -1) {
+    if (assignmentType !== ASSIGNMENT_TYPE_ON_SITE && technician.serviceIds.indexOf(serviceId) === -1) {
       throw new Error('此技師不可服務所選的其中一個項目');
     }
   });
@@ -1127,31 +1157,33 @@ function saveReservation_(payload) {
         throw new Error('服務項目未啟用');
       }
     });
-    if (!toBoolean_(technician.active)) {
-      throw new Error('技師未啟用');
-    }
-
-    var evaluation = evaluateReservationForTechnician_({
-      technicianId: payload.technicianId,
-      reservationDate: normalizeDateString_(payload.date),
-      reservationStart: reservationStart,
-      reservationEnd: reservationEnd,
-      schedules: schedules,
-      reservations: reservations,
-      serviceMap: serviceMap,
-      ignoreReservationId: String(payload.reservationId || ''),
-    });
-
-    if (!evaluation.ok) {
-      if (evaluation.reason === 'no-schedule') {
-        throw new Error('該日期沒有可預約班表');
+    if (assignmentType !== ASSIGNMENT_TYPE_ON_SITE) {
+      if (!toBoolean_(technician.active)) {
+        throw new Error('技師未啟用');
       }
 
-      if (evaluation.reason === 'out-of-range') {
-        throw new Error('預約時段不在班表範圍內');
-      }
+      var evaluation = evaluateReservationForTechnician_({
+        technicianId: payload.technicianId,
+        reservationDate: normalizeDateString_(payload.date),
+        reservationStart: reservationStart,
+        reservationEnd: reservationEnd,
+        schedules: schedules,
+        reservations: reservations,
+        serviceMap: serviceMap,
+        ignoreReservationId: String(payload.reservationId || ''),
+      });
 
-      throw new Error('此時段已被預約，請重新選擇');
+      if (!evaluation.ok) {
+        if (evaluation.reason === 'no-schedule') {
+          throw new Error('該日期沒有可預約班表');
+        }
+
+        if (evaluation.reason === 'out-of-range') {
+          throw new Error('預約時段不在班表範圍內');
+        }
+
+        throw new Error('此時段已被預約，請重新選擇');
+      }
     }
   }
 
@@ -1161,22 +1193,44 @@ function saveReservation_(payload) {
     userDisplayName: String(payload.userDisplayName || existing && existing.userDisplayName || '').trim(),
     customerName: sanitizeTextInput_(String(payload.customerName).trim()),
     phone: normalizedPhone,
-    technicianId: payload.technicianId,
+    technicianId: assignmentType === ASSIGNMENT_TYPE_ON_SITE ? '' : payload.technicianId,
     assignmentType: String(payload.assignmentType || '').trim() || '',
     serviceId: serviceIds.join(','),
     date: normalizeDateString_(payload.date),
     startTime: normalizeTimeString_(payload.startTime),
     endTime: minutesToTime_(reservationEnd),
     status: status,
-    technicianConfirmedAt: existing && !shouldResetReservationTechnicianConfirmation_(existing, {
-      technicianId: payload.technicianId,
-      assignmentType: String(payload.assignmentType || '').trim() || '',
-      serviceIds: serviceIds,
-      date: normalizeDateString_(payload.date),
-      startTime: normalizeTimeString_(payload.startTime),
-    })
-      ? String(existing.technicianConfirmedAt || '').trim()
-      : '',
+    technicianConfirmedAt: (function() {
+      var nextAssignmentType = String(payload.assignmentType || '').trim() || '';
+      var nextTechnicianId = String(payload.technicianId || '').trim();
+
+      // If next assignment is on-site, treat as already confirmed (no tech confirmation required)
+      if (nextAssignmentType === ASSIGNMENT_TYPE_ON_SITE) {
+        // If existing confirmation is valid and the reservation hasn't materially changed, keep it;
+        // otherwise, set to now to indicate confirmed-by-system.
+        if (existing && !shouldResetReservationTechnicianConfirmation_(existing, {
+          technicianId: payload.technicianId,
+          assignmentType: nextAssignmentType,
+          serviceIds: serviceIds,
+          date: normalizeDateString_(payload.date),
+          startTime: normalizeTimeString_(payload.startTime),
+        }) && normalizeReservationConfirmationTimestamp_(existing.technicianConfirmedAt)) {
+          return String(existing.technicianConfirmedAt || '').trim();
+        }
+        return toIsoString_(new Date());
+      }
+
+      // Otherwise preserve existing confirmation only when shouldReset says not to reset
+      return existing && !shouldResetReservationTechnicianConfirmation_(existing, {
+        technicianId: payload.technicianId,
+        assignmentType: String(payload.assignmentType || '').trim() || '',
+        serviceIds: serviceIds,
+        date: normalizeDateString_(payload.date),
+        startTime: normalizeTimeString_(payload.startTime),
+      })
+        ? String(existing.technicianConfirmedAt || '').trim()
+        : '';
+    })(),
     note: sanitizeTextInput_(payload.note || ''),
     createdAt: existing && existing.createdAt ? existing.createdAt : toIsoString_(new Date()),
   };
