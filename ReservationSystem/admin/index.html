@@ -453,7 +453,13 @@
               <label class="field"><span>技師</span><select name="technicianId" id="reservationTechnicianSelect" required></select></label>
               <div class="field"><span>服務項目</span><div id="reservationServiceSelect" class="checkbox-grid"></div></div>
               <label class="field"><span>日期</span><input name="date" type="date" required /></label>
-              <label class="field"><span>開始時間</span><input name="startTime" type="time" required /></label>
+              <label class="field">
+                <span>開始時間</span>
+                <div class="time-wheel-field">
+                  <input id="reservationStartTimeInput" name="startTime" type="hidden" value="09:00" />
+                  <button type="button" class="time-wheel-trigger" data-time-wheel-trigger>09:00</button>
+                </div>
+              </label>
               <label class="field"><span>狀態</span>
                 <select name="status" required>
                   <option value="已預約">已預約</option>

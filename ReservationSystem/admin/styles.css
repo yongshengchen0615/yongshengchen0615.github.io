@@ -2861,6 +2861,26 @@ textarea:focus-visible {
   opacity: 1;
 }
 
+#reservationForm input[name="date"],
+#reservationForm input[type="date"] {
+  height: 52px;
+  min-height: 52px;
+  padding-block: 0.875rem;
+  line-height: normal;
+}
+
+#reservationForm input[name="date"]::-webkit-datetime-edit,
+#reservationForm input[type="date"]::-webkit-datetime-edit,
+#reservationForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
+#reservationForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  min-height: 100%;
+}
+
+#reservationForm .time-wheel-trigger {
+  min-height: 52px;
+  padding-block: 0.875rem;
+}
+
 @media (max-width: 768px) {
   #scheduleForm input[name="date"],
   #scheduleForm input[name="endDate"],
@@ -2871,6 +2891,13 @@ textarea:focus-visible {
     min-height: 46px;
     height: 46px;
     padding-inline: 0.75rem;
+  }
+
+  #reservationForm input[name="date"],
+  #reservationForm input[type="date"],
+  #reservationForm .time-wheel-trigger {
+    min-height: 50px;
+    height: 50px;
   }
 }
 

@@ -1542,6 +1542,7 @@ function resetReservationForm() {
     "請選擇技師"
   );
   renderReservationServiceOptions();
+  syncTimeWheelField(elements.reservationForm.startTime, elements.reservationForm.startTime.value || "09:00");
   updateReservationFormMode();
 }
 
@@ -4124,6 +4125,7 @@ function fillReservationForm(reservationId) {
   elements.reservationForm.phone.value = reservation.phone;
   elements.reservationForm.date.value = reservation.date;
   elements.reservationForm.startTime.value = reservation.startTime;
+  syncTimeWheelField(elements.reservationForm.startTime, reservation.startTime || "09:00");
   elements.reservationForm.status.value = reservation.status || "已預約";
   elements.reservationForm.note.value = reservation.note || "";
   setReservationAssignedTechnicianId(reservation.technicianId);
