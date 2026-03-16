@@ -2051,38 +2051,6 @@ body.is-sheet-open {
    ========================================================================== */
 
 @media (max-width: 768px) {
-  /* Mobile fix: prevent native date/time controls from forcing grid items wider than the card */
-  .d-grid > *,
-  .field,
-  .time-wheel-field {
-    min-width: 0;
-    min-inline-size: 0;
-  }
-
-  .field > input,
-  .field > select,
-  .field > textarea,
-  .time-wheel-field > input {
-    min-width: 0;
-    min-inline-size: 0;
-  }
-
-  input[type="date"],
-  input[type="time"] {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-inline-size: 0;
-  }
-
-  input[type="date"]::-webkit-date-and-time-value,
-  input[type="time"]::-webkit-date-and-time-value,
-  input[type="date"]::-webkit-datetime-edit,
-  input[type="time"]::-webkit-datetime-edit {
-    min-width: 0;
-  }
-
   .review-summary {
     grid-template-columns: 1fr;
   }
@@ -2731,4 +2699,49 @@ textarea:focus-visible {
   justify-content: space-between;
   border-top: 1px solid rgba(146, 178, 200, 0.08);
   padding-top: 14px;
+}
+/* ==========================================================================
+   Schedule form mobile hardening
+   只加強班表起始日期 / 結束日期在行動裝置上的縮排，不改其他視覺
+   ========================================================================== */
+@media (max-width: 768px) {
+  #scheduleForm,
+  #scheduleForm > *,
+  #scheduleForm .field,
+  #scheduleForm label.field {
+    min-width: 0;
+    min-inline-size: 0;
+  }
+
+  /* WebKit / iOS date control can reserve extra logical width for the picker arrow.
+     width: 100% alone is sometimes not enough inside mobile WebView / Safari. */
+  #scheduleForm label.field {
+    overflow: hidden;
+  }
+
+  #scheduleForm input[type="date"] {
+    display: block;
+    inline-size: 100%;
+    width: 100%;
+    max-inline-size: 100%;
+    max-width: 100%;
+    min-inline-size: 0;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -webkit-min-logical-width: calc(100% - 18px);
+    padding-inline-end: 0.75rem;
+  }
+
+  #scheduleForm input[type="date"]::-webkit-date-and-time-value,
+  #scheduleForm input[type="date"]::-webkit-datetime-edit,
+  #scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    min-width: 0;
+  }
+
+  #scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
+  }
 }
