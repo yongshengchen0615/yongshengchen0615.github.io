@@ -1,3 +1,5 @@
+(() => {
+
 const ADMIN_STORAGE_KEYS = {
   gasUrl: "beauty-booking-gas-url",
   serviceCategories: "beauty-booking-service-categories",
@@ -3376,9 +3378,6 @@ function getGroupedServiceMarkup(serviceIds = []) {
       `;
     })
     .join("");
-  elements.scheduleResultLabel.textContent = `${workingSchedules} 筆可預約 / 共 ${state.schedules.length} 筆`;
-  renderScheduleCalendar();
-  renderSelectedScheduleDetail();
 }
 
 function getLeaveRequestDateLabel(leaveRequest) {
@@ -3511,7 +3510,17 @@ function renderScheduleCalendar() {
   }
 }
 
+function syncScheduleResultLabel() {
+  if (!elements.scheduleResultLabel) {
+    return;
+  }
+
+  const workingSchedules = state.schedules.filter((item) => item.isWorking).length;
+  elements.scheduleResultLabel.textContent = `${workingSchedules} 筆可預約 / 共 ${state.schedules.length} 筆`;
+}
+
 function renderScheduleTable() {
+  syncScheduleResultLabel();
   renderScheduleCalendar();
   renderSelectedScheduleDetail();
 }
@@ -4533,16 +4542,96 @@ async function adminDeleteAdmin(userId) {
   setStatus(`已刪除管理員 ${admin.displayName}。`, "success");
 }
 
-function bindEvents() {
-  document.addEventListener("click", (event) => {
-    const trigger = event.target.closest("[data-time-wheel-trigger]");
-    if (trigger) {
-      openTimeWheelPicker(trigger);
+function handleUiError(error) {
+  const message = error instanceof Error ? error.message : String(error || "發生未知錯誤");
+  setStatus(message, "error");
+}
+
+function bindEvent(target, eventName, handler, options) {
+  if (!target || typeof target.addEventListener !== "function") {
+    return;
+  }
+
+  target.addEventListener(eventName, handler, options);
+}
+
+function createAsyncHandler(task) {
+  return async (...args) => {
+    try {
+      await task(...args);
+    } catch (error) {
+      handleUiError(error);
+    }
+  };
+}
+
+const renderCoordinator = {
+  service() {
+    renderServiceTable();
+  },
+
+  technician() {
+    renderTechnicianReviewTable();
+    bulkTechnicianModule.renderTable();
+  },
+
+  schedule() {
+    renderScheduleTable();
+  },
+
+  leaveRequest() {
+    renderLeaveRequestTable();
+  },
+
+  reservation() {
+    renderReservationTable();
+  },
+
+  user() {
+    renderUserTable();
+  },
+
+  admin() {
+    renderAdminManagementTable();
+  },
+};
+
+let eventsBound = false;
+
+const eventBinder = {
+  bind() {
+    if (eventsBound) {
       return;
     }
 
-    const optionButton = event.target.closest("[data-time-wheel-item]");
-    if (optionButton) {
+    this.bindTimeWheelEvents();
+    this.bindAccessEvents();
+    this.bindNavigationEvents();
+    this.bindServiceEvents();
+    this.bindTechnicianEvents();
+    this.bindReservationEvents();
+    this.bindUserEvents();
+    this.bindAdminManagementEvents();
+    this.bindScheduleEvents();
+    this.bindLeaveRequestEvents();
+    this.bindRefreshEvents();
+
+    eventsBound = true;
+  },
+
+  bindTimeWheelEvents() {
+    bindEvent(document, "click", (event) => {
+      const trigger = event.target.closest("[data-time-wheel-trigger]");
+      if (trigger) {
+        openTimeWheelPicker(trigger);
+        return;
+      }
+
+      const optionButton = event.target.closest("[data-time-wheel-item]");
+      if (!optionButton) {
+        return;
+      }
+
       const type = optionButton.dataset.timeWheelItem;
       const value = optionButton.dataset.timeWheelValue;
       if (type === "hour") {
@@ -4558,45 +4647,37 @@ function bindEvents() {
       if (container && nextIndex >= 0) {
         container.scrollTo({ top: nextIndex * TIME_WHEEL_ITEM_HEIGHT, behavior: "smooth" });
       }
-    }
-  });
+    });
 
-  elements.timeWheelBackdrop?.addEventListener("click", closeTimeWheelPicker);
-  elements.timeWheelCloseButton?.addEventListener("click", closeTimeWheelPicker);
-  elements.timeWheelConfirmButton?.addEventListener("click", applyTimeWheelValue);
-  elements.timeWheelNowButton?.addEventListener("click", () => {
-    const now = new Date();
-    timeWheelState.hour = String(now.getHours()).padStart(2, "0");
-    const roundedMinutes = Math.floor(now.getMinutes() / TIME_WHEEL_MINUTE_STEP) * TIME_WHEEL_MINUTE_STEP;
-    timeWheelState.minute = String(roundedMinutes).padStart(2, "0");
-    updateTimeWheelSelection(true);
-  });
-  elements.timeWheelHourList?.addEventListener("scroll", () => handleTimeWheelScroll(elements.timeWheelHourList));
-  elements.timeWheelMinuteList?.addEventListener("scroll", () => handleTimeWheelScroll(elements.timeWheelMinuteList));
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && elements.timeWheelSheet && !elements.timeWheelSheet.classList.contains("is-hidden")) {
-      closeTimeWheelPicker();
-    }
-  });
+    bindEvent(elements.timeWheelBackdrop, "click", closeTimeWheelPicker);
+    bindEvent(elements.timeWheelCloseButton, "click", closeTimeWheelPicker);
+    bindEvent(elements.timeWheelConfirmButton, "click", applyTimeWheelValue);
+    bindEvent(elements.timeWheelNowButton, "click", () => {
+      const now = new Date();
+      timeWheelState.hour = String(now.getHours()).padStart(2, "0");
+      const roundedMinutes = Math.floor(now.getMinutes() / TIME_WHEEL_MINUTE_STEP) * TIME_WHEEL_MINUTE_STEP;
+      timeWheelState.minute = String(roundedMinutes).padStart(2, "0");
+      updateTimeWheelSelection(true);
+    });
+    bindEvent(elements.timeWheelHourList, "scroll", () => handleTimeWheelScroll(elements.timeWheelHourList));
+    bindEvent(elements.timeWheelMinuteList, "scroll", () => handleTimeWheelScroll(elements.timeWheelMinuteList));
+    bindEvent(document, "keydown", (event) => {
+      if (event.key === "Escape" && elements.timeWheelSheet && !elements.timeWheelSheet.classList.contains("is-hidden")) {
+        closeTimeWheelPicker();
+      }
+    });
+  },
 
-  elements.adminLoginButton.addEventListener("click", async () => {
-    try {
+  bindAccessEvents() {
+    bindEvent(elements.adminLoginButton, "click", createAsyncHandler(async () => {
       await refreshAdminIdentity();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.adminRefreshIdentityButton.addEventListener("click", async () => {
-    try {
+    bindEvent(elements.adminRefreshIdentityButton, "click", createAsyncHandler(async () => {
       await refreshAdminIdentity();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.adminLogoutButton.addEventListener("click", async () => {
-    try {
+    bindEvent(elements.adminLogoutButton, "click", createAsyncHandler(async () => {
       if (state.liffLoginRequired) {
         if (!state.liffId) {
           throw new Error("請先在 admin/config.json 設定 liffId。");
@@ -4617,117 +4698,102 @@ function bindEvents() {
       state.adminUsers = [];
       renderAdminAccessState();
       setStatus("已登出 LINE 帳號。", "info");
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
+  },
 
-  elements.pageTabs.forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextPage = button.dataset.pageTrigger;
-      setActivePage(nextPage);
-      setStatus(`已切換到${button.textContent.trim()}頁面。`, "info");
+  bindNavigationEvents() {
+    elements.pageTabs.forEach((button) => {
+      bindEvent(button, "click", () => {
+        const nextPage = button.dataset.pageTrigger;
+        setActivePage(nextPage);
+        setStatus(`已切換到${button.textContent.trim()}頁面。`, "info");
+      });
     });
-  });
+  },
 
-  elements.serviceSubmitButton.addEventListener("click", async (event) => {
-    try {
+  bindServiceEvents() {
+    bindEvent(elements.serviceSubmitButton, "click", createAsyncHandler(async (event) => {
       await submitService(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.serviceForm.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-    }
-  });
+    bindEvent(elements.serviceForm, "keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+      }
+    });
 
-  elements.serviceEditForm.addEventListener("submit", async (event) => {
-    try {
+    bindEvent(elements.serviceEditForm, "submit", createAsyncHandler(async (event) => {
       await submitServiceEdit(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.scheduleForm.addEventListener("submit", async (event) => {
-    try {
-      await submitSchedule(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.reservationForm.addEventListener("submit", async (event) => {
-    try {
-      await submitReservation(event);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.serviceResetButton.addEventListener("click", () => {
-    resetServiceForm();
-    setStatus("服務表單已重設。", "info");
-  });
-
-  elements.serviceEditResetButton.addEventListener("click", () => {
-    resetServiceEditForm();
-    setStatus("已取消服務編輯。", "info");
-  });
-
-  elements.serviceSearchInput.addEventListener("input", (event) => {
-    state.filters.serviceKeyword = event.target.value;
-    renderServiceTable();
-  });
-
-  elements.serviceCategoryFilter.addEventListener("change", (event) => {
-    state.filters.serviceCategory = event.target.value;
-    renderServiceTable();
-  });
-
-  elements.technicianSearchSelect.addEventListener("change", (event) => {
-    state.filters.technicianId = event.target.value;
-    renderTechnicianReviewTable();
-    bulkTechnicianModule.renderTable();
-  });
-
-  elements.technicianStatusFilter.addEventListener("change", (event) => {
-    state.filters.technicianStatus = event.target.value;
-    renderTechnicianReviewTable();
-    bulkTechnicianModule.renderTable();
-  });
-
-  elements.technicianReviewStatusFilter.addEventListener("change", (event) => {
-    state.filters.technicianReviewStatus = event.target.value;
-    renderTechnicianReviewTable();
-    bulkTechnicianModule.renderTable();
-  });
-  bulkTechnicianModule.bindEvents();
-
-  if (elements.technicianStickySaveButton) {
-    elements.technicianStickySaveButton.addEventListener("click", async () => {
-      try {
-        await bulkTechnicianModule.submit();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
+    bindEvent(elements.serviceResetButton, "click", () => {
+      resetServiceForm();
+      setStatus("服務表單已重設。", "info");
     });
-  }
-  if (elements.technicianStickyCancelButton) {
-    elements.technicianStickyCancelButton.addEventListener("click", () => {
-      try {
-        bulkTechnicianModule.cancelChanges();
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-  }
 
-  if (elements.technicianReviewSummary) {
-    elements.technicianReviewSummary.addEventListener("click", (event) => {
+    bindEvent(elements.serviceEditResetButton, "click", () => {
+      resetServiceEditForm();
+      setStatus("已取消服務編輯。", "info");
+    });
+
+    bindEvent(elements.serviceSearchInput, "input", (event) => {
+      state.filters.serviceKeyword = event.target.value;
+      renderCoordinator.service();
+    });
+
+    bindEvent(elements.serviceCategoryFilter, "change", (event) => {
+      state.filters.serviceCategory = event.target.value;
+      renderCoordinator.service();
+    });
+
+    bindEvent(elements.serviceTable, "click", createAsyncHandler(async (event) => {
+      const editButton = event.target.closest("[data-edit-service]");
+      if (editButton) {
+        fillServiceForm(editButton.dataset.editService);
+        setStatus("已載入服務資料，可直接修改。", "info");
+        return;
+      }
+
+      const deleteButton = event.target.closest("[data-delete-service]");
+      if (!deleteButton) {
+        return;
+      }
+
+      await deleteService(deleteButton.dataset.deleteService, deleteButton.dataset.serviceName);
+    }));
+  },
+
+  bindTechnicianEvents() {
+    const rerenderTechnicianViews = () => {
+      renderCoordinator.technician();
+    };
+
+    bindEvent(elements.technicianSearchSelect, "change", (event) => {
+      state.filters.technicianId = event.target.value;
+      rerenderTechnicianViews();
+    });
+
+    bindEvent(elements.technicianStatusFilter, "change", (event) => {
+      state.filters.technicianStatus = event.target.value;
+      rerenderTechnicianViews();
+    });
+
+    bindEvent(elements.technicianReviewStatusFilter, "change", (event) => {
+      state.filters.technicianReviewStatus = event.target.value;
+      rerenderTechnicianViews();
+    });
+
+    bulkTechnicianModule.bindEvents();
+
+    bindEvent(elements.technicianStickySaveButton, "click", createAsyncHandler(async () => {
+      await bulkTechnicianModule.submit();
+    }));
+
+    bindEvent(elements.technicianStickyCancelButton, "click", createAsyncHandler(async () => {
+      bulkTechnicianModule.cancelChanges();
+    }));
+
+    bindEvent(elements.technicianReviewSummary, "click", (event) => {
       const card = event.target.closest("[data-filter-review-status]");
       if (!card) {
         return;
@@ -4746,22 +4812,18 @@ function bindEvents() {
         el.classList.toggle("is-active-filter", el.dataset.filterReviewStatus === nextStatus);
       });
 
-      renderTechnicianReviewTable();
-      bulkTechnicianModule.renderTable();
+      rerenderTechnicianViews();
       setStatus(isSameFilter ? "已清除篩選。" : `已篩選：${clickedStatus}`, "info");
     });
-  }
 
-  if (elements.technicianReviewTable) {
-    elements.technicianReviewTable.addEventListener("click", async (event) => {
+    bindEvent(elements.technicianReviewTable, "click", (event) => {
       const focusButton = event.target.closest("[data-focus-technician]");
       if (focusButton) {
         focusTechnicianSettings(focusButton.dataset.focusTechnician);
-        return;
       }
     });
 
-    elements.technicianReviewTable.addEventListener("change", async (event) => {
+    bindEvent(elements.technicianReviewTable, "change", createAsyncHandler(async (event) => {
       const reviewSelect = event.target.closest("[data-review-technician-select]");
       if (!reviewSelect) {
         return;
@@ -4788,322 +4850,279 @@ function bindEvents() {
         await reviewTechnician(technicianId, nextStatus, note);
       } catch (error) {
         reviewSelect.value = previousStatus;
-        setStatus(error.message, "error");
+        throw error;
       }
+    }));
+  },
+
+  bindReservationEvents() {
+    bindEvent(elements.reservationForm, "submit", createAsyncHandler(async (event) => {
+      await submitReservation(event);
+    }));
+
+    bindEvent(elements.reservationResetButton, "click", () => {
+      resetReservationForm();
+      setStatus("預約表單已重設。", "info");
     });
-  }
 
-  elements.reservationSearchInput.addEventListener("input", (event) => {
-    state.filters.reservationKeyword = event.target.value;
-    renderReservationTable();
-  });
-
-  elements.reservationStatusFilter.addEventListener("change", (event) => {
-    state.filters.reservationStatus = event.target.value;
-    renderReservationTable();
-  });
-
-  elements.reservationTechnicianFilter.addEventListener("change", (event) => {
-    state.filters.reservationTechnicianId = event.target.value;
-    renderReservationTable();
-  });
-
-  elements.userSearchInput.addEventListener("input", (event) => {
-    state.filters.userKeyword = event.target.value;
-    renderUserTable();
-  });
-
-  elements.userStatusFilter.addEventListener("change", (event) => {
-    state.filters.userStatus = event.target.value;
-    renderUserTable();
-  });
-
-  elements.adminSearchInput?.addEventListener("input", (event) => {
-    state.filters.adminKeyword = event.target.value;
-    renderAdminManagementTable();
-  });
-
-  elements.adminStatusFilter?.addEventListener("change", (event) => {
-    state.filters.adminStatus = event.target.value;
-    renderAdminManagementTable();
-  });
-
-  elements.adminManagementTable?.addEventListener("click", async (event) => {
-    const reviewButton = event.target.closest("[data-review-admin]");
-    if (reviewButton) {
-      try {
-        await adminReviewAdmin(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus);
-      } catch (error) {
-        setStatus(error.message, "error");
+    bindEvent(elements.reservationTechnicianSelect, "change", () => {
+      if (!isOnsiteAssignmentSelected(elements.reservationTechnicianSelect.value)) {
+        setReservationAssignedTechnicianId(elements.reservationTechnicianSelect.value);
       }
-      return;
-    }
+      renderReservationServiceOptions(getSelectedReservationServiceIds());
+    });
 
-    const permButton = event.target.closest("[data-toggle-admin-permission]");
-    if (permButton) {
-      try {
+    bindEvent(elements.reservationSearchInput, "input", (event) => {
+      state.filters.reservationKeyword = event.target.value;
+      renderCoordinator.reservation();
+    });
+
+    bindEvent(elements.reservationStatusFilter, "change", (event) => {
+      state.filters.reservationStatus = event.target.value;
+      renderCoordinator.reservation();
+    });
+
+    bindEvent(elements.reservationTechnicianFilter, "change", (event) => {
+      state.filters.reservationTechnicianId = event.target.value;
+      renderCoordinator.reservation();
+    });
+
+    bindEvent(elements.reservationTable, "click", createAsyncHandler(async (event) => {
+      const editButton = event.target.closest("[data-edit-reservation]");
+      if (editButton) {
+        fillReservationForm(editButton.dataset.editReservation);
+        setStatus("已載入預約資料，可直接修改。", "info");
+        return;
+      }
+
+      const deleteButton = event.target.closest("[data-delete-reservation]");
+      if (!deleteButton) {
+        return;
+      }
+
+      await deleteReservation(deleteButton.dataset.deleteReservation, deleteButton.dataset.customerName);
+    }));
+  },
+
+  bindUserEvents() {
+    bindEvent(elements.userSearchInput, "input", (event) => {
+      state.filters.userKeyword = event.target.value;
+      renderCoordinator.user();
+    });
+
+    bindEvent(elements.userStatusFilter, "change", (event) => {
+      state.filters.userStatus = event.target.value;
+      renderCoordinator.user();
+    });
+
+    bindEvent(elements.userTable, "click", createAsyncHandler(async (event) => {
+      const reviewButton = event.target.closest("[data-review-user]");
+      if (reviewButton) {
+        await reviewUser(reviewButton.dataset.reviewUser, reviewButton.dataset.reviewStatus);
+        return;
+      }
+
+      const deleteButton = event.target.closest("[data-delete-user]");
+      if (!deleteButton) {
+        return;
+      }
+
+      await deleteUser(deleteButton.dataset.deleteUser, deleteButton.dataset.userName);
+    }));
+  },
+
+  bindAdminManagementEvents() {
+    bindEvent(elements.adminSearchInput, "input", (event) => {
+      state.filters.adminKeyword = event.target.value;
+      renderCoordinator.admin();
+    });
+
+    bindEvent(elements.adminStatusFilter, "change", (event) => {
+      state.filters.adminStatus = event.target.value;
+      renderCoordinator.admin();
+    });
+
+    bindEvent(elements.adminManagementTable, "click", createAsyncHandler(async (event) => {
+      const reviewButton = event.target.closest("[data-review-admin]");
+      if (reviewButton) {
+        await adminReviewAdmin(reviewButton.dataset.reviewAdmin, reviewButton.dataset.reviewStatus);
+        return;
+      }
+
+      const permButton = event.target.closest("[data-toggle-admin-permission]");
+      if (permButton) {
         const canManageAdmins = permButton.dataset.canManageAdmins === "true";
         await adminUpdateAdminPermission(permButton.dataset.toggleAdminPermission, { canManageAdmins });
-      } catch (error) {
-        setStatus(error.message, "error");
+        return;
       }
-      return;
-    }
 
-    const savePageButton = event.target.closest("[data-save-admin-pages]");
-    if (savePageButton) {
-      try {
+      const savePageButton = event.target.closest("[data-save-admin-pages]");
+      if (savePageButton) {
         const card = savePageButton.closest("[data-admin-mgmt-card]");
         if (!card) {
           setStatus("找不到管理員卡片。", "error");
           return;
         }
+
         const pagePermissions = Array.from(card.querySelectorAll("[data-admin-page-checkbox]:checked"))
           .map((input) => String(input.value || "").trim())
           .filter(Boolean);
         await adminUpdateAdminPermission(savePageButton.dataset.saveAdminPages, { pagePermissions });
-      } catch (error) {
-        setStatus(error.message, "error");
+        return;
       }
-      return;
-    }
 
-    const deleteButton = event.target.closest("[data-delete-admin]");
-    if (deleteButton) {
-      try {
+      const deleteButton = event.target.closest("[data-delete-admin]");
+      if (deleteButton) {
         await adminDeleteAdmin(deleteButton.dataset.deleteAdmin);
-      } catch (error) {
-        setStatus(error.message, "error");
       }
-    }
-  });
+    }));
+  },
 
-  elements.scheduleResetButton.addEventListener("click", () => {
-    resetScheduleForm();
-    setStatus("班表表單已重設。", "info");
-  });
+  bindScheduleEvents() {
+    bindEvent(elements.scheduleForm, "submit", createAsyncHandler(async (event) => {
+      await submitSchedule(event);
+    }));
 
-  elements.scheduleSelectAllTechniciansButton.addEventListener("click", () => {
-    const count = setScheduleTechnicianSelection(true);
-    setStatus(count ? `已全選 ${count} 位啟用技師。` : "目前沒有可選擇的技師。", "info");
-  });
+    bindEvent(elements.scheduleResetButton, "click", () => {
+      resetScheduleForm();
+      setStatus("班表表單已重設。", "info");
+    });
 
-  elements.scheduleClearTechniciansButton.addEventListener("click", () => {
-    const count = setScheduleTechnicianSelection(false);
-    setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
-  });
+    bindEvent(elements.scheduleSelectAllTechniciansButton, "click", () => {
+      const count = setScheduleTechnicianSelection(true);
+      setStatus(count ? `已全選 ${count} 位啟用技師。` : "目前沒有可選擇的技師。", "info");
+    });
 
-  elements.scheduleSelectAllEntriesButton?.addEventListener("click", () => {
-    const count = setScheduleEntrySelection(true);
-    setStatus(count ? `已全選當日 ${count} 筆班表。` : "當天沒有可選擇的班表。", "info");
-  });
+    bindEvent(elements.scheduleClearTechniciansButton, "click", () => {
+      const count = setScheduleTechnicianSelection(false);
+      setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
+    });
 
-  elements.scheduleClearEntriesButton?.addEventListener("click", () => {
-    const count = setScheduleEntrySelection(false);
-    setStatus(count ? "已清空班表勾選。" : "目前沒有可清空的班表。", "info");
-  });
+    bindEvent(elements.scheduleSelectAllEntriesButton, "click", () => {
+      const count = setScheduleEntrySelection(true);
+      setStatus(count ? `已全選當日 ${count} 筆班表。` : "當天沒有可選擇的班表。", "info");
+    });
 
-  elements.scheduleBatchDeleteButton?.addEventListener("click", async () => {
-    try {
+    bindEvent(elements.scheduleClearEntriesButton, "click", () => {
+      const count = setScheduleEntrySelection(false);
+      setStatus(count ? "已清空班表勾選。" : "目前沒有可清空的班表。", "info");
+    });
+
+    bindEvent(elements.scheduleBatchDeleteButton, "click", createAsyncHandler(async () => {
       const items = getSelectedScheduleDeleteKeys().map((key) => parseScheduleEntryKey(key));
       await batchDeleteSchedules(items);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.scheduleTechnicianCheckboxes.addEventListener("change", () => {
-    updateScheduleTechnicianSelectionMeta();
-  });
+    bindEvent(elements.scheduleTechnicianCheckboxes, "change", () => {
+      updateScheduleTechnicianSelectionMeta();
+    });
 
-  elements.schedulePrevMonthButton.addEventListener("click", () => {
-    state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, -1);
-    state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
-    renderScheduleTable();
-  });
+    bindEvent(elements.schedulePrevMonthButton, "click", () => {
+      state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, -1);
+      state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
+      renderCoordinator.schedule();
+    });
 
-  elements.scheduleTodayButton.addEventListener("click", () => {
-    const todayText = formatLocalDate(new Date());
-    updateSelectedScheduleDate(todayText);
-    renderScheduleTable();
-    resetScheduleForm();
-    setStatus(`已切換到 ${todayText}。`, "info");
-  });
+    bindEvent(elements.scheduleTodayButton, "click", () => {
+      const todayText = formatLocalDate(new Date());
+      updateSelectedScheduleDate(todayText);
+      renderCoordinator.schedule();
+      resetScheduleForm();
+      setStatus(`已切換到 ${todayText}。`, "info");
+    });
 
-  elements.scheduleNextMonthButton.addEventListener("click", () => {
-    state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, 1);
-    state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
-    renderScheduleTable();
-  });
+    bindEvent(elements.scheduleNextMonthButton, "click", () => {
+      state.ui.scheduleCalendarMonth = shiftMonth(state.ui.scheduleCalendarMonth, 1);
+      state.ui.selectedScheduleDate = `${state.ui.scheduleCalendarMonth}-01`;
+      renderCoordinator.schedule();
+    });
 
-  elements.scheduleCalendarGrid.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-schedule-date]");
-    if (!button) {
-      return;
-    }
-
-    updateSelectedScheduleDate(button.dataset.scheduleDate);
-    renderScheduleTable();
-    resetScheduleForm();
-    setStatus(`已選擇 ${button.dataset.scheduleDate}，可查看或新增當日班表。`, "info");
-  });
-
-  elements.scheduleTable.addEventListener("click", async (event) => {
-    const editButton = event.target.closest("[data-edit-schedule]");
-    if (editButton) {
-      const [dateText, technicianId] = editButton.dataset.editSchedule.split("::");
-      const schedule = state.schedules.find((item) => item.date === dateText && item.technicianId === technicianId);
-      if (!schedule) {
-        setStatus("找不到這筆班表資料。", "error");
+    bindEvent(elements.scheduleCalendarGrid, "click", (event) => {
+      const button = event.target.closest("[data-schedule-date]");
+      if (!button) {
         return;
       }
 
-      fillScheduleForm(schedule);
-      setStatus("已載入班表資料，可直接修改。", "info");
-      return;
-    }
+      updateSelectedScheduleDate(button.dataset.scheduleDate);
+      renderCoordinator.schedule();
+      resetScheduleForm();
+      setStatus(`已選擇 ${button.dataset.scheduleDate}，可查看或新增當日班表。`, "info");
+    });
 
-    const deleteButton = event.target.closest("[data-delete-schedule]");
-    if (!deleteButton) {
-      return;
-    }
+    bindEvent(elements.scheduleTable, "click", createAsyncHandler(async (event) => {
+      const editButton = event.target.closest("[data-edit-schedule]");
+      if (editButton) {
+        const [dateText, technicianId] = editButton.dataset.editSchedule.split("::");
+        const schedule = state.schedules.find((item) => item.date === dateText && item.technicianId === technicianId);
+        if (!schedule) {
+          setStatus("找不到這筆班表資料。", "error");
+          return;
+        }
 
-    try {
+        fillScheduleForm(schedule);
+        setStatus("已載入班表資料，可直接修改。", "info");
+        return;
+      }
+
+      const deleteButton = event.target.closest("[data-delete-schedule]");
+      if (!deleteButton) {
+        return;
+      }
+
       const [dateText, technicianId] = deleteButton.dataset.deleteSchedule.split("::");
       await deleteSchedule(dateText, technicianId, deleteButton.dataset.technicianName);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
 
-  elements.scheduleTable.addEventListener("change", (event) => {
-    const selectionInput = event.target.closest("[data-schedule-select]");
-    if (!selectionInput) {
-      return;
-    }
-
-    const currentKeys = new Set(getSelectedScheduleDeleteKeys());
-    if (selectionInput.checked) {
-      currentKeys.add(selectionInput.dataset.scheduleSelect);
-    } else {
-      currentKeys.delete(selectionInput.dataset.scheduleSelect);
-    }
-
-    setSelectedScheduleDeleteKeys(Array.from(currentKeys));
-    updateScheduleBatchSelectionMeta();
-  });
-
-  elements.leaveRequestTable?.addEventListener("click", async (event) => {
-    const saveButton = event.target.closest("[data-save-leave-request-status]");
-    if (saveButton) {
-      const leaveRequestId = saveButton.dataset.saveLeaveRequestStatus;
-      const select = elements.leaveRequestTable.querySelector(`[data-leave-request-status-select="${leaveRequestId}"]`);
-      if (!select) {
-        setStatus("找不到休假狀態欄位。", "error");
+    bindEvent(elements.scheduleTable, "change", (event) => {
+      const selectionInput = event.target.closest("[data-schedule-select]");
+      if (!selectionInput) {
         return;
       }
 
-      try {
+      const currentKeys = new Set(getSelectedScheduleDeleteKeys());
+      if (selectionInput.checked) {
+        currentKeys.add(selectionInput.dataset.scheduleSelect);
+      } else {
+        currentKeys.delete(selectionInput.dataset.scheduleSelect);
+      }
+
+      setSelectedScheduleDeleteKeys(Array.from(currentKeys));
+      updateScheduleBatchSelectionMeta();
+    });
+  },
+
+  bindLeaveRequestEvents() {
+    bindEvent(elements.leaveRequestTable, "click", createAsyncHandler(async (event) => {
+      const saveButton = event.target.closest("[data-save-leave-request-status]");
+      if (saveButton) {
+        const leaveRequestId = saveButton.dataset.saveLeaveRequestStatus;
+        const select = elements.leaveRequestTable.querySelector(`[data-leave-request-status-select="${leaveRequestId}"]`);
+        if (!select) {
+          setStatus("找不到休假狀態欄位。", "error");
+          return;
+        }
+
         await reviewLeaveRequest(leaveRequestId, select.value);
-      } catch (error) {
-        setStatus(error.message, "error");
+        return;
       }
-      return;
-    }
 
-    const deleteButton = event.target.closest("[data-delete-leave-request]");
-    if (deleteButton) {
-      try {
+      const deleteButton = event.target.closest("[data-delete-leave-request]");
+      if (deleteButton) {
         await deleteLeaveRequest(deleteButton.dataset.deleteLeaveRequest);
-      } catch (error) {
-        setStatus(error.message, "error");
       }
-    }
-  });
+    }));
+  },
 
-  elements.refreshDashboardButton.addEventListener("click", async () => {
-    try {
+  bindRefreshEvents() {
+    bindEvent(elements.refreshDashboardButton, "click", createAsyncHandler(async () => {
       setLoadingStatus("正在重新同步資料...");
       await loadAdminData();
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+    }));
+  },
+};
 
-  elements.reservationResetButton.addEventListener("click", () => {
-    resetReservationForm();
-    setStatus("預約表單已重設。", "info");
-  });
-
-  elements.reservationTechnicianSelect.addEventListener("change", () => {
-    if (!isOnsiteAssignmentSelected(elements.reservationTechnicianSelect.value)) {
-      setReservationAssignedTechnicianId(elements.reservationTechnicianSelect.value);
-    }
-    renderReservationServiceOptions(getSelectedReservationServiceIds());
-  });
-
-  elements.serviceTable.addEventListener("click", async (event) => {
-    const editButton = event.target.closest("[data-edit-service]");
-    if (editButton) {
-      fillServiceForm(editButton.dataset.editService);
-      setStatus("已載入服務資料，可直接修改。", "info");
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-service]");
-    if (!deleteButton) return;
-
-    try {
-      await deleteService(deleteButton.dataset.deleteService, deleteButton.dataset.serviceName);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.reservationTable.addEventListener("click", async (event) => {
-    const editButton = event.target.closest("[data-edit-reservation]");
-    if (editButton) {
-      fillReservationForm(editButton.dataset.editReservation);
-      setStatus("已載入預約資料，可直接修改。", "info");
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-reservation]");
-    if (!deleteButton) return;
-
-    try {
-      await deleteReservation(
-        deleteButton.dataset.deleteReservation,
-        deleteButton.dataset.customerName
-      );
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  elements.userTable.addEventListener("click", async (event) => {
-    const reviewButton = event.target.closest("[data-review-user]");
-    if (reviewButton) {
-      try {
-        await reviewUser(reviewButton.dataset.reviewUser, reviewButton.dataset.reviewStatus);
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-user]");
-    if (!deleteButton) {
-      return;
-    }
-
-    try {
-      await deleteUser(deleteButton.dataset.deleteUser, deleteButton.dataset.userName);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
+function bindEvents() {
+  eventBinder.bind();
 }
 
 async function initializeApp() {
@@ -5130,3 +5149,5 @@ async function initializeApp() {
 }
 
 initializeApp();
+
+})();

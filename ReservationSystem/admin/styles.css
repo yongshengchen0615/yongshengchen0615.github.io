@@ -92,7 +92,7 @@ body.is-busy {
   cursor: progress;
 }
 
-/* Input/Select/Textarea global – covers both static and JS‑generated HTML */
+/* Input/Select/Textarea global – covers both static and JS-generated HTML */
 input,
 select,
 textarea {
@@ -330,7 +330,7 @@ h1 {
 }
 
 /* ==========================================================================
-   Command Scroll (tab bar horizontal scroll on mobile)
+   Command Scroll
    ========================================================================== */
 
 .command-scroll {
@@ -345,7 +345,7 @@ h1 {
 }
 
 /* ==========================================================================
-   Buttons (custom – used in both static HTML and JS‑generated markup)
+   Buttons
    ========================================================================== */
 
 .button {
@@ -903,6 +903,27 @@ body.is-sheet-open {
   line-height: 1.5;
 }
 
+.schedule-impact-summary {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 188, 102, 0.22);
+  border-radius: 0.85rem;
+  background: rgba(255, 188, 102, 0.08);
+}
+
+.schedule-impact-summary__title {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: var(--warn);
+}
+
+.schedule-impact-summary__meta {
+  color: var(--bs-body-color);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
 .schedule-time-editor {
   display: grid;
   gap: 12px;
@@ -913,7 +934,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Status Pills (JS‑generated)
+   Status Pills
    ========================================================================== */
 
 .status-pill {
@@ -973,7 +994,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Tables & Data Lists (JS‑generated)
+   Tables & Data Lists
    ========================================================================== */
 
 .data-list,
@@ -1030,7 +1051,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Review Summary Cards (JS‑generated)
+   Review Summary Cards
    ========================================================================== */
 
 .review-summary {
@@ -1059,7 +1080,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   User Cells / Avatars (JS‑generated)
+   User Cells / Avatars
    ========================================================================== */
 
 .user-cell {
@@ -1100,7 +1121,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Service Category (JS‑generated)
+   Service Category
    ========================================================================== */
 
 .service-category-group {
@@ -1156,7 +1177,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Bulk Technician (JS‑generated)
+   Bulk Technician
    ========================================================================== */
 
 .technician-bulk-panel {
@@ -1479,7 +1500,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Shift + Service Cell (refactored compact layout)
+   Shift + Service Cell
    ========================================================================== */
 
 .shift-service-cell {
@@ -1701,7 +1722,6 @@ body.is-sheet-open {
 }
 
 /* Review table service cell */
-
 .review-service-cell {
   display: grid;
   gap: 2px;
@@ -1856,11 +1876,6 @@ body.is-sheet-open {
   min-width: 0;
 }
 
-.service-category-title {
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
 .bulk-service-option {
   display: block;
   min-width: 0;
@@ -1928,7 +1943,7 @@ body.is-sheet-open {
 }
 
 /* ==========================================================================
-   Misc / Sub‑panel / Section
+   Misc / Sub-panel / Section
    ========================================================================== */
 
 .sub-panel {
@@ -2025,12 +2040,9 @@ body.is-sheet-open {
    ========================================================================== */
 
 @media (max-width: 1024px) {
-  .admin-shell {
-    width: min(100% - 24px, 100%);
-  }
-
+  .admin-shell,
   .access-shell {
-    width: min(100% - 24px, 100%);
+    width: calc(100% - 24px);
   }
 
   .schedule-workspace {
@@ -2375,14 +2387,17 @@ body.is-sheet-open {
    ========================================================================== */
 
 @media (max-width: 576px) {
+  .admin-shell,
+  .access-shell {
+    width: calc(100% - 16px);
+  }
+
   .admin-shell {
-    width: min(100% - 16px, 100%);
     padding-top: max(18px, env(safe-area-inset-top, 0px));
     padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   }
 
   .access-shell {
-    width: min(100% - 16px, 100%);
     padding-top: max(18px, env(safe-area-inset-top, 0px));
   }
 
@@ -2700,110 +2715,141 @@ textarea:focus-visible {
   border-top: 1px solid rgba(146, 178, 200, 0.08);
   padding-top: 14px;
 }
+
 /* ==========================================================================
-   Schedule form date input hardening
-   讓班表的起始日期 / 結束日期適應桌機、平板、手機、LINE WebView
+   Schedule form date input hardening v2
+   更強制壓住 mobile / iPhone / LINE WebView 的 date input overflow
    ========================================================================== */
 
-/* 基礎：先確保外層容器不會把 date input 擠壞 */
+#scheduleSection,
+#scheduleSection .card-body,
 #scheduleForm,
 #scheduleForm > *,
 #scheduleForm .field,
 #scheduleForm label.field {
   min-width: 0;
   min-inline-size: 0;
+  max-width: 100%;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+}
+
+#scheduleForm {
+  overflow-x: clip;
 }
 
 #scheduleForm label.field {
-  overflow: visible;
+  display: grid;
+  gap: 8px;
+  width: 100%;
 }
 
-/* 只針對班表的起始日期 / 結束日期 */
 #scheduleForm input[name="date"],
 #scheduleForm input[name="endDate"],
 #scheduleForm input[type="date"] {
   display: block;
   width: 100%;
   inline-size: 100%;
-  max-width: 100%;
-  max-inline-size: 100%;
   min-width: 0;
   min-inline-size: 0;
+  max-width: 100%;
+  max-inline-size: 100%;
   box-sizing: border-box;
 
+  height: 48px;
   min-height: 48px;
-  padding-block: 0.75rem;
-  padding-inline: 0.875rem 1rem;
+  padding: 0.75rem 0.875rem;
+
+  border: 1px solid rgba(146, 178, 200, 0.2);
+  border-radius: 0.75rem;
+  background: rgba(5, 15, 22, 0.62);
+  color: var(--bs-body-color);
 
   font: inherit;
-  line-height: 1.35;
+  font-size: 16px;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
 
-  /* 關鍵：不要再硬縮 WebKit 原生 date control */
-  -webkit-min-logical-width: 0;
+  overflow: hidden;
 
-  /* 保留原生日期選擇器 */
   appearance: auto;
   -webkit-appearance: auto;
-
-  background-clip: padding-box;
+  -webkit-min-logical-width: 0;
 }
 
-/* WebKit / iPhone / LINE WebView 內部日期欄位收縮 */
 #scheduleForm input[name="date"]::-webkit-date-and-time-value,
-#scheduleForm input[name="date"]::-webkit-datetime-edit,
-#scheduleForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
 #scheduleForm input[name="endDate"]::-webkit-date-and-time-value,
-#scheduleForm input[name="endDate"]::-webkit-datetime-edit,
-#scheduleForm input[name="endDate"]::-webkit-datetime-edit-fields-wrapper,
-#scheduleForm input[type="date"]::-webkit-date-and-time-value,
-#scheduleForm input[type="date"]::-webkit-datetime-edit,
-#scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+#scheduleForm input[type="date"]::-webkit-date-and-time-value {
   min-width: 0;
   width: 100%;
-  inline-size: 100%;
-  margin: 0;
-  padding: 0;
-  line-height: 1.35;
   text-align: left;
 }
 
-/* 原生日曆按鈕不要多吃空間 */
+#scheduleForm input[name="date"]::-webkit-datetime-edit,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit,
+#scheduleForm input[type="date"]::-webkit-datetime-edit {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+#scheduleForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit-fields-wrapper,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+#scheduleForm input[name="date"]::-webkit-datetime-edit-year-field,
+#scheduleForm input[name="date"]::-webkit-datetime-edit-month-field,
+#scheduleForm input[name="date"]::-webkit-datetime-edit-day-field,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit-year-field,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit-month-field,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit-day-field,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-year-field,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-month-field,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-day-field,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-text {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 1.25;
+}
+
 #scheduleForm input[name="date"]::-webkit-calendar-picker-indicator,
 #scheduleForm input[name="endDate"]::-webkit-calendar-picker-indicator,
 #scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
-  margin: 0 0 0 0.25rem;
+  flex: 0 0 auto;
+  width: 1.1rem;
+  min-width: 1.1rem;
+  margin-left: 0.5rem;
   padding: 0;
   opacity: 1;
-  flex: 0 0 auto;
 }
 
-/* 平板以下：固定 16px，避免 iPhone 自動放大 */
 @media (max-width: 768px) {
   #scheduleForm input[name="date"],
   #scheduleForm input[name="endDate"],
   #scheduleForm input[type="date"] {
     font-size: 16px;
-    padding-inline: 0.875rem 0.875rem;
-  }
-}
-
-/* 小手機：再微縮內距，但不壓文字 */
-@media (max-width: 576px) {
-  #scheduleForm input[name="date"],
-  #scheduleForm input[name="endDate"],
-  #scheduleForm input[type="date"] {
     min-height: 46px;
+    height: 46px;
     padding-inline: 0.75rem;
-    line-height: 1.4;
   }
 }
 
-/* 超小螢幕：維持可讀性，不再額外擠壓 */
 @media (max-width: 390px) {
   #scheduleForm input[name="date"],
   #scheduleForm input[name="endDate"],
   #scheduleForm input[type="date"] {
-    padding-inline: 0.7rem;
+    padding-inline: 0.65rem;
   }
 }

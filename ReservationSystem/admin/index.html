@@ -53,7 +53,6 @@
 
     <!-- ===== Admin Main Content ===== -->
     <div id="adminContent" class="admin-shell is-hidden">
-
       <!-- Hero -->
       <header class="row g-3 mb-4">
         <div class="col-lg-7">
@@ -358,6 +357,10 @@
                 <strong>班表時段會自動使用技師頁設定的預設上下班時間。</strong>
                 <span>新增班表時，未勾選的啟用技師會自動記錄為休假；已勾選者則依各技師自己的預設時段建立班表。</span>
               </div>
+
+              <!-- 新增：班表影響摘要 -->
+              <div id="scheduleImpactSummary" class="schedule-impact-summary is-hidden"></div>
+
               <div id="scheduleEditTimePanel" class="schedule-time-editor is-hidden">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <strong id="scheduleEditModeLabel">編輯這筆班表的臨時上下班時間</strong>
@@ -392,23 +395,23 @@
           </div>
         </section>
 
-          <!-- ===== Leave Section ===== -->
-          <section id="leaveSection" class="card glass-card admin-page-panel is-hidden" data-admin-page="leave">
-            <div class="card-body p-4">
-              <div class="d-sm-flex justify-content-between align-items-start gap-3 mb-3">
-                <div>
-                  <p class="eyebrow">Leave Review</p>
-                  <h2>休假審核</h2>
-                  <p class="text-body-secondary">技師送出的休假申請會集中在這裡。審核通過後，系統會直接把休假寫入班表日曆。</p>
-                </div>
-                <div class="text-sm-end">
-                  <p id="leaveRequestResultLabel" class="text-body-secondary fw-bold mb-0">顯示 0 / 0 筆</p>
-                </div>
+        <!-- ===== Leave Section ===== -->
+        <section id="leaveSection" class="card glass-card admin-page-panel is-hidden" data-admin-page="leave">
+          <div class="card-body p-4">
+            <div class="d-sm-flex justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <p class="eyebrow">Leave Review</p>
+                <h2>休假審核</h2>
+                <p class="text-body-secondary">技師送出的休假申請會集中在這裡。審核通過後，系統會直接把休假寫入班表日曆。</p>
               </div>
-              <div id="leaveRequestSummary" class="review-summary mb-3"></div>
-              <div id="leaveRequestTable" class="table-wrap"></div>
+              <div class="text-sm-end">
+                <p id="leaveRequestResultLabel" class="text-body-secondary fw-bold mb-0">顯示 0 / 0 筆</p>
+              </div>
             </div>
-          </section>
+            <div id="leaveRequestSummary" class="review-summary mb-3"></div>
+            <div id="leaveRequestTable" class="table-wrap"></div>
+          </div>
+        </section>
 
         <!-- ===== Reservation Section ===== -->
         <section id="reservationSection" class="card glass-card admin-page-panel is-hidden" data-admin-page="reservation">
@@ -538,7 +541,6 @@
             <div id="adminManagementTable" class="table-wrap"></div>
           </div>
         </section>
-
       </main>
     </div>
 
