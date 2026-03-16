@@ -2701,25 +2701,35 @@ textarea:focus-visible {
   padding-top: 14px;
 }
 /* ==========================================================================
-   Schedule form mobile hardening
-   只加強班表起始日期 / 結束日期在行動裝置上的縮排，不改其他視覺
+   Schedule / Reservation date-time mobile hardening
+   修正行動裝置（尤其 iPhone / LINE WebView）下 date / time 欄位撐破容器
+   只處理 scheduleForm / reservationForm，不動其他視覺
    ========================================================================== */
 @media (max-width: 768px) {
+  /* 讓表單本身、直接子元素、field 容器都允許收縮 */
   #scheduleForm,
   #scheduleForm > *,
   #scheduleForm .field,
-  #scheduleForm label.field {
+  #scheduleForm label.field,
+  #reservationForm,
+  #reservationForm > *,
+  #reservationForm .field,
+  #reservationForm label.field {
     min-width: 0;
     min-inline-size: 0;
   }
 
-  /* WebKit / iOS date control can reserve extra logical width for the picker arrow.
-     width: 100% alone is sometimes not enough inside mobile WebView / Safari. */
-  #scheduleForm label.field {
+  /* iOS / WebKit 原生 date/time 控制項常把 logical width 撐大 */
+  #scheduleForm label.field,
+  #reservationForm label.field {
     overflow: hidden;
   }
 
-  #scheduleForm input[type="date"] {
+  /* 統一處理 schedule / reservation 裡的 date / time */
+  #scheduleForm input[type="date"],
+  #scheduleForm input[type="time"],
+  #reservationForm input[type="date"],
+  #reservationForm input[type="time"] {
     display: block;
     inline-size: 100%;
     width: 100%;
@@ -2730,18 +2740,43 @@ textarea:focus-visible {
     box-sizing: border-box;
     overflow: hidden;
     text-overflow: ellipsis;
-    -webkit-min-logical-width: calc(100% - 18px);
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-min-logical-width: 0;
     padding-inline-end: 0.75rem;
   }
 
+  /* WebKit 內部日期/時間文字區塊允許縮 */
   #scheduleForm input[type="date"]::-webkit-date-and-time-value,
   #scheduleForm input[type="date"]::-webkit-datetime-edit,
-  #scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  #scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  #scheduleForm input[type="time"]::-webkit-date-and-time-value,
+  #scheduleForm input[type="time"]::-webkit-datetime-edit,
+  #scheduleForm input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+  #reservationForm input[type="date"]::-webkit-date-and-time-value,
+  #reservationForm input[type="date"]::-webkit-datetime-edit,
+  #reservationForm input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  #reservationForm input[type="time"]::-webkit-date-and-time-value,
+  #reservationForm input[type="time"]::-webkit-datetime-edit,
+  #reservationForm input[type="time"]::-webkit-datetime-edit-fields-wrapper {
     min-width: 0;
+    inline-size: 100%;
   }
 
-  #scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
+  /* 拿掉 picker indicator 額外留白 */
+  #scheduleForm input[type="date"]::-webkit-calendar-picker-indicator,
+  #scheduleForm input[type="time"]::-webkit-calendar-picker-indicator,
+  #reservationForm input[type="date"]::-webkit-calendar-picker-indicator,
+  #reservationForm input[type="time"]::-webkit-calendar-picker-indicator {
     margin: 0;
     padding: 0;
+  }
+
+  /* 某些 WebView 下 time 欄位數字特別容易撐寬，再壓一次 */
+  #scheduleForm input[type="time"]::-webkit-datetime-edit-hour-field,
+  #scheduleForm input[type="time"]::-webkit-datetime-edit-minute-field,
+  #reservationForm input[type="time"]::-webkit-datetime-edit-hour-field,
+  #reservationForm input[type="time"]::-webkit-datetime-edit-minute-field {
+    padding-inline: 0;
   }
 }
