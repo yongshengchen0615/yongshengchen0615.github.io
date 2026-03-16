@@ -2051,6 +2051,38 @@ body.is-sheet-open {
    ========================================================================== */
 
 @media (max-width: 768px) {
+  /* Mobile fix: prevent native date/time controls from forcing grid items wider than the card */
+  .d-grid > *,
+  .field,
+  .time-wheel-field {
+    min-width: 0;
+    min-inline-size: 0;
+  }
+
+  .field > input,
+  .field > select,
+  .field > textarea,
+  .time-wheel-field > input {
+    min-width: 0;
+    min-inline-size: 0;
+  }
+
+  input[type="date"],
+  input[type="time"] {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-inline-size: 0;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value,
+  input[type="date"]::-webkit-datetime-edit,
+  input[type="time"]::-webkit-datetime-edit {
+    min-width: 0;
+  }
+
   .review-summary {
     grid-template-columns: 1fr;
   }
