@@ -934,6 +934,26 @@ function parseLocalDate(value) {
   return new Date(year, month - 1, day);
 }
 
+function formatReservationDateDisplay(value) {
+  const date = parseLocalDate(value);
+  if (!date) {
+    return "請選擇日期";
+  }
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function syncReservationDateDisplay(value = elements.reservationForm?.date?.value) {
+  const display = elements.reservationForm?.querySelector("[data-reservation-date-display]");
+  if (!display) {
+    return;
+  }
+
+  const hasValue = Boolean(String(value || "").trim());
+  display.textContent = hasValue ? formatReservationDateDisplay(value) : "請選擇日期";
+  display.classList.toggle("is-placeholder", !hasValue);
+}
+
 function formatMonthLabel(monthKey) {
   const [year, month] = String(monthKey).split("-");
   return `${year} 年 ${month} 月`;
@@ -1542,6 +1562,7 @@ function resetReservationForm() {
     "請選擇技師"
   );
   renderReservationServiceOptions();
+  syncReservationDateDisplay(elements.reservationForm.date.value);
   syncTimeWheelField(elements.reservationForm.startTime, elements.reservationForm.startTime.value || "09:00");
   updateReservationFormMode();
 }
@@ -4124,6 +4145,7 @@ function fillReservationForm(reservationId) {
   elements.reservationForm.customerName.value = reservation.customerName;
   elements.reservationForm.phone.value = reservation.phone;
   elements.reservationForm.date.value = reservation.date;
+  syncReservationDateDisplay(reservation.date);
   elements.reservationForm.startTime.value = reservation.startTime;
   syncTimeWheelField(elements.reservationForm.startTime, reservation.startTime || "09:00");
   elements.reservationForm.status.value = reservation.status || "已預約";
@@ -4872,6 +4894,14 @@ const eventBinder = {
         setReservationAssignedTechnicianId(elements.reservationTechnicianSelect.value);
       }
       renderReservationServiceOptions(getSelectedReservationServiceIds());
+    });
+
+    bindEvent(elements.reservationForm.date, "input", (event) => {
+      syncReservationDateDisplay(event.target.value);
+    });
+
+    bindEvent(elements.reservationForm.date, "change", (event) => {
+      syncReservationDateDisplay(event.target.value);
     });
 
     bindEvent(elements.reservationSearchInput, "input", (event) => {
