@@ -6,6 +6,7 @@
     <title>美業預約系統 | 管理員端</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -351,20 +352,8 @@
                 </div>
                 <div id="scheduleTechnicianCheckboxes" class="checkbox-grid checkbox-grid--technicians mt-2"></div>
               </div>
-              <label class="field">
-                <span>起始日期</span>
-                <div class="date-trigger-field">
-                  <input id="scheduleDateInput" name="date" type="date" required />
-                  <span class="date-trigger-field__value is-placeholder" data-schedule-start-date-display aria-hidden="true">請選擇起始日期</span>
-                </div>
-              </label>
-              <label class="field">
-                <span>結束日期</span>
-                <div class="date-trigger-field">
-                  <input id="scheduleEndDateInput" name="endDate" type="date" />
-                  <span class="date-trigger-field__value is-placeholder" data-schedule-end-date-display aria-hidden="true">請選擇結束日期</span>
-                </div>
-              </label>
+              <label class="field"><span>起始日期</span><input id="scheduleDateInput" name="date" type="date" required /></label>
+              <label class="field"><span>結束日期</span><input id="scheduleEndDateInput" name="endDate" type="date" /></label>
               <div class="schedule-time-hint">
                 <strong>班表時段會自動使用技師頁設定的預設上下班時間。</strong>
                 <span>新增班表時，未勾選的啟用技師會自動記錄為休假；已勾選者則依各技師自己的預設時段建立班表。</span>
@@ -464,13 +453,7 @@
               <label class="field"><span>電話</span><input name="phone" type="tel" placeholder="09xxxxxxxx" required /></label>
               <label class="field"><span>技師</span><select name="technicianId" id="reservationTechnicianSelect" required></select></label>
               <div class="field"><span>服務項目</span><div id="reservationServiceSelect" class="checkbox-grid"></div></div>
-              <label class="field">
-                <span>日期</span>
-                <div class="date-trigger-field">
-                  <input id="reservationDateInput" name="date" type="date" required />
-                  <span class="date-trigger-field__value is-placeholder" data-reservation-date-display aria-hidden="true">請選擇日期</span>
-                </div>
-              </label>
+              <label class="field"><span>日期</span><input id="reservationDateInput" name="date" type="date" required /></label>
               <label class="field">
                 <span>開始時間</span>
                 <div class="time-wheel-field">
@@ -593,6 +576,8 @@
       </section>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh-tw.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="./app.js"></script>

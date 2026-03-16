@@ -16,6 +16,7 @@ const ADMIN_PAGE_OPTIONS = [
   { key: "user", label: "用戶審核" },
 ];
 const vueApi = window.Vue || null;
+const flatpickrApi = window.flatpickr || null;
 const frameworkEnabled = Boolean(vueApi);
 const { createApp, reactive } = vueApi || {};
 const TIME_WHEEL_ITEM_HEIGHT = 52;
@@ -243,6 +244,12 @@ const timeWheelState = {
   activeTrigger: null,
   hour: "09",
   minute: "00",
+};
+
+const datePickerState = {
+  scheduleStart: null,
+  scheduleEnd: null,
+  reservation: null,
 };
 
 function normalizeTimeValue(value, fallback = "09:00") {
@@ -934,45 +941,95 @@ function parseLocalDate(value) {
   return new Date(year, month - 1, day);
 }
 
-function formatDateDisplayText(value) {
-  const date = parseLocalDate(value);
-  if (!date) {
-    return "";
-  }
-
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+function getDatePickerLocale() {
+  return flatpickrApi?.l10ns?.zh_tw || undefined;
 }
 
-function syncDateDisplay(display, value, placeholder = "請選擇日期") {
-  if (!display) {
+function enhanceDatePickerInput(instance, placeholder) {
+  const altInput = instance?.altInput;
+  if (!altInput) {
     return;
   }
 
-  const text = formatDateDisplayText(value);
-  const hasValue = Boolean(text);
-  display.textContent = hasValue ? text : placeholder;
-  display.classList.toggle("is-placeholder", !hasValue);
+  altInput.placeholder = placeholder;
+  altInput.readOnly = true;
+  altInput.setAttribute("aria-label", placeholder);
 }
 
-function syncReservationDateDisplay(value = elements.reservationForm?.date?.value) {
-  syncDateDisplay(
-    elements.reservationForm?.querySelector("[data-reservation-date-display]"),
-    value,
+function createDatePicker(input, placeholder, options = {}) {
+  if (!flatpickrApi || !input) {
+    return null;
+  }
+
+  const instance = flatpickrApi(input, {
+    altInput: true,
+    altInputClass: "date-picker-input",
+    altFormat: "Y年m月d日",
+    dateFormat: "Y-m-d",
+    allowInput: false,
+    disableMobile: true,
+    monthSelectorType: "static",
+    locale: getDatePickerLocale(),
+    ...options,
+  });
+
+  enhanceDatePickerInput(instance, placeholder);
+  return instance;
+}
+
+function setDateInputValue(input, value, triggerChange = false) {
+  if (!input) {
+    return;
+  }
+
+  const normalizedValue = String(value || "").trim();
+  const instance = input._flatpickr || null;
+  if (instance) {
+    if (normalizedValue) {
+      instance.setDate(normalizedValue, triggerChange, "Y-m-d");
+    } else {
+      instance.clear(triggerChange);
+    }
+    return;
+  }
+
+  input.value = normalizedValue;
+}
+
+function syncScheduleDatePickerConstraints() {
+  const startValue = String(elements.scheduleForm?.date?.value || "").trim();
+  const endValue = String(elements.scheduleForm?.endDate?.value || "").trim();
+
+  if (datePickerState.scheduleStart) {
+    datePickerState.scheduleStart.set("maxDate", endValue || undefined);
+  }
+
+  if (datePickerState.scheduleEnd) {
+    datePickerState.scheduleEnd.set("minDate", startValue || undefined);
+  }
+}
+
+function initializeDatePickers() {
+  if (!flatpickrApi) {
+    return;
+  }
+
+  datePickerState.scheduleStart = createDatePicker(
+    elements.scheduleForm?.date,
+    "請選擇起始日期",
+    { onChange: syncScheduleDatePickerConstraints }
+  );
+  datePickerState.scheduleEnd = createDatePicker(
+    elements.scheduleForm?.endDate,
+    "請選擇結束日期",
+    { onChange: syncScheduleDatePickerConstraints }
+  );
+  datePickerState.reservation = createDatePicker(
+    elements.reservationForm?.date,
     "請選擇日期"
   );
-}
 
-function syncScheduleDateDisplays() {
-  syncDateDisplay(
-    elements.scheduleForm?.querySelector("[data-schedule-start-date-display]"),
-    elements.scheduleForm?.date?.value,
-    "請選擇起始日期"
-  );
-  syncDateDisplay(
-    elements.scheduleForm?.querySelector("[data-schedule-end-date-display]"),
-    elements.scheduleForm?.endDate?.value,
-    "請選擇結束日期"
-  );
+  syncScheduleDatePickerConstraints();
 }
 
 function formatMonthLabel(monthKey) {
@@ -1056,9 +1113,9 @@ function resetScheduleForm() {
   const selectedDate = state.ui.selectedScheduleDate || formatLocalDate(new Date());
 
   elements.scheduleForm.reset();
-  elements.scheduleForm.date.value = selectedDate;
-  elements.scheduleForm.endDate.value = selectedDate;
-  syncScheduleDateDisplays();
+  setDateInputValue(elements.scheduleForm.date, selectedDate);
+  setDateInputValue(elements.scheduleForm.endDate, selectedDate);
+  syncScheduleDatePickerConstraints();
   syncTimeWheelField(elements.scheduleForm.startTime, "09:00");
   syncTimeWheelField(elements.scheduleForm.endTime, "18:00");
   state.ui.editingScheduleKey = "";
@@ -1075,9 +1132,9 @@ function fillScheduleForm(schedule) {
     return;
   }
 
-  elements.scheduleForm.date.value = schedule.date;
-  elements.scheduleForm.endDate.value = schedule.date;
-  syncScheduleDateDisplays();
+  setDateInputValue(elements.scheduleForm.date, schedule.date);
+  setDateInputValue(elements.scheduleForm.endDate, schedule.date);
+  syncScheduleDatePickerConstraints();
   syncTimeWheelField(elements.scheduleForm.startTime, schedule.startTime);
   syncTimeWheelField(elements.scheduleForm.endTime, schedule.endTime);
   state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
@@ -1585,7 +1642,7 @@ function resetReservationForm() {
     "請選擇技師"
   );
   renderReservationServiceOptions();
-  syncReservationDateDisplay(elements.reservationForm.date.value);
+  setDateInputValue(elements.reservationForm.date, elements.reservationForm.date.value);
   syncTimeWheelField(elements.reservationForm.startTime, elements.reservationForm.startTime.value || "09:00");
   updateReservationFormMode();
 }
@@ -4167,8 +4224,7 @@ function fillReservationForm(reservationId) {
   elements.reservationForm.reservationId.value = reservation.reservationId;
   elements.reservationForm.customerName.value = reservation.customerName;
   elements.reservationForm.phone.value = reservation.phone;
-  elements.reservationForm.date.value = reservation.date;
-  syncReservationDateDisplay(reservation.date);
+  setDateInputValue(elements.reservationForm.date, reservation.date);
   elements.reservationForm.startTime.value = reservation.startTime;
   syncTimeWheelField(elements.reservationForm.startTime, reservation.startTime || "09:00");
   elements.reservationForm.status.value = reservation.status || "已預約";
@@ -4919,14 +4975,6 @@ const eventBinder = {
       renderReservationServiceOptions(getSelectedReservationServiceIds());
     });
 
-    bindEvent(elements.reservationForm.date, "input", (event) => {
-      syncReservationDateDisplay(event.target.value);
-    });
-
-    bindEvent(elements.reservationForm.date, "change", (event) => {
-      syncReservationDateDisplay(event.target.value);
-    });
-
     bindEvent(elements.reservationSearchInput, "input", (event) => {
       state.filters.reservationKeyword = event.target.value;
       renderCoordinator.reservation();
@@ -5052,11 +5100,6 @@ const eventBinder = {
       const count = setScheduleTechnicianSelection(false);
       setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
     });
-
-    bindEvent(elements.scheduleForm.date, "input", syncScheduleDateDisplays);
-    bindEvent(elements.scheduleForm.date, "change", syncScheduleDateDisplays);
-    bindEvent(elements.scheduleForm.endDate, "input", syncScheduleDateDisplays);
-    bindEvent(elements.scheduleForm.endDate, "change", syncScheduleDateDisplays);
 
     bindEvent(elements.scheduleSelectAllEntriesButton, "click", () => {
       const count = setScheduleEntrySelection(true);
@@ -5190,6 +5233,7 @@ async function initializeApp() {
   applyGasUrlPreference();
   loadServiceCategoryMap();
   initializeTimeWheelFields(document);
+  initializeDatePickers();
   ensureTimeWheelLists();
   mountFrameworkApps();
   bindEvents();
