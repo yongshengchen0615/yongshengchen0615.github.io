@@ -597,6 +597,7 @@ h1 {
   box-shadow: 0 0 0 0.2rem rgba(82, 194, 166, 0.18);
 }
 
+#scheduleForm .date-trigger-field input[type="date"],
 #reservationForm .date-trigger-field input[type="date"] {
   position: absolute;
   inset: 0;
@@ -2929,6 +2930,7 @@ textarea:focus-visible {
   padding-block: 0.875rem;
 }
 
+#scheduleForm .date-trigger-field,
 #reservationForm .date-trigger-field {
   min-height: 52px;
 }
@@ -2945,6 +2947,7 @@ textarea:focus-visible {
     padding-inline: 0.75rem;
   }
 
+  #scheduleForm .date-trigger-field,
   #reservationForm .date-trigger-field,
   #reservationForm .time-wheel-trigger {
     min-height: 50px;

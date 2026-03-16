@@ -934,24 +934,45 @@ function parseLocalDate(value) {
   return new Date(year, month - 1, day);
 }
 
-function formatReservationDateDisplay(value) {
+function formatDateDisplayText(value) {
   const date = parseLocalDate(value);
   if (!date) {
-    return "請選擇日期";
+    return "";
   }
 
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-function syncReservationDateDisplay(value = elements.reservationForm?.date?.value) {
-  const display = elements.reservationForm?.querySelector("[data-reservation-date-display]");
+function syncDateDisplay(display, value, placeholder = "請選擇日期") {
   if (!display) {
     return;
   }
 
-  const hasValue = Boolean(String(value || "").trim());
-  display.textContent = hasValue ? formatReservationDateDisplay(value) : "請選擇日期";
+  const text = formatDateDisplayText(value);
+  const hasValue = Boolean(text);
+  display.textContent = hasValue ? text : placeholder;
   display.classList.toggle("is-placeholder", !hasValue);
+}
+
+function syncReservationDateDisplay(value = elements.reservationForm?.date?.value) {
+  syncDateDisplay(
+    elements.reservationForm?.querySelector("[data-reservation-date-display]"),
+    value,
+    "請選擇日期"
+  );
+}
+
+function syncScheduleDateDisplays() {
+  syncDateDisplay(
+    elements.scheduleForm?.querySelector("[data-schedule-start-date-display]"),
+    elements.scheduleForm?.date?.value,
+    "請選擇起始日期"
+  );
+  syncDateDisplay(
+    elements.scheduleForm?.querySelector("[data-schedule-end-date-display]"),
+    elements.scheduleForm?.endDate?.value,
+    "請選擇結束日期"
+  );
 }
 
 function formatMonthLabel(monthKey) {
@@ -1037,6 +1058,7 @@ function resetScheduleForm() {
   elements.scheduleForm.reset();
   elements.scheduleForm.date.value = selectedDate;
   elements.scheduleForm.endDate.value = selectedDate;
+  syncScheduleDateDisplays();
   syncTimeWheelField(elements.scheduleForm.startTime, "09:00");
   syncTimeWheelField(elements.scheduleForm.endTime, "18:00");
   state.ui.editingScheduleKey = "";
@@ -1055,6 +1077,7 @@ function fillScheduleForm(schedule) {
 
   elements.scheduleForm.date.value = schedule.date;
   elements.scheduleForm.endDate.value = schedule.date;
+  syncScheduleDateDisplays();
   syncTimeWheelField(elements.scheduleForm.startTime, schedule.startTime);
   syncTimeWheelField(elements.scheduleForm.endTime, schedule.endTime);
   state.ui.editingScheduleKey = `${schedule.date}::${schedule.technicianId}`;
@@ -5029,6 +5052,11 @@ const eventBinder = {
       const count = setScheduleTechnicianSelection(false);
       setStatus(count ? "已清空技師勾選。" : "目前沒有可清空的技師。", "info");
     });
+
+    bindEvent(elements.scheduleForm.date, "input", syncScheduleDateDisplays);
+    bindEvent(elements.scheduleForm.date, "change", syncScheduleDateDisplays);
+    bindEvent(elements.scheduleForm.endDate, "input", syncScheduleDateDisplays);
+    bindEvent(elements.scheduleForm.endDate, "change", syncScheduleDateDisplays);
 
     bindEvent(elements.scheduleSelectAllEntriesButton, "click", () => {
       const count = setScheduleEntrySelection(true);
