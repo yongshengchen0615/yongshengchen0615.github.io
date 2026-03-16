@@ -2701,68 +2701,109 @@ textarea:focus-visible {
   padding-top: 14px;
 }
 /* ==========================================================================
-   Schedule form mobile hardening
-   修正班表起始日期 / 結束日期在行動裝置上看起來被切掉
+   Schedule form date input hardening
+   讓班表的起始日期 / 結束日期適應桌機、平板、手機、LINE WebView
    ========================================================================== */
+
+/* 基礎：先確保外層容器不會把 date input 擠壞 */
+#scheduleForm,
+#scheduleForm > *,
+#scheduleForm .field,
+#scheduleForm label.field {
+  min-width: 0;
+  min-inline-size: 0;
+}
+
+#scheduleForm label.field {
+  overflow: visible;
+}
+
+/* 只針對班表的起始日期 / 結束日期 */
+#scheduleForm input[name="date"],
+#scheduleForm input[name="endDate"],
+#scheduleForm input[type="date"] {
+  display: block;
+  width: 100%;
+  inline-size: 100%;
+  max-width: 100%;
+  max-inline-size: 100%;
+  min-width: 0;
+  min-inline-size: 0;
+  box-sizing: border-box;
+
+  min-height: 48px;
+  padding-block: 0.75rem;
+  padding-inline: 0.875rem 1rem;
+
+  font: inherit;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+
+  /* 關鍵：不要再硬縮 WebKit 原生 date control */
+  -webkit-min-logical-width: 0;
+
+  /* 保留原生日期選擇器 */
+  appearance: auto;
+  -webkit-appearance: auto;
+
+  background-clip: padding-box;
+}
+
+/* WebKit / iPhone / LINE WebView 內部日期欄位收縮 */
+#scheduleForm input[name="date"]::-webkit-date-and-time-value,
+#scheduleForm input[name="date"]::-webkit-datetime-edit,
+#scheduleForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
+#scheduleForm input[name="endDate"]::-webkit-date-and-time-value,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit,
+#scheduleForm input[name="endDate"]::-webkit-datetime-edit-fields-wrapper,
+#scheduleForm input[type="date"]::-webkit-date-and-time-value,
+#scheduleForm input[type="date"]::-webkit-datetime-edit,
+#scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  min-width: 0;
+  width: 100%;
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  line-height: 1.35;
+  text-align: left;
+}
+
+/* 原生日曆按鈕不要多吃空間 */
+#scheduleForm input[name="date"]::-webkit-calendar-picker-indicator,
+#scheduleForm input[name="endDate"]::-webkit-calendar-picker-indicator,
+#scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
+  margin: 0 0 0 0.25rem;
+  padding: 0;
+  opacity: 1;
+  flex: 0 0 auto;
+}
+
+/* 平板以下：固定 16px，避免 iPhone 自動放大 */
 @media (max-width: 768px) {
-  #scheduleForm,
-  #scheduleForm > *,
-  #scheduleForm .field,
-  #scheduleForm label.field {
-    min-width: 0;
-    min-inline-size: 0;
-  }
-
-  /* 不再把外層直接裁切，避免 date control 視覺上像少一塊 */
-  #scheduleForm label.field {
-    overflow: visible;
-  }
-
+  #scheduleForm input[name="date"],
+  #scheduleForm input[name="endDate"],
   #scheduleForm input[type="date"] {
-    display: block;
-    inline-size: 100%;
-    width: 100%;
-    max-inline-size: 100%;
-    max-width: 100%;
-    min-inline-size: 0;
-    min-width: 0;
-    box-sizing: border-box;
-
-    /* 保留右側原生日期按鈕空間，避免文字被擠到像被切掉 */
-    padding-inline-start: 1rem;
-    padding-inline-end: 2.25rem;
-
     font-size: 16px;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: visible;
-    text-overflow: clip;
-
-    /* 關鍵：不要再用 calc(100% - 18px) 硬縮 */
-    -webkit-min-logical-width: 0;
-    appearance: auto;
-    -webkit-appearance: auto;
-    background-clip: padding-box;
+    padding-inline: 0.875rem 0.875rem;
   }
+}
 
-  #scheduleForm input[type="date"]::-webkit-date-and-time-value,
-  #scheduleForm input[type="date"]::-webkit-datetime-edit,
-  #scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-    min-width: 0;
-    inline-size: 100%;
-    width: 100%;
-    white-space: nowrap;
-    text-align: left;
+/* 小手機：再微縮內距，但不壓文字 */
+@media (max-width: 576px) {
+  #scheduleForm input[name="date"],
+  #scheduleForm input[name="endDate"],
+  #scheduleForm input[type="date"] {
+    min-height: 46px;
+    padding-inline: 0.75rem;
+    line-height: 1.4;
   }
+}
 
-  #scheduleForm input[type="date"]::-webkit-datetime-edit {
-    padding: 0;
-  }
-
-  #scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
-    margin: 0;
-    padding: 0;
-    opacity: 1;
-    flex: 0 0 auto;
+/* 超小螢幕：維持可讀性，不再額外擠壓 */
+@media (max-width: 390px) {
+  #scheduleForm input[name="date"],
+  #scheduleForm input[name="endDate"],
+  #scheduleForm input[type="date"] {
+    padding-inline: 0.7rem;
   }
 }
