@@ -45,7 +45,8 @@ body.is-busy {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   font-size: 16px;
 }
@@ -373,11 +374,14 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .leave-form__field {
   display: grid;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .leave-form__field span {
@@ -389,11 +393,22 @@ h1 {
 .leave-form__field input,
 .leave-form__field textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid rgba(146, 178, 200, 0.18);
   border-radius: var(--radius-sm);
   background: rgba(5, 15, 22, 0.52);
   color: var(--text);
   padding: 14px 16px;
+}
+
+.leave-form__field input[type="date"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .leave-form__field textarea {
@@ -802,6 +817,25 @@ h1 {
 
   .leave-form {
     grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .leave-form__field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .leave-form__field input,
+  .leave-form__field textarea,
+  .leave-form__field input[type="date"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .leave-form__field input[type="date"] {
+    font-size: 16px;
+    padding: 12px 14px;
   }
 
   .calendar-weekdays,
@@ -969,6 +1003,10 @@ h1 {
     padding: 16px;
   }
 
+  .leave-form__field input[type="date"] {
+    padding: 10px 12px;
+  }
+
   .button {
     min-height: 48px;
     padding: 12px 16px;
@@ -991,7 +1029,8 @@ h1 {
 }
 
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 0;
   border-color: var(--brand);
@@ -1033,7 +1072,6 @@ select:focus-visible {
    Responsive overflow fixes (prevent cards from overflowing on small screens)
    ========================================================================== */
 
-/* Ensure flex/grid children can shrink instead of forcing container width */
 .panel,
 .content-grid > *,
 .hero-grid > *,
@@ -1043,7 +1081,6 @@ select:focus-visible {
   box-sizing: border-box;
 }
 
-/* Media and long content should never overflow their container */
 img,
 video,
 iframe {
@@ -1051,13 +1088,11 @@ iframe {
   height: auto;
 }
 
-/* Better line breaking for long words/strings */
 * {
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
-/* Allow horizontal scrolling where wide tables/grids are expected */
 .table-wrap,
 .calendar-grid-shell,
 .card-list {
@@ -1066,7 +1101,6 @@ iframe {
 }
 
 @media (max-width: 480px) {
-  /* Reduce heavy shadows and padding that may contribute to visual overflow */
   .panel {
     padding-left: 12px;
     padding-right: 12px;
