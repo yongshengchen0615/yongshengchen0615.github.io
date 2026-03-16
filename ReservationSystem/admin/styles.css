@@ -2717,16 +2717,22 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   Schedule form date input hardening v2
+   Schedule / reservation form date input hardening v2
    更強制壓住 mobile / iPhone / LINE WebView 的 date input overflow
    ========================================================================== */
 
 #scheduleSection,
 #scheduleSection .card-body,
+#reservationSection,
+#reservationSection .card-body,
 #scheduleForm,
+#reservationForm,
 #scheduleForm > *,
+#reservationForm > *,
 #scheduleForm .field,
-#scheduleForm label.field {
+#reservationForm .field,
+#scheduleForm label.field,
+#reservationForm label.field {
   min-width: 0;
   min-inline-size: 0;
   max-width: 100%;
@@ -2734,11 +2740,13 @@ textarea:focus-visible {
   box-sizing: border-box;
 }
 
-#scheduleForm {
+#scheduleForm,
+#reservationForm {
   overflow-x: clip;
 }
 
-#scheduleForm label.field {
+#scheduleForm label.field,
+#reservationForm label.field {
   display: grid;
   gap: 8px;
   width: 100%;
@@ -2746,7 +2754,9 @@ textarea:focus-visible {
 
 #scheduleForm input[name="date"],
 #scheduleForm input[name="endDate"],
-#scheduleForm input[type="date"] {
+#scheduleForm input[type="date"],
+#reservationForm input[name="date"],
+#reservationForm input[type="date"] {
   display: block;
   width: 100%;
   inline-size: 100%;
@@ -2779,7 +2789,9 @@ textarea:focus-visible {
 
 #scheduleForm input[name="date"]::-webkit-date-and-time-value,
 #scheduleForm input[name="endDate"]::-webkit-date-and-time-value,
-#scheduleForm input[type="date"]::-webkit-date-and-time-value {
+#scheduleForm input[type="date"]::-webkit-date-and-time-value,
+#reservationForm input[name="date"]::-webkit-date-and-time-value,
+#reservationForm input[type="date"]::-webkit-date-and-time-value {
   min-width: 0;
   width: 100%;
   text-align: left;
@@ -2787,7 +2799,9 @@ textarea:focus-visible {
 
 #scheduleForm input[name="date"]::-webkit-datetime-edit,
 #scheduleForm input[name="endDate"]::-webkit-datetime-edit,
-#scheduleForm input[type="date"]::-webkit-datetime-edit {
+#scheduleForm input[type="date"]::-webkit-datetime-edit,
+#reservationForm input[name="date"]::-webkit-datetime-edit,
+#reservationForm input[type="date"]::-webkit-datetime-edit {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -2798,7 +2812,9 @@ textarea:focus-visible {
 
 #scheduleForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
 #scheduleForm input[name="endDate"]::-webkit-datetime-edit-fields-wrapper,
-#scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+#scheduleForm input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+#reservationForm input[name="date"]::-webkit-datetime-edit-fields-wrapper,
+#reservationForm input[type="date"]::-webkit-datetime-edit-fields-wrapper {
   display: flex;
   align-items: center;
   flex: 1 1 auto;
@@ -2817,7 +2833,15 @@ textarea:focus-visible {
 #scheduleForm input[type="date"]::-webkit-datetime-edit-year-field,
 #scheduleForm input[type="date"]::-webkit-datetime-edit-month-field,
 #scheduleForm input[type="date"]::-webkit-datetime-edit-day-field,
-#scheduleForm input[type="date"]::-webkit-datetime-edit-text {
+#scheduleForm input[type="date"]::-webkit-datetime-edit-text,
+#reservationForm input[name="date"]::-webkit-datetime-edit-year-field,
+#reservationForm input[name="date"]::-webkit-datetime-edit-month-field,
+#reservationForm input[name="date"]::-webkit-datetime-edit-day-field,
+#reservationForm input[name="date"]::-webkit-datetime-edit-text,
+#reservationForm input[type="date"]::-webkit-datetime-edit-year-field,
+#reservationForm input[type="date"]::-webkit-datetime-edit-month-field,
+#reservationForm input[type="date"]::-webkit-datetime-edit-day-field,
+#reservationForm input[type="date"]::-webkit-datetime-edit-text {
   min-width: 0;
   padding: 0;
   margin: 0;
@@ -2826,7 +2850,9 @@ textarea:focus-visible {
 
 #scheduleForm input[name="date"]::-webkit-calendar-picker-indicator,
 #scheduleForm input[name="endDate"]::-webkit-calendar-picker-indicator,
-#scheduleForm input[type="date"]::-webkit-calendar-picker-indicator {
+#scheduleForm input[type="date"]::-webkit-calendar-picker-indicator,
+#reservationForm input[name="date"]::-webkit-calendar-picker-indicator,
+#reservationForm input[type="date"]::-webkit-calendar-picker-indicator {
   flex: 0 0 auto;
   width: 1.1rem;
   min-width: 1.1rem;
@@ -2838,7 +2864,9 @@ textarea:focus-visible {
 @media (max-width: 768px) {
   #scheduleForm input[name="date"],
   #scheduleForm input[name="endDate"],
-  #scheduleForm input[type="date"] {
+  #scheduleForm input[type="date"],
+  #reservationForm input[name="date"],
+  #reservationForm input[type="date"] {
     font-size: 16px;
     min-height: 46px;
     height: 46px;
@@ -2849,7 +2877,9 @@ textarea:focus-visible {
 @media (max-width: 390px) {
   #scheduleForm input[name="date"],
   #scheduleForm input[name="endDate"],
-  #scheduleForm input[type="date"] {
+  #scheduleForm input[type="date"],
+  #reservationForm input[name="date"],
+  #reservationForm input[type="date"] {
     padding-inline: 0.65rem;
   }
 }
