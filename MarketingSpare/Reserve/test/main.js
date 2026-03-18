@@ -50,7 +50,7 @@ $(document).ready(async function () {
     });
 
     // ✅ Step 9：LIFF 初始化（如在 LINE 中）
-    await liff.init({ liffId: "2007061321-g603NNZG" });
+    await liff.init({ liffId: "2005939681-nrlRZEgB" });
     if (!liff.isInClient()) {
       alert("⚠️ 注意：目前不在 LINE 應用內，功能可能無法使用。");
     }
