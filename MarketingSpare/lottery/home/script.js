@@ -8,6 +8,7 @@ const linkTargets = {
   btn10: "../turntable/10points/index.html",
   btn15: "../turntable/15points/index.html",
   btn20: "../turntable/20points/index.html",
+   btnBirthday: "../turntable/Birthday/index.html",
 
 };
 
