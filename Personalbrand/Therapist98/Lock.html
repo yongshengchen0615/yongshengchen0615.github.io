@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>向10號技師取得  QR code金鑰驗證</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #111827;
+      color: #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 12px;
+    }
+    .btn-group {
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    #startBtn {
+      background: #22c55e;
+      color: #022c22;
+    }
+    #stopBtn {
+      background: #4b5563;
+      color: #e5e7eb;
+    }
+    #videoContainer {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 3 / 4;
+      background: #020617;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      /* transform: scaleX(-1);*/
+    }
+    .scan-box {
+      position: absolute;
+      inset: 15%;
+      border: 2px solid rgba(34, 197, 94, 0.8);
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+      pointer-events: none;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: #9ca3af;
+      text-align: center;
+      min-height: 1.2em;
+    }
+
+    /* ✅ 全螢幕驗證動畫 Overlay */
+    .fullscreen-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.94); /* 深色半透明 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .fullscreen-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .verify-box {
+      background: #020617;
+      border-radius: 16px;
+      padding: 24px 20px;
+      border: 1px solid #1f2937;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+      max-width: 260px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .fullscreen-overlay.active .verify-box {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .verify-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      border: 3px solid #4b5563;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      font-size: 1.6rem;
+    }
+    .verify-text {
+      font-size: 0.95rem;
+      color: #e5e7eb;
+      text-align: center;
+    }
+
+    /* 狀態：驗證中（旋轉圈） */
+    .verify-box.is-verifying .verify-icon {
+      border-color: #22c55e33;
+    }
+    .verify-box.is-verifying .verify-icon::before {
+      content: "";
+      position: absolute;
+      inset: 6px;
+      border-radius: 999px;
+      border: 3px solid #22c55e;
+      border-top-color: transparent;
+      animation: spin 0.9s linear infinite;
+    }
+
+    /* 狀態：成功 ✓ */
+    .verify-box.is-success .verify-icon {
+      background: #22c55e;
+      border-color: #bbf7d0;
+      color: #022c22;
+    }
+    .verify-box.is-success .verify-icon::before {
+      content: "✓";
+      position: relative;
+      animation: pop 0.35s ease-out;
+    }
+    .verify-box.is-success .verify-text {
+      color: #bbf7d0;
+    }
+
+    /* 狀態：失敗 ✕ */
+    .verify-box.is-error .verify-icon {
+      background: #ef4444;
+      border-color: #fecaca;
+      color: #7f1d1d;
+    }
+    .verify-box.is-error .verify-icon::before {
+      content: "✕";
+      position: relative;
+      animation: pop 0.35s ease-out;
+    }
+    .verify-box.is-error .verify-text {
+      color: #fecaca;
+    }
+
+    /* 動畫 */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    @keyframes pop {
+      0% {
+        transform: scale(0.4);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>向10號技師取得  QR code金鑰驗證</h1>
+
+  <div class="btn-group">
+    <button id="startBtn">開始掃描</button>
+    <button id="stopBtn">停止掃描</button>
+  </div>
+
+  <div id="videoContainer">
+    <video id="video" playsinline></video>
+    <div class="scan-box"></div>
+  </div>
+
+  <div id="status">尚未開始掃描</div>
+
+  <!-- ✅ 全螢幕驗證動畫 -->
+  <div id="verifyOverlay" class="fullscreen-overlay">
+    <div id="verifyBox" class="verify-box is-verifying">
+      <div class="verify-icon"></div>
+      <div id="verifyText" class="verify-text">正在驗證金鑰…</div>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // 👇 換成你的 Web App URL（/exec 結尾）
+    const API_URL = 'https://script.google.com/macros/s/AKfycbyAsqb58dZyk7ffqRL5is6OPfDr2JmwYXa9rxMBA2EmQR8WU-mOnqCVfp_Fd_wwP4ty/exec';
+    // ✅ 掃描成功且驗證通過後要跳轉的網址
+    const REDIRECT_URL = './home/index.html';
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    const verifyOverlay = document.getElementById('verifyOverlay');
+    const verifyBox = document.getElementById('verifyBox');
+    const verifyText = document.getElementById('verifyText');
+
+    let stream = null;
+    let scanTimer = null;
+    let isScanning = false;
+
+    // 控制 Overlay 顯示/隱藏
+    function showOverlay(show) {
+      if (show) {
+        verifyOverlay.classList.add('active');
+      } else {
+        verifyOverlay.classList.remove('active');
+      }
+    }
+
+    // 控制驗證狀態樣式與文字
+    function setVerifyState(state, message) {
+      verifyBox.classList.remove('is-verifying', 'is-success', 'is-error');
+      if (state === 'verifying') {
+        verifyBox.classList.add('is-verifying');
+      } else if (state === 'success') {
+        verifyBox.classList.add('is-success');
+      } else if (state === 'error') {
+        verifyBox.classList.add('is-error');
+      }
+      if (message) {
+        verifyText.textContent = message;
+      }
+    }
+
+    async function startScan() {
+      try {
+        if (isScanning) return;
+        statusEl.textContent = '正在啟動相機…';
+        showOverlay(false); // 開始掃描先關掉 overlay
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        isScanning = true;
+        statusEl.textContent = '掃描中… 請將 QR Code 放入框內';
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        scanTimer = setInterval(scanFrame, 200);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '無法啟動相機：' + err.message;
+        showOverlay(true);
+        setVerifyState('error', '無法啟動相機，請檢查權限設定。');
+      }
+    }
+
+    function stopScan() {
+      isScanning = false;
+      if (scanTimer) clearInterval(scanTimer);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (!statusEl.textContent.startsWith('無法啟動相機')) {
+        statusEl.textContent = '掃描已停止';
+      }
+    }
+
+    function scanFrame() {
+      if (!isScanning) return;
+  const ctx = canvas.getContext('2d');
+
+  // ★ 先清空
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+
+  // ★ 在畫到 canvas 時手動鏡射回來
+  // 假設現在 video 是鏡射顯示的，
+  // 那我們在 canvas 反轉一次，讓 jsQR 拿到「正常方向」的影像
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: 'dontInvert',
+  });
+
+      if (code) {
+        const key = code.data.trim();
+        statusEl.textContent = '已掃描到 QR Code，正在驗證…';
+
+        // 停止掃描並開啟全螢幕驗證動畫
+        stopScan();
+        showOverlay(true);
+        setVerifyState('verifying', '已掃描到 QR Code，正在進行認證');
+
+        verifyKey(key);
+      }
+    }
+
+    async function verifyKey(key) {
+      if (!key) {
+        setVerifyState('error', '⚠ 掃描到的金鑰是空的。');
+        statusEl.textContent = '驗證失敗：金鑰為空。';
+        return;
+      }
+
+      try {
+        const url = API_URL + '?action=verify&key=' + encodeURIComponent(key);
+        const res = await fetch(url, { method: 'GET' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const data = await res.json();
+
+        if (!data.ok) {
+          setVerifyState('error', '伺服器錯誤：' + (data.error || '未知錯誤'));
+          statusEl.textContent = '驗證失敗。';
+          return;
+        }
+
+        if (data.matched) {
+          setVerifyState('success', '✅ 認證成功，正在跳轉中…');
+          statusEl.textContent = '驗證成功，跳轉中…';
+
+          setTimeout(() => {
+            window.location.href = REDIRECT_URL;
+          }, 1500);
+        } else {
+          setVerifyState('error', '❌ 認證失敗');
+          statusEl.textContent = '驗證失敗：金鑰未註冊。';
+
+          // 如果你想失敗後幾秒自動關閉動畫，可以打開下面這段：
+           setTimeout(() => {
+             showOverlay(false);
+           }, 1500);
+        }
+      } catch (err) {
+        console.error(err);
+        setVerifyState('error', '❌ 呼叫後端失敗：' + err.message);
+        statusEl.textContent = '驗證失敗。';
+      }
+    }
+
+    startBtn.addEventListener('click', startScan);
+    stopBtn.addEventListener('click', stopScan);
+  </script>
+</body>
+</html>
