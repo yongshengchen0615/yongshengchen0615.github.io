@@ -105,11 +105,23 @@ async function handleLogin() {
 
 async function loadLineProfile() {
   const profile = await liff.getProfile();
+  const idToken = getLineIdToken();
+  const decodedToken = getDecodedLineIdToken();
+  const expectedChannelId = getLineChannelId();
+
+  if (!idToken) {
+    throw new Error("缺少 LINE idToken，請在 LINE Developers Console 的 LIFF App 啟用 openid scope 後重新登入。");
+  }
+
+  if (decodedToken && decodedToken.aud && expectedChannelId && decodedToken.aud !== expectedChannelId) {
+    throw new Error("LINE 登入驗證失敗：LIFF Channel ID 與 idToken 不一致，請檢查 LIFF_ID 與 GAS 的 LINE_CHANNEL_ID。");
+  }
+
   state.profile = {
     uuid: profile.userId,
     lineName: profile.displayName || "LINE 使用者",
     pictureUrl: profile.pictureUrl || "",
-    idToken: typeof liff.getIDToken === "function" ? liff.getIDToken() || "" : "",
+    idToken,
   };
   renderProfile();
 }
@@ -288,6 +300,20 @@ function hasRuntimeConfig() {
       !LOTTERY_CONFIG.LIFF_ID.includes("請填入") &&
       !LOTTERY_CONFIG.GAS_WEB_APP_URL.includes("請填入")
   );
+}
+
+function getLineIdToken() {
+  if (typeof liff.getIDToken !== "function") return "";
+  return liff.getIDToken() || "";
+}
+
+function getDecodedLineIdToken() {
+  if (typeof liff.getDecodedIDToken !== "function") return null;
+  return liff.getDecodedIDToken();
+}
+
+function getLineChannelId() {
+  return LOTTERY_CONFIG.LIFF_ID.split("-")[0] || "";
 }
 
 function formatLotteryNumber(value) {

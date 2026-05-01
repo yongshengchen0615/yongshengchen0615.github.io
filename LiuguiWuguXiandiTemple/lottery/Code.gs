@@ -5,8 +5,8 @@ const MAX_DRAW_ATTEMPTS = 3000;
 // Leave empty when this script is bound to the target Google Sheet.
 const SPREADSHEET_ID = '';
 
-// Optional: fill this with your LINE Login Channel ID to verify idToken on GAS.
-const LINE_CHANNEL_ID = '';
+// LINE Login Channel ID. This must match the channel prefix in script.js LIFF_ID.
+const LINE_CHANNEL_ID = '2009806965';
 
 function doGet() {
   initializeSheet_();
@@ -124,9 +124,14 @@ function drawNumber_(payload) {
 function resolveLineUser_(payload) {
   var fallbackUuid = cleanText_(payload.uuid);
   var fallbackName = cleanText_(payload.lineName) || 'LINE 使用者';
+  var channelId = cleanText_(LINE_CHANNEL_ID);
 
-  if (LINE_CHANNEL_ID && payload.idToken) {
-    var verified = verifyLineIdToken_(payload.idToken);
+  if (channelId) {
+    if (!payload.idToken) {
+      throw new Error('缺少 LINE idToken，請確認 LIFF App 已啟用 openid scope 後重新登入。');
+    }
+
+    var verified = verifyLineIdToken_(payload.idToken, fallbackUuid);
     return {
       uuid: cleanText_(verified.sub),
       lineName: cleanText_(verified.name) || fallbackName,
@@ -143,19 +148,29 @@ function resolveLineUser_(payload) {
   };
 }
 
-function verifyLineIdToken_(idToken) {
+function verifyLineIdToken_(idToken, expectedUserId) {
+  var formPayload = {
+    id_token: idToken,
+    client_id: cleanText_(LINE_CHANNEL_ID),
+  };
+  if (expectedUserId) {
+    formPayload.user_id = expectedUserId;
+  }
+
   var response = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', {
     method: 'post',
-    payload: {
-      id_token: idToken,
-      client_id: LINE_CHANNEL_ID,
-    },
+    payload: formPayload,
     muteHttpExceptions: true,
   });
-  var body = JSON.parse(response.getContentText() || '{}');
+  var body = parseJsonSafely_(response.getContentText());
+  var errorDetail = cleanText_(body.error_description) || cleanText_(body.error);
 
   if (response.getResponseCode() !== 200 || !body.sub) {
-    throw new Error('LINE 登入驗證失敗');
+    throw new Error('LINE 登入驗證失敗' + (errorDetail ? '：' + errorDetail : ''));
+  }
+
+  if (cleanText_(body.aud) && cleanText_(body.aud) !== cleanText_(LINE_CHANNEL_ID)) {
+    throw new Error('LINE 登入驗證失敗：Channel ID 不一致');
   }
 
   return body;
@@ -334,6 +349,14 @@ function parseRequest_(e) {
     action: e && e.parameter ? e.parameter.action : '',
     payload: e && e.parameter ? e.parameter : {},
   };
+}
+
+function parseJsonSafely_(value) {
+  try {
+    return JSON.parse(value || '{}');
+  } catch (error) {
+    return {};
+  }
 }
 
 function jsonResponse_(data) {
