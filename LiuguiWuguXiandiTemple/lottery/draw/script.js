@@ -7,6 +7,8 @@ const DRAW_CONFIG = {
 const state = {
   busy: false,
   board: null,
+  showSettings: true,
+  showHistory: true,
   rollingTimer: null,
   prizeRefreshTimer: null,
   toastTimer: null,
@@ -23,6 +25,11 @@ document.addEventListener("DOMContentLoaded", () => {
 function cacheElements() {
   [
     "connectionBadge",
+    "workspace",
+    "settingsPanel",
+    "historyPanel",
+    "toggleSettingsButton",
+    "toggleHistoryButton",
     "winnerNumber",
     "winnerName",
     "winnerPrize",
@@ -30,7 +37,6 @@ function cacheElements() {
     "drawButton",
     "refreshButton",
     "prizeName",
-    "prizeOptions",
     "adminToken",
     "drawnCount",
     "winnerCount",
@@ -48,7 +54,10 @@ function cacheElements() {
 function bindEvents() {
   elements.drawButton.addEventListener("click", handleDrawWinner);
   elements.refreshButton.addEventListener("click", () => refreshBoard(true));
-  elements.prizeName.addEventListener("input", handlePrizeInput);
+  elements.prizeName.addEventListener("change", handlePrizeInput);
+  elements.toggleSettingsButton.addEventListener("click", () => togglePanel("settings"));
+  elements.toggleHistoryButton.addEventListener("click", () => togglePanel("history"));
+  renderPanelVisibility();
 }
 
 async function refreshBoard(showToastOnSuccess) {
@@ -152,13 +161,14 @@ function renderStats(stats) {
     totalUsers: 0,
     drawnNumbers: 0,
     winners: 0,
+    prizeWinners: 0,
     remaining: 0,
     remainingSlots: 0,
   };
 
   elements.totalCount.textContent = values.totalUsers;
   elements.drawnCount.textContent = values.drawnNumbers;
-  elements.winnerCount.textContent = values.winners;
+  elements.winnerCount.textContent = values.prizeWinners || 0;
   elements.remainingCount.textContent = values.remainingSlots;
   elements.historyBadge.textContent = `${values.winners} 筆`;
   elements.historyBadge.dataset.state = values.winners > 0 ? "ready" : "idle";
@@ -166,12 +176,25 @@ function renderStats(stats) {
 
 function renderPrizeOptions(prizes, currentPrizeName) {
   const rows = prizes || [];
-  elements.prizeOptions.innerHTML = rows
-    .map((prize) => `<option value="${escapeHtml(prize.prizeName)}"></option>`)
-    .join("");
+  const selectedPrizeName = elements.prizeName.value.trim() || currentPrizeName || "";
 
-  if (!elements.prizeName.value.trim() && currentPrizeName) {
-    elements.prizeName.value = currentPrizeName;
+  if (!rows.length) {
+    elements.prizeName.innerHTML = '<option value="">請先到管理後台設定獎項</option>';
+    return;
+  }
+
+  elements.prizeName.innerHTML = rows.map((prize) => {
+    const isSelected = prize.prizeName === selectedPrizeName;
+    const remaining = Number(prize.remainingSlots || 0);
+    return `
+      <option value="${escapeHtml(prize.prizeName)}" ${isSelected ? "selected" : ""}>
+        ${escapeHtml(prize.prizeName)}（剩餘 ${escapeHtml(remaining)}）
+      </option>
+    `;
+  }).join("");
+
+  if (!elements.prizeName.value && rows[0]) {
+    elements.prizeName.value = rows[0].prizeName;
   }
 }
 
@@ -206,10 +229,36 @@ function setBusy(isBusy, label) {
 
 function updateButtons() {
   const remaining = state.board && state.board.stats ? Number(state.board.stats.remaining) : 0;
-  elements.drawButton.disabled = state.busy || remaining <= 0;
+  const hasPrize = Boolean(elements.prizeName.value.trim());
+  elements.drawButton.disabled = state.busy || !hasPrize || remaining <= 0;
   elements.refreshButton.disabled = state.busy;
   elements.prizeName.disabled = state.busy;
   elements.adminToken.disabled = state.busy;
+}
+
+function togglePanel(panelName) {
+  if (panelName === "settings") {
+    state.showSettings = !state.showSettings;
+  }
+  if (panelName === "history") {
+    state.showHistory = !state.showHistory;
+  }
+  renderPanelVisibility();
+}
+
+function renderPanelVisibility() {
+  elements.settingsPanel.hidden = !state.showSettings;
+  elements.historyPanel.hidden = !state.showHistory;
+  elements.workspace.classList.toggle("is-settings-hidden", !state.showSettings);
+  elements.workspace.classList.toggle("is-history-hidden", !state.showHistory);
+  updateToggleButton(elements.toggleSettingsButton, state.showSettings, "抽獎設定");
+  updateToggleButton(elements.toggleHistoryButton, state.showHistory, "中獎紀錄");
+}
+
+function updateToggleButton(button, isVisible, label) {
+  button.classList.toggle("is-active", isVisible);
+  button.setAttribute("aria-pressed", String(isVisible));
+  button.textContent = isVisible ? `隱藏${label}` : `顯示${label}`;
 }
 
 function setConnection(stateName, label) {

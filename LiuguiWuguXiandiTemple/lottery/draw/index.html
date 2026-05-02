@@ -14,10 +14,16 @@
         <p class="eyebrow">Lottery Draw Console</p>
         <h1>中獎抽取台</h1>
       </div>
-      <div class="badge" id="connectionBadge" data-state="idle">尚未同步</div>
+      <div class="topbar__actions">
+        <div class="view-toggles" aria-label="顯示區塊">
+          <button class="toggle-button is-active" id="toggleSettingsButton" type="button" aria-controls="settingsPanel" aria-pressed="true">隱藏抽獎設定</button>
+          <button class="toggle-button is-active" id="toggleHistoryButton" type="button" aria-controls="historyPanel" aria-pressed="true">隱藏中獎紀錄</button>
+        </div>
+        <div class="badge" id="connectionBadge" data-state="idle">尚未同步</div>
+      </div>
     </header>
 
-    <main class="workspace">
+    <main class="workspace" id="workspace">
       <section class="stage" aria-labelledby="stageTitle">
         <div class="stage__inner">
           <div>
@@ -38,13 +44,14 @@
         </div>
       </section>
 
-      <aside class="side">
+      <aside class="side" id="settingsPanel">
         <section class="panel controls" aria-labelledby="controlTitle">
           <h2 id="controlTitle">抽獎設定</h2>
           <label class="field">
-            獎項名稱
-            <input id="prizeName" type="text" autocomplete="off" list="prizeOptions">
-            <datalist id="prizeOptions"></datalist>
+            目前抽取獎項
+            <select id="prizeName">
+              <option value="">讀取獎項中</option>
+            </select>
           </label>
           <label class="field">
             管理密鑰
@@ -57,7 +64,7 @@
               <strong id="drawnCount">0</strong>
             </div>
             <div class="stat">
-              <span>已中獎</span>
+              <span>此獎已中</span>
               <strong id="winnerCount">0</strong>
             </div>
             <div class="stat">
@@ -74,7 +81,7 @@
         </section>
       </aside>
 
-      <section class="panel history" aria-labelledby="historyTitle">
+      <section class="panel history" id="historyPanel" aria-labelledby="historyTitle">
         <div class="history__head">
           <h2 id="historyTitle">中獎紀錄</h2>
           <span class="badge" id="historyBadge" data-state="idle">0 筆</span>

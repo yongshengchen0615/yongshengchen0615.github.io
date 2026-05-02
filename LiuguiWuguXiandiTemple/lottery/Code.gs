@@ -53,6 +53,10 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: setPrizeConfig_(payload) });
     }
 
+    if (action === 'deletePrizeConfig') {
+      return jsonResponse_({ ok: true, data: deletePrizeConfig_(payload) });
+    }
+
     if (action === 'setGuaranteedPrize') {
       return jsonResponse_({ ok: true, data: setGuaranteedPrize_(payload) });
     }
@@ -218,6 +222,7 @@ function getAdminBoard_(payload) {
 function setPrizeConfig_(payload) {
   assertAdmin_(payload);
   var prizeName = cleanText_(payload.prizeName);
+  var originalPrizeName = cleanText_(payload.originalPrizeName) || prizeName;
   if (!prizeName) {
     throw new Error('請輸入獎項名稱');
   }
@@ -234,18 +239,27 @@ function setPrizeConfig_(payload) {
     var userSheet = getSheet_();
     var prizeSheet = getPrizeSheet_();
     var records = readRecords_(userSheet);
-    assertPrizeCapacity_(records, prizeName, winnerCount);
+    assertPrizeCapacity_(records, originalPrizeName, winnerCount);
 
     var now = new Date();
     var prizes = readPrizeConfigs_(prizeSheet);
     var existing = null;
+    var duplicate = null;
     prizes.forEach(function(prize) {
-      if (prize.prizeName === prizeName) {
+      if (prize.prizeName === originalPrizeName) {
         existing = prize;
+      }
+      if (prize.prizeName === prizeName && prize.prizeName !== originalPrizeName) {
+        duplicate = prize;
       }
     });
 
+    if (duplicate) {
+      throw new Error('獎項名稱已存在：' + prizeName);
+    }
+
     if (existing) {
+      existing.prizeName = prizeName;
       existing.winnerCount = winnerCount;
       existing.updatedAt = now;
       writePrizeConfig_(prizeSheet, existing);
@@ -258,8 +272,46 @@ function setPrizeConfig_(payload) {
       });
     }
 
+    if (originalPrizeName !== prizeName) {
+      renamePrizeInRecords_(userSheet, records, originalPrizeName, prizeName, now);
+    }
+
     return buildAdminBoard_(userSheet, prizeSheet, {
       message: '已設定「' + prizeName + '」中獎數量為 ' + winnerCount + ' 名',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deletePrizeConfig_(payload) {
+  assertAdmin_(payload);
+  var prizeName = cleanText_(payload.prizeName);
+  if (!prizeName) {
+    throw new Error('請輸入要刪除的獎項名稱');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var records = readRecords_(userSheet);
+    if (getPrizeWinnerCount_(records, prizeName) > 0) {
+      throw new Error('「' + prizeName + '」已有中獎紀錄，不能刪除');
+    }
+
+    var prize = getPrizeConfigByName_(prizeSheet, prizeName);
+    if (!prize) {
+      throw new Error('找不到獎項：' + prizeName);
+    }
+
+    prizeSheet.deleteRow(prize.rowNumber);
+    clearGuaranteedPrizeByName_(userSheet, records, prizeName, new Date());
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      message: '已刪除獎項「' + prizeName + '」',
     });
   } finally {
     lock.releaseLock();
@@ -674,6 +726,13 @@ function writeGuaranteedPrize_(sheet, record) {
   sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
 }
 
+function writePrizeNameFields_(sheet, record) {
+  var headerMap = getHeaderMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  sheet.getRange(record.rowNumber, headerMap.winnerPrize + 1).setValue(record.winnerPrize);
+  sheet.getRange(record.rowNumber, headerMap.guaranteedPrize + 1).setValue(record.guaranteedPrize);
+  sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
+}
+
 function appendPrizeConfig_(sheet, prize) {
   var row = PRIZE_HEADERS.map(function(header) {
     return prize[header] || '';
@@ -1026,6 +1085,34 @@ function assertGuaranteedCapacity_(records, prizeName, winnerCount) {
   if (lockedCount > winnerCount) {
     throw new Error('「' + prizeName + '」保證中獎人數加上已中獎人數已超過設定數量 ' + winnerCount + ' 名');
   }
+}
+
+function renamePrizeInRecords_(sheet, records, originalPrizeName, prizeName, updatedAt) {
+  records.forEach(function(record) {
+    var changed = false;
+
+    if (cleanText_(record.winnerPrize) === originalPrizeName) {
+      record.winnerPrize = prizeName;
+      changed = true;
+    }
+    if (cleanText_(record.guaranteedPrize) === originalPrizeName) {
+      record.guaranteedPrize = prizeName;
+      changed = true;
+    }
+
+    if (!changed) return;
+    record.updatedAt = updatedAt;
+    writePrizeNameFields_(sheet, record);
+  });
+}
+
+function clearGuaranteedPrizeByName_(sheet, records, prizeName, updatedAt) {
+  records.forEach(function(record) {
+    if (cleanText_(record.guaranteedPrize) !== prizeName) return;
+    record.guaranteedPrize = '';
+    record.updatedAt = updatedAt;
+    writeGuaranteedPrize_(sheet, record);
+  });
 }
 
 function parsePositiveInteger_(value, fallback) {

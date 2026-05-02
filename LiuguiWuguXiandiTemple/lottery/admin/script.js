@@ -9,6 +9,7 @@ const state = {
   prizes: [],
   stats: null,
   selectedUuids: new Set(),
+  editingPrizeName: "",
   toastTimer: null,
 };
 
@@ -32,6 +33,7 @@ function cacheElements() {
     "prizeCount",
     "selectedCount",
     "savePrizeButton",
+    "newPrizeButton",
     "setGuaranteeButton",
     "clearGuaranteeButton",
     "refreshButton",
@@ -51,6 +53,7 @@ function cacheElements() {
 function bindEvents() {
   elements.refreshButton.addEventListener("click", () => refreshBoard(true));
   elements.savePrizeButton.addEventListener("click", savePrizeConfig);
+  elements.newPrizeButton.addEventListener("click", resetPrizeForm);
   elements.setGuaranteeButton.addEventListener("click", setGuaranteedPrize);
   elements.clearGuaranteeButton.addEventListener("click", clearGuaranteedPrize);
   elements.searchInput.addEventListener("input", renderUsers);
@@ -59,6 +62,7 @@ function bindEvents() {
   elements.selectEligibleButton.addEventListener("click", selectPendingUsers);
   elements.clearSelectionButton.addEventListener("click", clearSelection);
   elements.userRows.addEventListener("change", handleRowChange);
+  elements.prizeList.addEventListener("click", handlePrizeListClick);
 }
 
 async function refreshBoard(showToastOnSuccess) {
@@ -93,11 +97,41 @@ async function savePrizeConfig() {
   setBusy(true, "儲存中");
 
   try {
-    const board = await gasRequest("setPrizeConfig", buildPayload({ winnerCount }));
+    const originalPrizeName = state.editingPrizeName || prizeName;
+    const board = await gasRequest("setPrizeConfig", buildPayload({
+      winnerCount,
+      originalPrizeName,
+    }));
+    state.editingPrizeName = prizeName;
     applyBoard(board);
     setConnection("ready", "已儲存");
     setSystemMessage(board.message || "獎項已更新。");
     showToast(board.message || "獎項已更新", "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deletePrizeConfig(prizeName) {
+  if (!prizeName) return;
+  if (!window.confirm(`確定刪除「${prizeName}」？已有中獎紀錄的獎項不能刪除。`)) {
+    return;
+  }
+
+  setBusy(true, "刪除中");
+
+  try {
+    const selectedUuids = getSelectedUuids();
+    const board = await gasRequest("deletePrizeConfig", buildPayload({ prizeName }));
+    if (state.editingPrizeName === prizeName) {
+      resetPrizeForm(false);
+    }
+    applyBoard(board, selectedUuids);
+    setConnection("ready", "已刪除");
+    setSystemMessage(board.message || "獎項已刪除。");
+    showToast(board.message || "獎項已刪除", "success");
   } catch (error) {
     showError(error);
   } finally {
@@ -181,6 +215,9 @@ function applyBoard(board, selectedUuids) {
   state.users = board.users || [];
   state.prizes = board.prizes || [];
   state.stats = board.stats || null;
+  if (state.editingPrizeName && !findPrize(state.editingPrizeName)) {
+    state.editingPrizeName = "";
+  }
 
   if (selectedUuids) {
     state.selectedUuids = new Set(selectedUuids);
@@ -222,19 +259,17 @@ function renderPrizes() {
   }
 
   elements.prizeList.innerHTML = state.prizes.map((prize) => `
-    <button class="prize-item" type="button" data-prize="${escapeHtml(prize.prizeName)}" data-count="${escapeHtml(prize.winnerCount)}">
-      <strong>${escapeHtml(prize.prizeName)}</strong>
-      <span>${escapeHtml(prize.winnerCountUsed)} / ${escapeHtml(prize.winnerCount)}</span>
-    </button>
+    <div class="prize-item ${state.editingPrizeName === prize.prizeName ? "is-editing" : ""}">
+      <button class="prize-main" type="button" data-action="edit-prize" data-prize="${escapeHtml(prize.prizeName)}" data-count="${escapeHtml(prize.winnerCount)}">
+        <strong>${escapeHtml(prize.prizeName)}</strong>
+        <span>中獎 ${escapeHtml(prize.winnerCountUsed)} / ${escapeHtml(prize.winnerCount)}，保證 ${escapeHtml(prize.guaranteedCount)}</span>
+      </button>
+      <div class="prize-actions">
+        <button class="mini-button" type="button" data-action="edit-prize" data-prize="${escapeHtml(prize.prizeName)}" data-count="${escapeHtml(prize.winnerCount)}">編輯</button>
+        <button class="mini-button mini-button--danger" type="button" data-action="delete-prize" data-prize="${escapeHtml(prize.prizeName)}">刪除</button>
+      </div>
+    </div>
   `).join("");
-
-  elements.prizeList.querySelectorAll(".prize-item").forEach((button) => {
-    button.addEventListener("click", () => {
-      elements.prizeName.value = button.dataset.prize;
-      elements.winnerCountInput.value = button.dataset.count;
-      updateActions();
-    });
-  });
 }
 
 function renderUsers() {
@@ -273,7 +308,7 @@ function renderUsers() {
           <p class="user-name">${escapeHtml(user.lineName || "未命名使用者")}</p>
           <p class="user-id">${escapeHtml(user.uuid)}</p>
         </td>
-        <td>${renderGuaranteedPrize(user)}</td>
+        <td>${renderGuaranteedSelect(user)}</td>
         <td><span class="status-pill" data-state="${status.state}">${status.label}</span></td>
         <td>${escapeHtml(getWinnerRecordLabel(user))}</td>
       </tr>
@@ -282,6 +317,12 @@ function renderUsers() {
 }
 
 function handleRowChange(event) {
+  const select = event.target.closest(".guarantee-select");
+  if (select) {
+    updateUserGuaranteedPrize(select.dataset.uuid, select.value);
+    return;
+  }
+
   const checkbox = event.target.closest(".winner-check");
   if (!checkbox) return;
 
@@ -294,6 +335,33 @@ function handleRowChange(event) {
   renderStats();
   renderUsers();
   updateActions();
+}
+
+async function updateUserGuaranteedPrize(uuid, prizeName) {
+  if (!uuid) return;
+
+  const selectedUuids = getSelectedUuids();
+  const action = prizeName ? "setGuaranteedPrize" : "clearGuaranteedPrize";
+  const busyLabel = prizeName ? "寫入中" : "清除中";
+
+  setBusy(true, busyLabel);
+
+  try {
+    const payload = buildPayload({
+      selectedUuids: [uuid],
+      prizeName,
+    });
+    const board = await gasRequest(action, payload);
+    applyBoard(board, selectedUuids);
+    setConnection("ready", prizeName ? "已寫入" : "已清除");
+    setSystemMessage(board.message || "保證中獎設定已更新。");
+    showToast(board.message || "保證中獎設定已更新", "success");
+  } catch (error) {
+    showError(error);
+    renderUsers();
+  } finally {
+    setBusy(false);
+  }
 }
 
 function selectPendingUsers() {
@@ -315,8 +383,47 @@ function clearSelection() {
 }
 
 function handlePrizeNameInput() {
-  updateWinnerCountFromPrize();
+  if (!state.editingPrizeName || elements.prizeName.value.trim() === state.editingPrizeName) {
+    updateWinnerCountFromPrize();
+  }
   updateActions();
+}
+
+function handlePrizeListClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button || !elements.prizeList.contains(button)) return;
+
+  const prizeName = button.dataset.prize || "";
+  if (button.dataset.action === "edit-prize") {
+    loadPrizeForEditing(prizeName);
+    return;
+  }
+
+  if (button.dataset.action === "delete-prize") {
+    deletePrizeConfig(prizeName);
+  }
+}
+
+function loadPrizeForEditing(prizeName) {
+  const prize = findPrize(prizeName);
+  if (!prize) return;
+
+  state.editingPrizeName = prize.prizeName;
+  elements.prizeName.value = prize.prizeName;
+  elements.winnerCountInput.value = prize.winnerCount;
+  renderPrizes();
+  updateActions();
+}
+
+function resetPrizeForm(showMessage = true) {
+  state.editingPrizeName = "";
+  elements.prizeName.value = "";
+  elements.winnerCountInput.value = "1";
+  renderPrizes();
+  updateActions();
+  if (showMessage) {
+    setSystemMessage("已切換為新增獎項模式。");
+  }
 }
 
 function updateWinnerCountFromPrize() {
@@ -355,12 +462,24 @@ function getUserStatus(user) {
   };
 }
 
-function renderGuaranteedPrize(user) {
-  if (!user.guaranteedPrize) {
-    return '<span class="status-pill" data-state="auto">系統隨機</span>';
+function renderGuaranteedSelect(user) {
+  const prizeNames = state.prizes.map((prize) => prize.prizeName);
+  if (user.guaranteedPrize && !prizeNames.includes(user.guaranteedPrize)) {
+    prizeNames.push(user.guaranteedPrize);
   }
 
-  return `<span class="prize-tag">${escapeHtml(user.guaranteedPrize)}</span>`;
+  const options = [
+    '<option value="">系統隨機</option>',
+    ...prizeNames.map((prizeName) => `
+      <option value="${escapeHtml(prizeName)}" ${user.guaranteedPrize === prizeName ? "selected" : ""}>${escapeHtml(prizeName)}</option>
+    `),
+  ].join("");
+
+  return `
+    <select class="guarantee-select" data-uuid="${escapeHtml(user.uuid)}" ${state.busy ? "disabled" : ""}>
+      ${options}
+    </select>
+  `;
 }
 
 function getWinnerRecordLabel(user) {
@@ -380,6 +499,8 @@ function updateActions() {
   const hasWinnerCount = Number(elements.winnerCountInput.value) > 0;
 
   elements.savePrizeButton.disabled = state.busy || !hasPrize || !hasWinnerCount;
+  elements.savePrizeButton.textContent = state.editingPrizeName ? "更新獎項" : "儲存獎項";
+  elements.newPrizeButton.disabled = state.busy || (!state.editingPrizeName && !elements.prizeName.value.trim());
   elements.setGuaranteeButton.disabled = state.busy || !hasSelection || !hasPrize || !findPrize(elements.prizeName.value.trim());
   elements.clearGuaranteeButton.disabled = state.busy || !hasSelection;
   elements.refreshButton.disabled = state.busy;
@@ -389,6 +510,9 @@ function updateActions() {
   elements.winnerCountInput.disabled = state.busy;
   elements.adminToken.disabled = state.busy;
   elements.searchInput.disabled = state.busy;
+  elements.userRows.querySelectorAll(".guarantee-select").forEach((select) => {
+    select.disabled = state.busy;
+  });
 }
 
 function setConnection(stateName, label) {
