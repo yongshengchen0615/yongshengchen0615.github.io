@@ -247,7 +247,7 @@ function renderRecord(record, options = {}) {
       elements.lotteryNumber.textContent = number;
     }
     elements.numberState.textContent = getNumberStateLabel(record);
-    elements.drawState.textContent = record.hasWon ? "已中獎" : "已抽取";
+    elements.drawState.textContent = hasWinnerPrize(record) ? "已中獎" : "已抽取";
     elements.drawButton.textContent = "已完成抽號";
     elements.drawButton.disabled = true;
     return;
@@ -262,7 +262,7 @@ function renderRecord(record, options = {}) {
 }
 
 function renderWinnerPrize(record) {
-  const hasWon = Boolean(record && record.hasWon && record.winnerPrize);
+  const hasWon = hasWinnerPrize(record);
   elements.winnerPrizeCard.hidden = !hasWon;
   elements.winnerPrizeRow.hidden = !hasWon;
 
@@ -279,20 +279,24 @@ function renderWinnerPrize(record) {
 }
 
 function getNumberStateLabel(record) {
-  if (record.hasWon && record.winnerPrize) {
+  if (hasWinnerPrize(record)) {
     return `恭喜中獎：${record.winnerPrize}`;
   }
   return record.alreadyDrawn ? "你已經抽取過，這是原本號碼" : "此號碼已保留給你";
 }
 
 function getRecordMessage(record) {
-  if (record && record.hasWon && record.winnerPrize) {
+  if (hasWinnerPrize(record)) {
     return `恭喜中獎，獎項為「${record.winnerPrize}」。`;
   }
   if (record && record.hasDrawn) {
     return record.alreadyDrawn ? "你已經抽取過，系統顯示原本的摸彩號碼。" : "已找到你先前抽取的摸彩號碼。";
   }
   return "使用者資料已寫入 GAS，可以開始抽取摸彩號碼。";
+}
+
+function hasWinnerPrize(record) {
+  return Boolean(record && String(record.winnerPrize || "").trim());
 }
 
 function setBusy(isBusy, label) {
