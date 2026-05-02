@@ -249,6 +249,11 @@ h2 {
   color: var(--danger);
 }
 
+.icon-button--danger {
+  border-color: rgba(189, 47, 43, 0.28);
+  color: var(--danger);
+}
+
 .message {
   min-height: 44px;
   margin: 0;
@@ -388,6 +393,10 @@ tr.is-winner {
   background: rgba(217, 168, 39, 0.1);
 }
 
+tr.has-pending-guarantee {
+  background: rgba(189, 47, 43, 0.07);
+}
+
 .check-cell {
   width: 72px;
 }
@@ -405,6 +414,24 @@ tr.is-winner {
   padding: 7px 10px;
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.guarantee-control {
+  display: grid;
+  gap: 5px;
+  width: max-content;
+  max-width: 260px;
+}
+
+.guarantee-select.is-pending {
+  border-color: rgba(189, 47, 43, 0.45);
+  box-shadow: 0 0 0 3px rgba(189, 47, 43, 0.1);
+}
+
+.pending-note {
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .number-cell {

@@ -65,6 +65,14 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: clearGuaranteedPrize_(payload) });
     }
 
+    if (action === 'updateGuaranteedPrizes') {
+      return jsonResponse_({ ok: true, data: updateGuaranteedPrizes_(payload) });
+    }
+
+    if (action === 'deleteUsers') {
+      return jsonResponse_({ ok: true, data: deleteUsers_(payload) });
+    }
+
     throw new Error('不支援的操作類型');
   } catch (error) {
     return jsonResponse_({
@@ -395,6 +403,120 @@ function clearGuaranteedPrize_(payload) {
     return buildAdminBoard_(userSheet, prizeSheet, {
       selectedUuids: selectedUuids,
       message: '已清除 ' + targetRecords.length + ' 位使用者的保證中獎設定',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateGuaranteedPrizes_(payload) {
+  assertAdmin_(payload);
+  var guaranteeChanges = normalizeGuaranteedPrizeChanges_(payload.guaranteeChanges);
+  if (!guaranteeChanges.length) {
+    throw new Error('沒有需要儲存的保證中獎變更');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var records = readRecords_(userSheet);
+    var prizes = readPrizeConfigs_(prizeSheet);
+    var prizeMap = {};
+    prizes.forEach(function(prize) {
+      prizeMap[prize.prizeName] = prize;
+    });
+
+    var recordMap = {};
+    records.forEach(function(record) {
+      recordMap[record.uuid] = record;
+    });
+
+    var changedPrizeMap = {};
+    var targetRecords = [];
+    var now = new Date();
+
+    guaranteeChanges.forEach(function(change) {
+      var record = recordMap[change.uuid];
+      if (!record) {
+        throw new Error('找不到勾選的使用者：' + change.uuid);
+      }
+
+      if (change.prizeName && !prizeMap[change.prizeName]) {
+        throw new Error('請先設定「' + change.prizeName + '」的中獎數量');
+      }
+
+      if (
+        cleanText_(record.winnerAt) &&
+        change.prizeName &&
+        cleanText_(record.winnerPrize) !== change.prizeName
+      ) {
+        throw new Error(record.lineName + ' 已中過其他獎項，不能設定為「' + change.prizeName + '」保證中獎');
+      }
+
+      if (cleanText_(record.guaranteedPrize)) {
+        changedPrizeMap[cleanText_(record.guaranteedPrize)] = true;
+      }
+      if (change.prizeName) {
+        changedPrizeMap[change.prizeName] = true;
+      }
+
+      record.guaranteedPrize = change.prizeName;
+      record.updatedAt = now;
+      targetRecords.push(record);
+    });
+
+    Object.keys(changedPrizeMap).forEach(function(prizeName) {
+      var prizeConfig = prizeMap[prizeName];
+      if (prizeConfig) {
+        assertGuaranteedCapacity_(records, prizeName, prizeConfig.winnerCount);
+      }
+    });
+
+    targetRecords.forEach(function(record) {
+      writeGuaranteedPrize_(userSheet, record);
+    });
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      selectedUuids: guaranteeChanges.map(function(change) {
+        return change.uuid;
+      }),
+      message: '已儲存 ' + targetRecords.length + ' 筆保證中獎變更',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteUsers_(payload) {
+  assertAdmin_(payload);
+  var selectedUuids = normalizeUuidList_(payload.selectedUuids);
+  if (!selectedUuids.length) {
+    throw new Error('請至少勾選一位要刪除的使用者');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var records = readRecords_(userSheet);
+    var targetRecords = getSelectedRecords_(records, selectedUuids);
+    var rowNumbers = targetRecords.map(function(record) {
+      return record.rowNumber;
+    }).sort(function(a, b) {
+      return b - a;
+    });
+
+    rowNumbers.forEach(function(rowNumber) {
+      userSheet.deleteRow(rowNumber);
+    });
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      message: '已刪除 ' + targetRecords.length + ' 位使用者',
     });
   } finally {
     lock.releaseLock();
@@ -1027,6 +1149,28 @@ function normalizeUuidList_(value) {
   });
 
   return uuids;
+}
+
+function normalizeGuaranteedPrizeChanges_(value) {
+  if (!Array.isArray(value)) return [];
+
+  var order = [];
+  var byUuid = {};
+  value.forEach(function(item) {
+    var uuid = cleanText_(item && item.uuid);
+    if (!uuid) return;
+    if (!Object.prototype.hasOwnProperty.call(byUuid, uuid)) {
+      order.push(uuid);
+    }
+    byUuid[uuid] = cleanText_(item.prizeName);
+  });
+
+  return order.map(function(uuid) {
+    return {
+      uuid: uuid,
+      prizeName: byUuid[uuid],
+    };
+  });
 }
 
 function buildUuidSet_(uuids) {

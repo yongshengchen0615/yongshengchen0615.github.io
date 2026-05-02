@@ -366,12 +366,6 @@ h2 {
   opacity: 0.5;
 }
 
-.button--primary {
-  border-color: #06c755;
-  background: linear-gradient(135deg, #13df68, #06c755);
-  color: #07120a;
-}
-
 .button--accent {
   border-color: rgba(255, 224, 163, 0.5);
   background: linear-gradient(135deg, var(--gold-soft), var(--gold) 42%, #d36d19 100%);

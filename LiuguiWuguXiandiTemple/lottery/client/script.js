@@ -23,7 +23,6 @@ document.addEventListener("DOMContentLoaded", () => {
 function cacheElements() {
   [
     "connectionBadge",
-    "loginButton",
     "drawButton",
     "syncButton",
     "lotteryNumber",
@@ -48,7 +47,6 @@ function cacheElements() {
 }
 
 function bindEvents() {
-  elements.loginButton.addEventListener("click", handleLogin);
   elements.drawButton.addEventListener("click", handleDraw);
   elements.syncButton.addEventListener("click", () => syncCurrentUser(true));
 }
@@ -57,7 +55,6 @@ async function boot() {
   if (!hasRuntimeConfig()) {
     setConnection("error", "尚未設定");
     setSystemMessage("請先在 script.js 填入 LIFF_ID 與 GAS_WEB_APP_URL。");
-    elements.loginButton.disabled = true;
     return;
   }
 
@@ -76,8 +73,9 @@ async function boot() {
     state.liffReady = true;
 
     if (!liff.isLoggedIn()) {
-      setConnection("idle", "尚未登入");
-      setSystemMessage("請先用 LINE 登入。");
+      setConnection("busy", "前往登入");
+      setSystemMessage("正在前往 LINE 登入。");
+      liff.login({ redirectUri: window.location.href.split("#")[0] });
       return;
     }
 
@@ -87,25 +85,6 @@ async function boot() {
     showError(error);
   } finally {
     setBusy(false);
-  }
-}
-
-async function handleLogin() {
-  try {
-    if (!state.liffReady) {
-      await boot();
-      if (!state.liffReady) return;
-    }
-
-    if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: window.location.href.split("#")[0] });
-      return;
-    }
-
-    await loadLineProfile();
-    await syncCurrentUser(true);
-  } catch (error) {
-    showError(error);
   }
 }
 
@@ -220,14 +199,13 @@ function renderProfile() {
     elements.avatarFallback.hidden = false;
   }
 
-  elements.loginButton.disabled = true;
   elements.syncButton.disabled = false;
 }
 
 function renderRecord(record, options = {}) {
   if (!record) {
     elements.lotteryNumber.textContent = "------";
-    elements.numberState.textContent = "等待 LINE 登入";
+    elements.numberState.textContent = state.profile ? "尚未抽取" : "正在啟動 LINE";
     elements.syncState.textContent = "尚未同步";
     elements.drawState.textContent = "尚未抽取";
     renderWinnerPrize(null);
@@ -312,9 +290,6 @@ function setBusy(isBusy, label) {
   }
   if (elements.syncButton) {
     elements.syncButton.disabled = isBusy || !state.profile;
-  }
-  if (elements.loginButton) {
-    elements.loginButton.disabled = isBusy || Boolean(state.profile) || !hasRuntimeConfig();
   }
 }
 

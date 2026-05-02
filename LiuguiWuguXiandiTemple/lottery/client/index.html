@@ -28,7 +28,7 @@
           <span class="ticket__shine" aria-hidden="true"></span>
           <span class="ticket__label">Lottery Number</span>
           <output class="lottery-number" id="lotteryNumber">------</output>
-          <div class="number-state" id="numberState">等待 LINE 登入</div>
+          <div class="number-state" id="numberState">正在啟動 LINE</div>
           <div class="winner-prize" id="winnerPrizeCard" hidden>
             <span>中獎獎項</span>
             <strong id="winnerPrizeName">--</strong>
@@ -37,7 +37,6 @@
         </div>
 
         <div class="actions">
-          <button class="button button--primary" id="loginButton" type="button">LINE 登入</button>
           <button class="button button--accent" id="drawButton" type="button" disabled>抽取摸彩號碼</button>
           <button class="button button--ghost" id="syncButton" type="button" disabled>同步資料</button>
         </div>
@@ -72,7 +71,7 @@
 
         <section class="panel status-log" aria-live="polite">
           <strong>系統訊息</strong>
-          <p id="systemMessage">請先完成 LINE 登入。</p>
+          <p id="systemMessage">正在啟動 LINE 登入。</p>
         </section>
       </aside>
     </main>

@@ -9,6 +9,7 @@ const state = {
   prizes: [],
   stats: null,
   selectedUuids: new Set(),
+  guaranteeEdits: new Map(),
   editingPrizeName: "",
   toastTimer: null,
 };
@@ -34,14 +35,15 @@ function cacheElements() {
     "selectedCount",
     "savePrizeButton",
     "newPrizeButton",
-    "setGuaranteeButton",
     "clearGuaranteeButton",
+    "saveGuaranteeChangesButton",
     "refreshButton",
     "systemMessage",
     "listSummary",
     "searchInput",
     "selectEligibleButton",
     "clearSelectionButton",
+    "deleteUsersButton",
     "prizeList",
     "userRows",
     "toast",
@@ -54,18 +56,23 @@ function bindEvents() {
   elements.refreshButton.addEventListener("click", () => refreshBoard(true));
   elements.savePrizeButton.addEventListener("click", savePrizeConfig);
   elements.newPrizeButton.addEventListener("click", resetPrizeForm);
-  elements.setGuaranteeButton.addEventListener("click", setGuaranteedPrize);
   elements.clearGuaranteeButton.addEventListener("click", clearGuaranteedPrize);
+  elements.saveGuaranteeChangesButton.addEventListener("click", saveGuaranteeChanges);
   elements.searchInput.addEventListener("input", renderUsers);
   elements.prizeName.addEventListener("input", handlePrizeNameInput);
   elements.winnerCountInput.addEventListener("input", updateActions);
   elements.selectEligibleButton.addEventListener("click", selectPendingUsers);
   elements.clearSelectionButton.addEventListener("click", clearSelection);
+  elements.deleteUsersButton.addEventListener("click", deleteSelectedUsers);
   elements.userRows.addEventListener("change", handleRowChange);
   elements.prizeList.addEventListener("click", handlePrizeListClick);
 }
 
 async function refreshBoard(showToastOnSuccess) {
+  if (showToastOnSuccess && !confirmDiscardGuaranteeChanges()) {
+    return;
+  }
+
   setBusy(true, "同步中");
 
   try {
@@ -93,6 +100,9 @@ async function savePrizeConfig() {
     showError(new Error("中獎數量必須大於 0"));
     return;
   }
+  if (!confirmDiscardGuaranteeChanges()) {
+    return;
+  }
 
   setBusy(true, "儲存中");
 
@@ -116,6 +126,9 @@ async function savePrizeConfig() {
 
 async function deletePrizeConfig(prizeName) {
   if (!prizeName) return;
+  if (!confirmDiscardGuaranteeChanges()) {
+    return;
+  }
   if (!window.confirm(`確定刪除「${prizeName}」？已有中獎紀錄的獎項不能刪除。`)) {
     return;
   }
@@ -139,36 +152,13 @@ async function deletePrizeConfig(prizeName) {
   }
 }
 
-async function setGuaranteedPrize() {
-  const selectedUuids = getSelectedUuids();
-  if (!selectedUuids.length) {
-    showError(new Error("請先勾選保證中獎使用者"));
-    return;
-  }
-  if (!elements.prizeName.value.trim()) {
-    showError(new Error("請輸入保證中獎獎項"));
-    return;
-  }
-
-  setBusy(true, "寫入中");
-
-  try {
-    const board = await gasRequest("setGuaranteedPrize", buildPayload({ selectedUuids }));
-    applyBoard(board, selectedUuids);
-    setConnection("ready", "已寫入");
-    setSystemMessage(board.message || "保證中獎設定已更新。");
-    showToast(board.message || "保證中獎設定已更新", "success");
-  } catch (error) {
-    showError(error);
-  } finally {
-    setBusy(false);
-  }
-}
-
 async function clearGuaranteedPrize() {
   const selectedUuids = getSelectedUuids();
   if (!selectedUuids.length) {
     showError(new Error("請先勾選要清除保證設定的使用者"));
+    return;
+  }
+  if (!confirmDiscardGuaranteeChanges()) {
     return;
   }
 
@@ -180,6 +170,63 @@ async function clearGuaranteedPrize() {
     setConnection("ready", "已清除");
     setSystemMessage(board.message || "保證中獎設定已清除。");
     showToast(board.message || "保證中獎設定已清除", "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function saveGuaranteeChanges() {
+  const selectedUuids = getSelectedUuids();
+  const guaranteeChanges = getPendingGuaranteeChanges();
+  if (!guaranteeChanges.length) {
+    showError(new Error("沒有需要儲存的保證中獎變更"));
+    return;
+  }
+
+  setBusy(true, "儲存中");
+
+  try {
+    const board = await gasRequest("updateGuaranteedPrizes", buildPayload({ guaranteeChanges }));
+    state.guaranteeEdits.clear();
+    applyBoard(board, selectedUuids);
+    setConnection("ready", "已儲存");
+    setSystemMessage(board.message || "保證中獎變更已儲存。");
+    showToast(board.message || "保證中獎變更已儲存", "success");
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deleteSelectedUsers() {
+  const selectedUuids = getSelectedUuids();
+  if (!selectedUuids.length) {
+    showError(new Error("請先勾選要刪除的使用者"));
+    return;
+  }
+  if (!confirmDiscardGuaranteeChanges()) {
+    return;
+  }
+
+  const selectedUsers = state.users.filter((user) => state.selectedUuids.has(user.uuid));
+  const hasWinner = selectedUsers.some((user) => user.hasWon);
+  const warning = hasWinner ? "，包含已中獎紀錄，刪除後會一併移除摸彩號碼與中獎資料" : "";
+  if (!window.confirm(`確定刪除 ${selectedUuids.length} 位使用者${warning}？`)) {
+    return;
+  }
+
+  setBusy(true, "刪除中");
+
+  try {
+    const board = await gasRequest("deleteUsers", buildPayload({ selectedUuids }));
+    state.selectedUuids.clear();
+    applyBoard(board, []);
+    setConnection("ready", "已刪除");
+    setSystemMessage(board.message || "使用者已刪除。");
+    showToast(board.message || "使用者已刪除", "success");
   } catch (error) {
     showError(error);
   } finally {
@@ -215,6 +262,7 @@ function applyBoard(board, selectedUuids) {
   state.users = board.users || [];
   state.prizes = board.prizes || [];
   state.stats = board.stats || null;
+  state.guaranteeEdits.clear();
   if (state.editingPrizeName && !findPrize(state.editingPrizeName)) {
     state.editingPrizeName = "";
   }
@@ -240,12 +288,13 @@ function renderStats() {
     drawnNumbers: 0,
     prizes: 0,
   };
+  const pendingGuaranteeCount = getPendingGuaranteeChanges().length;
 
   elements.totalCount.textContent = stats.totalUsers;
   elements.drawnCount.textContent = stats.drawnNumbers;
   elements.prizeCount.textContent = stats.prizes || state.prizes.length;
   elements.selectedCount.textContent = state.selectedUuids.size;
-  elements.listSummary.textContent = `已領號碼 ${stats.drawnNumbers} 位，已設定 ${state.prizes.length} 個獎項。`;
+  elements.listSummary.textContent = `已領號碼 ${stats.drawnNumbers} 位，已設定 ${state.prizes.length} 個獎項${pendingGuaranteeCount ? `，${pendingGuaranteeCount} 筆保證變更待儲存` : ""}。`;
 }
 
 function renderPrizes() {
@@ -295,8 +344,11 @@ function renderUsers() {
     const rowClasses = [
       selected ? "is-selected" : "",
       user.hasWon ? "is-winner" : "",
+      state.guaranteeEdits.has(user.uuid) ? "has-pending-guarantee" : "",
     ].filter(Boolean).join(" ");
-    const status = getUserStatus(user);
+    const guaranteedPrize = getDraftGuaranteedPrize(user);
+    const hasPendingGuarantee = state.guaranteeEdits.has(user.uuid);
+    const status = getUserStatus(user, guaranteedPrize, hasPendingGuarantee);
 
     return `
       <tr class="${rowClasses}">
@@ -308,7 +360,7 @@ function renderUsers() {
           <p class="user-name">${escapeHtml(user.lineName || "未命名使用者")}</p>
           <p class="user-id">${escapeHtml(user.uuid)}</p>
         </td>
-        <td>${renderGuaranteedSelect(user)}</td>
+        <td>${renderGuaranteedSelect(user, guaranteedPrize, hasPendingGuarantee)}</td>
         <td><span class="status-pill" data-state="${status.state}">${status.label}</span></td>
         <td>${escapeHtml(getWinnerRecordLabel(user))}</td>
       </tr>
@@ -319,7 +371,7 @@ function renderUsers() {
 function handleRowChange(event) {
   const select = event.target.closest(".guarantee-select");
   if (select) {
-    updateUserGuaranteedPrize(select.dataset.uuid, select.value);
+    updateGuaranteeDraft(select.dataset.uuid, select.value);
     return;
   }
 
@@ -332,36 +384,33 @@ function handleRowChange(event) {
     state.selectedUuids.delete(checkbox.dataset.uuid);
   }
 
-  renderStats();
   renderUsers();
+  renderStats();
   updateActions();
 }
 
-async function updateUserGuaranteedPrize(uuid, prizeName) {
-  if (!uuid) return;
+function updateGuaranteeDraft(uuid, prizeName) {
+  const user = findUser(uuid);
+  if (!user) return;
 
-  const selectedUuids = getSelectedUuids();
-  const action = prizeName ? "setGuaranteedPrize" : "clearGuaranteedPrize";
-  const busyLabel = prizeName ? "寫入中" : "清除中";
-
-  setBusy(true, busyLabel);
-
-  try {
-    const payload = buildPayload({
-      selectedUuids: [uuid],
-      prizeName,
-    });
-    const board = await gasRequest(action, payload);
-    applyBoard(board, selectedUuids);
-    setConnection("ready", prizeName ? "已寫入" : "已清除");
-    setSystemMessage(board.message || "保證中獎設定已更新。");
-    showToast(board.message || "保證中獎設定已更新", "success");
-  } catch (error) {
-    showError(error);
-    renderUsers();
-  } finally {
-    setBusy(false);
+  const normalizedPrizeName = String(prizeName || "");
+  const originalPrizeName = String(user.guaranteedPrize || "");
+  if (normalizedPrizeName === originalPrizeName) {
+    state.guaranteeEdits.delete(uuid);
+  } else {
+    state.guaranteeEdits.set(uuid, normalizedPrizeName);
   }
+
+  renderUsers();
+  renderStats();
+  updateActions();
+
+  const pendingCount = getPendingGuaranteeChanges().length;
+  setSystemMessage(
+    pendingCount
+      ? `有 ${pendingCount} 筆保證中獎變更尚未儲存，按「儲存保證變更」後才會寫入 GAS。`
+      : getBoardMessage()
+  );
 }
 
 function selectPendingUsers() {
@@ -441,7 +490,41 @@ function getSelectedUuids() {
   return Array.from(state.selectedUuids);
 }
 
-function getUserStatus(user) {
+function getPendingGuaranteeChanges() {
+  const changes = [];
+  state.users.forEach((user) => {
+    if (!state.guaranteeEdits.has(user.uuid)) return;
+
+    const prizeName = String(state.guaranteeEdits.get(user.uuid) || "");
+    if (prizeName === String(user.guaranteedPrize || "")) return;
+
+    changes.push({
+      uuid: user.uuid,
+      prizeName,
+    });
+  });
+  return changes;
+}
+
+function getDraftGuaranteedPrize(user) {
+  if (state.guaranteeEdits.has(user.uuid)) {
+    return String(state.guaranteeEdits.get(user.uuid) || "");
+  }
+  return String(user.guaranteedPrize || "");
+}
+
+function findUser(uuid) {
+  return state.users.find((user) => user.uuid === uuid) || null;
+}
+
+function getUserStatus(user, guaranteedPrize, hasPendingGuarantee) {
+  if (hasPendingGuarantee) {
+    return {
+      state: "pending",
+      label: "待儲存",
+    };
+  }
+
   if (user.hasWon) {
     return {
       state: "winner",
@@ -449,7 +532,7 @@ function getUserStatus(user) {
     };
   }
 
-  if (user.guaranteedPrize) {
+  if (guaranteedPrize) {
     return {
       state: "guaranteed",
       label: "保證中獎",
@@ -462,7 +545,7 @@ function getUserStatus(user) {
   };
 }
 
-function renderGuaranteedSelect(user) {
+function renderGuaranteedSelect(user, guaranteedPrize, hasPendingGuarantee) {
   const prizeNames = state.prizes.map((prize) => prize.prizeName);
   if (user.guaranteedPrize && !prizeNames.includes(user.guaranteedPrize)) {
     prizeNames.push(user.guaranteedPrize);
@@ -471,14 +554,17 @@ function renderGuaranteedSelect(user) {
   const options = [
     '<option value="">系統隨機</option>',
     ...prizeNames.map((prizeName) => `
-      <option value="${escapeHtml(prizeName)}" ${user.guaranteedPrize === prizeName ? "selected" : ""}>${escapeHtml(prizeName)}</option>
+      <option value="${escapeHtml(prizeName)}" ${guaranteedPrize === prizeName ? "selected" : ""}>${escapeHtml(prizeName)}</option>
     `),
   ].join("");
 
   return `
-    <select class="guarantee-select" data-uuid="${escapeHtml(user.uuid)}" ${state.busy ? "disabled" : ""}>
-      ${options}
-    </select>
+    <div class="guarantee-control">
+      <select class="guarantee-select ${hasPendingGuarantee ? "is-pending" : ""}" data-uuid="${escapeHtml(user.uuid)}" ${state.busy ? "disabled" : ""}>
+        ${options}
+      </select>
+      ${hasPendingGuarantee ? '<span class="pending-note">未儲存</span>' : ""}
+    </div>
   `;
 }
 
@@ -497,15 +583,18 @@ function updateActions() {
   const hasSelection = state.selectedUuids.size > 0;
   const hasPrize = Boolean(elements.prizeName.value.trim());
   const hasWinnerCount = Number(elements.winnerCountInput.value) > 0;
+  const pendingGuaranteeCount = getPendingGuaranteeChanges().length;
 
   elements.savePrizeButton.disabled = state.busy || !hasPrize || !hasWinnerCount;
   elements.savePrizeButton.textContent = state.editingPrizeName ? "更新獎項" : "儲存獎項";
   elements.newPrizeButton.disabled = state.busy || (!state.editingPrizeName && !elements.prizeName.value.trim());
-  elements.setGuaranteeButton.disabled = state.busy || !hasSelection || !hasPrize || !findPrize(elements.prizeName.value.trim());
   elements.clearGuaranteeButton.disabled = state.busy || !hasSelection;
+  elements.saveGuaranteeChangesButton.disabled = state.busy || !pendingGuaranteeCount;
+  elements.saveGuaranteeChangesButton.textContent = pendingGuaranteeCount ? `儲存保證變更 (${pendingGuaranteeCount})` : "儲存保證變更";
   elements.refreshButton.disabled = state.busy;
   elements.selectEligibleButton.disabled = state.busy || !state.users.some((user) => !user.hasWon);
   elements.clearSelectionButton.disabled = state.busy || !hasSelection;
+  elements.deleteUsersButton.disabled = state.busy || !hasSelection;
   elements.prizeName.disabled = state.busy;
   elements.winnerCountInput.disabled = state.busy;
   elements.adminToken.disabled = state.busy;
@@ -513,6 +602,19 @@ function updateActions() {
   elements.userRows.querySelectorAll(".guarantee-select").forEach((select) => {
     select.disabled = state.busy;
   });
+}
+
+function confirmDiscardGuaranteeChanges() {
+  if (!getPendingGuaranteeChanges().length) return true;
+
+  const confirmed = window.confirm("尚有未儲存的保證中獎變更，繼續會取消這些變更。要繼續嗎？");
+  if (confirmed) {
+    state.guaranteeEdits.clear();
+    renderUsers();
+    renderStats();
+    updateActions();
+  }
+  return confirmed;
 }
 
 function setConnection(stateName, label) {
@@ -527,7 +629,7 @@ function setSystemMessage(message) {
 function getBoardMessage() {
   if (!state.stats) return "尚未取得 GAS 名單。";
   if (!state.prizes.length) return "請先設定獎項與中獎數量。";
-  return "可勾選使用者並設定保證中獎獎項；未設定者由系統隨機抽出。";
+  return "使用表格下拉選單修改保證中獎，按「儲存保證變更」後才會寫入。";
 }
 
 function showToast(message, type = "info") {

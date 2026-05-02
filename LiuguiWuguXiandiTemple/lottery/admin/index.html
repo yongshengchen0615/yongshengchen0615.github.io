@@ -62,8 +62,8 @@
         <div class="control-actions">
           <button class="button button--primary" id="savePrizeButton" type="button" disabled>儲存獎項</button>
           <button class="button" id="newPrizeButton" type="button">新增模式</button>
-          <button class="button button--primary" id="setGuaranteeButton" type="button" disabled>設定保證中獎</button>
-          <button class="button button--danger" id="clearGuaranteeButton" type="button" disabled>清除保證設定</button>
+          <button class="button button--danger" id="clearGuaranteeButton" type="button" disabled>批次清除保證設定</button>
+          <button class="button button--primary" id="saveGuaranteeChangesButton" type="button" disabled>儲存保證變更</button>
           <button class="button" id="refreshButton" type="button">同步名單</button>
         </div>
 
@@ -83,6 +83,7 @@
             <input class="search" id="searchInput" type="search" autocomplete="off" placeholder="搜尋姓名或摸彩號碼">
             <button class="icon-button" id="selectEligibleButton" type="button" title="勾選尚未中獎的使用者">全選未中獎</button>
             <button class="icon-button" id="clearSelectionButton" type="button" title="清除目前勾選">取消勾選</button>
+            <button class="icon-button icon-button--danger" id="deleteUsersButton" type="button" title="刪除目前勾選的使用者" disabled>刪除使用者</button>
           </div>
         </div>
 
