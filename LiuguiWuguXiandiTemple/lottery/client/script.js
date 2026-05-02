@@ -28,6 +28,9 @@ function cacheElements() {
     "syncButton",
     "lotteryNumber",
     "numberState",
+    "winnerPrizeCard",
+    "winnerPrizeName",
+    "winnerPrizeTime",
     "drawSubtitle",
     "avatarFallback",
     "avatarImage",
@@ -35,6 +38,8 @@ function cacheElements() {
     "lineUuid",
     "syncState",
     "drawState",
+    "winnerPrizeRow",
+    "winnerPrizeDetail",
     "systemMessage",
     "toast",
   ].forEach((id) => {
@@ -128,7 +133,7 @@ async function syncCurrentUser(showToastOnSuccess) {
     state.record = record;
     renderRecord(record, { animate: false });
     setConnection("ready", "已同步");
-    setSystemMessage(record.hasDrawn ? "已找到你先前抽取的摸彩號碼。" : "使用者資料已寫入 GAS，可以開始抽取摸彩號碼。");
+    setSystemMessage(getRecordMessage(record));
     if (showToastOnSuccess) showToast("資料已同步", "success");
   } catch (error) {
     showError(error);
@@ -154,7 +159,7 @@ async function handleDraw() {
     state.record = record;
     renderRecord(record, { animate: true });
     setConnection("ready", "已完成");
-    setSystemMessage(record.alreadyDrawn ? "你已經抽取過，系統顯示原本的摸彩號碼。" : "摸彩號碼已產生並寫入 GAS。");
+    setSystemMessage(getRecordMessage(record));
   } catch (error) {
     stopRollingNumber();
     renderRecord(state.record, { animate: false });
@@ -225,11 +230,13 @@ function renderRecord(record, options = {}) {
     elements.numberState.textContent = "等待 LINE 登入";
     elements.syncState.textContent = "尚未同步";
     elements.drawState.textContent = "尚未抽取";
+    renderWinnerPrize(null);
     elements.drawButton.disabled = true;
     return;
   }
 
   elements.syncState.textContent = "已寫入 GAS";
+  renderWinnerPrize(record);
 
   if (record.hasDrawn) {
     const number = formatLotteryNumber(record.lotteryNumber);
@@ -239,8 +246,8 @@ function renderRecord(record, options = {}) {
     } else {
       elements.lotteryNumber.textContent = number;
     }
-    elements.numberState.textContent = record.alreadyDrawn ? "你已經抽取過，這是原本號碼" : "此號碼已保留給你";
-    elements.drawState.textContent = "已抽取";
+    elements.numberState.textContent = getNumberStateLabel(record);
+    elements.drawState.textContent = record.hasWon ? "已中獎" : "已抽取";
     elements.drawButton.textContent = "已完成抽號";
     elements.drawButton.disabled = true;
     return;
@@ -252,6 +259,40 @@ function renderRecord(record, options = {}) {
   elements.drawState.textContent = "尚未抽取";
   elements.drawButton.textContent = "抽取摸彩號碼";
   elements.drawButton.disabled = state.busy;
+}
+
+function renderWinnerPrize(record) {
+  const hasWon = Boolean(record && record.hasWon && record.winnerPrize);
+  elements.winnerPrizeCard.hidden = !hasWon;
+  elements.winnerPrizeRow.hidden = !hasWon;
+
+  if (!hasWon) {
+    elements.winnerPrizeName.textContent = "--";
+    elements.winnerPrizeTime.textContent = "--";
+    elements.winnerPrizeDetail.textContent = "--";
+    return;
+  }
+
+  elements.winnerPrizeName.textContent = record.winnerPrize;
+  elements.winnerPrizeTime.textContent = record.winnerAt ? `中獎時間 ${record.winnerAt}` : "中獎時間尚未同步";
+  elements.winnerPrizeDetail.textContent = record.winnerPrize;
+}
+
+function getNumberStateLabel(record) {
+  if (record.hasWon && record.winnerPrize) {
+    return `恭喜中獎：${record.winnerPrize}`;
+  }
+  return record.alreadyDrawn ? "你已經抽取過，這是原本號碼" : "此號碼已保留給你";
+}
+
+function getRecordMessage(record) {
+  if (record && record.hasWon && record.winnerPrize) {
+    return `恭喜中獎，獎項為「${record.winnerPrize}」。`;
+  }
+  if (record && record.hasDrawn) {
+    return record.alreadyDrawn ? "你已經抽取過，系統顯示原本的摸彩號碼。" : "已找到你先前抽取的摸彩號碼。";
+  }
+  return "使用者資料已寫入 GAS，可以開始抽取摸彩號碼。";
 }
 
 function setBusy(isBusy, label) {

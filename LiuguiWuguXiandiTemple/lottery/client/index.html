@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#fbfbf8">
+  <meta name="theme-color" content="#f5ead7">
   <title>摸彩系統</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -29,6 +29,11 @@
           <span class="ticket__label">Lottery Number</span>
           <output class="lottery-number" id="lotteryNumber">------</output>
           <div class="number-state" id="numberState">等待 LINE 登入</div>
+          <div class="winner-prize" id="winnerPrizeCard" hidden>
+            <span>中獎獎項</span>
+            <strong id="winnerPrizeName">--</strong>
+            <small id="winnerPrizeTime">--</small>
+          </div>
         </div>
 
         <div class="actions">
@@ -57,6 +62,10 @@
             <div class="detail-row">
               <span>抽取狀態</span>
               <strong id="drawState">尚未抽取</strong>
+            </div>
+            <div class="detail-row" id="winnerPrizeRow" hidden>
+              <span>中獎獎項</span>
+              <strong id="winnerPrizeDetail">--</strong>
             </div>
           </div>
         </section>
