@@ -1,5 +1,7 @@
 const SHEET_NAME = 'LotteryUsers';
-const HEADERS = ['uuid', 'lineName', 'lotteryNumber', 'createdAt', 'drawnAt', 'updatedAt', 'winnerAt', 'winnerPrize'];
+const PRIZE_SHEET_NAME = 'LotteryPrizes';
+const HEADERS = ['uuid', 'lineName', 'lotteryNumber', 'createdAt', 'drawnAt', 'updatedAt', 'winnerAt', 'winnerPrize', 'eligiblePrizes', 'guaranteedPrize'];
+const PRIZE_HEADERS = ['prizeName', 'winnerCount', 'createdAt', 'updatedAt'];
 const MAX_DRAW_ATTEMPTS = 3000;
 const DEFAULT_WINNER_LIMIT = 20;
 
@@ -43,6 +45,22 @@ function doPost(e) {
       return jsonResponse_({ ok: true, data: getWinnerBoard_(payload) });
     }
 
+    if (action === 'getAdminBoard') {
+      return jsonResponse_({ ok: true, data: getAdminBoard_(payload) });
+    }
+
+    if (action === 'setPrizeConfig') {
+      return jsonResponse_({ ok: true, data: setPrizeConfig_(payload) });
+    }
+
+    if (action === 'setGuaranteedPrize') {
+      return jsonResponse_({ ok: true, data: setGuaranteedPrize_(payload) });
+    }
+
+    if (action === 'clearGuaranteedPrize') {
+      return jsonResponse_({ ok: true, data: clearGuaranteedPrize_(payload) });
+    }
+
     throw new Error('不支援的操作類型');
   } catch (error) {
     return jsonResponse_({
@@ -73,6 +91,8 @@ function syncUser_(payload) {
         updatedAt: now,
         winnerAt: '',
         winnerPrize: '',
+        eligiblePrizes: '',
+        guaranteedPrize: '',
       });
       return buildResponseRecord_({
         uuid: user.uuid,
@@ -83,6 +103,8 @@ function syncUser_(payload) {
         updatedAt: now,
         winnerAt: '',
         winnerPrize: '',
+        eligiblePrizes: '',
+        guaranteedPrize: '',
       }, false);
     }
 
@@ -116,6 +138,8 @@ function drawNumber_(payload) {
         updatedAt: now,
         winnerAt: '',
         winnerPrize: '',
+        eligiblePrizes: '',
+        guaranteedPrize: '',
       };
       record.rowNumber = appendUser_(sheet, record);
       lookup.usedNumbers = getUsedNumberSet_(sheet);
@@ -146,17 +170,30 @@ function drawWinner_(payload) {
 
   try {
     var sheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
     var records = readRecords_(sheet);
-    var eligibleRecords = getEligibleWinnerRecords_(records);
+    var prizeName = getRequestedPrizeName_(prizeSheet, payload);
+    var prizeConfig = getPrizeConfigByName_(prizeSheet, prizeName);
+    if (!prizeConfig) {
+      throw new Error('請先在管理後台設定「' + prizeName + '」的中獎數量');
+    }
+
+    var winnerCount = getPrizeWinnerCount_(records, prizeName);
+    if (winnerCount >= prizeConfig.winnerCount) {
+      throw new Error('「' + prizeName + '」已達設定中獎數量');
+    }
+
+    var remainingSlots = prizeConfig.winnerCount - winnerCount;
+    var eligibleRecords = getDrawableWinnerRecords_(records, prizeName, remainingSlots);
 
     if (!eligibleRecords.length) {
-      throw new Error('目前沒有可抽取的名單，請確認已有使用者抽取摸彩號碼，且尚未全數中獎。');
+      throw new Error('目前沒有符合「' + prizeName + '」的可抽取名單；若有保證中獎者，請確認他們已領取摸彩號碼。');
     }
 
     var now = new Date();
     var winner = eligibleRecords[Math.floor(Math.random() * eligibleRecords.length)];
     winner.winnerAt = now;
-    winner.winnerPrize = cleanText_(payload.prizeName) || '現場抽獎';
+    winner.winnerPrize = prizeName;
     winner.updatedAt = now;
 
     writeWinnerResult_(sheet, winner);
@@ -171,6 +208,147 @@ function getWinnerBoard_(payload) {
   return buildWinnerBoard_(getSheet_(), null, payload);
 }
 
+function getAdminBoard_(payload) {
+  assertAdmin_(payload);
+  return buildAdminBoard_(getSheet_(), getPrizeSheet_(), {
+    selectedUuids: normalizeUuidList_(payload.selectedUuids),
+  });
+}
+
+function setPrizeConfig_(payload) {
+  assertAdmin_(payload);
+  var prizeName = cleanText_(payload.prizeName);
+  if (!prizeName) {
+    throw new Error('請輸入獎項名稱');
+  }
+
+  var winnerCount = parsePositiveInteger_(payload.winnerCount, 0);
+  if (winnerCount < 1) {
+    throw new Error('中獎數量必須大於 0');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var records = readRecords_(userSheet);
+    assertPrizeCapacity_(records, prizeName, winnerCount);
+
+    var now = new Date();
+    var prizes = readPrizeConfigs_(prizeSheet);
+    var existing = null;
+    prizes.forEach(function(prize) {
+      if (prize.prizeName === prizeName) {
+        existing = prize;
+      }
+    });
+
+    if (existing) {
+      existing.winnerCount = winnerCount;
+      existing.updatedAt = now;
+      writePrizeConfig_(prizeSheet, existing);
+    } else {
+      appendPrizeConfig_(prizeSheet, {
+        prizeName: prizeName,
+        winnerCount: winnerCount,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      message: '已設定「' + prizeName + '」中獎數量為 ' + winnerCount + ' 名',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function setGuaranteedPrize_(payload) {
+  assertAdmin_(payload);
+  var prizeName = cleanText_(payload.prizeName);
+  if (!prizeName) {
+    throw new Error('請輸入保證中獎獎項');
+  }
+
+  var selectedUuids = normalizeUuidList_(payload.selectedUuids);
+  if (!selectedUuids.length) {
+    throw new Error('請至少勾選一位保證中獎使用者');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var prizeConfig = getPrizeConfigByName_(prizeSheet, prizeName);
+    if (!prizeConfig) {
+      throw new Error('請先設定「' + prizeName + '」的中獎數量');
+    }
+
+    var records = readRecords_(userSheet);
+    var targetRecords = getSelectedRecords_(records, selectedUuids);
+    targetRecords.forEach(function(record) {
+      if (cleanText_(record.winnerAt) && cleanText_(record.winnerPrize) !== prizeName) {
+        throw new Error(record.lineName + ' 已中過其他獎項，不能設定為「' + prizeName + '」保證中獎');
+      }
+    });
+
+    var now = new Date();
+    targetRecords.forEach(function(record) {
+      record.guaranteedPrize = prizeName;
+      record.updatedAt = now;
+    });
+    assertGuaranteedCapacity_(records, prizeName, prizeConfig.winnerCount, targetRecords);
+
+    targetRecords.forEach(function(record) {
+      writeGuaranteedPrize_(userSheet, record);
+    });
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      selectedUuids: selectedUuids,
+      message: '已設定 ' + targetRecords.length + ' 位使用者保證中「' + prizeName + '」',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function clearGuaranteedPrize_(payload) {
+  assertAdmin_(payload);
+  var selectedUuids = normalizeUuidList_(payload.selectedUuids);
+  if (!selectedUuids.length) {
+    throw new Error('請至少勾選一位要清除保證中獎的使用者');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var userSheet = getSheet_();
+    var prizeSheet = getPrizeSheet_();
+    var records = readRecords_(userSheet);
+    var targetRecords = getSelectedRecords_(records, selectedUuids);
+    var now = new Date();
+
+    targetRecords.forEach(function(record) {
+      record.guaranteedPrize = '';
+      record.updatedAt = now;
+      writeGuaranteedPrize_(userSheet, record);
+    });
+
+    return buildAdminBoard_(userSheet, prizeSheet, {
+      selectedUuids: selectedUuids,
+      message: '已清除 ' + targetRecords.length + ' 位使用者的保證中獎設定',
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function assertAdmin_(payload) {
   var expectedToken = cleanText_(DRAW_ADMIN_TOKEN);
   if (expectedToken && cleanText_(payload.adminToken) !== expectedToken) {
@@ -178,10 +356,46 @@ function assertAdmin_(payload) {
   }
 }
 
-function getEligibleWinnerRecords_(records) {
+function getEligibleWinnerRecords_(records, prizeName) {
+  var targetPrize = cleanText_(prizeName);
   return records.filter(function(record) {
-    return Boolean(cleanText_(record.lotteryNumber)) && !cleanText_(record.winnerAt);
+    if (!cleanText_(record.lotteryNumber) || cleanText_(record.winnerAt)) return false;
+    if (!targetPrize) return true;
+
+    var prizes = parsePrizeList_(record.eligiblePrizes);
+    return !prizes.length || prizes.indexOf(targetPrize) !== -1;
   });
+}
+
+function getDrawableWinnerRecords_(records, prizeName, remainingSlots) {
+  var pendingGuaranteedRecords = records.filter(function(record) {
+    return !cleanText_(record.winnerAt) &&
+      cleanText_(record.guaranteedPrize) === prizeName;
+  });
+  var readyGuaranteedRecords = pendingGuaranteedRecords.filter(function(record) {
+    return cleanText_(record.lotteryNumber) &&
+      cleanText_(record.guaranteedPrize) === prizeName;
+  });
+
+  if (readyGuaranteedRecords.length) {
+    return readyGuaranteedRecords;
+  }
+
+  if (pendingGuaranteedRecords.length >= remainingSlots) {
+    return [];
+  }
+
+  return records.filter(function(record) {
+    return cleanText_(record.lotteryNumber) &&
+      !cleanText_(record.winnerAt) &&
+      !cleanText_(record.guaranteedPrize);
+  });
+}
+
+function getPrizeWinnerCount_(records, prizeName) {
+  return records.filter(function(record) {
+    return cleanText_(record.winnerPrize) === prizeName;
+  }).length;
 }
 
 function resolveLineUser_(payload) {
@@ -257,6 +471,14 @@ function initializeSheet_() {
   sheet.getRange('C:C').setNumberFormat('@');
   sheet.getRange('D:G').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   sheet.getRange('H:H').setNumberFormat('@');
+  sheet.getRange('I:I').setNumberFormat('@');
+  sheet.getRange('J:J').setNumberFormat('@');
+
+  var prizeSheet = getPrizeSheet_();
+  ensurePrizeHeaders_(prizeSheet);
+  prizeSheet.getRange('A:A').setNumberFormat('@');
+  prizeSheet.getRange('B:B').setNumberFormat('0');
+  prizeSheet.getRange('C:D').setNumberFormat('yyyy-mm-dd hh:mm:ss');
 }
 
 function getSheet_() {
@@ -270,6 +492,22 @@ function getSheet_() {
   var sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(SHEET_NAME);
+  }
+
+  return sheet;
+}
+
+function getPrizeSheet_() {
+  var spreadsheet = SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) {
+    throw new Error('請將此 GAS 綁定到 Google 試算表，或填入 SPREADSHEET_ID');
+  }
+
+  var sheet = spreadsheet.getSheetByName(PRIZE_SHEET_NAME);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(PRIZE_SHEET_NAME);
   }
 
   return sheet;
@@ -292,6 +530,38 @@ function ensureHeaders_(sheet) {
   }
 
   HEADERS.forEach(function(header) {
+    if (currentHeaders.indexOf(header) === -1) {
+      var blankIndex = currentHeaders.indexOf('');
+      var column = blankIndex === -1 ? currentHeaders.length + 1 : blankIndex + 1;
+      sheet.getRange(1, column).setValue(header);
+
+      if (blankIndex === -1) {
+        currentHeaders.push(header);
+      } else {
+        currentHeaders[blankIndex] = header;
+      }
+    }
+  });
+  sheet.setFrozenRows(1);
+}
+
+function ensurePrizeHeaders_(sheet) {
+  var lastColumn = Math.max(sheet.getLastColumn(), 1);
+  var headerRange = sheet.getRange(1, 1, 1, lastColumn);
+  var currentHeaders = headerRange.getValues()[0].map(function(value) {
+    return cleanText_(value);
+  });
+  var hasAnyHeader = currentHeaders.some(function(value) {
+    return Boolean(value);
+  });
+
+  if (!hasAnyHeader) {
+    sheet.getRange(1, 1, 1, PRIZE_HEADERS.length).setValues([PRIZE_HEADERS]);
+    sheet.setFrozenRows(1);
+    return;
+  }
+
+  PRIZE_HEADERS.forEach(function(header) {
     if (currentHeaders.indexOf(header) === -1) {
       var blankIndex = currentHeaders.indexOf('');
       var column = blankIndex === -1 ? currentHeaders.length + 1 : blankIndex + 1;
@@ -354,6 +624,8 @@ function readRecords_(sheet) {
     record.lineName = cleanText_(record.lineName);
     record.lotteryNumber = cleanText_(record.lotteryNumber);
     record.winnerPrize = cleanText_(record.winnerPrize);
+    record.eligiblePrizes = serializePrizeList_(parsePrizeList_(record.eligiblePrizes));
+    record.guaranteedPrize = cleanText_(record.guaranteedPrize);
     record.rowNumber = i + 1;
     records.push(record);
   }
@@ -390,6 +662,33 @@ function writeWinnerResult_(sheet, record) {
   sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
 }
 
+function writePrizeEligibility_(sheet, record) {
+  var headerMap = getHeaderMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  sheet.getRange(record.rowNumber, headerMap.eligiblePrizes + 1).setValue(record.eligiblePrizes);
+  sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
+}
+
+function writeGuaranteedPrize_(sheet, record) {
+  var headerMap = getHeaderMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  sheet.getRange(record.rowNumber, headerMap.guaranteedPrize + 1).setValue(record.guaranteedPrize);
+  sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
+}
+
+function appendPrizeConfig_(sheet, prize) {
+  var row = PRIZE_HEADERS.map(function(header) {
+    return prize[header] || '';
+  });
+  sheet.appendRow(row);
+  return sheet.getLastRow();
+}
+
+function writePrizeConfig_(sheet, prize) {
+  var headerMap = getPrizeHeaderMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  sheet.getRange(prize.rowNumber, headerMap.prizeName + 1).setValue(prize.prizeName);
+  sheet.getRange(prize.rowNumber, headerMap.winnerCount + 1).setValue(prize.winnerCount);
+  sheet.getRange(prize.rowNumber, headerMap.updatedAt + 1).setValue(prize.updatedAt);
+}
+
 function getHeaderMap_(headers) {
   var map = {};
   headers.forEach(function(header, index) {
@@ -405,6 +704,74 @@ function getHeaderMap_(headers) {
   return map;
 }
 
+function getPrizeHeaderMap_(headers) {
+  var map = {};
+  headers.forEach(function(header, index) {
+    map[cleanText_(header)] = index;
+  });
+
+  PRIZE_HEADERS.forEach(function(header) {
+    if (typeof map[header] !== 'number') {
+      throw new Error('缺少獎項欄位：' + header);
+    }
+  });
+
+  return map;
+}
+
+function readPrizeConfigs_(sheet) {
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  var headerMap = getPrizeHeaderMap_(values[0]);
+  var prizes = [];
+
+  for (var i = 1; i < values.length; i += 1) {
+    var row = values[i];
+    var isEmpty = row.every(function(value) {
+      return cleanText_(value) === '';
+    });
+    if (isEmpty) continue;
+
+    var prize = {};
+    PRIZE_HEADERS.forEach(function(header) {
+      prize[header] = row[headerMap[header]];
+    });
+    prize.prizeName = cleanText_(prize.prizeName);
+    prize.winnerCount = parsePositiveInteger_(prize.winnerCount, 0);
+    prize.rowNumber = i + 1;
+
+    if (prize.prizeName && prize.winnerCount > 0) {
+      prizes.push(prize);
+    }
+  }
+
+  return prizes;
+}
+
+function getPrizeConfigByName_(sheet, prizeName) {
+  var targetPrize = cleanText_(prizeName);
+  var found = null;
+  readPrizeConfigs_(sheet).forEach(function(prize) {
+    if (prize.prizeName === targetPrize) {
+      found = prize;
+    }
+  });
+  return found;
+}
+
+function getRequestedPrizeName_(prizeSheet, payload) {
+  var prizeName = cleanText_(payload.prizeName);
+  if (prizeName) return prizeName;
+
+  var prizes = readPrizeConfigs_(prizeSheet);
+  if (prizes.length) {
+    return prizes[0].prizeName;
+  }
+
+  return '現場抽獎';
+}
+
 function buildResponseRecord_(record, alreadyDrawn) {
   return {
     uuid: cleanText_(record.uuid),
@@ -418,28 +785,42 @@ function buildResponseRecord_(record, alreadyDrawn) {
     updatedAt: formatDate_(record.updatedAt),
     winnerAt: formatDate_(record.winnerAt),
     winnerPrize: cleanText_(record.winnerPrize),
+    eligiblePrizes: parsePrizeList_(record.eligiblePrizes),
+    guaranteedPrize: cleanText_(record.guaranteedPrize),
   };
 }
 
 function buildWinnerBoard_(sheet, currentWinner, payload) {
+  var prizeSheet = getPrizeSheet_();
   var records = readRecords_(sheet);
+  var prizeName = getRequestedPrizeName_(prizeSheet, payload);
+  var prizeConfig = getPrizeConfigByName_(prizeSheet, prizeName);
   var winners = records.filter(function(record) {
     return Boolean(cleanText_(record.winnerAt));
   }).sort(function(a, b) {
     return getDateTime_(b.winnerAt) - getDateTime_(a.winnerAt);
   });
-  var eligibleRecords = getEligibleWinnerRecords_(records);
+  var prizeWinnerCount = getPrizeWinnerCount_(records, prizeName);
+  var remainingSlots = prizeConfig ? Math.max(prizeConfig.winnerCount - prizeWinnerCount, 0) : 0;
+  var eligibleRecords = prizeConfig ? getDrawableWinnerRecords_(records, prizeName, remainingSlots) : [];
   var limit = parsePositiveInteger_(payload.limit, DEFAULT_WINNER_LIMIT);
 
   return {
     currentWinner: currentWinner,
+    prizeName: prizeName,
+    prizeConfig: prizeConfig ? buildPrizeConfigRecord_(prizeConfig, records) : null,
+    prizes: readPrizeConfigs_(prizeSheet).map(function(prize) {
+      return buildPrizeConfigRecord_(prize, records);
+    }),
     stats: {
       totalUsers: records.length,
       drawnNumbers: records.filter(function(record) {
         return Boolean(cleanText_(record.lotteryNumber));
       }).length,
       winners: winners.length,
-      remaining: eligibleRecords.length,
+      prizeWinners: prizeWinnerCount,
+      remainingSlots: remainingSlots,
+      remaining: Math.min(eligibleRecords.length, remainingSlots),
     },
     winners: winners.slice(0, limit).map(buildWinnerRecord_),
   };
@@ -453,7 +834,198 @@ function buildWinnerRecord_(record) {
     winnerAt: formatDate_(record.winnerAt),
     winnerPrize: cleanText_(record.winnerPrize),
     drawnAt: formatDate_(record.drawnAt),
+    eligiblePrizes: parsePrizeList_(record.eligiblePrizes),
+    guaranteedPrize: cleanText_(record.guaranteedPrize),
   };
+}
+
+function buildAdminBoard_(sheet, prizeSheet, options) {
+  var records = readRecords_(sheet);
+  var prizes = readPrizeConfigs_(prizeSheet);
+  var selectedMap = buildUuidSet_(options && options.selectedUuids ? options.selectedUuids : []);
+  var users = records.map(function(record) {
+    return buildAdminUserRecord_(record, Boolean(selectedMap[record.uuid]));
+  }).sort(function(a, b) {
+    if (a.hasWon !== b.hasWon) return a.hasWon ? -1 : 1;
+    if (a.hasDrawn !== b.hasDrawn) return a.hasDrawn ? -1 : 1;
+    return String(a.lotteryNumber || '').localeCompare(String(b.lotteryNumber || ''));
+  });
+
+  return {
+    message: options && options.message ? options.message : '',
+    stats: {
+      totalUsers: records.length,
+      drawnNumbers: records.filter(function(record) {
+        return Boolean(cleanText_(record.lotteryNumber));
+      }).length,
+      winners: records.filter(function(record) {
+        return Boolean(cleanText_(record.winnerAt));
+      }).length,
+      remaining: records.filter(function(record) {
+        return Boolean(cleanText_(record.lotteryNumber)) && !cleanText_(record.winnerAt);
+      }).length,
+      prizes: prizes.length,
+    },
+    users: users,
+    prizes: prizes.map(function(prize) {
+      return buildPrizeConfigRecord_(prize, records);
+    }),
+  };
+}
+
+function buildAdminUserRecord_(record, selected) {
+  return {
+    uuid: cleanText_(record.uuid),
+    lineName: cleanText_(record.lineName),
+    lotteryNumber: cleanText_(record.lotteryNumber),
+    hasDrawn: Boolean(cleanText_(record.lotteryNumber)),
+    hasWon: Boolean(cleanText_(record.winnerAt)),
+    selected: Boolean(selected),
+    createdAt: formatDate_(record.createdAt),
+    drawnAt: formatDate_(record.drawnAt),
+    updatedAt: formatDate_(record.updatedAt),
+    winnerAt: formatDate_(record.winnerAt),
+    winnerPrize: cleanText_(record.winnerPrize),
+    eligiblePrizes: parsePrizeList_(record.eligiblePrizes),
+    guaranteedPrize: cleanText_(record.guaranteedPrize),
+    eligibilityMode: parsePrizeList_(record.eligiblePrizes).length ? 'custom' : 'auto',
+  };
+}
+
+function buildPrizeConfigRecord_(prize, records) {
+  var winnerCount = getPrizeWinnerCount_(records, prize.prizeName);
+  var guaranteedCount = records.filter(function(record) {
+    return cleanText_(record.guaranteedPrize) === prize.prizeName;
+  }).length;
+
+  return {
+    prizeName: prize.prizeName,
+    winnerCount: prize.winnerCount,
+    winnerCountUsed: winnerCount,
+    guaranteedCount: guaranteedCount,
+    remainingSlots: Math.max(prize.winnerCount - winnerCount, 0),
+    createdAt: formatDate_(prize.createdAt),
+    updatedAt: formatDate_(prize.updatedAt),
+  };
+}
+
+function buildPrizeList_(records) {
+  var prizeMap = {};
+  records.forEach(function(record) {
+    var prize = cleanText_(record.winnerPrize);
+    if (prize) {
+      prizeMap[prize] = true;
+    }
+    parsePrizeList_(record.eligiblePrizes).forEach(function(eligiblePrize) {
+      prizeMap[eligiblePrize] = true;
+    });
+  });
+
+  return Object.keys(prizeMap).sort();
+}
+
+function parsePrizeList_(value) {
+  var raw = cleanText_(value);
+  if (!raw) return [];
+
+  var seen = {};
+  var prizes = [];
+  raw.split(/[|,，、\n\r;；]+/).forEach(function(item) {
+    var prize = cleanText_(item);
+    if (!prize || seen[prize]) return;
+    seen[prize] = true;
+    prizes.push(prize);
+  });
+
+  return prizes;
+}
+
+function serializePrizeList_(prizes) {
+  if (!Array.isArray(prizes)) return '';
+
+  var seen = {};
+  var normalized = [];
+  prizes.forEach(function(item) {
+    var prize = cleanText_(item);
+    if (!prize || seen[prize]) return;
+    seen[prize] = true;
+    normalized.push(prize);
+  });
+
+  return normalized.join('、');
+}
+
+function normalizeUuidList_(value) {
+  if (!Array.isArray(value)) return [];
+
+  var map = {};
+  var uuids = [];
+  value.forEach(function(item) {
+    var uuid = cleanText_(item);
+    if (!uuid || map[uuid]) return;
+    map[uuid] = true;
+    uuids.push(uuid);
+  });
+
+  return uuids;
+}
+
+function buildUuidSet_(uuids) {
+  var map = {};
+  uuids.forEach(function(uuid) {
+    map[uuid] = true;
+  });
+  return map;
+}
+
+function assertAllSelectedUsersFound_(selectedUuids, foundMap) {
+  selectedUuids.forEach(function(uuid) {
+    if (!foundMap[uuid]) {
+      throw new Error('找不到勾選的使用者：' + uuid);
+    }
+  });
+}
+
+function getSelectedRecords_(records, selectedUuids) {
+  var selectedMap = buildUuidSet_(selectedUuids);
+  var foundMap = {};
+  var targetRecords = [];
+
+  records.forEach(function(record) {
+    if (!selectedMap[record.uuid]) return;
+    foundMap[record.uuid] = true;
+    targetRecords.push(record);
+  });
+
+  assertAllSelectedUsersFound_(selectedUuids, foundMap);
+  return targetRecords;
+}
+
+function assertPrizeCapacity_(records, prizeName, winnerCount) {
+  var usedCount = getPrizeWinnerCount_(records, prizeName);
+  var guaranteedCount = records.filter(function(record) {
+    return cleanText_(record.guaranteedPrize) === prizeName;
+  }).length;
+  var requiredCount = Math.max(usedCount, guaranteedCount);
+
+  if (winnerCount < requiredCount) {
+    throw new Error('「' + prizeName + '」目前已有 ' + usedCount + ' 位中獎、' + guaranteedCount + ' 位保證中獎，數量不能小於 ' + requiredCount);
+  }
+}
+
+function assertGuaranteedCapacity_(records, prizeName, winnerCount) {
+  var lockedUuids = {};
+
+  records.forEach(function(record) {
+    if (cleanText_(record.winnerPrize) === prizeName || cleanText_(record.guaranteedPrize) === prizeName) {
+      lockedUuids[record.uuid] = true;
+    }
+  });
+
+  var lockedCount = Object.keys(lockedUuids).length;
+  if (lockedCount > winnerCount) {
+    throw new Error('「' + prizeName + '」保證中獎人數加上已中獎人數已超過設定數量 ' + winnerCount + ' 名');
+  }
 }
 
 function parsePositiveInteger_(value, fallback) {

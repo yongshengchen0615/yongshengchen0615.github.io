@@ -43,7 +43,8 @@
           <h2 id="controlTitle">抽獎設定</h2>
           <label class="field">
             獎項名稱
-            <input id="prizeName" type="text" autocomplete="off" value="現場抽獎">
+            <input id="prizeName" type="text" autocomplete="off" list="prizeOptions">
+            <datalist id="prizeOptions"></datalist>
           </label>
           <label class="field">
             管理密鑰
@@ -60,7 +61,7 @@
               <strong id="winnerCount">0</strong>
             </div>
             <div class="stat">
-              <span>可抽名單</span>
+              <span>剩餘名額</span>
               <strong id="remainingCount">0</strong>
             </div>
             <div class="stat">

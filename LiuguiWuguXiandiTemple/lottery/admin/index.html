@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f6f3">
+  <title>摸彩管理後台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Lottery Admin</p>
+        <h1>管理後台</h1>
+      </div>
+      <div class="badge" id="connectionBadge" data-state="idle">尚未同步</div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel controls" aria-labelledby="controlTitle">
+        <div>
+          <h2 id="controlTitle">獎項設定</h2>
+          <p class="section-copy">先設定獎項與中獎數量，再指定保證中獎使用者。</p>
+        </div>
+
+        <label class="field">
+          獎項名稱
+          <input id="prizeName" type="text" autocomplete="off" list="prizeOptions" placeholder="例：頭獎、平安禮、加碼獎">
+          <datalist id="prizeOptions"></datalist>
+        </label>
+
+        <label class="field">
+          中獎數量
+          <input id="winnerCountInput" type="number" min="1" step="1" inputmode="numeric" value="1">
+        </label>
+
+        <label class="field">
+          管理密鑰
+          <input id="adminToken" type="password" autocomplete="off" placeholder="未設定可留空">
+        </label>
+
+        <div class="stats" aria-live="polite">
+          <div class="stat">
+            <span>總人數</span>
+            <strong id="totalCount">0</strong>
+          </div>
+          <div class="stat">
+            <span>已領號碼</span>
+            <strong id="drawnCount">0</strong>
+          </div>
+          <div class="stat">
+            <span>獎項數</span>
+            <strong id="prizeCount">0</strong>
+          </div>
+          <div class="stat">
+            <span>已勾選</span>
+            <strong id="selectedCount">0</strong>
+          </div>
+        </div>
+
+        <div class="control-actions">
+          <button class="button button--primary" id="savePrizeButton" type="button" disabled>儲存獎項</button>
+          <button class="button button--primary" id="setGuaranteeButton" type="button" disabled>設定保證中獎</button>
+          <button class="button button--danger" id="clearGuaranteeButton" type="button" disabled>清除保證設定</button>
+          <button class="button" id="refreshButton" type="button">同步名單</button>
+        </div>
+
+        <div class="prize-list" id="prizeList" aria-live="polite"></div>
+
+        <p class="message" id="systemMessage">正在讀取 GAS 名單。</p>
+      </aside>
+
+      <section class="list-area" aria-labelledby="listTitle">
+        <div class="list-toolbar">
+          <div>
+            <h2 id="listTitle">使用者名單</h2>
+            <p class="section-copy" id="listSummary">顯示已同步到 GAS 的使用者。</p>
+          </div>
+
+          <div class="toolbar-actions">
+            <input class="search" id="searchInput" type="search" autocomplete="off" placeholder="搜尋姓名或摸彩號碼">
+            <button class="icon-button" id="selectEligibleButton" type="button" title="勾選尚未中獎的使用者">全選未中獎</button>
+            <button class="icon-button" id="clearSelectionButton" type="button" title="清除目前勾選">取消勾選</button>
+          </div>
+        </div>
+
+        <div class="panel table-panel">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>選取</th>
+                  <th>摸彩號碼</th>
+                  <th>使用者</th>
+                  <th>保證中獎</th>
+                  <th>目前狀態</th>
+                  <th>中獎紀錄</th>
+                </tr>
+              </thead>
+              <tbody id="userRows">
+                <tr>
+                  <td class="empty-row" colspan="6">尚無資料</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

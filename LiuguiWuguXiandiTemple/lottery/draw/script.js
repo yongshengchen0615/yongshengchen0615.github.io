@@ -8,6 +8,7 @@ const state = {
   busy: false,
   board: null,
   rollingTimer: null,
+  prizeRefreshTimer: null,
   toastTimer: null,
 };
 
@@ -29,6 +30,7 @@ function cacheElements() {
     "drawButton",
     "refreshButton",
     "prizeName",
+    "prizeOptions",
     "adminToken",
     "drawnCount",
     "winnerCount",
@@ -46,7 +48,7 @@ function cacheElements() {
 function bindEvents() {
   elements.drawButton.addEventListener("click", handleDrawWinner);
   elements.refreshButton.addEventListener("click", () => refreshBoard(true));
-  elements.prizeName.addEventListener("input", renderPrizeLabel);
+  elements.prizeName.addEventListener("input", handlePrizeInput);
 }
 
 async function refreshBoard(showToastOnSuccess) {
@@ -69,7 +71,7 @@ async function refreshBoard(showToastOnSuccess) {
 async function handleDrawWinner() {
   setBusy(true, "抽取中");
   startRollingNumber();
-  setSystemMessage("正在從未中獎名單抽取。");
+  setSystemMessage("正在依照獎項資格抽取名單。");
 
   try {
     const board = await gasRequest("drawWinner", buildPayload());
@@ -107,13 +109,14 @@ async function gasRequest(action, payload) {
 
 function buildPayload() {
   return {
-    prizeName: elements.prizeName.value.trim() || "現場抽獎",
+    prizeName: elements.prizeName.value.trim(),
     adminToken: elements.adminToken.value.trim() || DRAW_CONFIG.ADMIN_TOKEN,
     limit: DRAW_CONFIG.WINNER_LIMIT,
   };
 }
 
 function renderBoard(board, options = {}) {
+  renderPrizeOptions(board && board.prizes, board && board.prizeName);
   renderStats(board && board.stats);
   renderWinnerRows(board && board.winners);
 
@@ -150,14 +153,26 @@ function renderStats(stats) {
     drawnNumbers: 0,
     winners: 0,
     remaining: 0,
+    remainingSlots: 0,
   };
 
   elements.totalCount.textContent = values.totalUsers;
   elements.drawnCount.textContent = values.drawnNumbers;
   elements.winnerCount.textContent = values.winners;
-  elements.remainingCount.textContent = values.remaining;
+  elements.remainingCount.textContent = values.remainingSlots;
   elements.historyBadge.textContent = `${values.winners} 筆`;
   elements.historyBadge.dataset.state = values.winners > 0 ? "ready" : "idle";
+}
+
+function renderPrizeOptions(prizes, currentPrizeName) {
+  const rows = prizes || [];
+  elements.prizeOptions.innerHTML = rows
+    .map((prize) => `<option value="${escapeHtml(prize.prizeName)}"></option>`)
+    .join("");
+
+  if (!elements.prizeName.value.trim() && currentPrizeName) {
+    elements.prizeName.value = currentPrizeName;
+  }
 }
 
 function renderWinnerRows(winners) {
@@ -208,9 +223,20 @@ function setSystemMessage(message) {
 
 function getBoardMessage(board) {
   if (!board || !board.stats) return "尚未取得 GAS 名單。";
+  const prizeName = board.prizeName || elements.prizeName.value.trim() || "未設定獎項";
+  if (!board.prizeConfig) return `請先在管理後台設定「${prizeName}」的中獎數量。`;
   if (board.stats.drawnNumbers === 0) return "目前沒有已領號碼的使用者。";
-  if (board.stats.remaining === 0) return "已領號碼的使用者皆已中獎。";
-  return `目前還有 ${board.stats.remaining} 位可抽名單。`;
+  if (board.stats.remainingSlots === 0) return `「${prizeName}」已達設定中獎數量。`;
+  if (board.stats.remaining === 0) return `目前沒有符合「${prizeName}」的可抽名單。`;
+  return `「${prizeName}」剩餘 ${board.stats.remainingSlots} 個名額，可抽名單 ${board.stats.remaining} 位。`;
+}
+
+function handlePrizeInput() {
+  renderPrizeLabel();
+  window.clearTimeout(state.prizeRefreshTimer);
+  state.prizeRefreshTimer = window.setTimeout(() => {
+    if (!state.busy) refreshBoard(false);
+  }, 420);
 }
 
 function showToast(message, type = "info") {
