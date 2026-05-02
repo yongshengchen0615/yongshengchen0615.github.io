@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f7f4ed">
+  <title>中獎抽取台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Lottery Draw Console</p>
+        <h1>中獎抽取台</h1>
+      </div>
+      <div class="badge" id="connectionBadge" data-state="idle">尚未同步</div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage" aria-labelledby="stageTitle">
+        <div class="stage__inner">
+          <div>
+            <span class="stage__label">Current Winner</span>
+            <h2 id="stageTitle">本輪中獎號碼</h2>
+            <output class="winner-number" id="winnerNumber">------</output>
+            <p class="winner-name" id="winnerName">等待抽取</p>
+            <div class="winner-meta">
+              <span class="chip" id="winnerPrize">獎項未設定</span>
+              <span class="chip" id="winnerTime">--</span>
+            </div>
+          </div>
+
+          <div class="stage__actions">
+            <button class="button button--draw" id="drawButton" type="button" disabled>抽出中獎者</button>
+            <button class="button button--ghost" id="refreshButton" type="button">同步名單</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="panel controls" aria-labelledby="controlTitle">
+          <h2 id="controlTitle">抽獎設定</h2>
+          <label class="field">
+            獎項名稱
+            <input id="prizeName" type="text" autocomplete="off" value="現場抽獎">
+          </label>
+          <label class="field">
+            管理密鑰
+            <input id="adminToken" type="password" autocomplete="off">
+          </label>
+
+          <div class="stats" aria-live="polite">
+            <div class="stat">
+              <span>已領號碼</span>
+              <strong id="drawnCount">0</strong>
+            </div>
+            <div class="stat">
+              <span>已中獎</span>
+              <strong id="winnerCount">0</strong>
+            </div>
+            <div class="stat">
+              <span>可抽名單</span>
+              <strong id="remainingCount">0</strong>
+            </div>
+            <div class="stat">
+              <span>總人數</span>
+              <strong id="totalCount">0</strong>
+            </div>
+          </div>
+
+          <p class="message" id="systemMessage">正在讀取 GAS 名單。</p>
+        </section>
+      </aside>
+
+      <section class="panel history" aria-labelledby="historyTitle">
+        <div class="history__head">
+          <h2 id="historyTitle">中獎紀錄</h2>
+          <span class="badge" id="historyBadge" data-state="idle">0 筆</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>序</th>
+                <th>摸彩號碼</th>
+                <th>姓名</th>
+                <th>獎項</th>
+                <th>中獎時間</th>
+              </tr>
+            </thead>
+            <tbody id="winnerRows">
+              <tr>
+                <td class="empty-row" colspan="5">尚無中獎紀錄</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

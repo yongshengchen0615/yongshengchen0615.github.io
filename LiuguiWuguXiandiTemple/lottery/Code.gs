@@ -6,7 +6,7 @@ const DEFAULT_WINNER_LIMIT = 20;
 // Leave empty when this script is bound to the target Google Sheet.
 const SPREADSHEET_ID = '';
 
-// LINE Login Channel ID. This must match the channel prefix in script.js LIFF_ID.
+// LINE Login Channel ID. This must match the channel prefix in client/script.js LIFF_ID.
 const LINE_CHANNEL_ID = '2009806965';
 
 // Optional admin token for winner-drawing pages. Leave empty to skip this check.

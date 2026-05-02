@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#fbfbf8">
+  <title>摸彩系統</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LINE Lottery</p>
+        <h1>摸彩系統</h1>
+      </div>
+      <div class="badge" id="connectionBadge" data-state="idle">尚未連線</div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel draw-panel" aria-labelledby="drawTitle">
+        <div>
+          <h2 id="drawTitle">摸彩號碼</h2>
+          <p class="section-copy" id="drawSubtitle">登入 LINE 後會同步使用者資料，已抽取過的使用者會直接顯示原本號碼。</p>
+        </div>
+
+        <div class="ticket" aria-live="polite">
+          <span class="ticket__shine" aria-hidden="true"></span>
+          <span class="ticket__label">Lottery Number</span>
+          <output class="lottery-number" id="lotteryNumber">------</output>
+          <div class="number-state" id="numberState">等待 LINE 登入</div>
+        </div>
+
+        <div class="actions">
+          <button class="button button--primary" id="loginButton" type="button">LINE 登入</button>
+          <button class="button button--accent" id="drawButton" type="button" disabled>抽取摸彩號碼</button>
+          <button class="button button--ghost" id="syncButton" type="button" disabled>同步資料</button>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section class="panel identity" aria-labelledby="identityTitle">
+          <h2 id="identityTitle">使用者資料</h2>
+          <div class="identity__header">
+            <div class="avatar avatar--empty" id="avatarFallback">LINE</div>
+            <img class="avatar" id="avatarImage" alt="" hidden>
+            <div>
+              <p class="identity__name" id="lineName">尚未登入</p>
+              <p class="identity__uuid" id="lineUuid">UUID 尚未取得</p>
+            </div>
+          </div>
+          <div class="detail-list">
+            <div class="detail-row">
+              <span>資料狀態</span>
+              <strong id="syncState">尚未同步</strong>
+            </div>
+            <div class="detail-row">
+              <span>抽取狀態</span>
+              <strong id="drawState">尚未抽取</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel status-log" aria-live="polite">
+          <strong>系統訊息</strong>
+          <p id="systemMessage">請先完成 LINE 登入。</p>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
+  <script src="script.js" defer></script>
+</body>
+</html>
