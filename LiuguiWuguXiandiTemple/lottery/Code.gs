@@ -1,12 +1,16 @@
 const SHEET_NAME = 'LotteryUsers';
-const HEADERS = ['uuid', 'lineName', 'lotteryNumber', 'createdAt', 'drawnAt', 'updatedAt'];
+const HEADERS = ['uuid', 'lineName', 'lotteryNumber', 'createdAt', 'drawnAt', 'updatedAt', 'winnerAt', 'winnerPrize'];
 const MAX_DRAW_ATTEMPTS = 3000;
+const DEFAULT_WINNER_LIMIT = 20;
 
 // Leave empty when this script is bound to the target Google Sheet.
 const SPREADSHEET_ID = '';
 
 // LINE Login Channel ID. This must match the channel prefix in script.js LIFF_ID.
 const LINE_CHANNEL_ID = '2009806965';
+
+// Optional admin token for winner-drawing pages. Leave empty to skip this check.
+const DRAW_ADMIN_TOKEN = '';
 
 function doGet() {
   initializeSheet_();
@@ -29,6 +33,14 @@ function doPost(e) {
 
     if (action === 'drawNumber') {
       return jsonResponse_({ ok: true, data: drawNumber_(payload) });
+    }
+
+    if (action === 'drawWinner') {
+      return jsonResponse_({ ok: true, data: drawWinner_(payload) });
+    }
+
+    if (action === 'getWinnerBoard') {
+      return jsonResponse_({ ok: true, data: getWinnerBoard_(payload) });
     }
 
     throw new Error('不支援的操作類型');
@@ -59,6 +71,8 @@ function syncUser_(payload) {
         createdAt: now,
         drawnAt: '',
         updatedAt: now,
+        winnerAt: '',
+        winnerPrize: '',
       });
       return buildResponseRecord_({
         uuid: user.uuid,
@@ -67,6 +81,8 @@ function syncUser_(payload) {
         createdAt: now,
         drawnAt: '',
         updatedAt: now,
+        winnerAt: '',
+        winnerPrize: '',
       }, false);
     }
 
@@ -98,6 +114,8 @@ function drawNumber_(payload) {
         createdAt: now,
         drawnAt: '',
         updatedAt: now,
+        winnerAt: '',
+        winnerPrize: '',
       };
       record.rowNumber = appendUser_(sheet, record);
       lookup.usedNumbers = getUsedNumberSet_(sheet);
@@ -119,6 +137,51 @@ function drawNumber_(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function drawWinner_(payload) {
+  assertAdmin_(payload);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    var sheet = getSheet_();
+    var records = readRecords_(sheet);
+    var eligibleRecords = getEligibleWinnerRecords_(records);
+
+    if (!eligibleRecords.length) {
+      throw new Error('目前沒有可抽取的名單，請確認已有使用者抽取摸彩號碼，且尚未全數中獎。');
+    }
+
+    var now = new Date();
+    var winner = eligibleRecords[Math.floor(Math.random() * eligibleRecords.length)];
+    winner.winnerAt = now;
+    winner.winnerPrize = cleanText_(payload.prizeName) || '現場抽獎';
+    winner.updatedAt = now;
+
+    writeWinnerResult_(sheet, winner);
+    return buildWinnerBoard_(sheet, buildWinnerRecord_(winner), payload);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getWinnerBoard_(payload) {
+  assertAdmin_(payload);
+  return buildWinnerBoard_(getSheet_(), null, payload);
+}
+
+function assertAdmin_(payload) {
+  var expectedToken = cleanText_(DRAW_ADMIN_TOKEN);
+  if (expectedToken && cleanText_(payload.adminToken) !== expectedToken) {
+    throw new Error('管理密鑰不正確');
+  }
+}
+
+function getEligibleWinnerRecords_(records) {
+  return records.filter(function(record) {
+    return Boolean(cleanText_(record.lotteryNumber)) && !cleanText_(record.winnerAt);
+  });
 }
 
 function resolveLineUser_(payload) {
@@ -192,6 +255,8 @@ function initializeSheet_() {
   ensureHeaders_(sheet);
   sheet.getRange('A:A').setNumberFormat('@');
   sheet.getRange('C:C').setNumberFormat('@');
+  sheet.getRange('D:G').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sheet.getRange('H:H').setNumberFormat('@');
 }
 
 function getSheet_() {
@@ -211,7 +276,7 @@ function getSheet_() {
 }
 
 function ensureHeaders_(sheet) {
-  var lastColumn = Math.max(sheet.getLastColumn(), HEADERS.length);
+  var lastColumn = Math.max(sheet.getLastColumn(), 1);
   var headerRange = sheet.getRange(1, 1, 1, lastColumn);
   var currentHeaders = headerRange.getValues()[0].map(function(value) {
     return cleanText_(value);
@@ -226,12 +291,17 @@ function ensureHeaders_(sheet) {
     return;
   }
 
-  var nextColumn = currentHeaders.length + 1;
   HEADERS.forEach(function(header) {
     if (currentHeaders.indexOf(header) === -1) {
-      sheet.getRange(1, nextColumn).setValue(header);
-      currentHeaders.push(header);
-      nextColumn += 1;
+      var blankIndex = currentHeaders.indexOf('');
+      var column = blankIndex === -1 ? currentHeaders.length + 1 : blankIndex + 1;
+      sheet.getRange(1, column).setValue(header);
+
+      if (blankIndex === -1) {
+        currentHeaders.push(header);
+      } else {
+        currentHeaders[blankIndex] = header;
+      }
     }
   });
   sheet.setFrozenRows(1);
@@ -283,6 +353,7 @@ function readRecords_(sheet) {
     record.uuid = cleanText_(record.uuid);
     record.lineName = cleanText_(record.lineName);
     record.lotteryNumber = cleanText_(record.lotteryNumber);
+    record.winnerPrize = cleanText_(record.winnerPrize);
     record.rowNumber = i + 1;
     records.push(record);
   }
@@ -312,6 +383,13 @@ function writeDrawResult_(sheet, record) {
   sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
 }
 
+function writeWinnerResult_(sheet, record) {
+  var headerMap = getHeaderMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  sheet.getRange(record.rowNumber, headerMap.winnerAt + 1).setValue(record.winnerAt);
+  sheet.getRange(record.rowNumber, headerMap.winnerPrize + 1).setValue(record.winnerPrize);
+  sheet.getRange(record.rowNumber, headerMap.updatedAt + 1).setValue(record.updatedAt);
+}
+
 function getHeaderMap_(headers) {
   var map = {};
   headers.forEach(function(header, index) {
@@ -334,10 +412,61 @@ function buildResponseRecord_(record, alreadyDrawn) {
     lotteryNumber: cleanText_(record.lotteryNumber),
     hasDrawn: Boolean(cleanText_(record.lotteryNumber)),
     alreadyDrawn: Boolean(alreadyDrawn),
+    hasWon: Boolean(cleanText_(record.winnerAt)),
     createdAt: formatDate_(record.createdAt),
     drawnAt: formatDate_(record.drawnAt),
     updatedAt: formatDate_(record.updatedAt),
+    winnerAt: formatDate_(record.winnerAt),
+    winnerPrize: cleanText_(record.winnerPrize),
   };
+}
+
+function buildWinnerBoard_(sheet, currentWinner, payload) {
+  var records = readRecords_(sheet);
+  var winners = records.filter(function(record) {
+    return Boolean(cleanText_(record.winnerAt));
+  }).sort(function(a, b) {
+    return getDateTime_(b.winnerAt) - getDateTime_(a.winnerAt);
+  });
+  var eligibleRecords = getEligibleWinnerRecords_(records);
+  var limit = parsePositiveInteger_(payload.limit, DEFAULT_WINNER_LIMIT);
+
+  return {
+    currentWinner: currentWinner,
+    stats: {
+      totalUsers: records.length,
+      drawnNumbers: records.filter(function(record) {
+        return Boolean(cleanText_(record.lotteryNumber));
+      }).length,
+      winners: winners.length,
+      remaining: eligibleRecords.length,
+    },
+    winners: winners.slice(0, limit).map(buildWinnerRecord_),
+  };
+}
+
+function buildWinnerRecord_(record) {
+  return {
+    uuid: cleanText_(record.uuid),
+    lineName: cleanText_(record.lineName),
+    lotteryNumber: cleanText_(record.lotteryNumber),
+    winnerAt: formatDate_(record.winnerAt),
+    winnerPrize: cleanText_(record.winnerPrize),
+    drawnAt: formatDate_(record.drawnAt),
+  };
+}
+
+function parsePositiveInteger_(value, fallback) {
+  var number = Number(value);
+  if (!isFinite(number) || number < 1) return fallback;
+  return Math.floor(number);
+}
+
+function getDateTime_(value) {
+  if (!value) return 0;
+  var date = Object.prototype.toString.call(value) === '[object Date]' ? value : new Date(value);
+  if (isNaN(date.getTime())) return 0;
+  return date.getTime();
 }
 
 function parseRequest_(e) {

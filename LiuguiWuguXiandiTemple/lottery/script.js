@@ -1,6 +1,7 @@
 const LOTTERY_CONFIG = {
   LIFF_ID: "2009806965-6dv1AJSV",
   GAS_WEB_APP_URL: "https://script.google.com/macros/s/AKfycbxvkPHXsB22b9hiFPtNY6m4IJ8wuc2rdXlEsbEPiudfXNhBsCuR64BPSxADIBsBK7tk/exec",
+  TOKEN_REFRESH_BUFFER_SECONDS: 60,
 };
 
 const state = {
@@ -107,15 +108,7 @@ async function loadLineProfile() {
   const profile = await liff.getProfile();
   const idToken = getLineIdToken();
   const decodedToken = getDecodedLineIdToken();
-  const expectedChannelId = getLineChannelId();
-
-  if (!idToken) {
-    throw new Error("缺少 LINE idToken，請在 LINE Developers Console 的 LIFF App 啟用 openid scope 後重新登入。");
-  }
-
-  if (decodedToken && decodedToken.aud && expectedChannelId && decodedToken.aud !== expectedChannelId) {
-    throw new Error("LINE 登入驗證失敗：LIFF Channel ID 與 idToken 不一致，請檢查 LIFF_ID 與 GAS 的 LINE_CHANNEL_ID。");
-  }
+  validateLineToken_(idToken, decodedToken);
 
   state.profile = {
     uuid: profile.userId,
@@ -131,7 +124,7 @@ async function syncCurrentUser(showToastOnSuccess) {
   setBusy(true, "同步資料");
 
   try {
-    const record = await gasRequest("syncUser", state.profile);
+    const record = await gasRequest("syncUser", getFreshLinePayload());
     state.record = record;
     renderRecord(record, { animate: false });
     setConnection("ready", "已同步");
@@ -157,7 +150,7 @@ async function handleDraw() {
   startRollingNumber();
 
   try {
-    const record = await gasRequest("drawNumber", state.profile);
+    const record = await gasRequest("drawNumber", getFreshLinePayload());
     state.record = record;
     renderRecord(record, { animate: true });
     setConnection("ready", "已完成");
@@ -182,10 +175,29 @@ async function gasRequest(action, payload) {
 
   const result = await response.json();
   if (!response.ok || !result.ok) {
+    if (isExpiredTokenMessage(result.message)) {
+      restartLineLogin("LINE 登入已過期，正在重新登入。");
+    }
     throw new Error(result.message || "GAS 請求失敗");
   }
 
   return result.data;
+}
+
+function getFreshLinePayload() {
+  requireProfile();
+
+  const idToken = getLineIdToken();
+  const decodedToken = getDecodedLineIdToken();
+  validateLineToken_(idToken, decodedToken);
+
+  state.profile.idToken = idToken;
+  return {
+    uuid: state.profile.uuid,
+    lineName: state.profile.lineName,
+    pictureUrl: state.profile.pictureUrl,
+    idToken,
+  };
 }
 
 function renderProfile() {
@@ -293,6 +305,23 @@ function requireProfile() {
   }
 }
 
+function validateLineToken_(idToken, decodedToken) {
+  const expectedChannelId = getLineChannelId();
+
+  if (!idToken) {
+    throw new Error("缺少 LINE idToken，請在 LINE Developers Console 的 LIFF App 啟用 openid scope 後重新登入。");
+  }
+
+  if (decodedToken && decodedToken.aud && expectedChannelId && decodedToken.aud !== expectedChannelId) {
+    throw new Error("LINE 登入驗證失敗：LIFF Channel ID 與 idToken 不一致，請檢查 LIFF_ID 與 GAS 的 LINE_CHANNEL_ID。");
+  }
+
+  if (isDecodedTokenExpired(decodedToken)) {
+    restartLineLogin("LINE 登入已過期，正在重新登入。");
+    throw new Error("LINE 登入已過期，請重新登入。");
+  }
+}
+
 function hasRuntimeConfig() {
   return Boolean(
     LOTTERY_CONFIG.LIFF_ID &&
@@ -314,6 +343,31 @@ function getDecodedLineIdToken() {
 
 function getLineChannelId() {
   return LOTTERY_CONFIG.LIFF_ID.split("-")[0] || "";
+}
+
+function isDecodedTokenExpired(decodedToken) {
+  if (!decodedToken || !decodedToken.exp) return false;
+  const bufferMs = LOTTERY_CONFIG.TOKEN_REFRESH_BUFFER_SECONDS * 1000;
+  return decodedToken.exp * 1000 <= Date.now() + bufferMs;
+}
+
+function isExpiredTokenMessage(message) {
+  return /idtoken expired|id token expired|token expired/i.test(String(message || ""));
+}
+
+function restartLineLogin(message) {
+  setConnection("idle", "重新登入");
+  setSystemMessage(message);
+  showToast(message, "error");
+
+  window.setTimeout(() => {
+    if (window.liff && typeof liff.logout === "function" && liff.isLoggedIn()) {
+      liff.logout();
+    }
+    if (window.liff && typeof liff.login === "function") {
+      liff.login({ redirectUri: window.location.href.split("#")[0] });
+    }
+  }, 300);
 }
 
 function formatLotteryNumber(value) {
