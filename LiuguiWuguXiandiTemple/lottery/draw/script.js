@@ -33,6 +33,7 @@ function cacheElements() {
     "winnerNumber",
     "winnerName",
     "winnerPrize",
+    "prizeRemaining",
     "winnerTime",
     "drawButton",
     "refreshButton",
@@ -86,7 +87,7 @@ async function handleDrawWinner() {
     const board = await gasRequest("drawWinner", buildPayload());
     state.board = board;
     stopRollingNumber();
-    renderBoard(board, { animateCurrent: true });
+    renderBoard(board);
     setConnection("ready", "已完成");
     setSystemMessage(board.currentWinner ? "中獎者已寫入 GAS。" : getBoardMessage(board));
     showToast("中獎紀錄已寫入 GAS", "success");
@@ -124,16 +125,16 @@ function buildPayload() {
   };
 }
 
-function renderBoard(board, options = {}) {
+function renderBoard(board) {
   renderPrizeOptions(board && board.prizes, board && board.prizeName);
   renderStats(board && board.stats);
+  renderPrizeRemaining(board);
   renderWinnerRows(board && board.winners);
 
   if (board && board.currentWinner) {
-    renderCurrentWinner(board.currentWinner, options.animateCurrent);
-  } else if (!state.rollingTimer) {
+    renderCurrentWinner(board.currentWinner);
+  } else {
     elements.winnerNumber.textContent = "------";
-    elements.winnerNumber.classList.remove("is-final");
     elements.winnerName.textContent = "等待抽取";
     renderPrizeLabel();
     elements.winnerTime.textContent = "--";
@@ -142,18 +143,11 @@ function renderBoard(board, options = {}) {
   updateButtons();
 }
 
-function renderCurrentWinner(winner, animate) {
-  elements.winnerNumber.classList.remove("is-final");
+function renderCurrentWinner(winner) {
   elements.winnerNumber.textContent = formatLotteryNumber(winner.lotteryNumber);
   elements.winnerName.textContent = winner.lineName || "未命名使用者";
   elements.winnerPrize.textContent = winner.winnerPrize || "現場抽獎";
   elements.winnerTime.textContent = winner.winnerAt || "--";
-
-  if (animate) {
-    window.requestAnimationFrame(() => {
-      elements.winnerNumber.classList.add("is-final");
-    });
-  }
 }
 
 function renderStats(stats) {
@@ -172,6 +166,25 @@ function renderStats(stats) {
   elements.remainingCount.textContent = values.remainingSlots;
   elements.historyBadge.textContent = `${values.winners} 筆`;
   elements.historyBadge.dataset.state = values.winners > 0 ? "ready" : "idle";
+}
+
+function renderPrizeRemaining(board) {
+  const prizeStatus = getSelectedPrizeStatus(board);
+
+  if (!prizeStatus.prizeName) {
+    elements.prizeRemaining.textContent = "剩餘 -- 名";
+    elements.prizeRemaining.dataset.state = "idle";
+    return;
+  }
+
+  if (prizeStatus.remainingSlots === null) {
+    elements.prizeRemaining.textContent = "尚未設定名額";
+    elements.prizeRemaining.dataset.state = "idle";
+    return;
+  }
+
+  elements.prizeRemaining.textContent = `剩餘 ${prizeStatus.remainingSlots} 名`;
+  elements.prizeRemaining.dataset.state = prizeStatus.remainingSlots > 0 ? "ready" : "empty";
 }
 
 function renderPrizeOptions(prizes, currentPrizeName) {
@@ -219,6 +232,7 @@ function renderWinnerRows(winners) {
 function renderPrizeLabel() {
   if (state.board && state.board.currentWinner) return;
   elements.winnerPrize.textContent = elements.prizeName.value.trim() || "現場抽獎";
+  renderPrizeRemaining(state.board);
 }
 
 function setBusy(isBusy, label) {
@@ -228,9 +242,12 @@ function setBusy(isBusy, label) {
 }
 
 function updateButtons() {
-  const remaining = state.board && state.board.stats ? Number(state.board.stats.remaining) : 0;
-  const hasPrize = Boolean(elements.prizeName.value.trim());
-  elements.drawButton.disabled = state.busy || !hasPrize || remaining <= 0;
+  const prizeName = elements.prizeName.value.trim();
+  const boardPrizeName = state.board && state.board.prizeName ? String(state.board.prizeName).trim() : "";
+  const boardMatchesSelectedPrize = Boolean(prizeName) && prizeName === boardPrizeName;
+  const remaining = boardMatchesSelectedPrize && state.board && state.board.stats ? Number(state.board.stats.remaining) : 0;
+
+  elements.drawButton.disabled = state.busy || !prizeName || remaining <= 0;
   elements.refreshButton.disabled = state.busy;
   elements.prizeName.disabled = state.busy;
   elements.adminToken.disabled = state.busy;
@@ -280,6 +297,43 @@ function getBoardMessage(board) {
   return `「${prizeName}」剩餘 ${board.stats.remainingSlots} 個名額，可抽名單 ${board.stats.remaining} 位。`;
 }
 
+function getSelectedPrizeStatus(board) {
+  const prizeName = elements.prizeName.value.trim() || (board && board.prizeName) || "";
+  if (!prizeName) {
+    return {
+      prizeName: "",
+      remainingSlots: null,
+    };
+  }
+
+  const prizes = board && Array.isArray(board.prizes) ? board.prizes : [];
+  const selectedPrize = prizes.find((prize) => prize.prizeName === prizeName);
+  if (selectedPrize) {
+    return {
+      prizeName,
+      remainingSlots: normalizeCount(selectedPrize.remainingSlots),
+    };
+  }
+
+  if (board && board.prizeName === prizeName && board.stats) {
+    return {
+      prizeName,
+      remainingSlots: normalizeCount(board.stats.remainingSlots),
+    };
+  }
+
+  return {
+    prizeName,
+    remainingSlots: null,
+  };
+}
+
+function normalizeCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return null;
+  return Math.max(Math.floor(count), 0);
+}
+
 function handlePrizeInput() {
   renderPrizeLabel();
   window.clearTimeout(state.prizeRefreshTimer);
@@ -309,9 +363,9 @@ function startRollingNumber() {
   stopRollingNumber();
   elements.winnerName.textContent = "抽取中";
   elements.winnerTime.textContent = "--";
-  elements.winnerNumber.classList.remove("is-final");
+  elements.winnerNumber.textContent = getRollingLotteryNumber();
   state.rollingTimer = window.setInterval(() => {
-    elements.winnerNumber.textContent = String(100000 + Math.floor(Math.random() * 900000));
+    elements.winnerNumber.textContent = getRollingLotteryNumber();
   }, 58);
 }
 
@@ -323,6 +377,10 @@ function stopRollingNumber() {
 
 function formatLotteryNumber(value) {
   return String(value || "").padStart(6, "0");
+}
+
+function getRollingLotteryNumber() {
+  return String(100000 + Math.floor(Math.random() * 900000));
 }
 
 function escapeHtml(value) {
