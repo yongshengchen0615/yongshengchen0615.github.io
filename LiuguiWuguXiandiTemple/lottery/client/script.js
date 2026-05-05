@@ -110,7 +110,7 @@ async function syncCurrentUser(showToastOnSuccess) {
   try {
     const record = await gasRequest("syncUser", getFreshLinePayload());
     state.record = record;
-    renderRecord(record, { animate: false });
+    renderRecord(record);
     setConnection("ready", "已同步");
     setSystemMessage(getRecordMessage(record));
     if (showToastOnSuccess) showToast("資料已同步", "success");
@@ -124,24 +124,23 @@ async function syncCurrentUser(showToastOnSuccess) {
 async function handleDraw() {
   requireProfile();
   if (state.record && state.record.hasDrawn) {
-    renderRecord(state.record, { animate: false });
+    renderRecord(state.record);
     return;
   }
 
   setBusy(true, "抽取中");
   elements.drawButton.disabled = true;
   elements.numberState.textContent = "正在確認 GAS 內是否有重複號碼";
-  startRollingNumber();
+  elements.lotteryNumber.textContent = "------";
 
   try {
     const record = await gasRequest("drawNumber", getFreshLinePayload());
     state.record = record;
-    renderRecord(record, { animate: true });
+    renderRecord(record);
     setConnection("ready", "已完成");
     setSystemMessage(getRecordMessage(record));
   } catch (error) {
-    stopRollingNumber();
-    renderRecord(state.record, { animate: false });
+    renderRecord(state.record);
     showError(error);
   } finally {
     setBusy(false);
@@ -202,7 +201,7 @@ function renderProfile() {
   elements.syncButton.disabled = false;
 }
 
-function renderRecord(record, options = {}) {
+function renderRecord(record) {
   if (!record) {
     elements.lotteryNumber.textContent = "------";
     elements.numberState.textContent = state.profile ? "尚未抽取" : "正在啟動 LINE";
@@ -218,12 +217,7 @@ function renderRecord(record, options = {}) {
 
   if (record.hasDrawn) {
     const number = formatLotteryNumber(record.lotteryNumber);
-    stopRollingNumber();
-    if (options.animate) {
-      animateFinalNumber(number);
-    } else {
-      elements.lotteryNumber.textContent = number;
-    }
+    elements.lotteryNumber.textContent = number;
     elements.numberState.textContent = getNumberStateLabel(record);
     elements.drawState.textContent = hasWinnerPrize(record) ? "已中獎" : "已抽取";
     elements.drawButton.textContent = "已完成抽號";
@@ -231,7 +225,6 @@ function renderRecord(record, options = {}) {
     return;
   }
 
-  stopRollingNumber();
   elements.lotteryNumber.textContent = "------";
   elements.numberState.textContent = "尚未抽取";
   elements.drawState.textContent = "尚未抽取";
@@ -392,31 +385,4 @@ function restartLineLogin(message) {
 
 function formatLotteryNumber(value) {
   return String(value || "").padStart(6, "0");
-}
-
-let rollingTimer = null;
-
-function startRollingNumber() {
-  stopRollingNumber();
-  rollingTimer = window.setInterval(() => {
-    elements.lotteryNumber.textContent = String(100000 + Math.floor(Math.random() * 900000));
-  }, 70);
-}
-
-function stopRollingNumber() {
-  if (rollingTimer) {
-    window.clearInterval(rollingTimer);
-    rollingTimer = null;
-  }
-}
-
-function animateFinalNumber(finalNumber) {
-  let count = 0;
-  const timer = window.setInterval(() => {
-    count += 1;
-    elements.lotteryNumber.textContent = count < 8
-      ? String(100000 + Math.floor(Math.random() * 900000))
-      : finalNumber;
-    if (count >= 8) window.clearInterval(timer);
-  }, 55);
 }
