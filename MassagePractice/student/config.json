@@ -1,7 +1,7 @@
 {
   "appName": "學員審核系統",
-  "lineChannelId": "YOUR_LINE_LOGIN_CHANNEL_ID",
-  "gasWebAppUrl": "YOUR_GAS_WEB_APP_URL",
-  "studentRedirectUri": "",
+  "lineChannelId": "2009986662",
+  "gasWebAppUrl": "https://script.google.com/macros/s/AKfycbyp5-BBjXuX2H0tB15Vh_27kEJownL-CUt3Ygjil9NF7TD4PZDtSVH_nBzt8YRF9Ogn/exec",
+  "studentRedirectUri": "https://yongshengchen0615.github.io/MassagePractice/student/index.html",
   "enableDebug": false
 }
