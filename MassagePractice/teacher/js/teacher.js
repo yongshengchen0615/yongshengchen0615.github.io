@@ -238,30 +238,39 @@
         const name = AppApi.escapeHtml(studentDisplayName(student));
         const picture = AppApi.escapeHtml(student.linePictureUrl || AppApi.avatarPlaceholder());
         const uuid = AppApi.escapeHtml(student.uuid || "");
-        const badge = `<span class="badge badge--${status}">${statusLabels[status] || status}</span>`;
+        const statusText = AppApi.escapeHtml(statusLabels[status] || status);
+        const badge = `<span class="badge badge--${AppApi.escapeHtml(status)}">${statusText}</span>`;
+        const reviewNote = student.reviewNote
+          ? `<span class="student-note">${AppApi.escapeHtml(student.reviewNote)}</span>`
+          : "";
 
         return `
           <tr>
-            <td>
+            <td data-label="學員">
               <div class="student-cell">
                 <img src="${picture}" alt="" loading="lazy" />
                 <div>
                   <strong>${name}</strong>
-                  <span>${AppApi.escapeHtml(student.reviewNote || "")}</span>
+                  ${reviewNote}
                 </div>
               </div>
             </td>
-            <td>${badge}</td>
-            <td>${AppApi.formatDate(student.createdAt)}</td>
-            <td>${AppApi.formatDate(student.updatedAt)}</td>
-            <td>
+            <td data-label="狀態">${badge}</td>
+            <td data-label="建立時間">${AppApi.formatDate(student.createdAt)}</td>
+            <td data-label="更新時間">${AppApi.formatDate(student.updatedAt)}</td>
+            <td data-label="操作">
               <div class="actions">
-                <button class="button button--approve" data-action="approved" data-uuid="${uuid}" type="button">通過</button>
-                <button class="button button--pending" data-action="pending" data-uuid="${uuid}" type="button">待審</button>
-                <button class="button button--reject" data-action="rejected" data-uuid="${uuid}" type="button">未通過</button>
-                <button class="button button--records" data-action="records" data-uuid="${uuid}" type="button">簽到</button>
-                <button class="button button--records" data-action="practiceRecords" data-uuid="${uuid}" type="button">練習</button>
-                <button class="button button--delete" data-action="delete" data-uuid="${uuid}" type="button">移除</button>
+                <div class="actions__group actions__group--review" aria-label="審核操作">
+                  <button class="button button--approve" data-action="approved" data-uuid="${uuid}" type="button">通過</button>
+                  <button class="button button--pending" data-action="pending" data-uuid="${uuid}" type="button">待審</button>
+                </div>
+                <div class="actions__group actions__group--records" aria-label="紀錄操作">
+                  <button class="button button--records" data-action="records" data-uuid="${uuid}" type="button">簽到</button>
+                  <button class="button button--records" data-action="practiceRecords" data-uuid="${uuid}" type="button">練習</button>
+                </div>
+                <div class="actions__group actions__group--danger" aria-label="移除操作">
+                  <button class="button button--delete" data-action="delete" data-uuid="${uuid}" type="button">移除</button>
+                </div>
               </div>
             </td>
           </tr>

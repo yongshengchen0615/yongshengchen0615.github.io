@@ -192,6 +192,9 @@ img {
 
 .topbar {
   display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   min-height: 68px;
   align-items: center;
   justify-content: space-between;
@@ -249,7 +252,7 @@ img {
 }
 
 .workspace {
-  width: min(1180px, 100%);
+  width: min(1240px, 100%);
   margin: 0 auto;
   padding: 40px 24px 64px;
 }
@@ -410,9 +413,13 @@ img {
 
 .teacher-header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
+}
+
+.teacher-header__copy {
+  min-width: 0;
 }
 
 .teacher-header h1 {
@@ -422,6 +429,9 @@ img {
 
 .teacher-tabs {
   display: inline-flex;
+  position: sticky;
+  top: 84px;
+  z-index: 10;
   width: fit-content;
   max-width: 100%;
   gap: 4px;
@@ -440,6 +450,8 @@ img {
   color: var(--muted);
   padding: 0 16px;
   font-weight: 850;
+  transition: background 140ms ease, color 140ms ease;
+  white-space: nowrap;
 }
 
 .teacher-tab.is-active {
@@ -453,6 +465,15 @@ img {
   flex-wrap: wrap;
   gap: 10px;
   align-items: end;
+}
+
+.admin-login {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: var(--shadow-soft);
 }
 
 .admin-login label {
@@ -484,7 +505,7 @@ a:focus-visible {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 160px)) minmax(260px, 1fr);
+  grid-template-columns: repeat(3, minmax(120px, 150px)) minmax(360px, 1fr);
   gap: 12px;
   align-items: stretch;
 }
@@ -496,6 +517,12 @@ a:focus-visible {
   border-radius: 8px;
   background: var(--surface);
   padding: 14px 16px;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.metric:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
 }
 
 .metric span {
@@ -518,6 +545,7 @@ a:focus-visible {
 
 .list-controls {
   justify-content: end;
+  align-content: end;
 }
 
 .list-controls input {
@@ -643,6 +671,10 @@ table {
   border-collapse: collapse;
 }
 
+.students-table {
+  min-width: 1080px;
+}
+
 .attendance-table {
   min-width: 720px;
 }
@@ -657,6 +689,11 @@ td {
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
+}
+
+.students-table th:last-child,
+.students-table td:last-child {
+  width: 390px;
 }
 
 th {
@@ -692,9 +729,11 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
-.student-cell span {
+.student-note {
+  display: block;
   color: var(--muted);
   font-size: 0.84rem;
+  overflow-wrap: anywhere;
 }
 
 .badge {
@@ -736,12 +775,30 @@ tbody tr:hover {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  align-items: center;
 }
 
 .actions .button {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.actions__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 4px;
+}
+
+.actions__group--danger {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
 }
 
 .button--approve {
@@ -799,6 +856,7 @@ tbody tr:hover {
 
   .teacher-tabs {
     display: grid;
+    top: 76px;
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -818,6 +876,11 @@ tbody tr:hover {
     justify-content: stretch;
   }
 
+  .practice-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .admin-login input,
   .admin-login button,
   .attendance-region__header button,
@@ -826,6 +889,111 @@ tbody tr:hover {
   .list-controls input,
   .list-controls select,
   .list-controls button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .table-region {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .table-region .table-wrap {
+    overflow: visible;
+  }
+
+  .students-table {
+    min-width: 0;
+  }
+
+  .students-table,
+  .students-table tbody,
+  .students-table tr,
+  .students-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .students-table thead {
+    display: none;
+  }
+
+  .students-table tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+    padding: 14px;
+  }
+
+  .students-table td {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+  }
+
+  .students-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 850;
+  }
+
+  .students-table td:first-child {
+    display: block;
+    padding-top: 0;
+  }
+
+  .students-table td:first-child::before {
+    display: none;
+  }
+
+  .students-table th:last-child,
+  .students-table td:last-child {
+    width: 100%;
+  }
+
+  .students-table td:last-child {
+    display: block;
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .students-table td:last-child::before {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .student-cell {
+    min-width: 0;
+  }
+
+  .actions {
+    display: grid;
+    gap: 8px;
+  }
+
+  .actions__group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .actions__group--records {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions__group--danger {
+    grid-template-columns: 1fr;
+  }
+
+  .actions .button {
     width: 100%;
   }
 }
