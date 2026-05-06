@@ -12,6 +12,7 @@
   let activeStudentView = readStudentView();
   let practiceTimerId = 0;
   let practiceTimerStartMs = 0;
+  let practiceTimerPendingStart = false;
 
   const elements = {
     refreshButton: document.getElementById("refreshButton"),
@@ -204,9 +205,35 @@
     elements.practiceTimerValue.textContent = formatElapsedTime(practiceTimerStartMs);
   }
 
-  function showPracticeTimer(record) {
+  function selectedPracticeName(select, otherInput) {
+    if (isPracticeOtherOption(select.value)) return cleanPracticeInput(otherInput);
+    const option = select.options[select.selectedIndex];
+    return option ? option.textContent.trim() : "";
+  }
+
+  function currentPracticeDraftRecord() {
+    return {
+      targetName: selectedPracticeName(elements.practiceTargetSelect, elements.practiceTargetOtherInput),
+      itemName: selectedPracticeName(elements.practiceItemSelect, elements.practiceItemOtherInput),
+      startedAt: new Date().toISOString()
+    };
+  }
+
+  function clearPracticeTimerInterval() {
+    if (!practiceTimerId) return;
+    window.clearInterval(practiceTimerId);
+    practiceTimerId = 0;
+  }
+
+  function showPracticeTimer(record, options) {
+    options = options || {};
     const start = new Date(record.startedAt);
-    const startMs = Number.isNaN(start.getTime()) ? Date.now() : start.getTime();
+    const startMs =
+      options.preserveStart && practiceTimerStartMs
+        ? practiceTimerStartMs
+        : Number.isNaN(start.getTime())
+          ? Date.now()
+          : start.getTime();
     const wasHidden = elements.practiceTimerOverlay.hidden;
     const practiceLabel = [record.targetName, record.itemName]
       .map((value) => String(value || "").trim())
@@ -214,9 +241,16 @@
       .join(" / ");
 
     practiceTimerStartMs = startMs;
+    practiceTimerPendingStart = Boolean(options.pendingStart);
     elements.practiceTimerOverlay.hidden = false;
     elements.practiceTimerMeta.textContent = practiceLabel || "練習進行中";
-    elements.practiceTimerStartedAt.textContent = record.startedAt ? "開始 " + AppApi.formatDate(record.startedAt) : "";
+    elements.practiceTimerStartedAt.textContent = practiceTimerPendingStart
+      ? "正在建立練習紀錄"
+      : record.startedAt
+        ? "開始 " + AppApi.formatDate(record.startedAt)
+        : "";
+    elements.endPracticeButton.textContent = practiceTimerPendingStart ? "開始中" : "結束練習";
+    elements.endPracticeButton.disabled = practiceTimerPendingStart;
     document.body.classList.add("practice-timer-open");
     renderPracticeTimerValue();
 
@@ -229,18 +263,25 @@
     }
   }
 
+  function freezePracticeTimer(message) {
+    renderPracticeTimerValue();
+    clearPracticeTimerInterval();
+    practiceTimerPendingStart = false;
+    elements.endPracticeButton.disabled = true;
+    elements.endPracticeButton.textContent = message || "處理中";
+  }
+
   function hidePracticeTimer() {
-    if (practiceTimerId) {
-      window.clearInterval(practiceTimerId);
-      practiceTimerId = 0;
-    }
+    clearPracticeTimerInterval();
 
     practiceTimerStartMs = 0;
+    practiceTimerPendingStart = false;
     elements.practiceTimerOverlay.hidden = true;
     elements.practiceTimerValue.textContent = "00:00:00";
     elements.practiceTimerMeta.textContent = "";
     elements.practiceTimerStartedAt.textContent = "";
     elements.endPracticeButton.disabled = true;
+    elements.endPracticeButton.textContent = "結束練習";
     document.body.classList.remove("practice-timer-open");
   }
 
@@ -389,7 +430,7 @@
     updatePracticeOtherFields(isActive);
     elements.endPracticeButton.disabled = !isActive;
     if (isActive) {
-      showPracticeTimer(practice.current);
+      showPracticeTimer(practice.current, { preserveStart: practiceTimerPendingStart });
     } else {
       hidePracticeTimer();
     }
@@ -631,6 +672,12 @@
       }
     }
 
+    if (action === "startPractice") {
+      showPracticeTimer(currentPracticeDraftRecord(), { pendingStart: true });
+    } else {
+      freezePracticeTimer("結束中");
+    }
+
     setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
 
     try {
@@ -638,6 +685,12 @@
       saveSession(student);
       renderStudent(student);
     } catch (error) {
+      if (action === "startPractice") {
+        hidePracticeTimer();
+      } else if (currentPracticeActive()) {
+        showPracticeTimer(currentStudent.practice.current, { preserveStart: true });
+      }
+
       setStatus("rejected", action === "startPractice" ? "開始失敗" : "結束失敗");
       setNotice(error.message);
     } finally {
