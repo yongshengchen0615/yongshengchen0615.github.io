@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>師資系統</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="../index.html">學員審核系統</a>
+      <a class="topbar__link" href="../student/">學員系統</a>
+    </header>
+
+    <main class="workspace workspace--teacher">
+      <section class="teacher-header" aria-labelledby="teacher-title">
+        <div>
+          <p class="eyebrow">Teacher Console</p>
+          <h1 id="teacher-title">學員審核</h1>
+        </div>
+        <div class="admin-login" id="adminLogin">
+          <label for="adminKey">管理密鑰</label>
+          <input id="adminKey" type="password" autocomplete="current-password" placeholder="輸入 GAS ADMIN_KEY" />
+          <button class="button" id="connectButton" type="button">連線</button>
+        </div>
+      </section>
+
+      <section class="toolbar" aria-label="列表工具">
+        <div class="metric">
+          <span>全部</span>
+          <strong id="totalCount">0</strong>
+        </div>
+        <div class="metric metric--pending">
+          <span>待審核</span>
+          <strong id="pendingCount">0</strong>
+        </div>
+        <div class="metric metric--approved">
+          <span>已通過</span>
+          <strong id="approvedCount">0</strong>
+        </div>
+        <div class="list-controls">
+          <input id="searchInput" type="search" placeholder="搜尋名稱或 UUID" />
+          <select id="statusFilter" aria-label="狀態篩選">
+            <option value="all">全部狀態</option>
+            <option value="pending">待審核</option>
+            <option value="approved">已通過</option>
+            <option value="rejected">未通過</option>
+          </select>
+          <button class="button button--ghost" id="reloadButton" type="button">重新整理</button>
+        </div>
+      </section>
+
+      <section class="table-region" aria-live="polite">
+        <div class="empty-state" id="emptyState">
+          輸入管理密鑰後載入學員名單。
+        </div>
+
+        <div class="table-wrap" id="tableWrap" hidden>
+          <table>
+            <thead>
+              <tr>
+                <th>學員</th>
+                <th>LINE UUID</th>
+                <th>狀態</th>
+                <th>建立時間</th>
+                <th>更新時間</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="studentsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/teacher.js"></script>
+  </body>
+</html>

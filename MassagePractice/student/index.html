@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>學員系統</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="../index.html">學員審核系統</a>
+      <a class="topbar__link" href="../teacher/">師資系統</a>
+    </header>
+
+    <main class="workspace workspace--student">
+      <section class="student-panel" aria-labelledby="student-title">
+        <div class="student-panel__copy">
+          <p class="eyebrow">Student Portal</p>
+          <h1 id="student-title">學員 LINE 登入</h1>
+          <p>登入後會將 LINE UUID、LINE 名稱與頭像寫入 Google Apps Script，狀態預設為待審核。</p>
+        </div>
+
+        <div class="auth-surface">
+          <div class="status-strip" id="statusStrip">
+            <span class="status-dot status-dot--idle" id="statusDot"></span>
+            <span id="statusText">尚未登入</span>
+          </div>
+
+          <div class="profile" id="profile" hidden>
+            <img class="profile__avatar" id="profileAvatar" src="" alt="" />
+            <div class="profile__meta">
+              <strong id="profileName"></strong>
+              <span id="profileUuid"></span>
+            </div>
+          </div>
+
+          <div class="notice" id="notice" role="status">
+            請使用 LINE 登入，系統會送出資料並等待師資審核。
+          </div>
+
+          <div class="button-row">
+            <button class="button button--line" id="loginButton" type="button">使用 LINE 登入</button>
+            <button class="button button--ghost" id="refreshButton" type="button" hidden>更新狀態</button>
+            <button class="button button--ghost" id="logoutButton" type="button" hidden>清除本機登入</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/student.js"></script>
+  </body>
+</html>

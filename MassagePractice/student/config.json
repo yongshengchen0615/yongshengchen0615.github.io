@@ -1,0 +1,7 @@
+{
+  "appName": "學員審核系統",
+  "lineChannelId": "YOUR_LINE_LOGIN_CHANNEL_ID",
+  "gasWebAppUrl": "YOUR_GAS_WEB_APP_URL",
+  "studentRedirectUri": "",
+  "enableDebug": false
+}
