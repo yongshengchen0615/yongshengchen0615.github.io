@@ -2,11 +2,13 @@
   "use strict";
 
   const STORAGE_KEY = "studentApprovalSession";
+  const VIEW_STORAGE_KEY = "studentActiveView";
   const OAUTH_KEY = "lineOAuth";
   const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
   const PRACTICE_OTHER_OPTION_ID = "__other__";
   const PRACTICE_OTHER_OPTION_NAME = "其他";
   let currentStudent = null;
+  let activeStudentView = readStudentView();
   let practiceTimerId = 0;
   let practiceTimerStartMs = 0;
 
@@ -17,6 +19,8 @@
     attendancePanel: document.getElementById("attendancePanel"),
     attendanceState: document.getElementById("attendanceState"),
     attendanceList: document.getElementById("attendanceList"),
+    studentViewTabs: document.getElementById("studentViewTabs"),
+    studentViewButtons: Array.from(document.querySelectorAll("[data-student-view]")),
     practicePanel: document.getElementById("practicePanel"),
     practiceState: document.getElementById("practiceState"),
     practiceTargetSelect: document.getElementById("practiceTargetSelect"),
@@ -99,6 +103,54 @@
 
   function setNotice(message) {
     elements.notice.textContent = message;
+  }
+
+  function readStudentView() {
+    try {
+      return localStorage.getItem(VIEW_STORAGE_KEY) === "practice" ? "practice" : "attendance";
+    } catch (error) {
+      return "attendance";
+    }
+  }
+
+  function saveStudentView(view) {
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch (error) {
+      // View persistence is optional; the controls still work without localStorage.
+    }
+  }
+
+  function setStudentView(view, options) {
+    const nextView = view === "practice" ? "practice" : "attendance";
+    const isApproved = currentStudent && normalizeStatus(currentStudent.status) === "approved";
+    activeStudentView = nextView;
+
+    if (!options || options.persist !== false) {
+      saveStudentView(nextView);
+    }
+
+    elements.studentViewTabs.hidden = !isApproved;
+    elements.attendancePanel.hidden = !isApproved || nextView !== "attendance";
+    elements.practicePanel.hidden = !isApproved || nextView !== "practice";
+
+    elements.studentViewButtons.forEach((button) => {
+      const isSelected = button.dataset.studentView === nextView;
+      button.classList.toggle("is-active", isSelected);
+      button.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+  }
+
+  function hideStudentViews() {
+    elements.studentViewTabs.hidden = true;
+    elements.attendancePanel.hidden = true;
+    elements.practicePanel.hidden = true;
+  }
+
+  function renderStudentSections(student) {
+    renderAttendance(student);
+    renderPractice(student);
+    setStudentView(activeStudentView, { persist: false });
   }
 
   function padTimerPart(value) {
@@ -199,8 +251,7 @@
     elements.profileAvatar.alt = student.lineName ? student.lineName + " 的 LINE 頭像" : "LINE 頭像";
     elements.profileName.textContent = student.lineName || "LINE 使用者";
     elements.refreshButton.hidden = false;
-    renderAttendance(student);
-    renderPractice(student);
+    renderStudentSections(student);
 
     if (status === "approved") {
       setNotice("審核已通過，可以使用簽到簽退與練習紀錄。");
@@ -215,8 +266,7 @@
     currentStudent = null;
     elements.profile.hidden = true;
     elements.refreshButton.hidden = true;
-    elements.attendancePanel.hidden = true;
-    elements.practicePanel.hidden = true;
+    hideStudentViews();
     hidePracticeTimer();
     setStatus("idle", "尚未登入");
     setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
@@ -228,9 +278,8 @@
     const records = Array.isArray(attendance.recent) ? attendance.recent : [];
     const isActive = Boolean(attendance.active && attendance.current);
 
-    elements.attendancePanel.hidden = !isApproved;
-
     if (!isApproved) {
+      elements.attendancePanel.hidden = true;
       elements.checkInButton.disabled = true;
       elements.checkOutButton.disabled = true;
       elements.attendanceList.innerHTML = "";
@@ -272,9 +321,8 @@
     const isActive = Boolean(practice.active && practice.current);
     const hasOptions = true;
 
-    elements.practicePanel.hidden = !isApproved;
-
     if (!isApproved) {
+      elements.practicePanel.hidden = true;
       elements.practiceTargetSelect.disabled = true;
       elements.practiceTargetOtherField.hidden = true;
       elements.practiceTargetOtherInput.disabled = true;
@@ -486,8 +534,7 @@
     } finally {
       elements.refreshButton.disabled = false;
       if (currentStudent) {
-        renderAttendance(currentStudent);
-        renderPractice(currentStudent);
+        renderStudentSections(currentStudent);
       }
     }
   }
@@ -550,8 +597,7 @@
     } finally {
       elements.refreshButton.disabled = false;
       if (currentStudent) {
-        renderAttendance(currentStudent);
-        renderPractice(currentStudent);
+        renderStudentSections(currentStudent);
       }
     }
   }
@@ -576,14 +622,16 @@
     } finally {
       elements.refreshButton.disabled = false;
       if (currentStudent) {
-        renderAttendance(currentStudent);
-        renderPractice(currentStudent);
+        renderStudentSections(currentStudent);
       }
     }
   }
 
   function bindEvents() {
     elements.refreshButton.addEventListener("click", refreshStatus);
+    elements.studentViewButtons.forEach((button) => {
+      button.addEventListener("click", () => setStudentView(button.dataset.studentView));
+    });
     elements.checkInButton.addEventListener("click", () => recordAttendance("checkIn"));
     elements.checkOutButton.addEventListener("click", () => recordAttendance("checkOut"));
     elements.practiceTargetSelect.addEventListener("change", () => updatePracticeOtherFields());

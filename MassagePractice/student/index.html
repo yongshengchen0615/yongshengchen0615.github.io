@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>學員系統</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260506-7" />
+    <link rel="stylesheet" href="css/styles.css?v=20260506-8" />
   </head>
   <body>
     <header class="topbar">
@@ -36,7 +36,32 @@
             系統會自動開啟 LINE 登入，並送出資料等待師資審核。
           </div>
 
-          <div class="attendance-panel" id="attendancePanel" hidden>
+          <div class="student-view-tabs" id="studentViewTabs" role="tablist" aria-label="學員功能" hidden>
+            <button
+              class="student-view-tab is-active"
+              id="attendanceViewTab"
+              data-student-view="attendance"
+              type="button"
+              role="tab"
+              aria-controls="attendancePanel"
+              aria-selected="true"
+            >
+              簽到狀態
+            </button>
+            <button
+              class="student-view-tab"
+              id="practiceViewTab"
+              data-student-view="practice"
+              type="button"
+              role="tab"
+              aria-controls="practicePanel"
+              aria-selected="false"
+            >
+              練習紀錄
+            </button>
+          </div>
+
+          <div class="attendance-panel" id="attendancePanel" role="tabpanel" aria-labelledby="attendanceViewTab" hidden>
             <div class="attendance-header">
               <h2>簽到狀態</h2>
               <span class="attendance-state" id="attendanceState">尚未簽到</span>
@@ -50,7 +75,7 @@
             <div class="attendance-list" id="attendanceList"></div>
           </div>
 
-          <div class="practice-panel" id="practicePanel" hidden>
+          <div class="practice-panel" id="practicePanel" role="tabpanel" aria-labelledby="practiceViewTab" hidden>
             <div class="attendance-header">
               <h2>練習紀錄</h2>
               <span class="attendance-state" id="practiceState">尚未練習</span>
@@ -100,7 +125,7 @@
       </div>
     </section>
 
-    <script src="js/api.js?v=20260506-7"></script>
-    <script src="js/student.js?v=20260506-7"></script>
+    <script src="js/api.js?v=20260506-8"></script>
+    <script src="js/student.js?v=20260506-8"></script>
   </body>
 </html>
