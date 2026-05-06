@@ -3,7 +3,7 @@
 這是一組靜態 `HTML/CSS/JS` 前端加上 Google Apps Script 後端：
 
 - `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS。
-- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過。
+- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，或移除學員。
 - `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet。
 
 ## 檔案
@@ -86,7 +86,7 @@ SPREADSHEET_ID=你的 Google Sheet ID
 
 - 學員入口：`student/`
 - 師資入口：`teacher/`
-- 師資輸入 `ADMIN_KEY` 後可以載入名單並按「通過」。
+- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核或移除學員。
 
 ## 注意事項
 

@@ -6,9 +6,7 @@
   const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
 
   const elements = {
-    loginButton: document.getElementById("loginButton"),
     refreshButton: document.getElementById("refreshButton"),
-    logoutButton: document.getElementById("logoutButton"),
     notice: document.getElementById("notice"),
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
@@ -48,7 +46,6 @@
   }
 
   function setBusy(isBusy, message) {
-    elements.loginButton.disabled = isBusy;
     elements.refreshButton.disabled = isBusy;
     setStatus(isBusy ? "busy" : "idle", message);
   }
@@ -97,7 +94,6 @@
     elements.profileName.textContent = student.lineName || "LINE 使用者";
     elements.profileUuid.textContent = student.lineUserId || student.uuid;
     elements.refreshButton.hidden = false;
-    elements.logoutButton.hidden = false;
 
     if (status === "approved") {
       setNotice("審核已通過，可以進入後續學員流程。");
@@ -111,13 +107,15 @@
   function renderLoggedOut() {
     elements.profile.hidden = true;
     elements.refreshButton.hidden = true;
-    elements.logoutButton.hidden = true;
     setStatus("idle", "尚未登入");
-    setNotice("請使用 LINE 登入，系統會送出資料並等待師資審核。");
+    setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
   }
 
   async function beginLineLogin() {
     try {
+      setStatus("busy", "正在開啟 LINE 登入");
+      setNotice("正在前往 LINE 登入頁面。");
+
       const config = AppApi.requireConfig({ line: true });
       const redirectUri = AppApi.studentRedirectUri();
       const state = randomString(24);
@@ -166,10 +164,10 @@
       AppApi.cleanOauthParams();
       setStatus("rejected", "LINE 登入取消");
       setNotice(params.get("error_description") || "LINE 登入未完成。");
-      return;
+      return true;
     }
 
-    if (!code) return;
+    if (!code) return false;
 
     setBusy(true, "正在驗證 LINE 登入");
 
@@ -194,9 +192,10 @@
       setStatus("rejected", "登入失敗");
       setNotice(error.message);
     } finally {
-      elements.loginButton.disabled = false;
       elements.refreshButton.disabled = false;
     }
+
+    return true;
   }
 
   async function refreshStatus() {
@@ -214,19 +213,15 @@
     } catch (error) {
       setStatus("rejected", "更新失敗");
       setNotice(error.message);
+      clearSession();
+      await beginLineLogin();
     } finally {
-      elements.loginButton.disabled = false;
       elements.refreshButton.disabled = false;
     }
   }
 
   function bindEvents() {
-    elements.loginButton.addEventListener("click", beginLineLogin);
     elements.refreshButton.addEventListener("click", refreshStatus);
-    elements.logoutButton.addEventListener("click", () => {
-      clearSession();
-      renderLoggedOut();
-    });
   }
 
   async function init() {
@@ -237,19 +232,21 @@
     } catch (error) {
       setStatus("rejected", "設定讀取失敗");
       setNotice(error.message);
-      elements.loginButton.disabled = true;
       elements.refreshButton.disabled = true;
       return;
     }
 
-    await handleCallback();
+    const handledCallback = await handleCallback();
+    if (handledCallback) return;
 
-    if (!new URLSearchParams(window.location.search).get("code")) {
-      const session = readSession();
-      if (session) {
-        await refreshStatus();
-      }
+    const session = readSession();
+    if (session) {
+      await refreshStatus();
+      return;
     }
+
+    renderLoggedOut();
+    await beginLineLogin();
   }
 
   init();

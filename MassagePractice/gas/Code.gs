@@ -56,6 +56,13 @@ function doPost(e) {
       });
     }
 
+    if (action === "deleteStudent") {
+      return json_({
+        ok: true,
+        data: deleteStudent_(payload)
+      });
+    }
+
     throw new Error("Unknown action: " + action);
   } catch (error) {
     return json_({
@@ -153,6 +160,25 @@ function updateStudentStatus_(payload) {
 
   return {
     student: publicStudent_(student, false)
+  };
+}
+
+function deleteStudent_(payload) {
+  assertAdmin_(payload.adminKey);
+  requireFields_(payload, ["uuid"]);
+
+  const sheet = ensureSheet_();
+  const table = readTable_();
+  const row = table.rows.find((item) => item.student.uuid === payload.uuid);
+
+  if (!row) {
+    throw new Error("找不到學員 UUID: " + payload.uuid);
+  }
+
+  sheet.deleteRow(row.rowNumber);
+
+  return {
+    uuid: payload.uuid
   };
 }
 

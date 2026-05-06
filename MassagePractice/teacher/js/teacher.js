@@ -97,6 +97,7 @@
                 <button class="button button--approve" data-action="approved" data-uuid="${uuid}" type="button">通過</button>
                 <button class="button button--pending" data-action="pending" data-uuid="${uuid}" type="button">待審</button>
                 <button class="button button--reject" data-action="rejected" data-uuid="${uuid}" type="button">未通過</button>
+                <button class="button button--delete" data-action="delete" data-uuid="${uuid}" type="button">移除</button>
               </div>
             </td>
           </tr>
@@ -154,6 +155,32 @@
     }
   }
 
+  async function deleteStudent(uuid) {
+    const key = adminKey();
+    const current = students.find((student) => student.uuid === uuid);
+    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+
+    if (!window.confirm(`確定移除「${name}」？這會從 Google Sheet 刪除此學員資料。`)) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await AppApi.post("deleteStudent", {
+        adminKey: key,
+        uuid
+      });
+
+      students = students.filter((student) => student.uuid !== uuid);
+      render();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function bindEvents() {
     elements.connectButton.addEventListener("click", loadStudents);
     elements.reloadButton.addEventListener("click", loadStudents);
@@ -166,6 +193,12 @@
     elements.studentsBody.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
+
+      if (button.dataset.action === "delete") {
+        deleteStudent(button.dataset.uuid);
+        return;
+      }
+
       updateStatus(button.dataset.uuid, button.dataset.action);
     });
   }

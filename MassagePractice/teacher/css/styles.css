@@ -505,6 +505,12 @@ tbody tr:hover {
   color: var(--pending);
 }
 
+.button--delete {
+  background: #fff;
+  border-color: #d4d8d2;
+  color: #53605a;
+}
+
 @keyframes pulse {
   from {
     transform: scale(0.85);
