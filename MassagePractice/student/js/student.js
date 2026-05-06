@@ -214,8 +214,7 @@
   function currentPracticeDraftRecord() {
     return {
       targetName: selectedPracticeName(elements.practiceTargetSelect, elements.practiceTargetOtherInput),
-      itemName: selectedPracticeName(elements.practiceItemSelect, elements.practiceItemOtherInput),
-      startedAt: new Date().toISOString()
+      itemName: selectedPracticeName(elements.practiceItemSelect, elements.practiceItemOtherInput)
     };
   }
 
@@ -228,8 +227,10 @@
   function showPracticeTimer(record, options) {
     options = options || {};
     const start = new Date(record.startedAt);
-    const startMs =
-      options.preserveStart && practiceTimerStartMs
+    const isPendingStart = Boolean(options.pendingStart);
+    const startMs = isPendingStart
+      ? 0
+      : options.preserveStart && practiceTimerStartMs
         ? practiceTimerStartMs
         : Number.isNaN(start.getTime())
           ? Date.now()
@@ -241,20 +242,20 @@
       .join(" / ");
 
     practiceTimerStartMs = startMs;
-    practiceTimerPendingStart = Boolean(options.pendingStart);
+    practiceTimerPendingStart = isPendingStart;
     elements.practiceTimerOverlay.hidden = false;
     elements.practiceTimerMeta.textContent = practiceLabel || "練習進行中";
     elements.practiceTimerStartedAt.textContent = practiceTimerPendingStart
-      ? "正在建立練習紀錄"
+      ? "等待開始"
       : record.startedAt
         ? "開始 " + AppApi.formatDate(record.startedAt)
         : "";
-    elements.endPracticeButton.textContent = practiceTimerPendingStart ? "開始中" : "結束練習";
+    elements.endPracticeButton.textContent = practiceTimerPendingStart ? "等待開始" : "結束練習";
     elements.endPracticeButton.disabled = practiceTimerPendingStart;
     document.body.classList.add("practice-timer-open");
     renderPracticeTimerValue();
 
-    if (!practiceTimerId) {
+    if (!practiceTimerPendingStart && !practiceTimerId) {
       practiceTimerId = window.setInterval(renderPracticeTimerValue, 1000);
     }
 
