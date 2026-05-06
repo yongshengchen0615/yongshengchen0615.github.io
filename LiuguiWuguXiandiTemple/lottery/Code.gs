@@ -11,6 +11,11 @@ const SPREADSHEET_ID = '';
 // LINE Login Channel ID. This must match the channel prefix in client/script.js LIFF_ID.
 const LINE_CHANNEL_ID = '2009806965';
 
+// LINE Messaging API channel access token. Prefer setting Script Property LINE_CHANNEL_ACCESS_TOKEN.
+const LINE_CHANNEL_ACCESS_TOKEN = '';
+const LINE_CHANNEL_ACCESS_TOKEN_PROPERTY = 'LINE_CHANNEL_ACCESS_TOKEN';
+const LINE_PUSH_MESSAGE_URL = 'https://api.line.me/v2/bot/message/push';
+
 // Optional admin token for winner-drawing pages. Leave empty to skip this check.
 const DRAW_ADMIN_TOKEN = '';
 
@@ -179,6 +184,8 @@ function drawWinner_(payload) {
   assertAdmin_(payload);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
+  var board = null;
+  var currentWinner = null;
 
   try {
     var sheet = getSheet_();
@@ -209,10 +216,14 @@ function drawWinner_(payload) {
     winner.updatedAt = now;
 
     writeWinnerResult_(sheet, winner);
-    return buildWinnerBoard_(sheet, buildWinnerRecord_(winner), payload);
+    currentWinner = buildWinnerRecord_(winner);
+    board = buildWinnerBoard_(sheet, currentWinner, payload);
   } finally {
     lock.releaseLock();
   }
+
+  notifyWinnerByLine_(currentWinner);
+  return board;
 }
 
 function getWinnerBoard_(payload) {
@@ -625,6 +636,69 @@ function verifyLineIdToken_(idToken, expectedUserId) {
   }
 
   return body;
+}
+
+function notifyWinnerByLine_(winner) {
+  if (!winner || !cleanText_(winner.uuid) || !cleanText_(winner.winnerPrize)) return;
+
+  var accessToken = getLineChannelAccessToken_();
+  if (!accessToken) {
+    Logger.log('LINE push skipped: missing Script Property ' + LINE_CHANNEL_ACCESS_TOKEN_PROPERTY);
+    return;
+  }
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(LINE_PUSH_MESSAGE_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        Authorization: 'Bearer ' + accessToken,
+      },
+      payload: JSON.stringify({
+        to: cleanText_(winner.uuid),
+        messages: [{
+          type: 'text',
+          text: buildWinnerLineMessage_(winner),
+        }],
+      }),
+      muteHttpExceptions: true,
+    });
+  } catch (error) {
+    Logger.log('LINE push failed: ' + (error.message || String(error)));
+    return;
+  }
+
+  var statusCode = response.getResponseCode();
+  if (statusCode < 200 || statusCode >= 300) {
+    Logger.log('LINE push failed with HTTP ' + statusCode + ': ' + response.getContentText());
+  }
+}
+
+function getLineChannelAccessToken_() {
+  return cleanText_(LINE_CHANNEL_ACCESS_TOKEN) ||
+    cleanText_(PropertiesService.getScriptProperties().getProperty(LINE_CHANNEL_ACCESS_TOKEN_PROPERTY));
+}
+
+function buildWinnerLineMessage_(winner) {
+  var lineName = cleanText_(winner.lineName) || '貴賓';
+  var lotteryNumber = cleanText_(winner.lotteryNumber) || '------';
+  var winnerPrize = cleanText_(winner.winnerPrize) || '現場抽獎';
+  var winnerAt = cleanText_(winner.winnerAt);
+  var lines = [
+    '六龜帝安宮摸彩中獎通知',
+    '',
+    '恭喜 ' + lineName + ' 中獎！',
+    '摸彩號碼：' + lotteryNumber,
+    '中獎獎項：' + winnerPrize,
+  ];
+
+  if (winnerAt) {
+    lines.push('中獎時間：' + winnerAt);
+  }
+
+  lines.push('', '請依現場公告或工作人員指示領獎。');
+  return lines.join('\n');
 }
 
 function createUniqueLotteryNumber_(usedNumbers) {
