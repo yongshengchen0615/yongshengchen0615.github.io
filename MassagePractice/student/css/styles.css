@@ -258,14 +258,6 @@ img {
   font-size: 1.2rem;
 }
 
-.profile__meta span,
-.uuid {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
 .notice {
   min-height: 56px;
   color: var(--muted);

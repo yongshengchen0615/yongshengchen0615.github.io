@@ -11,6 +11,11 @@
   };
 
   const elements = {
+    teacherTitle: document.getElementById("teacher-title"),
+    viewButtons: Array.from(document.querySelectorAll("[data-view]")),
+    studentsView: document.getElementById("studentsView"),
+    practiceTargetsView: document.getElementById("practiceTargetsView"),
+    practiceItemsView: document.getElementById("practiceItemsView"),
     adminKey: document.getElementById("adminKey"),
     connectButton: document.getElementById("connectButton"),
     reloadButton: document.getElementById("reloadButton"),
@@ -48,8 +53,33 @@
     rejected: "未通過"
   };
 
+  const viewTitles = {
+    studentsView: "學員審核",
+    practiceTargetsView: "練習對象",
+    practiceItemsView: "練習項目"
+  };
+
   function adminKey() {
     return elements.adminKey.value.trim() || sessionStorage.getItem(ADMIN_KEY) || "";
+  }
+
+  function showView(viewId) {
+    [elements.studentsView, elements.practiceTargetsView, elements.practiceItemsView].forEach((view) => {
+      view.hidden = view.id !== viewId;
+    });
+
+    elements.viewButtons.forEach((button) => {
+      const isActive = button.dataset.view === viewId;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+
+    elements.teacherTitle.textContent = viewTitles[viewId] || viewTitles.studentsView;
+
+    if (viewId !== "studentsView") {
+      hideAttendanceRecords();
+      hidePracticeRecords();
+    }
   }
 
   function setLoading(isLoading) {
@@ -77,13 +107,17 @@
     elements.practiceRecordTableWrap.hidden = true;
   }
 
+  function studentDisplayName(student) {
+    return student && student.lineName ? student.lineName : "未命名學員";
+  }
+
   function filteredStudents() {
     const query = elements.searchInput.value.trim().toLowerCase();
     const status = elements.statusFilter.value;
 
     return students.filter((student) => {
       const matchesStatus = status === "all" || student.status === status;
-      const haystack = [student.lineName, student.lineUserId, student.uuid].join(" ").toLowerCase();
+      const haystack = [student.lineName].join(" ").toLowerCase();
       return matchesStatus && (!query || haystack.includes(query));
     });
   }
@@ -162,9 +196,8 @@
     elements.studentsBody.innerHTML = rows
       .map((student) => {
         const status = student.status || "pending";
-        const name = AppApi.escapeHtml(student.lineName || "LINE 使用者");
+        const name = AppApi.escapeHtml(studentDisplayName(student));
         const picture = AppApi.escapeHtml(student.linePictureUrl || AppApi.avatarPlaceholder());
-        const lineUserId = AppApi.escapeHtml(student.lineUserId || "-");
         const uuid = AppApi.escapeHtml(student.uuid || "");
         const badge = `<span class="badge badge--${status}">${statusLabels[status] || status}</span>`;
 
@@ -179,7 +212,6 @@
                 </div>
               </div>
             </td>
-            <td><span class="uuid">${lineUserId}</span></td>
             <td>${badge}</td>
             <td>${AppApi.formatDate(student.createdAt)}</td>
             <td>${AppApi.formatDate(student.updatedAt)}</td>
@@ -259,7 +291,7 @@
   async function deleteStudent(uuid) {
     const key = adminKey();
     const current = students.find((student) => student.uuid === uuid);
-    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+    const name = studentDisplayName(current);
 
     if (!window.confirm(`確定移除「${name}」？這會從 Google Sheet 刪除此學員資料。`)) {
       return;
@@ -287,7 +319,7 @@
   async function loadAttendanceRecords(uuid) {
     const key = adminKey();
     const current = students.find((student) => student.uuid === uuid);
-    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+    const name = studentDisplayName(current);
 
     selectedAttendanceUuid = uuid;
     elements.attendanceRegion.hidden = false;
@@ -338,7 +370,7 @@
   async function loadPracticeRecords(uuid) {
     const key = adminKey();
     const current = students.find((student) => student.uuid === uuid);
-    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+    const name = studentDisplayName(current);
 
     selectedPracticeUuid = uuid;
     elements.practiceRecordRegion.hidden = false;
@@ -444,6 +476,9 @@
   }
 
   function bindEvents() {
+    elements.viewButtons.forEach((button) => {
+      button.addEventListener("click", () => showView(button.dataset.view));
+    });
     elements.connectButton.addEventListener("click", loadStudents);
     elements.reloadButton.addEventListener("click", loadStudents);
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);

@@ -24,7 +24,6 @@
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
     profileName: document.getElementById("profileName"),
-    profileUuid: document.getElementById("profileUuid"),
     statusDot: document.getElementById("statusDot"),
     statusText: document.getElementById("statusText")
   };
@@ -123,7 +122,6 @@
     elements.profileAvatar.src = student.linePictureUrl || AppApi.avatarPlaceholder();
     elements.profileAvatar.alt = student.lineName ? student.lineName + " 的 LINE 頭像" : "LINE 頭像";
     elements.profileName.textContent = student.lineName || "LINE 使用者";
-    elements.profileUuid.textContent = student.lineUserId || student.uuid;
     elements.refreshButton.hidden = false;
     renderAttendance(student);
     renderPractice(student);
