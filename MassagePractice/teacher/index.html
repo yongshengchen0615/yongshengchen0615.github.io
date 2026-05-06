@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>師資系統</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260506-2" />
+    <link rel="stylesheet" href="css/styles.css?v=20260506-4" />
   </head>
   <body>
     <header class="topbar">
@@ -46,6 +46,32 @@
             <option value="rejected">未通過</option>
           </select>
           <button class="button button--ghost" id="reloadButton" type="button">重新整理</button>
+        </div>
+      </section>
+
+      <section class="practice-admin" id="practiceAdmin" aria-label="練習設定">
+        <div class="practice-manager">
+          <div>
+            <p class="eyebrow">Practice Targets</p>
+            <h2>練習對象</h2>
+          </div>
+          <div class="practice-form">
+            <input id="practiceTargetInput" type="text" placeholder="新增練習對象" />
+            <button class="button" id="addPracticeTargetButton" type="button">新增</button>
+          </div>
+          <div class="option-list" id="practiceTargetList">輸入管理密鑰後載入。</div>
+        </div>
+
+        <div class="practice-manager">
+          <div>
+            <p class="eyebrow">Practice Items</p>
+            <h2>練習項目</h2>
+          </div>
+          <div class="practice-form">
+            <input id="practiceItemInput" type="text" placeholder="新增練習項目" />
+            <button class="button" id="addPracticeItemButton" type="button">新增</button>
+          </div>
+          <div class="option-list" id="practiceItemList">輸入管理密鑰後載入。</div>
         </div>
       </section>
 
@@ -96,9 +122,37 @@
           </table>
         </div>
       </section>
+
+      <section class="attendance-region" id="practiceRecordRegion" aria-live="polite" hidden>
+        <div class="attendance-region__header">
+          <div>
+            <p class="eyebrow">Practice Records</p>
+            <h2 id="practiceRecordTitle">練習紀錄</h2>
+          </div>
+          <button class="button button--ghost" id="closePracticeRecordButton" type="button">關閉</button>
+        </div>
+
+        <div class="empty-state" id="practiceRecordEmpty" hidden></div>
+
+        <div class="table-wrap" id="practiceRecordTableWrap" hidden>
+          <table class="practice-record-table">
+            <thead>
+              <tr>
+                <th>練習對象</th>
+                <th>練習項目</th>
+                <th>開始時間</th>
+                <th>結束時間</th>
+                <th>練習時間</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody id="practiceRecordBody"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
-    <script src="js/api.js?v=20260506-2"></script>
-    <script src="js/teacher.js?v=20260506-2"></script>
+    <script src="js/api.js?v=20260506-4"></script>
+    <script src="js/teacher.js?v=20260506-4"></script>
   </body>
 </html>

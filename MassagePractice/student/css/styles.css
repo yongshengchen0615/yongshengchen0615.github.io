@@ -272,11 +272,26 @@ img {
   line-height: 1.65;
 }
 
-.attendance-panel {
+.attendance-panel,
+.practice-panel {
   display: grid;
   gap: 14px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
+}
+
+.practice-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.practice-fields label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .attendance-header {
@@ -665,6 +680,10 @@ tbody tr:hover {
 
   .button-row .button {
     width: 100%;
+  }
+
+  .practice-fields {
+    grid-template-columns: 1fr;
   }
 
   .attendance-record {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>學員系統</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260506-3" />
+    <link rel="stylesheet" href="css/styles.css?v=20260506-4" />
   </head>
   <body>
     <header class="topbar">
@@ -51,6 +51,31 @@
             <div class="attendance-list" id="attendanceList"></div>
           </div>
 
+          <div class="practice-panel" id="practicePanel" hidden>
+            <div class="attendance-header">
+              <h2>練習紀錄</h2>
+              <span class="attendance-state" id="practiceState">尚未練習</span>
+            </div>
+
+            <div class="practice-fields">
+              <label for="practiceTargetSelect">
+                練習對象
+                <select id="practiceTargetSelect"></select>
+              </label>
+              <label for="practiceItemSelect">
+                練習項目
+                <select id="practiceItemSelect"></select>
+              </label>
+            </div>
+
+            <div class="button-row">
+              <button class="button button--checkin" id="startPracticeButton" type="button">開始練習</button>
+              <button class="button button--checkout" id="endPracticeButton" type="button">結束練習</button>
+            </div>
+
+            <div class="attendance-list" id="practiceList"></div>
+          </div>
+
           <div class="button-row">
             <button class="button button--ghost" id="refreshButton" type="button" hidden>更新狀態</button>
           </div>
@@ -58,7 +83,7 @@
       </section>
     </main>
 
-    <script src="js/api.js?v=20260506-3"></script>
-    <script src="js/student.js?v=20260506-3"></script>
+    <script src="js/api.js?v=20260506-4"></script>
+    <script src="js/student.js?v=20260506-4"></script>
   </body>
 </html>

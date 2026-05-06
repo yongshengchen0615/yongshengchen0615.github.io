@@ -2,9 +2,9 @@
 
 這是一組靜態 `HTML/CSS/JS` 前端加上 Google Apps Script 後端：
 
-- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退。
-- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，查看簽到紀錄，或移除學員。
-- `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet 與簽到紀錄。
+- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退，並記錄練習。
+- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，管理練習對象與項目，查看紀錄，或移除學員。
+- `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet、簽到紀錄與練習紀錄。
 
 ## 檔案
 
@@ -41,6 +41,16 @@ id, studentUuid, lineUserId, lineName, checkInAt, checkOutAt, createdAt, updated
 ```
 
 每次簽到會新增一筆紀錄；簽退會補上同一筆紀錄的 `checkOutAt`。
+
+GAS 也會建立練習設定與練習紀錄工作表：
+
+```text
+practice_targets: id, name, enabled, createdAt, updatedAt
+practice_items: id, name, enabled, createdAt, updatedAt
+practice_records: id, studentUuid, lineUserId, lineName, targetId, targetName, itemId, itemName, startedAt, endedAt, createdAt, updatedAt
+```
+
+學員開始練習會新增一筆 `practice_records`；結束練習會補上同一筆紀錄的 `endedAt`。
 
 ## 部署步驟
 
@@ -94,8 +104,8 @@ SPREADSHEET_ID=你的 Google Sheet ID
 
 - 學員入口：`student/`
 - 師資入口：`teacher/`
-- 學員審核通過後，可以在學員系統按「簽到」與「簽退」。
-- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核、查看簽到紀錄或移除學員。
+- 學員審核通過後，可以在學員系統按「簽到」與「簽退」，也可以選擇練習對象與練習項目後開始/結束練習。
+- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核、管理練習選項、查看簽到/練習紀錄或移除學員。
 
 ## 注意事項
 

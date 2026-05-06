@@ -393,6 +393,68 @@ a:focus-visible {
   min-width: min(260px, 100%);
 }
 
+.practice-admin {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.practice-manager {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.practice-manager h2 {
+  margin: 4px 0 0;
+  font-size: 1.15rem;
+}
+
+.practice-form {
+  display: flex;
+  gap: 10px;
+}
+
+.practice-form input {
+  min-width: 0;
+  flex: 1;
+}
+
+.option-list {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.option-list__empty {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.option-pill {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px 6px 12px;
+  background: #fafbf8;
+}
+
+.option-pill span {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 800;
+}
+
 .table-region {
   overflow: hidden;
 }
@@ -433,6 +495,10 @@ table {
 
 .attendance-table {
   min-width: 720px;
+}
+
+.practice-record-table {
+  min-width: 920px;
 }
 
 th,
@@ -569,7 +635,8 @@ tbody tr:hover {
 @media (max-width: 840px) {
   .entry,
   .student-panel,
-  .toolbar {
+  .toolbar,
+  .practice-admin {
     grid-template-columns: 1fr;
   }
 
@@ -584,6 +651,7 @@ tbody tr:hover {
   }
 
   .admin-login,
+  .practice-form,
   .list-controls {
     justify-content: stretch;
   }
@@ -591,6 +659,8 @@ tbody tr:hover {
   .admin-login input,
   .admin-login button,
   .attendance-region__header button,
+  .practice-form input,
+  .practice-form button,
   .list-controls input,
   .list-controls select,
   .list-controls button {

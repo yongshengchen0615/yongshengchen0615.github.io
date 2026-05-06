@@ -13,6 +13,13 @@
     attendancePanel: document.getElementById("attendancePanel"),
     attendanceState: document.getElementById("attendanceState"),
     attendanceList: document.getElementById("attendanceList"),
+    practicePanel: document.getElementById("practicePanel"),
+    practiceState: document.getElementById("practiceState"),
+    practiceTargetSelect: document.getElementById("practiceTargetSelect"),
+    practiceItemSelect: document.getElementById("practiceItemSelect"),
+    startPracticeButton: document.getElementById("startPracticeButton"),
+    endPracticeButton: document.getElementById("endPracticeButton"),
+    practiceList: document.getElementById("practiceList"),
     notice: document.getElementById("notice"),
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
@@ -65,6 +72,10 @@
     elements.refreshButton.disabled = isBusy;
     elements.checkInButton.disabled = isBusy;
     elements.checkOutButton.disabled = isBusy;
+    elements.practiceTargetSelect.disabled = isBusy;
+    elements.practiceItemSelect.disabled = isBusy;
+    elements.startPracticeButton.disabled = isBusy;
+    elements.endPracticeButton.disabled = isBusy;
     setStatus(isBusy ? "busy" : "idle", message);
   }
 
@@ -115,9 +126,10 @@
     elements.profileUuid.textContent = student.lineUserId || student.uuid;
     elements.refreshButton.hidden = false;
     renderAttendance(student);
+    renderPractice(student);
 
     if (status === "approved") {
-      setNotice("審核已通過，可以使用簽到簽退。");
+      setNotice("審核已通過，可以使用簽到簽退與練習紀錄。");
     } else if (status === "rejected") {
       setNotice(student.reviewNote || "審核未通過，請聯繫師資確認資料。");
     } else {
@@ -130,6 +142,7 @@
     elements.profile.hidden = true;
     elements.refreshButton.hidden = true;
     elements.attendancePanel.hidden = true;
+    elements.practicePanel.hidden = true;
     setStatus("idle", "尚未登入");
     setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
   }
@@ -172,6 +185,68 @@
           })
           .join("")
       : '<div class="attendance-empty">尚無簽到紀錄。</div>';
+  }
+
+  function renderPractice(student) {
+    const isApproved = normalizeStatus(student.status) === "approved";
+    const practice = student.practice || {};
+    const options = practice.options || {};
+    const targets = Array.isArray(options.targets) ? options.targets : [];
+    const items = Array.isArray(options.items) ? options.items : [];
+    const records = Array.isArray(practice.recent) ? practice.recent : [];
+    const isActive = Boolean(practice.active && practice.current);
+    const hasOptions = targets.length && items.length;
+
+    elements.practicePanel.hidden = !isApproved;
+
+    if (!isApproved) {
+      elements.practiceTargetSelect.disabled = true;
+      elements.practiceItemSelect.disabled = true;
+      elements.startPracticeButton.disabled = true;
+      elements.endPracticeButton.disabled = true;
+      elements.practiceList.innerHTML = "";
+      return;
+    }
+
+    elements.practiceState.textContent = isActive ? "練習中" : "尚未練習";
+    elements.practiceTargetSelect.innerHTML = selectOptions(targets, "選擇練習對象");
+    elements.practiceItemSelect.innerHTML = selectOptions(items, "選擇練習項目");
+    elements.practiceTargetSelect.disabled = isActive || !targets.length;
+    elements.practiceItemSelect.disabled = isActive || !items.length;
+    elements.startPracticeButton.disabled = isActive || !hasOptions;
+    elements.endPracticeButton.disabled = !isActive;
+
+    elements.practiceList.innerHTML = records.length
+      ? records
+          .map((record) => {
+            const endText = record.endedAt ? AppApi.formatDate(record.endedAt) : "尚未結束";
+            const stateClass = record.endedAt ? "attendance-record--closed" : "attendance-record--active";
+            const stateText = record.endedAt ? "已結束" : "進行中";
+
+            return `
+              <div class="attendance-record ${stateClass}">
+                <div class="attendance-times">
+                  <span>${AppApi.escapeHtml(record.targetName || "-")} / ${AppApi.escapeHtml(record.itemName || "-")}</span>
+                  <span>開始 ${AppApi.formatDate(record.startedAt)}</span>
+                  <span>結束 ${endText}</span>
+                </div>
+                <strong>${stateText}</strong>
+              </div>
+            `;
+          })
+          .join("")
+      : `<div class="attendance-empty">${hasOptions ? "尚無練習紀錄。" : "請先由師資端新增練習對象與練習項目。"}</div>`;
+  }
+
+  function selectOptions(options, placeholder) {
+    return (
+      `<option value="">${AppApi.escapeHtml(placeholder)}</option>` +
+      options
+        .map((option) => {
+          return `<option value="${AppApi.escapeHtml(option.id)}">${AppApi.escapeHtml(option.name)}</option>`;
+        })
+        .join("")
+    );
   }
 
   async function beginLineLogin() {
@@ -280,7 +355,52 @@
       setNotice(error.message);
     } finally {
       elements.refreshButton.disabled = false;
-      if (currentStudent) renderAttendance(currentStudent);
+      if (currentStudent) {
+        renderAttendance(currentStudent);
+        renderPractice(currentStudent);
+      }
+    }
+  }
+
+  async function recordPractice(action) {
+    const session = readSession();
+    if (!session) {
+      renderLoggedOut();
+      await beginLineLogin();
+      return;
+    }
+
+    const payload = {
+      uuid: session.uuid,
+      publicToken: session.publicToken
+    };
+
+    if (action === "startPractice") {
+      payload.targetId = elements.practiceTargetSelect.value;
+      payload.itemId = elements.practiceItemSelect.value;
+
+      if (!payload.targetId || !payload.itemId) {
+        setStatus("rejected", "練習資料未完成");
+        setNotice("請先選擇練習對象與練習項目。");
+        return;
+      }
+    }
+
+    setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
+
+    try {
+      const student = await AppApi.post(action, payload);
+      saveSession(student);
+      renderStudent(student);
+    } catch (error) {
+      setStatus("rejected", action === "startPractice" ? "開始失敗" : "結束失敗");
+      setNotice(error.message);
+    } finally {
+      elements.refreshButton.disabled = false;
+      if (currentStudent) {
+        renderAttendance(currentStudent);
+        renderPractice(currentStudent);
+      }
     }
   }
 
@@ -303,7 +423,10 @@
       await beginLineLogin();
     } finally {
       elements.refreshButton.disabled = false;
-      if (currentStudent) renderAttendance(currentStudent);
+      if (currentStudent) {
+        renderAttendance(currentStudent);
+        renderPractice(currentStudent);
+      }
     }
   }
 
@@ -311,6 +434,8 @@
     elements.refreshButton.addEventListener("click", refreshStatus);
     elements.checkInButton.addEventListener("click", () => recordAttendance("checkIn"));
     elements.checkOutButton.addEventListener("click", () => recordAttendance("checkOut"));
+    elements.startPracticeButton.addEventListener("click", () => recordPractice("startPractice"));
+    elements.endPracticeButton.addEventListener("click", () => recordPractice("endPractice"));
   }
 
   async function init() {

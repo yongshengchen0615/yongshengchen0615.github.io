@@ -4,6 +4,11 @@
   const ADMIN_KEY = "teacherAdminKey";
   let students = [];
   let selectedAttendanceUuid = "";
+  let selectedPracticeUuid = "";
+  let practiceSettings = {
+    targets: [],
+    items: []
+  };
 
   const elements = {
     adminKey: document.getElementById("adminKey"),
@@ -22,7 +27,19 @@
     attendanceEmpty: document.getElementById("attendanceEmpty"),
     attendanceTableWrap: document.getElementById("attendanceTableWrap"),
     attendanceBody: document.getElementById("attendanceBody"),
-    closeAttendanceButton: document.getElementById("closeAttendanceButton")
+    closeAttendanceButton: document.getElementById("closeAttendanceButton"),
+    practiceTargetInput: document.getElementById("practiceTargetInput"),
+    practiceItemInput: document.getElementById("practiceItemInput"),
+    addPracticeTargetButton: document.getElementById("addPracticeTargetButton"),
+    addPracticeItemButton: document.getElementById("addPracticeItemButton"),
+    practiceTargetList: document.getElementById("practiceTargetList"),
+    practiceItemList: document.getElementById("practiceItemList"),
+    practiceRecordRegion: document.getElementById("practiceRecordRegion"),
+    practiceRecordTitle: document.getElementById("practiceRecordTitle"),
+    practiceRecordEmpty: document.getElementById("practiceRecordEmpty"),
+    practiceRecordTableWrap: document.getElementById("practiceRecordTableWrap"),
+    practiceRecordBody: document.getElementById("practiceRecordBody"),
+    closePracticeRecordButton: document.getElementById("closePracticeRecordButton")
   };
 
   const statusLabels = {
@@ -38,6 +55,8 @@
   function setLoading(isLoading) {
     elements.connectButton.disabled = isLoading;
     elements.reloadButton.disabled = isLoading;
+    elements.addPracticeTargetButton.disabled = isLoading;
+    elements.addPracticeItemButton.disabled = isLoading;
   }
 
   function setEmpty(message) {
@@ -50,6 +69,12 @@
     elements.attendanceEmpty.textContent = message;
     elements.attendanceEmpty.hidden = false;
     elements.attendanceTableWrap.hidden = true;
+  }
+
+  function setPracticeRecordEmpty(message) {
+    elements.practiceRecordEmpty.textContent = message;
+    elements.practiceRecordEmpty.hidden = false;
+    elements.practiceRecordTableWrap.hidden = true;
   }
 
   function filteredStudents() {
@@ -70,10 +95,13 @@
   }
 
   function durationLabel(record) {
-    if (!record.checkOutAt) return "進行中";
+    const startValue = record.checkInAt || record.startedAt;
+    const endValue = record.checkOutAt || record.endedAt;
 
-    const start = new Date(record.checkInAt);
-    const end = new Date(record.checkOutAt);
+    if (!endValue) return "進行中";
+
+    const start = new Date(startValue);
+    const end = new Date(endValue);
     const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
 
     if (!Number.isFinite(minutes)) return "-";
@@ -88,6 +116,35 @@
     selectedAttendanceUuid = "";
     elements.attendanceRegion.hidden = true;
     elements.attendanceBody.innerHTML = "";
+  }
+
+  function hidePracticeRecords() {
+    selectedPracticeUuid = "";
+    elements.practiceRecordRegion.hidden = true;
+    elements.practiceRecordBody.innerHTML = "";
+  }
+
+  function renderPracticeSettings() {
+    renderPracticeOptionList(elements.practiceTargetList, practiceSettings.targets, "deletePracticeTarget");
+    renderPracticeOptionList(elements.practiceItemList, practiceSettings.items, "deletePracticeItem");
+  }
+
+  function renderPracticeOptionList(container, options, action) {
+    if (!options.length) {
+      container.innerHTML = '<div class="option-list__empty">尚未新增。</div>';
+      return;
+    }
+
+    container.innerHTML = options
+      .map((option) => {
+        return `
+          <div class="option-pill">
+            <span>${AppApi.escapeHtml(option.name)}</span>
+            <button class="button button--delete" data-action="${action}" data-id="${AppApi.escapeHtml(option.id)}" type="button">移除</button>
+          </div>
+        `;
+      })
+      .join("");
   }
 
   function render() {
@@ -131,7 +188,8 @@
                 <button class="button button--approve" data-action="approved" data-uuid="${uuid}" type="button">通過</button>
                 <button class="button button--pending" data-action="pending" data-uuid="${uuid}" type="button">待審</button>
                 <button class="button button--reject" data-action="rejected" data-uuid="${uuid}" type="button">未通過</button>
-                <button class="button button--records" data-action="records" data-uuid="${uuid}" type="button">紀錄</button>
+                <button class="button button--records" data-action="records" data-uuid="${uuid}" type="button">簽到</button>
+                <button class="button button--records" data-action="practiceRecords" data-uuid="${uuid}" type="button">練習</button>
                 <button class="button button--delete" data-action="delete" data-uuid="${uuid}" type="button">移除</button>
               </div>
             </td>
@@ -151,11 +209,18 @@
     setLoading(true);
     setEmpty("正在載入學員名單。");
     hideAttendanceRecords();
+    hidePracticeRecords();
 
     try {
       const data = await AppApi.post("listStudents", { adminKey: key });
+      const settings = await AppApi.post("listPracticeSettings", { adminKey: key });
       sessionStorage.setItem(ADMIN_KEY, key);
       students = data.students || [];
+      practiceSettings = {
+        targets: settings.targets || [],
+        items: settings.items || []
+      };
+      renderPracticeSettings();
       render();
     } catch (error) {
       setEmpty(error.message);
@@ -210,6 +275,7 @@
 
       students = students.filter((student) => student.uuid !== uuid);
       if (selectedAttendanceUuid === uuid) hideAttendanceRecords();
+      if (selectedPracticeUuid === uuid) hidePracticeRecords();
       render();
     } catch (error) {
       window.alert(error.message);
@@ -269,10 +335,131 @@
     }
   }
 
+  async function loadPracticeRecords(uuid) {
+    const key = adminKey();
+    const current = students.find((student) => student.uuid === uuid);
+    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+
+    selectedPracticeUuid = uuid;
+    elements.practiceRecordRegion.hidden = false;
+    elements.practiceRecordTitle.textContent = `${name} 練習紀錄`;
+    elements.practiceRecordBody.innerHTML = "";
+    setPracticeRecordEmpty("正在載入練習紀錄。");
+    setLoading(true);
+
+    try {
+      const data = await AppApi.post("listPracticeRecords", {
+        adminKey: key,
+        uuid
+      });
+      const records = data.records || [];
+
+      elements.practiceRecordTitle.textContent = `${data.student.lineName || name} 練習紀錄`;
+
+      if (!records.length) {
+        setPracticeRecordEmpty("目前沒有練習紀錄。");
+        return;
+      }
+
+      elements.practiceRecordEmpty.hidden = true;
+      elements.practiceRecordTableWrap.hidden = false;
+      elements.practiceRecordBody.innerHTML = records
+        .map((record) => {
+          const status = record.endedAt
+            ? '<span class="badge badge--closed">已結束</span>'
+            : '<span class="badge badge--active">進行中</span>';
+
+          return `
+            <tr>
+              <td>${AppApi.escapeHtml(record.targetName || "-")}</td>
+              <td>${AppApi.escapeHtml(record.itemName || "-")}</td>
+              <td>${AppApi.formatDate(record.startedAt)}</td>
+              <td>${record.endedAt ? AppApi.formatDate(record.endedAt) : "-"}</td>
+              <td>${durationLabel(record)}</td>
+              <td>${status}</td>
+            </tr>
+          `;
+        })
+        .join("");
+    } catch (error) {
+      setPracticeRecordEmpty(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addPracticeOption(action, input, settingsKey) {
+    const key = adminKey();
+    const name = input.value.trim();
+
+    if (!key) {
+      window.alert("請先輸入管理密鑰。");
+      return;
+    }
+
+    if (!name) {
+      window.alert("請輸入名稱。");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const data = await AppApi.post(action, {
+        adminKey: key,
+        name
+      });
+      const option = data.target || data.item;
+      practiceSettings[settingsKey] = [option].concat(practiceSettings[settingsKey]);
+      input.value = "";
+      renderPracticeSettings();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deletePracticeOption(action, id, settingsKey) {
+    const key = adminKey();
+
+    if (!window.confirm("確定移除此選項？既有練習紀錄會保留原本名稱。")) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await AppApi.post(action, {
+        adminKey: key,
+        id
+      });
+      practiceSettings[settingsKey] = practiceSettings[settingsKey].filter((option) => option.id !== id);
+      renderPracticeSettings();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function bindEvents() {
     elements.connectButton.addEventListener("click", loadStudents);
     elements.reloadButton.addEventListener("click", loadStudents);
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
+    elements.closePracticeRecordButton.addEventListener("click", hidePracticeRecords);
+    elements.addPracticeTargetButton.addEventListener("click", () => {
+      addPracticeOption("addPracticeTarget", elements.practiceTargetInput, "targets");
+    });
+    elements.addPracticeItemButton.addEventListener("click", () => {
+      addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
+    });
+    elements.practiceTargetInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") addPracticeOption("addPracticeTarget", elements.practiceTargetInput, "targets");
+    });
+    elements.practiceItemInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
+    });
     elements.searchInput.addEventListener("input", render);
     elements.statusFilter.addEventListener("change", render);
     elements.adminKey.addEventListener("keydown", (event) => {
@@ -293,7 +480,24 @@
         return;
       }
 
+      if (button.dataset.action === "practiceRecords") {
+        loadPracticeRecords(button.dataset.uuid);
+        return;
+      }
+
       updateStatus(button.dataset.uuid, button.dataset.action);
+    });
+
+    elements.practiceTargetList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      deletePracticeOption(button.dataset.action, button.dataset.id, "targets");
+    });
+
+    elements.practiceItemList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      deletePracticeOption(button.dataset.action, button.dataset.id, "items");
     });
   }
 
