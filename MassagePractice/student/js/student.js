@@ -311,6 +311,21 @@
       : '<div class="attendance-empty">尚無簽到紀錄。</div>';
   }
 
+  function durationLabel(record) {
+    if (!record.endedAt) return "進行中";
+
+    const start = new Date(record.startedAt);
+    const end = new Date(record.endedAt);
+    const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+
+    if (!Number.isFinite(minutes)) return "-";
+    if (minutes < 60) return `${minutes} 分鐘`;
+
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} 小時 ${rest} 分鐘` : `${hours} 小時`;
+  }
+
   function renderPractice(student) {
     const isApproved = normalizeStatus(student.status) === "approved";
     const practice = student.practice || {};
@@ -362,6 +377,7 @@
                   <span>${AppApi.escapeHtml(record.targetName || "-")} / ${AppApi.escapeHtml(record.itemName || "-")}</span>
                   <span>開始 ${AppApi.formatDate(record.startedAt)}</span>
                   <span>結束 ${endText}</span>
+                  <span>練習時間 ${durationLabel(record)}</span>
                 </div>
                 <strong>${stateText}</strong>
               </div>
