@@ -278,12 +278,22 @@ img {
   gap: 10px;
 }
 
-.practice-fields label {
+.practice-field-group {
+  display: grid;
+  gap: 7px;
+}
+
+.practice-field-group > label,
+.practice-other-field {
   display: grid;
   gap: 7px;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.practice-other-field {
+  margin-top: 2px;
 }
 
 .attendance-header {

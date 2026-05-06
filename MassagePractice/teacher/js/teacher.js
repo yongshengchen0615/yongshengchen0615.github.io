@@ -2,6 +2,7 @@
   "use strict";
 
   const ADMIN_KEY = "teacherAdminKey";
+  const PRACTICE_OTHER_OPTION_NAME = "其他";
   let students = [];
   let selectedAttendanceUuid = "";
   let selectedPracticeUuid = "";
@@ -164,21 +165,30 @@
   }
 
   function renderPracticeOptionList(container, options, action) {
+    const systemOption = `
+      <div class="option-pill option-pill--system">
+        <span>${PRACTICE_OTHER_OPTION_NAME}</span>
+        <small>學員自填</small>
+      </div>
+    `;
+
     if (!options.length) {
-      container.innerHTML = '<div class="option-list__empty">尚未新增。</div>';
+      container.innerHTML = systemOption + '<div class="option-list__empty">尚未新增其他固定選項以外的內容。</div>';
       return;
     }
 
-    container.innerHTML = options
-      .map((option) => {
-        return `
-          <div class="option-pill">
-            <span>${AppApi.escapeHtml(option.name)}</span>
-            <button class="button button--delete" data-action="${action}" data-id="${AppApi.escapeHtml(option.id)}" type="button">移除</button>
-          </div>
-        `;
-      })
-      .join("");
+    container.innerHTML =
+      systemOption +
+      options
+        .map((option) => {
+          return `
+            <div class="option-pill">
+              <span>${AppApi.escapeHtml(option.name)}</span>
+              <button class="button button--delete" data-action="${action}" data-id="${AppApi.escapeHtml(option.id)}" type="button">移除</button>
+            </div>
+          `;
+        })
+        .join("");
   }
 
   function render() {
@@ -431,6 +441,11 @@
 
     if (!name) {
       window.alert("請輸入名稱。");
+      return;
+    }
+
+    if (name === PRACTICE_OTHER_OPTION_NAME) {
+      window.alert("「其他」已是系統固定選項。");
       return;
     }
 

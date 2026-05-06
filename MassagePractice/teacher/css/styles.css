@@ -446,6 +446,13 @@ a:focus-visible {
   font-size: 1.15rem;
 }
 
+.manager-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .practice-form {
   display: flex;
   gap: 10px;
@@ -485,6 +492,17 @@ a:focus-visible {
   overflow-wrap: anywhere;
   color: var(--ink);
   font-weight: 800;
+}
+
+.option-pill small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.option-pill--system {
+  border-color: rgba(6, 199, 85, 0.32);
+  background: #f0fbf5;
 }
 
 .table-region {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>學員系統</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260506-5" />
+    <link rel="stylesheet" href="css/styles.css?v=20260506-6" />
   </head>
   <body>
     <header class="topbar">
@@ -57,14 +57,22 @@
             </div>
 
             <div class="practice-fields">
-              <label for="practiceTargetSelect">
-                練習對象
+              <div class="practice-field-group">
+                <label for="practiceTargetSelect">練習對象</label>
                 <select id="practiceTargetSelect"></select>
-              </label>
-              <label for="practiceItemSelect">
-                練習項目
+                <label class="practice-other-field" id="practiceTargetOtherField" for="practiceTargetOtherInput" hidden>
+                  其他練習對象
+                  <input id="practiceTargetOtherInput" type="text" maxlength="60" placeholder="輸入練習對象" />
+                </label>
+              </div>
+              <div class="practice-field-group">
+                <label for="practiceItemSelect">練習項目</label>
                 <select id="practiceItemSelect"></select>
-              </label>
+                <label class="practice-other-field" id="practiceItemOtherField" for="practiceItemOtherInput" hidden>
+                  其他練習項目
+                  <input id="practiceItemOtherInput" type="text" maxlength="60" placeholder="輸入練習項目" />
+                </label>
+              </div>
             </div>
 
             <div class="button-row">
@@ -82,7 +90,7 @@
       </section>
     </main>
 
-    <script src="js/api.js?v=20260506-5"></script>
-    <script src="js/student.js?v=20260506-5"></script>
+    <script src="js/api.js?v=20260506-6"></script>
+    <script src="js/student.js?v=20260506-6"></script>
   </body>
 </html>

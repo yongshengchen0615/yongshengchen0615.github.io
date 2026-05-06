@@ -4,6 +4,8 @@
   const STORAGE_KEY = "studentApprovalSession";
   const OAUTH_KEY = "lineOAuth";
   const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
+  const PRACTICE_OTHER_OPTION_ID = "__other__";
+  const PRACTICE_OTHER_OPTION_NAME = "其他";
   let currentStudent = null;
 
   const elements = {
@@ -16,7 +18,11 @@
     practicePanel: document.getElementById("practicePanel"),
     practiceState: document.getElementById("practiceState"),
     practiceTargetSelect: document.getElementById("practiceTargetSelect"),
+    practiceTargetOtherField: document.getElementById("practiceTargetOtherField"),
+    practiceTargetOtherInput: document.getElementById("practiceTargetOtherInput"),
     practiceItemSelect: document.getElementById("practiceItemSelect"),
+    practiceItemOtherField: document.getElementById("practiceItemOtherField"),
+    practiceItemOtherInput: document.getElementById("practiceItemOtherInput"),
     startPracticeButton: document.getElementById("startPracticeButton"),
     endPracticeButton: document.getElementById("endPracticeButton"),
     practiceList: document.getElementById("practiceList"),
@@ -72,7 +78,9 @@
     elements.checkInButton.disabled = isBusy;
     elements.checkOutButton.disabled = isBusy;
     elements.practiceTargetSelect.disabled = isBusy;
+    elements.practiceTargetOtherInput.disabled = isBusy;
     elements.practiceItemSelect.disabled = isBusy;
+    elements.practiceItemOtherInput.disabled = isBusy;
     elements.startPracticeButton.disabled = isBusy;
     elements.endPracticeButton.disabled = isBusy;
     setStatus(isBusy ? "busy" : "idle", message);
@@ -193,13 +201,17 @@
     const items = Array.isArray(options.items) ? options.items : [];
     const records = Array.isArray(practice.recent) ? practice.recent : [];
     const isActive = Boolean(practice.active && practice.current);
-    const hasOptions = targets.length && items.length;
+    const hasOptions = true;
 
     elements.practicePanel.hidden = !isApproved;
 
     if (!isApproved) {
       elements.practiceTargetSelect.disabled = true;
+      elements.practiceTargetOtherField.hidden = true;
+      elements.practiceTargetOtherInput.disabled = true;
       elements.practiceItemSelect.disabled = true;
+      elements.practiceItemOtherField.hidden = true;
+      elements.practiceItemOtherInput.disabled = true;
       elements.startPracticeButton.disabled = true;
       elements.endPracticeButton.disabled = true;
       elements.practiceList.innerHTML = "";
@@ -209,9 +221,9 @@
     elements.practiceState.textContent = isActive ? "練習中" : "尚未練習";
     elements.practiceTargetSelect.innerHTML = selectOptions(targets, "選擇練習對象");
     elements.practiceItemSelect.innerHTML = selectOptions(items, "選擇練習項目");
-    elements.practiceTargetSelect.disabled = isActive || !targets.length;
-    elements.practiceItemSelect.disabled = isActive || !items.length;
-    elements.startPracticeButton.disabled = isActive || !hasOptions;
+    elements.practiceTargetSelect.disabled = isActive;
+    elements.practiceItemSelect.disabled = isActive;
+    updatePracticeOtherFields(isActive);
     elements.endPracticeButton.disabled = !isActive;
 
     elements.practiceList.innerHTML = records.length
@@ -240,11 +252,56 @@
     return (
       `<option value="">${AppApi.escapeHtml(placeholder)}</option>` +
       options
+        .filter((option) => String(option.name || "").trim() !== PRACTICE_OTHER_OPTION_NAME)
         .map((option) => {
           return `<option value="${AppApi.escapeHtml(option.id)}">${AppApi.escapeHtml(option.name)}</option>`;
         })
-        .join("")
+        .join("") +
+      `<option value="${PRACTICE_OTHER_OPTION_ID}">${PRACTICE_OTHER_OPTION_NAME}</option>`
     );
+  }
+
+  function isPracticeOtherOption(value) {
+    return value === PRACTICE_OTHER_OPTION_ID;
+  }
+
+  function currentPracticeActive() {
+    const practice = (currentStudent && currentStudent.practice) || {};
+    return Boolean(practice.active && practice.current);
+  }
+
+  function cleanPracticeInput(input) {
+    return input.value.replace(/\s+/g, " ").trim();
+  }
+
+  function practiceSelectionComplete() {
+    const targetId = elements.practiceTargetSelect.value;
+    const itemId = elements.practiceItemSelect.value;
+
+    if (!targetId || !itemId) return false;
+    if (isPracticeOtherOption(targetId) && !cleanPracticeInput(elements.practiceTargetOtherInput)) return false;
+    if (isPracticeOtherOption(itemId) && !cleanPracticeInput(elements.practiceItemOtherInput)) return false;
+
+    return true;
+  }
+
+  function updatePracticeOtherFields(isActive) {
+    const isApproved = currentStudent && normalizeStatus(currentStudent.status) === "approved";
+    const disabledByActive = typeof isActive === "boolean" ? isActive : currentPracticeActive();
+    const targetIsOther = isPracticeOtherOption(elements.practiceTargetSelect.value);
+    const itemIsOther = isPracticeOtherOption(elements.practiceItemSelect.value);
+
+    elements.practiceTargetOtherField.hidden = !targetIsOther;
+    elements.practiceTargetOtherInput.disabled = disabledByActive || !targetIsOther;
+    elements.practiceTargetOtherInput.required = targetIsOther;
+    if (!targetIsOther) elements.practiceTargetOtherInput.value = "";
+
+    elements.practiceItemOtherField.hidden = !itemIsOther;
+    elements.practiceItemOtherInput.disabled = disabledByActive || !itemIsOther;
+    elements.practiceItemOtherInput.required = itemIsOther;
+    if (!itemIsOther) elements.practiceItemOtherInput.value = "";
+
+    elements.startPracticeButton.disabled = !isApproved || disabledByActive || !practiceSelectionComplete();
   }
 
   async function beginLineLogin() {
@@ -382,6 +439,28 @@
         setNotice("請先選擇練習對象與練習項目。");
         return;
       }
+
+      if (isPracticeOtherOption(payload.targetId)) {
+        payload.targetName = cleanPracticeInput(elements.practiceTargetOtherInput);
+
+        if (!payload.targetName) {
+          setStatus("rejected", "練習資料未完成");
+          setNotice("請輸入其他練習對象。");
+          updatePracticeOtherFields(false);
+          return;
+        }
+      }
+
+      if (isPracticeOtherOption(payload.itemId)) {
+        payload.itemName = cleanPracticeInput(elements.practiceItemOtherInput);
+
+        if (!payload.itemName) {
+          setStatus("rejected", "練習資料未完成");
+          setNotice("請輸入其他練習項目。");
+          updatePracticeOtherFields(false);
+          return;
+        }
+      }
     }
 
     setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
@@ -432,6 +511,10 @@
     elements.refreshButton.addEventListener("click", refreshStatus);
     elements.checkInButton.addEventListener("click", () => recordAttendance("checkIn"));
     elements.checkOutButton.addEventListener("click", () => recordAttendance("checkOut"));
+    elements.practiceTargetSelect.addEventListener("change", () => updatePracticeOtherFields());
+    elements.practiceTargetOtherInput.addEventListener("input", () => updatePracticeOtherFields());
+    elements.practiceItemSelect.addEventListener("change", () => updatePracticeOtherFields());
+    elements.practiceItemOtherInput.addEventListener("input", () => updatePracticeOtherFields());
     elements.startPracticeButton.addEventListener("click", () => recordPractice("startPractice"));
     elements.endPracticeButton.addEventListener("click", () => recordPractice("endPractice"));
   }

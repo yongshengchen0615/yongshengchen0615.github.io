@@ -3,6 +3,8 @@ const ATTENDANCE_SHEET_NAME = "attendance";
 const PRACTICE_TARGETS_SHEET_NAME = "practice_targets";
 const PRACTICE_ITEMS_SHEET_NAME = "practice_items";
 const PRACTICE_RECORDS_SHEET_NAME = "practice_records";
+const PRACTICE_OTHER_OPTION_ID = "__other__";
+const PRACTICE_OTHER_OPTION_NAME = "其他";
 const HEADERS = [
   "uuid",
   "lineUserId",
@@ -309,16 +311,8 @@ function startPractice_(payload) {
     throw new Error("目前已有尚未結束的練習紀錄。");
   }
 
-  const target = findPracticeOption_(PRACTICE_TARGETS_SHEET_NAME, payload.targetId);
-  const item = findPracticeOption_(PRACTICE_ITEMS_SHEET_NAME, payload.itemId);
-
-  if (!target || !target.enabled) {
-    throw new Error("練習對象不存在或已停用。");
-  }
-
-  if (!item || !item.enabled) {
-    throw new Error("練習項目不存在或已停用。");
-  }
+  const target = resolvePracticeChoice_(PRACTICE_TARGETS_SHEET_NAME, payload.targetId, payload.targetName, "練習對象");
+  const item = resolvePracticeChoice_(PRACTICE_ITEMS_SHEET_NAME, payload.itemId, payload.itemName, "練習項目");
 
   const now = new Date().toISOString();
   const record = {
@@ -892,10 +886,50 @@ function findPracticeOption_(sheetName, id) {
   return readPracticeOptions_(sheetName).find((option) => option.id === id) || null;
 }
 
+function resolvePracticeChoice_(sheetName, id, customName, label) {
+  if (isPracticeOtherOption_(id)) {
+    const name = cleanPracticeCustomName_(customName);
+
+    if (!name) {
+      throw new Error("請輸入其他" + label + "。");
+    }
+
+    if (name.length > 60) {
+      throw new Error("其他" + label + "最多 60 字。");
+    }
+
+    return {
+      id: PRACTICE_OTHER_OPTION_ID,
+      name: name,
+      enabled: true
+    };
+  }
+
+  const option = findPracticeOption_(sheetName, id);
+
+  if (!option || !option.enabled) {
+    throw new Error(label + "不存在或已停用。");
+  }
+
+  return option;
+}
+
+function isPracticeOtherOption_(id) {
+  return [PRACTICE_OTHER_OPTION_ID, "other", PRACTICE_OTHER_OPTION_NAME].indexOf(String(id || "").trim()) !== -1;
+}
+
+function cleanPracticeCustomName_(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
 function addPracticeOption_(sheetName, name) {
   const cleanName = String(name || "").trim();
   if (!cleanName) {
     throw new Error("請輸入名稱。");
+  }
+
+  if (cleanName === PRACTICE_OTHER_OPTION_NAME) {
+    throw new Error("「其他」已是系統固定選項。");
   }
 
   const table = readPracticeOptionTable_(sheetName);
