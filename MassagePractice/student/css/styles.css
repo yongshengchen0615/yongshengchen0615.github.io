@@ -164,7 +164,8 @@ img {
 }
 
 .auth-surface,
-.table-region {
+.table-region,
+.attendance-region {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -252,6 +253,78 @@ img {
   line-height: 1.65;
 }
 
+.attendance-panel {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.attendance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attendance-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.attendance-state {
+  color: var(--approved);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.attendance-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attendance-record,
+.attendance-empty {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbf8;
+  padding: 12px;
+}
+
+.attendance-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.attendance-record strong {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.attendance-record--active {
+  border-color: rgba(22, 132, 85, 0.36);
+  background: #f0fbf5;
+}
+
+.attendance-record--active strong {
+  color: var(--approved);
+}
+
+.attendance-times {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.attendance-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -292,6 +365,16 @@ img {
   border-color: var(--border);
   background: #fff;
   color: var(--ink);
+}
+
+.button--checkin {
+  background: var(--approved);
+}
+
+.button--checkout {
+  border-color: #a9d8c0;
+  background: #fff;
+  color: var(--approved);
 }
 
 .workspace--teacher {
@@ -563,5 +646,9 @@ tbody tr:hover {
 
   .button-row .button {
     width: 100%;
+  }
+
+  .attendance-record {
+    grid-template-columns: 1fr;
   }
 }

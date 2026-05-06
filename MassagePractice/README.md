@@ -2,9 +2,9 @@
 
 這是一組靜態 `HTML/CSS/JS` 前端加上 Google Apps Script 後端：
 
-- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS。
-- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，或移除學員。
-- `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet。
+- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退。
+- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，查看簽到紀錄，或移除學員。
+- `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet 與簽到紀錄。
 
 ## 檔案
 
@@ -33,6 +33,14 @@ uuid, lineUserId, lineName, linePictureUrl, status, createdAt, updatedAt, approv
 ```
 
 `lineUserId` 是 LINE 回傳的使用者 UUID；`uuid` 是系統內部學員 UUID；`publicToken` 只給學員端查自己的審核狀態。
+
+GAS 也會建立 `attendance` 工作表，欄位如下：
+
+```text
+id, studentUuid, lineUserId, lineName, checkInAt, checkOutAt, createdAt, updatedAt
+```
+
+每次簽到會新增一筆紀錄；簽退會補上同一筆紀錄的 `checkOutAt`。
 
 ## 部署步驟
 
@@ -86,13 +94,15 @@ SPREADSHEET_ID=你的 Google Sheet ID
 
 - 學員入口：`student/`
 - 師資入口：`teacher/`
-- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核或移除學員。
+- 學員審核通過後，可以在學員系統按「簽到」與「簽退」。
+- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核、查看簽到紀錄或移除學員。
 
 ## 注意事項
 
 - `LINE_CHANNEL_SECRET` 和 `ADMIN_KEY` 不要放在前端，只能放在 GAS Script Properties。
 - LINE OAuth 的 `redirect_uri` 必須與 LINE Developers Console 登記的 Callback URL 完全一致。
 - `student/config.json` 與 `teacher/config.json` 是兩份獨立設定檔，各自從自己的系統目錄讀取；JSON 不能加註解或尾端逗號。
+- 學員系統與師資系統頁面不提供彼此切換連結，請分別提供對應入口網址。
 - 前端呼叫 GAS 使用 `Content-Type: text/plain`，避免瀏覽器對 GAS Web App 送出 OPTIONS preflight。
 - 正式登入需要 HTTPS URL；直接用 `file://` 打開頁面只能預覽 UI，不能作為 LINE Callback URL。
 

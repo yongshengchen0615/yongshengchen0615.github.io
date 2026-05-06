@@ -164,7 +164,8 @@ img {
 }
 
 .auth-surface,
-.table-region {
+.table-region,
+.attendance-region {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -392,6 +393,24 @@ a:focus-visible {
   overflow: hidden;
 }
 
+.attendance-region {
+  overflow: hidden;
+}
+
+.attendance-region__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.attendance-region__header h2 {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+}
+
 .empty-state {
   padding: 42px 24px;
   color: var(--muted);
@@ -406,6 +425,10 @@ table {
   width: 100%;
   min-width: 860px;
   border-collapse: collapse;
+}
+
+.attendance-table {
+  min-width: 720px;
 }
 
 th,
@@ -478,6 +501,16 @@ tbody tr:hover {
   color: var(--rejected);
 }
 
+.badge--active {
+  background: #dcf7e8;
+  color: var(--approved);
+}
+
+.badge--closed {
+  background: #eef2ed;
+  color: var(--muted);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -503,6 +536,12 @@ tbody tr:hover {
   background: #fff;
   border-color: #f4d391;
   color: var(--pending);
+}
+
+.button--records {
+  background: #fff;
+  border-color: #a9d8c0;
+  color: var(--approved);
 }
 
 .button--delete {
@@ -535,6 +574,11 @@ tbody tr:hover {
     flex-direction: column;
   }
 
+  .attendance-region__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .admin-login,
   .list-controls {
     justify-content: stretch;
@@ -542,6 +586,7 @@ tbody tr:hover {
 
   .admin-login input,
   .admin-login button,
+  .attendance-region__header button,
   .list-controls input,
   .list-controls select,
   .list-controls button {

@@ -1,4 +1,5 @@
 const SHEET_NAME = "students";
+const ATTENDANCE_SHEET_NAME = "attendance";
 const HEADERS = [
   "uuid",
   "lineUserId",
@@ -10,6 +11,16 @@ const HEADERS = [
   "approvedAt",
   "reviewNote",
   "publicToken"
+];
+const ATTENDANCE_HEADERS = [
+  "id",
+  "studentUuid",
+  "lineUserId",
+  "lineName",
+  "checkInAt",
+  "checkOutAt",
+  "createdAt",
+  "updatedAt"
 ];
 
 function doGet() {
@@ -42,6 +53,20 @@ function doPost(e) {
       });
     }
 
+    if (action === "checkIn") {
+      return json_({
+        ok: true,
+        data: checkIn_(payload)
+      });
+    }
+
+    if (action === "checkOut") {
+      return json_({
+        ok: true,
+        data: checkOut_(payload)
+      });
+    }
+
     if (action === "listStudents") {
       return json_({
         ok: true,
@@ -63,6 +88,13 @@ function doPost(e) {
       });
     }
 
+    if (action === "listAttendanceRecords") {
+      return json_({
+        ok: true,
+        data: listAttendanceRecords_(payload)
+      });
+    }
+
     throw new Error("Unknown action: " + action);
   } catch (error) {
     return json_({
@@ -74,9 +106,12 @@ function doPost(e) {
 
 function setup() {
   const sheet = ensureSheet_();
+  const attendanceSheet = ensureAttendanceSheet_();
   return {
     sheet: sheet.getName(),
     headers: HEADERS,
+    attendanceSheet: attendanceSheet.getName(),
+    attendanceHeaders: ATTENDANCE_HEADERS,
     time: new Date().toISOString()
   };
 }
@@ -122,6 +157,57 @@ function getStudentStatus_(payload) {
   return publicStudent_(student, true);
 }
 
+function checkIn_(payload) {
+  const student = validateStudentSession_(payload);
+  assertStudentApproved_(student);
+
+  const table = readAttendanceTable_();
+  const openRecord = table.rows.find((row) => row.record.studentUuid === student.uuid && !row.record.checkOutAt);
+
+  if (openRecord) {
+    throw new Error("目前已有尚未簽退的紀錄。");
+  }
+
+  const now = new Date().toISOString();
+  const record = {
+    id: Utilities.getUuid(),
+    studentUuid: student.uuid,
+    lineUserId: student.lineUserId,
+    lineName: student.lineName,
+    checkInAt: now,
+    checkOutAt: "",
+    createdAt: now,
+    updatedAt: now
+  };
+
+  table.sheet.appendRow(ATTENDANCE_HEADERS.map((header) => record[header] || ""));
+
+  return publicStudent_(student, true);
+}
+
+function checkOut_(payload) {
+  const student = validateStudentSession_(payload);
+  assertStudentApproved_(student);
+
+  const table = readAttendanceTable_();
+  const openRows = table.rows
+    .filter((row) => row.record.studentUuid === student.uuid && !row.record.checkOutAt)
+    .sort((a, b) => String(b.record.checkInAt).localeCompare(String(a.record.checkInAt)));
+
+  if (!openRows.length) {
+    throw new Error("目前沒有可簽退的紀錄。");
+  }
+
+  const now = new Date().toISOString();
+  const row = openRows[0];
+  row.record.checkOutAt = now;
+  row.record.updatedAt = now;
+
+  writeAttendanceRow_(table.sheet, row.rowNumber, row.record);
+
+  return publicStudent_(student, true);
+}
+
 function listStudents_(payload) {
   assertAdmin_(payload.adminKey);
 
@@ -130,6 +216,25 @@ function listStudents_(payload) {
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
   return { students };
+}
+
+function listAttendanceRecords_(payload) {
+  assertAdmin_(payload.adminKey);
+  requireFields_(payload, ["uuid"]);
+
+  const student = findStudentByUuid_(payload.uuid);
+  if (!student) {
+    throw new Error("找不到學員 UUID: " + payload.uuid);
+  }
+
+  const records = sortAttendanceRecords_(
+    readAttendanceRecords_().filter((record) => record.studentUuid === payload.uuid)
+  ).map(publicAttendanceRecord_);
+
+  return {
+    student: publicStudent_(student, false),
+    records
+  };
 }
 
 function updateStudentStatus_(payload) {
@@ -176,10 +281,28 @@ function deleteStudent_(payload) {
   }
 
   sheet.deleteRow(row.rowNumber);
+  deleteAttendanceRowsByStudentUuid_(payload.uuid);
 
   return {
     uuid: payload.uuid
   };
+}
+
+function validateStudentSession_(payload) {
+  requireFields_(payload, ["uuid", "publicToken"]);
+
+  const student = findStudentByUuid_(payload.uuid);
+  if (!student || student.publicToken !== payload.publicToken) {
+    throw new Error("找不到學員或登入資訊已失效。");
+  }
+
+  return student;
+}
+
+function assertStudentApproved_(student) {
+  if (student.status !== "approved") {
+    throw new Error("審核通過後才能簽到簽退。");
+  }
 }
 
 function exchangeLineCode_(payload) {
@@ -311,19 +434,64 @@ function readTable_() {
     headerIndex[header] = index;
   });
 
-  const rows = values.slice(1).filter(rowHasValue_).map((row, index) => {
-    const student = {};
+  const rows = values
+    .slice(1)
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 2
+    }))
+    .filter((item) => rowHasValue_(item.row))
+    .map((item) => {
+      const student = {};
 
-    HEADERS.forEach((header) => {
-      const cellIndex = headerIndex[header];
-      student[header] = cellIndex >= 0 ? row[cellIndex] : "";
+      HEADERS.forEach((header) => {
+        const cellIndex = headerIndex[header];
+        student[header] = cellIndex >= 0 ? item.row[cellIndex] : "";
+      });
+
+      return {
+        rowNumber: item.rowNumber,
+        student: normalizeStudent_(student)
+      };
     });
 
-    return {
-      rowNumber: index + 2,
-      student: normalizeStudent_(student)
-    };
+  return { sheet, rows };
+}
+
+function readAttendanceRecords_() {
+  return readAttendanceTable_().rows.map((row) => row.record);
+}
+
+function readAttendanceTable_() {
+  const sheet = ensureAttendanceSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headerRow = values[0] || ATTENDANCE_HEADERS;
+  const headerIndex = {};
+
+  headerRow.forEach((header, index) => {
+    headerIndex[header] = index;
   });
+
+  const rows = values
+    .slice(1)
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 2
+    }))
+    .filter((item) => rowHasValue_(item.row))
+    .map((item) => {
+      const record = {};
+
+      ATTENDANCE_HEADERS.forEach((header) => {
+        const cellIndex = headerIndex[header];
+        record[header] = cellIndex >= 0 ? item.row[cellIndex] : "";
+      });
+
+      return {
+        rowNumber: item.rowNumber,
+        record: normalizeAttendanceRecord_(record)
+      };
+    });
 
   return { sheet, rows };
 }
@@ -343,18 +511,57 @@ function normalizeStudent_(student) {
   };
 }
 
+function normalizeAttendanceRecord_(record) {
+  return {
+    id: String(record.id || ""),
+    studentUuid: String(record.studentUuid || ""),
+    lineUserId: String(record.lineUserId || ""),
+    lineName: String(record.lineName || ""),
+    checkInAt: toIsoString_(record.checkInAt),
+    checkOutAt: toIsoString_(record.checkOutAt),
+    createdAt: toIsoString_(record.createdAt),
+    updatedAt: toIsoString_(record.updatedAt)
+  };
+}
+
 function writeStudentRow_(sheet, rowNumber, student) {
   sheet.getRange(rowNumber, 1, 1, HEADERS.length).setValues([HEADERS.map((header) => student[header] || "")]);
 }
 
+function writeAttendanceRow_(sheet, rowNumber, record) {
+  sheet
+    .getRange(rowNumber, 1, 1, ATTENDANCE_HEADERS.length)
+    .setValues([ATTENDANCE_HEADERS.map((header) => record[header] || "")]);
+}
+
+function deleteAttendanceRowsByStudentUuid_(uuid) {
+  const table = readAttendanceTable_();
+  const rowNumbers = table.rows
+    .filter((row) => row.record.studentUuid === uuid)
+    .map((row) => row.rowNumber)
+    .sort((a, b) => b - a);
+
+  rowNumbers.forEach((rowNumber) => {
+    table.sheet.deleteRow(rowNumber);
+  });
+}
+
 function ensureSheet_() {
+  return ensureSheetWithHeaders_(SHEET_NAME, HEADERS);
+}
+
+function ensureAttendanceSheet_() {
+  return ensureSheetWithHeaders_(ATTENDANCE_SHEET_NAME, ATTENDANCE_HEADERS);
+}
+
+function ensureSheetWithHeaders_(sheetName, headers) {
   const spreadsheet = getSpreadsheet_();
-  const sheet = spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME);
-  const firstRow = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
-  const needsHeader = HEADERS.some((header, index) => firstRow[index] !== header);
+  const sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+  const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  const needsHeader = headers.some((header, index) => firstRow[index] !== header);
 
   if (needsHeader) {
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
   }
 
@@ -414,8 +621,40 @@ function publicStudent_(student, includeToken) {
     reviewNote: student.reviewNote
   };
 
-  if (includeToken) data.publicToken = student.publicToken;
+  if (includeToken) {
+    data.publicToken = student.publicToken;
+    data.attendance = studentAttendanceSummary_(student.uuid);
+  }
+
   return data;
+}
+
+function studentAttendanceSummary_(uuid) {
+  const records = sortAttendanceRecords_(readAttendanceRecords_().filter((record) => record.studentUuid === uuid));
+  const current = records.find((record) => !record.checkOutAt) || null;
+
+  return {
+    active: Boolean(current),
+    current: current ? publicAttendanceRecord_(current) : null,
+    recent: records.slice(0, 5).map(publicAttendanceRecord_)
+  };
+}
+
+function publicAttendanceRecord_(record) {
+  return {
+    id: record.id,
+    studentUuid: record.studentUuid,
+    lineUserId: record.lineUserId,
+    lineName: record.lineName,
+    checkInAt: record.checkInAt,
+    checkOutAt: record.checkOutAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  };
+}
+
+function sortAttendanceRecords_(records) {
+  return records.slice().sort((a, b) => String(b.checkInAt).localeCompare(String(a.checkInAt)));
 }
 
 function createToken_() {

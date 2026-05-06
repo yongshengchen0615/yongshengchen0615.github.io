@@ -4,9 +4,15 @@
   const STORAGE_KEY = "studentApprovalSession";
   const OAUTH_KEY = "lineOAuth";
   const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
+  let currentStudent = null;
 
   const elements = {
     refreshButton: document.getElementById("refreshButton"),
+    checkInButton: document.getElementById("checkInButton"),
+    checkOutButton: document.getElementById("checkOutButton"),
+    attendancePanel: document.getElementById("attendancePanel"),
+    attendanceState: document.getElementById("attendanceState"),
+    attendanceList: document.getElementById("attendanceList"),
     notice: document.getElementById("notice"),
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
@@ -47,6 +53,8 @@
 
   function setBusy(isBusy, message) {
     elements.refreshButton.disabled = isBusy;
+    elements.checkInButton.disabled = isBusy;
+    elements.checkOutButton.disabled = isBusy;
     setStatus(isBusy ? "busy" : "idle", message);
   }
 
@@ -80,11 +88,13 @@
   }
 
   function clearSession() {
+    currentStudent = null;
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(OAUTH_KEY);
   }
 
   function renderStudent(student) {
+    currentStudent = student;
     const status = student.status || "pending";
     setStatus(status, statusText[status] || "待師資審核");
 
@@ -94,9 +104,10 @@
     elements.profileName.textContent = student.lineName || "LINE 使用者";
     elements.profileUuid.textContent = student.lineUserId || student.uuid;
     elements.refreshButton.hidden = false;
+    renderAttendance(student);
 
     if (status === "approved") {
-      setNotice("審核已通過，可以進入後續學員流程。");
+      setNotice("審核已通過，可以使用簽到簽退。");
     } else if (status === "rejected") {
       setNotice(student.reviewNote || "審核未通過，請聯繫師資確認資料。");
     } else {
@@ -105,10 +116,52 @@
   }
 
   function renderLoggedOut() {
+    currentStudent = null;
     elements.profile.hidden = true;
     elements.refreshButton.hidden = true;
+    elements.attendancePanel.hidden = true;
     setStatus("idle", "尚未登入");
     setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
+  }
+
+  function renderAttendance(student) {
+    const isApproved = (student.status || "pending") === "approved";
+    const attendance = student.attendance || {};
+    const records = Array.isArray(attendance.recent) ? attendance.recent : [];
+    const isActive = Boolean(attendance.active && attendance.current);
+
+    elements.attendancePanel.hidden = !isApproved;
+
+    if (!isApproved) {
+      elements.checkInButton.disabled = true;
+      elements.checkOutButton.disabled = true;
+      elements.attendanceList.innerHTML = "";
+      return;
+    }
+
+    elements.attendanceState.textContent = isActive ? "已簽到" : "尚未簽到";
+    elements.checkInButton.disabled = isActive;
+    elements.checkOutButton.disabled = !isActive;
+
+    elements.attendanceList.innerHTML = records.length
+      ? records
+          .map((record) => {
+            const checkOutText = record.checkOutAt ? AppApi.formatDate(record.checkOutAt) : "尚未簽退";
+            const stateClass = record.checkOutAt ? "attendance-record--closed" : "attendance-record--active";
+            const stateText = record.checkOutAt ? "已簽退" : "進行中";
+
+            return `
+              <div class="attendance-record ${stateClass}">
+                <div class="attendance-times">
+                  <span>簽到 ${AppApi.formatDate(record.checkInAt)}</span>
+                  <span>簽退 ${checkOutText}</span>
+                </div>
+                <strong>${stateText}</strong>
+              </div>
+            `;
+          })
+          .join("")
+      : '<div class="attendance-empty">尚無簽到紀錄。</div>';
   }
 
   async function beginLineLogin() {
@@ -198,6 +251,29 @@
     return true;
   }
 
+  async function recordAttendance(action) {
+    const session = readSession();
+    if (!session) {
+      renderLoggedOut();
+      await beginLineLogin();
+      return;
+    }
+
+    setBusy(true, action === "checkIn" ? "正在簽到" : "正在簽退");
+
+    try {
+      const student = await AppApi.post(action, session);
+      saveSession(student);
+      renderStudent(student);
+    } catch (error) {
+      setStatus("rejected", action === "checkIn" ? "簽到失敗" : "簽退失敗");
+      setNotice(error.message);
+    } finally {
+      elements.refreshButton.disabled = false;
+      if (currentStudent) renderAttendance(currentStudent);
+    }
+  }
+
   async function refreshStatus() {
     const session = readSession();
     if (!session) {
@@ -217,11 +293,14 @@
       await beginLineLogin();
     } finally {
       elements.refreshButton.disabled = false;
+      if (currentStudent) renderAttendance(currentStudent);
     }
   }
 
   function bindEvents() {
     elements.refreshButton.addEventListener("click", refreshStatus);
+    elements.checkInButton.addEventListener("click", () => recordAttendance("checkIn"));
+    elements.checkOutButton.addEventListener("click", () => recordAttendance("checkOut"));
   }
 
   async function init() {

@@ -3,6 +3,7 @@
 
   const ADMIN_KEY = "teacherAdminKey";
   let students = [];
+  let selectedAttendanceUuid = "";
 
   const elements = {
     adminKey: document.getElementById("adminKey"),
@@ -15,7 +16,13 @@
     approvedCount: document.getElementById("approvedCount"),
     emptyState: document.getElementById("emptyState"),
     tableWrap: document.getElementById("tableWrap"),
-    studentsBody: document.getElementById("studentsBody")
+    studentsBody: document.getElementById("studentsBody"),
+    attendanceRegion: document.getElementById("attendanceRegion"),
+    attendanceTitle: document.getElementById("attendanceTitle"),
+    attendanceEmpty: document.getElementById("attendanceEmpty"),
+    attendanceTableWrap: document.getElementById("attendanceTableWrap"),
+    attendanceBody: document.getElementById("attendanceBody"),
+    closeAttendanceButton: document.getElementById("closeAttendanceButton")
   };
 
   const statusLabels = {
@@ -39,6 +46,12 @@
     elements.tableWrap.hidden = true;
   }
 
+  function setAttendanceEmpty(message) {
+    elements.attendanceEmpty.textContent = message;
+    elements.attendanceEmpty.hidden = false;
+    elements.attendanceTableWrap.hidden = true;
+  }
+
   function filteredStudents() {
     const query = elements.searchInput.value.trim().toLowerCase();
     const status = elements.statusFilter.value;
@@ -54,6 +67,27 @@
     elements.totalCount.textContent = String(students.length);
     elements.pendingCount.textContent = String(students.filter((student) => student.status === "pending").length);
     elements.approvedCount.textContent = String(students.filter((student) => student.status === "approved").length);
+  }
+
+  function durationLabel(record) {
+    if (!record.checkOutAt) return "進行中";
+
+    const start = new Date(record.checkInAt);
+    const end = new Date(record.checkOutAt);
+    const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+
+    if (!Number.isFinite(minutes)) return "-";
+    if (minutes < 60) return `${minutes} 分鐘`;
+
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} 小時 ${rest} 分鐘` : `${hours} 小時`;
+  }
+
+  function hideAttendanceRecords() {
+    selectedAttendanceUuid = "";
+    elements.attendanceRegion.hidden = true;
+    elements.attendanceBody.innerHTML = "";
   }
 
   function render() {
@@ -97,6 +131,7 @@
                 <button class="button button--approve" data-action="approved" data-uuid="${uuid}" type="button">通過</button>
                 <button class="button button--pending" data-action="pending" data-uuid="${uuid}" type="button">待審</button>
                 <button class="button button--reject" data-action="rejected" data-uuid="${uuid}" type="button">未通過</button>
+                <button class="button button--records" data-action="records" data-uuid="${uuid}" type="button">紀錄</button>
                 <button class="button button--delete" data-action="delete" data-uuid="${uuid}" type="button">移除</button>
               </div>
             </td>
@@ -115,6 +150,7 @@
 
     setLoading(true);
     setEmpty("正在載入學員名單。");
+    hideAttendanceRecords();
 
     try {
       const data = await AppApi.post("listStudents", { adminKey: key });
@@ -173,6 +209,7 @@
       });
 
       students = students.filter((student) => student.uuid !== uuid);
+      if (selectedAttendanceUuid === uuid) hideAttendanceRecords();
       render();
     } catch (error) {
       window.alert(error.message);
@@ -181,9 +218,61 @@
     }
   }
 
+  async function loadAttendanceRecords(uuid) {
+    const key = adminKey();
+    const current = students.find((student) => student.uuid === uuid);
+    const name = current ? current.lineName || current.lineUserId || current.uuid : uuid;
+
+    selectedAttendanceUuid = uuid;
+    elements.attendanceRegion.hidden = false;
+    elements.attendanceTitle.textContent = `${name} 簽到紀錄`;
+    elements.attendanceBody.innerHTML = "";
+    setAttendanceEmpty("正在載入簽到紀錄。");
+    setLoading(true);
+
+    try {
+      const data = await AppApi.post("listAttendanceRecords", {
+        adminKey: key,
+        uuid
+      });
+      const records = data.records || [];
+
+      elements.attendanceTitle.textContent = `${data.student.lineName || name} 簽到紀錄`;
+
+      if (!records.length) {
+        setAttendanceEmpty("目前沒有簽到紀錄。");
+        return;
+      }
+
+      elements.attendanceEmpty.hidden = true;
+      elements.attendanceTableWrap.hidden = false;
+      elements.attendanceBody.innerHTML = records
+        .map((record) => {
+          const status = record.checkOutAt
+            ? '<span class="badge badge--closed">已簽退</span>'
+            : '<span class="badge badge--active">進行中</span>';
+
+          return `
+            <tr>
+              <td>${AppApi.formatDate(record.checkInAt)}</td>
+              <td>${record.checkOutAt ? AppApi.formatDate(record.checkOutAt) : "-"}</td>
+              <td>${durationLabel(record)}</td>
+              <td>${status}</td>
+            </tr>
+          `;
+        })
+        .join("");
+    } catch (error) {
+      setAttendanceEmpty(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function bindEvents() {
     elements.connectButton.addEventListener("click", loadStudents);
     elements.reloadButton.addEventListener("click", loadStudents);
+    elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
     elements.searchInput.addEventListener("input", render);
     elements.statusFilter.addEventListener("change", render);
     elements.adminKey.addEventListener("keydown", (event) => {
@@ -196,6 +285,11 @@
 
       if (button.dataset.action === "delete") {
         deleteStudent(button.dataset.uuid);
+        return;
+      }
+
+      if (button.dataset.action === "records") {
+        loadAttendanceRecords(button.dataset.uuid);
         return;
       }
 

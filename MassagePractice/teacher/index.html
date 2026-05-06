@@ -8,8 +8,7 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="../index.html">學員審核系統</a>
-      <a class="topbar__link" href="../student/">學員系統</a>
+      <span class="brand">學員審核系統</span>
     </header>
 
     <main class="workspace workspace--teacher">
@@ -68,6 +67,32 @@
               </tr>
             </thead>
             <tbody id="studentsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="attendance-region" id="attendanceRegion" aria-live="polite" hidden>
+        <div class="attendance-region__header">
+          <div>
+            <p class="eyebrow">Attendance Records</p>
+            <h2 id="attendanceTitle">簽到紀錄</h2>
+          </div>
+          <button class="button button--ghost" id="closeAttendanceButton" type="button">關閉</button>
+        </div>
+
+        <div class="empty-state" id="attendanceEmpty" hidden></div>
+
+        <div class="table-wrap" id="attendanceTableWrap" hidden>
+          <table class="attendance-table">
+            <thead>
+              <tr>
+                <th>簽到時間</th>
+                <th>簽退時間</th>
+                <th>停留時間</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceBody"></tbody>
           </table>
         </div>
       </section>

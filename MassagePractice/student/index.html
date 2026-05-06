@@ -8,8 +8,7 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="../index.html">學員審核系統</a>
-      <a class="topbar__link" href="../teacher/">師資系統</a>
+      <span class="brand">學員審核系統</span>
     </header>
 
     <main class="workspace workspace--student">
@@ -36,6 +35,20 @@
 
           <div class="notice" id="notice" role="status">
             系統會自動開啟 LINE 登入，並送出資料等待師資審核。
+          </div>
+
+          <div class="attendance-panel" id="attendancePanel" hidden>
+            <div class="attendance-header">
+              <h2>簽到狀態</h2>
+              <span class="attendance-state" id="attendanceState">尚未簽到</span>
+            </div>
+
+            <div class="button-row">
+              <button class="button button--checkin" id="checkInButton" type="button">簽到</button>
+              <button class="button button--checkout" id="checkOutButton" type="button">簽退</button>
+            </div>
+
+            <div class="attendance-list" id="attendanceList"></div>
           </div>
 
           <div class="button-row">
