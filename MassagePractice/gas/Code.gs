@@ -502,13 +502,23 @@ function normalizeStudent_(student) {
     lineUserId: String(student.lineUserId || ""),
     lineName: String(student.lineName || ""),
     linePictureUrl: String(student.linePictureUrl || ""),
-    status: String(student.status || "pending"),
+    status: normalizeStatus_(student.status),
     createdAt: toIsoString_(student.createdAt),
     updatedAt: toIsoString_(student.updatedAt),
     approvedAt: toIsoString_(student.approvedAt),
     reviewNote: String(student.reviewNote || ""),
     publicToken: String(student.publicToken || "")
   };
+}
+
+function normalizeStatus_(value) {
+  const status = String(value || "").trim().toLowerCase();
+
+  if (["approved", "通過", "已通過", "已通過審核"].indexOf(status) !== -1) return "approved";
+  if (["rejected", "未通過", "不通過", "拒絕"].indexOf(status) !== -1) return "rejected";
+  if (["pending", "待審", "待審核", "待師資審核", ""].indexOf(status) !== -1) return "pending";
+
+  return status;
 }
 
 function normalizeAttendanceRecord_(record) {

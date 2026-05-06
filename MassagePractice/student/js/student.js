@@ -30,6 +30,16 @@
     busy: "處理中"
   };
 
+  function normalizeStatus(value) {
+    const status = String(value || "").trim().toLowerCase();
+
+    if (["approved", "通過", "已通過", "已通過審核"].includes(status)) return "approved";
+    if (["rejected", "未通過", "不通過", "拒絕"].includes(status)) return "rejected";
+    if (["pending", "待審", "待審核", "待師資審核", ""].includes(status)) return "pending";
+
+    return status;
+  }
+
   function randomString(byteLength) {
     const bytes = new Uint8Array(byteLength);
     window.crypto.getRandomValues(bytes);
@@ -95,7 +105,7 @@
 
   function renderStudent(student) {
     currentStudent = student;
-    const status = student.status || "pending";
+    const status = normalizeStatus(student.status);
     setStatus(status, statusText[status] || "待師資審核");
 
     elements.profile.hidden = false;
@@ -125,7 +135,7 @@
   }
 
   function renderAttendance(student) {
-    const isApproved = (student.status || "pending") === "approved";
+    const isApproved = normalizeStatus(student.status) === "approved";
     const attendance = student.attendance || {};
     const records = Array.isArray(attendance.recent) ? attendance.recent : [];
     const isActive = Boolean(attendance.active && attendance.current);
