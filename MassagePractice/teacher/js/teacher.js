@@ -2,6 +2,7 @@
   "use strict";
 
   const ADMIN_KEY = "teacherAdminKey";
+  const THEME_STORAGE_KEY = "massageTheme";
   const PRACTICE_OTHER_OPTION_NAME = "其他";
   let students = [];
   let selectedAttendanceUuid = "";
@@ -45,7 +46,10 @@
     practiceRecordEmpty: document.getElementById("practiceRecordEmpty"),
     practiceRecordTableWrap: document.getElementById("practiceRecordTableWrap"),
     practiceRecordBody: document.getElementById("practiceRecordBody"),
-    closePracticeRecordButton: document.getElementById("closePracticeRecordButton")
+    closePracticeRecordButton: document.getElementById("closePracticeRecordButton"),
+    themeToggle: document.getElementById("themeToggle"),
+    themeToggleIcon: document.getElementById("themeToggleIcon"),
+    themeToggleText: document.getElementById("themeToggleText")
   };
 
   const statusLabels = {
@@ -59,6 +63,31 @@
     practiceTargetsView: "練習對象",
     practiceItemsView: "練習項目"
   };
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
+  function setTheme(theme, options) {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    const isDark = nextTheme === "dark";
+    document.documentElement.dataset.theme = nextTheme;
+    elements.themeToggle.setAttribute("aria-pressed", isDark ? "true" : "false");
+    elements.themeToggleIcon.textContent = isDark ? "☾" : "☀";
+    elements.themeToggleText.textContent = isDark ? "暗色調" : "亮色調";
+
+    if (!options || options.persist !== false) {
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      } catch (error) {
+        // Theme persistence is optional; the switch still works for this page view.
+      }
+    }
+  }
+
+  function toggleTheme() {
+    setTheme(currentTheme() === "dark" ? "light" : "dark");
+  }
 
   function adminKey() {
     return elements.adminKey.value.trim() || sessionStorage.getItem(ADMIN_KEY) || "";
@@ -491,6 +520,7 @@
   }
 
   function bindEvents() {
+    elements.themeToggle.addEventListener("click", toggleTheme);
     elements.viewButtons.forEach((button) => {
       button.addEventListener("click", () => showView(button.dataset.view));
     });
@@ -552,6 +582,7 @@
   }
 
   async function init() {
+    setTheme(currentTheme(), { persist: false });
     bindEvents();
 
     setLoading(true);

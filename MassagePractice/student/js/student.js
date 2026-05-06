@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "studentApprovalSession";
   const VIEW_STORAGE_KEY = "studentActiveView";
+  const THEME_STORAGE_KEY = "massageTheme";
   const OAUTH_KEY = "lineOAuth";
   const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
   const PRACTICE_OTHER_OPTION_ID = "__other__";
@@ -40,6 +41,9 @@
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
     profileName: document.getElementById("profileName"),
+    themeToggle: document.getElementById("themeToggle"),
+    themeToggleIcon: document.getElementById("themeToggleIcon"),
+    themeToggleText: document.getElementById("themeToggleText"),
     statusDot: document.getElementById("statusDot"),
     statusText: document.getElementById("statusText")
   };
@@ -103,6 +107,31 @@
 
   function setNotice(message) {
     elements.notice.textContent = message;
+  }
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
+  function setTheme(theme, options) {
+    const nextTheme = theme === "dark" ? "dark" : "light";
+    const isDark = nextTheme === "dark";
+    document.documentElement.dataset.theme = nextTheme;
+    elements.themeToggle.setAttribute("aria-pressed", isDark ? "true" : "false");
+    elements.themeToggleIcon.textContent = isDark ? "☾" : "☀";
+    elements.themeToggleText.textContent = isDark ? "暗色調" : "亮色調";
+
+    if (!options || options.persist !== false) {
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      } catch (error) {
+        // Theme persistence is optional; the switch still works for this page view.
+      }
+    }
+  }
+
+  function toggleTheme() {
+    setTheme(currentTheme() === "dark" ? "light" : "dark");
   }
 
   function readStudentView() {
@@ -644,6 +673,7 @@
   }
 
   function bindEvents() {
+    elements.themeToggle.addEventListener("click", toggleTheme);
     elements.refreshButton.addEventListener("click", refreshStatus);
     elements.studentViewButtons.forEach((button) => {
       button.addEventListener("click", () => setStudentView(button.dataset.studentView));
@@ -659,6 +689,7 @@
   }
 
   async function init() {
+    setTheme(currentTheme(), { persist: false });
     bindEvents();
 
     try {
