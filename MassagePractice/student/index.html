@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>學員系統</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260506-6" />
+    <link rel="stylesheet" href="css/styles.css?v=20260506-7" />
   </head>
   <body>
     <header class="topbar">
@@ -77,7 +77,6 @@
 
             <div class="button-row">
               <button class="button button--checkin" id="startPracticeButton" type="button">開始練習</button>
-              <button class="button button--checkout" id="endPracticeButton" type="button">結束練習</button>
             </div>
 
             <div class="attendance-list" id="practiceList"></div>
@@ -90,7 +89,18 @@
       </section>
     </main>
 
-    <script src="js/api.js?v=20260506-6"></script>
-    <script src="js/student.js?v=20260506-6"></script>
+    <section class="practice-timer" id="practiceTimerOverlay" aria-labelledby="practiceTimerTitle" role="dialog" aria-modal="true" hidden>
+      <div class="practice-timer__inner">
+        <p class="practice-timer__label">練習中</p>
+        <h2 id="practiceTimerTitle">正計時</h2>
+        <output class="practice-timer__time" id="practiceTimerValue">00:00:00</output>
+        <p class="practice-timer__meta" id="practiceTimerMeta"></p>
+        <p class="practice-timer__started" id="practiceTimerStartedAt"></p>
+        <button class="button button--timer-end" id="endPracticeButton" type="button">結束練習</button>
+      </div>
+    </section>
+
+    <script src="js/api.js?v=20260506-7"></script>
+    <script src="js/student.js?v=20260506-7"></script>
   </body>
 </html>

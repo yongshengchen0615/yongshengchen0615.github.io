@@ -7,6 +7,8 @@
   const PRACTICE_OTHER_OPTION_ID = "__other__";
   const PRACTICE_OTHER_OPTION_NAME = "其他";
   let currentStudent = null;
+  let practiceTimerId = 0;
+  let practiceTimerStartMs = 0;
 
   const elements = {
     refreshButton: document.getElementById("refreshButton"),
@@ -25,6 +27,10 @@
     practiceItemOtherInput: document.getElementById("practiceItemOtherInput"),
     startPracticeButton: document.getElementById("startPracticeButton"),
     endPracticeButton: document.getElementById("endPracticeButton"),
+    practiceTimerOverlay: document.getElementById("practiceTimerOverlay"),
+    practiceTimerValue: document.getElementById("practiceTimerValue"),
+    practiceTimerMeta: document.getElementById("practiceTimerMeta"),
+    practiceTimerStartedAt: document.getElementById("practiceTimerStartedAt"),
     practiceList: document.getElementById("practiceList"),
     notice: document.getElementById("notice"),
     profile: document.getElementById("profile"),
@@ -95,6 +101,68 @@
     elements.notice.textContent = message;
   }
 
+  function padTimerPart(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  function formatElapsedTime(startMs) {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
+
+    return [hours, minutes, seconds].map(padTimerPart).join(":");
+  }
+
+  function renderPracticeTimerValue() {
+    if (!practiceTimerStartMs) {
+      elements.practiceTimerValue.textContent = "00:00:00";
+      return;
+    }
+
+    elements.practiceTimerValue.textContent = formatElapsedTime(practiceTimerStartMs);
+  }
+
+  function showPracticeTimer(record) {
+    const start = new Date(record.startedAt);
+    const startMs = Number.isNaN(start.getTime()) ? Date.now() : start.getTime();
+    const wasHidden = elements.practiceTimerOverlay.hidden;
+    const practiceLabel = [record.targetName, record.itemName]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(" / ");
+
+    practiceTimerStartMs = startMs;
+    elements.practiceTimerOverlay.hidden = false;
+    elements.practiceTimerMeta.textContent = practiceLabel || "練習進行中";
+    elements.practiceTimerStartedAt.textContent = record.startedAt ? "開始 " + AppApi.formatDate(record.startedAt) : "";
+    document.body.classList.add("practice-timer-open");
+    renderPracticeTimerValue();
+
+    if (!practiceTimerId) {
+      practiceTimerId = window.setInterval(renderPracticeTimerValue, 1000);
+    }
+
+    if (wasHidden) {
+      elements.endPracticeButton.focus({ preventScroll: true });
+    }
+  }
+
+  function hidePracticeTimer() {
+    if (practiceTimerId) {
+      window.clearInterval(practiceTimerId);
+      practiceTimerId = 0;
+    }
+
+    practiceTimerStartMs = 0;
+    elements.practiceTimerOverlay.hidden = true;
+    elements.practiceTimerValue.textContent = "00:00:00";
+    elements.practiceTimerMeta.textContent = "";
+    elements.practiceTimerStartedAt.textContent = "";
+    elements.endPracticeButton.disabled = true;
+    document.body.classList.remove("practice-timer-open");
+  }
+
   function saveSession(student) {
     localStorage.setItem(
       STORAGE_KEY,
@@ -149,6 +217,7 @@
     elements.refreshButton.hidden = true;
     elements.attendancePanel.hidden = true;
     elements.practicePanel.hidden = true;
+    hidePracticeTimer();
     setStatus("idle", "尚未登入");
     setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
   }
@@ -215,6 +284,7 @@
       elements.startPracticeButton.disabled = true;
       elements.endPracticeButton.disabled = true;
       elements.practiceList.innerHTML = "";
+      hidePracticeTimer();
       return;
     }
 
@@ -225,6 +295,11 @@
     elements.practiceItemSelect.disabled = isActive;
     updatePracticeOtherFields(isActive);
     elements.endPracticeButton.disabled = !isActive;
+    if (isActive) {
+      showPracticeTimer(practice.current);
+    } else {
+      hidePracticeTimer();
+    }
 
     elements.practiceList.innerHTML = records.length
       ? records

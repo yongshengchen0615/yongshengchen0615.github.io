@@ -30,6 +30,10 @@ body {
   color: var(--ink);
 }
 
+body.practice-timer-open {
+  overflow: hidden;
+}
+
 button,
 input,
 select {
@@ -361,6 +365,75 @@ img {
   font-size: 0.9rem;
 }
 
+.practice-timer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 24px;
+  background: #0f1c16;
+  color: #fff;
+}
+
+.practice-timer__inner {
+  display: grid;
+  width: min(720px, 100%);
+  min-height: calc(100svh - 48px);
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.practice-timer__label,
+.practice-timer__started {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.practice-timer__label {
+  color: #85e5b0;
+}
+
+.practice-timer h2 {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.practice-timer__time {
+  display: block;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.practice-timer__meta {
+  max-width: 620px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.button--timer-end {
+  min-width: min(280px, 100%);
+  min-height: 56px;
+  margin-top: 8px;
+  border-color: rgba(255, 255, 255, 0.74);
+  background: #fff;
+  color: #0f1c16;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -690,5 +763,26 @@ tbody tr:hover {
 
   .attendance-record {
     grid-template-columns: 1fr;
+  }
+
+  .practice-timer {
+    padding: 18px;
+  }
+
+  .practice-timer__inner {
+    min-height: calc(100svh - 36px);
+    gap: 16px;
+  }
+
+  .practice-timer h2 {
+    font-size: 1.5rem;
+  }
+
+  .practice-timer__time {
+    font-size: 3.4rem;
+  }
+
+  .button--timer-end {
+    width: 100%;
   }
 }
