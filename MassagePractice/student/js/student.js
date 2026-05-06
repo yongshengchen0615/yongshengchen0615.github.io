@@ -331,6 +331,7 @@
                 <div class="attendance-times">
                   <span>簽到 ${AppApi.formatDate(record.checkInAt)}</span>
                   <span>簽退 ${checkOutText}</span>
+                  <span>停留時間 ${durationLabel(record.checkInAt, record.checkOutAt)}</span>
                 </div>
                 <strong>${stateText}</strong>
               </div>
@@ -340,11 +341,11 @@
       : '<div class="attendance-empty">尚無簽到紀錄。</div>';
   }
 
-  function durationLabel(record) {
-    if (!record.endedAt) return "進行中";
+  function durationLabel(startValue, endValue) {
+    if (!endValue) return "進行中";
 
-    const start = new Date(record.startedAt);
-    const end = new Date(record.endedAt);
+    const start = new Date(startValue);
+    const end = new Date(endValue);
     const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
 
     if (!Number.isFinite(minutes)) return "-";
@@ -406,7 +407,7 @@
                   <span>${AppApi.escapeHtml(record.targetName || "-")} / ${AppApi.escapeHtml(record.itemName || "-")}</span>
                   <span>開始 ${AppApi.formatDate(record.startedAt)}</span>
                   <span>結束 ${endText}</span>
-                  <span>練習時間 ${durationLabel(record)}</span>
+                  <span>練習時間 ${durationLabel(record.startedAt, record.endedAt)}</span>
                 </div>
                 <strong>${stateText}</strong>
               </div>

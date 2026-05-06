@@ -5,6 +5,18 @@ const PRACTICE_ITEMS_SHEET_NAME = "practice_items";
 const PRACTICE_RECORDS_SHEET_NAME = "practice_records";
 const PRACTICE_OTHER_OPTION_ID = "__other__";
 const PRACTICE_OTHER_OPTION_NAME = "其他";
+const WRITE_ACTIONS = [
+  "checkIn",
+  "checkOut",
+  "startPractice",
+  "endPractice",
+  "updateStudentStatus",
+  "deleteStudent",
+  "addPracticeTarget",
+  "addPracticeItem",
+  "deletePracticeTarget",
+  "deletePracticeItem"
+];
 const HEADERS = [
   "uuid",
   "lineUserId",
@@ -64,126 +76,112 @@ function doPost(e) {
     const request = parseRequest_(e);
     const action = request.action;
     const payload = request.payload || {};
+    const data = shouldLockAction_(action)
+      ? withWriteLock_(function () {
+          return handleAction_(action, payload);
+        })
+      : handleAction_(action, payload);
 
-    if (action === "lineLogin") {
-      return json_({
-        ok: true,
-        data: lineLogin_(payload)
-      });
-    }
-
-    if (action === "getStudentStatus") {
-      return json_({
-        ok: true,
-        data: getStudentStatus_(payload)
-      });
-    }
-
-    if (action === "checkIn") {
-      return json_({
-        ok: true,
-        data: checkIn_(payload)
-      });
-    }
-
-    if (action === "checkOut") {
-      return json_({
-        ok: true,
-        data: checkOut_(payload)
-      });
-    }
-
-    if (action === "startPractice") {
-      return json_({
-        ok: true,
-        data: startPractice_(payload)
-      });
-    }
-
-    if (action === "endPractice") {
-      return json_({
-        ok: true,
-        data: endPractice_(payload)
-      });
-    }
-
-    if (action === "listStudents") {
-      return json_({
-        ok: true,
-        data: listStudents_(payload)
-      });
-    }
-
-    if (action === "updateStudentStatus") {
-      return json_({
-        ok: true,
-        data: updateStudentStatus_(payload)
-      });
-    }
-
-    if (action === "deleteStudent") {
-      return json_({
-        ok: true,
-        data: deleteStudent_(payload)
-      });
-    }
-
-    if (action === "listAttendanceRecords") {
-      return json_({
-        ok: true,
-        data: listAttendanceRecords_(payload)
-      });
-    }
-
-    if (action === "listPracticeSettings") {
-      return json_({
-        ok: true,
-        data: listPracticeSettings_(payload)
-      });
-    }
-
-    if (action === "addPracticeTarget") {
-      return json_({
-        ok: true,
-        data: addPracticeTarget_(payload)
-      });
-    }
-
-    if (action === "addPracticeItem") {
-      return json_({
-        ok: true,
-        data: addPracticeItem_(payload)
-      });
-    }
-
-    if (action === "deletePracticeTarget") {
-      return json_({
-        ok: true,
-        data: deletePracticeTarget_(payload)
-      });
-    }
-
-    if (action === "deletePracticeItem") {
-      return json_({
-        ok: true,
-        data: deletePracticeItem_(payload)
-      });
-    }
-
-    if (action === "listPracticeRecords") {
-      return json_({
-        ok: true,
-        data: listPracticeRecords_(payload)
-      });
-    }
-
-    throw new Error("Unknown action: " + action);
+    return json_({
+      ok: true,
+      data: data
+    });
   } catch (error) {
     return json_({
       ok: false,
       error: error.message || String(error)
     });
   }
+}
+
+function shouldLockAction_(action) {
+  return WRITE_ACTIONS.indexOf(action) !== -1;
+}
+
+function withWriteLock_(callback) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    lock.waitLock(30000);
+  } catch (error) {
+    throw new Error("系統忙碌中，請稍後再試。");
+  }
+
+  try {
+    const result = callback();
+    SpreadsheetApp.flush();
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleAction_(action, payload) {
+  if (action === "lineLogin") {
+    return lineLogin_(payload);
+  }
+
+  if (action === "getStudentStatus") {
+    return getStudentStatus_(payload);
+  }
+
+  if (action === "checkIn") {
+    return checkIn_(payload);
+  }
+
+  if (action === "checkOut") {
+    return checkOut_(payload);
+  }
+
+  if (action === "startPractice") {
+    return startPractice_(payload);
+  }
+
+  if (action === "endPractice") {
+    return endPractice_(payload);
+  }
+
+  if (action === "listStudents") {
+    return listStudents_(payload);
+  }
+
+  if (action === "updateStudentStatus") {
+    return updateStudentStatus_(payload);
+  }
+
+  if (action === "deleteStudent") {
+    return deleteStudent_(payload);
+  }
+
+  if (action === "listAttendanceRecords") {
+    return listAttendanceRecords_(payload);
+  }
+
+  if (action === "listPracticeSettings") {
+    return listPracticeSettings_(payload);
+  }
+
+  if (action === "addPracticeTarget") {
+    return addPracticeTarget_(payload);
+  }
+
+  if (action === "addPracticeItem") {
+    return addPracticeItem_(payload);
+  }
+
+  if (action === "deletePracticeTarget") {
+    return deletePracticeTarget_(payload);
+  }
+
+  if (action === "deletePracticeItem") {
+    return deletePracticeItem_(payload);
+  }
+
+  if (action === "listPracticeRecords") {
+    return listPracticeRecords_(payload);
+  }
+
+  throw new Error("Unknown action: " + action);
 }
 
 function setup() {
@@ -271,6 +269,7 @@ function checkIn_(payload) {
   };
 
   table.sheet.appendRow(ATTENDANCE_HEADERS.map((header) => record[header] || ""));
+  SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
 }
@@ -294,6 +293,7 @@ function checkOut_(payload) {
   row.record.updatedAt = now;
 
   writeAttendanceRow_(table.sheet, row.rowNumber, row.record);
+  SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
 }
@@ -331,6 +331,7 @@ function startPractice_(payload) {
   };
 
   ensurePracticeRecordsSheet_().appendRow(PRACTICE_RECORD_HEADERS.map((header) => record[header] || ""));
+  SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
 }
@@ -354,6 +355,7 @@ function endPractice_(payload) {
   row.record.updatedAt = now;
 
   writePracticeRow_(table.sheet, row.rowNumber, row.record);
+  SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
 }
@@ -586,6 +588,12 @@ function parseLineResponse_(response, fallbackMessage) {
 }
 
 function upsertStudent_(profile) {
+  return withWriteLock_(function () {
+    return upsertStudentWithoutLock_(profile);
+  });
+}
+
+function upsertStudentWithoutLock_(profile) {
   const sheet = ensureSheet_();
   const table = readTable_();
   const now = new Date().toISOString();
