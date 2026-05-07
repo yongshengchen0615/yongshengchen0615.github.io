@@ -4,12 +4,19 @@
   const ADMIN_KEY = "teacherAdminKey";
   const THEME_STORAGE_KEY = "massageTheme";
   const PRACTICE_OTHER_OPTION_NAME = "其他";
+  const DEFAULT_MAP_CENTER = [25.033964, 121.564468];
+  const LOCATION_SEARCH_MIN_INTERVAL_MS = 1100;
   let students = [];
   let selectedAttendanceUuid = "";
   let selectedPracticeUuid = "";
+  let locationMap = null;
+  let locationMarker = null;
+  let locationCircle = null;
+  let lastLocationSearchAt = 0;
   let practiceSettings = {
     targets: [],
-    items: []
+    items: [],
+    location: null
   };
 
   const elements = {
@@ -18,6 +25,7 @@
     studentsView: document.getElementById("studentsView"),
     practiceTargetsView: document.getElementById("practiceTargetsView"),
     practiceItemsView: document.getElementById("practiceItemsView"),
+    locationSettingsView: document.getElementById("locationSettingsView"),
     adminKey: document.getElementById("adminKey"),
     connectButton: document.getElementById("connectButton"),
     reloadButton: document.getElementById("reloadButton"),
@@ -47,6 +55,20 @@
     practiceRecordTableWrap: document.getElementById("practiceRecordTableWrap"),
     practiceRecordBody: document.getElementById("practiceRecordBody"),
     closePracticeRecordButton: document.getElementById("closePracticeRecordButton"),
+    locationEnabledInput: document.getElementById("locationEnabledInput"),
+    locationNameInput: document.getElementById("locationNameInput"),
+    locationLatitudeInput: document.getElementById("locationLatitudeInput"),
+    locationLongitudeInput: document.getElementById("locationLongitudeInput"),
+    locationRadiusInput: document.getElementById("locationRadiusInput"),
+    detectLocationButton: document.getElementById("detectLocationButton"),
+    openLocationMapButton: document.getElementById("openLocationMapButton"),
+    closeLocationMapButton: document.getElementById("closeLocationMapButton"),
+    locationMapPanel: document.getElementById("locationMapPanel"),
+    locationMap: document.getElementById("locationMap"),
+    locationMapSearchInput: document.getElementById("locationMapSearchInput"),
+    searchLocationMapButton: document.getElementById("searchLocationMapButton"),
+    saveLocationButton: document.getElementById("saveLocationButton"),
+    locationSummary: document.getElementById("locationSummary"),
     themeToggle: document.getElementById("themeToggle"),
     themeToggleIcon: document.getElementById("themeToggleIcon"),
     themeToggleText: document.getElementById("themeToggleText")
@@ -61,7 +83,8 @@
   const viewTitles = {
     studentsView: "學員審核",
     practiceTargetsView: "練習對象",
-    practiceItemsView: "練習項目"
+    practiceItemsView: "練習項目",
+    locationSettingsView: "定位範圍"
   };
 
   function currentTheme() {
@@ -94,7 +117,7 @@
   }
 
   function showView(viewId) {
-    [elements.studentsView, elements.practiceTargetsView, elements.practiceItemsView].forEach((view) => {
+    [elements.studentsView, elements.practiceTargetsView, elements.practiceItemsView, elements.locationSettingsView].forEach((view) => {
       view.hidden = view.id !== viewId;
     });
 
@@ -110,6 +133,10 @@
       hideAttendanceRecords();
       hidePracticeRecords();
     }
+
+    if (viewId === "locationSettingsView" && locationMap && !elements.locationMapPanel.hidden) {
+      window.setTimeout(refreshLocationMap, 0);
+    }
   }
 
   function setLoading(isLoading) {
@@ -117,6 +144,11 @@
     elements.reloadButton.disabled = isLoading;
     elements.addPracticeTargetButton.disabled = isLoading;
     elements.addPracticeItemButton.disabled = isLoading;
+    elements.detectLocationButton.disabled = isLoading;
+    elements.openLocationMapButton.disabled = isLoading;
+    elements.closeLocationMapButton.disabled = isLoading;
+    elements.searchLocationMapButton.disabled = isLoading;
+    elements.saveLocationButton.disabled = isLoading;
   }
 
   function setEmpty(message) {
@@ -176,6 +208,24 @@
     return rest ? `${hours} 小時 ${rest} 分鐘` : `${hours} 小時`;
   }
 
+  function distanceText(value) {
+    const distance = Number(value);
+    if (!Number.isFinite(distance)) return "";
+    return `${Math.round(distance)} 公尺`;
+  }
+
+  function attendanceLocationText(record) {
+    const checkIn = distanceText(record.checkInDistanceMeters);
+    const checkOut = distanceText(record.checkOutDistanceMeters);
+    return [checkIn ? `簽到 ${checkIn}` : "", checkOut ? `簽退 ${checkOut}` : ""].filter(Boolean).join(" / ") || "-";
+  }
+
+  function practiceLocationText(record) {
+    const start = distanceText(record.startDistanceMeters);
+    const end = distanceText(record.endDistanceMeters);
+    return [start ? `開始 ${start}` : "", end ? `結束 ${end}` : ""].filter(Boolean).join(" / ") || "-";
+  }
+
   function hideAttendanceRecords() {
     selectedAttendanceUuid = "";
     elements.attendanceRegion.hidden = true;
@@ -191,6 +241,287 @@
   function renderPracticeSettings() {
     renderPracticeOptionList(elements.practiceTargetList, practiceSettings.targets, "deletePracticeTarget");
     renderPracticeOptionList(elements.practiceItemList, practiceSettings.items, "deletePracticeItem");
+    renderLocationSettings();
+  }
+
+  function defaultLocationSettings() {
+    return {
+      name: "",
+      enabled: false,
+      latitude: "",
+      longitude: "",
+      radiusMeters: 100
+    };
+  }
+
+  function normalizeLocationSettings(setting) {
+    const fallback = defaultLocationSettings();
+    const location = setting || fallback;
+    const hasRadius = location.radiusMeters === 0 || location.radiusMeters;
+
+    return {
+      name: location.name || "",
+      enabled: Boolean(location.enabled),
+      latitude: location.latitude === 0 || location.latitude ? location.latitude : "",
+      longitude: location.longitude === 0 || location.longitude ? location.longitude : "",
+      radiusMeters: hasRadius ? location.radiusMeters : setting ? "" : fallback.radiusMeters
+    };
+  }
+
+  function locationValue(value) {
+    return value === 0 || value ? String(value) : "";
+  }
+
+  function renderLocationSettings() {
+    const location = normalizeLocationSettings(practiceSettings.location);
+
+    elements.locationEnabledInput.checked = Boolean(location.enabled);
+    elements.locationNameInput.value = location.name || "";
+    elements.locationLatitudeInput.value = locationValue(location.latitude);
+    elements.locationLongitudeInput.value = locationValue(location.longitude);
+    elements.locationRadiusInput.value = locationValue(location.radiusMeters);
+    renderLocationSummary(location);
+    updateLocationMapFromForm();
+  }
+
+  function renderLocationSummary(location, message) {
+    const setting = normalizeLocationSettings(location);
+    const radius = Number(setting.radiusMeters);
+    const latitude = Number(setting.latitude);
+    const longitude = Number(setting.longitude);
+    const hasCoordinates =
+      setting.latitude !== "" && setting.longitude !== "" && Number.isFinite(latitude) && Number.isFinite(longitude);
+    const hasRadius = setting.radiusMeters !== "" && Number.isFinite(radius);
+
+    if (message) {
+      elements.locationSummary.textContent = message;
+      return;
+    }
+
+    if (!setting.enabled) {
+      elements.locationSummary.textContent = "目前未啟用定位限制。";
+      return;
+    }
+
+    if (!hasCoordinates || !hasRadius) {
+      elements.locationSummary.textContent = "定位限制已啟用，但座標或半徑尚未完整。";
+      return;
+    }
+
+    elements.locationSummary.textContent = `已啟用：${setting.name || "指定地點"}，半徑 ${Math.round(radius)} 公尺。`;
+  }
+
+  function formLocationPoint() {
+    const latitude = Number(elements.locationLatitudeInput.value);
+    const longitude = Number(elements.locationLongitudeInput.value);
+
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+
+    return [latitude, longitude];
+  }
+
+  function formLocationRadius() {
+    const radius = Number(elements.locationRadiusInput.value);
+    return Number.isFinite(radius) && radius > 0 ? radius : 100;
+  }
+
+  function setLocationPoint(latitude, longitude, options) {
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    elements.locationLatitudeInput.value = lat.toFixed(6);
+    elements.locationLongitudeInput.value = lng.toFixed(6);
+    if (!elements.locationRadiusInput.value.trim()) elements.locationRadiusInput.value = "100";
+    elements.locationEnabledInput.checked = true;
+    renderLocationSummary(currentLocationFormValue(), options && options.message);
+    updateLocationMapMarker([lat, lng], options);
+  }
+
+  function openLocationMap() {
+    elements.locationMapPanel.hidden = false;
+
+    if (!window.L) {
+      renderLocationSummary(currentLocationFormValue(), "地圖套件載入失敗，請確認網路連線後重新整理。");
+      return;
+    }
+
+    ensureLocationMap();
+
+    const selectedPoint = formLocationPoint();
+    const point = selectedPoint || DEFAULT_MAP_CENTER;
+    locationMap.setView(point, selectedPoint ? Math.max(locationMap.getZoom() || 16, 16) : 13);
+
+    if (selectedPoint) {
+      updateLocationMapMarker(point, { preserveView: true });
+    } else {
+      clearLocationMapMarker();
+    }
+
+    window.setTimeout(refreshLocationMap, 0);
+    renderLocationSummary(currentLocationFormValue());
+  }
+
+  function closeLocationMap() {
+    elements.locationMapPanel.hidden = true;
+  }
+
+  function ensureLocationMap() {
+    if (locationMap) return;
+
+    const point = formLocationPoint() || DEFAULT_MAP_CENTER;
+    locationMap = window.L.map(elements.locationMap, {
+      zoomControl: true
+    }).setView(point, formLocationPoint() ? 16 : 13);
+
+    window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(locationMap);
+
+    locationMap.on("click", (event) => {
+      if (!event.latlng) return;
+      setLocationPoint(event.latlng.lat, event.latlng.lng, { message: "已套用地圖座標。" });
+    });
+  }
+
+  function updateLocationMapFromForm() {
+    if (!locationMap || elements.locationMapPanel.hidden) return;
+
+    const point = formLocationPoint();
+    if (!point) return;
+
+    updateLocationMapMarker(point, { preserveView: true });
+  }
+
+  function updateLocationMapMarker(point, options) {
+    if (!locationMap) return;
+
+    const radius = formLocationRadius();
+    const latLng = window.L.latLng(point[0], point[1]);
+
+    if (!locationMarker) {
+      locationMarker = window.L.marker(latLng, {
+        draggable: true
+      }).addTo(locationMap);
+      locationMarker.on("dragend", () => {
+        const next = locationMarker.getLatLng();
+        if (!next) return;
+        setLocationPoint(next.lat, next.lng, { message: "已套用地圖座標。" });
+      });
+    } else {
+      locationMarker.setLatLng(latLng);
+    }
+
+    if (!locationCircle) {
+      locationCircle = window.L.circle(latLng, {
+        radius,
+        color: "#168455",
+        opacity: 0.9,
+        weight: 2,
+        fillColor: "#168455",
+        fillOpacity: 0.12
+      }).addTo(locationMap);
+    } else {
+      locationCircle.setLatLng(latLng);
+      locationCircle.setRadius(radius);
+    }
+
+    if (!options || !options.preserveView) {
+      locationMap.setView(latLng, Math.max(locationMap.getZoom() || 16, 16));
+    }
+  }
+
+  function clearLocationMapMarker() {
+    if (!locationMap) return;
+
+    if (locationMarker) {
+      locationMarker.remove();
+      locationMarker = null;
+    }
+
+    if (locationCircle) {
+      locationCircle.remove();
+      locationCircle = null;
+    }
+  }
+
+  function refreshLocationMap() {
+    if (!locationMap) return;
+
+    const point = formLocationPoint() || DEFAULT_MAP_CENTER;
+    locationMap.invalidateSize();
+    locationMap.setView(point, locationMap.getZoom() || 13, { animate: false });
+  }
+
+  async function searchLocationMap() {
+    const query = elements.locationMapSearchInput.value.replace(/\s+/g, " ").trim();
+
+    if (!query) {
+      renderLocationSummary(currentLocationFormValue(), "請輸入要搜尋的地址或地標。");
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastLocationSearchAt < LOCATION_SEARCH_MIN_INTERVAL_MS) {
+      renderLocationSummary(currentLocationFormValue(), "請稍候再搜尋。");
+      return;
+    }
+    lastLocationSearchAt = now;
+
+    if (!locationMap) {
+      openLocationMap();
+    }
+
+    renderLocationSummary(currentLocationFormValue(), "正在搜尋地點。");
+    setLoading(true);
+
+    try {
+      const params = new URLSearchParams({
+        format: "jsonv2",
+        q: query,
+        limit: "1",
+        "accept-language": "zh-TW"
+      });
+      const response = await fetch("https://nominatim.openstreetmap.org/search?" + params.toString(), {
+        headers: {
+          Accept: "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error("地圖搜尋失敗，請稍後再試。");
+      }
+
+      const results = await response.json();
+      const result = Array.isArray(results) ? results[0] : null;
+
+      if (!result || !result.lat || !result.lon) {
+        renderLocationSummary(currentLocationFormValue(), "找不到符合的地點。");
+        return;
+      }
+
+      if (!elements.locationNameInput.value.trim()) {
+        elements.locationNameInput.value = (result.name || query).slice(0, 80);
+      }
+
+      setLocationPoint(result.lat, result.lon, { message: "已套用搜尋結果。" });
+
+      if (locationMap && Array.isArray(result.boundingbox) && result.boundingbox.length === 4) {
+        const bounds = [
+          [Number(result.boundingbox[0]), Number(result.boundingbox[2])],
+          [Number(result.boundingbox[1]), Number(result.boundingbox[3])]
+        ];
+        if (bounds.flat().every(Number.isFinite)) {
+          locationMap.fitBounds(bounds, { maxZoom: 16 });
+        }
+      }
+    } catch (error) {
+      renderLocationSummary(currentLocationFormValue(), error.message || "地圖搜尋失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function renderPracticeOptionList(container, options, action) {
@@ -298,7 +629,8 @@
       students = data.students || [];
       practiceSettings = {
         targets: settings.targets || [],
-        items: settings.items || []
+        items: settings.items || [],
+        location: settings.location || defaultLocationSettings()
       };
       renderPracticeSettings();
       render();
@@ -403,6 +735,7 @@
               <td>${AppApi.formatDate(record.checkInAt)}</td>
               <td>${record.checkOutAt ? AppApi.formatDate(record.checkOutAt) : "-"}</td>
               <td>${durationLabel(record)}</td>
+              <td>${AppApi.escapeHtml(attendanceLocationText(record))}</td>
               <td>${status}</td>
             </tr>
           `;
@@ -456,6 +789,7 @@
               <td>${AppApi.formatDate(record.startedAt)}</td>
               <td>${record.endedAt ? AppApi.formatDate(record.endedAt) : "-"}</td>
               <td>${durationLabel(record)}</td>
+              <td>${AppApi.escapeHtml(practiceLocationText(record))}</td>
               <td>${status}</td>
             </tr>
           `;
@@ -528,6 +862,107 @@
     }
   }
 
+  function currentLocationFormValue() {
+    return {
+      enabled: elements.locationEnabledInput.checked,
+      name: elements.locationNameInput.value.trim(),
+      latitude: elements.locationLatitudeInput.value.trim(),
+      longitude: elements.locationLongitudeInput.value.trim(),
+      radiusMeters: elements.locationRadiusInput.value.trim()
+    };
+  }
+
+  function validateLocationForm(payload) {
+    if (!payload.enabled) return "";
+
+    const latitude = Number(payload.latitude);
+    const longitude = Number(payload.longitude);
+    const radius = Number(payload.radiusMeters);
+
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return "請輸入有效緯度。";
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return "請輸入有效經度。";
+    if (!Number.isFinite(radius) || radius < 10 || radius > 10000) return "半徑需介於 10 到 10000 公尺。";
+
+    return "";
+  }
+
+  function getTeacherCurrentLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("此瀏覽器不支援定位。"));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: Number.isFinite(position.coords.accuracy) ? Math.round(position.coords.accuracy) : ""
+          });
+        },
+        (error) => {
+          const messages = {
+            1: "定位權限被拒絕。",
+            2: "目前無法取得定位。",
+            3: "取得定位逾時。"
+          };
+          reject(new Error(messages[error.code] || "取得定位失敗。"));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    });
+  }
+
+  async function detectLocation() {
+    setLoading(true);
+    renderLocationSummary(currentLocationFormValue(), "正在取得目前定位。");
+
+    try {
+      const location = await getTeacherCurrentLocation();
+      if (!elements.locationRadiusInput.value.trim()) elements.locationRadiusInput.value = "100";
+      if (!elements.locationNameInput.value.trim()) elements.locationNameInput.value = "練習地點";
+      const accuracyText = location.accuracy ? `精準度約 ${location.accuracy} 公尺。` : "已填入目前定位。";
+      setLocationPoint(location.latitude, location.longitude, { message: accuracyText });
+    } catch (error) {
+      renderLocationSummary(currentLocationFormValue(), error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveLocationSettings() {
+    const key = adminKey();
+    if (!key) {
+      window.alert("請先輸入管理密鑰。");
+      return;
+    }
+
+    const payload = currentLocationFormValue();
+    const validationMessage = validateLocationForm(payload);
+    if (validationMessage) {
+      window.alert(validationMessage);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const data = await AppApi.post("updateLocationSettings", Object.assign({ adminKey: key }, payload));
+      practiceSettings.location = data.location || defaultLocationSettings();
+      renderLocationSettings();
+      renderLocationSummary(practiceSettings.location, "定位範圍已儲存。");
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function bindEvents() {
     elements.themeToggle.addEventListener("click", toggleTheme);
     elements.viewButtons.forEach((button) => {
@@ -543,11 +978,37 @@
     elements.addPracticeItemButton.addEventListener("click", () => {
       addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
     });
+    elements.detectLocationButton.addEventListener("click", detectLocation);
+    elements.openLocationMapButton.addEventListener("click", openLocationMap);
+    elements.searchLocationMapButton.addEventListener("click", searchLocationMap);
+    elements.closeLocationMapButton.addEventListener("click", closeLocationMap);
+    elements.saveLocationButton.addEventListener("click", saveLocationSettings);
+    [
+      elements.locationEnabledInput,
+      elements.locationNameInput,
+      elements.locationLatitudeInput,
+      elements.locationLongitudeInput,
+      elements.locationRadiusInput
+    ].forEach((input) => {
+      input.addEventListener("input", () => {
+        renderLocationSummary(currentLocationFormValue());
+        updateLocationMapFromForm();
+      });
+      input.addEventListener("change", () => {
+        renderLocationSummary(currentLocationFormValue());
+        updateLocationMapFromForm();
+      });
+    });
     elements.practiceTargetInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") addPracticeOption("addPracticeTarget", elements.practiceTargetInput, "targets");
     });
     elements.practiceItemInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
+    });
+    elements.locationMapSearchInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      searchLocationMap();
     });
     elements.searchInput.addEventListener("input", render);
     elements.statusFilter.addEventListener("change", render);

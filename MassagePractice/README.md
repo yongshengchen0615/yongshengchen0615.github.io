@@ -2,8 +2,8 @@
 
 這是一組靜態 `HTML/CSS/JS` 前端加上 Google Apps Script 後端：
 
-- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退，並記錄練習。
-- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，管理練習對象與項目，查看紀錄，或移除學員。
+- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退，並記錄練習；若師資啟用定位限制，操作前會要求瀏覽器定位。
+- `teacher/`: 師資輸入管理密鑰後讀取學員名單，設定待審核、通過、未通過，管理練習對象與項目、設定定位範圍，查看紀錄，或移除學員。
 - `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet、簽到紀錄與練習紀錄。
 
 ## 檔案
@@ -37,7 +37,7 @@ uuid, lineUserId, lineName, linePictureUrl, status, createdAt, updatedAt, approv
 GAS 也會建立 `attendance` 工作表，欄位如下：
 
 ```text
-id, studentUuid, lineUserId, lineName, checkInAt, checkOutAt, createdAt, updatedAt
+id, studentUuid, lineUserId, lineName, checkInAt, checkOutAt, createdAt, updatedAt, checkInLatitude, checkInLongitude, checkInAccuracyMeters, checkInDistanceMeters, checkOutLatitude, checkOutLongitude, checkOutAccuracyMeters, checkOutDistanceMeters
 ```
 
 每次簽到會新增一筆紀錄；簽退會補上同一筆紀錄的 `checkOutAt`。
@@ -47,10 +47,13 @@ GAS 也會建立練習設定與練習紀錄工作表：
 ```text
 practice_targets: id, name, enabled, createdAt, updatedAt
 practice_items: id, name, enabled, createdAt, updatedAt
-practice_records: id, studentUuid, lineUserId, lineName, targetId, targetName, itemId, itemName, startedAt, endedAt, createdAt, updatedAt
+practice_records: id, studentUuid, lineUserId, lineName, targetId, targetName, itemId, itemName, startedAt, endedAt, createdAt, updatedAt, startLatitude, startLongitude, startAccuracyMeters, startDistanceMeters, endLatitude, endLongitude, endAccuracyMeters, endDistanceMeters
+location_settings: id, name, enabled, latitude, longitude, radiusMeters, updatedAt
 ```
 
 學員開始練習會新增一筆 `practice_records`；結束練習會補上同一筆紀錄的 `endedAt`。
+
+`location_settings` 預設不啟用。師資端儲存定位範圍後，GAS 會在學員簽到、簽退、開始練習、結束練習時檢查學員送出的定位是否落在半徑內，並把距離與定位精準度寫入紀錄。
 
 ## 部署步驟
 
@@ -100,12 +103,15 @@ SPREADSHEET_ID=你的 Google Sheet ID
 8. 到 LINE Developers Console 的 LINE Login channel，把 Callback URL 設成與 `student/config.json` 的 `studentRedirectUri` 完全相同的 URL。
 9. 將前端檔案放到 HTTPS 靜態主機，例如 GitHub Pages、Cloudflare Pages、Netlify 或自己的主機。
 
+既有部署更新此版本後，也要重新貼上 `gas/Code.gs`、執行一次 `setup()`，再建立新版本部署，讓新增欄位與 `location_settings` 工作表生效。
+
 ## 使用方式
 
 - 學員入口：`student/`
 - 師資入口：`teacher/`
 - 學員審核通過後，可以在學員系統按「簽到」與「簽退」，也可以選擇練習對象與練習項目後開始/結束練習；選「其他」時可自行輸入對象或項目。
-- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核、管理練習選項、查看簽到/練習紀錄或移除學員。
+- 師資輸入 `ADMIN_KEY` 後可以載入名單，並審核、管理練習選項、設定定位範圍、查看簽到/練習紀錄或移除學員。
+- 師資在「定位範圍」可輸入地點名稱、緯度、經度與半徑；也可以用「使用目前定位」帶入目前 GPS 座標，或開啟免費地圖搜尋地址、地標並直接回填經緯度後再儲存。
 
 ## 注意事項
 
@@ -115,6 +121,9 @@ SPREADSHEET_ID=你的 Google Sheet ID
 - 學員系統與師資系統頁面不提供彼此切換連結，請分別提供對應入口網址。
 - 前端呼叫 GAS 使用 `Content-Type: text/plain`，避免瀏覽器對 GAS Web App 送出 OPTIONS preflight。
 - 正式登入需要 HTTPS URL；直接用 `file://` 打開頁面只能預覽 UI，不能作為 LINE Callback URL。
+- 瀏覽器定位需要 HTTPS 或 localhost；若學員拒絕定位權限，定位限制啟用時無法簽到、簽退或記錄練習。
+- 師資端地圖選點使用 Leaflet、OpenStreetMap 圖磚與 Nominatim 搜尋，不需要 Google Maps API key。公開 Nominatim 服務適合輕量搜尋；若使用量變大，建議改接自架 Nominatim 或商用地理編碼服務。
+- 這是 Web App 端的定位門檻，能阻擋一般不在範圍內的操作，但無法取代專用打卡硬體或 MDM 等防竄改控管。
 
 ## 官方文件
 
@@ -122,3 +131,6 @@ SPREADSHEET_ID=你的 Google Sheet ID
 - LINE Login v2.1 API：https://developers.line.biz/en/reference/line-login/
 - Google Apps Script Web Apps：https://developers.google.com/apps-script/guides/web
 - Apps Script PropertiesService：https://developers.google.com/apps-script/reference/properties/properties-service
+- Leaflet：https://leafletjs.com/
+- OpenStreetMap：https://www.openstreetmap.org/
+- Nominatim：https://nominatim.org/

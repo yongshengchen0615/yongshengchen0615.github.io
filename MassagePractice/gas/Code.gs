@@ -3,8 +3,13 @@ const ATTENDANCE_SHEET_NAME = "attendance";
 const PRACTICE_TARGETS_SHEET_NAME = "practice_targets";
 const PRACTICE_ITEMS_SHEET_NAME = "practice_items";
 const PRACTICE_RECORDS_SHEET_NAME = "practice_records";
+const LOCATION_SETTINGS_SHEET_NAME = "location_settings";
 const PRACTICE_OTHER_OPTION_ID = "__other__";
 const PRACTICE_OTHER_OPTION_NAME = "其他";
+const LOCATION_SETTING_ID = "default";
+const DEFAULT_LOCATION_RADIUS_METERS = 100;
+const MIN_LOCATION_RADIUS_METERS = 10;
+const MAX_LOCATION_RADIUS_METERS = 10000;
 const WRITE_ACTIONS = [
   "checkIn",
   "checkOut",
@@ -15,7 +20,8 @@ const WRITE_ACTIONS = [
   "addPracticeTarget",
   "addPracticeItem",
   "deletePracticeTarget",
-  "deletePracticeItem"
+  "deletePracticeItem",
+  "updateLocationSettings"
 ];
 const HEADERS = [
   "uuid",
@@ -37,7 +43,15 @@ const ATTENDANCE_HEADERS = [
   "checkInAt",
   "checkOutAt",
   "createdAt",
-  "updatedAt"
+  "updatedAt",
+  "checkInLatitude",
+  "checkInLongitude",
+  "checkInAccuracyMeters",
+  "checkInDistanceMeters",
+  "checkOutLatitude",
+  "checkOutLongitude",
+  "checkOutAccuracyMeters",
+  "checkOutDistanceMeters"
 ];
 const PRACTICE_OPTION_HEADERS = [
   "id",
@@ -58,6 +72,23 @@ const PRACTICE_RECORD_HEADERS = [
   "startedAt",
   "endedAt",
   "createdAt",
+  "updatedAt",
+  "startLatitude",
+  "startLongitude",
+  "startAccuracyMeters",
+  "startDistanceMeters",
+  "endLatitude",
+  "endLongitude",
+  "endAccuracyMeters",
+  "endDistanceMeters"
+];
+const LOCATION_SETTINGS_HEADERS = [
+  "id",
+  "name",
+  "enabled",
+  "latitude",
+  "longitude",
+  "radiusMeters",
   "updatedAt"
 ];
 
@@ -177,6 +208,10 @@ function handleAction_(action, payload) {
     return deletePracticeItem_(payload);
   }
 
+  if (action === "updateLocationSettings") {
+    return updateLocationSettings_(payload);
+  }
+
   if (action === "listPracticeRecords") {
     return listPracticeRecords_(payload);
   }
@@ -190,6 +225,7 @@ function setup() {
   const practiceTargetsSheet = ensurePracticeTargetsSheet_();
   const practiceItemsSheet = ensurePracticeItemsSheet_();
   const practiceRecordsSheet = ensurePracticeRecordsSheet_();
+  const locationSettingsSheet = ensureLocationSettingsSheet_();
   return {
     sheet: sheet.getName(),
     headers: HEADERS,
@@ -198,8 +234,10 @@ function setup() {
     practiceTargetsSheet: practiceTargetsSheet.getName(),
     practiceItemsSheet: practiceItemsSheet.getName(),
     practiceRecordsSheet: practiceRecordsSheet.getName(),
+    locationSettingsSheet: locationSettingsSheet.getName(),
     practiceOptionHeaders: PRACTICE_OPTION_HEADERS,
     practiceRecordHeaders: PRACTICE_RECORD_HEADERS,
+    locationSettingsHeaders: LOCATION_SETTINGS_HEADERS,
     time: new Date().toISOString()
   };
 }
@@ -248,6 +286,7 @@ function getStudentStatus_(payload) {
 function checkIn_(payload) {
   const student = validateStudentSession_(payload);
   assertStudentApproved_(student);
+  const location = assertWithinLocationRange_(payload);
 
   const table = readAttendanceTable_();
   const openRecord = table.rows.find((row) => row.record.studentUuid === student.uuid && !row.record.checkOutAt);
@@ -265,10 +304,18 @@ function checkIn_(payload) {
     checkInAt: now,
     checkOutAt: "",
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    checkInLatitude: location ? location.latitude : "",
+    checkInLongitude: location ? location.longitude : "",
+    checkInAccuracyMeters: location ? location.accuracyMeters : "",
+    checkInDistanceMeters: location ? location.distanceMeters : "",
+    checkOutLatitude: "",
+    checkOutLongitude: "",
+    checkOutAccuracyMeters: "",
+    checkOutDistanceMeters: ""
   };
 
-  table.sheet.appendRow(ATTENDANCE_HEADERS.map((header) => record[header] || ""));
+  table.sheet.appendRow(ATTENDANCE_HEADERS.map((header) => cellValue_(record[header])));
   SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
@@ -277,6 +324,7 @@ function checkIn_(payload) {
 function checkOut_(payload) {
   const student = validateStudentSession_(payload);
   assertStudentApproved_(student);
+  const location = assertWithinLocationRange_(payload);
 
   const table = readAttendanceTable_();
   const openRows = table.rows
@@ -291,6 +339,12 @@ function checkOut_(payload) {
   const row = openRows[0];
   row.record.checkOutAt = now;
   row.record.updatedAt = now;
+  if (location) {
+    row.record.checkOutLatitude = location.latitude;
+    row.record.checkOutLongitude = location.longitude;
+    row.record.checkOutAccuracyMeters = location.accuracyMeters;
+    row.record.checkOutDistanceMeters = location.distanceMeters;
+  }
 
   writeAttendanceRow_(table.sheet, row.rowNumber, row.record);
   SpreadsheetApp.flush();
@@ -302,6 +356,7 @@ function startPractice_(payload) {
   const student = validateStudentSession_(payload);
   assertStudentApproved_(student);
   requireFields_(payload, ["targetId", "itemId"]);
+  const location = assertWithinLocationRange_(payload);
 
   const openRecord = readPracticeTable_().rows.find(
     (row) => row.record.studentUuid === student.uuid && !row.record.endedAt
@@ -327,10 +382,18 @@ function startPractice_(payload) {
     startedAt: now,
     endedAt: "",
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    startLatitude: location ? location.latitude : "",
+    startLongitude: location ? location.longitude : "",
+    startAccuracyMeters: location ? location.accuracyMeters : "",
+    startDistanceMeters: location ? location.distanceMeters : "",
+    endLatitude: "",
+    endLongitude: "",
+    endAccuracyMeters: "",
+    endDistanceMeters: ""
   };
 
-  ensurePracticeRecordsSheet_().appendRow(PRACTICE_RECORD_HEADERS.map((header) => record[header] || ""));
+  ensurePracticeRecordsSheet_().appendRow(PRACTICE_RECORD_HEADERS.map((header) => cellValue_(record[header])));
   SpreadsheetApp.flush();
 
   return publicStudent_(student, true);
@@ -339,6 +402,7 @@ function startPractice_(payload) {
 function endPractice_(payload) {
   const student = validateStudentSession_(payload);
   assertStudentApproved_(student);
+  const location = assertWithinLocationRange_(payload);
 
   const table = readPracticeTable_();
   const openRows = table.rows
@@ -353,6 +417,12 @@ function endPractice_(payload) {
   const row = openRows[0];
   row.record.endedAt = now;
   row.record.updatedAt = now;
+  if (location) {
+    row.record.endLatitude = location.latitude;
+    row.record.endLongitude = location.longitude;
+    row.record.endAccuracyMeters = location.accuracyMeters;
+    row.record.endDistanceMeters = location.distanceMeters;
+  }
 
   writePracticeRow_(table.sheet, row.rowNumber, row.record);
   SpreadsheetApp.flush();
@@ -394,7 +464,8 @@ function listPracticeSettings_(payload) {
 
   return {
     targets: readPracticeOptions_(PRACTICE_TARGETS_SHEET_NAME),
-    items: readPracticeOptions_(PRACTICE_ITEMS_SHEET_NAME)
+    items: readPracticeOptions_(PRACTICE_ITEMS_SHEET_NAME),
+    location: publicLocationSettings_(readLocationSettings_())
   };
 }
 
@@ -422,6 +493,26 @@ function deletePracticeItem_(payload) {
   assertAdmin_(payload.adminKey);
   deletePracticeOption_(PRACTICE_ITEMS_SHEET_NAME, payload.id);
   return { id: payload.id };
+}
+
+function updateLocationSettings_(payload) {
+  assertAdmin_(payload.adminKey);
+
+  const setting = buildLocationSettingsFromPayload_(payload);
+  const table = readLocationSettingsTable_();
+  const existing = table.rows.find((row) => row.setting.id === LOCATION_SETTING_ID);
+
+  if (existing) {
+    writeLocationSettingsRow_(table.sheet, existing.rowNumber, setting);
+  } else {
+    table.sheet.appendRow(LOCATION_SETTINGS_HEADERS.map((header) => cellValue_(setting[header])));
+  }
+
+  SpreadsheetApp.flush();
+
+  return {
+    location: publicLocationSettings_(setting)
+  };
 }
 
 function listPracticeRecords_(payload) {
@@ -510,6 +601,200 @@ function assertStudentApproved_(student) {
   if (student.status !== "approved") {
     throw new Error("審核通過後才能簽到簽退。");
   }
+}
+
+function assertWithinLocationRange_(payload) {
+  const setting = readLocationSettings_();
+
+  if (!isLocationRangeEnabled_(setting)) {
+    return null;
+  }
+
+  const clientLocation = parseClientLocation_(payload.location);
+  const distance = haversineDistanceMeters_(
+    Number(setting.latitude),
+    Number(setting.longitude),
+    clientLocation.latitude,
+    clientLocation.longitude
+  );
+  const roundedDistance = Math.round(distance);
+  const radius = Number(setting.radiusMeters);
+
+  if (roundedDistance > radius) {
+    throw new Error(
+      "目前位置距離「" +
+        locationDisplayName_(setting) +
+        "」約 " +
+        roundedDistance +
+        " 公尺，超出允許範圍 " +
+        radius +
+        " 公尺。"
+    );
+  }
+
+  return {
+    latitude: roundCoordinate_(clientLocation.latitude),
+    longitude: roundCoordinate_(clientLocation.longitude),
+    accuracyMeters: clientLocation.accuracyMeters,
+    distanceMeters: roundedDistance
+  };
+}
+
+function isLocationRangeEnabled_(setting) {
+  return Boolean(
+    setting &&
+      setting.enabled &&
+      setting.latitude !== "" &&
+      setting.longitude !== "" &&
+      setting.radiusMeters !== "" &&
+      isFiniteNumber_(Number(setting.latitude)) &&
+      isFiniteNumber_(Number(setting.longitude)) &&
+      isFiniteNumber_(Number(setting.radiusMeters)) &&
+      Number(setting.radiusMeters) > 0
+  );
+}
+
+function parseClientLocation_(location) {
+  if (!location || typeof location !== "object") {
+    throw new Error("此操作需要取得目前定位，請允許瀏覽器定位後再試。");
+  }
+
+  return {
+    latitude: parseRequiredNumber_(location.latitude, "定位緯度", -90, 90),
+    longitude: parseRequiredNumber_(location.longitude, "定位經度", -180, 180),
+    accuracyMeters: parseOptionalNonNegativeNumber_(location.accuracy, "定位精準度")
+  };
+}
+
+function buildLocationSettingsFromPayload_(payload) {
+  const enabled = parseBoolean_(payload.enabled);
+  const latitude = parseOptionalCoordinate_(payload.latitude, "緯度", -90, 90);
+  const longitude = parseOptionalCoordinate_(payload.longitude, "經度", -180, 180);
+  const radius = parseOptionalRadius_(payload.radiusMeters);
+
+  if (enabled && latitude === "") {
+    throw new Error("啟用定位限制前，請設定緯度。");
+  }
+
+  if (enabled && longitude === "") {
+    throw new Error("啟用定位限制前，請設定經度。");
+  }
+
+  if (enabled && radius === "") {
+    throw new Error("啟用定位限制前，請設定範圍半徑。");
+  }
+
+  return {
+    id: LOCATION_SETTING_ID,
+    name: cleanLocationName_(payload.name),
+    enabled,
+    latitude,
+    longitude,
+    radiusMeters: radius === "" ? DEFAULT_LOCATION_RADIUS_METERS : radius,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function defaultLocationSettings_() {
+  return {
+    id: LOCATION_SETTING_ID,
+    name: "",
+    enabled: false,
+    latitude: "",
+    longitude: "",
+    radiusMeters: DEFAULT_LOCATION_RADIUS_METERS,
+    updatedAt: ""
+  };
+}
+
+function publicLocationSettings_(setting) {
+  const normalized = normalizeLocationSettings_(setting || defaultLocationSettings_());
+
+  return {
+    name: normalized.name,
+    enabled: isLocationRangeEnabled_(normalized),
+    latitude: normalized.latitude,
+    longitude: normalized.longitude,
+    radiusMeters: normalized.radiusMeters,
+    updatedAt: normalized.updatedAt
+  };
+}
+
+function cleanLocationName_(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function locationDisplayName_(setting) {
+  return setting.name || "指定地點";
+}
+
+function parseBoolean_(value) {
+  if (value === true) return true;
+  return ["true", "1", "yes", "y", "啟用"].indexOf(String(value || "").trim().toLowerCase()) !== -1;
+}
+
+function parseOptionalCoordinate_(value, label, min, max) {
+  if (value === "" || value === null || typeof value === "undefined") return "";
+  return parseRequiredNumber_(value, label, min, max);
+}
+
+function parseOptionalRadius_(value) {
+  if (value === "" || value === null || typeof value === "undefined") return "";
+  const radius = Math.round(parseRequiredNumber_(value, "範圍半徑", MIN_LOCATION_RADIUS_METERS, MAX_LOCATION_RADIUS_METERS));
+
+  if (radius < MIN_LOCATION_RADIUS_METERS || radius > MAX_LOCATION_RADIUS_METERS) {
+    throw new Error("範圍半徑需介於 " + MIN_LOCATION_RADIUS_METERS + " 到 " + MAX_LOCATION_RADIUS_METERS + " 公尺。");
+  }
+
+  return radius;
+}
+
+function parseRequiredNumber_(value, label, min, max) {
+  const number = Number(value);
+
+  if (!isFiniteNumber_(number)) {
+    throw new Error(label + "格式不正確。");
+  }
+
+  if (number < min || number > max) {
+    throw new Error(label + "需介於 " + min + " 到 " + max + "。");
+  }
+
+  return number;
+}
+
+function parseOptionalNonNegativeNumber_(value, label) {
+  if (value === "" || value === null || typeof value === "undefined") return "";
+  const number = Number(value);
+
+  if (!isFiniteNumber_(number) || number < 0) {
+    throw new Error(label + "格式不正確。");
+  }
+
+  return Math.round(number);
+}
+
+function haversineDistanceMeters_(lat1, lon1, lat2, lon2) {
+  const earthRadiusMeters = 6371000;
+  const dLat = degreesToRadians_(lat2 - lat1);
+  const dLon = degreesToRadians_(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(degreesToRadians_(lat1)) *
+      Math.cos(degreesToRadians_(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusMeters * c;
+}
+
+function degreesToRadians_(degrees) {
+  return (degrees * Math.PI) / 180;
+}
+
+function roundCoordinate_(value) {
+  return Math.round(Number(value) * 1000000) / 1000000;
 }
 
 function exchangeLineCode_(payload) {
@@ -624,7 +909,7 @@ function upsertStudentWithoutLock_(profile) {
     publicToken: createToken_()
   };
 
-  sheet.appendRow(HEADERS.map((header) => student[header] || ""));
+  sheet.appendRow(HEADERS.map((header) => cellValue_(student[header])));
   return student;
 }
 
@@ -681,6 +966,12 @@ function readPracticeOptions_(sheetName) {
 
 function readPracticeRecords_() {
   return readPracticeTable_().rows.map((row) => row.record);
+}
+
+function readLocationSettings_() {
+  const table = readLocationSettingsTable_();
+  const row = table.rows.find((item) => item.setting.id === LOCATION_SETTING_ID) || table.rows[0];
+  return row ? row.setting : defaultLocationSettings_();
 }
 
 function readAttendanceTable_() {
@@ -785,6 +1076,40 @@ function readPracticeTable_() {
   return { sheet, rows };
 }
 
+function readLocationSettingsTable_() {
+  const sheet = ensureLocationSettingsSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headerRow = values[0] || LOCATION_SETTINGS_HEADERS;
+  const headerIndex = {};
+
+  headerRow.forEach((header, index) => {
+    headerIndex[header] = index;
+  });
+
+  const rows = values
+    .slice(1)
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 2
+    }))
+    .filter((item) => rowHasValue_(item.row))
+    .map((item) => {
+      const setting = {};
+
+      LOCATION_SETTINGS_HEADERS.forEach((header) => {
+        const cellIndex = headerIndex[header];
+        setting[header] = cellIndex >= 0 ? item.row[cellIndex] : "";
+      });
+
+      return {
+        rowNumber: item.rowNumber,
+        setting: normalizeLocationSettings_(setting)
+      };
+    });
+
+  return { sheet, rows };
+}
+
 function normalizeStudent_(student) {
   return {
     uuid: String(student.uuid || ""),
@@ -819,7 +1144,15 @@ function normalizeAttendanceRecord_(record) {
     checkInAt: toIsoString_(record.checkInAt),
     checkOutAt: toIsoString_(record.checkOutAt),
     createdAt: toIsoString_(record.createdAt),
-    updatedAt: toIsoString_(record.updatedAt)
+    updatedAt: toIsoString_(record.updatedAt),
+    checkInLatitude: toOptionalNumber_(record.checkInLatitude),
+    checkInLongitude: toOptionalNumber_(record.checkInLongitude),
+    checkInAccuracyMeters: toOptionalNumber_(record.checkInAccuracyMeters),
+    checkInDistanceMeters: toOptionalNumber_(record.checkInDistanceMeters),
+    checkOutLatitude: toOptionalNumber_(record.checkOutLatitude),
+    checkOutLongitude: toOptionalNumber_(record.checkOutLongitude),
+    checkOutAccuracyMeters: toOptionalNumber_(record.checkOutAccuracyMeters),
+    checkOutDistanceMeters: toOptionalNumber_(record.checkOutDistanceMeters)
   };
 }
 
@@ -846,24 +1179,53 @@ function normalizePracticeRecord_(record) {
     startedAt: toIsoString_(record.startedAt),
     endedAt: toIsoString_(record.endedAt),
     createdAt: toIsoString_(record.createdAt),
-    updatedAt: toIsoString_(record.updatedAt)
+    updatedAt: toIsoString_(record.updatedAt),
+    startLatitude: toOptionalNumber_(record.startLatitude),
+    startLongitude: toOptionalNumber_(record.startLongitude),
+    startAccuracyMeters: toOptionalNumber_(record.startAccuracyMeters),
+    startDistanceMeters: toOptionalNumber_(record.startDistanceMeters),
+    endLatitude: toOptionalNumber_(record.endLatitude),
+    endLongitude: toOptionalNumber_(record.endLongitude),
+    endAccuracyMeters: toOptionalNumber_(record.endAccuracyMeters),
+    endDistanceMeters: toOptionalNumber_(record.endDistanceMeters)
+  };
+}
+
+function normalizeLocationSettings_(setting) {
+  const enabledValue = String(setting.enabled || "").trim().toLowerCase();
+  const radius = toOptionalNumber_(setting.radiusMeters);
+
+  return {
+    id: String(setting.id || LOCATION_SETTING_ID),
+    name: cleanLocationName_(setting.name),
+    enabled: ["true", "1", "yes", "y", "啟用"].indexOf(enabledValue) !== -1,
+    latitude: toOptionalNumber_(setting.latitude),
+    longitude: toOptionalNumber_(setting.longitude),
+    radiusMeters: radius === "" ? DEFAULT_LOCATION_RADIUS_METERS : radius,
+    updatedAt: toIsoString_(setting.updatedAt)
   };
 }
 
 function writeStudentRow_(sheet, rowNumber, student) {
-  sheet.getRange(rowNumber, 1, 1, HEADERS.length).setValues([HEADERS.map((header) => student[header] || "")]);
+  sheet.getRange(rowNumber, 1, 1, HEADERS.length).setValues([HEADERS.map((header) => cellValue_(student[header]))]);
 }
 
 function writeAttendanceRow_(sheet, rowNumber, record) {
   sheet
     .getRange(rowNumber, 1, 1, ATTENDANCE_HEADERS.length)
-    .setValues([ATTENDANCE_HEADERS.map((header) => record[header] || "")]);
+    .setValues([ATTENDANCE_HEADERS.map((header) => cellValue_(record[header]))]);
 }
 
 function writePracticeRow_(sheet, rowNumber, record) {
   sheet
     .getRange(rowNumber, 1, 1, PRACTICE_RECORD_HEADERS.length)
-    .setValues([PRACTICE_RECORD_HEADERS.map((header) => record[header] || "")]);
+    .setValues([PRACTICE_RECORD_HEADERS.map((header) => cellValue_(record[header]))]);
+}
+
+function writeLocationSettingsRow_(sheet, rowNumber, setting) {
+  sheet
+    .getRange(rowNumber, 1, 1, LOCATION_SETTINGS_HEADERS.length)
+    .setValues([LOCATION_SETTINGS_HEADERS.map((header) => cellValue_(setting[header]))]);
 }
 
 function deleteAttendanceRowsByStudentUuid_(uuid) {
@@ -955,7 +1317,7 @@ function addPracticeOption_(sheetName, name) {
     updatedAt: now
   };
 
-  table.sheet.appendRow(PRACTICE_OPTION_HEADERS.map((header) => option[header]));
+  table.sheet.appendRow(PRACTICE_OPTION_HEADERS.map((header) => cellValue_(option[header])));
   return normalizePracticeOption_(option);
 }
 
@@ -990,6 +1352,10 @@ function ensurePracticeItemsSheet_() {
 
 function ensurePracticeRecordsSheet_() {
   return ensureSheetWithHeaders_(PRACTICE_RECORDS_SHEET_NAME, PRACTICE_RECORD_HEADERS);
+}
+
+function ensureLocationSettingsSheet_() {
+  return ensureSheetWithHeaders_(LOCATION_SETTINGS_SHEET_NAME, LOCATION_SETTINGS_HEADERS);
 }
 
 function ensurePracticeOptionSheet_(sheetName) {
@@ -1069,6 +1435,7 @@ function publicStudent_(student, includeToken) {
     data.publicToken = student.publicToken;
     data.attendance = studentAttendanceSummary_(student.uuid);
     data.practice = studentPracticeSummary_(student.uuid);
+    data.locationRequirement = publicLocationSettings_(readLocationSettings_());
   }
 
   return data;
@@ -1094,7 +1461,11 @@ function publicAttendanceRecord_(record) {
     checkInAt: record.checkInAt,
     checkOutAt: record.checkOutAt,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt
+    updatedAt: record.updatedAt,
+    checkInDistanceMeters: record.checkInDistanceMeters,
+    checkInAccuracyMeters: record.checkInAccuracyMeters,
+    checkOutDistanceMeters: record.checkOutDistanceMeters,
+    checkOutAccuracyMeters: record.checkOutAccuracyMeters
   };
 }
 
@@ -1126,7 +1497,11 @@ function publicPracticeRecord_(record) {
     startedAt: record.startedAt,
     endedAt: record.endedAt,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt
+    updatedAt: record.updatedAt,
+    startDistanceMeters: record.startDistanceMeters,
+    startAccuracyMeters: record.startAccuracyMeters,
+    endDistanceMeters: record.endDistanceMeters,
+    endAccuracyMeters: record.endAccuracyMeters
   };
 }
 
@@ -1150,6 +1525,20 @@ function toIsoString_(value) {
   if (!value) return "";
   if (Object.prototype.toString.call(value) === "[object Date]") return value.toISOString();
   return String(value);
+}
+
+function toOptionalNumber_(value) {
+  if (value === "" || value === null || typeof value === "undefined") return "";
+  const number = Number(value);
+  return isFiniteNumber_(number) ? number : "";
+}
+
+function isFiniteNumber_(value) {
+  return typeof value === "number" && isFinite(value);
+}
+
+function cellValue_(value) {
+  return value === null || typeof value === "undefined" ? "" : value;
 }
 
 function json_(value) {

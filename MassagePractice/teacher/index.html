@@ -13,7 +13,13 @@
         } catch (error) {}
       })();
     </script>
-    <link rel="stylesheet" href="css/styles.css?v=20260507-3" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="css/styles.css?v=20260507-7" />
   </head>
   <body>
     <header class="topbar">
@@ -43,6 +49,7 @@
         <button class="teacher-tab is-active" data-view="studentsView" type="button" aria-selected="true">學員</button>
         <button class="teacher-tab" data-view="practiceTargetsView" type="button" aria-selected="false">練習對象</button>
         <button class="teacher-tab" data-view="practiceItemsView" type="button" aria-selected="false">練習項目</button>
+        <button class="teacher-tab" data-view="locationSettingsView" type="button" aria-selected="false">定位範圍</button>
       </nav>
 
       <section class="teacher-view" id="studentsView">
@@ -110,6 +117,7 @@
                   <th>簽到時間</th>
                   <th>簽退時間</th>
                   <th>停留時間</th>
+                  <th>定位距離</th>
                   <th>狀態</th>
                 </tr>
               </thead>
@@ -138,6 +146,7 @@
                   <th>開始時間</th>
                   <th>結束時間</th>
                   <th>練習時間</th>
+                  <th>定位距離</th>
                   <th>狀態</th>
                 </tr>
               </thead>
@@ -176,9 +185,71 @@
           <div class="option-list" id="practiceItemList">輸入管理密鑰後載入。</div>
         </section>
       </section>
+
+      <section class="teacher-view" id="locationSettingsView" hidden>
+        <section class="location-manager">
+          <div>
+            <p class="eyebrow">Location Range</p>
+            <h2>定位範圍</h2>
+            <p class="manager-note">套用至簽到、簽退與練習。</p>
+          </div>
+
+          <div class="location-toggle">
+            <label>
+              <input id="locationEnabledInput" type="checkbox" />
+              啟用定位限制
+            </label>
+          </div>
+
+          <div class="location-form">
+            <label class="location-field" for="locationNameInput">
+              地點名稱
+              <input id="locationNameInput" type="text" maxlength="80" placeholder="例如：教室" />
+            </label>
+
+            <div class="location-grid">
+              <label class="location-field" for="locationLatitudeInput">
+                緯度
+                <input id="locationLatitudeInput" type="number" inputmode="decimal" step="any" min="-90" max="90" placeholder="25.033964" />
+              </label>
+              <label class="location-field" for="locationLongitudeInput">
+                經度
+                <input id="locationLongitudeInput" type="number" inputmode="decimal" step="any" min="-180" max="180" placeholder="121.564468" />
+              </label>
+              <label class="location-field" for="locationRadiusInput">
+                半徑（公尺）
+                <input id="locationRadiusInput" type="number" inputmode="numeric" min="10" max="10000" step="1" placeholder="100" />
+              </label>
+            </div>
+          </div>
+
+          <div class="location-actions">
+            <button class="button button--ghost" id="detectLocationButton" type="button">使用目前定位</button>
+            <button class="button button--ghost" id="openLocationMapButton" type="button">開啟地圖選點</button>
+            <button class="button" id="saveLocationButton" type="button">儲存設定</button>
+          </div>
+
+          <div class="location-map-panel" id="locationMapPanel" hidden>
+            <div class="location-map-toolbar">
+              <strong>地圖選點</strong>
+              <input id="locationMapSearchInput" type="search" placeholder="搜尋地址或地標" autocomplete="off" />
+              <button class="button button--ghost" id="searchLocationMapButton" type="button">搜尋</button>
+              <button class="button button--ghost" id="closeLocationMapButton" type="button">關閉地圖</button>
+            </div>
+            <div class="location-map" id="locationMap" aria-label="定位地圖"></div>
+          </div>
+
+          <div class="location-summary" id="locationSummary">輸入管理密鑰後載入。</div>
+        </section>
+      </section>
     </main>
 
     <script src="js/api.js?v=20260507-1"></script>
-    <script src="js/teacher.js?v=20260507-3"></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="js/teacher.js?v=20260507-7"></script>
   </body>
 </html>

@@ -374,6 +374,17 @@ img {
   line-height: 1.65;
 }
 
+.location-hint {
+  border: 1px solid var(--approved-border-soft);
+  border-radius: 8px;
+  background: var(--surface-active);
+  color: var(--approved);
+  padding: 12px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .student-view-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

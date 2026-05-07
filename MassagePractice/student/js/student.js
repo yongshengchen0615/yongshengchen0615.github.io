@@ -39,6 +39,7 @@
     practiceTimerStartedAt: document.getElementById("practiceTimerStartedAt"),
     practiceList: document.getElementById("practiceList"),
     notice: document.getElementById("notice"),
+    locationHint: document.getElementById("locationHint"),
     profile: document.getElementById("profile"),
     profileAvatar: document.getElementById("profileAvatar"),
     profileName: document.getElementById("profileName"),
@@ -108,6 +109,82 @@
 
   function setNotice(message) {
     elements.notice.textContent = message;
+  }
+
+  function locationRequirement() {
+    const requirement = currentStudent && currentStudent.locationRequirement;
+    return requirement && requirement.enabled ? requirement : null;
+  }
+
+  function locationRequirementLabel(requirement) {
+    const name = requirement.name || "指定地點";
+    const radius = Number(requirement.radiusMeters);
+    const radiusText = Number.isFinite(radius) ? `${Math.round(radius)} 公尺` : "設定範圍";
+    return `${name} ${radiusText}內`;
+  }
+
+  function renderLocationHint(student) {
+    const requirement = student && student.locationRequirement && student.locationRequirement.enabled
+      ? student.locationRequirement
+      : null;
+
+    if (!requirement) {
+      elements.locationHint.hidden = true;
+      elements.locationHint.textContent = "";
+      return;
+    }
+
+    elements.locationHint.hidden = false;
+    elements.locationHint.textContent = `定位限制：需在 ${locationRequirementLabel(requirement)}。`;
+  }
+
+  function getCurrentLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("此瀏覽器不支援定位，無法完成操作。"));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: Number.isFinite(position.coords.accuracy) ? Math.round(position.coords.accuracy) : ""
+          });
+        },
+        (error) => {
+          const messages = {
+            1: "定位權限被拒絕，請允許定位後再試。",
+            2: "目前無法取得定位，請確認網路與定位服務後再試。",
+            3: "取得定位逾時，請移到訊號較佳的位置再試。"
+          };
+          reject(new Error(messages[error.code] || "取得定位失敗，請稍後再試。"));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    });
+  }
+
+  async function locationPayloadForAction() {
+    const requirement = locationRequirement();
+
+    if (!requirement) return null;
+
+    setStatus("busy", "正在取得定位");
+    setNotice(`請允許定位權限，系統會確認是否位於 ${locationRequirementLabel(requirement)}。`);
+
+    return getCurrentLocation();
+  }
+
+  function formatLocationDistance(distance) {
+    const value = Number(distance);
+    if (!Number.isFinite(value)) return "";
+    return `${Math.round(value)} 公尺`;
   }
 
   function currentTheme() {
@@ -322,10 +399,16 @@
     elements.profileAvatar.alt = student.lineName ? student.lineName + " 的 LINE 頭像" : "LINE 頭像";
     elements.profileName.textContent = student.lineName || "LINE 使用者";
     elements.refreshButton.hidden = false;
+    renderLocationHint(student);
     renderStudentSections(student);
 
     if (status === "approved") {
-      setNotice("審核已通過，可以使用簽到簽退與練習紀錄。");
+      const requirement = student.locationRequirement && student.locationRequirement.enabled ? student.locationRequirement : null;
+      setNotice(
+        requirement
+          ? `審核已通過，可以使用簽到簽退與練習紀錄；操作需在 ${locationRequirementLabel(requirement)}。`
+          : "審核已通過，可以使用簽到簽退與練習紀錄。"
+      );
     } else if (status === "rejected") {
       setNotice(student.reviewNote || "審核未通過，請聯繫師資確認資料。");
     } else {
@@ -337,6 +420,8 @@
     currentStudent = null;
     elements.profile.hidden = true;
     elements.refreshButton.hidden = true;
+    elements.locationHint.hidden = true;
+    elements.locationHint.textContent = "";
     hideStudentViews();
     hidePracticeTimer();
     setStatus("idle", "尚未登入");
@@ -367,6 +452,12 @@
             const checkOutText = record.checkOutAt ? AppApi.formatDate(record.checkOutAt) : "尚未簽退";
             const stateClass = record.checkOutAt ? "attendance-record--closed" : "attendance-record--active";
             const stateText = record.checkOutAt ? "已簽退" : "進行中";
+            const checkInDistance = formatLocationDistance(record.checkInDistanceMeters);
+            const checkOutDistance = formatLocationDistance(record.checkOutDistanceMeters);
+            const locationText =
+              [checkInDistance ? `簽到 ${checkInDistance}` : "", checkOutDistance ? `簽退 ${checkOutDistance}` : ""]
+                .filter(Boolean)
+                .join(" / ");
 
             return `
               <div class="attendance-record ${stateClass}">
@@ -374,6 +465,7 @@
                   <span>簽到 ${AppApi.formatDate(record.checkInAt)}</span>
                   <span>簽退 ${checkOutText}</span>
                   <span>停留時間 ${durationLabel(record.checkInAt, record.checkOutAt)}</span>
+                  ${locationText ? `<span>定位距離 ${locationText}</span>` : ""}
                 </div>
                 <strong>${stateText}</strong>
               </div>
@@ -442,6 +534,12 @@
             const endText = record.endedAt ? AppApi.formatDate(record.endedAt) : "尚未結束";
             const stateClass = record.endedAt ? "attendance-record--closed" : "attendance-record--active";
             const stateText = record.endedAt ? "已結束" : "進行中";
+            const startDistance = formatLocationDistance(record.startDistanceMeters);
+            const endDistance = formatLocationDistance(record.endDistanceMeters);
+            const locationText =
+              [startDistance ? `開始 ${startDistance}` : "", endDistance ? `結束 ${endDistance}` : ""]
+                .filter(Boolean)
+                .join(" / ");
 
             return `
               <div class="attendance-record ${stateClass}">
@@ -450,6 +548,7 @@
                   <span>開始 ${AppApi.formatDate(record.startedAt)}</span>
                   <span>結束 ${endText}</span>
                   <span>練習時間 ${durationLabel(record.startedAt, record.endedAt)}</span>
+                  ${locationText ? `<span>定位距離 ${locationText}</span>` : ""}
                 </div>
                 <strong>${stateText}</strong>
               </div>
@@ -610,10 +709,18 @@
       return;
     }
 
-    setBusy(true, action === "checkIn" ? "正在簽到" : "正在簽退");
+    const payload = {
+      uuid: session.uuid,
+      publicToken: session.publicToken
+    };
 
     try {
-      const student = await AppApi.post(action, session);
+      setBusy(true, locationRequirement() ? "正在取得定位" : action === "checkIn" ? "正在簽到" : "正在簽退");
+      const location = await locationPayloadForAction();
+      if (location) payload.location = location;
+
+      setBusy(true, action === "checkIn" ? "正在簽到" : "正在簽退");
+      const student = await AppApi.post(action, payload);
       saveSession(student);
       renderStudent(student);
     } catch (error) {
@@ -673,15 +780,18 @@
       }
     }
 
-    if (action === "startPractice") {
-      showPracticeTimer(currentPracticeDraftRecord(), { pendingStart: true });
-    } else {
-      freezePracticeTimer("結束中");
-    }
-
-    setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
-
     try {
+      setBusy(true, locationRequirement() ? "正在取得定位" : action === "startPractice" ? "正在開始練習" : "正在結束練習");
+      const location = await locationPayloadForAction();
+      if (location) payload.location = location;
+
+      if (action === "startPractice") {
+        showPracticeTimer(currentPracticeDraftRecord(), { pendingStart: true });
+      } else {
+        freezePracticeTimer("結束中");
+      }
+
+      setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
       const student = await AppApi.post(action, payload);
       saveSession(student);
       renderStudent(student);
