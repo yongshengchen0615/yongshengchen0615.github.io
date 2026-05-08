@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>待辦事項助理</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/lucide@latest" defer></script>
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="專案列表">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>待辦事項助理</h1>
+            <p id="todayLabel"></p>
+          </div>
+        </div>
+
+        <div class="metric-grid" aria-label="工作狀態">
+          <div>
+            <span id="totalTasks">0</span>
+            <small>總任務</small>
+          </div>
+          <div>
+            <span id="doneTasks">0</span>
+            <small>完成</small>
+          </div>
+          <div>
+            <span id="dueSoonTasks">0</span>
+            <small>7 天內</small>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="section-title">
+            <span>專案</span>
+            <button class="icon-button" id="newProjectButton" type="button" aria-label="新增專案">
+              <i data-lucide="plus"></i>
+            </button>
+          </div>
+          <nav class="project-list" id="projectList" aria-label="專案"></nav>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="planner-panel" aria-label="新增倒推計畫">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Reverse Planner</p>
+              <h2>建立終點，倒推出路線</h2>
+            </div>
+            <button class="ghost-button" id="seedButton" type="button">
+              <i data-lucide="sparkles"></i>
+              範例
+            </button>
+          </div>
+
+          <form id="projectForm" class="project-form">
+            <label class="title-field">
+              <span>目標</span>
+              <input
+                id="projectTitle"
+                type="text"
+                placeholder="例如：完成個人作品集網站"
+                autocomplete="off"
+                required
+              />
+            </label>
+
+            <label class="outcome-field">
+              <span>完成條件</span>
+              <textarea
+                id="projectOutcome"
+                rows="3"
+                placeholder="例如：首頁、作品頁、關於我、聯絡表單皆可正常使用"
+              ></textarea>
+            </label>
+
+            <div class="form-row date-fields">
+              <label>
+                <span>開始日</span>
+                <input id="projectStart" type="date" required />
+              </label>
+              <label>
+                <span>完成日</span>
+                <input id="projectDeadline" type="date" required />
+              </label>
+            </div>
+
+            <div class="form-row option-fields">
+              <label>
+                <span>類型</span>
+                <select id="projectType">
+                  <option value="residentContract">進駐廠商契約用印</option>
+                  <option value="rotationContract">特賣 / 輪動契約用印</option>
+                </select>
+              </label>
+            </div>
+
+            <button class="primary-button" type="submit">
+              <i data-lucide="route"></i>
+              建立倒推計畫
+            </button>
+          </form>
+
+          <div class="reference-note">
+            <span>2024 年 12 月版查檢表格式</span>
+            <strong>文件、品保、保單分段檢核</strong>
+          </div>
+        </section>
+
+        <section class="timeline-area" aria-label="專案計畫">
+          <div class="timeline-header">
+            <div>
+              <p class="eyebrow">Active Plan</p>
+              <h2 id="activeTitle">尚未建立專案</h2>
+            </div>
+            <div class="action-row">
+              <button class="ghost-button" id="exportButton" type="button">
+                <i data-lucide="download"></i>
+                匯出
+              </button>
+              <button class="danger-button" id="deleteProjectButton" type="button">
+                <i data-lucide="trash-2"></i>
+                刪除
+              </button>
+            </div>
+          </div>
+
+          <div class="progress-block">
+            <div>
+              <span id="progressLabel">0%</span>
+              <small id="dateRangeLabel">-</small>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <span id="progressBar"></span>
+            </div>
+          </div>
+
+          <div class="phase-strip" id="phaseStrip" aria-label="階段"></div>
+
+          <div class="task-toolbar">
+            <div class="segmented-control" role="tablist" aria-label="任務篩選">
+              <button class="active" type="button" data-filter="all">全部</button>
+              <button type="button" data-filter="open">未完成</button>
+              <button type="button" data-filter="done">已完成</button>
+            </div>
+            <form id="quickTaskForm" class="quick-task-form">
+              <input id="quickTaskInput" type="text" placeholder="新增補充任務" autocomplete="off" />
+              <input id="quickTaskDate" type="date" />
+              <button class="icon-button solid" type="submit" aria-label="新增任務">
+                <i data-lucide="plus"></i>
+              </button>
+            </form>
+          </div>
+
+          <div class="checklist-head" aria-hidden="true">
+            <span>項目</span>
+            <span>文件內容</span>
+            <span></span>
+          </div>
+
+          <div class="task-list" id="taskList"></div>
+        </section>
+      </main>
+
+      <aside class="inspector" aria-label="專案資訊">
+        <section>
+          <p class="eyebrow">Next</p>
+          <h2>下一步</h2>
+          <div class="next-task" id="nextTaskBox">
+            <span>建立第一個專案</span>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">Outcome</p>
+          <h2>完成條件</h2>
+          <p class="outcome-text" id="outcomeText">-</p>
+        </section>
+
+        <section>
+          <p class="eyebrow">Backward Map</p>
+          <h2>倒推節點</h2>
+          <ol class="reverse-list" id="reverseList"></ol>
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>
