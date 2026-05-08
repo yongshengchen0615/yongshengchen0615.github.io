@@ -1,18 +1,19 @@
 (function () {
   "use strict";
 
-  const ADMIN_KEY = "teacherAdminKey";
+  const TEACHER_SESSION_KEY = "teacherApprovalSession";
   const THEME_STORAGE_KEY = "massageTheme";
+  const OAUTH_KEY = "teacherLineOAuth";
+  const AUTH_URL = "https://access.line.me/oauth2/v2.1/authorize";
   const PRACTICE_OTHER_OPTION_NAME = "其他";
   const DEFAULT_MAP_CENTER = [25.033964, 121.564468];
-  const LOCATION_SEARCH_MIN_INTERVAL_MS = 1100;
   let students = [];
   let selectedAttendanceUuid = "";
   let selectedPracticeUuid = "";
+  let currentTeacher = null;
   let locationMap = null;
   let locationMarker = null;
   let locationCircle = null;
-  let lastLocationSearchAt = 0;
   let practiceSettings = {
     targets: [],
     items: [],
@@ -26,8 +27,10 @@
     practiceTargetsView: document.getElementById("practiceTargetsView"),
     practiceItemsView: document.getElementById("practiceItemsView"),
     locationSettingsView: document.getElementById("locationSettingsView"),
-    adminKey: document.getElementById("adminKey"),
+    teacherAuthName: document.getElementById("teacherAuthName"),
+    teacherAuthStatus: document.getElementById("teacherAuthStatus"),
     connectButton: document.getElementById("connectButton"),
+    logoutButton: document.getElementById("logoutButton"),
     reloadButton: document.getElementById("reloadButton"),
     searchInput: document.getElementById("searchInput"),
     statusFilter: document.getElementById("statusFilter"),
@@ -65,8 +68,6 @@
     closeLocationMapButton: document.getElementById("closeLocationMapButton"),
     locationMapPanel: document.getElementById("locationMapPanel"),
     locationMap: document.getElementById("locationMap"),
-    locationMapSearchInput: document.getElementById("locationMapSearchInput"),
-    searchLocationMapButton: document.getElementById("searchLocationMapButton"),
     saveLocationButton: document.getElementById("saveLocationButton"),
     locationSummary: document.getElementById("locationSummary"),
     themeToggle: document.getElementById("themeToggle"),
@@ -112,8 +113,125 @@
     setTheme(currentTheme() === "dark" ? "light" : "dark");
   }
 
-  function adminKey() {
-    return elements.adminKey.value.trim() || sessionStorage.getItem(ADMIN_KEY) || "";
+  function normalizeStatus(value) {
+    const status = String(value || "").trim().toLowerCase();
+
+    if (["approved", "通過", "已通過", "已通過審核"].includes(status)) return "approved";
+    if (["rejected", "未通過", "不通過", "拒絕"].includes(status)) return "rejected";
+    if (["pending", "待審", "待審核", "待師資審核", ""].includes(status)) return "pending";
+
+    return status;
+  }
+
+  function base64Url(bytes) {
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomString(byteLength) {
+    const bytes = new Uint8Array(byteLength);
+    window.crypto.getRandomValues(bytes);
+    return base64Url(bytes);
+  }
+
+  async function sha256(value) {
+    if (!window.crypto.subtle) return "";
+    const encoded = new TextEncoder().encode(value);
+    const digest = await window.crypto.subtle.digest("SHA-256", encoded);
+    return base64Url(new Uint8Array(digest));
+  }
+
+  function saveTeacherSession(teacher) {
+    localStorage.setItem(
+      TEACHER_SESSION_KEY,
+      JSON.stringify({
+        uuid: teacher.uuid,
+        publicToken: teacher.publicToken
+      })
+    );
+  }
+
+  function readTeacherSession() {
+    try {
+      const session = JSON.parse(localStorage.getItem(TEACHER_SESSION_KEY) || "null");
+      if (session && session.uuid && session.publicToken) return session;
+    } catch (error) {
+      localStorage.removeItem(TEACHER_SESSION_KEY);
+    }
+    return null;
+  }
+
+  function clearTeacherSession() {
+    currentTeacher = null;
+    localStorage.removeItem(TEACHER_SESSION_KEY);
+    sessionStorage.removeItem(OAUTH_KEY);
+  }
+
+  function teacherPayload(extra) {
+    const session = readTeacherSession();
+    if (!session) {
+      throw new Error("請先使用 LINE 登入師資帳號。");
+    }
+
+    return Object.assign(
+      {
+        teacherUuid: session.uuid,
+        teacherToken: session.publicToken
+      },
+      extra || {}
+    );
+  }
+
+  function renderTeacherAuth(teacher, message) {
+    currentTeacher = teacher || null;
+
+    if (!teacher) {
+      elements.teacherAuthName.textContent = "師資登入";
+      elements.teacherAuthStatus.textContent = message || "使用 LINE 登入後等待審核。";
+      elements.connectButton.textContent = "LINE 登入";
+      elements.logoutButton.hidden = true;
+      return;
+    }
+
+    const status = normalizeStatus(teacher.status);
+    elements.teacherAuthName.textContent = teacher.lineName || "LINE 使用者";
+    elements.teacherAuthStatus.textContent =
+      message ||
+      (status === "approved"
+        ? "師資審核已通過。"
+        : status === "rejected"
+          ? teacher.reviewNote || "師資審核未通過。"
+          : "已送出師資登入資料，請在 GAS teachers 工作表將 status 改為 approved。");
+    elements.connectButton.textContent = status === "approved" ? "重新整理" : "重新檢查";
+    elements.logoutButton.hidden = false;
+  }
+
+  function renderLoggedOut() {
+    students = [];
+    practiceSettings = {
+      targets: [],
+      items: [],
+      location: null
+    };
+    hideAttendanceRecords();
+    hidePracticeRecords();
+    updateMetrics();
+    renderTeacherAuth(null);
+    setEmpty("請先使用 LINE 登入師資帳號。");
+    elements.practiceTargetList.textContent = "師資審核通過後載入。";
+    elements.practiceItemList.textContent = "師資審核通過後載入。";
+    elements.locationSummary.textContent = "師資審核通過後載入。";
+  }
+
+  function requireApprovedTeacher() {
+    if (!currentTeacher || normalizeStatus(currentTeacher.status) !== "approved") {
+      window.alert("師資審核通過後才能使用師資系統。");
+      return false;
+    }
+    return true;
   }
 
   function showView(viewId) {
@@ -141,13 +259,13 @@
 
   function setLoading(isLoading) {
     elements.connectButton.disabled = isLoading;
+    elements.logoutButton.disabled = isLoading;
     elements.reloadButton.disabled = isLoading;
     elements.addPracticeTargetButton.disabled = isLoading;
     elements.addPracticeItemButton.disabled = isLoading;
     elements.detectLocationButton.disabled = isLoading;
     elements.openLocationMapButton.disabled = isLoading;
     elements.closeLocationMapButton.disabled = isLoading;
-    elements.searchLocationMapButton.disabled = isLoading;
     elements.saveLocationButton.disabled = isLoading;
   }
 
@@ -312,8 +430,13 @@
   }
 
   function formLocationPoint() {
-    const latitude = Number(elements.locationLatitudeInput.value);
-    const longitude = Number(elements.locationLongitudeInput.value);
+    const latitudeValue = elements.locationLatitudeInput.value.trim();
+    const longitudeValue = elements.locationLongitudeInput.value.trim();
+
+    if (!latitudeValue || !longitudeValue) return null;
+
+    const latitude = Number(latitudeValue);
+    const longitude = Number(longitudeValue);
 
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
     if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
@@ -455,75 +578,6 @@
     locationMap.setView(point, locationMap.getZoom() || 13, { animate: false });
   }
 
-  async function searchLocationMap() {
-    const query = elements.locationMapSearchInput.value.replace(/\s+/g, " ").trim();
-
-    if (!query) {
-      renderLocationSummary(currentLocationFormValue(), "請輸入要搜尋的地址或地標。");
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastLocationSearchAt < LOCATION_SEARCH_MIN_INTERVAL_MS) {
-      renderLocationSummary(currentLocationFormValue(), "請稍候再搜尋。");
-      return;
-    }
-    lastLocationSearchAt = now;
-
-    if (!locationMap) {
-      openLocationMap();
-    }
-
-    renderLocationSummary(currentLocationFormValue(), "正在搜尋地點。");
-    setLoading(true);
-
-    try {
-      const params = new URLSearchParams({
-        format: "jsonv2",
-        q: query,
-        limit: "1",
-        "accept-language": "zh-TW"
-      });
-      const response = await fetch("https://nominatim.openstreetmap.org/search?" + params.toString(), {
-        headers: {
-          Accept: "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error("地圖搜尋失敗，請稍後再試。");
-      }
-
-      const results = await response.json();
-      const result = Array.isArray(results) ? results[0] : null;
-
-      if (!result || !result.lat || !result.lon) {
-        renderLocationSummary(currentLocationFormValue(), "找不到符合的地點。");
-        return;
-      }
-
-      if (!elements.locationNameInput.value.trim()) {
-        elements.locationNameInput.value = (result.name || query).slice(0, 80);
-      }
-
-      setLocationPoint(result.lat, result.lon, { message: "已套用搜尋結果。" });
-
-      if (locationMap && Array.isArray(result.boundingbox) && result.boundingbox.length === 4) {
-        const bounds = [
-          [Number(result.boundingbox[0]), Number(result.boundingbox[2])],
-          [Number(result.boundingbox[1]), Number(result.boundingbox[3])]
-        ];
-        if (bounds.flat().every(Number.isFinite)) {
-          locationMap.fitBounds(bounds, { maxZoom: 16 });
-        }
-      }
-    } catch (error) {
-      renderLocationSummary(currentLocationFormValue(), error.message || "地圖搜尋失敗，請稍後再試。");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function renderPracticeOptionList(container, options, action) {
     const systemOption = `
       <div class="option-pill option-pill--system">
@@ -610,12 +664,142 @@
       .join("");
   }
 
-  async function loadStudents() {
-    const key = adminKey();
-    if (!key) {
-      setEmpty("請先輸入管理密鑰。");
+  async function beginLineLogin() {
+    try {
+      setLoading(true);
+      setEmpty("正在前往 LINE 登入頁面。");
+      renderTeacherAuth(null, "正在開啟 LINE 登入。");
+
+      const config = AppApi.requireConfig({ line: true });
+      const redirectUri = AppApi.teacherRedirectUri();
+      const state = randomString(24);
+      const nonce = randomString(24);
+      const codeVerifier = randomString(64);
+      const codeChallenge = await sha256(codeVerifier);
+
+      sessionStorage.setItem(
+        OAUTH_KEY,
+        JSON.stringify({
+          state,
+          nonce,
+          codeVerifier,
+          redirectUri
+        })
+      );
+
+      const params = new URLSearchParams({
+        response_type: "code",
+        client_id: config.lineChannelId,
+        redirect_uri: redirectUri,
+        state,
+        scope: "profile openid",
+        nonce
+      });
+
+      if (codeChallenge) {
+        params.set("code_challenge", codeChallenge);
+        params.set("code_challenge_method", "S256");
+      }
+
+      window.location.assign(AUTH_URL + "?" + params.toString());
+    } catch (error) {
+      renderTeacherAuth(null, error.message);
+      setEmpty(error.message);
+      setLoading(false);
+    }
+  }
+
+  async function handleCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("error");
+    const code = params.get("code");
+    const returnedState = params.get("state");
+
+    if (error) {
+      AppApi.cleanOauthParams();
+      renderTeacherAuth(null, params.get("error_description") || "LINE 登入未完成。");
+      setEmpty("LINE 登入未完成。");
+      return true;
+    }
+
+    if (!code) return false;
+
+    setLoading(true);
+    setEmpty("正在驗證 LINE 登入。");
+    renderTeacherAuth(null, "正在驗證 LINE 登入。");
+
+    try {
+      const oauth = JSON.parse(sessionStorage.getItem(OAUTH_KEY) || "null");
+      if (!oauth || oauth.state !== returnedState) {
+        throw new Error("LINE state 驗證失敗，請重新登入。");
+      }
+
+      const teacher = await AppApi.post("teacherLineLogin", {
+        code,
+        nonce: oauth.nonce,
+        codeVerifier: oauth.codeVerifier,
+        redirectUri: oauth.redirectUri
+      });
+
+      sessionStorage.removeItem(OAUTH_KEY);
+      saveTeacherSession(teacher);
+      AppApi.cleanOauthParams();
+      renderTeacherAuth(teacher);
+
+      if (normalizeStatus(teacher.status) === "approved") {
+        await loadStudents();
+      } else {
+        setEmpty("師資帳號尚未審核通過。請在 GAS 的 teachers 工作表將此 LINE 使用者 status 改為 approved。");
+      }
+    } catch (callbackError) {
+      renderTeacherAuth(null, callbackError.message);
+      setEmpty(callbackError.message);
+    } finally {
+      setLoading(false);
+    }
+
+    return true;
+  }
+
+  async function refreshTeacherStatus(options) {
+    const session = readTeacherSession();
+    if (!session) {
+      renderLoggedOut();
       return;
     }
+
+    setLoading(true);
+    if (!options || options.showMessage !== false) {
+      setEmpty("正在檢查師資審核狀態。");
+    }
+
+    try {
+      const teacher = await AppApi.post("getTeacherStatus", {
+        teacherUuid: session.uuid,
+        teacherToken: session.publicToken
+      });
+      saveTeacherSession(teacher);
+      renderTeacherAuth(teacher);
+
+      if (normalizeStatus(teacher.status) !== "approved") {
+        students = [];
+        updateMetrics();
+        setEmpty("師資帳號尚未審核通過。請在 GAS 的 teachers 工作表將 status 改為 approved。");
+        return;
+      }
+
+      await loadStudents();
+    } catch (error) {
+      clearTeacherSession();
+      renderTeacherAuth(null, error.message);
+      setEmpty(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadStudents() {
+    if (!requireApprovedTeacher()) return;
 
     setLoading(true);
     setEmpty("正在載入學員名單。");
@@ -623,9 +807,8 @@
     hidePracticeRecords();
 
     try {
-      const data = await AppApi.post("listStudents", { adminKey: key });
-      const settings = await AppApi.post("listPracticeSettings", { adminKey: key });
-      sessionStorage.setItem(ADMIN_KEY, key);
+      const data = await AppApi.post("listStudents", teacherPayload());
+      const settings = await AppApi.post("listPracticeSettings", teacherPayload());
       students = data.students || [];
       practiceSettings = {
         targets: settings.targets || [],
@@ -642,7 +825,7 @@
   }
 
   async function updateStatus(uuid, status) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
     const current = students.find((student) => student.uuid === uuid);
     const note =
       status === "rejected"
@@ -652,12 +835,11 @@
     setLoading(true);
 
     try {
-      const updated = await AppApi.post("updateStudentStatus", {
-        adminKey: key,
+      const updated = await AppApi.post("updateStudentStatus", teacherPayload({
         uuid,
         status,
         reviewNote: note
-      });
+      }));
 
       students = students.map((student) => (student.uuid === uuid ? updated.student : student));
       render();
@@ -669,7 +851,7 @@
   }
 
   async function deleteStudent(uuid) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
     const current = students.find((student) => student.uuid === uuid);
     const name = studentDisplayName(current);
 
@@ -680,10 +862,9 @@
     setLoading(true);
 
     try {
-      await AppApi.post("deleteStudent", {
-        adminKey: key,
+      await AppApi.post("deleteStudent", teacherPayload({
         uuid
-      });
+      }));
 
       students = students.filter((student) => student.uuid !== uuid);
       if (selectedAttendanceUuid === uuid) hideAttendanceRecords();
@@ -697,7 +878,7 @@
   }
 
   async function loadAttendanceRecords(uuid) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
     const current = students.find((student) => student.uuid === uuid);
     const name = studentDisplayName(current);
 
@@ -709,10 +890,9 @@
     setLoading(true);
 
     try {
-      const data = await AppApi.post("listAttendanceRecords", {
-        adminKey: key,
+      const data = await AppApi.post("listAttendanceRecords", teacherPayload({
         uuid
-      });
+      }));
       const records = data.records || [];
 
       elements.attendanceTitle.textContent = `${data.student.lineName || name} 簽到紀錄`;
@@ -749,7 +929,7 @@
   }
 
   async function loadPracticeRecords(uuid) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
     const current = students.find((student) => student.uuid === uuid);
     const name = studentDisplayName(current);
 
@@ -761,10 +941,9 @@
     setLoading(true);
 
     try {
-      const data = await AppApi.post("listPracticeRecords", {
-        adminKey: key,
+      const data = await AppApi.post("listPracticeRecords", teacherPayload({
         uuid
-      });
+      }));
       const records = data.records || [];
 
       elements.practiceRecordTitle.textContent = `${data.student.lineName || name} 練習紀錄`;
@@ -803,13 +982,8 @@
   }
 
   async function addPracticeOption(action, input, settingsKey) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
     const name = input.value.trim();
-
-    if (!key) {
-      window.alert("請先輸入管理密鑰。");
-      return;
-    }
 
     if (!name) {
       window.alert("請輸入名稱。");
@@ -824,10 +998,9 @@
     setLoading(true);
 
     try {
-      const data = await AppApi.post(action, {
-        adminKey: key,
+      const data = await AppApi.post(action, teacherPayload({
         name
-      });
+      }));
       const option = data.target || data.item;
       practiceSettings[settingsKey] = [option].concat(practiceSettings[settingsKey]);
       input.value = "";
@@ -840,7 +1013,7 @@
   }
 
   async function deletePracticeOption(action, id, settingsKey) {
-    const key = adminKey();
+    if (!requireApprovedTeacher()) return;
 
     if (!window.confirm("確定移除此選項？既有練習紀錄會保留原本名稱。")) {
       return;
@@ -849,10 +1022,9 @@
     setLoading(true);
 
     try {
-      await AppApi.post(action, {
-        adminKey: key,
+      await AppApi.post(action, teacherPayload({
         id
-      });
+      }));
       practiceSettings[settingsKey] = practiceSettings[settingsKey].filter((option) => option.id !== id);
       renderPracticeSettings();
     } catch (error) {
@@ -879,8 +1051,18 @@
     const longitude = Number(payload.longitude);
     const radius = Number(payload.radiusMeters);
 
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return "請輸入有效緯度。";
-    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return "請輸入有效經度。";
+    if (
+      !payload.latitude ||
+      !payload.longitude ||
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return "請先使用目前定位或地圖選點設定位置。";
+    }
     if (!Number.isFinite(radius) || radius < 10 || radius > 10000) return "半徑需介於 10 到 10000 公尺。";
 
     return "";
@@ -936,11 +1118,7 @@
   }
 
   async function saveLocationSettings() {
-    const key = adminKey();
-    if (!key) {
-      window.alert("請先輸入管理密鑰。");
-      return;
-    }
+    if (!requireApprovedTeacher()) return;
 
     const payload = currentLocationFormValue();
     const validationMessage = validateLocationForm(payload);
@@ -952,7 +1130,7 @@
     setLoading(true);
 
     try {
-      const data = await AppApi.post("updateLocationSettings", Object.assign({ adminKey: key }, payload));
+      const data = await AppApi.post("updateLocationSettings", teacherPayload(payload));
       practiceSettings.location = data.location || defaultLocationSettings();
       renderLocationSettings();
       renderLocationSummary(practiceSettings.location, "定位範圍已儲存。");
@@ -968,8 +1146,18 @@
     elements.viewButtons.forEach((button) => {
       button.addEventListener("click", () => showView(button.dataset.view));
     });
-    elements.connectButton.addEventListener("click", loadStudents);
-    elements.reloadButton.addEventListener("click", loadStudents);
+    elements.connectButton.addEventListener("click", () => {
+      if (readTeacherSession()) {
+        refreshTeacherStatus();
+      } else {
+        beginLineLogin();
+      }
+    });
+    elements.logoutButton.addEventListener("click", () => {
+      clearTeacherSession();
+      renderLoggedOut();
+    });
+    elements.reloadButton.addEventListener("click", () => refreshTeacherStatus());
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
     elements.closePracticeRecordButton.addEventListener("click", hidePracticeRecords);
     elements.addPracticeTargetButton.addEventListener("click", () => {
@@ -980,7 +1168,6 @@
     });
     elements.detectLocationButton.addEventListener("click", detectLocation);
     elements.openLocationMapButton.addEventListener("click", openLocationMap);
-    elements.searchLocationMapButton.addEventListener("click", searchLocationMap);
     elements.closeLocationMapButton.addEventListener("click", closeLocationMap);
     elements.saveLocationButton.addEventListener("click", saveLocationSettings);
     [
@@ -1005,16 +1192,8 @@
     elements.practiceItemInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
     });
-    elements.locationMapSearchInput.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      searchLocationMap();
-    });
     elements.searchInput.addEventListener("input", render);
     elements.statusFilter.addEventListener("change", render);
-    elements.adminKey.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") loadStudents();
-    });
 
     elements.studentsBody.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
@@ -1065,11 +1244,15 @@
     }
     setLoading(false);
 
-    const savedKey = sessionStorage.getItem(ADMIN_KEY);
-    if (savedKey) {
-      elements.adminKey.value = savedKey;
-      loadStudents();
+    const handledCallback = await handleCallback();
+    if (handledCallback) return;
+
+    if (readTeacherSession()) {
+      await refreshTeacherStatus({ showMessage: false });
+      return;
     }
+
+    renderLoggedOut();
   }
 
   init();

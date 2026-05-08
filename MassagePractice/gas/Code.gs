@@ -1,4 +1,5 @@
 const SHEET_NAME = "students";
+const TEACHERS_SHEET_NAME = "teachers";
 const ATTENDANCE_SHEET_NAME = "attendance";
 const PRACTICE_TARGETS_SHEET_NAME = "practice_targets";
 const PRACTICE_ITEMS_SHEET_NAME = "practice_items";
@@ -24,6 +25,18 @@ const WRITE_ACTIONS = [
   "updateLocationSettings"
 ];
 const HEADERS = [
+  "uuid",
+  "lineUserId",
+  "lineName",
+  "linePictureUrl",
+  "status",
+  "createdAt",
+  "updatedAt",
+  "approvedAt",
+  "reviewNote",
+  "publicToken"
+];
+const TEACHER_HEADERS = [
   "uuid",
   "lineUserId",
   "lineName",
@@ -152,6 +165,14 @@ function handleAction_(action, payload) {
     return lineLogin_(payload);
   }
 
+  if (action === "teacherLineLogin") {
+    return teacherLineLogin_(payload);
+  }
+
+  if (action === "getTeacherStatus") {
+    return getTeacherStatus_(payload);
+  }
+
   if (action === "getStudentStatus") {
     return getStudentStatus_(payload);
   }
@@ -221,6 +242,7 @@ function handleAction_(action, payload) {
 
 function setup() {
   const sheet = ensureSheet_();
+  const teachersSheet = ensureTeachersSheet_();
   const attendanceSheet = ensureAttendanceSheet_();
   const practiceTargetsSheet = ensurePracticeTargetsSheet_();
   const practiceItemsSheet = ensurePracticeItemsSheet_();
@@ -229,6 +251,8 @@ function setup() {
   return {
     sheet: sheet.getName(),
     headers: HEADERS,
+    teachersSheet: teachersSheet.getName(),
+    teacherHeaders: TEACHER_HEADERS,
     attendanceSheet: attendanceSheet.getName(),
     attendanceHeaders: ATTENDANCE_HEADERS,
     practiceTargetsSheet: practiceTargetsSheet.getName(),
@@ -270,6 +294,33 @@ function lineLogin_(payload) {
 
   const student = upsertStudent_(profile);
   return publicStudent_(student, true);
+}
+
+function teacherLineLogin_(payload) {
+  requireFields_(payload, ["code", "redirectUri"]);
+
+  const token = exchangeLineCode_(payload);
+  const verified = verifyLineIdToken_(token.id_token, payload.nonce);
+  const userInfo = fetchLineUserInfo_(token.access_token);
+  const lineUserId = verified.sub || userInfo.sub;
+
+  if (!lineUserId) {
+    throw new Error("LINE profile missing user id.");
+  }
+
+  const profile = {
+    lineUserId,
+    lineName: userInfo.name || verified.name || "",
+    linePictureUrl: userInfo.picture || verified.picture || ""
+  };
+
+  const teacher = upsertTeacher_(profile);
+  return publicTeacher_(teacher, true);
+}
+
+function getTeacherStatus_(payload) {
+  const teacher = validateTeacherSession_(payload);
+  return publicTeacher_(teacher, true);
 }
 
 function getStudentStatus_(payload) {
@@ -431,7 +482,7 @@ function endPractice_(payload) {
 }
 
 function listStudents_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
 
   const students = readStudents_()
     .map((student) => publicStudent_(student, false))
@@ -441,7 +492,7 @@ function listStudents_(payload) {
 }
 
 function listAttendanceRecords_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   requireFields_(payload, ["uuid"]);
 
   const student = findStudentByUuid_(payload.uuid);
@@ -460,7 +511,7 @@ function listAttendanceRecords_(payload) {
 }
 
 function listPracticeSettings_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
 
   return {
     targets: readPracticeOptions_(PRACTICE_TARGETS_SHEET_NAME),
@@ -470,33 +521,33 @@ function listPracticeSettings_(payload) {
 }
 
 function addPracticeTarget_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   return {
     target: addPracticeOption_(PRACTICE_TARGETS_SHEET_NAME, payload.name)
   };
 }
 
 function addPracticeItem_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   return {
     item: addPracticeOption_(PRACTICE_ITEMS_SHEET_NAME, payload.name)
   };
 }
 
 function deletePracticeTarget_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   deletePracticeOption_(PRACTICE_TARGETS_SHEET_NAME, payload.id);
   return { id: payload.id };
 }
 
 function deletePracticeItem_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   deletePracticeOption_(PRACTICE_ITEMS_SHEET_NAME, payload.id);
   return { id: payload.id };
 }
 
 function updateLocationSettings_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
 
   const setting = buildLocationSettingsFromPayload_(payload);
   const table = readLocationSettingsTable_();
@@ -516,7 +567,7 @@ function updateLocationSettings_(payload) {
 }
 
 function listPracticeRecords_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   requireFields_(payload, ["uuid"]);
 
   const student = findStudentByUuid_(payload.uuid);
@@ -535,7 +586,7 @@ function listPracticeRecords_(payload) {
 }
 
 function updateStudentStatus_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   requireFields_(payload, ["uuid", "status"]);
 
   const allowed = ["pending", "approved", "rejected"];
@@ -566,7 +617,7 @@ function updateStudentStatus_(payload) {
 }
 
 function deleteStudent_(payload) {
-  assertAdmin_(payload.adminKey);
+  assertTeacherAccess_(payload);
   requireFields_(payload, ["uuid"]);
 
   const sheet = ensureSheet_();
@@ -913,13 +964,63 @@ function upsertStudentWithoutLock_(profile) {
   return student;
 }
 
+function upsertTeacher_(profile) {
+  return withWriteLock_(function () {
+    return upsertTeacherWithoutLock_(profile);
+  });
+}
+
+function upsertTeacherWithoutLock_(profile) {
+  const sheet = ensureTeachersSheet_();
+  const table = readTeachersTable_();
+  const now = new Date().toISOString();
+  const existing = table.rows.find((row) => row.teacher.lineUserId === profile.lineUserId);
+
+  if (existing) {
+    const teacher = existing.teacher;
+    teacher.lineName = profile.lineName;
+    teacher.linePictureUrl = profile.linePictureUrl;
+    teacher.updatedAt = now;
+    teacher.status = teacher.status || "pending";
+    teacher.publicToken = teacher.publicToken || createToken_();
+
+    writeTeacherRow_(sheet, existing.rowNumber, teacher);
+    return teacher;
+  }
+
+  const teacher = {
+    uuid: Utilities.getUuid(),
+    lineUserId: profile.lineUserId,
+    lineName: profile.lineName,
+    linePictureUrl: profile.linePictureUrl,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+    approvedAt: "",
+    reviewNote: "",
+    publicToken: createToken_()
+  };
+
+  sheet.appendRow(TEACHER_HEADERS.map((header) => cellValue_(teacher[header])));
+  return teacher;
+}
+
 function findStudentByUuid_(uuid) {
   const row = readTable_().rows.find((item) => item.student.uuid === uuid);
   return row ? row.student : null;
 }
 
+function findTeacherByUuid_(uuid) {
+  const row = readTeachersTable_().rows.find((item) => item.teacher.uuid === uuid);
+  return row ? row.teacher : null;
+}
+
 function readStudents_() {
   return readTable_().rows.map((row) => row.student);
+}
+
+function readTeachers_() {
+  return readTeachersTable_().rows.map((row) => row.teacher);
 }
 
 function readTable_() {
@@ -950,6 +1051,40 @@ function readTable_() {
       return {
         rowNumber: item.rowNumber,
         student: normalizeStudent_(student)
+      };
+    });
+
+  return { sheet, rows };
+}
+
+function readTeachersTable_() {
+  const sheet = ensureTeachersSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headerRow = values[0] || TEACHER_HEADERS;
+  const headerIndex = {};
+
+  headerRow.forEach((header, index) => {
+    headerIndex[header] = index;
+  });
+
+  const rows = values
+    .slice(1)
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 2
+    }))
+    .filter((item) => rowHasValue_(item.row))
+    .map((item) => {
+      const teacher = {};
+
+      TEACHER_HEADERS.forEach((header) => {
+        const cellIndex = headerIndex[header];
+        teacher[header] = cellIndex >= 0 ? item.row[cellIndex] : "";
+      });
+
+      return {
+        rowNumber: item.rowNumber,
+        teacher: normalizeTeacher_(teacher)
       };
     });
 
@@ -1125,6 +1260,21 @@ function normalizeStudent_(student) {
   };
 }
 
+function normalizeTeacher_(teacher) {
+  return {
+    uuid: String(teacher.uuid || ""),
+    lineUserId: String(teacher.lineUserId || ""),
+    lineName: String(teacher.lineName || ""),
+    linePictureUrl: String(teacher.linePictureUrl || ""),
+    status: normalizeStatus_(teacher.status),
+    createdAt: toIsoString_(teacher.createdAt),
+    updatedAt: toIsoString_(teacher.updatedAt),
+    approvedAt: toIsoString_(teacher.approvedAt),
+    reviewNote: String(teacher.reviewNote || ""),
+    publicToken: String(teacher.publicToken || "")
+  };
+}
+
 function normalizeStatus_(value) {
   const status = String(value || "").trim().toLowerCase();
 
@@ -1208,6 +1358,12 @@ function normalizeLocationSettings_(setting) {
 
 function writeStudentRow_(sheet, rowNumber, student) {
   sheet.getRange(rowNumber, 1, 1, HEADERS.length).setValues([HEADERS.map((header) => cellValue_(student[header]))]);
+}
+
+function writeTeacherRow_(sheet, rowNumber, teacher) {
+  sheet
+    .getRange(rowNumber, 1, 1, TEACHER_HEADERS.length)
+    .setValues([TEACHER_HEADERS.map((header) => cellValue_(teacher[header]))]);
 }
 
 function writeAttendanceRow_(sheet, rowNumber, record) {
@@ -1338,6 +1494,10 @@ function ensureSheet_() {
   return ensureSheetWithHeaders_(SHEET_NAME, HEADERS);
 }
 
+function ensureTeachersSheet_() {
+  return ensureSheetWithHeaders_(TEACHERS_SHEET_NAME, TEACHER_HEADERS);
+}
+
 function ensureAttendanceSheet_() {
   return ensureSheetWithHeaders_(ATTENDANCE_SHEET_NAME, ATTENDANCE_HEADERS);
 }
@@ -1393,7 +1553,7 @@ function getSpreadsheet_() {
 function getProperties_() {
   const props = PropertiesService.getScriptProperties();
   const values = props.getProperties();
-  const required = ["LINE_CHANNEL_ID", "LINE_CHANNEL_SECRET", "ADMIN_KEY"];
+  const required = ["LINE_CHANNEL_ID", "LINE_CHANNEL_SECRET"];
   const missing = required.filter((key) => !values[key]);
 
   if (missing.length) {
@@ -1403,10 +1563,26 @@ function getProperties_() {
   return values;
 }
 
-function assertAdmin_(adminKey) {
-  const expected = getProperties_().ADMIN_KEY;
-  if (!adminKey || adminKey !== expected) {
-    throw new Error("管理密鑰錯誤。");
+function assertTeacherAccess_(payload) {
+  const teacher = validateTeacherSession_(payload);
+  assertTeacherApproved_(teacher);
+  return teacher;
+}
+
+function validateTeacherSession_(payload) {
+  requireFields_(payload, ["teacherUuid", "teacherToken"]);
+
+  const teacher = findTeacherByUuid_(payload.teacherUuid);
+  if (!teacher || teacher.publicToken !== payload.teacherToken) {
+    throw new Error("找不到師資或登入資訊已失效。");
+  }
+
+  return teacher;
+}
+
+function assertTeacherApproved_(teacher) {
+  if (teacher.status !== "approved") {
+    throw new Error("師資審核通過後才能使用師資系統。");
   }
 }
 
@@ -1416,6 +1592,26 @@ function requireFields_(payload, fields) {
       throw new Error("Missing field: " + field);
     }
   });
+}
+
+function publicTeacher_(teacher, includeToken) {
+  const data = {
+    uuid: teacher.uuid,
+    lineUserId: teacher.lineUserId,
+    lineName: teacher.lineName,
+    linePictureUrl: teacher.linePictureUrl,
+    status: teacher.status,
+    createdAt: teacher.createdAt,
+    updatedAt: teacher.updatedAt,
+    approvedAt: teacher.approvedAt,
+    reviewNote: teacher.reviewNote
+  };
+
+  if (includeToken) {
+    data.publicToken = teacher.publicToken;
+  }
+
+  return data;
 }
 
 function publicStudent_(student, includeToken) {

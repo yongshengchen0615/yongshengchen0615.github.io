@@ -459,7 +459,7 @@ img {
   color: var(--button-ink);
 }
 
-.admin-login,
+.teacher-auth,
 .list-controls {
   display: flex;
   flex-wrap: wrap;
@@ -467,7 +467,7 @@ img {
   align-items: end;
 }
 
-.admin-login {
+.teacher-auth {
   align-items: center;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -476,12 +476,22 @@ img {
   box-shadow: var(--shadow-soft);
 }
 
-.admin-login label {
+.teacher-auth__status {
   display: grid;
   gap: 7px;
+}
+
+.teacher-auth__status strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.teacher-auth__status span {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+  line-height: 1.4;
 }
 
 input,
@@ -608,6 +618,10 @@ a:focus-visible {
   gap: 10px;
 }
 
+.location-grid--radius-only {
+  grid-template-columns: minmax(160px, 220px);
+}
+
 .location-field {
   display: grid;
   gap: 7px;
@@ -664,11 +678,6 @@ a:focus-visible {
 .location-map-toolbar strong {
   font-size: 0.95rem;
   white-space: nowrap;
-}
-
-.location-map-toolbar input {
-  min-width: min(340px, 100%);
-  flex: 1;
 }
 
 .location-map-toolbar button {
@@ -980,7 +989,7 @@ tbody tr:hover {
     flex-direction: column;
   }
 
-  .admin-login,
+  .teacher-auth,
   .practice-form,
   .location-actions,
   .list-controls {
@@ -992,13 +1001,11 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .admin-login input,
-  .admin-login button,
+  .teacher-auth button,
   .attendance-region__header button,
   .practice-form input,
   .practice-form button,
   .location-actions button,
-  .location-map-toolbar input,
   .location-map-toolbar button,
   .list-controls input,
   .list-controls select,

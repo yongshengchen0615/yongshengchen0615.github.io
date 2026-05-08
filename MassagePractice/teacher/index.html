@@ -19,7 +19,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="css/styles.css?v=20260507-7" />
+    <link rel="stylesheet" href="css/styles.css?v=20260508-2" />
   </head>
   <body>
     <header class="topbar">
@@ -38,10 +38,13 @@
           <p class="eyebrow">Teacher Console</p>
           <h1 id="teacher-title">學員審核</h1>
         </div>
-        <div class="admin-login" id="adminLogin">
-          <label for="adminKey">管理密鑰</label>
-          <input id="adminKey" type="password" autocomplete="current-password" placeholder="輸入 GAS ADMIN_KEY" />
-          <button class="button" id="connectButton" type="button">連線</button>
+        <div class="teacher-auth" id="teacherAuth">
+          <div class="teacher-auth__status">
+            <strong id="teacherAuthName">師資登入</strong>
+            <span id="teacherAuthStatus">使用 LINE 登入後等待審核。</span>
+          </div>
+          <button class="button button--line" id="connectButton" type="button">LINE 登入</button>
+          <button class="button button--ghost" id="logoutButton" type="button" hidden>登出</button>
         </div>
       </section>
 
@@ -80,7 +83,7 @@
 
         <section class="table-region" aria-live="polite">
           <div class="empty-state" id="emptyState">
-            輸入管理密鑰後載入學員名單。
+            使用 LINE 登入師資帳號後載入學員名單。
           </div>
 
           <div class="table-wrap" id="tableWrap" hidden>
@@ -167,7 +170,7 @@
             <input id="practiceTargetInput" type="text" placeholder="新增練習對象" />
             <button class="button" id="addPracticeTargetButton" type="button">新增</button>
           </div>
-          <div class="option-list" id="practiceTargetList">輸入管理密鑰後載入。</div>
+          <div class="option-list" id="practiceTargetList">師資審核通過後載入。</div>
         </section>
       </section>
 
@@ -182,7 +185,7 @@
             <input id="practiceItemInput" type="text" placeholder="新增練習項目" />
             <button class="button" id="addPracticeItemButton" type="button">新增</button>
           </div>
-          <div class="option-list" id="practiceItemList">輸入管理密鑰後載入。</div>
+          <div class="option-list" id="practiceItemList">師資審核通過後載入。</div>
         </section>
       </section>
 
@@ -207,15 +210,10 @@
               <input id="locationNameInput" type="text" maxlength="80" placeholder="例如：教室" />
             </label>
 
-            <div class="location-grid">
-              <label class="location-field" for="locationLatitudeInput">
-                緯度
-                <input id="locationLatitudeInput" type="number" inputmode="decimal" step="any" min="-90" max="90" placeholder="25.033964" />
-              </label>
-              <label class="location-field" for="locationLongitudeInput">
-                經度
-                <input id="locationLongitudeInput" type="number" inputmode="decimal" step="any" min="-180" max="180" placeholder="121.564468" />
-              </label>
+            <input id="locationLatitudeInput" type="hidden" />
+            <input id="locationLongitudeInput" type="hidden" />
+
+            <div class="location-grid location-grid--radius-only">
               <label class="location-field" for="locationRadiusInput">
                 半徑（公尺）
                 <input id="locationRadiusInput" type="number" inputmode="numeric" min="10" max="10000" step="1" placeholder="100" />
@@ -232,24 +230,22 @@
           <div class="location-map-panel" id="locationMapPanel" hidden>
             <div class="location-map-toolbar">
               <strong>地圖選點</strong>
-              <input id="locationMapSearchInput" type="search" placeholder="搜尋地址或地標" autocomplete="off" />
-              <button class="button button--ghost" id="searchLocationMapButton" type="button">搜尋</button>
               <button class="button button--ghost" id="closeLocationMapButton" type="button">關閉地圖</button>
             </div>
             <div class="location-map" id="locationMap" aria-label="定位地圖"></div>
           </div>
 
-          <div class="location-summary" id="locationSummary">輸入管理密鑰後載入。</div>
+          <div class="location-summary" id="locationSummary">師資審核通過後載入。</div>
         </section>
       </section>
     </main>
 
-    <script src="js/api.js?v=20260507-1"></script>
+    <script src="js/api.js?v=20260508-1"></script>
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="js/teacher.js?v=20260507-7"></script>
+    <script src="js/teacher.js?v=20260508-2"></script>
   </body>
 </html>

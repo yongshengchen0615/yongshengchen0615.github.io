@@ -1,5 +1,7 @@
 {
   "appName": "學員審核系統",
+  "lineChannelId": "2009986662",
   "gasWebAppUrl": "https://script.google.com/macros/s/AKfycbyp5-BBjXuX2H0tB15Vh_27kEJownL-CUt3Ygjil9NF7TD4PZDtSVH_nBzt8YRF9Ogn/exec",
+  "teacherRedirectUri": "https://yongshengchen0615.github.io/MassagePractice/teacher/index.html",
   "enableDebug": false
 }

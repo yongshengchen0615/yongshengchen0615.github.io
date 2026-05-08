@@ -62,6 +62,12 @@
     return window.location.origin + window.location.pathname;
   }
 
+  function teacherRedirectUri() {
+    const config = getConfig();
+    if (isConfigured(config.teacherRedirectUri)) return config.teacherRedirectUri.trim();
+    return window.location.origin + window.location.pathname;
+  }
+
   function cleanOauthParams() {
     const url = new URL(window.location.href);
     [
@@ -148,6 +154,7 @@
     loadConfig,
     post,
     requireConfig,
-    studentRedirectUri
+    studentRedirectUri,
+    teacherRedirectUri
   };
 })();
