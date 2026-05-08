@@ -114,6 +114,7 @@ let state = {
   filter: "all",
   draggingTaskId: null,
   pointerDrag: null,
+  noteSaveTimer: null,
 };
 
 const elements = {};
@@ -261,6 +262,7 @@ function createProject({ title, outcome, start, deadline, type }) {
       phaseName: phase.name,
       dueDate: distributeTaskDate(phase, index),
       done: false,
+      note: "",
       createdAt: new Date().toISOString(),
     })),
   );
@@ -346,6 +348,7 @@ function handleQuickTaskSubmit(event) {
     phaseName: phase?.name || "補充",
     dueDate,
     done: false,
+    note: "",
     createdAt: new Date().toISOString(),
     order: getNextTaskOrder(project),
     manual: true,
@@ -518,6 +521,12 @@ function renderTasks(project) {
     button.addEventListener("click", () => deleteTask(project.id, button.dataset.deleteTask));
   });
 
+  elements.taskList.querySelectorAll("[data-task-note]").forEach((field) => {
+    autoSizeNoteField(field);
+    field.addEventListener("input", () => updateTaskNote(project.id, field.dataset.taskNote, field.value, field));
+    field.addEventListener("blur", saveState);
+  });
+
   elements.taskList.querySelectorAll("[data-drag-handle]").forEach((handle) => {
     handle.addEventListener("pointerdown", (event) => handleTaskPointerDown(event, project.id));
   });
@@ -531,6 +540,7 @@ function renderTaskCard(task, index) {
   const doneClass = task.done ? "done" : "";
   const emphasisClass = getTaskEmphasis(task);
   const dragClass = state.filter === "all" ? "" : "locked-order";
+  const note = task.note || "";
   return `
     <article class="task-card ${doneClass} ${emphasisClass} ${dragClass}" data-drag-task="${task.id}">
       <span class="task-number" data-drag-handle title="拖曳調整順序">
@@ -554,6 +564,10 @@ function renderTaskCard(task, index) {
           <i data-lucide="x"></i>
         </button>
       </div>
+      <label class="task-note-wrap">
+        <span>備註</span>
+        <textarea class="task-note" data-task-note="${task.id}" rows="1" placeholder="新增備註">${escapeHtml(note)}</textarea>
+      </label>
     </article>
   `;
 }
@@ -563,6 +577,22 @@ function getTaskEmphasis(task) {
   if (/異常|增補|讓與|注意|其他/.test(content)) return "alert";
   if (/品保|保單|責任險|食品|評估表/.test(content)) return "quality";
   return "";
+}
+
+function updateTaskNote(projectId, taskId, value, field) {
+  const project = state.projects.find((item) => item.id === projectId);
+  const task = project?.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+
+  task.note = value;
+  autoSizeNoteField(field);
+  clearTimeout(state.noteSaveTimer);
+  state.noteSaveTimer = setTimeout(saveState, 250);
+}
+
+function autoSizeNoteField(field) {
+  field.style.height = "auto";
+  field.style.height = `${field.scrollHeight}px`;
 }
 
 function handleTaskPointerDown(event, projectId) {
@@ -579,10 +609,13 @@ function handleTaskPointerDown(event, projectId) {
     taskId: state.draggingTaskId,
     pointerId: event.pointerId,
     startY: event.clientY,
+    offsetY: event.clientY - card.getBoundingClientRect().top,
     currentTargetId: null,
+    dropCard: null,
     insertAfter: false,
     hasMoved: false,
     card,
+    ghost: createTaskDragGhost(card, event.clientY),
   };
 
   card.classList.add("dragging");
@@ -600,17 +633,23 @@ function handleTaskPointerMove(event) {
 
   event.preventDefault();
   drag.hasMoved = drag.hasMoved || Math.abs(event.clientY - drag.startY) > 4;
+  moveTaskDragGhost(drag, event.clientY);
   scrollDragViewport(event.clientY);
 
   const target = getTaskCardAtPoint(event.clientX, event.clientY);
-  clearDragClasses({ keepDragging: true });
 
   if (!target || target.dataset.dragTask === drag.taskId) {
+    clearCurrentDropTarget(drag);
     drag.currentTargetId = null;
     return;
   }
 
+  if (drag.dropCard && drag.dropCard !== target) {
+    clearCurrentDropTarget(drag);
+  }
+
   drag.currentTargetId = target.dataset.dragTask;
+  drag.dropCard = target;
   drag.insertAfter = !isBeforeDropTarget(event, target);
   target.classList.toggle("drop-before", !drag.insertAfter);
   target.classList.toggle("drop-after", drag.insertAfter);
@@ -640,14 +679,38 @@ function handleTaskPointerCancel() {
   endTaskPointerDrag();
 }
 
+function clearCurrentDropTarget(drag) {
+  drag.dropCard?.classList.remove("drop-before", "drop-after");
+  drag.dropCard = null;
+}
+
 function endTaskPointerDrag() {
   window.removeEventListener("pointermove", handleTaskPointerMove);
   window.removeEventListener("pointerup", handleTaskPointerUp);
   window.removeEventListener("pointercancel", handleTaskPointerCancel);
+  state.pointerDrag?.ghost?.remove();
   clearDragClasses();
   document.body.classList.remove("task-drag-active");
   state.draggingTaskId = null;
   state.pointerDrag = null;
+}
+
+function createTaskDragGhost(card, clientY) {
+  const rect = card.getBoundingClientRect();
+  const ghost = card.cloneNode(true);
+  ghost.classList.add("task-drag-ghost");
+  ghost.classList.remove("dragging", "drop-before", "drop-after");
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = "0px";
+  ghost.style.width = `${rect.width}px`;
+  document.body.appendChild(ghost);
+  moveTaskDragGhost({ ghost, offsetY: clientY - rect.top }, clientY);
+  return ghost;
+}
+
+function moveTaskDragGhost(drag, clientY) {
+  if (!drag.ghost) return;
+  drag.ghost.style.transform = `translate3d(0, ${clientY - drag.offsetY}px, 0)`;
 }
 
 function getTaskCardAtPoint(x, y) {
@@ -764,7 +827,11 @@ function exportActiveProject() {
     ...project.phases.flatMap((phase) => {
       const tasks = getOrderedTasks(project)
         .filter((task) => task.phaseId === phase.id)
-        .map((task) => `- [${task.done ? "x" : " "}] ${formatDate(task.dueDate)} ${task.title}`);
+        .flatMap((task) => {
+          const rows = [`- [${task.done ? "x" : " "}] ${formatDate(task.dueDate)} ${task.title}`];
+          if (task.note?.trim()) rows.push(`  備註：${task.note.trim()}`);
+          return rows;
+        });
       return [`## ${phase.name} (${formatDate(phase.startDate)} - ${formatDate(phase.endDate)})`, ...tasks, ""];
     }),
   ];
@@ -790,6 +857,10 @@ function getProgress(project) {
 
 function normalizeProject(project) {
   if (!project?.tasks?.length) return;
+  project.tasks.forEach((task) => {
+    if (typeof task.note !== "string") task.note = "";
+  });
+
   const needsOrder = project.tasks.some((task) => !Number.isFinite(task.order));
   if (!needsOrder) return;
 

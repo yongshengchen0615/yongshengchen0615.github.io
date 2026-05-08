@@ -46,6 +46,8 @@ body {
 body.task-drag-active {
   cursor: grabbing;
   overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 button,
@@ -646,6 +648,16 @@ button svg {
   box-shadow: 0 12px 32px rgba(38, 44, 42, 0.16);
 }
 
+.task-drag-ghost {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  opacity: 0.96;
+  pointer-events: none;
+  box-shadow: 0 18px 42px rgba(38, 44, 42, 0.22);
+  will-change: transform;
+}
+
 .task-card.drop-before,
 .task-card.drop-after {
   position: relative;
@@ -693,6 +705,8 @@ button svg {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 40px;
+  padding: 0 2px;
   color: var(--muted);
   cursor: grab;
   touch-action: none;
@@ -762,6 +776,39 @@ button svg {
   gap: 8px;
   margin-top: 5px;
   font-size: 0.76rem;
+}
+
+.task-note-wrap {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.task-note-wrap span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.task-note {
+  min-height: 34px;
+  max-height: 160px;
+  padding: 7px 9px;
+  resize: none;
+  overflow-y: auto;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.task-note::placeholder {
+  color: #9aa39f;
+}
+
+.task-card.done .task-note {
+  color: var(--muted);
 }
 
 .phase-pill {
@@ -956,6 +1003,14 @@ button svg {
 
   .task-card {
     grid-template-columns: 50px minmax(0, 1fr) 34px;
+  }
+
+  .task-note-wrap {
+    grid-column: 1 / -1;
+  }
+
+  .task-number {
+    min-height: 44px;
   }
 
   .planner-panel,
