@@ -20,6 +20,8 @@ const WRITE_ACTIONS = [
   "deleteStudent",
   "addPracticeTarget",
   "addPracticeItem",
+  "batchAddPracticeTargets",
+  "batchAddPracticeItems",
   "deletePracticeTarget",
   "deletePracticeItem",
   "updateLocationSettings"
@@ -219,6 +221,14 @@ function handleAction_(action, payload) {
 
   if (action === "addPracticeItem") {
     return addPracticeItem_(payload);
+  }
+
+  if (action === "batchAddPracticeTargets") {
+    return batchAddPracticeTargets_(payload);
+  }
+
+  if (action === "batchAddPracticeItems") {
+    return batchAddPracticeItems_(payload);
   }
 
   if (action === "deletePracticeTarget") {
@@ -532,6 +542,16 @@ function addPracticeItem_(payload) {
   return {
     item: addPracticeOption_(PRACTICE_ITEMS_SHEET_NAME, payload.name)
   };
+}
+
+function batchAddPracticeTargets_(payload) {
+  assertTeacherAccess_(payload);
+  return batchAddPracticeOptionsResponse_("targets", PRACTICE_TARGETS_SHEET_NAME, payload.names);
+}
+
+function batchAddPracticeItems_(payload) {
+  assertTeacherAccess_(payload);
+  return batchAddPracticeOptionsResponse_("items", PRACTICE_ITEMS_SHEET_NAME, payload.names);
 }
 
 function deletePracticeTarget_(payload) {
@@ -1448,8 +1468,33 @@ function cleanPracticeCustomName_(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function cleanPracticeOptionName_(value) {
+  return String(value || "").trim();
+}
+
+function practiceOptionNamesFromPayload_(names) {
+  const values = Array.isArray(names)
+    ? names
+    : String(names || "")
+        .split(/[\n,，;；]+/);
+  const seen = {};
+  const cleanNames = [];
+
+  values.forEach((value) => {
+    const cleanName = cleanPracticeOptionName_(value);
+    const key = cleanName.toLowerCase();
+
+    if (!cleanName || seen[key]) return;
+
+    seen[key] = true;
+    cleanNames.push(cleanName);
+  });
+
+  return cleanNames;
+}
+
 function addPracticeOption_(sheetName, name) {
-  const cleanName = String(name || "").trim();
+  const cleanName = cleanPracticeOptionName_(name);
   if (!cleanName) {
     throw new Error("請輸入名稱。");
   }
@@ -1475,6 +1520,64 @@ function addPracticeOption_(sheetName, name) {
 
   table.sheet.appendRow(PRACTICE_OPTION_HEADERS.map((header) => cellValue_(option[header])));
   return normalizePracticeOption_(option);
+}
+
+function batchAddPracticeOptionsResponse_(key, sheetName, names) {
+  const result = batchAddPracticeOptions_(sheetName, names);
+  const response = {
+    skipped: result.skipped
+  };
+  response[key] = result.options;
+  return response;
+}
+
+function batchAddPracticeOptions_(sheetName, names) {
+  const cleanNames = practiceOptionNamesFromPayload_(names);
+  if (!cleanNames.length) {
+    throw new Error("請輸入名稱。");
+  }
+
+  const table = readPracticeOptionTable_(sheetName);
+  const existing = {};
+  const skipped = [];
+
+  table.rows.forEach((row) => {
+    existing[row.option.name.toLowerCase()] = true;
+  });
+
+  const now = new Date().toISOString();
+  const options = [];
+
+  cleanNames.forEach((name) => {
+    const key = name.toLowerCase();
+
+    if (name === PRACTICE_OTHER_OPTION_NAME || existing[key]) {
+      skipped.push(name);
+      return;
+    }
+
+    existing[key] = true;
+    options.push({
+      id: Utilities.getUuid(),
+      name,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now
+    });
+  });
+
+  if (options.length) {
+    const rowStart = Math.max(table.sheet.getLastRow(), 1) + 1;
+    const rows = options.map((option) => PRACTICE_OPTION_HEADERS.map((header) => cellValue_(option[header])));
+    table.sheet
+      .getRange(rowStart, 1, options.length, PRACTICE_OPTION_HEADERS.length)
+      .setValues(rows);
+  }
+
+  return {
+    options: options.map(normalizePracticeOption_),
+    skipped
+  };
 }
 
 function deletePracticeOption_(sheetName, id) {

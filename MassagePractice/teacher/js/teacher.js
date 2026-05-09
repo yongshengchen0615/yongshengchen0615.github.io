@@ -261,6 +261,8 @@
     elements.connectButton.disabled = isLoading;
     elements.logoutButton.disabled = isLoading;
     elements.reloadButton.disabled = isLoading;
+    elements.practiceTargetInput.disabled = isLoading;
+    elements.practiceItemInput.disabled = isLoading;
     elements.addPracticeTargetButton.disabled = isLoading;
     elements.addPracticeItemButton.disabled = isLoading;
     elements.detectLocationButton.disabled = isLoading;
@@ -981,17 +983,25 @@
     }
   }
 
-  async function addPracticeOption(action, input, settingsKey) {
+  function parsePracticeOptionNames(value) {
+    const seen = new Set();
+    return String(value || "")
+      .split(/[\n,，;；]+/)
+      .map((name) => name.trim())
+      .filter((name) => {
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  async function batchAddPracticeOptions(action, input, settingsKey) {
     if (!requireApprovedTeacher()) return;
-    const name = input.value.trim();
+    const names = parsePracticeOptionNames(input.value);
 
-    if (!name) {
+    if (!names.length) {
       window.alert("請輸入名稱。");
-      return;
-    }
-
-    if (name === PRACTICE_OTHER_OPTION_NAME) {
-      window.alert("「其他」已是系統固定選項。");
       return;
     }
 
@@ -999,12 +1009,30 @@
 
     try {
       const data = await AppApi.post(action, teacherPayload({
-        name
+        names
       }));
-      const option = data.target || data.item;
-      practiceSettings[settingsKey] = [option].concat(practiceSettings[settingsKey]);
-      input.value = "";
-      renderPracticeSettings();
+      const options = data[settingsKey] || [];
+      const skipped = data.skipped || [];
+
+      if (options.length) {
+        practiceSettings[settingsKey] = options.concat(practiceSettings[settingsKey]);
+        input.value = "";
+        renderPracticeSettings();
+      }
+
+      if (skipped.length) {
+        const skippedText = skipped.slice(0, 8).join("、");
+        const suffix = skipped.length > 8 ? ` 等 ${skipped.length} 筆` : "";
+        window.alert(
+          options.length
+            ? `已新增 ${options.length} 筆；略過已存在或固定選項：${skippedText}${suffix}`
+            : `沒有新增。已存在或固定選項：${skippedText}${suffix}`
+        );
+      }
+
+      if (!options.length && !skipped.length) {
+        window.alert("沒有新增項目。");
+      }
     } catch (error) {
       window.alert(error.message);
     } finally {
@@ -1161,10 +1189,10 @@
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
     elements.closePracticeRecordButton.addEventListener("click", hidePracticeRecords);
     elements.addPracticeTargetButton.addEventListener("click", () => {
-      addPracticeOption("addPracticeTarget", elements.practiceTargetInput, "targets");
+      batchAddPracticeOptions("batchAddPracticeTargets", elements.practiceTargetInput, "targets");
     });
     elements.addPracticeItemButton.addEventListener("click", () => {
-      addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
+      batchAddPracticeOptions("batchAddPracticeItems", elements.practiceItemInput, "items");
     });
     elements.detectLocationButton.addEventListener("click", detectLocation);
     elements.openLocationMapButton.addEventListener("click", openLocationMap);
@@ -1187,10 +1215,16 @@
       });
     });
     elements.practiceTargetInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addPracticeOption("addPracticeTarget", elements.practiceTargetInput, "targets");
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        batchAddPracticeOptions("batchAddPracticeTargets", elements.practiceTargetInput, "targets");
+      }
     });
     elements.practiceItemInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addPracticeOption("addPracticeItem", elements.practiceItemInput, "items");
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        batchAddPracticeOptions("batchAddPracticeItems", elements.practiceItemInput, "items");
+      }
     });
     elements.searchInput.addEventListener("input", render);
     elements.statusFilter.addEventListener("change", render);
@@ -1253,6 +1287,7 @@
     }
 
     renderLoggedOut();
+    await beginLineLogin();
   }
 
   init();

@@ -96,7 +96,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -495,7 +496,8 @@ img {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -505,8 +507,16 @@ select {
   outline: none;
 }
 
+textarea {
+  min-height: 112px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible,
 a:focus-visible {
   border-color: var(--focus);
@@ -599,10 +609,11 @@ a:focus-visible {
 
 .practice-form {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
 }
 
-.practice-form input {
+.practice-form textarea {
   min-width: 0;
   flex: 1;
 }
@@ -1003,7 +1014,7 @@ tbody tr:hover {
 
   .teacher-auth button,
   .attendance-region__header button,
-  .practice-form input,
+  .practice-form textarea,
   .practice-form button,
   .location-actions button,
   .location-map-toolbar button,
