@@ -1012,7 +1012,6 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .teacher-auth button,
   .attendance-region__header button,
   .practice-form textarea,
   .practice-form button,

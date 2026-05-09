@@ -29,8 +29,6 @@
     locationSettingsView: document.getElementById("locationSettingsView"),
     teacherAuthName: document.getElementById("teacherAuthName"),
     teacherAuthStatus: document.getElementById("teacherAuthStatus"),
-    connectButton: document.getElementById("connectButton"),
-    logoutButton: document.getElementById("logoutButton"),
     reloadButton: document.getElementById("reloadButton"),
     searchInput: document.getElementById("searchInput"),
     statusFilter: document.getElementById("statusFilter"),
@@ -189,24 +187,20 @@
     currentTeacher = teacher || null;
 
     if (!teacher) {
-      elements.teacherAuthName.textContent = "師資登入";
-      elements.teacherAuthStatus.textContent = message || "使用 LINE 登入後等待審核。";
-      elements.connectButton.textContent = "LINE 登入";
-      elements.logoutButton.hidden = true;
+      elements.teacherAuthName.textContent = "師資審核狀態";
+      elements.teacherAuthStatus.textContent = message || "尚未登入";
       return;
     }
 
     const status = normalizeStatus(teacher.status);
-    elements.teacherAuthName.textContent = teacher.lineName || "LINE 使用者";
+    elements.teacherAuthName.textContent = "師資審核狀態";
     elements.teacherAuthStatus.textContent =
       message ||
       (status === "approved"
-        ? "師資審核已通過。"
+        ? "已通過"
         : status === "rejected"
-          ? teacher.reviewNote || "師資審核未通過。"
-          : "已送出師資登入資料，請在 GAS teachers 工作表將 status 改為 approved。");
-    elements.connectButton.textContent = status === "approved" ? "重新整理" : "重新檢查";
-    elements.logoutButton.hidden = false;
+          ? "未通過"
+          : "待審核");
   }
 
   function renderLoggedOut() {
@@ -258,8 +252,6 @@
   }
 
   function setLoading(isLoading) {
-    elements.connectButton.disabled = isLoading;
-    elements.logoutButton.disabled = isLoading;
     elements.reloadButton.disabled = isLoading;
     elements.practiceTargetInput.disabled = isLoading;
     elements.practiceItemInput.disabled = isLoading;
@@ -1173,17 +1165,6 @@
     elements.themeToggle.addEventListener("click", toggleTheme);
     elements.viewButtons.forEach((button) => {
       button.addEventListener("click", () => showView(button.dataset.view));
-    });
-    elements.connectButton.addEventListener("click", () => {
-      if (readTeacherSession()) {
-        refreshTeacherStatus();
-      } else {
-        beginLineLogin();
-      }
-    });
-    elements.logoutButton.addEventListener("click", () => {
-      clearTeacherSession();
-      renderLoggedOut();
     });
     elements.reloadButton.addEventListener("click", () => refreshTeacherStatus());
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
