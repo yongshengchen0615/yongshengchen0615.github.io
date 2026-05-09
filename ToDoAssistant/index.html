@@ -30,7 +30,7 @@
           </div>
           <div>
             <span id="dueSoonTasks">0</span>
-            <small>7 天內</small>
+            <small>未完成</small>
           </div>
         </div>
 
@@ -42,6 +42,25 @@
             </button>
           </div>
           <nav class="project-list" id="projectList" aria-label="專案"></nav>
+        </div>
+
+        <div class="side-section sync-panel">
+          <div class="section-title">
+            <span>GAS 資料</span>
+            <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
+          </div>
+          <div class="sync-form">
+            <div class="sync-actions">
+              <button class="ghost-button compact" id="syncNowButton" type="button">
+                <i data-lucide="save"></i>
+                儲存
+              </button>
+            </div>
+            <p class="sync-status" id="syncStatus">讀取 config.json</p>
+            <a class="sync-sheet-link hidden" id="syncSheetLink" href="#" target="_blank" rel="noreferrer">
+              開啟資料表
+            </a>
+          </div>
         </div>
       </aside>
 
@@ -79,23 +98,13 @@
               ></textarea>
             </label>
 
-            <div class="form-row date-fields">
-              <label>
-                <span>開始日</span>
-                <input id="projectStart" type="date" required />
-              </label>
-              <label>
-                <span>完成日</span>
-                <input id="projectDeadline" type="date" required />
-              </label>
-            </div>
-
             <div class="form-row option-fields">
               <label>
                 <span>類型</span>
                 <select id="projectType">
                   <option value="residentContract">進駐廠商契約用印</option>
                   <option value="rotationContract">特賣 / 輪動契約用印</option>
+                  <option value="contractAdjustment">合約調整 / 展延協議書用印</option>
                 </select>
               </label>
             </div>
@@ -107,8 +116,8 @@
           </form>
 
           <div class="reference-note">
-            <span>2024 年 12 月版查檢表格式</span>
-            <strong>文件、品保、保單分段檢核</strong>
+            <span>PDF 用印查檢表格式</span>
+            <strong>文件、協議書、品保、保單分段檢核</strong>
           </div>
         </section>
 
@@ -133,7 +142,6 @@
           <div class="progress-block">
             <div>
               <span id="progressLabel">0%</span>
-              <small id="dateRangeLabel">-</small>
             </div>
             <div class="progress-track" aria-hidden="true">
               <span id="progressBar"></span>
@@ -150,7 +158,6 @@
             </div>
             <form id="quickTaskForm" class="quick-task-form">
               <input id="quickTaskInput" type="text" placeholder="新增補充任務" autocomplete="off" />
-              <input id="quickTaskDate" type="date" />
               <button class="icon-button solid" type="submit" aria-label="新增任務">
                 <i data-lucide="plus"></i>
               </button>

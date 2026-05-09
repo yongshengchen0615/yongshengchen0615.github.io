@@ -16,6 +16,7 @@
   --danger: #ba3b30;
   --danger-soft: #fae7e4;
   --blue: #315f94;
+  --blue-soft: #e7f0fb;
   --shadow: 0 14px 36px rgba(38, 44, 42, 0.08);
   --radius: 8px;
   font-family:
@@ -180,6 +181,10 @@ select:disabled {
   margin-top: 8px;
 }
 
+.sync-panel {
+  margin-top: 22px;
+}
+
 .section-title,
 .panel-heading,
 .timeline-header,
@@ -312,7 +317,6 @@ select:disabled {
 
 .title-field,
 .outcome-field,
-.date-fields,
 .option-fields {
   grid-column: span 2;
 }
@@ -446,6 +450,12 @@ select:focus {
   padding: 0 12px;
   background: var(--surface);
   border-color: var(--line);
+}
+
+.ghost-button.compact {
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 0.82rem;
 }
 
 .ghost-button {
@@ -591,9 +601,9 @@ button svg {
 }
 
 .quick-task-form {
-  grid-template-columns: minmax(120px, 1fr) 138px 38px;
+  grid-template-columns: minmax(160px, 1fr) 38px;
   gap: 8px;
-  min-width: min(100%, 430px);
+  min-width: min(100%, 360px);
 }
 
 .quick-task-form input {
@@ -694,6 +704,11 @@ button svg {
 .task-card.alert {
   border-color: rgba(186, 59, 48, 0.35);
   background: linear-gradient(90deg, var(--danger-soft), var(--surface) 48%);
+}
+
+.task-card.agreement {
+  border-color: rgba(49, 95, 148, 0.35);
+  background: linear-gradient(90deg, var(--blue-soft), var(--surface) 46%);
 }
 
 .task-card.done {
@@ -832,6 +847,11 @@ button svg {
   background: var(--danger-soft);
 }
 
+.agreement .phase-pill {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
 .task-actions {
   flex: 0 0 auto;
   gap: 6px;
@@ -916,6 +936,63 @@ button svg {
   display: none !important;
 }
 
+.sync-form {
+  display: grid;
+  gap: 10px;
+}
+
+.sync-form input {
+  min-height: 38px;
+  font-size: 0.82rem;
+}
+
+.sync-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-status {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.sync-sheet-link {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.sync-sheet-link:hover {
+  text-decoration: underline;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #a7afa9;
+}
+
+.sync-dot.ready {
+  background: var(--accent);
+}
+
+.sync-dot.busy {
+  background: var(--warning);
+}
+
+.sync-dot.dirty {
+  background: var(--blue);
+}
+
+.sync-dot.error {
+  background: var(--danger);
+}
+
 @keyframes liftIn {
   from {
     opacity: 0;
@@ -978,7 +1055,6 @@ button svg {
 
   .title-field,
   .outcome-field,
-  .date-fields,
   .option-fields,
   .project-form .primary-button {
     grid-column: 1 / -1;

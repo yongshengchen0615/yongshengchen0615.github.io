@@ -1,7 +1,6 @@
-const STORAGE_KEY = "todo-assistant-projects-v1";
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const CONFIG_PATH = "config.json";
 const phaseColors = ["#18745f", "#315f94", "#b66c20", "#7a4e98", "#ba3b30"];
-const supportedTypes = ["residentContract", "rotationContract"];
+const supportedTypes = ["residentContract", "rotationContract", "contractAdjustment"];
 
 const templates = {
   residentContract: [
@@ -104,6 +103,52 @@ const templates = {
       ],
     },
   ],
+  contractAdjustment: [
+    {
+      name: "基本申請",
+      weight: 1,
+      tasks: ["用印申請書(A)填寫完整", "確認合約調整或合約展延期間欄位", "確認申請人、合約租期與條件欄位"],
+    },
+    {
+      name: "簽呈建檔",
+      weight: 1.1,
+      tasks: [
+        "核准簽呈(D)內容無誤",
+        "確認簽呈欄位、日期與常見缺失",
+        "廠商合約建檔單(B)條件確認",
+        "建檔單條件需與簽呈及協議書條件相符",
+      ],
+    },
+    {
+      name: "協議書檢核",
+      weight: 2.2,
+      tasks: [
+        "合約調整協議書正本兩份",
+        "協議書版本正確，請至 Dr.owl 查看適用版本",
+        "協議書內容如展延日、商業條件需與簽呈相符",
+        "協議書必填欄位已填寫，字跡清楚且無數字誤植",
+        "雙方立約用印處與立約日期符合公司規範",
+        "協議書大小章、原約日期、名稱、統編等資訊與原約相符",
+        "協議書對應原合約條文項目確認相符",
+      ],
+    },
+    {
+      name: "原約與其他",
+      weight: 1,
+      tasks: ["原合約影本一份", "其他特定文件用途說明", "確認其他文件是否需列入異常事項"],
+    },
+    {
+      name: "用印送審",
+      weight: 0.9,
+      tasks: [
+        "逐頁或側邊騎縫章確認",
+        "內容增刪或修改處需旁蓋廠商小章",
+        "廠商公司、負責人名稱、統編、地址需與抄錄相符",
+        "增刪註記算字數與標點符號需寫入",
+        "其他備註或合約異常事項填寫",
+      ],
+    },
+  ],
 };
 
 const fullBreakdownAddons = ["確認風險與卡點", "建立備案", "整理決策紀錄"];
@@ -114,17 +159,28 @@ let state = {
   filter: "all",
   draggingTaskId: null,
   pointerDrag: null,
-  noteSaveTimer: null,
+  updatedAt: 0,
+  sync: {
+    endpoint: "",
+    key: "",
+    busy: false,
+    dirty: false,
+    loaded: false,
+    spreadsheetId: "",
+    spreadsheetUrl: "",
+  },
 };
 
 const elements = {};
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   bindElements();
-  setDefaultDates();
-  loadState();
+  setTodayLabel();
+  await loadSyncConfig();
   bindEvents();
+  setDataControlsDisabled(true);
   render();
+  await loadStateFromGasOnStart();
 });
 
 function bindElements() {
@@ -139,19 +195,19 @@ function bindElements() {
     "projectForm",
     "projectTitle",
     "projectOutcome",
-    "projectStart",
-    "projectDeadline",
     "projectType",
+    "syncNowButton",
+    "syncStatus",
+    "syncDot",
+    "syncSheetLink",
     "activeTitle",
     "exportButton",
     "deleteProjectButton",
     "progressLabel",
-    "dateRangeLabel",
     "progressBar",
     "phaseStrip",
     "quickTaskForm",
     "quickTaskInput",
-    "quickTaskDate",
     "taskList",
     "nextTaskBox",
     "outcomeText",
@@ -168,6 +224,8 @@ function bindEvents() {
   elements.seedButton.addEventListener("click", fillExample);
   elements.exportButton.addEventListener("click", exportActiveProject);
   elements.deleteProjectButton.addEventListener("click", deleteActiveProject);
+  elements.syncNowButton.addEventListener("click", () => saveToGas());
+  window.addEventListener("beforeunload", warnBeforeLeavingWithUnsavedData);
 
   document.querySelectorAll("[data-filter]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -178,12 +236,28 @@ function bindEvents() {
   });
 }
 
-function setDefaultDates() {
-  const today = startOfDay(new Date());
-  const deadline = addDays(today, 21);
-  elements.projectStart.value = toDateInput(today);
-  elements.projectDeadline.value = toDateInput(deadline);
-  elements.quickTaskDate.value = toDateInput(today);
+function warnBeforeLeavingWithUnsavedData(event) {
+  if (!state.sync.dirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+function setDataControlsDisabled(disabled) {
+  [
+    elements.newProjectButton,
+    elements.seedButton,
+    elements.exportButton,
+    elements.deleteProjectButton,
+    ...elements.projectForm.querySelectorAll("input, textarea, select, button"),
+    ...elements.quickTaskForm.querySelectorAll("input, button"),
+    ...elements.projectList.querySelectorAll("button"),
+  ].forEach((control) => {
+    if (control) control.disabled = disabled;
+  });
+}
+
+function setTodayLabel() {
+  const today = new Date();
   elements.todayLabel.textContent = new Intl.DateTimeFormat("zh-TW", {
     month: "long",
     day: "numeric",
@@ -191,32 +265,240 @@ function setDefaultDates() {
   }).format(today);
 }
 
-function loadState() {
-  const raw = readStorage();
-  if (!raw) return;
+function saveState(options = {}) {
+  const { touch = true, dirty = true } = options;
+  if (touch) state.updatedAt = Date.now();
 
-  try {
-    const saved = JSON.parse(raw);
-    if (Array.isArray(saved.projects)) {
-      state.projects = saved.projects.filter((project) => supportedTypes.includes(project.type));
-      state.projects.forEach(normalizeProject);
-      state.activeId = state.projects.some((project) => project.id === saved.activeId)
-        ? saved.activeId
-        : state.projects[0]?.id || null;
-    }
-  } catch {
-    state.projects = [];
-    state.activeId = null;
+  if (dirty) {
+    state.sync.dirty = true;
+    setSyncStatus("尚未儲存到 GAS", "dirty");
   }
 }
 
-function saveState() {
-  writeStorage(
-    JSON.stringify({
-      projects: state.projects,
-      activeId: state.activeId,
-    }),
-  );
+async function loadSyncConfig() {
+  try {
+    const response = await fetch(CONFIG_PATH, { cache: "no-store" });
+    if (!response.ok) throw new Error("config.json not found");
+
+    const config = await response.json();
+    state.sync.endpoint = String(config.gasUrl || config.endpoint || "").trim();
+    state.sync.key = String(config.syncKey || config.key || "").trim();
+    state.sync.spreadsheetId = extractSpreadsheetId(config.spreadsheetId || config.spreadsheetUrl || "");
+    rememberSpreadsheetUrl(config.spreadsheetUrl || getSpreadsheetUrlFromId(state.sync.spreadsheetId));
+    setSyncStatus(hasSyncConfig() ? "已讀取 config.json" : "config.json 尚未設定完整", hasSyncConfig() ? "ready" : "error");
+  } catch (error) {
+    state.sync.endpoint = "";
+    state.sync.key = "";
+    state.sync.spreadsheetId = "";
+    rememberSpreadsheetUrl("");
+    setSyncStatus(`無法讀取 config.json`, "error");
+  }
+}
+
+function hasSyncConfig() {
+  return Boolean(state.sync.endpoint && state.sync.key && state.sync.spreadsheetId);
+}
+
+function extractSpreadsheetId(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : text;
+}
+
+function getSpreadsheetUrlFromId(id) {
+  return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "";
+}
+
+function createSyncSnapshot() {
+  state.projects.forEach(normalizeProject);
+  return {
+    version: 1,
+    updatedAt: state.updatedAt || Date.now(),
+    activeId: state.activeId,
+    projects: state.projects,
+  };
+}
+
+function applySyncSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.projects)) return false;
+
+  state.projects = snapshot.projects.filter((project) => supportedTypes.includes(project.type));
+  state.projects.forEach(normalizeProject);
+  state.activeId = state.projects.some((project) => project.id === snapshot.activeId)
+    ? snapshot.activeId
+    : state.projects[0]?.id || null;
+  state.updatedAt = Number(snapshot.updatedAt) || Date.now();
+  state.sync.dirty = false;
+  state.sync.loaded = true;
+  render();
+  return true;
+}
+
+async function loadStateFromGasOnStart() {
+  if (!hasSyncConfig()) {
+    setSyncStatus("請先在 config.json 設定 gasUrl、syncKey、spreadsheetId", "error");
+    return;
+  }
+
+  if (state.sync.busy) return;
+  state.sync.busy = true;
+  setDataControlsDisabled(true);
+  setSyncStatus("從 GAS 載入中", "busy");
+
+  try {
+    const remote = await loadCloudState();
+    rememberSpreadsheetUrl(remote?.spreadsheetUrl);
+    const remoteData = remote?.data || null;
+
+    if (remoteData) {
+      if (!applySyncSnapshot(remoteData)) {
+        throw new Error("GAS 資料格式不正確");
+      }
+      setSyncStatus(`已從 GAS 載入 ${formatTime(new Date())}`, "ready");
+      return;
+    }
+
+    state.projects = [];
+    state.activeId = null;
+    state.updatedAt = 0;
+    state.sync.dirty = false;
+    state.sync.loaded = true;
+    render();
+    setSyncStatus("GAS 尚無資料，建立後按儲存", "ready");
+  } catch (error) {
+    state.sync.loaded = false;
+    setSyncStatus(`GAS 載入失敗：${error.message || "連線錯誤"}`, "error");
+  } finally {
+    state.sync.busy = false;
+    if (state.sync.loaded) {
+      setDataControlsDisabled(false);
+      render();
+    }
+    setSyncStatus(elements.syncStatus.textContent, elements.syncDot.className.replace("sync-dot", "").trim());
+  }
+}
+
+async function loadCloudState() {
+  return requestJsonp("load");
+}
+
+async function saveToGas() {
+  if (!hasSyncConfig()) {
+    setSyncStatus("請先在 config.json 設定 gasUrl、syncKey、spreadsheetId", "error");
+    return;
+  }
+
+  if (!state.sync.loaded) {
+    setSyncStatus("請先成功從 GAS 載入資料", "error");
+    return;
+  }
+
+  if (state.sync.busy) return;
+  state.sync.busy = true;
+  setDataControlsDisabled(true);
+  state.updatedAt = Date.now();
+  setSyncStatus("儲存到 GAS 中", "busy");
+
+  const snapshot = createSyncSnapshot();
+  const payload = {
+    key: state.sync.key,
+    spreadsheetId: state.sync.spreadsheetId,
+    data: snapshot,
+  };
+
+  try {
+    await pushCloudState(payload);
+    const verified = await loadCloudState();
+    rememberSpreadsheetUrl(verified?.spreadsheetUrl);
+
+    if (!verified?.data || Number(verified.data.updatedAt || 0) < Number(snapshot.updatedAt || 0)) {
+      throw new Error("GAS 尚未回傳最新資料");
+    }
+
+    if (!applySyncSnapshot(verified.data)) {
+      throw new Error("GAS 資料格式不正確");
+    }
+    setSyncStatus(`已儲存到 GAS ${formatTime(new Date())}`, "ready");
+  } catch (error) {
+    state.sync.dirty = true;
+    setSyncStatus(`儲存失敗：${error.message || "連線錯誤"}`, "error");
+  } finally {
+    state.sync.busy = false;
+    if (state.sync.loaded) {
+      setDataControlsDisabled(false);
+      render();
+    }
+    setSyncStatus(elements.syncStatus.textContent, elements.syncDot.className.replace("sync-dot", "").trim());
+  }
+}
+
+async function pushCloudState(payload) {
+  await fetch(state.sync.endpoint, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+function requestJsonp(action) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `todoAssistantSync_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("雲端讀取逾時"));
+    }, 12000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      script.remove();
+      delete window[callbackName];
+    }
+
+    window[callbackName] = (payload) => {
+      cleanup();
+      if (!payload?.ok) {
+        reject(new Error(payload?.error || "雲端回應錯誤"));
+        return;
+      }
+      resolve(payload);
+    };
+
+    try {
+      const url = new URL(state.sync.endpoint);
+      url.searchParams.set("action", action);
+      url.searchParams.set("key", state.sync.key);
+      url.searchParams.set("spreadsheetId", state.sync.spreadsheetId);
+      url.searchParams.set("callback", callbackName);
+      script.src = url.toString();
+      script.onerror = () => {
+        cleanup();
+        reject(new Error("無法連線到 GAS"));
+      };
+      document.head.appendChild(script);
+    } catch {
+      cleanup();
+      reject(new Error("config.json 的 gasUrl 格式不正確"));
+    }
+  });
+}
+
+function rememberSpreadsheetUrl(url) {
+  state.sync.spreadsheetUrl = String(url || "").trim();
+
+  if (!elements.syncSheetLink) return;
+  elements.syncSheetLink.classList.toggle("hidden", !state.sync.spreadsheetUrl);
+  elements.syncSheetLink.href = state.sync.spreadsheetUrl || "#";
+}
+
+function setSyncStatus(message, status = "") {
+  elements.syncStatus.textContent = message;
+  elements.syncDot.className = `sync-dot ${status}`.trim();
+  elements.syncNowButton.disabled = state.sync.busy || !hasSyncConfig() || !state.sync.loaded;
 }
 
 function handleProjectSubmit(event) {
@@ -224,23 +506,12 @@ function handleProjectSubmit(event) {
 
   const title = elements.projectTitle.value.trim();
   const outcome = elements.projectOutcome.value.trim();
-  const start = parseInputDate(elements.projectStart.value);
-  const deadline = parseInputDate(elements.projectDeadline.value);
 
-  if (!title || !start || !deadline) return;
-
-  if (deadline < start) {
-    elements.projectDeadline.setCustomValidity("完成日需晚於開始日");
-    elements.projectDeadline.reportValidity();
-    setTimeout(() => elements.projectDeadline.setCustomValidity(""), 0);
-    return;
-  }
+  if (!title) return;
 
   const project = createProject({
     title,
     outcome,
-    start,
-    deadline,
     type: elements.projectType.value,
   });
 
@@ -248,19 +519,17 @@ function handleProjectSubmit(event) {
   state.activeId = project.id;
   saveState();
   elements.projectForm.reset();
-  setDefaultDates();
   render();
 }
 
-function createProject({ title, outcome, start, deadline, type }) {
-  const phases = buildBackwardPlan({ start, deadline, type });
+function createProject({ title, outcome, type }) {
+  const phases = buildBackwardPlan({ type });
   const tasks = phases.flatMap((phase) =>
-    phase.tasks.map((taskTitle, index) => ({
+    phase.tasks.map((taskTitle) => ({
       id: makeId(),
       title: taskTitle,
       phaseId: phase.id,
       phaseName: phase.name,
-      dueDate: distributeTaskDate(phase, index),
       done: false,
       note: "",
       createdAt: new Date().toISOString(),
@@ -274,44 +543,19 @@ function createProject({ title, outcome, start, deadline, type }) {
     outcome: outcome || getDefaultOutcome(type),
     type,
     complexity: "deep",
-    startDate: toDateInput(start),
-    deadline: toDateInput(deadline),
     createdAt: new Date().toISOString(),
     phases,
     tasks,
   };
 }
 
-function buildBackwardPlan({ start, deadline, type }) {
+function buildBackwardPlan({ type }) {
   const base = templates[type] || templates.residentContract;
-  const reverseBase = [...base].reverse();
-  const reversePlan = reverseBase.map((phase, index) => ({
-    ...phase,
-    reverseOrder: index + 1,
+  return base.map((phase, index) => ({
+    id: makeId(),
+    name: phase.name,
+    reverseOrder: base.length - index,
     tasks: adjustTasks(phase.tasks),
-  }));
-
-  const totalDays = diffDays(start, deadline) + 1;
-  const totalWeight = reversePlan.reduce((sum, phase) => sum + phase.weight, 0);
-  let consumedWeight = 0;
-
-  const reversedWithDates = reversePlan.map((phase) => {
-    const endOffset = Math.round(((totalWeight - consumedWeight) / totalWeight) * (totalDays - 1));
-    consumedWeight += phase.weight;
-    const startOffset = Math.round(((totalWeight - consumedWeight) / totalWeight) * (totalDays - 1));
-
-    return {
-      id: makeId(),
-      name: phase.name,
-      reverseOrder: phase.reverseOrder,
-      startDate: toDateInput(addDays(start, Math.min(startOffset, endOffset))),
-      endDate: toDateInput(addDays(start, Math.max(startOffset, endOffset))),
-      tasks: phase.tasks,
-    };
-  });
-
-  return reversedWithDates.reverse().map((phase, index) => ({
-    ...phase,
     order: index + 1,
     color: phaseColors[index % phaseColors.length],
   }));
@@ -322,31 +566,19 @@ function adjustTasks(tasks) {
   return [...tasks.slice(0, middle), ...fullBreakdownAddons, ...tasks.slice(middle)];
 }
 
-function distributeTaskDate(phase, taskIndex) {
-  const start = parseInputDate(phase.startDate);
-  const end = parseInputDate(phase.endDate);
-  const span = Math.max(0, diffDays(start, end));
-  const denominator = Math.max(1, phase.tasks.length - 1);
-  const offset = Math.round((span * taskIndex) / denominator);
-  return toDateInput(addDays(start, offset));
-}
-
 function handleQuickTaskSubmit(event) {
   event.preventDefault();
   const project = getActiveProject();
   const title = elements.quickTaskInput.value.trim();
   if (!project || !title) return;
 
-  const fallbackDate = project.deadline || toDateInput(new Date());
-  const dueDate = elements.quickTaskDate.value || fallbackDate;
-  const phase = findPhaseForDate(project, dueDate) || project.phases[project.phases.length - 1];
+  const phase = project.phases[project.phases.length - 1];
 
   project.tasks.push({
     id: makeId(),
     title,
     phaseId: phase?.id || "extra",
     phaseName: phase?.name || "補充",
-    dueDate,
     done: false,
     note: "",
     createdAt: new Date().toISOString(),
@@ -359,22 +591,11 @@ function handleQuickTaskSubmit(event) {
   render();
 }
 
-function findPhaseForDate(project, dateValue) {
-  const target = parseInputDate(dateValue);
-  return project.phases.find((phase) => {
-    const start = parseInputDate(phase.startDate);
-    const end = parseInputDate(phase.endDate);
-    return target >= start && target <= end;
-  });
-}
-
 function fillExample() {
   elements.projectTitle.value = "進駐廠商契約用印查檢";
   elements.projectOutcome.value =
     "用印申請、契約正本、廠商證明文件、品保文件與保單皆確認完成。";
   elements.projectType.value = "residentContract";
-  elements.projectStart.value = toDateInput(new Date());
-  elements.projectDeadline.value = toDateInput(addDays(new Date(), 10));
   focusProjectTitle();
 }
 
@@ -408,7 +629,7 @@ function renderProjectList() {
         <button class="project-item ${activeClass}" type="button" data-project-id="${project.id}">
           <span>
             <strong>${escapeHtml(project.title)}</strong>
-            <span>${formatDate(project.deadline)} 完成</span>
+            <span>${project.tasks.length} 項任務</span>
           </span>
           <span class="mini-progress" style="--value: ${progress}%">${progress}</span>
         </button>
@@ -428,17 +649,11 @@ function renderProjectList() {
 function renderStats() {
   const tasks = state.projects.flatMap((project) => project.tasks);
   const done = tasks.filter((task) => task.done);
-  const today = startOfDay(new Date());
-  const nextWeek = addDays(today, 7);
-  const dueSoon = tasks.filter((task) => {
-    if (task.done) return false;
-    const due = parseInputDate(task.dueDate);
-    return due >= today && due <= nextWeek;
-  });
+  const open = tasks.filter((task) => !task.done);
 
   elements.totalTasks.textContent = String(tasks.length);
   elements.doneTasks.textContent = String(done.length);
-  elements.dueSoonTasks.textContent = String(dueSoon.length);
+  elements.dueSoonTasks.textContent = String(open.length);
 }
 
 function renderActiveProject() {
@@ -448,15 +663,13 @@ function renderActiveProject() {
   elements.exportButton.disabled = !hasProject;
   elements.deleteProjectButton.disabled = !hasProject;
   elements.quickTaskInput.disabled = !hasProject;
-  elements.quickTaskDate.disabled = !hasProject;
 
   if (!project) {
     elements.activeTitle.textContent = "尚未建立專案";
     elements.progressLabel.textContent = "0%";
-    elements.dateRangeLabel.textContent = "-";
     elements.progressBar.style.width = "0%";
     elements.phaseStrip.innerHTML = `<div class="empty-state">建立目標後會出現階段</div>`;
-    elements.taskList.innerHTML = `<div class="empty-state">任務會依開始日到完成日排列</div>`;
+    elements.taskList.innerHTML = `<div class="empty-state">任務會依階段排列</div>`;
     elements.nextTaskBox.innerHTML = `<span>建立第一個專案</span>`;
     elements.outcomeText.textContent = "-";
     elements.reverseList.innerHTML = "";
@@ -466,10 +679,8 @@ function renderActiveProject() {
   const progress = getProgress(project);
   elements.activeTitle.textContent = project.title;
   elements.progressLabel.textContent = `${progress}%`;
-  elements.dateRangeLabel.textContent = `${formatDate(project.startDate)} - ${formatDate(project.deadline)}`;
   elements.progressBar.style.width = `${progress}%`;
   elements.outcomeText.textContent = project.outcome;
-  elements.quickTaskDate.value = toDateInput(new Date());
 
   renderPhases(project);
   renderTasks(project);
@@ -488,7 +699,7 @@ function renderPhases(project) {
             <h3>${escapeHtml(phase.name)}</h3>
             <span class="phase-date">${phase.order}</span>
           </header>
-          <p class="phase-date">${formatDate(phase.startDate)} - ${formatDate(phase.endDate)}</p>
+          <p class="phase-date">${done} / ${total} 完成</p>
           <progress value="${done}" max="${total}"></progress>
         </article>
       `;
@@ -555,7 +766,6 @@ function renderTaskCard(task, index) {
           <span class="task-title">${escapeHtml(task.title)}</span>
           <span class="task-meta">
             <span class="phase-pill">${escapeHtml(task.phaseName)}</span>
-            <span>${formatDate(task.dueDate)}</span>
           </span>
         </div>
       </div>
@@ -576,6 +786,7 @@ function getTaskEmphasis(task) {
   const content = `${task.title} ${task.phaseName}`;
   if (/異常|增補|讓與|注意|其他/.test(content)) return "alert";
   if (/品保|保單|責任險|食品|評估表/.test(content)) return "quality";
+  if (/協議書|原合約|原約|Dr\.owl/.test(content)) return "agreement";
   return "";
 }
 
@@ -586,8 +797,7 @@ function updateTaskNote(projectId, taskId, value, field) {
 
   task.note = value;
   autoSizeNoteField(field);
-  clearTimeout(state.noteSaveTimer);
-  state.noteSaveTimer = setTimeout(saveState, 250);
+  saveState();
 }
 
 function autoSizeNoteField(field) {
@@ -760,10 +970,10 @@ function renderInspector(project) {
   if (nextTask) {
     elements.nextTaskBox.innerHTML = `
       <strong>${escapeHtml(nextTask.title)}</strong>
-      <span>${escapeHtml(nextTask.phaseName)} · ${formatDate(nextTask.dueDate)}</span>
+      <span>${escapeHtml(nextTask.phaseName)}</span>
     `;
   } else {
-    elements.nextTaskBox.innerHTML = `<strong>全部完成</strong><span>${formatDate(project.deadline)}</span>`;
+    elements.nextTaskBox.innerHTML = `<strong>全部完成</strong><span>${project.tasks.length} 項任務</span>`;
   }
 
   elements.reverseList.innerHTML = [...project.phases]
@@ -772,7 +982,7 @@ function renderInspector(project) {
       (phase) => `
         <li>
           <strong>${escapeHtml(phase.name)}</strong>
-          ${formatDate(phase.startDate)} - ${formatDate(phase.endDate)}
+          第 ${phase.order} 階段
         </li>
       `,
     )
@@ -822,17 +1032,16 @@ function exportActiveProject() {
   const lines = [
     `# ${project.title}`,
     `完成條件：${project.outcome}`,
-    `期間：${formatDate(project.startDate)} - ${formatDate(project.deadline)}`,
     "",
     ...project.phases.flatMap((phase) => {
       const tasks = getOrderedTasks(project)
         .filter((task) => task.phaseId === phase.id)
         .flatMap((task) => {
-          const rows = [`- [${task.done ? "x" : " "}] ${formatDate(task.dueDate)} ${task.title}`];
+          const rows = [`- [${task.done ? "x" : " "}] ${task.title}`];
           if (task.note?.trim()) rows.push(`  備註：${task.note.trim()}`);
           return rows;
         });
-      return [`## ${phase.name} (${formatDate(phase.startDate)} - ${formatDate(phase.endDate)})`, ...tasks, ""];
+      return [`## ${phase.name}`, ...tasks, ""];
     }),
   ];
 
@@ -856,10 +1065,24 @@ function getProgress(project) {
 }
 
 function normalizeProject(project) {
-  if (!project?.tasks?.length) return;
+  if (!project) return;
+  delete project.startDate;
+  delete project.deadline;
+
+  if (!Array.isArray(project.phases)) project.phases = [];
+  project.phases.forEach((phase, index) => {
+    delete phase.startDate;
+    delete phase.endDate;
+    if (!Number.isFinite(phase.order)) phase.order = index + 1;
+    if (!phase.color) phase.color = phaseColors[index % phaseColors.length];
+  });
+
+  if (!Array.isArray(project.tasks)) project.tasks = [];
   project.tasks.forEach((task) => {
     if (typeof task.note !== "string") task.note = "";
+    delete task.dueDate;
   });
+  if (!project.tasks.length) return;
 
   const needsOrder = project.tasks.some((task) => !Number.isFinite(task.order));
   if (!needsOrder) return;
@@ -877,10 +1100,6 @@ function compareTaskOrder(a, b) {
   const orderA = Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
   const orderB = Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
   if (orderA !== orderB) return orderA - orderB;
-
-  const dateA = parseInputDate(a.dueDate);
-  const dateB = parseInputDate(b.dueDate);
-  if (dateA && dateB && dateA.getTime() !== dateB.getTime()) return dateA - dateB;
 
   return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
 }
@@ -905,46 +1124,18 @@ function getDefaultOutcome(type) {
     return "特賣或輪動櫃位契約用印文件、品保與保單皆完成檢核。";
   }
 
+  if (type === "contractAdjustment") {
+    return "合約調整或展延協議書用印文件、簽呈、建檔單、協議書與原合約影本皆完成檢核。";
+  }
+
   return "依任務清單完成交付並保留後續追蹤項目。";
 }
 
-function startOfDay(date) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function addDays(date, days) {
-  const copy = startOfDay(date);
-  copy.setDate(copy.getDate() + days);
-  return copy;
-}
-
-function diffDays(start, end) {
-  return Math.round((startOfDay(end) - startOfDay(start)) / MS_PER_DAY);
-}
-
-function parseInputDate(value) {
-  if (!value) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  return startOfDay(new Date(year, month - 1, day));
-}
-
-function toDateInput(date) {
-  const target = startOfDay(date);
-  const year = target.getFullYear();
-  const month = String(target.getMonth() + 1).padStart(2, "0");
-  const day = String(target.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatDate(value) {
-  const date = typeof value === "string" ? parseInputDate(value) : value;
-  if (!date) return "-";
+function formatTime(value) {
   return new Intl.DateTimeFormat("zh-TW", {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
 }
 
 function escapeHtml(value) {
@@ -962,20 +1153,4 @@ function makeId() {
   }
 
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function readStorage() {
-  try {
-    return window.localStorage?.getItem(STORAGE_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStorage(value) {
-  try {
-    window.localStorage?.setItem(STORAGE_KEY, value);
-  } catch {
-    // The app keeps working even if browser storage is unavailable.
-  }
 }
