@@ -51,6 +51,10 @@ body.task-drag-active {
   user-select: none;
 }
 
+body.sync-overlay-active {
+  overflow: hidden;
+}
+
 button,
 input,
 textarea,
@@ -103,9 +107,9 @@ select:disabled {
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
   align-content: start;
-  width: min(100%, 1180px);
+  width: min(100%, 1120px);
   padding: clamp(18px, 2vw, 28px);
   justify-self: center;
 }
@@ -150,12 +154,12 @@ select:disabled {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 24px 0;
+  margin: 20px 0;
 }
 
 .metric-grid div {
   min-width: 0;
-  padding: 11px 10px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -183,6 +187,10 @@ select:disabled {
 
 .sync-panel {
   margin-top: 22px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .section-title,
@@ -310,15 +318,22 @@ select:disabled {
 }
 
 .project-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-items: end;
+  grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
+  align-items: start;
+  gap: 14px 16px;
   margin-top: 18px;
 }
 
-.title-field,
-.outcome-field,
+.title-field {
+  grid-column: 1;
+}
+
 .option-fields {
-  grid-column: span 2;
+  grid-column: 2;
+}
+
+.outcome-field {
+  grid-column: 1 / -1;
 }
 
 label {
@@ -368,7 +383,7 @@ select:focus {
 
 .project-form .form-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .project-form .option-fields {
@@ -418,9 +433,9 @@ select:focus {
 }
 
 .project-form .primary-button {
-  grid-column: 1 / -1;
+  grid-column: 2;
   justify-self: end;
-  width: min(100%, 260px);
+  width: min(100%, 240px);
 }
 
 .reference-note {
@@ -428,11 +443,11 @@ select:focus {
   justify-content: space-between;
   gap: 12px;
   margin-top: 16px;
-  padding: 9px 12px;
-  border: 1px solid #d8d200;
+  padding: 10px 12px;
+  border: 1px solid rgba(24, 116, 95, 0.18);
   border-radius: var(--radius);
-  color: #352f00;
-  background: #fff700;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
   font-size: 0.82rem;
   line-height: 1.35;
 }
@@ -490,15 +505,17 @@ button svg {
 
 .progress-block {
   display: grid;
-  gap: 9px;
-  margin: 18px 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
 }
 
 .progress-block > div:first-child {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: baseline;
-  gap: 12px;
+  min-width: 58px;
 }
 
 #progressLabel {
@@ -524,13 +541,13 @@ button svg {
 
 .phase-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 .phase-card {
-  min-height: 104px;
+  min-height: 92px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 12px 11px;
@@ -572,6 +589,7 @@ button svg {
 
 .task-toolbar {
   align-items: stretch;
+  gap: 12px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
@@ -603,7 +621,7 @@ button svg {
 .quick-task-form {
   grid-template-columns: minmax(160px, 1fr) 38px;
   gap: 8px;
-  min-width: min(100%, 360px);
+  min-width: min(100%, 340px);
 }
 
 .quick-task-form input {
@@ -641,14 +659,19 @@ button svg {
   min-height: 60px;
   padding: 9px 10px 9px 12px;
   border: 1px solid var(--line);
+  border-left: 5px solid var(--task-color, var(--accent));
   border-radius: var(--radius);
   background: var(--surface);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--task-color, var(--accent)) 9%, transparent), transparent 46%),
+    var(--surface);
   animation: liftIn 260ms ease both;
   user-select: none;
 }
 
 .task-card:hover {
-  border-color: rgba(24, 116, 95, 0.28);
+  border-color: color-mix(in srgb, var(--task-color, var(--accent)) 34%, var(--line));
+  border-left-color: var(--task-color, var(--accent));
   box-shadow: 0 8px 22px rgba(38, 44, 42, 0.06);
 }
 
@@ -698,22 +721,26 @@ button svg {
 
 .task-card.quality {
   border-color: rgba(21, 122, 47, 0.35);
+  border-left-color: var(--task-color, var(--quality));
   background: linear-gradient(90deg, var(--quality-soft), var(--surface) 46%);
 }
 
 .task-card.alert {
   border-color: rgba(186, 59, 48, 0.35);
+  border-left-color: var(--task-color, var(--danger));
   background: linear-gradient(90deg, var(--danger-soft), var(--surface) 48%);
 }
 
 .task-card.agreement {
   border-color: rgba(49, 95, 148, 0.35);
+  border-left-color: var(--task-color, var(--blue));
   background: linear-gradient(90deg, var(--blue-soft), var(--surface) 46%);
 }
 
 .task-card.done {
   color: var(--muted);
   background: rgba(236, 239, 231, 0.68);
+  border-left-color: var(--task-color, var(--accent));
 }
 
 .task-number {
@@ -831,25 +858,13 @@ button svg {
   align-items: center;
   min-height: 18px;
   padding: 0 6px;
+  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--task-color, var(--accent)) 24%, transparent);
   border-radius: 999px;
-  color: var(--accent-dark);
+  color: var(--task-color, var(--accent-dark));
   background: var(--accent-soft);
+  background: color-mix(in srgb, var(--task-color, var(--accent)) 12%, white);
   font-weight: 720;
-}
-
-.quality .phase-pill {
-  color: var(--quality);
-  background: var(--quality-soft);
-}
-
-.alert .phase-pill {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.agreement .phase-pill {
-  color: var(--blue);
-  background: var(--blue-soft);
 }
 
 .task-actions {
@@ -936,38 +951,88 @@ button svg {
   display: none !important;
 }
 
-.sync-form {
+.sync-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   display: grid;
-  gap: 10px;
+  place-items: center;
+  padding: 20px;
+  background: rgba(31, 36, 35, 0.34);
+  backdrop-filter: blur(10px);
 }
 
-.sync-form input {
-  min-height: 38px;
-  font-size: 0.82rem;
+.sync-overlay-panel {
+  width: min(100%, 420px);
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(31, 36, 35, 0.28);
+  animation: overlayIn 180ms ease both;
+}
+
+.sync-spinner {
+  width: 42px;
+  height: 42px;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 760ms linear infinite;
+}
+
+.sync-overlay-label {
+  margin: 0 0 5px;
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sync-overlay h2 {
+  margin: 0;
+  font-size: 1.14rem;
+  line-height: 1.25;
+}
+
+.sync-overlay p {
+  overflow-wrap: anywhere;
+}
+
+.sync-overlay h2 + p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.sync-form {
+  display: grid;
+  gap: 9px;
 }
 
 .sync-actions {
-  display: grid;
+  display: flex;
   gap: 8px;
 }
 
+.sync-actions .ghost-button {
+  width: 100%;
+}
+
 .sync-status {
-  min-height: 18px;
   margin: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   color: var(--muted);
+  background: var(--surface-soft);
   font-size: 0.76rem;
   line-height: 1.45;
-}
-
-.sync-sheet-link {
-  color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.sync-sheet-link:hover {
-  text-decoration: underline;
 }
 
 .sync-dot {
@@ -1001,6 +1066,23 @@ button svg {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes overlayIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1155,5 +1237,10 @@ button svg {
 
   .task-actions {
     align-self: flex-start;
+  }
+
+  .sync-overlay-panel {
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
 }

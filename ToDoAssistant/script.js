@@ -167,7 +167,6 @@ let state = {
     dirty: false,
     loaded: false,
     spreadsheetId: "",
-    spreadsheetUrl: "",
   },
 };
 
@@ -199,7 +198,9 @@ function bindElements() {
     "syncNowButton",
     "syncStatus",
     "syncDot",
-    "syncSheetLink",
+    "syncOverlay",
+    "syncOverlayTitle",
+    "syncOverlayMessage",
     "activeTitle",
     "exportButton",
     "deleteProjectButton",
@@ -237,7 +238,7 @@ function bindEvents() {
 }
 
 function warnBeforeLeavingWithUnsavedData(event) {
-  if (!state.sync.dirty) return;
+  if (!state.sync.dirty && !state.sync.busy) return;
   event.preventDefault();
   event.returnValue = "";
 }
@@ -284,13 +285,11 @@ async function loadSyncConfig() {
     state.sync.endpoint = String(config.gasUrl || config.endpoint || "").trim();
     state.sync.key = String(config.syncKey || config.key || "").trim();
     state.sync.spreadsheetId = extractSpreadsheetId(config.spreadsheetId || config.spreadsheetUrl || "");
-    rememberSpreadsheetUrl(config.spreadsheetUrl || getSpreadsheetUrlFromId(state.sync.spreadsheetId));
     setSyncStatus(hasSyncConfig() ? "已讀取 config.json" : "config.json 尚未設定完整", hasSyncConfig() ? "ready" : "error");
   } catch (error) {
     state.sync.endpoint = "";
     state.sync.key = "";
     state.sync.spreadsheetId = "";
-    rememberSpreadsheetUrl("");
     setSyncStatus(`無法讀取 config.json`, "error");
   }
 }
@@ -304,10 +303,6 @@ function extractSpreadsheetId(value) {
   if (!text) return "";
   const match = text.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return match ? match[1] : text;
-}
-
-function getSpreadsheetUrlFromId(id) {
-  return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "";
 }
 
 function createSyncSnapshot() {
@@ -344,11 +339,11 @@ async function loadStateFromGasOnStart() {
   if (state.sync.busy) return;
   state.sync.busy = true;
   setDataControlsDisabled(true);
+  showSyncOverlay("load");
   setSyncStatus("從 GAS 載入中", "busy");
 
   try {
     const remote = await loadCloudState();
-    rememberSpreadsheetUrl(remote?.spreadsheetUrl);
     const remoteData = remote?.data || null;
 
     if (remoteData) {
@@ -371,6 +366,7 @@ async function loadStateFromGasOnStart() {
     setSyncStatus(`GAS 載入失敗：${error.message || "連線錯誤"}`, "error");
   } finally {
     state.sync.busy = false;
+    hideSyncOverlay();
     if (state.sync.loaded) {
       setDataControlsDisabled(false);
       render();
@@ -397,6 +393,7 @@ async function saveToGas() {
   if (state.sync.busy) return;
   state.sync.busy = true;
   setDataControlsDisabled(true);
+  showSyncOverlay("save");
   state.updatedAt = Date.now();
   setSyncStatus("儲存到 GAS 中", "busy");
 
@@ -410,7 +407,6 @@ async function saveToGas() {
   try {
     await pushCloudState(payload);
     const verified = await loadCloudState();
-    rememberSpreadsheetUrl(verified?.spreadsheetUrl);
 
     if (!verified?.data || Number(verified.data.updatedAt || 0) < Number(snapshot.updatedAt || 0)) {
       throw new Error("GAS 尚未回傳最新資料");
@@ -425,6 +421,7 @@ async function saveToGas() {
     setSyncStatus(`儲存失敗：${error.message || "連線錯誤"}`, "error");
   } finally {
     state.sync.busy = false;
+    hideSyncOverlay();
     if (state.sync.loaded) {
       setDataControlsDisabled(false);
       render();
@@ -487,18 +484,25 @@ function requestJsonp(action) {
   });
 }
 
-function rememberSpreadsheetUrl(url) {
-  state.sync.spreadsheetUrl = String(url || "").trim();
-
-  if (!elements.syncSheetLink) return;
-  elements.syncSheetLink.classList.toggle("hidden", !state.sync.spreadsheetUrl);
-  elements.syncSheetLink.href = state.sync.spreadsheetUrl || "#";
-}
-
 function setSyncStatus(message, status = "") {
   elements.syncStatus.textContent = message;
   elements.syncDot.className = `sync-dot ${status}`.trim();
   elements.syncNowButton.disabled = state.sync.busy || !hasSyncConfig() || !state.sync.loaded;
+}
+
+function showSyncOverlay(mode) {
+  const isSaving = mode === "save";
+  elements.syncOverlayTitle.textContent = isSaving ? "儲存資料中" : "載入資料中";
+  elements.syncOverlayMessage.textContent = isSaving
+    ? "正在寫入 GAS，完成後會自動關閉，請不要關閉頁面。"
+    : "正在從 GAS 讀取資料，完成後會自動關閉，請不要關閉頁面。";
+  elements.syncOverlay.classList.remove("hidden");
+  document.body.classList.add("sync-overlay-active");
+}
+
+function hideSyncOverlay() {
+  elements.syncOverlay.classList.add("hidden");
+  document.body.classList.remove("sync-overlay-active");
 }
 
 function handleProjectSubmit(event) {
@@ -722,7 +726,7 @@ function renderTasks(project) {
     return;
   }
 
-  elements.taskList.innerHTML = visibleTasks.map((task, index) => renderTaskCard(task, index)).join("");
+  elements.taskList.innerHTML = visibleTasks.map((task, index) => renderTaskCard(project, task, index)).join("");
 
   elements.taskList.querySelectorAll("[data-toggle-task]").forEach((button) => {
     button.addEventListener("click", () => toggleTask(project.id, button.dataset.toggleTask));
@@ -747,13 +751,14 @@ function renderTasks(project) {
   }
 }
 
-function renderTaskCard(task, index) {
+function renderTaskCard(project, task, index) {
   const doneClass = task.done ? "done" : "";
   const emphasisClass = getTaskEmphasis(task);
   const dragClass = state.filter === "all" ? "" : "locked-order";
   const note = task.note || "";
+  const taskColor = getTaskColor(project, task);
   return `
-    <article class="task-card ${doneClass} ${emphasisClass} ${dragClass}" data-drag-task="${task.id}">
+    <article class="task-card ${doneClass} ${emphasisClass} ${dragClass}" style="--task-color: ${taskColor}" data-drag-task="${task.id}">
       <span class="task-number" data-drag-handle title="拖曳調整順序">
         <i data-lucide="grip-vertical"></i>
         ${String(index + 1).padStart(2, "0")}
@@ -788,6 +793,18 @@ function getTaskEmphasis(task) {
   if (/品保|保單|責任險|食品|評估表/.test(content)) return "quality";
   if (/協議書|原合約|原約|Dr\.owl/.test(content)) return "agreement";
   return "";
+}
+
+function getTaskColor(project, task) {
+  const phaseIndex = project.phases.findIndex((phase) => phase.id === task.phaseId || phase.name === task.phaseName);
+  const phase = phaseIndex >= 0 ? project.phases[phaseIndex] : null;
+  const fallbackIndex = phaseIndex >= 0 ? phaseIndex : getStableColorIndex(task.phaseName || task.phaseId || task.id);
+  const color = phase?.color || phaseColors[fallbackIndex % phaseColors.length];
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : phaseColors[fallbackIndex % phaseColors.length];
+}
+
+function getStableColorIndex(value) {
+  return String(value || "").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
 }
 
 function updateTaskNote(projectId, taskId, value, field) {

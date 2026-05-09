@@ -57,9 +57,6 @@
               </button>
             </div>
             <p class="sync-status" id="syncStatus">讀取 config.json</p>
-            <a class="sync-sheet-link hidden" id="syncSheetLink" href="#" target="_blank" rel="noreferrer">
-              開啟資料表
-            </a>
           </div>
         </div>
       </aside>
@@ -195,6 +192,17 @@
           <ol class="reverse-list" id="reverseList"></ol>
         </section>
       </aside>
+    </div>
+
+    <div class="sync-overlay hidden" id="syncOverlay" role="status" aria-live="assertive" aria-modal="true">
+      <div class="sync-overlay-panel">
+        <span class="sync-spinner" aria-hidden="true"></span>
+        <div>
+          <p class="sync-overlay-label">GAS 資料</p>
+          <h2 id="syncOverlayTitle">載入資料中</h2>
+          <p id="syncOverlayMessage">完成後會自動關閉，請不要關閉頁面。</p>
+        </div>
+      </div>
     </div>
   </body>
 </html>

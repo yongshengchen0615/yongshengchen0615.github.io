@@ -15,7 +15,6 @@ function doGet(e) {
     return respond_(e, {
       ok: true,
       data,
-      spreadsheetUrl: getSpreadsheetUrl_(key, spreadsheetId),
       serverTime: Date.now(),
     });
   } catch (error) {
@@ -64,7 +63,6 @@ function saveState_(payload) {
       ok: true,
       updatedAt: data.updatedAt,
       savedAt: Date.now(),
-      spreadsheetUrl: getSpreadsheetUrl_(key, spreadsheetId),
     };
   } finally {
     lock.releaseLock();
@@ -242,19 +240,6 @@ function getSpreadsheet_(key, spreadsheetId) {
     return ss;
   } catch (error) {
     throw new Error("Cannot open configured spreadsheet. Check spreadsheetId and GAS permissions.");
-  }
-}
-
-function getSpreadsheetUrl_(key, spreadsheetId) {
-  const props = PropertiesService.getScriptProperties();
-  const base = propertyBase_(key);
-  const existingId = getSpreadsheetId_({ spreadsheetId }, false) || props.getProperty(`${base}:spreadsheetId`);
-  if (!existingId) return "";
-
-  try {
-    return SpreadsheetApp.openById(existingId).getUrl();
-  } catch (error) {
-    return "";
   }
 }
 
