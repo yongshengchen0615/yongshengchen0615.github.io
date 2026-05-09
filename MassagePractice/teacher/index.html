@@ -19,7 +19,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="css/styles.css?v=20260508-2" />
+    <link rel="stylesheet" href="css/styles.css?v=20260509-1" />
   </head>
   <body>
     <header class="topbar">
@@ -41,7 +41,7 @@
         <div class="teacher-auth" id="teacherAuth">
           <div class="teacher-auth__status">
             <strong id="teacherAuthName">師資登入</strong>
-            <span id="teacherAuthStatus">使用 LINE 登入後等待審核。</span>
+            <span id="teacherAuthStatus">系統會自動開啟 LINE 登入。</span>
           </div>
           <button class="button button--line" id="connectButton" type="button">LINE 登入</button>
           <button class="button button--ghost" id="logoutButton" type="button" hidden>登出</button>
@@ -83,7 +83,7 @@
 
         <section class="table-region" aria-live="polite">
           <div class="empty-state" id="emptyState">
-            使用 LINE 登入師資帳號後載入學員名單。
+            系統會自動開啟 LINE 登入，登入後載入學員名單。
           </div>
 
           <div class="table-wrap" id="tableWrap" hidden>
@@ -167,8 +167,8 @@
             <p class="manager-note">固定包含「其他」，學員選擇後可自行輸入對象。</p>
           </div>
           <div class="practice-form">
-            <input id="practiceTargetInput" type="text" placeholder="新增練習對象" />
-            <button class="button" id="addPracticeTargetButton" type="button">新增</button>
+            <textarea id="practiceTargetInput" rows="4" placeholder="新增練習對象，可一次多行"></textarea>
+            <button class="button" id="addPracticeTargetButton" type="button">批次新增</button>
           </div>
           <div class="option-list" id="practiceTargetList">師資審核通過後載入。</div>
         </section>
@@ -182,8 +182,8 @@
             <p class="manager-note">固定包含「其他」，學員選擇後可自行輸入項目。</p>
           </div>
           <div class="practice-form">
-            <input id="practiceItemInput" type="text" placeholder="新增練習項目" />
-            <button class="button" id="addPracticeItemButton" type="button">新增</button>
+            <textarea id="practiceItemInput" rows="4" placeholder="新增練習項目，可一次多行"></textarea>
+            <button class="button" id="addPracticeItemButton" type="button">批次新增</button>
           </div>
           <div class="option-list" id="practiceItemList">師資審核通過後載入。</div>
         </section>
@@ -246,6 +246,6 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="js/teacher.js?v=20260508-2"></script>
+    <script src="js/teacher.js?v=20260509-2"></script>
   </body>
 </html>
