@@ -74,6 +74,17 @@ function routeApi_(action, params) {
         user: user,
       };
     }
+    case "testLogin": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      ensureSheets_(spreadsheet);
+      const user = normalizeTestUser_(parsePayload_(params.payload));
+      upsertUser_(spreadsheet, user);
+      const session = createSession_(spreadsheet, user.id);
+      return {
+        session: session,
+        user: user,
+      };
+    }
     case "me": {
       const spreadsheet = spreadsheetFromParams_(params);
       return {
@@ -82,9 +93,10 @@ function routeApi_(action, params) {
     }
     case "groups": {
       const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
       ensureSheets_(spreadsheet);
       return {
-        groups: listGroups_(spreadsheet),
+        groups: listGroups_(spreadsheet, user),
       };
     }
     case "createGroup": {
@@ -92,10 +104,40 @@ function routeApi_(action, params) {
       const user = requireUser_(spreadsheet, params.session);
       return createGroup_(spreadsheet, parsePayload_(params.payload), user);
     }
+    case "addItem": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return addItem_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "updateItem": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return updateItem_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "deleteItem": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return deleteItem_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "saveItems": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return saveItems_(spreadsheet, parsePayload_(params.payload), user);
+    }
     case "joinGroup": {
       const spreadsheet = spreadsheetFromParams_(params);
       const user = requireUser_(spreadsheet, params.session);
       return joinGroup_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "updateOrder": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return updateOrder_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "saveOrders": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return saveOrders_(spreadsheet, parsePayload_(params.payload), user);
     }
     default:
       throw new Error("Unknown action: " + action);
@@ -160,6 +202,14 @@ function verifyLineIdToken_(idToken, lineChannelId) {
   };
 }
 
+function normalizeTestUser_(payload) {
+  return {
+    id: cleanText_(payload.id, 80) || "demo_user",
+    displayName: cleanText_(payload.displayName, 40) || "測試使用者",
+    pictureUrl: cleanText_(payload.pictureUrl, 500),
+  };
+}
+
 function createGroup_(spreadsheet, payload, user) {
   const name = cleanText_(payload.name, 40);
   const items = normalizeIncomingItems_(payload.items);
@@ -202,7 +252,204 @@ function createGroup_(spreadsheet, payload, user) {
 
     return {
       group: group,
-      groups: listGroups_(spreadsheet),
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function addItem_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+  const item = normalizeIncomingItems_([payload.item])[0];
+
+  if (!item) {
+    throw new Error("請輸入品項名稱與金額。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    appendObject_(spreadsheet, SHEETS.ITEMS, {
+      id: "item_" + randomToken_(),
+      groupId: group.id,
+      name: item.name,
+      price: item.price,
+      createdAt: new Date().toISOString(),
+    });
+
+    touchGroup_(spreadsheet, group.id);
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateItem_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+  const itemId = cleanText_(payload.itemId, 80);
+  const item = normalizeIncomingItems_([payload.item])[0];
+
+  if (!itemId) {
+    throw new Error("缺少品項 ID。");
+  }
+
+  if (!item) {
+    throw new Error("請輸入品項名稱與金額。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const updated = updateObjectWhere_(spreadsheet, SHEETS.ITEMS, function (entry) {
+      return entry.id === itemId && entry.groupId === group.id;
+    }, function (entry) {
+      entry.name = item.name;
+      entry.price = item.price;
+      return entry;
+    });
+
+    if (!updated) {
+      throw new Error("找不到品項。");
+    }
+
+    syncOrderItemsForItem_(spreadsheet, itemId, item);
+    recalcGroupOrders_(spreadsheet, group.id);
+    touchGroup_(spreadsheet, group.id);
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteItem_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+  const itemId = cleanText_(payload.itemId, 80);
+
+  if (!itemId) {
+    throw new Error("缺少品項 ID。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const deleted = deleteObjectRows_(spreadsheet, SHEETS.ITEMS, function (entry) {
+      return entry.id === itemId && entry.groupId === group.id;
+    });
+
+    if (!deleted) {
+      throw new Error("找不到品項。");
+    }
+
+    deleteObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (entry) {
+      return entry.itemId === itemId;
+    });
+    recalcGroupOrders_(spreadsheet, group.id);
+    touchGroup_(spreadsheet, group.id);
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveItems_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+  const incomingItems = Array.isArray(payload.items) ? payload.items : [];
+  const seenIds = {};
+  const items = incomingItems.map(function (entry) {
+    entry = entry || {};
+    const id = cleanText_(entry.id, 80);
+    const item = normalizeIncomingItems_([entry])[0];
+
+    if (!item) {
+      throw new Error("請輸入品項名稱與金額。");
+    }
+
+    if (id) {
+      if (seenIds[id]) {
+        throw new Error("品項資料重複。");
+      }
+      seenIds[id] = true;
+    }
+
+    return {
+      id: id,
+      name: item.name,
+      price: item.price,
+    };
+  });
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const now = new Date().toISOString();
+    const existingItems = readObjects_(spreadsheet, SHEETS.ITEMS).filter(function (item) {
+      return item.groupId === group.id;
+    });
+    const existingMap = {};
+    existingItems.forEach(function (item) {
+      existingMap[item.id] = item;
+    });
+
+    const keptIds = {};
+    items.forEach(function (item) {
+      if (item.id) {
+        if (!existingMap[item.id]) {
+          throw new Error("找不到品項。");
+        }
+
+        keptIds[item.id] = true;
+        updateObjectWhere_(spreadsheet, SHEETS.ITEMS, function (entry) {
+          return entry.id === item.id && entry.groupId === group.id;
+        }, function (entry) {
+          entry.name = item.name;
+          entry.price = item.price;
+          return entry;
+        });
+        syncOrderItemsForItem_(spreadsheet, item.id, item);
+        return;
+      }
+
+      appendObject_(spreadsheet, SHEETS.ITEMS, {
+        id: "item_" + randomToken_(),
+        groupId: group.id,
+        name: item.name,
+        price: item.price,
+        createdAt: now,
+      });
+    });
+
+    existingItems.forEach(function (item) {
+      if (keptIds[item.id]) {
+        return;
+      }
+
+      deleteObjectRows_(spreadsheet, SHEETS.ITEMS, function (entry) {
+        return entry.id === item.id && entry.groupId === group.id;
+      });
+      deleteObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (entry) {
+        return entry.itemId === item.id;
+      });
+    });
+
+    recalcGroupOrders_(spreadsheet, group.id);
+    touchGroup_(spreadsheet, group.id);
+    return {
+      groups: listGroups_(spreadsheet, user),
     };
   } finally {
     lock.releaseLock();
@@ -300,14 +547,193 @@ function joinGroup_(spreadsheet, payload, user) {
 
     return {
       orderId: orderId,
-      groups: listGroups_(spreadsheet),
+      groups: listGroups_(spreadsheet, user),
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function listGroups_(spreadsheet) {
+function updateOrder_(spreadsheet, payload, user) {
+  const groupId = cleanText_(payload.groupId, 80);
+  const orderId = cleanText_(payload.orderId, 80);
+  const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+
+  if (!groupId || !orderId) {
+    throw new Error("缺少訂單資料。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const order = readObjects_(spreadsheet, SHEETS.ORDERS).find(function (entry) {
+      return entry.id === orderId && entry.groupId === groupId;
+    });
+
+    if (!order) {
+      throw new Error("找不到訂單。");
+    }
+
+    if (order.userId !== user.id) {
+      throw new Error("只能修改自己的訂單。");
+    }
+
+    const quantityMap = {};
+    requestedItems.forEach(function (entry) {
+      const itemId = cleanText_(entry.itemId, 80);
+      const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
+      if (itemId) {
+        quantityMap[itemId] = quantity;
+      }
+    });
+
+    const currentItems = readObjects_(spreadsheet, SHEETS.ORDER_ITEMS).filter(function (item) {
+      return item.orderId === orderId;
+    });
+
+    const updatedItems = currentItems
+      .map(function (item) {
+        const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+        if (quantity <= 0) {
+          return null;
+        }
+
+        const price = Number(item.price) || 0;
+        item.quantity = quantity;
+        item.subtotal = price * quantity;
+        return item;
+      })
+      .filter(Boolean);
+
+    deleteObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (item) {
+      return item.orderId === orderId;
+    });
+
+    if (!updatedItems.length) {
+      deleteObjectRows_(spreadsheet, SHEETS.ORDERS, function (entry) {
+        return entry.id === orderId && entry.userId === user.id;
+      });
+    } else {
+      updatedItems.forEach(function (item) {
+        appendObject_(spreadsheet, SHEETS.ORDER_ITEMS, item);
+      });
+
+      const total = updatedItems.reduce(function (sum, item) {
+        return sum + (Number(item.subtotal) || 0);
+      }, 0);
+
+      updateObjectWhere_(spreadsheet, SHEETS.ORDERS, function (entry) {
+        return entry.id === orderId && entry.userId === user.id;
+      }, function (entry) {
+        entry.total = total;
+        return entry;
+      });
+    }
+
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveOrders_(spreadsheet, payload, user) {
+  const groupId = cleanText_(payload.groupId, 80);
+  const requestedOrders = Array.isArray(payload.orders) ? payload.orders : [];
+
+  if (!groupId) {
+    throw new Error("缺少開團 ID。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const orders = readObjects_(spreadsheet, SHEETS.ORDERS).filter(function (entry) {
+      return entry.groupId === groupId;
+    });
+    const orderMap = {};
+    orders.forEach(function (order) {
+      orderMap[order.id] = order;
+    });
+
+    const orderItemsByOrder = groupBy_(readObjects_(spreadsheet, SHEETS.ORDER_ITEMS), "orderId");
+    requestedOrders.forEach(function (orderPayload) {
+      const orderId = cleanText_(orderPayload.orderId, 80);
+      const order = orderMap[orderId];
+
+      if (!order) {
+        throw new Error("找不到訂單。");
+      }
+
+      if (order.userId !== user.id) {
+        throw new Error("只能修改自己的訂單。");
+      }
+
+      const quantityMap = {};
+      const requestedItems = Array.isArray(orderPayload.items) ? orderPayload.items : [];
+      requestedItems.forEach(function (entry) {
+        const itemId = cleanText_(entry.itemId, 80);
+        const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
+        if (itemId) {
+          quantityMap[itemId] = quantity;
+        }
+      });
+
+      const updatedItems = (orderItemsByOrder[orderId] || [])
+        .map(function (item) {
+          const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+          if (quantity <= 0) {
+            return null;
+          }
+
+          const price = Number(item.price) || 0;
+          item.quantity = quantity;
+          item.subtotal = price * quantity;
+          return item;
+        })
+        .filter(Boolean);
+
+      deleteObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (item) {
+        return item.orderId === orderId;
+      });
+
+      if (!updatedItems.length) {
+        deleteObjectRows_(spreadsheet, SHEETS.ORDERS, function (entry) {
+          return entry.id === orderId && entry.userId === user.id;
+        });
+        return;
+      }
+
+      updatedItems.forEach(function (item) {
+        appendObject_(spreadsheet, SHEETS.ORDER_ITEMS, item);
+      });
+
+      const total = updatedItems.reduce(function (sum, item) {
+        return sum + (Number(item.subtotal) || 0);
+      }, 0);
+
+      updateObjectWhere_(spreadsheet, SHEETS.ORDERS, function (entry) {
+        return entry.id === orderId && entry.userId === user.id;
+      }, function (entry) {
+        entry.total = total;
+        return entry;
+      });
+    });
+
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function listGroups_(spreadsheet, user) {
   const groups = readObjects_(spreadsheet, SHEETS.GROUPS);
   const items = readObjects_(spreadsheet, SHEETS.ITEMS);
   const orders = readObjects_(spreadsheet, SHEETS.ORDERS);
@@ -322,7 +748,11 @@ function listGroups_(spreadsheet) {
       return group.id;
     })
     .map(function (group) {
-      const groupOrders = (ordersByGroup[group.id] || [])
+      const isOwner = Boolean(user && group.ownerUserId === user.id);
+      const visibleOrders = (ordersByGroup[group.id] || []).filter(function (order) {
+        return isOwner || (user && order.userId === user.id);
+      });
+      const groupOrders = visibleOrders
         .map(function (order) {
           const attachedItems = (orderItemsByOrder[order.id] || []).map(function (item) {
             return {
@@ -357,6 +787,8 @@ function listGroups_(spreadsheet) {
         name: group.name,
         ownerUserId: group.ownerUserId,
         ownerName: group.ownerName,
+        isOwner: isOwner,
+        canManageItems: isOwner,
         status: group.status || "open",
         createdAt: group.createdAt,
         updatedAt: group.updatedAt,
@@ -380,6 +812,85 @@ function listGroups_(spreadsheet) {
     .sort(function (a, b) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+}
+
+function requireGroupOwner_(spreadsheet, groupId, user) {
+  if (!groupId) {
+    throw new Error("缺少開團 ID。");
+  }
+
+  const group = readObjects_(spreadsheet, SHEETS.GROUPS).find(function (entry) {
+    return entry.id === groupId;
+  });
+
+  if (!group) {
+    throw new Error("找不到開團。");
+  }
+
+  if (!user || group.ownerUserId !== user.id) {
+    throw new Error("只有團主可以管理品項。");
+  }
+
+  return group;
+}
+
+function touchGroup_(spreadsheet, groupId) {
+  updateObjectWhere_(spreadsheet, SHEETS.GROUPS, function (entry) {
+    return entry.id === groupId;
+  }, function (entry) {
+    entry.updatedAt = new Date().toISOString();
+    return entry;
+  });
+}
+
+function syncOrderItemsForItem_(spreadsheet, itemId, item) {
+  updateObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (entry) {
+    return entry.itemId === itemId;
+  }, function (entry) {
+    const quantity = Number(entry.quantity) || 0;
+    entry.itemName = item.name;
+    entry.price = item.price;
+    entry.subtotal = item.price * quantity;
+    return entry;
+  });
+}
+
+function recalcGroupOrders_(spreadsheet, groupId) {
+  const groupOrders = readObjects_(spreadsheet, SHEETS.ORDERS).filter(function (order) {
+    return order.groupId === groupId;
+  });
+  const orderIds = {};
+  groupOrders.forEach(function (order) {
+    orderIds[order.id] = true;
+  });
+
+  const summary = {};
+  readObjects_(spreadsheet, SHEETS.ORDER_ITEMS).forEach(function (item) {
+    if (!orderIds[item.orderId]) {
+      return;
+    }
+
+    if (!summary[item.orderId]) {
+      summary[item.orderId] = {
+        count: 0,
+        total: 0,
+      };
+    }
+
+    summary[item.orderId].count += 1;
+    summary[item.orderId].total += Number(item.subtotal) || 0;
+  });
+
+  updateObjectRows_(spreadsheet, SHEETS.ORDERS, function (order) {
+    return order.groupId === groupId && summary[order.id] && summary[order.id].count > 0;
+  }, function (order) {
+    order.total = summary[order.id].total;
+    return order;
+  });
+
+  deleteObjectRows_(spreadsheet, SHEETS.ORDERS, function (order) {
+    return order.groupId === groupId && (!summary[order.id] || summary[order.id].count === 0);
+  });
 }
 
 function requireUser_(spreadsheet, sessionToken) {
@@ -526,6 +1037,76 @@ function upsertObject_(spreadsheet, sheetName, key, object) {
   sheet.appendRow(row);
 }
 
+function updateObjectWhere_(spreadsheet, sheetName, predicate, updater) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
+  const headers = HEADERS[sheetName];
+  const values = sheet.getDataRange().getValues();
+
+  for (let index = 1; index < values.length; index += 1) {
+    const object = headers.reduce(function (entry, header, headerIndex) {
+      entry[header] = normalizeCell_(values[index][headerIndex]);
+      return entry;
+    }, {});
+
+    if (predicate(object)) {
+      const updated = updater(object);
+      const row = headers.map(function (header) {
+        return updated[header] !== undefined ? updated[header] : "";
+      });
+      sheet.getRange(index + 1, 1, 1, headers.length).setValues([row]);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function updateObjectRows_(spreadsheet, sheetName, predicate, updater) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
+  const headers = HEADERS[sheetName];
+  const values = sheet.getDataRange().getValues();
+  let updatedCount = 0;
+
+  for (let index = 1; index < values.length; index += 1) {
+    const object = headers.reduce(function (entry, header, headerIndex) {
+      entry[header] = normalizeCell_(values[index][headerIndex]);
+      return entry;
+    }, {});
+
+    if (predicate(object)) {
+      const updated = updater(object);
+      const row = headers.map(function (header) {
+        return updated[header] !== undefined ? updated[header] : "";
+      });
+      sheet.getRange(index + 1, 1, 1, headers.length).setValues([row]);
+      updatedCount += 1;
+    }
+  }
+
+  return updatedCount;
+}
+
+function deleteObjectRows_(spreadsheet, sheetName, predicate) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
+  const headers = HEADERS[sheetName];
+  const values = sheet.getDataRange().getValues();
+  let deleted = false;
+
+  for (let index = values.length - 1; index >= 1; index -= 1) {
+    const object = headers.reduce(function (entry, header, headerIndex) {
+      entry[header] = normalizeCell_(values[index][headerIndex]);
+      return entry;
+    }, {});
+
+    if (predicate(object)) {
+      sheet.deleteRow(index + 1);
+      deleted = true;
+    }
+  }
+
+  return deleted;
+}
+
 function getSheetNoEnsure_(spreadsheet, sheetName) {
   const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
@@ -569,6 +1150,7 @@ function normalizeIncomingItems_(items) {
 
   return items
     .map(function (item) {
+      item = item || {};
       return {
         name: cleanText_(item.name, 32),
         price: Number(item.price),

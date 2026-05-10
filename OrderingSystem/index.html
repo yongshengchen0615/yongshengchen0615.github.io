@@ -19,58 +19,34 @@
 
         <div class="session-area" id="sessionArea">
           <span class="config-pill" id="configStatus">Demo</span>
-          <button class="line-button" id="loginButton" type="button">
+          <button class="line-button hidden" id="loginButton" type="button">
             <span aria-hidden="true">L</span>
             LINE 登入
           </button>
         </div>
       </header>
 
+      <nav class="main-nav hidden" id="mainNav" aria-label="主要功能">
+        <button class="nav-tab is-active" type="button" data-view="browse">找團加入</button>
+        <button class="nav-tab" type="button" data-view="create">開新團</button>
+        <button class="nav-tab" type="button" data-view="detail">團購明細</button>
+      </nav>
+
       <main class="workspace">
-        <aside class="sidebar">
-          <section class="auth-panel" id="loginPanel">
-            <p class="eyebrow">Member access</p>
-            <h1>用 LINE 開團、下單、追蹤金額</h1>
-            <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
-            <div class="stacked-actions">
-              <button class="primary-action" id="heroLoginButton" type="button">
-                <span aria-hidden="true">L</span>
-                LINE 登入
-              </button>
-              <button class="ghost-action" id="demoLoginButton" type="button">使用測試身分</button>
-            </div>
-          </section>
+        <section class="auth-panel" id="loginPanel">
+          <p class="eyebrow">Member access</p>
+          <h1>用 LINE 開團、下單、追蹤金額</h1>
+          <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
+          <div class="stacked-actions">
+            <button class="primary-action hidden" id="heroLoginButton" type="button">
+              <span aria-hidden="true">L</span>
+              LINE 登入
+            </button>
+            <button class="ghost-action hidden" id="demoLoginButton" type="button">使用測試身分</button>
+          </div>
+        </section>
 
-          <section class="create-panel hidden" id="createPanel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Create</p>
-                <h2>開新團</h2>
-              </div>
-              <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
-                ↺
-              </button>
-            </div>
-
-            <form id="createGroupForm" autocomplete="off">
-              <label class="field">
-                <span>開團名稱</span>
-                <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
-              </label>
-
-              <div class="form-subhead">
-                <span>項目與金額</span>
-                <button class="text-button" id="addItemButton" type="button">新增項目</button>
-              </div>
-
-              <div class="item-editor" id="itemEditor" aria-live="polite"></div>
-
-              <button class="primary-action full" type="submit">建立開團</button>
-            </form>
-          </section>
-        </aside>
-
-        <section class="group-board" aria-label="目前開團">
+        <section class="view-screen group-board" id="browseView" data-view-panel="browse" aria-label="目前開團">
           <div class="board-heading">
             <div>
               <p class="eyebrow">Open groups</p>
@@ -91,7 +67,35 @@
           <div class="group-list" id="groupList"></div>
         </section>
 
-        <aside class="detail-panel" aria-label="團購明細">
+        <section class="view-screen create-panel hidden" id="createPanel" data-view-panel="create" aria-label="開新團">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Create</p>
+              <h2>開新團</h2>
+            </div>
+            <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
+              ↺
+            </button>
+          </div>
+
+          <form id="createGroupForm" autocomplete="off">
+            <label class="field">
+              <span>開團名稱</span>
+              <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
+            </label>
+
+            <div class="form-subhead">
+              <span>項目與金額</span>
+              <button class="text-button" id="addItemButton" type="button">新增項目</button>
+            </div>
+
+            <div class="item-editor" id="itemEditor" aria-live="polite"></div>
+
+            <button class="primary-action full" type="submit">建立開團</button>
+          </form>
+        </section>
+
+        <section class="view-screen detail-panel hidden" id="detailView" data-view-panel="detail" aria-label="團購明細">
           <section class="empty-detail" id="emptyDetail">
             <p class="eyebrow">Detail</p>
             <h2>選擇一個團</h2>
@@ -122,6 +126,22 @@
               </div>
             </dl>
 
+            <section class="owner-tools hidden" id="ownerTools">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Items</p>
+                  <h3>品項管理</h3>
+                </div>
+              </div>
+
+              <div class="owner-item-actions">
+                <button class="text-button" id="ownerAddDraftButton" type="button">新增品項</button>
+                <button class="primary-action" id="ownerSaveItemsButton" type="button">儲存品項</button>
+              </div>
+
+              <div class="owner-item-list" id="ownerItemList"></div>
+            </section>
+
             <form class="join-form" id="joinGroupForm">
               <div class="section-heading compact">
                 <div>
@@ -139,13 +159,14 @@
               <div class="section-heading compact">
                 <div>
                   <p class="eyebrow">Orders</p>
-                  <h3>近期訂單</h3>
+                  <h3 id="orderSectionTitle">近期訂單</h3>
                 </div>
+                <button class="text-button hidden" id="saveOrdersButton" type="button">儲存訂單變更</button>
               </div>
               <div class="order-list" id="orderList"></div>
             </section>
           </section>
-        </aside>
+        </section>
       </main>
     </div>
 
@@ -198,12 +219,26 @@
 
     <template id="orderRowTemplate">
       <article class="order-row">
-        <div>
-          <strong class="order-user"></strong>
-          <p class="order-items"></p>
+        <div class="order-summary">
+          <div>
+            <div class="order-user-line">
+              <strong class="order-user"></strong>
+              <span class="order-role-badge"></span>
+            </div>
+            <p class="order-items"></p>
+          </div>
+          <span class="order-total"></span>
         </div>
-        <span class="order-total"></span>
+        <div class="order-editor hidden"></div>
       </article>
+    </template>
+
+    <template id="ownerItemTemplate">
+      <div class="owner-item-row">
+        <input class="owner-item-name" type="text" maxlength="32" aria-label="品項名稱" />
+        <input class="owner-item-price" type="number" min="0" step="1" inputmode="numeric" aria-label="品項金額" />
+        <button class="icon-button delete-owner-item" type="button" aria-label="刪除品項" title="刪除">×</button>
+      </div>
     </template>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>

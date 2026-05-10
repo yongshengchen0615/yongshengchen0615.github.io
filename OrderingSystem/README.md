@@ -12,6 +12,23 @@ HTML、CSS、JavaScript 前端加上 Google Apps Script 後端。使用者透過
 - `config.json`：前端設定
 - `gas/Code.gs`：Apps Script 後端、LINE ID token 驗證、Google Sheets 資料儲存
 
+## 介面
+
+登入後以分頁切換主要工作：
+
+- `找團加入`：搜尋與篩選目前開團
+- `開新團`：建立團名、品項與金額
+- `團購明細`：查看選定團購、下單與檢視近期訂單
+
+團購明細會依身分顯示不同資料：
+
+- 團主：可看到所有人的訂單明細，並可新增、修改、刪除品項；品項改完後用單一儲存按鈕批次套用
+- 非團主：只能看到自己的訂購紀錄
+- 訂購者：可在自己的訂單中修改已訂購品項數量，或將品項數量改為 0 來移除該品項；訂單改完後用單一儲存按鈕批次套用
+- 訂單清單：每筆訂單會標記為 `團主訂購` 或 `非團主訂購`
+
+團主修改品項名稱或金額時，已訂購使用者的訂單品項會同步更新並重算金額。團主刪除品項時，該品項會從既有訂單移除；若某筆訂單沒有剩餘品項，該筆訂單也會移除。
+
 ## config.json
 
 ```json
@@ -30,7 +47,7 @@ HTML、CSS、JavaScript 前端加上 Google Apps Script 後端。使用者透過
 - `liffId`：LINE Developers Console 裡 LIFF app 的 LIFF ID
 - `lineChannelId`：LINE Login Channel 的 Channel ID
 - `spreadsheetId`：Google Sheets 網址 `/d/` 後面那段 ID
-- `demoMode`：`true` 時會顯示測試身分按鈕
+- `demoMode`：`true` 時開頁自動 LINE/LIFF 登入；`false` 時開頁自動使用測試身分
 
 ## GAS 部署
 
@@ -69,6 +86,17 @@ openid
 6. 複製 LIFF ID，填到 `config.json` 的 `liffId`。
 
 這版不需要 `LINE_CHANNEL_SECRET`，也不需要 LINE Login Callback URL。登入流程由 LIFF SDK 在前端完成，前端只把 `liff.getIDToken()` 拿到的 ID token 送到 GAS，GAS 透過 LINE 官方 verify endpoint 驗證後建立 session。
+
+## 自動登入模式
+
+頁面不顯示 LINE 登入按鈕。開啟頁面時會依照 `config.json` 自動登入：
+
+- `demoMode: true`：自動初始化 LIFF，未登入 LINE 時直接進入 LINE 登入流程
+- `demoMode: false`：自動呼叫 GAS 的 `testLogin` 建立測試 session
+
+測試身分的後續開團、加入團、訂單統計都會走 GAS 和 `spreadsheetId` 指定的 Google Sheet。
+
+只有 `gasWebAppUrl` 留空時，前端才會退回瀏覽器 `localStorage` 的本機 Demo 資料。
 
 ## 資料表
 
