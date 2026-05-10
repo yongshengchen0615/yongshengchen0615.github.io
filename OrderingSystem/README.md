@@ -33,6 +33,7 @@
 LINE_CHANNEL_ID=你的 LINE Login Channel ID
 LINE_CHANNEL_SECRET=你的 LINE Login Channel Secret
 FRONTEND_URL=https://你的 GitHub Pages 網址/OrderingSystem/
+LINE_CALLBACK_URL=https://script.google.com/macros/s/你的部署ID/exec?action=lineCallback
 SPREADSHEET_ID=可選，留空會自動建立試算表
 ```
 
@@ -49,6 +50,8 @@ SPREADSHEET_ID=可選，留空會自動建立試算表
 ```text
 https://script.google.com/macros/s/你的部署ID/exec?action=lineCallback
 ```
+
+這一條必須跟 GAS Script Property 的 `LINE_CALLBACK_URL` 完全一致，包含 `/exec` 和 `?action=lineCallback`。
 
 Scopes 使用：
 
