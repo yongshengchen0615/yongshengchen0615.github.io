@@ -370,13 +370,16 @@
     });
   }
 
-  async function handleLogin() {
+  async function handleLogin(event) {
     if (!state.config.gasWebAppUrl) {
       handleDemoLogin();
       return;
     }
 
-    window.location.href = state.api.loginUrl(frontendUrl());
+    await withBusy(event.currentTarget, async () => {
+      const authUrl = await state.api.loginUrl(frontendUrl());
+      window.location.href = authUrl;
+    });
   }
 
   function handleDemoLogin() {
@@ -645,10 +648,7 @@
     }
 
     loginUrl(frontend) {
-      const url = new URL(this.baseUrl);
-      url.searchParams.set("action", "lineLogin");
-      url.searchParams.set("frontend", frontend);
-      return url.toString();
+      return this.request("lineLoginUrl", { frontend }).then((data) => data.authUrl);
     }
 
     me(session) {

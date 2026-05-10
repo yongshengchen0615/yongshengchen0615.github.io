@@ -67,6 +67,14 @@ function routeApi_(action, params) {
         app: "OrderingSystem",
         time: new Date().toISOString(),
       };
+    case "lineLoginUrl":
+      return buildLineLoginUrl_(params);
+    case "debugConfig":
+      return {
+        webAppUrl: webAppUrl_(),
+        lineCallbackUrl: lineCallbackUrl_(),
+        hasLineChannelId: Boolean(prop_("LINE_CHANNEL_ID", "")),
+      };
     case "me":
       return {
         user: requireUser_(params.session),
@@ -90,11 +98,16 @@ function routeApi_(action, params) {
 }
 
 function lineLogin_(params) {
+  const data = buildLineLoginUrl_(params);
+  return redirectHtml_(data.authUrl);
+}
+
+function buildLineLoginUrl_(params) {
   const channelId = prop_("LINE_CHANNEL_ID");
   const frontend = frontendFromRequest_(params.frontend);
   const state = randomToken_();
   const nonce = randomToken_();
-  const callbackUrl = webAppUrl_() + "?action=lineCallback";
+  const callbackUrl = lineCallbackUrl_();
 
   CacheService.getScriptCache().put(
     OAUTH_STATE_PREFIX + state,
@@ -105,18 +118,18 @@ function lineLogin_(params) {
     600
   );
 
-  const authUrl =
-    "https://access.line.me/oauth2/v2.1/authorize?" +
-    queryString_({
-      response_type: "code",
-      client_id: channelId,
-      redirect_uri: callbackUrl,
-      state: state,
-      scope: "profile openid",
-      nonce: nonce,
-    });
-
-  return redirectHtml_(authUrl);
+  return {
+    authUrl:
+      "https://access.line.me/oauth2/v2.1/authorize?" +
+      queryString_({
+        response_type: "code",
+        client_id: channelId,
+        redirect_uri: callbackUrl,
+        state: state,
+        scope: "profile openid",
+        nonce: nonce,
+      }),
+  };
 }
 
 function lineCallback_(params) {
@@ -134,7 +147,7 @@ function lineCallback_(params) {
     }
 
     const stateData = JSON.parse(cached);
-    const callbackUrl = webAppUrl_() + "?action=lineCallback";
+    const callbackUrl = lineCallbackUrl_();
     const channelId = prop_("LINE_CHANNEL_ID");
     const channelSecret = prop_("LINE_CHANNEL_SECRET");
 
@@ -715,6 +728,10 @@ function webAppUrl_() {
   return ScriptApp.getService().getUrl();
 }
 
+function lineCallbackUrl_() {
+  return prop_("LINE_CALLBACK_URL", webAppUrl_() + "?action=lineCallback");
+}
+
 function fetchJson_(url, options) {
   const requestOptions = Object.assign(
     {
@@ -741,11 +758,24 @@ function fetchJson_(url, options) {
 
 function redirectHtml_(url) {
   const safeUrl = JSON.stringify(url);
+  const escapedUrl = escapeHtml_(url);
   return HtmlService.createHtmlOutput(
-    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirect</title></head><body><script>location.replace(' +
+    '<!doctype html><html><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirect</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f2;color:#151816}a{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:8px;background:#06c755;color:#fff;text-decoration:none;font-weight:800}</style></head><body><a href="' +
+      escapedUrl +
+      '" target="_top">繼續 LINE 登入</a><script>try{window.top.location.replace(' +
       safeUrl +
-      ");</script></body></html>"
+      ")}catch(e){location.replace(" +
+      safeUrl +
+      ")}</script></body></html>"
   );
+}
+
+function escapeHtml_(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function queryString_(params) {
