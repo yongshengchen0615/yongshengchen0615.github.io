@@ -1,6 +1,9 @@
 (() => {
   const CONFIG_DEFAULTS = {
     gasWebAppUrl: "",
+    liffId: "",
+    lineChannelId: "",
+    spreadsheetId: "",
     demoMode: true,
   };
 
@@ -15,6 +18,8 @@
     config: { ...CONFIG_DEFAULTS },
     user: null,
     session: "",
+    liff: null,
+    liffReady: false,
     groups: [],
     selectedGroupId: "",
     filter: "all",
@@ -36,13 +41,16 @@
     resetCreateForm();
 
     state.config = await loadConfig();
-    state.api = state.config.gasWebAppUrl ? new GasApi(state.config.gasWebAppUrl) : new DemoApi();
+    state.api = state.config.gasWebAppUrl ? new GasApi(state.config) : new DemoApi();
 
     readLoginCallback();
     renderConfigStatus();
+    await initLineLogin();
 
     if (state.session) {
       await restoreSession();
+    } else if (isLiveConfigured() && state.liff && state.liff.isLoggedIn()) {
+      await authenticateWithLine(true);
     }
 
     renderSession();
@@ -120,11 +128,19 @@
       fileConfig = {};
     }
 
-    return {
+    const merged = {
       ...CONFIG_DEFAULTS,
       ...fileConfig,
       ...inlineConfig,
-      gasWebAppUrl: String(fileConfig.gasWebAppUrl || inlineConfig.gasWebAppUrl || "").trim(),
+    };
+
+    return {
+      ...merged,
+      gasWebAppUrl: normalizeGasUrl(merged.gasWebAppUrl),
+      liffId: String(merged.liffId || "").trim(),
+      lineChannelId: String(merged.lineChannelId || "").trim(),
+      spreadsheetId: String(merged.spreadsheetId || "").trim(),
+      demoMode: merged.demoMode !== false,
     };
   }
 
@@ -184,9 +200,11 @@
   }
 
   function renderConfigStatus() {
-    els.configStatus.textContent = state.config.gasWebAppUrl ? "GAS Live" : "Demo";
-    els.configStatus.classList.toggle("live", Boolean(state.config.gasWebAppUrl));
-    els.demoLoginButton.classList.toggle("hidden", Boolean(state.config.gasWebAppUrl));
+    const hasGas = isGasConfigured();
+    const ready = isLiveConfigured();
+    els.configStatus.textContent = ready ? "LIFF Live" : state.config.gasWebAppUrl ? "設定未完成" : "Demo";
+    els.configStatus.classList.toggle("live", ready);
+    els.demoLoginButton.classList.toggle("hidden", !state.config.demoMode);
   }
 
   function renderSession() {
@@ -377,9 +395,65 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      const authUrl = await state.api.loginUrl(frontendUrl());
-      window.location.href = authUrl;
+      if (!isLiveConfigured()) {
+        throw new Error("請先在 config.json 設定 liffId、lineChannelId、spreadsheetId、gasWebAppUrl。");
+      }
+
+      await initLineLogin();
+
+      if (!state.liff) {
+        throw new Error("LINE LIFF SDK 尚未載入。");
+      }
+
+      if (!state.liff.isLoggedIn()) {
+        state.liff.login({ redirectUri: frontendUrl() });
+        return;
+      }
+
+      await authenticateWithLine(false);
     });
+  }
+
+  async function initLineLogin() {
+    if (!isLiveConfigured()) {
+      return;
+    }
+
+    if (state.liffReady) {
+      return;
+    }
+
+    if (!window.liff) {
+      showToast("LINE LIFF SDK 載入失敗。", "error");
+      return;
+    }
+
+    try {
+      await window.liff.init({ liffId: state.config.liffId });
+      state.liff = window.liff;
+      state.liffReady = true;
+    } catch (error) {
+      showToast(error.message || "LIFF 初始化失敗。", "error");
+    }
+  }
+
+  async function authenticateWithLine(silent) {
+    const idToken = state.liff && state.liff.getIDToken();
+    if (!idToken) {
+      if (!silent) {
+        throw new Error("無法取得 LINE ID token，請重新登入。");
+      }
+      return;
+    }
+
+    const result = await state.api.loginWithLine(idToken);
+    state.session = result.session;
+    state.user = result.user;
+    localStorage.setItem(STORAGE.session, state.session);
+
+    if (!silent) {
+      showToast("LINE 登入完成。");
+    }
   }
 
   function handleDemoLogin() {
@@ -397,6 +471,9 @@
   }
 
   function handleLogout() {
+    if (state.liff && state.liff.isLoggedIn()) {
+      state.liff.logout();
+    }
     localStorage.removeItem(STORAGE.session);
     state.session = "";
     state.user = null;
@@ -638,17 +715,44 @@
     return url.toString();
   }
 
+  function isLiveConfigured() {
+    return Boolean(
+      state.config.gasWebAppUrl && state.config.liffId && state.config.lineChannelId && state.config.spreadsheetId
+    );
+  }
+
+  function isGasConfigured() {
+    return Boolean(state.config.gasWebAppUrl && state.config.spreadsheetId);
+  }
+
+  function normalizeGasUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    try {
+      const url = new URL(raw);
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch (error) {
+      return raw.split("?")[0].split("#")[0];
+    }
+  }
+
   function uid(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
   class GasApi {
-    constructor(baseUrl) {
-      this.baseUrl = baseUrl;
+    constructor(config) {
+      this.baseUrl = config.gasWebAppUrl;
+      this.config = config;
     }
 
-    loginUrl(frontend) {
-      return this.request("lineLoginUrl", { frontend }).then((data) => data.authUrl);
+    loginWithLine(idToken) {
+      return this.request("login", { idToken });
     }
 
     me(session) {
@@ -685,6 +789,9 @@
             url.searchParams.set(key, value);
           }
         });
+
+        url.searchParams.set("spreadsheetId", this.config.spreadsheetId);
+        url.searchParams.set("lineChannelId", this.config.lineChannelId);
 
         const script = document.createElement("script");
         const timeout = window.setTimeout(() => {

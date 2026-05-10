@@ -17,27 +17,19 @@ const HEADERS = {
 };
 
 const SESSION_DAYS = 14;
-const OAUTH_STATE_PREFIX = "line_state:";
 
 function setup() {
-  ensureSheets_();
+  const spreadsheet = SpreadsheetApp.create("OrderingSystem Data");
+  ensureSheets_(spreadsheet);
   return {
     ok: true,
-    spreadsheetId: getSpreadsheet_().getId(),
+    spreadsheetId: spreadsheet.getId(),
   };
 }
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
   const action = params.action || "ping";
-
-  if (action === "lineLogin") {
-    return lineLogin_(params);
-  }
-
-  if (action === "lineCallback") {
-    return lineCallback_(params);
-  }
 
   try {
     const data = routeApi_(action, params);
@@ -65,162 +57,110 @@ function routeApi_(action, params) {
     case "ping":
       return {
         app: "OrderingSystem",
+        mode: "config-json",
         time: new Date().toISOString(),
       };
-    case "lineLoginUrl":
-      return buildLineLoginUrl_(params);
-    case "debugConfig":
+    case "setup":
+      return setupBackend_(params);
+    case "login": {
+      const config = requestConfig_(params);
+      const spreadsheet = getSpreadsheet_(config.spreadsheetId);
+      ensureSheets_(spreadsheet);
+      const user = verifyLineIdToken_(params.idToken, config.lineChannelId);
+      upsertUser_(spreadsheet, user);
+      const session = createSession_(spreadsheet, user.id);
       return {
-        webAppUrl: webAppUrl_(),
-        lineCallbackUrl: lineCallbackUrl_(),
-        hasLineChannelId: Boolean(prop_("LINE_CHANNEL_ID", "")),
+        session: session,
+        user: user,
       };
-    case "me":
+    }
+    case "me": {
+      const spreadsheet = spreadsheetFromParams_(params);
       return {
-        user: requireUser_(params.session),
+        user: requireUser_(spreadsheet, params.session),
       };
-    case "groups":
-      ensureSheets_();
+    }
+    case "groups": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      ensureSheets_(spreadsheet);
       return {
-        groups: listGroups_(),
+        groups: listGroups_(spreadsheet),
       };
+    }
     case "createGroup": {
-      const user = requireUser_(params.session);
-      return createGroup_(parsePayload_(params.payload), user);
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return createGroup_(spreadsheet, parsePayload_(params.payload), user);
     }
     case "joinGroup": {
-      const user = requireUser_(params.session);
-      return joinGroup_(parsePayload_(params.payload), user);
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return joinGroup_(spreadsheet, parsePayload_(params.payload), user);
     }
     default:
       throw new Error("Unknown action: " + action);
   }
 }
 
-function lineLogin_(params) {
-  const data = buildLineLoginUrl_(params);
-  return redirectHtml_(data.authUrl);
-}
-
-function buildLineLoginUrl_(params) {
-  const channelId = prop_("LINE_CHANNEL_ID");
-  const frontend = frontendFromRequest_(params.frontend);
-  const state = randomToken_();
-  const nonce = randomToken_();
-  const callbackUrl = lineCallbackUrl_();
-
-  CacheService.getScriptCache().put(
-    OAUTH_STATE_PREFIX + state,
-    JSON.stringify({
-      nonce: nonce,
-      frontend: frontend,
-    }),
-    600
-  );
+function setupBackend_(params) {
+  const spreadsheetId = cleanText_(params.spreadsheetId, 160);
+  const spreadsheet = spreadsheetId ? getSpreadsheet_(spreadsheetId) : SpreadsheetApp.create("OrderingSystem Data");
+  ensureSheets_(spreadsheet);
 
   return {
-    authUrl:
-      "https://access.line.me/oauth2/v2.1/authorize?" +
-      queryString_({
-        response_type: "code",
-        client_id: channelId,
-        redirect_uri: callbackUrl,
-        state: state,
-        scope: "profile openid",
-        nonce: nonce,
-      }),
+    spreadsheetId: spreadsheet.getId(),
+    sheets: Object.keys(HEADERS),
   };
 }
 
-function lineCallback_(params) {
-  const fallbackFrontend = prop_("FRONTEND_URL", webAppUrl_());
+function requestConfig_(params) {
+  const spreadsheetId = cleanText_(params.spreadsheetId, 160);
+  const lineChannelId = cleanText_(params.lineChannelId, 80);
 
-  try {
-    if (params.error) {
-      throw new Error(params.error_description || params.error);
-    }
-
-    const state = params.state || "";
-    const cached = CacheService.getScriptCache().get(OAUTH_STATE_PREFIX + state);
-    if (!cached) {
-      throw new Error("LINE 登入狀態已逾時，請重新登入。");
-    }
-
-    const stateData = JSON.parse(cached);
-    const callbackUrl = lineCallbackUrl_();
-    const channelId = prop_("LINE_CHANNEL_ID");
-    const channelSecret = prop_("LINE_CHANNEL_SECRET");
-
-    const token = fetchJson_("https://api.line.me/oauth2/v2.1/token", {
-      method: "post",
-      payload: {
-        grant_type: "authorization_code",
-        code: params.code,
-        redirect_uri: callbackUrl,
-        client_id: channelId,
-        client_secret: channelSecret,
-      },
-    });
-
-    if (!token.id_token) {
-      throw new Error("LINE 未回傳 ID token。");
-    }
-
-    const verified = fetchJson_("https://api.line.me/oauth2/v2.1/verify", {
-      method: "post",
-      payload: {
-        id_token: token.id_token,
-        client_id: channelId,
-      },
-    });
-
-    if (stateData.nonce && verified.nonce !== stateData.nonce) {
-      throw new Error("LINE nonce 驗證失敗。");
-    }
-
-    const profile = buildLineProfile_(verified, token.access_token);
-    upsertUser_(profile);
-    const session = createSession_(profile.id);
-
-    return redirectHtml_(appendQuery_(stateData.frontend, { session: session }));
-  } catch (error) {
-    return redirectHtml_(
-      appendQuery_(fallbackFrontend, {
-        login_error: error.message || "LINE 登入失敗。",
-      })
-    );
+  if (!spreadsheetId) {
+    throw new Error("config.json 缺少 spreadsheetId。");
   }
+
+  if (!lineChannelId) {
+    throw new Error("config.json 缺少 lineChannelId。");
+  }
+
+  return {
+    spreadsheetId: spreadsheetId,
+    lineChannelId: lineChannelId,
+  };
 }
 
-function buildLineProfile_(verified, accessToken) {
-  let profile = {};
+function spreadsheetFromParams_(params) {
+  return getSpreadsheet_(params.spreadsheetId);
+}
 
-  if ((!verified.name || !verified.picture) && accessToken) {
-    try {
-      profile = fetchJson_("https://api.line.me/v2/profile", {
-        method: "get",
-        headers: {
-          Authorization: "Bearer " + accessToken,
-        },
-      });
-    } catch (error) {
-      profile = {};
-    }
+function verifyLineIdToken_(idToken, lineChannelId) {
+  const token = cleanText_(idToken, 5000);
+  if (!token) {
+    throw new Error("缺少 LINE ID token。");
   }
 
-  const id = verified.sub || profile.userId;
-  if (!id) {
+  const verified = fetchJson_("https://api.line.me/oauth2/v2.1/verify", {
+    method: "post",
+    payload: {
+      id_token: token,
+      client_id: lineChannelId,
+    },
+  });
+
+  if (!verified.sub) {
     throw new Error("LINE 使用者資料不完整。");
   }
 
   return {
-    id: id,
-    displayName: verified.name || profile.displayName || "LINE 使用者",
-    pictureUrl: verified.picture || profile.pictureUrl || "",
+    id: verified.sub,
+    displayName: verified.name || "LINE 使用者",
+    pictureUrl: verified.picture || "",
   };
 }
 
-function createGroup_(payload, user) {
+function createGroup_(spreadsheet, payload, user) {
   const name = cleanText_(payload.name, 40);
   const items = normalizeIncomingItems_(payload.items);
 
@@ -236,7 +176,7 @@ function createGroup_(payload, user) {
   lock.waitLock(10000);
 
   try {
-    ensureSheets_();
+    ensureSheets_(spreadsheet);
     const now = new Date().toISOString();
     const group = {
       id: "grp_" + randomToken_(),
@@ -248,10 +188,10 @@ function createGroup_(payload, user) {
       updatedAt: now,
     };
 
-    appendObject_(SHEETS.GROUPS, group);
+    appendObject_(spreadsheet, SHEETS.GROUPS, group);
 
     items.forEach(function (item) {
-      appendObject_(SHEETS.ITEMS, {
+      appendObject_(spreadsheet, SHEETS.ITEMS, {
         id: "item_" + randomToken_(),
         groupId: group.id,
         name: item.name,
@@ -262,14 +202,14 @@ function createGroup_(payload, user) {
 
     return {
       group: group,
-      groups: listGroups_(),
+      groups: listGroups_(spreadsheet),
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function joinGroup_(payload, user) {
+function joinGroup_(spreadsheet, payload, user) {
   const groupId = cleanText_(payload.groupId, 80);
   const requestedItems = Array.isArray(payload.items) ? payload.items : [];
 
@@ -281,8 +221,8 @@ function joinGroup_(payload, user) {
   lock.waitLock(10000);
 
   try {
-    ensureSheets_();
-    const groups = readObjects_(SHEETS.GROUPS);
+    ensureSheets_(spreadsheet);
+    const groups = readObjects_(spreadsheet, SHEETS.GROUPS);
     const group = groups.find(function (entry) {
       return entry.id === groupId && entry.status !== "closed";
     });
@@ -292,7 +232,7 @@ function joinGroup_(payload, user) {
     }
 
     const itemMap = {};
-    readObjects_(SHEETS.ITEMS)
+    readObjects_(spreadsheet, SHEETS.ITEMS)
       .filter(function (item) {
         return item.groupId === groupId;
       })
@@ -337,7 +277,7 @@ function joinGroup_(payload, user) {
       return sum + item.subtotal;
     }, 0);
 
-    appendObject_(SHEETS.ORDERS, {
+    appendObject_(spreadsheet, SHEETS.ORDERS, {
       id: orderId,
       groupId: groupId,
       userId: user.id,
@@ -347,7 +287,7 @@ function joinGroup_(payload, user) {
     });
 
     selectedItems.forEach(function (item) {
-      appendObject_(SHEETS.ORDER_ITEMS, {
+      appendObject_(spreadsheet, SHEETS.ORDER_ITEMS, {
         id: "oi_" + randomToken_(),
         orderId: orderId,
         itemId: item.itemId,
@@ -360,18 +300,18 @@ function joinGroup_(payload, user) {
 
     return {
       orderId: orderId,
-      groups: listGroups_(),
+      groups: listGroups_(spreadsheet),
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function listGroups_() {
-  const groups = readObjects_(SHEETS.GROUPS);
-  const items = readObjects_(SHEETS.ITEMS);
-  const orders = readObjects_(SHEETS.ORDERS);
-  const orderItems = readObjects_(SHEETS.ORDER_ITEMS);
+function listGroups_(spreadsheet) {
+  const groups = readObjects_(spreadsheet, SHEETS.GROUPS);
+  const items = readObjects_(spreadsheet, SHEETS.ITEMS);
+  const orders = readObjects_(spreadsheet, SHEETS.ORDERS);
+  const orderItems = readObjects_(spreadsheet, SHEETS.ORDER_ITEMS);
 
   const itemsByGroup = groupBy_(items, "groupId");
   const ordersByGroup = groupBy_(orders, "groupId");
@@ -442,14 +382,14 @@ function listGroups_() {
     });
 }
 
-function requireUser_(sessionToken) {
+function requireUser_(spreadsheet, sessionToken) {
   const token = cleanText_(sessionToken, 160);
   if (!token) {
     throw new Error("請先登入。");
   }
 
-  ensureSheets_();
-  const session = readObjects_(SHEETS.SESSIONS).find(function (entry) {
+  ensureSheets_(spreadsheet);
+  const session = readObjects_(spreadsheet, SHEETS.SESSIONS).find(function (entry) {
     return entry.token === token;
   });
 
@@ -461,7 +401,7 @@ function requireUser_(sessionToken) {
     throw new Error("登入已過期，請重新登入。");
   }
 
-  const user = readObjects_(SHEETS.USERS).find(function (entry) {
+  const user = readObjects_(spreadsheet, SHEETS.USERS).find(function (entry) {
     return entry.id === session.userId;
   });
 
@@ -476,9 +416,9 @@ function requireUser_(sessionToken) {
   };
 }
 
-function upsertUser_(profile) {
-  ensureSheets_();
-  upsertObject_(SHEETS.USERS, "id", {
+function upsertUser_(spreadsheet, profile) {
+  ensureSheets_(spreadsheet);
+  upsertObject_(spreadsheet, SHEETS.USERS, "id", {
     id: profile.id,
     displayName: profile.displayName,
     pictureUrl: profile.pictureUrl,
@@ -486,13 +426,13 @@ function upsertUser_(profile) {
   });
 }
 
-function createSession_(userId) {
-  ensureSheets_();
+function createSession_(spreadsheet, userId) {
+  ensureSheets_(spreadsheet);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const token = "sess_" + randomToken_() + randomToken_();
 
-  appendObject_(SHEETS.SESSIONS, {
+  appendObject_(spreadsheet, SHEETS.SESSIONS, {
     token: token,
     userId: userId,
     expiresAt: expiresAt.toISOString(),
@@ -502,12 +442,11 @@ function createSession_(userId) {
   return token;
 }
 
-function ensureSheets_() {
-  const ss = getSpreadsheet_();
+function ensureSheets_(spreadsheet) {
   Object.keys(HEADERS).forEach(function (sheetName) {
-    let sheet = ss.getSheetByName(sheetName);
+    let sheet = spreadsheet.getSheetByName(sheetName);
     if (!sheet) {
-      sheet = ss.insertSheet(sheetName);
+      sheet = spreadsheet.insertSheet(sheetName);
     }
 
     const headers = HEADERS[sheetName];
@@ -527,26 +466,16 @@ function ensureSheets_() {
   });
 }
 
-function getSpreadsheet_() {
-  const props = PropertiesService.getScriptProperties();
-  let spreadsheetId = props.getProperty("SPREADSHEET_ID");
-
-  if (!spreadsheetId) {
-    const spreadsheet = SpreadsheetApp.create("OrderingSystem Data");
-    spreadsheetId = spreadsheet.getId();
-    props.setProperty("SPREADSHEET_ID", spreadsheetId);
+function getSpreadsheet_(spreadsheetId) {
+  const id = cleanText_(spreadsheetId, 160);
+  if (!id) {
+    throw new Error("config.json 缺少 spreadsheetId。");
   }
-
-  return SpreadsheetApp.openById(spreadsheetId);
+  return SpreadsheetApp.openById(id);
 }
 
-function getSheet_(sheetName) {
-  ensureSheets_();
-  return getSpreadsheet_().getSheetByName(sheetName);
-}
-
-function readObjects_(sheetName) {
-  const sheet = getSheetNoEnsure_(sheetName);
+function readObjects_(spreadsheet, sheetName) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) {
     return [];
@@ -568,8 +497,8 @@ function readObjects_(sheetName) {
     });
 }
 
-function appendObject_(sheetName, object) {
-  const sheet = getSheetNoEnsure_(sheetName);
+function appendObject_(spreadsheet, sheetName, object) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
   const headers = HEADERS[sheetName];
   sheet.appendRow(
     headers.map(function (header) {
@@ -578,8 +507,8 @@ function appendObject_(sheetName, object) {
   );
 }
 
-function upsertObject_(sheetName, key, object) {
-  const sheet = getSheetNoEnsure_(sheetName);
+function upsertObject_(spreadsheet, sheetName, key, object) {
+  const sheet = getSheetNoEnsure_(spreadsheet, sheetName);
   const headers = HEADERS[sheetName];
   const values = sheet.getDataRange().getValues();
   const keyIndex = headers.indexOf(key);
@@ -597,8 +526,8 @@ function upsertObject_(sheetName, key, object) {
   sheet.appendRow(row);
 }
 
-function getSheetNoEnsure_(sheetName) {
-  const sheet = getSpreadsheet_().getSheetByName(sheetName);
+function getSheetNoEnsure_(spreadsheet, sheetName) {
+  const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
     throw new Error("Missing sheet: " + sheetName);
   }
@@ -696,42 +625,6 @@ function safeCallback_(callback) {
   return /^[A-Za-z_$][0-9A-Za-z_$]*(\.[A-Za-z_$][0-9A-Za-z_$]*)*$/.test(value) ? value : "";
 }
 
-function prop_(name, fallback) {
-  const value = PropertiesService.getScriptProperties().getProperty(name);
-  if (value) {
-    return value;
-  }
-
-  if (fallback !== undefined) {
-    return fallback;
-  }
-
-  throw new Error("Missing Script Property: " + name);
-}
-
-function frontendFromRequest_(frontend) {
-  const configured = prop_("FRONTEND_URL", "");
-  const requested = cleanText_(frontend, 500);
-
-  if (configured) {
-    return requested && requested.indexOf(configured) === 0 ? requested : configured;
-  }
-
-  if (!requested) {
-    throw new Error("Missing FRONTEND_URL Script Property.");
-  }
-
-  return requested;
-}
-
-function webAppUrl_() {
-  return ScriptApp.getService().getUrl();
-}
-
-function lineCallbackUrl_() {
-  return prop_("LINE_CALLBACK_URL", webAppUrl_() + "?action=lineCallback");
-}
-
 function fetchJson_(url, options) {
   const requestOptions = Object.assign(
     {
@@ -754,41 +647,6 @@ function fetchJson_(url, options) {
   }
 
   return data;
-}
-
-function redirectHtml_(url) {
-  const safeUrl = JSON.stringify(url);
-  const escapedUrl = escapeHtml_(url);
-  return HtmlService.createHtmlOutput(
-    '<!doctype html><html><head><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirect</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f2;color:#151816}a{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:8px;background:#06c755;color:#fff;text-decoration:none;font-weight:800}</style></head><body><a href="' +
-      escapedUrl +
-      '" target="_top">繼續 LINE 登入</a><script>try{window.top.location.replace(' +
-      safeUrl +
-      ")}catch(e){location.replace(" +
-      safeUrl +
-      ")}</script></body></html>"
-  );
-}
-
-function escapeHtml_(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function queryString_(params) {
-  return Object.keys(params)
-    .map(function (key) {
-      return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
-    })
-    .join("&");
-}
-
-function appendQuery_(url, params) {
-  const query = queryString_(params);
-  return url + (url.indexOf("?") === -1 ? "?" : "&") + query;
 }
 
 function randomToken_() {

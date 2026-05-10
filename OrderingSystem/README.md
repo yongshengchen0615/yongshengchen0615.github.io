@@ -1,69 +1,78 @@
 # 團購系統
 
-使用 HTML、CSS、JavaScript 製作的團購前端，後端使用 Google Apps Script。使用者可透過 LINE Login 登入、開團、設定品項與金額，也可以加入別人的團並選擇品項與數量。
+HTML、CSS、JavaScript 前端加上 Google Apps Script 後端。使用者透過 LINE LIFF 登入後，可以開團、建立品項與金額，也可以加入別人的團並選擇數量。
+
+這版不使用 Apps Script Script Properties，所有部署設定都放在前端 `config.json`。
 
 ## 檔案
 
-- `index.html`：前端畫面與模板
+- `index.html`：前端畫面與 LIFF SDK 載入
 - `styles.css`：響應式介面樣式
-- `app.js`：登入狀態、開團、加入團、GAS JSONP API
+- `app.js`：LIFF 登入、開團、加入團、GAS JSONP API
 - `config.json`：前端設定
-- `gas/Code.gs`：Apps Script 後端、LINE OAuth callback、Google Sheets 資料儲存
+- `gas/Code.gs`：Apps Script 後端、LINE ID token 驗證、Google Sheets 資料儲存
 
-## 前端設定
-
-先部署 GAS Web App，再把部署 URL 填入 `config.json`：
+## config.json
 
 ```json
 {
   "gasWebAppUrl": "https://script.google.com/macros/s/你的部署ID/exec",
+  "liffId": "你的 LIFF ID",
+  "lineChannelId": "你的 LINE Login Channel ID",
+  "spreadsheetId": "你的 Google Sheet ID",
   "demoMode": false
 }
 ```
 
-`gasWebAppUrl` 留空時，前端會使用瀏覽器 `localStorage` 的測試資料，方便直接開發 UI。
+說明：
 
-## GAS 設定
+- `gasWebAppUrl`：Apps Script Web App 的 `/exec` URL，不要加 `?action=...`
+- `liffId`：LINE Developers Console 裡 LIFF app 的 LIFF ID
+- `lineChannelId`：LINE Login Channel 的 Channel ID
+- `spreadsheetId`：Google Sheets 網址 `/d/` 後面那段 ID
+- `demoMode`：`true` 時會顯示測試身分按鈕
+
+## GAS 部署
 
 1. 到 Apps Script 建立專案。
 2. 將 `gas/Code.gs` 內容貼到 Apps Script。
-3. 在 Apps Script 專案設定新增 Script Properties：
-
-```text
-LINE_CHANNEL_ID=你的 LINE Login Channel ID
-LINE_CHANNEL_SECRET=你的 LINE Login Channel Secret
-FRONTEND_URL=https://你的 GitHub Pages 網址/OrderingSystem/
-LINE_CALLBACK_URL=https://script.google.com/macros/s/你的部署ID/exec?action=lineCallback
-SPREADSHEET_ID=可選，留空會自動建立試算表
-```
-
-4. 在 Apps Script 編輯器執行一次 `setup()`，授權建立/讀寫試算表。
-5. 部署為 Web App：
+3. 不需要設定 Script Properties。
+4. 建立 Google Sheet，複製 Sheet ID 到 `config.json` 的 `spreadsheetId`。
+5. 在 Apps Script 編輯器部署 Web App：
    - Execute as：Me
    - Who has access：Anyone
-6. 複製 Web App URL 到 `config.json`。
+6. 複製 Web App `/exec` URL 到 `config.json` 的 `gasWebAppUrl`。
+7. 開一次這個網址初始化資料表：
+
+```text
+https://script.google.com/macros/s/你的部署ID/exec?action=setup&spreadsheetId=你的GoogleSheetID
+```
 
 ## LINE Developers 設定
 
-在 LINE Login Channel 裡設定 Callback URL：
+1. 建立或使用 LINE Login Channel。
+2. 在 `Basic settings` 複製 `Channel ID`，填到 `config.json` 的 `lineChannelId`。
+3. 到 `LIFF` 分頁新增 LIFF app。
+4. Endpoint URL 填你的前端網址，例如：
 
 ```text
-https://script.google.com/macros/s/你的部署ID/exec?action=lineCallback
+https://你的帳號.github.io/你的repo/OrderingSystem/
 ```
 
-這一條必須跟 GAS Script Property 的 `LINE_CALLBACK_URL` 完全一致，包含 `/exec` 和 `?action=lineCallback`。
-
-Scopes 使用：
+5. LIFF scopes 勾選：
 
 ```text
-profile openid
+profile
+openid
 ```
 
-Channel Secret 只放在 GAS Script Properties，不要放到前端。
+6. 複製 LIFF ID，填到 `config.json` 的 `liffId`。
+
+這版不需要 `LINE_CHANNEL_SECRET`，也不需要 LINE Login Callback URL。登入流程由 LIFF SDK 在前端完成，前端只把 `liff.getIDToken()` 拿到的 ID token 送到 GAS，GAS 透過 LINE 官方 verify endpoint 驗證後建立 session。
 
 ## 資料表
 
-GAS 會建立或使用指定的 Google Sheets，包含：
+GAS 會在指定的 Google Sheet 建立或使用這些分頁：
 
 - `Users`
 - `Sessions`
