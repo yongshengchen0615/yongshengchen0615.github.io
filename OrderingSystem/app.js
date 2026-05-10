@@ -64,6 +64,7 @@ function cacheElements() {
     technicianNotice: document.querySelector("#technicianNotice"),
     technicianForm: document.querySelector("#technicianForm"),
     technicianNumber: document.querySelector("#technicianNumber"),
+    setupErrorText: document.querySelector("#setupErrorText"),
     errorNotice: document.querySelector("#errorNotice"),
     errorText: document.querySelector("#errorText"),
     refreshGroupsButton: document.querySelector("#refreshGroupsButton"),
@@ -801,11 +802,19 @@ function showToast(message) {
 function showError(message) {
   els.errorText.textContent = message;
   els.errorNotice.classList.remove("hidden");
+  if (els.setupErrorText) {
+    els.setupErrorText.textContent = message;
+    els.setupErrorText.classList.remove("hidden");
+  }
 }
 
 function clearError() {
   els.errorText.textContent = "";
   els.errorNotice.classList.add("hidden");
+  if (els.setupErrorText) {
+    els.setupErrorText.textContent = "";
+    els.setupErrorText.classList.add("hidden");
+  }
 }
 
 function renderIcons() {

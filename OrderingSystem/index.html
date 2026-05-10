@@ -11,6 +11,30 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
   </head>
   <body>
+    <section class="setup-gate hidden" id="technicianNotice">
+      <div class="setup-panel">
+        <div class="setup-icon">
+          <i data-lucide="badge-check"></i>
+        </div>
+        <div class="setup-copy">
+          <p class="eyebrow">首次設定</p>
+          <h3>輸入技師號碼</h3>
+          <p class="muted">技師號碼會寫入 GAS，確認後才能進入開團系統。</p>
+        </div>
+        <form class="setup-form" id="technicianForm">
+          <div class="form-row">
+            <label for="technicianNumber">技師號碼</label>
+            <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
+          </div>
+          <button class="primary-button" type="submit">
+            <i data-lucide="save"></i>
+            <span>確認</span>
+          </button>
+        </form>
+        <p class="setup-error hidden" id="setupErrorText"></p>
+      </div>
+    </section>
+
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand-block">
@@ -67,27 +91,6 @@
             <strong>尚未設定正式連線</strong>
             <p>請先在 <code>config.json</code> 填入 <code>LIFF_ID</code> 與 <code>GAS_WEB_APP_URL</code>。</p>
           </div>
-        </section>
-
-        <section class="setup-panel hidden" id="technicianNotice">
-          <div class="setup-icon">
-            <i data-lucide="badge-check"></i>
-          </div>
-          <div class="setup-copy">
-            <p class="eyebrow">首次設定</p>
-            <h3>輸入技師號碼</h3>
-            <p class="muted">技師號碼會寫入 GAS，之後開團與加入團都會使用這個身份。</p>
-          </div>
-          <form class="setup-form" id="technicianForm">
-            <div class="form-row">
-              <label for="technicianNumber">技師號碼</label>
-              <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
-            </div>
-            <button class="primary-button" type="submit">
-              <i data-lucide="save"></i>
-              <span>確認</span>
-            </button>
-          </form>
         </section>
 
         <section class="notice hidden danger" id="errorNotice">

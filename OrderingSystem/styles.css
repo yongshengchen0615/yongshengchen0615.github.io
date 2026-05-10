@@ -288,11 +288,22 @@ h3 {
   color: var(--danger);
 }
 
+.setup-gate {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 24px;
+}
+
+.setup-required .app-shell {
+  display: none;
+}
+
 .setup-panel {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 18px;
-  max-width: 680px;
+  width: min(680px, 100%);
   padding: 22px;
   border: 1px solid rgba(15, 139, 124, 0.24);
   border-radius: 8px;
@@ -328,8 +339,12 @@ h3 {
   gap: 12px;
 }
 
-.setup-required .side-nav {
-  display: none;
+.setup-error {
+  grid-column: 2;
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .inline-form {
@@ -792,6 +807,10 @@ tbody tr:last-child td {
     grid-column: 1;
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .setup-error {
+    grid-column: 1;
   }
 
   .inline-form {
