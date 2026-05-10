@@ -4,8 +4,8 @@
 
 ## 功能
 
-- LINE 登入：所有使用者都需登入。
-- 首次登入：必須輸入自己的技師號碼，之後才可開團或加入團。
+- LINE 登入：所有使用者都需登入，正式環境會自動導向 LINE 登入，不顯示登入按鈕。
+- 首次登入：登入成功後會顯示技師號碼設定畫面，確認後寫入 GAS，之後才可開團或加入團。
 - 開團：使用者可建立團名，新增多個項目與價格。
 - 加入團：使用者可加入別人開設中的團，選擇項目與數量後送出。
 - 團主視圖：開團者可查看自己開的團、各項目彙整與加入明細。
@@ -40,13 +40,21 @@
 
 1. 到 Google Drive 建立新的 Apps Script 專案。
 2. 將 `gas/Code.gs` 的內容貼到 Apps Script 編輯器。
-3. 到「專案設定」加入 Script Properties：
+3. 如果要固定使用既有 Google Sheets，打開 `gas/Code.gs`，在最上方填入：
+
+```js
+const GAS_CONFIG = {
+  SPREADSHEET_ID: "你的 Google Sheets ID",
+};
+```
+
+4. 到「專案設定」加入 Script Properties：
    - `LINE_CHANNEL_ID`：LINE Login Channel ID
-   - `SPREADSHEET_ID`：可留空，第一次執行時會自動建立資料表。
-4. 部署為 Web App：
+   - `SPREADSHEET_ID`：可留空。若 `GAS_CONFIG.SPREADSHEET_ID` 也留空，第一次執行時會自動建立資料表。
+5. 部署為 Web App：
    - Execute as：Me
    - Who has access：Anyone
-5. 複製部署後的 `/exec` URL，貼回 `config.json` 的 `GAS_WEB_APP_URL`。
+6. 複製部署後的 `/exec` URL，貼回 `config.json` 的 `GAS_WEB_APP_URL`。
 
 GAS 會自動建立這些工作表：
 
@@ -71,8 +79,8 @@ LIFF 會在前端取得 `idToken`，GAS 會呼叫 LINE 官方 Verify ID token AP
 
 ## 使用流程
 
-1. 使用者以 LINE 登入。
-2. 第一次登入時輸入技師號碼。
+1. 使用者開啟頁面後自動進入 LINE 登入流程。
+2. 第一次登入成功後輸入技師號碼並確認，系統會寫入 GAS。
 3. 到「開團」建立團名、項目與價格。
 4. 其他使用者到「加入團」選擇別人開設中的團並送出。
 5. 團主到「我開的團」查看彙整與明細。
