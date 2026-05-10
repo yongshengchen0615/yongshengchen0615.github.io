@@ -84,3 +84,7 @@ LIFF 會在前端取得 `idToken`，GAS 會呼叫 LINE 官方 Verify ID token AP
 3. 到「開團」建立團名、項目與價格。
 4. 其他使用者到「加入團」選擇別人開設中的團並送出。
 5. 團主到「我開的團」查看彙整與明細。
+
+## 常見狀況
+
+- `IdToken expired.`：LINE 登入憑證過期。前端會在呼叫 GAS 前檢查 token 到期時間，若過期會自動重新登入 LINE。

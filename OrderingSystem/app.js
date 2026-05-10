@@ -132,9 +132,12 @@ async function initApp() {
       return;
     }
 
-    state.idToken = liff.getIDToken();
-    if (!state.idToken) {
+    if (!refreshLineIdToken()) {
       throw new Error("無法取得 LINE idToken，請確認 LIFF scopes 已啟用 openid");
+    }
+    if (isCurrentLineTokenExpired()) {
+      reauthenticateLine();
+      return;
     }
     setBootStatus("同步資料中", "讀取技師資料");
     await refreshDashboard({ silent: true });
@@ -198,6 +201,15 @@ async function apiRequest(action, payload = {}) {
     return demoApi(action, payload);
   }
 
+  if (!refreshLineIdToken()) {
+    reauthenticateLine();
+    throw new Error("LINE 登入憑證已失效，正在重新登入");
+  }
+  if (isCurrentLineTokenExpired()) {
+    reauthenticateLine();
+    throw new Error("LINE 登入已過期，正在重新登入");
+  }
+
   setLoading(true);
   try {
     const response = await fetch(CONFIG.GAS_WEB_APP_URL, {
@@ -214,12 +226,47 @@ async function apiRequest(action, payload = {}) {
 
     const data = await response.json();
     if (!data.ok) {
+      if (isLineTokenError(data.error)) {
+        reauthenticateLine();
+      }
       throw new Error(data.error || "API 執行失敗");
     }
     return data.data;
   } finally {
     setLoading(false);
   }
+}
+
+function refreshLineIdToken() {
+  if (!window.liff || !liff.isLoggedIn()) return false;
+  state.idToken = liff.getIDToken();
+  return Boolean(state.idToken);
+}
+
+function isCurrentLineTokenExpired() {
+  if (!window.liff || typeof liff.getDecodedIDToken !== "function") return false;
+  const decoded = liff.getDecodedIDToken();
+  if (!decoded || !decoded.exp) return false;
+  return decoded.exp * 1000 <= Date.now() + 60000;
+}
+
+function isLineTokenError(message) {
+  return /idtoken|id token|token|expired|invalid/i.test(String(message || ""));
+}
+
+function reauthenticateLine() {
+  if (!window.liff || !isAppConfigured()) return;
+  setBootStatus("LINE 登入已過期", "重新登入中");
+  try {
+    if (liff.isLoggedIn()) {
+      liff.logout();
+    }
+  } catch (error) {
+    // LIFF may already be clearing session state.
+  }
+  liff.login({
+    redirectUri: window.location.href.split("#")[0],
+  });
 }
 
 function renderAll() {
