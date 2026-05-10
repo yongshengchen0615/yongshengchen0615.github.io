@@ -1,558 +1,766 @@
-const GAS_CONFIG = {
-  // 填入既有 Google Sheets ID 可固定使用同一份資料表。
-  // 留空時會改讀 Script Properties 的 SPREADSHEET_ID；仍留空則自動建立。
-  SPREADSHEET_ID: "",
-};
-
 const SHEETS = {
   USERS: "Users",
+  SESSIONS: "Sessions",
   GROUPS: "Groups",
-  GROUP_ITEMS: "GroupItems",
-  JOIN_ORDERS: "JoinOrders",
+  ITEMS: "Items",
+  ORDERS: "Orders",
+  ORDER_ITEMS: "OrderItems",
 };
 
 const HEADERS = {
-  Users: ["lineUserId", "displayName", "pictureUrl", "technicianNumber", "createdAt", "updatedAt"],
-  Groups: [
-    "groupId",
-    "groupName",
-    "ownerLineUserId",
-    "ownerName",
-    "ownerTechnicianNumber",
-    "status",
-    "createdAt",
-    "updatedAt",
-  ],
-  GroupItems: ["itemId", "groupId", "name", "price", "active", "createdAt", "updatedAt"],
-  JoinOrders: [
-    "orderId",
-    "groupId",
-    "groupName",
-    "ownerLineUserId",
-    "lineUserId",
-    "displayName",
-    "technicianNumber",
-    "itemSummary",
-    "itemsJson",
-    "total",
-    "note",
-    "createdAt",
-  ],
+  Users: ["id", "displayName", "pictureUrl", "updatedAt"],
+  Sessions: ["token", "userId", "expiresAt", "createdAt"],
+  Groups: ["id", "name", "ownerUserId", "ownerName", "status", "createdAt", "updatedAt"],
+  Items: ["id", "groupId", "name", "price", "createdAt"],
+  Orders: ["id", "groupId", "userId", "userName", "total", "createdAt"],
+  OrderItems: ["id", "orderId", "itemId", "itemName", "price", "quantity", "subtotal"],
 };
 
-const TIMEZONE = "Asia/Taipei";
+const SESSION_DAYS = 14;
+const OAUTH_STATE_PREFIX = "line_state:";
 
-function doGet() {
-  return jsonOutput_({
+function setup() {
+  ensureSheets_();
+  return {
     ok: true,
-    data: {
-      service: "GroupSystem GAS",
-      timestamp: new Date().toISOString(),
-    },
-  });
+    spreadsheetId: getSpreadsheet_().getId(),
+  };
+}
+
+function doGet(e) {
+  const params = (e && e.parameter) || {};
+  const action = params.action || "ping";
+
+  if (action === "lineLogin") {
+    return lineLogin_(params);
+  }
+
+  if (action === "lineCallback") {
+    return lineCallback_(params);
+  }
+
+  try {
+    const data = routeApi_(action, params);
+    return respond_(true, data, params.callback);
+  } catch (error) {
+    return respond_(false, {}, params.callback, error.message);
+  }
 }
 
 function doPost(e) {
+  const params = (e && e.parameter) || {};
+  const body = parseBody_(e);
+  const action = body.action || params.action || "ping";
+
   try {
-    const body = parseBody_(e);
-    const action = body.action;
-    const payload = body.payload || {};
-    const profile = verifyLineIdToken_(body.idToken);
-    const context = createContext_(profile);
-    const data = handleAction_(action, payload, context);
-
-    return jsonOutput_({ ok: true, data });
+    const data = routeApi_(action, Object.assign({}, params, body));
+    return respond_(true, data, params.callback || body.callback);
   } catch (error) {
-    return jsonOutput_({
-      ok: false,
-      error: error.message || String(error),
-    });
+    return respond_(false, {}, params.callback || body.callback, error.message);
   }
 }
 
-function handleAction_(action, payload, context) {
+function routeApi_(action, params) {
   switch (action) {
-    case "bootstrap":
-      return bootstrapData_(context);
-    case "saveTechnicianNumber":
-      return saveTechnicianNumber_(payload, context);
-    case "createGroup":
-      requireTechnician_(context.user);
-      return createGroup_(payload, context);
-    case "updateGroup":
-      requireTechnician_(context.user);
-      return updateGroup_(payload, context);
-    case "setGroupStatus":
-      requireTechnician_(context.user);
-      return setGroupStatus_(payload, context);
-    case "joinGroup":
-      requireTechnician_(context.user);
-      return joinGroup_(payload, context);
-    default:
-      throw new Error("未知操作");
-  }
-}
-
-function bootstrapData_(context) {
-  const groups = listGroupsWithDetails_();
-  return {
-    user: context.user,
-    openGroups: groups.filter((group) => group.status === "open" && group.ownerLineUserId !== context.user.lineUserId),
-    myGroups: groups.filter((group) => group.ownerLineUserId === context.user.lineUserId),
-    myOrders: listUserJoinOrders_(context.user.lineUserId),
-  };
-}
-
-function saveTechnicianNumber_(payload, context) {
-  const technicianNumber = String(payload.technicianNumber || "").trim();
-  if (!technicianNumber) {
-    throw new Error("請輸入技師號碼");
-  }
-  if (technicianNumber.length > 30) {
-    throw new Error("技師號碼過長");
-  }
-
-  const user = Object.assign({}, context.user, {
-    technicianNumber,
-    updatedAt: new Date().toISOString(),
-  });
-  updateObjectByKey_(SHEETS.USERS, "lineUserId", user.lineUserId, user);
-  context.user = user;
-  syncOwnerProfile_(user);
-  return bootstrapData_(context);
-}
-
-function createGroup_(payload, context) {
-  const groupName = cleanRequired_(payload.groupName, "請輸入團名");
-  const items = sanitizeItems_(payload.items);
-  const now = new Date().toISOString();
-  const group = {
-    groupId: Utilities.getUuid(),
-    groupName,
-    ownerLineUserId: context.user.lineUserId,
-    ownerName: context.user.displayName,
-    ownerTechnicianNumber: context.user.technicianNumber,
-    status: "open",
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  appendObject_(SHEETS.GROUPS, group);
-  replaceGroupItems_(group.groupId, items);
-  return bootstrapData_(context);
-}
-
-function updateGroup_(payload, context) {
-  const group = requireOwnedGroup_(payload.groupId, context.user);
-  const groupName = cleanRequired_(payload.groupName, "請輸入團名");
-  const items = sanitizeItems_(payload.items);
-  const updated = Object.assign({}, group, {
-    groupName,
-    ownerName: context.user.displayName,
-    ownerTechnicianNumber: context.user.technicianNumber,
-    updatedAt: new Date().toISOString(),
-  });
-
-  updateObjectByKey_(SHEETS.GROUPS, "groupId", updated.groupId, updated);
-  replaceGroupItems_(updated.groupId, items);
-  return bootstrapData_(context);
-}
-
-function setGroupStatus_(payload, context) {
-  const group = requireOwnedGroup_(payload.groupId, context.user);
-  const status = payload.status === "closed" ? "closed" : "open";
-  const updated = Object.assign({}, group, {
-    status,
-    updatedAt: new Date().toISOString(),
-  });
-
-  updateObjectByKey_(SHEETS.GROUPS, "groupId", updated.groupId, updated);
-  return bootstrapData_(context);
-}
-
-function joinGroup_(payload, context) {
-  const group = getGroupById_(payload.groupId);
-  if (!group || group.status !== "open") {
-    throw new Error("這個團目前無法加入");
-  }
-  if (group.ownerLineUserId === context.user.lineUserId) {
-    throw new Error("不能加入自己開的團");
-  }
-
-  const requestedItems = Array.isArray(payload.items) ? payload.items : [];
-  if (!requestedItems.length) {
-    throw new Error("請選擇要加入的項目");
-  }
-
-  const activeItems = listActiveItems_(group.groupId);
-  const itemMap = {};
-  activeItems.forEach((item) => {
-    itemMap[item.itemId] = item;
-  });
-
-  const orderItems = requestedItems.map((requested) => {
-    const item = itemMap[requested.itemId];
-    const quantity = Number(requested.quantity || 0);
-    if (!item || quantity <= 0) {
-      throw new Error("加入項目不正確");
-    }
-    return {
-      itemId: item.itemId,
-      name: item.name,
-      price: Number(item.price),
-      quantity,
-    };
-  });
-
-  const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const order = {
-    orderId: Utilities.getUuid(),
-    groupId: group.groupId,
-    groupName: group.groupName,
-    ownerLineUserId: group.ownerLineUserId,
-    lineUserId: context.user.lineUserId,
-    displayName: context.user.displayName,
-    technicianNumber: context.user.technicianNumber,
-    itemSummary: orderItems.map((item) => `${item.name} x${item.quantity}`).join("、"),
-    itemsJson: JSON.stringify(orderItems),
-    total,
-    note: String(payload.note || "").trim(),
-    createdAt: new Date().toISOString(),
-  };
-
-  appendObject_(SHEETS.JOIN_ORDERS, order);
-  return bootstrapData_(context);
-}
-
-function createContext_(profile) {
-  const user = upsertUserFromProfile_(profile);
-  return {
-    profile,
-    user,
-  };
-}
-
-function upsertUserFromProfile_(profile) {
-  const now = new Date().toISOString();
-  const existing = getUserByLineId_(profile.lineUserId);
-  const user = existing
-    ? Object.assign({}, existing, {
-        displayName: profile.displayName,
-        pictureUrl: profile.pictureUrl,
-        updatedAt: now,
-      })
-    : {
-        lineUserId: profile.lineUserId,
-        displayName: profile.displayName,
-        pictureUrl: profile.pictureUrl,
-        technicianNumber: "",
-        createdAt: now,
-        updatedAt: now,
+    case "ping":
+      return {
+        app: "OrderingSystem",
+        time: new Date().toISOString(),
       };
-
-  if (existing) {
-    updateObjectByKey_(SHEETS.USERS, "lineUserId", user.lineUserId, user);
-  } else {
-    appendObject_(SHEETS.USERS, user);
+    case "me":
+      return {
+        user: requireUser_(params.session),
+      };
+    case "groups":
+      ensureSheets_();
+      return {
+        groups: listGroups_(),
+      };
+    case "createGroup": {
+      const user = requireUser_(params.session);
+      return createGroup_(parsePayload_(params.payload), user);
+    }
+    case "joinGroup": {
+      const user = requireUser_(params.session);
+      return joinGroup_(parsePayload_(params.payload), user);
+    }
+    default:
+      throw new Error("Unknown action: " + action);
   }
-
-  return user;
 }
 
-function syncOwnerProfile_(user) {
-  const groups = readObjects_(SHEETS.GROUPS).filter((group) => group.ownerLineUserId === user.lineUserId);
-  groups.forEach((group) => {
-    updateObjectByKey_(SHEETS.GROUPS, "groupId", group.groupId, Object.assign({}, group, {
-      ownerName: user.displayName,
-      ownerTechnicianNumber: user.technicianNumber,
-      updatedAt: new Date().toISOString(),
-    }));
-  });
-}
+function lineLogin_(params) {
+  const channelId = prop_("LINE_CHANNEL_ID");
+  const frontend = frontendFromRequest_(params.frontend);
+  const state = randomToken_();
+  const nonce = randomToken_();
+  const callbackUrl = webAppUrl_() + "?action=lineCallback";
 
-function verifyLineIdToken_(idToken) {
-  if (!idToken) {
-    throw new Error("缺少 LINE 登入憑證");
-  }
+  CacheService.getScriptCache().put(
+    OAUTH_STATE_PREFIX + state,
+    JSON.stringify({
+      nonce: nonce,
+      frontend: frontend,
+    }),
+    600
+  );
 
-  const channelId = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_ID");
-  if (!channelId) {
-    throw new Error("GAS 尚未設定 LINE_CHANNEL_ID");
-  }
-
-  const response = UrlFetchApp.fetch("https://api.line.me/oauth2/v2.1/verify", {
-    method: "post",
-    muteHttpExceptions: true,
-    payload: {
-      id_token: idToken,
+  const authUrl =
+    "https://access.line.me/oauth2/v2.1/authorize?" +
+    queryString_({
+      response_type: "code",
       client_id: channelId,
-    },
-  });
+      redirect_uri: callbackUrl,
+      state: state,
+      scope: "profile openid",
+      nonce: nonce,
+    });
 
-  const statusCode = response.getResponseCode();
-  const data = JSON.parse(response.getContentText() || "{}");
-  if (statusCode < 200 || statusCode >= 300 || !data.sub) {
-    throw new Error(data.error_description || "LINE 登入驗證失敗");
+  return redirectHtml_(authUrl);
+}
+
+function lineCallback_(params) {
+  const fallbackFrontend = prop_("FRONTEND_URL", webAppUrl_());
+
+  try {
+    if (params.error) {
+      throw new Error(params.error_description || params.error);
+    }
+
+    const state = params.state || "";
+    const cached = CacheService.getScriptCache().get(OAUTH_STATE_PREFIX + state);
+    if (!cached) {
+      throw new Error("LINE 登入狀態已逾時，請重新登入。");
+    }
+
+    const stateData = JSON.parse(cached);
+    const callbackUrl = webAppUrl_() + "?action=lineCallback";
+    const channelId = prop_("LINE_CHANNEL_ID");
+    const channelSecret = prop_("LINE_CHANNEL_SECRET");
+
+    const token = fetchJson_("https://api.line.me/oauth2/v2.1/token", {
+      method: "post",
+      payload: {
+        grant_type: "authorization_code",
+        code: params.code,
+        redirect_uri: callbackUrl,
+        client_id: channelId,
+        client_secret: channelSecret,
+      },
+    });
+
+    if (!token.id_token) {
+      throw new Error("LINE 未回傳 ID token。");
+    }
+
+    const verified = fetchJson_("https://api.line.me/oauth2/v2.1/verify", {
+      method: "post",
+      payload: {
+        id_token: token.id_token,
+        client_id: channelId,
+      },
+    });
+
+    if (stateData.nonce && verified.nonce !== stateData.nonce) {
+      throw new Error("LINE nonce 驗證失敗。");
+    }
+
+    const profile = buildLineProfile_(verified, token.access_token);
+    upsertUser_(profile);
+    const session = createSession_(profile.id);
+
+    return redirectHtml_(appendQuery_(stateData.frontend, { session: session }));
+  } catch (error) {
+    return redirectHtml_(
+      appendQuery_(fallbackFrontend, {
+        login_error: error.message || "LINE 登入失敗。",
+      })
+    );
+  }
+}
+
+function buildLineProfile_(verified, accessToken) {
+  let profile = {};
+
+  if ((!verified.name || !verified.picture) && accessToken) {
+    try {
+      profile = fetchJson_("https://api.line.me/v2/profile", {
+        method: "get",
+        headers: {
+          Authorization: "Bearer " + accessToken,
+        },
+      });
+    } catch (error) {
+      profile = {};
+    }
+  }
+
+  const id = verified.sub || profile.userId;
+  if (!id) {
+    throw new Error("LINE 使用者資料不完整。");
   }
 
   return {
-    lineUserId: data.sub,
-    displayName: data.name || "LINE 使用者",
-    pictureUrl: data.picture || "",
+    id: id,
+    displayName: verified.name || profile.displayName || "LINE 使用者",
+    pictureUrl: verified.picture || profile.pictureUrl || "",
   };
 }
 
-function requireTechnician_(user) {
-  if (!user || !user.technicianNumber) {
-    throw new Error("第一次登入請先輸入技師號碼");
-  }
-}
+function createGroup_(payload, user) {
+  const name = cleanText_(payload.name, 40);
+  const items = normalizeIncomingItems_(payload.items);
 
-function requireOwnedGroup_(groupId, user) {
-  const group = getGroupById_(groupId);
-  if (!group || group.ownerLineUserId !== user.lineUserId) {
-    throw new Error("找不到可操作的開團");
-  }
-  return group;
-}
-
-function cleanRequired_(value, message) {
-  const text = String(value || "").trim();
-  if (!text) {
-    throw new Error(message);
-  }
-  return text;
-}
-
-function sanitizeItems_(items) {
-  const sanitized = (Array.isArray(items) ? items : [])
-    .map((item) => ({
-      itemId: item.itemId || Utilities.getUuid(),
-      name: String(item.name || "").trim(),
-      price: Number(item.price || 0),
-    }))
-    .filter((item) => item.name);
-
-  if (!sanitized.length) {
-    throw new Error("請新增至少一個項目");
+  if (!name) {
+    throw new Error("請輸入開團名稱。");
   }
 
-  sanitized.forEach((item) => {
-    if (Number.isNaN(item.price) || item.price < 0) {
-      throw new Error("項目價格不正確");
-    }
-  });
+  if (!items.length) {
+    throw new Error("至少需要一個品項。");
+  }
 
-  return sanitized;
-}
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
 
-function replaceGroupItems_(groupId, items) {
-  const now = new Date().toISOString();
-  listItemsByGroup_(groupId).forEach((item) => {
-    updateObjectByRowNumber_(SHEETS.GROUP_ITEMS, item._rowNumber, Object.assign({}, item, {
-      active: false,
-      updatedAt: now,
-    }));
-  });
-
-  items.forEach((item) => {
-    appendObject_(SHEETS.GROUP_ITEMS, {
-      itemId: Utilities.getUuid(),
-      groupId,
-      name: item.name,
-      price: item.price,
-      active: true,
+  try {
+    ensureSheets_();
+    const now = new Date().toISOString();
+    const group = {
+      id: "grp_" + randomToken_(),
+      name: name,
+      ownerUserId: user.id,
+      ownerName: user.displayName,
+      status: "open",
       createdAt: now,
       updatedAt: now,
+    };
+
+    appendObject_(SHEETS.GROUPS, group);
+
+    items.forEach(function (item) {
+      appendObject_(SHEETS.ITEMS, {
+        id: "item_" + randomToken_(),
+        groupId: group.id,
+        name: item.name,
+        price: item.price,
+        createdAt: now,
+      });
     });
-  });
+
+    return {
+      group: group,
+      groups: listGroups_(),
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
-function listGroupsWithDetails_() {
+function joinGroup_(payload, user) {
+  const groupId = cleanText_(payload.groupId, 80);
+  const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+
+  if (!groupId) {
+    throw new Error("缺少開團 ID。");
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_();
+    const groups = readObjects_(SHEETS.GROUPS);
+    const group = groups.find(function (entry) {
+      return entry.id === groupId && entry.status !== "closed";
+    });
+
+    if (!group) {
+      throw new Error("找不到可加入的開團。");
+    }
+
+    const itemMap = {};
+    readObjects_(SHEETS.ITEMS)
+      .filter(function (item) {
+        return item.groupId === groupId;
+      })
+      .forEach(function (item) {
+        itemMap[item.id] = item;
+      });
+
+    const quantities = {};
+    requestedItems.forEach(function (entry) {
+      const itemId = cleanText_(entry.itemId, 80);
+      const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
+      if (itemId && quantity > 0) {
+        quantities[itemId] = (quantities[itemId] || 0) + quantity;
+      }
+    });
+
+    const selectedItems = Object.keys(quantities)
+      .map(function (itemId) {
+        const item = itemMap[itemId];
+        if (!item) {
+          return null;
+        }
+        const quantity = quantities[itemId];
+        const price = Number(item.price) || 0;
+        return {
+          itemId: item.id,
+          itemName: item.name,
+          price: price,
+          quantity: quantity,
+          subtotal: price * quantity,
+        };
+      })
+      .filter(Boolean);
+
+    if (!selectedItems.length) {
+      throw new Error("請選擇至少一個品項。");
+    }
+
+    const now = new Date().toISOString();
+    const orderId = "ord_" + randomToken_();
+    const total = selectedItems.reduce(function (sum, item) {
+      return sum + item.subtotal;
+    }, 0);
+
+    appendObject_(SHEETS.ORDERS, {
+      id: orderId,
+      groupId: groupId,
+      userId: user.id,
+      userName: user.displayName,
+      total: total,
+      createdAt: now,
+    });
+
+    selectedItems.forEach(function (item) {
+      appendObject_(SHEETS.ORDER_ITEMS, {
+        id: "oi_" + randomToken_(),
+        orderId: orderId,
+        itemId: item.itemId,
+        itemName: item.itemName,
+        price: item.price,
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+      });
+    });
+
+    return {
+      orderId: orderId,
+      groups: listGroups_(),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function listGroups_() {
   const groups = readObjects_(SHEETS.GROUPS);
-  const items = readObjects_(SHEETS.GROUP_ITEMS);
-  const orders = readObjects_(SHEETS.JOIN_ORDERS).map(normalizeOrder_);
+  const items = readObjects_(SHEETS.ITEMS);
+  const orders = readObjects_(SHEETS.ORDERS);
+  const orderItems = readObjects_(SHEETS.ORDER_ITEMS);
+
+  const itemsByGroup = groupBy_(items, "groupId");
+  const ordersByGroup = groupBy_(orders, "groupId");
+  const orderItemsByOrder = groupBy_(orderItems, "orderId");
 
   return groups
-    .map((group) => {
-      const groupOrders = orders.filter((order) => order.groupId === group.groupId);
-      return stripPrivate_(Object.assign({}, group, {
-        items: items.filter((item) => item.groupId === group.groupId && item.active === true).map(stripPrivate_),
-        orders: groupOrders.map(stripPrivate_),
-        orderCount: groupOrders.length,
-      }));
+    .filter(function (group) {
+      return group.id;
     })
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    .map(function (group) {
+      const groupOrders = (ordersByGroup[group.id] || [])
+        .map(function (order) {
+          const attachedItems = (orderItemsByOrder[order.id] || []).map(function (item) {
+            return {
+              itemId: item.itemId,
+              name: item.itemName,
+              price: Number(item.price) || 0,
+              quantity: Number(item.quantity) || 0,
+              subtotal: Number(item.subtotal) || 0,
+            };
+          });
+
+          return {
+            id: order.id,
+            userId: order.userId,
+            userName: order.userName,
+            total: Number(order.total) || 0,
+            createdAt: order.createdAt,
+            items: attachedItems,
+          };
+        })
+        .sort(function (a, b) {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+      const participants = {};
+      groupOrders.forEach(function (order) {
+        participants[order.userId] = true;
+      });
+
+      return {
+        id: group.id,
+        name: group.name,
+        ownerUserId: group.ownerUserId,
+        ownerName: group.ownerName,
+        status: group.status || "open",
+        createdAt: group.createdAt,
+        updatedAt: group.updatedAt,
+        items: (itemsByGroup[group.id] || []).map(function (item) {
+          return {
+            id: item.id,
+            name: item.name,
+            price: Number(item.price) || 0,
+          };
+        }),
+        orders: groupOrders,
+        stats: {
+          participants: Object.keys(participants).length,
+          orders: groupOrders.length,
+          total: groupOrders.reduce(function (sum, order) {
+            return sum + order.total;
+          }, 0),
+        },
+      };
+    })
+    .sort(function (a, b) {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 }
 
-function listUserJoinOrders_(lineUserId) {
-  return readObjects_(SHEETS.JOIN_ORDERS)
-    .filter((order) => order.lineUserId === lineUserId)
-    .map(normalizeOrder_)
-    .map(stripPrivate_)
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-}
-
-function getUserByLineId_(lineUserId) {
-  return readObjects_(SHEETS.USERS).find((user) => user.lineUserId === lineUserId) || null;
-}
-
-function getGroupById_(groupId) {
-  return readObjects_(SHEETS.GROUPS).find((group) => group.groupId === groupId) || null;
-}
-
-function listItemsByGroup_(groupId) {
-  return readObjects_(SHEETS.GROUP_ITEMS).filter((item) => item.groupId === groupId);
-}
-
-function listActiveItems_(groupId) {
-  return listItemsByGroup_(groupId).filter((item) => item.active === true);
-}
-
-function normalizeOrder_(order) {
-  let items = [];
-  try {
-    items = JSON.parse(order.itemsJson || "[]");
-  } catch (error) {
-    items = [];
+function requireUser_(sessionToken) {
+  const token = cleanText_(sessionToken, 160);
+  if (!token) {
+    throw new Error("請先登入。");
   }
-  return Object.assign({}, order, {
-    items,
-    total: Number(order.total || 0),
+
+  ensureSheets_();
+  const session = readObjects_(SHEETS.SESSIONS).find(function (entry) {
+    return entry.token === token;
+  });
+
+  if (!session) {
+    throw new Error("登入已失效，請重新登入。");
+  }
+
+  if (new Date(session.expiresAt).getTime() < Date.now()) {
+    throw new Error("登入已過期，請重新登入。");
+  }
+
+  const user = readObjects_(SHEETS.USERS).find(function (entry) {
+    return entry.id === session.userId;
+  });
+
+  if (!user) {
+    throw new Error("找不到使用者資料。");
+  }
+
+  return {
+    id: user.id,
+    displayName: user.displayName || "LINE 使用者",
+    pictureUrl: user.pictureUrl || "",
+  };
+}
+
+function upsertUser_(profile) {
+  ensureSheets_();
+  upsertObject_(SHEETS.USERS, "id", {
+    id: profile.id,
+    displayName: profile.displayName,
+    pictureUrl: profile.pictureUrl,
+    updatedAt: new Date().toISOString(),
   });
 }
 
-function stripPrivate_(object) {
-  const copy = Object.assign({}, object);
-  delete copy._rowNumber;
-  return copy;
+function createSession_(userId) {
+  ensureSheets_();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  const token = "sess_" + randomToken_() + randomToken_();
+
+  appendObject_(SHEETS.SESSIONS, {
+    token: token,
+    userId: userId,
+    expiresAt: expiresAt.toISOString(),
+    createdAt: now.toISOString(),
+  });
+
+  return token;
+}
+
+function ensureSheets_() {
+  const ss = getSpreadsheet_();
+  Object.keys(HEADERS).forEach(function (sheetName) {
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    const headers = HEADERS[sheetName];
+    if (sheet.getLastRow() === 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      return;
+    }
+
+    const currentHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+    const mismatch = headers.some(function (header, index) {
+      return currentHeaders[index] !== header;
+    });
+
+    if (mismatch) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
+  });
+}
+
+function getSpreadsheet_() {
+  const props = PropertiesService.getScriptProperties();
+  let spreadsheetId = props.getProperty("SPREADSHEET_ID");
+
+  if (!spreadsheetId) {
+    const spreadsheet = SpreadsheetApp.create("OrderingSystem Data");
+    spreadsheetId = spreadsheet.getId();
+    props.setProperty("SPREADSHEET_ID", spreadsheetId);
+  }
+
+  return SpreadsheetApp.openById(spreadsheetId);
+}
+
+function getSheet_(sheetName) {
+  ensureSheets_();
+  return getSpreadsheet_().getSheetByName(sheetName);
+}
+
+function readObjects_(sheetName) {
+  const sheet = getSheetNoEnsure_(sheetName);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) {
+    return [];
+  }
+
+  const headers = values[0];
+  return values
+    .slice(1)
+    .filter(function (row) {
+      return row.some(function (cell) {
+        return cell !== "";
+      });
+    })
+    .map(function (row) {
+      return headers.reduce(function (object, header, index) {
+        object[header] = normalizeCell_(row[index]);
+        return object;
+      }, {});
+    });
+}
+
+function appendObject_(sheetName, object) {
+  const sheet = getSheetNoEnsure_(sheetName);
+  const headers = HEADERS[sheetName];
+  sheet.appendRow(
+    headers.map(function (header) {
+      return object[header] !== undefined ? object[header] : "";
+    })
+  );
+}
+
+function upsertObject_(sheetName, key, object) {
+  const sheet = getSheetNoEnsure_(sheetName);
+  const headers = HEADERS[sheetName];
+  const values = sheet.getDataRange().getValues();
+  const keyIndex = headers.indexOf(key);
+  const row = headers.map(function (header) {
+    return object[header] !== undefined ? object[header] : "";
+  });
+
+  for (let index = 1; index < values.length; index += 1) {
+    if (String(values[index][keyIndex]) === String(object[key])) {
+      sheet.getRange(index + 1, 1, 1, headers.length).setValues([row]);
+      return;
+    }
+  }
+
+  sheet.appendRow(row);
+}
+
+function getSheetNoEnsure_(sheetName) {
+  const sheet = getSpreadsheet_().getSheetByName(sheetName);
+  if (!sheet) {
+    throw new Error("Missing sheet: " + sheetName);
+  }
+  return sheet;
 }
 
 function parseBody_(e) {
   if (!e || !e.postData || !e.postData.contents) {
-    throw new Error("缺少請求內容");
-  }
-  return JSON.parse(e.postData.contents);
-}
-
-function jsonOutput_(payload) {
-  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function getSpreadsheet_() {
-  const properties = PropertiesService.getScriptProperties();
-  let spreadsheetId = String(GAS_CONFIG.SPREADSHEET_ID || "").trim() || properties.getProperty("SPREADSHEET_ID");
-  let spreadsheet;
-
-  if (spreadsheetId) {
-    spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-  } else {
-    spreadsheet = SpreadsheetApp.create("GroupSystem Database");
-    spreadsheetId = spreadsheet.getId();
-    properties.setProperty("SPREADSHEET_ID", spreadsheetId);
+    return {};
   }
 
-  Object.keys(SHEETS).forEach((key) => {
-    const name = SHEETS[key];
-    ensureSheet_(spreadsheet, name, HEADERS[name]);
-  });
-
-  return spreadsheet;
+  try {
+    return JSON.parse(e.postData.contents);
+  } catch (error) {
+    return {};
+  }
 }
 
-function ensureSheet_(spreadsheet, name, headers) {
-  let sheet = spreadsheet.getSheetByName(name);
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(name);
+function parsePayload_(payload) {
+  if (!payload) {
+    return {};
   }
 
-  if (sheet.getLastRow() === 0) {
-    applyTextFormat_(sheet, headers.length);
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.setFrozenRows(1);
-    return;
+  if (typeof payload === "object") {
+    return payload;
   }
 
-  applyTextFormat_(sheet, headers.length);
-  const lastColumn = Math.max(sheet.getLastColumn(), headers.length);
-  const current = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].filter(Boolean);
-  const missing = headers.filter((header) => current.indexOf(header) === -1);
-  if (missing.length) {
-    sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
+  try {
+    return JSON.parse(payload);
+  } catch (error) {
+    throw new Error("payload 格式錯誤。");
   }
-  sheet.setFrozenRows(1);
 }
 
-function applyTextFormat_(sheet, columnCount) {
-  sheet.getRange(1, 1, sheet.getMaxRows(), columnCount).setNumberFormat("@");
-}
+function normalizeIncomingItems_(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
 
-function getSheet_(name) {
-  return getSpreadsheet_().getSheetByName(name);
-}
-
-function readObjects_(name) {
-  const sheet = getSheet_(name);
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-  if (lastRow <= 1 || lastColumn === 0) return [];
-
-  const values = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
-  const headers = values.shift();
-  return values
-    .filter((row) => row.some((cell) => cell !== ""))
-    .map((row, index) => {
-      const object = { _rowNumber: index + 2 };
-      headers.forEach((header, columnIndex) => {
-        if (!header) return;
-        object[header] = normalizeCellValue_(row[columnIndex]);
-      });
-      return object;
+  return items
+    .map(function (item) {
+      return {
+        name: cleanText_(item.name, 32),
+        price: Number(item.price),
+      };
+    })
+    .filter(function (item) {
+      return item.name && Number.isFinite(item.price) && item.price >= 0;
     });
 }
 
-function appendObject_(name, object) {
-  const sheet = getSheet_(name);
-  const headers = getHeaders_(sheet);
-  sheet.appendRow(headers.map((header) => valueOrBlank_(object[header])));
+function cleanText_(value, maxLength) {
+  return String(value || "")
+    .trim()
+    .slice(0, maxLength);
 }
 
-function updateObjectByKey_(name, key, value, object) {
-  const sheet = getSheet_(name);
-  const rows = readObjects_(name);
-  const row = rows.find((candidate) => candidate[key] === value);
-  if (!row) {
-    throw new Error(`找不到資料列：${key}`);
-  }
-
-  const headers = getHeaders_(sheet);
-  const values = headers.map((header) => valueOrBlank_(object[header]));
-  sheet.getRange(row._rowNumber, 1, 1, headers.length).setValues([values]);
-}
-
-function updateObjectByRowNumber_(name, rowNumber, object) {
-  const sheet = getSheet_(name);
-  const headers = getHeaders_(sheet);
-  const values = headers.map((header) => valueOrBlank_(object[header]));
-  sheet.getRange(rowNumber, 1, 1, headers.length).setValues([values]);
-}
-
-function getHeaders_(sheet) {
-  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].filter(Boolean);
-}
-
-function valueOrBlank_(value) {
-  return value === null || value === undefined ? "" : value;
-}
-
-function normalizeCellValue_(value) {
-  if (value instanceof Date) {
-    return Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
-  }
-  if (typeof value === "string") {
-    const upper = value.toUpperCase();
-    if (upper === "TRUE") return true;
-    if (upper === "FALSE") return false;
+function normalizeCell_(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]") {
+    return value.toISOString();
   }
   return value;
+}
+
+function groupBy_(items, key) {
+  return items.reduce(function (map, item) {
+    const value = item[key];
+    if (!map[value]) {
+      map[value] = [];
+    }
+    map[value].push(item);
+    return map;
+  }, {});
+}
+
+function respond_(ok, data, callback, message) {
+  const body = JSON.stringify({
+    ok: ok,
+    data: data || {},
+    message: message || "",
+  });
+
+  const safeCallback = safeCallback_(callback);
+  if (safeCallback) {
+    return ContentService.createTextOutput(safeCallback + "(" + body + ");").setMimeType(
+      ContentService.MimeType.JAVASCRIPT
+    );
+  }
+
+  return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeCallback_(callback) {
+  const value = String(callback || "");
+  return /^[A-Za-z_$][0-9A-Za-z_$]*(\.[A-Za-z_$][0-9A-Za-z_$]*)*$/.test(value) ? value : "";
+}
+
+function prop_(name, fallback) {
+  const value = PropertiesService.getScriptProperties().getProperty(name);
+  if (value) {
+    return value;
+  }
+
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  throw new Error("Missing Script Property: " + name);
+}
+
+function frontendFromRequest_(frontend) {
+  const configured = prop_("FRONTEND_URL", "");
+  const requested = cleanText_(frontend, 500);
+
+  if (configured) {
+    return requested && requested.indexOf(configured) === 0 ? requested : configured;
+  }
+
+  if (!requested) {
+    throw new Error("Missing FRONTEND_URL Script Property.");
+  }
+
+  return requested;
+}
+
+function webAppUrl_() {
+  return ScriptApp.getService().getUrl();
+}
+
+function fetchJson_(url, options) {
+  const requestOptions = Object.assign(
+    {
+      muteHttpExceptions: true,
+    },
+    options || {}
+  );
+  const response = UrlFetchApp.fetch(url, requestOptions);
+  const text = response.getContentText();
+  let data = {};
+
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    data = {};
+  }
+
+  if (response.getResponseCode() >= 400) {
+    throw new Error(data.error_description || data.message || text || "HTTP " + response.getResponseCode());
+  }
+
+  return data;
+}
+
+function redirectHtml_(url) {
+  const safeUrl = JSON.stringify(url);
+  return HtmlService.createHtmlOutput(
+    '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirect</title></head><body><script>location.replace(' +
+      safeUrl +
+      ");</script></body></html>"
+  );
+}
+
+function queryString_(params) {
+  return Object.keys(params)
+    .map(function (key) {
+      return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
+    })
+    .join("&");
+}
+
+function appendQuery_(url, params) {
+  const query = queryString_(params);
+  return url + (url.indexOf("?") === -1 ? "?" : "&") + query;
+}
+
+function randomToken_() {
+  return Utilities.getUuid().replace(/-/g, "");
 }

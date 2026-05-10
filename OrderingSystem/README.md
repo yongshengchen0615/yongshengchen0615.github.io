@@ -1,90 +1,72 @@
-# 開團系統
+# 團購系統
 
-純前端 `HTML / CSS / JS` 搭配 Google Apps Script 後端。前端使用 LINE LIFF 登入，後端用 LINE `idToken` 驗證身分，資料存進 Google Sheets。
-
-## 功能
-
-- LINE 登入：所有使用者都需登入，正式環境會自動導向 LINE 登入，不顯示登入按鈕。
-- 首次登入：登入成功後會顯示全螢幕技師號碼設定畫面，確認寫入 GAS 後才會進入系統。
-- 開團：使用者可建立團名，新增多個項目與價格。
-- 加入團：使用者可加入別人開設中的團，選擇項目與數量後送出。
-- 團主視圖：開團者可查看自己開的團、各項目彙整與加入明細。
-- 加入紀錄：使用者可查看自己加入過的團。
+使用 HTML、CSS、JavaScript 製作的團購前端，後端使用 Google Apps Script。使用者可透過 LINE Login 登入、開團、設定品項與金額，也可以加入別人的團並選擇品項與數量。
 
 ## 檔案
 
-- `index.html`：頁面結構
-- `styles.css`：介面樣式
-- `config.json`：前端連線設定
-- `app.js`：前端互動與 GAS API 串接
-- `gas/Code.gs`：Google Apps Script 後端
+- `index.html`：前端畫面與模板
+- `styles.css`：響應式介面樣式
+- `app.js`：登入狀態、開團、加入團、GAS JSONP API
+- `config.json`：前端設定
+- `gas/Code.gs`：Apps Script 後端、LINE OAuth callback、Google Sheets 資料儲存
 
 ## 前端設定
 
-打開 `config.json`，填入：
+先部署 GAS Web App，再把部署 URL 填入 `config.json`：
 
 ```json
 {
-  "LIFF_ID": "你的 LIFF ID",
-  "GAS_WEB_APP_URL": "你的 GAS Web App /exec URL",
-  "links": {
-    "lineDevelopers": "https://developers.line.biz/console/",
-    "gasDashboard": "https://script.google.com/home"
-  }
+  "gasWebAppUrl": "https://script.google.com/macros/s/你的部署ID/exec",
+  "demoMode": false
 }
 ```
 
-尚未填入或讀不到 `config.json` 時會進入 Demo 模式，方便先看畫面與流程。正式測試時請用 GitHub Pages、GAS Web App 或本機 HTTP 伺服器開啟，瀏覽器直接用 `file://` 開 HTML 可能會擋掉 JSON 讀取。
+`gasWebAppUrl` 留空時，前端會使用瀏覽器 `localStorage` 的測試資料，方便直接開發 UI。
 
-## GAS 部署
+## GAS 設定
 
-1. 到 Google Drive 建立新的 Apps Script 專案。
-2. 將 `gas/Code.gs` 的內容貼到 Apps Script 編輯器。
-3. 如果要固定使用既有 Google Sheets，打開 `gas/Code.gs`，在最上方填入：
+1. 到 Apps Script 建立專案。
+2. 將 `gas/Code.gs` 內容貼到 Apps Script。
+3. 在 Apps Script 專案設定新增 Script Properties：
 
-```js
-const GAS_CONFIG = {
-  SPREADSHEET_ID: "你的 Google Sheets ID",
-};
+```text
+LINE_CHANNEL_ID=你的 LINE Login Channel ID
+LINE_CHANNEL_SECRET=你的 LINE Login Channel Secret
+FRONTEND_URL=https://你的 GitHub Pages 網址/OrderingSystem/
+SPREADSHEET_ID=可選，留空會自動建立試算表
 ```
 
-4. 到「專案設定」加入 Script Properties：
-   - `LINE_CHANNEL_ID`：LINE Login Channel ID
-   - `SPREADSHEET_ID`：可留空。若 `GAS_CONFIG.SPREADSHEET_ID` 也留空，第一次執行時會自動建立資料表。
+4. 在 Apps Script 編輯器執行一次 `setup()`，授權建立/讀寫試算表。
 5. 部署為 Web App：
    - Execute as：Me
    - Who has access：Anyone
-6. 複製部署後的 `/exec` URL，貼回 `config.json` 的 `GAS_WEB_APP_URL`。
+6. 複製 Web App URL 到 `config.json`。
 
-GAS 會自動建立這些工作表：
+## LINE Developers 設定
+
+在 LINE Login Channel 裡設定 Callback URL：
+
+```text
+https://script.google.com/macros/s/你的部署ID/exec?action=lineCallback
+```
+
+Scopes 使用：
+
+```text
+profile openid
+```
+
+Channel Secret 只放在 GAS Script Properties，不要放到前端。
+
+## 資料表
+
+GAS 會建立或使用指定的 Google Sheets，包含：
 
 - `Users`
+- `Sessions`
 - `Groups`
-- `GroupItems`
-- `JoinOrders`
+- `Items`
+- `Orders`
+- `OrderItems`
 
-## LINE LIFF 設定
-
-1. 到 LINE Developers 建立 LINE Login Channel。
-2. 建立 LIFF App，Endpoint URL 填前端頁面的公開網址，Scopes 至少啟用 `profile` 與 `openid`。
-3. 將 LIFF ID 貼回 `config.json` 的 `LIFF_ID`。
-4. 將 Channel ID 填到 GAS Script Properties 的 `LINE_CHANNEL_ID`。
-
-LIFF 會在前端取得 `idToken`，GAS 會呼叫 LINE 官方 Verify ID token API 驗證後才執行操作。
-
-官方文件：
-
-- LIFF `getIDToken`：https://developers.line.biz/en/reference/liff/#get-id-token
-- Verify ID token：https://developers.line.biz/en/reference/line-login/#verify-id-token
-
-## 使用流程
-
-1. 使用者開啟頁面後自動進入 LINE 登入流程。
-2. 第一次登入成功後會停在全螢幕技師號碼畫面，輸入並確認後系統會寫入 GAS。
-3. 到「開團」建立團名、項目與價格。
-4. 其他使用者到「加入團」選擇別人開設中的團並送出。
-5. 團主到「我開的團」查看彙整與明細。
-
-## 常見狀況
-
-- `IdToken expired.`：LINE 登入憑證過期。前端會在呼叫 GAS 前檢查 token 到期時間，若過期會自動重新登入 LINE。
+前端從 GitHub Pages 呼叫 GAS 時使用 JSONP，避免一般瀏覽器跨網域讀取 Apps Script response 的限制。

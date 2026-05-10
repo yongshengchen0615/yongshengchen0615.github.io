@@ -1,8 +1,4 @@
 {
-  "LIFF_ID": "2010027984-zB5jdvlL",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/AKfycbw8Zp1Rh_a--bBfTBDqhTJbvMX8uyDG5fS7bWMnCJSWNWdjZfflSWwmmurAhaYGDMNS/exec",
-  "links": {
-    "lineDevelopers": "https://developers.line.biz/console/",
-    "gasDashboard": "https://script.google.com/home"
-  }
+  "gasWebAppUrl": "https://script.google.com/macros/s/AKfycbw8Zp1Rh_a--bBfTBDqhTJbvMX8uyDG5fS7bWMnCJSWNWdjZfflSWwmmurAhaYGDMNS/exec",
+  "demoMode": false
 }

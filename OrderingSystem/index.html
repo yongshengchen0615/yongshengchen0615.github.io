@@ -3,231 +3,209 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>開團系統</title>
-    <link rel="preconnect" href="https://static.line-scdn.net" crossorigin />
-    <link rel="preconnect" href="https://unpkg.com" crossorigin />
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" defer></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <title>團購系統</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <section class="setup-gate hidden" id="technicianNotice">
-      <div class="setup-panel">
-        <div class="setup-icon">
-          <i data-lucide="badge-check"></i>
-        </div>
-        <div class="setup-copy">
-          <p class="eyebrow">首次設定</p>
-          <h3>輸入技師號碼</h3>
-          <p class="muted">技師號碼會寫入 GAS，確認後才能進入開團系統。</p>
-        </div>
-        <form class="setup-form" id="technicianForm">
-          <div class="form-row">
-            <label for="technicianNumber">技師號碼</label>
-            <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
-          </div>
-          <button class="primary-button" type="submit">
-            <i data-lucide="save"></i>
-            <span>確認</span>
-          </button>
-        </form>
-        <p class="setup-error hidden" id="setupErrorText"></p>
-      </div>
-    </section>
-
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand-block">
-          <div class="brand-mark">團</div>
-          <div>
-            <p class="eyebrow">Group System</p>
-            <h1>開團系統</h1>
-          </div>
-        </div>
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="團購系統首頁">
+          <span class="brand-mark">團</span>
+          <span>
+            <strong>團購系統</strong>
+            <small>LINE member orders</small>
+          </span>
+        </a>
 
-        <div class="profile-panel" id="profilePanel">
-          <div class="avatar-placeholder"></div>
-          <div>
-            <p class="muted">準備登入</p>
-            <strong>LINE 帳號</strong>
-          </div>
+        <div class="session-area" id="sessionArea">
+          <span class="config-pill" id="configStatus">Demo</span>
+          <button class="line-button" id="loginButton" type="button">
+            <span aria-hidden="true">L</span>
+            LINE 登入
+          </button>
         </div>
-
-        <nav class="side-nav" aria-label="主要功能">
-          <button class="nav-button active" data-view="joinView">
-            <i data-lucide="shopping-bag"></i>
-            <span>加入團</span>
-          </button>
-          <button class="nav-button" data-view="createView">
-            <i data-lucide="square-plus"></i>
-            <span>開團</span>
-          </button>
-          <button class="nav-button" data-view="myGroupsView">
-            <i data-lucide="clipboard-list"></i>
-            <span>我開的團</span>
-          </button>
-          <button class="nav-button" data-view="recordsView">
-            <i data-lucide="receipt-text"></i>
-            <span>加入紀錄</span>
-          </button>
-        </nav>
-      </aside>
+      </header>
 
       <main class="workspace">
-        <section class="topbar">
-          <div>
-            <p class="eyebrow">開團工作台</p>
-            <h2 id="pageTitle">加入團</h2>
-          </div>
-          <div class="status-cluster">
-            <span class="status-pill" id="authStatus">準備登入</span>
-            <span class="status-pill" id="techStatus">未填技師號碼</span>
-          </div>
-        </section>
-
-        <section class="notice hidden" id="configNotice">
-          <i data-lucide="triangle-alert"></i>
-          <div>
-            <strong>尚未設定正式連線</strong>
-            <p>請先在 <code>config.json</code> 填入 <code>LIFF_ID</code> 與 <code>GAS_WEB_APP_URL</code>。</p>
-          </div>
-        </section>
-
-        <section class="notice hidden danger" id="errorNotice">
-          <i data-lucide="circle-alert"></i>
-          <div>
-            <strong>系統訊息</strong>
-            <p id="errorText"></p>
-          </div>
-        </section>
-
-        <div id="mainViews">
-        <section class="view-panel active" id="joinView">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">可加入團</p>
-              <h3>別人開設的團</h3>
+        <aside class="sidebar">
+          <section class="auth-panel" id="loginPanel">
+            <p class="eyebrow">Member access</p>
+            <h1>用 LINE 開團、下單、追蹤金額</h1>
+            <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
+            <div class="stacked-actions">
+              <button class="primary-action" id="heroLoginButton" type="button">
+                <span aria-hidden="true">L</span>
+                LINE 登入
+              </button>
+              <button class="ghost-action" id="demoLoginButton" type="button">使用測試身分</button>
             </div>
-            <button class="ghost-button" id="refreshGroupsButton">
-              <i data-lucide="refresh-cw"></i>
-              <span>更新</span>
-            </button>
-          </div>
+          </section>
 
-          <div class="join-layout">
-            <div class="group-list" id="groupList"></div>
+          <section class="create-panel hidden" id="createPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Create</p>
+                <h2>開新團</h2>
+              </div>
+              <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
+                ↺
+              </button>
+            </div>
 
-            <form class="order-form" id="joinForm">
-              <div class="selected-group" id="selectedGroupPanel">
-                <p class="muted">尚未選擇團</p>
-                <strong>請從左側選擇要加入的團</strong>
+            <form id="createGroupForm" autocomplete="off">
+              <label class="field">
+                <span>開團名稱</span>
+                <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
+              </label>
+
+              <div class="form-subhead">
+                <span>項目與金額</span>
+                <button class="text-button" id="addItemButton" type="button">新增項目</button>
               </div>
-              <div class="join-items" id="joinItemList"></div>
-              <div class="form-row">
-                <label for="joinNote">備註</label>
-                <textarea id="joinNote" name="joinNote" rows="4" placeholder="顏色、口味、尺寸或其他需求"></textarea>
-              </div>
-              <div class="checkout-row">
-                <div>
-                  <p class="muted">合計</p>
-                  <strong id="joinTotal">$0</strong>
-                </div>
-                <button class="primary-button" type="submit" id="submitJoinButton">
-                  <i data-lucide="send"></i>
-                  <span>送出加入</span>
-                </button>
-              </div>
+
+              <div class="item-editor" id="itemEditor" aria-live="polite"></div>
+
+              <button class="primary-action full" type="submit">建立開團</button>
             </form>
-          </div>
-        </section>
+          </section>
+        </aside>
 
-        <section class="view-panel" id="createView">
-          <form class="admin-panel" id="groupForm">
-            <div class="section-header compact">
-              <div>
-                <p class="eyebrow">開團設定</p>
-                <h3 id="groupFormTitle">建立新團</h3>
-              </div>
-              <button class="primary-button" type="submit" id="saveGroupButton">
-                <i data-lucide="save"></i>
-                <span>建立團</span>
-              </button>
-            </div>
-
-            <div class="form-grid single">
-              <div class="form-row">
-                <label for="groupName">團名</label>
-                <input id="groupName" name="groupName" placeholder="例如：飲料團、甜點團、保養品團" required />
-              </div>
-            </div>
-
-            <div class="section-header compact subheader">
-              <div>
-                <p class="eyebrow">項目與價格</p>
-                <h3>團購項目</h3>
-              </div>
-              <button class="ghost-button" id="addDraftItemButton" type="button">
-                <i data-lucide="plus"></i>
-                <span>新增項目</span>
-              </button>
-            </div>
-
-            <div class="item-editor" id="draftItemEditor"></div>
-
-            <div class="form-actions">
-              <button class="ghost-button hidden" id="cancelEditButton" type="button">
-                <i data-lucide="x"></i>
-                <span>取消編輯</span>
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section class="view-panel" id="myGroupsView">
-          <div class="section-header">
+        <section class="group-board" aria-label="目前開團">
+          <div class="board-heading">
             <div>
-              <p class="eyebrow">團主視圖</p>
-              <h3>我開的團</h3>
+              <p class="eyebrow">Open groups</p>
+              <h2>目前開團</h2>
             </div>
-            <button class="ghost-button" id="refreshMyGroupsButton">
-              <i data-lucide="refresh-cw"></i>
-              <span>更新</span>
-            </button>
+            <label class="search-field">
+              <span class="sr-only">搜尋團名或項目</span>
+              <input id="groupSearchInput" type="search" placeholder="搜尋團名或項目" />
+            </label>
           </div>
-          <div class="owned-groups" id="myGroupsList"></div>
+
+          <div class="board-toolbar">
+            <button class="chip is-active" type="button" data-filter="all">全部</button>
+            <button class="chip" type="button" data-filter="mine">我的開團</button>
+            <button class="chip" type="button" data-filter="joined">我已加入</button>
+          </div>
+
+          <div class="group-list" id="groupList"></div>
         </section>
 
-        <section class="view-panel" id="recordsView">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">個人紀錄</p>
-              <h3>加入紀錄</h3>
+        <aside class="detail-panel" aria-label="團購明細">
+          <section class="empty-detail" id="emptyDetail">
+            <p class="eyebrow">Detail</p>
+            <h2>選擇一個團</h2>
+            <p>查看品項、數量與近期訂單。</p>
+          </section>
+
+          <section class="group-detail hidden" id="groupDetail">
+            <div class="detail-head">
+              <div>
+                <p class="eyebrow" id="detailOwner">Group owner</p>
+                <h2 id="detailTitle"></h2>
+              </div>
+              <span class="status-pill" id="detailStatus">開放中</span>
             </div>
-            <button class="ghost-button" id="refreshRecordsButton">
-              <i data-lucide="refresh-cw"></i>
-              <span>更新</span>
-            </button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>時間</th>
-                  <th>團名</th>
-                  <th>項目</th>
-                  <th>金額</th>
-                  <th>備註</th>
-                </tr>
-              </thead>
-              <tbody id="recordsTable"></tbody>
-            </table>
-          </div>
-        </section>
-        </div>
+
+            <dl class="stat-grid">
+              <div>
+                <dt>品項</dt>
+                <dd id="detailItemCount">0</dd>
+              </div>
+              <div>
+                <dt>訂單</dt>
+                <dd id="detailOrderCount">0</dd>
+              </div>
+              <div>
+                <dt>金額</dt>
+                <dd id="detailTotal">NT$0</dd>
+              </div>
+            </dl>
+
+            <form class="join-form" id="joinGroupForm">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Join</p>
+                  <h3>選擇品項</h3>
+                </div>
+                <strong id="joinSubtotal">NT$0</strong>
+              </div>
+
+              <div class="quantity-list" id="quantityList"></div>
+              <button class="primary-action full" type="submit">送出訂單</button>
+            </form>
+
+            <section class="orders-panel">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Orders</p>
+                  <h3>近期訂單</h3>
+                </div>
+              </div>
+              <div class="order-list" id="orderList"></div>
+            </section>
+          </section>
+        </aside>
       </main>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js"></script>
+
+    <template id="itemRowTemplate">
+      <div class="item-row">
+        <label class="field dense">
+          <span>項目</span>
+          <input name="itemName" type="text" maxlength="32" placeholder="品項名稱" required />
+        </label>
+        <label class="field dense price-field">
+          <span>金額</span>
+          <input name="itemPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required />
+        </label>
+        <button class="icon-button remove-item" type="button" aria-label="移除項目" title="移除">×</button>
+      </div>
+    </template>
+
+    <template id="groupCardTemplate">
+      <article class="group-card" tabindex="0">
+        <div class="group-card-top">
+          <div>
+            <p class="group-owner"></p>
+            <h3 class="group-name"></h3>
+          </div>
+          <span class="status-dot" aria-hidden="true"></span>
+        </div>
+        <div class="group-items"></div>
+        <div class="group-meta">
+          <span class="meta-orders"></span>
+          <span class="meta-total"></span>
+        </div>
+      </article>
+    </template>
+
+    <template id="quantityRowTemplate">
+      <div class="quantity-row">
+        <div>
+          <strong class="quantity-name"></strong>
+          <span class="quantity-price"></span>
+        </div>
+        <div class="stepper">
+          <button type="button" data-step="-1" aria-label="減少數量">−</button>
+          <input type="number" min="0" step="1" value="0" inputmode="numeric" />
+          <button type="button" data-step="1" aria-label="增加數量">+</button>
+        </div>
+      </div>
+    </template>
+
+    <template id="orderRowTemplate">
+      <article class="order-row">
+        <div>
+          <strong class="order-user"></strong>
+          <p class="order-items"></p>
+        </div>
+        <span class="order-total"></span>
+      </article>
+    </template>
+
+    <script src="app.js" defer></script>
   </body>
 </html>

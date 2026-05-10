@@ -1,1178 +1,869 @@
-const CONFIG = {
-  LIFF_ID: "",
-  GAS_WEB_APP_URL: "",
-  LINKS: {},
-};
-
-const PLACEHOLDER_VALUES = new Set(["", "YOUR_LIFF_ID", "YOUR_GAS_WEB_APP_URL"]);
-
-const state = {
-  profile: null,
-  idToken: "",
-  user: null,
-  openGroups: [],
-  myGroups: [],
-  myOrders: [],
-  selectedGroupId: "",
-  selectedQuantities: {},
-  draftItems: [],
-  editingGroupId: "",
-  activeView: "joinView",
-  loading: false,
-};
-
-const els = {};
-
-document.addEventListener("DOMContentLoaded", async () => {
-  cacheElements();
-  wireEvents();
-  resetDraftItems();
-  setBootStatus("載入設定中", "準備登入");
-  renderIcons();
-  await loadConfig();
-  initApp();
-});
-
-async function loadConfig() {
-  try {
-    const response = await fetch("./config.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`config.json HTTP ${response.status}`);
-    }
-
-    const config = await response.json();
-    CONFIG.LIFF_ID = String(config.LIFF_ID || config.liffId || "").trim();
-    CONFIG.GAS_WEB_APP_URL = String(config.GAS_WEB_APP_URL || config.gasWebAppUrl || "").trim();
-    CONFIG.LINKS = config.links || {};
-  } catch (error) {
-    CONFIG.LOAD_ERROR = error.message;
-  }
-}
-
-function isAppConfigured() {
-  return !PLACEHOLDER_VALUES.has(CONFIG.LIFF_ID) && !PLACEHOLDER_VALUES.has(CONFIG.GAS_WEB_APP_URL);
-}
-
-function cacheElements() {
-  Object.assign(els, {
-    profilePanel: document.querySelector("#profilePanel"),
-    authStatus: document.querySelector("#authStatus"),
-    techStatus: document.querySelector("#techStatus"),
-    pageTitle: document.querySelector("#pageTitle"),
-    mainViews: document.querySelector("#mainViews"),
-    configNotice: document.querySelector("#configNotice"),
-    technicianNotice: document.querySelector("#technicianNotice"),
-    technicianForm: document.querySelector("#technicianForm"),
-    technicianNumber: document.querySelector("#technicianNumber"),
-    setupErrorText: document.querySelector("#setupErrorText"),
-    errorNotice: document.querySelector("#errorNotice"),
-    errorText: document.querySelector("#errorText"),
-    refreshGroupsButton: document.querySelector("#refreshGroupsButton"),
-    groupList: document.querySelector("#groupList"),
-    joinForm: document.querySelector("#joinForm"),
-    selectedGroupPanel: document.querySelector("#selectedGroupPanel"),
-    joinItemList: document.querySelector("#joinItemList"),
-    joinNote: document.querySelector("#joinNote"),
-    joinTotal: document.querySelector("#joinTotal"),
-    submitJoinButton: document.querySelector("#submitJoinButton"),
-    groupForm: document.querySelector("#groupForm"),
-    groupFormTitle: document.querySelector("#groupFormTitle"),
-    saveGroupButton: document.querySelector("#saveGroupButton"),
-    groupName: document.querySelector("#groupName"),
-    addDraftItemButton: document.querySelector("#addDraftItemButton"),
-    draftItemEditor: document.querySelector("#draftItemEditor"),
-    cancelEditButton: document.querySelector("#cancelEditButton"),
-    refreshMyGroupsButton: document.querySelector("#refreshMyGroupsButton"),
-    myGroupsList: document.querySelector("#myGroupsList"),
-    refreshRecordsButton: document.querySelector("#refreshRecordsButton"),
-    recordsTable: document.querySelector("#recordsTable"),
-    toast: document.querySelector("#toast"),
-  });
-}
-
-function wireEvents() {
-  document.querySelectorAll(".nav-button").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.view));
-  });
-
-  els.technicianForm.addEventListener("submit", saveTechnicianNumber);
-  els.refreshGroupsButton.addEventListener("click", refreshDashboard);
-  els.refreshMyGroupsButton.addEventListener("click", refreshDashboard);
-  els.refreshRecordsButton.addEventListener("click", refreshDashboard);
-  els.joinForm.addEventListener("submit", submitJoin);
-  els.groupForm.addEventListener("submit", saveGroup);
-  els.addDraftItemButton.addEventListener("click", () => {
-    state.draftItems.push({ itemId: createId(), name: "", price: 0, active: true });
-    renderDraftItems();
-    renderIcons();
-  });
-  els.cancelEditButton.addEventListener("click", cancelEditGroup);
-}
-
-async function initApp() {
-  const configured = isAppConfigured();
-  els.configNotice.classList.toggle("hidden", configured);
-
-  if (!configured) {
-    setBootStatus("Demo 模式", "待填技師號碼");
-    ensureDemoLogin();
-    restoreDemoSession();
-    renderAll();
-    return;
-  }
-
-  try {
-    setBootStatus("LINE 登入中", "驗證身份");
-    await liff.init({
-      liffId: CONFIG.LIFF_ID,
-      withLoginOnExternalBrowser: true,
-    });
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-
-    if (!refreshLineIdToken()) {
-      throw new Error("無法取得 LINE idToken，請確認 LIFF scopes 已啟用 openid");
-    }
-    if (isCurrentLineTokenExpired()) {
-      reauthenticateLine();
-      return;
-    }
-    setBootStatus("同步資料中", "讀取技師資料");
-    await refreshDashboard({ silent: true });
-  } catch (error) {
-    showError(`LINE 初始化失敗：${error.message}`);
-    renderAll();
-  }
-}
-
-function setBootStatus(authText, techText) {
-  if (els.authStatus) {
-    els.authStatus.textContent = authText;
-  }
-  if (els.techStatus) {
-    els.techStatus.textContent = techText;
-  }
-  if (els.profilePanel) {
-    els.profilePanel.innerHTML = `
-      <div class="avatar-placeholder"></div>
-      <div>
-        <p class="muted">${escapeHtml(authText)}</p>
-        <strong>${escapeHtml(techText)}</strong>
-      </div>
-    `;
-  }
-}
-
-async function refreshDashboard(options = {}) {
-  if (!state.idToken && isAppConfigured()) return;
-  if (!isAppConfigured() && !state.profile) {
-    renderAll();
-    return;
-  }
-  try {
-    const result = await apiRequest("bootstrap", {});
-    applyDashboard(result);
-    if (!options.silent) {
-      showToast("資料已更新");
-    }
-  } catch (error) {
-    showError(error.message);
-  }
-}
-
-function applyDashboard(result) {
-  state.user = result.user || null;
-  state.openGroups = result.openGroups || [];
-  state.myGroups = result.myGroups || [];
-  state.myOrders = result.myOrders || [];
-
-  if (!state.openGroups.some((group) => group.groupId === state.selectedGroupId)) {
-    state.selectedGroupId = "";
-    state.selectedQuantities = {};
-  }
-
-  renderAll();
-}
-
-async function apiRequest(action, payload = {}) {
-  if (!isAppConfigured()) {
-    return demoApi(action, payload);
-  }
-
-  if (!refreshLineIdToken()) {
-    reauthenticateLine();
-    throw new Error("LINE 登入憑證已失效，正在重新登入");
-  }
-  if (isCurrentLineTokenExpired()) {
-    reauthenticateLine();
-    throw new Error("LINE 登入已過期，正在重新登入");
-  }
-
-  setLoading(true);
-  try {
-    const response = await fetch(CONFIG.GAS_WEB_APP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action,
-        idToken: state.idToken,
-        payload,
-      }),
-    });
-
-    const data = await response.json();
-    if (!data.ok) {
-      if (isLineTokenError(data.error)) {
-        reauthenticateLine();
-      }
-      throw new Error(data.error || "API 執行失敗");
-    }
-    return data.data;
-  } finally {
-    setLoading(false);
-  }
-}
-
-function refreshLineIdToken() {
-  if (!window.liff || !liff.isLoggedIn()) return false;
-  state.idToken = liff.getIDToken();
-  return Boolean(state.idToken);
-}
-
-function isCurrentLineTokenExpired() {
-  if (!window.liff || typeof liff.getDecodedIDToken !== "function") return false;
-  const decoded = liff.getDecodedIDToken();
-  if (!decoded || !decoded.exp) return false;
-  return decoded.exp * 1000 <= Date.now() + 60000;
-}
-
-function isLineTokenError(message) {
-  return /idtoken|id token|token|expired|invalid/i.test(String(message || ""));
-}
-
-function reauthenticateLine() {
-  if (!window.liff || !isAppConfigured()) return;
-  setBootStatus("LINE 登入已過期", "重新登入中");
-  try {
-    if (liff.isLoggedIn()) {
-      liff.logout();
-    }
-  } catch (error) {
-    // LIFF may already be clearing session state.
-  }
-  liff.login({
-    redirectUri: window.location.href.split("#")[0],
-  });
-}
-
-function renderAll() {
-  renderProfile();
-  renderStatus();
-  renderGroupList();
-  renderJoinPanel();
-  renderDraftForm();
-  renderDraftItems();
-  renderMyGroups();
-  renderRecords();
-  renderIcons();
-}
-
-function renderProfile() {
-  const displayName = getDisplayName();
-  const pictureUrl = state.user?.pictureUrl || state.profile?.pictureUrl;
-  const subtitle = state.user?.technicianNumber
-    ? `技師 ${state.user.technicianNumber}`
-    : state.user
-      ? "待填技師號碼"
-      : "尚未登入";
-
-  els.profilePanel.innerHTML = `
-    ${pictureUrl ? `<img src="${escapeHtml(pictureUrl)}" alt="">` : '<div class="avatar-placeholder"></div>'}
-    <div>
-      <p class="muted">${escapeHtml(subtitle)}</p>
-      <strong>${escapeHtml(displayName)}</strong>
-    </div>
-  `;
-
-}
-
-function renderStatus() {
-  const loggedIn = Boolean(state.user);
-  const hasTechnicianNumber = canUseSystem();
-
-  els.authStatus.className = "status-pill";
-  els.authStatus.textContent = loggedIn ? "已登入 LINE" : "未登入";
-  els.authStatus.classList.toggle("success", loggedIn);
-
-  els.techStatus.className = "status-pill";
-  if (!loggedIn) {
-    els.techStatus.textContent = "未填技師號碼";
-  } else if (hasTechnicianNumber) {
-    els.techStatus.textContent = `技師 ${state.user.technicianNumber}`;
-    els.techStatus.classList.add("success");
-  } else {
-    els.techStatus.textContent = "需填技師號碼";
-    els.techStatus.classList.add("warning");
-  }
-
-  els.technicianNotice.classList.toggle("hidden", !loggedIn || hasTechnicianNumber);
-  document.body.classList.toggle("setup-required", loggedIn && !hasTechnicianNumber);
-  els.mainViews.classList.toggle("hidden", loggedIn && !hasTechnicianNumber);
-  if (loggedIn && !els.technicianNumber.value) {
-    els.technicianNumber.value = state.user?.technicianNumber || "";
-  }
-
-  const joinReady = hasTechnicianNumber && getSelectedJoinItems().length > 0 && Boolean(getSelectedGroup());
-  els.submitJoinButton.disabled = state.loading || !joinReady;
-  els.saveGroupButton.disabled = state.loading || !hasTechnicianNumber;
-}
-
-function renderGroupList() {
-  if (!state.user) {
-    els.groupList.innerHTML = '<div class="empty-state">請先使用 LINE 登入</div>';
-    return;
-  }
-
-  if (!canUseSystem()) {
-    els.groupList.innerHTML = '<div class="empty-state">輸入技師號碼後即可查看與加入團</div>';
-    return;
-  }
-
-  if (!state.openGroups.length) {
-    els.groupList.innerHTML = '<div class="empty-state">目前沒有別人開設中的團</div>';
-    return;
-  }
-
-  els.groupList.innerHTML = state.openGroups
-    .map((group) => {
-      const active = group.groupId === state.selectedGroupId ? " active" : "";
-      return `
-        <article class="group-row${active}" data-group-id="${escapeHtml(group.groupId)}">
-          <div>
-            <div class="row-title">
-              <strong>${escapeHtml(group.groupName)}</strong>
-              <span class="status-pill success">開團中</span>
-            </div>
-            <p class="muted">團主：${escapeHtml(group.ownerName)}｜技師 ${escapeHtml(group.ownerTechnicianNumber || "-")}</p>
-            <p class="muted">${group.items.length} 個項目｜${group.orderCount || 0} 筆加入</p>
-          </div>
-          <button class="ghost-button" type="button" data-select-group="${escapeHtml(group.groupId)}">
-            <i data-lucide="arrow-right"></i>
-            <span>選擇</span>
-          </button>
-        </article>
-      `;
-    })
-    .join("");
-
-  els.groupList.querySelectorAll("[data-select-group]").forEach((button) => {
-    button.addEventListener("click", () => selectGroup(button.dataset.selectGroup));
-  });
-}
-
-function renderJoinPanel() {
-  const group = getSelectedGroup();
-  if (!group) {
-    els.selectedGroupPanel.innerHTML = '<p class="muted">尚未選擇團</p><strong>請從左側選擇要加入的團</strong>';
-    els.joinItemList.innerHTML = '<div class="empty-state">選擇團後會顯示項目</div>';
-    updateJoinTotal();
-    return;
-  }
-
-  els.selectedGroupPanel.innerHTML = `
-    <p class="muted">團主：${escapeHtml(group.ownerName)}｜技師 ${escapeHtml(group.ownerTechnicianNumber || "-")}</p>
-    <strong>${escapeHtml(group.groupName)}</strong>
-  `;
-
-  if (!group.items.length) {
-    els.joinItemList.innerHTML = '<div class="empty-state">這個團尚未設定項目</div>';
-    updateJoinTotal();
-    return;
-  }
-
-  els.joinItemList.innerHTML = group.items
-    .map((item) => {
-      const qty = state.selectedQuantities[item.itemId] || 0;
-      return `
-        <article class="menu-item">
-          <div>
-            <strong>${escapeHtml(item.name)}</strong>
-            <p class="muted">${escapeHtml(group.groupName)}</p>
-          </div>
-          <div class="price">$${numberFormat(item.price)}</div>
-          <div class="stepper" aria-label="${escapeHtml(item.name)} 數量">
-            <button type="button" data-step="-1" data-item-id="${escapeHtml(item.itemId)}">-</button>
-            <output>${qty}</output>
-            <button type="button" data-step="1" data-item-id="${escapeHtml(item.itemId)}">+</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  els.joinItemList.querySelectorAll("[data-step]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const itemId = button.dataset.itemId;
-      const step = Number(button.dataset.step);
-      const current = state.selectedQuantities[itemId] || 0;
-      state.selectedQuantities[itemId] = Math.max(0, current + step);
-      renderJoinPanel();
-      renderStatus();
-    });
-  });
-
-  updateJoinTotal();
-}
-
-function renderDraftForm() {
-  const editing = Boolean(state.editingGroupId);
-  els.groupFormTitle.textContent = editing ? "編輯開團" : "建立新團";
-  els.saveGroupButton.innerHTML = editing
-    ? '<i data-lucide="save"></i><span>儲存變更</span>'
-    : '<i data-lucide="save"></i><span>建立團</span>';
-  els.cancelEditButton.classList.toggle("hidden", !editing);
-  renderIcons();
-}
-
-function renderDraftItems() {
-  if (!state.draftItems.length) {
-    els.draftItemEditor.innerHTML = '<div class="empty-state">請新增至少一個項目</div>';
-    return;
-  }
-
-  els.draftItemEditor.innerHTML = state.draftItems
-    .map(
-      (item, index) => `
-        <div class="item-row" data-index="${index}">
-          <div class="form-row">
-            <label>項目</label>
-            <input value="${escapeHtml(item.name || "")}" data-field="name" placeholder="例如：珍奶、蛋糕、洗髮精">
-          </div>
-          <div class="form-row">
-            <label>價格</label>
-            <input type="number" min="0" step="1" value="${Number(item.price || 0)}" data-field="price">
-          </div>
-          <button class="icon-button" type="button" data-remove="${index}" aria-label="移除項目" title="移除項目">
-            <i data-lucide="trash-2"></i>
-          </button>
-        </div>
-      `,
-    )
-    .join("");
-
-  els.draftItemEditor.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("input", () => {
-      const row = input.closest(".item-row");
-      const item = state.draftItems[Number(row.dataset.index)];
-      item[input.dataset.field] = input.dataset.field === "price" ? Number(input.value) : input.value;
-    });
-  });
-
-  els.draftItemEditor.querySelectorAll("[data-remove]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.draftItems.splice(Number(button.dataset.remove), 1);
-      renderDraftItems();
-      renderIcons();
-    });
-  });
-}
-
-function renderMyGroups() {
-  if (!state.user) {
-    els.myGroupsList.innerHTML = '<div class="empty-state">請先使用 LINE 登入</div>';
-    return;
-  }
-
-  if (!canUseSystem()) {
-    els.myGroupsList.innerHTML = '<div class="empty-state">輸入技師號碼後即可開團</div>';
-    return;
-  }
-
-  if (!state.myGroups.length) {
-    els.myGroupsList.innerHTML = '<div class="empty-state">你尚未開團</div>';
-    return;
-  }
-
-  els.myGroupsList.innerHTML = state.myGroups
-    .map((group) => {
-      const summary = summarizeOrders(group.orders || []);
-      const statusText = group.status === "open" ? "開團中" : "已關閉";
-      const statusClass = group.status === "open" ? "success" : "warning";
-      return `
-        <article class="owned-group">
-          <div class="owned-group-head">
-            <div>
-              <div class="row-title">
-                <strong>${escapeHtml(group.groupName)}</strong>
-                <span class="status-pill ${statusClass}">${statusText}</span>
-              </div>
-              <p class="muted">${group.items.length} 個項目｜${(group.orders || []).length} 筆加入</p>
-            </div>
-            <div class="approval-actions">
-              <button class="ghost-button" type="button" data-edit-group="${escapeHtml(group.groupId)}">
-                <i data-lucide="pencil"></i>
-                <span>編輯</span>
-              </button>
-              <button class="ghost-button" type="button" data-toggle-group="${escapeHtml(group.groupId)}">
-                <i data-lucide="${group.status === "open" ? "lock" : "unlock"}"></i>
-                <span>${group.status === "open" ? "關閉" : "開啟"}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="summary-grid">
-            ${
-              summary.length
-                ? summary
-                    .map(
-                      (item) => `
-                        <div class="summary-row">
-                          <div>
-                            <strong>${escapeHtml(item.name)}</strong>
-                            <p class="muted">${item.quantity} 份</p>
-                          </div>
-                          <strong>$${numberFormat(item.total)}</strong>
-                        </div>
-                      `,
-                    )
-                    .join("")
-                : '<div class="empty-state">尚無人加入</div>'
-            }
-          </div>
-
-          <div class="table-wrap compact-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>技師</th>
-                  <th>姓名</th>
-                  <th>項目</th>
-                  <th>金額</th>
-                  <th>備註</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${
-                  group.orders && group.orders.length
-                    ? group.orders
-                        .map(
-                          (order) => `
-                            <tr>
-                              <td>${escapeHtml(order.technicianNumber)}</td>
-                              <td>${escapeHtml(order.displayName)}</td>
-                              <td>${escapeHtml(order.itemSummary)}</td>
-                              <td>$${numberFormat(order.total)}</td>
-                              <td>${escapeHtml(order.note || "")}</td>
-                            </tr>
-                          `,
-                        )
-                        .join("")
-                    : '<tr><td colspan="5">尚無加入紀錄</td></tr>'
-                }
-              </tbody>
-            </table>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  els.myGroupsList.querySelectorAll("[data-edit-group]").forEach((button) => {
-    button.addEventListener("click", () => startEditGroup(button.dataset.editGroup));
-  });
-  els.myGroupsList.querySelectorAll("[data-toggle-group]").forEach((button) => {
-    button.addEventListener("click", () => toggleGroupStatus(button.dataset.toggleGroup));
-  });
-}
-
-function renderRecords() {
-  if (!state.myOrders.length) {
-    els.recordsTable.innerHTML = '<tr><td colspan="5">尚無加入紀錄</td></tr>';
-    return;
-  }
-
-  els.recordsTable.innerHTML = state.myOrders
-    .map(
-      (order) => `
-        <tr>
-          <td>${escapeHtml(formatDateTime(order.createdAt))}</td>
-          <td>${escapeHtml(order.groupName)}</td>
-          <td>${escapeHtml(order.itemSummary)}</td>
-          <td>$${numberFormat(order.total)}</td>
-          <td>${escapeHtml(order.note || "")}</td>
-        </tr>
-      `,
-    )
-    .join("");
-}
-
-async function saveTechnicianNumber(event) {
-  event.preventDefault();
-  clearError();
-  const technicianNumber = els.technicianNumber.value.trim();
-  if (!technicianNumber) {
-    showToast("請輸入技師號碼");
-    return;
-  }
-
-  try {
-    const result = await apiRequest("saveTechnicianNumber", { technicianNumber });
-    applyDashboard(result);
-    showToast("技師號碼已儲存");
-  } catch (error) {
-    showError(error.message);
-  }
-}
-
-async function saveGroup(event) {
-  event.preventDefault();
-  clearError();
-
-  if (!canUseSystem()) {
-    showToast("請先輸入技師號碼");
-    return;
-  }
-
-  const groupName = els.groupName.value.trim();
-  const items = state.draftItems
-    .map((item) => ({
-      itemId: item.itemId,
-      name: String(item.name || "").trim(),
-      price: Number(item.price || 0),
-    }))
-    .filter((item) => item.name);
-
-  if (!groupName) {
-    showToast("請輸入團名");
-    return;
-  }
-  if (!items.length) {
-    showToast("請新增至少一個項目");
-    return;
-  }
-
-  try {
-    const action = state.editingGroupId ? "updateGroup" : "createGroup";
-    const wasEditing = Boolean(state.editingGroupId);
-    const result = await apiRequest(action, {
-      groupId: state.editingGroupId,
-      groupName,
-      items,
-    });
-    applyDashboard(result);
-    resetGroupForm();
-    switchView("myGroupsView");
-    showToast(wasEditing ? "開團已更新" : "開團已建立");
-  } catch (error) {
-    showError(error.message);
-  }
-}
-
-async function submitJoin(event) {
-  event.preventDefault();
-  clearError();
-
-  if (!canUseSystem()) {
-    showToast("請先輸入技師號碼");
-    return;
-  }
-
-  const group = getSelectedGroup();
-  const items = getSelectedJoinItems();
-  if (!group || !items.length) {
-    showToast("請先選擇要加入的項目");
-    return;
-  }
-
-  try {
-    const result = await apiRequest("joinGroup", {
-      groupId: group.groupId,
-      items,
-      note: els.joinNote.value.trim(),
-    });
-    state.selectedQuantities = {};
-    els.joinNote.value = "";
-    applyDashboard(result);
-    showToast("已加入開團");
-  } catch (error) {
-    showError(error.message);
-  }
-}
-
-function selectGroup(groupId) {
-  state.selectedGroupId = groupId;
-  state.selectedQuantities = {};
-  renderGroupList();
-  renderJoinPanel();
-  renderStatus();
-  renderIcons();
-}
-
-function startEditGroup(groupId) {
-  const group = state.myGroups.find((candidate) => candidate.groupId === groupId);
-  if (!group) return;
-
-  state.editingGroupId = group.groupId;
-  els.groupName.value = group.groupName;
-  state.draftItems = group.items.map((item) => ({
-    itemId: item.itemId,
-    name: item.name,
-    price: Number(item.price || 0),
-    active: true,
-  }));
-  renderDraftForm();
-  renderDraftItems();
-  switchView("createView");
-}
-
-async function toggleGroupStatus(groupId) {
-  const group = state.myGroups.find((candidate) => candidate.groupId === groupId);
-  if (!group) return;
-
-  try {
-    const result = await apiRequest("setGroupStatus", {
-      groupId,
-      status: group.status === "open" ? "closed" : "open",
-    });
-    applyDashboard(result);
-    showToast(group.status === "open" ? "已關閉開團" : "已重新開啟");
-  } catch (error) {
-    showError(error.message);
-  }
-}
-
-function cancelEditGroup() {
-  resetGroupForm();
-  renderAll();
-}
-
-function resetGroupForm() {
-  state.editingGroupId = "";
-  els.groupName.value = "";
-  resetDraftItems();
-  renderDraftForm();
-  renderDraftItems();
-}
-
-function resetDraftItems() {
-  state.draftItems = [{ itemId: createId(), name: "", price: 0, active: true }];
-}
-
-function switchView(viewId) {
-  state.activeView = viewId;
-  document.querySelectorAll(".view-panel").forEach((panel) => {
-    panel.classList.toggle("active", panel.id === viewId);
-  });
-  document.querySelectorAll(".nav-button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === viewId);
-  });
-
-  const titleMap = {
-    joinView: "加入團",
-    createView: state.editingGroupId ? "編輯開團" : "開團",
-    myGroupsView: "我開的團",
-    recordsView: "加入紀錄",
+(() => {
+  const CONFIG_DEFAULTS = {
+    gasWebAppUrl: "",
+    demoMode: true,
   };
-  els.pageTitle.textContent = titleMap[viewId] || "開團系統";
-}
 
-function getSelectedGroup() {
-  return state.openGroups.find((group) => group.groupId === state.selectedGroupId) || null;
-}
-
-function getSelectedJoinItems() {
-  const group = getSelectedGroup();
-  if (!group) return [];
-
-  return Object.entries(state.selectedQuantities)
-    .filter(([, quantity]) => Number(quantity) > 0)
-    .map(([itemId, quantity]) => {
-      const item = group.items.find((candidate) => candidate.itemId === itemId);
-      return {
-        itemId,
-        name: item?.name || "",
-        price: Number(item?.price || 0),
-        quantity: Number(quantity),
-      };
-    })
-    .filter((item) => item.name);
-}
-
-function updateJoinTotal() {
-  const total = getSelectedJoinItems().reduce((sum, item) => sum + item.price * item.quantity, 0);
-  els.joinTotal.textContent = `$${numberFormat(total)}`;
-}
-
-function summarizeOrders(orders) {
-  const map = new Map();
-  orders.forEach((order) => {
-    (order.items || []).forEach((item) => {
-      const current = map.get(item.itemId) || {
-        name: item.name,
-        quantity: 0,
-        total: 0,
-      };
-      current.quantity += Number(item.quantity || 0);
-      current.total += Number(item.price || 0) * Number(item.quantity || 0);
-      map.set(item.itemId, current);
-    });
-  });
-  return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity);
-}
-
-function canUseSystem() {
-  return Boolean(state.user && state.user.technicianNumber);
-}
-
-function getDisplayName() {
-  return state.user?.displayName || state.profile?.displayName || "LINE 帳號";
-}
-
-function setLoading(value) {
-  state.loading = value;
-  renderStatus();
-}
-
-function showToast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.add("show");
-  window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => {
-    els.toast.classList.remove("show");
-  }, 2600);
-}
-
-function showError(message) {
-  els.errorText.textContent = message;
-  els.errorNotice.classList.remove("hidden");
-  if (els.setupErrorText) {
-    els.setupErrorText.textContent = message;
-    els.setupErrorText.classList.remove("hidden");
-  }
-}
-
-function clearError() {
-  els.errorText.textContent = "";
-  els.errorNotice.classList.add("hidden");
-  if (els.setupErrorText) {
-    els.setupErrorText.textContent = "";
-    els.setupErrorText.classList.add("hidden");
-  }
-}
-
-function renderIcons() {
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
-}
-
-function escapeHtml(value) {
-  return String(value === null || value === undefined ? "" : value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function numberFormat(value) {
-  return Number(value || 0).toLocaleString("zh-TW");
-}
-
-function formatDateTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-TW", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function restoreDemoSession() {
-  const db = getDemoDb();
-  state.profile = db.currentProfile || null;
-  if (!state.profile) return;
-
-  const user = db.users.find((candidate) => candidate.lineUserId === state.profile.userId) || null;
-  applyDashboard(buildDemoDashboard(db, user));
-}
-
-function ensureDemoLogin() {
-  const db = getDemoDb();
-  if (!db.currentProfile) {
-    db.currentProfile = {
-      userId: "demo-user",
-      displayName: "Demo 技師",
-      pictureUrl: "",
-    };
-    saveDemoDb(db);
-  }
-}
-
-function demoLogin() {
-  const db = getDemoDb();
-  db.currentProfile = {
-    userId: "demo-user",
-    displayName: "Demo 技師",
-    pictureUrl: "",
+  const STORAGE = {
+    session: "orderingSystem.session",
+    demoData: "orderingSystem.demoData",
+    demoUser: "orderingSystem.demoUser",
   };
-  saveDemoDb(db);
-  restoreDemoSession();
-  showToast("已進入 Demo 模式");
-}
 
-function demoLogout() {
-  const db = getDemoDb();
-  db.currentProfile = null;
-  saveDemoDb(db);
-  Object.assign(state, {
-    profile: null,
-    idToken: "",
+  const state = {
+    api: null,
+    config: { ...CONFIG_DEFAULTS },
     user: null,
-    openGroups: [],
-    myGroups: [],
-    myOrders: [],
+    session: "",
+    groups: [],
     selectedGroupId: "",
-    selectedQuantities: {},
-    editingGroupId: "",
-    activeView: "joinView",
-    loading: false,
-  });
-  resetGroupForm();
-  switchView("joinView");
-  renderAll();
-  showToast("已登出 Demo 模式");
-}
-
-function demoApi(action, payload) {
-  const db = getDemoDb();
-  const currentUserId = db.currentProfile?.userId || "demo-user";
-  let user = db.users.find((candidate) => candidate.lineUserId === currentUserId);
-
-  if (!user) {
-    user = {
-      lineUserId: currentUserId,
-      displayName: db.currentProfile?.displayName || "Demo 使用者",
-      pictureUrl: "",
-      technicianNumber: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    db.users.push(user);
-  }
-
-  switch (action) {
-    case "bootstrap":
-      break;
-    case "saveTechnicianNumber":
-      user.technicianNumber = String(payload.technicianNumber || "").trim();
-      user.updatedAt = new Date().toISOString();
-      break;
-    case "createGroup":
-      requireDemoTechnician(user);
-      db.groups.unshift({
-        groupId: createId(),
-        groupName: String(payload.groupName || "").trim(),
-        ownerLineUserId: user.lineUserId,
-        ownerName: user.displayName,
-        ownerTechnicianNumber: user.technicianNumber,
-        status: "open",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      saveDemoItems(db, db.groups[0].groupId, payload.items || []);
-      break;
-    case "updateGroup":
-      requireDemoTechnician(user);
-      updateDemoGroup(db, user, payload);
-      break;
-    case "setGroupStatus":
-      requireDemoTechnician(user);
-      setDemoGroupStatus(db, user, payload);
-      break;
-    case "joinGroup":
-      requireDemoTechnician(user);
-      addDemoJoinOrder(db, user, payload);
-      break;
-    default:
-      throw new Error(`未知操作：${action}`);
-  }
-
-  saveDemoDb(db);
-  return buildDemoDashboard(db, user);
-}
-
-function requireDemoTechnician(user) {
-  if (!user.technicianNumber) {
-    throw new Error("請先輸入技師號碼");
-  }
-}
-
-function buildDemoDashboard(db, user) {
-  if (!user) {
-    return { user: null, openGroups: [], myGroups: [], myOrders: [] };
-  }
-
-  const orders = db.orders.map(normalizeDemoOrder);
-  const groups = db.groups.map((group) => ({
-    ...group,
-    items: db.items.filter((item) => item.groupId === group.groupId && item.active !== false),
-    orders: orders.filter((order) => order.groupId === group.groupId),
-    orderCount: orders.filter((order) => order.groupId === group.groupId).length,
-  }));
-
-  return {
-    user,
-    openGroups: groups.filter((group) => group.status === "open" && group.ownerLineUserId !== user.lineUserId),
-    myGroups: groups.filter((group) => group.ownerLineUserId === user.lineUserId),
-    myOrders: orders.filter((order) => order.lineUserId === user.lineUserId),
+    filter: "all",
+    search: "",
   };
-}
 
-function saveDemoItems(db, groupId, items) {
-  db.items = db.items.filter((item) => item.groupId !== groupId);
-  items
-    .filter((item) => String(item.name || "").trim())
-    .forEach((item) => {
-      db.items.push({
-        itemId: item.itemId || createId(),
-        groupId,
-        name: String(item.name || "").trim(),
-        price: Number(item.price || 0),
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+  const els = {};
+  const money = new Intl.NumberFormat("zh-TW", {
+    style: "currency",
+    currency: "TWD",
+    maximumFractionDigits: 0,
+  });
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  async function init() {
+    cacheElements();
+    bindStaticEvents();
+    resetCreateForm();
+
+    state.config = await loadConfig();
+    state.api = state.config.gasWebAppUrl ? new GasApi(state.config.gasWebAppUrl) : new DemoApi();
+
+    readLoginCallback();
+    renderConfigStatus();
+
+    if (state.session) {
+      await restoreSession();
+    }
+
+    renderSession();
+    await refreshGroups();
+  }
+
+  function cacheElements() {
+    els.sessionArea = document.querySelector("#sessionArea");
+    els.configStatus = document.querySelector("#configStatus");
+    els.loginButton = document.querySelector("#loginButton");
+    els.heroLoginButton = document.querySelector("#heroLoginButton");
+    els.demoLoginButton = document.querySelector("#demoLoginButton");
+    els.loginPanel = document.querySelector("#loginPanel");
+    els.createPanel = document.querySelector("#createPanel");
+    els.createGroupForm = document.querySelector("#createGroupForm");
+    els.groupNameInput = document.querySelector("#groupNameInput");
+    els.itemEditor = document.querySelector("#itemEditor");
+    els.addItemButton = document.querySelector("#addItemButton");
+    els.resetCreateButton = document.querySelector("#resetCreateButton");
+    els.groupSearchInput = document.querySelector("#groupSearchInput");
+    els.groupList = document.querySelector("#groupList");
+    els.emptyDetail = document.querySelector("#emptyDetail");
+    els.groupDetail = document.querySelector("#groupDetail");
+    els.detailOwner = document.querySelector("#detailOwner");
+    els.detailTitle = document.querySelector("#detailTitle");
+    els.detailStatus = document.querySelector("#detailStatus");
+    els.detailItemCount = document.querySelector("#detailItemCount");
+    els.detailOrderCount = document.querySelector("#detailOrderCount");
+    els.detailTotal = document.querySelector("#detailTotal");
+    els.joinGroupForm = document.querySelector("#joinGroupForm");
+    els.quantityList = document.querySelector("#quantityList");
+    els.joinSubtotal = document.querySelector("#joinSubtotal");
+    els.orderList = document.querySelector("#orderList");
+    els.toast = document.querySelector("#toast");
+    els.itemRowTemplate = document.querySelector("#itemRowTemplate");
+    els.groupCardTemplate = document.querySelector("#groupCardTemplate");
+    els.quantityRowTemplate = document.querySelector("#quantityRowTemplate");
+    els.orderRowTemplate = document.querySelector("#orderRowTemplate");
+    els.filterButtons = [...document.querySelectorAll("[data-filter]")];
+  }
+
+  function bindStaticEvents() {
+    els.loginButton.addEventListener("click", handleLogin);
+    els.heroLoginButton.addEventListener("click", handleLogin);
+    els.demoLoginButton.addEventListener("click", handleDemoLogin);
+    els.addItemButton.addEventListener("click", () => addCreateItemRow());
+    els.resetCreateButton.addEventListener("click", resetCreateForm);
+    els.createGroupForm.addEventListener("submit", handleCreateGroup);
+    els.joinGroupForm.addEventListener("submit", handleJoinGroup);
+    els.quantityList.addEventListener("click", handleQuantityClick);
+    els.quantityList.addEventListener("input", updateSubtotal);
+    els.groupSearchInput.addEventListener("input", () => {
+      state.search = els.groupSearchInput.value.trim().toLowerCase();
+      renderGroups();
+    });
+    els.filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.filter = button.dataset.filter;
+        renderFilters();
+        renderGroups();
       });
     });
-}
-
-function updateDemoGroup(db, user, payload) {
-  const group = db.groups.find((candidate) => candidate.groupId === payload.groupId);
-  if (!group || group.ownerLineUserId !== user.lineUserId) {
-    throw new Error("找不到可編輯的開團");
-  }
-  group.groupName = String(payload.groupName || "").trim();
-  group.updatedAt = new Date().toISOString();
-  saveDemoItems(db, group.groupId, payload.items || []);
-}
-
-function setDemoGroupStatus(db, user, payload) {
-  const group = db.groups.find((candidate) => candidate.groupId === payload.groupId);
-  if (!group || group.ownerLineUserId !== user.lineUserId) {
-    throw new Error("找不到可調整的開團");
-  }
-  group.status = payload.status === "closed" ? "closed" : "open";
-  group.updatedAt = new Date().toISOString();
-}
-
-function addDemoJoinOrder(db, user, payload) {
-  const group = db.groups.find((candidate) => candidate.groupId === payload.groupId);
-  if (!group || group.status !== "open") {
-    throw new Error("這個團目前無法加入");
-  }
-  if (group.ownerLineUserId === user.lineUserId) {
-    throw new Error("不能加入自己開的團");
   }
 
-  const items = (payload.items || []).map((requested) => {
-    const item = db.items.find((candidate) => candidate.itemId === requested.itemId && candidate.groupId === group.groupId);
-    if (!item || Number(requested.quantity || 0) <= 0) {
-      throw new Error("加入項目不正確");
+  async function loadConfig() {
+    const inlineConfig = window.GROUP_BUY_CONFIG || {};
+    let fileConfig = {};
+
+    try {
+      const response = await fetch("config.json", { cache: "no-store" });
+      if (response.ok) {
+        fileConfig = await response.json();
+      }
+    } catch (error) {
+      fileConfig = {};
     }
+
     return {
-      itemId: item.itemId,
-      name: item.name,
-      price: Number(item.price),
-      quantity: Number(requested.quantity),
+      ...CONFIG_DEFAULTS,
+      ...fileConfig,
+      ...inlineConfig,
+      gasWebAppUrl: String(fileConfig.gasWebAppUrl || inlineConfig.gasWebAppUrl || "").trim(),
     };
-  });
+  }
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  db.orders.unshift({
-    orderId: createId(),
-    groupId: group.groupId,
-    groupName: group.groupName,
-    ownerLineUserId: group.ownerLineUserId,
-    lineUserId: user.lineUserId,
-    displayName: user.displayName,
-    technicianNumber: user.technicianNumber,
-    itemSummary: items.map((item) => `${item.name} x${item.quantity}`).join("、"),
-    items,
-    total,
-    note: String(payload.note || "").trim(),
-    createdAt: new Date().toISOString(),
-  });
-}
+  function readLoginCallback() {
+    const url = new URL(window.location.href);
+    const session = url.searchParams.get("session");
+    const loginError = url.searchParams.get("login_error");
 
-function normalizeDemoOrder(order) {
-  return {
-    ...order,
-    items: order.items || [],
-    total: Number(order.total || 0),
-  };
-}
+    if (session) {
+      state.session = session;
+      localStorage.setItem(STORAGE.session, session);
+      url.searchParams.delete("session");
+      window.history.replaceState({}, document.title, url.toString());
+    } else {
+      state.session = localStorage.getItem(STORAGE.session) || "";
+    }
 
-function getDemoDb() {
-  const stored = localStorage.getItem("group-system-demo-db");
-  if (stored) return JSON.parse(stored);
+    if (loginError) {
+      showToast(loginError, "error");
+      url.searchParams.delete("login_error");
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  }
 
-  const now = new Date().toISOString();
-  const otherGroupId = createId();
-  return {
-    currentProfile: null,
-    users: [
-      {
-        lineUserId: "demo-user",
-        displayName: "Demo 技師",
-        pictureUrl: "",
-        technicianNumber: "",
-        createdAt: now,
-        updatedAt: now,
+  async function restoreSession() {
+    try {
+      state.user = await state.api.me(state.session);
+    } catch (error) {
+      localStorage.removeItem(STORAGE.session);
+      state.session = "";
+      state.user = null;
+      showToast("登入已過期，請重新登入。", "error");
+    }
+  }
+
+  async function refreshGroups() {
+    try {
+      const groups = await state.api.listGroups(state.session);
+      state.groups = groups.map(normalizeGroup).sort((a, b) => compareDateDesc(a.createdAt, b.createdAt));
+
+      if (!state.groups.some((group) => group.id === state.selectedGroupId)) {
+        state.selectedGroupId = state.groups[0] ? state.groups[0].id : "";
+      }
+
+      renderApp();
+    } catch (error) {
+      showToast(error.message || "讀取開團失敗。", "error");
+      renderApp();
+    }
+  }
+
+  function renderApp() {
+    renderSession();
+    renderFilters();
+    renderGroups();
+    renderDetail();
+  }
+
+  function renderConfigStatus() {
+    els.configStatus.textContent = state.config.gasWebAppUrl ? "GAS Live" : "Demo";
+    els.configStatus.classList.toggle("live", Boolean(state.config.gasWebAppUrl));
+    els.demoLoginButton.classList.toggle("hidden", Boolean(state.config.gasWebAppUrl));
+  }
+
+  function renderSession() {
+    els.loginPanel.classList.toggle("hidden", Boolean(state.user));
+    els.createPanel.classList.toggle("hidden", !state.user);
+
+    const status = els.configStatus;
+    els.sessionArea.replaceChildren(status);
+
+    if (!state.user) {
+      els.sessionArea.appendChild(els.loginButton);
+      return;
+    }
+
+    const chip = document.createElement("div");
+    chip.className = "user-chip";
+
+    if (state.user.pictureUrl) {
+      const image = document.createElement("img");
+      image.src = state.user.pictureUrl;
+      image.alt = "";
+      chip.appendChild(image);
+    } else {
+      const fallback = document.createElement("span");
+      fallback.className = "avatar-fallback";
+      fallback.textContent = initials(state.user.displayName);
+      chip.appendChild(fallback);
+    }
+
+    const name = document.createElement("span");
+    name.textContent = state.user.displayName || "LINE 使用者";
+    chip.appendChild(name);
+
+    const logout = document.createElement("button");
+    logout.className = "icon-button";
+    logout.type = "button";
+    logout.title = "登出";
+    logout.setAttribute("aria-label", "登出");
+    logout.textContent = "↪";
+    logout.addEventListener("click", handleLogout);
+
+    els.sessionArea.append(chip, logout);
+  }
+
+  function renderFilters() {
+    els.filterButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.filter === state.filter);
+    });
+  }
+
+  function renderGroups() {
+    const groups = filteredGroups();
+    els.groupList.replaceChildren();
+
+    if (!groups.length) {
+      els.groupList.appendChild(emptyState("目前沒有符合條件的開團"));
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    groups.forEach((group) => {
+      const node = els.groupCardTemplate.content.firstElementChild.cloneNode(true);
+      node.dataset.groupId = group.id;
+      node.classList.toggle("is-selected", group.id === state.selectedGroupId);
+      node.querySelector(".group-owner").textContent = `團主 ${group.ownerName}`;
+      node.querySelector(".group-name").textContent = group.name;
+      node.querySelector(".meta-orders").textContent = `${group.stats.orders} 筆訂單`;
+      node.querySelector(".meta-total").textContent = formatMoney(group.stats.total);
+
+      const items = node.querySelector(".group-items");
+      group.items.slice(0, 4).forEach((item) => {
+        const pill = document.createElement("span");
+        pill.className = "item-pill";
+        pill.textContent = `${item.name} ${formatMoney(item.price)}`;
+        items.appendChild(pill);
+      });
+
+      if (group.items.length > 4) {
+        const extra = document.createElement("span");
+        extra.className = "item-pill";
+        extra.textContent = `+${group.items.length - 4}`;
+        items.appendChild(extra);
+      }
+
+      node.addEventListener("click", () => selectGroup(group.id));
+      node.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectGroup(group.id);
+        }
+      });
+
+      fragment.appendChild(node);
+    });
+
+    els.groupList.appendChild(fragment);
+  }
+
+  function renderDetail() {
+    const group = selectedGroup();
+    els.emptyDetail.classList.toggle("hidden", Boolean(group));
+    els.groupDetail.classList.toggle("hidden", !group);
+
+    if (!group) {
+      return;
+    }
+
+    els.detailOwner.textContent = `團主 ${group.ownerName} · ${formatDate(group.createdAt)}`;
+    els.detailTitle.textContent = group.name;
+    els.detailStatus.textContent = group.status === "closed" ? "已截止" : "開放中";
+    els.detailItemCount.textContent = String(group.items.length);
+    els.detailOrderCount.textContent = String(group.stats.orders);
+    els.detailTotal.textContent = formatMoney(group.stats.total);
+
+    renderQuantityRows(group);
+    renderOrders(group);
+    updateSubtotal();
+  }
+
+  function renderQuantityRows(group) {
+    els.quantityList.replaceChildren();
+
+    if (!state.user) {
+      els.quantityList.appendChild(emptyState("請先登入再加入開團"));
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    group.items.forEach((item) => {
+      const node = els.quantityRowTemplate.content.firstElementChild.cloneNode(true);
+      const input = node.querySelector("input");
+      node.dataset.itemId = item.id;
+      input.dataset.itemId = item.id;
+      input.dataset.price = String(item.price);
+      node.querySelector(".quantity-name").textContent = item.name;
+      node.querySelector(".quantity-price").textContent = formatMoney(item.price);
+      fragment.appendChild(node);
+    });
+
+    els.quantityList.appendChild(fragment);
+  }
+
+  function renderOrders(group) {
+    els.orderList.replaceChildren();
+
+    if (!group.orders.length) {
+      els.orderList.appendChild(emptyState("尚未有人下單"));
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    group.orders.slice(0, 8).forEach((order) => {
+      const node = els.orderRowTemplate.content.firstElementChild.cloneNode(true);
+      node.querySelector(".order-user").textContent = order.userName;
+      node.querySelector(".order-items").textContent = order.items
+        .map((item) => `${item.name} × ${item.quantity}`)
+        .join("、");
+      node.querySelector(".order-total").textContent = formatMoney(order.total);
+      fragment.appendChild(node);
+    });
+
+    els.orderList.appendChild(fragment);
+  }
+
+  function selectGroup(groupId) {
+    state.selectedGroupId = groupId;
+    renderGroups();
+    renderDetail();
+  }
+
+  function filteredGroups() {
+    return state.groups.filter((group) => {
+      const text = `${group.name} ${group.ownerName} ${group.items.map((item) => item.name).join(" ")}`.toLowerCase();
+      const matchesSearch = !state.search || text.includes(state.search);
+      const matchesFilter =
+        state.filter === "all" ||
+        (state.filter === "mine" && state.user && group.ownerUserId === state.user.id) ||
+        (state.filter === "joined" && state.user && group.orders.some((order) => order.userId === state.user.id));
+      return matchesSearch && matchesFilter;
+    });
+  }
+
+  async function handleLogin() {
+    if (!state.config.gasWebAppUrl) {
+      handleDemoLogin();
+      return;
+    }
+
+    window.location.href = state.api.loginUrl(frontendUrl());
+  }
+
+  function handleDemoLogin() {
+    const user = {
+      id: "demo_user",
+      displayName: "測試使用者",
+      pictureUrl: "",
+    };
+    localStorage.setItem(STORAGE.demoUser, JSON.stringify(user));
+    localStorage.setItem(STORAGE.session, "demo-session");
+    state.session = "demo-session";
+    state.user = user;
+    showToast("已切換為測試身分。");
+    renderApp();
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(STORAGE.session);
+    state.session = "";
+    state.user = null;
+    renderApp();
+  }
+
+  async function handleCreateGroup(event) {
+    event.preventDefault();
+
+    if (!state.user) {
+      showToast("請先登入。", "error");
+      return;
+    }
+
+    const name = els.groupNameInput.value.trim();
+    const items = collectCreateItems();
+
+    if (!name) {
+      showToast("請輸入開團名稱。", "error");
+      return;
+    }
+
+    if (!items.length) {
+      showToast("至少需要一個品項。", "error");
+      return;
+    }
+
+    const submitter = event.submitter;
+    await withBusy(submitter, async () => {
+      const result = await state.api.createGroup({ name, items }, state.session, state.user);
+      resetCreateForm();
+      await refreshGroups();
+      if (result && result.group && result.group.id) {
+        state.selectedGroupId = result.group.id;
+        renderApp();
+      }
+      showToast("開團已建立。");
+    });
+  }
+
+  async function handleJoinGroup(event) {
+    event.preventDefault();
+
+    if (!state.user) {
+      showToast("請先登入。", "error");
+      return;
+    }
+
+    const group = selectedGroup();
+    if (!group) {
+      showToast("請先選擇開團。", "error");
+      return;
+    }
+
+    const items = [...els.quantityList.querySelectorAll("input")]
+      .map((input) => ({
+        itemId: input.dataset.itemId,
+        quantity: Math.max(0, Number.parseInt(input.value, 10) || 0),
+      }))
+      .filter((item) => item.quantity > 0);
+
+    if (!items.length) {
+      showToast("請選擇至少一個品項。", "error");
+      return;
+    }
+
+    await withBusy(event.submitter, async () => {
+      await state.api.joinGroup({ groupId: group.id, items }, state.session, state.user);
+      await refreshGroups();
+      state.selectedGroupId = group.id;
+      renderApp();
+      showToast("訂單已送出。");
+    });
+  }
+
+  function handleQuantityClick(event) {
+    const button = event.target.closest("[data-step]");
+    if (!button) {
+      return;
+    }
+
+    const input = button.closest(".quantity-row").querySelector("input");
+    const nextValue = Math.max(0, (Number.parseInt(input.value, 10) || 0) + Number(button.dataset.step));
+    input.value = String(nextValue);
+    updateSubtotal();
+  }
+
+  function updateSubtotal() {
+    const total = [...els.quantityList.querySelectorAll("input")].reduce((sum, input) => {
+      const quantity = Math.max(0, Number.parseInt(input.value, 10) || 0);
+      const price = Number(input.dataset.price) || 0;
+      return sum + quantity * price;
+    }, 0);
+
+    els.joinSubtotal.textContent = formatMoney(total);
+  }
+
+  function collectCreateItems() {
+    return [...els.itemEditor.querySelectorAll(".item-row")]
+      .map((row) => ({
+        name: row.querySelector('[name="itemName"]').value.trim(),
+        price: Number(row.querySelector('[name="itemPrice"]').value),
+      }))
+      .filter((item) => item.name && Number.isFinite(item.price) && item.price >= 0);
+  }
+
+  function resetCreateForm() {
+    els.createGroupForm.reset();
+    els.itemEditor.replaceChildren();
+    addCreateItemRow();
+    addCreateItemRow();
+  }
+
+  function addCreateItemRow(name = "", price = "") {
+    const node = els.itemRowTemplate.content.firstElementChild.cloneNode(true);
+    node.querySelector('[name="itemName"]').value = name;
+    node.querySelector('[name="itemPrice"]').value = price;
+    node.querySelector(".remove-item").addEventListener("click", () => {
+      if (els.itemEditor.children.length <= 1) {
+        node.querySelector('[name="itemName"]').value = "";
+        node.querySelector('[name="itemPrice"]').value = "";
+        return;
+      }
+      node.remove();
+    });
+    els.itemEditor.appendChild(node);
+  }
+
+  async function withBusy(button, task) {
+    if (button) {
+      button.disabled = true;
+    }
+    try {
+      await task();
+    } catch (error) {
+      showToast(error.message || "操作失敗。", "error");
+    } finally {
+      if (button) {
+        button.disabled = false;
+      }
+    }
+  }
+
+  function selectedGroup() {
+    return state.groups.find((group) => group.id === state.selectedGroupId) || null;
+  }
+
+  function normalizeGroup(group) {
+    const items = (group.items || []).map((item) => ({
+      ...item,
+      price: Number(item.price) || 0,
+    }));
+
+    const orders = (group.orders || [])
+      .map((order) => {
+        const orderItems = (order.items || []).map((item) => ({
+          ...item,
+          price: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 0,
+          subtotal: Number(item.subtotal) || (Number(item.price) || 0) * (Number(item.quantity) || 0),
+        }));
+        const total = Number(order.total) || orderItems.reduce((sum, item) => sum + item.subtotal, 0);
+        return {
+          ...order,
+          total,
+          items: orderItems,
+        };
+      })
+      .sort((a, b) => compareDateDesc(a.createdAt, b.createdAt));
+
+    const participants = new Set(orders.map((order) => order.userId).filter(Boolean)).size;
+    const total = orders.reduce((sum, order) => sum + order.total, 0);
+
+    return {
+      ...group,
+      items,
+      orders,
+      status: group.status || "open",
+      ownerName: group.ownerName || (group.owner && group.owner.displayName) || "LINE 使用者",
+      ownerUserId: group.ownerUserId || (group.owner && group.owner.id) || "",
+      stats: {
+        participants,
+        orders: orders.length,
+        total,
+        ...(group.stats || {}),
       },
-      {
-        lineUserId: "demo-owner",
-        displayName: "小林",
-        pictureUrl: "",
-        technicianNumber: "B018",
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    groups: [
-      {
-        groupId: otherGroupId,
-        groupName: "下午飲料團",
-        ownerLineUserId: "demo-owner",
-        ownerName: "小林",
-        ownerTechnicianNumber: "B018",
+    };
+  }
+
+  function emptyState(message) {
+    const node = document.createElement("div");
+    node.className = "empty-state";
+    node.textContent = message;
+    return node;
+  }
+
+  function showToast(message, type = "success") {
+    window.clearTimeout(showToast.timer);
+    els.toast.textContent = message;
+    els.toast.className = `toast is-visible${type === "error" ? " is-error" : ""}`;
+    showToast.timer = window.setTimeout(() => {
+      els.toast.classList.remove("is-visible");
+    }, 2800);
+  }
+
+  function initials(name = "") {
+    return name.trim().slice(0, 1).toUpperCase() || "U";
+  }
+
+  function formatMoney(value) {
+    return money.format(Number(value) || 0);
+  }
+
+  function formatDate(value) {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("zh-TW", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  function compareDateDesc(a, b) {
+    return new Date(b || 0).getTime() - new Date(a || 0).getTime();
+  }
+
+  function frontendUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("session");
+    url.searchParams.delete("login_error");
+    url.hash = "";
+    return url.toString();
+  }
+
+  function uid(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  class GasApi {
+    constructor(baseUrl) {
+      this.baseUrl = baseUrl;
+    }
+
+    loginUrl(frontend) {
+      const url = new URL(this.baseUrl);
+      url.searchParams.set("action", "lineLogin");
+      url.searchParams.set("frontend", frontend);
+      return url.toString();
+    }
+
+    me(session) {
+      return this.request("me", { session }).then((data) => data.user);
+    }
+
+    listGroups(session) {
+      return this.request("groups", { session }).then((data) => data.groups || []);
+    }
+
+    createGroup(payload, session) {
+      return this.request("createGroup", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    joinGroup(payload, session) {
+      return this.request("joinGroup", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    request(action, params = {}) {
+      return new Promise((resolve, reject) => {
+        const callback = `__orderingSystem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const url = new URL(this.baseUrl);
+        url.searchParams.set("action", action);
+        url.searchParams.set("callback", callback);
+
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== "") {
+            url.searchParams.set(key, value);
+          }
+        });
+
+        const script = document.createElement("script");
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error("GAS 回應逾時。"));
+        }, 18000);
+
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          delete window[callback];
+          script.remove();
+        };
+
+        window[callback] = (response) => {
+          cleanup();
+          if (!response || response.ok === false) {
+            reject(new Error((response && response.message) || "GAS 操作失敗。"));
+            return;
+          }
+          resolve(response.data || {});
+        };
+
+        script.onerror = () => {
+          cleanup();
+          reject(new Error("無法連線 GAS Web App。"));
+        };
+        script.src = url.toString();
+        document.body.appendChild(script);
+      });
+    }
+  }
+
+  class DemoApi {
+    me() {
+      return Promise.resolve(this.currentUser());
+    }
+
+    listGroups() {
+      return Promise.resolve(this.data().groups);
+    }
+
+    createGroup(payload) {
+      const data = this.data();
+      const user = this.currentUser();
+      const now = new Date().toISOString();
+      const group = {
+        id: uid("grp"),
+        name: payload.name,
+        ownerUserId: user.id,
+        ownerName: user.displayName,
         status: "open",
         createdAt: now,
-        updatedAt: now,
-      },
-    ],
-    items: [
-      { itemId: createId(), groupId: otherGroupId, name: "紅茶", price: 30, active: true, createdAt: now, updatedAt: now },
-      { itemId: createId(), groupId: otherGroupId, name: "珍珠奶茶", price: 55, active: true, createdAt: now, updatedAt: now },
-      { itemId: createId(), groupId: otherGroupId, name: "檸檬綠茶", price: 45, active: true, createdAt: now, updatedAt: now },
-    ],
-    orders: [],
-  };
-}
+        items: payload.items.map((item) => ({
+          id: uid("item"),
+          name: item.name,
+          price: Number(item.price) || 0,
+        })),
+        orders: [],
+      };
+      data.groups.unshift(group);
+      this.save(data);
+      return Promise.resolve({ group });
+    }
 
-function saveDemoDb(db) {
-  localStorage.setItem("group-system-demo-db", JSON.stringify(db));
-}
+    joinGroup(payload) {
+      const data = this.data();
+      const user = this.currentUser();
+      const group = data.groups.find((entry) => entry.id === payload.groupId);
+      if (!group) {
+        return Promise.reject(new Error("找不到開團。"));
+      }
 
-function createId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
+      const items = payload.items
+        .map((entry) => {
+          const item = group.items.find((target) => target.id === entry.itemId);
+          const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
+          if (!item || quantity <= 0) {
+            return null;
+          }
+          return {
+            itemId: item.id,
+            name: item.name,
+            price: item.price,
+            quantity,
+            subtotal: item.price * quantity,
+          };
+        })
+        .filter(Boolean);
+
+      if (!items.length) {
+        return Promise.reject(new Error("請選擇至少一個品項。"));
+      }
+
+      group.orders.unshift({
+        id: uid("ord"),
+        userId: user.id,
+        userName: user.displayName,
+        total: items.reduce((sum, item) => sum + item.subtotal, 0),
+        createdAt: new Date().toISOString(),
+        items,
+      });
+
+      this.save(data);
+      return Promise.resolve({ ok: true });
+    }
+
+    currentUser() {
+      const saved = localStorage.getItem(STORAGE.demoUser);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      return {
+        id: "demo_user",
+        displayName: "測試使用者",
+        pictureUrl: "",
+      };
+    }
+
+    data() {
+      const saved = localStorage.getItem(STORAGE.demoData);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+
+      const seeded = seedDemoData();
+      this.save(seeded);
+      return seeded;
+    }
+
+    save(data) {
+      localStorage.setItem(STORAGE.demoData, JSON.stringify(data));
+    }
   }
-  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+
+  function seedDemoData() {
+    const now = Date.now();
+    return {
+      groups: [
+        {
+          id: "grp_lunch",
+          name: "週五便當團",
+          ownerUserId: "u_mina",
+          ownerName: "Mina",
+          status: "open",
+          createdAt: new Date(now - 1000 * 60 * 36).toISOString(),
+          items: [
+            { id: "item_chicken", name: "椒麻雞腿飯", price: 120 },
+            { id: "item_pork", name: "滷排骨飯", price: 105 },
+            { id: "item_veg", name: "蔬食便當", price: 95 },
+          ],
+          orders: [
+            {
+              id: "ord_1",
+              userId: "u_chen",
+              userName: "阿誠",
+              total: 225,
+              createdAt: new Date(now - 1000 * 60 * 18).toISOString(),
+              items: [
+                { itemId: "item_chicken", name: "椒麻雞腿飯", price: 120, quantity: 1, subtotal: 120 },
+                { itemId: "item_pork", name: "滷排骨飯", price: 105, quantity: 1, subtotal: 105 },
+              ],
+            },
+          ],
+        },
+        {
+          id: "grp_drink",
+          name: "下午飲料團",
+          ownerUserId: "u_hao",
+          ownerName: "Hao",
+          status: "open",
+          createdAt: new Date(now - 1000 * 60 * 92).toISOString(),
+          items: [
+            { id: "item_tea", name: "四季春", price: 35 },
+            { id: "item_milk", name: "珍珠鮮奶茶", price: 65 },
+            { id: "item_coffee", name: "黑咖啡", price: 55 },
+          ],
+          orders: [],
+        },
+      ],
+    };
+  }
+})();
