@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>團購系統</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="團購系統首頁">
+          <span class="brand-mark">團</span>
+          <span>
+            <strong>團購系統</strong>
+            <small>LINE member orders</small>
+          </span>
+        </a>
+
+        <div class="session-area" id="sessionArea">
+          <span class="config-pill" id="configStatus">Demo</span>
+          <button class="line-button" id="loginButton" type="button">
+            <span aria-hidden="true">L</span>
+            LINE 登入
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar">
+          <section class="auth-panel" id="loginPanel">
+            <p class="eyebrow">Member access</p>
+            <h1>用 LINE 開團、下單、追蹤金額</h1>
+            <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
+            <div class="stacked-actions">
+              <button class="primary-action" id="heroLoginButton" type="button">
+                <span aria-hidden="true">L</span>
+                LINE 登入
+              </button>
+              <button class="ghost-action" id="demoLoginButton" type="button">使用測試身分</button>
+            </div>
+          </section>
+
+          <section class="create-panel hidden" id="createPanel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Create</p>
+                <h2>開新團</h2>
+              </div>
+              <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
+                ↺
+              </button>
+            </div>
+
+            <form id="createGroupForm" autocomplete="off">
+              <label class="field">
+                <span>開團名稱</span>
+                <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
+              </label>
+
+              <div class="form-subhead">
+                <span>項目與金額</span>
+                <button class="text-button" id="addItemButton" type="button">新增項目</button>
+              </div>
+
+              <div class="item-editor" id="itemEditor" aria-live="polite"></div>
+
+              <button class="primary-action full" type="submit">建立開團</button>
+            </form>
+          </section>
+        </aside>
+
+        <section class="group-board" aria-label="目前開團">
+          <div class="board-heading">
+            <div>
+              <p class="eyebrow">Open groups</p>
+              <h2>目前開團</h2>
+            </div>
+            <label class="search-field">
+              <span class="sr-only">搜尋團名或項目</span>
+              <input id="groupSearchInput" type="search" placeholder="搜尋團名或項目" />
+            </label>
+          </div>
+
+          <div class="board-toolbar">
+            <button class="chip is-active" type="button" data-filter="all">全部</button>
+            <button class="chip" type="button" data-filter="mine">我的開團</button>
+            <button class="chip" type="button" data-filter="joined">我已加入</button>
+          </div>
+
+          <div class="group-list" id="groupList"></div>
+        </section>
+
+        <aside class="detail-panel" aria-label="團購明細">
+          <section class="empty-detail" id="emptyDetail">
+            <p class="eyebrow">Detail</p>
+            <h2>選擇一個團</h2>
+            <p>查看品項、數量與近期訂單。</p>
+          </section>
+
+          <section class="group-detail hidden" id="groupDetail">
+            <div class="detail-head">
+              <div>
+                <p class="eyebrow" id="detailOwner">Group owner</p>
+                <h2 id="detailTitle"></h2>
+              </div>
+              <span class="status-pill" id="detailStatus">開放中</span>
+            </div>
+
+            <dl class="stat-grid">
+              <div>
+                <dt>品項</dt>
+                <dd id="detailItemCount">0</dd>
+              </div>
+              <div>
+                <dt>訂單</dt>
+                <dd id="detailOrderCount">0</dd>
+              </div>
+              <div>
+                <dt>金額</dt>
+                <dd id="detailTotal">NT$0</dd>
+              </div>
+            </dl>
+
+            <form class="join-form" id="joinGroupForm">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Join</p>
+                  <h3>選擇品項</h3>
+                </div>
+                <strong id="joinSubtotal">NT$0</strong>
+              </div>
+
+              <div class="quantity-list" id="quantityList"></div>
+              <button class="primary-action full" type="submit">送出訂單</button>
+            </form>
+
+            <section class="orders-panel">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Orders</p>
+                  <h3>近期訂單</h3>
+                </div>
+              </div>
+              <div class="order-list" id="orderList"></div>
+            </section>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <template id="itemRowTemplate">
+      <div class="item-row">
+        <label class="field dense">
+          <span>項目</span>
+          <input name="itemName" type="text" maxlength="32" placeholder="品項名稱" required />
+        </label>
+        <label class="field dense price-field">
+          <span>金額</span>
+          <input name="itemPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required />
+        </label>
+        <button class="icon-button remove-item" type="button" aria-label="移除項目" title="移除">×</button>
+      </div>
+    </template>
+
+    <template id="groupCardTemplate">
+      <article class="group-card" tabindex="0">
+        <div class="group-card-top">
+          <div>
+            <p class="group-owner"></p>
+            <h3 class="group-name"></h3>
+          </div>
+          <span class="status-dot" aria-hidden="true"></span>
+        </div>
+        <div class="group-items"></div>
+        <div class="group-meta">
+          <span class="meta-orders"></span>
+          <span class="meta-total"></span>
+        </div>
+      </article>
+    </template>
+
+    <template id="quantityRowTemplate">
+      <div class="quantity-row">
+        <div>
+          <strong class="quantity-name"></strong>
+          <span class="quantity-price"></span>
+        </div>
+        <div class="stepper">
+          <button type="button" data-step="-1" aria-label="減少數量">−</button>
+          <input type="number" min="0" step="1" value="0" inputmode="numeric" />
+          <button type="button" data-step="1" aria-label="增加數量">+</button>
+        </div>
+      </div>
+    </template>
+
+    <template id="orderRowTemplate">
+      <article class="order-row">
+        <div>
+          <strong class="order-user"></strong>
+          <p class="order-items"></p>
+        </div>
+        <span class="order-total"></span>
+      </article>
+    </template>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
