@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>開團系統</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">團</div>
+          <div>
+            <p class="eyebrow">Group System</p>
+            <h1>開團系統</h1>
+          </div>
+        </div>
+
+        <div class="profile-panel" id="profilePanel">
+          <div class="avatar-placeholder"></div>
+          <div>
+            <p class="muted">尚未登入</p>
+            <strong>LINE 帳號</strong>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="主要功能">
+          <button class="nav-button active" data-view="joinView">
+            <i data-lucide="shopping-bag"></i>
+            <span>加入團</span>
+          </button>
+          <button class="nav-button" data-view="createView">
+            <i data-lucide="square-plus"></i>
+            <span>開團</span>
+          </button>
+          <button class="nav-button" data-view="myGroupsView">
+            <i data-lucide="clipboard-list"></i>
+            <span>我開的團</span>
+          </button>
+          <button class="nav-button" data-view="recordsView">
+            <i data-lucide="receipt-text"></i>
+            <span>加入紀錄</span>
+          </button>
+        </nav>
+
+        <button class="line-login" id="loginButton">
+          <i data-lucide="log-in"></i>
+          <span>LINE 登入</span>
+        </button>
+      </aside>
+
+      <main class="workspace">
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">開團工作台</p>
+            <h2 id="pageTitle">加入團</h2>
+          </div>
+          <div class="status-cluster">
+            <span class="status-pill" id="authStatus">未登入</span>
+            <span class="status-pill" id="techStatus">未填技師號碼</span>
+          </div>
+        </section>
+
+        <section class="notice hidden" id="configNotice">
+          <i data-lucide="triangle-alert"></i>
+          <div>
+            <strong>尚未設定正式連線</strong>
+            <p>請先在 <code>config.json</code> 填入 <code>LIFF_ID</code> 與 <code>GAS_WEB_APP_URL</code>。</p>
+          </div>
+        </section>
+
+        <section class="notice hidden" id="technicianNotice">
+          <i data-lucide="badge-check"></i>
+          <div>
+            <strong>第一次登入請輸入技師號碼</strong>
+            <form class="inline-form" id="technicianForm">
+              <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
+              <button class="primary-button" type="submit">
+                <i data-lucide="save"></i>
+                <span>儲存</span>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <section class="notice hidden danger" id="errorNotice">
+          <i data-lucide="circle-alert"></i>
+          <div>
+            <strong>系統訊息</strong>
+            <p id="errorText"></p>
+          </div>
+        </section>
+
+        <section class="view-panel active" id="joinView">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">可加入團</p>
+              <h3>別人開設的團</h3>
+            </div>
+            <button class="ghost-button" id="refreshGroupsButton">
+              <i data-lucide="refresh-cw"></i>
+              <span>更新</span>
+            </button>
+          </div>
+
+          <div class="join-layout">
+            <div class="group-list" id="groupList"></div>
+
+            <form class="order-form" id="joinForm">
+              <div class="selected-group" id="selectedGroupPanel">
+                <p class="muted">尚未選擇團</p>
+                <strong>請從左側選擇要加入的團</strong>
+              </div>
+              <div class="join-items" id="joinItemList"></div>
+              <div class="form-row">
+                <label for="joinNote">備註</label>
+                <textarea id="joinNote" name="joinNote" rows="4" placeholder="顏色、口味、尺寸或其他需求"></textarea>
+              </div>
+              <div class="checkout-row">
+                <div>
+                  <p class="muted">合計</p>
+                  <strong id="joinTotal">$0</strong>
+                </div>
+                <button class="primary-button" type="submit" id="submitJoinButton">
+                  <i data-lucide="send"></i>
+                  <span>送出加入</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="view-panel" id="createView">
+          <form class="admin-panel" id="groupForm">
+            <div class="section-header compact">
+              <div>
+                <p class="eyebrow">開團設定</p>
+                <h3 id="groupFormTitle">建立新團</h3>
+              </div>
+              <button class="primary-button" type="submit" id="saveGroupButton">
+                <i data-lucide="save"></i>
+                <span>建立團</span>
+              </button>
+            </div>
+
+            <div class="form-grid single">
+              <div class="form-row">
+                <label for="groupName">團名</label>
+                <input id="groupName" name="groupName" placeholder="例如：飲料團、甜點團、保養品團" required />
+              </div>
+            </div>
+
+            <div class="section-header compact subheader">
+              <div>
+                <p class="eyebrow">項目與價格</p>
+                <h3>團購項目</h3>
+              </div>
+              <button class="ghost-button" id="addDraftItemButton" type="button">
+                <i data-lucide="plus"></i>
+                <span>新增項目</span>
+              </button>
+            </div>
+
+            <div class="item-editor" id="draftItemEditor"></div>
+
+            <div class="form-actions">
+              <button class="ghost-button hidden" id="cancelEditButton" type="button">
+                <i data-lucide="x"></i>
+                <span>取消編輯</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view-panel" id="myGroupsView">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">團主視圖</p>
+              <h3>我開的團</h3>
+            </div>
+            <button class="ghost-button" id="refreshMyGroupsButton">
+              <i data-lucide="refresh-cw"></i>
+              <span>更新</span>
+            </button>
+          </div>
+          <div class="owned-groups" id="myGroupsList"></div>
+        </section>
+
+        <section class="view-panel" id="recordsView">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">個人紀錄</p>
+              <h3>加入紀錄</h3>
+            </div>
+            <button class="ghost-button" id="refreshRecordsButton">
+              <i data-lucide="refresh-cw"></i>
+              <span>更新</span>
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>團名</th>
+                  <th>項目</th>
+                  <th>金額</th>
+                  <th>備註</th>
+                </tr>
+              </thead>
+              <tbody id="recordsTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
