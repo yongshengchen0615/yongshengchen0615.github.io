@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   cacheElements();
   wireEvents();
   resetDraftItems();
+  setBootStatus("載入設定中", "準備登入");
   renderIcons();
   await loadConfig();
   initApp();
@@ -112,6 +113,7 @@ async function initApp() {
   els.configNotice.classList.toggle("hidden", configured);
 
   if (!configured) {
+    setBootStatus("Demo 模式", "待填技師號碼");
     ensureDemoLogin();
     restoreDemoSession();
     renderAll();
@@ -119,6 +121,7 @@ async function initApp() {
   }
 
   try {
+    setBootStatus("LINE 登入中", "驗證身份");
     await liff.init({
       liffId: CONFIG.LIFF_ID,
       withLoginOnExternalBrowser: true,
@@ -128,12 +131,33 @@ async function initApp() {
       return;
     }
 
-    state.profile = await liff.getProfile();
     state.idToken = liff.getIDToken();
+    if (!state.idToken) {
+      throw new Error("無法取得 LINE idToken，請確認 LIFF scopes 已啟用 openid");
+    }
+    setBootStatus("同步資料中", "讀取技師資料");
     await refreshDashboard({ silent: true });
   } catch (error) {
     showError(`LINE 初始化失敗：${error.message}`);
     renderAll();
+  }
+}
+
+function setBootStatus(authText, techText) {
+  if (els.authStatus) {
+    els.authStatus.textContent = authText;
+  }
+  if (els.techStatus) {
+    els.techStatus.textContent = techText;
+  }
+  if (els.profilePanel) {
+    els.profilePanel.innerHTML = `
+      <div class="avatar-placeholder"></div>
+      <div>
+        <p class="muted">${escapeHtml(authText)}</p>
+        <strong>${escapeHtml(techText)}</strong>
+      </div>
+    `;
   }
 }
 
