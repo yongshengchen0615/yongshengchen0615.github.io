@@ -55,10 +55,10 @@ function isAppConfigured() {
 function cacheElements() {
   Object.assign(els, {
     profilePanel: document.querySelector("#profilePanel"),
-    loginButton: document.querySelector("#loginButton"),
     authStatus: document.querySelector("#authStatus"),
     techStatus: document.querySelector("#techStatus"),
     pageTitle: document.querySelector("#pageTitle"),
+    mainViews: document.querySelector("#mainViews"),
     configNotice: document.querySelector("#configNotice"),
     technicianNotice: document.querySelector("#technicianNotice"),
     technicianForm: document.querySelector("#technicianForm"),
@@ -93,7 +93,6 @@ function wireEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
 
-  els.loginButton.addEventListener("click", handleLoginClick);
   els.technicianForm.addEventListener("submit", saveTechnicianNumber);
   els.refreshGroupsButton.addEventListener("click", refreshDashboard);
   els.refreshMyGroupsButton.addEventListener("click", refreshDashboard);
@@ -113,15 +112,19 @@ async function initApp() {
   els.configNotice.classList.toggle("hidden", configured);
 
   if (!configured) {
+    ensureDemoLogin();
     restoreDemoSession();
     renderAll();
     return;
   }
 
   try {
-    await liff.init({ liffId: CONFIG.LIFF_ID });
+    await liff.init({
+      liffId: CONFIG.LIFF_ID,
+      withLoginOnExternalBrowser: true,
+    });
     if (!liff.isLoggedIn()) {
-      renderAll();
+      liff.login();
       return;
     }
 
@@ -132,25 +135,6 @@ async function initApp() {
     showError(`LINE 初始化失敗：${error.message}`);
     renderAll();
   }
-}
-
-async function handleLoginClick() {
-  if (!isAppConfigured()) {
-    if (state.user) {
-      demoLogout();
-    } else {
-      demoLogin();
-    }
-    return;
-  }
-
-  if (!liff.isLoggedIn()) {
-    liff.login();
-    return;
-  }
-
-  liff.logout();
-  window.location.reload();
 }
 
 async function refreshDashboard(options = {}) {
@@ -242,9 +226,6 @@ function renderProfile() {
     </div>
   `;
 
-  els.loginButton.innerHTML = state.user
-    ? '<i data-lucide="log-out"></i><span>登出</span>'
-    : '<i data-lucide="log-in"></i><span>LINE 登入</span>';
 }
 
 function renderStatus() {
@@ -267,6 +248,8 @@ function renderStatus() {
   }
 
   els.technicianNotice.classList.toggle("hidden", !loggedIn || hasTechnicianNumber);
+  document.body.classList.toggle("setup-required", loggedIn && !hasTechnicianNumber);
+  els.mainViews.classList.toggle("hidden", loggedIn && !hasTechnicianNumber);
   if (loggedIn && !els.technicianNumber.value) {
     els.technicianNumber.value = state.user?.technicianNumber || "";
   }
@@ -841,6 +824,18 @@ function restoreDemoSession() {
   applyDashboard(buildDemoDashboard(db, user));
 }
 
+function ensureDemoLogin() {
+  const db = getDemoDb();
+  if (!db.currentProfile) {
+    db.currentProfile = {
+      userId: "demo-user",
+      displayName: "Demo 技師",
+      pictureUrl: "",
+    };
+    saveDemoDb(db);
+  }
+}
+
 function demoLogin() {
   const db = getDemoDb();
   db.currentProfile = {
@@ -1057,7 +1052,7 @@ function getDemoDb() {
         lineUserId: "demo-user",
         displayName: "Demo 技師",
         pictureUrl: "",
-        technicianNumber: "A001",
+        technicianNumber: "",
         createdAt: now,
         updatedAt: now,
       },

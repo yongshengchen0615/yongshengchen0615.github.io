@@ -45,11 +45,6 @@
             <span>加入紀錄</span>
           </button>
         </nav>
-
-        <button class="line-login" id="loginButton">
-          <i data-lucide="log-in"></i>
-          <span>LINE 登入</span>
-        </button>
       </aside>
 
       <main class="workspace">
@@ -72,18 +67,25 @@
           </div>
         </section>
 
-        <section class="notice hidden" id="technicianNotice">
-          <i data-lucide="badge-check"></i>
-          <div>
-            <strong>第一次登入請輸入技師號碼</strong>
-            <form class="inline-form" id="technicianForm">
-              <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
-              <button class="primary-button" type="submit">
-                <i data-lucide="save"></i>
-                <span>儲存</span>
-              </button>
-            </form>
+        <section class="setup-panel hidden" id="technicianNotice">
+          <div class="setup-icon">
+            <i data-lucide="badge-check"></i>
           </div>
+          <div class="setup-copy">
+            <p class="eyebrow">首次設定</p>
+            <h3>輸入技師號碼</h3>
+            <p class="muted">技師號碼會寫入 GAS，之後開團與加入團都會使用這個身份。</p>
+          </div>
+          <form class="setup-form" id="technicianForm">
+            <div class="form-row">
+              <label for="technicianNumber">技師號碼</label>
+              <input id="technicianNumber" name="technicianNumber" placeholder="例如：A023" required />
+            </div>
+            <button class="primary-button" type="submit">
+              <i data-lucide="save"></i>
+              <span>確認</span>
+            </button>
+          </form>
         </section>
 
         <section class="notice hidden danger" id="errorNotice">
@@ -94,6 +96,7 @@
           </div>
         </section>
 
+        <div id="mainViews">
         <section class="view-panel active" id="joinView">
           <div class="section-header">
             <div>
@@ -215,6 +218,7 @@
             </table>
           </div>
         </section>
+        </div>
       </main>
     </div>
 

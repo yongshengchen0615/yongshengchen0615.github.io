@@ -1,3 +1,9 @@
+const GAS_CONFIG = {
+  // 填入既有 Google Sheets ID 可固定使用同一份資料表。
+  // 留空時會改讀 Script Properties 的 SPREADSHEET_ID；仍留空則自動建立。
+  SPREADSHEET_ID: "",
+};
+
 const SHEETS = {
   USERS: "Users",
   GROUPS: "Groups",
@@ -435,7 +441,7 @@ function jsonOutput_(payload) {
 
 function getSpreadsheet_() {
   const properties = PropertiesService.getScriptProperties();
-  let spreadsheetId = properties.getProperty("SPREADSHEET_ID");
+  let spreadsheetId = String(GAS_CONFIG.SPREADSHEET_ID || "").trim() || properties.getProperty("SPREADSHEET_ID");
   let spreadsheet;
 
   if (spreadsheetId) {
