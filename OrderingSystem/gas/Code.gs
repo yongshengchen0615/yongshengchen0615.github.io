@@ -11,9 +11,9 @@ const HEADERS = {
   Users: ["id", "displayName", "pictureUrl", "updatedAt"],
   Sessions: ["token", "userId", "expiresAt", "createdAt"],
   Groups: ["id", "name", "ownerUserId", "ownerName", "status", "createdAt", "updatedAt"],
-  Items: ["id", "groupId", "name", "price", "createdAt"],
+  Items: ["id", "groupId", "name", "price", "createdAt", "options"],
   Orders: ["id", "groupId", "userId", "userName", "total", "createdAt"],
-  OrderItems: ["id", "orderId", "itemId", "itemName", "price", "quantity", "subtotal"],
+  OrderItems: ["id", "orderId", "itemId", "itemName", "price", "quantity", "subtotal", "options"],
 };
 
 const SESSION_DAYS = 14;
@@ -247,6 +247,7 @@ function createGroup_(spreadsheet, payload, user) {
         name: item.name,
         price: item.price,
         createdAt: now,
+        options: stringifyJson_(item.options),
       });
     });
 
@@ -278,6 +279,7 @@ function addItem_(spreadsheet, payload, user) {
       name: item.name,
       price: item.price,
       createdAt: new Date().toISOString(),
+      options: stringifyJson_(item.options),
     });
 
     touchGroup_(spreadsheet, group.id);
@@ -312,6 +314,7 @@ function updateItem_(spreadsheet, payload, user) {
     }, function (entry) {
       entry.name = item.name;
       entry.price = item.price;
+      entry.options = stringifyJson_(item.options);
       return entry;
     });
 
@@ -388,6 +391,7 @@ function saveItems_(spreadsheet, payload, user) {
       id: id,
       name: item.name,
       price: item.price,
+      options: item.options,
     };
   });
 
@@ -418,6 +422,7 @@ function saveItems_(spreadsheet, payload, user) {
         }, function (entry) {
           entry.name = item.name;
           entry.price = item.price;
+          entry.options = stringifyJson_(item.options);
           return entry;
         });
         syncOrderItemsForItem_(spreadsheet, item.id, item);
@@ -430,6 +435,7 @@ function saveItems_(spreadsheet, payload, user) {
         name: item.name,
         price: item.price,
         createdAt: now,
+        options: stringifyJson_(item.options),
       });
     });
 
@@ -487,32 +493,38 @@ function joinGroup_(spreadsheet, payload, user) {
         itemMap[item.id] = item;
       });
 
-    const quantities = {};
+    const selectedMap = {};
     requestedItems.forEach(function (entry) {
       const itemId = cleanText_(entry.itemId, 80);
       const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
-      if (itemId && quantity > 0) {
-        quantities[itemId] = (quantities[itemId] || 0) + quantity;
+      const item = itemMap[itemId];
+      if (!item || quantity <= 0) {
+        return;
       }
-    });
 
-    const selectedItems = Object.keys(quantities)
-      .map(function (itemId) {
-        const item = itemMap[itemId];
-        if (!item) {
-          return null;
-        }
-        const quantity = quantities[itemId];
-        const price = Number(item.price) || 0;
-        return {
+      const selectedOptions = normalizeSelectedOptions_(entry.options, parseJsonArray_(item.options));
+      const optionExtra = selectedOptions.reduce(function (sum, option) {
+        return sum + option.price;
+      }, 0);
+      const price = (Number(item.price) || 0) + optionExtra;
+      const key = item.id + "::" + optionSignature_(selectedOptions);
+      if (!selectedMap[key]) {
+        selectedMap[key] = {
           itemId: item.id,
           itemName: item.name,
           price: price,
-          quantity: quantity,
-          subtotal: price * quantity,
+          quantity: 0,
+          subtotal: 0,
+          options: selectedOptions,
         };
-      })
-      .filter(Boolean);
+      }
+      selectedMap[key].quantity += quantity;
+      selectedMap[key].subtotal += price * quantity;
+    });
+
+    const selectedItems = Object.keys(selectedMap).map(function (key) {
+      return selectedMap[key];
+    });
 
     if (!selectedItems.length) {
       throw new Error("請選擇至少一個品項。");
@@ -542,6 +554,7 @@ function joinGroup_(spreadsheet, payload, user) {
         price: item.price,
         quantity: item.quantity,
         subtotal: item.subtotal,
+        options: stringifyJson_(item.options),
       });
     });
 
@@ -580,12 +593,17 @@ function updateOrder_(spreadsheet, payload, user) {
       throw new Error("只能修改自己的訂單。");
     }
 
-    const quantityMap = {};
+    const quantityByEntry = {};
+    const quantityByItem = {};
     requestedItems.forEach(function (entry) {
+      const entryId = cleanText_(entry.entryId, 80);
       const itemId = cleanText_(entry.itemId, 80);
       const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
+      if (entryId) {
+        quantityByEntry[entryId] = quantity;
+      }
       if (itemId) {
-        quantityMap[itemId] = quantity;
+        quantityByItem[itemId] = quantity;
       }
     });
 
@@ -595,7 +613,12 @@ function updateOrder_(spreadsheet, payload, user) {
 
     const updatedItems = currentItems
       .map(function (item) {
-        const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+        const quantity =
+          item.id && quantityByEntry[item.id] !== undefined
+            ? quantityByEntry[item.id]
+            : quantityByItem[item.itemId] !== undefined
+              ? quantityByItem[item.itemId]
+              : Number(item.quantity) || 0;
         if (quantity <= 0) {
           return null;
         }
@@ -674,19 +697,29 @@ function saveOrders_(spreadsheet, payload, user) {
         throw new Error("只能修改自己的訂單。");
       }
 
-      const quantityMap = {};
+      const quantityByEntry = {};
+      const quantityByItem = {};
       const requestedItems = Array.isArray(orderPayload.items) ? orderPayload.items : [];
       requestedItems.forEach(function (entry) {
+        const entryId = cleanText_(entry.entryId, 80);
         const itemId = cleanText_(entry.itemId, 80);
         const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
+        if (entryId) {
+          quantityByEntry[entryId] = quantity;
+        }
         if (itemId) {
-          quantityMap[itemId] = quantity;
+          quantityByItem[itemId] = quantity;
         }
       });
 
       const updatedItems = (orderItemsByOrder[orderId] || [])
         .map(function (item) {
-          const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+          const quantity =
+            item.id && quantityByEntry[item.id] !== undefined
+              ? quantityByEntry[item.id]
+              : quantityByItem[item.itemId] !== undefined
+                ? quantityByItem[item.itemId]
+                : Number(item.quantity) || 0;
           if (quantity <= 0) {
             return null;
           }
@@ -756,11 +789,13 @@ function listGroups_(spreadsheet, user) {
         .map(function (order) {
           const attachedItems = (orderItemsByOrder[order.id] || []).map(function (item) {
             return {
+              entryId: item.id,
               itemId: item.itemId,
               name: item.itemName,
               price: Number(item.price) || 0,
               quantity: Number(item.quantity) || 0,
               subtotal: Number(item.subtotal) || 0,
+              options: parseJsonArray_(item.options),
             };
           });
 
@@ -797,6 +832,7 @@ function listGroups_(spreadsheet, user) {
             id: item.id,
             name: item.name,
             price: Number(item.price) || 0,
+            options: parseJsonArray_(item.options),
           };
         }),
         orders: groupOrders,
@@ -848,9 +884,14 @@ function syncOrderItemsForItem_(spreadsheet, itemId, item) {
     return entry.itemId === itemId;
   }, function (entry) {
     const quantity = Number(entry.quantity) || 0;
+    const selectedOptions = normalizeSelectedOptions_(parseJsonArray_(entry.options), item.options);
+    const optionExtra = selectedOptions.reduce(function (sum, option) {
+      return sum + (Number(option.price) || 0);
+    }, 0);
     entry.itemName = item.name;
-    entry.price = item.price;
-    entry.subtotal = item.price * quantity;
+    entry.options = stringifyJson_(selectedOptions);
+    entry.price = item.price + optionExtra;
+    entry.subtotal = entry.price * quantity;
     return entry;
   });
 }
@@ -1154,11 +1195,125 @@ function normalizeIncomingItems_(items) {
       return {
         name: cleanText_(item.name, 32),
         price: Number(item.price),
+        options: normalizeOptionGroups_(item.options),
       };
     })
     .filter(function (item) {
       return item.name && Number.isFinite(item.price) && item.price >= 0;
     });
+}
+
+function normalizeOptionGroups_(groups) {
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+
+  return groups
+    .map(function (group, groupIndex) {
+      const name = cleanText_(group && group.name, 24);
+      const choices = Array.isArray(group && group.choices) ? group.choices : [];
+      return {
+        id: cleanText_((group && group.id) || "opt_" + groupIndex, 80),
+        name: name,
+        choices: choices
+          .map(function (choice, choiceIndex) {
+            const choiceName = cleanText_(choice && choice.name, 24);
+            return {
+              id: cleanText_((choice && choice.id) || "choice_" + choiceIndex, 80),
+              name: choiceName,
+              price: Math.max(0, Number(choice && choice.price) || 0),
+            };
+          })
+          .filter(function (choice) {
+            return choice.name;
+          }),
+      };
+    })
+    .filter(function (group) {
+      return group.name && group.choices.length;
+    });
+}
+
+function normalizeSelectedOptions_(selectedOptions, itemOptionGroups) {
+  const groups = normalizeOptionGroups_(itemOptionGroups);
+  const groupMap = {};
+  groups.forEach(function (group) {
+    const choiceMap = {};
+    group.choices.forEach(function (choice) {
+      choiceMap[choice.id] = choice;
+    });
+    groupMap[group.id] = {
+      group: group,
+      choices: choiceMap,
+    };
+  });
+
+  if (!Array.isArray(selectedOptions)) {
+    return [];
+  }
+
+  return selectedOptions
+    .map(function (option) {
+      const groupId = cleanText_(option && option.groupId, 80);
+      const choiceId = cleanText_(option && option.choiceId, 80);
+      const matchedGroup = groupMap[groupId];
+      const matchedChoice = matchedGroup && matchedGroup.choices[choiceId];
+      if (matchedGroup && matchedChoice) {
+        return {
+          groupId: matchedGroup.group.id,
+          groupName: matchedGroup.group.name,
+          choiceId: matchedChoice.id,
+          choiceName: matchedChoice.name,
+          price: matchedChoice.price,
+        };
+      }
+
+      if (groups.length) {
+        return null;
+      }
+
+      const groupName = cleanText_(option && option.groupName, 24);
+      const choiceName = cleanText_(option && option.choiceName, 24);
+      if (!groupName || !choiceName) {
+        return null;
+      }
+      return {
+        groupId: groupId,
+        groupName: groupName,
+        choiceId: choiceId,
+        choiceName: choiceName,
+        price: Math.max(0, Number(option && option.price) || 0),
+      };
+    })
+    .filter(Boolean);
+}
+
+function optionSignature_(options) {
+  return normalizeSelectedOptions_(options, []).map(function (option) {
+    return option.groupId + ":" + option.choiceId + ":" + option.price;
+  }).join("|");
+}
+
+function parseJsonArray_(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function stringifyJson_(value) {
+  const array = Array.isArray(value) ? value : [];
+  return array.length ? JSON.stringify(array) : "";
 }
 
 function cleanText_(value, maxLength) {

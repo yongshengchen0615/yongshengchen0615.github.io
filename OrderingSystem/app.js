@@ -25,6 +25,8 @@
     groups: [],
     selectedGroupId: "",
     view: "browse",
+    detailMode: "orders",
+    loadingCount: 0,
     filter: "all",
     search: "",
   };
@@ -40,35 +42,41 @@
 
   async function init() {
     cacheElements();
-    bindStaticEvents();
-    resetCreateForm();
+    const stopLoading = showLoading("正在登入並讀取團購資料", "載入中");
 
-    readLoginCallback();
-    state.config = await loadConfig();
-    state.usingDemo = !state.config.demoMode;
-    state.api = createApi();
-    renderConfigStatus();
+    try {
+      bindStaticEvents();
+      resetCreateForm();
 
-    const mode = desiredAuthMode();
-    if (localStorage.getItem(STORAGE.mode) !== mode) {
-      state.session = "";
-      localStorage.removeItem(STORAGE.session);
+      readLoginCallback();
+      state.config = await loadConfig();
+      state.usingDemo = !state.config.demoMode;
+      state.api = createApi();
+      renderConfigStatus();
+
+      const mode = desiredAuthMode();
+      if (localStorage.getItem(STORAGE.mode) !== mode) {
+        state.session = "";
+        localStorage.removeItem(STORAGE.session);
+      }
+
+      if (mode === "live") {
+        await initLineLogin();
+      }
+
+      if (state.session && localStorage.getItem(STORAGE.mode) === mode) {
+        await restoreSession();
+      }
+
+      if (!state.user) {
+        await autoAuthenticate(mode);
+      }
+
+      renderSession();
+      await refreshGroups();
+    } finally {
+      stopLoading();
     }
-
-    if (mode === "live") {
-      await initLineLogin();
-    }
-
-    if (state.session && localStorage.getItem(STORAGE.mode) === mode) {
-      await restoreSession();
-    }
-
-    if (!state.user) {
-      await autoAuthenticate(mode);
-    }
-
-    renderSession();
-    await refreshGroups();
   }
 
   function cacheElements() {
@@ -88,23 +96,35 @@
     els.groupSearchInput = document.querySelector("#groupSearchInput");
     els.groupList = document.querySelector("#groupList");
     els.emptyDetail = document.querySelector("#emptyDetail");
+    els.emptyDetailBackButton = document.querySelector("#emptyDetailBackButton");
     els.groupDetail = document.querySelector("#groupDetail");
+    els.detailBackButton = document.querySelector("#detailBackButton");
     els.detailOwner = document.querySelector("#detailOwner");
     els.detailTitle = document.querySelector("#detailTitle");
     els.detailStatus = document.querySelector("#detailStatus");
     els.detailItemCount = document.querySelector("#detailItemCount");
     els.detailOrderCount = document.querySelector("#detailOrderCount");
     els.detailTotal = document.querySelector("#detailTotal");
+    els.ownerDetailTabs = document.querySelector("#ownerDetailTabs");
+    els.ownerDetailButtons = [...document.querySelectorAll("[data-owner-detail]")];
     els.ownerTools = document.querySelector("#ownerTools");
+    els.ownerAddOptionGroupButton = document.querySelector("#ownerAddOptionGroupButton");
+    els.ownerOptionBankList = document.querySelector("#ownerOptionBankList");
     els.ownerAddDraftButton = document.querySelector("#ownerAddDraftButton");
     els.ownerSaveItemsButton = document.querySelector("#ownerSaveItemsButton");
     els.ownerItemList = document.querySelector("#ownerItemList");
+    els.detailOrderWorkspace = document.querySelector("#detailOrderWorkspace");
     els.joinGroupForm = document.querySelector("#joinGroupForm");
     els.quantityList = document.querySelector("#quantityList");
-    els.joinSubtotal = document.querySelector("#joinSubtotal");
+    els.selectionList = document.querySelector("#selectionList");
+    els.selectionEmpty = document.querySelector("#selectionEmpty");
+    els.selectionTotal = document.querySelector("#selectionTotal");
     els.orderSectionTitle = document.querySelector("#orderSectionTitle");
     els.saveOrdersButton = document.querySelector("#saveOrdersButton");
     els.orderList = document.querySelector("#orderList");
+    els.loadingOverlay = document.querySelector("#loadingOverlay");
+    els.loadingTitle = document.querySelector("#loadingTitle");
+    els.loadingMessage = document.querySelector("#loadingMessage");
     els.toast = document.querySelector("#toast");
     els.itemRowTemplate = document.querySelector("#itemRowTemplate");
     els.groupCardTemplate = document.querySelector("#groupCardTemplate");
@@ -120,20 +140,30 @@
     els.loginButton.addEventListener("click", handleLogin);
     els.heroLoginButton.addEventListener("click", handleLogin);
     els.demoLoginButton.addEventListener("click", (event) => {
-      withBusy(event.currentTarget, handleDemoLogin);
+      withBusy(event.currentTarget, handleDemoLogin, "正在建立測試登入");
     });
     els.navButtons.forEach((button) => {
       button.addEventListener("click", () => setView(button.dataset.view));
     });
     els.addItemButton.addEventListener("click", () => addCreateItemRow());
     els.resetCreateButton.addEventListener("click", resetCreateForm);
+    els.emptyDetailBackButton.addEventListener("click", showBrowseView);
+    els.detailBackButton.addEventListener("click", showBrowseView);
+    els.ownerDetailButtons.forEach((button) => {
+      button.addEventListener("click", () => setOwnerDetailMode(button.dataset.ownerDetail));
+    });
     els.createGroupForm.addEventListener("submit", handleCreateGroup);
+    els.ownerAddOptionGroupButton.addEventListener("click", handleAddOwnerOptionGroup);
+    els.ownerOptionBankList.addEventListener("click", handleOwnerOptionBankAction);
+    els.ownerOptionBankList.addEventListener("input", syncOwnerItemOptionPickers);
     els.ownerAddDraftButton.addEventListener("click", () => addOwnerItemRow());
     els.ownerSaveItemsButton.addEventListener("click", handleSaveOwnerItems);
     els.ownerItemList.addEventListener("click", handleOwnerItemAction);
+    els.ownerItemList.addEventListener("change", handleOwnerItemChange);
     els.joinGroupForm.addEventListener("submit", handleJoinGroup);
     els.quantityList.addEventListener("click", handleQuantityClick);
     els.quantityList.addEventListener("input", updateSubtotal);
+    els.quantityList.addEventListener("change", updateSubtotal);
     els.saveOrdersButton.addEventListener("click", handleSaveOrderEdits);
     els.orderList.addEventListener("click", handleOrderEditAction);
     els.groupSearchInput.addEventListener("input", () => {
@@ -300,6 +330,8 @@
       return;
     }
 
+    els.mainNav.classList.toggle("is-detail-mode", state.view === "detail");
+
     els.navButtons.forEach((button) => {
       const active = button.dataset.view === state.view;
       button.classList.toggle("is-active", active);
@@ -384,15 +416,38 @@
     els.detailOrderCount.textContent = String(group.stats.orders);
     els.detailTotal.textContent = formatMoney(group.stats.total);
 
+    renderOwnerDetailMode(group);
     renderOwnerTools(group);
     renderQuantityRows(group);
     renderOrders(group);
     updateSubtotal();
   }
 
+  function renderOwnerDetailMode(group) {
+    const isOwner = Boolean(group && group.isOwner);
+    if (!isOwner) {
+      state.detailMode = "orders";
+    }
+
+    const mode = state.detailMode === "items" && isOwner ? "items" : "orders";
+    state.detailMode = mode;
+
+    els.ownerDetailTabs.classList.toggle("hidden", !isOwner);
+    els.ownerTools.classList.toggle("hidden", !isOwner || mode !== "items");
+    els.detailOrderWorkspace.classList.toggle("hidden", isOwner && mode !== "orders");
+
+    els.ownerDetailButtons.forEach((button) => {
+      const active = button.dataset.ownerDetail === mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+      button.setAttribute("tabindex", active ? "0" : "-1");
+    });
+  }
+
   function renderOwnerTools(group) {
-    els.ownerTools.classList.toggle("hidden", !group.isOwner);
     els.ownerItemList.replaceChildren();
+    const optionBank = ownerOptionBankGroups(group.items || []);
+    renderOwnerOptionBank(optionBank);
 
     if (!group.isOwner) {
       return;
@@ -405,7 +460,7 @@
 
     const fragment = document.createDocumentFragment();
     group.items.forEach((item) => {
-      fragment.appendChild(buildOwnerItemRow(item));
+      fragment.appendChild(buildOwnerItemRow(item, optionBank));
     });
 
     els.ownerItemList.appendChild(fragment);
@@ -417,19 +472,210 @@
       empty.remove();
     }
 
-    const node = buildOwnerItemRow(item);
+    const node = buildOwnerItemRow(item, collectOwnerOptionBank(false).options);
     els.ownerItemList.appendChild(node);
     node.querySelector(".owner-item-name").focus();
   }
 
-  function buildOwnerItemRow(item = {}) {
+  function buildOwnerItemRow(item = {}, optionBank = []) {
     const node = els.ownerItemTemplate.content.firstElementChild.cloneNode(true);
+    const selectedIds = new Set(normalizeOptionGroups(item.options || []).map((group) => group.id));
     if (item.id) {
       node.dataset.itemId = item.id;
     }
     node.querySelector(".owner-item-name").value = item.name || "";
     node.querySelector(".owner-item-price").value = item.price !== undefined ? String(item.price) : "";
+    renderOwnerItemOptionPicker(node, selectedIds, optionBank);
     return node;
+  }
+
+  function renderOwnerOptionBank(optionGroups) {
+    const normalized = normalizeOptionGroups(optionGroups);
+    els.ownerOptionBankList.replaceChildren();
+
+    if (!normalized.length) {
+      els.ownerOptionBankList.appendChild(emptyState("尚未建立品項細項"));
+      return;
+    }
+
+    normalized.forEach((group) => {
+      els.ownerOptionBankList.appendChild(buildOwnerOptionGroup(group));
+    });
+  }
+
+  function renderOwnerItemOptionPicker(row, selectedIds, optionBank = collectOwnerOptionBank().options) {
+    const normalized = normalizeOptionGroups(optionBank);
+    const toggle = row.querySelector(".owner-item-has-options");
+    const picker = row.querySelector(".owner-item-option-picker");
+    const enabled = toggle.checked || selectedIds.size > 0;
+
+    toggle.checked = enabled;
+    picker.classList.toggle("hidden", !enabled);
+    picker.replaceChildren();
+
+    if (!normalized.length) {
+      picker.appendChild(emptyState("尚未建立可套用的品項細項"));
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "owner-option-apply-list";
+    normalized.forEach((group) => {
+      const label = document.createElement("label");
+      label.className = "owner-option-apply";
+
+      const input = document.createElement("input");
+      input.className = "owner-option-bank-choice";
+      input.type = "checkbox";
+      input.value = group.id;
+      input.checked = selectedIds.has(group.id);
+
+      const text = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = group.name;
+      const summary = document.createElement("small");
+      summary.textContent = formatOptionGroupSummary(group);
+      text.append(name, summary);
+
+      label.append(input, text);
+      list.appendChild(label);
+    });
+    picker.appendChild(list);
+  }
+
+  function buildOwnerOptionGroup(group = {}) {
+    const node = document.createElement("div");
+    node.className = "owner-option-group";
+    node.dataset.optionId = group.id || uid("opt");
+
+    const head = document.createElement("div");
+    head.className = "owner-option-group-head";
+
+    const name = document.createElement("input");
+    name.className = "owner-option-group-name";
+    name.type = "text";
+    name.maxLength = 24;
+    name.placeholder = "細項名稱，例如：甜度、冰塊、加購";
+    name.setAttribute("aria-label", "細項名稱");
+    name.value = group.name || "";
+
+    const remove = document.createElement("button");
+    remove.className = "icon-button delete-owner-option-group";
+    remove.type = "button";
+    remove.title = "刪除細項";
+    remove.setAttribute("aria-label", "刪除細項");
+    remove.textContent = "×";
+
+    const choices = document.createElement("div");
+    choices.className = "owner-option-choice-list";
+    (group.choices && group.choices.length ? group.choices : [{}]).forEach((choice) => {
+      choices.appendChild(buildOwnerOptionChoice(choice));
+    });
+
+    const addChoice = document.createElement("button");
+    addChoice.className = "text-button add-owner-option-choice";
+    addChoice.type = "button";
+    addChoice.textContent = "新增加價選項";
+
+    head.append(name, remove);
+    node.append(head, choices, addChoice);
+    return node;
+  }
+
+  function buildOwnerOptionChoice(choice = {}) {
+    const node = document.createElement("div");
+    node.className = "owner-option-choice";
+    node.dataset.choiceId = choice.id || uid("choice");
+
+    const name = document.createElement("input");
+    name.className = "owner-option-choice-name";
+    name.type = "text";
+    name.maxLength = 24;
+    name.placeholder = "選項名稱";
+    name.setAttribute("aria-label", "選項名稱");
+    name.value = choice.name || "";
+
+    const price = document.createElement("input");
+    price.className = "owner-option-choice-price";
+    price.type = "number";
+    price.min = "0";
+    price.step = "1";
+    price.inputMode = "numeric";
+    price.placeholder = "加價";
+    price.setAttribute("aria-label", "選項加價");
+    price.value = choice.price ? String(choice.price) : "";
+
+    const remove = document.createElement("button");
+    remove.className = "icon-button delete-owner-option-choice";
+    remove.type = "button";
+    remove.title = "刪除選項";
+    remove.setAttribute("aria-label", "刪除選項");
+    remove.textContent = "×";
+
+    node.append(name, price, remove);
+    return node;
+  }
+
+  function ownerOptionBankGroups(items) {
+    const groups = [];
+    const byId = new Map();
+
+    (items || []).forEach((item) => {
+      normalizeOptionGroups(item.options || []).forEach((group) => {
+        const id = group.id || optionId(group.name, groups.length);
+        const existing = byId.get(id);
+        if (existing) {
+          mergeOptionGroup(existing, group);
+          return;
+        }
+
+        const cloned = cloneOptionGroup({ ...group, id });
+        byId.set(id, cloned);
+        groups.push(cloned);
+      });
+    });
+
+    return groups;
+  }
+
+  function mergeOptionGroup(target, source) {
+    const existingChoices = new Set(target.choices.map((choice) => `${choice.id}:${choice.name}:${choice.price}`));
+    source.choices.forEach((choice) => {
+      const key = `${choice.id}:${choice.name}:${choice.price}`;
+      if (!existingChoices.has(key)) {
+        target.choices.push({ ...choice });
+        existingChoices.add(key);
+      }
+    });
+  }
+
+  function cloneOptionGroup(group) {
+    return {
+      id: group.id,
+      name: group.name,
+      choices: (group.choices || []).map((choice) => ({ ...choice })),
+    };
+  }
+
+  function formatOptionGroupSummary(group) {
+    return (group.choices || [])
+      .map((choice) => (choice.price > 0 ? `${choice.name} +${formatMoney(choice.price)}` : choice.name))
+      .join("、");
+  }
+
+  function ownerItemOptionSelections(row) {
+    return new Set(
+      [...row.querySelectorAll(".owner-option-bank-choice:checked")]
+        .map((input) => input.value)
+        .filter(Boolean)
+    );
+  }
+
+  function syncOwnerItemOptionPickers() {
+    const optionBank = collectOwnerOptionBank(false).options;
+    els.ownerItemList.querySelectorAll(".owner-item-row").forEach((row) => {
+      renderOwnerItemOptionPicker(row, ownerItemOptionSelections(row), optionBank);
+    });
   }
 
   function renderQuantityRows(group) {
@@ -442,17 +688,67 @@
 
     const fragment = document.createDocumentFragment();
     group.items.forEach((item) => {
-      const node = els.quantityRowTemplate.content.firstElementChild.cloneNode(true);
-      const input = node.querySelector("input");
-      node.dataset.itemId = item.id;
-      input.dataset.itemId = item.id;
-      input.dataset.price = String(item.price);
-      node.querySelector(".quantity-name").textContent = item.name;
-      node.querySelector(".quantity-price").textContent = formatMoney(item.price);
-      fragment.appendChild(node);
+      fragment.appendChild(buildQuantityRow(item));
     });
 
     els.quantityList.appendChild(fragment);
+  }
+
+  function buildQuantityRow(item, isVariant = false) {
+    const node = els.quantityRowTemplate.content.firstElementChild.cloneNode(true);
+    const input = node.querySelector("input");
+    const options = normalizeOptionGroups(item.options || []);
+    node.dataset.itemId = item.id;
+    node.dataset.name = item.name;
+    node.dataset.price = String(item.price);
+    input.dataset.itemId = item.id;
+    input.dataset.name = item.name;
+    input.dataset.price = String(item.price);
+    node.querySelector(".quantity-name").textContent = item.name;
+    node.querySelector(".quantity-price").textContent = `${formatMoney(item.price)} 起`;
+    renderQuantityOptions(node.querySelector(".quantity-options"), options);
+    node.querySelector(".add-quantity-variant").classList.toggle("hidden", !options.length);
+    node.querySelector(".remove-quantity-variant").classList.toggle("hidden", !isVariant);
+    return node;
+  }
+
+  function renderQuantityOptions(container, optionGroups) {
+    container.replaceChildren();
+    if (!optionGroups.length) {
+      container.classList.add("hidden");
+      return;
+    }
+
+    container.classList.remove("hidden");
+    optionGroups.forEach((group) => {
+      const label = document.createElement("label");
+      label.className = "quantity-option-field";
+
+      const title = document.createElement("span");
+      title.textContent = group.name;
+
+      const select = document.createElement("select");
+      select.className = "quantity-option-select";
+      select.dataset.groupId = group.id;
+      select.dataset.groupName = group.name;
+
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "不選擇";
+      select.appendChild(empty);
+
+      group.choices.forEach((choice) => {
+        const option = document.createElement("option");
+        option.value = choice.id;
+        option.dataset.choiceName = choice.name;
+        option.dataset.price = String(choice.price);
+        option.textContent = choice.price > 0 ? `${choice.name} +${formatMoney(choice.price)}` : choice.name;
+        select.appendChild(option);
+      });
+
+      label.append(title, select);
+      container.appendChild(label);
+    });
   }
 
   function renderOrders(group) {
@@ -474,7 +770,7 @@
       node.querySelector(".order-role-badge").textContent =
         order.userId === group.ownerUserId ? "團主訂購" : "非團主訂購";
       node.querySelector(".order-items").textContent = order.items
-        .map((item) => `${item.name} × ${item.quantity}`)
+        .map((item) => `${formatOrderItemLabel(item)} × ${item.quantity}`)
         .join("、");
       node.querySelector(".order-total").textContent = formatMoney(order.total);
       renderOrderEditor(order, node.querySelector(".order-editor"));
@@ -498,13 +794,14 @@
     order.items.forEach((item) => {
       const row = document.createElement("div");
       row.className = "order-edit-row";
+      row.dataset.entryId = item.entryId || "";
       row.dataset.itemId = item.itemId;
 
       const meta = document.createElement("div");
       meta.className = "order-edit-meta";
 
       const name = document.createElement("strong");
-      name.textContent = item.name;
+      name.textContent = formatOrderItemLabel(item);
 
       const price = document.createElement("span");
       price.textContent = `${formatMoney(item.price)} / 份`;
@@ -539,9 +836,31 @@
 
   function selectGroup(groupId) {
     state.selectedGroupId = groupId;
+    state.detailMode = "orders";
     renderGroups();
     renderDetail();
     setView("detail");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function setOwnerDetailMode(mode) {
+    if (!["orders", "items"].includes(mode)) {
+      return;
+    }
+
+    const group = selectedGroup();
+    if (!group || !group.isOwner) {
+      return;
+    }
+
+    state.detailMode = mode;
+    renderOwnerDetailMode(group);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function showBrowseView() {
+    setView("browse");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function setView(view) {
@@ -593,7 +912,7 @@
       }
 
       await authenticateWithLine(false);
-    });
+    }, "正在登入 LINE");
   }
 
   async function autoAuthenticate(mode) {
@@ -737,11 +1056,12 @@
       await refreshGroups();
       if (result && result.group && result.group.id) {
         state.selectedGroupId = result.group.id;
+        state.detailMode = "orders";
         state.view = "detail";
         renderApp();
       }
       showToast("開團已建立。");
-    });
+    }, "正在儲存開團資料");
   }
 
   async function handleOwnerItemAction(event) {
@@ -766,6 +1086,72 @@
     showToast("品項已標記移除，按儲存品項套用。");
   }
 
+  function handleAddOwnerOptionGroup() {
+    const empty = els.ownerOptionBankList.querySelector(".empty-state");
+    if (empty) {
+      empty.remove();
+    }
+
+    const node = buildOwnerOptionGroup();
+    els.ownerOptionBankList.appendChild(node);
+    syncOwnerItemOptionPickers();
+    node.querySelector(".owner-option-group-name").focus();
+  }
+
+  function handleOwnerOptionBankAction(event) {
+    const deleteOptionGroupButton = event.target.closest(".delete-owner-option-group");
+    if (deleteOptionGroupButton) {
+      const group = deleteOptionGroupButton.closest(".owner-option-group");
+      if (group) {
+        group.remove();
+        if (!els.ownerOptionBankList.querySelector(".owner-option-group")) {
+          els.ownerOptionBankList.appendChild(emptyState("尚未建立品項細項"));
+        }
+        syncOwnerItemOptionPickers();
+      }
+      return;
+    }
+
+    const addOptionChoiceButton = event.target.closest(".add-owner-option-choice");
+    if (addOptionChoiceButton) {
+      const group = addOptionChoiceButton.closest(".owner-option-group");
+      const list = group && group.querySelector(".owner-option-choice-list");
+      if (list) {
+        list.appendChild(buildOwnerOptionChoice());
+        syncOwnerItemOptionPickers();
+        list.lastElementChild.querySelector(".owner-option-choice-name").focus();
+      }
+      return;
+    }
+
+    const deleteOptionChoiceButton = event.target.closest(".delete-owner-option-choice");
+    if (deleteOptionChoiceButton) {
+      const choice = deleteOptionChoiceButton.closest(".owner-option-choice");
+      if (choice) {
+        choice.remove();
+        syncOwnerItemOptionPickers();
+      }
+    }
+  }
+
+  function handleOwnerItemChange(event) {
+    const toggle = event.target.closest(".owner-item-has-options");
+    if (!toggle) {
+      return;
+    }
+
+    const row = toggle.closest(".owner-item-row");
+    const picker = row && row.querySelector(".owner-item-option-picker");
+    if (!picker) {
+      return;
+    }
+
+    picker.classList.toggle("hidden", !toggle.checked);
+    if (toggle.checked) {
+      renderOwnerItemOptionPicker(row, ownerItemOptionSelections(row), collectOwnerOptionBank(false).options);
+    }
+  }
+
   async function handleSaveOwnerItems(event) {
     const group = selectedGroup();
 
@@ -786,7 +1172,7 @@
       state.view = "detail";
       renderApp();
       showToast("品項已儲存。");
-    });
+    }, "正在儲存品項與細項設定");
   }
 
   async function handleJoinGroup(event) {
@@ -803,12 +1189,11 @@
       return;
     }
 
-    const items = [...els.quantityList.querySelectorAll("input")]
-      .map((input) => ({
-        itemId: input.dataset.itemId,
-        quantity: Math.max(0, Number.parseInt(input.value, 10) || 0),
-      }))
-      .filter((item) => item.quantity > 0);
+    const items = selectedQuantityItems().map((item) => ({
+      itemId: item.itemId,
+      quantity: item.quantity,
+      options: item.options,
+    }));
 
     if (!items.length) {
       showToast("請選擇至少一個品項。", "error");
@@ -822,7 +1207,7 @@
       state.view = "detail";
       renderApp();
       showToast("訂單已送出。");
-    });
+    }, "正在送出訂單");
   }
 
   async function handleOrderEditAction(event) {
@@ -879,10 +1264,32 @@
       state.view = "detail";
       renderApp();
       showToast("訂單變更已儲存。");
-    });
+    }, "正在儲存訂單變更");
   }
 
   function handleQuantityClick(event) {
+    const addVariantButton = event.target.closest(".add-quantity-variant");
+    if (addVariantButton) {
+      const row = addVariantButton.closest(".quantity-row");
+      const group = selectedGroup();
+      const item = group && group.items.find((entry) => entry.id === row.dataset.itemId);
+      if (row && item) {
+        row.after(buildQuantityRow(item, true));
+        updateSubtotal();
+      }
+      return;
+    }
+
+    const removeVariantButton = event.target.closest(".remove-quantity-variant");
+    if (removeVariantButton) {
+      const row = removeVariantButton.closest(".quantity-row");
+      if (row) {
+        row.remove();
+        updateSubtotal();
+      }
+      return;
+    }
+
     const button = event.target.closest("[data-step]");
     if (!button) {
       return;
@@ -895,17 +1302,202 @@
   }
 
   function updateSubtotal() {
-    const total = [...els.quantityList.querySelectorAll("input")].reduce((sum, input) => {
-      const quantity = Math.max(0, Number.parseInt(input.value, 10) || 0);
-      const price = Number(input.dataset.price) || 0;
-      return sum + quantity * price;
-    }, 0);
+    const items = selectedQuantityItems();
+    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
 
-    els.joinSubtotal.textContent = formatMoney(total);
+    els.selectionTotal.textContent = formatMoney(total);
+    els.selectionEmpty.classList.toggle("hidden", items.length > 0);
+    els.selectionList.replaceChildren();
+
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "selection-row";
+
+      const meta = document.createElement("div");
+      meta.className = "selection-meta";
+
+      const name = document.createElement("strong");
+      name.textContent = `${item.name} × ${item.quantity}`;
+
+      const detail = document.createElement("span");
+      const optionsText = formatSelectedOptions(item.options);
+      detail.textContent = optionsText
+        ? `${optionsText} · ${formatMoney(item.unitPrice)} / 份`
+        : `${formatMoney(item.unitPrice)} / 份`;
+
+      const subtotal = document.createElement("span");
+      subtotal.className = "selection-subtotal";
+      subtotal.textContent = formatMoney(item.subtotal);
+
+      meta.append(name, detail);
+      row.append(meta, subtotal);
+      fragment.appendChild(row);
+    });
+
+    els.selectionList.appendChild(fragment);
+  }
+
+  function selectedQuantityItems() {
+    const selectedMap = new Map();
+
+    [...els.quantityList.querySelectorAll(".quantity-row")].forEach((row) => {
+      const input = row.querySelector("input");
+      if (!input) {
+        return;
+      }
+
+      const quantity = Math.max(0, Number.parseInt(input.value, 10) || 0);
+      if (quantity <= 0) {
+        return;
+      }
+
+      const basePrice = Number(row.dataset.price) || 0;
+      const options = selectedRowOptions(row);
+      const unitPrice = basePrice + options.reduce((sum, option) => sum + option.price, 0);
+      const item = {
+        itemId: row.dataset.itemId,
+        name: row.dataset.name || "品項",
+        price: basePrice,
+        unitPrice,
+        options,
+        optionKey: optionSignature(options),
+        quantity,
+        subtotal: unitPrice * quantity,
+      };
+      const key = `${item.itemId}::${item.optionKey}`;
+      const existing = selectedMap.get(key);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.subtotal += item.subtotal;
+        return;
+      }
+      selectedMap.set(key, item);
+    });
+
+    return [...selectedMap.values()];
+  }
+
+  function selectedRowOptions(row) {
+    return [...row.querySelectorAll(".quantity-option-select")]
+      .map((select) => {
+        const selected = select.selectedOptions[0];
+        if (!selected || !selected.value) {
+          return null;
+        }
+        return {
+          groupId: select.dataset.groupId,
+          groupName: select.dataset.groupName,
+          choiceId: selected.value,
+          choiceName: selected.dataset.choiceName || selected.textContent,
+          price: Number(selected.dataset.price) || 0,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function optionSignature(options) {
+    return normalizeSelectedOptions(options)
+      .map((option) => `${option.groupId}:${option.choiceId}:${option.price}`)
+      .join("|");
+  }
+
+  function normalizeSelectedOptions(options) {
+    if (!Array.isArray(options)) {
+      return [];
+    }
+
+    return options
+      .map((option) => ({
+        groupId: String(option.groupId || "").trim(),
+        groupName: String(option.groupName || "").trim(),
+        choiceId: String(option.choiceId || "").trim(),
+        choiceName: String(option.choiceName || "").trim(),
+        price: Number(option.price) || 0,
+      }))
+      .filter((option) => option.groupName && option.choiceName);
+  }
+
+  function syncSelectedOptionsToItemOptions(options, itemOptionGroups) {
+    const groups = normalizeOptionGroups(itemOptionGroups || []);
+    const groupMap = new Map();
+    groups.forEach((group) => {
+      groupMap.set(group.id, {
+        group,
+        choices: new Map(group.choices.map((choice) => [choice.id, choice])),
+      });
+    });
+
+    return normalizeSelectedOptions(options)
+      .map((option) => {
+        const matchedGroup = groupMap.get(option.groupId);
+        const matchedChoice = matchedGroup && matchedGroup.choices.get(option.choiceId);
+        if (matchedGroup && matchedChoice) {
+          return {
+            groupId: matchedGroup.group.id,
+            groupName: matchedGroup.group.name,
+            choiceId: matchedChoice.id,
+            choiceName: matchedChoice.name,
+            price: matchedChoice.price,
+          };
+        }
+
+        return groups.length ? null : option;
+      })
+      .filter(Boolean);
+  }
+
+  function formatSelectedOptions(options) {
+    return normalizeSelectedOptions(options)
+      .map((option) => (option.price > 0 ? `${option.choiceName} +${formatMoney(option.price)}` : option.choiceName))
+      .join("、");
+  }
+
+  function formatOrderItemLabel(item) {
+    const optionsText = formatSelectedOptions(item.options);
+    return optionsText ? `${item.name}（${optionsText}）` : item.name;
+  }
+
+  function normalizeOptionGroups(groups) {
+    if (!Array.isArray(groups)) {
+      return [];
+    }
+
+    return groups
+      .map((group, groupIndex) => {
+        const name = String(group.name || "").trim().slice(0, 24);
+        const choices = Array.isArray(group.choices) ? group.choices : [];
+        return {
+          id: String(group.id || optionId(name, groupIndex)).trim(),
+          name,
+          choices: choices
+            .map((choice, choiceIndex) => {
+              const choiceName = String(choice.name || "").trim().slice(0, 24);
+              const price = Math.max(0, Number(choice.price) || 0);
+              return {
+                id: String(choice.id || optionId(choiceName, choiceIndex)).trim(),
+                name: choiceName,
+                price,
+              };
+            })
+            .filter((choice) => choice.name),
+        };
+      })
+      .filter((group) => group.name && group.choices.length);
+  }
+
+  function optionId(name, index) {
+    const normalized = String(name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return normalized ? `opt_${normalized}` : `opt_${index}`;
   }
 
   function collectOrderEditItems(orderNode) {
     return [...orderNode.querySelectorAll(".order-edit-row")].map((row) => ({
+      entryId: row.dataset.entryId || "",
       itemId: row.dataset.itemId,
       quantity: Math.max(0, Number.parseInt(row.querySelector(".order-edit-quantity").value, 10) || 0),
     }));
@@ -928,16 +1520,20 @@
 
   function collectOwnerItems() {
     const rows = [...els.ownerItemList.querySelectorAll(".owner-item-row")];
+    const optionBankResult = collectOwnerOptionBank();
+    const optionById = new Map(optionBankResult.options.map((group) => [group.id, group]));
     const items = [];
-    let invalid = false;
+    let invalid = optionBankResult.invalid;
 
     rows.forEach((row) => {
       const nameInput = row.querySelector(".owner-item-name");
       const priceInput = row.querySelector(".owner-item-price");
+      const hasOptions = row.querySelector(".owner-item-has-options").checked;
       const name = nameInput.value.trim();
       const priceText = priceInput.value.trim();
+      const optionsResult = hasOptions ? collectOwnerAppliedOptionGroups(row, optionById) : { options: [], invalid: false };
 
-      if (!row.dataset.itemId && !name && !priceText) {
+      if (!row.dataset.itemId && !name && !priceText && !hasOptions) {
         return;
       }
 
@@ -945,9 +1541,10 @@
         id: row.dataset.itemId || "",
         name,
         price: Number(priceText),
+        options: optionsResult.options,
       };
 
-      if (!isValidItem(item)) {
+      if (!isValidItem(item) || optionsResult.invalid) {
         invalid = true;
         row.classList.add("is-invalid");
         return;
@@ -958,11 +1555,96 @@
     });
 
     if (invalid) {
-      showToast("請確認每個品項都有名稱與有效金額。", "error");
+      showToast("請確認品項、細項與加價選項都已完整填寫。", "error");
       return null;
     }
 
     return items;
+  }
+
+  function collectOwnerAppliedOptionGroups(row, optionById) {
+    const selectedIds = ownerItemOptionSelections(row);
+    const options = [...selectedIds].map((id) => optionById.get(id)).filter(Boolean).map(cloneOptionGroup);
+
+    return {
+      options,
+      invalid: selectedIds.size === 0 || options.length !== selectedIds.size,
+    };
+  }
+
+  function collectOwnerOptionBank(markInvalid = true) {
+    return collectOwnerOptionGroups(els.ownerOptionBankList, {
+      markInvalid,
+      requireGroups: false,
+    });
+  }
+
+  function collectOwnerOptionGroups(container, settings = {}) {
+    const markInvalid = settings.markInvalid !== false;
+    const requireGroups = Boolean(settings.requireGroups);
+    const groups = [];
+    let invalid = false;
+
+    container.querySelectorAll(".owner-option-group").forEach((groupNode, groupIndex) => {
+      const nameInput = groupNode.querySelector(".owner-option-group-name");
+      const name = nameInput.value.trim();
+      const choices = [];
+
+      groupNode.querySelectorAll(".owner-option-choice").forEach((choiceNode, choiceIndex) => {
+        const choiceNameInput = choiceNode.querySelector(".owner-option-choice-name");
+        const choicePriceInput = choiceNode.querySelector(".owner-option-choice-price");
+        const choiceName = choiceNameInput.value.trim();
+        const priceText = choicePriceInput.value.trim();
+
+        if (!choiceName && !priceText) {
+          return;
+        }
+
+        const price = Number(priceText || 0);
+        if (!choiceName || !Number.isFinite(price) || price < 0) {
+          invalid = true;
+          choiceNode.classList.toggle("is-invalid", markInvalid);
+          return;
+        }
+
+        if (markInvalid) {
+          choiceNode.classList.remove("is-invalid");
+        }
+        choices.push({
+          id: choiceNode.dataset.choiceId || optionId(choiceName, choiceIndex),
+          name: choiceName,
+          price,
+        });
+      });
+
+      if (!name && !choices.length) {
+        return;
+      }
+
+      if (!name || !choices.length) {
+        invalid = true;
+        groupNode.classList.toggle("is-invalid", markInvalid);
+        return;
+      }
+
+      if (markInvalid) {
+        groupNode.classList.remove("is-invalid");
+      }
+      groups.push({
+        id: groupNode.dataset.optionId || optionId(name, groupIndex),
+        name,
+        choices,
+      });
+    });
+
+    if (requireGroups && !groups.length) {
+      invalid = true;
+    }
+
+    return {
+      options: groups,
+      invalid,
+    };
   }
 
   function collectCreateItems() {
@@ -1000,19 +1682,59 @@
     els.itemEditor.appendChild(node);
   }
 
-  async function withBusy(button, task) {
+  async function withBusy(button, task, loadingMessage = "") {
     if (button) {
       button.disabled = true;
     }
+    const stopLoading = loadingMessage ? showLoading(loadingMessage, "處理中") : null;
     try {
       await task();
     } catch (error) {
       showToast(error.message || "操作失敗。", "error");
     } finally {
+      if (stopLoading) {
+        stopLoading();
+      }
       if (button) {
         button.disabled = false;
       }
     }
+  }
+
+  function showLoading(message = "處理中，請稍候", title = "處理中") {
+    state.loadingCount += 1;
+    setLoadingContent(message, title);
+    setLoadingVisible(true);
+
+    let closed = false;
+    return () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      state.loadingCount = Math.max(0, state.loadingCount - 1);
+      if (state.loadingCount === 0) {
+        setLoadingVisible(false);
+      }
+    };
+  }
+
+  function setLoadingContent(message, title) {
+    if (els.loadingTitle) {
+      els.loadingTitle.textContent = title;
+    }
+    if (els.loadingMessage) {
+      els.loadingMessage.textContent = message;
+    }
+  }
+
+  function setLoadingVisible(visible) {
+    if (!els.loadingOverlay) {
+      return;
+    }
+    els.loadingOverlay.classList.toggle("is-visible", visible);
+    els.loadingOverlay.setAttribute("aria-busy", visible ? "true" : "false");
+    document.body.classList.toggle("is-loading", visible);
   }
 
   function selectedGroup() {
@@ -1023,12 +1745,15 @@
     const items = (group.items || []).map((item) => ({
       ...item,
       price: Number(item.price) || 0,
+      options: normalizeOptionGroups(item.options || []),
     }));
 
     const orders = (group.orders || [])
       .map((order) => {
         const orderItems = (order.items || []).map((item) => ({
           ...item,
+          entryId: item.entryId || item.id || "",
+          options: normalizeSelectedOptions(item.options || []),
           price: Number(item.price) || 0,
           quantity: Number(item.quantity) || 0,
           subtotal: Number(item.subtotal) || (Number(item.price) || 0) * (Number(item.quantity) || 0),
@@ -1316,6 +2041,7 @@
           id: uid("item"),
           name: item.name,
           price: Number(item.price) || 0,
+          options: normalizeOptionGroups(item.options || []),
         })),
         orders: [],
       };
@@ -1331,6 +2057,7 @@
         id: uid("item"),
         name: payload.item.name,
         price: Number(payload.item.price) || 0,
+        options: normalizeOptionGroups(payload.item.options || []),
       });
       this.save(data);
       return Promise.resolve({ ok: true });
@@ -1345,6 +2072,7 @@
       }
       item.name = payload.item.name;
       item.price = Number(payload.item.price) || 0;
+      item.options = normalizeOptionGroups(payload.item.options || []);
       this.syncDemoOrderItems(group, item.id, item);
       this.save(data);
       return Promise.resolve({ ok: true });
@@ -1379,6 +2107,7 @@
         const item = {
           name: String(entry.name || "").trim(),
           price: Number(entry.price),
+          options: normalizeOptionGroups(entry.options || []),
         };
 
         if (!isValidItem(item)) {
@@ -1392,6 +2121,7 @@
           }
           existing.name = item.name;
           existing.price = item.price;
+          existing.options = item.options;
           keepIds.add(id);
           nextItems.push(existing);
           this.syncDemoOrderItems(group, id, existing);
@@ -1402,6 +2132,7 @@
           id: uid("item"),
           name: item.name,
           price: item.price,
+          options: item.options,
         });
       });
 
@@ -1430,22 +2161,31 @@
         return Promise.reject(new Error("找不到開團。"));
       }
 
-      const items = payload.items
-        .map((entry) => {
-          const item = group.items.find((target) => target.id === entry.itemId);
-          const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
-          if (!item || quantity <= 0) {
-            return null;
-          }
-          return {
-            itemId: item.id,
-            name: item.name,
-            price: item.price,
-            quantity,
-            subtotal: item.price * quantity,
-          };
-        })
-        .filter(Boolean);
+      const selectedMap = new Map();
+      (payload.items || []).forEach((entry) => {
+        const item = group.items.find((target) => target.id === entry.itemId);
+        const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
+        if (!item || quantity <= 0) {
+          return;
+        }
+        const options = syncSelectedOptionsToItemOptions(entry.options || [], item.options || []);
+        const optionExtra = options.reduce((sum, option) => sum + option.price, 0);
+        const unitPrice = (Number(item.price) || 0) + optionExtra;
+        const key = `${item.id}::${optionSignature(options)}`;
+        const selected = selectedMap.get(key) || {
+          id: uid("oi"),
+          itemId: item.id,
+          name: item.name,
+          options,
+          price: unitPrice,
+          quantity: 0,
+          subtotal: 0,
+        };
+        selected.quantity += quantity;
+        selected.subtotal += unitPrice * quantity;
+        selectedMap.set(key, selected);
+      });
+      const items = [...selectedMap.values()];
 
       if (!items.length) {
         return Promise.reject(new Error("請選擇至少一個品項。"));
@@ -1482,18 +2222,28 @@
         return Promise.reject(new Error("只能修改自己的訂單。"));
       }
 
-      const quantityMap = {};
+      const quantityByEntry = {};
+      const quantityByItem = {};
       (payload.items || []).forEach((entry) => {
+        const entryId = String(entry.entryId || "").trim();
         const itemId = String(entry.itemId || "").trim();
         const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
+        if (entryId) {
+          quantityByEntry[entryId] = quantity;
+        }
         if (itemId) {
-          quantityMap[itemId] = quantity;
+          quantityByItem[itemId] = quantity;
         }
       });
 
       order.items = order.items
         .map((item) => {
-          const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+          const quantity =
+            item.id && quantityByEntry[item.id] !== undefined
+              ? quantityByEntry[item.id]
+              : quantityByItem[item.itemId] !== undefined
+                ? quantityByItem[item.itemId]
+                : Number(item.quantity) || 0;
           if (quantity <= 0) {
             return null;
           }
@@ -1532,18 +2282,28 @@
           throw new Error("只能修改自己的訂單。");
         }
 
-        const quantityMap = {};
+        const quantityByEntry = {};
+        const quantityByItem = {};
         (orderPayload.items || []).forEach((entry) => {
+          const entryId = String(entry.entryId || "").trim();
           const itemId = String(entry.itemId || "").trim();
           const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
+          if (entryId) {
+            quantityByEntry[entryId] = quantity;
+          }
           if (itemId) {
-            quantityMap[itemId] = quantity;
+            quantityByItem[itemId] = quantity;
           }
         });
 
         order.items = order.items
           .map((item) => {
-            const quantity = quantityMap[item.itemId] !== undefined ? quantityMap[item.itemId] : Number(item.quantity) || 0;
+            const quantity =
+              item.id && quantityByEntry[item.id] !== undefined
+                ? quantityByEntry[item.id]
+                : quantityByItem[item.itemId] !== undefined
+                  ? quantityByItem[item.itemId]
+                  : Number(item.quantity) || 0;
             if (quantity <= 0) {
               return null;
             }
@@ -1582,8 +2342,9 @@
           }
 
           orderItem.name = item.name;
-          orderItem.price = item.price;
-          orderItem.subtotal = item.price * orderItem.quantity;
+          orderItem.options = syncSelectedOptionsToItemOptions(orderItem.options || [], item.options || []);
+          orderItem.price = item.price + orderItem.options.reduce((sum, option) => sum + option.price, 0);
+          orderItem.subtotal = orderItem.price * orderItem.quantity;
         });
         order.total = order.items.reduce((sum, orderItem) => sum + orderItem.subtotal, 0);
       });
@@ -1629,7 +2390,12 @@
           status: "open",
           createdAt: new Date(now - 1000 * 60 * 36).toISOString(),
           items: [
-            { id: "item_chicken", name: "椒麻雞腿飯", price: 120 },
+            {
+              id: "item_chicken",
+              name: "椒麻雞腿飯",
+              price: 120,
+              options: [{ id: "opt_addon", name: "加購", choices: [{ id: "opt_rice", name: "加飯", price: 10 }] }],
+            },
             { id: "item_pork", name: "滷排骨飯", price: 105 },
             { id: "item_veg", name: "蔬食便當", price: 95 },
           ],
@@ -1641,8 +2407,8 @@
               total: 225,
               createdAt: new Date(now - 1000 * 60 * 18).toISOString(),
               items: [
-                { itemId: "item_chicken", name: "椒麻雞腿飯", price: 120, quantity: 1, subtotal: 120 },
-                { itemId: "item_pork", name: "滷排骨飯", price: 105, quantity: 1, subtotal: 105 },
+                { id: "oi_demo_chicken", itemId: "item_chicken", name: "椒麻雞腿飯", price: 120, quantity: 1, subtotal: 120 },
+                { id: "oi_demo_pork", itemId: "item_pork", name: "滷排骨飯", price: 105, quantity: 1, subtotal: 105 },
               ],
             },
           ],
@@ -1655,8 +2421,24 @@
           status: "open",
           createdAt: new Date(now - 1000 * 60 * 92).toISOString(),
           items: [
-            { id: "item_tea", name: "四季春", price: 35 },
-            { id: "item_milk", name: "珍珠鮮奶茶", price: 65 },
+            {
+              id: "item_tea",
+              name: "四季春",
+              price: 35,
+              options: [
+                { id: "opt_sugar", name: "甜度", choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_less", name: "少糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
+                { id: "opt_ice", name: "冰塊", choices: [{ id: "ice_normal", name: "正常冰", price: 0 }, { id: "ice_less", name: "少冰", price: 0 }, { id: "ice_none", name: "去冰", price: 0 }] },
+              ],
+            },
+            {
+              id: "item_milk",
+              name: "珍珠鮮奶茶",
+              price: 65,
+              options: [
+                { id: "opt_sugar", name: "甜度", choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_half", name: "半糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
+                { id: "opt_addon", name: "加料", choices: [{ id: "addon_pearl", name: "珍珠加量", price: 10 }, { id: "addon_pudding", name: "布丁", price: 15 }] },
+              ],
+            },
             { id: "item_coffee", name: "黑咖啡", price: 55 },
           ],
           orders: [],
