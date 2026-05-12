@@ -469,7 +469,10 @@ form {
 .field input[type="datetime-local"],
 .search-field input {
   width: 100%;
+  inline-size: 100%;
   min-width: 0;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -483,6 +486,27 @@ form {
 
 .field input {
   padding: 0 12px;
+}
+
+.field input[type="datetime-local"] {
+  display: block;
+  max-width: 100%;
+  max-inline-size: 100%;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+}
+
+.field input[type="datetime-local"]::-webkit-date-and-time-value {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+}
+
+.field input[type="datetime-local"]::-webkit-datetime-edit {
+  min-width: 0;
 }
 
 .field input:focus,
@@ -514,6 +538,15 @@ form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   min-width: 0;
+  min-inline-size: 0;
+  max-width: 100%;
+  max-inline-size: 100%;
+}
+
+.schedule-grid .field {
+  max-width: 100%;
+  max-inline-size: 100%;
+  overflow: hidden;
 }
 
 .schedule-grid.compact-grid {
