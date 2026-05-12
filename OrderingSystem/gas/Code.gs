@@ -96,7 +96,26 @@ function routeApi_(action, params) {
       const user = requireUser_(spreadsheet, params.session);
       ensureSheets_(spreadsheet);
       return {
-        groups: listGroups_(spreadsheet, user),
+        groups: listGroups_(spreadsheet, user, {
+          summaryOnly: params.view === "summary",
+        }),
+      };
+    }
+    case "group": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      const groupId = cleanText_(params.groupId, 80);
+      if (!groupId) {
+        throw new Error("缺少開團 ID。");
+      }
+      const group = listGroups_(spreadsheet, user, {
+        groupId: groupId,
+      })[0];
+      if (!group) {
+        throw new Error("找不到開團。");
+      }
+      return {
+        group: group,
       };
     }
     case "createGroup": {
@@ -270,10 +289,7 @@ function createGroup_(spreadsheet, payload, user) {
       });
     });
 
-    return {
-      group: group,
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -302,9 +318,7 @@ function addItem_(spreadsheet, payload, user) {
     });
 
     touchGroup_(spreadsheet, group.id);
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -344,9 +358,7 @@ function updateItem_(spreadsheet, payload, user) {
     syncOrderItemsForItem_(spreadsheet, itemId, item);
     recalcGroupOrders_(spreadsheet, group.id);
     touchGroup_(spreadsheet, group.id);
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -378,9 +390,7 @@ function deleteItem_(spreadsheet, payload, user) {
     });
     recalcGroupOrders_(spreadsheet, group.id);
     touchGroup_(spreadsheet, group.id);
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -415,7 +425,7 @@ function deleteGroup_(spreadsheet, payload, user) {
     });
 
     return {
-      groups: listGroups_(spreadsheet, user),
+      deletedGroupId: group.id,
     };
   } finally {
     lock.releaseLock();
@@ -509,9 +519,7 @@ function saveItems_(spreadsheet, payload, user) {
 
     recalcGroupOrders_(spreadsheet, group.id);
     touchGroup_(spreadsheet, group.id);
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -535,9 +543,7 @@ function saveGroupSettings_(spreadsheet, payload, user) {
       return entry;
     });
 
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -567,9 +573,7 @@ function publishGroup_(spreadsheet, payload, user) {
       return entry;
     });
 
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, group.id);
   } finally {
     lock.releaseLock();
   }
@@ -676,10 +680,9 @@ function joinGroup_(spreadsheet, payload, user) {
       });
     });
 
-    return {
+    return groupResponse_(spreadsheet, user, groupId, {
       orderId: orderId,
-      groups: listGroups_(spreadsheet, user),
-    };
+    });
   } finally {
     lock.releaseLock();
   }
@@ -773,9 +776,7 @@ function updateOrder_(spreadsheet, payload, user) {
       });
     }
 
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, groupId);
   } finally {
     lock.releaseLock();
   }
@@ -901,19 +902,31 @@ function saveOrders_(spreadsheet, payload, user) {
       });
     });
 
-    return {
-      groups: listGroups_(spreadsheet, user),
-    };
+    return groupResponse_(spreadsheet, user, groupId);
   } finally {
     lock.releaseLock();
   }
 }
 
-function listGroups_(spreadsheet, user) {
+function groupResponse_(spreadsheet, user, groupId, extra) {
+  const result = extra || {};
+  const group = listGroups_(spreadsheet, user, {
+    groupId: groupId,
+  })[0];
+  if (group) {
+    result.group = group;
+  }
+  return result;
+}
+
+function listGroups_(spreadsheet, user, options) {
+  options = options || {};
+  const summaryOnly = Boolean(options.summaryOnly);
+  const targetGroupId = cleanText_(options.groupId, 80);
   const groups = readObjects_(spreadsheet, SHEETS.GROUPS);
   const items = readObjects_(spreadsheet, SHEETS.ITEMS);
   const orders = readObjects_(spreadsheet, SHEETS.ORDERS);
-  const orderItems = readObjects_(spreadsheet, SHEETS.ORDER_ITEMS);
+  const orderItems = summaryOnly ? [] : readObjects_(spreadsheet, SHEETS.ORDER_ITEMS);
 
   const itemsByGroup = groupBy_(items, "groupId");
   const ordersByGroup = groupBy_(orders, "groupId");
@@ -922,43 +935,46 @@ function listGroups_(spreadsheet, user) {
   return groups
     .filter(function (group) {
       const isOwner = Boolean(user && group.ownerUserId === user.id);
-      return group.id && (group.status !== "draft" || isOwner);
+      return group.id && (!targetGroupId || group.id === targetGroupId) && (group.status !== "draft" || isOwner);
     })
     .map(function (group) {
       const isOwner = Boolean(user && group.ownerUserId === user.id);
+      const allGroupOrders = ordersByGroup[group.id] || [];
       const visibleOrders = (ordersByGroup[group.id] || []).filter(function (order) {
         return isOwner || (user && order.userId === user.id);
       });
-      const groupOrders = visibleOrders
-        .map(function (order) {
-          const attachedItems = (orderItemsByOrder[order.id] || []).map(function (item) {
-            return {
-              entryId: item.id,
-              itemId: item.itemId,
-              name: item.itemName,
-              price: Number(item.price) || 0,
-              quantity: Number(item.quantity) || 0,
-              subtotal: Number(item.subtotal) || 0,
-              options: parseJsonArray_(item.options),
-            };
-          });
+      const groupOrders = summaryOnly
+        ? []
+        : visibleOrders
+            .map(function (order) {
+              const attachedItems = (orderItemsByOrder[order.id] || []).map(function (item) {
+                return {
+                  entryId: item.id,
+                  itemId: item.itemId,
+                  name: item.itemName,
+                  price: Number(item.price) || 0,
+                  quantity: Number(item.quantity) || 0,
+                  subtotal: Number(item.subtotal) || 0,
+                  options: parseJsonArray_(item.options),
+                };
+              });
 
-          return {
-            id: order.id,
-            userId: order.userId,
-            userName: order.userName,
-            total: Number(order.total) || 0,
-            paid: normalizeBoolean_(order.paid),
-            createdAt: order.createdAt,
-            items: attachedItems,
-          };
-        })
-        .sort(function (a, b) {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
+              return {
+                id: order.id,
+                userId: order.userId,
+                userName: order.userName,
+                total: Number(order.total) || 0,
+                paid: normalizeBoolean_(order.paid),
+                createdAt: order.createdAt,
+                items: attachedItems,
+              };
+            })
+            .sort(function (a, b) {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
 
       const participants = {};
-      groupOrders.forEach(function (order) {
+      visibleOrders.forEach(function (order) {
         participants[order.userId] = true;
       });
 
@@ -979,15 +995,22 @@ function listGroups_(spreadsheet, user) {
             id: item.id,
             name: item.name,
             price: Number(item.price) || 0,
-            options: parseJsonArray_(item.options),
+            options: summaryOnly ? [] : parseJsonArray_(item.options),
           };
         }),
         orders: groupOrders,
+        hasJoined: Boolean(
+          user &&
+            allGroupOrders.some(function (order) {
+              return order.userId === user.id;
+            })
+        ),
+        isSummary: summaryOnly,
         stats: {
           participants: Object.keys(participants).length,
-          orders: groupOrders.length,
-          total: groupOrders.reduce(function (sum, order) {
-            return sum + order.total;
+          orders: visibleOrders.length,
+          total: visibleOrders.reduce(function (sum, order) {
+            return sum + (Number(order.total) || 0);
           }, 0),
         },
       };

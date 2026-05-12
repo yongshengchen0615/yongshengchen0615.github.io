@@ -482,17 +482,86 @@
   async function refreshGroups() {
     try {
       const groups = await state.api.listGroups(state.session);
-      state.groups = groups.map(normalizeGroup).sort((a, b) => compareDateDesc(a.createdAt, b.createdAt));
-
-      if (!state.groups.some((group) => group.id === state.selectedGroupId)) {
-        state.selectedGroupId = state.groups[0] ? state.groups[0].id : "";
-      }
-
+      setGroups(groups);
       renderApp();
     } catch (error) {
       showToast(error.message || "讀取開團失敗。", "error");
       renderApp();
     }
+  }
+
+  function setGroups(groups) {
+    const previousById = new Map(state.groups.map((group) => [group.id, group]));
+    state.groups = (groups || [])
+      .map(normalizeGroup)
+      .map((group) => mergeExistingGroupDetail(group, previousById.get(group.id)))
+      .sort((a, b) => compareDateDesc(a.createdAt, b.createdAt));
+
+    if (!state.groups.some((group) => group.id === state.selectedGroupId)) {
+      state.selectedGroupId = state.groups[0] ? state.groups[0].id : "";
+    }
+  }
+
+  function mergeExistingGroupDetail(group, previous) {
+    if (!group.isSummary || !previous || previous.isSummary || previous.updatedAt !== group.updatedAt) {
+      return group;
+    }
+
+    return {
+      ...group,
+      items: previous.items,
+      orders: previous.orders,
+      isSummary: false,
+    };
+  }
+
+  function upsertGroup(group) {
+    const nextGroup = normalizeGroup(group);
+    const index = state.groups.findIndex((entry) => entry.id === nextGroup.id);
+
+    if (index >= 0) {
+      state.groups.splice(index, 1, mergeExistingGroupDetail(nextGroup, state.groups[index]));
+    } else {
+      state.groups.push(nextGroup);
+    }
+
+    state.groups.sort((a, b) => compareDateDesc(a.createdAt, b.createdAt));
+  }
+
+  async function syncGroupsFromResult(result) {
+    if (result && Array.isArray(result.groups)) {
+      setGroups(result.groups);
+      return;
+    }
+
+    if (result && result.group) {
+      upsertGroup(result.group);
+      return;
+    }
+
+    if (result && result.deletedGroupId) {
+      state.groups = state.groups.filter((group) => group.id !== result.deletedGroupId);
+      if (state.selectedGroupId === result.deletedGroupId) {
+        state.selectedGroupId = state.groups[0] ? state.groups[0].id : "";
+      }
+      return;
+    }
+
+    await refreshGroups();
+  }
+
+  async function ensureGroupDetail(groupId) {
+    const group = state.groups.find((entry) => entry.id === groupId);
+    if (!group || !group.isSummary || !state.api.getGroup) {
+      return group || null;
+    }
+
+    const result = await state.api.getGroup(groupId, state.session);
+    if (result && result.group) {
+      upsertGroup(result.group);
+    }
+
+    return state.groups.find((entry) => entry.id === groupId) || null;
   }
 
   function renderApp() {
@@ -1250,14 +1319,28 @@
     setView(view);
   }
 
-  function selectGroup(groupId) {
+  async function selectGroup(groupId) {
     state.selectedGroupId = groupId;
     state.returnFilter = state.filter;
-    const group = state.groups.find((entry) => entry.id === groupId);
+    let group = state.groups.find((entry) => entry.id === groupId);
     state.detailMode = group && group.status === "draft" && group.isOwner ? "items" : "orders";
     renderGroups();
-    renderDetail();
     setView("detail");
+
+    if (group && group.isSummary) {
+      const stopLoading = showLoading("正在讀取開團明細", "載入中");
+      try {
+        group = await ensureGroupDetail(groupId);
+        state.detailMode = group && group.status === "draft" && group.isOwner ? "items" : state.detailMode;
+      } catch (error) {
+        showToast(error.message || "讀取開團明細失敗。", "error");
+      } finally {
+        stopLoading();
+      }
+    }
+
+    renderGroups();
+    renderDetail();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1304,7 +1387,7 @@
         (state.filter === "joined" &&
           group.status !== "draft" &&
           state.user &&
-          group.orders.some((order) => order.userId === state.user.id));
+          (group.hasJoined || group.orders.some((order) => order.userId === state.user.id)));
       return matchesSearch && matchesFilter;
     });
   }
@@ -1487,7 +1570,7 @@
     await withBusy(submitter, async () => {
       const result = await state.api.createGroup({ name, items, status, ...schedule }, state.session, state.user);
       resetCreateForm();
-      await refreshGroups();
+      await syncGroupsFromResult(result);
       if (result && result.group && result.group.id) {
         state.selectedGroupId = result.group.id;
         state.filter = status === "draft" ? "mine" : state.filter;
@@ -1678,8 +1761,8 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      await state.api.saveItems({ groupId: group.id, items }, state.session);
-      await refreshGroups();
+      const result = await state.api.saveItems({ groupId: group.id, items }, state.session);
+      await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.view = "detail";
       renderApp();
@@ -1701,8 +1784,8 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      await state.api.saveGroupSettings({ groupId: group.id, ...schedule }, state.session);
-      await refreshGroups();
+      const result = await state.api.saveGroupSettings({ groupId: group.id, ...schedule }, state.session);
+      await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.view = "detail";
       renderApp();
@@ -1719,8 +1802,8 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      await state.api.publishGroup({ groupId: group.id }, state.session);
-      await refreshGroups();
+      const result = await state.api.publishGroup({ groupId: group.id }, state.session);
+      await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.detailMode = "orders";
       state.view = "detail";
@@ -1743,13 +1826,13 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      await state.api.deleteGroup({ groupId: group.id }, state.session);
+      const result = await state.api.deleteGroup({ groupId: group.id }, state.session);
       state.selectedGroupId = "";
       state.detailMode = "orders";
       state.view = "browse";
       state.filter = "mine";
       state.returnFilter = "mine";
-      await refreshGroups();
+      await syncGroupsFromResult(result);
       renderApp();
       showToast("開團已移除。");
     }, "正在移除開團");
@@ -1791,8 +1874,8 @@
     }
 
     await withBusy(event.submitter, async () => {
-      await state.api.joinGroup({ groupId: group.id, items }, state.session, state.user);
-      await refreshGroups();
+      const result = await state.api.joinGroup({ groupId: group.id, items }, state.session, state.user);
+      await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.view = "detail";
       renderApp();
@@ -1875,8 +1958,8 @@
     }
 
     await withBusy(event.currentTarget, async () => {
-      await state.api.saveOrders({ groupId: group.id, orders }, state.session);
-      await refreshGroups();
+      const result = await state.api.saveOrders({ groupId: group.id, orders }, state.session);
+      await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.view = "detail";
       renderApp();
@@ -2561,6 +2644,8 @@
       ownerName: group.ownerName || (group.owner && group.owner.displayName) || "LINE 使用者",
       ownerUserId,
       isOwner,
+      hasJoined: Boolean(group.hasJoined || orders.some((order) => state.user && order.userId === state.user.id)),
+      isSummary: Boolean(group.isSummary),
       canManageItems: Boolean(group.canManageItems || isOwner),
       stats: {
         participants,
@@ -2865,7 +2950,11 @@
     }
 
     listGroups(session) {
-      return this.request("groups", { session }).then((data) => data.groups || []);
+      return this.request("groups", { session, view: "summary" }).then((data) => data.groups || []);
+    }
+
+    getGroup(groupId, session) {
+      return this.request("group", { session, groupId });
     }
 
     createGroup(payload, session) {
@@ -3011,6 +3100,16 @@
           };
         });
       return Promise.resolve(groups);
+    }
+
+    getGroup(groupId) {
+      return this.listGroups().then((groups) => {
+        const group = groups.find((entry) => entry.id === groupId);
+        if (!group) {
+          throw new Error("找不到開團。");
+        }
+        return { group };
+      });
     }
 
     createGroup(payload) {
