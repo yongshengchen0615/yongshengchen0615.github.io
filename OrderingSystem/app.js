@@ -103,6 +103,8 @@
     els.addItemButton = document.querySelector("#addItemButton");
     els.resetCreateButton = document.querySelector("#resetCreateButton");
     els.saveDraftButton = document.querySelector("#saveDraftButton");
+    els.createAddOptionGroupButton = document.querySelector("#createAddOptionGroupButton");
+    els.createOptionBankList = document.querySelector("#createOptionBankList");
     els.browseView = document.querySelector("#browseView");
     els.browseTitle = document.querySelector("#browseTitle");
     els.groupSearchInput = document.querySelector("#groupSearchInput");
@@ -166,6 +168,10 @@
     });
     els.addItemButton.addEventListener("click", () => addCreateItemRow());
     els.resetCreateButton.addEventListener("click", resetCreateForm);
+    els.createAddOptionGroupButton.addEventListener("click", handleAddCreateOptionGroup);
+    els.createOptionBankList.addEventListener("click", handleCreateOptionBankAction);
+    els.createOptionBankList.addEventListener("input", syncCreateItemOptionPickers);
+    els.createOptionBankList.addEventListener("change", syncCreateItemOptionPickers);
     els.emptyDetailBackButton.addEventListener("click", showBrowseView);
     els.detailBackButton.addEventListener("click", showBrowseView);
     els.ownerDetailButtons.forEach((button) => {
@@ -183,6 +189,7 @@
     els.ownerSaveItemsButton.addEventListener("click", handleSaveOwnerItems);
     els.ownerItemList.addEventListener("click", handleOwnerItemAction);
     els.ownerItemList.addEventListener("change", handleOwnerItemChange);
+    els.itemEditor.addEventListener("change", handleCreateItemChange);
     els.joinGroupForm.addEventListener("submit", handleJoinGroup);
     els.quantityList.addEventListener("click", handleQuantityClick);
     els.quantityList.addEventListener("input", updateSubtotal);
@@ -662,6 +669,7 @@
 
     head.append(name, requiredLabel, remove);
     node.append(head, choices, addChoice);
+    updateOptionChoiceRemoveButtons(node);
     return node;
   }
 
@@ -688,8 +696,28 @@
     price.setAttribute("aria-label", "選項加價");
     price.value = choice.price ? String(choice.price) : "";
 
-    node.append(name, price);
+    const remove = document.createElement("button");
+    remove.className = "icon-button delete-owner-option-choice hidden";
+    remove.type = "button";
+    remove.title = "移除加價選項";
+    remove.setAttribute("aria-label", "移除加價選項");
+    remove.textContent = "×";
+
+    node.append(name, price, remove);
     return node;
+  }
+
+  function updateOptionChoiceRemoveButtons(groupNode) {
+    const choices = [...groupNode.querySelectorAll(".owner-option-choice")];
+    const canRemove = choices.length > 1;
+
+    choices.forEach((choice) => {
+      choice.classList.toggle("can-remove", canRemove);
+      const remove = choice.querySelector(".delete-owner-option-choice");
+      if (remove) {
+        remove.classList.toggle("hidden", !canRemove);
+      }
+    });
   }
 
   function ownerOptionBankGroups(items) {
@@ -754,6 +782,13 @@
   function syncOwnerItemOptionPickers() {
     const optionBank = collectOwnerOptionBank(false).options;
     els.ownerItemList.querySelectorAll(".owner-item-row").forEach((row) => {
+      renderOwnerItemOptionPicker(row, ownerItemOptionSelections(row), optionBank);
+    });
+  }
+
+  function syncCreateItemOptionPickers() {
+    const optionBank = collectCreateOptionBank(false).options;
+    els.itemEditor.querySelectorAll(".item-row").forEach((row) => {
       renderOwnerItemOptionPicker(row, ownerItemOptionSelections(row), optionBank);
     });
   }
@@ -1170,6 +1205,10 @@
       return;
     }
 
+    if (!items) {
+      return;
+    }
+
     if (!name) {
       showToast("請輸入開團名稱。", "error");
       return;
@@ -1195,6 +1234,67 @@
       }
       showToast(status === "draft" ? "草稿已儲存。" : "開團已建立。");
     }, status === "draft" ? "正在儲存草稿" : "正在儲存開團資料");
+  }
+
+  function handleAddCreateOptionGroup() {
+    const empty = els.createOptionBankList.querySelector(".empty-state");
+    if (empty) {
+      empty.remove();
+    }
+
+    const node = buildOwnerOptionGroup();
+    els.createOptionBankList.appendChild(node);
+    syncCreateItemOptionPickers();
+    node.querySelector(".owner-option-group-name").focus();
+  }
+
+  function handleCreateOptionBankAction(event) {
+    const deleteOptionGroupButton = event.target.closest(".delete-owner-option-group");
+    if (deleteOptionGroupButton) {
+      const group = deleteOptionGroupButton.closest(".owner-option-group");
+      if (group) {
+        group.remove();
+        if (!els.createOptionBankList.querySelector(".owner-option-group")) {
+          els.createOptionBankList.appendChild(emptyState("尚未建立品項細項"));
+        }
+        syncCreateItemOptionPickers();
+      }
+      return;
+    }
+
+    if (handleOptionChoiceDelete(event, syncCreateItemOptionPickers)) {
+      return;
+    }
+
+    const addOptionChoiceButton = event.target.closest(".add-owner-option-choice");
+    if (addOptionChoiceButton) {
+      const group = addOptionChoiceButton.closest(".owner-option-group");
+      const list = group && group.querySelector(".owner-option-choice-list");
+      if (list) {
+        list.appendChild(buildOwnerOptionChoice());
+        updateOptionChoiceRemoveButtons(group);
+        syncCreateItemOptionPickers();
+        list.lastElementChild.querySelector(".owner-option-choice-name").focus();
+      }
+    }
+  }
+
+  function handleCreateItemChange(event) {
+    const toggle = event.target.closest(".owner-item-has-options");
+    if (!toggle) {
+      return;
+    }
+
+    const row = toggle.closest(".item-row");
+    const picker = row && row.querySelector(".owner-item-option-picker");
+    if (!picker) {
+      return;
+    }
+
+    picker.classList.toggle("hidden", !toggle.checked);
+    if (toggle.checked) {
+      renderOwnerItemOptionPicker(row, ownerItemOptionSelections(row), collectCreateOptionBank(false).options);
+    }
   }
 
   async function handleOwnerItemAction(event) {
@@ -1245,18 +1345,41 @@
       return;
     }
 
+    if (handleOptionChoiceDelete(event, syncOwnerItemOptionPickers)) {
+      return;
+    }
+
     const addOptionChoiceButton = event.target.closest(".add-owner-option-choice");
     if (addOptionChoiceButton) {
       const group = addOptionChoiceButton.closest(".owner-option-group");
       const list = group && group.querySelector(".owner-option-choice-list");
       if (list) {
         list.appendChild(buildOwnerOptionChoice());
+        updateOptionChoiceRemoveButtons(group);
         syncOwnerItemOptionPickers();
         list.lastElementChild.querySelector(".owner-option-choice-name").focus();
       }
       return;
     }
 
+  }
+
+  function handleOptionChoiceDelete(event, syncPickers) {
+    const deleteOptionChoiceButton = event.target.closest(".delete-owner-option-choice");
+    if (!deleteOptionChoiceButton) {
+      return false;
+    }
+
+    const group = deleteOptionChoiceButton.closest(".owner-option-group");
+    const choice = deleteOptionChoiceButton.closest(".owner-option-choice");
+    const choices = group ? group.querySelectorAll(".owner-option-choice") : [];
+    if (group && choice && choices.length > 1) {
+      choice.remove();
+      updateOptionChoiceRemoveButtons(group);
+      syncPickers();
+    }
+
+    return true;
   }
 
   function handleOwnerItemChange(event) {
@@ -1891,6 +2014,13 @@
     });
   }
 
+  function collectCreateOptionBank(markInvalid = true) {
+    return collectOwnerOptionGroups(els.createOptionBankList, {
+      markInvalid,
+      requireGroups: false,
+    });
+  }
+
   function collectOwnerOptionGroups(container, settings = {}) {
     const markInvalid = settings.markInvalid !== false;
     const requireGroups = Boolean(settings.requireGroups);
@@ -1963,12 +2093,47 @@
   }
 
   function collectCreateItems() {
-    return [...els.itemEditor.querySelectorAll(".item-row")]
-      .map((row) => ({
-        name: row.querySelector('[name="itemName"]').value.trim(),
-        price: Number(row.querySelector('[name="itemPrice"]').value),
-      }))
-      .filter(isValidItem);
+    const rows = [...els.itemEditor.querySelectorAll(".item-row")];
+    const optionBankResult = collectCreateOptionBank();
+    const optionById = new Map(optionBankResult.options.map((group) => [group.id, group]));
+    const items = [];
+    let invalid = optionBankResult.invalid;
+
+    rows.forEach((row) => {
+      const nameInput = row.querySelector('[name="itemName"]');
+      const priceInput = row.querySelector('[name="itemPrice"]');
+      const hasOptions = row.querySelector(".owner-item-has-options").checked;
+      const name = nameInput.value.trim();
+      const priceText = priceInput.value.trim();
+      const optionsResult = hasOptions ? collectOwnerAppliedOptionGroups(row, optionById) : { options: [], invalid: false };
+
+      if (!name && !priceText && !hasOptions) {
+        row.classList.remove("is-invalid");
+        return;
+      }
+
+      const item = {
+        name,
+        price: Number(priceText),
+        options: optionsResult.options,
+      };
+
+      if (!isValidItem(item) || optionsResult.invalid) {
+        invalid = true;
+        row.classList.add("is-invalid");
+        return;
+      }
+
+      row.classList.remove("is-invalid");
+      items.push(item);
+    });
+
+    if (invalid) {
+      showToast("請確認品項、細項與加價選項都已完整填寫。", "error");
+      return null;
+    }
+
+    return items;
   }
 
   function collectCreateSchedule() {
@@ -2003,6 +2168,7 @@
 
   function resetCreateForm() {
     els.createGroupForm.reset();
+    els.createOptionBankList.replaceChildren(emptyState("尚未建立品項細項"));
     els.itemEditor.replaceChildren();
     addCreateItemRow();
     addCreateItemRow();
@@ -2012,10 +2178,13 @@
     const node = els.itemRowTemplate.content.firstElementChild.cloneNode(true);
     node.querySelector('[name="itemName"]').value = name;
     node.querySelector('[name="itemPrice"]').value = price;
+    renderOwnerItemOptionPicker(node, new Set(), collectCreateOptionBank(false).options);
     node.querySelector(".remove-item").addEventListener("click", () => {
       if (els.itemEditor.children.length <= 1) {
         node.querySelector('[name="itemName"]').value = "";
         node.querySelector('[name="itemPrice"]').value = "";
+        node.querySelector(".owner-item-has-options").checked = false;
+        renderOwnerItemOptionPicker(node, new Set(), collectCreateOptionBank(false).options);
         return;
       }
       node.remove();

@@ -90,6 +90,14 @@
               </label>
             </div>
 
+            <section class="owner-option-bank create-option-bank" aria-label="開團品項細項與加價選項">
+              <div class="owner-option-bank-head">
+                <strong>品項細項與加價選項</strong>
+                <button class="text-button" id="createAddOptionGroupButton" type="button">新增品項細項</button>
+              </div>
+              <div class="owner-option-list" id="createOptionBankList"></div>
+            </section>
+
             <div class="form-subhead">
               <span>項目與金額</span>
               <button class="text-button" id="addItemButton" type="button">新增項目</button>
@@ -269,6 +277,11 @@
           <input name="itemPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required />
         </label>
         <button class="icon-button remove-item" type="button" aria-label="移除項目" title="移除">×</button>
+        <label class="owner-item-option-toggle">
+          <input class="owner-item-has-options" type="checkbox" />
+          <span>套用品項細項 / 加價選項</span>
+        </label>
+        <div class="owner-item-option-picker hidden"></div>
       </div>
     </template>
 
