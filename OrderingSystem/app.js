@@ -116,6 +116,8 @@
     els.detailOwner = document.querySelector("#detailOwner");
     els.detailTitle = document.querySelector("#detailTitle");
     els.detailStatus = document.querySelector("#detailStatus");
+    els.detailOrderStart = document.querySelector("#detailOrderStart");
+    els.detailOrderEnd = document.querySelector("#detailOrderEnd");
     els.ownerPublishButton = document.querySelector("#ownerPublishButton");
     els.ownerDeleteGroupButton = document.querySelector("#ownerDeleteGroupButton");
     els.detailItemCount = document.querySelector("#detailItemCount");
@@ -450,6 +452,8 @@
         items.appendChild(extra);
       }
 
+      renderGroupSchedule(node.querySelector(".group-schedule"), group);
+
       node.addEventListener("click", () => selectGroup(group.id));
       node.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -483,12 +487,36 @@
     els.detailItemCount.textContent = String(group.items.length);
     els.detailOrderCount.textContent = String(group.stats.orders);
     els.detailTotal.textContent = formatMoney(group.stats.total);
+    els.detailOrderStart.textContent = formatScheduleDate(group.orderStartAt);
+    els.detailOrderEnd.textContent = formatScheduleDate(group.orderEndAt);
 
     renderOwnerDetailMode(group);
     renderOwnerTools(group);
     renderQuantityRows(group);
     renderOrders(group);
     updateSubtotal();
+  }
+
+  function renderGroupSchedule(container, group) {
+    if (!container) {
+      return;
+    }
+
+    container.replaceChildren(
+      scheduleLine("開始下單時間", formatScheduleDate(group.orderStartAt)),
+      scheduleLine("結束下單時間", formatScheduleDate(group.orderEndAt))
+    );
+  }
+
+  function scheduleLine(label, value) {
+    const row = document.createElement("span");
+    const labelNode = document.createElement("strong");
+    const valueNode = document.createElement("span");
+
+    labelNode.textContent = label;
+    valueNode.textContent = value;
+    row.append(labelNode, valueNode);
+    return row;
   }
 
   function renderOwnerDetailMode(group) {
@@ -2364,7 +2392,7 @@
         status: "scheduled",
         label: "尚未開始",
         canOrder: false,
-        message: `開始下單時間：${formatDate(group.orderStartAt)}`,
+        message: `開始下單時間：${formatScheduleDate(group.orderStartAt)}`,
       };
     }
 
@@ -2373,7 +2401,7 @@
         status: "ended",
         label: "已截止",
         canOrder: false,
-        message: `結束下單時間：${formatDate(group.orderEndAt)}`,
+        message: `結束下單時間：${formatScheduleDate(group.orderEndAt)}`,
       };
     }
 
@@ -2381,7 +2409,7 @@
       status: "open",
       label: "開放中",
       canOrder: true,
-      message: group.orderEndAt ? `結束下單時間：${formatDate(group.orderEndAt)}` : "",
+      message: group.orderEndAt ? `結束下單時間：${formatScheduleDate(group.orderEndAt)}` : "",
     };
   }
 
@@ -2406,6 +2434,22 @@
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
+  }
+
+  function formatScheduleDate(value) {
+    if (!value) {
+      return "未設定";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "未設定";
+    }
+
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+      date.getMinutes()
+    )}`;
   }
 
   function dateTimeLocalToIso(value) {
