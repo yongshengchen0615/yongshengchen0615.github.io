@@ -36,6 +36,7 @@
     filter: "all",
     returnFilter: "all",
     search: "",
+    schedulePickers: {},
   };
 
   const els = {};
@@ -49,6 +50,7 @@
 
   async function init() {
     cacheElements();
+    initSchedulePickers();
     const stopLoading = showLoading("正在登入並讀取團購資料", "載入中");
 
     try {
@@ -99,6 +101,7 @@
     els.groupNameInput = document.querySelector("#groupNameInput");
     els.orderStartInput = document.querySelector("#orderStartInput");
     els.orderEndInput = document.querySelector("#orderEndInput");
+    els.createScheduleSummary = document.querySelector("#createScheduleSummary");
     els.itemEditor = document.querySelector("#itemEditor");
     els.addItemButton = document.querySelector("#addItemButton");
     els.resetCreateButton = document.querySelector("#resetCreateButton");
@@ -128,6 +131,7 @@
     els.ownerTools = document.querySelector("#ownerTools");
     els.ownerOrderStartInput = document.querySelector("#ownerOrderStartInput");
     els.ownerOrderEndInput = document.querySelector("#ownerOrderEndInput");
+    els.ownerScheduleSummary = document.querySelector("#ownerScheduleSummary");
     els.ownerSaveGroupSettingsButton = document.querySelector("#ownerSaveGroupSettingsButton");
     els.ownerAddOptionGroupButton = document.querySelector("#ownerAddOptionGroupButton");
     els.ownerOptionBankList = document.querySelector("#ownerOptionBankList");
@@ -157,6 +161,7 @@
     els.navButtons = [...document.querySelectorAll("[data-view]")];
     els.viewPanels = [...document.querySelectorAll("[data-view-panel]")];
     els.filterButtons = [...document.querySelectorAll("[data-filter]")];
+    els.schedulePresetButtons = [...document.querySelectorAll("[data-schedule-action]")];
   }
 
   function bindStaticEvents() {
@@ -183,6 +188,13 @@
     els.ownerPublishButton.addEventListener("click", handlePublishGroup);
     els.ownerDeleteGroupButton.addEventListener("click", handleDeleteGroup);
     els.ownerSaveGroupSettingsButton.addEventListener("click", handleSaveGroupSettings);
+    [els.orderStartInput, els.orderEndInput, els.ownerOrderStartInput, els.ownerOrderEndInput].forEach((input) => {
+      input.addEventListener("input", handleScheduleInputChange);
+      input.addEventListener("change", handleScheduleInputChange);
+    });
+    els.schedulePresetButtons.forEach((button) => {
+      button.addEventListener("click", handleSchedulePreset);
+    });
     els.ownerAddOptionGroupButton.addEventListener("click", handleAddOwnerOptionGroup);
     els.ownerOptionBankList.addEventListener("click", handleOwnerOptionBankAction);
     els.ownerOptionBankList.addEventListener("input", syncOwnerItemOptionPickers);
@@ -203,6 +215,203 @@
       state.search = els.groupSearchInput.value.trim().toLowerCase();
       renderGroups();
     });
+  }
+
+  function initSchedulePickers() {
+    ["create", "owner"].forEach((scope) => {
+      const { startInput, endInput } = scheduleFields(scope);
+      if (!startInput || !endInput) {
+        return;
+      }
+
+      if (window.flatpickr) {
+        state.schedulePickers[`${scope}:start`] = window.flatpickr(startInput, schedulePickerOptions(scope));
+        state.schedulePickers[`${scope}:end`] = window.flatpickr(endInput, schedulePickerOptions(scope));
+      }
+
+      updateScheduleInputState(scope);
+    });
+  }
+
+  function schedulePickerOptions(scope) {
+    const options = {
+      enableTime: true,
+      time_24hr: true,
+      minuteIncrement: 5,
+      allowInput: true,
+      disableMobile: true,
+      dateFormat: "Y-m-d\\TH:i",
+      altInput: true,
+      altFormat: "Y/m/d H:i",
+      altInputClass: "schedule-picker-input",
+      ariaDateFormat: "Y 年 m 月 d 日 H 點 i 分",
+      onChange: () => updateScheduleInputState(scope),
+      onClose: () => updateScheduleInputState(scope),
+    };
+
+    if (window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.zh_tw) {
+      options.locale = window.flatpickr.l10ns.zh_tw;
+    }
+
+    return options;
+  }
+
+  function scheduleFields(scope) {
+    if (scope === "owner") {
+      return {
+        startInput: els.ownerOrderStartInput,
+        endInput: els.ownerOrderEndInput,
+        summary: els.ownerScheduleSummary,
+      };
+    }
+
+    return {
+      startInput: els.orderStartInput,
+      endInput: els.orderEndInput,
+      summary: els.createScheduleSummary,
+    };
+  }
+
+  function scheduleScopeForInput(input) {
+    if (input === els.ownerOrderStartInput || input === els.ownerOrderEndInput) {
+      return "owner";
+    }
+    if (input === els.orderStartInput || input === els.orderEndInput) {
+      return "create";
+    }
+    return "";
+  }
+
+  function handleScheduleInputChange(event) {
+    const scope = scheduleScopeForInput(event.currentTarget);
+    if (!scope) {
+      return;
+    }
+    updateScheduleInputState(scope);
+  }
+
+  function handleSchedulePreset(event) {
+    const button = event.currentTarget;
+    const scope = button.dataset.scheduleScope || "create";
+    const action = button.dataset.scheduleAction;
+    const { startInput, endInput } = scheduleFields(scope);
+    const now = roundUpDate(new Date(), 5);
+    let startAt = getScheduleInputDate(startInput);
+    let endAt = getScheduleInputDate(endInput);
+
+    if (action === "clear") {
+      startAt = null;
+      endAt = null;
+    } else if (action === "start-now") {
+      startAt = now;
+      if (endAt && endAt.getTime() <= startAt.getTime()) {
+        endAt = addHours(startAt, 1);
+      }
+    } else if (action === "duration") {
+      startAt = now;
+      endAt = addHours(startAt, Number(button.dataset.hours) || 1);
+    } else if (action === "tonight") {
+      startAt = now;
+      endAt = tonightDeadline(now);
+    }
+
+    setScheduleRange(scope, startAt, endAt);
+  }
+
+  function setScheduleRange(scope, startAt, endAt) {
+    const { startInput, endInput } = scheduleFields(scope);
+    setScheduleInputValue(startInput, startAt);
+    setScheduleInputValue(endInput, endAt);
+    updateScheduleInputState(scope);
+  }
+
+  function setScheduleInputValue(input, date) {
+    if (!input) {
+      return;
+    }
+
+    const picker = input._flatpickr;
+    if (picker) {
+      if (date) {
+        picker.setDate(date, false);
+      } else {
+        picker.clear(false);
+      }
+    }
+
+    input.value = date ? dateToDateTimeLocal(date) : "";
+  }
+
+  function updateScheduleInputState(scope) {
+    const { startInput, endInput, summary } = scheduleFields(scope);
+    const startAt = getScheduleInputDate(startInput);
+    const endAt = getScheduleInputDate(endInput);
+    const hasInvalidRange = Boolean(startAt && endAt && endAt.getTime() <= startAt.getTime());
+
+    syncScheduleConstraints(scope, startAt, endAt);
+    markScheduleInputError(startInput, false);
+    markScheduleInputError(endInput, hasInvalidRange);
+
+    if (summary) {
+      summary.textContent = formatScheduleRangeSummary(startAt, endAt);
+    }
+  }
+
+  function syncScheduleConstraints(scope, startAt = null, endAt = null) {
+    const { startInput, endInput } = scheduleFields(scope);
+    const startValue = startAt ? dateToDateTimeLocal(startAt) : "";
+    const endValue = endAt ? dateToDateTimeLocal(endAt) : "";
+
+    if (startInput) {
+      startInput.max = endValue;
+      if (startInput._flatpickr) {
+        startInput._flatpickr.set("maxDate", endAt || null);
+      }
+    }
+
+    if (endInput) {
+      endInput.min = startValue;
+      if (endInput._flatpickr) {
+        endInput._flatpickr.set("minDate", startAt || null);
+      }
+    }
+  }
+
+  function getScheduleInputDate(input) {
+    return dateTimeLocalToDate(input && input.value);
+  }
+
+  function markScheduleInputError(input, isInvalid) {
+    if (!input) {
+      return;
+    }
+    const field = input.closest(".field");
+    if (field) {
+      field.classList.toggle("is-invalid", isInvalid);
+    }
+    input.setAttribute("aria-invalid", isInvalid ? "true" : "false");
+  }
+
+  function roundUpDate(date, minuteStep) {
+    const rounded = new Date(date);
+    rounded.setSeconds(0, 0);
+    const stepMs = Math.max(1, minuteStep) * 60 * 1000;
+    return new Date(Math.ceil(rounded.getTime() / stepMs) * stepMs);
+  }
+
+  function addHours(date, hours) {
+    const next = new Date(date);
+    next.setHours(next.getHours() + hours);
+    return next;
+  }
+
+  function tonightDeadline(now) {
+    const endAt = new Date(now);
+    endAt.setHours(20, 0, 0, 0);
+    if (endAt.getTime() <= now.getTime()) {
+      endAt.setDate(endAt.getDate() + 1);
+    }
+    return endAt;
   }
 
   async function loadConfig() {
@@ -487,8 +696,8 @@
     els.detailItemCount.textContent = String(group.items.length);
     els.detailOrderCount.textContent = String(group.stats.orders);
     els.detailTotal.textContent = formatMoney(group.stats.total);
-    els.detailOrderStart.textContent = formatScheduleDate(group.orderStartAt);
-    els.detailOrderEnd.textContent = formatScheduleDate(group.orderEndAt);
+    renderDetailScheduleValue(els.detailOrderStart, group.orderStartAt, "start");
+    renderDetailScheduleValue(els.detailOrderEnd, group.orderEndAt, "end");
 
     renderOwnerDetailMode(group);
     renderOwnerTools(group);
@@ -503,8 +712,8 @@
     }
 
     container.replaceChildren(
-      scheduleLine("開始下單時間", formatScheduleDate(group.orderStartAt)),
-      scheduleLine("結束下單時間", formatScheduleDate(group.orderEndAt))
+      scheduleLine("開始", formatScheduleCompact(group.orderStartAt, "start")),
+      scheduleLine("截止", formatScheduleCompact(group.orderEndAt, "end"))
     );
   }
 
@@ -514,9 +723,37 @@
     const valueNode = document.createElement("span");
 
     labelNode.textContent = label;
+    valueNode.className = "schedule-line-value";
     valueNode.textContent = value;
     row.append(labelNode, valueNode);
     return row;
+  }
+
+  function renderDetailScheduleValue(container, value, role) {
+    if (!container) {
+      return;
+    }
+
+    const parts = scheduleDateParts(value);
+    container.replaceChildren();
+    container.classList.toggle("is-empty", !parts);
+
+    if (!parts) {
+      const fallback = document.createElement("span");
+      fallback.className = "schedule-empty-value";
+      fallback.textContent = role === "start" ? "立即開放" : "不自動截止";
+      container.appendChild(fallback);
+      return;
+    }
+
+    const primary = document.createElement("span");
+    const secondary = document.createElement("small");
+
+    primary.className = "schedule-primary-value";
+    secondary.className = "schedule-secondary-value";
+    primary.textContent = `${parts.relativeDate} ${parts.time}`;
+    secondary.textContent = `${parts.date} ${parts.weekday}`;
+    container.append(primary, secondary);
   }
 
   function renderOwnerDetailMode(group) {
@@ -564,12 +801,11 @@
   }
 
   function renderOwnerGroupSettings(group) {
-    if (els.ownerOrderStartInput) {
-      els.ownerOrderStartInput.value = isoToDateTimeLocal(group.orderStartAt);
-    }
-    if (els.ownerOrderEndInput) {
-      els.ownerOrderEndInput.value = isoToDateTimeLocal(group.orderEndAt);
-    }
+    setScheduleRange(
+      "owner",
+      group.orderStartAt ? new Date(group.orderStartAt) : null,
+      group.orderEndAt ? new Date(group.orderEndAt) : null
+    );
   }
 
   function addOwnerItemRow(item = {}) {
@@ -2175,9 +2411,12 @@
   function collectScheduleInputs(startInput, endInput) {
     const orderStartAt = dateTimeLocalToIso(startInput && startInput.value);
     const orderEndAt = dateTimeLocalToIso(endInput && endInput.value);
+    markScheduleInputError(startInput, false);
+    markScheduleInputError(endInput, false);
 
     if (orderStartAt && orderEndAt && new Date(orderEndAt).getTime() <= new Date(orderStartAt).getTime()) {
       showToast("結束下單時間必須晚於開始下單時間。", "error");
+      markScheduleInputError(endInput, true);
       if (endInput) {
         endInput.focus();
       }
@@ -2196,6 +2435,7 @@
 
   function resetCreateForm() {
     els.createGroupForm.reset();
+    setScheduleRange("create", null, null);
     els.createOptionBankList.replaceChildren(emptyState("尚未建立品項細項"));
     els.itemEditor.replaceChildren();
     addCreateItemRow();
@@ -2437,29 +2677,84 @@
   }
 
   function formatScheduleDate(value) {
+    const parts = scheduleDateParts(value);
+    if (!parts) {
+      return "未設定";
+    }
+
+    return `${parts.date} ${parts.time}`;
+  }
+
+  function formatScheduleCompact(value, role = "start") {
+    const parts = scheduleDateParts(value);
+    if (!parts) {
+      return role === "start" ? "立即開放" : "不自動截止";
+    }
+    return `${parts.relativeDate} ${parts.time}`;
+  }
+
+  function formatScheduleRangeSummary(startAt, endAt) {
+    if (!startAt && !endAt) {
+      return "未設定下單時段";
+    }
+    if (startAt && endAt) {
+      return `${formatScheduleCompact(startAt)} - ${formatScheduleCompact(endAt, "end")}`;
+    }
+    if (startAt) {
+      return `${formatScheduleCompact(startAt)} 開始`;
+    }
+    return `${formatScheduleCompact(endAt, "end")} 截止`;
+  }
+
+  function scheduleDateParts(value) {
     if (!value) {
-      return "未設定";
+      return null;
     }
 
-    const date = new Date(value);
+    const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) {
-      return "未設定";
+      return null;
     }
 
-    const pad = (number) => String(number).padStart(2, "0");
-    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-      date.getMinutes()
-    )}`;
+    const month = padNumber(date.getMonth() + 1);
+    const day = padNumber(date.getDate());
+    const time = `${padNumber(date.getHours())}:${padNumber(date.getMinutes())}`;
+    const weekday = new Intl.DateTimeFormat("zh-TW", { weekday: "short" }).format(date);
+
+    return {
+      date: `${date.getFullYear()}/${month}/${day}`,
+      shortDate: `${month}/${day}`,
+      time,
+      weekday,
+      relativeDate: relativeScheduleDate(date, weekday, `${month}/${day}`),
+    };
+  }
+
+  function relativeScheduleDate(date, weekday, fallbackDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+    const dayDiff = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+    if (dayDiff === 0) {
+      return "今天";
+    }
+    if (dayDiff === 1) {
+      return "明天";
+    }
+    if (dayDiff === -1) {
+      return "昨天";
+    }
+    if (Math.abs(dayDiff) <= 6) {
+      return weekday;
+    }
+    return fallbackDate;
   }
 
   function dateTimeLocalToIso(value) {
-    const raw = String(value || "").trim();
-    if (!raw) {
-      return "";
-    }
-
-    const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+    const date = dateTimeLocalToDate(value);
+    return date ? date.toISOString() : "";
   }
 
   function isoToDateTimeLocal(value) {
@@ -2472,10 +2767,31 @@
       return "";
     }
 
-    const pad = (number) => String(number).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
-      date.getMinutes()
-    )}`;
+    return dateToDateTimeLocal(date);
+  }
+
+  function dateTimeLocalToDate(value) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return null;
+    }
+
+    const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function dateToDateTimeLocal(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())}T${padNumber(
+      date.getHours()
+    )}:${padNumber(date.getMinutes())}`;
+  }
+
+  function padNumber(number) {
+    return String(number).padStart(2, "0");
   }
 
   function compareDateDesc(a, b) {

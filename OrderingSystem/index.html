@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>團購系統</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="is-loading">
@@ -79,16 +80,41 @@
               <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
             </label>
 
-            <div class="schedule-grid">
-              <label class="field">
-                <span>開始下單時間</span>
-                <input id="orderStartInput" name="orderStartAt" type="datetime-local" />
-              </label>
-              <label class="field">
-                <span>結束下單時間</span>
-                <input id="orderEndInput" name="orderEndAt" type="datetime-local" />
-              </label>
-            </div>
+            <section class="schedule-panel" data-schedule-scope="create" aria-label="下單時間設定">
+              <div class="schedule-panel-head">
+                <div>
+                  <span>下單時間</span>
+                  <strong id="createScheduleSummary">未設定下單時段</strong>
+                </div>
+              </div>
+              <div class="schedule-grid">
+                <label class="field">
+                  <span>開始下單時間</span>
+                  <input id="orderStartInput" name="orderStartAt" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span>結束下單時間</span>
+                  <input id="orderEndInput" name="orderEndAt" type="datetime-local" />
+                </label>
+              </div>
+              <div class="schedule-presets" aria-label="快速設定下單時間">
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="start-now">
+                  現在開始
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="2">
+                  開 2 小時
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="4">
+                  開 4 小時
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="tonight">
+                  開到今晚
+                </button>
+                <button class="schedule-preset is-muted" type="button" data-schedule-scope="create" data-schedule-action="clear">
+                  清除
+                </button>
+              </div>
+            </section>
 
             <section class="owner-option-bank create-option-bank" aria-label="開團品項細項與加價選項">
               <div class="owner-option-bank-head">
@@ -196,9 +222,13 @@
                 </div>
               </div>
 
-              <section class="owner-option-bank" aria-label="開團下單時間設定">
-                <div class="owner-option-bank-head">
-                  <strong>下單時間設定</strong>
+              <section class="owner-option-bank schedule-panel owner-schedule-panel" data-schedule-scope="owner" aria-label="開團下單時間設定">
+                <div class="owner-option-bank-head schedule-panel-head">
+                  <div>
+                    <span>下單時間</span>
+                    <strong>下單時間設定</strong>
+                    <small id="ownerScheduleSummary">未設定下單時段</small>
+                  </div>
                   <button class="text-button" id="ownerSaveGroupSettingsButton" type="button">儲存設定</button>
                 </div>
                 <div class="schedule-grid compact-grid">
@@ -210,6 +240,23 @@
                     <span>結束下單時間</span>
                     <input id="ownerOrderEndInput" type="datetime-local" />
                   </label>
+                </div>
+                <div class="schedule-presets compact-presets" aria-label="快速設定下單時間">
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="start-now">
+                    現在開始
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="2">
+                    開 2 小時
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="4">
+                    開 4 小時
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="tonight">
+                    開到今晚
+                  </button>
+                  <button class="schedule-preset is-muted" type="button" data-schedule-scope="owner" data-schedule-action="clear">
+                    清除
+                  </button>
                 </div>
               </section>
 
@@ -371,6 +418,8 @@
     </template>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh-tw.js"></script>
     <script src="app.js" defer></script>
   </body>
 </html>
