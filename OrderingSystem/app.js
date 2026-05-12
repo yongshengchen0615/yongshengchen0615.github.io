@@ -14,6 +14,12 @@
     demoUser: "orderingSystem.demoUser",
   };
 
+  const BROWSE_FILTER_LABELS = {
+    all: "所有開團",
+    mine: "我的開團",
+    joined: "我已加入",
+  };
+
   const state = {
     api: null,
     config: { ...CONFIG_DEFAULTS },
@@ -28,6 +34,7 @@
     detailMode: "orders",
     loadingCount: 0,
     filter: "all",
+    returnFilter: "all",
     search: "",
   };
 
@@ -90,9 +97,14 @@
     els.createPanel = document.querySelector("#createPanel");
     els.createGroupForm = document.querySelector("#createGroupForm");
     els.groupNameInput = document.querySelector("#groupNameInput");
+    els.orderStartInput = document.querySelector("#orderStartInput");
+    els.orderEndInput = document.querySelector("#orderEndInput");
     els.itemEditor = document.querySelector("#itemEditor");
     els.addItemButton = document.querySelector("#addItemButton");
     els.resetCreateButton = document.querySelector("#resetCreateButton");
+    els.saveDraftButton = document.querySelector("#saveDraftButton");
+    els.browseView = document.querySelector("#browseView");
+    els.browseTitle = document.querySelector("#browseTitle");
     els.groupSearchInput = document.querySelector("#groupSearchInput");
     els.groupList = document.querySelector("#groupList");
     els.emptyDetail = document.querySelector("#emptyDetail");
@@ -102,12 +114,17 @@
     els.detailOwner = document.querySelector("#detailOwner");
     els.detailTitle = document.querySelector("#detailTitle");
     els.detailStatus = document.querySelector("#detailStatus");
+    els.ownerPublishButton = document.querySelector("#ownerPublishButton");
+    els.ownerDeleteGroupButton = document.querySelector("#ownerDeleteGroupButton");
     els.detailItemCount = document.querySelector("#detailItemCount");
     els.detailOrderCount = document.querySelector("#detailOrderCount");
     els.detailTotal = document.querySelector("#detailTotal");
     els.ownerDetailTabs = document.querySelector("#ownerDetailTabs");
     els.ownerDetailButtons = [...document.querySelectorAll("[data-owner-detail]")];
     els.ownerTools = document.querySelector("#ownerTools");
+    els.ownerOrderStartInput = document.querySelector("#ownerOrderStartInput");
+    els.ownerOrderEndInput = document.querySelector("#ownerOrderEndInput");
+    els.ownerSaveGroupSettingsButton = document.querySelector("#ownerSaveGroupSettingsButton");
     els.ownerAddOptionGroupButton = document.querySelector("#ownerAddOptionGroupButton");
     els.ownerOptionBankList = document.querySelector("#ownerOptionBankList");
     els.ownerAddDraftButton = document.querySelector("#ownerAddDraftButton");
@@ -119,6 +136,8 @@
     els.selectionList = document.querySelector("#selectionList");
     els.selectionEmpty = document.querySelector("#selectionEmpty");
     els.selectionTotal = document.querySelector("#selectionTotal");
+    els.orderAvailability = document.querySelector("#orderAvailability");
+    els.joinSubmitButton = document.querySelector("#joinSubmitButton");
     els.orderSectionTitle = document.querySelector("#orderSectionTitle");
     els.saveOrdersButton = document.querySelector("#saveOrdersButton");
     els.orderList = document.querySelector("#orderList");
@@ -143,7 +162,7 @@
       withBusy(event.currentTarget, handleDemoLogin, "正在建立測試登入");
     });
     els.navButtons.forEach((button) => {
-      button.addEventListener("click", () => setView(button.dataset.view));
+      button.addEventListener("click", () => handleMainNav(button));
     });
     els.addItemButton.addEventListener("click", () => addCreateItemRow());
     els.resetCreateButton.addEventListener("click", resetCreateForm);
@@ -153,9 +172,13 @@
       button.addEventListener("click", () => setOwnerDetailMode(button.dataset.ownerDetail));
     });
     els.createGroupForm.addEventListener("submit", handleCreateGroup);
+    els.ownerPublishButton.addEventListener("click", handlePublishGroup);
+    els.ownerDeleteGroupButton.addEventListener("click", handleDeleteGroup);
+    els.ownerSaveGroupSettingsButton.addEventListener("click", handleSaveGroupSettings);
     els.ownerAddOptionGroupButton.addEventListener("click", handleAddOwnerOptionGroup);
     els.ownerOptionBankList.addEventListener("click", handleOwnerOptionBankAction);
     els.ownerOptionBankList.addEventListener("input", syncOwnerItemOptionPickers);
+    els.ownerOptionBankList.addEventListener("change", syncOwnerItemOptionPickers);
     els.ownerAddDraftButton.addEventListener("click", () => addOwnerItemRow());
     els.ownerSaveItemsButton.addEventListener("click", handleSaveOwnerItems);
     els.ownerItemList.addEventListener("click", handleOwnerItemAction);
@@ -166,16 +189,10 @@
     els.quantityList.addEventListener("change", updateSubtotal);
     els.saveOrdersButton.addEventListener("click", handleSaveOrderEdits);
     els.orderList.addEventListener("click", handleOrderEditAction);
+    els.orderList.addEventListener("change", handleOrderListChange);
     els.groupSearchInput.addEventListener("input", () => {
       state.search = els.groupSearchInput.value.trim().toLowerCase();
       renderGroups();
-    });
-    els.filterButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        state.filter = button.dataset.filter;
-        renderFilters();
-        renderGroups();
-      });
     });
   }
 
@@ -263,6 +280,7 @@
   function renderApp() {
     renderSession();
     renderFilters();
+    renderBrowseContext();
     renderGroups();
     renderDetail();
     renderView();
@@ -286,6 +304,7 @@
   function renderSession() {
     els.loginPanel.classList.toggle("hidden", Boolean(state.user));
     els.mainNav.classList.toggle("hidden", !state.user);
+    renderBrowseContext();
 
     const status = els.configStatus;
     els.sessionArea.replaceChildren(status);
@@ -333,7 +352,7 @@
     els.mainNav.classList.toggle("is-detail-mode", state.view === "detail");
 
     els.navButtons.forEach((button) => {
-      const active = button.dataset.view === state.view;
+      const active = isMainNavActive(button);
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
     });
@@ -345,8 +364,40 @@
 
   function renderFilters() {
     els.filterButtons.forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.filter === state.filter);
+      button.classList.toggle("is-active", isMainNavActive(button));
     });
+  }
+
+  function isMainNavActive(button) {
+    if (button.dataset.view !== state.view) {
+      return false;
+    }
+
+    if (button.dataset.view !== "browse") {
+      return true;
+    }
+
+    return button.dataset.filter === state.filter;
+  }
+
+  function renderBrowseContext() {
+    const label = browseFilterLabel(state.filter);
+    if (els.browseTitle) {
+      els.browseTitle.textContent = label;
+    }
+    if (els.browseView) {
+      els.browseView.setAttribute("aria-label", label);
+    }
+    if (els.emptyDetailBackButton) {
+      els.emptyDetailBackButton.textContent = `返回${browseFilterLabel(state.returnFilter)}`;
+    }
+    if (els.detailBackButton) {
+      els.detailBackButton.textContent = `返回${browseFilterLabel(state.returnFilter)}`;
+    }
+  }
+
+  function browseFilterLabel(filter) {
+    return BROWSE_FILTER_LABELS[filter] || BROWSE_FILTER_LABELS.all;
   }
 
   function renderGroups() {
@@ -364,8 +415,14 @@
       const node = els.groupCardTemplate.content.firstElementChild.cloneNode(true);
       node.dataset.groupId = group.id;
       node.classList.toggle("is-selected", group.id === state.selectedGroupId);
+      const showOwnerState = state.filter === "mine" && group.isOwner;
+      node.classList.toggle("is-draft-group", showOwnerState && group.status === "draft");
+      node.classList.toggle("is-published-group", showOwnerState && group.status !== "draft");
       node.querySelector(".group-owner").textContent = `團主 ${group.ownerName}`;
       node.querySelector(".group-name").textContent = group.name;
+      const stateBadge = node.querySelector(".group-state-badge");
+      stateBadge.textContent = group.status === "draft" ? "未發布" : "已發布";
+      stateBadge.classList.toggle("hidden", !showOwnerState);
       node.querySelector(".meta-orders").textContent = group.isOwner
         ? `${group.stats.orders} 筆訂單`
         : `${group.stats.orders} 筆我的訂單`;
@@ -411,7 +468,11 @@
 
     els.detailOwner.textContent = `團主 ${group.ownerName} · ${formatDate(group.createdAt)}`;
     els.detailTitle.textContent = group.name;
-    els.detailStatus.textContent = group.status === "closed" ? "已截止" : "開放中";
+    const availability = orderAvailability(group);
+    els.detailStatus.textContent = availability.label;
+    els.detailStatus.dataset.status = availability.status;
+    els.ownerPublishButton.classList.toggle("hidden", !(group.isOwner && group.status === "draft"));
+    els.ownerDeleteGroupButton.classList.toggle("hidden", !group.isOwner);
     els.detailItemCount.textContent = String(group.items.length);
     els.detailOrderCount.textContent = String(group.stats.orders);
     els.detailTotal.textContent = formatMoney(group.stats.total);
@@ -448,6 +509,7 @@
     els.ownerItemList.replaceChildren();
     const optionBank = ownerOptionBankGroups(group.items || []);
     renderOwnerOptionBank(optionBank);
+    renderOwnerGroupSettings(group);
 
     if (!group.isOwner) {
       return;
@@ -464,6 +526,15 @@
     });
 
     els.ownerItemList.appendChild(fragment);
+  }
+
+  function renderOwnerGroupSettings(group) {
+    if (els.ownerOrderStartInput) {
+      els.ownerOrderStartInput.value = isoToDateTimeLocal(group.orderStartAt);
+    }
+    if (els.ownerOrderEndInput) {
+      els.ownerOrderEndInput.value = isoToDateTimeLocal(group.orderEndAt);
+    }
   }
 
   function addOwnerItemRow(item = {}) {
@@ -559,6 +630,18 @@
     name.setAttribute("aria-label", "細項名稱");
     name.value = group.name || "";
 
+    const requiredLabel = document.createElement("label");
+    requiredLabel.className = "owner-option-required-toggle";
+
+    const required = document.createElement("input");
+    required.className = "owner-option-required";
+    required.type = "checkbox";
+    required.checked = Boolean(group.required);
+
+    const requiredText = document.createElement("span");
+    requiredText.textContent = "下單必填";
+    requiredLabel.append(required, requiredText);
+
     const remove = document.createElement("button");
     remove.className = "icon-button delete-owner-option-group";
     remove.type = "button";
@@ -577,7 +660,7 @@
     addChoice.type = "button";
     addChoice.textContent = "新增加價選項";
 
-    head.append(name, remove);
+    head.append(name, requiredLabel, remove);
     node.append(head, choices, addChoice);
     return node;
   }
@@ -605,14 +688,7 @@
     price.setAttribute("aria-label", "選項加價");
     price.value = choice.price ? String(choice.price) : "";
 
-    const remove = document.createElement("button");
-    remove.className = "icon-button delete-owner-option-choice";
-    remove.type = "button";
-    remove.title = "刪除選項";
-    remove.setAttribute("aria-label", "刪除選項");
-    remove.textContent = "×";
-
-    node.append(name, price, remove);
+    node.append(name, price);
     return node;
   }
 
@@ -639,6 +715,7 @@
   }
 
   function mergeOptionGroup(target, source) {
+    target.required = Boolean(target.required || source.required);
     const existingChoices = new Set(target.choices.map((choice) => `${choice.id}:${choice.name}:${choice.price}`));
     source.choices.forEach((choice) => {
       const key = `${choice.id}:${choice.name}:${choice.price}`;
@@ -653,14 +730,17 @@
     return {
       id: group.id,
       name: group.name,
+      required: Boolean(group.required),
       choices: (group.choices || []).map((choice) => ({ ...choice })),
     };
   }
 
   function formatOptionGroupSummary(group) {
-    return (group.choices || [])
+    const requirement = group.required ? "必填" : "選填";
+    const choices = (group.choices || [])
       .map((choice) => (choice.price > 0 ? `${choice.name} +${formatMoney(choice.price)}` : choice.name))
       .join("、");
+    return choices ? `${requirement} · ${choices}` : requirement;
   }
 
   function ownerItemOptionSelections(row) {
@@ -680,9 +760,20 @@
 
   function renderQuantityRows(group) {
     els.quantityList.replaceChildren();
+    const availability = orderAvailability(group);
+    const canOrder = availability.canOrder;
+
+    els.orderAvailability.textContent = availability.message || "";
+    els.orderAvailability.classList.toggle("hidden", canOrder);
+    els.joinSubmitButton.disabled = !canOrder;
 
     if (!state.user) {
       els.quantityList.appendChild(emptyState("請先登入再加入開團"));
+      return;
+    }
+
+    if (!canOrder) {
+      els.quantityList.appendChild(emptyState(availability.message || "目前無法下單"));
       return;
     }
 
@@ -725,16 +816,17 @@
       label.className = "quantity-option-field";
 
       const title = document.createElement("span");
-      title.textContent = group.name;
+      title.textContent = group.required ? `${group.name}（必填）` : group.name;
 
       const select = document.createElement("select");
       select.className = "quantity-option-select";
       select.dataset.groupId = group.id;
       select.dataset.groupName = group.name;
+      select.dataset.required = group.required ? "true" : "false";
 
       const empty = document.createElement("option");
       empty.value = "";
-      empty.textContent = "不選擇";
+      empty.textContent = group.required ? "請選擇" : "不選擇";
       select.appendChild(empty);
 
       group.choices.forEach((choice) => {
@@ -754,7 +846,7 @@
   function renderOrders(group) {
     els.orderList.replaceChildren();
     els.orderSectionTitle.textContent = group.isOwner ? "全部訂單" : "我的訂購紀錄";
-    els.saveOrdersButton.classList.toggle("hidden", !group.orders.some(canEditOrder));
+    els.saveOrdersButton.classList.toggle("hidden", !(group.orders.some(canEditOrder) || (group.isOwner && group.orders.length)));
 
     if (!group.orders.length) {
       els.orderList.appendChild(emptyState(group.isOwner ? "尚未有人下單" : "你尚未下單"));
@@ -773,6 +865,17 @@
         .map((item) => `${formatOrderItemLabel(item)} × ${item.quantity}`)
         .join("、");
       node.querySelector(".order-total").textContent = formatMoney(order.total);
+      const paymentBadge = node.querySelector(".order-payment-badge");
+      paymentBadge.textContent = order.paid ? "已收費" : "未收費";
+      paymentBadge.classList.toggle("is-paid", order.paid);
+      paymentBadge.classList.toggle("is-unpaid", !order.paid);
+
+      const paymentToggle = node.querySelector(".order-payment-toggle");
+      const paymentCheckbox = node.querySelector(".order-paid-checkbox");
+      paymentToggle.classList.toggle("hidden", !group.isOwner);
+      paymentCheckbox.checked = order.paid;
+      paymentCheckbox.dataset.orderId = order.id;
+      paymentCheckbox.setAttribute("aria-label", `設定 ${order.userName} 的訂單已收費`);
       renderOrderEditor(order, node.querySelector(".order-editor"));
       fragment.appendChild(node);
     });
@@ -834,9 +937,25 @@
     return Boolean(state.user && order && order.userId === state.user.id && order.items.length);
   }
 
+  function handleMainNav(button) {
+    const view = button.dataset.view;
+    const filter = button.dataset.filter;
+
+    if (filter) {
+      state.filter = filter;
+      state.returnFilter = filter;
+      renderBrowseContext();
+      renderGroups();
+    }
+
+    setView(view);
+  }
+
   function selectGroup(groupId) {
     state.selectedGroupId = groupId;
-    state.detailMode = "orders";
+    state.returnFilter = state.filter;
+    const group = state.groups.find((entry) => entry.id === groupId);
+    state.detailMode = group && group.status === "draft" && group.isOwner ? "items" : "orders";
     renderGroups();
     renderDetail();
     setView("detail");
@@ -859,6 +978,10 @@
   }
 
   function showBrowseView() {
+    state.filter = state.returnFilter;
+    renderFilters();
+    renderBrowseContext();
+    renderGroups();
     setView("browse");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -877,9 +1000,12 @@
       const text = `${group.name} ${group.ownerName} ${group.items.map((item) => item.name).join(" ")}`.toLowerCase();
       const matchesSearch = !state.search || text.includes(state.search);
       const matchesFilter =
-        state.filter === "all" ||
+        (state.filter === "all" && group.status !== "draft") ||
         (state.filter === "mine" && state.user && group.ownerUserId === state.user.id) ||
-        (state.filter === "joined" && state.user && group.orders.some((order) => order.userId === state.user.id));
+        (state.filter === "joined" &&
+          group.status !== "draft" &&
+          state.user &&
+          group.orders.some((order) => order.userId === state.user.id));
       return matchesSearch && matchesFilter;
     });
   }
@@ -1038,30 +1164,37 @@
 
     const name = els.groupNameInput.value.trim();
     const items = collectCreateItems();
+    const status = event.submitter && event.submitter.dataset.groupStatus === "draft" ? "draft" : "open";
+    const schedule = collectCreateSchedule();
+    if (!schedule) {
+      return;
+    }
 
     if (!name) {
       showToast("請輸入開團名稱。", "error");
       return;
     }
 
-    if (!items.length) {
+    if (status !== "draft" && !items.length) {
       showToast("至少需要一個品項。", "error");
       return;
     }
 
     const submitter = event.submitter;
     await withBusy(submitter, async () => {
-      const result = await state.api.createGroup({ name, items }, state.session, state.user);
+      const result = await state.api.createGroup({ name, items, status, ...schedule }, state.session, state.user);
       resetCreateForm();
       await refreshGroups();
       if (result && result.group && result.group.id) {
         state.selectedGroupId = result.group.id;
-        state.detailMode = "orders";
+        state.filter = status === "draft" ? "mine" : state.filter;
+        state.returnFilter = state.filter;
+        state.detailMode = status === "draft" ? "items" : "orders";
         state.view = "detail";
         renderApp();
       }
-      showToast("開團已建立。");
-    }, "正在儲存開團資料");
+      showToast(status === "draft" ? "草稿已儲存。" : "開團已建立。");
+    }, status === "draft" ? "正在儲存草稿" : "正在儲存開團資料");
   }
 
   async function handleOwnerItemAction(event) {
@@ -1124,14 +1257,6 @@
       return;
     }
 
-    const deleteOptionChoiceButton = event.target.closest(".delete-owner-option-choice");
-    if (deleteOptionChoiceButton) {
-      const choice = deleteOptionChoiceButton.closest(".owner-option-choice");
-      if (choice) {
-        choice.remove();
-        syncOwnerItemOptionPickers();
-      }
-    }
   }
 
   function handleOwnerItemChange(event) {
@@ -1175,6 +1300,74 @@
     }, "正在儲存品項與細項設定");
   }
 
+  async function handleSaveGroupSettings(event) {
+    const group = selectedGroup();
+
+    if (!group || !group.isOwner) {
+      showToast("只有團主可以管理開團設定。", "error");
+      return;
+    }
+
+    const schedule = collectOwnerSchedule();
+    if (!schedule) {
+      return;
+    }
+
+    await withBusy(event.currentTarget, async () => {
+      await state.api.saveGroupSettings({ groupId: group.id, ...schedule }, state.session);
+      await refreshGroups();
+      state.selectedGroupId = group.id;
+      state.view = "detail";
+      renderApp();
+      showToast("開團設定已儲存。");
+    }, "正在儲存開團設定");
+  }
+
+  async function handlePublishGroup(event) {
+    const group = selectedGroup();
+
+    if (!group || !group.isOwner) {
+      showToast("只有團主可以發布開團。", "error");
+      return;
+    }
+
+    await withBusy(event.currentTarget, async () => {
+      await state.api.publishGroup({ groupId: group.id }, state.session);
+      await refreshGroups();
+      state.selectedGroupId = group.id;
+      state.detailMode = "orders";
+      state.view = "detail";
+      renderApp();
+      showToast("開團已發布。");
+    }, "正在發布開團");
+  }
+
+  async function handleDeleteGroup(event) {
+    const group = selectedGroup();
+
+    if (!group || !group.isOwner) {
+      showToast("只有團主可以移除開團。", "error");
+      return;
+    }
+
+    const confirmed = window.confirm(`確定要移除「${group.name}」？此動作會一併刪除品項與訂單，無法復原。`);
+    if (!confirmed) {
+      return;
+    }
+
+    await withBusy(event.currentTarget, async () => {
+      await state.api.deleteGroup({ groupId: group.id }, state.session);
+      state.selectedGroupId = "";
+      state.detailMode = "orders";
+      state.view = "browse";
+      state.filter = "mine";
+      state.returnFilter = "mine";
+      await refreshGroups();
+      renderApp();
+      showToast("開團已移除。");
+    }, "正在移除開團");
+  }
+
   async function handleJoinGroup(event) {
     event.preventDefault();
 
@@ -1186,6 +1379,16 @@
     const group = selectedGroup();
     if (!group) {
       showToast("請先選擇開團。", "error");
+      return;
+    }
+
+    const availability = orderAvailability(group);
+    if (!availability.canOrder) {
+      showToast(availability.message || "目前無法下單。", "error");
+      return;
+    }
+
+    if (!validateSelectedRequiredOptions(group)) {
       return;
     }
 
@@ -1242,6 +1445,33 @@
     }
 
     showToast("品項已標記移除，按儲存訂單變更套用。");
+  }
+
+  function handleOrderListChange(event) {
+    const checkbox = event.target.closest(".order-paid-checkbox");
+
+    if (!checkbox) {
+      return;
+    }
+
+    const group = selectedGroup();
+    const orderNode = checkbox.closest(".order-row");
+    const orderId = checkbox.dataset.orderId || (orderNode && orderNode.dataset.orderId);
+
+    if (!group || !group.isOwner || !orderId) {
+      checkbox.checked = !checkbox.checked;
+      showToast("只有團主可以設定收費狀態。", "error");
+      return;
+    }
+
+    const paid = checkbox.checked;
+    const badge = orderNode && orderNode.querySelector(".order-payment-badge");
+    if (badge) {
+      badge.textContent = paid ? "已收費" : "未收費";
+      badge.classList.toggle("is-paid", paid);
+      badge.classList.toggle("is-unpaid", !paid);
+    }
+    showToast("收費狀態已暫存，按儲存訂單變更套用。");
   }
 
   async function handleSaveOrderEdits(event) {
@@ -1396,6 +1626,71 @@
       .filter(Boolean);
   }
 
+  function validateSelectedRequiredOptions(group) {
+    let firstInvalid = null;
+
+    [...els.quantityList.querySelectorAll(".quantity-row")].forEach((row) => {
+      row.classList.remove("is-invalid");
+      row.querySelectorAll(".quantity-option-select").forEach((select) => select.classList.remove("is-invalid"));
+
+      if (firstInvalid) {
+        return;
+      }
+
+      const input = row.querySelector("input");
+      const quantity = Math.max(0, Number.parseInt(input && input.value, 10) || 0);
+      if (quantity <= 0) {
+        return;
+      }
+
+      const item = group.items.find((entry) => entry.id === row.dataset.itemId);
+      if (!item) {
+        return;
+      }
+
+      const missing = missingRequiredOptionGroups(item.options || [], selectedRowOptions(row));
+      if (!missing.length) {
+        return;
+      }
+
+      const missingGroup = missing[0];
+      const select = [...row.querySelectorAll(".quantity-option-select")].find(
+        (entry) => entry.dataset.groupId === missingGroup.id
+      );
+      row.classList.add("is-invalid");
+      if (select) {
+        select.classList.add("is-invalid");
+      }
+      firstInvalid = {
+        item,
+        group: missingGroup,
+        select,
+      };
+    });
+
+    if (!firstInvalid) {
+      return true;
+    }
+
+    showToast(`請選擇「${firstInvalid.item.name}」的${firstInvalid.group.name}。`, "error");
+    if (firstInvalid.select) {
+      firstInvalid.select.focus();
+    }
+    return false;
+  }
+
+  function missingRequiredOptionGroups(optionGroups, selectedOptions) {
+    const selectedGroupIds = new Set(normalizeSelectedOptions(selectedOptions).map((option) => option.groupId));
+    return normalizeOptionGroups(optionGroups).filter((group) => group.required && !selectedGroupIds.has(group.id));
+  }
+
+  function assertRequiredOptionsSelected(item, selectedOptions) {
+    const missing = missingRequiredOptionGroups(item.options || [], selectedOptions);
+    if (missing.length) {
+      throw new Error(`請選擇「${item.name}」的${missing[0].name}。`);
+    }
+  }
+
   function optionSignature(options) {
     return normalizeSelectedOptions(options)
       .map((option) => `${option.groupId}:${option.choiceId}:${option.price}`)
@@ -1470,6 +1765,7 @@
         return {
           id: String(group.id || optionId(name, groupIndex)).trim(),
           name,
+          required: Boolean(group.required),
           choices: choices
             .map((choice, choiceIndex) => {
               const choiceName = String(choice.name || "").trim().slice(0, 24);
@@ -1507,13 +1803,29 @@
     return [...els.orderList.querySelectorAll(".order-row")]
       .map((orderNode) => {
         const order = group.orders.find((entry) => entry.id === orderNode.dataset.orderId);
-        if (!canEditOrder(order)) {
+        if (!order) {
           return null;
         }
-        return {
+
+        const orderPayload = {
           orderId: order.id,
-          items: collectOrderEditItems(orderNode),
         };
+
+        let hasEdits = false;
+        if (canEditOrder(order)) {
+          orderPayload.items = collectOrderEditItems(orderNode);
+          hasEdits = true;
+        }
+
+        if (group.isOwner) {
+          const paidInput = orderNode.querySelector(".order-paid-checkbox");
+          if (paidInput) {
+            orderPayload.paid = paidInput.checked;
+            hasEdits = true;
+          }
+        }
+
+        return hasEdits ? orderPayload : null;
       })
       .filter(Boolean);
   }
@@ -1588,6 +1900,8 @@
     container.querySelectorAll(".owner-option-group").forEach((groupNode, groupIndex) => {
       const nameInput = groupNode.querySelector(".owner-option-group-name");
       const name = nameInput.value.trim();
+      const requiredInput = groupNode.querySelector(".owner-option-required");
+      const required = Boolean(requiredInput && requiredInput.checked);
       const choices = [];
 
       groupNode.querySelectorAll(".owner-option-choice").forEach((choiceNode, choiceIndex) => {
@@ -1633,6 +1947,7 @@
       groups.push({
         id: groupNode.dataset.optionId || optionId(name, groupIndex),
         name,
+        required,
         choices,
       });
     });
@@ -1654,6 +1969,32 @@
         price: Number(row.querySelector('[name="itemPrice"]').value),
       }))
       .filter(isValidItem);
+  }
+
+  function collectCreateSchedule() {
+    return collectScheduleInputs(els.orderStartInput, els.orderEndInput);
+  }
+
+  function collectOwnerSchedule() {
+    return collectScheduleInputs(els.ownerOrderStartInput, els.ownerOrderEndInput);
+  }
+
+  function collectScheduleInputs(startInput, endInput) {
+    const orderStartAt = dateTimeLocalToIso(startInput && startInput.value);
+    const orderEndAt = dateTimeLocalToIso(endInput && endInput.value);
+
+    if (orderStartAt && orderEndAt && new Date(orderEndAt).getTime() <= new Date(orderStartAt).getTime()) {
+      showToast("結束下單時間必須晚於開始下單時間。", "error");
+      if (endInput) {
+        endInput.focus();
+      }
+      return null;
+    }
+
+    return {
+      orderStartAt,
+      orderEndAt,
+    };
   }
 
   function isValidItem(item) {
@@ -1761,6 +2102,7 @@
         const total = Number(order.total) || orderItems.reduce((sum, item) => sum + item.subtotal, 0);
         return {
           ...order,
+          paid: normalizeBoolean(order.paid),
           total,
           items: orderItems,
         };
@@ -1777,6 +2119,8 @@
       items,
       orders,
       status: group.status || "open",
+      orderStartAt: group.orderStartAt || "",
+      orderEndAt: group.orderEndAt || "",
       ownerName: group.ownerName || (group.owner && group.owner.displayName) || "LINE 使用者",
       ownerUserId,
       isOwner,
@@ -1814,6 +2158,71 @@
     return money.format(Number(value) || 0);
   }
 
+  function orderAvailability(group, nowValue = Date.now()) {
+    if (!group) {
+      return {
+        status: "closed",
+        label: "不可下單",
+        canOrder: false,
+        message: "請先選擇開團。",
+      };
+    }
+
+    if (group.status === "draft") {
+      return {
+        status: "draft",
+        label: "草稿",
+        canOrder: false,
+        message: "此開團仍是草稿，發布後才可下單。",
+      };
+    }
+
+    if (group.status === "closed") {
+      return {
+        status: "closed",
+        label: "已截止",
+        canOrder: false,
+        message: "此開團已截止下單。",
+      };
+    }
+
+    const now = Number(nowValue) || Date.now();
+    const startTime = group.orderStartAt ? new Date(group.orderStartAt).getTime() : 0;
+    const endTime = group.orderEndAt ? new Date(group.orderEndAt).getTime() : 0;
+
+    if (startTime && now < startTime) {
+      return {
+        status: "scheduled",
+        label: "尚未開始",
+        canOrder: false,
+        message: `開始下單時間：${formatDate(group.orderStartAt)}`,
+      };
+    }
+
+    if (endTime && now > endTime) {
+      return {
+        status: "ended",
+        label: "已截止",
+        canOrder: false,
+        message: `結束下單時間：${formatDate(group.orderEndAt)}`,
+      };
+    }
+
+    return {
+      status: "open",
+      label: "開放中",
+      canOrder: true,
+      message: group.orderEndAt ? `結束下單時間：${formatDate(group.orderEndAt)}` : "",
+    };
+  }
+
+  function normalizeBoolean(value) {
+    if (value === true || value === 1) {
+      return true;
+    }
+    return ["true", "yes", "1", "已收費"].includes(String(value || "").trim().toLowerCase());
+  }
+
   function formatDate(value) {
     if (!value) {
       return "";
@@ -1828,6 +2237,32 @@
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
+  }
+
+  function dateTimeLocalToIso(value) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  }
+
+  function isoToDateTimeLocal(value) {
+    if (!value) {
+      return "";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
+      date.getMinutes()
+    )}`;
   }
 
   function compareDateDesc(a, b) {
@@ -1932,8 +2367,29 @@
       });
     }
 
+    deleteGroup(payload, session) {
+      return this.request("deleteGroup", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
     saveItems(payload, session) {
       return this.request("saveItems", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    saveGroupSettings(payload, session) {
+      return this.request("saveGroupSettings", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    publishGroup(payload, session) {
+      return this.request("publishGroup", {
         session,
         payload: JSON.stringify(payload),
       });
@@ -2014,15 +2470,17 @@
 
     listGroups() {
       const user = this.currentUser();
-      const groups = this.data().groups.map((group) => {
-        const isOwner = group.ownerUserId === user.id;
-        return {
-          ...group,
-          isOwner,
-          canManageItems: isOwner,
-          orders: isOwner ? group.orders : group.orders.filter((order) => order.userId === user.id),
-        };
-      });
+      const groups = this.data().groups
+        .filter((group) => group.status !== "draft" || group.ownerUserId === user.id)
+        .map((group) => {
+          const isOwner = group.ownerUserId === user.id;
+          return {
+            ...group,
+            isOwner,
+            canManageItems: isOwner,
+            orders: isOwner ? group.orders : group.orders.filter((order) => order.userId === user.id),
+          };
+        });
       return Promise.resolve(groups);
     }
 
@@ -2035,7 +2493,9 @@
         name: payload.name,
         ownerUserId: user.id,
         ownerName: user.displayName,
-        status: "open",
+        status: payload.status === "draft" ? "draft" : "open",
+        orderStartAt: payload.orderStartAt || "",
+        orderEndAt: payload.orderEndAt || "",
         createdAt: now,
         items: payload.items.map((item) => ({
           id: uid("item"),
@@ -2091,6 +2551,14 @@
         order.total = order.items.reduce((sum, item) => sum + item.subtotal, 0);
       });
       group.orders = group.orders.filter((order) => order.items.length > 0);
+      this.save(data);
+      return Promise.resolve({ ok: true });
+    }
+
+    deleteGroup(payload) {
+      const data = this.data();
+      const group = this.ownerGroup(data, payload.groupId);
+      data.groups = data.groups.filter((entry) => entry.id !== group.id);
       this.save(data);
       return Promise.resolve({ ok: true });
     }
@@ -2153,12 +2621,37 @@
       return Promise.resolve({ ok: true });
     }
 
+    saveGroupSettings(payload) {
+      const data = this.data();
+      const group = this.ownerGroup(data, payload.groupId);
+      group.orderStartAt = payload.orderStartAt || "";
+      group.orderEndAt = payload.orderEndAt || "";
+      this.save(data);
+      return Promise.resolve({ ok: true });
+    }
+
+    publishGroup(payload) {
+      const data = this.data();
+      const group = this.ownerGroup(data, payload.groupId);
+      if (!group.items.length) {
+        return Promise.reject(new Error("至少需要一個品項才能發布開團。"));
+      }
+      group.status = "open";
+      this.save(data);
+      return Promise.resolve({ ok: true });
+    }
+
     joinGroup(payload) {
       const data = this.data();
       const user = this.currentUser();
       const group = data.groups.find((entry) => entry.id === payload.groupId);
       if (!group) {
         return Promise.reject(new Error("找不到開團。"));
+      }
+
+      const availability = orderAvailability(group);
+      if (!availability.canOrder) {
+        return Promise.reject(new Error(availability.message || "目前無法下單。"));
       }
 
       const selectedMap = new Map();
@@ -2169,6 +2662,7 @@
           return;
         }
         const options = syncSelectedOptionsToItemOptions(entry.options || [], item.options || []);
+        assertRequiredOptionsSelected(item, options);
         const optionExtra = options.reduce((sum, option) => sum + option.price, 0);
         const unitPrice = (Number(item.price) || 0) + optionExtra;
         const key = `${item.id}::${optionSignature(options)}`;
@@ -2196,6 +2690,7 @@
         userId: user.id,
         userName: user.displayName,
         total: items.reduce((sum, item) => sum + item.subtotal, 0),
+        paid: false,
         createdAt: new Date().toISOString(),
         items,
       });
@@ -2273,18 +2768,31 @@
         return Promise.reject(new Error("找不到開團。"));
       }
 
+      const isGroupOwner = group.ownerUserId === user.id;
       (payload.orders || []).forEach((orderPayload) => {
         const order = group.orders.find((entry) => entry.id === orderPayload.orderId);
         if (!order) {
           throw new Error("找不到訂單。");
         }
-        if (order.userId !== user.id) {
-          throw new Error("只能修改自己的訂單。");
+
+        if (Object.prototype.hasOwnProperty.call(orderPayload, "paid")) {
+          if (!isGroupOwner) {
+            throw new Error("只有團主可以設定收費狀態。");
+          }
+          order.paid = Boolean(orderPayload.paid);
+        }
+
+        if (!Array.isArray(orderPayload.items)) {
+          return;
         }
 
         const quantityByEntry = {};
         const quantityByItem = {};
-        (orderPayload.items || []).forEach((entry) => {
+        if (order.userId !== user.id) {
+          throw new Error("只能修改自己的訂單。");
+        }
+
+        orderPayload.items.forEach((entry) => {
           const entryId = String(entry.entryId || "").trim();
           const itemId = String(entry.itemId || "").trim();
           const quantity = Math.max(0, Number.parseInt(entry.quantity, 10) || 0);
@@ -2388,13 +2896,22 @@
           ownerUserId: "u_mina",
           ownerName: "Mina",
           status: "open",
+          orderStartAt: "",
+          orderEndAt: "",
           createdAt: new Date(now - 1000 * 60 * 36).toISOString(),
           items: [
             {
               id: "item_chicken",
               name: "椒麻雞腿飯",
               price: 120,
-              options: [{ id: "opt_addon", name: "加購", choices: [{ id: "opt_rice", name: "加飯", price: 10 }] }],
+              options: [
+                {
+                  id: "opt_addon",
+                  name: "加購",
+                  required: false,
+                  choices: [{ id: "opt_rice", name: "加飯", price: 10 }],
+                },
+              ],
             },
             { id: "item_pork", name: "滷排骨飯", price: 105 },
             { id: "item_veg", name: "蔬食便當", price: 95 },
@@ -2405,6 +2922,7 @@
               userId: "u_chen",
               userName: "阿誠",
               total: 225,
+              paid: false,
               createdAt: new Date(now - 1000 * 60 * 18).toISOString(),
               items: [
                 { id: "oi_demo_chicken", itemId: "item_chicken", name: "椒麻雞腿飯", price: 120, quantity: 1, subtotal: 120 },
@@ -2419,6 +2937,8 @@
           ownerUserId: "u_hao",
           ownerName: "Hao",
           status: "open",
+          orderStartAt: "",
+          orderEndAt: new Date(now + 1000 * 60 * 90).toISOString(),
           createdAt: new Date(now - 1000 * 60 * 92).toISOString(),
           items: [
             {
@@ -2426,8 +2946,8 @@
               name: "四季春",
               price: 35,
               options: [
-                { id: "opt_sugar", name: "甜度", choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_less", name: "少糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
-                { id: "opt_ice", name: "冰塊", choices: [{ id: "ice_normal", name: "正常冰", price: 0 }, { id: "ice_less", name: "少冰", price: 0 }, { id: "ice_none", name: "去冰", price: 0 }] },
+                { id: "opt_sugar", name: "甜度", required: true, choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_less", name: "少糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
+                { id: "opt_ice", name: "冰塊", required: true, choices: [{ id: "ice_normal", name: "正常冰", price: 0 }, { id: "ice_less", name: "少冰", price: 0 }, { id: "ice_none", name: "去冰", price: 0 }] },
               ],
             },
             {
@@ -2435,12 +2955,24 @@
               name: "珍珠鮮奶茶",
               price: 65,
               options: [
-                { id: "opt_sugar", name: "甜度", choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_half", name: "半糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
-                { id: "opt_addon", name: "加料", choices: [{ id: "addon_pearl", name: "珍珠加量", price: 10 }, { id: "addon_pudding", name: "布丁", price: 15 }] },
+                { id: "opt_sugar", name: "甜度", required: true, choices: [{ id: "sugar_normal", name: "正常", price: 0 }, { id: "sugar_half", name: "半糖", price: 0 }, { id: "sugar_none", name: "無糖", price: 0 }] },
+                { id: "opt_addon", name: "加料", required: false, choices: [{ id: "addon_pearl", name: "珍珠加量", price: 10 }, { id: "addon_pudding", name: "布丁", price: 15 }] },
               ],
             },
             { id: "item_coffee", name: "黑咖啡", price: 55 },
           ],
+          orders: [],
+        },
+        {
+          id: "grp_demo_draft",
+          name: "早餐團草稿",
+          ownerUserId: "demo_user",
+          ownerName: "測試使用者",
+          status: "draft",
+          orderStartAt: new Date(now + 1000 * 60 * 30).toISOString(),
+          orderEndAt: new Date(now + 1000 * 60 * 180).toISOString(),
+          createdAt: new Date(now - 1000 * 60 * 8).toISOString(),
+          items: [{ id: "item_sandwich", name: "火腿蛋三明治", price: 55, options: [] }],
           orders: [],
         },
       ],

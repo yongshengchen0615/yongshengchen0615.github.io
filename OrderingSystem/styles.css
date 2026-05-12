@@ -303,6 +303,11 @@ button:disabled {
   font-weight: 800;
 }
 
+.text-button.danger-action {
+  color: #7c241d;
+  background: #f8ddda;
+}
+
 .icon-button {
   width: 38px;
   height: 38px;
@@ -460,6 +465,7 @@ form {
 }
 
 .field input,
+.field input[type="datetime-local"],
 .search-field input {
   width: 100%;
   min-height: 44px;
@@ -501,6 +507,16 @@ form {
   margin-bottom: 18px;
 }
 
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.schedule-grid.compact-grid {
+  margin-top: 10px;
+}
+
 .item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(92px, 128px) 38px;
@@ -510,6 +526,17 @@ form {
 
 .price-field input {
   text-align: right;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.form-actions .text-button,
+.form-actions .primary-action {
+  flex: 1 1 0;
 }
 
 .group-board {
@@ -537,13 +564,6 @@ form {
   padding: 0 14px;
 }
 
-.board-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0;
-}
-
 .chip {
   min-height: 34px;
   padding: 0 12px;
@@ -564,6 +584,7 @@ form {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 12px;
+  margin-top: 18px;
   overflow: auto;
   padding-right: 3px;
 }
@@ -590,6 +611,15 @@ form {
 .group-card.is-selected {
   border-color: var(--surface-strong);
   box-shadow: 0 16px 36px rgba(16, 19, 18, 0.12);
+}
+
+.group-card.is-draft-group {
+  border-color: #ecd28b;
+  background: #fffaf0;
+}
+
+.group-card.is-published-group {
+  border-color: #cbe7d4;
 }
 
 .group-card-top {
@@ -629,6 +659,36 @@ form {
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 5px rgba(6, 199, 85, 0.13);
+}
+
+.is-draft-group .status-dot {
+  background: #d09a22;
+  box-shadow: 0 0 0 5px rgba(208, 154, 34, 0.15);
+}
+
+.is-published-group .status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 5px rgba(6, 199, 85, 0.13);
+}
+
+.group-state-badge {
+  display: inline-flex;
+  width: max-content;
+  margin-top: 9px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.is-draft-group .group-state-badge {
+  color: #664600;
+  background: #f8df92;
+}
+
+.is-published-group .group-state-badge {
+  color: #063f1c;
+  background: #d9f7e4;
 }
 
 .group-items {
@@ -697,6 +757,14 @@ form {
   margin-bottom: 16px;
 }
 
+.detail-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .detail-back-button {
   flex: 0 0 auto;
   justify-self: start;
@@ -710,6 +778,22 @@ form {
   flex: 0 0 auto;
   color: #063f1c;
   background: #d9f7e4;
+}
+
+.status-pill[data-status="draft"] {
+  color: #554100;
+  background: #f8df92;
+}
+
+.status-pill[data-status="scheduled"] {
+  color: #20506e;
+  background: #dcecf7;
+}
+
+.status-pill[data-status="closed"],
+.status-pill[data-status="ended"] {
+  color: #6d211c;
+  background: #f7dad7;
 }
 
 .stat-grid {
@@ -872,13 +956,34 @@ form {
 .owner-option-group-head,
 .owner-option-choice {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) auto 38px;
   gap: 8px;
   align-items: center;
 }
 
 .owner-option-choice {
-  grid-template-columns: minmax(0, 1fr) minmax(84px, 112px) 38px;
+  grid-template-columns: minmax(0, 1fr) minmax(84px, 112px);
+}
+
+.owner-option-required-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-option-required-toggle input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
 }
 
 .owner-option-choice-price {
@@ -935,7 +1040,9 @@ form {
 
 .owner-item-row.is-invalid input,
 .owner-option-group.is-invalid input,
-.owner-option-choice.is-invalid input {
+.owner-option-choice.is-invalid input,
+.quantity-row.is-invalid,
+.quantity-option-select.is-invalid {
   border-color: var(--danger);
 }
 
@@ -1015,6 +1122,17 @@ form {
 
 .selection-empty {
   margin: 0;
+}
+
+.order-availability {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f0d492;
+  border-radius: var(--radius);
+  color: #6d4500;
+  background: #fff7df;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .quantity-row,
@@ -1146,6 +1264,13 @@ form {
   min-width: 0;
 }
 
+.order-side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .order-user-line {
   display: flex;
   flex-wrap: wrap;
@@ -1168,6 +1293,41 @@ form {
 .is-owner-order .order-role-badge {
   color: #063f1c;
   background: #d9f7e4;
+}
+
+.order-payment-badge {
+  display: inline-flex !important;
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.order-payment-badge.is-paid {
+  color: #063f1c;
+  background: #d9f7e4;
+}
+
+.order-payment-badge.is-unpaid {
+  color: #6d4500;
+  background: #fff0c2;
+}
+
+.order-payment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.order-payment-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .order-items {
@@ -1421,6 +1581,10 @@ form {
     grid-template-columns: minmax(0, 1fr) 104px 38px;
   }
 
+  .schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
   .stat-grid {
     grid-template-columns: 1fr;
   }
@@ -1499,9 +1663,18 @@ form {
     grid-row: 1;
   }
 
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .order-summary {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .order-side {
+    justify-items: start;
   }
 
   .owner-item-row {
@@ -1527,19 +1700,28 @@ form {
     grid-row: 1;
   }
 
-  .owner-option-group-head,
-  .owner-option-choice {
+  .owner-option-group-head {
     grid-template-columns: 1fr 38px;
   }
 
-  .owner-option-choice-price {
-    grid-column: 1 / -1;
-    grid-row: 2;
+  .owner-option-choice {
+    grid-template-columns: 1fr;
   }
 
-  .owner-option-choice .delete-owner-option-choice {
+  .owner-option-required-toggle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .owner-option-group-head .delete-owner-option-group {
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .owner-option-choice-price {
+    text-align: left;
   }
 
   .order-edit-row {

@@ -10,9 +10,9 @@ const SHEETS = {
 const HEADERS = {
   Users: ["id", "displayName", "pictureUrl", "updatedAt"],
   Sessions: ["token", "userId", "expiresAt", "createdAt"],
-  Groups: ["id", "name", "ownerUserId", "ownerName", "status", "createdAt", "updatedAt"],
+  Groups: ["id", "name", "ownerUserId", "ownerName", "status", "createdAt", "updatedAt", "orderStartAt", "orderEndAt"],
   Items: ["id", "groupId", "name", "price", "createdAt", "options"],
-  Orders: ["id", "groupId", "userId", "userName", "total", "createdAt"],
+  Orders: ["id", "groupId", "userId", "userName", "total", "createdAt", "paid"],
   OrderItems: ["id", "orderId", "itemId", "itemName", "price", "quantity", "subtotal", "options"],
 };
 
@@ -119,10 +119,25 @@ function routeApi_(action, params) {
       const user = requireUser_(spreadsheet, params.session);
       return deleteItem_(spreadsheet, parsePayload_(params.payload), user);
     }
+    case "deleteGroup": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return deleteGroup_(spreadsheet, parsePayload_(params.payload), user);
+    }
     case "saveItems": {
       const spreadsheet = spreadsheetFromParams_(params);
       const user = requireUser_(spreadsheet, params.session);
       return saveItems_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "saveGroupSettings": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return saveGroupSettings_(spreadsheet, parsePayload_(params.payload), user);
+    }
+    case "publishGroup": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return publishGroup_(spreadsheet, parsePayload_(params.payload), user);
     }
     case "joinGroup": {
       const spreadsheet = spreadsheetFromParams_(params);
@@ -213,12 +228,14 @@ function normalizeTestUser_(payload) {
 function createGroup_(spreadsheet, payload, user) {
   const name = cleanText_(payload.name, 40);
   const items = normalizeIncomingItems_(payload.items);
+  const status = payload.status === "draft" ? "draft" : "open";
+  const schedule = normalizeSchedule_(payload);
 
   if (!name) {
     throw new Error("請輸入開團名稱。");
   }
 
-  if (!items.length) {
+  if (status !== "draft" && !items.length) {
     throw new Error("至少需要一個品項。");
   }
 
@@ -233,9 +250,11 @@ function createGroup_(spreadsheet, payload, user) {
       name: name,
       ownerUserId: user.id,
       ownerName: user.displayName,
-      status: "open",
+      status: status,
       createdAt: now,
       updatedAt: now,
+      orderStartAt: schedule.orderStartAt,
+      orderEndAt: schedule.orderEndAt,
     };
 
     appendObject_(spreadsheet, SHEETS.GROUPS, group);
@@ -367,6 +386,42 @@ function deleteItem_(spreadsheet, payload, user) {
   }
 }
 
+function deleteGroup_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const orderIds = {};
+    readObjects_(spreadsheet, SHEETS.ORDERS).forEach(function (order) {
+      if (order.groupId === group.id) {
+        orderIds[order.id] = true;
+      }
+    });
+
+    deleteObjectRows_(spreadsheet, SHEETS.ORDER_ITEMS, function (entry) {
+      return orderIds[entry.orderId];
+    });
+    deleteObjectRows_(spreadsheet, SHEETS.ORDERS, function (entry) {
+      return entry.groupId === group.id;
+    });
+    deleteObjectRows_(spreadsheet, SHEETS.ITEMS, function (entry) {
+      return entry.groupId === group.id;
+    });
+    deleteObjectRows_(spreadsheet, SHEETS.GROUPS, function (entry) {
+      return entry.id === group.id;
+    });
+
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function saveItems_(spreadsheet, payload, user) {
   const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
   const incomingItems = Array.isArray(payload.items) ? payload.items : [];
@@ -462,6 +517,64 @@ function saveItems_(spreadsheet, payload, user) {
   }
 }
 
+function saveGroupSettings_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+  const schedule = normalizeSchedule_(payload);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    updateObjectWhere_(spreadsheet, SHEETS.GROUPS, function (entry) {
+      return entry.id === group.id;
+    }, function (entry) {
+      entry.orderStartAt = schedule.orderStartAt;
+      entry.orderEndAt = schedule.orderEndAt;
+      entry.updatedAt = new Date().toISOString();
+      return entry;
+    });
+
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function publishGroup_(spreadsheet, payload, user) {
+  const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const itemCount = readObjects_(spreadsheet, SHEETS.ITEMS).filter(function (item) {
+      return item.groupId === group.id;
+    }).length;
+
+    if (!itemCount) {
+      throw new Error("至少需要一個品項才能發布開團。");
+    }
+
+    updateObjectWhere_(spreadsheet, SHEETS.GROUPS, function (entry) {
+      return entry.id === group.id;
+    }, function (entry) {
+      entry.status = "open";
+      entry.updatedAt = new Date().toISOString();
+      return entry;
+    });
+
+    return {
+      groups: listGroups_(spreadsheet, user),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function joinGroup_(spreadsheet, payload, user) {
   const groupId = cleanText_(payload.groupId, 80);
   const requestedItems = Array.isArray(payload.items) ? payload.items : [];
@@ -477,12 +590,14 @@ function joinGroup_(spreadsheet, payload, user) {
     ensureSheets_(spreadsheet);
     const groups = readObjects_(spreadsheet, SHEETS.GROUPS);
     const group = groups.find(function (entry) {
-      return entry.id === groupId && entry.status !== "closed";
+      return entry.id === groupId;
     });
 
     if (!group) {
       throw new Error("找不到可加入的開團。");
     }
+
+    requireGroupAcceptingOrders_(group);
 
     const itemMap = {};
     readObjects_(spreadsheet, SHEETS.ITEMS)
@@ -502,7 +617,9 @@ function joinGroup_(spreadsheet, payload, user) {
         return;
       }
 
-      const selectedOptions = normalizeSelectedOptions_(entry.options, parseJsonArray_(item.options));
+      const itemOptionGroups = parseJsonArray_(item.options);
+      const selectedOptions = normalizeSelectedOptions_(entry.options, itemOptionGroups);
+      validateRequiredOptions_(item, itemOptionGroups, selectedOptions);
       const optionExtra = selectedOptions.reduce(function (sum, option) {
         return sum + option.price;
       }, 0);
@@ -543,6 +660,7 @@ function joinGroup_(spreadsheet, payload, user) {
       userName: user.displayName,
       total: total,
       createdAt: now,
+      paid: false,
     });
 
     selectedItems.forEach(function (item) {
@@ -676,6 +794,15 @@ function saveOrders_(spreadsheet, payload, user) {
 
   try {
     ensureSheets_(spreadsheet);
+    const group = readObjects_(spreadsheet, SHEETS.GROUPS).find(function (entry) {
+      return entry.id === groupId;
+    });
+
+    if (!group) {
+      throw new Error("找不到開團。");
+    }
+
+    const isGroupOwner = Boolean(group.ownerUserId === user.id);
     const orders = readObjects_(spreadsheet, SHEETS.ORDERS).filter(function (entry) {
       return entry.groupId === groupId;
     });
@@ -693,14 +820,30 @@ function saveOrders_(spreadsheet, payload, user) {
         throw new Error("找不到訂單。");
       }
 
-      if (order.userId !== user.id) {
-        throw new Error("只能修改自己的訂單。");
+      if (Object.prototype.hasOwnProperty.call(orderPayload, "paid")) {
+        if (!isGroupOwner) {
+          throw new Error("只有團主可以設定收費狀態。");
+        }
+
+        updateObjectWhere_(spreadsheet, SHEETS.ORDERS, function (entry) {
+          return entry.id === orderId && entry.groupId === groupId;
+        }, function (entry) {
+          entry.paid = normalizeBoolean_(orderPayload.paid);
+          return entry;
+        });
+      }
+
+      if (!Array.isArray(orderPayload.items)) {
+        return;
       }
 
       const quantityByEntry = {};
       const quantityByItem = {};
-      const requestedItems = Array.isArray(orderPayload.items) ? orderPayload.items : [];
-      requestedItems.forEach(function (entry) {
+      if (order.userId !== user.id) {
+        throw new Error("只能修改自己的訂單。");
+      }
+
+      orderPayload.items.forEach(function (entry) {
         const entryId = cleanText_(entry.entryId, 80);
         const itemId = cleanText_(entry.itemId, 80);
         const quantity = Math.max(0, parseInt(entry.quantity, 10) || 0);
@@ -778,7 +921,8 @@ function listGroups_(spreadsheet, user) {
 
   return groups
     .filter(function (group) {
-      return group.id;
+      const isOwner = Boolean(user && group.ownerUserId === user.id);
+      return group.id && (group.status !== "draft" || isOwner);
     })
     .map(function (group) {
       const isOwner = Boolean(user && group.ownerUserId === user.id);
@@ -804,6 +948,7 @@ function listGroups_(spreadsheet, user) {
             userId: order.userId,
             userName: order.userName,
             total: Number(order.total) || 0,
+            paid: normalizeBoolean_(order.paid),
             createdAt: order.createdAt,
             items: attachedItems,
           };
@@ -827,6 +972,8 @@ function listGroups_(spreadsheet, user) {
         status: group.status || "open",
         createdAt: group.createdAt,
         updatedAt: group.updatedAt,
+        orderStartAt: group.orderStartAt || "",
+        orderEndAt: group.orderEndAt || "",
         items: (itemsByGroup[group.id] || []).map(function (item) {
           return {
             id: item.id,
@@ -1203,6 +1350,55 @@ function normalizeIncomingItems_(items) {
     });
 }
 
+function normalizeSchedule_(payload) {
+  const orderStartAt = normalizeIsoDate_(payload && payload.orderStartAt);
+  const orderEndAt = normalizeIsoDate_(payload && payload.orderEndAt);
+
+  if (orderStartAt && orderEndAt && new Date(orderEndAt).getTime() <= new Date(orderStartAt).getTime()) {
+    throw new Error("結束下單時間必須晚於開始下單時間。");
+  }
+
+  return {
+    orderStartAt: orderStartAt,
+    orderEndAt: orderEndAt,
+  };
+}
+
+function normalizeIsoDate_(value) {
+  const raw = cleanText_(value, 80);
+  if (!raw) {
+    return "";
+  }
+
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) {
+    throw new Error("下單時間格式錯誤。");
+  }
+  return date.toISOString();
+}
+
+function requireGroupAcceptingOrders_(group) {
+  if (group.status === "draft") {
+    throw new Error("此開團仍是草稿，發布後才可下單。");
+  }
+
+  if (group.status === "closed") {
+    throw new Error("此開團已截止下單。");
+  }
+
+  const now = Date.now();
+  const startTime = group.orderStartAt ? new Date(group.orderStartAt).getTime() : 0;
+  const endTime = group.orderEndAt ? new Date(group.orderEndAt).getTime() : 0;
+
+  if (startTime && now < startTime) {
+    throw new Error("此開團尚未開始下單。");
+  }
+
+  if (endTime && now > endTime) {
+    throw new Error("此開團已截止下單。");
+  }
+}
+
 function normalizeOptionGroups_(groups) {
   if (!Array.isArray(groups)) {
     return [];
@@ -1215,6 +1411,7 @@ function normalizeOptionGroups_(groups) {
       return {
         id: cleanText_((group && group.id) || "opt_" + groupIndex, 80),
         name: name,
+        required: Boolean(group && group.required),
         choices: choices
           .map(function (choice, choiceIndex) {
             const choiceName = cleanText_(choice && choice.name, 24);
@@ -1288,6 +1485,21 @@ function normalizeSelectedOptions_(selectedOptions, itemOptionGroups) {
     .filter(Boolean);
 }
 
+function validateRequiredOptions_(item, itemOptionGroups, selectedOptions) {
+  const selectedGroupIds = {};
+  normalizeSelectedOptions_(selectedOptions, []).forEach(function (option) {
+    selectedGroupIds[option.groupId] = true;
+  });
+
+  const missing = normalizeOptionGroups_(itemOptionGroups).find(function (group) {
+    return group.required && !selectedGroupIds[group.id];
+  });
+
+  if (missing) {
+    throw new Error("請選擇「" + item.name + "」的" + missing.name + "。");
+  }
+}
+
 function optionSignature_(options) {
   return normalizeSelectedOptions_(options, []).map(function (option) {
     return option.groupId + ":" + option.choiceId + ":" + option.price;
@@ -1320,6 +1532,13 @@ function cleanText_(value, maxLength) {
   return String(value || "")
     .trim()
     .slice(0, maxLength);
+}
+
+function normalizeBoolean_(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  return ["true", "yes", "1", "已收費"].indexOf(String(value || "").trim().toLowerCase()) >= 0;
 }
 
 function normalizeCell_(value) {
