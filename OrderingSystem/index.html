@@ -31,6 +31,7 @@
         <button class="nav-tab is-active" type="button" data-view="browse" data-filter="all">所有開團</button>
         <button class="nav-tab" type="button" data-view="browse" data-filter="mine">我的開團</button>
         <button class="nav-tab" type="button" data-view="browse" data-filter="joined">我已加入</button>
+        <button class="nav-tab" type="button" data-view="browse" data-filter="drafts">未發佈開團</button>
         <button class="nav-tab" type="button" data-view="create">開新團</button>
       </nav>
 
@@ -152,6 +153,7 @@
             <div class="detail-toolbar">
               <button class="text-button detail-back-button" id="detailBackButton" type="button">返回所有開團</button>
               <div class="detail-status-actions">
+                <button class="text-button" id="copyGroupButton" type="button">複製開團</button>
                 <button class="text-button hidden" id="ownerPublishButton" type="button">發布開團</button>
                 <button class="text-button danger-action hidden" id="ownerDeleteGroupButton" type="button">移除開團</button>
                 <span class="status-pill" id="detailStatus">開放中</span>
@@ -231,6 +233,10 @@
                   </div>
                   <button class="text-button" id="ownerSaveGroupSettingsButton" type="button">儲存設定</button>
                 </div>
+                <label class="field dense owner-group-name-field" id="ownerGroupNameField">
+                  <span>開團名稱</span>
+                  <input id="ownerGroupNameInput" type="text" maxlength="40" placeholder="開團名稱" />
+                </label>
                 <div class="schedule-grid compact-grid">
                   <label class="field dense">
                     <span>開始下單時間</span>

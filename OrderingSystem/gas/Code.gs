@@ -90,6 +90,11 @@ function routeApi_(action, params) {
       const user = requireUser_(spreadsheet, params.session);
       return updateProfile_(spreadsheet, parsePayload_(params.payload), user);
     }
+    case "checkPublicName": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return checkPublicName_(spreadsheet, parsePayload_(params.payload), user);
+    }
     case "me": {
       const spreadsheet = spreadsheetFromParams_(params);
       return {
@@ -290,6 +295,21 @@ function updateProfile_(spreadsheet, payload, user) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function checkPublicName_(spreadsheet, payload, user) {
+  ensureSheets_(spreadsheet);
+  const publicName = cleanText_(payload && payload.publicName, 40);
+  const displayName = userPublicName_({
+    displayName: user.displayName,
+    publicName: publicName,
+  });
+  const available = isPublicNameAvailable_(spreadsheet, displayName, user.id);
+
+  return {
+    available: available,
+    message: available ? "" : "公開名稱已被使用，請換一個名稱。",
+  };
 }
 
 function createGroup_(spreadsheet, payload, user) {
@@ -574,8 +594,14 @@ function saveItems_(spreadsheet, payload, user) {
 }
 
 function saveGroupSettings_(spreadsheet, payload, user) {
+  payload = payload || {};
   const group = requireGroupOwner_(spreadsheet, cleanText_(payload.groupId, 80), user);
   const schedule = normalizeSchedule_(payload);
+  const name = cleanText_(payload && payload.name, 40);
+
+  if (group.status === "draft" && Object.prototype.hasOwnProperty.call(payload, "name") && !name) {
+    throw new Error("請輸入開團名稱。");
+  }
 
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -585,6 +611,9 @@ function saveGroupSettings_(spreadsheet, payload, user) {
     updateObjectWhere_(spreadsheet, SHEETS.GROUPS, function (entry) {
       return entry.id === group.id;
     }, function (entry) {
+      if (entry.status === "draft" && Object.prototype.hasOwnProperty.call(payload, "name")) {
+        entry.name = name;
+      }
       entry.orderStartAt = schedule.orderStartAt;
       entry.orderEndAt = schedule.orderEndAt;
       entry.updatedAt = new Date().toISOString();
@@ -1215,18 +1244,24 @@ function userPublicName_(user) {
 }
 
 function assertPublicNameAvailable_(spreadsheet, name, userId) {
+  if (isPublicNameAvailable_(spreadsheet, name, userId)) {
+    return;
+  }
+
+  throw new Error("公開名稱已被使用，請換一個名稱。");
+}
+
+function isPublicNameAvailable_(spreadsheet, name, userId) {
   const requestedKey = publicNameKey_(name);
   if (!requestedKey) {
-    return;
+    return true;
   }
 
   const duplicate = readObjects_(spreadsheet, SHEETS.USERS).find(function (entry) {
     return entry.id !== userId && publicNameKey_(userPublicName_(entry)) === requestedKey;
   });
 
-  if (duplicate) {
-    throw new Error("公開名稱已被使用，請換一個名稱。");
-  }
+  return !duplicate;
 }
 
 function publicNameKey_(value) {

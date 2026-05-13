@@ -17,6 +17,7 @@
   const BROWSE_FILTER_LABELS = {
     all: "所有開團",
     mine: "我的開團",
+    drafts: "未發佈開團",
     joined: "我已加入",
   };
 
@@ -156,6 +157,7 @@
     els.detailStatus = document.querySelector("#detailStatus");
     els.detailOrderStart = document.querySelector("#detailOrderStart");
     els.detailOrderEnd = document.querySelector("#detailOrderEnd");
+    els.copyGroupButton = document.querySelector("#copyGroupButton");
     els.ownerPublishButton = document.querySelector("#ownerPublishButton");
     els.ownerDeleteGroupButton = document.querySelector("#ownerDeleteGroupButton");
     els.detailItemCount = document.querySelector("#detailItemCount");
@@ -164,6 +166,8 @@
     els.ownerDetailTabs = document.querySelector("#ownerDetailTabs");
     els.ownerDetailButtons = [...document.querySelectorAll("[data-owner-detail]")];
     els.ownerTools = document.querySelector("#ownerTools");
+    els.ownerGroupNameField = document.querySelector("#ownerGroupNameField");
+    els.ownerGroupNameInput = document.querySelector("#ownerGroupNameInput");
     els.ownerOrderStartInput = document.querySelector("#ownerOrderStartInput");
     els.ownerOrderEndInput = document.querySelector("#ownerOrderEndInput");
     els.ownerScheduleSummary = document.querySelector("#ownerScheduleSummary");
@@ -234,6 +238,7 @@
       button.addEventListener("click", () => setOwnerDetailMode(button.dataset.ownerDetail));
     });
     els.createGroupForm.addEventListener("submit", handleCreateGroup);
+    els.copyGroupButton.addEventListener("click", handleCopyGroup);
     els.ownerPublishButton.addEventListener("click", handlePublishGroup);
     els.ownerDeleteGroupButton.addEventListener("click", handleDeleteGroup);
     els.ownerSaveGroupSettingsButton.addEventListener("click", handleSaveGroupSettings);
@@ -768,12 +773,26 @@
     return BROWSE_FILTER_LABELS[filter] || BROWSE_FILTER_LABELS.all;
   }
 
+  function emptyBrowseMessage() {
+    if (state.search) {
+      return "目前沒有符合搜尋的開團";
+    }
+
+    const messages = {
+      all: "目前沒有已發布的開團",
+      mine: "目前沒有已發布的我的開團",
+      joined: "目前沒有已加入的開團",
+      drafts: "目前沒有未發佈開團",
+    };
+    return messages[state.filter] || "目前沒有符合條件的開團";
+  }
+
   function renderGroups() {
     const groups = filteredGroups();
     els.groupList.replaceChildren();
 
     if (!groups.length) {
-      els.groupList.appendChild(emptyState("目前沒有符合條件的開團"));
+      els.groupList.appendChild(emptyState(emptyBrowseMessage()));
       return;
     }
 
@@ -783,13 +802,13 @@
       const node = els.groupCardTemplate.content.firstElementChild.cloneNode(true);
       node.dataset.groupId = group.id;
       node.classList.toggle("is-selected", group.id === state.selectedGroupId);
-      const showOwnerState = state.filter === "mine" && group.isOwner;
+      const showOwnerState = ["mine", "drafts"].includes(state.filter) && group.isOwner;
       node.classList.toggle("is-draft-group", showOwnerState && group.status === "draft");
       node.classList.toggle("is-published-group", showOwnerState && group.status !== "draft");
       node.querySelector(".group-owner").textContent = `團主 ${group.ownerName}`;
       node.querySelector(".group-name").textContent = group.name;
       const stateBadge = node.querySelector(".group-state-badge");
-      stateBadge.textContent = group.status === "draft" ? "未發布" : "已發布";
+      stateBadge.textContent = group.status === "draft" ? "未發佈" : "已發布";
       stateBadge.classList.toggle("hidden", !showOwnerState);
       node.querySelector(".meta-orders").textContent = group.isOwner
         ? `${group.stats.orders} 筆訂單`
@@ -951,6 +970,10 @@
   }
 
   function renderOwnerGroupSettings(group) {
+    const isDraft = group.status === "draft";
+    els.ownerGroupNameField.classList.toggle("hidden", !isDraft);
+    els.ownerGroupNameInput.disabled = !isDraft;
+    els.ownerGroupNameInput.value = group.name || "";
     setScheduleRange(
       "owner",
       group.orderStartAt ? new Date(group.orderStartAt) : null,
@@ -1464,7 +1487,8 @@
       const matchesSearch = !state.search || text.includes(state.search);
       const matchesFilter =
         (state.filter === "all" && group.status !== "draft") ||
-        (state.filter === "mine" && state.user && group.ownerUserId === state.user.id) ||
+        (state.filter === "mine" && group.status !== "draft" && state.user && group.ownerUserId === state.user.id) ||
+        (state.filter === "drafts" && group.status === "draft" && state.user && group.ownerUserId === state.user.id) ||
         (state.filter === "joined" &&
           group.status !== "draft" &&
           state.user &&
@@ -1664,10 +1688,20 @@
     setProfileDialogError("");
     updatePublicNamePreview();
     els.publicNameSaveButton.disabled = true;
-    const stopLoading = showLoading("正在儲存公開名稱", "處理中");
+    const stopLoading = showLoading("正在檢查公開名稱", "處理中");
 
     try {
+      setLoadingProgress(12);
+      const availability = await state.api.checkPublicName({ publicName }, state.session);
+      setLoadingProgress(48);
+      if (!availability.available) {
+        throw new Error(availability.message || "公開名稱已被使用，請換一個名稱。");
+      }
+
+      setLoadingContent("公開名稱可用，正在儲存", "處理中");
+      setLoadingProgress(58);
       const result = await state.api.updateProfile({ publicName }, state.session);
+      setLoadingProgress(86);
       if (result && result.user) {
         state.user = normalizeClientUser(result.user);
       } else {
@@ -1758,7 +1792,7 @@
       await syncGroupsFromResult(result);
       if (result && result.group && result.group.id) {
         state.selectedGroupId = result.group.id;
-        state.filter = status === "draft" ? "mine" : state.filter;
+        state.filter = status === "draft" ? "drafts" : state.filter;
         state.returnFilter = state.filter;
         state.detailMode = status === "draft" ? "items" : "orders";
         state.view = "detail";
@@ -1766,6 +1800,57 @@
       }
       showToast(status === "draft" ? "草稿已儲存。" : "開團已建立。");
     }, status === "draft" ? "正在儲存草稿" : "正在儲存開團資料");
+  }
+
+  async function handleCopyGroup(event) {
+    if (!state.user) {
+      showToast("請先登入。", "error");
+      return;
+    }
+
+    const sourceGroup = selectedGroup();
+    if (!sourceGroup) {
+      showToast("請先選擇要複製的開團。", "error");
+      return;
+    }
+
+    await withBusy(event.currentTarget, async () => {
+      let group = sourceGroup;
+      if (group.isSummary) {
+        setLoadingContent("正在讀取原開團明細", "處理中");
+        setLoadingProgress(22);
+        group = await ensureGroupDetail(group.id);
+      }
+
+      if (!group) {
+        throw new Error("找不到要複製的開團。");
+      }
+
+      const payload = {
+        name: copiedGroupName(group.name),
+        status: "draft",
+        orderStartAt: group.orderStartAt || "",
+        orderEndAt: group.orderEndAt || "",
+        items: copyGroupItems(group),
+      };
+
+      setLoadingContent("正在建立草稿副本", "處理中");
+      setLoadingProgress(52);
+      const result = await state.api.createGroup(payload, state.session, state.user);
+      setLoadingProgress(84);
+      await syncGroupsFromResult(result);
+
+      if (result && result.group && result.group.id) {
+        state.selectedGroupId = result.group.id;
+        state.filter = "drafts";
+        state.returnFilter = "drafts";
+        state.detailMode = "items";
+        state.view = "detail";
+      }
+
+      renderApp();
+      showToast("已複製為草稿。");
+    }, "正在複製開團");
   }
 
   function handleAddCreateOptionGroup() {
@@ -1963,13 +2048,13 @@
       return;
     }
 
-    const schedule = collectOwnerSchedule();
-    if (!schedule) {
+    const settings = collectOwnerGroupSettings(group);
+    if (!settings) {
       return;
     }
 
     await withBusy(event.currentTarget, async () => {
-      const result = await state.api.saveGroupSettings({ groupId: group.id, ...schedule }, state.session);
+      const result = await state.api.saveGroupSettings({ groupId: group.id, ...settings }, state.session);
       await syncGroupsFromResult(result);
       state.selectedGroupId = group.id;
       state.view = "detail";
@@ -2012,11 +2097,12 @@
 
     await withBusy(event.currentTarget, async () => {
       const result = await state.api.deleteGroup({ groupId: group.id }, state.session);
+      const nextFilter = group.status === "draft" ? "drafts" : "mine";
       state.selectedGroupId = "";
       state.detailMode = "orders";
       state.view = "browse";
-      state.filter = "mine";
-      state.returnFilter = "mine";
+      state.filter = nextFilter;
+      state.returnFilter = nextFilter;
       await syncGroupsFromResult(result);
       renderApp();
       showToast("開團已移除。");
@@ -2676,6 +2762,26 @@
     return collectScheduleInputs(els.ownerOrderStartInput, els.ownerOrderEndInput);
   }
 
+  function collectOwnerGroupSettings(group) {
+    const schedule = collectOwnerSchedule();
+    if (!schedule) {
+      return null;
+    }
+
+    const settings = { ...schedule };
+    if (group && group.status === "draft") {
+      const name = els.ownerGroupNameInput.value.trim();
+      if (!name) {
+        showToast("請輸入開團名稱。", "error");
+        els.ownerGroupNameInput.focus();
+        return null;
+      }
+      settings.name = name;
+    }
+
+    return settings;
+  }
+
   function collectScheduleInputs(startInput, endInput) {
     const orderStartAt = dateTimeLocalToIso(startInput && startInput.value);
     const orderEndAt = dateTimeLocalToIso(endInput && endInput.value);
@@ -2699,6 +2805,22 @@
 
   function isValidItem(item) {
     return item.name && Number.isFinite(item.price) && item.price >= 0;
+  }
+
+  function copiedGroupName(name) {
+    const suffix = "（複製）";
+    const base = String(name || "未命名開團").trim() || "未命名開團";
+    return `${base.slice(0, Math.max(1, 40 - suffix.length))}${suffix}`;
+  }
+
+  function copyGroupItems(group) {
+    return (group.items || [])
+      .map((item) => ({
+        name: String(item.name || "").trim(),
+        price: Number(item.price),
+        options: normalizeOptionGroups(item.options || []),
+      }))
+      .filter(isValidItem);
   }
 
   function resetCreateForm() {
@@ -3288,6 +3410,13 @@
       });
     }
 
+    checkPublicName(payload, session) {
+      return this.request("checkPublicName", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
     me(session) {
       return this.request("me", { session }).then((data) => data.user);
     }
@@ -3434,6 +3563,18 @@
   class DemoApi {
     me() {
       return Promise.resolve(this.currentUser());
+    }
+
+    checkPublicName(payload) {
+      const user = normalizeClientUser({
+        ...this.currentUser(),
+        publicName: String((payload && payload.publicName) || "").trim().slice(0, 40),
+      });
+      const available = !this.isPublicNameTaken(this.data(), userPublicName(user), user.id);
+      return Promise.resolve({
+        available,
+        message: available ? "" : "公開名稱已被使用，請換一個名稱。",
+      });
     }
 
     updateProfile(payload) {
@@ -3645,6 +3786,13 @@
     saveGroupSettings(payload) {
       const data = this.data();
       const group = this.ownerGroup(data, payload.groupId);
+      const name = String((payload && payload.name) || "").trim().slice(0, 40);
+      if (group.status === "draft" && Object.prototype.hasOwnProperty.call(payload, "name")) {
+        if (!name) {
+          return Promise.reject(new Error("請輸入開團名稱。"));
+        }
+        group.name = name;
+      }
       group.orderStartAt = payload.orderStartAt || "";
       group.orderEndAt = payload.orderEndAt || "";
       this.save(data);
