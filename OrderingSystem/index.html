@@ -14,7 +14,7 @@
           <span class="brand-mark">團</span>
           <span>
             <strong>團購系統</strong>
-            <small>LINE member orders</small>
+            <small>LINE 團購下單</small>
           </span>
         </a>
 
@@ -36,7 +36,7 @@
 
       <main class="workspace">
         <section class="auth-panel" id="loginPanel">
-          <p class="eyebrow">Member access</p>
+          <p class="eyebrow">成員登入</p>
           <h1>用 LINE 開團、下單、追蹤金額</h1>
           <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
           <div class="stacked-actions">
@@ -51,7 +51,7 @@
         <section class="view-screen group-board" id="browseView" data-view-panel="browse" aria-label="所有開團">
           <div class="board-heading">
             <div>
-              <p class="eyebrow">Open groups</p>
+              <p class="eyebrow">開團列表</p>
               <h2 id="browseTitle">所有開團</h2>
             </div>
             <label class="search-field">
@@ -66,7 +66,7 @@
         <section class="view-screen create-panel hidden" id="createPanel" data-view-panel="create" aria-label="開新團">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Create</p>
+              <p class="eyebrow">建立開團</p>
               <h2>開新團</h2>
             </div>
             <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
@@ -107,8 +107,8 @@
                 <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="4">
                   開 4 小時
                 </button>
-                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="tonight">
-                  開到今晚
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="8">
+                  開 8 小時
                 </button>
                 <button class="schedule-preset is-muted" type="button" data-schedule-scope="create" data-schedule-action="clear">
                   清除
@@ -143,7 +143,7 @@
         <section class="view-screen detail-panel hidden" id="detailView" data-view-panel="detail" aria-label="團購明細">
           <section class="empty-detail" id="emptyDetail">
             <button class="text-button detail-back-button" id="emptyDetailBackButton" type="button">返回所有開團</button>
-            <p class="eyebrow">Detail</p>
+            <p class="eyebrow">團購明細</p>
             <h2>選擇一個團</h2>
             <p>查看品項、數量與近期訂單。</p>
           </section>
@@ -217,7 +217,7 @@
             <section class="owner-tools detail-workspace hidden" id="ownerTools" aria-labelledby="ownerItemsTab">
               <div class="section-heading compact">
                 <div>
-                  <p class="eyebrow">Items</p>
+                  <p class="eyebrow">品項</p>
                   <h3>品項管理</h3>
                 </div>
               </div>
@@ -251,8 +251,8 @@
                   <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="4">
                     開 4 小時
                   </button>
-                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="tonight">
-                    開到今晚
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="8">
+                    開 8 小時
                   </button>
                   <button class="schedule-preset is-muted" type="button" data-schedule-scope="owner" data-schedule-action="clear">
                     清除
@@ -280,7 +280,7 @@
               <form class="join-form" id="joinGroupForm">
                 <div class="section-heading compact">
                   <div>
-                    <p class="eyebrow">Join</p>
+                    <p class="eyebrow">下單</p>
                     <h3>選擇品項</h3>
                   </div>
                 </div>
@@ -301,7 +301,7 @@
               <section class="orders-panel">
                 <div class="section-heading compact">
                   <div>
-                    <p class="eyebrow">Orders</p>
+                    <p class="eyebrow">訂單</p>
                     <h3 id="orderSectionTitle">近期訂單</h3>
                   </div>
                   <button class="text-button hidden" id="saveOrdersButton" type="button">儲存訂單變更</button>
@@ -319,10 +319,55 @@
         <span class="loading-spinner" aria-hidden="true"></span>
         <strong id="loadingTitle">載入中</strong>
         <p id="loadingMessage">正在登入並讀取團購資料</p>
+        <div class="loading-progress-meta">
+          <span>載入進度</span>
+          <strong id="loadingPercent">0%</strong>
+        </div>
+        <div class="loading-progress" id="loadingProgress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="loadingProgressBar"></span>
+        </div>
       </div>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileDialogTitle">
+      <form class="profile-form" id="profileForm" autocomplete="off">
+        <div class="profile-dialog-head">
+          <div>
+            <p class="eyebrow">公開名稱</p>
+            <h2 id="profileDialogTitle">設定顯示名稱</h2>
+          </div>
+          <button class="icon-button" id="profileDialogCloseButton" type="button" aria-label="關閉公開名稱設定" title="關閉">×</button>
+        </div>
+
+        <div class="profile-current">
+          <span>原名稱</span>
+          <strong id="profileOriginalName">LINE 使用者</strong>
+        </div>
+
+        <label class="field profile-field">
+          <span>公開名稱</span>
+          <input id="publicNameInput" type="text" maxlength="40" placeholder="留空使用原名稱" aria-describedby="publicNameHelp publicNameError" />
+        </label>
+        <p class="field-help" id="publicNameHelp">公開名稱會顯示在團主與訂單，不能和其他使用者重複。</p>
+        <p class="field-error" id="publicNameError" role="alert"></p>
+
+        <div class="profile-preview" aria-live="polite">
+          <span>將顯示為</span>
+          <strong id="publicNamePreview">LINE 使用者</strong>
+          <small id="publicNamePreviewSource">原名稱</small>
+        </div>
+
+        <div class="profile-actions">
+          <button class="text-button" id="publicNameResetButton" type="button">使用原名稱</button>
+          <div>
+            <button class="text-button" id="profileCancelButton" type="button">取消</button>
+            <button class="primary-action" id="publicNameSaveButton" type="submit">儲存</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
 
     <template id="itemRowTemplate">
       <div class="item-row">

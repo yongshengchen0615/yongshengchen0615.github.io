@@ -112,7 +112,7 @@ openid
 
 GAS 會在指定的 Google Sheet 建立或使用這些分頁：
 
-- `Users`
+- `Users`：含 `publicName` 欄位保存使用者設定的公開名稱，空白時使用原本 LINE 名稱；公開顯示名稱不可與其他使用者重複
 - `Sessions`
 - `Groups`：含 `orderStartAt`、`orderEndAt` 欄位保存開始與結束下單時間
 - `Items`：含 `options` 欄位保存品項細項設定 JSON，包含每組細項的必填設定

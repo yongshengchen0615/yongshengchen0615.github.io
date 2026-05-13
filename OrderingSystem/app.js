@@ -37,6 +37,10 @@
     returnFilter: "all",
     search: "",
     schedulePickers: {},
+    loadingProgressValue: 0,
+    loadingProgressTarget: null,
+    loadingProgressFrame: 0,
+    activeLoadingProgress: null,
   };
 
   const els = {};
@@ -51,40 +55,71 @@
   async function init() {
     cacheElements();
     initSchedulePickers();
-    const stopLoading = showLoading("正在登入並讀取團購資料", "載入中");
+    const stopLoading = showLoading("正在準備介面", "載入中", 0);
 
     try {
       bindStaticEvents();
       resetCreateForm();
 
       readLoginCallback();
+      setLoadingProgress(8);
+      setLoadingContent("正在讀取設定檔", "載入中");
       state.config = await loadConfig();
+      setLoadingProgress(22);
       state.usingDemo = !state.config.demoMode;
       state.api = createApi();
       renderConfigStatus();
+      setLoadingProgress(30);
 
+      setLoadingContent("正在檢查登入狀態", "載入中");
       const mode = desiredAuthMode();
       if (localStorage.getItem(STORAGE.mode) !== mode) {
         state.session = "";
         localStorage.removeItem(STORAGE.session);
       }
+      setLoadingProgress(36);
 
       if (mode === "live") {
+        setLoadingContent("正在初始化 LINE 登入", "載入中");
         await initLineLogin();
+        setLoadingProgress(46);
       }
 
       if (state.session && localStorage.getItem(STORAGE.mode) === mode) {
+        setLoadingContent(isGasConfigured() ? "正在向 GAS 驗證登入" : "正在恢復登入狀態", "載入中");
         await restoreSession();
+        setLoadingProgress(58);
       }
 
       if (!state.user) {
+        setLoadingContent("正在建立登入狀態", "載入中");
         await autoAuthenticate(mode);
+        setLoadingProgress(66);
       }
 
       renderSession();
-      await refreshGroups();
+      setLoadingProgress(70);
+      await refreshGroups({
+        onRequestStart: () => {
+          setLoadingContent(isGasConfigured() ? "正在連線 GAS 讀取團購資料" : "正在讀取本機資料", "載入中");
+          setLoadingProgress(76);
+        },
+        onResponse: () => {
+          setLoadingContent(isGasConfigured() ? "GAS 已回應，正在整理資料" : "本機資料已讀取，正在整理", "載入中");
+          setLoadingProgress(88);
+        },
+        onNormalized: () => {
+          setLoadingContent("正在整理團購資料", "載入中");
+          setLoadingProgress(95);
+        },
+        onRendered: () => {
+          setLoadingContent("正在更新畫面", "載入中");
+          setLoadingProgress(98);
+        },
+      });
+      setLoadingContent("資料載入完成", "載入中");
     } finally {
-      stopLoading();
+      await stopLoading();
     }
   }
 
@@ -152,7 +187,21 @@
     els.loadingOverlay = document.querySelector("#loadingOverlay");
     els.loadingTitle = document.querySelector("#loadingTitle");
     els.loadingMessage = document.querySelector("#loadingMessage");
+    els.loadingProgress = document.querySelector("#loadingProgress");
+    els.loadingProgressBar = document.querySelector("#loadingProgressBar");
+    els.loadingPercent = document.querySelector("#loadingPercent");
     els.toast = document.querySelector("#toast");
+    els.profileDialog = document.querySelector("#profileDialog");
+    els.profileForm = document.querySelector("#profileForm");
+    els.profileDialogCloseButton = document.querySelector("#profileDialogCloseButton");
+    els.profileCancelButton = document.querySelector("#profileCancelButton");
+    els.publicNameInput = document.querySelector("#publicNameInput");
+    els.publicNameError = document.querySelector("#publicNameError");
+    els.profileOriginalName = document.querySelector("#profileOriginalName");
+    els.publicNamePreview = document.querySelector("#publicNamePreview");
+    els.publicNamePreviewSource = document.querySelector("#publicNamePreviewSource");
+    els.publicNameResetButton = document.querySelector("#publicNameResetButton");
+    els.publicNameSaveButton = document.querySelector("#publicNameSaveButton");
     els.itemRowTemplate = document.querySelector("#itemRowTemplate");
     els.groupCardTemplate = document.querySelector("#groupCardTemplate");
     els.quantityRowTemplate = document.querySelector("#quantityRowTemplate");
@@ -214,6 +263,19 @@
     els.groupSearchInput.addEventListener("input", () => {
       state.search = els.groupSearchInput.value.trim().toLowerCase();
       renderGroups();
+    });
+    els.profileForm.addEventListener("submit", handlePublicNameSubmit);
+    els.profileDialogCloseButton.addEventListener("click", closeProfileDialog);
+    els.profileCancelButton.addEventListener("click", closeProfileDialog);
+    els.publicNameResetButton.addEventListener("click", handlePublicNameReset);
+    els.publicNameInput.addEventListener("input", () => {
+      setProfileDialogError("");
+      updatePublicNamePreview();
+    });
+    els.profileDialog.addEventListener("click", (event) => {
+      if (event.target === els.profileDialog) {
+        closeProfileDialog();
+      }
     });
   }
 
@@ -310,9 +372,6 @@
     } else if (action === "duration") {
       startAt = now;
       endAt = addHours(startAt, Number(button.dataset.hours) || 1);
-    } else if (action === "tonight") {
-      startAt = now;
-      endAt = tonightDeadline(now);
     }
 
     setScheduleRange(scope, startAt, endAt);
@@ -405,15 +464,6 @@
     return next;
   }
 
-  function tonightDeadline(now) {
-    const endAt = new Date(now);
-    endAt.setHours(20, 0, 0, 0);
-    if (endAt.getTime() <= now.getTime()) {
-      endAt.setDate(endAt.getDate() + 1);
-    }
-    return endAt;
-  }
-
   async function loadConfig() {
     const inlineConfig = window.GROUP_BUY_CONFIG || {};
     let fileConfig = {};
@@ -468,7 +518,7 @@
 
   async function restoreSession() {
     try {
-      state.user = await state.api.me(state.session);
+      state.user = normalizeClientUser(await state.api.me(state.session));
     } catch (error) {
       localStorage.removeItem(STORAGE.session);
       localStorage.setItem(STORAGE.mode, "live");
@@ -479,11 +529,23 @@
     }
   }
 
-  async function refreshGroups() {
+  async function refreshGroups(progress = {}) {
     try {
-      const groups = await state.api.listGroups(state.session);
+      if (progress.onRequestStart && !(state.api instanceof GasApi)) {
+        progress.onRequestStart();
+      }
+      const groups = await state.api.listGroups(state.session, { progress });
+      if (progress.onResponse && !(state.api instanceof GasApi)) {
+        progress.onResponse();
+      }
       setGroups(groups);
+      if (progress.onNormalized) {
+        progress.onNormalized();
+      }
       renderApp();
+      if (progress.onRendered) {
+        progress.onRendered();
+      }
     } catch (error) {
       showToast(error.message || "讀取開團失敗。", "error");
       renderApp();
@@ -612,13 +674,32 @@
     } else {
       const fallback = document.createElement("span");
       fallback.className = "avatar-fallback";
-      fallback.textContent = initials(state.user.displayName);
+      fallback.textContent = initials(userPublicName(state.user));
       chip.appendChild(fallback);
     }
 
-    const name = document.createElement("span");
-    name.textContent = state.user.displayName || "LINE 使用者";
-    chip.appendChild(name);
+    const nameStack = document.createElement("span");
+    nameStack.className = "user-name-stack";
+    nameStack.title = state.user.publicName ? "已設定公開名稱" : "未設定公開名稱，使用原名稱";
+
+    const publicName = document.createElement("span");
+    publicName.className = "user-public-name";
+    publicName.textContent = `公開：${userPublicName(state.user)}`;
+
+    const originalName = document.createElement("span");
+    originalName.className = "user-original-name";
+    originalName.textContent = `原名稱：${state.user.displayName || "LINE 使用者"}`;
+
+    nameStack.append(publicName, originalName);
+    chip.appendChild(nameStack);
+
+    const profile = document.createElement("button");
+    profile.className = "icon-button profile-button";
+    profile.type = "button";
+    profile.title = "設定公開名稱";
+    profile.setAttribute("aria-label", "設定公開名稱");
+    profile.textContent = "更名";
+    profile.addEventListener("click", handlePublicNameSetting);
 
     const logout = document.createElement("button");
     logout.className = "icon-button";
@@ -628,7 +709,7 @@
     logout.textContent = "↪";
     logout.addEventListener("click", handleLogout);
 
-    els.sessionArea.append(chip, logout);
+    els.sessionArea.append(chip, profile, logout);
   }
 
   function renderView() {
@@ -1335,7 +1416,7 @@
       } catch (error) {
         showToast(error.message || "讀取開團明細失敗。", "error");
       } finally {
-        stopLoading();
+        await stopLoading();
       }
     }
 
@@ -1485,7 +1566,7 @@
 
     const result = await state.api.loginWithLine(idToken);
     state.session = result.session;
-    state.user = result.user;
+    state.user = normalizeClientUser(result.user);
     state.usingDemo = false;
     localStorage.setItem(STORAGE.session, state.session);
     localStorage.setItem(STORAGE.mode, "live");
@@ -1496,17 +1577,20 @@
   }
 
   async function handleDemoLogin() {
-    const user = {
+    const defaultUser = {
       id: "demo_user",
       displayName: "測試使用者",
       pictureUrl: "",
+      publicName: "",
     };
+    const user = normalizeClientUser({ ...defaultUser, ...readSavedDemoUser() });
+
     if (state.config.gasWebAppUrl) {
       state.usingDemo = true;
       state.api = createApi();
       const result = await state.api.testLogin(user);
       state.session = result.session;
-      state.user = result.user;
+      state.user = normalizeClientUser(result.user);
       localStorage.setItem(STORAGE.session, state.session);
       localStorage.setItem(STORAGE.mode, "test");
     } else {
@@ -1516,10 +1600,111 @@
       localStorage.setItem(STORAGE.session, "demo-session");
       localStorage.setItem(STORAGE.mode, "test");
       state.session = "demo-session";
-      state.user = user;
+      state.user = normalizeClientUser(user);
     }
 
     showToast("已切換為測試身分。");
+  }
+
+  function handlePublicNameSetting() {
+    if (!state.user) {
+      showToast("請先登入。", "error");
+      return;
+    }
+
+    openProfileDialog();
+  }
+
+  function openProfileDialog() {
+    const originalName = (state.user && state.user.displayName) || "LINE 使用者";
+    els.profileOriginalName.textContent = originalName;
+    els.publicNameInput.value = (state.user && state.user.publicName) || "";
+    setProfileDialogError("");
+    updatePublicNamePreview();
+
+    if (typeof els.profileDialog.showModal === "function") {
+      els.profileDialog.showModal();
+    } else {
+      els.profileDialog.setAttribute("open", "");
+    }
+
+    window.setTimeout(() => {
+      els.publicNameInput.focus();
+      els.publicNameInput.select();
+    }, 0);
+  }
+
+  function closeProfileDialog() {
+    setProfileDialogError("");
+    if (typeof els.profileDialog.close === "function") {
+      els.profileDialog.close();
+    } else {
+      els.profileDialog.removeAttribute("open");
+    }
+  }
+
+  function handlePublicNameReset() {
+    els.publicNameInput.value = "";
+    setProfileDialogError("");
+    updatePublicNamePreview();
+    els.publicNameInput.focus();
+  }
+
+  async function handlePublicNameSubmit(event) {
+    event.preventDefault();
+
+    if (!state.user) {
+      closeProfileDialog();
+      showToast("請先登入。", "error");
+      return;
+    }
+
+    const publicName = els.publicNameInput.value.trim().slice(0, 40);
+    els.publicNameInput.value = publicName;
+    setProfileDialogError("");
+    updatePublicNamePreview();
+    els.publicNameSaveButton.disabled = true;
+    const stopLoading = showLoading("正在儲存公開名稱", "處理中");
+
+    try {
+      const result = await state.api.updateProfile({ publicName }, state.session);
+      if (result && result.user) {
+        state.user = normalizeClientUser(result.user);
+      } else {
+        state.user = normalizeClientUser({ ...state.user, publicName });
+      }
+
+      if (result && Array.isArray(result.groups)) {
+        await syncGroupsFromResult(result);
+      } else {
+        await refreshGroups();
+      }
+
+      renderApp();
+      closeProfileDialog();
+      showToast(publicName ? "公開名稱已更新。" : "已改回使用原名稱。");
+    } catch (error) {
+      const message = error.message || "公開名稱儲存失敗。";
+      setProfileDialogError(message);
+      showToast(message, "error");
+    } finally {
+      await stopLoading();
+      els.publicNameSaveButton.disabled = false;
+    }
+  }
+
+  function updatePublicNamePreview() {
+    const customName = els.publicNameInput.value.trim();
+    const originalName = (state.user && state.user.displayName) || "LINE 使用者";
+    els.publicNamePreview.textContent = customName || originalName;
+    els.publicNamePreviewSource.textContent = customName ? "公開名稱" : "原名稱";
+    els.publicNamePreviewSource.dataset.source = customName ? "custom" : "original";
+  }
+
+  function setProfileDialogError(message) {
+    els.publicNameError.textContent = message;
+    els.publicNameInput.setAttribute("aria-invalid", message ? "true" : "false");
+    els.publicNameInput.closest(".field").classList.toggle("is-invalid", Boolean(message));
   }
 
   function handleLogout() {
@@ -2554,7 +2739,7 @@
       showToast(error.message || "操作失敗。", "error");
     } finally {
       if (stopLoading) {
-        stopLoading();
+        await stopLoading();
       }
       if (button) {
         button.disabled = false;
@@ -2562,22 +2747,50 @@
     }
   }
 
-  function showLoading(message = "處理中，請稍候", title = "處理中") {
+  function showLoading(message = "處理中，請稍候", title = "處理中", progress = 0) {
+    const isFirstLoading = state.loadingCount === 0;
     state.loadingCount += 1;
+    if (isFirstLoading) {
+      state.activeLoadingProgress = createLoadingProgressHooks();
+    }
     setLoadingContent(message, title);
+    setLoadingProgress(progress, { immediate: isFirstLoading && Number.isFinite(progress) });
     setLoadingVisible(true);
 
     let closed = false;
-    return () => {
+    return async () => {
       if (closed) {
         return;
       }
       closed = true;
       state.loadingCount = Math.max(0, state.loadingCount - 1);
       if (state.loadingCount === 0) {
+        setLoadingProgress(100);
+        await waitForLoadingProgress(100);
+        await delay(160);
         setLoadingVisible(false);
+        setLoadingProgress(null);
+        state.activeLoadingProgress = null;
       }
     };
+  }
+
+  function createLoadingProgressHooks() {
+    return {
+      onRequestStart: () => {
+        advanceLoadingProgress(36);
+      },
+      onResponse: () => {
+        advanceLoadingProgress(82);
+      },
+    };
+  }
+
+  function advanceLoadingProgress(value) {
+    const currentTarget = Number.isFinite(state.loadingProgressTarget) ? state.loadingProgressTarget : 0;
+    if (value > currentTarget) {
+      setLoadingProgress(value);
+    }
   }
 
   function setLoadingContent(message, title) {
@@ -2587,6 +2800,100 @@
     if (els.loadingMessage) {
       els.loadingMessage.textContent = message;
     }
+  }
+
+  function setLoadingProgress(progress, options = {}) {
+    if (!els.loadingProgress || !els.loadingProgressBar || !els.loadingPercent) {
+      return;
+    }
+
+    if (!Number.isFinite(progress)) {
+      cancelLoadingProgressFrame();
+      state.loadingProgressTarget = null;
+      state.loadingProgressValue = 0;
+      els.loadingProgress.removeAttribute("aria-valuenow");
+      els.loadingProgressBar.style.setProperty("--loading-progress", "0%");
+      els.loadingPercent.textContent = "0%";
+      return;
+    }
+
+    let value = Math.min(100, Math.max(0, Math.round(progress)));
+    if (!options.immediate && Number.isFinite(state.loadingProgressTarget)) {
+      value = Math.max(value, state.loadingProgressTarget);
+    }
+    state.loadingProgressTarget = value;
+
+    if (options.immediate) {
+      state.loadingProgressValue = value;
+      renderLoadingProgressValue(value);
+      return;
+    }
+
+    animateLoadingProgress();
+  }
+
+  function animateLoadingProgress() {
+    if (state.loadingProgressFrame || state.loadingProgressTarget === null) {
+      return;
+    }
+
+    const tick = () => {
+      state.loadingProgressFrame = 0;
+      const target = state.loadingProgressTarget;
+
+      if (target === null) {
+        return;
+      }
+
+      const current = state.loadingProgressValue;
+      const delta = target - current;
+      if (Math.abs(delta) < 0.18) {
+        state.loadingProgressValue = target;
+        renderLoadingProgressValue(target);
+        return;
+      }
+
+      const step = Math.max(0.24, Math.abs(delta) * 0.08);
+      state.loadingProgressValue = current + Math.sign(delta) * step;
+      renderLoadingProgressValue(state.loadingProgressValue);
+      state.loadingProgressFrame = window.requestAnimationFrame(tick);
+    };
+
+    state.loadingProgressFrame = window.requestAnimationFrame(tick);
+  }
+
+  function renderLoadingProgressValue(value) {
+    const safeValue = Math.min(100, Math.max(0, value));
+    const rounded = Math.round(safeValue);
+    els.loadingProgress.setAttribute("aria-valuenow", String(rounded));
+    els.loadingProgressBar.style.setProperty("--loading-progress", `${safeValue.toFixed(2)}%`);
+    els.loadingPercent.textContent = `${rounded}%`;
+  }
+
+  function cancelLoadingProgressFrame() {
+    if (state.loadingProgressFrame) {
+      window.cancelAnimationFrame(state.loadingProgressFrame);
+      state.loadingProgressFrame = 0;
+    }
+  }
+
+  function waitForLoadingProgress(target) {
+    return new Promise((resolve) => {
+      const check = () => {
+        if (Math.round(state.loadingProgressValue) >= target || state.loadingProgressTarget === null) {
+          resolve();
+          return;
+        }
+        window.requestAnimationFrame(check);
+      };
+      check();
+    });
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
   }
 
   function setLoadingVisible(visible) {
@@ -2670,6 +2977,35 @@
     showToast.timer = window.setTimeout(() => {
       els.toast.classList.remove("is-visible");
     }, 2800);
+  }
+
+  function normalizeClientUser(user) {
+    return {
+      id: String((user && user.id) || "demo_user").trim(),
+      displayName: String((user && user.displayName) || "LINE 使用者").trim(),
+      publicName: String((user && user.publicName) || "").trim(),
+      pictureUrl: String((user && user.pictureUrl) || "").trim(),
+    };
+  }
+
+  function userPublicName(user) {
+    const normalized = normalizeClientUser(user);
+    return normalized.publicName || normalized.displayName || "LINE 使用者";
+  }
+
+  function publicNameKey(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  }
+
+  function readSavedDemoUser() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.demoUser) || "{}");
+    } catch (error) {
+      return {};
+    }
   }
 
   function initials(name = "") {
@@ -2945,12 +3281,19 @@
       });
     }
 
+    updateProfile(payload, session) {
+      return this.request("updateProfile", {
+        session,
+        payload: JSON.stringify(payload),
+      });
+    }
+
     me(session) {
       return this.request("me", { session }).then((data) => data.user);
     }
 
-    listGroups(session) {
-      return this.request("groups", { session, view: "summary" }).then((data) => data.groups || []);
+    listGroups(session, options = {}) {
+      return this.request("groups", { session, view: "summary" }, options).then((data) => data.groups || []);
     }
 
     getGroup(groupId, session) {
@@ -3034,8 +3377,9 @@
       });
     }
 
-    request(action, params = {}) {
+    request(action, params = {}, options = {}) {
       return new Promise((resolve, reject) => {
+        const progress = options.progress || state.activeLoadingProgress || {};
         const callback = `__orderingSystem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const url = new URL(this.baseUrl);
         url.searchParams.set("action", action);
@@ -3063,6 +3407,9 @@
         };
 
         window[callback] = (response) => {
+          if (progress.onResponse) {
+            progress.onResponse({ action });
+          }
           cleanup();
           if (!response || response.ok === false) {
             reject(new Error((response && response.message) || "GAS 操作失敗。"));
@@ -3076,6 +3423,9 @@
           reject(new Error("無法連線 GAS Web App。"));
         };
         script.src = url.toString();
+        if (progress.onRequestStart) {
+          progress.onRequestStart({ action, url });
+        }
         document.body.appendChild(script);
       });
     }
@@ -3084,6 +3434,49 @@
   class DemoApi {
     me() {
       return Promise.resolve(this.currentUser());
+    }
+
+    updateProfile(payload) {
+      const user = normalizeClientUser({
+        ...this.currentUser(),
+        publicName: String((payload && payload.publicName) || "").trim().slice(0, 40),
+      });
+      const data = this.data();
+      const publicName = userPublicName(user);
+
+      if (this.isPublicNameTaken(data, publicName, user.id)) {
+        return Promise.reject(new Error("公開名稱已被使用，請換一個名稱。"));
+      }
+
+      localStorage.setItem(STORAGE.demoUser, JSON.stringify(user));
+      data.groups.forEach((group) => {
+        if (group.ownerUserId === user.id) {
+          group.ownerName = publicName;
+        }
+        (group.orders || []).forEach((order) => {
+          if (order.userId === user.id) {
+            order.userName = publicName;
+          }
+        });
+      });
+      this.save(data);
+
+      return this.listGroups().then((groups) => ({ user, groups }));
+    }
+
+    isPublicNameTaken(data, name, userId) {
+      const requestedKey = publicNameKey(name);
+      if (!requestedKey) {
+        return false;
+      }
+
+      return data.groups.some((group) => {
+        if (group.ownerUserId !== userId && publicNameKey(group.ownerName) === requestedKey) {
+          return true;
+        }
+
+        return (group.orders || []).some((order) => order.userId !== userId && publicNameKey(order.userName) === requestedKey);
+      });
     }
 
     listGroups() {
@@ -3120,7 +3513,7 @@
         id: uid("grp"),
         name: payload.name,
         ownerUserId: user.id,
-        ownerName: user.displayName,
+        ownerName: userPublicName(user),
         status: payload.status === "draft" ? "draft" : "open",
         orderStartAt: payload.orderStartAt || "",
         orderEndAt: payload.orderEndAt || "",
@@ -3316,7 +3709,7 @@
       group.orders.unshift({
         id: uid("ord"),
         userId: user.id,
-        userName: user.displayName,
+        userName: userPublicName(user),
         total: items.reduce((sum, item) => sum + item.subtotal, 0),
         paid: false,
         createdAt: new Date().toISOString(),
@@ -3487,15 +3880,12 @@
     }
 
     currentUser() {
-      const saved = localStorage.getItem(STORAGE.demoUser);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      return {
+      return normalizeClientUser({
         id: "demo_user",
         displayName: "測試使用者",
         pictureUrl: "",
-      };
+        ...readSavedDemoUser(),
+      });
     }
 
     data() {

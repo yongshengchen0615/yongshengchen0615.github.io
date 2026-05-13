@@ -8,7 +8,7 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  Users: ["id", "displayName", "pictureUrl", "updatedAt"],
+  Users: ["id", "displayName", "pictureUrl", "updatedAt", "publicName"],
   Sessions: ["token", "userId", "expiresAt", "createdAt"],
   Groups: ["id", "name", "ownerUserId", "ownerName", "status", "createdAt", "updatedAt", "orderStartAt", "orderEndAt"],
   Items: ["id", "groupId", "name", "price", "createdAt", "options"],
@@ -84,6 +84,11 @@ function routeApi_(action, params) {
         session: session,
         user: user,
       };
+    }
+    case "updateProfile": {
+      const spreadsheet = spreadsheetFromParams_(params);
+      const user = requireUser_(spreadsheet, params.session);
+      return updateProfile_(spreadsheet, parsePayload_(params.payload), user);
     }
     case "me": {
       const spreadsheet = spreadsheetFromParams_(params);
@@ -240,8 +245,51 @@ function normalizeTestUser_(payload) {
   return {
     id: cleanText_(payload.id, 80) || "demo_user",
     displayName: cleanText_(payload.displayName, 40) || "測試使用者",
+    publicName: cleanText_(payload.publicName, 40),
     pictureUrl: cleanText_(payload.pictureUrl, 500),
   };
+}
+
+function updateProfile_(spreadsheet, payload, user) {
+  const publicName = cleanText_(payload && payload.publicName, 40);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    ensureSheets_(spreadsheet);
+    const updatedUser = {
+      id: user.id,
+      displayName: user.displayName,
+      pictureUrl: user.pictureUrl,
+      publicName: publicName,
+      updatedAt: new Date().toISOString(),
+    };
+    const displayName = userPublicName_(updatedUser);
+
+    assertPublicNameAvailable_(spreadsheet, displayName, user.id);
+    upsertObject_(spreadsheet, SHEETS.USERS, "id", updatedUser);
+    updateObjectRows_(spreadsheet, SHEETS.GROUPS, function (group) {
+      return group.ownerUserId === user.id;
+    }, function (group) {
+      group.ownerName = displayName;
+      group.updatedAt = new Date().toISOString();
+      return group;
+    });
+    updateObjectRows_(spreadsheet, SHEETS.ORDERS, function (order) {
+      return order.userId === user.id;
+    }, function (order) {
+      order.userName = displayName;
+      return order;
+    });
+
+    const refreshedUser = userResponse_(updatedUser);
+    return {
+      user: refreshedUser,
+      groups: listGroups_(spreadsheet, refreshedUser),
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function createGroup_(spreadsheet, payload, user) {
@@ -268,7 +316,7 @@ function createGroup_(spreadsheet, payload, user) {
       id: "grp_" + randomToken_(),
       name: name,
       ownerUserId: user.id,
-      ownerName: user.displayName,
+      ownerName: userPublicName_(user),
       status: status,
       createdAt: now,
       updatedAt: now,
@@ -661,7 +709,7 @@ function joinGroup_(spreadsheet, payload, user) {
       id: orderId,
       groupId: groupId,
       userId: user.id,
-      userName: user.displayName,
+      userName: userPublicName_(user),
       total: total,
       createdAt: now,
       paid: false,
@@ -1131,21 +1179,60 @@ function requireUser_(spreadsheet, sessionToken) {
     throw new Error("找不到使用者資料。");
   }
 
-  return {
-    id: user.id,
-    displayName: user.displayName || "LINE 使用者",
-    pictureUrl: user.pictureUrl || "",
-  };
+  return userResponse_(user);
 }
 
 function upsertUser_(spreadsheet, profile) {
   ensureSheets_(spreadsheet);
+  const existing = readObjects_(spreadsheet, SHEETS.USERS).find(function (entry) {
+    return entry.id === profile.id;
+  });
+  const hasPublicName = Object.prototype.hasOwnProperty.call(profile, "publicName");
+
   upsertObject_(spreadsheet, SHEETS.USERS, "id", {
     id: profile.id,
-    displayName: profile.displayName,
-    pictureUrl: profile.pictureUrl,
+    displayName: cleanText_(profile.displayName, 40) || (existing && existing.displayName) || "LINE 使用者",
+    pictureUrl: cleanText_(profile.pictureUrl, 500),
     updatedAt: new Date().toISOString(),
+    publicName: hasPublicName ? cleanText_(profile.publicName, 40) : (existing && existing.publicName) || "",
   });
+}
+
+function userResponse_(user) {
+  return {
+    id: user.id,
+    displayName: cleanText_(user.displayName, 40) || "LINE 使用者",
+    publicName: cleanText_(user.publicName, 40),
+    pictureUrl: cleanText_(user.pictureUrl, 500),
+    publicDisplayName: userPublicName_(user),
+  };
+}
+
+function userPublicName_(user) {
+  const publicName = cleanText_(user && user.publicName, 40);
+  const displayName = cleanText_(user && user.displayName, 40);
+  return publicName || displayName || "LINE 使用者";
+}
+
+function assertPublicNameAvailable_(spreadsheet, name, userId) {
+  const requestedKey = publicNameKey_(name);
+  if (!requestedKey) {
+    return;
+  }
+
+  const duplicate = readObjects_(spreadsheet, SHEETS.USERS).find(function (entry) {
+    return entry.id !== userId && publicNameKey_(userPublicName_(entry)) === requestedKey;
+  });
+
+  if (duplicate) {
+    throw new Error("公開名稱已被使用，請換一個名稱。");
+  }
+}
+
+function publicNameKey_(value) {
+  return cleanText_(value, 40)
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 function createSession_(spreadsheet, userId) {

@@ -1,6 +1,7 @@
 :root {
-  --bg: #f5f6f2;
+  --bg: #f4f6f3;
   --surface: #ffffff;
+  --surface-soft: #fbfcfa;
   --surface-strong: #101312;
   --ink: #151816;
   --muted: #69706a;
@@ -10,7 +11,8 @@
   --warning: #c9821f;
   --danger: #b5392f;
   --blue: #2e6f9e;
-  --shadow: 0 22px 55px rgba(16, 19, 18, 0.11);
+  --shadow: 0 20px 48px rgba(16, 19, 18, 0.1);
+  --shadow-soft: 0 10px 24px rgba(16, 19, 18, 0.07);
   --radius: 8px;
   --topbar-height: 72px;
   color-scheme: light;
@@ -32,11 +34,7 @@ body {
   min-height: 100%;
   margin: 0;
   color: var(--ink);
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.74) 0 1px, transparent 1px 100%),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.74) 0 1px, transparent 1px 100%),
-    var(--bg);
-  background-size: 36px 36px;
+  background: var(--bg);
 }
 
 body.is-loading {
@@ -44,7 +42,8 @@ body.is-loading {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -55,6 +54,13 @@ button {
 button:disabled {
   cursor: wait;
   opacity: 0.58;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(6, 199, 85, 0.22);
+  outline-offset: 2px;
 }
 
 .hidden {
@@ -86,8 +92,8 @@ button:disabled {
   justify-content: space-between;
   height: var(--topbar-height);
   padding: 0 clamp(16px, 3vw, 32px);
-  border-bottom: 1px solid rgba(21, 24, 22, 0.08);
-  background: rgba(245, 246, 242, 0.88);
+  border-bottom: 1px solid rgba(21, 24, 22, 0.1);
+  background: rgba(244, 246, 243, 0.92);
   backdrop-filter: blur(18px);
 }
 
@@ -100,7 +106,8 @@ button:disabled {
   width: min(1180px, calc(100vw - 36px));
   margin: 0 auto;
   padding: 12px 0;
-  background: rgba(245, 246, 242, 0.9);
+  border-bottom: 1px solid rgba(21, 24, 22, 0.07);
+  background: rgba(244, 246, 243, 0.92);
   backdrop-filter: blur(18px);
 }
 
@@ -121,7 +128,7 @@ button:disabled {
 
 .nav-tab:hover {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.8);
 }
 
 .nav-tab.is-active {
@@ -146,7 +153,8 @@ button:disabled {
   place-items: center;
   border-radius: var(--radius);
   color: #fff;
-  background: var(--surface-strong);
+  background: linear-gradient(145deg, #151816, #303833);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   font-weight: 800;
 }
 
@@ -178,11 +186,12 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  max-width: min(42vw, 260px);
+  max-width: min(48vw, 320px);
   padding: 6px 9px 6px 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-soft);
 }
 
 .user-chip img,
@@ -207,11 +216,32 @@ button:disabled {
 
 .user-chip span {
   overflow: hidden;
+}
+
+.user-name-stack {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.user-chip .user-public-name,
+.user-chip .user-original-name {
+  display: block;
+  overflow: hidden;
   color: var(--ink);
-  font-size: 14px;
-  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-chip .user-public-name {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.user-chip .user-original-name {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .config-pill,
@@ -320,6 +350,14 @@ button:disabled {
   font-weight: 700;
 }
 
+.profile-button {
+  width: 48px;
+  flex-basis: 48px;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .icon-button:hover,
 .chip:hover,
 .group-card:hover {
@@ -348,9 +386,9 @@ button:disabled {
 .group-board,
 .empty-detail,
 .group-detail {
-  border: 1px solid rgba(21, 24, 22, 0.09);
+  border: 1px solid rgba(21, 24, 22, 0.08);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow);
 }
 
@@ -407,7 +445,8 @@ button:disabled {
 .group-board,
 .empty-detail,
 .group-detail {
-  padding: 20px;
+  padding: 22px;
+  animation: panel-in 180ms ease both;
 }
 
 .section-heading,
@@ -482,6 +521,7 @@ form {
   background: #fff;
   transition:
     border-color 160ms ease,
+    background 160ms ease,
     box-shadow 160ms ease;
 }
 
@@ -517,6 +557,7 @@ form {
 .field input:focus,
 .search-field input:focus {
   border-color: var(--accent);
+  background: #fff;
   box-shadow: 0 0 0 4px rgba(6, 199, 85, 0.13);
 }
 
@@ -571,7 +612,7 @@ form {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fbfcfa;
+  background: var(--surface-soft);
 }
 
 .schedule-panel-head {
@@ -716,10 +757,17 @@ form {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(16, 19, 18, 0.03);
   transition:
     transform 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
+}
+
+.group-card:hover {
+  border-color: #b7c0b8;
+  box-shadow: 0 14px 34px rgba(16, 19, 18, 0.1);
 }
 
 .group-card:focus-visible {
@@ -962,7 +1010,7 @@ form {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fbfcfa;
+  background: var(--surface-soft);
 }
 
 .detail-schedule dt {
@@ -1008,7 +1056,7 @@ form {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fbfcfa;
+  background: var(--surface-soft);
 }
 
 .stat-grid dt {
@@ -1057,7 +1105,7 @@ form {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fbfcfa;
+  background: var(--surface-soft);
 }
 
 .owner-option-bank-head {
@@ -1116,6 +1164,14 @@ form {
 .quantity-option-field select {
   min-height: 40px;
   padding: 0 10px;
+}
+
+.owner-item-row input:focus,
+.owner-option-group input:focus,
+.owner-option-choice input:focus,
+.quantity-option-field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(6, 199, 85, 0.13);
 }
 
 .owner-item-option-toggle,
@@ -1347,6 +1403,16 @@ form {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.quantity-row:hover,
+.order-row:hover {
+  border-color: #c7d0c6;
+  box-shadow: var(--shadow-soft);
 }
 
 .quantity-row {
@@ -1647,6 +1713,117 @@ form {
   background: var(--danger);
 }
 
+.profile-dialog {
+  width: min(460px, calc(100vw - 28px));
+  padding: 0;
+  border: 1px solid rgba(21, 24, 22, 0.12);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(16, 19, 18, 0.24);
+}
+
+.profile-dialog::backdrop {
+  background: rgba(16, 19, 18, 0.34);
+  backdrop-filter: blur(6px);
+}
+
+.profile-dialog[open] {
+  animation: dialog-in 170ms ease both;
+}
+
+.profile-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.profile-dialog-head,
+.profile-actions,
+.profile-actions > div,
+.profile-current,
+.profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-dialog-head,
+.profile-actions {
+  justify-content: space-between;
+}
+
+.profile-dialog-head h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.profile-current,
+.profile-preview {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.profile-current span,
+.profile-preview span,
+.profile-preview small,
+.field-help,
+.field-error {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-current strong,
+.profile-preview strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-preview {
+  align-items: flex-start;
+}
+
+.profile-preview strong {
+  flex: 1 1 auto;
+  text-align: right;
+}
+
+.profile-preview small {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #063f1c;
+  background: #d9f7e4;
+}
+
+.profile-preview small[data-source="original"] {
+  color: var(--muted);
+  background: #edf1eb;
+}
+
+.profile-field {
+  margin-top: 0;
+}
+
+.field-help,
+.field-error {
+  margin: -6px 0 0;
+  line-height: 1.5;
+}
+
+.field-error {
+  min-height: 18px;
+  color: var(--danger);
+}
+
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -1701,9 +1878,64 @@ form {
   line-height: 1.5;
 }
 
+.loading-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.loading-progress-meta strong {
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.loading-progress {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe4dc;
+}
+
+.loading-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--loading-progress, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #55d886);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -1791,6 +2023,13 @@ form {
     padding: 12px 0 28px;
   }
 
+  .create-panel,
+  .group-board,
+  .empty-detail,
+  .group-detail {
+    padding: 18px;
+  }
+
   .auth-panel {
     min-height: 360px;
     padding: 24px;
@@ -1874,7 +2113,18 @@ form {
   }
 
   .user-chip {
-    max-width: 42vw;
+    max-width: 40vw;
+  }
+
+  .session-area .icon-button {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .profile-button {
+    width: 44px;
+    flex-basis: 44px;
   }
 
   .line-button {
@@ -1893,6 +2143,21 @@ form {
   .empty-detail,
   .group-detail {
     padding: 16px;
+  }
+
+  .profile-form {
+    padding: 16px;
+  }
+
+  .profile-actions,
+  .profile-actions > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-actions .text-button,
+  .profile-actions .primary-action {
+    width: 100%;
   }
 
   .item-row {
