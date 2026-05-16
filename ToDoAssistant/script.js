@@ -156,7 +156,10 @@ const fullBreakdownAddons = ["確認風險與卡點", "建立備案", "整理決
 let state = {
   projects: [],
   activeId: null,
+  view: "projects",
   filter: "all",
+  calendarMonth: toMonthKey(new Date()),
+  pendingPhaseFocus: null,
   draggingTaskId: null,
   pointerDrag: null,
   updatedAt: 0,
@@ -175,8 +178,10 @@ const elements = {};
 document.addEventListener("DOMContentLoaded", async () => {
   bindElements();
   setTodayLabel();
+  setProjectFormDefaults();
   await loadSyncConfig();
   bindEvents();
+  renderPhaseDurationInputs();
   setDataControlsDisabled(true);
   render();
   await loadStateFromGasOnStart();
@@ -195,6 +200,8 @@ function bindElements() {
     "projectTitle",
     "projectOutcome",
     "projectType",
+    "projectStartDate",
+    "phaseDurationList",
     "syncNowButton",
     "syncStatus",
     "syncDot",
@@ -206,7 +213,13 @@ function bindElements() {
     "deleteProjectButton",
     "progressLabel",
     "progressBar",
+    "scheduleStrip",
     "phaseStrip",
+    "prevCalendarButton",
+    "nextCalendarButton",
+    "calendarTodayButton",
+    "calendarMonthLabel",
+    "calendarGrid",
     "quickTaskForm",
     "quickTaskInput",
     "taskList",
@@ -226,7 +239,18 @@ function bindEvents() {
   elements.exportButton.addEventListener("click", exportActiveProject);
   elements.deleteProjectButton.addEventListener("click", deleteActiveProject);
   elements.syncNowButton.addEventListener("click", () => saveToGas());
+  elements.projectType.addEventListener("change", renderPhaseDurationInputs);
+  elements.prevCalendarButton.addEventListener("click", () => shiftCalendarMonth(-1));
+  elements.nextCalendarButton.addEventListener("click", () => shiftCalendarMonth(1));
+  elements.calendarTodayButton.addEventListener("click", jumpCalendarToToday);
   window.addEventListener("beforeunload", warnBeforeLeavingWithUnsavedData);
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.view = button.dataset.view;
+      renderView();
+    });
+  });
 
   document.querySelectorAll("[data-filter]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -249,6 +273,10 @@ function setDataControlsDisabled(disabled) {
     elements.seedButton,
     elements.exportButton,
     elements.deleteProjectButton,
+    elements.prevCalendarButton,
+    elements.nextCalendarButton,
+    elements.calendarTodayButton,
+    ...document.querySelectorAll("[data-view]"),
     ...elements.projectForm.querySelectorAll("input, textarea, select, button"),
     ...elements.quickTaskForm.querySelectorAll("input, button"),
     ...elements.projectList.querySelectorAll("button"),
@@ -264,6 +292,42 @@ function setTodayLabel() {
     day: "numeric",
     weekday: "long",
   }).format(today);
+}
+
+function setProjectFormDefaults() {
+  elements.projectStartDate.value = toDateInputValue(new Date());
+}
+
+function renderPhaseDurationInputs() {
+  const type = elements.projectType.value;
+  const base = templates[type] || templates.residentContract;
+
+  elements.phaseDurationList.innerHTML = base
+    .map((phase, index) => {
+      const days = getDefaultPhaseDuration(type, phase.name, index);
+      return `
+        <label class="duration-field">
+          <span>${escapeHtml(phase.name)}</span>
+          <input
+            type="number"
+            min="1"
+            max="365"
+            step="1"
+            value="${days}"
+            data-phase-duration-name="${escapeHtml(phase.name)}"
+            aria-label="${escapeHtml(phase.name)} 完成天數"
+          />
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function readPhaseDurationsFromForm() {
+  return [...elements.phaseDurationList.querySelectorAll("[data-phase-duration-name]")].reduce((durations, input) => {
+    durations[input.dataset.phaseDurationName] = normalizeDurationDays(input.value);
+    return durations;
+  }, {});
 }
 
 function saveState(options = {}) {
@@ -517,17 +581,23 @@ function handleProjectSubmit(event) {
     title,
     outcome,
     type: elements.projectType.value,
+    startDate: elements.projectStartDate.value,
+    phaseDurations: readPhaseDurationsFromForm(),
   });
 
   state.projects.unshift(project);
   state.activeId = project.id;
+  state.view = "projects";
   saveState();
   elements.projectForm.reset();
+  setProjectFormDefaults();
+  renderPhaseDurationInputs();
   render();
 }
 
-function createProject({ title, outcome, type }) {
-  const phases = buildBackwardPlan({ type });
+function createProject({ title, outcome, type, startDate, phaseDurations }) {
+  const phases = buildBackwardPlan({ type, phaseDurations });
+  const projectStartDate = normalizeDateInput(startDate) || toDateInputValue(new Date());
   const tasks = phases.flatMap((phase) =>
     phase.tasks.map((taskTitle) => ({
       id: makeId(),
@@ -541,24 +611,32 @@ function createProject({ title, outcome, type }) {
   );
   setTaskOrders(tasks);
 
-  return {
+  const project = {
     id: makeId(),
     title,
     outcome: outcome || getDefaultOutcome(type),
     type,
     complexity: "deep",
+    startDate: projectStartDate,
+    endDate: "",
+    totalDurationDays: 0,
     createdAt: new Date().toISOString(),
     phases,
     tasks,
   };
+  recalculateProjectSchedule(project);
+  return project;
 }
 
-function buildBackwardPlan({ type }) {
+function buildBackwardPlan({ type, phaseDurations = {} }) {
   const base = templates[type] || templates.residentContract;
   return base.map((phase, index) => ({
     id: makeId(),
     name: phase.name,
     reverseOrder: base.length - index,
+    durationDays: normalizeDurationDays(phaseDurations[phase.name] || getDefaultPhaseDuration(type, phase.name, index)),
+    startDate: "",
+    endDate: "",
     tasks: adjustTasks(phase.tasks),
     order: index + 1,
     color: phaseColors[index % phaseColors.length],
@@ -587,10 +665,12 @@ function handleQuickTaskSubmit(event) {
     note: "",
     createdAt: new Date().toISOString(),
     order: getNextTaskOrder(project),
+    dueDate: phase?.endDate || project.endDate || "",
     manual: true,
   });
 
   elements.quickTaskInput.value = "";
+  recalculateProjectSchedule(project);
   saveState();
   render();
 }
@@ -600,10 +680,14 @@ function fillExample() {
   elements.projectOutcome.value =
     "用印申請、契約正本、廠商證明文件、品保文件與保單皆確認完成。";
   elements.projectType.value = "residentContract";
+  elements.projectStartDate.value = toDateInputValue(new Date());
+  renderPhaseDurationInputs();
   focusProjectTitle();
 }
 
 function focusProjectTitle() {
+  state.view = "projects";
+  renderView();
   elements.projectTitle.focus();
   elements.projectTitle.select();
 }
@@ -611,12 +695,51 @@ function focusProjectTitle() {
 function render() {
   renderProjectList();
   renderStats();
+  renderProjectCalendar();
   renderActiveProject();
+  renderView();
   renderFilters();
 
   if (window.lucide) {
     window.lucide.createIcons();
   }
+
+  focusPendingPhase();
+}
+
+function renderView() {
+  if (!["projects", "calendar"].includes(state.view)) state.view = "projects";
+
+  document.body.classList.toggle("calendar-view-mode", state.view === "calendar");
+
+  document.querySelectorAll("[data-view-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.viewPanel !== state.view);
+  });
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === state.view);
+  });
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function focusPendingPhase() {
+  const target = state.pendingPhaseFocus;
+  if (!target || target.projectId !== state.activeId || state.view !== "projects") return;
+
+  const phaseCard = [...elements.phaseStrip.querySelectorAll("[data-phase-card]")]
+    .find((card) => card.dataset.phaseCard === target.phaseId);
+  state.pendingPhaseFocus = null;
+
+  if (!phaseCard) return;
+
+  phaseCard.classList.add("jump-focus");
+  phaseCard.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => {
+    phaseCard.classList.remove("jump-focus");
+  }, 1800);
 }
 
 function renderProjectList() {
@@ -627,13 +750,14 @@ function renderProjectList() {
 
   elements.projectList.innerHTML = state.projects
     .map((project) => {
+      normalizeProject(project);
       const progress = getProgress(project);
       const activeClass = project.id === state.activeId ? "active" : "";
       return `
         <button class="project-item ${activeClass}" type="button" data-project-id="${project.id}">
           <span>
             <strong>${escapeHtml(project.title)}</strong>
-            <span>${project.tasks.length} 項任務</span>
+            <span>${project.tasks.length} 項任務 · ${formatDueLabel(project.endDate)}</span>
           </span>
           <span class="mini-progress" style="--value: ${progress}%">${progress}</span>
         </button>
@@ -644,6 +768,7 @@ function renderProjectList() {
   elements.projectList.querySelectorAll("[data-project-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeId = button.dataset.projectId;
+      state.view = "projects";
       saveState();
       render();
     });
@@ -672,6 +797,7 @@ function renderActiveProject() {
     elements.activeTitle.textContent = "尚未建立專案";
     elements.progressLabel.textContent = "0%";
     elements.progressBar.style.width = "0%";
+    elements.scheduleStrip.innerHTML = `<div class="empty-state">建立專案後會推導完成日期</div>`;
     elements.phaseStrip.innerHTML = `<div class="empty-state">建立目標後會出現階段</div>`;
     elements.taskList.innerHTML = `<div class="empty-state">任務會依階段排列</div>`;
     elements.nextTaskBox.innerHTML = `<span>建立第一個專案</span>`;
@@ -686,29 +812,198 @@ function renderActiveProject() {
   elements.progressBar.style.width = `${progress}%`;
   elements.outcomeText.textContent = project.outcome;
 
+  renderProjectSchedule(project);
   renderPhases(project);
   renderTasks(project);
   renderInspector(project);
 }
 
+function renderProjectSchedule(project) {
+  normalizeProject(project);
+  elements.scheduleStrip.innerHTML = `
+    <label class="schedule-field">
+      <span>專案開始日期</span>
+      <input type="date" value="${escapeHtml(project.startDate)}" data-project-start-date />
+    </label>
+    <div class="schedule-result">
+      <span>推導完成日</span>
+      <strong>${formatDateLabel(project.endDate)}</strong>
+      <small>${project.totalDurationDays} 天</small>
+    </div>
+  `;
+
+  elements.scheduleStrip.querySelector("[data-project-start-date]").addEventListener("change", (event) => {
+    updateProjectStartDate(project.id, event.target.value);
+  });
+}
+
 function renderPhases(project) {
+  normalizeProject(project);
   elements.phaseStrip.innerHTML = project.phases
     .map((phase) => {
       const phaseTasks = project.tasks.filter((task) => task.phaseId === phase.id);
       const done = phaseTasks.filter((task) => task.done).length;
       const total = phaseTasks.length || 1;
       return `
-        <article class="phase-card" style="--phase-color: ${phase.color}">
+        <article class="phase-card" style="--phase-color: ${phase.color}" data-phase-card="${phase.id}">
           <header>
             <h3>${escapeHtml(phase.name)}</h3>
-            <span class="phase-date">${phase.order}</span>
+            <span class="phase-order">${phase.order}</span>
           </header>
-          <p class="phase-date">${done} / ${total} 完成</p>
+          <p class="phase-date">${formatDateRange(phase.startDate, phase.endDate)}</p>
+          <label class="phase-duration-control">
+            <span>完成天數</span>
+            <input
+              type="number"
+              min="1"
+              max="365"
+              step="1"
+              value="${phase.durationDays}"
+              data-phase-duration="${phase.id}"
+              aria-label="${escapeHtml(phase.name)} 完成天數"
+            />
+          </label>
+          <p class="phase-progress-text">${done} / ${total} 完成</p>
           <progress value="${done}" max="${total}"></progress>
         </article>
       `;
     })
     .join("");
+
+  elements.phaseStrip.querySelectorAll("[data-phase-duration]").forEach((input) => {
+    input.addEventListener("change", () => {
+      updatePhaseDuration(project.id, input.dataset.phaseDuration, input.value);
+    });
+  });
+}
+
+function renderProjectCalendar() {
+  state.calendarMonth = normalizeMonthKey(state.calendarMonth) || toMonthKey(new Date());
+
+  const hasProjects = state.projects.length > 0;
+  const controlsDisabled = state.sync.busy || !state.sync.loaded || !hasProjects;
+  elements.prevCalendarButton.disabled = controlsDisabled;
+  elements.nextCalendarButton.disabled = controlsDisabled;
+  elements.calendarTodayButton.disabled = controlsDisabled;
+  elements.calendarMonthLabel.textContent = formatMonthLabel(state.calendarMonth);
+
+  if (!hasProjects) {
+    elements.calendarGrid.innerHTML = `<div class="empty-state">建立專案後會在日曆顯示所有階段進度</div>`;
+    return;
+  }
+
+  state.projects.forEach(normalizeProject);
+
+  const dates = buildCalendarDates(state.calendarMonth);
+  const today = toDateInputValue(new Date());
+  const monthPrefix = `${state.calendarMonth}-`;
+
+  elements.calendarGrid.innerHTML = dates
+    .map((dateValue) => {
+      const events = getCalendarEventsForDate(dateValue);
+      const visibleEvents = events.slice(0, 3);
+      const moreCount = events.length - visibleEvents.length;
+      const dayNumber = Number(dateValue.slice(-2));
+      const outsideClass = dateValue.startsWith(monthPrefix) ? "" : "outside";
+      const todayClass = dateValue === today ? "today" : "";
+
+      return `
+        <div class="calendar-day ${outsideClass} ${todayClass}">
+          <div class="calendar-day-top">
+            <span>${dayNumber}</span>
+          </div>
+          <div class="calendar-events">
+            ${visibleEvents.map(renderCalendarEvent).join("")}
+            ${moreCount > 0 ? `<span class="calendar-more">+${moreCount} 項</span>` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  elements.calendarGrid.querySelectorAll("[data-calendar-project-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeId = button.dataset.calendarProjectId;
+      state.view = "projects";
+      state.pendingPhaseFocus = {
+        projectId: button.dataset.calendarProjectId,
+        phaseId: button.dataset.calendarPhaseId,
+      };
+      saveState();
+      render();
+    });
+  });
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function renderCalendarEvent(event) {
+  const activeClass = event.projectId === state.activeId ? "active" : "";
+  const milestoneClass = event.isEndDate ? "milestone" : "";
+
+  return `
+    <button
+      class="calendar-event ${activeClass} ${milestoneClass}"
+      style="--event-color: ${event.color}; --event-progress: ${event.progressPercent}%"
+      type="button"
+      data-calendar-project-id="${event.projectId}"
+      data-calendar-phase-id="${event.phaseId}"
+      title="${escapeHtml(event.projectTitle)}：${escapeHtml(event.phaseName)}"
+    >
+      <strong>${escapeHtml(event.projectTitle)}</strong>
+      <span>${escapeHtml(event.phaseName)} · ${event.projectProgress}% · ${event.progressText}</span>
+    </button>
+  `;
+}
+
+function getCalendarEventsForDate(dateValue) {
+  return state.projects
+    .flatMap((project) =>
+      project.phases
+        .filter((phase) => isDateWithinRange(dateValue, phase.startDate, phase.endDate))
+        .map((phase) => {
+          const progress = getPhaseProgress(project, phase);
+          return {
+            projectId: project.id,
+            projectTitle: project.title,
+            projectProgress: getProgress(project),
+            phaseId: phase.id,
+            phaseName: phase.name,
+            color: phase.color,
+            isEndDate: dateValue === phase.endDate,
+            progressText: `${progress.done}/${progress.total}`,
+            progressPercent: progress.percent,
+          };
+        }),
+    )
+    .sort((a, b) => {
+      if (a.projectId === state.activeId && b.projectId !== state.activeId) return -1;
+      if (b.projectId === state.activeId && a.projectId !== state.activeId) return 1;
+      return a.projectTitle.localeCompare(b.projectTitle, "zh-Hant");
+    });
+}
+
+function getPhaseProgress(project, phase) {
+  const phaseTasks = project.tasks.filter((task) => task.phaseId === phase.id);
+  const total = phaseTasks.length || 1;
+  const done = phaseTasks.filter((task) => task.done).length;
+  return {
+    done,
+    total,
+    percent: Math.round((done / total) * 100),
+  };
+}
+
+function shiftCalendarMonth(delta) {
+  state.calendarMonth = addMonthsToMonthKey(state.calendarMonth, delta);
+  renderProjectCalendar();
+}
+
+function jumpCalendarToToday() {
+  state.calendarMonth = toMonthKey(new Date());
+  renderProjectCalendar();
 }
 
 function renderTasks(project) {
@@ -771,6 +1066,7 @@ function renderTaskCard(project, task, index) {
           <span class="task-title">${escapeHtml(task.title)}</span>
           <span class="task-meta">
             <span class="phase-pill">${escapeHtml(task.phaseName)}</span>
+            <span class="due-pill">${formatDueLabel(task.dueDate)}</span>
           </span>
         </div>
       </div>
@@ -987,7 +1283,7 @@ function renderInspector(project) {
   if (nextTask) {
     elements.nextTaskBox.innerHTML = `
       <strong>${escapeHtml(nextTask.title)}</strong>
-      <span>${escapeHtml(nextTask.phaseName)}</span>
+      <span>${escapeHtml(nextTask.phaseName)} · ${formatDueLabel(nextTask.dueDate)}</span>
     `;
   } else {
     elements.nextTaskBox.innerHTML = `<strong>全部完成</strong><span>${project.tasks.length} 項任務</span>`;
@@ -999,7 +1295,7 @@ function renderInspector(project) {
       (phase) => `
         <li>
           <strong>${escapeHtml(phase.name)}</strong>
-          第 ${phase.order} 階段
+          ${formatDateRange(phase.startDate, phase.endDate)} · ${phase.durationDays} 天
         </li>
       `,
     )
@@ -1049,6 +1345,8 @@ function exportActiveProject() {
   const lines = [
     `# ${project.title}`,
     `完成條件：${project.outcome}`,
+    `開始日期：${formatDateLabel(project.startDate)}`,
+    `推導完成日：${formatDateLabel(project.endDate)}`,
     "",
     ...project.phases.flatMap((phase) => {
       const tasks = getOrderedTasks(project)
@@ -1058,7 +1356,7 @@ function exportActiveProject() {
           if (task.note?.trim()) rows.push(`  備註：${task.note.trim()}`);
           return rows;
         });
-      return [`## ${phase.name}`, ...tasks, ""];
+      return [`## ${phase.name}（${formatDateRange(phase.startDate, phase.endDate)}，${phase.durationDays} 天）`, ...tasks, ""];
     }),
   ];
 
@@ -1083,22 +1381,22 @@ function getProgress(project) {
 
 function normalizeProject(project) {
   if (!project) return;
-  delete project.startDate;
-  delete project.deadline;
+  project.startDate = normalizeDateInput(project.startDate) || dateInputFromIso(project.createdAt) || toDateInputValue(new Date());
 
   if (!Array.isArray(project.phases)) project.phases = [];
   project.phases.forEach((phase, index) => {
-    delete phase.startDate;
-    delete phase.endDate;
     if (!Number.isFinite(phase.order)) phase.order = index + 1;
     if (!phase.color) phase.color = phaseColors[index % phaseColors.length];
+    phase.durationDays = normalizeDurationDays(
+      phase.durationDays || getDefaultPhaseDuration(project.type, phase.name, index),
+    );
   });
 
   if (!Array.isArray(project.tasks)) project.tasks = [];
   project.tasks.forEach((task) => {
     if (typeof task.note !== "string") task.note = "";
-    delete task.dueDate;
   });
+  recalculateProjectSchedule(project);
   if (!project.tasks.length) return;
 
   const needsOrder = project.tasks.some((task) => !Number.isFinite(task.order));
@@ -1106,6 +1404,59 @@ function normalizeProject(project) {
 
   const orderedTasks = [...project.tasks].sort(compareTaskOrder);
   setTaskOrders(orderedTasks);
+}
+
+function recalculateProjectSchedule(project) {
+  if (!project) return;
+
+  let cursor = normalizeDateInput(project.startDate) || toDateInputValue(new Date());
+  let totalDurationDays = 0;
+
+  project.phases.forEach((phase, index) => {
+    const durationDays = normalizeDurationDays(
+      phase.durationDays || getDefaultPhaseDuration(project.type, phase.name, index),
+    );
+    phase.durationDays = durationDays;
+    phase.startDate = cursor;
+    phase.endDate = addDaysToDateInput(cursor, durationDays - 1);
+    cursor = addDaysToDateInput(phase.endDate, 1);
+    totalDurationDays += durationDays;
+  });
+
+  project.totalDurationDays = totalDurationDays;
+  project.endDate = project.phases[project.phases.length - 1]?.endDate || project.startDate;
+
+  project.tasks.forEach((task) => {
+    const phase = project.phases.find((item) => item.id === task.phaseId || item.name === task.phaseName);
+    task.dueDate = phase?.endDate || project.endDate || "";
+  });
+}
+
+function updateProjectStartDate(projectId, value) {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) return;
+
+  const startDate = normalizeDateInput(value);
+  if (!startDate) {
+    render();
+    return;
+  }
+
+  project.startDate = startDate;
+  recalculateProjectSchedule(project);
+  saveState();
+  render();
+}
+
+function updatePhaseDuration(projectId, phaseId, value) {
+  const project = state.projects.find((item) => item.id === projectId);
+  const phase = project?.phases.find((item) => item.id === phaseId);
+  if (!project || !phase) return;
+
+  phase.durationDays = normalizeDurationDays(value);
+  recalculateProjectSchedule(project);
+  saveState();
+  render();
 }
 
 function getOrderedTasks(project) {
@@ -1130,6 +1481,142 @@ function setTaskOrders(tasks) {
 function getNextTaskOrder(project) {
   normalizeProject(project);
   return project.tasks.reduce((max, task) => Math.max(max, Number.isFinite(task.order) ? task.order : -1), -1) + 1;
+}
+
+function getDefaultPhaseDuration(type, phaseName, index) {
+  const templatePhase = (templates[type] || templates.residentContract).find((phase) => phase.name === phaseName);
+  const fallbackPhase = (templates[type] || templates.residentContract)[index];
+  const weight = Number(templatePhase?.weight || fallbackPhase?.weight || 1);
+  return Math.max(1, Math.round(weight * 2));
+}
+
+function normalizeDurationDays(value) {
+  const days = Number.parseInt(value, 10);
+  if (!Number.isFinite(days)) return 1;
+  return Math.min(365, Math.max(1, days));
+}
+
+function normalizeDateInput(value) {
+  const text = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+
+  const [year, month, day] = text.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return "";
+  }
+
+  return text;
+}
+
+function dateInputFromIso(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return toDateInputValue(date);
+}
+
+function toDateInputValue(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  return utcDate.toISOString().slice(0, 10);
+}
+
+function addDaysToDateInput(value, days) {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return "";
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateLabel(value) {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return "-";
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function formatDateRange(startDate, endDate) {
+  const start = formatDateLabel(startDate);
+  const end = formatDateLabel(endDate);
+  if (start === "-" && end === "-") return "-";
+  if (start === end) return start;
+  return `${start} - ${end}`;
+}
+
+function formatDueLabel(value) {
+  const label = formatDateLabel(value);
+  return label === "-" ? "未排程" : `完成日 ${label}`;
+}
+
+function normalizeMonthKey(value) {
+  const text = String(value || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(text)) return "";
+
+  const [year, month] = text.split("-").map(Number);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return "";
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+}
+
+function toMonthKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonthsToMonthKey(value, delta) {
+  const monthKey = normalizeMonthKey(value) || toMonthKey(new Date());
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(value) {
+  const monthKey = normalizeMonthKey(value) || toMonthKey(new Date());
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function buildCalendarDates(monthKey) {
+  const normalized = normalizeMonthKey(monthKey) || toMonthKey(new Date());
+  const [year, month] = normalized.split("-").map(Number);
+  const firstDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const startDate = addDaysToDateInput(firstDate, -firstDay);
+
+  return Array.from({ length: 42 }, (_, index) => addDaysToDateInput(startDate, index));
+}
+
+function isDateWithinRange(value, startDate, endDate) {
+  const current = dateInputToUtcTime(value);
+  const start = dateInputToUtcTime(startDate);
+  const end = dateInputToUtcTime(endDate);
+  if (!Number.isFinite(current) || !Number.isFinite(start) || !Number.isFinite(end)) return false;
+  return current >= start && current <= end;
+}
+
+function dateInputToUtcTime(value) {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return Number.NaN;
+  const [year, month, day] = normalized.split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
 }
 
 function getDefaultOutcome(type) {

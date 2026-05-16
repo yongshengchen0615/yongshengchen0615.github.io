@@ -80,6 +80,10 @@ select:disabled {
   min-height: 100vh;
 }
 
+body.calendar-view-mode .app-shell {
+  grid-template-columns: clamp(244px, 18vw, 288px) minmax(0, 1fr);
+}
+
 .sidebar,
 .inspector {
   background: var(--surface-tint);
@@ -114,6 +118,10 @@ select:disabled {
   justify-self: center;
 }
 
+body.calendar-view-mode .workspace {
+  width: min(100%, 1320px);
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -134,6 +142,7 @@ select:disabled {
 .brand h1,
 .panel-heading h2,
 .timeline-header h2,
+.calendar-header h2,
 .inspector h2 {
   margin: 0;
   letter-spacing: 0;
@@ -196,6 +205,8 @@ select:disabled {
 .section-title,
 .panel-heading,
 .timeline-header,
+.calendar-header,
+.calendar-controls,
 .task-toolbar,
 .action-row,
 .form-row,
@@ -210,6 +221,7 @@ select:disabled {
 .section-title,
 .panel-heading,
 .timeline-header,
+.calendar-header,
 .task-toolbar {
   justify-content: space-between;
   gap: 16px;
@@ -229,6 +241,38 @@ select:disabled {
 .project-list {
   display: grid;
   gap: 6px;
+}
+
+.view-switch {
+  display: grid;
+  gap: 6px;
+}
+
+.view-button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: transparent;
+  text-align: left;
+  font-weight: 760;
+}
+
+.view-button:hover,
+.view-button.active {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.view-button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .project-item {
@@ -280,7 +324,8 @@ select:disabled {
 }
 
 .planner-panel,
-.timeline-area {
+.timeline-area,
+.calendar-panel {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -296,6 +341,16 @@ select:disabled {
   padding: 22px;
 }
 
+.calendar-panel {
+  padding: 22px;
+  overflow-x: auto;
+}
+
+.project-view {
+  display: grid;
+  gap: 16px;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--accent-dark);
@@ -306,6 +361,7 @@ select:disabled {
 
 .panel-heading h2,
 .timeline-header h2,
+.calendar-header h2,
 .inspector h2 {
   font-size: clamp(1.18rem, 2vw, 1.58rem);
   line-height: 1.18;
@@ -334,6 +390,33 @@ select:disabled {
 
 .outcome-field {
   grid-column: 1 / -1;
+}
+
+.phase-duration-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f8f8f2;
+}
+
+.phase-duration-panel legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.phase-duration-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.duration-field input {
+  min-height: 38px;
 }
 
 label {
@@ -539,6 +622,189 @@ button svg {
   transition: width 300ms ease;
 }
 
+.schedule-strip {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin: 0 0 16px;
+}
+
+.schedule-field,
+.schedule-result {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.schedule-field input {
+  min-height: 38px;
+}
+
+.schedule-result {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.schedule-result span,
+.schedule-result small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.schedule-result strong {
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.calendar-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.calendar-controls strong {
+  min-width: 112px;
+  text-align: center;
+  font-size: 0.98rem;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  min-width: 760px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.calendar-weekdays span {
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: #f8f8f2;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+  background: var(--line);
+}
+
+.calendar-day {
+  min-width: 0;
+  min-height: 124px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.calendar-day.outside {
+  background: rgba(236, 239, 231, 0.62);
+}
+
+.calendar-day.today {
+  box-shadow: inset 0 0 0 2px rgba(24, 116, 95, 0.42);
+}
+
+.calendar-day-top {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 20px;
+  margin-bottom: 5px;
+}
+
+.calendar-day-top span {
+  min-width: 22px;
+  min-height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.calendar-day.today .calendar-day-top span {
+  color: #fff;
+  background: var(--accent);
+}
+
+.calendar-events {
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-event {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  padding: 5px 6px;
+  border: 1px solid color-mix(in srgb, var(--event-color, var(--accent)) 28%, transparent);
+  border-left: 4px solid var(--event-color, var(--accent));
+  border-radius: 6px;
+  color: var(--ink);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--event-color, var(--accent)) 16%, transparent) var(--event-progress, 0%), transparent 0),
+    color-mix(in srgb, var(--event-color, var(--accent)) 8%, white);
+  text-align: left;
+}
+
+.calendar-event:hover,
+.calendar-event.active {
+  border-color: color-mix(in srgb, var(--event-color, var(--accent)) 48%, var(--line));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--event-color, var(--accent)) 22%, transparent) var(--event-progress, 0%), transparent 0),
+    color-mix(in srgb, var(--event-color, var(--accent)) 12%, white);
+}
+
+.calendar-event.milestone {
+  border-right: 4px solid var(--event-color, var(--accent));
+}
+
+.calendar-event strong,
+.calendar-event span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-event strong {
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.calendar-event span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 720;
+}
+
+.calendar-more {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
 .phase-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
@@ -547,13 +813,20 @@ button svg {
 }
 
 .phase-card {
-  min-height: 92px;
+  min-height: 156px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 12px 11px;
   background: var(--surface);
   position: relative;
   overflow: hidden;
+}
+
+.phase-card.jump-focus {
+  border-color: color-mix(in srgb, var(--phase-color, var(--accent)) 64%, var(--line));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--phase-color, var(--accent)) 18%, transparent),
+    0 12px 28px rgba(38, 44, 42, 0.14);
 }
 
 .phase-card::before {
@@ -578,6 +851,33 @@ button svg {
 
 .phase-date {
   margin: 7px 0 10px;
+  font-size: 0.76rem;
+}
+
+.phase-order {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.phase-duration-control {
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.phase-duration-control span {
+  font-size: 0.72rem;
+}
+
+.phase-duration-control input {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.phase-progress-text {
+  margin: 0 0 6px;
+  color: var(--muted);
   font-size: 0.76rem;
 }
 
@@ -867,6 +1167,14 @@ button svg {
   font-weight: 720;
 }
 
+.due-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .task-actions {
   flex: 0 0 auto;
   gap: 6px;
@@ -944,6 +1252,11 @@ button svg {
 }
 
 .phase-strip .empty-state {
+  grid-column: 1 / -1;
+}
+
+.calendar-grid .empty-state,
+.schedule-strip .empty-state {
   grid-column: 1 / -1;
 }
 
@@ -1138,6 +1451,7 @@ button svg {
   .title-field,
   .outcome-field,
   .option-fields,
+  .phase-duration-panel,
   .project-form .primary-button {
     grid-column: 1 / -1;
   }
@@ -1148,6 +1462,10 @@ button svg {
 
   .phase-strip {
     grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  }
+
+  .schedule-strip {
+    grid-template-columns: 1fr;
   }
 
   .reference-note {
@@ -1173,6 +1491,7 @@ button svg {
 
   .planner-panel,
   .timeline-area,
+  .calendar-panel,
   .sidebar,
   .inspector {
     padding: 18px;
@@ -1186,9 +1505,14 @@ button svg {
 
   .form-row,
   .task-toolbar,
+  .calendar-header,
   .timeline-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .calendar-controls {
+    justify-content: flex-start;
   }
 
   .quick-task-form {

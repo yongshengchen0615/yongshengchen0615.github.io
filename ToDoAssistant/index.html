@@ -36,6 +36,22 @@
 
         <div class="side-section">
           <div class="section-title">
+            <span>檢視</span>
+          </div>
+          <div class="view-switch" role="tablist" aria-label="檢視切換">
+            <button class="view-button active" type="button" data-view="projects">
+              <i data-lucide="list-checks"></i>
+              專案頁面
+            </button>
+            <button class="view-button" type="button" data-view="calendar">
+              <i data-lucide="calendar-days"></i>
+              專案日曆
+            </button>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="section-title">
             <span>專案</span>
             <button class="icon-button" id="newProjectButton" type="button" aria-label="新增專案">
               <i data-lucide="plus"></i>
@@ -62,116 +78,158 @@
       </aside>
 
       <main class="workspace">
-        <section class="planner-panel" aria-label="新增倒推計畫">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Reverse Planner</p>
-              <h2>建立終點，倒推出路線</h2>
+        <div class="project-view" data-view-panel="projects">
+          <section class="planner-panel" aria-label="新增倒推計畫">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Reverse Planner</p>
+                <h2>建立終點，倒推出路線</h2>
+              </div>
+              <button class="ghost-button" id="seedButton" type="button">
+                <i data-lucide="sparkles"></i>
+                範例
+              </button>
             </div>
-            <button class="ghost-button" id="seedButton" type="button">
-              <i data-lucide="sparkles"></i>
-              範例
-            </button>
-          </div>
 
-          <form id="projectForm" class="project-form">
-            <label class="title-field">
-              <span>目標</span>
-              <input
-                id="projectTitle"
-                type="text"
-                placeholder="例如：完成個人作品集網站"
-                autocomplete="off"
-                required
-              />
-            </label>
-
-            <label class="outcome-field">
-              <span>完成條件</span>
-              <textarea
-                id="projectOutcome"
-                rows="3"
-                placeholder="例如：首頁、作品頁、關於我、聯絡表單皆可正常使用"
-              ></textarea>
-            </label>
-
-            <div class="form-row option-fields">
-              <label>
-                <span>類型</span>
-                <select id="projectType">
-                  <option value="residentContract">進駐廠商契約用印</option>
-                  <option value="rotationContract">特賣 / 輪動契約用印</option>
-                  <option value="contractAdjustment">合約調整 / 展延協議書用印</option>
-                </select>
+            <form id="projectForm" class="project-form">
+              <label class="title-field">
+                <span>目標</span>
+                <input
+                  id="projectTitle"
+                  type="text"
+                  placeholder="例如：完成個人作品集網站"
+                  autocomplete="off"
+                  required
+                />
               </label>
-            </div>
 
-            <button class="primary-button" type="submit">
-              <i data-lucide="route"></i>
-              建立倒推計畫
-            </button>
-          </form>
+              <label class="outcome-field">
+                <span>完成條件</span>
+                <textarea
+                  id="projectOutcome"
+                  rows="3"
+                  placeholder="例如：首頁、作品頁、關於我、聯絡表單皆可正常使用"
+                ></textarea>
+              </label>
 
-          <div class="reference-note">
-            <span>PDF 用印查檢表格式</span>
-            <strong>文件、協議書、品保、保單分段檢核</strong>
-          </div>
-        </section>
+              <div class="form-row option-fields">
+                <label>
+                  <span>類型</span>
+                  <select id="projectType">
+                    <option value="residentContract">進駐廠商契約用印</option>
+                    <option value="rotationContract">特賣 / 輪動契約用印</option>
+                    <option value="contractAdjustment">合約調整 / 展延協議書用印</option>
+                  </select>
+                </label>
+                <label>
+                  <span>開始日期</span>
+                  <input id="projectStartDate" type="date" required />
+                </label>
+              </div>
 
-        <section class="timeline-area" aria-label="專案計畫">
-          <div class="timeline-header">
-            <div>
-              <p class="eyebrow">Active Plan</p>
-              <h2 id="activeTitle">尚未建立專案</h2>
-            </div>
-            <div class="action-row">
-              <button class="ghost-button" id="exportButton" type="button">
-                <i data-lucide="download"></i>
-                匯出
-              </button>
-              <button class="danger-button" id="deleteProjectButton" type="button">
-                <i data-lucide="trash-2"></i>
-                刪除
-              </button>
-            </div>
-          </div>
+              <fieldset class="phase-duration-panel">
+                <legend>大區塊完成天數</legend>
+                <div id="phaseDurationList" class="phase-duration-list"></div>
+              </fieldset>
 
-          <div class="progress-block">
-            <div>
-              <span id="progressLabel">0%</span>
-            </div>
-            <div class="progress-track" aria-hidden="true">
-              <span id="progressBar"></span>
-            </div>
-          </div>
-
-          <div class="phase-strip" id="phaseStrip" aria-label="階段"></div>
-
-          <div class="task-toolbar">
-            <div class="segmented-control" role="tablist" aria-label="任務篩選">
-              <button class="active" type="button" data-filter="all">全部</button>
-              <button type="button" data-filter="open">未完成</button>
-              <button type="button" data-filter="done">已完成</button>
-            </div>
-            <form id="quickTaskForm" class="quick-task-form">
-              <input id="quickTaskInput" type="text" placeholder="新增補充任務" autocomplete="off" />
-              <button class="icon-button solid" type="submit" aria-label="新增任務">
-                <i data-lucide="plus"></i>
+              <button class="primary-button" type="submit">
+                <i data-lucide="route"></i>
+                建立倒推計畫
               </button>
             </form>
-          </div>
 
-          <div class="checklist-head" aria-hidden="true">
-            <span>項目</span>
-            <span>文件內容</span>
-            <span></span>
-          </div>
+            <div class="reference-note">
+              <span>PDF 用印查檢表格式</span>
+              <strong>文件、協議書、品保、保單分段檢核</strong>
+            </div>
+          </section>
 
-          <div class="task-list" id="taskList"></div>
+          <section class="timeline-area" aria-label="專案計畫">
+            <div class="timeline-header">
+              <div>
+                <p class="eyebrow">Active Plan</p>
+                <h2 id="activeTitle">尚未建立專案</h2>
+              </div>
+              <div class="action-row">
+                <button class="ghost-button" id="exportButton" type="button">
+                  <i data-lucide="download"></i>
+                  匯出
+                </button>
+                <button class="danger-button" id="deleteProjectButton" type="button">
+                  <i data-lucide="trash-2"></i>
+                  刪除
+                </button>
+              </div>
+            </div>
+
+            <div class="progress-block">
+              <div>
+                <span id="progressLabel">0%</span>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <span id="progressBar"></span>
+              </div>
+            </div>
+
+            <div class="schedule-strip" id="scheduleStrip" aria-label="專案日期"></div>
+
+            <div class="phase-strip" id="phaseStrip" aria-label="階段"></div>
+
+            <div class="task-toolbar">
+              <div class="segmented-control" role="tablist" aria-label="任務篩選">
+                <button class="active" type="button" data-filter="all">全部</button>
+                <button type="button" data-filter="open">未完成</button>
+                <button type="button" data-filter="done">已完成</button>
+              </div>
+              <form id="quickTaskForm" class="quick-task-form">
+                <input id="quickTaskInput" type="text" placeholder="新增補充任務" autocomplete="off" />
+                <button class="icon-button solid" type="submit" aria-label="新增任務">
+                  <i data-lucide="plus"></i>
+                </button>
+              </form>
+            </div>
+
+            <div class="checklist-head" aria-hidden="true">
+              <span>項目</span>
+              <span>文件內容</span>
+              <span></span>
+            </div>
+
+            <div class="task-list" id="taskList"></div>
+          </section>
+        </div>
+
+        <section class="calendar-panel hidden" data-view-panel="calendar" aria-label="所有專案日曆">
+          <div class="calendar-header">
+            <div>
+              <p class="eyebrow">Calendar</p>
+              <h2>專案日曆</h2>
+            </div>
+            <div class="calendar-controls">
+              <button class="icon-button" id="prevCalendarButton" type="button" aria-label="上一個月">
+                <i data-lucide="chevron-left"></i>
+              </button>
+              <strong id="calendarMonthLabel">-</strong>
+              <button class="icon-button" id="nextCalendarButton" type="button" aria-label="下一個月">
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button class="ghost-button compact" id="calendarTodayButton" type="button">今天</button>
+            </div>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>日</span>
+            <span>一</span>
+            <span>二</span>
+            <span>三</span>
+            <span>四</span>
+            <span>五</span>
+            <span>六</span>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
         </section>
       </main>
 
-      <aside class="inspector" aria-label="專案資訊">
+      <aside class="inspector" data-view-panel="projects" aria-label="專案資訊">
         <section>
           <p class="eyebrow">Next</p>
           <h2>下一步</h2>
