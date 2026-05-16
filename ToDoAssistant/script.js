@@ -888,7 +888,7 @@ function renderProjectCalendar() {
   elements.calendarMonthLabel.textContent = formatMonthLabel(state.calendarMonth);
 
   if (!hasProjects) {
-    elements.calendarGrid.innerHTML = `<div class="empty-state">建立專案後會在日曆顯示所有階段進度</div>`;
+    elements.calendarGrid.innerHTML = `<div class="empty-state">建立專案後會在日曆顯示區塊進度</div>`;
     return;
   }
 
@@ -904,13 +904,15 @@ function renderProjectCalendar() {
       const visibleEvents = events.slice(0, 3);
       const moreCount = events.length - visibleEvents.length;
       const dayNumber = Number(dateValue.slice(-2));
+      const weekdayLabel = formatWeekdayLabel(dateValue);
       const outsideClass = dateValue.startsWith(monthPrefix) ? "" : "outside";
       const todayClass = dateValue === today ? "today" : "";
 
       return `
         <div class="calendar-day ${outsideClass} ${todayClass}">
           <div class="calendar-day-top">
-            <span>${dayNumber}</span>
+            <span class="calendar-weekday-label">${weekdayLabel}</span>
+            <span class="calendar-day-number">${dayNumber}</span>
           </div>
           <div class="calendar-events">
             ${visibleEvents.map(renderCalendarEvent).join("")}
@@ -950,10 +952,11 @@ function renderCalendarEvent(event) {
       type="button"
       data-calendar-project-id="${event.projectId}"
       data-calendar-phase-id="${event.phaseId}"
-      title="${escapeHtml(event.projectTitle)}：${escapeHtml(event.phaseName)}"
+      title="${escapeHtml(event.projectTitle)}：${event.progressPercent}%"
+      aria-label="${escapeHtml(event.projectTitle)}：${event.progressPercent}%"
     >
       <strong>${escapeHtml(event.projectTitle)}</strong>
-      <span>${escapeHtml(event.phaseName)} · ${event.projectProgress}% · ${event.progressText}</span>
+      <span>${event.progressPercent}%</span>
     </button>
   `;
 }
@@ -968,12 +971,9 @@ function getCalendarEventsForDate(dateValue) {
           return {
             projectId: project.id,
             projectTitle: project.title,
-            projectProgress: getProgress(project),
             phaseId: phase.id,
-            phaseName: phase.name,
             color: phase.color,
             isEndDate: dateValue === phase.endDate,
-            progressText: `${progress.done}/${progress.total}`,
             progressPercent: progress.percent,
           };
         }),
@@ -1592,6 +1592,17 @@ function formatMonthLabel(value) {
     month: "long",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function formatWeekdayLabel(value) {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return "";
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  return new Intl.DateTimeFormat("zh-TW", {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function buildCalendarDates(monthKey) {
