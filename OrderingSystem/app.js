@@ -20,6 +20,7 @@
     drafts: "未發佈開團",
     joined: "我已加入",
   };
+  const REALTIME_SYNC_INTERVAL_MS = 8000;
 
   const state = {
     api: null,
@@ -42,6 +43,9 @@
     loadingProgressTarget: null,
     loadingProgressFrame: 0,
     activeLoadingProgress: null,
+    realtimeTimer: 0,
+    realtimeSyncing: false,
+    realtimeErrorCount: 0,
   };
 
   const els = {};
@@ -282,6 +286,8 @@
         closeProfileDialog();
       }
     });
+    document.addEventListener("visibilitychange", handleRealtimeResume);
+    window.addEventListener("focus", handleRealtimeResume);
   }
 
   function initSchedulePickers() {
@@ -638,6 +644,180 @@
     renderGroups();
     renderDetail();
     renderView();
+    syncRealtimeTimerState();
+  }
+
+  function syncRealtimeTimerState() {
+    if (state.user && state.api && state.session) {
+      startRealtimeSync();
+      return;
+    }
+
+    stopRealtimeSync();
+  }
+
+  function startRealtimeSync() {
+    if (state.realtimeTimer) {
+      return;
+    }
+
+    state.realtimeTimer = window.setInterval(() => {
+      syncRealtimeData();
+    }, REALTIME_SYNC_INTERVAL_MS);
+  }
+
+  function stopRealtimeSync() {
+    if (!state.realtimeTimer) {
+      return;
+    }
+
+    window.clearInterval(state.realtimeTimer);
+    state.realtimeTimer = 0;
+    state.realtimeSyncing = false;
+    state.realtimeErrorCount = 0;
+  }
+
+  function handleRealtimeResume() {
+    if (document.hidden) {
+      return;
+    }
+
+    syncRealtimeData();
+  }
+
+  async function syncRealtimeData() {
+    if (!canRealtimeSync()) {
+      return;
+    }
+
+    const api = state.api;
+    const session = state.session;
+    const selectedId = state.view === "detail" ? state.selectedGroupId : "";
+    state.realtimeSyncing = true;
+
+    try {
+      const groups = await api.listGroups(session);
+      if (!canApplyRealtimeResult(api, session)) {
+        return;
+      }
+
+      setGroups(groups);
+
+      if (selectedId && state.groups.some((group) => group.id === selectedId) && api.getGroup) {
+        const detail = await api.getGroup(selectedId, session);
+        if (!canApplyRealtimeResult(api, session)) {
+          return;
+        }
+        if (detail && detail.group) {
+          upsertGroup(detail.group);
+          state.selectedGroupId = selectedId;
+        }
+      }
+
+      state.realtimeErrorCount = 0;
+      renderApp();
+    } catch (error) {
+      state.realtimeErrorCount += 1;
+      if (state.realtimeErrorCount === 3) {
+        showToast("即時同步暫時中斷，稍後會自動重試。", "error");
+      }
+    } finally {
+      state.realtimeSyncing = false;
+    }
+  }
+
+  function canRealtimeSync() {
+    return Boolean(
+      state.user &&
+        state.api &&
+        state.session &&
+        !state.realtimeSyncing &&
+        !document.hidden &&
+        !shouldPauseRealtimeApply()
+    );
+  }
+
+  function canApplyRealtimeResult(api, session) {
+    return Boolean(
+      state.user && state.api === api && state.session === session && !document.hidden && !shouldPauseRealtimeApply()
+    );
+  }
+
+  function shouldPauseRealtimeApply() {
+    if (state.loadingCount > 0) {
+      return true;
+    }
+
+    return hasRealtimeEditingContext();
+  }
+
+  function hasRealtimeEditingContext() {
+    if (state.view !== "detail") {
+      return false;
+    }
+
+    const group = selectedGroup();
+    if (!group) {
+      return false;
+    }
+
+    if (group.isOwner && state.detailMode === "items") {
+      return true;
+    }
+
+    if (elementContainsFocus(els.joinGroupForm) || selectedQuantityItems().length > 0) {
+      return true;
+    }
+
+    if (elementContainsFocus(els.orderList) || hasPendingOrderEdits(group)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function elementContainsFocus(element) {
+    return Boolean(element && document.activeElement && element.contains(document.activeElement));
+  }
+
+  function hasPendingOrderEdits(group) {
+    if (!group || !els.orderList) {
+      return false;
+    }
+
+    return [...els.orderList.querySelectorAll(".order-row")].some((orderNode) => {
+      const order = group.orders.find((entry) => entry.id === orderNode.dataset.orderId);
+      if (!order) {
+        return false;
+      }
+
+      if (group.isOwner) {
+        const paidInput = orderNode.querySelector(".order-paid-checkbox");
+        if (paidInput && paidInput.checked !== Boolean(order.paid)) {
+          return true;
+        }
+      }
+
+      if (!canEditOrder(order)) {
+        return false;
+      }
+
+      return [...orderNode.querySelectorAll(".order-edit-row")].some((row) => {
+        if (row.classList.contains("is-pending-remove")) {
+          return true;
+        }
+
+        const input = row.querySelector(".order-edit-quantity");
+        const quantity = Math.max(0, Number.parseInt(input && input.value, 10) || 0);
+        const item = order.items.find((entry) => {
+          const entryId = row.dataset.entryId || "";
+          return (
+            (entryId && (entry.entryId === entryId || entry.id === entryId)) || entry.itemId === row.dataset.itemId
+          );
+        });
+        return Boolean(item && quantity !== Number(item.quantity));
+      });
+    });
   }
 
   function renderConfigStatus() {
