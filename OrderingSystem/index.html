@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>團購系統</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="is-loading">
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="團購系統首頁">
+          <span class="brand-mark">團</span>
+          <span>
+            <strong>團購系統</strong>
+            <small>LINE 團購下單</small>
+          </span>
+        </a>
+
+        <div class="session-area" id="sessionArea">
+          <span class="config-pill" id="configStatus">Demo</span>
+          <button class="line-button hidden" id="loginButton" type="button">
+            <span aria-hidden="true">L</span>
+            LINE 登入
+          </button>
+        </div>
+      </header>
+
+      <nav class="main-nav hidden" id="mainNav" aria-label="主要功能">
+        <button class="nav-tab is-active" type="button" data-view="browse" data-filter="all">所有開團</button>
+        <button class="nav-tab" type="button" data-view="browse" data-filter="mine">我的開團</button>
+        <button class="nav-tab" type="button" data-view="browse" data-filter="joined">我已加入</button>
+        <button class="nav-tab" type="button" data-view="browse" data-filter="drafts">未發佈開團</button>
+        <button class="nav-tab" type="button" data-view="create">開新團</button>
+      </nav>
+
+      <main class="workspace">
+        <section class="auth-panel" id="loginPanel">
+          <p class="eyebrow">成員登入</p>
+          <h1>用 LINE 開團、下單、追蹤金額</h1>
+          <p class="panel-copy">登入後每筆開團與訂單都會綁定使用者，方便團主統計與核對。</p>
+          <div class="stacked-actions">
+            <button class="primary-action hidden" id="heroLoginButton" type="button">
+              <span aria-hidden="true">L</span>
+              LINE 登入
+            </button>
+            <button class="ghost-action hidden" id="demoLoginButton" type="button">使用測試身分</button>
+          </div>
+        </section>
+
+        <section class="view-screen group-board" id="browseView" data-view-panel="browse" aria-label="所有開團">
+          <div class="board-heading">
+            <div>
+              <p class="eyebrow">開團列表</p>
+              <h2 id="browseTitle">所有開團</h2>
+            </div>
+            <label class="search-field">
+              <span class="sr-only">搜尋團名或項目</span>
+              <input id="groupSearchInput" type="search" placeholder="搜尋團名或項目" />
+            </label>
+          </div>
+
+          <div class="group-list" id="groupList"></div>
+        </section>
+
+        <section class="view-screen create-panel hidden" id="createPanel" data-view-panel="create" aria-label="開新團">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">建立開團</p>
+              <h2>開新團</h2>
+            </div>
+            <button class="icon-button" id="resetCreateButton" type="button" aria-label="清空開團表單" title="清空">
+              ↺
+            </button>
+          </div>
+
+          <form id="createGroupForm" autocomplete="off">
+            <label class="field">
+              <span>開團名稱</span>
+              <input id="groupNameInput" name="groupName" type="text" maxlength="40" placeholder="例：週五便當團" required />
+            </label>
+
+            <section class="schedule-panel" data-schedule-scope="create" aria-label="下單時間設定">
+              <div class="schedule-panel-head">
+                <div>
+                  <span>下單時間</span>
+                  <strong id="createScheduleSummary">未設定下單時段</strong>
+                </div>
+              </div>
+              <div class="schedule-grid">
+                <label class="field">
+                  <span>開始下單時間</span>
+                  <input id="orderStartInput" name="orderStartAt" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span>結束下單時間</span>
+                  <input id="orderEndInput" name="orderEndAt" type="datetime-local" />
+                </label>
+              </div>
+              <div class="schedule-presets" aria-label="快速設定下單時間">
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="start-now">
+                  現在開始
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="2">
+                  開 2 小時
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="4">
+                  開 4 小時
+                </button>
+                <button class="schedule-preset" type="button" data-schedule-scope="create" data-schedule-action="duration" data-hours="8">
+                  開 8 小時
+                </button>
+                <button class="schedule-preset is-muted" type="button" data-schedule-scope="create" data-schedule-action="clear">
+                  清除
+                </button>
+              </div>
+            </section>
+
+            <section class="owner-option-bank create-option-bank" aria-label="開團品項細項與加價選項">
+              <div class="owner-option-bank-head">
+                <strong>品項細項與加價選項</strong>
+                <button class="text-button" id="createAddOptionGroupButton" type="button">新增品項細項</button>
+              </div>
+              <div class="owner-option-list" id="createOptionBankList"></div>
+            </section>
+
+            <div class="form-subhead">
+              <span>項目與金額</span>
+              <button class="text-button" id="addItemButton" type="button">新增項目</button>
+            </div>
+
+            <div class="item-editor" id="itemEditor" aria-live="polite"></div>
+
+            <div class="form-actions">
+              <button class="text-button" id="saveDraftButton" type="submit" data-group-status="draft" formnovalidate>
+                儲存草稿
+              </button>
+              <button class="primary-action" type="submit" data-group-status="open">建立開團</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view-screen detail-panel hidden" id="detailView" data-view-panel="detail" aria-label="團購明細">
+          <section class="empty-detail" id="emptyDetail">
+            <button class="text-button detail-back-button" id="emptyDetailBackButton" type="button">返回所有開團</button>
+            <p class="eyebrow">團購明細</p>
+            <h2>選擇一個團</h2>
+            <p>查看品項、數量與近期訂單。</p>
+          </section>
+
+          <section class="group-detail hidden" id="groupDetail">
+            <div class="detail-toolbar">
+              <button class="text-button detail-back-button" id="detailBackButton" type="button">返回所有開團</button>
+              <div class="detail-status-actions">
+                <button class="text-button" id="copyGroupButton" type="button">複製開團</button>
+                <button class="text-button hidden" id="ownerPublishButton" type="button">發布開團</button>
+                <button class="text-button danger-action hidden" id="ownerDeleteGroupButton" type="button">移除開團</button>
+                <span class="status-pill" id="detailStatus">開放中</span>
+              </div>
+            </div>
+
+            <div class="detail-head">
+              <div>
+                <p class="eyebrow" id="detailOwner">Group owner</p>
+                <h2 id="detailTitle"></h2>
+              </div>
+            </div>
+
+            <dl class="detail-schedule" aria-label="下單時間">
+              <div>
+                <dt>開始下單時間</dt>
+                <dd id="detailOrderStart">未設定</dd>
+              </div>
+              <div>
+                <dt>結束下單時間</dt>
+                <dd id="detailOrderEnd">未設定</dd>
+              </div>
+            </dl>
+
+            <dl class="stat-grid">
+              <div>
+                <dt>品項</dt>
+                <dd id="detailItemCount">0</dd>
+              </div>
+              <div>
+                <dt>訂單</dt>
+                <dd id="detailOrderCount">0</dd>
+              </div>
+              <div>
+                <dt>金額</dt>
+                <dd id="detailTotal">NT$0</dd>
+              </div>
+            </dl>
+
+            <div class="owner-detail-tabs hidden" id="ownerDetailTabs" role="tablist" aria-label="團主明細切換">
+              <button
+                class="chip is-active"
+                id="ownerOrdersTab"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-owner-detail="orders"
+              >
+                下單與訂單
+              </button>
+              <button
+                class="chip"
+                id="ownerItemsTab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-owner-detail="items"
+              >
+                品項管理
+              </button>
+            </div>
+
+            <section class="owner-tools detail-workspace hidden" id="ownerTools" aria-labelledby="ownerItemsTab">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">品項</p>
+                  <h3>品項管理</h3>
+                </div>
+              </div>
+
+              <section class="owner-option-bank schedule-panel owner-schedule-panel" data-schedule-scope="owner" aria-label="開團下單時間設定">
+                <div class="owner-option-bank-head schedule-panel-head">
+                  <div>
+                    <span>下單時間</span>
+                    <strong>下單時間設定</strong>
+                    <small id="ownerScheduleSummary">未設定下單時段</small>
+                  </div>
+                  <button class="text-button" id="ownerSaveGroupSettingsButton" type="button">儲存設定</button>
+                </div>
+                <label class="field dense owner-group-name-field" id="ownerGroupNameField">
+                  <span>開團名稱</span>
+                  <input id="ownerGroupNameInput" type="text" maxlength="40" placeholder="開團名稱" />
+                </label>
+                <div class="schedule-grid compact-grid">
+                  <label class="field dense">
+                    <span>開始下單時間</span>
+                    <input id="ownerOrderStartInput" type="datetime-local" />
+                  </label>
+                  <label class="field dense">
+                    <span>結束下單時間</span>
+                    <input id="ownerOrderEndInput" type="datetime-local" />
+                  </label>
+                </div>
+                <div class="schedule-presets compact-presets" aria-label="快速設定下單時間">
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="start-now">
+                    現在開始
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="2">
+                    開 2 小時
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="4">
+                    開 4 小時
+                  </button>
+                  <button class="schedule-preset" type="button" data-schedule-scope="owner" data-schedule-action="duration" data-hours="8">
+                    開 8 小時
+                  </button>
+                  <button class="schedule-preset is-muted" type="button" data-schedule-scope="owner" data-schedule-action="clear">
+                    清除
+                  </button>
+                </div>
+              </section>
+
+              <section class="owner-option-bank" aria-label="品項細項與加價選項">
+                <div class="owner-option-bank-head">
+                  <strong>品項細項與加價選項</strong>
+                  <button class="text-button" id="ownerAddOptionGroupButton" type="button">新增品項細項</button>
+                </div>
+                <div class="owner-option-list" id="ownerOptionBankList"></div>
+              </section>
+
+              <div class="owner-item-actions">
+                <button class="text-button" id="ownerAddDraftButton" type="button">新增品項</button>
+                <button class="primary-action" id="ownerSaveItemsButton" type="button">儲存品項</button>
+              </div>
+
+              <div class="owner-item-list" id="ownerItemList"></div>
+            </section>
+
+            <div class="detail-order-workspace" id="detailOrderWorkspace" aria-labelledby="ownerOrdersTab">
+              <form class="join-form" id="joinGroupForm">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">下單</p>
+                    <h3>選擇品項</h3>
+                  </div>
+                </div>
+
+                <div class="quantity-list" id="quantityList"></div>
+                <p class="order-availability" id="orderAvailability"></p>
+                <section class="selection-summary" id="selectionSummary" aria-live="polite">
+                  <div class="selection-summary-head">
+                    <span>已選明細</span>
+                    <strong id="selectionTotal">NT$0</strong>
+                  </div>
+                  <div class="selection-list" id="selectionList"></div>
+                  <p class="selection-empty" id="selectionEmpty">尚未選擇品項</p>
+                </section>
+                <button class="primary-action full" id="joinSubmitButton" type="submit">送出訂單</button>
+              </form>
+
+              <section class="orders-panel">
+                <div class="section-heading compact">
+                  <div>
+                    <p class="eyebrow">訂單</p>
+                    <h3 id="orderSectionTitle">近期訂單</h3>
+                  </div>
+                  <button class="text-button hidden" id="saveOrdersButton" type="button">儲存訂單變更</button>
+                </div>
+                <div class="order-list" id="orderList"></div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="loading-overlay is-visible" id="loadingOverlay" role="status" aria-live="polite" aria-busy="true">
+      <div class="loading-panel">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <strong id="loadingTitle">載入中</strong>
+        <p id="loadingMessage">正在登入並讀取團購資料</p>
+        <div class="loading-progress-meta">
+          <span>載入進度</span>
+          <strong id="loadingPercent">0%</strong>
+        </div>
+        <div class="loading-progress" id="loadingProgress" role="progressbar" aria-label="載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="loadingProgressBar"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileDialogTitle">
+      <form class="profile-form" id="profileForm" autocomplete="off">
+        <div class="profile-dialog-head">
+          <div>
+            <p class="eyebrow">公開名稱</p>
+            <h2 id="profileDialogTitle">設定顯示名稱</h2>
+          </div>
+          <button class="icon-button" id="profileDialogCloseButton" type="button" aria-label="關閉公開名稱設定" title="關閉">×</button>
+        </div>
+
+        <div class="profile-current">
+          <span>原名稱</span>
+          <strong id="profileOriginalName">LINE 使用者</strong>
+        </div>
+
+        <label class="field profile-field">
+          <span>公開名稱</span>
+          <input id="publicNameInput" type="text" maxlength="40" placeholder="留空使用原名稱" aria-describedby="publicNameHelp publicNameError" />
+        </label>
+        <p class="field-help" id="publicNameHelp">公開名稱會顯示在團主與訂單，不能和其他使用者重複。</p>
+        <p class="field-error" id="publicNameError" role="alert"></p>
+
+        <div class="profile-preview" aria-live="polite">
+          <span>將顯示為</span>
+          <strong id="publicNamePreview">LINE 使用者</strong>
+          <small id="publicNamePreviewSource">原名稱</small>
+        </div>
+
+        <div class="profile-actions">
+          <button class="text-button" id="publicNameResetButton" type="button">使用原名稱</button>
+          <div>
+            <button class="text-button" id="profileCancelButton" type="button">取消</button>
+            <button class="primary-action" id="publicNameSaveButton" type="submit">儲存</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="itemRowTemplate">
+      <div class="item-row">
+        <label class="field dense">
+          <span>項目</span>
+          <input name="itemName" type="text" maxlength="32" placeholder="品項名稱" required />
+        </label>
+        <label class="field dense price-field">
+          <span>金額</span>
+          <input name="itemPrice" type="number" min="0" step="1" inputmode="numeric" placeholder="0" required />
+        </label>
+        <button class="icon-button remove-item" type="button" aria-label="移除項目" title="移除">×</button>
+        <label class="owner-item-option-toggle">
+          <input class="owner-item-has-options" type="checkbox" />
+          <span>套用品項細項 / 加價選項</span>
+        </label>
+        <div class="owner-item-option-picker hidden"></div>
+      </div>
+    </template>
+
+    <template id="groupCardTemplate">
+      <article class="group-card" tabindex="0">
+        <div class="group-card-top">
+          <div>
+            <p class="group-owner"></p>
+            <h3 class="group-name"></h3>
+            <span class="group-state-badge hidden"></span>
+          </div>
+          <span class="status-dot" aria-hidden="true"></span>
+        </div>
+        <div class="group-items"></div>
+        <div class="group-schedule" aria-label="下單時間"></div>
+        <div class="group-meta">
+          <span class="meta-orders"></span>
+          <span class="meta-total"></span>
+        </div>
+      </article>
+    </template>
+
+    <template id="quantityRowTemplate">
+      <div class="quantity-row">
+        <div class="quantity-meta">
+          <div>
+            <strong class="quantity-name"></strong>
+            <span class="quantity-price"></span>
+          </div>
+          <button class="text-button remove-quantity-variant hidden" type="button">移除細項</button>
+        </div>
+        <div class="quantity-options"></div>
+        <div class="stepper">
+          <button type="button" data-step="-1" aria-label="減少數量">−</button>
+          <input type="number" min="0" step="1" value="0" inputmode="numeric" />
+          <button type="button" data-step="1" aria-label="增加數量">+</button>
+        </div>
+        <button class="text-button add-quantity-variant hidden" type="button">新增不同細項</button>
+      </div>
+    </template>
+
+    <template id="orderRowTemplate">
+      <article class="order-row">
+        <div class="order-summary">
+          <div>
+            <div class="order-user-line">
+              <strong class="order-user"></strong>
+              <span class="order-role-badge"></span>
+              <span class="order-payment-badge"></span>
+            </div>
+            <p class="order-items"></p>
+          </div>
+          <div class="order-side">
+            <span class="order-total"></span>
+            <label class="order-payment-toggle hidden">
+              <input class="order-paid-checkbox" type="checkbox" />
+              <span>已收費</span>
+            </label>
+          </div>
+        </div>
+        <div class="order-editor hidden"></div>
+      </article>
+    </template>
+
+    <template id="ownerItemTemplate">
+      <div class="owner-item-row">
+        <input class="owner-item-name" type="text" maxlength="32" aria-label="品項名稱" placeholder="品項名稱" />
+        <input class="owner-item-price" type="number" min="0" step="1" inputmode="numeric" aria-label="品項金額" placeholder="金額" />
+        <button class="icon-button delete-owner-item" type="button" aria-label="刪除品項" title="刪除">×</button>
+        <label class="owner-item-option-toggle">
+          <input class="owner-item-has-options" type="checkbox" />
+          <span>套用品項細項 / 加價選項</span>
+        </label>
+        <div class="owner-item-option-picker hidden"></div>
+      </div>
+    </template>
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh-tw.js"></script>
+    <script src="app.js" defer></script>
+  </body>
+</html>
