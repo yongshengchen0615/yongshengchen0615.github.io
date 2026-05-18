@@ -21,6 +21,8 @@
   };
 
   const elements = {
+    appLoading: document.getElementById("appLoading"),
+    loadingText: document.getElementById("loadingText"),
     teacherTitle: document.getElementById("teacher-title"),
     viewButtons: Array.from(document.querySelectorAll("[data-view]")),
     studentsView: document.getElementById("studentsView"),
@@ -149,7 +151,9 @@
       TEACHER_SESSION_KEY,
       JSON.stringify({
         uuid: teacher.uuid,
-        publicToken: teacher.publicToken
+        publicToken: teacher.publicToken,
+        lineUserId: teacher.lineUserId,
+        loginMode: AppApi.isLineLoginEnabled() ? "line" : "test"
       })
     );
   }
@@ -157,7 +161,22 @@
   function readTeacherSession() {
     try {
       const session = JSON.parse(localStorage.getItem(TEACHER_SESSION_KEY) || "null");
-      if (session && session.uuid && session.publicToken) return session;
+      if (session && session.uuid && session.publicToken) {
+        if (AppApi.isLineLoginEnabled()) {
+          if (session.loginMode === "test") {
+            localStorage.removeItem(TEACHER_SESSION_KEY);
+            return null;
+          }
+        } else if (session.loginMode !== "test" || session.lineUserId !== AppApi.testLineUserId("teacher")) {
+          localStorage.removeItem(TEACHER_SESSION_KEY);
+          return null;
+        }
+
+        return {
+          uuid: session.uuid,
+          publicToken: session.publicToken
+        };
+      }
     } catch (error) {
       localStorage.removeItem(TEACHER_SESSION_KEY);
     }
@@ -173,7 +192,7 @@
   function teacherPayload(extra) {
     const session = readTeacherSession();
     if (!session) {
-      throw new Error("請先使用 LINE 登入師資帳號。");
+      throw new Error(AppApi.isLineLoginEnabled() ? "請先使用 LINE 登入師資帳號。" : "請先使用測試登入師資帳號。");
     }
 
     return Object.assign(
@@ -189,9 +208,10 @@
     currentTeacher = teacher || null;
 
     if (!teacher) {
+      const isLineLogin = AppApi.isLineLoginEnabled();
       elements.teacherAuthName.textContent = "師資登入";
-      elements.teacherAuthStatus.textContent = message || "使用 LINE 登入後等待審核。";
-      elements.connectButton.textContent = "LINE 登入";
+      elements.teacherAuthStatus.textContent = message || (isLineLogin ? "使用 LINE 登入後等待審核。" : "使用 config.json 測試師資登入。");
+      elements.connectButton.textContent = isLineLogin ? "LINE 登入" : "測試登入";
       elements.logoutButton.hidden = true;
       return;
     }
@@ -220,7 +240,7 @@
     hidePracticeRecords();
     updateMetrics();
     renderTeacherAuth(null);
-    setEmpty("請先使用 LINE 登入師資帳號。");
+    setEmpty(AppApi.isLineLoginEnabled() ? "請先使用 LINE 登入師資帳號。" : "請先使用測試師資登入。");
     elements.practiceTargetList.textContent = "師資審核通過後載入。";
     elements.practiceItemList.textContent = "師資審核通過後載入。";
     elements.locationSummary.textContent = "師資審核通過後載入。";
@@ -257,7 +277,16 @@
     }
   }
 
-  function setLoading(isLoading) {
+  function setLoadingScreen(isLoading, message) {
+    if (!elements.appLoading) return;
+    if (message && elements.loadingText) elements.loadingText.textContent = message;
+    elements.appLoading.hidden = !isLoading;
+    elements.appLoading.setAttribute("aria-busy", isLoading ? "true" : "false");
+    document.body.classList.toggle("loading-open", isLoading);
+  }
+
+  function setLoading(isLoading, message, options) {
+    options = options || {};
     elements.connectButton.disabled = isLoading;
     elements.logoutButton.disabled = isLoading;
     elements.reloadButton.disabled = isLoading;
@@ -267,6 +296,26 @@
     elements.openLocationMapButton.disabled = isLoading;
     elements.closeLocationMapButton.disabled = isLoading;
     elements.saveLocationButton.disabled = isLoading;
+    if (options.overlay !== false) {
+      setLoadingScreen(isLoading, message);
+    }
+  }
+
+  function setButtonLoading(button, isLoading, loadingText) {
+    if (!button) return;
+
+    if (isLoading) {
+      if (!button.dataset.idleText) button.dataset.idleText = button.textContent;
+      button.textContent = loadingText;
+      button.classList.add("is-loading");
+      button.disabled = true;
+      return;
+    }
+
+    button.textContent = button.dataset.idleText || button.textContent;
+    delete button.dataset.idleText;
+    button.classList.remove("is-loading");
+    button.disabled = false;
   }
 
   function setEmpty(message) {
@@ -665,8 +714,13 @@
   }
 
   async function beginLineLogin() {
+    if (!AppApi.isLineLoginEnabled()) {
+      await beginTestLogin();
+      return;
+    }
+
     try {
-      setLoading(true);
+      setLoading(true, "正在前往 LINE 登入");
       setEmpty("正在前往 LINE 登入頁面。");
       renderTeacherAuth(null, "正在開啟 LINE 登入。");
 
@@ -709,7 +763,35 @@
     }
   }
 
+  async function beginTestLogin() {
+    try {
+      setLoading(true, "正在建立測試師資登入");
+      setEmpty("正在建立測試師資登入。");
+      renderTeacherAuth(null, "正在使用 config.json 的測試師資資料登入。");
+
+      const teacher = await AppApi.post("testTeacherLogin", {
+        profile: AppApi.testLoginProfile("teacher")
+      });
+
+      saveTeacherSession(teacher);
+      renderTeacherAuth(teacher);
+
+      if (normalizeStatus(teacher.status) === "approved") {
+        await loadStudents();
+      } else {
+        setEmpty("師資帳號尚未審核通過。請在 GAS 的 teachers 工作表將此測試師資 status 改為 approved。");
+      }
+    } catch (error) {
+      renderTeacherAuth(null, error.message);
+      setEmpty(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCallback() {
+    if (!AppApi.isLineLoginEnabled()) return false;
+
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
     const code = params.get("code");
@@ -724,7 +806,7 @@
 
     if (!code) return false;
 
-    setLoading(true);
+    setLoading(true, "正在驗證 LINE 登入");
     setEmpty("正在驗證 LINE 登入。");
     renderTeacherAuth(null, "正在驗證 LINE 登入。");
 
@@ -768,7 +850,7 @@
       return;
     }
 
-    setLoading(true);
+    setLoading(true, "正在檢查師資審核狀態");
     if (!options || options.showMessage !== false) {
       setEmpty("正在檢查師資審核狀態。");
     }
@@ -801,7 +883,7 @@
   async function loadStudents() {
     if (!requireApprovedTeacher()) return;
 
-    setLoading(true);
+    setLoading(true, "正在載入學員名單");
     setEmpty("正在載入學員名單。");
     hideAttendanceRecords();
     hidePracticeRecords();
@@ -832,7 +914,7 @@
         ? window.prompt("未通過原因，可留空：", current ? current.reviewNote || "" : "") || ""
         : "";
 
-    setLoading(true);
+    setLoading(true, "正在更新審核狀態");
 
     try {
       const updated = await AppApi.post("updateStudentStatus", teacherPayload({
@@ -859,7 +941,7 @@
       return;
     }
 
-    setLoading(true);
+    setLoading(true, "正在移除學員");
 
     try {
       await AppApi.post("deleteStudent", teacherPayload({
@@ -887,7 +969,7 @@
     elements.attendanceTitle.textContent = `${name} 簽到紀錄`;
     elements.attendanceBody.innerHTML = "";
     setAttendanceEmpty("正在載入簽到紀錄。");
-    setLoading(true);
+    setLoading(true, "正在載入簽到紀錄");
 
     try {
       const data = await AppApi.post("listAttendanceRecords", teacherPayload({
@@ -938,7 +1020,7 @@
     elements.practiceRecordTitle.textContent = `${name} 練習紀錄`;
     elements.practiceRecordBody.innerHTML = "";
     setPracticeRecordEmpty("正在載入練習紀錄。");
-    setLoading(true);
+    setLoading(true, "正在載入練習紀錄");
 
     try {
       const data = await AppApi.post("listPracticeRecords", teacherPayload({
@@ -995,7 +1077,7 @@
       return;
     }
 
-    setLoading(true);
+    setLoading(true, "正在新增選項");
 
     try {
       const data = await AppApi.post(action, teacherPayload({
@@ -1019,7 +1101,7 @@
       return;
     }
 
-    setLoading(true);
+    setLoading(true, "正在移除選項");
 
     try {
       await AppApi.post(action, teacherPayload({
@@ -1101,7 +1183,7 @@
   }
 
   async function detectLocation() {
-    setLoading(true);
+    setLoading(true, "正在取得目前定位");
     renderLocationSummary(currentLocationFormValue(), "正在取得目前定位。");
 
     try {
@@ -1127,7 +1209,9 @@
       return;
     }
 
-    setLoading(true);
+    setLoading(true, "", { overlay: false });
+    setButtonLoading(elements.saveLocationButton, true, "儲存中");
+    renderLocationSummary(payload, "正在儲存定位範圍。");
 
     try {
       const data = await AppApi.post("updateLocationSettings", teacherPayload(payload));
@@ -1135,9 +1219,10 @@
       renderLocationSettings();
       renderLocationSummary(practiceSettings.location, "定位範圍已儲存。");
     } catch (error) {
-      window.alert(error.message);
+      renderLocationSummary(payload, error.message);
     } finally {
-      setLoading(false);
+      setButtonLoading(elements.saveLocationButton, false);
+      setLoading(false, "", { overlay: false });
     }
   }
 
@@ -1234,7 +1319,7 @@
     setTheme(currentTheme(), { persist: false });
     bindEvents();
 
-    setLoading(true);
+    setLoading(true, "正在載入師資系統");
     try {
       await AppApi.loadConfig();
     } catch (error) {

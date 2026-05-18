@@ -47,13 +47,40 @@
     const missing = [];
 
     if (!isConfigured(config.gasWebAppUrl)) missing.push("gasWebAppUrl");
-    if (options.line && !isConfigured(config.lineChannelId)) missing.push("lineChannelId");
+    if (options.line && isLineLoginEnabled() && !isConfigured(config.lineChannelId)) missing.push("lineChannelId");
 
     if (missing.length) {
       throw new Error("尚未設定 config.json: " + missing.join(", "));
     }
 
     return config;
+  }
+
+  function isLineLoginEnabled() {
+    const config = getConfig();
+    return config.enableLineLogin !== false;
+  }
+
+  function cleanString(value) {
+    return String(value || "").trim();
+  }
+
+  function testLoginProfile(role) {
+    const config = getConfig();
+    const profile = config[role === "teacher" ? "testTeacher" : "testStudent"] || config.testLoginProfile || {};
+    const fallbackName = role === "teacher" ? "測試師資" : "測試學員";
+    const fallbackId = role === "teacher" ? "default-teacher" : "default-student";
+
+    return {
+      lineUserId: cleanString(profile.lineUserId) || fallbackId,
+      lineName: cleanString(profile.lineName) || fallbackName,
+      linePictureUrl: cleanString(profile.linePictureUrl)
+    };
+  }
+
+  function testLineUserId(role) {
+    const lineUserId = testLoginProfile(role).lineUserId;
+    return lineUserId.indexOf("test:") === 0 ? lineUserId : "test:" + role + ":" + lineUserId;
   }
 
   function studentRedirectUri() {
@@ -145,9 +172,12 @@
     escapeHtml,
     formatDate,
     getConfig,
+    isLineLoginEnabled,
     loadConfig,
     post,
     requireConfig,
-    studentRedirectUri
+    studentRedirectUri,
+    testLineUserId,
+    testLoginProfile
   };
 })();
