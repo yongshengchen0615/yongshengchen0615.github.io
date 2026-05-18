@@ -94,6 +94,74 @@ body {
   color: var(--ink);
 }
 
+body.loading-open {
+  overflow: hidden;
+}
+
+.app-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.app-loading__panel {
+  display: grid;
+  width: min(360px, 100%);
+  justify-items: center;
+  gap: 18px;
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.app-loading__mark {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: 3px solid var(--surface-muted);
+  border-top-color: var(--line);
+  border-radius: 50%;
+  animation: loadingSpin 900ms linear infinite;
+}
+
+.app-loading__mark::after {
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  background: var(--line-border-soft);
+  content: "";
+}
+
+.app-loading__copy {
+  display: grid;
+  gap: 8px;
+}
+
+.app-loading h2,
+.app-loading p {
+  margin: 0;
+}
+
+.app-loading h2 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.app-loading__copy p:last-child {
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 button,
 input,
 select,
@@ -387,6 +455,24 @@ img {
   transform: none;
 }
 
+.button.is-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 1;
+}
+
+.button.is-loading::before {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: loadingSpin 720ms linear infinite;
+  content: "";
+}
+
 .button--line {
   background: var(--line);
   color: var(--button-line-ink);
@@ -668,6 +754,10 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.location-actions #saveLocationButton {
+  min-width: 96px;
 }
 
 .location-map-panel {
@@ -967,6 +1057,19 @@ tbody tr:hover {
   to {
     transform: scale(1.1);
     opacity: 1;
+  }
+}
+
+@keyframes loadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-loading__mark,
+  .status-dot--busy {
+    animation: none;
   }
 }
 

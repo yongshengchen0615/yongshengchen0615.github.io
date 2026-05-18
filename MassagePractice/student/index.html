@@ -13,9 +13,20 @@
         } catch (error) {}
       })();
     </script>
-    <link rel="stylesheet" href="css/styles.css?v=20260507-2" />
+    <link rel="stylesheet" href="css/styles.css?v=20260518-1" />
   </head>
   <body>
+    <section class="app-loading" id="appLoading" role="status" aria-live="polite" aria-busy="true">
+      <div class="app-loading__panel">
+        <div class="app-loading__mark" aria-hidden="true"></div>
+        <div class="app-loading__copy">
+          <p class="eyebrow">Student Portal</p>
+          <h2>學員系統</h2>
+          <p id="loadingText">正在載入系統</p>
+        </div>
+      </div>
+    </section>
+
     <header class="topbar">
       <span class="brand">學員審核系統</span>
       <div class="topbar__actions">
@@ -140,7 +151,7 @@
       </div>
     </section>
 
-    <script src="js/api.js?v=20260507-1"></script>
-    <script src="js/student.js?v=20260507-5"></script>
+    <script src="js/api.js?v=20260518-1"></script>
+    <script src="js/student.js?v=20260518-2"></script>
   </body>
 </html>

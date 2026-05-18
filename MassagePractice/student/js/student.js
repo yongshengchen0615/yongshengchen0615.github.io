@@ -15,6 +15,8 @@
   let practiceTimerPendingStart = false;
 
   const elements = {
+    appLoading: document.getElementById("appLoading"),
+    loadingText: document.getElementById("loadingText"),
     refreshButton: document.getElementById("refreshButton"),
     checkInButton: document.getElementById("checkInButton"),
     checkOutButton: document.getElementById("checkOutButton"),
@@ -100,6 +102,14 @@
     elements.startPracticeButton.disabled = isBusy;
     elements.endPracticeButton.disabled = isBusy;
     setStatus(isBusy ? "busy" : "idle", message);
+  }
+
+  function setLoadingScreen(isLoading, message) {
+    if (!elements.appLoading) return;
+    if (message && elements.loadingText) elements.loadingText.textContent = message;
+    elements.appLoading.hidden = !isLoading;
+    elements.appLoading.setAttribute("aria-busy", isLoading ? "true" : "false");
+    document.body.classList.toggle("loading-open", isLoading);
   }
 
   function setStatus(status, message) {
@@ -282,19 +292,6 @@
     elements.practiceTimerValue.textContent = formatElapsedTime(practiceTimerStartMs);
   }
 
-  function selectedPracticeName(select, otherInput) {
-    if (isPracticeOtherOption(select.value)) return cleanPracticeInput(otherInput);
-    const option = select.options[select.selectedIndex];
-    return option ? option.textContent.trim() : "";
-  }
-
-  function currentPracticeDraftRecord() {
-    return {
-      targetName: selectedPracticeName(elements.practiceTargetSelect, elements.practiceTargetOtherInput),
-      itemName: selectedPracticeName(elements.practiceItemSelect, elements.practiceItemOtherInput)
-    };
-  }
-
   function clearPracticeTimerInterval() {
     if (!practiceTimerId) return;
     window.clearInterval(practiceTimerId);
@@ -305,13 +302,15 @@
     options = options || {};
     const start = new Date(record.startedAt);
     const isPendingStart = Boolean(options.pendingStart);
+    const shouldPreserveStart = Boolean(options.preserveStart && practiceTimerStartMs);
     const startMs = isPendingStart
       ? 0
-      : options.preserveStart && practiceTimerStartMs
+      : shouldPreserveStart
         ? practiceTimerStartMs
         : Number.isNaN(start.getTime())
           ? Date.now()
           : start.getTime();
+    const startedAtText = shouldPreserveStart ? new Date(startMs).toISOString() : record.startedAt;
     const wasHidden = elements.practiceTimerOverlay.hidden;
     const practiceLabel = [record.targetName, record.itemName]
       .map((value) => String(value || "").trim())
@@ -324,8 +323,8 @@
     elements.practiceTimerMeta.textContent = practiceLabel || "練習進行中";
     elements.practiceTimerStartedAt.textContent = practiceTimerPendingStart
       ? "等待開始"
-      : record.startedAt
-        ? "開始 " + AppApi.formatDate(record.startedAt)
+      : startedAtText
+        ? "開始 " + AppApi.formatDate(startedAtText)
         : "";
     elements.endPracticeButton.textContent = practiceTimerPendingStart ? "等待開始" : "結束練習";
     elements.endPracticeButton.disabled = practiceTimerPendingStart;
@@ -368,7 +367,9 @@
       STORAGE_KEY,
       JSON.stringify({
         uuid: student.uuid,
-        publicToken: student.publicToken
+        publicToken: student.publicToken,
+        lineUserId: student.lineUserId,
+        loginMode: AppApi.isLineLoginEnabled() ? "line" : "test"
       })
     );
   }
@@ -376,7 +377,22 @@
   function readSession() {
     try {
       const session = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (session && session.uuid && session.publicToken) return session;
+      if (session && session.uuid && session.publicToken) {
+        if (AppApi.isLineLoginEnabled()) {
+          if (session.loginMode === "test") {
+            localStorage.removeItem(STORAGE_KEY);
+            return null;
+          }
+        } else if (session.loginMode !== "test" || session.lineUserId !== AppApi.testLineUserId("student")) {
+          localStorage.removeItem(STORAGE_KEY);
+          return null;
+        }
+
+        return {
+          uuid: session.uuid,
+          publicToken: session.publicToken
+        };
+      }
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -425,7 +441,11 @@
     hideStudentViews();
     hidePracticeTimer();
     setStatus("idle", "尚未登入");
-    setNotice("系統會自動開啟 LINE 登入，並送出資料等待師資審核。");
+    setNotice(
+      AppApi.isLineLoginEnabled()
+        ? "系統會自動開啟 LINE 登入，並送出資料等待師資審核。"
+        : "目前是測試登入模式，系統會使用 config.json 的測試學員資料。"
+    );
   }
 
   function renderAttendance(student) {
@@ -615,7 +635,13 @@
   }
 
   async function beginLineLogin() {
+    if (!AppApi.isLineLoginEnabled()) {
+      await beginTestLogin();
+      return;
+    }
+
     try {
+      setLoadingScreen(true, "正在前往 LINE 登入");
       setStatus("busy", "正在開啟 LINE 登入");
       setNotice("正在前往 LINE 登入頁面。");
 
@@ -652,12 +678,39 @@
 
       window.location.assign(AUTH_URL + "?" + params.toString());
     } catch (error) {
+      setLoadingScreen(false);
       setStatus("rejected", "設定未完成");
       setNotice(error.message);
     }
   }
 
+  async function beginTestLogin() {
+    try {
+      setLoadingScreen(true, "正在建立測試登入");
+      setStatus("busy", "正在建立測試登入");
+      setNotice("正在使用 config.json 的測試學員資料登入。");
+
+      const student = await AppApi.post("testStudentLogin", {
+        profile: AppApi.testLoginProfile("student")
+      });
+
+      saveSession(student);
+      renderStudent(student);
+    } catch (error) {
+      setStatus("rejected", "測試登入失敗");
+      setNotice(error.message);
+    } finally {
+      setLoadingScreen(false);
+      elements.refreshButton.disabled = false;
+      if (currentStudent) {
+        renderStudentSections(currentStudent);
+      }
+    }
+  }
+
   async function handleCallback() {
+    if (!AppApi.isLineLoginEnabled()) return false;
+
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
     const code = params.get("code");
@@ -665,6 +718,7 @@
 
     if (error) {
       AppApi.cleanOauthParams();
+      setLoadingScreen(false);
       setStatus("rejected", "LINE 登入取消");
       setNotice(params.get("error_description") || "LINE 登入未完成。");
       return true;
@@ -673,6 +727,7 @@
     if (!code) return false;
 
     setBusy(true, "正在驗證 LINE 登入");
+    setLoadingScreen(true, "正在驗證 LINE 登入");
 
     try {
       const oauth = JSON.parse(sessionStorage.getItem(OAUTH_KEY) || "null");
@@ -695,6 +750,7 @@
       setStatus("rejected", "登入失敗");
       setNotice(error.message);
     } finally {
+      setLoadingScreen(false);
       elements.refreshButton.disabled = false;
     }
 
@@ -715,10 +771,12 @@
     };
 
     try {
+      setLoadingScreen(true, locationRequirement() ? "正在取得定位" : action === "checkIn" ? "正在簽到" : "正在簽退");
       setBusy(true, locationRequirement() ? "正在取得定位" : action === "checkIn" ? "正在簽到" : "正在簽退");
       const location = await locationPayloadForAction();
       if (location) payload.location = location;
 
+      setLoadingScreen(true, action === "checkIn" ? "正在簽到" : "正在簽退");
       setBusy(true, action === "checkIn" ? "正在簽到" : "正在簽退");
       const student = await AppApi.post(action, payload);
       saveSession(student);
@@ -727,6 +785,7 @@
       setStatus("rejected", action === "checkIn" ? "簽到失敗" : "簽退失敗");
       setNotice(error.message);
     } finally {
+      setLoadingScreen(false);
       elements.refreshButton.disabled = false;
       if (currentStudent) {
         renderStudentSections(currentStudent);
@@ -742,6 +801,7 @@
       return;
     }
 
+    let renderedStudent = false;
     const payload = {
       uuid: session.uuid,
       publicToken: session.publicToken
@@ -781,20 +841,28 @@
     }
 
     try {
+      setLoadingScreen(true, locationRequirement() ? "正在取得定位" : action === "startPractice" ? "正在開始練習" : "正在結束練習");
       setBusy(true, locationRequirement() ? "正在取得定位" : action === "startPractice" ? "正在開始練習" : "正在結束練習");
       const location = await locationPayloadForAction();
       if (location) payload.location = location;
 
-      if (action === "startPractice") {
-        showPracticeTimer(currentPracticeDraftRecord(), { pendingStart: true });
-      } else {
+      if (action !== "startPractice") {
         freezePracticeTimer("結束中");
       }
 
+      setLoadingScreen(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
       setBusy(true, action === "startPractice" ? "正在開始練習" : "正在結束練習");
       const student = await AppApi.post(action, payload);
       saveSession(student);
+
+      if (action === "startPractice") {
+        practiceTimerStartMs = Date.now();
+        practiceTimerPendingStart = true;
+        setLoadingScreen(false);
+      }
+
       renderStudent(student);
+      renderedStudent = true;
     } catch (error) {
       if (action === "startPractice") {
         hidePracticeTimer();
@@ -805,8 +873,9 @@
       setStatus("rejected", action === "startPractice" ? "開始失敗" : "結束失敗");
       setNotice(error.message);
     } finally {
+      setLoadingScreen(false);
       elements.refreshButton.disabled = false;
-      if (currentStudent) {
+      if (currentStudent && !renderedStudent) {
         renderStudentSections(currentStudent);
       }
     }
@@ -820,6 +889,7 @@
     }
 
     setBusy(true, "正在更新審核狀態");
+    setLoadingScreen(true, "正在更新審核狀態");
 
     try {
       const student = await AppApi.post("getStudentStatus", session);
@@ -830,6 +900,7 @@
       clearSession();
       await beginLineLogin();
     } finally {
+      setLoadingScreen(false);
       elements.refreshButton.disabled = false;
       if (currentStudent) {
         renderStudentSections(currentStudent);
@@ -856,10 +927,12 @@
   async function init() {
     setTheme(currentTheme(), { persist: false });
     bindEvents();
+    setLoadingScreen(true, "正在載入學員系統");
 
     try {
       await AppApi.loadConfig();
     } catch (error) {
+      setLoadingScreen(false);
       setStatus("rejected", "設定讀取失敗");
       setNotice(error.message);
       elements.refreshButton.disabled = true;

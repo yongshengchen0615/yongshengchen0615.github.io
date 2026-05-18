@@ -167,8 +167,16 @@ function handleAction_(action, payload) {
     return lineLogin_(payload);
   }
 
+  if (action === "testStudentLogin") {
+    return testStudentLogin_(payload);
+  }
+
   if (action === "teacherLineLogin") {
     return teacherLineLogin_(payload);
+  }
+
+  if (action === "testTeacherLogin") {
+    return testTeacherLogin_(payload);
   }
 
   if (action === "getTeacherStatus") {
@@ -306,6 +314,12 @@ function lineLogin_(payload) {
   return publicStudent_(student, true);
 }
 
+function testStudentLogin_(payload) {
+  const profile = testLoginProfile_(payload, "student");
+  const student = upsertStudent_(profile);
+  return publicStudent_(student, true);
+}
+
 function teacherLineLogin_(payload) {
   requireFields_(payload, ["code", "redirectUri"]);
 
@@ -326,6 +340,31 @@ function teacherLineLogin_(payload) {
 
   const teacher = upsertTeacher_(profile);
   return publicTeacher_(teacher, true);
+}
+
+function testTeacherLogin_(payload) {
+  const profile = testLoginProfile_(payload, "teacher");
+  const teacher = upsertTeacher_(profile);
+  return publicTeacher_(teacher, true);
+}
+
+function testLoginProfile_(payload, role) {
+  const data = payload && payload.profile ? payload.profile : payload || {};
+  const rawUserId = cleanTestLoginValue_(data.lineUserId, 120);
+
+  if (!rawUserId) {
+    throw new Error("Missing field: lineUserId");
+  }
+
+  return {
+    lineUserId: rawUserId.indexOf("test:") === 0 ? rawUserId : "test:" + role + ":" + rawUserId,
+    lineName: cleanTestLoginValue_(data.lineName, 80) || (role === "teacher" ? "測試師資" : "測試學員"),
+    linePictureUrl: cleanTestLoginValue_(data.linePictureUrl, 500)
+  };
+}
+
+function cleanTestLoginValue_(value, maxLength) {
+  return String(value || "").trim().slice(0, maxLength);
 }
 
 function getTeacherStatus_(payload) {

@@ -2,8 +2,8 @@
 
 這是一組靜態 `HTML/CSS/JS` 前端加上 Google Apps Script 後端：
 
-- `student/`: 學員使用 LINE Login 登入，送出 LINE UUID、LINE 名稱、LINE 照片到 GAS；審核通過後可簽到、簽退，並記錄練習；若師資啟用定位限制，操作前會要求瀏覽器定位。
-- `teacher/`: 師資使用 LINE Login 登入；GAS 會建立師資資料，手動在 Google Sheet 將師資狀態改為通過後，才能讀取學員名單、審核學員、管理練習對象與項目、設定定位範圍，查看紀錄，或移除學員。
+- `student/`: 學員使用 LINE Login 登入，或在測試模式使用 `config.json` 的測試學員登入；審核通過後可簽到、簽退，並記錄練習；若師資啟用定位限制，操作前會要求瀏覽器定位。
+- `teacher/`: 師資使用 LINE Login 登入，或在測試模式使用 `config.json` 的測試師資登入；GAS 會建立師資資料，手動在 Google Sheet 將師資狀態改為通過後，才能讀取學員名單、審核學員、管理練習對象與項目、設定定位範圍，查看紀錄，或移除學員。
 - `gas/Code.gs`: GAS Web App 後端，負責 LINE token exchange、ID token 驗證、寫入 Google Sheet、簽到紀錄與練習紀錄。
 
 ## 檔案
@@ -90,9 +90,15 @@ SPREADSHEET_ID=你的 Google Sheet ID
 ```json
 {
   "appName": "學員審核系統",
+  "enableLineLogin": true,
   "lineChannelId": "你的 LINE Login Channel ID",
   "gasWebAppUrl": "你的 GAS Web App /exec URL",
   "studentRedirectUri": "https://你的網域/student/",
+  "testStudent": {
+    "lineUserId": "student-001",
+    "lineName": "測試學員",
+    "linePictureUrl": ""
+  },
   "enableDebug": false
 }
 ```
@@ -102,9 +108,15 @@ SPREADSHEET_ID=你的 Google Sheet ID
 ```json
 {
   "appName": "學員審核系統",
+  "enableLineLogin": true,
   "lineChannelId": "你的 LINE Login Channel ID",
   "gasWebAppUrl": "你的 GAS Web App /exec URL",
   "teacherRedirectUri": "https://你的網域/teacher/",
+  "testTeacher": {
+    "lineUserId": "teacher-001",
+    "lineName": "測試師資",
+    "linePictureUrl": ""
+  },
   "enableDebug": false
 }
 ```
@@ -118,14 +130,20 @@ SPREADSHEET_ID=你的 Google Sheet ID
 
 - 學員入口：`student/`
 - 師資入口：`teacher/`
+- `enableLineLogin` 設為 `false` 時，前端不會開啟 LINE OAuth，會改用 `testStudent` 或 `testTeacher` 的資料登入。測試登入建立的 `lineUserId` 會以 `test:student:` 或 `test:teacher:` 前綴寫入 Sheet。
 - 學員審核通過後，可以在學員系統按「簽到」與「簽退」，也可以選擇練習對象與練習項目後開始/結束練習；選「其他」時可自行輸入對象或項目。
+<<<<<<< HEAD
 - 師資第一次進入 `teacher/` 後會自動開啟 LINE 登入；登入後到 Google Sheet 的 `teachers` 工作表，把該師資列的 `status` 改成 `approved`，再回到師資頁按「重新整理」即可載入名單，並審核、批次新增練習選項、設定定位範圍、查看簽到/練習紀錄或移除學員。
+=======
+- 師資第一次進入 `teacher/` 後使用 LINE 或測試登入；登入後到 Google Sheet 的 `teachers` 工作表，把該師資列的 `status` 改成 `approved`，再回到師資頁按「重新檢查」即可載入名單，並審核、管理練習選項、設定定位範圍、查看簽到/練習紀錄或移除學員。
+>>>>>>> a1
 - 師資在「定位範圍」可輸入地點名稱與半徑；座標可用「使用目前定位」帶入，或開啟地圖後直接點選位置再儲存。
 
 ## 注意事項
 
 - `LINE_CHANNEL_SECRET` 不要放在前端，只能放在 GAS Script Properties。
 - LINE OAuth 的 `redirect_uri` 必須與 LINE Developers Console 登記的 Callback URL 完全一致。
+- `enableLineLogin: false` 是測試模式，公開部署前請改回 `true`，避免任何知道網址的人用測試身份寫入資料。
 - `student/config.json` 與 `teacher/config.json` 是兩份獨立設定檔，各自從自己的系統目錄讀取；JSON 不能加註解或尾端逗號。
 - 學員系統與師資系統頁面不提供彼此切換連結，請分別提供對應入口網址。
 - 前端呼叫 GAS 使用 `Content-Type: text/plain`，避免瀏覽器對 GAS Web App 送出 OPTIONS preflight。
