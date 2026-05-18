@@ -581,6 +581,12 @@ img {
   line-height: 1.4;
 }
 
+.teacher-auth__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 input,
 select,
 textarea {
@@ -1116,6 +1122,8 @@ tbody tr:hover {
   }
 
   .attendance-region__header button,
+  .teacher-auth__actions,
+  .teacher-auth__actions button,
   .practice-form textarea,
   .practice-form button,
   .location-actions button,

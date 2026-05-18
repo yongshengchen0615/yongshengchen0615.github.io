@@ -31,6 +31,8 @@
     locationSettingsView: document.getElementById("locationSettingsView"),
     teacherAuthName: document.getElementById("teacherAuthName"),
     teacherAuthStatus: document.getElementById("teacherAuthStatus"),
+    connectButton: document.getElementById("connectButton"),
+    logoutButton: document.getElementById("logoutButton"),
     reloadButton: document.getElementById("reloadButton"),
     searchInput: document.getElementById("searchInput"),
     statusFilter: document.getElementById("statusFilter"),
@@ -206,16 +208,14 @@
     currentTeacher = teacher || null;
 
     if (!teacher) {
-<<<<<<< HEAD
-      elements.teacherAuthName.textContent = "師資審核狀態";
-      elements.teacherAuthStatus.textContent = message || "尚未登入";
-=======
       const isLineLogin = AppApi.isLineLoginEnabled();
       elements.teacherAuthName.textContent = "師資登入";
       elements.teacherAuthStatus.textContent = message || (isLineLogin ? "使用 LINE 登入後等待審核。" : "使用 config.json 測試師資登入。");
       elements.connectButton.textContent = isLineLogin ? "LINE 登入" : "測試登入";
+      elements.connectButton.classList.toggle("button--line", isLineLogin);
+      elements.connectButton.classList.toggle("button--ghost", !isLineLogin);
+      elements.connectButton.hidden = false;
       elements.logoutButton.hidden = true;
->>>>>>> a1
       return;
     }
 
@@ -228,6 +228,8 @@
         : status === "rejected"
           ? "未通過"
           : "待審核");
+    elements.connectButton.hidden = true;
+    elements.logoutButton.hidden = false;
   }
 
   function renderLoggedOut() {
@@ -245,6 +247,12 @@
     elements.practiceTargetList.textContent = "師資審核通過後載入。";
     elements.practiceItemList.textContent = "師資審核通過後載入。";
     elements.locationSummary.textContent = "師資審核通過後載入。";
+  }
+
+  function logoutTeacher() {
+    clearTeacherSession();
+    renderLoggedOut();
+    setLoading(false, "", { overlay: false });
   }
 
   function requireApprovedTeacher() {
@@ -278,9 +286,7 @@
     }
   }
 
-<<<<<<< HEAD
-  function setLoading(isLoading) {
-=======
+
   function setLoadingScreen(isLoading, message) {
     if (!elements.appLoading) return;
     if (message && elements.loadingText) elements.loadingText.textContent = message;
@@ -293,7 +299,6 @@
     options = options || {};
     elements.connectButton.disabled = isLoading;
     elements.logoutButton.disabled = isLoading;
->>>>>>> a1
     elements.reloadButton.disabled = isLoading;
     elements.practiceTargetInput.disabled = isLoading;
     elements.practiceItemInput.disabled = isLoading;
@@ -1092,16 +1097,12 @@
       return;
     }
 
-<<<<<<< HEAD
-    setLoading(true);
-=======
-    if (name === PRACTICE_OTHER_OPTION_NAME) {
+    if (names.includes(PRACTICE_OTHER_OPTION_NAME)) {
       window.alert("「其他」已是系統固定選項。");
       return;
     }
 
     setLoading(true, "正在新增選項");
->>>>>>> a1
 
     try {
       const data = await AppApi.post(action, teacherPayload({
@@ -1273,6 +1274,8 @@
     elements.viewButtons.forEach((button) => {
       button.addEventListener("click", () => showView(button.dataset.view));
     });
+    elements.connectButton.addEventListener("click", () => beginLineLogin());
+    elements.logoutButton.addEventListener("click", logoutTeacher);
     elements.reloadButton.addEventListener("click", () => refreshTeacherStatus());
     elements.closeAttendanceButton.addEventListener("click", hideAttendanceRecords);
     elements.closePracticeRecordButton.addEventListener("click", hidePracticeRecords);
