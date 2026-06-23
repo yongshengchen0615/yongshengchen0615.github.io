@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>轉盤抽獎遊戲</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="../shared/style.css">
 </head>
 <body>
   <div class="container">
@@ -23,8 +23,9 @@
       <div id="pointer">▼</div>
       <button id="spinBtn" class="spin-center" aria-label="開始轉動">開始</button>
     </div>
-    <!-- 獎項與權重請直接在程式碼（app.js 的 defaultPrizes）中修改 -->
+    <!-- 獎項與權重由 config.js 指向的 Apps Script 提供 -->
   </div>
-  <script src="app.js"></script>
+  <script src="config.js"></script>
+  <script src="../shared/app.js"></script>
 </body>
 </html>
