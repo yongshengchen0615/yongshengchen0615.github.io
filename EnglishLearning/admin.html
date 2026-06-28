@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WordSpeak 管理員</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell admin-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Admin Console</p>
+          <h1>WordSpeak</h1>
+        </div>
+        <div class="top-actions">
+          <a class="nav-link" href="index.html">練習頁</a>
+          <div class="support-status" id="adminConnection">檢查連線中</div>
+        </div>
+      </header>
+
+      <main class="workspace admin-workspace">
+        <section class="panel composer admin-composer" aria-labelledby="adminTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Google Apps Script</p>
+              <h2 id="adminTitle">新增單字</h2>
+            </div>
+          </div>
+
+          <div class="learning-tabs admin-tabs" role="tablist" aria-label="管理資料類型">
+            <button
+              class="tab-button is-active"
+              id="adminWordMode"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              data-mode="words"
+            >
+              新增單字
+            </button>
+            <button
+              class="tab-button"
+              id="adminPhraseMode"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-mode="phrases"
+            >
+              新增片語
+            </button>
+          </div>
+
+          <form class="word-form" id="adminForm">
+            <label>
+              <span id="adminEnglishLabel">英文單字</span>
+              <input
+                id="adminEnglishInput"
+                type="text"
+                lang="en"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="achievement"
+                required
+              />
+            </label>
+
+            <label>
+              <span id="adminChineseLabel">中文意思</span>
+              <input
+                id="adminChineseInput"
+                type="text"
+                lang="zh-Hant"
+                autocomplete="off"
+                placeholder="成就"
+                required
+              />
+            </label>
+
+            <label class="is-hidden" id="adminExampleField">
+              <span>英文例句（選填）</span>
+              <input
+                id="adminExampleInput"
+                type="text"
+                lang="en"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="A simple question can break the ice."
+              />
+            </label>
+
+            <button class="primary-action" id="adminSubmit" type="submit">
+              <span aria-hidden="true">＋</span>
+              <span id="adminSubmitText">儲存單字到 GAS</span>
+            </button>
+          </form>
+
+          <div class="endpoint-box" aria-labelledby="endpointTitle">
+            <p class="eyebrow">Endpoint</p>
+            <h2 id="endpointTitle">GAS Web App URL</h2>
+            <code id="gasEndpoint">讀取 config.json 中</code>
+          </div>
+        </section>
+
+        <section class="panel practice admin-list-panel" aria-labelledby="recentTitle">
+          <div class="practice-header">
+            <div>
+              <p class="eyebrow" id="recentEyebrow">Vocabulary Store</p>
+              <h2 id="recentTitle">最近單字</h2>
+            </div>
+            <button class="tool-button" id="refreshWords" type="button">重新載入</button>
+          </div>
+
+          <div class="status-line" id="adminStatus" role="status" aria-live="polite">等待操作</div>
+
+          <ul class="word-list admin-word-list" id="adminWordList"></ul>
+
+          <div class="empty-state" id="adminEmptyState">
+            <strong id="adminEmptyTitle">還沒有 GAS 單字</strong>
+            <span id="adminEmptyText">設定 URL 後就能新增與讀取</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="admin.js" defer></script>
+  </body>
+</html>

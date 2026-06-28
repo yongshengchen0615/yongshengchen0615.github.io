@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WordSpeak 英文單字朗讀</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">English Learning</p>
+          <h1>WordSpeak</h1>
+        </div>
+        <div class="top-actions">
+          <div class="support-status" id="syncStatus">資料檢查中</div>
+          <div class="support-status" id="supportStatus">語音準備中</div>
+        </div>
+      </header>
+
+      <section class="now-playing" aria-labelledby="nowPlayingLabel" aria-live="polite">
+        <div>
+          <p class="eyebrow" id="nowPlayingLabel">Now Speaking</p>
+          <div class="now-kind" id="nowKind">等待播放</div>
+        </div>
+        <div class="now-text" id="nowText">選擇單字後開始</div>
+        <div class="now-hint" id="nowHint">字母 → 單字 → 中文</div>
+      </section>
+
+      <div class="learning-tabs" role="tablist" aria-label="學習內容">
+        <button
+          class="tab-button is-active"
+          id="wordTab"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="practicePanel"
+          data-mode="words"
+        >
+          學習單字
+        </button>
+        <button
+          class="tab-button"
+          id="phraseTab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="practicePanel"
+          data-mode="phrases"
+        >
+          學習片語
+        </button>
+      </div>
+
+      <main class="workspace">
+        <section class="panel composer" aria-labelledby="voiceTitle">
+          <div class="voice-area" aria-labelledby="voiceTitle">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Voice</p>
+                <h2 id="voiceTitle">語音設定</h2>
+              </div>
+            </div>
+
+            <div class="settings-grid">
+              <label>
+                <span>英文語音</span>
+                <select id="englishVoice"></select>
+              </label>
+
+              <label>
+                <span>中文語音</span>
+                <select id="chineseVoice"></select>
+              </label>
+
+              <label>
+                <span>字母速度</span>
+                <input id="letterRate" type="range" min="0.6" max="1.2" step="0.05" value="0.86" />
+              </label>
+
+              <label>
+                <span>中文速度</span>
+                <input id="chineseRate" type="range" min="0.7" max="1.15" step="0.05" value="0.92" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel practice" id="practicePanel" aria-labelledby="listTitle">
+          <div class="practice-header">
+            <div>
+              <p class="eyebrow" id="listEyebrow">Practice Queue</p>
+              <h2 id="listTitle">單字清單</h2>
+            </div>
+            <div class="counter" id="wordCount">0</div>
+          </div>
+
+          <div class="toolbar" aria-label="朗讀控制">
+            <label class="mode-toggle">
+              <input id="loopPlayback" type="checkbox" />
+              <span>循環播放</span>
+            </label>
+            <label class="mode-toggle">
+              <input id="randomPlayback" type="checkbox" />
+              <span>隨機播放</span>
+            </label>
+            <button class="tool-button" id="playSelected" type="button" title="播放目前單字">
+              <span aria-hidden="true">▶</span>
+              播放
+            </button>
+            <button class="tool-button" id="playAll" type="button" title="播放全部單字">
+              <span aria-hidden="true">▶▶</span>
+              全部
+            </button>
+            <button class="tool-button danger" id="stopSpeech" type="button" title="停止朗讀">
+              <span aria-hidden="true">■</span>
+              停止
+            </button>
+            <button class="tool-button" id="reloadWords" type="button" title="重新載入單字">
+              <span aria-hidden="true">↻</span>
+              <span id="reloadWordsLabel">載入</span>
+            </button>
+          </div>
+
+          <div class="sequence" id="sequenceLabels" aria-label="朗讀順序"></div>
+
+          <div class="status-line" id="statusLine" role="status" aria-live="polite">等待播放</div>
+
+          <ul class="word-list" id="wordList"></ul>
+
+          <div class="empty-state" id="emptyState">
+            <strong id="emptyStateTitle">清單是空的</strong>
+            <span id="emptyStateText">請由管理員頁新增單字</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
