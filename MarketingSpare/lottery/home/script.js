@@ -9,7 +9,8 @@ const activityPaths = {
   btn10: "../turntable/10points/index.html",
   btn15: "../turntable/15points/index.html",
   btn20: "../turntable/20points/index.html",
-  btnBirthday: "../turntable/Birthday/index.html"
+  btnBirthday: "../turntable/Birthday/index.html",
+  btnSchedule: "../turntable/Schedule/index.html"
 };
 
 // 建立各活動 LIFF app 後，在這裡填入對應的 LIFF ID。
@@ -18,7 +19,8 @@ const activityLiffIds = {
   btn10: "2005939681-OaHJFGwR",
   btn15: "2005939681-87tUHNK2",
   btn20: "2005939681-uRmWJbv7",
-  btnBirthday: "2005939681-X73uQDjh"
+  btnBirthday: "2005939681-X73uQDjh",
+  btnSchedule: "2005939681-mbwO4ESX"
 };
 
 function activityUrl(id) {
@@ -33,7 +35,8 @@ const linkTargets = {
   btn10: activityUrl("btn10"),
   btn15: activityUrl("btn15"),
   btn20: activityUrl("btn20"),
-  btnBirthday: activityUrl("btnBirthday")
+  btnBirthday: activityUrl("btnBirthday"),
+  btnSchedule: activityUrl("btnSchedule")
 };
 
 const $msg = document.getElementById("message");

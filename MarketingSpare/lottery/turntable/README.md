@@ -1,6 +1,6 @@
 # 轉盤抽獎整合版
 
-這個專案是純靜態前端轉盤抽獎頁，五個活動入口共用同一份前台、後台與樣式檔。
+這個專案是純靜態前端轉盤抽獎頁，六個活動入口共用同一份前台、後台與樣式檔。
 
 ## 目錄結構
 
@@ -9,6 +9,7 @@
 - `15points/`：15 點轉盤入口
 - `20points/`：20 點轉盤入口
 - `Birthday/`：壽星轉盤入口
+- `Schedule/`：排班幸運轉盤入口
 - `shared/`：共用前台、後台與樣式
 
 每個活動資料夾保留：
@@ -78,6 +79,7 @@ window.TURN_ADMIN_CONFIG = {
 15 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/15points/index.html
 20 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/20points/index.html
 壽星：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/Birthday/index.html
+排班幸運：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/Schedule/index.html
 ```
 
 ## Apps Script 回傳格式
