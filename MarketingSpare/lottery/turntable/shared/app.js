@@ -90,11 +90,16 @@ function describeLiffUnavailable(reason) {
 }
 
 function isLiffSendAvailable() {
-  return !!(
-    window.liff
-    && typeof window.liff.isApiAvailable === 'function'
-    && window.liff.isApiAvailable('sendMessages')
-  );
+  if (!window.liff || typeof window.liff.sendMessages !== 'function') return false;
+  if (typeof window.liff.isInClient === 'function' && !window.liff.isInClient()) return false;
+
+  if (typeof window.liff.getContext === 'function') {
+    const context = window.liff.getContext();
+    if (context?.type && !['utou', 'group', 'room'].includes(context.type)) return false;
+    if (Array.isArray(context?.scope) && !context.scope.includes('chat_message.write')) return false;
+  }
+
+  return true;
 }
 
 function getActivityName() {
