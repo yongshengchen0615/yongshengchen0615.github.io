@@ -2,14 +2,29 @@
 const storeLat = 22.989400929173414;
 const storeLon = 120.20560902221429;
 const allowedDistanceKm = 0.3;
+const LIFF_ID = "2005939681-Glnl96Vg";
 
 const linkTargets = {
- btn5:  "../turntable/5points/index.html",
-  btn10: "../turntable/10points/index.html",
-  btn15: "../turntable/15points/index.html",
-  btn20: "../turntable/20points/index.html",
-   btnBirthday: "../turntable/Birthday/index.html",
-
+  btn5: {
+    fallback: "../turntable/5points/index.html",
+    liffPath: "turntable/5points/index.html",
+  },
+  btn10: {
+    fallback: "../turntable/10points/index.html",
+    liffPath: "turntable/10points/index.html",
+  },
+  btn15: {
+    fallback: "../turntable/15points/index.html",
+    liffPath: "turntable/15points/index.html",
+  },
+  btn20: {
+    fallback: "../turntable/20points/index.html",
+    liffPath: "turntable/20points/index.html",
+  },
+  btnBirthday: {
+    fallback: "../turntable/Birthday/index.html",
+    liffPath: "turntable/Birthday/index.html",
+  },
 };
 
 const $msg = document.getElementById("message");
@@ -22,6 +37,9 @@ const CONFIG = {
     : new URL(location.href).searchParams.get('geo')?.toLowerCase() === 'off' ? false
     : typeof window.GEO_REQUIRE === 'boolean' ? window.GEO_REQUIRE
     : true,
+  useLiffLinks:
+    new URL(location.href).searchParams.get('liff')?.toLowerCase() === 'off' ? false
+    : Boolean(LIFF_ID) && location.protocol !== 'file:',
 };
 
 // ===== 初始化 =====
@@ -82,12 +100,17 @@ function onGeoError(err) {
 
 // ===== 解鎖按鈕 =====
 function unlockLinks() {
-  Object.entries(linkTargets).forEach(([id, href]) => {
+  Object.entries(linkTargets).forEach(([id, target]) => {
     const a = document.getElementById(id);
-    a.setAttribute("href", href);
+    a.setAttribute("href", getTurntableUrl(target));
     a.removeAttribute("aria-disabled");
     a.removeAttribute("tabindex");
   });
+}
+
+function getTurntableUrl(target) {
+  if (!CONFIG.useLiffLinks) return target.fallback;
+  return `https://liff.line.me/${encodeURIComponent(LIFF_ID)}/${target.liffPath}`;
 }
 
 // ===== 工具函式 =====
