@@ -97,6 +97,36 @@ function isLiffSendAvailable() {
   );
 }
 
+function getLiffDebugInfo() {
+  if (!window.liff) return 'liff=missing';
+
+  const parts = [];
+  try {
+    parts.push(`inClient=${window.liff.isInClient?.() ? 'yes' : 'no'}`);
+  } catch (_) {}
+  try {
+    parts.push(`loggedIn=${window.liff.isLoggedIn?.() ? 'yes' : 'no'}`);
+  } catch (_) {}
+  try {
+    parts.push(`sendMessages=${isLiffSendAvailable() ? 'yes' : 'no'}`);
+  } catch (_) {}
+  try {
+    const context = window.liff.getContext?.();
+    if (context?.type) parts.push(`context=${context.type}`);
+  } catch (_) {}
+
+  return parts.join(', ') || 'liff=ready';
+}
+
+function formatLiffError(err) {
+  const details = [];
+  if (err?.code) details.push(`code=${err.code}`);
+  if (err?.message) details.push(`message=${err.message}`);
+  const debug = getLiffDebugInfo();
+  if (debug) details.push(debug);
+  return details.length ? details.join(' / ') : String(err || 'unknown error');
+}
+
 function getActivityName() {
   return document.querySelector('h1')?.textContent?.trim() || document.title || '';
 }
@@ -130,7 +160,10 @@ async function sendPrizeToLine(result, trigger) {
     }
 
     if (!isLiffSendAvailable()) {
-      setLiffMessageStatus('請從 LINE 聊天視窗開啟 LIFF，並確認已啟用 chat_message.write。', false);
+      setLiffMessageStatus(
+        `無法使用 sendMessages。請從 LINE 聊天視窗開啟 LIFF，並確認已啟用 chat_message.write。(${getLiffDebugInfo()})`,
+        false
+      );
       result.lineStatus = 'unavailable';
       return { failed: true };
     }
@@ -151,7 +184,7 @@ async function sendPrizeToLine(result, trigger) {
   } catch (err) {
     console.error('LINE 訊息傳送失敗：', err);
     result.lineStatus = 'failed';
-    setLiffMessageStatus('LINE 訊息傳送失敗，請再試一次。', false);
+    setLiffMessageStatus(`LINE 訊息傳送失敗：${formatLiffError(err)}`, false);
     setLiffMessageRetry();
     return { failed: true };
   } finally {
