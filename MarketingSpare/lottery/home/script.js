@@ -2,20 +2,38 @@
 const storeLat = 22.989400929173414;
 const storeLon = 120.20560902221429;
 const allowedDistanceKm = 0.3;
-const LIFF_ID = "2005939681-Glnl96Vg";
 const isProductionPage = location.protocol === "https:" && location.hostname === "yongshengchen0615.github.io";
 
-function activityUrl(path) {
-  if (!isProductionPage) return `../${path}`;
-  return `https://liff.line.me/${LIFF_ID}/${path}`;
+const activityPaths = {
+  btn5: "../turntable/5points/index.html",
+  btn10: "../turntable/10points/index.html",
+  btn15: "../turntable/15points/index.html",
+  btn20: "../turntable/20points/index.html",
+  btnBirthday: "../turntable/Birthday/index.html"
+};
+
+// 建立各活動 LIFF app 後，在這裡填入對應的 LIFF ID。
+const activityLiffIds = {
+  btn5: "2005939681-b5jTuf4T",
+  btn10: "2005939681-OaHJFGwR",
+  btn15: "2005939681-87tUHNK2",
+  btn20: "2005939681-uRmWJbv7",
+  btnBirthday: "2005939681-X73uQDjh"
+};
+
+function activityUrl(id) {
+  const localPath = activityPaths[id];
+  const liffId = String(activityLiffIds[id] || "").trim();
+  if (!isProductionPage || !liffId) return localPath;
+  return `https://liff.line.me/${liffId}`;
 }
 
 const linkTargets = {
-  btn5: activityUrl("turntable/5points/index.html"),
-  btn10: activityUrl("turntable/10points/index.html"),
-  btn15: activityUrl("turntable/15points/index.html"),
-  btn20: activityUrl("turntable/20points/index.html"),
-  btnBirthday: activityUrl("turntable/Birthday/index.html")
+  btn5: activityUrl("btn5"),
+  btn10: activityUrl("btn10"),
+  btn15: activityUrl("btn15"),
+  btn20: activityUrl("btn20"),
+  btnBirthday: activityUrl("btnBirthday")
 };
 
 const $msg = document.getElementById("message");

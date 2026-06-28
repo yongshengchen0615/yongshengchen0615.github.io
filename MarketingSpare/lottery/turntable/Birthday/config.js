@@ -11,8 +11,8 @@ window.TURN_ADMIN_CONFIG = {
   noCors: false,
   // LIFF 設定：抽中獎項後用 liff.sendMessages() 傳回目前 LINE 聊天視窗
   liff: {
-    // 請填入 LINE Developers Console 的 LIFF ID
-    liffId: '2005939681-Glnl96Vg',
+    // 請填入壽星活動自己的 LIFF ID，endpoint: /lottery/turntable/Birthday/index.html
+    liffId: '2005939681-X73uQDjh',
     // landed = 獎項確定後立即送出；confirm = 按確認後才送出
     sendOn: 'landed',
     // 可用變數：{activity}、{prize}、{landedAt}

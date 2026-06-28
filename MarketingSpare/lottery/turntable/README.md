@@ -59,19 +59,26 @@ window.TURN_ADMIN_CONFIG = {
 
 設定方式：
 
-- 在每個活動的 `config.js` 填入 `liff.liffId`
-- LINE Developers Console 的 LIFF Endpoint URL 請設定為所有活動頁面的共同上層，例如：
-  `https://yongshengchen0615.github.io/MarketingSpare/lottery/`
-- LINE Developers Console 的 LIFF app 需啟用 `chat_message.write` scope
-- 官方帳號、自動回覆或圖文選單要使用 LIFF URL，不要直接貼 GitHub Pages URL。例如：
-  `https://liff.line.me/2005939681-Glnl96Vg/turntable/10points/index.html`
+- 每個活動各自建立一個 LINE Developers Console LIFF app
+- 每個 LIFF app 都要啟用 `chat_message.write` scope
+- 每個活動的 `config.js` 填入該活動自己的 `liff.liffId`
+- `home/script.js` 的 `activityLiffIds` 也要填入相同的活動 LIFF ID
+- 官方帳號、自動回覆或圖文選單要使用 LIFF URL，不要直接貼 GitHub Pages URL
 - `sendOn: 'landed'` 代表轉盤停下、獎項確定後立即送出
 - `sendOn: 'confirm'` 代表使用者按結果視窗的「確認」後才送出
 - `messageTemplate` 可使用 `{activity}`、`{prize}`、`{landedAt}`
 
 注意：`liff.sendMessages()` 只能送到「開啟此 LIFF app 的聊天室」。如果使用者從外部瀏覽器、Keep Memo、最近使用服務，或非聊天視窗入口開啟，LINE 可能會拒絕傳送。
 
-目前共用的 LIFF ID 是 `2005939681-Glnl96Vg`。若多個活動共用同一個 LIFF ID，Endpoint URL 不能設定成單一檔案如 `Lock.html`，否則在 `turntable/10points/` 等頁面執行 `liff.init()` 會落在 endpoint 範圍外，容易出現 `INIT_FAILED` 或 LINE Login `400 Bad Request`。
+各活動 Endpoint URL：
+
+```text
+5 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/5points/index.html
+10 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/10points/index.html
+15 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/15points/index.html
+20 點：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/20points/index.html
+壽星：https://yongshengchen0615.github.io/MarketingSpare/lottery/turntable/Birthday/index.html
+```
 
 ## Apps Script 回傳格式
 
