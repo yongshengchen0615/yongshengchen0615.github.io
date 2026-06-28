@@ -59,12 +59,31 @@ function getLiffConfig() {
   };
 }
 
+function hasLiffLaunchParams() {
+  const params = new URLSearchParams(location.search);
+  return Array.from(params.keys()).some((key) => (
+    key === 'access_token' ||
+    key === 'context_token' ||
+    key === 'liff.state' ||
+    key.startsWith('liff.')
+  ));
+}
+
+function isLikelyLiffContext(liffConfig) {
+  if (hasLiffLaunchParams()) return true;
+  if (liffConfig.withLoginOnExternalBrowser) return true;
+  return !!window.liff?.isInClient?.();
+}
+
 function initLiff() {
   const liffConfig = getLiffConfig();
   if (!liffConfig.enabled) return Promise.resolve({ ready: false, reason: 'disabled' });
   if (!liffConfig.liffId) return Promise.resolve({ ready: false, reason: 'missing_liff_id' });
   if (!window.liff || typeof window.liff.init !== 'function') {
     return Promise.resolve({ ready: false, reason: 'sdk_missing' });
+  }
+  if (!isLikelyLiffContext(liffConfig)) {
+    return Promise.resolve({ ready: false, reason: 'not_liff_context' });
   }
   if (liffInitPromise) return liffInitPromise;
 
@@ -86,6 +105,7 @@ function describeLiffUnavailable(reason) {
   if (reason === 'disabled') return '';
   if (reason === 'missing_liff_id') return '請先在 config.js 設定 LIFF ID。';
   if (reason === 'sdk_missing') return 'LIFF SDK 尚未載入。';
+  if (reason === 'not_liff_context') return '請用 LINE LIFF 連結開啟此頁，才能自動傳送中獎訊息。';
   return 'LIFF 尚未準備完成。';
 }
 

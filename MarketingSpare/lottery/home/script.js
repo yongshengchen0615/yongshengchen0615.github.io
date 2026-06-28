@@ -2,14 +2,20 @@
 const storeLat = 22.989400929173414;
 const storeLon = 120.20560902221429;
 const allowedDistanceKm = 0.3;
+const LIFF_ID = "2005939681-Glnl96Vg";
+const isProductionPage = location.protocol === "https:" && location.hostname === "yongshengchen0615.github.io";
+
+function activityUrl(path) {
+  if (!isProductionPage) return `../${path}`;
+  return `https://liff.line.me/${LIFF_ID}/${path}`;
+}
 
 const linkTargets = {
- btn5:  "../turntable/5points/index.html",
-  btn10: "../turntable/10points/index.html",
-  btn15: "../turntable/15points/index.html",
-  btn20: "../turntable/20points/index.html",
-   btnBirthday: "../turntable/Birthday/index.html",
-
+  btn5: activityUrl("turntable/5points/index.html"),
+  btn10: activityUrl("turntable/10points/index.html"),
+  btn15: activityUrl("turntable/15points/index.html"),
+  btn20: activityUrl("turntable/20points/index.html"),
+  btnBirthday: activityUrl("turntable/Birthday/index.html")
 };
 
 const $msg = document.getElementById("message");
