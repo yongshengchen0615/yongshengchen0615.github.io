@@ -209,6 +209,23 @@ button:active {
   margin: 0 0 16px;
 }
 
+.notify-status {
+  min-height: 20px;
+  margin: 0 0 16px;
+  color: #a7f3d0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.notify-status:empty {
+  min-height: 0;
+  margin: 0;
+}
+
+.notify-status.error {
+  color: #fca5a5;
+}
+
 .modal-actions {
   display: flex;
   gap: 12px;

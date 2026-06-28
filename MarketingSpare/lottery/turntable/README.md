@@ -41,11 +41,31 @@ window.TURN_ADMIN_CONFIG = {
   scriptUrl: 'https://script.google.com/macros/s/XXXXXXXX/exec',
   sheetName: '機率',
   proxyUrl: '',
-  noCors: false
+  noCors: false,
+  liff: {
+    liffId: '1234567890-AbcdEfgh',
+    sendOn: 'landed',
+    messageTemplate: '我中了「{prize}」！',
+    closeAfterSend: false
+  }
 };
 ```
 
 前台與後台都會讀同一份 `config.js`。前台用 `GET` 讀獎項資料；後台用 `GET` 載入資料，並用 `POST` 儲存 `{ sheet, items }`。
+
+## LIFF 傳送中獎訊息
+
+前台會在獎項確定後呼叫 `liff.sendMessages()`，把中獎內容送回目前開啟 LIFF 的 LINE 聊天視窗。若使用者是從官方帳號聊天室開啟 LIFF，訊息就會送到該官方帳號聊天室。
+
+設定方式：
+
+- 在每個活動的 `config.js` 填入 `liff.liffId`
+- LINE Developers Console 的 LIFF app 需啟用 `chat_message.write` scope
+- `sendOn: 'landed'` 代表轉盤停下、獎項確定後立即送出
+- `sendOn: 'confirm'` 代表使用者按結果視窗的「確認」後才送出
+- `messageTemplate` 可使用 `{activity}`、`{prize}`、`{landedAt}`
+
+注意：`liff.sendMessages()` 只能送到「開啟此 LIFF app 的聊天室」。如果使用者從外部瀏覽器、Keep Memo、最近使用服務，或非聊天視窗入口開啟，LINE 可能會拒絕傳送。
 
 ## Apps Script 回傳格式
 

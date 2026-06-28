@@ -17,6 +17,9 @@ let currentRotation = 0;
 let spinning = false;
 let blinkInterval = null;
 let currentWinIndex = -1;
+let activeResult = null;
+let liffMessageInFlight = false;
+let liffInitPromise = null;
 
 function getThemeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -43,6 +46,119 @@ function getProxyUrl() {
   return String(CFG.proxyUrl || '').trim();
 }
 
+function getLiffConfig() {
+  const source = CFG.liff || {};
+  const sendOn = source.sendOn === 'confirm' ? 'confirm' : 'landed';
+  return {
+    enabled: source.enabled !== false,
+    liffId: String(source.liffId || CFG.liffId || '').trim(),
+    sendOn,
+    messageTemplate: String(source.messageTemplate || '我中了「{prize}」！').trim() || '我中了「{prize}」！',
+    closeAfterSend: !!source.closeAfterSend,
+    withLoginOnExternalBrowser: !!source.withLoginOnExternalBrowser
+  };
+}
+
+function initLiff() {
+  const liffConfig = getLiffConfig();
+  if (!liffConfig.enabled) return Promise.resolve({ ready: false, reason: 'disabled' });
+  if (!liffConfig.liffId) return Promise.resolve({ ready: false, reason: 'missing_liff_id' });
+  if (!window.liff || typeof window.liff.init !== 'function') {
+    return Promise.resolve({ ready: false, reason: 'sdk_missing' });
+  }
+  if (liffInitPromise) return liffInitPromise;
+
+  liffInitPromise = window.liff
+    .init({
+      liffId: liffConfig.liffId,
+      withLoginOnExternalBrowser: liffConfig.withLoginOnExternalBrowser
+    })
+    .then(() => ({ ready: true }))
+    .catch((err) => {
+      liffInitPromise = null;
+      throw err;
+    });
+
+  return liffInitPromise;
+}
+
+function describeLiffUnavailable(reason) {
+  if (reason === 'disabled') return '';
+  if (reason === 'missing_liff_id') return '請先在 config.js 設定 LIFF ID。';
+  if (reason === 'sdk_missing') return 'LIFF SDK 尚未載入。';
+  return 'LIFF 尚未準備完成。';
+}
+
+function isLiffSendAvailable() {
+  return !!(
+    window.liff
+    && typeof window.liff.isApiAvailable === 'function'
+    && window.liff.isApiAvailable('sendMessages')
+  );
+}
+
+function getActivityName() {
+  return document.querySelector('h1')?.textContent?.trim() || document.title || '';
+}
+
+function formatLiffMessage(result, liffConfig) {
+  const replacements = {
+    prize: result.label,
+    activity: getActivityName(),
+    landedAt: result.landedAt
+  };
+
+  return liffConfig.messageTemplate.replace(/\{(prize|activity|landedAt)\}/g, (_, key) => replacements[key] || '');
+}
+
+async function sendPrizeToLine(result, trigger) {
+  const liffConfig = getLiffConfig();
+  if (!liffConfig.enabled || !result) return { skipped: true };
+  if (liffMessageInFlight) return { skipped: true };
+
+  liffMessageInFlight = true;
+  result.lineStatus = 'sending';
+  setLiffMessageLoading(trigger === 'confirm');
+
+  try {
+    const initResult = await initLiff();
+    if (!initResult.ready) {
+      const message = describeLiffUnavailable(initResult.reason);
+      if (message) setLiffMessageStatus(message, false);
+      result.lineStatus = 'unavailable';
+      return { failed: !!message };
+    }
+
+    if (!isLiffSendAvailable()) {
+      setLiffMessageStatus('請從 LINE 聊天視窗開啟 LIFF，並確認已啟用 chat_message.write。', false);
+      result.lineStatus = 'unavailable';
+      return { failed: true };
+    }
+
+    await window.liff.sendMessages([
+      {
+        type: 'text',
+        text: formatLiffMessage(result, liffConfig)
+      }
+    ]);
+
+    result.lineStatus = 'sent';
+    setLiffMessageStatus('已送到 LINE 聊天視窗');
+    if (liffConfig.closeAfterSend && window.liff?.isInClient?.()) {
+      window.liff.closeWindow();
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('LINE 訊息傳送失敗：', err);
+    result.lineStatus = 'failed';
+    setLiffMessageStatus('LINE 訊息傳送失敗，請再試一次。', false);
+    setLiffMessageRetry();
+    return { failed: true };
+  } finally {
+    liffMessageInFlight = false;
+  }
+}
+
 function withQuery(url, params) {
   const pairs = Object.entries(params)
     .filter(([, value]) => value)
@@ -54,7 +170,11 @@ function withQuery(url, params) {
 function buildReadUrl() {
   const endpoint = getScriptUrl();
   const url = withQuery(endpoint, { sheet: getSheetName() });
-  const proxy = getProxyUrl();
+  return proxiedUrl(url, getProxyUrl());
+}
+
+function proxiedUrl(url, proxyUrl) {
+  const proxy = String(proxyUrl || '').trim();
   if (!proxy) return url;
   return proxy.replace(/\/$/, '') + '/' + url.replace(/^https?:\/\//, '');
 }
@@ -299,13 +419,14 @@ function ensureResultModal() {
     <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
       <p class="muted">中獎結果</p>
       <h2 id="resultTitle"><span id="modalPrize"></span></h2>
+      <p id="resultNotifyStatus" class="notify-status" aria-live="polite"></p>
       <div class="modal-actions">
         <button id="confirmBtn" class="spin-center small" type="button">確認</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector('#confirmBtn').addEventListener('click', hideResultModal);
+  modal.querySelector('#confirmBtn').addEventListener('click', confirmResultModal);
   modal.addEventListener('click', (event) => {
     if (event.target === modal) hideResultModal();
   });
@@ -315,13 +436,88 @@ function ensureResultModal() {
 function showResultModal(label) {
   const modal = ensureResultModal();
   const modalPrize = modal.querySelector('#modalPrize');
+  activeResult = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    label,
+    landedAt: new Date().toISOString(),
+    lineStatus: 'pending'
+  };
+  modal.dataset.resultId = activeResult.id;
+  modal.dataset.prize = label;
   if (modalPrize) modalPrize.textContent = label;
+  resetResultModalState();
   modal.classList.remove('hidden');
+
+  if (getLiffConfig().sendOn === 'landed') {
+    sendPrizeToLine(activeResult, 'landed').catch((err) => {
+      console.error('LINE 訊息傳送失敗：', err);
+    });
+  }
 }
 
 function hideResultModal() {
   const modal = document.getElementById('resultModal');
   if (modal) modal.classList.add('hidden');
+}
+
+function resetResultModalState() {
+  const modal = ensureResultModal();
+  const status = modal.querySelector('#resultNotifyStatus');
+  const confirmBtn = modal.querySelector('#confirmBtn');
+  if (status) {
+    status.textContent = '';
+    status.classList.remove('error');
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '確認';
+  }
+}
+
+async function confirmResultModal() {
+  const liffConfig = getLiffConfig();
+  if (!activeResult || (liffConfig.sendOn === 'landed' && activeResult.lineStatus !== 'failed')) {
+    hideResultModal();
+    return;
+  }
+
+  try {
+    const outcome = await sendPrizeToLine(activeResult, 'confirm');
+    if (outcome?.failed) return;
+    hideResultModal();
+  } catch (err) {
+    console.error('LINE 訊息傳送失敗：', err);
+  }
+}
+
+function setLiffMessageLoading(showLoadingText) {
+  const modal = ensureResultModal();
+  const confirmBtn = modal.querySelector('#confirmBtn');
+  const status = modal.querySelector('#resultNotifyStatus');
+  if (confirmBtn && showLoadingText) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '傳送中';
+  }
+  if (status) {
+    status.textContent = showLoadingText ? 'LINE 訊息傳送中...' : '';
+    status.classList.remove('error');
+  }
+}
+
+function setLiffMessageStatus(message, ok = true) {
+  const modal = ensureResultModal();
+  const status = modal.querySelector('#resultNotifyStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('error', !ok);
+}
+
+function setLiffMessageRetry() {
+  const modal = ensureResultModal();
+  const confirmBtn = modal.querySelector('#confirmBtn');
+  if (!confirmBtn) return;
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = '再試一次';
 }
 
 function addHistory(text) {
