@@ -60,14 +60,12 @@ window.TURN_ADMIN_CONFIG = {
 設定方式：
 
 - 在每個活動的 `config.js` 填入 `liff.liffId`
-- LINE Developers Console 的 LIFF Endpoint URL 請設定到此專案根目錄，例如 `https://你的網域/MarketingSpare/lottery/`
-- 官方帳號選單或訊息請使用 LIFF URL，例如 `https://liff.line.me/1234567890-AbcdEfgh`，不要直接貼 `home/index.html` 或 `turntable/.../index.html`
 - LINE Developers Console 的 LIFF app 需啟用 `chat_message.write` scope
 - `sendOn: 'landed'` 代表轉盤停下、獎項確定後立即送出
 - `sendOn: 'confirm'` 代表使用者按結果視窗的「確認」後才送出
 - `messageTemplate` 可使用 `{activity}`、`{prize}`、`{landedAt}`
 
-注意：`liff.sendMessages()` 只能送到「開啟此 LIFF app 的聊天室」。如果使用者從外部瀏覽器、Keep Memo、最近使用服務，或非聊天視窗入口開啟，LINE 可能會拒絕傳送。若畫面提示「請回到 LINE 官方帳號聊天室，點選抽獎連結重新開啟」，代表目前不是從有效的 LIFF 聊天入口啟動。
+注意：`liff.sendMessages()` 只能送到「開啟此 LIFF app 的聊天室」。如果使用者從外部瀏覽器、Keep Memo、最近使用服務，或非聊天視窗入口開啟，LINE 可能會拒絕傳送。
 
 ## Apps Script 回傳格式
 

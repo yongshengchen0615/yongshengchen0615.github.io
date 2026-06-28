@@ -92,75 +92,9 @@ function describeLiffUnavailable(reason) {
 function isLiffSendAvailable() {
   return !!(
     window.liff
-    && typeof window.liff.sendMessages === 'function'
+    && typeof window.liff.isApiAvailable === 'function'
+    && window.liff.isApiAvailable('sendMessages')
   );
-}
-
-function isLiffClientFeatureInitError(err) {
-  return err?.code === 'INIT_FAILED'
-    && /Unable to load client features/i.test(String(err?.message || ''));
-}
-
-function isLiffSendPermissionError(err) {
-  return String(err?.code || '') === '403'
-    || /required permissions|chat_message\.write/i.test(String(err?.message || ''));
-}
-
-function describeLiffInitError(err) {
-  if (isLiffClientFeatureInitError(err)) {
-    return '請回到 LINE 官方帳號聊天室，點選抽獎連結重新開啟，才能把中獎訊息送回聊天室。';
-  }
-  if (err?.code === 'INVALID_ARGUMENT') return 'LIFF ID 設定有誤，請檢查 config.js。';
-  return 'LIFF 初始化失敗，請重新開啟活動頁後再試一次。';
-}
-
-function shouldRetryLiffError(err) {
-  return !isLiffClientFeatureInitError(err)
-    && !isLiffSendPermissionError(err)
-    && err?.code !== 'INVALID_ARGUMENT';
-}
-
-function warmupLiff() {
-  const liffConfig = getLiffConfig();
-  if (!liffConfig.enabled || !liffConfig.liffId) return;
-  initLiff().catch((err) => {
-    console.warn('LIFF 初始化尚未完成，將在傳送 LINE 訊息時再次檢查：', err);
-  });
-}
-
-function getLiffDebugInfo() {
-  if (!window.liff) return 'liff=missing';
-
-  const parts = [];
-  try {
-    parts.push(`inClient=${window.liff.isInClient?.() ? 'yes' : 'no'}`);
-  } catch (_) {}
-  try {
-    parts.push(`loggedIn=${window.liff.isLoggedIn?.() ? 'yes' : 'no'}`);
-  } catch (_) {}
-  try {
-    parts.push(`sendMessages=${isLiffSendAvailable() ? 'yes' : 'no'}`);
-  } catch (_) {}
-  try {
-    const context = window.liff.getContext?.();
-    if (context?.type) parts.push(`context=${context.type}`);
-  } catch (_) {}
-
-  return parts.join(', ') || 'liff=ready';
-}
-
-function formatLiffError(err) {
-  if (err?.code === 'INIT_FAILED') return describeLiffInitError(err);
-  if (isLiffSendPermissionError(err)) {
-    return '請確認活動是從 LINE 聊天室的 LIFF 連結開啟，並已允許 chat_message.write 傳送訊息權限。';
-  }
-
-  const details = [];
-  if (err?.code) details.push(`code=${err.code}`);
-  if (err?.message) details.push(`message=${err.message}`);
-  const debug = getLiffDebugInfo();
-  if (debug) details.push(debug);
-  return details.length ? details.join(' / ') : String(err || 'unknown error');
 }
 
 function getActivityName() {
@@ -196,11 +130,7 @@ async function sendPrizeToLine(result, trigger) {
     }
 
     if (!isLiffSendAvailable()) {
-      console.warn('LIFF sendMessages 不可用：', getLiffDebugInfo());
-      setLiffMessageStatus(
-        '無法把中獎訊息送回 LINE。請從官方帳號聊天室開啟抽獎連結，並確認 LIFF 已允許傳送訊息。',
-        false
-      );
+      setLiffMessageStatus('請從 LINE 聊天視窗開啟 LIFF，並確認已啟用 chat_message.write。', false);
       result.lineStatus = 'unavailable';
       return { failed: true };
     }
@@ -220,13 +150,9 @@ async function sendPrizeToLine(result, trigger) {
     return { ok: true };
   } catch (err) {
     console.error('LINE 訊息傳送失敗：', err);
-    result.lineStatus = shouldRetryLiffError(err) ? 'failed' : 'unavailable';
-    setLiffMessageStatus(`LINE 訊息傳送失敗：${formatLiffError(err)}`, false);
-    if (shouldRetryLiffError(err)) {
-      setLiffMessageRetry();
-    } else {
-      setLiffMessageDismiss();
-    }
+    result.lineStatus = 'failed';
+    setLiffMessageStatus('LINE 訊息傳送失敗，請再試一次。', false);
+    setLiffMessageRetry();
     return { failed: true };
   } finally {
     liffMessageInFlight = false;
@@ -594,14 +520,6 @@ function setLiffMessageRetry() {
   confirmBtn.textContent = '再試一次';
 }
 
-function setLiffMessageDismiss() {
-  const modal = ensureResultModal();
-  const confirmBtn = modal.querySelector('#confirmBtn');
-  if (!confirmBtn) return;
-  confirmBtn.disabled = false;
-  confirmBtn.textContent = '確認';
-}
-
 function addHistory(text) {
   const item = { text, time: new Date().toLocaleString() };
   try {
@@ -628,7 +546,6 @@ if (pointer) pointer.style.color = getThemeColors().pointerColor;
 
 (async () => {
   resizeCanvas();
-  warmupLiff();
   showLoading(true);
   await fetchPrizesFromGAS();
   drawWheel();
