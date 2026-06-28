@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>向10號技師取得  QR code金鑰驗證</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .status {
+      width: min(320px, calc(100% - 48px));
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 16px;
+      border: 4px solid rgba(229, 231, 235, 0.2);
+      border-top-color: #22c55e;
+      border-radius: 999px;
+      animation: spin 0.9s linear infinite;
+    }
+
+    .error {
+      color: #fecaca;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="message">正在開啟抽獎頁面...</div>
+  </main>
+
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    const LIFF_ID = '2005939681-Glnl96Vg';
+    const DEFAULT_PATH = 'Lock.html';
+    const messageEl = document.getElementById('message');
+    const rootUrl = new URL('./', location.href);
+
+    function setError(message) {
+      messageEl.textContent = message;
+      messageEl.classList.add('error');
+    }
+
+    function resolveProjectUrl(path) {
+      const fallback = new URL(DEFAULT_PATH, rootUrl);
+      if (!path) return fallback.href;
+
+      try {
+        const normalizedPath = /^https?:\/\//i.test(path) ? path : path.replace(/^\/+/, '');
+        const target = new URL(normalizedPath, rootUrl);
+        if (target.origin !== rootUrl.origin || !target.pathname.startsWith(rootUrl.pathname)) {
+          return fallback.href;
+        }
+        return target.href;
+      } catch (_) {
+        return fallback.href;
+      }
+    }
+
+    function hasLiffParams(params) {
+      return Array.from(params.keys()).some((key) => (
+        key === 'access_token' ||
+        key === 'context_token' ||
+        key === 'liff.state' ||
+        key.startsWith('liff.')
+      ));
+    }
+
+    async function boot() {
+      const params = new URLSearchParams(location.search);
+      const requestedPath = params.get('liff.state');
+      const isLiffLaunch = hasLiffParams(params) || !!window.liff?.isInClient?.();
+
+      if (!isLiffLaunch) {
+        location.replace(resolveProjectUrl(requestedPath || DEFAULT_PATH));
+        return;
+      }
+
+      if (!window.liff || typeof window.liff.init !== 'function') {
+        location.replace(resolveProjectUrl(requestedPath || DEFAULT_PATH));
+        return;
+      }
+
+      try {
+        await window.liff.init({ liffId: LIFF_ID });
+        location.replace(resolveProjectUrl(requestedPath || DEFAULT_PATH));
+      } catch (err) {
+        console.error('LIFF 初始化失敗：', err);
+        setError('LINE LIFF 初始化失敗，請確認 LIFF Endpoint URL 設定為此專案根目錄。');
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>
