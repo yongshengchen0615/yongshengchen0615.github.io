@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f3f0e7" />
+    <meta name="description" content="LINE LIFF 會員系統設定指南" />
+    <title>設定指南｜PERSONA MEMBERS</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2306c755'/%3E%3Cpath d='M18 19h28v21H32l-9 7v-7h-5z' fill='white'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="回到會員中心">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span><strong>PERSONA</strong><small>MEMBERS</small></span>
+      </a>
+      <a class="legal-back-link" href="./">返回會員中心</a>
+    </header>
+
+    <main class="legal-document setup-document">
+      <header>
+        <p class="eyebrow">DEPLOYMENT GUIDE</p>
+        <h1>四步完成上線。</h1>
+        <p class="legal-notice">
+          準備一份 Google 試算表、一個 LINE Login Channel，以及可發布 GitHub Pages 的儲存庫。整套系統不需要安裝套件。
+        </p>
+      </header>
+
+      <section>
+        <span>01</span>
+        <div>
+          <h2>建立 Google Sheet 與 Apps Script</h2>
+          <p>建立 Google 試算表並複製網址中 <code>/d/</code> 與 <code>/edit</code> 之間的 Spreadsheet ID，再從「擴充功能 → Apps Script」開啟編輯器。</p>
+          <p>將 <a href="gas/Code.gs" target="_blank">gas/Code.gs</a> 貼入程式，並在專案設定開啟資訊清單檔案後，以 <a href="gas/appsscript.json" target="_blank">gas/appsscript.json</a> 取代內容。</p>
+          <h3>指令碼屬性</h3>
+          <dl class="setup-config-list">
+            <div><dt>LINE_CHANNEL_ID</dt><dd>LINE Login Channel ID，不是 LIFF ID</dd></div>
+            <div><dt>SPREADSHEET_ID</dt><dd>剛才複製的 Google Sheet ID</dd></div>
+            <div><dt>ALLOWED_ORIGINS</dt><dd>前端 origin，例如 https://example.github.io</dd></div>
+            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
+            <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，LINE 驗證每分鐘上限，預設 120</dd></div>
+          </dl>
+          <p><code>ALLOWED_ORIGINS</code> 不可填 <code>*</code>，也不要包含 GitHub Pages 的子目錄路徑。</p>
+        </div>
+      </section>
+
+      <section>
+        <span>02</span>
+        <div>
+          <h2>初始化並部署 GAS</h2>
+          <p>在 Apps Script 編輯器選擇 <code>setup</code> 執行一次並完成授權。程式會建立 Members 工作表與固定欄位。</p>
+          <p>選擇「部署 → 新增部署作業 → 網頁應用程式」，執行身分選「我」，存取權選「任何人」。複製結尾為 <code>/exec</code> 的正式網址；不要使用只供編輯者測試的 <code>/dev</code>。</p>
+          <pre><code>curl -L "你的_GAS_EXEC_網址?action=health"</code></pre>
+          <p>看到 <code>"ok":true</code> 即代表公開部署可連線。之後每次修改 GAS，都要在管理部署作業中建立新版本。</p>
+        </div>
+      </section>
+
+      <section>
+        <span>03</span>
+        <div>
+          <h2>建立 LINE Login 與 LIFF</h2>
+          <p>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers Console</a> 建立 LINE Login Channel，並在 LIFF 分頁新增 App。</p>
+          <ul class="setup-check-list">
+            <li>Endpoint URL：本會員頁部署後的完整 HTTPS 網址</li>
+            <li>Size：建議 Full</li>
+            <li>Scope：必要的 <code>openid</code>、<code>profile</code>，以及選用的 <code>email</code></li>
+          </ul>
+          <p>儲存後複製 LIFF ID。正式使用者應從 <code>https://liff.line.me/{LIFF_ID}</code> 開啟會員中心。</p>
+        </div>
+      </section>
+
+      <section>
+        <span>04</span>
+        <div>
+          <h2>填入前端設定並發布</h2>
+          <p>編輯 <a href="config.json" target="_blank">config.json</a>，填入剛取得的 LIFF ID、GAS <code>/exec</code> 網址與品牌名稱。</p>
+          <pre><code>{
+  "LIFF_ID": "1234567890-AbCdEfGh",
+  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/.../exec",
+  "BRAND_NAME": "你的品牌名稱"
+}</code></pre>
+          <p>提交到 GitHub Pages 發布分支後，用 LIFF URL 在 LINE 手機 App 與外部瀏覽器各測試一次。更完整的檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer legal-footer">
+      <p>LIFF + GAS DEPLOYMENT</p>
+      <a href="./">會員中心</a>
+      <p>© 2026 PERSONA</p>
+    </footer>
+  </body>
+</html>
