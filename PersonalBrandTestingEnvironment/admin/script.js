@@ -223,22 +223,23 @@
       metrics: { all: 5, pending: 0, approved: 3, denied: 2 },
       pagination: { page: 1, pageSize: 50, total: 5, totalPages: 1 },
       members: [
-        demoMember("MBR-A102938475", "林若晴", "ruoqing@example.com", "approved", 0),
-        demoMember("MBR-B564738291", "陳宇安", "yuan@example.com", "approved", 1),
-        demoMember("MBR-C019283746", "許雅文", "", "denied", 3),
-        demoMember("MBR-D837465920", "江柏廷", "bo@example.com", "denied", 5),
-        demoMember("MBR-E746291038", "周語彤", "yutong@example.com", "approved", 12),
+        demoMember("MBR-A102938475", "林若晴", "0912 345 678", "1991-04-16", "approved", 0),
+        demoMember("MBR-B564738291", "陳宇安", "+886 912 000 123", "1988-11-02", "approved", 1),
+        demoMember("MBR-C019283746", "許雅文", "", "1995-07-21", "denied", 3),
+        demoMember("MBR-D837465920", "江柏廷", "02-2345-6789", "", "denied", 5),
+        demoMember("MBR-E746291038", "周語彤", "0988 765 432", "1993-02-08", "approved", 12),
       ],
     });
   }
 
-  function demoMember(memberId, displayName, email, status, daysAgo) {
+  function demoMember(memberId, displayName, phone, birthday, status, daysAgo) {
     var joinedAt = new Date(Date.now() - (daysAgo + 30) * 86400000).toISOString();
     return {
       memberId: memberId,
       displayName: displayName,
       pictureUrl: "",
-      email: email,
+      phone: phone,
+      birthday: birthday,
       status: status,
       joinedAt: joinedAt,
       lastLoginAt: new Date(Date.now() - daysAgo * 86400000).toISOString(),
@@ -287,7 +288,7 @@
     var statusFilter = byId("status-filter").value;
     var visibleMembers = members.filter(function (member) {
       var matchesStatus = statusFilter === "all" || member.status === statusFilter;
-      var haystack = [member.displayName, member.memberId, member.email]
+      var haystack = [member.displayName, member.memberId, member.phone, member.birthday]
         .join(" ")
         .toLocaleLowerCase("zh-TW");
       return matchesStatus && (!query || haystack.indexOf(query) !== -1);
@@ -320,8 +321,12 @@
 
     var contactColumn = createCell("聯絡資料");
     contactColumn.classList.add("contact-cell");
-    appendTextElement(contactColumn, "strong", member.email || "尚未授權 Email");
-    appendTextElement(contactColumn, "small", formatLoginCount(member.loginCount));
+    appendTextElement(contactColumn, "strong", member.phone || "電話未填寫");
+    appendTextElement(
+      contactColumn,
+      "small",
+      member.birthday ? "生日 " + formatBirthday(member.birthday) : "生日未填寫"
+    );
     row.appendChild(contactColumn);
 
     row.appendChild(createDateCell("加入日期", member.joinedAt));
@@ -524,7 +529,10 @@
       memberId: cleanText(value.memberId, "—"),
       displayName: cleanText(value.displayName, "LINE 會員"),
       pictureUrl: safeImageUrl(value.pictureUrl),
-      email: cleanText(value.email, ""),
+      phone: cleanText(value.phone, ""),
+      birthday: /^\d{4}-\d{2}-\d{2}$/.test(String(value.birthday || ""))
+        ? String(value.birthday)
+        : "",
       status: normalizeStatus(value.status),
       joinedAt: value.joinedAt || "",
       lastLoginAt: value.lastLoginAt || "",
@@ -832,6 +840,11 @@
     };
   }
 
+  function formatBirthday(value) {
+    var birthday = String(value || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday.replace(/-/g, "/") : "—";
+  }
+
   function formatTime(value) {
     return new Intl.DateTimeFormat("zh-TW", {
       hour: "2-digit",
@@ -839,10 +852,6 @@
       second: "2-digit",
       hour12: false,
     }).format(value);
-  }
-
-  function formatLoginCount(value) {
-    return "登入 " + formatNumber(value) + " 次";
   }
 
   function formatNumber(value) {

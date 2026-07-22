@@ -86,6 +86,10 @@ function createGasContext(overrides = {}) {
       getUuid() {
         return "abcdef12-3456-7890-abcd-ef1234567890";
       },
+      formatDate(date, _timeZone, pattern) {
+        assert.equal(pattern, "yyyy-MM-dd");
+        return date.toISOString().slice(0, 10);
+      },
     },
     ...overrides,
   };
@@ -119,6 +123,8 @@ function createMemberRow(gas, overrides = {}) {
     accessUpdatedBy: "",
     lastAccessRequestId: "",
     adminStatus: "",
+    phone: "+886912345678",
+    birthday: "1990-05-20",
     ...overrides,
   };
 
@@ -371,20 +377,31 @@ test("supported actions always verify against config, never a request-provided c
     return createIdentity();
   };
   gas.upsertMember_ = () => ({ data: { action: "upsert" } });
+  gas.updateMemberProfile_ = () => ({ data: { action: "profile" } });
   gas.deleteMember_ = () => ({ data: { action: "delete" } });
 
-  gas.handleMemberRequest_({
+  const upsertResult = gas.handleMemberRequest_({
     action: "upsertMember",
     idToken: "header.payload.signature",
     lineChannelId: "2010791619",
   });
-  gas.handleMemberRequest_({
+  const profileResult = gas.handleMemberRequest_({
+    action: "updateMemberProfile",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+    phone: "0912345678",
+    birthday: "1990-05-20",
+  });
+  const deleteResult = gas.handleMemberRequest_({
     action: "deleteMember",
     idToken: "header.payload.signature",
     lineChannelId: "2010791619",
   });
 
-  assert.deepEqual(channels, ["2010787602", "2010787602"]);
+  assert.deepEqual(channels, ["2010787602", "2010787602", "2010787602"]);
+  assert.equal(upsertResult.data.action, "upsert");
+  assert.equal(profileResult.data.action, "profile");
+  assert.equal(deleteResult.data.action, "delete");
 });
 
 test("origins are exact and bridge output safely serializes profile text", () => {
@@ -436,7 +453,7 @@ test("doPost rejects an unlisted origin before member mutation", () => {
   assert.equal(handled, false);
 });
 
-test("new member rows use the shared 21-column schema and are approved", () => {
+test("new member rows use the shared 23-column schema, omit legacy email and are approved", () => {
   const gas = createGasContext();
   const rows = [];
   const sheet = createMemberSheet(rows);
@@ -453,23 +470,32 @@ test("new member rows use the shared 21-column schema and are approved", () => {
   );
 
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].length, 21);
+  assert.equal(rows[0].length, 23);
   assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "approved");
   assert.equal(rows[0][gas.MEMBER_COLUMN.adminStatus - 1], "");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.email - 1], "");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.phone - 1], "");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.birthday - 1], "");
   assert.equal(rows[0][gas.MEMBER_COLUMN.displayName - 1], "'=IMPORTXML(1)");
   assert.equal(result.data.created, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "email"), false);
+  assert.equal(result.data.member.phone, "");
+  assert.equal(result.data.member.birthday, "");
   assert.deepEqual(JSON.parse(JSON.stringify(result.data.access)), {
     status: "approved",
     allowed: true,
   });
 });
 
-test("existing member upsert preserves status and admin_status with field-level writes", () => {
+test("existing member upsert preserves legacy email, editable profile and access fields", () => {
   const gas = createGasContext();
   const rows = [
     createMemberRow(gas, {
       status: "denied",
       adminStatus: "approved",
+      email: "legacy@example.com",
+      phone: "0911222333",
+      birthday: "1988-08-08",
       lastTokenIat: 1000,
       lastRequestId: "request-old-1",
     }),
@@ -478,7 +504,11 @@ test("existing member upsert preserves status and admin_status with field-level 
   gas.getOrCreateMemberSheet_ = () => createMemberSheet(rows, writes);
 
   const result = gas.upsertMember_(
-    createIdentity({ tokenIssuedAt: 2000, displayName: "更新名稱" }),
+    createIdentity({
+      tokenIssuedAt: 2000,
+      displayName: "更新名稱",
+      email: "new-token-email@example.com",
+    }),
     {
       action: "upsertMember",
       requestId: "request-update-2",
@@ -490,6 +520,9 @@ test("existing member upsert preserves status and admin_status with field-level 
   assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "denied");
   assert.equal(rows[0][gas.MEMBER_COLUMN.adminStatus - 1], "approved");
   assert.equal(rows[0][gas.MEMBER_COLUMN.displayName - 1], "更新名稱");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.email - 1], "legacy@example.com");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.phone - 1], "0911222333");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.birthday - 1], "1988-08-08");
   assert.equal(result.data.access.status, "denied");
   assert.equal(result.data.access.allowed, false);
   assert.equal(result.data.member, null);
@@ -511,6 +544,169 @@ test("existing member upsert preserves status and admin_status with field-level 
     ),
     false
   );
+  for (const protectedColumn of [
+    gas.MEMBER_COLUMN.email,
+    gas.MEMBER_COLUMN.phone,
+    gas.MEMBER_COLUMN.birthday,
+  ]) {
+    assert.equal(
+      valueWrites.some(
+        ({ column, columnCount }) =>
+          column <= protectedColumn && column + columnCount - 1 >= protectedColumn
+      ),
+      false
+    );
+  }
+});
+
+test("profile update parses fetch and bridge fields and validates phone and birthday", () => {
+  const gas = createGasContext();
+  const payload = {
+    action: "updateMemberProfile",
+    idToken: "header.payload.signature",
+    requestId: "request-profile-parse-1",
+    callbackOrigin: "https://example.github.io/",
+    phone: "+886 912-345-678",
+    birthday: "2000-02-29",
+    lineUserId: `U${"f".repeat(32)}`,
+    targetMemberId: "MBR-ATTACKER00",
+  };
+  const fetchRequest = gas.parseRequest_({
+    postData: { contents: JSON.stringify(payload) },
+  });
+  const bridgeRequest = gas.parseRequest_({
+    parameter: {
+      ...payload,
+      transport: "bridge",
+      requestSecret: "a".repeat(48),
+    },
+  });
+
+  for (const field of ["action", "idToken", "requestId", "callbackOrigin", "phone", "birthday"]) {
+    assert.equal(fetchRequest[field], bridgeRequest[field]);
+  }
+  assert.equal(Object.prototype.hasOwnProperty.call(fetchRequest, "lineUserId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(fetchRequest, "targetMemberId"), false);
+  gas.validateRequestEnvelope_(fetchRequest);
+  gas.validateRequestEnvelope_(bridgeRequest);
+
+  for (const phone of ["123", "0912<script>", "=IMPORTXML(1)", "1".repeat(31)]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...fetchRequest, phone }),
+      (error) => error.appCode === "INVALID_PHONE"
+    );
+  }
+  for (const birthday of ["2000-02-30", "20-01-01", "2999-01-01"]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...fetchRequest, birthday }),
+      (error) => error.appCode === "INVALID_BIRTHDAY"
+    );
+  }
+
+  gas.validateRequestEnvelope_({ ...fetchRequest, phone: "", birthday: "" });
+});
+
+test("profile update is token-bound, idempotent, narrow and never returns email", () => {
+  const gas = createGasContext();
+  const rows = [
+    createMemberRow(gas, {
+      email: "legacy-private@example.com",
+      phone: "0911000000",
+      birthday: "1991-01-01",
+      adminStatus: "legacy-value",
+      accessUpdatedBy: `U${"c".repeat(32)}`,
+    }),
+  ];
+  const before = rows[0].slice();
+  const writes = [];
+  gas.getOrCreateMemberSheet_ = () => createMemberSheet(rows, writes);
+  const request = {
+    action: "updateMemberProfile",
+    requestId: "request-profile-save-1",
+    phone: "+886912345678",
+    birthday: "2000-02-29",
+  };
+
+  const result = gas.updateMemberProfile_(createIdentity(), request, {});
+
+  assert.equal(rows[0][gas.MEMBER_COLUMN.phone - 1], "'+886912345678");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.birthday - 1], "2000-02-29");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.lastRequestId - 1], request.requestId);
+  assert.ok(rows[0][gas.MEMBER_COLUMN.updatedAt - 1] instanceof Date);
+  for (let index = 0; index < rows[0].length; index += 1) {
+    if (
+      [
+        gas.MEMBER_COLUMN.updatedAt - 1,
+        gas.MEMBER_COLUMN.lastRequestId - 1,
+        gas.MEMBER_COLUMN.phone - 1,
+        gas.MEMBER_COLUMN.birthday - 1,
+      ].includes(index)
+    ) {
+      continue;
+    }
+    assert.equal(rows[0][index], before[index], `profile update changed protected column ${index + 1}`);
+  }
+  for (const write of writes) {
+    for (let column = write.column; column < write.column + write.columnCount; column += 1) {
+      assert.equal(
+        [
+          gas.MEMBER_COLUMN.updatedAt,
+          gas.MEMBER_COLUMN.lastRequestId,
+          gas.MEMBER_COLUMN.phone,
+          gas.MEMBER_COLUMN.birthday,
+        ].includes(column),
+        true,
+        `profile update wrote protected column ${column}`
+      );
+    }
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(result.data.access)), {
+    status: "approved",
+    allowed: true,
+  });
+  assert.equal(result.data.member.phone, "+886912345678");
+  assert.equal(result.data.member.birthday, "2000-02-29");
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "email"), false);
+
+  const writeCount = writes.length;
+  const retry = gas.updateMemberProfile_(createIdentity(), request, {});
+  assert.equal(retry.data.duplicate, true);
+  assert.equal(writes.length, writeCount);
+});
+
+test("profile update rejects missing or disabled token owner without writing", () => {
+  const gas = createGasContext();
+  const rows = [createMemberRow(gas, { status: "denied" })];
+  const writes = [];
+  gas.getOrCreateMemberSheet_ = () => createMemberSheet(rows, writes);
+  const request = {
+    action: "updateMemberProfile",
+    requestId: "request-profile-denied-1",
+    phone: "0912345678",
+    birthday: "1990-05-20",
+  };
+
+  assert.throws(
+    () => gas.updateMemberProfile_(createIdentity(), request, {}),
+    (error) => error.appCode === "MEMBER_ACCESS_DENIED"
+  );
+  assert.equal(writes.length, 0);
+
+  assert.throws(
+    () =>
+      gas.updateMemberProfile_(
+        createIdentity({ lineUserId: `U${"d".repeat(32)}` }),
+        {
+          ...request,
+          requestId: "request-profile-missing-2",
+          lineUserId: `U${"b".repeat(32)}`,
+          targetMemberId: "MBR-ABCDEF1234",
+        },
+        {}
+      ),
+    (error) => error.appCode === "MEMBER_NOT_FOUND"
+  );
+  assert.equal(writes.length, 0);
 });
 
 test("upsert retries are idempotent and distinct token sessions increment once", () => {
@@ -572,12 +768,16 @@ test("deleteMember is retry-idempotent and prevents recreation with the same tok
   );
 });
 
-test("legacy schema migration appends headers and promotes pending access without touching other fields", () => {
-  for (const legacyLength of [17, 20]) {
+test("17, 20 and 21-column schemas migrate to profile fields without touching legacy data", () => {
+  const schemaFactories = [
+    (gas) => Array.from(gas.LEGACY_MEMBER_HEADERS),
+    (gas) => Array.from(gas.ACCESS_AUDIT_MEMBER_HEADERS),
+    (gas) => Array.from(gas.ACCESS_AUDIT_MEMBER_HEADERS).concat(["admin_status"]),
+  ];
+  for (const createHeaders of schemaFactories) {
     const gas = createGasContext();
-    const headers = Array.from(
-      legacyLength === 17 ? gas.LEGACY_MEMBER_HEADERS : gas.ACCESS_AUDIT_MEMBER_HEADERS
-    );
+    const headers = createHeaders(gas);
+    const legacyLength = headers.length;
     const member = new Array(legacyLength).fill("");
     member[gas.MEMBER_COLUMN.status - 1] = "pending";
     if (legacyLength >= 20) member[gas.MEMBER_COLUMN.lastAccessRequestId - 1] = "audit-request";
@@ -632,6 +832,10 @@ test("legacy schema migration appends headers and promotes pending access withou
 
     assert.equal(result, sheet);
     assert.deepEqual(headers, Array.from(gas.MEMBER_HEADERS));
+    assert.equal(gas.MEMBER_HEADERS.length, 23);
+    assert.equal(gas.MEMBER_HEADERS[20], "admin_status");
+    assert.equal(gas.MEMBER_HEADERS[21], "phone");
+    assert.equal(gas.MEMBER_HEADERS[22], "birthday");
     assert.equal(member[gas.MEMBER_COLUMN.status - 1], "approved");
     assert.deepEqual(
       member.filter((_value, index) => index !== gas.MEMBER_COLUMN.status - 1),

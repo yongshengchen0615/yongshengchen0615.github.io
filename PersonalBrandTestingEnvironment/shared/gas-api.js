@@ -10,6 +10,8 @@
     "expectedAccessUpdatedAt",
     "page",
     "pageSize",
+    "phone",
+    "birthday",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {

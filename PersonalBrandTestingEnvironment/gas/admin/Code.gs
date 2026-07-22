@@ -17,7 +17,7 @@
  * status field.
  */
 
-var API_VERSION = "1.0.0";
+var API_VERSION = "1.1.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -53,9 +53,10 @@ var ACCESS_AUDIT_MEMBER_HEADERS = LEGACY_MEMBER_HEADERS.concat([
   "last_access_request_id",
 ]);
 
-// admin_status remains only for compatibility with the existing 21-column
-// Members sheet. This backend never reads it as authorization.
-var MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
+// Preserve the former 21-column Members schema and append member-editable
+// profile fields. This backend never reads admin_status as authorization.
+var PRE_PROFILE_MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
+var MEMBER_HEADERS = PRE_PROFILE_MEMBER_HEADERS.concat(["phone", "birthday"]);
 
 var MEMBER_COLUMN = {
   memberId: 1,
@@ -79,6 +80,8 @@ var MEMBER_COLUMN = {
   accessUpdatedBy: 19,
   lastAccessRequestId: 20,
   adminStatus: 21,
+  phone: 22,
+  birthday: 23,
 };
 
 var ADMIN_HEADERS = [
@@ -547,7 +550,8 @@ function adminMemberResponseFromRow_(row) {
     memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
     displayName: String(row[MEMBER_COLUMN.displayName - 1] || "LINE 會員"),
     pictureUrl: normalizeHttpsUrl_(row[MEMBER_COLUMN.pictureUrl - 1]),
-    email: String(row[MEMBER_COLUMN.email - 1] || ""),
+    phone: memberPhoneFromRow_(row),
+    birthday: memberBirthdayFromRow_(row),
     status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
     joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
     updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
@@ -616,12 +620,15 @@ function getOrCreateMemberSheet_(spreadsheet, config) {
   var lastColumn = sheet.getLastColumn();
   if (
     lastColumn === LEGACY_MEMBER_HEADERS.length ||
-    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length
+    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length ||
+    lastColumn === PRE_PROFILE_MEMBER_HEADERS.length
   ) {
-    var previousHeaders =
-      lastColumn === LEGACY_MEMBER_HEADERS.length
-        ? LEGACY_MEMBER_HEADERS
-        : ACCESS_AUDIT_MEMBER_HEADERS;
+    var previousHeaders = PRE_PROFILE_MEMBER_HEADERS;
+    if (lastColumn === LEGACY_MEMBER_HEADERS.length) {
+      previousHeaders = LEGACY_MEMBER_HEADERS;
+    } else if (lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length) {
+      previousHeaders = ACCESS_AUDIT_MEMBER_HEADERS;
+    }
     assertHeadersMatch_(
       sheet.getRange(1, 1, 1, previousHeaders.length).getDisplayValues()[0],
       previousHeaders,
@@ -758,7 +765,11 @@ function styleHeader_(sheet, startColumn, columnCount, background) {
 
 function applyMemberSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21].forEach(function (column) {
+  [
+    1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21,
+    MEMBER_COLUMN.phone,
+    MEMBER_COLUMN.birthday,
+  ].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   [7, 8, 9, MEMBER_COLUMN.accessUpdatedAt].forEach(function (column) {
@@ -773,6 +784,7 @@ function applyMemberRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt).setNumberFormat("yyyy-mm-dd hh:mm:ss");
   sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedBy).setNumberFormat("@");
   sheet.getRange(rowNumber, MEMBER_COLUMN.lastAccessRequestId).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2).setNumberFormat("@");
 }
 
 function applyAdminSheetColumnFormats_(sheet) {
@@ -1032,6 +1044,16 @@ function appError_(code, publicMessage) {
   error.appCode = code;
   error.publicMessage = publicMessage;
   return error;
+}
+
+function memberPhoneFromRow_(row) {
+  var phone = String(row[MEMBER_COLUMN.phone - 1] || "").trim().slice(0, 30);
+  return /^'[=+\-@]/.test(phone) ? phone.slice(1) : phone;
+}
+
+function memberBirthdayFromRow_(row) {
+  var birthday = String(row[MEMBER_COLUMN.birthday - 1] || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday : "";
 }
 
 function safeSheetText_(value) {

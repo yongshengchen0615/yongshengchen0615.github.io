@@ -69,6 +69,100 @@ test("client member profile does not display email or login metadata", () => {
   }
 });
 
+test("client member profile displays editable phone and birthday details", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+  const renderMember = getTopLevelFunctionContaining(script, /function\s+renderMember\s*\(/);
+
+  assert.ok(memberState, "client member state must exist");
+  assert.match(memberState[0], /<dt>\s*電話\s*<\/dt>/);
+  assert.match(memberState[0], /<dd[^>]+id="member-phone"/);
+  assert.match(memberState[0], /<dt>\s*生日\s*<\/dt>/);
+  assert.match(memberState[0], /<dd[^>]+id="member-birthday"/);
+  assert.match(memberState[0], /id="edit-profile-button"/);
+
+  assert.match(renderMember, /byId\(["']member-phone["']\)/);
+  assert.match(renderMember, /\bmember\.phone\b/);
+  assert.match(renderMember, /byId\(["']member-birthday["']\)/);
+  assert.match(renderMember, /\bmember\.birthday\b/);
+});
+
+test("client profile dialog submits phone and birthday through the profile update action", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const dialog = /<dialog\b[^>]*id="profile-dialog"[\s\S]*?<\/dialog>/.exec(html);
+
+  assert.ok(dialog, "client profile edit dialog must exist");
+  assert.match(dialog[0], /<form\b[^>]*id="profile-form"/);
+  assert.match(dialog[0], /<input\b[^>]*id="profile-phone-input"[^>]*>/);
+  assert.match(
+    dialog[0],
+    /id="profile-phone-input"[^>]*type="tel"|type="tel"[^>]*id="profile-phone-input"/
+  );
+  assert.match(dialog[0], /<input\b[^>]*id="profile-birthday-input"[^>]*>/);
+  assert.match(
+    dialog[0],
+    /id="profile-birthday-input"[^>]*type="date"|type="date"[^>]*id="profile-birthday-input"/
+  );
+  assert.match(
+    dialog[0],
+    /<button\b[^>]*id="profile-save-button"[^>]*type="submit"|<button\b[^>]*type="submit"[^>]*id="profile-save-button"/
+  );
+
+  assert.match(
+    script,
+    /byId\(["']profile-form["']\)\.addEventListener\(["']submit["']/
+  );
+  const submitProfile = getTopLevelFunctionContaining(script, /["']updateMemberProfile["']/);
+  assert.match(submitProfile, /["']updateMemberProfile["']/);
+  assert.match(submitProfile, /\bphone\s*:/);
+  assert.match(submitProfile, /\bbirthday\s*:/);
+});
+
+test("shared GAS transport allowlists member phone and birthday fields", () => {
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
+
+  assert.ok(extraFields, "shared transport extra-field allowlist must exist");
+  assert.match(extraFields[1], /["']phone["']/);
+  assert.match(extraFields[1], /["']birthday["']/);
+});
+
+test("member-facing client and admin contact search do not reference member email", () => {
+  const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const renderRows = getTopLevelFunctionContaining(adminScript, /function\s+renderMemberRows\s*\(/);
+  const createRow = getTopLevelFunctionContaining(adminScript, /function\s+createMemberRow\s*\(/);
+  const normalizeMember = getTopLevelFunctionContaining(adminScript, /function\s+normalizeMember\s*\(/);
+
+  assert.doesNotMatch(clientHtml, /\bEmail\b/i);
+  assert.doesNotMatch(clientScript, /\bmember\.email\b/i);
+  assert.doesNotMatch(adminHtml, /placeholder="[^"]*Email[^"]*"/i);
+  assert.doesNotMatch(renderRows, /\bmember\.email\b/i);
+  assert.doesNotMatch(createRow, /\bmember\.email\b|Email/i);
+  assert.doesNotMatch(normalizeMember, /\bemail\s*:/i);
+});
+
+test("admin maps phone and birthday into member search and contact details", () => {
+  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const renderRows = getTopLevelFunctionContaining(script, /function\s+renderMemberRows\s*\(/);
+  const createRow = getTopLevelFunctionContaining(script, /function\s+createMemberRow\s*\(/);
+  const normalizeMember = getTopLevelFunctionContaining(script, /function\s+normalizeMember\s*\(/);
+
+  assert.match(html, /id="search-input"[^>]*placeholder="[^"]*電話[^"]*"/);
+  assert.match(renderRows, /\bmember\.phone\b/);
+  assert.match(renderRows, /\bmember\.birthday\b/);
+  assert.match(createRow, /createCell\(["']聯絡資料["']\)/);
+  assert.match(createRow, /\bmember\.phone\b/);
+  assert.match(createRow, /\bmember\.birthday\b/);
+  assert.match(normalizeMember, /\bphone\s*:\s*[^,;\n]*\bvalue\.phone\b/);
+  assert.match(normalizeMember, /\bbirthday\s*:\s*[^,;\n]*\bvalue\.birthday\b/);
+});
+
 test("client and admin JSON configs expose only public frontend settings", () => {
   const clientConfig = JSON.parse(fs.readFileSync(path.join(root, "client/config.json"), "utf8"));
   const adminConfig = JSON.parse(fs.readFileSync(path.join(root, "admin/config.json"), "utf8"));

@@ -268,6 +268,8 @@ function createMemberRow(gas, overrides = {}) {
     accessUpdatedBy: "",
     lastAccessRequestId: "",
     adminStatus: "approved",
+    phone: "+886912345678",
+    birthday: "1990-05-20",
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -323,8 +325,10 @@ function identity(overrides = {}) {
 test("administrator GAS uses the isolated channel and compatible sheet schemas", () => {
   const gas = createGasContext();
   assert.equal(gas.REQUIRED_LINE_CHANNEL_ID, ADMIN_CHANNEL_ID);
-  assert.equal(gas.MEMBER_HEADERS.length, 21);
+  assert.equal(gas.MEMBER_HEADERS.length, 23);
   assert.equal(gas.MEMBER_HEADERS[20], "admin_status");
+  assert.equal(gas.MEMBER_HEADERS[21], "phone");
+  assert.equal(gas.MEMBER_HEADERS[22], "birthday");
   assert.equal(gas.ADMIN_HEADERS.length, 12);
   assert.deepEqual(
     JSON.parse(JSON.stringify(gas.ADMIN_HEADERS)),
@@ -414,9 +418,9 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
-test("only two administrator actions are accepted and admin status input is ignored", () => {
+test("only two administrator actions are accepted and member/profile input is ignored", () => {
   const gas = createGasContext();
-  for (const action of ["upsertMember", "deleteMember"]) {
+  for (const action of ["upsertMember", "updateMemberProfile", "deleteMember"]) {
     assert.throws(
       () =>
         gas.validateRequestEnvelope_({
@@ -440,11 +444,15 @@ test("only two administrator actions are accepted and admin status input is igno
         pageSize: 50,
         adminStatus: "approved",
         status: "approved",
+        phone: "0912345678",
+        birthday: "1990-05-20",
       }),
     },
   });
   assert.equal(Object.prototype.hasOwnProperty.call(parsed, "adminStatus"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed, "status"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "phone"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "birthday"), false);
   gas.validateRequestEnvelope_(parsed);
 });
 
@@ -466,7 +474,7 @@ test("member actions are rejected before config, LINE verification or Sheets are
     throw new Error("Sheet must not be opened");
   };
 
-  for (const action of ["upsertMember", "deleteMember"]) {
+  for (const action of ["upsertMember", "updateMemberProfile", "deleteMember"]) {
     assert.throws(
       () => gas.handleAdminRequest_({ action, idToken: "header.payload.signature" }),
       (error) => error.appCode === "UNSUPPORTED_ACTION"
@@ -730,15 +738,21 @@ test("approved member listing is bounded and omits all internal identifiers", ()
   assert.equal(serialized.includes(internalAccessAdmin), false);
   assert.equal(serialized.includes("private-login-request"), false);
   assert.equal(serialized.includes("private-access-request"), false);
+  assert.equal(serialized.includes("member@example.com"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.members[0], "adminStatus"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.members[0], "lineUserId"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.members[0], "lastTokenIat"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.members[0], "email"), false);
+  assert.equal(result.data.members[0].phone, "+886912345678");
+  assert.equal(result.data.members[0].birthday, "1990-05-20");
 });
 
-test("member access update uses CAS, narrow writes and audit fields", () => {
+test("member access update uses CAS, preserves profile and never returns email", () => {
   const gas = createGasContext();
   const member = createMemberRow(gas, { status: "approved", adminStatus: "legacy-value" });
   const originalProfile = member.slice(1, 5);
+  const originalPhone = member[gas.MEMBER_COLUMN.phone - 1];
+  const originalBirthday = member[gas.MEMBER_COLUMN.birthday - 1];
   const spreadsheet = createSpreadsheet({
     Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
     Members: createSheet("Members", gas.MEMBER_HEADERS, [member]),
@@ -761,8 +775,13 @@ test("member access update uses CAS, narrow writes and audit fields", () => {
   assert.equal(updated[gas.MEMBER_COLUMN.accessUpdatedBy - 1], ADMIN_USER_ID);
   assert.equal(updated[gas.MEMBER_COLUMN.lastAccessRequestId - 1], request.requestId);
   assert.equal(updated[gas.MEMBER_COLUMN.adminStatus - 1], "legacy-value");
+  assert.equal(updated[gas.MEMBER_COLUMN.phone - 1], originalPhone);
+  assert.equal(updated[gas.MEMBER_COLUMN.birthday - 1], originalBirthday);
   assert.ok(updated[gas.MEMBER_COLUMN.accessUpdatedAt - 1] instanceof Date);
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "lineUserId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "email"), false);
+  assert.equal(result.data.member.phone, originalPhone);
+  assert.equal(result.data.member.birthday, originalBirthday);
 
   const duplicate = gas.adminSetMemberAccess_(identity(), request, configFor(gas));
   assert.equal(duplicate.data.duplicate, true);
@@ -884,15 +903,22 @@ test("origin checks are exact and do not treat path or suffix as authority", () 
   assert.equal(gas.isAllowedRequestOrigin_("http://localhost:8080"), true);
 });
 
-test("legacy Members headers upgrade to 21 columns while admin_status remains unused", () => {
+test("17, 20 and 21-column Members headers upgrade to the shared 23-column profile schema", () => {
   const gas = createGasContext();
-  const memberSheet = createSheet("Members", gas.LEGACY_MEMBER_HEADERS, []);
-  const spreadsheet = createSpreadsheet({ Members: memberSheet });
-  gas.getOrCreateMemberSheet_(spreadsheet, configFor(gas));
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(memberSheet.data[0])),
-    JSON.parse(JSON.stringify(gas.MEMBER_HEADERS))
-  );
+  const previousSchemas = [
+    Array.from(gas.LEGACY_MEMBER_HEADERS),
+    Array.from(gas.ACCESS_AUDIT_MEMBER_HEADERS),
+    Array.from(gas.ACCESS_AUDIT_MEMBER_HEADERS).concat(["admin_status"]),
+  ];
+  for (const headers of previousSchemas) {
+    const memberSheet = createSheet("Members", headers, []);
+    const spreadsheet = createSpreadsheet({ Members: memberSheet });
+    gas.getOrCreateMemberSheet_(spreadsheet, configFor(gas));
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(memberSheet.data[0])),
+      JSON.parse(JSON.stringify(gas.MEMBER_HEADERS))
+    );
+  }
 
   const badAdminHeaders = gas.ADMIN_HEADERS.slice();
   badAdminHeaders[5] = "role";
@@ -911,7 +937,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.0.0");
+  assert.equal(response.data.version, "1.1.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

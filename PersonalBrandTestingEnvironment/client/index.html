@@ -84,7 +84,7 @@
           <div class="action-copy">
             <p class="eyebrow">SECURE SIGN IN</p>
             <h2>登入會員中心</h2>
-            <p>將取得 LINE 顯示名稱、頭像與使用者識別碼；Email 僅在你同意授權時取得。</p>
+            <p>將取得 LINE 顯示名稱、頭像與使用者識別碼；電話與生日由你登入後自行填寫。</p>
           </div>
 
           <button class="primary-button" id="login-button" type="button">
@@ -206,9 +206,23 @@
                 <dt>會員狀態</dt>
                 <dd><span class="inline-status">有效</span></dd>
               </div>
+              <div>
+                <dt>電話</dt>
+                <dd id="member-phone">尚未填寫</dd>
+              </div>
+              <div>
+                <dt>生日</dt>
+                <dd id="member-birthday">尚未填寫</dd>
+              </div>
             </dl>
 
-            <button class="secondary-button full-width" id="logout-button" type="button">登出目前裝置</button>
+            <div class="member-actions">
+              <button class="primary-button" id="edit-profile-button" type="button">
+                <span>編輯會員資料</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+              </button>
+              <button class="secondary-button full-width" id="logout-button" type="button">登出目前裝置</button>
+            </div>
           </section>
         </div>
 
@@ -217,7 +231,7 @@
             <p class="eyebrow">DATA CONTROL</p>
             <h2 id="data-control-title">你的資料，由你決定。</h2>
           </div>
-          <p>後台保存建立會員所需的 LINE 資料、登入次數與時間、會員使用狀態、異動時間與執行異動的管理員識別碼、基本開啟環境、Token 核發時間，以及避免重複寫入的請求識別碼；不會保存 ID Token 本體或 LINE 密碼。</p>
+          <p>後台保存建立會員所需的 LINE 資料、你自行填寫的電話與生日、登入次數與時間、會員使用狀態、異動時間與執行異動的管理員識別碼、基本開啟環境、Token 核發時間，以及避免重複寫入的請求識別碼；不會保存 ID Token 本體或 LINE 密碼。</p>
           <div>
             <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
             <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
@@ -256,7 +270,7 @@
       <div class="modal-body">
         <section>
           <span>01</span>
-          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、選擇授權的 Email、會員時間與次數、使用狀態、異動時間與管理員識別碼、基本開啟環境、Token 核發時間，以及防止重複寫入的請求識別碼。</p></div>
+          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、你自行填寫的電話與生日、會員時間與次數、使用狀態、異動時間與管理員識別碼、基本開啟環境、Token 核發時間，以及防止重複寫入的請求識別碼。</p></div>
         </section>
         <section>
           <span>02</span>
@@ -268,6 +282,60 @@
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
+    </dialog>
+
+    <dialog class="modal profile-modal" id="profile-dialog" aria-labelledby="profile-title" aria-describedby="profile-description">
+      <form id="profile-form" novalidate>
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">EDIT MEMBER PROFILE</p>
+            <h2 id="profile-title">編輯會員資料</h2>
+          </div>
+          <button class="icon-button" id="profile-close-button" type="button" data-close-dialog aria-label="關閉會員資料編輯視窗">×</button>
+        </div>
+
+        <p class="profile-description" id="profile-description">電話與生日皆為選填，你可以隨時更新或清空。</p>
+
+        <div class="profile-fields">
+          <label class="profile-field" for="profile-phone-input">
+            <span>電話</span>
+            <input
+              id="profile-phone-input"
+              name="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              maxlength="30"
+              placeholder="例如：0912 345 678"
+              aria-describedby="profile-phone-help profile-phone-error"
+            />
+            <small id="profile-phone-help">可輸入市話、手機或國際電話格式。</small>
+            <small class="field-error" id="profile-phone-error" role="alert" hidden></small>
+          </label>
+
+          <label class="profile-field" for="profile-birthday-input">
+            <span>生日</span>
+            <input
+              id="profile-birthday-input"
+              name="birthday"
+              type="date"
+              autocomplete="bday"
+              aria-describedby="profile-birthday-error"
+            />
+            <small class="field-error" id="profile-birthday-error" role="alert" hidden></small>
+          </label>
+        </div>
+
+        <p class="profile-form-error" id="profile-form-error" role="alert" aria-live="assertive" tabindex="-1" hidden></p>
+
+        <div class="profile-actions">
+          <button class="secondary-button" id="profile-cancel-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" id="profile-save-button" type="submit">
+            <span>儲存資料</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+          </button>
+        </div>
+      </form>
     </dialog>
 
     <dialog class="modal delete-modal" id="delete-dialog" aria-labelledby="delete-title">

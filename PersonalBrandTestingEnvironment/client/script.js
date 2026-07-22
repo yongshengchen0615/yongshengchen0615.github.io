@@ -11,6 +11,7 @@
     "error-state",
   ];
   var currentIdToken = "";
+  var currentMember = null;
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
@@ -37,6 +38,7 @@
   function boot() {
     var thisBoot = ++bootVersion;
     isDemoSession = false;
+    currentMember = null;
     setView("loading-state");
     setConnection("正在連線", "loading");
 
@@ -152,6 +154,7 @@
   function handleLogout() {
     if (isDemoSession) {
       isDemoSession = false;
+      currentMember = null;
       setConnection("等待設定", "setup");
       setView("setup-state");
       showToast("已離開預覽模式");
@@ -161,6 +164,7 @@
     if (!window.liff) return;
 
     currentIdToken = "";
+    currentMember = null;
     clearInvalidTokenRecoveryGuard();
 
     if (window.liff.isInClient()) {
@@ -173,6 +177,197 @@
     }
 
     window.location.replace(getCleanPageUrl());
+  }
+
+  function openProfileEditor() {
+    if (!currentMember) return;
+
+    resetProfileForm();
+    byId("profile-birthday-input").max = getLocalTodayString();
+    openDialog(byId("profile-dialog"));
+  }
+
+  function handleProfileSubmit(event) {
+    event.preventDefault();
+    clearProfileErrors();
+
+    var profile;
+    try {
+      profile = {
+        phone: normalizeMemberPhone(byId("profile-phone-input").value),
+        birthday: normalizeMemberBirthday(byId("profile-birthday-input").value),
+      };
+    } catch (error) {
+      showProfileValidationError(error);
+      return;
+    }
+
+    if (isDemoSession) {
+      renderMember(Object.assign({}, currentMember, profile), false);
+      byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
+      closeDialog(byId("profile-dialog"));
+      showToast("預覽：會員資料已更新");
+      return;
+    }
+
+    var token = currentIdToken || (window.liff && window.liff.getIDToken()) || "";
+    if (!token) {
+      showProfileFormError("登入狀態已失效，請重新登入後再試。");
+      return;
+    }
+
+    setProfileFormBusy(true);
+    sendGasRequest("updateMemberProfile", token, getLiffContext(), {
+      phone: profile.phone,
+      birthday: profile.birthday,
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
+
+        if (
+          !response.data ||
+          !response.data.access ||
+          typeof response.data.access.allowed !== "boolean"
+        ) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
+        }
+
+        if (!response.data.access.allowed) {
+          setProfileFormBusy(false);
+          closeDialog(byId("profile-dialog"));
+          renderAccessState(response.data.access.status, false);
+          return;
+        }
+
+        if (!response.data.member) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
+        }
+
+        renderMember(response.data.member, false);
+        byId("sync-caption").textContent = "會員資料已更新";
+        setProfileFormBusy(false);
+        closeDialog(byId("profile-dialog"));
+        showToast("會員資料已儲存");
+      })
+      .catch(function (error) {
+        var normalized = normalizeClientError(error);
+        if (normalized.code === "INVALID_TOKEN" || normalized.code === "INVALID_ID_TOKEN") {
+          setProfileFormBusy(false);
+          closeDialog(byId("profile-dialog"));
+          handleClientError(error);
+          return;
+        }
+
+        if (normalized.code === "INVALID_PHONE" || normalized.code === "INVALID_BIRTHDAY") {
+          showProfileValidationError(
+            createClientError(normalized.code, normalized.message)
+          );
+          return;
+        }
+
+        if (normalized.code === "MEMBER_ACCESS_DENIED") {
+          setProfileFormBusy(false);
+          closeDialog(byId("profile-dialog"));
+          renderAccessState("denied", false);
+          return;
+        }
+
+        showProfileFormError(normalized.message);
+      })
+      .finally(function () {
+        setProfileFormBusy(false);
+      });
+  }
+
+  function setProfileFormBusy(busy) {
+    var dialog = byId("profile-dialog");
+    dialog.dataset.busy = busy ? "true" : "false";
+    setButtonBusy(byId("profile-save-button"), busy, "正在儲存");
+    byId("profile-cancel-button").disabled = busy;
+    byId("profile-close-button").disabled = busy;
+    byId("profile-phone-input").disabled = busy;
+    byId("profile-birthday-input").disabled = busy;
+  }
+
+  function resetProfileForm() {
+    clearProfileErrors();
+    byId("profile-phone-input").value = currentMember ? currentMember.phone || "" : "";
+    byId("profile-birthday-input").value = currentMember ? currentMember.birthday || "" : "";
+  }
+
+  function clearProfileErrors() {
+    ["phone", "birthday"].forEach(function (field) {
+      var input = byId("profile-" + field + "-input");
+      var error = byId("profile-" + field + "-error");
+      input.setAttribute("aria-invalid", "false");
+      error.textContent = "";
+      error.hidden = true;
+    });
+    byId("profile-form-error").textContent = "";
+    byId("profile-form-error").hidden = true;
+  }
+
+  function showProfileValidationError(error) {
+    var field = error && error.code === "INVALID_BIRTHDAY" ? "birthday" : "phone";
+    var input = byId("profile-" + field + "-input");
+    var output = byId("profile-" + field + "-error");
+    input.setAttribute("aria-invalid", "true");
+    output.textContent = (error && error.message) || "請檢查欄位內容。";
+    output.hidden = false;
+    input.focus();
+  }
+
+  function showProfileFormError(message) {
+    var output = byId("profile-form-error");
+    output.textContent = message || "無法儲存會員資料，請稍後再試。";
+    output.hidden = false;
+    output.focus();
+  }
+
+  function normalizeMemberPhone(value) {
+    var phone = String(value || "").trim();
+    if (!phone) return "";
+
+    var digitCount = phone.replace(/\D/g, "").length;
+    if (
+      phone.length > 30 ||
+      !/^[0-9+().\- #xX]+$/.test(phone) ||
+      digitCount < 6 ||
+      digitCount > 20
+    ) {
+      throw createClientError(
+        "INVALID_PHONE",
+        "請輸入 6 至 20 位數字，可使用空格、+、-、括號或分機符號。"
+      );
+    }
+    return phone;
+  }
+
+  function normalizeMemberBirthday(value) {
+    var birthday = String(value || "").trim();
+    if (!birthday) return "";
+
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday);
+    if (!match) {
+      throw createClientError("INVALID_BIRTHDAY", "請選擇有效的生日。");
+    }
+    var date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    if (
+      date.getUTCFullYear() !== Number(match[1]) ||
+      date.getUTCMonth() !== Number(match[2]) - 1 ||
+      date.getUTCDate() !== Number(match[3]) ||
+      birthday > getLocalTodayString()
+    ) {
+      throw createClientError("INVALID_BIRTHDAY", "生日必須是有效日期，且不可晚於今天。");
+    }
+    return birthday;
+  }
+
+  function getLocalTodayString() {
+    var now = new Date();
+    var local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
   }
 
   function handleDeleteMember() {
@@ -214,12 +409,13 @@
       });
   }
 
-  function sendGasRequest(action, idToken, context) {
+  function sendGasRequest(action, idToken, context, fields) {
     return window.MemberApi.sendRequest({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
       action: action,
       idToken: idToken,
       context: context || {},
+      fields: fields || {},
     });
   }
 
@@ -252,12 +448,23 @@
   function renderMember(member, wasCreated) {
     var name = cleanDisplayText(member.displayName, "LINE 會員");
     var pictureUrl = getSafeImageUrl(member.pictureUrl);
+    var phone = cleanDisplayText(member.phone, "");
+    var birthday = normalizeBirthdayDisplayValue(member.birthday);
+
+    currentMember = Object.assign({}, member, {
+      phone: phone,
+      birthday: birthday,
+    });
 
     byId("member-greeting-name").textContent = name;
     byId("member-display-name").textContent = name;
     byId("member-avatar-fallback").textContent = getInitial(name);
     byId("member-id").textContent = cleanDisplayText(member.memberId, "—");
     byId("member-since").textContent = formatShortDate(member.joinedAt);
+    byId("member-phone").textContent = phone || "尚未填寫";
+    byId("member-birthday").textContent = birthday
+      ? formatBirthday(birthday)
+      : "尚未填寫";
     byId("sync-caption").textContent = wasCreated ? "會員建立完成" : "會員資料已同步";
 
     var avatar = byId("member-avatar");
@@ -302,6 +509,8 @@
         memberId: "MBR-PREVIEW",
         displayName: "王小明",
         pictureUrl: "",
+        phone: "0912 345 678",
+        birthday: "1992-06-18",
         joinedAt: new Date(now.getFullYear(), 0, 18).toISOString(),
       },
       false
@@ -405,6 +614,10 @@
       LINE_RATE_LIMITED: "LINE 驗證請求較多，請稍候一分鐘再試。",
       LINE_UNAVAILABLE: "LINE 驗證服務暫時無法使用，請稍後再試。",
       MEMBER_DELETED: "會員資料剛完成刪除，請重新登入後再建立會員。",
+      MEMBER_NOT_FOUND: "找不到會員資料，請重新登入後再試。",
+      MEMBER_ACCESS_DENIED: "目前帳號已停用，無法修改會員資料。",
+      INVALID_PHONE: "電話格式不正確，請檢查後再試。",
+      INVALID_BIRTHDAY: "生日格式不正確，且不可晚於今天。",
     };
 
     if (knownMessages[code]) message = knownMessages[code];
@@ -499,6 +712,16 @@
       .replace(/\//g, ".");
   }
 
+  function normalizeBirthdayDisplayValue(value) {
+    var birthday = String(value || "").trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday : "";
+  }
+
+  function formatBirthday(value) {
+    var birthday = normalizeBirthdayDisplayValue(value);
+    return birthday ? birthday.replace(/-/g, ".") : "尚未填寫";
+  }
+
   function setButtonBusy(button, busy, busyLabel) {
     if (!button) return;
     var label = button.querySelector("span") || button;
@@ -535,7 +758,9 @@
 
   function closeDialog(dialog) {
     if (!dialog) return;
+    if (dialog.id === "profile-dialog" && dialog.dataset.busy === "true") return;
     if (dialog.id === "delete-dialog") resetDeleteConfirmation();
+    if (dialog.id === "profile-dialog") resetProfileForm();
     if (typeof dialog.close === "function" && dialog.open) {
       dialog.close();
     } else {
@@ -577,6 +802,8 @@
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
+    byId("edit-profile-button").addEventListener("click", openProfileEditor);
+    byId("profile-form").addEventListener("submit", handleProfileSubmit);
 
     document.querySelectorAll("[data-open-dialog]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -602,6 +829,25 @@
 
     byId("delete-dialog").addEventListener("close", function () {
       resetDeleteConfirmation();
+    });
+
+    byId("profile-dialog").addEventListener("close", function () {
+      resetProfileForm();
+    });
+
+    byId("profile-dialog").addEventListener("cancel", function (event) {
+      if (event.currentTarget.dataset.busy === "true") event.preventDefault();
+    });
+
+    ["phone", "birthday"].forEach(function (field) {
+      byId("profile-" + field + "-input").addEventListener("input", function () {
+        var input = byId("profile-" + field + "-input");
+        var output = byId("profile-" + field + "-error");
+        input.setAttribute("aria-invalid", "false");
+        output.textContent = "";
+        output.hidden = true;
+        byId("profile-form-error").hidden = true;
+      });
     });
   }
 

@@ -10,11 +10,12 @@
  * - SHEET_NAME: defaults to "Members"
  * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
  *
- * This deployment accepts only upsertMember and deleteMember. It deliberately
- * does not authorize or implement administrator actions.
+ * This deployment accepts only upsertMember, updateMemberProfile and
+ * deleteMember. It deliberately does not authorize or implement administrator
+ * actions.
  */
 
-var API_VERSION = "1.0.0";
+var API_VERSION = "1.1.0";
 var DEFAULT_SHEET_NAME = "Members";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
@@ -45,9 +46,10 @@ var ACCESS_AUDIT_MEMBER_HEADERS = LEGACY_MEMBER_HEADERS.concat([
   "last_access_request_id",
 ]);
 
-// Keep the exact shared 21-column schema. The client backend preserves but
-// never uses admin_status for authorization.
-var MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
+// Preserve the exact former 21-column schema, then append editable profile
+// fields so existing indexes and spreadsheet data never move.
+var PRE_PROFILE_MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
+var MEMBER_HEADERS = PRE_PROFILE_MEMBER_HEADERS.concat(["phone", "birthday"]);
 
 var MEMBER_COLUMN = {
   memberId: 1,
@@ -71,6 +73,8 @@ var MEMBER_COLUMN = {
   accessUpdatedBy: 19,
   lastAccessRequestId: 20,
   adminStatus: 21,
+  phone: 22,
+  birthday: 23,
 };
 
 function doGet(e) {
@@ -164,11 +168,19 @@ function handleMemberRequest_(request) {
     return upsertMember_(identity, request, config);
   }
 
+  if (request.action === "updateMemberProfile") {
+    return updateMemberProfile_(identity, request, config);
+  }
+
   return deleteMember_(identity, request, config);
 }
 
 function assertSupportedAction_(action) {
-  if (action !== "upsertMember" && action !== "deleteMember") {
+  if (
+    action !== "upsertMember" &&
+    action !== "updateMemberProfile" &&
+    action !== "deleteMember"
+  ) {
     throw appError_("UNSUPPORTED_ACTION", "此會員端後台不支援該操作。");
   }
 }
@@ -230,7 +242,6 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     lineUserId: limitText_(claims.sub, 128),
     displayName: limitText_(claims.name || "LINE 會員", 100),
     pictureUrl: normalizeHttpsUrl_(claims.picture),
-    email: limitText_(claims.email || "", 254),
     tokenIssuedAt: Math.floor(Number(claims.iat)),
   };
 }
@@ -277,14 +288,13 @@ function upsertMember_(identity, request, config) {
         var isNewLoginSession =
           Number(row[MEMBER_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
 
-        // Deliberately use field-level writes. In particular, columns 6
-        // (status) and 21 (admin_status) are never overwritten here.
+        // Deliberately use field-level writes. In particular, legacy email,
+        // status, admin_status, phone and birthday are never overwritten here.
         sheet
-          .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 3)
+          .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 2)
           .setValues([[
             safeSheetText_(identity.displayName),
             safeSheetText_(identity.pictureUrl),
-            safeSheetText_(identity.email),
           ]]);
         sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
         if (isNewLoginSession) {
@@ -340,6 +350,71 @@ function upsertMember_(identity, request, config) {
   }
 }
 
+function updateMemberProfile_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "會員資料正在更新，請稍後再試。");
+  }
+
+  try {
+    var phone = normalizeMemberPhone_(request.phone);
+    var birthday = normalizeMemberBirthday_(request.birthday);
+    var sheet = getOrCreateMemberSheet_(config);
+    var rowNumber = findMemberRow_(sheet, identity.lineUserId);
+    if (!rowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    var access = memberAccessFromRow_(row);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法修改會員資料。");
+    }
+
+    var recentOutcome = getRecentRequestOutcome_(
+      identity.lineUserId,
+      request.action,
+      request.requestId
+    );
+    var isDuplicate =
+      String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId ||
+      Boolean(recentOutcome);
+
+    if (!isDuplicate) {
+      var now = new Date();
+      sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+      sheet
+        .getRange(rowNumber, MEMBER_COLUMN.lastRequestId)
+        .setValues([[request.requestId]]);
+      sheet
+        .getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2)
+        .setValues([[safeSheetText_(phone), safeSheetText_(birthday)]]);
+      applyMemberRowFormats_(sheet, rowNumber);
+      SpreadsheetApp.flush();
+      markRequestProcessed_(identity.lineUserId, request.action, request.requestId, "updated");
+    }
+
+    // Re-read because the independent administrator GAS can change access at
+    // any time. A newly disabled member never receives profile data.
+    row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    access = memberAccessFromRow_(row);
+    var context = normalizeContext_(request.context);
+
+    return {
+      data: {
+        access: access,
+        member: access.allowed ? memberResponseFromRow_(row, identity, context) : null,
+        duplicate: isDuplicate,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法更新會員資料，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function deleteMember_(identity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -377,7 +452,7 @@ function createMemberRow_(identity, requestId, context, now) {
     safeSheetText_(identity.lineUserId),
     safeSheetText_(identity.displayName),
     safeSheetText_(identity.pictureUrl),
-    safeSheetText_(identity.email),
+    "",
     "approved",
     now,
     now,
@@ -390,6 +465,8 @@ function createMemberRow_(identity, requestId, context, now) {
     safeSheetText_(context.viewType),
     identity.tokenIssuedAt,
     requestId,
+    "",
+    "",
     "",
     "",
     "",
@@ -407,7 +484,8 @@ function memberResponseFromRow_(row, identity, context) {
     memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
     displayName: identity.displayName,
     pictureUrl: identity.pictureUrl,
-    email: identity.email,
+    phone: memberPhoneFromRow_(row),
+    birthday: memberBirthdayFromRow_(row),
     status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
     joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
     updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
@@ -467,12 +545,15 @@ function getOrCreateMemberSheet_(config) {
   var lastColumn = sheet.getLastColumn();
   if (
     lastColumn === LEGACY_MEMBER_HEADERS.length ||
-    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length
+    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length ||
+    lastColumn === PRE_PROFILE_MEMBER_HEADERS.length
   ) {
-    var previousHeaders =
-      lastColumn === LEGACY_MEMBER_HEADERS.length
-        ? LEGACY_MEMBER_HEADERS
-        : ACCESS_AUDIT_MEMBER_HEADERS;
+    var previousHeaders = PRE_PROFILE_MEMBER_HEADERS;
+    if (lastColumn === LEGACY_MEMBER_HEADERS.length) {
+      previousHeaders = LEGACY_MEMBER_HEADERS;
+    } else if (lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length) {
+      previousHeaders = ACCESS_AUDIT_MEMBER_HEADERS;
+    }
     var existingPreviousHeaders = sheet
       .getRange(1, 1, 1, previousHeaders.length)
       .getDisplayValues()[0];
@@ -541,7 +622,11 @@ function styleMemberHeader_(sheet, startColumn, columnCount) {
 
 function applySheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  var textColumns = [1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21];
+  var textColumns = [
+    1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21,
+    MEMBER_COLUMN.phone,
+    MEMBER_COLUMN.birthday,
+  ];
 
   textColumns.forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
@@ -563,6 +648,7 @@ function applyMemberRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedBy).setNumberFormat("@");
   sheet.getRange(rowNumber, MEMBER_COLUMN.lastAccessRequestId).setNumberFormat("@");
   sheet.getRange(rowNumber, MEMBER_COLUMN.adminStatus).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2).setNumberFormat("@");
 }
 
 function findMemberRow_(sheet, lineUserId) {
@@ -589,6 +675,8 @@ function parseRequest_(e) {
       requestSecret: String(e.parameter.requestSecret || ""),
       callbackOrigin: normalizeOrigin_(e.parameter.callbackOrigin),
       context: parseContext_(e.parameter.context),
+      phone: String(e.parameter.phone || "").trim(),
+      birthday: String(e.parameter.birthday || "").trim(),
       transport: "bridge",
     };
   }
@@ -614,6 +702,8 @@ function parseRequest_(e) {
     requestSecret: "",
     callbackOrigin: normalizeOrigin_(parsed.callbackOrigin),
     context: normalizeContext_(parsed.context),
+    phone: String(parsed.phone || "").trim(),
+    birthday: String(parsed.birthday || "").trim(),
     transport: "fetch",
   };
 }
@@ -630,6 +720,11 @@ function validateRequestEnvelope_(request) {
   }
   if (request.transport === "bridge" && !/^[a-f0-9]{48}$/.test(request.requestSecret || "")) {
     throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
+  }
+
+  if (request.action === "updateMemberProfile") {
+    request.phone = normalizeMemberPhone_(request.phone);
+    request.birthday = normalizeMemberBirthday_(request.birthday);
   }
 }
 
@@ -828,6 +923,65 @@ function appError_(code, publicMessage) {
   error.appCode = code;
   error.publicMessage = publicMessage;
   return error;
+}
+
+function normalizeMemberPhone_(value) {
+  var phone = String(value == null ? "" : value).trim();
+  if (!phone) return "";
+
+  var digitCount = phone.replace(/\D/g, "").length;
+  if (
+    phone.length > 30 ||
+    !/^[0-9+().\- #xX]+$/.test(phone) ||
+    digitCount < 6 ||
+    digitCount > 20
+  ) {
+    throw appError_(
+      "INVALID_PHONE",
+      "電話格式不正確，請輸入 6 至 20 位數字，可使用空格、+、-、括號或分機符號。"
+    );
+  }
+
+  return phone;
+}
+
+function normalizeMemberBirthday_(value) {
+  var birthday = String(value == null ? "" : value).trim();
+  if (!birthday) return "";
+
+  var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday);
+  if (!match) {
+    throw appError_("INVALID_BIRTHDAY", "生日格式不正確，請使用 YYYY-MM-DD。");
+  }
+
+  var year = Number(match[1]);
+  var month = Number(match[2]);
+  var day = Number(match[3]);
+  var date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw appError_("INVALID_BIRTHDAY", "生日不是有效的日期。");
+  }
+
+  var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+  if (birthday > today) {
+    throw appError_("INVALID_BIRTHDAY", "生日不可晚於今天。");
+  }
+
+  return birthday;
+}
+
+function memberPhoneFromRow_(row) {
+  var phone = String(row[MEMBER_COLUMN.phone - 1] || "").trim().slice(0, 30);
+  return /^'[=+\-@]/.test(phone) ? phone.slice(1) : phone;
+}
+
+function memberBirthdayFromRow_(row) {
+  var birthday = String(row[MEMBER_COLUMN.birthday - 1] || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday : "";
 }
 
 function safeSheetText_(value) {
