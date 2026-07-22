@@ -258,10 +258,6 @@
     byId("member-avatar-fallback").textContent = getInitial(name);
     byId("member-id").textContent = cleanDisplayText(member.memberId, "—");
     byId("member-since").textContent = formatShortDate(member.joinedAt);
-    byId("member-email").textContent = cleanDisplayText(member.email, "尚未授權");
-    byId("member-login-count").textContent = formatLoginCount(member.loginCount);
-    byId("member-last-login").textContent = formatDateTime(member.lastLoginAt);
-    byId("member-environment").textContent = formatEnvironment(member.loginContext);
     byId("sync-caption").textContent = wasCreated ? "會員建立完成" : "會員資料已同步";
 
     var avatar = byId("member-avatar");
@@ -306,11 +302,7 @@
         memberId: "MBR-PREVIEW",
         displayName: "王小明",
         pictureUrl: "",
-        email: "hello@example.com",
         joinedAt: new Date(now.getFullYear(), 0, 18).toISOString(),
-        lastLoginAt: now.toISOString(),
-        loginCount: 12,
-        loginContext: { type: "utou", os: "ios", language: "zh-TW" },
       },
       false
     );
@@ -505,39 +497,6 @@
     })
       .format(date)
       .replace(/\//g, ".");
-  }
-
-  function formatDateTime(value) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat("zh-TW", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
-  }
-
-  function formatLoginCount(value) {
-    var count = Number(value);
-    return Number.isFinite(count) && count >= 0 ? Math.floor(count).toLocaleString("zh-TW") + " 次" : "—";
-  }
-
-  function formatEnvironment(context) {
-    context = context || {};
-    var typeLabels = {
-      utou: "LINE 一對一聊天室",
-      group: "LINE 群組",
-      room: "LINE 多人聊天室",
-      external: "外部瀏覽器",
-      none: "LINE 應用程式",
-    };
-    var osLabels = { ios: "iOS", android: "Android", web: "Web" };
-    var source = typeLabels[context.type] || (context.inClient ? "LINE 應用程式" : "瀏覽器");
-    var os = osLabels[context.os] || cleanDisplayText(context.os, "");
-    return os ? source + " · " + os : source;
   }
 
   function setButtonBusy(button, busy, busyLabel) {

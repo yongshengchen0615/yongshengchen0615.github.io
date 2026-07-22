@@ -49,6 +49,26 @@ test("HTML documents do not contain duplicate IDs", () => {
   }
 });
 
+test("client member profile does not display email or login metadata", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+
+  assert.ok(memberState, "client member state must exist");
+  for (const label of ["Email", "登入次數", "最後登入", "登入環境"]) {
+    assert.doesNotMatch(memberState[0], new RegExp(`>${label}<`));
+  }
+  for (const id of [
+    "member-email",
+    "member-login-count",
+    "member-last-login",
+    "member-environment",
+  ]) {
+    assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(script, new RegExp(`byId\\(["']${id}["']\\)`));
+  }
+});
+
 test("client and admin JSON configs expose only public frontend settings", () => {
   const clientConfig = JSON.parse(fs.readFileSync(path.join(root, "client/config.json"), "utf8"));
   const adminConfig = JSON.parse(fs.readFileSync(path.join(root, "admin/config.json"), "utf8"));
