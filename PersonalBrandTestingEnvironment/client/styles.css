@@ -1,3 +1,4 @@
+/* PERSONA member client */
 :root {
   color-scheme: light;
   --paper: #f3f0e7;
@@ -627,6 +628,132 @@ code {
   grid-template-columns: 1.3fr 1fr;
   gap: 0.65rem;
   margin-top: -1.5rem;
+}
+
+.access-layout {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(3rem, 10vw, 10rem);
+  padding-block: clamp(4rem, 9vw, 9rem);
+}
+
+.access-visual {
+  position: relative;
+  width: min(100%, 28rem);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.access-ring,
+.access-ring::before,
+.access-ring::after {
+  position: absolute;
+  border: 1px solid rgba(6, 199, 85, 0.28);
+  border-radius: 50%;
+  content: "";
+}
+
+.access-ring {
+  inset: 5%;
+  animation: orbit-drift 4s ease-in-out infinite alternate;
+}
+
+.access-ring::before {
+  inset: 14%;
+  border-style: dashed;
+}
+
+.access-ring::after {
+  inset: 31%;
+  border-color: rgba(6, 199, 85, 0.5);
+  background: rgba(6, 199, 85, 0.06);
+}
+
+.access-icon {
+  position: relative;
+  z-index: 1;
+  width: 5.5rem;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--green-deep);
+  box-shadow: 0 1.5rem 4rem rgba(7, 59, 41, 0.17);
+  font-size: 2rem;
+  animation: loading-bounce 1.8s ease-in-out infinite alternate;
+}
+
+.access-layout[data-status="denied"] .access-ring,
+.access-layout[data-status="denied"] .access-ring::before,
+.access-layout[data-status="denied"] .access-ring::after {
+  border-color: rgba(165, 59, 49, 0.25);
+}
+
+.access-layout[data-status="denied"] .access-icon {
+  background: var(--danger);
+  animation: none;
+}
+
+.access-copy {
+  max-width: 42rem;
+}
+
+.access-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  margin-top: 1.25rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid rgba(6, 199, 85, 0.35);
+  color: var(--green-dark);
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+}
+
+.access-layout[data-status="denied"] .access-badge {
+  border-color: rgba(165, 59, 49, 0.35);
+  color: var(--danger);
+}
+
+.access-copy h1 {
+  max-width: 10ch;
+  margin: 1.1rem 0 1.5rem;
+  font-size: clamp(3rem, 6.7vw, 7rem);
+  font-weight: 520;
+  line-height: 0.97;
+  letter-spacing: -0.065em;
+}
+
+.access-copy > p:not(.eyebrow) {
+  max-width: 36rem;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: clamp(0.98rem, 1.3vw, 1.1rem);
+  line-height: 1.85;
+}
+
+.access-actions {
+  max-width: 38rem;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 0.7rem;
+  margin-top: 2.5rem;
+}
+
+.access-data-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.3rem;
+  margin-top: 1.1rem;
+}
+
+.access-data-actions .text-button,
+.access-data-actions .danger-button {
+  min-height: 2.75rem;
 }
 
 .member-layout {
@@ -1351,8 +1478,14 @@ code {
 
 @media (max-width: 980px) {
   .auth-layout,
-  .setup-layout {
+  .setup-layout,
+  .access-layout {
     grid-template-columns: 1fr;
+  }
+
+  .access-visual {
+    width: min(62vw, 22rem);
+    margin-inline: auto;
   }
 
   .auth-intro h1,
@@ -1498,6 +1631,28 @@ code {
 
   .setup-actions {
     grid-template-columns: 1fr;
+  }
+
+  .access-layout {
+    gap: 2rem;
+  }
+
+  .access-visual {
+    width: min(70vw, 17rem);
+  }
+
+  .access-copy h1 {
+    font-size: clamp(2.8rem, 14.2vw, 4.4rem);
+  }
+
+  .access-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .access-data-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
   }
 
   .member-heading {

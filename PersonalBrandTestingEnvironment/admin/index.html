@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#edf0e9" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content="會員存取權限管理後台" />
+    <title>PERSONA ADMIN｜會員管理</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%230b3c2c'/%3E%3Cpath d='M18 20h28v20H32l-9 7v-7h-5z' fill='%2306c755'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script defer src="../shared/gas-api.js"></script>
+    <script defer src="script.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳至主要內容</a>
+    <div class="page-grid" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="回到管理後台首頁">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-copy">
+          <strong data-brand-name>PERSONA</strong>
+          <small>ADMIN</small>
+        </span>
+      </a>
+
+      <div class="connection" id="connection-status" data-tone="loading" role="status" aria-live="polite">
+        <span aria-hidden="true"></span>
+        <span id="connection-label">正在連線</span>
+      </div>
+    </header>
+
+    <main id="main-content" class="app-shell">
+      <section class="app-state centered-state" id="loading-state" aria-labelledby="loading-title">
+        <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <p class="eyebrow">ADMIN ACCESS</p>
+        <h1 id="loading-title">正在確認管理員身分</h1>
+        <p id="loading-message">連線 LINE 與會員後台，請稍候。</p>
+      </section>
+
+      <section class="app-state access-state" id="login-state" hidden aria-labelledby="login-title">
+        <div>
+          <p class="eyebrow">RESTRICTED AREA</p>
+          <h1 id="login-title">登入會員管理後台</h1>
+          <p>使用已列入管理員名單的 LINE 帳號進行身分驗證。</p>
+        </div>
+        <button class="primary-button" id="login-button" type="button">
+          <span>使用 LINE 登入</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+        </button>
+      </section>
+
+      <section class="app-state access-state" id="setup-state" hidden aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">SETUP REQUIRED</p>
+          <h1 id="setup-title">管理端尚未完成設定</h1>
+          <p>請在 <code>admin/config.json</code> 填入管理端 LIFF ID，並確認 GAS 網址可用。</p>
+        </div>
+        <div class="button-row">
+          <a class="primary-button" href="../setup.html">開啟設定說明</a>
+          <button class="secondary-button" id="preview-button" type="button">預覽管理後台</button>
+        </div>
+      </section>
+
+      <section class="app-state access-state" id="unauthorized-state" hidden aria-labelledby="unauthorized-title">
+        <div>
+          <p class="eyebrow danger-copy">ACCESS DENIED</p>
+          <h1 id="unauthorized-title">此 LINE 帳號沒有管理權限</h1>
+          <p>後台已完成身分驗證，但這個帳號不在管理員名單中。</p>
+        </div>
+        <button class="secondary-button" id="unauthorized-logout-button" type="button">登出這個帳號</button>
+      </section>
+
+      <section class="app-state access-state" id="error-state" hidden aria-labelledby="error-title">
+        <div>
+          <p class="eyebrow danger-copy" id="error-code">CONNECTION ERROR</p>
+          <h1 id="error-title">暫時無法開啟管理後台</h1>
+          <p id="error-message">連線時發生問題，請稍後再試。</p>
+        </div>
+        <button class="primary-button" id="retry-button" type="button">
+          <span>重新連線</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+        </button>
+      </section>
+
+      <section class="app-state dashboard" id="dashboard-state" hidden aria-labelledby="dashboard-title">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">MEMBER ACCESS</p>
+            <h1 id="dashboard-title">會員存取管理</h1>
+            <p>審核新會員，或調整已有會員的進入權限。</p>
+          </div>
+
+          <div class="admin-identity" aria-label="目前管理員">
+            <div class="admin-avatar">
+              <img id="admin-avatar" alt="" hidden />
+              <span id="admin-avatar-fallback" aria-hidden="true">A</span>
+            </div>
+            <div>
+              <small>SIGNED IN AS</small>
+              <strong id="admin-name">管理員</strong>
+            </div>
+            <button class="text-button" id="logout-button" type="button">登出</button>
+          </div>
+        </header>
+
+        <dl class="metric-strip" aria-label="會員審核統計">
+          <div>
+            <dt>全部會員</dt>
+            <dd id="metric-all">0</dd>
+          </div>
+          <div>
+            <dt>等待審核</dt>
+            <dd id="metric-pending">0</dd>
+          </div>
+          <div>
+            <dt>已允許</dt>
+            <dd id="metric-approved">0</dd>
+          </div>
+          <div>
+            <dt>已停止</dt>
+            <dd id="metric-denied">0</dd>
+          </div>
+        </dl>
+
+        <section class="member-workspace" aria-labelledby="member-list-title">
+          <header class="workspace-toolbar">
+            <div>
+              <p class="eyebrow">MEMBER DIRECTORY</p>
+              <h2 id="member-list-title">會員清單</h2>
+              <p id="sync-label">尚未同步</p>
+            </div>
+
+            <form class="filters" id="filter-form" role="search">
+              <label class="search-field">
+                <span class="sr-only">搜尋本頁會員</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
+                <input id="search-input" type="search" autocomplete="off" placeholder="搜尋本頁姓名、會員編號或 Email" />
+              </label>
+
+              <label class="filter-field">
+                <span class="sr-only">篩選會員狀態</span>
+                <select id="status-filter">
+                  <option value="all">全部狀態</option>
+                  <option value="pending">等待審核</option>
+                  <option value="approved">已允許</option>
+                  <option value="denied">已停止</option>
+                </select>
+              </label>
+
+              <button class="refresh-button" id="refresh-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+                <span>重新整理</span>
+              </button>
+            </form>
+          </header>
+
+          <div class="table-wrap" id="table-wrap" aria-busy="false">
+            <table>
+              <caption class="sr-only">會員資料與進入權限</caption>
+              <thead>
+                <tr>
+                  <th scope="col">會員</th>
+                  <th scope="col">聯絡資料</th>
+                  <th scope="col">加入日期</th>
+                  <th scope="col">最後登入</th>
+                  <th scope="col">存取狀態</th>
+                  <th scope="col"><span class="sr-only">操作</span></th>
+                </tr>
+              </thead>
+              <tbody id="member-list"></tbody>
+            </table>
+          </div>
+
+          <div class="empty-state" id="empty-state" hidden>
+            <strong>沒有符合條件的會員</strong>
+            <p>請調整搜尋關鍵字或狀態篩選。</p>
+          </div>
+
+          <footer class="pagination" aria-label="會員清單分頁">
+            <button class="text-button" id="previous-page-button" type="button">上一頁</button>
+            <p>第 <strong id="current-page">1</strong> / <span id="total-pages">1</span> 頁</p>
+            <button class="text-button" id="next-page-button" type="button">下一頁</button>
+          </footer>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>MEMBER ACCESS CONTROL</p>
+      <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
+    </footer>
+
+    <dialog class="confirm-dialog" id="deny-dialog" aria-labelledby="deny-dialog-title">
+      <div>
+        <p class="eyebrow danger-copy">STOP ACCESS</p>
+        <h2 id="deny-dialog-title">停止這位會員的進入權限？</h2>
+        <p><span id="deny-member-name">此會員</span> 將無法進入會員系統，之後仍可由管理員重新允許。</p>
+      </div>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="cancel-deny-button" type="button">取消</button>
+        <button class="danger-button" id="confirm-deny-button" type="button">確認停止存取</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span aria-hidden="true"></span>
+      <p id="toast-message"></p>
+    </div>
+  </body>
+</html>

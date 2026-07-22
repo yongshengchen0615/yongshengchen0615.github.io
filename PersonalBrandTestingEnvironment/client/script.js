@@ -2,57 +2,30 @@
   "use strict";
 
   var CONFIG = Object.freeze({});
-  var STATE_IDS = ["loading-state", "login-state", "setup-state", "member-state", "error-state"];
-  var FETCH_TIMEOUT_MS = 12000;
-  var BRIDGE_TIMEOUT_MS = 20000;
+  var STATE_IDS = [
+    "loading-state",
+    "login-state",
+    "setup-state",
+    "access-state",
+    "member-state",
+    "error-state",
+  ];
   var currentIdToken = "";
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
 
   function loadConfig() {
-    return window
-      .fetch(new URL("config.json", document.baseURI).toString(), {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-        credentials: "same-origin",
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw createClientError(
-            "CONFIG_LOAD_ERROR",
-            "無法載入 config.json。請確認設定檔已與 index.html 一起發布。"
-          );
-        }
-        return response.json();
-      })
+    if (!window.MemberApi) {
+      return Promise.reject(
+        createClientError("CLIENT_LIBRARY_ERROR", "無法載入會員資料連線元件，請重新整理頁面。")
+      );
+    }
+
+    return window.MemberApi
+      .loadConfig("config.json", ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"])
       .then(function (config) {
-        if (!config || typeof config !== "object" || Array.isArray(config)) {
-          throw createClientError("CONFIG_FORMAT_ERROR", "config.json 的最外層必須是 JSON 物件。");
-        }
-
-        ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"].forEach(function (key) {
-          if (typeof config[key] !== "string") {
-            throw createClientError(
-              "CONFIG_FORMAT_ERROR",
-              "config.json 的 " + key + " 必須是字串。"
-            );
-          }
-        });
-
-        CONFIG = Object.freeze({
-          LIFF_ID: config.LIFF_ID,
-          GAS_WEB_APP_URL: config.GAS_WEB_APP_URL,
-          BRAND_NAME: config.BRAND_NAME,
-        });
-      })
-      .catch(function (error) {
-        if (error && error.code) throw error;
-        throw createClientError(
-          "CONFIG_LOAD_ERROR",
-          "無法讀取 config.json。請透過網站伺服器開啟頁面並確認 JSON 格式正確。"
-        );
+        CONFIG = config;
       });
   }
 
@@ -125,7 +98,20 @@
         if (expectedBootVersion !== bootVersion) return;
         assertSuccessfulResponse(response);
 
-        if (!response.data || !response.data.member) {
+        if (
+          !response.data ||
+          !response.data.access ||
+          typeof response.data.access.allowed !== "boolean"
+        ) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的會員存取狀態格式不完整。");
+        }
+
+        if (!response.data.access.allowed) {
+          renderAccessState(response.data.access.status, Boolean(response.data.created));
+          return;
+        }
+
+        if (!response.data.member) {
           throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
         }
 
@@ -154,8 +140,7 @@
     setButtonBusy(button, true, "前往 LINE 登入");
 
     try {
-      // 不指定 redirectUri，讓 LIFF 使用 Console 中的 Endpoint URL，避免網址不符。
-      window.liff.login();
+      window.liff.login({ redirectUri: getCleanPageUrl() });
     } catch (error) {
       setButtonBusy(button, false);
       handleClientError(error);
@@ -224,169 +209,12 @@
   }
 
   function sendGasRequest(action, idToken, context) {
-    var request = {
+    return window.MemberApi.sendRequest({
+      gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
       action: action,
       idToken: idToken,
-      requestId: createRequestId(),
-      callbackOrigin: getCallbackOrigin(),
       context: context || {},
-      transport: "fetch",
-    };
-
-    return postWithFetch(request).catch(function (error) {
-      if (!shouldUseBridgeFallback(error)) throw error;
-      return postWithBridge(request);
     });
-  }
-
-  function postWithFetch(request) {
-    var controller = new AbortController();
-    var timeout = window.setTimeout(function () {
-      controller.abort();
-    }, FETCH_TIMEOUT_MS);
-
-    return window
-      .fetch(String(CONFIG.GAS_WEB_APP_URL).trim(), {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=UTF-8" },
-        body: JSON.stringify(request),
-        cache: "no-store",
-        credentials: "omit",
-        redirect: "follow",
-        referrerPolicy: "no-referrer",
-        signal: controller.signal,
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw createClientError("BACKEND_HTTP_ERROR", "GAS 後台目前無法回應。");
-        }
-        return response.text();
-      })
-      .then(function (text) {
-        var result;
-        try {
-          result = JSON.parse(text);
-        } catch (_error) {
-          throw createClientError(
-            "BACKEND_RESPONSE_ERROR",
-            "GAS 回傳的不是 JSON。請確認 Web App 已設為「任何人」可存取，並使用 /exec 網址。"
-          );
-        }
-        return validateResponseEnvelope(result, request.requestId);
-      })
-      .finally(function () {
-        window.clearTimeout(timeout);
-      });
-  }
-
-  function postWithBridge(originalRequest) {
-    return new Promise(function (resolve, reject) {
-      var requestSecret = createRandomHex(24);
-      var frameName = "gas_bridge_" + originalRequest.requestId.replace(/[^a-zA-Z0-9]/g, "");
-      var iframe = document.createElement("iframe");
-      var form = document.createElement("form");
-      var timeout;
-      var settled = false;
-
-      iframe.name = frameName;
-      iframe.title = "會員資料同步通道";
-      iframe.hidden = true;
-
-      form.method = "POST";
-      form.action = String(CONFIG.GAS_WEB_APP_URL).trim();
-      form.target = frameName;
-      form.acceptCharset = "UTF-8";
-      form.hidden = true;
-
-      appendHiddenField(form, "action", originalRequest.action);
-      appendHiddenField(form, "idToken", originalRequest.idToken);
-      appendHiddenField(form, "requestId", originalRequest.requestId);
-      appendHiddenField(form, "requestSecret", requestSecret);
-      appendHiddenField(form, "callbackOrigin", originalRequest.callbackOrigin);
-      appendHiddenField(form, "context", JSON.stringify(originalRequest.context || {}));
-      appendHiddenField(form, "transport", "bridge");
-
-      function cleanup() {
-        window.clearTimeout(timeout);
-        window.removeEventListener("message", receiveMessage);
-        form.remove();
-        window.setTimeout(function () {
-          iframe.remove();
-        }, 0);
-      }
-
-      function finish(callback, value) {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        callback(value);
-      }
-
-      function receiveMessage(event) {
-        var message = event.data;
-        if (!isPlausibleGasOrigin(event.origin)) return;
-        if (!message || message.type !== "MEMBER_GAS_RESPONSE") return;
-        if (message.requestId !== originalRequest.requestId || message.requestSecret !== requestSecret) return;
-
-        try {
-          finish(resolve, validateResponseEnvelope(message.result, originalRequest.requestId));
-        } catch (error) {
-          finish(reject, error);
-        }
-      }
-
-      window.addEventListener("message", receiveMessage);
-      document.body.appendChild(iframe);
-      document.body.appendChild(form);
-
-      timeout = window.setTimeout(function () {
-        finish(
-          reject,
-          createClientError(
-            "BACKEND_TIMEOUT",
-            "等待 GAS 回應逾時。請確認 ALLOWED_ORIGINS 與 Web App 存取權限設定。"
-          )
-        );
-      }, BRIDGE_TIMEOUT_MS);
-
-      form.submit();
-    });
-  }
-
-  function appendHiddenField(form, name, value) {
-    var input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value == null ? "" : String(value);
-    form.appendChild(input);
-  }
-
-  function validateResponseEnvelope(result, requestId) {
-    if (!result || typeof result !== "object" || result.requestId !== requestId) {
-      throw createClientError("INVALID_RESPONSE", "無法確認 GAS 回應與本次請求相符。");
-    }
-    return result;
-  }
-
-  function shouldUseBridgeFallback(error) {
-    return (
-      error instanceof TypeError ||
-      (error && (error.name === "AbortError" || error.code === "FETCH_NETWORK_ERROR"))
-    );
-  }
-
-  function isPlausibleGasOrigin(origin) {
-    if (origin === "https://script.google.com") return true;
-    try {
-      var url = new URL(origin);
-      return (
-        url.protocol === "https:" &&
-        (url.hostname === "script.googleusercontent.com" ||
-          url.hostname.endsWith(".script.googleusercontent.com"))
-      );
-    } catch (_error) {
-      return false;
-    }
   }
 
   function assertSuccessfulResponse(response) {
@@ -395,6 +223,26 @@
     var code = response && response.code ? response.code : "BACKEND_ERROR";
     var message = response && response.message ? response.message : "會員後台暫時無法處理這次請求。";
     throw createClientError(code, message);
+  }
+
+  function renderAccessState(status, wasCreated) {
+    var denied = status === "denied";
+    byId("access-icon").textContent = denied ? "×" : "⌛";
+    byId("access-badge").textContent = denied ? "尚未開放" : "等待審核";
+    byId("access-title").textContent = denied ? "目前無法進入會員中心" : "會員申請已送出";
+    byId("access-message").textContent = denied
+      ? "管理員目前未開放這個帳號進入。若你認為狀態有誤，請聯絡服務人員後再重新確認。"
+      : "管理員確認後即可進入會員中心，你可以稍後回來重新確認狀態。";
+    byId("access-state").dataset.status = denied ? "denied" : "pending";
+    byId("access-logout-button").textContent =
+      window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
+
+    setConnection(denied ? "尚未開放" : "等待審核", denied ? "error" : "setup");
+    setView("access-state");
+
+    if (wasCreated && !denied) {
+      showToast("會員申請已建立，等待管理員審核");
+    }
   }
 
   function renderMember(member, wasCreated) {
@@ -558,24 +406,11 @@
     if (!liffId || /YOUR_|請填入|REPLACE/i.test(liffId)) return false;
     if (!gasUrl || /YOUR_|請填入|REPLACE/i.test(gasUrl)) return false;
 
-    try {
-      var url = new URL(gasUrl);
-      return (
-        url.protocol === "https:" &&
-        url.hostname === "script.google.com" &&
-        /\/macros\/s\/[^/]+\/exec\/?$/.test(url.pathname)
-      );
-    } catch (_error) {
-      return false;
-    }
+    return Boolean(window.MemberApi && window.MemberApi.isValidGasUrl(gasUrl));
   }
 
   function hasDemoQuery() {
     return new URLSearchParams(window.location.search).get("demo") === "1";
-  }
-
-  function getCallbackOrigin() {
-    return window.location.origin && window.location.origin !== "null" ? window.location.origin : "";
   }
 
   function getCleanPageUrl() {
@@ -583,27 +418,6 @@
     url.search = "";
     url.hash = "";
     return url.toString();
-  }
-
-  function createRequestId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return "req-" + createRandomHex(16);
-  }
-
-  function createRandomHex(byteLength) {
-    if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
-      throw createClientError("SECURE_RANDOM_UNAVAILABLE", "目前瀏覽器不支援安全連線所需功能。");
-    }
-
-    var bytes = new Uint8Array(byteLength);
-    window.crypto.getRandomValues(bytes);
-    return Array.prototype.map
-      .call(bytes, function (byte) {
-        return byte.toString(16).padStart(2, "0");
-      })
-      .join("");
   }
 
   function cleanDisplayText(value, fallback) {
@@ -743,6 +557,8 @@
   function bindInteractions() {
     byId("login-button").addEventListener("click", handleLogin);
     byId("logout-button").addEventListener("click", handleLogout);
+    byId("access-refresh-button").addEventListener("click", boot);
+    byId("access-logout-button").addEventListener("click", handleLogout);
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);

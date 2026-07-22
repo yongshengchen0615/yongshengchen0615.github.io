@@ -7,21 +7,21 @@
     <meta name="description" content="LINE LIFF 會員系統設定指南" />
     <title>設定指南｜PERSONA MEMBERS</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2306c755'/%3E%3Cpath d='M18 19h28v21H32l-9 7v-7h-5z' fill='white'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="client/styles.css" />
   </head>
   <body class="legal-page">
     <header class="site-header">
-      <a class="brand" href="./" aria-label="回到會員中心">
+      <a class="brand" href="client/" aria-label="回到會員中心">
         <span class="brand-mark" aria-hidden="true">P</span>
         <span><strong>PERSONA</strong><small>MEMBERS</small></span>
       </a>
-      <a class="legal-back-link" href="./">返回會員中心</a>
+      <a class="legal-back-link" href="client/">返回會員中心</a>
     </header>
 
     <main class="legal-document setup-document">
       <header>
         <p class="eyebrow">DEPLOYMENT GUIDE</p>
-        <h1>四步完成上線。</h1>
+        <h1>五步完成上線。</h1>
         <p class="legal-notice">
           準備一份 Google 試算表、一個 LINE Login Channel，以及可發布 GitHub Pages 的儲存庫。整套系統不需要安裝套件。
         </p>
@@ -38,6 +38,7 @@
             <div><dt>LINE_CHANNEL_ID</dt><dd>LINE Login Channel ID，不是 LIFF ID</dd></div>
             <div><dt>SPREADSHEET_ID</dt><dd>剛才複製的 Google Sheet ID</dd></div>
             <div><dt>ALLOWED_ORIGINS</dt><dd>前端 origin，例如 https://example.github.io</dd></div>
+            <div><dt>ADMIN_LINE_USER_IDS</dt><dd>管理員 LINE User ID，多個以逗號分隔；可在第 05 步取得後補上</dd></div>
             <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
             <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，LINE 驗證每分鐘上限，預設 120</dd></div>
           </dl>
@@ -59,35 +60,47 @@
       <section>
         <span>03</span>
         <div>
-          <h2>建立 LINE Login 與 LIFF</h2>
-          <p>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers Console</a> 建立 LINE Login Channel，並在 LIFF 分頁新增 App。</p>
+          <h2>建立會員端與管理端 LIFF</h2>
+          <p>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers Console</a> 建立一個 LINE Login Channel，並在同一個 Channel 的 LIFF 分頁新增兩個 App。</p>
           <ul class="setup-check-list">
-            <li>Endpoint URL：本會員頁部署後的完整 HTTPS 網址</li>
+            <li>會員端 Endpoint：<code>https://你的網域/PersonalBrandTestingEnvironment/client/</code></li>
+            <li>管理端 Endpoint：<code>https://你的網域/PersonalBrandTestingEnvironment/admin/</code></li>
             <li>Size：建議 Full</li>
             <li>Scope：必要的 <code>openid</code>、<code>profile</code>，以及選用的 <code>email</code></li>
           </ul>
-          <p>儲存後複製 LIFF ID。正式使用者應從 <code>https://liff.line.me/{LIFF_ID}</code> 開啟會員中心。</p>
+          <p>分別複製兩個 LIFF ID。兩個 LIFF App 必須建立在同一個 LINE Login Channel，GAS 才能用同一個 <code>LINE_CHANNEL_ID</code> 驗證。</p>
         </div>
       </section>
 
       <section>
         <span>04</span>
         <div>
-          <h2>填入前端設定並發布</h2>
-          <p>編輯 <a href="config.json" target="_blank">config.json</a>，填入剛取得的 LIFF ID、GAS <code>/exec</code> 網址與品牌名稱。</p>
+          <h2>填入兩端設定並發布</h2>
+          <p>編輯 <a href="client/config.json" target="_blank">client/config.json</a>，填入會員端 LIFF ID、GAS <code>/exec</code> 網址與品牌名稱。</p>
           <pre><code>{
   "LIFF_ID": "1234567890-AbCdEfGh",
   "GAS_WEB_APP_URL": "https://script.google.com/macros/s/.../exec",
   "BRAND_NAME": "你的品牌名稱"
 }</code></pre>
-          <p>提交到 GitHub Pages 發布分支後，用 LIFF URL 在 LINE 手機 App 與外部瀏覽器各測試一次。更完整的檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
+          <p>再編輯 <a href="admin/config.json" target="_blank">admin/config.json</a>，使用管理端 LIFF ID；兩端的 GAS 網址必須相同。提交到 GitHub Pages 發布分支後再繼續下一步。</p>
+        </div>
+      </section>
+
+      <section>
+        <span>05</span>
+        <div>
+          <h2>指定第一位管理員</h2>
+          <p>先從會員端 LIFF 登入一次。新帳號會以 <code>pending</code> 建立在 Members 工作表；複製你那一列的 <code>line_user_id</code>。</p>
+          <p>回到 Apps Script 的指令碼屬性，將該值填入 <code>ADMIN_LINE_USER_IDS</code>。多位管理員使用半形逗號分隔，請勿把名單放進公開的前端 JSON。</p>
+          <pre><code>ADMIN_LINE_USER_IDS=Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
+          <p>現在可從管理端 LIFF URL 登入，核准自己的會員帳號及其他待審核會員。完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
         </div>
       </section>
     </main>
 
     <footer class="site-footer legal-footer">
       <p>LIFF + GAS DEPLOYMENT</p>
-      <a href="./">會員中心</a>
+      <a href="client/">會員中心</a>
       <p>© 2026 PERSONA</p>
     </footer>
   </body>

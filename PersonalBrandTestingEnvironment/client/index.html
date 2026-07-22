@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f0e7" />
+    <meta
+      name="description"
+      content="使用 LINE 安全登入的會員中心，查看會員身分與資料同步狀態。"
+    />
+    <title>PERSONA MEMBERS｜會員中心</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2306c755'/%3E%3Cpath d='M18 19h28v21H32l-9 7v-7h-5z' fill='white'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script defer src="../shared/gas-api.js"></script>
+    <script defer src="script.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳至主要內容</a>
+
+    <div class="page-texture" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="回到會員中心首頁">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span>
+          <strong data-brand-name>PERSONA</strong>
+          <small>MEMBERS</small>
+        </span>
+      </a>
+
+      <div class="connection-status" id="connection-status" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="connection-label">正在連線</span>
+      </div>
+    </header>
+
+    <main id="main-content" class="app-shell">
+      <section class="app-state loading-state" id="loading-state" aria-labelledby="loading-title">
+        <div class="loading-symbol" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <p class="eyebrow">MEMBER ACCESS</p>
+        <h1 id="loading-title">正在確認會員身分</h1>
+        <p>連線 LINE 與會員資料庫，請稍候。</p>
+      </section>
+
+      <section class="app-state auth-layout" id="login-state" hidden aria-labelledby="login-title">
+        <div class="auth-intro">
+          <p class="eyebrow">YOUR MEMBERSHIP, ONE TAP AWAY</p>
+          <h1 id="login-title">你的會員身分，<br />從 LINE 開始。</h1>
+          <p class="intro-copy">
+            不必再記一組密碼。使用 LINE 完成身分確認，就能建立或開啟你的會員資料。
+          </p>
+
+          <div class="trust-list" aria-label="服務特色">
+            <div>
+              <span>01</span>
+              <p><strong>快速登入</strong><small>使用既有 LINE 帳號</small></p>
+            </div>
+            <div>
+              <span>02</span>
+              <p><strong>安全驗證</strong><small>由後台向 LINE 核對身分</small></p>
+            </div>
+            <div>
+              <span>03</span>
+              <p><strong>即時同步</strong><small>自動更新會員登入紀錄</small></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-action">
+          <span class="section-index" aria-hidden="true">01 / ACCESS</span>
+          <div class="identity-orbit" aria-hidden="true">
+            <span class="orbit orbit-one"></span>
+            <span class="orbit orbit-two"></span>
+            <span class="identity-core">
+              <svg viewBox="0 0 32 32" role="presentation">
+                <path d="M7 7.5h18v13H16l-5.5 4.5v-4.5H7z"></path>
+              </svg>
+            </span>
+          </div>
+
+          <div class="action-copy">
+            <p class="eyebrow">SECURE SIGN IN</p>
+            <h2>登入會員中心</h2>
+            <p>將取得 LINE 顯示名稱、頭像與使用者識別碼；Email 僅在你同意授權時取得。</p>
+          </div>
+
+          <button class="primary-button" id="login-button" type="button">
+            <span>使用 LINE 登入</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M14 7l5 5-5 5"></path>
+            </svg>
+          </button>
+
+          <p class="consent-copy">
+            繼續即表示你已閱讀並同意
+            <button class="text-button" type="button" data-open-dialog="privacy-dialog">會員資料說明</button>。
+          </p>
+        </div>
+      </section>
+
+      <section class="app-state setup-layout" id="setup-state" hidden aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">SETUP REQUIRED</p>
+          <h1 id="setup-title">還差兩個設定，<br />會員系統就能上線。</h1>
+          <p class="intro-copy">目前畫面已完成，請填入 LIFF ID 與 GAS Web App 網址來啟用真實登入。</p>
+        </div>
+
+        <ol class="setup-steps">
+          <li>
+            <span>01</span>
+            <div>
+              <strong>設定 GAS 後台</strong>
+              <p>部署 <code>gas/Code.gs</code>，並取得結尾為 <code>/exec</code> 的網址。</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <strong>設定 LIFF</strong>
+              <p>在 LINE Developers 建立會員端 LIFF App，將公開值填入 <code>client/config.json</code>。</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="setup-actions">
+          <a class="primary-button" href="../setup.html">
+            <span>開啟設定說明</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+          </a>
+          <button class="secondary-button" id="preview-button" type="button">預覽完成畫面</button>
+        </div>
+      </section>
+
+      <section class="app-state access-layout" id="access-state" hidden aria-labelledby="access-title">
+        <div class="access-visual" aria-hidden="true">
+          <span class="access-ring"></span>
+          <span class="access-icon" id="access-icon">⌛</span>
+        </div>
+        <div class="access-copy">
+          <p class="eyebrow">MEMBERSHIP ACCESS</p>
+          <span class="access-badge" id="access-badge">等待審核</span>
+          <h1 id="access-title">會員申請已送出</h1>
+          <p id="access-message">管理員確認後即可進入會員中心，你可以稍後回來重新確認狀態。</p>
+          <div class="access-actions">
+            <button class="primary-button" id="access-refresh-button" type="button">
+              <span>重新確認狀態</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+            </button>
+            <button class="secondary-button" id="access-logout-button" type="button">登出目前裝置</button>
+          </div>
+          <div class="access-data-actions">
+            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
+            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除申請資料</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="app-state member-layout" id="member-state" hidden aria-labelledby="member-title">
+        <header class="member-heading">
+          <div>
+            <p class="eyebrow">MEMBER PROFILE</p>
+            <h1 id="member-title">歡迎回來，<span id="member-greeting-name">會員</span></h1>
+          </div>
+          <p class="sync-caption"><span aria-hidden="true"></span><span id="sync-caption">會員資料已同步</span></p>
+        </header>
+
+        <div class="member-workspace">
+          <article class="member-pass" aria-label="數位會員證">
+            <div class="pass-topline">
+              <span data-brand-name>PERSONA</span>
+              <span>MEMBER / ACTIVE</span>
+            </div>
+
+            <div class="pass-profile">
+              <div class="member-avatar">
+                <img id="member-avatar" alt="" hidden />
+                <span id="member-avatar-fallback" aria-hidden="true">M</span>
+              </div>
+              <div>
+                <small>MEMBER NAME</small>
+                <strong id="member-display-name">—</strong>
+                <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
+              </div>
+            </div>
+
+            <div class="pass-footer">
+              <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
+              <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
+              <div class="pass-code" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+          </article>
+
+          <section class="member-details" aria-labelledby="details-title">
+            <div class="details-heading">
+              <p class="eyebrow">ACCOUNT DETAILS</p>
+              <h2 id="details-title">會員資料</h2>
+            </div>
+
+            <dl class="detail-list">
+              <div>
+                <dt>會員狀態</dt>
+                <dd><span class="inline-status">有效</span></dd>
+              </div>
+              <div>
+                <dt>Email</dt>
+                <dd id="member-email">尚未授權</dd>
+              </div>
+              <div>
+                <dt>登入次數</dt>
+                <dd id="member-login-count">—</dd>
+              </div>
+              <div>
+                <dt>最後登入</dt>
+                <dd id="member-last-login">—</dd>
+              </div>
+              <div>
+                <dt>登入環境</dt>
+                <dd id="member-environment">—</dd>
+              </div>
+            </dl>
+
+            <button class="secondary-button full-width" id="logout-button" type="button">登出目前裝置</button>
+          </section>
+        </div>
+
+        <section class="data-control" aria-labelledby="data-control-title">
+          <div>
+            <p class="eyebrow">DATA CONTROL</p>
+            <h2 id="data-control-title">你的資料，由你決定。</h2>
+          </div>
+          <p>後台保存建立會員所需的 LINE 資料、登入次數與時間、會員審核狀態與異動時間、基本開啟環境、Token 核發時間，以及避免重複寫入的請求識別碼；不會保存 ID Token 本體或 LINE 密碼。</p>
+          <div>
+            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
+            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="app-state error-layout" id="error-state" hidden aria-labelledby="error-title">
+        <span class="error-code" id="error-code">CONNECTION ERROR</span>
+        <div>
+          <p class="eyebrow">SOMETHING WENT WRONG</p>
+          <h1 id="error-title">暫時無法開啟會員中心</h1>
+          <p id="error-message">連線時發生問題，請稍後再試。</p>
+          <button class="primary-button compact-button" id="retry-button" type="button">
+            <span>重新連線</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>SECURE MEMBER ACCESS VIA LINE</p>
+      <button class="text-button" type="button" data-open-dialog="privacy-dialog">資料與隱私</button>
+      <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
+    </footer>
+
+    <dialog class="modal" id="privacy-dialog" aria-labelledby="privacy-title">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">PRIVACY AT A GLANCE</p>
+          <h2 id="privacy-title">會員資料說明</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="關閉資料說明">×</button>
+      </div>
+      <div class="modal-body">
+        <section>
+          <span>01</span>
+          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、選擇授權的 Email、會員時間與次數、審核狀態與異動時間、基本開啟環境、Token 核發時間，以及防止重複寫入的請求識別碼。</p></div>
+        </section>
+        <section>
+          <span>02</span>
+          <div><h3>如何驗證</h3><p>前端把短效 ID Token 交給後台，後台再向 LINE 驗證。Token 僅用於當次驗證，不會寫入試算表。</p></div>
+        </section>
+        <section>
+          <span>03</span>
+          <div><h3>如何刪除</h3><p>登入後可在會員中心刪除自己的整筆會員資料。正式上線前，請依你的服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+        </section>
+      </div>
+      <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
+    </dialog>
+
+    <dialog class="modal delete-modal" id="delete-dialog" aria-labelledby="delete-title">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow danger-copy">DELETE MEMBERSHIP</p>
+          <h2 id="delete-title">刪除會員資料？</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="關閉刪除視窗">×</button>
+      </div>
+      <p>這會永久刪除試算表中的會員紀錄，且無法復原。若要確認，請在下方輸入「刪除」。</p>
+      <label class="confirm-field">
+        <span>確認文字</span>
+        <input id="delete-confirm-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入：刪除" />
+      </label>
+      <button class="danger-button full-width" id="delete-confirm-button" type="button" disabled>永久刪除會員資料</button>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="toast-message"></span>
+    </div>
+  </body>
+</html>

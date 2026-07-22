@@ -10,14 +10,18 @@
  * Optional:
  * - SHEET_NAME: defaults to "Members"
  * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
+ * - ADMIN_LINE_USER_IDS: comma-separated verified LINE user IDs allowed to
+ *   access administrator actions; admin actions stay disabled when omitted
  */
 
-var API_VERSION = "1.0.0";
+var API_VERSION = "1.1.0";
 var DEFAULT_SHEET_NAME = "Members";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
+var DEFAULT_ADMIN_PAGE_SIZE = 50;
+var MAX_ADMIN_PAGE_SIZE = 100;
 
-var MEMBER_HEADERS = [
+var LEGACY_MEMBER_HEADERS = [
   "member_id",
   "line_user_id",
   "display_name",
@@ -37,6 +41,12 @@ var MEMBER_HEADERS = [
   "last_request_id",
 ];
 
+var MEMBER_HEADERS = LEGACY_MEMBER_HEADERS.concat([
+  "access_updated_at",
+  "access_updated_by",
+  "last_access_request_id",
+]);
+
 var MEMBER_COLUMN = {
   memberId: 1,
   lineUserId: 2,
@@ -55,6 +65,9 @@ var MEMBER_COLUMN = {
   viewType: 15,
   lastTokenIat: 16,
   lastRequestId: 17,
+  accessUpdatedAt: 18,
+  accessUpdatedBy: 19,
+  lastAccessRequestId: 20,
 };
 
 function doGet(e) {
@@ -131,6 +144,13 @@ function setup() {
       spreadsheetId: config.spreadsheetId,
       sheetName: sheet.getName(),
       columns: MEMBER_HEADERS.length,
+      adminCount: config.adminLineUserIds.length,
+      adminConfigured: config.adminConfigValid && config.adminLineUserIds.length > 0,
+      warning:
+        config.adminConfigValid && config.adminLineUserIds.length > 0
+          ? ""
+          : "ADMIN_LINE_USER_IDS 尚未正確設定，管理員功能將保持關閉。",
+      accessStatuses: ["pending", "approved", "denied"],
     };
   } finally {
     lock.releaseLock();
@@ -147,6 +167,16 @@ function handleMemberRequest_(request) {
 
   if (request.action === "deleteMember") {
     return deleteMember_(identity, request, config);
+  }
+
+  if (request.action === "adminListMembers") {
+    requireAdmin_(identity, config);
+    return adminListMembers_(identity, request, config);
+  }
+
+  if (request.action === "adminSetMemberAccess") {
+    requireAdmin_(identity, config);
+    return adminSetMemberAccess_(identity, request, config);
   }
 
   throw appError_("UNSUPPORTED_ACTION", "不支援的會員操作。");
@@ -261,7 +291,6 @@ function upsertMember_(identity, request, config) {
         row[MEMBER_COLUMN.displayName - 1] = safeSheetText_(identity.displayName);
         row[MEMBER_COLUMN.pictureUrl - 1] = safeSheetText_(identity.pictureUrl);
         row[MEMBER_COLUMN.email - 1] = safeSheetText_(identity.email);
-        row[MEMBER_COLUMN.status - 1] = "active";
         row[MEMBER_COLUMN.updatedAt - 1] = now;
         if (isNewLoginSession) {
           row[MEMBER_COLUMN.lastLoginAt - 1] = now;
@@ -293,10 +322,13 @@ function upsertMember_(identity, request, config) {
       );
     }
 
+    var access = memberAccessFromRow_(row);
+
     return {
       data: {
         created: responseCreated,
-        member: memberResponseFromRow_(row, identity, context),
+        access: access,
+        member: access.allowed ? memberResponseFromRow_(row, identity, context) : null,
       },
     };
   } catch (error) {
@@ -347,6 +379,144 @@ function deleteMember_(identity, request, config) {
   }
 }
 
+function adminListMembers_(adminIdentity, request, config) {
+  requireAdmin_(adminIdentity, config);
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "會員資料正在更新，請稍後再試。");
+  }
+
+  try {
+    var sheet = getOrCreateMemberSheet_(config);
+    var lastRow = sheet.getLastRow();
+    var rows =
+      lastRow < 2
+        ? []
+        : sheet.getRange(2, 1, lastRow - 1, MEMBER_HEADERS.length).getValues();
+    var metrics = {
+      all: rows.length,
+      pending: 0,
+      approved: 0,
+      denied: 0,
+    };
+    var members = rows.map(function (row) {
+      var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+      metrics[status] += 1;
+      return adminMemberResponseFromRow_(row);
+    });
+
+    members.sort(function (left, right) {
+      return dateSortValue_(right.joinedAt) - dateSortValue_(left.joinedAt);
+    });
+
+    var page = Math.max(1, Math.floor(Number(request.page) || 1));
+    var pageSize = Math.max(
+      1,
+      Math.min(MAX_ADMIN_PAGE_SIZE, Math.floor(Number(request.pageSize) || DEFAULT_ADMIN_PAGE_SIZE))
+    );
+    var total = members.length;
+    var startIndex = (page - 1) * pageSize;
+
+    return {
+      data: {
+        members: members.slice(startIndex, startIndex + pageSize),
+        metrics: metrics,
+        pagination: {
+          page: page,
+          pageSize: pageSize,
+          total: total,
+          totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+        },
+        admin: {
+          displayName: adminIdentity.displayName,
+          pictureUrl: adminIdentity.pictureUrl,
+        },
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取會員清單，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminSetMemberAccess_(adminIdentity, request, config) {
+  requireAdmin_(adminIdentity, config);
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "會員權限正在更新，請稍後再試。");
+  }
+
+  try {
+    var sheet = getOrCreateMemberSheet_(config);
+    var rowNumber = findMemberRowByMemberId_(sheet, request.targetMemberId);
+    if (!rowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到指定的會員。");
+    }
+
+    var row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    var currentStatus = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+    var lastAccessRequestId = String(row[MEMBER_COLUMN.lastAccessRequestId - 1] || "");
+
+    if (lastAccessRequestId === request.requestId) {
+      if (currentStatus !== request.accessStatus) {
+        throw appError_(
+          "REQUEST_ID_CONFLICT",
+          "同一請求識別碼不可用於不同的權限變更。"
+        );
+      }
+
+      return {
+        data: {
+          member: adminMemberResponseFromRow_(row),
+          duplicate: true,
+        },
+      };
+    }
+
+    var now = new Date();
+    row[MEMBER_COLUMN.status - 1] = request.accessStatus;
+    row[MEMBER_COLUMN.updatedAt - 1] = now;
+    row[MEMBER_COLUMN.accessUpdatedAt - 1] = now;
+    row[MEMBER_COLUMN.accessUpdatedBy - 1] = safeSheetText_(adminIdentity.lineUserId);
+    row[MEMBER_COLUMN.lastAccessRequestId - 1] = request.requestId;
+
+    sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).setValues([row]);
+    applyMemberRowFormats_(sheet, rowNumber);
+    SpreadsheetApp.flush();
+
+    return {
+      data: {
+        member: adminMemberResponseFromRow_(row),
+        duplicate: false,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法更新會員權限，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminMemberResponseFromRow_(row) {
+  return {
+    memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
+    displayName: String(row[MEMBER_COLUMN.displayName - 1] || "LINE 會員"),
+    pictureUrl: normalizeHttpsUrl_(row[MEMBER_COLUMN.pictureUrl - 1]),
+    email: String(row[MEMBER_COLUMN.email - 1] || ""),
+    status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
+    joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
+    updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
+    lastLoginAt: toIsoString_(row[MEMBER_COLUMN.lastLoginAt - 1]),
+    loginCount: Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0),
+    accessUpdatedAt: toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]),
+  };
+}
+
 function createMemberRow_(identity, requestId, context, now) {
   return [
     "MBR-" + Utilities.getUuid().replace(/-/g, "").slice(0, 10).toUpperCase(),
@@ -354,7 +524,7 @@ function createMemberRow_(identity, requestId, context, now) {
     safeSheetText_(identity.displayName),
     safeSheetText_(identity.pictureUrl),
     safeSheetText_(identity.email),
-    "active",
+    "pending",
     now,
     now,
     now,
@@ -366,7 +536,18 @@ function createMemberRow_(identity, requestId, context, now) {
     safeSheetText_(context.viewType),
     identity.tokenIssuedAt,
     requestId,
+    "",
+    "",
+    "",
   ];
+}
+
+function memberAccessFromRow_(row) {
+  var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+  return {
+    status: status,
+    allowed: status === "approved",
+  };
 }
 
 function memberResponseFromRow_(row, identity, context) {
@@ -375,7 +556,7 @@ function memberResponseFromRow_(row, identity, context) {
     displayName: identity.displayName,
     pictureUrl: identity.pictureUrl,
     email: identity.email,
-    status: String(row[MEMBER_COLUMN.status - 1] || "active"),
+    status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
     joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
     updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
     lastLoginAt: toIsoString_(row[MEMBER_COLUMN.lastLoginAt - 1]),
@@ -390,8 +571,14 @@ function getConfig_() {
   var spreadsheetId = String(properties.getProperty("SPREADSHEET_ID") || "").trim();
   var sheetName = String(properties.getProperty("SHEET_NAME") || DEFAULT_SHEET_NAME).trim();
   var allowedOrigins = getAllowedOrigins_();
+  var adminConfig = getAdminConfig_(properties);
 
-  if (!/^\d{6,}$/.test(lineChannelId) || !spreadsheetId || !sheetName || allowedOrigins.length === 0) {
+  if (
+    !/^\d{6,}$/.test(lineChannelId) ||
+    !spreadsheetId ||
+    !sheetName ||
+    allowedOrigins.length === 0
+  ) {
     throw appError_(
       "CONFIG_ERROR",
       "GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
@@ -403,7 +590,57 @@ function getConfig_() {
     spreadsheetId: spreadsheetId,
     sheetName: sheetName.slice(0, 80),
     allowedOrigins: allowedOrigins,
+    adminLineUserIds: adminConfig.lineUserIds,
+    adminConfigValid: adminConfig.valid,
   };
+}
+
+function getAdminLineUserIds_(properties) {
+  return getAdminConfig_(properties).lineUserIds;
+}
+
+function getAdminConfig_(properties) {
+  properties = properties || PropertiesService.getScriptProperties();
+  var raw = String(properties.getProperty("ADMIN_LINE_USER_IDS") || "");
+  var values = raw
+    .split(",")
+    .map(function (value) {
+      return String(value || "").trim();
+    })
+    .filter(Boolean);
+  var unique = [];
+  var valid = true;
+
+  values.forEach(function (lineUserId) {
+    if (!/^U[0-9a-f]{32}$/i.test(lineUserId)) {
+      valid = false;
+      return;
+    }
+    if (unique.indexOf(lineUserId) === -1) unique.push(lineUserId);
+  });
+
+  return {
+    lineUserIds: unique,
+    valid: valid,
+  };
+}
+
+function requireAdmin_(identity, config) {
+  var adminLineUserIds = config && Array.isArray(config.adminLineUserIds)
+    ? config.adminLineUserIds
+    : [];
+  var lineUserId = identity ? String(identity.lineUserId || "") : "";
+
+  if (!config || config.adminConfigValid === false || adminLineUserIds.length === 0) {
+    throw appError_(
+      "ADMIN_CONFIG_ERROR",
+      "管理員白名單尚未完成設定。"
+    );
+  }
+
+  if (!lineUserId || adminLineUserIds.indexOf(lineUserId) === -1) {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
 }
 
 function getOrCreateMemberSheet_(config) {
@@ -422,38 +659,68 @@ function getOrCreateMemberSheet_(config) {
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).setValues([MEMBER_HEADERS]);
     sheet.setFrozenRows(1);
-    sheet
-      .getRange(1, 1, 1, MEMBER_HEADERS.length)
-      .setBackground("#073b29")
-      .setFontColor("#ffffff")
-      .setFontWeight("bold");
+    styleMemberHeader_(sheet, 1, MEMBER_HEADERS.length);
     sheet.autoResizeColumns(1, MEMBER_HEADERS.length);
     applySheetColumnFormats_(sheet);
     return sheet;
   }
 
-  var existingHeaders = sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0];
-  for (var i = 0; i < MEMBER_HEADERS.length; i += 1) {
-    if (existingHeaders[i] !== MEMBER_HEADERS[i]) {
-      throw appError_(
-        "SCHEMA_MISMATCH",
-        "Members 工作表欄位與程式版本不相符，請勿手動調整第一列欄位。"
-      );
-    }
+  var lastColumn = sheet.getLastColumn();
+  if (lastColumn === LEGACY_MEMBER_HEADERS.length) {
+    var legacyHeaders = sheet
+      .getRange(1, 1, 1, LEGACY_MEMBER_HEADERS.length)
+      .getDisplayValues()[0];
+    assertMemberHeadersMatch_(legacyHeaders, LEGACY_MEMBER_HEADERS);
+
+    var appendedHeaders = MEMBER_HEADERS.slice(LEGACY_MEMBER_HEADERS.length);
+    sheet
+      .getRange(1, LEGACY_MEMBER_HEADERS.length + 1, 1, appendedHeaders.length)
+      .setValues([appendedHeaders]);
+    styleMemberHeader_(sheet, LEGACY_MEMBER_HEADERS.length + 1, appendedHeaders.length);
+    sheet.autoResizeColumns(LEGACY_MEMBER_HEADERS.length + 1, appendedHeaders.length);
+    applySheetColumnFormats_(sheet);
+    SpreadsheetApp.flush();
+    return sheet;
   }
+
+  if (lastColumn !== MEMBER_HEADERS.length) throwMemberSchemaMismatch_();
+
+  var existingHeaders = sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0];
+  assertMemberHeadersMatch_(existingHeaders, MEMBER_HEADERS);
 
   return sheet;
 }
 
+function assertMemberHeadersMatch_(actualHeaders, expectedHeaders) {
+  for (var i = 0; i < expectedHeaders.length; i += 1) {
+    if (actualHeaders[i] !== expectedHeaders[i]) throwMemberSchemaMismatch_();
+  }
+}
+
+function throwMemberSchemaMismatch_() {
+  throw appError_(
+    "SCHEMA_MISMATCH",
+    "Members 工作表欄位與程式版本不相符，請勿手動調整第一列欄位。"
+  );
+}
+
+function styleMemberHeader_(sheet, startColumn, columnCount) {
+  sheet
+    .getRange(1, startColumn, 1, columnCount)
+    .setBackground("#073b29")
+    .setFontColor("#ffffff")
+    .setFontWeight("bold");
+}
+
 function applySheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  var textColumns = [1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17];
+  var textColumns = [1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20];
 
   textColumns.forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
 
-  [7, 8, 9].forEach(function (column) {
+  [7, 8, 9, MEMBER_COLUMN.accessUpdatedAt].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
   });
   sheet.getRange(2, MEMBER_COLUMN.lastTokenIat, rowCount, 1).setNumberFormat("0");
@@ -466,6 +733,9 @@ function applyMemberRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, MEMBER_COLUMN.viewType).setNumberFormat("@");
   sheet.getRange(rowNumber, MEMBER_COLUMN.lastTokenIat).setNumberFormat("0");
   sheet.getRange(rowNumber, MEMBER_COLUMN.lastRequestId).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedBy).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.lastAccessRequestId).setNumberFormat("@");
 }
 
 function findMemberRow_(sheet, lineUserId) {
@@ -475,6 +745,20 @@ function findMemberRow_(sheet, lineUserId) {
   var match = sheet
     .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
     .createTextFinder(lineUserId)
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findNext();
+
+  return match ? match.getRow() : 0;
+}
+
+function findMemberRowByMemberId_(sheet, memberId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var match = sheet
+    .getRange(2, MEMBER_COLUMN.memberId, lastRow - 1, 1)
+    .createTextFinder(memberId)
     .matchEntireCell(true)
     .matchCase(true)
     .findNext();
@@ -493,6 +777,10 @@ function parseRequest_(e) {
       requestSecret: String(e.parameter.requestSecret || ""),
       callbackOrigin: normalizeOrigin_(e.parameter.callbackOrigin),
       context: parseContext_(e.parameter.context),
+      targetMemberId: String(e.parameter.targetMemberId || "").trim(),
+      accessStatus: String(e.parameter.accessStatus || "").trim().toLowerCase(),
+      page: optionalNumber_(e.parameter.page, 1),
+      pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
       transport: "bridge",
     };
   }
@@ -518,6 +806,10 @@ function parseRequest_(e) {
     requestSecret: "",
     callbackOrigin: normalizeOrigin_(parsed.callbackOrigin),
     context: normalizeContext_(parsed.context),
+    targetMemberId: String(parsed.targetMemberId || "").trim(),
+    accessStatus: String(parsed.accessStatus || "").trim().toLowerCase(),
+    page: optionalNumber_(parsed.page, 1),
+    pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
     transport: "fetch",
   };
 }
@@ -527,7 +819,11 @@ function validateRequestEnvelope_(request) {
     throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
   }
 
-  if (request.action !== "upsertMember" && request.action !== "deleteMember") {
+  if (
+    ["upsertMember", "deleteMember", "adminListMembers", "adminSetMemberAccess"].indexOf(
+      request.action
+    ) === -1
+  ) {
     throw appError_("UNSUPPORTED_ACTION", "不支援的會員操作。");
   }
 
@@ -538,6 +834,33 @@ function validateRequestEnvelope_(request) {
   if (request.transport === "bridge" && !/^[a-f0-9]{48}$/.test(request.requestSecret || "")) {
     throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
   }
+
+  if (request.action === "adminListMembers") {
+    if (!isPositiveInteger_(request.page)) {
+      throw appError_("INVALID_PAGE", "頁碼格式不正確。");
+    }
+    if (!isPositiveInteger_(request.pageSize) || request.pageSize > MAX_ADMIN_PAGE_SIZE) {
+      throw appError_("INVALID_PAGE_SIZE", "每頁筆數必須介於 1 到 100。");
+    }
+  }
+
+  if (request.action === "adminSetMemberAccess") {
+    if (!/^MBR-[A-Z0-9]{10}$/.test(request.targetMemberId || "")) {
+      throw appError_("INVALID_MEMBER_ID", "會員識別碼格式不正確。");
+    }
+    if (request.accessStatus !== "approved" && request.accessStatus !== "denied") {
+      throw appError_("INVALID_ACCESS_STATUS", "會員權限狀態只能設為 approved 或 denied。");
+    }
+  }
+}
+
+function optionalNumber_(value, fallback) {
+  return value === undefined || value === null || value === "" ? fallback : Number(value);
+}
+
+function isPositiveInteger_(value) {
+  var number = Number(value);
+  return number >= 1 && number !== Infinity && Math.floor(number) === number;
 }
 
 function parseContext_(value) {
@@ -749,6 +1072,19 @@ function limitText_(value, maxLength) {
 function normalizeHttpsUrl_(value) {
   var url = limitText_(value, 2000);
   return /^https:\/\//i.test(url) ? url : "";
+}
+
+function normalizeAccessStatus_(value) {
+  var status = String(value || "").trim().toLowerCase();
+  if (status === "approved" || status === "active") return "approved";
+  if (status === "denied") return "denied";
+  return "pending";
+}
+
+function dateSortValue_(value) {
+  var date = value instanceof Date ? value : new Date(value);
+  var timestamp = date.getTime();
+  return isNaN(timestamp) ? 0 : timestamp;
 }
 
 function toIsoString_(value) {
