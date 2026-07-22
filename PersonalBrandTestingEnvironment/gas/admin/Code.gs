@@ -1,0 +1,1077 @@
+/**
+ * PERSONA MEMBERS - isolated administrator Google Apps Script backend
+ *
+ * Required Script Properties:
+ * - LINE_CHANNEL_ID: must be 2010791619 (the administrator LINE Login channel)
+ * - SPREADSHEET_ID: Google Sheet ID shared with the member backend
+ * - ALLOWED_ORIGINS: comma-separated frontend origins
+ *
+ * Optional Script Properties:
+ * - SHEET_NAME: defaults to "Members"
+ * - ADMIN_SHEET_NAME: defaults to "Admins"
+ * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
+ *
+ * Administrator approval is deliberately manual. A verified administrator
+ * channel login creates an Admins row with status "pending". Only a spreadsheet
+ * owner can change that cell to "approved"; no API accepts an administrator
+ * status field.
+ */
+
+var API_VERSION = "1.0.0";
+var SERVICE_NAME = "member-admin-api";
+var REQUIRED_LINE_CHANNEL_ID = "2010791619";
+var DEFAULT_SHEET_NAME = "Members";
+var DEFAULT_ADMIN_SHEET_NAME = "Admins";
+var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
+var MAX_ID_TOKEN_LENGTH = 6000;
+var DEFAULT_ADMIN_PAGE_SIZE = 50;
+var MAX_ADMIN_PAGE_SIZE = 100;
+
+var LEGACY_MEMBER_HEADERS = [
+  "member_id",
+  "line_user_id",
+  "display_name",
+  "picture_url",
+  "email",
+  "status",
+  "joined_at",
+  "updated_at",
+  "last_login_at",
+  "login_count",
+  "context_type",
+  "context_os",
+  "context_language",
+  "in_liff_client",
+  "view_type",
+  "last_token_iat",
+  "last_request_id",
+];
+
+var ACCESS_AUDIT_MEMBER_HEADERS = LEGACY_MEMBER_HEADERS.concat([
+  "access_updated_at",
+  "access_updated_by",
+  "last_access_request_id",
+]);
+
+// admin_status remains only for compatibility with the existing 21-column
+// Members sheet. This backend never reads it as authorization.
+var MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
+
+var MEMBER_COLUMN = {
+  memberId: 1,
+  lineUserId: 2,
+  displayName: 3,
+  pictureUrl: 4,
+  email: 5,
+  status: 6,
+  joinedAt: 7,
+  updatedAt: 8,
+  lastLoginAt: 9,
+  loginCount: 10,
+  contextType: 11,
+  contextOs: 12,
+  contextLanguage: 13,
+  inLiffClient: 14,
+  viewType: 15,
+  lastTokenIat: 16,
+  lastRequestId: 17,
+  accessUpdatedAt: 18,
+  accessUpdatedBy: 19,
+  lastAccessRequestId: 20,
+  adminStatus: 21,
+};
+
+var ADMIN_HEADERS = [
+  "admin_id",
+  "line_user_id",
+  "display_name",
+  "picture_url",
+  "email",
+  "status",
+  "requested_at",
+  "updated_at",
+  "last_login_at",
+  "login_count",
+  "last_token_iat",
+  "last_request_id",
+];
+
+var ADMIN_COLUMN = {
+  adminId: 1,
+  lineUserId: 2,
+  displayName: 3,
+  pictureUrl: 4,
+  email: 5,
+  status: 6,
+  requestedAt: 7,
+  updatedAt: 8,
+  lastLoginAt: 9,
+  loginCount: 10,
+  lastTokenIat: 11,
+  lastRequestId: 12,
+};
+
+function doGet(e) {
+  var action = e && e.parameter ? String(e.parameter.action || "") : "";
+  var requestId = e && e.parameter ? String(e.parameter.requestId || "") : "";
+
+  if (!action || action === "health") {
+    return jsonResponse_({
+      ok: true,
+      requestId: requestId,
+      data: {
+        service: SERVICE_NAME,
+        version: API_VERSION,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  return jsonResponse_({
+    ok: false,
+    requestId: requestId,
+    code: "METHOD_NOT_ALLOWED",
+    message: "此操作必須使用 POST。",
+  });
+}
+
+function doPost(e) {
+  var request = {};
+  var result;
+
+  try {
+    request = parseRequest_(e);
+    validateRequestEnvelope_(request);
+
+    // callbackOrigin is client-provided and therefore only an operational
+    // allowlist. The verified LINE ID token plus the Admins row are authority.
+    if (!isAllowedRequestOrigin_(request.callbackOrigin)) {
+      throw appError_("ORIGIN_NOT_ALLOWED", "目前網站來源未被 GAS 允許。");
+    }
+
+    result = handleAdminRequest_(request);
+    result.ok = true;
+  } catch (error) {
+    result = errorResult_(error);
+  }
+
+  result.requestId = String(request.requestId || "");
+
+  if (request.transport === "bridge") {
+    return bridgeResponse_(result, request);
+  }
+
+  return jsonResponse_(result);
+}
+
+/** Run once in the Apps Script editor after configuring Script Properties. */
+function setup() {
+  var config = getConfig_();
+  var lock = LockService.getScriptLock();
+
+  if (!lock.tryLock(10000)) {
+    throw new Error("Could not acquire setup lock. Try again in a few seconds.");
+  }
+
+  try {
+    var spreadsheet = openSpreadsheet_(config);
+    var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    applyMemberSheetColumnFormats_(memberSheet);
+    applyAdminSheetColumnFormats_(adminSheet);
+    SpreadsheetApp.flush();
+
+    return {
+      ok: true,
+      spreadsheetId: config.spreadsheetId,
+      memberSheetName: memberSheet.getName(),
+      adminSheetName: adminSheet.getName(),
+      memberColumns: MEMBER_HEADERS.length,
+      adminColumns: ADMIN_HEADERS.length,
+      approvedAdminCount: countApprovedAdmins_(adminSheet),
+      pendingAdminCount: countPendingAdmins_(adminSheet),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleAdminRequest_(request) {
+  // Keep this guard here as well as in validateRequestEnvelope_. It prevents a
+  // direct/internal call with a member action from reading configuration,
+  // contacting LINE, or opening either sheet.
+  if (["adminListMembers", "adminSetMemberAccess"].indexOf(request.action) === -1) {
+    throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
+  }
+
+  var config = getConfig_();
+  var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
+
+  if (request.action === "adminListMembers") {
+    return adminListMembers_(identity, request, config);
+  }
+
+  if (request.action === "adminSetMemberAccess") {
+    return adminSetMemberAccess_(identity, request, config);
+  }
+
+  throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
+}
+
+function verifyLineIdToken_(idToken, expectedChannelId) {
+  var response;
+
+  if (!isJwtLike_(idToken)) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證格式不正確，請重新登入。");
+  }
+
+  enforceLineVerificationRateLimit_();
+
+  try {
+    response = UrlFetchApp.fetch(LINE_VERIFY_URL, {
+      method: "post",
+      contentType: "application/x-www-form-urlencoded",
+      payload: {
+        id_token: idToken,
+        client_id: expectedChannelId,
+      },
+      muteHttpExceptions: true,
+    });
+  } catch (_error) {
+    throw appError_("LINE_UNAVAILABLE", "目前無法向 LINE 驗證登入狀態，請稍後再試。");
+  }
+
+  var responseCode = response.getResponseCode();
+  if (responseCode === 400) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證無效或已過期，請重新登入。");
+  }
+  if (responseCode === 429) {
+    throw appError_("LINE_RATE_LIMITED", "LINE 驗證請求過於頻繁，請稍後再試。");
+  }
+  if (responseCode !== 200) {
+    throw appError_("LINE_UNAVAILABLE", "LINE 驗證服務暫時無法使用，請稍後再試。");
+  }
+
+  var claims;
+  try {
+    claims = JSON.parse(response.getContentText());
+  } catch (_error) {
+    throw appError_("LINE_RESPONSE_ERROR", "LINE 驗證服務回傳了無法識別的資料。");
+  }
+
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  var issuedAt = Math.floor(Number(claims && claims.iat));
+  if (
+    !claims ||
+    !/^U[0-9a-f]{32}$/.test(String(claims.sub || "")) ||
+    String(claims.aud || "") !== expectedChannelId ||
+    Number(claims.exp || 0) <= nowSeconds ||
+    issuedAt <= 0 ||
+    issuedAt > nowSeconds + 300 ||
+    String(claims.iss || "") !== "https://access.line.me"
+  ) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證驗證失敗，請重新登入。");
+  }
+
+  return {
+    lineUserId: String(claims.sub),
+    displayName: limitText_(claims.name || "LINE 管理員", 100),
+    pictureUrl: normalizeHttpsUrl_(claims.picture),
+    email: limitText_(claims.email || "", 254),
+    tokenIssuedAt: issuedAt,
+  };
+}
+
+function adminListMembers_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "會員資料正在更新，請稍後再試。");
+  }
+
+  try {
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+
+    // Sensitive member data is not read until administrator authorization has
+    // completed successfully.
+    var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
+    var lastRow = memberSheet.getLastRow();
+    var rows =
+      lastRow < 2
+        ? []
+        : memberSheet.getRange(2, 1, lastRow - 1, MEMBER_HEADERS.length).getValues();
+    var metrics = {
+      all: rows.length,
+      pending: 0,
+      approved: 0,
+      denied: 0,
+    };
+    var members = rows.map(function (row) {
+      var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+      metrics[status] += 1;
+      return adminMemberResponseFromRow_(row);
+    });
+
+    members.sort(function (left, right) {
+      return dateSortValue_(right.joinedAt) - dateSortValue_(left.joinedAt);
+    });
+
+    var page = Math.max(1, Math.floor(Number(request.page) || 1));
+    var pageSize = Math.max(
+      1,
+      Math.min(MAX_ADMIN_PAGE_SIZE, Math.floor(Number(request.pageSize) || DEFAULT_ADMIN_PAGE_SIZE))
+    );
+    var total = members.length;
+    var startIndex = (page - 1) * pageSize;
+
+    return {
+      data: {
+        members: members.slice(startIndex, startIndex + pageSize),
+        metrics: metrics,
+        pagination: {
+          page: page,
+          pageSize: pageSize,
+          total: total,
+          totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+        },
+        admin: {
+          displayName: adminIdentity.displayName,
+          pictureUrl: adminIdentity.pictureUrl,
+        },
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取會員清單，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminSetMemberAccess_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "會員權限正在更新，請稍後再試。");
+  }
+
+  try {
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
+    var rowNumber = findUniqueMemberRowByMemberId_(memberSheet, request.targetMemberId);
+    if (!rowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到指定的會員。");
+    }
+
+    var row = memberSheet
+      .getRange(rowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var currentStatus = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+    var lastAccessRequestId = String(row[MEMBER_COLUMN.lastAccessRequestId - 1] || "");
+
+    if (lastAccessRequestId === request.requestId) {
+      if (currentStatus !== request.accessStatus) {
+        throw appError_(
+          "REQUEST_ID_CONFLICT",
+          "同一請求識別碼不可用於不同的權限變更。"
+        );
+      }
+
+      return {
+        data: {
+          member: adminMemberResponseFromRow_(row),
+          duplicate: true,
+        },
+      };
+    }
+
+    var currentAccessUpdatedAt = toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]);
+    if (
+      currentStatus !== request.expectedAccessStatus ||
+      currentAccessUpdatedAt !== String(request.expectedAccessUpdatedAt || "")
+    ) {
+      throw appError_(
+        "ACCESS_CONFLICT",
+        "會員狀態已由其他管理員更新，請重新整理清單後再試。"
+      );
+    }
+
+    var now = new Date();
+    // These deliberately narrow writes preserve LINE profile/login fields that
+    // may be synchronized concurrently by the independent member GAS project.
+    memberSheet.getRange(rowNumber, MEMBER_COLUMN.status).setValues([[request.accessStatus]]);
+    memberSheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+    memberSheet
+      .getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt, 1, 3)
+      .setValues([[now, safeSheetText_(adminIdentity.lineUserId), request.requestId]]);
+    applyMemberRowFormats_(memberSheet, rowNumber);
+    SpreadsheetApp.flush();
+    row = memberSheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+
+    return {
+      data: {
+        member: adminMemberResponseFromRow_(row),
+        duplicate: false,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法更新會員權限，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function requireApprovedAdmin_(identity, request, adminSheet) {
+  var matches = findAdminRows_(adminSheet, identity.lineUserId);
+
+  // Duplicate identities are ambiguous and must never grant access.
+  if (matches.length > 1) {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+
+  var now = new Date();
+  if (matches.length === 0) {
+    adminSheet.appendRow(createPendingAdminRow_(identity, request.requestId, now));
+    var createdRowNumber = adminSheet.getLastRow();
+    applyAdminRowFormats_(adminSheet, createdRowNumber);
+    SpreadsheetApp.flush();
+    throw appError_(
+      "ADMIN_PENDING",
+      "管理員申請已建立，請由試算表管理者核准後再試。"
+    );
+  }
+
+  var rowNumber = matches[0];
+  var row = adminSheet.getRange(rowNumber, 1, 1, ADMIN_HEADERS.length).getValues()[0];
+  assertUniqueAdminId_(adminSheet, rowNumber, row);
+  var status = strictAdminStatus_(row[ADMIN_COLUMN.status - 1]);
+
+  if (status !== "approved" && status !== "pending") {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+
+  var isDuplicate = String(row[ADMIN_COLUMN.lastRequestId - 1] || "") === request.requestId;
+  if (!isDuplicate) {
+    var isNewLoginSession =
+      Number(row[ADMIN_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
+    adminSheet
+      .getRange(rowNumber, ADMIN_COLUMN.displayName, 1, 3)
+      .setValues([
+        [
+          safeSheetText_(identity.displayName),
+          safeSheetText_(identity.pictureUrl),
+          safeSheetText_(identity.email),
+        ],
+      ]);
+    adminSheet.getRange(rowNumber, ADMIN_COLUMN.updatedAt).setValues([[now]]);
+    if (isNewLoginSession) {
+      adminSheet
+        .getRange(rowNumber, ADMIN_COLUMN.lastLoginAt, 1, 2)
+        .setValues([
+          [now, Math.max(0, Number(row[ADMIN_COLUMN.loginCount - 1]) || 0) + 1],
+        ]);
+    }
+    adminSheet
+      .getRange(rowNumber, ADMIN_COLUMN.lastTokenIat, 1, 2)
+      .setValues([[identity.tokenIssuedAt, request.requestId]]);
+    applyAdminRowFormats_(adminSheet, rowNumber);
+    SpreadsheetApp.flush();
+  }
+
+  // Spreadsheet edits are not covered by LockService. Re-read the status after
+  // field-level writes so an owner's manual approval/denial is never overwritten.
+  row = adminSheet.getRange(rowNumber, 1, 1, ADMIN_HEADERS.length).getValues()[0];
+  var refreshedMatches = findAdminRows_(adminSheet, identity.lineUserId);
+  if (refreshedMatches.length !== 1 || refreshedMatches[0] !== rowNumber) {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+  assertUniqueAdminId_(adminSheet, rowNumber, row);
+  status = strictAdminStatus_(row[ADMIN_COLUMN.status - 1]);
+
+  if (status === "pending") {
+    throw appError_("ADMIN_PENDING", "管理員申請仍在等待試算表管理者核准。");
+  }
+  if (status !== "approved") {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+
+  return rowNumber;
+}
+
+function assertUniqueAdminId_(sheet, rowNumber, row) {
+  var adminId = String(row[ADMIN_COLUMN.adminId - 1] || "");
+  if (!/^ADM-[A-Z0-9]{10}$/.test(adminId)) {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+
+  var lastRow = sheet.getLastRow();
+  var values = sheet
+    .getRange(2, ADMIN_COLUMN.adminId, Math.max(lastRow - 1, 1), 1)
+    .getValues();
+  var matchedRow = 0;
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") !== adminId) continue;
+    if (matchedRow !== 0) {
+      throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+    }
+    matchedRow = i + 2;
+  }
+
+  if (matchedRow !== rowNumber) {
+    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
+  }
+}
+
+function createPendingAdminRow_(identity, requestId, now) {
+  return [
+    "ADM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 10).toUpperCase(),
+    safeSheetText_(identity.lineUserId),
+    safeSheetText_(identity.displayName),
+    safeSheetText_(identity.pictureUrl),
+    safeSheetText_(identity.email),
+    "pending",
+    now,
+    now,
+    now,
+    1,
+    identity.tokenIssuedAt,
+    requestId,
+  ];
+}
+
+function adminMemberResponseFromRow_(row) {
+  return {
+    memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
+    displayName: String(row[MEMBER_COLUMN.displayName - 1] || "LINE 會員"),
+    pictureUrl: normalizeHttpsUrl_(row[MEMBER_COLUMN.pictureUrl - 1]),
+    email: String(row[MEMBER_COLUMN.email - 1] || ""),
+    status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
+    joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
+    updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
+    lastLoginAt: toIsoString_(row[MEMBER_COLUMN.lastLoginAt - 1]),
+    loginCount: Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0),
+    accessUpdatedAt: toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]),
+  };
+}
+
+function getConfig_() {
+  var properties = PropertiesService.getScriptProperties();
+  var lineChannelId = String(properties.getProperty("LINE_CHANNEL_ID") || "").trim();
+  var spreadsheetId = String(properties.getProperty("SPREADSHEET_ID") || "").trim();
+  var sheetName = String(properties.getProperty("SHEET_NAME") || DEFAULT_SHEET_NAME).trim();
+  var adminSheetName = String(
+    properties.getProperty("ADMIN_SHEET_NAME") || DEFAULT_ADMIN_SHEET_NAME
+  ).trim();
+  var allowedOrigins = getAllowedOrigins_();
+
+  if (
+    lineChannelId !== REQUIRED_LINE_CHANNEL_ID ||
+    !spreadsheetId ||
+    !sheetName ||
+    !adminSheetName ||
+    sheetName.length > 80 ||
+    adminSheetName.length > 80 ||
+    sheetName.toLowerCase() === adminSheetName.toLowerCase() ||
+    allowedOrigins.length === 0
+  ) {
+    throw appError_(
+      "CONFIG_ERROR",
+      "管理 GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME、ADMIN_SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
+    );
+  }
+
+  return {
+    lineChannelId: lineChannelId,
+    spreadsheetId: spreadsheetId,
+    sheetName: sheetName,
+    adminSheetName: adminSheetName,
+    allowedOrigins: allowedOrigins,
+  };
+}
+
+function openSpreadsheet_(config) {
+  try {
+    return SpreadsheetApp.openById(config.spreadsheetId);
+  } catch (_error) {
+    throw appError_("SPREADSHEET_ERROR", "無法開啟試算表，請檢查 SPREADSHEET_ID 與權限。");
+  }
+}
+
+function getOrCreateMemberSheet_(spreadsheet, config) {
+  var sheet = spreadsheet.getSheetByName(config.sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(config.sheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).setValues([MEMBER_HEADERS]);
+    sheet.setFrozenRows(1);
+    styleHeader_(sheet, 1, MEMBER_HEADERS.length, "#073b29");
+    sheet.autoResizeColumns(1, MEMBER_HEADERS.length);
+    applyMemberSheetColumnFormats_(sheet);
+    return sheet;
+  }
+
+  var lastColumn = sheet.getLastColumn();
+  if (
+    lastColumn === LEGACY_MEMBER_HEADERS.length ||
+    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length
+  ) {
+    var previousHeaders =
+      lastColumn === LEGACY_MEMBER_HEADERS.length
+        ? LEGACY_MEMBER_HEADERS
+        : ACCESS_AUDIT_MEMBER_HEADERS;
+    assertHeadersMatch_(
+      sheet.getRange(1, 1, 1, previousHeaders.length).getDisplayValues()[0],
+      previousHeaders,
+      "MEMBER_SCHEMA_MISMATCH"
+    );
+    var appendedHeaders = MEMBER_HEADERS.slice(previousHeaders.length);
+    sheet
+      .getRange(1, previousHeaders.length + 1, 1, appendedHeaders.length)
+      .setValues([appendedHeaders]);
+    styleHeader_(sheet, previousHeaders.length + 1, appendedHeaders.length, "#073b29");
+    sheet.autoResizeColumns(previousHeaders.length + 1, appendedHeaders.length);
+    applyMemberSheetColumnFormats_(sheet);
+    SpreadsheetApp.flush();
+    return sheet;
+  }
+
+  if (lastColumn !== MEMBER_HEADERS.length) {
+    throw appError_(
+      "MEMBER_SCHEMA_MISMATCH",
+      "Members 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+    );
+  }
+
+  assertHeadersMatch_(
+    sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0],
+    MEMBER_HEADERS,
+    "MEMBER_SCHEMA_MISMATCH"
+  );
+  return sheet;
+}
+
+function getOrCreateAdminSheet_(spreadsheet, config) {
+  var sheet = spreadsheet.getSheetByName(config.adminSheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(config.adminSheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, ADMIN_HEADERS.length).setValues([ADMIN_HEADERS]);
+    sheet.setFrozenRows(1);
+    styleHeader_(sheet, 1, ADMIN_HEADERS.length, "#172238");
+    sheet.autoResizeColumns(1, ADMIN_HEADERS.length);
+    applyAdminSheetColumnFormats_(sheet);
+    return sheet;
+  }
+
+  if (sheet.getLastColumn() !== ADMIN_HEADERS.length) {
+    throw appError_(
+      "ADMIN_SCHEMA_MISMATCH",
+      "Admins 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+    );
+  }
+
+  assertHeadersMatch_(
+    sheet.getRange(1, 1, 1, ADMIN_HEADERS.length).getDisplayValues()[0],
+    ADMIN_HEADERS,
+    "ADMIN_SCHEMA_MISMATCH"
+  );
+  return sheet;
+}
+
+function assertHeadersMatch_(actualHeaders, expectedHeaders, errorCode) {
+  for (var i = 0; i < expectedHeaders.length; i += 1) {
+    if (actualHeaders[i] !== expectedHeaders[i]) {
+      throw appError_(
+        errorCode,
+        errorCode === "ADMIN_SCHEMA_MISMATCH"
+          ? "Admins 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+          : "Members 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+      );
+    }
+  }
+}
+
+function findAdminRows_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var values = sheet
+    .getRange(2, ADMIN_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var rows = [];
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") === lineUserId) rows.push(i + 2);
+  }
+  return rows;
+}
+
+function findUniqueMemberRowByMemberId_(sheet, memberId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var values = sheet
+    .getRange(2, MEMBER_COLUMN.memberId, lastRow - 1, 1)
+    .getValues();
+  var rowNumber = 0;
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") !== memberId) continue;
+    if (rowNumber !== 0) {
+      throw appError_(
+        "MEMBER_DATA_CONFLICT",
+        "會員資料有重複識別碼，請先修正試算表。"
+      );
+    }
+    rowNumber = i + 2;
+  }
+  return rowNumber;
+}
+
+function countApprovedAdmins_(sheet) {
+  return countAdminsWithStatus_(sheet, "approved");
+}
+
+function countPendingAdmins_(sheet) {
+  return countAdminsWithStatus_(sheet, "pending");
+}
+
+function countAdminsWithStatus_(sheet, expectedStatus) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  return sheet
+    .getRange(2, ADMIN_COLUMN.status, lastRow - 1, 1)
+    .getValues()
+    .reduce(function (count, row) {
+      return count + (strictAdminStatus_(row[0]) === expectedStatus ? 1 : 0);
+    }, 0);
+}
+
+function styleHeader_(sheet, startColumn, columnCount, background) {
+  sheet
+    .getRange(1, startColumn, 1, columnCount)
+    .setBackground(background)
+    .setFontColor("#ffffff")
+    .setFontWeight("bold");
+}
+
+function applyMemberSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  [7, 8, 9, MEMBER_COLUMN.accessUpdatedAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+  sheet.getRange(2, MEMBER_COLUMN.lastTokenIat, rowCount, 1).setNumberFormat("0");
+}
+
+function applyMemberRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, MEMBER_COLUMN.memberId, 1, 6).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedBy).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.lastAccessRequestId).setNumberFormat("@");
+}
+
+function applyAdminSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 6, 12].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  [7, 8, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+  sheet.getRange(2, ADMIN_COLUMN.lastTokenIat, rowCount, 1).setNumberFormat("0");
+}
+
+function applyAdminRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, ADMIN_COLUMN.adminId, 1, 6).setNumberFormat("@");
+  sheet.getRange(rowNumber, ADMIN_COLUMN.requestedAt, 1, 3).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, ADMIN_COLUMN.lastTokenIat).setNumberFormat("0");
+  sheet.getRange(rowNumber, ADMIN_COLUMN.lastRequestId).setNumberFormat("@");
+}
+
+function parseRequest_(e) {
+  if (!e) throw appError_("INVALID_REQUEST", "沒有收到請求內容。");
+
+  if (e.parameter && String(e.parameter.transport || "") === "bridge") {
+    return {
+      action: String(e.parameter.action || ""),
+      idToken: String(e.parameter.idToken || ""),
+      requestId: String(e.parameter.requestId || ""),
+      requestSecret: String(e.parameter.requestSecret || ""),
+      callbackOrigin: normalizeOrigin_(e.parameter.callbackOrigin),
+      targetMemberId: String(e.parameter.targetMemberId || "").trim(),
+      accessStatus: String(e.parameter.accessStatus || "").trim().toLowerCase(),
+      expectedAccessStatus: String(e.parameter.expectedAccessStatus || "").trim().toLowerCase(),
+      expectedAccessUpdatedAt: String(e.parameter.expectedAccessUpdatedAt || "").trim(),
+      page: optionalNumber_(e.parameter.page, 1),
+      pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
+      transport: "bridge",
+    };
+  }
+
+  var contents = e.postData && e.postData.contents ? e.postData.contents : "";
+  if (!contents) throw appError_("INVALID_REQUEST", "請求內容是空的。");
+
+  var parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch (_error) {
+    throw appError_("INVALID_JSON", "請求內容不是有效的 JSON。");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw appError_("INVALID_REQUEST", "請求內容必須是 JSON 物件。");
+  }
+
+  return {
+    action: String(parsed.action || ""),
+    idToken: String(parsed.idToken || ""),
+    requestId: String(parsed.requestId || ""),
+    requestSecret: "",
+    callbackOrigin: normalizeOrigin_(parsed.callbackOrigin),
+    targetMemberId: String(parsed.targetMemberId || "").trim(),
+    accessStatus: String(parsed.accessStatus || "").trim().toLowerCase(),
+    expectedAccessStatus: String(parsed.expectedAccessStatus || "").trim().toLowerCase(),
+    expectedAccessUpdatedAt: String(parsed.expectedAccessUpdatedAt || "").trim(),
+    page: optionalNumber_(parsed.page, 1),
+    pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
+    transport: "fetch",
+  };
+}
+
+function validateRequestEnvelope_(request) {
+  if (!/^[a-zA-Z0-9-]{10,80}$/.test(request.requestId || "")) {
+    throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
+  }
+
+  if (["adminListMembers", "adminSetMemberAccess"].indexOf(request.action) === -1) {
+    throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
+  }
+
+  if (
+    !request.idToken ||
+    request.idToken.length > MAX_ID_TOKEN_LENGTH ||
+    !isJwtLike_(request.idToken)
+  ) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證缺少或格式不正確。");
+  }
+
+  if (request.transport === "bridge" && !/^[a-f0-9]{48}$/.test(request.requestSecret || "")) {
+    throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
+  }
+
+  if (request.action === "adminListMembers") {
+    if (!isPositiveInteger_(request.page)) {
+      throw appError_("INVALID_PAGE", "頁碼格式不正確。");
+    }
+    if (!isPositiveInteger_(request.pageSize) || request.pageSize > MAX_ADMIN_PAGE_SIZE) {
+      throw appError_("INVALID_PAGE_SIZE", "每頁筆數必須介於 1 到 100。");
+    }
+  }
+
+  if (request.action === "adminSetMemberAccess") {
+    if (!/^MBR-[A-Z0-9]{10}$/.test(request.targetMemberId || "")) {
+      throw appError_("INVALID_MEMBER_ID", "會員識別碼格式不正確。");
+    }
+    if (request.accessStatus !== "approved" && request.accessStatus !== "denied") {
+      throw appError_("INVALID_ACCESS_STATUS", "會員權限狀態只能設為 approved 或 denied。");
+    }
+    if (
+      request.expectedAccessStatus !== "approved" &&
+      request.expectedAccessStatus !== "denied"
+    ) {
+      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本狀態不正確。");
+    }
+    if (
+      request.expectedAccessUpdatedAt &&
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(request.expectedAccessUpdatedAt)
+    ) {
+      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本格式不正確。");
+    }
+  }
+}
+
+function optionalNumber_(value, fallback) {
+  return value === undefined || value === null || value === "" ? fallback : Number(value);
+}
+
+function isPositiveInteger_(value) {
+  var number = Number(value);
+  return number >= 1 && number !== Infinity && Math.floor(number) === number;
+}
+
+function isAllowedRequestOrigin_(requestedOrigin) {
+  if (!requestedOrigin || !isValidOrigin_(requestedOrigin)) return false;
+  return getAllowedOrigins_().indexOf(requestedOrigin) !== -1;
+}
+
+function getAllowedOrigins_() {
+  var raw = String(
+    PropertiesService.getScriptProperties().getProperty("ALLOWED_ORIGINS") || ""
+  );
+  var origins = [];
+  raw
+    .split(",")
+    .map(normalizeOrigin_)
+    .forEach(function (origin) {
+      if (origin && isValidOrigin_(origin) && origins.indexOf(origin) === -1) {
+        origins.push(origin);
+      }
+    });
+  return origins;
+}
+
+function isValidOrigin_(origin) {
+  return (
+    /^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)
+  );
+}
+
+function normalizeOrigin_(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isJwtLike_(value) {
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(value || ""));
+}
+
+function enforceLineVerificationRateLimit_() {
+  var lock;
+  var acquired = false;
+
+  try {
+    var properties = PropertiesService.getScriptProperties();
+    var configuredLimit = Number(properties.getProperty("MAX_VERIFY_REQUESTS_PER_MINUTE") || 120);
+    var limit = Math.max(1, Math.min(1000, Math.floor(configuredLimit) || 120));
+    var minuteBucket = Math.floor(Date.now() / 60000);
+    var cacheKey = "admin-line-verify-count:" + minuteBucket;
+    lock = LockService.getScriptLock();
+    acquired = lock.tryLock(1000);
+
+    if (!acquired) {
+      throw appError_("BUSY", "管理員驗證請求較多，請稍後再試。");
+    }
+
+    var cache = CacheService.getScriptCache();
+    var count = Math.max(0, Number(cache.get(cacheKey)) || 0);
+    if (count >= limit) {
+      throw appError_("LINE_RATE_LIMITED", "管理員驗證請求已達暫時上限，請稍後再試。");
+    }
+    cache.put(cacheKey, String(count + 1), 120);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    // Best effort only; identity verification still occurs at LINE.
+  } finally {
+    if (acquired && lock) lock.releaseLock();
+  }
+}
+
+function bridgeResponse_(result, request) {
+  var targetOrigin = isValidOrigin_(request.callbackOrigin) ? request.callbackOrigin : "";
+  var secret = /^[a-f0-9]{48}$/.test(request.requestSecret || "")
+    ? request.requestSecret
+    : "";
+
+  if (!targetOrigin || !secret) {
+    return HtmlService.createHtmlOutput(
+      "<!doctype html><meta charset=\"utf-8\"><title>Invalid bridge</title>"
+    ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  var message = {
+    type: "MEMBER_GAS_RESPONSE",
+    requestId: String(request.requestId || ""),
+    requestSecret: secret,
+    result: result,
+  };
+  var html =
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>Admin sync</title></head>" +
+    "<body><script>window.top.postMessage(" +
+    safeJsonForHtml_(message) +
+    "," +
+    safeJsonForHtml_(targetOrigin) +
+    ");<\/script></body></html>";
+
+  return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function jsonResponse_(payload) {
+  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeJsonForHtml_(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function errorResult_(error) {
+  var code = error && error.appCode ? error.appCode : "INTERNAL_ERROR";
+  var message = error && error.publicMessage ? error.publicMessage : "後台發生未預期的錯誤。";
+
+  // Never log request bodies, ID tokens, or LINE user IDs.
+  console.error("Admin API error code: " + code);
+
+  return {
+    ok: false,
+    code: code,
+    message: message,
+  };
+}
+
+function appError_(code, publicMessage) {
+  var error = new Error(publicMessage);
+  error.appCode = code;
+  error.publicMessage = publicMessage;
+  return error;
+}
+
+function safeSheetText_(value) {
+  var text = String(value == null ? "" : value);
+  return /^[=+\-@]/.test(text) ? "'" + text : text;
+}
+
+function limitText_(value, maxLength) {
+  return String(value == null ? "" : value).trim().slice(0, maxLength || 200);
+}
+
+function normalizeHttpsUrl_(value) {
+  var url = limitText_(value, 2000);
+  return /^https:\/\//i.test(url) ? url : "";
+}
+
+function normalizeAccessStatus_(value) {
+  var status = String(value || "").trim().toLowerCase();
+  if (!status || status === "approved" || status === "active" || status === "pending") {
+    return "approved";
+  }
+  if (status === "denied") return "denied";
+  return "pending";
+}
+
+function strictAdminStatus_(value) {
+  var status = String(value || "").trim().toLowerCase();
+  return status === "approved" || status === "pending" || status === "denied"
+    ? status
+    : "";
+}
+
+function dateSortValue_(value) {
+  var date = value instanceof Date ? value : new Date(value);
+  var timestamp = date.getTime();
+  return isNaN(timestamp) ? 0 : timestamp;
+}
+
+function toIsoString_(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  var date = value instanceof Date ? value : new Date(value);
+  return isNaN(date.getTime()) ? "" : date.toISOString();
+}

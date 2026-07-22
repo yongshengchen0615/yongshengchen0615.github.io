@@ -1,276 +1,261 @@
 # PERSONA MEMBERS
 
-以原生 HTML、CSS、JavaScript 製作的 LINE LIFF 會員系統。前端可放在 GitHub Pages；Google Apps Script（GAS）負責向 LINE 驗證 ID Token，並把驗證後的會員資料寫入 Google 試算表。
+以原生 HTML、CSS、JavaScript 製作的 LINE LIFF 會員系統。會員端與管理端使用不同的 LIFF Channel、不同的 Google Apps Script（GAS）專案與部署；兩套 GAS 只共用同一份 Google Spreadsheet。
 
-## 已完成的功能
+## 系統行為
 
-- LIFF 初始化、外部瀏覽器 LINE 登入與 LIFF Browser 自動登入狀態
-- 後端驗證 LINE ID Token，不信任前端自行傳來的 userId／姓名／頭像
-- 會員首次建立、再次登入更新、登入次數與最後登入時間
-- 新會員預設可直接進入會員中心，登入完成即可使用
-- 管理員 LIFF 後台、會員搜尋／篩選、停用與恢復會員系統權限
-- GAS 驗證 LINE 身分後，再從 Members 工作表的 `admin_status` 欄位確認管理員資格
-- 數位會員證、桌機／手機響應式介面、載入／錯誤／未設定狀態
-- 外部瀏覽器登出、LIFF Browser 關閉視窗
-- 會員自行刪除 Google Sheet 中的資料
-- 試算表併發鎖、重複請求保護、公式注入防護
-- 隱私說明視窗與可自行補充的 `privacy.html` 政策範本
+- 會員端 LIFF `2010787602-kaiSm2eq` 只呼叫會員 GAS。
+- 管理端 LIFF `2010791619-vhevCvvD` 只呼叫管理 GAS。
+- 新會員預設 `Members.status=approved`，登入後可直接使用會員中心。
+- 管理員可把 `Members.status` 改為 `approved`（可使用）或 `denied`（停用）。
+- 管理員首次登入會在 `Admins` 工作表建立 `pending` 申請。
+- 只有試算表擁有者手動將 `Admins.status` 改為 `approved` 才能進入後台；改為 `denied` 會拒絕登入。
+- `Members.admin_status` 是舊版相容欄位，不再用來授予管理權限。
+- 兩套 GAS 都會各自向 LINE 驗證 ID Token，不信任前端傳入的 userId、姓名、頭像或角色。
 
 ## 專案結構
 
 ```text
 PersonalBrandTestingEnvironment/
-├── index.html              # 舊網址相容入口，導向 client/
-├── setup.html              # 可由瀏覽器直接閱讀的部署指南
-├── client/                 # 會員端 LIFF
+├── index.html                 # 舊網址相容入口，導向 client/
+├── setup.html                 # 瀏覽器版部署指南
+├── client/                    # 會員端 LIFF
 │   ├── index.html
 │   ├── privacy.html
 │   ├── styles.css
 │   ├── script.js
 │   └── config.json
-├── admin/                  # 管理員端 LIFF
+├── admin/                     # 管理員端 LIFF
 │   ├── index.html
 │   ├── styles.css
 │   ├── script.js
 │   └── config.json
 ├── shared/
-│   └── gas-api.js          # 兩端共用的 GAS 安全傳輸與重試
+│   └── gas-api.js             # 兩端共用的跨網域傳輸
 ├── gas/
-│   ├── Code.gs             # GAS API、LINE 驗證與 Sheet 寫入
-│   └── appsscript.json     # Apps Script 權限與 Web App 設定
+│   ├── client/                # 只處理會員登入與刪除資料
+│   │   ├── Code.gs
+│   │   └── appsscript.json
+│   └── admin/                 # 只處理管理員授權與會員權限
+│       ├── Code.gs
+│       └── appsscript.json
 └── tests/
-    └── gas.test.js         # GAS 認證、來源限制與回應安全測試
 ```
 
 ## 本機預覽
 
-這個專案沒有套件依賴或建置步驟。在此目錄執行：
+本專案沒有套件依賴或建置步驟。在專案目錄執行：
 
 ```bash
 python3 -m http.server 8080
 ```
 
-開啟以下網址可查看預覽資料，且不會送到 GAS：
+- 會員端預覽：[http://localhost:8080/client/?demo=1](http://localhost:8080/client/?demo=1)
+- 管理端預覽：[http://localhost:8080/admin/?demo=1](http://localhost:8080/admin/?demo=1)
 
-- 會員端：[http://localhost:8080/client/?demo=1](http://localhost:8080/client/?demo=1)
-- 管理端：[http://localhost:8080/admin/?demo=1](http://localhost:8080/admin/?demo=1)
+展示模式不會把資料送到 GAS。真實登入必須使用公開 HTTPS Endpoint。
 
-真實 LIFF 登入需先完成以下設定，並使用公開 HTTPS Endpoint。
+## 1. 建立共用 Google Spreadsheet
 
-## 1. 建立 Google Sheet 與 GAS 後台
+建立一份 Google 試算表，從網址複製 Spreadsheet ID：
 
-1. 建立一份新的 Google 試算表，從網址複製試算表 ID：
+```text
+https://docs.google.com/spreadsheets/d/{這一段是 SPREADSHEET_ID}/edit
+```
 
-   ```text
-   https://docs.google.com/spreadsheets/d/{這一段是 SPREADSHEET_ID}/edit
-   ```
+會員 GAS 與管理 GAS 的 `SPREADSHEET_ID` 必須填完全相同的值。不要公開分享試算表的編輯權；可以編輯 `Admins.status` 的人等同最高管理者。
 
-2. 在試算表選擇「擴充功能 → Apps Script」。
-3. 將 [`gas/Code.gs`](gas/Code.gs) 的內容貼入 Apps Script 的 `Code.gs`。
-4. 在 Apps Script「專案設定」開啟「在編輯器中顯示 appsscript.json 資訊清單檔案」，再以 [`gas/appsscript.json`](gas/appsscript.json) 取代內容。
-   資訊清單已將 LINE 驗證網址加入 `urlFetchWhitelist`，這是正式版本部署使用 `UrlFetchApp` 時需要的外部網址允許清單。
-5. 到「專案設定 → 指令碼屬性」加入：
+## 2. 建立並部署會員 GAS
+
+1. 建立第一個獨立 Apps Script 專案，例如命名為 `PERSONA Member API`。
+2. 將 [`gas/client/Code.gs`](gas/client/Code.gs) 貼入 `Code.gs`。
+3. 開啟資訊清單檔案後，以 [`gas/client/appsscript.json`](gas/client/appsscript.json) 取代內容。
+4. 在「專案設定 → 指令碼屬性」加入：
 
    | 屬性 | 必要 | 值 |
    | --- | --- | --- |
-   | `LINE_CHANNEL_ID` | 是 | LINE Login Channel 的 Channel ID，不是 LIFF ID |
-   | `SPREADSHEET_ID` | 是 | 第 1 步取得的 Google Sheet ID |
-   | `ALLOWED_ORIGINS` | 是 | 前端 origin，多個以逗號分隔 |
-   | `SHEET_NAME` | 否 | 預設為 `Members` |
-   | `MAX_VERIFY_REQUESTS_PER_MINUTE` | 否 | LINE 驗證每分鐘上限，預設 `120`，範圍 `1`–`1000` |
+   | `LINE_CHANNEL_ID` | 是 | `2010787602` |
+   | `SPREADSHEET_ID` | 是 | 共用 Google Spreadsheet ID |
+   | `ALLOWED_ORIGINS` | 是 | `https://yongshengchen0615.github.io` |
+   | `SHEET_NAME` | 否 | 預設 `Members` |
+   | `MAX_VERIFY_REQUESTS_PER_MINUTE` | 否 | 預設 `120`，範圍 `1`–`1000` |
 
-   GitHub Pages 範例：
-
-   ```text
-   ALLOWED_ORIGINS=https://yongshengchen0615.github.io,http://localhost:8080
-   ```
-
-   `ALLOWED_ORIGINS` 只能填 origin（協定、網域、Port），不要加 `/PersonalBrandTestingEnvironment/` 路徑，也不要填 `*`。
-
-6. 在 Apps Script 編輯器上方選擇 `setup` 並執行一次，依畫面授權。成功後會自動建立 `Members` 工作表與欄位；既有的 17 欄或 20 欄工作表會安全補齊欄位，不會覆寫其他會員資料。為符合直接使用的新規則，舊的空白或 `pending` 會員狀態會轉為 `approved`。
-7. 選擇「部署 → 新增部署作業 → 網頁應用程式」：
+5. 執行一次 `setup()` 並完成授權，建立或更新 `Members` 工作表。
+6. 選擇「部署 → 新增部署作業 → 網頁應用程式」：
    - 執行身分：**我（部署者）**
    - 誰可以存取：**任何人**
-8. 完成部署後複製結尾為 `/exec` 的網址。`/dev` 只供 Apps Script 編輯者測試，不能放進正式前端。
+7. 複製結尾為 `/exec` 的會員 GAS URL。
 
-可以用以下指令檢查部署是否可公開存取：
+正式站的 `ALLOWED_ORIGINS` 只填 origin，不含 `/PersonalBrandTestingEnvironment/client/` 路徑、結尾斜線或 `*`。需要本機串接時才額外用逗號加入 `http://localhost:8080`。
+
+會員 GAS 健康檢查：
 
 ```bash
-curl -L "你的_GAS_EXEC_網址?action=health"
+curl -L "會員_GAS_EXEC_URL?action=health"
 ```
 
-應回傳包含 `"ok":true` 與 `"service":"member-api"` 的 JSON。修改 GAS 程式後，記得到「管理部署作業」建立新版本。
+成功回應會包含 `"ok":true` 與 `"service":"member-client-api"`。
 
-## 2. 建立 LINE Login 與兩個 LIFF App
+## 3. 建立並部署管理 GAS
 
-1. 進入 [LINE Developers Console](https://developers.line.biz/console/)，建立 Provider 與 **LINE Login Channel**。
-2. 在同一個 Channel 的 LIFF 分頁新增「會員端」與「管理端」兩個 LIFF App。兩者必須在同一 Channel，才能共用 GAS 的 `LINE_CHANNEL_ID`。
-3. 會員端 Endpoint URL：
+1. 建立第二個、完全獨立的 Apps Script 專案，例如命名為 `PERSONA Admin API`。不要把管理程式貼進會員 GAS 專案。
+2. 將 [`gas/admin/Code.gs`](gas/admin/Code.gs) 貼入 `Code.gs`。
+3. 開啟資訊清單檔案後，以 [`gas/admin/appsscript.json`](gas/admin/appsscript.json) 取代內容。
+4. 在這個專案的「指令碼屬性」加入：
 
-   ```text
-   https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/
-   ```
+   | 屬性 | 必要 | 值 |
+   | --- | --- | --- |
+   | `LINE_CHANNEL_ID` | 是 | `2010791619` |
+   | `SPREADSHEET_ID` | 是 | 與會員 GAS 完全相同的 Spreadsheet ID |
+   | `ALLOWED_ORIGINS` | 是 | `https://yongshengchen0615.github.io` |
+   | `SHEET_NAME` | 否 | 預設 `Members` |
+   | `ADMIN_SHEET_NAME` | 否 | 預設 `Admins` |
+   | `MAX_VERIFY_REQUESTS_PER_MINUTE` | 否 | 預設 `120`，範圍 `1`–`1000` |
 
-4. 管理端 Endpoint URL：
+5. 執行一次 `setup()` 並完成授權，建立或更新 `Members` 與 `Admins` 工作表。
+6. 另外部署成「網頁應用程式」，執行身分選「我」、存取權選「任何人」。
+7. 複製管理 GAS 自己的 `/exec` URL。此 URL 必須與會員 GAS URL 不同。
 
-   ```text
-   https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/
-   ```
+管理 GAS 的 `ALLOWED_ORIGINS` 同樣填：
 
-5. 兩個 App 的 Scope 都勾選：
-   - `openid`：必要，用來取得 ID Token。
-   - `profile`：必要，用來取得顯示名稱與頭像。
-   - `email`：選用；需先在 LINE Developers 申請 Email 權限，且使用者同意後才會取得。
-6. 建議 Size 選 `Full`，儲存後分別複製會員端與管理端 LIFF ID。
-7. 會員端 LIFF URL 可放到 LINE 圖文選單或訊息中；管理端 URL 只提供給管理人員，但後台仍會再次檢查權限。
-8. 正式上線前，補齊 [`client/privacy.html`](client/privacy.html) 的經營者與聯絡資料，再把其公開網址填入 Channel 的隱私權政策欄位。
+```text
+https://yongshengchen0615.github.io
+```
 
-Endpoint URL 必須使用 HTTPS、不可包含 `#fragment`，且要涵蓋登入後實際回到的頁面。兩端登入時會把目前頁面移除 Query String 與 fragment 後作為 `redirectUri`；依 LINE 規則，該網址必須以各自 LIFF App 的 Endpoint URL 開頭，因此請勿把會員端與管理端的 Endpoint 對調。
+修改任何 GAS 程式後，儲存並不會更新既有正式部署；必須到「部署 → 管理部署作業」建立新版本。
+
+## 4. 設定兩個 LINE LIFF App
+
+在 [LINE Developers Console](https://developers.line.biz/console/) 確認：
+
+| 用途 | LIFF ID | Channel ID | Endpoint URL |
+| --- | --- | --- | --- |
+| 會員端 | `2010787602-kaiSm2eq` | `2010787602` | `https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/` |
+| 管理端 | `2010791619-vhevCvvD` | `2010791619` | `https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/` |
+
+兩個 App 都勾選：
+
+- `openid`：必要，用來取得 ID Token。
+- `profile`：必要，用來取得顯示名稱與頭像。
+- `email`：選用；需要先申請 Email 權限。
+
+Endpoint URL 必須使用 HTTPS、不可包含 `#fragment`，且會員端與管理端不可對調。建議 Size 選 `Full`。
 
 官方參考：
 
 - [註冊 LIFF App](https://developers.line.biz/en/docs/liff/registering-liff-apps/)
 - [LIFF 初始化與登入](https://developers.line.biz/en/docs/liff/developing-liff-apps/)
-- [在 LIFF 與伺服器安全使用會員資料](https://developers.line.biz/en/docs/liff/using-user-profile/)
+- [安全使用 LIFF 會員資料](https://developers.line.biz/en/docs/liff/using-user-profile/)
 - [LINE ID Token 驗證 API](https://developers.line.biz/en/reference/line-login/#verify-id-token)
 
-## 3. 填入兩端設定
+## 5. 填入前端 config.json
 
-編輯 [`client/config.json`](client/config.json)：
+[`client/config.json`](client/config.json) 保留現有會員 LIFF ID 與會員 GAS URL：
 
 ```json
 {
-  "LIFF_ID": "1234567890-AbCdEfGh",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/部署識別碼/exec",
-  "BRAND_NAME": "你的品牌名稱"
+  "BRAND_NAME": "PERSONA",
+  "LIFF_ID": "2010787602-kaiSm2eq",
+  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/會員部署識別碼/exec"
 }
 ```
 
-再編輯 [`admin/config.json`](admin/config.json)，填入管理端 LIFF ID；`GAS_WEB_APP_URL` 與 `BRAND_NAME` 應和會員端一致：
+[`admin/config.json`](admin/config.json) 的 LIFF ID 已固定；部署管理 GAS 後，把 placeholder 換成新管理 GAS URL：
 
 ```json
 {
-  "LIFF_ID": "1234567890-AdminLiff",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/部署識別碼/exec",
-  "BRAND_NAME": "你的品牌名稱",
+  "LIFF_ID": "2010791619-vhevCvvD",
+  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/管理部署識別碼/exec",
+  "BRAND_NAME": "PERSONA",
   "PAGE_SIZE": 50
 }
 ```
 
-這些值都會出現在瀏覽器中，屬於公開設定。JSON 的鍵名與字串需要雙引號，最後一個欄位後不可加逗號。不要把以下資料放進任何前端 `config.json` 或 Git 儲存庫：
+會員端與管理端的 `GAS_WEB_APP_URL` 不可共用或對調。這些是瀏覽器可見的公開設定；不要把 LINE Channel Secret、ID Token、Google 憑證、私鑰或管理員狀態放進前端 JSON。
 
-- LINE Channel Secret
-- LINE ID Token／Access Token
-- Google 帳號憑證
-- 任何私鑰或服務帳號 JSON
-- `admin_status` 等管理員資格值（這些值由 Members 工作表維護）
+## 6. 首次管理員核准
 
-這個實作不需要 LINE Channel Secret；GAS 只用 Channel ID 呼叫 LINE 官方的 ID Token 驗證端點。
+1. 先完成兩套 GAS 的 `setup()`、部署與兩份 `config.json`。
+2. 使用管理端 LIFF 登入。管理 GAS 驗證成功後，會在共用 Spreadsheet 的 `Admins` 工作表建立一列 `status=pending` 的申請。
+3. 試算表擁有者確認該列資料，手動把 `status` 改為小寫 `approved`。
+4. 回到管理端等待畫面，按「重新整理」即可進入會員管理後台。
 
-## 4. 部署 GitHub Pages
+若要撤銷管理資格，在 `Admins` 工作表把該列 `status` 改為 `denied`。管理端不提供核准其他管理員的 API；核准只允許由試算表擁有者手動執行。
 
-本目錄位於 `yongshengchen0615.github.io` 儲存庫時，提交並推送到 GitHub Pages 使用的發布分支即可。確認瀏覽器能開啟：
+管理員不必先在會員端登入。管理端身分只對應 `Admins` 工作表；`Members.admin_status` 即使填成 `approved` 也不會取得管理權限。
 
-```text
-https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/
-https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/
-```
+## 會員權限
 
-### 在 Google Sheet 指定管理員
+`Members.status` 是會員是否能使用系統的唯一控制欄位：
 
-1. 先從會員端 LIFF 登入一次。帳號會直接建立為可使用會員。
-2. 開啟 Google 試算表的 `Members` 工作表，以顯示名稱、會員編號或 `line_user_id` 找到該列。
-3. 將該列的 `admin_status` 設為小寫 `approved`。
-4. 從管理端 LIFF 登入，即可停用或恢復其他會員的使用權。
+- `approved`：可以登入會員系統。
+- `denied`：停止使用會員系統，但仍可要求刪除自己的資料。
 
-要移除管理資格，將 `admin_status` 清空或改為 `denied`。只有值為 `approved` 才能使用管理端；管理後台不提供設定其他管理員的功能，避免一般管理操作擴大權限。`client/` 與 `admin/` 的網址本身不構成管理權限。
+新會員預設為 `approved`。後續登入只同步 LINE 個人資料與登入紀錄，不會覆蓋管理員設定的 `status`。除了管理後台，也可以由試算表擁有者直接手動修改這一欄。
 
-同一張工作表也能直接調整一般會員權限：`status=approved` 代表可使用會員系統，`status=denied` 代表停用。會員再次登入只會同步個人資料與登入紀錄，不會把你手動設定的 `status` 或 `admin_status` 蓋掉。
-
-試算表編輯權現在等同最高管理權限，請只分享給可信任的管理者；不要開放公開編輯，並建議保護 `member_id`、`line_user_id` 等識別欄位，避免誤改。
-
-再使用兩個 LIFF URL 分別測試：
-
-- LINE 手機 App 內開啟
-- Safari／Chrome 外部瀏覽器登入
-- 第一次登入是否新增一列會員
-- 第一次登入是否直接進入會員中心
-- 管理員停用後，會員重新登入是否無法進入
-- 管理員恢復後，會員是否可再次進入
-- 第二次登入是否只更新同一列，且同一 Token 工作階段不重複計數
-- 刪除會員資料後，Sheet 中該列是否消失
-
-## 資料與安全設計
-
-登入流程如下：
+## 資料與安全邊界
 
 ```text
-LIFF 取得短效 ID Token
-        ↓ HTTPS POST
-GAS 將 Token 送到 LINE /oauth2/v2.1/verify
-        ↓ 驗證成功才繼續
-以 LINE 回傳的 sub 當唯一會員鍵並更新 Google Sheet
-        ↓
-新會員為 approved 並直接回傳會員中心資料；denied 會被停用
+會員 LIFF ID Token
+  → 會員 GAS（LINE_CHANNEL_ID=2010787602）
+  → Members：建立會員、更新登入、刪除本人資料
+
+管理 LIFF ID Token
+  → 管理 GAS（LINE_CHANNEL_ID=2010791619）
+  → Admins：建立 pending 申請並檢查 status
+  → status=approved 後才可讀取／調整 Members.status
 ```
 
-前端 `liff.getProfile()` 或自行解碼 Token 得到的資料不會被後台當成可信會員資料。GAS 只使用 LINE 驗證 API 回傳的 `sub`、`name`、`picture`、`email` 與 `iat`；`iat` 僅作為登入工作階段標記，ID Token 本體不會寫入 Sheet 或 Log。
+兩套 GAS 各自只接受自己的動作與 Channel Token。它們透過相同 `SPREADSHEET_ID` 讀寫同一份試算表，而不是彼此呼叫。前端傳入的身分、callback origin 或角色不構成權限。
 
-`Members` 會保存：
+管理端身分只在 `Admins` 工作表比對，不需要命中會員端建立的 `Members.line_user_id`。因此兩個官方帳號即使位於不同 Provider、LINE 驗證得到不同的 `sub`，也不會影響管理員核准或會員權限管理。
 
-- 會員編號與 LINE 使用者識別碼
-- LINE 顯示名稱、頭像網址、已授權的 Email
-- `approved`／`denied` 會員使用狀態、建立／更新／最後登入時間，以及依不同 LINE ID Token 工作階段計算的登入次數
-- 權限異動時間、執行異動的管理員 LINE User ID，以及避免管理操作重複寫入的 request ID
-- `admin_status` 管理員資格，由試算表管理者手動設定
-- LIFF 開啟情境、作業系統與語系等基本診斷資訊
-- LINE 驗證後的 Token 核發時間 `iat`，用來區分登入工作階段；不包含 Token 本體
-- 最後 request ID（只用於避免跨網域重試造成登入次數重複）
-
-管理端每次讀取或修改會員資料時，都會先向 LINE 驗證 ID Token，使用驗證後的 `sub` 在 Members 工作表找到本人資料列，並只在 `admin_status` 精確為 `approved` 時授予管理權限。管理端網址、前端 JSON、`callbackOrigin` 或前端傳入的角色都不會被當成管理權限。新會員預設可使用；之後的登入只會更新自己的 LINE 個資與登入紀錄，不會覆寫管理員設定的停用狀態。已停用會員仍可刪除自己的資料。
-
-`status` 的正常值為 `approved` 或 `denied`。升級時會將舊的空白與 `pending` 轉為 `approved`；若試算表被手動填入其他非空值，系統會安全地拒絕進入，直到管理者在 Sheet 修正狀態。
-
-GAS `ContentService` 回應會重新導向，且不能自行設定完整 CORS Header。前端會先用不觸發 preflight 的 `text/plain` POST；若瀏覽器攔截跨網域回應，會自動以隱藏表單送出相同 request ID，並用一次性隨機值與 `postMessage` 接收結果。ID Token 始終位於 HTTPS POST body，不會放在網址 Query String。
-
-GAS 是公開 Web App，無法取得可靠的用戶端 IP 來做完整防濫用。後台會先拒絕明顯錯誤的 JWT 格式，並以 `MAX_VERIFY_REQUESTS_PER_MINUTE` 做全域、盡力而為的 LINE 驗證熔斷；若未來流量或攻擊風險提高，應在 GAS 前方加入具有 IP／裝置限流能力的 API Gateway 或 Worker。
-
-Google 官方參考：
-
-- [部署 Apps Script Web App](https://developers.google.com/apps-script/guides/web)
-- [Apps Script Content Service 與重新導向](https://developers.google.com/apps-script/guides/content)
-- [Properties Service](https://developers.google.com/apps-script/guides/properties)
-- [Lock Service](https://developers.google.com/apps-script/reference/lock/lock-service)
+ID Token 只放在 HTTPS POST body，不會寫入 Sheet、Log 或 Query String。GAS 使用 LINE 驗證結果中的 `sub` 作為各自工作表的身分鍵。
 
 ## 常見問題
 
-### 畫面顯示「還差兩個設定」
+### 管理端顯示「尚未完成設定」
 
-對應資料夾的 `client/config.json` 或 `admin/config.json` 仍是預設值，或 GAS 網址不是 `https://script.google.com/macros/s/.../exec`。
+`admin/config.json` 的 `GAS_WEB_APP_URL` 仍是 `YOUR_ADMIN_GAS_WEB_APP_URL`，或不是管理 GAS 正式部署的 `/exec` URL。完成第二次 GAS 部署後再替換。
 
-### 管理端顯示「沒有管理權限」
+### 管理端顯示「等待核准」
 
-先從會員端登入一次，確認 Members 工作表已有這個 LINE 帳號的資料列，再將該列的 `admin_status` 設為 `approved`。修改後重新整理管理端。
+這是首次登入的正常流程。到共用 Spreadsheet 的 `Admins` 工作表找到該申請，把 `status` 從 `pending` 改為 `approved`，再回管理端按「重新整理」。不要修改 `Members.admin_status`。
 
-### 顯示 `MISSING ID TOKEN`
+### 管理端顯示「申請已拒絕」
 
-確認 LIFF Scope 已勾選 `openid`。變更 Scope 後，使用者可能需要重新同意授權或重新登入。
+該帳號在 `Admins.status` 不是 `approved`，通常是 `denied`。只有試算表擁有者可以手動恢復為 `approved`。
 
-### 顯示 `ORIGIN NOT ALLOWED` 或等待 GAS 逾時
+### 顯示 `INVALID_TOKEN`
 
-確認 GAS Script Property 的 `ALLOWED_ORIGINS` 與瀏覽器 `location.origin` 完全一致。GitHub Pages 只填網域 origin，不含子目錄。
+確認兩端沒有共用或對調 GAS URL，且各 GAS 的 `LINE_CHANNEL_ID` 正確：
+
+```text
+會員 GAS：2010787602
+管理 GAS：2010791619
+```
+
+修正 Script Property 後建立新的 GAS 部署版本，再關閉 LIFF 視窗並重新登入取得新 Token。
+
+### 顯示 `MISSING_ID_TOKEN`
+
+確認對應 LIFF App 的 Scope 已勾選 `openid`。變更 Scope 後，使用者可能需要重新同意或登入。
+
+### 顯示 `ORIGIN_NOT_ALLOWED` 或等待 GAS 逾時
+
+兩個 GAS 專案都要各自設定：
+
+```text
+ALLOWED_ORIGINS=https://yongshengchen0615.github.io
+```
+
+不要加入 `/PersonalBrandTestingEnvironment/`、`client/`、`admin/` 或 `*`。
 
 ### GAS 回傳 Google 登入頁面
 
-重新部署 Web App，並確認存取權是「任何人」，前端使用的是 `/exec` 而不是 `/dev`。
-
-### 已更新 Code.gs，但前端仍是舊行為
-
-Apps Script 儲存程式不會自動更新既有正式部署；到「部署 → 管理部署作業」建立新版本。
+重新部署對應的 Web App，確認存取權是「任何人」，且前端使用 `/exec` 而不是 `/dev`。
 
 ## 開發檢查
-
-本專案沒有 package manager。可執行：
 
 ```bash
 node --check shared/gas-api.js
@@ -278,9 +263,11 @@ node --check client/script.js
 node --check admin/script.js
 python3 -m json.tool client/config.json
 python3 -m json.tool admin/config.json
-node --check < gas/Code.gs
-python3 -m json.tool gas/appsscript.json
+node --check < gas/client/Code.gs
+node --check < gas/admin/Code.gs
+python3 -m json.tool gas/client/appsscript.json
+python3 -m json.tool gas/admin/appsscript.json
 node --test tests/*.test.js
 ```
 
-真實 LINE 驗證與 Google Sheet 寫入只有在填入自己的 LIFF／GAS 設定並完成部署後才能做端對端測試。
+真實 LINE 驗證與 Google Sheet 寫入，只有在兩套 GAS 完成部署並填入各自 URL 後才能做端對端測試。

@@ -1,26 +1,23 @@
 /**
- * PERSONA MEMBERS - Google Apps Script backend
+ * PERSONA MEMBERS - client-only Google Apps Script backend
  *
  * Required Script Properties:
- * - LINE_CHANNEL_ID: LINE Login channel ID used by the LIFF app
- * - SPREADSHEET_ID: Google Sheet ID that stores member rows
- * - ALLOWED_ORIGINS: comma-separated frontend origins, e.g.
- *   https://example.github.io,http://localhost:8080
+ * - LINE_CHANNEL_ID: member LIFF LINE Login channel ID (for example 2010787602)
+ * - SPREADSHEET_ID: Google Sheet ID shared with the administrator backend
+ * - ALLOWED_ORIGINS: comma-separated frontend origins
  *
  * Optional:
  * - SHEET_NAME: defaults to "Members"
  * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
  *
- * Administrator access is controlled by the Members sheet. Set the verified
- * member's admin_status cell to "approved" after they have logged in once.
+ * This deployment accepts only upsertMember and deleteMember. It deliberately
+ * does not authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.2.0";
+var API_VERSION = "1.0.0";
 var DEFAULT_SHEET_NAME = "Members";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
-var DEFAULT_ADMIN_PAGE_SIZE = 50;
-var MAX_ADMIN_PAGE_SIZE = 100;
 
 var LEGACY_MEMBER_HEADERS = [
   "member_id",
@@ -48,6 +45,8 @@ var ACCESS_AUDIT_MEMBER_HEADERS = LEGACY_MEMBER_HEADERS.concat([
   "last_access_request_id",
 ]);
 
+// Keep the exact shared 21-column schema. The client backend preserves but
+// never uses admin_status for authorization.
 var MEMBER_HEADERS = ACCESS_AUDIT_MEMBER_HEADERS.concat(["admin_status"]);
 
 var MEMBER_COLUMN = {
@@ -83,7 +82,7 @@ function doGet(e) {
       ok: true,
       requestId: requestId,
       data: {
-        service: "member-api",
+        service: "member-client-api",
         version: API_VERSION,
         timestamp: new Date().toISOString(),
       },
@@ -106,8 +105,8 @@ function doPost(e) {
     request = parseRequest_(e);
     validateRequestEnvelope_(request);
 
-    // callbackOrigin is client-provided, so this is an operational allowlist,
-    // not authentication. The verified LINE ID token remains the authority.
+    // callbackOrigin is only an operational allowlist. The verified LINE ID
+    // token remains the identity authority.
     if (!isAllowedRequestOrigin_(request.callbackOrigin)) {
       throw appError_("ORIGIN_NOT_ALLOWED", "目前網站來源未被 GAS 允許。");
     }
@@ -127,10 +126,7 @@ function doPost(e) {
   return jsonResponse_(result);
 }
 
-/**
- * Run once from the Apps Script editor after setting Script Properties.
- * It validates configuration, creates the Members sheet and formats columns.
- */
+/** Run once after configuring Script Properties. */
 function setup() {
   var config = getConfig_();
   var lock = LockService.getScriptLock();
@@ -144,20 +140,12 @@ function setup() {
     migrateDefaultMemberAccess_(sheet);
     applySheetColumnFormats_(sheet);
     SpreadsheetApp.flush();
-    var adminCount = countApprovedAdmins_(sheet);
     return {
       ok: true,
       spreadsheetId: config.spreadsheetId,
       sheetName: sheet.getName(),
       columns: MEMBER_HEADERS.length,
-      adminCount: adminCount,
-      adminConfigured: adminCount > 0,
-      warning:
-        adminCount > 0
-          ? ""
-          : "尚未有管理員：請先以會員端登入，再將 Members 工作表的 admin_status 設為 approved。",
       accessStatuses: ["approved", "denied"],
-      adminStatuses: ["approved", "denied"],
     };
   } finally {
     lock.releaseLock();
@@ -165,6 +153,10 @@ function setup() {
 }
 
 function handleMemberRequest_(request) {
+  // Keep this guard here as well as in validateRequestEnvelope_ so direct
+  // internal calls cannot make an admin request reach config or token checks.
+  assertSupportedAction_(request && request.action);
+
   var config = getConfig_();
   var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
 
@@ -172,19 +164,13 @@ function handleMemberRequest_(request) {
     return upsertMember_(identity, request, config);
   }
 
-  if (request.action === "deleteMember") {
-    return deleteMember_(identity, request, config);
-  }
+  return deleteMember_(identity, request, config);
+}
 
-  if (request.action === "adminListMembers") {
-    return adminListMembers_(identity, request, config);
+function assertSupportedAction_(action) {
+  if (action !== "upsertMember" && action !== "deleteMember") {
+    throw appError_("UNSUPPORTED_ACTION", "此會員端後台不支援該操作。");
   }
-
-  if (request.action === "adminSetMemberAccess") {
-    return adminSetMemberAccess_(identity, request, config);
-  }
-
-  throw appError_("UNSUPPORTED_ACTION", "不支援的會員操作。");
 }
 
 function verifyLineIdToken_(idToken, expectedChannelId) {
@@ -278,9 +264,6 @@ function upsertMember_(identity, request, config) {
       applyMemberRowFormats_(sheet, rowNumber);
     } else {
       row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
-
-      // A timed-out fetch may be repeated through the iframe bridge. The same
-      // request ID must not increase the login count twice.
       isDuplicate =
         String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId ||
         Boolean(recentOutcome);
@@ -293,43 +276,41 @@ function upsertMember_(identity, request, config) {
       if (!isDuplicate) {
         var isNewLoginSession =
           Number(row[MEMBER_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
+
+        // Deliberately use field-level writes. In particular, columns 6
+        // (status) and 21 (admin_status) are never overwritten here.
         sheet
           .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 3)
-          .setValues([
-            [
-              safeSheetText_(identity.displayName),
-              safeSheetText_(identity.pictureUrl),
-              safeSheetText_(identity.email),
-            ],
-          ]);
+          .setValues([[
+            safeSheetText_(identity.displayName),
+            safeSheetText_(identity.pictureUrl),
+            safeSheetText_(identity.email),
+          ]]);
         sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
         if (isNewLoginSession) {
           sheet
             .getRange(rowNumber, MEMBER_COLUMN.lastLoginAt, 1, 2)
-            .setValues([
-              [now, Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0) + 1],
-            ]);
+            .setValues([[
+              now,
+              Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0) + 1,
+            ]]);
         }
         sheet
           .getRange(rowNumber, MEMBER_COLUMN.contextType, 1, 7)
-          .setValues([
-            [
-              safeSheetText_(context.type),
-              safeSheetText_(context.os),
-              safeSheetText_(context.language),
-              context.inClient,
-              safeSheetText_(context.viewType),
-              identity.tokenIssuedAt,
-              request.requestId,
-            ],
-          ]);
+          .setValues([[
+            safeSheetText_(context.type),
+            safeSheetText_(context.os),
+            safeSheetText_(context.language),
+            context.inClient,
+            safeSheetText_(context.viewType),
+            identity.tokenIssuedAt,
+            request.requestId,
+          ]]);
         applyMemberRowFormats_(sheet, rowNumber);
       }
     }
 
-    if (created || !isDuplicate) {
-      SpreadsheetApp.flush();
-    }
+    if (created || !isDuplicate) SpreadsheetApp.flush();
 
     if (!isDuplicate) {
       markRequestProcessed_(
@@ -340,9 +321,7 @@ function upsertMember_(identity, request, config) {
       );
     }
 
-    // Human edits in Google Sheets are not protected by LockService. Re-read
-    // after the field-level writes so status/admin_status changes are preserved
-    // and reflected in this response.
+    // Re-read so an administrator's Sheet edit is reflected in the response.
     row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
     var access = memberAccessFromRow_(row);
 
@@ -369,12 +348,7 @@ function deleteMember_(identity, request, config) {
 
   try {
     if (wasRequestRecentlyProcessed_(identity.lineUserId, request.action, request.requestId)) {
-      return {
-        data: {
-          deleted: true,
-          duplicate: true,
-        },
-      };
+      return { data: { deleted: true, duplicate: true } };
     }
 
     var sheet = getOrCreateMemberSheet_(config);
@@ -388,164 +362,13 @@ function deleteMember_(identity, request, config) {
     markMemberDeleted_(identity.lineUserId, identity.tokenIssuedAt);
     markRequestProcessed_(identity.lineUserId, request.action, request.requestId, "deleted");
 
-    return {
-      data: {
-        deleted: rowNumber > 0,
-      },
-    };
+    return { data: { deleted: rowNumber > 0 } };
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法刪除會員資料，請稍後再試。");
   } finally {
     lock.releaseLock();
   }
-}
-
-function adminListMembers_(adminIdentity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "會員資料正在更新，請稍後再試。");
-  }
-
-  try {
-    var sheet = getOrCreateMemberSheet_(config);
-    requireAdmin_(adminIdentity, config, sheet);
-    var lastRow = sheet.getLastRow();
-    var rows =
-      lastRow < 2
-        ? []
-        : sheet.getRange(2, 1, lastRow - 1, MEMBER_HEADERS.length).getValues();
-    var metrics = {
-      all: rows.length,
-      pending: 0,
-      approved: 0,
-      denied: 0,
-    };
-    var members = rows.map(function (row) {
-      var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
-      metrics[status] += 1;
-      return adminMemberResponseFromRow_(row);
-    });
-
-    members.sort(function (left, right) {
-      return dateSortValue_(right.joinedAt) - dateSortValue_(left.joinedAt);
-    });
-
-    var page = Math.max(1, Math.floor(Number(request.page) || 1));
-    var pageSize = Math.max(
-      1,
-      Math.min(MAX_ADMIN_PAGE_SIZE, Math.floor(Number(request.pageSize) || DEFAULT_ADMIN_PAGE_SIZE))
-    );
-    var total = members.length;
-    var startIndex = (page - 1) * pageSize;
-
-    return {
-      data: {
-        members: members.slice(startIndex, startIndex + pageSize),
-        metrics: metrics,
-        pagination: {
-          page: page,
-          pageSize: pageSize,
-          total: total,
-          totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
-        },
-        admin: {
-          displayName: adminIdentity.displayName,
-          pictureUrl: adminIdentity.pictureUrl,
-        },
-      },
-    };
-  } catch (error) {
-    if (error && error.appCode) throw error;
-    throw appError_("SPREADSHEET_ERROR", "目前無法讀取會員清單，請稍後再試。");
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function adminSetMemberAccess_(adminIdentity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "會員權限正在更新，請稍後再試。");
-  }
-
-  try {
-    var sheet = getOrCreateMemberSheet_(config);
-    requireAdmin_(adminIdentity, config, sheet);
-    var rowNumber = findMemberRowByMemberId_(sheet, request.targetMemberId);
-    if (!rowNumber) {
-      throw appError_("MEMBER_NOT_FOUND", "找不到指定的會員。");
-    }
-
-    var row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
-    var currentStatus = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
-    var lastAccessRequestId = String(row[MEMBER_COLUMN.lastAccessRequestId - 1] || "");
-
-    if (lastAccessRequestId === request.requestId) {
-      if (currentStatus !== request.accessStatus) {
-        throw appError_(
-          "REQUEST_ID_CONFLICT",
-          "同一請求識別碼不可用於不同的權限變更。"
-        );
-      }
-
-      return {
-        data: {
-          member: adminMemberResponseFromRow_(row),
-          duplicate: true,
-        },
-      };
-    }
-
-    var currentAccessUpdatedAt = toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]);
-    var expectedAccessUpdatedAt = String(request.expectedAccessUpdatedAt || "");
-    if (
-      currentStatus !== request.expectedAccessStatus ||
-      currentAccessUpdatedAt !== expectedAccessUpdatedAt
-    ) {
-      throw appError_(
-        "ACCESS_CONFLICT",
-        "會員狀態已由其他管理員更新，請重新整理清單後再試。"
-      );
-    }
-
-    var now = new Date();
-    sheet.getRange(rowNumber, MEMBER_COLUMN.status).setValues([[request.accessStatus]]);
-    sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
-    sheet
-      .getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt, 1, 3)
-      .setValues([[now, safeSheetText_(adminIdentity.lineUserId), request.requestId]]);
-    applyMemberRowFormats_(sheet, rowNumber);
-    SpreadsheetApp.flush();
-    row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
-
-    return {
-      data: {
-        member: adminMemberResponseFromRow_(row),
-        duplicate: false,
-      },
-    };
-  } catch (error) {
-    if (error && error.appCode) throw error;
-    throw appError_("SPREADSHEET_ERROR", "目前無法更新會員權限，請稍後再試。");
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function adminMemberResponseFromRow_(row) {
-  return {
-    memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
-    displayName: String(row[MEMBER_COLUMN.displayName - 1] || "LINE 會員"),
-    pictureUrl: normalizeHttpsUrl_(row[MEMBER_COLUMN.pictureUrl - 1]),
-    email: String(row[MEMBER_COLUMN.email - 1] || ""),
-    status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
-    joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
-    updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
-    lastLoginAt: toIsoString_(row[MEMBER_COLUMN.lastLoginAt - 1]),
-    loginCount: Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0),
-    accessUpdatedAt: toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]),
-  };
 }
 
 function createMemberRow_(identity, requestId, context, now) {
@@ -576,10 +399,7 @@ function createMemberRow_(identity, requestId, context, now) {
 
 function memberAccessFromRow_(row) {
   var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
-  return {
-    status: status,
-    allowed: status === "approved",
-  };
+  return { status: status, allowed: status === "approved" };
 }
 
 function memberResponseFromRow_(row, identity, context) {
@@ -612,7 +432,7 @@ function getConfig_() {
   ) {
     throw appError_(
       "CONFIG_ERROR",
-      "GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
+      "會員端 GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
     );
   }
 
@@ -624,34 +444,6 @@ function getConfig_() {
   };
 }
 
-function requireAdmin_(identity, config, memberSheet) {
-  var lineUserId = identity ? String(identity.lineUserId || "") : "";
-
-  if (!lineUserId) {
-    throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
-  }
-
-  try {
-    var sheet = memberSheet || getOrCreateMemberSheet_(config);
-    var rowNumber = findUniqueMemberRow_(sheet, lineUserId);
-    if (!rowNumber) {
-      throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
-    }
-
-    var adminStatus = sheet
-      .getRange(rowNumber, MEMBER_COLUMN.adminStatus)
-      .getValues()[0][0];
-    if (normalizeAdminStatus_(adminStatus) !== "approved") {
-      throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
-    }
-
-    return rowNumber;
-  } catch (error) {
-    if (error && error.appCode) throw error;
-    throw appError_("SPREADSHEET_ERROR", "目前無法驗證管理員權限，請稍後再試。");
-  }
-}
-
 function getOrCreateMemberSheet_(config) {
   var spreadsheet;
   try {
@@ -661,9 +453,7 @@ function getOrCreateMemberSheet_(config) {
   }
 
   var sheet = spreadsheet.getSheetByName(config.sheetName);
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(config.sheetName);
-  }
+  if (!sheet) sheet = spreadsheet.insertSheet(config.sheetName);
 
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).setValues([MEMBER_HEADERS]);
@@ -704,7 +494,6 @@ function getOrCreateMemberSheet_(config) {
 
   var existingHeaders = sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0];
   assertMemberHeadersMatch_(existingHeaders, MEMBER_HEADERS);
-
   return sheet;
 }
 
@@ -726,32 +515,20 @@ function migrateDefaultMemberAccess_(sheet) {
   if (lastRow < 2) return 0;
 
   var changed = 0;
-
   for (var rowNumber = 2; rowNumber <= lastRow; rowNumber += 1) {
-    var cell = sheet.getRange(rowNumber, MEMBER_COLUMN.status);
-    var value = cell.getValues()[0][0];
+    var statusCell = sheet.getRange(rowNumber, MEMBER_COLUMN.status);
+    var value = statusCell.getValues()[0][0];
     var status = String(value == null ? "" : value).trim().toLowerCase();
+
     if (!status || status === "pending") {
-      // Do not rewrite the whole status column: a human may be editing other
-      // member rows while this one-time migration runs.
-      cell.setValues([["approved"]]);
+      // A single-cell write avoids touching administrator edits in any other
+      // row or in admin_status.
+      statusCell.setValues([["approved"]]);
       changed += 1;
     }
   }
 
   return changed;
-}
-
-function countApprovedAdmins_(sheet) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 0;
-
-  return sheet
-    .getRange(2, MEMBER_COLUMN.adminStatus, lastRow - 1, 1)
-    .getValues()
-    .reduce(function (count, row) {
-      return count + (normalizeAdminStatus_(row[0]) === "approved" ? 1 : 0);
-    }, 0);
 }
 
 function styleMemberHeader_(sheet, startColumn, columnCount) {
@@ -769,7 +546,6 @@ function applySheetColumnFormats_(sheet) {
   textColumns.forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
-
   [7, 8, 9, MEMBER_COLUMN.accessUpdatedAt].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
   });
@@ -799,39 +575,6 @@ function findMemberRow_(sheet, lineUserId) {
     .matchEntireCell(true)
     .matchCase(true)
     .findNext();
-
-  return match ? match.getRow() : 0;
-}
-
-function findUniqueMemberRow_(sheet, lineUserId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 0;
-
-  var values = sheet
-    .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
-    .getValues();
-  var rowNumber = 0;
-
-  for (var i = 0; i < values.length; i += 1) {
-    if (String(values[i][0] || "") !== lineUserId) continue;
-    if (rowNumber !== 0) return 0;
-    rowNumber = i + 2;
-  }
-
-  return rowNumber;
-}
-
-function findMemberRowByMemberId_(sheet, memberId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 0;
-
-  var match = sheet
-    .getRange(2, MEMBER_COLUMN.memberId, lastRow - 1, 1)
-    .createTextFinder(memberId)
-    .matchEntireCell(true)
-    .matchCase(true)
-    .findNext();
-
   return match ? match.getRow() : 0;
 }
 
@@ -846,12 +589,6 @@ function parseRequest_(e) {
       requestSecret: String(e.parameter.requestSecret || ""),
       callbackOrigin: normalizeOrigin_(e.parameter.callbackOrigin),
       context: parseContext_(e.parameter.context),
-      targetMemberId: String(e.parameter.targetMemberId || "").trim(),
-      accessStatus: String(e.parameter.accessStatus || "").trim().toLowerCase(),
-      expectedAccessStatus: String(e.parameter.expectedAccessStatus || "").trim().toLowerCase(),
-      expectedAccessUpdatedAt: String(e.parameter.expectedAccessUpdatedAt || "").trim(),
-      page: optionalNumber_(e.parameter.page, 1),
-      pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
       transport: "bridge",
     };
   }
@@ -877,75 +614,23 @@ function parseRequest_(e) {
     requestSecret: "",
     callbackOrigin: normalizeOrigin_(parsed.callbackOrigin),
     context: normalizeContext_(parsed.context),
-    targetMemberId: String(parsed.targetMemberId || "").trim(),
-    accessStatus: String(parsed.accessStatus || "").trim().toLowerCase(),
-    expectedAccessStatus: String(parsed.expectedAccessStatus || "").trim().toLowerCase(),
-    expectedAccessUpdatedAt: String(parsed.expectedAccessUpdatedAt || "").trim(),
-    page: optionalNumber_(parsed.page, 1),
-    pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
     transport: "fetch",
   };
 }
 
 function validateRequestEnvelope_(request) {
+  // Reject admin/unknown actions before inspecting their token or parameters.
+  assertSupportedAction_(request.action);
+
   if (!/^[a-zA-Z0-9-]{10,80}$/.test(request.requestId || "")) {
     throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
   }
-
-  if (
-    ["upsertMember", "deleteMember", "adminListMembers", "adminSetMemberAccess"].indexOf(
-      request.action
-    ) === -1
-  ) {
-    throw appError_("UNSUPPORTED_ACTION", "不支援的會員操作。");
-  }
-
   if (!request.idToken || request.idToken.length > MAX_ID_TOKEN_LENGTH || !isJwtLike_(request.idToken)) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證缺少或格式不正確。");
   }
-
   if (request.transport === "bridge" && !/^[a-f0-9]{48}$/.test(request.requestSecret || "")) {
     throw appError_("INVALID_BRIDGE", "安全回應通道格式不正確。");
   }
-
-  if (request.action === "adminListMembers") {
-    if (!isPositiveInteger_(request.page)) {
-      throw appError_("INVALID_PAGE", "頁碼格式不正確。");
-    }
-    if (!isPositiveInteger_(request.pageSize) || request.pageSize > MAX_ADMIN_PAGE_SIZE) {
-      throw appError_("INVALID_PAGE_SIZE", "每頁筆數必須介於 1 到 100。");
-    }
-  }
-
-  if (request.action === "adminSetMemberAccess") {
-    if (!/^MBR-[A-Z0-9]{10}$/.test(request.targetMemberId || "")) {
-      throw appError_("INVALID_MEMBER_ID", "會員識別碼格式不正確。");
-    }
-    if (request.accessStatus !== "approved" && request.accessStatus !== "denied") {
-      throw appError_("INVALID_ACCESS_STATUS", "會員權限狀態只能設為 approved 或 denied。");
-    }
-    if (
-      request.expectedAccessStatus !== "approved" &&
-      request.expectedAccessStatus !== "denied"
-    ) {
-      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本狀態不正確。");
-    }
-    if (
-      request.expectedAccessUpdatedAt &&
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(request.expectedAccessUpdatedAt)
-    ) {
-      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本格式不正確。");
-    }
-  }
-}
-
-function optionalNumber_(value, fallback) {
-  return value === undefined || value === null || value === "" ? fallback : Number(value);
-}
-
-function isPositiveInteger_(value) {
-  var number = Number(value);
-  return number >= 1 && number !== Infinity && Math.floor(number) === number;
 }
 
 function parseContext_(value) {
@@ -970,7 +655,6 @@ function normalizeContext_(context) {
 
 function isAllowedRequestOrigin_(requestedOrigin) {
   if (!requestedOrigin || !isValidOrigin_(requestedOrigin)) return false;
-
   return getAllowedOrigins_().indexOf(requestedOrigin) !== -1;
 }
 
@@ -984,11 +668,13 @@ function getAllowedOrigins_() {
     .filter(function (origin) {
       return Boolean(origin && isValidOrigin_(origin));
     });
-
 }
 
 function isValidOrigin_(origin) {
-  return /^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin);
+  return (
+    /^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)
+  );
 }
 
 function normalizeOrigin_(value) {
@@ -1019,7 +705,7 @@ function markMemberDeleted_(lineUserId, tokenIssuedAt) {
       3700
     );
   } catch (_error) {
-    // Best-effort tombstone. The Sheet deletion remains authoritative.
+    // Best effort. The Sheet deletion remains authoritative.
   }
 }
 
@@ -1045,8 +731,7 @@ function markRequestProcessed_(lineUserId, action, requestId, outcome) {
       600
     );
   } catch (_error) {
-    // The last_request_id sheet column still provides a local fallback if the
-    // best-effort Apps Script cache is unavailable.
+    // last_request_id remains the local idempotency fallback.
   }
 }
 
@@ -1079,7 +764,7 @@ function enforceLineVerificationRateLimit_() {
     cache.put(cacheKey, String(count + 1), 120);
   } catch (error) {
     if (error && error.appCode) throw error;
-    // Rate limiting is best-effort. Identity validation still happens at LINE.
+    // Best-effort rate limiting. LINE still validates identity.
   } finally {
     if (acquired && lock) lock.releaseLock();
   }
@@ -1090,7 +775,8 @@ function bridgeResponse_(result, request) {
   var secret = /^[a-f0-9]{48}$/.test(request.requestSecret || "") ? request.requestSecret : "";
 
   if (!targetOrigin || !secret) {
-    return HtmlService.createHtmlOutput("<!doctype html><meta charset=\"utf-8\"><title>Invalid bridge</title>")
+    return HtmlService
+      .createHtmlOutput("<!doctype html><meta charset=\"utf-8\"><title>Invalid bridge</title>")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
@@ -1108,11 +794,15 @@ function bridgeResponse_(result, request) {
     safeJsonForHtml_(targetOrigin) +
     ");<\/script></body></html>";
 
-  return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  return HtmlService
+    .createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function jsonResponse_(payload) {
-  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function safeJsonForHtml_(value) {
@@ -1128,14 +818,9 @@ function errorResult_(error) {
   var code = error && error.appCode ? error.appCode : "INTERNAL_ERROR";
   var message = error && error.publicMessage ? error.publicMessage : "後台發生未預期的錯誤。";
 
-  // Do not log request bodies or LINE tokens.
-  console.error("Member API error code: " + code);
-
-  return {
-    ok: false,
-    code: code,
-    message: message,
-  };
+  // Never log request bodies or LINE tokens.
+  console.error("Member client API error code: " + code);
+  return { ok: false, code: code, message: message };
 }
 
 function appError_(code, publicMessage) {
@@ -1166,16 +851,6 @@ function normalizeAccessStatus_(value) {
   }
   if (status === "denied") return "denied";
   return "pending";
-}
-
-function normalizeAdminStatus_(value) {
-  return String(value || "").trim().toLowerCase() === "approved" ? "approved" : "denied";
-}
-
-function dateSortValue_(value) {
-  var date = value instanceof Date ? value : new Date(value);
-  var timestamp = date.getTime();
-  return isNaN(timestamp) ? 0 : timestamp;
 }
 
 function toIsoString_(value) {

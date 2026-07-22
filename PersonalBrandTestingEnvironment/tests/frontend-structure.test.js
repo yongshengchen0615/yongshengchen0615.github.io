@@ -52,6 +52,14 @@ test("client and admin JSON configs expose only public frontend settings", () =>
 
   assert.equal(Number.isInteger(adminConfig.PAGE_SIZE), true);
   assert.equal(adminConfig.PAGE_SIZE >= 1 && adminConfig.PAGE_SIZE <= 100, true);
+  assert.equal(clientConfig.LIFF_ID, "2010787602-kaiSm2eq");
+  assert.equal(adminConfig.LIFF_ID, "2010791619-vhevCvvD");
+  assert.match(clientConfig.GAS_WEB_APP_URL, /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/);
+  assert.match(
+    adminConfig.GAS_WEB_APP_URL,
+    /^(?:YOUR_ADMIN_GAS_WEB_APP_URL|https:\/\/script\.google\.com\/macros\/s\/.+\/exec)$/
+  );
+  assert.notEqual(adminConfig.GAS_WEB_APP_URL, clientConfig.GAS_WEB_APP_URL);
 });
 
 test("admin access updates include both optimistic concurrency fields", () => {
@@ -73,4 +81,35 @@ test("both applications load the shared GAS transport before their own scripts",
     assert.notEqual(appIndex, -1);
     assert.equal(sharedIndex < appIndex, true, `${relativePath} must load shared transport first`);
   }
+});
+
+test("deployment guides document two independent GAS deployments and Sheet-based admin approval", () => {
+  for (const relativePath of ["README.md", "setup.html"]) {
+    const guide = fs.readFileSync(path.join(root, relativePath), "utf8");
+
+    assert.match(guide, /LINE_CHANNEL_ID/);
+    assert.match(guide, /2010787602/);
+    assert.match(guide, /2010791619/);
+    assert.match(guide, /gas\/client\/Code\.gs/);
+    assert.match(guide, /gas\/admin\/Code\.gs/);
+    assert.match(guide, /https:\/\/yongshengchen0615\.github\.io/);
+    assert.match(guide, /Admins/);
+    assert.match(guide, /pending/);
+    assert.match(guide, /approved/);
+    assert.doesNotMatch(guide, /CLIENT_LINE_CHANNEL_ID|ADMIN_LINE_CHANNEL_ID/);
+  }
+});
+
+test("admin UI distinguishes pending approval from forbidden access", () => {
+  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+
+  assert.match(html, /id="pending-state"/);
+  assert.match(html, /id="pending-refresh-button"/);
+  assert.match(html, /id="pending-logout-button"/);
+  assert.match(html, /Admins/);
+  assert.match(script, /normalized\.code === "ADMIN_PENDING"/);
+  assert.match(script, /normalized\.code === "ADMIN_FORBIDDEN"/);
+  assert.match(script, /byId\("pending-refresh-button"\)\.addEventListener\("click", boot\)/);
+  assert.match(script, /byId\("pending-logout-button"\)\.addEventListener\("click", handleLogout\)/);
 });

@@ -21,80 +21,83 @@
     <main class="legal-document setup-document">
       <header>
         <p class="eyebrow">DEPLOYMENT GUIDE</p>
-        <h1>五步完成上線。</h1>
+        <h1>兩套 GAS，權限分流。</h1>
         <p class="legal-notice">
-          準備一份 Google 試算表、一個 LINE Login Channel，以及可發布 GitHub Pages 的儲存庫。整套系統不需要安裝套件。
+          會員端與管理端使用獨立 LIFF Channel、獨立 Apps Script 專案與獨立部署，只共用同一份 Google Spreadsheet。
         </p>
       </header>
 
       <section>
         <span>01</span>
         <div>
-          <h2>建立 Google Sheet 與 Apps Script</h2>
-          <p>建立 Google 試算表並複製網址中 <code>/d/</code> 與 <code>/edit</code> 之間的 Spreadsheet ID，再從「擴充功能 → Apps Script」開啟編輯器。</p>
-          <p>將 <a href="gas/Code.gs" target="_blank">gas/Code.gs</a> 貼入程式，並在專案設定開啟資訊清單檔案後，以 <a href="gas/appsscript.json" target="_blank">gas/appsscript.json</a> 取代內容。</p>
-          <h3>指令碼屬性</h3>
-          <dl class="setup-config-list">
-            <div><dt>LINE_CHANNEL_ID</dt><dd>LINE Login Channel ID，不是 LIFF ID</dd></div>
-            <div><dt>SPREADSHEET_ID</dt><dd>剛才複製的 Google Sheet ID</dd></div>
-            <div><dt>ALLOWED_ORIGINS</dt><dd>前端 origin，例如 https://example.github.io</dd></div>
-            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
-            <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，LINE 驗證每分鐘上限，預設 120</dd></div>
-          </dl>
-          <p><code>ALLOWED_ORIGINS</code> 不可填 <code>*</code>，也不要包含 GitHub Pages 的子目錄路徑。</p>
+          <h2>建立共用 Spreadsheet</h2>
+          <p>建立 Google 試算表，複製網址中 <code>/d/</code> 與 <code>/edit</code> 之間的 Spreadsheet ID。接下來兩個 GAS 專案的 <code>SPREADSHEET_ID</code> 必須填完全相同的值。</p>
+          <p>不要公開分享試算表編輯權。能修改 <code>Admins.status</code> 的人等同最高管理者。</p>
         </div>
       </section>
 
       <section>
         <span>02</span>
         <div>
-          <h2>初始化並部署 GAS</h2>
-          <p>在 Apps Script 編輯器選擇 <code>setup</code> 執行一次並完成授權。程式會建立 Members 工作表與固定欄位；既有工作表會安全補上 <code>admin_status</code> 等欄位，舊的空白或 <code>pending</code> 會員狀態會轉為 <code>approved</code>。</p>
-          <p>選擇「部署 → 新增部署作業 → 網頁應用程式」，執行身分選「我」，存取權選「任何人」。複製結尾為 <code>/exec</code> 的正式網址；不要使用只供編輯者測試的 <code>/dev</code>。</p>
-          <pre><code>curl -L "你的_GAS_EXEC_網址?action=health"</code></pre>
-          <p>看到 <code>"ok":true</code> 即代表公開部署可連線。之後每次修改 GAS，都要在管理部署作業中建立新版本。</p>
+          <h2>部署會員 GAS</h2>
+          <p>建立第一個獨立 Apps Script 專案，貼入 <a href="gas/client/Code.gs" target="_blank">gas/client/Code.gs</a>，並以 <a href="gas/client/appsscript.json" target="_blank">gas/client/appsscript.json</a> 更新資訊清單。</p>
+          <h3>會員 GAS 指令碼屬性</h3>
+          <dl class="setup-config-list">
+            <div><dt>LINE_CHANNEL_ID</dt><dd>2010787602</dd></div>
+            <div><dt>SPREADSHEET_ID</dt><dd>共用 Google Spreadsheet ID</dd></div>
+            <div><dt>ALLOWED_ORIGINS</dt><dd>https://yongshengchen0615.github.io</dd></div>
+            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
+            <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，預設 120</dd></div>
+          </dl>
+          <p>執行一次 <code>setup()</code>，再部署為網頁應用程式；執行身分選「我」、存取權選「任何人」。保留會員 GAS 的 <code>/exec</code> URL。</p>
         </div>
       </section>
 
       <section>
         <span>03</span>
         <div>
-          <h2>建立會員端與管理端 LIFF</h2>
-          <p>到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers Console</a> 建立一個 LINE Login Channel，並在同一個 Channel 的 LIFF 分頁新增兩個 App。</p>
-          <ul class="setup-check-list">
-            <li>會員端 Endpoint：<code>https://你的網域/PersonalBrandTestingEnvironment/client/</code></li>
-            <li>管理端 Endpoint：<code>https://你的網域/PersonalBrandTestingEnvironment/admin/</code></li>
-            <li>Size：建議 Full</li>
-            <li>Scope：必要的 <code>openid</code>、<code>profile</code>，以及選用的 <code>email</code></li>
-          </ul>
-          <p>分別複製兩個 LIFF ID。兩個 LIFF App 必須建立在同一個 LINE Login Channel，GAS 才能用同一個 <code>LINE_CHANNEL_ID</code> 驗證。</p>
+          <h2>部署管理 GAS</h2>
+          <p>建立第二個、完全獨立的 Apps Script 專案，貼入 <a href="gas/admin/Code.gs" target="_blank">gas/admin/Code.gs</a>，並以 <a href="gas/admin/appsscript.json" target="_blank">gas/admin/appsscript.json</a> 更新資訊清單。不要把它合併進會員 GAS。</p>
+          <h3>管理 GAS 指令碼屬性</h3>
+          <dl class="setup-config-list">
+            <div><dt>LINE_CHANNEL_ID</dt><dd>2010791619</dd></div>
+            <div><dt>SPREADSHEET_ID</dt><dd>與會員 GAS 完全相同</dd></div>
+            <div><dt>ALLOWED_ORIGINS</dt><dd>https://yongshengchen0615.github.io</dd></div>
+            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
+            <div><dt>ADMIN_SHEET_NAME</dt><dd>選填，預設 Admins</dd></div>
+            <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，預設 120</dd></div>
+          </dl>
+          <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
+          <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
         </div>
       </section>
 
       <section>
         <span>04</span>
         <div>
-          <h2>填入兩端設定並發布</h2>
-          <p>編輯 <a href="client/config.json" target="_blank">client/config.json</a>，填入會員端 LIFF ID、GAS <code>/exec</code> 網址與品牌名稱。</p>
-          <pre><code>{
-  "LIFF_ID": "1234567890-AbCdEfGh",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/.../exec",
-  "BRAND_NAME": "你的品牌名稱"
-}</code></pre>
-          <p>再編輯 <a href="admin/config.json" target="_blank">admin/config.json</a>，使用管理端 LIFF ID；兩端的 GAS 網址必須相同。提交到 GitHub Pages 發布分支後再繼續下一步。</p>
+          <h2>連接兩個 LIFF 與 config</h2>
+          <ul class="setup-check-list">
+            <li>會員 LIFF：<code>2010787602-kaiSm2eq</code>，Endpoint 為 <code>https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/</code></li>
+            <li>管理 LIFF：<code>2010791619-vhevCvvD</code>，Endpoint 為 <code>https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/</code></li>
+            <li>兩個 LIFF 都要勾選 <code>openid</code> 與 <code>profile</code></li>
+          </ul>
+          <p><a href="client/config.json" target="_blank">client/config.json</a> 保留會員 LIFF ID 與既有會員 GAS URL。把 <a href="admin/config.json" target="_blank">admin/config.json</a> 的 <code>YOUR_ADMIN_GAS_WEB_APP_URL</code> 換成新管理 GAS 的 <code>/exec</code> URL。</p>
+          <pre><code>client/config.json → 會員 GAS /exec
+admin/config.json  → 管理 GAS /exec</code></pre>
+          <p>兩個 GAS URL 不可共用或對調。每次更新 Apps Script 程式後，也要在管理部署作業中建立新版本。</p>
         </div>
       </section>
 
       <section>
         <span>05</span>
         <div>
-          <h2>在 Google Sheet 指定管理員</h2>
-          <p>先從會員端 LIFF 登入一次。新帳號會直接建立為可使用會員，登入完成即可使用。</p>
-          <p>開啟 Google 試算表的 Members 工作表，找到要授權的會員列，將 <code>admin_status</code> 欄位設為小寫 <code>approved</code>。清空或改為 <code>denied</code> 即可移除管理資格。</p>
-          <pre><code>admin_status = approved</code></pre>
-          <p>若要直接在 Sheet 調整一般會員權限，將 <code>status</code> 設為 <code>approved</code>（可使用）或 <code>denied</code>（停用）；後續會員登入不會覆寫這兩個手動權限欄位。</p>
-          <p>試算表編輯權等同最高管理權限，請只分享給可信任的管理者，且不要開放公開編輯。</p>
-          <p>現在可從管理端 LIFF URL 登入，停用或恢復會員的系統使用權。完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
+          <h2>核准第一位管理員</h2>
+          <p>從管理端 LIFF 登入。首次驗證成功後，管理 GAS 會在共用 Spreadsheet 的 <code>Admins</code> 工作表建立 <code>status=pending</code> 申請。</p>
+          <p>由試算表擁有者確認該列，再把 <code>status</code> 手動改為小寫 <code>approved</code>。回到等待畫面按「重新整理」即可進入後台；改為 <code>denied</code> 會拒絕登入。</p>
+          <pre><code>Admins.status = approved</code></pre>
+          <p>管理資格只看 <code>Admins.status</code>。舊的 <code>Members.admin_status</code> 不再授權，也不需要先從會員端登入。</p>
+          <p>一般會員預設可以直接使用；後續可在後台或 Members 工作表把 <code>status</code> 改為 <code>approved</code>（可使用）或 <code>denied</code>（停用）。</p>
+          <p>完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
         </div>
       </section>
     </main>

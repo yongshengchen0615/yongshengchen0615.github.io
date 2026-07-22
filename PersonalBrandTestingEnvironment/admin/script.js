@@ -6,6 +6,7 @@
     "loading-state",
     "login-state",
     "setup-state",
+    "pending-state",
     "unauthorized-state",
     "error-state",
     "dashboard-state",
@@ -567,8 +568,13 @@
 
   function handleFatalError(error) {
     var normalized = normalizeError(error);
+    if (normalized.code === "ADMIN_PENDING") {
+      setConnection("等待核准", "setup");
+      setView("pending-state");
+      return;
+    }
     if (normalized.code === "ADMIN_FORBIDDEN") {
-      setConnection("沒有權限", "error");
+      setConnection("申請已拒絕", "error");
       setView("unauthorized-state");
       return;
     }
@@ -578,7 +584,8 @@
   function normalizeError(error) {
     var code = error && (error.code || error.name) ? String(error.code || error.name) : "CONNECTION_ERROR";
     var messages = {
-      ADMIN_FORBIDDEN: "此 LINE 帳號在 Members 工作表中的 admin_status 尚未設為 approved。",
+      ADMIN_PENDING: "管理員申請等待試算表擁有者核准。",
+      ADMIN_FORBIDDEN: "此 LINE 帳號在 Admins 工作表中的狀態未獲核准。",
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證，請確認 LIFF 已勾選 openid 權限。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
@@ -596,7 +603,7 @@
 
   function isAuthorizationError(error) {
     var code = error && error.code;
-    return code === "ADMIN_FORBIDDEN" || code === "INVALID_TOKEN";
+    return code === "ADMIN_PENDING" || code === "ADMIN_FORBIDDEN" || code === "INVALID_TOKEN";
   }
 
   function showError(code, message) {
@@ -783,6 +790,8 @@
   function bindInteractions() {
     byId("login-button").addEventListener("click", handleLogin);
     byId("logout-button").addEventListener("click", handleLogout);
+    byId("pending-refresh-button").addEventListener("click", boot);
+    byId("pending-logout-button").addEventListener("click", handleLogout);
     byId("unauthorized-logout-button").addEventListener("click", handleLogout);
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoDashboard);
