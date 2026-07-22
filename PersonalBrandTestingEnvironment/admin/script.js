@@ -210,13 +210,13 @@
     currentIdToken = "";
     renderDashboard({
       admin: { displayName: "管理員預覽", pictureUrl: "" },
-      metrics: { all: 5, pending: 2, approved: 2, denied: 1 },
+      metrics: { all: 5, pending: 0, approved: 3, denied: 2 },
       pagination: { page: 1, pageSize: 50, total: 5, totalPages: 1 },
       members: [
-        demoMember("MBR-A102938475", "林若晴", "ruoqing@example.com", "pending", 0),
+        demoMember("MBR-A102938475", "林若晴", "ruoqing@example.com", "approved", 0),
         demoMember("MBR-B564738291", "陳宇安", "yuan@example.com", "approved", 1),
         demoMember("MBR-C019283746", "許雅文", "", "denied", 3),
-        demoMember("MBR-D837465920", "江柏廷", "bo@example.com", "pending", 5),
+        demoMember("MBR-D837465920", "江柏廷", "bo@example.com", "denied", 5),
         demoMember("MBR-E746291038", "周語彤", "yutong@example.com", "approved", 12),
       ],
     });
@@ -233,7 +233,7 @@
       joinedAt: joinedAt,
       lastLoginAt: new Date(Date.now() - daysAgo * 86400000).toISOString(),
       loginCount: daysAgo + 1,
-      accessUpdatedAt: status === "pending" ? "" : new Date().toISOString(),
+      accessUpdatedAt: new Date().toISOString(),
     };
   }
 
@@ -267,7 +267,6 @@
 
   function renderMetrics() {
     byId("metric-all").textContent = formatNumber(metrics.all);
-    byId("metric-pending").textContent = formatNumber(metrics.pending);
     byId("metric-approved").textContent = formatNumber(metrics.approved);
     byId("metric-denied").textContent = formatNumber(metrics.denied);
   }
@@ -329,11 +328,12 @@
     var actionColumn = createCell("操作");
     var actions = document.createElement("div");
     actions.className = "row-actions";
-    if (member.status !== "approved") {
-      actions.appendChild(createActionButton("approve", "允許進入", member));
-    }
-    if (member.status !== "denied") {
-      actions.appendChild(createActionButton("deny", "停止存取", member));
+    if (member.status === "denied") {
+      actions.appendChild(createActionButton("approve", "恢復使用", member));
+    } else if (member.status === "approved") {
+      actions.appendChild(createActionButton("deny", "停用", member));
+    } else {
+      appendTextElement(actions, "small", "請至 Sheet 修正狀態");
     }
     actionColumn.appendChild(actions);
     row.appendChild(actionColumn);
@@ -421,7 +421,7 @@
     if (isDemoSession) {
       applyLocalMemberUpdate(member.memberId, accessStatus);
       closeDenyDialog();
-      showToast(accessStatus === "approved" ? "預覽：已允許會員進入" : "預覽：已停止會員存取");
+      showToast(accessStatus === "approved" ? "預覽：已恢復會員使用" : "預覽：已停用會員");
       return;
     }
 
@@ -438,6 +438,7 @@
     sendAdminRequest("adminSetMemberAccess", {
       targetMemberId: member.memberId,
       accessStatus: accessStatus,
+      expectedAccessStatus: member.status,
       expectedAccessUpdatedAt: member.accessUpdatedAt,
     })
       .then(function (response) {
@@ -447,7 +448,7 @@
         }
         applyLocalMemberUpdate(member.memberId, accessStatus, response.data.member);
         closeDenyDialog();
-        showToast(accessStatus === "approved" ? "已允許會員進入" : "已停止會員存取");
+        showToast(accessStatus === "approved" ? "已恢復會員使用" : "已停用會員");
       })
       .catch(function (error) {
         if (isAuthorizationError(error)) {
@@ -551,9 +552,9 @@
   }
 
   function statusLabel(status) {
-    if (status === "approved") return "已允許";
-    if (status === "denied") return "已停止";
-    return "等待審核";
+    if (status === "approved") return "可使用";
+    if (status === "denied") return "已停用";
+    return "狀態需修正";
   }
 
   function assertSuccessfulResponse(response) {
@@ -577,8 +578,7 @@
   function normalizeError(error) {
     var code = error && (error.code || error.name) ? String(error.code || error.name) : "CONNECTION_ERROR";
     var messages = {
-      ADMIN_CONFIG_ERROR: "GAS 尚未設定 ADMIN_LINE_USER_IDS，請先完成第一位管理員設定。",
-      ADMIN_FORBIDDEN: "此 LINE 帳號不在管理員名單中。",
+      ADMIN_FORBIDDEN: "此 LINE 帳號在 Members 工作表中的 admin_status 尚未設為 approved。",
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證，請確認 LIFF 已勾選 openid 權限。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
@@ -596,7 +596,7 @@
 
   function isAuthorizationError(error) {
     var code = error && error.code;
-    return code === "ADMIN_FORBIDDEN" || code === "ADMIN_CONFIG_ERROR" || code === "INVALID_TOKEN";
+    return code === "ADMIN_FORBIDDEN" || code === "INVALID_TOKEN";
   }
 
   function showError(code, message) {

@@ -46,12 +46,22 @@ test("client and admin JSON configs expose only public frontend settings", () =>
     assert.equal(typeof config.LIFF_ID, "string");
     assert.equal(typeof config.GAS_WEB_APP_URL, "string");
     assert.equal(typeof config.BRAND_NAME, "string");
-    assert.equal("ADMIN_LINE_USER_IDS" in config, false);
+    assert.equal("admin_status" in config, false);
     assert.equal("LINE_CHANNEL_ID" in config, false);
   }
 
   assert.equal(Number.isInteger(adminConfig.PAGE_SIZE), true);
   assert.equal(adminConfig.PAGE_SIZE >= 1 && adminConfig.PAGE_SIZE <= 100, true);
+});
+
+test("admin access updates include both optimistic concurrency fields", () => {
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+
+  assert.match(transport, /"expectedAccessStatus"/);
+  assert.match(transport, /"expectedAccessUpdatedAt"/);
+  assert.match(adminScript, /expectedAccessStatus:\s*member\.status/);
+  assert.match(adminScript, /expectedAccessUpdatedAt:\s*member\.accessUpdatedAt/);
 });
 
 test("both applications load the shared GAS transport before their own scripts", () => {

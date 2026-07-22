@@ -6,6 +6,7 @@
   var EXTRA_FIELD_NAMES = [
     "targetMemberId",
     "accessStatus",
+    "expectedAccessStatus",
     "expectedAccessUpdatedAt",
     "page",
     "pageSize",

@@ -226,22 +226,20 @@
   }
 
   function renderAccessState(status, wasCreated) {
-    var denied = status === "denied";
-    byId("access-icon").textContent = denied ? "×" : "⌛";
-    byId("access-badge").textContent = denied ? "尚未開放" : "等待審核";
-    byId("access-title").textContent = denied ? "目前無法進入會員中心" : "會員申請已送出";
-    byId("access-message").textContent = denied
-      ? "管理員目前未開放這個帳號進入。若你認為狀態有誤，請聯絡服務人員後再重新確認。"
-      : "管理員確認後即可進入會員中心，你可以稍後回來重新確認狀態。";
-    byId("access-state").dataset.status = denied ? "denied" : "pending";
+    byId("access-icon").textContent = "×";
+    byId("access-badge").textContent = "已停用";
+    byId("access-title").textContent = "目前無法進入會員中心";
+    byId("access-message").textContent =
+      "管理員目前已停用這個帳號的會員系統使用權。若你認為狀態有誤，請聯絡服務人員後再重新確認。";
+    byId("access-state").dataset.status = "denied";
     byId("access-logout-button").textContent =
       window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
 
-    setConnection(denied ? "尚未開放" : "等待審核", denied ? "error" : "setup");
+    setConnection("已停用", "error");
     setView("access-state");
 
-    if (wasCreated && !denied) {
-      showToast("會員申請已建立，等待管理員審核");
+    if (wasCreated) {
+      showToast("會員資料已建立，但目前無法使用", "error");
     }
   }
 

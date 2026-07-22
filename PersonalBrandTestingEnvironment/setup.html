@@ -38,7 +38,6 @@
             <div><dt>LINE_CHANNEL_ID</dt><dd>LINE Login Channel ID，不是 LIFF ID</dd></div>
             <div><dt>SPREADSHEET_ID</dt><dd>剛才複製的 Google Sheet ID</dd></div>
             <div><dt>ALLOWED_ORIGINS</dt><dd>前端 origin，例如 https://example.github.io</dd></div>
-            <div><dt>ADMIN_LINE_USER_IDS</dt><dd>管理員 LINE User ID，多個以逗號分隔；可在第 05 步取得後補上</dd></div>
             <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
             <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，LINE 驗證每分鐘上限，預設 120</dd></div>
           </dl>
@@ -50,7 +49,7 @@
         <span>02</span>
         <div>
           <h2>初始化並部署 GAS</h2>
-          <p>在 Apps Script 編輯器選擇 <code>setup</code> 執行一次並完成授權。程式會建立 Members 工作表與固定欄位。</p>
+          <p>在 Apps Script 編輯器選擇 <code>setup</code> 執行一次並完成授權。程式會建立 Members 工作表與固定欄位；既有工作表會安全補上 <code>admin_status</code> 等欄位，舊的空白或 <code>pending</code> 會員狀態會轉為 <code>approved</code>。</p>
           <p>選擇「部署 → 新增部署作業 → 網頁應用程式」，執行身分選「我」，存取權選「任何人」。複製結尾為 <code>/exec</code> 的正式網址；不要使用只供編輯者測試的 <code>/dev</code>。</p>
           <pre><code>curl -L "你的_GAS_EXEC_網址?action=health"</code></pre>
           <p>看到 <code>"ok":true</code> 即代表公開部署可連線。之後每次修改 GAS，都要在管理部署作業中建立新版本。</p>
@@ -89,11 +88,13 @@
       <section>
         <span>05</span>
         <div>
-          <h2>指定第一位管理員</h2>
-          <p>先從會員端 LIFF 登入一次。新帳號會以 <code>pending</code> 建立在 Members 工作表；複製你那一列的 <code>line_user_id</code>。</p>
-          <p>回到 Apps Script 的指令碼屬性，將該值填入 <code>ADMIN_LINE_USER_IDS</code>。多位管理員使用半形逗號分隔，請勿把名單放進公開的前端 JSON。</p>
-          <pre><code>ADMIN_LINE_USER_IDS=Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
-          <p>現在可從管理端 LIFF URL 登入，核准自己的會員帳號及其他待審核會員。完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
+          <h2>在 Google Sheet 指定管理員</h2>
+          <p>先從會員端 LIFF 登入一次。新帳號會直接建立為可使用會員，登入完成即可使用。</p>
+          <p>開啟 Google 試算表的 Members 工作表，找到要授權的會員列，將 <code>admin_status</code> 欄位設為小寫 <code>approved</code>。清空或改為 <code>denied</code> 即可移除管理資格。</p>
+          <pre><code>admin_status = approved</code></pre>
+          <p>若要直接在 Sheet 調整一般會員權限，將 <code>status</code> 設為 <code>approved</code>（可使用）或 <code>denied</code>（停用）；後續會員登入不會覆寫這兩個手動權限欄位。</p>
+          <p>試算表編輯權等同最高管理權限，請只分享給可信任的管理者，且不要開放公開編輯。</p>
+          <p>現在可從管理端 LIFF URL 登入，停用或恢復會員的系統使用權。完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
         </div>
       </section>
     </main>

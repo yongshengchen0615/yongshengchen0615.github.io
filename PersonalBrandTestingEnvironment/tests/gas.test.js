@@ -50,7 +50,6 @@ function createGasContext(overrides = {}) {
         return {
           getProperty(name) {
             if (name === "ALLOWED_ORIGINS") return "https://example.github.io,http://localhost:8080";
-            if (name === "ADMIN_LINE_USER_IDS") return ADMIN_LINE_USER_ID;
             return "";
           },
         };
@@ -87,6 +86,7 @@ function createMemberRow(gas, overrides = {}) {
     accessUpdatedAt: "",
     accessUpdatedBy: "",
     lastAccessRequestId: "",
+    adminStatus: "",
     ...overrides,
   };
 
@@ -96,7 +96,7 @@ function createMemberRow(gas, overrides = {}) {
   return row;
 }
 
-function createRowSheet(rows) {
+function createRowSheet(rows, options = {}) {
   return {
     getLastRow() {
       return rows.length + 1;
@@ -113,6 +113,9 @@ function createRowSheet(rows) {
           );
         },
         setValues(values) {
+          if (options.beforeSetValues) {
+            options.beforeSetValues({ rowNumber, column, rowCount, columnCount, values, rows });
+          }
           values.forEach((valuesRow, rowOffset) => {
             valuesRow.forEach((value, columnOffset) => {
               rows[startIndex + rowOffset][column - 1 + columnOffset] = value;
@@ -317,45 +320,44 @@ test("doPost handles JSON primitives as an invalid request", () => {
   assert.equal(payload.code, "INVALID_REQUEST");
 });
 
-test("administrator authorization exact-matches verified LINE user IDs", () => {
-  const secondAdminId = `U${"b".repeat(32)}`;
+test("administrator authorization comes from one exact Members row with admin_status approved", () => {
   const gas = createGasContext();
-  const properties = {
-    getProperty(name) {
-      return name === "ADMIN_LINE_USER_IDS"
-        ? ` ${ADMIN_LINE_USER_ID},${secondAdminId},${ADMIN_LINE_USER_ID} `
-        : "";
-    },
-  };
+  const rows = [
+    createMemberRow(gas, {
+      lineUserId: ADMIN_LINE_USER_ID,
+      status: "denied",
+      adminStatus: " APPROVED ",
+    }),
+  ];
+  const sheet = createRowSheet(rows);
 
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(gas.getAdminLineUserIds_(properties))),
-    [ADMIN_LINE_USER_ID, secondAdminId]
-  );
-  assert.doesNotThrow(() =>
-    gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, { adminLineUserIds: [ADMIN_LINE_USER_ID] })
-  );
+  assert.equal(gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, {}, sheet), 2);
   assert.throws(
-    () =>
-      gas.requireAdmin_(
-        { lineUserId: ADMIN_LINE_USER_ID.toUpperCase() },
-        { adminLineUserIds: [ADMIN_LINE_USER_ID] }
-      ),
+    () => gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID.toUpperCase() }, {}, sheet),
     (error) => error.appCode === "ADMIN_FORBIDDEN"
   );
-  assert.deepEqual(
-    JSON.parse(
-      JSON.stringify(gas.getAdminLineUserIds_({ getProperty: () => "not-a-line-user-id" }))
-    ),
-    []
+
+  rows[0][gas.MEMBER_COLUMN.adminStatus - 1] = "denied";
+  assert.throws(
+    () => gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, {}, sheet),
+    (error) => error.appCode === "ADMIN_FORBIDDEN"
+  );
+
+  rows[0][gas.MEMBER_COLUMN.adminStatus - 1] = "approved";
+  rows.push(
+    createMemberRow(gas, {
+      memberId: "MBR-DUPLICATE1",
+      lineUserId: ADMIN_LINE_USER_ID,
+      adminStatus: "approved",
+    })
   );
   assert.throws(
-    () => gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, { adminLineUserIds: [] }),
-    (error) => error.appCode === "ADMIN_CONFIG_ERROR"
+    () => gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, {}, sheet),
+    (error) => error.appCode === "ADMIN_FORBIDDEN"
   );
 });
 
-test("missing administrator allowlist does not block normal backend configuration", () => {
+test("backend configuration no longer reads an administrator LINE ID allowlist", () => {
   const gas = createGasContext({
     PropertiesService: {
       getScriptProperties() {
@@ -373,29 +375,36 @@ test("missing administrator allowlist does not block normal backend configuratio
   });
 
   const config = gas.getConfig_();
-  assert.deepEqual(JSON.parse(JSON.stringify(config.adminLineUserIds)), []);
-  assert.equal(config.adminConfigValid, true);
-  assert.throws(
-    () => gas.requireAdmin_({ lineUserId: ADMIN_LINE_USER_ID }, config),
-    (error) => error.appCode === "ADMIN_CONFIG_ERROR"
-  );
+  assert.equal("adminLineUserIds" in config, false);
+  assert.equal("adminConfigValid" in config, false);
 });
 
 test("admin actions verify the token before rejecting a non-admin without reading member data", () => {
-  const gas = createGasContext();
+  let wideMemberRead = false;
+  const gas = createGasContext({
+    LockService: {
+      getScriptLock() {
+        return { tryLock: () => true, releaseLock() {} };
+      },
+    },
+  });
   let verified = false;
-  let listCalled = false;
   gas.getConfig_ = () => ({
     lineChannelId: "1234567890",
-    adminLineUserIds: [ADMIN_LINE_USER_ID],
   });
+  const rows = [createMemberRow(gas)];
+  const baseSheet = createRowSheet(rows);
+  gas.getOrCreateMemberSheet_ = () => ({
+    ...baseSheet,
+    getRange(rowNumber, column, rowCount, columnCount) {
+      if (column === 1 && columnCount === gas.MEMBER_HEADERS.length) wideMemberRead = true;
+      return baseSheet.getRange(rowNumber, column, rowCount, columnCount);
+    },
+  });
+
   gas.verifyLineIdToken_ = () => {
     verified = true;
     return { lineUserId: `U${"c".repeat(32)}` };
-  };
-  gas.adminListMembers_ = () => {
-    listCalled = true;
-    return { data: {} };
   };
 
   assert.throws(
@@ -410,7 +419,7 @@ test("admin actions verify the token before rejecting a non-admin without readin
     (error) => error.appCode === "ADMIN_FORBIDDEN"
   );
   assert.equal(verified, true);
-  assert.equal(listCalled, false);
+  assert.equal(wideMemberRead, false);
 });
 
 test("fetch and bridge requests parse and validate administrator fields consistently", () => {
@@ -422,6 +431,7 @@ test("fetch and bridge requests parse and validate administrator fields consiste
     callbackOrigin: "https://example.github.io",
     targetMemberId: "MBR-ABCDEF1234",
     accessStatus: "APPROVED",
+    expectedAccessStatus: "DENIED",
     expectedAccessUpdatedAt: "2026-07-22T01:02:03.000Z",
     page: "2",
     pageSize: "25",
@@ -441,6 +451,7 @@ test("fetch and bridge requests parse and validate administrator fields consiste
   for (const request of [fetchRequest, bridgeRequest]) {
     assert.equal(request.targetMemberId, "MBR-ABCDEF1234");
     assert.equal(request.accessStatus, "approved");
+    assert.equal(request.expectedAccessStatus, "denied");
     assert.equal(request.expectedAccessUpdatedAt, "2026-07-22T01:02:03.000Z");
     assert.equal(request.page, 2);
     assert.equal(request.pageSize, 25);
@@ -460,6 +471,14 @@ test("fetch and bridge requests parse and validate administrator fields consiste
         accessStatus: "pending",
       }),
     (error) => error.appCode === "INVALID_ACCESS_STATUS"
+  );
+  assert.throws(
+    () =>
+      gas.validateRequestEnvelope_({
+        ...fetchRequest,
+        expectedAccessStatus: "pending",
+      }),
+    (error) => error.appCode === "INVALID_ACCESS_VERSION"
   );
   assert.throws(
     () =>
@@ -538,22 +557,23 @@ test("upsertMember_ is retry-idempotent and counts distinct token sessions", () 
   assert.equal(created.data.created, true);
   assert.deepEqual(
     JSON.parse(JSON.stringify(created.data.access)),
-    { status: "pending", allowed: false }
+    { status: "approved", allowed: true }
   );
-  assert.equal(created.data.member, null);
+  assert.equal(created.data.member.status, "approved");
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 1);
 
   const retried = gas.upsertMember_(identity, firstRequest, {});
   assert.equal(retried.data.created, true);
-  assert.equal(retried.data.access.status, "pending");
-  assert.equal(retried.data.member, null);
+  assert.equal(retried.data.access.status, "approved");
+  assert.equal(retried.data.member.status, "approved");
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 1);
 
-  rows[0][gas.MEMBER_COLUMN.status - 1] = "approved";
+  rows[0][gas.MEMBER_COLUMN.status - 1] = "pending";
 
   const secondRequest = { action: "upsertMember", requestId: "request-second-2", context };
   const sameSession = gas.upsertMember_(identity, secondRequest, {});
   assert.equal(sameSession.data.created, false);
+  assert.equal(sameSession.data.access.status, "approved");
   assert.equal(sameSession.data.access.allowed, true);
   assert.equal(sameSession.data.member.loginCount, 1);
 
@@ -611,8 +631,8 @@ test("upsertMember_ is retry-idempotent and counts distinct token sessions", () 
     {}
   );
   assert.equal(recreatedWithNewToken.data.created, true);
-  assert.equal(recreatedWithNewToken.data.access.status, "pending");
-  assert.equal(recreatedWithNewToken.data.member, null);
+  assert.equal(recreatedWithNewToken.data.access.status, "approved");
+  assert.equal(recreatedWithNewToken.data.member.status, "approved");
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 1);
 
   assert.throws(
@@ -626,6 +646,71 @@ test("upsertMember_ is retry-idempotent and counts distinct token sessions", () 
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0][gas.MEMBER_COLUMN.displayName - 1], identity.displayName);
+});
+
+test("member login field updates preserve concurrent manual status and admin_status edits", () => {
+  const requestCache = new Map();
+  const gas = createGasContext({
+    CacheService: {
+      getScriptCache() {
+        return {
+          get: (key) => requestCache.get(key) || null,
+          put: (key, value) => requestCache.set(key, value),
+        };
+      },
+    },
+    LockService: {
+      getScriptLock() {
+        return { tryLock: () => true, releaseLock() {} };
+      },
+    },
+    SpreadsheetApp: { flush() {} },
+  });
+  const lineUserId = `U${"d".repeat(32)}`;
+  const rows = [
+    createMemberRow(gas, {
+      lineUserId,
+      status: "approved",
+      adminStatus: "",
+      lastTokenIat: 1000,
+    }),
+  ];
+  let manualEditInjected = false;
+  const sheet = createRowSheet(rows, {
+    beforeSetValues({ rowNumber }) {
+      if (rowNumber !== 2 || manualEditInjected) return;
+      manualEditInjected = true;
+      rows[0][gas.MEMBER_COLUMN.status - 1] = "denied";
+      rows[0][gas.MEMBER_COLUMN.adminStatus - 1] = "approved";
+    },
+  });
+  gas.getOrCreateMemberSheet_ = () => sheet;
+  gas.applyMemberRowFormats_ = () => {};
+
+  const result = gas.upsertMember_(
+    {
+      lineUserId,
+      displayName: "更新名稱",
+      pictureUrl: "https://profile.line-scdn.net/new",
+      email: "new@example.com",
+      tokenIssuedAt: 2000,
+    },
+    {
+      action: "upsertMember",
+      requestId: "request-field-level-1",
+      context: { type: "external", os: "web", language: "zh-TW", inClient: false },
+    },
+    {}
+  );
+
+  assert.equal(manualEditInjected, true);
+  assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "denied");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.adminStatus - 1], "approved");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.data.access)), {
+    status: "denied",
+    allowed: false,
+  });
+  assert.equal(result.data.member, null);
 });
 
 test("administrator access updates are audited, durable, and conflict-safe", () => {
@@ -651,9 +736,25 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
       },
     },
   });
-  const rows = [createMemberRow(gas)];
+  const rows = [
+    createMemberRow(gas),
+    createMemberRow(gas, {
+      memberId: "MBR-ADMIN00001",
+      lineUserId: ADMIN_LINE_USER_ID,
+      displayName: "管理員",
+      status: "denied",
+      adminStatus: "approved",
+    }),
+  ];
   const originalLineUserId = rows[0][gas.MEMBER_COLUMN.lineUserId - 1];
-  const sheet = createRowSheet(rows);
+  let manualAdminEditInjected = false;
+  const sheet = createRowSheet(rows, {
+    beforeSetValues({ rowNumber }) {
+      if (rowNumber !== 2 || manualAdminEditInjected) return;
+      manualAdminEditInjected = true;
+      rows[0][gas.MEMBER_COLUMN.adminStatus - 1] = "approved";
+    },
+  });
   gas.getOrCreateMemberSheet_ = () => sheet;
   gas.applyMemberRowFormats_ = () => {};
 
@@ -662,12 +763,13 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
     displayName: "管理員",
     pictureUrl: "https://profile.line-scdn.net/admin",
   };
-  const config = { adminLineUserIds: [ADMIN_LINE_USER_ID] };
+  const config = {};
   const request = {
     action: "adminSetMemberAccess",
     requestId: "request-admin-approve-1",
     targetMemberId: "MBR-ABCDEF1234",
     accessStatus: "approved",
+    expectedAccessStatus: "approved",
     expectedAccessUpdatedAt: "",
   };
 
@@ -678,6 +780,8 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
   assert.equal(rows[0][gas.MEMBER_COLUMN.accessUpdatedBy - 1], ADMIN_LINE_USER_ID);
   assert.equal(rows[0][gas.MEMBER_COLUMN.lastAccessRequestId - 1], request.requestId);
   assert.equal(rows[0][gas.MEMBER_COLUMN.lineUserId - 1], originalLineUserId);
+  assert.equal(rows[0][gas.MEMBER_COLUMN.adminStatus - 1], "approved");
+  assert.equal(manualAdminEditInjected, true);
   assert.equal(flushCount, 1);
 
   const retried = gas.adminSetMemberAccess_(admin, request, config);
@@ -698,6 +802,7 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
       ...request,
       requestId: "request-admin-deny-2",
       accessStatus: "denied",
+      expectedAccessStatus: "approved",
       expectedAccessUpdatedAt: approved.data.member.accessUpdatedAt,
     },
     config
@@ -705,6 +810,24 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
   assert.equal(denied.data.member.status, "denied");
   assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "denied");
   assert.equal(flushCount, 2);
+
+  rows[0][gas.MEMBER_COLUMN.status - 1] = "approved";
+  assert.throws(
+    () =>
+      gas.adminSetMemberAccess_(
+        admin,
+        {
+          ...request,
+          requestId: "request-admin-manual-conflict-3",
+          accessStatus: "approved",
+          expectedAccessStatus: "denied",
+          expectedAccessUpdatedAt: denied.data.member.accessUpdatedAt,
+        },
+        config
+      ),
+    (error) => error.appCode === "ACCESS_CONFLICT"
+  );
+  rows[0][gas.MEMBER_COLUMN.status - 1] = "denied";
 
   assert.throws(
     () => gas.adminSetMemberAccess_(admin, request, config),
@@ -735,7 +858,9 @@ test("administrator listing is bounded, normalized, and omits internal identifie
   const rows = [
     createMemberRow(gas, {
       memberId: "MBR-AAAAAAAAAA",
+      lineUserId: ADMIN_LINE_USER_ID,
       status: "active",
+      adminStatus: "approved",
       joinedAt: new Date("2026-01-01T00:00:00.000Z"),
     }),
     createMemberRow(gas, {
@@ -758,7 +883,7 @@ test("administrator listing is bounded, normalized, and omits internal identifie
       pictureUrl: "https://profile.line-scdn.net/admin",
     },
     { page: 1, pageSize: 2 },
-    { adminLineUserIds: [ADMIN_LINE_USER_ID] }
+    {}
   );
 
   assert.deepEqual(
@@ -786,63 +911,84 @@ test("administrator listing is bounded, normalized, and omits internal identifie
     assert.equal("lastRequestId" in member, false);
     assert.equal("lastAccessRequestId" in member, false);
     assert.equal("accessUpdatedBy" in member, false);
+    assert.equal("adminStatus" in member, false);
   }
 });
 
-test("exact legacy member headers migrate by appending only access audit columns", () => {
+test("exact 17- and 20-column member schemas append admin_status and migrate default access", () => {
   const gas = createGasContext();
-  const headers = Array.from(gas.LEGACY_MEMBER_HEADERS);
-  let formatted = false;
-  let flushCount = 0;
-  const sheet = {
-    getName: () => "Members",
-    getLastRow: () => 2,
-    getLastColumn: () => headers.length,
-    getRange(_row, column, _rowCount, columnCount) {
-      return {
-        getDisplayValues() {
-          return [headers.slice(column - 1, column - 1 + columnCount)];
-        },
-        setValues(values) {
-          values[0].forEach((value, index) => {
-            headers[column - 1 + index] = value;
-          });
-          return this;
-        },
-        setBackground() {
-          return this;
-        },
-        setFontColor() {
-          return this;
-        },
-        setFontWeight() {
-          return this;
-        },
-      };
-    },
-    autoResizeColumns() {},
-  };
-  gas.SpreadsheetApp = {
-    openById() {
-      return { getSheetByName: () => sheet };
-    },
-    flush() {
-      flushCount += 1;
-    },
-  };
-  gas.applySheetColumnFormats_ = () => {
-    formatted = true;
-  };
+  function migrateFrom(sourceHeaders) {
+    const headers = Array.from(sourceHeaders);
+    const statuses = ["pending", "", "denied", "active", "unexpected-value"];
+    let formatted = false;
+    let flushCount = 0;
+    const sheet = {
+      getName: () => "Members",
+      getLastRow: () => statuses.length + 1,
+      getLastColumn: () => headers.length,
+      getRange(row, column, rowCount, columnCount = 1) {
+        return {
+          getDisplayValues() {
+            return [headers.slice(column - 1, column - 1 + columnCount)];
+          },
+          getValues() {
+            if (row >= 2 && column === gas.MEMBER_COLUMN.status) {
+              return [[statuses[row - 2]]];
+            }
+            return [[]];
+          },
+          setValues(values) {
+            if (row === 1) {
+              values[0].forEach((value, index) => {
+                headers[column - 1 + index] = value;
+              });
+            } else if (row >= 2 && column === gas.MEMBER_COLUMN.status) {
+              statuses[row - 2] = values[0][0];
+            }
+            return this;
+          },
+          setBackground() {
+            return this;
+          },
+          setFontColor() {
+            return this;
+          },
+          setFontWeight() {
+            return this;
+          },
+        };
+      },
+      autoResizeColumns() {},
+    };
+    gas.SpreadsheetApp = {
+      openById() {
+        return { getSheetByName: () => sheet };
+      },
+      flush() {
+        flushCount += 1;
+      },
+    };
+    gas.applySheetColumnFormats_ = () => {
+      formatted = true;
+    };
 
-  assert.equal(gas.getOrCreateMemberSheet_({ spreadsheetId: "sheet", sheetName: "Members" }), sheet);
-  assert.deepEqual(Array.from(headers), Array.from(gas.MEMBER_HEADERS));
-  assert.equal(formatted, true);
-  assert.equal(flushCount, 1);
+    assert.equal(
+      gas.getOrCreateMemberSheet_({ spreadsheetId: "sheet", sheetName: "Members" }),
+      sheet
+    );
+    assert.deepEqual(Array.from(headers), Array.from(gas.MEMBER_HEADERS));
+    assert.deepEqual(statuses, ["approved", "approved", "denied", "active", "unexpected-value"]);
+    assert.equal(formatted, true);
+    assert.equal(flushCount, 1);
+  }
+
+  migrateFrom(gas.LEGACY_MEMBER_HEADERS);
+  migrateFrom(gas.ACCESS_AUDIT_MEMBER_HEADERS);
 
   const invalidHeaders = Array.from(gas.LEGACY_MEMBER_HEADERS);
   invalidHeaders[5] = "manually_changed";
   const invalidSheet = {
-    ...sheet,
+    getLastRow: () => 1,
     getLastColumn: () => invalidHeaders.length,
     getRange(_row, column, _rowCount, columnCount) {
       return {
@@ -850,7 +996,9 @@ test("exact legacy member headers migrate by appending only access audit columns
       };
     },
   };
-  gas.SpreadsheetApp.openById = () => ({ getSheetByName: () => invalidSheet });
+  gas.SpreadsheetApp = {
+    openById: () => ({ getSheetByName: () => invalidSheet }),
+  };
   assert.throws(
     () => gas.getOrCreateMemberSheet_({ spreadsheetId: "sheet", sheetName: "Members" }),
     (error) => error.appCode === "SCHEMA_MISMATCH"

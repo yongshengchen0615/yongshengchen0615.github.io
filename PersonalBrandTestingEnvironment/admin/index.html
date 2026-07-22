@@ -47,7 +47,7 @@
         <div>
           <p class="eyebrow">RESTRICTED AREA</p>
           <h1 id="login-title">登入會員管理後台</h1>
-          <p>使用已列入管理員名單的 LINE 帳號進行身分驗證。</p>
+          <p>使用 Members 工作表中 <code>admin_status</code> 已設為 <code>approved</code> 的 LINE 帳號進行身分驗證。</p>
         </div>
         <button class="primary-button" id="login-button" type="button">
           <span>使用 LINE 登入</span>
@@ -71,7 +71,7 @@
         <div>
           <p class="eyebrow danger-copy">ACCESS DENIED</p>
           <h1 id="unauthorized-title">此 LINE 帳號沒有管理權限</h1>
-          <p>後台已完成身分驗證，但這個帳號不在管理員名單中。</p>
+          <p>後台已完成身分驗證，但這個帳號在 Members 工作表中尚未取得管理員資格。</p>
         </div>
         <button class="secondary-button" id="unauthorized-logout-button" type="button">登出這個帳號</button>
       </section>
@@ -93,7 +93,7 @@
           <div>
             <p class="eyebrow">MEMBER ACCESS</p>
             <h1 id="dashboard-title">會員存取管理</h1>
-            <p>審核新會員，或調整已有會員的進入權限。</p>
+            <p>查看會員使用狀態，隨時停用或恢復會員系統權限。</p>
           </div>
 
           <div class="admin-identity" aria-label="目前管理員">
@@ -109,21 +109,17 @@
           </div>
         </header>
 
-        <dl class="metric-strip" aria-label="會員審核統計">
+        <dl class="metric-strip" aria-label="會員使用狀態統計">
           <div>
             <dt>全部會員</dt>
             <dd id="metric-all">0</dd>
           </div>
           <div>
-            <dt>等待審核</dt>
-            <dd id="metric-pending">0</dd>
-          </div>
-          <div>
-            <dt>已允許</dt>
+            <dt>可使用</dt>
             <dd id="metric-approved">0</dd>
           </div>
           <div>
-            <dt>已停止</dt>
+            <dt>已停用</dt>
             <dd id="metric-denied">0</dd>
           </div>
         </dl>
@@ -147,9 +143,8 @@
                 <span class="sr-only">篩選會員狀態</span>
                 <select id="status-filter">
                   <option value="all">全部狀態</option>
-                  <option value="pending">等待審核</option>
-                  <option value="approved">已允許</option>
-                  <option value="denied">已停止</option>
+                  <option value="approved">可使用</option>
+                  <option value="denied">已停用</option>
                 </select>
               </label>
 
@@ -199,12 +194,12 @@
     <dialog class="confirm-dialog" id="deny-dialog" aria-labelledby="deny-dialog-title">
       <div>
         <p class="eyebrow danger-copy">STOP ACCESS</p>
-        <h2 id="deny-dialog-title">停止這位會員的進入權限？</h2>
-        <p><span id="deny-member-name">此會員</span> 將無法進入會員系統，之後仍可由管理員重新允許。</p>
+        <h2 id="deny-dialog-title">停用這位會員的系統權限？</h2>
+        <p><span id="deny-member-name">此會員</span> 將無法進入會員系統，之後仍可由管理員恢復使用。</p>
       </div>
       <div class="dialog-actions">
         <button class="secondary-button" id="cancel-deny-button" type="button">取消</button>
-        <button class="danger-button" id="confirm-deny-button" type="button">確認停止存取</button>
+        <button class="danger-button" id="confirm-deny-button" type="button">確認停用</button>
       </div>
     </dialog>
 

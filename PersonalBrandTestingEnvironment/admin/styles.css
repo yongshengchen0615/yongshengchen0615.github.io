@@ -505,7 +505,7 @@ button:disabled {
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   margin: clamp(2.5rem, 5vw, 5rem) 0 0;
   border-block: 1px solid var(--line-strong);
 }
@@ -790,8 +790,15 @@ tbody tr[data-busy="true"] {
 
 .row-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.42rem;
+}
+
+.row-actions small {
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.4;
 }
 
 .action-button {
@@ -1016,22 +1023,6 @@ tbody tr[data-busy="true"] {
     grid-template-columns: auto minmax(0, 1fr) auto;
     padding-block: 0.75rem;
     border-block: 1px solid var(--line);
-  }
-
-  .metric-strip {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .metric-strip > div:nth-child(2) {
-    border-right: 0;
-  }
-
-  .metric-strip > div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-
-  .metric-strip > div:nth-child(3) {
-    padding-left: 0;
   }
 
   .filters {
