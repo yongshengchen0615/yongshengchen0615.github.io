@@ -14,6 +14,7 @@
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
+  var INVALID_TOKEN_RECOVERY_PREFIX = "persona-member-invalid-token-recovery:";
 
   function loadConfig() {
     if (!window.MemberApi) {
@@ -97,6 +98,7 @@
       .then(function (response) {
         if (expectedBootVersion !== bootVersion) return;
         assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
 
         if (
           !response.data ||
@@ -158,6 +160,9 @@
 
     if (!window.liff) return;
 
+    currentIdToken = "";
+    clearInvalidTokenRecoveryGuard();
+
     if (window.liff.isInClient()) {
       window.liff.closeWindow();
       return;
@@ -192,6 +197,7 @@
     sendGasRequest("deleteMember", token, getLiffContext())
       .then(function (response) {
         assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
         closeDialog(byId("delete-dialog"));
         showToast("會員資料已永久刪除");
 
@@ -339,7 +345,58 @@
   function handleClientError(error) {
     var normalized = normalizeClientError(error);
     console.error("Member app error:", normalized.code, error);
+
+    if (
+      (normalized.code === "INVALID_TOKEN" || normalized.code === "INVALID_ID_TOKEN") &&
+      tryExternalTokenRecovery()
+    ) {
+      return;
+    }
+
     showError(normalized.code, normalized.message);
+  }
+
+  function tryExternalTokenRecovery() {
+    if (!window.liff || window.liff.isInClient()) return false;
+
+    var guardKey =
+      INVALID_TOKEN_RECOVERY_PREFIX + String(CONFIG.LIFF_ID || "unknown").trim();
+
+    try {
+      if (window.sessionStorage.getItem(guardKey) === "attempted") return false;
+      window.sessionStorage.setItem(guardKey, "attempted");
+    } catch (_error) {
+      // Without a tab-scoped guard, automatic login could redirect forever.
+      return false;
+    }
+
+    currentIdToken = "";
+    setConnection("正在重新登入", "loading");
+    setLoadingCopy("正在更新 LINE 登入", "偵測到舊的登入憑證，正在安全地重新登入。");
+    setView("loading-state");
+
+    try {
+      if (window.liff.isLoggedIn()) window.liff.logout();
+      window.liff.login({ redirectUri: getCleanPageUrl() });
+      return true;
+    } catch (_error) {
+      try {
+        window.sessionStorage.removeItem(guardKey);
+      } catch (_storageError) {
+        // The existing error state remains the safe fallback.
+      }
+      return false;
+    }
+  }
+
+  function clearInvalidTokenRecoveryGuard() {
+    var guardKey =
+      INVALID_TOKEN_RECOVERY_PREFIX + String(CONFIG.LIFF_ID || "unknown").trim();
+    try {
+      window.sessionStorage.removeItem(guardKey);
+    } catch (_error) {
+      // sessionStorage may be unavailable in privacy-restricted browsers.
+    }
   }
 
   function normalizeClientError(error) {
@@ -347,6 +404,7 @@
     var message = error && error.message;
     var knownMessages = {
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入後再試。",
+      INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入後再試。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證。請確認 LIFF 已勾選 openid 權限。",
       CONFIG_ERROR: "GAS 後台尚未完成設定，請檢查 Script Properties。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
