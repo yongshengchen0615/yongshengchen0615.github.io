@@ -3,7 +3,13 @@
 
   var FETCH_TIMEOUT_MS = 12000;
   var BRIDGE_TIMEOUT_MS = 20000;
-  var EXTRA_FIELD_NAMES = ["targetMemberId", "accessStatus", "page", "pageSize"];
+  var EXTRA_FIELD_NAMES = [
+    "targetMemberId",
+    "accessStatus",
+    "expectedAccessUpdatedAt",
+    "page",
+    "pageSize",
+  ];
 
   function loadConfig(relativePath, requiredStringKeys) {
     return window

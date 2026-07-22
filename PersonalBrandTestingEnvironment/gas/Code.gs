@@ -477,6 +477,15 @@ function adminSetMemberAccess_(adminIdentity, request, config) {
       };
     }
 
+    var currentAccessUpdatedAt = toIsoString_(row[MEMBER_COLUMN.accessUpdatedAt - 1]);
+    var expectedAccessUpdatedAt = String(request.expectedAccessUpdatedAt || "");
+    if (currentAccessUpdatedAt !== expectedAccessUpdatedAt) {
+      throw appError_(
+        "ACCESS_CONFLICT",
+        "會員狀態已由其他管理員更新，請重新整理清單後再試。"
+      );
+    }
+
     var now = new Date();
     row[MEMBER_COLUMN.status - 1] = request.accessStatus;
     row[MEMBER_COLUMN.updatedAt - 1] = now;
@@ -779,6 +788,7 @@ function parseRequest_(e) {
       context: parseContext_(e.parameter.context),
       targetMemberId: String(e.parameter.targetMemberId || "").trim(),
       accessStatus: String(e.parameter.accessStatus || "").trim().toLowerCase(),
+      expectedAccessUpdatedAt: String(e.parameter.expectedAccessUpdatedAt || "").trim(),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
       transport: "bridge",
@@ -808,6 +818,7 @@ function parseRequest_(e) {
     context: normalizeContext_(parsed.context),
     targetMemberId: String(parsed.targetMemberId || "").trim(),
     accessStatus: String(parsed.accessStatus || "").trim().toLowerCase(),
+    expectedAccessUpdatedAt: String(parsed.expectedAccessUpdatedAt || "").trim(),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
     transport: "fetch",
@@ -850,6 +861,12 @@ function validateRequestEnvelope_(request) {
     }
     if (request.accessStatus !== "approved" && request.accessStatus !== "denied") {
       throw appError_("INVALID_ACCESS_STATUS", "會員權限狀態只能設為 approved 或 denied。");
+    }
+    if (
+      request.expectedAccessUpdatedAt &&
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(request.expectedAccessUpdatedAt)
+    ) {
+      throw appError_("INVALID_ACCESS_VERSION", "會員權限版本格式不正確。");
     }
   }
 }

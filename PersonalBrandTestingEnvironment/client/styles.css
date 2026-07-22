@@ -622,6 +622,14 @@ code {
   font-size: 0.9em;
 }
 
+.legal-document li code,
+.legal-document p code,
+.setup-config-list code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .setup-actions {
   grid-column: 2;
   display: grid;

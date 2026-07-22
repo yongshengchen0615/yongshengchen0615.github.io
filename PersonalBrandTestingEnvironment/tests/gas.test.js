@@ -195,9 +195,11 @@ test("verifyLineIdToken_ accepts only current claims for the expected channel", 
 });
 
 test("verifyLineIdToken_ rejects a non-200 response without exposing the response body", () => {
+  let fetchCalled = false;
   const gas = createGasContext({
     UrlFetchApp: {
       fetch() {
+        fetchCalled = true;
         return {
           getResponseCode: () => 400,
           getContentText: () => "sensitive provider response",
@@ -207,9 +209,10 @@ test("verifyLineIdToken_ rejects a non-200 response without exposing the respons
   });
 
   assert.throws(
-    () => gas.verifyLineIdToken_("expired-token", "1234567890"),
+    () => gas.verifyLineIdToken_("header.payload.signature", "1234567890"),
     (error) => error.appCode === "INVALID_TOKEN" && !error.message.includes("sensitive")
   );
+  assert.equal(fetchCalled, true);
 });
 
 test("verifyLineIdToken_ distinguishes provider rate limits from invalid tokens", () => {
@@ -419,6 +422,7 @@ test("fetch and bridge requests parse and validate administrator fields consiste
     callbackOrigin: "https://example.github.io",
     targetMemberId: "MBR-ABCDEF1234",
     accessStatus: "APPROVED",
+    expectedAccessUpdatedAt: "2026-07-22T01:02:03.000Z",
     page: "2",
     pageSize: "25",
   };
@@ -437,6 +441,7 @@ test("fetch and bridge requests parse and validate administrator fields consiste
   for (const request of [fetchRequest, bridgeRequest]) {
     assert.equal(request.targetMemberId, "MBR-ABCDEF1234");
     assert.equal(request.accessStatus, "approved");
+    assert.equal(request.expectedAccessUpdatedAt, "2026-07-22T01:02:03.000Z");
     assert.equal(request.page, 2);
     assert.equal(request.pageSize, 25);
     assert.doesNotThrow(() => gas.validateRequestEnvelope_(request));
@@ -455,6 +460,14 @@ test("fetch and bridge requests parse and validate administrator fields consiste
         accessStatus: "pending",
       }),
     (error) => error.appCode === "INVALID_ACCESS_STATUS"
+  );
+  assert.throws(
+    () =>
+      gas.validateRequestEnvelope_({
+        ...fetchRequest,
+        expectedAccessUpdatedAt: "not-a-version",
+      }),
+    (error) => error.appCode === "INVALID_ACCESS_VERSION"
   );
 });
 
@@ -655,6 +668,7 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
     requestId: "request-admin-approve-1",
     targetMemberId: "MBR-ABCDEF1234",
     accessStatus: "approved",
+    expectedAccessUpdatedAt: "",
   };
 
   const approved = gas.adminSetMemberAccess_(admin, request, config);
@@ -680,10 +694,22 @@ test("administrator access updates are audited, durable, and conflict-safe", () 
 
   const denied = gas.adminSetMemberAccess_(
     admin,
-    { ...request, requestId: "request-admin-deny-2", accessStatus: "denied" },
+    {
+      ...request,
+      requestId: "request-admin-deny-2",
+      accessStatus: "denied",
+      expectedAccessUpdatedAt: approved.data.member.accessUpdatedAt,
+    },
     config
   );
   assert.equal(denied.data.member.status, "denied");
+  assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "denied");
+  assert.equal(flushCount, 2);
+
+  assert.throws(
+    () => gas.adminSetMemberAccess_(admin, request, config),
+    (error) => error.appCode === "ACCESS_CONFLICT"
+  );
   assert.equal(rows[0][gas.MEMBER_COLUMN.status - 1], "denied");
   assert.equal(flushCount, 2);
 
