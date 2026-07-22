@@ -188,3 +188,82 @@ test("client does not start automatic login or token recovery inside the LIFF br
     /if\s*\([\s\S]{0,160}?isInClient\s*\(\s*\)[\s\S]{0,160}?\)\s*(?:\{[\s\S]{0,160}?\breturn\b|return\b)/
   );
 });
+
+test("admin renews either invalid token error once and guards redirect loops", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /(?:window\.)?sessionStorage\.getItem\s*\(/
+  );
+  const recoveryName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(recovery);
+
+  assert.ok(recoveryName, "admin token recovery must be implemented as a named function");
+  assert.match(script, /normalized\.code\s*===\s*["']INVALID_TOKEN["']/);
+  assert.match(script, /normalized\.code\s*===\s*["']INVALID_ID_TOKEN["']/);
+
+  const recoveryCalls = script.match(
+    new RegExp(`\\b${recoveryName[1]}\\s*\\(`, "g")
+  );
+  assert.equal(
+    (recoveryCalls || []).length >= 2,
+    true,
+    "the admin token error path must call the recovery function"
+  );
+
+  const getGuardAt = recovery.search(/(?:window\.)?sessionStorage\.getItem\s*\(/);
+  const setGuardAt = recovery.search(/(?:window\.)?sessionStorage\.setItem\s*\(/);
+  const inClientAt = recovery.search(/(?:window\.)?liff\.isInClient\s*\(\s*\)/);
+  const logoutAt = recovery.search(/(?:window\.)?liff\.logout\s*\(\s*\)/);
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.equal(getGuardAt >= 0 && setGuardAt > getGuardAt, true);
+  assert.match(recovery.slice(getGuardAt, setGuardAt), /\b(?:if|return)\b/);
+  assert.equal(inClientAt >= 0 && inClientAt < logoutAt, true);
+  assert.equal(logoutAt >= 0 && loginAt > logoutAt, true);
+  assert.match(recovery.slice(loginAt), /redirectUri\s*:\s*getCleanPageUrl\s*\(\s*\)/);
+});
+
+test("admin clears the invalid-token loop guard after an authenticated admin response", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const fatalHandler = getTopLevelFunctionContaining(
+    script,
+    /normalized\.code\s*===\s*["']ADMIN_PENDING["']/
+  );
+
+  assert.match(script, /(?:window\.)?sessionStorage\.removeItem\s*\(/);
+  assert.match(
+    script,
+    /assertSuccessfulResponse\(response\);[\s\S]{0,400}?(?:sessionStorage\.removeItem\s*\(|clear[A-Za-z0-9_$]*(?:Token|Reauth)[A-Za-z0-9_$]*\s*\()/i
+  );
+  assert.match(
+    fatalHandler,
+    /normalized\.code\s*===\s*["']ADMIN_PENDING["']\s*\)\s*\{\s*clearInvalidTokenRecoveryGuard\s*\(\s*\)/
+  );
+  assert.match(
+    fatalHandler,
+    /normalized\.code\s*===\s*["']ADMIN_FORBIDDEN["']\s*\)\s*\{\s*clearInvalidTokenRecoveryGuard\s*\(\s*\)/
+  );
+});
+
+test("admin does not start automatic login or token recovery inside the LIFF browser", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
+  const recovery = getTopLevelFunctionContaining(
+    script,
+    /(?:window\.)?sessionStorage\.getItem\s*\(/
+  );
+  const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
+
+  assert.match(boot, /withLoginOnExternalBrowser\s*:\s*false/);
+  assert.match(boot, /\.then\(function\s*\(\)\s*\{[\s\S]{0,120}?isLiffInitialized\s*=\s*true/);
+  assert.match(
+    boot,
+    /if\s*\(\s*!window\.liff\.isLoggedIn\s*\(\s*\)\s*\)\s*\{[\s\S]{0,240}?setView\(["']login-state["']\);[\s\S]{0,80}?return;/
+  );
+  assert.doesNotMatch(boot, /(?:window\.)?liff\.login\s*\(/);
+  assert.match(recovery.slice(0, loginAt), /!isLiffInitialized/);
+  assert.match(
+    recovery.slice(0, loginAt),
+    /if\s*\([\s\S]{0,160}?isInClient\s*\(\s*\)[\s\S]{0,160}?\)\s*(?:\{[\s\S]{0,160}?\breturn\b|return\b)/
+  );
+});

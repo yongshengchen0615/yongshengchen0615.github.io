@@ -23,6 +23,8 @@
   var isDemoSession = false;
   var isListLoading = false;
   var isMutationLoading = false;
+  var isLiffInitialized = false;
+  var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
 
   function byId(id) {
     return document.getElementById(id);
@@ -76,9 +78,11 @@
       return Promise.resolve();
     }
 
+    isLiffInitialized = false;
     return window.liff
       .init({ liffId: String(CONFIG.LIFF_ID).trim(), withLoginOnExternalBrowser: false })
       .then(function () {
+        isLiffInitialized = true;
         if (thisBoot !== bootVersion) return;
         if (!window.liff.isLoggedIn()) {
           setConnection("等待登入", "idle");
@@ -123,6 +127,7 @@
       .then(function (response) {
         if (expectedBootVersion !== bootVersion || thisListRequest !== listRequestVersion) return;
         assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
         renderDashboard(response.data);
       })
       .catch(function (error) {
@@ -180,6 +185,10 @@
       return;
     }
     if (!window.liff) return;
+
+    currentIdToken = "";
+    clearInvalidTokenRecoveryGuard();
+
     if (window.liff.isInClient()) {
       window.liff.closeWindow();
       return;
@@ -568,17 +577,70 @@
 
   function handleFatalError(error) {
     var normalized = normalizeError(error);
+
+    if (
+      (normalized.code === "INVALID_TOKEN" || normalized.code === "INVALID_ID_TOKEN") &&
+      tryExternalTokenRecovery()
+    ) {
+      return;
+    }
+
     if (normalized.code === "ADMIN_PENDING") {
+      clearInvalidTokenRecoveryGuard();
       setConnection("等待核准", "setup");
       setView("pending-state");
       return;
     }
     if (normalized.code === "ADMIN_FORBIDDEN") {
+      clearInvalidTokenRecoveryGuard();
       setConnection("申請已拒絕", "error");
       setView("unauthorized-state");
       return;
     }
     showError(normalized.code, normalized.message);
+  }
+
+  function tryExternalTokenRecovery() {
+    if (!window.liff || !isLiffInitialized || window.liff.isInClient()) return false;
+
+    var guardKey =
+      INVALID_TOKEN_RECOVERY_PREFIX + String(CONFIG.LIFF_ID || "unknown").trim();
+
+    try {
+      if (window.sessionStorage.getItem(guardKey) === "attempted") return false;
+      window.sessionStorage.setItem(guardKey, "attempted");
+    } catch (_error) {
+      // Without a tab-scoped guard, automatic login could redirect forever.
+      return false;
+    }
+
+    currentIdToken = "";
+    setConnection("正在重新登入", "loading");
+    setLoading("正在更新 LINE 登入", "偵測到舊的登入憑證，正在安全地重新登入管理後台。");
+    setView("loading-state");
+
+    try {
+      if (window.liff.isLoggedIn()) window.liff.logout();
+      window.liff.login({ redirectUri: getCleanPageUrl() });
+      return true;
+    } catch (_error) {
+      try {
+        window.sessionStorage.removeItem(guardKey);
+      } catch (_storageError) {
+        // The existing error state remains the safe fallback.
+      }
+      return false;
+    }
+  }
+
+  function clearInvalidTokenRecoveryGuard() {
+    var guardKey =
+      INVALID_TOKEN_RECOVERY_PREFIX + String(CONFIG.LIFF_ID || "unknown").trim();
+    try {
+      window.sessionStorage.removeItem(guardKey);
+    } catch (_error) {
+      // sessionStorage may be unavailable in privacy-restricted browsers.
+    }
   }
 
   function normalizeError(error) {
@@ -587,6 +649,7 @@
       ADMIN_PENDING: "管理員申請等待試算表擁有者核准。",
       ADMIN_FORBIDDEN: "此 LINE 帳號在 Admins 工作表中的狀態未獲核准。",
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入。",
+      INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證，請確認 LIFF 已勾選 openid 權限。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
       LINE_RATE_LIMITED: "LINE 驗證請求較多，請稍候一分鐘再試。",
@@ -602,8 +665,13 @@
   }
 
   function isAuthorizationError(error) {
-    var code = error && error.code;
-    return code === "ADMIN_PENDING" || code === "ADMIN_FORBIDDEN" || code === "INVALID_TOKEN";
+    var code = normalizeError(error).code;
+    return (
+      code === "ADMIN_PENDING" ||
+      code === "ADMIN_FORBIDDEN" ||
+      code === "INVALID_TOKEN" ||
+      code === "INVALID_ID_TOKEN"
+    );
   }
 
   function showError(code, message) {
