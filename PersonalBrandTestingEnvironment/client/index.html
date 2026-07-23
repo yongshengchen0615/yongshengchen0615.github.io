@@ -121,7 +121,7 @@
             <span>02</span>
             <div>
               <strong>設定 LIFF</strong>
-              <p>在 LINE Developers 建立會員端 LIFF App，連結會員官方帳號、Size 設為 <code>Full</code>，並勾選 <code>profile</code>、<code>chat_message.write</code>，再將公開值填入 <code>client/config.json</code>。</p>
+              <p>在 LINE Developers 建立會員端 LIFF App，Size 建議設為 <code>Full</code>，勾選 <code>openid</code>、<code>profile</code> 並開啟 <code>Scan QR</code>，再將公開值填入 <code>client/config.json</code>。會員不需要加入官方帳號即可集點。</p>
             </div>
           </li>
         </ol>
@@ -219,6 +219,10 @@
             </dl>
 
             <div class="member-actions">
+              <button class="primary-button" id="scan-point-button" type="button">
+                <span>掃描集點 QR Code</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
+              </button>
               <button class="primary-button" id="edit-profile-button" type="button">
                 <span>編輯會員資料</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
@@ -439,7 +443,6 @@
         <strong id="claim-error-message">這張 QR 無效或已過期。</strong>
         <div class="claim-actions">
           <button class="secondary-button" id="claim-error-close-button" type="button">確認</button>
-          <button class="primary-button" id="claim-add-friend-button" type="button" hidden><span>加入官方帳號</span></button>
           <button class="primary-button" id="claim-retry-button" type="button"><span>重新確認</span></button>
         </div>
       </section>

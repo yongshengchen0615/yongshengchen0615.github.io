@@ -449,8 +449,8 @@ test("client claim dialog exposes automatic progress, result, duplicate, and ret
   }
   assert.match(errorState, /\brole=["']alert["']/i);
   assert.match(retryButton, /\btype=["']button["']/i);
-  assert.match(getOpeningTagById(html, "claim-add-friend-button"), /hidden/);
   assert.doesNotMatch(html, /id=["']claim-(?:close|confirm)-button["']/);
+  assert.doesNotMatch(html, /id=["']claim-add-friend-button["']/);
   assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
   assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) return;/);
   assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) event\.preventDefault\(\);/);
@@ -492,7 +492,6 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   assert.match(redeemClaim, /originalPointBalance/);
   assert.match(redeemClaim, /claim-success-before/);
   assert.match(redeemClaim, /claim-duplicate-before/);
-  assert.match(redeemClaim, /prepareOfficialAccountMessageContext\(\)/);
   assert.match(redeemClaim, /sendPointClaimMessage\(/);
   assert.match(sync, /renderMember\(/);
   assert.match(sync, /redeemPendingPointCampaign\(\)/);
@@ -552,20 +551,21 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(html, /id=["']claim-success-note["']/);
   assert.match(html, /id=["']claim-success-message-status["']/);
   assert.match(html, /id=["']claim-duplicate-title["']/);
+  assert.match(html, /id=["']scan-point-button["']/);
+  assert.match(html, /掃描集點 QR Code/);
   assert.match(normalizeCampaign, /expiryMode\s*===\s*["']unlimited["']/);
   assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
-  assert.match(redeem, /prepareOfficialAccountMessageContext\s*\(/);
   assert.match(redeem, /sendPointClaimMessage\s*\(/);
-  assert.match(script, /getFriendship\s*\(/);
-  assert.match(script, /openOfficialAccountFriendLink\s*\(/);
-  assert.match(script, /location\.replace\s*\(friendUrl\)/);
-  assert.match(script, /claim-add-friend-button["']\)\.addEventListener/);
+  assert.match(script, /scanCodeV2\s*;/);
+  assert.match(script, /extractPointClaimFromQr\s*\(/);
+  assert.match(script, /storePendingPointClaim\s*\(/);
+  assert.match(script, /INVALID_POINT_QR/);
+  assert.match(script, /byId\(["']scan-point-button["']\)\.addEventListener/);
   assert.match(script, /sendMessages\s*\(/);
   assert.match(script, /type\s*===\s*["']utou["']/);
-  assert.match(script, /OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE/);
-  assert.match(script, /OFFICIAL_ACCOUNT_NOT_FRIEND/);
-  assert.match(script, /OFFICIAL_ACCOUNT_FRIEND_URL/);
+  assert.doesNotMatch(script, /getFriendship\s*\(/);
+  assert.doesNotMatch(script, /OFFICIAL_ACCOUNT_FRIEND(?:SHIP_UNAVAILABLE|_NOT_FRIEND|_URL)/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
   assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
   assert.match(redeem, /重新掃描同一張 QR Code/);
@@ -681,7 +681,7 @@ test("client and admin JSON configs expose only public frontend settings", () =>
   assert.equal(Number.isInteger(adminConfig.PAGE_SIZE), true);
   assert.equal(adminConfig.PAGE_SIZE >= 1 && adminConfig.PAGE_SIZE <= 100, true);
   assert.equal(clientConfig.LIFF_ID, "2010787602-kaiSm2eq");
-  assert.equal(clientConfig.OFFICIAL_ACCOUNT_FRIEND_URL, "https://lin.ee/vdtjCdT");
+  assert.equal("OFFICIAL_ACCOUNT_FRIEND_URL" in clientConfig, false);
   assert.equal(adminConfig.LIFF_ID, "2010791619-vhevCvvD");
   assert.match(clientConfig.GAS_WEB_APP_URL, /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/);
   assert.match(

@@ -19,12 +19,12 @@
   var POINT_CLAIM_STORAGE_PREFIX = "persona-member-point-claim:";
   var POINT_REDEMPTION_REQUEST_STORAGE_PREFIX =
     "persona-member-point-redemption-request:";
-  var OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN = /^https:\/\/lin\.ee\/[A-Za-z0-9]+$/;
   var pendingPointClaim = "";
   var pendingPointClaimError = "";
   var pendingPointRedemptionRequestId = "";
   var isPointClaimPersisted = false;
   var isPointClaimBusy = false;
+  var isPointScannerBusy = false;
   var isPointHistoryLoading = false;
   var pointHistoryRequestVersion = 0;
 
@@ -36,12 +36,7 @@
     }
 
     return window.MemberApi
-      .loadConfig("config.json", [
-        "LIFF_ID",
-        "GAS_WEB_APP_URL",
-        "BRAND_NAME",
-        "OFFICIAL_ACCOUNT_FRIEND_URL",
-      ])
+      .loadConfig("config.json", ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"])
       .then(function (config) {
         CONFIG = config;
       });
@@ -259,22 +254,14 @@
 
     openDialog(byId("claim-dialog"));
     setPointClaimBusy(true);
-    setClaimLoadingCopy("正在確認官方帳號", "請保持此頁開啟，系統會先確認訊息權限。");
+    setClaimLoadingCopy("正在加入會員點數", "請保持此頁開啟，完成前請勿離開。");
     setClaimState("claim-loading-state");
 
-    prepareOfficialAccountMessageContext()
-      .then(function (messageContext) {
-        setClaimLoadingCopy("正在加入會員點數", "請保持此頁開啟，完成前請勿離開。");
-        var redemptionRequestId = ensurePendingPointRedemptionRequestId();
-        return sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
-          claim: pendingPointClaim,
-        }, redemptionRequestId).then(function (response) {
-          return { response: response, messageContext: messageContext };
-        });
-      })
+    var redemptionRequestId = ensurePendingPointRedemptionRequestId();
+    sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
+      claim: pendingPointClaim,
+    }, redemptionRequestId)
       .then(function (response) {
-        var messageContext = response.messageContext;
-        response = response.response;
         assertSuccessfulResponse(response);
         clearInvalidTokenRecoveryGuard();
 
@@ -347,7 +334,7 @@
         setClaimState("claim-success-state");
         setClaimMessageStatus({ pending: true });
         return sendPointClaimMessage(
-          messageContext,
+          getPointMessageContext(),
           originalPointBalance,
           awardedPoints,
           pointBalance
@@ -363,85 +350,111 @@
       });
   }
 
-  function prepareOfficialAccountMessageContext() {
+  function getPointMessageContext() {
     var liffContext = getLiffContext();
-    var messageContext = {
+    return {
       inClient: liffContext.inClient === true,
       isOneToOneChat: liffContext.type === "utou",
-      isFriend: false,
-      friendshipChecked: false,
     };
+  }
 
-    if (!window.liff || typeof window.liff.getFriendship !== "function") {
-      return Promise.reject(
-        createClientError(
-          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
-        )
-      );
+  function handleScanPointQr() {
+    var button = byId("scan-point-button");
+    if (isPointScannerBusy || isPointClaimBusy || !button) return;
+
+    if (isDemoSession) {
+      showToast("預覽模式無法使用相機掃描", "error");
+      return;
     }
 
-    return Promise.resolve()
-      .then(function () {
-        return window.liff.getFriendship();
-      })
-      .then(function (friendship) {
-        messageContext.friendshipChecked = true;
-        messageContext.isFriend = Boolean(friendship && friendship.friendFlag);
+    var scanner = window.liff && window.liff.scanCodeV2;
+    if (typeof scanner !== "function") {
+      showToast("目前無法使用 QR 掃描器，請在 LINE Developers 開啟 Scan QR。", "error");
+      return;
+    }
 
-        if (messageContext.isFriend) {
-          return messageContext;
-        }
-        throw createClientError(
-          "OFFICIAL_ACCOUNT_NOT_FRIEND",
-          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
-        );
+    isPointScannerBusy = true;
+    setButtonBusy(button, true, "正在開啟掃描");
+
+    Promise.resolve()
+      .then(function () {
+        return scanner.call(window.liff);
       })
-      .catch(function (error) {
-        if (
-          error &&
-          (error.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
-            error.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE")
-        ) {
-          throw error;
-        }
-        if (messageContext.inClient) {
+      .then(function (result) {
+        var claim = extractPointClaimFromQr(result && result.value);
+        if (!claim) {
           throw createClientError(
-            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-            "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
+            "INVALID_POINT_QR",
+            "這不是有效的會員點數 QR Code，請掃描管理員產生的點數 QR。"
           );
         }
-        throw createClientError(
-          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
-        );
+        storePendingPointClaim(claim);
+        redeemPendingPointCampaign();
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) {
+          showToast("已取消掃描");
+          return;
+        }
+        var normalized = normalizeClientError(error);
+        showToast(normalized.message, "error");
+      })
+      .finally(function () {
+        isPointScannerBusy = false;
+        setButtonBusy(button, false);
       });
   }
 
-  function openOfficialAccountFriendLink() {
-    var friendUrl = String(CONFIG.OFFICIAL_ACCOUNT_FRIEND_URL || "").trim();
-    if (!OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN.test(friendUrl)) {
-      handlePointClaimError(
-        createClientError(
-          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-          "官方帳號加入連結尚未完成設定，請聯絡管理員。"
-        )
-      );
-      return false;
+  function extractPointClaimFromQr(value) {
+    var scannedValue = String(value || "").trim();
+    if (!scannedValue) return "";
+
+    var url;
+    try {
+      url = new URL(scannedValue);
+    } catch (_error) {
+      return "";
     }
 
-    try {
-      window.location.replace(friendUrl);
-      return true;
-    } catch (_error) {
-      handlePointClaimError(
-        createClientError(
-          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-          "目前無法開啟官方帳號加入頁面，請稍後再試。"
-        )
-      );
-      return false;
+    var expectedPath = "/" + String(CONFIG.LIFF_ID || "").trim();
+    var claim = url.searchParams.get("claim") || "";
+    var keys = Array.from(url.searchParams.keys());
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "liff.line.me" ||
+      url.pathname.replace(/\/+$/, "") !== expectedPath ||
+      url.hash ||
+      keys.length !== 1 ||
+      keys[0] !== "claim" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(claim)
+    ) {
+      return "";
     }
+
+    return claim;
+  }
+
+  function storePendingPointClaim(claim) {
+    if (
+      claim !== pendingPointClaim &&
+      claim !== getStoredPointClaim()
+    ) {
+      clearPendingPointRedemptionRequest();
+    }
+
+    pendingPointClaim = claim;
+    pendingPointClaimError = "";
+    try {
+      window.sessionStorage.setItem(getPointClaimStorageKey(), claim);
+      isPointClaimPersisted = true;
+    } catch (_error) {
+      isPointClaimPersisted = false;
+    }
+  }
+
+  function isPointScanCancelled(error) {
+    var code = String(error && (error.code || error.name || error.message) || "").toUpperCase();
+    return /CANCEL/.test(code);
   }
 
   function sendPointClaimMessage(
@@ -454,7 +467,6 @@
       !messageContext ||
       !messageContext.inClient ||
       !messageContext.isOneToOneChat ||
-      !messageContext.isFriend ||
       !window.liff ||
       typeof window.liff.sendMessages !== "function"
     ) {
@@ -493,11 +505,11 @@
         ? "success"
         : "muted";
     status.textContent = result && result.pending
-      ? "正在將領點通知傳送給官方帳號…"
-      : result && result.sent
-        ? "已將領點通知傳送給官方帳號。"
-        : result && result.reason === "unavailable"
-          ? "點數已發放；請從官方帳號一對一聊天室開啟會員頁面，才能自動傳送通知。"
+        ? "正在將領點通知傳送給官方帳號…"
+        : result && result.sent
+          ? "已將領點通知傳送給官方帳號。"
+          : result && result.reason === "unavailable"
+          ? "點數已發放；目前環境未啟用官方帳號通知。"
           : "點數已發放，但領點通知未能傳送給官方帳號。";
   }
 
@@ -764,9 +776,7 @@
       "claim-success-state": "claim-success-close-button",
       "claim-duplicate-state": "claim-duplicate-close-button",
       "claim-error-state": byId("claim-retry-button").hidden
-        ? byId("claim-add-friend-button").hidden
-          ? "claim-error-close-button"
-          : "claim-add-friend-button"
+        ? "claim-error-close-button"
         : "claim-retry-button",
     }[activeId];
     if (focusTargetId) {
@@ -790,7 +800,6 @@
     dialog.dataset.busy = busy ? "true" : "false";
     [
       "claim-retry-button",
-      "claim-add-friend-button",
       "claim-success-close-button",
       "claim-duplicate-close-button",
       "claim-error-close-button",
@@ -827,22 +836,14 @@
       normalized.code === "POINT_CAMPAIGN_EXPIRED";
 
     if (terminalError) clearPendingPointClaim();
-    var friendshipError =
-      normalized.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
-      normalized.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE";
-    setClaimError(
-      normalized.message,
-      !terminalError && !friendshipError && Boolean(pendingPointClaim),
-      friendshipError
-    );
+    setClaimError(normalized.message, !terminalError && Boolean(pendingPointClaim));
     openDialog(byId("claim-dialog"));
   }
 
-  function setClaimError(message, canRetry, canAddFriend) {
+  function setClaimError(message, canRetry) {
     byId("claim-error-message").textContent =
       message || "這張 QR 目前無法領取，請稍後再試。";
     byId("claim-retry-button").hidden = !canRetry;
-    byId("claim-add-friend-button").hidden = !canAddFriend;
     setClaimState("claim-error-state");
   }
 
@@ -1433,10 +1434,7 @@
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入後再試。",
       INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入後再試。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證。請確認 LIFF 已勾選 openid 權限。",
-      OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE:
-        "請先加入官方帳號，再回到會員頁面按「重新確認」。",
-      OFFICIAL_ACCOUNT_NOT_FRIEND:
-        "請先加入官方帳號，再回到會員頁面按「重新確認」。",
+      INVALID_POINT_QR: "這不是有效的會員點數 QR Code，請重新掃描。",
       CONFIG_ERROR: "GAS 後台尚未完成設定，請檢查 Script Properties。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
       SPREADSHEET_ERROR: "會員試算表目前無法使用，請檢查試算表 ID 與權限。",
@@ -1500,11 +1498,9 @@
   function hasCompleteConfig() {
     var liffId = String(CONFIG.LIFF_ID || "").trim();
     var gasUrl = String(CONFIG.GAS_WEB_APP_URL || "").trim();
-    var friendUrl = String(CONFIG.OFFICIAL_ACCOUNT_FRIEND_URL || "").trim();
 
     if (!liffId || /YOUR_|請填入|REPLACE/i.test(liffId)) return false;
     if (!gasUrl || /YOUR_|請填入|REPLACE/i.test(gasUrl)) return false;
-    if (!OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN.test(friendUrl)) return false;
 
     return Boolean(window.MemberApi && window.MemberApi.isValidGasUrl(gasUrl));
   }
@@ -1658,11 +1654,11 @@
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
     byId("refresh-point-history-button").addEventListener("click", loadPointHistory);
+    byId("scan-point-button").addEventListener("click", handleScanPointQr);
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
     byId("claim-retry-button").addEventListener("click", redeemPendingPointCampaign);
-    byId("claim-add-friend-button").addEventListener("click", openOfficialAccountFriendLink);
     [
       "claim-success-close-button",
       "claim-duplicate-close-button",
