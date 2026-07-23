@@ -325,6 +325,7 @@
           demoPointType("PTY-PREVIEW001", 1, "limited", "once_per_member"),
           demoPointType("PTY-PREVIEW002", 2, "unlimited", "once_per_member"),
           demoPointType("PTY-PREVIEW003", 3, "unlimited", "repeatable"),
+          demoPointType("PTY-PREVIEW004", 4, "limited", "single_member"),
         ],
       });
       renderAdminIdentity({ displayName: "管理員預覽", pictureUrl: "" });
@@ -585,7 +586,9 @@
       label !== points + " 點" ||
       (status !== "active" && status !== "inactive") ||
       (expiryMode !== "limited" && expiryMode !== "unlimited") ||
-      (redemptionMode !== "once_per_member" && redemptionMode !== "repeatable")
+      (redemptionMode !== "once_per_member" &&
+        redemptionMode !== "repeatable" &&
+        redemptionMode !== "single_member")
     ) {
       throw createError("INVALID_RESPONSE", "後台回傳的點數類型格式不正確。");
     }
@@ -695,7 +698,11 @@
     return (
       (pointType.expiryMode === "unlimited" ? "無期限" : "有期限") +
       " · " +
-      (pointType.redemptionMode === "repeatable" ? "可重複領取" : "每位會員限領一次")
+      (pointType.redemptionMode === "repeatable"
+        ? "可重複領取"
+        : pointType.redemptionMode === "single_member"
+          ? "僅限一位會員領取"
+          : "每位會員限領一次")
     );
   }
 
@@ -705,6 +712,9 @@
     var notice = byId("point-rule-notice");
     var isUnlimited = Boolean(pointType && pointType.expiryMode === "unlimited");
     var isRepeatable = Boolean(pointType && pointType.redemptionMode === "repeatable");
+    var isSingleMember = Boolean(
+      pointType && pointType.redemptionMode === "single_member"
+    );
 
     expiryField.hidden = isUnlimited;
     expiryInput.required = !isUnlimited;
@@ -716,6 +726,8 @@
     notice.dataset.tone = isUnlimited && isRepeatable ? "warning" : "default";
     if (!pointType) {
       notice.textContent = "請先建立並選擇一個點數類型。";
+    } else if (isSingleMember) {
+      notice.textContent = "這張 QR 只能由一位會員成功領取，第一位領取後即失效。";
     } else if (isUnlimited && isRepeatable) {
       notice.textContent =
         "永久重複領取 QR：不需設定日期，產生後任何可登入會員都可反覆掃描領點。";
@@ -866,7 +878,9 @@
       campaignPoints > 9999 ||
       campaignLabel !== campaignPoints + " 點" ||
       !expiryIsValid ||
-      (redemptionMode !== "once_per_member" && redemptionMode !== "repeatable")
+      (redemptionMode !== "once_per_member" &&
+        redemptionMode !== "repeatable" &&
+        redemptionMode !== "single_member")
     ) {
       throw createError("INVALID_RESPONSE", "後台回傳的 QR 活動格式不正確。");
     }
@@ -887,11 +901,15 @@
     byId("point-qr-rule").textContent =
       currentPointCampaign.redemptionMode === "repeatable"
         ? "每次重新掃描可再領一次"
-        : "每位會員限領一次";
+        : currentPointCampaign.redemptionMode === "single_member"
+          ? "僅限一位會員領取"
+          : "每位會員限領一次";
     byId("point-qr-description").textContent =
       currentPointCampaign.redemptionMode === "repeatable"
         ? "提供給會員掃描並確認領取；每次重新掃描都可再次領點。"
-        : "提供給會員掃描並確認領取；同一會員重複掃描不會再次增加點數。";
+        : currentPointCampaign.redemptionMode === "single_member"
+          ? "提供給會員掃描並確認領取；第一位成功領取後，其他會員無法再使用。"
+          : "提供給會員掃描並確認領取；同一會員重複掃描不會再次增加點數。";
     byId("point-claim-url").value = currentClaimUrl;
     byId("point-qr-preview-message").hidden = !preview;
     byId("point-qr-output").hidden = Boolean(preview);

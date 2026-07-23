@@ -1221,6 +1221,11 @@ test("point type validation accepts only integer values from 1 through 9999", ()
   }
   gas.validateRequestEnvelope_({ ...base, points: 1 });
   gas.validateRequestEnvelope_({ ...base, points: "9999" });
+  gas.validateRequestEnvelope_({
+    ...base,
+    points: 4,
+    redemptionMode: "single_member",
+  });
 });
 
 test("campaign validation requires an exact point type and mode-aware expiry", () => {

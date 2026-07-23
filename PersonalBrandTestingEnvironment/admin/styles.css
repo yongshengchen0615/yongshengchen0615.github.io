@@ -782,6 +782,10 @@ button:disabled {
   border: 1px solid var(--line-strong);
 }
 
+.segmented-options.redemption-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .segmented-options label {
   position: relative;
   min-width: 0;

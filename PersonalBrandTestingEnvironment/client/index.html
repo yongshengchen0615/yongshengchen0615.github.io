@@ -364,8 +364,20 @@
       <section class="claim-state claim-success-state" id="claim-success-state" role="status" aria-live="polite" hidden>
         <span class="claim-symbol" aria-hidden="true">+</span>
         <p>點數領取完成</p>
-        <strong>+<span id="claim-success-points">0</span> 點</strong>
-        <small>目前共有 <b id="claim-success-balance">0</b> 點</small>
+        <div class="claim-balance-summary" aria-label="點數變動明細">
+          <div>
+            <small>原本點數</small>
+            <strong><output id="claim-success-before">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>獲得點數</small>
+            <strong>+<output id="claim-success-points">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>目前點數</small>
+            <strong><output id="claim-success-balance">0</output><span> 點</span></strong>
+          </div>
+        </div>
         <p class="claim-result-note" id="claim-success-note">這張 QR 已完成領取。</p>
         <button class="primary-button full-width" id="claim-success-close-button" type="button"><span>確認</span></button>
       </section>
@@ -374,7 +386,20 @@
         <span class="claim-symbol claim-symbol-muted" aria-hidden="true">✓</span>
         <p id="claim-duplicate-title">這張 QR 已領取過</p>
         <strong id="claim-duplicate-message">沒有重複加點</strong>
-        <small>目前共有 <b id="claim-duplicate-balance">0</b> 點</small>
+        <div class="claim-balance-summary" aria-label="點數變動明細">
+          <div>
+            <small>原本點數</small>
+            <strong><output id="claim-duplicate-before">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>獲得點數</small>
+            <strong>+<output id="claim-duplicate-points">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>目前點數</small>
+            <strong><output id="claim-duplicate-balance">0</output><span> 點</span></strong>
+          </div>
+        </div>
         <button class="secondary-button full-width" id="claim-duplicate-close-button" type="button">確認</button>
       </section>
 

@@ -1171,6 +1171,57 @@ test("unlimited repeatable campaigns award distinct requests and replay one requ
   assert.equal(preview.data.pointBalance, 6);
 });
 
+test("single-member campaigns award the first member and reject every later member", () => {
+  const gas = createGasContext();
+  const secondLineUserId = `U${"c".repeat(32)}`;
+  const campaignRows = [
+    createPointCampaignRow(gas, {
+      redemptionModeSnapshot: "single_member",
+    }),
+  ];
+  const redemptionRows = [];
+  installPointSheets(gas, {
+    memberRows: [
+      createMemberRow(gas),
+      createMemberRow(gas, {
+        memberId: "MBR-SECOND0000",
+        lineUserId: secondLineUserId,
+        displayName: "第二位會員",
+      }),
+    ],
+    campaignRows,
+    redemptionRows,
+  });
+
+  const first = gas.redeemPointCampaign_(
+    createIdentity(),
+    {
+      action: "redeemPointCampaign",
+      requestId: "request-single-member-one",
+      claim: POINT_CLAIM,
+    },
+    {}
+  );
+  const second = gas.redeemPointCampaign_(
+    createIdentity({ lineUserId: secondLineUserId, displayName: "第二位會員" }),
+    {
+      action: "redeemPointCampaign",
+      requestId: "request-single-member-two",
+      claim: POINT_CLAIM,
+    },
+    {}
+  );
+
+  assert.equal(first.data.redeemed, true);
+  assert.equal(first.data.duplicate, false);
+  assert.equal(first.data.campaign.redemptionMode, "single_member");
+  assert.equal(second.data.redeemed, false);
+  assert.equal(second.data.duplicate, true);
+  assert.equal(second.data.duplicateReason, "campaign_redeemed");
+  assert.equal(second.data.pointBalance, 0);
+  assert.equal(redemptionRows.length, 1);
+});
+
 test("different members can redeem one campaign and one member can redeem different campaigns", () => {
   const gas = createGasContext();
   const otherClaim = "B".repeat(43);

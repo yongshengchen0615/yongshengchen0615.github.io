@@ -51,7 +51,7 @@
         <div>
           <h2>身分驗證與安全</h2>
           <p>前端會把 LINE 核發的短效 ID Token 傳送至 Google Apps Script 後台，由後台向 LINE Platform 驗證。系統不會把 ID Token、Access Token 或 LINE 密碼保存到會員試算表。</p>
-          <p>點數 QR 只包含不透明的領取憑證，不包含會員資料、LINE Token 或點數數值；<code>PointCampaigns</code> 不保存原始憑證，只保存雜湊值，管理後台另以受保護的 Script Property 產生或重建憑證。QR 連結仍可能被轉傳；持有連結且具有效會員資格者，可依活動設定的期限與可否重複規則領取點數。</p>
+          <p>點數 QR 只包含不透明的領取憑證，不包含會員資料、LINE Token 或點數數值；<code>PointCampaigns</code> 不保存原始憑證，只保存雜湊值，管理後台另以受保護的 Script Property 產生或重建憑證。QR 連結仍可能被轉傳；持有連結且具有效會員資格者，可依活動設定的期限與領取規則領取點數，規則也能限制整張 QR 只能由一位會員成功領取。</p>
         </div>
       </section>
 

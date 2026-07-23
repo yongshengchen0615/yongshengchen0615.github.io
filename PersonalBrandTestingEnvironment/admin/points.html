@@ -202,7 +202,7 @@
 
                 <fieldset class="point-rule-fieldset">
                   <legend>領取方式</legend>
-                  <div class="segmented-options">
+                  <div class="segmented-options redemption-options">
                     <label for="point-redemption-mode-once">
                       <input
                         id="point-redemption-mode-once"
@@ -211,7 +211,7 @@
                         value="once_per_member"
                         checked
                       />
-                      <span>不可重複</span>
+                      <span>每位會員一次</span>
                     </label>
                     <label for="point-redemption-mode-repeatable">
                       <input
@@ -221,6 +221,15 @@
                         value="repeatable"
                       />
                       <span>可重複</span>
+                    </label>
+                    <label for="point-redemption-mode-single">
+                      <input
+                        id="point-redemption-mode-single"
+                        name="redemptionMode"
+                        type="radio"
+                        value="single_member"
+                      />
+                      <span>僅限一位會員</span>
                     </label>
                   </div>
                 </fieldset>

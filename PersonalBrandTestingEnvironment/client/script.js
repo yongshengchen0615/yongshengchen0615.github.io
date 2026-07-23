@@ -269,9 +269,19 @@
 
         var pointBalance = normalizePointBalance(response.data.pointBalance);
         var campaign = normalizePointCampaign(response.data.campaign);
+        var awardedPoints = Number(response.data.awardedPoints);
+        if (!Number.isSafeInteger(awardedPoints) || awardedPoints < 0) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的獲得點數格式不正確。");
+        }
+        var originalPointBalance = pointBalance - awardedPoints;
+        if (originalPointBalance < 0) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的點數變動資料不一致。");
+        }
         updateMemberPointBalance(pointBalance, true);
 
         if (response.data.duplicate) {
+          byId("claim-duplicate-before").textContent = formatPointNumber(originalPointBalance);
+          byId("claim-duplicate-points").textContent = formatPointNumber(awardedPoints);
           byId("claim-duplicate-balance").textContent = formatPointNumber(pointBalance);
           if (response.data.duplicateReason === "request_replay") {
             byId("claim-duplicate-title").textContent = "本次領取已完成";
@@ -280,6 +290,10 @@
           } else if (response.data.duplicateReason === "already_redeemed") {
             byId("claim-duplicate-title").textContent = "這張 QR 已領取過";
             byId("claim-duplicate-message").textContent = "沒有重複加點";
+          } else if (response.data.duplicateReason === "campaign_redeemed") {
+            byId("claim-duplicate-title").textContent = "這張 QR 已被領取";
+            byId("claim-duplicate-message").textContent =
+              "這張 QR 只能由一位會員領取，沒有重複加點";
           } else {
             throw createClientError("INVALID_RESPONSE", "後台回傳的重複領取原因不正確。");
           }
@@ -292,7 +306,6 @@
           throw createClientError("INVALID_RESPONSE", "後台未確認這次點數領取。");
         }
 
-        var awardedPoints = Number(response.data.awardedPoints);
         if (
           !Number.isSafeInteger(awardedPoints) ||
           awardedPoints !== campaign.points
@@ -300,12 +313,15 @@
           throw createClientError("INVALID_RESPONSE", "後台回傳的點數資料不一致。");
         }
 
+        byId("claim-success-before").textContent = formatPointNumber(originalPointBalance);
         byId("claim-success-points").textContent = formatPointNumber(awardedPoints);
         byId("claim-success-balance").textContent = formatPointNumber(pointBalance);
         byId("claim-success-note").textContent =
           campaign.redemptionMode === "repeatable"
             ? "如需再次領取，請重新掃描同一張 QR Code。"
-            : "這張 QR 對本會員已完成領取。";
+            : campaign.redemptionMode === "single_member"
+              ? "這張 QR 僅限一位會員領取，完成後即失效。"
+              : "這張 QR 對本會員已完成領取。";
         clearPendingPointClaim();
         setClaimState("claim-success-state");
       })
@@ -338,7 +354,9 @@
       points > 9999 ||
       label !== points + " 點" ||
       !validExpiry ||
-      (redemptionMode !== "once_per_member" && redemptionMode !== "repeatable")
+      (redemptionMode !== "once_per_member" &&
+        redemptionMode !== "repeatable" &&
+        redemptionMode !== "single_member")
     ) {
       throw createClientError("INVALID_RESPONSE", "後台回傳的點數活動格式不完整。");
     }
@@ -1267,7 +1285,12 @@
 
     document.querySelectorAll("dialog").forEach(function (dialog) {
       dialog.addEventListener("click", function (event) {
-        if (event.target === dialog) closeDialog(dialog);
+        if (event.target !== dialog) return;
+        if (dialog.id === "claim-dialog") return;
+        closeDialog(dialog);
+      });
+      dialog.addEventListener("cancel", function (event) {
+        if (dialog.id === "claim-dialog") event.preventDefault();
       });
     });
 

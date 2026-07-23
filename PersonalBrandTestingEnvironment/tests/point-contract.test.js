@@ -145,3 +145,40 @@ test("unlimited repeatable campaign snapshots are accepted without an expiry", (
     new Date("2099-01-01T00:00:00.000Z")
   );
 });
+
+test("single-member campaign snapshots are accepted with a limited expiry", () => {
+  const admin = loadGas("gas/admin/Code.gs");
+  const client = loadGas("gas/client/Code.gs");
+  const requestId = "request-contract-single-member";
+  const claim = admin.createCampaignClaim_(
+    "PCG-SINGLE0001",
+    requestId,
+    "s".repeat(64)
+  );
+  const expiresAt = new Date(
+    Math.floor((Date.now() + 86400000) / 1000) * 1000
+  );
+  const row = [
+    "PCG-SINGLE0001",
+    "PTY-SINGLE0001",
+    "4 點",
+    4,
+    admin.sha256Hex_(claim),
+    "active",
+    expiresAt,
+    new Date(),
+    `U${"a".repeat(32)}`,
+    requestId,
+    "limited",
+    "single_member",
+  ];
+  const sheet = {
+    getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [row.slice()] }),
+  };
+
+  const parsed = client.findPointCampaignByClaim_(sheet, claim);
+  assert.equal(parsed.redemptionMode, "single_member");
+  assert.equal(parsed.expiryMode, "limited");
+  client.assertPointCampaignAvailable_(parsed, new Date());
+});

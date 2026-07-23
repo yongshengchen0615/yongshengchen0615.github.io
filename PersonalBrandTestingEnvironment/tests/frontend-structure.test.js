@@ -226,6 +226,7 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
     ["point-expiry-mode-unlimited", "expiryMode", "unlimited"],
     ["point-redemption-mode-once", "redemptionMode", "once_per_member"],
     ["point-redemption-mode-repeatable", "redemptionMode", "repeatable"],
+    ["point-redemption-mode-single", "redemptionMode", "single_member"],
   ]) {
     const radio = getOpeningTagById(html, id);
     assert.match(radio, /\btype=["']radio["']/i);
@@ -319,10 +320,13 @@ test("admin point rules drive conditional expiry, QR copy, and soft deletion", (
   assert.match(syncRules, /expiryInput\.required\s*=\s*!isUnlimited/);
   assert.match(syncRules, /isUnlimited\s*&&\s*isRepeatable/);
   assert.match(syncRules, /反覆掃描領點/);
+  assert.match(syncRules, /isSingleMember/);
+  assert.match(syncRules, /只能由一位會員成功領取/);
   assert.match(deleteType, /sendAdminRequest\(["']adminDeletePointType["']/);
   assert.match(deleteType, /\bpointTypeId\s*:/);
   assert.match(qrDialog, /無期限/);
   assert.match(qrDialog, /每次重新掃描可再領一次/);
+  assert.match(qrDialog, /僅限一位會員領取/);
 });
 
 test("admin member and point pages load only their own data and preflight QR creation", () => {
@@ -366,6 +370,7 @@ test("client member pass renders a live point balance from the member response",
 
 test("client claim dialog exposes automatic progress, result, duplicate, and retry states", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const dialog = getOpeningTagById(html, "claim-dialog");
   const successConfirmButton = getOpeningTagById(html, "claim-success-close-button");
   const duplicateConfirmButton = getOpeningTagById(html, "claim-duplicate-close-button");
@@ -386,10 +391,30 @@ test("client claim dialog exposes automatic progress, result, duplicate, and ret
   assert.match(successState, /aria-live=["']polite["']/i);
   assert.match(duplicateState, /\brole=["']status["']/i);
   assert.match(duplicateState, /aria-live=["']polite["']/i);
+  for (const state of [
+    getElementMarkupById(html, "claim-success-state"),
+    getElementMarkupById(html, "claim-duplicate-state"),
+  ]) {
+    assert.match(state, /原本點數/);
+    assert.match(state, /獲得點數/);
+    assert.match(state, /目前點數/);
+  }
+  for (const id of [
+    "claim-success-before",
+    "claim-success-points",
+    "claim-success-balance",
+    "claim-duplicate-before",
+    "claim-duplicate-points",
+    "claim-duplicate-balance",
+  ]) {
+    assert.match(getOpeningTagById(html, id), /<(?:output|b)\b/i);
+  }
   assert.match(errorState, /\brole=["']alert["']/i);
   assert.match(retryButton, /\btype=["']button["']/i);
   assert.doesNotMatch(html, /id=["']claim-(?:close|confirm)-button["']/);
   assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
+  assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) return;/);
+  assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) event\.preventDefault\(\);/);
 });
 
 test("client captures a sanitized claim after LIFF init and redeems automatically", () => {
@@ -417,6 +442,9 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
 
   assert.match(redeemClaim, /["']redeemPointCampaign["']/);
   assert.match(redeemClaim, /\bclaim\s*:/);
+  assert.match(redeemClaim, /originalPointBalance/);
+  assert.match(redeemClaim, /claim-success-before/);
+  assert.match(redeemClaim, /claim-duplicate-before/);
   assert.match(sync, /renderMember\(/);
   assert.match(sync, /return\s+redeemPendingPointCampaign\(\)/);
   assert.doesNotMatch(script, /["']previewPointCampaign["']/);
@@ -476,6 +504,7 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
+  assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
   assert.match(redeem, /重新掃描同一張 QR Code/);
   assert.match(stableRequest, /sessionStorage\.getItem\s*\(/);
   assert.match(stableRequest, /sessionStorage\.setItem\s*\(/);

@@ -1706,10 +1706,14 @@ function normalizeExpiryMode_(value) {
 
 function normalizeRedemptionMode_(value) {
   var mode = String(value || "").trim().toLowerCase();
-  if (mode !== "once_per_member" && mode !== "repeatable") {
+  if (
+    mode !== "once_per_member" &&
+    mode !== "repeatable" &&
+    mode !== "single_member"
+  ) {
     throw appError_(
       "INVALID_REDEMPTION_MODE",
-      "點數領取模式只能設為 once_per_member 或 repeatable。"
+      "點數領取模式只能設為 once_per_member、repeatable 或 single_member。"
     );
   }
   return mode;
@@ -1975,7 +1979,11 @@ function normalizeStoredExpiryMode_(value) {
 
 function normalizeStoredRedemptionMode_(value) {
   var mode = String(value || "").trim().toLowerCase();
-  return mode === "once_per_member" || mode === "repeatable" ? mode : "";
+  return mode === "once_per_member" ||
+    mode === "repeatable" ||
+    mode === "single_member"
+    ? mode
+    : "";
 }
 
 function strictPointStatus_(value) {

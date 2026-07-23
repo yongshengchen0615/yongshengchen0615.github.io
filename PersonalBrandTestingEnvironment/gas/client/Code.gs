@@ -638,14 +638,22 @@ function redeemPointCampaign_(identity, request, config) {
             campaign.campaignId,
             identity.lineUserId
           )
-        : null;
+        : campaign.redemptionMode === "single_member"
+          ? findPointRedemptionByCampaign_(redemptionSheet, campaign.campaignId)
+          : null;
     if (existingRedemption) {
+      if (campaign.redemptionMode === "single_member") {
+        assertRedemptionMatchesCampaign_(existingRedemption, campaign);
+      }
       return {
         data: {
           access: access,
           redeemed: false,
           duplicate: true,
-          duplicateReason: "already_redeemed",
+          duplicateReason:
+            campaign.redemptionMode === "single_member"
+              ? "campaign_redeemed"
+              : "already_redeemed",
           awardedPoints: 0,
           pointBalance: getMemberPointBalance_(redemptionSheet, identity.lineUserId),
           campaign: pointCampaignResponse_(campaign),
@@ -702,6 +710,25 @@ function redeemPointCampaign_(identity, request, config) {
             redeemed: false,
             duplicate: true,
             duplicateReason: "already_redeemed",
+            awardedPoints: 0,
+            pointBalance: getMemberPointBalance_(redemptionSheet, identity.lineUserId),
+            campaign: pointCampaignResponse_(campaign),
+          },
+        };
+      }
+    } else if (campaign.redemptionMode === "single_member") {
+      existingRedemption = findPointRedemptionByCampaign_(
+        redemptionSheet,
+        campaign.campaignId
+      );
+      if (existingRedemption) {
+        assertRedemptionMatchesCampaign_(existingRedemption, campaign);
+        return {
+          data: {
+            access: access,
+            redeemed: false,
+            duplicate: true,
+            duplicateReason: "campaign_redeemed",
             awardedPoints: 0,
             pointBalance: getMemberPointBalance_(redemptionSheet, identity.lineUserId),
             campaign: pointCampaignResponse_(campaign),
@@ -1341,7 +1368,11 @@ function normalizeStoredExpiryMode_(value) {
 
 function normalizeStoredRedemptionMode_(value) {
   var mode = String(value || "").trim().toLowerCase();
-  return mode === "once_per_member" || mode === "repeatable" ? mode : "";
+  return mode === "once_per_member" ||
+    mode === "repeatable" ||
+    mode === "single_member"
+    ? mode
+    : "";
 }
 
 function findPointRedemptionByRequest_(sheet, lineUserId, requestId) {
@@ -1386,7 +1417,7 @@ function assertRedemptionMatchesCampaign_(redemptionRow, campaign) {
   ) {
     throw appError_(
       "REQUEST_ID_CONFLICT",
-      "同一請求識別碼不可用於不同的點數領取。"
+      "點數領取紀錄與活動規則不一致，請聯絡管理員。"
     );
   }
 }
@@ -1414,6 +1445,32 @@ function findPointRedemption_(sheet, campaignId, lineUserId) {
       }
       match = rows[i];
     }
+  }
+  return match;
+}
+
+function findPointRedemptionByCampaign_(sheet, campaignId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var match = null;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.campaignId - 1], 100) !==
+      campaignId
+    ) {
+      continue;
+    }
+    if (match) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "同一點數活動有重複領取紀錄，請聯絡管理員。"
+      );
+    }
+    match = rows[i];
   }
   return match;
 }
@@ -1484,7 +1541,7 @@ function getMemberPointBalance_(sheet, lineUserId) {
       !redemptionMode ||
       (campaignModes[campaignId] &&
         (campaignModes[campaignId] !== redemptionMode ||
-          redemptionMode === "once_per_member"))
+          redemptionMode !== "repeatable"))
     ) {
       throw appError_("POINT_DATA_ERROR", "會員點數紀錄格式不正確，請聯絡管理員。");
     }
