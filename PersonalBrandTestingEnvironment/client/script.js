@@ -24,6 +24,8 @@
   var pendingPointRedemptionRequestId = "";
   var isPointClaimPersisted = false;
   var isPointClaimBusy = false;
+  var isPointHistoryLoading = false;
+  var pointHistoryRequestVersion = 0;
 
   function loadConfig() {
     if (!window.MemberApi) {
@@ -45,6 +47,8 @@
 
   function boot() {
     var thisBoot = ++bootVersion;
+    pointHistoryRequestVersion += 1;
+    isPointHistoryLoading = false;
     isDemoSession = false;
     currentMember = null;
     setView("loading-state");
@@ -128,7 +132,9 @@
         }
 
         renderMember(response.data.member, Boolean(response.data.created));
-        return redeemPendingPointCampaign();
+        return Promise.resolve(redeemPendingPointCampaign()).then(function () {
+          return loadPointHistory();
+        });
       })
       .catch(function (error) {
         if (expectedBootVersion !== bootVersion) return;
@@ -398,6 +404,185 @@
     }
   }
 
+  function loadPointHistory() {
+    if (isDemoSession) return Promise.resolve();
+
+    var token = currentIdToken || (window.liff && window.liff.getIDToken()) || "";
+    if (!token) return Promise.resolve();
+
+    var requestVersion = ++pointHistoryRequestVersion;
+    isPointHistoryLoading = true;
+    renderPointHistoryLoading();
+
+    return sendGasRequest("listPointHistory", token, getLiffContext())
+      .then(function (response) {
+        if (requestVersion !== pointHistoryRequestVersion) return;
+        assertSuccessfulResponse(response);
+
+        if (
+          !response.data ||
+          !response.data.access ||
+          response.data.access.allowed !== true ||
+          !Array.isArray(response.data.history) ||
+          typeof response.data.hasMore !== "boolean"
+        ) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的點數紀錄格式不完整。");
+        }
+
+        updateMemberPointBalance(normalizePointBalance(response.data.pointBalance), false);
+        renderPointHistory(response.data.history, response.data.hasMore);
+      })
+      .catch(function (error) {
+        if (requestVersion !== pointHistoryRequestVersion) return;
+        var normalized = normalizeClientError(error);
+        if (
+          normalized.code === "INVALID_TOKEN" ||
+          normalized.code === "INVALID_ID_TOKEN" ||
+          normalized.code === "MISSING_ID_TOKEN"
+        ) {
+          handleClientError(error);
+          return;
+        }
+        if (normalized.code === "MEMBER_ACCESS_DENIED") {
+          renderAccessState("denied", false);
+          return;
+        }
+        renderPointHistoryError(normalized.message);
+      })
+      .finally(function () {
+        if (requestVersion !== pointHistoryRequestVersion) return;
+        isPointHistoryLoading = false;
+        byId("refresh-point-history-button").disabled = false;
+        byId("point-history-loading").hidden = true;
+      });
+  }
+
+  function normalizePointHistoryEntry(value) {
+    value = value && typeof value === "object" ? value : {};
+    var redemptionId = String(value.redemptionId || "").trim();
+    var points = Number(value.points);
+    var label = String(value.label || "").trim();
+    var balanceAfter = Number(value.balanceAfter);
+    var redeemedAt = String(value.redeemedAt || "").trim();
+    var redemptionMode = String(value.redemptionMode || "").trim().toLowerCase();
+    var source = String(value.source || "").trim().toLowerCase();
+    var date = new Date(redeemedAt);
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !Number.isSafeInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      label !== points + " 點" ||
+      !Number.isSafeInteger(balanceAfter) ||
+      balanceAfter < points ||
+      Number.isNaN(date.getTime()) ||
+      (redemptionMode !== "once_per_member" &&
+        redemptionMode !== "repeatable" &&
+        redemptionMode !== "single_member") ||
+      source !== "qr"
+    ) {
+      throw createClientError("INVALID_RESPONSE", "後台回傳的點數紀錄格式不正確。");
+    }
+    return {
+      redemptionId: redemptionId,
+      label: label,
+      points: points,
+      balanceAfter: balanceAfter,
+      redeemedAt: date.toISOString(),
+      redemptionMode: redemptionMode,
+      source: source,
+    };
+  }
+
+  function renderPointHistoryLoading() {
+    isPointHistoryLoading = true;
+    byId("point-history-loading").hidden = false;
+    byId("point-history-error").hidden = true;
+    byId("point-history-empty").hidden = true;
+    byId("refresh-point-history-button").disabled = true;
+    byId("point-history-list").setAttribute("aria-busy", "true");
+    byId("point-history-summary").textContent = "正在更新";
+  }
+
+  function renderPointHistory(entries, hasMore) {
+    var list = byId("point-history-list");
+    var normalizedEntries = entries.map(normalizePointHistoryEntry);
+    isPointHistoryLoading = false;
+    list.textContent = "";
+    list.setAttribute("aria-busy", "false");
+    byId("point-history-loading").hidden = true;
+    byId("point-history-error").hidden = true;
+    byId("point-history-empty").hidden = normalizedEntries.length !== 0;
+    byId("refresh-point-history-button").disabled = false;
+    byId("point-history-summary").textContent = normalizedEntries.length
+      ? "最近 " + normalizedEntries.length + " 筆" + (hasMore ? " · 還有更多" : "")
+      : "尚無紀錄";
+
+    normalizedEntries.forEach(function (entry) {
+      var item = document.createElement("li");
+      var marker = document.createElement("span");
+      var content = document.createElement("div");
+      var title = document.createElement("strong");
+      var meta = document.createElement("small");
+      var amount = document.createElement("b");
+      var balance = document.createElement("span");
+
+      item.className = "point-history-item";
+      marker.className = "point-history-marker";
+      marker.setAttribute("aria-hidden", "true");
+      content.className = "point-history-content";
+      title.textContent = entry.label + " · 獲得點數";
+      meta.textContent =
+        formatPointHistoryDate(entry.redeemedAt) +
+        " · " +
+        formatPointHistoryMode(entry.redemptionMode);
+      amount.className = "point-history-amount";
+      amount.textContent = "+" + formatPointNumber(entry.points) + " 點";
+      balance.className = "point-history-balance";
+      balance.textContent = "餘額 " + formatPointNumber(entry.balanceAfter);
+
+      content.appendChild(title);
+      content.appendChild(meta);
+      item.appendChild(marker);
+      item.appendChild(content);
+      item.appendChild(amount);
+      item.appendChild(balance);
+      list.appendChild(item);
+    });
+  }
+
+  function renderPointHistoryError(message) {
+    var list = byId("point-history-list");
+    isPointHistoryLoading = false;
+    list.textContent = "";
+    list.setAttribute("aria-busy", "false");
+    byId("point-history-loading").hidden = true;
+    byId("refresh-point-history-button").disabled = false;
+    byId("point-history-empty").hidden = true;
+    byId("point-history-summary").textContent = "載入失敗";
+    byId("point-history-error").textContent =
+      message || "目前無法讀取點數紀錄，請稍後再試。";
+    byId("point-history-error").hidden = false;
+  }
+
+  function formatPointHistoryDate(value) {
+    var date = new Date(value);
+    return new Intl.DateTimeFormat("zh-TW", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  function formatPointHistoryMode(mode) {
+    return mode === "repeatable"
+      ? "可重複 QR"
+      : mode === "single_member"
+        ? "單人 QR"
+        : "會員一次 QR";
+  }
+
   function setClaimState(activeId) {
     [
       "claim-loading-state",
@@ -633,6 +818,7 @@
         }
 
         renderMember(response.data.member, false);
+        loadPointHistory();
         byId("sync-caption").textContent = "會員資料已更新";
         setProfileFormBusy(false);
         closeDialog(byId("profile-dialog"));
@@ -889,6 +1075,7 @@
 
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("member-state");
+    renderPointHistoryLoading();
 
     if (wasCreated) {
       showToast("會員資料建立完成，歡迎加入");
@@ -910,6 +1097,26 @@
       },
       false
     );
+    renderPointHistory([
+      {
+        redemptionId: "RDM-PREVIEW00000001",
+        label: "20 點",
+        points: 20,
+        balanceAfter: 128,
+        redeemedAt: new Date(now.getTime() - 86400000).toISOString(),
+        redemptionMode: "once_per_member",
+        source: "qr",
+      },
+      {
+        redemptionId: "RDM-PREVIEW00000002",
+        label: "8 點",
+        points: 8,
+        balanceAfter: 108,
+        redeemedAt: new Date(now.getTime() - 4 * 86400000).toISOString(),
+        redemptionMode: "repeatable",
+        source: "qr",
+      },
+    ], false);
     byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
   }
 
@@ -1266,6 +1473,7 @@
     byId("access-logout-button").addEventListener("click", handleLogout);
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
+    byId("refresh-point-history-button").addEventListener("click", loadPointHistory);
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);

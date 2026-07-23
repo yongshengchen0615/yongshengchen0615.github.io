@@ -368,6 +368,24 @@ test("client member pass renders a live point balance from the member response",
   assert.match(renderMember, /\bmember\.pointBalance\b/);
 });
 
+test("client member point history has loading, empty, error and refresh states", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+  const history = getTopLevelFunctionContaining(script, /["']listPointHistory["']/);
+
+  assert.ok(memberState, "client member state must exist");
+  assert.match(memberState[0], /id="point-history-title"/);
+  assert.match(memberState[0], /id="point-history-list"/);
+  assert.match(memberState[0], /id="point-history-loading"/);
+  assert.match(memberState[0], /id="point-history-empty"/);
+  assert.match(memberState[0], /id="point-history-error"/);
+  assert.match(memberState[0], /id="refresh-point-history-button"/);
+  assert.match(history, /sendGasRequest\(["']listPointHistory["']/);
+  assert.match(script, /refresh-point-history-button["']\)\.addEventListener/);
+  assert.match(script, /formatPointHistoryMode/);
+});
+
 test("client claim dialog exposes automatic progress, result, duplicate, and retry states", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
@@ -430,7 +448,7 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   const captureClaim = getTopLevelFunctionContaining(script, /\.get\(["']claim["']\)/);
   const captureName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(captureClaim);
   const redeemClaim = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
-  const sync = getTopLevelFunctionContaining(script, /return\s+redeemPendingPointCampaign\(\)/);
+  const sync = getTopLevelFunctionContaining(script, /redeemPendingPointCampaign\(\)/);
 
   assert.ok(captureName, "claim capture must be a named top-level function");
   assert.match(captureClaim, /(?:window\.)?sessionStorage\.setItem\s*\(/);
@@ -454,7 +472,9 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   assert.match(redeemClaim, /claim-success-before/);
   assert.match(redeemClaim, /claim-duplicate-before/);
   assert.match(sync, /renderMember\(/);
-  assert.match(sync, /return\s+redeemPendingPointCampaign\(\)/);
+  assert.match(sync, /redeemPendingPointCampaign\(\)/);
+  assert.match(sync, /loadPointHistory\(\)/);
+  assert.match(script, /sendGasRequest\(["']listPointHistory["']/);
   assert.doesNotMatch(script, /["']previewPointCampaign["']/);
   assert.match(
     script,

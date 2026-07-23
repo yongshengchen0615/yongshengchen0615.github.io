@@ -576,6 +576,7 @@ test("supported actions always verify against config, never a request-provided c
   };
   gas.upsertMember_ = () => ({ data: { action: "upsert" } });
   gas.updateMemberProfile_ = () => ({ data: { action: "profile" } });
+  gas.listPointHistory_ = () => ({ data: { action: "history" } });
   gas.previewPointCampaign_ = () => ({ data: { action: "preview" } });
   gas.redeemPointCampaign_ = () => ({ data: { action: "redeem" } });
   gas.deleteMember_ = () => ({ data: { action: "delete" } });
@@ -594,6 +595,11 @@ test("supported actions always verify against config, never a request-provided c
   });
   const deleteResult = gas.handleMemberRequest_({
     action: "deleteMember",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+  });
+  const historyResult = gas.handleMemberRequest_({
+    action: "listPointHistory",
     idToken: "header.payload.signature",
     lineChannelId: "2010791619",
   });
@@ -616,9 +622,11 @@ test("supported actions always verify against config, never a request-provided c
     "2010787602",
     "2010787602",
     "2010787602",
+    "2010787602",
   ]);
   assert.equal(upsertResult.data.action, "upsert");
   assert.equal(profileResult.data.action, "profile");
+  assert.equal(historyResult.data.action, "history");
   assert.equal(deleteResult.data.action, "delete");
   assert.equal(previewResult.data.action, "preview");
   assert.equal(redeemResult.data.action, "redeem");
@@ -1666,6 +1674,70 @@ test("upsert and profile responses derive pointBalance from the redemption ledge
   assert.equal(profile.data.member.pointBalance, 5);
 });
 
+test("member point history is token-bound, newest-first and hides other members", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas)];
+  const redemptionRows = [
+    createPointRedemptionRow(gas, {
+      redeemedAt: new Date("2026-07-20T00:00:00.000Z"),
+      balanceAfter: 3,
+    }),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-SECOND0000000000",
+      campaignId: "PCG-SECOND1234",
+      pointTypeId: "PTY-SECOND1234",
+      points: 2,
+      balanceAfter: 5,
+      redeemedAt: new Date("2026-07-23T00:00:00.000Z"),
+      requestId: "request-redeem-2",
+      redemptionModeSnapshot: "repeatable",
+    }),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-OTHER00000000000",
+      campaignId: "PCG-OTHER12345",
+      pointTypeId: "PTY-OTHER12345",
+      lineUserId: `U${"d".repeat(32)}`,
+      memberId: "MBR-OTHER12345",
+      requestId: "request-redeem-other",
+      balanceAfter: 9,
+    }),
+  ];
+  installPointSheets(gas, { memberRows, redemptionRows });
+
+  const result = gas.listPointHistory_(
+    createIdentity(),
+    { action: "listPointHistory", requestId: "request-history-1" },
+    {}
+  );
+
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(result.data.pointBalance, 5);
+  assert.equal(result.data.hasMore, false);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result.data.history)),
+    [
+      {
+        redemptionId: "RDM-SECOND0000000000",
+        label: "2 點",
+        points: 2,
+        balanceAfter: 5,
+        redeemedAt: "2026-07-23T00:00:00.000Z",
+        redemptionMode: "repeatable",
+        source: "qr",
+      },
+      {
+        redemptionId: "RDM-ABCDEF1234567890",
+        label: "3 點",
+        points: 3,
+        balanceAfter: 3,
+        redeemedAt: "2026-07-20T00:00:00.000Z",
+        redemptionMode: "once_per_member",
+        source: "qr",
+      },
+    ]
+  );
+});
+
 test("deleteMember is retry-idempotent and prevents recreation with the same token", () => {
   const gas = createGasContext();
   const rows = [
@@ -2002,7 +2074,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.2.0");
+  assert.equal(health.data.version, "1.3.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

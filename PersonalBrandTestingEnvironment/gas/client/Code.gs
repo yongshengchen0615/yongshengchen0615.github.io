@@ -17,11 +17,12 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.2.0";
+var API_VERSION = "1.3.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
 var DEFAULT_POINT_REDEMPTION_SHEET_NAME = "PointRedemptions";
+var MAX_POINT_HISTORY_ENTRIES = 30;
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
 
@@ -284,6 +285,10 @@ function handleMemberRequest_(request) {
     return updateMemberProfile_(identity, request, config);
   }
 
+  if (request.action === "listPointHistory") {
+    return listPointHistory_(identity, request, config);
+  }
+
   if (request.action === "previewPointCampaign") {
     return previewPointCampaign_(identity, request, config);
   }
@@ -299,6 +304,7 @@ function assertSupportedAction_(action) {
   if (
     action !== "upsertMember" &&
     action !== "updateMemberProfile" &&
+    action !== "listPointHistory" &&
     action !== "previewPointCampaign" &&
     action !== "redeemPointCampaign" &&
     action !== "deleteMember"
@@ -545,6 +551,147 @@ function updateMemberProfile_(identity, request, config) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function listPointHistory_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數紀錄正在整理，請稍後再試。");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法讀取點數紀錄。");
+    }
+
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var pointBalance = getMemberPointBalance_(redemptionSheet, identity.lineUserId);
+    var history = readMemberPointHistory_(redemptionSheet, identity.lineUserId);
+
+    return {
+      data: {
+        access: access,
+        pointBalance: pointBalance,
+        history: history.slice(0, MAX_POINT_HISTORY_ENTRIES),
+        hasMore: history.length > MAX_POINT_HISTORY_ENTRIES,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數紀錄，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function readMemberPointHistory_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var redemptionIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  var campaignModes = Object.create(null);
+  var history = [];
+
+  rows.forEach(function (row, index) {
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
+    var storedLineUserId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
+      128
+    );
+    var requestId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.requestId - 1], 100);
+    var requestKey = storedLineUserId + ":" + requestId;
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      redemptionIds[redemptionId] ||
+      requestKeys[requestKey]
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "會員點數紀錄格式不正確，請聯絡管理員。"
+      );
+    }
+    redemptionIds[redemptionId] = true;
+    requestKeys[requestKey] = true;
+
+    var campaignId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.campaignId - 1],
+      100
+    );
+    var pointTypeId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.pointTypeId - 1],
+      100
+    );
+    var memberId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.memberId - 1], 100);
+    var points = Number(row[POINT_REDEMPTION_COLUMN.points - 1]);
+    var balanceAfter = Number(row[POINT_REDEMPTION_COLUMN.balanceAfter - 1]);
+    var redemptionMode = normalizeStoredRedemptionMode_(
+      row[POINT_REDEMPTION_COLUMN.redemptionModeSnapshot - 1]
+    );
+    var redeemedAt = row[POINT_REDEMPTION_COLUMN.redeemedAt - 1];
+    var redeemedDate =
+      redeemedAt instanceof Date ? redeemedAt : new Date(String(redeemedAt || ""));
+    if (
+      !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      !Number.isSafeInteger(balanceAfter) ||
+      balanceAfter < points ||
+      isNaN(redeemedDate.getTime()) ||
+      !redemptionMode ||
+      (campaignModes[storedLineUserId + ":" + campaignId] &&
+        (campaignModes[storedLineUserId + ":" + campaignId] !== redemptionMode ||
+          redemptionMode !== "repeatable"))
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "會員點數紀錄格式不正確，請聯絡管理員。"
+      );
+    }
+    campaignModes[storedLineUserId + ":" + campaignId] = redemptionMode;
+
+    if (storedLineUserId === lineUserId) {
+      history.push({
+        redemptionId: redemptionId,
+        label: String(points) + " 點",
+        points: points,
+        balanceAfter: balanceAfter,
+        redeemedAt: redeemedDate.toISOString(),
+        redemptionMode: redemptionMode,
+        source: "qr",
+        rowNumber: index + 2,
+      });
+    }
+  });
+
+  history.sort(function (left, right) {
+    return new Date(right.redeemedAt).getTime() - new Date(left.redeemedAt).getTime();
+  });
+  return history.map(function (entry) {
+    delete entry.rowNumber;
+    return entry;
+  });
 }
 
 function previewPointCampaign_(identity, request, config) {

@@ -1034,6 +1034,192 @@ code {
   gap: 0.65rem;
 }
 
+.point-history {
+  margin-top: clamp(4rem, 8vw, 8rem);
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--line-strong);
+}
+
+.point-history-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.point-history-heading h2 {
+  margin: 0.55rem 0 0;
+  font-size: clamp(1.5rem, 2.5vw, 2.3rem);
+  font-weight: 560;
+  letter-spacing: -0.045em;
+}
+
+.point-history-heading p:not(.eyebrow) {
+  margin: 0.65rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+
+.point-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 0 0 auto;
+}
+
+.point-history-actions > span {
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.refresh-button {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 680;
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.refresh-button svg {
+  width: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.refresh-button:hover:not(:disabled) {
+  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.point-history-list {
+  margin: 1.6rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.point-history-item {
+  min-height: 4.5rem;
+  display: grid;
+  grid-template-columns: 0.6rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.point-history-marker {
+  width: 0.52rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(6, 199, 85, 0.1);
+}
+
+.point-history-content {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.point-history-content strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.point-history-content small,
+.point-history-balance {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.point-history-amount {
+  color: var(--green-dark);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.point-history-balance {
+  min-width: 4.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.point-history-loading {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1.6rem;
+  padding: 1.2rem 0;
+  border-top: 1px solid var(--line-strong);
+}
+
+.history-loading-line {
+  width: 100%;
+  height: 0.65rem;
+  background: linear-gradient(90deg, var(--line) 20%, rgba(6, 199, 85, 0.12) 50%, var(--line) 80%);
+  background-size: 220% 100%;
+  animation: history-shimmer 1.25s ease-in-out infinite;
+}
+
+.history-loading-line:nth-child(2) {
+  width: 78%;
+}
+
+.history-loading-line:nth-child(3) {
+  width: 58%;
+}
+
+.point-history-empty,
+.point-history-error {
+  margin-top: 1.6rem;
+  padding: 1.2rem 0;
+  border-top: 1px solid var(--line-strong);
+}
+
+.point-history-empty strong {
+  font-size: 0.85rem;
+}
+
+.point-history-empty p,
+.point-history-error {
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.point-history-error {
+  padding-left: 0.8rem;
+  border-left: 2px solid var(--danger);
+  color: var(--danger);
+}
+
 .profile-description {
   margin: 1.4rem 0 0;
   color: var(--ink-soft);
@@ -1750,6 +1936,15 @@ code {
   }
 }
 
+@keyframes history-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 @keyframes point-balance-update {
   45% {
     color: #8dffc0;
@@ -2018,6 +2213,27 @@ code {
   .profile-actions .primary-button,
   .profile-actions .secondary-button {
     width: 100%;
+  }
+
+  .point-history-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+
+  .point-history-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .point-history-item {
+    grid-template-columns: 0.6rem minmax(0, 1fr) auto;
+  }
+
+  .point-history-balance {
+    grid-column: 2 / -1;
+    min-width: 0;
+    text-align: left;
   }
 
   .data-control {

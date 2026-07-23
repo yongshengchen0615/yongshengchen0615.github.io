@@ -228,6 +228,35 @@
           </section>
         </div>
 
+        <section class="point-history" aria-labelledby="point-history-title">
+          <header class="point-history-heading">
+            <div>
+              <p class="eyebrow">POINT ACTIVITY</p>
+              <h2 id="point-history-title">點數使用紀錄</h2>
+              <p>查看每次領取點數後的變動與當下餘額。</p>
+            </div>
+            <div class="point-history-actions">
+              <span id="point-history-summary" aria-live="polite">尚未載入</span>
+              <button class="refresh-button" id="refresh-point-history-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+                <span>重新整理</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="point-history-loading" id="point-history-loading" role="status" aria-live="polite" hidden>
+            <span class="history-loading-line"></span>
+            <span class="history-loading-line"></span>
+            <span class="history-loading-line"></span>
+          </div>
+          <ol class="point-history-list" id="point-history-list" aria-live="polite"></ol>
+          <div class="point-history-empty" id="point-history-empty" hidden>
+            <strong>還沒有點數紀錄</strong>
+            <p>掃描有效的點數 QR Code 後，紀錄會顯示在這裡。</p>
+          </div>
+          <p class="point-history-error" id="point-history-error" role="alert" hidden></p>
+        </section>
+
         <section class="data-control" aria-labelledby="data-control-title">
           <div>
             <p class="eyebrow">DATA CONTROL</p>
