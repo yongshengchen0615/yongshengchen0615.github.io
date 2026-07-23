@@ -245,6 +245,7 @@
       return;
     }
 
+    openDialog(byId("claim-dialog"));
     setPointClaimBusy(true);
     setClaimLoadingCopy("正在加入會員點數", "請保持此頁開啟，完成前請勿離開。");
     setClaimState("claim-loading-state");

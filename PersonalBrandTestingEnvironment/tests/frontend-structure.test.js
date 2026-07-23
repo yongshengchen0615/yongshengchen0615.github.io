@@ -442,6 +442,7 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
 
   assert.match(redeemClaim, /["']redeemPointCampaign["']/);
   assert.match(redeemClaim, /\bclaim\s*:/);
+  assert.match(redeemClaim, /openDialog\(byId\(["']claim-dialog["']\)\)/);
   assert.match(redeemClaim, /originalPointBalance/);
   assert.match(redeemClaim, /claim-success-before/);
   assert.match(redeemClaim, /claim-duplicate-before/);
