@@ -414,6 +414,8 @@ function configFor(gas) {
     pointTypesSheetName: "PointTypes",
     pointCampaignsSheetName: "PointCampaigns",
     pointRedemptionsSheetName: "PointRedemptions",
+    lotteryPrizesSheetName: "LotteryPrizes",
+    lotteryDrawsSheetName: "LotteryDraws",
     memberLiffUrl: "https://liff.line.me/2010787602-kaiSm2eq",
     pointClaimSecret: "s".repeat(64),
     allowedOrigins: ["https://example.github.io"],
@@ -551,7 +553,7 @@ test("configuration fails closed unless the administrator channel is exact", () 
   );
 });
 
-test("setup safely creates a claim secret and all point sheets with exact schemas", () => {
+test("setup safely creates a claim secret and all reward sheets with exact schemas", () => {
   const gas = createGasContext({ properties: { POINT_CLAIM_SECRET: "" } });
   const spreadsheet = createSpreadsheet();
   installSpreadsheet(gas, spreadsheet);
@@ -633,7 +635,7 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
-test("only the seven administrator actions are accepted and untrusted fields are ignored", () => {
+test("only allowlisted administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
   for (const action of [
     "upsertMember",
@@ -688,6 +690,16 @@ test("only the seven administrator actions are accepted and untrusted fields are
       pointTypeId: "PTY-ABCDEF1234",
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
     },
+    { ...tokenFields, action: "adminGetLotteryConfig" },
+    {
+      ...tokenFields,
+      action: "adminSaveLotteryConfig",
+      lotteryPrizes: [
+        { label: "獎項 A", color: "#0F766E", probability: 50 },
+        { label: "獎項 B", color: "#F59E0B", probability: 50 },
+      ],
+    },
+    { ...tokenFields, action: "adminListLotteryDraws" },
   ]) {
     gas.validateRequestEnvelope_(request);
   }
@@ -755,7 +767,7 @@ test("member actions are rejected before config, LINE verification or Sheets are
   assert.equal(sheetOpened, false);
 });
 
-test("all seven administrator actions dispatch only after config and LINE verification", () => {
+test("all administrator actions dispatch only after config and LINE verification", () => {
   const gas = createGasContext();
   const routed = [];
   let configReads = 0;
@@ -776,6 +788,9 @@ test("all seven administrator actions dispatch only after config and LINE verifi
     ["adminCreatePointType", "adminCreatePointType_"],
     ["adminDeletePointType", "adminDeletePointType_"],
     ["adminCreatePointCampaign", "adminCreatePointCampaign_"],
+    ["adminGetLotteryConfig", "adminGetLotteryConfig_"],
+    ["adminSaveLotteryConfig", "adminSaveLotteryConfig_"],
+    ["adminListLotteryDraws", "adminListLotteryDraws_"],
   ]) {
     gas[functionName] = (_identity, request) => {
       routed.push(request.action);
@@ -788,8 +803,8 @@ test("all seven administrator actions dispatch only after config and LINE verifi
     assert.equal(result.data.route, action);
   }
   assert.deepEqual(routed, Array.from(gas.ADMIN_ACTIONS));
-  assert.equal(configReads, 7);
-  assert.equal(tokenVerifications, 7);
+  assert.equal(configReads, gas.ADMIN_ACTIONS.length);
+  assert.equal(tokenVerifications, gas.ADMIN_ACTIONS.length);
 });
 
 test("normal requests fail closed on a missing claim secret before LINE or Sheets", () => {
@@ -1814,6 +1829,142 @@ test("campaign issuance fails closed on duplicate IDs or a tampered deterministi
   }
 });
 
+test("lottery prize validation requires bounded colors and an exact 100 percent total", () => {
+  const gas = createGasContext();
+  const valid = gas.normalizeLotteryPrizes_([
+    { label: "銘謝惠顧", color: "#d9d6cc", probability: 65.25 },
+    { label: "頭獎", color: "#0B3C2C", probability: 34.75 },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(valid)), [
+    {
+      label: "銘謝惠顧",
+      color: "#D9D6CC",
+      probabilityBasisPoints: 6525,
+    },
+    {
+      label: "頭獎",
+      color: "#0B3C2C",
+      probabilityBasisPoints: 3475,
+    },
+  ]);
+
+  for (const [prizes, code] of [
+    [
+      [
+        { label: "A", color: "#000000", probability: 50 },
+        { label: "B", color: "#FFFFFF", probability: 49.99 },
+      ],
+      "INVALID_LOTTERY_TOTAL",
+    ],
+    [
+      [
+        { label: "A", color: "red", probability: 50 },
+        { label: "B", color: "#FFFFFF", probability: 50 },
+      ],
+      "INVALID_LOTTERY_COLOR",
+    ],
+    [
+      [
+        { label: "A", color: "#000000", probability: 50.001 },
+        { label: "B", color: "#FFFFFF", probability: 49.999 },
+      ],
+      "INVALID_LOTTERY_PROBABILITY",
+    ],
+  ]) {
+    assert.throws(
+      () => gas.normalizeLotteryPrizes_(prizes),
+      (error) => error.appCode === code
+    );
+  }
+});
+
+test("approved administrators save an append-only lottery version idempotently", () => {
+  const gas = createGasContext();
+  const adminSheet = createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]);
+  const prizeSheet = createSheet("LotteryPrizes", gas.LOTTERY_PRIZE_HEADERS, []);
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: adminSheet,
+      LotteryPrizes: prizeSheet,
+    })
+  );
+  const request = {
+    action: "adminSaveLotteryConfig",
+    requestId: "request-lottery-save-1",
+    lotteryPrizes: [
+      { label: "銘謝惠顧", color: "#D9D6CC", probability: 70 },
+      { label: "頭獎", color: "#0B3C2C", probability: 30 },
+    ],
+  };
+
+  const first = gas.adminSaveLotteryConfig_(identity(), request, configFor(gas));
+  const second = gas.adminSaveLotteryConfig_(identity(), request, configFor(gas));
+
+  assert.equal(first.data.duplicate, false);
+  assert.equal(second.data.duplicate, true);
+  assert.equal(first.data.lottery.ticketCost, 5);
+  assert.equal(first.data.lottery.configVersion, second.data.lottery.configVersion);
+  assert.equal(prizeSheet.data.length, 3);
+  assert.deepEqual(
+    prizeSheet.data
+      .slice(1)
+      .map((row) => row[gas.LOTTERY_PRIZE_COLUMN.updatedBy - 1]),
+    ["ADM-ABCDEF1234", "ADM-ABCDEF1234"]
+  );
+  assert.deepEqual(
+    prizeSheet.data
+      .slice(1)
+      .map((row) => row[gas.LOTTERY_PRIZE_COLUMN.probabilityBasisPoints - 1]),
+    [7000, 3000]
+  );
+});
+
+test("administrator lottery history omits LINE and request identifiers", () => {
+  const gas = createGasContext();
+  const drawRow = new Array(gas.LOTTERY_DRAW_HEADERS.length).fill("");
+  const values = {
+    drawId: "LDW-ABCDEF1234567890",
+    configVersion: "LCF-ABCDEF123456",
+    prizeId: "LPR-ABCDEF1234",
+    prizeLabelSnapshot: "頭獎",
+    prizeColorSnapshot: "#0B3C2C",
+    probabilityBasisPointsSnapshot: 500,
+    memberId: "MBR-ABCDEF1234",
+    lineUserId: MEMBER_USER_ID,
+    pointsSpent: 5,
+    balanceBefore: 12,
+    balanceAfter: 7,
+    drawnAt: new Date("2026-07-23T00:00:00.000Z"),
+    requestId: "request-lottery-draw-1",
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    drawRow[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
+  });
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      Members: createSheet("Members", gas.MEMBER_HEADERS, [createMemberRow(gas)]),
+      LotteryDraws: createSheet("LotteryDraws", gas.LOTTERY_DRAW_HEADERS, [
+        drawRow,
+      ]),
+    })
+  );
+
+  const result = gas.adminListLotteryDraws_(
+    identity(),
+    { action: "adminListLotteryDraws", requestId: "request-lottery-list-1" },
+    configFor(gas)
+  );
+  const serialized = JSON.stringify(result.data);
+  assert.equal(result.data.draws.length, 1);
+  assert.equal(result.data.draws[0].memberDisplayName, "會員甲");
+  assert.equal(result.data.draws[0].prizeLabel, "頭獎");
+  assert.equal(serialized.includes(MEMBER_USER_ID), false);
+  assert.equal(serialized.includes("request-lottery-draw-1"), false);
+});
+
 test("fetch and bridge parse identical point fields without accepting snapshots or claims", () => {
   const gas = createGasContext();
   const payload = {
@@ -2062,7 +2213,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.3.0");
+  assert.equal(response.data.version, "1.4.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

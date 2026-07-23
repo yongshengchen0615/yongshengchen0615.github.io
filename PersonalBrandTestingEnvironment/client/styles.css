@@ -1165,6 +1165,15 @@ code {
   white-space: nowrap;
 }
 
+.point-history-item[data-entry-type="spend"] .point-history-marker {
+  background: #b57c32;
+  box-shadow: 0 0 0 4px rgba(181, 124, 50, 0.12);
+}
+
+.point-history-amount-spend {
+  color: #8a581b;
+}
+
 .point-history-balance {
   min-width: 4.5rem;
   text-align: right;
@@ -1789,6 +1798,186 @@ code {
   letter-spacing: -0.015em;
 }
 
+.lottery-entry-button {
+  border-color: #b88b42;
+  background:
+    linear-gradient(110deg, rgba(184, 139, 66, 0.2), transparent 45%),
+    var(--green-deep);
+}
+
+.lottery-modal {
+  width: min(calc(100% - 1.5rem), 40rem);
+  max-height: min(94svh, 56rem);
+}
+
+.lottery-description {
+  margin: 1.2rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.lottery-state {
+  min-height: 22rem;
+}
+
+.lottery-loading-state,
+.lottery-error-state,
+.lottery-result-state {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding-top: 2rem;
+  text-align: center;
+}
+
+.lottery-loading-state > p,
+.lottery-error-state > p,
+.lottery-result-state > p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.65;
+}
+
+.lottery-loading-state > strong {
+  margin-bottom: 0.45rem;
+}
+
+.lottery-ready-state {
+  padding-top: 1.35rem;
+}
+
+.member-lottery-balance {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.2rem 1rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.member-lottery-balance > span,
+.member-lottery-balance small {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+}
+
+.member-lottery-balance strong {
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.member-lottery-balance small {
+  grid-column: 1 / -1;
+}
+
+.member-lottery-stage {
+  position: relative;
+  width: min(100%, 25rem);
+  aspect-ratio: 1;
+  display: grid;
+  margin: 1.1rem auto 1.25rem;
+  place-items: center;
+}
+
+.member-lottery-rotor {
+  width: 100%;
+  height: 100%;
+  transition: transform 4.2s cubic-bezier(0.12, 0.72, 0.12, 1);
+  will-change: transform;
+}
+
+#member-lottery-wheel {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 1.1rem 1.5rem rgba(11, 60, 44, 0.18));
+}
+
+.member-lottery-pointer {
+  position: absolute;
+  z-index: 5;
+  top: -0.15rem;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-top: 2rem solid var(--green-deep);
+  border-right: 1rem solid transparent;
+  border-left: 1rem solid transparent;
+  filter: drop-shadow(0 0.25rem 0.15rem rgba(0, 0, 0, 0.18));
+  transform: translateX(-50%);
+}
+
+.member-lottery-hub {
+  position: absolute;
+  z-index: 4;
+  width: 18%;
+  aspect-ratio: 1;
+  display: grid;
+  border: 0.45rem solid rgba(255, 255, 255, 0.88);
+  border-radius: 50%;
+  place-items: center;
+  color: #fff;
+  background: var(--green-deep);
+  box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.2);
+  font-size: clamp(1rem, 4vw, 1.8rem);
+  font-weight: 800;
+}
+
+.lottery-spin-status {
+  min-height: 1.35rem;
+  margin: 0.65rem 0 0;
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.lottery-result-state {
+  min-height: 30rem;
+}
+
+.lottery-result-kicker {
+  color: var(--green-dark);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.lottery-result-swatch {
+  width: 4.5rem;
+  aspect-ratio: 1;
+  display: block;
+  margin: 1.2rem 0;
+  border: 0.5rem solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 0.8rem 2rem rgba(16, 39, 29, 0.16);
+}
+
+.lottery-result-state > strong {
+  max-width: 16ch;
+  margin: 0.35rem 0 0;
+  font-size: clamp(2rem, 8vw, 4rem);
+  font-weight: 540;
+  line-height: 1;
+  letter-spacing: -0.055em;
+  overflow-wrap: anywhere;
+}
+
+.lottery-balance-summary {
+  margin-block: 1.7rem 1.2rem;
+}
+
+.lottery-error-state > strong {
+  max-width: 26rem;
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
 .delete-modal > p {
   margin: 1.4rem 0;
 }
@@ -2386,6 +2575,18 @@ code {
   .modal {
     width: calc(100% - 1rem);
     max-height: calc(100svh - 1rem);
+  }
+
+  .lottery-modal {
+    padding: 1.2rem;
+  }
+
+  .member-lottery-stage {
+    width: min(78vw, 23rem);
+  }
+
+  .lottery-result-state {
+    min-height: 27rem;
   }
 
   .claim-actions {

@@ -219,6 +219,10 @@
             </dl>
 
             <div class="member-actions">
+              <button class="primary-button lottery-entry-button" id="open-lottery-button" type="button">
+                <span>使用 5 點轉盤抽獎</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg>
+              </button>
               <button class="primary-button" id="scan-point-button" type="button">
                 <span>掃描集點 QR Code</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
@@ -266,7 +270,7 @@
             <p class="eyebrow">DATA CONTROL</p>
             <h2 id="data-control-title">你的資料，由你決定。</h2>
           </div>
-          <p>後台保存建立會員所需的 LINE 資料、你自行填寫的電話與生日、登入與會員狀態紀錄，以及點數活動、領取時間與餘額等防止重複領點所需資料；不會保存 ID Token 本體或 LINE 密碼。</p>
+          <p>後台保存建立會員所需的 LINE 資料、你自行填寫的電話與生日、登入與會員狀態紀錄，以及點數領取、轉盤扣點與獎項結果；不會保存 ID Token 本體或 LINE 密碼。</p>
           <div>
             <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
             <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
@@ -305,7 +309,7 @@
       <div class="modal-body">
         <section>
           <span>01</span>
-          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、你自行填寫的電話與生日、會員登入與狀態紀錄，以及點數活動、領取點數、時間與餘額等防止重複領點所需資料。</p></div>
+          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、你自行填寫的電話與生日、會員登入與狀態紀錄，以及點數領取、轉盤扣點、獎項與當下餘額。</p></div>
         </section>
         <section>
           <span>02</span>
@@ -313,7 +317,7 @@
         </section>
         <section>
           <span>03</span>
-          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料與點數領取紀錄；點數餘額和防重複領取歷史也會一併清除，重新加入後可能依規則再次領取仍有效的舊 QR。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料、點數領取與抽獎紀錄；點數餘額和防重複歷史也會一併清除。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
@@ -371,6 +375,94 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <dialog
+      class="modal lottery-modal"
+      id="lottery-dialog"
+      aria-labelledby="lottery-dialog-title"
+      aria-describedby="lottery-dialog-description"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">FIVE-POINT LOTTERY</p>
+          <h2 id="lottery-dialog-title">5 點轉盤抽獎</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="lottery-close-button"
+          type="button"
+          aria-label="關閉轉盤抽獎"
+        >×</button>
+      </div>
+
+      <p class="lottery-description" id="lottery-dialog-description">
+        每次抽獎會扣除 5 點；抽獎結果由後台決定並立即記錄。
+      </p>
+
+      <section class="lottery-state lottery-loading-state" id="lottery-loading-state" role="status" aria-live="polite">
+        <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <strong>正在載入轉盤</strong>
+        <p>正在確認獎項設定與你的點數餘額。</p>
+      </section>
+
+      <section class="lottery-state lottery-ready-state" id="lottery-ready-state" hidden>
+        <div class="member-lottery-balance">
+          <span>目前點數</span>
+          <strong><output id="lottery-point-balance">0</output> PTS</strong>
+          <small>本次抽獎券 −5 點</small>
+        </div>
+
+        <div class="member-lottery-stage">
+          <span class="member-lottery-pointer" aria-hidden="true"></span>
+          <div class="member-lottery-rotor" id="member-lottery-rotor">
+            <canvas id="member-lottery-wheel" width="720" height="720">
+              你的瀏覽器不支援轉盤。
+            </canvas>
+          </div>
+          <span class="member-lottery-hub" aria-hidden="true">5</span>
+        </div>
+
+        <button class="primary-button full-width lottery-spin-button" id="lottery-spin-button" type="button">
+          <span>扣除 5 點並開始抽獎</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+        </button>
+        <p class="lottery-spin-status" id="lottery-spin-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="lottery-state lottery-result-state" id="lottery-result-state" role="status" aria-live="polite" hidden>
+        <span class="lottery-result-kicker">YOU WON</span>
+        <span class="lottery-result-swatch" id="lottery-result-swatch" aria-hidden="true"></span>
+        <p>本次抽中</p>
+        <strong id="lottery-result-prize">—</strong>
+        <div class="claim-balance-summary lottery-balance-summary" aria-label="抽獎點數變動明細">
+          <div>
+            <small>原本點數</small>
+            <strong><output id="lottery-result-before">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>使用點數</small>
+            <strong>−<output id="lottery-result-spent">5</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>目前點數</small>
+            <strong><output id="lottery-result-balance">0</output><span> 點</span></strong>
+          </div>
+        </div>
+        <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
+          <span>確認並回到會員資料</span>
+        </button>
+      </section>
+
+      <section class="lottery-state lottery-error-state" id="lottery-error-state" role="alert" hidden>
+        <span class="claim-symbol claim-symbol-error" aria-hidden="true">×</span>
+        <p>目前無法開啟轉盤</p>
+        <strong id="lottery-error-message">請稍後再試。</strong>
+        <div class="claim-actions">
+          <button class="secondary-button" id="lottery-error-close-button" type="button">返回會員資料</button>
+          <button class="primary-button" id="lottery-retry-button" type="button"><span>重新載入</span></button>
+        </div>
+      </section>
     </dialog>
 
     <dialog

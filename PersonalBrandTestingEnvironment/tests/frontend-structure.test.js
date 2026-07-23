@@ -11,6 +11,7 @@ const htmlFiles = [
   "client/privacy.html",
   "admin/index.html",
   "admin/points.html",
+  "admin/lottery.html",
 ];
 
 function getTopLevelFunctionContaining(source, marker) {
@@ -78,9 +79,10 @@ test("HTML documents do not contain duplicate IDs", () => {
   }
 });
 
-test("admin separates member records and point issuance into isolated pages", () => {
+test("admin separates member records, point issuance, and lottery into isolated pages", () => {
   const memberHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
   const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
   const boot = getTopLevelFunctionContaining(
     script,
@@ -93,13 +95,17 @@ test("admin separates member records and point issuance into isolated pages", ()
 
   assert.match(memberHtml, /<body\b[^>]*data-admin-page=["']members["']/i);
   assert.match(pointHtml, /<body\b[^>]*data-admin-page=["']points["']/i);
+  assert.match(lotteryHtml, /<body\b[^>]*data-admin-page=["']lottery["']/i);
   assert.match(memberHtml, /href=["']\.\/["'][^>]*aria-current=["']page["']/i);
   assert.match(pointHtml, /href=["']points\.html["'][^>]*aria-current=["']page["']/i);
-  for (const html of [memberHtml, pointHtml]) {
+  assert.match(lotteryHtml, /href=["']lottery\.html["'][^>]*aria-current=["']page["']/i);
+  for (const html of [memberHtml, pointHtml, lotteryHtml]) {
     assert.match(html, /href=["']\.\/["'][^>]*data-admin-route/i);
     assert.match(html, /href=["']points\.html["'][^>]*data-admin-route/i);
+    assert.match(html, /href=["']lottery\.html["'][^>]*data-admin-route/i);
     assert.match(html, />會員資料</);
     assert.match(html, />點數管理</);
+    assert.match(html, />轉盤抽獎</);
   }
 
   for (const id of ["point-workspace", "point-type-form", "point-campaign-form", "point-qr-dialog"]) {
@@ -107,13 +113,13 @@ test("admin separates member records and point issuance into isolated pages", ()
   }
   for (const id of ["metric-all", "member-list", "filter-form", "deny-dialog"]) {
     assert.doesNotMatch(pointHtml, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(lotteryHtml, new RegExp(`id=["']${id}["']`));
   }
 
-  assert.match(
-    script,
-    /document\.body[\s\S]{0,120}?dataset\.adminPage\s*===\s*["']points["']/
-  );
+  assert.match(script, /requestedAdminPage\s*===\s*["']points["']/);
+  assert.match(script, /requestedAdminPage\s*===\s*["']lottery["']/);
   assert.match(boot, /ADMIN_PAGE\s*===\s*["']points["'][\s\S]{0,80}?fetchPointTypes\s*\(/);
+  assert.match(boot, /ADMIN_PAGE\s*===\s*["']lottery["'][\s\S]{0,80}?fetchLotteryConfig\s*\(/);
   assert.match(boot, /fetchMembers\s*\(/);
   assert.match(routeSync, /isDemoSession\s*\|\|\s*hasDemoQuery\s*\(\s*\)/);
   assert.match(routeSync, /searchParams\.set\s*\(\s*["']demo["']\s*,\s*["']1["']\s*\)/);
@@ -285,6 +291,60 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+});
+
+test("admin lottery page configures labels, colors, exact probabilities, and draw history", () => {
+  const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+
+  for (const id of [
+    "admin-lottery-wheel",
+    "lottery-config-form",
+    "lottery-prize-list",
+    "lottery-probability-total",
+    "add-lottery-prize-button",
+    "save-lottery-button",
+    "lottery-history-list",
+    "lottery-history-loading",
+    "lottery-history-empty",
+    "lottery-history-error",
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
+  assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
+  assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
+  assert.match(script, /totalBasisPoints\s*!==\s*10000/);
+  assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
+});
+
+test("member lottery uses a persisted request ID and animates only to the GAS result", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const gas = fs.readFileSync(path.join(root, "gas/client/Code.gs"), "utf8");
+  const spin = getTopLevelFunctionContaining(script, /function\s+handleLotterySpin/);
+
+  for (const id of [
+    "open-lottery-button",
+    "lottery-dialog",
+    "member-lottery-wheel",
+    "lottery-spin-button",
+    "lottery-result-prize",
+    "lottery-result-before",
+    "lottery-result-spent",
+    "lottery-result-balance",
+    "lottery-result-confirm-button",
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(spin, /sendGasRequest\(["']drawLottery["']/);
+  assert.match(spin, /ensurePendingLotteryRequestId\s*\(\s*\)/);
+  assert.doesNotMatch(spin, /Math\.random\s*\(/);
+  assert.match(script, /normalizeLotteryDraw\(data\.draw,\s*resultConfig\)/);
+  assert.match(script, /animateLotteryToPrize\(draw\)/);
+  assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
+  assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
+  assert.match(gas, /LOTTERY_TICKET_COST\s*=\s*5/);
 });
 
 test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
@@ -559,7 +619,7 @@ test("new member creation sends a privacy-bounded official account message", () 
   assert.match(officialAccountMessage, /reason:\s*["']send_failed["']/);
 });
 
-test("shared transport exposes only the bounded point campaign fields", () => {
+test("shared transport exposes only the bounded point and lottery fields", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
 
@@ -571,9 +631,15 @@ test("shared transport exposes only the bounded point campaign fields", () => {
     "expiresAt",
     "expiryMode",
     "redemptionMode",
+    "lotteryPrizes",
   ]) {
     assert.match(extraFields[1], new RegExp(`["']${field}["']`));
   }
+  assert.match(
+    transport,
+    /name\s*===\s*["']lotteryPrizes["'][\s\S]*?JSON\.stringify\(originalRequest\[name\]\)/,
+    "the bridge transport must serialize the prize array as JSON"
+  );
   assert.doesNotMatch(
     extraFields[1],
     /["'](?:points|memberId|lineUserId)["']/,
@@ -667,6 +733,7 @@ test("member point scanner falls back to an in-page camera and always stops medi
 test("admin loads a local QR encoder and frontend code never calls an external QR service", () => {
   const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
   const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
   const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
@@ -678,6 +745,11 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
     false,
     "member administration must not load the QR encoder"
   );
+  assert.equal(
+    lotteryHtml.includes('src="../shared/qr-code.js"'),
+    false,
+    "lottery administration must not load the point-campaign QR encoder"
+  );
   assert.notEqual(qrScriptAt, -1, "point administration must load the local shared QR encoder");
   assert.equal(qrScriptAt < adminScriptAt, true, "the QR encoder must load before admin script.js");
   assert.equal(
@@ -686,14 +758,21 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
     "the local QR encoder asset must exist"
   );
 
-  for (const html of [adminHtml, pointHtml, clientHtml]) {
+  for (const html of [adminHtml, pointHtml, lotteryHtml, clientHtml]) {
     const externalScripts = [...html.matchAll(/<script\b[^>]*\bsrc=["'](https?:[^"']+)["']/gi)]
       .map((match) => match[1])
       .filter((source) => source !== "https://static.line-scdn.net/liff/edge/2/sdk.js");
     assert.deepEqual(externalScripts, [], "QR generation must not add a third-party script");
   }
 
-  const frontendSource = [adminHtml, pointHtml, clientHtml, adminScript, clientScript].join("\n");
+  const frontendSource = [
+    adminHtml,
+    pointHtml,
+    lotteryHtml,
+    clientHtml,
+    adminScript,
+    clientScript,
+  ].join("\n");
   assert.doesNotMatch(
     frontendSource,
     /(?:api\.qrserver\.com|quickchart\.io|chart\.googleapis\.com|chart\.google\.com)/i,
@@ -702,7 +781,12 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
 });
 
 test("LIFF entry points suppress referrers before loading the external SDK", () => {
-  for (const relativePath of ["client/index.html", "admin/index.html", "admin/points.html"]) {
+  for (const relativePath of [
+    "client/index.html",
+    "admin/index.html",
+    "admin/points.html",
+    "admin/lottery.html",
+  ]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const referrerAt = html.search(
       /<meta\b[^>]*name=["']referrer["'][^>]*content=["']no-referrer["'][^>]*>/i
@@ -821,7 +905,11 @@ test("deployment guides document two independent GAS deployments and Sheet-based
 test("admin UI distinguishes pending approval from forbidden access", () => {
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
-  for (const relativePath of ["admin/index.html", "admin/points.html"]) {
+  for (const relativePath of [
+    "admin/index.html",
+    "admin/points.html",
+    "admin/lottery.html",
+  ]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     assert.match(html, /id="pending-state"/);
     assert.match(html, /id="pending-refresh-button"/);
@@ -838,7 +926,7 @@ test("client renews an invalid external-browser token once and guards redirect l
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const recovery = getTopLevelFunctionContaining(
     script,
-    /(?:window\.)?sessionStorage\.getItem\s*\(/
+    /INVALID_TOKEN_RECOVERY_PREFIX\s*\+/
   );
   const recoveryName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(recovery);
 
@@ -882,7 +970,7 @@ test("client does not start automatic login or token recovery inside the LIFF br
   const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
   const recovery = getTopLevelFunctionContaining(
     script,
-    /(?:window\.)?sessionStorage\.getItem\s*\(/
+    /INVALID_TOKEN_RECOVERY_PREFIX\s*\+/
   );
   const loginAt = recovery.search(/(?:window\.)?liff\.login\s*\(/);
 

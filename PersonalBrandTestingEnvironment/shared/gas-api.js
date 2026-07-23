@@ -18,6 +18,7 @@
     "expiresAt",
     "expiryMode",
     "redemptionMode",
+    "lotteryPrizes",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
@@ -167,7 +168,13 @@
       appendHiddenField(form, "transport", "bridge");
       EXTRA_FIELD_NAMES.forEach(function (name) {
         if (Object.prototype.hasOwnProperty.call(originalRequest, name)) {
-          appendHiddenField(form, name, originalRequest[name]);
+          appendHiddenField(
+            form,
+            name,
+            name === "lotteryPrizes"
+              ? JSON.stringify(originalRequest[name])
+              : originalRequest[name]
+          );
         }
       });
 

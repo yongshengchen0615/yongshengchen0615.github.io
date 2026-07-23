@@ -6,8 +6,8 @@
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#edf0e9" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="description" content="會員存取權限管理後台" />
-    <title>PERSONA ADMIN｜會員管理</title>
+    <meta name="description" content="會員 5 點轉盤抽獎設定與紀錄管理" />
+    <title>PERSONA ADMIN｜轉盤抽獎</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%230b3c2c'/%3E%3Cpath d='M18 20h28v20H32l-9 7v-7h-5z' fill='%2306c755'/%3E%3C/svg%3E"
@@ -17,7 +17,7 @@
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="script.js"></script>
   </head>
-  <body data-admin-page="members">
+  <body data-admin-page="lottery">
     <a class="skip-link" href="#main-content">跳至主要內容</a>
     <div class="page-grid" aria-hidden="true"></div>
 
@@ -41,13 +41,13 @@
         <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
         <p class="eyebrow">ADMIN ACCESS</p>
         <h1 id="loading-title">正在確認管理員身分</h1>
-        <p id="loading-message">連線 LINE 與會員後台，請稍候。</p>
+        <p id="loading-message">連線 LINE 與抽獎後台，請稍候。</p>
       </section>
 
       <section class="app-state access-state" id="login-state" hidden aria-labelledby="login-title">
         <div>
           <p class="eyebrow">RESTRICTED AREA</p>
-          <h1 id="login-title">登入會員管理後台</h1>
+          <h1 id="login-title">登入抽獎管理後台</h1>
           <p>使用 LINE 完成身分驗證。首次登入會建立管理員申請，再由試算表擁有者核准。</p>
         </div>
         <button class="primary-button" id="login-button" type="button">
@@ -64,7 +64,7 @@
         </div>
         <div class="button-row">
           <a class="primary-button" href="../setup.html">開啟設定說明</a>
-          <button class="secondary-button" id="preview-button" type="button">預覽管理後台</button>
+          <button class="secondary-button" id="preview-button" type="button">預覽抽獎後台</button>
         </div>
       </section>
 
@@ -72,7 +72,7 @@
         <div>
           <p class="eyebrow">APPROVAL PENDING</p>
           <h1 id="pending-title">管理員資格等待核准</h1>
-          <p>首次登入已在共用 Google Spreadsheet 的 <code>Admins</code> 工作表建立 <code>pending</code> 申請。請由試算表擁有者將該列的 <code>status</code> 改為 <code>approved</code>，再按重新整理。</p>
+          <p>請由試算表擁有者將 <code>Admins</code> 工作表內你的 <code>status</code> 改為 <code>approved</code>，再按重新整理。</p>
         </div>
         <div class="button-row">
           <button class="primary-button" id="pending-refresh-button" type="button">重新整理</button>
@@ -84,7 +84,7 @@
         <div>
           <p class="eyebrow danger-copy">ACCESS DENIED</p>
           <h1 id="unauthorized-title">管理員申請已拒絕</h1>
-          <p>後台已完成身分驗證，但這個帳號在 <code>Admins</code> 工作表中的狀態不是 <code>approved</code>。如需恢復權限，請聯絡試算表擁有者。</p>
+          <p>這個帳號目前沒有管理員權限。如需恢復，請聯絡試算表擁有者。</p>
         </div>
         <button class="secondary-button" id="unauthorized-logout-button" type="button">登出這個帳號</button>
       </section>
@@ -92,7 +92,7 @@
       <section class="app-state access-state" id="error-state" hidden aria-labelledby="error-title">
         <div>
           <p class="eyebrow danger-copy" id="error-code">CONNECTION ERROR</p>
-          <h1 id="error-title">暫時無法開啟管理後台</h1>
+          <h1 id="error-title">暫時無法開啟抽獎管理後台</h1>
           <p id="error-message">連線時發生問題，請稍後再試。</p>
         </div>
         <button class="primary-button" id="retry-button" type="button">
@@ -103,16 +103,16 @@
 
       <section class="app-state dashboard" id="dashboard-state" hidden aria-labelledby="dashboard-title">
         <nav class="workspace-nav" aria-label="管理後台功能">
-          <a href="./" data-admin-route aria-current="page"><span>01</span>會員資料</a>
+          <a href="./" data-admin-route><span>01</span>會員資料</a>
           <a href="points.html" data-admin-route><span>02</span>點數管理</a>
-          <a href="lottery.html" data-admin-route><span>03</span>轉盤抽獎</a>
+          <a href="lottery.html" data-admin-route aria-current="page"><span>03</span>轉盤抽獎</a>
         </nav>
 
         <header class="workspace-header">
           <div>
-            <p class="eyebrow">MEMBER ACCESS</p>
-            <h1 id="dashboard-title">會員存取管理</h1>
-            <p>查看會員使用狀態，隨時停用或恢復會員系統權限。</p>
+            <p class="eyebrow">FIVE-POINT LOTTERY</p>
+            <h1 id="dashboard-title">5 點轉盤抽獎</h1>
+            <p>每張抽獎券固定扣除 5 點；設定獎項、色塊與中獎機率。</p>
           </div>
 
           <div class="admin-identity" aria-label="目前管理員">
@@ -128,99 +128,87 @@
           </div>
         </header>
 
-        <dl class="metric-strip" aria-label="會員使用狀態統計">
-          <div>
-            <dt>全部會員</dt>
-            <dd id="metric-all">0</dd>
-          </div>
-          <div>
-            <dt>可使用</dt>
-            <dd id="metric-approved">0</dd>
-          </div>
-          <div>
-            <dt>已停用</dt>
-            <dd id="metric-denied">0</dd>
-          </div>
-        </dl>
-
-        <section class="member-workspace" aria-labelledby="member-list-title">
-          <header class="workspace-toolbar">
-            <div>
-              <p class="eyebrow">MEMBER DIRECTORY</p>
-              <h2 id="member-list-title">會員清單</h2>
-              <p id="sync-label">尚未同步</p>
+        <section class="lottery-workspace" aria-labelledby="lottery-config-title">
+          <div class="lottery-preview-panel">
+            <div class="lottery-wheel-stage" aria-label="轉盤色塊預覽">
+              <span class="lottery-preview-pointer" aria-hidden="true"></span>
+              <canvas id="admin-lottery-wheel" width="720" height="720">
+                你的瀏覽器不支援轉盤預覽。
+              </canvas>
+              <span class="lottery-preview-hub" aria-hidden="true">5</span>
             </div>
+            <div class="lottery-preview-copy">
+              <p class="eyebrow">LIVE PREVIEW</p>
+              <h2>抽獎券一次 5 點</h2>
+              <p>色塊等分呈現，實際中獎結果依你設定的機率由後台安全決定。</p>
+              <dl>
+                <div><dt>目前版本</dt><dd id="lottery-config-version">尚未儲存</dd></div>
+                <div><dt>最後更新</dt><dd id="lottery-config-updated-at">—</dd></div>
+              </dl>
+            </div>
+          </div>
 
-            <form class="filters" id="filter-form" role="search">
-              <label class="search-field">
-                <span class="sr-only">搜尋本頁會員</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
-                <input id="search-input" type="search" autocomplete="off" placeholder="搜尋本頁姓名、會員編號或電話" />
-              </label>
-
-              <label class="filter-field">
-                <span class="sr-only">篩選會員狀態</span>
-                <select id="status-filter">
-                  <option value="all">全部狀態</option>
-                  <option value="approved">可使用</option>
-                  <option value="denied">已停用</option>
-                </select>
-              </label>
-
-              <button class="refresh-button" id="refresh-button" type="button">
+          <form class="lottery-config-panel" id="lottery-config-form" novalidate>
+            <header class="lottery-config-heading">
+              <div>
+                <p class="eyebrow">PRIZE CONFIGURATION</p>
+                <h2 id="lottery-config-title">轉盤獎項</h2>
+                <p>可設定 2 到 12 個獎項；每個機率最多兩位小數。</p>
+              </div>
+              <button class="refresh-button" id="refresh-lottery-button" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
                 <span>重新整理</span>
               </button>
-            </form>
+            </header>
+
+            <div class="lottery-prize-labels" aria-hidden="true">
+              <span>獎項名稱</span><span>區塊顏色</span><span>中獎機率</span><span>操作</span>
+            </div>
+            <ol class="lottery-prize-list" id="lottery-prize-list" aria-live="polite"></ol>
+
+            <div class="lottery-config-footer">
+              <button class="secondary-button" id="add-lottery-prize-button" type="button">＋ 新增獎項</button>
+              <p class="lottery-probability-total">
+                機率合計
+                <strong><output id="lottery-probability-total">0.00</output>%</strong>
+              </p>
+              <button class="primary-button" id="save-lottery-button" type="submit">
+                <span>儲存並啟用轉盤</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+              </button>
+            </div>
+            <p class="inline-error" id="lottery-config-error" role="alert" hidden></p>
+          </form>
+        </section>
+
+        <section class="lottery-history-workspace" aria-labelledby="lottery-history-title">
+          <header class="point-history-heading">
+            <div>
+              <p class="eyebrow">DRAW ACTIVITY</p>
+              <h2 id="lottery-history-title">最新抽獎紀錄</h2>
+              <p id="lottery-history-summary">查看會員扣除 5 點後的抽獎結果。</p>
+            </div>
+            <button class="refresh-button" id="refresh-lottery-history-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+              <span>重新整理紀錄</span>
+            </button>
           </header>
-
-          <div class="table-wrap" id="table-wrap" aria-busy="false">
-            <table>
-              <caption class="sr-only">會員資料與進入權限</caption>
-              <thead>
-                <tr>
-                  <th scope="col">會員</th>
-                  <th scope="col">聯絡資料</th>
-                  <th scope="col">加入日期</th>
-                  <th scope="col">最後登入</th>
-                  <th scope="col">存取狀態</th>
-                  <th scope="col"><span class="sr-only">操作</span></th>
-                </tr>
-              </thead>
-              <tbody id="member-list"></tbody>
-            </table>
+          <div class="admin-point-history-status" id="lottery-history-loading" role="status" aria-live="polite" hidden>
+            <span class="history-skeleton-line"></span>
+            <span class="history-skeleton-line"></span>
+            <span class="history-skeleton-line"></span>
           </div>
-
-          <div class="empty-state" id="empty-state" hidden>
-            <strong>沒有符合條件的會員</strong>
-            <p>請調整搜尋關鍵字或狀態篩選。</p>
-          </div>
-
-          <footer class="pagination" aria-label="會員清單分頁">
-            <button class="text-button" id="previous-page-button" type="button">上一頁</button>
-            <p>第 <strong id="current-page">1</strong> / <span id="total-pages">1</span> 頁</p>
-            <button class="text-button" id="next-page-button" type="button">下一頁</button>
-          </footer>
+          <ol class="lottery-history-list" id="lottery-history-list" aria-live="polite" aria-busy="false"></ol>
+          <p class="admin-point-history-empty" id="lottery-history-empty" hidden>目前還沒有抽獎紀錄。</p>
+          <p class="inline-error admin-point-history-error" id="lottery-history-error" role="alert" hidden></p>
         </section>
       </section>
     </main>
 
     <footer class="site-footer">
-      <p>MEMBER ACCESS CONTROL</p>
+      <p>FIVE-POINT LOTTERY CONTROL</p>
       <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
     </footer>
-
-    <dialog class="confirm-dialog" id="deny-dialog" aria-labelledby="deny-dialog-title">
-      <div>
-        <p class="eyebrow danger-copy">STOP ACCESS</p>
-        <h2 id="deny-dialog-title">停用這位會員的系統權限？</h2>
-        <p><span id="deny-member-name">此會員</span> 將無法進入會員系統，之後仍可由管理員恢復使用。</p>
-      </div>
-      <div class="dialog-actions">
-        <button class="secondary-button" id="cancel-deny-button" type="button">取消</button>
-        <button class="danger-button" id="confirm-deny-button" type="button">確認停用</button>
-      </div>
-    </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden>
       <span aria-hidden="true"></span>

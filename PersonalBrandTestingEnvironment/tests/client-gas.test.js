@@ -367,9 +367,58 @@ function createPointRedemptionRow(gas, overrides = {}) {
   return row;
 }
 
+function createLotteryPrizeRows(gas, overrides = {}) {
+  const configVersion = overrides.configVersion || "LCF-ABCDEF123456";
+  const updatedAt =
+    overrides.updatedAt || new Date("2026-07-23T00:00:00.000Z");
+  const lastRequestId =
+    overrides.lastRequestId || "request-lottery-config-1";
+  const prizes = overrides.prizes || [
+    {
+      prizeId: "LPR-ABCDEF1234",
+      label: "小禮物",
+      color: "#8DCCAA",
+      probabilityBasisPoints: 7000,
+    },
+    {
+      prizeId: "LPR-ZYXWVU9876",
+      label: "頭獎",
+      color: "#0B3C2C",
+      probabilityBasisPoints: 3000,
+    },
+  ];
+  return prizes.map((prize, index) => {
+    const row = new Array(gas.LOTTERY_PRIZE_HEADERS.length).fill("");
+    const values = {
+      configVersion,
+      prizeId: prize.prizeId,
+      label: prize.label,
+      color: prize.color,
+      probabilityBasisPoints: prize.probabilityBasisPoints,
+      sortOrder: index + 1,
+      status: "active",
+      updatedAt,
+      updatedBy: "ADM-ABCDEF1234",
+      lastRequestId,
+    };
+    Object.entries(values).forEach(([key, value]) => {
+      row[gas.LOTTERY_PRIZE_COLUMN[key] - 1] = value;
+    });
+    return row;
+  });
+}
+
 function installPointSheets(
   gas,
-  { memberRows = [], campaignRows = [], redemptionRows = [], redemptionWrites = [] } = {}
+  {
+    memberRows = [],
+    campaignRows = [],
+    redemptionRows = [],
+    redemptionWrites = [],
+    lotteryPrizeRows = [],
+    lotteryDrawRows = [],
+    lotteryDrawWrites = [],
+  } = {}
 ) {
   const memberSheet = createMemberSheet(memberRows);
   const campaignSheet = createDataSheet(
@@ -383,10 +432,29 @@ function installPointSheets(
     redemptionRows,
     redemptionWrites
   );
+  const lotteryPrizeSheet = createDataSheet(
+    "LotteryPrizes",
+    Array.from(gas.LOTTERY_PRIZE_HEADERS),
+    lotteryPrizeRows
+  );
+  const lotteryDrawSheet = createDataSheet(
+    "LotteryDraws",
+    Array.from(gas.LOTTERY_DRAW_HEADERS),
+    lotteryDrawRows,
+    lotteryDrawWrites
+  );
   gas.getOrCreateMemberSheet_ = () => memberSheet;
   gas.getOrCreatePointCampaignSheet_ = () => campaignSheet;
   gas.getOrCreatePointRedemptionSheet_ = () => redemptionSheet;
-  return { memberSheet, campaignSheet, redemptionSheet };
+  gas.getOrCreateLotteryPrizeSheet_ = () => lotteryPrizeSheet;
+  gas.getOrCreateLotteryDrawSheet_ = () => lotteryDrawSheet;
+  return {
+    memberSheet,
+    campaignSheet,
+    redemptionSheet,
+    lotteryPrizeSheet,
+    lotteryDrawSheet,
+  };
 }
 
 test("client manifest is a standalone V8 web app with only required scopes", () => {
@@ -1717,6 +1785,8 @@ test("member point history is token-bound, newest-first and hides other members"
     JSON.parse(JSON.stringify(result.data.history)),
     [
       {
+        historyId: "RDM-SECOND0000000000",
+        entryType: "earn",
         redemptionId: "RDM-SECOND0000000000",
         label: "2 點",
         points: 2,
@@ -1726,6 +1796,8 @@ test("member point history is token-bound, newest-first and hides other members"
         source: "qr",
       },
       {
+        historyId: "RDM-ABCDEF1234567890",
+        entryType: "earn",
         redemptionId: "RDM-ABCDEF1234567890",
         label: "3 點",
         points: 3,
@@ -1736,6 +1808,62 @@ test("member point history is token-bound, newest-first and hides other members"
       },
     ]
   );
+});
+
+test("lottery draw deducts five points, returns the server result, and replays idempotently", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas)];
+  const redemptionRows = [
+    createPointRedemptionRow(gas, {
+      points: 8,
+      balanceAfter: 8,
+      redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+    }),
+  ];
+  const sheets = installPointSheets(gas, {
+    memberRows,
+    redemptionRows,
+    lotteryPrizeRows: createLotteryPrizeRows(gas),
+  });
+  const request = {
+    action: "drawLottery",
+    requestId: "request-lottery-draw-1",
+  };
+
+  const first = gas.drawLottery_(createIdentity(), request, {});
+  const replay = gas.drawLottery_(createIdentity(), request, {});
+
+  assert.equal(first.data.duplicate, false);
+  assert.equal(replay.data.duplicate, true);
+  assert.match(first.data.draw.drawId, /^LDW-[A-Z0-9]{16}$/);
+  assert.equal(first.data.draw.ticketCost, 5);
+  assert.equal(first.data.draw.originalPointBalance, 8);
+  assert.equal(first.data.draw.pointBalance, 3);
+  assert.equal(first.data.pointBalance, 3);
+  assert.equal(first.data.lottery.ticketCost, 5);
+  assert.equal(replay.data.draw.drawId, first.data.draw.drawId);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
+
+  const history = gas.listPointHistory_(
+    createIdentity(),
+    { action: "listPointHistory", requestId: "request-lottery-history-1" },
+    {}
+  );
+  assert.equal(history.data.pointBalance, 3);
+  assert.equal(history.data.history[0].entryType, "spend");
+  assert.equal(history.data.history[0].points, -5);
+  assert.equal(history.data.history[0].drawId, first.data.draw.drawId);
+
+  assert.throws(
+    () =>
+      gas.drawLottery_(
+        createIdentity(),
+        { action: "drawLottery", requestId: "request-lottery-draw-2" },
+        {}
+      ),
+    (error) => error.appCode === "INSUFFICIENT_POINTS"
+  );
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
 });
 
 test("deleteMember is retry-idempotent and prevents recreation with the same token", () => {
@@ -2074,7 +2202,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.3.0");
+  assert.equal(health.data.version, "1.4.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -2092,9 +2220,13 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointTypeSheetName, "PointTypes");
   assert.equal(setup.pointCampaignSheetName, "PointCampaigns");
   assert.equal(setup.pointRedemptionSheetName, "PointRedemptions");
+  assert.equal(setup.lotteryPrizeSheetName, "LotteryPrizes");
+  assert.equal(setup.lotteryDrawSheetName, "LotteryDraws");
   assert.equal(setup.pointTypeColumns, 12);
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
+  assert.equal(setup.lotteryPrizeColumns, 10);
+  assert.equal(setup.lotteryDrawColumns, 13);
 });
 
 test("verification rate limit rejects excess requests", () => {

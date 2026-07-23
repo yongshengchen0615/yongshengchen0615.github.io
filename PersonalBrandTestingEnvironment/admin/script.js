@@ -2,8 +2,12 @@
   "use strict";
 
   var CONFIG = Object.freeze({});
+  var requestedAdminPage =
+    document.body && String(document.body.dataset.adminPage || "");
   var ADMIN_PAGE =
-    document.body && document.body.dataset.adminPage === "points" ? "points" : "members";
+    requestedAdminPage === "points" || requestedAdminPage === "lottery"
+      ? requestedAdminPage
+      : "members";
   var STATE_IDS = [
     "loading-state",
     "login-state",
@@ -17,6 +21,11 @@
   var pointTypes = [];
   var pointHistory = [];
   var pointHistoryHasMore = false;
+  var lotteryConfig = null;
+  var lotteryPrizes = [];
+  var lotteryDraws = [];
+  var lotteryDrawsHaveMore = false;
+  var lotteryAdminIdentity = null;
   var metrics = { all: 0, pending: 0, approved: 0, denied: 0 };
   var pagination = { page: 1, pageSize: 50, total: 0, totalPages: 0 };
   var currentIdToken = "";
@@ -30,12 +39,17 @@
   var bootVersion = 0;
   var listRequestVersion = 0;
   var pointHistoryRequestVersion = 0;
+  var lotteryRequestVersion = 0;
+  var lotteryHistoryRequestVersion = 0;
   var isDemoSession = false;
   var isListLoading = false;
   var isMutationLoading = false;
   var isPointMutationLoading = false;
   var isPointHistoryLoading = false;
   var isPointWorkspaceAvailable = false;
+  var isLotteryLoading = false;
+  var isLotteryMutationLoading = false;
+  var isLotteryHistoryLoading = false;
   var isLiffInitialized = false;
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
   var MEMBER_LIFF_PATH = "/2010787602-kaiSm2eq";
@@ -113,6 +127,12 @@
               return;
             }
             return fetchPointHistory(thisBoot, true);
+          });
+        }
+        if (ADMIN_PAGE === "lottery") {
+          return fetchLotteryConfig(thisBoot, false).then(function () {
+            if (thisBoot !== bootVersion || isDemoSession) return;
+            return fetchLotteryHistory(thisBoot, true);
           });
         }
         pagination.page = 1;
@@ -283,6 +303,134 @@
       });
   }
 
+  function fetchLotteryConfig(expectedBootVersion, preserveDashboard) {
+    if (isLotteryLoading || isLotteryMutationLoading) return Promise.resolve();
+    var thisRequest = ++lotteryRequestVersion;
+    var refreshButton = byId("refresh-lottery-button");
+    currentIdToken = window.liff.getIDToken() || "";
+    if (!currentIdToken) {
+      handleFatalError(
+        createError("MISSING_ID_TOKEN", "沒有取得 LINE ID Token，請確認 LIFF 已勾選 openid 權限。")
+      );
+      return Promise.resolve();
+    }
+
+    isLotteryLoading = true;
+    updateOperationControls();
+    if (preserveDashboard) {
+      setButtonBusy(refreshButton, true, "同步中");
+      setConnection("正在同步轉盤", "loading");
+    } else {
+      setLoading("正在載入轉盤設定", "後台正在驗證權限並讀取目前獎項。請稍候。");
+      setView("loading-state");
+    }
+
+    return sendAdminRequest("adminGetLotteryConfig", {})
+      .then(function (response) {
+        if (
+          expectedBootVersion !== bootVersion ||
+          thisRequest !== lotteryRequestVersion
+        ) {
+          return;
+        }
+        assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
+        renderLotteryDashboard(response.data);
+      })
+      .catch(function (error) {
+        if (
+          expectedBootVersion !== bootVersion ||
+          thisRequest !== lotteryRequestVersion
+        ) {
+          return;
+        }
+        if (preserveDashboard && !isAuthorizationError(error)) {
+          showLotteryConfigError(normalizeError(error).message);
+          showToast(normalizeError(error).message, "error");
+          setConnection("同步失敗", "error");
+          return;
+        }
+        handleFatalError(error);
+      })
+      .finally(function () {
+        if (thisRequest !== lotteryRequestVersion) return;
+        isLotteryLoading = false;
+        setButtonBusy(refreshButton, false);
+        updateOperationControls();
+      });
+  }
+
+  function fetchLotteryHistory(expectedBootVersion, preserveDashboard) {
+    if (isLotteryHistoryLoading || isLotteryMutationLoading) {
+      return Promise.resolve();
+    }
+    var thisRequest = ++lotteryHistoryRequestVersion;
+    var refreshButton = byId("refresh-lottery-history-button");
+    if (!currentIdToken && window.liff && typeof window.liff.getIDToken === "function") {
+      currentIdToken = window.liff.getIDToken() || "";
+    }
+    if (!currentIdToken) {
+      var missingTokenError = createError(
+        "MISSING_ID_TOKEN",
+        "沒有取得 LINE ID Token，請確認 LIFF 已勾選 openid 權限。"
+      );
+      renderLotteryHistoryError(missingTokenError);
+      handleFatalError(missingTokenError);
+      return Promise.resolve();
+    }
+
+    isLotteryHistoryLoading = true;
+    renderLotteryHistoryLoading();
+    updateOperationControls();
+    if (preserveDashboard) {
+      setButtonBusy(refreshButton, true, "同步中");
+      setConnection("正在同步紀錄", "loading");
+    }
+
+    return sendAdminRequest("adminListLotteryDraws", {})
+      .then(function (response) {
+        if (
+          expectedBootVersion !== bootVersion ||
+          thisRequest !== lotteryHistoryRequestVersion
+        ) {
+          return;
+        }
+        assertSuccessfulResponse(response);
+        if (!response.data || !Array.isArray(response.data.draws)) {
+          throw createError("INVALID_RESPONSE", "後台回傳的抽獎紀錄格式不完整。");
+        }
+        clearInvalidTokenRecoveryGuard();
+        renderLotteryHistory(response.data.draws, response.data.hasMore);
+        if (preserveDashboard) {
+          setConnection(
+            isDemoSession ? "展示模式" : "安全連線",
+            isDemoSession ? "setup" : "connected"
+          );
+        }
+      })
+      .catch(function (error) {
+        if (
+          expectedBootVersion !== bootVersion ||
+          thisRequest !== lotteryHistoryRequestVersion
+        ) {
+          return;
+        }
+        if (preserveDashboard && !isAuthorizationError(error)) {
+          renderLotteryHistoryError(error);
+          showToast(normalizeError(error).message, "error");
+          setConnection("紀錄同步失敗", "error");
+          return;
+        }
+        handleFatalError(error);
+      })
+      .finally(function () {
+        if (thisRequest !== lotteryHistoryRequestVersion) return;
+        isLotteryHistoryLoading = false;
+        setButtonBusy(refreshButton, false);
+        updateOperationControls();
+      });
+  }
+
   function sendAdminRequest(action, fields) {
     return window.MemberApi.sendRequest({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
@@ -397,6 +545,25 @@
     );
   }
 
+  function renderLotteryDashboard(data) {
+    data = data && typeof data === "object" ? data : {};
+    lotteryConfig = normalizeLotteryConfig(data.lottery);
+    lotteryAdminIdentity = data.admin || lotteryAdminIdentity || getCurrentAdminIdentity();
+    lotteryPrizes = lotteryConfig.prizes.length
+      ? lotteryConfig.prizes.map(copyLotteryPrizeForEditor)
+      : defaultLotteryPrizes();
+    renderAdminIdentity(lotteryAdminIdentity);
+    renderLotteryConfigMeta();
+    renderLotteryPrizeRows();
+    clearLotteryConfigError();
+    updateOperationControls();
+    setConnection(
+      isDemoSession ? "展示模式" : "安全連線",
+      isDemoSession ? "setup" : "connected"
+    );
+    setView("dashboard-state");
+  }
+
   function renderDemoDashboard() {
     isDemoSession = true;
     currentIdToken = "";
@@ -413,6 +580,44 @@
         hasMore: false,
       });
       renderAdminIdentity({ displayName: "管理員預覽", pictureUrl: "" });
+      return;
+    }
+    if (ADMIN_PAGE === "lottery") {
+      renderLotteryDashboard({
+        admin: { displayName: "管理員預覽", pictureUrl: "" },
+        lottery: {
+          configVersion: "LCF-PREVIEW00001",
+          ticketCost: 5,
+          updatedAt: new Date().toISOString(),
+          prizes: [
+            {
+              prizeId: "LPR-PREVIEW001",
+              label: "銘謝惠顧",
+              color: "#D9D6CC",
+              probability: 50,
+            },
+            {
+              prizeId: "LPR-PREVIEW002",
+              label: "小禮物",
+              color: "#8DCCAA",
+              probability: 30,
+            },
+            {
+              prizeId: "LPR-PREVIEW003",
+              label: "精選獎",
+              color: "#F0C36A",
+              probability: 15,
+            },
+            {
+              prizeId: "LPR-PREVIEW004",
+              label: "頭獎",
+              color: "#0B3C2C",
+              probability: 5,
+            },
+          ],
+        },
+      });
+      renderLotteryHistory(demoLotteryDraws(), false);
       return;
     }
     renderDashboard({
@@ -513,6 +718,551 @@
         source: "qr",
       },
     ];
+  }
+
+  function defaultLotteryPrizes() {
+    return [
+      { prizeId: "", label: "銘謝惠顧", color: "#D9D6CC", probability: 50 },
+      { prizeId: "", label: "小禮物", color: "#8DCCAA", probability: 30 },
+      { prizeId: "", label: "精選獎", color: "#F0C36A", probability: 15 },
+      { prizeId: "", label: "頭獎", color: "#0B3C2C", probability: 5 },
+    ];
+  }
+
+  function demoLotteryDraws() {
+    var now = Date.now();
+    return [
+      {
+        drawId: "LDW-PREVIEW000000001",
+        configVersion: "LCF-PREVIEW00001",
+        prizeId: "LPR-PREVIEW002",
+        prizeLabel: "小禮物",
+        prizeColor: "#8DCCAA",
+        memberId: "MBR-A102938475",
+        memberDisplayName: "林若晴",
+        ticketCost: 5,
+        originalPointBalance: 18,
+        pointBalance: 13,
+        drawnAt: new Date(now - 18 * 60000).toISOString(),
+      },
+      {
+        drawId: "LDW-PREVIEW000000002",
+        configVersion: "LCF-PREVIEW00001",
+        prizeId: "LPR-PREVIEW001",
+        prizeLabel: "銘謝惠顧",
+        prizeColor: "#D9D6CC",
+        memberId: "MBR-B564738291",
+        memberDisplayName: "陳宇安",
+        ticketCost: 5,
+        originalPointBalance: 9,
+        pointBalance: 4,
+        drawnAt: new Date(now - 3 * 3600000).toISOString(),
+      },
+    ];
+  }
+
+  function normalizeLotteryConfig(value) {
+    value = value && typeof value === "object" ? value : {};
+    var configVersion = String(value.configVersion || "").trim();
+    var ticketCost = Number(value.ticketCost);
+    var updatedAt = String(value.updatedAt || "").trim();
+    var rawPrizes = Array.isArray(value.prizes) ? value.prizes : null;
+    if (
+      ticketCost !== 5 ||
+      !rawPrizes ||
+      (configVersion && !/^LCF-[A-Z0-9]{12}$/.test(configVersion)) ||
+      (!configVersion && (updatedAt || rawPrizes.length)) ||
+      (configVersion && Number.isNaN(new Date(updatedAt).getTime())) ||
+      rawPrizes.length > 12 ||
+      (rawPrizes.length > 0 && rawPrizes.length < 2)
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的轉盤設定格式不正確。");
+    }
+    var prizes = rawPrizes.map(normalizeLotteryPrize);
+    var total = prizes.reduce(function (sum, prize) {
+      return sum + Math.round(prize.probability * 100);
+    }, 0);
+    if (prizes.length && total !== 10000) {
+      throw createError("INVALID_RESPONSE", "後台回傳的轉盤機率合計不是 100%。");
+    }
+    return {
+      configVersion: configVersion,
+      ticketCost: ticketCost,
+      updatedAt: updatedAt,
+      prizes: prizes,
+    };
+  }
+
+  function normalizeLotteryPrize(value) {
+    value = value && typeof value === "object" ? value : {};
+    var prizeId = String(value.prizeId || "").trim();
+    var label = String(value.label || "").trim();
+    var color = String(value.color || "").trim().toUpperCase();
+    var probability = Number(value.probability);
+    if (
+      !/^LPR-[A-Z0-9]{10}$/.test(prizeId) ||
+      !label ||
+      label.length > 40 ||
+      !/^#[0-9A-F]{6}$/.test(color) ||
+      !Number.isFinite(probability) ||
+      probability <= 0 ||
+      probability >= 100 ||
+      Math.abs(Math.round(probability * 100) / 100 - probability) > 0.000001
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的轉盤獎項格式不正確。");
+    }
+    return {
+      prizeId: prizeId,
+      label: label,
+      color: color,
+      probability: probability,
+    };
+  }
+
+  function copyLotteryPrizeForEditor(prize) {
+    return {
+      prizeId: String(prize.prizeId || ""),
+      label: String(prize.label || ""),
+      color: String(prize.color || "#D9D6CC").toUpperCase(),
+      probability: Number(prize.probability) || 0,
+    };
+  }
+
+  function renderLotteryConfigMeta() {
+    byId("lottery-config-version").textContent =
+      lotteryConfig && lotteryConfig.configVersion
+        ? lotteryConfig.configVersion
+        : "尚未儲存";
+    byId("lottery-config-updated-at").textContent =
+      lotteryConfig && lotteryConfig.updatedAt
+        ? formatDateTime(lotteryConfig.updatedAt)
+        : "—";
+  }
+
+  function renderLotteryPrizeRows() {
+    var list = byId("lottery-prize-list");
+    list.textContent = "";
+    lotteryPrizes.forEach(function (prize, index) {
+      var item = document.createElement("li");
+      var order = document.createElement("span");
+      var label = document.createElement("label");
+      var labelInput = document.createElement("input");
+      var colorLabel = document.createElement("label");
+      var colorInput = document.createElement("input");
+      var colorText = document.createElement("span");
+      var probabilityLabel = document.createElement("label");
+      var probabilityInput = document.createElement("input");
+      var probabilitySuffix = document.createElement("span");
+      var removeButton = document.createElement("button");
+
+      item.className = "lottery-prize-row";
+      item.dataset.index = String(index);
+      order.className = "lottery-prize-order";
+      order.textContent = String(index + 1).padStart(2, "0");
+
+      label.className = "lottery-prize-name";
+      labelInput.type = "text";
+      labelInput.maxLength = 40;
+      labelInput.value = prize.label;
+      labelInput.placeholder = "獎項名稱";
+      labelInput.setAttribute("aria-label", "第 " + (index + 1) + " 個獎項名稱");
+      label.appendChild(labelInput);
+
+      colorLabel.className = "lottery-prize-color";
+      colorInput.type = "color";
+      colorInput.value = prize.color;
+      colorInput.setAttribute("aria-label", "第 " + (index + 1) + " 個獎項顏色");
+      colorText.textContent = prize.color;
+      colorLabel.appendChild(colorInput);
+      colorLabel.appendChild(colorText);
+
+      probabilityLabel.className = "lottery-prize-probability";
+      probabilityInput.type = "number";
+      probabilityInput.inputMode = "decimal";
+      probabilityInput.min = "0.01";
+      probabilityInput.max = "99.99";
+      probabilityInput.step = "0.01";
+      probabilityInput.value = String(prize.probability);
+      probabilityInput.setAttribute(
+        "aria-label",
+        "第 " + (index + 1) + " 個獎項中獎機率"
+      );
+      probabilitySuffix.textContent = "%";
+      probabilityLabel.appendChild(probabilityInput);
+      probabilityLabel.appendChild(probabilitySuffix);
+
+      removeButton.className = "lottery-prize-remove";
+      removeButton.type = "button";
+      removeButton.textContent = "移除";
+      removeButton.disabled = lotteryPrizes.length <= 2;
+      removeButton.setAttribute("aria-label", "移除獎項 " + (prize.label || index + 1));
+      removeButton.addEventListener("click", function () {
+        removeLotteryPrize(index);
+      });
+
+      [labelInput, colorInput, probabilityInput].forEach(function (input) {
+        input.addEventListener("input", function () {
+          lotteryPrizes[index] = {
+            prizeId: lotteryPrizes[index].prizeId,
+            label: labelInput.value,
+            color: colorInput.value.toUpperCase(),
+            probability: Number(probabilityInput.value),
+          };
+          colorText.textContent = colorInput.value.toUpperCase();
+          updateLotteryProbabilityTotal();
+          drawAdminLotteryWheel();
+          clearLotteryConfigError();
+        });
+      });
+
+      item.appendChild(order);
+      item.appendChild(label);
+      item.appendChild(colorLabel);
+      item.appendChild(probabilityLabel);
+      item.appendChild(removeButton);
+      list.appendChild(item);
+    });
+    updateLotteryProbabilityTotal();
+    drawAdminLotteryWheel();
+  }
+
+  function addLotteryPrize() {
+    if (
+      isLotteryLoading ||
+      isLotteryMutationLoading ||
+      lotteryPrizes.length >= 12
+    ) {
+      if (lotteryPrizes.length >= 12) {
+        showLotteryConfigError("轉盤最多可設定 12 個獎項。");
+      }
+      return;
+    }
+    var colors = ["#C87965", "#82A7A0", "#A89CC8", "#E2A35B", "#557B64"];
+    lotteryPrizes.push({
+      prizeId: "",
+      label: "新獎項",
+      color: colors[(lotteryPrizes.length - 4 + colors.length) % colors.length],
+      probability: 1,
+    });
+    renderLotteryPrizeRows();
+    var inputs = byId("lottery-prize-list").querySelectorAll(
+      ".lottery-prize-name input"
+    );
+    if (inputs.length) {
+      inputs[inputs.length - 1].focus();
+      inputs[inputs.length - 1].select();
+    }
+  }
+
+  function removeLotteryPrize(index) {
+    if (isLotteryMutationLoading || lotteryPrizes.length <= 2) return;
+    lotteryPrizes.splice(index, 1);
+    renderLotteryPrizeRows();
+  }
+
+  function updateLotteryProbabilityTotal() {
+    var totalBasisPoints = lotteryPrizes.reduce(function (sum, prize) {
+      var probability = Number(prize.probability);
+      return sum + (Number.isFinite(probability) ? Math.round(probability * 100) : 0);
+    }, 0);
+    var output = byId("lottery-probability-total");
+    output.textContent = (totalBasisPoints / 100).toFixed(2);
+    output.closest(".lottery-probability-total").dataset.valid =
+      totalBasisPoints === 10000 ? "true" : "false";
+    return totalBasisPoints;
+  }
+
+  function validateLotterySubmission() {
+    if (lotteryPrizes.length < 2 || lotteryPrizes.length > 12) {
+      throw createError("INVALID_LOTTERY_PRIZES", "轉盤必須設定 2 到 12 個獎項。");
+    }
+    var labels = Object.create(null);
+    var totalBasisPoints = 0;
+    var normalized = lotteryPrizes.map(function (prize) {
+      var label = String(prize.label || "").trim();
+      var color = String(prize.color || "").trim().toUpperCase();
+      var probability = Number(prize.probability);
+      var basisPoints = Math.round(probability * 100);
+      var labelKey = label.toLocaleLowerCase("zh-TW");
+      if (!label || label.length > 40) {
+        throw createError("INVALID_LOTTERY_PRIZES", "獎項名稱必須是 1 到 40 個字元。");
+      }
+      if (labels[labelKey]) {
+        throw createError("INVALID_LOTTERY_PRIZES", "獎項名稱不可重複。");
+      }
+      if (!/^#[0-9A-F]{6}$/.test(color)) {
+        throw createError("INVALID_LOTTERY_COLOR", "請為每個獎項選擇有效顏色。");
+      }
+      if (
+        !Number.isFinite(probability) ||
+        probability <= 0 ||
+        probability >= 100 ||
+        Math.abs(basisPoints / 100 - probability) > 0.000001
+      ) {
+        throw createError(
+          "INVALID_LOTTERY_PROBABILITY",
+          "每個獎項機率必須介於 0.01% 到 99.99%，最多兩位小數。"
+        );
+      }
+      labels[labelKey] = true;
+      totalBasisPoints += basisPoints;
+      return { label: label, color: color, probability: basisPoints / 100 };
+    });
+    if (totalBasisPoints !== 10000) {
+      throw createError("INVALID_LOTTERY_TOTAL", "所有獎項機率合計必須是 100%。");
+    }
+    return normalized;
+  }
+
+  function handleSaveLotteryConfig(event) {
+    event.preventDefault();
+    if (isLotteryLoading || isLotteryMutationLoading) return;
+    clearLotteryConfigError();
+    var submittedPrizes;
+    try {
+      submittedPrizes = validateLotterySubmission();
+    } catch (error) {
+      showLotteryConfigError(normalizeError(error).message);
+      return;
+    }
+
+    if (isDemoSession) {
+      var now = new Date().toISOString();
+      renderLotteryDashboard({
+        admin: { displayName: "管理員預覽", pictureUrl: "" },
+        lottery: {
+          configVersion: "LCF-PREVIEW00002",
+          ticketCost: 5,
+          updatedAt: now,
+          prizes: submittedPrizes.map(function (prize, index) {
+            return {
+              prizeId:
+                "LPR-PREVIEW" + String(index + 1).padStart(3, "0"),
+              label: prize.label,
+              color: prize.color,
+              probability: prize.probability,
+            };
+          }),
+        },
+      });
+      showToast("預覽：轉盤設定已更新");
+      return;
+    }
+
+    isLotteryMutationLoading = true;
+    setButtonBusy(byId("save-lottery-button"), true, "正在儲存");
+    updateOperationControls();
+    sendAdminRequest("adminSaveLotteryConfig", {
+      lotteryPrizes: submittedPrizes,
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (!response.data || !response.data.lottery) {
+          throw createError("INVALID_RESPONSE", "後台回傳的轉盤設定格式不完整。");
+        }
+        renderLotteryDashboard({
+          lottery: response.data.lottery,
+          admin: lotteryAdminIdentity || getCurrentAdminIdentity(),
+        });
+        showToast(response.data.duplicate ? "設定已儲存，未重複建立" : "轉盤設定已啟用");
+      })
+      .catch(function (error) {
+        showLotteryConfigError(normalizeError(error).message);
+      })
+      .finally(function () {
+        isLotteryMutationLoading = false;
+        setButtonBusy(byId("save-lottery-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function drawAdminLotteryWheel() {
+    var canvas = byId("admin-lottery-wheel");
+    if (!canvas || typeof canvas.getContext !== "function") return;
+    var context = canvas.getContext("2d");
+    if (!context) return;
+    var size = 720;
+    var center = size / 2;
+    var radius = center - 12;
+    var count = lotteryPrizes.length || 1;
+    var sector = (Math.PI * 2) / count;
+    canvas.width = size;
+    canvas.height = size;
+    context.clearRect(0, 0, size, size);
+
+    lotteryPrizes.forEach(function (prize, index) {
+      var start = -Math.PI / 2 + index * sector;
+      var end = start + sector;
+      context.beginPath();
+      context.moveTo(center, center);
+      context.arc(center, center, radius, start, end);
+      context.closePath();
+      context.fillStyle = /^#[0-9A-F]{6}$/i.test(prize.color)
+        ? prize.color
+        : "#D9D6CC";
+      context.fill();
+      context.strokeStyle = "rgba(243, 240, 231, 0.9)";
+      context.lineWidth = 5;
+      context.stroke();
+
+      context.save();
+      context.translate(center, center);
+      context.rotate(start + sector / 2);
+      context.textAlign = "right";
+      context.textBaseline = "middle";
+      context.font = count > 8 ? "600 22px sans-serif" : "600 28px sans-serif";
+      context.fillStyle = lotteryTextColor(prize.color);
+      context.fillText(String(prize.label || "未命名").slice(0, 10), radius - 44, 0);
+      context.restore();
+    });
+
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.strokeStyle = "#0B3C2C";
+    context.lineWidth = 10;
+    context.stroke();
+  }
+
+  function lotteryTextColor(color) {
+    var match = /^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i.exec(
+      String(color || "")
+    );
+    if (!match) return "#0B3C2C";
+    var luminance =
+      Number.parseInt(match[1], 16) * 0.299 +
+      Number.parseInt(match[2], 16) * 0.587 +
+      Number.parseInt(match[3], 16) * 0.114;
+    return luminance < 145 ? "#FFFFFF" : "#0B3C2C";
+  }
+
+  function showLotteryConfigError(message) {
+    var error = byId("lottery-config-error");
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  function clearLotteryConfigError() {
+    var error = byId("lottery-config-error");
+    error.textContent = "";
+    error.hidden = true;
+  }
+
+  function normalizeLotteryDraw(value) {
+    value = value && typeof value === "object" ? value : {};
+    var drawId = String(value.drawId || "").trim();
+    var configVersion = String(value.configVersion || "").trim();
+    var prizeId = String(value.prizeId || "").trim();
+    var prizeLabel = String(value.prizeLabel || "").trim();
+    var prizeColor = String(value.prizeColor || "").trim().toUpperCase();
+    var memberId = String(value.memberId || "").trim();
+    var memberDisplayName = String(value.memberDisplayName || "LINE 會員").trim();
+    var ticketCost = Number(value.ticketCost);
+    var originalPointBalance = Number(value.originalPointBalance);
+    var pointBalance = Number(value.pointBalance);
+    var drawnAt = String(value.drawnAt || "").trim();
+    if (
+      !/^LDW-[A-Z0-9]{16}$/.test(drawId) ||
+      !/^LCF-[A-Z0-9]{12}$/.test(configVersion) ||
+      !/^LPR-[A-Z0-9]{10}$/.test(prizeId) ||
+      !prizeLabel ||
+      prizeLabel.length > 40 ||
+      !/^#[0-9A-F]{6}$/.test(prizeColor) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !memberDisplayName ||
+      ticketCost !== 5 ||
+      !Number.isSafeInteger(originalPointBalance) ||
+      !Number.isSafeInteger(pointBalance) ||
+      originalPointBalance < 5 ||
+      pointBalance !== originalPointBalance - 5 ||
+      Number.isNaN(new Date(drawnAt).getTime())
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的抽獎紀錄格式不正確。");
+    }
+    return {
+      drawId: drawId,
+      configVersion: configVersion,
+      prizeId: prizeId,
+      prizeLabel: prizeLabel,
+      prizeColor: prizeColor,
+      memberId: memberId,
+      memberDisplayName: memberDisplayName.slice(0, 100),
+      ticketCost: ticketCost,
+      originalPointBalance: originalPointBalance,
+      pointBalance: pointBalance,
+      drawnAt: drawnAt,
+    };
+  }
+
+  function renderLotteryHistoryLoading() {
+    byId("lottery-history-loading").hidden = false;
+    byId("lottery-history-list").hidden = true;
+    byId("lottery-history-list").setAttribute("aria-busy", "true");
+    byId("lottery-history-empty").hidden = true;
+    byId("lottery-history-error").hidden = true;
+  }
+
+  function renderLotteryHistoryError(errorValue) {
+    byId("lottery-history-loading").hidden = true;
+    byId("lottery-history-list").hidden = true;
+    byId("lottery-history-list").setAttribute("aria-busy", "false");
+    byId("lottery-history-empty").hidden = true;
+    byId("lottery-history-error").textContent =
+      "抽獎紀錄載入失敗：" + normalizeError(errorValue).message;
+    byId("lottery-history-error").hidden = false;
+  }
+
+  function renderLotteryHistory(draws, hasMore) {
+    lotteryDraws = (Array.isArray(draws) ? draws : []).map(normalizeLotteryDraw);
+    lotteryDrawsHaveMore = Boolean(hasMore);
+    var list = byId("lottery-history-list");
+    byId("lottery-history-loading").hidden = true;
+    byId("lottery-history-error").hidden = true;
+    list.hidden = lotteryDraws.length === 0;
+    list.setAttribute("aria-busy", "false");
+    byId("lottery-history-empty").hidden = lotteryDraws.length !== 0;
+    list.textContent = "";
+    byId("lottery-history-summary").textContent = lotteryDraws.length
+      ? "最近 " +
+        lotteryDraws.length +
+        " 筆抽獎紀錄" +
+        (lotteryDrawsHaveMore ? "（僅顯示最新 50 筆）" : "")
+      : "查看會員扣除 5 點後的抽獎結果。";
+
+    lotteryDraws.forEach(function (draw) {
+      var item = document.createElement("li");
+      var swatch = document.createElement("span");
+      var main = document.createElement("div");
+      var member = document.createElement("strong");
+      var detail = document.createElement("small");
+      var prize = document.createElement("strong");
+      var meta = document.createElement("div");
+      var time = document.createElement("time");
+      var balance = document.createElement("span");
+      item.className = "lottery-history-row";
+      swatch.className = "lottery-history-swatch";
+      swatch.style.backgroundColor = draw.prizeColor;
+      main.className = "lottery-history-main";
+      member.textContent = draw.memberDisplayName;
+      detail.textContent = draw.memberId + " · " + draw.drawId;
+      prize.className = "lottery-history-prize";
+      prize.textContent = draw.prizeLabel;
+      time.dateTime = draw.drawnAt;
+      time.textContent = formatDateTime(draw.drawnAt);
+      balance.textContent =
+        formatNumber(draw.originalPointBalance) +
+        " → " +
+        formatNumber(draw.pointBalance) +
+        " 點";
+      main.appendChild(member);
+      main.appendChild(detail);
+      meta.appendChild(time);
+      meta.appendChild(balance);
+      item.appendChild(swatch);
+      item.appendChild(main);
+      item.appendChild(prize);
+      item.appendChild(meta);
+      list.appendChild(item);
+    });
   }
 
   function handleCreatePointType(event) {
@@ -1688,6 +2438,12 @@
       INVALID_REDEMPTION_MODE: "點數類型的領取規則無效，請重新選擇。",
       INVALID_CAMPAIGN_EXPIRY: "領取期限需晚於現在，且不可超過一年。",
       POINT_DATA_CONFLICT: "點數試算表資料不一致，請先檢查工作表內容。",
+      INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個不重複的轉盤獎項。",
+      INVALID_LOTTERY_COLOR: "獎項顏色格式不正確，請重新選擇。",
+      INVALID_LOTTERY_PROBABILITY: "每個獎項機率需介於 0.01% 至 99.99%。",
+      INVALID_LOTTERY_TOTAL: "所有獎項機率合計必須是 100%。",
+      LOTTERY_DATA_ERROR: "轉盤或抽獎工作表資料不一致，請先檢查內容。",
+      LOTTERY_SCHEMA_MISMATCH: "轉盤工作表欄位版本不符，請重新執行 setup()。",
       REQUEST_ID_CONFLICT: "同一請求已被用於不同操作，請重新整理後再試。",
       CONFIG_ERROR: "管理後台尚未完成設定，請重新執行管理 GAS setup()。",
     };
@@ -1748,7 +2504,12 @@
   }
 
   function updateOperationControls() {
-    var busy = isListLoading || isMutationLoading || isPointMutationLoading;
+    var busy =
+      isListLoading ||
+      isMutationLoading ||
+      isPointMutationLoading ||
+      isLotteryLoading ||
+      isLotteryMutationLoading;
     if (ADMIN_PAGE === "points") {
       byId("refresh-points-button").disabled = busy;
       byId("refresh-point-history-button").disabled = busy || isPointHistoryLoading;
@@ -1758,6 +2519,23 @@
       });
       byId("create-point-type-button").disabled = busy || !isPointWorkspaceAvailable;
       renderPointTypes();
+      return;
+    }
+    if (ADMIN_PAGE === "lottery") {
+      byId("refresh-lottery-button").disabled = busy;
+      byId("refresh-lottery-history-button").disabled =
+        busy || isLotteryHistoryLoading;
+      byId("add-lottery-prize-button").disabled =
+        busy || lotteryPrizes.length >= 12;
+      byId("save-lottery-button").disabled = busy;
+      byId("lottery-config-form")
+        .querySelectorAll("input, .lottery-prize-remove")
+        .forEach(function (control) {
+          control.disabled =
+            busy ||
+            (control.classList.contains("lottery-prize-remove") &&
+              lotteryPrizes.length <= 2);
+        });
       return;
     }
 
@@ -1982,6 +2760,34 @@
         if (event.currentTarget.dataset.busy === "true") event.preventDefault();
         else pendingDeletePointType = null;
       });
+      return;
+    }
+
+    if (ADMIN_PAGE === "lottery") {
+      byId("refresh-lottery-button").addEventListener("click", function () {
+        if (isDemoSession) {
+          renderDemoDashboard();
+          showToast("預覽設定已重新整理");
+          return;
+        }
+        fetchLotteryConfig(bootVersion, true);
+      });
+      byId("refresh-lottery-history-button").addEventListener(
+        "click",
+        function () {
+          if (isDemoSession) {
+            renderLotteryHistory(demoLotteryDraws(), false);
+            showToast("預覽紀錄已重新整理");
+            return;
+          }
+          fetchLotteryHistory(bootVersion, true);
+        }
+      );
+      byId("add-lottery-prize-button").addEventListener("click", addLotteryPrize);
+      byId("lottery-config-form").addEventListener(
+        "submit",
+        handleSaveLotteryConfig
+      );
       return;
     }
 
