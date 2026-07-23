@@ -137,10 +137,19 @@
           throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
         }
 
-        renderMember(response.data.member, Boolean(response.data.created));
-        return Promise.resolve(redeemPendingPointCampaign()).then(function () {
-          return loadPointHistory();
-        });
+        var wasCreated = Boolean(response.data.created);
+        renderMember(response.data.member, wasCreated);
+        return sendNewMemberJoinMessage(
+          getPointMessageContext(),
+          response.data.member,
+          wasCreated
+        )
+          .then(function () {
+            return redeemPendingPointCampaign();
+          })
+          .then(function () {
+            return loadPointHistory();
+          });
       })
       .catch(function (error) {
         if (expectedBootVersion !== bootVersion) return;
@@ -722,6 +731,33 @@
     awardedPoints,
     pointBalance
   ) {
+    var message =
+      "會員點數通知\n原本點數：" +
+      formatPointNumber(originalPointBalance) +
+      " 點\n獲得點數：+" +
+      formatPointNumber(awardedPoints) +
+      " 點\n目前點數：" +
+      formatPointNumber(pointBalance) +
+      " 點";
+
+    return sendOfficialAccountMessage(messageContext, message);
+  }
+
+  function sendNewMemberJoinMessage(messageContext, member, wasCreated) {
+    if (!wasCreated || !member) {
+      return Promise.resolve({ sent: false, reason: "not_new_member" });
+    }
+
+    var message =
+      "新會員加入通知\n我已完成會員註冊\n會員編號：" +
+      cleanDisplayText(member.memberId, "—") +
+      "\n會員名稱：" +
+      cleanDisplayText(member.displayName, "LINE 會員");
+
+    return sendOfficialAccountMessage(messageContext, message);
+  }
+
+  function sendOfficialAccountMessage(messageContext, message) {
     if (
       !messageContext ||
       !messageContext.inClient ||
@@ -731,15 +767,6 @@
     ) {
       return Promise.resolve({ sent: false, reason: "unavailable" });
     }
-
-    var message =
-      "會員點數通知\n原本點數：" +
-      formatPointNumber(originalPointBalance) +
-      " 點\n獲得點數：+" +
-      formatPointNumber(awardedPoints) +
-      " 點\n目前點數：" +
-      formatPointNumber(pointBalance) +
-      " 點";
 
     return Promise.resolve()
       .then(function () {

@@ -509,6 +509,41 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   );
 });
 
+test("new member creation sends a privacy-bounded official account message", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const sync = getTopLevelFunctionContaining(
+    script,
+    /sendGasRequest\(["']upsertMember["']/
+  );
+  const newMemberMessage = getTopLevelFunctionContaining(
+    script,
+    /["']新會員加入通知\\n我已完成會員註冊/
+  );
+  const officialAccountMessage = getTopLevelFunctionContaining(
+    script,
+    /window\.liff\.sendMessages\s*\(/
+  );
+
+  assert.match(sync, /var\s+wasCreated\s*=\s*Boolean\(response\.data\.created\)/);
+  assert.match(sync, /sendNewMemberJoinMessage\s*\(/);
+  assert.match(sync, /redeemPendingPointCampaign\s*\(/);
+  assert.equal(
+    sync.indexOf("sendNewMemberJoinMessage") <
+      sync.indexOf("redeemPendingPointCampaign"),
+    true,
+    "a first-time join message should be attempted before a pending point message"
+  );
+  assert.match(newMemberMessage, /if\s*\(!wasCreated\s*\|\|\s*!member\)/);
+  assert.match(newMemberMessage, /member\.memberId/);
+  assert.match(newMemberMessage, /member\.displayName/);
+  assert.doesNotMatch(newMemberMessage, /member\.(?:phone|birthday|lineUserId)/);
+  assert.match(officialAccountMessage, /messageContext\.inClient/);
+  assert.match(officialAccountMessage, /messageContext\.isOneToOneChat/);
+  assert.match(officialAccountMessage, /reason:\s*["']unavailable["']/);
+  assert.match(officialAccountMessage, /catch\(function\s*\(\)\s*\{/);
+  assert.match(officialAccountMessage, /reason:\s*["']send_failed["']/);
+});
+
 test("shared transport exposes only the bounded point campaign fields", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
