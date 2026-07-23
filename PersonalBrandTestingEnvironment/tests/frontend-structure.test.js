@@ -560,6 +560,9 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(script, /requestFriendship\s*\(/);
   assert.match(script, /sendMessages\s*\(/);
   assert.match(script, /type\s*===\s*["']utou["']/);
+  assert.match(script, /OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE/);
+  assert.match(script, /OFFICIAL_ACCOUNT_NOT_FRIEND/);
+  assert.match(script, /請先加入會員官方帳號/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
   assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
   assert.match(redeem, /重新掃描同一張 QR Code/);

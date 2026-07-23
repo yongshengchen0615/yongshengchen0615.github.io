@@ -366,10 +366,15 @@
       friendshipChecked: false,
     };
 
-    if (
-      !window.liff ||
-      typeof window.liff.getFriendship !== "function"
-    ) {
+    if (!window.liff || typeof window.liff.getFriendship !== "function") {
+      if (messageContext.inClient) {
+        return Promise.reject(
+          createClientError(
+            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+            "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
+          )
+        );
+      }
       return Promise.resolve(messageContext);
     }
 
@@ -383,10 +388,16 @@
 
         if (
           messageContext.isFriend ||
-          !messageContext.inClient ||
-          typeof window.liff.requestFriendship !== "function"
+          !messageContext.inClient
         ) {
           return messageContext;
+        }
+
+        if (typeof window.liff.requestFriendship !== "function") {
+          throw createClientError(
+            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+            "目前無法開啟官方帳號加入確認，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
+          );
         }
 
         return Promise.resolve(window.liff.requestFriendship())
@@ -398,12 +409,29 @@
             messageContext.isFriend = Boolean(
               updatedFriendship && updatedFriendship.friendFlag
             );
+            if (!messageContext.isFriend) {
+              throw createClientError(
+                "OFFICIAL_ACCOUNT_NOT_FRIEND",
+                "請先加入會員官方帳號，完成後按「重新確認」才能領取點數。"
+              );
+            }
             return messageContext;
           });
       })
-      .catch(function () {
-        // A friendship check is best effort. Point redemption still succeeds,
-        // while the success state explains why no chat message was sent.
+      .catch(function (error) {
+        if (messageContext.inClient) {
+          if (
+            error &&
+            (error.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
+              error.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE")
+          ) {
+            throw error;
+          }
+          throw createClientError(
+            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+            "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
+          );
+        }
         return messageContext;
       });
   }
@@ -1386,6 +1414,10 @@
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入後再試。",
       INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入後再試。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證。請確認 LIFF 已勾選 openid 權限。",
+      OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE:
+        "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。",
+      OFFICIAL_ACCOUNT_NOT_FRIEND:
+        "請先加入會員官方帳號，完成後按「重新確認」才能領取點數。",
       CONFIG_ERROR: "GAS 後台尚未完成設定，請檢查 Script Properties。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
       SPREADSHEET_ERROR: "會員試算表目前無法使用，請檢查試算表 ID 與權限。",
