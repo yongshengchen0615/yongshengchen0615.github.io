@@ -25,6 +25,11 @@
   var isPointClaimPersisted = false;
   var isPointClaimBusy = false;
   var isPointScannerBusy = false;
+  var pointScannerStream = null;
+  var pointScannerTimer = 0;
+  var pointScannerResolve = null;
+  var pointScannerReject = null;
+  var pointScannerDetecting = false;
   var isPointHistoryLoading = false;
   var pointHistoryRequestVersion = 0;
 
@@ -367,24 +372,12 @@
       return;
     }
 
-    var scanner = window.liff && window.liff.scanCodeV2;
-    if (!isPointScannerAvailable()) {
-      showToast(
-        "目前 LIFF 未開放 QR 掃描，請在 LINE Developers 開啟 Scan QR，並將 LIFF Size 設為 Full。",
-        "error"
-      );
-      return;
-    }
-
     isPointScannerBusy = true;
     setButtonBusy(button, true, "正在開啟掃描");
 
-    Promise.resolve()
-      .then(function () {
-        return scanner.call(window.liff);
-      })
-      .then(function (result) {
-        var claim = extractPointClaimFromQr(result && result.value);
+    openPointQrScanner()
+      .then(function (scannedValue) {
+        var claim = extractPointClaimFromQr(scannedValue);
         if (!claim) {
           throw createClientError(
             "INVALID_POINT_QR",
@@ -408,6 +401,25 @@
       });
   }
 
+  function openPointQrScanner() {
+    if (!isPointScannerAvailable()) {
+      return openEmbeddedPointScanner();
+    }
+
+    return Promise.resolve()
+      .then(function () {
+        return window.liff.scanCodeV2();
+      })
+      .then(function (result) {
+        return result && result.value;
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) throw error;
+        if (!isNativePointScannerUnavailableError(error)) throw error;
+        return openEmbeddedPointScanner();
+      });
+  }
+
   function isPointScannerAvailable() {
     if (!window.liff || typeof window.liff.scanCodeV2 !== "function") {
       return false;
@@ -422,6 +434,228 @@
     } catch (_error) {
       return false;
     }
+  }
+
+  function isNativePointScannerUnavailableError(error) {
+    var normalized = normalizeClientError(error);
+    var code = String(error && (error.code || error.name) || "").toUpperCase();
+    return (
+      normalized.code === "SCAN_QR_UNAVAILABLE" ||
+      code === "FORBIDDEN" ||
+      code === "EXCEPTION_IN_SUBWINDOW"
+    );
+  }
+
+  function openEmbeddedPointScanner() {
+    if (pointScannerReject) {
+      return Promise.reject(
+        createClientError("BUSY", "QR 掃描器正在使用中，請稍候。")
+      );
+    }
+
+    var dialog = byId("point-scanner-dialog");
+    setEmbeddedPointScannerStatus("正在啟動相機…");
+    openDialog(dialog);
+
+    return new Promise(function (resolve, reject) {
+      pointScannerResolve = resolve;
+      pointScannerReject = reject;
+
+      createEmbeddedPointBarcodeDetector()
+        .then(function (detector) {
+          if (
+            !window.navigator.mediaDevices ||
+            typeof window.navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            throw createClientError(
+              "CAMERA_UNAVAILABLE",
+              "目前瀏覽器無法開啟相機，請更新 LINE 或改用手機瀏覽器。"
+            );
+          }
+
+          return window.navigator.mediaDevices
+            .getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 1280 },
+                height: { ideal: 1280 },
+              },
+            })
+            .then(function (stream) {
+              return { detector: detector, stream: stream };
+            });
+        })
+        .then(function (scanner) {
+          if (!pointScannerReject) {
+            scanner.stream.getTracks().forEach(function (track) {
+              track.stop();
+            });
+            return;
+          }
+
+          pointScannerStream = scanner.stream;
+          var video = byId("point-scanner-video");
+          video.srcObject = scanner.stream;
+          return Promise.resolve(video.play()).then(function () {
+            setEmbeddedPointScannerStatus("將 QR Code 對準框線，辨識成功後會自動領點。");
+            var label = byId("scan-point-button").querySelector("span");
+            if (label) label.textContent = "正在掃描";
+            scheduleEmbeddedPointScan(scanner.detector);
+          });
+        })
+        .catch(function (error) {
+          if (!pointScannerReject) return;
+          finishEmbeddedPointScanner("", normalizeEmbeddedPointScannerError(error));
+        });
+    });
+  }
+
+  function createEmbeddedPointBarcodeDetector() {
+    if (typeof window.BarcodeDetector !== "function") {
+      return Promise.reject(
+        createClientError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器沒有 QR 辨識功能，請在 LINE Developers 開啟 Scan QR。"
+        )
+      );
+    }
+
+    var supportedFormats =
+      typeof window.BarcodeDetector.getSupportedFormats === "function"
+        ? window.BarcodeDetector.getSupportedFormats()
+        : Promise.resolve(["qr_code"]);
+
+    return Promise.resolve(supportedFormats).then(function (formats) {
+      if (!Array.isArray(formats) || formats.indexOf("qr_code") === -1) {
+        throw createClientError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器不支援 QR Code 辨識，請更新 LINE 或改用手機瀏覽器。"
+        );
+      }
+      return new window.BarcodeDetector({ formats: ["qr_code"] });
+    });
+  }
+
+  function scheduleEmbeddedPointScan(detector) {
+    window.clearTimeout(pointScannerTimer);
+    if (!pointScannerReject) return;
+
+    pointScannerTimer = window.setTimeout(function () {
+      var video = byId("point-scanner-video");
+      if (!pointScannerReject) return;
+      if (!video || video.readyState < 2 || pointScannerDetecting) {
+        scheduleEmbeddedPointScan(detector);
+        return;
+      }
+
+      pointScannerDetecting = true;
+      Promise.resolve(detector.detect(video))
+        .then(function (barcodes) {
+          if (!pointScannerReject || !Array.isArray(barcodes)) return;
+          var match = barcodes.find(function (barcode) {
+            return barcode && String(barcode.rawValue || "").trim();
+          });
+          if (match) {
+            finishEmbeddedPointScanner(String(match.rawValue).trim());
+          }
+        })
+        .catch(function () {
+          // A frame can fail while the camera is focusing; keep scanning.
+        })
+        .finally(function () {
+          pointScannerDetecting = false;
+          if (pointScannerReject) scheduleEmbeddedPointScan(detector);
+        });
+    }, 160);
+  }
+
+  function cancelEmbeddedPointScanner() {
+    if (!pointScannerReject) {
+      stopEmbeddedPointScanner();
+      closeEmbeddedPointScannerDialog();
+      return;
+    }
+    finishEmbeddedPointScanner(
+      "",
+      createClientError("POINT_SCAN_CANCELLED", "已取消掃描。")
+    );
+  }
+
+  function finishEmbeddedPointScanner(value, error) {
+    var resolve = pointScannerResolve;
+    var reject = pointScannerReject;
+    pointScannerResolve = null;
+    pointScannerReject = null;
+    stopEmbeddedPointScanner();
+    closeEmbeddedPointScannerDialog();
+
+    if (value && resolve) {
+      resolve(value);
+    } else if (reject) {
+      reject(error || createClientError("CAMERA_UNAVAILABLE", "QR 掃描器已停止。"));
+    }
+  }
+
+  function stopEmbeddedPointScanner() {
+    window.clearTimeout(pointScannerTimer);
+    pointScannerTimer = 0;
+    pointScannerDetecting = false;
+
+    if (pointScannerStream) {
+      pointScannerStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+      pointScannerStream = null;
+    }
+
+    var video = byId("point-scanner-video");
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+  }
+
+  function closeEmbeddedPointScannerDialog() {
+    var dialog = byId("point-scanner-dialog");
+    if (!dialog) return;
+    if (typeof dialog.close === "function" && dialog.open) {
+      dialog.close();
+    } else {
+      dialog.removeAttribute("open");
+    }
+  }
+
+  function setEmbeddedPointScannerStatus(message, tone) {
+    var status = byId("point-scanner-status");
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.tone = tone || "loading";
+  }
+
+  function normalizeEmbeddedPointScannerError(error) {
+    var name = String(error && (error.name || error.code) || "").toUpperCase();
+    if (name === "NOTALLOWEDERROR" || name === "SECURITYERROR") {
+      return createClientError(
+        "CAMERA_PERMISSION_DENIED",
+        "相機權限被拒絕，請在 LINE 或瀏覽器設定中允許相機後重試。"
+      );
+    }
+    if (name === "NOTFOUNDERROR" || name === "OVERCONSTRAINEDERROR") {
+      return createClientError("CAMERA_NOT_FOUND", "找不到可使用的相機。");
+    }
+    if (name === "NOTREADABLEERROR" || name === "ABORTERROR") {
+      return createClientError(
+        "CAMERA_UNAVAILABLE",
+        "相機目前無法使用，請關閉其他使用相機的程式後重試。"
+      );
+    }
+    return error && error.code
+      ? error
+      : createClientError(
+          "CAMERA_UNAVAILABLE",
+          "目前無法啟動相機，請更新 LINE 或改用手機瀏覽器。"
+        );
   }
 
   function extractPointClaimFromQr(value) {
@@ -472,8 +706,14 @@
   }
 
   function isPointScanCancelled(error) {
-    var code = String(error && (error.code || error.name || error.message) || "").toUpperCase();
-    return /CANCEL/.test(code);
+    var errorText = [
+      error && error.code,
+      error && error.name,
+      error && error.message,
+    ]
+      .join(" ")
+      .toUpperCase();
+    return /CANCEL/.test(errorText);
   }
 
   function sendPointClaimMessage(
@@ -1681,6 +1921,10 @@
     byId("preview-button").addEventListener("click", renderDemoMember);
     byId("refresh-point-history-button").addEventListener("click", loadPointHistory);
     byId("scan-point-button").addEventListener("click", handleScanPointQr);
+    byId("point-scanner-cancel-button").addEventListener(
+      "click",
+      cancelEmbeddedPointScanner
+    );
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
@@ -1711,10 +1955,18 @@
       dialog.addEventListener("click", function (event) {
         if (event.target !== dialog) return;
         if (dialog.id === "claim-dialog") return;
+        if (dialog.id === "point-scanner-dialog") {
+          cancelEmbeddedPointScanner();
+          return;
+        }
         closeDialog(dialog);
       });
       dialog.addEventListener("cancel", function (event) {
         if (dialog.id === "claim-dialog") event.preventDefault();
+        if (dialog.id === "point-scanner-dialog") {
+          event.preventDefault();
+          cancelEmbeddedPointScanner();
+        }
       });
     });
 
@@ -1748,6 +2000,8 @@
         byId("profile-form-error").hidden = true;
       });
     });
+
+    window.addEventListener("pagehide", stopEmbeddedPointScanner);
   }
 
   bindInteractions();

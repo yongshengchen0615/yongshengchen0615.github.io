@@ -557,7 +557,7 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
   assert.match(redeem, /sendPointClaimMessage\s*\(/);
-  assert.match(script, /scanCodeV2\s*;/);
+  assert.match(script, /scanCodeV2\s*\(/);
   assert.match(script, /isApiAvailable\(["']scanCodeV2["']\)/);
   assert.match(script, /SCAN_QR_UNAVAILABLE/);
   assert.match(script, /extractPointClaimFromQr\s*\(/);
@@ -575,6 +575,43 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(stableRequest, /sessionStorage\.setItem\s*\(/);
   assert.match(transport, /options\.requestId/);
   assert.match(transport, /createRequestId:\s*createRequestId/);
+});
+
+test("member point scanner falls back to an in-page camera and always stops media tracks", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const scannerDialog = getOpeningTagById(html, "point-scanner-dialog");
+  const scannerVideo = getOpeningTagById(html, "point-scanner-video");
+  const scannerCancel = getOpeningTagById(html, "point-scanner-cancel-button");
+  const openScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+openPointQrScanner\s*\(/
+  );
+  const embeddedScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+openEmbeddedPointScanner\s*\(/
+  );
+  const stopScanner = getTopLevelFunctionContaining(
+    script,
+    /function\s+stopEmbeddedPointScanner\s*\(/
+  );
+
+  assert.match(scannerDialog, /<dialog\b/i);
+  assert.match(scannerDialog, /aria-labelledby=["']point-scanner-title["']/i);
+  assert.match(scannerDialog, /aria-describedby=["']point-scanner-description["']/i);
+  assert.match(scannerVideo, /\bautoplay(?:\s|>|=)/i);
+  assert.match(scannerVideo, /\bmuted(?:\s|>|=)/i);
+  assert.match(scannerVideo, /\bplaysinline(?:\s|>|=)/i);
+  assert.match(scannerCancel, /\btype=["']button["']/i);
+  assert.match(openScanner, /scanCodeV2\s*\(/);
+  assert.match(openScanner, /openEmbeddedPointScanner\s*\(/);
+  assert.match(embeddedScanner, /BarcodeDetector/);
+  assert.match(embeddedScanner, /getUserMedia\s*\(/);
+  assert.match(embeddedScanner, /facingMode\s*:\s*\{\s*ideal\s*:\s*["']environment["']/);
+  assert.match(script, /detector\.detect\s*\(\s*video\s*\)/);
+  assert.match(stopScanner, /getTracks\s*\(\s*\)\.forEach/);
+  assert.match(stopScanner, /track\.stop\s*\(\s*\)/);
+  assert.match(script, /pagehide["']\s*,\s*stopEmbeddedPointScanner/);
 });
 
 test("admin loads a local QR encoder and frontend code never calls an external QR service", () => {

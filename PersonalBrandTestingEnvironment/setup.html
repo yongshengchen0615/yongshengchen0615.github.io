@@ -94,7 +94,7 @@
           <pre><code>client/config.json → 會員 GAS /exec
 admin/config.json  → 管理 GAS /exec</code></pre>
           <p>兩個 GAS URL 不可共用或對調。每次更新 Apps Script 程式後，也要在管理部署作業中建立新版本。</p>
-          <p>會員不需要加入官方帳號即可集點。會員頁提供「掃描集點 QR Code」按鈕，會使用 <code>liff.scanCodeV2()</code> 讀取管理端產生的 QR；也可以直接開啟 QR 連結完成登入與領點。若頁面是在官方帳號一對一聊天室中開啟，且已選用 <code>chat_message.write</code>，系統才會額外嘗試用 <code>liff.sendMessages()</code> 傳送通知，通知失敗不會影響點數發放。</p>
+          <p>會員不需要加入官方帳號即可集點。會員頁提供「掃描集點 QR Code」按鈕，會優先使用 <code>liff.scanCodeV2()</code>，原生掃描不可用時則在支援的瀏覽器切換成頁內相機掃描；也可以直接開啟 QR 連結完成登入與領點。若頁面是在官方帳號一對一聊天室中開啟，且已選用 <code>chat_message.write</code>，系統才會額外嘗試用 <code>liff.sendMessages()</code> 傳送通知，通知失敗不會影響點數發放。</p>
         </div>
       </section>
 
