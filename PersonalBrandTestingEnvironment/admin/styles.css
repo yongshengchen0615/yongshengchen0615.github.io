@@ -608,6 +608,144 @@ button:disabled {
   border-block: 1px solid var(--line-strong);
 }
 
+.point-history-workspace {
+  margin-top: clamp(3rem, 6vw, 6rem);
+  border-block: 1px solid var(--line-strong);
+}
+
+.point-history-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.point-history-heading h2 {
+  margin: 0.4rem 0 0;
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  font-weight: 560;
+  letter-spacing: -0.045em;
+}
+
+.point-history-heading p:last-child {
+  max-width: 36rem;
+  margin: 0.65rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.75;
+}
+
+.point-history-heading .refresh-button {
+  min-width: 9.5rem;
+  flex: 0 0 auto;
+}
+
+.admin-point-history-status,
+.admin-point-history-empty,
+.admin-point-history-error {
+  min-height: 4rem;
+  margin: 0;
+  padding: 1.35rem 0;
+}
+
+.admin-point-history-status {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.history-skeleton-line {
+  width: 100%;
+  height: 1.05rem;
+  display: block;
+  background: linear-gradient(90deg, rgba(16, 39, 29, 0.08), rgba(16, 39, 29, 0.16), rgba(16, 39, 29, 0.08));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.history-skeleton-line:nth-child(2) {
+  width: 78%;
+}
+
+.history-skeleton-line:nth-child(3) {
+  width: 58%;
+}
+
+.admin-point-history-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.admin-point-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto;
+  grid-template-areas:
+    "main amount"
+    "meta meta";
+  gap: 0.55rem 1.25rem;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-point-history-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.28rem;
+  grid-area: main;
+}
+
+.admin-point-history-member {
+  overflow: hidden;
+  font-size: 0.93rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-point-history-details,
+.admin-point-history-meta {
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+
+.admin-point-history-amount {
+  align-self: start;
+  color: var(--green-dark);
+  font-size: 1.08rem;
+  grid-area: amount;
+  white-space: nowrap;
+}
+
+.admin-point-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  grid-area: meta;
+}
+
+.admin-point-history-meta span::before {
+  content: "·";
+  margin-right: 0.45rem;
+  color: var(--line-strong);
+}
+
+.admin-point-history-meta time::before {
+  content: "";
+}
+
+.admin-point-history-empty {
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line);
+}
+
+.admin-point-history-error {
+  border-top: 1px solid var(--line);
+}
+
 .point-workspace-heading {
   display: flex;
   align-items: end;
@@ -1569,6 +1707,19 @@ tbody tr[data-busy="true"] {
     flex-direction: column;
   }
 
+  .point-history-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .point-history-heading p:last-child {
+    max-width: 42rem;
+  }
+
+  .point-history-heading .refresh-button {
+    width: 100%;
+  }
+
   .point-workspace-heading > p {
     max-width: 42rem;
     text-align: left;
@@ -1891,6 +2042,12 @@ tbody tr[data-busy="true"] {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
   }
 }
 

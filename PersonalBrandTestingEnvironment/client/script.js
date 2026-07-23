@@ -253,14 +253,22 @@
 
     openDialog(byId("claim-dialog"));
     setPointClaimBusy(true);
-    setClaimLoadingCopy("正在加入會員點數", "請保持此頁開啟，完成前請勿離開。");
+    setClaimLoadingCopy("正在確認官方帳號", "請保持此頁開啟，系統會先確認訊息權限。");
     setClaimState("claim-loading-state");
 
-    var redemptionRequestId = ensurePendingPointRedemptionRequestId();
-    sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
-      claim: pendingPointClaim,
-    }, redemptionRequestId)
+    prepareOfficialAccountMessageContext()
+      .then(function (messageContext) {
+        setClaimLoadingCopy("正在加入會員點數", "請保持此頁開啟，完成前請勿離開。");
+        var redemptionRequestId = ensurePendingPointRedemptionRequestId();
+        return sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
+          claim: pendingPointClaim,
+        }, redemptionRequestId).then(function (response) {
+          return { response: response, messageContext: messageContext };
+        });
+      })
       .then(function (response) {
+        var messageContext = response.messageContext;
+        response = response.response;
         assertSuccessfulResponse(response);
         clearInvalidTokenRecoveryGuard();
 
@@ -331,11 +339,130 @@
               : "這張 QR 對本會員已完成領取。";
         clearPendingPointClaim();
         setClaimState("claim-success-state");
+        setClaimMessageStatus({ pending: true });
+        return sendPointClaimMessage(
+          messageContext,
+          originalPointBalance,
+          awardedPoints,
+          pointBalance
+        ).then(
+          function (messageResult) {
+            setClaimMessageStatus(messageResult);
+          }
+        );
       })
       .catch(handlePointClaimError)
       .finally(function () {
         setPointClaimBusy(false);
       });
+  }
+
+  function prepareOfficialAccountMessageContext() {
+    var liffContext = getLiffContext();
+    var messageContext = {
+      inClient: liffContext.inClient === true,
+      isOneToOneChat: liffContext.type === "utou",
+      isFriend: false,
+      friendshipChecked: false,
+    };
+
+    if (
+      !window.liff ||
+      typeof window.liff.getFriendship !== "function"
+    ) {
+      return Promise.resolve(messageContext);
+    }
+
+    return Promise.resolve()
+      .then(function () {
+        return window.liff.getFriendship();
+      })
+      .then(function (friendship) {
+        messageContext.friendshipChecked = true;
+        messageContext.isFriend = Boolean(friendship && friendship.friendFlag);
+
+        if (
+          messageContext.isFriend ||
+          !messageContext.inClient ||
+          typeof window.liff.requestFriendship !== "function"
+        ) {
+          return messageContext;
+        }
+
+        return Promise.resolve(window.liff.requestFriendship())
+          .then(function () {
+            return window.liff.getFriendship();
+          })
+          .then(function (updatedFriendship) {
+            messageContext.friendshipChecked = true;
+            messageContext.isFriend = Boolean(
+              updatedFriendship && updatedFriendship.friendFlag
+            );
+            return messageContext;
+          });
+      })
+      .catch(function () {
+        // A friendship check is best effort. Point redemption still succeeds,
+        // while the success state explains why no chat message was sent.
+        return messageContext;
+      });
+  }
+
+  function sendPointClaimMessage(
+    messageContext,
+    originalPointBalance,
+    awardedPoints,
+    pointBalance
+  ) {
+    if (
+      !messageContext ||
+      !messageContext.inClient ||
+      !messageContext.isOneToOneChat ||
+      !messageContext.isFriend ||
+      !window.liff ||
+      typeof window.liff.sendMessages !== "function"
+    ) {
+      return Promise.resolve({ sent: false, reason: "unavailable" });
+    }
+
+    var message =
+      "會員點數通知\n原本點數：" +
+      formatPointNumber(originalPointBalance) +
+      " 點\n獲得點數：+" +
+      formatPointNumber(awardedPoints) +
+      " 點\n目前點數：" +
+      formatPointNumber(pointBalance) +
+      " 點";
+
+    return Promise.resolve()
+      .then(function () {
+        return window.liff.sendMessages([{ type: "text", text: message }]);
+      })
+      .then(function () {
+        return { sent: true };
+      })
+      .catch(function () {
+        return { sent: false, reason: "send_failed" };
+      });
+  }
+
+  function setClaimMessageStatus(result) {
+    var status = byId("claim-success-message-status");
+    if (!status) return;
+
+    status.hidden = false;
+    status.dataset.tone = result && result.pending
+      ? "pending"
+      : result && result.sent
+        ? "success"
+        : "muted";
+    status.textContent = result && result.pending
+      ? "正在將領點通知傳送給官方帳號…"
+      : result && result.sent
+        ? "已將領點通知傳送給官方帳號。"
+        : result && result.reason === "unavailable"
+          ? "點數已發放；請從官方帳號一對一聊天室開啟會員頁面，才能自動傳送通知。"
+          : "點數已發放，但領點通知未能傳送給官方帳號。";
   }
 
   function normalizePointCampaign(campaign) {
@@ -592,6 +719,10 @@
     ].forEach(function (id) {
       byId(id).hidden = id !== activeId;
     });
+    var messageStatus = byId("claim-success-message-status");
+    if (messageStatus && activeId !== "claim-success-state") {
+      messageStatus.hidden = true;
+    }
 
     var focusTargetId = {
       "claim-success-state": "claim-success-close-button",
@@ -1099,7 +1230,7 @@
     );
     renderPointHistory([
       {
-        redemptionId: "RDM-PREVIEW00000001",
+        redemptionId: "RDM-PREVIEW000000001",
         label: "20 點",
         points: 20,
         balanceAfter: 128,
@@ -1108,7 +1239,7 @@
         source: "qr",
       },
       {
-        redemptionId: "RDM-PREVIEW00000002",
+        redemptionId: "RDM-PREVIEW000000002",
         label: "8 點",
         points: 8,
         balanceAfter: 108,

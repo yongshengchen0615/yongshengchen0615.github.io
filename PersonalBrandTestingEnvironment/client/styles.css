@@ -1630,6 +1630,27 @@ code {
   margin-top: 1rem !important;
 }
 
+.claim-message-status {
+  max-width: 26rem;
+  margin-top: 0.5rem !important;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  color: var(--ink-soft) !important;
+  background: rgba(16, 39, 29, 0.035);
+  font-size: 0.72rem !important;
+  line-height: 1.6 !important;
+}
+
+.claim-message-status[data-tone="pending"] {
+  color: var(--green-dark) !important;
+}
+
+.claim-message-status[data-tone="success"] {
+  border-color: rgba(6, 199, 85, 0.35);
+  color: var(--green-dark) !important;
+  background: rgba(6, 199, 85, 0.08);
+}
+
 .claim-actions {
   width: 100%;
   display: grid;

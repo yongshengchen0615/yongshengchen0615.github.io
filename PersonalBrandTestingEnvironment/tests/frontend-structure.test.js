@@ -211,6 +211,7 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   const deleteDialog = getOpeningTagById(html, "delete-point-type-dialog");
   const copyButton = getElementMarkupById(html, "copy-claim-link-button");
   const downloadButton = getElementMarkupById(html, "download-qr-button");
+  const pointHistory = getOpeningTagById(html, "point-history-workspace");
 
   assert.match(workspace, /aria-labelledby=(?:"[^"]+"|'[^']+')/);
   assert.match(pointTypeForm, /<form\b/i);
@@ -257,6 +258,18 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   assert.match(copyButton, /複製/);
   assert.match(downloadButton, /<button\b[^>]*\btype=["']button["']/i);
   assert.match(downloadButton, /下載/);
+  assert.match(pointHistory, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  for (const id of [
+    "point-history-title",
+    "point-history-summary",
+    "refresh-point-history-button",
+    "point-history-loading",
+    "admin-point-history-list",
+    "point-history-empty",
+    "point-history-error",
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
 });
 
 test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
@@ -336,6 +349,10 @@ test("admin member and point pages load only their own data and preflight QR cre
     script,
     /["']adminListPointTypes["']/
   );
+  const fetchPointHistory = getTopLevelFunctionContaining(
+    script,
+    /["']adminListPointHistory["']/
+  );
   const createCampaign = getTopLevelFunctionContaining(
     script,
     /["']adminCreatePointCampaign["']/
@@ -345,6 +362,9 @@ test("admin member and point pages load only their own data and preflight QR cre
   assert.doesNotMatch(fetchMembers, /adminListPointTypes/);
   assert.match(fetchPointTypes, /sendAdminRequest\(["']adminListPointTypes["']/);
   assert.doesNotMatch(fetchPointTypes, /adminListMembers/);
+  assert.match(fetchPointHistory, /sendAdminRequest\(["']adminListPointHistory["']/);
+  assert.match(fetchPointHistory, /renderAdminPointHistory/);
+  assert.match(script, /refresh-point-history-button["']\)\.addEventListener/);
 
   const qrPreflightAt = createCampaign.indexOf("window.PersonaQr");
   const mutationAt = createCampaign.indexOf(
@@ -471,6 +491,8 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   assert.match(redeemClaim, /originalPointBalance/);
   assert.match(redeemClaim, /claim-success-before/);
   assert.match(redeemClaim, /claim-duplicate-before/);
+  assert.match(redeemClaim, /prepareOfficialAccountMessageContext\(\)/);
+  assert.match(redeemClaim, /sendPointClaimMessage\(/);
   assert.match(sync, /renderMember\(/);
   assert.match(sync, /redeemPendingPointCampaign\(\)/);
   assert.match(sync, /loadPointHistory\(\)/);
@@ -527,10 +549,17 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   );
 
   assert.match(html, /id=["']claim-success-note["']/);
+  assert.match(html, /id=["']claim-success-message-status["']/);
   assert.match(html, /id=["']claim-duplicate-title["']/);
   assert.match(normalizeCampaign, /expiryMode\s*===\s*["']unlimited["']/);
   assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
+  assert.match(redeem, /prepareOfficialAccountMessageContext\s*\(/);
+  assert.match(redeem, /sendPointClaimMessage\s*\(/);
+  assert.match(script, /getFriendship\s*\(/);
+  assert.match(script, /requestFriendship\s*\(/);
+  assert.match(script, /sendMessages\s*\(/);
+  assert.match(script, /type\s*===\s*["']utou["']/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
   assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
   assert.match(redeem, /重新掃描同一張 QR Code/);

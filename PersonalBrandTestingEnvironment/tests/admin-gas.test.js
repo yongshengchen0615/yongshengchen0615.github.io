@@ -384,6 +384,27 @@ function createPointCampaignRow(gas, overrides = {}) {
   return { row, claim };
 }
 
+function createPointRedemptionRow(gas, overrides = {}) {
+  const row = new Array(gas.POINT_REDEMPTION_HEADERS.length).fill("");
+  const values = {
+    redemptionId: "RDM-ABCDEF1234567890",
+    campaignId: "PCG-ABCDEF1234",
+    pointTypeId: "PTY-ABCDEF1234",
+    memberId: "MBR-ABCDEF1234",
+    lineUserId: MEMBER_USER_ID,
+    points: 3,
+    balanceAfter: 8,
+    redeemedAt: new Date("2026-01-03T00:00:00.000Z"),
+    requestId: "request-point-history",
+    redemptionModeSnapshot: "once_per_member",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_REDEMPTION_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
 function configFor(gas) {
   return {
     lineChannelId: ADMIN_CHANNEL_ID,
@@ -612,7 +633,7 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
-test("only the six administrator actions are accepted and untrusted fields are ignored", () => {
+test("only the seven administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
   for (const action of [
     "upsertMember",
@@ -648,6 +669,7 @@ test("only the six administrator actions are accepted and untrusted fields are i
       expectedAccessUpdatedAt: "",
     },
     { ...tokenFields, action: "adminListPointTypes" },
+    { ...tokenFields, action: "adminListPointHistory" },
     {
       ...tokenFields,
       action: "adminCreatePointType",
@@ -733,7 +755,7 @@ test("member actions are rejected before config, LINE verification or Sheets are
   assert.equal(sheetOpened, false);
 });
 
-test("all six administrator actions dispatch only after config and LINE verification", () => {
+test("all seven administrator actions dispatch only after config and LINE verification", () => {
   const gas = createGasContext();
   const routed = [];
   let configReads = 0;
@@ -750,6 +772,7 @@ test("all six administrator actions dispatch only after config and LINE verifica
     ["adminListMembers", "adminListMembers_"],
     ["adminSetMemberAccess", "adminSetMemberAccess_"],
     ["adminListPointTypes", "adminListPointTypes_"],
+    ["adminListPointHistory", "adminListPointHistory_"],
     ["adminCreatePointType", "adminCreatePointType_"],
     ["adminDeletePointType", "adminDeletePointType_"],
     ["adminCreatePointCampaign", "adminCreatePointCampaign_"],
@@ -765,8 +788,8 @@ test("all six administrator actions dispatch only after config and LINE verifica
     assert.equal(result.data.route, action);
   }
   assert.deepEqual(routed, Array.from(gas.ADMIN_ACTIONS));
-  assert.equal(configReads, 6);
-  assert.equal(tokenVerifications, 6);
+  assert.equal(configReads, 7);
+  assert.equal(tokenVerifications, 7);
 });
 
 test("normal requests fail closed on a missing claim secret before LINE or Sheets", () => {
@@ -1003,7 +1026,7 @@ test("pending authorization stops before the Members sheet is read", () => {
 
 test("pending and denied administrators cannot read or mutate point sheets", () => {
   for (const status of ["pending", "denied"]) {
-    for (const action of ["list", "createType", "createCampaign"]) {
+    for (const action of ["list", "history", "createType", "createCampaign"]) {
       const gas = createGasContext();
       const adminSheet = createSheet("Admins", gas.ADMIN_HEADERS, [
         createAdminRow(gas, { status }),
@@ -1012,7 +1035,11 @@ test("pending and denied administrators cannot read or mutate point sheets", () 
       const spreadsheet = {
         getSheetByName(name) {
           if (name === "Admins") return adminSheet;
-          if (name === "PointTypes" || name === "PointCampaigns") {
+          if (
+            name === "PointTypes" ||
+            name === "PointCampaigns" ||
+            name === "PointRedemptions"
+          ) {
             pointSheetRequested = true;
             throw new Error("Point sheets must not be read");
           }
@@ -1032,6 +1059,8 @@ test("pending and denied administrators cannot read or mutate point sheets", () 
       const invoke =
         action === "list"
           ? () => gas.adminListPointTypes_(identity(), request, configFor(gas))
+          : action === "history"
+            ? () => gas.adminListPointHistory_(identity(), request, configFor(gas))
           : action === "createType"
             ? () => gas.adminCreatePointType_(identity(), request, configFor(gas))
             : () => gas.adminCreatePointCampaign_(identity(), request, configFor(gas));
@@ -1313,6 +1342,41 @@ test("approved administrators can list sorted point types without internal audit
   assert.equal(serialized.includes("private-type-request"), false);
   assert.equal(serialized.includes(`U${"e".repeat(32)}`), false);
   assert.equal(serialized.includes(`U${"f".repeat(32)}`), false);
+});
+
+test("approved administrators can list bounded point history without LINE IDs or request IDs", () => {
+  const gas = createGasContext();
+  const rows = Array.from({ length: 51 }, (_, index) =>
+    createPointRedemptionRow(gas, {
+      redemptionId: `RDM-${String(index + 1).padStart(16, "0")}`,
+      redeemedAt: new Date(Date.UTC(2026, 0, 1, 0, index, 0)),
+      requestId: `request-history-${String(index + 1).padStart(3, "0")}`,
+      redemptionModeSnapshot: "repeatable",
+      balanceAfter: index + 3,
+    })
+  );
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointRedemptions: createSheet("PointRedemptions", gas.POINT_REDEMPTION_HEADERS, rows),
+  });
+  installSpreadsheet(gas, spreadsheet);
+
+  const result = gas.adminListPointHistory_(
+    identity(),
+    { requestId: "request-list-point-history" },
+    configFor(gas)
+  );
+  assert.equal(result.data.history.length, 50);
+  assert.equal(result.data.hasMore, true);
+  assert.equal(result.data.history[0].points, 3);
+  assert.equal(result.data.history[0].memberId, "MBR-ABCDEF1234");
+  assert.equal(result.data.history[0].label, "3 點");
+  assert.equal(result.data.history[0].source, "qr");
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.history[0], "lineUserId"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.data.history[0], "requestId"), false);
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes(MEMBER_USER_ID), false);
+  assert.equal(serialized.includes("request-history-"), false);
 });
 
 test("point type creation is server-labelled, unique and idempotent", () => {
@@ -1998,7 +2062,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.2.0");
+  assert.equal(response.data.version, "1.3.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

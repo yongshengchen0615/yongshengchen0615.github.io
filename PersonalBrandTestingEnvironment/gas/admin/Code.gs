@@ -24,7 +24,7 @@
  * status field.
  */
 
-var API_VERSION = "1.2.0";
+var API_VERSION = "1.3.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -38,11 +38,13 @@ var MAX_ID_TOKEN_LENGTH = 6000;
 var DEFAULT_ADMIN_PAGE_SIZE = 50;
 var MAX_ADMIN_PAGE_SIZE = 100;
 var MAX_POINT_VALUE = 9999;
+var MAX_POINT_HISTORY_ENTRIES = 50;
 var MAX_CAMPAIGN_LIFETIME_MS = 366 * 24 * 60 * 60 * 1000;
 var ADMIN_ACTIONS = [
   "adminListMembers",
   "adminSetMemberAccess",
   "adminListPointTypes",
+  "adminListPointHistory",
   "adminCreatePointType",
   "adminDeletePointType",
   "adminCreatePointCampaign",
@@ -351,6 +353,10 @@ function handleAdminRequest_(request) {
     return adminListPointTypes_(identity, request, config);
   }
 
+  if (request.action === "adminListPointHistory") {
+    return adminListPointHistory_(identity, request, config);
+  }
+
   if (request.action === "adminCreatePointType") {
     return adminCreatePointType_(identity, request, config);
   }
@@ -625,6 +631,128 @@ function adminListPointTypes_(adminIdentity, request, config) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function adminListPointHistory_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數紀錄正在讀取，請稍後再試。");
+  }
+
+  try {
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
+    var history = readAdminPointHistory_(redemptionSheet);
+
+    history.sort(function (left, right) {
+      var timeDifference = dateSortValue_(right.redeemedAt) - dateSortValue_(left.redeemedAt);
+      return timeDifference || right.rowNumber - left.rowNumber;
+    });
+
+    var hasMore = history.length > MAX_POINT_HISTORY_ENTRIES;
+    return {
+      data: {
+        history: history.slice(0, MAX_POINT_HISTORY_ENTRIES).map(function (entry) {
+          return {
+            redemptionId: entry.redemptionId,
+            campaignId: entry.campaignId,
+            pointTypeId: entry.pointTypeId,
+            memberId: entry.memberId,
+            label: pointLabel_(entry.points),
+            points: entry.points,
+            balanceAfter: entry.balanceAfter,
+            redeemedAt: entry.redeemedAt,
+            redemptionMode: entry.redemptionMode,
+            source: "qr",
+          };
+        }),
+        hasMore: hasMore,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數使用紀錄，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function readAdminPointHistory_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var redemptionIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  var campaignModes = Object.create(null);
+  var history = [];
+
+  for (var i = 0; i < rows.length; i += 1) {
+    var row = rows[i];
+    var rowNumber = i + 2;
+    var redemptionId = String(row[POINT_REDEMPTION_COLUMN.redemptionId - 1] || "").trim();
+    var campaignId = String(row[POINT_REDEMPTION_COLUMN.campaignId - 1] || "").trim();
+    var pointTypeId = String(row[POINT_REDEMPTION_COLUMN.pointTypeId - 1] || "").trim();
+    var memberId = String(row[POINT_REDEMPTION_COLUMN.memberId - 1] || "").trim();
+    var lineUserId = String(row[POINT_REDEMPTION_COLUMN.lineUserId - 1] || "").trim();
+    var points = Number(row[POINT_REDEMPTION_COLUMN.points - 1]);
+    var balanceAfter = Number(row[POINT_REDEMPTION_COLUMN.balanceAfter - 1]);
+    var redeemedDate = row[POINT_REDEMPTION_COLUMN.redeemedAt - 1];
+    var redeemedAt = toIsoString_(redeemedDate);
+    var requestId = String(row[POINT_REDEMPTION_COLUMN.requestId - 1] || "").trim();
+    var redemptionMode = normalizeStoredRedemptionMode_(
+      row[POINT_REDEMPTION_COLUMN.redemptionModeSnapshot - 1]
+    );
+    var requestKey = lineUserId + ":" + requestId;
+    var campaignModeKey = lineUserId + ":" + campaignId;
+
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !/^U[0-9a-f]{32}$/.test(lineUserId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > MAX_POINT_VALUE ||
+      !Number.isSafeInteger(balanceAfter) ||
+      balanceAfter < points ||
+      !redeemedAt ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      !redemptionMode ||
+      redemptionIds[redemptionId] ||
+      requestKeys[requestKey] ||
+      (campaignModes[campaignModeKey] &&
+        (campaignModes[campaignModeKey] !== redemptionMode ||
+          redemptionMode !== "repeatable"))
+    ) {
+      throw appError_(
+        "POINT_DATA_CONFLICT",
+        "點數使用紀錄第 " + rowNumber + " 列資料不正確，請先修正試算表。"
+      );
+    }
+
+    redemptionIds[redemptionId] = true;
+    requestKeys[requestKey] = true;
+    campaignModes[campaignModeKey] = redemptionMode;
+    history.push({
+      rowNumber: rowNumber,
+      redemptionId: redemptionId,
+      campaignId: campaignId,
+      pointTypeId: pointTypeId,
+      memberId: memberId,
+      points: points,
+      balanceAfter: balanceAfter,
+      redeemedAt: redeemedAt,
+      redemptionMode: redemptionMode,
+    });
+  }
+
+  return history;
 }
 
 function adminCreatePointType_(adminIdentity, request, config) {

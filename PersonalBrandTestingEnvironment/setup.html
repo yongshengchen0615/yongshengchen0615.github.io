@@ -87,13 +87,14 @@
           <ul class="setup-check-list">
             <li>會員 LIFF：<code>2010787602-kaiSm2eq</code>，Endpoint 為 <code>https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/</code></li>
             <li>管理 LIFF：<code>2010791619-vhevCvvD</code>，Endpoint 為 <code>https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/</code></li>
-            <li>兩個 LIFF 都要勾選 <code>openid</code> 與 <code>profile</code></li>
+            <li>兩個 LIFF 都要勾選 <code>openid</code> 與 <code>profile</code>；會員 LIFF 另外勾選 <code>chat_message.write</code></li>
           </ul>
           <p>點數管理頁 <code>admin/points.html</code> 使用同一個管理 LIFF 與同一份 <code>admin/config.json</code>；不需要再建立第三個 LIFF App。</p>
           <p><a href="client/config.json" target="_blank">client/config.json</a> 保留會員 LIFF ID 與既有會員 GAS URL。把 <a href="admin/config.json" target="_blank">admin/config.json</a> 的 <code>YOUR_ADMIN_GAS_WEB_APP_URL</code> 換成新管理 GAS 的 <code>/exec</code> URL。</p>
           <pre><code>client/config.json → 會員 GAS /exec
 admin/config.json  → 管理 GAS /exec</code></pre>
           <p>兩個 GAS URL 不可共用或對調。每次更新 Apps Script 程式後，也要在管理部署作業中建立新版本。</p>
+          <p>會員端 Channel 請連結會員官方帳號。領點頁會在 LINE LIFF 內先顯示加入好友確認，並在官方帳號一對一聊天室中使用 <code>liff.sendMessages()</code> 送出領點通知；一般瀏覽器仍可領點，但無法把通知自動送到官方帳號。</p>
         </div>
       </section>
 
