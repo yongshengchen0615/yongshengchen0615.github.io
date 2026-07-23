@@ -23,6 +23,34 @@ function getTopLevelFunctionContaining(source, marker) {
   return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getOpeningTagById(source, id) {
+  const escapedId = escapeRegExp(id);
+  const match = new RegExp(
+    `<([a-z][\\w:-]*)\\b[^>]*\\bid=(?:"${escapedId}"|'${escapedId}')[^>]*>`,
+    "i"
+  ).exec(source);
+  assert.ok(match, `missing element #${id}`);
+  return match[0];
+}
+
+function getElementMarkupById(source, id) {
+  const escapedId = escapeRegExp(id);
+  const match = new RegExp(
+    `<([a-z][\\w:-]*)\\b[^>]*\\bid=(?:"${escapedId}"|'${escapedId}')[^>]*>`,
+    "i"
+  ).exec(source);
+  assert.ok(match, `missing element #${id}`);
+
+  const closingTag = `</${match[1]}>`;
+  const end = source.indexOf(closingTag, match.index + match[0].length);
+  assert.notEqual(end, -1, `element #${id} must have a closing tag`);
+  return source.slice(match.index, end + closingTag.length);
+}
+
 test("split client and admin entry points reference existing local assets", () => {
   for (const relativePath of htmlFiles) {
     const absolutePath = path.join(root, relativePath);
@@ -127,6 +155,254 @@ test("shared GAS transport allowlists member phone and birthday fields", () => {
   assert.ok(extraFields, "shared transport extra-field allowlist must exist");
   assert.match(extraFields[1], /["']phone["']/);
   assert.match(extraFields[1], /["']birthday["']/);
+});
+
+test("admin exposes an accessible point-type and QR campaign workspace", () => {
+  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const workspace = getOpeningTagById(html, "point-workspace");
+  const pointTypeForm = getOpeningTagById(html, "point-type-form");
+  const pointAmountInput = getOpeningTagById(html, "point-amount-input");
+  const campaignForm = getOpeningTagById(html, "point-campaign-form");
+  const expiryInput = getOpeningTagById(html, "point-expiry-input");
+  const qrDialog = getOpeningTagById(html, "point-qr-dialog");
+  const qrOutput = getOpeningTagById(html, "point-qr-output");
+  const copyButton = getElementMarkupById(html, "copy-claim-link-button");
+  const downloadButton = getElementMarkupById(html, "download-qr-button");
+
+  assert.match(workspace, /aria-labelledby=(?:"[^"]+"|'[^']+')/);
+  assert.match(pointTypeForm, /<form\b/i);
+  assert.match(html, /<label\b[^>]*for=["']point-amount-input["']/i);
+  assert.match(pointAmountInput, /\btype=["']number["']/i);
+  assert.match(pointAmountInput, /\bname=["']pointAmount["']/i);
+  assert.match(pointAmountInput, /\bmin=["']1["']/i);
+  assert.match(pointAmountInput, /\bmax=["']9999["']/i);
+  assert.match(pointAmountInput, /\bstep=["']1["']/i);
+  assert.match(pointAmountInput, /\brequired(?:\s|>|=)/i);
+  assert.match(getOpeningTagById(html, "point-type-list"), /aria-(?:busy|live)=/i);
+  assert.match(campaignForm, /<form\b/i);
+  assert.match(html, /<label\b[^>]*for=["']point-expiry-input["']/i);
+  assert.match(expiryInput, /\bname=["']expiresAt["']/i);
+  assert.match(
+    getOpeningTagById(html, "create-point-campaign-button"),
+    /\btype=["']submit["']/i
+  );
+
+  assert.match(qrDialog, /<dialog\b/i);
+  assert.match(qrDialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(qrDialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(qrOutput, /\brole=["']img["']/i);
+  assert.match(qrOutput, /aria-(?:label|labelledby)=(?:"[^"]+"|'[^']+')/i);
+  assert.match(copyButton, /<button\b[^>]*\btype=["']button["']/i);
+  assert.match(copyButton, /複製/);
+  assert.match(downloadButton, /<button\b[^>]*\btype=["']button["']/i);
+  assert.match(downloadButton, /下載/);
+});
+
+test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const createType = getTopLevelFunctionContaining(script, /["']adminCreatePointType["']/);
+  const createCampaign = getTopLevelFunctionContaining(
+    script,
+    /["']adminCreatePointCampaign["']/
+  );
+
+  assert.match(
+    script,
+    /byId\(["']point-type-form["']\)\.addEventListener\(["']submit["']/
+  );
+  assert.match(createType, /["']adminCreatePointType["']/);
+  assert.match(createType, /\bpointAmount\s*:/);
+
+  assert.match(
+    script,
+    /byId\(["']point-campaign-form["']\)\.addEventListener\(["']submit["']/
+  );
+  assert.match(createCampaign, /["']adminCreatePointCampaign["']/);
+  assert.match(createCampaign, /\bpointTypeId\s*:/);
+  assert.match(createCampaign, /\bexpiresAt\s*:/);
+  assert.match(createCampaign, /\bresponse\.data\.claimUrl\b/);
+  assert.doesNotMatch(
+    createCampaign,
+    /\b(?:memberId|lineUserId|idToken|currentIdToken)\b/,
+    "the QR campaign handler must not build a claim from member or LINE identity data"
+  );
+  assert.doesNotMatch(
+    createCampaign,
+    /(?:new\s+URL|URLSearchParams)\s*\([^)]*(?:pointAmount|points|memberId|idToken)/i,
+    "the QR campaign handler must not construct a claim URL from local point or identity data"
+  );
+  assert.doesNotMatch(createCampaign, /https?:\/\/(?:api\.)?(?:qr|chart|quickchart)/i);
+});
+
+test("point setup failure does not hide member administration or create unusable campaigns", () => {
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const fetchMembers = getTopLevelFunctionContaining(script, /["']adminListMembers["']/);
+  const createCampaign = getTopLevelFunctionContaining(
+    script,
+    /["']adminCreatePointCampaign["']/
+  );
+
+  const renderMembersAt = fetchMembers.indexOf("renderDashboard(memberData)");
+  const loadPointsAt = fetchMembers.indexOf('sendAdminRequest("adminListPointTypes"');
+  assert.equal(renderMembersAt >= 0 && loadPointsAt > renderMembersAt, true);
+  assert.match(fetchMembers, /renderPointWorkspaceError\s*\(/);
+
+  const qrPreflightAt = createCampaign.indexOf("window.PersonaQr");
+  const mutationAt = createCampaign.indexOf(
+    'sendAdminRequest("adminCreatePointCampaign"'
+  );
+  assert.equal(qrPreflightAt >= 0 && mutationAt > qrPreflightAt, true);
+  assert.match(createCampaign, /\bisPointMutationLoading\b/);
+});
+
+test("client member pass renders a live point balance from the member response", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
+  const balance = getOpeningTagById(html, "member-point-balance");
+  const renderMember = getTopLevelFunctionContaining(script, /function\s+renderMember\s*\(/);
+
+  assert.ok(memberState, "client member state must exist");
+  assert.match(memberState[0], /id=["']member-point-balance["']/);
+  assert.match(balance, /aria-live=["']polite["']/i);
+  assert.match(renderMember, /byId\(["']member-point-balance["']\)/);
+  assert.match(renderMember, /\bmember\.pointBalance\b/);
+});
+
+test("client claim dialog exposes preview, progress, result, duplicate, and retry states", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const dialog = getOpeningTagById(html, "claim-dialog");
+  const confirmButton = getOpeningTagById(html, "claim-confirm-button");
+  const retryButton = getOpeningTagById(html, "claim-retry-button");
+  const loadingState = getOpeningTagById(html, "claim-loading-state");
+  const successState = getOpeningTagById(html, "claim-success-state");
+  const duplicateState = getOpeningTagById(html, "claim-duplicate-state");
+  const errorState = getOpeningTagById(html, "claim-error-state");
+
+  assert.match(dialog, /<dialog\b/i);
+  assert.match(dialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(dialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
+  getOpeningTagById(html, "claim-preview-state");
+  assert.match(confirmButton, /\btype=["']button["']/i);
+  assert.match(loadingState, /\brole=["']status["']/i);
+  assert.match(loadingState, /aria-live=["']polite["']/i);
+  assert.match(successState, /\brole=["']status["']/i);
+  assert.match(successState, /aria-live=["']polite["']/i);
+  assert.match(duplicateState, /\brole=["']status["']/i);
+  assert.match(duplicateState, /aria-live=["']polite["']/i);
+  assert.match(errorState, /\brole=["']alert["']/i);
+  assert.match(retryButton, /\btype=["']button["']/i);
+});
+
+test("client captures a sanitized claim after LIFF init and redeems only on confirmation", () => {
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
+  const captureClaim = getTopLevelFunctionContaining(script, /\.get\(["']claim["']\)/);
+  const captureName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(captureClaim);
+  const previewClaim = getTopLevelFunctionContaining(script, /["']previewPointCampaign["']/);
+  const redeemClaim = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
+  const redeemName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(redeemClaim);
+
+  assert.ok(captureName, "claim capture must be a named top-level function");
+  assert.ok(redeemName, "claim redemption must be a named top-level function");
+  assert.match(captureClaim, /(?:window\.)?sessionStorage\.setItem\s*\(/);
+  assert.match(captureClaim, /\.searchParams\.delete\(["']claim["']\)/);
+  assert.match(captureClaim, /(?:window\.)?history\.replaceState\s*\(/);
+
+  const initAt = boot.search(/(?:window\.)?liff\.init\s*\(/);
+  const initThenAt = boot.indexOf(".then", initAt);
+  const captureAt = boot.indexOf(captureName[1] + "(", initThenAt);
+  assert.equal(initAt >= 0 && initThenAt > initAt, true);
+  assert.equal(
+    captureAt > initThenAt,
+    true,
+    "claim query capture must run only after liff.init resolves"
+  );
+
+  assert.match(previewClaim, /["']previewPointCampaign["']/);
+  assert.match(previewClaim, /\bclaim\s*:/);
+  assert.doesNotMatch(previewClaim, /["']redeemPointCampaign["']/);
+  assert.match(redeemClaim, /["']redeemPointCampaign["']/);
+  assert.match(redeemClaim, /\bclaim\s*:/);
+  assert.match(
+    script,
+    new RegExp(
+      `byId\\(["']claim-confirm-button["']\\)\\.addEventListener\\(["']click["'],\\s*${escapeRegExp(
+        redeemName[1]
+      )}\\s*\\)`
+    )
+  );
+  assert.equal(
+    (script.match(/["']redeemPointCampaign["']/g) || []).length,
+    1,
+    "only the explicit confirmation handler may invoke point redemption"
+  );
+});
+
+test("shared transport exposes only the bounded point campaign fields", () => {
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
+
+  assert.ok(extraFields, "shared transport extra-field allowlist must exist");
+  for (const field of ["claim", "pointAmount", "pointTypeId", "expiresAt"]) {
+    assert.match(extraFields[1], new RegExp(`["']${field}["']`));
+  }
+  assert.doesNotMatch(
+    extraFields[1],
+    /["'](?:points|memberId|lineUserId)["']/,
+    "raw point balances and member identity fields must not cross the generic transport allowlist"
+  );
+});
+
+test("admin loads a local QR encoder and frontend code never calls an external QR service", () => {
+  const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const qrScriptAt = adminHtml.indexOf('src="../shared/qr-code.js"');
+  const adminScriptAt = adminHtml.indexOf('src="script.js"');
+
+  assert.notEqual(qrScriptAt, -1, "admin must load the local shared QR encoder");
+  assert.equal(qrScriptAt < adminScriptAt, true, "the QR encoder must load before admin script.js");
+  assert.equal(
+    fs.existsSync(path.join(root, "shared/qr-code.js")),
+    true,
+    "the local QR encoder asset must exist"
+  );
+
+  for (const html of [adminHtml, clientHtml]) {
+    const externalScripts = [...html.matchAll(/<script\b[^>]*\bsrc=["'](https?:[^"']+)["']/gi)]
+      .map((match) => match[1])
+      .filter((source) => source !== "https://static.line-scdn.net/liff/edge/2/sdk.js");
+    assert.deepEqual(externalScripts, [], "QR generation must not add a third-party script");
+  }
+
+  const frontendSource = [adminHtml, clientHtml, adminScript, clientScript].join("\n");
+  assert.doesNotMatch(
+    frontendSource,
+    /(?:api\.qrserver\.com|quickchart\.io|chart\.googleapis\.com|chart\.google\.com)/i,
+    "claim URLs must never be sent to an external QR image API"
+  );
+});
+
+test("LIFF entry points suppress referrers before loading the external SDK", () => {
+  for (const relativePath of ["client/index.html", "admin/index.html"]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const referrerAt = html.search(
+      /<meta\b[^>]*name=["']referrer["'][^>]*content=["']no-referrer["'][^>]*>/i
+    );
+    const liffSdkAt = html.indexOf(
+      'src="https://static.line-scdn.net/liff/edge/2/sdk.js"'
+    );
+
+    assert.notEqual(referrerAt, -1, `${relativePath} must set no-referrer`);
+    assert.notEqual(liffSdkAt, -1, `${relativePath} must load the LIFF SDK`);
+    assert.equal(
+      referrerAt < liffSdkAt,
+      true,
+      `${relativePath} must suppress query referrers before external assets load`
+    );
+  }
 });
 
 test("member-facing client and admin contact search do not reference member email", () => {

@@ -8,15 +8,20 @@
  *
  * Optional:
  * - SHEET_NAME: defaults to "Members"
+ * - POINT_TYPE_SHEET_NAME: defaults to "PointTypes"
+ * - POINT_CAMPAIGN_SHEET_NAME: defaults to "PointCampaigns"
+ * - POINT_REDEMPTION_SHEET_NAME: defaults to "PointRedemptions"
  * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
  *
- * This deployment accepts only upsertMember, updateMemberProfile and
- * deleteMember. It deliberately does not authorize or implement administrator
- * actions.
+ * This deployment accepts only member-owned actions. It deliberately does not
+ * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.1.0";
+var API_VERSION = "1.2.0";
 var DEFAULT_SHEET_NAME = "Members";
+var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
+var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
+var DEFAULT_POINT_REDEMPTION_SHEET_NAME = "PointRedemptions";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
 
@@ -75,6 +80,78 @@ var MEMBER_COLUMN = {
   adminStatus: 21,
   phone: 22,
   birthday: 23,
+};
+
+var POINT_TYPE_HEADERS = [
+  "point_type_id",
+  "label",
+  "points",
+  "status",
+  "created_at",
+  "updated_at",
+  "created_by",
+  "last_request_id",
+];
+
+var POINT_TYPE_COLUMN = {
+  pointTypeId: 1,
+  label: 2,
+  points: 3,
+  status: 4,
+  createdAt: 5,
+  updatedAt: 6,
+  createdBy: 7,
+  lastRequestId: 8,
+};
+
+var POINT_CAMPAIGN_HEADERS = [
+  "campaign_id",
+  "point_type_id",
+  "label_snapshot",
+  "points_snapshot",
+  "claim_hash",
+  "status",
+  "expires_at",
+  "created_at",
+  "created_by",
+  "last_request_id",
+];
+
+var POINT_CAMPAIGN_COLUMN = {
+  campaignId: 1,
+  pointTypeId: 2,
+  labelSnapshot: 3,
+  pointsSnapshot: 4,
+  claimHash: 5,
+  status: 6,
+  expiresAt: 7,
+  createdAt: 8,
+  createdBy: 9,
+  lastRequestId: 10,
+};
+
+var POINT_REDEMPTION_HEADERS = [
+  "redemption_id",
+  "campaign_id",
+  "point_type_id",
+  "member_id",
+  "line_user_id",
+  "points",
+  "balance_after",
+  "redeemed_at",
+  "request_id",
+];
+
+var POINT_REDEMPTION_COLUMN = {
+  redemptionId: 1,
+  campaignId: 2,
+  pointTypeId: 3,
+  memberId: 4,
+  lineUserId: 5,
+  points: 6,
+  balanceAfter: 7,
+  redeemedAt: 8,
+  requestId: 9,
 };
 
 function doGet(e) {
@@ -141,8 +218,14 @@ function setup() {
 
   try {
     var sheet = getOrCreateMemberSheet_(config);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(config);
+    var pointCampaignSheet = getOrCreatePointCampaignSheet_(config);
+    var pointRedemptionSheet = getOrCreatePointRedemptionSheet_(config);
     migrateDefaultMemberAccess_(sheet);
     applySheetColumnFormats_(sheet);
+    applyPointTypeSheetFormats_(pointTypeSheet);
+    applyPointCampaignSheetFormats_(pointCampaignSheet);
+    applyPointRedemptionSheetFormats_(pointRedemptionSheet);
     SpreadsheetApp.flush();
     return {
       ok: true,
@@ -150,6 +233,12 @@ function setup() {
       sheetName: sheet.getName(),
       columns: MEMBER_HEADERS.length,
       accessStatuses: ["approved", "denied"],
+      pointTypeSheetName: pointTypeSheet.getName(),
+      pointTypeColumns: POINT_TYPE_HEADERS.length,
+      pointCampaignSheetName: pointCampaignSheet.getName(),
+      pointCampaignColumns: POINT_CAMPAIGN_HEADERS.length,
+      pointRedemptionSheetName: pointRedemptionSheet.getName(),
+      pointRedemptionColumns: POINT_REDEMPTION_HEADERS.length,
     };
   } finally {
     lock.releaseLock();
@@ -172,6 +261,14 @@ function handleMemberRequest_(request) {
     return updateMemberProfile_(identity, request, config);
   }
 
+  if (request.action === "previewPointCampaign") {
+    return previewPointCampaign_(identity, request, config);
+  }
+
+  if (request.action === "redeemPointCampaign") {
+    return redeemPointCampaign_(identity, request, config);
+  }
+
   return deleteMember_(identity, request, config);
 }
 
@@ -179,6 +276,8 @@ function assertSupportedAction_(action) {
   if (
     action !== "upsertMember" &&
     action !== "updateMemberProfile" &&
+    action !== "previewPointCampaign" &&
+    action !== "redeemPointCampaign" &&
     action !== "deleteMember"
   ) {
     throw appError_("UNSUPPORTED_ACTION", "此會員端後台不支援該操作。");
@@ -334,12 +433,17 @@ function upsertMember_(identity, request, config) {
     // Re-read so an administrator's Sheet edit is reflected in the response.
     row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
     var access = memberAccessFromRow_(row);
+    var pointBalance = access.allowed
+      ? getMemberPointBalance_(getOrCreatePointRedemptionSheet_(config), identity.lineUserId)
+      : 0;
 
     return {
       data: {
         created: responseCreated,
         access: access,
-        member: access.allowed ? memberResponseFromRow_(row, identity, context) : null,
+        member: access.allowed
+          ? memberResponseFromRow_(row, identity, context, pointBalance)
+          : null,
       },
     };
   } catch (error) {
@@ -399,17 +503,197 @@ function updateMemberProfile_(identity, request, config) {
     row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
     access = memberAccessFromRow_(row);
     var context = normalizeContext_(request.context);
+    var pointBalance = access.allowed
+      ? getMemberPointBalance_(getOrCreatePointRedemptionSheet_(config), identity.lineUserId)
+      : 0;
 
     return {
       data: {
         access: access,
-        member: access.allowed ? memberResponseFromRow_(row, identity, context) : null,
+        member: access.allowed
+          ? memberResponseFromRow_(row, identity, context, pointBalance)
+          : null,
         duplicate: isDuplicate,
       },
     };
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法更新會員資料，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function previewPointCampaign_(identity, request, config) {
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法領取點數。");
+    }
+
+    var campaignSheet = getOrCreatePointCampaignSheet_(config);
+    var campaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    assertPointCampaignAvailable_(campaign, new Date());
+    var pointBalance = getMemberPointBalance_(
+      getOrCreatePointRedemptionSheet_(config),
+      identity.lineUserId
+    );
+
+    return {
+      data: {
+        access: access,
+        campaign: pointCampaignResponse_(campaign),
+        pointBalance: pointBalance,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數活動，請稍後再試。");
+  }
+}
+
+function redeemPointCampaign_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數正在處理，請稍後再試。");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法領取點數。");
+    }
+
+    var campaignSheet = getOrCreatePointCampaignSheet_(config);
+    var campaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var existingRedemption = findPointRedemption_(
+      redemptionSheet,
+      campaign.campaignId,
+      identity.lineUserId
+    );
+
+    // A completed redemption remains idempotent even if the campaign later
+    // expires or is disabled. A fresh claimant must pass the availability
+    // checks below.
+    if (existingRedemption) {
+      return {
+        data: {
+          access: access,
+          redeemed: false,
+          duplicate: true,
+          awardedPoints: 0,
+          pointBalance: getMemberPointBalance_(redemptionSheet, identity.lineUserId),
+          campaign: pointCampaignResponse_(campaign),
+        },
+      };
+    }
+
+    assertPointCampaignAvailable_(campaign, new Date());
+
+    // Re-read immediately before the sole ledger mutation. Administrator and
+    // member GAS projects do not share ScriptLock, so this narrows the window
+    // in which a concurrent access change could otherwise be missed.
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法領取點數。");
+    }
+
+    // Check the persistent key again immediately before append. This is the
+    // authoritative idempotency check for retries with either the same or a
+    // different requestId.
+    existingRedemption = findPointRedemption_(
+      redemptionSheet,
+      campaign.campaignId,
+      identity.lineUserId
+    );
+    if (existingRedemption) {
+      return {
+        data: {
+          access: access,
+          redeemed: false,
+          duplicate: true,
+          awardedPoints: 0,
+          pointBalance: getMemberPointBalance_(redemptionSheet, identity.lineUserId),
+          campaign: pointCampaignResponse_(campaign),
+        },
+      };
+    }
+
+    // The spreadsheet owner can disable or edit a campaign outside this GAS
+    // lock. Re-read immediately before append, require the previewed snapshot
+    // to remain identical and re-check expiry/status.
+    var latestCampaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    assertPointCampaignAvailable_(latestCampaign, new Date());
+    if (
+      latestCampaign.campaignId !== campaign.campaignId ||
+      latestCampaign.pointTypeId !== campaign.pointTypeId ||
+      latestCampaign.label !== campaign.label ||
+      latestCampaign.points !== campaign.points ||
+      latestCampaign.expiresAt !== campaign.expiresAt
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "點數活動在領取期間已異動，請重新掃描後再試。"
+      );
+    }
+    campaign = latestCampaign;
+
+    var pointBalance = getMemberPointBalance_(redemptionSheet, identity.lineUserId);
+    if (pointBalance > 9007199254740991 - campaign.points) {
+      throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
+    }
+    var balanceAfter = pointBalance + campaign.points;
+    var now = new Date();
+
+    redemptionSheet.appendRow([
+      "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase(),
+      safeSheetText_(campaign.campaignId),
+      safeSheetText_(campaign.pointTypeId),
+      safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),
+      safeSheetText_(identity.lineUserId),
+      campaign.points,
+      balanceAfter,
+      now,
+      request.requestId,
+    ]);
+    applyPointRedemptionRowFormats_(redemptionSheet, redemptionSheet.getLastRow());
+    SpreadsheetApp.flush();
+
+    return {
+      data: {
+        access: access,
+        redeemed: true,
+        duplicate: false,
+        awardedPoints: campaign.points,
+        pointBalance: balanceAfter,
+        campaign: pointCampaignResponse_(campaign),
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法領取點數，請稍後再試。");
   } finally {
     lock.releaseLock();
   }
@@ -427,17 +711,28 @@ function deleteMember_(identity, request, config) {
     }
 
     var sheet = getOrCreateMemberSheet_(config);
-    var rowNumber = findMemberRow_(sheet, identity.lineUserId);
+    var rowNumbers = findMemberRows_(sheet, identity.lineUserId);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var deletedRedemptions = deletePointRedemptionsForMember_(
+      redemptionSheet,
+      identity.lineUserId
+    );
 
-    if (rowNumber > 0) {
-      sheet.deleteRow(rowNumber);
-      SpreadsheetApp.flush();
-    }
+    rowNumbers.forEach(function (rowNumber) {
+      // Keep physical row numbers stable because the administrator backend is
+      // a separate GAS project whose ScriptLock cannot coordinate with this
+      // one. Clearing prevents a concurrent narrow admin write from shifting
+      // onto the next member while still removing all member data.
+      sheet
+        .getRange(rowNumber, 1, 1, MEMBER_HEADERS.length)
+        .setValues([new Array(MEMBER_HEADERS.length).fill("")]);
+    });
+    if (rowNumbers.length > 0 || deletedRedemptions > 0) SpreadsheetApp.flush();
 
     markMemberDeleted_(identity.lineUserId, identity.tokenIssuedAt);
     markRequestProcessed_(identity.lineUserId, request.action, request.requestId, "deleted");
 
-    return { data: { deleted: rowNumber > 0 } };
+    return { data: { deleted: rowNumbers.length > 0 } };
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法刪除會員資料，請稍後再試。");
@@ -479,13 +774,14 @@ function memberAccessFromRow_(row) {
   return { status: status, allowed: status === "approved" };
 }
 
-function memberResponseFromRow_(row, identity, context) {
+function memberResponseFromRow_(row, identity, context, pointBalance) {
   return {
     memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
     displayName: identity.displayName,
     pictureUrl: identity.pictureUrl,
     phone: memberPhoneFromRow_(row),
     birthday: memberBirthdayFromRow_(row),
+    pointBalance: normalizePointBalance_(pointBalance),
     status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
     joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
     updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
@@ -500,24 +796,57 @@ function getConfig_() {
   var lineChannelId = String(properties.getProperty("LINE_CHANNEL_ID") || "").trim();
   var spreadsheetId = String(properties.getProperty("SPREADSHEET_ID") || "").trim();
   var sheetName = String(properties.getProperty("SHEET_NAME") || DEFAULT_SHEET_NAME).trim();
+  var pointTypeSheetName = String(
+    properties.getProperty("POINT_TYPE_SHEET_NAME") || DEFAULT_POINT_TYPE_SHEET_NAME
+  ).trim();
+  var pointCampaignSheetName = String(
+    properties.getProperty("POINT_CAMPAIGN_SHEET_NAME") || DEFAULT_POINT_CAMPAIGN_SHEET_NAME
+  ).trim();
+  var pointRedemptionSheetName = String(
+    properties.getProperty("POINT_REDEMPTION_SHEET_NAME") ||
+      DEFAULT_POINT_REDEMPTION_SHEET_NAME
+  ).trim();
   var allowedOrigins = getAllowedOrigins_();
 
   if (
     !/^\d{6,}$/.test(lineChannelId) ||
     !spreadsheetId ||
     !sheetName ||
+    !pointTypeSheetName ||
+    !pointCampaignSheetName ||
+    !pointRedemptionSheetName ||
     allowedOrigins.length === 0
   ) {
     throw appError_(
       "CONFIG_ERROR",
-      "會員端 GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
+      "會員端 GAS 尚未完成 LINE、試算表或允許來源設定。"
     );
+  }
+
+  var sheetNames = [
+    sheetName,
+    pointTypeSheetName,
+    pointCampaignSheetName,
+    pointRedemptionSheetName,
+  ].map(function (name) {
+    return name.toLowerCase();
+  });
+  if (
+    sheetNames.some(function (name) {
+      return name.length > 80;
+    }) ||
+    new Set(sheetNames).size !== sheetNames.length
+  ) {
+    throw appError_("CONFIG_ERROR", "會員與點數工作表名稱不可重複，且不可超過 80 個字元。");
   }
 
   return {
     lineChannelId: lineChannelId,
     spreadsheetId: spreadsheetId,
     sheetName: sheetName.slice(0, 80),
+    pointTypeSheetName: pointTypeSheetName.slice(0, 80),
+    pointCampaignSheetName: pointCampaignSheetName.slice(0, 80),
+    pointRedemptionSheetName: pointRedemptionSheetName.slice(0, 80),
     allowedOrigins: allowedOrigins,
   };
 }
@@ -576,6 +905,71 @@ function getOrCreateMemberSheet_(config) {
   var existingHeaders = sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0];
   assertMemberHeadersMatch_(existingHeaders, MEMBER_HEADERS);
   return sheet;
+}
+
+function getOrCreatePointTypeSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointTypeSheetName || DEFAULT_POINT_TYPE_SHEET_NAME,
+    POINT_TYPE_HEADERS
+  );
+}
+
+function getOrCreatePointCampaignSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointCampaignSheetName || DEFAULT_POINT_CAMPAIGN_SHEET_NAME,
+    POINT_CAMPAIGN_HEADERS
+  );
+}
+
+function getOrCreatePointRedemptionSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointRedemptionSheetName || DEFAULT_POINT_REDEMPTION_SHEET_NAME,
+    POINT_REDEMPTION_HEADERS
+  );
+}
+
+function getOrCreatePointDataSheet_(config, sheetName, expectedHeaders) {
+  var spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
+  } catch (_error) {
+    throw appError_("SPREADSHEET_ERROR", "無法開啟點數試算表，請檢查 SPREADSHEET_ID 與權限。");
+  }
+
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    sheet.setFrozenRows(1);
+    styleMemberHeader_(sheet, 1, expectedHeaders.length);
+    sheet.autoResizeColumns(1, expectedHeaders.length);
+    return sheet;
+  }
+
+  if (sheet.getLastColumn() !== expectedHeaders.length) {
+    throwPointSchemaMismatch_(sheetName);
+  }
+
+  var actualHeaders = sheet
+    .getRange(1, 1, 1, expectedHeaders.length)
+    .getDisplayValues()[0];
+  for (var i = 0; i < expectedHeaders.length; i += 1) {
+    if (actualHeaders[i] !== expectedHeaders[i]) {
+      throwPointSchemaMismatch_(sheetName);
+    }
+  }
+  return sheet;
+}
+
+function throwPointSchemaMismatch_(sheetName) {
+  throw appError_(
+    "POINT_SCHEMA_MISMATCH",
+    String(sheetName || "點數") + " 工作表欄位與程式版本不相符，請勿手動調整第一列欄位。"
+  );
 }
 
 function assertMemberHeadersMatch_(actualHeaders, expectedHeaders) {
@@ -651,17 +1045,262 @@ function applyMemberRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2).setNumberFormat("@");
 }
 
+function applyPointTypeSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 4, 7, 8].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet.getRange(2, POINT_TYPE_COLUMN.points, rowCount, 1).setNumberFormat("0");
+  [POINT_TYPE_COLUMN.createdAt, POINT_TYPE_COLUMN.updatedAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+}
+
+function applyPointCampaignSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 5, 6, 9, 10].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_CAMPAIGN_COLUMN.pointsSnapshot, rowCount, 1)
+    .setNumberFormat("0");
+  [POINT_CAMPAIGN_COLUMN.expiresAt, POINT_CAMPAIGN_COLUMN.createdAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+}
+
+function applyPointRedemptionSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.points, rowCount, 2)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.redeemedAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyPointRedemptionRowFormats_(sheet, rowNumber) {
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.redemptionId, 1, 5)
+    .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.points, 1, 2)
+    .setNumberFormat("0");
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.redeemedAt)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, POINT_REDEMPTION_COLUMN.requestId).setNumberFormat("@");
+}
+
 function findMemberRow_(sheet, lineUserId) {
+  var rows = findMemberRows_(sheet, lineUserId);
+  if (rows.length > 1) {
+    throw appError_(
+      "MEMBER_DATA_CONFLICT",
+      "會員資料有重複識別碼，請聯絡管理員。"
+    );
+  }
+  return rows.length ? rows[0] : 0;
+}
+
+function findMemberRows_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var values = sheet
+    .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var rowNumbers = [];
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") !== lineUserId) continue;
+    rowNumbers.push(i + 2);
+  }
+  return rowNumbers;
+}
+
+function findPointCampaignByClaim_(sheet, claim) {
+  var claimHash = sha256Hex_(normalizePointClaim_(claim));
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("POINT_CAMPAIGN_NOT_FOUND", "找不到這個點數活動，請確認 QR Code。");
+  }
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_CAMPAIGN_HEADERS.length)
+    .getValues();
+  var matchingRows = rows.filter(function (row) {
+    return String(row[POINT_CAMPAIGN_COLUMN.claimHash - 1] || "").trim().toLowerCase() ===
+      claimHash;
+  });
+
+  if (matchingRows.length === 0) {
+    throw appError_("POINT_CAMPAIGN_NOT_FOUND", "找不到這個點數活動，請確認 QR Code。");
+  }
+  if (matchingRows.length > 1) {
+    throw appError_("POINT_DATA_ERROR", "點數活動資料重複，請聯絡管理員。");
+  }
+
+  var row = matchingRows[0];
+  var campaignId = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.campaignId - 1], 100);
+  var pointTypeId = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.pointTypeId - 1], 100);
+  var label = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.labelSnapshot - 1], 100);
+  var points = Number(row[POINT_CAMPAIGN_COLUMN.pointsSnapshot - 1]);
+  var status = String(row[POINT_CAMPAIGN_COLUMN.status - 1] || "").trim().toLowerCase();
+  var rawExpiresAt = row[POINT_CAMPAIGN_COLUMN.expiresAt - 1];
+  var expiresAt = "";
+  var expiresAtTime = 0;
+
+  if (
+    !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+    !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+    !Number.isInteger(points) ||
+    points < 1 ||
+    points > 9999 ||
+    label !== String(points) + " 點"
+  ) {
+    throw appError_("POINT_DATA_ERROR", "點數活動資料格式不正確，請聯絡管理員。");
+  }
+
+  if (rawExpiresAt === "" || rawExpiresAt == null) {
+    throw appError_("POINT_DATA_ERROR", "點數活動到期時間不可為空白，請聯絡管理員。");
+  }
+  var expiresDate =
+    rawExpiresAt instanceof Date ? rawExpiresAt : new Date(String(rawExpiresAt));
+  if (isNaN(expiresDate.getTime())) {
+    throw appError_("POINT_DATA_ERROR", "點數活動到期時間格式不正確，請聯絡管理員。");
+  }
+  expiresAt = expiresDate.toISOString();
+  expiresAtTime = expiresDate.getTime();
+
+  return {
+    campaignId: campaignId,
+    pointTypeId: pointTypeId,
+    label: label,
+    points: points,
+    status: status,
+    expiresAt: expiresAt,
+    expiresAtTime: expiresAtTime,
+  };
+}
+
+function assertPointCampaignAvailable_(campaign, now) {
+  if (!campaign || campaign.status !== "active") {
+    throw appError_("POINT_CAMPAIGN_INACTIVE", "這個點數活動目前未開放領取。");
+  }
+  if (campaign.expiresAtTime <= now.getTime()) {
+    throw appError_("POINT_CAMPAIGN_EXPIRED", "這個點數活動已經結束。");
+  }
+}
+
+function pointCampaignResponse_(campaign) {
+  return {
+    label: campaign.label,
+    points: campaign.points,
+    expiresAt: campaign.expiresAt,
+  };
+}
+
+function findPointRedemption_(sheet, campaignId, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var match = null;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.campaignId - 1], 100) ===
+        campaignId &&
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.lineUserId - 1], 128) ===
+        lineUserId
+    ) {
+      if (match) {
+        throw appError_(
+          "POINT_DATA_ERROR",
+          "同一會員有重複的點數領取紀錄，請聯絡管理員。"
+        );
+      }
+      match = rows[i];
+    }
+  }
+  return match;
+}
+
+function getMemberPointBalance_(sheet, lineUserId) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return 0;
 
-  var match = sheet
-    .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
-    .createTextFinder(lineUserId)
-    .matchEntireCell(true)
-    .matchCase(true)
-    .findNext();
-  return match ? match.getRow() : 0;
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var balance = 0;
+  var redeemedCampaigns = Object.create(null);
+  rows.forEach(function (row) {
+    if (
+      plainSheetText_(row[POINT_REDEMPTION_COLUMN.lineUserId - 1], 128) !== lineUserId
+    ) {
+      return;
+    }
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
+    var campaignId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.campaignId - 1],
+      100
+    );
+    var pointTypeId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.pointTypeId - 1],
+      100
+    );
+    var memberId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.memberId - 1], 100);
+    var requestId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.requestId - 1], 100);
+    var points = Number(row[POINT_REDEMPTION_COLUMN.points - 1]);
+    var redeemedAt = row[POINT_REDEMPTION_COLUMN.redeemedAt - 1];
+    var redeemedDate =
+      redeemedAt instanceof Date ? redeemedAt : new Date(String(redeemedAt || ""));
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      isNaN(redeemedDate.getTime()) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      redeemedCampaigns[campaignId]
+    ) {
+      throw appError_("POINT_DATA_ERROR", "會員點數紀錄格式不正確，請聯絡管理員。");
+    }
+    redeemedCampaigns[campaignId] = true;
+    if (balance > 9007199254740991 - points) {
+      throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
+    }
+    balance += points;
+  });
+  return balance;
+}
+
+function deletePointRedemptionsForMember_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var values = sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var deleted = 0;
+  for (var i = values.length - 1; i >= 0; i -= 1) {
+    if (plainSheetText_(values[i][0], 128) === lineUserId) {
+      sheet.deleteRow(i + 2);
+      deleted += 1;
+    }
+  }
+  return deleted;
 }
 
 function parseRequest_(e) {
@@ -677,6 +1316,7 @@ function parseRequest_(e) {
       context: parseContext_(e.parameter.context),
       phone: String(e.parameter.phone || "").trim(),
       birthday: String(e.parameter.birthday || "").trim(),
+      claim: String(e.parameter.claim || "").trim(),
       transport: "bridge",
     };
   }
@@ -704,6 +1344,7 @@ function parseRequest_(e) {
     context: normalizeContext_(parsed.context),
     phone: String(parsed.phone || "").trim(),
     birthday: String(parsed.birthday || "").trim(),
+    claim: String(parsed.claim || "").trim(),
     transport: "fetch",
   };
 }
@@ -725,6 +1366,12 @@ function validateRequestEnvelope_(request) {
   if (request.action === "updateMemberProfile") {
     request.phone = normalizeMemberPhone_(request.phone);
     request.birthday = normalizeMemberBirthday_(request.birthday);
+  }
+  if (
+    request.action === "previewPointCampaign" ||
+    request.action === "redeemPointCampaign"
+  ) {
+    request.claim = normalizePointClaim_(request.claim);
   }
 }
 
@@ -923,6 +1570,40 @@ function appError_(code, publicMessage) {
   error.appCode = code;
   error.publicMessage = publicMessage;
   return error;
+}
+
+function normalizePointClaim_(value) {
+  var claim = String(value == null ? "" : value).trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(claim)) {
+    throw appError_("INVALID_POINT_CLAIM", "QR Code 領點憑證格式不正確。");
+  }
+  return claim;
+}
+
+function sha256Hex_(value) {
+  var bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8
+  );
+  return bytes
+    .map(function (byte) {
+      return ((byte + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+function plainSheetText_(value, maxLength) {
+  var text = String(value == null ? "" : value).trim();
+  if (/^'[=+\-@]/.test(text)) text = text.slice(1);
+  return text.slice(0, maxLength || 200);
+}
+
+function normalizePointBalance_(value) {
+  var balance = Number(value || 0);
+  return Number.isInteger(balance) && balance >= 0 && balance <= 9007199254740991
+    ? balance
+    : 0;
 }
 
 function normalizeMemberPhone_(value) {

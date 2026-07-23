@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -24,8 +25,108 @@ function createProperties(values = {}) {
   };
 }
 
+function createDataSheet(name, initialHeaders = [], initialRows = [], writes = []) {
+  const headers = initialHeaders.slice();
+  const rows = initialRows;
+  let frozenRows = 0;
+
+  function getRow(rowNumber) {
+    if (rowNumber === 1) return headers;
+    return rows[rowNumber - 2] || [];
+  }
+
+  return {
+    appendRow(row) {
+      rows.push(row.slice());
+    },
+    deleteRow(rowNumber) {
+      rows.splice(rowNumber - 2, 1);
+    },
+    getName() {
+      return name;
+    },
+    getLastRow() {
+      return headers.length || rows.length ? rows.length + 1 : 0;
+    },
+    getLastColumn() {
+      return headers.length;
+    },
+    getMaxRows() {
+      return Math.max(rows.length + 1, 20);
+    },
+    setFrozenRows(count) {
+      frozenRows = count;
+    },
+    autoResizeColumns() {},
+    get frozenRows() {
+      return frozenRows;
+    },
+    get headers() {
+      return headers;
+    },
+    get rows() {
+      return rows;
+    },
+    getRange(rowNumber, column, rowCount = 1, columnCount = 1) {
+      return {
+        getValues() {
+          return Array.from({ length: rowCount }, (_, rowOffset) =>
+            Array.from({ length: columnCount }, (_unused, columnOffset) => {
+              const source = getRow(rowNumber + rowOffset);
+              return source[column - 1 + columnOffset] ?? "";
+            })
+          );
+        },
+        getDisplayValues() {
+          return this.getValues().map((row) => row.map((value) => String(value ?? "")));
+        },
+        setValues(values) {
+          writes.push({ rowNumber, column, rowCount, columnCount, values });
+          for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+            const targetRowNumber = rowNumber + rowOffset;
+            let target;
+            if (targetRowNumber === 1) {
+              target = headers;
+            } else {
+              while (rows.length < targetRowNumber - 1) rows.push([]);
+              target = rows[targetRowNumber - 2];
+            }
+            for (let columnOffset = 0; columnOffset < columnCount; columnOffset += 1) {
+              target[column - 1 + columnOffset] = values[rowOffset][columnOffset];
+            }
+          }
+          return this;
+        },
+        setNumberFormat() {
+          return this;
+        },
+        setBackground() {
+          return this;
+        },
+        setFontColor() {
+          return this;
+        },
+        setFontWeight() {
+          return this;
+        },
+      };
+    },
+  };
+}
+
 function createGasContext(overrides = {}) {
   const cache = new Map();
+  const sheets = new Map();
+  const spreadsheet = {
+    getSheetByName(name) {
+      return sheets.get(name) || null;
+    },
+    insertSheet(name) {
+      const sheet = createDataSheet(name);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  };
   const context = {
     console: { error() {} },
     Date,
@@ -81,8 +182,18 @@ function createGasContext(overrides = {}) {
         };
       },
     },
-    SpreadsheetApp: { flush() {} },
+    SpreadsheetApp: {
+      flush() {},
+      openById() {
+        return spreadsheet;
+      },
+    },
     Utilities: {
+      DigestAlgorithm: { SHA_256: "SHA_256" },
+      Charset: { UTF_8: "UTF_8" },
+      computeDigest(_algorithm, value) {
+        return Array.from(crypto.createHash("sha256").update(String(value)).digest());
+      },
       getUuid() {
         return "abcdef12-3456-7890-abcd-ef1234567890";
       },
@@ -199,6 +310,75 @@ function createIdentity(overrides = {}) {
   };
 }
 
+const POINT_CLAIM = "A".repeat(43);
+
+function pointClaimHash(claim = POINT_CLAIM) {
+  return crypto.createHash("sha256").update(claim).digest("hex");
+}
+
+function createPointCampaignRow(gas, overrides = {}) {
+  const row = new Array(gas.POINT_CAMPAIGN_HEADERS.length).fill("");
+  const values = {
+    campaignId: "PCG-ABCDEF1234",
+    pointTypeId: "PTY-ABCDEF1234",
+    labelSnapshot: "3 點",
+    pointsSnapshot: 3,
+    claimHash: pointClaimHash(),
+    status: "active",
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    createdAt: new Date("2026-07-23T00:00:00.000Z"),
+    createdBy: `U${"a".repeat(32)}`,
+    lastRequestId: "request-campaign-1",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_CAMPAIGN_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
+function createPointRedemptionRow(gas, overrides = {}) {
+  const row = new Array(gas.POINT_REDEMPTION_HEADERS.length).fill("");
+  const values = {
+    redemptionId: "RDM-ABCDEF1234567890",
+    campaignId: "PCG-ABCDEF1234",
+    pointTypeId: "PTY-ABCDEF1234",
+    memberId: "MBR-ABCDEF1234",
+    lineUserId: `U${"b".repeat(32)}`,
+    points: 3,
+    balanceAfter: 3,
+    redeemedAt: new Date("2026-07-23T00:00:00.000Z"),
+    requestId: "request-redeem-1",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_REDEMPTION_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
+function installPointSheets(
+  gas,
+  { memberRows = [], campaignRows = [], redemptionRows = [], redemptionWrites = [] } = {}
+) {
+  const memberSheet = createMemberSheet(memberRows);
+  const campaignSheet = createDataSheet(
+    "PointCampaigns",
+    Array.from(gas.POINT_CAMPAIGN_HEADERS),
+    campaignRows
+  );
+  const redemptionSheet = createDataSheet(
+    "PointRedemptions",
+    Array.from(gas.POINT_REDEMPTION_HEADERS),
+    redemptionRows,
+    redemptionWrites
+  );
+  gas.getOrCreateMemberSheet_ = () => memberSheet;
+  gas.getOrCreatePointCampaignSheet_ = () => campaignSheet;
+  gas.getOrCreatePointRedemptionSheet_ = () => redemptionSheet;
+  return { memberSheet, campaignSheet, redemptionSheet };
+}
+
 test("client manifest is a standalone V8 web app with only required scopes", () => {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "gas", "client", "appsscript.json"), "utf8")
@@ -219,6 +399,9 @@ test("client config uses its own LINE_CHANNEL_ID and fails closed when incomplet
 
   assert.equal(config.lineChannelId, "2010787602");
   assert.equal(config.spreadsheetId, "shared-members-sheet");
+  assert.equal(config.pointTypeSheetName, "PointTypes");
+  assert.equal(config.pointCampaignSheetName, "PointCampaigns");
+  assert.equal(config.pointRedemptionSheetName, "PointRedemptions");
   assert.deepEqual(Array.from(config.allowedOrigins), [
     "https://example.github.io",
     "http://localhost:8080",
@@ -229,6 +412,11 @@ test("client config uses its own LINE_CHANNEL_ID and fails closed when incomplet
     { LINE_CHANNEL_ID: "" },
     { SPREADSHEET_ID: "" },
     { ALLOWED_ORIGINS: "https://example.github.io/path" },
+    { POINT_TYPE_SHEET_NAME: "members" },
+    {
+      POINT_TYPE_SHEET_NAME: "PointData",
+      POINT_CAMPAIGN_SHEET_NAME: "pointdata",
+    },
   ]) {
     const invalidGas = createGasContext({
       PropertiesService: {
@@ -378,6 +566,8 @@ test("supported actions always verify against config, never a request-provided c
   };
   gas.upsertMember_ = () => ({ data: { action: "upsert" } });
   gas.updateMemberProfile_ = () => ({ data: { action: "profile" } });
+  gas.previewPointCampaign_ = () => ({ data: { action: "preview" } });
+  gas.redeemPointCampaign_ = () => ({ data: { action: "redeem" } });
   gas.deleteMember_ = () => ({ data: { action: "delete" } });
 
   const upsertResult = gas.handleMemberRequest_({
@@ -397,11 +587,31 @@ test("supported actions always verify against config, never a request-provided c
     idToken: "header.payload.signature",
     lineChannelId: "2010791619",
   });
+  const previewResult = gas.handleMemberRequest_({
+    action: "previewPointCampaign",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+    claim: POINT_CLAIM,
+  });
+  const redeemResult = gas.handleMemberRequest_({
+    action: "redeemPointCampaign",
+    idToken: "header.payload.signature",
+    lineChannelId: "2010791619",
+    claim: POINT_CLAIM,
+  });
 
-  assert.deepEqual(channels, ["2010787602", "2010787602", "2010787602"]);
+  assert.deepEqual(channels, [
+    "2010787602",
+    "2010787602",
+    "2010787602",
+    "2010787602",
+    "2010787602",
+  ]);
   assert.equal(upsertResult.data.action, "upsert");
   assert.equal(profileResult.data.action, "profile");
   assert.equal(deleteResult.data.action, "delete");
+  assert.equal(previewResult.data.action, "preview");
+  assert.equal(redeemResult.data.action, "redeem");
 });
 
 test("origins are exact and bridge output safely serializes profile text", () => {
@@ -606,6 +816,57 @@ test("profile update parses fetch and bridge fields and validates phone and birt
   gas.validateRequestEnvelope_({ ...fetchRequest, phone: "", birthday: "" });
 });
 
+test("point campaign requests parse only a fixed base64url claim for fetch and bridge", () => {
+  const gas = createGasContext();
+
+  for (const action of ["previewPointCampaign", "redeemPointCampaign"]) {
+    const payload = {
+      action,
+      idToken: "header.payload.signature",
+      requestId: `request-${action}-parse`,
+      callbackOrigin: "https://example.github.io/",
+      claim: POINT_CLAIM,
+      points: 9999,
+      campaignId: "CMP-FORGED",
+      memberId: "MBR-FORGED",
+      lineUserId: `U${"f".repeat(32)}`,
+    };
+    const fetchRequest = gas.parseRequest_({
+      postData: { contents: JSON.stringify(payload) },
+    });
+    const bridgeRequest = gas.parseRequest_({
+      parameter: {
+        ...payload,
+        transport: "bridge",
+        requestSecret: "a".repeat(48),
+      },
+    });
+
+    for (const field of ["action", "idToken", "requestId", "callbackOrigin", "claim"]) {
+      assert.equal(fetchRequest[field], bridgeRequest[field]);
+    }
+    for (const forgedField of ["points", "campaignId", "memberId", "lineUserId"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(fetchRequest, forgedField), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(bridgeRequest, forgedField), false);
+    }
+    gas.validateRequestEnvelope_(fetchRequest);
+    gas.validateRequestEnvelope_(bridgeRequest);
+
+    for (const invalidClaim of [
+      "",
+      "A".repeat(42),
+      "A".repeat(44),
+      "A".repeat(42) + "+",
+      "<script>".repeat(6),
+    ]) {
+      assert.throws(
+        () => gas.validateRequestEnvelope_({ ...fetchRequest, claim: invalidClaim }),
+        (error) => error.appCode === "INVALID_POINT_CLAIM"
+      );
+    }
+  }
+});
+
 test("profile update is token-bound, idempotent, narrow and never returns email", () => {
   const gas = createGasContext();
   const rows = [
@@ -741,13 +1002,526 @@ test("upsert retries are idempotent and distinct token sessions increment once",
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 2);
 });
 
+test("point campaign preview is token-owner only and returns public campaign data", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas)];
+  const campaignRows = [createPointCampaignRow(gas)];
+  const redemptionRows = [
+    createPointRedemptionRow(gas, {
+      campaignId: "PCG-OLDER00000",
+      pointTypeId: "PTY-OLDER00000",
+      points: 2,
+      balanceAfter: 2,
+    }),
+  ];
+  installPointSheets(gas, { memberRows, campaignRows, redemptionRows });
+
+  const result = gas.previewPointCampaign_(
+    createIdentity(),
+    { action: "previewPointCampaign", requestId: "request-preview-1", claim: POINT_CLAIM },
+    {}
+  );
+
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(result.data.campaign.label, "3 點");
+  assert.equal(result.data.campaign.points, 3);
+  assert.match(result.data.campaign.expiresAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(result.data.pointBalance, 2);
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes(POINT_CLAIM), false);
+  assert.equal(serialized.includes(pointClaimHash()), false);
+  assert.equal(serialized.includes(createIdentity().lineUserId), false);
+});
+
+test("point redemption trusts campaign snapshot, persists once and is permanently idempotent", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas)];
+  const campaignRows = [createPointCampaignRow(gas, { pointsSnapshot: 3 })];
+  const redemptionRows = [
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-OLDER00000000000",
+      campaignId: "PCG-OLDER00000",
+      pointTypeId: "PTY-OLDER00000",
+      points: 2,
+      balanceAfter: 2,
+      requestId: "request-older-1",
+    }),
+  ];
+  const { redemptionSheet } = installPointSheets(gas, {
+    memberRows,
+    campaignRows,
+    redemptionRows,
+  });
+  const identity = createIdentity();
+  const forgedRequest = {
+    action: "redeemPointCampaign",
+    requestId: "request-redeem-new-1",
+    claim: POINT_CLAIM,
+    points: 9999,
+    campaignId: "CMP-FORGED",
+    memberId: "MBR-FORGED",
+    lineUserId: `U${"f".repeat(32)}`,
+  };
+
+  const first = gas.redeemPointCampaign_(identity, forgedRequest, {});
+  assert.equal(first.data.redeemed, true);
+  assert.equal(first.data.duplicate, false);
+  assert.equal(first.data.awardedPoints, 3);
+  assert.equal(first.data.pointBalance, 5);
+  assert.equal(redemptionRows.length, 2);
+  const saved = redemptionRows[1];
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.campaignId - 1], "PCG-ABCDEF1234");
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.memberId - 1], "MBR-ABCDEF1234");
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.lineUserId - 1], identity.lineUserId);
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.points - 1], 3);
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.balanceAfter - 1], 5);
+  assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.requestId - 1], forgedRequest.requestId);
+
+  campaignRows[0][gas.POINT_CAMPAIGN_COLUMN.status - 1] = "inactive";
+  const sameRequestRetry = gas.redeemPointCampaign_(identity, forgedRequest, {});
+  const newRequestRetry = gas.redeemPointCampaign_(
+    identity,
+    { ...forgedRequest, requestId: "request-redeem-new-2" },
+    {}
+  );
+  for (const retry of [sameRequestRetry, newRequestRetry]) {
+    assert.equal(retry.data.redeemed, false);
+    assert.equal(retry.data.duplicate, true);
+    assert.equal(retry.data.awardedPoints, 0);
+    assert.equal(retry.data.pointBalance, 5);
+  }
+  assert.equal(redemptionSheet.rows.length, 2);
+
+  const serialized = JSON.stringify(first);
+  assert.equal(serialized.includes(POINT_CLAIM), false);
+  assert.equal(serialized.includes(pointClaimHash()), false);
+  assert.equal(serialized.includes(identity.lineUserId), false);
+});
+
+test("different members can redeem one campaign and one member can redeem different campaigns", () => {
+  const gas = createGasContext();
+  const otherClaim = "B".repeat(43);
+  const secondLineUserId = `U${"c".repeat(32)}`;
+  const memberRows = [
+    createMemberRow(gas),
+    createMemberRow(gas, {
+      memberId: "MBR-SECOND0000",
+      lineUserId: secondLineUserId,
+      displayName: "第二位會員",
+    }),
+  ];
+  const campaignRows = [
+    createPointCampaignRow(gas),
+    createPointCampaignRow(gas, {
+      campaignId: "PCG-SECOND1234",
+      pointTypeId: "PTY-SECOND1234",
+      labelSnapshot: "2 點",
+      pointsSnapshot: 2,
+      claimHash: pointClaimHash(otherClaim),
+    }),
+  ];
+  const redemptionRows = [];
+  installPointSheets(gas, { memberRows, campaignRows, redemptionRows });
+
+  const firstMember = createIdentity();
+  const secondMember = createIdentity({
+    lineUserId: secondLineUserId,
+    displayName: "第二位會員",
+  });
+  gas.redeemPointCampaign_(
+    firstMember,
+    { action: "redeemPointCampaign", requestId: "request-multi-1", claim: POINT_CLAIM },
+    {}
+  );
+  const secondMemberResult = gas.redeemPointCampaign_(
+    secondMember,
+    { action: "redeemPointCampaign", requestId: "request-multi-2", claim: POINT_CLAIM },
+    {}
+  );
+  const secondCampaignResult = gas.redeemPointCampaign_(
+    firstMember,
+    { action: "redeemPointCampaign", requestId: "request-multi-3", claim: otherClaim },
+    {}
+  );
+
+  assert.equal(redemptionRows.length, 3);
+  assert.equal(secondMemberResult.data.pointBalance, 3);
+  assert.equal(secondCampaignResult.data.pointBalance, 5);
+  assert.equal(
+    redemptionRows.filter(
+      (row) =>
+        row[gas.POINT_REDEMPTION_COLUMN.lineUserId - 1] === firstMember.lineUserId
+    ).length,
+    2
+  );
+});
+
+test("point preview and redemption reject missing or disabled members without ledger writes", () => {
+  for (const action of ["previewPointCampaign", "redeemPointCampaign"]) {
+    for (const memberRows of [
+      [],
+      [createMemberRow(createGasContext(), { status: "denied" })],
+    ]) {
+      const gas = createGasContext();
+      const normalizedMemberRows = memberRows.map((row) => Array.from(row));
+      const campaignRows = [createPointCampaignRow(gas)];
+      const redemptionRows = [];
+      installPointSheets(gas, {
+        memberRows: normalizedMemberRows,
+        campaignRows,
+        redemptionRows,
+      });
+      const invoke =
+        action === "previewPointCampaign"
+          ? gas.previewPointCampaign_.bind(gas)
+          : gas.redeemPointCampaign_.bind(gas);
+
+      assert.throws(
+        () =>
+          invoke(
+            createIdentity(),
+            { action, requestId: `request-${action}-denied`, claim: POINT_CLAIM },
+            {}
+          ),
+        (error) =>
+          error.appCode ===
+          (normalizedMemberRows.length ? "MEMBER_ACCESS_DENIED" : "MEMBER_NOT_FOUND")
+      );
+      assert.equal(redemptionRows.length, 0);
+    }
+  }
+});
+
+test("point campaign preview and redemption require active, expiring, safe snapshots", () => {
+  const cases = [
+    {
+      campaignRows: [],
+      code: "POINT_CAMPAIGN_NOT_FOUND",
+    },
+    {
+      campaignRows: [{ status: "inactive" }],
+      code: "POINT_CAMPAIGN_INACTIVE",
+    },
+    {
+      campaignRows: [{ expiresAt: new Date(Date.now() - 1000) }],
+      code: "POINT_CAMPAIGN_EXPIRED",
+    },
+    {
+      campaignRows: [{ expiresAt: new Date(0) }],
+      code: "POINT_CAMPAIGN_EXPIRED",
+    },
+    {
+      campaignRows: [{ expiresAt: "" }],
+      code: "POINT_DATA_ERROR",
+    },
+    {
+      campaignRows: [{ pointsSnapshot: 0 }],
+      code: "POINT_DATA_ERROR",
+    },
+    {
+      campaignRows: [{ pointsSnapshot: 10000 }],
+      code: "POINT_DATA_ERROR",
+    },
+    {
+      campaignRows: [{ campaignId: "not-a-production-id" }],
+      code: "POINT_DATA_ERROR",
+    },
+    {
+      campaignRows: [{ pointTypeId: "also-invalid" }],
+      code: "POINT_DATA_ERROR",
+    },
+    {
+      campaignRows: [{ labelSnapshot: "custom 3 points" }],
+      code: "POINT_DATA_ERROR",
+    },
+  ];
+
+  for (const testCase of cases) {
+    for (const action of ["previewPointCampaign", "redeemPointCampaign"]) {
+      const gas = createGasContext();
+      const campaignRows = testCase.campaignRows.map((overrides) =>
+        createPointCampaignRow(gas, overrides)
+      );
+      const redemptionRows = [];
+      installPointSheets(gas, {
+        memberRows: [createMemberRow(gas)],
+        campaignRows,
+        redemptionRows,
+      });
+      const invoke =
+        action === "previewPointCampaign"
+          ? gas.previewPointCampaign_.bind(gas)
+          : gas.redeemPointCampaign_.bind(gas);
+
+      assert.throws(
+        () =>
+          invoke(
+            createIdentity(),
+            {
+              action,
+              requestId: `request-invalid-${action}-${testCase.code}`,
+              claim: POINT_CLAIM,
+            },
+            {}
+          ),
+        (error) => error.appCode === testCase.code
+      );
+      assert.equal(redemptionRows.length, 0);
+    }
+  }
+});
+
+test("point redemption fails closed when the mutation lock is busy", () => {
+  const gas = createGasContext({
+    LockService: {
+      getScriptLock() {
+        return { tryLock: () => false, releaseLock() {} };
+      },
+    },
+  });
+  let sheetOpened = false;
+  gas.getOrCreateMemberSheet_ = () => {
+    sheetOpened = true;
+    throw new Error("must not open");
+  };
+
+  assert.throws(
+    () =>
+      gas.redeemPointCampaign_(
+        createIdentity(),
+        {
+          action: "redeemPointCampaign",
+          requestId: "request-busy-redeem",
+          claim: POINT_CLAIM,
+        },
+        {}
+      ),
+    (error) => error.appCode === "BUSY"
+  );
+  assert.equal(sheetOpened, false);
+});
+
+test("point redemption rechecks member access immediately before appending", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas)];
+  const baseMemberSheet = createMemberSheet(memberRows);
+  let fullRowReads = 0;
+  const memberSheet = {
+    ...baseMemberSheet,
+    getRange(rowNumber, column, rowCount = 1, columnCount = 1) {
+      const range = baseMemberSheet.getRange(rowNumber, column, rowCount, columnCount);
+      if (column === 1 && columnCount === gas.MEMBER_HEADERS.length) {
+        const originalGetValues = range.getValues.bind(range);
+        range.getValues = () => {
+          fullRowReads += 1;
+          const values = originalGetValues();
+          if (fullRowReads >= 2) {
+            values[0][gas.MEMBER_COLUMN.status - 1] = "denied";
+          }
+          return values;
+        };
+      }
+      return range;
+    },
+  };
+  const campaignRows = [createPointCampaignRow(gas)];
+  const redemptionRows = [];
+  const campaignSheet = createDataSheet(
+    "PointCampaigns",
+    Array.from(gas.POINT_CAMPAIGN_HEADERS),
+    campaignRows
+  );
+  const redemptionSheet = createDataSheet(
+    "PointRedemptions",
+    Array.from(gas.POINT_REDEMPTION_HEADERS),
+    redemptionRows
+  );
+  gas.getOrCreateMemberSheet_ = () => memberSheet;
+  gas.getOrCreatePointCampaignSheet_ = () => campaignSheet;
+  gas.getOrCreatePointRedemptionSheet_ = () => redemptionSheet;
+
+  assert.throws(
+    () =>
+      gas.redeemPointCampaign_(
+        createIdentity(),
+        {
+          action: "redeemPointCampaign",
+          requestId: "request-access-race",
+          claim: POINT_CLAIM,
+        },
+        {}
+      ),
+    (error) => error.appCode === "MEMBER_ACCESS_DENIED"
+  );
+  assert.equal(fullRowReads, 2);
+  assert.equal(redemptionRows.length, 0);
+});
+
+test("point redemption rechecks campaign status immediately before appending", () => {
+  const gas = createGasContext();
+  const campaignRows = [createPointCampaignRow(gas)];
+  const baseCampaignSheet = createDataSheet(
+    "PointCampaigns",
+    Array.from(gas.POINT_CAMPAIGN_HEADERS),
+    campaignRows
+  );
+  let campaignReads = 0;
+  const campaignSheet = {
+    ...baseCampaignSheet,
+    getRange(rowNumber, column, rowCount = 1, columnCount = 1) {
+      const range = baseCampaignSheet.getRange(rowNumber, column, rowCount, columnCount);
+      if (rowNumber === 2 && column === 1 && columnCount === gas.POINT_CAMPAIGN_HEADERS.length) {
+        const originalGetValues = range.getValues.bind(range);
+        range.getValues = () => {
+          campaignReads += 1;
+          if (campaignReads === 2) {
+            campaignRows[0][gas.POINT_CAMPAIGN_COLUMN.status - 1] = "inactive";
+          }
+          return originalGetValues();
+        };
+      }
+      return range;
+    },
+  };
+  const redemptionRows = [];
+  gas.getOrCreateMemberSheet_ = () => createMemberSheet([createMemberRow(gas)]);
+  gas.getOrCreatePointCampaignSheet_ = () => campaignSheet;
+  gas.getOrCreatePointRedemptionSheet_ = () =>
+    createDataSheet(
+      "PointRedemptions",
+      Array.from(gas.POINT_REDEMPTION_HEADERS),
+      redemptionRows
+    );
+
+  assert.throws(
+    () =>
+      gas.redeemPointCampaign_(
+        createIdentity(),
+        {
+          action: "redeemPointCampaign",
+          requestId: "request-campaign-race",
+          claim: POINT_CLAIM,
+        },
+        {}
+      ),
+    (error) => error.appCode === "POINT_CAMPAIGN_INACTIVE"
+  );
+  assert.equal(campaignReads, 2);
+  assert.equal(redemptionRows.length, 0);
+});
+
+test("duplicate persisted campaign redemption keys fail closed", () => {
+  for (const action of ["previewPointCampaign", "redeemPointCampaign"]) {
+    const gas = createGasContext();
+    const redemptionRows = [
+      createPointRedemptionRow(gas),
+      createPointRedemptionRow(gas, {
+        redemptionId: "RDM-DUPLICATE0000000",
+        requestId: "request-redeem-duplicate",
+      }),
+    ];
+    installPointSheets(gas, {
+      memberRows: [createMemberRow(gas)],
+      campaignRows: [createPointCampaignRow(gas)],
+      redemptionRows,
+    });
+    const invoke =
+      action === "previewPointCampaign"
+        ? gas.previewPointCampaign_.bind(gas)
+        : gas.redeemPointCampaign_.bind(gas);
+
+    assert.throws(
+      () =>
+        invoke(
+          createIdentity(),
+          {
+            action,
+            requestId: `request-duplicate-ledger-${action}`,
+            claim: POINT_CLAIM,
+          },
+          {}
+        ),
+      (error) => error.appCode === "POINT_DATA_ERROR"
+    );
+    assert.equal(redemptionRows.length, 2);
+  }
+});
+
+test("upsert and profile responses derive pointBalance from the redemption ledger", () => {
+  const gas = createGasContext();
+  const memberRows = [createMemberRow(gas, { lastTokenIat: 2000 })];
+  const redemptionRows = [
+    createPointRedemptionRow(gas, { points: 3, balanceAfter: 3 }),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-SECOND0000000000",
+      campaignId: "PCG-SECOND1234",
+      pointTypeId: "PTY-SECOND1234",
+      points: 2,
+      balanceAfter: 5,
+    }),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-OTHER00000000000",
+      campaignId: "PCG-OTHER12345",
+      lineUserId: `U${"d".repeat(32)}`,
+      points: 9,
+      balanceAfter: 9,
+    }),
+  ];
+  installPointSheets(gas, { memberRows, redemptionRows });
+
+  const upsert = gas.upsertMember_(
+    createIdentity(),
+    { action: "upsertMember", requestId: "request-balance-upsert", context: {} },
+    {}
+  );
+  const profile = gas.updateMemberProfile_(
+    createIdentity(),
+    {
+      action: "updateMemberProfile",
+      requestId: "request-balance-profile",
+      phone: "0912345678",
+      birthday: "1990-05-20",
+      context: {},
+    },
+    {}
+  );
+
+  assert.equal(upsert.data.member.pointBalance, 5);
+  assert.equal(profile.data.member.pointBalance, 5);
+});
+
 test("deleteMember is retry-idempotent and prevents recreation with the same token", () => {
   const gas = createGasContext();
-  const rows = [createMemberRow(gas)];
+  const rows = [
+    createMemberRow(gas),
+    createMemberRow(gas, { memberId: "MBR-DUPLICATE1" }),
+  ];
   gas.getOrCreateMemberSheet_ = () => createMemberSheet(rows);
+  const redemptionRows = [
+    createPointRedemptionRow(gas),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-SECOND0000000000",
+      campaignId: "PCG-SECOND1234",
+    }),
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-OTHER00000000000",
+      campaignId: "PCG-OTHER12345",
+      lineUserId: `U${"d".repeat(32)}`,
+    }),
+  ];
+  const redemptionSheet = createDataSheet(
+    "PointRedemptions",
+    Array.from(gas.POINT_REDEMPTION_HEADERS),
+    redemptionRows
+  );
+  gas.getOrCreatePointRedemptionSheet_ = () => redemptionSheet;
   const identity = createIdentity({ tokenIssuedAt: 2000 });
   const request = { action: "deleteMember", requestId: "request-delete-1" };
 
+  assert.throws(
+    () => gas.findMemberRow_(gas.getOrCreateMemberSheet_(), identity.lineUserId),
+    (error) => error.appCode === "MEMBER_DATA_CONFLICT"
+  );
   const first = gas.deleteMember_(identity, request, {});
   const retry = gas.deleteMember_(identity, request, {});
   assert.equal(first.data.deleted, true);
@@ -755,7 +1529,18 @@ test("deleteMember is retry-idempotent and prevents recreation with the same tok
     deleted: true,
     duplicate: true,
   });
-  assert.equal(rows.length, 0);
+  assert.equal(rows.length, 2);
+  assert.equal(
+    rows.every(
+      (row) => row.length === gas.MEMBER_HEADERS.length && row.every((value) => value === "")
+    ),
+    true
+  );
+  assert.equal(redemptionRows.length, 1);
+  assert.equal(
+    redemptionRows[0][gas.POINT_REDEMPTION_COLUMN.lineUserId - 1],
+    `U${"d".repeat(32)}`
+  );
 
   assert.throws(
     () =>
@@ -844,6 +1629,72 @@ test("17, 20 and 21-column schemas migrate to profile fields without touching le
   }
 });
 
+test("point sheets use the exact shared schemas and reject header drift", () => {
+  const gas = createGasContext();
+  const sheets = new Map();
+  const spreadsheet = {
+    getSheetByName(name) {
+      return sheets.get(name) || null;
+    },
+    insertSheet(name) {
+      const sheet = createDataSheet(name);
+      sheets.set(name, sheet);
+      return sheet;
+    },
+  };
+  gas.SpreadsheetApp.openById = () => spreadsheet;
+  const config = {
+    spreadsheetId: "shared-members-sheet",
+    pointTypeSheetName: "PointTypes",
+    pointCampaignSheetName: "PointCampaigns",
+    pointRedemptionSheetName: "PointRedemptions",
+  };
+
+  const pointTypeSheet = gas.getOrCreatePointTypeSheet_(config);
+  const campaignSheet = gas.getOrCreatePointCampaignSheet_(config);
+  const redemptionSheet = gas.getOrCreatePointRedemptionSheet_(config);
+
+  assert.deepEqual(pointTypeSheet.headers, [
+    "point_type_id",
+    "label",
+    "points",
+    "status",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "last_request_id",
+  ]);
+  assert.deepEqual(campaignSheet.headers, [
+    "campaign_id",
+    "point_type_id",
+    "label_snapshot",
+    "points_snapshot",
+    "claim_hash",
+    "status",
+    "expires_at",
+    "created_at",
+    "created_by",
+    "last_request_id",
+  ]);
+  assert.deepEqual(redemptionSheet.headers, [
+    "redemption_id",
+    "campaign_id",
+    "point_type_id",
+    "member_id",
+    "line_user_id",
+    "points",
+    "balance_after",
+    "redeemed_at",
+    "request_id",
+  ]);
+
+  campaignSheet.headers[4] = "claim";
+  assert.throws(
+    () => gas.getOrCreatePointCampaignSheet_(config),
+    (error) => error.appCode === "POINT_SCHEMA_MISMATCH"
+  );
+});
+
 test("default access migration uses status-only writes and preserves admin_status", () => {
   const gas = createGasContext();
   const rows = [
@@ -880,6 +1731,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
+  assert.equal(health.data.version, "1.2.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -894,6 +1746,12 @@ test("health and setup responses never expose LINE channel configuration", () =>
   const setup = gas.setup();
   assert.equal("lineChannelId" in setup, false);
   assert.equal(JSON.stringify(setup).includes("2010787602"), false);
+  assert.equal(setup.pointTypeSheetName, "PointTypes");
+  assert.equal(setup.pointCampaignSheetName, "PointCampaigns");
+  assert.equal(setup.pointRedemptionSheetName, "PointRedemptions");
+  assert.equal(setup.pointTypeColumns, 8);
+  assert.equal(setup.pointCampaignColumns, 10);
+  assert.equal(setup.pointRedemptionColumns, 9);
 });
 
 test("verification rate limit rejects excess requests", () => {

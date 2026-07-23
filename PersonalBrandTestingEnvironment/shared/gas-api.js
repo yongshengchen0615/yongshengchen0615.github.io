@@ -12,6 +12,10 @@
     "pageSize",
     "phone",
     "birthday",
+    "claim",
+    "pointAmount",
+    "pointTypeId",
+    "expiresAt",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {

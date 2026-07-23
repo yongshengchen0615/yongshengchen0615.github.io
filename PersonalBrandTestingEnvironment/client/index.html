@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#f3f0e7" />
     <meta
       name="description"
@@ -189,9 +190,10 @@
             <div class="pass-footer">
               <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
               <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
-              <div class="pass-code" aria-hidden="true">
-                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-              </div>
+              <p class="pass-points">
+                <small>POINT BALANCE</small>
+                <strong><output id="member-point-balance" aria-label="會員點數餘額" aria-live="polite">0</output><span> PTS</span></strong>
+              </p>
             </div>
           </article>
 
@@ -231,7 +233,7 @@
             <p class="eyebrow">DATA CONTROL</p>
             <h2 id="data-control-title">你的資料，由你決定。</h2>
           </div>
-          <p>後台保存建立會員所需的 LINE 資料、你自行填寫的電話與生日、登入次數與時間、會員使用狀態、異動時間與執行異動的管理員識別碼、基本開啟環境、Token 核發時間，以及避免重複寫入的請求識別碼；不會保存 ID Token 本體或 LINE 密碼。</p>
+          <p>後台保存建立會員所需的 LINE 資料、你自行填寫的電話與生日、登入與會員狀態紀錄，以及點數活動、領取時間與餘額等防止重複領點所需資料；不會保存 ID Token 本體或 LINE 密碼。</p>
           <div>
             <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
             <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
@@ -270,7 +272,7 @@
       <div class="modal-body">
         <section>
           <span>01</span>
-          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、你自行填寫的電話與生日、會員時間與次數、使用狀態、異動時間與管理員識別碼、基本開啟環境、Token 核發時間，以及防止重複寫入的請求識別碼。</p></div>
+          <div><h3>會保存什麼</h3><p>LINE 使用者識別碼、顯示名稱、頭像網址、你自行填寫的電話與生日、會員登入與狀態紀錄，以及點數活動、領取點數、時間與餘額等防止重複領點所需資料。</p></div>
         </section>
         <section>
           <span>02</span>
@@ -278,7 +280,7 @@
         </section>
         <section>
           <span>03</span>
-          <div><h3>如何刪除</h3><p>登入後可在會員中心刪除自己的整筆會員資料。正式上線前，請依你的服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料與點數領取紀錄；點數餘額和防重複領取歷史也會一併清除，重新加入後可能再次領取尚未到期的舊 QR。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
@@ -336,6 +338,70 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <dialog
+      class="modal claim-modal"
+      id="claim-dialog"
+      aria-labelledby="claim-dialog-title"
+      aria-describedby="claim-dialog-description"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">POINT CLAIM</p>
+          <h2 id="claim-dialog-title">領取會員點數</h2>
+        </div>
+        <button class="icon-button" id="claim-close-button" type="button" aria-label="關閉點數領取視窗">×</button>
+      </div>
+
+      <p class="claim-description" id="claim-dialog-description">每張 QR 活動每位會員只能領取一次，點數以後台設定為準。</p>
+
+      <section class="claim-state claim-preview-state" id="claim-preview-state" role="status" aria-live="polite" hidden>
+        <span class="claim-symbol" aria-hidden="true">+</span>
+        <p>本次可領取</p>
+        <strong><span id="claim-preview-points">0</span> 點</strong>
+        <small id="claim-preview-label">點數活動</small>
+        <p class="claim-expiry">領取期限：<time id="claim-preview-expiry">—</time></p>
+        <div class="claim-actions">
+          <button class="secondary-button" id="claim-preview-cancel-button" type="button">稍後再說</button>
+          <button class="primary-button" id="claim-confirm-button" type="button">
+            <span>確認領取</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+          </button>
+        </div>
+      </section>
+
+      <section class="claim-state claim-loading-state" id="claim-loading-state" role="status" aria-live="polite">
+        <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <strong>正在確認 QR 領取資格</strong>
+        <p>後台正在核對活動與會員身分，請稍候。</p>
+      </section>
+
+      <section class="claim-state claim-success-state" id="claim-success-state" role="status" aria-live="polite" hidden>
+        <span class="claim-symbol" aria-hidden="true">+</span>
+        <p>點數領取完成</p>
+        <strong>+<span id="claim-success-points">0</span> 點</strong>
+        <small>目前共有 <b id="claim-success-balance">0</b> 點</small>
+        <button class="primary-button full-width" id="claim-success-close-button" type="button"><span>完成</span></button>
+      </section>
+
+      <section class="claim-state claim-duplicate-state" id="claim-duplicate-state" role="status" aria-live="polite" hidden>
+        <span class="claim-symbol claim-symbol-muted" aria-hidden="true">✓</span>
+        <p>這張 QR 已領取過</p>
+        <strong>沒有重複加點</strong>
+        <small>目前共有 <b id="claim-duplicate-balance">0</b> 點</small>
+        <button class="secondary-button full-width" id="claim-duplicate-close-button" type="button">返回會員中心</button>
+      </section>
+
+      <section class="claim-state claim-error-state" id="claim-error-state" role="alert" hidden>
+        <span class="claim-symbol claim-symbol-error" aria-hidden="true">×</span>
+        <p>目前無法領取點數</p>
+        <strong id="claim-error-message">這張 QR 無效或已過期。</strong>
+        <div class="claim-actions">
+          <button class="secondary-button" id="claim-error-close-button" type="button">返回會員中心</button>
+          <button class="primary-button" id="claim-retry-button" type="button"><span>重新確認</span></button>
+        </div>
+      </section>
     </dialog>
 
     <dialog class="modal delete-modal" id="delete-dialog" aria-labelledby="delete-title">

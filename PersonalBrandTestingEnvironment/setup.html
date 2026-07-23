@@ -46,10 +46,13 @@
             <div><dt>LINE_CHANNEL_ID</dt><dd>2010787602</dd></div>
             <div><dt>SPREADSHEET_ID</dt><dd>共用 Google Spreadsheet ID</dd></div>
             <div><dt>ALLOWED_ORIGINS</dt><dd>https://yongshengchen0615.github.io</dd></div>
-            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
+            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members；自訂時須與管理 GAS 相同</dd></div>
+            <div><dt>POINT_TYPE_SHEET_NAME</dt><dd>選填，預設 PointTypes</dd></div>
+            <div><dt>POINT_CAMPAIGN_SHEET_NAME</dt><dd>選填，預設 PointCampaigns</dd></div>
+            <div><dt>POINT_REDEMPTION_SHEET_NAME</dt><dd>選填，預設 PointRedemptions</dd></div>
             <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，預設 120</dd></div>
           </dl>
-          <p>執行一次 <code>setup()</code>，再部署為網頁應用程式；執行身分選「我」、存取權選「任何人」。保留會員 GAS 的 <code>/exec</code> URL。</p>
+          <p>執行一次 <code>setup()</code>，建立或驗證 <code>Members</code> 與三張點數工作表，再部署為網頁應用程式；執行身分選「我」、存取權選「任何人」。保留會員 GAS 的 <code>/exec</code> URL。</p>
         </div>
       </section>
 
@@ -63,13 +66,17 @@
             <div><dt>LINE_CHANNEL_ID</dt><dd>2010791619</dd></div>
             <div><dt>SPREADSHEET_ID</dt><dd>與會員 GAS 完全相同</dd></div>
             <div><dt>ALLOWED_ORIGINS</dt><dd>https://yongshengchen0615.github.io</dd></div>
-            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members</dd></div>
+            <div><dt>SHEET_NAME</dt><dd>選填，預設 Members；自訂時須與會員 GAS 相同</dd></div>
             <div><dt>ADMIN_SHEET_NAME</dt><dd>選填，預設 Admins</dd></div>
+            <div><dt>POINT_TYPE_SHEET_NAME</dt><dd>選填，預設 PointTypes；須與會員 GAS 相同</dd></div>
+            <div><dt>POINT_CAMPAIGN_SHEET_NAME</dt><dd>選填，預設 PointCampaigns；須與會員 GAS 相同</dd></div>
+            <div><dt>POINT_REDEMPTION_SHEET_NAME</dt><dd>選填，預設 PointRedemptions；須與會員 GAS 相同</dd></div>
+            <div><dt>MEMBER_LIFF_URL</dt><dd>選填；目前只接受 https://liff.line.me/2010787602-kaiSm2eq</dd></div>
             <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，預設 120</dd></div>
           </dl>
-          <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
+          <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>若是從舊版升級，請在維護時段先將兩套 GAS 都建立新部署，再分別執行 <code>setup()</code>。系統會保留既有 1–21 欄並在尾端追加 <code>phone</code>、<code>birthday</code>；不要只升級其中一套 GAS。</p>
+          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，另建立三張點數工作表；不要只升級其中一套 GAS。</p>
         </div>
       </section>
 
@@ -99,6 +106,18 @@ admin/config.json  → 管理 GAS /exec</code></pre>
           <p>管理資格只看 <code>Admins.status</code>。舊的 <code>Members.admin_status</code> 不再授權，也不需要先從會員端登入。</p>
           <p>一般會員預設可以直接使用；後續可在後台或 Members 工作表把 <code>status</code> 改為 <code>approved</code>（可使用）或 <code>denied</code>（停用）。</p>
           <p>完整檢查與疑難排解請看 <a href="https://github.com/yongshengchen0615/yongshengchen0615.github.io/tree/main/PersonalBrandTestingEnvironment" target="_blank" rel="noopener">專案 README</a>。</p>
+        </div>
+      </section>
+
+      <section>
+        <span>06</span>
+        <div>
+          <h2>建立點數 QR</h2>
+          <p>以已核准的管理員登入後台，先新增 1～9999 的整數點數類型，再選擇類型與未來到期時間（最長 366 天）產生 QR Code。QR 由瀏覽器本機產生，不會把領點網址送給第三方圖片服務。</p>
+          <p>會員掃描後會先看到活動點數與期限，按下「確認領取」才寫入 <code>PointRedemptions</code>。同一活動每位會員只能領取一次；同一 QR 可由多位已核准會員使用，也可能被轉傳，因此請設定合理期限。</p>
+          <pre><code>PointTypes       → 點數類型
+PointCampaigns   → QR 活動與 claim hash
+PointRedemptions → 會員領取紀錄與餘額</code></pre>
         </div>
       </section>
     </main>

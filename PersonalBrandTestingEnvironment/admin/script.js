@@ -12,9 +12,13 @@
     "dashboard-state",
   ];
   var members = [];
+  var pointTypes = [];
   var metrics = { all: 0, pending: 0, approved: 0, denied: 0 };
   var pagination = { page: 1, pageSize: 50, total: 0, totalPages: 0 };
   var currentIdToken = "";
+  var selectedPointTypeId = "";
+  var currentClaimUrl = "";
+  var currentPointCampaign = null;
   var pendingDenyMember = null;
   var updatingMemberIds = Object.create(null);
   var toastTimer = null;
@@ -23,8 +27,11 @@
   var isDemoSession = false;
   var isListLoading = false;
   var isMutationLoading = false;
+  var isPointMutationLoading = false;
+  var isPointWorkspaceAvailable = false;
   var isLiffInitialized = false;
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
+  var MEMBER_LIFF_PATH = "/2010787602-kaiSm2eq";
 
   function byId(id) {
     return document.getElementById(id);
@@ -120,6 +127,7 @@
       setView("loading-state");
     }
 
+    var memberData;
     return sendAdminRequest("adminListMembers", {
       page: page,
       pageSize: getConfiguredPageSize(),
@@ -128,7 +136,25 @@
         if (expectedBootVersion !== bootVersion || thisListRequest !== listRequestVersion) return;
         assertSuccessfulResponse(response);
         clearInvalidTokenRecoveryGuard();
-        renderDashboard(response.data);
+        memberData = response.data;
+        renderDashboard(memberData);
+
+        return sendAdminRequest("adminListPointTypes", {})
+          .then(function (pointResponse) {
+            if (
+              expectedBootVersion !== bootVersion ||
+              thisListRequest !== listRequestVersion
+            ) {
+              return;
+            }
+            assertSuccessfulResponse(pointResponse);
+            renderPointDashboard(pointResponse.data);
+          })
+          .catch(function (pointError) {
+            if (isAuthorizationError(pointError)) throw pointError;
+            renderPointWorkspaceError(pointError);
+            showToast("會員清單已載入，但點數功能暫時無法使用", "error");
+          });
       })
       .catch(function (error) {
         if (expectedBootVersion !== bootVersion || thisListRequest !== listRequestVersion) return;
@@ -197,22 +223,66 @@
     window.location.replace(getCleanPageUrl());
   }
 
-  function renderDashboard(data) {
+  function renderDashboard(data, pointData) {
     data = data && typeof data === "object" ? data : {};
     if (!Array.isArray(data.members)) {
       throw createError("INVALID_RESPONSE", "後台回傳的會員清單格式不完整。");
     }
 
     members = data.members.map(normalizeMember);
+    isPointWorkspaceAvailable = false;
+    pointTypes = [];
+    selectedPointTypeId = "";
     metrics = normalizeMetrics(data.metrics);
     pagination = normalizePagination(data.pagination);
     renderAdminIdentity(data.admin || {});
     renderMetrics();
+    renderPointTypes();
+    setDefaultPointExpiry();
     renderMemberRows();
     renderPagination();
+    updateOperationControls();
     byId("sync-label").textContent = "最後同步：" + formatTime(new Date());
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("dashboard-state");
+
+    if (pointData) renderPointDashboard(pointData);
+  }
+
+  function renderPointDashboard(pointData) {
+    pointData = pointData && typeof pointData === "object" ? pointData : {};
+    if (!Array.isArray(pointData.pointTypes)) {
+      throw createError("INVALID_RESPONSE", "後台回傳的點數類型格式不完整。");
+    }
+
+    pointTypes = pointData.pointTypes.map(normalizePointType);
+    isPointWorkspaceAvailable = true;
+    if (
+      !pointTypes.some(function (pointType) {
+        return pointType.pointTypeId === selectedPointTypeId && pointType.status === "active";
+      })
+    ) {
+      var firstActiveType = pointTypes.find(function (pointType) {
+        return pointType.status === "active";
+      });
+      selectedPointTypeId = firstActiveType ? firstActiveType.pointTypeId : "";
+    }
+    clearPointFormError("point-type-error");
+    clearPointFormError("point-campaign-error");
+    renderPointTypes();
+    updateOperationControls();
+  }
+
+  function renderPointWorkspaceError(error) {
+    pointTypes = [];
+    selectedPointTypeId = "";
+    isPointWorkspaceAvailable = false;
+    renderPointTypes();
+    updateOperationControls();
+    showPointFormError(
+      "point-type-error",
+      "點數功能載入失敗：" + normalizeError(error).message
+    );
   }
 
   function renderDemoDashboard() {
@@ -228,6 +298,12 @@
         demoMember("MBR-C019283746", "許雅文", "", "1995-07-21", "denied", 3),
         demoMember("MBR-D837465920", "江柏廷", "02-2345-6789", "", "denied", 5),
         demoMember("MBR-E746291038", "周語彤", "0988 765 432", "1993-02-08", "approved", 12),
+      ],
+    }, {
+      pointTypes: [
+        demoPointType("PTY-PREVIEW001", 1),
+        demoPointType("PTY-PREVIEW002", 2),
+        demoPointType("PTY-PREVIEW003", 3),
       ],
     });
   }
@@ -246,6 +322,421 @@
       loginCount: daysAgo + 1,
       accessUpdatedAt: new Date().toISOString(),
     };
+  }
+
+  function demoPointType(pointTypeId, points) {
+    return {
+      pointTypeId: pointTypeId,
+      label: points + " 點",
+      points: points,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function handleCreatePointType(event) {
+    event.preventDefault();
+    if (isPointMutationLoading || !isPointWorkspaceAvailable) return;
+    clearPointFormError("point-type-error");
+    var input = byId("point-amount-input");
+    var pointAmount = Number(input.value);
+
+    if (
+      !Number.isInteger(pointAmount) ||
+      pointAmount < 1 ||
+      pointAmount > 9999
+    ) {
+      showPointFormError("point-type-error", "請輸入 1 至 9999 的整數點數。");
+      input.focus();
+      return;
+    }
+
+    if (
+      pointTypes.some(function (pointType) {
+        return pointType.points === pointAmount && pointType.status === "active";
+      })
+    ) {
+      showPointFormError("point-type-error", "這個點數類型已經存在。");
+      return;
+    }
+
+    if (isDemoSession) {
+      var previewType = demoPointType(
+        "PTY-PREVIEW" + String(pointTypes.length + 1).padStart(3, "0"),
+        pointAmount
+      );
+      pointTypes.unshift(normalizePointType(previewType));
+      selectedPointTypeId = previewType.pointTypeId;
+      input.value = "";
+      renderPointTypes();
+      showToast("預覽：已新增 " + pointAmount + " 點類型");
+      return;
+    }
+
+    isPointMutationLoading = true;
+    setButtonBusy(byId("create-point-type-button"), true, "正在新增");
+    updateOperationControls();
+
+    sendAdminRequest("adminCreatePointType", {
+      pointAmount: pointAmount,
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (!response.data || !response.data.pointType) {
+          throw createError("INVALID_RESPONSE", "後台回傳的點數類型格式不完整。");
+        }
+        var pointType = normalizePointType(response.data.pointType);
+        var existingIndex = pointTypes.findIndex(function (item) {
+          return item.pointTypeId === pointType.pointTypeId;
+        });
+        if (existingIndex >= 0) pointTypes[existingIndex] = pointType;
+        else pointTypes.unshift(pointType);
+        selectedPointTypeId = pointType.pointTypeId;
+        input.value = "";
+        renderPointTypes();
+        showToast("已新增 " + pointType.label);
+      })
+      .catch(function (error) {
+        if (isAuthorizationError(error)) {
+          handleFatalError(error);
+          return;
+        }
+        showPointFormError("point-type-error", normalizeError(error).message);
+      })
+      .finally(function () {
+        isPointMutationLoading = false;
+        setButtonBusy(byId("create-point-type-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function handleCreatePointCampaign(event) {
+    event.preventDefault();
+    if (isPointMutationLoading || !isPointWorkspaceAvailable) return;
+    clearPointFormError("point-campaign-error");
+    var pointType = getSelectedPointType();
+    if (!pointType || pointType.status !== "active") {
+      showPointFormError("point-campaign-error", "請先選擇可使用的點數類型。");
+      return;
+    }
+
+    var expiryInput = byId("point-expiry-input");
+    var expiryDate = new Date(expiryInput.value);
+    if (
+      !expiryInput.value ||
+      Number.isNaN(expiryDate.getTime()) ||
+      expiryDate.getTime() <= Date.now() + 5 * 60 * 1000 ||
+      expiryDate.getTime() > Date.now() + 366 * 86400000
+    ) {
+      showPointFormError(
+        "point-campaign-error",
+        "領取期限需晚於現在至少 5 分鐘，且不可超過一年。"
+      );
+      expiryInput.focus();
+      return;
+    }
+
+    if (isDemoSession) {
+      showPointQrDialog(
+        {
+          label: pointType.label,
+          points: pointType.points,
+          expiresAt: expiryDate.toISOString(),
+        },
+        "",
+        true
+      );
+      return;
+    }
+
+    if (
+      !window.PersonaQr ||
+      typeof window.PersonaQr.renderSvg !== "function" ||
+      typeof window.PersonaQr.toPngDataUrl !== "function"
+    ) {
+      showPointFormError(
+        "point-campaign-error",
+        "QR 產生元件尚未載入，請重新整理頁面後再試。"
+      );
+      return;
+    }
+
+    isPointMutationLoading = true;
+    setButtonBusy(byId("create-point-campaign-button"), true, "正在產生");
+    updateOperationControls();
+
+    sendAdminRequest("adminCreatePointCampaign", {
+      pointTypeId: pointType.pointTypeId,
+      expiresAt: expiryDate.toISOString(),
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (
+          !response.data ||
+          !response.data.campaign ||
+          !response.data.claimUrl
+        ) {
+          throw createError("INVALID_RESPONSE", "後台回傳的 QR 活動格式不完整。");
+        }
+        showPointQrDialog(
+          response.data.campaign,
+          response.data.claimUrl,
+          false
+        );
+        showToast("點數 QR Code 已產生");
+      })
+      .catch(function (error) {
+        if (isAuthorizationError(error)) {
+          handleFatalError(error);
+          return;
+        }
+        showPointFormError("point-campaign-error", normalizeError(error).message);
+      })
+      .finally(function () {
+        isPointMutationLoading = false;
+        setButtonBusy(byId("create-point-campaign-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function normalizePointType(value) {
+    value = value && typeof value === "object" ? value : {};
+    var pointTypeId = String(value.pointTypeId || "");
+    var points = Number(value.points);
+    var label = String(value.label || "").trim();
+    var status = String(value.status || "").trim().toLowerCase();
+    if (
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      label !== points + " 點" ||
+      (status !== "active" && status !== "inactive")
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的點數類型格式不正確。");
+    }
+    return {
+      pointTypeId: pointTypeId,
+      label: label,
+      points: points,
+      status: status,
+      createdAt: value.createdAt || "",
+      updatedAt: value.updatedAt || "",
+    };
+  }
+
+  function renderPointTypes() {
+    var list = byId("point-type-list");
+    list.textContent = "";
+    list.setAttribute("aria-busy", String(isPointMutationLoading));
+
+    if (pointTypes.length === 0) {
+      var empty = document.createElement("li");
+      empty.className = "point-type-empty";
+      empty.textContent = isPointWorkspaceAvailable
+        ? "尚未建立點數類型，請先輸入 1、2、3 等整數點數。"
+        : "點數功能目前無法使用，會員權限管理仍可正常操作。";
+      list.appendChild(empty);
+    } else {
+      pointTypes.forEach(function (pointType) {
+        var item = document.createElement("li");
+        var button = document.createElement("button");
+        var label = document.createElement("strong");
+        var status = document.createElement("small");
+        button.type = "button";
+        button.className = "point-type-option";
+        button.dataset.pointTypeId = pointType.pointTypeId;
+        button.setAttribute(
+          "aria-pressed",
+          String(pointType.pointTypeId === selectedPointTypeId)
+        );
+        button.disabled =
+          isListLoading ||
+          isPointMutationLoading ||
+          !isPointWorkspaceAvailable ||
+          pointType.status !== "active";
+        label.textContent = pointType.label;
+        status.textContent = pointType.status === "active" ? "可發行 QR" : "已停用";
+        button.appendChild(label);
+        button.appendChild(status);
+        button.addEventListener("click", function () {
+          selectPointType(pointType.pointTypeId);
+        });
+        item.appendChild(button);
+        list.appendChild(item);
+      });
+    }
+
+    var selected = getSelectedPointType();
+    byId("selected-point-label").textContent = selected
+      ? selected.label
+      : "尚未建立點數類型";
+    byId("create-point-campaign-button").disabled =
+      !selected ||
+      selected.status !== "active" ||
+      isListLoading ||
+      isPointMutationLoading ||
+      !isPointWorkspaceAvailable;
+  }
+
+  function selectPointType(pointTypeId) {
+    var match = pointTypes.find(function (pointType) {
+      return pointType.pointTypeId === pointTypeId && pointType.status === "active";
+    });
+    if (!match) return;
+    selectedPointTypeId = match.pointTypeId;
+    clearPointFormError("point-campaign-error");
+    renderPointTypes();
+  }
+
+  function getSelectedPointType() {
+    return pointTypes.find(function (pointType) {
+      return pointType.pointTypeId === selectedPointTypeId;
+    }) || null;
+  }
+
+  function setDefaultPointExpiry() {
+    var input = byId("point-expiry-input");
+    var now = new Date();
+    var minimum = new Date(now.getTime() + 5 * 60 * 1000);
+    var defaultExpiry = new Date(now.getTime() + 30 * 86400000);
+    input.min = toLocalDateTimeValue(minimum);
+    input.max = toLocalDateTimeValue(new Date(now.getTime() + 366 * 86400000));
+    if (!input.value || new Date(input.value).getTime() <= now.getTime()) {
+      input.value = toLocalDateTimeValue(defaultExpiry);
+    }
+  }
+
+  function toLocalDateTimeValue(value) {
+    var date = new Date(value);
+    var local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function showPointFormError(id, message) {
+    var output = byId(id);
+    output.textContent = message || "目前無法處理點數操作，請稍後再試。";
+    output.hidden = false;
+  }
+
+  function clearPointFormError(id) {
+    var output = byId(id);
+    output.textContent = "";
+    output.hidden = true;
+  }
+
+  function showPointQrDialog(campaign, claimUrl, preview) {
+    campaign = campaign && typeof campaign === "object" ? campaign : {};
+    var campaignPoints = Number(campaign.points);
+    var campaignLabel = String(campaign.label || "").trim();
+    var campaignExpiry = String(campaign.expiresAt || "").trim();
+    if (
+      !Number.isInteger(campaignPoints) ||
+      campaignPoints < 1 ||
+      campaignPoints > 9999 ||
+      campaignLabel !== campaignPoints + " 點" ||
+      !campaignExpiry ||
+      Number.isNaN(new Date(campaignExpiry).getTime())
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的 QR 活動格式不正確。");
+    }
+    currentPointCampaign = {
+      label: campaignLabel,
+      points: campaignPoints,
+      expiresAt: campaignExpiry,
+    };
+    currentClaimUrl = String(claimUrl || "");
+
+    byId("point-qr-label").textContent = currentPointCampaign.label;
+    byId("point-qr-expiry").textContent = formatDateTime(currentPointCampaign.expiresAt);
+    byId("point-claim-url").value = currentClaimUrl;
+    byId("point-qr-preview-message").hidden = !preview;
+    byId("point-qr-output").hidden = Boolean(preview);
+    byId("copy-claim-link-button").disabled = Boolean(preview);
+    byId("download-qr-button").disabled = Boolean(preview);
+
+    if (!preview) {
+      var url;
+      try {
+        url = new URL(currentClaimUrl);
+      } catch (_error) {
+        throw createError("INVALID_RESPONSE", "後台回傳的領取連結格式不正確。");
+      }
+      if (
+        url.protocol !== "https:" ||
+        url.hostname !== "liff.line.me" ||
+        url.pathname.replace(/\/+$/, "") !== MEMBER_LIFF_PATH ||
+        Array.from(url.searchParams.keys()).length !== 1 ||
+        !/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get("claim") || "") ||
+        !window.PersonaQr
+      ) {
+        throw createError("INVALID_RESPONSE", "後台回傳的領取連結格式不正確。");
+      }
+      window.PersonaQr.renderSvg(byId("point-qr-output"), currentClaimUrl, {
+        label: "領取 " + currentPointCampaign.label + " 的 QR Code",
+        foreground: "#10271d",
+      });
+    }
+
+    var dialog = byId("point-qr-dialog");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  function closePointQrDialog() {
+    var dialog = byId("point-qr-dialog");
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
+  }
+
+  function copyPointClaimUrl() {
+    if (!currentClaimUrl) return;
+    var copyPromise =
+      window.navigator.clipboard &&
+      typeof window.navigator.clipboard.writeText === "function"
+        ? window.navigator.clipboard.writeText(currentClaimUrl)
+        : null;
+
+    if (copyPromise) {
+      copyPromise
+        .then(function () {
+          showToast("領取連結已複製");
+        })
+        .catch(function () {
+          fallbackCopyPointClaimUrl();
+        });
+      return;
+    }
+    fallbackCopyPointClaimUrl();
+  }
+
+  function fallbackCopyPointClaimUrl() {
+    var input = byId("point-claim-url");
+    input.focus();
+    input.select();
+    try {
+      if (!document.execCommand("copy")) throw new Error("copy failed");
+      showToast("領取連結已複製");
+    } catch (_error) {
+      showToast("無法自動複製，請手動複製連結", "error");
+    }
+  }
+
+  function downloadPointQr() {
+    if (!currentClaimUrl || !currentPointCampaign || !window.PersonaQr) return;
+    try {
+      var link = document.createElement("a");
+      link.href = window.PersonaQr.toPngDataUrl(currentClaimUrl, { scale: 16 });
+      link.download =
+        "point-" + String(currentPointCampaign.points || "reward") + "-qr.png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showToast("QR 圖片已下載");
+    } catch (error) {
+      showToast(normalizeError(error).message, "error");
+    }
   }
 
   function renderAdminIdentity(admin) {
@@ -512,7 +1003,7 @@
     var totalPages = Math.max(0, Number(pagination.totalPages) || 0);
     byId("current-page").textContent = String(totalPages === 0 ? 1 : pagination.page);
     byId("total-pages").textContent = String(Math.max(1, totalPages));
-    var busy = isListLoading || isMutationLoading;
+    var busy = isListLoading || isMutationLoading || isPointMutationLoading;
     byId("previous-page-button").disabled = busy || pagination.page <= 1;
     byId("next-page-button").disabled = busy || totalPages === 0 || pagination.page >= totalPages;
   }
@@ -665,6 +1156,15 @@
       BUSY: "會員資料正在更新，請稍候幾秒後再試。",
       MEMBER_NOT_FOUND: "這位會員已不存在，請重新整理清單。",
       ACCESS_CONFLICT: "會員狀態已被其他管理員更新，清單將重新同步。",
+      INVALID_POINTS: "點數必須是 1 至 9999 的整數。",
+      POINT_TYPE_EXISTS: "這個點數類型已經存在。",
+      POINT_TYPE_NOT_FOUND: "找不到選擇的點數類型，請重新整理後再試。",
+      POINT_TYPE_INACTIVE: "這個點數類型已停用，無法產生新的 QR。",
+      INVALID_POINT_TYPE_ID: "點數類型識別碼無效，請重新整理後再試。",
+      INVALID_CAMPAIGN_EXPIRY: "領取期限需晚於現在，且不可超過一年。",
+      POINT_DATA_CONFLICT: "點數試算表資料不一致，請先檢查工作表內容。",
+      REQUEST_ID_CONFLICT: "同一請求已被用於不同操作，請重新整理後再試。",
+      CONFIG_ERROR: "管理後台尚未完成設定，請重新執行管理 GAS setup()。",
     };
     return {
       code: code,
@@ -723,13 +1223,17 @@
   }
 
   function updateOperationControls() {
-    var busy = isListLoading || isMutationLoading;
+    var busy = isListLoading || isMutationLoading || isPointMutationLoading;
     byId("table-wrap").setAttribute("aria-busy", String(busy));
     byId("refresh-button").disabled = busy;
     document.querySelectorAll(".action-button").forEach(function (button) {
       var row = button.closest("tr");
       button.disabled = busy || Boolean(row && updatingMemberIds[row.dataset.memberId]);
     });
+    byId("point-amount-input").disabled = busy || !isPointWorkspaceAvailable;
+    byId("point-expiry-input").disabled = busy || !isPointWorkspaceAvailable;
+    byId("create-point-type-button").disabled = busy || !isPointWorkspaceAvailable;
+    renderPointTypes();
     renderPagination();
   }
 
@@ -845,6 +1349,19 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday.replace(/-/g, "/") : "—";
   }
 
+  function formatDateTime(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return new Intl.DateTimeFormat("zh-TW", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  }
+
   function formatTime(value) {
     return new Intl.DateTimeFormat("zh-TW", {
       hour: "2-digit",
@@ -890,6 +1407,15 @@
     byId("status-filter").addEventListener("change", renderMemberRows);
     byId("filter-form").addEventListener("submit", function (event) {
       event.preventDefault();
+    });
+    byId("point-type-form").addEventListener("submit", handleCreatePointType);
+    byId("point-campaign-form").addEventListener("submit", handleCreatePointCampaign);
+    byId("copy-claim-link-button").addEventListener("click", copyPointClaimUrl);
+    byId("download-qr-button").addEventListener("click", downloadPointQr);
+    byId("close-point-qr-button").addEventListener("click", closePointQrDialog);
+    byId("done-point-qr-button").addEventListener("click", closePointQrDialog);
+    byId("point-qr-dialog").addEventListener("click", function (event) {
+      if (event.target === byId("point-qr-dialog")) closePointQrDialog();
     });
     byId("cancel-deny-button").addEventListener("click", closeDenyDialog);
     byId("confirm-deny-button").addEventListener("click", function () {

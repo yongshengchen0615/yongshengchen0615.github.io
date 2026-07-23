@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -28,11 +29,13 @@ function createOutput(content) {
 }
 
 function createGasContext(options = {}) {
+  let uuidCounter = 0;
   const propertyValues = {
     LINE_CHANNEL_ID: ADMIN_CHANNEL_ID,
     SPREADSHEET_ID: "spreadsheet-id",
     SHEET_NAME: "Members",
     ADMIN_SHEET_NAME: "Admins",
+    POINT_CLAIM_SECRET: "s".repeat(64),
     ALLOWED_ORIGINS: "https://example.github.io,http://localhost:8080",
     ...options.properties,
   };
@@ -68,6 +71,10 @@ function createGasContext(options = {}) {
               ? propertyValues[name]
               : "";
           },
+          setProperty(name, value) {
+            propertyValues[name] = String(value);
+            return this;
+          },
         };
       },
     },
@@ -102,8 +109,32 @@ function createGasContext(options = {}) {
       },
     },
     Utilities: {
+      Charset: { UTF_8: "UTF-8" },
+      DigestAlgorithm: { SHA_256: "SHA_256" },
       getUuid() {
-        return "01234567-89ab-cdef-0123-456789abcdef";
+        uuidCounter += 1;
+        const hex = crypto
+          .createHash("sha256")
+          .update(`uuid-${uuidCounter}`)
+          .digest("hex")
+          .slice(0, 32);
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+      },
+      computeHmacSha256Signature(value, key) {
+        return Array.from(crypto.createHmac("sha256", key).update(value).digest(), (byte) =>
+          byte > 127 ? byte - 256 : byte
+        );
+      },
+      computeDigest(_algorithm, value) {
+        return Array.from(crypto.createHash("sha256").update(value).digest(), (byte) =>
+          byte > 127 ? byte - 256 : byte
+        );
+      },
+      base64EncodeWebSafe(bytes) {
+        return Buffer.from(Array.from(bytes, (byte) => (Number(byte) + 256) % 256))
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_");
       },
     },
     SpreadsheetApp: options.SpreadsheetApp || {
@@ -121,6 +152,7 @@ function createGasContext(options = {}) {
       createHtmlOutput: createOutput,
     },
     ...options.globals,
+    __propertyValues: propertyValues,
   };
 
   vm.createContext(context);
@@ -301,12 +333,62 @@ function createAdminRow(gas, overrides = {}) {
   return row;
 }
 
+function createPointTypeRow(gas, overrides = {}) {
+  const row = new Array(gas.POINT_TYPE_HEADERS.length).fill("");
+  const values = {
+    pointTypeId: "PTY-ABCDEF1234",
+    label: "3 點",
+    points: 3,
+    status: "active",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    createdBy: ADMIN_USER_ID,
+    lastRequestId: "request-point-type-old",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_TYPE_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
+function createPointCampaignRow(gas, overrides = {}) {
+  const requestId = overrides.lastRequestId || "request-point-campaign-old";
+  const campaignId = overrides.campaignId || "PCG-ABCDEF1234";
+  const secret = overrides.pointClaimSecret || "s".repeat(64);
+  const claim = gas.createCampaignClaim_(campaignId, requestId, secret);
+  const row = new Array(gas.POINT_CAMPAIGN_HEADERS.length).fill("");
+  const values = {
+    campaignId,
+    pointTypeId: "PTY-ABCDEF1234",
+    labelSnapshot: "3 點",
+    pointsSnapshot: 3,
+    claimHash: gas.sha256Hex_(claim),
+    status: "active",
+    expiresAt: new Date(Date.now() + 86400000),
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    createdBy: ADMIN_USER_ID,
+    lastRequestId: requestId,
+    ...overrides,
+  };
+  delete values.pointClaimSecret;
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_CAMPAIGN_COLUMN[key] - 1] = value;
+  });
+  return { row, claim };
+}
+
 function configFor(gas) {
   return {
     lineChannelId: ADMIN_CHANNEL_ID,
     spreadsheetId: "spreadsheet-id",
     sheetName: "Members",
     adminSheetName: "Admins",
+    pointTypesSheetName: "PointTypes",
+    pointCampaignsSheetName: "PointCampaigns",
+    pointRedemptionsSheetName: "PointRedemptions",
+    memberLiffUrl: "https://liff.line.me/2010787602-kaiSm2eq",
+    pointClaimSecret: "s".repeat(64),
     allowedOrigins: ["https://example.github.io"],
   };
 }
@@ -347,6 +429,39 @@ test("administrator GAS uses the isolated channel and compatible sheet schemas",
       "last_request_id",
     ]
   );
+  assert.deepEqual(Array.from(gas.POINT_TYPE_HEADERS), [
+    "point_type_id",
+    "label",
+    "points",
+    "status",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "last_request_id",
+  ]);
+  assert.deepEqual(Array.from(gas.POINT_CAMPAIGN_HEADERS), [
+    "campaign_id",
+    "point_type_id",
+    "label_snapshot",
+    "points_snapshot",
+    "claim_hash",
+    "status",
+    "expires_at",
+    "created_at",
+    "created_by",
+    "last_request_id",
+  ]);
+  assert.deepEqual(Array.from(gas.POINT_REDEMPTION_HEADERS), [
+    "redemption_id",
+    "campaign_id",
+    "point_type_id",
+    "member_id",
+    "line_user_id",
+    "points",
+    "balance_after",
+    "redeemed_at",
+    "request_id",
+  ]);
 });
 
 test("configuration fails closed unless the administrator channel is exact", () => {
@@ -355,6 +470,11 @@ test("configuration fails closed unless the administrator channel is exact", () 
   assert.equal(config.lineChannelId, ADMIN_CHANNEL_ID);
   assert.equal(config.sheetName, "Members");
   assert.equal(config.adminSheetName, "Admins");
+  assert.equal(config.pointTypesSheetName, "PointTypes");
+  assert.equal(config.pointCampaignsSheetName, "PointCampaigns");
+  assert.equal(config.pointRedemptionsSheetName, "PointRedemptions");
+  assert.equal(config.memberLiffUrl, "https://liff.line.me/2010787602-kaiSm2eq");
+  assert.equal(config.pointClaimSecret, "s".repeat(64));
 
   const wrongChannel = createGasContext({
     properties: { LINE_CHANNEL_ID: "2010787602" },
@@ -371,6 +491,67 @@ test("configuration fails closed unless the administrator channel is exact", () 
     () => sameSheet.getConfig_(),
     (error) => error.appCode === "CONFIG_ERROR"
   );
+
+  for (const properties of [
+    { POINT_TYPE_SHEET_NAME: "admins" },
+    { POINT_CAMPAIGN_SHEET_NAME: "PointTypes" },
+    { POINT_REDEMPTION_SHEET_NAME: "members" },
+    { MEMBER_LIFF_URL: "https://evil.example/2010787602-kaiSm2eq" },
+    { MEMBER_LIFF_URL: "https://liff.line.me/2010787602-kaiSm2eq?claim=bad" },
+    { POINT_CLAIM_SECRET: "" },
+    { POINT_CLAIM_SECRET: "too-short" },
+  ]) {
+    const invalid = createGasContext({ properties });
+    assert.throws(
+      () => invalid.getConfig_(),
+      (error) => error.appCode === "CONFIG_ERROR"
+    );
+  }
+
+  const trailingSlash = createGasContext({
+    properties: { MEMBER_LIFF_URL: "https://liff.line.me/2010787602-kaiSm2eq/" },
+  });
+  assert.equal(
+    trailingSlash.getConfig_().memberLiffUrl,
+    "https://liff.line.me/2010787602-kaiSm2eq"
+  );
+});
+
+test("setup safely creates a claim secret and all point sheets with exact schemas", () => {
+  const gas = createGasContext({ properties: { POINT_CLAIM_SECRET: "" } });
+  const spreadsheet = createSpreadsheet();
+  installSpreadsheet(gas, spreadsheet);
+
+  const result = gas.setup();
+  assert.match(gas.__propertyValues.POINT_CLAIM_SECRET, /^[a-f0-9]{64}$/);
+  assert.equal(result.pointTypesSheetName, "PointTypes");
+  assert.equal(result.pointCampaignsSheetName, "PointCampaigns");
+  assert.equal(result.pointRedemptionsSheetName, "PointRedemptions");
+  assert.equal(result.pointTypeColumns, 8);
+  assert.equal(result.pointCampaignColumns, 10);
+  assert.equal(result.pointRedemptionColumns, 9);
+  assert.deepEqual(
+    spreadsheet.sheets.PointTypes.data[0],
+    Array.from(gas.POINT_TYPE_HEADERS)
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointCampaigns.data[0],
+    Array.from(gas.POINT_CAMPAIGN_HEADERS)
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointRedemptions.data[0],
+    Array.from(gas.POINT_REDEMPTION_HEADERS)
+  );
+  assert.equal(Object.prototype.hasOwnProperty.call(result, "pointClaimSecret"), false);
+});
+
+test("setup never replaces an explicitly malformed point claim secret", () => {
+  const gas = createGasContext({ properties: { POINT_CLAIM_SECRET: "weak" } });
+  assert.throws(
+    () => gas.setup(),
+    (error) => error.appCode === "CONFIG_ERROR"
+  );
+  assert.equal(gas.__propertyValues.POINT_CLAIM_SECRET, "weak");
 });
 
 test("LINE verification sends the exact admin client_id and validates returned claims", () => {
@@ -418,9 +599,14 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
-test("only two administrator actions are accepted and member/profile input is ignored", () => {
+test("only the five administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
-  for (const action of ["upsertMember", "updateMemberProfile", "deleteMember"]) {
+  for (const action of [
+    "upsertMember",
+    "updateMemberProfile",
+    "deleteMember",
+    "redeemPointCampaign",
+  ]) {
     assert.throws(
       () =>
         gas.validateRequestEnvelope_({
@@ -431,6 +617,33 @@ test("only two administrator actions are accepted and member/profile input is ig
         }),
       (error) => error.appCode === "UNSUPPORTED_ACTION"
     );
+  }
+
+  const tokenFields = {
+    idToken: "header.payload.signature",
+    requestId: "request-valid-action",
+    transport: "fetch",
+  };
+  for (const request of [
+    { ...tokenFields, action: "adminListMembers", page: 1, pageSize: 50 },
+    {
+      ...tokenFields,
+      action: "adminSetMemberAccess",
+      targetMemberId: "MBR-ABCDEF1234",
+      accessStatus: "denied",
+      expectedAccessStatus: "approved",
+      expectedAccessUpdatedAt: "",
+    },
+    { ...tokenFields, action: "adminListPointTypes" },
+    { ...tokenFields, action: "adminCreatePointType", points: 3 },
+    {
+      ...tokenFields,
+      action: "adminCreatePointCampaign",
+      pointTypeId: "PTY-ABCDEF1234",
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    },
+  ]) {
+    gas.validateRequestEnvelope_(request);
   }
 
   const parsed = gas.parseRequest_({
@@ -446,6 +659,9 @@ test("only two administrator actions are accepted and member/profile input is ig
         status: "approved",
         phone: "0912345678",
         birthday: "1990-05-20",
+        label: "=STEAL()",
+        claimHash: "secret",
+        createdBy: ADMIN_USER_ID,
       }),
     },
   });
@@ -453,6 +669,9 @@ test("only two administrator actions are accepted and member/profile input is ig
   assert.equal(Object.prototype.hasOwnProperty.call(parsed, "status"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed, "phone"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed, "birthday"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "label"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "claimHash"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed, "createdBy"), false);
   gas.validateRequestEnvelope_(parsed);
 });
 
@@ -474,13 +693,77 @@ test("member actions are rejected before config, LINE verification or Sheets are
     throw new Error("Sheet must not be opened");
   };
 
-  for (const action of ["upsertMember", "updateMemberProfile", "deleteMember"]) {
+  for (const action of [
+    "upsertMember",
+    "updateMemberProfile",
+    "deleteMember",
+    "redeemPointCampaign",
+  ]) {
     assert.throws(
       () => gas.handleAdminRequest_({ action, idToken: "header.payload.signature" }),
       (error) => error.appCode === "UNSUPPORTED_ACTION"
     );
   }
   assert.equal(configRead, false);
+  assert.equal(tokenVerified, false);
+  assert.equal(sheetOpened, false);
+});
+
+test("all five administrator actions dispatch only after config and LINE verification", () => {
+  const gas = createGasContext();
+  const routed = [];
+  let configReads = 0;
+  let tokenVerifications = 0;
+  gas.getConfig_ = () => {
+    configReads += 1;
+    return configFor(gas);
+  };
+  gas.verifyLineIdToken_ = () => {
+    tokenVerifications += 1;
+    return identity();
+  };
+  for (const [action, functionName] of [
+    ["adminListMembers", "adminListMembers_"],
+    ["adminSetMemberAccess", "adminSetMemberAccess_"],
+    ["adminListPointTypes", "adminListPointTypes_"],
+    ["adminCreatePointType", "adminCreatePointType_"],
+    ["adminCreatePointCampaign", "adminCreatePointCampaign_"],
+  ]) {
+    gas[functionName] = (_identity, request) => {
+      routed.push(request.action);
+      return { data: { route: request.action } };
+    };
+    const result = gas.handleAdminRequest_({
+      action,
+      idToken: "header.payload.signature",
+    });
+    assert.equal(result.data.route, action);
+  }
+  assert.deepEqual(routed, Array.from(gas.ADMIN_ACTIONS));
+  assert.equal(configReads, 5);
+  assert.equal(tokenVerifications, 5);
+});
+
+test("normal requests fail closed on a missing claim secret before LINE or Sheets", () => {
+  const gas = createGasContext({ properties: { POINT_CLAIM_SECRET: "" } });
+  let tokenVerified = false;
+  let sheetOpened = false;
+  gas.verifyLineIdToken_ = () => {
+    tokenVerified = true;
+    return identity();
+  };
+  gas.SpreadsheetApp.openById = () => {
+    sheetOpened = true;
+    throw new Error("Sheet must not be opened");
+  };
+  assert.throws(
+    () =>
+      gas.handleAdminRequest_({
+        action: "adminListPointTypes",
+        idToken: "header.payload.signature",
+      }),
+    (error) => error.appCode === "CONFIG_ERROR"
+  );
   assert.equal(tokenVerified, false);
   assert.equal(sheetOpened, false);
 });
@@ -693,6 +976,48 @@ test("pending authorization stops before the Members sheet is read", () => {
   assert.equal(memberRequested, false);
 });
 
+test("pending and denied administrators cannot read or mutate point sheets", () => {
+  for (const status of ["pending", "denied"]) {
+    for (const action of ["list", "createType", "createCampaign"]) {
+      const gas = createGasContext();
+      const adminSheet = createSheet("Admins", gas.ADMIN_HEADERS, [
+        createAdminRow(gas, { status }),
+      ]);
+      let pointSheetRequested = false;
+      const spreadsheet = {
+        getSheetByName(name) {
+          if (name === "Admins") return adminSheet;
+          if (name === "PointTypes" || name === "PointCampaigns") {
+            pointSheetRequested = true;
+            throw new Error("Point sheets must not be read");
+          }
+          return null;
+        },
+      };
+      installSpreadsheet(gas, spreadsheet);
+      const request = {
+        requestId: `request-${status}-${action}`,
+        points: 3,
+        pointTypeId: "PTY-ABCDEF1234",
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      };
+
+      const invoke =
+        action === "list"
+          ? () => gas.adminListPointTypes_(identity(), request, configFor(gas))
+          : action === "createType"
+            ? () => gas.adminCreatePointType_(identity(), request, configFor(gas))
+            : () => gas.adminCreatePointCampaign_(identity(), request, configFor(gas));
+      assert.throws(
+        invoke,
+        (error) =>
+          error.appCode === (status === "pending" ? "ADMIN_PENDING" : "ADMIN_FORBIDDEN")
+      );
+      assert.equal(pointSheetRequested, false);
+    }
+  }
+});
+
 test("approved member listing is bounded and omits all internal identifiers", () => {
   const gas = createGasContext();
   const internalAccessAdmin = `U${"c".repeat(32)}`;
@@ -712,6 +1037,7 @@ test("approved member listing is bounded and omits all internal identifiers", ()
       joinedAt: new Date("2026-02-01T00:00:00.000Z"),
       adminStatus: "denied",
     }),
+    new Array(gas.MEMBER_HEADERS.length).fill(""),
   ];
   const spreadsheet = createSpreadsheet({
     Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
@@ -850,6 +1176,448 @@ test("stale access updates and duplicate member IDs fail closed", () => {
   );
 });
 
+test("point type validation accepts only integer values from 1 through 9999", () => {
+  const gas = createGasContext();
+  const base = {
+    action: "adminCreatePointType",
+    idToken: "header.payload.signature",
+    requestId: "request-point-validation",
+    transport: "fetch",
+  };
+  for (const points of [undefined, NaN, Infinity, 0, -1, 1.5, 10000]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...base, points }),
+      (error) => error.appCode === "INVALID_POINTS"
+    );
+  }
+  gas.validateRequestEnvelope_({ ...base, points: 1 });
+  gas.validateRequestEnvelope_({ ...base, points: "9999" });
+});
+
+test("campaign validation requires an exact point type and future UTC expiry within 366 days", () => {
+  const gas = createGasContext();
+  const base = {
+    action: "adminCreatePointCampaign",
+    idToken: "header.payload.signature",
+    requestId: "request-campaign-validation",
+    transport: "fetch",
+    pointTypeId: "PTY-ABCDEF1234",
+  };
+  const validExpiry = new Date(Date.now() + 86400000).toISOString();
+  gas.validateRequestEnvelope_({ ...base, expiresAt: validExpiry });
+
+  for (const pointTypeId of ["", "PTY-lowercase1", "MBR-ABCDEF1234"]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...base, pointTypeId, expiresAt: validExpiry }),
+      (error) => error.appCode === "INVALID_POINT_TYPE_ID"
+    );
+  }
+  for (const expiresAt of [
+    "",
+    "2027-02-30T00:00:00.000Z",
+    new Date(Date.now() - 1000).toISOString(),
+    new Date(Date.now() + 367 * 86400000).toISOString(),
+    new Date(Date.now() + 86400000).toISOString().replace(/\.\d{3}Z$/, "Z"),
+  ]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...base, expiresAt }),
+      (error) => error.appCode === "INVALID_CAMPAIGN_EXPIRY"
+    );
+  }
+});
+
+test("approved administrators can list sorted point types without internal audit fields", () => {
+  const gas = createGasContext();
+  const pointTypes = [
+    createPointTypeRow(gas, {
+      pointTypeId: "PTY-ZYXWVU9876",
+      label: "3 點",
+      points: 3,
+      status: "inactive",
+      createdBy: `U${"f".repeat(32)}`,
+      lastRequestId: "private-type-request-3",
+    }),
+    createPointTypeRow(gas, {
+      pointTypeId: "PTY-A102938475",
+      label: "1 點",
+      points: 1,
+      createdBy: `U${"e".repeat(32)}`,
+      lastRequestId: "private-type-request-1",
+    }),
+  ];
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, pointTypes),
+  });
+  installSpreadsheet(gas, spreadsheet);
+
+  const result = gas.adminListPointTypes_(
+    identity(),
+    { requestId: "request-list-point-types" },
+    configFor(gas)
+  );
+  assert.deepEqual(
+    Array.from(result.data.pointTypes, (type) => type.points),
+    [1, 3]
+  );
+  assert.equal(result.data.pointTypes[0].label, "1 點");
+  assert.equal(result.data.pointTypes[1].status, "inactive");
+  for (const type of result.data.pointTypes) {
+    assert.equal(Object.prototype.hasOwnProperty.call(type, "createdBy"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(type, "lastRequestId"), false);
+  }
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes("private-type-request"), false);
+  assert.equal(serialized.includes(`U${"e".repeat(32)}`), false);
+  assert.equal(serialized.includes(`U${"f".repeat(32)}`), false);
+});
+
+test("point type creation is server-labelled, unique and idempotent", () => {
+  const gas = createGasContext();
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, []),
+  });
+  installSpreadsheet(gas, spreadsheet);
+  const request = {
+    action: "adminCreatePointType",
+    requestId: "request-create-three-points",
+    points: 3,
+    label: "=UNTRUSTED()",
+  };
+
+  const result = gas.adminCreatePointType_(identity(), request, configFor(gas));
+  assert.equal(result.data.duplicate, false);
+  assert.match(result.data.pointType.pointTypeId, /^PTY-[A-Z0-9]{10}$/);
+  assert.equal(result.data.pointType.label, "3 點");
+  assert.equal(result.data.pointType.points, 3);
+  assert.equal(result.data.pointType.status, "active");
+  const row = spreadsheet.sheets.PointTypes.data[1];
+  assert.equal(row[gas.POINT_TYPE_COLUMN.label - 1], "3 點");
+  assert.equal(row[gas.POINT_TYPE_COLUMN.createdBy - 1], ADMIN_USER_ID);
+  assert.equal(row[gas.POINT_TYPE_COLUMN.lastRequestId - 1], request.requestId);
+  assert.equal(JSON.stringify(result).includes(ADMIN_USER_ID), false);
+  assert.equal(JSON.stringify(result).includes(request.requestId), false);
+
+  const duplicate = gas.adminCreatePointType_(identity(), request, configFor(gas));
+  assert.equal(duplicate.data.duplicate, true);
+  assert.equal(
+    duplicate.data.pointType.pointTypeId,
+    result.data.pointType.pointTypeId
+  );
+  assert.equal(spreadsheet.sheets.PointTypes.data.length, 2);
+
+  assert.throws(
+    () =>
+      gas.adminCreatePointType_(
+        identity(),
+        { ...request, points: 4 },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+  assert.throws(
+    () =>
+      gas.adminCreatePointType_(
+        identity(),
+        { ...request, requestId: "request-create-three-again" },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "POINT_TYPE_EXISTS"
+  );
+});
+
+test("malformed or duplicate active point type rows fail closed", () => {
+  const gas = createGasContext();
+  for (const rows of [
+    [
+      createPointTypeRow(gas),
+      createPointTypeRow(gas, {
+        pointTypeId: "PTY-ZYXWVU9876",
+        lastRequestId: "request-other-type",
+      }),
+    ],
+    [createPointTypeRow(gas, { label: "=3 點" })],
+    [createPointTypeRow(gas, { status: "owner" })],
+  ]) {
+    const spreadsheet = createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, rows),
+    });
+    installSpreadsheet(gas, spreadsheet);
+    assert.throws(
+      () =>
+        gas.adminListPointTypes_(
+          identity(),
+          { requestId: "request-list-conflicting-types" },
+          configFor(gas)
+        ),
+      (error) => error.appCode === "POINT_DATA_CONFLICT"
+    );
+  }
+});
+
+test("campaign creation snapshots the type and stores only a deterministic claim hash", () => {
+  const gas = createGasContext();
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, [
+      createPointTypeRow(gas),
+    ]),
+    PointCampaigns: createSheet("PointCampaigns", gas.POINT_CAMPAIGN_HEADERS, []),
+  });
+  installSpreadsheet(gas, spreadsheet);
+  const request = {
+    action: "adminCreatePointCampaign",
+    requestId: "request-create-point-campaign",
+    pointTypeId: "PTY-ABCDEF1234",
+    expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+    points: 9999,
+    claimHash: "client-must-not-control-this",
+  };
+
+  const result = gas.adminCreatePointCampaign_(identity(), request, configFor(gas));
+  assert.equal(result.data.duplicate, false);
+  assert.match(result.data.campaign.campaignId, /^PCG-[A-Z0-9]{10}$/);
+  assert.equal(result.data.campaign.pointTypeId, request.pointTypeId);
+  assert.equal(result.data.campaign.label, "3 點");
+  assert.equal(result.data.campaign.points, 3);
+  assert.equal(result.data.campaign.status, "active");
+  assert.equal(result.data.campaign.expiresAt, request.expiresAt);
+
+  const claimUrl = new URL(result.data.claimUrl);
+  assert.equal(claimUrl.origin, "https://liff.line.me");
+  assert.equal(claimUrl.pathname, "/2010787602-kaiSm2eq");
+  assert.deepEqual(Array.from(claimUrl.searchParams.keys()), ["claim"]);
+  const claim = claimUrl.searchParams.get("claim");
+  assert.match(claim, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(claimUrl.searchParams.has("points"), false);
+  assert.equal(claimUrl.searchParams.has("pointTypeId"), false);
+
+  const row = spreadsheet.sheets.PointCampaigns.data[1];
+  const storedHash = row[gas.POINT_CAMPAIGN_COLUMN.claimHash - 1];
+  assert.match(storedHash, /^[a-f0-9]{64}$/);
+  assert.equal(storedHash, gas.sha256Hex_(claim));
+  assert.notEqual(storedHash, claim);
+  assert.equal(JSON.stringify(row).includes(claim), false);
+  assert.equal(row[gas.POINT_CAMPAIGN_COLUMN.pointsSnapshot - 1], 3);
+  assert.equal(row[gas.POINT_CAMPAIGN_COLUMN.labelSnapshot - 1], "3 點");
+  assert.equal(row[gas.POINT_CAMPAIGN_COLUMN.createdBy - 1], ADMIN_USER_ID);
+
+  const serialized = JSON.stringify(result);
+  assert.equal(serialized.includes(storedHash), false);
+  assert.equal(serialized.includes(ADMIN_USER_ID), false);
+  assert.equal(serialized.includes(request.requestId), false);
+  assert.equal(serialized.includes("s".repeat(64)), false);
+  for (const key of ["claimHash", "createdBy", "lastRequestId"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(result.data.campaign, key), false);
+  }
+
+  const duplicate = gas.adminCreatePointCampaign_(
+    identity(),
+    request,
+    configFor(gas)
+  );
+  assert.equal(duplicate.data.duplicate, true);
+  assert.equal(duplicate.data.claimUrl, result.data.claimUrl);
+  assert.equal(
+    duplicate.data.campaign.campaignId,
+    result.data.campaign.campaignId
+  );
+  assert.equal(spreadsheet.sheets.PointCampaigns.data.length, 2);
+
+  assert.throws(
+    () =>
+      gas.adminCreatePointCampaign_(
+        identity(),
+        { ...request, pointTypeId: "PTY-ZYXWVU9876" },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+  assert.throws(
+    () =>
+      gas.adminCreatePointCampaign_(
+        identity(),
+        {
+          ...request,
+          expiresAt: new Date(Date.now() + 8 * 86400000).toISOString(),
+        },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+});
+
+test("campaign creation rejects missing, inactive and ambiguous point types", () => {
+  for (const scenario of ["missing", "inactive", "duplicate"]) {
+    const gas = createGasContext();
+    let rows = [];
+    if (scenario === "inactive") {
+      rows = [createPointTypeRow(gas, { status: "inactive" })];
+    } else if (scenario === "duplicate") {
+      rows = [
+        createPointTypeRow(gas),
+        createPointTypeRow(gas, {
+          pointTypeId: "PTY-ZYXWVU9876",
+          lastRequestId: "request-duplicate-active-points",
+        }),
+      ];
+    }
+    const spreadsheet = createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, rows),
+      PointCampaigns: createSheet("PointCampaigns", gas.POINT_CAMPAIGN_HEADERS, []),
+    });
+    installSpreadsheet(gas, spreadsheet);
+    assert.throws(
+      () =>
+        gas.adminCreatePointCampaign_(
+          identity(),
+          {
+            requestId: `request-campaign-${scenario}`,
+            pointTypeId: "PTY-ABCDEF1234",
+            expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          },
+          configFor(gas)
+        ),
+      (error) =>
+        error.appCode ===
+        (scenario === "missing"
+          ? "POINT_TYPE_NOT_FOUND"
+          : scenario === "inactive"
+            ? "POINT_TYPE_INACTIVE"
+            : "POINT_DATA_CONFLICT")
+    );
+  }
+});
+
+test("campaign issuance fails closed on duplicate IDs or a tampered deterministic hash", () => {
+  for (const scenario of ["duplicate-id", "tampered-hash"]) {
+    const gas = createGasContext();
+    const requestId =
+      scenario === "tampered-hash"
+        ? "request-tampered-campaign"
+        : "request-new-campaign-after-conflict";
+    const firstOverrides = {
+      lastRequestId:
+        scenario === "tampered-hash"
+          ? requestId
+          : "request-existing-campaign-one",
+      expiresAt: new Date(Date.now() + 86400000),
+    };
+    if (scenario === "tampered-hash") {
+      firstOverrides.claimHash = "0".repeat(64);
+    }
+    const first = createPointCampaignRow(gas, firstOverrides).row;
+    if (scenario === "tampered-hash") {
+      first[gas.POINT_CAMPAIGN_COLUMN.claimHash - 1] = "0".repeat(64);
+    }
+    const campaignRows =
+      scenario === "duplicate-id"
+        ? [
+            first,
+            createPointCampaignRow(gas, {
+              campaignId: "PCG-ABCDEF1234",
+              lastRequestId: "request-existing-campaign-two",
+              expiresAt: new Date(Date.now() + 2 * 86400000),
+            }).row,
+          ]
+        : [first];
+    const spreadsheet = createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, [
+        createPointTypeRow(gas),
+      ]),
+      PointCampaigns: createSheet(
+        "PointCampaigns",
+        gas.POINT_CAMPAIGN_HEADERS,
+        campaignRows
+      ),
+    });
+    installSpreadsheet(gas, spreadsheet);
+    assert.throws(
+      () =>
+        gas.adminCreatePointCampaign_(
+          identity(),
+          {
+            requestId,
+            pointTypeId: "PTY-ABCDEF1234",
+            expiresAt:
+              scenario === "tampered-hash"
+                ? first[gas.POINT_CAMPAIGN_COLUMN.expiresAt - 1].toISOString()
+                : new Date(Date.now() + 3 * 86400000).toISOString(),
+          },
+          configFor(gas)
+        ),
+      (error) => error.appCode === "POINT_DATA_CONFLICT"
+    );
+  }
+});
+
+test("fetch and bridge parse identical point fields without accepting snapshots or claims", () => {
+  const gas = createGasContext();
+  const payload = {
+    action: "adminCreatePointCampaign",
+    idToken: "header.payload.signature",
+    requestId: "request-bridge-point-campaign",
+    callbackOrigin: "https://example.github.io/",
+    pointTypeId: "PTY-ABCDEF1234",
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    pointsSnapshot: 9999,
+    labelSnapshot: "9999 點",
+    claimHash: "forged",
+  };
+  const fetchRequest = gas.parseRequest_({
+    postData: { contents: JSON.stringify(payload) },
+  });
+  const bridgeRequest = gas.parseRequest_({
+    parameter: {
+      ...payload,
+      transport: "bridge",
+      requestSecret: "a".repeat(48),
+    },
+  });
+  for (const field of [
+    "action",
+    "idToken",
+    "requestId",
+    "callbackOrigin",
+    "pointTypeId",
+    "expiresAt",
+  ]) {
+    assert.equal(fetchRequest[field], bridgeRequest[field]);
+  }
+  for (const request of [fetchRequest, bridgeRequest]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(request, "pointsSnapshot"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(request, "labelSnapshot"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(request, "claimHash"), false);
+    gas.validateRequestEnvelope_(request);
+  }
+
+  const pointTypePayload = {
+    ...payload,
+    action: "adminCreatePointType",
+    requestId: "request-bridge-point-type",
+    pointAmount: "3",
+    points: "9999",
+  };
+  const parsedPointType = gas.parseRequest_({
+    postData: { contents: JSON.stringify(pointTypePayload) },
+  });
+  const parsedBridgePointType = gas.parseRequest_({
+    parameter: {
+      ...pointTypePayload,
+      transport: "bridge",
+      requestSecret: "b".repeat(48),
+    },
+  });
+  assert.equal(parsedPointType.points, 3);
+  assert.equal(parsedBridgePointType.points, 3);
+  gas.validateRequestEnvelope_(parsedPointType);
+  gas.validateRequestEnvelope_(parsedBridgePointType);
+});
+
 test("fetch and bridge parse identical CAS fields and bind bridge state", () => {
   const gas = createGasContext();
   const payload = {
@@ -928,6 +1696,35 @@ test("17, 20 and 21-column Members headers upgrade to the shared 23-column profi
     () => gas.getOrCreateAdminSheet_(badSpreadsheet, configFor(gas)),
     (error) => error.appCode === "ADMIN_SCHEMA_MISMATCH"
   );
+
+  for (const [sheetName, headers, getterName, expectedCode] of [
+    [
+      "PointTypes",
+      Array.from(gas.POINT_TYPE_HEADERS),
+      "getOrCreatePointTypeSheet_",
+      "POINT_TYPE_SCHEMA_MISMATCH",
+    ],
+    [
+      "PointCampaigns",
+      Array.from(gas.POINT_CAMPAIGN_HEADERS),
+      "getOrCreatePointCampaignSheet_",
+      "POINT_CAMPAIGN_SCHEMA_MISMATCH",
+    ],
+    [
+      "PointRedemptions",
+      Array.from(gas.POINT_REDEMPTION_HEADERS),
+      "getOrCreatePointRedemptionSheet_",
+      "POINT_REDEMPTION_SCHEMA_MISMATCH",
+    ],
+  ]) {
+    headers[0] = "wrong_header";
+    const sheet = createSheet(sheetName, headers, []);
+    const spreadsheet = createSpreadsheet({ [sheetName]: sheet });
+    assert.throws(
+      () => gas[getterName](spreadsheet, configFor(gas)),
+      (error) => error.appCode === expectedCode
+    );
+  }
 });
 
 test("health identifies the isolated service without exposing configuration", () => {
@@ -937,7 +1734,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.1.0");
+  assert.equal(response.data.version, "1.2.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

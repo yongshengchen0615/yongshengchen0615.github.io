@@ -9,7 +9,14 @@
  * Optional Script Properties:
  * - SHEET_NAME: defaults to "Members"
  * - ADMIN_SHEET_NAME: defaults to "Admins"
+ * - POINT_TYPE_SHEET_NAME: defaults to "PointTypes"
+ * - POINT_CAMPAIGN_SHEET_NAME: defaults to "PointCampaigns"
+ * - POINT_REDEMPTION_SHEET_NAME: defaults to "PointRedemptions"
+ * - MEMBER_LIFF_URL: defaults to the member LIFF URL
  * - MAX_VERIFY_REQUESTS_PER_MINUTE: defaults to 120 (1-1000)
+ *
+ * setup() creates POINT_CLAIM_SECRET when it is missing. Normal API requests
+ * fail closed until that secret exists and is valid.
  *
  * Administrator approval is deliberately manual. A verified administrator
  * channel login creates an Admins row with status "pending". Only a spreadsheet
@@ -17,15 +24,28 @@
  * status field.
  */
 
-var API_VERSION = "1.1.0";
+var API_VERSION = "1.2.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_ADMIN_SHEET_NAME = "Admins";
+var DEFAULT_POINT_TYPES_SHEET_NAME = "PointTypes";
+var DEFAULT_POINT_CAMPAIGNS_SHEET_NAME = "PointCampaigns";
+var DEFAULT_POINT_REDEMPTIONS_SHEET_NAME = "PointRedemptions";
+var DEFAULT_MEMBER_LIFF_URL = "https://liff.line.me/2010787602-kaiSm2eq";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
 var DEFAULT_ADMIN_PAGE_SIZE = 50;
 var MAX_ADMIN_PAGE_SIZE = 100;
+var MAX_POINT_VALUE = 9999;
+var MAX_CAMPAIGN_LIFETIME_MS = 366 * 24 * 60 * 60 * 1000;
+var ADMIN_ACTIONS = [
+  "adminListMembers",
+  "adminSetMemberAccess",
+  "adminListPointTypes",
+  "adminCreatePointType",
+  "adminCreatePointCampaign",
+];
 
 var LEGACY_MEMBER_HEADERS = [
   "member_id",
@@ -114,6 +134,66 @@ var ADMIN_COLUMN = {
   lastRequestId: 12,
 };
 
+var POINT_TYPE_HEADERS = [
+  "point_type_id",
+  "label",
+  "points",
+  "status",
+  "created_at",
+  "updated_at",
+  "created_by",
+  "last_request_id",
+];
+
+var POINT_TYPE_COLUMN = {
+  pointTypeId: 1,
+  label: 2,
+  points: 3,
+  status: 4,
+  createdAt: 5,
+  updatedAt: 6,
+  createdBy: 7,
+  lastRequestId: 8,
+};
+
+var POINT_CAMPAIGN_HEADERS = [
+  "campaign_id",
+  "point_type_id",
+  "label_snapshot",
+  "points_snapshot",
+  "claim_hash",
+  "status",
+  "expires_at",
+  "created_at",
+  "created_by",
+  "last_request_id",
+];
+
+var POINT_CAMPAIGN_COLUMN = {
+  campaignId: 1,
+  pointTypeId: 2,
+  labelSnapshot: 3,
+  pointsSnapshot: 4,
+  claimHash: 5,
+  status: 6,
+  expiresAt: 7,
+  createdAt: 8,
+  createdBy: 9,
+  lastRequestId: 10,
+};
+
+var POINT_REDEMPTION_HEADERS = [
+  "redemption_id",
+  "campaign_id",
+  "point_type_id",
+  "member_id",
+  "line_user_id",
+  "points",
+  "balance_after",
+  "redeemed_at",
+  "request_id",
+];
+
 function doGet(e) {
   var action = e && e.parameter ? String(e.parameter.action || "") : "";
   var requestId = e && e.parameter ? String(e.parameter.requestId || "") : "";
@@ -169,7 +249,6 @@ function doPost(e) {
 
 /** Run once in the Apps Script editor after configuring Script Properties. */
 function setup() {
-  var config = getConfig_();
   var lock = LockService.getScriptLock();
 
   if (!lock.tryLock(10000)) {
@@ -177,11 +256,19 @@ function setup() {
   }
 
   try {
+    ensurePointClaimSecretForSetup_();
+    var config = getConfig_();
     var spreadsheet = openSpreadsheet_(config);
     var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
+    var pointCampaignSheet = getOrCreatePointCampaignSheet_(spreadsheet, config);
+    var pointRedemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
     applyMemberSheetColumnFormats_(memberSheet);
     applyAdminSheetColumnFormats_(adminSheet);
+    applyPointTypeSheetColumnFormats_(pointTypeSheet);
+    applyPointCampaignSheetColumnFormats_(pointCampaignSheet);
+    applyPointRedemptionSheetColumnFormats_(pointRedemptionSheet);
     SpreadsheetApp.flush();
 
     return {
@@ -189,8 +276,14 @@ function setup() {
       spreadsheetId: config.spreadsheetId,
       memberSheetName: memberSheet.getName(),
       adminSheetName: adminSheet.getName(),
+      pointTypesSheetName: pointTypeSheet.getName(),
+      pointCampaignsSheetName: pointCampaignSheet.getName(),
+      pointRedemptionsSheetName: pointRedemptionSheet.getName(),
       memberColumns: MEMBER_HEADERS.length,
       adminColumns: ADMIN_HEADERS.length,
+      pointTypeColumns: POINT_TYPE_HEADERS.length,
+      pointCampaignColumns: POINT_CAMPAIGN_HEADERS.length,
+      pointRedemptionColumns: POINT_REDEMPTION_HEADERS.length,
       approvedAdminCount: countApprovedAdmins_(adminSheet),
       pendingAdminCount: countPendingAdmins_(adminSheet),
     };
@@ -203,7 +296,7 @@ function handleAdminRequest_(request) {
   // Keep this guard here as well as in validateRequestEnvelope_. It prevents a
   // direct/internal call with a member action from reading configuration,
   // contacting LINE, or opening either sheet.
-  if (["adminListMembers", "adminSetMemberAccess"].indexOf(request.action) === -1) {
+  if (ADMIN_ACTIONS.indexOf(request.action) === -1) {
     throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
   }
 
@@ -216,6 +309,18 @@ function handleAdminRequest_(request) {
 
   if (request.action === "adminSetMemberAccess") {
     return adminSetMemberAccess_(identity, request, config);
+  }
+
+  if (request.action === "adminListPointTypes") {
+    return adminListPointTypes_(identity, request, config);
+  }
+
+  if (request.action === "adminCreatePointType") {
+    return adminCreatePointType_(identity, request, config);
+  }
+
+  if (request.action === "adminCreatePointCampaign") {
+    return adminCreatePointCampaign_(identity, request, config);
   }
 
   throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
@@ -304,6 +409,30 @@ function adminListMembers_(adminIdentity, request, config) {
       lastRow < 2
         ? []
         : memberSheet.getRange(2, 1, lastRow - 1, MEMBER_HEADERS.length).getValues();
+    var membersById = Object.create(null);
+    var membersByLineUserId = Object.create(null);
+    rows = rows.filter(function (row) {
+      var memberId = String(row[MEMBER_COLUMN.memberId - 1] || "").trim();
+      var lineUserId = String(row[MEMBER_COLUMN.lineUserId - 1] || "").trim();
+
+      // Member deletion clears a row instead of shifting it because this
+      // independent GAS cannot share a lock with the member backend.
+      if (!memberId && !lineUserId) return false;
+      if (
+        !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+        !/^U[0-9a-f]{32}$/.test(lineUserId) ||
+        membersById[memberId] ||
+        membersByLineUserId[lineUserId]
+      ) {
+        throw appError_(
+          "MEMBER_DATA_CONFLICT",
+          "會員資料識別碼缺漏或重複，請先修正試算表。"
+        );
+      }
+      membersById[memberId] = true;
+      membersByLineUserId[lineUserId] = true;
+      return true;
+    });
     var metrics = {
       all: rows.length,
       pending: 0,
@@ -422,6 +551,240 @@ function adminSetMemberAccess_(adminIdentity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法更新會員權限，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminListPointTypes_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數類型正在更新，請稍後再試。");
+  }
+
+  try {
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
+    var records = readPointTypeRecords_(pointTypeSheet);
+
+    records.sort(function (left, right) {
+      if (left.points !== right.points) return left.points - right.points;
+      return left.pointTypeId < right.pointTypeId ? -1 : 1;
+    });
+
+    return {
+      data: {
+        pointTypes: records.map(pointTypeResponseFromRecord_),
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數類型，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminCreatePointType_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數類型正在更新，請稍後再試。");
+  }
+
+  try {
+    var points = normalizePointValue_(request.points);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
+    var records = readPointTypeRecords_(pointTypeSheet);
+    var requestRowNumber = findUniqueRowByTextColumn_(
+      pointTypeSheet,
+      POINT_TYPE_COLUMN.lastRequestId,
+      request.requestId,
+      "POINT_DATA_CONFLICT",
+      "點數類型資料有重複請求識別碼，請先修正試算表。"
+    );
+
+    if (requestRowNumber) {
+      var duplicateRow = pointTypeSheet
+        .getRange(requestRowNumber, 1, 1, POINT_TYPE_HEADERS.length)
+        .getValues()[0];
+      var duplicateRecord = pointTypeRecordFromRow_(duplicateRow, requestRowNumber);
+      if (duplicateRecord.points !== points) {
+        throw appError_(
+          "REQUEST_ID_CONFLICT",
+          "同一請求識別碼不可用於不同的點數類型。"
+        );
+      }
+      return {
+        data: {
+          pointType: pointTypeResponseFromRecord_(duplicateRecord),
+          duplicate: true,
+        },
+      };
+    }
+
+    for (var i = 0; i < records.length; i += 1) {
+      if (records[i].status === "active" && records[i].points === points) {
+        throw appError_("POINT_TYPE_EXISTS", "相同點數的啟用類型已存在。");
+      }
+    }
+
+    var pointTypeId = generateUniqueEntityId_(
+      "PTY-",
+      pointTypeSheet,
+      POINT_TYPE_COLUMN.pointTypeId,
+      "POINT_DATA_CONFLICT"
+    );
+    var now = new Date();
+    pointTypeSheet.appendRow([
+      pointTypeId,
+      pointLabel_(points),
+      points,
+      "active",
+      now,
+      now,
+      safeSheetText_(adminIdentity.lineUserId),
+      request.requestId,
+    ]);
+    var rowNumber = pointTypeSheet.getLastRow();
+    applyPointTypeRowFormats_(pointTypeSheet, rowNumber);
+    SpreadsheetApp.flush();
+    var row = pointTypeSheet
+      .getRange(rowNumber, 1, 1, POINT_TYPE_HEADERS.length)
+      .getValues()[0];
+    var record = pointTypeRecordFromRow_(row, rowNumber);
+
+    return {
+      data: {
+        pointType: pointTypeResponseFromRecord_(record),
+        duplicate: false,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法新增點數類型，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminCreatePointCampaign_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數 QR 正在產生，請稍後再試。");
+  }
+
+  try {
+    var pointTypeId = normalizePointTypeId_(request.pointTypeId);
+    var expiresAt = parseCampaignExpiry_(request.expiresAt);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
+    var pointCampaignSheet = getOrCreatePointCampaignSheet_(spreadsheet, config);
+    readPointCampaignRecords_(pointCampaignSheet);
+    var requestRowNumber = findUniqueRowByTextColumn_(
+      pointCampaignSheet,
+      POINT_CAMPAIGN_COLUMN.lastRequestId,
+      request.requestId,
+      "POINT_DATA_CONFLICT",
+      "點數活動資料有重複請求識別碼，請先修正試算表。"
+    );
+
+    if (requestRowNumber) {
+      var duplicateRow = pointCampaignSheet
+        .getRange(requestRowNumber, 1, 1, POINT_CAMPAIGN_HEADERS.length)
+        .getValues()[0];
+      var duplicateRecord = pointCampaignRecordFromRow_(duplicateRow, requestRowNumber);
+      if (
+        duplicateRecord.pointTypeId !== pointTypeId ||
+        duplicateRecord.expiresAt !== expiresAt.toISOString()
+      ) {
+        throw appError_(
+          "REQUEST_ID_CONFLICT",
+          "同一請求識別碼不可用於不同的點數 QR。"
+        );
+      }
+      var duplicateClaim = createCampaignClaim_(
+        duplicateRecord.campaignId,
+        request.requestId,
+        config.pointClaimSecret
+      );
+      if (sha256Hex_(duplicateClaim) !== duplicateRecord.claimHash) {
+        throw appError_("POINT_DATA_CONFLICT", "點數活動驗證資料不一致，請先修正試算表。");
+      }
+      return {
+        data: {
+          campaign: pointCampaignResponseFromRecord_(duplicateRecord),
+          claimUrl: buildPointClaimUrl_(config.memberLiffUrl, duplicateClaim),
+          duplicate: true,
+        },
+      };
+    }
+
+    var typeRecords = readPointTypeRecords_(pointTypeSheet);
+    var pointType = null;
+    for (var i = 0; i < typeRecords.length; i += 1) {
+      if (typeRecords[i].pointTypeId === pointTypeId) {
+        if (pointType) {
+          throw appError_("POINT_DATA_CONFLICT", "點數類型識別碼重複，請先修正試算表。");
+        }
+        pointType = typeRecords[i];
+      }
+    }
+    if (!pointType) {
+      throw appError_("POINT_TYPE_NOT_FOUND", "找不到指定的點數類型。");
+    }
+    if (pointType.status !== "active") {
+      throw appError_("POINT_TYPE_INACTIVE", "這個點數類型目前未啟用。");
+    }
+
+    var campaignId = generateUniqueEntityId_(
+      "PCG-",
+      pointCampaignSheet,
+      POINT_CAMPAIGN_COLUMN.campaignId,
+      "POINT_DATA_CONFLICT"
+    );
+    var claim = createCampaignClaim_(
+      campaignId,
+      request.requestId,
+      config.pointClaimSecret
+    );
+    var now = new Date();
+    pointCampaignSheet.appendRow([
+      campaignId,
+      pointType.pointTypeId,
+      pointType.label,
+      pointType.points,
+      sha256Hex_(claim),
+      "active",
+      expiresAt,
+      now,
+      safeSheetText_(adminIdentity.lineUserId),
+      request.requestId,
+    ]);
+    var rowNumber = pointCampaignSheet.getLastRow();
+    applyPointCampaignRowFormats_(pointCampaignSheet, rowNumber);
+    SpreadsheetApp.flush();
+    var row = pointCampaignSheet
+      .getRange(rowNumber, 1, 1, POINT_CAMPAIGN_HEADERS.length)
+      .getValues()[0];
+    var record = pointCampaignRecordFromRow_(row, rowNumber);
+
+    return {
+      data: {
+        campaign: pointCampaignResponseFromRecord_(record),
+        claimUrl: buildPointClaimUrl_(config.memberLiffUrl, claim),
+        duplicate: false,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法產生點數 QR，請稍後再試。");
   } finally {
     lock.releaseLock();
   }
@@ -569,21 +932,41 @@ function getConfig_() {
   var adminSheetName = String(
     properties.getProperty("ADMIN_SHEET_NAME") || DEFAULT_ADMIN_SHEET_NAME
   ).trim();
+  var pointTypesSheetName = String(
+    properties.getProperty("POINT_TYPE_SHEET_NAME") || DEFAULT_POINT_TYPES_SHEET_NAME
+  ).trim();
+  var pointCampaignsSheetName = String(
+    properties.getProperty("POINT_CAMPAIGN_SHEET_NAME") ||
+      DEFAULT_POINT_CAMPAIGNS_SHEET_NAME
+  ).trim();
+  var pointRedemptionsSheetName = String(
+    properties.getProperty("POINT_REDEMPTION_SHEET_NAME") ||
+      DEFAULT_POINT_REDEMPTIONS_SHEET_NAME
+  ).trim();
+  var memberLiffUrl = normalizeMemberLiffUrl_(
+    properties.getProperty("MEMBER_LIFF_URL") || DEFAULT_MEMBER_LIFF_URL
+  );
+  var pointClaimSecret = String(properties.getProperty("POINT_CLAIM_SECRET") || "").trim();
   var allowedOrigins = getAllowedOrigins_();
+  var sheetNames = [
+    sheetName,
+    adminSheetName,
+    pointTypesSheetName,
+    pointCampaignsSheetName,
+    pointRedemptionsSheetName,
+  ];
 
   if (
     lineChannelId !== REQUIRED_LINE_CHANNEL_ID ||
     !spreadsheetId ||
-    !sheetName ||
-    !adminSheetName ||
-    sheetName.length > 80 ||
-    adminSheetName.length > 80 ||
-    sheetName.toLowerCase() === adminSheetName.toLowerCase() ||
+    !hasUniqueValidSheetNames_(sheetNames) ||
+    !memberLiffUrl ||
+    !isValidPointClaimSecret_(pointClaimSecret) ||
     allowedOrigins.length === 0
   ) {
     throw appError_(
       "CONFIG_ERROR",
-      "管理 GAS 尚未完成 LINE_CHANNEL_ID、SPREADSHEET_ID、SHEET_NAME、ADMIN_SHEET_NAME 或 ALLOWED_ORIGINS 設定。"
+      "管理 GAS 的 LINE、試算表、點數、LIFF 或網站來源設定不完整。"
     );
   }
 
@@ -592,8 +975,53 @@ function getConfig_() {
     spreadsheetId: spreadsheetId,
     sheetName: sheetName,
     adminSheetName: adminSheetName,
+    pointTypesSheetName: pointTypesSheetName,
+    pointCampaignsSheetName: pointCampaignsSheetName,
+    pointRedemptionsSheetName: pointRedemptionsSheetName,
+    memberLiffUrl: memberLiffUrl,
+    pointClaimSecret: pointClaimSecret,
     allowedOrigins: allowedOrigins,
   };
+}
+
+function ensurePointClaimSecretForSetup_() {
+  var properties = PropertiesService.getScriptProperties();
+  var secret = String(properties.getProperty("POINT_CLAIM_SECRET") || "").trim();
+  if (!secret) {
+    secret =
+      Utilities.getUuid().replace(/-/g, "") +
+      Utilities.getUuid().replace(/-/g, "");
+    properties.setProperty("POINT_CLAIM_SECRET", secret);
+  }
+  if (!isValidPointClaimSecret_(secret)) {
+    throw appError_(
+      "CONFIG_ERROR",
+      "POINT_CLAIM_SECRET 格式不正確，請使用至少 32 個英數、底線或連字號字元。"
+    );
+  }
+  return secret;
+}
+
+function hasUniqueValidSheetNames_(names) {
+  var normalized = [];
+  for (var i = 0; i < names.length; i += 1) {
+    var name = String(names[i] || "").trim();
+    var lower = name.toLowerCase();
+    if (!name || name.length > 80 || normalized.indexOf(lower) !== -1) {
+      return false;
+    }
+    normalized.push(lower);
+  }
+  return true;
+}
+
+function normalizeMemberLiffUrl_(value) {
+  var normalized = String(value || "").trim().replace(/\/+$/, "");
+  return normalized === DEFAULT_MEMBER_LIFF_URL ? normalized : "";
+}
+
+function isValidPointClaimSecret_(value) {
+  return /^[A-Za-z0-9_-]{32,256}$/.test(String(value || ""));
 }
 
 function openSpreadsheet_(config) {
@@ -688,6 +1116,73 @@ function getOrCreateAdminSheet_(spreadsheet, config) {
   return sheet;
 }
 
+function getOrCreatePointTypeSheet_(spreadsheet, config) {
+  return getOrCreateExactPointSheet_(
+    spreadsheet,
+    config.pointTypesSheetName,
+    POINT_TYPE_HEADERS,
+    "POINT_TYPE_SCHEMA_MISMATCH",
+    "#245c47",
+    applyPointTypeSheetColumnFormats_
+  );
+}
+
+function getOrCreatePointCampaignSheet_(spreadsheet, config) {
+  return getOrCreateExactPointSheet_(
+    spreadsheet,
+    config.pointCampaignsSheetName,
+    POINT_CAMPAIGN_HEADERS,
+    "POINT_CAMPAIGN_SCHEMA_MISMATCH",
+    "#654f22",
+    applyPointCampaignSheetColumnFormats_
+  );
+}
+
+function getOrCreatePointRedemptionSheet_(spreadsheet, config) {
+  return getOrCreateExactPointSheet_(
+    spreadsheet,
+    config.pointRedemptionsSheetName,
+    POINT_REDEMPTION_HEADERS,
+    "POINT_REDEMPTION_SCHEMA_MISMATCH",
+    "#334d70",
+    applyPointRedemptionSheetColumnFormats_
+  );
+}
+
+function getOrCreateExactPointSheet_(
+  spreadsheet,
+  sheetName,
+  expectedHeaders,
+  errorCode,
+  background,
+  applyFormats
+) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    sheet.setFrozenRows(1);
+    styleHeader_(sheet, 1, expectedHeaders.length, background);
+    sheet.autoResizeColumns(1, expectedHeaders.length);
+    applyFormats(sheet);
+    return sheet;
+  }
+
+  if (sheet.getLastColumn() !== expectedHeaders.length) {
+    throw appError_(
+      errorCode,
+      sheetName + " 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+    );
+  }
+  assertHeadersMatch_(
+    sheet.getRange(1, 1, 1, expectedHeaders.length).getDisplayValues()[0],
+    expectedHeaders,
+    errorCode
+  );
+  return sheet;
+}
+
 function assertHeadersMatch_(actualHeaders, expectedHeaders, errorCode) {
   for (var i = 0; i < expectedHeaders.length; i += 1) {
     if (actualHeaders[i] !== expectedHeaders[i]) {
@@ -695,7 +1190,9 @@ function assertHeadersMatch_(actualHeaders, expectedHeaders, errorCode) {
         errorCode,
         errorCode === "ADMIN_SCHEMA_MISMATCH"
           ? "Admins 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
-          : "Members 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+          : errorCode === "MEMBER_SCHEMA_MISMATCH"
+            ? "Members 工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
+            : "點數工作表欄位與管理程式版本不相符，請勿手動調整第一列欄位。"
       );
     }
   }
@@ -805,6 +1302,67 @@ function applyAdminRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, ADMIN_COLUMN.lastRequestId).setNumberFormat("@");
 }
 
+function applyPointTypeSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 4, 7, 8].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet.getRange(2, POINT_TYPE_COLUMN.points, rowCount, 1).setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_TYPE_COLUMN.createdAt, rowCount, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyPointTypeRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, POINT_TYPE_COLUMN.pointTypeId, 1, 2).setNumberFormat("@");
+  sheet.getRange(rowNumber, POINT_TYPE_COLUMN.points).setNumberFormat("0");
+  sheet.getRange(rowNumber, POINT_TYPE_COLUMN.status).setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_TYPE_COLUMN.createdAt, 1, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(rowNumber, POINT_TYPE_COLUMN.createdBy, 1, 2)
+    .setNumberFormat("@");
+}
+
+function applyPointCampaignSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 5, 6, 9, 10].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_CAMPAIGN_COLUMN.pointsSnapshot, rowCount, 1)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_CAMPAIGN_COLUMN.expiresAt, rowCount, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyPointCampaignRowFormats_(sheet, rowNumber) {
+  sheet
+    .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.campaignId, 1, 3)
+    .setNumberFormat("@");
+  sheet.getRange(rowNumber, POINT_CAMPAIGN_COLUMN.pointsSnapshot).setNumberFormat("0");
+  sheet
+    .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.claimHash, 1, 2)
+    .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.expiresAt, 1, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.createdBy, 1, 2)
+    .setNumberFormat("@");
+}
+
+function applyPointRedemptionSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet.getRange(2, 6, rowCount, 2).setNumberFormat("0");
+  sheet.getRange(2, 8, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
 function parseRequest_(e) {
   if (!e) throw appError_("INVALID_REQUEST", "沒有收到請求內容。");
 
@@ -819,6 +1377,9 @@ function parseRequest_(e) {
       accessStatus: String(e.parameter.accessStatus || "").trim().toLowerCase(),
       expectedAccessStatus: String(e.parameter.expectedAccessStatus || "").trim().toLowerCase(),
       expectedAccessUpdatedAt: String(e.parameter.expectedAccessUpdatedAt || "").trim(),
+      points: optionalNumber_(e.parameter.pointAmount, NaN),
+      pointTypeId: String(e.parameter.pointTypeId || "").trim(),
+      expiresAt: String(e.parameter.expiresAt || "").trim(),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
       transport: "bridge",
@@ -849,6 +1410,9 @@ function parseRequest_(e) {
     accessStatus: String(parsed.accessStatus || "").trim().toLowerCase(),
     expectedAccessStatus: String(parsed.expectedAccessStatus || "").trim().toLowerCase(),
     expectedAccessUpdatedAt: String(parsed.expectedAccessUpdatedAt || "").trim(),
+    points: optionalNumber_(parsed.pointAmount, NaN),
+    pointTypeId: String(parsed.pointTypeId || "").trim(),
+    expiresAt: String(parsed.expiresAt || "").trim(),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
     transport: "fetch",
@@ -860,7 +1424,7 @@ function validateRequestEnvelope_(request) {
     throw appError_("INVALID_REQUEST_ID", "請求識別碼格式不正確。");
   }
 
-  if (["adminListMembers", "adminSetMemberAccess"].indexOf(request.action) === -1) {
+  if (ADMIN_ACTIONS.indexOf(request.action) === -1) {
     throw appError_("UNSUPPORTED_ACTION", "此管理服務不支援該操作。");
   }
 
@@ -905,6 +1469,322 @@ function validateRequestEnvelope_(request) {
       throw appError_("INVALID_ACCESS_VERSION", "會員權限版本格式不正確。");
     }
   }
+
+  if (request.action === "adminCreatePointType") {
+    normalizePointValue_(request.points);
+  }
+
+  if (request.action === "adminCreatePointCampaign") {
+    normalizePointTypeId_(request.pointTypeId);
+    parseCampaignExpiry_(request.expiresAt);
+  }
+}
+
+function normalizePointValue_(value) {
+  var points = Number(value);
+  if (
+    !isFinite(points) ||
+    Math.floor(points) !== points ||
+    points < 1 ||
+    points > MAX_POINT_VALUE
+  ) {
+    throw appError_(
+      "INVALID_POINTS",
+      "點數必須是 1 到 " + MAX_POINT_VALUE + " 的整數。"
+    );
+  }
+  return points;
+}
+
+function pointLabel_(points) {
+  return String(points) + " 點";
+}
+
+function normalizePointTypeId_(value) {
+  var pointTypeId = String(value || "").trim();
+  if (!/^PTY-[A-Z0-9]{10}$/.test(pointTypeId)) {
+    throw appError_("INVALID_POINT_TYPE_ID", "點數類型識別碼格式不正確。");
+  }
+  return pointTypeId;
+}
+
+function parseCampaignExpiry_(value) {
+  var raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(raw)) {
+    throw appError_("INVALID_CAMPAIGN_EXPIRY", "點數 QR 到期時間格式不正確。");
+  }
+  var expiresAt = new Date(raw);
+  if (isNaN(expiresAt.getTime()) || expiresAt.toISOString() !== raw) {
+    throw appError_("INVALID_CAMPAIGN_EXPIRY", "點數 QR 到期時間格式不正確。");
+  }
+  var now = Date.now();
+  if (
+    expiresAt.getTime() <= now ||
+    expiresAt.getTime() > now + MAX_CAMPAIGN_LIFETIME_MS
+  ) {
+    throw appError_(
+      "INVALID_CAMPAIGN_EXPIRY",
+      "點數 QR 到期時間必須在未來 366 天內。"
+    );
+  }
+  return expiresAt;
+}
+
+function readPointTypeRecords_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_TYPE_HEADERS.length)
+    .getValues();
+  var records = [];
+  var ids = Object.create(null);
+  var activePoints = Object.create(null);
+  var requestIds = Object.create(null);
+
+  for (var i = 0; i < rows.length; i += 1) {
+    var record = pointTypeRecordFromRow_(rows[i], i + 2);
+    if (ids[record.pointTypeId]) {
+      throw appError_("POINT_DATA_CONFLICT", "點數類型識別碼重複，請先修正試算表。");
+    }
+    ids[record.pointTypeId] = true;
+    if (record.status === "active") {
+      var pointsKey = String(record.points);
+      if (activePoints[pointsKey]) {
+        throw appError_("POINT_DATA_CONFLICT", "啟用中的點數類型數值重複，請先修正試算表。");
+      }
+      activePoints[pointsKey] = true;
+    }
+    if (requestIds[record.lastRequestId]) {
+      throw appError_("POINT_DATA_CONFLICT", "點數類型請求識別碼重複，請先修正試算表。");
+    }
+    requestIds[record.lastRequestId] = true;
+    records.push(record);
+  }
+  return records;
+}
+
+function readPointCampaignRecords_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_CAMPAIGN_HEADERS.length)
+    .getValues();
+  var records = [];
+  var ids = Object.create(null);
+  var hashes = Object.create(null);
+  var requestIds = Object.create(null);
+
+  for (var i = 0; i < rows.length; i += 1) {
+    var record = pointCampaignRecordFromRow_(rows[i], i + 2);
+    if (ids[record.campaignId]) {
+      throw appError_("POINT_DATA_CONFLICT", "點數活動識別碼重複，請先修正試算表。");
+    }
+    if (hashes[record.claimHash]) {
+      throw appError_("POINT_DATA_CONFLICT", "點數活動兌換驗證值重複，請先修正試算表。");
+    }
+    if (requestIds[record.lastRequestId]) {
+      throw appError_("POINT_DATA_CONFLICT", "點數活動請求識別碼重複，請先修正試算表。");
+    }
+    ids[record.campaignId] = true;
+    hashes[record.claimHash] = true;
+    requestIds[record.lastRequestId] = true;
+    records.push(record);
+  }
+  return records;
+}
+
+function pointTypeRecordFromRow_(row, rowNumber) {
+  var pointTypeId = String(row[POINT_TYPE_COLUMN.pointTypeId - 1] || "");
+  var points = Number(row[POINT_TYPE_COLUMN.points - 1]);
+  var label = String(row[POINT_TYPE_COLUMN.label - 1] || "");
+  var status = strictPointStatus_(row[POINT_TYPE_COLUMN.status - 1]);
+  var createdAt = toIsoString_(row[POINT_TYPE_COLUMN.createdAt - 1]);
+  var updatedAt = toIsoString_(row[POINT_TYPE_COLUMN.updatedAt - 1]);
+  var createdBy = String(row[POINT_TYPE_COLUMN.createdBy - 1] || "");
+  var lastRequestId = String(row[POINT_TYPE_COLUMN.lastRequestId - 1] || "");
+  if (
+    !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+    !isFinite(points) ||
+    Math.floor(points) !== points ||
+    points < 1 ||
+    points > MAX_POINT_VALUE ||
+    label !== pointLabel_(points) ||
+    !status ||
+    !createdAt ||
+    !updatedAt ||
+    !/^U[0-9a-f]{32}$/.test(createdBy) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
+  ) {
+    throw appError_(
+      "POINT_DATA_CONFLICT",
+      "點數類型第 " + rowNumber + " 列資料不正確，請先修正試算表。"
+    );
+  }
+  return {
+    rowNumber: rowNumber,
+    pointTypeId: pointTypeId,
+    label: label,
+    points: points,
+    status: status,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    createdBy: createdBy,
+    lastRequestId: lastRequestId,
+  };
+}
+
+function pointTypeResponseFromRecord_(record) {
+  return {
+    pointTypeId: record.pointTypeId,
+    label: record.label,
+    points: record.points,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function pointCampaignRecordFromRow_(row, rowNumber) {
+  var campaignId = String(row[POINT_CAMPAIGN_COLUMN.campaignId - 1] || "");
+  var pointTypeId = String(row[POINT_CAMPAIGN_COLUMN.pointTypeId - 1] || "");
+  var points = Number(row[POINT_CAMPAIGN_COLUMN.pointsSnapshot - 1]);
+  var label = String(row[POINT_CAMPAIGN_COLUMN.labelSnapshot - 1] || "");
+  var claimHash = String(row[POINT_CAMPAIGN_COLUMN.claimHash - 1] || "").toLowerCase();
+  var status = strictPointStatus_(row[POINT_CAMPAIGN_COLUMN.status - 1]);
+  var expiresAt = toIsoString_(row[POINT_CAMPAIGN_COLUMN.expiresAt - 1]);
+  var createdAt = toIsoString_(row[POINT_CAMPAIGN_COLUMN.createdAt - 1]);
+  var createdBy = String(row[POINT_CAMPAIGN_COLUMN.createdBy - 1] || "");
+  var lastRequestId = String(row[POINT_CAMPAIGN_COLUMN.lastRequestId - 1] || "");
+  if (
+    !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+    !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+    !isFinite(points) ||
+    Math.floor(points) !== points ||
+    points < 1 ||
+    points > MAX_POINT_VALUE ||
+    label !== pointLabel_(points) ||
+    !/^[a-f0-9]{64}$/.test(claimHash) ||
+    !status ||
+    !expiresAt ||
+    !createdAt ||
+    !/^U[0-9a-f]{32}$/.test(createdBy) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
+  ) {
+    throw appError_(
+      "POINT_DATA_CONFLICT",
+      "點數活動第 " + rowNumber + " 列資料不正確，請先修正試算表。"
+    );
+  }
+  return {
+    rowNumber: rowNumber,
+    campaignId: campaignId,
+    pointTypeId: pointTypeId,
+    label: label,
+    points: points,
+    claimHash: claimHash,
+    status: status,
+    expiresAt: expiresAt,
+    createdAt: createdAt,
+    createdBy: createdBy,
+    lastRequestId: lastRequestId,
+  };
+}
+
+function pointCampaignResponseFromRecord_(record) {
+  return {
+    campaignId: record.campaignId,
+    pointTypeId: record.pointTypeId,
+    label: record.label,
+    points: record.points,
+    status: record.status,
+    expiresAt: record.expiresAt,
+    createdAt: record.createdAt,
+  };
+}
+
+function strictPointStatus_(value) {
+  var status = String(value || "").trim().toLowerCase();
+  return status === "active" || status === "inactive" ? status : "";
+}
+
+function findUniqueRowByTextColumn_(
+  sheet,
+  column,
+  expectedValue,
+  conflictCode,
+  conflictMessage
+) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var values = sheet.getRange(2, column, lastRow - 1, 1).getValues();
+  var rowNumber = 0;
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") !== expectedValue) continue;
+    if (rowNumber) throw appError_(conflictCode, conflictMessage);
+    rowNumber = i + 2;
+  }
+  return rowNumber;
+}
+
+function generateUniqueEntityId_(prefix, sheet, idColumn, conflictCode) {
+  var lastRow = sheet.getLastRow();
+  var existing = Object.create(null);
+  if (lastRow >= 2) {
+    sheet
+      .getRange(2, idColumn, lastRow - 1, 1)
+      .getValues()
+      .forEach(function (row) {
+        existing[String(row[0] || "")] = true;
+      });
+  }
+  for (var i = 0; i < 8; i += 1) {
+    var id =
+      prefix +
+      Utilities.getUuid().replace(/-/g, "").slice(0, 10).toUpperCase();
+    if (!existing[id]) return id;
+  }
+  throw appError_(conflictCode, "目前無法產生唯一識別碼，請稍後再試。");
+}
+
+function createCampaignClaim_(campaignId, requestId, secret) {
+  if (
+    !/^PCG-[A-Z0-9]{10}$/.test(String(campaignId || "")) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(String(requestId || "")) ||
+    !isValidPointClaimSecret_(secret)
+  ) {
+    throw appError_("CONFIG_ERROR", "點數 QR 安全設定不完整。");
+  }
+  var bytes = Utilities.computeHmacSha256Signature(
+    "point-campaign:v1:" + campaignId + ":" + requestId,
+    secret,
+    Utilities.Charset.UTF_8
+  );
+  var claim = Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(claim)) {
+    throw appError_("INTERNAL_ERROR", "目前無法產生點數 QR。");
+  }
+  return claim;
+}
+
+function sha256Hex_(value) {
+  var bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value || ""),
+    Utilities.Charset.UTF_8
+  );
+  return bytes
+    .map(function (byte) {
+      return ((Number(byte) + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+function buildPointClaimUrl_(memberLiffUrl, claim) {
+  var normalizedUrl = normalizeMemberLiffUrl_(memberLiffUrl);
+  if (!normalizedUrl || !/^[A-Za-z0-9_-]{43}$/.test(String(claim || ""))) {
+    throw appError_("CONFIG_ERROR", "會員 LIFF 或點數 QR 安全設定不完整。");
+  }
+  return normalizedUrl + "?claim=" + encodeURIComponent(claim);
 }
 
 function optionalNumber_(value, fallback) {
