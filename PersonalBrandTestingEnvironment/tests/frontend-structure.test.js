@@ -449,6 +449,7 @@ test("client claim dialog exposes automatic progress, result, duplicate, and ret
   }
   assert.match(errorState, /\brole=["']alert["']/i);
   assert.match(retryButton, /\btype=["']button["']/i);
+  assert.match(getOpeningTagById(html, "claim-add-friend-button"), /hidden/);
   assert.doesNotMatch(html, /id=["']claim-(?:close|confirm)-button["']/);
   assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
   assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) return;/);
@@ -559,6 +560,7 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(script, /getFriendship\s*\(/);
   assert.match(script, /openOfficialAccountFriendLink\s*\(/);
   assert.match(script, /location\.replace\s*\(friendUrl\)/);
+  assert.match(script, /claim-add-friend-button["']\)\.addEventListener/);
   assert.match(script, /sendMessages\s*\(/);
   assert.match(script, /type\s*===\s*["']utou["']/);
   assert.match(script, /OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE/);

@@ -373,7 +373,12 @@
     };
 
     if (!window.liff || typeof window.liff.getFriendship !== "function") {
-      return openOfficialAccountFriendLink();
+      return Promise.reject(
+        createClientError(
+          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
+        )
+      );
     }
 
     return Promise.resolve()
@@ -387,7 +392,10 @@
         if (messageContext.isFriend) {
           return messageContext;
         }
-        return openOfficialAccountFriendLink();
+        throw createClientError(
+          "OFFICIAL_ACCOUNT_NOT_FRIEND",
+          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
+        );
       })
       .catch(function (error) {
         if (
@@ -403,32 +411,37 @@
             "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
           );
         }
-        return openOfficialAccountFriendLink();
+        throw createClientError(
+          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+          "請先加入官方帳號，再回到會員頁面按「重新確認」。"
+        );
       });
   }
 
   function openOfficialAccountFriendLink() {
     var friendUrl = String(CONFIG.OFFICIAL_ACCOUNT_FRIEND_URL || "").trim();
     if (!OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN.test(friendUrl)) {
-      throw createClientError(
-        "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-        "官方帳號加入連結尚未完成設定，請聯絡管理員。"
+      handlePointClaimError(
+        createClientError(
+          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+          "官方帳號加入連結尚未完成設定，請聯絡管理員。"
+        )
       );
+      return false;
     }
 
     try {
       window.location.replace(friendUrl);
+      return true;
     } catch (_error) {
-      throw createClientError(
-        "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-        "目前無法開啟官方帳號加入頁面，請稍後再試。"
+      handlePointClaimError(
+        createClientError(
+          "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+          "目前無法開啟官方帳號加入頁面，請稍後再試。"
+        )
       );
+      return false;
     }
-
-    throw createClientError(
-      "OFFICIAL_ACCOUNT_NOT_FRIEND",
-      "請先加入官方帳號，完成後重新開啟會員頁面再領取點數。"
-    );
   }
 
   function sendPointClaimMessage(
@@ -751,7 +764,9 @@
       "claim-success-state": "claim-success-close-button",
       "claim-duplicate-state": "claim-duplicate-close-button",
       "claim-error-state": byId("claim-retry-button").hidden
-        ? "claim-error-close-button"
+        ? byId("claim-add-friend-button").hidden
+          ? "claim-error-close-button"
+          : "claim-add-friend-button"
         : "claim-retry-button",
     }[activeId];
     if (focusTargetId) {
@@ -775,6 +790,7 @@
     dialog.dataset.busy = busy ? "true" : "false";
     [
       "claim-retry-button",
+      "claim-add-friend-button",
       "claim-success-close-button",
       "claim-duplicate-close-button",
       "claim-error-close-button",
@@ -811,14 +827,22 @@
       normalized.code === "POINT_CAMPAIGN_EXPIRED";
 
     if (terminalError) clearPendingPointClaim();
-    setClaimError(normalized.message, !terminalError && Boolean(pendingPointClaim));
+    var friendshipError =
+      normalized.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
+      normalized.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE";
+    setClaimError(
+      normalized.message,
+      !terminalError && !friendshipError && Boolean(pendingPointClaim),
+      friendshipError
+    );
     openDialog(byId("claim-dialog"));
   }
 
-  function setClaimError(message, canRetry) {
+  function setClaimError(message, canRetry, canAddFriend) {
     byId("claim-error-message").textContent =
       message || "這張 QR 目前無法領取，請稍後再試。";
     byId("claim-retry-button").hidden = !canRetry;
+    byId("claim-add-friend-button").hidden = !canAddFriend;
     setClaimState("claim-error-state");
   }
 
@@ -1410,9 +1434,9 @@
       INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入後再試。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證。請確認 LIFF 已勾選 openid 權限。",
       OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE:
-        "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。",
+        "請先加入官方帳號，再回到會員頁面按「重新確認」。",
       OFFICIAL_ACCOUNT_NOT_FRIEND:
-        "請先加入會員官方帳號，完成後按「重新確認」才能領取點數。",
+        "請先加入官方帳號，再回到會員頁面按「重新確認」。",
       CONFIG_ERROR: "GAS 後台尚未完成設定，請檢查 Script Properties。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
       SPREADSHEET_ERROR: "會員試算表目前無法使用，請檢查試算表 ID 與權限。",
@@ -1638,6 +1662,7 @@
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
     byId("claim-retry-button").addEventListener("click", redeemPendingPointCampaign);
+    byId("claim-add-friend-button").addEventListener("click", openOfficialAccountFriendLink);
     [
       "claim-success-close-button",
       "claim-duplicate-close-button",
