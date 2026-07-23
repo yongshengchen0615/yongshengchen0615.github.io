@@ -1205,8 +1205,16 @@
   function openDialog(dialog) {
     if (!dialog) return;
     if (dialog.open || dialog.hasAttribute("open")) return;
+    dialog.removeAttribute("hidden");
     if (typeof dialog.showModal === "function") {
-      dialog.showModal();
+      try {
+        dialog.showModal();
+      } catch (_error) {
+        dialog.setAttribute("open", "");
+      }
+      if (!dialog.open && !dialog.hasAttribute("open")) {
+        dialog.setAttribute("open", "");
+      }
     } else {
       dialog.setAttribute("open", "");
     }

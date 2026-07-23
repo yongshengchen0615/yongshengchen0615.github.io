@@ -415,6 +415,13 @@ test("client claim dialog exposes automatic progress, result, duplicate, and ret
   assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
   assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) return;/);
   assert.match(script, /if \(dialog\.id === ["']claim-dialog["']\) event\.preventDefault\(\);/);
+
+  const openDialog = getTopLevelFunctionContaining(
+    script,
+    /dialog\.removeAttribute\(["']hidden["']\)/
+  );
+  assert.match(openDialog, /typeof dialog\.showModal === ["']function["']/);
+  assert.match(openDialog, /catch \(_error\)[\s\S]*dialog\.setAttribute\(["']open["']/);
 });
 
 test("client captures a sanitized claim after LIFF init and redeems automatically", () => {
