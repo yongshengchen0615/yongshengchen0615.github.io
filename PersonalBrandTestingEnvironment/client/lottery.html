@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b3c2c" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>PERSONA MEMBERS｜集點卡抽獎</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script defer src="../shared/gas-api.js"></script>
+    <script defer src="lottery.js"></script>
+  </head>
+  <body class="lottery-page">
+    <header class="site-header lottery-page-header">
+      <a class="brand" href="./" data-member-route aria-label="返回會員資料">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-copy"><strong data-brand-name>PERSONA</strong><small>MEMBER LOTTERY</small></span>
+      </a>
+      <a class="text-button lottery-back-link" href="./" data-member-route>會員資料</a>
+    </header>
+
+    <main class="lottery-page-main">
+      <section class="app-state lottery-page-status" id="loading-state" aria-labelledby="loading-title">
+        <p class="eyebrow">POINT CARD LOTTERY</p>
+        <h1 id="loading-title">正在讀取集點卡</h1>
+        <p id="loading-message">確認本輪進度與可使用的轉盤類型。</p>
+        <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+      </section>
+
+      <section class="app-state lottery-page-status" id="login-state" hidden aria-labelledby="login-title">
+        <p class="eyebrow">LINE SIGN IN</p>
+        <h1 id="login-title">登入後查看抽獎資格</h1>
+        <p>抽獎資格綁定你的 LINE 會員帳號。</p>
+        <button class="primary-button" id="login-button" type="button"><span>使用 LINE 登入</span></button>
+      </section>
+
+      <section class="app-state lottery-page-status" id="setup-state" hidden aria-labelledby="setup-title">
+        <p class="eyebrow">SETUP REQUIRED</p>
+        <h1 id="setup-title">抽獎頁尚未完成設定</h1>
+        <p>請確認會員端 config.json 與兩套 GAS 已更新部署。</p>
+        <a class="primary-button" href="../setup.html"><span>查看部署說明</span></a>
+      </section>
+
+      <section class="app-state lottery-page-status" id="error-state" hidden aria-labelledby="error-title">
+        <p class="eyebrow danger-copy" id="error-code">CONNECTION ERROR</p>
+        <h1 id="error-title">暫時無法開啟抽獎頁</h1>
+        <p id="error-message">請稍後再試。</p>
+        <div class="lottery-page-status-actions">
+          <button class="primary-button" id="retry-button" type="button"><span>重新連線</span></button>
+          <a class="secondary-button" href="./" data-member-route>返回會員資料</a>
+        </div>
+      </section>
+
+      <section class="app-state lottery-page-workspace" id="lottery-state" hidden aria-labelledby="lottery-title">
+        <header class="lottery-page-title">
+          <div>
+            <p class="eyebrow">POINT CARD LOTTERY</p>
+            <h1 id="lottery-title">完成一輪，抽獎一次。</h1>
+            <p>抽獎不會扣除累計點數；同一集點輪次只能選一個轉盤抽獎。</p>
+          </div>
+          <dl class="lottery-total-points">
+            <dt>終身累計</dt>
+            <dd><output id="lottery-total-points">0</output><span> PTS</span></dd>
+          </dl>
+        </header>
+
+        <section class="point-card-progress" aria-labelledby="point-card-progress-title">
+          <div class="point-card-progress-copy">
+            <div>
+              <p class="eyebrow">CURRENT ROUND</p>
+              <h2 id="point-card-progress-title">第 <span id="point-card-round">1</span> 輪集點卡</h2>
+            </div>
+            <strong><output id="point-card-current">0</output> / <output id="point-card-target">5</output> 點</strong>
+          </div>
+          <div class="point-card-track" role="progressbar" aria-label="本輪集點進度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+            <span id="point-card-progress-bar"></span>
+          </div>
+          <div class="point-card-progress-meta">
+            <p id="point-card-progress-message">再獲得 5 點即可完成本輪。</p>
+            <p>可抽獎 <strong id="available-draw-count">0</strong> 次</p>
+          </div>
+        </section>
+
+        <section class="lottery-type-picker" aria-labelledby="lottery-type-picker-title">
+          <div>
+            <p class="eyebrow">CHOOSE A WHEEL</p>
+            <h2 id="lottery-type-picker-title">選擇轉盤類型</h2>
+          </div>
+          <div class="lottery-type-options" id="lottery-type-options" role="radiogroup" aria-label="轉盤類型"></div>
+        </section>
+
+        <section class="lottery-play-area" aria-label="轉盤抽獎">
+          <div class="lottery-page-wheel-stage">
+            <span class="member-lottery-pointer" aria-hidden="true"></span>
+            <div class="member-lottery-rotor" id="member-lottery-rotor">
+              <canvas id="member-lottery-wheel" width="720" height="720">你的瀏覽器不支援轉盤。</canvas>
+            </div>
+            <span class="member-lottery-hub" aria-hidden="true">★</span>
+          </div>
+          <div class="lottery-play-copy">
+            <p class="eyebrow">SELECTED LOTTERY</p>
+            <h2 id="selected-lottery-name">—</h2>
+            <p id="lottery-play-rule">完成本輪集點後即可抽獎，累計點數保持不變。</p>
+            <button class="primary-button lottery-spin-button" id="lottery-spin-button" type="button">
+              <span>使用本輪資格開始抽獎</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+            </button>
+            <p class="lottery-spin-status" id="lottery-spin-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>ONE DRAW PER COMPLETED ROUND</p>
+      <a class="text-button" href="./" data-member-route>返回會員資料</a>
+      <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
+    </footer>
+
+    <dialog class="modal lottery-result-dialog" id="lottery-result-dialog" aria-labelledby="lottery-result-title">
+      <section class="lottery-result-state" role="status" aria-live="polite">
+        <span class="lottery-result-kicker">YOU WON</span>
+        <span class="lottery-result-swatch" id="lottery-result-swatch" aria-hidden="true"></span>
+        <p id="lottery-result-type">本次抽中</p>
+        <strong id="lottery-result-title">—</strong>
+        <div class="claim-balance-summary lottery-balance-summary" aria-label="抽獎後累計點數">
+          <div><small>抽獎前累計</small><strong><output id="lottery-result-before">0</output><span> 點</span></strong></div>
+          <div><small>使用資格</small><strong><output>1</output><span> 次</span></strong></div>
+          <div><small>抽獎後累計</small><strong><output id="lottery-result-balance">0</output><span> 點</span></strong></div>
+        </div>
+        <p class="lottery-result-note">點數沒有扣除；本輪抽獎資格已使用。</p>
+        <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
+          <span>確認並返回會員資料</span>
+        </button>
+      </section>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="toast-message"></span>
+    </div>
+  </body>
+</html>

@@ -22,6 +22,9 @@
   var pointHistory = [];
   var pointHistoryHasMore = false;
   var lotteryConfig = null;
+  var pointCardSetting = null;
+  var lotteryTypes = [];
+  var selectedLotteryTypeId = "";
   var lotteryPrizes = [];
   var lotteryDraws = [];
   var lotteryDrawsHaveMore = false;
@@ -547,12 +550,29 @@
 
   function renderLotteryDashboard(data) {
     data = data && typeof data === "object" ? data : {};
-    lotteryConfig = normalizeLotteryConfig(data.lottery);
+    pointCardSetting = normalizePointCardSetting(data.pointCardSetting);
+    lotteryTypes = normalizeLotteryTypes(data.lotteryTypes);
+    if (
+      !selectedLotteryTypeId ||
+      !lotteryTypes.some(function (type) {
+        return type.lotteryTypeId === selectedLotteryTypeId;
+      })
+    ) {
+      selectedLotteryTypeId = lotteryTypes.length
+        ? lotteryTypes[0].lotteryTypeId
+        : "";
+    }
+    var selectedType = getSelectedLotteryType();
+    lotteryConfig = selectedType
+      ? selectedType.lottery
+      : normalizeLotteryConfig({ lotteryTypeId: "", configVersion: "", updatedAt: "", prizes: [] });
     lotteryAdminIdentity = data.admin || lotteryAdminIdentity || getCurrentAdminIdentity();
     lotteryPrizes = lotteryConfig.prizes.length
       ? lotteryConfig.prizes.map(copyLotteryPrizeForEditor)
       : defaultLotteryPrizes();
     renderAdminIdentity(lotteryAdminIdentity);
+    renderPointCardSetting();
+    renderLotteryTypes();
     renderLotteryConfigMeta();
     renderLotteryPrizeRows();
     clearLotteryConfigError();
@@ -585,37 +605,12 @@
     if (ADMIN_PAGE === "lottery") {
       renderLotteryDashboard({
         admin: { displayName: "管理員預覽", pictureUrl: "" },
-        lottery: {
-          configVersion: "LCF-PREVIEW00001",
-          ticketCost: 5,
-          updatedAt: new Date().toISOString(),
-          prizes: [
-            {
-              prizeId: "LPR-PREVIEW001",
-              label: "銘謝惠顧",
-              color: "#D9D6CC",
-              probability: 50,
-            },
-            {
-              prizeId: "LPR-PREVIEW002",
-              label: "小禮物",
-              color: "#8DCCAA",
-              probability: 30,
-            },
-            {
-              prizeId: "LPR-PREVIEW003",
-              label: "精選獎",
-              color: "#F0C36A",
-              probability: 15,
-            },
-            {
-              prizeId: "LPR-PREVIEW004",
-              label: "頭獎",
-              color: "#0B3C2C",
-              probability: 5,
-            },
-          ],
+        pointCardSetting: {
+          settingVersion: "PCS-PREVIEW00001",
+          targetPoints: 5,
+          effectiveAt: new Date().toISOString(),
         },
+        lotteryTypes: [demoLotteryType()],
       });
       renderLotteryHistory(demoLotteryDraws(), false);
       return;
@@ -632,6 +627,26 @@
         demoMember("MBR-E746291038", "周語彤", "0988 765 432", "1993-02-08", "approved", 12),
       ],
     });
+  }
+
+  function demoLotteryType() {
+    return {
+      lotteryTypeId: "LTY-PREVIEW001",
+      name: "經典轉盤",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      lottery: {
+        lotteryTypeId: "LTY-PREVIEW001",
+        configVersion: "LCF-PREVIEW00001",
+        updatedAt: new Date().toISOString(),
+        prizes: [
+          { prizeId: "LPR-PREVIEW001", label: "銘謝惠顧", color: "#D9D6CC", probability: 50 },
+          { prizeId: "LPR-PREVIEW002", label: "小禮物", color: "#8DCCAA", probability: 30 },
+          { prizeId: "LPR-PREVIEW003", label: "精選獎", color: "#F0C36A", probability: 15 },
+          { prizeId: "LPR-PREVIEW004", label: "頭獎", color: "#0B3C2C", probability: 5 },
+        ],
+      },
+    };
   }
 
   function getCurrentAdminIdentity() {
@@ -738,11 +753,13 @@
         prizeId: "LPR-PREVIEW002",
         prizeLabel: "小禮物",
         prizeColor: "#8DCCAA",
+        lotteryTypeId: "LTY-PREVIEW001",
+        lotteryTypeName: "經典轉盤",
         memberId: "MBR-A102938475",
         memberDisplayName: "林若晴",
-        ticketCost: 5,
+        ticketCost: 0,
         originalPointBalance: 18,
-        pointBalance: 13,
+        pointBalance: 18,
         drawnAt: new Date(now - 18 * 60000).toISOString(),
       },
       {
@@ -751,24 +768,80 @@
         prizeId: "LPR-PREVIEW001",
         prizeLabel: "銘謝惠顧",
         prizeColor: "#D9D6CC",
+        lotteryTypeId: "LTY-PREVIEW001",
+        lotteryTypeName: "經典轉盤",
         memberId: "MBR-B564738291",
         memberDisplayName: "陳宇安",
-        ticketCost: 5,
+        ticketCost: 0,
         originalPointBalance: 9,
-        pointBalance: 4,
+        pointBalance: 9,
         drawnAt: new Date(now - 3 * 3600000).toISOString(),
       },
     ];
   }
 
-  function normalizeLotteryConfig(value) {
+  function normalizePointCardSetting(value) {
     value = value && typeof value === "object" ? value : {};
+    var settingVersion = String(value.settingVersion || "").trim();
+    var targetPoints = Number(value.targetPoints);
+    var effectiveAt = String(value.effectiveAt || "").trim();
+    if (
+      !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
+      !Number.isInteger(targetPoints) ||
+      targetPoints < 1 ||
+      targetPoints > 9999 ||
+      Number.isNaN(new Date(effectiveAt).getTime())
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的集點卡規則格式不正確。");
+    }
+    return {
+      settingVersion: settingVersion,
+      targetPoints: targetPoints,
+      effectiveAt: effectiveAt,
+    };
+  }
+
+  function normalizeLotteryTypes(value) {
+    if (!Array.isArray(value)) {
+      throw createError("INVALID_RESPONSE", "後台回傳的轉盤類型格式不正確。");
+    }
+    var ids = Object.create(null);
+    var names = Object.create(null);
+    return value.map(function (item) {
+      item = item && typeof item === "object" ? item : {};
+      var lotteryTypeId = String(item.lotteryTypeId || "").trim();
+      var name = String(item.name || "").trim();
+      if (
+        !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) ||
+        !name ||
+        name.length > 40 ||
+        item.status !== "active" ||
+        ids[lotteryTypeId] ||
+        names[name.toLowerCase()]
+      ) {
+        throw createError("INVALID_RESPONSE", "後台回傳的轉盤類型資料不正確。");
+      }
+      ids[lotteryTypeId] = true;
+      names[name.toLowerCase()] = true;
+      return {
+        lotteryTypeId: lotteryTypeId,
+        name: name,
+        status: "active",
+        createdAt: String(item.createdAt || ""),
+        lottery: normalizeLotteryConfig(item.lottery, lotteryTypeId),
+      };
+    });
+  }
+
+  function normalizeLotteryConfig(value, expectedLotteryTypeId) {
+    value = value && typeof value === "object" ? value : {};
+    var lotteryTypeId = String(value.lotteryTypeId || expectedLotteryTypeId || "").trim();
     var configVersion = String(value.configVersion || "").trim();
-    var ticketCost = Number(value.ticketCost);
     var updatedAt = String(value.updatedAt || "").trim();
     var rawPrizes = Array.isArray(value.prizes) ? value.prizes : null;
     if (
-      ticketCost !== 5 ||
+      (lotteryTypeId && !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId)) ||
+      (expectedLotteryTypeId && lotteryTypeId !== expectedLotteryTypeId) ||
       !rawPrizes ||
       (configVersion && !/^LCF-[A-Z0-9]{12}$/.test(configVersion)) ||
       (!configVersion && (updatedAt || rawPrizes.length)) ||
@@ -786,11 +859,56 @@
       throw createError("INVALID_RESPONSE", "後台回傳的轉盤機率合計不是 100%。");
     }
     return {
+      lotteryTypeId: lotteryTypeId,
       configVersion: configVersion,
-      ticketCost: ticketCost,
       updatedAt: updatedAt,
       prizes: prizes,
     };
+  }
+
+  function getSelectedLotteryType() {
+    return lotteryTypes.find(function (type) {
+      return type.lotteryTypeId === selectedLotteryTypeId;
+    }) || null;
+  }
+
+  function renderPointCardSetting() {
+    if (!pointCardSetting) return;
+    byId("point-card-target-input").value = String(pointCardSetting.targetPoints);
+    byId("point-card-setting-current").textContent =
+      pointCardSetting.targetPoints + " 點完成一輪";
+    byId("point-card-setting-effective").textContent =
+      formatDateTime(pointCardSetting.effectiveAt);
+  }
+
+  function renderLotteryTypes() {
+    var select = byId("lottery-type-select");
+    select.textContent = "";
+    lotteryTypes.forEach(function (type) {
+      var option = document.createElement("option");
+      option.value = type.lotteryTypeId;
+      option.textContent = type.name;
+      option.selected = type.lotteryTypeId === selectedLotteryTypeId;
+      select.appendChild(option);
+    });
+    select.disabled = lotteryTypes.length === 0;
+    byId("delete-lottery-type-button").disabled = lotteryTypes.length === 0;
+    byId("lottery-empty-types").hidden = lotteryTypes.length !== 0;
+  }
+
+  function selectLotteryType(lotteryTypeId) {
+    selectedLotteryTypeId = String(lotteryTypeId || "");
+    var selectedType = getSelectedLotteryType();
+    lotteryConfig = selectedType
+      ? selectedType.lottery
+      : normalizeLotteryConfig({ lotteryTypeId: "", configVersion: "", updatedAt: "", prizes: [] });
+    lotteryPrizes = lotteryConfig.prizes.length
+      ? lotteryConfig.prizes.map(copyLotteryPrizeForEditor)
+      : defaultLotteryPrizes();
+    renderLotteryConfigMeta();
+    renderLotteryPrizeRows();
+    clearLotteryConfigError();
+    updateOperationControls();
   }
 
   function normalizeLotteryPrize(value) {
@@ -1017,6 +1135,10 @@
   function handleSaveLotteryConfig(event) {
     event.preventDefault();
     if (isLotteryLoading || isLotteryMutationLoading) return;
+    if (!selectedLotteryTypeId) {
+      showLotteryConfigError("請先新增並選擇轉盤類型。");
+      return;
+    }
     clearLotteryConfigError();
     var submittedPrizes;
     try {
@@ -1028,11 +1150,10 @@
 
     if (isDemoSession) {
       var now = new Date().toISOString();
-      renderLotteryDashboard({
-        admin: { displayName: "管理員預覽", pictureUrl: "" },
-        lottery: {
+      var selectedDemoType = getSelectedLotteryType();
+      selectedDemoType.lottery = normalizeLotteryConfig({
+          lotteryTypeId: selectedLotteryTypeId,
           configVersion: "LCF-PREVIEW00002",
-          ticketCost: 5,
           updatedAt: now,
           prizes: submittedPrizes.map(function (prize, index) {
             return {
@@ -1043,8 +1164,8 @@
               probability: prize.probability,
             };
           }),
-        },
-      });
+        }, selectedLotteryTypeId);
+      selectLotteryType(selectedLotteryTypeId);
       showToast("預覽：轉盤設定已更新");
       return;
     }
@@ -1053,6 +1174,7 @@
     setButtonBusy(byId("save-lottery-button"), true, "正在儲存");
     updateOperationControls();
     sendAdminRequest("adminSaveLotteryConfig", {
+      lotteryTypeId: selectedLotteryTypeId,
       lotteryPrizes: submittedPrizes,
     })
       .then(function (response) {
@@ -1060,10 +1182,15 @@
         if (!response.data || !response.data.lottery) {
           throw createError("INVALID_RESPONSE", "後台回傳的轉盤設定格式不完整。");
         }
-        renderLotteryDashboard({
-          lottery: response.data.lottery,
-          admin: lotteryAdminIdentity || getCurrentAdminIdentity(),
-        });
+        var selectedType = getSelectedLotteryType();
+        if (!selectedType) {
+          throw createError("INVALID_RESPONSE", "已儲存的轉盤類型不存在。");
+        }
+        selectedType.lottery = normalizeLotteryConfig(
+          response.data.lottery,
+          selectedLotteryTypeId
+        );
+        selectLotteryType(selectedLotteryTypeId);
         showToast(response.data.duplicate ? "設定已儲存，未重複建立" : "轉盤設定已啟用");
       })
       .catch(function (error) {
@@ -1072,6 +1199,179 @@
       .finally(function () {
         isLotteryMutationLoading = false;
         setButtonBusy(byId("save-lottery-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function handleSavePointCardSetting(event) {
+    event.preventDefault();
+    if (isLotteryMutationLoading) return;
+    var input = byId("point-card-target-input");
+    var targetPoints = Number(input.value);
+    if (!Number.isInteger(targetPoints) || targetPoints < 1 || targetPoints > 9999) {
+      showLotteryConfigError("集點卡每輪點數必須是 1 到 9999 的整數。");
+      input.focus();
+      return;
+    }
+    if (isDemoSession) {
+      pointCardSetting = {
+        settingVersion: "PCS-PREVIEW00002",
+        targetPoints: targetPoints,
+        effectiveAt: new Date().toISOString(),
+      };
+      renderPointCardSetting();
+      showToast("預覽：集點卡規則已更新");
+      return;
+    }
+    isLotteryMutationLoading = true;
+    setButtonBusy(byId("save-point-card-setting-button"), true, "正在儲存");
+    updateOperationControls();
+    sendAdminRequest("adminSavePointCardSetting", {
+      pointCardTarget: targetPoints,
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (!response.data || !response.data.pointCardSetting) {
+          throw createError("INVALID_RESPONSE", "後台回傳的集點卡規則格式不完整。");
+        }
+        pointCardSetting = normalizePointCardSetting(response.data.pointCardSetting);
+        renderPointCardSetting();
+        showToast(
+          response.data.changed === false
+            ? "集點卡規則未變更"
+            : "新的集點卡輪次規則已啟用"
+        );
+      })
+      .catch(function (error) {
+        showLotteryConfigError(normalizeError(error).message);
+      })
+      .finally(function () {
+        isLotteryMutationLoading = false;
+        setButtonBusy(byId("save-point-card-setting-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function handleCreateLotteryType(event) {
+    event.preventDefault();
+    if (isLotteryMutationLoading) return;
+    var input = byId("lottery-type-name-input");
+    var name = String(input.value || "").trim();
+    if (!name || name.length > 40) {
+      showLotteryConfigError("轉盤類型名稱必須是 1 到 40 個字元。");
+      input.focus();
+      return;
+    }
+    if (
+      lotteryTypes.some(function (type) {
+        return type.name.toLowerCase() === name.toLowerCase();
+      })
+    ) {
+      showLotteryConfigError("已有相同名稱的轉盤類型。");
+      return;
+    }
+    if (isDemoSession) {
+      var previewId =
+        "LTY-PREVIEW" + String(lotteryTypes.length + 1).padStart(3, "0");
+      lotteryTypes.push({
+        lotteryTypeId: previewId,
+        name: name,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        lottery: normalizeLotteryConfig({
+          lotteryTypeId: previewId,
+          configVersion: "",
+          updatedAt: "",
+          prizes: [],
+        }, previewId),
+      });
+      selectedLotteryTypeId = previewId;
+      input.value = "";
+      renderLotteryTypes();
+      selectLotteryType(previewId);
+      showToast("預覽：已新增轉盤類型");
+      return;
+    }
+    isLotteryMutationLoading = true;
+    setButtonBusy(byId("create-lottery-type-button"), true, "正在新增");
+    updateOperationControls();
+    sendAdminRequest("adminCreateLotteryType", { lotteryTypeName: name })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (!response.data || !response.data.lotteryType) {
+          throw createError("INVALID_RESPONSE", "後台回傳的轉盤類型格式不完整。");
+        }
+        var created = normalizeLotteryTypes([response.data.lotteryType])[0];
+        lotteryTypes.push(created);
+        selectedLotteryTypeId = created.lotteryTypeId;
+        input.value = "";
+        renderLotteryTypes();
+        selectLotteryType(created.lotteryTypeId);
+        showToast("已新增「" + created.name + "」");
+      })
+      .catch(function (error) {
+        showLotteryConfigError(normalizeError(error).message);
+      })
+      .finally(function () {
+        isLotteryMutationLoading = false;
+        setButtonBusy(byId("create-lottery-type-button"), false);
+        updateOperationControls();
+      });
+  }
+
+  function openDeleteLotteryTypeDialog() {
+    var selectedType = getSelectedLotteryType();
+    if (!selectedType || isLotteryMutationLoading) return;
+    byId("delete-lottery-type-name").textContent = selectedType.name;
+    openDialog(byId("delete-lottery-type-dialog"));
+  }
+
+  function handleDeleteLotteryType() {
+    var selectedType = getSelectedLotteryType();
+    if (!selectedType || isLotteryMutationLoading) return;
+    if (isDemoSession) {
+      lotteryTypes = lotteryTypes.filter(function (type) {
+        return type.lotteryTypeId !== selectedType.lotteryTypeId;
+      });
+      selectedLotteryTypeId = lotteryTypes.length ? lotteryTypes[0].lotteryTypeId : "";
+      closeDialog(byId("delete-lottery-type-dialog"));
+      renderLotteryTypes();
+      selectLotteryType(selectedLotteryTypeId);
+      showToast("預覽：轉盤類型已刪除");
+      return;
+    }
+    isLotteryMutationLoading = true;
+    byId("delete-lottery-type-dialog").dataset.busy = "true";
+    setButtonBusy(byId("confirm-delete-lottery-type-button"), true, "正在刪除");
+    updateOperationControls();
+    sendAdminRequest("adminDeleteLotteryType", {
+      lotteryTypeId: selectedType.lotteryTypeId,
+    })
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (
+          !response.data ||
+          response.data.deleted !== true ||
+          response.data.lotteryTypeId !== selectedType.lotteryTypeId
+        ) {
+          throw createError("INVALID_RESPONSE", "後台未確認轉盤類型已刪除。");
+        }
+        lotteryTypes = lotteryTypes.filter(function (type) {
+          return type.lotteryTypeId !== selectedType.lotteryTypeId;
+        });
+        selectedLotteryTypeId = lotteryTypes.length ? lotteryTypes[0].lotteryTypeId : "";
+        closeDialog(byId("delete-lottery-type-dialog"));
+        renderLotteryTypes();
+        selectLotteryType(selectedLotteryTypeId);
+        showToast("轉盤類型已刪除，歷史抽獎紀錄仍保留");
+      })
+      .catch(function (error) {
+        showLotteryConfigError(normalizeError(error).message);
+      })
+      .finally(function () {
+        isLotteryMutationLoading = false;
+        byId("delete-lottery-type-dialog").dataset.busy = "false";
+        setButtonBusy(byId("confirm-delete-lottery-type-button"), false);
         updateOperationControls();
       });
   }
@@ -1156,6 +1456,8 @@
     var prizeColor = String(value.prizeColor || "").trim().toUpperCase();
     var memberId = String(value.memberId || "").trim();
     var memberDisplayName = String(value.memberDisplayName || "LINE 會員").trim();
+    var lotteryTypeId = String(value.lotteryTypeId || "").trim();
+    var lotteryTypeName = String(value.lotteryTypeName || "").trim();
     var ticketCost = Number(value.ticketCost);
     var originalPointBalance = Number(value.originalPointBalance);
     var pointBalance = Number(value.pointBalance);
@@ -1169,11 +1471,14 @@
       !/^#[0-9A-F]{6}$/.test(prizeColor) ||
       !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
       !memberDisplayName ||
-      ticketCost !== 5 ||
+      !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) ||
+      !lotteryTypeName ||
+      lotteryTypeName.length > 40 ||
+      (ticketCost !== 0 && ticketCost !== 5) ||
       !Number.isSafeInteger(originalPointBalance) ||
       !Number.isSafeInteger(pointBalance) ||
-      originalPointBalance < 5 ||
-      pointBalance !== originalPointBalance - 5 ||
+      originalPointBalance < ticketCost ||
+      pointBalance !== originalPointBalance - ticketCost ||
       Number.isNaN(new Date(drawnAt).getTime())
     ) {
       throw createError("INVALID_RESPONSE", "後台回傳的抽獎紀錄格式不正確。");
@@ -1186,6 +1491,8 @@
       prizeColor: prizeColor,
       memberId: memberId,
       memberDisplayName: memberDisplayName.slice(0, 100),
+      lotteryTypeId: lotteryTypeId,
+      lotteryTypeName: lotteryTypeName,
       ticketCost: ticketCost,
       originalPointBalance: originalPointBalance,
       pointBalance: pointBalance,
@@ -1226,7 +1533,7 @@
         lotteryDraws.length +
         " 筆抽獎紀錄" +
         (lotteryDrawsHaveMore ? "（僅顯示最新 50 筆）" : "")
-      : "查看會員扣除 5 點後的抽獎結果。";
+      : "查看會員每輪集點完成後的抽獎結果。";
 
     lotteryDraws.forEach(function (draw) {
       var item = document.createElement("li");
@@ -1243,16 +1550,19 @@
       swatch.style.backgroundColor = draw.prizeColor;
       main.className = "lottery-history-main";
       member.textContent = draw.memberDisplayName;
-      detail.textContent = draw.memberId + " · " + draw.drawId;
+      detail.textContent =
+        draw.memberId + " · " + draw.lotteryTypeName + " · " + draw.drawId;
       prize.className = "lottery-history-prize";
       prize.textContent = draw.prizeLabel;
       time.dateTime = draw.drawnAt;
       time.textContent = formatDateTime(draw.drawnAt);
       balance.textContent =
-        formatNumber(draw.originalPointBalance) +
-        " → " +
-        formatNumber(draw.pointBalance) +
-        " 點";
+        draw.ticketCost === 0
+          ? "累計 " + formatNumber(draw.pointBalance) + " 點 · 當輪資格已使用"
+          : formatNumber(draw.originalPointBalance) +
+            " → " +
+            formatNumber(draw.pointBalance) +
+            " 點";
       main.appendChild(member);
       main.appendChild(detail);
       meta.appendChild(time);
@@ -2438,7 +2748,13 @@
       INVALID_REDEMPTION_MODE: "點數類型的領取規則無效，請重新選擇。",
       INVALID_CAMPAIGN_EXPIRY: "領取期限需晚於現在，且不可超過一年。",
       POINT_DATA_CONFLICT: "點數試算表資料不一致，請先檢查工作表內容。",
+      INVALID_POINT_CARD_TARGET: "集點卡每輪點數必須是 1 至 9999 的整數。",
+      POINT_CARD_DATA_ERROR: "集點卡設定資料不一致，請先檢查工作表內容。",
       INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個不重複的轉盤獎項。",
+      INVALID_LOTTERY_TYPE_ID: "轉盤類型識別碼無效，請重新整理後再試。",
+      INVALID_LOTTERY_TYPE_NAME: "轉盤類型名稱必須是 1 至 40 個字元。",
+      LOTTERY_TYPE_EXISTS: "已有相同名稱的轉盤類型。",
+      LOTTERY_TYPE_NOT_FOUND: "找不到可使用的轉盤類型，請重新整理後再試。",
       INVALID_LOTTERY_COLOR: "獎項顏色格式不正確，請重新選擇。",
       INVALID_LOTTERY_PROBABILITY: "每個獎項機率需介於 0.01% 至 99.99%。",
       INVALID_LOTTERY_TOTAL: "所有獎項機率合計必須是 100%。",
@@ -2479,6 +2795,18 @@
     toastTimer = window.setTimeout(function () {
       toast.hidden = true;
     }, 4200);
+  }
+
+  function openDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
   }
 
   function setView(activeId) {
@@ -2526,13 +2854,21 @@
       byId("refresh-lottery-history-button").disabled =
         busy || isLotteryHistoryLoading;
       byId("add-lottery-prize-button").disabled =
-        busy || lotteryPrizes.length >= 12;
-      byId("save-lottery-button").disabled = busy;
+        busy || !selectedLotteryTypeId || lotteryPrizes.length >= 12;
+      byId("save-lottery-button").disabled = busy || !selectedLotteryTypeId;
+      byId("point-card-target-input").disabled = busy;
+      byId("save-point-card-setting-button").disabled = busy;
+      byId("lottery-type-select").disabled = busy || lotteryTypes.length === 0;
+      byId("lottery-type-name-input").disabled = busy;
+      byId("create-lottery-type-button").disabled = busy;
+      byId("delete-lottery-type-button").disabled =
+        busy || lotteryTypes.length === 0;
       byId("lottery-config-form")
         .querySelectorAll("input, .lottery-prize-remove")
         .forEach(function (control) {
           control.disabled =
             busy ||
+            !selectedLotteryTypeId ||
             (control.classList.contains("lottery-prize-remove") &&
               lotteryPrizes.length <= 2);
         });
@@ -2618,7 +2954,13 @@
       element.textContent = brand;
     });
     document.title =
-      brand + " ADMIN｜" + (ADMIN_PAGE === "points" ? "點數管理" : "會員管理");
+      brand +
+      " ADMIN｜" +
+      (ADMIN_PAGE === "points"
+        ? "點數管理"
+        : ADMIN_PAGE === "lottery"
+          ? "轉盤抽獎"
+          : "會員管理");
     syncAdminRoutes();
   }
 
@@ -2784,6 +3126,31 @@
         }
       );
       byId("add-lottery-prize-button").addEventListener("click", addLotteryPrize);
+      byId("point-card-setting-form").addEventListener(
+        "submit",
+        handleSavePointCardSetting
+      );
+      byId("lottery-type-form").addEventListener(
+        "submit",
+        handleCreateLotteryType
+      );
+      byId("lottery-type-select").addEventListener("change", function (event) {
+        selectLotteryType(event.target.value);
+      });
+      byId("delete-lottery-type-button").addEventListener(
+        "click",
+        openDeleteLotteryTypeDialog
+      );
+      byId("cancel-delete-lottery-type-button").addEventListener("click", function () {
+        closeDialog(byId("delete-lottery-type-dialog"));
+      });
+      byId("confirm-delete-lottery-type-button").addEventListener(
+        "click",
+        handleDeleteLotteryType
+      );
+      byId("delete-lottery-type-dialog").addEventListener("cancel", function (event) {
+        if (event.currentTarget.dataset.busy === "true") event.preventDefault();
+      });
       byId("lottery-config-form").addEventListener(
         "submit",
         handleSaveLotteryConfig

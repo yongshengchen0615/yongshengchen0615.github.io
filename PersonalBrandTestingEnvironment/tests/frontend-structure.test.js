@@ -8,6 +8,7 @@ const htmlFiles = [
   "index.html",
   "setup.html",
   "client/index.html",
+  "client/lottery.html",
   "client/privacy.html",
   "admin/index.html",
   "admin/points.html",
@@ -293,11 +294,17 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   }
 });
 
-test("admin lottery page configures labels, colors, exact probabilities, and draw history", () => {
+test("admin lottery page configures point-card rounds, wheel types, prizes, and history", () => {
   const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
   for (const id of [
+    "point-card-setting-form",
+    "point-card-target-input",
+    "lottery-type-form",
+    "lottery-type-name-input",
+    "lottery-type-select",
+    "delete-lottery-type-button",
     "admin-lottery-wheel",
     "lottery-config-form",
     "lottery-prize-list",
@@ -312,39 +319,50 @@ test("admin lottery page configures labels, colors, exact probabilities, and dra
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
+  assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
+  assert.match(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
+  assert.match(script, /sendAdminRequest\(["']adminDeleteLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
   assert.match(script, /totalBasisPoints\s*!==\s*10000/);
   assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
 });
 
-test("member lottery uses a persisted request ID and animates only to the GAS result", () => {
-  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
-  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+test("member lottery is a separate page and consumes a round only after the GAS result", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const gas = fs.readFileSync(path.join(root, "gas/client/Code.gs"), "utf8");
-  const spin = getTopLevelFunctionContaining(script, /function\s+handleLotterySpin/);
+  const spin = getTopLevelFunctionContaining(script, /function\s+handleDraw/);
 
   for (const id of [
-    "open-lottery-button",
-    "lottery-dialog",
+    "point-card-progress-bar",
+    "available-draw-count",
+    "lottery-type-options",
     "member-lottery-wheel",
     "lottery-spin-button",
-    "lottery-result-prize",
+    "lottery-result-dialog",
+    "lottery-result-title",
     "lottery-result-before",
-    "lottery-result-spent",
     "lottery-result-balance",
     "lottery-result-confirm-button",
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
-  assert.match(spin, /sendGasRequest\(["']drawLottery["']/);
-  assert.match(spin, /ensurePendingLotteryRequestId\s*\(\s*\)/);
+  assert.match(memberHtml, /id=["']lottery-page-link["'][^>]*href=["']lottery\.html["']/);
+  assert.doesNotMatch(memberHtml, /id=["']lottery-result-dialog["']/);
+  assert.match(spin, /sendMemberRequest\(\s*["']drawLottery["']/);
+  assert.match(spin, /ensurePendingRequest\s*\(/);
+  assert.match(spin, /\blotteryTypeId\s*:/);
   assert.doesNotMatch(spin, /Math\.random\s*\(/);
-  assert.match(script, /normalizeLotteryDraw\(data\.draw,\s*resultConfig\)/);
-  assert.match(script, /animateLotteryToPrize\(draw\)/);
+  assert.match(script, /draw\.pointsSpent\s*!==\s*0/);
+  assert.match(script, /draw\.pointBalance\s*!==\s*draw\.originalPointBalance/);
+  assert.match(script, /normalizeLotteryConfig\(\s*data\.lottery/);
+  assert.match(script, /animateToPrize\(draw,\s*selectedType\.lottery\)/);
   assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
   assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
-  assert.match(gas, /LOTTERY_TICKET_COST\s*=\s*5/);
+  assert.match(gas, /pointsSpent:\s*0/);
+  assert.match(gas, /cardRoundKey/);
 });
 
 test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
@@ -479,6 +497,9 @@ test("client member point history has loading, empty, error and refresh states",
   assert.match(history, /sendGasRequest\(["']listPointHistory["']/);
   assert.match(script, /refresh-point-history-button["']\)\.addEventListener/);
   assert.match(script, /formatPointHistoryMode/);
+  assert.match(script, /entryType\s*===\s*["']draw["']/);
+  assert.match(script, /label\s*===\s*["']集點卡抽獎 · ["']\s*\+\s*prizeLabel/);
+  assert.match(script, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
 });
 
 test("client claim dialog exposes automatic progress, result, duplicate, and retry states", () => {
@@ -631,6 +652,9 @@ test("shared transport exposes only the bounded point and lottery fields", () =>
     "expiresAt",
     "expiryMode",
     "redemptionMode",
+    "pointCardTarget",
+    "lotteryTypeId",
+    "lotteryTypeName",
     "lotteryPrizes",
   ]) {
     assert.match(extraFields[1], new RegExp(`["']${field}["']`));
@@ -783,6 +807,7 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
 test("LIFF entry points suppress referrers before loading the external SDK", () => {
   for (const relativePath of [
     "client/index.html",
+    "client/lottery.html",
     "admin/index.html",
     "admin/points.html",
     "admin/lottery.html",
@@ -875,10 +900,16 @@ test("admin access updates include both optimistic concurrency fields", () => {
 });
 
 test("both applications load the shared GAS transport before their own scripts", () => {
-  for (const relativePath of ["client/index.html", "admin/index.html", "admin/points.html"]) {
+  for (const [relativePath, scriptName] of [
+    ["client/index.html", "script.js"],
+    ["client/lottery.html", "lottery.js"],
+    ["admin/index.html", "script.js"],
+    ["admin/points.html", "script.js"],
+    ["admin/lottery.html", "script.js"],
+  ]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const sharedIndex = html.indexOf('../shared/gas-api.js');
-    const appIndex = html.indexOf('src="script.js"');
+    const appIndex = html.indexOf(`src="${scriptName}"`);
     assert.notEqual(sharedIndex, -1);
     assert.notEqual(appIndex, -1);
     assert.equal(sharedIndex < appIndex, true, `${relativePath} must load shared transport first`);
@@ -894,6 +925,8 @@ test("deployment guides document two independent GAS deployments and Sheet-based
     assert.match(guide, /2010791619/);
     assert.match(guide, /gas\/client\/Code\.gs/);
     assert.match(guide, /gas\/admin\/Code\.gs/);
+    assert.match(guide, /PointCardSettings/);
+    assert.match(guide, /LotteryTypes/);
     assert.match(guide, /https:\/\/yongshengchen0615\.github\.io/);
     assert.match(guide, /Admins/);
     assert.match(guide, /pending/);

@@ -1385,13 +1385,19 @@
       (redemptionMode === "once_per_member" ||
         redemptionMode === "repeatable" ||
         redemptionMode === "single_member");
-    var validLottery =
+    var validLegacyLottery =
       entryType === "spend" &&
+      points === -5 &&
+      label === "5 點抽獎券 · " + prizeLabel;
+    var validRoundLottery =
+      entryType === "draw" &&
+      points === 0 &&
+      label === "集點卡抽獎 · " + prizeLabel;
+    var validLottery =
+      (validLegacyLottery || validRoundLottery) &&
       source === "lottery" &&
       /^LDW-[A-Z0-9]{16}$/.test(drawId) &&
       historyId === drawId &&
-      points === -5 &&
-      label === "5 點抽獎券 · " + prizeLabel &&
       prizeLabel &&
       prizeLabel.length <= 40 &&
       /^#[0-9A-F]{6}$/.test(prizeColor) &&
@@ -1456,24 +1462,30 @@
       marker.setAttribute("aria-hidden", "true");
       content.className = "point-history-content";
       title.textContent =
-        entry.entryType === "spend"
+        entry.entryType !== "earn"
           ? entry.prizeLabel + " · 轉盤抽獎"
           : entry.label + " · 獲得點數";
       meta.textContent =
         formatPointHistoryDate(entry.redeemedAt) +
         " · " +
         (entry.entryType === "spend"
-          ? "5 點抽獎券"
+          ? "舊版 5 點抽獎券"
+          : entry.entryType === "draw"
+            ? "集點卡完成輪次"
           : formatPointHistoryMode(entry.redemptionMode));
       amount.className =
         "point-history-amount" +
         (entry.entryType === "spend" ? " point-history-amount-spend" : "");
       amount.textContent =
-        (entry.points > 0 ? "+" : "−") +
-        formatPointNumber(Math.abs(entry.points)) +
-        " 點";
+        entry.entryType === "draw"
+          ? "不扣點"
+          : (entry.points > 0 ? "+" : "−") +
+            formatPointNumber(Math.abs(entry.points)) +
+            " 點";
       balance.className = "point-history-balance";
-      balance.textContent = "餘額 " + formatPointNumber(entry.balanceAfter);
+      balance.textContent =
+        (entry.entryType === "draw" ? "累計 " : "餘額 ") +
+        formatPointNumber(entry.balanceAfter);
 
       content.appendChild(title);
       content.appendChild(meta);
@@ -2432,6 +2444,17 @@
       element.textContent = brand;
     });
     document.title = brand + " MEMBERS｜會員中心";
+    syncClientRoutes();
+  }
+
+  function syncClientRoutes() {
+    var demo = isDemoSession || hasDemoQuery();
+    document.querySelectorAll("[data-client-route]").forEach(function (link) {
+      var url = new URL(link.getAttribute("href"), window.location.href);
+      if (demo) url.searchParams.set("demo", "1");
+      else url.searchParams.delete("demo");
+      link.href = url.toString();
+    });
   }
 
   function bindInteractions() {
@@ -2442,19 +2465,6 @@
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
     byId("refresh-point-history-button").addEventListener("click", loadPointHistory);
-    byId("open-lottery-button").addEventListener("click", openLottery);
-    byId("lottery-spin-button").addEventListener("click", handleLotterySpin);
-    byId("lottery-close-button").addEventListener("click", function () {
-      closeDialog(byId("lottery-dialog"));
-    });
-    byId("lottery-error-close-button").addEventListener("click", function () {
-      closeDialog(byId("lottery-dialog"));
-    });
-    byId("lottery-retry-button").addEventListener("click", retryLottery);
-    byId("lottery-result-confirm-button").addEventListener(
-      "click",
-      confirmLotteryResult
-    );
     byId("scan-point-button").addEventListener("click", handleScanPointQr);
     byId("point-scanner-cancel-button").addEventListener(
       "click",
@@ -2525,13 +2535,6 @@
 
     byId("claim-dialog").addEventListener("cancel", function (event) {
       if (event.currentTarget.dataset.busy === "true") event.preventDefault();
-    });
-
-    byId("lottery-dialog").addEventListener("close", function () {
-      if (!isLotteryBusy) {
-        setLotteryState("lottery-loading-state");
-        byId("lottery-spin-status").textContent = "";
-      }
     });
 
     ["phone", "birthday"].forEach(function (field) {

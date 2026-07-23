@@ -1978,6 +1978,250 @@ code {
   line-height: 1.65;
 }
 
+.lottery-page-main {
+  width: min(100%, var(--content-width));
+  min-height: calc(100svh - var(--header-height) - 74px);
+  margin-inline: auto;
+}
+
+.lottery-page-status {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1rem;
+}
+
+.lottery-page-status h1 {
+  max-width: 11ch;
+  margin: 0;
+  font-size: clamp(3rem, 8vw, 7rem);
+  line-height: 0.94;
+  letter-spacing: -0.065em;
+}
+
+.lottery-page-status > p:not(.eyebrow) {
+  max-width: 36rem;
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+
+.lottery-page-status .claim-loader {
+  margin: 1rem 0 0;
+}
+
+.lottery-page-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.lottery-page-workspace {
+  padding-top: clamp(2.5rem, 5vw, 5rem);
+}
+
+.lottery-page-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 2rem;
+}
+
+.lottery-page-title h1 {
+  max-width: 12ch;
+  margin: 0.5rem 0 0.85rem;
+  font-size: clamp(3rem, 7vw, 7rem);
+  font-weight: 520;
+  line-height: 0.92;
+  letter-spacing: -0.07em;
+}
+
+.lottery-page-title > div > p:last-child {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.75;
+}
+
+.lottery-total-points {
+  min-width: 10rem;
+  margin: 0;
+  padding: 1rem 0;
+  border-block: 1px solid var(--line-strong);
+  text-align: right;
+}
+
+.lottery-total-points dt {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+}
+
+.lottery-total-points dd {
+  margin: 0.3rem 0 0;
+  color: var(--green-deep);
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.lottery-total-points dd span {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+}
+
+.point-card-progress {
+  margin-top: clamp(2.5rem, 5vw, 5rem);
+  padding-block: clamp(1.5rem, 3vw, 2.5rem);
+  border-block: 1px solid var(--line-strong);
+}
+
+.point-card-progress-copy,
+.point-card-progress-meta {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.point-card-progress-copy h2 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.45rem, 2.5vw, 2.4rem);
+  font-weight: 560;
+}
+
+.point-card-progress-copy > strong {
+  color: var(--green-deep);
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.point-card-track {
+  height: 0.8rem;
+  margin: 1.4rem 0 0.8rem;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.point-card-track span {
+  width: 0;
+  height: 100%;
+  display: block;
+  background: var(--green);
+  transition: width 520ms cubic-bezier(0.2, 0.72, 0.2, 1);
+}
+
+.point-card-progress-meta p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
+.point-card-progress-meta strong {
+  color: var(--green-dark);
+}
+
+.lottery-type-picker {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.32fr) minmax(0, 1fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  margin-top: clamp(3rem, 6vw, 6rem);
+}
+
+.lottery-type-picker h2 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.5rem, 2.8vw, 2.7rem);
+  font-weight: 560;
+}
+
+.lottery-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 0.65rem;
+}
+
+.lottery-type-option {
+  min-height: 48px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  transition:
+    color 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.lottery-type-option[aria-checked="true"] {
+  border-color: var(--green-deep);
+  color: #fff;
+  background: var(--green-deep);
+}
+
+.lottery-play-area {
+  display: grid;
+  grid-template-columns: minmax(19rem, 0.9fr) minmax(16rem, 0.65fr);
+  align-items: center;
+  gap: clamp(2rem, 7vw, 7rem);
+  margin-top: clamp(2.5rem, 5vw, 5rem);
+  padding-block: clamp(2.5rem, 5vw, 5rem);
+  border-top: 1px solid var(--line-strong);
+}
+
+.lottery-page-wheel-stage {
+  position: relative;
+  width: min(100%, 34rem);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.lottery-play-copy h2 {
+  margin: 0.45rem 0 0.8rem;
+  font-size: clamp(2.2rem, 5vw, 5rem);
+  font-weight: 540;
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+}
+
+.lottery-play-copy > p:not(.eyebrow) {
+  max-width: 28rem;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
+
+.lottery-play-copy .lottery-spin-button {
+  width: min(100%, 23rem);
+  margin-top: 1.25rem;
+}
+
+.lottery-play-copy .lottery-spin-status {
+  max-width: 28rem;
+  text-align: left;
+}
+
+.lottery-result-dialog {
+  width: min(calc(100% - 1.5rem), 42rem);
+}
+
+.lottery-result-dialog .lottery-result-state {
+  padding-block: 1rem;
+}
+
+.lottery-result-note {
+  margin: 0 0 1.4rem !important;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+}
+
 .delete-modal > p {
   margin: 1.4rem 0;
 }
@@ -2579,6 +2823,66 @@ code {
 
   .lottery-modal {
     padding: 1.2rem;
+  }
+
+  .lottery-page-header .brand small {
+    display: none;
+  }
+
+  .lottery-page-title,
+  .lottery-type-picker,
+  .lottery-play-area {
+    grid-template-columns: 1fr;
+  }
+
+  .lottery-page-title {
+    align-items: start;
+  }
+
+  .lottery-page-title h1,
+  .lottery-page-status h1 {
+    font-size: clamp(2.8rem, 14vw, 4.5rem);
+  }
+
+  .lottery-total-points {
+    width: 100%;
+    text-align: left;
+  }
+
+  .point-card-progress-copy,
+  .point-card-progress-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .lottery-type-picker,
+  .lottery-play-area {
+    gap: 1.6rem;
+  }
+
+  .lottery-type-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lottery-page-wheel-stage {
+    width: min(84vw, 28rem);
+    margin-inline: auto;
+  }
+
+  .lottery-play-copy {
+    text-align: center;
+  }
+
+  .lottery-play-copy > p:not(.eyebrow),
+  .lottery-play-copy .lottery-spin-status {
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .lottery-play-copy .lottery-spin-button {
+    width: 100%;
   }
 
   .member-lottery-stage {

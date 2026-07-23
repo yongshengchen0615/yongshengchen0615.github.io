@@ -405,6 +405,42 @@ function createPointRedemptionRow(gas, overrides = {}) {
   return row;
 }
 
+function createPointCardSettingRow(gas, overrides = {}) {
+  const row = new Array(gas.POINT_CARD_SETTING_HEADERS.length).fill("");
+  const values = {
+    settingVersion: gas.DEFAULT_POINT_CARD_SETTING_VERSION,
+    targetPoints: 5,
+    effectiveAt: new Date(0),
+    updatedBy: "SYSTEM",
+    lastRequestId: "setup-default-card",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
+function createLotteryTypeRow(gas, overrides = {}) {
+  const row = new Array(gas.LOTTERY_TYPE_HEADERS.length).fill("");
+  const values = {
+    lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+    name: gas.DEFAULT_LOTTERY_TYPE_NAME,
+    status: "active",
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    createdBy: "SYSTEM",
+    deletedAt: "",
+    deletedBy: "",
+    lastRequestId: "setup-default-type",
+    ...overrides,
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    row[gas.LOTTERY_TYPE_COLUMN[key] - 1] = value;
+  });
+  return row;
+}
+
 function configFor(gas) {
   return {
     lineChannelId: ADMIN_CHANNEL_ID,
@@ -414,6 +450,8 @@ function configFor(gas) {
     pointTypesSheetName: "PointTypes",
     pointCampaignsSheetName: "PointCampaigns",
     pointRedemptionsSheetName: "PointRedemptions",
+    pointCardSettingsSheetName: "PointCardSettings",
+    lotteryTypesSheetName: "LotteryTypes",
     lotteryPrizesSheetName: "LotteryPrizes",
     lotteryDrawsSheetName: "LotteryDraws",
     memberLiffUrl: "https://liff.line.me/2010787602-kaiSm2eq",
@@ -509,6 +547,10 @@ test("configuration fails closed unless the administrator channel is exact", () 
   assert.equal(config.pointTypesSheetName, "PointTypes");
   assert.equal(config.pointCampaignsSheetName, "PointCampaigns");
   assert.equal(config.pointRedemptionsSheetName, "PointRedemptions");
+  assert.equal(config.pointCardSettingsSheetName, "PointCardSettings");
+  assert.equal(config.lotteryTypesSheetName, "LotteryTypes");
+  assert.equal(config.lotteryPrizesSheetName, "LotteryPrizes");
+  assert.equal(config.lotteryDrawsSheetName, "LotteryDraws");
   assert.equal(config.memberLiffUrl, "https://liff.line.me/2010787602-kaiSm2eq");
   assert.equal(config.pointClaimSecret, "s".repeat(64));
 
@@ -532,6 +574,9 @@ test("configuration fails closed unless the administrator channel is exact", () 
     { POINT_TYPE_SHEET_NAME: "admins" },
     { POINT_CAMPAIGN_SHEET_NAME: "PointTypes" },
     { POINT_REDEMPTION_SHEET_NAME: "members" },
+    { POINT_CARD_SETTING_SHEET_NAME: "LotteryTypes" },
+    { LOTTERY_TYPE_SHEET_NAME: "PointCardSettings" },
+    { LOTTERY_PRIZE_SHEET_NAME: "LotteryDraws" },
     { MEMBER_LIFF_URL: "https://evil.example/2010787602-kaiSm2eq" },
     { MEMBER_LIFF_URL: "https://liff.line.me/2010787602-kaiSm2eq?claim=bad" },
     { POINT_CLAIM_SECRET: "" },
@@ -563,9 +608,17 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointTypesSheetName, "PointTypes");
   assert.equal(result.pointCampaignsSheetName, "PointCampaigns");
   assert.equal(result.pointRedemptionsSheetName, "PointRedemptions");
+  assert.equal(result.pointCardSettingsSheetName, "PointCardSettings");
+  assert.equal(result.lotteryTypesSheetName, "LotteryTypes");
+  assert.equal(result.lotteryPrizesSheetName, "LotteryPrizes");
+  assert.equal(result.lotteryDrawsSheetName, "LotteryDraws");
   assert.equal(result.pointTypeColumns, 12);
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
+  assert.equal(result.pointCardSettingColumns, 5);
+  assert.equal(result.lotteryTypeColumns, 9);
+  assert.equal(result.lotteryPrizeColumns, 11);
+  assert.equal(result.lotteryDrawColumns, 16);
   assert.deepEqual(
     JSON.parse(JSON.stringify(spreadsheet.sheets.PointTypes.data[0])),
     JSON.parse(JSON.stringify(gas.POINT_TYPE_HEADERS))
@@ -578,6 +631,16 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
     spreadsheet.sheets.PointRedemptions.data[0],
     Array.from(gas.POINT_REDEMPTION_HEADERS)
   );
+  assert.deepEqual(
+    spreadsheet.sheets.PointCardSettings.data[0],
+    Array.from(gas.POINT_CARD_SETTING_HEADERS)
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.LotteryTypes.data[0],
+    Array.from(gas.LOTTERY_TYPE_HEADERS)
+  );
+  assert.equal(spreadsheet.sheets.PointCardSettings.data.length, 2);
+  assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 2);
   assert.equal(Object.prototype.hasOwnProperty.call(result, "pointClaimSecret"), false);
 });
 
@@ -693,7 +756,23 @@ test("only allowlisted administrator actions are accepted and untrusted fields a
     { ...tokenFields, action: "adminGetLotteryConfig" },
     {
       ...tokenFields,
+      action: "adminSavePointCardSetting",
+      pointCardTarget: 5,
+    },
+    {
+      ...tokenFields,
+      action: "adminCreateLotteryType",
+      lotteryTypeName: "夏日轉盤",
+    },
+    {
+      ...tokenFields,
+      action: "adminDeleteLotteryType",
+      lotteryTypeId: "LTY-DEFAULT001",
+    },
+    {
+      ...tokenFields,
       action: "adminSaveLotteryConfig",
+      lotteryTypeId: "LTY-DEFAULT001",
       lotteryPrizes: [
         { label: "獎項 A", color: "#0F766E", probability: 50 },
         { label: "獎項 B", color: "#F59E0B", probability: 50 },
@@ -789,6 +868,9 @@ test("all administrator actions dispatch only after config and LINE verification
     ["adminDeletePointType", "adminDeletePointType_"],
     ["adminCreatePointCampaign", "adminCreatePointCampaign_"],
     ["adminGetLotteryConfig", "adminGetLotteryConfig_"],
+    ["adminSavePointCardSetting", "adminSavePointCardSetting_"],
+    ["adminCreateLotteryType", "adminCreateLotteryType_"],
+    ["adminDeleteLotteryType", "adminDeleteLotteryType_"],
     ["adminSaveLotteryConfig", "adminSaveLotteryConfig_"],
     ["adminListLotteryDraws", "adminListLotteryDraws_"],
   ]) {
@@ -1882,16 +1964,21 @@ test("approved administrators save an append-only lottery version idempotently",
   const gas = createGasContext();
   const adminSheet = createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]);
   const prizeSheet = createSheet("LotteryPrizes", gas.LOTTERY_PRIZE_HEADERS, []);
+  const typeSheet = createSheet("LotteryTypes", gas.LOTTERY_TYPE_HEADERS, [
+    createLotteryTypeRow(gas),
+  ]);
   installSpreadsheet(
     gas,
     createSpreadsheet({
       Admins: adminSheet,
       LotteryPrizes: prizeSheet,
+      LotteryTypes: typeSheet,
     })
   );
   const request = {
     action: "adminSaveLotteryConfig",
     requestId: "request-lottery-save-1",
+    lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
     lotteryPrizes: [
       { label: "銘謝惠顧", color: "#D9D6CC", probability: 70 },
       { label: "頭獎", color: "#0B3C2C", probability: 30 },
@@ -1903,7 +1990,7 @@ test("approved administrators save an append-only lottery version idempotently",
 
   assert.equal(first.data.duplicate, false);
   assert.equal(second.data.duplicate, true);
-  assert.equal(first.data.lottery.ticketCost, 5);
+  assert.equal(first.data.lottery.lotteryTypeId, gas.DEFAULT_LOTTERY_TYPE_ID);
   assert.equal(first.data.lottery.configVersion, second.data.lottery.configVersion);
   assert.equal(prizeSheet.data.length, 3);
   assert.deepEqual(
@@ -1917,6 +2004,113 @@ test("approved administrators save an append-only lottery version idempotently",
       .slice(1)
       .map((row) => row[gas.LOTTERY_PRIZE_COLUMN.probabilityBasisPoints - 1]),
     [7000, 3000]
+  );
+});
+
+test("administrators version point-card targets without rewriting earlier rules", () => {
+  const gas = createGasContext();
+  const settingSheet = createSheet(
+    "PointCardSettings",
+    gas.POINT_CARD_SETTING_HEADERS,
+    [createPointCardSettingRow(gas)]
+  );
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      PointCardSettings: settingSheet,
+    })
+  );
+  const request = {
+    action: "adminSavePointCardSetting",
+    requestId: "request-point-card-save-1",
+    pointCardTarget: 8,
+  };
+
+  const first = gas.adminSavePointCardSetting_(identity(), request, configFor(gas));
+  const replay = gas.adminSavePointCardSetting_(identity(), request, configFor(gas));
+  const unchanged = gas.adminSavePointCardSetting_(
+    identity(),
+    {
+      action: "adminSavePointCardSetting",
+      requestId: "request-point-card-save-2",
+      pointCardTarget: 8,
+    },
+    configFor(gas)
+  );
+
+  assert.equal(first.data.changed, true);
+  assert.equal(first.data.duplicate, false);
+  assert.equal(first.data.pointCardSetting.targetPoints, 8);
+  assert.equal(replay.data.duplicate, true);
+  assert.equal(replay.data.pointCardSetting.settingVersion, first.data.pointCardSetting.settingVersion);
+  assert.equal(unchanged.data.changed, false);
+  assert.equal(settingSheet.data.length, 3);
+  assert.equal(
+    settingSheet.data[1][gas.POINT_CARD_SETTING_COLUMN.targetPoints - 1],
+    5
+  );
+});
+
+test("administrators create and soft-delete lottery types idempotently", () => {
+  const gas = createGasContext();
+  const typeSheet = createSheet("LotteryTypes", gas.LOTTERY_TYPE_HEADERS, [
+    createLotteryTypeRow(gas),
+  ]);
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      LotteryTypes: typeSheet,
+    })
+  );
+  const createRequest = {
+    action: "adminCreateLotteryType",
+    requestId: "request-lottery-type-create-1",
+    lotteryTypeName: "夏日限定",
+  };
+
+  const created = gas.adminCreateLotteryType_(identity(), createRequest, configFor(gas));
+  const replay = gas.adminCreateLotteryType_(identity(), createRequest, configFor(gas));
+  const lotteryTypeId = created.data.lotteryType.lotteryTypeId;
+  const deleted = gas.adminDeleteLotteryType_(
+    identity(),
+    {
+      action: "adminDeleteLotteryType",
+      requestId: "request-lottery-type-delete-1",
+      lotteryTypeId,
+    },
+    configFor(gas)
+  );
+  const deleteReplay = gas.adminDeleteLotteryType_(
+    identity(),
+    {
+      action: "adminDeleteLotteryType",
+      requestId: "request-lottery-type-delete-1",
+      lotteryTypeId,
+    },
+    configFor(gas)
+  );
+
+  assert.match(lotteryTypeId, /^LTY-[A-Z0-9]{10}$/);
+  assert.equal(created.data.duplicate, false);
+  assert.equal(replay.data.duplicate, true);
+  assert.equal(replay.data.lotteryType.lotteryTypeId, lotteryTypeId);
+  assert.equal(deleted.data.deleted, true);
+  assert.equal(deleted.data.duplicate, false);
+  assert.equal(deleteReplay.data.duplicate, true);
+  assert.throws(
+    () => gas.adminCreateLotteryType_(identity(), createRequest, configFor(gas)),
+    (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+  assert.equal(typeSheet.data.length, 3);
+  assert.equal(
+    typeSheet.data[2][gas.LOTTERY_TYPE_COLUMN.status - 1],
+    "deleted"
+  );
+  assert.equal(
+    typeSheet.data[2][gas.LOTTERY_TYPE_COLUMN.name - 1],
+    "夏日限定"
   );
 });
 
@@ -1937,9 +2131,34 @@ test("administrator lottery history omits LINE and request identifiers", () => {
     balanceAfter: 7,
     drawnAt: new Date("2026-07-23T00:00:00.000Z"),
     requestId: "request-lottery-draw-1",
+    lotteryTypeId: "",
+    cardSettingVersion: "",
+    cardRoundKey: "",
   };
   Object.entries(values).forEach(([key, value]) => {
     drawRow[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
+  });
+  const roundDrawRow = new Array(gas.LOTTERY_DRAW_HEADERS.length).fill("");
+  const roundValues = {
+    drawId: "LDW-ZYXWVU9876543210",
+    configVersion: "LCF-ABCDEF123456",
+    prizeId: "LPR-ZYXWVU9876",
+    prizeLabelSnapshot: "小禮物",
+    prizeColorSnapshot: "#8DCCAA",
+    probabilityBasisPointsSnapshot: 3000,
+    memberId: "MBR-ABCDEF1234",
+    lineUserId: MEMBER_USER_ID,
+    pointsSpent: 0,
+    balanceBefore: 12,
+    balanceAfter: 12,
+    drawnAt: new Date("2026-07-24T00:00:00.000Z"),
+    requestId: "request-lottery-round-draw-1",
+    lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+    cardSettingVersion: gas.DEFAULT_POINT_CARD_SETTING_VERSION,
+    cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`,
+  };
+  Object.entries(roundValues).forEach(([key, value]) => {
+    roundDrawRow[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
   });
   installSpreadsheet(
     gas,
@@ -1948,6 +2167,10 @@ test("administrator lottery history omits LINE and request identifiers", () => {
       Members: createSheet("Members", gas.MEMBER_HEADERS, [createMemberRow(gas)]),
       LotteryDraws: createSheet("LotteryDraws", gas.LOTTERY_DRAW_HEADERS, [
         drawRow,
+        roundDrawRow,
+      ]),
+      LotteryTypes: createSheet("LotteryTypes", gas.LOTTERY_TYPE_HEADERS, [
+        createLotteryTypeRow(gas),
       ]),
     })
   );
@@ -1958,11 +2181,16 @@ test("administrator lottery history omits LINE and request identifiers", () => {
     configFor(gas)
   );
   const serialized = JSON.stringify(result.data);
-  assert.equal(result.data.draws.length, 1);
+  assert.equal(result.data.draws.length, 2);
   assert.equal(result.data.draws[0].memberDisplayName, "會員甲");
-  assert.equal(result.data.draws[0].prizeLabel, "頭獎");
+  assert.equal(result.data.draws[0].prizeLabel, "小禮物");
+  assert.equal(result.data.draws[0].lotteryTypeName, gas.DEFAULT_LOTTERY_TYPE_NAME);
+  assert.equal(result.data.draws[0].usedCardRound, true);
+  assert.equal(result.data.draws[0].ticketCost, 0);
+  assert.equal(result.data.draws[1].usedCardRound, false);
   assert.equal(serialized.includes(MEMBER_USER_ID), false);
   assert.equal(serialized.includes("request-lottery-draw-1"), false);
+  assert.equal(serialized.includes("request-lottery-round-draw-1"), false);
 });
 
 test("fetch and bridge parse identical point fields without accepting snapshots or claims", () => {
@@ -2130,6 +2358,30 @@ test("17, 20 and 21-column Members headers upgrade to the shared 23-column profi
       "getOrCreatePointRedemptionSheet_",
       "POINT_REDEMPTION_SCHEMA_MISMATCH",
     ],
+    [
+      "PointCardSettings",
+      Array.from(gas.POINT_CARD_SETTING_HEADERS),
+      "getOrCreatePointCardSettingSheet_",
+      "POINT_CARD_SCHEMA_MISMATCH",
+    ],
+    [
+      "LotteryTypes",
+      Array.from(gas.LOTTERY_TYPE_HEADERS),
+      "getOrCreateLotteryTypeSheet_",
+      "LOTTERY_SCHEMA_MISMATCH",
+    ],
+    [
+      "LotteryPrizes",
+      Array.from(gas.LOTTERY_PRIZE_HEADERS),
+      "getOrCreateLotteryPrizeSheet_",
+      "LOTTERY_SCHEMA_MISMATCH",
+    ],
+    [
+      "LotteryDraws",
+      Array.from(gas.LOTTERY_DRAW_HEADERS),
+      "getOrCreateLotteryDrawSheet_",
+      "LOTTERY_SCHEMA_MISMATCH",
+    ],
   ]) {
     headers[0] = "wrong_header";
     const sheet = createSheet(sheetName, headers, []);
@@ -2162,6 +2414,33 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
     new Date("2026-01-01T00:00:00.000Z"),
     "request-legacy-redeem",
   ];
+  const legacyPrizeRow = [
+    "LCF-ABCDEF123456",
+    "LPR-ABCDEF1234",
+    "頭獎",
+    "#0B3C2C",
+    10000,
+    1,
+    "active",
+    new Date("2026-01-01T00:00:00.000Z"),
+    "ADM-ABCDEF1234",
+    "request-legacy-lottery-config",
+  ];
+  const legacyDrawRow = [
+    "LDW-ABCDEF1234567890",
+    "LCF-ABCDEF123456",
+    "LPR-ABCDEF1234",
+    "頭獎",
+    "#0B3C2C",
+    10000,
+    "MBR-ABCDEF1234",
+    MEMBER_USER_ID,
+    5,
+    5,
+    0,
+    new Date("2026-01-01T00:00:00.000Z"),
+    "request-legacy-lottery-draw",
+  ];
   const spreadsheet = createSpreadsheet({
     PointTypes: createSheet(
       "PointTypes",
@@ -2178,11 +2457,23 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
       gas.LEGACY_POINT_REDEMPTION_HEADERS,
       [legacyRedemptionRow]
     ),
+    LotteryPrizes: createSheet(
+      "LotteryPrizes",
+      gas.LEGACY_LOTTERY_PRIZE_HEADERS,
+      [legacyPrizeRow]
+    ),
+    LotteryDraws: createSheet(
+      "LotteryDraws",
+      gas.LEGACY_LOTTERY_DRAW_HEADERS,
+      [legacyDrawRow]
+    ),
   });
 
   gas.getOrCreatePointTypeSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointCampaignSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointRedemptionSheet_(spreadsheet, configFor(gas));
+  gas.getOrCreateLotteryPrizeSheet_(spreadsheet, configFor(gas));
+  gas.getOrCreateLotteryDrawSheet_(spreadsheet, configFor(gas));
 
   assert.deepEqual(
     JSON.parse(JSON.stringify(spreadsheet.sheets.PointTypes.data[0])),
@@ -2204,6 +2495,14 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
     spreadsheet.sheets.PointRedemptions.data[1].slice(legacyRedemptionRow.length),
     ["once_per_member"]
   );
+  assert.deepEqual(
+    spreadsheet.sheets.LotteryPrizes.data[1].slice(legacyPrizeRow.length),
+    [gas.DEFAULT_LOTTERY_TYPE_ID]
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.LotteryDraws.data[1].slice(legacyDrawRow.length),
+    ["", "", ""]
+  );
 });
 
 test("health identifies the isolated service without exposing configuration", () => {
@@ -2213,7 +2512,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.4.0");
+  assert.equal(response.data.version, "1.5.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

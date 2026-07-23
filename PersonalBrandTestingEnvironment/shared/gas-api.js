@@ -18,6 +18,9 @@
     "expiresAt",
     "expiryMode",
     "redemptionMode",
+    "pointCardTarget",
+    "lotteryTypeId",
+    "lotteryTypeName",
     "lotteryPrizes",
   ];
 

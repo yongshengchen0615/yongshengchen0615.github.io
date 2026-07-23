@@ -12,6 +12,8 @@
  * - POINT_TYPE_SHEET_NAME: defaults to "PointTypes"
  * - POINT_CAMPAIGN_SHEET_NAME: defaults to "PointCampaigns"
  * - POINT_REDEMPTION_SHEET_NAME: defaults to "PointRedemptions"
+ * - POINT_CARD_SETTING_SHEET_NAME: defaults to "PointCardSettings"
+ * - LOTTERY_TYPE_SHEET_NAME: defaults to "LotteryTypes"
  * - LOTTERY_PRIZE_SHEET_NAME: defaults to "LotteryPrizes"
  * - LOTTERY_DRAW_SHEET_NAME: defaults to "LotteryDraws"
  * - MEMBER_LIFF_URL: defaults to the member LIFF URL
@@ -26,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.4.0";
+var API_VERSION = "1.5.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -34,6 +36,8 @@ var DEFAULT_ADMIN_SHEET_NAME = "Admins";
 var DEFAULT_POINT_TYPES_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGNS_SHEET_NAME = "PointCampaigns";
 var DEFAULT_POINT_REDEMPTIONS_SHEET_NAME = "PointRedemptions";
+var DEFAULT_POINT_CARD_SETTINGS_SHEET_NAME = "PointCardSettings";
+var DEFAULT_LOTTERY_TYPES_SHEET_NAME = "LotteryTypes";
 var DEFAULT_LOTTERY_PRIZES_SHEET_NAME = "LotteryPrizes";
 var DEFAULT_LOTTERY_DRAWS_SHEET_NAME = "LotteryDraws";
 var DEFAULT_MEMBER_LIFF_URL = "https://liff.line.me/2010787602-kaiSm2eq";
@@ -44,7 +48,11 @@ var MAX_ADMIN_PAGE_SIZE = 100;
 var MAX_POINT_VALUE = 9999;
 var MAX_POINT_HISTORY_ENTRIES = 50;
 var MAX_LOTTERY_DRAW_HISTORY_ENTRIES = 50;
-var LOTTERY_TICKET_COST = 5;
+var DEFAULT_POINT_CARD_TARGET = 5;
+var LEGACY_LOTTERY_TICKET_COST = 5;
+var DEFAULT_LOTTERY_TYPE_ID = "LTY-DEFAULT001";
+var DEFAULT_LOTTERY_TYPE_NAME = "經典轉盤";
+var DEFAULT_POINT_CARD_SETTING_VERSION = "PCS-DEFAULT00001";
 var MIN_LOTTERY_PRIZES = 2;
 var MAX_LOTTERY_PRIZES = 12;
 var MAX_CAMPAIGN_LIFETIME_MS = 366 * 24 * 60 * 60 * 1000;
@@ -57,6 +65,9 @@ var ADMIN_ACTIONS = [
   "adminDeletePointType",
   "adminCreatePointCampaign",
   "adminGetLotteryConfig",
+  "adminSavePointCardSetting",
+  "adminCreateLotteryType",
+  "adminDeleteLotteryType",
   "adminSaveLotteryConfig",
   "adminListLotteryDraws",
 ];
@@ -243,7 +254,47 @@ var POINT_REDEMPTION_COLUMN = {
   redemptionModeSnapshot: 10,
 };
 
-var LOTTERY_PRIZE_HEADERS = [
+var POINT_CARD_SETTING_HEADERS = [
+  "setting_version",
+  "target_points",
+  "effective_at",
+  "updated_by",
+  "last_request_id",
+];
+
+var POINT_CARD_SETTING_COLUMN = {
+  settingVersion: 1,
+  targetPoints: 2,
+  effectiveAt: 3,
+  updatedBy: 4,
+  lastRequestId: 5,
+};
+
+var LOTTERY_TYPE_HEADERS = [
+  "lottery_type_id",
+  "name",
+  "status",
+  "created_at",
+  "updated_at",
+  "created_by",
+  "deleted_at",
+  "deleted_by",
+  "last_request_id",
+];
+
+var LOTTERY_TYPE_COLUMN = {
+  lotteryTypeId: 1,
+  name: 2,
+  status: 3,
+  createdAt: 4,
+  updatedAt: 5,
+  createdBy: 6,
+  deletedAt: 7,
+  deletedBy: 8,
+  lastRequestId: 9,
+};
+
+var LEGACY_LOTTERY_PRIZE_HEADERS = [
   "config_version",
   "prize_id",
   "label",
@@ -256,6 +307,10 @@ var LOTTERY_PRIZE_HEADERS = [
   "last_request_id",
 ];
 
+var LOTTERY_PRIZE_HEADERS = LEGACY_LOTTERY_PRIZE_HEADERS.concat([
+  "lottery_type_id",
+]);
+
 var LOTTERY_PRIZE_COLUMN = {
   configVersion: 1,
   prizeId: 2,
@@ -267,9 +322,10 @@ var LOTTERY_PRIZE_COLUMN = {
   updatedAt: 8,
   updatedBy: 9,
   lastRequestId: 10,
+  lotteryTypeId: 11,
 };
 
-var LOTTERY_DRAW_HEADERS = [
+var LEGACY_LOTTERY_DRAW_HEADERS = [
   "draw_id",
   "config_version",
   "prize_id",
@@ -285,6 +341,12 @@ var LOTTERY_DRAW_HEADERS = [
   "request_id",
 ];
 
+var LOTTERY_DRAW_HEADERS = LEGACY_LOTTERY_DRAW_HEADERS.concat([
+  "lottery_type_id",
+  "card_setting_version",
+  "card_round_key",
+]);
+
 var LOTTERY_DRAW_COLUMN = {
   drawId: 1,
   configVersion: 2,
@@ -299,6 +361,9 @@ var LOTTERY_DRAW_COLUMN = {
   balanceAfter: 11,
   drawnAt: 12,
   requestId: 13,
+  lotteryTypeId: 14,
+  cardSettingVersion: 15,
+  cardRoundKey: 16,
 };
 
 function doGet(e) {
@@ -371,6 +436,10 @@ function setup() {
     var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
     var pointCampaignSheet = getOrCreatePointCampaignSheet_(spreadsheet, config);
     var pointRedemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
+    var pointCardSettingSheet = getOrCreatePointCardSettingSheet_(spreadsheet, config);
+    var lotteryTypeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
+    ensureDefaultPointCardSetting_(pointCardSettingSheet);
+    ensureDefaultLotteryType_(lotteryTypeSheet);
     var lotteryPrizeSheet = getOrCreateLotteryPrizeSheet_(spreadsheet, config);
     var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(spreadsheet, config);
     applyMemberSheetColumnFormats_(memberSheet);
@@ -378,6 +447,8 @@ function setup() {
     applyPointTypeSheetColumnFormats_(pointTypeSheet);
     applyPointCampaignSheetColumnFormats_(pointCampaignSheet);
     applyPointRedemptionSheetColumnFormats_(pointRedemptionSheet);
+    applyPointCardSettingSheetColumnFormats_(pointCardSettingSheet);
+    applyLotteryTypeSheetColumnFormats_(lotteryTypeSheet);
     applyLotteryPrizeSheetColumnFormats_(lotteryPrizeSheet);
     applyLotteryDrawSheetColumnFormats_(lotteryDrawSheet);
     SpreadsheetApp.flush();
@@ -390,6 +461,8 @@ function setup() {
       pointTypesSheetName: pointTypeSheet.getName(),
       pointCampaignsSheetName: pointCampaignSheet.getName(),
       pointRedemptionsSheetName: pointRedemptionSheet.getName(),
+      pointCardSettingsSheetName: pointCardSettingSheet.getName(),
+      lotteryTypesSheetName: lotteryTypeSheet.getName(),
       lotteryPrizesSheetName: lotteryPrizeSheet.getName(),
       lotteryDrawsSheetName: lotteryDrawSheet.getName(),
       memberColumns: MEMBER_HEADERS.length,
@@ -397,6 +470,8 @@ function setup() {
       pointTypeColumns: POINT_TYPE_HEADERS.length,
       pointCampaignColumns: POINT_CAMPAIGN_HEADERS.length,
       pointRedemptionColumns: POINT_REDEMPTION_HEADERS.length,
+      pointCardSettingColumns: POINT_CARD_SETTING_HEADERS.length,
+      lotteryTypeColumns: LOTTERY_TYPE_HEADERS.length,
       lotteryPrizeColumns: LOTTERY_PRIZE_HEADERS.length,
       lotteryDrawColumns: LOTTERY_DRAW_HEADERS.length,
       approvedAdminCount: countApprovedAdmins_(adminSheet),
@@ -448,6 +523,18 @@ function handleAdminRequest_(request) {
 
   if (request.action === "adminGetLotteryConfig") {
     return adminGetLotteryConfig_(identity, request, config);
+  }
+
+  if (request.action === "adminSavePointCardSetting") {
+    return adminSavePointCardSetting_(identity, request, config);
+  }
+
+  if (request.action === "adminCreateLotteryType") {
+    return adminCreateLotteryType_(identity, request, config);
+  }
+
+  if (request.action === "adminDeleteLotteryType") {
+    return adminDeleteLotteryType_(identity, request, config);
   }
 
   if (request.action === "adminSaveLotteryConfig") {
@@ -1156,20 +1243,26 @@ function adminGetLotteryConfig_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var pointCardSettingSheet = getOrCreatePointCardSettingSheet_(spreadsheet, config);
+    var lotteryTypeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
     var prizeSheet = getOrCreateLotteryPrizeSheet_(spreadsheet, config);
     var configs = readLotteryConfigs_(prizeSheet);
-    var lottery = configs.length
-      ? lotteryConfigResponse_(configs[configs.length - 1])
-      : {
-          configVersion: "",
-          ticketCost: LOTTERY_TICKET_COST,
-          updatedAt: "",
-          prizes: [],
-        };
+    var pointCardSettings = readPointCardSettings_(pointCardSettingSheet);
+    var lotteryTypes = readLotteryTypes_(lotteryTypeSheet).filter(function (type) {
+      return type.status === "active";
+    });
 
     return {
       data: {
-        lottery: lottery,
+        pointCardSetting: pointCardSettingResponse_(
+          pointCardSettings[pointCardSettings.length - 1]
+        ),
+        lotteryTypes: lotteryTypes.map(function (type) {
+          return lotteryTypeResponse_(
+            type,
+            findLatestLotteryConfigForType_(configs, type.lotteryTypeId)
+          );
+        }),
         admin: {
           displayName: adminIdentity.displayName,
           pictureUrl: adminIdentity.pictureUrl,
@@ -1184,6 +1277,213 @@ function adminGetLotteryConfig_(adminIdentity, request, config) {
   }
 }
 
+function adminSavePointCardSetting_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "集點卡規則正在儲存，請稍後再試。");
+  }
+
+  try {
+    var targetPoints = normalizePointCardTarget_(request.pointCardTarget);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var adminId = String(
+      adminSheet
+        .getRange(adminRowNumber, ADMIN_COLUMN.adminId)
+        .getValues()[0][0] || ""
+    );
+    var settingSheet = getOrCreatePointCardSettingSheet_(spreadsheet, config);
+    var settings = readPointCardSettings_(settingSheet);
+    var duplicate = settings.filter(function (setting) {
+      return setting.lastRequestId === request.requestId;
+    });
+    if (duplicate.length > 1) {
+      throw appError_("POINT_CARD_DATA_ERROR", "集點卡設定請求識別碼重複。");
+    }
+    if (duplicate.length === 1) {
+      if (duplicate[0].targetPoints !== targetPoints) {
+        throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的集點卡規則。");
+      }
+      return {
+        data: {
+          pointCardSetting: pointCardSettingResponse_(duplicate[0]),
+          duplicate: true,
+          changed: true,
+        },
+      };
+    }
+
+    var latest = settings[settings.length - 1];
+    if (latest.targetPoints === targetPoints) {
+      return {
+        data: {
+          pointCardSetting: pointCardSettingResponse_(latest),
+          duplicate: false,
+          changed: false,
+        },
+      };
+    }
+
+    var existingVersions = Object.create(null);
+    settings.forEach(function (setting) {
+      existingVersions[setting.settingVersion] = true;
+    });
+    var settingVersion = generateLotteryId_(
+      "PCS-",
+      12,
+      existingVersions,
+      "POINT_CARD_DATA_ERROR"
+    );
+    var now = new Date(
+      Math.max(new Date().getTime(), latest.effectiveAtTime + 1)
+    );
+    settingSheet.appendRow([
+      settingVersion,
+      targetPoints,
+      now,
+      adminId,
+      request.requestId,
+    ]);
+    applyPointCardSettingRowFormats_(settingSheet, settingSheet.getLastRow());
+    SpreadsheetApp.flush();
+
+    return {
+      data: {
+        pointCardSetting: pointCardSettingResponse_(
+          readPointCardSettings_(settingSheet).slice(-1)[0]
+        ),
+        duplicate: false,
+        changed: true,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法儲存集點卡規則，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminCreateLotteryType_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "轉盤類型正在新增，請稍後再試。");
+  }
+
+  try {
+    var name = normalizeLotteryTypeName_(request.lotteryTypeName);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var adminId = String(
+      adminSheet
+        .getRange(adminRowNumber, ADMIN_COLUMN.adminId)
+        .getValues()[0][0] || ""
+    );
+    var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
+    var types = readLotteryTypes_(typeSheet);
+    var duplicate = types.filter(function (type) {
+      return type.lastRequestId === request.requestId;
+    });
+    if (duplicate.length > 1) {
+      throw appError_("LOTTERY_DATA_ERROR", "轉盤類型請求識別碼重複。");
+    }
+    if (duplicate.length === 1) {
+      if (duplicate[0].name !== name || duplicate[0].status !== "active") {
+        throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的轉盤類型。");
+      }
+      return { data: { lotteryType: lotteryTypeResponse_(duplicate[0], null), duplicate: true } };
+    }
+    if (
+      types.some(function (type) {
+        return type.status === "active" && type.name.toLowerCase() === name.toLowerCase();
+      })
+    ) {
+      throw appError_("LOTTERY_TYPE_EXISTS", "已有相同名稱的轉盤類型。");
+    }
+
+    var existingIds = Object.create(null);
+    types.forEach(function (type) {
+      existingIds[type.lotteryTypeId] = true;
+    });
+    var lotteryTypeId = generateLotteryId_(
+      "LTY-",
+      10,
+      existingIds,
+      "LOTTERY_DATA_ERROR"
+    );
+    var now = new Date();
+    typeSheet.appendRow([
+      lotteryTypeId,
+      safeSheetText_(name),
+      "active",
+      now,
+      now,
+      adminId,
+      "",
+      "",
+      request.requestId,
+    ]);
+    applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
+    SpreadsheetApp.flush();
+    var created = readLotteryTypes_(typeSheet).filter(function (type) {
+      return type.lotteryTypeId === lotteryTypeId;
+    })[0];
+    return { data: { lotteryType: lotteryTypeResponse_(created, null), duplicate: false } };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法新增轉盤類型，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminDeleteLotteryType_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "轉盤類型正在刪除，請稍後再試。");
+  }
+
+  try {
+    var lotteryTypeId = normalizeLotteryTypeId_(request.lotteryTypeId);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var adminId = String(
+      adminSheet
+        .getRange(adminRowNumber, ADMIN_COLUMN.adminId)
+        .getValues()[0][0] || ""
+    );
+    var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
+    var types = readLotteryTypes_(typeSheet);
+    var type = findLotteryType_(types, lotteryTypeId, true);
+    if (type.status === "deleted") {
+      return { data: { deleted: true, duplicate: true, lotteryTypeId: lotteryTypeId } };
+    }
+    var now = new Date();
+    typeSheet
+      .getRange(type.rowNumber, LOTTERY_TYPE_COLUMN.status, 1, 7)
+      .setValues([[
+        "deleted",
+        type.createdAtValue,
+        now,
+        type.createdBy,
+        now,
+        adminId,
+        type.lastRequestId,
+      ]]);
+    applyLotteryTypeRowFormats_(typeSheet, type.rowNumber);
+    SpreadsheetApp.flush();
+    return { data: { deleted: true, duplicate: false, lotteryTypeId: lotteryTypeId } };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法刪除轉盤類型，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function adminSaveLotteryConfig_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -1191,6 +1491,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
   }
 
   try {
+    var lotteryTypeId = normalizeLotteryTypeId_(request.lotteryTypeId);
     var submittedPrizes = normalizeLotteryPrizes_(request.lotteryPrizes);
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
@@ -1202,6 +1503,12 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
     if (!/^ADM-[A-Z0-9]{10}$/.test(adminId)) {
       throw appError_("ADMIN_FORBIDDEN", "目前帳號沒有管理員權限。");
     }
+    var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
+    var lotteryType = findLotteryType_(
+      readLotteryTypes_(typeSheet),
+      lotteryTypeId,
+      false
+    );
 
     var prizeSheet = getOrCreateLotteryPrizeSheet_(spreadsheet, config);
     var configs = readLotteryConfigs_(prizeSheet);
@@ -1220,6 +1527,9 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
           "REQUEST_ID_CONFLICT",
           "同一請求識別碼不可用於不同的轉盤設定。"
         );
+      }
+      if (duplicateConfig.lotteryTypeId !== lotteryType.lotteryTypeId) {
+        throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的轉盤類型。");
       }
       return {
         data: {
@@ -1263,6 +1573,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
         now,
         adminId,
         request.requestId,
+        lotteryTypeId,
       ];
     });
     var startRow = prizeSheet.getLastRow() + 1;
@@ -1303,8 +1614,13 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
     var drawSheet = getOrCreateLotteryDrawSheet_(spreadsheet, config);
+    var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
     var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
     var membersById = readMemberNamesById_(memberSheet);
+    var lotteryTypeNames = Object.create(null);
+    readLotteryTypes_(typeSheet).forEach(function (type) {
+      lotteryTypeNames[type.lotteryTypeId] = type.name;
+    });
     var draws = readAdminLotteryDraws_(drawSheet);
     draws.sort(function (left, right) {
       return (
@@ -1325,11 +1641,15 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
               prizeId: draw.prizeId,
               prizeLabel: draw.prizeLabel,
               prizeColor: draw.prizeColor,
+              lotteryTypeId: draw.lotteryTypeId,
+              lotteryTypeName:
+                lotteryTypeNames[draw.lotteryTypeId] || "已刪除轉盤",
               memberId: draw.memberId,
               memberDisplayName: membersById[draw.memberId] || "已刪除會員",
               ticketCost: draw.pointsSpent,
               originalPointBalance: draw.balanceBefore,
               pointBalance: draw.balanceAfter,
+              usedCardRound: !draw.legacyDraw,
               drawnAt: draw.drawnAt,
             };
           }),
@@ -1497,6 +1817,14 @@ function getConfig_() {
     properties.getProperty("POINT_REDEMPTION_SHEET_NAME") ||
       DEFAULT_POINT_REDEMPTIONS_SHEET_NAME
   ).trim();
+  var pointCardSettingsSheetName = String(
+    properties.getProperty("POINT_CARD_SETTING_SHEET_NAME") ||
+      DEFAULT_POINT_CARD_SETTINGS_SHEET_NAME
+  ).trim();
+  var lotteryTypesSheetName = String(
+    properties.getProperty("LOTTERY_TYPE_SHEET_NAME") ||
+      DEFAULT_LOTTERY_TYPES_SHEET_NAME
+  ).trim();
   var lotteryPrizesSheetName = String(
     properties.getProperty("LOTTERY_PRIZE_SHEET_NAME") ||
       DEFAULT_LOTTERY_PRIZES_SHEET_NAME
@@ -1516,6 +1844,8 @@ function getConfig_() {
     pointTypesSheetName,
     pointCampaignsSheetName,
     pointRedemptionsSheetName,
+    pointCardSettingsSheetName,
+    lotteryTypesSheetName,
     lotteryPrizesSheetName,
     lotteryDrawsSheetName,
   ];
@@ -1542,6 +1872,8 @@ function getConfig_() {
     pointTypesSheetName: pointTypesSheetName,
     pointCampaignsSheetName: pointCampaignsSheetName,
     pointRedemptionsSheetName: pointRedemptionsSheetName,
+    pointCardSettingsSheetName: pointCardSettingsSheetName,
+    lotteryTypesSheetName: lotteryTypesSheetName,
     lotteryPrizesSheetName: lotteryPrizesSheetName,
     lotteryDrawsSheetName: lotteryDrawsSheetName,
     memberLiffUrl: memberLiffUrl,
@@ -1721,13 +2053,39 @@ function getOrCreatePointRedemptionSheet_(spreadsheet, config) {
   );
 }
 
+function getOrCreatePointCardSettingSheet_(spreadsheet, config) {
+  return getOrCreateExactPointSheet_(
+    spreadsheet,
+    config.pointCardSettingsSheetName,
+    POINT_CARD_SETTING_HEADERS,
+    [],
+    [],
+    "POINT_CARD_SCHEMA_MISMATCH",
+    "#0f766e",
+    applyPointCardSettingSheetColumnFormats_
+  );
+}
+
+function getOrCreateLotteryTypeSheet_(spreadsheet, config) {
+  return getOrCreateExactPointSheet_(
+    spreadsheet,
+    config.lotteryTypesSheetName,
+    LOTTERY_TYPE_HEADERS,
+    [],
+    [],
+    "LOTTERY_SCHEMA_MISMATCH",
+    "#365314",
+    applyLotteryTypeSheetColumnFormats_
+  );
+}
+
 function getOrCreateLotteryPrizeSheet_(spreadsheet, config) {
   return getOrCreateExactPointSheet_(
     spreadsheet,
     config.lotteryPrizesSheetName,
     LOTTERY_PRIZE_HEADERS,
-    [],
-    [],
+    LEGACY_LOTTERY_PRIZE_HEADERS,
+    [DEFAULT_LOTTERY_TYPE_ID],
     "LOTTERY_SCHEMA_MISMATCH",
     "#6b3f24",
     applyLotteryPrizeSheetColumnFormats_
@@ -1739,12 +2097,41 @@ function getOrCreateLotteryDrawSheet_(spreadsheet, config) {
     spreadsheet,
     config.lotteryDrawsSheetName,
     LOTTERY_DRAW_HEADERS,
-    [],
-    [],
+    LEGACY_LOTTERY_DRAW_HEADERS,
+    ["", "", ""],
     "LOTTERY_SCHEMA_MISMATCH",
     "#43345f",
     applyLotteryDrawSheetColumnFormats_
   );
+}
+
+function ensureDefaultPointCardSetting_(sheet) {
+  if (sheet.getLastRow() >= 2) return;
+  sheet.appendRow([
+    DEFAULT_POINT_CARD_SETTING_VERSION,
+    DEFAULT_POINT_CARD_TARGET,
+    new Date(0),
+    "SYSTEM",
+    "setup-default-card",
+  ]);
+  applyPointCardSettingRowFormats_(sheet, sheet.getLastRow());
+}
+
+function ensureDefaultLotteryType_(sheet) {
+  if (sheet.getLastRow() >= 2) return;
+  var epoch = new Date(0);
+  sheet.appendRow([
+    DEFAULT_LOTTERY_TYPE_ID,
+    safeSheetText_(DEFAULT_LOTTERY_TYPE_NAME),
+    "active",
+    epoch,
+    epoch,
+    "SYSTEM",
+    "",
+    "",
+    "setup-default-type",
+  ]);
+  applyLotteryTypeRowFormats_(sheet, sheet.getLastRow());
 }
 
 function getOrCreateExactPointSheet_(
@@ -1992,9 +2379,50 @@ function applyPointRedemptionSheetColumnFormats_(sheet) {
   sheet.getRange(2, 8, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
 }
 
+function applyPointCardSettingSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 4, 5].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_CARD_SETTING_COLUMN.targetPoints, rowCount, 1)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_CARD_SETTING_COLUMN.effectiveAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyPointCardSettingRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, 1).setNumberFormat("@");
+  sheet.getRange(rowNumber, 2).setNumberFormat("0");
+  sheet.getRange(rowNumber, 3).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, 4, 1, 2).setNumberFormat("@");
+}
+
+function applyLotteryTypeSheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 6, 8, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, LOTTERY_TYPE_COLUMN.createdAt, rowCount, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(2, LOTTERY_TYPE_COLUMN.deletedAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyLotteryTypeRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, 1, 1, 3).setNumberFormat("@");
+  sheet.getRange(rowNumber, 4, 1, 2).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, 6).setNumberFormat("@");
+  sheet.getRange(rowNumber, 7).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, 8, 1, 2).setNumberFormat("@");
+}
+
 function applyLotteryPrizeSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 4, 7, 9, 10].forEach(function (column) {
+  [1, 2, 3, 4, 7, 9, 10, LOTTERY_PRIZE_COLUMN.lotteryTypeId].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2006,7 +2434,7 @@ function applyLotteryPrizeSheetColumnFormats_(sheet) {
 }
 
 function applyLotteryPrizeRowFormats_(sheet, startRow, rowCount) {
-  [1, 2, 3, 4, 7, 9, 10].forEach(function (column) {
+  [1, 2, 3, 4, 7, 9, 10, LOTTERY_PRIZE_COLUMN.lotteryTypeId].forEach(function (column) {
     sheet.getRange(startRow, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2024,7 +2452,7 @@ function applyLotteryPrizeRowFormats_(sheet, startRow, rowCount) {
 
 function applyLotteryDrawSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 4, 5, 7, 8, 13].forEach(function (column) {
+  [1, 2, 3, 4, 5, 7, 8, 13, 14, 15, 16].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2062,6 +2490,9 @@ function parseRequest_(e) {
       expiresAt: String(e.parameter.expiresAt || "").trim(),
       expiryMode: String(e.parameter.expiryMode || "").trim().toLowerCase(),
       redemptionMode: String(e.parameter.redemptionMode || "").trim().toLowerCase(),
+      pointCardTarget: optionalNumber_(e.parameter.pointCardTarget, NaN),
+      lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
+      lotteryTypeName: String(e.parameter.lotteryTypeName || "").trim(),
       lotteryPrizes: parseLotteryPrizes_(e.parameter.lotteryPrizes),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
@@ -2098,6 +2529,9 @@ function parseRequest_(e) {
     expiresAt: String(parsed.expiresAt || "").trim(),
     expiryMode: String(parsed.expiryMode || "").trim().toLowerCase(),
     redemptionMode: String(parsed.redemptionMode || "").trim().toLowerCase(),
+    pointCardTarget: optionalNumber_(parsed.pointCardTarget, NaN),
+    lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
+    lotteryTypeName: String(parsed.lotteryTypeName || "").trim(),
     lotteryPrizes: parseLotteryPrizes_(parsed.lotteryPrizes),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
@@ -2170,7 +2604,20 @@ function validateRequestEnvelope_(request) {
     normalizePointTypeId_(request.pointTypeId);
   }
 
+  if (request.action === "adminSavePointCardSetting") {
+    normalizePointCardTarget_(request.pointCardTarget);
+  }
+
+  if (request.action === "adminCreateLotteryType") {
+    normalizeLotteryTypeName_(request.lotteryTypeName);
+  }
+
+  if (request.action === "adminDeleteLotteryType") {
+    normalizeLotteryTypeId_(request.lotteryTypeId);
+  }
+
   if (request.action === "adminSaveLotteryConfig") {
+    normalizeLotteryTypeId_(request.lotteryTypeId);
     normalizeLotteryPrizes_(request.lotteryPrizes);
   }
 }
@@ -2189,6 +2636,38 @@ function normalizePointValue_(value) {
     );
   }
   return points;
+}
+
+function normalizePointCardTarget_(value) {
+  var target = Number(value);
+  if (
+    !isFinite(target) ||
+    Math.floor(target) !== target ||
+    target < 1 ||
+    target > MAX_POINT_VALUE
+  ) {
+    throw appError_(
+      "INVALID_POINT_CARD_TARGET",
+      "集點卡每輪點數必須是 1 到 " + MAX_POINT_VALUE + " 的整數。"
+    );
+  }
+  return target;
+}
+
+function normalizeLotteryTypeId_(value) {
+  var lotteryTypeId = String(value || "").trim();
+  if (!/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId)) {
+    throw appError_("INVALID_LOTTERY_TYPE_ID", "轉盤類型識別碼格式不正確。");
+  }
+  return lotteryTypeId;
+}
+
+function normalizeLotteryTypeName_(value) {
+  var name = plainSheetText_(value, 40);
+  if (!name) {
+    throw appError_("INVALID_LOTTERY_TYPE_NAME", "轉盤類型名稱必須是 1 到 40 個字元。");
+  }
+  return name;
 }
 
 function pointLabel_(points) {
@@ -2416,6 +2895,175 @@ function readPointCampaignRecords_(sheet) {
   return records;
 }
 
+function readPointCardSettings_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("POINT_CARD_NOT_CONFIGURED", "尚未設定集點卡每輪點數。");
+  }
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_CARD_SETTING_HEADERS.length)
+    .getValues();
+  var versions = Object.create(null);
+  var requests = Object.create(null);
+  var settings = rows.map(function (row, index) {
+    var settingVersion = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.settingVersion - 1],
+      100
+    );
+    var targetPoints = Number(row[POINT_CARD_SETTING_COLUMN.targetPoints - 1]);
+    var effectiveAtValue = row[POINT_CARD_SETTING_COLUMN.effectiveAt - 1];
+    var effectiveAt = toIsoString_(effectiveAtValue);
+    var updatedBy = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.updatedBy - 1],
+      100
+    );
+    var lastRequestId = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.lastRequestId - 1],
+      100
+    );
+    if (
+      !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
+      !Number.isInteger(targetPoints) ||
+      targetPoints < 1 ||
+      targetPoints > MAX_POINT_VALUE ||
+      !effectiveAt ||
+      (updatedBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(updatedBy)) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      versions[settingVersion] ||
+      requests[lastRequestId]
+    ) {
+      throw appError_(
+        "POINT_CARD_DATA_ERROR",
+        "集點卡設定第 " + (index + 2) + " 列資料不正確。"
+      );
+    }
+    versions[settingVersion] = true;
+    requests[lastRequestId] = true;
+    return {
+      rowNumber: index + 2,
+      settingVersion: settingVersion,
+      targetPoints: targetPoints,
+      effectiveAt: effectiveAt,
+      effectiveAtTime: new Date(effectiveAt).getTime(),
+      effectiveAtValue: effectiveAtValue,
+      updatedBy: updatedBy,
+      lastRequestId: lastRequestId,
+    };
+  });
+  settings.sort(function (left, right) {
+    return left.effectiveAtTime - right.effectiveAtTime || left.rowNumber - right.rowNumber;
+  });
+  for (var i = 1; i < settings.length; i += 1) {
+    if (settings[i].effectiveAtTime <= settings[i - 1].effectiveAtTime) {
+      throw appError_("POINT_CARD_DATA_ERROR", "集點卡設定生效時間必須依序增加。");
+    }
+  }
+  return settings;
+}
+
+function pointCardSettingResponse_(setting) {
+  return {
+    settingVersion: setting.settingVersion,
+    targetPoints: setting.targetPoints,
+    effectiveAt: setting.effectiveAt,
+  };
+}
+
+function readLotteryTypes_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("LOTTERY_NOT_CONFIGURED", "尚未建立轉盤類型。");
+  }
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, LOTTERY_TYPE_HEADERS.length)
+    .getValues();
+  var ids = Object.create(null);
+  var activeNames = Object.create(null);
+  return rows.map(function (row, index) {
+    var lotteryTypeId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lotteryTypeId - 1], 100);
+    var name = plainSheetText_(row[LOTTERY_TYPE_COLUMN.name - 1], 40);
+    var status = String(row[LOTTERY_TYPE_COLUMN.status - 1] || "").trim().toLowerCase();
+    var createdAtValue = row[LOTTERY_TYPE_COLUMN.createdAt - 1];
+    var createdAt = toIsoString_(createdAtValue);
+    var updatedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.updatedAt - 1]);
+    var createdBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.createdBy - 1], 100);
+    var deletedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.deletedAt - 1]);
+    var deletedBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.deletedBy - 1], 100);
+    var lastRequestId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lastRequestId - 1], 100);
+    var deletionValid =
+      status === "active"
+        ? !deletedAt && !deletedBy
+        : status === "deleted" &&
+          Boolean(deletedAt) &&
+          /^ADM-[A-Z0-9]{10}$/.test(deletedBy);
+    if (
+      !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) ||
+      !name ||
+      !createdAt ||
+      !updatedAt ||
+      (createdBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(createdBy)) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      !deletionValid ||
+      ids[lotteryTypeId] ||
+      (status === "active" && activeNames[name.toLowerCase()])
+    ) {
+      throw appError_(
+        "LOTTERY_DATA_ERROR",
+        "轉盤類型第 " + (index + 2) + " 列資料不正確。"
+      );
+    }
+    ids[lotteryTypeId] = true;
+    if (status === "active") activeNames[name.toLowerCase()] = true;
+    return {
+      rowNumber: index + 2,
+      lotteryTypeId: lotteryTypeId,
+      name: name,
+      status: status,
+      createdAt: createdAt,
+      createdAtValue: createdAtValue,
+      updatedAt: updatedAt,
+      createdBy: createdBy,
+      deletedAt: deletedAt,
+      deletedBy: deletedBy,
+      lastRequestId: lastRequestId,
+    };
+  });
+}
+
+function findLotteryType_(types, lotteryTypeId, includeDeleted) {
+  var matches = types.filter(function (type) {
+    return type.lotteryTypeId === lotteryTypeId;
+  });
+  if (matches.length !== 1 || (!includeDeleted && matches[0].status !== "active")) {
+    throw appError_("LOTTERY_TYPE_NOT_FOUND", "找不到可使用的轉盤類型。");
+  }
+  return matches[0];
+}
+
+function findLatestLotteryConfigForType_(configs, lotteryTypeId) {
+  var matches = configs.filter(function (config) {
+    return config.lotteryTypeId === lotteryTypeId;
+  });
+  return matches.length ? matches[matches.length - 1] : null;
+}
+
+function lotteryTypeResponse_(type, lotteryConfig) {
+  return {
+    lotteryTypeId: type.lotteryTypeId,
+    name: type.name,
+    status: type.status,
+    createdAt: type.createdAt,
+    lottery: lotteryConfig
+      ? lotteryConfigResponse_(lotteryConfig)
+      : {
+          lotteryTypeId: type.lotteryTypeId,
+          configVersion: "",
+          updatedAt: "",
+          prizes: [],
+        },
+  };
+}
+
 function readLotteryConfigs_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -2447,6 +3095,7 @@ function readLotteryConfigs_(sheet) {
         updatedAtTime: new Date(prize.updatedAt).getTime(),
         updatedBy: prize.updatedBy,
         lastRequestId: prize.lastRequestId,
+        lotteryTypeId: prize.lotteryTypeId,
         lastRowNumber: prize.rowNumber,
         prizes: [],
       };
@@ -2456,6 +3105,7 @@ function readLotteryConfigs_(sheet) {
       group.updatedAt !== prize.updatedAt ||
       group.updatedBy !== prize.updatedBy ||
       group.lastRequestId !== prize.lastRequestId
+      || group.lotteryTypeId !== prize.lotteryTypeId
     ) {
       throw appError_("LOTTERY_DATA_ERROR", "同一版轉盤設定的稽核資料不一致。");
     }
@@ -2529,6 +3179,10 @@ function lotteryPrizeRecordFromRow_(row, rowNumber) {
     row[LOTTERY_PRIZE_COLUMN.lastRequestId - 1],
     100
   );
+  var lotteryTypeId = plainSheetText_(
+    row[LOTTERY_PRIZE_COLUMN.lotteryTypeId - 1],
+    100
+  );
 
   if (
     !/^LCF-[A-Z0-9]{12}$/.test(configVersion) ||
@@ -2546,6 +3200,7 @@ function lotteryPrizeRecordFromRow_(row, rowNumber) {
     !updatedAt ||
     !/^ADM-[A-Z0-9]{10}$/.test(updatedBy) ||
     !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
+    || !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId)
   ) {
     throw appError_(
       "LOTTERY_DATA_ERROR",
@@ -2563,13 +3218,14 @@ function lotteryPrizeRecordFromRow_(row, rowNumber) {
     updatedAt: updatedAt,
     updatedBy: updatedBy,
     lastRequestId: lastRequestId,
+    lotteryTypeId: lotteryTypeId,
   };
 }
 
 function lotteryConfigResponse_(lotteryConfig) {
   return {
+    lotteryTypeId: lotteryConfig.lotteryTypeId,
     configVersion: lotteryConfig.configVersion,
-    ticketCost: LOTTERY_TICKET_COST,
     updatedAt: lotteryConfig.updatedAt,
     prizes: lotteryConfig.prizes.map(function (prize) {
       return {
@@ -2631,6 +3287,33 @@ function lotteryDrawRecordFromRow_(row, rowNumber) {
   var balanceAfter = Number(row[LOTTERY_DRAW_COLUMN.balanceAfter - 1]);
   var drawnAt = toIsoString_(row[LOTTERY_DRAW_COLUMN.drawnAt - 1]);
   var requestId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.requestId - 1], 100);
+  var lotteryTypeId = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.lotteryTypeId - 1],
+    100
+  );
+  var cardSettingVersion = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.cardSettingVersion - 1],
+    100
+  );
+  var cardRoundKey = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.cardRoundKey - 1],
+    100
+  );
+  var isLegacyDraw =
+    pointsSpent === LEGACY_LOTTERY_TICKET_COST &&
+    balanceBefore >= LEGACY_LOTTERY_TICKET_COST &&
+    balanceAfter === balanceBefore - LEGACY_LOTTERY_TICKET_COST &&
+    !lotteryTypeId &&
+    !cardSettingVersion &&
+    !cardRoundKey;
+  var isRoundDraw =
+    pointsSpent === 0 &&
+    balanceBefore >= 0 &&
+    balanceAfter === balanceBefore &&
+    /^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) &&
+    /^PCS-[A-Z0-9]{12}$/.test(cardSettingVersion) &&
+    cardRoundKey.indexOf(cardSettingVersion + ":") === 0 &&
+    /^[1-9]\d*$/.test(cardRoundKey.slice(cardSettingVersion.length + 1));
 
   if (
     !/^LDW-[A-Z0-9]{16}$/.test(drawId) ||
@@ -2644,11 +3327,9 @@ function lotteryDrawRecordFromRow_(row, rowNumber) {
     probabilityBasisPoints > 9999 ||
     !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
     !/^U[0-9a-f]{32}$/.test(lineUserId) ||
-    pointsSpent !== LOTTERY_TICKET_COST ||
     !Number.isSafeInteger(balanceBefore) ||
     !Number.isSafeInteger(balanceAfter) ||
-    balanceBefore < LOTTERY_TICKET_COST ||
-    balanceAfter !== balanceBefore - LOTTERY_TICKET_COST ||
+    (!isLegacyDraw && !isRoundDraw) ||
     !drawnAt ||
     !/^[a-zA-Z0-9-]{10,80}$/.test(requestId)
   ) {
@@ -2672,6 +3353,10 @@ function lotteryDrawRecordFromRow_(row, rowNumber) {
     balanceAfter: balanceAfter,
     drawnAt: drawnAt,
     requestId: requestId,
+    lotteryTypeId: lotteryTypeId || DEFAULT_LOTTERY_TYPE_ID,
+    cardSettingVersion: cardSettingVersion,
+    cardRoundKey: cardRoundKey,
+    legacyDraw: isLegacyDraw,
   };
 }
 

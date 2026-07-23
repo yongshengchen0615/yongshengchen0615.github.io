@@ -50,11 +50,13 @@
             <div><dt>POINT_TYPE_SHEET_NAME</dt><dd>選填，預設 PointTypes</dd></div>
             <div><dt>POINT_CAMPAIGN_SHEET_NAME</dt><dd>選填，預設 PointCampaigns</dd></div>
             <div><dt>POINT_REDEMPTION_SHEET_NAME</dt><dd>選填，預設 PointRedemptions</dd></div>
+            <div><dt>POINT_CARD_SETTING_SHEET_NAME</dt><dd>選填，預設 PointCardSettings</dd></div>
+            <div><dt>LOTTERY_TYPE_SHEET_NAME</dt><dd>選填，預設 LotteryTypes</dd></div>
             <div><dt>LOTTERY_PRIZE_SHEET_NAME</dt><dd>選填，預設 LotteryPrizes</dd></div>
             <div><dt>LOTTERY_DRAW_SHEET_NAME</dt><dd>選填，預設 LotteryDraws</dd></div>
             <div><dt>MAX_VERIFY_REQUESTS_PER_MINUTE</dt><dd>選填，預設 120</dd></div>
           </dl>
-          <p>執行一次 <code>setup()</code>，建立或驗證 <code>Members</code>、三張點數工作表與兩張轉盤工作表，再部署為網頁應用程式；執行身分選「我」、存取權選「任何人」。保留會員 GAS 的 <code>/exec</code> URL。</p>
+          <p>執行一次 <code>setup()</code>，建立或驗證 <code>Members</code>、三張點數工作表及四張集點卡／轉盤工作表，再部署為網頁應用程式；執行身分選「我」、存取權選「任何人」。保留會員 GAS 的 <code>/exec</code> URL。</p>
         </div>
       </section>
 
@@ -73,6 +75,8 @@
             <div><dt>POINT_TYPE_SHEET_NAME</dt><dd>選填，預設 PointTypes；須與會員 GAS 相同</dd></div>
             <div><dt>POINT_CAMPAIGN_SHEET_NAME</dt><dd>選填，預設 PointCampaigns；須與會員 GAS 相同</dd></div>
             <div><dt>POINT_REDEMPTION_SHEET_NAME</dt><dd>選填，預設 PointRedemptions；須與會員 GAS 相同</dd></div>
+            <div><dt>POINT_CARD_SETTING_SHEET_NAME</dt><dd>選填，預設 PointCardSettings；須與會員 GAS 相同</dd></div>
+            <div><dt>LOTTERY_TYPE_SHEET_NAME</dt><dd>選填，預設 LotteryTypes；須與會員 GAS 相同</dd></div>
             <div><dt>LOTTERY_PRIZE_SHEET_NAME</dt><dd>選填，預設 LotteryPrizes；須與會員 GAS 相同</dd></div>
             <div><dt>LOTTERY_DRAW_SHEET_NAME</dt><dd>選填，預設 LotteryDraws；須與會員 GAS 相同</dd></div>
             <div><dt>MEMBER_LIFF_URL</dt><dd>選填；目前只接受 https://liff.line.me/2010787602-kaiSm2eq</dd></div>
@@ -80,7 +84,7 @@
           </dl>
           <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並建立 <code>LotteryPrizes</code>、<code>LotteryDraws</code>；舊活動會回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
+          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並建立 <code>PointCardSettings</code>、<code>LotteryTypes</code>、<code>LotteryPrizes</code>、<code>LotteryDraws</code>；既有轉盤歸入預設「經典轉盤」，舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
         </div>
       </section>
 
@@ -124,19 +128,21 @@ admin/config.json  → 管理 GAS /exec</code></pre>
           <p><strong>注意：</strong>無期限且可重複的 QR 若被轉傳，任何有效會員都能反覆掃描領點；「僅限一位會員」則由第一位成功領取者取得，第二位起會被拒絕。需要停止時，請把對應 <code>PointCampaigns.status</code> 改為 <code>inactive</code>。</p>
           <pre><code>PointTypes       → 點數類型
 PointCampaigns   → QR 活動與 claim hash
-PointRedemptions → 會員領取紀錄與餘額</code></pre>
+PointRedemptions → 會員領取紀錄與終身累計點數</code></pre>
         </div>
       </section>
 
       <section>
         <span>07</span>
         <div>
-          <h2>設定 5 點轉盤抽獎</h2>
-          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，設定 2～12 個獎項名稱、區塊顏色與中獎機率。機率最多兩位小數且合計必須是 100%；儲存後會在 <code>LotteryPrizes</code> 建立不可覆寫的新版本。</p>
-          <p>會員按「使用 5 點轉盤抽獎」後，會員 GAS 會確認餘額、扣除 5 點、依管理設定決定獎項，再把結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果，不會自行決定中獎項目；同一次網路重試也不會重複扣點。</p>
-          <p>抽獎完成會顯示原本點數、使用點數與目前點數，按「確認」才回到會員資料。管理端同頁可查看最新 50 筆抽獎紀錄。</p>
-          <pre><code>LotteryPrizes → 轉盤版本、獎項、顏色與機率
-LotteryDraws  → 會員扣點、獎項快照與抽獎時間</code></pre>
+          <h2>設定集點卡與轉盤抽獎</h2>
+          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，先設定每輪需要的點數，再新增轉盤類型並替每個類型設定 2～12 個獎項名稱、區塊顏色與中獎機率。機率最多兩位小數且合計必須是 100%；規則與獎項都採版本化紀錄，刪除轉盤類型也只會軟刪除，不影響歷史資料。</p>
+          <p>會員累計點數達到門檻後會完成一輪並取得一次抽獎資格，集點卡進度進入下一輪，但 <code>PointRedemptions</code> 的終身累計不會歸零。會員由獨立抽獎頁選擇一種轉盤；同一輪只能抽一次，抽獎不扣點，下一輪再次達標後才能再抽。</p>
+          <p>會員 GAS 會鎖定未使用輪次、依管理設定決定獎項，再把類型、規則版本、輪次與結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果；同一次網路重試只會重播原結果。按「確認」後才返回會員資料。</p>
+          <pre><code>PointCardSettings → 每輪點數門檻與生效版本
+LotteryTypes      → 可用轉盤類型與軟刪除狀態
+LotteryPrizes     → 各類型的獎項、顏色、機率與版本
+LotteryDraws      → 會員使用的集點輪次與獎項快照</code></pre>
         </div>
       </section>
     </main>
