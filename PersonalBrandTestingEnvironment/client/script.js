@@ -19,6 +19,7 @@
   var POINT_CLAIM_STORAGE_PREFIX = "persona-member-point-claim:";
   var POINT_REDEMPTION_REQUEST_STORAGE_PREFIX =
     "persona-member-point-redemption-request:";
+  var OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN = /^https:\/\/lin\.ee\/[A-Za-z0-9]+$/;
   var pendingPointClaim = "";
   var pendingPointClaimError = "";
   var pendingPointRedemptionRequestId = "";
@@ -35,7 +36,12 @@
     }
 
     return window.MemberApi
-      .loadConfig("config.json", ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"])
+      .loadConfig("config.json", [
+        "LIFF_ID",
+        "GAS_WEB_APP_URL",
+        "BRAND_NAME",
+        "OFFICIAL_ACCOUNT_FRIEND_URL",
+      ])
       .then(function (config) {
         CONFIG = config;
       });
@@ -367,15 +373,7 @@
     };
 
     if (!window.liff || typeof window.liff.getFriendship !== "function") {
-      if (messageContext.inClient) {
-        return Promise.reject(
-          createClientError(
-            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-            "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
-          )
-        );
-      }
-      return Promise.resolve(messageContext);
+      return openOfficialAccountFriendLink();
     }
 
     return Promise.resolve()
@@ -386,54 +384,51 @@
         messageContext.friendshipChecked = true;
         messageContext.isFriend = Boolean(friendship && friendship.friendFlag);
 
-        if (
-          messageContext.isFriend ||
-          !messageContext.inClient
-        ) {
+        if (messageContext.isFriend) {
           return messageContext;
         }
-
-        if (typeof window.liff.requestFriendship !== "function") {
-          throw createClientError(
-            "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
-            "目前無法開啟官方帳號加入確認，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
-          );
-        }
-
-        return Promise.resolve(window.liff.requestFriendship())
-          .then(function () {
-            return window.liff.getFriendship();
-          })
-          .then(function (updatedFriendship) {
-            messageContext.friendshipChecked = true;
-            messageContext.isFriend = Boolean(
-              updatedFriendship && updatedFriendship.friendFlag
-            );
-            if (!messageContext.isFriend) {
-              throw createClientError(
-                "OFFICIAL_ACCOUNT_NOT_FRIEND",
-                "請先加入會員官方帳號，完成後按「重新確認」才能領取點數。"
-              );
-            }
-            return messageContext;
-          });
+        return openOfficialAccountFriendLink();
       })
       .catch(function (error) {
+        if (
+          error &&
+          (error.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
+            error.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE")
+        ) {
+          throw error;
+        }
         if (messageContext.inClient) {
-          if (
-            error &&
-            (error.code === "OFFICIAL_ACCOUNT_NOT_FRIEND" ||
-              error.code === "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE")
-          ) {
-            throw error;
-          }
           throw createClientError(
             "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
             "目前無法確認官方帳號好友狀態，請確認會員 LIFF 已連結官方帳號並使用 Full 尺寸。"
           );
         }
-        return messageContext;
+        return openOfficialAccountFriendLink();
       });
+  }
+
+  function openOfficialAccountFriendLink() {
+    var friendUrl = String(CONFIG.OFFICIAL_ACCOUNT_FRIEND_URL || "").trim();
+    if (!OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN.test(friendUrl)) {
+      throw createClientError(
+        "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+        "官方帳號加入連結尚未完成設定，請聯絡管理員。"
+      );
+    }
+
+    try {
+      window.location.replace(friendUrl);
+    } catch (_error) {
+      throw createClientError(
+        "OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE",
+        "目前無法開啟官方帳號加入頁面，請稍後再試。"
+      );
+    }
+
+    throw createClientError(
+      "OFFICIAL_ACCOUNT_NOT_FRIEND",
+      "請先加入官方帳號，完成後重新開啟會員頁面再領取點數。"
+    );
   }
 
   function sendPointClaimMessage(
@@ -1481,9 +1476,11 @@
   function hasCompleteConfig() {
     var liffId = String(CONFIG.LIFF_ID || "").trim();
     var gasUrl = String(CONFIG.GAS_WEB_APP_URL || "").trim();
+    var friendUrl = String(CONFIG.OFFICIAL_ACCOUNT_FRIEND_URL || "").trim();
 
     if (!liffId || /YOUR_|請填入|REPLACE/i.test(liffId)) return false;
     if (!gasUrl || /YOUR_|請填入|REPLACE/i.test(gasUrl)) return false;
+    if (!OFFICIAL_ACCOUNT_FRIEND_URL_PATTERN.test(friendUrl)) return false;
 
     return Boolean(window.MemberApi && window.MemberApi.isValidGasUrl(gasUrl));
   }

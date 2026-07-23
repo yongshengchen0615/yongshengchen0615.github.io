@@ -557,12 +557,13 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(redeem, /prepareOfficialAccountMessageContext\s*\(/);
   assert.match(redeem, /sendPointClaimMessage\s*\(/);
   assert.match(script, /getFriendship\s*\(/);
-  assert.match(script, /requestFriendship\s*\(/);
+  assert.match(script, /openOfficialAccountFriendLink\s*\(/);
+  assert.match(script, /location\.replace\s*\(friendUrl\)/);
   assert.match(script, /sendMessages\s*\(/);
   assert.match(script, /type\s*===\s*["']utou["']/);
   assert.match(script, /OFFICIAL_ACCOUNT_FRIENDSHIP_UNAVAILABLE/);
   assert.match(script, /OFFICIAL_ACCOUNT_NOT_FRIEND/);
-  assert.match(script, /請先加入會員官方帳號/);
+  assert.match(script, /OFFICIAL_ACCOUNT_FRIEND_URL/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
   assert.match(redeem, /duplicateReason\s*===\s*["']campaign_redeemed["']/);
   assert.match(redeem, /重新掃描同一張 QR Code/);
@@ -678,6 +679,7 @@ test("client and admin JSON configs expose only public frontend settings", () =>
   assert.equal(Number.isInteger(adminConfig.PAGE_SIZE), true);
   assert.equal(adminConfig.PAGE_SIZE >= 1 && adminConfig.PAGE_SIZE <= 100, true);
   assert.equal(clientConfig.LIFF_ID, "2010787602-kaiSm2eq");
+  assert.equal(clientConfig.OFFICIAL_ACCOUNT_FRIEND_URL, "https://lin.ee/vdtjCdT");
   assert.equal(adminConfig.LIFF_ID, "2010791619-vhevCvvD");
   assert.match(clientConfig.GAS_WEB_APP_URL, /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/);
   assert.match(
