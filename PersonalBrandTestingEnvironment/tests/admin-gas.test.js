@@ -344,6 +344,10 @@ function createPointTypeRow(gas, overrides = {}) {
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     createdBy: ADMIN_USER_ID,
     lastRequestId: "request-point-type-old",
+    expiryMode: "limited",
+    redemptionMode: "once_per_member",
+    deletedBy: "",
+    deleteRequestId: "",
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -369,6 +373,8 @@ function createPointCampaignRow(gas, overrides = {}) {
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     createdBy: ADMIN_USER_ID,
     lastRequestId: requestId,
+    expiryModeSnapshot: "limited",
+    redemptionModeSnapshot: "once_per_member",
     ...overrides,
   };
   delete values.pointClaimSecret;
@@ -438,6 +444,10 @@ test("administrator GAS uses the isolated channel and compatible sheet schemas",
     "updated_at",
     "created_by",
     "last_request_id",
+    "expiry_mode",
+    "redemption_mode",
+    "deleted_by",
+    "delete_request_id",
   ]);
   assert.deepEqual(Array.from(gas.POINT_CAMPAIGN_HEADERS), [
     "campaign_id",
@@ -450,6 +460,8 @@ test("administrator GAS uses the isolated channel and compatible sheet schemas",
     "created_at",
     "created_by",
     "last_request_id",
+    "expiry_mode_snapshot",
+    "redemption_mode_snapshot",
   ]);
   assert.deepEqual(Array.from(gas.POINT_REDEMPTION_HEADERS), [
     "redemption_id",
@@ -461,6 +473,7 @@ test("administrator GAS uses the isolated channel and compatible sheet schemas",
     "balance_after",
     "redeemed_at",
     "request_id",
+    "redemption_mode_snapshot",
   ]);
 });
 
@@ -527,12 +540,12 @@ test("setup safely creates a claim secret and all point sheets with exact schema
   assert.equal(result.pointTypesSheetName, "PointTypes");
   assert.equal(result.pointCampaignsSheetName, "PointCampaigns");
   assert.equal(result.pointRedemptionsSheetName, "PointRedemptions");
-  assert.equal(result.pointTypeColumns, 8);
-  assert.equal(result.pointCampaignColumns, 10);
-  assert.equal(result.pointRedemptionColumns, 9);
+  assert.equal(result.pointTypeColumns, 12);
+  assert.equal(result.pointCampaignColumns, 12);
+  assert.equal(result.pointRedemptionColumns, 10);
   assert.deepEqual(
-    spreadsheet.sheets.PointTypes.data[0],
-    Array.from(gas.POINT_TYPE_HEADERS)
+    JSON.parse(JSON.stringify(spreadsheet.sheets.PointTypes.data[0])),
+    JSON.parse(JSON.stringify(gas.POINT_TYPE_HEADERS))
   );
   assert.deepEqual(
     spreadsheet.sheets.PointCampaigns.data[0],
@@ -599,7 +612,7 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
-test("only the five administrator actions are accepted and untrusted fields are ignored", () => {
+test("only the six administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
   for (const action of [
     "upsertMember",
@@ -635,7 +648,18 @@ test("only the five administrator actions are accepted and untrusted fields are 
       expectedAccessUpdatedAt: "",
     },
     { ...tokenFields, action: "adminListPointTypes" },
-    { ...tokenFields, action: "adminCreatePointType", points: 3 },
+    {
+      ...tokenFields,
+      action: "adminCreatePointType",
+      points: 3,
+      expiryMode: "limited",
+      redemptionMode: "once_per_member",
+    },
+    {
+      ...tokenFields,
+      action: "adminDeletePointType",
+      pointTypeId: "PTY-ABCDEF1234",
+    },
     {
       ...tokenFields,
       action: "adminCreatePointCampaign",
@@ -709,7 +733,7 @@ test("member actions are rejected before config, LINE verification or Sheets are
   assert.equal(sheetOpened, false);
 });
 
-test("all five administrator actions dispatch only after config and LINE verification", () => {
+test("all six administrator actions dispatch only after config and LINE verification", () => {
   const gas = createGasContext();
   const routed = [];
   let configReads = 0;
@@ -727,6 +751,7 @@ test("all five administrator actions dispatch only after config and LINE verific
     ["adminSetMemberAccess", "adminSetMemberAccess_"],
     ["adminListPointTypes", "adminListPointTypes_"],
     ["adminCreatePointType", "adminCreatePointType_"],
+    ["adminDeletePointType", "adminDeletePointType_"],
     ["adminCreatePointCampaign", "adminCreatePointCampaign_"],
   ]) {
     gas[functionName] = (_identity, request) => {
@@ -740,8 +765,8 @@ test("all five administrator actions dispatch only after config and LINE verific
     assert.equal(result.data.route, action);
   }
   assert.deepEqual(routed, Array.from(gas.ADMIN_ACTIONS));
-  assert.equal(configReads, 5);
-  assert.equal(tokenVerifications, 5);
+  assert.equal(configReads, 6);
+  assert.equal(tokenVerifications, 6);
 });
 
 test("normal requests fail closed on a missing claim secret before LINE or Sheets", () => {
@@ -998,6 +1023,8 @@ test("pending and denied administrators cannot read or mutate point sheets", () 
       const request = {
         requestId: `request-${status}-${action}`,
         points: 3,
+        expiryMode: "limited",
+        redemptionMode: "once_per_member",
         pointTypeId: "PTY-ABCDEF1234",
         expiresAt: new Date(Date.now() + 86400000).toISOString(),
       };
@@ -1183,6 +1210,8 @@ test("point type validation accepts only integer values from 1 through 9999", ()
     idToken: "header.payload.signature",
     requestId: "request-point-validation",
     transport: "fetch",
+    expiryMode: "limited",
+    redemptionMode: "once_per_member",
   };
   for (const points of [undefined, NaN, Infinity, 0, -1, 1.5, 10000]) {
     assert.throws(
@@ -1194,7 +1223,7 @@ test("point type validation accepts only integer values from 1 through 9999", ()
   gas.validateRequestEnvelope_({ ...base, points: "9999" });
 });
 
-test("campaign validation requires an exact point type and future UTC expiry within 366 days", () => {
+test("campaign validation requires an exact point type and mode-aware expiry", () => {
   const gas = createGasContext();
   const base = {
     action: "adminCreatePointCampaign",
@@ -1205,6 +1234,11 @@ test("campaign validation requires an exact point type and future UTC expiry wit
   };
   const validExpiry = new Date(Date.now() + 86400000).toISOString();
   gas.validateRequestEnvelope_({ ...base, expiresAt: validExpiry });
+  assert.equal(
+    gas.parseCampaignExpiryForMode_(validExpiry, "limited").toISOString(),
+    validExpiry
+  );
+  assert.equal(gas.parseCampaignExpiryForMode_("", "unlimited"), null);
 
   for (const pointTypeId of ["", "PTY-lowercase1", "MBR-ABCDEF1234"]) {
     assert.throws(
@@ -1220,10 +1254,14 @@ test("campaign validation requires an exact point type and future UTC expiry wit
     new Date(Date.now() + 86400000).toISOString().replace(/\.\d{3}Z$/, "Z"),
   ]) {
     assert.throws(
-      () => gas.validateRequestEnvelope_({ ...base, expiresAt }),
+      () => gas.parseCampaignExpiryForMode_(expiresAt, "limited"),
       (error) => error.appCode === "INVALID_CAMPAIGN_EXPIRY"
     );
   }
+  assert.throws(
+    () => gas.parseCampaignExpiryForMode_(validExpiry, "unlimited"),
+    (error) => error.appCode === "INVALID_CAMPAIGN_EXPIRY"
+  );
 });
 
 test("approved administrators can list sorted point types without internal audit fields", () => {
@@ -1283,6 +1321,8 @@ test("point type creation is server-labelled, unique and idempotent", () => {
     action: "adminCreatePointType",
     requestId: "request-create-three-points",
     points: 3,
+    expiryMode: "limited",
+    redemptionMode: "once_per_member",
     label: "=UNTRUSTED()",
   };
 
@@ -1324,6 +1364,102 @@ test("point type creation is server-labelled, unique and idempotent", () => {
         configFor(gas)
       ),
     (error) => error.appCode === "POINT_TYPE_EXISTS"
+  );
+});
+
+test("point type uniqueness includes expiry and redemption modes", () => {
+  const gas = createGasContext();
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, [
+      createPointTypeRow(gas),
+    ]),
+  });
+  installSpreadsheet(gas, spreadsheet);
+
+  const result = gas.adminCreatePointType_(
+    identity(),
+    {
+      action: "adminCreatePointType",
+      requestId: "request-create-permanent",
+      points: 3,
+      expiryMode: "unlimited",
+      redemptionMode: "repeatable",
+    },
+    configFor(gas)
+  );
+
+  assert.equal(result.data.pointType.points, 3);
+  assert.equal(result.data.pointType.expiryMode, "unlimited");
+  assert.equal(result.data.pointType.redemptionMode, "repeatable");
+  assert.equal(spreadsheet.sheets.PointTypes.data.length, 3);
+});
+
+test("point type deletion is idempotent, audited and never removes issued campaigns", () => {
+  const gas = createGasContext();
+  const campaign = createPointCampaignRow(gas).row;
+  const pointTypes = [
+    createPointTypeRow(gas),
+    createPointTypeRow(gas, {
+      pointTypeId: "PTY-SECOND1234",
+      label: "4 點",
+      points: 4,
+      lastRequestId: "request-point-type-second",
+    }),
+  ];
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, pointTypes),
+    PointCampaigns: createSheet("PointCampaigns", gas.POINT_CAMPAIGN_HEADERS, [
+      campaign,
+    ]),
+  });
+  installSpreadsheet(gas, spreadsheet);
+  const request = {
+    action: "adminDeletePointType",
+    requestId: "request-delete-point-type",
+    pointTypeId: "PTY-ABCDEF1234",
+  };
+  const campaignBefore = campaign.slice();
+
+  const result = gas.adminDeletePointType_(identity(), request, configFor(gas));
+  assert.equal(result.data.deleted, true);
+  assert.equal(result.data.duplicate, false);
+  assert.equal(result.data.pointType.status, "inactive");
+  assert.equal(spreadsheet.sheets.PointTypes.data.length, 3);
+  const deletedRow = spreadsheet.sheets.PointTypes.data[1];
+  assert.equal(deletedRow[gas.POINT_TYPE_COLUMN.status - 1], "inactive");
+  assert.equal(deletedRow[gas.POINT_TYPE_COLUMN.deletedBy - 1], ADMIN_USER_ID);
+  assert.equal(
+    deletedRow[gas.POINT_TYPE_COLUMN.deleteRequestId - 1],
+    request.requestId
+  );
+  assert.deepEqual(campaign, campaignBefore);
+
+  const retry = gas.adminDeletePointType_(identity(), request, configFor(gas));
+  assert.equal(retry.data.duplicate, true);
+  assert.throws(
+    () =>
+      gas.adminDeletePointType_(
+        identity(),
+        { ...request, pointTypeId: "PTY-SECOND1234" },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+  assert.throws(
+    () =>
+      gas.adminCreatePointCampaign_(
+        identity(),
+        {
+          action: "adminCreatePointCampaign",
+          requestId: "request-campaign-after-delete",
+          pointTypeId: "PTY-ABCDEF1234",
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "POINT_TYPE_INACTIVE"
   );
 });
 
@@ -1446,6 +1582,60 @@ test("campaign creation snapshots the type and stores only a deterministic claim
         configFor(gas)
       ),
     (error) => error.appCode === "REQUEST_ID_CONFLICT"
+  );
+});
+
+test("unlimited repeatable types create permanent campaign snapshots without expiry", () => {
+  const gas = createGasContext();
+  const spreadsheet = createSpreadsheet({
+    Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+    PointTypes: createSheet("PointTypes", gas.POINT_TYPE_HEADERS, [
+      createPointTypeRow(gas, {
+        expiryMode: "unlimited",
+        redemptionMode: "repeatable",
+      }),
+    ]),
+    PointCampaigns: createSheet("PointCampaigns", gas.POINT_CAMPAIGN_HEADERS, []),
+  });
+  installSpreadsheet(gas, spreadsheet);
+  const request = {
+    action: "adminCreatePointCampaign",
+    requestId: "request-permanent-campaign",
+    pointTypeId: "PTY-ABCDEF1234",
+    expiresAt: "",
+  };
+
+  const result = gas.adminCreatePointCampaign_(
+    identity(),
+    request,
+    configFor(gas)
+  );
+  assert.equal(result.data.campaign.expiresAt, "");
+  assert.equal(result.data.campaign.expiryMode, "unlimited");
+  assert.equal(result.data.campaign.redemptionMode, "repeatable");
+  const row = spreadsheet.sheets.PointCampaigns.data[1];
+  assert.equal(row[gas.POINT_CAMPAIGN_COLUMN.expiresAt - 1], "");
+  assert.equal(
+    row[gas.POINT_CAMPAIGN_COLUMN.expiryModeSnapshot - 1],
+    "unlimited"
+  );
+  assert.equal(
+    row[gas.POINT_CAMPAIGN_COLUMN.redemptionModeSnapshot - 1],
+    "repeatable"
+  );
+
+  assert.throws(
+    () =>
+      gas.adminCreatePointCampaign_(
+        identity(),
+        {
+          ...request,
+          requestId: "request-permanent-with-expiry",
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        },
+        configFor(gas)
+      ),
+    (error) => error.appCode === "INVALID_CAMPAIGN_EXPIRY"
   );
 });
 
@@ -1601,6 +1791,8 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
     requestId: "request-bridge-point-type",
     pointAmount: "3",
     points: "9999",
+    expiryMode: "unlimited",
+    redemptionMode: "repeatable",
   };
   const parsedPointType = gas.parseRequest_({
     postData: { contents: JSON.stringify(pointTypePayload) },
@@ -1614,6 +1806,8 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
   });
   assert.equal(parsedPointType.points, 3);
   assert.equal(parsedBridgePointType.points, 3);
+  assert.equal(parsedPointType.expiryMode, "unlimited");
+  assert.equal(parsedBridgePointType.redemptionMode, "repeatable");
   gas.validateRequestEnvelope_(parsedPointType);
   gas.validateRequestEnvelope_(parsedBridgePointType);
 });
@@ -1725,6 +1919,71 @@ test("17, 20 and 21-column Members headers upgrade to the shared 23-column profi
       (error) => error.appCode === expectedCode
     );
   }
+});
+
+test("legacy point sheets migrate by appending policy snapshots and preserving old cells", () => {
+  const gas = createGasContext();
+  const legacyTypeRow = createPointTypeRow(gas).slice(
+    0,
+    gas.LEGACY_POINT_TYPE_HEADERS.length
+  );
+  const legacyCampaignRow = createPointCampaignRow(gas).row.slice(
+    0,
+    gas.LEGACY_POINT_CAMPAIGN_HEADERS.length
+  );
+  const legacyRedemptionRow = [
+    "RDM-ABCDEF1234567890",
+    "PCG-ABCDEF1234",
+    "PTY-ABCDEF1234",
+    "MBR-ABCDEF1234",
+    MEMBER_USER_ID,
+    3,
+    3,
+    new Date("2026-01-01T00:00:00.000Z"),
+    "request-legacy-redeem",
+  ];
+  const spreadsheet = createSpreadsheet({
+    PointTypes: createSheet(
+      "PointTypes",
+      gas.LEGACY_POINT_TYPE_HEADERS,
+      [legacyTypeRow]
+    ),
+    PointCampaigns: createSheet(
+      "PointCampaigns",
+      gas.LEGACY_POINT_CAMPAIGN_HEADERS,
+      [legacyCampaignRow]
+    ),
+    PointRedemptions: createSheet(
+      "PointRedemptions",
+      gas.LEGACY_POINT_REDEMPTION_HEADERS,
+      [legacyRedemptionRow]
+    ),
+  });
+
+  gas.getOrCreatePointTypeSheet_(spreadsheet, configFor(gas));
+  gas.getOrCreatePointCampaignSheet_(spreadsheet, configFor(gas));
+  gas.getOrCreatePointRedemptionSheet_(spreadsheet, configFor(gas));
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(spreadsheet.sheets.PointTypes.data[0])),
+    JSON.parse(JSON.stringify(gas.POINT_TYPE_HEADERS))
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointTypes.data[1].slice(0, legacyTypeRow.length),
+    legacyTypeRow
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointTypes.data[1].slice(legacyTypeRow.length),
+    ["limited", "once_per_member", "", ""]
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointCampaigns.data[1].slice(legacyCampaignRow.length),
+    ["limited", "once_per_member"]
+  );
+  assert.deepEqual(
+    spreadsheet.sheets.PointRedemptions.data[1].slice(legacyRedemptionRow.length),
+    ["once_per_member"]
+  );
 });
 
 test("health identifies the isolated service without exposing configuration", () => {

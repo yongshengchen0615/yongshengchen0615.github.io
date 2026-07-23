@@ -19,6 +19,7 @@ function extractFunction(name) {
 
 function createHarness(href, { rejectStorage = false } = {}) {
   const values = new Map();
+  let requestSequence = 0;
   const pageUrl = new URL(href);
   const window = {
     location: {
@@ -47,12 +48,21 @@ function createHarness(href, { rejectStorage = false } = {}) {
         values.delete(String(key));
       },
     },
+    MemberApi: {
+      createRequestId() {
+        requestSequence += 1;
+        return `request-redemption-${requestSequence}`;
+      },
+    },
   };
   const functionNames = [
     "capturePendingPointClaim",
     "getPointClaimStorageKey",
+    "getPointRedemptionRequestStorageKey",
     "clearStoredPointClaim",
     "clearPendingPointClaim",
+    "clearPendingPointRedemptionRequest",
+    "ensurePendingPointRedemptionRequestId",
     "getStoredPointClaim",
     "getCleanPageUrl",
   ];
@@ -60,14 +70,17 @@ function createHarness(href, { rejectStorage = false } = {}) {
     (function () {
       var CONFIG = { LIFF_ID: "2010787602-kaiSm2eq" };
       var POINT_CLAIM_STORAGE_PREFIX = "persona-member-point-claim:";
+      var POINT_REDEMPTION_REQUEST_STORAGE_PREFIX = "persona-member-point-redemption-request:";
       var pendingPointClaim = "";
       var pendingPointClaimError = "";
+      var pendingPointRedemptionRequestId = "";
       var isPointClaimPersisted = false;
       ${functionNames.map(extractFunction).join("\n")}
       return {
         capture: capturePendingPointClaim,
         cleanUrl: getCleanPageUrl,
         clear: clearPendingPointClaim,
+        ensureRequestId: ensurePendingPointRedemptionRequestId,
         state: function () {
           return {
             claim: pendingPointClaim,
@@ -152,4 +165,20 @@ test("malformed claim is cleared without entering storage or a redirect URL", ()
   assert.match(harness.api.state().error, /格式不正確/);
   assert.equal(harness.values.size, 0);
   assert.equal(new URL(harness.api.cleanUrl()).searchParams.has("claim"), false);
+});
+
+test("one redemption attempt reuses its request ID until the claim is cleared", () => {
+  const claim = "D".repeat(43);
+  const harness = createHarness(
+    `https://example.github.io/client/?claim=${claim}`
+  );
+
+  harness.api.capture();
+  const first = harness.api.ensureRequestId();
+  const retry = harness.api.ensureRequestId();
+  assert.equal(retry, first);
+
+  harness.api.clear();
+  const nextScan = harness.api.ensureRequestId();
+  assert.notEqual(nextScan, first);
 });

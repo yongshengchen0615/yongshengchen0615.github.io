@@ -44,6 +44,7 @@ var ADMIN_ACTIONS = [
   "adminSetMemberAccess",
   "adminListPointTypes",
   "adminCreatePointType",
+  "adminDeletePointType",
   "adminCreatePointCampaign",
 ];
 
@@ -134,7 +135,7 @@ var ADMIN_COLUMN = {
   lastRequestId: 12,
 };
 
-var POINT_TYPE_HEADERS = [
+var LEGACY_POINT_TYPE_HEADERS = [
   "point_type_id",
   "label",
   "points",
@@ -145,6 +146,13 @@ var POINT_TYPE_HEADERS = [
   "last_request_id",
 ];
 
+var POINT_TYPE_HEADERS = LEGACY_POINT_TYPE_HEADERS.concat([
+  "expiry_mode",
+  "redemption_mode",
+  "deleted_by",
+  "delete_request_id",
+]);
+
 var POINT_TYPE_COLUMN = {
   pointTypeId: 1,
   label: 2,
@@ -154,9 +162,13 @@ var POINT_TYPE_COLUMN = {
   updatedAt: 6,
   createdBy: 7,
   lastRequestId: 8,
+  expiryMode: 9,
+  redemptionMode: 10,
+  deletedBy: 11,
+  deleteRequestId: 12,
 };
 
-var POINT_CAMPAIGN_HEADERS = [
+var LEGACY_POINT_CAMPAIGN_HEADERS = [
   "campaign_id",
   "point_type_id",
   "label_snapshot",
@@ -169,6 +181,11 @@ var POINT_CAMPAIGN_HEADERS = [
   "last_request_id",
 ];
 
+var POINT_CAMPAIGN_HEADERS = LEGACY_POINT_CAMPAIGN_HEADERS.concat([
+  "expiry_mode_snapshot",
+  "redemption_mode_snapshot",
+]);
+
 var POINT_CAMPAIGN_COLUMN = {
   campaignId: 1,
   pointTypeId: 2,
@@ -180,9 +197,11 @@ var POINT_CAMPAIGN_COLUMN = {
   createdAt: 8,
   createdBy: 9,
   lastRequestId: 10,
+  expiryModeSnapshot: 11,
+  redemptionModeSnapshot: 12,
 };
 
-var POINT_REDEMPTION_HEADERS = [
+var LEGACY_POINT_REDEMPTION_HEADERS = [
   "redemption_id",
   "campaign_id",
   "point_type_id",
@@ -193,6 +212,23 @@ var POINT_REDEMPTION_HEADERS = [
   "redeemed_at",
   "request_id",
 ];
+
+var POINT_REDEMPTION_HEADERS = LEGACY_POINT_REDEMPTION_HEADERS.concat([
+  "redemption_mode_snapshot",
+]);
+
+var POINT_REDEMPTION_COLUMN = {
+  redemptionId: 1,
+  campaignId: 2,
+  pointTypeId: 3,
+  memberId: 4,
+  lineUserId: 5,
+  points: 6,
+  balanceAfter: 7,
+  redeemedAt: 8,
+  requestId: 9,
+  redemptionModeSnapshot: 10,
+};
 
 function doGet(e) {
   var action = e && e.parameter ? String(e.parameter.action || "") : "";
@@ -317,6 +353,10 @@ function handleAdminRequest_(request) {
 
   if (request.action === "adminCreatePointType") {
     return adminCreatePointType_(identity, request, config);
+  }
+
+  if (request.action === "adminDeletePointType") {
+    return adminDeletePointType_(identity, request, config);
   }
 
   if (request.action === "adminCreatePointCampaign") {
@@ -595,6 +635,8 @@ function adminCreatePointType_(adminIdentity, request, config) {
 
   try {
     var points = normalizePointValue_(request.points);
+    var expiryMode = normalizeExpiryMode_(request.expiryMode);
+    var redemptionMode = normalizeRedemptionMode_(request.redemptionMode);
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
@@ -613,7 +655,11 @@ function adminCreatePointType_(adminIdentity, request, config) {
         .getRange(requestRowNumber, 1, 1, POINT_TYPE_HEADERS.length)
         .getValues()[0];
       var duplicateRecord = pointTypeRecordFromRow_(duplicateRow, requestRowNumber);
-      if (duplicateRecord.points !== points) {
+      if (
+        duplicateRecord.points !== points ||
+        duplicateRecord.expiryMode !== expiryMode ||
+        duplicateRecord.redemptionMode !== redemptionMode
+      ) {
         throw appError_(
           "REQUEST_ID_CONFLICT",
           "同一請求識別碼不可用於不同的點數類型。"
@@ -628,8 +674,13 @@ function adminCreatePointType_(adminIdentity, request, config) {
     }
 
     for (var i = 0; i < records.length; i += 1) {
-      if (records[i].status === "active" && records[i].points === points) {
-        throw appError_("POINT_TYPE_EXISTS", "相同點數的啟用類型已存在。");
+      if (
+        records[i].status === "active" &&
+        records[i].points === points &&
+        records[i].expiryMode === expiryMode &&
+        records[i].redemptionMode === redemptionMode
+      ) {
+        throw appError_("POINT_TYPE_EXISTS", "相同設定的啟用點數類型已存在。");
       }
     }
 
@@ -649,6 +700,10 @@ function adminCreatePointType_(adminIdentity, request, config) {
       now,
       safeSheetText_(adminIdentity.lineUserId),
       request.requestId,
+      expiryMode,
+      redemptionMode,
+      "",
+      "",
     ]);
     var rowNumber = pointTypeSheet.getLastRow();
     applyPointTypeRowFormats_(pointTypeSheet, rowNumber);
@@ -672,6 +727,81 @@ function adminCreatePointType_(adminIdentity, request, config) {
   }
 }
 
+function adminDeletePointType_(adminIdentity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "點數類型正在更新，請稍後再試。");
+  }
+
+  try {
+    var pointTypeId = normalizePointTypeId_(request.pointTypeId);
+    var spreadsheet = openSpreadsheet_(config);
+    var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
+    requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
+    var records = readPointTypeRecords_(pointTypeSheet);
+    var record = null;
+
+    for (var i = 0; i < records.length; i += 1) {
+      if (
+        records[i].deleteRequestId === request.requestId &&
+        records[i].pointTypeId !== pointTypeId
+      ) {
+        throw appError_(
+          "REQUEST_ID_CONFLICT",
+          "同一請求識別碼不可用於刪除不同的點數類型。"
+        );
+      }
+      if (records[i].pointTypeId === pointTypeId) record = records[i];
+    }
+
+    if (!record) {
+      throw appError_("POINT_TYPE_NOT_FOUND", "找不到指定的點數類型。");
+    }
+
+    if (record.status !== "active") {
+      return {
+        data: {
+          pointType: pointTypeResponseFromRecord_(record),
+          deleted: true,
+          duplicate: true,
+        },
+      };
+    }
+
+    var now = new Date();
+    pointTypeSheet
+      .getRange(record.rowNumber, POINT_TYPE_COLUMN.status)
+      .setValues([["inactive"]]);
+    pointTypeSheet
+      .getRange(record.rowNumber, POINT_TYPE_COLUMN.updatedAt)
+      .setValues([[now]]);
+    pointTypeSheet
+      .getRange(record.rowNumber, POINT_TYPE_COLUMN.deletedBy, 1, 2)
+      .setValues([[safeSheetText_(adminIdentity.lineUserId), request.requestId]]);
+    applyPointTypeRowFormats_(pointTypeSheet, record.rowNumber);
+    SpreadsheetApp.flush();
+
+    var row = pointTypeSheet
+      .getRange(record.rowNumber, 1, 1, POINT_TYPE_HEADERS.length)
+      .getValues()[0];
+    record = pointTypeRecordFromRow_(row, record.rowNumber);
+
+    return {
+      data: {
+        pointType: pointTypeResponseFromRecord_(record),
+        deleted: true,
+        duplicate: false,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法刪除點數類型，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function adminCreatePointCampaign_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -680,7 +810,6 @@ function adminCreatePointCampaign_(adminIdentity, request, config) {
 
   try {
     var pointTypeId = normalizePointTypeId_(request.pointTypeId);
-    var expiresAt = parseCampaignExpiry_(request.expiresAt);
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
@@ -700,9 +829,16 @@ function adminCreatePointCampaign_(adminIdentity, request, config) {
         .getRange(requestRowNumber, 1, 1, POINT_CAMPAIGN_HEADERS.length)
         .getValues()[0];
       var duplicateRecord = pointCampaignRecordFromRow_(duplicateRow, requestRowNumber);
+      // A retry can arrive after a limited campaign has expired. Compare the
+      // submitted ISO value with the persisted snapshot without reapplying the
+      // creation-time "future" window; the original request is already durable.
+      var duplicateExpiresAtIso = normalizeCampaignExpiryForComparison_(
+        request.expiresAt,
+        duplicateRecord.expiryMode
+      );
       if (
         duplicateRecord.pointTypeId !== pointTypeId ||
-        duplicateRecord.expiresAt !== expiresAt.toISOString()
+        duplicateRecord.expiresAt !== duplicateExpiresAtIso
       ) {
         throw appError_(
           "REQUEST_ID_CONFLICT",
@@ -742,6 +878,7 @@ function adminCreatePointCampaign_(adminIdentity, request, config) {
     if (pointType.status !== "active") {
       throw appError_("POINT_TYPE_INACTIVE", "這個點數類型目前未啟用。");
     }
+    var expiresAt = parseCampaignExpiryForMode_(request.expiresAt, pointType.expiryMode);
 
     var campaignId = generateUniqueEntityId_(
       "PCG-",
@@ -762,10 +899,12 @@ function adminCreatePointCampaign_(adminIdentity, request, config) {
       pointType.points,
       sha256Hex_(claim),
       "active",
-      expiresAt,
+      expiresAt || "",
       now,
       safeSheetText_(adminIdentity.lineUserId),
       request.requestId,
+      pointType.expiryMode,
+      pointType.redemptionMode,
     ]);
     var rowNumber = pointCampaignSheet.getLastRow();
     applyPointCampaignRowFormats_(pointCampaignSheet, rowNumber);
@@ -1121,6 +1260,8 @@ function getOrCreatePointTypeSheet_(spreadsheet, config) {
     spreadsheet,
     config.pointTypesSheetName,
     POINT_TYPE_HEADERS,
+    LEGACY_POINT_TYPE_HEADERS,
+    ["limited", "once_per_member", "", ""],
     "POINT_TYPE_SCHEMA_MISMATCH",
     "#245c47",
     applyPointTypeSheetColumnFormats_
@@ -1132,6 +1273,8 @@ function getOrCreatePointCampaignSheet_(spreadsheet, config) {
     spreadsheet,
     config.pointCampaignsSheetName,
     POINT_CAMPAIGN_HEADERS,
+    LEGACY_POINT_CAMPAIGN_HEADERS,
+    ["limited", "once_per_member"],
     "POINT_CAMPAIGN_SCHEMA_MISMATCH",
     "#654f22",
     applyPointCampaignSheetColumnFormats_
@@ -1143,6 +1286,8 @@ function getOrCreatePointRedemptionSheet_(spreadsheet, config) {
     spreadsheet,
     config.pointRedemptionsSheetName,
     POINT_REDEMPTION_HEADERS,
+    LEGACY_POINT_REDEMPTION_HEADERS,
+    ["once_per_member"],
     "POINT_REDEMPTION_SCHEMA_MISMATCH",
     "#334d70",
     applyPointRedemptionSheetColumnFormats_
@@ -1153,6 +1298,8 @@ function getOrCreateExactPointSheet_(
   spreadsheet,
   sheetName,
   expectedHeaders,
+  legacyHeaders,
+  legacyDefaults,
   errorCode,
   background,
   applyFormats
@@ -1167,6 +1314,29 @@ function getOrCreateExactPointSheet_(
     sheet.autoResizeColumns(1, expectedHeaders.length);
     applyFormats(sheet);
     return sheet;
+  }
+
+  if (sheet.getLastColumn() === legacyHeaders.length) {
+    assertHeadersMatch_(
+      sheet.getRange(1, 1, 1, legacyHeaders.length).getDisplayValues()[0],
+      legacyHeaders,
+      errorCode
+    );
+    var appendedHeaders = expectedHeaders.slice(legacyHeaders.length);
+    sheet
+      .getRange(1, legacyHeaders.length + 1, 1, appendedHeaders.length)
+      .setValues([appendedHeaders]);
+    if (sheet.getLastRow() > 1) {
+      var defaultRows = [];
+      for (var rowIndex = 2; rowIndex <= sheet.getLastRow(); rowIndex += 1) {
+        defaultRows.push(legacyDefaults.slice());
+      }
+      sheet
+        .getRange(2, legacyHeaders.length + 1, defaultRows.length, legacyDefaults.length)
+        .setValues(defaultRows);
+    }
+    applyFormats(sheet);
+    SpreadsheetApp.flush();
   }
 
   if (sheet.getLastColumn() !== expectedHeaders.length) {
@@ -1304,7 +1474,7 @@ function applyAdminRowFormats_(sheet, rowNumber) {
 
 function applyPointTypeSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 4, 7, 8].forEach(function (column) {
+  [1, 2, 4, 7, 8, 9, 10, 11, 12].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet.getRange(2, POINT_TYPE_COLUMN.points, rowCount, 1).setNumberFormat("0");
@@ -1323,11 +1493,14 @@ function applyPointTypeRowFormats_(sheet, rowNumber) {
   sheet
     .getRange(rowNumber, POINT_TYPE_COLUMN.createdBy, 1, 2)
     .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_TYPE_COLUMN.expiryMode, 1, 4)
+    .setNumberFormat("@");
 }
 
 function applyPointCampaignSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 5, 6, 9, 10].forEach(function (column) {
+  [1, 2, 3, 5, 6, 9, 10, 11, 12].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -1352,11 +1525,14 @@ function applyPointCampaignRowFormats_(sheet, rowNumber) {
   sheet
     .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.createdBy, 1, 2)
     .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_CAMPAIGN_COLUMN.expiryModeSnapshot, 1, 2)
+    .setNumberFormat("@");
 }
 
 function applyPointRedemptionSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 4, 5, 9].forEach(function (column) {
+  [1, 2, 3, 4, 5, 9, 10].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet.getRange(2, 6, rowCount, 2).setNumberFormat("0");
@@ -1380,6 +1556,8 @@ function parseRequest_(e) {
       points: optionalNumber_(e.parameter.pointAmount, NaN),
       pointTypeId: String(e.parameter.pointTypeId || "").trim(),
       expiresAt: String(e.parameter.expiresAt || "").trim(),
+      expiryMode: String(e.parameter.expiryMode || "").trim().toLowerCase(),
+      redemptionMode: String(e.parameter.redemptionMode || "").trim().toLowerCase(),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
       transport: "bridge",
@@ -1413,6 +1591,8 @@ function parseRequest_(e) {
     points: optionalNumber_(parsed.pointAmount, NaN),
     pointTypeId: String(parsed.pointTypeId || "").trim(),
     expiresAt: String(parsed.expiresAt || "").trim(),
+    expiryMode: String(parsed.expiryMode || "").trim().toLowerCase(),
+    redemptionMode: String(parsed.redemptionMode || "").trim().toLowerCase(),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
     transport: "fetch",
@@ -1472,11 +1652,16 @@ function validateRequestEnvelope_(request) {
 
   if (request.action === "adminCreatePointType") {
     normalizePointValue_(request.points);
+    normalizeExpiryMode_(request.expiryMode);
+    normalizeRedemptionMode_(request.redemptionMode);
+  }
+
+  if (request.action === "adminDeletePointType") {
+    normalizePointTypeId_(request.pointTypeId);
   }
 
   if (request.action === "adminCreatePointCampaign") {
     normalizePointTypeId_(request.pointTypeId);
-    parseCampaignExpiry_(request.expiresAt);
   }
 }
 
@@ -1508,8 +1693,37 @@ function normalizePointTypeId_(value) {
   return pointTypeId;
 }
 
-function parseCampaignExpiry_(value) {
+function normalizeExpiryMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  if (mode !== "limited" && mode !== "unlimited") {
+    throw appError_(
+      "INVALID_EXPIRY_MODE",
+      "點數期限模式只能設為 limited 或 unlimited。"
+    );
+  }
+  return mode;
+}
+
+function normalizeRedemptionMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  if (mode !== "once_per_member" && mode !== "repeatable") {
+    throw appError_(
+      "INVALID_REDEMPTION_MODE",
+      "點數領取模式只能設為 once_per_member 或 repeatable。"
+    );
+  }
+  return mode;
+}
+
+function parseCampaignExpiryForMode_(value, expiryMode) {
+  var mode = normalizeExpiryMode_(expiryMode);
   var raw = String(value || "").trim();
+  if (mode === "unlimited") {
+    if (raw) {
+      throw appError_("INVALID_CAMPAIGN_EXPIRY", "無期限點數 QR 不可設定到期時間。");
+    }
+    return null;
+  }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(raw)) {
     throw appError_("INVALID_CAMPAIGN_EXPIRY", "點數 QR 到期時間格式不正確。");
   }
@@ -1530,6 +1744,15 @@ function parseCampaignExpiry_(value) {
   return expiresAt;
 }
 
+function normalizeCampaignExpiryForComparison_(value, expiryMode) {
+  var mode = normalizeExpiryMode_(expiryMode);
+  var raw = String(value || "").trim();
+  if (mode === "unlimited") return raw === "" ? "" : raw;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(raw)) return raw;
+  var expiresAt = new Date(raw);
+  return isNaN(expiresAt.getTime()) ? raw : expiresAt.toISOString();
+}
+
 function readPointTypeRecords_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -1538,8 +1761,9 @@ function readPointTypeRecords_(sheet) {
     .getValues();
   var records = [];
   var ids = Object.create(null);
-  var activePoints = Object.create(null);
+  var activeTypes = Object.create(null);
   var requestIds = Object.create(null);
+  var deleteRequestIds = Object.create(null);
 
   for (var i = 0; i < rows.length; i += 1) {
     var record = pointTypeRecordFromRow_(rows[i], i + 2);
@@ -1548,16 +1772,26 @@ function readPointTypeRecords_(sheet) {
     }
     ids[record.pointTypeId] = true;
     if (record.status === "active") {
-      var pointsKey = String(record.points);
-      if (activePoints[pointsKey]) {
-        throw appError_("POINT_DATA_CONFLICT", "啟用中的點數類型數值重複，請先修正試算表。");
+      var typeKey = [
+        String(record.points),
+        record.expiryMode,
+        record.redemptionMode,
+      ].join(":");
+      if (activeTypes[typeKey]) {
+        throw appError_("POINT_DATA_CONFLICT", "啟用中的點數類型設定重複，請先修正試算表。");
       }
-      activePoints[pointsKey] = true;
+      activeTypes[typeKey] = true;
     }
     if (requestIds[record.lastRequestId]) {
       throw appError_("POINT_DATA_CONFLICT", "點數類型請求識別碼重複，請先修正試算表。");
     }
     requestIds[record.lastRequestId] = true;
+    if (record.deleteRequestId) {
+      if (deleteRequestIds[record.deleteRequestId]) {
+        throw appError_("POINT_DATA_CONFLICT", "點數類型刪除請求識別碼重複，請先修正試算表。");
+      }
+      deleteRequestIds[record.deleteRequestId] = true;
+    }
     records.push(record);
   }
   return records;
@@ -1602,6 +1836,13 @@ function pointTypeRecordFromRow_(row, rowNumber) {
   var updatedAt = toIsoString_(row[POINT_TYPE_COLUMN.updatedAt - 1]);
   var createdBy = String(row[POINT_TYPE_COLUMN.createdBy - 1] || "");
   var lastRequestId = String(row[POINT_TYPE_COLUMN.lastRequestId - 1] || "");
+  var expiryMode = normalizeStoredExpiryMode_(row[POINT_TYPE_COLUMN.expiryMode - 1]);
+  var redemptionMode = normalizeStoredRedemptionMode_(
+    row[POINT_TYPE_COLUMN.redemptionMode - 1]
+  );
+  var deletedBy = String(row[POINT_TYPE_COLUMN.deletedBy - 1] || "");
+  var deleteRequestId = String(row[POINT_TYPE_COLUMN.deleteRequestId - 1] || "");
+  var hasDeletionAudit = Boolean(deletedBy || deleteRequestId);
   if (
     !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
     !isFinite(points) ||
@@ -1613,7 +1854,13 @@ function pointTypeRecordFromRow_(row, rowNumber) {
     !createdAt ||
     !updatedAt ||
     !/^U[0-9a-f]{32}$/.test(createdBy) ||
-    !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
+    !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+    !expiryMode ||
+    !redemptionMode ||
+    (hasDeletionAudit &&
+      (!/^U[0-9a-f]{32}$/.test(deletedBy) ||
+        !/^[a-zA-Z0-9-]{10,80}$/.test(deleteRequestId))) ||
+    (status === "active" && hasDeletionAudit)
   ) {
     throw appError_(
       "POINT_DATA_CONFLICT",
@@ -1630,6 +1877,10 @@ function pointTypeRecordFromRow_(row, rowNumber) {
     updatedAt: updatedAt,
     createdBy: createdBy,
     lastRequestId: lastRequestId,
+    expiryMode: expiryMode,
+    redemptionMode: redemptionMode,
+    deletedBy: deletedBy,
+    deleteRequestId: deleteRequestId,
   };
 }
 
@@ -1639,6 +1890,8 @@ function pointTypeResponseFromRecord_(record) {
     label: record.label,
     points: record.points,
     status: record.status,
+    expiryMode: record.expiryMode,
+    redemptionMode: record.redemptionMode,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -1655,6 +1908,12 @@ function pointCampaignRecordFromRow_(row, rowNumber) {
   var createdAt = toIsoString_(row[POINT_CAMPAIGN_COLUMN.createdAt - 1]);
   var createdBy = String(row[POINT_CAMPAIGN_COLUMN.createdBy - 1] || "");
   var lastRequestId = String(row[POINT_CAMPAIGN_COLUMN.lastRequestId - 1] || "");
+  var expiryMode = normalizeStoredExpiryMode_(
+    row[POINT_CAMPAIGN_COLUMN.expiryModeSnapshot - 1]
+  );
+  var redemptionMode = normalizeStoredRedemptionMode_(
+    row[POINT_CAMPAIGN_COLUMN.redemptionModeSnapshot - 1]
+  );
   if (
     !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
     !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
@@ -1665,7 +1924,10 @@ function pointCampaignRecordFromRow_(row, rowNumber) {
     label !== pointLabel_(points) ||
     !/^[a-f0-9]{64}$/.test(claimHash) ||
     !status ||
-    !expiresAt ||
+    !expiryMode ||
+    !redemptionMode ||
+    (expiryMode === "limited" && !expiresAt) ||
+    (expiryMode === "unlimited" && Boolean(expiresAt)) ||
     !createdAt ||
     !/^U[0-9a-f]{32}$/.test(createdBy) ||
     !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
@@ -1684,6 +1946,8 @@ function pointCampaignRecordFromRow_(row, rowNumber) {
     claimHash: claimHash,
     status: status,
     expiresAt: expiresAt,
+    expiryMode: expiryMode,
+    redemptionMode: redemptionMode,
     createdAt: createdAt,
     createdBy: createdBy,
     lastRequestId: lastRequestId,
@@ -1698,8 +1962,20 @@ function pointCampaignResponseFromRecord_(record) {
     points: record.points,
     status: record.status,
     expiresAt: record.expiresAt,
+    expiryMode: record.expiryMode,
+    redemptionMode: record.redemptionMode,
     createdAt: record.createdAt,
   };
+}
+
+function normalizeStoredExpiryMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  return mode === "limited" || mode === "unlimited" ? mode : "";
+}
+
+function normalizeStoredRedemptionMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  return mode === "once_per_member" || mode === "repeatable" ? mode : "";
 }
 
 function strictPointStatus_(value) {

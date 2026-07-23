@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#edf0e9" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content="會員點數類型與 QR 領取碼管理後台" />
+    <title>PERSONA ADMIN｜點數管理</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='17' fill='%230b3c2c'/%3E%3Cpath d='M18 20h28v20H32l-9 7v-7h-5z' fill='%2306c755'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script defer src="../shared/gas-api.js"></script>
+    <script defer src="../shared/qr-code.js"></script>
+    <script defer src="script.js"></script>
+  </head>
+  <body data-admin-page="points">
+    <a class="skip-link" href="#main-content">跳至主要內容</a>
+    <div class="page-grid" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="./" data-admin-route aria-label="回到會員管理頁">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span class="brand-copy">
+          <strong data-brand-name>PERSONA</strong>
+          <small>ADMIN</small>
+        </span>
+      </a>
+
+      <div class="connection" id="connection-status" data-tone="loading" role="status" aria-live="polite">
+        <span aria-hidden="true"></span>
+        <span id="connection-label">正在連線</span>
+      </div>
+    </header>
+
+    <main id="main-content" class="app-shell">
+      <section class="app-state centered-state" id="loading-state" aria-labelledby="loading-title">
+        <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <p class="eyebrow">ADMIN ACCESS</p>
+        <h1 id="loading-title">正在確認管理員身分</h1>
+        <p id="loading-message">連線 LINE 與點數後台，請稍候。</p>
+      </section>
+
+      <section class="app-state access-state" id="login-state" hidden aria-labelledby="login-title">
+        <div>
+          <p class="eyebrow">RESTRICTED AREA</p>
+          <h1 id="login-title">登入點數管理後台</h1>
+          <p>使用 LINE 完成身分驗證。首次登入會建立管理員申請，再由試算表擁有者核准。</p>
+        </div>
+        <button class="primary-button" id="login-button" type="button">
+          <span>使用 LINE 登入</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+        </button>
+      </section>
+
+      <section class="app-state access-state" id="setup-state" hidden aria-labelledby="setup-title">
+        <div>
+          <p class="eyebrow">SETUP REQUIRED</p>
+          <h1 id="setup-title">管理端尚未連接 GAS</h1>
+          <p>請先獨立部署 <code>gas/admin/Code.gs</code>，再把新的 <code>/exec</code> 網址填入 <code>admin/config.json</code>。</p>
+        </div>
+        <div class="button-row">
+          <a class="primary-button" href="../setup.html">開啟設定說明</a>
+          <button class="secondary-button" id="preview-button" type="button">預覽點數後台</button>
+        </div>
+      </section>
+
+      <section class="app-state access-state" id="pending-state" hidden aria-labelledby="pending-title">
+        <div>
+          <p class="eyebrow">APPROVAL PENDING</p>
+          <h1 id="pending-title">管理員資格等待核准</h1>
+          <p>首次登入已在共用 Google Spreadsheet 的 <code>Admins</code> 工作表建立 <code>pending</code> 申請。請由試算表擁有者將該列的 <code>status</code> 改為 <code>approved</code>，再按重新整理。</p>
+        </div>
+        <div class="button-row">
+          <button class="primary-button" id="pending-refresh-button" type="button">重新整理</button>
+          <button class="secondary-button" id="pending-logout-button" type="button">登出這個帳號</button>
+        </div>
+      </section>
+
+      <section class="app-state access-state" id="unauthorized-state" hidden aria-labelledby="unauthorized-title">
+        <div>
+          <p class="eyebrow danger-copy">ACCESS DENIED</p>
+          <h1 id="unauthorized-title">管理員申請已拒絕</h1>
+          <p>後台已完成身分驗證，但這個帳號在 <code>Admins</code> 工作表中的狀態不是 <code>approved</code>。如需恢復權限，請聯絡試算表擁有者。</p>
+        </div>
+        <button class="secondary-button" id="unauthorized-logout-button" type="button">登出這個帳號</button>
+      </section>
+
+      <section class="app-state access-state" id="error-state" hidden aria-labelledby="error-title">
+        <div>
+          <p class="eyebrow danger-copy" id="error-code">CONNECTION ERROR</p>
+          <h1 id="error-title">暫時無法開啟點數管理後台</h1>
+          <p id="error-message">連線時發生問題，請稍後再試。</p>
+        </div>
+        <button class="primary-button" id="retry-button" type="button">
+          <span>重新連線</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+        </button>
+      </section>
+
+      <section class="app-state dashboard" id="dashboard-state" hidden aria-labelledby="dashboard-title">
+        <nav class="workspace-nav" aria-label="管理後台功能">
+          <a href="./" data-admin-route><span>01</span>會員資料</a>
+          <a href="points.html" data-admin-route aria-current="page"><span>02</span>點數管理</a>
+        </nav>
+
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">POINT ISSUANCE</p>
+            <h1 id="dashboard-title">點數與 QR 管理</h1>
+            <p>建立點數、期限與領取規則，再產生會員 QR 領取碼。</p>
+          </div>
+
+          <div class="admin-identity" aria-label="目前管理員">
+            <div class="admin-avatar">
+              <img id="admin-avatar" alt="" hidden />
+              <span id="admin-avatar-fallback" aria-hidden="true">A</span>
+            </div>
+            <div>
+              <small>SIGNED IN AS</small>
+              <strong id="admin-name">管理員</strong>
+            </div>
+            <button class="text-button" id="logout-button" type="button">登出</button>
+          </div>
+        </header>
+
+        <section class="point-workspace" id="point-workspace" aria-labelledby="point-workspace-title">
+          <header class="point-workspace-heading">
+            <div>
+              <p class="eyebrow">POINT CAMPAIGN</p>
+              <h2 id="point-workspace-title">點數類型與 QR 領取碼</h2>
+            </div>
+            <div class="point-heading-actions">
+              <p>先建立期限與領取規則，再選擇類型產生 QR Code。</p>
+              <button class="refresh-button" id="refresh-points-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+                <span>重新整理</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="point-workspace-grid">
+            <section class="point-type-panel" aria-labelledby="point-type-title">
+              <div class="point-panel-heading">
+                <div>
+                  <span>01</span>
+                  <h3 id="point-type-title">點數類型</h3>
+                </div>
+                <small>例如 1、2、3 點</small>
+              </div>
+
+              <form class="point-type-form" id="point-type-form" novalidate>
+                <label for="point-amount-input">新增點數</label>
+                <div class="point-amount-field">
+                  <input
+                    id="point-amount-input"
+                    name="pointAmount"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    max="9999"
+                    step="1"
+                    placeholder="3"
+                    required
+                    aria-describedby="point-type-help point-type-error"
+                  />
+                  <span aria-hidden="true">點</span>
+                  <button class="primary-button" id="create-point-type-button" type="submit">
+                    <span>新增類型</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                </div>
+
+                <fieldset class="point-rule-fieldset">
+                  <legend>有效期限</legend>
+                  <div class="segmented-options">
+                    <label for="point-expiry-mode-limited">
+                      <input
+                        id="point-expiry-mode-limited"
+                        name="expiryMode"
+                        type="radio"
+                        value="limited"
+                        checked
+                      />
+                      <span>有期限</span>
+                    </label>
+                    <label for="point-expiry-mode-unlimited">
+                      <input
+                        id="point-expiry-mode-unlimited"
+                        name="expiryMode"
+                        type="radio"
+                        value="unlimited"
+                      />
+                      <span>無期限</span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="point-rule-fieldset">
+                  <legend>領取方式</legend>
+                  <div class="segmented-options">
+                    <label for="point-redemption-mode-once">
+                      <input
+                        id="point-redemption-mode-once"
+                        name="redemptionMode"
+                        type="radio"
+                        value="once_per_member"
+                        checked
+                      />
+                      <span>不可重複</span>
+                    </label>
+                    <label for="point-redemption-mode-repeatable">
+                      <input
+                        id="point-redemption-mode-repeatable"
+                        name="redemptionMode"
+                        type="radio"
+                        value="repeatable"
+                      />
+                      <span>可重複</span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <small id="point-type-help">相同點數可依不同期限與領取方式建立多種類型。</small>
+                <p class="inline-error" id="point-type-error" role="alert" hidden></p>
+              </form>
+
+              <ul class="point-type-list" id="point-type-list" aria-live="polite" aria-busy="false"></ul>
+            </section>
+
+            <section class="point-campaign-panel" aria-labelledby="point-campaign-title">
+              <div class="point-panel-heading">
+                <div>
+                  <span>02</span>
+                  <h3 id="point-campaign-title">產生 QR Code</h3>
+                </div>
+                <small>規則跟隨所選類型</small>
+              </div>
+
+              <div class="selected-point-type" id="selected-point-type" aria-live="polite">
+                <div>
+                  <small>目前選擇</small>
+                  <strong id="selected-point-label">尚未建立點數類型</strong>
+                </div>
+                <p id="selected-point-rules">建立類型後即可產生 QR Code。</p>
+              </div>
+
+              <form class="point-campaign-form" id="point-campaign-form" novalidate>
+                <div class="point-expiry-field" id="point-expiry-field">
+                  <label for="point-expiry-input">領取期限</label>
+                  <input
+                    id="point-expiry-input"
+                    name="expiresAt"
+                    type="datetime-local"
+                    required
+                    aria-describedby="point-expiry-help point-campaign-error"
+                  />
+                  <small id="point-expiry-help">期限最長可設定為一年；到期後 QR 自動失效。</small>
+                </div>
+                <p class="point-rule-notice" id="point-rule-notice">
+                  每位會員在這張 QR 活動中只能領取一次。
+                </p>
+                <p class="inline-error" id="point-campaign-error" role="alert" hidden></p>
+                <button class="primary-button" id="create-point-campaign-button" type="submit">
+                  <span>產生 QR Code</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+                </button>
+              </form>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>POINT ISSUANCE CONTROL</p>
+      <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
+    </footer>
+
+    <dialog
+      class="confirm-dialog point-qr-dialog"
+      id="point-qr-dialog"
+      aria-labelledby="point-qr-title"
+      aria-describedby="point-qr-description"
+    >
+      <header class="qr-dialog-heading">
+        <div>
+          <p class="eyebrow">POINT CLAIM QR</p>
+          <h2 id="point-qr-title">QR Code 已產生</h2>
+        </div>
+        <button class="dialog-close-button" id="close-point-qr-button" type="button" aria-label="關閉 QR Code">×</button>
+      </header>
+
+      <p id="point-qr-description">提供給會員掃描並確認領取；同一會員重複掃描不會再次增加點數。</p>
+
+      <div class="qr-output-wrap" id="point-qr-visual">
+        <svg
+          id="point-qr-output"
+          role="img"
+          aria-label="點數領取 QR Code"
+          xmlns="http://www.w3.org/2000/svg"
+        ></svg>
+        <div class="qr-preview-message" id="point-qr-preview-message" hidden>
+          <strong>預覽模式</strong>
+          <span>不會產生可使用的領取碼</span>
+        </div>
+      </div>
+
+      <dl class="qr-details">
+        <div><dt>點數</dt><dd id="point-qr-label">—</dd></div>
+        <div><dt>有效期限</dt><dd id="point-qr-expiry">—</dd></div>
+        <div><dt>領取規則</dt><dd id="point-qr-rule">—</dd></div>
+      </dl>
+
+      <input id="point-claim-url" type="text" readonly aria-label="會員點數領取連結" />
+
+      <div class="dialog-actions qr-dialog-actions">
+        <button class="secondary-button" id="copy-claim-link-button" type="button">複製領取連結</button>
+        <button class="secondary-button" id="download-qr-button" type="button">下載 QR</button>
+        <button class="primary-button" id="done-point-qr-button" type="button"><span>完成</span></button>
+      </div>
+    </dialog>
+
+    <dialog
+      class="confirm-dialog delete-point-type-dialog"
+      id="delete-point-type-dialog"
+      aria-labelledby="delete-point-type-title"
+      aria-describedby="delete-point-type-description"
+    >
+      <header class="qr-dialog-heading">
+        <div>
+          <p class="eyebrow danger-copy">DELETE POINT TYPE</p>
+          <h2 id="delete-point-type-title">刪除點數類型？</h2>
+        </div>
+        <button
+          class="dialog-close-button"
+          id="cancel-delete-point-type-button"
+          type="button"
+          aria-label="關閉刪除點數類型視窗"
+        >×</button>
+      </header>
+      <p id="delete-point-type-description">
+        將刪除「<strong id="delete-point-type-label">—</strong>」，之後不能再用它產生新 QR。
+        已經產生的 QR 仍會依原本規則運作。
+      </p>
+      <div class="dialog-actions">
+        <button class="secondary-button" id="keep-point-type-button" type="button">保留類型</button>
+        <button class="danger-button" id="confirm-delete-point-type-button" type="button">確認刪除</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span aria-hidden="true"></span>
+      <p id="toast-message"></p>
+    </div>
+  </body>
+</html>

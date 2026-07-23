@@ -47,6 +47,10 @@ test("administrator-issued claim and campaign row are accepted by the member GAS
   const client = loadGas("gas/client/Code.gs");
 
   assert.deepEqual(
+    Array.from(admin.POINT_TYPE_HEADERS),
+    Array.from(client.POINT_TYPE_HEADERS)
+  );
+  assert.deepEqual(
     Array.from(admin.POINT_CAMPAIGN_HEADERS),
     Array.from(client.POINT_CAMPAIGN_HEADERS)
   );
@@ -74,6 +78,8 @@ test("administrator-issued claim and campaign row are accepted by the member GAS
     new Date(),
     `U${"a".repeat(32)}`,
     requestId,
+    "limited",
+    "once_per_member",
   ];
   const sheet = {
     getLastRow: () => 2,
@@ -95,6 +101,47 @@ test("administrator-issued claim and campaign row are accepted by the member GAS
     status: "active",
     expiresAt: expiresAt.toISOString(),
     expiresAtTime: expiresAt.getTime(),
+    expiryMode: "limited",
+    redemptionMode: "once_per_member",
   });
   client.assertPointCampaignAvailable_(parsed, new Date());
+});
+
+test("unlimited repeatable campaign snapshots are accepted without an expiry", () => {
+  const admin = loadGas("gas/admin/Code.gs");
+  const client = loadGas("gas/client/Code.gs");
+  const requestId = "request-contract-permanent";
+  const claim = admin.createCampaignClaim_(
+    "PCG-PERMANENT1",
+    requestId,
+    "s".repeat(64)
+  );
+  const row = [
+    "PCG-PERMANENT1",
+    "PTY-PERMANENT1",
+    "2 點",
+    2,
+    admin.sha256Hex_(claim),
+    "active",
+    "",
+    new Date(),
+    `U${"a".repeat(32)}`,
+    requestId,
+    "unlimited",
+    "repeatable",
+  ];
+  const sheet = {
+    getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [row.slice()] }),
+  };
+
+  const parsed = client.findPointCampaignByClaim_(sheet, claim);
+  assert.equal(parsed.expiryMode, "unlimited");
+  assert.equal(parsed.redemptionMode, "repeatable");
+  assert.equal(parsed.expiresAt, "");
+  assert.equal(parsed.expiresAtTime, 0);
+  client.assertPointCampaignAvailable_(
+    parsed,
+    new Date("2099-01-01T00:00:00.000Z")
+  );
 });

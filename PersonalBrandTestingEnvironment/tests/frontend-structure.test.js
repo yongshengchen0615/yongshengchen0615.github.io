@@ -10,6 +10,7 @@ const htmlFiles = [
   "client/index.html",
   "client/privacy.html",
   "admin/index.html",
+  "admin/points.html",
 ];
 
 function getTopLevelFunctionContaining(source, marker) {
@@ -75,6 +76,47 @@ test("HTML documents do not contain duplicate IDs", () => {
     const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length, `${relativePath} contains duplicate IDs`);
   }
+});
+
+test("admin separates member records and point issuance into isolated pages", () => {
+  const memberHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(
+    script,
+    /withLoginOnExternalBrowser\s*:\s*false/
+  );
+  const routeSync = getTopLevelFunctionContaining(
+    script,
+    /var\s+demo\s*=\s*isDemoSession/
+  );
+
+  assert.match(memberHtml, /<body\b[^>]*data-admin-page=["']members["']/i);
+  assert.match(pointHtml, /<body\b[^>]*data-admin-page=["']points["']/i);
+  assert.match(memberHtml, /href=["']\.\/["'][^>]*aria-current=["']page["']/i);
+  assert.match(pointHtml, /href=["']points\.html["'][^>]*aria-current=["']page["']/i);
+  for (const html of [memberHtml, pointHtml]) {
+    assert.match(html, /href=["']\.\/["'][^>]*data-admin-route/i);
+    assert.match(html, /href=["']points\.html["'][^>]*data-admin-route/i);
+    assert.match(html, />會員資料</);
+    assert.match(html, />點數管理</);
+  }
+
+  for (const id of ["point-workspace", "point-type-form", "point-campaign-form", "point-qr-dialog"]) {
+    assert.doesNotMatch(memberHtml, new RegExp(`id=["']${id}["']`));
+  }
+  for (const id of ["metric-all", "member-list", "filter-form", "deny-dialog"]) {
+    assert.doesNotMatch(pointHtml, new RegExp(`id=["']${id}["']`));
+  }
+
+  assert.match(
+    script,
+    /document\.body[\s\S]{0,120}?dataset\.adminPage\s*===\s*["']points["']/
+  );
+  assert.match(boot, /ADMIN_PAGE\s*===\s*["']points["'][\s\S]{0,80}?fetchPointTypes\s*\(/);
+  assert.match(boot, /fetchMembers\s*\(/);
+  assert.match(routeSync, /isDemoSession\s*\|\|\s*hasDemoQuery\s*\(\s*\)/);
+  assert.match(routeSync, /searchParams\.set\s*\(\s*["']demo["']\s*,\s*["']1["']\s*\)/);
 });
 
 test("client member profile does not display email or login metadata", () => {
@@ -158,7 +200,7 @@ test("shared GAS transport allowlists member phone and birthday fields", () => {
 });
 
 test("admin exposes an accessible point-type and QR campaign workspace", () => {
-  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const html = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
   const workspace = getOpeningTagById(html, "point-workspace");
   const pointTypeForm = getOpeningTagById(html, "point-type-form");
   const pointAmountInput = getOpeningTagById(html, "point-amount-input");
@@ -166,6 +208,7 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   const expiryInput = getOpeningTagById(html, "point-expiry-input");
   const qrDialog = getOpeningTagById(html, "point-qr-dialog");
   const qrOutput = getOpeningTagById(html, "point-qr-output");
+  const deleteDialog = getOpeningTagById(html, "delete-point-type-dialog");
   const copyButton = getElementMarkupById(html, "copy-claim-link-button");
   const downloadButton = getElementMarkupById(html, "download-qr-button");
 
@@ -178,6 +221,17 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   assert.match(pointAmountInput, /\bmax=["']9999["']/i);
   assert.match(pointAmountInput, /\bstep=["']1["']/i);
   assert.match(pointAmountInput, /\brequired(?:\s|>|=)/i);
+  for (const [id, name, value] of [
+    ["point-expiry-mode-limited", "expiryMode", "limited"],
+    ["point-expiry-mode-unlimited", "expiryMode", "unlimited"],
+    ["point-redemption-mode-once", "redemptionMode", "once_per_member"],
+    ["point-redemption-mode-repeatable", "redemptionMode", "repeatable"],
+  ]) {
+    const radio = getOpeningTagById(html, id);
+    assert.match(radio, /\btype=["']radio["']/i);
+    assert.match(radio, new RegExp(`\\bname=["']${name}["']`, "i"));
+    assert.match(radio, new RegExp(`\\bvalue=["']${value}["']`, "i"));
+  }
   assert.match(getOpeningTagById(html, "point-type-list"), /aria-(?:busy|live)=/i);
   assert.match(campaignForm, /<form\b/i);
   assert.match(html, /<label\b[^>]*for=["']point-expiry-input["']/i);
@@ -192,6 +246,12 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   assert.match(qrDialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
   assert.match(qrOutput, /\brole=["']img["']/i);
   assert.match(qrOutput, /aria-(?:label|labelledby)=(?:"[^"]+"|'[^']+')/i);
+  assert.match(deleteDialog, /<dialog\b/i);
+  assert.match(deleteDialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
+  assert.match(
+    getOpeningTagById(html, "confirm-delete-point-type-button"),
+    /\btype=["']button["']/i
+  );
   assert.match(copyButton, /<button\b[^>]*\btype=["']button["']/i);
   assert.match(copyButton, /複製/);
   assert.match(downloadButton, /<button\b[^>]*\btype=["']button["']/i);
@@ -212,6 +272,8 @@ test("admin creates point types and QR campaigns from backend-issued claim URLs"
   );
   assert.match(createType, /["']adminCreatePointType["']/);
   assert.match(createType, /\bpointAmount\s*:/);
+  assert.match(createType, /\bexpiryMode\s*:/);
+  assert.match(createType, /\bredemptionMode\s*:/);
 
   assert.match(
     script,
@@ -234,18 +296,51 @@ test("admin creates point types and QR campaigns from backend-issued claim URLs"
   assert.doesNotMatch(createCampaign, /https?:\/\/(?:api\.)?(?:qr|chart|quickchart)/i);
 });
 
-test("point setup failure does not hide member administration or create unusable campaigns", () => {
+test("admin point rules drive conditional expiry, QR copy, and soft deletion", () => {
+  const html = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const syncRules = getTopLevelFunctionContaining(
+    script,
+    /expiryField\.hidden\s*=\s*isUnlimited/
+  );
+  const deleteType = getTopLevelFunctionContaining(
+    script,
+    /["']adminDeletePointType["']/
+  );
+  const qrDialog = getTopLevelFunctionContaining(
+    script,
+    /byId\(["']point-qr-rule["']\)\.textContent/
+  );
+
+  assert.match(html, /id=["']selected-point-rules["']/);
+  assert.match(html, /id=["']point-expiry-field["']/);
+  assert.match(html, /id=["']point-rule-notice["']/);
+  assert.match(html, /id=["']point-qr-rule["']/);
+  assert.match(syncRules, /expiryInput\.required\s*=\s*!isUnlimited/);
+  assert.match(syncRules, /isUnlimited\s*&&\s*isRepeatable/);
+  assert.match(syncRules, /反覆掃描領點/);
+  assert.match(deleteType, /sendAdminRequest\(["']adminDeletePointType["']/);
+  assert.match(deleteType, /\bpointTypeId\s*:/);
+  assert.match(qrDialog, /無期限/);
+  assert.match(qrDialog, /每次重新掃描可再領一次/);
+});
+
+test("admin member and point pages load only their own data and preflight QR creation", () => {
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
   const fetchMembers = getTopLevelFunctionContaining(script, /["']adminListMembers["']/);
+  const fetchPointTypes = getTopLevelFunctionContaining(
+    script,
+    /["']adminListPointTypes["']/
+  );
   const createCampaign = getTopLevelFunctionContaining(
     script,
     /["']adminCreatePointCampaign["']/
   );
 
-  const renderMembersAt = fetchMembers.indexOf("renderDashboard(memberData)");
-  const loadPointsAt = fetchMembers.indexOf('sendAdminRequest("adminListPointTypes"');
-  assert.equal(renderMembersAt >= 0 && loadPointsAt > renderMembersAt, true);
-  assert.match(fetchMembers, /renderPointWorkspaceError\s*\(/);
+  assert.match(fetchMembers, /sendAdminRequest\(["']adminListMembers["']/);
+  assert.doesNotMatch(fetchMembers, /adminListPointTypes/);
+  assert.match(fetchPointTypes, /sendAdminRequest\(["']adminListPointTypes["']/);
+  assert.doesNotMatch(fetchPointTypes, /adminListMembers/);
 
   const qrPreflightAt = createCampaign.indexOf("window.PersonaQr");
   const mutationAt = createCampaign.indexOf(
@@ -269,10 +364,11 @@ test("client member pass renders a live point balance from the member response",
   assert.match(renderMember, /\bmember\.pointBalance\b/);
 });
 
-test("client claim dialog exposes preview, progress, result, duplicate, and retry states", () => {
+test("client claim dialog exposes automatic progress, result, duplicate, and retry states", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const dialog = getOpeningTagById(html, "claim-dialog");
-  const confirmButton = getOpeningTagById(html, "claim-confirm-button");
+  const successConfirmButton = getOpeningTagById(html, "claim-success-close-button");
+  const duplicateConfirmButton = getOpeningTagById(html, "claim-duplicate-close-button");
   const retryButton = getOpeningTagById(html, "claim-retry-button");
   const loadingState = getOpeningTagById(html, "claim-loading-state");
   const successState = getOpeningTagById(html, "claim-success-state");
@@ -282,8 +378,8 @@ test("client claim dialog exposes preview, progress, result, duplicate, and retr
   assert.match(dialog, /<dialog\b/i);
   assert.match(dialog, /aria-labelledby=(?:"[^"]+"|'[^']+')/i);
   assert.match(dialog, /aria-describedby=(?:"[^"]+"|'[^']+')/i);
-  getOpeningTagById(html, "claim-preview-state");
-  assert.match(confirmButton, /\btype=["']button["']/i);
+  assert.match(successConfirmButton, /\btype=["']button["']/i);
+  assert.match(duplicateConfirmButton, /\btype=["']button["']/i);
   assert.match(loadingState, /\brole=["']status["']/i);
   assert.match(loadingState, /aria-live=["']polite["']/i);
   assert.match(successState, /\brole=["']status["']/i);
@@ -292,19 +388,19 @@ test("client claim dialog exposes preview, progress, result, duplicate, and retr
   assert.match(duplicateState, /aria-live=["']polite["']/i);
   assert.match(errorState, /\brole=["']alert["']/i);
   assert.match(retryButton, /\btype=["']button["']/i);
+  assert.doesNotMatch(html, /id=["']claim-(?:close|confirm)-button["']/);
+  assert.doesNotMatch(html, /id=["']claim-preview-state["']/);
 });
 
-test("client captures a sanitized claim after LIFF init and redeems only on confirmation", () => {
+test("client captures a sanitized claim after LIFF init and redeems automatically", () => {
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const boot = getTopLevelFunctionContaining(script, /withLoginOnExternalBrowser\s*:\s*false/);
   const captureClaim = getTopLevelFunctionContaining(script, /\.get\(["']claim["']\)/);
   const captureName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(captureClaim);
-  const previewClaim = getTopLevelFunctionContaining(script, /["']previewPointCampaign["']/);
   const redeemClaim = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
-  const redeemName = /function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(redeemClaim);
+  const sync = getTopLevelFunctionContaining(script, /return\s+redeemPendingPointCampaign\(\)/);
 
   assert.ok(captureName, "claim capture must be a named top-level function");
-  assert.ok(redeemName, "claim redemption must be a named top-level function");
   assert.match(captureClaim, /(?:window\.)?sessionStorage\.setItem\s*\(/);
   assert.match(captureClaim, /\.searchParams\.delete\(["']claim["']\)/);
   assert.match(captureClaim, /(?:window\.)?history\.replaceState\s*\(/);
@@ -319,23 +415,19 @@ test("client captures a sanitized claim after LIFF init and redeems only on conf
     "claim query capture must run only after liff.init resolves"
   );
 
-  assert.match(previewClaim, /["']previewPointCampaign["']/);
-  assert.match(previewClaim, /\bclaim\s*:/);
-  assert.doesNotMatch(previewClaim, /["']redeemPointCampaign["']/);
   assert.match(redeemClaim, /["']redeemPointCampaign["']/);
   assert.match(redeemClaim, /\bclaim\s*:/);
+  assert.match(sync, /renderMember\(/);
+  assert.match(sync, /return\s+redeemPendingPointCampaign\(\)/);
+  assert.doesNotMatch(script, /["']previewPointCampaign["']/);
   assert.match(
     script,
-    new RegExp(
-      `byId\\(["']claim-confirm-button["']\\)\\.addEventListener\\(["']click["'],\\s*${escapeRegExp(
-        redeemName[1]
-      )}\\s*\\)`
-    )
+    /byId\(["']claim-retry-button["']\)\.addEventListener\(["']click["'],\s*redeemPendingPointCampaign\s*\)/
   );
   assert.equal(
     (script.match(/["']redeemPointCampaign["']/g) || []).length,
     1,
-    "only the explicit confirmation handler may invoke point redemption"
+    "the member client should issue one direct redemption action"
   );
 });
 
@@ -344,7 +436,14 @@ test("shared transport exposes only the bounded point campaign fields", () => {
   const extraFields = /var\s+EXTRA_FIELD_NAMES\s*=\s*\[([\s\S]*?)\];/.exec(transport);
 
   assert.ok(extraFields, "shared transport extra-field allowlist must exist");
-  for (const field of ["claim", "pointAmount", "pointTypeId", "expiresAt"]) {
+  for (const field of [
+    "claim",
+    "pointAmount",
+    "pointTypeId",
+    "expiresAt",
+    "expiryMode",
+    "redemptionMode",
+  ]) {
     assert.match(extraFields[1], new RegExp(`["']${field}["']`));
   }
   assert.doesNotMatch(
@@ -354,15 +453,51 @@ test("shared transport exposes only the bounded point campaign fields", () => {
   );
 });
 
+test("member claim UI supports unlimited and repeatable campaigns with retry idempotency", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const normalizeCampaign = getTopLevelFunctionContaining(
+    script,
+    /var\s+validExpiry\s*=/
+  );
+  const redeem = getTopLevelFunctionContaining(
+    script,
+    /["']redeemPointCampaign["']/
+  );
+  const stableRequest = getTopLevelFunctionContaining(
+    script,
+    /var\s+stored\s*=\s*String\s*\(/
+  );
+
+  assert.match(html, /id=["']claim-success-note["']/);
+  assert.match(html, /id=["']claim-duplicate-title["']/);
+  assert.match(normalizeCampaign, /expiryMode\s*===\s*["']unlimited["']/);
+  assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
+  assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
+  assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
+  assert.match(redeem, /重新掃描同一張 QR Code/);
+  assert.match(stableRequest, /sessionStorage\.getItem\s*\(/);
+  assert.match(stableRequest, /sessionStorage\.setItem\s*\(/);
+  assert.match(transport, /options\.requestId/);
+  assert.match(transport, /createRequestId:\s*createRequestId/);
+});
+
 test("admin loads a local QR encoder and frontend code never calls an external QR service", () => {
   const adminHtml = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
+  const pointHtml = fs.readFileSync(path.join(root, "admin/points.html"), "utf8");
   const clientHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
   const clientScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
-  const qrScriptAt = adminHtml.indexOf('src="../shared/qr-code.js"');
-  const adminScriptAt = adminHtml.indexOf('src="script.js"');
+  const qrScriptAt = pointHtml.indexOf('src="../shared/qr-code.js"');
+  const adminScriptAt = pointHtml.indexOf('src="script.js"');
 
-  assert.notEqual(qrScriptAt, -1, "admin must load the local shared QR encoder");
+  assert.equal(
+    adminHtml.includes('src="../shared/qr-code.js"'),
+    false,
+    "member administration must not load the QR encoder"
+  );
+  assert.notEqual(qrScriptAt, -1, "point administration must load the local shared QR encoder");
   assert.equal(qrScriptAt < adminScriptAt, true, "the QR encoder must load before admin script.js");
   assert.equal(
     fs.existsSync(path.join(root, "shared/qr-code.js")),
@@ -370,14 +505,14 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
     "the local QR encoder asset must exist"
   );
 
-  for (const html of [adminHtml, clientHtml]) {
+  for (const html of [adminHtml, pointHtml, clientHtml]) {
     const externalScripts = [...html.matchAll(/<script\b[^>]*\bsrc=["'](https?:[^"']+)["']/gi)]
       .map((match) => match[1])
       .filter((source) => source !== "https://static.line-scdn.net/liff/edge/2/sdk.js");
     assert.deepEqual(externalScripts, [], "QR generation must not add a third-party script");
   }
 
-  const frontendSource = [adminHtml, clientHtml, adminScript, clientScript].join("\n");
+  const frontendSource = [adminHtml, pointHtml, clientHtml, adminScript, clientScript].join("\n");
   assert.doesNotMatch(
     frontendSource,
     /(?:api\.qrserver\.com|quickchart\.io|chart\.googleapis\.com|chart\.google\.com)/i,
@@ -386,7 +521,7 @@ test("admin loads a local QR encoder and frontend code never calls an external Q
 });
 
 test("LIFF entry points suppress referrers before loading the external SDK", () => {
-  for (const relativePath of ["client/index.html", "admin/index.html"]) {
+  for (const relativePath of ["client/index.html", "admin/index.html", "admin/points.html"]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const referrerAt = html.search(
       /<meta\b[^>]*name=["']referrer["'][^>]*content=["']no-referrer["'][^>]*>/i
@@ -474,7 +609,7 @@ test("admin access updates include both optimistic concurrency fields", () => {
 });
 
 test("both applications load the shared GAS transport before their own scripts", () => {
-  for (const relativePath of ["client/index.html", "admin/index.html"]) {
+  for (const relativePath of ["client/index.html", "admin/index.html", "admin/points.html"]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const sharedIndex = html.indexOf('../shared/gas-api.js');
     const appIndex = html.indexOf('src="script.js"');
@@ -502,13 +637,15 @@ test("deployment guides document two independent GAS deployments and Sheet-based
 });
 
 test("admin UI distinguishes pending approval from forbidden access", () => {
-  const html = fs.readFileSync(path.join(root, "admin/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
-  assert.match(html, /id="pending-state"/);
-  assert.match(html, /id="pending-refresh-button"/);
-  assert.match(html, /id="pending-logout-button"/);
-  assert.match(html, /Admins/);
+  for (const relativePath of ["admin/index.html", "admin/points.html"]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    assert.match(html, /id="pending-state"/);
+    assert.match(html, /id="pending-refresh-button"/);
+    assert.match(html, /id="pending-logout-button"/);
+    assert.match(html, /Admins/);
+  }
   assert.match(script, /normalized\.code === "ADMIN_PENDING"/);
   assert.match(script, /normalized\.code === "ADMIN_FORBIDDEN"/);
   assert.match(script, /byId\("pending-refresh-button"\)\.addEventListener\("click", boot\)/);

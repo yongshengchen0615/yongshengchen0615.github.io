@@ -280,7 +280,7 @@
         </section>
         <section>
           <span>03</span>
-          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料與點數領取紀錄；點數餘額和防重複領取歷史也會一併清除，重新加入後可能再次領取尚未到期的舊 QR。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料與點數領取紀錄；點數餘額和防重複領取歷史也會一併清除，重新加入後可能依規則再次領取仍有效的舊 QR。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
@@ -351,29 +351,13 @@
           <p class="eyebrow">POINT CLAIM</p>
           <h2 id="claim-dialog-title">領取會員點數</h2>
         </div>
-        <button class="icon-button" id="claim-close-button" type="button" aria-label="關閉點數領取視窗">×</button>
       </div>
 
-      <p class="claim-description" id="claim-dialog-description">每張 QR 活動每位會員只能領取一次，點數以後台設定為準。</p>
-
-      <section class="claim-state claim-preview-state" id="claim-preview-state" role="status" aria-live="polite" hidden>
-        <span class="claim-symbol" aria-hidden="true">+</span>
-        <p>本次可領取</p>
-        <strong><span id="claim-preview-points">0</span> 點</strong>
-        <small id="claim-preview-label">點數活動</small>
-        <p class="claim-expiry">領取期限：<time id="claim-preview-expiry">—</time></p>
-        <div class="claim-actions">
-          <button class="secondary-button" id="claim-preview-cancel-button" type="button">稍後再說</button>
-          <button class="primary-button" id="claim-confirm-button" type="button">
-            <span>確認領取</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
-          </button>
-        </div>
-      </section>
+      <p class="claim-description" id="claim-dialog-description">領取期限與是否可重複，以管理員建立 QR 時的規則為準。</p>
 
       <section class="claim-state claim-loading-state" id="claim-loading-state" role="status" aria-live="polite">
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
-        <strong>正在確認 QR 領取資格</strong>
+        <strong>正在加入會員點數</strong>
         <p>後台正在核對活動與會員身分，請稍候。</p>
       </section>
 
@@ -382,15 +366,16 @@
         <p>點數領取完成</p>
         <strong>+<span id="claim-success-points">0</span> 點</strong>
         <small>目前共有 <b id="claim-success-balance">0</b> 點</small>
-        <button class="primary-button full-width" id="claim-success-close-button" type="button"><span>完成</span></button>
+        <p class="claim-result-note" id="claim-success-note">這張 QR 已完成領取。</p>
+        <button class="primary-button full-width" id="claim-success-close-button" type="button"><span>確認</span></button>
       </section>
 
       <section class="claim-state claim-duplicate-state" id="claim-duplicate-state" role="status" aria-live="polite" hidden>
         <span class="claim-symbol claim-symbol-muted" aria-hidden="true">✓</span>
-        <p>這張 QR 已領取過</p>
-        <strong>沒有重複加點</strong>
+        <p id="claim-duplicate-title">這張 QR 已領取過</p>
+        <strong id="claim-duplicate-message">沒有重複加點</strong>
         <small>目前共有 <b id="claim-duplicate-balance">0</b> 點</small>
-        <button class="secondary-button full-width" id="claim-duplicate-close-button" type="button">返回會員中心</button>
+        <button class="secondary-button full-width" id="claim-duplicate-close-button" type="button">確認</button>
       </section>
 
       <section class="claim-state claim-error-state" id="claim-error-state" role="alert" hidden>
@@ -398,7 +383,7 @@
         <p>目前無法領取點數</p>
         <strong id="claim-error-message">這張 QR 無效或已過期。</strong>
         <div class="claim-actions">
-          <button class="secondary-button" id="claim-error-close-button" type="button">返回會員中心</button>
+          <button class="secondary-button" id="claim-error-close-button" type="button">確認</button>
           <button class="primary-button" id="claim-retry-button" type="button"><span>重新確認</span></button>
         </div>
       </section>

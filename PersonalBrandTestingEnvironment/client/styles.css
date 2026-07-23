@@ -1381,6 +1381,24 @@ code {
   letter-spacing: 0.04em;
 }
 
+.claim-rule,
+.claim-result-note {
+  max-width: 24rem;
+  margin-top: 0.55rem !important;
+}
+
+.claim-rule {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--line);
+  color: var(--ink) !important;
+  background: rgba(16, 39, 29, 0.035);
+  font-weight: 650;
+}
+
+.claim-result-note {
+  margin-top: 1rem !important;
+}
+
 .claim-actions {
   width: 100%;
   display: grid;

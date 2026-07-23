@@ -76,7 +76,7 @@
           </dl>
           <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，另建立三張點數工作表；不要只升級其中一套 GAS。</p>
+          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，並在三張點數工作表尾端追加規則快照欄位；舊活動會回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
         </div>
       </section>
 
@@ -89,6 +89,7 @@
             <li>管理 LIFF：<code>2010791619-vhevCvvD</code>，Endpoint 為 <code>https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/</code></li>
             <li>兩個 LIFF 都要勾選 <code>openid</code> 與 <code>profile</code></li>
           </ul>
+          <p>點數管理頁 <code>admin/points.html</code> 使用同一個管理 LIFF 與同一份 <code>admin/config.json</code>；不需要再建立第三個 LIFF App。</p>
           <p><a href="client/config.json" target="_blank">client/config.json</a> 保留會員 LIFF ID 與既有會員 GAS URL。把 <a href="admin/config.json" target="_blank">admin/config.json</a> 的 <code>YOUR_ADMIN_GAS_WEB_APP_URL</code> 換成新管理 GAS 的 <code>/exec</code> URL。</p>
           <pre><code>client/config.json → 會員 GAS /exec
 admin/config.json  → 管理 GAS /exec</code></pre>
@@ -113,8 +114,9 @@ admin/config.json  → 管理 GAS /exec</code></pre>
         <span>06</span>
         <div>
           <h2>建立點數 QR</h2>
-          <p>以已核准的管理員登入後台，先新增 1～9999 的整數點數類型，再選擇類型與未來到期時間（最長 366 天）產生 QR Code。QR 由瀏覽器本機產生，不會把領點網址送給第三方圖片服務。</p>
-          <p>會員掃描後會先看到活動點數與期限，按下「確認領取」才寫入 <code>PointRedemptions</code>。同一活動每位會員只能領取一次；同一 QR 可由多位已核准會員使用，也可能被轉傳，因此請設定合理期限。</p>
+          <p>以已核准的管理員登入後台，從「點數管理」前往 <code>admin/points.html</code>，輸入 1～9999 的整數點數，設定有期限／無期限及可重複／不可重複後新增類型。有期限類型再選未來到期時間（最長 366 天）；無期限類型可直接產生 QR Code。QR 由瀏覽器本機產生，不會把領點網址送給第三方圖片服務。</p>
+          <p>會員掃描並完成登入後會直接領取點數，完成畫面按「確認」即可關閉。可重複類型需重新掃描才可再領；同一次網路重送不會重複加點。刪除類型只會阻止新 QR，既有 QR 仍依快照運作。</p>
+          <p><strong>注意：</strong>無期限且可重複的 QR 若被轉傳，任何有效會員都能反覆掃描領點；需要停止時，請把對應 <code>PointCampaigns.status</code> 改為 <code>inactive</code>。</p>
           <pre><code>PointTypes       → 點數類型
 PointCampaigns   → QR 活動與 claim hash
 PointRedemptions → 會員領取紀錄與餘額</code></pre>

@@ -16,6 +16,8 @@
     "pointAmount",
     "pointTypeId",
     "expiresAt",
+    "expiryMode",
+    "redemptionMode",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
@@ -66,10 +68,19 @@
 
   function sendRequest(options) {
     options = options || {};
+    var requestId =
+      options.requestId === undefined || options.requestId === null
+        ? createRequestId()
+        : String(options.requestId || "").trim();
+    if (!/^[a-zA-Z0-9-]{10,80}$/.test(requestId)) {
+      return Promise.reject(
+        createError("INVALID_REQUEST_ID", "請求識別碼格式不正確。")
+      );
+    }
     var request = {
       action: String(options.action || ""),
       idToken: String(options.idToken || ""),
-      requestId: createRequestId(),
+      requestId: requestId,
       callbackOrigin: getCallbackOrigin(),
       context: options.context && typeof options.context === "object" ? options.context : {},
       transport: "fetch",
@@ -296,6 +307,7 @@
     loadConfig: loadConfig,
     sendRequest: sendRequest,
     isValidGasUrl: isValidGasUrl,
+    createRequestId: createRequestId,
     createError: createError,
   });
 })();
