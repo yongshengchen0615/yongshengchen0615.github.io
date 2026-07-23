@@ -161,9 +161,16 @@ test("client member profile displays editable phone and birthday details", () =>
 test("client profile dialog submits phone and birthday through the profile update action", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
   const dialog = /<dialog\b[^>]*id="profile-dialog"[\s\S]*?<\/dialog>/.exec(html);
+  const profileInputStyles =
+    /\.profile-field input\s*\{([\s\S]*?)\}/.exec(styles);
+  const mobileDateStyles =
+    /\.profile-field input\[type=["']date["']\]\s*\{([\s\S]*?)\}/.exec(styles);
 
   assert.ok(dialog, "client profile edit dialog must exist");
+  assert.ok(profileInputStyles, "profile inputs must have a shared layout rule");
+  assert.ok(mobileDateStyles, "date input must have an iOS-safe layout rule");
   assert.match(dialog[0], /<form\b[^>]*id="profile-form"/);
   assert.match(dialog[0], /<input\b[^>]*id="profile-phone-input"[^>]*>/);
   assert.match(
@@ -179,6 +186,14 @@ test("client profile dialog submits phone and birthday through the profile updat
     dialog[0],
     /<button\b[^>]*id="profile-save-button"[^>]*type="submit"|<button\b[^>]*type="submit"[^>]*id="profile-save-button"/
   );
+  assert.match(profileInputStyles[1], /display\s*:\s*block/);
+  assert.match(profileInputStyles[1], /width\s*:\s*100%/);
+  assert.match(profileInputStyles[1], /min-width\s*:\s*0/);
+  assert.match(profileInputStyles[1], /max-width\s*:\s*100%/);
+  assert.match(profileInputStyles[1], /height\s*:\s*3\.5rem/);
+  assert.match(mobileDateStyles[1], /padding-inline\s*:\s*0/);
+  assert.match(mobileDateStyles[1], /text-align\s*:\s*left/);
+  assert.match(mobileDateStyles[1], /text-indent\s*:\s*0\.45rem/);
 
   assert.match(
     script,
