@@ -558,6 +558,8 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
   assert.match(redeem, /sendPointClaimMessage\s*\(/);
   assert.match(script, /scanCodeV2\s*;/);
+  assert.match(script, /isApiAvailable\(["']scanCodeV2["']\)/);
+  assert.match(script, /SCAN_QR_UNAVAILABLE/);
   assert.match(script, /extractPointClaimFromQr\s*\(/);
   assert.match(script, /storePendingPointClaim\s*\(/);
   assert.match(script, /INVALID_POINT_QR/);

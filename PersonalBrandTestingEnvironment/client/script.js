@@ -368,8 +368,11 @@
     }
 
     var scanner = window.liff && window.liff.scanCodeV2;
-    if (typeof scanner !== "function") {
-      showToast("目前無法使用 QR 掃描器，請在 LINE Developers 開啟 Scan QR。", "error");
+    if (!isPointScannerAvailable()) {
+      showToast(
+        "目前 LIFF 未開放 QR 掃描，請在 LINE Developers 開啟 Scan QR，並將 LIFF Size 設為 Full。",
+        "error"
+      );
       return;
     }
 
@@ -403,6 +406,22 @@
         isPointScannerBusy = false;
         setButtonBusy(button, false);
       });
+  }
+
+  function isPointScannerAvailable() {
+    if (!window.liff || typeof window.liff.scanCodeV2 !== "function") {
+      return false;
+    }
+
+    if (typeof window.liff.isApiAvailable !== "function") {
+      return true;
+    }
+
+    try {
+      return window.liff.isApiAvailable("scanCodeV2") === true;
+    } catch (_error) {
+      return false;
+    }
   }
 
   function extractPointClaimFromQr(value) {
@@ -1430,11 +1449,14 @@
   function normalizeClientError(error) {
     var code = error && (error.code || error.name);
     var message = error && error.message;
+    var errorText = String(code || "") + " " + String(message || "");
     var knownMessages = {
       INVALID_TOKEN: "LINE 登入憑證無效或已過期，請重新登入後再試。",
       INVALID_ID_TOKEN: "LINE 登入憑證已失效，請重新登入後再試。",
       MISSING_ID_TOKEN: "沒有取得 LINE 登入憑證。請確認 LIFF 已勾選 openid 權限。",
       INVALID_POINT_QR: "這不是有效的會員點數 QR Code，請重新掃描。",
+      SCAN_QR_UNAVAILABLE:
+        "目前 LIFF 未開放 QR 掃描，請在 LINE Developers 開啟 Scan QR，並將 LIFF Size 設為 Full。",
       CONFIG_ERROR: "GAS 後台尚未完成設定，請檢查 Script Properties。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許，請檢查 ALLOWED_ORIGINS。",
       SPREADSHEET_ERROR: "會員試算表目前無法使用，請檢查試算表 ID 與權限。",
@@ -1454,6 +1476,10 @@
       POINT_SCHEMA_MISMATCH: "點數資料表格式不正確，請聯絡管理員。",
       INVALID_RESPONSE: "後台回傳的資料格式不完整，請稍後再試。",
     };
+
+    if (/(subwindowopen|scancodev2|no permission for liff)/i.test(errorText)) {
+      code = "SCAN_QR_UNAVAILABLE";
+    }
 
     if (knownMessages[code]) message = knownMessages[code];
 
