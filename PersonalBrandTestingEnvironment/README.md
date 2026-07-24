@@ -44,6 +44,8 @@ PersonalBrandTestingEnvironment/
 │   └── config.json
 ├── shared/
 │   ├── gas-api.js             # 兩端共用的跨網域傳輸
+│   ├── liff-runtime.js        # 兩端共用的 LIFF 環境與公開設定檢查
+│   ├── lottery-wheel.js       # 管理端與會員端共用的轉盤 Canvas 繪製
 │   └── qr-code.js             # 管理端本機 QR SVG／PNG 產生器
 ├── gas/
 │   ├── client/                # 處理會員登入、個人資料、領點、抽獎與刪除資料
@@ -54,6 +56,8 @@ PersonalBrandTestingEnvironment/
 │       └── appsscript.json
 └── tests/
 ```
+
+程式邊界、資料所有權、安全設計與後續拆分順序請參考 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 本機預覽
 
@@ -70,6 +74,12 @@ python3 -m http.server 8080
 - 管理端轉盤頁預覽：[http://localhost:8080/admin/lottery.html?demo=1](http://localhost:8080/admin/lottery.html?demo=1)
 
 展示模式不會把資料送到 GAS。真實登入必須使用公開 HTTPS Endpoint。
+
+全部自動測試可直接用 Node.js 內建測試工具執行：
+
+```bash
+node --test tests/*.test.js
+```
 
 ## 1. 建立共用 Google Spreadsheet
 

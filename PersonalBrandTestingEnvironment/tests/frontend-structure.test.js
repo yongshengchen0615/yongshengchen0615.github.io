@@ -960,7 +960,7 @@ test("admin access updates include both optimistic concurrency fields", () => {
   assert.match(adminScript, /expectedAccessUpdatedAt:\s*member\.accessUpdatedAt/);
 });
 
-test("both applications load the shared GAS transport before their own scripts", () => {
+test("both applications load shared runtime modules before their own scripts", () => {
   for (const [relativePath, scriptName] of [
     ["client/index.html", "script.js"],
     ["client/lottery.html", "lottery.js"],
@@ -969,12 +969,40 @@ test("both applications load the shared GAS transport before their own scripts",
     ["admin/lottery.html", "script.js"],
   ]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
-    const sharedIndex = html.indexOf('../shared/gas-api.js');
+    const transportIndex = html.indexOf('../shared/gas-api.js');
+    const runtimeIndex = html.indexOf('../shared/liff-runtime.js');
     const appIndex = html.indexOf(`src="${scriptName}"`);
-    assert.notEqual(sharedIndex, -1);
+    assert.notEqual(transportIndex, -1);
+    assert.notEqual(runtimeIndex, -1);
     assert.notEqual(appIndex, -1);
-    assert.equal(sharedIndex < appIndex, true, `${relativePath} must load shared transport first`);
+    assert.equal(
+      transportIndex < appIndex && runtimeIndex < appIndex,
+      true,
+      `${relativePath} must load shared runtime modules first`
+    );
   }
+
+  for (const relativePath of ["client/lottery.html", "admin/lottery.html"]) {
+    const html = fs.readFileSync(path.join(root, relativePath), "utf8");
+    const wheelIndex = html.indexOf('../shared/lottery-wheel.js');
+    const appIndex = html.indexOf(
+      relativePath.startsWith("client/") ? 'src="lottery.js"' : 'src="script.js"'
+    );
+    assert.notEqual(wheelIndex, -1);
+    assert.equal(wheelIndex < appIndex, true, `${relativePath} must preload the wheel renderer`);
+  }
+});
+
+test("member home no longer contains the retired embedded lottery implementation", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+
+  assert.doesNotMatch(html, /id=["']lottery-dialog["']/);
+  assert.doesNotMatch(script, /function\s+(?:openLottery|handleLotterySpin|drawMemberLotteryWheel)\s*\(/);
+  assert.doesNotMatch(script, /persona-member-lottery-request/);
+  assert.doesNotMatch(styles, /\.lottery-modal\b/);
+  assert.doesNotMatch(styles, /\.member-lottery-stage\b/);
 });
 
 test("deployment guides document two independent GAS deployments and Sheet-based admin approval", () => {

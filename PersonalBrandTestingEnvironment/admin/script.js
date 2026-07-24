@@ -64,7 +64,11 @@
   }
 
   function loadConfig() {
-    if (!window.MemberApi) {
+    if (
+      !window.MemberApi ||
+      !window.LiffRuntime ||
+      (ADMIN_PAGE === "lottery" && !window.LotteryWheel)
+    ) {
       return Promise.reject(createError("CLIENT_LIBRARY_ERROR", "無法載入後台連線元件。"));
     }
     return window.MemberApi
@@ -1643,61 +1647,9 @@
 
   function drawAdminLotteryWheel() {
     var canvas = byId("admin-lottery-wheel");
-    if (!canvas || typeof canvas.getContext !== "function") return;
-    var context = canvas.getContext("2d");
-    if (!context) return;
-    var size = 720;
-    var center = size / 2;
-    var radius = center - 12;
-    var count = lotteryPrizes.length || 1;
-    var sector = (Math.PI * 2) / count;
-    canvas.width = size;
-    canvas.height = size;
-    context.clearRect(0, 0, size, size);
-
-    lotteryPrizes.forEach(function (prize, index) {
-      var start = -Math.PI / 2 + index * sector;
-      var end = start + sector;
-      context.beginPath();
-      context.moveTo(center, center);
-      context.arc(center, center, radius, start, end);
-      context.closePath();
-      context.fillStyle = /^#[0-9A-F]{6}$/i.test(prize.color)
-        ? prize.color
-        : "#D9D6CC";
-      context.fill();
-      context.strokeStyle = "rgba(243, 240, 231, 0.9)";
-      context.lineWidth = 5;
-      context.stroke();
-
-      context.save();
-      context.translate(center, center);
-      context.rotate(start + sector / 2);
-      context.textAlign = "right";
-      context.textBaseline = "middle";
-      context.font = count > 8 ? "600 22px sans-serif" : "600 28px sans-serif";
-      context.fillStyle = lotteryTextColor(prize.color);
-      context.fillText(String(prize.label || "未命名").slice(0, 10), radius - 44, 0);
-      context.restore();
+    window.LotteryWheel.draw(canvas, lotteryPrizes, {
+      separatorColor: "rgba(243, 240, 231, 0.9)",
     });
-
-    context.beginPath();
-    context.arc(center, center, radius, 0, Math.PI * 2);
-    context.strokeStyle = "#0B3C2C";
-    context.lineWidth = 10;
-    context.stroke();
-  }
-
-  function lotteryTextColor(color) {
-    var match = /^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i.exec(
-      String(color || "")
-    );
-    if (!match) return "#0B3C2C";
-    var luminance =
-      Number.parseInt(match[1], 16) * 0.299 +
-      Number.parseInt(match[2], 16) * 0.587 +
-      Number.parseInt(match[3], 16) * 0.114;
-    return luminance < 145 ? "#FFFFFF" : "#0B3C2C";
   }
 
   function showLotteryConfigError(message) {
@@ -3187,33 +3139,11 @@
   }
 
   function getLiffContext() {
-    var context = {};
-    try {
-      var liffContext = window.liff.getContext() || {};
-      context.type = cleanContextValue(liffContext.type);
-      context.viewType = cleanContextValue(liffContext.viewType);
-      context.os = cleanContextValue(window.liff.getOS());
-      context.language = cleanContextValue(
-        typeof window.liff.getAppLanguage === "function"
-          ? window.liff.getAppLanguage()
-          : window.navigator.language
-      );
-      context.inClient = Boolean(window.liff.isInClient());
-    } catch (_error) {
-      context.os = cleanContextValue(window.navigator.platform);
-      context.language = cleanContextValue(window.navigator.language);
-    }
-    return context;
-  }
-
-  function cleanContextValue(value) {
-    return String(value || "").trim().slice(0, 40);
+    return window.LiffRuntime.getContext(window.liff, window.navigator);
   }
 
   function hasCompleteConfig() {
-    var liffId = String(CONFIG.LIFF_ID || "").trim();
-    if (!liffId || /YOUR_|請填入|REPLACE/i.test(liffId)) return false;
-    return Boolean(window.MemberApi && window.MemberApi.isValidGasUrl(CONFIG.GAS_WEB_APP_URL));
+    return window.LiffRuntime.hasCompleteConfig(CONFIG, window.MemberApi);
   }
 
   function getConfiguredPageSize() {
@@ -3229,7 +3159,7 @@
   }
 
   function hasDemoQuery() {
-    return new URLSearchParams(window.location.search).get("demo") === "1";
+    return window.LiffRuntime.hasDemoQuery(window.location.search);
   }
 
   function applyBrand() {

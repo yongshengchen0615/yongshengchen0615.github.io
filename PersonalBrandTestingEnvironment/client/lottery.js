@@ -54,7 +54,7 @@
   }
 
   function loadConfig() {
-    if (!window.MemberApi) {
+    if (!window.MemberApi || !window.LiffRuntime || !window.LotteryWheel) {
       return Promise.reject(createError("CLIENT_LIBRARY_ERROR", "無法載入會員連線元件。"));
     }
     return window.MemberApi
@@ -707,7 +707,7 @@
       var canvas = document.createElement("canvas");
       canvas.width = 720;
       canvas.height = 720;
-      if (renderWheelCanvas(canvas, type.lottery.prizes)) {
+      if (window.LotteryWheel.draw(canvas, type.lottery.prizes)) {
         wheelRenderCache[type.lotteryTypeId] = canvas;
       }
     });
@@ -726,57 +726,7 @@
       context.drawImage(cached, 0, 0);
       return;
     }
-    renderWheelCanvas(canvas, prizes);
-  }
-
-  function renderWheelCanvas(canvas, prizes) {
-    if (!canvas || typeof canvas.getContext !== "function") return false;
-    var context = canvas.getContext("2d");
-    if (!context) return false;
-    var size = 720;
-    var center = size / 2;
-    var radius = center - 12;
-    var sector = (Math.PI * 2) / prizes.length;
-    canvas.width = size;
-    canvas.height = size;
-    context.clearRect(0, 0, size, size);
-    prizes.forEach(function (prize, index) {
-      var start = -Math.PI / 2 + index * sector;
-      context.beginPath();
-      context.moveTo(center, center);
-      context.arc(center, center, radius, start, start + sector);
-      context.closePath();
-      context.fillStyle = prize.color;
-      context.fill();
-      context.strokeStyle = "rgba(243, 240, 231, 0.92)";
-      context.lineWidth = 5;
-      context.stroke();
-      context.save();
-      context.translate(center, center);
-      context.rotate(start + sector / 2);
-      context.textAlign = "right";
-      context.textBaseline = "middle";
-      context.font = prizes.length > 8 ? "600 22px sans-serif" : "600 28px sans-serif";
-      context.fillStyle = lotteryTextColor(prize.color);
-      context.fillText(prize.label.slice(0, 10), radius - 44, 0);
-      context.restore();
-    });
-    context.beginPath();
-    context.arc(center, center, radius, 0, Math.PI * 2);
-    context.strokeStyle = "#0B3C2C";
-    context.lineWidth = 10;
-    context.stroke();
-    return true;
-  }
-
-  function lotteryTextColor(color) {
-    var match = /^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i.exec(color);
-    if (!match) return "#0B3C2C";
-    var luminance =
-      Number.parseInt(match[1], 16) * 0.299 +
-      Number.parseInt(match[2], 16) * 0.587 +
-      Number.parseInt(match[3], 16) * 0.114;
-    return luminance < 145 ? "#FFFFFF" : "#0B3C2C";
+    window.LotteryWheel.draw(canvas, prizes);
   }
 
   function handleDraw() {
@@ -1858,36 +1808,11 @@
   }
 
   function getLiffContext() {
-    var context = {};
-    try {
-      var liffContext = window.liff.getContext() || {};
-      context.type = cleanContextValue(liffContext.type);
-      context.viewType = cleanContextValue(liffContext.viewType);
-      context.os = cleanContextValue(window.liff.getOS());
-      context.language = cleanContextValue(
-        typeof window.liff.getAppLanguage === "function"
-          ? window.liff.getAppLanguage()
-          : window.navigator.language
-      );
-      context.inClient = Boolean(window.liff.isInClient());
-    } catch (_error) {
-      context.os = cleanContextValue(window.navigator.platform);
-      context.language = cleanContextValue(window.navigator.language);
-    }
-    return context;
-  }
-
-  function cleanContextValue(value) {
-    return String(value || "").trim().slice(0, 40);
+    return window.LiffRuntime.getContext(window.liff, window.navigator);
   }
 
   function hasCompleteConfig() {
-    var liffId = String(CONFIG.LIFF_ID || "").trim();
-    return (
-      liffId &&
-      !/YOUR_|請填入|REPLACE/i.test(liffId) &&
-      window.MemberApi.isValidGasUrl(CONFIG.GAS_WEB_APP_URL)
-    );
+    return window.LiffRuntime.hasCompleteConfig(CONFIG, window.MemberApi);
   }
 
   function applyBrand() {
@@ -1951,7 +1876,7 @@
   }
 
   function hasDemoQuery() {
-    return new URLSearchParams(window.location.search).get("demo") === "1";
+    return window.LiffRuntime.hasDemoQuery(window.location.search);
   }
 
   function createError(code, message) {

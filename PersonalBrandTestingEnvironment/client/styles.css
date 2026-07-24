@@ -1805,24 +1805,6 @@ code {
     var(--green-deep);
 }
 
-.lottery-modal {
-  width: min(calc(100% - 1.5rem), 40rem);
-  max-height: min(94svh, 56rem);
-}
-
-.lottery-description {
-  margin: 1.2rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.76rem;
-  line-height: 1.7;
-}
-
-.lottery-state {
-  min-height: 22rem;
-}
-
-.lottery-loading-state,
-.lottery-error-state,
 .lottery-result-state {
   display: grid;
   align-content: center;
@@ -1831,54 +1813,11 @@ code {
   text-align: center;
 }
 
-.lottery-loading-state > p,
-.lottery-error-state > p,
 .lottery-result-state > p {
   margin: 0;
   color: var(--ink-soft);
   font-size: 0.76rem;
   line-height: 1.65;
-}
-
-.lottery-loading-state > strong {
-  margin-bottom: 0.45rem;
-}
-
-.lottery-ready-state {
-  padding-top: 1.35rem;
-}
-
-.member-lottery-balance {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 0.2rem 1rem;
-  padding-bottom: 0.8rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.member-lottery-balance > span,
-.member-lottery-balance small {
-  color: var(--ink-faint);
-  font-size: 0.68rem;
-}
-
-.member-lottery-balance strong {
-  font-size: 1.2rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.member-lottery-balance small {
-  grid-column: 1 / -1;
-}
-
-.member-lottery-stage {
-  position: relative;
-  width: min(100%, 25rem);
-  aspect-ratio: 1;
-  display: grid;
-  margin: 1.1rem auto 1.25rem;
-  place-items: center;
 }
 
 .member-lottery-rotor {
@@ -1972,13 +1911,6 @@ code {
 
 .lottery-balance-summary {
   margin-block: 1.7rem 1.2rem;
-}
-
-.lottery-error-state > strong {
-  max-width: 26rem;
-  margin: 0.5rem 0 0;
-  font-size: 1rem;
-  line-height: 1.65;
 }
 
 .lottery-page-main {
@@ -3178,10 +3110,6 @@ code {
     max-height: calc(100svh - 1rem);
   }
 
-  .lottery-modal {
-    padding: 1.2rem;
-  }
-
   .lottery-page-header .brand small {
     display: none;
   }
@@ -3273,10 +3201,6 @@ code {
     width: clamp(5.5rem, 27%, 7rem);
     border-width: 0.34rem;
     font-size: 0.74rem;
-  }
-
-  .member-lottery-stage {
-    width: min(78vw, 23rem);
   }
 
   .lottery-result-state {
