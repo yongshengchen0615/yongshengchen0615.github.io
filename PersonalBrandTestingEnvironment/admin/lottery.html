@@ -155,27 +155,32 @@
 
           <section class="lottery-type-panel" aria-labelledby="lottery-type-title">
             <div>
-              <p class="eyebrow">LOTTERY TYPES</p>
-              <h2 id="lottery-type-title">轉盤抽獎類型</h2>
-              <p>每個類型有獨立獎項設定；刪除後仍保留過去抽獎紀錄。</p>
+              <p class="eyebrow">WHEEL LIBRARY</p>
+              <h2 id="lottery-type-title">管理轉盤</h2>
+              <p>選擇既有轉盤進行編輯，或從空白設定新增一個完整轉盤。</p>
             </div>
             <label class="lottery-type-select-field" for="lottery-type-select">
               <span>目前編輯</span>
               <select id="lottery-type-select"></select>
             </label>
-            <form class="lottery-type-create" id="lottery-type-form" novalidate>
-              <label for="lottery-type-name-input">新增類型</label>
-              <div>
-                <input id="lottery-type-name-input" type="text" maxlength="40" placeholder="例如：生日限定轉盤" required />
-                <button class="secondary-button" id="create-lottery-type-button" type="submit">新增</button>
-              </div>
-            </form>
-            <button class="danger-button lottery-type-delete" id="delete-lottery-type-button" type="button">刪除目前類型</button>
-            <p id="lottery-empty-types" hidden>目前沒有轉盤類型，請先新增一個類型。</p>
+            <div class="lottery-library-actions">
+              <button class="secondary-button" id="new-lottery-type-button" type="button">＋ 新增轉盤</button>
+              <button class="danger-button lottery-type-delete" id="delete-lottery-type-button" type="button">刪除目前轉盤</button>
+            </div>
           </section>
         </section>
 
-        <section class="lottery-workspace" aria-labelledby="lottery-config-title">
+        <section class="lottery-empty-state" id="lottery-empty-state" aria-labelledby="lottery-empty-title" hidden>
+          <p class="eyebrow">NO WHEELS YET</p>
+          <h2 id="lottery-empty-title">目前還沒有轉盤</h2>
+          <p>新增第一個轉盤，設定名稱、獎項、顏色與機率後一次儲存。</p>
+          <button class="primary-button" id="start-create-lottery-button" type="button">
+            <span>新增第一個轉盤</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </button>
+        </section>
+
+        <section class="lottery-workspace" id="lottery-editor" aria-labelledby="lottery-config-title" hidden>
           <div class="lottery-preview-panel">
             <div class="lottery-wheel-stage" aria-label="轉盤色塊預覽">
               <span class="lottery-preview-pointer" aria-hidden="true"></span>
@@ -186,7 +191,7 @@
             </div>
             <div class="lottery-preview-copy">
               <p class="eyebrow">LIVE PREVIEW</p>
-              <h2>到達節點，獲得一次抽獎</h2>
+              <h2 id="lottery-preview-name">尚未命名的轉盤</h2>
               <p>一張卡可有多個抽獎節點；抽獎不扣累計點數，結果由後台依設定機率決定。</p>
               <dl>
                 <div><dt>目前版本</dt><dd id="lottery-config-version">尚未儲存</dd></div>
@@ -198,9 +203,9 @@
           <form class="lottery-config-panel" id="lottery-config-form" novalidate>
             <header class="lottery-config-heading">
               <div>
-                <p class="eyebrow">PRIZE CONFIGURATION</p>
-                <h2 id="lottery-config-title">轉盤獎項</h2>
-                <p>可設定 2 到 12 個獎項；每個機率最多兩位小數。</p>
+                <p class="eyebrow">WHEEL SETUP</p>
+                <h2 id="lottery-config-title">完整轉盤設定</h2>
+                <p>依序完成名稱與獎項，確認預覽後只需儲存一次。</p>
               </div>
               <button class="refresh-button" id="refresh-lottery-button" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
@@ -208,6 +213,15 @@
               </button>
             </header>
 
+            <label class="lottery-name-field" for="lottery-type-name-input">
+              <span><b>01</b> 轉盤名稱</span>
+              <input id="lottery-type-name-input" type="text" maxlength="40" placeholder="例如：生日限定轉盤" autocomplete="off" required />
+            </label>
+
+            <div class="lottery-prize-section-heading">
+              <span><b>02</b> 獎項、顏色與機率</span>
+              <small>設定 2 到 12 個獎項；機率合計必須為 100%。</small>
+            </div>
             <div class="lottery-prize-labels" aria-hidden="true">
               <span>獎項名稱</span><span>區塊顏色</span><span>中獎機率</span><span>操作</span>
             </div>
@@ -220,7 +234,7 @@
                 <strong><output id="lottery-probability-total">0.00</output>%</strong>
               </p>
               <button class="primary-button" id="save-lottery-button" type="submit">
-                <span>儲存並啟用轉盤</span>
+                <span>儲存完整轉盤</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
               </button>
             </div>

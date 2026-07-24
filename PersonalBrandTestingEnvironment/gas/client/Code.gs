@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.6.0";
+var API_VERSION = "1.7.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -380,8 +380,8 @@ function setup() {
     var pointCardSettingSheet = getOrCreatePointCardSettingSheet_(config);
     var lotteryTypeSheet = getOrCreateLotteryTypeSheet_(config);
     ensureDefaultPointCardSetting_(pointCardSettingSheet);
-    ensureDefaultLotteryType_(lotteryTypeSheet);
     var lotteryPrizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    ensureLotteryTypeForExistingPrizes_(lotteryTypeSheet, lotteryPrizeSheet);
     var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
     migrateDefaultMemberAccess_(sheet);
     applySheetColumnFormats_(sheet);
@@ -2511,10 +2511,26 @@ function ensureDefaultPointCardSetting_(sheet) {
   applyPointCardSettingSheetFormats_(sheet);
 }
 
-function ensureDefaultLotteryType_(sheet) {
-  if (sheet.getLastRow() >= 2) return;
+function ensureLotteryTypeForExistingPrizes_(typeSheet, prizeSheet) {
+  if (typeSheet.getLastRow() >= 2 || prizeSheet.getLastRow() < 2) return;
+  var typeIds = prizeSheet
+    .getRange(
+      2,
+      LOTTERY_PRIZE_COLUMN.lotteryTypeId,
+      prizeSheet.getLastRow() - 1,
+      1
+    )
+    .getDisplayValues();
+  for (var i = 0; i < typeIds.length; i += 1) {
+    if (String(typeIds[i][0] || "") !== DEFAULT_LOTTERY_TYPE_ID) {
+      throw appError_(
+        "LOTTERY_DATA_ERROR",
+        "既有轉盤獎項缺少對應的轉盤類型，請先檢查試算表。"
+      );
+    }
+  }
   var epoch = new Date(0);
-  sheet.appendRow([
+  typeSheet.appendRow([
     DEFAULT_LOTTERY_TYPE_ID,
     safeSheetText_(DEFAULT_LOTTERY_TYPE_NAME),
     "active",
@@ -2525,7 +2541,7 @@ function ensureDefaultLotteryType_(sheet) {
     "",
     "setup-default-type",
   ]);
-  applyLotteryTypeSheetFormats_(sheet);
+  applyLotteryTypeSheetFormats_(typeSheet);
 }
 
 function getOrCreatePointDataSheet_(

@@ -84,7 +84,7 @@
           </dl>
           <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並在 <code>PointCardSettings</code> 追加 <code>reward_milestones</code>；舊規則的空白節點相容為只在滿點抽一次。既有轉盤歸入預設「經典轉盤」，舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
+          <p>全新安裝完成後不會自動建立轉盤，請到管理端轉盤頁按「新增第一個轉盤」，一次填好名稱、獎項、顏色與機率後儲存。若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並在 <code>PointCardSettings</code> 追加 <code>reward_milestones</code>；舊規則的空白節點相容為只在滿點抽一次。只有舊版已有轉盤獎項時，才會建立「經典轉盤」並歸入舊獎項；舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
         </div>
       </section>
 

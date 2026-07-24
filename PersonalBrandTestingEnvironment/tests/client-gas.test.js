@@ -2468,6 +2468,14 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
       ),
     ],
     [
+      "LotteryTypes",
+      createDataSheet(
+        "LotteryTypes",
+        Array.from(gas.LOTTERY_TYPE_HEADERS),
+        []
+      ),
+    ],
+    [
       "PointCardSettings",
       createDataSheet(
         "PointCardSettings",
@@ -2500,7 +2508,9 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
   gas.getOrCreatePointCampaignSheet_(config);
   gas.getOrCreatePointRedemptionSheet_(config);
   gas.getOrCreatePointCardSettingSheet_(config);
-  gas.getOrCreateLotteryPrizeSheet_(config);
+  const lotteryTypeSheet = gas.getOrCreateLotteryTypeSheet_(config);
+  const lotteryPrizeSheet = gas.getOrCreateLotteryPrizeSheet_(config);
+  gas.ensureLotteryTypeForExistingPrizes_(lotteryTypeSheet, lotteryPrizeSheet);
   gas.getOrCreateLotteryDrawSheet_(config);
 
   assert.deepEqual(
@@ -2539,6 +2549,15 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
       .get("LotteryPrizes")
       .rows[0].slice(gas.LEGACY_LOTTERY_PRIZE_HEADERS.length),
     [gas.DEFAULT_LOTTERY_TYPE_ID]
+  );
+  assert.equal(sheets.get("LotteryTypes").rows.length, 1);
+  assert.equal(
+    sheets.get("LotteryTypes").rows[0][gas.LOTTERY_TYPE_COLUMN.lotteryTypeId - 1],
+    gas.DEFAULT_LOTTERY_TYPE_ID
+  );
+  assert.equal(
+    sheets.get("LotteryTypes").rows[0][gas.LOTTERY_TYPE_COLUMN.name - 1],
+    gas.DEFAULT_LOTTERY_TYPE_NAME
   );
   assert.deepEqual(
     sheets
@@ -2584,7 +2603,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.6.0");
+  assert.equal(health.data.version, "1.7.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

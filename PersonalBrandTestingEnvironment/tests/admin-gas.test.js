@@ -650,7 +650,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
     ],
     "5"
   );
-  assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 2);
+  assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(result, "pointClaimSecret"), false);
 });
 
@@ -2034,7 +2034,9 @@ test("approved administrators save an append-only lottery version idempotently",
 
   assert.equal(first.data.duplicate, false);
   assert.equal(second.data.duplicate, true);
+  assert.equal(first.data.created, false);
   assert.equal(first.data.lottery.lotteryTypeId, gas.DEFAULT_LOTTERY_TYPE_ID);
+  assert.equal(first.data.lotteryType.name, gas.DEFAULT_LOTTERY_TYPE_NAME);
   assert.equal(first.data.lottery.configVersion, second.data.lottery.configVersion);
   assert.equal(prizeSheet.data.length, 3);
   assert.deepEqual(
@@ -2049,6 +2051,80 @@ test("approved administrators save an append-only lottery version idempotently",
       .map((row) => row[gas.LOTTERY_PRIZE_COLUMN.probabilityBasisPoints - 1]),
     [7000, 3000]
   );
+});
+
+test("administrators create and rename a complete wheel with the same save action", () => {
+  const gas = createGasContext();
+  const typeSheet = createSheet("LotteryTypes", gas.LOTTERY_TYPE_HEADERS, []);
+  const prizeSheet = createSheet("LotteryPrizes", gas.LOTTERY_PRIZE_HEADERS, []);
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      LotteryTypes: typeSheet,
+      LotteryPrizes: prizeSheet,
+    })
+  );
+  const createRequest = {
+    action: "adminSaveLotteryConfig",
+    requestId: "request-complete-wheel-create-1",
+    lotteryTypeId: "",
+    lotteryTypeName: "生日限定",
+    lotteryPrizes: [
+      { label: "生日禮", color: "#0B3C2C", probability: 20 },
+      { label: "下次再來", color: "#D9D6CC", probability: 80 },
+    ],
+  };
+
+  const first = gas.adminSaveLotteryConfig_(
+    identity(),
+    createRequest,
+    configFor(gas)
+  );
+  const replay = gas.adminSaveLotteryConfig_(
+    identity(),
+    createRequest,
+    configFor(gas)
+  );
+  const lotteryTypeId = first.data.lotteryType.lotteryTypeId;
+
+  assert.match(lotteryTypeId, /^LTY-[A-Z0-9]{10}$/);
+  assert.equal(first.data.created, true);
+  assert.equal(first.data.duplicate, false);
+  assert.equal(first.data.lotteryType.name, "生日限定");
+  assert.equal(first.data.lottery.lotteryTypeId, lotteryTypeId);
+  assert.equal(replay.data.created, true);
+  assert.equal(replay.data.duplicate, true);
+  assert.equal(typeSheet.data.length, 2);
+  assert.equal(prizeSheet.data.length, 3);
+
+  const updateRequest = {
+    ...createRequest,
+    requestId: "request-complete-wheel-update-1",
+    lotteryTypeId,
+    lotteryTypeName: "生日專屬",
+    lotteryPrizes: [
+      { label: "生日大禮", color: "#A44A3F", probability: 10 },
+      { label: "生日禮", color: "#0B3C2C", probability: 30 },
+      { label: "下次再來", color: "#D9D6CC", probability: 60 },
+    ],
+  };
+  const updated = gas.adminSaveLotteryConfig_(
+    identity(),
+    updateRequest,
+    configFor(gas)
+  );
+
+  assert.equal(updated.data.created, false);
+  assert.equal(updated.data.duplicate, false);
+  assert.equal(updated.data.lotteryType.name, "生日專屬");
+  assert.equal(updated.data.lottery.prizes.length, 3);
+  assert.equal(typeSheet.data.length, 2);
+  assert.equal(
+    typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.name - 1],
+    "生日專屬"
+  );
+  assert.equal(prizeSheet.data.length, 6);
 });
 
 test("administrators version point-card totals and reward milestones without rewriting earlier rules", () => {
@@ -2569,7 +2645,15 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   gas.getOrCreatePointCampaignSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointRedemptionSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointCardSettingSheet_(spreadsheet, configFor(gas));
-  gas.getOrCreateLotteryPrizeSheet_(spreadsheet, configFor(gas));
+  const lotteryTypeSheet = gas.getOrCreateLotteryTypeSheet_(
+    spreadsheet,
+    configFor(gas)
+  );
+  const lotteryPrizeSheet = gas.getOrCreateLotteryPrizeSheet_(
+    spreadsheet,
+    configFor(gas)
+  );
+  gas.ensureLotteryTypeForExistingPrizes_(lotteryTypeSheet, lotteryPrizeSheet);
   gas.getOrCreateLotteryDrawSheet_(spreadsheet, configFor(gas));
 
   assert.deepEqual(
@@ -2609,6 +2693,17 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
     spreadsheet.sheets.LotteryPrizes.data[1].slice(legacyPrizeRow.length),
     [gas.DEFAULT_LOTTERY_TYPE_ID]
   );
+  assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 2);
+  assert.equal(
+    spreadsheet.sheets.LotteryTypes.data[1][
+      gas.LOTTERY_TYPE_COLUMN.lotteryTypeId - 1
+    ],
+    gas.DEFAULT_LOTTERY_TYPE_ID
+  );
+  assert.equal(
+    spreadsheet.sheets.LotteryTypes.data[1][gas.LOTTERY_TYPE_COLUMN.name - 1],
+    gas.DEFAULT_LOTTERY_TYPE_NAME
+  );
   assert.deepEqual(
     spreadsheet.sheets.LotteryDraws.data[1].slice(legacyDrawRow.length),
     ["", "", ""]
@@ -2622,7 +2717,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.6.0");
+  assert.equal(response.data.version, "1.7.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

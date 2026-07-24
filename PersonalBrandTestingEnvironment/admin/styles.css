@@ -1670,8 +1670,7 @@ tbody tr[data-busy="true"] {
 
 .lottery-rule-field,
 .lottery-milestone-field,
-.lottery-type-select-field,
-.lottery-type-create {
+.lottery-type-select-field {
   display: grid;
   gap: 0.5rem;
   color: var(--ink-soft);
@@ -1743,8 +1742,7 @@ tbody tr[data-busy="true"] {
   font-size: 0.76rem;
 }
 
-.lottery-type-select-field select,
-.lottery-type-create input {
+.lottery-type-select-field select {
   width: 100%;
   min-height: 48px;
   border: 1px solid var(--line-strong);
@@ -1756,14 +1754,43 @@ tbody tr[data-busy="true"] {
   font-size: 0.82rem;
 }
 
-.lottery-type-create > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.65rem;
+.lottery-library-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .lottery-type-delete {
-  justify-self: start;
+  min-height: 44px;
+}
+
+.lottery-empty-state {
+  margin-top: clamp(3rem, 6vw, 6rem);
+  padding-block: clamp(3rem, 8vw, 7rem);
+  border-block: 1px solid var(--line-strong);
+  text-align: center;
+  animation: state-in 320ms ease-out both;
+}
+
+.lottery-empty-state h2 {
+  margin: 0.55rem 0 0.8rem;
+  color: var(--green-deep);
+  font-size: clamp(2.2rem, 5vw, 5rem);
+  font-weight: 540;
+  letter-spacing: -0.055em;
+}
+
+.lottery-empty-state > p:not(.eyebrow) {
+  max-width: 34rem;
+  margin: 0 auto 1.6rem;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
+
+.lottery-empty-state .primary-button {
+  margin-inline: auto;
 }
 
 .lottery-workspace {
@@ -1771,6 +1798,7 @@ tbody tr[data-busy="true"] {
   grid-template-columns: minmax(19rem, 0.82fr) minmax(30rem, 1.18fr);
   margin-top: clamp(3rem, 6vw, 6rem);
   border-block: 1px solid var(--line-strong);
+  animation: state-in 320ms ease-out both;
 }
 
 .lottery-preview-panel {
@@ -1905,6 +1933,55 @@ tbody tr[data-busy="true"] {
   margin: 0.55rem 0 0;
   color: var(--ink-soft);
   font-size: 0.76rem;
+}
+
+.lottery-name-field {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 2rem;
+  padding-block: 1.2rem;
+  border-block: 1px solid var(--line-strong);
+}
+
+.lottery-name-field > span,
+.lottery-prize-section-heading > span {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
+.lottery-name-field b,
+.lottery-prize-section-heading b {
+  margin-right: 0.5rem;
+  color: var(--green-dark);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.64rem;
+}
+
+.lottery-name-field input {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-bottom: 2px solid var(--green-dark);
+  border-radius: 0;
+  padding: 0.5rem 0;
+  color: var(--green-deep);
+  background: transparent;
+  font: inherit;
+  font-size: clamp(1.3rem, 2.5vw, 2rem);
+  font-weight: 560;
+}
+
+.lottery-prize-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.lottery-prize-section-heading small {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
 }
 
 .lottery-prize-labels,
@@ -2420,8 +2497,7 @@ tbody tr[data-busy="true"] {
     grid-template-columns: 1fr;
   }
 
-  .lottery-rule-meta,
-  .lottery-type-create > div {
+  .lottery-rule-meta {
     grid-template-columns: 1fr;
   }
 
@@ -2434,6 +2510,16 @@ tbody tr[data-busy="true"] {
   .lottery-rule-panel .primary-button,
   .lottery-type-panel .secondary-button,
   .lottery-type-delete {
+    width: 100%;
+  }
+
+  .lottery-library-actions,
+  .lottery-prize-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lottery-empty-state .primary-button {
     width: 100%;
   }
 

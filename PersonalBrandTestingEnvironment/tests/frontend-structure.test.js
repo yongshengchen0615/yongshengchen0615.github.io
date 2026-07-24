@@ -302,10 +302,13 @@ test("admin lottery page configures card milestones, wheel types, prizes, and hi
     "point-card-setting-form",
     "point-card-target-input",
     "point-card-milestones-input",
-    "lottery-type-form",
-    "lottery-type-name-input",
     "lottery-type-select",
+    "new-lottery-type-button",
     "delete-lottery-type-button",
+    "lottery-empty-state",
+    "start-create-lottery-button",
+    "lottery-editor",
+    "lottery-type-name-input",
     "admin-lottery-wheel",
     "lottery-config-form",
     "lottery-prize-list",
@@ -322,9 +325,11 @@ test("admin lottery page configures card milestones, wheel types, prizes, and hi
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
   assert.match(script, /pointCardMilestones:\s*rewardMilestones\.join\(["'],["']\)/);
-  assert.match(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
+  assert.doesNotMatch(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminDeleteLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
+  assert.match(script, /lotteryTypeName:\s*lotteryTypeName/);
+  assert.match(script, /lotteryPrizes:\s*submittedPrizes/);
   assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
   assert.match(script, /totalBasisPoints\s*!==\s*10000/);
   assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
