@@ -25,7 +25,7 @@
       <section class="app-state lottery-page-status" id="loading-state" aria-labelledby="loading-title">
         <p class="eyebrow">POINT CARD LOTTERY</p>
         <h1 id="loading-title">正在讀取集點卡</h1>
-        <p id="loading-message">確認本輪進度與可使用的轉盤類型。</p>
+        <p id="loading-message">確認本張卡進度與可使用的轉盤類型。</p>
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
       </section>
 
@@ -57,8 +57,8 @@
         <header class="lottery-page-title">
           <div>
             <p class="eyebrow">POINT CARD LOTTERY</p>
-            <h1 id="lottery-title">完成一輪，抽獎一次。</h1>
-            <p>抽獎不會扣除累計點數；同一集點輪次只能選一個轉盤抽獎。</p>
+            <h1 id="lottery-title">集到節點，就能抽獎。</h1>
+            <p>一張卡可取得多次抽獎資格；集滿後開始新卡，終身累計點數不會歸零。</p>
           </div>
           <dl class="lottery-total-points">
             <dt>終身累計</dt>
@@ -69,16 +69,17 @@
         <section class="point-card-progress" aria-labelledby="point-card-progress-title">
           <div class="point-card-progress-copy">
             <div>
-              <p class="eyebrow">CURRENT ROUND</p>
-              <h2 id="point-card-progress-title">第 <span id="point-card-round">1</span> 輪集點卡</h2>
+              <p class="eyebrow">CURRENT POINT CARD</p>
+              <h2 id="point-card-progress-title">第 <span id="point-card-round">1</span> 張集點卡</h2>
             </div>
             <strong><output id="point-card-current">0</output> / <output id="point-card-target">5</output> 點</strong>
           </div>
-          <div class="point-card-track" role="progressbar" aria-label="本輪集點進度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+          <div class="point-card-track" role="progressbar" aria-label="本張集點卡進度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
             <span id="point-card-progress-bar"></span>
           </div>
+          <ol class="point-card-milestones" id="point-card-milestones" aria-label="本張卡抽獎節點"></ol>
           <div class="point-card-progress-meta">
-            <p id="point-card-progress-message">再獲得 5 點即可完成本輪。</p>
+            <p id="point-card-progress-message">再獲得 5 點可取得抽獎資格。</p>
             <p>可抽獎 <strong id="available-draw-count">0</strong> 次</p>
           </div>
         </section>
@@ -102,9 +103,9 @@
           <div class="lottery-play-copy">
             <p class="eyebrow">SELECTED LOTTERY</p>
             <h2 id="selected-lottery-name">—</h2>
-            <p id="lottery-play-rule">完成本輪集點後即可抽獎，累計點數保持不變。</p>
+            <p id="lottery-play-rule">到達任一抽獎節點即可抽獎，累計點數保持不變。</p>
             <button class="primary-button lottery-spin-button" id="lottery-spin-button" type="button">
-              <span>使用本輪資格開始抽獎</span>
+              <span>使用一次資格開始抽獎</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
             </button>
             <p class="lottery-spin-status" id="lottery-spin-status" role="status" aria-live="polite"></p>
@@ -114,7 +115,7 @@
     </main>
 
     <footer class="site-footer">
-      <p>ONE DRAW PER COMPLETED ROUND</p>
+      <p>ONE DRAW PER REWARD MILESTONE</p>
       <a class="text-button" href="./" data-member-route>返回會員資料</a>
       <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
     </footer>
@@ -130,7 +131,7 @@
           <div><small>使用資格</small><strong><output>1</output><span> 次</span></strong></div>
           <div><small>抽獎後累計</small><strong><output id="lottery-result-balance">0</output><span> 點</span></strong></div>
         </div>
-        <p class="lottery-result-note">點數沒有扣除；本輪抽獎資格已使用。</p>
+        <p class="lottery-result-note">點數沒有扣除；一個里程碑抽獎資格已使用。</p>
         <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
           <span>確認並返回會員資料</span>
         </button>

@@ -6,7 +6,7 @@
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#edf0e9" />
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="description" content="會員集點卡門檻、轉盤類型、獎項與抽獎紀錄管理" />
+    <meta name="description" content="會員集點卡總點數、抽獎節點、轉盤類型、獎項與抽獎紀錄管理" />
     <title>PERSONA ADMIN｜轉盤抽獎</title>
     <link
       rel="icon"
@@ -112,7 +112,7 @@
           <div>
             <p class="eyebrow">POINT CARD LOTTERY</p>
             <h1 id="dashboard-title">集點卡與轉盤抽獎</h1>
-            <p>設定每輪集點門檻、轉盤類型、獎項色塊與中獎機率。</p>
+            <p>設定集點卡總點數、抽獎節點、轉盤類型、獎項色塊與中獎機率。</p>
           </div>
 
           <div class="admin-identity" aria-label="目前管理員">
@@ -131,13 +131,18 @@
         <section class="lottery-rule-workspace" aria-label="集點卡與轉盤類型設定">
           <form class="lottery-rule-panel" id="point-card-setting-form" novalidate>
             <div>
-              <p class="eyebrow">POINT CARD ROUND</p>
-              <h2>集點卡每輪點數</h2>
-              <p>達到門檻後畫面進度歸零並取得一次抽獎資格，終身累計點數不會扣除。</p>
+              <p class="eyebrow">POINT CARD REWARDS</p>
+              <h2>集點卡與抽獎節點</h2>
+              <p>會員每到一個節點取得一次抽獎資格；集滿後開始新卡，終身累計點數仍完整保留。</p>
             </div>
             <label class="lottery-rule-field" for="point-card-target-input">
-              <span>每輪需要</span>
+              <span>一張卡集滿</span>
               <span><input id="point-card-target-input" type="number" min="1" max="9999" step="1" inputmode="numeric" required /><b>點</b></span>
+            </label>
+            <label class="lottery-milestone-field" for="point-card-milestones-input">
+              <span>抽獎節點</span>
+              <input id="point-card-milestones-input" type="text" inputmode="numeric" maxlength="120" placeholder="例如：5, 10, 15, 20" aria-describedby="point-card-milestones-help" required />
+              <small id="point-card-milestones-help">以逗號分隔，最後一個節點必須等於集點卡總點數。</small>
             </label>
             <dl class="lottery-rule-meta">
               <div><dt>目前規則</dt><dd id="point-card-setting-current">—</dd></div>
@@ -181,8 +186,8 @@
             </div>
             <div class="lottery-preview-copy">
               <p class="eyebrow">LIVE PREVIEW</p>
-              <h2>完成一輪，抽獎一次</h2>
-              <p>抽獎不扣累計點數；色塊等分呈現，結果依設定機率由後台安全決定。</p>
+              <h2>到達節點，獲得一次抽獎</h2>
+              <p>一張卡可有多個抽獎節點；抽獎不扣累計點數，結果由後台依設定機率決定。</p>
               <dl>
                 <div><dt>目前版本</dt><dd id="lottery-config-version">尚未儲存</dd></div>
                 <div><dt>最後更新</dt><dd id="lottery-config-updated-at">—</dd></div>
@@ -228,7 +233,7 @@
             <div>
               <p class="eyebrow">DRAW ACTIVITY</p>
               <h2 id="lottery-history-title">最新抽獎紀錄</h2>
-              <p id="lottery-history-summary">查看會員每輪集點完成後的抽獎結果。</p>
+              <p id="lottery-history-summary">查看會員使用集點卡節點資格的抽獎結果。</p>
             </div>
             <button class="refresh-button" id="refresh-lottery-history-button" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>

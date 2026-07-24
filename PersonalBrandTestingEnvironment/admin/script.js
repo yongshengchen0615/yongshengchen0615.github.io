@@ -607,7 +607,8 @@
         admin: { displayName: "管理員預覽", pictureUrl: "" },
         pointCardSetting: {
           settingVersion: "PCS-PREVIEW00001",
-          targetPoints: 5,
+          targetPoints: 20,
+          rewardMilestones: [5, 10, 15, 20],
           effectiveAt: new Date().toISOString(),
         },
         lotteryTypes: [demoLotteryType()],
@@ -784,6 +785,10 @@
     value = value && typeof value === "object" ? value : {};
     var settingVersion = String(value.settingVersion || "").trim();
     var targetPoints = Number(value.targetPoints);
+    var rewardMilestones = normalizePointCardMilestones(
+      value.rewardMilestones,
+      targetPoints
+    );
     var effectiveAt = String(value.effectiveAt || "").trim();
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
@@ -797,8 +802,44 @@
     return {
       settingVersion: settingVersion,
       targetPoints: targetPoints,
+      rewardMilestones: rewardMilestones,
       effectiveAt: effectiveAt,
     };
+  }
+
+  function normalizePointCardMilestones(value, targetPoints) {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
+      throw createError("INVALID_RESPONSE", "後台回傳的抽獎節點格式不正確。");
+    }
+    var previous = 0;
+    var milestones = value.map(function (item) {
+      var milestone = Number(item);
+      if (
+        !Number.isInteger(milestone) ||
+        milestone <= previous ||
+        milestone > targetPoints
+      ) {
+        throw createError("INVALID_RESPONSE", "後台回傳的抽獎節點格式不正確。");
+      }
+      previous = milestone;
+      return milestone;
+    });
+    if (milestones[milestones.length - 1] !== targetPoints) {
+      throw createError("INVALID_RESPONSE", "最後一個抽獎節點必須等於集點卡總點數。");
+    }
+    return milestones;
+  }
+
+  function parsePointCardMilestonesInput(value, targetPoints) {
+    var parts = String(value || "")
+      .trim()
+      .split(/[\s,，、]+/)
+      .filter(Boolean);
+    var milestones = parts.map(Number);
+    milestones.sort(function (left, right) {
+      return left - right;
+    });
+    return normalizePointCardMilestones(milestones, targetPoints);
   }
 
   function normalizeLotteryTypes(value) {
@@ -875,8 +916,13 @@
   function renderPointCardSetting() {
     if (!pointCardSetting) return;
     byId("point-card-target-input").value = String(pointCardSetting.targetPoints);
+    byId("point-card-milestones-input").value =
+      pointCardSetting.rewardMilestones.join(", ");
     byId("point-card-setting-current").textContent =
-      pointCardSetting.targetPoints + " 點完成一輪";
+      pointCardSetting.targetPoints +
+      " 點一張 · " +
+      pointCardSetting.rewardMilestones.join(" / ") +
+      " 點抽獎";
     byId("point-card-setting-effective").textContent =
       formatDateTime(pointCardSetting.effectiveAt);
   }
@@ -1207,16 +1253,33 @@
     event.preventDefault();
     if (isLotteryMutationLoading) return;
     var input = byId("point-card-target-input");
+    var milestoneInput = byId("point-card-milestones-input");
     var targetPoints = Number(input.value);
     if (!Number.isInteger(targetPoints) || targetPoints < 1 || targetPoints > 9999) {
-      showLotteryConfigError("集點卡每輪點數必須是 1 到 9999 的整數。");
+      showLotteryConfigError("集點卡總點數必須是 1 到 9999 的整數。");
       input.focus();
+      return;
+    }
+    var rewardMilestones;
+    try {
+      rewardMilestones = parsePointCardMilestonesInput(
+        milestoneInput.value,
+        targetPoints
+      );
+    } catch (_error) {
+      showLotteryConfigError(
+        "抽獎節點必須是不重複的整數，最後一個節點需等於 " +
+          targetPoints +
+          " 點。"
+      );
+      milestoneInput.focus();
       return;
     }
     if (isDemoSession) {
       pointCardSetting = {
         settingVersion: "PCS-PREVIEW00002",
         targetPoints: targetPoints,
+        rewardMilestones: rewardMilestones,
         effectiveAt: new Date().toISOString(),
       };
       renderPointCardSetting();
@@ -1228,6 +1291,7 @@
     updateOperationControls();
     sendAdminRequest("adminSavePointCardSetting", {
       pointCardTarget: targetPoints,
+      pointCardMilestones: rewardMilestones.join(","),
     })
       .then(function (response) {
         assertSuccessfulResponse(response);
@@ -1239,7 +1303,7 @@
         showToast(
           response.data.changed === false
             ? "集點卡規則未變更"
-            : "新的集點卡輪次規則已啟用"
+            : "新的集點卡與抽獎節點已啟用"
         );
       })
       .catch(function (error) {
@@ -1533,7 +1597,7 @@
         lotteryDraws.length +
         " 筆抽獎紀錄" +
         (lotteryDrawsHaveMore ? "（僅顯示最新 50 筆）" : "")
-      : "查看會員每輪集點完成後的抽獎結果。";
+      : "查看會員使用集點卡節點資格的抽獎結果。";
 
     lotteryDraws.forEach(function (draw) {
       var item = document.createElement("li");
@@ -1558,7 +1622,7 @@
       time.textContent = formatDateTime(draw.drawnAt);
       balance.textContent =
         draw.ticketCost === 0
-          ? "累計 " + formatNumber(draw.pointBalance) + " 點 · 當輪資格已使用"
+          ? "累計 " + formatNumber(draw.pointBalance) + " 點 · 節點資格已使用"
           : formatNumber(draw.originalPointBalance) +
             " → " +
             formatNumber(draw.pointBalance) +
@@ -2748,7 +2812,9 @@
       INVALID_REDEMPTION_MODE: "點數類型的領取規則無效，請重新選擇。",
       INVALID_CAMPAIGN_EXPIRY: "領取期限需晚於現在，且不可超過一年。",
       POINT_DATA_CONFLICT: "點數試算表資料不一致，請先檢查工作表內容。",
-      INVALID_POINT_CARD_TARGET: "集點卡每輪點數必須是 1 至 9999 的整數。",
+      INVALID_POINT_CARD_TARGET: "集點卡總點數必須是 1 至 9999 的整數。",
+      INVALID_POINT_CARD_MILESTONES:
+        "抽獎節點必須是遞增整數，且最後一個節點等於集點卡總點數。",
       POINT_CARD_DATA_ERROR: "集點卡設定資料不一致，請先檢查工作表內容。",
       INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個不重複的轉盤獎項。",
       INVALID_LOTTERY_TYPE_ID: "轉盤類型識別碼無效，請重新整理後再試。",

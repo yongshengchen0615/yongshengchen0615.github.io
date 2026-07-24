@@ -28,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.5.0";
+var API_VERSION = "1.6.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -254,13 +254,16 @@ var POINT_REDEMPTION_COLUMN = {
   redemptionModeSnapshot: 10,
 };
 
-var POINT_CARD_SETTING_HEADERS = [
+var LEGACY_POINT_CARD_SETTING_HEADERS = [
   "setting_version",
   "target_points",
   "effective_at",
   "updated_by",
   "last_request_id",
 ];
+var POINT_CARD_SETTING_HEADERS = LEGACY_POINT_CARD_SETTING_HEADERS.concat([
+  "reward_milestones",
+]);
 
 var POINT_CARD_SETTING_COLUMN = {
   settingVersion: 1,
@@ -268,6 +271,7 @@ var POINT_CARD_SETTING_COLUMN = {
   effectiveAt: 3,
   updatedBy: 4,
   lastRequestId: 5,
+  rewardMilestones: 6,
 };
 
 var LOTTERY_TYPE_HEADERS = [
@@ -1285,6 +1289,10 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
 
   try {
     var targetPoints = normalizePointCardTarget_(request.pointCardTarget);
+    var rewardMilestones = normalizePointCardMilestones_(
+      request.pointCardMilestones,
+      targetPoints
+    );
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
@@ -1302,7 +1310,13 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
       throw appError_("POINT_CARD_DATA_ERROR", "集點卡設定請求識別碼重複。");
     }
     if (duplicate.length === 1) {
-      if (duplicate[0].targetPoints !== targetPoints) {
+      if (
+        duplicate[0].targetPoints !== targetPoints ||
+        !pointCardMilestonesEqual_(
+          duplicate[0].rewardMilestones,
+          rewardMilestones
+        )
+      ) {
         throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的集點卡規則。");
       }
       return {
@@ -1315,7 +1329,10 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
     }
 
     var latest = settings[settings.length - 1];
-    if (latest.targetPoints === targetPoints) {
+    if (
+      latest.targetPoints === targetPoints &&
+      pointCardMilestonesEqual_(latest.rewardMilestones, rewardMilestones)
+    ) {
       return {
         data: {
           pointCardSetting: pointCardSettingResponse_(latest),
@@ -1344,6 +1361,7 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
       now,
       adminId,
       request.requestId,
+      rewardMilestones.join(","),
     ]);
     applyPointCardSettingRowFormats_(settingSheet, settingSheet.getLastRow());
     SpreadsheetApp.flush();
@@ -2058,8 +2076,8 @@ function getOrCreatePointCardSettingSheet_(spreadsheet, config) {
     spreadsheet,
     config.pointCardSettingsSheetName,
     POINT_CARD_SETTING_HEADERS,
-    [],
-    [],
+    LEGACY_POINT_CARD_SETTING_HEADERS,
+    [""],
     "POINT_CARD_SCHEMA_MISMATCH",
     "#0f766e",
     applyPointCardSettingSheetColumnFormats_
@@ -2113,6 +2131,7 @@ function ensureDefaultPointCardSetting_(sheet) {
     new Date(0),
     "SYSTEM",
     "setup-default-card",
+    String(DEFAULT_POINT_CARD_TARGET),
   ]);
   applyPointCardSettingRowFormats_(sheet, sheet.getLastRow());
 }
@@ -2381,7 +2400,7 @@ function applyPointRedemptionSheetColumnFormats_(sheet) {
 
 function applyPointCardSettingSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 4, 5].forEach(function (column) {
+  [1, 4, 5, 6].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2396,7 +2415,7 @@ function applyPointCardSettingRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 1).setNumberFormat("@");
   sheet.getRange(rowNumber, 2).setNumberFormat("0");
   sheet.getRange(rowNumber, 3).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  sheet.getRange(rowNumber, 4, 1, 2).setNumberFormat("@");
+  sheet.getRange(rowNumber, 4, 1, 3).setNumberFormat("@");
 }
 
 function applyLotteryTypeSheetColumnFormats_(sheet) {
@@ -2491,6 +2510,7 @@ function parseRequest_(e) {
       expiryMode: String(e.parameter.expiryMode || "").trim().toLowerCase(),
       redemptionMode: String(e.parameter.redemptionMode || "").trim().toLowerCase(),
       pointCardTarget: optionalNumber_(e.parameter.pointCardTarget, NaN),
+      pointCardMilestones: String(e.parameter.pointCardMilestones || "").trim(),
       lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
       lotteryTypeName: String(e.parameter.lotteryTypeName || "").trim(),
       lotteryPrizes: parseLotteryPrizes_(e.parameter.lotteryPrizes),
@@ -2530,6 +2550,9 @@ function parseRequest_(e) {
     expiryMode: String(parsed.expiryMode || "").trim().toLowerCase(),
     redemptionMode: String(parsed.redemptionMode || "").trim().toLowerCase(),
     pointCardTarget: optionalNumber_(parsed.pointCardTarget, NaN),
+    pointCardMilestones: Array.isArray(parsed.pointCardMilestones)
+      ? parsed.pointCardMilestones.join(",")
+      : String(parsed.pointCardMilestones || "").trim(),
     lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
     lotteryTypeName: String(parsed.lotteryTypeName || "").trim(),
     lotteryPrizes: parseLotteryPrizes_(parsed.lotteryPrizes),
@@ -2605,7 +2628,11 @@ function validateRequestEnvelope_(request) {
   }
 
   if (request.action === "adminSavePointCardSetting") {
-    normalizePointCardTarget_(request.pointCardTarget);
+    var pointCardTarget = normalizePointCardTarget_(request.pointCardTarget);
+    normalizePointCardMilestones_(
+      request.pointCardMilestones,
+      pointCardTarget
+    );
   }
 
   if (request.action === "adminCreateLotteryType") {
@@ -2648,10 +2675,62 @@ function normalizePointCardTarget_(value) {
   ) {
     throw appError_(
       "INVALID_POINT_CARD_TARGET",
-      "集點卡每輪點數必須是 1 到 " + MAX_POINT_VALUE + " 的整數。"
+      "集點卡總點數必須是 1 到 " + MAX_POINT_VALUE + " 的整數。"
     );
   }
   return target;
+}
+
+function normalizePointCardMilestones_(value, targetPoints) {
+  var target = normalizePointCardTarget_(targetPoints);
+  var normalizedValue =
+    value == null || String(value).trim() === "" ? String(target) : value;
+  var rawValues = Array.isArray(normalizedValue)
+    ? normalizedValue
+    : String(normalizedValue).split(/[\s,，、]+/);
+  var milestones = [];
+  var seen = Object.create(null);
+  rawValues.forEach(function (rawValue) {
+    if (String(rawValue).trim() === "") return;
+    var milestone = Number(rawValue);
+    if (
+      !Number.isInteger(milestone) ||
+      milestone < 1 ||
+      milestone > target ||
+      seen[milestone]
+    ) {
+      throw appError_(
+        "INVALID_POINT_CARD_MILESTONES",
+        "抽獎節點必須是不重複、介於 1 到集點卡總點數之間的整數。"
+      );
+    }
+    seen[milestone] = true;
+    milestones.push(milestone);
+  });
+  milestones.sort(function (left, right) {
+    return left - right;
+  });
+  if (
+    milestones.length < 1 ||
+    milestones.length > 20 ||
+    milestones[milestones.length - 1] !== target
+  ) {
+    throw appError_(
+      "INVALID_POINT_CARD_MILESTONES",
+      "請設定 1 到 20 個抽獎節點，且最後一個節點必須等於集點卡總點數。"
+    );
+  }
+  return milestones;
+}
+
+function pointCardMilestonesEqual_(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
 }
 
 function normalizeLotteryTypeId_(value) {
@@ -2898,7 +2977,7 @@ function readPointCampaignRecords_(sheet) {
 function readPointCardSettings_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {
-    throw appError_("POINT_CARD_NOT_CONFIGURED", "尚未設定集點卡每輪點數。");
+    throw appError_("POINT_CARD_NOT_CONFIGURED", "尚未設定集點卡總點數與抽獎節點。");
   }
   var rows = sheet
     .getRange(2, 1, lastRow - 1, POINT_CARD_SETTING_HEADERS.length)
@@ -2920,6 +2999,14 @@ function readPointCardSettings_(sheet) {
     var lastRequestId = plainSheetText_(
       row[POINT_CARD_SETTING_COLUMN.lastRequestId - 1],
       100
+    );
+    var rawRewardMilestones = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
+      200
+    );
+    var rewardMilestones = normalizePointCardMilestones_(
+      rawRewardMilestones || String(targetPoints),
+      targetPoints
     );
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
@@ -2943,6 +3030,7 @@ function readPointCardSettings_(sheet) {
       rowNumber: index + 2,
       settingVersion: settingVersion,
       targetPoints: targetPoints,
+      rewardMilestones: rewardMilestones,
       effectiveAt: effectiveAt,
       effectiveAtTime: new Date(effectiveAt).getTime(),
       effectiveAtValue: effectiveAtValue,
@@ -2965,6 +3053,7 @@ function pointCardSettingResponse_(setting) {
   return {
     settingVersion: setting.settingVersion,
     targetPoints: setting.targetPoints,
+    rewardMilestones: setting.rewardMilestones.slice(),
     effectiveAt: setting.effectiveAt,
   };
 }
@@ -3313,7 +3402,9 @@ function lotteryDrawRecordFromRow_(row, rowNumber) {
     /^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) &&
     /^PCS-[A-Z0-9]{12}$/.test(cardSettingVersion) &&
     cardRoundKey.indexOf(cardSettingVersion + ":") === 0 &&
-    /^[1-9]\d*$/.test(cardRoundKey.slice(cardSettingVersion.length + 1));
+    /^[1-9]\d*(?::[1-9]\d*)?$/.test(
+      cardRoundKey.slice(cardSettingVersion.length + 1)
+    );
 
   if (
     !/^LDW-[A-Z0-9]{16}$/.test(drawId) ||

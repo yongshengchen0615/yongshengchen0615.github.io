@@ -419,8 +419,12 @@ function createPointCardSettingRow(gas, overrides = {}) {
     effectiveAt: new Date(0),
     updatedBy: "SYSTEM",
     lastRequestId: "setup-default-card",
+    rewardMilestones: "5",
     ...overrides,
   };
+  if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
+    values.rewardMilestones = String(values.targetPoints);
+  }
   Object.entries(values).forEach(([key, value]) => {
     row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
   });
@@ -1898,7 +1902,7 @@ test("lottery draw consumes one completed card round without deducting lifetime 
   assert.equal(first.data.draw.pointBalance, 5);
   assert.equal(first.data.pointBalance, 5);
   assert.equal(first.data.totalPoints, 5);
-  assert.equal(first.data.draw.cardRoundKey, `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`);
+  assert.equal(first.data.draw.cardRoundKey, `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`);
   assert.equal(first.data.card.currentPoints, 0);
   assert.equal(first.data.card.completedRounds, 1);
   assert.equal(first.data.card.drawsUsed, 1);
@@ -1924,6 +1928,8 @@ test("lottery draw consumes one completed card round without deducting lifetime 
   assert.equal(history.data.history[0].points, 0);
   assert.equal(history.data.history[0].drawId, first.data.draw.drawId);
 
+  sheets.lotteryDrawSheet.rows[0][gas.LOTTERY_DRAW_COLUMN.cardRoundKey - 1] =
+    `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`;
   assert.throws(
     () =>
       gas.drawLottery_(
@@ -1940,12 +1946,12 @@ test("lottery draw consumes one completed card round without deducting lifetime 
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
 });
 
-test("each newly completed point-card round grants exactly one more draw", () => {
+test("a 20-point card grants draws at 5, 10, 15 and 20 before resetting", () => {
   const gas = createGasContext();
   const redemptionRows = [
     createPointRedemptionRow(gas, {
-      points: 10,
-      balanceAfter: 10,
+      points: 20,
+      balanceAfter: 20,
       redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
     }),
   ];
@@ -1953,38 +1959,45 @@ test("each newly completed point-card round grants exactly one more draw", () =>
     memberRows: [createMemberRow(gas)],
     redemptionRows,
     lotteryPrizeRows: createLotteryPrizeRows(gas),
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        targetPoints: 20,
+        rewardMilestones: "5,10,15,20",
+      }),
+    ],
   });
 
-  const first = gas.drawLottery_(
-    createIdentity(),
-    {
-      action: "drawLottery",
-      requestId: "request-lottery-round-1",
-      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
-    },
-    {}
-  );
-  const second = gas.drawLottery_(
-    createIdentity(),
-    {
-      action: "drawLottery",
-      requestId: "request-lottery-round-2",
-      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
-    },
-    {}
+  const draws = [1, 2, 3, 4].map((number) =>
+    gas.drawLottery_(
+      createIdentity(),
+      {
+        action: "drawLottery",
+        requestId: `request-lottery-milestone-${number}`,
+        lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      },
+      {}
+    )
   );
 
-  assert.equal(first.data.draw.cardRoundKey, `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`);
-  assert.equal(first.data.card.availableDraws, 1);
-  assert.equal(second.data.draw.cardRoundKey, `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:2`);
-  assert.equal(second.data.card.availableDraws, 0);
-  assert.equal(second.data.totalPoints, 10);
-  assert.equal(sheets.lotteryDrawSheet.rows.length, 2);
+  assert.deepEqual(
+    draws.map((result) => result.data.draw.cardRoundKey),
+    [5, 10, 15, 20].map(
+      (milestone) =>
+        `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:${milestone}`
+    )
+  );
+  assert.equal(draws[3].data.card.currentPoints, 0);
+  assert.equal(draws[3].data.card.currentCardNumber, 2);
+  assert.equal(draws[3].data.card.completedCards, 1);
+  assert.equal(draws[3].data.card.earnedRewards, 4);
+  assert.equal(draws[3].data.card.availableDraws, 0);
+  assert.equal(draws[3].data.totalPoints, 20);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 4);
   assert.deepEqual(
     sheets.lotteryDrawSheet.rows.map(
       (row) => row[gas.LOTTERY_DRAW_COLUMN.pointsSpent - 1]
     ),
-    [0, 0]
+    [0, 0, 0, 0]
   );
 
   assert.throws(
@@ -1993,12 +2006,101 @@ test("each newly completed point-card round grants exactly one more draw", () =>
         createIdentity(),
         {
           action: "drawLottery",
-          requestId: "request-lottery-round-3",
+          requestId: "request-lottery-milestone-5",
           lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
         },
         {}
       ),
     (error) => error.appCode === "LOTTERY_ROUND_NOT_READY"
+  );
+});
+
+test("milestone draw eligibility appears exactly when the running card reaches each node", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 4,
+        balanceAfter: 4,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+    lotteryPrizeRows: createLotteryPrizeRows(gas),
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        targetPoints: 20,
+        rewardMilestones: "5,10,15,20",
+      }),
+    ],
+  });
+
+  let status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+  assert.equal(status.currentPoints, 4);
+  assert.equal(status.availableDraws, 0);
+  assert.equal(status.nextMilestonePoints, 5);
+
+  sheets.redemptionSheet.rows.push(
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-MILESTONE0500001",
+      campaignId: "PCG-MILESTONE5",
+      pointTypeId: "PTY-MILESTONE5",
+      points: 1,
+      balanceAfter: 5,
+      redeemedAt: new Date("2026-07-22T01:00:00.000Z"),
+      requestId: "request-milestone-five",
+    })
+  );
+  status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+  assert.equal(status.currentPoints, 5);
+  assert.deepEqual(JSON.parse(JSON.stringify(status.reachedMilestones)), [5]);
+  assert.equal(status.availableDraws, 1);
+
+  gas.drawLottery_(
+    createIdentity(),
+    {
+      action: "drawLottery",
+      requestId: "request-milestone-five-draw",
+      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+    },
+    {}
+  );
+  sheets.redemptionSheet.rows.push(
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-MILESTONE1000001",
+      campaignId: "PCG-MILESTON10",
+      pointTypeId: "PTY-MILESTON10",
+      points: 5,
+      balanceAfter: 10,
+      redeemedAt: new Date("2026-07-22T02:00:00.000Z"),
+      requestId: "request-milestone-ten",
+    })
+  );
+  status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+  assert.equal(status.currentPoints, 10);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(status.reachedMilestones)),
+    [5, 10]
+  );
+  assert.equal(status.availableDraws, 1);
+  assert.equal(
+    status.nextReward.cardRoundKey,
+    `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:10`
   );
 });
 
@@ -2049,7 +2151,7 @@ test("a new point-card target starts a new period while lifetime points remain c
   assert.equal(status.completedRounds, 1);
   assert.equal(status.availableDraws, 1);
   assert.equal(status.totalPoints, 7);
-  assert.equal(status.nextRound.cardRoundKey, "PCS-SECOND000001:1");
+  assert.equal(status.nextRound.cardRoundKey, "PCS-SECOND000001:1:3");
 });
 
 test("deleteMember is retry-idempotent and prevents recreation with the same token", () => {
@@ -2302,6 +2404,12 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
         gas.LEGACY_POINT_REDEMPTION_HEADERS.length
       ),
     ],
+    PointCardSettings: [
+      createPointCardSettingRow(gas).slice(
+        0,
+        gas.LEGACY_POINT_CARD_SETTING_HEADERS.length
+      ),
+    ],
     LotteryPrizes: [
       createLotteryPrizeRows(gas)[0].slice(
         0,
@@ -2360,6 +2468,14 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
       ),
     ],
     [
+      "PointCardSettings",
+      createDataSheet(
+        "PointCardSettings",
+        Array.from(gas.LEGACY_POINT_CARD_SETTING_HEADERS),
+        legacyRows.PointCardSettings
+      ),
+    ],
+    [
       "LotteryDraws",
       createDataSheet(
         "LotteryDraws",
@@ -2383,6 +2499,7 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
   gas.getOrCreatePointTypeSheet_(config);
   gas.getOrCreatePointCampaignSheet_(config);
   gas.getOrCreatePointRedemptionSheet_(config);
+  gas.getOrCreatePointCardSettingSheet_(config);
   gas.getOrCreateLotteryPrizeSheet_(config);
   gas.getOrCreateLotteryDrawSheet_(config);
 
@@ -2401,6 +2518,21 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
       .get("PointRedemptions")
       .rows[0].slice(gas.LEGACY_POINT_REDEMPTION_HEADERS.length),
     ["once_per_member"]
+  );
+  assert.deepEqual(
+    sheets
+      .get("PointCardSettings")
+      .rows[0].slice(gas.LEGACY_POINT_CARD_SETTING_HEADERS.length),
+    [""]
+  );
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        gas.readPointCardSettings_(sheets.get("PointCardSettings"))[0]
+          .rewardMilestones
+      )
+    ),
+    [5]
   );
   assert.deepEqual(
     sheets
@@ -2452,7 +2584,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.5.0");
+  assert.equal(health.data.version, "1.6.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -2477,7 +2609,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointTypeColumns, 12);
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
-  assert.equal(setup.pointCardSettingColumns, 5);
+  assert.equal(setup.pointCardSettingColumns, 6);
   assert.equal(setup.lotteryTypeColumns, 9);
   assert.equal(setup.lotteryPrizeColumns, 11);
   assert.equal(setup.lotteryDrawColumns, 16);

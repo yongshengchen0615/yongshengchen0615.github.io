@@ -28,7 +28,7 @@
 
   function start() {
     setView("loading-state");
-    setLoading("正在讀取集點卡", "確認本輪進度與可使用的轉盤類型。");
+    setLoading("正在讀取集點卡", "確認本張卡進度與可使用的轉盤類型。");
     return loadConfig()
       .then(function () {
         applyBrand();
@@ -93,7 +93,7 @@
 
   function loadLotteryWorkspace(expectedBootVersion) {
     setView("loading-state");
-    setLoading("正在讀取集點卡", "確認本輪進度、抽獎資格與轉盤設定。");
+    setLoading("正在讀取集點卡", "確認本張卡進度、抽獎資格與轉盤設定。");
     return sendMemberRequest("getLotteryConfig", {})
       .then(function (response) {
         if (expectedBootVersion !== bootVersion) return;
@@ -161,17 +161,24 @@
     var now = new Date().toISOString();
     renderWorkspace({
       access: { allowed: true, status: "approved" },
-      totalPoints: 12,
+      totalPoints: 32,
       card: {
         settingVersion: "PCS-PREVIEW00001",
-        targetPoints: 5,
-        currentPoints: 2,
+        targetPoints: 20,
+        rewardMilestones: [5, 10, 15, 20],
+        reachedMilestones: [5, 10],
+        currentPoints: 12,
+        nextMilestonePoints: 15,
         pointsRemaining: 3,
-        currentRound: 3,
-        completedRounds: 2,
-        drawsUsed: 1,
+        pointsToCardComplete: 8,
+        currentCardNumber: 2,
+        currentRound: 2,
+        completedCards: 1,
+        completedRounds: 1,
+        earnedRewards: 6,
+        drawsUsed: 5,
         availableDraws: 1,
-        totalPoints: 12,
+        totalPoints: 32,
       },
       lotteryTypes: [
         {
@@ -292,13 +299,26 @@
 
   function normalizePointCardStatus(value) {
     value = value && typeof value === "object" ? value : {};
+    var rewardMilestones = Array.isArray(value.rewardMilestones)
+      ? value.rewardMilestones.map(Number)
+      : [];
+    var reachedMilestones = Array.isArray(value.reachedMilestones)
+      ? value.reachedMilestones.map(Number)
+      : [];
     var normalized = {
       settingVersion: String(value.settingVersion || "").trim(),
       targetPoints: Number(value.targetPoints),
+      rewardMilestones: rewardMilestones,
+      reachedMilestones: reachedMilestones,
       currentPoints: Number(value.currentPoints),
+      nextMilestonePoints: Number(value.nextMilestonePoints),
       pointsRemaining: Number(value.pointsRemaining),
+      pointsToCardComplete: Number(value.pointsToCardComplete),
+      currentCardNumber: Number(value.currentCardNumber),
       currentRound: Number(value.currentRound),
+      completedCards: Number(value.completedCards),
       completedRounds: Number(value.completedRounds),
+      earnedRewards: Number(value.earnedRewards),
       drawsUsed: Number(value.drawsUsed),
       availableDraws: Number(value.availableDraws),
       totalPoints: Number(value.totalPoints),
@@ -307,19 +327,43 @@
       !/^PCS-[A-Z0-9]{12}$/.test(normalized.settingVersion) ||
       !Number.isInteger(normalized.targetPoints) ||
       normalized.targetPoints < 1 ||
+      !isStrictPointSequence(normalized.rewardMilestones, normalized.targetPoints) ||
+      !isStrictPointSequence(normalized.reachedMilestones, normalized.currentPoints, true) ||
+      normalized.reachedMilestones.some(function (milestone) {
+        return normalized.rewardMilestones.indexOf(milestone) === -1;
+      }) ||
+      !pointSequencesEqual(
+        normalized.reachedMilestones,
+        normalized.rewardMilestones.filter(function (milestone) {
+          return milestone <= normalized.currentPoints;
+        })
+      ) ||
       !Number.isInteger(normalized.currentPoints) ||
       normalized.currentPoints < 0 ||
       normalized.currentPoints >= normalized.targetPoints ||
-      normalized.pointsRemaining !== normalized.targetPoints - normalized.currentPoints ||
+      normalized.nextMilestonePoints !==
+        normalized.rewardMilestones.find(function (milestone) {
+          return milestone > normalized.currentPoints;
+        }) ||
+      normalized.pointsRemaining !==
+        normalized.nextMilestonePoints - normalized.currentPoints ||
+      normalized.pointsToCardComplete !==
+        normalized.targetPoints - normalized.currentPoints ||
+      !Number.isInteger(normalized.currentCardNumber) ||
+      normalized.currentCardNumber < 1 ||
       !Number.isInteger(normalized.currentRound) ||
-      normalized.currentRound < 1 ||
+      normalized.currentRound !== normalized.currentCardNumber ||
+      !Number.isInteger(normalized.completedCards) ||
+      normalized.completedCards < 0 ||
       !Number.isInteger(normalized.completedRounds) ||
-      normalized.completedRounds < 0 ||
+      normalized.completedRounds !== normalized.completedCards ||
+      !Number.isInteger(normalized.earnedRewards) ||
+      normalized.earnedRewards < 0 ||
       !Number.isInteger(normalized.drawsUsed) ||
       normalized.drawsUsed < 0 ||
       !Number.isInteger(normalized.availableDraws) ||
       normalized.availableDraws < 0 ||
-      normalized.availableDraws !== normalized.completedRounds - normalized.drawsUsed ||
+      normalized.availableDraws !== normalized.earnedRewards - normalized.drawsUsed ||
       !Number.isSafeInteger(normalized.totalPoints) ||
       normalized.totalPoints < 0
     ) {
@@ -328,9 +372,36 @@
     return normalized;
   }
 
+  function isStrictPointSequence(values, maximum, allowEmpty) {
+    if (!Array.isArray(values) || (!allowEmpty && values.length < 1)) return false;
+    var previous = 0;
+    for (var i = 0; i < values.length; i += 1) {
+      if (
+        !Number.isInteger(values[i]) ||
+        values[i] <= previous ||
+        values[i] > maximum
+      ) {
+        return false;
+      }
+      previous = values[i];
+    }
+    return allowEmpty || values[values.length - 1] === maximum;
+  }
+
+  function pointSequencesEqual(left, right) {
+    return (
+      left.length === right.length &&
+      left.every(function (value, index) {
+        return value === right[index];
+      })
+    );
+  }
+
   function renderPointCard() {
     byId("lottery-total-points").textContent = formatNumber(cardStatus.totalPoints);
-    byId("point-card-round").textContent = formatNumber(cardStatus.currentRound);
+    byId("point-card-round").textContent = formatNumber(
+      cardStatus.currentCardNumber
+    );
     byId("point-card-current").textContent = formatNumber(cardStatus.currentPoints);
     byId("point-card-target").textContent = formatNumber(cardStatus.targetPoints);
     byId("available-draw-count").textContent = formatNumber(cardStatus.availableDraws);
@@ -342,10 +413,44 @@
     var track = byId("point-card-progress-bar").parentElement;
     track.setAttribute("aria-valuemax", String(cardStatus.targetPoints));
     track.setAttribute("aria-valuenow", String(cardStatus.currentPoints));
+    renderPointCardMilestones();
     byId("point-card-progress-message").textContent =
       cardStatus.availableDraws > 0
-        ? "已有 " + cardStatus.availableDraws + " 個完成輪次可以抽獎。"
-        : "再獲得 " + cardStatus.pointsRemaining + " 點即可完成本輪。";
+        ? "已有 " + cardStatus.availableDraws + " 次節點抽獎資格可使用。"
+        : "再獲得 " +
+          cardStatus.pointsRemaining +
+          " 點，到 " +
+          cardStatus.nextMilestonePoints +
+          " 點可抽獎。";
+  }
+
+  function renderPointCardMilestones() {
+    var list = byId("point-card-milestones");
+    list.textContent = "";
+    list.classList.toggle(
+      "is-dense",
+      cardStatus.rewardMilestones.length > 8
+    );
+    cardStatus.rewardMilestones.forEach(function (milestone) {
+      var item = document.createElement("li");
+      var reached = cardStatus.reachedMilestones.indexOf(milestone) !== -1;
+      var next = milestone === cardStatus.nextMilestonePoints;
+      item.className = reached ? "is-reached" : next ? "is-next" : "";
+      item.style.left = (milestone / cardStatus.targetPoints) * 100 + "%";
+      item.innerHTML =
+        "<span aria-hidden=\"true\">" +
+        (reached ? "✓" : "★") +
+        "</span><small>" +
+        formatNumber(milestone) +
+        " 點</small>";
+      item.setAttribute(
+        "aria-label",
+        milestone +
+          " 點抽獎節點，" +
+          (reached ? "本張卡已到達" : next ? "下一個節點" : "尚未到達")
+      );
+      list.appendChild(item);
+    });
   }
 
   function renderLotteryTypeOptions() {
@@ -444,7 +549,7 @@
     pendingRequest = ensurePendingRequest(selected.lotteryTypeId);
     updateControls();
     byId("lottery-spin-status").textContent =
-      "GAS 正在鎖定本輪資格並決定抽獎結果…";
+      "GAS 正在鎖定一個節點資格並決定抽獎結果…";
 
     if (isDemoSession) {
       var previewPrize = selected.lottery.prizes[1] || selected.lottery.prizes[0];
@@ -463,16 +568,23 @@
             pointsSpent: 0,
             originalPointBalance: cardStatus.totalPoints,
             pointBalance: cardStatus.totalPoints,
-            cardRoundKey: cardStatus.settingVersion + ":2",
+            cardRoundKey: cardStatus.settingVersion + ":2:10",
             drawnAt: new Date().toISOString(),
           },
           card: {
             settingVersion: cardStatus.settingVersion,
             targetPoints: cardStatus.targetPoints,
+            rewardMilestones: cardStatus.rewardMilestones.slice(),
+            reachedMilestones: cardStatus.reachedMilestones.slice(),
             currentPoints: cardStatus.currentPoints,
+            nextMilestonePoints: cardStatus.nextMilestonePoints,
             pointsRemaining: cardStatus.pointsRemaining,
+            pointsToCardComplete: cardStatus.pointsToCardComplete,
+            currentCardNumber: cardStatus.currentCardNumber,
             currentRound: cardStatus.currentRound,
+            completedCards: cardStatus.completedCards,
             completedRounds: cardStatus.completedRounds,
+            earnedRewards: cardStatus.earnedRewards,
             drawsUsed: cardStatus.drawsUsed + 1,
             availableDraws: cardStatus.availableDraws - 1,
             totalPoints: cardStatus.totalPoints,
@@ -539,7 +651,7 @@
       draw.pointsSpent !== 0 ||
       !Number.isSafeInteger(draw.originalPointBalance) ||
       draw.pointBalance !== draw.originalPointBalance ||
-      !/^PCS-[A-Z0-9]{12}:[1-9]\d*$/.test(draw.cardRoundKey) ||
+      !/^PCS-[A-Z0-9]{12}:[1-9]\d*(?::[1-9]\d*)?$/.test(draw.cardRoundKey) ||
       Number.isNaN(new Date(draw.drawnAt).getTime())
     ) {
       throw createError("INVALID_RESPONSE", "後台回傳的抽獎結果格式不正確。");
@@ -651,8 +763,8 @@
     label.textContent = isBusy
       ? "正在決定抽獎結果"
       : cardStatus && cardStatus.availableDraws > 0
-        ? "使用本輪資格開始抽獎"
-        : "完成本輪集點後即可抽獎";
+        ? "使用一次資格開始抽獎"
+        : "到達下一個節點即可抽獎";
     document.querySelectorAll(".lottery-type-option").forEach(function (option) {
       option.disabled = isBusy || Boolean(pendingRequest);
     });
@@ -809,7 +921,7 @@
       MEMBER_ACCESS_DENIED: "目前會員帳號已停用，無法使用抽獎功能。",
       LOTTERY_NOT_CONFIGURED: "管理員尚未完成轉盤設定。",
       LOTTERY_TYPE_NOT_FOUND: "選擇的轉盤類型已停用，請重新整理。",
-      LOTTERY_ROUND_NOT_READY: "本輪尚未集滿，或本輪抽獎資格已使用。",
+      LOTTERY_ROUND_NOT_READY: "尚未到達新的抽獎節點，或現有資格已使用。",
       POINT_CARD_NOT_CONFIGURED: "管理員尚未設定集點卡規則。",
       POINT_CARD_DATA_ERROR: "集點卡資料目前無法使用，請聯絡管理員。",
       LOTTERY_DATA_ERROR: "抽獎紀錄目前無法使用，請聯絡管理員。",

@@ -1669,12 +1669,31 @@ tbody tr[data-busy="true"] {
 }
 
 .lottery-rule-field,
+.lottery-milestone-field,
 .lottery-type-select-field,
 .lottery-type-create {
   display: grid;
   gap: 0.5rem;
   color: var(--ink-soft);
   font-size: 0.7rem;
+}
+
+.lottery-milestone-field input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  padding: 0.75rem;
+  color: var(--green-deep);
+  background: rgba(255, 255, 255, 0.62);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.lottery-milestone-field small {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
+  line-height: 1.55;
 }
 
 .lottery-rule-field > span:last-child {

@@ -2114,6 +2114,75 @@ code {
   transition: width 520ms cubic-bezier(0.2, 0.72, 0.2, 1);
 }
 
+.point-card-milestones {
+  position: relative;
+  height: 3.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.point-card-milestones li {
+  position: absolute;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  min-width: 2.8rem;
+  transform: translateX(-50%);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.point-card-milestones li:last-child {
+  justify-items: end;
+  transform: translateX(-100%);
+}
+
+.point-card-milestones li > span {
+  width: 1.65rem;
+  height: 1.65rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--paper);
+  font-size: 0.62rem;
+}
+
+.point-card-milestones li small {
+  white-space: nowrap;
+  font-size: 0.62rem;
+}
+
+.point-card-milestones.is-dense li small {
+  display: none;
+}
+
+.point-card-milestones.is-dense li.is-next small,
+.point-card-milestones.is-dense li:last-child small {
+  display: block;
+}
+
+.point-card-milestones li.is-next {
+  color: var(--green-dark);
+}
+
+.point-card-milestones li.is-next > span {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(36, 92, 71, 0.11);
+}
+
+.point-card-milestones li.is-reached {
+  color: var(--green-dark);
+}
+
+.point-card-milestones li.is-reached > span {
+  border-color: var(--green-dark);
+  color: #fff;
+  background: var(--green-dark);
+}
+
 .point-card-progress-meta p {
   margin: 0;
   color: var(--ink-soft);
@@ -2854,6 +2923,16 @@ code {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.65rem;
+  }
+
+  .point-card-milestones li small {
+    display: none;
+  }
+
+  .point-card-milestones li.is-reached small,
+  .point-card-milestones li.is-next small,
+  .point-card-milestones li:last-child small {
+    display: block;
   }
 
   .lottery-type-picker,

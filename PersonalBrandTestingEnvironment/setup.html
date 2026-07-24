@@ -84,7 +84,7 @@
           </dl>
           <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並建立 <code>PointCardSettings</code>、<code>LotteryTypes</code>、<code>LotteryPrizes</code>、<code>LotteryDraws</code>；既有轉盤歸入預設「經典轉盤」，舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
+          <p>若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並在 <code>PointCardSettings</code> 追加 <code>reward_milestones</code>；舊規則的空白節點相容為只在滿點抽一次。既有轉盤歸入預設「經典轉盤」，舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
         </div>
       </section>
 
@@ -136,13 +136,13 @@ PointRedemptions → 會員領取紀錄與終身累計點數</code></pre>
         <span>07</span>
         <div>
           <h2>設定集點卡與轉盤抽獎</h2>
-          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，先設定每輪需要的點數，再新增轉盤類型並替每個類型設定 2～12 個獎項名稱、區塊顏色與中獎機率。機率最多兩位小數且合計必須是 100%；規則與獎項都採版本化紀錄，刪除轉盤類型也只會軟刪除，不影響歷史資料。</p>
-          <p>會員累計點數達到門檻後會完成一輪並取得一次抽獎資格，集點卡進度進入下一輪，但 <code>PointRedemptions</code> 的終身累計不會歸零。會員由獨立抽獎頁選擇一種轉盤；同一輪只能抽一次，抽獎不扣點，下一輪再次達標後才能再抽。</p>
-          <p>會員 GAS 會鎖定未使用輪次、依管理設定決定獎項，再把類型、規則版本、輪次與結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果；同一次網路重試只會重播原結果。按「確認」後才返回會員資料。</p>
-          <pre><code>PointCardSettings → 每輪點數門檻與生效版本
+          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，先設定一張卡的總點數與抽獎節點，例如 <code>20</code> 點卡搭配 <code>5, 10, 15, 20</code>，再新增轉盤類型並替每個類型設定 2～12 個獎項名稱、區塊顏色與中獎機率。機率最多兩位小數且合計必須是 100%；規則與獎項都採版本化紀錄，刪除轉盤類型也只會軟刪除，不影響歷史資料。</p>
+          <p>會員每到一個節點就取得一次抽獎資格；集滿 20 點後畫面開始下一張卡，但 <code>PointRedemptions</code> 的終身累計不會歸零。會員可保留尚未使用的資格，抽獎也不扣點。</p>
+          <p>會員 GAS 會鎖定最早未使用的節點資格、依管理設定決定獎項，再把類型、規則版本、卡片編號、節點與結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果；同一次網路重試只會重播原結果。按「確認」後才返回會員資料。</p>
+          <pre><code>PointCardSettings → 卡片總點數、抽獎節點與生效版本
 LotteryTypes      → 可用轉盤類型與軟刪除狀態
 LotteryPrizes     → 各類型的獎項、顏色、機率與版本
-LotteryDraws      → 會員使用的集點輪次與獎項快照</code></pre>
+LotteryDraws      → 會員使用的卡片節點資格與獎項快照</code></pre>
         </div>
       </section>
     </main>

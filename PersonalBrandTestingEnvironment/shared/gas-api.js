@@ -19,6 +19,7 @@
     "expiryMode",
     "redemptionMode",
     "pointCardTarget",
+    "pointCardMilestones",
     "lotteryTypeId",
     "lotteryTypeName",
     "lotteryPrizes",

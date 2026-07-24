@@ -413,8 +413,12 @@ function createPointCardSettingRow(gas, overrides = {}) {
     effectiveAt: new Date(0),
     updatedBy: "SYSTEM",
     lastRequestId: "setup-default-card",
+    rewardMilestones: "5",
     ...overrides,
   };
+  if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
+    values.rewardMilestones = String(values.targetPoints);
+  }
   Object.entries(values).forEach(([key, value]) => {
     row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
   });
@@ -615,7 +619,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointTypeColumns, 12);
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
-  assert.equal(result.pointCardSettingColumns, 5);
+  assert.equal(result.pointCardSettingColumns, 6);
   assert.equal(result.lotteryTypeColumns, 9);
   assert.equal(result.lotteryPrizeColumns, 11);
   assert.equal(result.lotteryDrawColumns, 16);
@@ -640,6 +644,12 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
     Array.from(gas.LOTTERY_TYPE_HEADERS)
   );
   assert.equal(spreadsheet.sheets.PointCardSettings.data.length, 2);
+  assert.equal(
+    spreadsheet.sheets.PointCardSettings.data[1][
+      gas.POINT_CARD_SETTING_COLUMN.rewardMilestones - 1
+    ],
+    "5"
+  );
   assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 2);
   assert.equal(Object.prototype.hasOwnProperty.call(result, "pointClaimSecret"), false);
 });
@@ -1354,6 +1364,40 @@ test("point type validation accepts only integer values from 1 through 9999", ()
   });
 });
 
+test("point-card milestones are unique, bounded, and finish at the card total", () => {
+  const gas = createGasContext();
+  const base = {
+    action: "adminSavePointCardSetting",
+    idToken: "header.payload.signature",
+    requestId: "request-card-validation",
+    transport: "fetch",
+    pointCardTarget: 20,
+  };
+  gas.validateRequestEnvelope_({
+    ...base,
+    pointCardMilestones: "5,10,15,20",
+  });
+  for (const pointCardMilestones of [
+    "",
+    "5,10,15",
+    "0,5,20",
+    "5,5,20",
+    "5,21,20",
+    "five,20",
+  ]) {
+    if (pointCardMilestones === "") continue;
+    assert.throws(
+      () =>
+        gas.validateRequestEnvelope_({
+          ...base,
+          pointCardMilestones,
+        }),
+      (error) => error.appCode === "INVALID_POINT_CARD_MILESTONES"
+    );
+  }
+  gas.validateRequestEnvelope_({ ...base, pointCardMilestones: "" });
+});
+
 test("campaign validation requires an exact point type and mode-aware expiry", () => {
   const gas = createGasContext();
   const base = {
@@ -2007,7 +2051,7 @@ test("approved administrators save an append-only lottery version idempotently",
   );
 });
 
-test("administrators version point-card targets without rewriting earlier rules", () => {
+test("administrators version point-card totals and reward milestones without rewriting earlier rules", () => {
   const gas = createGasContext();
   const settingSheet = createSheet(
     "PointCardSettings",
@@ -2024,7 +2068,8 @@ test("administrators version point-card targets without rewriting earlier rules"
   const request = {
     action: "adminSavePointCardSetting",
     requestId: "request-point-card-save-1",
-    pointCardTarget: 8,
+    pointCardTarget: 20,
+    pointCardMilestones: "5,10,15,20",
   };
 
   const first = gas.adminSavePointCardSetting_(identity(), request, configFor(gas));
@@ -2034,14 +2079,19 @@ test("administrators version point-card targets without rewriting earlier rules"
     {
       action: "adminSavePointCardSetting",
       requestId: "request-point-card-save-2",
-      pointCardTarget: 8,
+      pointCardTarget: 20,
+      pointCardMilestones: "5,10,15,20",
     },
     configFor(gas)
   );
 
   assert.equal(first.data.changed, true);
   assert.equal(first.data.duplicate, false);
-  assert.equal(first.data.pointCardSetting.targetPoints, 8);
+  assert.equal(first.data.pointCardSetting.targetPoints, 20);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(first.data.pointCardSetting.rewardMilestones)),
+    [5, 10, 15, 20]
+  );
   assert.equal(replay.data.duplicate, true);
   assert.equal(replay.data.pointCardSetting.settingVersion, first.data.pointCardSetting.settingVersion);
   assert.equal(unchanged.data.changed, false);
@@ -2049,6 +2099,10 @@ test("administrators version point-card targets without rewriting earlier rules"
   assert.equal(
     settingSheet.data[1][gas.POINT_CARD_SETTING_COLUMN.targetPoints - 1],
     5
+  );
+  assert.equal(
+    settingSheet.data[2][gas.POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
+    "5,10,15,20"
   );
 });
 
@@ -2155,11 +2209,18 @@ test("administrator lottery history omits LINE and request identifiers", () => {
     requestId: "request-lottery-round-draw-1",
     lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
     cardSettingVersion: gas.DEFAULT_POINT_CARD_SETTING_VERSION,
-    cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`,
+    cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
   };
   Object.entries(roundValues).forEach(([key, value]) => {
     roundDrawRow[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
   });
+  const legacyRoundDrawRow = roundDrawRow.slice();
+  legacyRoundDrawRow[gas.LOTTERY_DRAW_COLUMN.cardRoundKey - 1] =
+    `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`;
+  assert.equal(
+    gas.lotteryDrawRecordFromRow_(legacyRoundDrawRow, 2).cardRoundKey,
+    `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1`
+  );
   installSpreadsheet(
     gas,
     createSpreadsheet({
@@ -2258,6 +2319,32 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
   assert.equal(parsedBridgePointType.redemptionMode, "repeatable");
   gas.validateRequestEnvelope_(parsedPointType);
   gas.validateRequestEnvelope_(parsedBridgePointType);
+
+  const pointCardPayload = {
+    ...payload,
+    action: "adminSavePointCardSetting",
+    requestId: "request-bridge-point-card",
+    pointCardTarget: "20",
+    pointCardMilestones: "5,10,15,20",
+  };
+  const parsedPointCard = gas.parseRequest_({
+    postData: { contents: JSON.stringify(pointCardPayload) },
+  });
+  const parsedBridgePointCard = gas.parseRequest_({
+    parameter: {
+      ...pointCardPayload,
+      transport: "bridge",
+      requestSecret: "c".repeat(48),
+    },
+  });
+  assert.equal(parsedPointCard.pointCardTarget, 20);
+  assert.equal(parsedPointCard.pointCardMilestones, "5,10,15,20");
+  assert.equal(
+    parsedBridgePointCard.pointCardMilestones,
+    parsedPointCard.pointCardMilestones
+  );
+  gas.validateRequestEnvelope_(parsedPointCard);
+  gas.validateRequestEnvelope_(parsedBridgePointCard);
 });
 
 test("fetch and bridge parse identical CAS fields and bind bridge state", () => {
@@ -2414,6 +2501,10 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
     new Date("2026-01-01T00:00:00.000Z"),
     "request-legacy-redeem",
   ];
+  const legacyPointCardRow = createPointCardSettingRow(gas).slice(
+    0,
+    gas.LEGACY_POINT_CARD_SETTING_HEADERS.length
+  );
   const legacyPrizeRow = [
     "LCF-ABCDEF123456",
     "LPR-ABCDEF1234",
@@ -2457,6 +2548,11 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
       gas.LEGACY_POINT_REDEMPTION_HEADERS,
       [legacyRedemptionRow]
     ),
+    PointCardSettings: createSheet(
+      "PointCardSettings",
+      gas.LEGACY_POINT_CARD_SETTING_HEADERS,
+      [legacyPointCardRow]
+    ),
     LotteryPrizes: createSheet(
       "LotteryPrizes",
       gas.LEGACY_LOTTERY_PRIZE_HEADERS,
@@ -2472,6 +2568,7 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   gas.getOrCreatePointTypeSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointCampaignSheet_(spreadsheet, configFor(gas));
   gas.getOrCreatePointRedemptionSheet_(spreadsheet, configFor(gas));
+  gas.getOrCreatePointCardSettingSheet_(spreadsheet, configFor(gas));
   gas.getOrCreateLotteryPrizeSheet_(spreadsheet, configFor(gas));
   gas.getOrCreateLotteryDrawSheet_(spreadsheet, configFor(gas));
 
@@ -2496,6 +2593,19 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
     ["once_per_member"]
   );
   assert.deepEqual(
+    spreadsheet.sheets.PointCardSettings.data[1].slice(legacyPointCardRow.length),
+    [""]
+  );
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        gas.readPointCardSettings_(spreadsheet.sheets.PointCardSettings)[0]
+          .rewardMilestones
+      )
+    ),
+    [5]
+  );
+  assert.deepEqual(
     spreadsheet.sheets.LotteryPrizes.data[1].slice(legacyPrizeRow.length),
     [gas.DEFAULT_LOTTERY_TYPE_ID]
   );
@@ -2512,7 +2622,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.5.0");
+  assert.equal(response.data.version, "1.6.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

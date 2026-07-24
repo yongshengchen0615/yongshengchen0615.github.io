@@ -294,13 +294,14 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   }
 });
 
-test("admin lottery page configures point-card rounds, wheel types, prizes, and history", () => {
+test("admin lottery page configures card milestones, wheel types, prizes, and history", () => {
   const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
   for (const id of [
     "point-card-setting-form",
     "point-card-target-input",
+    "point-card-milestones-input",
     "lottery-type-form",
     "lottery-type-name-input",
     "lottery-type-select",
@@ -320,6 +321,7 @@ test("admin lottery page configures point-card rounds, wheel types, prizes, and 
   }
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
+  assert.match(script, /pointCardMilestones:\s*rewardMilestones\.join\(["'],["']\)/);
   assert.match(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminDeleteLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
@@ -328,7 +330,7 @@ test("admin lottery page configures point-card rounds, wheel types, prizes, and 
   assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
 });
 
-test("member lottery is a separate page and consumes a round only after the GAS result", () => {
+test("member lottery renders milestone rewards and consumes one only after the GAS result", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
@@ -337,6 +339,7 @@ test("member lottery is a separate page and consumes a round only after the GAS 
 
   for (const id of [
     "point-card-progress-bar",
+    "point-card-milestones",
     "available-draw-count",
     "lottery-type-options",
     "member-lottery-wheel",
@@ -359,6 +362,7 @@ test("member lottery is a separate page and consumes a round only after the GAS 
   assert.match(script, /draw\.pointBalance\s*!==\s*draw\.originalPointBalance/);
   assert.match(script, /normalizeLotteryConfig\(\s*data\.lottery/);
   assert.match(script, /animateToPrize\(draw,\s*selectedType\.lottery\)/);
+  assert.match(script, /renderPointCardMilestones\(\)/);
   assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
   assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
   assert.match(gas, /pointsSpent:\s*0/);
@@ -653,6 +657,7 @@ test("shared transport exposes only the bounded point and lottery fields", () =>
     "expiryMode",
     "redemptionMode",
     "pointCardTarget",
+    "pointCardMilestones",
     "lotteryTypeId",
     "lotteryTypeName",
     "lotteryPrizes",

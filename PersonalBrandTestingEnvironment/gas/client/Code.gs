@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.5.0";
+var API_VERSION = "1.6.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -194,13 +194,16 @@ var POINT_REDEMPTION_COLUMN = {
   redemptionModeSnapshot: 10,
 };
 
-var POINT_CARD_SETTING_HEADERS = [
+var LEGACY_POINT_CARD_SETTING_HEADERS = [
   "setting_version",
   "target_points",
   "effective_at",
   "updated_by",
   "last_request_id",
 ];
+var POINT_CARD_SETTING_HEADERS = LEGACY_POINT_CARD_SETTING_HEADERS.concat([
+  "reward_milestones",
+]);
 
 var POINT_CARD_SETTING_COLUMN = {
   settingVersion: 1,
@@ -208,6 +211,7 @@ var POINT_CARD_SETTING_COLUMN = {
   effectiveAt: 3,
   updatedBy: 4,
   lastRequestId: 5,
+  rewardMilestones: 6,
 };
 
 var LOTTERY_TYPE_HEADERS = [
@@ -928,6 +932,10 @@ function readPointCardSettings_(sheet) {
       row[POINT_CARD_SETTING_COLUMN.lastRequestId - 1],
       100
     );
+    var rewardMilestones = parsePointCardMilestones_(
+      row[POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
+      targetPoints
+    );
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
       !Number.isInteger(targetPoints) ||
@@ -946,6 +954,7 @@ function readPointCardSettings_(sheet) {
     return {
       settingVersion: settingVersion,
       targetPoints: targetPoints,
+      rewardMilestones: rewardMilestones,
       effectiveAt: effectiveAtDate.toISOString(),
       effectiveAtTime: effectiveAtDate.getTime(),
     };
@@ -959,6 +968,34 @@ function readPointCardSettings_(sheet) {
     }
   }
   return settings;
+}
+
+function parsePointCardMilestones_(value, targetPoints) {
+  var raw = String(value == null ? "" : value).trim();
+  if (!raw) raw = String(targetPoints);
+  var parts = raw.split(/[\s,，、]+/);
+  var milestones = [];
+  for (var i = 0; i < parts.length; i += 1) {
+    if (!parts[i]) continue;
+    var milestone = Number(parts[i]);
+    if (
+      !Number.isInteger(milestone) ||
+      milestone < 1 ||
+      milestone > targetPoints ||
+      (milestones.length && milestone <= milestones[milestones.length - 1])
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "集點卡抽獎節點資料格式不正確。");
+    }
+    milestones.push(milestone);
+  }
+  if (
+    milestones.length < 1 ||
+    milestones.length > 20 ||
+    milestones[milestones.length - 1] !== targetPoints
+  ) {
+    throw appError_("POINT_CARD_DATA_ERROR", "集點卡抽獎節點必須以總點數作為最後一站。");
+  }
+  return milestones;
 }
 
 function readLotteryTypes_(sheet) {
@@ -1086,19 +1123,41 @@ function getMemberPointCardStatus_(
 
   var ranges = [];
   var settingsByVersion = Object.create(null);
-  var totalCompletedRounds = 0;
+  var totalCompletedCards = 0;
+  var totalEarnedRewards = 0;
   settings.forEach(function (setting) {
     var earned = pointsBySetting[setting.settingVersion];
-    var completed = Math.floor(earned / setting.targetPoints);
+    var completedCards = Math.floor(earned / setting.targetPoints);
+    var currentPoints = earned % setting.targetPoints;
+    var reachedMilestones = setting.rewardMilestones.filter(function (milestone) {
+      return milestone <= currentPoints;
+    });
+    var earnedRewards =
+      completedCards * setting.rewardMilestones.length +
+      reachedMilestones.length;
+    if (!Number.isSafeInteger(earnedRewards)) {
+      throw appError_("POINT_CARD_DATA_ERROR", "集點卡抽獎資格數量超出可處理範圍。");
+    }
     var range = {
       settingVersion: setting.settingVersion,
       targetPoints: setting.targetPoints,
+      rewardMilestones: setting.rewardMilestones,
       earnedPoints: earned,
-      completedRounds: completed,
-      startOrdinal: totalCompletedRounds + 1,
-      endOrdinal: totalCompletedRounds + completed,
+      currentPoints: currentPoints,
+      reachedMilestones: reachedMilestones,
+      completedCards: completedCards,
+      earnedRewards: earnedRewards,
+      startOrdinal: totalEarnedRewards + 1,
+      endOrdinal: totalEarnedRewards + earnedRewards,
     };
-    totalCompletedRounds += completed;
+    totalCompletedCards += completedCards;
+    totalEarnedRewards += earnedRewards;
+    if (
+      !Number.isSafeInteger(totalCompletedCards) ||
+      !Number.isSafeInteger(totalEarnedRewards)
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "集點卡累計資料超出可處理範圍。");
+    }
     ranges.push(range);
     settingsByVersion[setting.settingVersion] = range;
   });
@@ -1114,31 +1173,45 @@ function getMemberPointCardStatus_(
       return;
     }
     var range = settingsByVersion[draw.cardSettingVersion];
-    var roundNumber = Number(
-      draw.cardRoundKey.slice(draw.cardSettingVersion.length + 1)
-    );
+    var keyParts = draw.cardRoundKey
+      .slice(draw.cardSettingVersion.length + 1)
+      .split(":");
+    var cardNumber = Number(keyParts[0]);
+    var milestonePoints =
+      keyParts.length === 1 ? range && range.targetPoints : Number(keyParts[1]);
+    var milestoneIndex = range
+      ? range.rewardMilestones.indexOf(milestonePoints)
+      : -1;
+    var qualificationNumber =
+      (cardNumber - 1) * (range ? range.rewardMilestones.length : 0) +
+      milestoneIndex +
+      1;
     if (
       !range ||
-      !Number.isSafeInteger(roundNumber) ||
-      roundNumber < 1 ||
-      roundNumber > range.completedRounds
+      (keyParts.length !== 1 && keyParts.length !== 2) ||
+      !Number.isSafeInteger(cardNumber) ||
+      cardNumber < 1 ||
+      milestoneIndex < 0 ||
+      !Number.isSafeInteger(qualificationNumber) ||
+      qualificationNumber < 1 ||
+      qualificationNumber > range.earnedRewards
     ) {
-      throw appError_("LOTTERY_DATA_ERROR", "抽獎紀錄使用了不存在的集點輪次。");
+      throw appError_("LOTTERY_DATA_ERROR", "抽獎紀錄使用了不存在的集點卡獎勵節點。");
     }
-    var usedOrdinal = range.startOrdinal + roundNumber - 1;
+    var usedOrdinal = range.startOrdinal + qualificationNumber - 1;
     if (usedOrdinals[usedOrdinal]) {
-      throw appError_("LOTTERY_DATA_ERROR", "同一集點輪次被重複抽獎。");
+      throw appError_("LOTTERY_DATA_ERROR", "同一集點卡獎勵節點被重複抽獎。");
     }
     usedOrdinals[usedOrdinal] = true;
   });
-  if (memberDrawCount > totalCompletedRounds) {
-    throw appError_("LOTTERY_DATA_ERROR", "抽獎次數超過已完成的集點輪次。");
+  if (memberDrawCount > totalEarnedRewards) {
+    throw appError_("LOTTERY_DATA_ERROR", "抽獎次數超過已取得的集點卡獎勵。");
   }
 
   var nextOrdinal = 0;
   var legacyRemaining = legacyDrawCount;
   var searchLimit = memberDrawCount + 1;
-  for (var ordinal = 1; ordinal <= totalCompletedRounds && ordinal <= searchLimit; ordinal += 1) {
+  for (var ordinal = 1; ordinal <= totalEarnedRewards && ordinal <= searchLimit; ordinal += 1) {
     if (usedOrdinals[ordinal]) continue;
     if (legacyRemaining > 0) {
       legacyRemaining -= 1;
@@ -1147,13 +1220,13 @@ function getMemberPointCardStatus_(
     nextOrdinal = ordinal;
     break;
   }
-  if (!nextOrdinal && memberDrawCount < totalCompletedRounds) {
+  if (!nextOrdinal && memberDrawCount < totalEarnedRewards) {
     nextOrdinal = searchLimit;
     while (usedOrdinals[nextOrdinal]) nextOrdinal += 1;
   }
 
-  var nextRound = null;
-  if (nextOrdinal > 0 && nextOrdinal <= totalCompletedRounds) {
+  var nextReward = null;
+  if (nextOrdinal > 0 && nextOrdinal <= totalEarnedRewards) {
     for (var rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
       var candidate = ranges[rangeIndex];
       if (
@@ -1162,29 +1235,56 @@ function getMemberPointCardStatus_(
       ) {
         continue;
       }
-      var nextRoundNumber = nextOrdinal - candidate.startOrdinal + 1;
-      nextRound = {
+      var qualificationIndex = nextOrdinal - candidate.startOrdinal;
+      var nextCardNumber =
+        Math.floor(qualificationIndex / candidate.rewardMilestones.length) + 1;
+      var nextMilestone =
+        candidate.rewardMilestones[
+          qualificationIndex % candidate.rewardMilestones.length
+        ];
+      nextReward = {
         settingVersion: candidate.settingVersion,
-        roundNumber: nextRoundNumber,
-        cardRoundKey: candidate.settingVersion + ":" + nextRoundNumber,
+        cardNumber: nextCardNumber,
+        roundNumber: nextCardNumber,
+        milestonePoints: nextMilestone,
+        cardRoundKey:
+          candidate.settingVersion +
+          ":" +
+          nextCardNumber +
+          ":" +
+          nextMilestone,
       };
       break;
     }
   }
 
   var current = ranges[ranges.length - 1];
-  var currentPoints = current.earnedPoints % current.targetPoints;
+  var nextMilestonePoints = current.targetPoints;
+  for (var milestoneIndex = 0; milestoneIndex < current.rewardMilestones.length; milestoneIndex += 1) {
+    if (current.rewardMilestones[milestoneIndex] > current.currentPoints) {
+      nextMilestonePoints = current.rewardMilestones[milestoneIndex];
+      break;
+    }
+  }
   return {
     settingVersion: current.settingVersion,
     targetPoints: current.targetPoints,
-    currentPoints: currentPoints,
-    pointsRemaining: current.targetPoints - currentPoints,
-    currentRound: totalCompletedRounds + 1,
-    completedRounds: totalCompletedRounds,
+    rewardMilestones: current.rewardMilestones.slice(),
+    reachedMilestones: current.reachedMilestones.slice(),
+    currentPoints: current.currentPoints,
+    nextMilestonePoints: nextMilestonePoints,
+    pointsRemaining: nextMilestonePoints - current.currentPoints,
+    pointsToCardComplete: current.targetPoints - current.currentPoints,
+    currentCardNumber: current.completedCards + 1,
+    currentRound: current.completedCards + 1,
+    completedCards: totalCompletedCards,
+    completedRounds: totalCompletedCards,
+    earnedRewards: totalEarnedRewards,
     drawsUsed: memberDrawCount,
-    availableDraws: totalCompletedRounds - memberDrawCount,
+    availableDraws: totalEarnedRewards - memberDrawCount,
     totalPoints: ledger.totalPoints,
-    nextRound: nextRound,
+    nextReward: nextReward,
+    nextRound: nextReward,
   };
 }
 
@@ -1192,10 +1292,17 @@ function pointCardStatusResponse_(status) {
   return {
     settingVersion: status.settingVersion,
     targetPoints: status.targetPoints,
+    rewardMilestones: status.rewardMilestones.slice(),
+    reachedMilestones: status.reachedMilestones.slice(),
     currentPoints: status.currentPoints,
+    nextMilestonePoints: status.nextMilestonePoints,
     pointsRemaining: status.pointsRemaining,
+    pointsToCardComplete: status.pointsToCardComplete,
+    currentCardNumber: status.currentCardNumber,
     currentRound: status.currentRound,
+    completedCards: status.completedCards,
     completedRounds: status.completedRounds,
+    earnedRewards: status.earnedRewards,
     drawsUsed: status.drawsUsed,
     availableDraws: status.availableDraws,
     totalPoints: status.totalPoints,
@@ -1256,7 +1363,7 @@ function getLotteryConfig_(identity, request, config) {
 function drawLottery_(identity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "抽獎輪次正在處理，請稍後再試。");
+    throw appError_("BUSY", "抽獎資格正在處理，請稍後再試。");
   }
 
   try {
@@ -1332,7 +1439,7 @@ function drawLottery_(identity, request, config) {
     if (cardStatus.availableDraws < 1 || !cardStatus.nextRound) {
       throw appError_(
         "LOTTERY_ROUND_NOT_READY",
-        "本輪集點尚未完成，或本輪抽獎資格已使用。"
+        "尚未到達新的抽獎節點，或已取得的抽獎資格皆已使用。"
       );
     }
 
@@ -1398,7 +1505,7 @@ function drawLottery_(identity, request, config) {
     if (cardStatus.availableDraws < 1 || !cardStatus.nextRound) {
       throw appError_(
         "LOTTERY_ROUND_NOT_READY",
-        "本輪集點尚未完成，或本輪抽獎資格已使用。"
+        "尚未到達新的抽獎節點，或已取得的抽獎資格皆已使用。"
       );
     }
 
@@ -1675,7 +1782,9 @@ function lotteryDrawRecordFromRow_(row) {
     /^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) &&
     /^PCS-[A-Z0-9]{12}$/.test(cardSettingVersion) &&
     cardRoundKey.indexOf(cardSettingVersion + ":") === 0 &&
-    /^[1-9]\d*$/.test(cardRoundKey.slice(cardSettingVersion.length + 1));
+    /^[1-9]\d*(?::[1-9]\d*)?$/.test(
+      cardRoundKey.slice(cardSettingVersion.length + 1)
+    );
   if (
     !/^LDW-[A-Z0-9]{16}$/.test(drawId) ||
     !/^LCF-[A-Z0-9]{12}$/.test(configVersion) ||
@@ -2354,8 +2463,8 @@ function getOrCreatePointCardSettingSheet_(config) {
     config,
     config.pointCardSettingSheetName || DEFAULT_POINT_CARD_SETTING_SHEET_NAME,
     POINT_CARD_SETTING_HEADERS,
-    [],
-    []
+    LEGACY_POINT_CARD_SETTING_HEADERS,
+    [""]
   );
 }
 
@@ -2397,6 +2506,7 @@ function ensureDefaultPointCardSetting_(sheet) {
     new Date(0),
     "SYSTEM",
     "setup-default-card",
+    String(DEFAULT_POINT_CARD_TARGET),
   ]);
   applyPointCardSettingSheetFormats_(sheet);
 }
@@ -2617,7 +2727,7 @@ function applyPointRedemptionRowFormats_(sheet, rowNumber) {
 
 function applyPointCardSettingSheetFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 4, 5].forEach(function (column) {
+  [1, 4, 5, 6].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
