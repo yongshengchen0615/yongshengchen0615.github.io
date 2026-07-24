@@ -20,7 +20,9 @@
     "redemptionMode",
     "pointCardTarget",
     "pointCardMilestones",
+    "pointCardRewards",
     "lotteryTypeId",
+    "cardRoundKey",
     "lotteryTypeName",
     "lotteryPrizes",
   ];
@@ -175,7 +177,7 @@
           appendHiddenField(
             form,
             name,
-            name === "lotteryPrizes"
+            name === "lotteryPrizes" || name === "pointCardRewards"
               ? JSON.stringify(originalRequest[name])
               : originalRequest[name]
           );

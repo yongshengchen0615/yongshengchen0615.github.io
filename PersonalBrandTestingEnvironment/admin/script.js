@@ -23,6 +23,7 @@
   var pointHistoryHasMore = false;
   var lotteryConfig = null;
   var pointCardSetting = null;
+  var pointCardRewardRules = [];
   var lotteryTypes = [];
   var selectedLotteryTypeId = "";
   var isCreatingLotteryType = false;
@@ -552,6 +553,12 @@
   function renderLotteryDashboard(data) {
     data = data && typeof data === "object" ? data : {};
     pointCardSetting = normalizePointCardSetting(data.pointCardSetting);
+    pointCardRewardRules = pointCardSetting.rewardRules.map(function (rule) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    });
     lotteryTypes = normalizeLotteryTypes(data.lotteryTypes);
     isCreatingLotteryType = false;
     if (
@@ -614,6 +621,12 @@
           settingVersion: "PCS-PREVIEW00001",
           targetPoints: 20,
           rewardMilestones: [5, 10, 15, 20],
+          rewardRules: [
+            { points: 5, lotteryTypeId: "" },
+            { points: 10, lotteryTypeId: "" },
+            { points: 15, lotteryTypeId: "" },
+            { points: 20, lotteryTypeId: "" },
+          ],
           effectiveAt: new Date().toISOString(),
         },
         lotteryTypes: [],
@@ -774,6 +787,29 @@
       value.rewardMilestones,
       targetPoints
     );
+    var rawRewardRules = Array.isArray(value.rewardRules)
+      ? value.rewardRules
+      : rewardMilestones.map(function (points) {
+          return { points: points, lotteryTypeId: "" };
+        });
+    if (rawRewardRules.length !== rewardMilestones.length) {
+      throw createError("INVALID_RESPONSE", "後台回傳的節點轉盤設定不正確。");
+    }
+    var rewardRules = rawRewardRules.map(function (rule, index) {
+      rule = rule && typeof rule === "object" ? rule : {};
+      var points = Number(rule.points);
+      var lotteryTypeId = String(rule.lotteryTypeId || "").trim();
+      if (
+        points !== rewardMilestones[index] ||
+        (lotteryTypeId && !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId))
+      ) {
+        throw createError("INVALID_RESPONSE", "後台回傳的節點轉盤設定不正確。");
+      }
+      return {
+        points: points,
+        lotteryTypeId: lotteryTypeId,
+      };
+    });
     var effectiveAt = String(value.effectiveAt || "").trim();
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
@@ -788,6 +824,7 @@
       settingVersion: settingVersion,
       targetPoints: targetPoints,
       rewardMilestones: rewardMilestones,
+      rewardRules: rewardRules,
       effectiveAt: effectiveAt,
     };
   }
@@ -813,18 +850,6 @@
       throw createError("INVALID_RESPONSE", "最後一個抽獎節點必須等於集點卡總點數。");
     }
     return milestones;
-  }
-
-  function parsePointCardMilestonesInput(value, targetPoints) {
-    var parts = String(value || "")
-      .trim()
-      .split(/[\s,，、]+/)
-      .filter(Boolean);
-    var milestones = parts.map(Number);
-    milestones.sort(function (left, right) {
-      return left - right;
-    });
-    return normalizePointCardMilestones(milestones, targetPoints);
   }
 
   function normalizeLotteryTypes(value) {
@@ -901,8 +926,6 @@
   function renderPointCardSetting() {
     if (!pointCardSetting) return;
     byId("point-card-target-input").value = String(pointCardSetting.targetPoints);
-    byId("point-card-milestones-input").value =
-      pointCardSetting.rewardMilestones.join(", ");
     byId("point-card-setting-current").textContent =
       pointCardSetting.targetPoints +
       " 點一張 · " +
@@ -910,6 +933,150 @@
       " 點抽獎";
     byId("point-card-setting-effective").textContent =
       formatDateTime(pointCardSetting.effectiveAt);
+    renderPointCardRewardRows();
+  }
+
+  function getConfiguredLotteryTypes() {
+    return lotteryTypes.filter(function (type) {
+      return Boolean(
+        type.lottery &&
+          type.lottery.configVersion &&
+          type.lottery.prizes.length >= 2
+      );
+    });
+  }
+
+  function renderPointCardRewardRows() {
+    var list = byId("point-card-reward-list");
+    var configuredTypes = getConfiguredLotteryTypes();
+    list.textContent = "";
+    pointCardRewardRules.sort(function (left, right) {
+      return Number(left.points) - Number(right.points);
+    });
+    pointCardRewardRules.forEach(function (rule, index) {
+      var item = document.createElement("li");
+      var order = document.createElement("span");
+      var pointsLabel = document.createElement("label");
+      var pointsInput = document.createElement("input");
+      var typeLabel = document.createElement("label");
+      var typeSelect = document.createElement("select");
+      var removeButton = document.createElement("button");
+
+      item.className = "point-card-reward-row";
+      order.className = "point-card-reward-order";
+      order.textContent = String(index + 1).padStart(2, "0");
+      pointsInput.type = "number";
+      pointsInput.min = "1";
+      pointsInput.max = "9999";
+      pointsInput.step = "1";
+      pointsInput.inputMode = "numeric";
+      pointsInput.value = String(rule.points || "");
+      pointsInput.setAttribute("aria-label", "第 " + (index + 1) + " 個抽獎節點點數");
+      pointsLabel.appendChild(pointsInput);
+
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = configuredTypes.length
+        ? "選擇這個節點的轉盤"
+        : "尚無已完成設定的轉盤";
+      typeSelect.appendChild(placeholder);
+      configuredTypes.forEach(function (type) {
+        var option = document.createElement("option");
+        option.value = type.lotteryTypeId;
+        option.textContent = type.name;
+        option.selected = type.lotteryTypeId === rule.lotteryTypeId;
+        typeSelect.appendChild(option);
+      });
+      typeSelect.value = rule.lotteryTypeId;
+      typeSelect.setAttribute("aria-label", "第 " + (index + 1) + " 個節點指定轉盤");
+      typeLabel.appendChild(typeSelect);
+
+      removeButton.type = "button";
+      removeButton.className = "point-card-reward-remove";
+      removeButton.textContent = "移除";
+      removeButton.disabled = pointCardRewardRules.length <= 1;
+      removeButton.setAttribute("aria-label", "移除第 " + (index + 1) + " 個抽獎節點");
+
+      pointsInput.addEventListener("input", function () {
+        pointCardRewardRules[index].points = Number(pointsInput.value);
+        clearLotteryConfigError();
+      });
+      typeSelect.addEventListener("change", function () {
+        pointCardRewardRules[index].lotteryTypeId = typeSelect.value;
+        clearLotteryConfigError();
+      });
+      removeButton.addEventListener("click", function () {
+        if (pointCardRewardRules.length <= 1) return;
+        pointCardRewardRules.splice(index, 1);
+        renderPointCardRewardRows();
+        updateOperationControls();
+      });
+
+      item.appendChild(order);
+      item.appendChild(pointsLabel);
+      item.appendChild(typeLabel);
+      item.appendChild(removeButton);
+      list.appendChild(item);
+    });
+    byId("point-card-reward-empty").hidden = configuredTypes.length > 0;
+  }
+
+  function addPointCardRewardRule() {
+    if (isLotteryMutationLoading || pointCardRewardRules.length >= 20) return;
+    var targetPoints = Number(byId("point-card-target-input").value);
+    if (!Number.isInteger(targetPoints) || targetPoints < 1) targetPoints = 5;
+    var used = Object.create(null);
+    pointCardRewardRules.forEach(function (rule) {
+      used[rule.points] = true;
+    });
+    var suggestedPoints = targetPoints;
+    for (var candidate = 1; candidate <= targetPoints; candidate += 1) {
+      if (!used[candidate]) {
+        suggestedPoints = candidate;
+        break;
+      }
+    }
+    var configuredTypes = getConfiguredLotteryTypes();
+    pointCardRewardRules.push({
+      points: suggestedPoints,
+      lotteryTypeId:
+        configuredTypes.length === 1 ? configuredTypes[0].lotteryTypeId : "",
+    });
+    renderPointCardRewardRows();
+    updateOperationControls();
+  }
+
+  function validatePointCardRewardRules(targetPoints) {
+    var configuredTypeIds = Object.create(null);
+    getConfiguredLotteryTypes().forEach(function (type) {
+      configuredTypeIds[type.lotteryTypeId] = true;
+    });
+    var rules = pointCardRewardRules.map(function (rule) {
+      return {
+        points: Number(rule.points),
+        lotteryTypeId: String(rule.lotteryTypeId || "").trim(),
+      };
+    });
+    rules.sort(function (left, right) {
+      return left.points - right.points;
+    });
+    normalizePointCardMilestones(
+      rules.map(function (rule) {
+        return rule.points;
+      }),
+      targetPoints
+    );
+    if (
+      rules.some(function (rule) {
+        return !configuredTypeIds[rule.lotteryTypeId];
+      })
+    ) {
+      throw createError(
+        "INVALID_POINT_CARD_REWARDS",
+        "每個抽獎節點都必須選擇一個已完成設定的轉盤。"
+      );
+    }
+    return rules;
   }
 
   function renderLotteryTypes() {
@@ -971,6 +1138,7 @@
     renderLotteryTypes();
     renderLotteryConfigMeta();
     renderLotteryPrizeRows();
+    renderPointCardRewardRows();
     clearLotteryConfigError();
     updateOperationControls();
   }
@@ -1341,35 +1509,41 @@
     event.preventDefault();
     if (isLotteryMutationLoading) return;
     var input = byId("point-card-target-input");
-    var milestoneInput = byId("point-card-milestones-input");
     var targetPoints = Number(input.value);
     if (!Number.isInteger(targetPoints) || targetPoints < 1 || targetPoints > 9999) {
       showLotteryConfigError("集點卡總點數必須是 1 到 9999 的整數。");
       input.focus();
       return;
     }
-    var rewardMilestones;
+    var rewardRules;
     try {
-      rewardMilestones = parsePointCardMilestonesInput(
-        milestoneInput.value,
-        targetPoints
-      );
+      rewardRules = validatePointCardRewardRules(targetPoints);
     } catch (_error) {
       showLotteryConfigError(
-        "抽獎節點必須是不重複的整數，最後一個節點需等於 " +
+        normalizeError(_error).message ||
+          "抽獎節點必須是不重複的整數，最後一個節點需等於 " +
           targetPoints +
           " 點。"
       );
-      milestoneInput.focus();
       return;
     }
+    var rewardMilestones = rewardRules.map(function (rule) {
+      return rule.points;
+    });
     if (isDemoSession) {
       pointCardSetting = {
         settingVersion: "PCS-PREVIEW00002",
         targetPoints: targetPoints,
         rewardMilestones: rewardMilestones,
+        rewardRules: rewardRules,
         effectiveAt: new Date().toISOString(),
       };
+      pointCardRewardRules = rewardRules.map(function (rule) {
+        return {
+          points: rule.points,
+          lotteryTypeId: rule.lotteryTypeId,
+        };
+      });
       renderPointCardSetting();
       showToast("預覽：集點卡規則已更新");
       return;
@@ -1379,7 +1553,7 @@
     updateOperationControls();
     sendAdminRequest("adminSavePointCardSetting", {
       pointCardTarget: targetPoints,
-      pointCardMilestones: rewardMilestones.join(","),
+      pointCardRewards: rewardRules,
     })
       .then(function (response) {
         assertSuccessfulResponse(response);
@@ -1387,6 +1561,12 @@
           throw createError("INVALID_RESPONSE", "後台回傳的集點卡規則格式不完整。");
         }
         pointCardSetting = normalizePointCardSetting(response.data.pointCardSetting);
+        pointCardRewardRules = pointCardSetting.rewardRules.map(function (rule) {
+          return {
+            points: rule.points,
+            lotteryTypeId: rule.lotteryTypeId,
+          };
+        });
         renderPointCardSetting();
         showToast(
           response.data.changed === false
@@ -2946,7 +3126,18 @@
         busy || !hasLotteryEditor || lotteryPrizes.length >= 12;
       byId("save-lottery-button").disabled = busy || !hasLotteryEditor;
       byId("point-card-target-input").disabled = busy;
-      byId("point-card-milestones-input").disabled = busy;
+      byId("add-point-card-reward-button").disabled =
+        busy ||
+        pointCardRewardRules.length >= 20 ||
+        getConfiguredLotteryTypes().length === 0;
+      byId("point-card-reward-list")
+        .querySelectorAll("input, select, button")
+        .forEach(function (control) {
+          control.disabled =
+            busy ||
+            (control.classList.contains("point-card-reward-remove") &&
+              pointCardRewardRules.length <= 1);
+        });
       byId("save-point-card-setting-button").disabled = busy;
       byId("lottery-type-select").disabled =
         busy || lotteryTypes.length === 0 || isCreatingLotteryType;
@@ -3222,6 +3413,10 @@
       byId("point-card-setting-form").addEventListener(
         "submit",
         handleSavePointCardSetting
+      );
+      byId("add-point-card-reward-button").addEventListener(
+        "click",
+        addPointCardRewardRule
       );
       byId("new-lottery-type-button").addEventListener(
         "click",

@@ -133,17 +133,26 @@
             <div>
               <p class="eyebrow">POINT CARD REWARDS</p>
               <h2>集點卡與抽獎節點</h2>
-              <p>會員每到一個節點取得一次抽獎資格；集滿後開始新卡，終身累計點數仍完整保留。</p>
+              <p>會員每到一個節點取得一張指定轉盤的抽獎券；集滿後開始新卡，終身累計點數仍完整保留。</p>
             </div>
             <label class="lottery-rule-field" for="point-card-target-input">
               <span>一張卡集滿</span>
               <span><input id="point-card-target-input" type="number" min="1" max="9999" step="1" inputmode="numeric" required /><b>點</b></span>
             </label>
-            <label class="lottery-milestone-field" for="point-card-milestones-input">
-              <span>抽獎節點</span>
-              <input id="point-card-milestones-input" type="text" inputmode="numeric" maxlength="120" placeholder="例如：5, 10, 15, 20" aria-describedby="point-card-milestones-help" required />
-              <small id="point-card-milestones-help">以逗號分隔，最後一個節點必須等於集點卡總點數。</small>
-            </label>
+            <section class="point-card-reward-editor" aria-labelledby="point-card-reward-editor-title">
+              <header>
+                <div>
+                  <span id="point-card-reward-editor-title">抽獎節點與指定轉盤</span>
+                  <small>每個節點只能指定一個已完成設定的轉盤，最後一個節點必須等於集點卡總點數。</small>
+                </div>
+                <button class="secondary-button compact-button" id="add-point-card-reward-button" type="button">＋ 新增節點</button>
+              </header>
+              <div class="point-card-reward-labels" aria-hidden="true">
+                <span>達到點數</span><span>獲得抽獎券</span><span>操作</span>
+              </div>
+              <ol class="point-card-reward-list" id="point-card-reward-list" aria-live="polite"></ol>
+              <p class="point-card-reward-empty" id="point-card-reward-empty" hidden>請先完成至少一個轉盤的獎項設定，再新增抽獎節點。</p>
+            </section>
             <dl class="lottery-rule-meta">
               <div><dt>目前規則</dt><dd id="point-card-setting-current">—</dd></div>
               <div><dt>生效時間</dt><dd id="point-card-setting-effective">—</dd></div>

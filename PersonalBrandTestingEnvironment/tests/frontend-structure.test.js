@@ -294,14 +294,16 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
   }
 });
 
-test("admin lottery page configures card milestones, wheel types, prizes, and history", () => {
+test("admin lottery page maps individually added card nodes to one configured wheel", () => {
   const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
 
   for (const id of [
     "point-card-setting-form",
     "point-card-target-input",
-    "point-card-milestones-input",
+    "add-point-card-reward-button",
+    "point-card-reward-list",
+    "point-card-reward-empty",
     "lottery-type-select",
     "new-lottery-type-button",
     "delete-lottery-type-button",
@@ -324,7 +326,10 @@ test("admin lottery page configures card milestones, wheel types, prizes, and hi
   }
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
-  assert.match(script, /pointCardMilestones:\s*rewardMilestones\.join\(["'],["']\)/);
+  assert.match(script, /pointCardRewards:\s*rewardRules/);
+  assert.match(script, /function\s+addPointCardRewardRule\s*\(/);
+  assert.match(script, /function\s+validatePointCardRewardRules\s*\(/);
+  assert.doesNotMatch(html, /id=["']point-card-milestones-input["']/);
   assert.doesNotMatch(script, /sendAdminRequest\(["']adminCreateLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminDeleteLotteryType["']/);
   assert.match(script, /sendAdminRequest\(["']adminSaveLotteryConfig["']/);
@@ -335,7 +340,7 @@ test("admin lottery page configures card milestones, wheel types, prizes, and hi
   assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
 });
 
-test("member lottery renders milestone rewards and consumes one only after the GAS result", () => {
+test("member lottery opens an earned ticket on a separate view and spins from the wheel center", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
@@ -346,7 +351,11 @@ test("member lottery renders milestone rewards and consumes one only after the G
     "point-card-progress-bar",
     "point-card-milestones",
     "available-draw-count",
-    "lottery-type-options",
+    "lottery-ticket-view",
+    "lottery-ticket-list",
+    "lottery-ticket-empty",
+    "lottery-wheel-view",
+    "lottery-wheel-back-button",
     "member-lottery-wheel",
     "lottery-spin-button",
     "lottery-result-dialog",
@@ -359,9 +368,19 @@ test("member lottery renders milestone rewards and consumes one only after the G
   }
   assert.match(memberHtml, /id=["']lottery-page-link["'][^>]*href=["']lottery\.html["']/);
   assert.doesNotMatch(memberHtml, /id=["']lottery-result-dialog["']/);
+  assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
+  assert.match(
+    html,
+    /class=["'][^"']*lottery-page-wheel-stage[^"']*["'][\s\S]*?<button\b[^>]*class=["'][^"']*member-lottery-hub[^"']*lottery-center-button[^"']*["'][^>]*id=["']lottery-spin-button["']/i
+  );
+  assert.match(
+    getOpeningTagById(html, "lottery-wheel-view"),
+    /\bhidden\b/i
+  );
   assert.match(spin, /sendMemberRequest\(\s*["']drawLottery["']/);
   assert.match(spin, /ensurePendingRequest\s*\(/);
   assert.match(spin, /\blotteryTypeId\s*:/);
+  assert.match(spin, /\bcardRoundKey\s*:/);
   assert.doesNotMatch(spin, /Math\.random\s*\(/);
   assert.match(script, /draw\.pointsSpent\s*!==\s*0/);
   assert.match(script, /draw\.pointBalance\s*!==\s*draw\.originalPointBalance/);
@@ -663,7 +682,9 @@ test("shared transport exposes only the bounded point and lottery fields", () =>
     "redemptionMode",
     "pointCardTarget",
     "pointCardMilestones",
+    "pointCardRewards",
     "lotteryTypeId",
+    "cardRoundKey",
     "lotteryTypeName",
     "lotteryPrizes",
   ]) {
@@ -671,8 +692,8 @@ test("shared transport exposes only the bounded point and lottery fields", () =>
   }
   assert.match(
     transport,
-    /name\s*===\s*["']lotteryPrizes["'][\s\S]*?JSON\.stringify\(originalRequest\[name\]\)/,
-    "the bridge transport must serialize the prize array as JSON"
+    /name\s*===\s*["']lotteryPrizes["']\s*\|\|\s*name\s*===\s*["']pointCardRewards["'][\s\S]*?JSON\.stringify\(originalRequest\[name\]\)/,
+    "the bridge transport must serialize prize and point-card node arrays as JSON"
   );
   assert.doesNotMatch(
     extraFields[1],

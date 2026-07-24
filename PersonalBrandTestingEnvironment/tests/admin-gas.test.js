@@ -414,10 +414,17 @@ function createPointCardSettingRow(gas, overrides = {}) {
     updatedBy: "SYSTEM",
     lastRequestId: "setup-default-card",
     rewardMilestones: "5",
+    rewardLotteryTypeIds: gas.DEFAULT_LOTTERY_TYPE_ID,
     ...overrides,
   };
   if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
     values.rewardMilestones = String(values.targetPoints);
+  }
+  if (!Object.prototype.hasOwnProperty.call(overrides, "rewardLotteryTypeIds")) {
+    values.rewardLotteryTypeIds = String(values.rewardMilestones)
+      .split(",")
+      .map(() => gas.DEFAULT_LOTTERY_TYPE_ID)
+      .join(",");
   }
   Object.entries(values).forEach(([key, value]) => {
     row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
@@ -619,7 +626,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointTypeColumns, 12);
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
-  assert.equal(result.pointCardSettingColumns, 6);
+  assert.equal(result.pointCardSettingColumns, 7);
   assert.equal(result.lotteryTypeColumns, 9);
   assert.equal(result.lotteryPrizeColumns, 11);
   assert.equal(result.lotteryDrawColumns, 16);
@@ -649,6 +656,12 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
       gas.POINT_CARD_SETTING_COLUMN.rewardMilestones - 1
     ],
     "5"
+  );
+  assert.equal(
+    spreadsheet.sheets.PointCardSettings.data[1][
+      gas.POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds - 1
+    ],
+    ""
   );
   assert.equal(spreadsheet.sheets.LotteryTypes.data.length, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(result, "pointClaimSecret"), false);
@@ -2127,25 +2140,64 @@ test("administrators create and rename a complete wheel with the same save actio
   assert.equal(prizeSheet.data.length, 6);
 });
 
-test("administrators version point-card totals and reward milestones without rewriting earlier rules", () => {
+test("administrators version point-card nodes with one assigned wheel per node", () => {
   const gas = createGasContext();
   const settingSheet = createSheet(
     "PointCardSettings",
     gas.POINT_CARD_SETTING_HEADERS,
     [createPointCardSettingRow(gas)]
   );
+  const typeSheet = createSheet("LotteryTypes", gas.LOTTERY_TYPE_HEADERS, [
+    createLotteryTypeRow(gas),
+  ]);
+  const prizeSheet = createSheet("LotteryPrizes", gas.LOTTERY_PRIZE_HEADERS, []);
   installSpreadsheet(
     gas,
     createSpreadsheet({
       Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
       PointCardSettings: settingSheet,
+      LotteryTypes: typeSheet,
+      LotteryPrizes: prizeSheet,
     })
   );
+  gas.adminSaveLotteryConfig_(
+    identity(),
+    {
+      action: "adminSaveLotteryConfig",
+      requestId: "request-point-card-wheel-default",
+      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      lotteryPrizes: [
+        { label: "小禮物", color: "#0B3C2C", probability: 25 },
+        { label: "下次再來", color: "#D9D6CC", probability: 75 },
+      ],
+    },
+    configFor(gas)
+  );
+  const birthdayWheel = gas.adminSaveLotteryConfig_(
+    identity(),
+    {
+      action: "adminSaveLotteryConfig",
+      requestId: "request-point-card-wheel-birthday",
+      lotteryTypeId: "",
+      lotteryTypeName: "生日限定",
+      lotteryPrizes: [
+        { label: "生日禮", color: "#A44A3F", probability: 20 },
+        { label: "生日祝福", color: "#D9D6CC", probability: 80 },
+      ],
+    },
+    configFor(gas)
+  ).data.lotteryType.lotteryTypeId;
+  const pointCardRewards = [
+    { points: 5, lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID },
+    { points: 10, lotteryTypeId: birthdayWheel },
+    { points: 15, lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID },
+    { points: 20, lotteryTypeId: birthdayWheel },
+  ];
   const request = {
     action: "adminSavePointCardSetting",
     requestId: "request-point-card-save-1",
     pointCardTarget: 20,
-    pointCardMilestones: "5,10,15,20",
+    pointCardRewards,
   };
 
   const first = gas.adminSavePointCardSetting_(identity(), request, configFor(gas));
@@ -2156,7 +2208,7 @@ test("administrators version point-card totals and reward milestones without rew
       action: "adminSavePointCardSetting",
       requestId: "request-point-card-save-2",
       pointCardTarget: 20,
-      pointCardMilestones: "5,10,15,20",
+      pointCardRewards,
     },
     configFor(gas)
   );
@@ -2167,6 +2219,10 @@ test("administrators version point-card totals and reward milestones without rew
   assert.deepEqual(
     JSON.parse(JSON.stringify(first.data.pointCardSetting.rewardMilestones)),
     [5, 10, 15, 20]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(first.data.pointCardSetting.rewardRules)),
+    pointCardRewards
   );
   assert.equal(replay.data.duplicate, true);
   assert.equal(replay.data.pointCardSetting.settingVersion, first.data.pointCardSetting.settingVersion);
@@ -2180,6 +2236,54 @@ test("administrators version point-card totals and reward milestones without rew
     settingSheet.data[2][gas.POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
     "5,10,15,20"
   );
+  assert.equal(
+    settingSheet.data[2][
+      gas.POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds - 1
+    ],
+    [
+      gas.DEFAULT_LOTTERY_TYPE_ID,
+      birthdayWheel,
+      gas.DEFAULT_LOTTERY_TYPE_ID,
+      birthdayWheel,
+    ].join(",")
+  );
+  assert.throws(
+    () =>
+      gas.adminDeleteLotteryType_(
+        identity(),
+        {
+          action: "adminDeleteLotteryType",
+          requestId: "request-delete-referenced-wheel",
+          lotteryTypeId: birthdayWheel,
+        },
+        configFor(gas)
+    ),
+    (error) => error.appCode === "LOTTERY_TYPE_IN_USE"
+  );
+  gas.adminSavePointCardSetting_(
+    identity(),
+    {
+      action: "adminSavePointCardSetting",
+      requestId: "request-remove-birthday-wheel-reference",
+      pointCardTarget: 20,
+      pointCardRewards: [5, 10, 15, 20].map((points) => ({
+        points,
+        lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      })),
+    },
+    configFor(gas)
+  );
+  const deletedHistoricalWheel = gas.adminDeleteLotteryType_(
+    identity(),
+    {
+      action: "adminDeleteLotteryType",
+      requestId: "request-delete-historical-wheel",
+      lotteryTypeId: birthdayWheel,
+    },
+    configFor(gas)
+  );
+  assert.equal(deletedHistoricalWheel.data.deleted, true);
+  assert.equal(deletedHistoricalWheel.data.duplicate, false);
 });
 
 test("administrators create and soft-delete lottery types idempotently", () => {
@@ -2401,7 +2505,10 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
     action: "adminSavePointCardSetting",
     requestId: "request-bridge-point-card",
     pointCardTarget: "20",
-    pointCardMilestones: "5,10,15,20",
+    pointCardRewards: [
+      { points: 5, lotteryTypeId: "LTY-ABCDEF1234" },
+      { points: 20, lotteryTypeId: "LTY-ZYXWVU9876" },
+    ],
   };
   const parsedPointCard = gas.parseRequest_({
     postData: { contents: JSON.stringify(pointCardPayload) },
@@ -2414,10 +2521,13 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
     },
   });
   assert.equal(parsedPointCard.pointCardTarget, 20);
-  assert.equal(parsedPointCard.pointCardMilestones, "5,10,15,20");
-  assert.equal(
-    parsedBridgePointCard.pointCardMilestones,
-    parsedPointCard.pointCardMilestones
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(parsedPointCard.pointCardRewards)),
+    pointCardPayload.pointCardRewards
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(parsedBridgePointCard.pointCardRewards)),
+    pointCardPayload.pointCardRewards
   );
   gas.validateRequestEnvelope_(parsedPointCard);
   gas.validateRequestEnvelope_(parsedBridgePointCard);
@@ -2678,7 +2788,7 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   );
   assert.deepEqual(
     spreadsheet.sheets.PointCardSettings.data[1].slice(legacyPointCardRow.length),
-    [""]
+    ["", ""]
   );
   assert.deepEqual(
     JSON.parse(
@@ -2710,6 +2820,36 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   );
 });
 
+test("milestone-only point-card rows append the wheel mapping column in place", () => {
+  const gas = createGasContext();
+  const existingRow = createPointCardSettingRow(gas).slice(
+    0,
+    gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length
+  );
+  const existingCells = existingRow.slice();
+  const sheet = createSheet(
+    "PointCardSettings",
+    gas.MILESTONE_POINT_CARD_SETTING_HEADERS,
+    [existingRow]
+  );
+  const spreadsheet = createSpreadsheet({ PointCardSettings: sheet });
+
+  gas.getOrCreatePointCardSettingSheet_(spreadsheet, configFor(gas));
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(sheet.data[0])),
+    JSON.parse(JSON.stringify(gas.POINT_CARD_SETTING_HEADERS))
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    [""]
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(0, gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    existingCells
+  );
+});
+
 test("health identifies the isolated service without exposing configuration", () => {
   const gas = createGasContext();
   const output = gas.doGet({ parameter: { action: "health", requestId: "health-123" } });
@@ -2717,7 +2857,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.7.0");
+  assert.equal(response.data.version, "1.8.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

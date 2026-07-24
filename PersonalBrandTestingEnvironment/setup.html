@@ -84,7 +84,7 @@
           </dl>
           <p>同樣執行一次 <code>setup()</code> 並另外部署成網頁應用程式。這一步會自動建立管理 GAS 專用的 <code>POINT_CLAIM_SECRET</code>；不要把它放進前端 JSON 或試算表。管理 GAS 的 <code>/exec</code> URL 必須與會員 GAS 不同。</p>
           <p>兩邊的 <code>ALLOWED_ORIGINS</code> 都只填 origin；不要加入 <code>/PersonalBrandTestingEnvironment/</code>、<code>client/</code>、<code>admin/</code> 或 <code>*</code>。</p>
-          <p>全新安裝完成後不會自動建立轉盤，請到管理端轉盤頁按「新增第一個轉盤」，一次填好名稱、獎項、顏色與機率後儲存。若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並在 <code>PointCardSettings</code> 追加 <code>reward_milestones</code>；舊規則的空白節點相容為只在滿點抽一次。只有舊版已有轉盤獎項時，才會建立「經典轉盤」並歸入舊獎項；舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
+          <p>全新安裝完成後不會自動建立轉盤，請到管理端轉盤頁按「新增第一個轉盤」，一次填好名稱、獎項、顏色與機率後儲存，再替集點卡節點選擇這個轉盤。若是從舊版升級，請在維護時段先更新兩套 GAS，再分別執行 <code>setup()</code> 並建立新部署。系統會保留既有 1–21 欄、在尾端追加 <code>phone</code> 與 <code>birthday</code>，在三張點數工作表尾端追加規則快照欄位，並在 <code>PointCardSettings</code> 追加 <code>reward_milestones</code> 與 <code>reward_lottery_type_ids</code>；兩欄逐項對應，讓每個節點只能使用一個轉盤。舊規則的空白節點相容為只在滿點抽一次；舊版已有獎項時，系統才會建立「經典轉盤」、歸入舊獎項並將舊節點指派給它。舊活動回填為有期限且每位會員一次。不要只升級其中一套 GAS。</p>
         </div>
       </section>
 
@@ -136,10 +136,10 @@ PointRedemptions → 會員領取紀錄與終身累計點數</code></pre>
         <span>07</span>
         <div>
           <h2>設定集點卡與轉盤抽獎</h2>
-          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，先設定一張卡的總點數與抽獎節點，例如 <code>20</code> 點卡搭配 <code>5, 10, 15, 20</code>，再新增轉盤類型並替每個類型設定 2～12 個獎項名稱、區塊顏色與中獎機率。機率最多兩位小數且合計必須是 100%；規則與獎項都採版本化紀錄，刪除轉盤類型也只會軟刪除，不影響歷史資料。</p>
-          <p>會員每到一個節點就取得一次抽獎資格；集滿 20 點後畫面開始下一張卡，但 <code>PointRedemptions</code> 的終身累計不會歸零。會員可保留尚未使用的資格，抽獎也不扣點。</p>
-          <p>會員 GAS 會鎖定最早未使用的節點資格、依管理設定決定獎項，再把類型、規則版本、卡片編號、節點與結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果；同一次網路重試只會重播原結果。按「確認」後才返回會員資料。</p>
-          <pre><code>PointCardSettings → 卡片總點數、抽獎節點與生效版本
+          <p>以已核准的管理員前往 <code>admin/lottery.html</code>，先新增轉盤並在同一個表單完成名稱、2～12 個獎項、區塊顏色與中獎機率。再設定集點卡總點數，按「新增節點」逐列輸入點數並選擇該節點對應的轉盤，不需輸入逗號分隔文字。以 20 點卡為例，可建立 5、10、15、20 點四列；每列只能指定一個轉盤，最後一列必須等於 20。機率最多兩位小數且合計必須是 100%；規則與獎項都採版本化紀錄，目前規則引用的轉盤必須先發布新規則解除引用才能軟刪除，歷史規則已發出的抽獎券仍可使用原轉盤。</p>
+          <p>會員每到一個節點就取得一張指定轉盤的抽獎券；集滿 20 點後畫面開始下一張卡，但 <code>PointRedemptions</code> 的終身累計不會歸零。會員可保留尚未使用的券，抽獎也不扣點。</p>
+          <p>會員先在「目前獲得抽獎券」點選一張券，才會進入獨立轉盤畫面；直接點轉盤中央開始抽獎。會員 GAS 會鎖定該券、確認指定轉盤、依管理設定決定獎項，再把類型、規則版本、卡片編號、節點與結果寫入 <code>LotteryDraws</code>。瀏覽器只播放後台結果；同一次網路重試只會重播原結果。按「確認」後才返回會員資料。</p>
+          <pre><code>PointCardSettings → 卡片總點數、抽獎節點、指定轉盤與生效版本
 LotteryTypes      → 可用轉盤類型與軟刪除狀態
 LotteryPrizes     → 各類型的獎項、顏色、機率與版本
 LotteryDraws      → 會員使用的卡片節點資格與獎項快照</code></pre>

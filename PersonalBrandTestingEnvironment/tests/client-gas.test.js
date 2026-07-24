@@ -420,10 +420,17 @@ function createPointCardSettingRow(gas, overrides = {}) {
     updatedBy: "SYSTEM",
     lastRequestId: "setup-default-card",
     rewardMilestones: "5",
+    rewardLotteryTypeIds: gas.DEFAULT_LOTTERY_TYPE_ID,
     ...overrides,
   };
   if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
     values.rewardMilestones = String(values.targetPoints);
+  }
+  if (!Object.prototype.hasOwnProperty.call(overrides, "rewardLotteryTypeIds")) {
+    values.rewardLotteryTypeIds = String(values.rewardMilestones)
+      .split(",")
+      .map(() => gas.DEFAULT_LOTTERY_TYPE_ID)
+      .join(",");
   }
   Object.entries(values).forEach(([key, value]) => {
     row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
@@ -1888,6 +1895,7 @@ test("lottery draw consumes one completed card round without deducting lifetime 
     action: "drawLottery",
     requestId: "request-lottery-draw-1",
     lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+    cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
   };
 
   const first = gas.drawLottery_(createIdentity(), request, {});
@@ -1946,6 +1954,185 @@ test("lottery draw consumes one completed card round without deducting lifetime 
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
 });
 
+test("a reward ticket can draw only from the wheel assigned to its point node", () => {
+  const gas = createGasContext();
+  const assignedTypeId = "LTY-ZYXWVU9876";
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 5,
+        balanceAfter: 5,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        rewardLotteryTypeIds: assignedTypeId,
+      }),
+    ],
+    lotteryTypeRows: [
+      createLotteryTypeRow(gas),
+      createLotteryTypeRow(gas, {
+        lotteryTypeId: assignedTypeId,
+        name: "生日限定",
+        lastRequestId: "request-create-birthday-wheel",
+      }),
+    ],
+    lotteryPrizeRows: createLotteryPrizeRows(gas, {
+      lotteryTypeId: assignedTypeId,
+      configVersion: "LCF-ZYXWVU987654",
+      lastRequestId: "request-config-birthday-wheel",
+      prizes: [
+        {
+          prizeId: "LPR-BIRTHDAY01",
+          label: "生日禮",
+          color: "#A44A3F",
+          probabilityBasisPoints: 2000,
+        },
+        {
+          prizeId: "LPR-BIRTHDAY02",
+          label: "生日祝福",
+          color: "#D9D6CC",
+          probabilityBasisPoints: 8000,
+        },
+      ],
+    }),
+  });
+  const cardRoundKey = `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`;
+
+  assert.throws(
+    () =>
+      gas.drawLottery_(
+        createIdentity(),
+        {
+          action: "drawLottery",
+          requestId: "request-wrong-ticket-wheel",
+          lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+          cardRoundKey,
+        },
+        {}
+      ),
+    (error) => error.appCode === "LOTTERY_TICKET_MISMATCH"
+  );
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 0);
+
+  const result = gas.drawLottery_(
+    createIdentity(),
+    {
+      action: "drawLottery",
+      requestId: "request-assigned-ticket-wheel",
+      lotteryTypeId: assignedTypeId,
+      cardRoundKey,
+    },
+    {}
+  );
+  assert.equal(result.data.draw.lotteryTypeId, assignedTypeId);
+  assert.equal(result.data.draw.cardRoundKey, cardRoundKey);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
+});
+
+test("an earned historical ticket keeps its assigned wheel after that wheel is soft-deleted", () => {
+  const gas = createGasContext();
+  const historicalTypeId = "LTY-ZYXWVU9876";
+  const historicalPrizeRows = createLotteryPrizeRows(gas, {
+    lotteryTypeId: historicalTypeId,
+    configVersion: "LCF-ZYXWVU987654",
+    lastRequestId: "request-config-historical-wheel",
+    prizes: [
+      {
+        prizeId: "LPR-HISTORY001",
+        label: "歷史獎項",
+        color: "#A44A3F",
+        probabilityBasisPoints: 2500,
+      },
+      {
+        prizeId: "LPR-HISTORY002",
+        label: "歷史祝福",
+        color: "#D9D6CC",
+        probabilityBasisPoints: 7500,
+      },
+    ],
+  });
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 5,
+        balanceAfter: 5,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        rewardLotteryTypeIds: historicalTypeId,
+      }),
+      createPointCardSettingRow(gas, {
+        settingVersion: "PCS-SECOND000001",
+        effectiveAt: new Date("2026-07-23T00:00:00.000Z"),
+        updatedBy: "ADM-ABCDEF1234",
+        lastRequestId: "request-new-current-card",
+      }),
+    ],
+    lotteryTypeRows: [
+      createLotteryTypeRow(gas),
+      createLotteryTypeRow(gas, {
+        lotteryTypeId: historicalTypeId,
+        name: "已下架歷史轉盤",
+        status: "deleted",
+        updatedAt: new Date("2026-07-24T00:00:00.000Z"),
+        deletedAt: new Date("2026-07-24T00:00:00.000Z"),
+        deletedBy: "ADM-ABCDEF1234",
+        lastRequestId: "request-create-historical-wheel",
+      }),
+    ],
+    lotteryPrizeRows: [
+      ...createLotteryPrizeRows(gas),
+      ...historicalPrizeRows,
+    ],
+  });
+  const config = gas.getLotteryConfig_(
+    createIdentity(),
+    { action: "getLotteryConfig", requestId: "request-list-historical-ticket" },
+    {}
+  );
+  const ticket = config.data.card.availableRewards[0];
+
+  assert.equal(ticket.lotteryTypeId, historicalTypeId);
+  assert.equal(ticket.cardRoundKey, `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`);
+  assert.equal(
+    config.data.lotteryTypes.some(
+      (type) => type.lotteryTypeId === historicalTypeId
+    ),
+    true
+  );
+
+  const result = gas.drawLottery_(
+    createIdentity(),
+    {
+      action: "drawLottery",
+      requestId: "request-draw-historical-ticket",
+      lotteryTypeId: historicalTypeId,
+      cardRoundKey: ticket.cardRoundKey,
+    },
+    {}
+  );
+  assert.equal(result.data.draw.lotteryTypeId, historicalTypeId);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
+  const afterDrawConfig = gas.getLotteryConfig_(
+    createIdentity(),
+    { action: "getLotteryConfig", requestId: "request-refresh-historical-ticket" },
+    {}
+  );
+  assert.equal(afterDrawConfig.data.card.availableDraws, 0);
+  assert.equal(
+    afterDrawConfig.data.lotteryTypes.some(
+      (type) => type.lotteryTypeId === historicalTypeId
+    ),
+    true
+  );
+});
+
 test("a 20-point card grants draws at 5, 10, 15 and 20 before resetting", () => {
   const gas = createGasContext();
   const redemptionRows = [
@@ -1972,8 +2159,11 @@ test("a 20-point card grants draws at 5, 10, 15 and 20 before resetting", () => 
       createIdentity(),
       {
         action: "drawLottery",
-        requestId: `request-lottery-milestone-${number}`,
-        lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+          requestId: `request-lottery-milestone-${number}`,
+          lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+          cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:${
+            [5, 10, 15, 20][number - 1]
+          }`,
       },
       {}
     )
@@ -2072,6 +2262,7 @@ test("milestone draw eligibility appears exactly when the running card reaches e
       action: "drawLottery",
       requestId: "request-milestone-five-draw",
       lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
     },
     {}
   );
@@ -2533,7 +2724,7 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
     sheets
       .get("PointCardSettings")
       .rows[0].slice(gas.LEGACY_POINT_CARD_SETTING_HEADERS.length),
-    [""]
+    ["", ""]
   );
   assert.deepEqual(
     JSON.parse(
@@ -2564,6 +2755,40 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
       .get("LotteryDraws")
       .rows[0].slice(gas.LEGACY_LOTTERY_DRAW_HEADERS.length),
     ["", "", ""]
+  );
+});
+
+test("client GAS upgrades milestone-only point-card rows with one mapping column", () => {
+  const gas = createGasContext();
+  const existingRow = createPointCardSettingRow(gas).slice(
+    0,
+    gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length
+  );
+  const existingCells = existingRow.slice();
+  const sheet = createDataSheet(
+    "PointCardSettings",
+    Array.from(gas.MILESTONE_POINT_CARD_SETTING_HEADERS),
+    [existingRow]
+  );
+  gas.SpreadsheetApp.openById = () => ({
+    getSheetByName(name) {
+      return name === "PointCardSettings" ? sheet : null;
+    },
+  });
+
+  gas.getOrCreatePointCardSettingSheet_({
+    spreadsheetId: "shared-members-sheet",
+    pointCardSettingSheetName: "PointCardSettings",
+  });
+
+  assert.deepEqual(sheet.headers, Array.from(gas.POINT_CARD_SETTING_HEADERS));
+  assert.deepEqual(
+    sheet.rows[0].slice(gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    [""]
+  );
+  assert.deepEqual(
+    sheet.rows[0].slice(0, gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    existingCells
   );
 });
 
@@ -2603,7 +2828,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.7.0");
+  assert.equal(health.data.version, "1.8.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -2628,7 +2853,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointTypeColumns, 12);
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
-  assert.equal(setup.pointCardSettingColumns, 6);
+  assert.equal(setup.pointCardSettingColumns, 7);
   assert.equal(setup.lotteryTypeColumns, 9);
   assert.equal(setup.lotteryPrizeColumns, 11);
   assert.equal(setup.lotteryDrawColumns, 16);
