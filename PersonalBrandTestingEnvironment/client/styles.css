@@ -1812,7 +1812,6 @@ code {
 .member-lottery-rotor {
   width: 100%;
   height: 100%;
-  transition: transform 4.2s cubic-bezier(0.12, 0.72, 0.12, 1);
   will-change: transform;
 }
 

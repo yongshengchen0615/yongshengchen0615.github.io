@@ -1389,19 +1389,14 @@
     if (lotteryPrizes.length < 2 || lotteryPrizes.length > 12) {
       throw createError("INVALID_LOTTERY_PRIZES", "轉盤必須設定 2 到 12 個獎項。");
     }
-    var labels = Object.create(null);
     var totalBasisPoints = 0;
     var normalized = lotteryPrizes.map(function (prize) {
       var label = String(prize.label || "").trim();
       var color = String(prize.color || "").trim().toUpperCase();
       var probability = Number(prize.probability);
       var basisPoints = Math.round(probability * 100);
-      var labelKey = label.toLocaleLowerCase("zh-TW");
       if (!label || label.length > 40) {
         throw createError("INVALID_LOTTERY_PRIZES", "獎項名稱必須是 1 到 40 個字元。");
-      }
-      if (labels[labelKey]) {
-        throw createError("INVALID_LOTTERY_PRIZES", "獎項名稱不可重複。");
       }
       if (!/^#[0-9A-F]{6}$/.test(color)) {
         throw createError("INVALID_LOTTERY_COLOR", "請為每個獎項選擇有效顏色。");
@@ -1417,7 +1412,6 @@
           "每個獎項機率必須介於 0.01% 到 99.99%，最多兩位小數。"
         );
       }
-      labels[labelKey] = true;
       totalBasisPoints += basisPoints;
       return { label: label, color: color, probability: basisPoints / 100 };
     });
@@ -3103,7 +3097,7 @@
       INVALID_POINT_CARD_MILESTONES:
         "抽獎節點必須是遞增整數，且最後一個節點等於集點卡總點數。",
       POINT_CARD_DATA_ERROR: "集點卡設定資料不一致，請先檢查工作表內容。",
-      INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個不重複的轉盤獎項。",
+      INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個有效的轉盤獎項。",
       INVALID_LOTTERY_TYPE_ID: "轉盤類型識別碼無效，請重新整理後再試。",
       INVALID_LOTTERY_TYPE_NAME: "轉盤類型名稱必須是 1 至 40 個字元。",
       LOTTERY_TYPE_EXISTS: "已有相同名稱的轉盤類型。",

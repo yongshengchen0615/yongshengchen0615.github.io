@@ -8,9 +8,10 @@
   var selectedRewardTicket = null;
   var cardStatus = null;
   var lotteryRotation = 0;
-  var drawStartedAt = 0;
   var waitingSpinFrame = 0;
   var waitingSpinLastTime = 0;
+  var settlingSpinFrame = 0;
+  var spinAnimationVersion = 0;
   var isBusy = false;
   var isDemoSession = false;
   var pendingRequest = null;
@@ -26,12 +27,14 @@
   var pointScannerDetecting = false;
   var pendingPointClaim = "";
   var pendingPointClaimRequestId = "";
+  var pointClaimRefreshPromise = null;
+  var pointClaimRefreshTimer = 0;
   var isPointClaimBusy = false;
   var activeTicketTab = "";
   var isPointHistoryLoading = false;
   var pointHistoryRequestVersion = 0;
-  var DRAW_TARGET_TOTAL_MS = 3000;
-  var DRAW_MIN_RESULT_MS = 900;
+  var SPIN_DEGREES_PER_MS = 1.2;
+  var FINAL_SPIN_TURNS = 3;
   var WHEEL_PRELOAD_LIMIT = 8;
   var STATE_IDS = [
     "loading-state",
@@ -79,8 +82,17 @@
 
   function boot() {
     var thisBoot = ++bootVersion;
+    isBusy = false;
+    stopSpinAnimation();
     pointHistoryRequestVersion += 1;
     isPointHistoryLoading = false;
+    window.clearTimeout(pointClaimRefreshTimer);
+    pointClaimRefreshTimer = 0;
+    pointClaimRefreshPromise = null;
+    closeDialog(byId("point-claim-dialog"));
+    byId("lottery-state").setAttribute("aria-busy", "false");
+    setButtonBusy(byId("scan-point-button"), false);
+    setButtonBusy(byId("point-claim-confirm-button"), false);
     activeTicketTab = "";
     isDemoSession = hasDemoQuery();
     syncMemberRoutes();
@@ -135,7 +147,7 @@
     }
     return sendMemberRequest("getLotteryConfig", {})
       .then(function (response) {
-        if (expectedBootVersion !== bootVersion) return;
+        if (expectedBootVersion !== bootVersion) return false;
         assertSuccessfulResponse(response);
         if (
           !response.data ||
@@ -148,15 +160,21 @@
         }
         clearInvalidTokenRecoveryGuard();
         renderWorkspace(response.data);
-        return loadPointHistory();
+        loadPointHistory();
+        return true;
       })
       .catch(function (error) {
-        if (expectedBootVersion !== bootVersion) return;
-        if (!preserveView || isAuthorizationError(error)) {
+        if (expectedBootVersion !== bootVersion) return false;
+        var authorizationError = isAuthorizationError(error);
+        if (!preserveView || authorizationError) {
+          if (preserveView && authorizationError) {
+            closeDialog(byId("point-claim-dialog"));
+          }
           handleFatalError(error);
-          return;
+          return false;
         }
         showToast(normalizeError(error).message, "error");
+        return false;
       })
       .finally(function () {
         if (!preserveView || expectedBootVersion !== bootVersion) return;
@@ -1068,7 +1086,6 @@
     var selected = getSelectedLotteryType();
     if (!selected) return;
     isBusy = true;
-    drawStartedAt = Date.now();
     pendingRequest = ensurePendingRequest(selectedRewardTicket);
     startWaitingSpin();
     updateControls();
@@ -1146,8 +1163,7 @@
       })
       .catch(function (error) {
         isBusy = false;
-        drawStartedAt = 0;
-        stopWaitingSpin();
+        stopSpinAnimation();
         updateControls();
         byId("lottery-spin-status").textContent =
           "尚未確認結果；請再點一次轉盤中央安全重試，不會重複使用抽獎券。";
@@ -1231,8 +1247,7 @@
       }
     } catch (error) {
       isBusy = false;
-      drawStartedAt = 0;
-      stopWaitingSpin();
+      stopSpinAnimation();
       updateControls();
       showToast(normalizeError(error).message, "error");
       return;
@@ -1253,7 +1268,6 @@
       byId("lottery-result-balance").textContent = formatNumber(draw.pointBalance);
       clearPendingRequest();
       isBusy = false;
-      drawStartedAt = 0;
       renderPointCard();
       renderLotteryTickets();
       updateControls();
@@ -1263,7 +1277,8 @@
   }
 
   function animateToPrize(draw, lottery) {
-    stopWaitingSpin();
+    stopSpinAnimation();
+    var animationVersion = spinAnimationVersion;
     var prizeIndex = lottery.prizes.findIndex(function (prize) {
       return prize.prizeId === draw.prizeId;
     });
@@ -1272,49 +1287,70 @@
     var currentModulo = ((lotteryRotation % 360) + 360) % 360;
     var desiredModulo = ((desiredRotation % 360) + 360) % 360;
     var alignment = (desiredModulo - currentModulo + 360) % 360;
-    lotteryRotation += 360 * 5 + alignment;
+    var startRotation = lotteryRotation;
+    var rotationDelta = 360 * FINAL_SPIN_TURNS + alignment;
+    var targetRotation = startRotation + rotationDelta;
     var rotor = byId("member-lottery-rotor");
     var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    var elapsed = drawStartedAt ? Date.now() - drawStartedAt : 0;
-    var duration = reducedMotion
-      ? 0
-      : Math.max(
-          DRAW_MIN_RESULT_MS,
-          Math.min(DRAW_TARGET_TOTAL_MS, DRAW_TARGET_TOTAL_MS - elapsed)
-        );
-    rotor.style.transitionDuration = reducedMotion ? "0.01ms" : duration + "ms";
-    rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
     byId("lottery-spin-status").textContent = "轉盤旋轉中，請稍候結果…";
+    if (reducedMotion) {
+      lotteryRotation = targetRotation;
+      rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
+      return new Promise(function (resolve) {
+        window.setTimeout(function () {
+          if (animationVersion === spinAnimationVersion) resolve();
+        }, 30);
+      });
+    }
+
+    // Quadratic ease-out begins at the same angular velocity as the waiting
+    // spin, then continuously slows to a complete stop at the selected prize.
+    var duration = (2 * rotationDelta) / SPIN_DEGREES_PER_MS;
     return new Promise(function (resolve) {
-      window.setTimeout(resolve, reducedMotion ? 30 : duration + 100);
+      var animationStartedAt =
+        window.performance && typeof window.performance.now === "function"
+          ? window.performance.now()
+          : null;
+      function decelerate(timestamp) {
+        if (animationVersion !== spinAnimationVersion) return;
+        if (animationStartedAt === null) animationStartedAt = timestamp;
+        var progress = Math.min(1, (timestamp - animationStartedAt) / duration);
+        var easedProgress = 1 - Math.pow(1 - progress, 2);
+        lotteryRotation = startRotation + rotationDelta * easedProgress;
+        rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
+        if (progress < 1) {
+          settlingSpinFrame = window.requestAnimationFrame(decelerate);
+          return;
+        }
+        settlingSpinFrame = 0;
+        lotteryRotation = targetRotation;
+        rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
+        resolve();
+      }
+      settlingSpinFrame = window.requestAnimationFrame(decelerate);
     });
   }
 
   function resetRotor() {
-    stopWaitingSpin();
+    stopSpinAnimation();
     lotteryRotation = 0;
     var rotor = byId("member-lottery-rotor");
-    rotor.style.transitionDuration = "0ms";
     rotor.style.transform = "rotate(0deg)";
-    window.requestAnimationFrame(function () {
-      rotor.style.transitionDuration = "";
-    });
   }
 
   function startWaitingSpin() {
-    stopWaitingSpin();
+    stopSpinAnimation();
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     var rotor = byId("member-lottery-rotor");
-    rotor.style.transitionDuration = "0ms";
     waitingSpinLastTime = 0;
     function rotate(timestamp) {
       if (!isBusy) {
-        stopWaitingSpin();
+        stopSpinAnimation();
         return;
       }
       if (waitingSpinLastTime) {
         lotteryRotation +=
-          Math.min(40, timestamp - waitingSpinLastTime) * 0.34;
+          Math.min(100, timestamp - waitingSpinLastTime) * SPIN_DEGREES_PER_MS;
         rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
       }
       waitingSpinLastTime = timestamp;
@@ -1323,12 +1359,17 @@
     waitingSpinFrame = window.requestAnimationFrame(rotate);
   }
 
-  function stopWaitingSpin() {
+  function stopSpinAnimation() {
     if (waitingSpinFrame) {
       window.cancelAnimationFrame(waitingSpinFrame);
       waitingSpinFrame = 0;
     }
+    if (settlingSpinFrame) {
+      window.cancelAnimationFrame(settlingSpinFrame);
+      settlingSpinFrame = 0;
+    }
     waitingSpinLastTime = 0;
+    spinAnimationVersion += 1;
   }
 
   function updateControls() {
@@ -1594,6 +1635,15 @@
         pendingPointClaim = "";
         clearPendingPointRedemptionRequest();
         setPointClaimState("point-claim-result-state");
+        // Start after the scanner promise restores its button state so the
+        // background refresh cannot overwrite the original scan-button label.
+        var claimBootVersion = bootVersion;
+        window.clearTimeout(pointClaimRefreshTimer);
+        pointClaimRefreshTimer = window.setTimeout(function () {
+          pointClaimRefreshTimer = 0;
+          if (claimBootVersion !== bootVersion) return;
+          preparePointClaimWorkspaceRefresh();
+        }, 0);
       })
       .catch(function (error) {
         if (isAuthorizationError(error)) {
@@ -1671,8 +1721,46 @@
   }
 
   function confirmPointClaim() {
-    closeDialog(byId("point-claim-dialog"));
-    return loadLotteryWorkspace(bootVersion, true);
+    var button = byId("point-claim-confirm-button");
+    if (button.disabled) {
+      return pointClaimRefreshPromise || Promise.resolve(false);
+    }
+    setButtonBusy(button, true, "正在更新集點卡");
+    var expectedBootVersion = bootVersion;
+    var refreshPromise = preparePointClaimWorkspaceRefresh();
+    return refreshPromise
+      .then(function (updated) {
+        if (!updated || expectedBootVersion !== bootVersion) return false;
+        closeDialog(byId("point-claim-dialog"));
+        if (pointClaimRefreshPromise === refreshPromise) {
+          pointClaimRefreshPromise = null;
+        }
+        return true;
+      })
+      .finally(function () {
+        if (expectedBootVersion === bootVersion) {
+          setButtonBusy(button, false);
+        }
+      });
+  }
+
+  function preparePointClaimWorkspaceRefresh() {
+    if (pointClaimRefreshPromise) return pointClaimRefreshPromise;
+    var refreshPromise = loadLotteryWorkspace(bootVersion, true).then(
+      function (updated) {
+        if (!updated && pointClaimRefreshPromise === refreshPromise) {
+          pointClaimRefreshPromise = null;
+          var dialog = byId("point-claim-dialog");
+          if (dialog.open || dialog.hasAttribute("open")) {
+            byId("point-claim-note").textContent =
+              "領點結果已確認，但集點卡尚未同步。請確認網路後再按一次。";
+          }
+        }
+        return updated;
+      }
+    );
+    pointClaimRefreshPromise = refreshPromise;
+    return refreshPromise;
   }
 
   function sendPointClaimMessage(
@@ -2295,8 +2383,7 @@
           handleDraw();
         } catch (error) {
           isBusy = false;
-          drawStartedAt = 0;
-          stopWaitingSpin();
+          stopSpinAnimation();
           updateControls();
         showToast(normalizeError(error).message, "error");
       }

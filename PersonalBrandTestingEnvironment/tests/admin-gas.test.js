@@ -2038,7 +2038,7 @@ test("approved administrators save an append-only lottery version idempotently",
     lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
     lotteryPrizes: [
       { label: "銘謝惠顧", color: "#D9D6CC", probability: 70 },
-      { label: "頭獎", color: "#0B3C2C", probability: 30 },
+      { label: "銘謝惠顧", color: "#0B3C2C", probability: 30 },
     ],
   };
 
@@ -2051,6 +2051,16 @@ test("approved administrators save an append-only lottery version idempotently",
   assert.equal(first.data.lottery.lotteryTypeId, gas.DEFAULT_LOTTERY_TYPE_ID);
   assert.equal(first.data.lotteryType.name, gas.DEFAULT_LOTTERY_TYPE_NAME);
   assert.equal(first.data.lottery.configVersion, second.data.lottery.configVersion);
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(first.data.lottery.prizes.map((prize) => prize.label))
+    ),
+    ["銘謝惠顧", "銘謝惠顧"]
+  );
+  assert.equal(
+    new Set(first.data.lottery.prizes.map((prize) => prize.prizeId)).size,
+    2
+  );
   assert.equal(prizeSheet.data.length, 3);
   assert.deepEqual(
     prizeSheet.data

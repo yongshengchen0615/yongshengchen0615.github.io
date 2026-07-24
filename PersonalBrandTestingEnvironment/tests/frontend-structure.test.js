@@ -297,6 +297,10 @@ test("admin exposes an accessible point-type and QR campaign workspace", () => {
 test("admin lottery page maps individually added card nodes to one configured wheel", () => {
   const html = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const validatePrizes = getTopLevelFunctionContaining(
+    script,
+    /function\s+validateLotterySubmission\s*\(/
+  );
 
   for (const id of [
     "point-card-setting-form",
@@ -338,14 +342,28 @@ test("admin lottery page maps individually added card nodes to one configured wh
   assert.match(script, /sendAdminRequest\(["']adminListLotteryDraws["']/);
   assert.match(script, /totalBasisPoints\s*!==\s*10000/);
   assert.match(script, /colorInput\.type\s*=\s*["']color["']/);
+  assert.doesNotMatch(validatePrizes, /獎項名稱不可重複|labelKey|var\s+labels/);
 });
 
 test("member lottery opens an earned ticket on a separate view and spins from the wheel center", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
   const gas = fs.readFileSync(path.join(root, "gas/client/Code.gs"), "utf8");
   const spin = getTopLevelFunctionContaining(script, /function\s+handleDraw/);
+  const animateSpin = getTopLevelFunctionContaining(
+    script,
+    /function\s+animateToPrize\s*\(/
+  );
+  const waitingSpin = getTopLevelFunctionContaining(
+    script,
+    /function\s+startWaitingSpin\s*\(/
+  );
+  const stopSpin = getTopLevelFunctionContaining(
+    script,
+    /function\s+stopSpinAnimation\s*\(/
+  );
   const renderWorkspace = getTopLevelFunctionContaining(
     script,
     /function\s+renderWorkspace/
@@ -451,7 +469,29 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(openTicket, /renderSelectedLottery\(\);[\s\S]*showLotteryWheelView\(\)/);
   assert.doesNotMatch(openTicket, /requestAnimationFrame/);
   assert.match(script, /function\s+startWaitingSpin\s*\(/);
-  assert.match(script, /requestAnimationFrame\(rotate\)/);
+  assert.match(waitingSpin, /requestAnimationFrame\(rotate\)/);
+  assert.match(
+    waitingSpin,
+    /\*\s*SPIN_DEGREES_PER_MS/
+  );
+  assert.match(waitingSpin, /Math\.min\(100,\s*timestamp\s*-\s*waitingSpinLastTime\)/);
+  assert.match(
+    animateSpin,
+    /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
+  );
+  assert.match(
+    animateSpin,
+    /1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
+  );
+  assert.match(animateSpin, /if\s*\(reducedMotion\)[\s\S]*return new Promise/);
+  assert.match(animateSpin, /window\.performance\.now\(\)/);
+  assert.match(animateSpin, /requestAnimationFrame\(decelerate\)/);
+  assert.match(stopSpin, /cancelAnimationFrame\(settlingSpinFrame\)/);
+  assert.match(stopSpin, /spinAnimationVersion\s*\+=\s*1/);
+  assert.doesNotMatch(
+    styles,
+    /\.member-lottery-rotor\s*\{[^}]*\btransition\s*:/s
+  );
   assert.match(script, /cardStatus\.availableRewards\.forEach/);
   assert.match(script, /function\s+selectTicketTab\s*\(/);
   assert.match(script, /byId\(name\s*\+\s*["']-ticket-panel["']\)\.hidden\s*=\s*!selected/);
@@ -616,7 +656,10 @@ test("client point history lives on the point-card page with complete UI states"
   assert.match(script, /entryType\s*===\s*["']draw["']/);
   assert.match(script, /label\s*===\s*["']集點卡抽獎 · ["']\s*\+\s*prizeLabel/);
   assert.match(script, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
-  assert.match(loadWorkspace, /renderWorkspace\(response\.data\);[\s\S]*return loadPointHistory\(\)/);
+  assert.match(
+    loadWorkspace,
+    /renderWorkspace\(response\.data\);[\s\S]*loadPointHistory\(\);[\s\S]*return true/
+  );
   assert.match(
     getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
     /loadPointHistory\(\)/
@@ -864,6 +907,10 @@ test("shared GAS transport keeps fetch primary and bridge as a compatibility fal
 
 test("member point-card refresh and scanner keep interaction local and bounded", () => {
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const boot = getTopLevelFunctionContaining(
+    script,
+    /function\s+boot\s*\(/
+  );
   const loadWorkspace = getTopLevelFunctionContaining(
     script,
     /function\s+loadLotteryWorkspace\s*\(/
@@ -871,6 +918,14 @@ test("member point-card refresh and scanner keep interaction local and bounded",
   const confirmClaim = getTopLevelFunctionContaining(
     script,
     /function\s+confirmPointClaim\s*\(/
+  );
+  const prepareClaimRefresh = getTopLevelFunctionContaining(
+    script,
+    /function\s+preparePointClaimWorkspaceRefresh\s*\(/
+  );
+  const redeemClaim = getTopLevelFunctionContaining(
+    script,
+    /function\s+redeemScannedPointClaim\s*\(/
   );
   const nativeFallback = getTopLevelFunctionContaining(
     script,
@@ -887,7 +942,47 @@ test("member point-card refresh and scanner keep interaction local and bounded",
 
   assert.match(loadWorkspace, /if\s*\(preserveView\)/);
   assert.match(loadWorkspace, /lotteryState\.setAttribute\(["']aria-busy["']/);
-  assert.match(confirmClaim, /loadLotteryWorkspace\(bootVersion,\s*true\)/);
+  assert.match(
+    loadWorkspace,
+    /authorizationError[\s\S]*closeDialog\(byId\(["']point-claim-dialog["']\)\)[\s\S]*handleFatalError/
+  );
+  assert.match(loadWorkspace, /loadPointHistory\(\);\s*return true;/);
+  assert.doesNotMatch(loadWorkspace, /return\s+loadPointHistory\(\)/);
+  assert.match(
+    redeemClaim,
+    /setPointClaimState\(["']point-claim-result-state["']\);[\s\S]*claimBootVersion\s*=\s*bootVersion[\s\S]*claimBootVersion\s*!==\s*bootVersion[\s\S]*preparePointClaimWorkspaceRefresh\(\)/
+  );
+  assert.match(
+    confirmClaim,
+    /preparePointClaimWorkspaceRefresh\(\)[\s\S]*\.then\(function\s*\(updated\)[\s\S]*closeDialog/
+  );
+  assert.doesNotMatch(confirmClaim, /loadLotteryWorkspace/);
+  assert.match(
+    confirmClaim,
+    /pointClaimRefreshPromise\s*===\s*refreshPromise/
+  );
+  assert.match(
+    confirmClaim,
+    /expectedBootVersion\s*===\s*bootVersion[\s\S]*setButtonBusy\(button,\s*false\)/
+  );
+  assert.match(boot, /clearTimeout\(pointClaimRefreshTimer\)/);
+  assert.match(
+    boot,
+    /setButtonBusy\(byId\(["']point-claim-confirm-button["']\),\s*false\)/
+  );
+  assert.match(
+    prepareClaimRefresh,
+    /if\s*\(pointClaimRefreshPromise\)\s*return pointClaimRefreshPromise/
+  );
+  assert.match(
+    prepareClaimRefresh,
+    /var\s+refreshPromise\s*=\s*loadLotteryWorkspace\(bootVersion,\s*true\)/
+  );
+  assert.match(
+    prepareClaimRefresh,
+    /pointClaimRefreshPromise\s*===\s*refreshPromise/
+  );
+  assert.match(prepareClaimRefresh, /集點卡尚未同步/);
   assert.match(nativeFallback, /subwindowopen is not allowed/);
   assert.match(embeddedScanner, /width:\s*\{\s*ideal:\s*960\s*\}/);
   assert.match(embeddedScanner, /height:\s*\{\s*ideal:\s*960\s*\}/);

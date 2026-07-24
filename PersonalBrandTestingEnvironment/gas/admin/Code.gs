@@ -3197,7 +3197,6 @@ function normalizeLotteryPrizes_(value) {
     throw appError_("INVALID_LOTTERY_PRIZES", "轉盤必須設定 2 到 12 個獎項。");
   }
 
-  var labels = Object.create(null);
   var totalBasisPoints = 0;
   var normalized = prizes.map(function (prize) {
     if (!prize || typeof prize !== "object" || Array.isArray(prize)) {
@@ -3207,13 +3206,9 @@ function normalizeLotteryPrizes_(value) {
     var color = String(prize.color || "").trim().toUpperCase();
     var probability = Number(prize.probability);
     var probabilityBasisPoints = Math.round(probability * 100);
-    var labelKey = label.toLocaleLowerCase();
 
     if (!label || label.length > 40 || /[\u0000-\u001F\u007F]/.test(label)) {
       throw appError_("INVALID_LOTTERY_PRIZES", "獎項名稱必須是 1 到 40 個可顯示字元。");
-    }
-    if (labels[labelKey]) {
-      throw appError_("INVALID_LOTTERY_PRIZES", "轉盤獎項名稱不可重複。");
     }
     if (!/^#[0-9A-F]{6}$/.test(color)) {
       throw appError_("INVALID_LOTTERY_COLOR", "獎項顏色必須是 #RRGGBB 格式。");
@@ -3230,7 +3225,6 @@ function normalizeLotteryPrizes_(value) {
       );
     }
 
-    labels[labelKey] = true;
     totalBasisPoints += probabilityBasisPoints;
     return {
       label: label,
@@ -3627,7 +3621,6 @@ function readLotteryConfigs_(sheet) {
   var configs = Object.keys(groups).map(function (configVersion) {
     var group = groups[configVersion];
     var orders = Object.create(null);
-    var labels = Object.create(null);
     var totalBasisPoints = 0;
     if (
       group.prizes.length < MIN_LOTTERY_PRIZES ||
@@ -3636,12 +3629,10 @@ function readLotteryConfigs_(sheet) {
       throw appError_("LOTTERY_DATA_ERROR", "每版轉盤必須包含 2 到 12 個獎項。");
     }
     group.prizes.forEach(function (prize) {
-      var labelKey = prize.label.toLocaleLowerCase();
-      if (orders[prize.sortOrder] || labels[labelKey]) {
-        throw appError_("LOTTERY_DATA_ERROR", "同一版轉盤的順序或獎項名稱重複。");
+      if (orders[prize.sortOrder]) {
+        throw appError_("LOTTERY_DATA_ERROR", "同一版轉盤的獎項順序重複。");
       }
       orders[prize.sortOrder] = true;
-      labels[labelKey] = true;
       totalBasisPoints += prize.probabilityBasisPoints;
     });
     if (totalBasisPoints !== 10000) {
