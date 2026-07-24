@@ -56,6 +56,32 @@
   var isLotteryMutationLoading = false;
   var isLotteryHistoryLoading = false;
   var isLiffInitialized = false;
+  var memberSearchFrame = 0;
+  var adminWheelRenderFrame = 0;
+  var ADMIN_DATE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  var ADMIN_MINUTE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  var ADMIN_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  var ADMIN_SECOND_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
   var MEMBER_LIFF_PATH = "/2010787602-kaiSm2eq";
 
@@ -592,6 +618,8 @@
     renderLotteryConfigMeta();
     renderLotteryPrizeRows();
     clearLotteryConfigError();
+    clearPointCardSettingError();
+    clearDeleteLotteryTypeError();
     updateOperationControls();
     setConnection(
       isDemoSession ? "展示模式" : "安全連線",
@@ -953,7 +981,7 @@
   function renderPointCardRewardRows() {
     var list = byId("point-card-reward-list");
     var configuredTypes = getConfiguredLotteryTypes();
-    list.textContent = "";
+    var fragment = document.createDocumentFragment();
     pointCardRewardRules.sort(function (left, right) {
       return Number(left.points) - Number(right.points);
     });
@@ -969,6 +997,7 @@
       item.className = "point-card-reward-row";
       order.className = "point-card-reward-order";
       order.textContent = String(index + 1).padStart(2, "0");
+      pointsLabel.dataset.label = "達到點數";
       pointsInput.type = "number";
       pointsInput.min = "1";
       pointsInput.max = "9999";
@@ -978,6 +1007,7 @@
       pointsInput.setAttribute("aria-label", "第 " + (index + 1) + " 個抽獎節點點數");
       pointsLabel.appendChild(pointsInput);
 
+      typeLabel.dataset.label = "指定轉盤";
       var placeholder = document.createElement("option");
       placeholder.value = "";
       placeholder.textContent = configuredTypes.length
@@ -1003,15 +1033,16 @@
 
       pointsInput.addEventListener("input", function () {
         pointCardRewardRules[index].points = Number(pointsInput.value);
-        clearLotteryConfigError();
+        clearPointCardSettingError();
       });
       typeSelect.addEventListener("change", function () {
         pointCardRewardRules[index].lotteryTypeId = typeSelect.value;
-        clearLotteryConfigError();
+        clearPointCardSettingError();
       });
       removeButton.addEventListener("click", function () {
         if (pointCardRewardRules.length <= 1) return;
         pointCardRewardRules.splice(index, 1);
+        clearPointCardSettingError();
         renderPointCardRewardRows();
         updateOperationControls();
       });
@@ -1020,8 +1051,9 @@
       item.appendChild(pointsLabel);
       item.appendChild(typeLabel);
       item.appendChild(removeButton);
-      list.appendChild(item);
+      fragment.appendChild(item);
     });
+    list.replaceChildren(fragment);
     byId("point-card-reward-empty").hidden = configuredTypes.length > 0;
   }
 
@@ -1046,6 +1078,7 @@
       lotteryTypeId:
         configuredTypes.length === 1 ? configuredTypes[0].lotteryTypeId : "",
     });
+    clearPointCardSettingError();
     renderPointCardRewardRows();
     updateOperationControls();
   }
@@ -1114,6 +1147,7 @@
     byId("lottery-editor").hidden = !hasEditor;
     byId("lottery-empty-state").hidden =
       hasEditor || lotteryTypes.length > 0;
+    byId("lottery-rule-workspace").hidden = lotteryTypes.length === 0;
     byId("lottery-config-title").textContent = isCreatingLotteryType
       ? "新增完整轉盤"
       : "完整轉盤設定";
@@ -1216,7 +1250,7 @@
 
   function renderLotteryPrizeRows() {
     var list = byId("lottery-prize-list");
-    list.textContent = "";
+    var fragment = document.createDocumentFragment();
     lotteryPrizes.forEach(function (prize, index) {
       var item = document.createElement("li");
       var order = document.createElement("span");
@@ -1236,6 +1270,7 @@
       order.textContent = String(index + 1).padStart(2, "0");
 
       label.className = "lottery-prize-name";
+      label.dataset.label = "獎項名稱";
       labelInput.type = "text";
       labelInput.maxLength = 40;
       labelInput.value = prize.label;
@@ -1244,6 +1279,7 @@
       label.appendChild(labelInput);
 
       colorLabel.className = "lottery-prize-color";
+      colorLabel.dataset.label = "區塊顏色";
       colorInput.type = "color";
       colorInput.value = prize.color;
       colorInput.setAttribute("aria-label", "第 " + (index + 1) + " 個獎項顏色");
@@ -1252,6 +1288,7 @@
       colorLabel.appendChild(colorText);
 
       probabilityLabel.className = "lottery-prize-probability";
+      probabilityLabel.dataset.label = "中獎機率";
       probabilityInput.type = "number";
       probabilityInput.inputMode = "decimal";
       probabilityInput.min = "0.01";
@@ -1285,7 +1322,7 @@
           };
           colorText.textContent = colorInput.value.toUpperCase();
           updateLotteryProbabilityTotal();
-          drawAdminLotteryWheel();
+          scheduleAdminLotteryWheel();
           clearLotteryConfigError();
         });
       });
@@ -1295,10 +1332,11 @@
       item.appendChild(colorLabel);
       item.appendChild(probabilityLabel);
       item.appendChild(removeButton);
-      list.appendChild(item);
+      fragment.appendChild(item);
     });
+    list.replaceChildren(fragment);
     updateLotteryProbabilityTotal();
-    drawAdminLotteryWheel();
+    scheduleAdminLotteryWheel();
   }
 
   function addLotteryPrize() {
@@ -1514,8 +1552,12 @@
     if (isLotteryMutationLoading) return;
     var input = byId("point-card-target-input");
     var targetPoints = Number(input.value);
+    clearPointCardSettingError();
     if (!Number.isInteger(targetPoints) || targetPoints < 1 || targetPoints > 9999) {
-      showLotteryConfigError("集點卡總點數必須是 1 到 9999 的整數。");
+      showPointCardSettingError(
+        "集點卡總點數必須是 1 到 9999 的整數。",
+        input
+      );
       input.focus();
       return;
     }
@@ -1523,12 +1565,13 @@
     try {
       rewardRules = validatePointCardRewardRules(targetPoints);
     } catch (_error) {
-      showLotteryConfigError(
+      showPointCardSettingError(
         normalizeError(_error).message ||
           "抽獎節點必須是不重複的整數，最後一個節點需等於 " +
           targetPoints +
           " 點。"
       );
+      byId("point-card-setting-error").focus();
       return;
     }
     var rewardMilestones = rewardRules.map(function (rule) {
@@ -1549,6 +1592,7 @@
         };
       });
       renderPointCardSetting();
+      clearPointCardSettingError();
       showToast("預覽：集點卡規則已更新");
       return;
     }
@@ -1572,6 +1616,7 @@
           };
         });
         renderPointCardSetting();
+        clearPointCardSettingError();
         showToast(
           response.data.changed === false
             ? "集點卡規則未變更"
@@ -1579,7 +1624,8 @@
         );
       })
       .catch(function (error) {
-        showLotteryConfigError(normalizeError(error).message);
+        showPointCardSettingError(normalizeError(error).message);
+        byId("point-card-setting-error").focus();
       })
       .finally(function () {
         isLotteryMutationLoading = false;
@@ -1591,8 +1637,14 @@
   function openDeleteLotteryTypeDialog() {
     var selectedType = getSelectedLotteryType();
     if (!selectedType || isLotteryMutationLoading) return;
+    clearDeleteLotteryTypeError();
     byId("delete-lottery-type-name").textContent = selectedType.name;
     openDialog(byId("delete-lottery-type-dialog"));
+  }
+
+  function closeDeleteLotteryTypeDialog() {
+    clearDeleteLotteryTypeError();
+    closeDialog(byId("delete-lottery-type-dialog"));
   }
 
   function handleDeleteLotteryType() {
@@ -1603,7 +1655,7 @@
         return type.lotteryTypeId !== selectedType.lotteryTypeId;
       });
       selectedLotteryTypeId = lotteryTypes.length ? lotteryTypes[0].lotteryTypeId : "";
-      closeDialog(byId("delete-lottery-type-dialog"));
+      closeDeleteLotteryTypeDialog();
       renderLotteryTypes();
       selectLotteryType(selectedLotteryTypeId);
       showToast("預覽：轉盤類型已刪除");
@@ -1629,13 +1681,15 @@
           return type.lotteryTypeId !== selectedType.lotteryTypeId;
         });
         selectedLotteryTypeId = lotteryTypes.length ? lotteryTypes[0].lotteryTypeId : "";
-        closeDialog(byId("delete-lottery-type-dialog"));
+        closeDeleteLotteryTypeDialog();
         renderLotteryTypes();
         selectLotteryType(selectedLotteryTypeId);
         showToast("轉盤類型已刪除，歷史抽獎紀錄仍保留");
       })
       .catch(function (error) {
-        showLotteryConfigError(normalizeError(error).message);
+        showDeleteLotteryTypeError(normalizeError(error).message);
+        showToast("無法刪除轉盤，請查看對話框說明", "error");
+        byId("delete-lottery-type-error").focus();
       })
       .finally(function () {
         isLotteryMutationLoading = false;
@@ -1652,6 +1706,14 @@
     });
   }
 
+  function scheduleAdminLotteryWheel() {
+    if (adminWheelRenderFrame) return;
+    adminWheelRenderFrame = window.requestAnimationFrame(function () {
+      adminWheelRenderFrame = 0;
+      drawAdminLotteryWheel();
+    });
+  }
+
   function showLotteryConfigError(message) {
     var error = byId("lottery-config-error");
     error.textContent = message;
@@ -1660,6 +1722,32 @@
 
   function clearLotteryConfigError() {
     var error = byId("lottery-config-error");
+    error.textContent = "";
+    error.hidden = true;
+  }
+
+  function showPointCardSettingError(message, invalidControl) {
+    var error = byId("point-card-setting-error");
+    error.textContent = message;
+    error.hidden = false;
+    if (invalidControl) invalidControl.setAttribute("aria-invalid", "true");
+  }
+
+  function clearPointCardSettingError() {
+    var error = byId("point-card-setting-error");
+    error.textContent = "";
+    error.hidden = true;
+    byId("point-card-target-input").removeAttribute("aria-invalid");
+  }
+
+  function showDeleteLotteryTypeError(message) {
+    var error = byId("delete-lottery-type-error");
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  function clearDeleteLotteryTypeError() {
+    var error = byId("delete-lottery-type-error");
     error.textContent = "";
     error.hidden = true;
   }
@@ -1718,17 +1806,20 @@
   }
 
   function renderLotteryHistoryLoading() {
-    byId("lottery-history-loading").hidden = false;
-    byId("lottery-history-list").hidden = true;
-    byId("lottery-history-list").setAttribute("aria-busy", "true");
+    var list = byId("lottery-history-list");
+    var hasItems = list.childElementCount > 0;
+    byId("lottery-history-loading").hidden = hasItems;
+    list.hidden = !hasItems;
+    list.setAttribute("aria-busy", "true");
     byId("lottery-history-empty").hidden = true;
     byId("lottery-history-error").hidden = true;
   }
 
   function renderLotteryHistoryError(errorValue) {
+    var list = byId("lottery-history-list");
     byId("lottery-history-loading").hidden = true;
-    byId("lottery-history-list").hidden = true;
-    byId("lottery-history-list").setAttribute("aria-busy", "false");
+    list.hidden = list.childElementCount === 0;
+    list.setAttribute("aria-busy", "false");
     byId("lottery-history-empty").hidden = true;
     byId("lottery-history-error").textContent =
       "抽獎紀錄載入失敗：" + normalizeError(errorValue).message;
@@ -1739,12 +1830,12 @@
     lotteryDraws = (Array.isArray(draws) ? draws : []).map(normalizeLotteryDraw);
     lotteryDrawsHaveMore = Boolean(hasMore);
     var list = byId("lottery-history-list");
+    var fragment = document.createDocumentFragment();
     byId("lottery-history-loading").hidden = true;
     byId("lottery-history-error").hidden = true;
     list.hidden = lotteryDraws.length === 0;
     list.setAttribute("aria-busy", "false");
     byId("lottery-history-empty").hidden = lotteryDraws.length !== 0;
-    list.textContent = "";
     byId("lottery-history-summary").textContent = lotteryDraws.length
       ? "最近 " +
         lotteryDraws.length +
@@ -1788,8 +1879,9 @@
       item.appendChild(main);
       item.appendChild(prize);
       item.appendChild(meta);
-      list.appendChild(item);
+      fragment.appendChild(item);
     });
+    list.replaceChildren(fragment);
   }
 
   function handleCreatePointType(event) {
@@ -2057,8 +2149,9 @@
     var list = byId("admin-point-history-list");
     var empty = byId("point-history-empty");
     var error = byId("point-history-error");
-    loading.hidden = false;
-    list.hidden = true;
+    var hasItems = list.childElementCount > 0;
+    loading.hidden = hasItems;
+    list.hidden = !hasItems;
     list.setAttribute("aria-busy", "true");
     empty.hidden = true;
     error.hidden = true;
@@ -2071,7 +2164,7 @@
     var error = byId("point-history-error");
     var message = normalizeError(errorValue).message;
     loading.hidden = true;
-    list.hidden = true;
+    list.hidden = list.childElementCount === 0;
     list.setAttribute("aria-busy", "false");
     empty.hidden = true;
     error.textContent = "點數使用紀錄載入失敗：" + message;
@@ -2084,6 +2177,7 @@
     var empty = byId("point-history-empty");
     var error = byId("point-history-error");
     var summary = byId("point-history-summary");
+    var fragment = document.createDocumentFragment();
     pointHistory = (Array.isArray(history) ? history : []).map(normalizePointHistoryEntry);
     pointHistoryHasMore = Boolean(hasMore);
     loading.hidden = true;
@@ -2091,9 +2185,9 @@
     list.hidden = pointHistory.length === 0;
     list.setAttribute("aria-busy", "false");
     empty.hidden = pointHistory.length !== 0;
-    list.textContent = "";
 
     if (pointHistory.length === 0) {
+      list.replaceChildren();
       summary.textContent = "查看會員透過 QR 領取的最新紀錄。";
       return;
     }
@@ -2134,8 +2228,9 @@
       item.appendChild(main);
       item.appendChild(amount);
       item.appendChild(meta);
-      list.appendChild(item);
+      fragment.appendChild(item);
     });
+    list.replaceChildren(fragment);
   }
 
   function formatPointHistoryMode(mode) {
@@ -2146,11 +2241,10 @@
 
   function renderPointTypes() {
     var list = byId("point-type-list");
+    var fragment = document.createDocumentFragment();
     var activePointTypes = pointTypes.filter(function (pointType) {
       return pointType.status === "active";
     });
-    list.textContent = "";
-    list.setAttribute("aria-busy", String(isPointMutationLoading));
 
     if (activePointTypes.length === 0) {
       var empty = document.createElement("li");
@@ -2158,7 +2252,7 @@
       empty.textContent = isPointWorkspaceAvailable
         ? "尚未建立點數類型，請先輸入 1、2、3 等整數點數。"
         : "點數功能目前無法使用，請稍後重新整理；會員資料頁不受影響。";
-      list.appendChild(empty);
+      fragment.appendChild(empty);
     } else {
       activePointTypes.forEach(function (pointType) {
         var item = document.createElement("li");
@@ -2198,9 +2292,10 @@
         });
         item.appendChild(button);
         item.appendChild(deleteButton);
-        list.appendChild(item);
+        fragment.appendChild(item);
       });
     }
+    list.replaceChildren(fragment);
 
     var selected = getSelectedPointType();
     byId("selected-point-label").textContent = selected
@@ -2215,6 +2310,32 @@
       selected.status !== "active" ||
       isListLoading ||
       isPointMutationLoading ||
+      !isPointWorkspaceAvailable;
+    syncPointTypeControls();
+  }
+
+  function syncPointTypeControls() {
+    var list = byId("point-type-list");
+    var busy = isListLoading || isPointMutationLoading;
+    list.setAttribute("aria-busy", String(isPointMutationLoading));
+    list.querySelectorAll(".point-type-option").forEach(function (button) {
+      var pointType = pointTypes.find(function (item) {
+        return item.pointTypeId === button.dataset.pointTypeId;
+      });
+      button.disabled =
+        busy ||
+        !isPointWorkspaceAvailable ||
+        !pointType ||
+        pointType.status !== "active";
+    });
+    list.querySelectorAll(".point-type-delete-button").forEach(function (button) {
+      button.disabled = busy || !isPointWorkspaceAvailable;
+    });
+    var selected = getSelectedPointType();
+    byId("create-point-campaign-button").disabled =
+      !selected ||
+      selected.status !== "active" ||
+      busy ||
       !isPointWorkspaceAvailable;
   }
 
@@ -2575,6 +2696,7 @@
 
   function renderMemberRows() {
     var list = byId("member-list");
+    var fragment = document.createDocumentFragment();
     var query = byId("search-input").value.trim().toLocaleLowerCase("zh-TW");
     var statusFilter = byId("status-filter").value;
     var visibleMembers = members.filter(function (member) {
@@ -2585,12 +2707,20 @@
       return matchesStatus && (!query || haystack.indexOf(query) !== -1);
     });
 
-    list.textContent = "";
     visibleMembers.forEach(function (member, index) {
-      list.appendChild(createMemberRow(member, index));
+      fragment.appendChild(createMemberRow(member, index));
     });
+    list.replaceChildren(fragment);
     byId("empty-state").hidden = visibleMembers.length !== 0;
     byId("table-wrap").hidden = visibleMembers.length === 0;
+  }
+
+  function scheduleMemberRowsRender() {
+    if (memberSearchFrame) return;
+    memberSearchFrame = window.requestAnimationFrame(function () {
+      memberSearchFrame = 0;
+      renderMemberRows();
+    });
   }
 
   function createMemberRow(member, index) {
@@ -2658,6 +2788,10 @@
       var image = document.createElement("img");
       image.alt = member.displayName + " 的 LINE 頭像";
       image.referrerPolicy = "no-referrer";
+      image.loading = "lazy";
+      image.decoding = "async";
+      image.width = 48;
+      image.height = 48;
       image.hidden = true;
       image.onload = function () {
         image.hidden = false;
@@ -3065,7 +3199,7 @@
         input.disabled = busy || !isPointWorkspaceAvailable;
       });
       byId("create-point-type-button").disabled = busy || !isPointWorkspaceAvailable;
-      renderPointTypes();
+      syncPointTypeControls();
       return;
     }
     if (ADMIN_PAGE === "lottery") {
@@ -3218,8 +3352,8 @@
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return { date: "—", time: "" };
     return {
-      date: new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date),
-      time: new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date),
+      date: ADMIN_DATE_FORMATTER.format(date),
+      time: ADMIN_MINUTE_FORMATTER.format(date),
     };
   }
 
@@ -3231,23 +3365,11 @@
   function formatDateTime(value) {
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat("zh-TW", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
+    return ADMIN_DATE_TIME_FORMATTER.format(date);
   }
 
   function formatTime(value) {
-    return new Intl.DateTimeFormat("zh-TW", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(value);
+    return ADMIN_SECOND_FORMATTER.format(value);
   }
 
   function formatNumber(value) {
@@ -3348,6 +3470,10 @@
         "click",
         addPointCardRewardRule
       );
+      byId("point-card-target-input").addEventListener(
+        "input",
+        clearPointCardSettingError
+      );
       byId("new-lottery-type-button").addEventListener(
         "click",
         beginCreateLotteryType
@@ -3368,7 +3494,7 @@
         openDeleteLotteryTypeDialog
       );
       byId("cancel-delete-lottery-type-button").addEventListener("click", function () {
-        closeDialog(byId("delete-lottery-type-dialog"));
+        closeDeleteLotteryTypeDialog();
       });
       byId("confirm-delete-lottery-type-button").addEventListener(
         "click",
@@ -3376,6 +3502,7 @@
       );
       byId("delete-lottery-type-dialog").addEventListener("cancel", function (event) {
         if (event.currentTarget.dataset.busy === "true") event.preventDefault();
+        else clearDeleteLotteryTypeError();
       });
       byId("lottery-config-form").addEventListener(
         "submit",
@@ -3398,8 +3525,8 @@
     byId("next-page-button").addEventListener("click", function () {
       changePage(1);
     });
-    byId("search-input").addEventListener("input", renderMemberRows);
-    byId("status-filter").addEventListener("change", renderMemberRows);
+    byId("search-input").addEventListener("input", scheduleMemberRowsRender);
+    byId("status-filter").addEventListener("change", scheduleMemberRowsRender);
     byId("filter-form").addEventListener("submit", function (event) {
       event.preventDefault();
     });

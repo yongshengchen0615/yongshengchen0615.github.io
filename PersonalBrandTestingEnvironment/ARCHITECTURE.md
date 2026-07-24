@@ -27,8 +27,8 @@
 
 | 入口 | 程式 | 責任 |
 | --- | --- | --- |
-| `client/index.html` | `client/script.js` | 會員登入、個人資料、會員權限、點數結果與點數紀錄 |
-| `client/lottery.html` | `client/lottery.js` | 集點卡、掃描 QR、抽獎券與轉盤畫面 |
+| `client/index.html` | `client/script.js` | 會員登入、個人資料、會員權限與 QR 領點結果 |
+| `client/lottery.html` | `client/lottery.js` | 集點卡、掃描 QR、點數紀錄、抽獎券分頁與轉盤 |
 | `admin/index.html` | `admin/script.js` | 會員查詢與使用權限 |
 | `admin/points.html` | `admin/script.js` | 點數類型、活動 QR 與領點紀錄 |
 | `admin/lottery.html` | `admin/script.js` | 集點卡規則、轉盤設定與中獎紀錄 |
@@ -102,7 +102,7 @@
 目前最大的維護成本是 `admin/script.js` 同時承載三個管理頁，以及兩套大型 `Code.gs` 的契約同步。建議依下列順序小步處理：
 
 1. 將管理端依 `members`、`points`、`lottery` 拆成頁面控制器，保留共用登入 session 與錯誤處理。
-2. 將會員端點數領取、個人資料與點數紀錄拆成獨立功能模組。
+2. 將會員端點數領取、個人資料與集點卡紀錄拆成獨立功能模組。
 3. 建立不含執行平台程式的 schema manifest，讓測試檢查兩套 GAS 的欄位、狀態與 action 契約。
 4. 若資料量或並行寫入明顯增加，再評估把帳本移到具交易能力的資料庫；不應只靠前端最佳化掩蓋 Sheet 限制。
 

@@ -52,6 +52,7 @@ input {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 button {
@@ -61,6 +62,30 @@ button {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+p,
+li,
+button,
+a,
+label,
+legend,
+dt,
+dd {
+  overflow-wrap: anywhere;
+}
+
+p,
+li {
+  text-wrap: pretty;
 }
 
 img {
@@ -314,51 +339,6 @@ img {
   line-height: 1.85;
 }
 
-.trust-list {
-  max-width: 42rem;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: clamp(3rem, 6vw, 6rem);
-  border-top: 1px solid var(--line-strong);
-}
-
-.trust-list > div {
-  display: grid;
-  gap: 1.3rem;
-  padding: 1rem 1rem 0 0;
-  border-right: 1px solid var(--line);
-}
-
-.trust-list > div:not(:first-child) {
-  padding-left: 1rem;
-}
-
-.trust-list > div:last-child {
-  border-right: 0;
-}
-
-.trust-list span {
-  color: var(--ink-faint);
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 0.67rem;
-}
-
-.trust-list p {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0;
-}
-
-.trust-list strong {
-  font-size: 0.88rem;
-}
-
-.trust-list small {
-  color: var(--ink-faint);
-  font-size: 0.72rem;
-  line-height: 1.5;
-}
-
 .auth-action {
   position: relative;
   align-self: stretch;
@@ -485,7 +465,8 @@ img {
   letter-spacing: 0.04em;
 }
 
-.primary-button svg {
+.primary-button svg,
+.secondary-button svg {
   width: 1.25rem;
   fill: none;
   stroke: currentColor;
@@ -556,7 +537,10 @@ img {
 }
 
 .text-button {
-  padding: 0;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.2rem;
   border: 0;
   border-bottom: 1px solid currentColor;
   border-radius: 0;
@@ -778,7 +762,7 @@ code {
 
 .member-heading h1 {
   margin: 0.65rem 0 0;
-  font-size: clamp(2.7rem, 6vw, 6rem);
+  font-size: clamp(2.5rem, 5vw, 5rem);
   font-weight: 520;
   line-height: 1;
   letter-spacing: -0.065em;
@@ -1116,6 +1100,11 @@ code {
   padding: 0;
   border-top: 1px solid var(--line-strong);
   list-style: none;
+  transition: opacity 160ms ease;
+}
+
+.point-history-list[aria-busy="true"]:not(:empty) {
+  opacity: 0.52;
 }
 
 .point-history-item {
@@ -1462,7 +1451,7 @@ code {
 }
 
 .icon-button {
-  width: 2.5rem;
+  width: 2.75rem;
   aspect-ratio: 1;
   flex: 0 0 auto;
   border: 1px solid var(--line);
@@ -1964,9 +1953,9 @@ code {
 }
 
 .lottery-page-title h1 {
-  max-width: 12ch;
+  max-width: none;
   margin: 0.5rem 0 0.85rem;
-  font-size: clamp(3rem, 7vw, 7rem);
+  font-size: clamp(2.8rem, 5.5vw, 5.5rem);
   font-weight: 520;
   line-height: 0.92;
   letter-spacing: -0.07em;
@@ -2195,7 +2184,12 @@ code {
   grid-template-columns: minmax(13rem, 0.32fr) minmax(0, 1fr);
   gap: clamp(2rem, 6vw, 6rem);
   margin-top: clamp(3rem, 6vw, 6rem);
-  padding-bottom: clamp(3rem, 7vw, 7rem);
+  padding-bottom: 0;
+}
+
+.lottery-page .point-history {
+  margin-top: clamp(3rem, 6vw, 6rem);
+  margin-bottom: clamp(3rem, 7vw, 7rem);
 }
 
 .lottery-ticket-workspace h2 {
@@ -2212,46 +2206,73 @@ code {
   line-height: 1.7;
 }
 
-.lottery-ticket-groups {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--line-strong);
-}
-
-.lottery-ticket-group {
+.lottery-ticket-switcher {
   min-width: 0;
 }
 
-.lottery-ticket-group + .lottery-ticket-group {
-  padding-inline-start: clamp(1.25rem, 3vw, 2.5rem);
-  border-inline-start: 1px solid var(--line-strong);
-}
-
-.lottery-ticket-group > header {
-  min-height: 5.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+.lottery-ticket-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line-strong);
   border-bottom: 1px solid var(--line-strong);
 }
 
-.lottery-ticket-group h3 {
-  margin: 0.2rem 0 0;
-  font-size: clamp(1.2rem, 2vw, 1.75rem);
-  font-weight: 620;
+.lottery-ticket-tabs button {
+  min-width: 0;
+  min-height: 5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 0;
+  color: var(--ink-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 180ms ease,
+    background 180ms ease;
 }
 
-.lottery-ticket-group > header > strong {
-  color: var(--green-deep);
-  font-size: clamp(1.35rem, 2.5vw, 2rem);
+.lottery-ticket-tabs button + button {
+  border-left: 1px solid var(--line-strong);
+}
+
+.lottery-ticket-tabs button[aria-selected="true"] {
+  color: #fff;
+  background: var(--green-deep);
+}
+
+.lottery-ticket-tabs button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid var(--green);
+  outline-offset: -3px;
+}
+
+.lottery-ticket-tabs button > span {
+  font-size: clamp(1rem, 1.8vw, 1.35rem);
+  font-weight: 680;
+}
+
+.lottery-ticket-tabs button > strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: clamp(1.25rem, 2.3vw, 1.8rem);
   font-variant-numeric: tabular-nums;
 }
 
-.lottery-ticket-group > header > strong span {
-  color: var(--ink-faint);
+.lottery-ticket-tabs button > strong small {
+  color: currentColor;
   font-size: 0.65rem;
   font-weight: 560;
+  opacity: 0.68;
+}
+
+.lottery-ticket-panel {
+  min-width: 0;
+  animation: state-in 220ms both;
 }
 
 .lottery-ticket-list {
@@ -2893,7 +2914,9 @@ code {
   .site-header {
     position: sticky;
     top: 0;
+    background: rgba(243, 240, 231, 0.94);
     background: color-mix(in srgb, var(--paper) 92%, transparent);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
   }
 
@@ -2930,21 +2953,7 @@ code {
   .auth-intro h1,
   .setup-layout h1,
   .error-layout h1 {
-    font-size: clamp(2.8rem, 14.2vw, 4.4rem);
-  }
-
-  .trust-list {
-    grid-template-columns: 1fr;
-    margin-top: 3rem;
-  }
-
-  .trust-list > div,
-  .trust-list > div:not(:first-child) {
-    grid-template-columns: 2rem 1fr;
-    gap: 0.7rem;
-    padding: 0.85rem 0;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    font-size: clamp(2.35rem, 11vw, 3.4rem);
   }
 
   .auth-action {
@@ -2979,7 +2988,7 @@ code {
   }
 
   .access-copy h1 {
-    font-size: clamp(2.8rem, 14.2vw, 4.4rem);
+    font-size: clamp(2.35rem, 11vw, 3.4rem);
   }
 
   .access-actions {
@@ -2997,12 +3006,7 @@ code {
   }
 
   .member-heading h1 {
-    font-size: clamp(2.7rem, 13vw, 4.3rem);
-  }
-
-  .member-heading h1 span {
-    display: block;
-    margin-top: 0.12em;
+    font-size: clamp(2.3rem, 10.5vw, 3.35rem);
   }
 
   .sync-caption {
@@ -3010,7 +3014,7 @@ code {
   }
 
   .member-pass {
-    min-height: 23rem;
+    min-height: 21.5rem;
     aspect-ratio: auto;
   }
 
@@ -3076,6 +3080,12 @@ code {
     grid-template-columns: 0.6rem minmax(0, 1fr) auto;
   }
 
+  .point-history-content strong {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
   .point-history-balance {
     grid-column: 2 / -1;
     min-width: 0;
@@ -3099,6 +3109,7 @@ code {
   .site-footer {
     min-height: 92px;
     grid-template-columns: 1fr auto;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
   .site-footer p:first-child {
@@ -3125,7 +3136,7 @@ code {
 
   .lottery-page-title h1,
   .lottery-page-status h1 {
-    font-size: clamp(2.8rem, 14vw, 4.5rem);
+    font-size: clamp(2.35rem, 11vw, 3.5rem);
   }
 
   .lottery-total-points {
@@ -3161,7 +3172,6 @@ code {
     display: none;
   }
 
-  .point-card-milestones li.is-reached small,
   .point-card-milestones li.is-next small,
   .point-card-milestones li:last-child small {
     display: block;
@@ -3171,21 +3181,19 @@ code {
     gap: 1.6rem;
   }
 
-  .lottery-ticket-groups {
-    grid-template-columns: 1fr;
-  }
-
-  .lottery-ticket-group + .lottery-ticket-group {
-    margin-top: 2rem;
-    padding-inline-start: 0;
-    border-block-start: 1px solid var(--line-strong);
-    border-inline-start: 0;
+  .lottery-ticket-tabs button {
+    min-height: 4.4rem;
+    padding-inline: 0.75rem;
   }
 
   .lottery-ticket-button,
   .lottery-locked-ticket {
-    min-height: 8.5rem;
+    min-height: 7.5rem;
     padding: 1rem 0.15rem;
+  }
+
+  .lottery-ticket-name {
+    font-size: clamp(1.2rem, 7vw, 1.75rem);
   }
 
   .lottery-page-wheel-stage {
@@ -3194,7 +3202,7 @@ code {
   }
 
   .lottery-wheel-heading h1 {
-    font-size: clamp(2.7rem, 14vw, 4.5rem);
+    font-size: clamp(2.35rem, 11vw, 3.5rem);
   }
 
   .member-lottery-hub {

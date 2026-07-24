@@ -2,11 +2,16 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#0b3c2c" />
     <meta name="referrer" content="no-referrer" />
     <meta name="robots" content="noindex,nofollow" />
     <title>PERSONA MEMBERS｜集點卡抽獎</title>
+    <link rel="preconnect" href="https://static.line-scdn.net" crossorigin />
+    <link rel="dns-prefetch" href="https://static.line-scdn.net" />
     <link rel="stylesheet" href="styles.css" />
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
@@ -15,19 +20,20 @@
     <script defer src="lottery.js"></script>
   </head>
   <body class="lottery-page">
+    <a class="skip-link" href="#main-content">跳至主要內容</a>
     <header class="site-header lottery-page-header">
       <a class="brand" href="./" data-member-route aria-label="返回會員資料">
         <span class="brand-mark" aria-hidden="true">P</span>
-        <span class="brand-copy"><strong data-brand-name>PERSONA</strong><small>MEMBER LOTTERY</small></span>
+        <span class="brand-copy"><strong data-brand-name>PERSONA</strong><small>POINT CARD</small></span>
       </a>
       <a class="text-button lottery-back-link" href="./" data-member-route>會員資料</a>
     </header>
 
-    <main class="lottery-page-main">
+    <main class="lottery-page-main" id="main-content">
       <section class="app-state lottery-page-status" id="loading-state" aria-labelledby="loading-title">
         <p class="eyebrow">POINT CARD LOTTERY</p>
         <h1 id="loading-title">正在讀取集點卡</h1>
-        <p id="loading-message">確認本張卡進度與目前獲得的抽獎券。</p>
+        <p id="loading-message">正在同步點數與抽獎券。</p>
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
       </section>
 
@@ -59,9 +65,8 @@
         <section id="lottery-ticket-view" aria-labelledby="lottery-title">
           <header class="lottery-page-title">
             <div>
-              <p class="eyebrow">POINT CARD LOTTERY</p>
-              <h1 id="lottery-title">集到節點，就獲得一張抽獎券。</h1>
-              <p>每張抽獎券都已指定一個轉盤；點選抽獎券後，再到獨立畫面開始抽獎。</p>
+              <p class="eyebrow">POINT CARD</p>
+              <h1 id="lottery-title">集點卡</h1>
             </div>
             <dl class="lottery-total-points">
               <dt>終身累計</dt>
@@ -91,8 +96,8 @@
             <div class="point-card-scan-row">
               <div>
                 <p class="eyebrow">ADD POINTS</p>
-                <strong>掃描店家集點碼</strong>
-                <small>完成領點後，這張集點卡會立即更新。</small>
+                <strong>掃描集點碼</strong>
+                <small>領點後立即更新。</small>
               </div>
               <button class="primary-button point-card-scan-button" id="scan-point-button" type="button">
                 <span>掃描集點 QR Code</span>
@@ -101,41 +106,95 @@
             </div>
           </section>
 
-          <section class="lottery-ticket-workspace" aria-labelledby="lottery-ticket-title">
+          <section class="lottery-ticket-workspace" id="lottery-ticket-workspace" aria-labelledby="lottery-ticket-title">
             <header>
               <p class="eyebrow">POINT REWARDS</p>
-              <h2 id="lottery-ticket-title">抽獎券紀錄</h2>
-              <p>查看本張卡尚未取得的節點，以及目前可使用的抽獎券。抽獎完成後，該券會直接移除。</p>
+              <h2 id="lottery-ticket-title">抽獎券</h2>
+              <p>抽完即使用。</p>
             </header>
-            <div class="lottery-ticket-groups">
-              <section class="lottery-ticket-group is-locked" aria-labelledby="locked-ticket-title">
-                <header>
-                  <div>
-                    <p class="eyebrow">UPCOMING</p>
-                    <h3 id="locked-ticket-title">未獲得</h3>
-                  </div>
-                  <strong><output id="locked-ticket-count">0</output><span> 張</span></strong>
-                </header>
+            <div class="lottery-ticket-switcher">
+              <div class="lottery-ticket-tabs" id="lottery-ticket-tabs" role="tablist" aria-label="抽獎券狀態">
+                <button
+                  id="locked-ticket-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="locked-ticket-panel"
+                  tabindex="-1"
+                >
+                  <span id="locked-ticket-title">未獲得</span>
+                  <strong><output id="locked-ticket-count">0</output><small>張</small></strong>
+                </button>
+                <button
+                  id="earned-ticket-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="earned-ticket-panel"
+                >
+                  <span id="earned-ticket-title">已獲得</span>
+                  <strong><output id="earned-ticket-count">0</output><small>張</small></strong>
+                </button>
+              </div>
+
+              <section
+                class="lottery-ticket-panel is-locked"
+                id="locked-ticket-panel"
+                role="tabpanel"
+                aria-labelledby="locked-ticket-tab"
+                hidden
+              >
                 <div class="lottery-locked-ticket-list" id="locked-ticket-list"></div>
                 <p class="lottery-ticket-empty" id="locked-ticket-empty" hidden>
                   本張卡的抽獎節點都已取得。
                 </p>
               </section>
 
-              <section class="lottery-ticket-group is-earned" aria-labelledby="earned-ticket-title">
-                <header>
-                  <div>
-                    <p class="eyebrow">READY TO USE</p>
-                    <h3 id="earned-ticket-title">已獲得</h3>
-                  </div>
-                  <strong><output id="earned-ticket-count">0</output><span> 張</span></strong>
-                </header>
+              <section
+                class="lottery-ticket-panel is-earned"
+                id="earned-ticket-panel"
+                role="tabpanel"
+                aria-labelledby="earned-ticket-tab"
+              >
                 <div class="lottery-ticket-list" id="lottery-ticket-list"></div>
                 <p class="lottery-ticket-empty" id="lottery-ticket-empty" hidden>
-                  目前沒有可使用的抽獎券。集點到下一個節點後會顯示在這裡。
+                  目前沒有可用的抽獎券。
                 </p>
               </section>
             </div>
+          </section>
+
+          <section class="point-history" aria-labelledby="point-history-title">
+            <header class="point-history-heading">
+              <div>
+                <p class="eyebrow">POINT ACTIVITY</p>
+                <h2 id="point-history-title">點數紀錄</h2>
+              </div>
+              <div class="point-history-actions">
+                <span id="point-history-summary" aria-live="polite">尚未載入</span>
+                <button class="refresh-button" id="refresh-point-history-button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+                  <span>更新</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="point-history-loading" id="point-history-loading" role="status" aria-live="polite" hidden>
+              <span class="history-loading-line"></span>
+              <span class="history-loading-line"></span>
+              <span class="history-loading-line"></span>
+            </div>
+            <ol
+              class="point-history-list"
+              id="point-history-list"
+              aria-busy="false"
+              aria-describedby="point-history-summary"
+            ></ol>
+            <div class="point-history-empty" id="point-history-empty" hidden>
+              <strong>尚無點數紀錄</strong>
+              <p>完成領點或抽獎後會顯示在這裡。</p>
+            </div>
+            <p class="point-history-error" id="point-history-error" role="alert" hidden></p>
           </section>
         </section>
 
@@ -159,7 +218,7 @@
                 <span>點我抽獎</span>
               </button>
             </div>
-            <p id="lottery-play-rule">轉盤資料已載入。點選中央開始；抽獎不扣點數，本張抽獎券只會使用一次。</p>
+            <p id="lottery-play-rule">點選中央開始。抽獎不扣點，本券僅可使用一次。</p>
             <p class="lottery-spin-status" id="lottery-spin-status" role="status" aria-live="polite"></p>
           </section>
         </section>
@@ -183,7 +242,7 @@
           <div><small>使用抽獎券</small><strong><output>1</output><span> 張</span></strong></div>
           <div><small>抽獎後累計</small><strong><output id="lottery-result-balance">0</output><span> 點</span></strong></div>
         </div>
-        <p class="lottery-result-note">點數沒有扣除；這張抽獎券已從「已獲得」清單移除。</p>
+        <p class="lottery-result-note">不扣點，本券已使用。</p>
         <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
           <span>確認並返回集點卡</span>
         </button>
@@ -203,7 +262,7 @@
         </div>
       </div>
       <p class="scanner-description" id="point-scanner-description">
-        將管理員產生的集點 QR Code 放入框線內，辨識成功後會直接領取點數。
+        將集點 QR Code 放入框線內。
       </p>
       <div class="scanner-viewport">
         <video
@@ -238,7 +297,7 @@
       <section class="claim-state" id="point-claim-loading-state" role="status" aria-live="polite">
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
         <strong>正在加入會員點數</strong>
-        <p>後台正在核對活動與會員身分，請稍候。</p>
+        <p>正在核對領取資格。</p>
       </section>
       <section class="claim-state" id="point-claim-result-state" role="status" aria-live="polite" hidden>
         <span class="claim-symbol" id="point-claim-symbol" aria-hidden="true">+</span>

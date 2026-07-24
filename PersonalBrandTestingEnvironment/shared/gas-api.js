@@ -32,7 +32,7 @@
       .fetch(new URL(relativePath, document.baseURI).toString(), {
         method: "GET",
         headers: { Accept: "application/json" },
-        cache: "no-store",
+        cache: "no-cache",
         credentials: "same-origin",
       })
       .then(function (response) {
@@ -100,10 +100,29 @@
       }
     });
 
-    return postWithFetch(String(options.gasUrl || "").trim(), request).catch(function (error) {
+    var gasUrl = String(options.gasUrl || "").trim();
+    // Published GAS Web Apps are cross-origin and the bridge is their reliable
+    // response path; avoid waiting for a fetch that will normally fail CORS.
+    if (shouldUseBridgeFirst(gasUrl)) {
+      return postWithBridge(gasUrl, request);
+    }
+
+    return postWithFetch(gasUrl, request).catch(function (error) {
       if (!shouldUseBridgeFallback(error)) throw error;
-      return postWithBridge(String(options.gasUrl || "").trim(), request);
+      return postWithBridge(gasUrl, request);
     });
+  }
+
+  function shouldUseBridgeFirst(gasUrl) {
+    try {
+      var target = new URL(gasUrl);
+      return (
+        target.hostname === "script.google.com" &&
+        target.origin !== window.location.origin
+      );
+    } catch (_error) {
+      return false;
+    }
   }
 
   function postWithFetch(gasUrl, request) {
