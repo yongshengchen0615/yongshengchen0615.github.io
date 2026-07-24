@@ -101,28 +101,10 @@
     });
 
     var gasUrl = String(options.gasUrl || "").trim();
-    // Published GAS Web Apps are cross-origin and the bridge is their reliable
-    // response path; avoid waiting for a fetch that will normally fail CORS.
-    if (shouldUseBridgeFirst(gasUrl)) {
-      return postWithBridge(gasUrl, request);
-    }
-
     return postWithFetch(gasUrl, request).catch(function (error) {
       if (!shouldUseBridgeFallback(error)) throw error;
       return postWithBridge(gasUrl, request);
     });
-  }
-
-  function shouldUseBridgeFirst(gasUrl) {
-    try {
-      var target = new URL(gasUrl);
-      return (
-        target.hostname === "script.google.com" &&
-        target.origin !== window.location.origin
-      );
-    } catch (_error) {
-      return false;
-    }
   }
 
   function postWithFetch(gasUrl, request) {
@@ -246,7 +228,7 @@
           reject,
           createError(
             "BACKEND_TIMEOUT",
-            "等待 GAS 回應逾時。請確認 ALLOWED_ORIGINS 與 Web App 存取權限設定。"
+            "GAS 後台目前沒有回應。請稍後重試；若持續發生，再確認 Web App 已發布為可存取。"
           )
         );
       }, BRIDGE_TIMEOUT_MS);

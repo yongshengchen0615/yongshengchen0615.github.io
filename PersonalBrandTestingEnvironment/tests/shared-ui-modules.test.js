@@ -74,7 +74,7 @@ function createCanvasRecorder() {
   };
 }
 
-test("shared GAS requests use the bridge immediately for a published cross-origin web app", async () => {
+test("shared GAS requests try fetch before falling back to the bridge", async () => {
   let messageListener = null;
   let fetchCalls = 0;
   let submittedForms = 0;
@@ -139,6 +139,7 @@ test("shared GAS requests use the bridge immediately for a published cross-origi
   const context = vm.createContext({
     AbortController,
     Promise,
+    TypeError,
     URL,
     Uint8Array,
     clearTimeout,
@@ -161,7 +162,7 @@ test("shared GAS requests use the bridge immediately for a published cross-origi
 
   assert.equal(result.ok, true);
   assert.equal(result.requestId, "req-1234567890");
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls, 1);
   assert.equal(submittedForms, 1);
 });
 

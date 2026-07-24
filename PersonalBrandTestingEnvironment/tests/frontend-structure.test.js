@@ -848,21 +848,17 @@ test("LIFF pages preconnect early and use keyboard-safe mobile viewport sizing",
   }
 });
 
-test("shared GAS transport skips the known cross-origin fetch timeout", () => {
+test("shared GAS transport keeps fetch primary and bridge as a compatibility fallback", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const sendRequest = getTopLevelFunctionContaining(
     transport,
     /function\s+sendRequest\s*\(/
   );
-  const bridgePreference = getTopLevelFunctionContaining(
-    transport,
-    /function\s+shouldUseBridgeFirst\s*\(/
-  );
 
-  assert.match(sendRequest, /if\s*\(shouldUseBridgeFirst\(gasUrl\)\)/);
+  assert.match(sendRequest, /postWithFetch\(gasUrl,\s*request\)\.catch/);
+  assert.match(sendRequest, /shouldUseBridgeFallback\(error\)/);
   assert.match(sendRequest, /return postWithBridge\(gasUrl,\s*request\)/);
-  assert.match(bridgePreference, /target\.hostname\s*===\s*["']script\.google\.com["']/);
-  assert.match(bridgePreference, /target\.origin\s*!==\s*window\.location\.origin/);
+  assert.doesNotMatch(transport, /shouldUseBridgeFirst/);
   assert.match(transport, /loadConfig[\s\S]*?cache:\s*["']no-cache["']/);
 });
 
