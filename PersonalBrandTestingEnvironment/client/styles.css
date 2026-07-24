@@ -2096,10 +2096,41 @@ code {
   font-weight: 560;
 }
 
-.point-card-progress-copy > strong {
+.point-card-score {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(7rem, 1fr));
+  min-width: min(100%, 19rem);
+  border-block: 1px solid var(--line-strong);
+}
+
+.point-card-score p {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+
+.point-card-score p + p {
+  border-inline-start: 1px solid var(--line-strong);
+}
+
+.point-card-score span {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.point-card-score strong {
   color: var(--green-deep);
-  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-size: clamp(1.8rem, 4vw, 2.9rem);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.point-card-score small {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  font-weight: 560;
 }
 
 .point-card-track {
@@ -2196,6 +2227,37 @@ code {
   color: var(--green-dark);
 }
 
+.point-card-scan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-top: 1.6rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.point-card-scan-row > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.point-card-scan-row > div > strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.point-card-scan-row > div > small {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.point-card-scan-button {
+  flex: 0 0 auto;
+}
+
 .lottery-ticket-workspace {
   display: grid;
   grid-template-columns: minmax(13rem, 0.32fr) minmax(0, 1fr);
@@ -2251,6 +2313,32 @@ code {
 .lottery-ticket-button:disabled {
   cursor: wait;
   opacity: 0.58;
+}
+
+.lottery-ticket-button.is-used,
+.lottery-ticket-button.is-used:hover,
+.lottery-ticket-button.is-used:focus-visible {
+  padding-inline: 0.2rem;
+  color: var(--ink-faint);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 8px,
+      rgba(11, 60, 44, 0.025) 8px,
+      rgba(11, 60, 44, 0.025) 16px
+    );
+  cursor: default;
+  opacity: 0.62;
+  outline: 0;
+}
+
+.lottery-ticket-button.is-used .lottery-ticket-action {
+  width: max-content;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid currentColor;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
 }
 
 .lottery-ticket-number,
@@ -3073,6 +3161,23 @@ code {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.65rem;
+  }
+
+  .point-card-score {
+    width: 100%;
+  }
+
+  .point-card-score p {
+    padding-inline: 0.75rem;
+  }
+
+  .point-card-scan-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .point-card-scan-button {
+    width: 100%;
   }
 
   .point-card-milestones li small {

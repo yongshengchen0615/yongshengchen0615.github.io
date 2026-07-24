@@ -220,13 +220,9 @@
 
             <div class="member-actions">
               <a class="primary-button lottery-entry-button" id="lottery-page-link" href="lottery.html" data-client-route>
-                <span>前往集點卡抽獎</span>
+                <span>集點卡</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg>
               </a>
-              <button class="primary-button" id="scan-point-button" type="button">
-                <span>掃描集點 QR Code</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
-              </button>
               <button class="primary-button" id="edit-profile-button" type="button">
                 <span>編輯會員資料</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
@@ -375,43 +371,6 @@
           </button>
         </div>
       </form>
-    </dialog>
-
-    <dialog
-      class="modal scanner-modal"
-      id="point-scanner-dialog"
-      aria-labelledby="point-scanner-title"
-      aria-describedby="point-scanner-description"
-    >
-      <div class="modal-head">
-        <div>
-          <p class="eyebrow">POINT SCANNER</p>
-          <h2 id="point-scanner-title">掃描集點 QR Code</h2>
-        </div>
-      </div>
-
-      <p class="scanner-description" id="point-scanner-description">
-        將管理員產生的集點 QR Code 放入框線內，辨識成功後會直接領取點數。
-      </p>
-
-      <div class="scanner-viewport">
-        <video
-          class="scanner-video"
-          id="point-scanner-video"
-          autoplay
-          muted
-          playsinline
-          aria-label="QR Code 相機預覽"
-        ></video>
-        <span class="scanner-guide" aria-hidden="true"></span>
-      </div>
-
-      <p class="scanner-status" id="point-scanner-status" role="status" aria-live="polite">
-        正在啟動相機…
-      </p>
-      <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
-        取消掃描
-      </button>
     </dialog>
 
     <dialog

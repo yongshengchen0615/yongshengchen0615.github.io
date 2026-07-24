@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.8.0";
+var API_VERSION = "1.9.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -1249,7 +1249,24 @@ function getMemberPointCardStatus_(
     throw appError_("LOTTERY_DATA_ERROR", "抽獎次數超過已取得的集點卡獎勵。");
   }
 
+  var consumedOrdinals = Object.create(null);
+  Object.keys(usedOrdinals).forEach(function (ordinal) {
+    consumedOrdinals[ordinal] = true;
+  });
   var legacyRemaining = legacyDrawCount;
+  for (
+    var legacyOrdinal = 1;
+    legacyOrdinal <= totalEarnedRewards && legacyRemaining > 0;
+    legacyOrdinal += 1
+  ) {
+    if (consumedOrdinals[legacyOrdinal]) continue;
+    consumedOrdinals[legacyOrdinal] = true;
+    legacyRemaining -= 1;
+  }
+  if (legacyRemaining > 0) {
+    throw appError_("LOTTERY_DATA_ERROR", "舊版抽獎次數超過已取得的集點卡獎勵。");
+  }
+
   var availableRewards = [];
   for (
     var ordinal = 1;
@@ -1257,12 +1274,19 @@ function getMemberPointCardStatus_(
     availableRewards.length < MAX_AVAILABLE_REWARD_TICKETS;
     ordinal += 1
   ) {
-    if (usedOrdinals[ordinal]) continue;
-    if (legacyRemaining > 0) {
-      legacyRemaining -= 1;
-      continue;
-    }
+    if (consumedOrdinals[ordinal]) continue;
     availableRewards.push(pointCardRewardForOrdinal_(ranges, ordinal));
+  }
+  var rewardTickets = [];
+  for (
+    var ticketOrdinal = totalEarnedRewards;
+    ticketOrdinal >= 1 &&
+    rewardTickets.length < MAX_AVAILABLE_REWARD_TICKETS;
+    ticketOrdinal -= 1
+  ) {
+    var rewardTicket = pointCardRewardForOrdinal_(ranges, ticketOrdinal);
+    rewardTicket.used = Boolean(consumedOrdinals[ticketOrdinal]);
+    rewardTickets.push(rewardTicket);
   }
   var nextReward = availableRewards.length ? availableRewards[0] : null;
 
@@ -1298,6 +1322,7 @@ function getMemberPointCardStatus_(
       };
     }),
     availableRewards: availableRewards,
+    rewardTickets: rewardTickets,
     nextReward: nextReward,
     nextRound: nextReward,
   };
@@ -1365,6 +1390,16 @@ function pointCardStatusResponse_(status) {
         milestonePoints: reward.milestonePoints,
         lotteryTypeId: reward.lotteryTypeId,
         cardRoundKey: reward.cardRoundKey,
+      };
+    }),
+    rewardTickets: status.rewardTickets.map(function (reward) {
+      return {
+        settingVersion: reward.settingVersion,
+        cardNumber: reward.cardNumber,
+        milestonePoints: reward.milestonePoints,
+        lotteryTypeId: reward.lotteryTypeId,
+        cardRoundKey: reward.cardRoundKey,
+        used: reward.used === true,
       };
     }),
     totalPoints: status.totalPoints,

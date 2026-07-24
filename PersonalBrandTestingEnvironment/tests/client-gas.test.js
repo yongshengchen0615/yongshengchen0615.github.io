@@ -1915,6 +1915,11 @@ test("lottery draw consumes one completed card round without deducting lifetime 
   assert.equal(first.data.card.completedRounds, 1);
   assert.equal(first.data.card.drawsUsed, 1);
   assert.equal(first.data.card.availableDraws, 0);
+  assert.equal(first.data.card.availableRewards.length, 0);
+  assert.equal(first.data.card.rewardTickets.length, 1);
+  assert.equal(first.data.card.rewardTickets[0].cardRoundKey, request.cardRoundKey);
+  assert.equal(first.data.card.rewardTickets[0].used, true);
+  assert.equal(replay.data.card.rewardTickets[0].used, true);
   assert.equal(replay.data.draw.drawId, first.data.draw.drawId);
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
   assert.equal(
@@ -2828,7 +2833,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.8.0");
+  assert.equal(health.data.version, "1.9.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

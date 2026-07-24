@@ -13,6 +13,17 @@
   var pendingRequest = null;
   var toastTimer = null;
   var bootVersion = 0;
+  var wheelRenderCache = Object.create(null);
+  var isWheelPreparing = false;
+  var isPointScannerBusy = false;
+  var pointScannerStream = null;
+  var pointScannerTimer = 0;
+  var pointScannerResolve = null;
+  var pointScannerReject = null;
+  var pointScannerDetecting = false;
+  var pendingPointClaim = "";
+  var pendingPointClaimRequestId = "";
+  var isPointClaimBusy = false;
   var STATE_IDS = [
     "loading-state",
     "login-state",
@@ -21,6 +32,8 @@
     "lottery-state",
   ];
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
+  var POINT_REDEMPTION_REQUEST_STORAGE_PREFIX =
+    "persona-member-point-redemption-request:";
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-member-lottery-token-recovery:";
 
   function byId(id) {
@@ -130,6 +143,7 @@
 
   function renderWorkspace(data) {
     lotteryTypes = normalizeLotteryTypes(data.lotteryTypes);
+    preloadLotteryWheels();
     cardStatus = normalizePointCardStatus(data.card);
     var totalPoints = normalizePointNumber(
       data.totalPoints == null ? data.pointBalance : data.totalPoints
@@ -150,8 +164,8 @@
     renderPointCard();
     renderLotteryTickets();
     setView("lottery-state");
-    if (selectedRewardTicket) showLotteryWheelView();
-    else showLotteryTicketView();
+    showLotteryTicketView();
+    if (selectedRewardTicket) openLotteryTicket(selectedRewardTicket);
     updateControls();
   }
 
@@ -190,6 +204,56 @@
             milestonePoints: 10,
             lotteryTypeId: "LTY-PREVIEW002",
             cardRoundKey: "PCS-PREVIEW00001:2:10",
+          },
+        ],
+        rewardTickets: [
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 2,
+            milestonePoints: 10,
+            lotteryTypeId: "LTY-PREVIEW002",
+            cardRoundKey: "PCS-PREVIEW00001:2:10",
+            used: false,
+          },
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 2,
+            milestonePoints: 5,
+            lotteryTypeId: "LTY-PREVIEW001",
+            cardRoundKey: "PCS-PREVIEW00001:2:5",
+            used: true,
+          },
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 1,
+            milestonePoints: 20,
+            lotteryTypeId: "LTY-PREVIEW002",
+            cardRoundKey: "PCS-PREVIEW00001:1:20",
+            used: true,
+          },
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 1,
+            milestonePoints: 15,
+            lotteryTypeId: "LTY-PREVIEW001",
+            cardRoundKey: "PCS-PREVIEW00001:1:15",
+            used: true,
+          },
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 1,
+            milestonePoints: 10,
+            lotteryTypeId: "LTY-PREVIEW002",
+            cardRoundKey: "PCS-PREVIEW00001:1:10",
+            used: true,
+          },
+          {
+            settingVersion: "PCS-PREVIEW00001",
+            cardNumber: 1,
+            milestonePoints: 5,
+            lotteryTypeId: "LTY-PREVIEW001",
+            cardRoundKey: "PCS-PREVIEW00001:1:5",
+            used: true,
           },
         ],
         totalPoints: 32,
@@ -331,6 +395,9 @@
     var availableRewards = Array.isArray(value.availableRewards)
       ? value.availableRewards.map(normalizeRewardTicket)
       : [];
+    var rewardTickets = Array.isArray(value.rewardTickets)
+      ? value.rewardTickets.map(normalizeRewardTicket)
+      : [];
     var normalized = {
       settingVersion: String(value.settingVersion || "").trim(),
       targetPoints: Number(value.targetPoints),
@@ -349,6 +416,7 @@
       drawsUsed: Number(value.drawsUsed),
       availableDraws: Number(value.availableDraws),
       availableRewards: availableRewards,
+      rewardTickets: rewardTickets,
       totalPoints: Number(value.totalPoints),
     };
     if (
@@ -403,6 +471,12 @@
         Math.min(normalized.availableDraws, 50) ||
       !hasUniqueRewardTickets(normalized.availableRewards) ||
       normalized.availableRewards.some(function (ticket) {
+        return ticket.used || !findLotteryType(ticket.lotteryTypeId);
+      }) ||
+      normalized.rewardTickets.length !==
+        Math.min(normalized.earnedRewards, 50) ||
+      !hasUniqueRewardTickets(normalized.rewardTickets) ||
+      normalized.rewardTickets.some(function (ticket) {
         return !findLotteryType(ticket.lotteryTypeId);
       }) ||
       !Number.isSafeInteger(normalized.totalPoints) ||
@@ -415,12 +489,14 @@
 
   function normalizeRewardTicket(value) {
     value = value && typeof value === "object" ? value : {};
+    var hasUsedState = Object.prototype.hasOwnProperty.call(value, "used");
     var ticket = {
       settingVersion: String(value.settingVersion || "").trim(),
       cardNumber: Number(value.cardNumber),
       milestonePoints: Number(value.milestonePoints),
       lotteryTypeId: String(value.lotteryTypeId || "").trim(),
       cardRoundKey: String(value.cardRoundKey || "").trim(),
+      used: value.used === true,
     };
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(ticket.settingVersion) ||
@@ -429,6 +505,7 @@
       !Number.isSafeInteger(ticket.milestonePoints) ||
       ticket.milestonePoints < 1 ||
       !/^LTY-[A-Z0-9]{10}$/.test(ticket.lotteryTypeId) ||
+      (hasUsedState && typeof value.used !== "boolean") ||
       ticket.cardRoundKey !==
         ticket.settingVersion +
           ":" +
@@ -541,18 +618,22 @@
     var container = byId("lottery-ticket-list");
     var empty = byId("lottery-ticket-empty");
     container.textContent = "";
-    empty.hidden = cardStatus.availableRewards.length > 0;
-    cardStatus.availableRewards.forEach(function (ticket, index) {
+    empty.hidden = cardStatus.rewardTickets.length > 0;
+    cardStatus.rewardTickets.forEach(function (ticket, index) {
       var type = findLotteryType(ticket.lotteryTypeId);
       if (!type) return;
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "lottery-ticket-button";
+      button.className =
+        "lottery-ticket-button" + (ticket.used ? " is-used" : "");
       button.dataset.cardRoundKey = ticket.cardRoundKey;
+      button.dataset.used = String(ticket.used);
+      button.disabled = ticket.used;
       appendTicketText(
         button,
         "lottery-ticket-number",
-        "抽獎券 " + String(index + 1).padStart(2, "0")
+        "抽獎券 " +
+          String(cardStatus.earnedRewards - index).padStart(2, "0")
       );
       appendTicketText(button, "lottery-ticket-name", type.name);
       appendTicketText(
@@ -564,7 +645,11 @@
           formatNumber(ticket.milestonePoints) +
           " 點節點"
       );
-      appendTicketText(button, "lottery-ticket-action", "開啟轉盤 →");
+      appendTicketText(
+        button,
+        "lottery-ticket-action",
+        ticket.used ? "已使用" : "開啟轉盤 →"
+      );
       button.setAttribute(
         "aria-label",
         type.name +
@@ -572,10 +657,11 @@
           ticket.cardNumber +
           " 張卡 " +
           ticket.milestonePoints +
-          " 點節點，開啟轉盤"
+          " 點節點，" +
+          (ticket.used ? "已使用" : "開啟轉盤")
       );
       button.addEventListener("click", function () {
-        if (isBusy || pendingRequest) return;
+        if (ticket.used || isBusy || isWheelPreparing || pendingRequest) return;
         openLotteryTicket(ticket);
       });
       container.appendChild(button);
@@ -594,11 +680,23 @@
   }
 
   function openLotteryTicket(ticket) {
-    selectedRewardTicket = normalizeRewardTicket(ticket);
+    var normalizedTicket = normalizeRewardTicket(ticket);
+    if (normalizedTicket.used) return;
+    selectedRewardTicket = normalizedTicket;
     selectedLotteryTypeId = selectedRewardTicket.lotteryTypeId;
-    renderSelectedLottery();
-    showLotteryWheelView();
+    isWheelPreparing = true;
+    byId("lottery-spin-status").textContent = "轉盤資料載入中…";
     updateControls();
+    window.requestAnimationFrame(function () {
+      renderSelectedLottery();
+      window.requestAnimationFrame(function () {
+        showLotteryWheelView();
+        isWheelPreparing = false;
+        byId("lottery-spin-status").textContent =
+          "轉盤資料已載入，點選中央開始抽獎。";
+        updateControls();
+      });
+    });
   }
 
   function renderSelectedLottery() {
@@ -611,7 +709,7 @@
       " 張集點卡 · " +
       formatNumber(selectedRewardTicket.milestonePoints) +
       " 點節點抽獎券";
-    drawWheel(selected.lottery.prizes);
+    drawWheel(selected.lottery.prizes, selected.lotteryTypeId);
     resetRotor();
   }
 
@@ -622,7 +720,6 @@
   }
 
   function showLotteryWheelView() {
-    renderSelectedLottery();
     byId("lottery-ticket-view").hidden = true;
     byId("lottery-wheel-view").hidden = false;
     window.requestAnimationFrame(function () {
@@ -635,15 +732,41 @@
   }
 
   function closeLotteryWheelView() {
-    if (isBusy || pendingRequest) return;
+    if (isBusy || isWheelPreparing || pendingRequest) return;
     selectedRewardTicket = null;
     selectedLotteryTypeId = "";
     showLotteryTicketView();
     updateControls();
   }
 
-  function drawWheel(prizes) {
+  function preloadLotteryWheels() {
+    wheelRenderCache = Object.create(null);
+    lotteryTypes.forEach(function (type) {
+      var canvas = document.createElement("canvas");
+      canvas.width = 720;
+      canvas.height = 720;
+      renderWheelCanvas(canvas, type.lottery.prizes);
+      wheelRenderCache[type.lotteryTypeId] = canvas;
+    });
+  }
+
+  function drawWheel(prizes, lotteryTypeId) {
     var canvas = byId("member-lottery-wheel");
+    if (!canvas || typeof canvas.getContext !== "function") return;
+    var context = canvas.getContext("2d");
+    if (!context) return;
+    var cached = wheelRenderCache[lotteryTypeId];
+    if (cached) {
+      canvas.width = 720;
+      canvas.height = 720;
+      context.clearRect(0, 0, 720, 720);
+      context.drawImage(cached, 0, 0);
+      return;
+    }
+    renderWheelCanvas(canvas, prizes);
+  }
+
+  function renderWheelCanvas(canvas, prizes) {
     if (!canvas || typeof canvas.getContext !== "function") return;
     var context = canvas.getContext("2d");
     if (!context) return;
@@ -748,6 +871,18 @@
             availableDraws: cardStatus.availableDraws - 1,
             availableRewards: cardStatus.availableRewards.filter(function (ticket) {
               return ticket.cardRoundKey !== selectedRewardTicket.cardRoundKey;
+            }),
+            rewardTickets: cardStatus.rewardTickets.map(function (ticket) {
+              return {
+                settingVersion: ticket.settingVersion,
+                cardNumber: ticket.cardNumber,
+                milestonePoints: ticket.milestonePoints,
+                lotteryTypeId: ticket.lotteryTypeId,
+                cardRoundKey: ticket.cardRoundKey,
+                used:
+                  ticket.used ||
+                  ticket.cardRoundKey === selectedRewardTicket.cardRoundKey,
+              };
             }),
             totalPoints: cardStatus.totalPoints,
           },
@@ -873,7 +1008,9 @@
     });
     if (existingIndex >= 0) lotteryTypes[existingIndex] = selectedType;
     cardStatus = nextCard;
-    drawWheel(selectedType.lottery.prizes);
+    wheelRenderCache[selectedType.lotteryTypeId] = null;
+    preloadLotteryWheels();
+    drawWheel(selectedType.lottery.prizes, selectedType.lotteryTypeId);
     animateToPrize(draw, selectedType.lottery).then(function () {
       byId("lottery-result-swatch").style.backgroundColor = draw.prizeColor;
       byId("lottery-result-title").textContent = draw.prizeLabel;
@@ -925,6 +1062,7 @@
   function updateControls() {
     var canDraw =
       !isBusy &&
+      !isWheelPreparing &&
       cardStatus &&
       selectedRewardTicket &&
       (cardStatus.availableDraws > 0 || Boolean(pendingRequest)) &&
@@ -932,19 +1070,26 @@
     var button = byId("lottery-spin-button");
     button.disabled = !canDraw;
     button.setAttribute("aria-busy", String(isBusy));
-    button.dataset.state = isBusy ? "busy" : canDraw ? "ready" : "disabled";
+    button.dataset.state =
+      isBusy ? "busy" : isWheelPreparing ? "loading" : canDraw ? "ready" : "disabled";
     var label = button.querySelector("span");
     label.textContent = isBusy
       ? "抽獎中"
+      : isWheelPreparing
+        ? "載入轉盤"
       : selectedRewardTicket
         ? pendingRequest
           ? "點我重試"
           : "點我抽獎"
         : "選擇抽獎券";
     byId("lottery-wheel-back-button").disabled =
-      isBusy || Boolean(pendingRequest);
+      isBusy || isWheelPreparing || Boolean(pendingRequest);
     document.querySelectorAll(".lottery-ticket-button").forEach(function (ticket) {
-      ticket.disabled = isBusy || Boolean(pendingRequest);
+      ticket.disabled =
+        ticket.dataset.used === "true" ||
+        isBusy ||
+        isWheelPreparing ||
+        Boolean(pendingRequest);
     });
   }
 
@@ -1039,9 +1184,566 @@
     byId("lottery-result-confirm-button").focus();
   }
 
-  function returnToMemberPage() {
-    var link = document.querySelector("[data-member-route]");
-    window.location.assign(link ? link.href : "./");
+  function returnToPointCard() {
+    var dialog = byId("lottery-result-dialog");
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
+    selectedRewardTicket = null;
+    selectedLotteryTypeId = "";
+    showLotteryTicketView();
+    updateControls();
+    window.requestAnimationFrame(function () {
+      byId("scan-point-button").focus({ preventScroll: true });
+      window.scrollTo({
+        top: byId("lottery-ticket-list").offsetTop - 120,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
+    });
+  }
+
+  function handleScanPointQr() {
+    var button = byId("scan-point-button");
+    if (isPointScannerBusy || isPointClaimBusy || !button) return;
+    if (isDemoSession) {
+      showToast("預覽模式無法使用相機掃描", "error");
+      return;
+    }
+
+    isPointScannerBusy = true;
+    setButtonBusy(button, true, "正在開啟掃描");
+    openPointQrScanner()
+      .then(function (scannedValue) {
+        var claim = extractPointClaimFromQr(scannedValue);
+        if (!claim) {
+          throw createError(
+            "INVALID_POINT_QR",
+            "這不是有效的會員點數 QR Code，請掃描管理員產生的點數 QR。"
+          );
+        }
+        if (claim !== pendingPointClaim) clearPendingPointRedemptionRequest();
+        pendingPointClaim = claim;
+        return redeemScannedPointClaim();
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) {
+          showToast("已取消掃描");
+          return;
+        }
+        showToast(normalizeError(error).message, "error");
+      })
+      .finally(function () {
+        isPointScannerBusy = false;
+        setButtonBusy(button, false);
+      });
+  }
+
+  function redeemScannedPointClaim() {
+    if (isPointClaimBusy || !pendingPointClaim) return Promise.resolve();
+    isPointClaimBusy = true;
+    setPointClaimState("point-claim-loading-state");
+    openDialog(byId("point-claim-dialog"));
+    var requestId = ensurePendingPointRedemptionRequest();
+
+    return sendMemberRequest(
+      "redeemPointCampaign",
+      { claim: pendingPointClaim },
+      requestId
+    )
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        if (
+          !response.data ||
+          !response.data.access ||
+          response.data.access.allowed !== true ||
+          typeof response.data.duplicate !== "boolean" ||
+          typeof response.data.redeemed !== "boolean"
+        ) {
+          throw createError("INVALID_RESPONSE", "後台回傳的領點結果格式不完整。");
+        }
+        var pointBalance = normalizePointNumber(response.data.pointBalance);
+        var awardedPoints = normalizePointNumber(response.data.awardedPoints);
+        var campaign = normalizePointCampaign(response.data.campaign);
+        var originalPointBalance = pointBalance - awardedPoints;
+        if (originalPointBalance < 0) {
+          throw createError("INVALID_RESPONSE", "後台回傳的點數變動資料不一致。");
+        }
+
+        if (response.data.duplicate) {
+          if (
+            response.data.redeemed ||
+            awardedPoints !== 0 ||
+            ["request_replay", "already_redeemed", "campaign_redeemed"].indexOf(
+              response.data.duplicateReason
+            ) === -1
+          ) {
+            throw createError("INVALID_RESPONSE", "後台回傳的重複領取資料不一致。");
+          }
+          byId("point-claim-symbol").textContent = "✓";
+          byId("point-claim-symbol").className = "claim-symbol claim-symbol-muted";
+          byId("point-claim-kicker").textContent =
+            response.data.duplicateReason === "campaign_redeemed"
+              ? "這張 QR 已由其他會員領取"
+              : "這張 QR 已領取過";
+          byId("point-claim-title").textContent = "沒有重複加點";
+          byId("point-claim-note").textContent =
+            "會員點數維持不變，集點卡會重新整理最新狀態。";
+        } else {
+          if (!response.data.redeemed || awardedPoints !== campaign.points) {
+            throw createError("INVALID_RESPONSE", "後台未確認這次點數領取。");
+          }
+          byId("point-claim-symbol").textContent = "+";
+          byId("point-claim-symbol").className = "claim-symbol";
+          byId("point-claim-kicker").textContent = "點數領取完成";
+          byId("point-claim-title").textContent =
+            "獲得 " + formatNumber(awardedPoints) + " 點";
+          byId("point-claim-note").textContent =
+            campaign.redemptionMode === "repeatable"
+              ? "如需再次領取，請重新掃描同一張 QR Code。"
+              : campaign.redemptionMode === "single_member"
+                ? "這張 QR 僅限一位會員領取，完成後即失效。"
+                : "這張 QR 對本會員已完成領取。";
+          sendPointClaimMessage(
+            originalPointBalance,
+            awardedPoints,
+            pointBalance
+          ).catch(function () {
+            showToast("點數已加入，但未能傳送官方帳號通知。", "error");
+          });
+        }
+
+        byId("point-claim-before").textContent = formatNumber(
+          originalPointBalance
+        );
+        byId("point-claim-awarded").textContent = formatNumber(awardedPoints);
+        byId("point-claim-balance").textContent = formatNumber(pointBalance);
+        pendingPointClaim = "";
+        clearPendingPointRedemptionRequest();
+        setPointClaimState("point-claim-result-state");
+      })
+      .catch(function (error) {
+        var normalized = normalizeError(error);
+        byId("point-claim-error-message").textContent = normalized.message;
+        setPointClaimState("point-claim-error-state");
+      })
+      .finally(function () {
+        isPointClaimBusy = false;
+      });
+  }
+
+  function normalizePointCampaign(campaign) {
+    campaign = campaign && typeof campaign === "object" ? campaign : {};
+    var points = Number(campaign.points);
+    var label = String(campaign.label || "").trim();
+    var expiryMode = String(campaign.expiryMode || "").trim().toLowerCase();
+    var redemptionMode = String(campaign.redemptionMode || "")
+      .trim()
+      .toLowerCase();
+    var expiresAt = String(campaign.expiresAt || "").trim();
+    var expiry = expiresAt ? new Date(expiresAt) : null;
+    var validExpiry =
+      expiryMode === "unlimited"
+        ? !expiresAt
+        : expiryMode === "limited" &&
+          Boolean(expiry) &&
+          !Number.isNaN(expiry.getTime());
+    if (
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      label !== points + " 點" ||
+      !validExpiry ||
+      ["once_per_member", "repeatable", "single_member"].indexOf(
+        redemptionMode
+      ) === -1
+    ) {
+      throw createError("INVALID_RESPONSE", "後台回傳的點數活動格式不完整。");
+    }
+    return {
+      points: points,
+      redemptionMode: redemptionMode,
+    };
+  }
+
+  function setPointClaimState(activeId) {
+    [
+      "point-claim-loading-state",
+      "point-claim-result-state",
+      "point-claim-error-state",
+    ].forEach(function (id) {
+      byId(id).hidden = id !== activeId;
+    });
+  }
+
+  function confirmPointClaim() {
+    closeDialog(byId("point-claim-dialog"));
+    return loadLotteryWorkspace(bootVersion);
+  }
+
+  function sendPointClaimMessage(
+    originalPointBalance,
+    awardedPoints,
+    pointBalance
+  ) {
+    var context = getLiffContext();
+    if (
+      context.inClient !== true ||
+      context.type !== "utou" ||
+      !window.liff ||
+      typeof window.liff.sendMessages !== "function"
+    ) {
+      return Promise.resolve({ sent: false });
+    }
+    var message =
+      "會員點數通知\n原本點數：" +
+      formatNumber(originalPointBalance) +
+      " 點\n獲得點數：+" +
+      formatNumber(awardedPoints) +
+      " 點\n目前點數：" +
+      formatNumber(pointBalance) +
+      " 點";
+    return window.liff.sendMessages([{ type: "text", text: message }]);
+  }
+
+  function ensurePendingPointRedemptionRequest() {
+    if (pendingPointClaimRequestId) return pendingPointClaimRequestId;
+    try {
+      var stored = String(
+        window.sessionStorage.getItem(getPointRedemptionRequestStorageKey()) ||
+          ""
+      );
+      if (/^[a-zA-Z0-9-]{10,80}$/.test(stored)) {
+        pendingPointClaimRequestId = stored;
+        return stored;
+      }
+    } catch (_error) {
+      // The in-memory request ID still protects retries on this page.
+    }
+    pendingPointClaimRequestId = window.MemberApi.createRequestId();
+    try {
+      window.sessionStorage.setItem(
+        getPointRedemptionRequestStorageKey(),
+        pendingPointClaimRequestId
+      );
+    } catch (_error) {
+      // The in-memory request ID still protects retries on this page.
+    }
+    return pendingPointClaimRequestId;
+  }
+
+  function clearPendingPointRedemptionRequest() {
+    pendingPointClaimRequestId = "";
+    try {
+      window.sessionStorage.removeItem(getPointRedemptionRequestStorageKey());
+    } catch (_error) {
+      // sessionStorage may be unavailable.
+    }
+  }
+
+  function getPointRedemptionRequestStorageKey() {
+    return (
+      POINT_REDEMPTION_REQUEST_STORAGE_PREFIX +
+      String(CONFIG.LIFF_ID || "unknown")
+    );
+  }
+
+  function openPointQrScanner() {
+    if (!isPointScannerAvailable()) return openEmbeddedPointScanner();
+    return Promise.resolve()
+      .then(function () {
+        return window.liff.scanCodeV2();
+      })
+      .then(function (result) {
+        return result && result.value;
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) throw error;
+        if (!isNativePointScannerUnavailableError(error)) throw error;
+        return openEmbeddedPointScanner();
+      });
+  }
+
+  function isPointScannerAvailable() {
+    if (!window.liff || typeof window.liff.scanCodeV2 !== "function") {
+      return false;
+    }
+    if (typeof window.liff.isApiAvailable !== "function") return true;
+    try {
+      return window.liff.isApiAvailable("scanCodeV2") === true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function isNativePointScannerUnavailableError(error) {
+    var code = String(error && (error.code || error.name) || "").toUpperCase();
+    return (
+      normalizeError(error).code === "SCAN_QR_UNAVAILABLE" ||
+      code === "FORBIDDEN" ||
+      code === "EXCEPTION_IN_SUBWINDOW"
+    );
+  }
+
+  function openEmbeddedPointScanner() {
+    if (pointScannerReject) {
+      return Promise.reject(createError("BUSY", "QR 掃描器正在使用中，請稍候。"));
+    }
+    setEmbeddedPointScannerStatus("正在啟動相機…");
+    openDialog(byId("point-scanner-dialog"));
+    return new Promise(function (resolve, reject) {
+      pointScannerResolve = resolve;
+      pointScannerReject = reject;
+      createEmbeddedPointBarcodeDetector()
+        .then(function (detector) {
+          if (
+            !window.navigator.mediaDevices ||
+            typeof window.navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            throw createError(
+              "CAMERA_UNAVAILABLE",
+              "目前瀏覽器無法開啟相機，請更新 LINE 或改用手機瀏覽器。"
+            );
+          }
+          return window.navigator.mediaDevices
+            .getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 1280 },
+                height: { ideal: 1280 },
+              },
+            })
+            .then(function (stream) {
+              return { detector: detector, stream: stream };
+            });
+        })
+        .then(function (scanner) {
+          if (!pointScannerReject) {
+            scanner.stream.getTracks().forEach(function (track) {
+              track.stop();
+            });
+            return;
+          }
+          pointScannerStream = scanner.stream;
+          var video = byId("point-scanner-video");
+          video.srcObject = scanner.stream;
+          return Promise.resolve(video.play()).then(function () {
+            setEmbeddedPointScannerStatus(
+              "將 QR Code 對準框線，辨識成功後會自動領點。"
+            );
+            var label = byId("scan-point-button").querySelector("span");
+            if (label) label.textContent = "正在掃描";
+            scheduleEmbeddedPointScan(scanner.detector);
+          });
+        })
+        .catch(function (error) {
+          if (!pointScannerReject) return;
+          finishEmbeddedPointScanner(
+            "",
+            normalizeEmbeddedPointScannerError(error)
+          );
+        });
+    });
+  }
+
+  function createEmbeddedPointBarcodeDetector() {
+    if (typeof window.BarcodeDetector !== "function") {
+      return Promise.reject(
+        createError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器沒有 QR 辨識功能，請更新 LINE 或改用手機瀏覽器。"
+        )
+      );
+    }
+    var supportedFormats =
+      typeof window.BarcodeDetector.getSupportedFormats === "function"
+        ? window.BarcodeDetector.getSupportedFormats()
+        : Promise.resolve(["qr_code"]);
+    return Promise.resolve(supportedFormats).then(function (formats) {
+      if (!Array.isArray(formats) || formats.indexOf("qr_code") === -1) {
+        throw createError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器不支援 QR Code 辨識，請更新 LINE 或改用手機瀏覽器。"
+        );
+      }
+      return new window.BarcodeDetector({ formats: ["qr_code"] });
+    });
+  }
+
+  function scheduleEmbeddedPointScan(detector) {
+    window.clearTimeout(pointScannerTimer);
+    if (!pointScannerReject) return;
+    pointScannerTimer = window.setTimeout(function () {
+      var video = byId("point-scanner-video");
+      if (!pointScannerReject) return;
+      if (!video || video.readyState < 2 || pointScannerDetecting) {
+        scheduleEmbeddedPointScan(detector);
+        return;
+      }
+      pointScannerDetecting = true;
+      Promise.resolve(detector.detect(video))
+        .then(function (barcodes) {
+          if (!pointScannerReject || !Array.isArray(barcodes)) return;
+          var match = barcodes.find(function (barcode) {
+            return barcode && String(barcode.rawValue || "").trim();
+          });
+          if (match) {
+            finishEmbeddedPointScanner(String(match.rawValue).trim());
+          }
+        })
+        .catch(function () {
+          // A single frame can fail while the camera focuses.
+        })
+        .finally(function () {
+          pointScannerDetecting = false;
+          if (pointScannerReject) scheduleEmbeddedPointScan(detector);
+        });
+    }, 160);
+  }
+
+  function cancelEmbeddedPointScanner() {
+    if (!pointScannerReject) {
+      stopEmbeddedPointScanner();
+      closeDialog(byId("point-scanner-dialog"));
+      return;
+    }
+    finishEmbeddedPointScanner(
+      "",
+      createError("POINT_SCAN_CANCELLED", "已取消掃描。")
+    );
+  }
+
+  function finishEmbeddedPointScanner(value, error) {
+    var resolve = pointScannerResolve;
+    var reject = pointScannerReject;
+    pointScannerResolve = null;
+    pointScannerReject = null;
+    stopEmbeddedPointScanner();
+    closeDialog(byId("point-scanner-dialog"));
+    if (value && resolve) resolve(value);
+    else if (reject) {
+      reject(error || createError("CAMERA_UNAVAILABLE", "QR 掃描器已停止。"));
+    }
+  }
+
+  function stopEmbeddedPointScanner() {
+    window.clearTimeout(pointScannerTimer);
+    pointScannerTimer = 0;
+    pointScannerDetecting = false;
+    if (pointScannerStream) {
+      pointScannerStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+      pointScannerStream = null;
+    }
+    var video = byId("point-scanner-video");
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+  }
+
+  function setEmbeddedPointScannerStatus(message) {
+    byId("point-scanner-status").textContent = message;
+  }
+
+  function normalizeEmbeddedPointScannerError(error) {
+    var name = String(error && (error.name || error.code) || "").toUpperCase();
+    if (name === "NOTALLOWEDERROR" || name === "SECURITYERROR") {
+      return createError(
+        "CAMERA_PERMISSION_DENIED",
+        "相機權限被拒絕，請在 LINE 或瀏覽器設定中允許相機後重試。"
+      );
+    }
+    if (name === "NOTFOUNDERROR" || name === "OVERCONSTRAINEDERROR") {
+      return createError("CAMERA_NOT_FOUND", "找不到可使用的相機。");
+    }
+    if (name === "NOTREADABLEERROR" || name === "ABORTERROR") {
+      return createError(
+        "CAMERA_UNAVAILABLE",
+        "相機目前無法使用，請關閉其他使用相機的程式後重試。"
+      );
+    }
+    return error && error.code
+      ? error
+      : createError(
+          "CAMERA_UNAVAILABLE",
+          "目前無法啟動相機，請更新 LINE 或改用手機瀏覽器。"
+        );
+  }
+
+  function extractPointClaimFromQr(value) {
+    var scannedValue = String(value || "").trim();
+    if (!scannedValue) return "";
+    var url;
+    try {
+      url = new URL(scannedValue);
+    } catch (_error) {
+      return "";
+    }
+    var expectedPath = "/" + String(CONFIG.LIFF_ID || "").trim();
+    var claim = url.searchParams.get("claim") || "";
+    var keys = Array.from(url.searchParams.keys());
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "liff.line.me" ||
+      url.pathname.replace(/\/+$/, "") !== expectedPath ||
+      url.hash ||
+      keys.length !== 1 ||
+      keys[0] !== "claim" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(claim)
+    ) {
+      return "";
+    }
+    return claim;
+  }
+
+  function isPointScanCancelled(error) {
+    return /CANCEL/.test(
+      [error && error.code, error && error.name, error && error.message]
+        .join(" ")
+        .toUpperCase()
+    );
+  }
+
+  function setButtonBusy(button, busy, busyLabel) {
+    if (!button) return;
+    var label = button.querySelector("span");
+    if (busy) {
+      button.dataset.originalDisabled = String(button.disabled);
+      button.dataset.originalLabel = label ? label.textContent : "";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      if (label && busyLabel) label.textContent = busyLabel;
+      return;
+    }
+    button.disabled = button.dataset.originalDisabled === "true";
+    if (label && button.dataset.originalLabel) {
+      label.textContent = button.dataset.originalLabel;
+    }
+    button.removeAttribute("aria-busy");
+    delete button.dataset.originalDisabled;
+    delete button.dataset.originalLabel;
+  }
+
+  function openDialog(dialog) {
+    if (!dialog || dialog.open || dialog.hasAttribute("open")) return;
+    if (typeof dialog.showModal === "function") {
+      try {
+        dialog.showModal();
+      } catch (_error) {
+        dialog.setAttribute("open", "");
+      }
+    } else {
+      dialog.setAttribute("open", "");
+    }
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) return;
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
   }
 
   function handleLogin() {
@@ -1131,6 +1833,15 @@
       LOTTERY_TICKET_MISMATCH: "這張抽獎券只能使用管理員指定的轉盤。",
       POINT_CARD_NOT_CONFIGURED: "管理員尚未設定集點卡規則。",
       POINT_CARD_DATA_ERROR: "集點卡資料目前無法使用，請聯絡管理員。",
+      INVALID_POINT_QR: "這不是有效的會員點數 QR Code。",
+      POINT_CAMPAIGN_NOT_FOUND: "這張集點 QR Code 不存在。",
+      POINT_CAMPAIGN_EXPIRED: "這張集點 QR Code 已過期。",
+      POINT_CAMPAIGN_INACTIVE: "這張集點 QR Code 已停用。",
+      POINT_CAMPAIGN_REDEEMED: "這張集點 QR Code 已被領取。",
+      SCAN_QR_UNAVAILABLE: "目前環境無法掃描 QR Code，請更新 LINE 或瀏覽器。",
+      CAMERA_PERMISSION_DENIED: "相機權限被拒絕，請允許相機後重試。",
+      CAMERA_NOT_FOUND: "找不到可使用的相機。",
+      CAMERA_UNAVAILABLE: "相機目前無法使用，請稍後再試。",
       LOTTERY_DATA_ERROR: "抽獎紀錄目前無法使用，請聯絡管理員。",
       REQUEST_ID_CONFLICT: "上一次抽獎仍在確認中，請使用同一轉盤重試。",
       ORIGIN_NOT_ALLOWED: "目前網站來源未被 GAS 允許。",
@@ -1264,6 +1975,11 @@
   function bindInteractions() {
     byId("login-button").addEventListener("click", handleLogin);
     byId("retry-button").addEventListener("click", boot);
+    byId("scan-point-button").addEventListener("click", handleScanPointQr);
+    byId("point-scanner-cancel-button").addEventListener(
+      "click",
+      cancelEmbeddedPointScanner
+    );
     byId("lottery-wheel-back-button").addEventListener(
       "click",
       closeLotteryWheelView
@@ -1279,11 +1995,33 @@
     });
     byId("lottery-result-confirm-button").addEventListener(
       "click",
-      returnToMemberPage
+      returnToPointCard
     );
     byId("lottery-result-dialog").addEventListener("cancel", function (event) {
       event.preventDefault();
     });
+    byId("point-scanner-dialog").addEventListener("cancel", function (event) {
+      event.preventDefault();
+      cancelEmbeddedPointScanner();
+    });
+    byId("point-claim-dialog").addEventListener("cancel", function (event) {
+      event.preventDefault();
+    });
+    byId("point-claim-confirm-button").addEventListener(
+      "click",
+      confirmPointClaim
+    );
+    byId("point-claim-error-close-button").addEventListener(
+      "click",
+      function () {
+        closeDialog(byId("point-claim-dialog"));
+      }
+    );
+    byId("point-claim-retry-button").addEventListener(
+      "click",
+      redeemScannedPointClaim
+    );
+    window.addEventListener("pagehide", stopEmbeddedPointScanner);
   }
 
   byId("current-year").textContent = String(new Date().getFullYear());

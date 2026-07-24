@@ -350,7 +350,10 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   for (const id of [
     "point-card-progress-bar",
     "point-card-milestones",
+    "point-card-current",
+    "point-card-target",
     "available-draw-count",
+    "scan-point-button",
     "lottery-ticket-view",
     "lottery-ticket-list",
     "lottery-ticket-empty",
@@ -367,8 +370,13 @@ test("member lottery opens an earned ticket on a separate view and spins from th
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.match(memberHtml, /id=["']lottery-page-link["'][^>]*href=["']lottery\.html["']/);
+  assert.match(memberHtml, /id=["']lottery-page-link["'][\s\S]*?<span>集點卡<\/span>/);
+  assert.doesNotMatch(memberHtml, /前往集點卡抽獎/);
+  assert.doesNotMatch(memberHtml, /id=["']scan-point-button["']/);
   assert.doesNotMatch(memberHtml, /id=["']lottery-result-dialog["']/);
   assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
+  assert.doesNotMatch(html, /id=["']point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i);
+  assert.match(html, /確認並返回集點卡/);
   assert.match(
     html,
     /class=["'][^"']*lottery-page-wheel-stage[^"']*["'][\s\S]*?<button\b[^>]*class=["'][^"']*member-lottery-hub[^"']*lottery-center-button[^"']*["'][^>]*id=["']lottery-spin-button["']/i
@@ -387,6 +395,14 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(script, /normalizeLotteryConfig\(\s*data\.lottery/);
   assert.match(script, /animateToPrize\(draw,\s*selectedType\.lottery\)/);
   assert.match(script, /renderPointCardMilestones\(\)/);
+  assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
+  assert.match(script, /preloadLotteryWheels\(\);[\s\S]*normalizePointCardStatus/);
+  assert.match(script, /ticket\.used\s*\?\s*["']已使用["']/);
+  assert.match(script, /function\s+returnToPointCard\s*\(/);
+  assert.doesNotMatch(
+    getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
+    /location\.(?:assign|replace)/
+  );
   assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
   assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
   assert.match(gas, /pointsSpent:\s*0/);
@@ -705,6 +721,8 @@ test("shared transport exposes only the bounded point and lottery fields", () =>
 test("member claim UI supports unlimited and repeatable campaigns with retry idempotency", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryHtml = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const normalizeCampaign = getTopLevelFunctionContaining(
     script,
@@ -722,21 +740,21 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
   assert.match(html, /id=["']claim-success-note["']/);
   assert.match(html, /id=["']claim-success-message-status["']/);
   assert.match(html, /id=["']claim-duplicate-title["']/);
-  assert.match(html, /id=["']scan-point-button["']/);
-  assert.match(html, /掃描集點 QR Code/);
+  assert.doesNotMatch(html, /id=["']scan-point-button["']/);
+  assert.match(lotteryHtml, /id=["']scan-point-button["']/);
+  assert.match(lotteryHtml, /掃描集點 QR Code/);
   assert.match(normalizeCampaign, /expiryMode\s*===\s*["']unlimited["']/);
   assert.match(normalizeCampaign, /redemptionMode\s*!==\s*["']repeatable["']/);
   assert.match(redeem, /ensurePendingPointRedemptionRequestId\s*\(/);
   assert.match(redeem, /sendPointClaimMessage\s*\(/);
-  assert.match(script, /scanCodeV2\s*\(/);
-  assert.match(script, /isApiAvailable\(["']scanCodeV2["']\)/);
-  assert.match(script, /SCAN_QR_UNAVAILABLE/);
-  assert.match(script, /extractPointClaimFromQr\s*\(/);
-  assert.match(script, /storePendingPointClaim\s*\(/);
-  assert.match(script, /INVALID_POINT_QR/);
-  assert.match(script, /byId\(["']scan-point-button["']\)\.addEventListener/);
-  assert.match(script, /sendMessages\s*\(/);
-  assert.match(script, /type\s*===\s*["']utou["']/);
+  assert.match(lotteryScript, /scanCodeV2\s*\(/);
+  assert.match(lotteryScript, /isApiAvailable\(["']scanCodeV2["']\)/);
+  assert.match(lotteryScript, /SCAN_QR_UNAVAILABLE/);
+  assert.match(lotteryScript, /extractPointClaimFromQr\s*\(/);
+  assert.match(lotteryScript, /INVALID_POINT_QR/);
+  assert.match(lotteryScript, /byId\(["']scan-point-button["']\)\.addEventListener/);
+  assert.match(lotteryScript, /sendMessages\s*\(/);
+  assert.match(lotteryScript, /context\.type\s*!==\s*["']utou["']/);
   assert.doesNotMatch(script, /getFriendship\s*\(/);
   assert.doesNotMatch(script, /OFFICIAL_ACCOUNT_FRIEND(?:SHIP_UNAVAILABLE|_NOT_FRIEND|_URL)/);
   assert.match(redeem, /duplicateReason\s*===\s*["']request_replay["']/);
@@ -749,8 +767,8 @@ test("member claim UI supports unlimited and repeatable campaigns with retry ide
 });
 
 test("member point scanner falls back to an in-page camera and always stops media tracks", () => {
-  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
-  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const scannerDialog = getOpeningTagById(html, "point-scanner-dialog");
   const scannerVideo = getOpeningTagById(html, "point-scanner-video");
   const scannerCancel = getOpeningTagById(html, "point-scanner-cancel-button");
