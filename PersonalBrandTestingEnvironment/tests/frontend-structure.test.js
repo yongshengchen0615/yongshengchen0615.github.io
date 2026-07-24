@@ -355,6 +355,10 @@ test("member lottery opens an earned ticket on a separate view and spins from th
     "available-draw-count",
     "scan-point-button",
     "lottery-ticket-view",
+    "locked-ticket-count",
+    "locked-ticket-list",
+    "locked-ticket-empty",
+    "earned-ticket-count",
     "lottery-ticket-list",
     "lottery-ticket-empty",
     "lottery-wheel-view",
@@ -376,6 +380,9 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.doesNotMatch(memberHtml, /id=["']lottery-result-dialog["']/);
   assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
   assert.doesNotMatch(html, /id=["']point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i);
+  assert.match(html, /id=["']locked-ticket-title["']>未獲得</);
+  assert.match(html, /id=["']earned-ticket-title["']>已獲得</);
+  assert.match(html, /抽獎完成後，該券會直接移除/);
   assert.match(html, /確認並返回集點卡/);
   assert.match(
     html,
@@ -387,6 +394,7 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   );
   assert.match(spin, /sendMemberRequest\(\s*["']drawLottery["']/);
   assert.match(spin, /ensurePendingRequest\s*\(/);
+  assert.match(spin, /startWaitingSpin\(\);[\s\S]*sendMemberRequest\(/);
   assert.match(spin, /\blotteryTypeId\s*:/);
   assert.match(spin, /\bcardRoundKey\s*:/);
   assert.doesNotMatch(spin, /Math\.random\s*\(/);
@@ -397,7 +405,10 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(script, /renderPointCardMilestones\(\)/);
   assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
   assert.match(script, /preloadLotteryWheels\(\);[\s\S]*normalizePointCardStatus/);
-  assert.match(script, /ticket\.used\s*\?\s*["']已使用["']/);
+  assert.match(script, /function\s+startWaitingSpin\s*\(/);
+  assert.match(script, /requestAnimationFrame\(rotate\)/);
+  assert.match(script, /cardStatus\.availableRewards\.forEach/);
+  assert.doesNotMatch(script, /\brewardTickets\b/);
   assert.match(script, /function\s+returnToPointCard\s*\(/);
   assert.doesNotMatch(
     getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
@@ -407,6 +418,7 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
   assert.match(gas, /pointsSpent:\s*0/);
   assert.match(gas, /cardRoundKey/);
+  assert.doesNotMatch(gas, /\brewardTickets\b/);
 });
 
 test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {

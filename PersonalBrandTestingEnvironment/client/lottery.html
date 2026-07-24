@@ -101,14 +101,39 @@
 
           <section class="lottery-ticket-workspace" aria-labelledby="lottery-ticket-title">
             <header>
-              <p class="eyebrow">TICKET HISTORY</p>
+              <p class="eyebrow">POINT REWARDS</p>
               <h2 id="lottery-ticket-title">抽獎券紀錄</h2>
-              <p>可使用的券可開啟指定轉盤；抽獎後仍會保留，並標示為已使用。</p>
+              <p>查看本張卡尚未取得的節點，以及目前可使用的抽獎券。抽獎完成後，該券會直接移除。</p>
             </header>
-            <div class="lottery-ticket-list" id="lottery-ticket-list"></div>
-            <p class="lottery-ticket-empty" id="lottery-ticket-empty" hidden>
-              尚未獲得抽獎券。集點到下一個節點後，抽獎券會顯示在這裡。
-            </p>
+            <div class="lottery-ticket-groups">
+              <section class="lottery-ticket-group is-locked" aria-labelledby="locked-ticket-title">
+                <header>
+                  <div>
+                    <p class="eyebrow">UPCOMING</p>
+                    <h3 id="locked-ticket-title">未獲得</h3>
+                  </div>
+                  <strong><output id="locked-ticket-count">0</output><span> 張</span></strong>
+                </header>
+                <div class="lottery-locked-ticket-list" id="locked-ticket-list"></div>
+                <p class="lottery-ticket-empty" id="locked-ticket-empty" hidden>
+                  本張卡的抽獎節點都已取得。
+                </p>
+              </section>
+
+              <section class="lottery-ticket-group is-earned" aria-labelledby="earned-ticket-title">
+                <header>
+                  <div>
+                    <p class="eyebrow">READY TO USE</p>
+                    <h3 id="earned-ticket-title">已獲得</h3>
+                  </div>
+                  <strong><output id="earned-ticket-count">0</output><span> 張</span></strong>
+                </header>
+                <div class="lottery-ticket-list" id="lottery-ticket-list"></div>
+                <p class="lottery-ticket-empty" id="lottery-ticket-empty" hidden>
+                  目前沒有可使用的抽獎券。集點到下一個節點後會顯示在這裡。
+                </p>
+              </section>
+            </div>
           </section>
         </section>
 
@@ -156,7 +181,7 @@
           <div><small>使用抽獎券</small><strong><output>1</output><span> 張</span></strong></div>
           <div><small>抽獎後累計</small><strong><output id="lottery-result-balance">0</output><span> 點</span></strong></div>
         </div>
-        <p class="lottery-result-note">點數沒有扣除；這張節點抽獎券已使用。</p>
+        <p class="lottery-result-note">點數沒有扣除；這張抽獎券已從「已獲得」清單移除。</p>
         <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
           <span>確認並返回集點卡</span>
         </button>

@@ -2280,17 +2280,60 @@ code {
   line-height: 1.7;
 }
 
-.lottery-ticket-list {
+.lottery-ticket-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line-strong);
 }
 
-.lottery-ticket-button {
+.lottery-ticket-group {
+  min-width: 0;
+}
+
+.lottery-ticket-group + .lottery-ticket-group {
+  padding-inline-start: clamp(1.25rem, 3vw, 2.5rem);
+  border-inline-start: 1px solid var(--line-strong);
+}
+
+.lottery-ticket-group > header {
+  min-height: 5.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.lottery-ticket-group h3 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.2rem, 2vw, 1.75rem);
+  font-weight: 620;
+}
+
+.lottery-ticket-group > header > strong {
+  color: var(--green-deep);
+  font-size: clamp(1.35rem, 2.5vw, 2rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.lottery-ticket-group > header > strong span {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
+  font-weight: 560;
+}
+
+.lottery-ticket-list {
+  min-width: 0;
+}
+
+.lottery-ticket-button,
+.lottery-locked-ticket {
   width: 100%;
   min-height: 7.5rem;
   display: grid;
-  grid-template-columns: minmax(6.5rem, 0.55fr) minmax(11rem, 1.3fr) minmax(10rem, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1.2rem;
+  gap: 0.45rem 1rem;
   padding: 1.3rem 0.2rem;
   border: 0;
   border-bottom: 1px solid var(--line-strong);
@@ -2300,6 +2343,20 @@ code {
     color 180ms ease,
     background 180ms ease,
     padding 180ms ease;
+}
+
+.lottery-ticket-name,
+.lottery-ticket-meta {
+  grid-column: 1;
+}
+
+.lottery-ticket-number,
+.lottery-ticket-action {
+  grid-row: 1;
+}
+
+.lottery-ticket-action {
+  grid-column: 2;
 }
 
 .lottery-ticket-button:hover,
@@ -2315,29 +2372,21 @@ code {
   opacity: 0.58;
 }
 
-.lottery-ticket-button.is-used,
-.lottery-ticket-button.is-used:hover,
-.lottery-ticket-button.is-used:focus-visible {
-  padding-inline: 0.2rem;
+.lottery-locked-ticket {
   color: var(--ink-faint);
-  background:
-    repeating-linear-gradient(
-      -45deg,
-      transparent,
-      transparent 8px,
-      rgba(11, 60, 44, 0.025) 8px,
-      rgba(11, 60, 44, 0.025) 16px
-    );
-  cursor: default;
-  opacity: 0.62;
-  outline: 0;
+  background: transparent;
 }
 
-.lottery-ticket-button.is-used .lottery-ticket-action {
+.lottery-locked-ticket .lottery-ticket-name {
+  color: var(--ink-soft);
+}
+
+.lottery-locked-ticket .lottery-ticket-action {
   width: max-content;
   padding: 0.35rem 0.55rem;
   border: 1px solid currentColor;
-  color: var(--ink-soft);
+  color: var(--ink-faint);
+  font-size: 0.62rem;
   letter-spacing: 0.08em;
 }
 
@@ -3194,30 +3243,21 @@ code {
     gap: 1.6rem;
   }
 
-  .lottery-ticket-button {
-    grid-template-columns: 1fr auto;
-    gap: 0.45rem 1rem;
+  .lottery-ticket-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .lottery-ticket-group + .lottery-ticket-group {
+    margin-top: 2rem;
+    padding-inline-start: 0;
+    border-block-start: 1px solid var(--line-strong);
+    border-inline-start: 0;
+  }
+
+  .lottery-ticket-button,
+  .lottery-locked-ticket {
     min-height: 8.5rem;
     padding: 1rem 0.15rem;
-  }
-
-  .lottery-ticket-name,
-  .lottery-ticket-meta {
-    grid-column: 1;
-  }
-
-  .lottery-ticket-number,
-  .lottery-ticket-action {
-    grid-row: 1;
-  }
-
-  .lottery-ticket-action {
-    grid-column: 2;
-  }
-
-  .lottery-ticket-button:hover,
-  .lottery-ticket-button:focus-visible {
-    padding-inline: 0.8rem;
   }
 
   .lottery-page-wheel-stage {
