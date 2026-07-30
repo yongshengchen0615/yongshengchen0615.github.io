@@ -318,8 +318,17 @@
   }
 
   function openPendingMemberPanel() {
-    if (!pendingMemberPanel || byId("member-state").hidden) return;
+    if (byId("member-state").hidden) return;
     if (document.querySelector("dialog[open]")) return;
+    if (
+      !isDemoSession &&
+      window.MemberLotteryDialog &&
+      window.MemberLotteryDialog.hasPending()
+    ) {
+      window.MemberLotteryDialog.restorePending();
+      return;
+    }
+    if (!pendingMemberPanel) return;
     var panel = pendingMemberPanel;
     pendingMemberPanel = "";
     if (panel === "tickets") openMemberTicketDialog();
@@ -888,10 +897,75 @@
 
   function openMemberLotteryTicket(ticket) {
     var normalizedTicket = normalizeMemberRewardTicket(ticket);
-    var url = new URL("lottery.html", window.location.href);
-    url.searchParams.set("ticket", normalizedTicket.cardRoundKey);
-    if (isDemoSession || hasDemoQuery()) url.searchParams.set("demo", "1");
-    window.location.assign(url.toString());
+    if (!window.MemberLotteryDialog) {
+      showToast("轉盤元件尚未載入，請重新整理後再試。", "error");
+      return;
+    }
+    closeDialog(byId("member-ticket-dialog"), true);
+    window.MemberLotteryDialog.open(normalizedTicket);
+  }
+
+  function configureMemberLotteryDialog() {
+    if (!window.MemberLotteryDialog || !window.LotteryWheel) {
+      throw createClientError(
+        "CLIENT_LIBRARY_ERROR",
+        "無法載入轉盤元件，請重新整理頁面。"
+      );
+    }
+
+    window.MemberLotteryDialog.configure({
+      liffId: String(CONFIG.LIFF_ID || "").trim(),
+      request: function (action, fields, requestId) {
+        var token =
+          currentIdToken || (window.liff && window.liff.getIDToken()) || "";
+        if (!token) {
+          return Promise.reject(
+            createClientError(
+              "MISSING_ID_TOKEN",
+              "登入狀態已失效，請重新登入後再抽獎。"
+            )
+          );
+        }
+        return sendGasRequest(
+          action,
+          token,
+          getLiffContext(),
+          fields,
+          requestId
+        ).then(function (response) {
+          assertSuccessfulResponse(response);
+          clearInvalidTokenRecoveryGuard();
+          return response;
+        });
+      },
+      isDemo: function () {
+        return isDemoSession;
+      },
+      getCurrentCardSummary: function () {
+        return currentMemberCardSummary;
+      },
+      getCurrentTotalPoints: function () {
+        return currentMember ? currentMember.pointBalance : 0;
+      },
+      getMemberId: function () {
+        return currentMember ? currentMember.memberId : "";
+      },
+      onCardUpdated: function (card, totalPoints) {
+        updateMemberPointBalance(totalPoints, true);
+        renderMemberCardSummary(card, true);
+        isPointHistoryDirty = true;
+      },
+      onReturnToTickets: function () {
+        pendingMemberPanel = "";
+        window.requestAnimationFrame(openMemberTicketDialog);
+      },
+      onAuthorizationError: function (error) {
+        closeDialog(byId("member-lottery-dialog"), true);
+        handleClientError(error);
+      },
+      normalizeError: normalizeClientError,
+      showToast: showToast,
+    });
   }
 
   function openPointHistoryDialog() {
@@ -2449,6 +2523,14 @@
   function closeDialog(dialog, force) {
     if (!dialog) return;
     if (
+      dialog.id === "member-lottery-dialog" &&
+      window.MemberLotteryDialog &&
+      !window.MemberLotteryDialog.canClose() &&
+      !force
+    ) {
+      return;
+    }
+    if (
       dialog.id === "profile-dialog" &&
       dialog.dataset.busy === "true" &&
       !force
@@ -2638,6 +2720,7 @@
     return loadConfig()
       .then(function () {
         applyBrand();
+        configureMemberLotteryDialog();
         return boot();
       })
       .catch(handleClientError);

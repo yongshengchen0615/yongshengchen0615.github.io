@@ -97,6 +97,19 @@ img {
   display: none !important;
 }
 
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
 ::selection {
   color: #fff;
   background: var(--green-dark);
@@ -1567,6 +1580,39 @@ code {
   overflow: hidden;
 }
 
+.member-ticket-dialog[open] {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  padding:
+    max(1rem, env(safe-area-inset-top))
+    max(clamp(1.25rem, 4vw, 4.5rem), env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(clamp(1.25rem, 4vw, 4.5rem), env(safe-area-inset-left));
+  border: 0;
+  border-radius: 0;
+}
+
+.member-ticket-dialog .modal-head,
+.member-ticket-dialog .member-panel-description,
+.member-ticket-dialog .member-ticket-tabs {
+  flex: 0 0 auto;
+}
+
+.member-ticket-dialog .member-panel-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  max-height: none;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
 .member-panel-description {
   margin: 1.15rem 0 1.25rem;
   color: var(--ink-soft);
@@ -1910,6 +1956,150 @@ code {
   background:
     linear-gradient(110deg, rgba(184, 139, 66, 0.2), transparent 45%),
     var(--green-deep);
+}
+
+.member-lottery-dialog {
+  width: min(calc(100% - 1.25rem), 36rem);
+  max-height: min(92dvh, 48rem);
+  overflow: auto;
+  padding: clamp(1.1rem, 3vw, 1.7rem);
+  border-radius: 1.25rem;
+}
+
+.member-lottery-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-lottery-dialog-head {
+  flex: 0 0 auto;
+  align-items: center;
+  padding-bottom: 1rem;
+}
+
+.member-lottery-dialog-head h2 {
+  margin-top: 0.2rem;
+  font-size: clamp(1.45rem, 5vw, 2rem);
+}
+
+.member-lottery-dialog-head .icon-button:disabled {
+  cursor: wait;
+  opacity: 0.42;
+}
+
+.member-lottery-state {
+  min-height: min(67dvh, 34rem);
+  flex: 1 1 auto;
+}
+
+.member-lottery-loading-state,
+.member-lottery-error-state,
+.member-lottery-result-state {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: clamp(1.5rem, 5vw, 3rem) 0 0.5rem;
+  text-align: center;
+}
+
+.member-lottery-loading-state .claim-loader {
+  margin-bottom: 1.25rem;
+}
+
+.member-lottery-loading-state > strong,
+.member-lottery-error-state > strong {
+  font-size: clamp(1.25rem, 5vw, 1.75rem);
+  line-height: 1.35;
+}
+
+.member-lottery-loading-state > p,
+.member-lottery-error-state > p,
+.member-lottery-result-state > p {
+  max-width: 27rem;
+  margin: 0.7rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.member-lottery-error-state .error-code {
+  align-self: auto;
+  margin-bottom: 0.75rem;
+  padding: 0;
+}
+
+.member-lottery-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-top: 1.75rem;
+}
+
+.member-lottery-wheel-state {
+  padding-top: 1rem;
+}
+
+.member-lottery-wheel-copy {
+  text-align: center;
+}
+
+.member-lottery-wheel-copy h3 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(1.45rem, 5vw, 2rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.member-lottery-wheel-copy > p:last-child {
+  margin: 0.55rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.member-lottery-dialog-stage {
+  position: relative;
+  width: min(74vw, 21rem);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 1.2rem auto 0;
+}
+
+.member-lottery-dialog .member-lottery-pointer {
+  border-top-width: 1.65rem;
+  border-right-width: 0.82rem;
+  border-left-width: 0.82rem;
+}
+
+.member-lottery-dialog .member-lottery-hub {
+  width: clamp(4.8rem, 27%, 6.2rem);
+  border-width: 0.34rem;
+  font-size: clamp(0.7rem, 2.8vw, 0.88rem);
+}
+
+.member-lottery-dialog .lottery-spin-status {
+  margin-bottom: 0;
+}
+
+.member-lottery-result-state .lottery-result-swatch {
+  width: 4rem;
+  margin-block: 1rem;
+}
+
+.member-lottery-result-state > strong {
+  max-width: 17ch;
+  font-size: clamp(2rem, 9vw, 3.5rem);
+  font-weight: 540;
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.member-lottery-result-state .lottery-balance-summary {
+  width: 100%;
+  margin-block: 1.5rem 1rem;
 }
 
 .lottery-result-state {
@@ -3211,6 +3401,24 @@ code {
     scrollbar-gutter: auto;
   }
 
+  .member-ticket-dialog[open] {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding:
+      max(1rem, env(safe-area-inset-top))
+      max(var(--page-gutter), env(safe-area-inset-right))
+      max(1rem, env(safe-area-inset-bottom))
+      max(var(--page-gutter), env(safe-area-inset-left));
+    border: 0;
+    border-radius: 0;
+  }
+
+  .member-ticket-dialog .member-panel-scroll {
+    max-height: none;
+  }
+
   .member-ticket-tabs {
     margin-inline: calc(var(--page-gutter) * -1);
     padding-inline: var(--page-gutter);
@@ -3219,6 +3427,31 @@ code {
   .member-ticket-dialog .lottery-ticket-button,
   .member-ticket-dialog .lottery-locked-ticket {
     min-height: 6.2rem;
+  }
+
+  .member-lottery-dialog {
+    width: calc(100% - 1rem);
+    max-height: calc(100dvh - 1rem);
+    margin: auto;
+    padding:
+      1rem
+      max(1rem, env(safe-area-inset-right))
+      max(1rem, env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
+    border-width: 1px;
+    border-radius: 1rem;
+  }
+
+  .member-lottery-state {
+    min-height: min(69dvh, 31rem);
+  }
+
+  .member-lottery-dialog-stage {
+    width: min(72vw, 19rem);
+  }
+
+  .member-lottery-actions {
+    grid-template-columns: 1fr;
   }
 
   .data-control {

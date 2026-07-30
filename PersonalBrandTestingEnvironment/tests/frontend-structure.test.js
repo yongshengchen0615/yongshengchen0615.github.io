@@ -54,6 +54,12 @@ function getElementMarkupById(source, id) {
   return source.slice(match.index, end + closingTag.length);
 }
 
+function getCssRuleBody(source, selector) {
+  const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(source);
+  assert.ok(match, `missing CSS rule ${selector}`);
+  return match[1];
+}
+
 test("split client and admin entry points reference existing local assets", () => {
   for (const relativePath of htmlFiles) {
     const absolutePath = path.join(root, relativePath);
@@ -413,9 +419,143 @@ test("admin lottery page maps individually added card nodes to one configured wh
   assert.doesNotMatch(validatePrizes, /獎項名稱不可重複|labelKey|var\s+labels/);
 });
 
-test("member lottery opens an earned ticket on a separate view and spins from the wheel center", () => {
-  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
-  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+test("member home opens a fullscreen ticket picker and an in-place lottery dialog", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lotteryDialogScript = fs.readFileSync(
+    path.join(root, "client/member-lottery.js"),
+    "utf8"
+  );
+  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const ticketDialog = getOpeningTagById(html, "member-ticket-dialog");
+  const lotteryDialog = getOpeningTagById(html, "member-lottery-dialog");
+  const lotteryDialogDescription = getOpeningTagById(
+    html,
+    "member-lottery-dialog-description"
+  );
+  const loadingState = getOpeningTagById(html, "member-lottery-loading-state");
+  const errorState = getOpeningTagById(html, "member-lottery-error-state");
+  const wheelState = getOpeningTagById(html, "member-lottery-wheel-state");
+  const resultState = getOpeningTagById(html, "member-lottery-result-state");
+  const openTicket = getTopLevelFunctionContaining(
+    script,
+    /function\s+openMemberLotteryTicket\s*\(/
+  );
+  const configureDialog = getTopLevelFunctionContaining(
+    script,
+    /function\s+configureMemberLotteryDialog\s*\(/
+  );
+  const openLotteryDialog = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+open\s*\(ticketValue\)/
+  );
+  const loadWorkspace = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+loadWorkspace\s*\(/
+  );
+  const finishDraw = getTopLevelFunctionContaining(
+    lotteryDialogScript,
+    /function\s+finishDraw\s*\(/
+  );
+  const ticketDialogStyles = getCssRuleBody(
+    styles,
+    ".member-ticket-dialog[open]"
+  );
+  const ticketScrollStyles = getCssRuleBody(
+    styles,
+    ".member-ticket-dialog .member-panel-scroll"
+  );
+  const lotteryDialogStyles = getCssRuleBody(styles, ".member-lottery-dialog");
+
+  assert.match(ticketDialog, /^<dialog\b/i);
+  assert.match(lotteryDialog, /^<dialog\b/i);
+  assert.match(lotteryDialog, /\baria-labelledby=["']member-lottery-dialog-title["']/i);
+  assert.match(
+    lotteryDialog,
+    /\baria-describedby=["']member-lottery-dialog-description["']/i
+  );
+  assert.match(lotteryDialogDescription, /\bclass=["'][^"']*visually-hidden/i);
+  assert.doesNotMatch(lotteryDialogDescription, /\shidden(?:\s|=|>)/i);
+  assert.match(loadingState, /\brole=["']status["']/i);
+  assert.match(loadingState, /\baria-live=["']polite["']/i);
+  assert.doesNotMatch(loadingState, /\bhidden\b/i);
+  assert.match(errorState, /\brole=["']alert["']/i);
+  assert.match(errorState, /\bhidden\b/i);
+  assert.match(wheelState, /\baria-labelledby=["']member-lottery-name["']/i);
+  assert.match(wheelState, /\bhidden\b/i);
+  assert.match(resultState, /\brole=["']status["']/i);
+  assert.match(resultState, /\baria-live=["']polite["']/i);
+  assert.match(resultState, /\bhidden\b/i);
+  for (const id of [
+    "member-lottery-wheel",
+    "member-lottery-spin-button",
+    "member-lottery-close-button",
+    "member-lottery-return-button",
+    "member-lottery-retry-button",
+    "member-lottery-confirm-button",
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(html, /正在準備轉盤/);
+  assert.doesNotMatch(
+    getElementMarkupById(html, "member-lottery-dialog"),
+    /<iframe\b/i
+  );
+
+  assert.match(ticketDialogStyles, /\bwidth:\s*100%/);
+  assert.match(ticketDialogStyles, /\bheight:\s*100dvh/);
+  assert.match(ticketDialogStyles, /\bmax-width:\s*none/);
+  assert.match(ticketDialogStyles, /\bmax-height:\s*none/);
+  assert.match(ticketDialogStyles, /\bdisplay:\s*flex/);
+  assert.match(ticketDialogStyles, /\bflex-direction:\s*column/);
+  assert.match(ticketDialogStyles, /\bmargin:\s*0/);
+  assert.match(ticketScrollStyles, /\bmin-height:\s*0/);
+  assert.match(ticketScrollStyles, /\bflex:\s*1\s+1\s+auto/);
+  assert.match(ticketScrollStyles, /\bmax-height:\s*none/);
+
+  assert.match(
+    lotteryDialogStyles,
+    /\bwidth:\s*min\([^;]*,\s*\d+(?:\.\d+)?rem\)/
+  );
+  assert.match(lotteryDialogStyles, /\bmax-height:\s*min\(/);
+  assert.doesNotMatch(lotteryDialogStyles, /\bheight:\s*100dvh/);
+  assert.doesNotMatch(lotteryDialogStyles, /\bmax-width:\s*none/);
+
+  assert.match(
+    openTicket,
+    /closeDialog\(byId\(["']member-ticket-dialog["']\),\s*true\)[\s\S]*window\.MemberLotteryDialog\.open/
+  );
+  assert.doesNotMatch(
+    openTicket,
+    /(?:window\.)?location\.(?:assign|replace)|new\s+URL\s*\(\s*["']lottery\.html|lottery\.html/
+  );
+  assert.doesNotMatch(html, /<iframe\b/i);
+  assert.doesNotMatch(lotteryDialogScript, /lottery\.html|location\.(?:assign|replace)/);
+
+  assert.match(
+    openLotteryDialog,
+    /showDialog\(dialog\)[\s\S]*setDialogState\(["']member-lottery-loading-state["']\)[\s\S]*loadWorkspace\(thisLoad\)/
+  );
+  assert.match(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
+  assert.match(
+    loadWorkspace,
+    /drawSelectedWheel\(\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+  );
+  assert.match(
+    configureDialog,
+    /onCardUpdated:\s*function\s*\(card,\s*totalPoints\)[\s\S]*?updateMemberPointBalance\(totalPoints,\s*true\)[\s\S]*?renderMemberCardSummary\(card,\s*true\)/
+  );
+  assert.match(
+    configureDialog,
+    /getMemberId:\s*function\s*\(\)[\s\S]*?currentMember\.memberId/
+  );
+  assert.match(
+    finishDraw,
+    /animateToPrize\([^)]*\)\.then\([\s\S]*?clearPendingRequest\(\)[\s\S]*?safeCardUpdated\(cardStatus,\s*totalPoints\)[\s\S]*?setDialogState\(["']member-lottery-result-state["']\)/
+  );
+});
+
+test("legacy client lottery deep link remains available and spins from the wheel center", () => {
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
@@ -477,29 +617,7 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
-  for (const id of [
-    "member-ticket-dialog",
-    "member-ticket-tabs",
-    "member-locked-ticket-tab",
-    "member-locked-ticket-panel",
-    "member-locked-ticket-count",
-    "member-locked-ticket-list",
-    "member-earned-ticket-tab",
-    "member-earned-ticket-panel",
-    "member-earned-ticket-count",
-    "member-earned-ticket-list",
-  ]) {
-    assert.match(memberHtml, new RegExp(`id=["']${id}["']`));
-  }
-  assert.match(
-    getOpeningTagById(memberHtml, "lottery-page-link"),
-    /<button\b[^>]*\btype=["']button["'][^>]*\baria-controls=["']member-ticket-dialog["']/i
-  );
-  assert.match(memberHtml, /id=["']lottery-page-link["'][\s\S]*?<span>抽獎券<\/span>/);
-  assert.doesNotMatch(memberHtml, /前往集點卡抽獎/);
-  assert.match(memberHtml, /id=["']scan-point-button["']/);
   assert.doesNotMatch(html, /id=["']scan-point-button["']/);
-  assert.doesNotMatch(memberHtml, /id=["']lottery-result-dialog["']/);
   assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
   assert.doesNotMatch(html, /id=["']point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i);
   assert.match(html, /id=["']locked-ticket-title["']>未獲得</);
@@ -583,7 +701,6 @@ test("member lottery opens an earned ticket on a separate view and spins from th
     getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
     /navigateToMemberPanel\(["']tickets["']\)/
   );
-  assert.match(memberScript, /url\.searchParams\.set\(["']ticket["'],\s*normalizedTicket\.cardRoundKey\)/);
   assert.match(script, /function\s+captureRequestedCardRoundKey\s*\(/);
   assert.match(renderWorkspace, /cardStatus\.availableRewards\.find/);
   assert.doesNotMatch(
@@ -1360,27 +1477,45 @@ test("both applications load shared runtime modules before their own scripts", (
     );
   }
 
-  for (const relativePath of ["client/lottery.html", "admin/lottery.html"]) {
+  for (const [relativePath, scriptName] of [
+    ["client/index.html", "member-lottery.js"],
+    ["client/lottery.html", "lottery.js"],
+    ["admin/lottery.html", "script.js"],
+  ]) {
     const html = fs.readFileSync(path.join(root, relativePath), "utf8");
     const wheelIndex = html.indexOf('../shared/lottery-wheel.js');
-    const appIndex = html.indexOf(
-      relativePath.startsWith("client/") ? 'src="lottery.js"' : 'src="script.js"'
-    );
+    const appIndex = html.indexOf(`src="${scriptName}"`);
     assert.notEqual(wheelIndex, -1);
     assert.equal(wheelIndex < appIndex, true, `${relativePath} must preload the wheel renderer`);
   }
+
+  const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  assert.equal(
+    memberHtml.indexOf('src="member-lottery.js"') <
+      memberHtml.indexOf('src="script.js"'),
+    true,
+    "the member lottery controller must be available before the member app configures it"
+  );
 });
 
-test("member home no longer contains the retired embedded lottery implementation", () => {
+test("member home uses an isolated lottery dialog controller instead of page navigation", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
-  const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+  const lotteryDialogScript = fs.readFileSync(
+    path.join(root, "client/member-lottery.js"),
+    "utf8"
+  );
+  const openTicket = getTopLevelFunctionContaining(
+    script,
+    /function\s+openMemberLotteryTicket\s*\(/
+  );
 
-  assert.doesNotMatch(html, /id=["']lottery-dialog["']/);
-  assert.doesNotMatch(script, /function\s+(?:openLottery|handleLotterySpin|drawMemberLotteryWheel)\s*\(/);
-  assert.doesNotMatch(script, /persona-member-lottery-request/);
-  assert.doesNotMatch(styles, /\.lottery-modal\b/);
-  assert.doesNotMatch(styles, /\.member-lottery-stage\b/);
+  assert.match(html, /id=["']member-lottery-dialog["']/);
+  assert.match(script, /window\.MemberLotteryDialog\.configure\s*\(/);
+  assert.match(lotteryDialogScript, /window\.MemberLotteryDialog\s*=\s*api/);
+  assert.match(openTicket, /window\.MemberLotteryDialog\.open\(normalizedTicket\)/);
+  assert.doesNotMatch(openTicket, /lottery\.html|location\.(?:assign|replace)/);
+  assert.doesNotMatch(html, /<iframe\b/i);
 });
 
 test("deployment guides document two independent GAS deployments and Sheet-based admin approval", () => {

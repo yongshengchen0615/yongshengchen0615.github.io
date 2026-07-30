@@ -20,6 +20,8 @@
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="../shared/liff-runtime.js"></script>
+    <script defer src="../shared/lottery-wheel.js"></script>
+    <script defer src="member-lottery.js"></script>
     <script defer src="script.js"></script>
   </head>
   <body>
@@ -456,6 +458,128 @@
           </p>
         </section>
       </div>
+    </dialog>
+
+    <dialog
+      class="modal member-lottery-dialog"
+      id="member-lottery-dialog"
+      aria-labelledby="member-lottery-dialog-title"
+      aria-describedby="member-lottery-dialog-description"
+    >
+      <div class="modal-head member-lottery-dialog-head">
+        <div>
+          <p class="eyebrow">LOTTERY WHEEL</p>
+          <h2 id="member-lottery-dialog-title">轉盤抽獎</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="member-lottery-close-button"
+          type="button"
+          aria-label="關閉轉盤"
+        >
+          ×
+        </button>
+      </div>
+      <p class="visually-hidden" id="member-lottery-dialog-description">
+        正在準備抽獎轉盤。
+      </p>
+
+      <section
+        class="member-lottery-state member-lottery-loading-state"
+        id="member-lottery-loading-state"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+        <strong>正在準備轉盤</strong>
+        <p>確認抽獎券與獎項設定，完成後即可開始。</p>
+      </section>
+
+      <section
+        class="member-lottery-state member-lottery-error-state"
+        id="member-lottery-error-state"
+        role="alert"
+        hidden
+      >
+        <small class="error-code" id="member-lottery-error-code">LOTTERY ERROR</small>
+        <strong id="member-lottery-error-message">目前無法載入轉盤。</strong>
+        <div class="member-lottery-actions">
+          <button class="secondary-button" id="member-lottery-return-button" type="button">
+            返回抽獎券
+          </button>
+          <button class="primary-button" id="member-lottery-retry-button" type="button">
+            <span>重新載入</span>
+          </button>
+        </div>
+      </section>
+
+      <section
+        class="member-lottery-state member-lottery-wheel-state"
+        id="member-lottery-wheel-state"
+        aria-labelledby="member-lottery-name"
+        hidden
+      >
+        <header class="member-lottery-wheel-copy">
+          <p class="eyebrow">YOUR TURN</p>
+          <h3 id="member-lottery-name">會員轉盤</h3>
+          <p id="member-lottery-ticket-detail">正在確認抽獎券。</p>
+        </header>
+
+        <div class="member-lottery-dialog-stage" aria-label="抽獎轉盤">
+          <span class="member-lottery-pointer" aria-hidden="true"></span>
+          <div class="member-lottery-rotor" id="member-lottery-rotor">
+            <canvas id="member-lottery-wheel" width="720" height="720">
+              你的瀏覽器不支援轉盤畫面。
+            </canvas>
+          </div>
+          <button
+            class="member-lottery-hub lottery-center-button"
+            id="member-lottery-spin-button"
+            type="button"
+            disabled
+          >
+            <span>載入轉盤</span>
+          </button>
+        </div>
+        <p
+          class="lottery-spin-status"
+          id="member-lottery-spin-status"
+          role="status"
+          aria-live="polite"
+        >
+          正在準備轉盤…
+        </p>
+      </section>
+
+      <section
+        class="member-lottery-state member-lottery-result-state"
+        id="member-lottery-result-state"
+        role="status"
+        aria-live="polite"
+        hidden
+      >
+        <p class="lottery-result-kicker">本次抽中</p>
+        <span
+          class="lottery-result-swatch"
+          id="member-lottery-result-swatch"
+          aria-hidden="true"
+        ></span>
+        <strong id="member-lottery-result-prize">獎項</strong>
+        <p id="member-lottery-result-detail">抽獎券已完成使用。</p>
+        <div class="claim-balance-summary lottery-balance-summary" aria-label="點數明細">
+          <div>
+            <small>抽獎前</small>
+            <strong><output id="member-lottery-result-before">0</output><span> 點</span></strong>
+          </div>
+          <div>
+            <small>目前點數</small>
+            <strong><output id="member-lottery-result-balance">0</output><span> 點</span></strong>
+          </div>
+        </div>
+        <button class="primary-button full-width" id="member-lottery-confirm-button" type="button">
+          <span>確認並返回抽獎券</span>
+        </button>
+      </section>
     </dialog>
 
     <dialog

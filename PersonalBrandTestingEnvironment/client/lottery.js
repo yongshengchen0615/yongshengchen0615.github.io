@@ -41,7 +41,7 @@
 
   function start() {
     setView("loading-state");
-    setLoading("正在讀取集點卡", "確認本張卡進度與目前獲得的抽獎券。");
+    setLoading("正在準備轉盤", "確認抽獎券與獎項設定。");
     return loadConfig()
       .then(function () {
         applyBrand();
@@ -115,7 +115,7 @@
       lotteryState.setAttribute("aria-busy", "true");
     } else {
       setView("loading-state");
-      setLoading("正在讀取集點卡", "確認本張卡進度、抽獎資格與轉盤設定。");
+      setLoading("正在準備轉盤", "確認抽獎資格與轉盤設定。");
     }
     return sendMemberRequest("getLotteryConfig", {})
       .then(function (response) {

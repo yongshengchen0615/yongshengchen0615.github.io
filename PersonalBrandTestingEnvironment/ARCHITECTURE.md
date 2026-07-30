@@ -27,8 +27,8 @@
 
 | 入口 | 程式 | 責任 |
 | --- | --- | --- |
-| `client/index.html` | `client/script.js` | 會員登入、會員卡、QR 領點、抽獎券與點數紀錄小視窗 |
-| `client/lottery.html` | `client/lottery.js` | 選定票券後的轉盤、開獎結果與舊連結 fallback |
+| `client/index.html` | `client/script.js`、`client/member-lottery.js` | 會員登入、會員卡、QR 領點、滿版抽獎券、轉盤與點數紀錄小視窗 |
+| `client/lottery.html` | `client/lottery.js` | 舊抽獎連結的相容 fallback |
 | `admin/index.html` | `admin/script.js` | 會員查詢與使用權限 |
 | `admin/points.html` | `admin/script.js` | 點數類型、活動 QR 與領點紀錄 |
 | `admin/lottery.html` | `admin/script.js` | 集點卡規則、轉盤設定與中獎紀錄 |
@@ -93,7 +93,8 @@
 ## 6. 本次重構決策
 
 - 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
-- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態，不為開小視窗增加試算表讀取；只有選定可用券才載入獨立轉盤頁。
+- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態，不為開啟滿版票券清單增加試算表讀取；只有選定可用券後，才在首頁轉盤小視窗中延遲載入最新設定。
+- 待確認抽獎以 LIFF 與已驗證會員編號隔離，展示模式另用獨立空間；結果未知時保留同一 request ID，後台明確確認未開獎時才解除鎖定並重載票券。
 - 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。
 - 把三份重複的 Canvas 轉盤程式整合為 `shared/lottery-wheel.js`。
 - 把三份重複的 LIFF context、展示模式與 config 完整性檢查整合為 `shared/liff-runtime.js`。
