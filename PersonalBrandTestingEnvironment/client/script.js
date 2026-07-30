@@ -24,6 +24,13 @@
   var pendingPointRedemptionRequestId = "";
   var isPointClaimPersisted = false;
   var isPointClaimBusy = false;
+  var isProfileOnboardingRequired = false;
+  var isPointScannerBusy = false;
+  var pointScannerStream = null;
+  var pointScannerTimer = 0;
+  var pointScannerResolve = null;
+  var pointScannerReject = null;
+  var pointScannerDetecting = false;
 
   function loadConfig() {
     if (!window.MemberApi || !window.LiffRuntime) {
@@ -47,6 +54,12 @@
     var thisBoot = ++bootVersion;
     isDemoSession = false;
     currentMember = null;
+    isProfileOnboardingRequired = false;
+    stopPointScannerForPageExit();
+    isPointScannerBusy = false;
+    setButtonBusy(byId("scan-point-button"), false);
+    setProfileFormBusy(false);
+    closeDialog(byId("profile-dialog"), true);
     setView("loading-state");
     setConnection("正在連線", "loading");
 
@@ -129,11 +142,16 @@
 
         var wasCreated = Boolean(response.data.created);
         renderMember(response.data.member, wasCreated);
+        renderMemberCardSummary(response.data.cardSummary, false);
         sendNewMemberJoinMessage(
           getPointMessageContext(),
           response.data.member,
           wasCreated
         );
+        if (!isMemberProfileComplete(response.data.member)) {
+          openProfileOnboarding();
+          return;
+        }
         return redeemPendingPointCampaign();
       })
       .catch(function (error) {
@@ -257,7 +275,7 @@
     setClaimState("claim-loading-state");
 
     var redemptionRequestId = ensurePendingPointRedemptionRequestId();
-    sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
+    return sendGasRequest("redeemPointCampaign", token, getLiffContext(), {
       claim: pendingPointClaim,
     }, redemptionRequestId)
       .then(function (response) {
@@ -285,6 +303,7 @@
           throw createClientError("INVALID_RESPONSE", "後台回傳的點數變動資料不一致。");
         }
         updateMemberPointBalance(pointBalance, true);
+        renderMemberCardSummary(response.data.cardSummary, true);
 
         if (response.data.duplicate) {
           byId("claim-duplicate-before").textContent = formatPointNumber(originalPointBalance);
@@ -482,6 +501,73 @@
     return balance;
   }
 
+  function normalizeMemberCardSummary(summary) {
+    var currentPoints = summary && Number(summary.currentPoints);
+    var targetPoints = summary && Number(summary.targetPoints);
+    var availableDraws = summary && Number(summary.availableDraws);
+    if (
+      !summary ||
+      !Number.isSafeInteger(currentPoints) ||
+      currentPoints < 0 ||
+      !Number.isSafeInteger(targetPoints) ||
+      targetPoints < 1 ||
+      currentPoints >= targetPoints ||
+      !Number.isSafeInteger(availableDraws) ||
+      availableDraws < 0
+    ) {
+      throw createClientError("INVALID_RESPONSE", "後台回傳的集點卡摘要格式不正確。");
+    }
+    return {
+      currentPoints: currentPoints,
+      targetPoints: targetPoints,
+      availableDraws: availableDraws,
+    };
+  }
+
+  function renderMemberCardSummary(summary, animate) {
+    var normalized = normalizeMemberCardSummary(summary);
+    var currentOutput = byId("member-point-card-current");
+    var targetOutput = byId("member-point-card-target");
+    var progressTrack = byId("member-point-card-progress-track");
+    var progress = byId("member-point-card-progress");
+    var ticketCount = byId("member-ticket-count");
+    var ticketLink = byId("lottery-page-link");
+    var pointsContainer = currentOutput.closest(".pass-points");
+    var progressPercent = Math.min(
+      100,
+      Math.max(0, (normalized.currentPoints / normalized.targetPoints) * 100)
+    );
+
+    currentOutput.textContent = formatPointNumber(normalized.currentPoints);
+    targetOutput.textContent = formatPointNumber(normalized.targetPoints);
+    progressTrack.setAttribute("aria-valuemax", String(normalized.targetPoints));
+    progressTrack.setAttribute("aria-valuenow", String(normalized.currentPoints));
+    progress.style.width = progressPercent.toFixed(2) + "%";
+
+    ticketCount.value = String(normalized.availableDraws);
+    ticketCount.textContent =
+      normalized.availableDraws > 99
+        ? "99+"
+        : formatPointNumber(normalized.availableDraws);
+    ticketCount.hidden = normalized.availableDraws === 0;
+    ticketLink.setAttribute(
+      "aria-label",
+      normalized.availableDraws > 0
+        ? "抽獎券，" + formatPointNumber(normalized.availableDraws) + " 張可用"
+        : "抽獎券，目前沒有可用票券"
+    );
+
+    if (animate && pointsContainer) {
+      pointsContainer.removeAttribute("data-updated");
+      window.requestAnimationFrame(function () {
+        pointsContainer.dataset.updated = "true";
+        window.setTimeout(function () {
+          pointsContainer.removeAttribute("data-updated");
+        }, 650);
+      });
+    }
+  }
+
   function updateMemberPointBalance(balance, animate) {
     var normalizedBalance = normalizePointBalance(balance);
     var output = byId("member-point-balance");
@@ -491,11 +577,11 @@
     if (currentMember) currentMember.pointBalance = normalizedBalance;
 
     if (animate && container) {
-      container.removeAttribute("data-updated");
+      container.removeAttribute("data-balance-updated");
       window.requestAnimationFrame(function () {
-        container.dataset.updated = "true";
+        container.dataset.balanceUpdated = "true";
         window.setTimeout(function () {
-          container.removeAttribute("data-updated");
+          container.removeAttribute("data-balance-updated");
         }, 650);
       });
     }
@@ -621,6 +707,351 @@
     return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 }).format(value);
   }
 
+  function handleScanPointQr() {
+    var button = byId("scan-point-button");
+    if (
+      !button ||
+      isPointScannerBusy ||
+      isPointClaimBusy ||
+      isProfileOnboardingRequired
+    ) {
+      return;
+    }
+    if (isDemoSession) {
+      showToast("預覽模式無法使用相機掃描", "error");
+      return;
+    }
+
+    isPointScannerBusy = true;
+    setButtonBusy(button, true, "正在開啟掃描");
+    openPointQrScanner()
+      .then(function (scannedValue) {
+        var claim = extractPointClaimFromQr(scannedValue);
+        if (!claim) {
+          throw createClientError(
+            "INVALID_POINT_QR",
+            "這不是有效的會員點數 QR Code，請掃描管理員提供的集點碼。"
+          );
+        }
+        setScannedPointClaim(claim);
+        return redeemPendingPointCampaign();
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) {
+          showToast("已取消掃描");
+          return;
+        }
+        showToast(normalizeClientError(error).message, "error");
+      })
+      .finally(function () {
+        isPointScannerBusy = false;
+        setButtonBusy(button, false);
+      });
+  }
+
+  function setScannedPointClaim(claim) {
+    if (claim !== pendingPointClaim) clearPendingPointRedemptionRequest();
+    pendingPointClaim = claim;
+    pendingPointClaimError = "";
+    try {
+      window.sessionStorage.setItem(getPointClaimStorageKey(), claim);
+      isPointClaimPersisted = true;
+    } catch (_error) {
+      isPointClaimPersisted = false;
+    }
+  }
+
+  function openPointQrScanner() {
+    if (!isPointScannerAvailable()) return openEmbeddedPointScanner();
+    return Promise.resolve()
+      .then(function () {
+        return window.liff.scanCodeV2();
+      })
+      .then(function (result) {
+        return result && result.value;
+      })
+      .catch(function (error) {
+        if (isPointScanCancelled(error)) throw error;
+        if (!isNativePointScannerUnavailableError(error)) throw error;
+        return openEmbeddedPointScanner();
+      });
+  }
+
+  function isPointScannerAvailable() {
+    if (!window.liff || typeof window.liff.scanCodeV2 !== "function") {
+      return false;
+    }
+    if (typeof window.liff.isApiAvailable !== "function") return true;
+    try {
+      return window.liff.isApiAvailable("scanCodeV2") === true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function isNativePointScannerUnavailableError(error) {
+    var code = String((error && (error.code || error.name)) || "").toUpperCase();
+    var message = String((error && error.message) || "").toLowerCase();
+    return (
+      normalizeClientError(error).code === "SCAN_QR_UNAVAILABLE" ||
+      code === "FORBIDDEN" ||
+      code === "EXCEPTION_IN_SUBWINDOW" ||
+      message.indexOf("subwindowopen is not allowed") !== -1
+    );
+  }
+
+  function openEmbeddedPointScanner() {
+    if (pointScannerReject) {
+      return Promise.reject(
+        createClientError("BUSY", "QR 掃描器正在使用中，請稍候。")
+      );
+    }
+    setEmbeddedPointScannerStatus("正在啟動相機…");
+    openDialog(byId("point-scanner-dialog"));
+    return new Promise(function (resolve, reject) {
+      pointScannerResolve = resolve;
+      pointScannerReject = reject;
+      createEmbeddedPointBarcodeDetector()
+        .then(function (detector) {
+          if (
+            !window.navigator.mediaDevices ||
+            typeof window.navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            throw createClientError(
+              "CAMERA_UNAVAILABLE",
+              "目前瀏覽器無法開啟相機，請更新 LINE 或改用手機瀏覽器。"
+            );
+          }
+          return window.navigator.mediaDevices
+            .getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 960 },
+                height: { ideal: 960 },
+              },
+            })
+            .then(function (stream) {
+              return { detector: detector, stream: stream };
+            });
+        })
+        .then(function (scanner) {
+          if (!pointScannerReject) {
+            scanner.stream.getTracks().forEach(function (track) {
+              track.stop();
+            });
+            return;
+          }
+          pointScannerStream = scanner.stream;
+          var video = byId("point-scanner-video");
+          video.srcObject = scanner.stream;
+          return Promise.resolve(video.play()).then(function () {
+            setEmbeddedPointScannerStatus(
+              "將 QR Code 對準框線，辨識成功後會自動領點。"
+            );
+            var label = byId("scan-point-button").querySelector("span");
+            if (label) label.textContent = "正在掃描";
+            scheduleEmbeddedPointScan(scanner.detector);
+          });
+        })
+        .catch(function (error) {
+          if (!pointScannerReject) return;
+          finishEmbeddedPointScanner(
+            "",
+            normalizeEmbeddedPointScannerError(error)
+          );
+        });
+    });
+  }
+
+  function createEmbeddedPointBarcodeDetector() {
+    if (typeof window.BarcodeDetector !== "function") {
+      return Promise.reject(
+        createClientError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器沒有 QR 辨識功能，請更新 LINE 或改用手機瀏覽器。"
+        )
+      );
+    }
+    var supportedFormats =
+      typeof window.BarcodeDetector.getSupportedFormats === "function"
+        ? window.BarcodeDetector.getSupportedFormats()
+        : Promise.resolve(["qr_code"]);
+    return Promise.resolve(supportedFormats).then(function (formats) {
+      if (!Array.isArray(formats) || formats.indexOf("qr_code") === -1) {
+        throw createClientError(
+          "SCAN_QR_UNAVAILABLE",
+          "目前瀏覽器不支援 QR Code 辨識，請更新 LINE 或改用手機瀏覽器。"
+        );
+      }
+      return new window.BarcodeDetector({ formats: ["qr_code"] });
+    });
+  }
+
+  function scheduleEmbeddedPointScan(detector) {
+    window.clearTimeout(pointScannerTimer);
+    if (!pointScannerReject) return;
+    pointScannerTimer = window.setTimeout(function () {
+      var video = byId("point-scanner-video");
+      if (!pointScannerReject) return;
+      if (!video || video.readyState < 2 || pointScannerDetecting) {
+        scheduleEmbeddedPointScan(detector);
+        return;
+      }
+      pointScannerDetecting = true;
+      Promise.resolve(detector.detect(video))
+        .then(function (barcodes) {
+          if (!pointScannerReject || !Array.isArray(barcodes)) return;
+          var match = barcodes.find(function (barcode) {
+            return barcode && String(barcode.rawValue || "").trim();
+          });
+          if (match) {
+            var scannedValue = String(match.rawValue).trim();
+            if (extractPointClaimFromQr(scannedValue)) {
+              finishEmbeddedPointScanner(scannedValue);
+            } else {
+              setEmbeddedPointScannerStatus(
+                "這不是集點 QR Code，請改掃管理員提供的條碼。"
+              );
+            }
+          }
+        })
+        .catch(function () {
+          // A single frame can fail while the camera focuses.
+        })
+        .finally(function () {
+          pointScannerDetecting = false;
+          if (pointScannerReject) scheduleEmbeddedPointScan(detector);
+        });
+    }, 280);
+  }
+
+  function cancelEmbeddedPointScanner() {
+    if (!pointScannerReject) {
+      stopEmbeddedPointScanner();
+      closeDialog(byId("point-scanner-dialog"));
+      return;
+    }
+    finishEmbeddedPointScanner(
+      "",
+      createClientError("POINT_SCAN_CANCELLED", "已取消掃描。")
+    );
+  }
+
+  function finishEmbeddedPointScanner(value, error) {
+    var resolve = pointScannerResolve;
+    var reject = pointScannerReject;
+    pointScannerResolve = null;
+    pointScannerReject = null;
+    stopEmbeddedPointScanner();
+    closeDialog(byId("point-scanner-dialog"));
+    if (value && resolve) resolve(value);
+    else if (reject) {
+      reject(
+        error ||
+          createClientError("CAMERA_UNAVAILABLE", "QR 掃描器已停止。")
+      );
+    }
+  }
+
+  function stopEmbeddedPointScanner() {
+    window.clearTimeout(pointScannerTimer);
+    pointScannerTimer = 0;
+    pointScannerDetecting = false;
+    if (pointScannerStream) {
+      pointScannerStream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+      pointScannerStream = null;
+    }
+    var video = byId("point-scanner-video");
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+  }
+
+  function stopPointScannerForPageExit() {
+    if (!pointScannerReject) {
+      stopEmbeddedPointScanner();
+      return;
+    }
+    finishEmbeddedPointScanner(
+      "",
+      createClientError(
+        "POINT_SCAN_CANCELLED",
+        "頁面已離開，掃描已停止。"
+      )
+    );
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) stopPointScannerForPageExit();
+  }
+
+  function setEmbeddedPointScannerStatus(message) {
+    byId("point-scanner-status").textContent = message;
+  }
+
+  function normalizeEmbeddedPointScannerError(error) {
+    var name = String((error && (error.name || error.code)) || "").toUpperCase();
+    if (name === "NOTALLOWEDERROR" || name === "SECURITYERROR") {
+      return createClientError(
+        "CAMERA_PERMISSION_DENIED",
+        "相機權限被拒絕，請在 LINE 或瀏覽器設定中允許相機後重試。"
+      );
+    }
+    if (name === "NOTFOUNDERROR" || name === "OVERCONSTRAINEDERROR") {
+      return createClientError("CAMERA_NOT_FOUND", "找不到可使用的相機。");
+    }
+    if (name === "NOTREADABLEERROR" || name === "ABORTERROR") {
+      return createClientError(
+        "CAMERA_UNAVAILABLE",
+        "相機目前無法使用，請關閉其他使用相機的程式後重試。"
+      );
+    }
+    return error && error.code
+      ? error
+      : createClientError(
+          "CAMERA_UNAVAILABLE",
+          "目前無法啟動相機，請更新 LINE 或改用手機瀏覽器。"
+        );
+  }
+
+  function extractPointClaimFromQr(value) {
+    var scannedValue = String(value || "").trim();
+    if (!scannedValue) return "";
+    var url;
+    try {
+      url = new URL(scannedValue);
+    } catch (_error) {
+      return "";
+    }
+    var expectedPath = "/" + String(CONFIG.LIFF_ID || "").trim();
+    var claim = url.searchParams.get("claim") || "";
+    var keys = Array.from(url.searchParams.keys());
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "liff.line.me" ||
+      url.pathname.replace(/\/+$/, "") !== expectedPath ||
+      url.hash ||
+      keys.length !== 1 ||
+      keys[0] !== "claim" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(claim)
+    ) {
+      return "";
+    }
+    return claim;
+  }
+
+  function isPointScanCancelled(error) {
+    return /CANCEL/.test(
+      [error && error.code, error && error.name, error && error.message]
+        .join(" ")
+        .toUpperCase()
+    );
+  }
+
   function handleLogin() {
     var button = byId("login-button");
     if (!window.liff || button.disabled) return;
@@ -659,6 +1090,9 @@
 
     currentIdToken = "";
     currentMember = null;
+    isProfileOnboardingRequired = false;
+    stopPointScannerForPageExit();
+    closeDialog(byId("profile-dialog"), true);
     clearInvalidTokenRecoveryGuard();
     clearPendingPointClaim();
 
@@ -677,21 +1111,62 @@
   function openProfileEditor() {
     if (!currentMember) return;
 
+    setProfileDialogMode("edit");
     resetProfileForm();
     byId("profile-birthday-input").max = getLocalTodayString();
     openDialog(byId("profile-dialog"));
+  }
+
+  function openProfileOnboarding() {
+    if (!currentMember || isMemberProfileComplete(currentMember)) return;
+
+    isProfileOnboardingRequired = true;
+    setProfileDialogMode("onboarding");
+    resetProfileForm();
+    byId("profile-birthday-input").max = getLocalTodayString();
+    openDialog(byId("profile-dialog"));
+    window.requestAnimationFrame(function () {
+      var target = currentMember.phone
+        ? byId("profile-birthday-input")
+        : byId("profile-phone-input");
+      target.focus();
+    });
+  }
+
+  function setProfileDialogMode(mode) {
+    var onboarding = mode === "onboarding";
+    var dialog = byId("profile-dialog");
+    dialog.dataset.mode = onboarding ? "onboarding" : "edit";
+    byId("profile-eyebrow").textContent = onboarding
+      ? "COMPLETE MEMBER PROFILE"
+      : "EDIT MEMBER PROFILE";
+    byId("profile-title").textContent = onboarding
+      ? "完成會員資料"
+      : "編輯會員資料";
+    byId("profile-description").textContent = onboarding
+      ? "首次使用請填寫電話與生日，完成後即可開始集點。"
+      : "你可以隨時更新電話與生日。";
+    byId("profile-close-button").hidden = onboarding;
+    byId("profile-cancel-button").hidden = onboarding;
+    byId("profile-save-button").querySelector("span").textContent = onboarding
+      ? "完成加入會員"
+      : "儲存資料";
   }
 
   function handleProfileSubmit(event) {
     event.preventDefault();
     clearProfileErrors();
 
+    var onboarding =
+      isProfileOnboardingRequired ||
+      byId("profile-dialog").dataset.mode === "onboarding";
     var profile;
     try {
       profile = {
         phone: normalizeMemberPhone(byId("profile-phone-input").value),
         birthday: normalizeMemberBirthday(byId("profile-birthday-input").value),
       };
+      assertCompleteMemberProfile(profile);
     } catch (error) {
       showProfileValidationError(error);
       return;
@@ -730,7 +1205,8 @@
 
         if (!response.data.access.allowed) {
           setProfileFormBusy(false);
-          closeDialog(byId("profile-dialog"));
+          isProfileOnboardingRequired = false;
+          closeDialog(byId("profile-dialog"), true);
           renderAccessState(response.data.access.status, false);
           return;
         }
@@ -738,18 +1214,25 @@
         if (!response.data.member) {
           throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
         }
+        if (onboarding && !isMemberProfileComplete(response.data.member)) {
+          throw createClientError("INVALID_RESPONSE", "後台未完整保存電話與生日。");
+        }
 
         renderMember(response.data.member, false);
         byId("sync-caption").textContent = "會員資料已更新";
         setProfileFormBusy(false);
-        closeDialog(byId("profile-dialog"));
-        showToast("會員資料已儲存");
+        isProfileOnboardingRequired = false;
+        setProfileDialogMode("edit");
+        closeDialog(byId("profile-dialog"), true);
+        showToast(onboarding ? "會員資料完成，可以開始集點" : "會員資料已儲存");
+        if (onboarding) return redeemPendingPointCampaign();
       })
       .catch(function (error) {
         var normalized = normalizeClientError(error);
         if (normalized.code === "INVALID_TOKEN" || normalized.code === "INVALID_ID_TOKEN") {
           setProfileFormBusy(false);
-          closeDialog(byId("profile-dialog"));
+          isProfileOnboardingRequired = false;
+          closeDialog(byId("profile-dialog"), true);
           handleClientError(error);
           return;
         }
@@ -763,7 +1246,8 @@
 
         if (normalized.code === "MEMBER_ACCESS_DENIED") {
           setProfileFormBusy(false);
-          closeDialog(byId("profile-dialog"));
+          isProfileOnboardingRequired = false;
+          closeDialog(byId("profile-dialog"), true);
           renderAccessState("denied", false);
           return;
         }
@@ -789,6 +1273,23 @@
     clearProfileErrors();
     byId("profile-phone-input").value = currentMember ? currentMember.phone || "" : "";
     byId("profile-birthday-input").value = currentMember ? currentMember.birthday || "" : "";
+  }
+
+  function assertCompleteMemberProfile(profile) {
+    if (!profile || !profile.phone) {
+      throw createClientError("INVALID_PHONE", "請填寫電話後再儲存。");
+    }
+    if (!profile.birthday) {
+      throw createClientError("INVALID_BIRTHDAY", "請選擇生日後再儲存。");
+    }
+  }
+
+  function isMemberProfileComplete(member) {
+    return Boolean(
+      member &&
+      String(member.phone || "").trim() &&
+      normalizeBirthdayDisplayValue(member.birthday)
+    );
   }
 
   function clearProfileErrors() {
@@ -1014,6 +1515,14 @@
         birthday: "1992-06-18",
         pointBalance: 128,
         joinedAt: new Date(now.getFullYear(), 0, 18).toISOString(),
+      },
+      false
+    );
+    renderMemberCardSummary(
+      {
+        currentPoints: 12,
+        targetPoints: 20,
+        availableDraws: 2,
       },
       false
     );
@@ -1311,9 +1820,22 @@
     }
   }
 
-  function closeDialog(dialog) {
+  function closeDialog(dialog, force) {
     if (!dialog) return;
-    if (dialog.id === "profile-dialog" && dialog.dataset.busy === "true") return;
+    if (
+      dialog.id === "profile-dialog" &&
+      dialog.dataset.busy === "true" &&
+      !force
+    ) {
+      return;
+    }
+    if (
+      dialog.id === "profile-dialog" &&
+      dialog.dataset.mode === "onboarding" &&
+      !force
+    ) {
+      return;
+    }
     if (dialog.id === "claim-dialog" && dialog.dataset.busy === "true") return;
     if (dialog.id === "delete-dialog") resetDeleteConfirmation();
     if (dialog.id === "profile-dialog") resetProfileForm();
@@ -1371,6 +1893,11 @@
     byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
+    byId("scan-point-button").addEventListener("click", handleScanPointQr);
+    byId("point-scanner-cancel-button").addEventListener(
+      "click",
+      cancelEmbeddedPointScanner
+    );
     byId("claim-retry-button").addEventListener("click", redeemPendingPointCampaign);
     [
       "claim-success-close-button",
@@ -1397,11 +1924,20 @@
     document.querySelectorAll("dialog").forEach(function (dialog) {
       dialog.addEventListener("click", function (event) {
         if (event.target !== dialog) return;
-        if (dialog.id === "claim-dialog") return;
+        if (dialog.id === "claim-dialog" || dialog.id === "point-scanner-dialog") {
+          return;
+        }
         closeDialog(dialog);
       });
       dialog.addEventListener("cancel", function (event) {
-        if (dialog.id === "claim-dialog") event.preventDefault();
+        if (
+          dialog.id === "claim-dialog" ||
+          dialog.id === "point-scanner-dialog" ||
+          (dialog.id === "profile-dialog" &&
+            dialog.dataset.mode === "onboarding")
+        ) {
+          event.preventDefault();
+        }
       });
     });
 
@@ -1418,7 +1954,17 @@
     });
 
     byId("profile-dialog").addEventListener("cancel", function (event) {
-      if (event.currentTarget.dataset.busy === "true") event.preventDefault();
+      if (
+        event.currentTarget.dataset.busy === "true" ||
+        event.currentTarget.dataset.mode === "onboarding"
+      ) {
+        event.preventDefault();
+      }
+    });
+
+    byId("point-scanner-dialog").addEventListener("cancel", function (event) {
+      event.preventDefault();
+      cancelEmbeddedPointScanner();
     });
 
     byId("claim-dialog").addEventListener("cancel", function (event) {
@@ -1436,6 +1982,8 @@
       });
     });
 
+    window.addEventListener("pagehide", stopPointScannerForPageExit);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
   bindInteractions();

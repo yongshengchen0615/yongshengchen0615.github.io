@@ -93,17 +93,6 @@
               <p id="point-card-progress-message">再獲得 5 點可取得抽獎券。</p>
               <p>目前持有 <strong id="available-draw-count">0</strong> 張</p>
             </div>
-            <div class="point-card-scan-row">
-              <div>
-                <p class="eyebrow">ADD POINTS</p>
-                <strong>掃描集點碼</strong>
-                <small>領點後立即更新。</small>
-              </div>
-              <button class="primary-button point-card-scan-button" id="scan-point-button" type="button">
-                <span>掃描集點 QR Code</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
-              </button>
-            </div>
           </section>
 
           <section class="lottery-ticket-workspace" id="lottery-ticket-workspace" aria-labelledby="lottery-ticket-title">
@@ -246,81 +235,6 @@
         <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
           <span>確認並返回集點卡</span>
         </button>
-      </section>
-    </dialog>
-
-    <dialog
-      class="modal scanner-modal"
-      id="point-scanner-dialog"
-      aria-labelledby="point-scanner-title"
-      aria-describedby="point-scanner-description"
-    >
-      <div class="modal-head">
-        <div>
-          <p class="eyebrow">POINT SCANNER</p>
-          <h2 id="point-scanner-title">掃描集點 QR Code</h2>
-        </div>
-      </div>
-      <p class="scanner-description" id="point-scanner-description">
-        將集點 QR Code 放入框線內。
-      </p>
-      <div class="scanner-viewport">
-        <video
-          class="scanner-video"
-          id="point-scanner-video"
-          autoplay
-          muted
-          playsinline
-          aria-label="QR Code 相機預覽"
-        ></video>
-        <span class="scanner-guide" aria-hidden="true"></span>
-      </div>
-      <p class="scanner-status" id="point-scanner-status" role="status" aria-live="polite">
-        正在啟動相機…
-      </p>
-      <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
-        取消掃描
-      </button>
-    </dialog>
-
-    <dialog
-      class="modal claim-modal"
-      id="point-claim-dialog"
-      aria-labelledby="point-claim-dialog-title"
-    >
-      <div class="modal-head">
-        <div>
-          <p class="eyebrow">POINT CLAIM</p>
-          <h2 id="point-claim-dialog-title">集點結果</h2>
-        </div>
-      </div>
-      <section class="claim-state" id="point-claim-loading-state" role="status" aria-live="polite">
-        <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
-        <strong>正在加入會員點數</strong>
-        <p>正在核對領取資格。</p>
-      </section>
-      <section class="claim-state" id="point-claim-result-state" role="status" aria-live="polite" hidden>
-        <span class="claim-symbol" id="point-claim-symbol" aria-hidden="true">+</span>
-        <p id="point-claim-kicker">點數領取完成</p>
-        <strong id="point-claim-title">集點卡已更新</strong>
-        <div class="claim-balance-summary" aria-label="點數變動明細">
-          <div><small>原本點數</small><strong><output id="point-claim-before">0</output><span> 點</span></strong></div>
-          <div><small>獲得點數</small><strong>+<output id="point-claim-awarded">0</output><span> 點</span></strong></div>
-          <div><small>目前點數</small><strong><output id="point-claim-balance">0</output><span> 點</span></strong></div>
-        </div>
-        <p class="claim-result-note" id="point-claim-note">這張 QR 已完成領取。</p>
-        <button class="primary-button full-width" id="point-claim-confirm-button" type="button">
-          <span>確認並更新集點卡</span>
-        </button>
-      </section>
-      <section class="claim-state" id="point-claim-error-state" role="alert" hidden>
-        <span class="claim-symbol claim-symbol-error" aria-hidden="true">×</span>
-        <p>目前無法領取點數</p>
-        <strong id="point-claim-error-message">這張 QR 無效或已過期。</strong>
-        <div class="claim-actions">
-          <button class="secondary-button" id="point-claim-error-close-button" type="button">返回集點卡</button>
-          <button class="primary-button" id="point-claim-retry-button" type="button"><span>重新確認</span></button>
-        </div>
       </section>
     </dialog>
 

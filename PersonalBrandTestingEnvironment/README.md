@@ -7,7 +7,7 @@
 - 會員端 LIFF `2010787602-kaiSm2eq` 只呼叫會員 GAS。
 - 管理端 LIFF `2010791619-vhevCvvD` 只呼叫管理 GAS。
 - 新會員預設 `Members.status=approved`，登入後可直接使用會員中心。
-- 會員可在會員中心自行修改或清空 `phone` 與 `birthday`。
+- 新會員首次進入會員中心時須填寫 `phone` 與 `birthday`，之後可自行修改。
 - 管理員可把 `Members.status` 改為 `approved`（可使用）或 `denied`（停用）。
 - 管理端將會員資料、點數 QR 與轉盤抽獎拆成三個頁面，各頁只載入自己需要的資料。
 - 管理員首次登入會在 `Admins` 工作表建立 `pending` 申請。

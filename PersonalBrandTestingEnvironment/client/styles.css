@@ -421,7 +421,6 @@ img {
 }
 
 .action-copy h2,
-.member-details h2,
 .data-control h2,
 .modal h2 {
   margin: 0.55rem 0 0;
@@ -770,17 +769,21 @@ code {
 
 .member-workspace {
   min-width: 0;
+  width: min(100%, 54rem);
+  margin-inline: auto;
+}
+
+.member-card-stack {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.17fr) minmax(320px, 0.63fr);
-  gap: clamp(2.5rem, 7vw, 7.5rem);
-  align-items: center;
+  gap: 0.85rem;
 }
 
 .member-pass {
   position: relative;
   min-width: 0;
   width: 100%;
-  aspect-ratio: 1.63 / 1;
+  min-height: 33rem;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -910,6 +913,36 @@ code {
   background: var(--green);
 }
 
+.pass-contact-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 3vw, 2.5rem);
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.pass-contact-list > div {
+  min-width: 0;
+}
+
+.pass-contact-list dt {
+  margin-bottom: 0.35rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: clamp(0.52rem, 0.9vw, 0.65rem);
+  letter-spacing: 0.14em;
+}
+
+.pass-contact-list dd {
+  overflow: hidden;
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: clamp(0.72rem, 1.4vw, 0.9rem);
+  letter-spacing: 0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pass-footer {
   align-items: end;
 }
@@ -928,7 +961,9 @@ code {
 }
 
 .pass-points {
-  min-width: 7.5rem;
+  min-width: min(15rem, 42%);
+  display: grid;
+  gap: 0.35rem;
   justify-items: end;
   text-align: right;
 }
@@ -941,7 +976,7 @@ code {
   letter-spacing: 0;
 }
 
-.pass-points output {
+.pass-points > strong output {
   font-size: clamp(1.2rem, 2.8vw, 2rem);
   font-weight: 650;
   line-height: 0.9;
@@ -953,69 +988,82 @@ code {
   letter-spacing: 0.12em;
 }
 
-.pass-points[data-updated="true"] output {
+.pass-point-meta {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: clamp(0.58rem, 1.1vw, 0.68rem);
+  line-height: 1.45;
+}
+
+.pass-point-progress {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 2px;
+  margin-top: 0.15rem;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pass-point-progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--green);
+  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pass-points[data-updated="true"] #member-point-card-current,
+.pass-points[data-balance-updated="true"] #member-point-balance {
   animation: point-balance-update 560ms ease-out both;
 }
 
-.member-details {
+.member-service-actions {
   min-width: 0;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.details-heading {
-  padding-bottom: 1.5rem;
-}
-
-.detail-list {
-  margin: 0 0 1.4rem;
-  border-top: 1px solid var(--line-strong);
-}
-
-.detail-list > div {
   display: grid;
-  grid-template-columns: 8rem 1fr;
-  gap: 1rem;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
 }
 
-.detail-list dt {
-  color: var(--ink-faint);
-  font-size: 0.76rem;
-}
-
-.detail-list dd {
+.member-service-actions > * {
   min-width: 0;
-  overflow: hidden;
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 650;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 100%;
 }
 
-.inline-status {
+.member-ticket-button,
+.member-account-actions .secondary-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  color: var(--green-dark);
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
-.inline-status::before {
-  width: 0.4rem;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--green);
-  content: "";
+.member-ticket-count {
+  min-width: 1.45rem;
+  height: 1.45rem;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding-inline: 0.36rem;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--green-dark);
+  font-size: 0.68rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
-.member-actions {
-  display: grid;
-  gap: 0.65rem;
+.member-ticket-count[hidden] {
+  display: none;
+}
+
+.member-account-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.15rem;
 }
 
 .point-history {
@@ -2147,37 +2195,6 @@ code {
   color: var(--green-dark);
 }
 
-.point-card-scan-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin-top: 1.6rem;
-  padding-top: 1.35rem;
-  border-top: 1px solid var(--line);
-}
-
-.point-card-scan-row > div {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.point-card-scan-row > div > strong {
-  color: var(--ink);
-  font-size: 1rem;
-  font-weight: 650;
-}
-
-.point-card-scan-row > div > small {
-  color: var(--ink-soft);
-  font-size: 0.68rem;
-  line-height: 1.55;
-}
-
-.point-card-scan-button {
-  flex: 0 0 auto;
-}
-
 .lottery-ticket-workspace {
   display: grid;
   grid-template-columns: minmax(13rem, 0.32fr) minmax(0, 1fr);
@@ -2880,20 +2897,6 @@ code {
     margin-top: 0;
   }
 
-  .member-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .member-details {
-    display: grid;
-    grid-template-columns: 0.65fr 1fr;
-    gap: 3rem;
-  }
-
-  .member-actions {
-    grid-column: 2;
-  }
-
   .data-control {
     grid-template-columns: 1fr 1fr;
   }
@@ -3013,8 +3016,7 @@ code {
   }
 
   .member-pass {
-    min-height: 21.5rem;
-    aspect-ratio: auto;
+    min-height: 31rem;
   }
 
   .pass-topline span:last-child {
@@ -3042,13 +3044,29 @@ code {
     justify-content: flex-start;
   }
 
-  .member-details {
-    display: flex;
-    gap: 0;
+  .pass-point-meta {
+    text-align: left;
   }
 
-  .detail-list > div {
-    grid-template-columns: 6rem 1fr;
+  .member-service-actions {
+    gap: 0.55rem;
+  }
+
+  .member-service-actions .primary-button,
+  .member-service-actions .secondary-button {
+    min-height: 3.25rem;
+    padding-inline: 0.85rem;
+  }
+
+  .member-account-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .member-account-actions .secondary-button,
+  .member-account-actions .text-button {
+    width: 100%;
   }
 
   .profile-fields {
@@ -3156,15 +3174,6 @@ code {
 
   .point-card-score p {
     padding-inline: 0.75rem;
-  }
-
-  .point-card-scan-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .point-card-scan-button {
-    width: 100%;
   }
 
   .point-card-milestones li small {

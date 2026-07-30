@@ -632,9 +632,10 @@ function upsertMember_(identity, request, config) {
     // Re-read so an administrator's Sheet edit is reflected in the response.
     row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
     var access = memberAccessFromRow_(row);
-    var pointBalance = access.allowed
-      ? getMemberPointBalanceForConfig_(config, identity.lineUserId)
-      : 0;
+    var cardStatus = access.allowed
+      ? getMemberPointCardStatusForConfig_(config, identity.lineUserId)
+      : null;
+    var pointBalance = cardStatus ? cardStatus.totalPoints : 0;
 
     return {
       data: {
@@ -642,6 +643,9 @@ function upsertMember_(identity, request, config) {
         access: access,
         member: access.allowed
           ? memberResponseFromRow_(row, identity, context, pointBalance)
+          : null,
+        cardSummary: cardStatus
+          ? pointCardSummaryResponse_(cardStatus)
           : null,
       },
     };
@@ -660,8 +664,12 @@ function updateMemberProfile_(identity, request, config) {
   }
 
   try {
-    var phone = normalizeMemberPhone_(request.phone);
-    var birthday = normalizeMemberBirthday_(request.birthday);
+    var profile = normalizeRequiredMemberProfile_(
+      request.phone,
+      request.birthday
+    );
+    var phone = profile.phone;
+    var birthday = profile.birthday;
     var sheet = getOrCreateMemberSheet_(config);
     var rowNumber = findMemberRow_(sheet, identity.lineUserId);
     if (!rowNumber) {
@@ -1381,6 +1389,14 @@ function pointCardStatusResponse_(status) {
       };
     }),
     totalPoints: status.totalPoints,
+  };
+}
+
+function pointCardSummaryResponse_(status) {
+  return {
+    currentPoints: status.currentPoints,
+    targetPoints: status.targetPoints,
+    availableDraws: status.availableDraws,
   };
 }
 
@@ -2113,21 +2129,16 @@ function redeemPointCampaign_(identity, request, config) {
     // both one-time and repeatable campaigns, even after expiry or disabling.
     if (replayedRedemption) {
       assertRedemptionMatchesCampaign_(replayedRedemption, campaign);
-      return {
-        data: {
-          access: access,
-          redeemed: false,
-          duplicate: true,
-          duplicateReason: "request_replay",
-          awardedPoints: 0,
-          pointBalance: getMemberPointBalance_(
-            redemptionSheet,
-            identity.lineUserId,
-            lotteryDrawSheet
-          ),
-          campaign: pointCampaignResponse_(campaign),
-        },
-      };
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        "request_replay",
+        0
+      );
     }
 
     var existingRedemption =
@@ -2144,24 +2155,18 @@ function redeemPointCampaign_(identity, request, config) {
       if (campaign.redemptionMode === "single_member") {
         assertRedemptionMatchesCampaign_(existingRedemption, campaign);
       }
-      return {
-        data: {
-          access: access,
-          redeemed: false,
-          duplicate: true,
-          duplicateReason:
-            campaign.redemptionMode === "single_member"
-              ? "campaign_redeemed"
-              : "already_redeemed",
-          awardedPoints: 0,
-          pointBalance: getMemberPointBalance_(
-            redemptionSheet,
-            identity.lineUserId,
-            lotteryDrawSheet
-          ),
-          campaign: pointCampaignResponse_(campaign),
-        },
-      };
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        campaign.redemptionMode === "single_member"
+          ? "campaign_redeemed"
+          : "already_redeemed",
+        0
+      );
     }
 
     assertPointCampaignAvailable_(campaign, new Date());
@@ -2187,21 +2192,16 @@ function redeemPointCampaign_(identity, request, config) {
     );
     if (replayedRedemption) {
       assertRedemptionMatchesCampaign_(replayedRedemption, campaign);
-      return {
-        data: {
-          access: access,
-          redeemed: false,
-          duplicate: true,
-          duplicateReason: "request_replay",
-          awardedPoints: 0,
-          pointBalance: getMemberPointBalance_(
-            redemptionSheet,
-            identity.lineUserId,
-            lotteryDrawSheet
-          ),
-          campaign: pointCampaignResponse_(campaign),
-        },
-      };
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        "request_replay",
+        0
+      );
     }
 
     if (campaign.redemptionMode === "once_per_member") {
@@ -2211,21 +2211,16 @@ function redeemPointCampaign_(identity, request, config) {
         identity.lineUserId
       );
       if (existingRedemption) {
-        return {
-          data: {
-            access: access,
-            redeemed: false,
-            duplicate: true,
-            duplicateReason: "already_redeemed",
-            awardedPoints: 0,
-            pointBalance: getMemberPointBalance_(
-              redemptionSheet,
-              identity.lineUserId,
-              lotteryDrawSheet
-            ),
-            campaign: pointCampaignResponse_(campaign),
-          },
-        };
+        return pointCampaignRedemptionResponseForConfig_(
+          config,
+          identity.lineUserId,
+          redemptionSheet,
+          lotteryDrawSheet,
+          access,
+          campaign,
+          "already_redeemed",
+          0
+        );
       }
     } else if (campaign.redemptionMode === "single_member") {
       existingRedemption = findPointRedemptionByCampaign_(
@@ -2234,21 +2229,16 @@ function redeemPointCampaign_(identity, request, config) {
       );
       if (existingRedemption) {
         assertRedemptionMatchesCampaign_(existingRedemption, campaign);
-        return {
-          data: {
-            access: access,
-            redeemed: false,
-            duplicate: true,
-            duplicateReason: "campaign_redeemed",
-            awardedPoints: 0,
-            pointBalance: getMemberPointBalance_(
-              redemptionSheet,
-              identity.lineUserId,
-              lotteryDrawSheet
-            ),
-            campaign: pointCampaignResponse_(campaign),
-          },
-        };
+        return pointCampaignRedemptionResponseForConfig_(
+          config,
+          identity.lineUserId,
+          redemptionSheet,
+          lotteryDrawSheet,
+          access,
+          campaign,
+          "campaign_redeemed",
+          0
+        );
       }
     }
 
@@ -2299,23 +2289,58 @@ function redeemPointCampaign_(identity, request, config) {
     applyPointRedemptionRowFormats_(redemptionSheet, redemptionSheet.getLastRow());
     SpreadsheetApp.flush();
 
-    return {
-      data: {
-        access: access,
-        redeemed: true,
-        duplicate: false,
-        duplicateReason: "",
-        awardedPoints: campaign.points,
-        pointBalance: balanceAfter,
-        campaign: pointCampaignResponse_(campaign),
-      },
-    };
+    var response = pointCampaignRedemptionResponseForConfig_(
+      config,
+      identity.lineUserId,
+      redemptionSheet,
+      lotteryDrawSheet,
+      access,
+      campaign,
+      "",
+      campaign.points
+    );
+    if (response.data.pointBalance !== balanceAfter) {
+      throw appError_("POINT_DATA_ERROR", "領點後的集點卡累計資料不一致。");
+    }
+    return response;
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法領取點數，請稍後再試。");
   } finally {
     lock.releaseLock();
   }
+}
+
+function pointCampaignRedemptionResponseForConfig_(
+  config,
+  lineUserId,
+  redemptionSheet,
+  lotteryDrawSheet,
+  access,
+  campaign,
+  duplicateReason,
+  awardedPoints
+) {
+  var cardStatus = getMemberPointCardStatusForConfig_(
+    config,
+    lineUserId,
+    redemptionSheet,
+    lotteryDrawSheet
+  );
+  var normalizedDuplicateReason = String(duplicateReason || "");
+  var duplicate = Boolean(normalizedDuplicateReason);
+  return {
+    data: {
+      access: access,
+      redeemed: !duplicate,
+      duplicate: duplicate,
+      duplicateReason: normalizedDuplicateReason,
+      awardedPoints: awardedPoints,
+      pointBalance: cardStatus.totalPoints,
+      cardSummary: pointCardSummaryResponse_(cardStatus),
+      campaign: pointCampaignResponse_(campaign),
+    },
+  };
 }
 
 function deleteMember_(identity, request, config) {
@@ -3310,6 +3335,20 @@ function getMemberPointBalanceForConfig_(config, lineUserId) {
   );
 }
 
+function getMemberPointCardStatusForConfig_(
+  config,
+  lineUserId,
+  redemptionSheet,
+  lotteryDrawSheet
+) {
+  return getMemberPointCardStatus_(
+    redemptionSheet || getOrCreatePointRedemptionSheet_(config),
+    lotteryDrawSheet || getOrCreateLotteryDrawSheet_(config),
+    getOrCreatePointCardSettingSheet_(config),
+    lineUserId
+  );
+}
+
 function getMemberPointBalance_(sheet, lineUserId) {
   return readMemberPointLedger_(sheet, lineUserId).totalPoints;
 }
@@ -3505,8 +3544,12 @@ function validateRequestEnvelope_(request) {
   }
 
   if (request.action === "updateMemberProfile") {
-    request.phone = normalizeMemberPhone_(request.phone);
-    request.birthday = normalizeMemberBirthday_(request.birthday);
+    var profile = normalizeRequiredMemberProfile_(
+      request.phone,
+      request.birthday
+    );
+    request.phone = profile.phone;
+    request.birthday = profile.birthday;
   }
   if (
     request.action === "previewPointCampaign" ||
@@ -3819,6 +3862,21 @@ function normalizeMemberBirthday_(value) {
   }
 
   return birthday;
+}
+
+function normalizeRequiredMemberProfile_(phoneValue, birthdayValue) {
+  var phone = normalizeMemberPhone_(phoneValue);
+  var birthday = normalizeMemberBirthday_(birthdayValue);
+  if (!phone) {
+    throw appError_("INVALID_PHONE", "請填寫電話後再儲存會員資料。");
+  }
+  if (!birthday) {
+    throw appError_("INVALID_BIRTHDAY", "請填寫生日後再儲存會員資料。");
+  }
+  return {
+    phone: phone,
+    birthday: birthday,
+  };
 }
 
 function memberPhoneFromRow_(row) {

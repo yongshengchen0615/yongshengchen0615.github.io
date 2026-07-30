@@ -158,67 +158,79 @@
         </header>
 
         <div class="member-workspace">
-          <article class="member-pass" aria-label="數位會員證">
-            <div class="pass-topline">
-              <span data-brand-name>PERSONA</span>
-              <span>MEMBER / ACTIVE</span>
-            </div>
-
-            <div class="pass-profile">
-              <div class="member-avatar">
-                <img id="member-avatar" alt="" hidden />
-                <span id="member-avatar-fallback" aria-hidden="true">M</span>
+          <div class="member-card-stack">
+            <article class="member-pass" aria-label="數位會員證">
+              <div class="pass-topline">
+                <span data-brand-name>PERSONA</span>
+                <span>MEMBER / ACTIVE</span>
               </div>
-              <div>
-                <small>MEMBER NAME</small>
-                <strong id="member-display-name">—</strong>
-                <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
-              </div>
-            </div>
 
-            <div class="pass-footer">
-              <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
-              <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
-              <p class="pass-points">
-                <small>LIFETIME POINTS</small>
-                <strong><output id="member-point-balance" aria-label="會員終身累計點數" aria-live="polite">0</output><span> PTS</span></strong>
-              </p>
-            </div>
-          </article>
-
-          <section class="member-details" aria-labelledby="details-title">
-            <div class="details-heading">
-              <p class="eyebrow">ACCOUNT DETAILS</p>
-              <h2 id="details-title">會員資料</h2>
-            </div>
-
-            <dl class="detail-list">
-              <div>
-                <dt>會員狀態</dt>
-                <dd><span class="inline-status">有效</span></dd>
+              <div class="pass-profile">
+                <div class="member-avatar">
+                  <img id="member-avatar" alt="" hidden />
+                  <span id="member-avatar-fallback" aria-hidden="true">M</span>
+                </div>
+                <div>
+                  <small>MEMBER NAME</small>
+                  <strong id="member-display-name">—</strong>
+                  <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
+                </div>
               </div>
-              <div>
-                <dt>電話</dt>
-                <dd id="member-phone">尚未填寫</dd>
-              </div>
-              <div>
-                <dt>生日</dt>
-                <dd id="member-birthday">尚未填寫</dd>
-              </div>
-            </dl>
 
-            <div class="member-actions">
-              <a class="primary-button lottery-entry-button" id="lottery-page-link" href="lottery.html" data-client-route>
-                <span>集點卡</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg>
-              </a>
-              <button class="secondary-button full-width" id="edit-profile-button" type="button">
-                <span>編輯會員資料</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
+              <dl class="pass-contact-list" aria-label="會員聯絡資料">
+                <div>
+                  <dt>電話</dt>
+                  <dd id="member-phone">尚未填寫</dd>
+                </div>
+                <div>
+                  <dt>生日</dt>
+                  <dd id="member-birthday">尚未填寫</dd>
+                </div>
+              </dl>
+
+              <div class="pass-footer">
+                <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
+                <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
+                <div class="pass-points">
+                  <small>目前已集</small>
+                  <strong><output id="member-point-card-current" aria-label="本張集點卡目前點數" aria-live="polite">0</output><span> 點</span></strong>
+                  <span class="pass-point-meta">
+                    本輪目標 <output id="member-point-card-target">—</output> 點 ·
+                    累計 <output id="member-point-balance" aria-label="會員終身累計點數">0</output> 點
+                  </span>
+                  <span
+                    class="pass-point-progress"
+                    id="member-point-card-progress-track"
+                    role="progressbar"
+                    aria-label="本張集點卡進度"
+                    aria-valuemin="0"
+                    aria-valuemax="1"
+                    aria-valuenow="0"
+                  ><i id="member-point-card-progress" aria-hidden="true"></i></span>
+                </div>
+              </div>
+            </article>
+
+            <div class="member-service-actions" role="group" aria-label="會員集點功能">
+              <button class="primary-button member-scan-button" id="scan-point-button" type="button">
+                <span>掃描集點碼</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
               </button>
-              <button class="secondary-button full-width" id="logout-button" type="button">登出目前裝置</button>
+              <a class="secondary-button member-ticket-button" id="lottery-page-link" href="lottery.html" data-client-route aria-label="抽獎券">
+                <span>抽獎券</span>
+                <output class="member-ticket-count" id="member-ticket-count" aria-label="可用抽獎券數量" aria-live="polite" hidden>0</output>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4V7zM9 7v10"></path></svg>
+              </a>
             </div>
-          </section>
+
+            <div class="member-account-actions">
+              <button class="secondary-button" id="edit-profile-button" type="button">
+                <span>編輯會員資料</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"></path></svg>
+              </button>
+              <button class="text-button" id="logout-button" type="button">登出目前裝置</button>
+            </div>
+          </div>
         </div>
 
         <section class="data-control" aria-labelledby="data-control-title">
@@ -283,13 +295,13 @@
       <form id="profile-form" novalidate>
         <div class="modal-head">
           <div>
-            <p class="eyebrow">EDIT MEMBER PROFILE</p>
+            <p class="eyebrow" id="profile-eyebrow">EDIT MEMBER PROFILE</p>
             <h2 id="profile-title">編輯會員資料</h2>
           </div>
           <button class="icon-button" id="profile-close-button" type="button" data-close-dialog aria-label="關閉會員資料編輯視窗">×</button>
         </div>
 
-        <p class="profile-description" id="profile-description">電話與生日皆為選填，你可以隨時更新或清空。</p>
+        <p class="profile-description" id="profile-description">你可以隨時更新電話與生日。</p>
 
         <div class="profile-fields">
           <label class="profile-field" for="profile-phone-input">
@@ -301,6 +313,7 @@
               inputmode="tel"
               autocomplete="tel"
               maxlength="30"
+              required
               placeholder="例如：0912 345 678"
               aria-describedby="profile-phone-help profile-phone-error"
             />
@@ -315,6 +328,7 @@
               name="birthday"
               type="date"
               autocomplete="bday"
+              required
               aria-describedby="profile-birthday-error"
             />
             <small class="field-error" id="profile-birthday-error" role="alert" hidden></small>
@@ -331,6 +345,40 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <dialog
+      class="modal scanner-modal"
+      id="point-scanner-dialog"
+      aria-labelledby="point-scanner-title"
+      aria-describedby="point-scanner-description"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">POINT SCANNER</p>
+          <h2 id="point-scanner-title">掃描集點碼</h2>
+        </div>
+      </div>
+      <p class="scanner-description" id="point-scanner-description">
+        將管理員提供的集點 QR Code 放入框線內。
+      </p>
+      <div class="scanner-viewport">
+        <video
+          class="scanner-video"
+          id="point-scanner-video"
+          autoplay
+          muted
+          playsinline
+          aria-label="QR Code 相機預覽"
+        ></video>
+        <span class="scanner-guide" aria-hidden="true"></span>
+      </div>
+      <p class="scanner-status" id="point-scanner-status" role="status" aria-live="polite">
+        正在啟動相機…
+      </p>
+      <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
+        取消掃描
+      </button>
     </dialog>
 
     <dialog

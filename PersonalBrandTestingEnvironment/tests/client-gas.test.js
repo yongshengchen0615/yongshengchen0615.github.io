@@ -818,8 +818,7 @@ test("doPost rejects an unlisted origin before member mutation", () => {
 test("new member rows use the shared 23-column schema, omit legacy email and are approved", () => {
   const gas = createGasContext();
   const rows = [];
-  const sheet = createMemberSheet(rows);
-  gas.getOrCreateMemberSheet_ = () => sheet;
+  installPointSheets(gas, { memberRows: rows });
 
   const result = gas.upsertMember_(
     createIdentity({ displayName: "=IMPORTXML(1)" }),
@@ -843,6 +842,11 @@ test("new member rows use the shared 23-column schema, omit legacy email and are
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "email"), false);
   assert.equal(result.data.member.phone, "");
   assert.equal(result.data.member.birthday, "");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.data.cardSummary)), {
+    currentPoints: 0,
+    targetPoints: 5,
+    availableDraws: 0,
+  });
   assert.deepEqual(JSON.parse(JSON.stringify(result.data.access)), {
     status: "approved",
     allowed: true,
@@ -965,7 +969,24 @@ test("profile update parses fetch and bridge fields and validates phone and birt
     );
   }
 
-  gas.validateRequestEnvelope_({ ...fetchRequest, phone: "", birthday: "" });
+  assert.throws(
+    () =>
+      gas.validateRequestEnvelope_({
+        ...fetchRequest,
+        phone: "",
+        birthday: fetchRequest.birthday,
+      }),
+    (error) => error.appCode === "INVALID_PHONE"
+  );
+  assert.throws(
+    () =>
+      gas.validateRequestEnvelope_({
+        ...fetchRequest,
+        phone: fetchRequest.phone,
+        birthday: "",
+      }),
+    (error) => error.appCode === "INVALID_BIRTHDAY"
+  );
 });
 
 test("point campaign requests parse only a fixed base64url claim for fetch and bridge", () => {
@@ -1100,6 +1121,30 @@ test("profile update rejects missing or disabled token owner without writing", (
   };
 
   assert.throws(
+    () =>
+      gas.updateMemberProfile_(
+        createIdentity(),
+        { ...request, requestId: "request-profile-empty-phone", phone: "" },
+        {}
+      ),
+    (error) => error.appCode === "INVALID_PHONE"
+  );
+  assert.throws(
+    () =>
+      gas.updateMemberProfile_(
+        createIdentity(),
+        {
+          ...request,
+          requestId: "request-profile-empty-birthday",
+          birthday: "",
+        },
+        {}
+      ),
+    (error) => error.appCode === "INVALID_BIRTHDAY"
+  );
+  assert.equal(writes.length, 0);
+
+  assert.throws(
     () => gas.updateMemberProfile_(createIdentity(), request, {}),
     (error) => error.appCode === "MEMBER_ACCESS_DENIED"
   );
@@ -1125,7 +1170,7 @@ test("profile update rejects missing or disabled token owner without writing", (
 test("upsert retries are idempotent and distinct token sessions increment once", () => {
   const gas = createGasContext();
   const rows = [];
-  gas.getOrCreateMemberSheet_ = () => createMemberSheet(rows);
+  installPointSheets(gas, { memberRows: rows });
   const identity = createIdentity({ tokenIssuedAt: 2000 });
   const request = {
     action: "upsertMember",
@@ -1220,6 +1265,11 @@ test("point redemption trusts campaign snapshot, persists once and is permanentl
   assert.equal(first.data.duplicate, false);
   assert.equal(first.data.awardedPoints, 3);
   assert.equal(first.data.pointBalance, 5);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.data.cardSummary)), {
+    currentPoints: 0,
+    targetPoints: 5,
+    availableDraws: 1,
+  });
   assert.equal(redemptionRows.length, 2);
   const saved = redemptionRows[1];
   assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.campaignId - 1], "PCG-ABCDEF1234");
@@ -1241,6 +1291,10 @@ test("point redemption trusts campaign snapshot, persists once and is permanentl
     assert.equal(retry.data.duplicate, true);
     assert.equal(retry.data.awardedPoints, 0);
     assert.equal(retry.data.pointBalance, 5);
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(retry.data.cardSummary)),
+      JSON.parse(JSON.stringify(first.data.cardSummary))
+    );
   }
   assert.equal(sameRequestRetry.data.duplicateReason, "request_replay");
   assert.equal(newRequestRetry.data.duplicateReason, "already_redeemed");
@@ -1361,6 +1415,11 @@ test("single-member campaigns award the first member and reject every later memb
   assert.equal(second.data.duplicate, true);
   assert.equal(second.data.duplicateReason, "campaign_redeemed");
   assert.equal(second.data.pointBalance, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(second.data.cardSummary)), {
+    currentPoints: 0,
+    targetPoints: 5,
+    availableDraws: 0,
+  });
   assert.equal(redemptionRows.length, 1);
 });
 
@@ -1805,6 +1864,11 @@ test("upsert and profile responses derive pointBalance from the redemption ledge
   );
 
   assert.equal(upsert.data.member.pointBalance, 5);
+  assert.deepEqual(JSON.parse(JSON.stringify(upsert.data.cardSummary)), {
+    currentPoints: 0,
+    targetPoints: 5,
+    availableDraws: 1,
+  });
   assert.equal(profile.data.member.pointBalance, 5);
 });
 
