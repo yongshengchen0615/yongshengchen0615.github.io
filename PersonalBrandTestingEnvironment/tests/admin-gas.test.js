@@ -415,6 +415,8 @@ function createPointCardSettingRow(gas, overrides = {}) {
     lastRequestId: "setup-default-card",
     rewardMilestones: "5",
     rewardLotteryTypeIds: gas.DEFAULT_LOTTERY_TYPE_ID,
+    expiryMode: "unlimited",
+    expiresOn: "",
     ...overrides,
   };
   if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
@@ -626,7 +628,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointTypeColumns, 12);
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
-  assert.equal(result.pointCardSettingColumns, 7);
+  assert.equal(result.pointCardSettingColumns, 9);
   assert.equal(result.lotteryTypeColumns, 9);
   assert.equal(result.lotteryPrizeColumns, 11);
   assert.equal(result.lotteryDrawColumns, 16);
@@ -660,6 +662,18 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(
     spreadsheet.sheets.PointCardSettings.data[1][
       gas.POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds - 1
+    ],
+    ""
+  );
+  assert.equal(
+    spreadsheet.sheets.PointCardSettings.data[1][
+      gas.POINT_CARD_SETTING_COLUMN.expiryMode - 1
+    ],
+    "unlimited"
+  );
+  assert.equal(
+    spreadsheet.sheets.PointCardSettings.data[1][
+      gas.POINT_CARD_SETTING_COLUMN.expiresOn - 1
     ],
     ""
   );
@@ -1409,6 +1423,52 @@ test("point-card milestones are unique, bounded, and finish at the card total", 
     );
   }
   gas.validateRequestEnvelope_({ ...base, pointCardMilestones: "" });
+});
+
+test("point-card expiry accepts an unlimited card or a current Taipei date", () => {
+  const gas = createGasContext();
+  const base = {
+    action: "adminSavePointCardSetting",
+    idToken: "header.payload.signature",
+    requestId: "request-card-expiry-validation",
+    transport: "fetch",
+    pointCardTarget: 5,
+    pointCardMilestones: "5",
+  };
+
+  gas.validateRequestEnvelope_({
+    ...base,
+    pointCardExpiryMode: "unlimited",
+    pointCardExpiresOn: "",
+  });
+  gas.validateRequestEnvelope_({
+    ...base,
+    pointCardExpiryMode: "limited",
+    pointCardExpiresOn: "2099-12-31",
+  });
+  for (const request of [
+    {
+      pointCardExpiryMode: "limited",
+      pointCardExpiresOn: "",
+    },
+    {
+      pointCardExpiryMode: "limited",
+      pointCardExpiresOn: "2026-02-30",
+    },
+    {
+      pointCardExpiryMode: "limited",
+      pointCardExpiresOn: "2000-01-01",
+    },
+    {
+      pointCardExpiryMode: "unlimited",
+      pointCardExpiresOn: "2099-12-31",
+    },
+  ]) {
+    assert.throws(
+      () => gas.validateRequestEnvelope_({ ...base, ...request }),
+      (error) => error.appCode === "INVALID_POINT_CARD_EXPIRY"
+    );
+  }
 });
 
 test("campaign validation requires an exact point type and mode-aware expiry", () => {
@@ -2208,6 +2268,8 @@ test("administrators version point-card nodes with one assigned wheel per node",
     requestId: "request-point-card-save-1",
     pointCardTarget: 20,
     pointCardRewards,
+    pointCardExpiryMode: "limited",
+    pointCardExpiresOn: "2099-12-31",
   };
 
   const first = gas.adminSavePointCardSetting_(identity(), request, configFor(gas));
@@ -2219,6 +2281,8 @@ test("administrators version point-card nodes with one assigned wheel per node",
       requestId: "request-point-card-save-2",
       pointCardTarget: 20,
       pointCardRewards,
+      pointCardExpiryMode: "limited",
+      pointCardExpiresOn: "2099-12-31",
     },
     configFor(gas)
   );
@@ -2234,6 +2298,8 @@ test("administrators version point-card nodes with one assigned wheel per node",
     JSON.parse(JSON.stringify(first.data.pointCardSetting.rewardRules)),
     pointCardRewards
   );
+  assert.equal(first.data.pointCardSetting.expiryMode, "limited");
+  assert.equal(first.data.pointCardSetting.expiresOn, "2099-12-31");
   assert.equal(replay.data.duplicate, true);
   assert.equal(replay.data.pointCardSetting.settingVersion, first.data.pointCardSetting.settingVersion);
   assert.equal(unchanged.data.changed, false);
@@ -2256,6 +2322,14 @@ test("administrators version point-card nodes with one assigned wheel per node",
       gas.DEFAULT_LOTTERY_TYPE_ID,
       birthdayWheel,
     ].join(",")
+  );
+  assert.equal(
+    settingSheet.data[2][gas.POINT_CARD_SETTING_COLUMN.expiryMode - 1],
+    "limited"
+  );
+  assert.equal(
+    settingSheet.data[2][gas.POINT_CARD_SETTING_COLUMN.expiresOn - 1],
+    "2099-12-31"
   );
   assert.throws(
     () =>
@@ -2519,6 +2593,8 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
       { points: 5, lotteryTypeId: "LTY-ABCDEF1234" },
       { points: 20, lotteryTypeId: "LTY-ZYXWVU9876" },
     ],
+    pointCardExpiryMode: "limited",
+    pointCardExpiresOn: "2099-12-31",
   };
   const parsedPointCard = gas.parseRequest_({
     postData: { contents: JSON.stringify(pointCardPayload) },
@@ -2539,6 +2615,8 @@ test("fetch and bridge parse identical point fields without accepting snapshots 
     JSON.parse(JSON.stringify(parsedBridgePointCard.pointCardRewards)),
     pointCardPayload.pointCardRewards
   );
+  assert.equal(parsedPointCard.pointCardExpiryMode, "limited");
+  assert.equal(parsedBridgePointCard.pointCardExpiresOn, "2099-12-31");
   gas.validateRequestEnvelope_(parsedPointCard);
   gas.validateRequestEnvelope_(parsedBridgePointCard);
 });
@@ -2798,7 +2876,7 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   );
   assert.deepEqual(
     spreadsheet.sheets.PointCardSettings.data[1].slice(legacyPointCardRow.length),
-    ["", ""]
+    ["", "", "unlimited", ""]
   );
   assert.deepEqual(
     JSON.parse(
@@ -2852,10 +2930,40 @@ test("milestone-only point-card rows append the wheel mapping column in place", 
   );
   assert.deepEqual(
     sheet.data[1].slice(gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
-    [""]
+    ["", "unlimited", ""]
   );
   assert.deepEqual(
     sheet.data[1].slice(0, gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    existingCells
+  );
+});
+
+test("wheel-mapped point-card rows append unlimited expiry defaults in place", () => {
+  const gas = createGasContext();
+  const existingRow = createPointCardSettingRow(gas).slice(
+    0,
+    gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length
+  );
+  const existingCells = existingRow.slice();
+  const sheet = createSheet(
+    "PointCardSettings",
+    gas.LOTTERY_POINT_CARD_SETTING_HEADERS,
+    [existingRow]
+  );
+  const spreadsheet = createSpreadsheet({ PointCardSettings: sheet });
+
+  gas.getOrCreatePointCardSettingSheet_(spreadsheet, configFor(gas));
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(sheet.data[0])),
+    JSON.parse(JSON.stringify(gas.POINT_CARD_SETTING_HEADERS))
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length),
+    ["unlimited", ""]
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(0, gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length),
     existingCells
   );
 });

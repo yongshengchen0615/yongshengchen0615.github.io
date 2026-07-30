@@ -264,8 +264,12 @@ var LEGACY_POINT_CARD_SETTING_HEADERS = [
 var MILESTONE_POINT_CARD_SETTING_HEADERS = LEGACY_POINT_CARD_SETTING_HEADERS.concat([
   "reward_milestones",
 ]);
-var POINT_CARD_SETTING_HEADERS = MILESTONE_POINT_CARD_SETTING_HEADERS.concat([
+var LOTTERY_POINT_CARD_SETTING_HEADERS = MILESTONE_POINT_CARD_SETTING_HEADERS.concat([
   "reward_lottery_type_ids",
+]);
+var POINT_CARD_SETTING_HEADERS = LOTTERY_POINT_CARD_SETTING_HEADERS.concat([
+  "expiry_mode",
+  "expires_on",
 ]);
 
 var POINT_CARD_SETTING_COLUMN = {
@@ -276,6 +280,8 @@ var POINT_CARD_SETTING_COLUMN = {
   lastRequestId: 5,
   rewardMilestones: 6,
   rewardLotteryTypeIds: 7,
+  expiryMode: 8,
+  expiresOn: 9,
 };
 
 var LOTTERY_TYPE_HEADERS = [
@@ -1298,6 +1304,11 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
 
   try {
     var targetPoints = normalizePointCardTarget_(request.pointCardTarget);
+    var expiry = normalizePointCardExpiry_(
+      request.pointCardExpiryMode,
+      request.pointCardExpiresOn,
+      true
+    );
     var submittedRewardRules = normalizePointCardRewardRules_(
       request.pointCardRewards,
       request.pointCardMilestones,
@@ -1333,6 +1344,8 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
     if (duplicate.length === 1) {
       if (
         duplicate[0].targetPoints !== targetPoints ||
+        duplicate[0].expiryMode !== expiry.expiryMode ||
+        duplicate[0].expiresOn !== expiry.expiresOn ||
         !pointCardRewardRulesEqual_(duplicate[0].rewardRules, rewardRules)
       ) {
         throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的集點卡規則。");
@@ -1349,6 +1362,8 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
     var latest = settings[settings.length - 1];
     if (
       latest.targetPoints === targetPoints &&
+      latest.expiryMode === expiry.expiryMode &&
+      latest.expiresOn === expiry.expiresOn &&
       pointCardRewardRulesEqual_(latest.rewardRules, rewardRules)
     ) {
       return {
@@ -1385,6 +1400,8 @@ function adminSavePointCardSetting_(adminIdentity, request, config) {
           return rule.lotteryTypeId;
         })
         .join(","),
+      expiry.expiryMode,
+      expiry.expiresOn,
     ]);
     applyPointCardSettingRowFormats_(settingSheet, settingSheet.getLastRow());
     SpreadsheetApp.flush();
@@ -2222,10 +2239,12 @@ function getOrCreatePointCardSettingSheet_(spreadsheet, config) {
     [
       LEGACY_POINT_CARD_SETTING_HEADERS,
       MILESTONE_POINT_CARD_SETTING_HEADERS,
+      LOTTERY_POINT_CARD_SETTING_HEADERS,
     ],
     [
-      ["", ""],
-      [""],
+      ["", "", "unlimited", ""],
+      ["", "unlimited", ""],
+      ["unlimited", ""],
     ],
     "POINT_CARD_SCHEMA_MISMATCH",
     "#0f766e",
@@ -2281,6 +2300,8 @@ function ensureDefaultPointCardSetting_(sheet) {
     "SYSTEM",
     "setup-default-card",
     String(DEFAULT_POINT_CARD_TARGET),
+    "",
+    "unlimited",
     "",
   ]);
   applyPointCardSettingRowFormats_(sheet, sheet.getLastRow());
@@ -2657,7 +2678,7 @@ function applyPointRedemptionSheetColumnFormats_(sheet) {
 
 function applyPointCardSettingSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 4, 5, 6, 7].forEach(function (column) {
+  [1, 4, 5, 6, 7, 8, 9].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2672,7 +2693,7 @@ function applyPointCardSettingRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 1).setNumberFormat("@");
   sheet.getRange(rowNumber, 2).setNumberFormat("0");
   sheet.getRange(rowNumber, 3).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  sheet.getRange(rowNumber, 4, 1, 4).setNumberFormat("@");
+  sheet.getRange(rowNumber, 4, 1, 6).setNumberFormat("@");
 }
 
 function applyLotteryTypeSheetColumnFormats_(sheet) {
@@ -2769,6 +2790,10 @@ function parseRequest_(e) {
       pointCardTarget: optionalNumber_(e.parameter.pointCardTarget, NaN),
       pointCardMilestones: String(e.parameter.pointCardMilestones || "").trim(),
       pointCardRewards: parsePointCardRewards_(e.parameter.pointCardRewards),
+      pointCardExpiryMode: String(
+        e.parameter.pointCardExpiryMode || "unlimited"
+      ).trim().toLowerCase(),
+      pointCardExpiresOn: String(e.parameter.pointCardExpiresOn || "").trim(),
       lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
       lotteryTypeName: String(e.parameter.lotteryTypeName || "").trim(),
       lotteryPrizes: parseLotteryPrizes_(e.parameter.lotteryPrizes),
@@ -2812,6 +2837,10 @@ function parseRequest_(e) {
       ? parsed.pointCardMilestones.join(",")
       : String(parsed.pointCardMilestones || "").trim(),
     pointCardRewards: parsePointCardRewards_(parsed.pointCardRewards),
+    pointCardExpiryMode: String(
+      parsed.pointCardExpiryMode || "unlimited"
+    ).trim().toLowerCase(),
+    pointCardExpiresOn: String(parsed.pointCardExpiresOn || "").trim(),
     lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
     lotteryTypeName: String(parsed.lotteryTypeName || "").trim(),
     lotteryPrizes: parseLotteryPrizes_(parsed.lotteryPrizes),
@@ -2888,6 +2917,11 @@ function validateRequestEnvelope_(request) {
 
   if (request.action === "adminSavePointCardSetting") {
     var pointCardTarget = normalizePointCardTarget_(request.pointCardTarget);
+    normalizePointCardExpiry_(
+      request.pointCardExpiryMode,
+      request.pointCardExpiresOn,
+      true
+    );
     normalizePointCardRewardRules_(
       request.pointCardRewards,
       request.pointCardMilestones,
@@ -2942,6 +2976,63 @@ function normalizePointCardTarget_(value) {
     );
   }
   return target;
+}
+
+function normalizePointCardExpiry_(modeValue, expiresOnValue, requireCurrentDate) {
+  var mode = String(modeValue || "unlimited").trim().toLowerCase();
+  var expiresOn = String(expiresOnValue || "").trim();
+  var errorCode = requireCurrentDate
+    ? "INVALID_POINT_CARD_EXPIRY"
+    : "POINT_CARD_DATA_ERROR";
+  if (mode !== "limited" && mode !== "unlimited") {
+    throw appError_(
+      errorCode,
+      "集點卡期限只能設為有期限或無期限。"
+    );
+  }
+  if (mode === "unlimited") {
+    if (expiresOn) {
+      throw appError_(
+        errorCode,
+        "無期限集點卡不可設定到期日。"
+      );
+    }
+    return { expiryMode: mode, expiresOn: "" };
+  }
+  if (!isValidPointCardDate_(expiresOn)) {
+    throw appError_(
+      errorCode,
+      "請選擇有效的集點卡到期日。"
+    );
+  }
+  if (requireCurrentDate && expiresOn < taipeiDateString_(new Date())) {
+    throw appError_(
+      "INVALID_POINT_CARD_EXPIRY",
+      "集點卡到期日不可早於今天。"
+    );
+  }
+  return { expiryMode: mode, expiresOn: expiresOn };
+}
+
+function isValidPointCardDate_(value) {
+  var raw = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  var date = new Date(raw + "T00:00:00+08:00");
+  return (
+    !isNaN(date.getTime()) &&
+    taipeiDateString_(date) === raw
+  );
+}
+
+function taipeiDateString_(date) {
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function pointCardExpiryEndTime_(expiresOn) {
+  return new Date(expiresOn + "T00:00:00+08:00").getTime() +
+    24 * 60 * 60 * 1000;
 }
 
 function normalizePointCardMilestones_(value, targetPoints) {
@@ -3395,6 +3486,15 @@ function readPointCardSettings_(sheet) {
         lotteryTypeId: rewardLotteryTypeIds[ruleIndex],
       };
     });
+    var expiry = normalizePointCardExpiry_(
+      row[POINT_CARD_SETTING_COLUMN.expiryMode - 1],
+      row[POINT_CARD_SETTING_COLUMN.expiresOn - 1],
+      false
+    );
+    var expiresAtTime =
+      expiry.expiryMode === "limited"
+        ? pointCardExpiryEndTime_(expiry.expiresOn)
+        : 0;
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
       !Number.isInteger(targetPoints) ||
@@ -3403,6 +3503,8 @@ function readPointCardSettings_(sheet) {
       !effectiveAt ||
       (updatedBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(updatedBy)) ||
       !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      (expiresAtTime &&
+        expiresAtTime <= new Date(effectiveAt).getTime()) ||
       versions[settingVersion] ||
       requests[lastRequestId]
     ) {
@@ -3419,6 +3521,13 @@ function readPointCardSettings_(sheet) {
       targetPoints: targetPoints,
       rewardMilestones: rewardMilestones,
       rewardRules: rewardRules,
+      expiryMode: expiry.expiryMode,
+      expiresOn: expiry.expiresOn,
+      expiresAt:
+        expiry.expiryMode === "limited"
+          ? new Date(expiresAtTime).toISOString()
+          : "",
+      expiresAtTime: expiresAtTime,
       effectiveAt: effectiveAt,
       effectiveAtTime: new Date(effectiveAt).getTime(),
       effectiveAtValue: effectiveAtValue,
@@ -3448,6 +3557,9 @@ function pointCardSettingResponse_(setting) {
         lotteryTypeId: rule.lotteryTypeId,
       };
     }),
+    expiryMode: setting.expiryMode,
+    expiresOn: setting.expiresOn,
+    expiresAt: setting.expiresAt,
     effectiveAt: setting.effectiveAt,
   };
 }

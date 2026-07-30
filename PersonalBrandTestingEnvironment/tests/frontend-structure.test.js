@@ -366,6 +366,11 @@ test("admin lottery page maps individually added card nodes to one configured wh
   for (const id of [
     "point-card-setting-form",
     "point-card-target-input",
+    "point-card-expiry-unlimited",
+    "point-card-expiry-limited",
+    "point-card-expiry-date-field",
+    "point-card-expires-on-input",
+    "point-card-setting-expiry",
     "add-point-card-reward-button",
     "point-card-reward-list",
     "point-card-reward-empty",
@@ -392,6 +397,8 @@ test("admin lottery page maps individually added card nodes to one configured wh
   assert.match(script, /sendAdminRequest\(["']adminGetLotteryConfig["']/);
   assert.match(script, /sendAdminRequest\(["']adminSavePointCardSetting["']/);
   assert.match(script, /pointCardRewards:\s*rewardRules/);
+  assert.match(script, /pointCardExpiryMode:\s*expiryMode/);
+  assert.match(script, /pointCardExpiresOn:\s*expiresOn/);
   assert.match(script, /function\s+addPointCardRewardRule\s*\(/);
   assert.match(script, /function\s+validatePointCardRewardRules\s*\(/);
   assert.doesNotMatch(html, /id=["']point-card-milestones-input["']/);
@@ -408,6 +415,7 @@ test("admin lottery page maps individually added card nodes to one configured wh
 
 test("member lottery opens an earned ticket on a separate view and spins from the wheel center", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
@@ -443,6 +451,7 @@ test("member lottery opens an earned ticket on a separate view and spins from th
     "point-card-milestones",
     "point-card-current",
     "point-card-target",
+    "point-card-expiry",
     "available-draw-count",
     "lottery-ticket-view",
     "lottery-ticket-tabs",
@@ -456,13 +465,6 @@ test("member lottery opens an earned ticket on a separate view and spins from th
     "earned-ticket-count",
     "lottery-ticket-list",
     "lottery-ticket-empty",
-    "point-history-title",
-    "point-history-summary",
-    "refresh-point-history-button",
-    "point-history-loading",
-    "point-history-list",
-    "point-history-empty",
-    "point-history-error",
     "lottery-wheel-view",
     "lottery-wheel-back-button",
     "member-lottery-wheel",
@@ -475,7 +477,24 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
-  assert.match(memberHtml, /id=["']lottery-page-link["'][^>]*href=["']lottery\.html["']/);
+  for (const id of [
+    "member-ticket-dialog",
+    "member-ticket-tabs",
+    "member-locked-ticket-tab",
+    "member-locked-ticket-panel",
+    "member-locked-ticket-count",
+    "member-locked-ticket-list",
+    "member-earned-ticket-tab",
+    "member-earned-ticket-panel",
+    "member-earned-ticket-count",
+    "member-earned-ticket-list",
+  ]) {
+    assert.match(memberHtml, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(
+    getOpeningTagById(memberHtml, "lottery-page-link"),
+    /<button\b[^>]*\btype=["']button["'][^>]*\baria-controls=["']member-ticket-dialog["']/i
+  );
   assert.match(memberHtml, /id=["']lottery-page-link["'][\s\S]*?<span>抽獎券<\/span>/);
   assert.doesNotMatch(memberHtml, /前往集點卡抽獎/);
   assert.match(memberHtml, /id=["']scan-point-button["']/);
@@ -486,7 +505,7 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(html, /id=["']locked-ticket-title["']>未獲得</);
   assert.match(html, /id=["']earned-ticket-title["']>已獲得</);
   assert.match(html, /抽完即使用/);
-  assert.match(html, /確認並返回集點卡/);
+  assert.match(html, /確認並返回會員資料/);
   assert.match(getOpeningTagById(html, "lottery-ticket-tabs"), /\brole=["']tablist["']/i);
   assert.match(
     getOpeningTagById(html, "locked-ticket-tab"),
@@ -560,9 +579,19 @@ test("member lottery opens an earned ticket on a separate view and spins from th
   assert.match(script, /["']keydown["'],\s*handleTicketTabKeydown/);
   assert.doesNotMatch(script, /\brewardTickets\b/);
   assert.match(script, /function\s+returnToPointCard\s*\(/);
-  assert.doesNotMatch(
+  assert.match(
     getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
-    /location\.(?:assign|replace)/
+    /navigateToMemberPanel\(["']tickets["']\)/
+  );
+  assert.match(memberScript, /url\.searchParams\.set\(["']ticket["'],\s*normalizedTicket\.cardRoundKey\)/);
+  assert.match(script, /function\s+captureRequestedCardRoundKey\s*\(/);
+  assert.match(renderWorkspace, /cardStatus\.availableRewards\.find/);
+  assert.doesNotMatch(
+    getTopLevelFunctionContaining(
+      script,
+      /function\s+normalizePointCardStatus\s*\(/
+    ),
+    /availableDraws\s*!==\s*normalized\.earnedRewards\s*-\s*normalized\.drawsUsed/
   );
   assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
   assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
@@ -688,6 +717,7 @@ test("client member pass renders current-card progress and a live ticket badge",
   assert.ok(memberState, "client member state must exist");
   assert.match(memberState[0], /id=["']member-point-card-current["']/);
   assert.match(memberState[0], /id=["']member-point-card-target["']/);
+  assert.match(memberState[0], /id=["']member-point-card-expiry["']/);
   assert.match(memberState[0], /id=["']member-point-card-progress-track["']/);
   assert.match(current, /aria-live=["']polite["']/i);
   assert.match(ticketCount, /aria-live=["']polite["']/i);
@@ -698,6 +728,8 @@ test("client member pass renders current-card progress and a live ticket badge",
   assert.match(renderCard, /\bnormalized\.currentPoints\b/);
   assert.match(renderCard, /\bnormalized\.targetPoints\b/);
   assert.match(renderCard, /\bnormalized\.availableDraws\b/);
+  assert.match(renderCard, /\bnormalized\.expiryMode\b/);
+  assert.match(renderCard, /\bnormalized\.expiresOn\b/);
   assert.match(renderCard, /ticketCount\.hidden\s*=\s*normalized\.availableDraws\s*===\s*0/);
   assert.match(renderCard, /progress\.style\.width/);
   assert.doesNotMatch(
@@ -706,18 +738,22 @@ test("client member pass renders current-card progress and a live ticket badge",
   );
 });
 
-test("client point history lives on the point-card page with complete UI states", () => {
+test("client point history opens lazily from a member-page dialog with complete UI states", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
-  const history = getTopLevelFunctionContaining(script, /["']listPointHistory["']/);
-  const loadWorkspace = getTopLevelFunctionContaining(
-    script,
-    /["']getLotteryConfig["']/
+  const history = getTopLevelFunctionContaining(
+    memberScript,
+    /["']listPointHistory["']/
+  );
+  const openHistory = getTopLevelFunctionContaining(
+    memberScript,
+    /function\s+openPointHistoryDialog\s*\(/
   );
 
   for (const id of [
+    "point-history-dialog",
     "point-history-title",
     "point-history-summary",
     "point-history-list",
@@ -726,24 +762,18 @@ test("client point history lives on the point-card page with complete UI states"
     "point-history-error",
     "refresh-point-history-button",
   ]) {
-    assert.match(html, new RegExp(`id=["']${id}["']`));
-    assert.doesNotMatch(memberHtml, new RegExp(`id=["']${id}["']`));
+    assert.match(memberHtml, new RegExp(`id=["']${id}["']`));
+    assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`));
   }
-  assert.doesNotMatch(memberScript, /["']listPointHistory["']/);
-  assert.match(history, /sendMemberRequest\(["']listPointHistory["']/);
-  assert.match(script, /refresh-point-history-button["']\)\.addEventListener/);
-  assert.match(script, /formatPointHistoryMode/);
-  assert.match(script, /entryType\s*===\s*["']draw["']/);
-  assert.match(script, /label\s*===\s*["']集點卡抽獎 · ["']\s*\+\s*prizeLabel/);
-  assert.match(script, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
-  assert.match(
-    loadWorkspace,
-    /renderWorkspace\(response\.data\);[\s\S]*loadPointHistory\(\);[\s\S]*return true/
-  );
-  assert.match(
-    getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
-    /loadPointHistory\(\)/
-  );
+  assert.match(memberHtml, /id=["']open-point-history-button["']/);
+  assert.match(history, /sendGasRequest\(["']listPointHistory["']/);
+  assert.match(memberScript, /refresh-point-history-button["']\)\.addEventListener/);
+  assert.match(memberScript, /formatPointHistoryMode/);
+  assert.match(memberScript, /entryType\s*===\s*["']draw["']/);
+  assert.match(memberScript, /label\s*===\s*["']集點卡抽獎 · ["']\s*\+\s*prizeLabel/);
+  assert.match(memberScript, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
+  assert.match(openHistory, /!hasLoadedPointHistory\s*\|\|\s*isPointHistoryDirty/);
+  assert.doesNotMatch(script, /["']listPointHistory["']/);
 });
 
 test("primary pages use concise copy and responsive text safeguards", () => {
@@ -868,7 +898,8 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   assert.match(sync, /renderMember\(/);
   assert.match(sync, /redeemPendingPointCampaign\(\)/);
   assert.doesNotMatch(sync, /loadPointHistory\(\)/);
-  assert.doesNotMatch(script, /sendGasRequest\(["']listPointHistory["']/);
+  assert.match(redeemClaim, /isPointHistoryDirty\s*=\s*true/);
+  assert.match(script, /sendGasRequest\(["']listPointHistory["']/);
   assert.doesNotMatch(script, /["']previewPointCampaign["']/);
   assert.match(
     script,

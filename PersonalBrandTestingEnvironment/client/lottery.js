@@ -20,10 +20,10 @@
   var wheelRenderCache = Object.create(null);
   var isWheelPreparing = false;
   var activeTicketTab = "";
-  var isPointHistoryLoading = false;
-  var pointHistoryRequestVersion = 0;
-  var SPIN_DEGREES_PER_MS = 1.2;
-  var FINAL_SPIN_TURNS = 3;
+  var requestedCardRoundKey = "";
+  var requestedTicketError = "";
+  var SPIN_DEGREES_PER_MS = 1.45;
+  var FINAL_SPIN_TURNS = 2;
   var WHEEL_PRELOAD_LIMIT = 8;
   var STATE_IDS = [
     "loading-state",
@@ -34,12 +34,6 @@
   ];
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-member-lottery-token-recovery:";
-  var POINT_HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   function byId(id) {
     return document.getElementById(id);
@@ -71,11 +65,10 @@
     var thisBoot = ++bootVersion;
     isBusy = false;
     stopSpinAnimation();
-    pointHistoryRequestVersion += 1;
-    isPointHistoryLoading = false;
     byId("lottery-state").setAttribute("aria-busy", "false");
     activeTicketTab = "";
     isDemoSession = hasDemoQuery();
+    captureRequestedCardRoundKey();
     syncMemberRoutes();
     setView("loading-state");
     setLoading("正在確認會員身分", "連線 LINE 並讀取集點卡進度。");
@@ -139,7 +132,6 @@
         }
         clearInvalidTokenRecoveryGuard();
         renderWorkspace(response.data);
-        loadPointHistory();
         return true;
       })
       .catch(function (error) {
@@ -187,14 +179,30 @@
       selectedRewardTicket = null;
       selectedLotteryTypeId = "";
     }
+    if (!selectedRewardTicket && requestedCardRoundKey) {
+      selectedRewardTicket =
+        cardStatus.availableRewards.find(function (ticket) {
+          return ticket.cardRoundKey === requestedCardRoundKey;
+        }) || null;
+      if (selectedRewardTicket) {
+        selectedLotteryTypeId = selectedRewardTicket.lotteryTypeId;
+      } else {
+        requestedTicketError = "這張抽獎券已使用或不存在，請返回會員資料重新選擇。";
+      }
+    }
+    requestedCardRoundKey = "";
+    clearRequestedTicketFromUrl();
     preloadLotteryWheels();
 
     renderPointCard();
     renderLotteryTickets();
-    renderPointHistoryLoading();
     setView("lottery-state");
     showLotteryTicketView();
     if (selectedRewardTicket) openLotteryTicket(selectedRewardTicket);
+    else if (requestedTicketError) {
+      showToast(requestedTicketError, "error");
+      requestedTicketError = "";
+    }
     updateControls();
   }
 
@@ -207,6 +215,8 @@
       card: {
         settingVersion: "PCS-PREVIEW00001",
         targetPoints: 20,
+        expiryMode: "limited",
+        expiresOn: "2026-12-31",
         rewardMilestones: [5, 10, 15, 20],
         rewardRules: [
           { points: 5, lotteryTypeId: "LTY-PREVIEW001" },
@@ -269,247 +279,6 @@
         },
       ],
     });
-    var demoNow = new Date(now);
-    renderPointHistory(
-      [
-        {
-          historyId: "RDM-PREVIEW000000001",
-          entryType: "earn",
-          redemptionId: "RDM-PREVIEW000000001",
-          label: "12 點",
-          points: 12,
-          balanceAfter: 32,
-          redeemedAt: new Date(demoNow.getTime() - 86400000).toISOString(),
-          redemptionMode: "once_per_member",
-          source: "qr",
-        },
-        {
-          historyId: "LDW-PREVIEW000000001",
-          entryType: "draw",
-          drawId: "LDW-PREVIEW000000001",
-          label: "集點卡抽獎 · 精選獎",
-          points: 0,
-          balanceAfter: 20,
-          redeemedAt: new Date(
-            demoNow.getTime() - 2 * 86400000
-          ).toISOString(),
-          redemptionMode: "lottery",
-          source: "lottery",
-          prizeLabel: "精選獎",
-          prizeColor: "#F0C36A",
-        },
-      ],
-      false
-    );
-  }
-
-  function loadPointHistory() {
-    if (isDemoSession || !currentIdToken) return Promise.resolve();
-
-    var requestVersion = ++pointHistoryRequestVersion;
-    isPointHistoryLoading = true;
-    renderPointHistoryLoading();
-
-    return sendMemberRequest("listPointHistory", {})
-      .then(function (response) {
-        if (requestVersion !== pointHistoryRequestVersion) return;
-        assertSuccessfulResponse(response);
-        if (
-          !response.data ||
-          !response.data.access ||
-          response.data.access.allowed !== true ||
-          !Array.isArray(response.data.history) ||
-          typeof response.data.hasMore !== "boolean"
-        ) {
-          throw createError("INVALID_RESPONSE", "後台回傳的點數紀錄格式不完整。");
-        }
-        normalizePointNumber(response.data.pointBalance);
-        renderPointHistory(response.data.history, response.data.hasMore);
-      })
-      .catch(function (error) {
-        if (requestVersion !== pointHistoryRequestVersion) return;
-        var normalized = normalizeError(error);
-        if (
-          normalized.code === "INVALID_TOKEN" ||
-          normalized.code === "INVALID_ID_TOKEN" ||
-          normalized.code === "MISSING_ID_TOKEN" ||
-          normalized.code === "MEMBER_ACCESS_DENIED"
-        ) {
-          handleFatalError(error);
-          return;
-        }
-        renderPointHistoryError(normalized.message);
-      })
-      .finally(function () {
-        if (requestVersion !== pointHistoryRequestVersion) return;
-        isPointHistoryLoading = false;
-        byId("refresh-point-history-button").disabled = false;
-        byId("point-history-loading").hidden = true;
-      });
-  }
-
-  function normalizePointHistoryEntry(value) {
-    value = value && typeof value === "object" ? value : {};
-    var historyId = String(value.historyId || "").trim();
-    var entryType = String(value.entryType || "").trim().toLowerCase();
-    var redemptionId = String(value.redemptionId || "").trim();
-    var drawId = String(value.drawId || "").trim();
-    var points = Number(value.points);
-    var label = String(value.label || "").trim();
-    var balanceAfter = Number(value.balanceAfter);
-    var redeemedAt = String(value.redeemedAt || "").trim();
-    var redemptionMode = String(value.redemptionMode || "").trim().toLowerCase();
-    var source = String(value.source || "").trim().toLowerCase();
-    var prizeLabel = String(value.prizeLabel || "").trim();
-    var prizeColor = String(value.prizeColor || "").trim().toUpperCase();
-    var date = new Date(redeemedAt);
-    var validEarn =
-      entryType === "earn" &&
-      source === "qr" &&
-      /^RDM-[A-Z0-9]{16}$/.test(redemptionId) &&
-      historyId === redemptionId &&
-      Number.isSafeInteger(points) &&
-      points >= 1 &&
-      points <= 9999 &&
-      label === points + " 點" &&
-      Number.isSafeInteger(balanceAfter) &&
-      balanceAfter >= points &&
-      (redemptionMode === "once_per_member" ||
-        redemptionMode === "repeatable" ||
-        redemptionMode === "single_member");
-    var validLegacyLottery =
-      entryType === "spend" &&
-      points === -5 &&
-      label === "5 點抽獎券 · " + prizeLabel;
-    var validRoundLottery =
-      entryType === "draw" &&
-      points === 0 &&
-      label === "集點卡抽獎 · " + prizeLabel;
-    var validLottery =
-      (validLegacyLottery || validRoundLottery) &&
-      source === "lottery" &&
-      /^LDW-[A-Z0-9]{16}$/.test(drawId) &&
-      historyId === drawId &&
-      prizeLabel &&
-      prizeLabel.length <= 40 &&
-      /^#[0-9A-F]{6}$/.test(prizeColor) &&
-      Number.isSafeInteger(balanceAfter) &&
-      balanceAfter >= 0 &&
-      redemptionMode === "lottery";
-
-    if ((!validEarn && !validLottery) || Number.isNaN(date.getTime())) {
-      throw createError("INVALID_RESPONSE", "後台回傳的點數紀錄格式不正確。");
-    }
-    return {
-      entryType: entryType,
-      points: points,
-      label: label,
-      balanceAfter: balanceAfter,
-      redeemedAt: date.toISOString(),
-      redemptionMode: redemptionMode,
-      prizeLabel: prizeLabel,
-    };
-  }
-
-  function renderPointHistoryLoading() {
-    var list = byId("point-history-list");
-    var hasRenderedItems = list.childElementCount > 0;
-    isPointHistoryLoading = true;
-    byId("point-history-loading").hidden = hasRenderedItems;
-    byId("point-history-error").hidden = true;
-    byId("point-history-empty").hidden = true;
-    byId("refresh-point-history-button").disabled = true;
-    list.setAttribute("aria-busy", "true");
-    byId("point-history-summary").textContent = "更新中";
-  }
-
-  function renderPointHistory(entries, hasMore) {
-    var list = byId("point-history-list");
-    var fragment = document.createDocumentFragment();
-    var normalizedEntries = entries.map(normalizePointHistoryEntry);
-    isPointHistoryLoading = false;
-    list.setAttribute("aria-busy", "false");
-    byId("point-history-loading").hidden = true;
-    byId("point-history-error").hidden = true;
-    byId("point-history-empty").hidden = normalizedEntries.length !== 0;
-    byId("refresh-point-history-button").disabled = false;
-    byId("point-history-summary").textContent = normalizedEntries.length
-      ? normalizedEntries.length + " 筆" + (hasMore ? " · 更多" : "")
-      : "尚無紀錄";
-
-    normalizedEntries.forEach(function (entry) {
-      var item = document.createElement("li");
-      var marker = document.createElement("span");
-      var content = document.createElement("div");
-      var title = document.createElement("strong");
-      var meta = document.createElement("small");
-      var amount = document.createElement("b");
-      var balance = document.createElement("span");
-
-      item.className = "point-history-item";
-      item.dataset.entryType = entry.entryType;
-      marker.className = "point-history-marker";
-      marker.setAttribute("aria-hidden", "true");
-      content.className = "point-history-content";
-      title.textContent =
-        entry.entryType === "earn"
-          ? "獲得 " + entry.label
-          : "抽中 " + entry.prizeLabel;
-      meta.textContent =
-        formatPointHistoryDate(entry.redeemedAt) +
-        " · " +
-        (entry.entryType === "spend"
-          ? "舊版抽獎券"
-          : entry.entryType === "draw"
-            ? "集點卡抽獎"
-            : formatPointHistoryMode(entry.redemptionMode));
-      amount.className =
-        "point-history-amount" +
-        (entry.entryType === "spend" ? " point-history-amount-spend" : "");
-      amount.textContent =
-        entry.entryType === "draw"
-          ? "不扣點"
-          : (entry.points > 0 ? "+" : "−") +
-            formatNumber(Math.abs(entry.points)) +
-            " 點";
-      balance.className = "point-history-balance";
-      balance.textContent = "累計 " + formatNumber(entry.balanceAfter);
-
-      content.appendChild(title);
-      content.appendChild(meta);
-      item.appendChild(marker);
-      item.appendChild(content);
-      item.appendChild(amount);
-      item.appendChild(balance);
-      fragment.appendChild(item);
-    });
-    list.replaceChildren(fragment);
-  }
-
-  function renderPointHistoryError(message) {
-    var list = byId("point-history-list");
-    isPointHistoryLoading = false;
-    list.textContent = "";
-    list.setAttribute("aria-busy", "false");
-    byId("point-history-loading").hidden = true;
-    byId("refresh-point-history-button").disabled = false;
-    byId("point-history-empty").hidden = true;
-    byId("point-history-summary").textContent = "載入失敗";
-    byId("point-history-error").textContent =
-      message || "目前無法讀取點數紀錄。";
-    byId("point-history-error").hidden = false;
-  }
-
-  function formatPointHistoryDate(value) {
-    return POINT_HISTORY_DATE_FORMATTER.format(new Date(value));
-  }
-
-  function formatPointHistoryMode(mode) {
-    return mode === "repeatable"
-      ? "可重複 QR"
-      : mode === "single_member"
-        ? "單人 QR"
-        : "每位會員一次";
   }
 
   function normalizeLotteryTypes(value) {
@@ -618,6 +387,8 @@
     var normalized = {
       settingVersion: String(value.settingVersion || "").trim(),
       targetPoints: Number(value.targetPoints),
+      expiryMode: String(value.expiryMode || "").trim(),
+      expiresOn: String(value.expiresOn || "").trim(),
       rewardMilestones: rewardMilestones,
       rewardRules: rewardRules,
       reachedMilestones: reachedMilestones,
@@ -639,6 +410,11 @@
       !/^PCS-[A-Z0-9]{12}$/.test(normalized.settingVersion) ||
       !Number.isInteger(normalized.targetPoints) ||
       normalized.targetPoints < 1 ||
+      (normalized.expiryMode !== "unlimited" &&
+        normalized.expiryMode !== "limited") ||
+      (normalized.expiryMode === "unlimited" && normalized.expiresOn) ||
+      (normalized.expiryMode === "limited" &&
+        !isValidPointCardDate(normalized.expiresOn)) ||
       !isStrictPointSequence(normalized.rewardMilestones, normalized.targetPoints) ||
       normalized.rewardRules.length !== normalized.rewardMilestones.length ||
       normalized.rewardRules.some(function (rule, index) {
@@ -680,9 +456,11 @@
       normalized.earnedRewards < 0 ||
       !Number.isInteger(normalized.drawsUsed) ||
       normalized.drawsUsed < 0 ||
+      normalized.drawsUsed > normalized.earnedRewards ||
       !Number.isInteger(normalized.availableDraws) ||
       normalized.availableDraws < 0 ||
-      normalized.availableDraws !== normalized.earnedRewards - normalized.drawsUsed ||
+      normalized.availableDraws >
+        normalized.earnedRewards - normalized.drawsUsed ||
       normalized.availableRewards.length !==
         Math.min(normalized.availableDraws, 50) ||
       !hasUniqueRewardTickets(normalized.availableRewards) ||
@@ -695,6 +473,19 @@
       throw createError("INVALID_RESPONSE", "集點卡進度格式不正確。");
     }
     return normalized;
+  }
+
+  function isValidPointCardDate(value) {
+    var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+    if (!match) return false;
+    var date = new Date(
+      Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    );
+    return (
+      date.getUTCFullYear() === Number(match[1]) &&
+      date.getUTCMonth() === Number(match[2]) - 1 &&
+      date.getUTCDate() === Number(match[3])
+    );
   }
 
   function normalizeRewardTicket(value) {
@@ -772,6 +563,10 @@
     );
     byId("point-card-current").textContent = formatNumber(cardStatus.currentPoints);
     byId("point-card-target").textContent = formatNumber(cardStatus.targetPoints);
+    byId("point-card-expiry").textContent =
+      cardStatus.expiryMode === "limited"
+        ? "有效至 " + cardStatus.expiresOn.replace(/-/g, ".")
+        : "集點卡無期限";
     byId("available-draw-count").textContent = formatNumber(cardStatus.availableDraws);
     var progress = Math.min(
       100,
@@ -1005,8 +800,7 @@
     if (isBusy || isWheelPreparing || pendingRequest) return;
     selectedRewardTicket = null;
     selectedLotteryTypeId = "";
-    showLotteryTicketView();
-    updateControls();
+    navigateToMemberPanel("tickets");
   }
 
   function preloadLotteryWheels() {
@@ -1090,6 +884,8 @@
           card: {
             settingVersion: cardStatus.settingVersion,
             targetPoints: cardStatus.targetPoints,
+            expiryMode: cardStatus.expiryMode,
+            expiresOn: cardStatus.expiresOn,
             rewardMilestones: cardStatus.rewardMilestones.slice(),
             rewardRules: cardStatus.rewardRules.slice(),
             reachedMilestones: cardStatus.reachedMilestones.slice(),
@@ -1278,8 +1074,9 @@
       });
     }
 
-    // Quadratic ease-out begins at the same angular velocity as the waiting
-    // spin, then continuously slows to a complete stop at the selected prize.
+    // Keep the first-frame velocity equal to the waiting spin. Adding the
+    // smoothstep correction also keeps acceleration continuous at both ends,
+    // so the wheel eases from fast to slow without an abrupt speed change.
     var duration = (2 * rotationDelta) / SPIN_DEGREES_PER_MS;
     return new Promise(function (resolve) {
       var animationStartedAt =
@@ -1290,7 +1087,9 @@
         if (animationVersion !== spinAnimationVersion) return;
         if (animationStartedAt === null) animationStartedAt = timestamp;
         var progress = Math.min(1, (timestamp - animationStartedAt) / duration);
-        var easedProgress = 1 - Math.pow(1 - progress, 2);
+        var quadraticEaseOut = 1 - Math.pow(1 - progress, 2);
+        var smoothstepCorrection = Math.pow(progress * (1 - progress), 2);
+        var easedProgress = quadraticEaseOut + smoothstepCorrection;
         lotteryRotation = startRotation + rotationDelta * easedProgress;
         rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
         if (progress < 1) {
@@ -1370,14 +1169,64 @@
           ? "點我重試"
           : "點我抽獎"
         : "選擇抽獎券";
-    byId("lottery-wheel-back-button").disabled =
+    var wheelBackDisabled =
       isBusy || isWheelPreparing || Boolean(pendingRequest);
+    byId("lottery-wheel-back-button").disabled = wheelBackDisabled;
+    byId("lottery-wheel-back-button").setAttribute(
+      "aria-disabled",
+      String(wheelBackDisabled)
+    );
+    setMemberRoutesLocked(isBusy);
     document.querySelectorAll(".lottery-ticket-button").forEach(function (ticket) {
       ticket.disabled =
         isBusy ||
         isWheelPreparing ||
         Boolean(pendingRequest);
     });
+  }
+
+  function setMemberRoutesLocked(locked) {
+    document.querySelectorAll("[data-member-route]").forEach(function (link) {
+      if (locked) {
+        if (!link.hasAttribute("data-unlocked-tabindex")) {
+          link.setAttribute(
+            "data-unlocked-tabindex",
+            link.hasAttribute("tabindex")
+              ? String(link.getAttribute("tabindex"))
+              : "none"
+          );
+        }
+        link.setAttribute("aria-disabled", "true");
+        link.setAttribute("tabindex", "-1");
+        return;
+      }
+
+      var originalTabIndex = link.getAttribute("data-unlocked-tabindex");
+      link.removeAttribute("aria-disabled");
+      link.removeAttribute("data-unlocked-tabindex");
+      if (originalTabIndex === "none" || originalTabIndex === null) {
+        link.removeAttribute("tabindex");
+      } else {
+        link.setAttribute("tabindex", originalTabIndex);
+      }
+    });
+  }
+
+  function preventMemberRouteDuringSpin(event) {
+    var link =
+      event.target && typeof event.target.closest === "function"
+        ? event.target.closest("[data-member-route]")
+        : null;
+    if (!link || !isBusy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    showToast("轉盤正在開獎，結果顯示後即可離開。", "error");
+  }
+
+  function preventPageExitDuringSpin(event) {
+    if (!isBusy) return;
+    event.preventDefault();
+    event.returnValue = "";
   }
 
   function ensurePendingRequest(ticket) {
@@ -1475,21 +1324,17 @@
     var dialog = byId("lottery-result-dialog");
     if (typeof dialog.close === "function" && dialog.open) dialog.close();
     else dialog.removeAttribute("open");
-    selectedRewardTicket = null;
-    selectedLotteryTypeId = "";
-    showLotteryTicketView();
-    selectTicketTab("earned", false);
-    updateControls();
-    loadPointHistory();
-    window.requestAnimationFrame(function () {
-      byId("earned-ticket-tab").focus({ preventScroll: true });
-      window.scrollTo({
-        top: byId("lottery-ticket-workspace").offsetTop - 120,
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-      });
-    });
+    navigateToMemberPanel("tickets");
+  }
+
+  function navigateToMemberPanel(panel) {
+    if (isBusy) return;
+    var url = new URL("./", window.location.href);
+    if (panel === "tickets" || panel === "history") {
+      url.searchParams.set("panel", panel);
+    }
+    if (isDemoSession || hasDemoQuery()) url.searchParams.set("demo", "1");
+    window.location.assign(url.toString());
   }
 
   function handleLogin() {
@@ -1668,9 +1513,85 @@
     return normalizePointNumber(value).toLocaleString("zh-TW");
   }
 
+  function captureRequestedCardRoundKey() {
+    var pageUrl = new URL(window.location.href);
+    var directTicket = pageUrl.searchParams.get("ticket");
+    var liffState = pageUrl.searchParams.get("liff.state");
+    var stateUrl = null;
+    var stateTicket = null;
+    var urlChanged = directTicket !== null;
+
+    if (liffState) {
+      try {
+        stateUrl = new URL(liffState, window.location.origin);
+        stateTicket = stateUrl.searchParams.get("ticket");
+      } catch (_error) {
+        stateUrl = null;
+      }
+    }
+
+    var incomingTicket =
+      directTicket !== null ? directTicket : stateTicket;
+    if (incomingTicket !== null) {
+      var normalizedTicket = String(incomingTicket || "").trim();
+      if (
+        /^PCS-[A-Z0-9]{12}:[1-9]\d{0,15}:[1-9]\d{0,3}$/.test(
+          normalizedTicket
+        )
+      ) {
+        requestedCardRoundKey = normalizedTicket;
+        requestedTicketError = "";
+      } else {
+        requestedCardRoundKey = "";
+        requestedTicketError = "抽獎券連結格式不正確，請返回會員資料重新選擇。";
+      }
+    }
+
+    pageUrl.searchParams.delete("ticket");
+    if (stateUrl && stateTicket !== null) {
+      stateUrl.searchParams.delete("ticket");
+      urlChanged = true;
+      if (
+        (stateUrl.pathname === "/" || stateUrl.pathname === pageUrl.pathname) &&
+        !stateUrl.search &&
+        !stateUrl.hash
+      ) {
+        pageUrl.searchParams.delete("liff.state");
+      } else {
+        pageUrl.searchParams.set(
+          "liff.state",
+          stateUrl.pathname + stateUrl.search + stateUrl.hash
+        );
+      }
+    }
+    if (urlChanged && window.history && window.history.replaceState) {
+      window.history.replaceState(
+        window.history.state,
+        document.title,
+        pageUrl.toString()
+      );
+    }
+  }
+
+  function clearRequestedTicketFromUrl() {
+    var pageUrl = new URL(window.location.href);
+    if (!pageUrl.searchParams.has("ticket")) return;
+    pageUrl.searchParams.delete("ticket");
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(
+        window.history.state,
+        document.title,
+        pageUrl.toString()
+      );
+    }
+  }
+
   function getCleanPageUrl() {
     var url = new URL(window.location.href);
     url.hash = "";
+    if (requestedCardRoundKey) {
+      url.searchParams.set("ticket", requestedCardRoundKey);
+    }
     return url.toString();
   }
 
@@ -1685,12 +1606,10 @@
   }
 
   function bindInteractions() {
+    document.addEventListener("click", preventMemberRouteDuringSpin, true);
+    window.addEventListener("beforeunload", preventPageExitDuringSpin);
     byId("login-button").addEventListener("click", handleLogin);
     byId("retry-button").addEventListener("click", boot);
-    byId("refresh-point-history-button").addEventListener(
-      "click",
-      loadPointHistory
-    );
     ["locked", "earned"].forEach(function (name) {
       byId(name + "-ticket-tab").addEventListener("click", function () {
         selectTicketTab(name, false);

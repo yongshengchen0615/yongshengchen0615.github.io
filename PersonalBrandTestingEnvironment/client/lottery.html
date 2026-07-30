@@ -91,7 +91,7 @@
             <ol class="point-card-milestones" id="point-card-milestones" aria-label="本張卡抽獎節點"></ol>
             <div class="point-card-progress-meta">
               <p id="point-card-progress-message">再獲得 5 點可取得抽獎券。</p>
-              <p>目前持有 <strong id="available-draw-count">0</strong> 張</p>
+              <p><span id="point-card-expiry">集點卡無期限</span> · 目前持有 <strong id="available-draw-count">0</strong> 張</p>
             </div>
           </section>
 
@@ -153,38 +153,6 @@
             </div>
           </section>
 
-          <section class="point-history" aria-labelledby="point-history-title">
-            <header class="point-history-heading">
-              <div>
-                <p class="eyebrow">POINT ACTIVITY</p>
-                <h2 id="point-history-title">點數紀錄</h2>
-              </div>
-              <div class="point-history-actions">
-                <span id="point-history-summary" aria-live="polite">尚未載入</span>
-                <button class="refresh-button" id="refresh-point-history-button" type="button">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
-                  <span>更新</span>
-                </button>
-              </div>
-            </header>
-
-            <div class="point-history-loading" id="point-history-loading" role="status" aria-live="polite" hidden>
-              <span class="history-loading-line"></span>
-              <span class="history-loading-line"></span>
-              <span class="history-loading-line"></span>
-            </div>
-            <ol
-              class="point-history-list"
-              id="point-history-list"
-              aria-busy="false"
-              aria-describedby="point-history-summary"
-            ></ol>
-            <div class="point-history-empty" id="point-history-empty" hidden>
-              <strong>尚無點數紀錄</strong>
-              <p>完成領點或抽獎後會顯示在這裡。</p>
-            </div>
-            <p class="point-history-error" id="point-history-error" role="alert" hidden></p>
-          </section>
         </section>
 
         <section class="lottery-wheel-view" id="lottery-wheel-view" hidden aria-labelledby="selected-lottery-name">
@@ -233,7 +201,7 @@
         </div>
         <p class="lottery-result-note">不扣點，本券已使用。</p>
         <button class="primary-button full-width" id="lottery-result-confirm-button" type="button">
-          <span>確認並返回集點卡</span>
+          <span>確認並返回會員資料</span>
         </button>
       </section>
     </dialog>

@@ -172,6 +172,45 @@
                 <b>點</b>
               </span>
             </label>
+            <fieldset class="point-card-expiry-editor">
+              <legend>集點卡期限</legend>
+              <div class="point-card-expiry-options">
+                <label for="point-card-expiry-unlimited">
+                  <input
+                    id="point-card-expiry-unlimited"
+                    name="pointCardExpiryMode"
+                    type="radio"
+                    value="unlimited"
+                    checked
+                  />
+                  <span>無期限</span>
+                </label>
+                <label for="point-card-expiry-limited">
+                  <input
+                    id="point-card-expiry-limited"
+                    name="pointCardExpiryMode"
+                    type="radio"
+                    value="limited"
+                  />
+                  <span>指定到期日</span>
+                </label>
+              </div>
+              <label
+                class="point-card-expiry-date"
+                id="point-card-expiry-date-field"
+                for="point-card-expires-on-input"
+                hidden
+              >
+                <span>有效至</span>
+                <input
+                  id="point-card-expires-on-input"
+                  name="pointCardExpiresOn"
+                  type="date"
+                  aria-describedby="point-card-expiry-help point-card-setting-error"
+                />
+              </label>
+              <small id="point-card-expiry-help">到期日當天仍可集點與使用抽獎券；隔日會重置目前集點並開啟新一輪，累計點數不受影響。</small>
+            </fieldset>
             <section class="point-card-reward-editor" aria-labelledby="point-card-reward-editor-title">
               <header>
                 <div>
@@ -189,6 +228,7 @@
             <dl class="lottery-rule-meta">
               <div><dt>目前規則</dt><dd id="point-card-setting-current">—</dd></div>
               <div><dt>生效時間</dt><dd id="point-card-setting-effective">—</dd></div>
+              <div><dt>目前期限</dt><dd id="point-card-setting-expiry">無期限</dd></div>
             </dl>
             <button class="primary-button" id="save-point-card-setting-button" type="submit">
               <span>儲存集點卡規則</span>

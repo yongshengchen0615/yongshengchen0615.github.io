@@ -659,6 +659,8 @@
             { points: 15, lotteryTypeId: "" },
             { points: 20, lotteryTypeId: "" },
           ],
+          expiryMode: "unlimited",
+          expiresOn: "",
           effectiveAt: new Date().toISOString(),
         },
         lotteryTypes: [],
@@ -843,12 +845,21 @@
       };
     });
     var effectiveAt = String(value.effectiveAt || "").trim();
+    var expiryMode = String(value.expiryMode || "unlimited")
+      .trim()
+      .toLowerCase();
+    var expiresOn = String(value.expiresOn || "").trim();
+    var expiryIsValid =
+      expiryMode === "unlimited"
+        ? expiresOn === ""
+        : expiryMode === "limited" && isValidDateInputValue(expiresOn);
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
       !Number.isInteger(targetPoints) ||
       targetPoints < 1 ||
       targetPoints > 9999 ||
-      Number.isNaN(new Date(effectiveAt).getTime())
+      Number.isNaN(new Date(effectiveAt).getTime()) ||
+      !expiryIsValid
     ) {
       throw createError("INVALID_RESPONSE", "後台回傳的集點卡規則格式不正確。");
     }
@@ -857,8 +868,22 @@
       targetPoints: targetPoints,
       rewardMilestones: rewardMilestones,
       rewardRules: rewardRules,
+      expiryMode: expiryMode,
+      expiresOn: expiresOn,
       effectiveAt: effectiveAt,
     };
+  }
+
+  function isValidDateInputValue(value) {
+    var raw = String(value || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+    var parts = raw.split("-").map(Number);
+    var date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    return (
+      date.getUTCFullYear() === parts[0] &&
+      date.getUTCMonth() === parts[1] - 1 &&
+      date.getUTCDate() === parts[2]
+    );
   }
 
   function normalizePointCardMilestones(value, targetPoints) {
@@ -958,6 +983,13 @@
   function renderPointCardSetting() {
     if (!pointCardSetting) return;
     byId("point-card-target-input").value = String(pointCardSetting.targetPoints);
+    byId("point-card-expiry-unlimited").checked =
+      pointCardSetting.expiryMode === "unlimited";
+    byId("point-card-expiry-limited").checked =
+      pointCardSetting.expiryMode === "limited";
+    byId("point-card-expires-on-input").value =
+      pointCardSetting.expiresOn;
+    syncPointCardExpiryControls();
     byId("point-card-setting-current").textContent =
       pointCardSetting.targetPoints +
       " 點一張 · " +
@@ -965,7 +997,32 @@
       " 點抽獎";
     byId("point-card-setting-effective").textContent =
       formatDateTime(pointCardSetting.effectiveAt);
+    byId("point-card-setting-expiry").textContent =
+      pointCardSetting.expiryMode === "limited"
+        ? "有效至 " + pointCardSetting.expiresOn.replace(/-/g, "/")
+        : "無期限";
     renderPointCardRewardRows();
+  }
+
+  function syncPointCardExpiryControls() {
+    var limited = byId("point-card-expiry-limited").checked;
+    var input = byId("point-card-expires-on-input");
+    var today = taipeiDateInputValue(new Date());
+    input.min = today;
+    byId("point-card-expiry-date-field").hidden = !limited;
+    input.required = limited;
+    if (limited && !input.value) {
+      input.value = taipeiDateInputValue(
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      );
+    }
+    clearPointCardSettingError();
+  }
+
+  function taipeiDateInputValue(value) {
+    return new Date(new Date(value).getTime() + 8 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
   }
 
   function getConfiguredLotteryTypes() {
@@ -1555,6 +1612,25 @@
       input.focus();
       return;
     }
+    var expiryMode = byId("point-card-expiry-limited").checked
+      ? "limited"
+      : "unlimited";
+    var expiresOn =
+      expiryMode === "limited"
+        ? String(byId("point-card-expires-on-input").value || "").trim()
+        : "";
+    if (
+      expiryMode === "limited" &&
+      (!isValidDateInputValue(expiresOn) ||
+        expiresOn < taipeiDateInputValue(new Date()))
+    ) {
+      showPointCardSettingError(
+        "請選擇今天或之後的集點卡到期日。",
+        byId("point-card-expires-on-input")
+      );
+      byId("point-card-expires-on-input").focus();
+      return;
+    }
     var rewardRules;
     try {
       rewardRules = validatePointCardRewardRules(targetPoints);
@@ -1577,6 +1653,8 @@
         targetPoints: targetPoints,
         rewardMilestones: rewardMilestones,
         rewardRules: rewardRules,
+        expiryMode: expiryMode,
+        expiresOn: expiresOn,
         effectiveAt: new Date().toISOString(),
       };
       pointCardRewardRules = rewardRules.map(function (rule) {
@@ -1596,6 +1674,8 @@
     sendAdminRequest("adminSavePointCardSetting", {
       pointCardTarget: targetPoints,
       pointCardRewards: rewardRules,
+      pointCardExpiryMode: expiryMode,
+      pointCardExpiresOn: expiresOn,
     })
       .then(function (response) {
         assertSuccessfulResponse(response);
@@ -1732,6 +1812,7 @@
     error.textContent = "";
     error.hidden = true;
     byId("point-card-target-input").removeAttribute("aria-invalid");
+    byId("point-card-expires-on-input").removeAttribute("aria-invalid");
   }
 
   function showDeleteLotteryTypeError(message) {
@@ -3096,6 +3177,8 @@
       INVALID_POINT_CARD_TARGET: "集點卡總點數必須是 1 至 9999 的整數。",
       INVALID_POINT_CARD_MILESTONES:
         "抽獎節點必須是遞增整數，且最後一個節點等於集點卡總點數。",
+      INVALID_POINT_CARD_EXPIRY:
+        "請選擇正確的集點卡期限；指定日期不可早於今天。",
       POINT_CARD_DATA_ERROR: "集點卡設定資料不一致，請先檢查工作表內容。",
       INVALID_LOTTERY_PRIZES: "請設定 2 至 12 個有效的轉盤獎項。",
       INVALID_LOTTERY_TYPE_ID: "轉盤類型識別碼無效，請重新整理後再試。",
@@ -3206,6 +3289,13 @@
         busy || !hasLotteryEditor || lotteryPrizes.length >= 12;
       byId("save-lottery-button").disabled = busy || !hasLotteryEditor;
       byId("point-card-target-input").disabled = busy;
+      document
+        .querySelectorAll(
+          "input[name='pointCardExpiryMode'], #point-card-expires-on-input"
+        )
+        .forEach(function (control) {
+          control.disabled = busy;
+        });
       byId("add-point-card-reward-button").disabled =
         busy ||
         pointCardRewardRules.length >= 20 ||
@@ -3465,6 +3555,15 @@
         addPointCardRewardRule
       );
       byId("point-card-target-input").addEventListener(
+        "input",
+        clearPointCardSettingError
+      );
+      document
+        .querySelectorAll("input[name='pointCardExpiryMode']")
+        .forEach(function (input) {
+          input.addEventListener("change", syncPointCardExpiryControls);
+        });
+      byId("point-card-expires-on-input").addEventListener(
         "input",
         clearPointCardSettingError
       );

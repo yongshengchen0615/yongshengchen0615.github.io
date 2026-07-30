@@ -1736,6 +1736,76 @@ tbody tr[data-busy="true"] {
   font-size: 1rem;
 }
 
+.point-card-expiry-editor {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.point-card-expiry-editor legend,
+.point-card-expiry-date > span {
+  margin-bottom: 0.5rem;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+}
+
+.point-card-expiry-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.point-card-expiry-options label {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--line-strong);
+  padding: 0.6rem 0.8rem;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.46);
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.point-card-expiry-options label:has(input:checked) {
+  border-color: var(--green-dark);
+  color: var(--green-deep);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.point-card-expiry-options input {
+  accent-color: var(--green-dark);
+}
+
+.point-card-expiry-date {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.point-card-expiry-date[hidden] {
+  display: none;
+}
+
+.point-card-expiry-date input {
+  width: min(100%, 18rem);
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  padding: 0.65rem 0.75rem;
+  color: var(--green-deep);
+  background: rgba(255, 255, 255, 0.62);
+  font: inherit;
+}
+
+.point-card-expiry-editor small {
+  color: var(--ink-faint);
+  font-size: 0.63rem;
+  line-height: 1.55;
+}
+
 .point-card-reward-editor {
   display: grid;
   gap: 0.75rem;
@@ -1844,7 +1914,7 @@ tbody tr[data-busy="true"] {
 
 .lottery-rule-meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   border-block: 1px solid var(--line);
 }

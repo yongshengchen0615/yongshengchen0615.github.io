@@ -21,6 +21,8 @@
     "pointCardTarget",
     "pointCardMilestones",
     "pointCardRewards",
+    "pointCardExpiryMode",
+    "pointCardExpiresOn",
     "lotteryTypeId",
     "cardRoundKey",
     "lotteryTypeName",

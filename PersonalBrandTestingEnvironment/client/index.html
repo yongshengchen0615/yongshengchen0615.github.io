@@ -198,6 +198,7 @@
                     本輪目標 <output id="member-point-card-target">—</output> 點 ·
                     累計 <output id="member-point-balance" aria-label="會員終身累計點數">0</output> 點
                   </span>
+                  <span class="pass-point-expiry" id="member-point-card-expiry">集點卡無期限</span>
                   <span
                     class="pass-point-progress"
                     id="member-point-card-progress-track"
@@ -216,11 +217,15 @@
                 <span>掃描集點碼</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
               </button>
-              <a class="secondary-button member-ticket-button" id="lottery-page-link" href="lottery.html" data-client-route aria-label="抽獎券">
+              <button class="secondary-button member-ticket-button" id="lottery-page-link" type="button" aria-haspopup="dialog" aria-controls="member-ticket-dialog" aria-label="抽獎券">
                 <span>抽獎券</span>
                 <output class="member-ticket-count" id="member-ticket-count" aria-label="可用抽獎券數量" aria-live="polite" hidden>0</output>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4V7zM9 7v10"></path></svg>
-              </a>
+              </button>
+              <button class="secondary-button member-history-button" id="open-point-history-button" type="button" aria-haspopup="dialog" aria-controls="point-history-dialog">
+                <span>點數紀錄</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M20 12a8 8 0 1 1-2.3-5.7M17 4v3h3"></path></svg>
+              </button>
             </div>
 
             <div class="member-account-actions">
@@ -379,6 +384,121 @@
       <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
         取消掃描
       </button>
+    </dialog>
+
+    <dialog
+      class="modal member-panel-dialog member-ticket-dialog"
+      id="member-ticket-dialog"
+      aria-labelledby="member-ticket-title"
+      aria-describedby="member-ticket-description"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">LOTTERY TICKETS</p>
+          <h2 id="member-ticket-title">抽獎券</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="關閉抽獎券視窗">×</button>
+      </div>
+      <p class="member-panel-description" id="member-ticket-description">
+        查看本張集點卡的抽獎節點；選擇已獲得的票券即可開啟轉盤。
+      </p>
+
+      <div class="lottery-ticket-tabs member-ticket-tabs" id="member-ticket-tabs" role="tablist" aria-label="抽獎券狀態">
+        <button
+          id="member-locked-ticket-tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="member-locked-ticket-panel"
+          tabindex="-1"
+        >
+          <span>未獲得</span>
+          <strong><output id="member-locked-ticket-count">0</output><small>張</small></strong>
+        </button>
+        <button
+          id="member-earned-ticket-tab"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="member-earned-ticket-panel"
+        >
+          <span>已獲得</span>
+          <strong><output id="member-earned-ticket-count">0</output><small>張</small></strong>
+        </button>
+      </div>
+
+      <div class="member-panel-scroll">
+        <section
+          class="lottery-ticket-panel is-locked"
+          id="member-locked-ticket-panel"
+          role="tabpanel"
+          aria-labelledby="member-locked-ticket-tab"
+          hidden
+        >
+          <div class="lottery-locked-ticket-list" id="member-locked-ticket-list"></div>
+          <p class="lottery-ticket-empty" id="member-locked-ticket-empty" hidden>
+            本張卡的抽獎節點都已取得。
+          </p>
+        </section>
+
+        <section
+          class="lottery-ticket-panel is-earned"
+          id="member-earned-ticket-panel"
+          role="tabpanel"
+          aria-labelledby="member-earned-ticket-tab"
+        >
+          <div class="lottery-ticket-list" id="member-earned-ticket-list"></div>
+          <p class="lottery-ticket-empty" id="member-earned-ticket-empty" hidden>
+            目前沒有可用的抽獎券。
+          </p>
+          <p class="member-ticket-limit-note" id="member-ticket-limit-note" hidden>
+            票券較多，目前先顯示前 50 張。
+          </p>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog
+      class="modal member-panel-dialog member-history-dialog"
+      id="point-history-dialog"
+      aria-labelledby="point-history-title"
+      aria-describedby="point-history-summary"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">POINT ACTIVITY</p>
+          <h2 id="point-history-title">點數紀錄</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="關閉點數紀錄視窗">×</button>
+      </div>
+
+      <section class="point-history member-point-history">
+        <div class="point-history-actions">
+          <span id="point-history-summary" aria-live="polite">尚未載入</span>
+          <button class="refresh-button" id="refresh-point-history-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+            <span>更新</span>
+          </button>
+        </div>
+        <div class="member-panel-scroll">
+          <div class="point-history-loading" id="point-history-loading" role="status" aria-live="polite" hidden>
+            <span class="history-loading-line"></span>
+            <span class="history-loading-line"></span>
+            <span class="history-loading-line"></span>
+          </div>
+          <ol
+            class="point-history-list"
+            id="point-history-list"
+            aria-busy="false"
+            aria-describedby="point-history-summary"
+          ></ol>
+          <div class="point-history-empty" id="point-history-empty" hidden>
+            <strong>尚無點數紀錄</strong>
+            <p>完成領點或抽獎後會顯示在這裡。</p>
+          </div>
+          <p class="point-history-error" id="point-history-error" role="alert" hidden></p>
+        </div>
+      </section>
     </dialog>
 
     <dialog

@@ -205,8 +205,12 @@ var LEGACY_POINT_CARD_SETTING_HEADERS = [
 var MILESTONE_POINT_CARD_SETTING_HEADERS = LEGACY_POINT_CARD_SETTING_HEADERS.concat([
   "reward_milestones",
 ]);
-var POINT_CARD_SETTING_HEADERS = MILESTONE_POINT_CARD_SETTING_HEADERS.concat([
+var LOTTERY_POINT_CARD_SETTING_HEADERS = MILESTONE_POINT_CARD_SETTING_HEADERS.concat([
   "reward_lottery_type_ids",
+]);
+var POINT_CARD_SETTING_HEADERS = LOTTERY_POINT_CARD_SETTING_HEADERS.concat([
+  "expiry_mode",
+  "expires_on",
 ]);
 
 var POINT_CARD_SETTING_COLUMN = {
@@ -217,6 +221,8 @@ var POINT_CARD_SETTING_COLUMN = {
   lastRequestId: 5,
   rewardMilestones: 6,
   rewardLotteryTypeIds: 7,
+  expiryMode: 8,
+  expiresOn: 9,
 };
 
 var LOTTERY_TYPE_HEADERS = [
@@ -964,6 +970,10 @@ function readPointCardSettings_(sheet) {
         lotteryTypeId: rewardLotteryTypeIds[ruleIndex],
       };
     });
+    var expiry = parseStoredPointCardExpiry_(
+      row[POINT_CARD_SETTING_COLUMN.expiryMode - 1],
+      row[POINT_CARD_SETTING_COLUMN.expiresOn - 1]
+    );
     if (
       !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
       !Number.isInteger(targetPoints) ||
@@ -972,6 +982,8 @@ function readPointCardSettings_(sheet) {
       isNaN(effectiveAtDate.getTime()) ||
       (updatedBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(updatedBy)) ||
       !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      (expiry.expiresAtTime &&
+        expiry.expiresAtTime <= effectiveAtDate.getTime()) ||
       versions[settingVersion] ||
       requests[lastRequestId]
     ) {
@@ -984,6 +996,10 @@ function readPointCardSettings_(sheet) {
       targetPoints: targetPoints,
       rewardMilestones: rewardMilestones,
       rewardRules: rewardRules,
+      expiryMode: expiry.expiryMode,
+      expiresOn: expiry.expiresOn,
+      expiresAt: expiry.expiresAt,
+      expiresAtTime: expiry.expiresAtTime,
       effectiveAt: effectiveAtDate.toISOString(),
       effectiveAtTime: effectiveAtDate.getTime(),
     };
@@ -997,6 +1013,49 @@ function readPointCardSettings_(sheet) {
     }
   }
   return settings;
+}
+
+function parseStoredPointCardExpiry_(modeValue, expiresOnValue) {
+  var mode = String(modeValue || "unlimited").trim().toLowerCase();
+  var expiresOn = String(expiresOnValue || "").trim();
+  if (mode !== "limited" && mode !== "unlimited") {
+    throw appError_("POINT_CARD_DATA_ERROR", "集點卡期限模式不正確。");
+  }
+  if (mode === "unlimited") {
+    if (expiresOn) {
+      throw appError_("POINT_CARD_DATA_ERROR", "無期限集點卡不可設定到期日。");
+    }
+    return {
+      expiryMode: "unlimited",
+      expiresOn: "",
+      expiresAt: "",
+      expiresAtTime: 0,
+    };
+  }
+  if (!isValidPointCardDate_(expiresOn)) {
+    throw appError_("POINT_CARD_DATA_ERROR", "集點卡到期日格式不正確。");
+  }
+  var expiresAtTime =
+    new Date(expiresOn + "T00:00:00+08:00").getTime() +
+    24 * 60 * 60 * 1000;
+  return {
+    expiryMode: "limited",
+    expiresOn: expiresOn,
+    expiresAt: new Date(expiresAtTime).toISOString(),
+    expiresAtTime: expiresAtTime,
+  };
+}
+
+function isValidPointCardDate_(value) {
+  var raw = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  var date = new Date(raw + "T00:00:00+08:00");
+  return (
+    !isNaN(date.getTime()) &&
+    new Date(date.getTime() + 8 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10) === raw
+  );
 }
 
 function parsePointCardMilestones_(value, targetPoints) {
@@ -1151,8 +1210,12 @@ function getMemberPointCardStatus_(
   var ledger = readMemberPointLedger_(redemptionSheet, lineUserId);
   var settings = readPointCardSettings_(settingSheet);
   var pointsBySetting = Object.create(null);
+  var nowTime = new Date().getTime();
   settings.forEach(function (setting) {
-    pointsBySetting[setting.settingVersion] = 0;
+    pointsBySetting[setting.settingVersion] = {
+      beforeExpiry: 0,
+      afterExpiry: 0,
+    };
   });
   ledger.events.forEach(function (event) {
     var selected = null;
@@ -1166,15 +1229,46 @@ function getMemberPointCardStatus_(
     if (!selected) {
       throw appError_("POINT_CARD_DATA_ERROR", "點數紀錄早於第一版集點卡規則。");
     }
-    pointsBySetting[selected.settingVersion] += event.points;
+    var pointBucket = pointsBySetting[selected.settingVersion];
+    if (
+      selected.expiryMode === "limited" &&
+      event.redeemedAtTime >= selected.expiresAtTime
+    ) {
+      pointBucket.afterExpiry += event.points;
+    } else {
+      pointBucket.beforeExpiry += event.points;
+    }
   });
 
   var ranges = [];
   var settingsByVersion = Object.create(null);
   var totalCompletedCards = 0;
   var totalEarnedRewards = 0;
+  var totalEligibleRewards = 0;
   settings.forEach(function (setting) {
-    var earned = pointsBySetting[setting.settingVersion];
+    var pointBuckets = pointsBySetting[setting.settingVersion];
+    var expiryApplied =
+      setting.expiryMode === "limited" &&
+      setting.expiresAtTime <= nowTime;
+    var expiredPoints = expiryApplied ? pointBuckets.beforeExpiry : 0;
+    var earned = expiryApplied
+      ? pointBuckets.afterExpiry
+      : pointBuckets.beforeExpiry + pointBuckets.afterExpiry;
+    var expiredCompletedCards = Math.floor(
+      expiredPoints / setting.targetPoints
+    );
+    var expiredCurrentPoints = expiredPoints % setting.targetPoints;
+    var expiredReachedMilestones = setting.rewardMilestones.filter(
+      function (milestone) {
+        return milestone <= expiredCurrentPoints;
+      }
+    );
+    var expiredEarnedRewards =
+      expiredCompletedCards * setting.rewardMilestones.length +
+      expiredReachedMilestones.length;
+    var reservedExpiredCards = expiredPoints
+      ? Math.ceil(expiredPoints / setting.targetPoints)
+      : 0;
     var completedCards = Math.floor(earned / setting.targetPoints);
     var currentPoints = earned % setting.targetPoints;
     var reachedMilestones = setting.rewardMilestones.filter(function (milestone) {
@@ -1183,7 +1277,12 @@ function getMemberPointCardStatus_(
     var earnedRewards =
       completedCards * setting.rewardMilestones.length +
       reachedMilestones.length;
-    if (!Number.isSafeInteger(earnedRewards)) {
+    var allEarnedRewards = expiredEarnedRewards + earnedRewards;
+    if (
+      !Number.isSafeInteger(expiredEarnedRewards) ||
+      !Number.isSafeInteger(earnedRewards) ||
+      !Number.isSafeInteger(allEarnedRewards)
+    ) {
       throw appError_("POINT_CARD_DATA_ERROR", "集點卡抽獎資格數量超出可處理範圍。");
     }
     var range = {
@@ -1192,18 +1291,31 @@ function getMemberPointCardStatus_(
       rewardMilestones: setting.rewardMilestones,
       rewardRules: setting.rewardRules,
       earnedPoints: earned,
+      expiredPoints: expiredPoints,
       currentPoints: currentPoints,
       reachedMilestones: reachedMilestones,
       completedCards: completedCards,
-      earnedRewards: earnedRewards,
+      expiredCompletedCards: expiredCompletedCards,
+      expiredEarnedRewards: expiredEarnedRewards,
+      reservedExpiredCards: reservedExpiredCards,
+      activeEarnedRewards: earnedRewards,
+      earnedRewards: allEarnedRewards,
       startOrdinal: totalEarnedRewards + 1,
-      endOrdinal: totalEarnedRewards + earnedRewards,
+      expiredEndOrdinal: totalEarnedRewards + expiredEarnedRewards,
+      activeStartOrdinal: totalEarnedRewards + expiredEarnedRewards + 1,
+      endOrdinal: totalEarnedRewards + allEarnedRewards,
+      expiryMode: setting.expiryMode,
+      expiresOn: setting.expiresOn,
+      expiresAt: setting.expiresAt,
+      expiryApplied: expiryApplied,
     };
-    totalCompletedCards += completedCards;
-    totalEarnedRewards += earnedRewards;
+    totalCompletedCards += expiredCompletedCards + completedCards;
+    totalEarnedRewards += allEarnedRewards;
+    totalEligibleRewards += earnedRewards;
     if (
       !Number.isSafeInteger(totalCompletedCards) ||
-      !Number.isSafeInteger(totalEarnedRewards)
+      !Number.isSafeInteger(totalEarnedRewards) ||
+      !Number.isSafeInteger(totalEligibleRewards)
     ) {
       throw appError_("POINT_CARD_DATA_ERROR", "集點卡累計資料超出可處理範圍。");
     }
@@ -1231,15 +1343,26 @@ function getMemberPointCardStatus_(
     var milestoneIndex = range
       ? range.rewardMilestones.indexOf(milestonePoints)
       : -1;
+    var isExpiredCard =
+      range && cardNumber <= range.reservedExpiredCards;
+    var relativeCardNumber = isExpiredCard
+      ? cardNumber
+      : cardNumber - (range ? range.reservedExpiredCards : 0);
     var qualificationNumber =
-      (cardNumber - 1) * (range ? range.rewardMilestones.length : 0) +
+      (relativeCardNumber - 1) *
+        (range ? range.rewardMilestones.length : 0) +
       milestoneIndex +
       1;
+    if (!isExpiredCard && range) {
+      qualificationNumber += range.expiredEarnedRewards;
+    }
     if (
       !range ||
       (keyParts.length !== 1 && keyParts.length !== 2) ||
       !Number.isSafeInteger(cardNumber) ||
       cardNumber < 1 ||
+      !Number.isSafeInteger(relativeCardNumber) ||
+      relativeCardNumber < 1 ||
       milestoneIndex < 0 ||
       !Number.isSafeInteger(qualificationNumber) ||
       qualificationNumber < 1 ||
@@ -1276,14 +1399,26 @@ function getMemberPointCardStatus_(
   }
 
   var availableRewards = [];
-  for (
-    var ordinal = 1;
-    ordinal <= totalEarnedRewards &&
-    availableRewards.length < MAX_AVAILABLE_REWARD_TICKETS;
-    ordinal += 1
-  ) {
-    if (consumedOrdinals[ordinal]) continue;
-    availableRewards.push(pointCardRewardForOrdinal_(ranges, ordinal));
+  var consumedEligibleRewards = 0;
+  Object.keys(consumedOrdinals).forEach(function (ordinal) {
+    if (isEligiblePointCardRewardOrdinal_(ranges, Number(ordinal))) {
+      consumedEligibleRewards += 1;
+    }
+  });
+  ranges.forEach(function (range) {
+    for (
+      var ordinal = range.activeStartOrdinal;
+      ordinal <= range.endOrdinal &&
+      availableRewards.length < MAX_AVAILABLE_REWARD_TICKETS;
+      ordinal += 1
+    ) {
+      if (consumedOrdinals[ordinal]) continue;
+      availableRewards.push(pointCardRewardForOrdinal_(ranges, ordinal));
+    }
+  });
+  var availableDraws = totalEligibleRewards - consumedEligibleRewards;
+  if (!Number.isSafeInteger(availableDraws) || availableDraws < 0) {
+    throw appError_("LOTTERY_DATA_ERROR", "可用抽獎券數量不正確。");
   }
   var nextReward = availableRewards.length ? availableRewards[0] : null;
 
@@ -1299,18 +1434,27 @@ function getMemberPointCardStatus_(
     settingVersion: current.settingVersion,
     targetPoints: current.targetPoints,
     rewardMilestones: current.rewardMilestones.slice(),
+    expiryMode:
+      current.expiryApplied ? "unlimited" : current.expiryMode,
+    expiresOn:
+      current.expiryApplied ? "" : current.expiresOn,
+    configuredExpiryMode: current.expiryMode,
+    configuredExpiresOn: current.expiresOn,
+    expiryRolledOver: current.expiryApplied,
     reachedMilestones: current.reachedMilestones.slice(),
     currentPoints: current.currentPoints,
     nextMilestonePoints: nextMilestonePoints,
     pointsRemaining: nextMilestonePoints - current.currentPoints,
     pointsToCardComplete: current.targetPoints - current.currentPoints,
-    currentCardNumber: current.completedCards + 1,
-    currentRound: current.completedCards + 1,
+    currentCardNumber:
+      current.reservedExpiredCards + current.completedCards + 1,
+    currentRound:
+      current.reservedExpiredCards + current.completedCards + 1,
     completedCards: totalCompletedCards,
     completedRounds: totalCompletedCards,
     earnedRewards: totalEarnedRewards,
     drawsUsed: memberDrawCount,
-    availableDraws: totalEarnedRewards - memberDrawCount,
+    availableDraws: availableDraws,
     totalPoints: ledger.totalPoints,
     rewardRules: current.rewardRules.map(function (rule) {
       return {
@@ -1324,6 +1468,19 @@ function getMemberPointCardStatus_(
   };
 }
 
+function isEligiblePointCardRewardOrdinal_(ranges, ordinal) {
+  for (var rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+    var range = ranges[rangeIndex];
+    if (
+      ordinal >= range.activeStartOrdinal &&
+      ordinal <= range.endOrdinal
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function pointCardRewardForOrdinal_(ranges, ordinal) {
   for (var rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
     var candidate = ranges[rangeIndex];
@@ -1333,11 +1490,16 @@ function pointCardRewardForOrdinal_(ranges, ordinal) {
     ) {
       continue;
     }
-    var qualificationIndex = ordinal - candidate.startOrdinal;
+    var inExpiredPeriod = ordinal <= candidate.expiredEndOrdinal;
+    var qualificationIndex = inExpiredPeriod
+      ? ordinal - candidate.startOrdinal
+      : ordinal - candidate.activeStartOrdinal;
     var rewardIndex =
       qualificationIndex % candidate.rewardMilestones.length;
     var cardNumber =
-      Math.floor(qualificationIndex / candidate.rewardMilestones.length) + 1;
+      Math.floor(qualificationIndex / candidate.rewardMilestones.length) +
+      1 +
+      (inExpiredPeriod ? 0 : candidate.reservedExpiredCards);
     var milestonePoints = candidate.rewardMilestones[rewardIndex];
     return {
       settingVersion: candidate.settingVersion,
@@ -1360,6 +1522,8 @@ function pointCardStatusResponse_(status) {
   return {
     settingVersion: status.settingVersion,
     targetPoints: status.targetPoints,
+    expiryMode: status.expiryMode,
+    expiresOn: status.expiresOn,
     rewardMilestones: status.rewardMilestones.slice(),
     rewardRules: status.rewardRules.map(function (rule) {
       return {
@@ -1383,6 +1547,7 @@ function pointCardStatusResponse_(status) {
       return {
         settingVersion: reward.settingVersion,
         cardNumber: reward.cardNumber,
+        roundNumber: reward.roundNumber,
         milestonePoints: reward.milestonePoints,
         lotteryTypeId: reward.lotteryTypeId,
         cardRoundKey: reward.cardRoundKey,
@@ -1394,9 +1559,29 @@ function pointCardStatusResponse_(status) {
 
 function pointCardSummaryResponse_(status) {
   return {
+    settingVersion: status.settingVersion,
     currentPoints: status.currentPoints,
     targetPoints: status.targetPoints,
+    expiryMode: status.expiryMode,
+    expiresOn: status.expiresOn,
+    currentCardNumber: status.currentCardNumber,
     availableDraws: status.availableDraws,
+    rewardRules: status.rewardRules.map(function (rule) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    }),
+    availableRewards: status.availableRewards.map(function (reward) {
+      return {
+        settingVersion: reward.settingVersion,
+        cardNumber: reward.cardNumber,
+        roundNumber: reward.roundNumber,
+        milestonePoints: reward.milestonePoints,
+        lotteryTypeId: reward.lotteryTypeId,
+        cardRoundKey: reward.cardRoundKey,
+      };
+    }),
   };
 }
 
@@ -2629,10 +2814,12 @@ function getOrCreatePointCardSettingSheet_(config) {
     [
       LEGACY_POINT_CARD_SETTING_HEADERS,
       MILESTONE_POINT_CARD_SETTING_HEADERS,
+      LOTTERY_POINT_CARD_SETTING_HEADERS,
     ],
     [
-      ["", ""],
-      [""],
+      ["", "", "unlimited", ""],
+      ["", "unlimited", ""],
+      ["unlimited", ""],
     ]
   );
 }
@@ -2676,6 +2863,8 @@ function ensureDefaultPointCardSetting_(sheet) {
     "SYSTEM",
     "setup-default-card",
     String(DEFAULT_POINT_CARD_TARGET),
+    "",
+    "unlimited",
     "",
   ]);
   applyPointCardSettingSheetFormats_(sheet);
@@ -3008,7 +3197,7 @@ function applyPointRedemptionRowFormats_(sheet, rowNumber) {
 
 function applyPointCardSettingSheetFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 4, 5, 6, 7].forEach(function (column) {
+  [1, 4, 5, 6, 7, 8, 9].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet

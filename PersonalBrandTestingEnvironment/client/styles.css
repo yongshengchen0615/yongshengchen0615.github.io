@@ -994,6 +994,13 @@ code {
   line-height: 1.45;
 }
 
+.pass-point-expiry {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: clamp(0.58rem, 1.1vw, 0.67rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
 .pass-point-progress {
   position: relative;
   overflow: hidden;
@@ -1019,7 +1026,7 @@ code {
 .member-service-actions {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
 }
 
@@ -1029,6 +1036,7 @@ code {
 }
 
 .member-ticket-button,
+.member-history-button,
 .member-account-actions .secondary-button {
   position: relative;
   display: inline-flex;
@@ -1551,6 +1559,68 @@ code {
   margin-inline: 0.15rem;
   border-bottom: 1px solid currentColor;
   color: var(--green-dark);
+}
+
+.member-panel-dialog {
+  width: min(calc(100% - 2rem), 42rem);
+  max-height: min(88svh, 50rem);
+  overflow: hidden;
+}
+
+.member-panel-description {
+  margin: 1.15rem 0 1.25rem;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.member-panel-scroll {
+  max-height: min(52svh, 30rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.member-ticket-tabs {
+  margin-inline: calc(clamp(1.4rem, 4vw, 2.5rem) * -1);
+  padding-inline: clamp(1.4rem, 4vw, 2.5rem);
+  background: var(--paper-soft);
+}
+
+.member-ticket-dialog .lottery-ticket-button,
+.member-ticket-dialog .lottery-locked-ticket {
+  min-height: 6.5rem;
+}
+
+.member-ticket-dialog .lottery-ticket-name {
+  font-size: clamp(1.15rem, 4.5vw, 1.75rem);
+}
+
+.member-ticket-limit-note {
+  margin: 1rem 0 0;
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+
+.member-point-history {
+  margin: 0;
+  padding: 1.2rem 0 0;
+  border-top: 0;
+}
+
+.member-point-history .point-history-actions {
+  justify-content: space-between;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.member-point-history .point-history-list,
+.member-point-history .point-history-loading,
+.member-point-history .point-history-empty,
+.member-point-history .point-history-error {
+  margin-top: 0;
 }
 
 .claim-modal {
@@ -2203,11 +2273,6 @@ code {
   padding-bottom: 0;
 }
 
-.lottery-page .point-history {
-  margin-top: clamp(3rem, 6vw, 6rem);
-  margin-bottom: clamp(3rem, 7vw, 7rem);
-}
-
 .lottery-ticket-workspace h2 {
   margin: 0.35rem 0 0;
   font-size: clamp(1.5rem, 2.8vw, 2.7rem);
@@ -2432,6 +2497,12 @@ code {
 }
 
 .lottery-wheel-back-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.lottery-page [data-member-route][aria-disabled="true"] {
+  pointer-events: none;
   cursor: not-allowed;
   opacity: 0.42;
 }
@@ -3049,7 +3120,12 @@ code {
   }
 
   .member-service-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
+  }
+
+  .member-scan-button {
+    grid-column: 1 / -1;
   }
 
   .member-service-actions .primary-button,
@@ -3107,6 +3183,42 @@ code {
     grid-column: 2 / -1;
     min-width: 0;
     text-align: left;
+  }
+
+  .member-panel-dialog {
+    width: 100%;
+    max-width: none;
+    max-height: min(84svh, 48rem);
+    margin: auto 0 0;
+    padding:
+      1.25rem
+      var(--page-gutter)
+      max(1.25rem, env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  .member-panel-dialog .modal-head {
+    padding-bottom: 1rem;
+  }
+
+  .member-panel-description {
+    margin-block: 0.9rem 1rem;
+  }
+
+  .member-panel-scroll {
+    max-height: min(45svh, 25rem);
+    scrollbar-gutter: auto;
+  }
+
+  .member-ticket-tabs {
+    margin-inline: calc(var(--page-gutter) * -1);
+    padding-inline: var(--page-gutter);
+  }
+
+  .member-ticket-dialog .lottery-ticket-button,
+  .member-ticket-dialog .lottery-locked-ticket {
+    min-height: 6.2rem;
   }
 
   .data-control {

@@ -421,6 +421,8 @@ function createPointCardSettingRow(gas, overrides = {}) {
     lastRequestId: "setup-default-card",
     rewardMilestones: "5",
     rewardLotteryTypeIds: gas.DEFAULT_LOTTERY_TYPE_ID,
+    expiryMode: "unlimited",
+    expiresOn: "",
     ...overrides,
   };
   if (!Object.prototype.hasOwnProperty.call(overrides, "rewardMilestones")) {
@@ -436,6 +438,37 @@ function createPointCardSettingRow(gas, overrides = {}) {
     row[gas.POINT_CARD_SETTING_COLUMN[key] - 1] = value;
   });
   return row;
+}
+
+function expectedPointCardSummary(gas, overrides = {}) {
+  const completed = overrides.availableDraws === 1;
+  return {
+    settingVersion: gas.DEFAULT_POINT_CARD_SETTING_VERSION,
+    currentPoints: 0,
+    targetPoints: 5,
+    expiryMode: "unlimited",
+    expiresOn: "",
+    currentCardNumber: completed ? 2 : 1,
+    availableDraws: completed ? 1 : 0,
+    rewardRules: [
+      {
+        points: 5,
+        lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      },
+    ],
+    availableRewards: completed
+      ? [
+          {
+            settingVersion: gas.DEFAULT_POINT_CARD_SETTING_VERSION,
+            cardNumber: 1,
+            roundNumber: 1,
+            milestonePoints: 5,
+            lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+            cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
+          },
+        ]
+      : [],
+  };
 }
 
 function createLotteryTypeRow(gas, overrides = {}) {
@@ -842,11 +875,10 @@ test("new member rows use the shared 23-column schema, omit legacy email and are
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.member, "email"), false);
   assert.equal(result.data.member.phone, "");
   assert.equal(result.data.member.birthday, "");
-  assert.deepEqual(JSON.parse(JSON.stringify(result.data.cardSummary)), {
-    currentPoints: 0,
-    targetPoints: 5,
-    availableDraws: 0,
-  });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result.data.cardSummary)),
+    expectedPointCardSummary(gas)
+  );
   assert.deepEqual(JSON.parse(JSON.stringify(result.data.access)), {
     status: "approved",
     allowed: true,
@@ -1265,11 +1297,10 @@ test("point redemption trusts campaign snapshot, persists once and is permanentl
   assert.equal(first.data.duplicate, false);
   assert.equal(first.data.awardedPoints, 3);
   assert.equal(first.data.pointBalance, 5);
-  assert.deepEqual(JSON.parse(JSON.stringify(first.data.cardSummary)), {
-    currentPoints: 0,
-    targetPoints: 5,
-    availableDraws: 1,
-  });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(first.data.cardSummary)),
+    expectedPointCardSummary(gas, { availableDraws: 1 })
+  );
   assert.equal(redemptionRows.length, 2);
   const saved = redemptionRows[1];
   assert.equal(saved[gas.POINT_REDEMPTION_COLUMN.campaignId - 1], "PCG-ABCDEF1234");
@@ -1415,11 +1446,10 @@ test("single-member campaigns award the first member and reject every later memb
   assert.equal(second.data.duplicate, true);
   assert.equal(second.data.duplicateReason, "campaign_redeemed");
   assert.equal(second.data.pointBalance, 0);
-  assert.deepEqual(JSON.parse(JSON.stringify(second.data.cardSummary)), {
-    currentPoints: 0,
-    targetPoints: 5,
-    availableDraws: 0,
-  });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(second.data.cardSummary)),
+    expectedPointCardSummary(gas)
+  );
   assert.equal(redemptionRows.length, 1);
 });
 
@@ -1864,11 +1894,10 @@ test("upsert and profile responses derive pointBalance from the redemption ledge
   );
 
   assert.equal(upsert.data.member.pointBalance, 5);
-  assert.deepEqual(JSON.parse(JSON.stringify(upsert.data.cardSummary)), {
-    currentPoints: 0,
-    targetPoints: 5,
-    availableDraws: 1,
-  });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(upsert.data.cardSummary)),
+    expectedPointCardSummary(gas, { availableDraws: 1 })
+  );
   assert.equal(profile.data.member.pointBalance, 5);
 });
 
@@ -2362,6 +2391,141 @@ test("milestone draw eligibility appears exactly when the running card reaches e
   );
 });
 
+test("an expired card resets current progress, expires unused tickets and keeps lifetime points", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        redemptionId: "RDM-BEFOREEXPIRY0001",
+        points: 5,
+        balanceAfter: 5,
+        redeemedAt: new Date("2020-01-01T15:59:59.999Z"),
+        requestId: "request-before-card-expiry",
+      }),
+      createPointRedemptionRow(gas, {
+        redemptionId: "RDM-AFTEREXPIRY00001",
+        campaignId: "PCG-AFTEREXP01",
+        pointTypeId: "PTY-AFTEREXP01",
+        points: 2,
+        balanceAfter: 7,
+        redeemedAt: new Date("2020-01-01T16:00:00.000Z"),
+        requestId: "request-after-card-expiry",
+      }),
+    ],
+    lotteryPrizeRows: createLotteryPrizeRows(gas),
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        expiryMode: "limited",
+        expiresOn: "2020-01-01",
+      }),
+    ],
+  });
+
+  let status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+
+  assert.equal(status.currentPoints, 2);
+  assert.equal(status.currentCardNumber, 2);
+  assert.equal(status.totalPoints, 7);
+  assert.equal(status.availableDraws, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(status.availableRewards)), []);
+  assert.equal(status.expiryMode, "unlimited");
+  assert.equal(status.expiresOn, "");
+  assert.equal(status.configuredExpiryMode, "limited");
+  assert.equal(status.configuredExpiresOn, "2020-01-01");
+  assert.equal(status.expiryRolledOver, true);
+
+  sheets.redemptionSheet.rows.push(
+    createPointRedemptionRow(gas, {
+      redemptionId: "RDM-NEWCYCLE00000001",
+      campaignId: "PCG-NEWCYCLE01",
+      pointTypeId: "PTY-NEWCYCLE01",
+      points: 3,
+      balanceAfter: 10,
+      redeemedAt: new Date("2020-01-03T00:00:00.000Z"),
+      requestId: "request-new-card-cycle",
+    })
+  );
+  status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+
+  assert.equal(status.currentPoints, 0);
+  assert.equal(status.currentCardNumber, 3);
+  assert.equal(status.totalPoints, 10);
+  assert.equal(status.availableDraws, 1);
+  assert.equal(
+    status.availableRewards[0].cardRoundKey,
+    `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:2:5`
+  );
+});
+
+test("a future card expiry remains visible in full and compact member status", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 3,
+        balanceAfter: 3,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+    pointCardSettingRows: [
+      createPointCardSettingRow(gas, {
+        expiryMode: "limited",
+        expiresOn: "2099-12-31",
+      }),
+    ],
+  });
+  const status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+  const full = gas.pointCardStatusResponse_(status);
+  const summary = gas.pointCardSummaryResponse_(status);
+
+  assert.equal(full.expiryMode, "limited");
+  assert.equal(full.expiresOn, "2099-12-31");
+  assert.equal(summary.expiryMode, "limited");
+  assert.equal(summary.expiresOn, "2099-12-31");
+  assert.equal(summary.settingVersion, status.settingVersion);
+  assert.equal(summary.currentCardNumber, 1);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(summary.rewardRules)),
+    [{ points: 5, lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID }]
+  );
+});
+
+test("member GAS rejects malformed or contradictory stored card expiry values", () => {
+  const gas = createGasContext();
+  for (const overrides of [
+    { expiryMode: "limited", expiresOn: "2026-02-30" },
+    { expiryMode: "unlimited", expiresOn: "2099-12-31" },
+    { expiryMode: "forever", expiresOn: "" },
+  ]) {
+    const sheet = createDataSheet(
+      "PointCardSettings",
+      Array.from(gas.POINT_CARD_SETTING_HEADERS),
+      [createPointCardSettingRow(gas, overrides)]
+    );
+    assert.throws(
+      () => gas.readPointCardSettings_(sheet),
+      (error) => error.appCode === "POINT_CARD_DATA_ERROR"
+    );
+  }
+});
+
 test("a new point-card target starts a new period while lifetime points remain cumulative", () => {
   const gas = createGasContext();
   const sheets = installPointSheets(gas, {
@@ -2791,7 +2955,7 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
     sheets
       .get("PointCardSettings")
       .rows[0].slice(gas.LEGACY_POINT_CARD_SETTING_HEADERS.length),
-    ["", ""]
+    ["", "", "unlimited", ""]
   );
   assert.deepEqual(
     JSON.parse(
@@ -2851,10 +3015,44 @@ test("client GAS upgrades milestone-only point-card rows with one mapping column
   assert.deepEqual(sheet.headers, Array.from(gas.POINT_CARD_SETTING_HEADERS));
   assert.deepEqual(
     sheet.rows[0].slice(gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
-    [""]
+    ["", "unlimited", ""]
   );
   assert.deepEqual(
     sheet.rows[0].slice(0, gas.MILESTONE_POINT_CARD_SETTING_HEADERS.length),
+    existingCells
+  );
+});
+
+test("client GAS appends unlimited expiry defaults to wheel-mapped card rows", () => {
+  const gas = createGasContext();
+  const existingRow = createPointCardSettingRow(gas).slice(
+    0,
+    gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length
+  );
+  const existingCells = existingRow.slice();
+  const sheet = createDataSheet(
+    "PointCardSettings",
+    Array.from(gas.LOTTERY_POINT_CARD_SETTING_HEADERS),
+    [existingRow]
+  );
+  gas.SpreadsheetApp.openById = () => ({
+    getSheetByName(name) {
+      return name === "PointCardSettings" ? sheet : null;
+    },
+  });
+
+  gas.getOrCreatePointCardSettingSheet_({
+    spreadsheetId: "shared-members-sheet",
+    pointCardSettingSheetName: "PointCardSettings",
+  });
+
+  assert.deepEqual(sheet.headers, Array.from(gas.POINT_CARD_SETTING_HEADERS));
+  assert.deepEqual(
+    sheet.rows[0].slice(gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length),
+    ["unlimited", ""]
+  );
+  assert.deepEqual(
+    sheet.rows[0].slice(0, gas.LOTTERY_POINT_CARD_SETTING_HEADERS.length),
     existingCells
   );
 });
@@ -2920,7 +3118,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointTypeColumns, 12);
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
-  assert.equal(setup.pointCardSettingColumns, 7);
+  assert.equal(setup.pointCardSettingColumns, 9);
   assert.equal(setup.lotteryTypeColumns, 9);
   assert.equal(setup.lotteryPrizeColumns, 11);
   assert.equal(setup.lotteryDrawColumns, 16);

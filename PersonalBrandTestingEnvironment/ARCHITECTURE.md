@@ -27,8 +27,8 @@
 
 | 入口 | 程式 | 責任 |
 | --- | --- | --- |
-| `client/index.html` | `client/script.js` | 會員登入、個人資料、會員權限與 QR 領點結果 |
-| `client/lottery.html` | `client/lottery.js` | 集點卡、掃描 QR、點數紀錄、抽獎券分頁與轉盤 |
+| `client/index.html` | `client/script.js` | 會員登入、會員卡、QR 領點、抽獎券與點數紀錄小視窗 |
+| `client/lottery.html` | `client/lottery.js` | 選定票券後的轉盤、開獎結果與舊連結 fallback |
 | `admin/index.html` | `admin/script.js` | 會員查詢與使用權限 |
 | `admin/points.html` | `admin/script.js` | 點數類型、活動 QR 與領點紀錄 |
 | `admin/lottery.html` | `admin/script.js` | 集點卡規則、轉盤設定與中獎紀錄 |
@@ -50,7 +50,7 @@
 - 使用會員 Channel ID 向 LINE 驗證 ID Token。
 - 建立或同步會員、修改本人電話與生日、刪除本人資料。
 - 驗證並兌換點數活動。
-- 計算集點卡當輪狀態與可用抽獎券。
+- 依期限計算集點卡當輪狀態與可用抽獎券，同時保留終身累計。
 - 在伺服器依已儲存機率決定獎項並保存結果。
 
 ### 管理 GAS
@@ -72,7 +72,7 @@
 | `PointTypes` | 管理 GAS | 可發放的點數規則 |
 | `PointCampaigns` | 管理 GAS | 已發行 QR 活動與規則快照 |
 | `PointRedemptions` | 會員 GAS | 點數領取帳本與終身累計依據 |
-| `PointCardSettings` | 管理 GAS | 卡片滿點與抽獎節點 |
+| `PointCardSettings` | 管理 GAS | 卡片滿點、期限、抽獎節點與指定轉盤 |
 | `LotteryTypes` | 管理 GAS | 轉盤類型生命週期 |
 | `LotteryPrizes` | 管理 GAS | 不可變的轉盤設定版本與機率 |
 | `LotteryDraws` | 會員 GAS | 實際抽獎結果 |
@@ -92,7 +92,9 @@
 
 ## 6. 本次重構決策
 
-- 移除 `client/script.js` 中已被獨立集點卡頁取代、且沒有對應 DOM 的舊抽獎 modal 流程。
+- 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
+- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態，不為開小視窗增加試算表讀取；只有選定可用券才載入獨立轉盤頁。
+- 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。
 - 把三份重複的 Canvas 轉盤程式整合為 `shared/lottery-wheel.js`。
 - 把三份重複的 LIFF context、展示模式與 config 完整性檢查整合為 `shared/liff-runtime.js`。
 - 保留頁面、API action、Sheet schema、GAS 部署方式及所有使用者行為。
