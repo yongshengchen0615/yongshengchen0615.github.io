@@ -110,6 +110,7 @@
     syncMemberRoutes();
 
     setView("loading-state");
+
     setLoading(
       "正在確認會員身分",
       "連線 LINE 並讀取集點卡進度。"
@@ -142,7 +143,9 @@
         withLoginOnExternalBrowser: false,
       })
       .then(function () {
-        if (thisBoot !== bootVersion) return;
+        if (thisBoot !== bootVersion) {
+          return;
+        }
 
         if (!window.liff.isLoggedIn()) {
           setView("login-state");
@@ -159,10 +162,15 @@
           );
         }
 
-        return loadLotteryWorkspace(thisBoot);
+        return loadLotteryWorkspace(
+          thisBoot
+        );
       })
       .catch(function (error) {
-        if (thisBoot !== bootVersion) return;
+        if (thisBoot !== bootVersion) {
+          return;
+        }
+
         handleFatalError(error);
       });
   }
@@ -171,7 +179,8 @@
     expectedBootVersion,
     preserveView
   ) {
-    var lotteryState = byId("lottery-state");
+    var lotteryState =
+      byId("lottery-state");
 
     if (preserveView) {
       lotteryState.setAttribute(
@@ -180,6 +189,7 @@
       );
     } else {
       setView("loading-state");
+
       setLoading(
         "正在準備轉盤",
         "確認抽獎資格與轉盤設定。"
@@ -192,17 +202,21 @@
     )
       .then(function (response) {
         if (
-          expectedBootVersion !== bootVersion
+          expectedBootVersion !==
+          bootVersion
         ) {
           return false;
         }
 
-        assertSuccessfulResponse(response);
+        assertSuccessfulResponse(
+          response
+        );
 
         if (
           !response.data ||
           !response.data.access ||
-          response.data.access.allowed !== true ||
+          response.data.access.allowed !==
+            true ||
           !Array.isArray(
             response.data.lotteryTypes
           ) ||
@@ -221,7 +235,8 @@
       })
       .catch(function (error) {
         if (
-          expectedBootVersion !== bootVersion
+          expectedBootVersion !==
+          bootVersion
         ) {
           return false;
         }
@@ -247,7 +262,8 @@
       .finally(function () {
         if (
           !preserveView ||
-          expectedBootVersion !== bootVersion
+          expectedBootVersion !==
+            bootVersion
         ) {
           return;
         }
@@ -277,22 +293,26 @@
   }
 
   function renderWorkspace(data) {
-    lotteryTypes = normalizeLotteryTypes(
-      data.lotteryTypes
-    );
+    lotteryTypes =
+      normalizeLotteryTypes(
+        data.lotteryTypes
+      );
 
-    cardStatus = normalizePointCardStatus(
-      data.card
-    );
+    cardStatus =
+      normalizePointCardStatus(
+        data.card
+      );
 
-    var totalPoints = normalizePointNumber(
-      data.totalPoints == null
-        ? data.pointBalance
-        : data.totalPoints
-    );
+    var totalPoints =
+      normalizePointNumber(
+        data.totalPoints == null
+          ? data.pointBalance
+          : data.totalPoints
+      );
 
     if (
-      totalPoints !== cardStatus.totalPoints
+      totalPoints !==
+      cardStatus.totalPoints
     ) {
       throw createError(
         "INVALID_RESPONSE",
@@ -300,7 +320,8 @@
       );
     }
 
-    pendingRequest = readPendingRequest();
+    pendingRequest =
+      readPendingRequest();
 
     if (
       pendingRequest &&
@@ -376,26 +397,32 @@
   function renderDemo() {
     currentIdToken = "";
 
-    var now = new Date().toISOString();
+    var now =
+      new Date().toISOString();
 
     renderWorkspace({
       access: {
         allowed: true,
         status: "approved",
       },
+
       totalPoints: 32,
+
       card: {
         settingVersion:
           "PCS-PREVIEW00001",
+
         targetPoints: 20,
         expiryMode: "limited",
         expiresOn: "2026-12-31",
+
         rewardMilestones: [
           5,
           10,
           15,
           20,
         ],
+
         rewardRules: [
           {
             points: 5,
@@ -418,50 +445,67 @@
               "LTY-PREVIEW002",
           },
         ],
+
         reachedMilestones: [
           5,
           10,
         ],
+
         currentPoints: 12,
         nextMilestonePoints: 15,
         pointsRemaining: 3,
         pointsToCardComplete: 8,
+
         currentCardNumber: 2,
         currentRound: 2,
+
         completedCards: 1,
         completedRounds: 1,
+
         earnedRewards: 6,
         drawsUsed: 5,
         availableDraws: 1,
+
         availableRewards: [
           {
             settingVersion:
               "PCS-PREVIEW00001",
+
             cardNumber: 2,
             milestonePoints: 10,
+
             lotteryTypeId:
               "LTY-PREVIEW002",
+
             cardRoundKey:
               "PCS-PREVIEW00001:2:10",
           },
         ],
+
         totalPoints: 32,
       },
+
       lotteryTypes: [
         {
           lotteryTypeId:
             "LTY-PREVIEW001",
+
           name: "經典轉盤",
+
           lottery: {
             lotteryTypeId:
               "LTY-PREVIEW001",
+
             configVersion:
               "LCF-PREVIEW00001",
+
             updatedAt: now,
+
             prizes: [
               {
                 prizeId:
                   "LPR-PREVIEW001",
+
                 label: "銘謝惠顧",
                 color: "#D9D6CC",
                 probability: 50,
@@ -469,6 +513,7 @@
               {
                 prizeId:
                   "LPR-PREVIEW002",
+
                 label: "小禮物",
                 color: "#8DCCAA",
                 probability: 30,
@@ -476,6 +521,7 @@
               {
                 prizeId:
                   "LPR-PREVIEW003",
+
                 label: "精選獎",
                 color: "#F0C36A",
                 probability: 15,
@@ -483,6 +529,7 @@
               {
                 prizeId:
                   "LPR-PREVIEW004",
+
                 label: "頭獎",
                 color: "#0B3C2C",
                 probability: 5,
@@ -493,17 +540,23 @@
         {
           lotteryTypeId:
             "LTY-PREVIEW002",
+
           name: "生日限定",
+
           lottery: {
             lotteryTypeId:
               "LTY-PREVIEW002",
+
             configVersion:
               "LCF-PREVIEW00002",
+
             updatedAt: now,
+
             prizes: [
               {
                 prizeId:
                   "LPR-PREVIEW005",
+
                 label: "生日祝福",
                 color: "#C87965",
                 probability: 60,
@@ -511,6 +564,7 @@
               {
                 prizeId:
                   "LPR-PREVIEW006",
+
                 label: "限定禮物",
                 color: "#A89CC8",
                 probability: 30,
@@ -518,6 +572,7 @@
               {
                 prizeId:
                   "LPR-PREVIEW007",
+
                 label: "生日頭獎",
                 color: "#0B3C2C",
                 probability: 10,
@@ -529,7 +584,9 @@
     });
   }
 
-  function normalizeLotteryTypes(value) {
+  function normalizeLotteryTypes(
+    value
+  ) {
     if (
       !Array.isArray(value) ||
       value.length < 1
@@ -549,13 +606,15 @@
           ? item
           : {};
 
-      var lotteryTypeId = String(
-        item.lotteryTypeId || ""
-      ).trim();
+      var lotteryTypeId =
+        String(
+          item.lotteryTypeId || ""
+        ).trim();
 
-      var name = String(
-        item.name || ""
-      ).trim();
+      var name =
+        String(
+          item.name || ""
+        ).trim();
 
       if (
         !/^LTY-[A-Z0-9]{10}$/.test(
@@ -574,8 +633,11 @@
       ids[lotteryTypeId] = true;
 
       return {
-        lotteryTypeId: lotteryTypeId,
+        lotteryTypeId:
+          lotteryTypeId,
+
         name: name,
+
         lottery:
           normalizeLotteryConfig(
             item.lottery,
@@ -595,31 +657,36 @@
         ? value
         : {};
 
-    var lotteryTypeId = String(
-      value.lotteryTypeId || ""
-    ).trim();
+    var lotteryTypeId =
+      String(
+        value.lotteryTypeId || ""
+      ).trim();
 
-    var configVersion = String(
-      value.configVersion || ""
-    ).trim();
+    var configVersion =
+      String(
+        value.configVersion || ""
+      ).trim();
 
-    var updatedAt = String(
-      value.updatedAt || ""
-    ).trim();
+    var updatedAt =
+      String(
+        value.updatedAt || ""
+      ).trim();
 
-    var rawPrizes = Array.isArray(
-      value.prizes
-    )
-      ? value.prizes
-      : [];
+    var rawPrizes =
+      Array.isArray(value.prizes)
+        ? value.prizes
+        : [];
 
     if (
-      lotteryTypeId !== expectedTypeId ||
+      lotteryTypeId !==
+        expectedTypeId ||
       !/^LCF-[A-Z0-9]{12}$/.test(
         configVersion
       ) ||
       Number.isNaN(
-        new Date(updatedAt).getTime()
+        new Date(
+          updatedAt
+        ).getTime()
       ) ||
       rawPrizes.length < 2 ||
       rawPrizes.length > 12
@@ -635,75 +702,85 @@
 
     var totalBasisPoints = 0;
 
-    var prizes = rawPrizes.map(
-      function (prize) {
-        prize =
-          prize &&
-          typeof prize === "object"
-            ? prize
-            : {};
+    var prizes =
+      rawPrizes.map(
+        function (prize) {
+          prize =
+            prize &&
+            typeof prize === "object"
+              ? prize
+              : {};
 
-        var prizeId = String(
-          prize.prizeId || ""
-        ).trim();
+          var prizeId =
+            String(
+              prize.prizeId || ""
+            ).trim();
 
-        var label = String(
-          prize.label || ""
-        ).trim();
+          var label =
+            String(
+              prize.label || ""
+            ).trim();
 
-        var color = String(
-          prize.color || ""
-        )
-          .trim()
-          .toUpperCase();
+          var color =
+            String(
+              prize.color || ""
+            )
+              .trim()
+              .toUpperCase();
 
-        var probability = Number(
-          prize.probability
-        );
+          var probability =
+            Number(
+              prize.probability
+            );
 
-        var basisPoints = Math.round(
-          probability * 100
-        );
+          var basisPoints =
+            Math.round(
+              probability * 100
+            );
 
-        if (
-          !/^LPR-[A-Z0-9]{10}$/.test(
-            prizeId
-          ) ||
-          prizeIds[prizeId] ||
-          !label ||
-          label.length > 40 ||
-          !/^#[0-9A-F]{6}$/.test(
-            color
-          ) ||
-          !Number.isFinite(
-            probability
-          ) ||
-          probability <= 0 ||
-          probability >= 100 ||
-          Math.abs(
-            basisPoints / 100 -
+          if (
+            !/^LPR-[A-Z0-9]{10}$/.test(
+              prizeId
+            ) ||
+            prizeIds[prizeId] ||
+            !label ||
+            label.length > 40 ||
+            !/^#[0-9A-F]{6}$/.test(
+              color
+            ) ||
+            !Number.isFinite(
               probability
-          ) > 0.000001
-        ) {
-          throw createError(
-            "INVALID_RESPONSE",
-            "轉盤獎項格式不正確。"
-          );
+            ) ||
+            probability <= 0 ||
+            probability >= 100 ||
+            Math.abs(
+              basisPoints / 100 -
+                probability
+            ) > 0.000001
+          ) {
+            throw createError(
+              "INVALID_RESPONSE",
+              "轉盤獎項格式不正確。"
+            );
+          }
+
+          prizeIds[prizeId] = true;
+          totalBasisPoints +=
+            basisPoints;
+
+          return {
+            prizeId: prizeId,
+            label: label,
+            color: color,
+            probability:
+              probability,
+          };
         }
+      );
 
-        prizeIds[prizeId] = true;
-        totalBasisPoints += basisPoints;
-
-        return {
-          prizeId: prizeId,
-          label: label,
-          color: color,
-          probability: probability,
-        };
-      }
-    );
-
-    if (totalBasisPoints !== 10000) {
+    if (
+      totalBasisPoints !== 10000
+    ) {
       throw createError(
         "INVALID_RESPONSE",
         "轉盤機率合計不是 100%。"
@@ -711,9 +788,15 @@
     }
 
     return {
-      lotteryTypeId: lotteryTypeId,
-      configVersion: configVersion,
-      updatedAt: updatedAt,
+      lotteryTypeId:
+        lotteryTypeId,
+
+      configVersion:
+        configVersion,
+
+      updatedAt:
+        updatedAt,
+
       prizes: prizes,
     };
   }
@@ -737,23 +820,29 @@
         : [];
 
     var rewardRules =
-      Array.isArray(value.rewardRules)
+      Array.isArray(
+        value.rewardRules
+      )
         ? value.rewardRules.map(
             function (rule) {
               rule =
                 rule &&
-                typeof rule === "object"
+                typeof rule ===
+                  "object"
                   ? rule
                   : {};
 
               return {
-                points: Number(
-                  rule.points
-                ),
-                lotteryTypeId: String(
-                  rule.lotteryTypeId ||
-                    ""
-                ).trim(),
+                points:
+                  Number(
+                    rule.points
+                  ),
+
+                lotteryTypeId:
+                  String(
+                    rule.lotteryTypeId ||
+                      ""
+                  ).trim(),
               };
             }
           )
@@ -778,61 +867,97 @@
         : [];
 
     var normalized = {
-      settingVersion: String(
-        value.settingVersion || ""
-      ).trim(),
-      targetPoints: Number(
-        value.targetPoints
-      ),
-      expiryMode: String(
-        value.expiryMode || ""
-      ).trim(),
-      expiresOn: String(
-        value.expiresOn || ""
-      ).trim(),
+      settingVersion:
+        String(
+          value.settingVersion || ""
+        ).trim(),
+
+      targetPoints:
+        Number(
+          value.targetPoints
+        ),
+
+      expiryMode:
+        String(
+          value.expiryMode || ""
+        ).trim(),
+
+      expiresOn:
+        String(
+          value.expiresOn || ""
+        ).trim(),
+
       rewardMilestones:
         rewardMilestones,
-      rewardRules: rewardRules,
+
+      rewardRules:
+        rewardRules,
+
       reachedMilestones:
         reachedMilestones,
-      currentPoints: Number(
-        value.currentPoints
-      ),
-      nextMilestonePoints: Number(
-        value.nextMilestonePoints
-      ),
-      pointsRemaining: Number(
-        value.pointsRemaining
-      ),
-      pointsToCardComplete: Number(
-        value.pointsToCardComplete
-      ),
-      currentCardNumber: Number(
-        value.currentCardNumber
-      ),
-      currentRound: Number(
-        value.currentRound
-      ),
-      completedCards: Number(
-        value.completedCards
-      ),
-      completedRounds: Number(
-        value.completedRounds
-      ),
-      earnedRewards: Number(
-        value.earnedRewards
-      ),
-      drawsUsed: Number(
-        value.drawsUsed
-      ),
-      availableDraws: Number(
-        value.availableDraws
-      ),
+
+      currentPoints:
+        Number(
+          value.currentPoints
+        ),
+
+      nextMilestonePoints:
+        Number(
+          value.nextMilestonePoints
+        ),
+
+      pointsRemaining:
+        Number(
+          value.pointsRemaining
+        ),
+
+      pointsToCardComplete:
+        Number(
+          value.pointsToCardComplete
+        ),
+
+      currentCardNumber:
+        Number(
+          value.currentCardNumber
+        ),
+
+      currentRound:
+        Number(
+          value.currentRound
+        ),
+
+      completedCards:
+        Number(
+          value.completedCards
+        ),
+
+      completedRounds:
+        Number(
+          value.completedRounds
+        ),
+
+      earnedRewards:
+        Number(
+          value.earnedRewards
+        ),
+
+      drawsUsed:
+        Number(
+          value.drawsUsed
+        ),
+
+      availableDraws:
+        Number(
+          value.availableDraws
+        ),
+
       availableRewards:
         availableRewards,
-      totalPoints: Number(
-        value.totalPoints
-      ),
+
+      totalPoints:
+        Number(
+          value.totalPoints
+        ),
     };
 
     if (
@@ -993,21 +1118,26 @@
     return normalized;
   }
 
-  function isValidPointCardDate(value) {
+  function isValidPointCardDate(
+    value
+  ) {
     var match =
       /^(\d{4})-(\d{2})-(\d{2})$/.exec(
         String(value || "")
       );
 
-    if (!match) return false;
+    if (!match) {
+      return false;
+    }
 
-    var date = new Date(
-      Date.UTC(
-        Number(match[1]),
-        Number(match[2]) - 1,
-        Number(match[3])
-      )
-    );
+    var date =
+      new Date(
+        Date.UTC(
+          Number(match[1]),
+          Number(match[2]) - 1,
+          Number(match[3])
+        )
+      );
 
     return (
       date.getUTCFullYear() ===
@@ -1019,7 +1149,9 @@
     );
   }
 
-  function normalizeRewardTicket(value) {
+  function normalizeRewardTicket(
+    value
+  ) {
     value =
       value &&
       typeof value === "object"
@@ -1027,21 +1159,30 @@
         : {};
 
     var ticket = {
-      settingVersion: String(
-        value.settingVersion || ""
-      ).trim(),
-      cardNumber: Number(
-        value.cardNumber
-      ),
-      milestonePoints: Number(
-        value.milestonePoints
-      ),
-      lotteryTypeId: String(
-        value.lotteryTypeId || ""
-      ).trim(),
-      cardRoundKey: String(
-        value.cardRoundKey || ""
-      ).trim(),
+      settingVersion:
+        String(
+          value.settingVersion || ""
+        ).trim(),
+
+      cardNumber:
+        Number(
+          value.cardNumber
+        ),
+
+      milestonePoints:
+        Number(
+          value.milestonePoints
+        ),
+
+      lotteryTypeId:
+        String(
+          value.lotteryTypeId || ""
+        ).trim(),
+
+      cardRoundKey:
+        String(
+          value.cardRoundKey || ""
+        ).trim(),
     };
 
     if (
@@ -1078,15 +1219,23 @@
   function hasUniqueRewardTickets(
     tickets
   ) {
-    var keys = Object.create(null);
+    var keys =
+      Object.create(null);
 
     return tickets.every(
       function (ticket) {
-        if (keys[ticket.cardRoundKey]) {
+        if (
+          keys[
+            ticket.cardRoundKey
+          ]
+        ) {
           return false;
         }
 
-        keys[ticket.cardRoundKey] = true;
+        keys[
+          ticket.cardRoundKey
+        ] = true;
+
         return true;
       }
     );
@@ -1133,19 +1282,23 @@
         !Number.isInteger(
           values[index]
         ) ||
-        values[index] <= previous ||
-        values[index] > maximum
+        values[index] <=
+          previous ||
+        values[index] >
+          maximum
       ) {
         return false;
       }
 
-      previous = values[index];
+      previous =
+        values[index];
     }
 
     return (
       allowEmpty ||
-      values[values.length - 1] ===
-        maximum
+      values[
+        values.length - 1
+      ] === maximum
     );
   }
 
@@ -1154,11 +1307,16 @@
     right
   ) {
     return (
-      left.length === right.length &&
+      left.length ===
+        right.length &&
       left.every(
-        function (value, index) {
+        function (
+          value,
+          index
+        ) {
           return (
-            value === right[index]
+            value ===
+            right[index]
           );
         }
       )
@@ -1168,27 +1326,31 @@
   function renderPointCard() {
     byId(
       "lottery-total-points"
-    ).textContent = formatNumber(
-      cardStatus.totalPoints
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.totalPoints
+      );
 
     byId(
       "point-card-round"
-    ).textContent = formatNumber(
-      cardStatus.currentCardNumber
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.currentCardNumber
+      );
 
     byId(
       "point-card-current"
-    ).textContent = formatNumber(
-      cardStatus.currentPoints
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.currentPoints
+      );
 
     byId(
       "point-card-target"
-    ).textContent = formatNumber(
-      cardStatus.targetPoints
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.targetPoints
+      );
 
     byId(
       "point-card-expiry"
@@ -1204,37 +1366,45 @@
 
     byId(
       "available-draw-count"
-    ).textContent = formatNumber(
-      cardStatus.availableDraws
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.availableDraws
+      );
 
-    var progress = Math.min(
-      100,
-      Math.max(
-        0,
-        (
-          cardStatus.currentPoints /
-          cardStatus.targetPoints
-        ) * 100
-      )
-    );
+    var progress =
+      Math.min(
+        100,
+        Math.max(
+          0,
+          (
+            cardStatus.currentPoints /
+            cardStatus.targetPoints
+          ) * 100
+        )
+      );
 
     byId(
       "point-card-progress-bar"
-    ).style.width = progress + "%";
+    ).style.width =
+      progress + "%";
 
-    var track = byId(
-      "point-card-progress-bar"
-    ).parentElement;
+    var track =
+      byId(
+        "point-card-progress-bar"
+      ).parentElement;
 
     track.setAttribute(
       "aria-valuemax",
-      String(cardStatus.targetPoints)
+      String(
+        cardStatus.targetPoints
+      )
     );
 
     track.setAttribute(
       "aria-valuenow",
-      String(cardStatus.currentPoints)
+      String(
+        cardStatus.currentPoints
+      )
     );
 
     renderPointCardMilestones();
@@ -1254,9 +1424,10 @@
   }
 
   function renderPointCardMilestones() {
-    var list = byId(
-      "point-card-milestones"
-    );
+    var list =
+      byId(
+        "point-card-milestones"
+      );
 
     var fragment =
       document.createDocumentFragment();
@@ -1270,7 +1441,9 @@
     cardStatus.rewardMilestones.forEach(
       function (milestone) {
         var item =
-          document.createElement("li");
+          document.createElement(
+            "li"
+          );
 
         var reached =
           cardStatus.reachedMilestones.indexOf(
@@ -1281,11 +1454,12 @@
           milestone ===
           cardStatus.nextMilestonePoints;
 
-        item.className = reached
-          ? "is-reached"
-          : next
-            ? "is-next"
-            : "";
+        item.className =
+          reached
+            ? "is-reached"
+            : next
+              ? "is-next"
+              : "";
 
         item.style.left =
           (
@@ -1315,29 +1489,37 @@
             )
         );
 
-        fragment.appendChild(item);
+        fragment.appendChild(
+          item
+        );
       }
     );
 
-    list.replaceChildren(fragment);
+    list.replaceChildren(
+      fragment
+    );
   }
 
   function renderLotteryTickets() {
-    var container = byId(
-      "lottery-ticket-list"
-    );
+    var container =
+      byId(
+        "lottery-ticket-list"
+      );
 
-    var empty = byId(
-      "lottery-ticket-empty"
-    );
+    var empty =
+      byId(
+        "lottery-ticket-empty"
+      );
 
-    var lockedContainer = byId(
-      "locked-ticket-list"
-    );
+    var lockedContainer =
+      byId(
+        "locked-ticket-list"
+      );
 
-    var lockedEmpty = byId(
-      "locked-ticket-empty"
-    );
+    var lockedEmpty =
+      byId(
+        "locked-ticket-empty"
+      );
 
     var earnedFragment =
       document.createDocumentFragment();
@@ -1351,17 +1533,21 @@
 
     byId(
       "earned-ticket-count"
-    ).textContent = formatNumber(
-      cardStatus.availableDraws
-    );
+    ).textContent =
+      formatNumber(
+        cardStatus.availableDraws
+      );
 
     cardStatus.availableRewards.forEach(
       function (ticket, index) {
-        var type = findLotteryType(
-          ticket.lotteryTypeId
-        );
+        var type =
+          findLotteryType(
+            ticket.lotteryTypeId
+          );
 
-        if (!type) return;
+        if (!type) {
+          return;
+        }
 
         var button =
           document.createElement(
@@ -1369,6 +1555,7 @@
           );
 
         button.type = "button";
+
         button.className =
           "lottery-ticket-button";
 
@@ -1432,7 +1619,9 @@
               return;
             }
 
-            openLotteryTicket(ticket);
+            openLotteryTicket(
+              ticket
+            );
           }
         );
 
@@ -1454,20 +1643,24 @@
 
     byId(
       "locked-ticket-count"
-    ).textContent = formatNumber(
-      lockedRules.length
-    );
+    ).textContent =
+      formatNumber(
+        lockedRules.length
+      );
 
     lockedEmpty.hidden =
       lockedRules.length > 0;
 
     lockedRules.forEach(
       function (rule) {
-        var type = findLotteryType(
-          rule.lotteryTypeId
-        );
+        var type =
+          findLotteryType(
+            rule.lotteryTypeId
+          );
 
-        if (!type) return;
+        if (!type) {
+          return;
+        }
 
         var item =
           document.createElement(
@@ -1545,7 +1738,8 @@
         ? "locked"
         : "earned";
 
-    activeTicketTab = selectedName;
+    activeTicketTab =
+      selectedName;
 
     [
       "locked",
@@ -1554,22 +1748,23 @@
       var selected =
         name === selectedName;
 
-      var tab = byId(
-        name + "-ticket-tab"
-      );
+      var tab =
+        byId(
+          name + "-ticket-tab"
+        );
 
       byId(
         name + "-ticket-panel"
-      ).hidden = !selected;
+      ).hidden =
+        !selected;
 
       tab.setAttribute(
         "aria-selected",
         String(selected)
       );
 
-      tab.tabIndex = selected
-        ? 0
-        : -1;
+      tab.tabIndex =
+        selected ? 0 : -1;
 
       if (
         selected &&
@@ -1584,8 +1779,10 @@
     event
   ) {
     if (
-      event.key !== "ArrowLeft" &&
-      event.key !== "ArrowRight" &&
+      event.key !==
+        "ArrowLeft" &&
+      event.key !==
+        "ArrowRight" &&
       event.key !== "Home" &&
       event.key !== "End"
     ) {
@@ -1595,7 +1792,8 @@
     event.preventDefault();
 
     var nextTab =
-      event.key === "ArrowLeft" ||
+      event.key ===
+        "ArrowLeft" ||
       event.key === "Home"
         ? "locked"
         : "earned";
@@ -1612,12 +1810,19 @@
     value
   ) {
     var element =
-      document.createElement("span");
+      document.createElement(
+        "span"
+      );
 
-    element.className = className;
-    element.textContent = value;
+    element.className =
+      className;
 
-    parent.appendChild(element);
+    element.textContent =
+      value;
+
+    parent.appendChild(
+      element
+    );
   }
 
   function getSelectedLotteryType() {
@@ -1626,12 +1831,16 @@
     );
   }
 
-  function openLotteryTicket(ticket) {
+  function openLotteryTicket(
+    ticket
+  ) {
     var normalizedTicket;
 
     try {
       normalizedTicket =
-        normalizeRewardTicket(ticket);
+        normalizeRewardTicket(
+          ticket
+        );
     } catch (error) {
       showToast(
         normalizeError(error).message,
@@ -1678,9 +1887,10 @@
 
         byId(
           "lottery-spin-status"
-        ).textContent = pendingRequest
-          ? "上次結果尚未確認，點選中央安全重試。"
-          : "轉盤已就緒，點選中央開始抽獎。";
+        ).textContent =
+          pendingRequest
+            ? "上次結果尚未確認，點選中央安全重試。"
+            : "轉盤已就緒，點選中央開始抽獎。";
 
         updateControls();
         focusLotterySpinButton();
@@ -1694,20 +1904,29 @@
         }
 
         isWheelPreparing = false;
-        selectedRewardTicket = null;
-        selectedLotteryTypeId = "";
+
+        selectedRewardTicket =
+          null;
+
+        selectedLotteryTypeId =
+          "";
 
         showLotteryTicketView();
         updateControls();
 
         if (
-          isAuthorizationError(error)
+          isAuthorizationError(
+            error
+          )
         ) {
-          handleFatalError(error);
+          handleFatalError(
+            error
+          );
         } else {
           showToast(
-            normalizeError(error)
-              .message,
+            normalizeError(
+              error
+            ).message,
             "error"
           );
         }
@@ -1720,6 +1939,7 @@
   ) {
     if (isDemoSession) {
       renderSelectedLottery();
+
       return waitForWheelPaint();
     }
 
@@ -1734,7 +1954,9 @@
         return;
       }
 
-      assertSuccessfulResponse(response);
+      assertSuccessfulResponse(
+        response
+      );
 
       if (
         !response.data ||
@@ -1752,26 +1974,32 @@
         );
       }
 
+      /*
+       * 先使用暫存資料完成所有驗證。
+       * 驗證完成前不修改目前畫面中的 cardStatus 與 lotteryTypes，
+       * 避免準備失敗時發生新舊資料混用。
+       */
+      var previousTypes =
+        lotteryTypes;
+
       var refreshedTypes =
         normalizeLotteryTypes(
           response.data.lotteryTypes
         );
 
-      var previousTypes =
-        lotteryTypes;
-
       var refreshedCard;
 
-      lotteryTypes = refreshedTypes;
+      lotteryTypes =
+        refreshedTypes;
 
       try {
         refreshedCard =
           normalizePointCardStatus(
             response.data.card
           );
-      } catch (error) {
-        lotteryTypes = previousTypes;
-        throw error;
+      } finally {
+        lotteryTypes =
+          previousTypes;
       }
 
       var totalPoints =
@@ -1787,8 +2015,6 @@
         totalPoints !==
         refreshedCard.totalPoints
       ) {
-        lotteryTypes = previousTypes;
-
         throw createError(
           "INVALID_RESPONSE",
           "累計點數與集點卡資料不一致。"
@@ -1798,7 +2024,8 @@
       var storedRequest =
         readPendingRequest();
 
-      var refreshedTicket = null;
+      var refreshedTicket =
+        null;
 
       if (
         storedRequest &&
@@ -1807,6 +2034,10 @@
         storedRequest.lotteryTypeId ===
           ticket.lotteryTypeId
       ) {
+        /*
+         * 上一次 drawLottery 已送出，但結果尚未確認。
+         * 保留同一 requestId，讓使用者可以安全重試。
+         */
         refreshedTicket =
           pendingTicketResponse(
             storedRequest
@@ -1836,41 +2067,91 @@
         );
       }
 
-      cardStatus = refreshedCard;
+      var refreshedLotteryType =
+        refreshedTypes.find(
+          function (type) {
+            return (
+              type.lotteryTypeId ===
+              refreshedTicket
+                .lotteryTypeId
+            );
+          }
+        ) || null;
+
+      if (!refreshedLotteryType) {
+        throw createError(
+          "LOTTERY_TYPE_NOT_FOUND",
+          "這張抽獎券指定的轉盤目前無法使用。"
+        );
+      }
+
+      if (
+        expectedPreparationVersion !==
+        wheelPreparationVersion
+      ) {
+        return;
+      }
+
+      /*
+       * 驗證全部通過後才套用最新資料。
+       */
+      lotteryTypes =
+        refreshedTypes;
+
+      cardStatus =
+        refreshedCard;
+
       selectedRewardTicket =
         refreshedTicket;
+
       selectedLotteryTypeId =
-        refreshedTicket.lotteryTypeId;
+        refreshedTicket
+          .lotteryTypeId;
 
       clearInvalidTokenRecoveryGuard();
 
-      preloadLotteryWheels();
+      /*
+       * 更新集點卡與抽獎券資料。
+       */
       renderPointCard();
       renderLotteryTickets();
+
+      /*
+       * 預先建立 Canvas 快取，再將選定轉盤畫入正式 Canvas。
+       */
+      preloadLotteryWheels();
       renderSelectedLottery();
 
+      /*
+       * 等待瀏覽器真正完成 Canvas 與 transform 繪製後，
+       * 才啟用中央抽獎按鈕。
+       */
       return waitForWheelPaint();
     });
   }
 
   function renderSelectedLotteryHeading() {
-    if (!selectedRewardTicket) return;
+    if (!selectedRewardTicket) {
+      return;
+    }
 
     var selected =
       getSelectedLotteryType();
 
     byId(
       "selected-lottery-name"
-    ).textContent = selected
-      ? selected.name
-      : "正在準備轉盤";
+    ).textContent =
+      selected
+        ? selected.name
+        : "正在準備轉盤";
 
     byId(
       "selected-ticket-detail"
     ).textContent =
       "第 " +
       formatNumber(
-        selectedRewardTicket.cardNumber
+        selectedRewardTicket
+          .cardNumber
       ) +
       " 張集點卡 · " +
       formatNumber(
@@ -1969,8 +2250,11 @@
       return;
     }
 
-    selectedRewardTicket = null;
-    selectedLotteryTypeId = "";
+    selectedRewardTicket =
+      null;
+
+    selectedLotteryTypeId =
+      "";
 
     navigateToMemberPanel(
       "tickets"
@@ -1984,7 +2268,9 @@
     var typeIds =
       cardStatus.availableRewards
         .map(function (ticket) {
-          return ticket.lotteryTypeId;
+          return (
+            ticket.lotteryTypeId
+          );
         })
         .concat(
           selectedLotteryTypeId
@@ -2000,8 +2286,9 @@
             values
           ) {
             return (
-              values.indexOf(typeId) ===
-              index
+              values.indexOf(
+                typeId
+              ) === index
             );
           }
         )
@@ -2013,9 +2300,13 @@
     typeIds.forEach(
       function (typeId) {
         var type =
-          findLotteryType(typeId);
+          findLotteryType(
+            typeId
+          );
 
-        if (!type) return;
+        if (!type) {
+          return;
+        }
 
         var canvas =
           document.createElement(
@@ -2043,9 +2334,10 @@
     prizes,
     lotteryTypeId
   ) {
-    var canvas = byId(
-      "member-lottery-wheel"
-    );
+    var canvas =
+      byId(
+        "member-lottery-wheel"
+      );
 
     if (
       !canvas ||
@@ -2123,7 +2415,9 @@
     var selected =
       getSelectedLotteryType();
 
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
     isBusy = true;
 
@@ -2148,74 +2442,107 @@
       window.setTimeout(
         function () {
           finishDraw({
-            lotteryType: selected,
+            lotteryType:
+              selected,
+
             lottery:
               selected.lottery,
+
             draw: {
               drawId:
                 "LDW-PREVIEW000000001",
+
               configVersion:
                 selected.lottery
                   .configVersion,
+
               prizeId:
                 previewPrize.prizeId,
+
               prizeLabel:
                 previewPrize.label,
+
               prizeColor:
                 previewPrize.color,
+
               lotteryTypeId:
                 selected.lotteryTypeId,
+
               ticketCost: 0,
               pointsSpent: 0,
+
               originalPointBalance:
                 cardStatus.totalPoints,
+
               pointBalance:
                 cardStatus.totalPoints,
+
               cardRoundKey:
                 selectedRewardTicket
                   .cardRoundKey,
+
               drawnAt:
                 new Date().toISOString(),
             },
+
             card: {
               settingVersion:
                 cardStatus.settingVersion,
+
               targetPoints:
                 cardStatus.targetPoints,
+
               expiryMode:
                 cardStatus.expiryMode,
+
               expiresOn:
                 cardStatus.expiresOn,
+
               rewardMilestones:
                 cardStatus.rewardMilestones.slice(),
+
               rewardRules:
                 cardStatus.rewardRules.slice(),
+
               reachedMilestones:
                 cardStatus.reachedMilestones.slice(),
+
               currentPoints:
                 cardStatus.currentPoints,
+
               nextMilestonePoints:
                 cardStatus.nextMilestonePoints,
+
               pointsRemaining:
                 cardStatus.pointsRemaining,
+
               pointsToCardComplete:
                 cardStatus.pointsToCardComplete,
+
               currentCardNumber:
                 cardStatus.currentCardNumber,
+
               currentRound:
                 cardStatus.currentRound,
+
               completedCards:
                 cardStatus.completedCards,
+
               completedRounds:
                 cardStatus.completedRounds,
+
               earnedRewards:
                 cardStatus.earnedRewards,
+
               drawsUsed:
                 cardStatus.drawsUsed +
                 1,
+
               availableDraws:
                 cardStatus
-                  .availableDraws - 1,
+                  .availableDraws -
+                1,
+
               availableRewards:
                 cardStatus.availableRewards.filter(
                   function (ticket) {
@@ -2226,9 +2553,11 @@
                     );
                   }
                 ),
+
               totalPoints:
                 cardStatus.totalPoints,
             },
+
             totalPoints:
               cardStatus.totalPoints,
           });
@@ -2239,11 +2568,16 @@
       return;
     }
 
+    /*
+     * 只有按下中央抽獎按鈕後，
+     * 才呼叫 drawLottery 正式使用抽獎券。
+     */
     sendMemberRequest(
       "drawLottery",
       {
         lotteryTypeId:
           selected.lotteryTypeId,
+
         cardRoundKey:
           selectedRewardTicket
             .cardRoundKey,
@@ -2268,7 +2602,9 @@
           );
         }
 
-        finishDraw(response.data);
+        finishDraw(
+          response.data
+        );
       })
       .catch(function (error) {
         isBusy = false;
@@ -2282,13 +2618,18 @@
           "尚未確認結果；請再點一次轉盤中央安全重試，不會重複使用抽獎券。";
 
         if (
-          isAuthorizationError(error)
+          isAuthorizationError(
+            error
+          )
         ) {
-          handleFatalError(error);
+          handleFatalError(
+            error
+          );
         } else {
           showToast(
-            normalizeError(error)
-              .message,
+            normalizeError(
+              error
+            ).message,
             "error"
           );
         }
@@ -2306,43 +2647,64 @@
         : {};
 
     var draw = {
-      drawId: String(
-        value.drawId || ""
-      ).trim(),
-      configVersion: String(
-        value.configVersion || ""
-      ).trim(),
-      prizeId: String(
-        value.prizeId || ""
-      ).trim(),
-      prizeLabel: String(
-        value.prizeLabel || ""
-      ).trim(),
-      prizeColor: String(
-        value.prizeColor || ""
-      )
-        .trim()
-        .toUpperCase(),
-      lotteryTypeId: String(
-        value.lotteryTypeId || ""
-      ).trim(),
-      pointsSpent: Number(
-        value.pointsSpent == null
-          ? value.ticketCost
-          : value.pointsSpent
-      ),
-      originalPointBalance: Number(
-        value.originalPointBalance
-      ),
-      pointBalance: Number(
-        value.pointBalance
-      ),
-      cardRoundKey: String(
-        value.cardRoundKey || ""
-      ).trim(),
-      drawnAt: String(
-        value.drawnAt || ""
-      ).trim(),
+      drawId:
+        String(
+          value.drawId || ""
+        ).trim(),
+
+      configVersion:
+        String(
+          value.configVersion || ""
+        ).trim(),
+
+      prizeId:
+        String(
+          value.prizeId || ""
+        ).trim(),
+
+      prizeLabel:
+        String(
+          value.prizeLabel || ""
+        ).trim(),
+
+      prizeColor:
+        String(
+          value.prizeColor || ""
+        )
+          .trim()
+          .toUpperCase(),
+
+      lotteryTypeId:
+        String(
+          value.lotteryTypeId || ""
+        ).trim(),
+
+      pointsSpent:
+        Number(
+          value.pointsSpent == null
+            ? value.ticketCost
+            : value.pointsSpent
+        ),
+
+      originalPointBalance:
+        Number(
+          value.originalPointBalance
+        ),
+
+      pointBalance:
+        Number(
+          value.pointBalance
+        ),
+
+      cardRoundKey:
+        String(
+          value.cardRoundKey || ""
+        ).trim(),
+
+      drawnAt:
+        String(
+          value.drawnAt || ""
+        ).trim(),
     };
 
     var prize =
@@ -2443,10 +2805,11 @@
           data.card
         );
 
-      draw = normalizeDraw(
-        data.draw,
-        selectedType
-      );
+      draw =
+        normalizeDraw(
+          data.draw,
+          selectedType
+        );
 
       if (
         !selectedRewardTicket ||
@@ -2465,7 +2828,8 @@
           data.totalPoints == null
             ? data.pointBalance
             : data.totalPoints
-        ) !== draw.pointBalance ||
+        ) !==
+          draw.pointBalance ||
         nextCard.totalPoints !==
           draw.pointBalance
       ) {
@@ -2499,11 +2863,13 @@
       );
 
     if (existingIndex >= 0) {
-      lotteryTypes[existingIndex] =
-        selectedType;
+      lotteryTypes[
+        existingIndex
+      ] = selectedType;
     }
 
-    cardStatus = nextCard;
+    cardStatus =
+      nextCard;
 
     animateToPrize(
       draw,
@@ -2527,15 +2893,17 @@
 
       byId(
         "lottery-result-before"
-      ).textContent = formatNumber(
-        draw.originalPointBalance
-      );
+      ).textContent =
+        formatNumber(
+          draw.originalPointBalance
+        );
 
       byId(
         "lottery-result-balance"
-      ).textContent = formatNumber(
-        draw.pointBalance
-      );
+      ).textContent =
+        formatNumber(
+          draw.pointBalance
+        );
 
       clearPendingRequest();
 
@@ -2573,7 +2941,8 @@
       );
 
     var sectorDegrees =
-      360 / lottery.prizes.length;
+      360 /
+      lottery.prizes.length;
 
     var desiredRotation =
       -(prizeIndex + 0.5) *
@@ -2602,16 +2971,18 @@
       lotteryRotation;
 
     var rotationDelta =
-      360 * FINAL_SPIN_TURNS +
+      360 *
+        FINAL_SPIN_TURNS +
       alignment;
 
     var targetRotation =
       startRotation +
       rotationDelta;
 
-    var rotor = byId(
-      "member-lottery-rotor"
-    );
+    var rotor =
+      byId(
+        "member-lottery-rotor"
+      );
 
     var reducedMotion =
       window.matchMedia(
@@ -2651,7 +3022,8 @@
 
     var duration =
       (
-        2 * rotationDelta
+        2 *
+        rotationDelta
       ) /
       SPIN_DEGREES_PER_MS;
 
@@ -2682,13 +3054,14 @@
               timestamp;
           }
 
-          var progress = Math.min(
-            1,
-            (
-              timestamp -
-              animationStartedAt
-            ) / duration
-          );
+          var progress =
+            Math.min(
+              1,
+              (
+                timestamp -
+                animationStartedAt
+              ) / duration
+            );
 
           var quadraticEaseOut =
             1 -
@@ -2728,6 +3101,7 @@
           }
 
           settlingSpinFrame = 0;
+
           lotteryRotation =
             targetRotation;
 
@@ -2752,9 +3126,10 @@
 
     lotteryRotation = 0;
 
-    var rotor = byId(
-      "member-lottery-rotor"
-    );
+    var rotor =
+      byId(
+        "member-lottery-rotor"
+      );
 
     rotor.style.transform =
       "rotate(0deg)";
@@ -2771,9 +3146,10 @@
       return;
     }
 
-    var rotor = byId(
-      "member-lottery-rotor"
-    );
+    var rotor =
+      byId(
+        "member-lottery-rotor"
+      );
 
     waitingSpinLastTime = 0;
 
@@ -2848,37 +3224,43 @@
         getSelectedLotteryType()
       );
 
-    var button = byId(
-      "lottery-spin-button"
-    );
+    var button =
+      byId(
+        "lottery-spin-button"
+      );
 
-    button.disabled = !canDraw;
+    button.disabled =
+      !canDraw;
 
     button.setAttribute(
       "aria-busy",
       String(isBusy)
     );
 
-    button.dataset.state = isBusy
-      ? "busy"
-      : isWheelPreparing
-        ? "loading"
-        : canDraw
-          ? "ready"
-          : "disabled";
+    button.dataset.state =
+      isBusy
+        ? "busy"
+        : isWheelPreparing
+          ? "loading"
+          : canDraw
+            ? "ready"
+            : "disabled";
 
     var label =
-      button.querySelector("span");
+      button.querySelector(
+        "span"
+      );
 
-    label.textContent = isBusy
-      ? "抽獎中"
-      : isWheelPreparing
-        ? "載入轉盤"
-        : selectedRewardTicket
-          ? pendingRequest
-            ? "點我重試"
-            : "點我抽獎"
-          : "選擇抽獎券";
+    label.textContent =
+      isBusy
+        ? "抽獎中"
+        : isWheelPreparing
+          ? "載入轉盤"
+          : selectedRewardTicket
+            ? pendingRequest
+              ? "點我重試"
+              : "點我抽獎"
+            : "選擇抽獎券";
 
     var wheelBackDisabled =
       isBusy ||
@@ -2894,7 +3276,9 @@
       "lottery-wheel-back-button"
     ).setAttribute(
       "aria-disabled",
-      String(wheelBackDisabled)
+      String(
+        wheelBackDisabled
+      )
     );
 
     setMemberRoutesLocked(
@@ -2905,12 +3289,16 @@
       .querySelectorAll(
         ".lottery-ticket-button"
       )
-      .forEach(function (ticket) {
-        ticket.disabled =
-          isBusy ||
-          isWheelPreparing ||
-          Boolean(pendingRequest);
-      });
+      .forEach(
+        function (ticket) {
+          ticket.disabled =
+            isBusy ||
+            isWheelPreparing ||
+            Boolean(
+              pendingRequest
+            );
+        }
+      );
   }
 
   function setMemberRoutesLocked(
@@ -2920,68 +3308,71 @@
       .querySelectorAll(
         "[data-member-route]"
       )
-      .forEach(function (link) {
-        if (locked) {
-          if (
-            !link.hasAttribute(
-              "data-unlocked-tabindex"
-            )
-          ) {
-            link.setAttribute(
-              "data-unlocked-tabindex",
-              link.hasAttribute(
-                "tabindex"
+      .forEach(
+        function (link) {
+          if (locked) {
+            if (
+              !link.hasAttribute(
+                "data-unlocked-tabindex"
               )
-                ? String(
-                    link.getAttribute(
-                      "tabindex"
+            ) {
+              link.setAttribute(
+                "data-unlocked-tabindex",
+                link.hasAttribute(
+                  "tabindex"
+                )
+                  ? String(
+                      link.getAttribute(
+                        "tabindex"
+                      )
                     )
-                  )
-                : "none"
+                  : "none"
+              );
+            }
+
+            link.setAttribute(
+              "aria-disabled",
+              "true"
             );
+
+            link.setAttribute(
+              "tabindex",
+              "-1"
+            );
+
+            return;
           }
 
-          link.setAttribute(
-            "aria-disabled",
-            "true"
+          var originalTabIndex =
+            link.getAttribute(
+              "data-unlocked-tabindex"
+            );
+
+          link.removeAttribute(
+            "aria-disabled"
           );
 
-          link.setAttribute(
-            "tabindex",
-            "-1"
-          );
-
-          return;
-        }
-
-        var originalTabIndex =
-          link.getAttribute(
+          link.removeAttribute(
             "data-unlocked-tabindex"
           );
 
-        link.removeAttribute(
-          "aria-disabled"
-        );
-
-        link.removeAttribute(
-          "data-unlocked-tabindex"
-        );
-
-        if (
-          originalTabIndex ===
-            "none" ||
-          originalTabIndex === null
-        ) {
-          link.removeAttribute(
-            "tabindex"
-          );
-        } else {
-          link.setAttribute(
-            "tabindex",
-            originalTabIndex
-          );
+          if (
+            originalTabIndex ===
+              "none" ||
+            originalTabIndex ===
+              null
+          ) {
+            link.removeAttribute(
+              "tabindex"
+            );
+          } else {
+            link.setAttribute(
+              "tabindex",
+              originalTabIndex
+            );
+          }
         }
-      });
+      );
   }
 
   function preventMemberRouteDuringSpin(
@@ -2996,7 +3387,9 @@
           )
         : null;
 
-    if (!link || !isBusy) return;
+    if (!link || !isBusy) {
+      return;
+    }
 
     event.preventDefault();
     event.stopPropagation();
@@ -3010,7 +3403,9 @@
   function preventPageExitDuringSpin(
     event
   ) {
-    if (!isBusy) return;
+    if (!isBusy) {
+      return;
+    }
 
     event.preventDefault();
     event.returnValue = "";
@@ -3041,27 +3436,35 @@
     var request = {
       requestId:
         window.MemberApi.createRequestId(),
+
       settingVersion:
         ticket.settingVersion,
+
       cardNumber:
         ticket.cardNumber,
+
       milestonePoints:
         ticket.milestonePoints,
+
       lotteryTypeId:
         ticket.lotteryTypeId,
+
       cardRoundKey:
         ticket.cardRoundKey,
     };
 
-    pendingRequest = request;
+    pendingRequest =
+      request;
 
     try {
       window.sessionStorage.setItem(
         getRequestStorageKey(),
-        JSON.stringify(request)
+        JSON.stringify(
+          request
+        )
       );
     } catch (_error) {
-      // sessionStorage 不可用時，仍保留記憶體內的 request。
+      // sessionStorage 不可使用時，仍保留記憶體中的 requestId。
     }
 
     return request;
@@ -3073,11 +3476,12 @@
     }
 
     try {
-      var parsed = JSON.parse(
-        window.sessionStorage.getItem(
-          getRequestStorageKey()
-        ) || "null"
-      );
+      var parsed =
+        JSON.parse(
+          window.sessionStorage.getItem(
+            getRequestStorageKey()
+          ) || "null"
+        );
 
       if (
         parsed &&
@@ -3088,11 +3492,13 @@
           parsed
         )
       ) {
-        pendingRequest = parsed;
+        pendingRequest =
+          parsed;
+
         return pendingRequest;
       }
     } catch (_error) {
-      // 無效或不可用的 storage 視為空資料。
+      // 無效或不可使用的 sessionStorage 視為空資料。
     }
 
     return null;
@@ -3102,7 +3508,10 @@
     value
   ) {
     try {
-      normalizeRewardTicket(value);
+      normalizeRewardTicket(
+        value
+      );
+
       return true;
     } catch (_error) {
       return false;
@@ -3113,7 +3522,9 @@
     value
   ) {
     return (
-      isValidPendingTicket(value) &&
+      isValidPendingTicket(
+        value
+      ) &&
       Boolean(
         findLotteryType(
           value.lotteryTypeId
@@ -3138,7 +3549,7 @@
         getRequestStorageKey()
       );
     } catch (_error) {
-      // sessionStorage 可能不可用。
+      // sessionStorage 可能不可使用。
     }
   }
 
@@ -3153,9 +3564,10 @@
   }
 
   function openResultDialog() {
-    var dialog = byId(
-      "lottery-result-dialog"
-    );
+    var dialog =
+      byId(
+        "lottery-result-dialog"
+      );
 
     if (
       typeof dialog.showModal ===
@@ -3175,9 +3587,10 @@
   }
 
   function returnToPointCard() {
-    var dialog = byId(
-      "lottery-result-dialog"
-    );
+    var dialog =
+      byId(
+        "lottery-result-dialog"
+      );
 
     if (
       typeof dialog.close ===
@@ -3196,13 +3609,18 @@
     );
   }
 
-  function navigateToMemberPanel(panel) {
-    if (isBusy) return;
+  function navigateToMemberPanel(
+    panel
+  ) {
+    if (isBusy) {
+      return;
+    }
 
-    var url = new URL(
-      "./",
-      window.location.href
-    );
+    var url =
+      new URL(
+        "./",
+        window.location.href
+      );
 
     if (
       panel === "tickets" ||
@@ -3230,7 +3648,9 @@
   }
 
   function handleLogin() {
-    if (!window.liff) return;
+    if (!window.liff) {
+      return;
+    }
 
     if (
       window.liff.isLoggedIn()
@@ -3249,7 +3669,9 @@
     errorValue
   ) {
     var normalized =
-      normalizeError(errorValue);
+      normalizeError(
+        errorValue
+      );
 
     if (
       recoverInvalidToken(
@@ -3272,10 +3694,14 @@
     ).textContent =
       normalized.message;
 
-    setView("error-state");
+    setView(
+      "error-state"
+    );
   }
 
-  function recoverInvalidToken(error) {
+  function recoverInvalidToken(
+    error
+  ) {
     if (
       error.code !==
         "INVALID_TOKEN" &&
@@ -3323,7 +3749,9 @@
 
     currentIdToken = "";
 
-    setView("loading-state");
+    setView(
+      "loading-state"
+    );
 
     setLoading(
       "正在更新 LINE 登入",
@@ -3358,7 +3786,7 @@
           )
       );
     } catch (_error) {
-      // sessionStorage 可能不可用。
+      // sessionStorage 可能不可使用。
     }
   }
 
@@ -3370,9 +3798,11 @@
       response.ok !== true
     ) {
       throw createError(
-        response && response.code
+        response &&
+          response.code
           ? response.code
           : "BACKEND_ERROR",
+
         response &&
           response.message
           ? response.message
@@ -3399,48 +3829,68 @@
     var messages = {
       INVALID_TOKEN:
         "LINE 登入憑證無效或已過期，請重新登入。",
+
       INVALID_ID_TOKEN:
         "LINE 登入憑證已失效，請重新登入。",
+
       MISSING_ID_TOKEN:
         "沒有取得 LINE 登入憑證，請確認 LIFF openid 權限。",
+
       MEMBER_NOT_FOUND:
         "請先返回會員資料頁完成會員登入。",
+
       MEMBER_ACCESS_DENIED:
         "目前會員帳號已停用，無法使用抽獎功能。",
+
       LOTTERY_NOT_CONFIGURED:
         "管理員尚未完成轉盤設定。",
+
       LOTTERY_TYPE_NOT_FOUND:
         "選擇的轉盤類型已停用，請重新整理。",
+
       LOTTERY_ROUND_NOT_READY:
         "尚未到達新的抽獎節點，或現有資格已使用。",
+
       INVALID_LOTTERY_TICKET:
         "這張抽獎券格式不正確，請重新整理。",
+
       LOTTERY_TICKET_MISMATCH:
         "這張抽獎券只能使用管理員指定的轉盤。",
+
       POINT_CARD_NOT_CONFIGURED:
         "管理員尚未設定集點卡規則。",
+
       POINT_CARD_DATA_ERROR:
         "集點卡資料目前無法使用，請聯絡管理員。",
+
       LOTTERY_DATA_ERROR:
         "抽獎紀錄目前無法使用，請聯絡管理員。",
+
       REQUEST_ID_CONFLICT:
         "上一次抽獎仍在確認中，請使用同一轉盤重試。",
+
       ORIGIN_NOT_ALLOWED:
         "目前網站來源未被 GAS 允許。",
+
       LINE_RATE_LIMITED:
         "LINE 驗證請求較多，請稍候一分鐘再試。",
+
       LINE_UNAVAILABLE:
         "LINE 驗證服務暫時無法使用。",
+
       BUSY:
         "抽獎資料正在更新，請稍候幾秒再試。",
+
       CONFIG_ERROR:
         "會員 GAS 尚未完成集點卡設定。",
+
       WHEEL_RENDER_ERROR:
         "目前無法繪製轉盤，請重新開啟後再試。",
     };
 
     return {
       code: code,
+
       message:
         messages[code] ||
         (
@@ -3454,20 +3904,23 @@
   function isAuthorizationError(
     errorValue
   ) {
-    var code = String(
-      errorValue &&
-      errorValue.code
-        ? errorValue.code
-        : ""
-    );
+    var code =
+      String(
+        errorValue &&
+        errorValue.code
+          ? errorValue.code
+          : ""
+      );
 
     return (
-      code === "INVALID_TOKEN" ||
+      code ===
+        "INVALID_TOKEN" ||
       code ===
         "INVALID_ID_TOKEN" ||
       code ===
         "MEMBER_ACCESS_DENIED" ||
-      code === "MEMBER_NOT_FOUND"
+      code ===
+        "MEMBER_NOT_FOUND"
     );
   }
 
@@ -3486,21 +3939,24 @@
   }
 
   function applyBrand() {
-    var brand = String(
-      CONFIG.BRAND_NAME ||
-        "PERSONA"
-    )
-      .trim()
-      .slice(0, 28);
+    var brand =
+      String(
+        CONFIG.BRAND_NAME ||
+          "PERSONA"
+      )
+        .trim()
+        .slice(0, 28);
 
     document
       .querySelectorAll(
         "[data-brand-name]"
       )
-      .forEach(function (element) {
-        element.textContent =
-          brand;
-      });
+      .forEach(
+        function (element) {
+          element.textContent =
+            brand;
+        }
+      );
 
     document.title =
       brand +
@@ -3518,34 +3974,38 @@
       .querySelectorAll(
         "[data-member-route]"
       )
-      .forEach(function (link) {
-        var url = new URL(
-          link.getAttribute(
-            "href"
-          ),
-          window.location.href
-        );
+      .forEach(
+        function (link) {
+          var url =
+            new URL(
+              link.getAttribute(
+                "href"
+              ),
+              window.location.href
+            );
 
-        if (demo) {
-          url.searchParams.set(
-            "demo",
-            "1"
-          );
-        } else {
-          url.searchParams.delete(
-            "demo"
-          );
+          if (demo) {
+            url.searchParams.set(
+              "demo",
+              "1"
+            );
+          } else {
+            url.searchParams.delete(
+              "demo"
+            );
+          }
+
+          link.href =
+            url.toString();
         }
-
-        link.href =
-          url.toString();
-      });
+      );
   }
 
   function setView(activeId) {
     STATE_IDS.forEach(
       function (id) {
-        var element = byId(id);
+        var element =
+          byId(id);
 
         if (element) {
           element.hidden =
@@ -3561,18 +4021,21 @@
   ) {
     byId(
       "loading-title"
-    ).textContent = title;
+    ).textContent =
+      title;
 
     byId(
       "loading-message"
-    ).textContent = message;
+    ).textContent =
+      message;
   }
 
   function showToast(
     message,
     tone
   ) {
-    var toast = byId("toast");
+    var toast =
+      byId("toast");
 
     window.clearTimeout(
       toastTimer
@@ -3580,7 +4043,8 @@
 
     byId(
       "toast-message"
-    ).textContent = message;
+    ).textContent =
+      message;
 
     toast.dataset.tone =
       tone || "success";
@@ -3599,7 +4063,8 @@
   function normalizePointNumber(
     value
   ) {
-    var number = Number(value);
+    var number =
+      Number(value);
 
     if (
       !Number.isSafeInteger(
@@ -3616,16 +4081,21 @@
     return number;
   }
 
-  function formatNumber(value) {
+  function formatNumber(
+    value
+  ) {
     return normalizePointNumber(
       value
-    ).toLocaleString("zh-TW");
+    ).toLocaleString(
+      "zh-TW"
+    );
   }
 
   function captureRequestedCardRoundKey() {
-    var pageUrl = new URL(
-      window.location.href
-    );
+    var pageUrl =
+      new URL(
+        window.location.href
+      );
 
     var directTicket =
       pageUrl.searchParams.get(
@@ -3645,10 +4115,11 @@
 
     if (liffState) {
       try {
-        stateUrl = new URL(
-          liffState,
-          window.location.origin
-        );
+        stateUrl =
+          new URL(
+            liffState,
+            window.location.origin
+          );
 
         stateTicket =
           stateUrl.searchParams.get(
@@ -3664,7 +4135,9 @@
         ? directTicket
         : stateTicket;
 
-    if (incomingTicket !== null) {
+    if (
+      incomingTicket !== null
+    ) {
       var normalizedTicket =
         String(
           incomingTicket || ""
@@ -3678,9 +4151,11 @@
         requestedCardRoundKey =
           normalizedTicket;
 
-        requestedTicketError = "";
+        requestedTicketError =
+          "";
       } else {
-        requestedCardRoundKey = "";
+        requestedCardRoundKey =
+          "";
 
         requestedTicketError =
           "抽獎券連結格式不正確，請返回會員資料重新選擇。";
@@ -3737,9 +4212,10 @@
   }
 
   function clearRequestedTicketFromUrl() {
-    var pageUrl = new URL(
-      window.location.href
-    );
+    var pageUrl =
+      new URL(
+        window.location.href
+      );
 
     if (
       !pageUrl.searchParams.has(
@@ -3766,9 +4242,10 @@
   }
 
   function getCleanPageUrl() {
-    var url = new URL(
-      window.location.href
-    );
+    var url =
+      new URL(
+        window.location.href
+      );
 
     url.hash = "";
 
@@ -3829,26 +4306,30 @@
     [
       "locked",
       "earned",
-    ].forEach(function (name) {
-      byId(
-        name + "-ticket-tab"
-      ).addEventListener(
-        "click",
-        function () {
-          selectTicketTab(
-            name,
-            false
-          );
-        }
-      );
+    ].forEach(
+      function (name) {
+        byId(
+          name +
+            "-ticket-tab"
+        ).addEventListener(
+          "click",
+          function () {
+            selectTicketTab(
+              name,
+              false
+            );
+          }
+        );
 
-      byId(
-        name + "-ticket-tab"
-      ).addEventListener(
-        "keydown",
-        handleTicketTabKeydown
-      );
-    });
+        byId(
+          name +
+            "-ticket-tab"
+        ).addEventListener(
+          "keydown",
+          handleTicketTabKeydown
+        );
+      }
+    );
 
     byId(
       "lottery-wheel-back-button"
@@ -3871,8 +4352,9 @@
           updateControls();
 
           showToast(
-            normalizeError(error)
-              .message,
+            normalizeError(
+              error
+            ).message,
             "error"
           );
         }
@@ -3898,9 +4380,10 @@
 
   byId(
     "current-year"
-  ).textContent = String(
-    new Date().getFullYear()
-  );
+  ).textContent =
+    String(
+      new Date().getFullYear()
+    );
 
   bindInteractions();
   start();
