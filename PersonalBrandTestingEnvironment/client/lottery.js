@@ -23,8 +23,8 @@
   var requestedCardRoundKey = "";
   var requestedTicketError = "";
 
-  var FINAL_SPIN_TURNS = 6;
-  var SPIN_DURATION_MS = 4200;
+  var SPIN_DEGREES_PER_MS = 1.45;
+  var FINAL_SPIN_TURNS = 2;
   var RESULT_HOLD_MS = 450;
   var WHEEL_PRELOAD_LIMIT = 8;
 
@@ -3196,49 +3196,30 @@
         lotteryRotation +
         "deg)";
 
-      return Promise.resolve();
+      return new Promise(
+        function (resolve) {
+          window.setTimeout(
+            resolve,
+            30
+          );
+        }
+      );
     }
 
-    var accelerationRatio =
-      0.18;
-
-    var cruiseRatio =
-      0.18;
-
-    var decelerationRatio =
-      1 -
-      accelerationRatio -
-      cruiseRatio;
-
-    var accelerationDuration =
-      SPIN_DURATION_MS *
-      accelerationRatio;
-
-    var cruiseDuration =
-      SPIN_DURATION_MS *
-      cruiseRatio;
-
-    var decelerationDuration =
-      SPIN_DURATION_MS *
-      decelerationRatio;
-
-    var normalizedDistance =
-      accelerationDuration *
-        0.5 +
-      cruiseDuration +
-      decelerationDuration *
-        0.5;
-
-    var maximumVelocity =
-      rotationDelta /
-      normalizedDistance;
+    var duration =
+      (2 * rotationDelta) /
+      SPIN_DEGREES_PER_MS;
 
     return new Promise(
       function (resolve) {
         var startedAt =
-          null;
+          window.performance &&
+          typeof window.performance.now ===
+            "function"
+            ? window.performance.now()
+            : null;
 
-        function rotate(
+        function decelerate(
           timestamp
         ) {
           if (
@@ -3253,86 +3234,34 @@
               timestamp;
           }
 
-          var elapsed =
-            Math.min(
-              SPIN_DURATION_MS,
-              timestamp - startedAt
+          var progress = Math.min(
+            1,
+            (timestamp - startedAt) /
+              duration
+          );
+
+          var quadraticEaseOut =
+            1 -
+            Math.pow(
+              1 - progress,
+              2
             );
 
-          var distance;
+          var smoothstepCorrection =
+            Math.pow(
+              progress *
+                (1 - progress),
+              2
+            );
 
-          if (
-            elapsed <=
-            accelerationDuration
-          ) {
-            var accelerationProgress =
-              elapsed /
-              accelerationDuration;
-
-            distance =
-              maximumVelocity *
-              accelerationDuration *
-              (
-                Math.pow(
-                  accelerationProgress,
-                  3
-                ) -
-                0.5 *
-                Math.pow(
-                  accelerationProgress,
-                  4
-                )
-              );
-          } else if (
-            elapsed <=
-            accelerationDuration +
-              cruiseDuration
-          ) {
-            var cruiseElapsed =
-              elapsed -
-              accelerationDuration;
-
-            distance =
-              maximumVelocity *
-                accelerationDuration *
-                0.5 +
-              maximumVelocity *
-                cruiseElapsed;
-          } else {
-            var decelerationElapsed =
-              elapsed -
-              accelerationDuration -
-              cruiseDuration;
-
-            var decelerationProgress =
-              decelerationElapsed /
-              decelerationDuration;
-
-            distance =
-              maximumVelocity *
-                accelerationDuration *
-                0.5 +
-              maximumVelocity *
-                cruiseDuration +
-              maximumVelocity *
-                decelerationDuration *
-                (
-                  decelerationProgress -
-                  Math.pow(
-                    decelerationProgress,
-                    3
-                  ) +
-                  0.5 *
-                  Math.pow(
-                    decelerationProgress,
-                    4
-                  )
-                );
-          }
+          var easedProgress =
+            quadraticEaseOut +
+            smoothstepCorrection;
 
           lotteryRotation =
             startRotation +
-            distance;
+            rotationDelta *
+              easedProgress;
 
           rotor.style.transform =
             "rotate(" +
@@ -3340,12 +3269,11 @@
             "deg)";
 
           if (
-            elapsed <
-            SPIN_DURATION_MS
+            progress < 1
           ) {
             settlingSpinFrame =
               window.requestAnimationFrame(
-                rotate
+                decelerate
               );
 
             return;
@@ -3367,7 +3295,7 @@
 
         settlingSpinFrame =
           window.requestAnimationFrame(
-            rotate
+            decelerate
           );
       }
     );

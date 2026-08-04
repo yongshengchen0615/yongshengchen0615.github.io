@@ -54,6 +54,10 @@ test("member lottery retries a pending draw with the same persisted request id",
     script,
     /function\s+handleDraw\s*\(/
   );
+  const loadWorkspace = getTopLevelFunctionContaining(
+    script,
+    /function\s+loadWorkspace\s*\(/
+  );
   const finishDraw = getTopLevelFunctionContaining(
     script,
     /function\s+finishDraw\s*\(/
@@ -87,19 +91,21 @@ test("member lottery retries a pending draw with the same persisted request id",
     /REQUEST_STORAGE_PREFIX\s*\+\s*options\.liffId\s*\+\s*["']:["']\s*\+\s*memberId/
   );
   assert.match(
-    handleDraw,
+    loadWorkspace,
     /pendingRequest\s*=\s*ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*pendingRequest\.requestId/
   );
+  assert.match(handleDraw, /finishDraw\(preparedDrawData\)/);
+  assert.doesNotMatch(handleDraw, /options\.request|startWaitingSpin/);
   assert.match(
     finishDraw,
     /animateToPrize\([^)]*\)\.then\([\s\S]*clearPendingRequest\(\)/
   );
 });
 
-test("member lottery releases only definitive no-draw failures and refreshes the card", () => {
-  const handleDraw = getTopLevelFunctionContaining(
+test("member lottery releases only definitive preparation failures and refreshes the card", () => {
+  const loadWorkspace = getTopLevelFunctionContaining(
     script,
-    /function\s+handleDraw\s*\(/
+    /function\s+loadWorkspace\s*\(/
   );
   const definitiveFailure = getTopLevelFunctionContaining(
     script,
@@ -111,7 +117,7 @@ test("member lottery releases only definitive no-draw failures and refreshes the
   );
 
   assert.match(
-    handleDraw,
+    loadWorkspace,
     /isDefinitiveNoDrawError\(error\)[\s\S]*clearPendingRequest\(\)[\s\S]*refreshHostCardAfterNoDraw\(\)/
   );
   assert.match(definitiveFailure, /LOTTERY_ROUND_NOT_READY/);
@@ -172,18 +178,21 @@ test("member lottery cannot close or leave while spinning or awaiting confirmati
 });
 
 test("legacy lottery page still locks all navigation during a draw", () => {
-  assert.match(legacyScript, /setMemberRoutesLocked\(isBusy\)/);
   assert.match(
     legacyScript,
-    /link\.setAttribute\(["']aria-disabled["'],\s*["']true["']\)/
+    /setMemberRoutesLocked\(\s*lockedByPreparedTransaction\s*\)/
   );
   assert.match(
     legacyScript,
-    /document\.addEventListener\(["']click["'],\s*preventMemberRouteDuringSpin,\s*true\)/
+    /link\.setAttribute\(\s*["']aria-disabled["'],\s*["']true["']\s*\)/
   );
   assert.match(
     legacyScript,
-    /window\.addEventListener\(["']beforeunload["'],\s*preventPageExitDuringSpin\)/
+    /document\.addEventListener\(\s*["']click["'],\s*preventMemberRouteDuringSpin,\s*true\s*\)/
+  );
+  assert.match(
+    legacyScript,
+    /window\.addEventListener\(\s*["']beforeunload["'],\s*preventPageExitDuringSpin\s*\)/
   );
   assert.match(
     styles,

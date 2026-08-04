@@ -43,6 +43,7 @@
   var cardStatus = null;
   var selectedTicket = null;
   var selectedLotteryTypeId = "";
+  var preparedDrawData = null;
   var pendingRequest = null;
   var pendingRequestStorageKey = "";
   var isPreparing = false;
@@ -50,8 +51,6 @@
   var allowHostClose = false;
   var loadVersion = 0;
   var lotteryRotation = 0;
-  var waitingSpinFrame = 0;
-  var waitingSpinLastTime = 0;
   var settlingSpinFrame = 0;
   var spinAnimationVersion = 0;
 
@@ -176,6 +175,7 @@
     setDialogState("member-lottery-loading-state");
     dialog.setAttribute("aria-busy", "true");
     isPreparing = true;
+    preparedDrawData = null;
     stopSpinAnimation();
     resetRotor();
 
@@ -244,6 +244,7 @@
     byId("member-lottery-dialog").setAttribute("aria-busy", "false");
     selectedTicket = null;
     selectedLotteryTypeId = "";
+    preparedDrawData = null;
     lotteryTypes = [];
     cardStatus = null;
     setText("member-lottery-spin-status", "");
@@ -311,16 +312,52 @@
 
         renderTicketHeading();
         drawSelectedWheel();
+        pendingRequest = ensurePendingRequest(selectedTicket);
+        setText(
+          "member-lottery-spin-status",
+          storedRequest
+            ? "正在安全取回上次抽獎結果…"
+            : "正在安全準備本次抽獎結果…"
+        );
+        safeCardUpdated(cardStatus, workspace.totalPoints);
+        updateControls();
+
+        if (safeIsDemo()) return createDemoDrawResponse();
+        return options.request(
+          "drawLottery",
+          {
+            lotteryTypeId: selectedTicket.lotteryTypeId,
+            cardRoundKey: selectedTicket.cardRoundKey,
+          },
+          pendingRequest.requestId
+        );
+      })
+      .then(function (response) {
+        if (expectedLoadVersion !== loadVersion) return false;
+        assertSuccessfulResponse(response);
+        if (
+          !response.data ||
+          !response.data.draw ||
+          !response.data.lottery ||
+          !response.data.lotteryType ||
+          !response.data.card
+        ) {
+          throw createError(
+            "INVALID_RESPONSE",
+            "後台回傳的抽獎結果格式不完整。"
+          );
+        }
+
+        preparedDrawData = normalizePreparedDraw(response.data);
+        drawWheel(preparedDrawData.selectedType.lottery.prizes);
+        resetRotor();
         isPreparing = false;
         byId("member-lottery-dialog").setAttribute("aria-busy", "false");
         setDialogState("member-lottery-wheel-state");
         setText(
           "member-lottery-spin-status",
-          storedRequest
-            ? "上次結果尚未確認，點選中央安全重試。"
-            : "轉盤已就緒，點選中央開始抽獎。"
+          "轉盤已就緒，點選中央開始抽獎。"
         );
-        safeCardUpdated(cardStatus, workspace.totalPoints);
         updateControls();
         focusElement(byId("member-lottery-spin-button"));
         return true;
@@ -328,6 +365,7 @@
       .catch(function (error) {
         if (expectedLoadVersion !== loadVersion) return false;
         isPreparing = false;
+        preparedDrawData = null;
         byId("member-lottery-dialog").setAttribute("aria-busy", "false");
         if (delegateAuthorizationError(error)) {
           if (canClose()) requestClose();
@@ -340,6 +378,10 @@
             updateControls();
           }
           return false;
+        }
+        if (isDefinitiveNoDrawError(error)) {
+          clearPendingRequest();
+          refreshHostCardAfterNoDraw();
         }
         showError(error);
         updateControls();
@@ -386,143 +428,103 @@
       isPreparing ||
       !cardStatus ||
       !selectedTicket ||
+      !preparedDrawData ||
       !findLotteryType(selectedLotteryTypeId) ||
-      (!readPendingRequest() && cardStatus.availableDraws < 1)
+      !readPendingRequest()
     ) {
       return;
     }
 
-    try {
-      pendingRequest = ensurePendingRequest(selectedTicket);
-    } catch (error) {
-      showDrawError(error);
-      return;
-    }
-
     isBusy = true;
-    startWaitingSpin();
     setText(
       "member-lottery-spin-status",
-      "轉盤已開始，正在安全確認抽獎結果…"
+      "轉盤旋轉中，正在揭曉結果…"
     );
     updateControls();
 
-    var drawPromise = Promise.resolve().then(function () {
-      if (safeIsDemo()) return createDemoDrawResponse();
-      return options.request(
-            "drawLottery",
-            {
-              lotteryTypeId: selectedTicket.lotteryTypeId,
-              cardRoundKey: selectedTicket.cardRoundKey,
-            },
-            pendingRequest.requestId
-          );
-    });
-
-    drawPromise
-      .then(function (response) {
-        assertSuccessfulResponse(response);
-        if (
-          !response.data ||
-          !response.data.draw ||
-          !response.data.lottery ||
-          !response.data.lotteryType ||
-          !response.data.card
-        ) {
-          throw createError(
-            "INVALID_RESPONSE",
-            "後台回傳的抽獎結果格式不完整。"
-          );
-        }
-        return finishDraw(response.data);
-      })
+    finishDraw(preparedDrawData)
       .catch(function (error) {
         isBusy = false;
         stopSpinAnimation();
-        if (delegateAuthorizationError(error)) {
-          setText(
-            "member-lottery-spin-status",
-            "正在更新會員登入狀態…"
-          );
-          updateControls();
-          return;
-        }
-        if (isDefinitiveNoDrawError(error)) {
-          clearPendingRequest();
-          showError(error);
-          updateControls();
-          refreshHostCardAfterNoDraw();
-          return;
-        }
         setText(
           "member-lottery-spin-status",
-          "尚未確認結果；請再點一次中央安全重試，不會重複使用抽獎券。"
+          "轉盤動畫未完成，請再點一次中央重新揭曉同一結果。"
         );
         updateControls();
         safeShowToast(normalizeError(error).message);
       });
   }
 
-  function finishDraw(data) {
+  function normalizePreparedDraw(data) {
     var selectedType;
     var resultLottery;
     var nextCard;
     var draw;
     var totalPoints;
 
-    try {
-      selectedType = normalizeLotteryTypes([data.lotteryType])[0];
-      if (selectedType.lotteryTypeId !== selectedLotteryTypeId) {
-        throw createError(
-          "INVALID_RESPONSE",
-          "抽獎結果與選擇的轉盤類型不一致。"
-        );
-      }
-      resultLottery = normalizeLotteryConfig(
-        data.lottery,
-        selectedType.lotteryTypeId
+    selectedType = normalizeLotteryTypes([data.lotteryType])[0];
+    if (selectedType.lotteryTypeId !== selectedLotteryTypeId) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎結果與選擇的轉盤類型不一致。"
       );
-      if (
-        JSON.stringify(resultLottery) !==
-        JSON.stringify(selectedType.lottery)
-      ) {
-        throw createError(
-          "INVALID_RESPONSE",
-          "抽獎結果使用了不一致的轉盤設定。"
-        );
-      }
-
-      replaceLotteryType(selectedType);
-      nextCard = normalizePointCardStatus(data.card);
-      draw = normalizeDraw(data.draw, selectedType);
-      if (
-        !selectedTicket ||
-        draw.cardRoundKey !== selectedTicket.cardRoundKey
-      ) {
-        throw createError(
-          "INVALID_RESPONSE",
-          "抽獎結果與選擇的抽獎券不一致。"
-        );
-      }
-      totalPoints = normalizePointNumber(
-        data.totalPoints == null ? data.pointBalance : data.totalPoints
+    }
+    resultLottery = normalizeLotteryConfig(
+      data.lottery,
+      selectedType.lotteryTypeId
+    );
+    if (
+      JSON.stringify(resultLottery) !==
+      JSON.stringify(selectedType.lottery)
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎結果使用了不一致的轉盤設定。"
       );
-      if (
-        totalPoints !== draw.pointBalance ||
-        nextCard.totalPoints !== draw.pointBalance
-      ) {
-        throw createError(
-          "INVALID_RESPONSE",
-          "抽獎前後累計點數不一致。"
-        );
-      }
-    } catch (error) {
-      return Promise.reject(error);
     }
 
-    cardStatus = nextCard;
-    drawWheel(selectedType.lottery.prizes);
+    replaceLotteryType(selectedType);
+    nextCard = normalizePointCardStatus(data.card);
+    draw = normalizeDraw(data.draw, selectedType);
+    if (
+      !selectedTicket ||
+      draw.cardRoundKey !== selectedTicket.cardRoundKey
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎結果與選擇的抽獎券不一致。"
+      );
+    }
+    totalPoints = normalizePointNumber(
+      data.totalPoints == null ? data.pointBalance : data.totalPoints
+    );
+    if (
+      totalPoints !== draw.pointBalance ||
+      nextCard.totalPoints !== draw.pointBalance
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎前後累計點數不一致。"
+      );
+    }
+
+    return {
+      selectedType: selectedType,
+      nextCard: nextCard,
+      draw: draw,
+      totalPoints: totalPoints,
+    };
+  }
+
+  function finishDraw(prepared) {
+    var selectedType = prepared.selectedType;
+    var nextCard = prepared.nextCard;
+    var draw = prepared.draw;
+    var totalPoints = prepared.totalPoints;
+
     return animateToPrize(draw, selectedType.lottery).then(function () {
+      cardStatus = nextCard;
+      preparedDrawData = null;
       clearPendingRequest();
       isBusy = false;
       safeCardUpdated(cardStatus, totalPoints);
@@ -933,30 +935,6 @@
     }
   }
 
-  function startWaitingSpin() {
-    stopSpinAnimation();
-    if (prefersReducedMotion()) return;
-    var rotor = byId("member-lottery-rotor");
-    waitingSpinLastTime = 0;
-
-    function rotate(timestamp) {
-      if (!isBusy) {
-        stopSpinAnimation();
-        return;
-      }
-      if (waitingSpinLastTime) {
-        lotteryRotation +=
-          Math.min(100, timestamp - waitingSpinLastTime) *
-          SPIN_DEGREES_PER_MS;
-        rotor.style.transform = "rotate(" + lotteryRotation + "deg)";
-      }
-      waitingSpinLastTime = timestamp;
-      waitingSpinFrame = window.requestAnimationFrame(rotate);
-    }
-
-    waitingSpinFrame = window.requestAnimationFrame(rotate);
-  }
-
   function animateToPrize(draw, lottery) {
     stopSpinAnimation();
     var animationVersion = spinAnimationVersion;
@@ -1045,15 +1023,10 @@
   }
 
   function stopSpinAnimation() {
-    if (waitingSpinFrame) {
-      window.cancelAnimationFrame(waitingSpinFrame);
-      waitingSpinFrame = 0;
-    }
     if (settlingSpinFrame) {
       window.cancelAnimationFrame(settlingSpinFrame);
       settlingSpinFrame = 0;
     }
-    waitingSpinLastTime = 0;
     spinAnimationVersion += 1;
   }
 
@@ -1227,15 +1200,6 @@
     setDialogState("member-lottery-error-state");
   }
 
-  function showDrawError(errorValue) {
-    setText(
-      "member-lottery-spin-status",
-      normalizeError(errorValue).message
-    );
-    safeShowToast(normalizeError(errorValue).message);
-    updateControls();
-  }
-
   function isDefinitiveNoDrawError(errorValue) {
     var code = normalizeError(errorValue).code;
     return (
@@ -1321,7 +1285,8 @@
       cardStatus &&
       selectedTicket &&
       selectedType &&
-      (cardStatus.availableDraws > 0 || pending);
+      preparedDrawData &&
+      pending;
     var spinButton = byId("member-lottery-spin-button");
     spinButton.disabled = !canDraw;
     spinButton.setAttribute("aria-busy", String(isBusy));
@@ -1337,12 +1302,14 @@
       isBusy
         ? "抽獎中"
         : isPreparing
-          ? "載入轉盤"
-          : pending
-            ? "點我重試"
-            : selectedTicket
-              ? "點我抽獎"
-              : "選擇抽獎券"
+          ? "準備轉盤"
+          : preparedDrawData
+            ? "開始抽獎"
+            : pending
+              ? "重新準備"
+              : selectedTicket
+                ? "等待準備"
+                : "選擇抽獎券"
     );
 
     var closeDisabled = !canClose();

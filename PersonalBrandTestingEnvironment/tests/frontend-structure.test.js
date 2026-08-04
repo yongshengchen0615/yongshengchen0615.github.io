@@ -539,6 +539,10 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
   assert.match(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
   assert.match(
     loadWorkspace,
+    /ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*normalizePreparedDraw\(response\.data\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+  );
+  assert.match(
+    loadWorkspace,
     /drawSelectedWheel\(\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
   );
   assert.match(
@@ -565,9 +569,9 @@ test("legacy client lottery deep link remains available and spins from the wheel
     script,
     /function\s+animateToPrize\s*\(/
   );
-  const waitingSpin = getTopLevelFunctionContaining(
+  const prepareDraw = getTopLevelFunctionContaining(
     script,
-    /function\s+startWaitingSpin\s*\(/
+    /function\s+prepareLotteryDraw\s*\(/
   );
   const stopSpin = getTopLevelFunctionContaining(
     script,
@@ -643,16 +647,20 @@ test("legacy client lottery deep link remains available and spins from the wheel
     getOpeningTagById(html, "lottery-wheel-view"),
     /\bhidden\b/i
   );
-  assert.match(spin, /sendMemberRequest\(\s*["']drawLottery["']/);
-  assert.match(spin, /ensurePendingRequest\s*\(/);
-  assert.match(spin, /startWaitingSpin\(\);[\s\S]*sendMemberRequest\(/);
-  assert.match(spin, /\blotteryTypeId\s*:/);
-  assert.match(spin, /\bcardRoundKey\s*:/);
+  assert.match(prepareDraw, /sendMemberRequest\(\s*["']drawLottery["']/);
+  assert.match(prepareDraw, /ensurePendingRequest\s*\(/);
+  assert.match(prepareDraw, /\blotteryTypeId\s*:/);
+  assert.match(prepareDraw, /\bcardRoundKey\s*:/);
+  assert.match(spin, /revealPreparedDraw\(\s*preparedDrawData\s*\)/);
+  assert.doesNotMatch(spin, /sendMemberRequest|startWaitingSpin/);
   assert.doesNotMatch(spin, /Math\.random\s*\(/);
   assert.match(script, /draw\.pointsSpent\s*!==\s*0/);
   assert.match(script, /draw\.pointBalance\s*!==\s*draw\.originalPointBalance/);
   assert.match(script, /normalizeLotteryConfig\(\s*data\.lottery/);
-  assert.match(script, /animateToPrize\(draw,\s*selectedType\.lottery\)/);
+  assert.match(
+    script,
+    /animateToPrize\(\s*draw,\s*selectedType\.lottery\s*\)/
+  );
   assert.match(script, /renderPointCardMilestones\(\)/);
   assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
   assert.equal(
@@ -662,29 +670,35 @@ test("legacy client lottery deep link remains available and spins from the wheel
     "card eligibility must be known before wheel canvases are preloaded"
   );
   assert.match(preloadWheels, /cardStatus\.availableRewards/);
-  assert.match(preloadWheels, /\.slice\(0,\s*WHEEL_PRELOAD_LIMIT\)/);
-  assert.doesNotMatch(preloadWheels, /lotteryTypes\.forEach/);
-  assert.match(openTicket, /renderSelectedLottery\(\);[\s\S]*showLotteryWheelView\(\)/);
-  assert.doesNotMatch(openTicket, /requestAnimationFrame/);
-  assert.match(script, /function\s+startWaitingSpin\s*\(/);
-  assert.match(waitingSpin, /requestAnimationFrame\(rotate\)/);
   assert.match(
-    waitingSpin,
-    /\*\s*SPIN_DEGREES_PER_MS/
+    preloadWheels,
+    /\.slice\(\s*0,\s*WHEEL_PRELOAD_LIMIT\s*\)/
   );
-  assert.match(waitingSpin, /Math\.min\(100,\s*timestamp\s*-\s*waitingSpinLastTime\)/);
+  assert.doesNotMatch(preloadWheels, /lotteryTypes\.forEach/);
+  assert.match(
+    openTicket,
+    /renderSelectedLotteryHeading\(\);[\s\S]*showLotteryWheelView\(\)/
+  );
+  assert.doesNotMatch(openTicket, /requestAnimationFrame/);
+  assert.doesNotMatch(script, /function\s+startWaitingSpin\s*\(/);
   assert.match(
     animateSpin,
     /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
   );
   assert.match(
     animateSpin,
-    /1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
+    /quadraticEaseOut\s*=\s*1\s*-\s*Math\.pow\(\s*1\s*-\s*progress,\s*2\s*\)/
   );
   assert.match(animateSpin, /if\s*\(reducedMotion\)[\s\S]*return new Promise/);
   assert.match(animateSpin, /window\.performance\.now\(\)/);
-  assert.match(animateSpin, /requestAnimationFrame\(decelerate\)/);
-  assert.match(stopSpin, /cancelAnimationFrame\(settlingSpinFrame\)/);
+  assert.match(
+    animateSpin,
+    /requestAnimationFrame\(\s*decelerate\s*\)/
+  );
+  assert.match(
+    stopSpin,
+    /cancelAnimationFrame\(\s*settlingSpinFrame\s*\)/
+  );
   assert.match(stopSpin, /spinAnimationVersion\s*\+=\s*1/);
   assert.doesNotMatch(
     styles,
@@ -692,14 +706,17 @@ test("legacy client lottery deep link remains available and spins from the wheel
   );
   assert.match(script, /cardStatus\.availableRewards\.forEach/);
   assert.match(script, /function\s+selectTicketTab\s*\(/);
-  assert.match(script, /byId\(name\s*\+\s*["']-ticket-panel["']\)\.hidden\s*=\s*!selected/);
+  assert.match(
+    script,
+    /byId\(\s*name\s*\+\s*["']-ticket-panel["']\s*\)\.hidden\s*=\s*!selected/
+  );
   assert.match(script, /function\s+handleTicketTabKeydown\s*\(/);
   assert.match(script, /["']keydown["'],\s*handleTicketTabKeydown/);
   assert.doesNotMatch(script, /\brewardTickets\b/);
   assert.match(script, /function\s+returnToPointCard\s*\(/);
   assert.match(
     getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
-    /navigateToMemberPanel\(["']tickets["']\)/
+    /navigateToMemberPanel\(\s*["']tickets["']\s*\)/
   );
   assert.match(script, /function\s+captureRequestedCardRoundKey\s*\(/);
   assert.match(renderWorkspace, /cardStatus\.availableRewards\.find/);
