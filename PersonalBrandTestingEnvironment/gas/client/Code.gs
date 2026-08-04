@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.14.0";
+var API_VERSION = "1.15.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -343,6 +343,7 @@ function doGet(e) {
       data: {
         service: "member-client-api",
         version: API_VERSION,
+        capabilities: ["member_identity_v1", "member_card_summary_v1"],
         timestamp: new Date().toISOString(),
       },
     });

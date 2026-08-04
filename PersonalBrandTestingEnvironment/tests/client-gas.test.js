@@ -3859,7 +3859,11 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.14.0");
+  assert.equal(health.data.version, "1.15.0");
+  assert.deepEqual(Array.from(health.data.capabilities), [
+    "member_identity_v1",
+    "member_card_summary_v1",
+  ]);
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

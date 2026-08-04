@@ -38,6 +38,7 @@ test("member identity renders before the point-card summary finishes loading", a
       var currentIdToken = "";
       var pendingMemberSyncRequestId = "";
       var currentMemberWasCreated = false;
+      var memberBackendSupportsProgressive = true;
       var window = {
         liff: {
           getIDToken: function () { return "header.payload.signature"; }
@@ -51,6 +52,7 @@ test("member identity renders before the point-card summary finishes loading", a
       function setView() {}
       function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
       function getLiffContext() { return {}; }
+      function getMemberSyncAction() { return Promise.resolve("upsertMemberIdentity"); }
       function assertSuccessfulResponse(response) { if (!response.ok) throw new Error("failed"); }
       function enablePerformanceReporting() {}
       function clearInvalidTokenRecoveryGuard() {}
@@ -116,6 +118,179 @@ test("member identity renders before the point-card summary finishes loading", a
   ]);
 });
 
+test("a legacy member backend uses the compatible login action instead of timing out", async () => {
+  const actions = [];
+  const member = {
+    memberId: "MBR-LEGACY1234",
+    displayName: "相容會員",
+    phone: "0912345678",
+    birthday: "1990-01-01",
+    pointBalance: 8,
+  };
+  const cardSummary = {
+    currentPoints: 8,
+    targetPoints: 20,
+    availableDraws: 0,
+    rewardRules: [],
+    availableRewards: [],
+  };
+  const moduleSource = `
+    (function () {
+      var bootVersion = 1;
+      var currentIdToken = "";
+      var pendingMemberSyncRequestId = "";
+      var currentMemberWasCreated = false;
+      var memberBackendSupportsProgressive = false;
+      var window = {
+        liff: { getIDToken: function () { return "header.payload.signature"; } },
+        MemberApi: { createRequestId: function () { return "request-legacy-login"; } }
+      };
+      function setConnection() {}
+      function setLoadingCopy() {}
+      function setView() {}
+      function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
+      function getLiffContext() { return {}; }
+      function getMemberSyncAction() { return Promise.resolve("upsertMember"); }
+      function assertSuccessfulResponse(response) { if (!response.ok) throw new Error("failed"); }
+      function enablePerformanceReporting() {}
+      function clearInvalidTokenRecoveryGuard() {}
+      function renderAccessState() {}
+      function renderMember() { actions.push("render-member"); }
+      function renderMemberCardSummary() { actions.push("render-card"); }
+      function updateMemberPointBalance() {}
+      function sendNewMemberJoinMessage() {}
+      function getPointMessageContext() { return {}; }
+      function isMemberProfileComplete() { return true; }
+      function openProfileOnboarding() {}
+      function redeemPendingPointCampaign() { actions.push("redeem-pending"); return Promise.resolve(); }
+      function openPendingMemberPanel() { actions.push("open-panel"); }
+      function normalizeClientError(error) { return { code: error.code || "CONNECTION_ERROR", message: error.message }; }
+      function showToast() {}
+      function sendGasRequest(action) {
+        actions.push(action);
+        if (action === "upsertMemberIdentity") {
+          var error = new Error("backend still processing");
+          error.code = "REQUEST_STATUS_UNKNOWN";
+          return Promise.reject(error);
+        }
+        if (action !== "upsertMember") throw new Error("unexpected action " + action);
+        return Promise.resolve({
+          ok: true,
+          data: {
+            created: false,
+            access: { allowed: true, status: "approved" },
+            member: member,
+            cardSummary: cardSummary
+          }
+        });
+      }
+      ${extractFunction("syncMember")}
+      ${extractFunction("loadMemberCardSummary")}
+      ${extractFunction("loadMemberCardSummarySafely")}
+      return { syncMember: syncMember };
+    })()
+  `;
+  const api = vm.runInNewContext(moduleSource, {
+    Promise,
+    Error,
+    actions,
+    member,
+    cardSummary,
+  });
+
+  await api.syncMember(1);
+
+  assert.deepEqual(actions, [
+    "upsertMember",
+    "render-member",
+    "render-card",
+    "redeem-pending",
+    "open-panel",
+  ]);
+});
+
+test("member backend health capabilities select the compatible login contract", async () => {
+  for (const scenario of [
+    { capabilities: [], expectedAction: "upsertMember" },
+    {
+      capabilities: ["member_identity_v1", "member_card_summary_v1"],
+      expectedAction: "upsertMemberIdentity",
+    },
+  ]) {
+    const moduleSource = `
+      (function () {
+        var CONFIG = { GAS_WEB_APP_URL: "https://script.google.com/macros/s/deployment-id/exec" };
+        var memberBackendCapabilitiesPromise = null;
+        var memberBackendSupportsProgressive = null;
+        var window = {
+          MemberApi: { createRequestId: function () { return "request-health-check"; } },
+          setTimeout: function () { return 1; },
+          clearTimeout: function () {},
+          fetch: function () {
+            return Promise.resolve({
+              ok: true,
+              json: function () {
+                return Promise.resolve({
+                  ok: true,
+                  data: {
+                    service: "member-client-api",
+                    capabilities: capabilities
+                  }
+                });
+              }
+            });
+          }
+        };
+        function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
+        ${extractFunction("warmMemberBackendCapabilities")}
+        ${extractFunction("getMemberSyncAction")}
+        return { getMemberSyncAction: getMemberSyncAction };
+      })()
+    `;
+    const api = vm.runInNewContext(moduleSource, {
+      Promise,
+      Error,
+      URL,
+      AbortController,
+      capabilities: scenario.capabilities,
+    });
+
+    assert.equal(await api.getMemberSyncAction(), scenario.expectedAction);
+  }
+});
+
+test("member capability preflight times out safely without AbortController", async () => {
+  const moduleSource = `
+    (function () {
+      var CONFIG = { GAS_WEB_APP_URL: "https://script.google.com/macros/s/deployment-id/exec" };
+      var memberBackendCapabilitiesPromise = null;
+      var memberBackendSupportsProgressive = null;
+      var window = {
+        MemberApi: { createRequestId: function () { return "request-health-timeout"; } },
+        setTimeout: function (callback) { queueMicrotask(callback); return 1; },
+        clearTimeout: function () {},
+        fetch: function () { return new Promise(function () {}); }
+      };
+      function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
+      ${extractFunction("warmMemberBackendCapabilities")}
+      ${extractFunction("getMemberSyncAction")}
+      return { getMemberSyncAction: getMemberSyncAction };
+    })()
+  `;
+  const api = vm.runInNewContext(moduleSource, {
+    Promise,
+    Error,
+    URL,
+    queueMicrotask,
+  });
+  const action = await Promise.race([
+    api.getMemberSyncAction(),
+    new Promise((resolve) => setTimeout(() => resolve("preflight-stalled"), 25)),
+  ]);
+
+  assert.equal(action, "upsertMember");
+});
+
 test("a point-card read failure keeps the authenticated member visible", async () => {
   const events = [];
   const member = {
@@ -130,6 +305,7 @@ test("a point-card read failure keeps the authenticated member visible", async (
       var currentIdToken = "";
       var pendingMemberSyncRequestId = "";
       var currentMemberWasCreated = false;
+      var memberBackendSupportsProgressive = true;
       var window = {
         liff: { getIDToken: function () { return "header.payload.signature"; } },
         MemberApi: { createRequestId: function () { return "request-partial-login"; } }
@@ -139,6 +315,7 @@ test("a point-card read failure keeps the authenticated member visible", async (
       function setView() {}
       function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
       function getLiffContext() { return {}; }
+      function getMemberSyncAction() { return Promise.resolve("upsertMemberIdentity"); }
       function assertSuccessfulResponse(response) { if (!response.ok) throw new Error("failed"); }
       function enablePerformanceReporting() {}
       function clearInvalidTokenRecoveryGuard() {}
@@ -211,6 +388,7 @@ test("an unknown member sync result retries with the original request id", async
       var currentMember = null;
       var pendingMemberSyncRequestId = "";
       var currentMemberWasCreated = false;
+      var memberBackendSupportsProgressive = true;
       var window = {
         liff: { getIDToken: function () { return "header.payload.signature"; } },
         MemberApi: {
@@ -222,6 +400,7 @@ test("an unknown member sync result retries with the original request id", async
       function setView() {}
       function createClientError(code, message) { var error = new Error(message); error.code = code; return error; }
       function getLiffContext() { return {}; }
+      function getMemberSyncAction() { return Promise.resolve("upsertMemberIdentity"); }
       function assertSuccessfulResponse(response) { if (!response.ok) throw new Error("failed"); }
       function enablePerformanceReporting() {}
       function clearInvalidTokenRecoveryGuard() {}
@@ -332,7 +511,7 @@ test("member request progress exposes meaningful connection stages", () => {
 
   assert.deepEqual(events, [
     "正在核對會員資料:loading",
-    "正在安全同步會員:第一次連線可能需要約 25 秒，完成後會立即顯示會員資料。",
+    "正在安全同步會員:第一次連線最長可能需要約 45 秒，完成後會立即顯示會員資料。",
     "切換連線方式:loading",
   ]);
 });

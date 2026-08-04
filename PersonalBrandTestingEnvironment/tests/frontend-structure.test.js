@@ -1139,7 +1139,7 @@ test("client captures a sanitized claim after LIFF init and redeems automaticall
   const redeemClaim = getTopLevelFunctionContaining(script, /["']redeemPointCampaign["']/);
   const sync = getTopLevelFunctionContaining(
     script,
-    /sendGasRequest\(\s*["']upsertMemberIdentity["']/
+    /pendingMemberSyncRequestId\s*=\s*pendingMemberSyncRequestId/
   );
 
   assert.ok(captureName, "claim capture must be a named top-level function");
@@ -1185,7 +1185,7 @@ test("new member creation sends a privacy-bounded official account message", () 
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const sync = getTopLevelFunctionContaining(
     script,
-    /sendGasRequest\(\s*["']upsertMemberIdentity["']/
+    /pendingMemberSyncRequestId\s*=\s*pendingMemberSyncRequestId/
   );
   const updateProfile = getTopLevelFunctionContaining(
     script,
@@ -1346,7 +1346,7 @@ test("member home updates card progress immediately and keeps scanning local", (
   const lotteryScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const sync = getTopLevelFunctionContaining(
     script,
-    /sendGasRequest\(\s*["']upsertMemberIdentity["']/
+    /pendingMemberSyncRequestId\s*=\s*pendingMemberSyncRequestId/
   );
   const redeemClaim = getTopLevelFunctionContaining(
     script,

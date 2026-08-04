@@ -29,7 +29,10 @@
 flowchart TD
   A[會員 LIFF] --> B[讀取 client/config.json]
   B --> C[LINE LIFF 驗證與 ID Token]
-  C --> D[upsertMemberIdentity<br/>固定 request ID／bridge 單一路徑]
+  C --> C1{health capabilities}
+  C1 -->|新版| D[upsertMemberIdentity<br/>固定 request ID／bridge 單一路徑]
+  C1 -->|舊版或檢查逾時| D1[upsertMember 相容登入<br/>固定 request ID／bridge 單一路徑]
+  D1 --> E
   D --> E{會員狀態}
   E -->|未核准| F[顯示存取狀態]
   E -->|資料未完整| G[完成電話與生日]
@@ -75,9 +78,9 @@ flowchart TD
 
 | 階段 | 通訊與時限 | 一致性／授權 |
 | --- | --- | --- |
-| 公開設定 | 同源 `GET config.json`、不使用瀏覽器快取 | 只允許 LIFF ID、GAS `/exec` URL 與品牌等公開值 |
+| 公開設定 | 同源 `GET config.json`，並平行讀取 GAS 公開 health capabilities | 只允許 LIFF ID、GAS `/exec` URL、品牌、服務版本與能力名稱等公開值；舊後端自動使用相容登入 action |
 | 讀取 API | 先使用該裝置對 GAS URL 最近成功的通道；Fetch 9 秒、bridge 25 秒，網路層失敗才切換一次 | request ID 綁定回應，GAS 重新驗證 LINE ID Token |
-| 寫入 API | 固定使用隱藏 form／iframe bridge，25 秒；不在同一次操作改送另一個通道 | 驗證 GAS origin、callback origin、request ID 與一次性 secret；逾時視為結果未知，以相同 request ID 重試 |
+| 寫入 API | 固定使用隱藏 form／iframe bridge；會員登入同步最多 45 秒，其他寫入 25 秒；不在同一次操作改送另一個通道 | 驗證 GAS origin、callback origin、request ID 與一次性 secret；逾時視為結果未知，以相同 request ID 重試 |
 | 身分驗證 | LINE verify 成功結果最多暫存 5 分鐘 | 只快取 `sub`、`iat`、`exp`；權限與會員資料仍即時讀 Sheet |
 | 資料處理 | 會員先讀身分、再讀卡片摘要；管理搜尋在後端分頁前執行，歷史紀錄只讀 cursor 視窗 | 寫入持鎖且使用 request ID 冪等；讀取不長時間占用寫入鎖 |
 
@@ -154,7 +157,7 @@ flowchart TD
 ## 6. 本次重構決策
 
 - 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
-- 登入先以 `upsertMemberIdentity` 建立或核對會員並立即顯示身分卡，再以 `getMemberCardSummary` 漸進載入點數、集點卡與票券；首次會員完成電話與生日後才發送加入通知並開放後續操作。
+- 登入先檢查公開 health capabilities；支援新合約時以 `upsertMemberIdentity` 建立或核對會員並立即顯示身分卡，再以 `getMemberCardSummary` 漸進載入點數、集點卡與票券。舊部署缺少能力名稱時自動改用 `upsertMember`，避免前後端發布不同步造成逾時；首次會員完成電話與生日後才發送加入通知並開放後續操作。
 - 抽獎券摘要只附上最新轉盤中被選取的獎項名稱，不傳機率。票券清單與轉盤資源延遲到使用時載入；選定可用券後先明確確認，再以單一 `prepareLotteryDraw` 和固定 request ID 保存結果並回傳轉盤，中央按鈕只播放固定 3 秒動畫。
 - 待確認抽獎以 LIFF 與已驗證會員編號隔離，展示模式另用獨立空間；結果未知時保留同一 request ID，後台明確確認未開獎時才解除鎖定並重載票券。
 - 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。

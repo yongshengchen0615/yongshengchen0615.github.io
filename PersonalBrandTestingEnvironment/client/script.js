@@ -15,6 +15,8 @@
   var currentMemberCardSummary = null;
   var pendingMemberSyncRequestId = "";
   var currentMemberWasCreated = false;
+  var memberBackendCapabilitiesPromise = null;
+  var memberBackendSupportsProgressive = null;
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
@@ -84,6 +86,77 @@
         recordPhaseTiming("config_load", "config", startedAt, "failure", error);
         throw error;
       });
+  }
+
+  function warmMemberBackendCapabilities() {
+    if (memberBackendCapabilitiesPromise) return memberBackendCapabilitiesPromise;
+    var gasUrl = String(CONFIG.GAS_WEB_APP_URL || "").trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
+      memberBackendSupportsProgressive = false;
+      memberBackendCapabilitiesPromise = Promise.resolve(false);
+      return memberBackendCapabilitiesPromise;
+    }
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeout;
+    var healthUrl = new URL(gasUrl);
+    healthUrl.searchParams.set("action", "health");
+    healthUrl.searchParams.set("requestId", window.MemberApi.createRequestId());
+
+    var timeoutFallback = new Promise(function (resolve) {
+      timeout = window.setTimeout(function () {
+        if (controller) controller.abort();
+        resolve(false);
+      }, 3500);
+    });
+    var healthRequest = Promise.resolve()
+      .then(function () {
+        return window.fetch(healthUrl.toString(), {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+          credentials: "omit",
+          redirect: "follow",
+          referrerPolicy: "no-referrer",
+          signal: controller ? controller.signal : undefined,
+        });
+      })
+      .then(function (response) {
+        if (!response.ok) throw createClientError("BACKEND_HTTP_ERROR", "健康檢查失敗。");
+        return response.json();
+      })
+      .then(function (response) {
+        var capabilities =
+          response &&
+          response.ok === true &&
+          response.data &&
+          response.data.service === "member-client-api" &&
+          Array.isArray(response.data.capabilities)
+            ? response.data.capabilities
+            : [];
+        return (
+          capabilities.indexOf("member_identity_v1") !== -1 &&
+          capabilities.indexOf("member_card_summary_v1") !== -1
+        );
+      })
+      .catch(function () {
+        return false;
+      });
+
+    memberBackendCapabilitiesPromise = Promise.race([healthRequest, timeoutFallback])
+      .then(function (supportsProgressive) {
+        memberBackendSupportsProgressive = supportsProgressive;
+        return supportsProgressive;
+      })
+      .finally(function () {
+        window.clearTimeout(timeout);
+      });
+    return memberBackendCapabilitiesPromise;
+  }
+
+  function getMemberSyncAction() {
+    return warmMemberBackendCapabilities().then(function (supportsProgressive) {
+      return supportsProgressive ? "upsertMemberIdentity" : "upsertMember";
+    });
   }
 
   function byId(id) {
@@ -173,54 +246,72 @@
     pendingMemberSyncRequestId =
       pendingMemberSyncRequestId || window.MemberApi.createRequestId();
 
-    return sendGasRequest(
-      "upsertMemberIdentity",
-      currentIdToken,
-      getLiffContext(),
-      {},
-      pendingMemberSyncRequestId
-    )
-      .then(function (response) {
-        if (expectedBootVersion !== bootVersion) return;
-        assertSuccessfulResponse(response);
-        pendingMemberSyncRequestId = "";
-        enablePerformanceReporting();
-        clearInvalidTokenRecoveryGuard();
+    return getMemberSyncAction()
+      .then(function (syncAction) {
+        return sendGasRequest(
+          syncAction,
+          currentIdToken,
+          getLiffContext(),
+          {},
+          pendingMemberSyncRequestId
+        ).then(function (response) {
+          if (expectedBootVersion !== bootVersion) return;
+          assertSuccessfulResponse(response);
+          pendingMemberSyncRequestId = "";
+          enablePerformanceReporting();
+          clearInvalidTokenRecoveryGuard();
 
-        if (
-          !response.data ||
-          !response.data.access ||
-          typeof response.data.access.allowed !== "boolean"
-        ) {
-          throw createClientError("INVALID_RESPONSE", "後台回傳的會員存取狀態格式不完整。");
-        }
+          if (
+            !response.data ||
+            !response.data.access ||
+            typeof response.data.access.allowed !== "boolean"
+          ) {
+            throw createClientError(
+              "INVALID_RESPONSE",
+              "後台回傳的會員存取狀態格式不完整。"
+            );
+          }
 
-        if (!response.data.access.allowed) {
-          renderAccessState(response.data.access.status, Boolean(response.data.created));
-          return;
-        }
+          if (!response.data.access.allowed) {
+            renderAccessState(
+              response.data.access.status,
+              Boolean(response.data.created)
+            );
+            return;
+          }
 
-        if (!response.data.member) {
-          throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
-        }
+          if (!response.data.member) {
+            throw createClientError(
+              "INVALID_RESPONSE",
+              "後台回傳的會員資料格式不完整。"
+            );
+          }
 
-        var wasCreated = Boolean(response.data.created);
-        currentMemberWasCreated = wasCreated;
-        renderMember(response.data.member, wasCreated);
-        if (!isMemberProfileComplete(response.data.member)) {
-          openProfileOnboarding();
-          return;
-        }
-        sendNewMemberJoinMessage(
-          getPointMessageContext(),
-          response.data.member,
-          wasCreated
-        );
-        currentMemberWasCreated = false;
-        if (wasCreated) showToast("會員資料建立完成，歡迎加入");
-        return loadMemberCardSummarySafely()
-          .then(redeemPendingPointCampaign)
-          .then(openPendingMemberPanel);
+          var wasCreated = Boolean(response.data.created);
+          currentMemberWasCreated = wasCreated;
+          renderMember(response.data.member, wasCreated);
+          var hasLegacyCardSummary =
+            syncAction === "upsertMember" && Boolean(response.data.cardSummary);
+          if (hasLegacyCardSummary) {
+            renderMemberCardSummary(response.data.cardSummary, false);
+          }
+          if (!isMemberProfileComplete(response.data.member)) {
+            openProfileOnboarding();
+            return;
+          }
+          sendNewMemberJoinMessage(
+            getPointMessageContext(),
+            response.data.member,
+            wasCreated
+          );
+          currentMemberWasCreated = false;
+          if (wasCreated) showToast("會員資料建立完成，歡迎加入");
+          return (hasLegacyCardSummary
+            ? Promise.resolve()
+            : loadMemberCardSummarySafely())
+            .then(redeemPendingPointCampaign)
+            .then(openPendingMemberPanel);
+        });
       })
       .catch(function (error) {
         if (expectedBootVersion !== bootVersion) return;
@@ -252,6 +343,7 @@
   }
 
   function loadMemberCardSummarySafely() {
+    if (memberBackendSupportsProgressive === false) return Promise.resolve();
     return loadMemberCardSummary().catch(function (error) {
       var normalized = normalizeClientError(error);
       if (
@@ -2501,7 +2593,7 @@
       setConnection("正在核對會員資料", "loading");
       setLoadingCopy(
         "正在安全同步會員",
-        "第一次連線可能需要約 25 秒，完成後會立即顯示會員資料。"
+        "第一次連線最長可能需要約 45 秒，完成後會立即顯示會員資料。"
       );
       return;
     }
@@ -3288,6 +3380,7 @@
     return loadConfig()
       .then(function () {
         applyBrand();
+        warmMemberBackendCapabilities();
         return boot();
       })
       .catch(handleClientError);

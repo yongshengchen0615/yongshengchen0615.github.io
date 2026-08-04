@@ -3,6 +3,7 @@
 
   var FETCH_TIMEOUT_MS = 9000;
   var BRIDGE_TIMEOUT_MS = 25000;
+  var MEMBER_SYNC_BRIDGE_TIMEOUT_MS = 45000;
   var TRANSPORT_STORAGE_PREFIX = "persona-gas-transport:";
   var MUTATION_ACTIONS = [
     "upsertMember",
@@ -366,10 +367,16 @@
             "GAS 後台目前沒有回應。請稍後重試；若持續發生，再確認 Web App 已發布為可存取。"
           )
         );
-      }, BRIDGE_TIMEOUT_MS);
+      }, getBridgeTimeoutMs(originalRequest.action));
 
       form.submit();
     });
+  }
+
+  function getBridgeTimeoutMs(action) {
+    return action === "upsertMemberIdentity" || action === "upsertMember"
+      ? MEMBER_SYNC_BRIDGE_TIMEOUT_MS
+      : BRIDGE_TIMEOUT_MS;
   }
 
   function appendHiddenField(form, name, value) {

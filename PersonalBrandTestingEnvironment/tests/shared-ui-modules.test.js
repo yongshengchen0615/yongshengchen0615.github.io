@@ -266,6 +266,89 @@ test("member mutations use one bridge request and never race an alternate transp
   );
 });
 
+test("member login bridge allows a cold-start response beyond the generic write timeout", async () => {
+  let messageListener = null;
+  const timeoutDelays = [];
+  const document = {
+    baseURI: "https://example.test/client/",
+    body: { appendChild() {} },
+    createElement(tagName) {
+      const element = {
+        children: [],
+        appendChild(child) {
+          this.children.push(child);
+        },
+        remove() {},
+      };
+      if (tagName === "form") {
+        element.submit = function () {
+          const fields = Object.fromEntries(
+            this.children.map((child) => [child.name, child.value])
+          );
+          queueMicrotask(() => {
+            messageListener({
+              origin: "https://script.google.com",
+              data: {
+                type: "MEMBER_GAS_RESPONSE",
+                requestId: fields.requestId,
+                requestSecret: fields.requestSecret,
+                result: { ok: true, requestId: fields.requestId },
+              },
+            });
+          });
+        };
+      }
+      return element;
+    },
+  };
+  const window = {
+    location: { origin: "https://example.test" },
+    crypto: {
+      getRandomValues(bytes) {
+        bytes.fill(7);
+        return bytes;
+      },
+    },
+    fetch() {
+      throw new Error("member login must use the bridge");
+    },
+    setTimeout(_callback, delay) {
+      timeoutDelays.push(delay);
+      return timeoutDelays.length;
+    },
+    clearTimeout() {},
+    addEventListener(type, listener) {
+      if (type === "message") messageListener = listener;
+    },
+    removeEventListener(type, listener) {
+      if (type === "message" && messageListener === listener) messageListener = null;
+    },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Promise,
+    TypeError,
+    URL,
+    Uint8Array,
+    document,
+    queueMicrotask,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+
+  await window.MemberApi.sendRequest({
+    gasUrl: "https://script.google.com/macros/s/example/exec",
+    action: "upsertMemberIdentity",
+    requestId: "req-member-cold-start",
+  });
+
+  assert.equal(timeoutDelays.includes(45000), true);
+});
+
 test("timed out mutations report an unknown result that can be retried with the same request id", async () => {
   let messageListener = null;
   let fetchCalls = 0;
