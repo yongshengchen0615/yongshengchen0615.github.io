@@ -678,7 +678,7 @@
     if (
       (!rule.showPrizesOnTicket && prizeLabels.length > 0) ||
       (rule.showPrizesOnTicket &&
-        (prizeLabels.length < 2 ||
+        (prizeLabels.length < 1 ||
           prizeLabels.length > 12 ||
           prizeLabels.some(function (label) {
             return !label || label.length > 40;
@@ -1887,38 +1887,6 @@
     }
   }
 
-  function handleLogout() {
-    if (isDemoSession) {
-      isDemoSession = false;
-      currentMember = null;
-      setConnection("等待設定", "setup");
-      setView("setup-state");
-      showToast("已離開預覽模式");
-      return;
-    }
-
-    if (!window.liff) return;
-
-    currentIdToken = "";
-    currentMember = null;
-    isProfileOnboardingRequired = false;
-    stopPointScannerForPageExit();
-    closeDialog(byId("profile-dialog"), true);
-    clearInvalidTokenRecoveryGuard();
-    clearPendingPointClaim();
-
-    if (window.liff.isInClient()) {
-      window.liff.closeWindow();
-      return;
-    }
-
-    if (window.liff.isLoggedIn()) {
-      window.liff.logout();
-    }
-
-    window.location.replace(getCleanPageUrl());
-  }
-
   function openProfileEditor() {
     if (!currentMember) return;
 
@@ -1985,7 +1953,6 @@
 
     if (isDemoSession) {
       renderMember(Object.assign({}, currentMember, profile), false);
-      byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
       closeDialog(byId("profile-dialog"));
       showToast("預覽：會員資料已更新");
       return;
@@ -2030,7 +1997,6 @@
         }
 
         renderMember(response.data.member, false);
-        byId("sync-caption").textContent = "會員資料已更新";
         setProfileFormBusy(false);
         isProfileOnboardingRequired = false;
         setProfileDialogMode("edit");
@@ -2177,45 +2143,6 @@
     return local.toISOString().slice(0, 10);
   }
 
-  function handleDeleteMember() {
-    var button = byId("delete-confirm-button");
-    if (button.disabled) return;
-
-    if (isDemoSession) {
-      closeDialog(byId("delete-dialog"));
-      showToast("預覽模式不會建立或刪除真實資料");
-      return;
-    }
-
-    var token = currentIdToken || (window.liff && window.liff.getIDToken()) || "";
-    if (!token) {
-      closeDialog(byId("delete-dialog"));
-      showError("MISSING_ID_TOKEN", "登入狀態已失效，請重新登入後再刪除會員資料。");
-      return;
-    }
-
-    setButtonBusy(button, true, "正在刪除");
-
-    sendGasRequest("deleteMember", token, getLiffContext())
-      .then(function (response) {
-        assertSuccessfulResponse(response);
-        clearInvalidTokenRecoveryGuard();
-        closeDialog(byId("delete-dialog"));
-        showToast("會員資料已永久刪除");
-
-        window.setTimeout(function () {
-          handleLogout();
-        }, 900);
-      })
-      .catch(function (error) {
-        closeDialog(byId("delete-dialog"));
-        handleClientError(error);
-      })
-      .finally(function () {
-        setButtonBusy(button, false);
-      });
-  }
-
   function sendGasRequest(action, idToken, context, fields, requestId) {
     return window.MemberApi.sendRequest({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
@@ -2242,8 +2169,6 @@
     byId("access-message").textContent =
       "此帳號已停用。如有疑問，請聯絡服務人員。";
     byId("access-state").dataset.status = "denied";
-    byId("access-logout-button").textContent =
-      window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
 
     setConnection("已停用", "error");
     setView("access-state");
@@ -2268,7 +2193,6 @@
       pointBalance: pointBalance,
     });
 
-    byId("member-greeting-name").textContent = name;
     byId("member-display-name").textContent = name;
     byId("member-avatar-fallback").textContent = getInitial(name);
     byId("member-id").textContent = cleanDisplayText(member.memberId, "—");
@@ -2278,7 +2202,6 @@
       ? formatBirthday(birthday)
       : "尚未填寫";
     byId("member-point-balance").textContent = formatPointNumber(pointBalance);
-    byId("sync-caption").textContent = wasCreated ? "會員建立完成" : "會員資料已同步";
 
     var avatar = byId("member-avatar");
     var fallback = byId("member-avatar-fallback");
@@ -2301,10 +2224,6 @@
       fallback.hidden = false;
       avatar.removeAttribute("src");
     }
-
-    var logoutButton = byId("logout-button");
-    logoutButton.textContent =
-      window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
 
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("member-state");
@@ -2341,25 +2260,25 @@
             points: 5,
             lotteryTypeId: "LTY-PREVIEW001",
             showPrizesOnTicket: true,
-            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+            prizeLabels: ["小禮物", "精選獎", "頭獎"],
           },
           {
             points: 10,
             lotteryTypeId: "LTY-PREVIEW002",
             showPrizesOnTicket: true,
-            prizeLabels: ["生日祝福", "限定禮物"],
+            prizeLabels: ["限定禮物"],
           },
           {
             points: 15,
             lotteryTypeId: "LTY-PREVIEW001",
             showPrizesOnTicket: true,
-            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+            prizeLabels: ["小禮物", "精選獎", "頭獎"],
           },
           {
             points: 20,
             lotteryTypeId: "LTY-PREVIEW001",
             showPrizesOnTicket: true,
-            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+            prizeLabels: ["小禮物", "精選獎", "頭獎"],
           },
         ],
         availableRewards: [
@@ -2376,7 +2295,6 @@
       },
       false
     );
-    byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
     openPendingMemberPanel();
   }
 
@@ -2704,20 +2622,12 @@
       return;
     }
     if (dialog.id === "claim-dialog" && dialog.dataset.busy === "true") return;
-    if (dialog.id === "delete-dialog") resetDeleteConfirmation();
     if (dialog.id === "profile-dialog") resetProfileForm();
     if (typeof dialog.close === "function" && dialog.open) {
       dialog.close();
     } else {
       dialog.removeAttribute("open");
     }
-  }
-
-  function resetDeleteConfirmation() {
-    var button = byId("delete-confirm-button");
-    setButtonBusy(button, false);
-    byId("delete-confirm-input").value = "";
-    button.disabled = true;
   }
 
   function showToast(message, tone) {
@@ -2741,12 +2651,9 @@
 
   function bindInteractions() {
     byId("login-button").addEventListener("click", handleLogin);
-    byId("logout-button").addEventListener("click", handleLogout);
     byId("access-refresh-button").addEventListener("click", boot);
-    byId("access-logout-button").addEventListener("click", handleLogout);
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
-    byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
     byId("scan-point-button").addEventListener("click", handleScanPointQr);
@@ -2816,14 +2723,6 @@
           event.preventDefault();
         }
       });
-    });
-
-    byId("delete-confirm-input").addEventListener("input", function (event) {
-      byId("delete-confirm-button").disabled = event.target.value.trim() !== "刪除";
-    });
-
-    byId("delete-dialog").addEventListener("close", function () {
-      resetDeleteConfirmation();
     });
 
     byId("profile-dialog").addEventListener("close", function () {

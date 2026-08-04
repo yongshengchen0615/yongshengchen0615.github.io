@@ -28,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.9.0";
+var API_VERSION = "1.10.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -296,8 +296,12 @@ var LEGACY_LOTTERY_TYPE_HEADERS = [
   "last_request_id",
 ];
 
-var LOTTERY_TYPE_HEADERS = LEGACY_LOTTERY_TYPE_HEADERS.concat([
+var TOGGLE_LOTTERY_TYPE_HEADERS = LEGACY_LOTTERY_TYPE_HEADERS.concat([
   "show_prizes_on_ticket",
+]);
+
+var LOTTERY_TYPE_HEADERS = TOGGLE_LOTTERY_TYPE_HEADERS.concat([
+  "ticket_prize_orders",
 ]);
 
 var LOTTERY_TYPE_COLUMN = {
@@ -311,6 +315,7 @@ var LOTTERY_TYPE_COLUMN = {
   deletedBy: 8,
   lastRequestId: 9,
   showPrizesOnTicket: 10,
+  ticketPrizeOrders: 11,
 };
 
 var LEGACY_LOTTERY_PRIZE_HEADERS = [
@@ -1496,6 +1501,7 @@ function adminCreateLotteryType_(adminIdentity, request, config) {
       "",
       request.requestId,
       showPrizesOnTicket,
+      "",
     ]);
     applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
     SpreadsheetApp.flush();
@@ -1638,17 +1644,22 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
     }
 
     var lotteryTypeName = submittedLotteryTypeName || lotteryType.name;
-    var showPrizesOnTicket =
-      requestedShowPrizesOnTicket === null
-        ? lotteryType
-          ? lotteryType.showPrizesOnTicket
-          : false
-        : requestedShowPrizesOnTicket;
+    var ticketPrizeOrders = resolveSubmittedLotteryTicketPrizeOrders_(
+      submittedPrizes,
+      requestedShowPrizesOnTicket,
+      lotteryType
+    );
+    var showPrizesOnTicket = ticketPrizeOrders.length > 0;
+    var serializedTicketPrizeOrders = ticketPrizeOrders.join(",");
     if (
       lotteryType &&
       lotteryType.lastRequestId === request.requestId &&
       (lotteryType.name !== lotteryTypeName ||
-        lotteryType.showPrizesOnTicket !== showPrizesOnTicket)
+        !lotteryTicketPrizeOrdersMatch_(
+          lotteryType,
+          ticketPrizeOrders,
+          submittedPrizes.length
+        ))
     ) {
       throw appError_(
         "REQUEST_ID_CONFLICT",
@@ -1689,6 +1700,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
         "",
         request.requestId,
         showPrizesOnTicket,
+        serializedTicketPrizeOrders,
       ]);
       applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
       SpreadsheetApp.flush();
@@ -1697,11 +1709,15 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
       createdType = true;
     } else if (
       lotteryType.name !== lotteryTypeName ||
-      lotteryType.showPrizesOnTicket !== showPrizesOnTicket
+      !lotteryTicketPrizeOrdersMatch_(
+        lotteryType,
+        ticketPrizeOrders,
+        submittedPrizes.length
+      )
     ) {
       var renamedAt = new Date();
       typeSheet
-        .getRange(lotteryType.rowNumber, LOTTERY_TYPE_COLUMN.name, 1, 9)
+        .getRange(lotteryType.rowNumber, LOTTERY_TYPE_COLUMN.name, 1, 10)
         .setValues([[
           safeSheetText_(lotteryTypeName),
           "active",
@@ -1712,6 +1728,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
           "",
           request.requestId,
           showPrizesOnTicket,
+          serializedTicketPrizeOrders,
         ]]);
       applyLotteryTypeRowFormats_(typeSheet, lotteryType.rowNumber);
       SpreadsheetApp.flush();
@@ -2297,8 +2314,8 @@ function getOrCreateLotteryTypeSheet_(spreadsheet, config) {
     spreadsheet,
     config.lotteryTypesSheetName,
     LOTTERY_TYPE_HEADERS,
-    LEGACY_LOTTERY_TYPE_HEADERS,
-    ["false"],
+    [LEGACY_LOTTERY_TYPE_HEADERS, TOGGLE_LOTTERY_TYPE_HEADERS],
+    [["false", ""], [""]],
     "LOTTERY_SCHEMA_MISMATCH",
     "#365314",
     applyLotteryTypeSheetColumnFormats_
@@ -2435,6 +2452,7 @@ function ensureLotteryTypeForExistingPrizes_(typeSheet, prizeSheet) {
     "",
     "setup-default-type",
     false,
+    "",
   ]);
   applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
 }
@@ -2739,7 +2757,16 @@ function applyPointCardSettingRowFormats_(sheet, rowNumber) {
 
 function applyLotteryTypeSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 6, 8, 9, LOTTERY_TYPE_COLUMN.showPrizesOnTicket].forEach(function (column) {
+  [
+    1,
+    2,
+    3,
+    6,
+    8,
+    9,
+    LOTTERY_TYPE_COLUMN.showPrizesOnTicket,
+    LOTTERY_TYPE_COLUMN.ticketPrizeOrders,
+  ].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2755,7 +2782,7 @@ function applyLotteryTypeRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 4, 1, 2).setNumberFormat("yyyy-mm-dd hh:mm:ss");
   sheet.getRange(rowNumber, 6).setNumberFormat("@");
   sheet.getRange(rowNumber, 7).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  sheet.getRange(rowNumber, 8, 1, 3).setNumberFormat("@");
+  sheet.getRange(rowNumber, 8, 1, 4).setNumberFormat("@");
 }
 
 function applyLotteryPrizeSheetColumnFormats_(sheet) {
@@ -3346,12 +3373,23 @@ function normalizeLotteryPrizes_(value) {
     var color = String(prize.color || "").trim().toUpperCase();
     var probability = Number(prize.probability);
     var probabilityBasisPoints = Math.round(probability * 100);
+    var hasTicketVisibility = Object.prototype.hasOwnProperty.call(
+      prize,
+      "showOnTicket"
+    );
+    var showOnTicket = hasTicketVisibility ? prize.showOnTicket : null;
 
     if (!label || label.length > 40 || /[\u0000-\u001F\u007F]/.test(label)) {
       throw appError_("INVALID_LOTTERY_PRIZES", "獎項名稱必須是 1 到 40 個可顯示字元。");
     }
     if (!/^#[0-9A-F]{6}$/.test(color)) {
       throw appError_("INVALID_LOTTERY_COLOR", "獎項顏色必須是 #RRGGBB 格式。");
+    }
+    if (hasTicketVisibility && typeof showOnTicket !== "boolean") {
+      throw appError_(
+        "INVALID_LOTTERY_PRIZES",
+        "每個獎項的抽獎券顯示設定必須是布林值。"
+      );
     }
     if (
       !isFinite(probability) ||
@@ -3366,17 +3404,86 @@ function normalizeLotteryPrizes_(value) {
     }
 
     totalBasisPoints += probabilityBasisPoints;
-    return {
+    var normalizedPrize = {
       label: label,
       color: color,
       probabilityBasisPoints: probabilityBasisPoints,
     };
+    if (hasTicketVisibility) {
+      normalizedPrize.showOnTicket = showOnTicket;
+    }
+    return normalizedPrize;
   });
 
   if (totalBasisPoints !== 10000) {
     throw appError_("INVALID_LOTTERY_TOTAL", "所有獎項機率合計必須是 100%。");
   }
   return normalized;
+}
+
+function resolveSubmittedLotteryTicketPrizeOrders_(
+  submittedPrizes,
+  requestedShowPrizesOnTicket,
+  lotteryType
+) {
+  var explicitCount = submittedPrizes.filter(function (prize) {
+    return Object.prototype.hasOwnProperty.call(prize, "showOnTicket");
+  }).length;
+  if (explicitCount > 0 && explicitCount !== submittedPrizes.length) {
+    throw appError_(
+      "INVALID_LOTTERY_PRIZES",
+      "請為每個獎項設定是否顯示在抽獎券。"
+    );
+  }
+  if (explicitCount === submittedPrizes.length) {
+    return submittedPrizes
+      .map(function (prize, index) {
+        return prize.showOnTicket ? index + 1 : 0;
+      })
+      .filter(function (order) {
+        return order > 0;
+      });
+  }
+  if (requestedShowPrizesOnTicket !== null) {
+    return requestedShowPrizesOnTicket
+      ? submittedPrizes.map(function (_prize, index) {
+          return index + 1;
+        })
+      : [];
+  }
+  if (!lotteryType || !lotteryType.showPrizesOnTicket) return [];
+  var existingOrders =
+    lotteryType.ticketPrizeOrders === null
+      ? submittedPrizes.map(function (_prize, index) {
+          return index + 1;
+        })
+      : lotteryType.ticketPrizeOrders.slice();
+  if (
+    existingOrders.some(function (order) {
+      return order > submittedPrizes.length;
+    })
+  ) {
+    throw appError_(
+      "INVALID_LOTTERY_PRIZES",
+      "目前抽獎券顯示的獎項已被移除，請使用新版管理端重新選擇。"
+    );
+  }
+  return existingOrders;
+}
+
+function lotteryTicketPrizeOrdersMatch_(lotteryType, expectedOrders, prizeCount) {
+  if (!lotteryType) return false;
+  var currentOrders = !lotteryType.showPrizesOnTicket
+    ? []
+    : lotteryType.ticketPrizeOrders === null
+      ? Array.from({ length: prizeCount }, function (_value, index) {
+          return index + 1;
+        })
+      : lotteryType.ticketPrizeOrders;
+  if (currentOrders.length !== expectedOrders.length) return false;
+  return currentOrders.every(function (order, index) {
+    return order === expectedOrders[index];
+  });
 }
 
 function parseCampaignExpiryForMode_(value, expiryMode) {
@@ -3659,6 +3766,10 @@ function readLotteryTypes_(sheet) {
     var showPrizesOnTicket = parseStoredLotteryTicketVisibility_(
       row[LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1]
     );
+    var ticketPrizeOrders = parseStoredLotteryTicketPrizeOrders_(
+      row[LOTTERY_TYPE_COLUMN.ticketPrizeOrders - 1],
+      showPrizesOnTicket
+    );
     var deletionValid =
       status === "active"
         ? !deletedAt && !deletedBy
@@ -3696,6 +3807,7 @@ function readLotteryTypes_(sheet) {
       deletedBy: deletedBy,
       lastRequestId: lastRequestId,
       showPrizesOnTicket: showPrizesOnTicket,
+      ticketPrizeOrders: ticketPrizeOrders,
     };
   });
 }
@@ -3718,12 +3830,14 @@ function findLatestLotteryConfigForType_(configs, lotteryTypeId) {
 }
 
 function lotteryTypeResponse_(type, lotteryConfig) {
+  var ticketPrizeOrders = resolveLotteryTicketPrizeOrders_(type, lotteryConfig);
   return {
     lotteryTypeId: type.lotteryTypeId,
     name: type.name,
     status: type.status,
     createdAt: type.createdAt,
-    showPrizesOnTicket: type.showPrizesOnTicket,
+    showPrizesOnTicket: Boolean(lotteryConfig && ticketPrizeOrders.length),
+    ticketPrizeOrders: ticketPrizeOrders,
     lottery: lotteryConfig
       ? lotteryConfigResponse_(lotteryConfig)
       : {
@@ -3745,6 +3859,63 @@ function parseStoredLotteryTicketVisibility_(value) {
     "LOTTERY_DATA_ERROR",
     "轉盤的抽獎券獎項顯示設定不正確。"
   );
+}
+
+function parseStoredLotteryTicketPrizeOrders_(value, showPrizesOnTicket) {
+  var raw = String(value == null ? "" : value).trim();
+  if (!raw) return showPrizesOnTicket ? null : [];
+  if (!showPrizesOnTicket || raw.length > 35) {
+    throw appError_(
+      "LOTTERY_DATA_ERROR",
+      "轉盤的抽獎券獎項選擇設定不正確。"
+    );
+  }
+  var previous = 0;
+  var seen = Object.create(null);
+  return raw.split(",").map(function (part) {
+    var order = Number(String(part || "").trim());
+    if (
+      !Number.isInteger(order) ||
+      order < 1 ||
+      order > MAX_LOTTERY_PRIZES ||
+      seen[order] ||
+      order <= previous
+    ) {
+      throw appError_(
+        "LOTTERY_DATA_ERROR",
+        "轉盤的抽獎券獎項選擇設定不正確。"
+      );
+    }
+    seen[order] = true;
+    previous = order;
+    return order;
+  });
+}
+
+function resolveLotteryTicketPrizeOrders_(type, lotteryConfig) {
+  if (!type || !type.showPrizesOnTicket || !lotteryConfig) return [];
+  var availableOrders = Object.create(null);
+  lotteryConfig.prizes.forEach(function (prize) {
+    availableOrders[prize.sortOrder] = true;
+  });
+  var orders =
+    type.ticketPrizeOrders === null
+      ? lotteryConfig.prizes.map(function (prize) {
+          return prize.sortOrder;
+        })
+      : type.ticketPrizeOrders.slice();
+  if (
+    !orders.length ||
+    orders.some(function (order) {
+      return !availableOrders[order];
+    })
+  ) {
+    throw appError_(
+      "LOTTERY_DATA_ERROR",
+      "轉盤的抽獎券獎項選擇與目前獎項不一致。"
+    );
+  }
+  return orders;
 }
 
 function readLotteryConfigs_(sheet) {

@@ -613,9 +613,6 @@
     renderPointCardSetting();
     renderLotteryTypes();
     byId("lottery-type-name-input").value = selectedType ? selectedType.name : "";
-    byId("lottery-show-prizes-on-ticket").checked = selectedType
-      ? selectedType.showPrizesOnTicket
-      : true;
     renderLotteryNamePreview();
     renderLotteryEditorState();
     renderLotteryConfigMeta();
@@ -773,10 +770,10 @@
 
   function defaultLotteryPrizes() {
     return [
-      { prizeId: "", label: "銘謝惠顧", color: "#D9D6CC", probability: 50 },
-      { prizeId: "", label: "小禮物", color: "#8DCCAA", probability: 30 },
-      { prizeId: "", label: "精選獎", color: "#F0C36A", probability: 15 },
-      { prizeId: "", label: "頭獎", color: "#0B3C2C", probability: 5 },
+      { prizeId: "", label: "銘謝惠顧", color: "#D9D6CC", probability: 50, showOnTicket: true },
+      { prizeId: "", label: "小禮物", color: "#8DCCAA", probability: 30, showOnTicket: true },
+      { prizeId: "", label: "精選獎", color: "#F0C36A", probability: 15, showOnTicket: true },
+      { prizeId: "", label: "頭獎", color: "#0B3C2C", probability: 5, showOnTicket: true },
     ];
   }
 
@@ -934,15 +931,62 @@
       }
       ids[lotteryTypeId] = true;
       names[name.toLowerCase()] = true;
+      var lottery = normalizeLotteryConfig(item.lottery, lotteryTypeId);
+      var ticketPrizeOrders = normalizeLotteryTicketPrizeOrders(
+        item,
+        lottery.prizes.length
+      );
+      lottery.prizes = lottery.prizes.map(function (prize, index) {
+        var copy = copyLotteryPrizeForEditor(prize);
+        copy.showOnTicket = ticketPrizeOrders.indexOf(index + 1) !== -1;
+        return copy;
+      });
       return {
         lotteryTypeId: lotteryTypeId,
         name: name,
         status: "active",
         createdAt: String(item.createdAt || ""),
-        showPrizesOnTicket: item.showPrizesOnTicket === true,
-        lottery: normalizeLotteryConfig(item.lottery, lotteryTypeId),
+        showPrizesOnTicket: ticketPrizeOrders.length > 0,
+        ticketPrizeOrders: ticketPrizeOrders,
+        lottery: lottery,
       };
     });
+  }
+
+  function normalizeLotteryTicketPrizeOrders(value, prizeCount) {
+    var hasOrders = Object.prototype.hasOwnProperty.call(
+      value,
+      "ticketPrizeOrders"
+    );
+    var showPrizesOnTicket = value.showPrizesOnTicket === true;
+    if (!hasOrders) {
+      return showPrizesOnTicket
+        ? Array.from({ length: prizeCount }, function (_value, index) {
+            return index + 1;
+          })
+        : [];
+    }
+    if (!Array.isArray(value.ticketPrizeOrders)) {
+      throw createError("INVALID_RESPONSE", "後台回傳的抽獎券獎項選擇不正確。");
+    }
+    var previous = 0;
+    var orders = value.ticketPrizeOrders.map(function (rawOrder) {
+      var order = Number(rawOrder);
+      if (
+        !Number.isInteger(order) ||
+        order < 1 ||
+        order > prizeCount ||
+        order <= previous
+      ) {
+        throw createError("INVALID_RESPONSE", "後台回傳的抽獎券獎項選擇不正確。");
+      }
+      previous = order;
+      return order;
+    });
+    if (showPrizesOnTicket !== (orders.length > 0)) {
+      throw createError("INVALID_RESPONSE", "後台回傳的抽獎券獎項選擇不一致。");
+    }
+    return orders;
   }
 
   function normalizeLotteryConfig(value, expectedLotteryTypeId) {
@@ -1233,9 +1277,6 @@
       ? lotteryConfig.prizes.map(copyLotteryPrizeForEditor)
       : defaultLotteryPrizes();
     byId("lottery-type-name-input").value = selectedType ? selectedType.name : "";
-    byId("lottery-show-prizes-on-ticket").checked = selectedType
-      ? selectedType.showPrizesOnTicket
-      : true;
     renderLotteryNamePreview();
     renderLotteryTypes();
     renderLotteryConfigMeta();
@@ -1257,7 +1298,6 @@
     });
     lotteryPrizes = defaultLotteryPrizes();
     byId("lottery-type-name-input").value = "";
-    byId("lottery-show-prizes-on-ticket").checked = true;
     renderLotteryNamePreview();
     renderLotteryTypes();
     renderLotteryConfigMeta();
@@ -1290,6 +1330,7 @@
       label: label,
       color: color,
       probability: probability,
+      showOnTicket: value.showOnTicket === true,
     };
   }
 
@@ -1299,6 +1340,7 @@
       label: String(prize.label || ""),
       color: String(prize.color || "#D9D6CC").toUpperCase(),
       probability: Number(prize.probability) || 0,
+      showOnTicket: prize.showOnTicket === true,
     };
   }
 
@@ -1327,6 +1369,9 @@
       var probabilityLabel = document.createElement("label");
       var probabilityInput = document.createElement("input");
       var probabilitySuffix = document.createElement("span");
+      var ticketVisibilityLabel = document.createElement("label");
+      var ticketVisibilityInput = document.createElement("input");
+      var ticketVisibilityText = document.createElement("span");
       var removeButton = document.createElement("button");
 
       item.className = "lottery-prize-row";
@@ -1368,6 +1413,20 @@
       probabilityLabel.appendChild(probabilityInput);
       probabilityLabel.appendChild(probabilitySuffix);
 
+      ticketVisibilityLabel.className = "lottery-prize-ticket-visibility";
+      ticketVisibilityLabel.dataset.label = "抽獎券顯示";
+      ticketVisibilityInput.type = "checkbox";
+      ticketVisibilityInput.checked = prize.showOnTicket === true;
+      ticketVisibilityInput.setAttribute(
+        "aria-label",
+        "在抽獎券顯示第 " + (index + 1) + " 個獎項"
+      );
+      ticketVisibilityText.textContent = ticketVisibilityInput.checked
+        ? "顯示"
+        : "不顯示";
+      ticketVisibilityLabel.appendChild(ticketVisibilityInput);
+      ticketVisibilityLabel.appendChild(ticketVisibilityText);
+
       removeButton.className = "lottery-prize-remove";
       removeButton.type = "button";
       removeButton.textContent = "移除";
@@ -1384,6 +1443,7 @@
             label: labelInput.value,
             color: colorInput.value.toUpperCase(),
             probability: Number(probabilityInput.value),
+            showOnTicket: ticketVisibilityInput.checked,
           };
           colorText.textContent = colorInput.value.toUpperCase();
           updateLotteryProbabilityTotal();
@@ -1391,11 +1451,19 @@
           clearLotteryConfigError();
         });
       });
+      ticketVisibilityInput.addEventListener("change", function () {
+        lotteryPrizes[index].showOnTicket = ticketVisibilityInput.checked;
+        ticketVisibilityText.textContent = ticketVisibilityInput.checked
+          ? "顯示"
+          : "不顯示";
+        clearLotteryConfigError();
+      });
 
       item.appendChild(order);
       item.appendChild(label);
       item.appendChild(colorLabel);
       item.appendChild(probabilityLabel);
+      item.appendChild(ticketVisibilityLabel);
       item.appendChild(removeButton);
       fragment.appendChild(item);
     });
@@ -1421,6 +1489,7 @@
       label: "新獎項",
       color: colors[(lotteryPrizes.length - 4 + colors.length) % colors.length],
       probability: 1,
+      showOnTicket: true,
     });
     renderLotteryPrizeRows();
     var inputs = byId("lottery-prize-list").querySelectorAll(
@@ -1478,7 +1547,18 @@
         );
       }
       totalBasisPoints += basisPoints;
-      return { label: label, color: color, probability: basisPoints / 100 };
+      if (typeof prize.showOnTicket !== "boolean") {
+        throw createError(
+          "INVALID_LOTTERY_PRIZES",
+          "請設定每個獎項是否顯示在抽獎券。"
+        );
+      }
+      return {
+        label: label,
+        color: color,
+        probability: basisPoints / 100,
+        showOnTicket: prize.showOnTicket,
+      };
     });
     if (totalBasisPoints !== 10000) {
       throw createError("INVALID_LOTTERY_TOTAL", "所有獎項機率合計必須是 100%。");
@@ -1514,9 +1594,6 @@
       return;
     }
     var submittedPrizes;
-    var showPrizesOnTicket = byId(
-      "lottery-show-prizes-on-ticket"
-    ).checked;
     try {
       submittedPrizes = validateLotterySubmission();
     } catch (error) {
@@ -1541,12 +1618,21 @@
               label: prize.label,
               color: prize.color,
               probability: prize.probability,
+              showOnTicket: prize.showOnTicket,
             };
           }),
         }, savedLotteryTypeId);
+      var ticketPrizeOrders = submittedPrizes
+        .map(function (prize, index) {
+          return prize.showOnTicket ? index + 1 : 0;
+        })
+        .filter(function (order) {
+          return order > 0;
+        });
       if (selectedDemoType) {
         selectedDemoType.name = lotteryTypeName;
-        selectedDemoType.showPrizesOnTicket = showPrizesOnTicket;
+        selectedDemoType.showPrizesOnTicket = ticketPrizeOrders.length > 0;
+        selectedDemoType.ticketPrizeOrders = ticketPrizeOrders;
         selectedDemoType.lottery = savedLottery;
       } else {
         lotteryTypes.push({
@@ -1554,7 +1640,8 @@
           name: lotteryTypeName,
           status: "active",
           createdAt: now,
-          showPrizesOnTicket: showPrizesOnTicket,
+          showPrizesOnTicket: ticketPrizeOrders.length > 0,
+          ticketPrizeOrders: ticketPrizeOrders,
           lottery: savedLottery,
         });
       }
@@ -1573,7 +1660,6 @@
     sendAdminRequest("adminSaveLotteryConfig", {
       lotteryTypeId: selectedLotteryTypeId,
       lotteryTypeName: lotteryTypeName,
-      showPrizesOnTicket: showPrizesOnTicket,
       lotteryPrizes: submittedPrizes,
     })
       .then(function (response) {

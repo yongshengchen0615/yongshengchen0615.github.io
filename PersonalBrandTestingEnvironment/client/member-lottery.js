@@ -773,7 +773,7 @@
       (!hasVisibility && prizeLabels.length > 0) ||
       (!showPrizesOnTicket && prizeLabels.length > 0) ||
       (showPrizesOnTicket &&
-        (prizeLabels.length < 2 ||
+        (prizeLabels.length < 1 ||
           prizeLabels.length > 12 ||
           prizeLabels.some(function (label) {
             return !label || label.length > 40;

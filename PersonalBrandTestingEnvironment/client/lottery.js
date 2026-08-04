@@ -496,6 +496,12 @@
           showPrizesOnTicket:
             true,
 
+          ticketPrizeOrders: [
+            2,
+            3,
+            4,
+          ],
+
           lottery: {
             lotteryTypeId:
               "LTY-PREVIEW001",
@@ -549,6 +555,10 @@
 
           showPrizesOnTicket:
             true,
+
+          ticketPrizeOrders: [
+            2,
+          ],
 
           lottery: {
             lotteryTypeId:
@@ -639,6 +649,18 @@
 
       ids[lotteryTypeId] = true;
 
+      var lottery =
+        normalizeLotteryConfig(
+          item.lottery,
+          lotteryTypeId
+        );
+
+      var ticketPrizeOrders =
+        normalizeLotteryTicketPrizeOrders(
+          item,
+          lottery.prizes.length
+        );
+
       return {
         lotteryTypeId:
           lotteryTypeId,
@@ -646,16 +668,79 @@
         name: name,
 
         showPrizesOnTicket:
-          item.showPrizesOnTicket ===
-          true,
+          ticketPrizeOrders.length > 0,
+
+        ticketPrizeOrders:
+          ticketPrizeOrders,
 
         lottery:
-          normalizeLotteryConfig(
-            item.lottery,
-            lotteryTypeId
-          ),
+          lottery,
       };
     });
+  }
+
+  function normalizeLotteryTicketPrizeOrders(
+    value,
+    prizeCount
+  ) {
+    var hasOrders =
+      Object.prototype.hasOwnProperty.call(
+        value,
+        "ticketPrizeOrders"
+      );
+    var showPrizesOnTicket =
+      value.showPrizesOnTicket === true;
+    if (!hasOrders) {
+      return showPrizesOnTicket
+        ? Array.from(
+            { length: prizeCount },
+            function (_value, index) {
+              return index + 1;
+            }
+          )
+        : [];
+    }
+    if (
+      !Array.isArray(
+        value.ticketPrizeOrders
+      )
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎券獎項選擇不正確。"
+      );
+    }
+    var previous = 0;
+    var orders =
+      value.ticketPrizeOrders.map(
+        function (rawOrder) {
+          var order =
+            Number(rawOrder);
+          if (
+            !Number.isInteger(order) ||
+            order < 1 ||
+            order > prizeCount ||
+            order <= previous
+          ) {
+            throw createError(
+              "INVALID_RESPONSE",
+              "抽獎券獎項選擇不正確。"
+            );
+          }
+          previous = order;
+          return order;
+        }
+      );
+    if (
+      showPrizesOnTicket !==
+      (orders.length > 0)
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎券獎項選擇不一致。"
+      );
+    }
+    return orders;
   }
 
   function normalizeLotteryConfig(
@@ -1741,6 +1826,13 @@
     }
     var seen = Object.create(null);
     return type.lottery.prizes
+      .filter(function (_prize, index) {
+        return (
+          type.ticketPrizeOrders.indexOf(
+            index + 1
+          ) !== -1
+        );
+      })
       .map(function (prize) {
         return prize.label;
       })

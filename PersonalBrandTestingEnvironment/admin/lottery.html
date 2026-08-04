@@ -291,23 +291,12 @@
               <input id="lottery-type-name-input" type="text" maxlength="40" placeholder="例如：生日限定轉盤" autocomplete="off" required />
             </label>
 
-            <fieldset class="lottery-ticket-display-field">
-              <legend><b>02</b> 抽獎券顯示</legend>
-              <label for="lottery-show-prizes-on-ticket">
-                <input id="lottery-show-prizes-on-ticket" type="checkbox" />
-                <span>
-                  <strong>顯示可抽中的獎項</strong>
-                  <small>會員可在未獲得與已獲得的抽獎券下方預先查看獎項名稱，不會顯示中獎機率。</small>
-                </span>
-              </label>
-            </fieldset>
-
             <div class="lottery-prize-section-heading">
-              <span><b>03</b> 獎項、顏色與機率</span>
-              <small>設定 2 到 12 個獎項；機率合計必須為 100%。</small>
+              <span><b>02</b> 獎項、顏色與機率</span>
+              <small>設定 2 到 12 個獎項；勾選要顯示在抽獎券上的獎項，機率不會公開。</small>
             </div>
             <div class="lottery-prize-labels" aria-hidden="true">
-              <span>獎項名稱</span><span>區塊顏色</span><span>中獎機率</span><span>操作</span>
+              <span>獎項名稱</span><span>區塊顏色</span><span>中獎機率</span><span>抽獎券顯示</span><span>操作</span>
             </div>
             <ol class="lottery-prize-list" id="lottery-prize-list" aria-live="polite"></ol>
 

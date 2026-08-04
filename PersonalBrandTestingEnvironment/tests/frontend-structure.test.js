@@ -419,6 +419,25 @@ test("admin lottery page maps individually added card nodes to one configured wh
   assert.doesNotMatch(validatePrizes, /獎項名稱不可重複|labelKey|var\s+labels/);
 });
 
+test("member home keeps identity inside the member card and removes account control clutter", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+
+  assert.match(html, /id=["']member-display-name["']/);
+  assert.match(html, /id=["']edit-profile-button["']/);
+  assert.match(html, /id=["']privacy-dialog["']/);
+  assert.doesNotMatch(html, />\s*MEMBER PROFILE\s*</);
+  assert.doesNotMatch(html, /id=["']member-greeting-name["']/);
+  assert.doesNotMatch(html, /id=["']sync-caption["']/);
+  assert.doesNotMatch(html, /id=["']logout-button["']/);
+  assert.doesNotMatch(html, /id=["']access-logout-button["']/);
+  assert.doesNotMatch(html, /id=["']data-control-title["']/);
+  assert.doesNotMatch(html, /id=["']delete-dialog["']/);
+  assert.doesNotMatch(html, /查看資料說明|資料與隱私|刪除會員資料|登出目前裝置/);
+  assert.doesNotMatch(script, /handleDeleteMember|resetDeleteConfirmation/);
+  assert.doesNotMatch(script, /byId\(["'](?:member-greeting-name|sync-caption|logout-button|access-logout-button|delete-dialog|delete-confirm-button)["']\)/);
+});
+
 test("member home opens a fullscreen ticket picker and an in-place lottery dialog", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
@@ -891,7 +910,7 @@ test("client member pass renders one star per point and keeps lifetime hours bes
   );
 });
 
-test("administrators can publish prize previews beneath earned and locked tickets", () => {
+test("administrators can choose individual prize previews beneath earned and locked tickets", () => {
   const adminHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
   const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
   const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
@@ -913,8 +932,12 @@ test("administrators can publish prize previews beneath earned and locked ticket
     /function\s+appendMemberTicketPrizePreview\s*\(/
   );
 
-  assert.match(adminHtml, /id=["']lottery-show-prizes-on-ticket["']/);
-  assert.match(saveLottery, /showPrizesOnTicket/);
+  assert.doesNotMatch(adminHtml, /id=["']lottery-show-prizes-on-ticket["']/);
+  assert.match(adminHtml, /抽獎券顯示/);
+  assert.match(adminHtml, /勾選要顯示[^<]*獎項/);
+  assert.match(adminScript, /lottery-prize-ticket-visibility/);
+  assert.match(adminScript, /showOnTicket/);
+  assert.match(saveLottery, /lotteryPrizes:\s*submittedPrizes/);
   assert.match(normalizeSummary, /showPrizesOnTicket/);
   assert.match(normalizeSummary, /prizeLabels/);
   assert.match(renderTickets, /appendMemberTicketPrizePreview\(button,\s*ticketRule\)/);

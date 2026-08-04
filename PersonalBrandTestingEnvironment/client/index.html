@@ -141,24 +141,11 @@
               <span>重新確認狀態</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
             </button>
-            <button class="secondary-button" id="access-logout-button" type="button">登出目前裝置</button>
-          </div>
-          <div class="access-data-actions">
-            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
-            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
           </div>
         </div>
       </section>
 
-      <section class="app-state member-layout" id="member-state" hidden aria-labelledby="member-title">
-        <header class="member-heading">
-          <div>
-            <p class="eyebrow">MEMBER PROFILE</p>
-            <h1 id="member-title"><span id="member-greeting-name">會員</span></h1>
-          </div>
-          <p class="sync-caption"><span aria-hidden="true"></span><span id="sync-caption">會員資料已同步</span></p>
-        </header>
-
+      <section class="app-state member-layout" id="member-state" hidden aria-label="會員中心">
         <div class="member-workspace">
           <div class="member-card-stack">
             <article class="member-pass" aria-label="數位會員證">
@@ -232,22 +219,9 @@
                 <span>編輯會員資料</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"></path></svg>
               </button>
-              <button class="text-button" id="logout-button" type="button">登出目前裝置</button>
             </div>
           </div>
         </div>
-
-        <section class="data-control" aria-labelledby="data-control-title">
-          <div>
-            <p class="eyebrow">DATA CONTROL</p>
-            <h2 id="data-control-title">資料與隱私</h2>
-          </div>
-          <p>保存會員、點數與抽獎紀錄；不保存 LINE 密碼或 ID Token。</p>
-          <div>
-            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
-            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
-          </div>
-        </section>
       </section>
 
       <section class="app-state error-layout" id="error-state" hidden aria-labelledby="error-title">
@@ -266,7 +240,6 @@
 
     <footer class="site-footer">
       <p>SECURE MEMBER ACCESS VIA LINE</p>
-      <button class="text-button" type="button" data-open-dialog="privacy-dialog">資料與隱私</button>
       <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
     </footer>
 
@@ -289,7 +262,7 @@
         </section>
         <section>
           <span>03</span>
-          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料、點數領取與抽獎紀錄；累計點數、集點輪次和防重複歷史也會一併清除。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+          <div><h3>資料權利</h3><p>如需查詢、更正或刪除紀錄，請聯絡服務經營者依隱私權政策處理。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
@@ -695,22 +668,6 @@
           <button class="primary-button" id="claim-retry-button" type="button"><span>重新確認</span></button>
         </div>
       </section>
-    </dialog>
-
-    <dialog class="modal delete-modal" id="delete-dialog" aria-labelledby="delete-title">
-      <div class="modal-head">
-        <div>
-          <p class="eyebrow danger-copy">DELETE MEMBERSHIP</p>
-          <h2 id="delete-title">刪除會員資料？</h2>
-        </div>
-        <button class="icon-button" type="button" data-close-dialog aria-label="關閉刪除視窗">×</button>
-      </div>
-      <p>這會永久刪除試算表中的會員紀錄，且無法復原。若要確認，請在下方輸入「刪除」。</p>
-      <label class="confirm-field">
-        <span>確認文字</span>
-        <input id="delete-confirm-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入：刪除" />
-      </label>
-      <button class="danger-button full-width" id="delete-confirm-button" type="button" disabled>永久刪除會員資料</button>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden>
