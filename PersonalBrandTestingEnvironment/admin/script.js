@@ -613,6 +613,9 @@
     renderPointCardSetting();
     renderLotteryTypes();
     byId("lottery-type-name-input").value = selectedType ? selectedType.name : "";
+    byId("lottery-show-prizes-on-ticket").checked = selectedType
+      ? selectedType.showPrizesOnTicket
+      : true;
     renderLotteryNamePreview();
     renderLotteryEditorState();
     renderLotteryConfigMeta();
@@ -936,6 +939,7 @@
         name: name,
         status: "active",
         createdAt: String(item.createdAt || ""),
+        showPrizesOnTicket: item.showPrizesOnTicket === true,
         lottery: normalizeLotteryConfig(item.lottery, lotteryTypeId),
       };
     });
@@ -1229,6 +1233,9 @@
       ? lotteryConfig.prizes.map(copyLotteryPrizeForEditor)
       : defaultLotteryPrizes();
     byId("lottery-type-name-input").value = selectedType ? selectedType.name : "";
+    byId("lottery-show-prizes-on-ticket").checked = selectedType
+      ? selectedType.showPrizesOnTicket
+      : true;
     renderLotteryNamePreview();
     renderLotteryTypes();
     renderLotteryConfigMeta();
@@ -1250,6 +1257,7 @@
     });
     lotteryPrizes = defaultLotteryPrizes();
     byId("lottery-type-name-input").value = "";
+    byId("lottery-show-prizes-on-ticket").checked = true;
     renderLotteryNamePreview();
     renderLotteryTypes();
     renderLotteryConfigMeta();
@@ -1506,6 +1514,9 @@
       return;
     }
     var submittedPrizes;
+    var showPrizesOnTicket = byId(
+      "lottery-show-prizes-on-ticket"
+    ).checked;
     try {
       submittedPrizes = validateLotterySubmission();
     } catch (error) {
@@ -1535,6 +1546,7 @@
         }, savedLotteryTypeId);
       if (selectedDemoType) {
         selectedDemoType.name = lotteryTypeName;
+        selectedDemoType.showPrizesOnTicket = showPrizesOnTicket;
         selectedDemoType.lottery = savedLottery;
       } else {
         lotteryTypes.push({
@@ -1542,6 +1554,7 @@
           name: lotteryTypeName,
           status: "active",
           createdAt: now,
+          showPrizesOnTicket: showPrizesOnTicket,
           lottery: savedLottery,
         });
       }
@@ -1560,6 +1573,7 @@
     sendAdminRequest("adminSaveLotteryConfig", {
       lotteryTypeId: selectedLotteryTypeId,
       lotteryTypeName: lotteryTypeName,
+      showPrizesOnTicket: showPrizesOnTicket,
       lotteryPrizes: submittedPrizes,
     })
       .then(function (response) {

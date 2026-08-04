@@ -483,6 +483,7 @@ function createLotteryTypeRow(gas, overrides = {}) {
     deletedAt: "",
     deletedBy: "",
     lastRequestId: "setup-default-type",
+    showPrizesOnTicket: false,
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -490,6 +491,38 @@ function createLotteryTypeRow(gas, overrides = {}) {
   });
   return row;
 }
+
+test("member card responses include bounded prize labels only for enabled ticket previews", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    lotteryTypeRows: [
+      createLotteryTypeRow(gas, { showPrizesOnTicket: true }),
+    ],
+    lotteryPrizeRows: createLotteryPrizeRows(gas),
+  });
+  const status = gas.getMemberPointCardStatus_(
+    sheets.redemptionSheet,
+    sheets.lotteryDrawSheet,
+    sheets.pointCardSettingSheet,
+    createIdentity().lineUserId
+  );
+  const summary = gas.pointCardSummaryResponseForConfig_(
+    {},
+    status,
+    sheets.lotteryTypeSheet,
+    sheets.lotteryPrizeSheet
+  );
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(summary.rewardRules[0])),
+    {
+      points: 5,
+      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      showPrizesOnTicket: true,
+      prizeLabels: ["小禮物", "頭獎"],
+    }
+  );
+});
 
 function installPointSheets(
   gas,
@@ -2989,6 +3022,40 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
   );
 });
 
+test("client GAS appends a disabled ticket prize preview to legacy lottery types", () => {
+  const gas = createGasContext();
+  const legacyRow = createLotteryTypeRow(gas).slice(
+    0,
+    gas.LEGACY_LOTTERY_TYPE_HEADERS.length
+  );
+  const legacyCells = legacyRow.slice();
+  const sheet = createDataSheet(
+    "LotteryTypes",
+    Array.from(gas.LEGACY_LOTTERY_TYPE_HEADERS),
+    [legacyRow]
+  );
+  gas.SpreadsheetApp.openById = () => ({
+    getSheetByName(name) {
+      return name === "LotteryTypes" ? sheet : null;
+    },
+  });
+
+  gas.getOrCreateLotteryTypeSheet_({
+    spreadsheetId: "shared-members-sheet",
+    lotteryTypeSheetName: "LotteryTypes",
+  });
+
+  assert.deepEqual(sheet.headers, Array.from(gas.LOTTERY_TYPE_HEADERS));
+  assert.deepEqual(
+    sheet.rows[0].slice(0, gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
+    legacyCells
+  );
+  assert.deepEqual(
+    sheet.rows[0].slice(gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
+    ["false"]
+  );
+});
+
 test("client GAS upgrades milestone-only point-card rows with one mapping column", () => {
   const gas = createGasContext();
   const existingRow = createPointCardSettingRow(gas).slice(
@@ -3093,7 +3160,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.10.0");
+  assert.equal(health.data.version, "1.11.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -3119,7 +3186,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
   assert.equal(setup.pointCardSettingColumns, 9);
-  assert.equal(setup.lotteryTypeColumns, 9);
+  assert.equal(setup.lotteryTypeColumns, 10);
   assert.equal(setup.lotteryPrizeColumns, 11);
   assert.equal(setup.lotteryDrawColumns, 16);
 });

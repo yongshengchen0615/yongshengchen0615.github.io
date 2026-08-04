@@ -493,6 +493,9 @@
 
           name: "經典轉盤",
 
+          showPrizesOnTicket:
+            true,
+
           lottery: {
             lotteryTypeId:
               "LTY-PREVIEW001",
@@ -543,6 +546,9 @@
             "LTY-PREVIEW002",
 
           name: "生日限定",
+
+          showPrizesOnTicket:
+            true,
 
           lottery: {
             lotteryTypeId:
@@ -638,6 +644,10 @@
           lotteryTypeId,
 
         name: name,
+
+        showPrizesOnTicket:
+          item.showPrizesOnTicket ===
+          true,
 
         lottery:
           normalizeLotteryConfig(
@@ -1372,43 +1382,7 @@
         cardStatus.availableDraws
       );
 
-    var progress =
-      Math.min(
-        100,
-        Math.max(
-          0,
-          (
-            cardStatus.currentPoints /
-            cardStatus.targetPoints
-          ) * 100
-        )
-      );
-
-    byId(
-      "point-card-progress-bar"
-    ).style.width =
-      progress + "%";
-
-    var track =
-      byId(
-        "point-card-progress-bar"
-      ).parentElement;
-
-    track.setAttribute(
-      "aria-valuemax",
-      String(
-        cardStatus.targetPoints
-      )
-    );
-
-    track.setAttribute(
-      "aria-valuenow",
-      String(
-        cardStatus.currentPoints
-      )
-    );
-
-    renderPointCardMilestones();
+    renderPointCardStars();
 
     byId(
       "point-card-progress-message"
@@ -1424,80 +1398,92 @@
           " 點可獲得抽獎券。";
   }
 
-  function renderPointCardMilestones() {
+  function renderPointCardStars() {
     var list =
       byId(
-        "point-card-milestones"
+        "point-card-stars"
       );
 
     var fragment =
       document.createDocumentFragment();
 
-    list.classList.toggle(
-      "is-dense",
-      cardStatus.rewardMilestones
-        .length > 8
-    );
+    var milestonePoints =
+      Object.create(null);
 
     cardStatus.rewardMilestones.forEach(
       function (milestone) {
+        milestonePoints[milestone] =
+          true;
+      }
+    );
+
+    for (
+      var point = 1;
+      point <= cardStatus.targetPoints;
+      point += 1
+    ) {
         var item =
           document.createElement(
             "li"
           );
 
-        var reached =
-          cardStatus.reachedMilestones.indexOf(
-            milestone
-          ) !== -1;
+        var collected =
+          point <=
+          cardStatus.currentPoints;
 
-        var next =
-          milestone ===
-          cardStatus.nextMilestonePoints;
+        var milestone =
+          Boolean(
+            milestonePoints[point]
+          );
 
         item.className =
-          reached
-            ? "is-reached"
-            : next
-              ? "is-next"
-              : "";
-
-        item.style.left =
-          (
-            milestone /
-            cardStatus.targetPoints
-          ) *
-            100 +
-          "%";
-
-        item.innerHTML =
-          '<span aria-hidden="true">' +
-          (reached ? "✓" : "★") +
-          "</span><small>" +
-          formatNumber(milestone) +
-          " 點</small>";
-
+          (collected
+            ? "is-collected"
+            : "") +
+          (milestone
+            ? " is-milestone"
+            : "");
+        item.textContent =
+          milestone ? "✦" : "★";
         item.setAttribute(
-          "aria-label",
-          milestone +
-            " 點抽獎節點，" +
-            (
-              reached
-                ? "本張卡已到達"
-                : next
-                  ? "下一個節點"
-                  : "尚未到達"
-            )
+          "aria-hidden",
+          "true"
         );
+        if (milestone) {
+          item.title =
+            formatNumber(point) +
+            " 點可獲得抽獎券";
+        }
 
         fragment.appendChild(
           item
         );
       }
-    );
 
     list.replaceChildren(
       fragment
+    );
+    list.style.setProperty(
+      "--point-star-columns",
+      String(
+        cardStatus.targetPoints <= 10
+          ? cardStatus.targetPoints
+          : cardStatus.targetPoints <= 40
+            ? 10
+            : 20
+      )
+    );
+    list.setAttribute(
+      "aria-label",
+      "目前已集 " +
+        formatNumber(
+          cardStatus.currentPoints
+        ) +
+        " 點，本輪目標 " +
+        formatNumber(
+          cardStatus.targetPoints
+        ) +
+        " 點；星芒代表可獲得抽獎券的節點。"
     );
   }
 
@@ -1593,6 +1579,11 @@
             " 點節點"
         );
 
+        appendLotteryTicketPrizePreview(
+          button,
+          type
+        );
+
         appendTicketText(
           button,
           "lottery-ticket-action",
@@ -1606,7 +1597,11 @@
             ticket.cardNumber +
             " 張卡 " +
             ticket.milestonePoints +
-            " 點節點，開啟轉盤"
+            " 點節點" +
+            lotteryTicketPrizeAriaLabel(
+              type
+            ) +
+            "，開啟轉盤"
         );
 
         button.addEventListener(
@@ -1698,6 +1693,11 @@
             " 點後獲得"
         );
 
+        appendLotteryTicketPrizePreview(
+          item,
+          type
+        );
+
         appendTicketText(
           item,
           "lottery-ticket-action",
@@ -1728,6 +1728,72 @@
         ),
       false
     );
+  }
+
+  function lotteryTicketPrizeLabels(
+    type
+  ) {
+    if (
+      !type ||
+      !type.showPrizesOnTicket
+    ) {
+      return [];
+    }
+    var seen = Object.create(null);
+    return type.lottery.prizes
+      .map(function (prize) {
+        return prize.label;
+      })
+      .filter(function (label) {
+        if (seen[label]) return false;
+        seen[label] = true;
+        return true;
+      });
+  }
+
+  function appendLotteryTicketPrizePreview(
+    parent,
+    type
+  ) {
+    var prizeLabels =
+      lotteryTicketPrizeLabels(
+        type
+      );
+    if (!prizeLabels.length) return;
+    var preview =
+      document.createElement(
+        "span"
+      );
+    var heading =
+      document.createElement(
+        "b"
+      );
+    var labels =
+      document.createElement(
+        "span"
+      );
+    preview.className =
+      "lottery-ticket-prizes";
+    heading.textContent =
+      "可抽中";
+    labels.textContent =
+      prizeLabels.join(" · ");
+    preview.appendChild(heading);
+    preview.appendChild(labels);
+    parent.appendChild(preview);
+  }
+
+  function lotteryTicketPrizeAriaLabel(
+    type
+  ) {
+    var prizeLabels =
+      lotteryTicketPrizeLabels(
+        type
+      );
+    return prizeLabels.length
+      ? "，可抽中 " +
+          prizeLabels.join("、")
+      : "";
   }
 
   function selectTicketTab(

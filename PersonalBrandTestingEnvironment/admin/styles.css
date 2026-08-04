@@ -2146,11 +2146,61 @@ tbody tr[data-busy="true"] {
 }
 
 .lottery-name-field b,
+.lottery-ticket-display-field b,
 .lottery-prize-section-heading b {
   margin-right: 0.5rem;
   color: var(--green-dark);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.64rem;
+}
+
+.lottery-ticket-display-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 2rem;
+  padding: 0 0 1.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.lottery-ticket-display-field legend {
+  margin-bottom: 0.75rem;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
+.lottery-ticket-display-field > label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.8rem;
+  cursor: pointer;
+}
+
+.lottery-ticket-display-field input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--green-dark);
+}
+
+.lottery-ticket-display-field label > span {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.lottery-ticket-display-field strong {
+  color: var(--green-deep);
+  font-size: 0.86rem;
+}
+
+.lottery-ticket-display-field small {
+  max-width: 42rem;
+  color: var(--ink-faint);
+  font-size: 0.66rem;
+  line-height: 1.65;
 }
 
 .lottery-name-field input {

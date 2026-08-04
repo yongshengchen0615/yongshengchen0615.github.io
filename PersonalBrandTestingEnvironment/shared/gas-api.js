@@ -26,6 +26,7 @@
     "lotteryTypeId",
     "cardRoundKey",
     "lotteryTypeName",
+    "showPrizesOnTicket",
     "lotteryPrizes",
   ];
 

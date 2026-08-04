@@ -643,11 +643,7 @@
       : [];
     var rewardRules = Array.isArray(value.rewardRules)
       ? value.rewardRules.map(function (rule) {
-          rule = rule && typeof rule === "object" ? rule : {};
-          return {
-            points: Number(rule.points),
-            lotteryTypeId: String(rule.lotteryTypeId || "").trim(),
-          };
+          return normalizeRewardRule(rule);
         })
       : [];
     var reachedMilestones = Array.isArray(value.reachedMilestones)
@@ -754,6 +750,47 @@
         "INVALID_RESPONSE",
         "集點卡進度格式不正確。"
       );
+    }
+    return normalized;
+  }
+
+  function normalizeRewardRule(rule) {
+    rule = rule && typeof rule === "object" ? rule : {};
+    var hasVisibility = Object.prototype.hasOwnProperty.call(
+      rule,
+      "showPrizesOnTicket"
+    );
+    var showPrizesOnTicket = hasVisibility
+      ? rule.showPrizesOnTicket
+      : false;
+    var prizeLabels = Array.isArray(rule.prizeLabels)
+      ? rule.prizeLabels.map(function (label) {
+          return String(label || "").trim();
+        })
+      : [];
+    if (
+      (hasVisibility && typeof showPrizesOnTicket !== "boolean") ||
+      (!hasVisibility && prizeLabels.length > 0) ||
+      (!showPrizesOnTicket && prizeLabels.length > 0) ||
+      (showPrizesOnTicket &&
+        (prizeLabels.length < 2 ||
+          prizeLabels.length > 12 ||
+          prizeLabels.some(function (label) {
+            return !label || label.length > 40;
+          })))
+    ) {
+      throw createError(
+        "INVALID_RESPONSE",
+        "抽獎券獎項顯示資料不正確。"
+      );
+    }
+    var normalized = {
+      points: Number(rule.points),
+      lotteryTypeId: String(rule.lotteryTypeId || "").trim(),
+    };
+    if (hasVisibility) {
+      normalized.showPrizesOnTicket = showPrizesOnTicket;
+      normalized.prizeLabels = showPrizesOnTicket ? prizeLabels : [];
     }
     return normalized;
   }
@@ -1522,12 +1559,7 @@
       expiresOn: String(value.expiresOn || "").trim(),
       rewardRules: Array.isArray(value.rewardRules)
         ? value.rewardRules.map(function (rule) {
-            return {
-              points: Number(rule && rule.points),
-              lotteryTypeId: String(
-                (rule && rule.lotteryTypeId) || ""
-              ).trim(),
-            };
+            return normalizeRewardRule(rule);
           })
         : [],
       availableRewards: Array.isArray(value.availableRewards)
@@ -1691,10 +1723,20 @@
       expiresOn: value.expiresOn,
       rewardMilestones: value.rewardMilestones.slice(),
       rewardRules: value.rewardRules.map(function (rule) {
-        return {
+        var copy = {
           points: rule.points,
           lotteryTypeId: rule.lotteryTypeId,
         };
+        if (
+          Object.prototype.hasOwnProperty.call(
+            rule,
+            "showPrizesOnTicket"
+          )
+        ) {
+          copy.showPrizesOnTicket = rule.showPrizesOnTicket;
+          copy.prizeLabels = rule.prizeLabels.slice();
+        }
+        return copy;
       }),
       reachedMilestones: value.reachedMilestones.slice(),
       currentPoints: value.currentPoints,

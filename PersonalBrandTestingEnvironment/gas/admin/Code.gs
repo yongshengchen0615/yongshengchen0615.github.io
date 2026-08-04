@@ -28,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.8.0";
+var API_VERSION = "1.9.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -284,7 +284,7 @@ var POINT_CARD_SETTING_COLUMN = {
   expiresOn: 9,
 };
 
-var LOTTERY_TYPE_HEADERS = [
+var LEGACY_LOTTERY_TYPE_HEADERS = [
   "lottery_type_id",
   "name",
   "status",
@@ -296,6 +296,10 @@ var LOTTERY_TYPE_HEADERS = [
   "last_request_id",
 ];
 
+var LOTTERY_TYPE_HEADERS = LEGACY_LOTTERY_TYPE_HEADERS.concat([
+  "show_prizes_on_ticket",
+]);
+
 var LOTTERY_TYPE_COLUMN = {
   lotteryTypeId: 1,
   name: 2,
@@ -306,6 +310,7 @@ var LOTTERY_TYPE_COLUMN = {
   deletedAt: 7,
   deletedBy: 8,
   lastRequestId: 9,
+  showPrizesOnTicket: 10,
 };
 
 var LEGACY_LOTTERY_PRIZE_HEADERS = [
@@ -1431,6 +1436,10 @@ function adminCreateLotteryType_(adminIdentity, request, config) {
 
   try {
     var name = normalizeLotteryTypeName_(request.lotteryTypeName);
+    var showPrizesOnTicket =
+      typeof request.showPrizesOnTicket === "boolean"
+        ? request.showPrizesOnTicket
+        : false;
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
@@ -1448,7 +1457,11 @@ function adminCreateLotteryType_(adminIdentity, request, config) {
       throw appError_("LOTTERY_DATA_ERROR", "轉盤類型請求識別碼重複。");
     }
     if (duplicate.length === 1) {
-      if (duplicate[0].name !== name || duplicate[0].status !== "active") {
+      if (
+        duplicate[0].name !== name ||
+        duplicate[0].status !== "active" ||
+        duplicate[0].showPrizesOnTicket !== showPrizesOnTicket
+      ) {
         throw appError_("REQUEST_ID_CONFLICT", "同一請求不可用於不同的轉盤類型。");
       }
       return { data: { lotteryType: lotteryTypeResponse_(duplicate[0], null), duplicate: true } };
@@ -1482,6 +1495,7 @@ function adminCreateLotteryType_(adminIdentity, request, config) {
       "",
       "",
       request.requestId,
+      showPrizesOnTicket,
     ]);
     applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
     SpreadsheetApp.flush();
@@ -1581,6 +1595,10 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
       submittedLotteryTypeName = normalizeLotteryTypeName_("");
     }
     var submittedPrizes = normalizeLotteryPrizes_(request.lotteryPrizes);
+    var requestedShowPrizesOnTicket =
+      typeof request.showPrizesOnTicket === "boolean"
+        ? request.showPrizesOnTicket
+        : null;
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     var adminRowNumber = requireApprovedAdmin_(adminIdentity, request, adminSheet);
@@ -1620,6 +1638,23 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
     }
 
     var lotteryTypeName = submittedLotteryTypeName || lotteryType.name;
+    var showPrizesOnTicket =
+      requestedShowPrizesOnTicket === null
+        ? lotteryType
+          ? lotteryType.showPrizesOnTicket
+          : false
+        : requestedShowPrizesOnTicket;
+    if (
+      lotteryType &&
+      lotteryType.lastRequestId === request.requestId &&
+      (lotteryType.name !== lotteryTypeName ||
+        lotteryType.showPrizesOnTicket !== showPrizesOnTicket)
+    ) {
+      throw appError_(
+        "REQUEST_ID_CONFLICT",
+        "同一請求不可用於不同的轉盤顯示設定。"
+      );
+    }
     var duplicateName = types.some(function (type) {
       return (
         type.status === "active" &&
@@ -1653,16 +1688,20 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
         "",
         "",
         request.requestId,
+        showPrizesOnTicket,
       ]);
       applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
       SpreadsheetApp.flush();
       types = readLotteryTypes_(typeSheet);
       lotteryType = findLotteryType_(types, newLotteryTypeId, false);
       createdType = true;
-    } else if (lotteryType.name !== lotteryTypeName) {
+    } else if (
+      lotteryType.name !== lotteryTypeName ||
+      lotteryType.showPrizesOnTicket !== showPrizesOnTicket
+    ) {
       var renamedAt = new Date();
       typeSheet
-        .getRange(lotteryType.rowNumber, LOTTERY_TYPE_COLUMN.name, 1, 8)
+        .getRange(lotteryType.rowNumber, LOTTERY_TYPE_COLUMN.name, 1, 9)
         .setValues([[
           safeSheetText_(lotteryTypeName),
           "active",
@@ -1672,6 +1711,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
           "",
           "",
           request.requestId,
+          showPrizesOnTicket,
         ]]);
       applyLotteryTypeRowFormats_(typeSheet, lotteryType.rowNumber);
       SpreadsheetApp.flush();
@@ -2257,8 +2297,8 @@ function getOrCreateLotteryTypeSheet_(spreadsheet, config) {
     spreadsheet,
     config.lotteryTypesSheetName,
     LOTTERY_TYPE_HEADERS,
-    [],
-    [],
+    LEGACY_LOTTERY_TYPE_HEADERS,
+    ["false"],
     "LOTTERY_SCHEMA_MISMATCH",
     "#365314",
     applyLotteryTypeSheetColumnFormats_
@@ -2394,6 +2434,7 @@ function ensureLotteryTypeForExistingPrizes_(typeSheet, prizeSheet) {
     "",
     "",
     "setup-default-type",
+    false,
   ]);
   applyLotteryTypeRowFormats_(typeSheet, typeSheet.getLastRow());
 }
@@ -2698,7 +2739,7 @@ function applyPointCardSettingRowFormats_(sheet, rowNumber) {
 
 function applyLotteryTypeSheetColumnFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 6, 8, 9].forEach(function (column) {
+  [1, 2, 3, 6, 8, 9, LOTTERY_TYPE_COLUMN.showPrizesOnTicket].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet
@@ -2714,7 +2755,7 @@ function applyLotteryTypeRowFormats_(sheet, rowNumber) {
   sheet.getRange(rowNumber, 4, 1, 2).setNumberFormat("yyyy-mm-dd hh:mm:ss");
   sheet.getRange(rowNumber, 6).setNumberFormat("@");
   sheet.getRange(rowNumber, 7).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  sheet.getRange(rowNumber, 8, 1, 2).setNumberFormat("@");
+  sheet.getRange(rowNumber, 8, 1, 3).setNumberFormat("@");
 }
 
 function applyLotteryPrizeSheetColumnFormats_(sheet) {
@@ -2796,6 +2837,10 @@ function parseRequest_(e) {
       pointCardExpiresOn: String(e.parameter.pointCardExpiresOn || "").trim(),
       lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
       lotteryTypeName: String(e.parameter.lotteryTypeName || "").trim(),
+      showPrizesOnTicket: optionalBoolean_(
+        e.parameter.showPrizesOnTicket,
+        null
+      ),
       lotteryPrizes: parseLotteryPrizes_(e.parameter.lotteryPrizes),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
@@ -2843,6 +2888,10 @@ function parseRequest_(e) {
     pointCardExpiresOn: String(parsed.pointCardExpiresOn || "").trim(),
     lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
     lotteryTypeName: String(parsed.lotteryTypeName || "").trim(),
+    showPrizesOnTicket: optionalBoolean_(
+      parsed.showPrizesOnTicket,
+      null
+    ),
     lotteryPrizes: parseLotteryPrizes_(parsed.lotteryPrizes),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
@@ -3607,6 +3656,9 @@ function readLotteryTypes_(sheet) {
     var deletedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.deletedAt - 1]);
     var deletedBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.deletedBy - 1], 100);
     var lastRequestId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lastRequestId - 1], 100);
+    var showPrizesOnTicket = parseStoredLotteryTicketVisibility_(
+      row[LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1]
+    );
     var deletionValid =
       status === "active"
         ? !deletedAt && !deletedBy
@@ -3643,6 +3695,7 @@ function readLotteryTypes_(sheet) {
       deletedAt: deletedAt,
       deletedBy: deletedBy,
       lastRequestId: lastRequestId,
+      showPrizesOnTicket: showPrizesOnTicket,
     };
   });
 }
@@ -3670,6 +3723,7 @@ function lotteryTypeResponse_(type, lotteryConfig) {
     name: type.name,
     status: type.status,
     createdAt: type.createdAt,
+    showPrizesOnTicket: type.showPrizesOnTicket,
     lottery: lotteryConfig
       ? lotteryConfigResponse_(lotteryConfig)
       : {
@@ -3679,6 +3733,18 @@ function lotteryTypeResponse_(type, lotteryConfig) {
           prizes: [],
         },
   };
+}
+
+function parseStoredLotteryTicketVisibility_(value) {
+  var normalized = String(value == null ? "false" : value)
+    .trim()
+    .toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false" || normalized === "") return false;
+  throw appError_(
+    "LOTTERY_DATA_ERROR",
+    "轉盤的抽獎券獎項顯示設定不正確。"
+  );
 }
 
 function readLotteryConfigs_(sheet) {
@@ -4263,6 +4329,13 @@ function buildPointClaimUrl_(memberLiffUrl, claim) {
 
 function optionalNumber_(value, fallback) {
   return value === undefined || value === null || value === "" ? fallback : Number(value);
+}
+
+function optionalBoolean_(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  throw appError_("INVALID_REQUEST", "布林設定格式不正確。");
 }
 
 function isPositiveInteger_(value) {

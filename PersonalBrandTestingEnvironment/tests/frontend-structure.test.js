@@ -591,8 +591,7 @@ test("legacy client lottery deep link remains available and spins from the wheel
   );
 
   for (const id of [
-    "point-card-progress-bar",
-    "point-card-milestones",
+    "point-card-stars",
     "point-card-current",
     "point-card-target",
     "point-card-expiry",
@@ -622,6 +621,7 @@ test("legacy client lottery deep link remains available and spins from the wheel
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.doesNotMatch(html, /id=["']scan-point-button["']/);
+  assert.doesNotMatch(html, /role=["']progressbar["']/);
   assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
   assert.doesNotMatch(html, /id=["']point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i);
   assert.match(html, /id=["']locked-ticket-title["']>未獲得</);
@@ -661,7 +661,9 @@ test("legacy client lottery deep link remains available and spins from the wheel
     script,
     /animateToPrize\(\s*draw,\s*selectedType\.lottery\s*\)/
   );
-  assert.match(script, /renderPointCardMilestones\(\)/);
+  assert.match(script, /renderPointCardStars\(\)/);
+  assert.match(script, /point\s*<=\s*cardStatus\.targetPoints/);
+  assert.match(script, /milestone\s*\?\s*["']✦["']\s*:\s*["']★["']/);
   assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
   assert.equal(
     renderWorkspace.indexOf("normalizePointCardStatus") <
@@ -836,7 +838,7 @@ test("admin member and point pages load only their own data and preflight QR cre
   assert.match(createCampaign, /\bisPointMutationLoading\b/);
 });
 
-test("client member pass renders current-card progress and a live ticket badge", () => {
+test("client member pass renders one star per point and keeps lifetime hours beside the member name", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const memberState = /id="member-state"[\s\S]*?(?=<section[^>]+id="error-state")/.exec(html);
@@ -847,16 +849,26 @@ test("client member pass renders current-card progress and a live ticket badge",
     script,
     /function\s+renderMemberCardSummary\s*\(/
   );
+  const renderStars = getTopLevelFunctionContaining(
+    script,
+    /function\s+renderMemberPointStars\s*\(/
+  );
 
   assert.ok(memberState, "client member state must exist");
   assert.match(memberState[0], /id=["']member-point-card-current["']/);
   assert.match(memberState[0], /id=["']member-point-card-target["']/);
   assert.match(memberState[0], /id=["']member-point-card-expiry["']/);
-  assert.match(memberState[0], /id=["']member-point-card-progress-track["']/);
+  assert.match(memberState[0], /id=["']member-point-card-stars["']/);
+  assert.doesNotMatch(memberState[0], /role=["']progressbar["']/);
+  assert.doesNotMatch(memberState[0], /id=["']member-point-card-progress(?:-track)?["']/);
   assert.match(current, /aria-live=["']polite["']/i);
   assert.match(ticketCount, /aria-live=["']polite["']/i);
   assert.match(ticketCount, /\bhidden\b/i);
   assert.match(memberState[0], /id=["']member-point-balance["']/);
+  assert.match(
+    memberState[0],
+    /id=["']member-display-name["'][\s\S]*目前消費時數[\s\S]*id=["']member-point-balance["']/
+  );
   assert.match(renderMember, /byId\(["']member-point-balance["']\)/);
   assert.match(renderMember, /\bmember\.pointBalance\b/);
   assert.match(renderCard, /\bnormalized\.currentPoints\b/);
@@ -865,16 +877,57 @@ test("client member pass renders current-card progress and a live ticket badge",
   assert.match(renderCard, /\bnormalized\.expiryMode\b/);
   assert.match(renderCard, /\bnormalized\.expiresOn\b/);
   assert.match(renderCard, /ticketCount\.hidden\s*=\s*normalized\.availableDraws\s*===\s*0/);
-  assert.match(renderCard, /progress\.style\.width/);
+  assert.match(renderCard, /renderMemberPointStars\(normalized\)/);
+  assert.match(renderStars, /normalized\.targetPoints/);
+  assert.match(renderStars, /normalized\.currentPoints/);
+  assert.match(renderStars, /rewardRules/);
+  assert.match(renderStars, /is-milestone/);
+  assert.match(renderStars, /is-collected/);
+  assert.match(renderStars, /["']✦["']/);
+  assert.match(renderStars, /["']★["']/);
   assert.doesNotMatch(
     memberState[0],
     /id=["']member-point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i
   );
 });
 
+test("administrators can publish prize previews beneath earned and locked tickets", () => {
+  const adminHtml = fs.readFileSync(path.join(root, "admin/lottery.html"), "utf8");
+  const adminScript = fs.readFileSync(path.join(root, "admin/script.js"), "utf8");
+  const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
+  const saveLottery = getTopLevelFunctionContaining(
+    adminScript,
+    /function\s+handleSaveLotteryConfig\s*\(/
+  );
+  const normalizeSummary = getTopLevelFunctionContaining(
+    memberScript,
+    /function\s+normalizeMemberCardSummary\s*\(/
+  );
+  const renderTickets = getTopLevelFunctionContaining(
+    memberScript,
+    /function\s+renderMemberTicketPanels\s*\(/
+  );
+  const renderPrizePreview = getTopLevelFunctionContaining(
+    memberScript,
+    /function\s+appendMemberTicketPrizePreview\s*\(/
+  );
+
+  assert.match(adminHtml, /id=["']lottery-show-prizes-on-ticket["']/);
+  assert.match(saveLottery, /showPrizesOnTicket/);
+  assert.match(normalizeSummary, /showPrizesOnTicket/);
+  assert.match(normalizeSummary, /prizeLabels/);
+  assert.match(renderTickets, /appendMemberTicketPrizePreview\(button,\s*ticketRule\)/);
+  assert.match(renderTickets, /appendMemberTicketPrizePreview\(item,\s*rule\)/);
+  assert.match(renderPrizePreview, /lottery-ticket-prizes/);
+  assert.match(renderPrizePreview, /可抽中/);
+  assert.match(transport, /["']showPrizesOnTicket["']/);
+});
+
 test("client point history opens lazily from a member-page dialog with complete UI states", () => {
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const memberScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const memberStyles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const history = getTopLevelFunctionContaining(
@@ -884,6 +937,18 @@ test("client point history opens lazily from a member-page dialog with complete 
   const openHistory = getTopLevelFunctionContaining(
     memberScript,
     /function\s+openPointHistoryDialog\s*\(/
+  );
+  const historyDialogStyles = getCssRuleBody(
+    memberStyles,
+    ".member-history-dialog[open]"
+  );
+  const historySectionStyles = getCssRuleBody(
+    memberStyles,
+    ".member-history-dialog .member-point-history"
+  );
+  const historyScrollStyles = getCssRuleBody(
+    memberStyles,
+    ".member-history-dialog .member-panel-scroll"
   );
 
   for (const id of [
@@ -908,6 +973,20 @@ test("client point history opens lazily from a member-page dialog with complete 
   assert.match(memberScript, /entry\.entryType\s*===\s*["']draw["']\s*\?\s*["']不扣點["']/);
   assert.match(openHistory, /!hasLoadedPointHistory\s*\|\|\s*isPointHistoryDirty/);
   assert.doesNotMatch(script, /["']listPointHistory["']/);
+  assert.match(historyDialogStyles, /\bwidth:\s*100%/);
+  assert.match(historyDialogStyles, /\bheight:\s*100dvh/);
+  assert.match(historyDialogStyles, /\bmax-width:\s*none/);
+  assert.match(historyDialogStyles, /\bmax-height:\s*none/);
+  assert.match(historyDialogStyles, /\bdisplay:\s*flex/);
+  assert.match(historyDialogStyles, /\bflex-direction:\s*column/);
+  assert.match(historyDialogStyles, /\bmargin:\s*0/);
+  assert.match(historySectionStyles, /\bmin-height:\s*0/);
+  assert.match(historySectionStyles, /\bflex:\s*1\s+1\s+auto/);
+  assert.match(historySectionStyles, /\bdisplay:\s*flex/);
+  assert.match(historySectionStyles, /\bflex-direction:\s*column/);
+  assert.match(historyScrollStyles, /\bmin-height:\s*0/);
+  assert.match(historyScrollStyles, /\bflex:\s*1\s+1\s+auto/);
+  assert.match(historyScrollStyles, /\bmax-height:\s*none/);
 });
 
 test("primary pages use concise copy and responsive text safeguards", () => {
@@ -1190,7 +1269,7 @@ test("member home updates card progress immediately and keeps scanning local", (
     /updateMemberPointBalance\(pointBalance,\s*true\);[\s\S]*renderMemberCardSummary\(response\.data\.cardSummary,\s*true\)/
   );
   assert.doesNotMatch(redeemClaim, /getLotteryConfig|loadLotteryWorkspace/);
-  assert.match(renderSummary, /normalized\.currentPoints\s*\/\s*normalized\.targetPoints/);
+  assert.match(renderSummary, /renderMemberPointStars\(normalized\)/);
   assert.match(renderSummary, /ticketCount\.hidden\s*=\s*normalized\.availableDraws\s*===\s*0/);
   assert.doesNotMatch(script, /["']getLotteryConfig["']/);
   assert.doesNotMatch(lotteryScript, /scanCodeV2|point-scanner-dialog|redeemPointCampaign/);

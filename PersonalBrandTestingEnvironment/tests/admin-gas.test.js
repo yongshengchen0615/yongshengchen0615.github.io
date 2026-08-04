@@ -446,6 +446,7 @@ function createLotteryTypeRow(gas, overrides = {}) {
     deletedAt: "",
     deletedBy: "",
     lastRequestId: "setup-default-type",
+    showPrizesOnTicket: false,
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -629,7 +630,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
   assert.equal(result.pointCardSettingColumns, 9);
-  assert.equal(result.lotteryTypeColumns, 9);
+  assert.equal(result.lotteryTypeColumns, 10);
   assert.equal(result.lotteryPrizeColumns, 11);
   assert.equal(result.lotteryDrawColumns, 16);
   assert.deepEqual(
@@ -2153,6 +2154,7 @@ test("administrators create and rename a complete wheel with the same save actio
     requestId: "request-complete-wheel-create-1",
     lotteryTypeId: "",
     lotteryTypeName: "生日限定",
+    showPrizesOnTicket: true,
     lotteryPrizes: [
       { label: "生日禮", color: "#0B3C2C", probability: 20 },
       { label: "下次再來", color: "#D9D6CC", probability: 80 },
@@ -2175,6 +2177,7 @@ test("administrators create and rename a complete wheel with the same save actio
   assert.equal(first.data.created, true);
   assert.equal(first.data.duplicate, false);
   assert.equal(first.data.lotteryType.name, "生日限定");
+  assert.equal(first.data.lotteryType.showPrizesOnTicket, true);
   assert.equal(first.data.lottery.lotteryTypeId, lotteryTypeId);
   assert.equal(replay.data.created, true);
   assert.equal(replay.data.duplicate, true);
@@ -2206,6 +2209,10 @@ test("administrators create and rename a complete wheel with the same save actio
   assert.equal(
     typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.name - 1],
     "生日專屬"
+  );
+  assert.equal(
+    typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1],
+    true
   );
   assert.equal(prizeSheet.data.length, 6);
 });
@@ -2908,6 +2915,36 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   );
 });
 
+test("legacy lottery types append the ticket prize visibility setting without changing old cells", () => {
+  const gas = createGasContext();
+  const legacyRow = createLotteryTypeRow(gas).slice(
+    0,
+    gas.LEGACY_LOTTERY_TYPE_HEADERS.length
+  );
+  const legacyCells = legacyRow.slice();
+  const sheet = createSheet(
+    "LotteryTypes",
+    gas.LEGACY_LOTTERY_TYPE_HEADERS,
+    [legacyRow]
+  );
+  const spreadsheet = createSpreadsheet({ LotteryTypes: sheet });
+
+  gas.getOrCreateLotteryTypeSheet_(spreadsheet, configFor(gas));
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(sheet.data[0])),
+    JSON.parse(JSON.stringify(gas.LOTTERY_TYPE_HEADERS))
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(0, gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
+    legacyCells
+  );
+  assert.deepEqual(
+    sheet.data[1].slice(gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
+    ["false"]
+  );
+});
+
 test("milestone-only point-card rows append the wheel mapping column in place", () => {
   const gas = createGasContext();
   const existingRow = createPointCardSettingRow(gas).slice(
@@ -2975,7 +3012,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.8.0");
+  assert.equal(response.data.version, "1.9.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

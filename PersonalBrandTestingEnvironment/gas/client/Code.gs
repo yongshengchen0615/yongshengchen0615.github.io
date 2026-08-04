@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.10.0";
+var API_VERSION = "1.11.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -225,7 +225,7 @@ var POINT_CARD_SETTING_COLUMN = {
   expiresOn: 9,
 };
 
-var LOTTERY_TYPE_HEADERS = [
+var LEGACY_LOTTERY_TYPE_HEADERS = [
   "lottery_type_id",
   "name",
   "status",
@@ -237,6 +237,10 @@ var LOTTERY_TYPE_HEADERS = [
   "last_request_id",
 ];
 
+var LOTTERY_TYPE_HEADERS = LEGACY_LOTTERY_TYPE_HEADERS.concat([
+  "show_prizes_on_ticket",
+]);
+
 var LOTTERY_TYPE_COLUMN = {
   lotteryTypeId: 1,
   name: 2,
@@ -247,6 +251,7 @@ var LOTTERY_TYPE_COLUMN = {
   deletedAt: 7,
   deletedBy: 8,
   lastRequestId: 9,
+  showPrizesOnTicket: 10,
 };
 
 var LEGACY_LOTTERY_PRIZE_HEADERS = [
@@ -651,7 +656,7 @@ function upsertMember_(identity, request, config) {
           ? memberResponseFromRow_(row, identity, context, pointBalance)
           : null,
         cardSummary: cardStatus
-          ? pointCardSummaryResponse_(cardStatus)
+          ? pointCardSummaryResponseForConfig_(config, cardStatus)
           : null,
       },
     };
@@ -1130,6 +1135,9 @@ function readLotteryTypes_(sheet) {
     var deletedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.deletedAt - 1]);
     var deletedBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.deletedBy - 1], 100);
     var lastRequestId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lastRequestId - 1], 100);
+    var showPrizesOnTicket = parseStoredLotteryTicketVisibility_(
+      row[LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1]
+    );
     var deletionValid =
       status === "active"
         ? !deletedAt && !deletedBy
@@ -1157,6 +1165,7 @@ function readLotteryTypes_(sheet) {
       status: status,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      showPrizesOnTicket: showPrizesOnTicket,
     };
   });
 }
@@ -1175,8 +1184,21 @@ function memberLotteryTypeResponse_(type, lotteryConfig) {
   return {
     lotteryTypeId: type.lotteryTypeId,
     name: type.name,
+    showPrizesOnTicket: type.showPrizesOnTicket,
     lottery: lotteryConfigResponse_(lotteryConfig),
   };
+}
+
+function parseStoredLotteryTicketVisibility_(value) {
+  var normalized = String(value == null ? "false" : value)
+    .trim()
+    .toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false" || normalized === "") return false;
+  throw appError_(
+    "LOTTERY_DATA_ERROR",
+    "轉盤的抽獎券獎項顯示設定不正確。"
+  );
 }
 
 function getAvailableLotteryTypes_(typeSheet, prizeSheet, requiredTypeIds) {
@@ -1585,6 +1607,79 @@ function pointCardSummaryResponse_(status) {
   };
 }
 
+function pointCardSummaryResponseForConfig_(
+  config,
+  status,
+  lotteryTypeSheet,
+  lotteryPrizeSheet
+) {
+  return addTicketPrizeDisplaysToCardResponse_(
+    pointCardSummaryResponse_(status),
+    lotteryTypeSheet || getOrCreateLotteryTypeSheet_(config),
+    lotteryPrizeSheet || getOrCreateLotteryPrizeSheet_(config)
+  );
+}
+
+function pointCardStatusResponseForConfig_(
+  config,
+  status,
+  lotteryTypeSheet,
+  lotteryPrizeSheet
+) {
+  return addTicketPrizeDisplaysToCardResponse_(
+    pointCardStatusResponse_(status),
+    lotteryTypeSheet || getOrCreateLotteryTypeSheet_(config),
+    lotteryPrizeSheet || getOrCreateLotteryPrizeSheet_(config)
+  );
+}
+
+function addTicketPrizeDisplaysToCardResponse_(
+  response,
+  lotteryTypeSheet,
+  lotteryPrizeSheet
+) {
+  var types =
+    lotteryTypeSheet.getLastRow() >= 2
+      ? readLotteryTypes_(lotteryTypeSheet)
+      : [];
+  var configs =
+    lotteryPrizeSheet.getLastRow() >= 2
+      ? readLotteryConfigs_(lotteryPrizeSheet)
+      : [];
+  var typesById = Object.create(null);
+  var latestConfigsByTypeId = Object.create(null);
+  types.forEach(function (type) {
+    typesById[type.lotteryTypeId] = type;
+  });
+  configs.forEach(function (lotteryConfig) {
+    if (!latestConfigsByTypeId[lotteryConfig.lotteryTypeId]) {
+      latestConfigsByTypeId[lotteryConfig.lotteryTypeId] = lotteryConfig;
+    }
+  });
+  response.rewardRules = response.rewardRules.map(function (rule) {
+    var type = typesById[rule.lotteryTypeId];
+    var lotteryConfig = latestConfigsByTypeId[rule.lotteryTypeId];
+    var showPrizesOnTicket = Boolean(
+      type && type.showPrizesOnTicket && lotteryConfig
+    );
+    if (!showPrizesOnTicket) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    }
+    return {
+      points: rule.points,
+      lotteryTypeId: rule.lotteryTypeId,
+      showPrizesOnTicket: true,
+      prizeLabels: lotteryConfig.prizes.map(function (prize) {
+        return prize.label;
+      }),
+    };
+  });
+  return response;
+}
+
 function getLotteryConfig_(identity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -1648,7 +1743,12 @@ function getLotteryConfig_(identity, request, config) {
       data: {
         access: access,
         lotteryTypes: lotteryTypes,
-        card: pointCardStatusResponse_(cardStatus),
+        card: pointCardStatusResponseForConfig_(
+          config,
+          cardStatus,
+          typeSheet,
+          prizeSheet
+        ),
         pointBalance: cardStatus.totalPoints,
         totalPoints: cardStatus.totalPoints,
         canDraw: cardStatus.availableDraws > 0,
@@ -1721,7 +1821,12 @@ function drawLottery_(identity, request, config) {
             ),
             readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
           ),
-          card: pointCardStatusResponse_(replayCardStatus),
+          card: pointCardStatusResponseForConfig_(
+            config,
+            replayCardStatus,
+            typeSheet,
+            prizeSheet
+          ),
           pointBalance: replayCardStatus.totalPoints,
           totalPoints: replayCardStatus.totalPoints,
         },
@@ -1795,7 +1900,12 @@ function drawLottery_(identity, request, config) {
             ),
             readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
           ),
-          card: pointCardStatusResponse_(cardStatus),
+          card: pointCardStatusResponseForConfig_(
+            config,
+            cardStatus,
+            typeSheet,
+            prizeSheet
+          ),
           pointBalance: cardStatus.totalPoints,
           totalPoints: cardStatus.totalPoints,
         },
@@ -1879,7 +1989,12 @@ function drawLottery_(identity, request, config) {
           cardRoundKey: selectedReward.cardRoundKey,
           drawnAt: now.toISOString(),
         },
-        card: pointCardStatusResponse_(updatedCardStatus),
+        card: pointCardStatusResponseForConfig_(
+          config,
+          updatedCardStatus,
+          typeSheet,
+          prizeSheet
+        ),
         pointBalance: updatedCardStatus.totalPoints,
         totalPoints: updatedCardStatus.totalPoints,
       },
@@ -2522,7 +2637,7 @@ function pointCampaignRedemptionResponseForConfig_(
       duplicateReason: normalizedDuplicateReason,
       awardedPoints: awardedPoints,
       pointBalance: cardStatus.totalPoints,
-      cardSummary: pointCardSummaryResponse_(cardStatus),
+      cardSummary: pointCardSummaryResponseForConfig_(config, cardStatus),
       campaign: pointCampaignResponse_(campaign),
     },
   };
@@ -2829,8 +2944,8 @@ function getOrCreateLotteryTypeSheet_(config) {
     config,
     config.lotteryTypeSheetName || DEFAULT_LOTTERY_TYPE_SHEET_NAME,
     LOTTERY_TYPE_HEADERS,
-    [],
-    []
+    LEGACY_LOTTERY_TYPE_HEADERS,
+    ["false"]
   );
 }
 
@@ -2956,6 +3071,7 @@ function ensureLotteryTypeForExistingPrizes_(typeSheet, prizeSheet) {
     "",
     "",
     "setup-default-type",
+    false,
   ]);
   applyLotteryTypeSheetFormats_(typeSheet);
 }
@@ -3210,7 +3326,7 @@ function applyPointCardSettingSheetFormats_(sheet) {
 
 function applyLotteryTypeSheetFormats_(sheet) {
   var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
-  [1, 2, 3, 6, 8, 9].forEach(function (column) {
+  [1, 2, 3, 6, 8, 9, LOTTERY_TYPE_COLUMN.showPrizesOnTicket].forEach(function (column) {
     sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
   });
   sheet

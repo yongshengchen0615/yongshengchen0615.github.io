@@ -598,9 +598,12 @@
     var rewardRules =
       summary && Array.isArray(summary.rewardRules)
         ? summary.rewardRules.map(function (rule) {
+            var prizeDisplay = normalizeMemberTicketPrizeDisplay(rule);
             return {
               points: Number(rule && rule.points),
               lotteryTypeId: String((rule && rule.lotteryTypeId) || "").trim(),
+              showPrizesOnTicket: prizeDisplay.showPrizesOnTicket,
+              prizeLabels: prizeDisplay.prizeLabels,
             };
           })
         : [];
@@ -650,6 +653,45 @@
       availableRewards: availableRewards,
       expiryMode: expiryMode,
       expiresOn: expiresOn,
+    };
+  }
+
+  function normalizeMemberTicketPrizeDisplay(rule) {
+    rule = rule && typeof rule === "object" ? rule : {};
+    var hasVisibility = Object.prototype.hasOwnProperty.call(
+      rule,
+      "showPrizesOnTicket"
+    );
+    if (!hasVisibility) {
+      return { showPrizesOnTicket: false, prizeLabels: [] };
+    }
+    if (typeof rule.showPrizesOnTicket !== "boolean") {
+      throw createClientError(
+        "INVALID_RESPONSE",
+        "後台回傳的抽獎券獎項顯示設定不正確。"
+      );
+    }
+    var rawLabels = Array.isArray(rule.prizeLabels) ? rule.prizeLabels : [];
+    var prizeLabels = rawLabels.map(function (label) {
+      return String(label || "").trim();
+    });
+    if (
+      (!rule.showPrizesOnTicket && prizeLabels.length > 0) ||
+      (rule.showPrizesOnTicket &&
+        (prizeLabels.length < 2 ||
+          prizeLabels.length > 12 ||
+          prizeLabels.some(function (label) {
+            return !label || label.length > 40;
+          })))
+    ) {
+      throw createClientError(
+        "INVALID_RESPONSE",
+        "後台回傳的抽獎券獎項名稱不正確。"
+      );
+    }
+    return {
+      showPrizesOnTicket: rule.showPrizesOnTicket,
+      prizeLabels: rule.showPrizesOnTicket ? prizeLabels : [],
     };
   }
 
@@ -708,15 +750,9 @@
     var normalized = normalizeMemberCardSummary(summary);
     var currentOutput = byId("member-point-card-current");
     var targetOutput = byId("member-point-card-target");
-    var progressTrack = byId("member-point-card-progress-track");
-    var progress = byId("member-point-card-progress");
     var ticketCount = byId("member-ticket-count");
     var ticketLink = byId("lottery-page-link");
     var pointsContainer = currentOutput.closest(".pass-points");
-    var progressPercent = Math.min(
-      100,
-      Math.max(0, (normalized.currentPoints / normalized.targetPoints) * 100)
-    );
 
     currentMemberCardSummary = normalized;
     currentOutput.textContent = formatPointNumber(normalized.currentPoints);
@@ -725,9 +761,7 @@
       normalized.expiryMode === "limited"
         ? "集點期限至 " + formatMemberCardDate(normalized.expiresOn)
         : "集點卡無期限";
-    progressTrack.setAttribute("aria-valuemax", String(normalized.targetPoints));
-    progressTrack.setAttribute("aria-valuenow", String(normalized.currentPoints));
-    progress.style.width = progressPercent.toFixed(2) + "%";
+    renderMemberPointStars(normalized);
 
     ticketCount.value = String(normalized.availableDraws);
     ticketCount.textContent =
@@ -752,6 +786,66 @@
         }, 650);
       });
     }
+  }
+
+  function renderMemberPointStars(normalized) {
+    var container = byId("member-point-card-stars");
+    var milestonePoints = Object.create(null);
+    normalized.rewardRules.forEach(function (rule) {
+      milestonePoints[rule.points] = true;
+    });
+    var signature =
+      normalized.targetPoints +
+      ":" +
+      normalized.rewardRules
+        .map(function (rule) {
+          return rule.points;
+        })
+        .join(",");
+
+    if (container.dataset.signature !== signature) {
+      var fragment = document.createDocumentFragment();
+      for (var point = 1; point <= normalized.targetPoints; point += 1) {
+        var star = document.createElement("span");
+        var isMilestone = Boolean(milestonePoints[point]);
+        star.className =
+          "pass-point-star" + (isMilestone ? " is-milestone" : "");
+        star.dataset.point = String(point);
+        star.textContent = isMilestone ? "✦" : "★";
+        star.setAttribute("aria-hidden", "true");
+        if (isMilestone) {
+          star.title = formatPointNumber(point) + " 點可獲得抽獎券";
+        }
+        fragment.appendChild(star);
+      }
+      container.replaceChildren(fragment);
+      container.dataset.signature = signature;
+    }
+
+    Array.prototype.forEach.call(container.children, function (star) {
+      star.classList.toggle(
+        "is-collected",
+        Number(star.dataset.point) <= normalized.currentPoints
+      );
+    });
+    container.style.setProperty(
+      "--point-star-columns",
+      String(
+        normalized.targetPoints <= 10
+          ? normalized.targetPoints
+          : normalized.targetPoints <= 40
+            ? 10
+            : 20
+      )
+    );
+    container.setAttribute(
+      "aria-label",
+      "目前已集 " +
+        formatPointNumber(normalized.currentPoints) +
+        " 點，本輪目標 " +
+        formatPointNumber(normalized.targetPoints) +
+        " 點；星芒代表可獲得抽獎券的節點。"
+    );
   }
 
   function formatMemberCardDate(value) {
@@ -787,6 +881,8 @@
         "lottery-ticket-meta",
         "第 " + formatPointNumber(ticket.cardNumber) + " 張集點卡"
       );
+      var ticketRule = findMemberTicketRewardRule(summary, ticket);
+      appendMemberTicketPrizePreview(button, ticketRule);
       appendMemberTicketText(button, "lottery-ticket-action", "開啟轉盤 →");
       button.setAttribute(
         "aria-label",
@@ -794,7 +890,9 @@
           ticket.cardNumber +
           " 張集點卡，" +
           ticket.milestonePoints +
-          " 點節點抽獎券，開啟轉盤"
+          " 點節點抽獎券" +
+          memberTicketPrizeAriaLabel(ticketRule) +
+          "，開啟轉盤"
       );
       button.addEventListener("click", function () {
         openMemberLotteryTicket(ticket);
@@ -820,6 +918,7 @@
         "lottery-ticket-meta",
         "本張卡達到 " + formatPointNumber(rule.points) + " 點後獲得"
       );
+      appendMemberTicketPrizePreview(item, rule);
       appendMemberTicketText(item, "lottery-ticket-action", "未獲得");
       lockedFragment.appendChild(item);
     });
@@ -842,6 +941,46 @@
         (summary.availableRewards.length > 0 ? "earned" : "locked"),
       false
     );
+  }
+
+  function findMemberTicketRewardRule(summary, ticket) {
+    return (
+      summary.rewardRules.find(function (rule) {
+        return (
+          rule.points === ticket.milestonePoints &&
+          rule.lotteryTypeId === ticket.lotteryTypeId
+        );
+      }) || null
+    );
+  }
+
+  function uniqueMemberTicketPrizeLabels(rule) {
+    if (!rule || !rule.showPrizesOnTicket) return [];
+    var seen = Object.create(null);
+    return rule.prizeLabels.filter(function (label) {
+      if (seen[label]) return false;
+      seen[label] = true;
+      return true;
+    });
+  }
+
+  function appendMemberTicketPrizePreview(parent, rule) {
+    var prizeLabels = uniqueMemberTicketPrizeLabels(rule);
+    if (!prizeLabels.length) return;
+    var preview = document.createElement("span");
+    var heading = document.createElement("b");
+    var labels = document.createElement("span");
+    preview.className = "lottery-ticket-prizes";
+    heading.textContent = "可抽中";
+    labels.textContent = prizeLabels.join(" · ");
+    preview.appendChild(heading);
+    preview.appendChild(labels);
+    parent.appendChild(preview);
+  }
+
+  function memberTicketPrizeAriaLabel(rule) {
+    var prizeLabels = uniqueMemberTicketPrizeLabels(rule);
+    return prizeLabels.length ? "，可抽中 " + prizeLabels.join("、") : "";
   }
 
   function appendMemberTicketText(parent, className, value) {
@@ -1243,7 +1382,7 @@
   function updateMemberPointBalance(balance, animate) {
     var normalizedBalance = normalizePointBalance(balance);
     var output = byId("member-point-balance");
-    var container = output.closest(".pass-points");
+    var container = output.closest(".member-consumption-hours");
 
     output.textContent = formatPointNumber(normalizedBalance);
     if (currentMember) currentMember.pointBalance = normalizedBalance;
@@ -2198,10 +2337,30 @@
         currentCardNumber: 2,
         availableDraws: 1,
         rewardRules: [
-          { points: 5, lotteryTypeId: "LTY-PREVIEW001" },
-          { points: 10, lotteryTypeId: "LTY-PREVIEW001" },
-          { points: 15, lotteryTypeId: "LTY-PREVIEW001" },
-          { points: 20, lotteryTypeId: "LTY-PREVIEW001" },
+          {
+            points: 5,
+            lotteryTypeId: "LTY-PREVIEW001",
+            showPrizesOnTicket: true,
+            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+          },
+          {
+            points: 10,
+            lotteryTypeId: "LTY-PREVIEW002",
+            showPrizesOnTicket: true,
+            prizeLabels: ["生日祝福", "限定禮物"],
+          },
+          {
+            points: 15,
+            lotteryTypeId: "LTY-PREVIEW001",
+            showPrizesOnTicket: true,
+            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+          },
+          {
+            points: 20,
+            lotteryTypeId: "LTY-PREVIEW001",
+            showPrizesOnTicket: true,
+            prizeLabels: ["銘謝惠顧", "小禮物", "精選獎", "頭獎"],
+          },
         ],
         availableRewards: [
           {

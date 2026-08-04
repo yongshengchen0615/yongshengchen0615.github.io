@@ -172,9 +172,15 @@
                   <img id="member-avatar" alt="" hidden />
                   <span id="member-avatar-fallback" aria-hidden="true">M</span>
                 </div>
-                <div>
+                <div class="pass-profile-copy">
                   <small>MEMBER NAME</small>
-                  <strong id="member-display-name">—</strong>
+                  <div class="pass-profile-heading">
+                    <strong id="member-display-name">—</strong>
+                    <span class="member-consumption-hours">
+                      <small>目前消費時數</small>
+                      <b><output id="member-point-balance" aria-label="目前消費時數" aria-live="polite">0</output><span> 小時</span></b>
+                    </span>
+                  </div>
                   <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
                 </div>
               </div>
@@ -197,19 +203,10 @@
                   <small>目前已集</small>
                   <strong><output id="member-point-card-current" aria-label="本張集點卡目前點數" aria-live="polite">0</output><span> 點</span></strong>
                   <span class="pass-point-meta">
-                    本輪目標 <output id="member-point-card-target">—</output> 點 ·
-                    累計 <output id="member-point-balance" aria-label="會員終身累計點數">0</output> 點
+                    本輪目標 <output id="member-point-card-target">—</output> 點
                   </span>
                   <span class="pass-point-expiry" id="member-point-card-expiry">集點卡無期限</span>
-                  <span
-                    class="pass-point-progress"
-                    id="member-point-card-progress-track"
-                    role="progressbar"
-                    aria-label="本張集點卡進度"
-                    aria-valuemin="0"
-                    aria-valuemax="1"
-                    aria-valuenow="0"
-                  ><i id="member-point-card-progress" aria-hidden="true"></i></span>
+                  <span class="pass-point-stars" id="member-point-card-stars" role="img" aria-label="尚未取得集點卡資料"></span>
                 </div>
               </div>
             </article>

@@ -888,8 +888,18 @@ code {
   font-weight: 520;
 }
 
-.pass-profile > div:last-child {
+.pass-profile-copy {
+  min-width: 0;
+  flex: 1 1 auto;
   display: grid;
+}
+
+.pass-profile-heading {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
 }
 
 .member-pass small {
@@ -908,6 +918,33 @@ code {
   letter-spacing: -0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.member-consumption-hours {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 0.25rem;
+  padding-left: clamp(0.75rem, 2vw, 1.4rem);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  text-align: right;
+}
+
+.member-consumption-hours b {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.22rem;
+  font-size: clamp(1.05rem, 2.5vw, 1.65rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.member-consumption-hours b span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.56rem;
+  font-weight: 520;
+  letter-spacing: 0.08em;
 }
 
 .active-label {
@@ -1014,25 +1051,51 @@ code {
   line-height: 1.4;
 }
 
-.pass-point-progress {
-  position: relative;
-  overflow: hidden;
+.pass-point-stars {
   width: 100%;
-  height: 2px;
-  margin-top: 0.15rem;
-  background: rgba(255, 255, 255, 0.18);
+  display: grid;
+  grid-template-columns: repeat(var(--point-star-columns, 10), minmax(0, 1fr));
+  gap: 0.18rem 0.26rem;
+  margin-top: 0.2rem;
+  direction: ltr;
 }
 
-.pass-point-progress i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0;
-  background: var(--green);
-  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.pass-point-star {
+  display: grid;
+  min-width: 0;
+  aspect-ratio: 1;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.2);
+  font-size: clamp(0.72rem, 1.45vw, 1rem);
+  line-height: 1;
+  transform: scale(0.88);
+  transition:
+    color 260ms ease,
+    filter 260ms ease,
+    opacity 260ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pass-point-star.is-collected {
+  color: #8ff2b1;
+  filter: drop-shadow(0 0 0.28rem rgba(143, 242, 177, 0.3));
+  transform: scale(1);
+}
+
+.pass-point-star.is-milestone {
+  color: rgba(255, 210, 103, 0.52);
+  font-size: clamp(0.9rem, 1.8vw, 1.2rem);
+  transform: scale(1);
+}
+
+.pass-point-star.is-milestone.is-collected {
+  color: #ffd267;
+  filter: drop-shadow(0 0 0.34rem rgba(255, 210, 103, 0.46));
+  transform: scale(1.08);
 }
 
 .pass-points[data-updated="true"] #member-point-card-current,
-.pass-points[data-balance-updated="true"] #member-point-balance {
+.member-consumption-hours[data-balance-updated="true"] #member-point-balance {
   animation: point-balance-update 560ms ease-out both;
 }
 
@@ -1607,6 +1670,40 @@ code {
 }
 
 .member-ticket-dialog .member-panel-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  max-height: none;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.member-history-dialog[open] {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  padding:
+    max(1rem, env(safe-area-inset-top))
+    max(clamp(1.25rem, 4vw, 4.5rem), env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(clamp(1.25rem, 4vw, 4.5rem), env(safe-area-inset-left));
+  border: 0;
+  border-radius: 0;
+}
+
+.member-history-dialog .member-point-history {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.member-history-dialog .member-panel-scroll {
   min-height: 0;
   flex: 1 1 auto;
   max-height: none;
@@ -2361,88 +2458,49 @@ code {
   font-weight: 560;
 }
 
-.point-card-track {
-  height: 0.8rem;
-  margin: 1.4rem 0 0.8rem;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.point-card-track span {
-  width: 0;
-  height: 100%;
-  display: block;
-  background: var(--green);
-  transition: width 520ms cubic-bezier(0.2, 0.72, 0.2, 1);
-}
-
-.point-card-milestones {
-  position: relative;
-  height: 3.6rem;
-  margin: 0;
+.point-card-stars {
+  display: grid;
+  grid-template-columns: repeat(var(--point-star-columns, 10), minmax(0, 1fr));
+  gap: clamp(0.28rem, 1vw, 0.65rem);
+  margin: 1.5rem 0;
   padding: 0;
   list-style: none;
 }
 
-.point-card-milestones li {
-  position: absolute;
-  top: 0;
-  display: grid;
-  justify-items: center;
-  gap: 0.3rem;
-  min-width: 2.8rem;
-  transform: translateX(-50%);
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.point-card-milestones li:last-child {
-  justify-items: end;
-  transform: translateX(-100%);
-}
-
-.point-card-milestones li > span {
-  width: 1.65rem;
-  height: 1.65rem;
+.point-card-stars li {
+  min-width: 0;
+  aspect-ratio: 1;
   display: grid;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  background: var(--paper);
-  font-size: 0.62rem;
+  color: var(--ink-faint);
+  background: rgba(255, 255, 255, 0.38);
+  font-size: clamp(0.72rem, 1.8vw, 1rem);
+  line-height: 1;
+  transition:
+    color 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    transform 220ms ease;
 }
 
-.point-card-milestones li small {
-  white-space: nowrap;
-  font-size: 0.62rem;
-}
-
-.point-card-milestones.is-dense li small {
-  display: none;
-}
-
-.point-card-milestones.is-dense li.is-next small,
-.point-card-milestones.is-dense li:last-child small {
-  display: block;
-}
-
-.point-card-milestones li.is-next {
-  color: var(--green-dark);
-}
-
-.point-card-milestones li.is-next > span {
-  border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(36, 92, 71, 0.11);
-}
-
-.point-card-milestones li.is-reached {
-  color: var(--green-dark);
-}
-
-.point-card-milestones li.is-reached > span {
+.point-card-stars li.is-collected {
   border-color: var(--green-dark);
   color: #fff;
   background: var(--green-dark);
+  transform: scale(1.02);
+}
+
+.point-card-stars li.is-milestone {
+  border-color: #d7aa3f;
+  color: #9a6f12;
+  background: #fff4cf;
+  font-size: clamp(0.9rem, 2.2vw, 1.25rem);
+}
+
+.point-card-stars li.is-milestone.is-collected {
+  color: #fff;
+  background: #b88415;
 }
 
 .point-card-progress-meta p {
@@ -2570,8 +2628,28 @@ code {
 }
 
 .lottery-ticket-name,
-.lottery-ticket-meta {
+.lottery-ticket-meta,
+.lottery-ticket-prizes {
   grid-column: 1;
+}
+
+.lottery-ticket-prizes {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.28rem 0.5rem;
+  margin-top: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.lottery-ticket-prizes b {
+  color: var(--green-dark);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
 }
 
 .lottery-ticket-number,
@@ -2638,8 +2716,12 @@ code {
 
 .lottery-ticket-button:hover .lottery-ticket-number,
 .lottery-ticket-button:hover .lottery-ticket-meta,
+.lottery-ticket-button:hover .lottery-ticket-prizes,
+.lottery-ticket-button:hover .lottery-ticket-prizes b,
 .lottery-ticket-button:focus-visible .lottery-ticket-number,
-.lottery-ticket-button:focus-visible .lottery-ticket-meta {
+.lottery-ticket-button:focus-visible .lottery-ticket-meta,
+.lottery-ticket-button:focus-visible .lottery-ticket-prizes,
+.lottery-ticket-button:focus-visible .lottery-ticket-prizes b {
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -3289,6 +3371,22 @@ code {
     max-width: 9ch;
   }
 
+  .pass-profile-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .member-consumption-hours {
+    padding-left: 0;
+    border-left: 0;
+    text-align: left;
+  }
+
+  .member-consumption-hours b {
+    justify-content: flex-start;
+  }
+
   .pass-footer {
     flex-wrap: wrap;
   }
@@ -3401,7 +3499,8 @@ code {
     scrollbar-gutter: auto;
   }
 
-  .member-ticket-dialog[open] {
+  .member-ticket-dialog[open],
+  .member-history-dialog[open] {
     height: 100vh;
     height: 100dvh;
     max-height: none;
@@ -3415,7 +3514,8 @@ code {
     border-radius: 0;
   }
 
-  .member-ticket-dialog .member-panel-scroll {
+  .member-ticket-dialog .member-panel-scroll,
+  .member-history-dialog .member-panel-scroll {
     max-height: none;
   }
 
@@ -3519,15 +3619,6 @@ code {
 
   .point-card-score p {
     padding-inline: 0.75rem;
-  }
-
-  .point-card-milestones li small {
-    display: none;
-  }
-
-  .point-card-milestones li.is-next small,
-  .point-card-milestones li:last-child small {
-    display: block;
   }
 
   .lottery-ticket-workspace {
