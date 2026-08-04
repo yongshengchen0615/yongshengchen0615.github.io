@@ -1245,7 +1245,7 @@ test("LIFF pages preconnect early and use keyboard-safe mobile viewport sizing",
   }
 });
 
-test("shared GAS transport learns the successful per-tab transport with bounded fallbacks", () => {
+test("shared GAS transport learns the successful device transport with bounded fallbacks", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const sendRequest = getTopLevelFunctionContaining(
     transport,
@@ -1256,7 +1256,9 @@ test("shared GAS transport learns the successful per-tab transport with bounded 
   assert.match(sendRequest, /rememberPreferredTransport\(gasUrl,\s*transport\)/);
   assert.match(sendRequest, /preferredTransport\s*===\s*["']bridge["']\s*\?\s*["']fetch["']\s*:\s*["']bridge["']/);
   assert.match(transport, /FETCH_TIMEOUT_MS\s*=\s*9000/);
-  assert.match(transport, /BRIDGE_TIMEOUT_MS\s*=\s*12000/);
+  assert.match(transport, /BRIDGE_TIMEOUT_MS\s*=\s*25000/);
+  assert.match(transport, /window\.localStorage\.getItem\(key\)/);
+  assert.match(transport, /window\.localStorage\.setItem\(key,\s*transport\)/);
   assert.match(transport, /loadConfig[\s\S]*?cache:\s*["']no-cache["']/);
 });
 

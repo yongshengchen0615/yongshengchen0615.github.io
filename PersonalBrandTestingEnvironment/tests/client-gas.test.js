@@ -109,6 +109,38 @@ function createDataSheet(name, initialHeaders = [], initialRows = [], writes = [
         setFontWeight() {
           return this;
         },
+        createTextFinder(searchValue) {
+          return {
+            matchEntireCell() {
+              return this;
+            },
+            matchCase() {
+              return this;
+            },
+            findAll() {
+              const matches = [];
+              for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+                const source = getRow(rowNumber + rowOffset);
+                for (
+                  let columnOffset = 0;
+                  columnOffset < columnCount;
+                  columnOffset += 1
+                ) {
+                  if (
+                    String(source[column - 1 + columnOffset] ?? "") ===
+                    String(searchValue)
+                  ) {
+                    matches.push({
+                      getRow: () => rowNumber + rowOffset,
+                      getColumn: () => column + columnOffset,
+                    });
+                  }
+                }
+              }
+              return matches;
+            },
+          };
+        },
       };
     },
   };
@@ -290,6 +322,18 @@ function createMemberSheet(rows, writes = []) {
             },
             matchCase() {
               return this;
+            },
+            findAll() {
+              const matches = [];
+              for (let offset = 0; offset < rowCount; offset += 1) {
+                if (String(rows[start + offset][column - 1]) === String(searchValue)) {
+                  matches.push({
+                    getRow: () => rowNumber + offset,
+                    getColumn: () => column,
+                  });
+                }
+              }
+              return matches;
             },
             findNext() {
               for (let offset = 0; offset < rowCount; offset += 1) {
@@ -1387,6 +1431,93 @@ test("same-token unchanged login returns fresh data without Sheet writes or flus
   assert.equal(sheets.lotteryDrawSheet.rows.length, 0);
 });
 
+test("member login does not scan complete point and lottery ledgers", () => {
+  const gas = createGasContext();
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+  });
+  const broadScans = [];
+  gas.readMemberPointLedger_ = function () {
+    broadScans.push("PointRedemptions");
+    return { totalPoints: 0, events: [] };
+  };
+  gas.readAllLotteryDraws_ = function () {
+    broadScans.push("LotteryDraws");
+    return [];
+  };
+
+  const result = gas.upsertMember_(
+    createIdentity(),
+    {
+      action: "upsertMember",
+      requestId: "request-member-fast-login",
+      context: {
+        type: "external",
+        os: "web",
+        language: "zh-TW",
+        inClient: false,
+        viewType: "full",
+      },
+    },
+    {}
+  );
+
+  assert.equal(result.data.access.allowed, true);
+  assert.deepEqual(broadScans, []);
+});
+
+test("member login releases its mutation lock before reading the current card", () => {
+  let lockHeld = false;
+  const gas = createGasContext({
+    LockService: {
+      getScriptLock() {
+        return {
+          tryLock() {
+            lockHeld = true;
+            return true;
+          },
+          releaseLock() {
+            lockHeld = false;
+          },
+        };
+      },
+    },
+  });
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+  });
+  let cardReadWhileLocked = null;
+  gas.getMemberPointCardStatusForConfig_ = function () {
+    cardReadWhileLocked = lockHeld;
+    return {
+      totalPoints: 0,
+    };
+  };
+  gas.pointCardSummaryResponseForConfig_ = function () {
+    return { currentPoints: 0, targetPoints: 5 };
+  };
+
+  const result = gas.upsertMember_(
+    createIdentity(),
+    {
+      action: "upsertMember",
+      requestId: "request-member-lock-scope",
+      context: {
+        type: "external",
+        os: "web",
+        language: "zh-TW",
+        inClient: false,
+        viewType: "full",
+      },
+    },
+    {}
+  );
+
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(cardReadWhileLocked, false);
+  assert.equal(lockHeld, false);
+});
+
 test("point campaign preview is token-owner only and returns public campaign data", () => {
   const gas = createGasContext();
   const memberRows = [createMemberRow(gas)];
@@ -1491,6 +1622,122 @@ test("point redemption trusts campaign snapshot, persists once and is permanentl
   assert.equal(serialized.includes(POINT_CLAIM), false);
   assert.equal(serialized.includes(pointClaimHash()), false);
   assert.equal(serialized.includes(identity.lineUserId), false);
+});
+
+test("point redemption does not scan complete campaign, point or lottery tables", () => {
+  const gas = createGasContext();
+  const unrelatedCampaigns = Array.from({ length: 20 }, (_, index) => {
+    const suffix = String(index + 1).padStart(10, "0");
+    const claim = String(index + 1).padStart(43, "A");
+    return createPointCampaignRow(gas, {
+      campaignId: `PCG-${suffix}`,
+      pointTypeId: `PTY-${suffix}`,
+      claimHash: pointClaimHash(claim),
+      lastRequestId: `request-campaign-${suffix}`,
+    });
+  });
+  const unrelatedRedemptions = Array.from({ length: 20 }, (_, index) => {
+    const suffix = String(index + 1).padStart(10, "0");
+    const redemptionSuffix = String(index + 1).padStart(16, "0");
+    return createPointRedemptionRow(gas, {
+      redemptionId: `RDM-${redemptionSuffix}`,
+      campaignId: `PCG-${suffix}`,
+      pointTypeId: `PTY-${suffix}`,
+      memberId: `MBR-${suffix}`,
+      lineUserId: `U${(index + 1).toString(16).padStart(32, "0")}`,
+      requestId: `request-other-${suffix}`,
+    });
+  });
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    campaignRows: unrelatedCampaigns.concat([createPointCampaignRow(gas)]),
+    redemptionRows: unrelatedRedemptions,
+  });
+  const broadReads = [];
+  [
+    [sheets.campaignSheet, gas.POINT_CAMPAIGN_HEADERS.length, "PointCampaigns"],
+    [sheets.redemptionSheet, gas.POINT_REDEMPTION_HEADERS.length, "PointRedemptions"],
+    [sheets.lotteryDrawSheet, gas.LOTTERY_DRAW_HEADERS.length, "LotteryDraws"],
+  ].forEach(([sheet, width, label]) => {
+    const originalGetRange = sheet.getRange.bind(sheet);
+    sheet.getRange = function (rowNumber, column, rowCount, columnCount) {
+      if (
+        rowNumber === 2 &&
+        column === 1 &&
+        rowCount === sheet.rows.length &&
+        columnCount === width
+      ) {
+        broadReads.push(label);
+      }
+      return originalGetRange(rowNumber, column, rowCount, columnCount);
+    };
+  });
+
+  const result = gas.redeemPointCampaign_(
+    createIdentity(),
+    {
+      action: "redeemPointCampaign",
+      requestId: "request-fast-redemption",
+      claim: POINT_CLAIM,
+    },
+    {}
+  );
+
+  assert.equal(result.data.redeemed, true);
+  assert.deepEqual(broadReads, []);
+});
+
+test("successful point redemption releases its mutation lock before card rendering", () => {
+  let lockHeld = false;
+  const gas = createGasContext({
+    LockService: {
+      getScriptLock() {
+        return {
+          tryLock() {
+            lockHeld = true;
+            return true;
+          },
+          releaseLock() {
+            lockHeld = false;
+          },
+        };
+      },
+    },
+  });
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    campaignRows: [createPointCampaignRow(gas)],
+  });
+  let responseReadWhileLocked = null;
+  gas.pointCampaignRedemptionResponseForConfig_ = function () {
+    responseReadWhileLocked = lockHeld;
+    return {
+      data: {
+        access: { status: "approved", allowed: true },
+        redeemed: true,
+        duplicate: false,
+        duplicateReason: "",
+        awardedPoints: 3,
+        pointBalance: 3,
+        cardSummary: {},
+        campaign: {},
+      },
+    };
+  };
+
+  const result = gas.redeemPointCampaign_(
+    createIdentity(),
+    {
+      action: "redeemPointCampaign",
+      requestId: "request-redemption-lock-scope",
+      claim: POINT_CLAIM,
+    },
+    {}
+  );
+
+  assert.equal(result.data.redeemed, true);
+  assert.equal(responseReadWhileLocked, false);
+  assert.equal(lockHeld, false);
 });
 
 test("unlimited repeatable campaigns award distinct requests and replay one request only once", () => {
@@ -2284,8 +2531,8 @@ test("single lottery preparation reuses one validated snapshot per ledger", () =
   });
   const counts = {};
   for (const name of [
-    "readAllLotteryDraws_",
-    "readMemberPointLedger_",
+    "readMemberLotteryDraws_",
+    "readMemberPointLedgerFast_",
     "readPointCardSettings_",
     "readLotteryTypes_",
     "readLotteryConfigs_",
@@ -2312,12 +2559,42 @@ test("single lottery preparation reuses one validated snapshot per ledger", () =
   assert.equal(result.data.card.availableDraws, 0);
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
   assert.deepEqual(counts, {
-    readAllLotteryDraws_: 1,
-    readMemberPointLedger_: 1,
+    readMemberLotteryDraws_: 1,
+    readMemberPointLedgerFast_: 1,
     readPointCardSettings_: 1,
     readLotteryTypes_: 1,
     readLotteryConfigs_: 1,
   });
+});
+
+test("point history reuses one member redemption snapshot for balance and entries", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 3,
+        balanceAfter: 3,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+  });
+  const originalReadRows = gas.readRowsMatchingExactText_;
+  let redemptionSnapshots = 0;
+  gas.readRowsMatchingExactText_ = function (...args) {
+    if (args[0] === sheets.redemptionSheet) redemptionSnapshots += 1;
+    return originalReadRows.apply(this, args);
+  };
+
+  const result = gas.listPointHistory_(
+    createIdentity(),
+    { action: "listPointHistory", requestId: "request-history-snapshot" },
+    {}
+  );
+
+  assert.equal(result.data.pointBalance, 3);
+  assert.equal(result.data.history.length, 1);
+  assert.equal(redemptionSnapshots, 1);
 });
 
 test("performance reports are bounded, idempotent and omit identity data from Cloud logs", () => {
@@ -3505,7 +3782,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.13.0");
+  assert.equal(health.data.version, "1.14.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

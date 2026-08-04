@@ -2,7 +2,7 @@
   "use strict";
 
   var FETCH_TIMEOUT_MS = 9000;
-  var BRIDGE_TIMEOUT_MS = 12000;
+  var BRIDGE_TIMEOUT_MS = 25000;
   var TRANSPORT_STORAGE_PREFIX = "persona-gas-transport:";
   var EXTRA_FIELD_NAMES = [
     "targetMemberId",
@@ -327,20 +327,36 @@
   }
 
   function readPreferredTransport(gasUrl) {
+    var key = transportStorageKey(gasUrl);
     try {
-      var value = window.sessionStorage.getItem(transportStorageKey(gasUrl));
-      return value === "bridge" ? "bridge" : "fetch";
+      var sessionValue = window.sessionStorage.getItem(key);
+      if (sessionValue === "fetch" || sessionValue === "bridge") {
+        return sessionValue;
+      }
     } catch (_error) {
-      return "fetch";
+      // Storage can be unavailable in privacy-restricted browsers.
     }
+    try {
+      var persistedValue = window.localStorage.getItem(key);
+      return persistedValue === "bridge" ? "bridge" : "fetch";
+    } catch (_error) {
+      // Fall back to Fetch when persistent storage is unavailable.
+    }
+    return "fetch";
   }
 
   function rememberPreferredTransport(gasUrl, transport) {
     if (transport !== "fetch" && transport !== "bridge") return;
+    var key = transportStorageKey(gasUrl);
     try {
-      window.sessionStorage.setItem(transportStorageKey(gasUrl), transport);
+      window.sessionStorage.setItem(key, transport);
     } catch (_error) {
       // Storage can be unavailable in privacy-restricted browsers.
+    }
+    try {
+      window.localStorage.setItem(key, transport);
+    } catch (_error) {
+      // Persisting only the transport name is an optional performance hint.
     }
   }
 

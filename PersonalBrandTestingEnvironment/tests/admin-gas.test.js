@@ -737,6 +737,83 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
+test("administrator LINE verification caches only minimal claims for five minutes", () => {
+  const cache = new Map();
+  const cacheWrites = [];
+  let fetchCalls = 0;
+  const now = Math.floor(Date.now() / 1000);
+  const gas = createGasContext({
+    claims: {
+      exp: now + 3600,
+      iat: now,
+      name: "不可進入快取的管理員姓名",
+      picture: "https://profile.line-scdn.net/private-admin",
+      email: "private-admin@example.com",
+    },
+    globals: {
+      CacheService: {
+        getScriptCache() {
+          return {
+            get(key) {
+              return cache.get(key) ?? null;
+            },
+            put(key, value, ttl) {
+              cache.set(key, String(value));
+              cacheWrites.push({ key, value: String(value), ttl });
+            },
+          };
+        },
+      },
+      UrlFetchApp: {
+        fetch() {
+          fetchCalls += 1;
+          return {
+            getResponseCode: () => 200,
+            getContentText: () =>
+              JSON.stringify({
+                iss: "https://access.line.me",
+                sub: ADMIN_USER_ID,
+                aud: ADMIN_CHANNEL_ID,
+                exp: now + 3600,
+                iat: now,
+                name: "不可進入快取的管理員姓名",
+                picture: "https://profile.line-scdn.net/private-admin",
+                email: "private-admin@example.com",
+              }),
+          };
+        },
+      },
+    },
+  });
+
+  const first = gas.verifyLineIdToken_(
+    "header.cached-admin.signature",
+    ADMIN_CHANNEL_ID
+  );
+  const second = gas.verifyLineIdToken_(
+    "header.cached-admin.signature",
+    ADMIN_CHANNEL_ID
+  );
+
+  assert.equal(first.displayName, "不可進入快取的管理員姓名");
+  assert.equal(second.fromCache, true);
+  assert.equal(fetchCalls, 1);
+  const tokenWrite = cacheWrites.find((entry) =>
+    entry.key.startsWith("line-token:")
+  );
+  assert.ok(tokenWrite);
+  assert.equal(tokenWrite.ttl <= 300, true);
+  assert.deepEqual(JSON.parse(tokenWrite.value), {
+    sub: ADMIN_USER_ID,
+    iat: now,
+    exp: now + 3600,
+  });
+  assert.doesNotMatch(
+    tokenWrite.key + tokenWrite.value,
+    /cached-admin|不可進入|private-admin/
+  );
+});
+
 test("only allowlisted administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
   for (const action of [
@@ -1009,6 +1086,187 @@ test("the same pending applicant can read Members only after manual Sheet approv
   );
   assert.equal(result.data.members.length, 1);
   assert.equal(adminSheet.data[1][gas.ADMIN_COLUMN.status - 1], "approved");
+});
+
+test("cached administrator identity avoids repeated profile writes and flush", () => {
+  let writes = 0;
+  let flushCalls = 0;
+  const gas = createGasContext();
+  gas.SpreadsheetApp.flush = function () {
+    flushCalls += 1;
+  };
+  const adminSheet = createSheet(
+    "Admins",
+    gas.ADMIN_HEADERS,
+    [createAdminRow(gas, { status: "approved", lastTokenIat: 1000 })],
+    {
+      beforeSetValues() {
+        writes += 1;
+      },
+    }
+  );
+  const cachedIdentity = identity({
+    displayName: "",
+    pictureUrl: "",
+    email: "",
+    tokenIssuedAt: 1000,
+    tokenExpiresAt: 9999999999,
+    fromCache: true,
+  });
+
+  const rowNumber = gas.requireApprovedAdmin_(
+    cachedIdentity,
+    { requestId: "request-admin-cached-profile" },
+    adminSheet
+  );
+
+  assert.equal(rowNumber, 2);
+  assert.equal(writes, 0);
+  assert.equal(flushCalls, 0);
+  assert.equal(cachedIdentity.displayName, "管理員");
+  assert.equal(cachedIdentity.pictureUrl, "https://profile.line-scdn.net/admin");
+  assert.equal(cachedIdentity.email, "admin@example.com");
+});
+
+test("administrator read actions release the authorization lock before scanning data sheets", () => {
+  const cases = [
+    {
+      name: "members",
+      invoke(gas, request, config, observeRead) {
+        gas.getOrCreateMemberSheet_ = function () {
+          return {
+            getLastRow() {
+              observeRead();
+              return 1;
+            },
+          };
+        };
+        gas.adminListMembers_(identity(), request, config);
+      },
+    },
+    {
+      name: "point types",
+      invoke(gas, request, config, observeRead) {
+        gas.getOrCreatePointTypeSheet_ = function () {
+          return {};
+        };
+        gas.readPointTypeRecords_ = function () {
+          observeRead();
+          return [];
+        };
+        gas.adminListPointTypes_(identity(), request, config);
+      },
+    },
+    {
+      name: "point history",
+      invoke(gas, request, config, observeRead) {
+        gas.getOrCreatePointRedemptionSheet_ = function () {
+          return {};
+        };
+        gas.readAdminPointHistory_ = function () {
+          observeRead();
+          return [];
+        };
+        gas.adminListPointHistory_(identity(), request, config);
+      },
+    },
+    {
+      name: "lottery config",
+      invoke(gas, request, config, observeRead) {
+        gas.getOrCreatePointCardSettingSheet_ = function () {
+          return {};
+        };
+        gas.getOrCreateLotteryTypeSheet_ = function () {
+          return {};
+        };
+        gas.getOrCreateLotteryPrizeSheet_ = function () {
+          return {};
+        };
+        gas.readLotteryConfigs_ = function () {
+          observeRead();
+          return [];
+        };
+        gas.readPointCardSettings_ = function () {
+          return [];
+        };
+        gas.readLotteryTypes_ = function () {
+          return [];
+        };
+        gas.pointCardSettingResponse_ = function () {
+          return null;
+        };
+        gas.adminGetLotteryConfig_(identity(), request, config);
+      },
+    },
+    {
+      name: "lottery history",
+      invoke(gas, request, config, observeRead) {
+        gas.getOrCreateLotteryDrawSheet_ = function () {
+          return {};
+        };
+        gas.getOrCreateLotteryTypeSheet_ = function () {
+          return {};
+        };
+        gas.getOrCreateMemberSheet_ = function () {
+          return {};
+        };
+        gas.readMemberNamesById_ = function () {
+          observeRead();
+          return Object.create(null);
+        };
+        gas.readLotteryTypes_ = function () {
+          return [];
+        };
+        gas.readAdminLotteryDraws_ = function () {
+          return [];
+        };
+        gas.adminListLotteryDraws_(identity(), request, config);
+      },
+    },
+  ];
+
+  cases.forEach((testCase, index) => {
+    const gas = createGasContext();
+    let released = false;
+    let releaseCalls = 0;
+    let readObserved = false;
+    gas.LockService = {
+      getScriptLock() {
+        return {
+          tryLock() {
+            return true;
+          },
+          releaseLock() {
+            released = true;
+            releaseCalls += 1;
+          },
+        };
+      },
+    };
+    gas.openSpreadsheet_ = function () {
+      return {};
+    };
+    gas.getOrCreateAdminSheet_ = function () {
+      return {};
+    };
+    gas.requireApprovedAdmin_ = function () {
+      assert.equal(released, false, testCase.name + " must authorize while locked");
+      return 2;
+    };
+
+    testCase.invoke(
+      gas,
+      { requestId: "request-read-lock-" + String(index + 1) },
+      configFor(gas),
+      function () {
+        readObserved = true;
+        assert.equal(released, true, testCase.name + " must scan after releasing lock");
+      }
+    );
+
+    assert.equal(readObserved, true, testCase.name + " did not read its data sheet");
+    assert.equal(releaseCalls, 1, testCase.name + " released its lock more than once");
+  });
 });
 
 test("pending remains pending while denied, blank and unknown statuses fail closed", () => {
@@ -3056,7 +3314,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.10.0");
+  assert.equal(response.data.version, "1.11.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

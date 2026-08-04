@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.13.0";
+var API_VERSION = "1.14.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -654,6 +654,7 @@ function upsertMember_(identity, request, config) {
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "會員資料正在同步，請稍後再試。");
   }
+  var lockReleased = false;
 
   try {
     var deletedTokenIat = getMemberDeletionTombstone_(identity.lineUserId);
@@ -760,6 +761,10 @@ function upsertMember_(identity, request, config) {
     // Re-read so an administrator's Sheet edit is reflected in the response.
     row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
     var access = memberAccessFromRow_(row);
+    // Point-card reads are member-owned and do not mutate the member row. Do
+    // not make other logins wait behind ledger, draw and wheel-config reads.
+    lock.releaseLock();
+    lockReleased = true;
     var cardStatus = access.allowed
       ? getMemberPointCardStatusForConfig_(config, identity.lineUserId)
       : null;
@@ -781,7 +786,7 @@ function upsertMember_(identity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "會員試算表目前無法使用，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -895,12 +900,15 @@ function listPointHistory_(identity, request, config) {
       redemptionSheet,
       lotteryDrawSheet,
     ]);
-    var pointBalance = getMemberPointBalance_(
+    var pointSnapshot = readMemberPointSnapshot_(
       redemptionSheet,
-      identity.lineUserId,
-      lotteryDrawSheet
+      identity.lineUserId
     );
-    var history = readMemberPointHistory_(redemptionSheet, identity.lineUserId)
+    var pointBalance = pointSnapshot.ledger.totalPoints;
+    var history = buildMemberPointHistoryFromRows_(
+      pointSnapshot.rows,
+      identity.lineUserId
+    )
       .concat(readMemberLotteryHistory_(lotteryDrawSheet, identity.lineUserId))
       .sort(function (left, right) {
         return new Date(right.redeemedAt).getTime() - new Date(left.redeemedAt).getTime();
@@ -929,12 +937,13 @@ function listPointHistory_(identity, request, config) {
 }
 
 function readMemberPointHistory_(sheet, lineUserId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
+  return buildMemberPointHistoryFromRows_(
+    readMemberPointSnapshot_(sheet, lineUserId).rows,
+    lineUserId
+  );
+}
 
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
-    .getValues();
+function buildMemberPointHistoryFromRows_(rows, lineUserId) {
   var redemptionIds = Object.create(null);
   var requestKeys = Object.create(null);
   var campaignModes = Object.create(null);
@@ -1031,11 +1040,12 @@ function readMemberPointHistory_(sheet, lineUserId) {
 }
 
 function readMemberLotteryHistory_(sheet, lineUserId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
-    .getValues();
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    LOTTERY_DRAW_COLUMN.lineUserId,
+    lineUserId,
+    LOTTERY_DRAW_HEADERS.length
+  );
   var drawIds = Object.create(null);
   var requestKeys = Object.create(null);
   var history = [];
@@ -1430,8 +1440,8 @@ function getMemberPointCardStatus_(
   lineUserId
 ) {
   return calculateMemberPointCardStatus_(
-    readMemberPointLedger_(redemptionSheet, lineUserId),
-    readAllLotteryDraws_(drawSheet),
+    readMemberPointLedgerFast_(redemptionSheet, lineUserId),
+    readMemberLotteryDraws_(drawSheet, lineUserId),
     readPointCardSettings_(settingSheet),
     lineUserId
   );
@@ -2266,8 +2276,11 @@ function prepareLotteryDraw_(identity, request, config) {
       settingSheet,
       redemptionSheet,
     ]);
-    var draws = readAllLotteryDraws_(drawSheet);
-    var ledger = readMemberPointLedger_(redemptionSheet, identity.lineUserId);
+    var draws = readMemberLotteryDraws_(drawSheet, identity.lineUserId);
+    var ledger = readMemberPointLedgerFast_(
+      redemptionSheet,
+      identity.lineUserId
+    );
     var settings = readPointCardSettings_(settingSheet);
     var lotteryTypes = readLotteryTypes_(typeSheet);
     var lotteryConfigs = readLotteryConfigs_(prizeSheet);
@@ -2817,7 +2830,14 @@ function lotteryDrawRecordFromRow_(row) {
 
 function findLotteryDrawByRequest_(sheet, lineUserId, requestId) {
   var match = null;
-  readAllLotteryDraws_(sheet).forEach(function (draw) {
+  buildLotteryDrawRecordsFromRows_(
+    readRowsMatchingExactText_(
+      sheet,
+      LOTTERY_DRAW_COLUMN.requestId,
+      requestId,
+      LOTTERY_DRAW_HEADERS.length
+    )
+  ).forEach(function (draw) {
     if (draw.lineUserId !== lineUserId || draw.requestId !== requestId) return;
     if (match) {
       throw appError_("LOTTERY_DATA_ERROR", "相同抽獎請求出現重複紀錄。");
@@ -2833,6 +2853,28 @@ function readAllLotteryDraws_(sheet) {
   var rows = sheet
     .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
     .getValues();
+  return buildLotteryDrawRecordsFromRows_(rows);
+}
+
+function readMemberLotteryDraws_(sheet, lineUserId) {
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    LOTTERY_DRAW_COLUMN.lineUserId,
+    lineUserId,
+    LOTTERY_DRAW_HEADERS.length
+  );
+  var draws = buildLotteryDrawRecordsFromRows_(rows);
+  assertMatchedIdentifiersGloballyUnique_(
+    sheet,
+    rows,
+    LOTTERY_DRAW_COLUMN.drawId,
+    "LOTTERY_DATA_ERROR",
+    "抽獎紀錄識別碼重複，請聯絡管理員。"
+  );
+  return draws;
+}
+
+function buildLotteryDrawRecordsFromRows_(rows) {
   var drawIds = Object.create(null);
   var requestKeys = Object.create(null);
   return rows.map(function (row) {
@@ -2935,6 +2977,7 @@ function redeemPointCampaign_(identity, request, config) {
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "點數正在處理，請稍後再試。");
   }
+  var lockReleased = false;
 
   try {
     var memberSheet = getOrCreateMemberSheet_(config);
@@ -3124,6 +3167,10 @@ function redeemPointCampaign_(identity, request, config) {
     ]);
     applyPointRedemptionRowFormats_(redemptionSheet, redemptionSheet.getLastRow());
     SpreadsheetApp.flush();
+    // The award is durable after flush. Building the updated member card is a
+    // read-only step and must not block another member's point mutation.
+    lock.releaseLock();
+    lockReleased = true;
 
     var response = pointCampaignRedemptionResponseForConfig_(
       config,
@@ -3143,7 +3190,7 @@ function redeemPointCampaign_(identity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法領取點數，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -3959,18 +4006,69 @@ function findMemberRow_(sheet, lineUserId) {
 }
 
 function findMemberRows_(sheet, lineUserId) {
+  return findExactTextRowNumbers_(
+    sheet,
+    MEMBER_COLUMN.lineUserId,
+    lineUserId
+  );
+}
+
+function findExactTextRowNumbers_(sheet, columnNumber, searchValue) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-
-  var values = sheet
-    .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
-    .getValues();
+  var matches = sheet
+    .getRange(2, columnNumber, lastRow - 1, 1)
+    .createTextFinder(String(searchValue || ""))
+    .matchEntireCell(true)
+    .matchCase(true)
+    .findAll();
+  var seen = Object.create(null);
   var rowNumbers = [];
-  for (var i = 0; i < values.length; i += 1) {
-    if (String(values[i][0] || "") !== lineUserId) continue;
-    rowNumbers.push(i + 2);
-  }
+  matches.forEach(function (match) {
+    var rowNumber = Number(match.getRow());
+    if (rowNumber < 2 || rowNumber > lastRow || seen[rowNumber]) return;
+    seen[rowNumber] = true;
+    rowNumbers.push(rowNumber);
+  });
+  rowNumbers.sort(function (left, right) {
+    return left - right;
+  });
   return rowNumbers;
+}
+
+function readRowsMatchingExactText_(
+  sheet,
+  searchColumn,
+  searchValue,
+  columnCount
+) {
+  var rowNumbers = findExactTextRowNumbers_(
+    sheet,
+    searchColumn,
+    searchValue
+  );
+  if (!rowNumbers.length) return [];
+
+  var rows = [];
+  var groupStart = rowNumbers[0];
+  var groupEnd = groupStart;
+  function appendGroup() {
+    var values = sheet
+      .getRange(groupStart, 1, groupEnd - groupStart + 1, columnCount)
+      .getValues();
+    Array.prototype.push.apply(rows, values);
+  }
+  for (var i = 1; i < rowNumbers.length; i += 1) {
+    if (rowNumbers[i] === groupEnd + 1) {
+      groupEnd = rowNumbers[i];
+      continue;
+    }
+    appendGroup();
+    groupStart = rowNumbers[i];
+    groupEnd = groupStart;
+  }
+  appendGroup();
+  return rows;
 }
 
 function findPointCampaignByClaim_(sheet, claim) {
@@ -3980,13 +4078,12 @@ function findPointCampaignByClaim_(sheet, claim) {
     throw appError_("POINT_CAMPAIGN_NOT_FOUND", "找不到這個點數活動，請確認 QR Code。");
   }
 
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_CAMPAIGN_HEADERS.length)
-    .getValues();
-  var matchingRows = rows.filter(function (row) {
-    return String(row[POINT_CAMPAIGN_COLUMN.claimHash - 1] || "").trim().toLowerCase() ===
-      claimHash;
-  });
+  var matchingRows = readRowsMatchingExactText_(
+    sheet,
+    POINT_CAMPAIGN_COLUMN.claimHash,
+    claimHash,
+    POINT_CAMPAIGN_HEADERS.length
+  );
 
   if (matchingRows.length === 0) {
     throw appError_("POINT_CAMPAIGN_NOT_FOUND", "找不到這個點數活動，請確認 QR Code。");
@@ -4089,12 +4186,12 @@ function normalizeStoredRedemptionMode_(value) {
 }
 
 function findPointRedemptionByRequest_(sheet, lineUserId, requestId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
-    .getValues();
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    POINT_REDEMPTION_COLUMN.requestId,
+    requestId,
+    POINT_REDEMPTION_HEADERS.length
+  );
   var match = null;
   for (var i = 0; i < rows.length; i += 1) {
     if (
@@ -4136,12 +4233,12 @@ function assertRedemptionMatchesCampaign_(redemptionRow, campaign) {
 }
 
 function findPointRedemption_(sheet, campaignId, lineUserId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
-    .getValues();
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    POINT_REDEMPTION_COLUMN.lineUserId,
+    lineUserId,
+    POINT_REDEMPTION_HEADERS.length
+  );
   var match = null;
   for (var i = 0; i < rows.length; i += 1) {
     if (
@@ -4163,12 +4260,12 @@ function findPointRedemption_(sheet, campaignId, lineUserId) {
 }
 
 function findPointRedemptionByCampaign_(sheet, campaignId) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-
-  var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
-    .getValues();
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    POINT_REDEMPTION_COLUMN.campaignId,
+    campaignId,
+    POINT_REDEMPTION_HEADERS.length
+  );
   var match = null;
   for (var i = 0; i < rows.length; i += 1) {
     if (
@@ -4210,7 +4307,7 @@ function getMemberPointCardStatusForConfig_(
 }
 
 function getMemberPointBalance_(sheet, lineUserId) {
-  return readMemberPointLedger_(sheet, lineUserId).totalPoints;
+  return readMemberPointLedgerFast_(sheet, lineUserId).totalPoints;
 }
 
 function readMemberPointLedger_(sheet, lineUserId) {
@@ -4220,6 +4317,68 @@ function readMemberPointLedger_(sheet, lineUserId) {
   var rows = sheet
     .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
     .getValues();
+  return buildMemberPointLedgerFromRows_(rows, lineUserId);
+}
+
+function readMemberPointLedgerFast_(sheet, lineUserId) {
+  return readMemberPointSnapshot_(sheet, lineUserId).ledger;
+}
+
+function readMemberPointSnapshot_(sheet, lineUserId) {
+  var rows = readRowsMatchingExactText_(
+    sheet,
+    POINT_REDEMPTION_COLUMN.lineUserId,
+    lineUserId,
+    POINT_REDEMPTION_HEADERS.length
+  );
+  var ledger = buildMemberPointLedgerFromRows_(rows, lineUserId);
+  assertMatchedIdentifiersGloballyUnique_(
+    sheet,
+    rows,
+    POINT_REDEMPTION_COLUMN.redemptionId,
+    "POINT_DATA_ERROR",
+    "會員點數紀錄格式不正確，請聯絡管理員。"
+  );
+  return { rows: rows, ledger: ledger };
+}
+
+function assertMatchedIdentifiersGloballyUnique_(
+  sheet,
+  rows,
+  identifierColumn,
+  errorCode,
+  errorMessage
+) {
+  var identifiers = Object.create(null);
+  rows.forEach(function (row) {
+    var identifier = String(row[identifierColumn - 1] || "").trim();
+    if (identifier && identifiers[identifier] === undefined) {
+      identifiers[identifier] = 0;
+    }
+  });
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  // One narrow column read is substantially cheaper than issuing one
+  // TextFinder request per member event, while still detecting an identifier
+  // duplicated on another member's row.
+  sheet
+    .getRange(2, identifierColumn, lastRow - 1, 1)
+    .getValues()
+    .forEach(function (value) {
+      var identifier = String(value[0] || "").trim();
+      if (identifiers[identifier] !== undefined) {
+        identifiers[identifier] += 1;
+      }
+    });
+  Object.keys(identifiers).forEach(function (identifier) {
+    if (identifiers[identifier] !== 1) {
+      throw appError_(errorCode, errorMessage);
+    }
+  });
+}
+
+function buildMemberPointLedgerFromRows_(rows, lineUserId) {
   var totalPoints = 0;
   var events = [];
   var redemptionIds = Object.create(null);

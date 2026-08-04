@@ -166,11 +166,12 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
   assert.equal(submittedForms, 1);
 });
 
-test("shared GAS transport remembers a successful bridge for the current tab", async () => {
+test("shared GAS transport remembers a successful bridge for a future tab", async () => {
   let messageListener = null;
   let fetchCalls = 0;
   let submittedForms = 0;
-  const storage = new Map();
+  const sessionStorage = new Map();
+  const localStorage = new Map();
   const document = {
     baseURI: "https://example.test/client/",
     body: { appendChild() {} },
@@ -208,10 +209,18 @@ test("shared GAS transport remembers a successful bridge for the current tab", a
     location: { origin: "https://example.test" },
     sessionStorage: {
       getItem(key) {
-        return storage.get(key) || null;
+        return sessionStorage.get(key) || null;
       },
       setItem(key, value) {
-        storage.set(key, String(value));
+        sessionStorage.set(key, String(value));
+      },
+    },
+    localStorage: {
+      getItem(key) {
+        return localStorage.get(key) || null;
+      },
+      setItem(key, value) {
+        localStorage.set(key, String(value));
       },
     },
     crypto: {
@@ -259,6 +268,7 @@ test("shared GAS transport remembers a successful bridge for the current tab", a
     action: "upsertMember",
     requestId: "req-transport-0001",
   });
+  sessionStorage.clear();
   await window.MemberApi.sendRequest({
     gasUrl: "https://script.google.com/macros/s/example/exec",
     action: "upsertMember",
@@ -267,7 +277,7 @@ test("shared GAS transport remembers a successful bridge for the current tab", a
 
   assert.equal(fetchCalls, 1, "the second request should not repeat the failed fetch");
   assert.equal(submittedForms, 2);
-  assert.equal(Array.from(storage.values()).includes("bridge"), true);
+  assert.equal(Array.from(localStorage.values()).includes("bridge"), true);
 });
 
 test("shared LIFF runtime normalizes context and validates public configuration", () => {

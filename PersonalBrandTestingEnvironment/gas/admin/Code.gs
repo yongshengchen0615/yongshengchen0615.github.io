@@ -28,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.10.0";
+var API_VERSION = "1.11.0";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -43,6 +43,7 @@ var DEFAULT_LOTTERY_DRAWS_SHEET_NAME = "LotteryDraws";
 var DEFAULT_MEMBER_LIFF_URL = "https://liff.line.me/2010787602-kaiSm2eq";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
+var LINE_TOKEN_CACHE_SECONDS = 300;
 var DEFAULT_ADMIN_PAGE_SIZE = 50;
 var MAX_ADMIN_PAGE_SIZE = 100;
 var MAX_POINT_VALUE = 9999;
@@ -578,6 +579,16 @@ function handleAdminRequest_(request) {
 }
 
 function verifyLineIdToken_(idToken, expectedChannelId) {
+  if (!isJwtLike_(idToken)) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證格式不正確，請重新登入。");
+  }
+
+  var cachedIdentity = getCachedLineIdentity_(idToken, expectedChannelId);
+  if (cachedIdentity) return cachedIdentity;
+  return verifyLineIdTokenFresh_(idToken, expectedChannelId);
+}
+
+function verifyLineIdTokenFresh_(idToken, expectedChannelId) {
   var response;
 
   if (!isJwtLike_(idToken)) {
@@ -632,17 +643,89 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證驗證失敗，請重新登入。");
   }
 
+  cacheVerifiedLineClaims_(idToken, expectedChannelId, claims);
+
   return {
     lineUserId: String(claims.sub),
     displayName: limitText_(claims.name || "LINE 管理員", 100),
     pictureUrl: normalizeHttpsUrl_(claims.picture),
     email: limitText_(claims.email || "", 254),
     tokenIssuedAt: issuedAt,
+    tokenExpiresAt: Math.floor(Number(claims.exp)),
+    fromCache: false,
   };
+}
+
+function getCachedLineIdentity_(idToken, expectedChannelId) {
+  var cached;
+  try {
+    cached = CacheService.getScriptCache().get(
+      lineTokenCacheKey_(idToken, expectedChannelId)
+    );
+  } catch (_error) {
+    return null;
+  }
+  if (!cached) return null;
+
+  var claims;
+  try {
+    claims = JSON.parse(String(cached));
+  } catch (_error) {
+    return null;
+  }
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  if (
+    !claims ||
+    typeof claims !== "object" ||
+    !/^U[0-9a-f]{32}$/.test(String(claims.sub || "")) ||
+    Number(claims.iat || 0) <= 0 ||
+    Number(claims.exp || 0) <= nowSeconds
+  ) {
+    return null;
+  }
+  return {
+    lineUserId: String(claims.sub),
+    displayName: "",
+    pictureUrl: "",
+    email: "",
+    tokenIssuedAt: Math.floor(Number(claims.iat)),
+    tokenExpiresAt: Math.floor(Number(claims.exp)),
+    fromCache: true,
+  };
+}
+
+function cacheVerifiedLineClaims_(idToken, expectedChannelId, claims) {
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  var ttl = Math.min(
+    LINE_TOKEN_CACHE_SECONDS,
+    Math.floor(Number(claims.exp || 0)) - nowSeconds
+  );
+  if (ttl < 1) return;
+  try {
+    CacheService.getScriptCache().put(
+      lineTokenCacheKey_(idToken, expectedChannelId),
+      JSON.stringify({
+        sub: String(claims.sub || ""),
+        iat: Math.floor(Number(claims.iat || 0)),
+        exp: Math.floor(Number(claims.exp || 0)),
+      }),
+      ttl
+    );
+  } catch (_error) {
+    // LINE remains authoritative when CacheService is unavailable.
+  }
+}
+
+function lineTokenCacheKey_(idToken, expectedChannelId) {
+  return (
+    "line-token:" +
+    sha256Hex_(String(expectedChannelId) + ":" + String(idToken))
+  );
 }
 
 function adminListMembers_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
+  var lockReleased = false;
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "會員資料正在更新，請稍後再試。");
   }
@@ -651,6 +734,8 @@ function adminListMembers_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    lock.releaseLock();
+    lockReleased = true;
 
     // Sensitive member data is not read until administrator authorization has
     // completed successfully.
@@ -728,7 +813,7 @@ function adminListMembers_(adminIdentity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取會員清單，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -809,6 +894,7 @@ function adminSetMemberAccess_(adminIdentity, request, config) {
 
 function adminListPointTypes_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
+  var lockReleased = false;
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "點數類型正在更新，請稍後再試。");
   }
@@ -817,6 +903,8 @@ function adminListPointTypes_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    lock.releaseLock();
+    lockReleased = true;
     var pointTypeSheet = getOrCreatePointTypeSheet_(spreadsheet, config);
     var records = readPointTypeRecords_(pointTypeSheet);
 
@@ -834,12 +922,13 @@ function adminListPointTypes_(adminIdentity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數類型，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
 function adminListPointHistory_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
+  var lockReleased = false;
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "點數紀錄正在讀取，請稍後再試。");
   }
@@ -848,6 +937,8 @@ function adminListPointHistory_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    lock.releaseLock();
+    lockReleased = true;
     var redemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
     var history = readAdminPointHistory_(redemptionSheet);
 
@@ -880,7 +971,7 @@ function adminListPointHistory_(adminIdentity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數使用紀錄，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -1264,6 +1355,7 @@ function adminCreatePointCampaign_(adminIdentity, request, config) {
 
 function adminGetLotteryConfig_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
+  var lockReleased = false;
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "轉盤設定正在讀取，請稍後再試。");
   }
@@ -1272,6 +1364,8 @@ function adminGetLotteryConfig_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    lock.releaseLock();
+    lockReleased = true;
     var pointCardSettingSheet = getOrCreatePointCardSettingSheet_(spreadsheet, config);
     var lotteryTypeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
     var prizeSheet = getOrCreateLotteryPrizeSheet_(spreadsheet, config);
@@ -1302,7 +1396,7 @@ function adminGetLotteryConfig_(adminIdentity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取轉盤設定，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -1840,6 +1934,7 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
 
 function adminListLotteryDraws_(adminIdentity, request, config) {
   var lock = LockService.getScriptLock();
+  var lockReleased = false;
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "抽獎紀錄正在讀取，請稍後再試。");
   }
@@ -1848,6 +1943,8 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
+    lock.releaseLock();
+    lockReleased = true;
     var drawSheet = getOrCreateLotteryDrawSheet_(spreadsheet, config);
     var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
     var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
@@ -1895,7 +1992,7 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取抽獎紀錄，請稍後再試。");
   } finally {
-    lock.releaseLock();
+    if (!lockReleased) lock.releaseLock();
   }
 }
 
@@ -1921,6 +2018,14 @@ function requireApprovedAdmin_(identity, request, adminSheet) {
 
   var rowNumber = matches[0];
   var row = adminSheet.getRange(rowNumber, 1, 1, ADMIN_HEADERS.length).getValues()[0];
+  if (identity.fromCache) {
+    identity.displayName =
+      limitText_(row[ADMIN_COLUMN.displayName - 1], 100) || "LINE 管理員";
+    identity.pictureUrl = normalizeHttpsUrl_(
+      row[ADMIN_COLUMN.pictureUrl - 1]
+    );
+    identity.email = limitText_(row[ADMIN_COLUMN.email - 1], 254);
+  }
   assertUniqueAdminId_(adminSheet, rowNumber, row);
   var status = strictAdminStatus_(row[ADMIN_COLUMN.status - 1]);
 
@@ -1932,16 +2037,25 @@ function requireApprovedAdmin_(identity, request, adminSheet) {
   if (!isDuplicate) {
     var isNewLoginSession =
       Number(row[ADMIN_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
-    adminSheet
-      .getRange(rowNumber, ADMIN_COLUMN.displayName, 1, 3)
-      .setValues([
-        [
-          safeSheetText_(identity.displayName),
-          safeSheetText_(identity.pictureUrl),
-          safeSheetText_(identity.email),
-        ],
-      ]);
-    adminSheet.getRange(rowNumber, ADMIN_COLUMN.updatedAt).setValues([[now]]);
+    var profileChanged =
+      String(row[ADMIN_COLUMN.displayName - 1] || "") !== identity.displayName ||
+      String(row[ADMIN_COLUMN.pictureUrl - 1] || "") !== identity.pictureUrl ||
+      String(row[ADMIN_COLUMN.email - 1] || "") !== identity.email;
+    var hasAdminChanges = isNewLoginSession || profileChanged;
+    if (profileChanged) {
+      adminSheet
+        .getRange(rowNumber, ADMIN_COLUMN.displayName, 1, 3)
+        .setValues([
+          [
+            safeSheetText_(identity.displayName),
+            safeSheetText_(identity.pictureUrl),
+            safeSheetText_(identity.email),
+          ],
+        ]);
+    }
+    if (hasAdminChanges) {
+      adminSheet.getRange(rowNumber, ADMIN_COLUMN.updatedAt).setValues([[now]]);
+    }
     if (isNewLoginSession) {
       adminSheet
         .getRange(rowNumber, ADMIN_COLUMN.lastLoginAt, 1, 2)
@@ -1949,11 +2063,13 @@ function requireApprovedAdmin_(identity, request, adminSheet) {
           [now, Math.max(0, Number(row[ADMIN_COLUMN.loginCount - 1]) || 0) + 1],
         ]);
     }
-    adminSheet
-      .getRange(rowNumber, ADMIN_COLUMN.lastTokenIat, 1, 2)
-      .setValues([[identity.tokenIssuedAt, request.requestId]]);
-    applyAdminRowFormats_(adminSheet, rowNumber);
-    SpreadsheetApp.flush();
+    if (hasAdminChanges) {
+      adminSheet
+        .getRange(rowNumber, ADMIN_COLUMN.lastTokenIat, 1, 2)
+        .setValues([[identity.tokenIssuedAt, request.requestId]]);
+      applyAdminRowFormats_(adminSheet, rowNumber);
+      SpreadsheetApp.flush();
+    }
   }
 
   // Spreadsheet edits are not covered by LockService. Re-read the status after

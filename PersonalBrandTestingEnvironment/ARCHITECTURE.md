@@ -23,6 +23,18 @@
 
 會員端與管理端是兩個不同的 LINE Channel、LIFF App 與 GAS 部署。兩端唯一共用的持久資料是 Google Spreadsheet；任何一端都不能改用另一端的 ID Token audience 或 GAS URL。
 
+### 請求生命週期
+
+| 階段 | 通訊與時限 | 一致性／授權 |
+| --- | --- | --- |
+| 公開設定 | 同源 `GET config.json`、不使用瀏覽器快取 | 只允許 LIFF ID、GAS `/exec` URL 與品牌等公開值 |
+| 主要 API | 跨來源 `POST text/plain` JSON；Fetch 9 秒 | request ID 綁定回應，GAS 重新驗證 LINE ID Token |
+| 備援 API | Fetch 網路失敗後使用隱藏 form／iframe；25 秒 | 驗證 GAS origin、callback origin、request ID 與一次性 secret |
+| 身分驗證 | LINE verify 成功結果最多暫存 5 分鐘 | 只快取 `sub`、`iat`、`exp`；權限與會員資料仍即時讀 Sheet |
+| 資料處理 | 會員讀取用精確列查找；管理清單按頁面需求讀取 | 寫入持鎖且使用 request ID 冪等；讀取不長時間占用寫入鎖 |
+
+成功的 `fetch`／`bridge` 名稱會依 GAS URL 寫入 sessionStorage 與 localStorage，讓同一裝置後續頁面直接使用已驗證可行的通道。這個提示不包含 Token、會員 ID 或任何業務資料；儲存空間不可用時會安全退回 Fetch。
+
 ## 2. 前端入口與責任
 
 | 入口 | 程式 | 責任 |
@@ -35,7 +47,7 @@
 
 共用瀏覽器模組：
 
-- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、9 秒 fetch 與 12 秒受驗證 iframe fallback，並在單一分頁記住每個 GAS URL 最近成功的傳輸方式。
+- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、9 秒 fetch 與 25 秒受驗證 iframe fallback，並在裝置上記住每個 GAS URL 最近成功的傳輸方式。
 - `shared/liff-runtime.js`：LIFF 環境資訊、展示模式與公開設定完整性檢查。
 - `shared/lottery-wheel.js`：管理端預覽與會員端轉盤共用的 Canvas 繪製。
 - `shared/qr-code.js`：管理端本機 QR Code 編碼，不把領點網址交給第三方服務。
@@ -83,7 +95,7 @@
 
 - `config.json`、LIFF ID、GAS `/exec` URL 都是公開資料；秘密只放在 GAS Script Properties。
 - GAS 必須重新驗證 ID Token 的 audience、issuer、subject 與時效，不信任前端傳入的 LINE user ID。
-- 會員 GAS 只可把已驗證 Token 的 `sub`、`iat`、`exp` 以 SHA-256 Token key 暫存最多 5 分鐘；原始 Token、姓名與頭像不可進入 CacheService、Sheet 或效能紀錄。會員權限、點數與抽獎資料仍必須每次讀取 Spreadsheet。
+- 會員與管理 GAS 只可把已驗證 Token 的 `sub`、`iat`、`exp` 以 SHA-256 Token key 暫存最多 5 分鐘；原始 Token、姓名與頭像不可進入 CacheService 或效能紀錄。會員權限、管理權限、點數與抽獎資料仍必須每次讀取 Spreadsheet。
 - `ALLOWED_ORIGINS` 只接受完整 origin；所有回應都綁定 request ID，iframe bridge 另外驗證回應 origin 與一次性 secret。
 - 會員與管理 action 使用白名單分流，未知欄位不進入業務函式。
 - 點數領取、抽獎與管理寫入使用 request ID 保持重試冪等。
@@ -101,6 +113,8 @@
 - 把三份重複的 LIFF context、展示模式與 config 完整性檢查整合為 `shared/liff-runtime.js`。
 - 保留頁面、舊 `drawLottery` action 與 GAS 部署方式，新增 `prepareLotteryDraw` 與需會員驗證但不記錄身分的 `reportClientPerformance`；`LotteryTypes` 只在尾端追加相容欄位，舊 9 欄資料由 `setup()` 補成關閉預覽，既有 10 欄的整組預覽設定則相容轉成全部獎項皆顯示。
 - 效能紀錄只接受固定 phase、耗時、結果、transport、fallback 與錯誤碼；快速成功不回報，背景回報失敗立即重試一次，Cloud Logging 不包含 LINE ID、Token、姓名、電話、生日或 request ID。
+- 會員登入、集點卡、點數紀錄與抽獎只讀取該會員的帳本列；領點與登入完成必要寫入後會在組合卡片回應前釋放鎖。點數紀錄以同一份列快照同時計算餘額與清單。
+- 管理端相同 Token 的連續頁面請求不重複呼叫 LINE verify，也不在姓名、頭像與登入 session 未變時重寫 `Admins`。五個管理讀取 action 完成核准檢查後立即釋放鎖，再讀取各自資料頁需要的工作表。
 
 ## 7. 後續重構順序
 
