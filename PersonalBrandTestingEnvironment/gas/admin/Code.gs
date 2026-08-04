@@ -781,6 +781,23 @@ function adminListMembers_(adminIdentity, request, config) {
       return adminMemberResponseFromRow_(row);
     });
 
+    var query = String(request.query || "")
+      .trim()
+      .toLocaleLowerCase("zh-TW")
+      .slice(0, 100);
+    var memberStatus =
+      request.memberStatus === "approved" || request.memberStatus === "denied"
+        ? request.memberStatus
+        : "all";
+    members = members.filter(function (member) {
+      if (memberStatus !== "all" && member.status !== memberStatus) return false;
+      if (!query) return true;
+      return [member.displayName, member.memberId, member.phone, member.birthday]
+        .join(" ")
+        .toLocaleLowerCase("zh-TW")
+        .indexOf(query) !== -1;
+    });
+
     members.sort(function (left, right) {
       return dateSortValue_(right.joinedAt) - dateSortValue_(left.joinedAt);
     });
@@ -940,17 +957,15 @@ function adminListPointHistory_(adminIdentity, request, config) {
     lock.releaseLock();
     lockReleased = true;
     var redemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
-    var history = readAdminPointHistory_(redemptionSheet);
-
-    history.sort(function (left, right) {
-      var timeDifference = dateSortValue_(right.redeemedAt) - dateSortValue_(left.redeemedAt);
-      return timeDifference || right.rowNumber - left.rowNumber;
-    });
-
-    var hasMore = history.length > MAX_POINT_HISTORY_ENTRIES;
+    var history = readAdminPointHistory_(
+      redemptionSheet,
+      request.cursor,
+      request.limit || MAX_POINT_HISTORY_ENTRIES
+    );
+    var hasMore = history.hasMore === true;
     return {
       data: {
-        history: history.slice(0, MAX_POINT_HISTORY_ENTRIES).map(function (entry) {
+        history: history.map(function (entry) {
           return {
             redemptionId: entry.redemptionId,
             campaignId: entry.campaignId,
@@ -965,6 +980,7 @@ function adminListPointHistory_(adminIdentity, request, config) {
           };
         }),
         hasMore: hasMore,
+        nextCursor: hasMore ? history.nextCursor : 0,
       },
     };
   } catch (error) {
@@ -975,12 +991,23 @@ function adminListPointHistory_(adminIdentity, request, config) {
   }
 }
 
-function readAdminPointHistory_(sheet) {
+function readAdminPointHistory_(sheet, cursor, limit) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
+  var pageLimit = Math.max(
+    1,
+    Math.min(100, Math.floor(Number(limit) || MAX_POINT_HISTORY_ENTRIES))
+  );
+  var endExclusive = Math.min(
+    lastRow + 1,
+    Math.floor(Number(cursor) || lastRow + 1)
+  );
+  if (endExclusive <= 2) return [];
+  var startRow = Math.max(2, endExclusive - pageLimit - 1);
+  var rowCount = endExclusive - startRow;
   var rows = sheet
-    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getRange(startRow, 1, rowCount, POINT_REDEMPTION_HEADERS.length)
     .getValues();
   var redemptionIds = Object.create(null);
   var requestKeys = Object.create(null);
@@ -989,7 +1016,7 @@ function readAdminPointHistory_(sheet) {
 
   for (var i = 0; i < rows.length; i += 1) {
     var row = rows[i];
-    var rowNumber = i + 2;
+    var rowNumber = startRow + i;
     var redemptionId = String(row[POINT_REDEMPTION_COLUMN.redemptionId - 1] || "").trim();
     var campaignId = String(row[POINT_REDEMPTION_COLUMN.campaignId - 1] || "").trim();
     var pointTypeId = String(row[POINT_REDEMPTION_COLUMN.pointTypeId - 1] || "").trim();
@@ -1048,6 +1075,13 @@ function readAdminPointHistory_(sheet) {
     });
   }
 
+  history.reverse();
+  var hasMore = history.length > pageLimit || startRow > 2;
+  if (history.length > pageLimit) history = history.slice(0, pageLimit);
+  history.hasMore = hasMore;
+  history.nextCursor = hasMore && history.length
+    ? history[history.length - 1].rowNumber
+    : 0;
   return history;
 }
 
@@ -1953,39 +1987,36 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
     readLotteryTypes_(typeSheet).forEach(function (type) {
       lotteryTypeNames[type.lotteryTypeId] = type.name;
     });
-    var draws = readAdminLotteryDraws_(drawSheet);
-    draws.sort(function (left, right) {
-      return (
-        dateSortValue_(right.drawnAt) - dateSortValue_(left.drawnAt) ||
-        right.rowNumber - left.rowNumber
-      );
-    });
-    var hasMore = draws.length > MAX_LOTTERY_DRAW_HISTORY_ENTRIES;
+    var draws = readAdminLotteryDraws_(
+      drawSheet,
+      request.cursor,
+      request.limit || MAX_LOTTERY_DRAW_HISTORY_ENTRIES
+    );
+    var hasMore = draws.hasMore === true;
 
     return {
       data: {
-        draws: draws
-          .slice(0, MAX_LOTTERY_DRAW_HISTORY_ENTRIES)
-          .map(function (draw) {
-            return {
-              drawId: draw.drawId,
-              configVersion: draw.configVersion,
-              prizeId: draw.prizeId,
-              prizeLabel: draw.prizeLabel,
-              prizeColor: draw.prizeColor,
-              lotteryTypeId: draw.lotteryTypeId,
-              lotteryTypeName:
-                lotteryTypeNames[draw.lotteryTypeId] || "已刪除轉盤",
-              memberId: draw.memberId,
-              memberDisplayName: membersById[draw.memberId] || "已刪除會員",
-              ticketCost: draw.pointsSpent,
-              originalPointBalance: draw.balanceBefore,
-              pointBalance: draw.balanceAfter,
-              usedCardRound: !draw.legacyDraw,
-              drawnAt: draw.drawnAt,
-            };
-          }),
+        draws: draws.map(function (draw) {
+          return {
+            drawId: draw.drawId,
+            configVersion: draw.configVersion,
+            prizeId: draw.prizeId,
+            prizeLabel: draw.prizeLabel,
+            prizeColor: draw.prizeColor,
+            lotteryTypeId: draw.lotteryTypeId,
+            lotteryTypeName:
+              lotteryTypeNames[draw.lotteryTypeId] || "已刪除轉盤",
+            memberId: draw.memberId,
+            memberDisplayName: membersById[draw.memberId] || "已刪除會員",
+            ticketCost: draw.pointsSpent,
+            originalPointBalance: draw.balanceBefore,
+            pointBalance: draw.balanceAfter,
+            usedCardRound: !draw.legacyDraw,
+            drawnAt: draw.drawnAt,
+          };
+        }),
         hasMore: hasMore,
+        nextCursor: hasMore ? draws.nextCursor : 0,
       },
     };
   } catch (error) {
@@ -2987,6 +3018,10 @@ function parseRequest_(e) {
       lotteryPrizes: parseLotteryPrizes_(e.parameter.lotteryPrizes),
       page: optionalNumber_(e.parameter.page, 1),
       pageSize: optionalNumber_(e.parameter.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
+      query: String(e.parameter.query || "").trim(),
+      memberStatus: String(e.parameter.memberStatus || "all").trim().toLowerCase(),
+      cursor: optionalNumber_(e.parameter.cursor, 0),
+      limit: optionalNumber_(e.parameter.limit, MAX_POINT_HISTORY_ENTRIES),
       transport: "bridge",
     };
   }
@@ -3038,6 +3073,10 @@ function parseRequest_(e) {
     lotteryPrizes: parseLotteryPrizes_(parsed.lotteryPrizes),
     page: optionalNumber_(parsed.page, 1),
     pageSize: optionalNumber_(parsed.pageSize, DEFAULT_ADMIN_PAGE_SIZE),
+    query: String(parsed.query || "").trim(),
+    memberStatus: String(parsed.memberStatus || "all").trim().toLowerCase(),
+    cursor: optionalNumber_(parsed.cursor, 0),
+    limit: optionalNumber_(parsed.limit, MAX_POINT_HISTORY_ENTRIES),
     transport: "fetch",
   };
 }
@@ -3070,6 +3109,25 @@ function validateRequestEnvelope_(request) {
     if (!isPositiveInteger_(request.pageSize) || request.pageSize > MAX_ADMIN_PAGE_SIZE) {
       throw appError_("INVALID_PAGE_SIZE", "每頁筆數必須介於 1 到 100。");
     }
+    if (String(request.query || "").length > 100) {
+      throw appError_("INVALID_QUERY", "會員搜尋文字不可超過 100 字。");
+    }
+    if (["all", "approved", "denied"].indexOf(request.memberStatus || "all") === -1) {
+      throw appError_("INVALID_MEMBER_STATUS", "會員狀態篩選格式不正確。");
+    }
+  }
+
+  if (
+    !Number.isSafeInteger(Number(request.cursor || 0)) ||
+    Number(request.cursor || 0) < 0
+  ) {
+    throw appError_("INVALID_CURSOR", "紀錄游標格式不正確。");
+  }
+  if (
+    !isPositiveInteger_(request.limit || MAX_POINT_HISTORY_ENTRIES) ||
+    Number(request.limit || MAX_POINT_HISTORY_ENTRIES) > 100
+  ) {
+    throw appError_("INVALID_LIMIT", "每次紀錄筆數必須介於 1 到 100。");
   }
 
   if (request.action === "adminSetMemberAccess") {
@@ -4329,16 +4387,27 @@ function lotteryDrawRecordFromRow_(row, rowNumber) {
   };
 }
 
-function readAdminLotteryDraws_(sheet) {
+function readAdminLotteryDraws_(sheet, cursor, limit) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
+  var pageLimit = Math.max(
+    1,
+    Math.min(100, Math.floor(Number(limit) || MAX_LOTTERY_DRAW_HISTORY_ENTRIES))
+  );
+  var endExclusive = Math.min(
+    lastRow + 1,
+    Math.floor(Number(cursor) || lastRow + 1)
+  );
+  if (endExclusive <= 2) return [];
+  var startRow = Math.max(2, endExclusive - pageLimit - 1);
+  var rowCount = endExclusive - startRow;
   var rows = sheet
-    .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
+    .getRange(startRow, 1, rowCount, LOTTERY_DRAW_HEADERS.length)
     .getValues();
   var drawIds = Object.create(null);
   var requestKeys = Object.create(null);
-  return rows.map(function (row, index) {
-    var draw = lotteryDrawRecordFromRow_(row, index + 2);
+  var draws = rows.map(function (row, index) {
+    var draw = lotteryDrawRecordFromRow_(row, startRow + index);
     var requestKey = draw.lineUserId + ":" + draw.requestId;
     if (drawIds[draw.drawId] || requestKeys[requestKey]) {
       throw appError_("LOTTERY_DATA_ERROR", "抽獎紀錄識別碼或請求識別碼重複。");
@@ -4347,13 +4416,21 @@ function readAdminLotteryDraws_(sheet) {
     requestKeys[requestKey] = true;
     return draw;
   });
+  draws.reverse();
+  var hasMore = draws.length > pageLimit || startRow > 2;
+  if (draws.length > pageLimit) draws = draws.slice(0, pageLimit);
+  draws.hasMore = hasMore;
+  draws.nextCursor = hasMore && draws.length
+    ? draws[draws.length - 1].rowNumber
+    : 0;
+  return draws;
 }
 
 function readMemberNamesById_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return Object.create(null);
   var rows = sheet
-    .getRange(2, 1, lastRow - 1, MEMBER_HEADERS.length)
+    .getRange(2, 1, lastRow - 1, MEMBER_COLUMN.displayName)
     .getValues();
   var members = Object.create(null);
   rows.forEach(function (row) {

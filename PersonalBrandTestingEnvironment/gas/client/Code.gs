@@ -454,12 +454,19 @@ function handleMemberRequest_(request) {
   var config = getConfig_();
   var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
 
-  if (request.action === "upsertMember") {
+  if (
+    request.action === "upsertMember" ||
+    request.action === "upsertMemberIdentity"
+  ) {
     return upsertMember_(identity, request, config);
   }
 
   if (request.action === "updateMemberProfile") {
     return updateMemberProfile_(identity, request, config);
+  }
+
+  if (request.action === "getMemberCardSummary") {
+    return getMemberCardSummary_(identity, request, config);
   }
 
   if (request.action === "listPointHistory") {
@@ -496,7 +503,9 @@ function handleMemberRequest_(request) {
 function assertSupportedAction_(action) {
   if (
     action !== "upsertMember" &&
+    action !== "upsertMemberIdentity" &&
     action !== "updateMemberProfile" &&
+    action !== "getMemberCardSummary" &&
     action !== "listPointHistory" &&
     action !== "getLotteryConfig" &&
     action !== "prepareLotteryDraw" &&
@@ -650,6 +659,7 @@ function lineTokenCacheKey_(idToken, expectedChannelId) {
 }
 
 function upsertMember_(identity, request, config) {
+  var includeCardSummary = request.action !== "upsertMemberIdentity";
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     throw appError_("BUSY", "會員資料正在同步，請稍後再試。");
@@ -765,18 +775,23 @@ function upsertMember_(identity, request, config) {
     // not make other logins wait behind ledger, draw and wheel-config reads.
     lock.releaseLock();
     lockReleased = true;
-    var cardStatus = access.allowed
+    var cardStatus = access.allowed && includeCardSummary
       ? getMemberPointCardStatusForConfig_(config, identity.lineUserId)
       : null;
-    var pointBalance = cardStatus ? cardStatus.totalPoints : 0;
+    var pointBalance = cardStatus ? cardStatus.totalPoints : null;
+    var member = access.allowed
+      ? memberResponseFromRow_(row, identity, context, pointBalance)
+      : null;
+    if (member && !includeCardSummary) {
+      member.pointBalance = null;
+      member.totalPoints = null;
+    }
 
     return {
       data: {
         created: responseCreated,
         access: access,
-        member: access.allowed
-          ? memberResponseFromRow_(row, identity, context, pointBalance)
-          : null,
+        member: member,
         cardSummary: cardStatus
           ? pointCardSummaryResponseForConfig_(config, cardStatus)
           : null,
@@ -800,6 +815,39 @@ function identityFromMemberRow_(identity, row) {
     tokenExpiresAt: identity.tokenExpiresAt,
     fromCache: true,
   };
+}
+
+function getMemberCardSummary_(identity, request, config) {
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var rowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!rowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var row = memberSheet
+      .getRange(rowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(row);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法讀取集點卡。");
+    }
+
+    var cardStatus = getMemberPointCardStatusForConfig_(
+      config,
+      identity.lineUserId
+    );
+    return {
+      data: {
+        access: access,
+        pointBalance: cardStatus.totalPoints,
+        cardSummary: pointCardSummaryResponseForConfig_(config, cardStatus),
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法讀取集點卡，請稍後再試。");
+  }
 }
 
 function updateMemberProfile_(identity, request, config) {

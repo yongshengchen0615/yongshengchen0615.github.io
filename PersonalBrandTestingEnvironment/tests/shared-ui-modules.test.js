@@ -166,6 +166,196 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
   assert.equal(submittedForms, 1);
 });
 
+test("member mutations use one bridge request and never race an alternate transport", async () => {
+  let messageListener = null;
+  let fetchCalls = 0;
+  let submittedForms = 0;
+  const progress = [];
+  const document = {
+    baseURI: "https://example.test/client/",
+    body: { appendChild() {} },
+    createElement(tagName) {
+      const element = {
+        children: [],
+        appendChild(child) {
+          this.children.push(child);
+        },
+        remove() {},
+      };
+      if (tagName === "form") {
+        element.submit = function () {
+          submittedForms += 1;
+          const fields = Object.fromEntries(
+            this.children.map((child) => [child.name, child.value])
+          );
+          queueMicrotask(() => {
+            messageListener({
+              origin: "https://script.google.com",
+              data: {
+                type: "MEMBER_GAS_RESPONSE",
+                requestId: fields.requestId,
+                requestSecret: fields.requestSecret,
+                result: { ok: true, requestId: fields.requestId },
+              },
+            });
+          });
+        };
+      }
+      return element;
+    },
+  };
+  const window = {
+    location: { origin: "https://example.test" },
+    crypto: {
+      getRandomValues(bytes) {
+        bytes.fill(7);
+        return bytes;
+      },
+    },
+    fetch() {
+      fetchCalls += 1;
+      return Promise.reject(new TypeError("CORS"));
+    },
+    setTimeout,
+    clearTimeout,
+    addEventListener(type, listener) {
+      if (type === "message") messageListener = listener;
+    },
+    removeEventListener(type, listener) {
+      if (type === "message" && messageListener === listener) {
+        messageListener = null;
+      }
+    },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Promise,
+    TypeError,
+    URL,
+    Uint8Array,
+    clearTimeout,
+    document,
+    queueMicrotask,
+    setTimeout,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+
+  const result = await window.MemberApi.sendRequest({
+    gasUrl: "https://script.google.com/macros/s/example/exec",
+    action: "redeemPointCampaign",
+    requestId: "req-mutation-0001",
+    onProgress(event) {
+      progress.push({ ...event });
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(fetchCalls, 0);
+  assert.equal(submittedForms, 1);
+  assert.deepEqual(
+    progress.map((event) => [event.phase, event.transport]),
+    [
+      ["connecting", "bridge"],
+      ["complete", "bridge"],
+    ]
+  );
+});
+
+test("timed out mutations report an unknown result that can be retried with the same request id", async () => {
+  let messageListener = null;
+  let fetchCalls = 0;
+  let submittedForms = 0;
+  const progress = [];
+  const document = {
+    baseURI: "https://example.test/client/",
+    body: { appendChild() {} },
+    createElement(tagName) {
+      const element = {
+        children: [],
+        appendChild(child) {
+          this.children.push(child);
+        },
+        remove() {},
+      };
+      if (tagName === "form") {
+        element.submit = function () {
+          submittedForms += 1;
+        };
+      }
+      return element;
+    },
+  };
+  const window = {
+    location: { origin: "https://example.test" },
+    crypto: {
+      getRandomValues(bytes) {
+        bytes.fill(7);
+        return bytes;
+      },
+    },
+    fetch() {
+      fetchCalls += 1;
+      return Promise.reject(new TypeError("unexpected fetch"));
+    },
+    setTimeout(callback, delay) {
+      if (delay === 25000) queueMicrotask(callback);
+      return 1;
+    },
+    clearTimeout() {},
+    addEventListener(type, listener) {
+      if (type === "message") messageListener = listener;
+    },
+    removeEventListener(type, listener) {
+      if (type === "message" && messageListener === listener) {
+        messageListener = null;
+      }
+    },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Promise,
+    TypeError,
+    URL,
+    Uint8Array,
+    document,
+    queueMicrotask,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+
+  await assert.rejects(
+    window.MemberApi.sendRequest({
+      gasUrl: "https://script.google.com/macros/s/example/exec",
+      action: "redeemPointCampaign",
+      requestId: "req-mutation-timeout",
+      onProgress(event) {
+        progress.push({ ...event });
+      },
+    }),
+    (error) => {
+      assert.equal(error.code, "REQUEST_STATUS_UNKNOWN");
+      assert.equal(error.requestId, "req-mutation-timeout");
+      return true;
+    }
+  );
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(submittedForms, 1);
+  assert.deepEqual(
+    progress.map((event) => event.phase),
+    ["connecting", "failed"]
+  );
+});
+
 test("shared GAS transport remembers a successful bridge for a future tab", async () => {
   let messageListener = null;
   let fetchCalls = 0;
@@ -265,13 +455,13 @@ test("shared GAS transport remembers a successful bridge for a future tab", asyn
 
   await window.MemberApi.sendRequest({
     gasUrl: "https://script.google.com/macros/s/example/exec",
-    action: "upsertMember",
+    action: "health",
     requestId: "req-transport-0001",
   });
   sessionStorage.clear();
   await window.MemberApi.sendRequest({
     gasUrl: "https://script.google.com/macros/s/example/exec",
-    action: "upsertMember",
+    action: "health",
     requestId: "req-transport-0002",
   });
 

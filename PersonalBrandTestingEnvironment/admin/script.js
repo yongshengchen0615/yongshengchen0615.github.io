@@ -21,6 +21,7 @@
   var pointTypes = [];
   var pointHistory = [];
   var pointHistoryHasMore = false;
+  var pointHistoryNextCursor = 0;
   var lotteryConfig = null;
   var pointCardSetting = null;
   var pointCardRewardRules = [];
@@ -30,6 +31,7 @@
   var lotteryPrizes = [];
   var lotteryDraws = [];
   var lotteryDrawsHaveMore = false;
+  var lotteryHistoryNextCursor = 0;
   var lotteryAdminIdentity = null;
   var metrics = { all: 0, pending: 0, approved: 0, denied: 0 };
   var pagination = { page: 1, pageSize: 50, total: 0, totalPages: 0 };
@@ -84,9 +86,339 @@
   });
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
   var MEMBER_LIFF_PATH = "/2010787602-kaiSm2eq";
+  var ADMIN_MUTATION_ACTIONS = [
+    "adminSetMemberAccess",
+    "adminCreatePointType",
+    "adminDeletePointType",
+    "adminCreatePointCampaign",
+    "adminSavePointCardSetting",
+    "adminCreateLotteryType",
+    "adminDeleteLotteryType",
+    "adminSaveLotteryConfig",
+  ];
+  var pendingAdminMutationRequestIds = Object.create(null);
+  var ADMIN_DRAFT_STORAGE_PREFIX = "persona-admin-draft:v1:";
+  var adminDraftsRestored = false;
+  var isAdminDraftDirty = false;
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function getAdminDraftStorageKey() {
+    return ADMIN_DRAFT_STORAGE_PREFIX + ADMIN_PAGE;
+  }
+
+  function emptyAdminDraftEnvelope() {
+    return { version: 1, page: ADMIN_PAGE, sections: {} };
+  }
+
+  function readAdminDrafts() {
+    if (ADMIN_PAGE === "members") return emptyAdminDraftEnvelope();
+    try {
+      var serialized = window.sessionStorage.getItem(getAdminDraftStorageKey());
+      if (!serialized) return emptyAdminDraftEnvelope();
+      if (serialized.length > 50000) {
+        window.sessionStorage.removeItem(getAdminDraftStorageKey());
+        return emptyAdminDraftEnvelope();
+      }
+      var value = JSON.parse(serialized);
+      if (
+        !value ||
+        value.version !== 1 ||
+        value.page !== ADMIN_PAGE ||
+        !value.sections ||
+        typeof value.sections !== "object" ||
+        Array.isArray(value.sections)
+      ) {
+        window.sessionStorage.removeItem(getAdminDraftStorageKey());
+        return emptyAdminDraftEnvelope();
+      }
+      return value;
+    } catch (_error) {
+      return emptyAdminDraftEnvelope();
+    }
+  }
+
+  function saveAdminDraftSection(section, data) {
+    if (ADMIN_PAGE === "members" || !section || !data) return;
+    var envelope = readAdminDrafts();
+    envelope.sections[section] = {
+      updatedAt: new Date().toISOString(),
+      data: data,
+    };
+    try {
+      var serialized = JSON.stringify(envelope);
+      if (serialized.length > 50000) return;
+      window.sessionStorage.setItem(getAdminDraftStorageKey(), serialized);
+      isAdminDraftDirty = true;
+    } catch (_error) {
+      // Storage can be unavailable in private browsing; editing must remain usable.
+    }
+  }
+
+  function clearAdminDraftSection(section) {
+    var envelope = readAdminDrafts();
+    if (!Object.prototype.hasOwnProperty.call(envelope.sections, section)) return;
+    delete envelope.sections[section];
+    var remainingSections = Object.keys(envelope.sections);
+    try {
+      if (remainingSections.length) {
+        window.sessionStorage.setItem(
+          getAdminDraftStorageKey(),
+          JSON.stringify(envelope)
+        );
+      } else {
+        window.sessionStorage.removeItem(getAdminDraftStorageKey());
+      }
+    } catch (_error) {
+      // Keep the current editing session functional when storage is unavailable.
+    }
+    isAdminDraftDirty = remainingSections.length > 0;
+  }
+
+  function hasAdminDraftSection(section) {
+    return Object.prototype.hasOwnProperty.call(readAdminDrafts().sections, section);
+  }
+
+  function getCheckedDraftValue(name) {
+    var input = document.querySelector('input[name="' + name + '"]:checked');
+    return input ? input.value : "";
+  }
+
+  function setCheckedDraftValue(name, value) {
+    document.querySelectorAll('input[name="' + name + '"]').forEach(function (input) {
+      input.checked = input.value === value;
+    });
+  }
+
+  function capturePointTypeDraft() {
+    return {
+      pointAmount: String(byId("point-amount-input").value || "").slice(0, 4),
+      expiryMode: getCheckedDraftValue("expiryMode"),
+      redemptionMode: getCheckedDraftValue("redemptionMode"),
+    };
+  }
+
+  function capturePointCampaignDraft() {
+    return {
+      pointTypeId: String(selectedPointTypeId || "").slice(0, 40),
+      expiresAt: String(byId("point-expiry-input").value || "").slice(0, 24),
+    };
+  }
+
+  function capturePointCardDraft() {
+    return {
+      targetPoints: String(byId("point-card-target-input").value || "").slice(0, 4),
+      expiryMode: getCheckedDraftValue("pointCardExpiryMode"),
+      expiresOn: String(byId("point-card-expires-on-input").value || "").slice(0, 10),
+      rewardRules: pointCardRewardRules.slice(0, 20).map(function (rule) {
+        return {
+          points: Number(rule.points),
+          lotteryTypeId: String(rule.lotteryTypeId || "").slice(0, 40),
+        };
+      }),
+    };
+  }
+
+  function captureLotteryConfigDraft() {
+    return {
+      lotteryTypeId: String(selectedLotteryTypeId || "").slice(0, 40),
+      creating: Boolean(isCreatingLotteryType),
+      name: String(byId("lottery-type-name-input").value || "").slice(0, 40),
+      prizes: lotteryPrizes.slice(0, 12).map(function (prize) {
+        return {
+          prizeId: String(prize.prizeId || "").slice(0, 40),
+          label: String(prize.label || "").slice(0, 40),
+          color: String(prize.color || "").slice(0, 7),
+          probability: Number(prize.probability),
+          showOnTicket: Boolean(prize.showOnTicket),
+        };
+      }),
+    };
+  }
+
+  function getAdminDraftSectionData(envelope, section) {
+    var entry = envelope.sections[section];
+    return entry && entry.data && typeof entry.data === "object"
+      ? entry.data
+      : null;
+  }
+
+  function restorePointAdminDrafts(envelope) {
+    var restored = false;
+    var pointTypeDraft = getAdminDraftSectionData(envelope, "pointType");
+    if (pointTypeDraft) {
+      byId("point-amount-input").value = /^\d{0,4}$/.test(pointTypeDraft.pointAmount)
+        ? pointTypeDraft.pointAmount
+        : "";
+      if (pointTypeDraft.expiryMode === "limited" || pointTypeDraft.expiryMode === "unlimited") {
+        setCheckedDraftValue("expiryMode", pointTypeDraft.expiryMode);
+      }
+      if (
+        pointTypeDraft.redemptionMode === "once_per_member" ||
+        pointTypeDraft.redemptionMode === "repeatable" ||
+        pointTypeDraft.redemptionMode === "single_member"
+      ) {
+        setCheckedDraftValue("redemptionMode", pointTypeDraft.redemptionMode);
+      }
+      restored = true;
+    }
+
+    var campaignDraft = getAdminDraftSectionData(envelope, "pointCampaign");
+    if (campaignDraft) {
+      var hasDraftPointType = pointTypes.some(function (pointType) {
+        return (
+          pointType.pointTypeId === campaignDraft.pointTypeId &&
+          pointType.status === "active"
+        );
+      });
+      if (hasDraftPointType) {
+        selectedPointTypeId = campaignDraft.pointTypeId;
+        renderPointTypes();
+      }
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(campaignDraft.expiresAt)) {
+        byId("point-expiry-input").value = campaignDraft.expiresAt;
+      }
+      restored = true;
+    }
+    syncPointTypeControls();
+    return restored;
+  }
+
+  function restoreLotteryAdminDrafts(envelope) {
+    var restored = false;
+    var pointCardDraft = getAdminDraftSectionData(envelope, "pointCard");
+    if (pointCardDraft) {
+      if (/^\d{0,4}$/.test(pointCardDraft.targetPoints)) {
+        byId("point-card-target-input").value = pointCardDraft.targetPoints;
+      }
+      if (
+        pointCardDraft.expiryMode === "limited" ||
+        pointCardDraft.expiryMode === "unlimited"
+      ) {
+        setCheckedDraftValue("pointCardExpiryMode", pointCardDraft.expiryMode);
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(pointCardDraft.expiresOn)) {
+        byId("point-card-expires-on-input").value = pointCardDraft.expiresOn;
+      }
+      if (Array.isArray(pointCardDraft.rewardRules)) {
+        var restoredRules = pointCardDraft.rewardRules
+          .slice(0, 20)
+          .map(function (rule) {
+            return {
+              points: Number(rule && rule.points),
+              lotteryTypeId: String((rule && rule.lotteryTypeId) || "").slice(0, 40),
+            };
+          })
+          .filter(function (rule) {
+            return Number.isInteger(rule.points) && rule.points >= 1 && rule.points <= 9999;
+          });
+        if (restoredRules.length) pointCardRewardRules = restoredRules;
+      }
+      syncPointCardExpiryControls();
+      renderPointCardRewardRows();
+      restored = true;
+    }
+
+    var lotteryDraft = getAdminDraftSectionData(envelope, "lotteryConfig");
+    if (lotteryDraft) {
+      var selectedType = lotteryTypes.find(function (type) {
+        return type.lotteryTypeId === lotteryDraft.lotteryTypeId;
+      });
+      if (lotteryDraft.creating || selectedType) {
+        isCreatingLotteryType = Boolean(lotteryDraft.creating);
+        selectedLotteryTypeId = isCreatingLotteryType ? "" : selectedType.lotteryTypeId;
+        lotteryConfig = selectedType
+          ? selectedType.lottery
+          : normalizeLotteryConfig({
+              lotteryTypeId: "",
+              configVersion: "",
+              updatedAt: "",
+              prizes: [],
+            });
+        var restoredPrizes = Array.isArray(lotteryDraft.prizes)
+          ? lotteryDraft.prizes.slice(0, 12).map(function (prize) {
+              return {
+                prizeId: String((prize && prize.prizeId) || "").slice(0, 40),
+                label: String((prize && prize.label) || "").slice(0, 40),
+                color: String((prize && prize.color) || "").toUpperCase(),
+                probability: Number(prize && prize.probability),
+                showOnTicket: Boolean(prize && prize.showOnTicket),
+              };
+            }).filter(function (prize) {
+              return (
+                prize.label &&
+                /^#[0-9A-F]{6}$/.test(prize.color) &&
+                Number.isFinite(prize.probability) &&
+                prize.probability > 0 &&
+                prize.probability < 100
+              );
+            })
+          : [];
+        if (restoredPrizes.length >= 2) lotteryPrizes = restoredPrizes;
+        byId("lottery-type-name-input").value = String(lotteryDraft.name || "").slice(0, 40);
+        renderLotteryNamePreview();
+        renderLotteryTypes();
+        renderLotteryConfigMeta();
+        renderLotteryPrizeRows();
+        restored = true;
+      }
+    }
+    updateOperationControls();
+    return restored;
+  }
+
+  function restoreAdminDrafts() {
+    if (adminDraftsRestored || ADMIN_PAGE === "members") return;
+    adminDraftsRestored = true;
+    var envelope = readAdminDrafts();
+    var sectionNames = Object.keys(envelope.sections);
+    isAdminDraftDirty = sectionNames.length > 0;
+    if (!sectionNames.length) return;
+    var restored =
+      ADMIN_PAGE === "points"
+        ? restorePointAdminDrafts(envelope)
+        : restoreLotteryAdminDrafts(envelope);
+    if (restored) {
+      window.setTimeout(function () {
+        showToast("已復原這個工作階段尚未送出的草稿");
+      }, 0);
+    }
+  }
+
+  function bindAdminDraftForm(formId, section, capture) {
+    var form = byId(formId);
+    ["input", "change"].forEach(function (eventName) {
+      form.addEventListener(eventName, function () {
+        saveAdminDraftSection(section, capture());
+      });
+    });
+  }
+
+  function bindAdminDraftProtection() {
+    if (ADMIN_PAGE === "members") return;
+    isAdminDraftDirty = Object.keys(readAdminDrafts().sections).length > 0;
+    window.addEventListener("beforeunload", function (event) {
+      if (!isAdminDraftDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+    if (ADMIN_PAGE === "points") {
+      bindAdminDraftForm("point-type-form", "pointType", capturePointTypeDraft);
+      bindAdminDraftForm(
+        "point-campaign-form",
+        "pointCampaign",
+        capturePointCampaignDraft
+      );
+      return;
+    }
+    bindAdminDraftForm("point-card-setting-form", "pointCard", capturePointCardDraft);
+    bindAdminDraftForm(
+      "lottery-config-form",
+      "lotteryConfig",
+      captureLotteryConfigDraft
+    );
   }
 
   function loadConfig() {
@@ -204,6 +536,8 @@
     return sendAdminRequest("adminListMembers", {
       page: page,
       pageSize: getConfiguredPageSize(),
+      query: byId("search-input").value.trim(),
+      memberStatus: byId("status-filter").value,
     })
       .then(function (response) {
         if (expectedBootVersion !== bootVersion || thisListRequest !== listRequestVersion) return;
@@ -274,7 +608,7 @@
       });
   }
 
-  function fetchPointHistory(expectedBootVersion, preserveDashboard) {
+  function fetchPointHistory(expectedBootVersion, preserveDashboard, append) {
     if (isPointHistoryLoading || isPointMutationLoading) return Promise.resolve();
     var thisHistoryRequest = ++pointHistoryRequestVersion;
     var refreshButton = byId("refresh-point-history-button");
@@ -299,7 +633,11 @@
       setConnection("正在同步紀錄", "loading");
     }
 
-    return sendAdminRequest("adminListPointHistory", {})
+    if (!append) pointHistoryNextCursor = 0;
+    return sendAdminRequest("adminListPointHistory", {
+      cursor: append ? pointHistoryNextCursor : 0,
+      limit: 20,
+    })
       .then(function (response) {
         if (
           expectedBootVersion !== bootVersion ||
@@ -312,7 +650,15 @@
           throw createError("INVALID_RESPONSE", "後台回傳的點數使用紀錄格式不完整。");
         }
         clearInvalidTokenRecoveryGuard();
-        renderAdminPointHistory(response.data.history, response.data.hasMore);
+        pointHistoryNextCursor = Math.max(
+          0,
+          Math.floor(Number(response.data.nextCursor) || 0)
+        );
+        renderAdminPointHistory(
+          response.data.history,
+          response.data.hasMore,
+          append === true
+        );
         setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
       })
       .catch(function (error) {
@@ -395,7 +741,7 @@
       });
   }
 
-  function fetchLotteryHistory(expectedBootVersion, preserveDashboard) {
+  function fetchLotteryHistory(expectedBootVersion, preserveDashboard, append) {
     if (isLotteryHistoryLoading || isLotteryMutationLoading) {
       return Promise.resolve();
     }
@@ -422,7 +768,11 @@
       setConnection("正在同步紀錄", "loading");
     }
 
-    return sendAdminRequest("adminListLotteryDraws", {})
+    if (!append) lotteryHistoryNextCursor = 0;
+    return sendAdminRequest("adminListLotteryDraws", {
+      cursor: append ? lotteryHistoryNextCursor : 0,
+      limit: 20,
+    })
       .then(function (response) {
         if (
           expectedBootVersion !== bootVersion ||
@@ -435,7 +785,15 @@
           throw createError("INVALID_RESPONSE", "後台回傳的抽獎紀錄格式不完整。");
         }
         clearInvalidTokenRecoveryGuard();
-        renderLotteryHistory(response.data.draws, response.data.hasMore);
+        lotteryHistoryNextCursor = Math.max(
+          0,
+          Math.floor(Number(response.data.nextCursor) || 0)
+        );
+        renderLotteryHistory(
+          response.data.draws,
+          response.data.hasMore,
+          append === true
+        );
         if (preserveDashboard) {
           setConnection(
             isDemoSession ? "展示模式" : "安全連線",
@@ -467,13 +825,86 @@
   }
 
   function sendAdminRequest(action, fields) {
+    fields = fields || {};
+    var isMutation = ADMIN_MUTATION_ACTIONS.indexOf(action) !== -1;
+    var requestId = isMutation
+      ? getPendingAdminMutationRequestId(action, fields)
+      : undefined;
     return window.MemberApi.sendRequest({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
       action: action,
       idToken: currentIdToken,
       context: getLiffContext(),
-      fields: fields || {},
+      fields: fields,
+      requestId: requestId,
+      onProgress: handleAdminRequestProgress,
+    }).then(
+      function (response) {
+        if (isMutation && (!response || response.ok !== true)) {
+          clearPendingAdminMutationRequestId(action, fields);
+        }
+        return response;
+      },
+      function (error) {
+        if (isMutation && (!error || error.code !== "REQUEST_STATUS_UNKNOWN")) {
+          clearPendingAdminMutationRequestId(action, fields);
+        }
+        throw error;
+      }
+    );
+  }
+
+  function getPendingAdminMutationRequestId(action, fields) {
+    var key = action + ":" + JSON.stringify(fields || {});
+    if (!pendingAdminMutationRequestIds[key]) {
+      pendingAdminMutationRequestIds[key] = window.MemberApi.createRequestId();
+    }
+    return pendingAdminMutationRequestIds[key];
+  }
+
+  function clearPendingAdminMutationRequestId(action, fields) {
+    delete pendingAdminMutationRequestIds[
+      action + ":" + JSON.stringify(fields || {})
+    ];
+  }
+
+  function confirmAdminMutationResponse(response) {
+    var requestId = String((response && response.requestId) || "");
+    if (!requestId) return;
+    Object.keys(pendingAdminMutationRequestIds).forEach(function (key) {
+      if (pendingAdminMutationRequestIds[key] === requestId) {
+        delete pendingAdminMutationRequestIds[key];
+      }
     });
+  }
+
+  function handleAdminRequestProgress(progress) {
+    progress = progress && typeof progress === "object" ? progress : {};
+    if (progress.phase === "complete") {
+      setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
+      return;
+    }
+    if (progress.phase === "fallback") {
+      setConnection("切換連線方式", "loading");
+      return;
+    }
+    if (progress.phase === "failed") {
+      setConnection(
+        progress.errorCode === "REQUEST_STATUS_UNKNOWN"
+          ? "等待重新確認"
+          : "同步失敗",
+        "error"
+      );
+      return;
+    }
+    if (progress.phase === "connecting") {
+      setConnection(
+        ADMIN_MUTATION_ACTIONS.indexOf(progress.action) !== -1
+          ? "正在安全寫入"
+          : "正在同步資料",
+        "loading"
+      );
+    }
   }
 
   function handleLogin() {
@@ -535,6 +966,7 @@
     byId("sync-label").textContent = "最後同步：" + formatTime(new Date());
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("dashboard-state");
+    restoreAdminDrafts();
   }
 
   function renderPointDashboard(pointData) {
@@ -566,6 +998,7 @@
     updateOperationControls();
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("dashboard-state");
+    restoreAdminDrafts();
   }
 
   function renderPointWorkspaceError(error) {
@@ -626,6 +1059,7 @@
       isDemoSession ? "setup" : "connected"
     );
     setView("dashboard-state");
+    restoreAdminDrafts();
   }
 
   function renderDemoDashboard() {
@@ -1150,6 +1584,7 @@
         clearPointCardSettingError();
         renderPointCardRewardRows();
         updateOperationControls();
+        saveAdminDraftSection("pointCard", capturePointCardDraft());
       });
 
       item.appendChild(order);
@@ -1186,6 +1621,7 @@
     clearPointCardSettingError();
     renderPointCardRewardRows();
     updateOperationControls();
+    saveAdminDraftSection("pointCard", capturePointCardDraft());
   }
 
   function validatePointCardRewardRules(targetPoints) {
@@ -1288,6 +1724,13 @@
 
   function beginCreateLotteryType() {
     if (isLotteryLoading || isLotteryMutationLoading) return;
+    if (
+      hasAdminDraftSection("lotteryConfig") &&
+      !window.confirm("目前轉盤有尚未儲存的修改。要放棄草稿並新增轉盤嗎？")
+    ) {
+      return;
+    }
+    clearAdminDraftSection("lotteryConfig");
     isCreatingLotteryType = true;
     selectedLotteryTypeId = "";
     lotteryConfig = normalizeLotteryConfig({
@@ -1304,6 +1747,7 @@
     renderLotteryPrizeRows();
     clearLotteryConfigError();
     updateOperationControls();
+    saveAdminDraftSection("lotteryConfig", captureLotteryConfigDraft());
     byId("lottery-type-name-input").focus();
   }
 
@@ -1499,12 +1943,14 @@
       inputs[inputs.length - 1].focus();
       inputs[inputs.length - 1].select();
     }
+    saveAdminDraftSection("lotteryConfig", captureLotteryConfigDraft());
   }
 
   function removeLotteryPrize(index) {
     if (isLotteryMutationLoading || lotteryPrizes.length <= 2) return;
     lotteryPrizes.splice(index, 1);
     renderLotteryPrizeRows();
+    saveAdminDraftSection("lotteryConfig", captureLotteryConfigDraft());
   }
 
   function updateLotteryProbabilityTotal() {
@@ -1645,6 +2091,7 @@
           lottery: savedLottery,
         });
       }
+      clearAdminDraftSection("lotteryConfig");
       selectLotteryType(savedLotteryTypeId);
       showToast(
         selectedDemoType
@@ -1674,11 +2121,13 @@
         var savedType = normalizeLotteryTypes([
           response.data.lotteryType,
         ])[0];
+        confirmAdminMutationResponse(response);
         var existingIndex = lotteryTypes.findIndex(function (type) {
           return type.lotteryTypeId === savedType.lotteryTypeId;
         });
         if (existingIndex >= 0) lotteryTypes[existingIndex] = savedType;
         else lotteryTypes.push(savedType);
+        clearAdminDraftSection("lotteryConfig");
         selectLotteryType(savedType.lotteryTypeId);
         showToast(
           response.data.duplicate
@@ -1765,6 +2214,7 @@
       });
       renderPointCardSetting();
       clearPointCardSettingError();
+      clearAdminDraftSection("pointCard");
       showToast("預覽：集點卡規則已更新");
       return;
     }
@@ -1783,6 +2233,7 @@
           throw createError("INVALID_RESPONSE", "後台回傳的集點卡規則格式不完整。");
         }
         pointCardSetting = normalizePointCardSetting(response.data.pointCardSetting);
+        confirmAdminMutationResponse(response);
         pointCardRewardRules = pointCardSetting.rewardRules.map(function (rule) {
           return {
             points: rule.points,
@@ -1791,6 +2242,7 @@
         });
         renderPointCardSetting();
         clearPointCardSettingError();
+        clearAdminDraftSection("pointCard");
         showToast(
           response.data.changed === false
             ? "集點卡規則未變更"
@@ -1851,6 +2303,7 @@
         ) {
           throw createError("INVALID_RESPONSE", "後台未確認轉盤類型已刪除。");
         }
+        confirmAdminMutationResponse(response);
         lotteryTypes = lotteryTypes.filter(function (type) {
           return type.lotteryTypeId !== selectedType.lotteryTypeId;
         });
@@ -1988,6 +2441,7 @@
     list.setAttribute("aria-busy", "true");
     byId("lottery-history-empty").hidden = true;
     byId("lottery-history-error").hidden = true;
+    byId("load-more-lottery-history-button").disabled = true;
   }
 
   function renderLotteryHistoryError(errorValue) {
@@ -1999,10 +2453,12 @@
     byId("lottery-history-error").textContent =
       "抽獎紀錄載入失敗：" + normalizeError(errorValue).message;
     byId("lottery-history-error").hidden = false;
+    byId("load-more-lottery-history-button").disabled = false;
   }
 
-  function renderLotteryHistory(draws, hasMore) {
-    lotteryDraws = (Array.isArray(draws) ? draws : []).map(normalizeLotteryDraw);
+  function renderLotteryHistory(draws, hasMore, append) {
+    var nextDraws = (Array.isArray(draws) ? draws : []).map(normalizeLotteryDraw);
+    lotteryDraws = append ? lotteryDraws.concat(nextDraws) : nextDraws;
     lotteryDrawsHaveMore = Boolean(hasMore);
     var list = byId("lottery-history-list");
     var fragment = document.createDocumentFragment();
@@ -2011,11 +2467,14 @@
     list.hidden = lotteryDraws.length === 0;
     list.setAttribute("aria-busy", "false");
     byId("lottery-history-empty").hidden = lotteryDraws.length !== 0;
+    byId("load-more-lottery-history-button").hidden = !lotteryDrawsHaveMore;
+    byId("load-more-lottery-history-button").disabled = false;
+    byId("export-lottery-history-button").disabled = lotteryDraws.length === 0;
     byId("lottery-history-summary").textContent = lotteryDraws.length
-      ? "最近 " +
+      ? "已載入 " +
         lotteryDraws.length +
         " 筆抽獎紀錄" +
-        (lotteryDrawsHaveMore ? "（僅顯示最新 50 筆）" : "")
+        (lotteryDrawsHaveMore ? "，可繼續載入" : "")
       : "查看會員使用集點卡節點資格的抽獎結果。";
 
     lotteryDraws.forEach(function (draw) {
@@ -2102,6 +2561,7 @@
       pointTypes.unshift(normalizePointType(previewType));
       selectedPointTypeId = previewType.pointTypeId;
       input.value = "";
+      clearAdminDraftSection("pointType");
       renderPointTypes();
       showToast("預覽：已新增 " + pointAmount + " 點類型");
       return;
@@ -2122,6 +2582,7 @@
           throw createError("INVALID_RESPONSE", "後台回傳的點數類型格式不完整。");
         }
         var pointType = normalizePointType(response.data.pointType);
+        confirmAdminMutationResponse(response);
         var existingIndex = pointTypes.findIndex(function (item) {
           return item.pointTypeId === pointType.pointTypeId;
         });
@@ -2129,6 +2590,7 @@
         else pointTypes.unshift(pointType);
         selectedPointTypeId = pointType.pointTypeId;
         input.value = "";
+        clearAdminDraftSection("pointType");
         renderPointTypes();
         showToast("已新增 " + pointType.label);
       })
@@ -2176,6 +2638,7 @@
     }
 
     if (isDemoSession) {
+      clearAdminDraftSection("pointCampaign");
       showPointQrDialog(
         {
           label: pointType.label,
@@ -2219,11 +2682,13 @@
         ) {
           throw createError("INVALID_RESPONSE", "後台回傳的 QR 活動格式不完整。");
         }
+        confirmAdminMutationResponse(response);
         showPointQrDialog(
           response.data.campaign,
           response.data.claimUrl,
           false
         );
+        clearAdminDraftSection("pointCampaign");
         showToast("點數 QR Code 已產生");
       })
       .catch(function (error) {
@@ -2330,6 +2795,7 @@
     list.setAttribute("aria-busy", "true");
     empty.hidden = true;
     error.hidden = true;
+    byId("load-more-point-history-button").disabled = true;
   }
 
   function renderAdminPointHistoryError(errorValue) {
@@ -2344,22 +2810,29 @@
     empty.hidden = true;
     error.textContent = "點數使用紀錄載入失敗：" + message;
     error.hidden = false;
+    byId("load-more-point-history-button").disabled = false;
   }
 
-  function renderAdminPointHistory(history, hasMore) {
+  function renderAdminPointHistory(history, hasMore, append) {
     var loading = byId("point-history-loading");
     var list = byId("admin-point-history-list");
     var empty = byId("point-history-empty");
     var error = byId("point-history-error");
     var summary = byId("point-history-summary");
     var fragment = document.createDocumentFragment();
-    pointHistory = (Array.isArray(history) ? history : []).map(normalizePointHistoryEntry);
+    var nextHistory = (Array.isArray(history) ? history : []).map(
+      normalizePointHistoryEntry
+    );
+    pointHistory = append ? pointHistory.concat(nextHistory) : nextHistory;
     pointHistoryHasMore = Boolean(hasMore);
     loading.hidden = true;
     error.hidden = true;
     list.hidden = pointHistory.length === 0;
     list.setAttribute("aria-busy", "false");
     empty.hidden = pointHistory.length !== 0;
+    byId("load-more-point-history-button").hidden = !pointHistoryHasMore;
+    byId("load-more-point-history-button").disabled = false;
+    byId("export-point-history-button").disabled = pointHistory.length === 0;
 
     if (pointHistory.length === 0) {
       list.replaceChildren();
@@ -2368,10 +2841,10 @@
     }
 
     summary.textContent =
-      "最近 " +
+      "已載入 " +
       pointHistory.length +
       " 筆領取紀錄" +
-      (pointHistoryHasMore ? "（僅顯示最新 50 筆）" : "");
+      (pointHistoryHasMore ? "，可繼續載入" : "");
     pointHistory.forEach(function (entry) {
       var item = document.createElement("li");
       var main = document.createElement("div");
@@ -2412,6 +2885,65 @@
     if (mode === "repeatable") return "可重複";
     if (mode === "single_member") return "單一會員";
     return "每位會員一次";
+  }
+
+  function downloadAdminHistoryCsv(kind) {
+    var isLottery = kind === "lottery";
+    var filename = isLottery ? "lottery-history.csv" : "point-history.csv";
+    var rows = isLottery
+      ? lotteryDraws.map(function (draw) {
+          return [
+            draw.drawnAt,
+            draw.memberId,
+            draw.memberDisplayName,
+            draw.lotteryTypeName,
+            draw.prizeLabel,
+            draw.pointBalance,
+          ];
+        })
+      : pointHistory.map(function (entry) {
+          return [
+            entry.redeemedAt,
+            entry.memberId,
+            entry.campaignId,
+            entry.pointTypeId,
+            entry.points,
+            entry.balanceAfter,
+            formatPointHistoryMode(entry.redemptionMode),
+          ];
+        });
+    var headers = isLottery
+      ? ["時間", "會員編號", "會員名稱", "轉盤", "獎項", "累計點數"]
+      : [
+          "時間",
+          "會員編號",
+          "活動編號",
+          "點數類型",
+          "獲得點數",
+          "領取後點數",
+          "領取規則",
+        ];
+    if (!rows.length) return;
+    var csv = [headers].concat(rows).map(function (row) {
+      return row.map(escapeAdminCsvCell).join(",");
+    }).join("\r\n");
+    var blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    var url = window.URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function () {
+      window.URL.revokeObjectURL(url);
+    }, 0);
+  }
+
+  function escapeAdminCsvCell(value) {
+    var text = String(value == null ? "" : value);
+    if (/^[=+\-@]/.test(text)) text = "'" + text;
+    return '"' + text.replace(/"/g, '""') + '"';
   }
 
   function renderPointTypes() {
@@ -2522,6 +3054,7 @@
     selectedPointTypeId = match.pointTypeId;
     clearPointFormError("point-campaign-error");
     renderPointTypes();
+    saveAdminDraftSection("pointCampaign", capturePointCampaignDraft());
   }
 
   function getCheckedValue(name) {
@@ -2624,6 +3157,7 @@
         if (deletedType.status !== "inactive") {
           throw createError("INVALID_RESPONSE", "後台未確認點數類型已刪除。");
         }
+        confirmAdminMutationResponse(response);
         var index = pointTypes.findIndex(function (item) {
           return item.pointTypeId === deletedType.pointTypeId;
         });
@@ -2872,30 +3406,21 @@
   function renderMemberRows() {
     var list = byId("member-list");
     var fragment = document.createDocumentFragment();
-    var query = byId("search-input").value.trim().toLocaleLowerCase("zh-TW");
-    var statusFilter = byId("status-filter").value;
-    var visibleMembers = members.filter(function (member) {
-      var matchesStatus = statusFilter === "all" || member.status === statusFilter;
-      var haystack = [member.displayName, member.memberId, member.phone, member.birthday]
-        .join(" ")
-        .toLocaleLowerCase("zh-TW");
-      return matchesStatus && (!query || haystack.indexOf(query) !== -1);
-    });
 
-    visibleMembers.forEach(function (member, index) {
+    members.forEach(function (member, index) {
       fragment.appendChild(createMemberRow(member, index));
     });
     list.replaceChildren(fragment);
-    byId("empty-state").hidden = visibleMembers.length !== 0;
-    byId("table-wrap").hidden = visibleMembers.length === 0;
+    byId("empty-state").hidden = members.length !== 0;
+    byId("table-wrap").hidden = members.length === 0;
   }
 
   function scheduleMemberRowsRender() {
-    if (memberSearchFrame) return;
-    memberSearchFrame = window.requestAnimationFrame(function () {
+    window.clearTimeout(memberSearchFrame);
+    memberSearchFrame = window.setTimeout(function () {
       memberSearchFrame = 0;
-      renderMemberRows();
-    });
+      fetchMembers(bootVersion, true, 1);
+    }, 320);
   }
 
   function createMemberRow(member, index) {
@@ -3061,6 +3586,8 @@
         if (!response.data || !response.data.member) {
           throw createError("INVALID_RESPONSE", "後台回傳的會員狀態格式不完整。");
         }
+        normalizeMember(response.data.member);
+        confirmAdminMutationResponse(response);
         applyLocalMemberUpdate(member.memberId, accessStatus, response.data.member);
         closeDenyDialog();
         showToast(accessStatus === "approved" ? "已恢復會員使用" : "已停用會員");
@@ -3291,6 +3818,8 @@
       LOTTERY_DATA_ERROR: "轉盤或抽獎工作表資料不一致，請先檢查內容。",
       LOTTERY_SCHEMA_MISMATCH: "轉盤工作表欄位版本不符，請重新執行 setup()。",
       REQUEST_ID_CONFLICT: "同一請求已被用於不同操作，請重新整理後再試。",
+      REQUEST_STATUS_UNKNOWN:
+        "後台可能仍在完成這次操作。請保留目前內容並再次送出，系統會用同一請求安全核對。",
       CONFIG_ERROR: "管理後台尚未完成設定，請重新執行管理 GAS setup()。",
     };
     return {
@@ -3574,6 +4103,7 @@
     byId("unauthorized-logout-button").addEventListener("click", handleLogout);
     byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoDashboard);
+    bindAdminDraftProtection();
 
     if (ADMIN_PAGE === "points") {
       byId("refresh-points-button").addEventListener("click", function () {
@@ -3591,6 +4121,15 @@
           return;
         }
         fetchPointHistory(bootVersion, true);
+      });
+      byId("load-more-point-history-button").addEventListener(
+        "click",
+        function () {
+          fetchPointHistory(bootVersion, true, true);
+        }
+      );
+      byId("export-point-history-button").addEventListener("click", function () {
+        downloadAdminHistoryCsv("points");
       });
       byId("point-type-form").addEventListener("submit", handleCreatePointType);
       byId("point-campaign-form").addEventListener("submit", handleCreatePointCampaign);
@@ -3645,6 +4184,18 @@
           fetchLotteryHistory(bootVersion, true);
         }
       );
+      byId("load-more-lottery-history-button").addEventListener(
+        "click",
+        function () {
+          fetchLotteryHistory(bootVersion, true, true);
+        }
+      );
+      byId("export-lottery-history-button").addEventListener(
+        "click",
+        function () {
+          downloadAdminHistoryCsv("lottery");
+        }
+      );
       byId("add-lottery-prize-button").addEventListener("click", addLotteryPrize);
       byId("point-card-setting-form").addEventListener(
         "submit",
@@ -3676,6 +4227,14 @@
         beginCreateLotteryType
       );
       byId("lottery-type-select").addEventListener("change", function (event) {
+        if (
+          hasAdminDraftSection("lotteryConfig") &&
+          !window.confirm("目前轉盤有尚未儲存的修改。要放棄草稿並切換轉盤嗎？")
+        ) {
+          event.target.value = isCreatingLotteryType ? "" : selectedLotteryTypeId;
+          return;
+        }
+        clearAdminDraftSection("lotteryConfig");
         selectLotteryType(event.target.value);
       });
       byId("lottery-type-name-input").addEventListener("input", function () {
@@ -3722,6 +4281,9 @@
     byId("status-filter").addEventListener("change", scheduleMemberRowsRender);
     byId("filter-form").addEventListener("submit", function (event) {
       event.preventDefault();
+      window.clearTimeout(memberSearchFrame);
+      memberSearchFrame = 0;
+      fetchMembers(bootVersion, true, 1);
     });
     byId("cancel-deny-button").addEventListener("click", closeDenyDialog);
     byId("confirm-deny-button").addEventListener("click", function () {

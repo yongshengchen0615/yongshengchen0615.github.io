@@ -20,8 +20,8 @@ function getTopLevelFunctionContaining(source, marker) {
   return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
-test("in-place member lottery runs five seconds with a continuous fast-to-slow curve", () => {
-  assert.match(script, /SPIN_DURATION_MS\s*=\s*5000/);
+test("in-place member lottery runs three seconds with a continuous fast-to-slow curve", () => {
+  assert.match(script, /SPIN_DURATION_MS\s*=\s*3000/);
   assert.match(script, /FINAL_SPIN_TURNS\s*=\s*8/);
   assert.match(
     script,

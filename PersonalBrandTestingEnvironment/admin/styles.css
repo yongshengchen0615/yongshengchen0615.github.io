@@ -675,6 +675,19 @@ button:disabled {
   padding: 1.35rem 0;
 }
 
+.history-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.history-load-more {
+  width: min(100%, 22rem);
+  margin: 1rem auto 0;
+}
+
 .admin-point-history-status {
   display: grid;
   gap: 0.65rem;

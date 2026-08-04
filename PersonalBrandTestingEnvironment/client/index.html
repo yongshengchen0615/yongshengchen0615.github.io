@@ -20,8 +20,6 @@
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="../shared/liff-runtime.js"></script>
-    <script defer src="../shared/lottery-wheel.js"></script>
-    <script defer src="member-lottery.js"></script>
     <script defer src="script.js"></script>
   </head>
   <body>
@@ -164,8 +162,8 @@
                   <div class="pass-profile-heading">
                     <strong id="member-display-name">—</strong>
                     <span class="member-consumption-hours">
-                      <small>目前消費時數</small>
-                      <b><output id="member-point-balance" aria-label="目前消費時數" aria-live="polite">0</output><span> 小時</span></b>
+                      <small>累計點數</small>
+                      <b><output id="member-point-balance" aria-label="累計點數" aria-live="polite">—</output><span> 點</span></b>
                     </span>
                   </div>
                   <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
@@ -187,10 +185,10 @@
                 <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
                 <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
                 <div class="pass-points">
-                  <small>目前已集</small>
+                  <small>本卡進度</small>
                   <strong><output id="member-point-card-current" aria-label="本張集點卡目前點數" aria-live="polite">0</output><span> 點</span></strong>
                   <span class="pass-point-meta">
-                    本輪目標 <output id="member-point-card-target">—</output> 點
+                    目標 <output id="member-point-card-target">—</output> 點
                   </span>
                   <span class="pass-point-expiry" id="member-point-card-expiry">集點卡無期限</span>
                   <span class="pass-point-stars" id="member-point-card-stars" role="img" aria-label="尚未取得集點卡資料"></span>
@@ -353,6 +351,27 @@
       <p class="scanner-status" id="point-scanner-status" role="status" aria-live="polite">
         正在啟動相機…
       </p>
+      <div class="scanner-recovery" id="point-scanner-recovery" hidden>
+        <p>你可以重新開啟相機，或貼上管理員提供的完整 LIFF 集點連結。</p>
+        <label for="point-qr-link-input">集點連結</label>
+        <input
+          id="point-qr-link-input"
+          type="url"
+          inputmode="url"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="https://liff.line.me/..."
+        />
+        <div class="scanner-recovery-actions">
+          <button class="secondary-button" id="point-scanner-retry-button" type="button">
+            重試相機
+          </button>
+          <button class="primary-button" id="point-scanner-link-button" type="button">
+            <span>使用這個連結</span>
+          </button>
+        </div>
+      </div>
       <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
         取消掃描
       </button>
@@ -427,6 +446,35 @@
             票券較多，目前先顯示前 50 張。
           </p>
         </section>
+      </div>
+    </dialog>
+
+    <dialog
+      class="modal member-ticket-confirm-dialog"
+      id="member-ticket-confirm-dialog"
+      aria-labelledby="member-ticket-confirm-title"
+      aria-describedby="member-ticket-confirm-description"
+    >
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">USE LOTTERY TICKET</p>
+          <h2 id="member-ticket-confirm-title">使用這張抽獎券？</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="member-ticket-confirm-cancel-button"
+          type="button"
+          aria-label="取消使用抽獎券"
+        >×</button>
+      </div>
+      <div class="modal-body member-ticket-confirm-copy">
+        <p id="member-ticket-confirm-description">
+          確認後會鎖定本次抽獎，請保持頁面開啟直到結果顯示。
+        </p>
+        <strong id="member-ticket-confirm-detail">正在確認抽獎券</strong>
+        <button class="primary-button full-width" id="member-ticket-confirm-button" type="button">
+          <span>確認使用這張券</span>
+        </button>
       </div>
     </dialog>
 

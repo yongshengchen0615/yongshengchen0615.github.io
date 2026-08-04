@@ -791,6 +791,49 @@ test("member API accepts one preparation action and authenticated performance re
   assert.doesNotThrow(() => gas.assertSupportedAction_("reportClientPerformance"));
 });
 
+test("fast member identity sync is an authenticated public action", () => {
+  const gas = createGasContext();
+  let verifiedChannel = "";
+  gas.getConfig_ = () => ({ lineChannelId: "2010787602" });
+  gas.verifyLineIdToken_ = (_token, channelId) => {
+    verifiedChannel = channelId;
+    return createIdentity();
+  };
+  gas.upsertMember_ = (_identity, request) => ({
+    data: { action: request.action },
+  });
+
+  const result = gas.handleMemberRequest_({
+    action: "upsertMemberIdentity",
+    idToken: "header.payload.signature",
+  });
+
+  assert.equal(verifiedChannel, "2010787602");
+  assert.equal(result.data.action, "upsertMemberIdentity");
+});
+
+test("member card summary loads through a separate authenticated read action", () => {
+  const gas = createGasContext();
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+  });
+  gas.getConfig_ = () => ({ lineChannelId: "2010787602" });
+  gas.verifyLineIdToken_ = () => createIdentity();
+
+  const result = gas.handleMemberRequest_({
+    action: "getMemberCardSummary",
+    idToken: "header.payload.signature",
+    requestId: "request-card-summary",
+  });
+
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(result.data.pointBalance, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result.data.cardSummary)),
+    expectedPointCardSummary(gas)
+  );
+});
+
 test("LINE provider errors are public-safe and distinguish throttling", () => {
   let responseCode = 400;
   const gas = createGasContext({
@@ -1464,6 +1507,40 @@ test("member login does not scan complete point and lottery ledgers", () => {
 
   assert.equal(result.data.access.allowed, true);
   assert.deepEqual(broadScans, []);
+});
+
+test("fast member sync returns identity before point-card aggregation", () => {
+  const gas = createGasContext();
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+  });
+  let cardReads = 0;
+  gas.getMemberPointCardStatusForConfig_ = function () {
+    cardReads += 1;
+    return { totalPoints: 99 };
+  };
+
+  const result = gas.upsertMember_(
+    createIdentity(),
+    {
+      action: "upsertMemberIdentity",
+      requestId: "request-member-identity",
+      context: {
+        type: "external",
+        os: "web",
+        language: "zh-TW",
+        inClient: false,
+        viewType: "full",
+      },
+    },
+    {}
+  );
+
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(result.data.member.memberId, "MBR-ABCDEF1234");
+  assert.equal(result.data.member.pointBalance, null);
+  assert.equal(result.data.cardSummary, null);
+  assert.equal(cardReads, 0);
 });
 
 test("member login releases its mutation lock before reading the current card", () => {

@@ -1523,6 +1523,48 @@ test("approved member listing is bounded and omits all internal identifiers", ()
   assert.equal(result.data.members[0].birthday, "1990-05-20");
 });
 
+test("member search filters the complete backend dataset before pagination", () => {
+  const gas = createGasContext();
+  const members = [
+    createMemberRow(gas),
+    createMemberRow(gas, {
+      memberId: "MBR-REMOTE0001",
+      lineUserId: `U${"d".repeat(32)}`,
+      displayName: "遠端搜尋會員",
+      joinedAt: new Date("2026-02-01T00:00:00.000Z"),
+    }),
+    createMemberRow(gas, {
+      memberId: "MBR-SECOND0002",
+      lineUserId: `U${"e".repeat(32)}`,
+      displayName: "其他會員",
+      joinedAt: new Date("2026-03-01T00:00:00.000Z"),
+    }),
+  ];
+  installSpreadsheet(
+    gas,
+    createSpreadsheet({
+      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
+      Members: createSheet("Members", gas.MEMBER_HEADERS, members),
+    })
+  );
+
+  const result = gas.adminListMembers_(
+    identity(),
+    {
+      requestId: "request-global-member-search",
+      page: 1,
+      pageSize: 1,
+      query: "遠端搜尋",
+      memberStatus: "all",
+    },
+    configFor(gas)
+  );
+
+  assert.equal(result.data.pagination.total, 1);
+  assert.equal(result.data.members[0].memberId, "MBR-REMOTE0001");
+  assert.equal(result.data.metrics.all, 3);
+});
+
 test("member access update uses CAS, preserves profile and never returns email", () => {
   const gas = createGasContext();
   const member = createMemberRow(gas, { status: "approved", adminStatus: "legacy-value" });
@@ -1851,6 +1893,126 @@ test("approved administrators can list bounded point history without LINE IDs or
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes(MEMBER_USER_ID), false);
   assert.equal(serialized.includes("request-history-"), false);
+});
+
+test("point history reads one cursor window instead of scanning a 100k-row ledger", () => {
+  const gas = createGasContext();
+  const rangeReads = [];
+  const sheet = {
+    getLastRow() {
+      return 100001;
+    },
+    getRange(startRow, startColumn, rowCount, columnCount) {
+      rangeReads.push({ startRow, startColumn, rowCount, columnCount });
+      return {
+        getValues() {
+          return Array.from({ length: rowCount }, (_, index) =>
+            createPointRedemptionRow(gas, {
+              redemptionId: `RDM-${String(startRow + index).padStart(16, "0")}`,
+              redeemedAt: new Date(2026, 0, 1, 0, 0, startRow + index),
+              requestId: `request-tail-${String(startRow + index).padStart(6, "0")}`,
+              redemptionModeSnapshot: "repeatable",
+            })
+          );
+        },
+      };
+    },
+  };
+
+  const page = gas.readAdminPointHistory_(sheet, 0, 20);
+
+  assert.equal(rangeReads.length, 1);
+  assert.equal(rangeReads[0].rowCount, 21);
+  assert.equal(page.length, 20);
+  assert.equal(page[0].rowNumber, 100001);
+  assert.equal(page.hasMore, true);
+  assert.equal(page.nextCursor, 99982);
+});
+
+test("lottery history reads one cursor window instead of scanning a 100k-row ledger", () => {
+  const gas = createGasContext();
+  const rangeReads = [];
+  const sheet = {
+    getLastRow() {
+      return 100001;
+    },
+    getRange(startRow, startColumn, rowCount, columnCount) {
+      rangeReads.push({ startRow, startColumn, rowCount, columnCount });
+      return {
+        getValues() {
+          return Array.from({ length: rowCount }, (_, index) => {
+            const rowNumber = startRow + index;
+            const row = new Array(gas.LOTTERY_DRAW_HEADERS.length).fill("");
+            const values = {
+              drawId: `LDW-${String(rowNumber).padStart(16, "0")}`,
+              configVersion: "LCF-ABCDEF123456",
+              prizeId: "LPR-ABCDEF1234",
+              prizeLabelSnapshot: "小禮物",
+              prizeColorSnapshot: "#06C755",
+              probabilityBasisPointsSnapshot: 5000,
+              memberId: "MBR-ABCDEF1234",
+              lineUserId: MEMBER_USER_ID,
+              pointsSpent: 0,
+              balanceBefore: 20,
+              balanceAfter: 20,
+              drawnAt: new Date(2026, 0, 1, 0, 0, rowNumber),
+              requestId: `request-draw-tail-${String(rowNumber).padStart(6, "0")}`,
+              lotteryTypeId: "LTY-DEFAULT001",
+              cardSettingVersion: "PCS-DEFAULT00001",
+              cardRoundKey: `PCS-DEFAULT00001:${rowNumber}:5`,
+            };
+            Object.entries(values).forEach(([key, value]) => {
+              row[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
+            });
+            return row;
+          });
+        },
+      };
+    },
+  };
+
+  const page = gas.readAdminLotteryDraws_(sheet, 0, 20);
+
+  assert.equal(rangeReads.length, 1);
+  assert.equal(rangeReads[0].rowCount, 21);
+  assert.equal(page.length, 20);
+  assert.equal(page[0].rowNumber, 100001);
+  assert.equal(page.hasMore, true);
+  assert.equal(page.nextCursor, 99982);
+});
+
+test("fetch and bridge parse bounded admin search and cursor fields", () => {
+  const gas = createGasContext();
+  const payload = {
+    action: "adminListMembers",
+    idToken: "header.payload.signature",
+    requestId: "request-admin-search-fields",
+    callbackOrigin: "https://example.github.io",
+    page: 1,
+    pageSize: 20,
+    query: "會員 ABC",
+    memberStatus: "approved",
+    cursor: 9876,
+    limit: 20,
+  };
+  const fetchRequest = gas.parseRequest_({
+    postData: { contents: JSON.stringify(payload) },
+  });
+  const bridgeRequest = gas.parseRequest_({
+    parameter: {
+      ...payload,
+      transport: "bridge",
+      requestSecret: "a".repeat(48),
+    },
+  });
+
+  for (const request of [fetchRequest, bridgeRequest]) {
+    assert.equal(request.query, "會員 ABC");
+    assert.equal(request.memberStatus, "approved");
+    assert.equal(request.cursor, 9876);
+    assert.equal(request.limit, 20);
+    gas.validateRequestEnvelope_(request);
+  }
 });
 
 test("point type creation is server-labelled, unique and idempotent", () => {

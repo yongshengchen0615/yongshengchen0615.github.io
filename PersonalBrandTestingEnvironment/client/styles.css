@@ -1029,6 +1029,51 @@ code {
   direction: ltr;
 }
 
+.pass-point-stars.is-progress {
+  display: grid;
+  gap: 0.55rem;
+  padding-block: 0.3rem;
+}
+
+.pass-point-progress-track {
+  width: 100%;
+  height: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pass-point-progress-fill {
+  display: block;
+  width: var(--point-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #76e59d, #ffd267);
+  transition: width 360ms ease;
+}
+
+.pass-point-progress-milestones {
+  position: relative;
+  display: block;
+  width: calc(100% - 0.7rem);
+  height: 1rem;
+}
+
+.pass-point-progress-marker {
+  position: absolute;
+  top: 0;
+  color: rgba(255, 210, 103, 0.48);
+  font-size: 0.82rem;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.pass-point-progress-marker.is-collected {
+  color: #ffd267;
+  filter: drop-shadow(0 0 0.28rem rgba(255, 210, 103, 0.42));
+}
+
 .pass-point-star {
   display: grid;
   min-width: 0;
@@ -1765,6 +1810,44 @@ code {
 
 .scanner-status[data-tone="error"] {
   color: var(--danger);
+}
+
+.scanner-recovery {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(165, 59, 49, 0.28);
+  background: rgba(165, 59, 49, 0.055);
+}
+
+.scanner-recovery p,
+.scanner-recovery label {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.scanner-recovery label {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.scanner-recovery input {
+  width: 100%;
+  min-width: 0;
+  height: 3.2rem;
+  padding-inline: 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--paper-soft);
+  font-size: 1rem;
+}
+
+.scanner-recovery-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 0.55rem;
 }
 
 .claim-description {
@@ -3177,7 +3260,11 @@ code {
 
   .app-state {
     min-height: calc(100svh - var(--header-height));
-    padding-block: 3.25rem;
+    padding-block: 1.5rem 2rem;
+  }
+
+  .auth-layout {
+    gap: 1.25rem;
   }
 
   .auth-intro h1,
@@ -3186,14 +3273,25 @@ code {
     font-size: clamp(2.35rem, 11vw, 3.4rem);
   }
 
+  .auth-intro h1 {
+    margin-block: 0.65rem 0.75rem;
+  }
+
+  .auth-intro .intro-copy {
+    font-size: 0.86rem;
+    line-height: 1.55;
+  }
+
   .auth-action {
-    min-height: 32rem;
+    min-height: 21rem;
+    padding-top: 1.25rem;
   }
 
   .identity-orbit {
-    top: 3.2rem;
+    top: 1.25rem;
+    left: auto;
     right: 50%;
-    width: 10.5rem;
+    width: 8rem;
     transform: translateX(50%);
   }
 
@@ -3202,7 +3300,8 @@ code {
   }
 
   .action-copy {
-    margin-top: 15rem;
+    margin-top: 9rem;
+    margin-bottom: 1rem;
   }
 
   .setup-actions {
@@ -3523,6 +3622,27 @@ code {
     grid-template-columns: 1fr;
     gap: 0.3rem;
   }
+}
+
+.member-ticket-confirm-dialog {
+  width: min(calc(100% - 2rem), 30rem);
+}
+
+.member-ticket-confirm-copy {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.member-ticket-confirm-copy p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.member-ticket-confirm-copy strong {
+  padding-block: 1rem;
+  border-block: 1px solid var(--line);
+  font-size: 0.9rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

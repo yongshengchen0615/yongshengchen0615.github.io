@@ -2,7 +2,7 @@
   "use strict";
 
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
-  var SPIN_DURATION_MS = 5000;
+  var SPIN_DURATION_MS = 3000;
   var FINAL_SPIN_TURNS = 8;
   var DIALOG_STATE_IDS = [
     "member-lottery-loading-state",

@@ -23,17 +23,65 @@
 
 會員端與管理端是兩個不同的 LINE Channel、LIFF App 與 GAS 部署。兩端唯一共用的持久資料是 Google Spreadsheet；任何一端都不能改用另一端的 ID Token audience 或 GAS URL。
 
+### 會員端流程圖
+
+```mermaid
+flowchart TD
+  A[會員 LIFF] --> B[讀取 client/config.json]
+  B --> C[LINE LIFF 驗證與 ID Token]
+  C --> D[upsertMemberIdentity<br/>固定 request ID／bridge 單一路徑]
+  D --> E{會員狀態}
+  E -->|未核准| F[顯示存取狀態]
+  E -->|資料未完整| G[完成電話與生日]
+  E -->|可使用| H[先顯示會員身分卡]
+  G --> H
+  H --> I[getMemberCardSummary<br/>讀取可依裝置 fallback]
+  I --> J[顯示累計點數、卡片進度與票券]
+  J --> K{會員操作}
+  K -->|掃描集點| L[相機／貼上 LIFF 連結]
+  K -->|使用票券| M[明確確認票券]
+  K -->|點數紀錄| N[延遲載入本人紀錄]
+  L --> O[redeemPointCampaign<br/>固定 request ID／冪等寫入]
+  M --> P[prepareLotteryDraw<br/>固定 request ID／伺服器決定結果]
+  O --> J
+  P --> Q[3 秒轉盤動畫]
+  Q --> J
+```
+
+### 管理端流程圖
+
+```mermaid
+flowchart TD
+  A[管理 LIFF] --> B[讀取 admin/config.json]
+  B --> C[管理 LINE Channel 驗證]
+  C --> D{Admins.status}
+  D -->|pending| E[等待試算表擁有者核准]
+  D -->|denied| F[拒絕進入]
+  D -->|approved| G{獨立管理頁}
+  G --> H[會員管理<br/>後端全資料搜尋＋分頁]
+  G --> I[點數管理<br/>類型／QR／cursor 紀錄]
+  G --> J[抽獎管理<br/>集點卡／轉盤／cursor 紀錄]
+  H --> K[管理寫入<br/>固定 request ID／bridge 單一路徑]
+  I --> K
+  J --> K
+  I --> L[sessionStorage 頁面草稿／離頁警告]
+  J --> L
+  H --> M[(共用 Spreadsheet)]
+  K --> M
+  L -.不含 Token 或會員資料.-> A
+```
+
 ### 請求生命週期
 
 | 階段 | 通訊與時限 | 一致性／授權 |
 | --- | --- | --- |
 | 公開設定 | 同源 `GET config.json`、不使用瀏覽器快取 | 只允許 LIFF ID、GAS `/exec` URL 與品牌等公開值 |
-| 主要 API | 跨來源 `POST text/plain` JSON；Fetch 9 秒 | request ID 綁定回應，GAS 重新驗證 LINE ID Token |
-| 備援 API | Fetch 網路失敗後使用隱藏 form／iframe；25 秒 | 驗證 GAS origin、callback origin、request ID 與一次性 secret |
+| 讀取 API | 先使用該裝置對 GAS URL 最近成功的通道；Fetch 9 秒、bridge 25 秒，網路層失敗才切換一次 | request ID 綁定回應，GAS 重新驗證 LINE ID Token |
+| 寫入 API | 固定使用隱藏 form／iframe bridge，25 秒；不在同一次操作改送另一個通道 | 驗證 GAS origin、callback origin、request ID 與一次性 secret；逾時視為結果未知，以相同 request ID 重試 |
 | 身分驗證 | LINE verify 成功結果最多暫存 5 分鐘 | 只快取 `sub`、`iat`、`exp`；權限與會員資料仍即時讀 Sheet |
-| 資料處理 | 會員讀取用精確列查找；管理清單按頁面需求讀取 | 寫入持鎖且使用 request ID 冪等；讀取不長時間占用寫入鎖 |
+| 資料處理 | 會員先讀身分、再讀卡片摘要；管理搜尋在後端分頁前執行，歷史紀錄只讀 cursor 視窗 | 寫入持鎖且使用 request ID 冪等；讀取不長時間占用寫入鎖 |
 
-成功的 `fetch`／`bridge` 名稱會依 GAS URL 寫入 sessionStorage 與 localStorage，讓同一裝置後續頁面直接使用已驗證可行的通道。這個提示不包含 Token、會員 ID 或任何業務資料；儲存空間不可用時會安全退回 Fetch。
+成功的讀取通道名稱會依 GAS URL 寫入 sessionStorage 與 localStorage，讓同一裝置後續讀取直接使用已驗證可行的通道。這個提示不包含 Token、會員 ID 或任何業務資料；儲存空間不可用時會安全退回 Fetch。所有會員與管理寫入都維持單一 bridge 請求，避免 Fetch 已寫入但前端逾時後又用另一個通道重送。
 
 ## 2. 前端入口與責任
 
@@ -47,7 +95,7 @@
 
 共用瀏覽器模組：
 
-- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、9 秒 fetch 與 25 秒受驗證 iframe fallback，並在裝置上記住每個 GAS URL 最近成功的傳輸方式。
+- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、讀取通道 fallback、寫入單一路徑、固定 request ID 與階段狀態回報。
 - `shared/liff-runtime.js`：LIFF 環境資訊、展示模式與公開設定完整性檢查。
 - `shared/lottery-wheel.js`：管理端預覽與會員端轉盤共用的 Canvas 繪製。
 - `shared/qr-code.js`：管理端本機 QR Code 編碼，不把領點網址交給第三方服務。
@@ -106,7 +154,8 @@
 ## 6. 本次重構決策
 
 - 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
-- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態；有勾選抽獎券預覽的獎項時，只附上最新轉盤中被選取的獎項名稱，不傳機率。開啟滿版票券清單不再額外讀取試算表；選定可用券後，以單一 `prepareLotteryDraw` 和固定 request ID 讀取一次各 ledger 快照、保存結果並回傳轉盤，中央按鈕只播放固定 5 秒動畫。
+- 登入先以 `upsertMemberIdentity` 建立或核對會員並立即顯示身分卡，再以 `getMemberCardSummary` 漸進載入點數、集點卡與票券；首次會員完成電話與生日後才發送加入通知並開放後續操作。
+- 抽獎券摘要只附上最新轉盤中被選取的獎項名稱，不傳機率。票券清單與轉盤資源延遲到使用時載入；選定可用券後先明確確認，再以單一 `prepareLotteryDraw` 和固定 request ID 保存結果並回傳轉盤，中央按鈕只播放固定 3 秒動畫。
 - 待確認抽獎以 LIFF 與已驗證會員編號隔離，展示模式另用獨立空間；結果未知時保留同一 request ID，後台明確確認未開獎時才解除鎖定並重載票券。
 - 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。
 - 把三份重複的 Canvas 轉盤程式整合為 `shared/lottery-wheel.js`。
@@ -115,6 +164,8 @@
 - 效能紀錄只接受固定 phase、耗時、結果、transport、fallback 與錯誤碼；快速成功不回報，背景回報失敗立即重試一次，Cloud Logging 不包含 LINE ID、Token、姓名、電話、生日或 request ID。
 - 會員登入、集點卡、點數紀錄與抽獎只讀取該會員的帳本列；領點與登入完成必要寫入後會在組合卡片回應前釋放鎖。點數紀錄以同一份列快照同時計算餘額與清單。
 - 管理端相同 Token 的連續頁面請求不重複呼叫 LINE verify，也不在姓名、頭像與登入 session 未變時重寫 `Admins`。五個管理讀取 action 完成核准檢查後立即釋放鎖，再讀取各自資料頁需要的工作表。
+- 管理會員搜尋與狀態篩選在 GAS 對完整資料集執行後才分頁；點數及抽獎紀錄使用 cursor 讀取固定尾端視窗，並提供逐頁載入與防公式注入的 CSV 匯出。
+- 點數與抽獎編輯草稿只保留在同一分頁的 `sessionStorage`，大小上限 50 KB，不儲存 Token、管理員身分或會員資料；成功寫入後清除對應草稿，尚有草稿時離頁會警告。
 
 ## 7. 後續重構順序
 

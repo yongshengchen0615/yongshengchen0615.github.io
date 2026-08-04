@@ -4,6 +4,23 @@
   var FETCH_TIMEOUT_MS = 9000;
   var BRIDGE_TIMEOUT_MS = 25000;
   var TRANSPORT_STORAGE_PREFIX = "persona-gas-transport:";
+  var MUTATION_ACTIONS = [
+    "upsertMember",
+    "upsertMemberIdentity",
+    "updateMemberProfile",
+    "prepareLotteryDraw",
+    "drawLottery",
+    "redeemPointCampaign",
+    "deleteMember",
+    "adminSetMemberAccess",
+    "adminCreatePointType",
+    "adminDeletePointType",
+    "adminCreatePointCampaign",
+    "adminSavePointCardSetting",
+    "adminCreateLotteryType",
+    "adminDeleteLotteryType",
+    "adminSaveLotteryConfig",
+  ];
   var EXTRA_FIELD_NAMES = [
     "targetMemberId",
     "accessStatus",
@@ -11,6 +28,10 @@
     "expectedAccessUpdatedAt",
     "page",
     "pageSize",
+    "query",
+    "memberStatus",
+    "cursor",
+    "limit",
     "phone",
     "birthday",
     "claim",
@@ -114,29 +135,48 @@
     var gasUrl = String(options.gasUrl || "").trim();
     var startedAt = nowMilliseconds();
     var attemptedTransports = [];
-    var preferredTransport = readPreferredTransport(gasUrl);
+    var isMutation = MUTATION_ACTIONS.indexOf(request.action) !== -1;
+    var preferredTransport = isMutation ? "bridge" : readPreferredTransport(gasUrl);
 
     function attempt(transport) {
       attemptedTransports.push(transport);
+      notifyProgress(options.onProgress, {
+        action: request.action,
+        phase: "connecting",
+        transport: transport,
+        fallbackUsed: attemptedTransports.length > 1,
+      });
       var promise =
         transport === "bridge"
           ? postWithBridge(gasUrl, request)
           : postWithFetch(gasUrl, request);
       return promise.then(function (result) {
-        rememberPreferredTransport(gasUrl, transport);
+        if (!isMutation) rememberPreferredTransport(gasUrl, transport);
         return result;
       });
     }
 
     return attempt(preferredTransport)
       .catch(function (error) {
-        if (!shouldTryAlternateTransport(preferredTransport, error)) {
+        if (isMutation || !shouldTryAlternateTransport(preferredTransport, error)) {
           throw error;
         }
+        notifyProgress(options.onProgress, {
+          action: request.action,
+          phase: "fallback",
+          transport: preferredTransport === "bridge" ? "fetch" : "bridge",
+          fallbackUsed: true,
+        });
         return attempt(preferredTransport === "bridge" ? "fetch" : "bridge");
       })
       .then(
         function (result) {
+          notifyProgress(options.onProgress, {
+            action: request.action,
+            phase: "complete",
+            transport: attemptedTransports[attemptedTransports.length - 1],
+            fallbackUsed: attemptedTransports.length > 1,
+          });
           notifyTiming(options.onTiming, {
             action: request.action,
             durationMs: elapsedMilliseconds(startedAt),
@@ -151,23 +191,55 @@
           return result;
         },
         function (error) {
+          var finalError = mutationTimeoutError(error, isMutation, request.requestId);
+          notifyProgress(options.onProgress, {
+            action: request.action,
+            phase: "failed",
+            transport:
+              attemptedTransports[attemptedTransports.length - 1] ||
+              preferredTransport,
+            fallbackUsed: attemptedTransports.length > 1,
+            errorCode: String(
+              (finalError && (finalError.code || finalError.name)) || "CONNECTION_ERROR"
+            ),
+          });
           notifyTiming(options.onTiming, {
             action: request.action,
             durationMs: elapsedMilliseconds(startedAt),
             outcome:
-              error &&
-              (error.name === "AbortError" || error.code === "BACKEND_TIMEOUT")
+              finalError &&
+              (finalError.name === "AbortError" ||
+                finalError.code === "BACKEND_TIMEOUT" ||
+                finalError.code === "REQUEST_STATUS_UNKNOWN")
                 ? "timeout"
                 : "failure",
-            errorCode: String((error && (error.code || error.name)) || "CONNECTION_ERROR"),
+            errorCode: String(
+              (finalError && (finalError.code || finalError.name)) || "CONNECTION_ERROR"
+            ),
             transport:
               attemptedTransports[attemptedTransports.length - 1] ||
               preferredTransport,
             fallbackUsed: attemptedTransports.length > 1,
           });
-          throw error;
+          throw finalError;
         }
       );
+  }
+
+  function mutationTimeoutError(error, isMutation, requestId) {
+    if (
+      !isMutation ||
+      !error ||
+      (error.name !== "AbortError" && error.code !== "BACKEND_TIMEOUT")
+    ) {
+      return error;
+    }
+    var timeout = createError(
+      "REQUEST_STATUS_UNKNOWN",
+      "後台仍可能正在處理這次操作。請保留目前頁面並重試，系統會核對同一筆請求，不會重複寫入。"
+    );
+    timeout.requestId = requestId;
+    return timeout;
   }
 
   function postWithFetch(gasUrl, request) {
@@ -386,6 +458,15 @@
       callback(Object.freeze(timing));
     } catch (_error) {
       // Performance reporting must never change the request result.
+    }
+  }
+
+  function notifyProgress(callback, progress) {
+    if (typeof callback !== "function") return;
+    try {
+      callback(Object.freeze(progress));
+    } catch (_error) {
+      // UI progress reporting must never change the request result.
     }
   }
 

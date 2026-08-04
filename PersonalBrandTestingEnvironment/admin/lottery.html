@@ -322,10 +322,15 @@
               <h2 id="lottery-history-title">最新抽獎紀錄</h2>
               <p id="lottery-history-summary">會員抽獎結果。</p>
             </div>
-            <button class="refresh-button" id="refresh-lottery-history-button" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
-              <span>重新整理紀錄</span>
-            </button>
+            <div class="history-heading-actions">
+              <button class="secondary-button" id="export-lottery-history-button" type="button" disabled>
+                匯出 CSV
+              </button>
+              <button class="refresh-button" id="refresh-lottery-history-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+                <span>重新整理紀錄</span>
+              </button>
+            </div>
           </header>
           <div class="admin-point-history-status" id="lottery-history-loading" role="status" aria-live="polite" hidden>
             <span class="history-skeleton-line"></span>
@@ -340,6 +345,9 @@
           ></ol>
           <p class="admin-point-history-empty" id="lottery-history-empty" hidden>目前還沒有抽獎紀錄。</p>
           <p class="inline-error admin-point-history-error" id="lottery-history-error" role="alert" hidden></p>
+          <button class="secondary-button history-load-more" id="load-more-lottery-history-button" type="button" hidden>
+            載入更多紀錄
+          </button>
         </section>
       </section>
     </main>
