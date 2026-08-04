@@ -675,9 +675,76 @@ test("LINE ID token verification sends the member channel and validates claims",
 
   claims.aud = "2010791619";
   assert.throws(
-    () => gas.verifyLineIdToken_("header.payload.signature", "2010787602"),
+    () => gas.verifyLineIdToken_("header.other.signature", "2010787602"),
     (error) => error.appCode === "INVALID_TOKEN"
   );
+});
+
+test("LINE token verification caches only minimal verified claims for five minutes", () => {
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    iss: "https://access.line.me",
+    sub: `U${"d".repeat(32)}`,
+    aud: "2010787602",
+    exp: now + 3600,
+    iat: now,
+    name: "不可進入快取的姓名",
+    picture: "https://profile.line-scdn.net/private-profile",
+  };
+  const cache = new Map();
+  const writes = [];
+  let fetchCalls = 0;
+  const gas = createGasContext({
+    CacheService: {
+      getScriptCache() {
+        return {
+          get: (key) => cache.get(key) ?? null,
+          put(key, value, ttl) {
+            cache.set(key, String(value));
+            writes.push({ key, value: String(value), ttl });
+          },
+        };
+      },
+    },
+    UrlFetchApp: {
+      fetch() {
+        fetchCalls += 1;
+        return {
+          getResponseCode: () => 200,
+          getContentText: () => JSON.stringify(claims),
+        };
+      },
+    },
+  });
+
+  const first = gas.verifyLineIdToken_(
+    "header.cached-token.signature",
+    "2010787602"
+  );
+  const second = gas.verifyLineIdToken_(
+    "header.cached-token.signature",
+    "2010787602"
+  );
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(first.displayName, claims.name);
+  assert.equal(second.fromCache, true);
+  const tokenWrite = writes.find((entry) => entry.key.startsWith("line-token:"));
+  assert.ok(tokenWrite);
+  assert.equal(tokenWrite.ttl <= 300, true);
+  assert.deepEqual(JSON.parse(tokenWrite.value), {
+    sub: claims.sub,
+    iat: claims.iat,
+    exp: claims.exp,
+  });
+  assert.doesNotMatch(tokenWrite.key + tokenWrite.value, /cached-token|不可進入|private-profile/);
+});
+
+test("member API accepts one preparation action and authenticated performance reports", () => {
+  const gas = createGasContext();
+
+  assert.doesNotThrow(() => gas.assertSupportedAction_("prepareLotteryDraw"));
+  assert.doesNotThrow(() => gas.assertSupportedAction_("reportClientPerformance"));
 });
 
 test("LINE provider errors are public-safe and distinguish throttling", () => {
@@ -1266,6 +1333,58 @@ test("upsert retries are idempotent and distinct token sessions increment once",
     {}
   );
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 2);
+});
+
+test("same-token unchanged login returns fresh data without Sheet writes or flush", () => {
+  let flushCalls = 0;
+  const writes = [];
+  const gas = createGasContext({
+    SpreadsheetApp: {
+      flush() {
+        flushCalls += 1;
+      },
+    },
+  });
+  const memberRows = [
+    createMemberRow(gas, {
+      lastTokenIat: 2000,
+      lastRequestId: "request-member-previous",
+    }),
+  ];
+  const sheets = installPointSheets(gas, { memberRows });
+  const memberSheet = createMemberSheet(memberRows, writes);
+  gas.getOrCreateMemberSheet_ = () => memberSheet;
+
+  const result = gas.upsertMember_(
+    {
+      ...createIdentity(),
+      displayName: "",
+      pictureUrl: "",
+      fromCache: true,
+      tokenExpiresAt: 9999999999,
+    },
+    {
+      action: "upsertMember",
+      requestId: "request-member-noop",
+      idToken: "header.cached.signature",
+      context: {
+        type: "external",
+        os: "web",
+        language: "zh-TW",
+        inClient: false,
+        viewType: "full",
+      },
+    },
+    { lineChannelId: "2010787602" }
+  );
+
+  assert.equal(writes.length, 0);
+  assert.equal(flushCalls, 0);
+  assert.equal(result.data.member.displayName, "王小明");
+  assert.equal(result.data.member.pictureUrl, "https://profile.line-scdn.net/member");
+  assert.equal(result.data.access.allowed, true);
+  assert.equal(result.data.cardSummary.availableDraws, 0);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 0);
 });
 
 test("point campaign preview is token-owner only and returns public campaign data", () => {
@@ -2006,6 +2125,69 @@ test("member point history is token-bound, newest-first and hides other members"
   );
 });
 
+test("lock-free member reads recheck access immediately before returning", () => {
+  ["history", "lottery"].forEach((endpoint) => {
+    const gas = createGasContext({
+      LockService: {
+        getScriptLock() {
+          throw new Error("read-only endpoints must not acquire the global lock");
+        },
+      },
+    });
+    const sheets = installPointSheets(gas, {
+      memberRows: [createMemberRow(gas)],
+      lotteryPrizeRows: createLotteryPrizeRows(gas),
+    });
+    const originalGetRange = sheets.memberSheet.getRange.bind(
+      sheets.memberSheet
+    );
+    let accessReads = 0;
+    sheets.memberSheet.getRange = function (
+      rowNumber,
+      column,
+      rowCount,
+      columnCount
+    ) {
+      const range = originalGetRange(rowNumber, column, rowCount, columnCount);
+      if (
+        rowNumber !== 2 ||
+        column !== 1 ||
+        columnCount !== gas.MEMBER_HEADERS.length
+      ) {
+        return range;
+      }
+      const originalGetValues = range.getValues.bind(range);
+      range.getValues = function () {
+        accessReads += 1;
+        const values = originalGetValues();
+        if (accessReads >= 2) {
+          values[0][gas.MEMBER_COLUMN.status - 1] = "denied";
+        }
+        return values;
+      };
+      return range;
+    };
+
+    const invoke =
+      endpoint === "history"
+        ? () =>
+            gas.listPointHistory_(
+              createIdentity(),
+              { action: "listPointHistory", requestId: "request-access-history" },
+              {}
+            )
+        : () =>
+            gas.getLotteryConfig_(
+              createIdentity(),
+              { action: "getLotteryConfig", requestId: "request-access-lottery" },
+              {}
+            );
+
+    assert.throws(invoke, (error) => error.appCode === "MEMBER_ACCESS_DENIED");
+    assert.equal(accessReads, 2);
+  });
+});
+
 test("lottery draw consumes one completed card round without deducting lifetime points", () => {
   const gas = createGasContext();
   const memberRows = [createMemberRow(gas)];
@@ -2085,6 +2267,133 @@ test("lottery draw consumes one completed card round without deducting lifetime 
     (error) => error.appCode === "LOTTERY_ROUND_NOT_READY"
   );
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
+});
+
+test("single lottery preparation reuses one validated snapshot per ledger", () => {
+  const gas = createGasContext();
+  const sheets = installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    redemptionRows: [
+      createPointRedemptionRow(gas, {
+        points: 5,
+        balanceAfter: 5,
+        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
+      }),
+    ],
+    lotteryPrizeRows: createLotteryPrizeRows(gas),
+  });
+  const counts = {};
+  for (const name of [
+    "readAllLotteryDraws_",
+    "readMemberPointLedger_",
+    "readPointCardSettings_",
+    "readLotteryTypes_",
+    "readLotteryConfigs_",
+  ]) {
+    const original = gas[name];
+    gas[name] = function (...args) {
+      counts[name] = (counts[name] || 0) + 1;
+      return original.apply(this, args);
+    };
+  }
+
+  const result = gas.prepareLotteryDraw_(
+    createIdentity(),
+    {
+      action: "prepareLotteryDraw",
+      requestId: "request-prepare-draw-1",
+      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
+      cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
+    },
+    {}
+  );
+
+  assert.equal(result.data.duplicate, false);
+  assert.equal(result.data.card.availableDraws, 0);
+  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
+  assert.deepEqual(counts, {
+    readAllLotteryDraws_: 1,
+    readMemberPointLedger_: 1,
+    readPointCardSettings_: 1,
+    readLotteryTypes_: 1,
+    readLotteryConfigs_: 1,
+  });
+});
+
+test("performance reports are bounded, idempotent and omit identity data from Cloud logs", () => {
+  const logs = [];
+  const gas = createGasContext({
+    console: {
+      error() {},
+      warn(value) {
+        logs.push(String(value));
+      },
+    },
+  });
+  const request = gas.parseRequest_({
+    postData: {
+      contents: JSON.stringify({
+        action: "reportClientPerformance",
+        idToken: "header.private-token.signature",
+        requestId: "request-performance-1",
+        callbackOrigin: "https://example.github.io",
+        metricName: "wheel_prepare",
+        operation: "prepareLotteryDraw",
+        durationMs: 1800,
+        outcome: "slow",
+        requestTransport: "mixed",
+        fallbackUsed: true,
+        errorCode: "",
+      }),
+    },
+  });
+  gas.validateRequestEnvelope_(request);
+  const identity = createIdentity({ displayName: "不應記錄的會員姓名" });
+
+  const first = gas.reportClientPerformance_(identity, request);
+  const replay = gas.reportClientPerformance_(identity, request);
+
+  assert.equal(first.data.duplicate, false);
+  assert.equal(replay.data.duplicate, true);
+  assert.equal(logs.length, 1);
+  const entry = JSON.parse(logs[0]);
+  assert.equal(entry.metricName, "wheel_prepare");
+  assert.equal(entry.durationMs, 1800);
+  assert.equal(entry.fallbackUsed, true);
+  assert.doesNotMatch(
+    logs[0],
+    /private-token|request-performance|不應記錄|Ubbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/
+  );
+
+  for (let reportNumber = 2; reportNumber <= 12; reportNumber += 1) {
+    const accepted = gas.reportClientPerformance_(identity, {
+      ...request,
+      requestId: `request-performance-${reportNumber}`,
+    });
+    assert.equal(accepted.data.duplicate, false);
+  }
+  assert.equal(logs.length, 12);
+  assert.throws(
+    () =>
+      gas.reportClientPerformance_(identity, {
+        ...request,
+        requestId: "request-performance-13",
+      }),
+    (error) => error.appCode === "PERFORMANCE_RATE_LIMITED"
+  );
+  assert.throws(
+    () =>
+      gas.normalizePerformanceMetric_({
+        metricName: "wheel_prepare",
+        operation: "prepareLotteryDraw",
+        durationMs: 999,
+        outcome: "slow",
+        requestTransport: "fetch",
+        fallbackUsed: false,
+        errorCode: "",
+      }),
+    (error) => error.appCode === "INVALID_PERFORMANCE_REPORT"
+  );
 });
 
 test("a reward ticket can draw only from the wheel assigned to its point node", () => {
@@ -3196,7 +3505,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.12.0");
+  assert.equal(health.data.version, "1.13.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 

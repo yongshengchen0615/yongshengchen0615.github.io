@@ -38,6 +38,21 @@
   var isPointHistoryDirty = true;
   var pointHistoryRequestVersion = 0;
   var pendingMemberPanel = "";
+  var pendingPerformanceReports = [];
+  var isPerformanceReportBusy = false;
+  var isPerformanceReportingReady = false;
+  var PERFORMANCE_THRESHOLDS = Object.freeze({
+    page_shell: 300,
+    config_load: 1000,
+    liff_init: 1500,
+    member_sync: 2500,
+    wheel_prepare: 1000,
+    api_request: 2500,
+  });
+  var pageStartedAt =
+    window.performance && typeof window.performance.now === "function"
+      ? 0
+      : Date.now();
   var POINT_HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
     month: "numeric",
     day: "numeric",
@@ -52,10 +67,16 @@
       );
     }
 
+    var startedAt = performanceNow();
     return window.MemberApi
       .loadConfig("config.json", ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"])
       .then(function (config) {
         CONFIG = config;
+        recordPhaseTiming("config_load", "config", startedAt, "success");
+      })
+      .catch(function (error) {
+        recordPhaseTiming("config_load", "config", startedAt, "failure", error);
+        throw error;
       });
   }
 
@@ -100,11 +121,15 @@
       return Promise.resolve();
     }
 
+    var liffStartedAt = performanceNow();
+    var liffInitialized = false;
     return window.liff.init({
         liffId: String(CONFIG.LIFF_ID).trim(),
         withLoginOnExternalBrowser: false,
       })
       .then(function () {
+        liffInitialized = true;
+        recordPhaseTiming("liff_init", "liff", liffStartedAt, "success");
         if (thisBoot !== bootVersion) return;
         capturePendingPointClaim();
 
@@ -117,6 +142,9 @@
         return syncMember(thisBoot);
       })
       .catch(function (error) {
+        if (!liffInitialized) {
+          recordPhaseTiming("liff_init", "liff", liffStartedAt, "failure", error);
+        }
         if (thisBoot !== bootVersion) return;
         handleClientError(error);
       });
@@ -139,6 +167,7 @@
       .then(function (response) {
         if (expectedBootVersion !== bootVersion) return;
         assertSuccessfulResponse(response);
+        enablePerformanceReporting();
         clearInvalidTokenRecoveryGuard();
 
         if (
@@ -2151,7 +2180,125 @@
       context: context || {},
       fields: fields || {},
       requestId: requestId,
+      onTiming: handleRequestTiming,
     });
+  }
+
+  function performanceNow() {
+    return window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function recordPhaseTiming(metricName, operation, startedAt, outcome, error) {
+    queuePerformanceReport({
+      metricName: metricName,
+      operation: operation,
+      durationMs: Math.max(0, Math.round(performanceNow() - startedAt)),
+      outcome: outcome,
+      requestTransport: "none",
+      fallbackUsed: false,
+      errorCode: performanceErrorCode(error),
+    });
+  }
+
+  function handleRequestTiming(timing) {
+    timing = timing && typeof timing === "object" ? timing : {};
+    var action = String(timing.action || "");
+    if (action === "reportClientPerformance") return;
+    var metricName =
+      action === "upsertMember"
+        ? "member_sync"
+        : action === "prepareLotteryDraw"
+          ? "wheel_prepare"
+          : "api_request";
+    queuePerformanceReport({
+      metricName: metricName,
+      operation: action || "page",
+      durationMs: Math.max(0, Math.round(Number(timing.durationMs) || 0)),
+      outcome: String(timing.outcome || "failure"),
+      requestTransport: String(timing.transport || "none"),
+      fallbackUsed: timing.fallbackUsed === true,
+      errorCode: performanceErrorCode(timing.errorCode),
+    });
+    if (timing.outcome !== "success" && currentIdToken) {
+      enablePerformanceReporting();
+    }
+  }
+
+  function queuePerformanceReport(metric) {
+    var threshold = PERFORMANCE_THRESHOLDS[metric.metricName];
+    if (!threshold) return;
+    var normalizedOutcome = String(metric.outcome || "failure").toLowerCase();
+    if (normalizedOutcome === "success") {
+      if (metric.durationMs < threshold) return;
+      normalizedOutcome = "slow";
+    }
+    if (["slow", "timeout", "failure"].indexOf(normalizedOutcome) === -1) {
+      normalizedOutcome = "failure";
+    }
+    metric.outcome = normalizedOutcome;
+    metric.errorCode = normalizedOutcome === "slow" ? "" : metric.errorCode;
+    if (pendingPerformanceReports.length >= 12) return;
+    pendingPerformanceReports.push(metric);
+    drainPerformanceReports();
+  }
+
+  function enablePerformanceReporting() {
+    isPerformanceReportingReady = true;
+    window.setTimeout(drainPerformanceReports, 0);
+  }
+
+  function drainPerformanceReports() {
+    if (
+      !isPerformanceReportingReady ||
+      isPerformanceReportBusy ||
+      !currentIdToken ||
+      !hasCompleteConfig() ||
+      !pendingPerformanceReports.length
+    ) {
+      return;
+    }
+    isPerformanceReportBusy = true;
+    var metric = pendingPerformanceReports.shift();
+    var requestId = window.MemberApi.createRequestId();
+    sendPerformanceReport(metric, requestId, 0).finally(function () {
+      isPerformanceReportBusy = false;
+      drainPerformanceReports();
+    });
+  }
+
+  function sendPerformanceReport(metric, requestId, attempt) {
+    return window.MemberApi
+      .sendRequest({
+        gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
+        action: "reportClientPerformance",
+        idToken: currentIdToken,
+        context: {},
+        fields: metric,
+        requestId: requestId,
+      })
+      .then(function (response) {
+        if (!response || response.ok !== true) {
+          throw new Error("Performance report rejected");
+        }
+      })
+      .catch(function () {
+        if (attempt === 0) {
+          return sendPerformanceReport(metric, requestId, 1);
+        }
+      });
+  }
+
+  function performanceErrorCode(value) {
+    var code =
+      typeof value === "string"
+        ? value
+        : value && (value.code || value.name)
+          ? value.code || value.name
+          : "";
+    code = String(code || "").trim().toUpperCase();
+    return /^[A-Z0-9_]{2,60}$/.test(code) ? code : "CONNECTION_ERROR";
   }
 
   function assertSuccessfulResponse(response) {
@@ -2771,6 +2918,7 @@
   byId("current-year").textContent = String(new Date().getFullYear());
 
   function start() {
+    recordPhaseTiming("page_shell", "page", pageStartedAt, "success");
     setConnection("正在載入設定", "loading");
     setLoadingCopy("正在載入會員系統", "讀取公開設定並準備 LINE 登入服務。請稍候。");
     setView("loading-state");

@@ -20,24 +20,16 @@ function getTopLevelFunctionContaining(source, marker) {
   return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
-test("in-place member lottery settles quickly with a continuous fast-to-slow curve", () => {
-  assert.match(script, /SPIN_DEGREES_PER_MS\s*=\s*1\.45/);
-  assert.match(script, /FINAL_SPIN_TURNS\s*=\s*2/);
+test("in-place member lottery runs five seconds with a continuous fast-to-slow curve", () => {
+  assert.match(script, /SPIN_DURATION_MS\s*=\s*5000/);
+  assert.match(script, /FINAL_SPIN_TURNS\s*=\s*8/);
   assert.match(
     script,
-    /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
+    /easeOutCubic\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*3\)/
   );
   assert.match(
     script,
-    /quadraticEaseOut\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
-  );
-  assert.match(
-    script,
-    /smoothstepCorrection\s*=\s*Math\.pow\(\s*progress\s*\*\s*\(1\s*-\s*progress\)\s*,\s*2\s*\)/
-  );
-  assert.match(
-    script,
-    /easedProgress\s*=\s*quadraticEaseOut\s*\+\s*smoothstepCorrection/
+    /easedProgress\s*=\s*easeOutCubic/
   );
 });
 
@@ -92,7 +84,7 @@ test("member lottery retries a pending draw with the same persisted request id",
   );
   assert.match(
     loadWorkspace,
-    /pendingRequest\s*=\s*ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*pendingRequest\.requestId/
+    /pendingRequest\s*=\s*ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']prepareLotteryDraw["'][\s\S]*pendingRequest\.requestId/
   );
   assert.match(handleDraw, /finishDraw\(preparedDrawData\)/);
   assert.doesNotMatch(handleDraw, /options\.request|startWaitingSpin/);

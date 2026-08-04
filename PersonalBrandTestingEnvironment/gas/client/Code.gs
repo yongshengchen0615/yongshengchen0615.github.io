@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.12.0";
+var API_VERSION = "1.13.0";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -42,6 +42,7 @@ var MAX_LOTTERY_PRIZES = 12;
 var MAX_AVAILABLE_REWARD_TICKETS = 50;
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
+var LINE_TOKEN_CACHE_SECONDS = 300;
 
 var LEGACY_MEMBER_HEADERS = [
   "member_id",
@@ -469,8 +470,16 @@ function handleMemberRequest_(request) {
     return getLotteryConfig_(identity, request, config);
   }
 
+  if (request.action === "prepareLotteryDraw") {
+    return prepareLotteryDraw_(identity, request, config);
+  }
+
   if (request.action === "drawLottery") {
     return drawLottery_(identity, request, config);
+  }
+
+  if (request.action === "reportClientPerformance") {
+    return reportClientPerformance_(identity, request);
   }
 
   if (request.action === "previewPointCampaign") {
@@ -490,7 +499,9 @@ function assertSupportedAction_(action) {
     action !== "updateMemberProfile" &&
     action !== "listPointHistory" &&
     action !== "getLotteryConfig" &&
+    action !== "prepareLotteryDraw" &&
     action !== "drawLottery" &&
+    action !== "reportClientPerformance" &&
     action !== "previewPointCampaign" &&
     action !== "redeemPointCampaign" &&
     action !== "deleteMember"
@@ -500,6 +511,17 @@ function assertSupportedAction_(action) {
 }
 
 function verifyLineIdToken_(idToken, expectedChannelId) {
+  if (!isJwtLike_(idToken)) {
+    throw appError_("INVALID_TOKEN", "LINE 登入憑證格式不正確，請重新登入。");
+  }
+
+  var cachedIdentity = getCachedLineIdentity_(idToken, expectedChannelId);
+  if (cachedIdentity) return cachedIdentity;
+
+  return verifyLineIdTokenFresh_(idToken, expectedChannelId);
+}
+
+function verifyLineIdTokenFresh_(idToken, expectedChannelId) {
   var response;
 
   if (!isJwtLike_(idToken)) {
@@ -552,12 +574,79 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證驗證失敗，請重新登入。");
   }
 
+  cacheVerifiedLineClaims_(idToken, expectedChannelId, claims);
+
   return {
     lineUserId: limitText_(claims.sub, 128),
     displayName: limitText_(claims.name || "LINE 會員", 100),
     pictureUrl: normalizeHttpsUrl_(claims.picture),
     tokenIssuedAt: Math.floor(Number(claims.iat)),
+    tokenExpiresAt: Math.floor(Number(claims.exp)),
+    fromCache: false,
   };
+}
+
+function getCachedLineIdentity_(idToken, expectedChannelId) {
+  var cached;
+  try {
+    cached = CacheService.getScriptCache().get(
+      lineTokenCacheKey_(idToken, expectedChannelId)
+    );
+  } catch (_error) {
+    return null;
+  }
+  if (!cached) return null;
+
+  var claims;
+  try {
+    claims = JSON.parse(String(cached));
+  } catch (_error) {
+    return null;
+  }
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  if (
+    !claims ||
+    typeof claims !== "object" ||
+    !claims.sub ||
+    Number(claims.iat || 0) <= 0 ||
+    Number(claims.exp || 0) <= nowSeconds
+  ) {
+    return null;
+  }
+  return {
+    lineUserId: limitText_(claims.sub, 128),
+    displayName: "",
+    pictureUrl: "",
+    tokenIssuedAt: Math.floor(Number(claims.iat)),
+    tokenExpiresAt: Math.floor(Number(claims.exp)),
+    fromCache: true,
+  };
+}
+
+function cacheVerifiedLineClaims_(idToken, expectedChannelId, claims) {
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  var ttl = Math.min(
+    LINE_TOKEN_CACHE_SECONDS,
+    Math.floor(Number(claims.exp || 0)) - nowSeconds
+  );
+  if (ttl < 1) return;
+  try {
+    CacheService.getScriptCache().put(
+      lineTokenCacheKey_(idToken, expectedChannelId),
+      JSON.stringify({
+        sub: String(claims.sub || ""),
+        iat: Math.floor(Number(claims.iat || 0)),
+        exp: Math.floor(Number(claims.exp || 0)),
+      }),
+      ttl
+    );
+  } catch (_error) {
+    // LINE remains authoritative when CacheService is unavailable.
+  }
+}
+
+function lineTokenCacheKey_(idToken, expectedChannelId) {
+  return "line-token:" + sha256Hex_(String(expectedChannelId) + ":" + String(idToken));
 }
 
 function upsertMember_(identity, request, config) {
@@ -581,14 +670,21 @@ function upsertMember_(identity, request, config) {
     var isDuplicate = false;
     var recentOutcome = getRecentRequestOutcome_(identity.lineUserId, request.action, request.requestId);
     var responseCreated = created;
+    var hasMemberChanges = created;
 
     if (created) {
+      if (identity.fromCache) {
+        identity = verifyLineIdTokenFresh_(request.idToken, config.lineChannelId);
+      }
       row = createMemberRow_(identity, request.requestId, context, now);
       sheet.appendRow(row);
       rowNumber = sheet.getLastRow();
       applyMemberRowFormats_(sheet, rowNumber);
     } else {
       row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+      if (identity.fromCache) {
+        identity = identityFromMemberRow_(identity, row);
+      }
       isDuplicate =
         String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId ||
         Boolean(recentOutcome);
@@ -601,16 +697,30 @@ function upsertMember_(identity, request, config) {
       if (!isDuplicate) {
         var isNewLoginSession =
           Number(row[MEMBER_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
+        var profileChanged =
+          String(row[MEMBER_COLUMN.displayName - 1] || "") !== identity.displayName ||
+          String(row[MEMBER_COLUMN.pictureUrl - 1] || "") !== identity.pictureUrl;
+        var contextChanged =
+          String(row[MEMBER_COLUMN.contextType - 1] || "") !== context.type ||
+          String(row[MEMBER_COLUMN.contextOs - 1] || "") !== context.os ||
+          String(row[MEMBER_COLUMN.contextLanguage - 1] || "") !== context.language ||
+          Boolean(row[MEMBER_COLUMN.inLiffClient - 1]) !== context.inClient ||
+          String(row[MEMBER_COLUMN.viewType - 1] || "") !== context.viewType;
+        hasMemberChanges = isNewLoginSession || profileChanged || contextChanged;
 
         // Deliberately use field-level writes. In particular, legacy email,
         // status, admin_status, phone and birthday are never overwritten here.
-        sheet
-          .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 2)
-          .setValues([[
-            safeSheetText_(identity.displayName),
-            safeSheetText_(identity.pictureUrl),
-          ]]);
-        sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+        if (profileChanged) {
+          sheet
+            .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 2)
+            .setValues([[
+              safeSheetText_(identity.displayName),
+              safeSheetText_(identity.pictureUrl),
+            ]]);
+        }
+        if (hasMemberChanges) {
+          sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+        }
         if (isNewLoginSession) {
           sheet
             .getRange(rowNumber, MEMBER_COLUMN.lastLoginAt, 1, 2)
@@ -619,29 +729,31 @@ function upsertMember_(identity, request, config) {
               Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0) + 1,
             ]]);
         }
-        sheet
-          .getRange(rowNumber, MEMBER_COLUMN.contextType, 1, 7)
-          .setValues([[
-            safeSheetText_(context.type),
-            safeSheetText_(context.os),
-            safeSheetText_(context.language),
-            context.inClient,
-            safeSheetText_(context.viewType),
-            identity.tokenIssuedAt,
-            request.requestId,
-          ]]);
-        applyMemberRowFormats_(sheet, rowNumber);
+        if (isNewLoginSession || contextChanged) {
+          sheet
+            .getRange(rowNumber, MEMBER_COLUMN.contextType, 1, 7)
+            .setValues([[
+              safeSheetText_(context.type),
+              safeSheetText_(context.os),
+              safeSheetText_(context.language),
+              context.inClient,
+              safeSheetText_(context.viewType),
+              identity.tokenIssuedAt,
+              request.requestId,
+            ]]);
+        }
+        if (hasMemberChanges) applyMemberRowFormats_(sheet, rowNumber);
       }
     }
 
-    if (created || !isDuplicate) SpreadsheetApp.flush();
+    if (hasMemberChanges) SpreadsheetApp.flush();
 
     if (!isDuplicate) {
       markRequestProcessed_(
         identity.lineUserId,
         request.action,
         request.requestId,
-        created ? "created" : "updated"
+        created ? "created" : hasMemberChanges ? "updated" : "unchanged"
       );
     }
 
@@ -673,6 +785,18 @@ function upsertMember_(identity, request, config) {
   }
 }
 
+function identityFromMemberRow_(identity, row) {
+  return {
+    lineUserId: identity.lineUserId,
+    displayName:
+      plainSheetText_(row[MEMBER_COLUMN.displayName - 1], 100) || "LINE 會員",
+    pictureUrl: normalizeHttpsUrl_(row[MEMBER_COLUMN.pictureUrl - 1]),
+    tokenIssuedAt: identity.tokenIssuedAt,
+    tokenExpiresAt: identity.tokenExpiresAt,
+    fromCache: true,
+  };
+}
+
 function updateMemberProfile_(identity, request, config) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -693,6 +817,7 @@ function updateMemberProfile_(identity, request, config) {
     }
 
     var row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    if (identity.fromCache) identity = identityFromMemberRow_(identity, row);
     var access = memberAccessFromRow_(row);
     if (!access.allowed) {
       throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法修改會員資料。");
@@ -748,11 +873,6 @@ function updateMemberProfile_(identity, request, config) {
 }
 
 function listPointHistory_(identity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "點數紀錄正在整理，請稍後再試。");
-  }
-
   try {
     var memberSheet = getOrCreateMemberSheet_(config);
     var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
@@ -770,6 +890,11 @@ function listPointHistory_(identity, request, config) {
 
     var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
     var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+    var readVersions = captureSheetReadVersions_([
+      memberSheet,
+      redemptionSheet,
+      lotteryDrawSheet,
+    ]);
     var pointBalance = getMemberPointBalance_(
       redemptionSheet,
       identity.lineUserId,
@@ -780,6 +905,14 @@ function listPointHistory_(identity, request, config) {
       .sort(function (left, right) {
         return new Date(right.redeemedAt).getTime() - new Date(left.redeemedAt).getTime();
       });
+    assertSheetReadVersionsUnchanged_(readVersions);
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法讀取點數紀錄。");
+    }
 
     return {
       data: {
@@ -792,8 +925,6 @@ function listPointHistory_(identity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數紀錄，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -1298,8 +1429,15 @@ function getMemberPointCardStatus_(
   settingSheet,
   lineUserId
 ) {
-  var ledger = readMemberPointLedger_(redemptionSheet, lineUserId);
-  var settings = readPointCardSettings_(settingSheet);
+  return calculateMemberPointCardStatus_(
+    readMemberPointLedger_(redemptionSheet, lineUserId),
+    readAllLotteryDraws_(drawSheet),
+    readPointCardSettings_(settingSheet),
+    lineUserId
+  );
+}
+
+function calculateMemberPointCardStatus_(ledger, draws, settings, lineUserId) {
   var pointsBySetting = Object.create(null);
   var nowTime = new Date().getTime();
   settings.forEach(function (setting) {
@@ -1417,7 +1555,7 @@ function getMemberPointCardStatus_(
   var usedOrdinals = Object.create(null);
   var legacyDrawCount = 0;
   var memberDrawCount = 0;
-  readAllLotteryDraws_(drawSheet).forEach(function (draw) {
+  draws.forEach(function (draw) {
     if (draw.lineUserId !== lineUserId) return;
     memberDrawCount += 1;
     if (draw.legacyDraw) {
@@ -1715,6 +1853,10 @@ function addTicketPrizeDisplaysToCardResponse_(
     lotteryPrizeSheet.getLastRow() >= 2
       ? readLotteryConfigs_(lotteryPrizeSheet)
       : [];
+  return addTicketPrizeDisplaysFromData_(response, types, configs);
+}
+
+function addTicketPrizeDisplaysFromData_(response, types, configs) {
   var typesById = Object.create(null);
   var latestConfigsByTypeId = Object.create(null);
   types.forEach(function (type) {
@@ -1755,11 +1897,6 @@ function addTicketPrizeDisplaysToCardResponse_(
 }
 
 function getLotteryConfig_(identity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "抽獎設定正在同步，請稍後再試。");
-  }
-
   try {
     var memberSheet = getOrCreateMemberSheet_(config);
     var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
@@ -1779,6 +1916,14 @@ function getLotteryConfig_(identity, request, config) {
     var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
     var settingSheet = getOrCreatePointCardSettingSheet_(config);
     var typeSheet = getOrCreateLotteryTypeSheet_(config);
+    var readVersions = captureSheetReadVersions_([
+      memberSheet,
+      prizeSheet,
+      drawSheet,
+      redemptionSheet,
+      settingSheet,
+      typeSheet,
+    ]);
     var cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
@@ -1812,6 +1957,14 @@ function getLotteryConfig_(identity, request, config) {
         "目前抽獎券尚未指定可使用的轉盤，請聯絡管理員。"
       );
     }
+    assertSheetReadVersionsUnchanged_(readVersions);
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法使用抽獎功能。");
+    }
 
     return {
       data: {
@@ -1831,8 +1984,6 @@ function getLotteryConfig_(identity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取抽獎設定，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -2078,6 +2229,317 @@ function drawLottery_(identity, request, config) {
     throw appError_("SPREADSHEET_ERROR", "目前無法完成抽獎，請稍後再試。");
   } finally {
     lock.releaseLock();
+  }
+}
+
+function prepareLotteryDraw_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "抽獎資格正在處理，請稍後再試。");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var drawSheet = getOrCreateLotteryDrawSheet_(config);
+    var prizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    var typeSheet = getOrCreateLotteryTypeSheet_(config);
+    var settingSheet = getOrCreatePointCardSettingSheet_(config);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法使用抽獎功能。");
+    }
+
+    var readVersions = captureSheetReadVersions_([
+      memberSheet,
+      drawSheet,
+      prizeSheet,
+      typeSheet,
+      settingSheet,
+      redemptionSheet,
+    ]);
+    var draws = readAllLotteryDraws_(drawSheet);
+    var ledger = readMemberPointLedger_(redemptionSheet, identity.lineUserId);
+    var settings = readPointCardSettings_(settingSheet);
+    var lotteryTypes = readLotteryTypes_(typeSheet);
+    var lotteryConfigs = readLotteryConfigs_(prizeSheet);
+    var replayedDraw = findLotteryDrawInData_(
+      draws,
+      identity.lineUserId,
+      request.requestId
+    );
+    var cardStatus = calculateMemberPointCardStatus_(
+      ledger,
+      draws,
+      settings,
+      identity.lineUserId
+    );
+
+    if (replayedDraw) {
+      assertLotteryReplayMatchesRequest_(replayedDraw, request);
+      return preparedLotteryResponse_(
+        access,
+        true,
+        replayedDraw,
+        cardStatus,
+        lotteryTypes,
+        lotteryConfigs
+      );
+    }
+
+    var selectedReward = resolveAvailablePointCardReward_(
+      cardStatus,
+      request.cardRoundKey
+    );
+    if (selectedReward.lotteryTypeId !== request.lotteryTypeId) {
+      throw appError_(
+        "LOTTERY_TICKET_MISMATCH",
+        "這張抽獎券只能使用指定的轉盤。"
+      );
+    }
+    var lotteryType = findLotteryTypeById_(
+      lotteryTypes,
+      selectedReward.lotteryTypeId
+    );
+    var lotteryConfig = findLatestLotteryConfigInData_(
+      lotteryConfigs,
+      lotteryType.lotteryTypeId
+    );
+
+    // Keep reads lock-efficient while still failing closed if the independent
+    // administrator GAS appended a new rules/config version mid-request.
+    assertSheetReadVersionsUnchanged_(readVersions);
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法使用抽獎功能。");
+    }
+
+    var prize = pickLotteryPrize_(lotteryConfig.prizes);
+    var now = new Date();
+    var drawId =
+      "LDW-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();
+    var memberId = String(memberRow[MEMBER_COLUMN.memberId - 1] || "");
+    drawSheet.appendRow([
+      drawId,
+      safeSheetText_(lotteryConfig.configVersion),
+      safeSheetText_(prize.prizeId),
+      safeSheetText_(prize.label),
+      prize.color,
+      prize.probabilityBasisPoints,
+      safeSheetText_(memberId),
+      safeSheetText_(identity.lineUserId),
+      0,
+      cardStatus.totalPoints,
+      cardStatus.totalPoints,
+      now,
+      request.requestId,
+      lotteryType.lotteryTypeId,
+      selectedReward.settingVersion,
+      selectedReward.cardRoundKey,
+    ]);
+    applyLotteryDrawRowFormats_(drawSheet, drawSheet.getLastRow());
+    SpreadsheetApp.flush();
+
+    var persistedDraw = {
+      drawId: drawId,
+      configVersion: lotteryConfig.configVersion,
+      prizeId: prize.prizeId,
+      prizeLabel: prize.label,
+      prizeColor: prize.color,
+      probabilityBasisPoints: prize.probabilityBasisPoints,
+      memberId: memberId,
+      lineUserId: identity.lineUserId,
+      pointsSpent: 0,
+      balanceBefore: cardStatus.totalPoints,
+      balanceAfter: cardStatus.totalPoints,
+      drawnAt: now.toISOString(),
+      requestId: request.requestId,
+      lotteryTypeId: lotteryType.lotteryTypeId,
+      cardSettingVersion: selectedReward.settingVersion,
+      cardRoundKey: selectedReward.cardRoundKey,
+      legacyDraw: false,
+    };
+    var updatedCardStatus = calculateMemberPointCardStatus_(
+      ledger,
+      draws.concat([persistedDraw]),
+      settings,
+      identity.lineUserId
+    );
+    return preparedLotteryResponse_(
+      access,
+      false,
+      persistedDraw,
+      updatedCardStatus,
+      lotteryTypes,
+      lotteryConfigs
+    );
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法完成抽獎，請稍後再試。");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function preparedLotteryResponse_(
+  access,
+  duplicate,
+  draw,
+  cardStatus,
+  lotteryTypes,
+  lotteryConfigs
+) {
+  var lotteryConfig = findLotteryConfigByVersionInData_(
+    lotteryConfigs,
+    draw.configVersion
+  );
+  var lotteryType = findLotteryTypeById_(lotteryTypes, draw.lotteryTypeId);
+  return {
+    data: {
+      access: access,
+      duplicate: duplicate,
+      draw: lotteryDrawResponse_(draw),
+      lottery: lotteryConfigResponse_(lotteryConfig),
+      lotteryType: memberLotteryTypeResponse_(lotteryType, lotteryConfig),
+      card: addTicketPrizeDisplaysFromData_(
+        pointCardStatusResponse_(cardStatus),
+        lotteryTypes,
+        lotteryConfigs
+      ),
+      pointBalance: cardStatus.totalPoints,
+      totalPoints: cardStatus.totalPoints,
+    },
+  };
+}
+
+function assertLotteryReplayMatchesRequest_(draw, request) {
+  if (
+    draw.lotteryTypeId !== request.lotteryTypeId ||
+    (request.cardRoundKey && draw.cardRoundKey !== request.cardRoundKey)
+  ) {
+    throw appError_("REQUEST_ID_CONFLICT", "同一抽獎請求不可更換抽獎券。");
+  }
+}
+
+function findLotteryDrawInData_(draws, lineUserId, requestId) {
+  var match = null;
+  draws.forEach(function (draw) {
+    if (draw.lineUserId !== lineUserId || draw.requestId !== requestId) return;
+    if (match) {
+      throw appError_("LOTTERY_DATA_ERROR", "相同抽獎請求出現重複紀錄。");
+    }
+    match = draw;
+  });
+  return match;
+}
+
+function findLatestLotteryConfigInData_(configs, lotteryTypeId) {
+  for (var i = 0; i < configs.length; i += 1) {
+    if (configs[i].lotteryTypeId === lotteryTypeId) return configs[i];
+  }
+  throw appError_("LOTTERY_NOT_CONFIGURED", "這個轉盤類型尚未設定獎項。");
+}
+
+function findLotteryConfigByVersionInData_(configs, configVersion) {
+  for (var i = 0; i < configs.length; i += 1) {
+    if (configs[i].configVersion === configVersion) return configs[i];
+  }
+  throw appError_("LOTTERY_DATA_ERROR", "找不到抽獎紀錄所使用的轉盤設定。");
+}
+
+function captureSheetReadVersions_(sheets) {
+  return sheets.map(function (sheet) {
+    return {
+      sheet: sheet,
+      lastRow: sheet.getLastRow(),
+      lastColumn:
+        typeof sheet.getLastColumn === "function" ? sheet.getLastColumn() : null,
+    };
+  });
+}
+
+function assertSheetReadVersionsUnchanged_(versions) {
+  var changed = versions.some(function (version) {
+    return (
+      version.sheet.getLastRow() !== version.lastRow ||
+      (version.lastColumn !== null &&
+        version.sheet.getLastColumn() !== version.lastColumn)
+    );
+  });
+  if (changed) {
+    throw appError_("BUSY", "資料剛完成更新，請重新整理後再試。");
+  }
+}
+
+function reportClientPerformance_(identity, request) {
+  var metric = request.performanceMetric;
+  if (!metric) {
+    throw appError_("INVALID_PERFORMANCE_REPORT", "效能回報格式不正確。");
+  }
+  if (
+    wasRequestRecentlyProcessed_(
+      identity.lineUserId,
+      request.action,
+      request.requestId
+    )
+  ) {
+    return { data: { accepted: true, duplicate: true } };
+  }
+  enforcePerformanceReportRateLimit_(identity.lineUserId);
+
+  var entry = {
+    event: "member_client_performance",
+    service: "member-client-api",
+    apiVersion: API_VERSION,
+    severity: metric.outcome === "slow" ? "WARNING" : "ERROR",
+    metricName: metric.metricName,
+    operation: metric.operation,
+    durationMs: metric.durationMs,
+    outcome: metric.outcome,
+    transport: metric.requestTransport,
+    fallbackUsed: metric.fallbackUsed,
+    errorCode: metric.errorCode,
+    recordedAt: new Date().toISOString(),
+  };
+  if (typeof console !== "undefined" && typeof console.warn === "function") {
+    console.warn(JSON.stringify(entry));
+  } else if (typeof console !== "undefined" && typeof console.log === "function") {
+    console.log(JSON.stringify(entry));
+  }
+  markRequestProcessed_(
+    identity.lineUserId,
+    request.action,
+    request.requestId,
+    "logged"
+  );
+  return { data: { accepted: true, duplicate: false } };
+}
+
+function enforcePerformanceReportRateLimit_(lineUserId) {
+  var minuteBucket = Math.floor(Date.now() / 60000);
+  var key =
+    "performance-rate:" + sha256Hex_(String(lineUserId)) + ":" + minuteBucket;
+  try {
+    var cache = CacheService.getScriptCache();
+    var count = Math.max(0, Number(cache.get(key)) || 0);
+    if (count >= 12) {
+      throw appError_("PERFORMANCE_RATE_LIMITED", "效能回報過於頻繁。");
+    }
+    cache.put(key, String(count + 1), 90);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    // Reporting is best effort if CacheService is temporarily unavailable.
   }
 }
 
@@ -2909,13 +3371,27 @@ function getConfig_() {
   };
 }
 
-function getOrCreateMemberSheet_(config) {
+function getSpreadsheetForRequest_(config) {
+  if (config && config.__requestSpreadsheet) {
+    return config.__requestSpreadsheet;
+  }
   var spreadsheet;
   try {
     spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
   } catch (_error) {
-    throw appError_("SPREADSHEET_ERROR", "無法開啟會員試算表，請檢查 SPREADSHEET_ID 與權限。");
+    throw appError_(
+      "SPREADSHEET_ERROR",
+      "無法開啟會員試算表，請檢查 SPREADSHEET_ID 與權限。"
+    );
   }
+  // config is created once per request. This is request-scoped reuse, not a
+  // cross-request cache; every request still validates the Sheet schemas.
+  config.__requestSpreadsheet = spreadsheet;
+  return spreadsheet;
+}
+
+function getOrCreateMemberSheet_(config) {
+  var spreadsheet = getSpreadsheetForRequest_(config);
 
   var sheet = spreadsheet.getSheetByName(config.sheetName);
   if (!sheet) sheet = spreadsheet.insertSheet(config.sheetName);
@@ -3158,12 +3634,7 @@ function getOrCreatePointDataSheet_(
   legacyHeaders,
   legacyDefaults
 ) {
-  var spreadsheet;
-  try {
-    spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
-  } catch (_error) {
-    throw appError_("SPREADSHEET_ERROR", "無法開啟點數試算表，請檢查 SPREADSHEET_ID 與權限。");
-  }
+  var spreadsheet = getSpreadsheetForRequest_(config);
 
   var sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
@@ -3884,6 +4355,13 @@ function parseRequest_(e) {
       claim: String(e.parameter.claim || "").trim(),
       lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
       cardRoundKey: String(e.parameter.cardRoundKey || "").trim(),
+      metricName: String(e.parameter.metricName || "").trim(),
+      operation: String(e.parameter.operation || "").trim(),
+      durationMs: String(e.parameter.durationMs || "").trim(),
+      outcome: String(e.parameter.outcome || "").trim(),
+      requestTransport: String(e.parameter.requestTransport || "").trim(),
+      fallbackUsed: String(e.parameter.fallbackUsed || "").trim(),
+      errorCode: String(e.parameter.errorCode || "").trim(),
       transport: "bridge",
     };
   }
@@ -3914,6 +4392,13 @@ function parseRequest_(e) {
     claim: String(parsed.claim || "").trim(),
     lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
     cardRoundKey: String(parsed.cardRoundKey || "").trim(),
+    metricName: String(parsed.metricName || "").trim(),
+    operation: String(parsed.operation || "").trim(),
+    durationMs: parsed.durationMs,
+    outcome: String(parsed.outcome || "").trim(),
+    requestTransport: String(parsed.requestTransport || "").trim(),
+    fallbackUsed: parsed.fallbackUsed,
+    errorCode: String(parsed.errorCode || "").trim(),
     transport: "fetch",
   };
 }
@@ -3946,12 +4431,72 @@ function validateRequestEnvelope_(request) {
   ) {
     request.claim = normalizePointClaim_(request.claim);
   }
-  if (request.action === "drawLottery") {
+  if (
+    request.action === "drawLottery" ||
+    request.action === "prepareLotteryDraw"
+  ) {
     request.lotteryTypeId = normalizeLotteryTypeId_(request.lotteryTypeId);
     request.cardRoundKey = normalizeOptionalCardRoundKey_(
       request.cardRoundKey
     );
   }
+  if (request.action === "reportClientPerformance") {
+    request.performanceMetric = normalizePerformanceMetric_(request);
+  }
+}
+
+function normalizePerformanceMetric_(request) {
+  var metricName = String(request.metricName || "").trim();
+  var operation = String(request.operation || "").trim();
+  var durationMs = Number(request.durationMs);
+  var outcome = String(request.outcome || "").trim().toLowerCase();
+  var requestTransport = String(request.requestTransport || "").trim().toLowerCase();
+  var fallbackUsed =
+    request.fallbackUsed === true || String(request.fallbackUsed) === "true";
+  var errorCode = String(request.errorCode || "").trim().toUpperCase();
+  var thresholds = {
+    page_shell: 300,
+    config_load: 1000,
+    liff_init: 1500,
+    member_sync: 2500,
+    wheel_prepare: 1000,
+    api_request: 2500,
+  };
+  var operations = [
+    "page",
+    "config",
+    "liff",
+    "upsertMember",
+    "prepareLotteryDraw",
+    "getLotteryConfig",
+    "updateMemberProfile",
+    "listPointHistory",
+    "previewPointCampaign",
+    "redeemPointCampaign",
+    "deleteMember",
+  ];
+  if (
+    !Object.prototype.hasOwnProperty.call(thresholds, metricName) ||
+    operations.indexOf(operation) === -1 ||
+    !Number.isInteger(durationMs) ||
+    durationMs < 0 ||
+    durationMs > 120000 ||
+    ["slow", "timeout", "failure"].indexOf(outcome) === -1 ||
+    ["fetch", "bridge", "mixed", "none"].indexOf(requestTransport) === -1 ||
+    (errorCode && !/^[A-Z0-9_]{2,60}$/.test(errorCode)) ||
+    (outcome === "slow" && durationMs < thresholds[metricName])
+  ) {
+    throw appError_("INVALID_PERFORMANCE_REPORT", "效能回報格式不正確。");
+  }
+  return {
+    metricName: metricName,
+    operation: operation,
+    durationMs: durationMs,
+    outcome: outcome,
+    requestTransport: requestTransport,
+    fallbackUsed: fallbackUsed,
+    errorCode: errorCode,
+  };
 }
 
 function normalizeLotteryTypeId_(value) {

@@ -1,8 +1,9 @@
 (function () {
   "use strict";
 
-  var FETCH_TIMEOUT_MS = 12000;
-  var BRIDGE_TIMEOUT_MS = 20000;
+  var FETCH_TIMEOUT_MS = 9000;
+  var BRIDGE_TIMEOUT_MS = 12000;
+  var TRANSPORT_STORAGE_PREFIX = "persona-gas-transport:";
   var EXTRA_FIELD_NAMES = [
     "targetMemberId",
     "accessStatus",
@@ -28,6 +29,13 @@
     "lotteryTypeName",
     "showPrizesOnTicket",
     "lotteryPrizes",
+    "metricName",
+    "operation",
+    "durationMs",
+    "outcome",
+    "requestTransport",
+    "fallbackUsed",
+    "errorCode",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
@@ -104,10 +112,62 @@
     });
 
     var gasUrl = String(options.gasUrl || "").trim();
-    return postWithFetch(gasUrl, request).catch(function (error) {
-      if (!shouldUseBridgeFallback(error)) throw error;
-      return postWithBridge(gasUrl, request);
-    });
+    var startedAt = nowMilliseconds();
+    var attemptedTransports = [];
+    var preferredTransport = readPreferredTransport(gasUrl);
+
+    function attempt(transport) {
+      attemptedTransports.push(transport);
+      var promise =
+        transport === "bridge"
+          ? postWithBridge(gasUrl, request)
+          : postWithFetch(gasUrl, request);
+      return promise.then(function (result) {
+        rememberPreferredTransport(gasUrl, transport);
+        return result;
+      });
+    }
+
+    return attempt(preferredTransport)
+      .catch(function (error) {
+        if (!shouldTryAlternateTransport(preferredTransport, error)) {
+          throw error;
+        }
+        return attempt(preferredTransport === "bridge" ? "fetch" : "bridge");
+      })
+      .then(
+        function (result) {
+          notifyTiming(options.onTiming, {
+            action: request.action,
+            durationMs: elapsedMilliseconds(startedAt),
+            outcome: result && result.ok === true ? "success" : "failure",
+            errorCode:
+              result && result.ok !== true && result.code
+                ? String(result.code)
+                : "",
+            transport: attemptedTransports[attemptedTransports.length - 1],
+            fallbackUsed: attemptedTransports.length > 1,
+          });
+          return result;
+        },
+        function (error) {
+          notifyTiming(options.onTiming, {
+            action: request.action,
+            durationMs: elapsedMilliseconds(startedAt),
+            outcome:
+              error &&
+              (error.name === "AbortError" || error.code === "BACKEND_TIMEOUT")
+                ? "timeout"
+                : "failure",
+            errorCode: String((error && (error.code || error.name)) || "CONNECTION_ERROR"),
+            transport:
+              attemptedTransports[attemptedTransports.length - 1] ||
+              preferredTransport,
+            fallbackUsed: attemptedTransports.length > 1,
+          });
+          throw error;
+        }
+      );
   }
 
   function postWithFetch(gasUrl, request) {
@@ -260,6 +320,57 @@
       error instanceof TypeError ||
       (error && (error.name === "AbortError" || error.code === "FETCH_NETWORK_ERROR"))
     );
+  }
+
+  function shouldTryAlternateTransport(primaryTransport, error) {
+    return primaryTransport === "bridge" || shouldUseBridgeFallback(error);
+  }
+
+  function readPreferredTransport(gasUrl) {
+    try {
+      var value = window.sessionStorage.getItem(transportStorageKey(gasUrl));
+      return value === "bridge" ? "bridge" : "fetch";
+    } catch (_error) {
+      return "fetch";
+    }
+  }
+
+  function rememberPreferredTransport(gasUrl, transport) {
+    if (transport !== "fetch" && transport !== "bridge") return;
+    try {
+      window.sessionStorage.setItem(transportStorageKey(gasUrl), transport);
+    } catch (_error) {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }
+
+  function transportStorageKey(gasUrl) {
+    var value = String(gasUrl || "");
+    var hash = 2166136261;
+    for (var index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return TRANSPORT_STORAGE_PREFIX + (hash >>> 0).toString(16);
+  }
+
+  function nowMilliseconds() {
+    return window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function elapsedMilliseconds(startedAt) {
+    return Math.max(0, Math.round(nowMilliseconds() - startedAt));
+  }
+
+  function notifyTiming(callback, timing) {
+    if (typeof callback !== "function") return;
+    try {
+      callback(Object.freeze(timing));
+    } catch (_error) {
+      // Performance reporting must never change the request result.
+    }
   }
 
   function isPlausibleGasOrigin(origin) {

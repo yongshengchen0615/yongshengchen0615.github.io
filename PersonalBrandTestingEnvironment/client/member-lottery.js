@@ -2,8 +2,8 @@
   "use strict";
 
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
-  var SPIN_DEGREES_PER_MS = 1.45;
-  var FINAL_SPIN_TURNS = 2;
+  var SPIN_DURATION_MS = 5000;
+  var FINAL_SPIN_TURNS = 8;
   var DIALOG_STATE_IDS = [
     "member-lottery-loading-state",
     "member-lottery-error-state",
@@ -258,80 +258,59 @@
 
   function loadWorkspace(expectedLoadVersion) {
     var requestPromise = Promise.resolve().then(function () {
-      if (safeIsDemo()) {
-        return {
-          ok: true,
-          data: buildDemoWorkspace(),
-        };
+      var storedRequest = readPendingRequest();
+      if (
+        storedRequest &&
+        (storedRequest.cardRoundKey !== selectedTicket.cardRoundKey ||
+          storedRequest.lotteryTypeId !== selectedTicket.lotteryTypeId)
+      ) {
+        throw createError(
+          "REQUEST_ID_CONFLICT",
+          "上一次抽獎使用了不同的抽獎券。"
+        );
       }
-      return options.request("getLotteryConfig", {}, undefined);
+
+      if (safeIsDemo()) {
+        var workspace = normalizeWorkspace(buildDemoWorkspace());
+        lotteryTypes = workspace.lotteryTypes;
+        cardStatus = workspace.card;
+        var availableTicket = cardStatus.availableRewards.find(function (ticket) {
+          return (
+            ticket.cardRoundKey === selectedTicket.cardRoundKey &&
+            ticket.lotteryTypeId === selectedTicket.lotteryTypeId
+          );
+        });
+        if (!storedRequest && !availableTicket) {
+          throw createError(
+            "LOTTERY_ROUND_NOT_READY",
+            "這張抽獎券已使用或目前無法使用。"
+          );
+        }
+        if (availableTicket) selectedTicket = availableTicket;
+      }
+
+      renderTicketHeading();
+      pendingRequest = ensurePendingRequest(selectedTicket);
+      setText(
+        "member-lottery-spin-status",
+        storedRequest
+          ? "正在安全取回上次抽獎結果…"
+          : "正在安全準備本次抽獎結果…"
+      );
+      updateControls();
+
+      if (safeIsDemo()) return createDemoDrawResponse();
+      return options.request(
+        "prepareLotteryDraw",
+        {
+          lotteryTypeId: selectedTicket.lotteryTypeId,
+          cardRoundKey: selectedTicket.cardRoundKey,
+        },
+        pendingRequest.requestId
+      );
     });
 
     return requestPromise
-      .then(function (response) {
-        if (expectedLoadVersion !== loadVersion) return false;
-        assertSuccessfulResponse(response);
-        var workspace = normalizeWorkspace(response.data);
-        lotteryTypes = workspace.lotteryTypes;
-        cardStatus = workspace.card;
-
-        var selectedType = findLotteryType(selectedLotteryTypeId);
-        if (!selectedType) {
-          throw createError(
-            "LOTTERY_TYPE_NOT_FOUND",
-            "這張抽獎券指定的轉盤目前無法使用。"
-          );
-        }
-
-        var storedRequest = readPendingRequest();
-        if (!storedRequest) {
-          var availableTicket = cardStatus.availableRewards.find(function (
-            ticket
-          ) {
-            return (
-              ticket.cardRoundKey === selectedTicket.cardRoundKey &&
-              ticket.lotteryTypeId === selectedTicket.lotteryTypeId
-            );
-          });
-          if (!availableTicket) {
-            throw createError(
-              "LOTTERY_ROUND_NOT_READY",
-              "這張抽獎券已使用或目前無法使用。"
-            );
-          }
-          selectedTicket = availableTicket;
-        } else if (
-          storedRequest.cardRoundKey !== selectedTicket.cardRoundKey ||
-          storedRequest.lotteryTypeId !== selectedTicket.lotteryTypeId
-        ) {
-          throw createError(
-            "REQUEST_ID_CONFLICT",
-            "上一次抽獎使用了不同的抽獎券。"
-          );
-        }
-
-        renderTicketHeading();
-        drawSelectedWheel();
-        pendingRequest = ensurePendingRequest(selectedTicket);
-        setText(
-          "member-lottery-spin-status",
-          storedRequest
-            ? "正在安全取回上次抽獎結果…"
-            : "正在安全準備本次抽獎結果…"
-        );
-        safeCardUpdated(cardStatus, workspace.totalPoints);
-        updateControls();
-
-        if (safeIsDemo()) return createDemoDrawResponse();
-        return options.request(
-          "drawLottery",
-          {
-            lotteryTypeId: selectedTicket.lotteryTypeId,
-            cardRoundKey: selectedTicket.cardRoundKey,
-          },
-          pendingRequest.requestId
-        );
-      })
       .then(function (response) {
         if (expectedLoadVersion !== loadVersion) return false;
         assertSuccessfulResponse(response);
@@ -349,6 +328,7 @@
         }
 
         preparedDrawData = normalizePreparedDraw(response.data);
+        cardStatus = preparedDrawData.nextCard;
         drawWheel(preparedDrawData.selectedType.lottery.prizes);
         resetRotor();
         isPreparing = false;
@@ -1008,7 +988,7 @@
       });
     }
 
-    var duration = (2 * rotationDelta) / SPIN_DEGREES_PER_MS;
+    var duration = SPIN_DURATION_MS;
     return new Promise(function (resolve) {
       var animationStartedAt =
         window.performance &&
@@ -1023,13 +1003,8 @@
           1,
           (timestamp - animationStartedAt) / duration
         );
-        var quadraticEaseOut = 1 - Math.pow(1 - progress, 2);
-        var smoothstepCorrection = Math.pow(
-          progress * (1 - progress),
-          2
-        );
-        var easedProgress =
-          quadraticEaseOut + smoothstepCorrection;
+        var easeOutCubic = 1 - Math.pow(1 - progress, 3);
+        var easedProgress = easeOutCubic;
         lotteryRotation =
           startRotation + rotationDelta * easedProgress;
         rotor.style.transform =

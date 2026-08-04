@@ -555,14 +555,14 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
     openLotteryDialog,
     /showDialog\(dialog\)[\s\S]*setDialogState\(["']member-lottery-loading-state["']\)[\s\S]*loadWorkspace\(thisLoad\)/
   );
-  assert.match(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
+  assert.doesNotMatch(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
   assert.match(
     loadWorkspace,
-    /ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*normalizePreparedDraw\(response\.data\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+    /ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']prepareLotteryDraw["'][\s\S]*normalizePreparedDraw\(response\.data\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
   );
   assert.match(
     loadWorkspace,
-    /drawSelectedWheel\(\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+    /drawWheel\(preparedDrawData\.selectedType\.lottery\.prizes\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
   );
   assert.match(
     configureDialog,
@@ -666,7 +666,8 @@ test("legacy client lottery deep link remains available and spins from the wheel
     getOpeningTagById(html, "lottery-wheel-view"),
     /\bhidden\b/i
   );
-  assert.match(prepareDraw, /sendMemberRequest\(\s*["']drawLottery["']/);
+  assert.match(prepareDraw, /sendMemberRequest\(\s*["']prepareLotteryDraw["']/);
+  assert.doesNotMatch(prepareDraw, /sendMemberRequest\(\s*["']getLotteryConfig["']/);
   assert.match(prepareDraw, /ensurePendingRequest\s*\(/);
   assert.match(prepareDraw, /\blotteryTypeId\s*:/);
   assert.match(prepareDraw, /\bcardRoundKey\s*:/);
@@ -704,11 +705,11 @@ test("legacy client lottery deep link remains available and spins from the wheel
   assert.doesNotMatch(script, /function\s+startWaitingSpin\s*\(/);
   assert.match(
     animateSpin,
-    /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
+    /duration\s*=\s*SPIN_DURATION_MS/
   );
   assert.match(
     animateSpin,
-    /quadraticEaseOut\s*=\s*1\s*-\s*Math\.pow\(\s*1\s*-\s*progress,\s*2\s*\)/
+    /easeOutCubic\s*=\s*1\s*-\s*Math\.pow\(\s*1\s*-\s*progress,\s*3\s*\)/
   );
   assert.match(animateSpin, /if\s*\(reducedMotion\)[\s\S]*return new Promise/);
   assert.match(animateSpin, /window\.performance\.now\(\)/);
@@ -1244,18 +1245,58 @@ test("LIFF pages preconnect early and use keyboard-safe mobile viewport sizing",
   }
 });
 
-test("shared GAS transport keeps fetch primary and bridge as a compatibility fallback", () => {
+test("shared GAS transport learns the successful per-tab transport with bounded fallbacks", () => {
   const transport = fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8");
   const sendRequest = getTopLevelFunctionContaining(
     transport,
     /function\s+sendRequest\s*\(/
   );
 
-  assert.match(sendRequest, /postWithFetch\(gasUrl,\s*request\)\.catch/);
-  assert.match(sendRequest, /shouldUseBridgeFallback\(error\)/);
-  assert.match(sendRequest, /return postWithBridge\(gasUrl,\s*request\)/);
-  assert.doesNotMatch(transport, /shouldUseBridgeFirst/);
+  assert.match(sendRequest, /readPreferredTransport\(gasUrl\)/);
+  assert.match(sendRequest, /rememberPreferredTransport\(gasUrl,\s*transport\)/);
+  assert.match(sendRequest, /preferredTransport\s*===\s*["']bridge["']\s*\?\s*["']fetch["']\s*:\s*["']bridge["']/);
+  assert.match(transport, /FETCH_TIMEOUT_MS\s*=\s*9000/);
+  assert.match(transport, /BRIDGE_TIMEOUT_MS\s*=\s*12000/);
   assert.match(transport, /loadConfig[\s\S]*?cache:\s*["']no-cache["']/);
+});
+
+test("member performance reporting is non-blocking, bounded and retries once", () => {
+  const member = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const lottery = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
+  const gas = fs.readFileSync(path.join(root, "gas/client/Code.gs"), "utf8");
+
+  for (const source of [member, lottery]) {
+    const sendReport = getTopLevelFunctionContaining(
+      source,
+      /function\s+sendPerformanceReport\s*\(/
+    );
+    const drain = getTopLevelFunctionContaining(
+      source,
+      /function\s+drainPerformanceReports\s*\(/
+    );
+    assert.match(sendReport, /action:\s*["']reportClientPerformance["']/);
+    assert.match(
+      sendReport,
+      /catch\(function\s*\(\)\s*\{[\s\S]*attempt\s*===\s*0[\s\S]*sendPerformanceReport\(metric,\s*requestId,\s*1\)/
+    );
+    assert.match(drain, /sendPerformanceReport\(metric,\s*requestId,\s*0\)\.finally/);
+    assert.doesNotMatch(sendReport, /displayName|pictureUrl|phone|birthday|lineUserId/);
+  }
+  assert.match(gas, /event:\s*["']member_client_performance["']/);
+  const reportStart = gas.indexOf("function reportClientPerformance_(");
+  assert.notEqual(reportStart, -1);
+  const reportEnd = gas.indexOf("\nfunction ", reportStart + 1);
+  const reportHandler = gas.slice(
+    reportStart,
+    reportEnd === -1 ? gas.length : reportEnd
+  );
+  const entryStart = reportHandler.indexOf("var entry =");
+  const entryEnd = reportHandler.indexOf("\n  };", entryStart);
+  const loggedEntry = reportHandler.slice(entryStart, entryEnd);
+  assert.doesNotMatch(
+    loggedEntry,
+    /lineUserId|displayName|pictureUrl|phone|birthday|requestId\s*:/
+  );
 });
 
 test("member home updates card progress immediately and keeps scanning local", () => {

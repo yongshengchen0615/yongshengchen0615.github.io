@@ -402,16 +402,15 @@ test("draw data is prepared before the center button starts one smooth animation
 
   state.requestHandler = (action) => {
     actions.push(action);
-    if (action === "getLotteryConfig") return createWorkspaceResponse();
-    if (action === "drawLottery") return createDrawResponse();
+    if (action === "prepareLotteryDraw") return createDrawResponse();
     throw new Error(`Unexpected action: ${action}`);
   };
 
   assert.equal(await controller.open(createTicket()), true);
   assert.deepEqual(
     actions,
-    ["getLotteryConfig", "drawLottery"],
-    "opening the wheel must prepare both its display data and draw result"
+    ["prepareLotteryDraw"],
+    "opening the wheel must prepare its display data and draw result in one request"
   );
   assert.equal(
     elements["member-lottery-rotor"].style.transform,
@@ -423,7 +422,7 @@ test("draw data is prepared before the center button starts one smooth animation
     () => elements["member-lottery-result-state"].hidden === false,
     "prepared draw result did not complete its animation"
   );
-  assert.deepEqual(actions, ["getLotteryConfig", "drawLottery"]);
+  assert.deepEqual(actions, ["prepareLotteryDraw"]);
   assert.notEqual(
     elements["member-lottery-rotor"].style.transform,
     "rotate(0deg)"
@@ -453,8 +452,7 @@ test("pending draws are isolated by member and demo scope, then replay for the o
   let drawAttempt = 0;
 
   state.requestHandler = (action) => {
-    if (action === "getLotteryConfig") return createWorkspaceResponse();
-    if (action === "drawLottery") {
+    if (action === "prepareLotteryDraw") {
       drawAttempt += 1;
       return drawAttempt === 1
         ? Promise.reject(transientError)
@@ -513,11 +511,9 @@ test("definitive no-draw response clears pending and refreshes the host card", a
   state.requestHandler = (action) => {
     if (action === "getLotteryConfig") {
       configReads += 1;
-      return createWorkspaceResponse({
-        ticketAvailable: configReads === 1,
-      });
+      return createWorkspaceResponse({ ticketAvailable: false });
     }
-    if (action === "drawLottery") {
+    if (action === "prepareLotteryDraw") {
       return Promise.reject(
         createError(
           "LOTTERY_ROUND_NOT_READY",
@@ -531,8 +527,8 @@ test("definitive no-draw response clears pending and refreshes the host card", a
   assert.equal(await controller.open(createTicket()), false);
   await waitFor(
     () =>
-      configReads === 2 &&
-      state.updates.length >= 2 &&
+      configReads === 1 &&
+      state.updates.length >= 1 &&
       state.updates.at(-1).card.availableDraws === 0,
     "host card was not refreshed after the definitive no-draw response"
   );
@@ -541,7 +537,7 @@ test("definitive no-draw response clears pending and refreshes the host card", a
   assert.equal(controller.canClose(), true);
   assert.equal(controller.requestClose(), true);
   assert.equal(storage.has(MEMBER_A_STORAGE_KEY), false);
-  assert.equal(configReads, 2);
+  assert.equal(configReads, 1);
   assert.equal(
     harness.elements["member-lottery-error-code"].textContent,
     "LOTTERY ROUND NOT READY"
@@ -554,11 +550,7 @@ test("unknown draw errors retain the pending request and keep the dialog locked"
   let configReads = 0;
 
   state.requestHandler = (action) => {
-    if (action === "getLotteryConfig") {
-      configReads += 1;
-      return createWorkspaceResponse();
-    }
-    if (action === "drawLottery") {
+    if (action === "prepareLotteryDraw") {
       return Promise.reject(
         createError("CONNECTION_ERROR", "The request timed out")
       );
@@ -572,7 +564,7 @@ test("unknown draw errors retain the pending request and keep the dialog locked"
   assert.equal(controller.canClose(), false);
   assert.equal(controller.requestClose(), false);
   assert.equal(storage.has(MEMBER_A_STORAGE_KEY), true);
-  assert.equal(configReads, 1);
+  assert.equal(configReads, 0);
   assert.match(
     harness.elements["member-lottery-error-message"].textContent,
     /timed out/

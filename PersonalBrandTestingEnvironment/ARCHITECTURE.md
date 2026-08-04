@@ -35,7 +35,7 @@
 
 共用瀏覽器模組：
 
-- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、fetch 傳輸與受驗證的 iframe fallback。
+- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、9 秒 fetch 與 12 秒受驗證 iframe fallback，並在單一分頁記住每個 GAS URL 最近成功的傳輸方式。
 - `shared/liff-runtime.js`：LIFF 環境資訊、展示模式與公開設定完整性檢查。
 - `shared/lottery-wheel.js`：管理端預覽與會員端轉盤共用的 Canvas 繪製。
 - `shared/qr-code.js`：管理端本機 QR Code 編碼，不把領點網址交給第三方服務。
@@ -83,22 +83,24 @@
 
 - `config.json`、LIFF ID、GAS `/exec` URL 都是公開資料；秘密只放在 GAS Script Properties。
 - GAS 必須重新驗證 ID Token 的 audience、issuer、subject 與時效，不信任前端傳入的 LINE user ID。
+- 會員 GAS 只可把已驗證 Token 的 `sub`、`iat`、`exp` 以 SHA-256 Token key 暫存最多 5 分鐘；原始 Token、姓名與頭像不可進入 CacheService、Sheet 或效能紀錄。會員權限、點數與抽獎資料仍必須每次讀取 Spreadsheet。
 - `ALLOWED_ORIGINS` 只接受完整 origin；所有回應都綁定 request ID，iframe bridge 另外驗證回應 origin 與一次性 secret。
 - 會員與管理 action 使用白名單分流，未知欄位不進入業務函式。
 - 點數領取、抽獎與管理寫入使用 request ID 保持重試冪等。
 - 中獎機率與結果只在會員 GAS 計算；Canvas 動畫只呈現伺服器已回傳的獎項。
 - 管理員核准只允許試算表擁有者手動修改 `Admins.status`，前端沒有提升管理權限的 API。
-- Google Sheets 不是關聯式資料庫。跨列更新必須持續使用既有 lock、重讀與唯一性檢查，避免重複領點或重複抽獎。
+- Google Sheets 不是關聯式資料庫。點數與抽獎寫入必須持續使用 lock、重讀與唯一性檢查；純讀取 action 不占用全域 lock，改用 request-scoped 快照與版本檢查。
 
 ## 6. 本次重構決策
 
 - 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
-- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態；有勾選抽獎券預覽的獎項時，只附上最新轉盤中被選取的獎項名稱，不傳機率。開啟滿版票券清單不再額外讀取試算表；選定可用券後，首頁轉盤小視窗會在載入狀態中取得最新設定並以固定 request ID 安全準備結果，中央按鈕只負責動畫，不再等待網路。
+- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態；有勾選抽獎券預覽的獎項時，只附上最新轉盤中被選取的獎項名稱，不傳機率。開啟滿版票券清單不再額外讀取試算表；選定可用券後，以單一 `prepareLotteryDraw` 和固定 request ID 讀取一次各 ledger 快照、保存結果並回傳轉盤，中央按鈕只播放固定 5 秒動畫。
 - 待確認抽獎以 LIFF 與已驗證會員編號隔離，展示模式另用獨立空間；結果未知時保留同一 request ID，後台明確確認未開獎時才解除鎖定並重載票券。
 - 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。
 - 把三份重複的 Canvas 轉盤程式整合為 `shared/lottery-wheel.js`。
 - 把三份重複的 LIFF context、展示模式與 config 完整性檢查整合為 `shared/liff-runtime.js`。
-- 保留頁面、API action 與 GAS 部署方式；`LotteryTypes` 只在尾端追加相容欄位，舊 9 欄資料由 `setup()` 補成關閉預覽，既有 10 欄的整組預覽設定則相容轉成全部獎項皆顯示。
+- 保留頁面、舊 `drawLottery` action 與 GAS 部署方式，新增 `prepareLotteryDraw` 與需會員驗證但不記錄身分的 `reportClientPerformance`；`LotteryTypes` 只在尾端追加相容欄位，舊 9 欄資料由 `setup()` 補成關閉預覽，既有 10 欄的整組預覽設定則相容轉成全部獎項皆顯示。
+- 效能紀錄只接受固定 phase、耗時、結果、transport、fallback 與錯誤碼；快速成功不回報，背景回報失敗立即重試一次，Cloud Logging 不包含 LINE ID、Token、姓名、電話、生日或 request ID。
 
 ## 7. 後續重構順序
 

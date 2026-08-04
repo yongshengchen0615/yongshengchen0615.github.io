@@ -166,6 +166,110 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
   assert.equal(submittedForms, 1);
 });
 
+test("shared GAS transport remembers a successful bridge for the current tab", async () => {
+  let messageListener = null;
+  let fetchCalls = 0;
+  let submittedForms = 0;
+  const storage = new Map();
+  const document = {
+    baseURI: "https://example.test/client/",
+    body: { appendChild() {} },
+    createElement(tagName) {
+      const element = {
+        children: [],
+        appendChild(child) {
+          this.children.push(child);
+        },
+        remove() {},
+      };
+      if (tagName === "form") {
+        element.submit = function () {
+          submittedForms += 1;
+          const fields = Object.fromEntries(
+            this.children.map((child) => [child.name, child.value])
+          );
+          queueMicrotask(() => {
+            messageListener({
+              origin: "https://script.google.com",
+              data: {
+                type: "MEMBER_GAS_RESPONSE",
+                requestId: fields.requestId,
+                requestSecret: fields.requestSecret,
+                result: { ok: true, requestId: fields.requestId },
+              },
+            });
+          });
+        };
+      }
+      return element;
+    },
+  };
+  const window = {
+    location: { origin: "https://example.test" },
+    sessionStorage: {
+      getItem(key) {
+        return storage.get(key) || null;
+      },
+      setItem(key, value) {
+        storage.set(key, String(value));
+      },
+    },
+    crypto: {
+      getRandomValues(bytes) {
+        bytes.fill(7);
+        return bytes;
+      },
+    },
+    fetch() {
+      fetchCalls += 1;
+      return Promise.reject(new TypeError("CORS"));
+    },
+    setTimeout,
+    clearTimeout,
+    addEventListener(type, listener) {
+      if (type === "message") messageListener = listener;
+    },
+    removeEventListener(type, listener) {
+      if (type === "message" && messageListener === listener) {
+        messageListener = null;
+      }
+    },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Date,
+    Promise,
+    TypeError,
+    URL,
+    Uint8Array,
+    clearTimeout,
+    document,
+    queueMicrotask,
+    setTimeout,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+
+  await window.MemberApi.sendRequest({
+    gasUrl: "https://script.google.com/macros/s/example/exec",
+    action: "upsertMember",
+    requestId: "req-transport-0001",
+  });
+  await window.MemberApi.sendRequest({
+    gasUrl: "https://script.google.com/macros/s/example/exec",
+    action: "upsertMember",
+    requestId: "req-transport-0002",
+  });
+
+  assert.equal(fetchCalls, 1, "the second request should not repeat the failed fetch");
+  assert.equal(submittedForms, 2);
+  assert.equal(Array.from(storage.values()).includes("bridge"), true);
+});
+
 test("shared LIFF runtime normalizes context and validates public configuration", () => {
   const window = loadBrowserModule("shared/liff-runtime.js");
   const runtime = window.LiffRuntime;

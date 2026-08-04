@@ -22,10 +22,24 @@
   var activeTicketTab = "";
   var requestedCardRoundKey = "";
   var requestedTicketError = "";
+  var pendingPerformanceReports = [];
+  var isPerformanceReportBusy = false;
+  var isPerformanceReportingReady = false;
+  var PERFORMANCE_THRESHOLDS = Object.freeze({
+    page_shell: 300,
+    config_load: 1000,
+    liff_init: 1500,
+    member_sync: 2500,
+    wheel_prepare: 1000,
+    api_request: 2500,
+  });
+  var pageStartedAt =
+    window.performance && typeof window.performance.now === "function"
+      ? 0
+      : Date.now();
 
-  var SPIN_DEGREES_PER_MS = 1.45;
-  var FINAL_SPIN_TURNS = 2;
-  var RESULT_HOLD_MS = 450;
+  var SPIN_DURATION_MS = 5000;
+  var FINAL_SPIN_TURNS = 8;
   var WHEEL_PRELOAD_LIMIT = 8;
 
   var STATE_IDS = [
@@ -47,6 +61,7 @@
   }
 
   function start() {
+    recordPhaseTiming("page_shell", "page", pageStartedAt, "success");
     setView("loading-state");
     setLoading(
       "正在準備轉盤",
@@ -75,6 +90,7 @@
       );
     }
 
+    var startedAt = performanceNow();
     return window.MemberApi
       .loadConfig(
         "config.json",
@@ -86,6 +102,11 @@
       )
       .then(function (config) {
         CONFIG = config;
+        recordPhaseTiming("config_load", "config", startedAt, "success");
+      })
+      .catch(function (error) {
+        recordPhaseTiming("config_load", "config", startedAt, "failure", error);
+        throw error;
       });
   }
 
@@ -138,12 +159,16 @@
       return Promise.resolve();
     }
 
+    var liffStartedAt = performanceNow();
+    var liffInitialized = false;
     return window.liff
       .init({
         liffId: String(CONFIG.LIFF_ID).trim(),
         withLoginOnExternalBrowser: false,
       })
       .then(function () {
+        liffInitialized = true;
+        recordPhaseTiming("liff_init", "liff", liffStartedAt, "success");
         if (thisBoot !== bootVersion) {
           return;
         }
@@ -168,6 +193,9 @@
         );
       })
       .catch(function (error) {
+        if (!liffInitialized) {
+          recordPhaseTiming("liff_init", "liff", liffStartedAt, "failure", error);
+        }
         if (thisBoot !== bootVersion) {
           return;
         }
@@ -212,6 +240,7 @@
         assertSuccessfulResponse(
           response
         );
+        enablePerformanceReporting();
 
         if (
           !response.data ||
@@ -290,7 +319,123 @@
       context: getLiffContext(),
       fields: fields || {},
       requestId: requestId,
+      onTiming: handleRequestTiming,
     });
+  }
+
+  function performanceNow() {
+    return window.performance && typeof window.performance.now === "function"
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function recordPhaseTiming(metricName, operation, startedAt, outcome, error) {
+    queuePerformanceReport({
+      metricName: metricName,
+      operation: operation,
+      durationMs: Math.max(0, Math.round(performanceNow() - startedAt)),
+      outcome: outcome,
+      requestTransport: "none",
+      fallbackUsed: false,
+      errorCode: performanceErrorCode(error),
+    });
+  }
+
+  function handleRequestTiming(timing) {
+    timing = timing && typeof timing === "object" ? timing : {};
+    var action = String(timing.action || "");
+    if (action === "reportClientPerformance") return;
+    var metricName =
+      action === "prepareLotteryDraw"
+        ? "wheel_prepare"
+        : action === "getLotteryConfig"
+          ? "member_sync"
+          : "api_request";
+    queuePerformanceReport({
+      metricName: metricName,
+      operation: action || "page",
+      durationMs: Math.max(0, Math.round(Number(timing.durationMs) || 0)),
+      outcome: String(timing.outcome || "failure"),
+      requestTransport: String(timing.transport || "none"),
+      fallbackUsed: timing.fallbackUsed === true,
+      errorCode: performanceErrorCode(timing.errorCode),
+    });
+    if (timing.outcome !== "success" && currentIdToken) {
+      enablePerformanceReporting();
+    }
+  }
+
+  function queuePerformanceReport(metric) {
+    var threshold = PERFORMANCE_THRESHOLDS[metric.metricName];
+    if (!threshold) return;
+    var normalizedOutcome = String(metric.outcome || "failure").toLowerCase();
+    if (normalizedOutcome === "success") {
+      if (metric.durationMs < threshold) return;
+      normalizedOutcome = "slow";
+    }
+    if (["slow", "timeout", "failure"].indexOf(normalizedOutcome) === -1) {
+      normalizedOutcome = "failure";
+    }
+    metric.outcome = normalizedOutcome;
+    metric.errorCode = normalizedOutcome === "slow" ? "" : metric.errorCode;
+    if (pendingPerformanceReports.length >= 12) return;
+    pendingPerformanceReports.push(metric);
+    drainPerformanceReports();
+  }
+
+  function enablePerformanceReporting() {
+    isPerformanceReportingReady = true;
+    window.setTimeout(drainPerformanceReports, 0);
+  }
+
+  function drainPerformanceReports() {
+    if (
+      !isPerformanceReportingReady ||
+      isPerformanceReportBusy ||
+      !currentIdToken ||
+      !hasCompleteConfig() ||
+      !pendingPerformanceReports.length
+    ) {
+      return;
+    }
+    isPerformanceReportBusy = true;
+    var metric = pendingPerformanceReports.shift();
+    var requestId = window.MemberApi.createRequestId();
+    sendPerformanceReport(metric, requestId, 0).finally(function () {
+      isPerformanceReportBusy = false;
+      drainPerformanceReports();
+    });
+  }
+
+  function sendPerformanceReport(metric, requestId, attempt) {
+    return window.MemberApi
+      .sendRequest({
+        gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
+        action: "reportClientPerformance",
+        idToken: currentIdToken,
+        context: {},
+        fields: metric,
+        requestId: requestId,
+      })
+      .then(function (response) {
+        if (!response || response.ok !== true) {
+          throw new Error("Performance report rejected");
+        }
+      })
+      .catch(function () {
+        if (attempt === 0) return sendPerformanceReport(metric, requestId, 1);
+      });
+  }
+
+  function performanceErrorCode(value) {
+    var code =
+      typeof value === "string"
+        ? value
+        : value && (value.code || value.name)
+          ? value.code || value.name
+          : "";
+    code = String(code || "").trim().toUpperCase();
+    return /^[A-Z0-9_]{2,60}$/.test(code) ? code : "CONNECTION_ERROR";
   }
 
   function renderWorkspace(data) {
@@ -2144,236 +2289,55 @@
       );
     }
 
-    var configPromise =
-      isDemoSession
-        ? Promise.resolve({
-            lotteryTypes:
-              lotteryTypes,
+    selectedRewardTicket = existingPending
+      ? pendingTicketResponse(existingPending)
+      : ticket;
+    selectedLotteryTypeId = selectedRewardTicket.lotteryTypeId;
+    pendingRequest = ensurePendingRequest(selectedRewardTicket);
 
-            card:
-              cardStatus,
+    byId("lottery-spin-status").textContent = existingPending
+      ? "正在安全取回上次抽獎結果…"
+      : "正在安全準備本次抽獎結果…";
 
-            totalPoints:
-              cardStatus.totalPoints,
-          })
-        : sendMemberRequest(
-            "getLotteryConfig",
-            {}
-          ).then(
-            function (response) {
-              assertSuccessfulResponse(
-                response
-              );
-
-              if (
-                !response.data ||
-                !response.data.access ||
-                response.data.access
-                  .allowed !== true ||
-                !Array.isArray(
-                  response.data
-                    .lotteryTypes
-                ) ||
-                !response.data.card
-              ) {
-                throw createError(
-                  "INVALID_RESPONSE",
-                  "後台回傳的抽獎資料格式不完整。"
-                );
-              }
-
-              return response.data;
-            }
-          );
-
-    return configPromise
-      .then(function (workspaceData) {
-        if (
-          expectedPreparationVersion !==
-          wheelPreparationVersion
-        ) {
-          return null;
-        }
-
-        var previousTypes =
-          lotteryTypes;
-
-        var refreshedTypes =
-          isDemoSession
-            ? lotteryTypes
-            : normalizeLotteryTypes(
-                workspaceData
-                  .lotteryTypes
-              );
-
-        var refreshedCard;
-
-        lotteryTypes =
-          refreshedTypes;
-
-        try {
-          refreshedCard =
-            isDemoSession
-              ? cardStatus
-              : normalizePointCardStatus(
-                  workspaceData.card
-                );
-        } catch (error) {
-          lotteryTypes =
-            previousTypes;
-
-          throw error;
-        }
-
-        var totalPoints =
-          normalizePointNumber(
-            workspaceData
-              .totalPoints == null
-              ? workspaceData
-                  .pointBalance
-              : workspaceData
-                  .totalPoints
-          );
-
-        if (
-          totalPoints !==
-          refreshedCard.totalPoints
-        ) {
-          lotteryTypes =
-            previousTypes;
-
-          throw createError(
-            "INVALID_RESPONSE",
-            "累計點數與集點卡資料不一致。"
-          );
-        }
-
-        var refreshedTicket;
-
-        if (existingPending) {
-          refreshedTicket =
-            pendingTicketResponse(
-              existingPending
-            );
-        } else {
-          refreshedTicket =
-            refreshedCard.availableRewards.find(
-              function (
-                availableTicket
-              ) {
-                return (
-                  availableTicket
-                    .cardRoundKey ===
-                    ticket.cardRoundKey &&
-                  availableTicket
-                    .lotteryTypeId ===
-                    ticket.lotteryTypeId
-                );
-              }
-            ) || null;
-
-          if (!refreshedTicket) {
-            lotteryTypes =
-              previousTypes;
-
-            throw createError(
-              "LOTTERY_ROUND_NOT_READY",
-              "這張抽獎券已使用或目前無法使用。"
-            );
-          }
-        }
-
-        var selectedType =
-          refreshedTypes.find(
-            function (type) {
-              return (
-                type.lotteryTypeId ===
-                refreshedTicket
-                  .lotteryTypeId
-              );
-            }
-          ) || null;
-
-        if (!selectedType) {
-          lotteryTypes =
-            previousTypes;
-
-          throw createError(
+    var selectedType = findLotteryType(selectedLotteryTypeId);
+    var drawPromise;
+    if (isDemoSession) {
+      if (!selectedType) {
+        return Promise.reject(
+          createError(
             "LOTTERY_TYPE_NOT_FOUND",
             "這張抽獎券指定的轉盤目前無法使用。"
-          );
-        }
-
-        lotteryTypes =
-          refreshedTypes;
-
-        cardStatus =
-          refreshedCard;
-
-        selectedRewardTicket =
-          refreshedTicket;
-
-        selectedLotteryTypeId =
-          refreshedTicket
-            .lotteryTypeId;
-
-        preloadLotteryWheels();
-        renderPointCard();
-        renderLotteryTickets();
-        renderSelectedLottery();
-
-        pendingRequest =
-          ensurePendingRequest(
-            refreshedTicket
-          );
-
-        byId(
-          "lottery-spin-status"
-        ).textContent =
-          "正在安全準備本次抽獎結果…";
-
-        if (isDemoSession) {
-          return createDemoPreparedDraw(
-            selectedType
-          );
-        }
-
-        return sendMemberRequest(
-          "drawLottery",
-          {
-            lotteryTypeId:
-              selectedType
-                .lotteryTypeId,
-
-            cardRoundKey:
-              refreshedTicket
-                .cardRoundKey,
-          },
-          pendingRequest.requestId
-        ).then(
-          function (response) {
-            assertSuccessfulResponse(
-              response
-            );
-
-            if (
-              !response.data ||
-              !response.data.draw ||
-              !response.data.lottery ||
-              !response.data
-                .lotteryType ||
-              !response.data.card
-            ) {
-              throw createError(
-                "INVALID_RESPONSE",
-                "後台回傳的抽獎結果格式不完整。"
-              );
-            }
-
-            return response.data;
-          }
+          )
         );
-      })
+      }
+      drawPromise = createDemoPreparedDraw(selectedType);
+    } else {
+      drawPromise = sendMemberRequest(
+        "prepareLotteryDraw",
+        {
+          lotteryTypeId: selectedRewardTicket.lotteryTypeId,
+          cardRoundKey: selectedRewardTicket.cardRoundKey,
+        },
+        pendingRequest.requestId
+      ).then(function (response) {
+        assertSuccessfulResponse(response);
+        if (
+          !response.data ||
+          !response.data.draw ||
+          !response.data.lottery ||
+          !response.data.lotteryType ||
+          !response.data.card
+        ) {
+          throw createError(
+            "INVALID_RESPONSE",
+            "後台回傳的抽獎結果格式不完整。"
+          );
+        }
+        return response.data;
+      });
+    }
+
+    return drawPromise
       .then(function (drawData) {
         if (
           !drawData ||
@@ -3072,16 +3036,6 @@
       selectedType.lottery
     )
       .then(function () {
-        return new Promise(
-          function (resolve) {
-            window.setTimeout(
-              resolve,
-              RESULT_HOLD_MS
-            );
-          }
-        );
-      })
-      .then(function () {
         byId(
           "lottery-result-swatch"
         ).style.backgroundColor =
@@ -3365,8 +3319,7 @@
     }
 
     var duration =
-      (2 * rotationDelta) /
-      SPIN_DEGREES_PER_MS;
+      SPIN_DURATION_MS;
 
     return new Promise(
       function (resolve) {
@@ -3398,23 +3351,15 @@
               duration
           );
 
-          var quadraticEaseOut =
+          var easeOutCubic =
             1 -
             Math.pow(
               1 - progress,
-              2
-            );
-
-          var smoothstepCorrection =
-            Math.pow(
-              progress *
-                (1 - progress),
-              2
+              3
             );
 
           var easedProgress =
-            quadraticEaseOut +
-            smoothstepCorrection;
+            easeOutCubic;
 
           lotteryRotation =
             startRotation +
