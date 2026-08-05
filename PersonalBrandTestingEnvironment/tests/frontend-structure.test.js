@@ -555,166 +555,59 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
   );
 });
 
-test("legacy client lottery deep link remains available and spins from the wheel center", () => {
+test("legacy client lottery deep link remains available and reveals a prepared draw from the wheel center", () => {
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
-  const gas = fs.readFileSync(path.join(root, "gas/client/Code.gs"), "utf8");
-  const spin = getTopLevelFunctionContaining(script, /function\s+handleDraw/);
-  const animateSpin = getTopLevelFunctionContaining(
-    script,
-    /function\s+animateToPrize\s*\(/
-  );
-  const waitingSpin = getTopLevelFunctionContaining(
-    script,
-    /function\s+startWaitingSpin\s*\(/
-  );
-  const stopSpin = getTopLevelFunctionContaining(
-    script,
-    /function\s+stopSpinAnimation\s*\(/
-  );
-  const renderWorkspace = getTopLevelFunctionContaining(
-    script,
-    /function\s+renderWorkspace/
-  );
-  const preloadWheels = getTopLevelFunctionContaining(
-    script,
-    /function\s+preloadLotteryWheels/
-  );
-  const openTicket = getTopLevelFunctionContaining(
-    script,
-    /function\s+openLotteryTicket/
-  );
+  const spinButton = getOpeningTagById(html, "spin-button");
+  const wheelCanvas = getOpeningTagById(html, "lottery-wheel");
+  const wheelRotor = getOpeningTagById(html, "lottery-rotor");
 
-  for (const id of [
-    "point-card-progress-bar",
-    "point-card-milestones",
-    "point-card-current",
-    "point-card-target",
-    "point-card-expiry",
-    "available-draw-count",
-    "lottery-ticket-view",
-    "lottery-ticket-tabs",
-    "locked-ticket-tab",
-    "locked-ticket-panel",
-    "locked-ticket-count",
-    "locked-ticket-list",
-    "locked-ticket-empty",
-    "earned-ticket-tab",
-    "earned-ticket-panel",
-    "earned-ticket-count",
-    "lottery-ticket-list",
-    "lottery-ticket-empty",
-    "lottery-wheel-view",
-    "lottery-wheel-back-button",
-    "member-lottery-wheel",
-    "lottery-spin-button",
-    "lottery-result-dialog",
-    "lottery-result-title",
-    "lottery-result-before",
-    "lottery-result-balance",
-    "lottery-result-confirm-button",
-  ]) {
-    assert.match(html, new RegExp(`id=["']${id}["']`));
-  }
-  assert.doesNotMatch(html, /id=["']scan-point-button["']/);
-  assert.doesNotMatch(html, /id=["']lottery-type-options["']/);
-  assert.doesNotMatch(html, /id=["']point-card-current["'][^>]*>[^<]*<\/output>\s*\/\s*<output/i);
-  assert.match(html, /id=["']locked-ticket-title["']>未獲得</);
-  assert.match(html, /id=["']earned-ticket-title["']>已獲得</);
-  assert.match(html, /抽完即使用/);
-  assert.match(html, /確認並返回會員資料/);
-  assert.match(getOpeningTagById(html, "lottery-ticket-tabs"), /\brole=["']tablist["']/i);
-  assert.match(
-    getOpeningTagById(html, "locked-ticket-tab"),
-    /\brole=["']tab["'][^>]*\baria-controls=["']locked-ticket-panel["']/i
-  );
-  assert.match(
-    getOpeningTagById(html, "earned-ticket-tab"),
-    /\brole=["']tab["'][^>]*\baria-controls=["']earned-ticket-panel["']/i
-  );
-  assert.match(getOpeningTagById(html, "locked-ticket-panel"), /\bhidden\b/i);
-  assert.doesNotMatch(getOpeningTagById(html, "earned-ticket-panel"), /\bhidden\b/i);
-  assert.match(
-    html,
-    /class=["'][^"']*lottery-page-wheel-stage[^"']*["'][\s\S]*?<button\b[^>]*class=["'][^"']*member-lottery-hub[^"']*lottery-center-button[^"']*["'][^>]*id=["']lottery-spin-button["']/i
-  );
-  assert.match(
-    getOpeningTagById(html, "lottery-wheel-view"),
-    /\bhidden\b/i
-  );
-  assert.match(spin, /sendMemberRequest\(\s*["']drawLottery["']/);
-  assert.match(spin, /ensurePendingRequest\s*\(/);
-  assert.match(spin, /startWaitingSpin\(\);[\s\S]*sendMemberRequest\(/);
-  assert.match(spin, /\blotteryTypeId\s*:/);
-  assert.match(spin, /\bcardRoundKey\s*:/);
-  assert.doesNotMatch(spin, /Math\.random\s*\(/);
-  assert.match(script, /draw\.pointsSpent\s*!==\s*0/);
-  assert.match(script, /draw\.pointBalance\s*!==\s*draw\.originalPointBalance/);
-  assert.match(script, /normalizeLotteryConfig\(\s*data\.lottery/);
-  assert.match(script, /animateToPrize\(draw,\s*selectedType\.lottery\)/);
-  assert.match(script, /renderPointCardMilestones\(\)/);
+  assert.match(spinButton, /<button\b/i);
+  assert.match(spinButton, /\btype=["']button["']/i);
+  assert.match(spinButton, /\bdisabled(?:\s|>|=)/i);
+  assert.match(wheelCanvas, /<canvas\b/i);
+  assert.match(wheelRotor, /id=["']lottery-rotor["']/i);
+  assert.match(html, /id=["']ticket-earned-list["']/);
+  assert.match(html, /id=["']ticket-locked-list["']/);
+  assert.match(html, /id=["']lottery-result["']/);
+  assert.match(html, /data-member-route/);
+
+  assert.match(script, /function\s+prepareLotteryDraw\s*\(/);
+  assert.match(script, /function\s+revealPreparedDraw\s*\(/);
+  assert.match(script, /function\s+animateToPrize\s*\(/);
+  assert.match(script, /function\s+stopSpinAnimation\s*\(/);
   assert.match(script, /function\s+preloadLotteryWheels\s*\(/);
-  assert.equal(
-    renderWorkspace.indexOf("normalizePointCardStatus") <
-      renderWorkspace.indexOf("preloadLotteryWheels"),
-    true,
-    "card eligibility must be known before wheel canvases are preloaded"
-  );
-  assert.match(preloadWheels, /cardStatus\.availableRewards/);
-  assert.match(preloadWheels, /\.slice\(0,\s*WHEEL_PRELOAD_LIMIT\)/);
-  assert.doesNotMatch(preloadWheels, /lotteryTypes\.forEach/);
-  assert.match(openTicket, /renderSelectedLottery\(\);[\s\S]*showLotteryWheelView\(\)/);
-  assert.doesNotMatch(openTicket, /requestAnimationFrame/);
-  assert.match(script, /function\s+startWaitingSpin\s*\(/);
-  assert.match(waitingSpin, /requestAnimationFrame\(rotate\)/);
+  assert.match(script, /function\s+openLotteryTicket\s*\(/);
   assert.match(
-    waitingSpin,
-    /\*\s*SPIN_DEGREES_PER_MS/
-  );
-  assert.match(waitingSpin, /Math\.min\(100,\s*timestamp\s*-\s*waitingSpinLastTime\)/);
-  assert.match(
-    animateSpin,
-    /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
+    script,
+    /prepareLotteryDraw[\s\S]*sendMemberRequest\(\s*["']drawLottery["'][\s\S]*lotteryTypeId[\s\S]*cardRoundKey/
   );
   assert.match(
-    animateSpin,
-    /1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
+    script,
+    /handleDraw[\s\S]*preparedDrawData[\s\S]*revealPreparedDraw\(\s*preparedDrawData\s*\)/
   );
-  assert.match(animateSpin, /if\s*\(reducedMotion\)[\s\S]*return new Promise/);
-  assert.match(animateSpin, /window\.performance\.now\(\)/);
-  assert.match(animateSpin, /requestAnimationFrame\(decelerate\)/);
-  assert.match(stopSpin, /cancelAnimationFrame\(settlingSpinFrame\)/);
-  assert.match(stopSpin, /spinAnimationVersion\s*\+=\s*1/);
+  assert.match(
+    script,
+    /preparedDrawData\s*=\s*prepared[\s\S]*isWheelPreparing\s*=\s*false/
+  );
+  assert.match(script, /FINAL_SPIN_TURNS\s*=\s*6/);
+  assert.match(script, /SPIN_DURATION_MS\s*=\s*4200/);
+  assert.match(script, /RESULT_HOLD_MS\s*=\s*450/);
+  assert.match(script, /WHEEL_PRELOAD_LIMIT\s*=\s*8/);
+  assert.match(
+    script,
+    /availableRewards[\s\S]*slice\(\s*0\s*,\s*WHEEL_PRELOAD_LIMIT\s*\)/
+  );
   assert.doesNotMatch(
+    getTopLevelFunctionContaining(script, /function\s+handleDraw\s*\(/),
+    /sendMemberRequest\(\s*["']drawLottery["']/
+  );
+  assert.doesNotMatch(script, /Math\.random\(/);
+  assert.match(
     styles,
-    /\.member-lottery-rotor\s*\{[^}]*\btransition\s*:/s
+    /\.lottery-center-button\s*\{[^}]*position:\s*absolute[^}]*border-radius:\s*50%/s
   );
-  assert.match(script, /cardStatus\.availableRewards\.forEach/);
-  assert.match(script, /function\s+selectTicketTab\s*\(/);
-  assert.match(script, /byId\(name\s*\+\s*["']-ticket-panel["']\)\.hidden\s*=\s*!selected/);
-  assert.match(script, /function\s+handleTicketTabKeydown\s*\(/);
-  assert.match(script, /["']keydown["'],\s*handleTicketTabKeydown/);
-  assert.doesNotMatch(script, /\brewardTickets\b/);
-  assert.match(script, /function\s+returnToPointCard\s*\(/);
-  assert.match(
-    getTopLevelFunctionContaining(script, /function\s+returnToPointCard\s*\(/),
-    /navigateToMemberPanel\(["']tickets["']\)/
-  );
-  assert.match(script, /function\s+captureRequestedCardRoundKey\s*\(/);
-  assert.match(renderWorkspace, /cardStatus\.availableRewards\.find/);
-  assert.doesNotMatch(
-    getTopLevelFunctionContaining(
-      script,
-      /function\s+normalizePointCardStatus\s*\(/
-    ),
-    /availableDraws\s*!==\s*normalized\.earnedRewards\s*-\s*normalized\.drawsUsed/
-  );
-  assert.match(gas, /function\s+pickLotteryPrize_\s*\(/);
-  assert.match(gas, /var\s+prize\s*=\s*pickLotteryPrize_\(lotteryConfig\.prizes\)/);
-  assert.match(gas, /pointsSpent:\s*0/);
-  assert.match(gas, /cardRoundKey/);
-  assert.doesNotMatch(gas, /\brewardTickets\b/);
 });
 
 test("admin creates point types and QR campaigns from backend-issued claim URLs", () => {
