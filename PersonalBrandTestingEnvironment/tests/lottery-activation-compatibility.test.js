@@ -27,6 +27,7 @@ const legacyBoundary = [
 const v2Boundary = [
   '    <script defer src="../shared/lottery-wheel.js"></script>',
   '    <script defer src="../shared/module-registry.js"></script>',
+  '    <script defer src="member-lottery.js"></script>',
   '    <script defer src="lottery/contracts.js"></script>',
   '    <script defer src="lottery/pending-request-store.js"></script>',
   '    <script defer src="lottery/preparation-service.js"></script>',
@@ -56,4 +57,11 @@ test("deployment workflow activates the complete v2 boundary atomically", () => 
     /git add PersonalBrandTestingEnvironment\/client\/index\.html/
   );
   assert.match(workflow, /deploy: activate member lottery v2/);
+});
+
+test("v2 facade overwrites the inert legacy fallback before host configuration", () => {
+  const legacyAt = v2Boundary.indexOf('src="member-lottery.js"');
+  const v2At = v2Boundary.indexOf('src="member-lottery-v2.js"');
+  const hostAt = v2Boundary.indexOf('src="script.js"');
+  assert.equal(legacyAt >= 0 && v2At > legacyAt && hostAt > v2At, true);
 });
