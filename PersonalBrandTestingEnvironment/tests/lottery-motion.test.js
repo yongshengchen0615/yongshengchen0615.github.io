@@ -166,18 +166,34 @@ test("member lottery v2 cannot close or leave while spinning or awaiting confirm
 });
 
 test("legacy lottery page still locks all navigation during a draw", () => {
-  assert.match(legacyScript, /setMemberRoutesLocked\(isBusy\)/);
-  assert.match(
+  const updateControls = getFunctionContaining(
     legacyScript,
-    /link\.setAttribute\(["']aria-disabled["'],\s*["']true["']\)/
+    /var\s+lockedByPreparedTransaction\s*=/
+  );
+  const bindInteractions = getFunctionContaining(
+    legacyScript,
+    /function\s+bindInteractions\s*\(/
+  );
+
+  assert.match(
+    updateControls,
+    /lockedByPreparedTransaction\s*=\s*isBusy\s*\|\|\s*isWheelPreparing\s*\|\|\s*Boolean\(\s*pendingRequest\s*\)/
+  );
+  assert.match(
+    updateControls,
+    /setMemberRoutesLocked\(\s*lockedByPreparedTransaction\s*\)/
   );
   assert.match(
     legacyScript,
-    /document\.addEventListener\(["']click["'],\s*preventMemberRouteDuringSpin,\s*true\)/
+    /link\.setAttribute\(\s*["']aria-disabled["']\s*,\s*["']true["']\s*\)/
   );
   assert.match(
-    legacyScript,
-    /window\.addEventListener\(["']beforeunload["'],\s*preventPageExitDuringSpin\)/
+    bindInteractions,
+    /document\.addEventListener\(\s*["']click["']\s*,\s*preventMemberRouteDuringSpin\s*,\s*true\s*\)/
+  );
+  assert.match(
+    bindInteractions,
+    /window\.addEventListener\(\s*["']beforeunload["']\s*,\s*preventPageExitDuringSpin\s*\)/
   );
   assert.match(
     styles,
