@@ -1,191 +1,244 @@
-(function () {
+(function (global) {
   "use strict";
 
-  var original = window.MemberLotteryDialog;
-  if (!original || typeof original.configure !== "function") return;
-
+  var originalDialog = global.MemberLotteryDialog;
+  var modules = global.MemberLotteryPreparation;
   var options = null;
   var request = null;
-  var prepared = Object.create(null);
-  var preparing = false;
-  var version = 0;
-  var bound = false;
-  var drawGuardInstalled = false;
-  var suppressNextWheelDraw = false;
-  var PREFIX = "persona-member-lottery-round-request:";
+  var service = null;
+  var view = null;
+  var wheelDrawGuard = null;
+  var interactionsBound = false;
+  var opening = false;
+  var openVersion = 0;
+  var REQUEST_STORAGE_PREFIX =
+    "persona-member-lottery-round-request:";
+
+  if (
+    !originalDialog ||
+    typeof originalDialog.configure !== "function"
+  ) {
+    return;
+  }
 
   function configure(value) {
-    options = value && typeof value === "object" ? value : {};
-    request = options.request;
-    if (typeof request !== "function") return original.configure(options);
+    value = value && typeof value === "object" ? value : {};
+    request = value.request;
+    if (typeof request !== "function") {
+      return originalDialog.configure(value);
+    }
 
-    installWheelDrawGuard();
+    assertDependencies();
+    options = value;
 
-    var wrapped = {};
-    Object.keys(options).forEach(function (key) {
-      wrapped[key] = options[key];
+    var store = modules.createPendingRequestStore({
+      storage: getSessionStorage(),
+      getStorageKey: getStorageKey,
+      createRequestId: function () {
+        return global.MemberApi.createRequestId();
+      },
+      normalizeTicket: normalizeTicket,
     });
-    wrapped.request = requestPrepared;
-    original.configure(wrapped);
-    bind();
+
+    service = modules.createPreparationService({
+      request: request,
+      store: store,
+      normalizeTicket: normalizeTicket,
+      isDefinitiveError: isDefinitiveNoDrawError,
+    });
+
+    view = modules.createPreparationView({
+      document: global.document,
+      showToast: safeToast,
+    });
+
+    wheelDrawGuard = modules.createWheelDrawGuard({
+      global: global,
+      lotteryWheel: global.LotteryWheel,
+    });
+    wheelDrawGuard.install();
+
+    var wrappedOptions = {};
+    Object.keys(value).forEach(function (key) {
+      wrappedOptions[key] = value[key];
+    });
+    wrappedOptions.request = requestPrepared;
+
+    originalDialog.configure(wrappedOptions);
+    bindInteractions();
     return api;
   }
 
   function open(ticket) {
-    var current = ++version;
+    var currentOpen = ++openVersion;
+    opening = true;
 
-    // The original dialog first loads getLotteryConfig, validates the ticket,
-    // draws the wheel canvas, and only then resolves. The preparation request
-    // therefore runs inside the same visible "preparing wheel" phase.
-    return Promise.resolve(original.open(ticket)).then(function (opened) {
-      if (!opened || isDemo()) return opened;
-      return prepare(readPending() || ticket, current).then(function (ready) {
-        return ready === true;
-      });
-    });
-  }
-
-  function restorePending() {
-    var current = ++version;
-    return Promise.resolve(original.restorePending()).then(function (opened) {
-      if (!opened || isDemo()) return opened;
-      var pending = readPending();
-      return pending
-        ? prepare(pending, current).then(function (ready) {
-            return ready === true;
-          })
-        : false;
-    });
-  }
-
-  function requestPrepared(action, fields, requestId) {
-    if (action !== "drawLottery" || !requestId || !prepared[requestId]) {
-      return request(action, fields, requestId);
-    }
-
-    var item = prepared[requestId];
-    if (
-      String((fields && fields.lotteryTypeId) || "") !== item.lotteryTypeId ||
-      String((fields && fields.cardRoundKey) || "") !== item.cardRoundKey
-    ) {
-      return Promise.reject(
-        error("REQUEST_ID_CONFLICT", "抽獎券與已準備結果不一致。")
-      );
-    }
-
-    delete prepared[requestId];
-
-    // The wheel canvas was already built during preparation. The original
-    // result handler normally redraws it once more before animation; suppress
-    // exactly that redundant draw and return the prepared result immediately.
-    suppressNextWheelDraw = true;
-    return Promise.resolve(item.response);
-  }
-
-  function prepare(ticketValue, expectedVersion) {
-    var ticket;
-    var pending;
-    try {
-      ticket = normalize(ticketValue);
-      pending = ensurePending(ticket);
-    } catch (reason) {
-      fail(reason, false);
-      return Promise.resolve(false);
-    }
-
-    preparing = true;
-    loading();
-
-    return Promise.resolve(
-      request(
-        "drawLottery",
-        {
-          lotteryTypeId: ticket.lotteryTypeId,
-          cardRoundKey: ticket.cardRoundKey,
-        },
-        pending.requestId
-      )
-    )
-      .then(function (response) {
-        if (expectedVersion !== version) return false;
-        if (!response || response.ok !== true) {
-          throw error(
-            response && response.code ? response.code : "BACKEND_ERROR",
-            response && response.message
-              ? response.message
-              : "後台目前無法準備抽獎結果。"
-          );
+    return Promise.resolve(originalDialog.open(ticket))
+      .then(function (opened) {
+        if (currentOpen !== openVersion) return false;
+        if (!opened || isDemo()) {
+          opening = false;
+          return opened;
         }
 
-        prepared[pending.requestId] = {
-          response: response,
-          lotteryTypeId: ticket.lotteryTypeId,
-          cardRoundKey: ticket.cardRoundKey,
-        };
-        preparing = false;
-        ready();
-        return true;
+        return prepare(
+          service.getPending() || ticket,
+          currentOpen
+        );
       })
-      .catch(function (reason) {
-        if (expectedVersion !== version) return false;
-        preparing = false;
-        var definitive = definitiveNoDraw(reason);
-        if (definitive) clearPending();
-        fail(reason, !definitive);
+      .catch(function (error) {
+        if (currentOpen !== openVersion) return false;
+        opening = false;
+        view.fail(error, false);
         return false;
       });
   }
 
-  function installWheelDrawGuard() {
-    if (drawGuardInstalled) return;
-    if (!window.LotteryWheel || typeof window.LotteryWheel.draw !== "function") {
-      return;
-    }
+  function restorePending() {
+    var currentOpen = ++openVersion;
+    opening = true;
 
-    var originalDraw = window.LotteryWheel.draw;
-    var guardedDraw = function () {
-      if (suppressNextWheelDraw) {
-        suppressNextWheelDraw = false;
-        return true;
-      }
-      return originalDraw.apply(window.LotteryWheel, arguments);
-    };
+    return Promise.resolve(originalDialog.restorePending())
+      .then(function (opened) {
+        if (currentOpen !== openVersion) return false;
+        if (!opened || isDemo()) {
+          opening = false;
+          return opened;
+        }
 
-    try {
-      window.LotteryWheel = Object.freeze({
-        draw: guardedDraw,
-        textColor: window.LotteryWheel.textColor,
+        var pending = service.getPending();
+        if (!pending) {
+          opening = false;
+          return false;
+        }
+        return prepare(pending, currentOpen);
+      })
+      .catch(function (error) {
+        if (currentOpen !== openVersion) return false;
+        opening = false;
+        view.fail(error, false);
+        return false;
       });
-      drawGuardInstalled = true;
-    } catch (_error) {
-      // If the shared module cannot be replaced, the flow still works; only
-      // the harmless redundant canvas draw remains.
-    }
   }
 
-  function bind() {
-    if (bound) return;
-    var button = byId("member-lottery-spin-button");
-    if (!button) return;
-    bound = true;
+  function prepare(ticket, expectedOpenVersion) {
+    view.loading();
 
+    return service.prepare(ticket).then(function (result) {
+      if (expectedOpenVersion !== openVersion || result.stale) {
+        return false;
+      }
+
+      opening = false;
+      if (result.ready) {
+        view.ready();
+        return true;
+      }
+
+      view.fail(result.error, Boolean(result.retryable));
+      return false;
+    });
+  }
+
+  function requestPrepared(action, fields, requestId) {
+    if (action !== "drawLottery" || !service) {
+      return request(action, fields, requestId);
+    }
+
+    var response;
+    try {
+      response = service.consume(fields, requestId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    if (response === null) {
+      return request(action, fields, requestId);
+    }
+
+    wheelDrawGuard.suppressNextDraw();
+    return Promise.resolve(response);
+  }
+
+  function bindInteractions() {
+    if (interactionsBound) return;
+
+    var button = global.document.getElementById(
+      "member-lottery-spin-button"
+    );
+    if (!button) return;
+
+    interactionsBound = true;
     button.addEventListener(
       "click",
       function (event) {
-        if (isDemo()) return;
-        var pending = readPending();
-        if (!preparing && pending && prepared[pending.requestId]) return;
+        if (!service || isDemo()) return;
+
+        var pending = service.getPending();
+        if (
+          !opening &&
+          !service.isPreparing() &&
+          pending &&
+          service.hasPrepared(pending.requestId)
+        ) {
+          return;
+        }
 
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!preparing && pending) prepare(pending, ++version);
+
+        if (!opening && !service.isPreparing() && pending) {
+          prepare(pending, ++openVersion);
+        }
       },
       true
     );
   }
 
-  function normalize(value) {
+  function canClose() {
+    if (!service) return originalDialog.canClose();
+    return (
+      !opening &&
+      !service.isPreparing() &&
+      originalDialog.canClose()
+    );
+  }
+
+  function requestClose(value) {
+    if (opening || (service && service.isPreparing())) {
+      safeToast("轉盤正在準備，完成前請勿關閉。");
+      return false;
+    }
+
+    openVersion += 1;
+    if (service) service.cancel();
+    if (wheelDrawGuard) wheelDrawGuard.reset();
+    return originalDialog.requestClose(value);
+  }
+
+  function getStorageKey() {
+    if (!options) return "";
+
+    var liffId = String(options.liffId || "unknown");
+    if (isDemo()) {
+      return REQUEST_STORAGE_PREFIX + liffId + ":demo";
+    }
+
+    var memberId = "";
+    try {
+      memberId = String(options.getMemberId() || "").trim();
+    } catch (_error) {
+      memberId = "";
+    }
+
+    return /^MBR-[A-Z0-9]{10}$/.test(memberId)
+      ? REQUEST_STORAGE_PREFIX + liffId + ":" + memberId
+      : "";
+  }
+
+  function normalizeTicket(value) {
     value = value && typeof value === "object" ? value : {};
+
     var ticket = {
       settingVersion: String(value.settingVersion || "").trim(),
       cardNumber: Number(value.cardNumber),
@@ -208,173 +261,19 @@
           ":" +
           ticket.milestonePoints
     ) {
-      throw error("INVALID_LOTTERY_TICKET", "抽獎券資料格式不正確。");
+      throw createError(
+        "INVALID_LOTTERY_TICKET",
+        "抽獎券資料格式不正確。"
+      );
     }
+
     return ticket;
   }
 
-  function ensurePending(ticket) {
-    var existing = readPending();
-    if (existing) {
-      if (
-        existing.cardRoundKey !== ticket.cardRoundKey ||
-        existing.lotteryTypeId !== ticket.lotteryTypeId
-      ) {
-        throw error(
-          "REQUEST_ID_CONFLICT",
-          "請先完成上一次尚未揭曉的抽獎。"
-        );
-      }
-      return existing;
-    }
-
-    var key = storageKey();
-    if (!key) {
-      throw error("LOTTERY_SESSION_NOT_READY", "會員身分尚未準備完成。");
-    }
-
-    var value = {
-      requestId: window.MemberApi.createRequestId(),
-      settingVersion: ticket.settingVersion,
-      cardNumber: ticket.cardNumber,
-      milestonePoints: ticket.milestonePoints,
-      lotteryTypeId: ticket.lotteryTypeId,
-      cardRoundKey: ticket.cardRoundKey,
-    };
-    window.sessionStorage.setItem(key, JSON.stringify(value));
-    return value;
-  }
-
-  function readPending() {
-    var key = storageKey();
-    if (!key) return null;
-    try {
-      var value = JSON.parse(window.sessionStorage.getItem(key) || "null");
-      if (
-        !value ||
-        !/^[a-zA-Z0-9-]{10,80}$/.test(String(value.requestId || ""))
-      ) {
-        return null;
-      }
-      var ticket = normalize(value);
-      ticket.requestId = String(value.requestId);
-      return ticket;
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  function clearPending() {
-    try {
-      window.sessionStorage.removeItem(storageKey());
-    } catch (_error) {}
-  }
-
-  function storageKey() {
-    if (!options) return "";
-    var liffId = String(options.liffId || "unknown");
-    if (isDemo()) return PREFIX + liffId + ":demo";
-
-    var memberId = "";
-    try {
-      memberId = String(options.getMemberId() || "").trim();
-    } catch (_error) {}
-    return /^MBR-[A-Z0-9]{10}$/.test(memberId)
-      ? PREFIX + liffId + ":" + memberId
-      : "";
-  }
-
-  function loading() {
-    state("member-lottery-loading-state");
-    busy(true);
-    status("正在準備轉盤資料與抽獎結果，完成後按鈕只播放動畫。");
-    button(true, "準備轉盤", "loading");
-    closeButtons(true);
-  }
-
-  function ready() {
-    state("member-lottery-wheel-state");
-    busy(false);
-    status("轉盤資料已準備完成，點選中央直接播放抽獎動畫。");
-    button(false, "點我抽獎", "ready");
-    closeButtons(true);
-  }
-
-  function fail(reason, retryable) {
-    busy(false);
-    if (retryable) {
-      state("member-lottery-wheel-state");
-      status("轉盤尚未準備完成，點選中央重新準備；不會重複使用抽獎券。");
-      button(false, "重新準備", "ready");
-    } else {
-      state("member-lottery-error-state");
-      text(
-        "member-lottery-error-code",
-        String((reason && (reason.code || reason.name)) || "DRAW_ERROR").replace(
-          /_/g,
-          " "
-        )
-      );
-      text(
-        "member-lottery-error-message",
-        reason && reason.message ? reason.message : "目前無法準備轉盤。"
-      );
-      button(true, "無法抽獎", "disabled");
-    }
-    closeButtons(retryable);
-    toast(reason && reason.message ? reason.message : "目前無法準備轉盤。");
-  }
-
-  function state(active) {
-    [
-      "member-lottery-loading-state",
-      "member-lottery-error-state",
-      "member-lottery-wheel-state",
-      "member-lottery-result-state",
-    ].forEach(function (id) {
-      var element = byId(id);
-      if (element) element.hidden = id !== active;
-    });
-  }
-
-  function busy(value) {
-    var dialog = byId("member-lottery-dialog");
-    if (dialog) dialog.setAttribute("aria-busy", String(value));
-  }
-
-  function status(value) {
-    text("member-lottery-spin-status", value);
-  }
-
-  function text(id, value) {
-    var element = byId(id);
-    if (element) element.textContent = String(value || "");
-  }
-
-  function button(disabled, label, stateName) {
-    var element = byId("member-lottery-spin-button");
-    if (!element) return;
-    element.disabled = disabled;
-    element.dataset.state = stateName;
-    element.setAttribute("aria-busy", String(preparing));
-    var labelElement = element.querySelector("span");
-    if (labelElement) labelElement.textContent = label;
-    else element.textContent = label;
-  }
-
-  function closeButtons(disabled) {
-    ["member-lottery-close-button", "member-lottery-return-button"].forEach(
-      function (id) {
-        var element = byId(id);
-        if (!element) return;
-        element.disabled = disabled;
-        element.setAttribute("aria-disabled", String(disabled));
-      }
+  function isDefinitiveNoDrawError(reason) {
+    var code = String(
+      (reason && (reason.code || reason.name)) || ""
     );
-  }
-
-  function definitiveNoDraw(reason) {
-    var code = String((reason && (reason.code || reason.name)) || "");
     return (
       code === "LOTTERY_ROUND_NOT_READY" ||
       code === "LOTTERY_TICKET_MISMATCH" ||
@@ -390,19 +289,53 @@
     }
   }
 
-  function toast(message) {
+  function safeToast(message) {
     try {
       if (options && typeof options.showToast === "function") {
         options.showToast(String(message || ""));
       }
-    } catch (_error) {}
+    } catch (_error) {
+      // Toast failures do not affect the lottery state machine.
+    }
   }
 
-  function byId(id) {
-    return document.getElementById(id);
+  function getSessionStorage() {
+    try {
+      return global.sessionStorage;
+    } catch (_error) {
+      throw createError(
+        "LOTTERY_STORAGE_UNAVAILABLE",
+        "瀏覽器無法保存安全的抽獎請求。"
+      );
+    }
   }
 
-  function error(code, message) {
+  function assertDependencies() {
+    var requiredFactories = [
+      "createPendingRequestStore",
+      "createPreparationService",
+      "createPreparationView",
+      "createWheelDrawGuard",
+    ];
+
+    if (
+      !modules ||
+      requiredFactories.some(function (name) {
+        return typeof modules[name] !== "function";
+      }) ||
+      !global.MemberApi ||
+      typeof global.MemberApi.createRequestId !== "function" ||
+      !global.LotteryWheel ||
+      typeof global.LotteryWheel.draw !== "function"
+    ) {
+      throw createError(
+        "CLIENT_LIBRARY_ERROR",
+        "無法載入轉盤準備模組。"
+      );
+    }
+  }
+
+  function createError(code, message) {
     var value = new Error(message);
     value.code = code;
     return value;
@@ -413,20 +346,11 @@
     open: open,
     restorePending: restorePending,
     hasPending: function () {
-      return original.hasPending();
+      return originalDialog.hasPending();
     },
-    canClose: function () {
-      return !preparing && original.canClose();
-    },
-    requestClose: function (value) {
-      if (preparing) {
-        toast("轉盤正在準備，完成前請勿關閉。");
-        return false;
-      }
-      version += 1;
-      return original.requestClose(value);
-    },
+    canClose: canClose,
+    requestClose: requestClose,
   });
 
-  window.MemberLotteryDialog = api;
-})();
+  global.MemberLotteryDialog = api;
+})(window);
