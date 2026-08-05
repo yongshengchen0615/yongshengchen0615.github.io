@@ -133,23 +133,29 @@ jobs:
       - name: Test complete lottery motion invariants
         run: node --test PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
 
-      - name: Run remaining regression tests
-        run: |
-          mapfile -d '' tests < <(
-            find PersonalBrandTestingEnvironment/tests -maxdepth 1 -name '*.test.js' \
-              ! -name 'member-lottery-v2.test.js' \
-              ! -name 'workspace-mapper.test.js' \
-              ! -name 'wheel-animator.test.js' \
-              ! -name 'lottery-v2-structure.test.js' \
-              ! -name 'lottery-activation-compatibility.test.js' \
-              ! -name 'module-registry.test.js' \
-              ! -name 'member-lottery-preload.test.js' \
-              ! -name 'member-lottery-runtime.test.js' \
-              ! -name 'lottery-preload-structure.test.js' \
-              ! -name 'lottery-motion.test.js' \
-              -print0
-          )
-          node --test "${tests[@]}"
+      - name: Test QR code module
+        run: node --test PersonalBrandTestingEnvironment/tests/qr-code.test.js
+
+      - name: Test point contracts
+        run: node --test PersonalBrandTestingEnvironment/tests/point-contract.test.js
+
+      - name: Test shared UI modules
+        run: node --test PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js
+
+      - name: Test client claim flow
+        run: node --test PersonalBrandTestingEnvironment/tests/client-claim-flow.test.js
+
+      - name: Test client message flow
+        run: node --test PersonalBrandTestingEnvironment/tests/client-message-flow.test.js
+
+      - name: Test admin GAS
+        run: node --test PersonalBrandTestingEnvironment/tests/admin-gas.test.js
+
+      - name: Test client GAS
+        run: node --test PersonalBrandTestingEnvironment/tests/client-gas.test.js
+
+      - name: Test frontend structure
+        run: node --test PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
 
       - name: Run complete regression suite
         run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
