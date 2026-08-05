@@ -565,7 +565,11 @@ test("legacy client lottery deep link remains available and reveals a prepared d
 
   assert.match(spinButton, /<button\b/i);
   assert.match(spinButton, /\btype=["']button["']/i);
-  assert.match(spinButton, /\bdisabled(?:\s|>|=)/i);
+  assert.doesNotMatch(spinButton, /\bdisabled(?:\s|>|=)/i);
+assert.match(
+  script,
+  /var\s+buttonEnabled\s*=\s*canReveal\s*\|\|\s*canRetryPreparation[\s\S]*button\.disabled\s*=\s*!buttonEnabled/
+);
   assert.match(wheelCanvas, /<canvas\b/i);
   assert.match(wheelRotor, /id=["']lottery-rotor["']/i);
   assert.match(html, /id=["']lottery-ticket-list["']/);
