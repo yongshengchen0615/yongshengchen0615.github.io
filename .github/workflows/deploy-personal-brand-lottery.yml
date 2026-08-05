@@ -1,4 +1,4 @@
-name: Validate and Activate Personal Brand Lottery Preload
+name: Validate and Activate Personal Brand Lottery V2
 
 on:
   pull_request:
@@ -6,22 +6,16 @@ on:
     paths:
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
-      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
-      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
-      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
-      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
+      - "PersonalBrandTestingEnvironment/tests/**"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
     paths:
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
-      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
-      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
-      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
-      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
+      - "PersonalBrandTestingEnvironment/tests/**"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
@@ -47,7 +41,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Activate prepared lottery scripts
+      - name: Activate member lottery v2 scripts
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -59,14 +53,16 @@ jobs:
           expected = "\n".join([
               start_marker,
               '    <script defer src="../shared/module-registry.js"></script>',
-              '    <script defer src="member-lottery.js"></script>',
               '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
-              '    <script defer src="lottery/preparation-view.js"></script>',
               '    <script defer src="lottery/wheel-draw-guard.js"></script>',
-              '    <script defer src="lottery/preload-controller.js"></script>',
-              '    <script defer src="member-lottery-preload.js"></script>',
+              '    <script defer src="lottery/workspace-mapper.js"></script>',
+              '    <script defer src="lottery/wheel-animator.js"></script>',
+              '    <script defer src="lottery/dialog-view.js"></script>',
+              '    <script defer src="lottery/demo-provider.js"></script>',
+              '    <script defer src="lottery/dialog-controller.js"></script>',
+              '    <script defer src="member-lottery-v2.js"></script>',
               end_marker,
           ])
 
@@ -90,18 +86,16 @@ jobs:
           node --check PersonalBrandTestingEnvironment/client/lottery/contracts.js
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
-          node --check PersonalBrandTestingEnvironment/client/lottery/preparation-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
-          node --check PersonalBrandTestingEnvironment/client/lottery/preload-controller.js
-          node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/workspace-mapper.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/wheel-animator.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/dialog-view.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/demo-provider.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/dialog-controller.js
+          node --check PersonalBrandTestingEnvironment/client/member-lottery-v2.js
 
-      - name: Run preload tests
-        run: |
-          node --test \
-            PersonalBrandTestingEnvironment/tests/module-registry.test.js \
-            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
-            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
-            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
+      - name: Run lottery tests
+        run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
 
       - name: Validate dependency order
         run: |
@@ -114,30 +108,32 @@ jobs:
           expected = "\n".join([
               '    <script defer src="../shared/lottery-wheel.js"></script>',
               '    <script defer src="../shared/module-registry.js"></script>',
-              '    <script defer src="member-lottery.js"></script>',
               '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
-              '    <script defer src="lottery/preparation-view.js"></script>',
               '    <script defer src="lottery/wheel-draw-guard.js"></script>',
-              '    <script defer src="lottery/preload-controller.js"></script>',
-              '    <script defer src="member-lottery-preload.js"></script>',
+              '    <script defer src="lottery/workspace-mapper.js"></script>',
+              '    <script defer src="lottery/wheel-animator.js"></script>',
+              '    <script defer src="lottery/dialog-view.js"></script>',
+              '    <script defer src="lottery/demo-provider.js"></script>',
+              '    <script defer src="lottery/dialog-controller.js"></script>',
+              '    <script defer src="member-lottery-v2.js"></script>',
               '    <script defer src="script.js"></script>',
           ])
           if expected not in text:
-              raise SystemExit("Lottery module dependency order is invalid")
+              raise SystemExit("Member lottery v2 dependency order is invalid")
           PY
 
       - name: Commit activated dependency order
         if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
-            echo "Prepared lottery scripts are already active."
+            echo "Member lottery v2 scripts are already active."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
-          git commit -m "deploy: activate prepared lottery modules"
+          git commit -m "deploy: activate member lottery v2"
           git push origin HEAD:main
