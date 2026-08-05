@@ -2,9 +2,7 @@
   "use strict";
 
   var registry = root.PersonaModules;
-  if (!registry) {
-    throw new Error("PersonaModules must load before lottery preparation view.");
-  }
+  if (!registry) return;
 
   registry.define("lottery.preparation-view", [], function () {
     function create(options) {
