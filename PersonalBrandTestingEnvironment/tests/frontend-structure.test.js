@@ -559,18 +559,18 @@ test("legacy client lottery deep link remains available and reveals a prepared d
   const html = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
-  const spinButton = getOpeningTagById(html, "spin-button");
-  const wheelCanvas = getOpeningTagById(html, "lottery-wheel");
-  const wheelRotor = getOpeningTagById(html, "lottery-rotor");
+  const spinButton = getOpeningTagById(html, "lottery-spin-button");
+  const wheelCanvas = getOpeningTagById(html, "member-lottery-wheel");
+  const wheelRotor = getOpeningTagById(html, "member-lottery-rotor");
 
   assert.match(spinButton, /<button\b/i);
   assert.match(spinButton, /\btype=["']button["']/i);
   assert.match(spinButton, /\bdisabled(?:\s|>|=)/i);
   assert.match(wheelCanvas, /<canvas\b/i);
   assert.match(wheelRotor, /id=["']lottery-rotor["']/i);
-  assert.match(html, /id=["']ticket-earned-list["']/);
-  assert.match(html, /id=["']ticket-locked-list["']/);
-  assert.match(html, /id=["']lottery-result["']/);
+  assert.match(html, /id=["']lottery-ticket-list["']/);
+  assert.match(html, /id=["']locked-ticket-list["']/);
+  assert.match(html, /id=["']lottery-result-dialog["']/);
   assert.match(html, /data-member-route/);
 
   assert.match(script, /function\s+prepareLotteryDraw\s*\(/);
