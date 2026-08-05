@@ -115,7 +115,22 @@ jobs:
       - name: Test preload structure compatibility
         run: node --test PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
 
-      - name: Test legacy lottery motion
+      - name: Test v2 motion curve invariant
+        run: node --test --test-name-pattern="settles quickly" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Test v2 pending request invariant
+        run: node --test --test-name-pattern="same persisted request id" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Test v2 definitive failure invariant
+        run: node --test --test-name-pattern="definitive no-draw" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Test v2 close protection invariant
+        run: node --test --test-name-pattern="cannot close or leave" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Test legacy page navigation lock invariant
+        run: node --test --test-name-pattern="legacy lottery page" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Test complete lottery motion invariants
         run: node --test PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
 
       - name: Run remaining regression tests
