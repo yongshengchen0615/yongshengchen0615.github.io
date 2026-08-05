@@ -30,8 +30,25 @@
     });
   }
 
+  function expectsModuleRegistry() {
+    var documentValue = root.document;
+    if (!documentValue || !documentValue.scripts) return false;
+
+    return Array.prototype.some.call(documentValue.scripts, function (script) {
+      var source = String((script && script.getAttribute("src")) || "");
+      return /(?:^|\/)module-registry\.js(?:[?#].*)?$/.test(source);
+    });
+  }
+
   var legacy = root.MemberLotteryDialog;
   var registry = root.PersonaModules;
+
+  // During the deployment transition, the previous index.html does not yet
+  // reference module-registry.js. Keep the proven legacy dialog active until
+  // the activation workflow publishes the new atomic script boundary.
+  if (!registry && !expectsModuleRegistry()) {
+    return;
+  }
 
   try {
     if (!registry || typeof registry.get !== "function") {
