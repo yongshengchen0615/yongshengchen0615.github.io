@@ -4,16 +4,20 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
+      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
     paths:
+      - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
+      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
@@ -48,14 +52,18 @@ jobs:
 
           path = Path("PersonalBrandTestingEnvironment/client/index.html")
           text = path.read_text(encoding="utf-8")
-          start_marker = '    <script defer src="member-lottery.js"></script>'
+          start_marker = '    <script defer src="../shared/lottery-wheel.js"></script>'
           end_marker = '    <script defer src="script.js"></script>'
           expected = "\n".join([
               start_marker,
+              '    <script defer src="../shared/module-registry.js"></script>',
+              '    <script defer src="member-lottery.js"></script>',
+              '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
               '    <script defer src="lottery/preparation-view.js"></script>',
               '    <script defer src="lottery/wheel-draw-guard.js"></script>',
+              '    <script defer src="lottery/preload-controller.js"></script>',
               '    <script defer src="member-lottery-preload.js"></script>',
               end_marker,
           ])
@@ -76,15 +84,19 @@ jobs:
 
       - name: Validate JavaScript syntax
         run: |
+          node --check PersonalBrandTestingEnvironment/shared/module-registry.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/contracts.js
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/preload-controller.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
 
       - name: Run preload tests
         run: |
           node --test \
+            PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
 
@@ -97,11 +109,15 @@ jobs:
               encoding="utf-8"
           )
           expected = "\n".join([
+              '    <script defer src="../shared/lottery-wheel.js"></script>',
+              '    <script defer src="../shared/module-registry.js"></script>',
               '    <script defer src="member-lottery.js"></script>',
+              '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
               '    <script defer src="lottery/preparation-view.js"></script>',
               '    <script defer src="lottery/wheel-draw-guard.js"></script>',
+              '    <script defer src="lottery/preload-controller.js"></script>',
               '    <script defer src="member-lottery-preload.js"></script>',
               '    <script defer src="script.js"></script>',
           ])
@@ -120,5 +136,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
-          git commit -m "deploy: activate prepared lottery scripts"
+          git commit -m "deploy: activate prepared lottery modules"
           git push origin HEAD:main
