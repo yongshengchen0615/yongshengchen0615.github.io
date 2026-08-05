@@ -1,6 +1,6 @@
-# 系統架構與維護邊界
+# 系統架構、耦合分析與重構路線
 
-本文件描述目前會員系統的實際執行架構、資料所有權、安全邊界與後續重構方向。部署步驟與 Script Properties 請以 [`README.md`](README.md) 為準。
+本文件描述目前會員系統的實際執行架構、資料所有權、安全邊界、已完成的低耦合重構，以及後續拆分順序。部署步驟與 Script Properties 仍以 [`README.md`](README.md) 與 [`setup.html`](setup.html) 為準。
 
 ## 1. 執行拓撲
 
@@ -23,11 +23,13 @@
 
 會員端與管理端是兩個不同的 LINE Channel、LIFF App 與 GAS 部署。兩端唯一共用的持久資料是 Google Spreadsheet；任何一端都不能改用另一端的 ID Token audience 或 GAS URL。
 
-## 2. 前端入口與責任
+兩套 GAS 必須維持獨立。它們共用資料，不共用授權邊界；合併會讓會員端部署取得不必要的管理權限。
 
-| 入口 | 程式 | 責任 |
+## 2. 主要入口與責任
+
+| 入口 | 主要程式 | 現況責任 |
 | --- | --- | --- |
-| `client/index.html` | `client/script.js`、`client/member-lottery.js` | 會員登入、會員卡、QR 領點、滿版抽獎券、轉盤與點數紀錄小視窗 |
+| `client/index.html` | `client/script.js`、`client/member-lottery.js` | 會員登入、會員卡、個資、QR 領點、點數紀錄、抽獎券與轉盤 |
 | `client/lottery.html` | `client/lottery.js` | 舊抽獎連結的相容 fallback |
 | `admin/index.html` | `admin/script.js` | 會員查詢與使用權限 |
 | `admin/points.html` | `admin/script.js` | 點數類型、活動 QR 與領點紀錄 |
@@ -35,35 +37,141 @@
 
 共用瀏覽器模組：
 
-- `shared/gas-api.js`：公開設定讀取、請求欄位白名單、fetch 傳輸與受驗證的 iframe fallback。
-- `shared/liff-runtime.js`：LIFF 環境資訊、展示模式與公開設定完整性檢查。
-- `shared/lottery-wheel.js`：管理端預覽與會員端轉盤共用的 Canvas 繪製。
-- `shared/qr-code.js`：管理端本機 QR Code 編碼，不把領點網址交給第三方服務。
+- `shared/gas-api.js`：公開設定讀取、request ID、fetch 傳輸、受驗證 iframe fallback 與回應封套。
+- `shared/liff-runtime.js`：LIFF context、展示模式與公開設定完整性檢查。
+- `shared/lottery-wheel.js`：管理端預覽與會員端轉盤共用 Canvas 繪製。
+- `shared/qr-code.js`：管理端本機 QR Code 編碼。
+- `shared/module-registry.js`：顯式模組註冊、延遲解析、單例與循環依賴偵測。
 
-所有共用模組都必須在頁面自己的程式之前載入。前端只負責顯示與送出意圖，不可自行決定中獎結果、會員權限或可領取點數。
+前端只負責顯示與送出意圖，不可自行決定中獎結果、會員權限或可領取點數。
 
-## 3. 後端責任
+## 3. 核心問題分析
 
-### 會員 GAS
+### 3.1 `client/script.js` 是會員端 God Object
 
-- 只接受會員 action。
-- 使用會員 Channel ID 向 LINE 驗證 ID Token。
-- 建立或同步會員、修改本人電話與生日、刪除本人資料。
-- 驗證並兌換點數活動。
-- 依期限計算集點卡當輪狀態與可用抽獎券，同時保留終身累計。
-- 在伺服器依已儲存機率決定獎項並保存結果。
+目前同一個 IIFE 同時管理：
 
-### 管理 GAS
+- LIFF 初始化、登入、token 失效恢復；
+- 會員同步與個資編輯；
+- QR claim 解析、sessionStorage、領點冪等；
+- LIFF 掃碼與相機 fallback；
+- 點數紀錄載入與畫面；
+- 集點卡摘要與抽獎券列表；
+- dialog、toast、loading、error view；
+- 抽獎模組組裝。
 
-- 只接受管理 action。
-- 使用管理 Channel ID 向 LINE 驗證 ID Token。
-- 只依 `Admins` 工作表的 `approved` 狀態授權。
-- 管理會員使用權限、點數類型與活動、集點卡規則及轉盤版本。
-- 查詢經過欄位裁切的會員、領點與中獎紀錄。
+結果是大量全域狀態、busy flag、request version 與 DOM ID 形成時間順序耦合。修改點數紀錄，也可能影響登入、dialog 或抽獎恢復流程。
 
-兩套 `Code.gs` 必須能獨立貼入及部署。兩檔內目前仍有相同的 Sheet schema 與解析程式，這是獨立 GAS 專案造成的部署限制，不應直接改成瀏覽器式 import。共用資料契約的同步由測試保護；若未來導入建置流程，才適合由單一 schema manifest 產生兩端常數。
+### 3.2 `admin/script.js` 同時承載三個管理工作區
 
-## 4. Spreadsheet 資料所有權
+同一份程式依 `data-admin-page` 切換會員、點數、轉盤三種工作區，卻仍初始化全部狀態、formatter 與操作函式。這讓每個頁面載入不需要的邏輯，也提高跨頁回歸風險。
+
+### 3.3 抽獎程式曾是「拆檔但未解耦」
+
+先前預載功能雖拆成多個檔案，但每個檔案都掛在 `window.MemberLottery*`，再由 `member-lottery-preload.js` 覆寫 `window.MemberLotteryDialog` 並攔截：
+
+- `getLotteryConfig`：改成先抓設定、再先呼叫 `drawLottery`；
+- `drawLottery`：改成回傳記憶體中的預載結果。
+
+這個行為正確，但相依關係隱藏在 script 載入順序與全域名稱中。任何模組漏載時，舊版「按下按鈕才打後台」流程可能繼續運作，錯誤不夠明確。
+
+### 3.4 驗證規則重複
+
+抽獎券格式在 `client/script.js`、`member-lottery.js`、pending request store 中重複。會員端、管理端與 GAS 也各自重複 response envelope、ID、日期與點數驗證。
+
+短期需要保留部分重複以控制改動範圍；長期應透過 action-specific contract test 確保一致，而不是繼續複製貼上。
+
+### 3.5 Transport 與 domain 欄位耦合
+
+`shared/gas-api.js` 同時負責網路傳輸與 `EXTRA_FIELD_NAMES` domain 欄位白名單。每新增一個後台欄位都要改 transport。後續應改為 action contract 驗證，再由 transport 傳送已驗證 payload。
+
+### 3.6 GAS 仍是大型單檔
+
+兩套 `Code.gs` 都同時包含 HTTP dispatch、LINE 驗證、授權、schema migration、repository、點數、集點卡、轉盤與 utility。Apps Script 專案可包含多個 `.gs` 檔案，因此可在不改執行方式的前提下按責任拆分。
+
+## 4. 目標依賴方向
+
+```text
+DOM / LIFF / GAS adapter
+        ↓
+application controller / use case
+        ↓
+domain contracts / pure validation
+        ↓
+storage、transport、clock 等介面
+```
+
+規則：
+
+1. Domain 與 use-case 模組不可直接讀 DOM 或瀏覽器全域狀態。
+2. View adapter 可操作 DOM，但必須由 composition root 注入 `document` 或元素。
+3. Service 必須注入 request、storage 與 callback。
+4. 只有 composition root 可以解析 `window` 上的外部 SDK 與既有公開 API。
+5. 對外 facade 保持小且穩定；內部模組不得各自污染 global namespace。
+6. 會員 GAS 與管理 GAS 的授權邊界不得合併。
+
+## 5. 本次已完成的第一階段重構
+
+### 5.1 顯式 module registry
+
+新增 `shared/module-registry.js`：
+
+- 以名稱註冊 factory 與 dependencies；
+- 在 `get()` 時延遲解析；
+- internal module 定義順序不再重要；
+- 同一模組只建立一次；
+- 重複註冊、缺少模組、循環依賴都有固定 error code。
+
+### 5.2 抽獎共用 contracts
+
+新增 `client/lottery/contracts.js`，集中：
+
+- 抽獎券 normalization；
+- request ID 驗證；
+- GAS response envelope 驗證；
+- definitive no-draw error 分類；
+- client error 建立。
+
+### 5.3 高內聚抽獎元件
+
+| 模組 | 單一責任 |
+| --- | --- |
+| `pending-request-store.js` | request ID 持久化與 session idempotency |
+| `wheel-draw-guard.js` | 記憶體中 prepared result 的所有權與比對 |
+| `preparation-service.js` | 設定驗證、預先開獎、錯誤清理與 host card refresh |
+| `preparation-view.js` | 「準備中／已就緒」按鈕與文字狀態 |
+| `preload-controller.js` | 將 preload use case 接到既有 legacy dialog |
+| `member-lottery-preload.js` | 唯一 composition root 與失敗 facade |
+
+內部模組不再建立 `window.MemberLotteryPendingRequestStore`、`window.MemberLotteryPreparationService` 等全域物件。對外仍保留 `window.MemberLotteryDialog`，因此 `client/script.js` 暫時不需要高風險的大規模改寫。
+
+### 5.4 轉盤執行流程
+
+```text
+點選抽獎券
+  -> controller 驗證 ticket
+  -> legacy dialog 顯示 loading
+  -> getLotteryConfig 進入 preparation service
+  -> 驗證抽獎券仍可使用
+  -> 建立或沿用同一 request ID
+  -> 先呼叫 drawLottery
+  -> 驗證並保存 prepared response
+  -> 繪製轉盤並啟用中央按鈕
+
+點選中央按鈕
+  -> legacy dialog 使用同一 request ID 要求 drawLottery
+  -> controller 只回傳記憶體 prepared response
+  -> 不發生網路請求
+  -> legacy dialog 只執行轉動、減速、停獎與結果畫面
+```
+
+### 5.5 失敗策略
+
+- 暫時性網路錯誤：保留 pending request 與相同 request ID，安全重試。
+- 明確未開獎錯誤：清除 pending request 與 prepared response，重新同步卡片。
+- 模組初始化失敗：以 unavailable facade 明確拋出 `LOTTERY_BOOTSTRAP_ERROR`，不再靜默退回舊流程。
+
+## 6. Spreadsheet 資料所有權
 
 | 工作表 | 主要寫入者 | 用途 |
 | --- | --- | --- |
@@ -74,60 +182,121 @@
 | `PointRedemptions` | 會員 GAS | 點數領取帳本與終身累計依據 |
 | `PointCardSettings` | 管理 GAS | 卡片滿點、期限、抽獎節點與指定轉盤 |
 | `LotteryTypes` | 管理 GAS | 轉盤類型生命週期 |
-| `LotteryPrizes` | 管理 GAS | 不可變的轉盤設定版本與機率 |
+| `LotteryPrizes` | 管理 GAS | 不可變轉盤設定版本與機率 |
 | `LotteryDraws` | 會員 GAS | 實際抽獎結果 |
 
-點數餘額與集點卡進度應由帳本重新計算，不由瀏覽器或 `Members` 顯示值當作權威資料。軟刪除的點數類型與轉盤仍保留歷史資料。
+點數餘額與集點卡進度應由帳本重新計算，不由瀏覽器或 `Members` 顯示值當作權威資料。
 
-## 5. 安全與一致性邊界
+## 7. 安全與一致性邊界
 
-- `config.json`、LIFF ID、GAS `/exec` URL 都是公開資料；秘密只放在 GAS Script Properties。
-- GAS 必須重新驗證 ID Token 的 audience、issuer、subject 與時效，不信任前端傳入的 LINE user ID。
-- `ALLOWED_ORIGINS` 只接受完整 origin；所有回應都綁定 request ID，iframe bridge 另外驗證回應 origin 與一次性 secret。
-- 會員與管理 action 使用白名單分流，未知欄位不進入業務函式。
-- 點數領取、抽獎與管理寫入使用 request ID 保持重試冪等。
-- 中獎機率與結果只在會員 GAS 計算；Canvas 動畫只呈現伺服器已回傳的獎項。
-- 管理員核准只允許試算表擁有者手動修改 `Admins.status`，前端沒有提升管理權限的 API。
-- Google Sheets 不是關聯式資料庫。跨列更新必須持續使用既有 lock、重讀與唯一性檢查，避免重複領點或重複抽獎。
+- `config.json`、LIFF ID、GAS `/exec` URL 是公開資料；秘密只放 GAS Script Properties。
+- GAS 必須驗證 ID Token audience、issuer、subject 與時效。
+- `ALLOWED_ORIGINS` 只接受完整 origin。
+- 回應綁定 request ID；iframe bridge 額外驗證 origin 與一次性 secret。
+- 會員與管理 action 白名單分流。
+- 領點、抽獎與管理寫入使用 request ID 保持冪等。
+- 中獎機率與結果只在會員 GAS 決定；Canvas 動畫只呈現已確認結果。
+- 管理員核准只依 `Admins.status`，前端沒有提升權限 API。
+- Google Sheets 不是交易型資料庫，跨列寫入必須保留 lock、重讀與唯一性檢查。
 
-## 6. 本次重構決策
+## 8. 後續重構順序
 
-- 會員首頁是日常操作中心：掃碼、票券狀態與點數紀錄不再要求頁面跳轉。
-- 抽獎券摘要沿用 `upsertMember` 已算出的集點卡狀態，不為開啟滿版票券清單增加試算表讀取；只有選定可用券後，才在首頁轉盤小視窗中延遲載入最新設定。
-- 待確認抽獎以 LIFF 與已驗證會員編號隔離，展示模式另用獨立空間；結果未知時保留同一 request ID，後台明確確認未開獎時才解除鎖定並重載票券。
-- 集點卡期限採 append-only 設定；到期後捨棄當輪進度與未用券，但不改寫點數帳本或已抽紀錄。
-- 把三份重複的 Canvas 轉盤程式整合為 `shared/lottery-wheel.js`。
-- 把三份重複的 LIFF context、展示模式與 config 完整性檢查整合為 `shared/liff-runtime.js`。
-- 保留頁面、API action、Sheet schema、GAS 部署方式及所有使用者行為。
+### Phase 2：拆 `client/script.js`
 
-## 7. 後續重構順序
+保留現有 DOM ID，逐一抽出：
 
-目前最大的維護成本是 `admin/script.js` 同時承載三個管理頁，以及兩套大型 `Code.gs` 的契約同步。建議依下列順序小步處理：
+```text
+client/app/session-controller.js
+client/member/member-service.js
+client/member/profile-controller.js
+client/points/claim-controller.js
+client/points/history-controller.js
+client/scanner/point-scanner.js
+client/ui/dialog-service.js
+client/ui/toast-service.js
+client/ui/app-state-view.js
+```
 
-1. 將管理端依 `members`、`points`、`lottery` 拆成頁面控制器，保留共用登入 session 與錯誤處理。
-2. 將會員端點數領取、個人資料與集點卡紀錄拆成獨立功能模組。
-3. 建立不含執行平台程式的 schema manifest，讓測試檢查兩套 GAS 的欄位、狀態與 action 契約。
-4. 若資料量或並行寫入明顯增加，再評估把帳本移到具交易能力的資料庫；不應只靠前端最佳化掩蓋 Sheet 限制。
+先抽 pure normalization 與 use case，再移動 DOM code；不要一次重寫整個會員頁。
 
-每一階段都應保持兩套 GAS 可獨立部署，並在更動資料契約前先補跨端 contract test。
+### Phase 3：淘汰 legacy `member-lottery.js`
 
-## 8. 驗證
+拆成：
 
-本專案沒有套件依賴與建置步驟。
+```text
+lottery/dialog-controller.js
+lottery/workspace-mapper.js
+lottery/wheel-animator.js
+lottery/result-presenter.js
+lottery/demo-provider.js
+```
+
+完成後，dialog controller 應直接呼叫 `prepare(ticket)` 與 `revealPrepared()`，移除 request interception compatibility layer。
+
+### Phase 4：按頁拆 `admin/script.js`
+
+```text
+admin/core/session-controller.js
+admin/members/member-admin-controller.js
+admin/points/point-type-controller.js
+admin/points/campaign-controller.js
+admin/lottery/config-controller.js
+admin/lottery/history-controller.js
+```
+
+每個 HTML 只載入自己的 page controller，共用 session、transport、error mapper 與 view utility。
+
+### Phase 5：按 domain 拆兩套 GAS
+
+會員與管理專案各自拆成：
+
+```text
+00_Config.gs
+10_Http.gs
+20_LineIdentity.gs
+30_Authorization.gs
+40_Members.gs
+50_Points.gs
+60_PointCards.gs
+70_Lottery.gs
+80_SheetRepositories.gs
+90_Migrations.gs
+99_Utilities.gs
+```
+
+不得建立跨部署 runtime import。未導入 build pipeline 前，兩套 GAS 必須仍能各自完整部署。
+
+### Phase 6：API contract 化
+
+以 action-specific validator 取代 transport-level domain field whitelist，並為以下 action 建立 request/response contract test：
+
+- `upsertMember`
+- `redeemPointCampaign`
+- `getLotteryConfig`
+- `drawLottery`
+- 管理端會員、點數、轉盤 mutation
+
+## 9. 測試與驗證
+
+本階段新增或保留的關鍵測試：
+
+- 開啟抽獎券時先完成 `getLotteryConfig` 與 `drawLottery`；
+- 點擊中央按鈕只取 prepared memory response，不打後台；
+- 暫時性錯誤沿用相同 request ID；
+- definitive no-draw error 解除 pending state；
+- internal lottery modules 不建立個別 global；
+- module registry 可亂序定義、維持 singleton、拒絕 duplicate、偵測 cycle；
+- GitHub Actions 自動插入與驗證正確 script boundary。
 
 ```bash
-# 全部自動測試
-node --test tests/*.test.js
+node --check shared/module-registry.js
+node --check client/lottery/*.js
+node --check client/member-lottery-preload.js
 
-# 瀏覽器 JavaScript 語法
-node --check shared/gas-api.js
-node --check shared/liff-runtime.js
-node --check shared/lottery-wheel.js
-node --check client/script.js
-node --check client/lottery.js
-node --check admin/script.js
-
-# GAS 語法（Node 不辨識 .gs 副檔名，因此由 stdin 檢查）
-node --check < gas/client/Code.gs
-node --check < gas/admin/Code.gs
+node --test \
+  tests/module-registry.test.js \
+  tests/member-lottery-preload.test.js \
+  tests/lottery-preload-structure.test.js
 ```
+
+後續每抽出一個 controller，都應先建立 state-machine 或 contract test，再移除原始程式碼。
