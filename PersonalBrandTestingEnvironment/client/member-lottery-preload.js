@@ -104,10 +104,7 @@
     return Promise.resolve(legacy.open(activeTicket)).then(function (opened) {
       if (opened && !safeIsDemo()) {
         var pending = store.read();
-        if (
-          pending &&
-          guard.has(activeTicket, pending.requestId)
-        ) {
+        if (pending && guard.has(activeTicket, pending.requestId)) {
           view.markReady();
         }
       }

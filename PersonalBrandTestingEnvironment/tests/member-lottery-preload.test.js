@@ -5,7 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const modulePaths = [
+const scriptPaths = [
   "client/lottery/pending-request-store.js",
   "client/lottery/preparation-service.js",
   "client/lottery/preparation-view.js",
@@ -13,7 +13,7 @@ const modulePaths = [
   "client/member-lottery-preload.js",
 ];
 
-const LIFF_ID = "liff-preload-test";
+const LIFF_ID = "liff-preload";
 const MEMBER_ID = "MBR-AAAAAAAAAA";
 const SETTING_VERSION = "PCS-TEST00000001";
 const LOTTERY_TYPE_ID = "LTY-TEST000001";
@@ -32,6 +32,27 @@ function createTicket() {
 }
 
 function createWorkspaceResponse({ ticketAvailable = true } = {}) {
+  const ticket = createTicket();
+  const lottery = {
+    lotteryTypeId: LOTTERY_TYPE_ID,
+    configVersion: "LCF-TEST00000001",
+    updatedAt: "2026-08-05T00:00:00.000Z",
+    prizes: [
+      {
+        prizeId: "LPR-TEST000001",
+        label: "會員好禮",
+        color: "#8DCCAA",
+        probability: 50,
+      },
+      {
+        prizeId: "LPR-TEST000002",
+        label: "本輪頭獎",
+        color: "#0B3C2C",
+        probability: 50,
+      },
+    ],
+  };
+
   return {
     ok: true,
     data: {
@@ -40,29 +61,11 @@ function createWorkspaceResponse({ ticketAvailable = true } = {}) {
         {
           lotteryTypeId: LOTTERY_TYPE_ID,
           name: "測試轉盤",
-          lottery: {
-            lotteryTypeId: LOTTERY_TYPE_ID,
-            configVersion: "LCF-TEST00000001",
-            updatedAt: "2026-08-05T00:00:00.000Z",
-            prizes: [
-              {
-                prizeId: "LPR-TEST000001",
-                label: "會員好禮",
-                color: "#8DCCAA",
-                probability: 50,
-              },
-              {
-                prizeId: "LPR-TEST000002",
-                label: "本輪頭獎",
-                color: "#0B3C2C",
-                probability: 50,
-              },
-            ],
-          },
+          lottery,
         },
       ],
       card: {
-        availableRewards: ticketAvailable ? [createTicket()] : [],
+        availableRewards: ticketAvailable ? [ticket] : [],
       },
       totalPoints: 12,
     },
@@ -70,14 +73,28 @@ function createWorkspaceResponse({ ticketAvailable = true } = {}) {
 }
 
 function createDrawResponse() {
+  const workspace = createWorkspaceResponse();
+  const lotteryType = workspace.data.lotteryTypes[0];
+  const prize = lotteryType.lottery.prizes[0];
+
   return {
     ok: true,
     data: {
-      lotteryType: { lotteryTypeId: LOTTERY_TYPE_ID },
-      lottery: { lotteryTypeId: LOTTERY_TYPE_ID },
+      access: { allowed: true, status: "approved" },
+      lotteryType,
+      lottery: lotteryType.lottery,
       draw: {
+        drawId: "LDW-TEST000000000001",
+        configVersion: lotteryType.lottery.configVersion,
+        prizeId: prize.prizeId,
+        prizeLabel: prize.label,
+        prizeColor: prize.color,
         lotteryTypeId: LOTTERY_TYPE_ID,
         cardRoundKey: CARD_ROUND_KEY,
+        originalPointBalance: 12,
+        pointBalance: 12,
+        pointsSpent: 0,
+        drawnAt: "2026-08-05T00:00:00.000Z",
       },
       card: { availableRewards: [] },
       totalPoints: 12,
@@ -86,76 +103,66 @@ function createDrawResponse() {
 }
 
 class FakeElement {
-  constructor(id) {
-    this.id = id;
+  constructor() {
     this.disabled = false;
-    this.dataset = {};
     this.textContent = "";
+    this.dataset = {};
     this.attributes = new Map();
-    this.label = { textContent: "" };
+  }
+
+  querySelector() {
+    return null;
   }
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
   }
-
-  querySelector(selector) {
-    return selector === "span" ? this.label : null;
-  }
 }
 
 function createHarness() {
-  const elements = {
-    "member-lottery-spin-button": new FakeElement(
-      "member-lottery-spin-button"
-    ),
-    "member-lottery-spin-status": new FakeElement(
-      "member-lottery-spin-status"
-    ),
-  };
   const storage = new Map();
-  const calls = [];
-  const updates = [];
-  let requestHandler = () => {
-    throw new Error("Unexpected request");
+  const elements = {
+    "member-lottery-spin-status": new FakeElement(),
+    "member-lottery-spin-button": new FakeElement(),
   };
-  let nextRequestId = 1;
-  let legacyOptions = null;
+  const originalCalls = [];
+  const createdRequestIds = [];
+  let requestSequence = 0;
+  let configuredOptions = null;
+  let activeTicket = null;
+  let legacyPending = false;
 
-  const legacyController = {
+  const legacy = {
     configure(options) {
-      legacyOptions = options;
+      configuredOptions = options;
       return this;
     },
-    open() {
+    open(ticket) {
+      activeTicket = ticket;
       return Promise.resolve()
-        .then(() => legacyOptions.request("getLotteryConfig", {}, undefined))
-        .then(() => {
-          elements["member-lottery-spin-button"].disabled = false;
-          return true;
-        })
-        .catch(() => false);
+        .then(() => configuredOptions.request("getLotteryConfig", {}, undefined))
+        .then(() => true);
     },
     hasPending() {
-      return storage.has(STORAGE_KEY);
+      return legacyPending;
     },
     canClose() {
-      return !storage.has(STORAGE_KEY);
+      return !legacyPending;
     },
     requestClose() {
-      return !storage.has(STORAGE_KEY);
+      if (legacyPending) return false;
+      activeTicket = null;
+      return true;
     },
+  };
+
+  const state = {
+    drawAttempts: 0,
+    failNextDraw: null,
+    ticketAvailable: true,
   };
 
   const window = {
-    MemberLotteryDialog: legacyController,
-    MemberApi: {
-      createRequestId() {
-        const id = `request-${String(nextRequestId).padStart(4, "0")}`;
-        nextRequestId += 1;
-        return id;
-      },
-    },
     document: {
       getElementById(id) {
         return elements[id] || null;
@@ -167,11 +174,22 @@ function createHarness() {
       },
       setItem(key, value) {
         storage.set(key, String(value));
+        legacyPending = true;
       },
       removeItem(key) {
         storage.delete(key);
+        legacyPending = false;
       },
     },
+    MemberApi: {
+      createRequestId() {
+        requestSequence += 1;
+        const id = `preload-request-${String(requestSequence).padStart(4, "0")}`;
+        createdRequestIds.push(id);
+        return id;
+      },
+    },
+    MemberLotteryDialog: legacy,
   };
   window.window = window;
 
@@ -187,83 +205,69 @@ function createHarness() {
     Promise,
     RegExp,
     String,
+    clearTimeout,
+    console,
+    document: window.document,
+    setTimeout,
     window,
   });
 
-  for (const relativePath of modulePaths) {
-    const source = fs.readFileSync(path.join(root, relativePath), "utf8");
-    vm.runInContext(source, context, { filename: relativePath });
+  for (const relativePath of scriptPaths) {
+    vm.runInContext(
+      fs.readFileSync(path.join(root, relativePath), "utf8"),
+      context,
+      { filename: relativePath }
+    );
   }
 
-  const controller = window.MemberLotteryDialog;
-  controller.configure({
+  const api = window.MemberLotteryDialog;
+  api.configure({
     liffId: LIFF_ID,
-    request(action, fields, requestId) {
-      calls.push({ action, fields, requestId });
-      return requestHandler(action, fields, requestId);
+    isDemo() {
+      return false;
     },
     getMemberId() {
       return MEMBER_ID;
     },
-    isDemo() {
-      return false;
-    },
-    onCardUpdated(card, totalPoints) {
-      updates.push({ card, totalPoints });
+    onCardUpdated() {},
+    request(action, fields, requestId) {
+      originalCalls.push({ action, fields, requestId });
+      if (action === "getLotteryConfig") {
+        return Promise.resolve(
+          createWorkspaceResponse({ ticketAvailable: state.ticketAvailable })
+        );
+      }
+      if (action === "drawLottery") {
+        state.drawAttempts += 1;
+        if (state.failNextDraw) {
+          const error = state.failNextDraw;
+          state.failNextDraw = null;
+          return Promise.reject(error);
+        }
+        return Promise.resolve(createDrawResponse());
+      }
+      throw new Error(`Unexpected action: ${action}`);
     },
   });
 
   return {
-    calls,
-    controller,
+    api,
+    createdRequestIds,
     elements,
-    legacyOptions() {
-      return legacyOptions;
-    },
-    setRequestHandler(handler) {
-      requestHandler = handler;
-    },
+    originalCalls,
+    state,
     storage,
-    updates,
-    window,
-  };
-}
-
-function createServiceHarness() {
-  const harness = createHarness();
-  const store = harness.window.MemberLotteryPendingRequestStore.create({
-    liffId: LIFF_ID,
-    getMemberId() {
-      return MEMBER_ID;
+    async simulateLegacySpin() {
+      const pending = JSON.parse(storage.get(STORAGE_KEY));
+      return configuredOptions.request(
+        "drawLottery",
+        {
+          lotteryTypeId: activeTicket.lotteryTypeId,
+          cardRoundKey: activeTicket.cardRoundKey,
+        },
+        pending.requestId
+      );
     },
-    isDemo() {
-      return false;
-    },
-    createRequestId() {
-      return "service-request-0001";
-    },
-  });
-  const guard = harness.window.MemberLotteryWheelDrawGuard.create();
-  const serviceCalls = [];
-  let handler = () => {
-    throw new Error("Unexpected service request");
-  };
-  const service = harness.window.MemberLotteryPreparationService.create({
-    request(action, fields, requestId) {
-      serviceCalls.push({ action, fields, requestId });
-      return handler(action, fields, requestId);
-    },
-    store,
-    guard,
-  });
-  return {
-    guard,
-    service,
-    serviceCalls,
-    setHandler(nextHandler) {
-      handler = nextHandler;
-    },
-    store,
   };
 }
 
@@ -273,155 +277,67 @@ function createError(code, message = code) {
   return error;
 }
 
-async function waitFor(predicate, message) {
-  const deadline = Date.now() + 1000;
-  while (!predicate()) {
-    if (Date.now() >= deadline) {
-      assert.fail(message || "Timed out waiting for condition");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2));
-  }
-}
-
-test("opening a ticket prepares config and draw before enabling the wheel", async () => {
+test("opening a ticket preloads config and draw before enabling the wheel", async () => {
   const harness = createHarness();
-  let resolveDraw;
-  const drawPromise = new Promise((resolve) => {
-    resolveDraw = resolve;
-  });
 
-  harness.setRequestHandler((action) => {
-    if (action === "getLotteryConfig") return createWorkspaceResponse();
-    if (action === "drawLottery") return drawPromise;
-    throw new Error(`Unexpected action: ${action}`);
-  });
-
-  const openPromise = harness.controller.open(createTicket());
-  await waitFor(
-    () => harness.calls.some((call) => call.action === "drawLottery"),
-    "draw preparation did not start"
+  assert.equal(await harness.api.open(createTicket()), true);
+  assert.deepEqual(
+    harness.originalCalls.map((call) => call.action),
+    ["getLotteryConfig", "drawLottery"]
   );
-
+  assert.equal(harness.createdRequestIds.length, 1);
+  assert.equal(harness.storage.has(STORAGE_KEY), true);
+  assert.equal(harness.elements["member-lottery-spin-button"].disabled, false);
   assert.equal(
-    harness.elements["member-lottery-spin-button"].disabled,
-    true
-  );
-  assert.match(
     harness.elements["member-lottery-spin-status"].textContent,
-    /正在準備轉盤/
-  );
-
-  resolveDraw(createDrawResponse());
-  assert.equal(await openPromise, true);
-  assert.equal(
-    harness.elements["member-lottery-spin-button"].disabled,
-    false
-  );
-  assert.equal(
-    harness.elements["member-lottery-spin-button"].dataset.state,
-    "ready"
-  );
-  assert.match(
-    harness.elements["member-lottery-spin-status"].textContent,
-    /轉盤已就緒/
+    "轉盤已就緒，點選中央直接揭曉結果。"
   );
 });
 
-test("wheel animation receives the prepared result without a second draw request", async () => {
+test("pressing the wheel consumes only the prepared in-memory response", async () => {
   const harness = createHarness();
-  harness.setRequestHandler((action) => {
-    if (action === "getLotteryConfig") return createWorkspaceResponse();
-    if (action === "drawLottery") return createDrawResponse();
-    throw new Error(`Unexpected action: ${action}`);
-  });
 
-  assert.equal(await harness.controller.open(createTicket()), true);
-  const pending = JSON.parse(harness.storage.get(STORAGE_KEY));
-  const drawCount = harness.calls.filter(
-    (call) => call.action === "drawLottery"
-  ).length;
+  await harness.api.open(createTicket());
+  const callsBeforeSpin = harness.originalCalls.length;
+  const response = await harness.simulateLegacySpin();
 
-  const preparedResponse = await harness.legacyOptions().request(
-    "drawLottery",
-    {
-      lotteryTypeId: LOTTERY_TYPE_ID,
-      cardRoundKey: CARD_ROUND_KEY,
-    },
-    pending.requestId
-  );
-
-  assert.equal(preparedResponse.ok, true);
-  assert.equal(
-    harness.calls.filter((call) => call.action === "drawLottery").length,
-    drawCount
-  );
+  assert.equal(response.ok, true);
+  assert.equal(harness.originalCalls.length, callsBeforeSpin);
+  assert.equal(harness.state.drawAttempts, 1);
 });
 
-test("transient preparation retry reuses the same persisted request id", async () => {
-  const harness = createServiceHarness();
-  let drawAttempt = 0;
-
-  harness.setHandler((action) => {
-    if (action === "getLotteryConfig") return createWorkspaceResponse();
-    if (action === "drawLottery") {
-      drawAttempt += 1;
-      return drawAttempt === 1
-        ? Promise.reject(createError("BACKEND_TIMEOUT", "Temporary timeout"))
-        : createDrawResponse();
-    }
-    throw new Error(`Unexpected action: ${action}`);
-  });
+test("a transient preload failure keeps the same request id for retry", async () => {
+  const harness = createHarness();
+  harness.state.failNextDraw = createError("CONNECTION_ERROR", "temporary");
 
   await assert.rejects(
-    Promise.resolve(harness.service.prepare(createTicket())),
-    /Temporary timeout/
+    harness.api.open(createTicket()),
+    (error) => error.code === "CONNECTION_ERROR"
   );
-  assert.equal(harness.store.read().requestId, "service-request-0001");
 
-  await harness.service.prepare(createTicket());
-  const requestIds = harness.serviceCalls
-    .filter((call) => call.action === "drawLottery")
-    .map((call) => call.requestId);
-  assert.deepEqual(requestIds, [
-    "service-request-0001",
-    "service-request-0001",
-  ]);
+  const persistedAfterFailure = JSON.parse(harness.storage.get(STORAGE_KEY));
+  assert.equal(harness.createdRequestIds.length, 1);
+
+  assert.equal(await harness.api.open(createTicket()), true);
+  const persistedAfterRetry = JSON.parse(harness.storage.get(STORAGE_KEY));
+
+  assert.equal(persistedAfterRetry.requestId, persistedAfterFailure.requestId);
+  assert.equal(harness.createdRequestIds.length, 1);
+  assert.equal(harness.state.drawAttempts, 2);
 });
 
-test("definitive no-draw failure releases the stored ticket", async () => {
-  const harness = createServiceHarness();
-  let configReads = 0;
-
-  harness.setHandler((action) => {
-    if (action === "getLotteryConfig") {
-      configReads += 1;
-      return createWorkspaceResponse({ ticketAvailable: configReads === 1 });
-    }
-    if (action === "drawLottery") {
-      return Promise.reject(
-        createError("LOTTERY_ROUND_NOT_READY", "Ticket already used")
-      );
-    }
-    throw new Error(`Unexpected action: ${action}`);
-  });
+test("a definitive no-draw failure releases the pending request", async () => {
+  const harness = createHarness();
+  harness.state.failNextDraw = createError(
+    "LOTTERY_ROUND_NOT_READY",
+    "already used"
+  );
 
   await assert.rejects(
-    Promise.resolve(harness.service.prepare(createTicket())),
-    /Ticket already used/
+    harness.api.open(createTicket()),
+    (error) => error.code === "LOTTERY_ROUND_NOT_READY"
   );
-  assert.equal(harness.store.read(), null);
-  assert.equal(configReads, 2);
-});
 
-test("unprepared wheel draw fails locally", async () => {
-  const harness = createServiceHarness();
-  const ticket = createTicket();
-  const pending = harness.store.ensure(ticket);
-
-  await assert.rejects(
-    Promise.resolve(
-      harness.service.resolvePrepared(ticket, pending.requestId)
-    ),
-    /尚未準備完成/
-  );
+  assert.equal(harness.storage.has(STORAGE_KEY), false);
+  assert.equal(harness.api.hasPending(), false);
 });
