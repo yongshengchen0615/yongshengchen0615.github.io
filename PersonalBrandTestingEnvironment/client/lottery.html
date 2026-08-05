@@ -85,7 +85,10 @@
                 <p><span>集滿目標</span><strong><output id="point-card-target">5</output><small> 點</small></strong></p>
               </div>
             </div>
-            <ol class="point-card-stars" id="point-card-stars" role="img" aria-label="尚未取得集點卡資料"></ol>
+            <div class="point-card-track" role="progressbar" aria-label="本張集點卡進度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+              <span id="point-card-progress-bar"></span>
+            </div>
+            <ol class="point-card-milestones" id="point-card-milestones" aria-label="本張卡抽獎節點"></ol>
             <div class="point-card-progress-meta">
               <p id="point-card-progress-message">再獲得 5 點可取得抽獎券。</p>
               <p><span id="point-card-expiry">集點卡無期限</span> · 目前持有 <strong id="available-draw-count">0</strong> 張</p>

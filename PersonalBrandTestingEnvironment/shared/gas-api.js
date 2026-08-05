@@ -1,27 +1,8 @@
 (function () {
   "use strict";
 
-  var FETCH_TIMEOUT_MS = 9000;
-  var BRIDGE_TIMEOUT_MS = 25000;
-  var MEMBER_SYNC_BRIDGE_TIMEOUT_MS = 45000;
-  var TRANSPORT_STORAGE_PREFIX = "persona-gas-transport:";
-  var MUTATION_ACTIONS = [
-    "upsertMember",
-    "upsertMemberIdentity",
-    "updateMemberProfile",
-    "prepareLotteryDraw",
-    "drawLottery",
-    "redeemPointCampaign",
-    "deleteMember",
-    "adminSetMemberAccess",
-    "adminCreatePointType",
-    "adminDeletePointType",
-    "adminCreatePointCampaign",
-    "adminSavePointCardSetting",
-    "adminCreateLotteryType",
-    "adminDeleteLotteryType",
-    "adminSaveLotteryConfig",
-  ];
+  var FETCH_TIMEOUT_MS = 12000;
+  var BRIDGE_TIMEOUT_MS = 20000;
   var EXTRA_FIELD_NAMES = [
     "targetMemberId",
     "accessStatus",
@@ -29,10 +10,6 @@
     "expectedAccessUpdatedAt",
     "page",
     "pageSize",
-    "query",
-    "memberStatus",
-    "cursor",
-    "limit",
     "phone",
     "birthday",
     "claim",
@@ -49,15 +26,7 @@
     "lotteryTypeId",
     "cardRoundKey",
     "lotteryTypeName",
-    "showPrizesOnTicket",
     "lotteryPrizes",
-    "metricName",
-    "operation",
-    "durationMs",
-    "outcome",
-    "requestTransport",
-    "fallbackUsed",
-    "errorCode",
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
@@ -134,113 +103,10 @@
     });
 
     var gasUrl = String(options.gasUrl || "").trim();
-    var startedAt = nowMilliseconds();
-    var attemptedTransports = [];
-    var isMutation = MUTATION_ACTIONS.indexOf(request.action) !== -1;
-    var preferredTransport = isMutation ? "bridge" : readPreferredTransport(gasUrl);
-
-    function attempt(transport) {
-      attemptedTransports.push(transport);
-      notifyProgress(options.onProgress, {
-        action: request.action,
-        phase: "connecting",
-        transport: transport,
-        fallbackUsed: attemptedTransports.length > 1,
-      });
-      var promise =
-        transport === "bridge"
-          ? postWithBridge(gasUrl, request)
-          : postWithFetch(gasUrl, request);
-      return promise.then(function (result) {
-        if (!isMutation) rememberPreferredTransport(gasUrl, transport);
-        return result;
-      });
-    }
-
-    return attempt(preferredTransport)
-      .catch(function (error) {
-        if (isMutation || !shouldTryAlternateTransport(preferredTransport, error)) {
-          throw error;
-        }
-        notifyProgress(options.onProgress, {
-          action: request.action,
-          phase: "fallback",
-          transport: preferredTransport === "bridge" ? "fetch" : "bridge",
-          fallbackUsed: true,
-        });
-        return attempt(preferredTransport === "bridge" ? "fetch" : "bridge");
-      })
-      .then(
-        function (result) {
-          notifyProgress(options.onProgress, {
-            action: request.action,
-            phase: "complete",
-            transport: attemptedTransports[attemptedTransports.length - 1],
-            fallbackUsed: attemptedTransports.length > 1,
-          });
-          notifyTiming(options.onTiming, {
-            action: request.action,
-            durationMs: elapsedMilliseconds(startedAt),
-            outcome: result && result.ok === true ? "success" : "failure",
-            errorCode:
-              result && result.ok !== true && result.code
-                ? String(result.code)
-                : "",
-            transport: attemptedTransports[attemptedTransports.length - 1],
-            fallbackUsed: attemptedTransports.length > 1,
-          });
-          return result;
-        },
-        function (error) {
-          var finalError = mutationTimeoutError(error, isMutation, request.requestId);
-          notifyProgress(options.onProgress, {
-            action: request.action,
-            phase: "failed",
-            transport:
-              attemptedTransports[attemptedTransports.length - 1] ||
-              preferredTransport,
-            fallbackUsed: attemptedTransports.length > 1,
-            errorCode: String(
-              (finalError && (finalError.code || finalError.name)) || "CONNECTION_ERROR"
-            ),
-          });
-          notifyTiming(options.onTiming, {
-            action: request.action,
-            durationMs: elapsedMilliseconds(startedAt),
-            outcome:
-              finalError &&
-              (finalError.name === "AbortError" ||
-                finalError.code === "BACKEND_TIMEOUT" ||
-                finalError.code === "REQUEST_STATUS_UNKNOWN")
-                ? "timeout"
-                : "failure",
-            errorCode: String(
-              (finalError && (finalError.code || finalError.name)) || "CONNECTION_ERROR"
-            ),
-            transport:
-              attemptedTransports[attemptedTransports.length - 1] ||
-              preferredTransport,
-            fallbackUsed: attemptedTransports.length > 1,
-          });
-          throw finalError;
-        }
-      );
-  }
-
-  function mutationTimeoutError(error, isMutation, requestId) {
-    if (
-      !isMutation ||
-      !error ||
-      (error.name !== "AbortError" && error.code !== "BACKEND_TIMEOUT")
-    ) {
-      return error;
-    }
-    var timeout = createError(
-      "REQUEST_STATUS_UNKNOWN",
-      "後台仍可能正在處理這次操作。請保留目前頁面並重試，系統會核對同一筆請求，不會重複寫入。"
-    );
-    timeout.requestId = requestId;
-    return timeout;
+    return postWithFetch(gasUrl, request).catch(function (error) {
+      if (!shouldUseBridgeFallback(error)) throw error;
+      return postWithBridge(gasUrl, request);
+    });
   }
 
   function postWithFetch(gasUrl, request) {
@@ -367,16 +233,10 @@
             "GAS 後台目前沒有回應。請稍後重試；若持續發生，再確認 Web App 已發布為可存取。"
           )
         );
-      }, getBridgeTimeoutMs(originalRequest.action));
+      }, BRIDGE_TIMEOUT_MS);
 
       form.submit();
     });
-  }
-
-  function getBridgeTimeoutMs(action) {
-    return action === "upsertMemberIdentity" || action === "upsertMember"
-      ? MEMBER_SYNC_BRIDGE_TIMEOUT_MS
-      : BRIDGE_TIMEOUT_MS;
   }
 
   function appendHiddenField(form, name, value) {
@@ -399,82 +259,6 @@
       error instanceof TypeError ||
       (error && (error.name === "AbortError" || error.code === "FETCH_NETWORK_ERROR"))
     );
-  }
-
-  function shouldTryAlternateTransport(primaryTransport, error) {
-    return primaryTransport === "bridge" || shouldUseBridgeFallback(error);
-  }
-
-  function readPreferredTransport(gasUrl) {
-    var key = transportStorageKey(gasUrl);
-    try {
-      var sessionValue = window.sessionStorage.getItem(key);
-      if (sessionValue === "fetch" || sessionValue === "bridge") {
-        return sessionValue;
-      }
-    } catch (_error) {
-      // Storage can be unavailable in privacy-restricted browsers.
-    }
-    try {
-      var persistedValue = window.localStorage.getItem(key);
-      return persistedValue === "bridge" ? "bridge" : "fetch";
-    } catch (_error) {
-      // Fall back to Fetch when persistent storage is unavailable.
-    }
-    return "fetch";
-  }
-
-  function rememberPreferredTransport(gasUrl, transport) {
-    if (transport !== "fetch" && transport !== "bridge") return;
-    var key = transportStorageKey(gasUrl);
-    try {
-      window.sessionStorage.setItem(key, transport);
-    } catch (_error) {
-      // Storage can be unavailable in privacy-restricted browsers.
-    }
-    try {
-      window.localStorage.setItem(key, transport);
-    } catch (_error) {
-      // Persisting only the transport name is an optional performance hint.
-    }
-  }
-
-  function transportStorageKey(gasUrl) {
-    var value = String(gasUrl || "");
-    var hash = 2166136261;
-    for (var index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return TRANSPORT_STORAGE_PREFIX + (hash >>> 0).toString(16);
-  }
-
-  function nowMilliseconds() {
-    return window.performance && typeof window.performance.now === "function"
-      ? window.performance.now()
-      : Date.now();
-  }
-
-  function elapsedMilliseconds(startedAt) {
-    return Math.max(0, Math.round(nowMilliseconds() - startedAt));
-  }
-
-  function notifyTiming(callback, timing) {
-    if (typeof callback !== "function") return;
-    try {
-      callback(Object.freeze(timing));
-    } catch (_error) {
-      // Performance reporting must never change the request result.
-    }
-  }
-
-  function notifyProgress(callback, progress) {
-    if (typeof callback !== "function") return;
-    try {
-      callback(Object.freeze(progress));
-    } catch (_error) {
-      // UI progress reporting must never change the request result.
-    }
   }
 
   function isPlausibleGasOrigin(origin) {

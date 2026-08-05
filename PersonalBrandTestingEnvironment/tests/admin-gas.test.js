@@ -446,8 +446,6 @@ function createLotteryTypeRow(gas, overrides = {}) {
     deletedAt: "",
     deletedBy: "",
     lastRequestId: "setup-default-type",
-    showPrizesOnTicket: false,
-    ticketPrizeOrders: "",
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -631,7 +629,7 @@ test("setup safely creates a claim secret and all reward sheets with exact schem
   assert.equal(result.pointCampaignColumns, 12);
   assert.equal(result.pointRedemptionColumns, 10);
   assert.equal(result.pointCardSettingColumns, 9);
-  assert.equal(result.lotteryTypeColumns, 11);
+  assert.equal(result.lotteryTypeColumns, 9);
   assert.equal(result.lotteryPrizeColumns, 11);
   assert.equal(result.lotteryDrawColumns, 16);
   assert.deepEqual(
@@ -734,83 +732,6 @@ test("LINE verification sends the exact admin client_id and validates returned c
   assert.throws(
     () => malformedSubject.verifyLineIdToken_("header.payload.signature", ADMIN_CHANNEL_ID),
     (error) => error.appCode === "INVALID_TOKEN"
-  );
-});
-
-test("administrator LINE verification caches only minimal claims for five minutes", () => {
-  const cache = new Map();
-  const cacheWrites = [];
-  let fetchCalls = 0;
-  const now = Math.floor(Date.now() / 1000);
-  const gas = createGasContext({
-    claims: {
-      exp: now + 3600,
-      iat: now,
-      name: "不可進入快取的管理員姓名",
-      picture: "https://profile.line-scdn.net/private-admin",
-      email: "private-admin@example.com",
-    },
-    globals: {
-      CacheService: {
-        getScriptCache() {
-          return {
-            get(key) {
-              return cache.get(key) ?? null;
-            },
-            put(key, value, ttl) {
-              cache.set(key, String(value));
-              cacheWrites.push({ key, value: String(value), ttl });
-            },
-          };
-        },
-      },
-      UrlFetchApp: {
-        fetch() {
-          fetchCalls += 1;
-          return {
-            getResponseCode: () => 200,
-            getContentText: () =>
-              JSON.stringify({
-                iss: "https://access.line.me",
-                sub: ADMIN_USER_ID,
-                aud: ADMIN_CHANNEL_ID,
-                exp: now + 3600,
-                iat: now,
-                name: "不可進入快取的管理員姓名",
-                picture: "https://profile.line-scdn.net/private-admin",
-                email: "private-admin@example.com",
-              }),
-          };
-        },
-      },
-    },
-  });
-
-  const first = gas.verifyLineIdToken_(
-    "header.cached-admin.signature",
-    ADMIN_CHANNEL_ID
-  );
-  const second = gas.verifyLineIdToken_(
-    "header.cached-admin.signature",
-    ADMIN_CHANNEL_ID
-  );
-
-  assert.equal(first.displayName, "不可進入快取的管理員姓名");
-  assert.equal(second.fromCache, true);
-  assert.equal(fetchCalls, 1);
-  const tokenWrite = cacheWrites.find((entry) =>
-    entry.key.startsWith("line-token:")
-  );
-  assert.ok(tokenWrite);
-  assert.equal(tokenWrite.ttl <= 300, true);
-  assert.deepEqual(JSON.parse(tokenWrite.value), {
-    sub: ADMIN_USER_ID,
-    iat: now,
-    exp: now + 3600,
-  });
-  assert.doesNotMatch(
-    tokenWrite.key + tokenWrite.value,
-    /cached-admin|不可進入|private-admin/
   );
 });
 
@@ -1088,187 +1009,6 @@ test("the same pending applicant can read Members only after manual Sheet approv
   assert.equal(adminSheet.data[1][gas.ADMIN_COLUMN.status - 1], "approved");
 });
 
-test("cached administrator identity avoids repeated profile writes and flush", () => {
-  let writes = 0;
-  let flushCalls = 0;
-  const gas = createGasContext();
-  gas.SpreadsheetApp.flush = function () {
-    flushCalls += 1;
-  };
-  const adminSheet = createSheet(
-    "Admins",
-    gas.ADMIN_HEADERS,
-    [createAdminRow(gas, { status: "approved", lastTokenIat: 1000 })],
-    {
-      beforeSetValues() {
-        writes += 1;
-      },
-    }
-  );
-  const cachedIdentity = identity({
-    displayName: "",
-    pictureUrl: "",
-    email: "",
-    tokenIssuedAt: 1000,
-    tokenExpiresAt: 9999999999,
-    fromCache: true,
-  });
-
-  const rowNumber = gas.requireApprovedAdmin_(
-    cachedIdentity,
-    { requestId: "request-admin-cached-profile" },
-    adminSheet
-  );
-
-  assert.equal(rowNumber, 2);
-  assert.equal(writes, 0);
-  assert.equal(flushCalls, 0);
-  assert.equal(cachedIdentity.displayName, "管理員");
-  assert.equal(cachedIdentity.pictureUrl, "https://profile.line-scdn.net/admin");
-  assert.equal(cachedIdentity.email, "admin@example.com");
-});
-
-test("administrator read actions release the authorization lock before scanning data sheets", () => {
-  const cases = [
-    {
-      name: "members",
-      invoke(gas, request, config, observeRead) {
-        gas.getOrCreateMemberSheet_ = function () {
-          return {
-            getLastRow() {
-              observeRead();
-              return 1;
-            },
-          };
-        };
-        gas.adminListMembers_(identity(), request, config);
-      },
-    },
-    {
-      name: "point types",
-      invoke(gas, request, config, observeRead) {
-        gas.getOrCreatePointTypeSheet_ = function () {
-          return {};
-        };
-        gas.readPointTypeRecords_ = function () {
-          observeRead();
-          return [];
-        };
-        gas.adminListPointTypes_(identity(), request, config);
-      },
-    },
-    {
-      name: "point history",
-      invoke(gas, request, config, observeRead) {
-        gas.getOrCreatePointRedemptionSheet_ = function () {
-          return {};
-        };
-        gas.readAdminPointHistory_ = function () {
-          observeRead();
-          return [];
-        };
-        gas.adminListPointHistory_(identity(), request, config);
-      },
-    },
-    {
-      name: "lottery config",
-      invoke(gas, request, config, observeRead) {
-        gas.getOrCreatePointCardSettingSheet_ = function () {
-          return {};
-        };
-        gas.getOrCreateLotteryTypeSheet_ = function () {
-          return {};
-        };
-        gas.getOrCreateLotteryPrizeSheet_ = function () {
-          return {};
-        };
-        gas.readLotteryConfigs_ = function () {
-          observeRead();
-          return [];
-        };
-        gas.readPointCardSettings_ = function () {
-          return [];
-        };
-        gas.readLotteryTypes_ = function () {
-          return [];
-        };
-        gas.pointCardSettingResponse_ = function () {
-          return null;
-        };
-        gas.adminGetLotteryConfig_(identity(), request, config);
-      },
-    },
-    {
-      name: "lottery history",
-      invoke(gas, request, config, observeRead) {
-        gas.getOrCreateLotteryDrawSheet_ = function () {
-          return {};
-        };
-        gas.getOrCreateLotteryTypeSheet_ = function () {
-          return {};
-        };
-        gas.getOrCreateMemberSheet_ = function () {
-          return {};
-        };
-        gas.readMemberNamesById_ = function () {
-          observeRead();
-          return Object.create(null);
-        };
-        gas.readLotteryTypes_ = function () {
-          return [];
-        };
-        gas.readAdminLotteryDraws_ = function () {
-          return [];
-        };
-        gas.adminListLotteryDraws_(identity(), request, config);
-      },
-    },
-  ];
-
-  cases.forEach((testCase, index) => {
-    const gas = createGasContext();
-    let released = false;
-    let releaseCalls = 0;
-    let readObserved = false;
-    gas.LockService = {
-      getScriptLock() {
-        return {
-          tryLock() {
-            return true;
-          },
-          releaseLock() {
-            released = true;
-            releaseCalls += 1;
-          },
-        };
-      },
-    };
-    gas.openSpreadsheet_ = function () {
-      return {};
-    };
-    gas.getOrCreateAdminSheet_ = function () {
-      return {};
-    };
-    gas.requireApprovedAdmin_ = function () {
-      assert.equal(released, false, testCase.name + " must authorize while locked");
-      return 2;
-    };
-
-    testCase.invoke(
-      gas,
-      { requestId: "request-read-lock-" + String(index + 1) },
-      configFor(gas),
-      function () {
-        readObserved = true;
-        assert.equal(released, true, testCase.name + " must scan after releasing lock");
-      }
-    );
-
-    assert.equal(readObserved, true, testCase.name + " did not read its data sheet");
-    assert.equal(releaseCalls, 1, testCase.name + " released its lock more than once");
-  });
-});
-
 test("pending remains pending while denied, blank and unknown statuses fail closed", () => {
   const gas = createGasContext();
   for (const [status, expectedCode] of [
@@ -1521,48 +1261,6 @@ test("approved member listing is bounded and omits all internal identifiers", ()
   assert.equal(Object.prototype.hasOwnProperty.call(result.data.members[0], "email"), false);
   assert.equal(result.data.members[0].phone, "+886912345678");
   assert.equal(result.data.members[0].birthday, "1990-05-20");
-});
-
-test("member search filters the complete backend dataset before pagination", () => {
-  const gas = createGasContext();
-  const members = [
-    createMemberRow(gas),
-    createMemberRow(gas, {
-      memberId: "MBR-REMOTE0001",
-      lineUserId: `U${"d".repeat(32)}`,
-      displayName: "遠端搜尋會員",
-      joinedAt: new Date("2026-02-01T00:00:00.000Z"),
-    }),
-    createMemberRow(gas, {
-      memberId: "MBR-SECOND0002",
-      lineUserId: `U${"e".repeat(32)}`,
-      displayName: "其他會員",
-      joinedAt: new Date("2026-03-01T00:00:00.000Z"),
-    }),
-  ];
-  installSpreadsheet(
-    gas,
-    createSpreadsheet({
-      Admins: createSheet("Admins", gas.ADMIN_HEADERS, [createAdminRow(gas)]),
-      Members: createSheet("Members", gas.MEMBER_HEADERS, members),
-    })
-  );
-
-  const result = gas.adminListMembers_(
-    identity(),
-    {
-      requestId: "request-global-member-search",
-      page: 1,
-      pageSize: 1,
-      query: "遠端搜尋",
-      memberStatus: "all",
-    },
-    configFor(gas)
-  );
-
-  assert.equal(result.data.pagination.total, 1);
-  assert.equal(result.data.members[0].memberId, "MBR-REMOTE0001");
-  assert.equal(result.data.metrics.all, 3);
 });
 
 test("member access update uses CAS, preserves profile and never returns email", () => {
@@ -1893,126 +1591,6 @@ test("approved administrators can list bounded point history without LINE IDs or
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes(MEMBER_USER_ID), false);
   assert.equal(serialized.includes("request-history-"), false);
-});
-
-test("point history reads one cursor window instead of scanning a 100k-row ledger", () => {
-  const gas = createGasContext();
-  const rangeReads = [];
-  const sheet = {
-    getLastRow() {
-      return 100001;
-    },
-    getRange(startRow, startColumn, rowCount, columnCount) {
-      rangeReads.push({ startRow, startColumn, rowCount, columnCount });
-      return {
-        getValues() {
-          return Array.from({ length: rowCount }, (_, index) =>
-            createPointRedemptionRow(gas, {
-              redemptionId: `RDM-${String(startRow + index).padStart(16, "0")}`,
-              redeemedAt: new Date(2026, 0, 1, 0, 0, startRow + index),
-              requestId: `request-tail-${String(startRow + index).padStart(6, "0")}`,
-              redemptionModeSnapshot: "repeatable",
-            })
-          );
-        },
-      };
-    },
-  };
-
-  const page = gas.readAdminPointHistory_(sheet, 0, 20);
-
-  assert.equal(rangeReads.length, 1);
-  assert.equal(rangeReads[0].rowCount, 21);
-  assert.equal(page.length, 20);
-  assert.equal(page[0].rowNumber, 100001);
-  assert.equal(page.hasMore, true);
-  assert.equal(page.nextCursor, 99982);
-});
-
-test("lottery history reads one cursor window instead of scanning a 100k-row ledger", () => {
-  const gas = createGasContext();
-  const rangeReads = [];
-  const sheet = {
-    getLastRow() {
-      return 100001;
-    },
-    getRange(startRow, startColumn, rowCount, columnCount) {
-      rangeReads.push({ startRow, startColumn, rowCount, columnCount });
-      return {
-        getValues() {
-          return Array.from({ length: rowCount }, (_, index) => {
-            const rowNumber = startRow + index;
-            const row = new Array(gas.LOTTERY_DRAW_HEADERS.length).fill("");
-            const values = {
-              drawId: `LDW-${String(rowNumber).padStart(16, "0")}`,
-              configVersion: "LCF-ABCDEF123456",
-              prizeId: "LPR-ABCDEF1234",
-              prizeLabelSnapshot: "小禮物",
-              prizeColorSnapshot: "#06C755",
-              probabilityBasisPointsSnapshot: 5000,
-              memberId: "MBR-ABCDEF1234",
-              lineUserId: MEMBER_USER_ID,
-              pointsSpent: 0,
-              balanceBefore: 20,
-              balanceAfter: 20,
-              drawnAt: new Date(2026, 0, 1, 0, 0, rowNumber),
-              requestId: `request-draw-tail-${String(rowNumber).padStart(6, "0")}`,
-              lotteryTypeId: "LTY-DEFAULT001",
-              cardSettingVersion: "PCS-DEFAULT00001",
-              cardRoundKey: `PCS-DEFAULT00001:${rowNumber}:5`,
-            };
-            Object.entries(values).forEach(([key, value]) => {
-              row[gas.LOTTERY_DRAW_COLUMN[key] - 1] = value;
-            });
-            return row;
-          });
-        },
-      };
-    },
-  };
-
-  const page = gas.readAdminLotteryDraws_(sheet, 0, 20);
-
-  assert.equal(rangeReads.length, 1);
-  assert.equal(rangeReads[0].rowCount, 21);
-  assert.equal(page.length, 20);
-  assert.equal(page[0].rowNumber, 100001);
-  assert.equal(page.hasMore, true);
-  assert.equal(page.nextCursor, 99982);
-});
-
-test("fetch and bridge parse bounded admin search and cursor fields", () => {
-  const gas = createGasContext();
-  const payload = {
-    action: "adminListMembers",
-    idToken: "header.payload.signature",
-    requestId: "request-admin-search-fields",
-    callbackOrigin: "https://example.github.io",
-    page: 1,
-    pageSize: 20,
-    query: "會員 ABC",
-    memberStatus: "approved",
-    cursor: 9876,
-    limit: 20,
-  };
-  const fetchRequest = gas.parseRequest_({
-    postData: { contents: JSON.stringify(payload) },
-  });
-  const bridgeRequest = gas.parseRequest_({
-    parameter: {
-      ...payload,
-      transport: "bridge",
-      requestSecret: "a".repeat(48),
-    },
-  });
-
-  for (const request of [fetchRequest, bridgeRequest]) {
-    assert.equal(request.query, "會員 ABC");
-    assert.equal(request.memberStatus, "approved");
-    assert.equal(request.cursor, 9876);
-    assert.equal(request.limit, 20);
-    gas.validateRequestEnvelope_(request);
-  }
 });
 
 test("point type creation is server-labelled, unique and idempotent", () => {
@@ -2576,8 +2154,8 @@ test("administrators create and rename a complete wheel with the same save actio
     lotteryTypeId: "",
     lotteryTypeName: "生日限定",
     lotteryPrizes: [
-      { label: "生日禮", color: "#0B3C2C", probability: 20, showOnTicket: true },
-      { label: "下次再來", color: "#D9D6CC", probability: 80, showOnTicket: false },
+      { label: "生日禮", color: "#0B3C2C", probability: 20 },
+      { label: "下次再來", color: "#D9D6CC", probability: 80 },
     ],
   };
 
@@ -2597,11 +2175,6 @@ test("administrators create and rename a complete wheel with the same save actio
   assert.equal(first.data.created, true);
   assert.equal(first.data.duplicate, false);
   assert.equal(first.data.lotteryType.name, "生日限定");
-  assert.equal(first.data.lotteryType.showPrizesOnTicket, true);
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(first.data.lotteryType.ticketPrizeOrders)),
-    [1]
-  );
   assert.equal(first.data.lottery.lotteryTypeId, lotteryTypeId);
   assert.equal(replay.data.created, true);
   assert.equal(replay.data.duplicate, true);
@@ -2614,9 +2187,9 @@ test("administrators create and rename a complete wheel with the same save actio
     lotteryTypeId,
     lotteryTypeName: "生日專屬",
     lotteryPrizes: [
-      { label: "生日大禮", color: "#A44A3F", probability: 10, showOnTicket: false },
-      { label: "生日禮", color: "#0B3C2C", probability: 30, showOnTicket: true },
-      { label: "下次再來", color: "#D9D6CC", probability: 60, showOnTicket: true },
+      { label: "生日大禮", color: "#A44A3F", probability: 10 },
+      { label: "生日禮", color: "#0B3C2C", probability: 30 },
+      { label: "下次再來", color: "#D9D6CC", probability: 60 },
     ],
   };
   const updated = gas.adminSaveLotteryConfig_(
@@ -2633,18 +2206,6 @@ test("administrators create and rename a complete wheel with the same save actio
   assert.equal(
     typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.name - 1],
     "生日專屬"
-  );
-  assert.equal(
-    typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1],
-    true
-  );
-  assert.equal(
-    typeSheet.data[1][gas.LOTTERY_TYPE_COLUMN.ticketPrizeOrders - 1],
-    "2,3"
-  );
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(updated.data.lotteryType.ticketPrizeOrders)),
-    [2, 3]
   );
   assert.equal(prizeSheet.data.length, 6);
 });
@@ -2825,7 +2386,6 @@ test("administrators create and soft-delete lottery types idempotently", () => {
     action: "adminCreateLotteryType",
     requestId: "request-lottery-type-create-1",
     lotteryTypeName: "夏日限定",
-    showPrizesOnTicket: true,
   };
 
   const created = gas.adminCreateLotteryType_(identity(), createRequest, configFor(gas));
@@ -2852,12 +2412,6 @@ test("administrators create and soft-delete lottery types idempotently", () => {
 
   assert.match(lotteryTypeId, /^LTY-[A-Z0-9]{10}$/);
   assert.equal(created.data.duplicate, false);
-  assert.equal(created.data.lotteryType.showPrizesOnTicket, false);
-  assert.equal(created.data.lotteryType.ticketPrizeOrders.length, 0);
-  assert.equal(
-    typeSheet.data[2][gas.LOTTERY_TYPE_COLUMN.showPrizesOnTicket - 1],
-    true
-  );
   assert.equal(replay.data.duplicate, true);
   assert.equal(replay.data.lotteryType.lotteryTypeId, lotteryTypeId);
   assert.equal(deleted.data.deleted, true);
@@ -3354,61 +2908,6 @@ test("legacy point sheets migrate by appending policy snapshots and preserving o
   );
 });
 
-test("legacy lottery types append individual ticket prize settings without changing old cells", () => {
-  const gas = createGasContext();
-  const legacyRow = createLotteryTypeRow(gas).slice(
-    0,
-    gas.LEGACY_LOTTERY_TYPE_HEADERS.length
-  );
-  const legacyCells = legacyRow.slice();
-  const sheet = createSheet(
-    "LotteryTypes",
-    gas.LEGACY_LOTTERY_TYPE_HEADERS,
-    [legacyRow]
-  );
-  const spreadsheet = createSpreadsheet({ LotteryTypes: sheet });
-
-  gas.getOrCreateLotteryTypeSheet_(spreadsheet, configFor(gas));
-
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(sheet.data[0])),
-    JSON.parse(JSON.stringify(gas.LOTTERY_TYPE_HEADERS))
-  );
-  assert.deepEqual(
-    sheet.data[1].slice(0, gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
-    legacyCells
-  );
-  assert.deepEqual(
-    sheet.data[1].slice(gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
-    ["false", ""]
-  );
-});
-
-test("toggle-only lottery types append individual prize orders without changing old cells", () => {
-  const gas = createGasContext();
-  const previousRow = createLotteryTypeRow(gas, {
-    showPrizesOnTicket: true,
-  }).slice(0, gas.TOGGLE_LOTTERY_TYPE_HEADERS.length);
-  const previousCells = previousRow.slice();
-  const sheet = createSheet(
-    "LotteryTypes",
-    gas.TOGGLE_LOTTERY_TYPE_HEADERS,
-    [previousRow]
-  );
-  const spreadsheet = createSpreadsheet({ LotteryTypes: sheet });
-
-  gas.getOrCreateLotteryTypeSheet_(spreadsheet, configFor(gas));
-
-  assert.deepEqual(
-    sheet.data[1].slice(0, gas.TOGGLE_LOTTERY_TYPE_HEADERS.length),
-    previousCells
-  );
-  assert.deepEqual(
-    sheet.data[1].slice(gas.TOGGLE_LOTTERY_TYPE_HEADERS.length),
-    [""]
-  );
-});
-
 test("milestone-only point-card rows append the wheel mapping column in place", () => {
   const gas = createGasContext();
   const existingRow = createPointCardSettingRow(gas).slice(
@@ -3476,7 +2975,7 @@ test("health identifies the isolated service without exposing configuration", ()
   assert.equal(response.ok, true);
   assert.equal(response.requestId, "health-123");
   assert.equal(response.data.service, "member-admin-api");
-  assert.equal(response.data.version, "1.11.0");
+  assert.equal(response.data.version, "1.8.0");
   assert.equal(JSON.stringify(response).includes("spreadsheet-id"), false);
   assert.equal(JSON.stringify(response).includes(ADMIN_CHANNEL_ID), false);
 });

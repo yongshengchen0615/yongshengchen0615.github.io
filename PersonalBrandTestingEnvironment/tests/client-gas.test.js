@@ -109,38 +109,6 @@ function createDataSheet(name, initialHeaders = [], initialRows = [], writes = [
         setFontWeight() {
           return this;
         },
-        createTextFinder(searchValue) {
-          return {
-            matchEntireCell() {
-              return this;
-            },
-            matchCase() {
-              return this;
-            },
-            findAll() {
-              const matches = [];
-              for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
-                const source = getRow(rowNumber + rowOffset);
-                for (
-                  let columnOffset = 0;
-                  columnOffset < columnCount;
-                  columnOffset += 1
-                ) {
-                  if (
-                    String(source[column - 1 + columnOffset] ?? "") ===
-                    String(searchValue)
-                  ) {
-                    matches.push({
-                      getRow: () => rowNumber + rowOffset,
-                      getColumn: () => column + columnOffset,
-                    });
-                  }
-                }
-              }
-              return matches;
-            },
-          };
-        },
       };
     },
   };
@@ -322,18 +290,6 @@ function createMemberSheet(rows, writes = []) {
             },
             matchCase() {
               return this;
-            },
-            findAll() {
-              const matches = [];
-              for (let offset = 0; offset < rowCount; offset += 1) {
-                if (String(rows[start + offset][column - 1]) === String(searchValue)) {
-                  matches.push({
-                    getRow: () => rowNumber + offset,
-                    getColumn: () => column,
-                  });
-                }
-              }
-              return matches;
             },
             findNext() {
               for (let offset = 0; offset < rowCount; offset += 1) {
@@ -527,8 +483,6 @@ function createLotteryTypeRow(gas, overrides = {}) {
     deletedAt: "",
     deletedBy: "",
     lastRequestId: "setup-default-type",
-    showPrizesOnTicket: false,
-    ticketPrizeOrders: "",
     ...overrides,
   };
   Object.entries(values).forEach(([key, value]) => {
@@ -536,41 +490,6 @@ function createLotteryTypeRow(gas, overrides = {}) {
   });
   return row;
 }
-
-test("member card responses include bounded prize labels only for enabled ticket previews", () => {
-  const gas = createGasContext();
-  const sheets = installPointSheets(gas, {
-    lotteryTypeRows: [
-      createLotteryTypeRow(gas, {
-        showPrizesOnTicket: true,
-        ticketPrizeOrders: "2",
-      }),
-    ],
-    lotteryPrizeRows: createLotteryPrizeRows(gas),
-  });
-  const status = gas.getMemberPointCardStatus_(
-    sheets.redemptionSheet,
-    sheets.lotteryDrawSheet,
-    sheets.pointCardSettingSheet,
-    createIdentity().lineUserId
-  );
-  const summary = gas.pointCardSummaryResponseForConfig_(
-    {},
-    status,
-    sheets.lotteryTypeSheet,
-    sheets.lotteryPrizeSheet
-  );
-
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(summary.rewardRules[0])),
-    {
-      points: 5,
-      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
-      showPrizesOnTicket: true,
-      prizeLabels: ["頭獎"],
-    }
-  );
-});
 
 function installPointSheets(
   gas,
@@ -719,118 +638,8 @@ test("LINE ID token verification sends the member channel and validates claims",
 
   claims.aud = "2010791619";
   assert.throws(
-    () => gas.verifyLineIdToken_("header.other.signature", "2010787602"),
+    () => gas.verifyLineIdToken_("header.payload.signature", "2010787602"),
     (error) => error.appCode === "INVALID_TOKEN"
-  );
-});
-
-test("LINE token verification caches only minimal verified claims for five minutes", () => {
-  const now = Math.floor(Date.now() / 1000);
-  const claims = {
-    iss: "https://access.line.me",
-    sub: `U${"d".repeat(32)}`,
-    aud: "2010787602",
-    exp: now + 3600,
-    iat: now,
-    name: "不可進入快取的姓名",
-    picture: "https://profile.line-scdn.net/private-profile",
-  };
-  const cache = new Map();
-  const writes = [];
-  let fetchCalls = 0;
-  const gas = createGasContext({
-    CacheService: {
-      getScriptCache() {
-        return {
-          get: (key) => cache.get(key) ?? null,
-          put(key, value, ttl) {
-            cache.set(key, String(value));
-            writes.push({ key, value: String(value), ttl });
-          },
-        };
-      },
-    },
-    UrlFetchApp: {
-      fetch() {
-        fetchCalls += 1;
-        return {
-          getResponseCode: () => 200,
-          getContentText: () => JSON.stringify(claims),
-        };
-      },
-    },
-  });
-
-  const first = gas.verifyLineIdToken_(
-    "header.cached-token.signature",
-    "2010787602"
-  );
-  const second = gas.verifyLineIdToken_(
-    "header.cached-token.signature",
-    "2010787602"
-  );
-
-  assert.equal(fetchCalls, 1);
-  assert.equal(first.displayName, claims.name);
-  assert.equal(second.fromCache, true);
-  const tokenWrite = writes.find((entry) => entry.key.startsWith("line-token:"));
-  assert.ok(tokenWrite);
-  assert.equal(tokenWrite.ttl <= 300, true);
-  assert.deepEqual(JSON.parse(tokenWrite.value), {
-    sub: claims.sub,
-    iat: claims.iat,
-    exp: claims.exp,
-  });
-  assert.doesNotMatch(tokenWrite.key + tokenWrite.value, /cached-token|不可進入|private-profile/);
-});
-
-test("member API accepts one preparation action and authenticated performance reports", () => {
-  const gas = createGasContext();
-
-  assert.doesNotThrow(() => gas.assertSupportedAction_("prepareLotteryDraw"));
-  assert.doesNotThrow(() => gas.assertSupportedAction_("reportClientPerformance"));
-});
-
-test("fast member identity sync is an authenticated public action", () => {
-  const gas = createGasContext();
-  let verifiedChannel = "";
-  gas.getConfig_ = () => ({ lineChannelId: "2010787602" });
-  gas.verifyLineIdToken_ = (_token, channelId) => {
-    verifiedChannel = channelId;
-    return createIdentity();
-  };
-  gas.upsertMember_ = (_identity, request) => ({
-    data: { action: request.action },
-  });
-
-  const result = gas.handleMemberRequest_({
-    action: "upsertMemberIdentity",
-    idToken: "header.payload.signature",
-  });
-
-  assert.equal(verifiedChannel, "2010787602");
-  assert.equal(result.data.action, "upsertMemberIdentity");
-});
-
-test("member card summary loads through a separate authenticated read action", () => {
-  const gas = createGasContext();
-  installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-  });
-  gas.getConfig_ = () => ({ lineChannelId: "2010787602" });
-  gas.verifyLineIdToken_ = () => createIdentity();
-
-  const result = gas.handleMemberRequest_({
-    action: "getMemberCardSummary",
-    idToken: "header.payload.signature",
-    requestId: "request-card-summary",
-  });
-
-  assert.equal(result.data.access.allowed, true);
-  assert.equal(result.data.pointBalance, 0);
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(result.data.cardSummary)),
-    expectedPointCardSummary(gas)
   );
 });
 
@@ -1422,179 +1231,6 @@ test("upsert retries are idempotent and distinct token sessions increment once",
   assert.equal(rows[0][gas.MEMBER_COLUMN.loginCount - 1], 2);
 });
 
-test("same-token unchanged login returns fresh data without Sheet writes or flush", () => {
-  let flushCalls = 0;
-  const writes = [];
-  const gas = createGasContext({
-    SpreadsheetApp: {
-      flush() {
-        flushCalls += 1;
-      },
-    },
-  });
-  const memberRows = [
-    createMemberRow(gas, {
-      lastTokenIat: 2000,
-      lastRequestId: "request-member-previous",
-    }),
-  ];
-  const sheets = installPointSheets(gas, { memberRows });
-  const memberSheet = createMemberSheet(memberRows, writes);
-  gas.getOrCreateMemberSheet_ = () => memberSheet;
-
-  const result = gas.upsertMember_(
-    {
-      ...createIdentity(),
-      displayName: "",
-      pictureUrl: "",
-      fromCache: true,
-      tokenExpiresAt: 9999999999,
-    },
-    {
-      action: "upsertMember",
-      requestId: "request-member-noop",
-      idToken: "header.cached.signature",
-      context: {
-        type: "external",
-        os: "web",
-        language: "zh-TW",
-        inClient: false,
-        viewType: "full",
-      },
-    },
-    { lineChannelId: "2010787602" }
-  );
-
-  assert.equal(writes.length, 0);
-  assert.equal(flushCalls, 0);
-  assert.equal(result.data.member.displayName, "王小明");
-  assert.equal(result.data.member.pictureUrl, "https://profile.line-scdn.net/member");
-  assert.equal(result.data.access.allowed, true);
-  assert.equal(result.data.cardSummary.availableDraws, 0);
-  assert.equal(sheets.lotteryDrawSheet.rows.length, 0);
-});
-
-test("member login does not scan complete point and lottery ledgers", () => {
-  const gas = createGasContext();
-  installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-  });
-  const broadScans = [];
-  gas.readMemberPointLedger_ = function () {
-    broadScans.push("PointRedemptions");
-    return { totalPoints: 0, events: [] };
-  };
-  gas.readAllLotteryDraws_ = function () {
-    broadScans.push("LotteryDraws");
-    return [];
-  };
-
-  const result = gas.upsertMember_(
-    createIdentity(),
-    {
-      action: "upsertMember",
-      requestId: "request-member-fast-login",
-      context: {
-        type: "external",
-        os: "web",
-        language: "zh-TW",
-        inClient: false,
-        viewType: "full",
-      },
-    },
-    {}
-  );
-
-  assert.equal(result.data.access.allowed, true);
-  assert.deepEqual(broadScans, []);
-});
-
-test("fast member sync returns identity before point-card aggregation", () => {
-  const gas = createGasContext();
-  installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-  });
-  let cardReads = 0;
-  gas.getMemberPointCardStatusForConfig_ = function () {
-    cardReads += 1;
-    return { totalPoints: 99 };
-  };
-
-  const result = gas.upsertMember_(
-    createIdentity(),
-    {
-      action: "upsertMemberIdentity",
-      requestId: "request-member-identity",
-      context: {
-        type: "external",
-        os: "web",
-        language: "zh-TW",
-        inClient: false,
-        viewType: "full",
-      },
-    },
-    {}
-  );
-
-  assert.equal(result.data.access.allowed, true);
-  assert.equal(result.data.member.memberId, "MBR-ABCDEF1234");
-  assert.equal(result.data.member.pointBalance, null);
-  assert.equal(result.data.cardSummary, null);
-  assert.equal(cardReads, 0);
-});
-
-test("member login releases its mutation lock before reading the current card", () => {
-  let lockHeld = false;
-  const gas = createGasContext({
-    LockService: {
-      getScriptLock() {
-        return {
-          tryLock() {
-            lockHeld = true;
-            return true;
-          },
-          releaseLock() {
-            lockHeld = false;
-          },
-        };
-      },
-    },
-  });
-  installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-  });
-  let cardReadWhileLocked = null;
-  gas.getMemberPointCardStatusForConfig_ = function () {
-    cardReadWhileLocked = lockHeld;
-    return {
-      totalPoints: 0,
-    };
-  };
-  gas.pointCardSummaryResponseForConfig_ = function () {
-    return { currentPoints: 0, targetPoints: 5 };
-  };
-
-  const result = gas.upsertMember_(
-    createIdentity(),
-    {
-      action: "upsertMember",
-      requestId: "request-member-lock-scope",
-      context: {
-        type: "external",
-        os: "web",
-        language: "zh-TW",
-        inClient: false,
-        viewType: "full",
-      },
-    },
-    {}
-  );
-
-  assert.equal(result.data.access.allowed, true);
-  assert.equal(cardReadWhileLocked, false);
-  assert.equal(lockHeld, false);
-});
-
 test("point campaign preview is token-owner only and returns public campaign data", () => {
   const gas = createGasContext();
   const memberRows = [createMemberRow(gas)];
@@ -1699,122 +1335,6 @@ test("point redemption trusts campaign snapshot, persists once and is permanentl
   assert.equal(serialized.includes(POINT_CLAIM), false);
   assert.equal(serialized.includes(pointClaimHash()), false);
   assert.equal(serialized.includes(identity.lineUserId), false);
-});
-
-test("point redemption does not scan complete campaign, point or lottery tables", () => {
-  const gas = createGasContext();
-  const unrelatedCampaigns = Array.from({ length: 20 }, (_, index) => {
-    const suffix = String(index + 1).padStart(10, "0");
-    const claim = String(index + 1).padStart(43, "A");
-    return createPointCampaignRow(gas, {
-      campaignId: `PCG-${suffix}`,
-      pointTypeId: `PTY-${suffix}`,
-      claimHash: pointClaimHash(claim),
-      lastRequestId: `request-campaign-${suffix}`,
-    });
-  });
-  const unrelatedRedemptions = Array.from({ length: 20 }, (_, index) => {
-    const suffix = String(index + 1).padStart(10, "0");
-    const redemptionSuffix = String(index + 1).padStart(16, "0");
-    return createPointRedemptionRow(gas, {
-      redemptionId: `RDM-${redemptionSuffix}`,
-      campaignId: `PCG-${suffix}`,
-      pointTypeId: `PTY-${suffix}`,
-      memberId: `MBR-${suffix}`,
-      lineUserId: `U${(index + 1).toString(16).padStart(32, "0")}`,
-      requestId: `request-other-${suffix}`,
-    });
-  });
-  const sheets = installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-    campaignRows: unrelatedCampaigns.concat([createPointCampaignRow(gas)]),
-    redemptionRows: unrelatedRedemptions,
-  });
-  const broadReads = [];
-  [
-    [sheets.campaignSheet, gas.POINT_CAMPAIGN_HEADERS.length, "PointCampaigns"],
-    [sheets.redemptionSheet, gas.POINT_REDEMPTION_HEADERS.length, "PointRedemptions"],
-    [sheets.lotteryDrawSheet, gas.LOTTERY_DRAW_HEADERS.length, "LotteryDraws"],
-  ].forEach(([sheet, width, label]) => {
-    const originalGetRange = sheet.getRange.bind(sheet);
-    sheet.getRange = function (rowNumber, column, rowCount, columnCount) {
-      if (
-        rowNumber === 2 &&
-        column === 1 &&
-        rowCount === sheet.rows.length &&
-        columnCount === width
-      ) {
-        broadReads.push(label);
-      }
-      return originalGetRange(rowNumber, column, rowCount, columnCount);
-    };
-  });
-
-  const result = gas.redeemPointCampaign_(
-    createIdentity(),
-    {
-      action: "redeemPointCampaign",
-      requestId: "request-fast-redemption",
-      claim: POINT_CLAIM,
-    },
-    {}
-  );
-
-  assert.equal(result.data.redeemed, true);
-  assert.deepEqual(broadReads, []);
-});
-
-test("successful point redemption releases its mutation lock before card rendering", () => {
-  let lockHeld = false;
-  const gas = createGasContext({
-    LockService: {
-      getScriptLock() {
-        return {
-          tryLock() {
-            lockHeld = true;
-            return true;
-          },
-          releaseLock() {
-            lockHeld = false;
-          },
-        };
-      },
-    },
-  });
-  installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-    campaignRows: [createPointCampaignRow(gas)],
-  });
-  let responseReadWhileLocked = null;
-  gas.pointCampaignRedemptionResponseForConfig_ = function () {
-    responseReadWhileLocked = lockHeld;
-    return {
-      data: {
-        access: { status: "approved", allowed: true },
-        redeemed: true,
-        duplicate: false,
-        duplicateReason: "",
-        awardedPoints: 3,
-        pointBalance: 3,
-        cardSummary: {},
-        campaign: {},
-      },
-    };
-  };
-
-  const result = gas.redeemPointCampaign_(
-    createIdentity(),
-    {
-      action: "redeemPointCampaign",
-      requestId: "request-redemption-lock-scope",
-      claim: POINT_CLAIM,
-    },
-    {}
-  );
-
-  assert.equal(result.data.redeemed, true);
-  assert.equal(responseReadWhileLocked, false);
-  assert.equal(lockHeld, false);
 });
 
 test("unlimited repeatable campaigns award distinct requests and replay one request only once", () => {
@@ -2449,69 +1969,6 @@ test("member point history is token-bound, newest-first and hides other members"
   );
 });
 
-test("lock-free member reads recheck access immediately before returning", () => {
-  ["history", "lottery"].forEach((endpoint) => {
-    const gas = createGasContext({
-      LockService: {
-        getScriptLock() {
-          throw new Error("read-only endpoints must not acquire the global lock");
-        },
-      },
-    });
-    const sheets = installPointSheets(gas, {
-      memberRows: [createMemberRow(gas)],
-      lotteryPrizeRows: createLotteryPrizeRows(gas),
-    });
-    const originalGetRange = sheets.memberSheet.getRange.bind(
-      sheets.memberSheet
-    );
-    let accessReads = 0;
-    sheets.memberSheet.getRange = function (
-      rowNumber,
-      column,
-      rowCount,
-      columnCount
-    ) {
-      const range = originalGetRange(rowNumber, column, rowCount, columnCount);
-      if (
-        rowNumber !== 2 ||
-        column !== 1 ||
-        columnCount !== gas.MEMBER_HEADERS.length
-      ) {
-        return range;
-      }
-      const originalGetValues = range.getValues.bind(range);
-      range.getValues = function () {
-        accessReads += 1;
-        const values = originalGetValues();
-        if (accessReads >= 2) {
-          values[0][gas.MEMBER_COLUMN.status - 1] = "denied";
-        }
-        return values;
-      };
-      return range;
-    };
-
-    const invoke =
-      endpoint === "history"
-        ? () =>
-            gas.listPointHistory_(
-              createIdentity(),
-              { action: "listPointHistory", requestId: "request-access-history" },
-              {}
-            )
-        : () =>
-            gas.getLotteryConfig_(
-              createIdentity(),
-              { action: "getLotteryConfig", requestId: "request-access-lottery" },
-              {}
-            );
-
-    assert.throws(invoke, (error) => error.appCode === "MEMBER_ACCESS_DENIED");
-    assert.equal(accessReads, 2);
-  });
-});
-
 test("lottery draw consumes one completed card round without deducting lifetime points", () => {
   const gas = createGasContext();
   const memberRows = [createMemberRow(gas)];
@@ -2591,163 +2048,6 @@ test("lottery draw consumes one completed card round without deducting lifetime 
     (error) => error.appCode === "LOTTERY_ROUND_NOT_READY"
   );
   assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
-});
-
-test("single lottery preparation reuses one validated snapshot per ledger", () => {
-  const gas = createGasContext();
-  const sheets = installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-    redemptionRows: [
-      createPointRedemptionRow(gas, {
-        points: 5,
-        balanceAfter: 5,
-        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
-      }),
-    ],
-    lotteryPrizeRows: createLotteryPrizeRows(gas),
-  });
-  const counts = {};
-  for (const name of [
-    "readMemberLotteryDraws_",
-    "readMemberPointLedgerFast_",
-    "readPointCardSettings_",
-    "readLotteryTypes_",
-    "readLotteryConfigs_",
-  ]) {
-    const original = gas[name];
-    gas[name] = function (...args) {
-      counts[name] = (counts[name] || 0) + 1;
-      return original.apply(this, args);
-    };
-  }
-
-  const result = gas.prepareLotteryDraw_(
-    createIdentity(),
-    {
-      action: "prepareLotteryDraw",
-      requestId: "request-prepare-draw-1",
-      lotteryTypeId: gas.DEFAULT_LOTTERY_TYPE_ID,
-      cardRoundKey: `${gas.DEFAULT_POINT_CARD_SETTING_VERSION}:1:5`,
-    },
-    {}
-  );
-
-  assert.equal(result.data.duplicate, false);
-  assert.equal(result.data.card.availableDraws, 0);
-  assert.equal(sheets.lotteryDrawSheet.rows.length, 1);
-  assert.deepEqual(counts, {
-    readMemberLotteryDraws_: 1,
-    readMemberPointLedgerFast_: 1,
-    readPointCardSettings_: 1,
-    readLotteryTypes_: 1,
-    readLotteryConfigs_: 1,
-  });
-});
-
-test("point history reuses one member redemption snapshot for balance and entries", () => {
-  const gas = createGasContext();
-  const sheets = installPointSheets(gas, {
-    memberRows: [createMemberRow(gas)],
-    redemptionRows: [
-      createPointRedemptionRow(gas, {
-        points: 3,
-        balanceAfter: 3,
-        redeemedAt: new Date("2026-07-22T00:00:00.000Z"),
-      }),
-    ],
-  });
-  const originalReadRows = gas.readRowsMatchingExactText_;
-  let redemptionSnapshots = 0;
-  gas.readRowsMatchingExactText_ = function (...args) {
-    if (args[0] === sheets.redemptionSheet) redemptionSnapshots += 1;
-    return originalReadRows.apply(this, args);
-  };
-
-  const result = gas.listPointHistory_(
-    createIdentity(),
-    { action: "listPointHistory", requestId: "request-history-snapshot" },
-    {}
-  );
-
-  assert.equal(result.data.pointBalance, 3);
-  assert.equal(result.data.history.length, 1);
-  assert.equal(redemptionSnapshots, 1);
-});
-
-test("performance reports are bounded, idempotent and omit identity data from Cloud logs", () => {
-  const logs = [];
-  const gas = createGasContext({
-    console: {
-      error() {},
-      warn(value) {
-        logs.push(String(value));
-      },
-    },
-  });
-  const request = gas.parseRequest_({
-    postData: {
-      contents: JSON.stringify({
-        action: "reportClientPerformance",
-        idToken: "header.private-token.signature",
-        requestId: "request-performance-1",
-        callbackOrigin: "https://example.github.io",
-        metricName: "wheel_prepare",
-        operation: "prepareLotteryDraw",
-        durationMs: 1800,
-        outcome: "slow",
-        requestTransport: "mixed",
-        fallbackUsed: true,
-        errorCode: "",
-      }),
-    },
-  });
-  gas.validateRequestEnvelope_(request);
-  const identity = createIdentity({ displayName: "不應記錄的會員姓名" });
-
-  const first = gas.reportClientPerformance_(identity, request);
-  const replay = gas.reportClientPerformance_(identity, request);
-
-  assert.equal(first.data.duplicate, false);
-  assert.equal(replay.data.duplicate, true);
-  assert.equal(logs.length, 1);
-  const entry = JSON.parse(logs[0]);
-  assert.equal(entry.metricName, "wheel_prepare");
-  assert.equal(entry.durationMs, 1800);
-  assert.equal(entry.fallbackUsed, true);
-  assert.doesNotMatch(
-    logs[0],
-    /private-token|request-performance|不應記錄|Ubbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/
-  );
-
-  for (let reportNumber = 2; reportNumber <= 12; reportNumber += 1) {
-    const accepted = gas.reportClientPerformance_(identity, {
-      ...request,
-      requestId: `request-performance-${reportNumber}`,
-    });
-    assert.equal(accepted.data.duplicate, false);
-  }
-  assert.equal(logs.length, 12);
-  assert.throws(
-    () =>
-      gas.reportClientPerformance_(identity, {
-        ...request,
-        requestId: "request-performance-13",
-      }),
-    (error) => error.appCode === "PERFORMANCE_RATE_LIMITED"
-  );
-  assert.throws(
-    () =>
-      gas.normalizePerformanceMetric_({
-        metricName: "wheel_prepare",
-        operation: "prepareLotteryDraw",
-        durationMs: 999,
-        outcome: "slow",
-        requestTransport: "fetch",
-        fallbackUsed: false,
-        errorCode: "",
-      }),
-    (error) => error.appCode === "INVALID_PERFORMANCE_REPORT"
-  );
 });
 
 test("a reward ticket can draw only from the wheel assigned to its point node", () => {
@@ -3689,72 +2989,6 @@ test("legacy point sheet rows receive append-only policy defaults", () => {
   );
 });
 
-test("client GAS appends disabled individual ticket prize settings to legacy lottery types", () => {
-  const gas = createGasContext();
-  const legacyRow = createLotteryTypeRow(gas).slice(
-    0,
-    gas.LEGACY_LOTTERY_TYPE_HEADERS.length
-  );
-  const legacyCells = legacyRow.slice();
-  const sheet = createDataSheet(
-    "LotteryTypes",
-    Array.from(gas.LEGACY_LOTTERY_TYPE_HEADERS),
-    [legacyRow]
-  );
-  gas.SpreadsheetApp.openById = () => ({
-    getSheetByName(name) {
-      return name === "LotteryTypes" ? sheet : null;
-    },
-  });
-
-  gas.getOrCreateLotteryTypeSheet_({
-    spreadsheetId: "shared-members-sheet",
-    lotteryTypeSheetName: "LotteryTypes",
-  });
-
-  assert.deepEqual(sheet.headers, Array.from(gas.LOTTERY_TYPE_HEADERS));
-  assert.deepEqual(
-    sheet.rows[0].slice(0, gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
-    legacyCells
-  );
-  assert.deepEqual(
-    sheet.rows[0].slice(gas.LEGACY_LOTTERY_TYPE_HEADERS.length),
-    ["false", ""]
-  );
-});
-
-test("client GAS preserves toggle-only lottery types while appending prize orders", () => {
-  const gas = createGasContext();
-  const previousRow = createLotteryTypeRow(gas, {
-    showPrizesOnTicket: true,
-  }).slice(0, gas.TOGGLE_LOTTERY_TYPE_HEADERS.length);
-  const previousCells = previousRow.slice();
-  const sheet = createDataSheet(
-    "LotteryTypes",
-    Array.from(gas.TOGGLE_LOTTERY_TYPE_HEADERS),
-    [previousRow]
-  );
-  gas.SpreadsheetApp.openById = () => ({
-    getSheetByName(name) {
-      return name === "LotteryTypes" ? sheet : null;
-    },
-  });
-
-  gas.getOrCreateLotteryTypeSheet_({
-    spreadsheetId: "shared-members-sheet",
-    lotteryTypeSheetName: "LotteryTypes",
-  });
-
-  assert.deepEqual(
-    sheet.rows[0].slice(0, gas.TOGGLE_LOTTERY_TYPE_HEADERS.length),
-    previousCells
-  );
-  assert.deepEqual(
-    sheet.rows[0].slice(gas.TOGGLE_LOTTERY_TYPE_HEADERS.length),
-    [""]
-  );
-});
-
 test("client GAS upgrades milestone-only point-card rows with one mapping column", () => {
   const gas = createGasContext();
   const existingRow = createPointCardSettingRow(gas).slice(
@@ -3859,11 +3093,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   );
   assert.equal(health.ok, true);
   assert.equal(health.data.service, "member-client-api");
-  assert.equal(health.data.version, "1.15.0");
-  assert.deepEqual(Array.from(health.data.capabilities), [
-    "member_identity_v1",
-    "member_card_summary_v1",
-  ]);
+  assert.equal(health.data.version, "1.10.0");
   assert.equal("lineChannelId" in health.data, false);
   assert.equal(JSON.stringify(health).includes("2010787602"), false);
 
@@ -3889,7 +3119,7 @@ test("health and setup responses never expose LINE channel configuration", () =>
   assert.equal(setup.pointCampaignColumns, 12);
   assert.equal(setup.pointRedemptionColumns, 10);
   assert.equal(setup.pointCardSettingColumns, 9);
-  assert.equal(setup.lotteryTypeColumns, 11);
+  assert.equal(setup.lotteryTypeColumns, 9);
   assert.equal(setup.lotteryPrizeColumns, 11);
   assert.equal(setup.lotteryDrawColumns, 16);
 });

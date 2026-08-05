@@ -20,6 +20,8 @@
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="../shared/liff-runtime.js"></script>
+    <script defer src="../shared/lottery-wheel.js"></script>
+    <script defer src="member-lottery.js"></script>
     <script defer src="script.js"></script>
   </head>
   <body>
@@ -139,11 +141,24 @@
               <span>重新確認狀態</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5"></path></svg>
             </button>
+            <button class="secondary-button" id="access-logout-button" type="button">登出目前裝置</button>
+          </div>
+          <div class="access-data-actions">
+            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
+            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
           </div>
         </div>
       </section>
 
-      <section class="app-state member-layout" id="member-state" hidden aria-label="會員中心">
+      <section class="app-state member-layout" id="member-state" hidden aria-labelledby="member-title">
+        <header class="member-heading">
+          <div>
+            <p class="eyebrow">MEMBER PROFILE</p>
+            <h1 id="member-title"><span id="member-greeting-name">會員</span></h1>
+          </div>
+          <p class="sync-caption"><span aria-hidden="true"></span><span id="sync-caption">會員資料已同步</span></p>
+        </header>
+
         <div class="member-workspace">
           <div class="member-card-stack">
             <article class="member-pass" aria-label="數位會員證">
@@ -157,15 +172,9 @@
                   <img id="member-avatar" alt="" hidden />
                   <span id="member-avatar-fallback" aria-hidden="true">M</span>
                 </div>
-                <div class="pass-profile-copy">
+                <div>
                   <small>MEMBER NAME</small>
-                  <div class="pass-profile-heading">
-                    <strong id="member-display-name">—</strong>
-                    <span class="member-consumption-hours">
-                      <small>累計點數</small>
-                      <b><output id="member-point-balance" aria-label="累計點數" aria-live="polite">—</output><span> 點</span></b>
-                    </span>
-                  </div>
+                  <strong id="member-display-name">—</strong>
                   <span class="active-label"><i aria-hidden="true"></i>有效會員</span>
                 </div>
               </div>
@@ -185,13 +194,22 @@
                 <p><small>MEMBER ID</small><strong id="member-id">—</strong></p>
                 <p><small>MEMBER SINCE</small><strong id="member-since">—</strong></p>
                 <div class="pass-points">
-                  <small>本卡進度</small>
+                  <small>目前已集</small>
                   <strong><output id="member-point-card-current" aria-label="本張集點卡目前點數" aria-live="polite">0</output><span> 點</span></strong>
                   <span class="pass-point-meta">
-                    目標 <output id="member-point-card-target">—</output> 點
+                    本輪目標 <output id="member-point-card-target">—</output> 點 ·
+                    累計 <output id="member-point-balance" aria-label="會員終身累計點數">0</output> 點
                   </span>
                   <span class="pass-point-expiry" id="member-point-card-expiry">集點卡無期限</span>
-                  <span class="pass-point-stars" id="member-point-card-stars" role="img" aria-label="尚未取得集點卡資料"></span>
+                  <span
+                    class="pass-point-progress"
+                    id="member-point-card-progress-track"
+                    role="progressbar"
+                    aria-label="本張集點卡進度"
+                    aria-valuemin="0"
+                    aria-valuemax="1"
+                    aria-valuenow="0"
+                  ><i id="member-point-card-progress" aria-hidden="true"></i></span>
                 </div>
               </div>
             </article>
@@ -217,9 +235,22 @@
                 <span>編輯會員資料</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"></path></svg>
               </button>
+              <button class="text-button" id="logout-button" type="button">登出目前裝置</button>
             </div>
           </div>
         </div>
+
+        <section class="data-control" aria-labelledby="data-control-title">
+          <div>
+            <p class="eyebrow">DATA CONTROL</p>
+            <h2 id="data-control-title">資料與隱私</h2>
+          </div>
+          <p>保存會員、點數與抽獎紀錄；不保存 LINE 密碼或 ID Token。</p>
+          <div>
+            <button class="text-button" type="button" data-open-dialog="privacy-dialog">查看資料說明</button>
+            <button class="danger-button" type="button" data-open-dialog="delete-dialog">刪除會員資料</button>
+          </div>
+        </section>
       </section>
 
       <section class="app-state error-layout" id="error-state" hidden aria-labelledby="error-title">
@@ -238,6 +269,7 @@
 
     <footer class="site-footer">
       <p>SECURE MEMBER ACCESS VIA LINE</p>
+      <button class="text-button" type="button" data-open-dialog="privacy-dialog">資料與隱私</button>
       <p>© <span id="current-year"></span> <span data-brand-name>PERSONA</span></p>
     </footer>
 
@@ -260,7 +292,7 @@
         </section>
         <section>
           <span>03</span>
-          <div><h3>資料權利</h3><p>如需查詢、更正或刪除紀錄，請聯絡服務經營者依隱私權政策處理。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
+          <div><h3>如何刪除</h3><p>登入後可刪除自己的會員資料、點數領取與抽獎紀錄；累計點數、集點輪次和防重複歷史也會一併清除。正式上線前，請依服務內容補齊<a href="privacy.html" target="_blank" rel="noopener">隱私權政策範本</a>。</p></div>
         </section>
       </div>
       <button class="primary-button full-width" type="button" data-close-dialog><span>我知道了</span></button>
@@ -351,27 +383,6 @@
       <p class="scanner-status" id="point-scanner-status" role="status" aria-live="polite">
         正在啟動相機…
       </p>
-      <div class="scanner-recovery" id="point-scanner-recovery" hidden>
-        <p>你可以重新開啟相機，或貼上管理員提供的完整 LIFF 集點連結。</p>
-        <label for="point-qr-link-input">集點連結</label>
-        <input
-          id="point-qr-link-input"
-          type="url"
-          inputmode="url"
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          placeholder="https://liff.line.me/..."
-        />
-        <div class="scanner-recovery-actions">
-          <button class="secondary-button" id="point-scanner-retry-button" type="button">
-            重試相機
-          </button>
-          <button class="primary-button" id="point-scanner-link-button" type="button">
-            <span>使用這個連結</span>
-          </button>
-        </div>
-      </div>
       <button class="secondary-button full-width" id="point-scanner-cancel-button" type="button">
         取消掃描
       </button>
@@ -450,35 +461,6 @@
     </dialog>
 
     <dialog
-      class="modal member-ticket-confirm-dialog"
-      id="member-ticket-confirm-dialog"
-      aria-labelledby="member-ticket-confirm-title"
-      aria-describedby="member-ticket-confirm-description"
-    >
-      <div class="modal-head">
-        <div>
-          <p class="eyebrow">USE LOTTERY TICKET</p>
-          <h2 id="member-ticket-confirm-title">使用這張抽獎券？</h2>
-        </div>
-        <button
-          class="icon-button"
-          id="member-ticket-confirm-cancel-button"
-          type="button"
-          aria-label="取消使用抽獎券"
-        >×</button>
-      </div>
-      <div class="modal-body member-ticket-confirm-copy">
-        <p id="member-ticket-confirm-description">
-          確認後會鎖定本次抽獎，請保持頁面開啟直到結果顯示。
-        </p>
-        <strong id="member-ticket-confirm-detail">正在確認抽獎券</strong>
-        <button class="primary-button full-width" id="member-ticket-confirm-button" type="button">
-          <span>確認使用這張券</span>
-        </button>
-      </div>
-    </dialog>
-
-    <dialog
       class="modal member-lottery-dialog"
       id="member-lottery-dialog"
       aria-labelledby="member-lottery-dialog-title"
@@ -510,7 +492,7 @@
       >
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
         <strong>正在準備轉盤</strong>
-        <p>正在載入獎項並安全準備本次結果，完成後即可順暢轉動。</p>
+        <p>確認抽獎券與獎項設定，完成後即可開始。</p>
       </section>
 
       <section
@@ -716,6 +698,22 @@
           <button class="primary-button" id="claim-retry-button" type="button"><span>重新確認</span></button>
         </div>
       </section>
+    </dialog>
+
+    <dialog class="modal delete-modal" id="delete-dialog" aria-labelledby="delete-title">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow danger-copy">DELETE MEMBERSHIP</p>
+          <h2 id="delete-title">刪除會員資料？</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="關閉刪除視窗">×</button>
+      </div>
+      <p>這會永久刪除試算表中的會員紀錄，且無法復原。若要確認，請在下方輸入「刪除」。</p>
+      <label class="confirm-field">
+        <span>確認文字</span>
+        <input id="delete-confirm-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入：刪除" />
+      </label>
+      <button class="danger-button full-width" id="delete-confirm-button" type="button" disabled>永久刪除會員資料</button>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden>

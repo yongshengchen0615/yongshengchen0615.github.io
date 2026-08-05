@@ -675,19 +675,6 @@ button:disabled {
   padding: 1.35rem 0;
 }
 
-.history-heading-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.6rem;
-}
-
-.history-load-more {
-  width: min(100%, 22rem);
-  margin: 1rem auto 0;
-}
-
 .admin-point-history-status {
   display: grid;
   gap: 0.65rem;
@@ -2196,7 +2183,7 @@ tbody tr[data-busy="true"] {
 .lottery-prize-labels,
 .lottery-prize-row {
   display: grid;
-  grid-template-columns: 2rem minmax(10rem, 1fr) minmax(8rem, 0.65fr) minmax(7rem, 0.55fr) minmax(6.5rem, 0.45fr) 4rem;
+  grid-template-columns: 2rem minmax(10rem, 1fr) minmax(8rem, 0.65fr) minmax(7rem, 0.55fr) 4rem;
   align-items: center;
   gap: 0.7rem;
 }
@@ -2272,32 +2259,6 @@ tbody tr[data-busy="true"] {
 .lottery-prize-probability {
   position: relative;
   display: block;
-}
-
-.lottery-prize-ticket-visibility {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.45);
-  cursor: pointer;
-}
-
-.lottery-prize-ticket-visibility input {
-  width: 1.2rem;
-  height: 1.2rem;
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--green-dark);
-  cursor: pointer;
-}
-
-.lottery-prize-ticket-visibility span {
-  color: var(--ink-soft);
-  font-size: 0.68rem;
-  white-space: nowrap;
 }
 
 .lottery-prize-probability input {
@@ -2420,7 +2381,7 @@ tbody tr[data-busy="true"] {
 
   .lottery-prize-labels,
   .lottery-prize-row {
-    grid-template-columns: 1.7rem minmax(9rem, 1fr) minmax(7rem, 0.55fr) minmax(6.5rem, 0.5fr) minmax(6rem, 0.4fr) 3.5rem;
+    grid-template-columns: 1.7rem minmax(9rem, 1fr) minmax(7rem, 0.55fr) minmax(6.5rem, 0.5fr) 3.5rem;
     gap: 0.5rem;
   }
 
@@ -2579,7 +2540,7 @@ tbody tr[data-busy="true"] {
 
   .lottery-prize-labels,
   .lottery-prize-row {
-    grid-template-columns: 1.7rem minmax(9rem, 1fr) minmax(7rem, 0.6fr) minmax(6.5rem, 0.55fr) minmax(6rem, 0.45fr) 3.5rem;
+    grid-template-columns: 1.7rem minmax(9rem, 1fr) minmax(7rem, 0.6fr) minmax(6.5rem, 0.55fr) 3.5rem;
   }
 
   .lottery-history-row {
@@ -2800,8 +2761,7 @@ tbody tr[data-busy="true"] {
   .point-card-reward-row label::before,
   .lottery-prize-name::before,
   .lottery-prize-color::before,
-  .lottery-prize-probability::before,
-  .lottery-prize-ticket-visibility::before {
+  .lottery-prize-probability::before {
     display: block;
     margin-bottom: 0.3rem;
     color: var(--ink-faint);
@@ -2849,11 +2809,6 @@ tbody tr[data-busy="true"] {
     grid-row: 3;
   }
 
-  .lottery-prize-ticket-visibility {
-    grid-column: 2;
-    grid-row: 4;
-  }
-
   .lottery-prize-probability span {
     top: auto;
     bottom: 0.85rem;
@@ -2862,7 +2817,7 @@ tbody tr[data-busy="true"] {
 
   .lottery-prize-remove {
     grid-column: 3;
-    grid-row: 1 / 5;
+    grid-row: 1 / 4;
   }
 
   .lottery-config-footer {

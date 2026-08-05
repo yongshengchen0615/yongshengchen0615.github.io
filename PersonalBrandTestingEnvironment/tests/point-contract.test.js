@@ -42,53 +42,6 @@ function loadGas(relativePath) {
   return context;
 }
 
-function createSingleRowSheet(row) {
-  return {
-    getLastRow: () => 2,
-    getRange(rowNumber, column, rowCount = 1, columnCount = 1) {
-      const values = Array.from({ length: rowCount }, (_unused, rowOffset) => {
-        if (rowNumber + rowOffset !== 2) {
-          return new Array(columnCount).fill("");
-        }
-        return row.slice(column - 1, column - 1 + columnCount);
-      });
-      return {
-        getValues: () => values.map((value) => value.slice()),
-        createTextFinder(searchValue) {
-          let matchEntireCell = false;
-          let matchCase = false;
-          return {
-            matchEntireCell(value) {
-              matchEntireCell = Boolean(value);
-              return this;
-            },
-            matchCase(value) {
-              matchCase = Boolean(value);
-              return this;
-            },
-            findAll() {
-              const expected = String(searchValue || "");
-              const found = values.some((value) =>
-                value.some((cell) => {
-                  const actual = String(cell || "");
-                  const normalizedActual = matchCase ? actual : actual.toLowerCase();
-                  const normalizedExpected = matchCase
-                    ? expected
-                    : expected.toLowerCase();
-                  return matchEntireCell
-                    ? normalizedActual === normalizedExpected
-                    : normalizedActual.includes(normalizedExpected);
-                })
-              );
-              return found ? [{ getRow: () => 2 }] : [];
-            },
-          };
-        },
-      };
-    },
-  };
-}
-
 test("administrator-issued claim and campaign row are accepted by the member GAS contract", () => {
   const admin = loadGas("gas/admin/Code.gs");
   const client = loadGas("gas/client/Code.gs");
@@ -128,7 +81,10 @@ test("administrator-issued claim and campaign row are accepted by the member GAS
     "limited",
     "once_per_member",
   ];
-  const sheet = createSingleRowSheet(row);
+  const sheet = {
+    getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [row.slice()] }),
+  };
 
   assert.match(claim, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(
@@ -174,7 +130,10 @@ test("unlimited repeatable campaign snapshots are accepted without an expiry", (
     "unlimited",
     "repeatable",
   ];
-  const sheet = createSingleRowSheet(row);
+  const sheet = {
+    getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [row.slice()] }),
+  };
 
   const parsed = client.findPointCampaignByClaim_(sheet, claim);
   assert.equal(parsed.expiryMode, "unlimited");
@@ -213,7 +172,10 @@ test("single-member campaign snapshots are accepted with a limited expiry", () =
     "limited",
     "single_member",
   ];
-  const sheet = createSingleRowSheet(row);
+  const sheet = {
+    getLastRow: () => 2,
+    getRange: () => ({ getValues: () => [row.slice()] }),
+  };
 
   const parsed = client.findPointCampaignByClaim_(sheet, claim);
   assert.equal(parsed.redemptionMode, "single_member");

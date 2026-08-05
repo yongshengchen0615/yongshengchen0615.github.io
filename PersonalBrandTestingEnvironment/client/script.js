@@ -13,10 +13,6 @@
   var currentIdToken = "";
   var currentMember = null;
   var currentMemberCardSummary = null;
-  var pendingMemberSyncRequestId = "";
-  var currentMemberWasCreated = false;
-  var memberBackendCapabilitiesPromise = null;
-  var memberBackendSupportsProgressive = null;
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
@@ -42,25 +38,6 @@
   var isPointHistoryDirty = true;
   var pointHistoryRequestVersion = 0;
   var pendingMemberPanel = "";
-  var memberLotteryAssetsPromise = null;
-  var isMemberLotteryConfigured = false;
-  var isMemberLotteryOpening = false;
-  var pendingMemberLotteryTicket = null;
-  var pendingPerformanceReports = [];
-  var isPerformanceReportBusy = false;
-  var isPerformanceReportingReady = false;
-  var PERFORMANCE_THRESHOLDS = Object.freeze({
-    page_shell: 300,
-    config_load: 1000,
-    liff_init: 1500,
-    member_sync: 2500,
-    wheel_prepare: 1000,
-    api_request: 2500,
-  });
-  var pageStartedAt =
-    window.performance && typeof window.performance.now === "function"
-      ? 0
-      : Date.now();
   var POINT_HISTORY_DATE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
     month: "numeric",
     day: "numeric",
@@ -75,88 +52,11 @@
       );
     }
 
-    var startedAt = performanceNow();
     return window.MemberApi
       .loadConfig("config.json", ["LIFF_ID", "GAS_WEB_APP_URL", "BRAND_NAME"])
       .then(function (config) {
         CONFIG = config;
-        recordPhaseTiming("config_load", "config", startedAt, "success");
-      })
-      .catch(function (error) {
-        recordPhaseTiming("config_load", "config", startedAt, "failure", error);
-        throw error;
       });
-  }
-
-  function warmMemberBackendCapabilities() {
-    if (memberBackendCapabilitiesPromise) return memberBackendCapabilitiesPromise;
-    var gasUrl = String(CONFIG.GAS_WEB_APP_URL || "").trim();
-    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(gasUrl)) {
-      memberBackendSupportsProgressive = false;
-      memberBackendCapabilitiesPromise = Promise.resolve(false);
-      return memberBackendCapabilitiesPromise;
-    }
-    var controller = typeof AbortController === "function" ? new AbortController() : null;
-    var timeout;
-    var healthUrl = new URL(gasUrl);
-    healthUrl.searchParams.set("action", "health");
-    healthUrl.searchParams.set("requestId", window.MemberApi.createRequestId());
-
-    var timeoutFallback = new Promise(function (resolve) {
-      timeout = window.setTimeout(function () {
-        if (controller) controller.abort();
-        resolve(false);
-      }, 3500);
-    });
-    var healthRequest = Promise.resolve()
-      .then(function () {
-        return window.fetch(healthUrl.toString(), {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-          credentials: "omit",
-          redirect: "follow",
-          referrerPolicy: "no-referrer",
-          signal: controller ? controller.signal : undefined,
-        });
-      })
-      .then(function (response) {
-        if (!response.ok) throw createClientError("BACKEND_HTTP_ERROR", "健康檢查失敗。");
-        return response.json();
-      })
-      .then(function (response) {
-        var capabilities =
-          response &&
-          response.ok === true &&
-          response.data &&
-          response.data.service === "member-client-api" &&
-          Array.isArray(response.data.capabilities)
-            ? response.data.capabilities
-            : [];
-        return (
-          capabilities.indexOf("member_identity_v1") !== -1 &&
-          capabilities.indexOf("member_card_summary_v1") !== -1
-        );
-      })
-      .catch(function () {
-        return false;
-      });
-
-    memberBackendCapabilitiesPromise = Promise.race([healthRequest, timeoutFallback])
-      .then(function (supportsProgressive) {
-        memberBackendSupportsProgressive = supportsProgressive;
-        return supportsProgressive;
-      })
-      .finally(function () {
-        window.clearTimeout(timeout);
-      });
-    return memberBackendCapabilitiesPromise;
-  }
-
-  function getMemberSyncAction() {
-    return warmMemberBackendCapabilities().then(function (supportsProgressive) {
-      return supportsProgressive ? "upsertMemberIdentity" : "upsertMember";
-    });
   }
 
   function byId(id) {
@@ -168,7 +68,6 @@
     isDemoSession = false;
     currentMember = null;
     currentMemberCardSummary = null;
-    currentMemberWasCreated = false;
     isProfileOnboardingRequired = false;
     isPointHistoryDirty = true;
     pointHistoryRequestVersion += 1;
@@ -201,15 +100,11 @@
       return Promise.resolve();
     }
 
-    var liffStartedAt = performanceNow();
-    var liffInitialized = false;
     return window.liff.init({
         liffId: String(CONFIG.LIFF_ID).trim(),
         withLoginOnExternalBrowser: false,
       })
       .then(function () {
-        liffInitialized = true;
-        recordPhaseTiming("liff_init", "liff", liffStartedAt, "success");
         if (thisBoot !== bootVersion) return;
         capturePendingPointClaim();
 
@@ -222,9 +117,6 @@
         return syncMember(thisBoot);
       })
       .catch(function (error) {
-        if (!liffInitialized) {
-          recordPhaseTiming("liff_init", "liff", liffStartedAt, "failure", error);
-        }
         if (thisBoot !== bootVersion) return;
         handleClientError(error);
       });
@@ -243,124 +135,47 @@
       );
     }
 
-    pendingMemberSyncRequestId =
-      pendingMemberSyncRequestId || window.MemberApi.createRequestId();
+    return sendGasRequest("upsertMember", currentIdToken, getLiffContext())
+      .then(function (response) {
+        if (expectedBootVersion !== bootVersion) return;
+        assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
 
-    return getMemberSyncAction()
-      .then(function (syncAction) {
-        return sendGasRequest(
-          syncAction,
-          currentIdToken,
-          getLiffContext(),
-          {},
-          pendingMemberSyncRequestId
-        ).then(function (response) {
-          if (expectedBootVersion !== bootVersion) return;
-          assertSuccessfulResponse(response);
-          pendingMemberSyncRequestId = "";
-          enablePerformanceReporting();
-          clearInvalidTokenRecoveryGuard();
+        if (
+          !response.data ||
+          !response.data.access ||
+          typeof response.data.access.allowed !== "boolean"
+        ) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的會員存取狀態格式不完整。");
+        }
 
-          if (
-            !response.data ||
-            !response.data.access ||
-            typeof response.data.access.allowed !== "boolean"
-          ) {
-            throw createClientError(
-              "INVALID_RESPONSE",
-              "後台回傳的會員存取狀態格式不完整。"
-            );
-          }
+        if (!response.data.access.allowed) {
+          renderAccessState(response.data.access.status, Boolean(response.data.created));
+          return;
+        }
 
-          if (!response.data.access.allowed) {
-            renderAccessState(
-              response.data.access.status,
-              Boolean(response.data.created)
-            );
-            return;
-          }
+        if (!response.data.member) {
+          throw createClientError("INVALID_RESPONSE", "後台回傳的會員資料格式不完整。");
+        }
 
-          if (!response.data.member) {
-            throw createClientError(
-              "INVALID_RESPONSE",
-              "後台回傳的會員資料格式不完整。"
-            );
-          }
-
-          var wasCreated = Boolean(response.data.created);
-          currentMemberWasCreated = wasCreated;
-          renderMember(response.data.member, wasCreated);
-          var hasLegacyCardSummary =
-            syncAction === "upsertMember" && Boolean(response.data.cardSummary);
-          if (hasLegacyCardSummary) {
-            renderMemberCardSummary(response.data.cardSummary, false);
-          }
-          if (!isMemberProfileComplete(response.data.member)) {
-            openProfileOnboarding();
-            return;
-          }
-          sendNewMemberJoinMessage(
-            getPointMessageContext(),
-            response.data.member,
-            wasCreated
-          );
-          currentMemberWasCreated = false;
-          if (wasCreated) showToast("會員資料建立完成，歡迎加入");
-          return (hasLegacyCardSummary
-            ? Promise.resolve()
-            : loadMemberCardSummarySafely())
-            .then(redeemPendingPointCampaign)
-            .then(openPendingMemberPanel);
-        });
+        var wasCreated = Boolean(response.data.created);
+        renderMember(response.data.member, wasCreated);
+        renderMemberCardSummary(response.data.cardSummary, false);
+        sendNewMemberJoinMessage(
+          getPointMessageContext(),
+          response.data.member,
+          wasCreated
+        );
+        if (!isMemberProfileComplete(response.data.member)) {
+          openProfileOnboarding();
+          return;
+        }
+        return redeemPendingPointCampaign().then(openPendingMemberPanel);
       })
       .catch(function (error) {
         if (expectedBootVersion !== bootVersion) return;
-        if (!error || error.code !== "REQUEST_STATUS_UNKNOWN") {
-          pendingMemberSyncRequestId = "";
-        }
         throw error;
       });
-  }
-
-  function loadMemberCardSummary() {
-    return sendGasRequest(
-      "getMemberCardSummary",
-      currentIdToken,
-      getLiffContext()
-    ).then(function (response) {
-      assertSuccessfulResponse(response);
-      if (
-        !response.data ||
-        !response.data.access ||
-        response.data.access.allowed !== true ||
-        !response.data.cardSummary
-      ) {
-        throw createClientError("INVALID_RESPONSE", "後台回傳的點數卡資料格式不完整。");
-      }
-      updateMemberPointBalance(response.data.pointBalance, false);
-      renderMemberCardSummary(response.data.cardSummary, false);
-    });
-  }
-
-  function loadMemberCardSummarySafely() {
-    if (memberBackendSupportsProgressive === false) return Promise.resolve();
-    return loadMemberCardSummary().catch(function (error) {
-      var normalized = normalizeClientError(error);
-      if (
-        normalized.code === "INVALID_TOKEN" ||
-        normalized.code === "INVALID_ID_TOKEN" ||
-        normalized.code === "MISSING_ID_TOKEN" ||
-        normalized.code === "MEMBER_ACCESS_DENIED" ||
-        normalized.code === "MEMBER_NOT_FOUND"
-      ) {
-        throw error;
-      }
-      setConnection("會員已登入，點數卡待同步", "error");
-      showToast(
-        "會員資料已載入，但點數卡暫時無法同步；重新開啟頁面即可再試。",
-        "error"
-      );
-    });
   }
 
   function capturePendingPointClaim() {
@@ -507,19 +322,6 @@
     if (document.querySelector("dialog[open]")) return;
     if (
       !isDemoSession &&
-      !window.MemberLotteryDialog &&
-      hasStoredMemberLotteryRequest()
-    ) {
-      return ensureMemberLotteryAssets()
-        .then(function () {
-          return window.MemberLotteryDialog.restorePending();
-        })
-        .catch(function (error) {
-          showToast(normalizeClientError(error).message, "error");
-        });
-    }
-    if (
-      !isDemoSession &&
       window.MemberLotteryDialog &&
       window.MemberLotteryDialog.hasPending()
     ) {
@@ -531,25 +333,6 @@
     pendingMemberPanel = "";
     if (panel === "tickets") openMemberTicketDialog();
     if (panel === "history") openPointHistoryDialog();
-  }
-
-  function hasStoredMemberLotteryRequest() {
-    if (!currentMember || !/^MBR-[A-Z0-9]{10}$/.test(currentMember.memberId)) {
-      return false;
-    }
-    var storageKey =
-      "persona-member-lottery-round-request:" +
-      String(CONFIG.LIFF_ID || "unknown").trim() +
-      ":" +
-      currentMember.memberId;
-    try {
-      var request = JSON.parse(window.sessionStorage.getItem(storageKey) || "null");
-      return Boolean(
-        request && /^[a-zA-Z0-9-]{10,80}$/.test(String(request.requestId || ""))
-      );
-    } catch (_error) {
-      return false;
-    }
   }
 
   function redeemPendingPointCampaign() {
@@ -815,12 +598,9 @@
     var rewardRules =
       summary && Array.isArray(summary.rewardRules)
         ? summary.rewardRules.map(function (rule) {
-            var prizeDisplay = normalizeMemberTicketPrizeDisplay(rule);
             return {
               points: Number(rule && rule.points),
               lotteryTypeId: String((rule && rule.lotteryTypeId) || "").trim(),
-              showPrizesOnTicket: prizeDisplay.showPrizesOnTicket,
-              prizeLabels: prizeDisplay.prizeLabels,
             };
           })
         : [];
@@ -870,45 +650,6 @@
       availableRewards: availableRewards,
       expiryMode: expiryMode,
       expiresOn: expiresOn,
-    };
-  }
-
-  function normalizeMemberTicketPrizeDisplay(rule) {
-    rule = rule && typeof rule === "object" ? rule : {};
-    var hasVisibility = Object.prototype.hasOwnProperty.call(
-      rule,
-      "showPrizesOnTicket"
-    );
-    if (!hasVisibility) {
-      return { showPrizesOnTicket: false, prizeLabels: [] };
-    }
-    if (typeof rule.showPrizesOnTicket !== "boolean") {
-      throw createClientError(
-        "INVALID_RESPONSE",
-        "後台回傳的抽獎券獎項顯示設定不正確。"
-      );
-    }
-    var rawLabels = Array.isArray(rule.prizeLabels) ? rule.prizeLabels : [];
-    var prizeLabels = rawLabels.map(function (label) {
-      return String(label || "").trim();
-    });
-    if (
-      (!rule.showPrizesOnTicket && prizeLabels.length > 0) ||
-      (rule.showPrizesOnTicket &&
-        (prizeLabels.length < 1 ||
-          prizeLabels.length > 12 ||
-          prizeLabels.some(function (label) {
-            return !label || label.length > 40;
-          })))
-    ) {
-      throw createClientError(
-        "INVALID_RESPONSE",
-        "後台回傳的抽獎券獎項名稱不正確。"
-      );
-    }
-    return {
-      showPrizesOnTicket: rule.showPrizesOnTicket,
-      prizeLabels: rule.showPrizesOnTicket ? prizeLabels : [],
     };
   }
 
@@ -967,9 +708,15 @@
     var normalized = normalizeMemberCardSummary(summary);
     var currentOutput = byId("member-point-card-current");
     var targetOutput = byId("member-point-card-target");
+    var progressTrack = byId("member-point-card-progress-track");
+    var progress = byId("member-point-card-progress");
     var ticketCount = byId("member-ticket-count");
     var ticketLink = byId("lottery-page-link");
     var pointsContainer = currentOutput.closest(".pass-points");
+    var progressPercent = Math.min(
+      100,
+      Math.max(0, (normalized.currentPoints / normalized.targetPoints) * 100)
+    );
 
     currentMemberCardSummary = normalized;
     currentOutput.textContent = formatPointNumber(normalized.currentPoints);
@@ -978,7 +725,9 @@
       normalized.expiryMode === "limited"
         ? "集點期限至 " + formatMemberCardDate(normalized.expiresOn)
         : "集點卡無期限";
-    renderMemberPointStars(normalized);
+    progressTrack.setAttribute("aria-valuemax", String(normalized.targetPoints));
+    progressTrack.setAttribute("aria-valuenow", String(normalized.currentPoints));
+    progress.style.width = progressPercent.toFixed(2) + "%";
 
     ticketCount.value = String(normalized.availableDraws);
     ticketCount.textContent =
@@ -1003,112 +752,6 @@
         }, 650);
       });
     }
-  }
-
-  function renderMemberPointStars(normalized) {
-    var container = byId("member-point-card-stars");
-    var milestonePoints = Object.create(null);
-    var usesCompactProgress = normalized.targetPoints > 40;
-    normalized.rewardRules.forEach(function (rule) {
-      milestonePoints[rule.points] = true;
-    });
-    var signature =
-      (usesCompactProgress ? "progress:" : "stars:") +
-      normalized.targetPoints +
-      ":" +
-      normalized.rewardRules
-        .map(function (rule) {
-          return rule.points;
-        })
-        .join(",");
-
-    if (container.dataset.signature !== signature) {
-      var fragment = document.createDocumentFragment();
-      if (usesCompactProgress) {
-        var track = document.createElement("span");
-        var fill = document.createElement("span");
-        var milestones = document.createElement("span");
-        track.className = "pass-point-progress-track";
-        fill.className = "pass-point-progress-fill";
-        milestones.className = "pass-point-progress-milestones";
-        track.setAttribute("aria-hidden", "true");
-        track.appendChild(fill);
-        normalized.rewardRules.forEach(function (rule) {
-          var marker = document.createElement("span");
-          marker.className = "pass-point-progress-marker";
-          marker.dataset.point = String(rule.points);
-          marker.style.left = (rule.points / normalized.targetPoints) * 100 + "%";
-          marker.textContent = "✦";
-          marker.title = formatPointNumber(rule.points) + " 點可獲得抽獎券";
-          marker.setAttribute("aria-hidden", "true");
-          milestones.appendChild(marker);
-        });
-        fragment.appendChild(track);
-        fragment.appendChild(milestones);
-      } else {
-        for (var point = 1; point <= normalized.targetPoints; point += 1) {
-          var star = document.createElement("span");
-          var isMilestone = Boolean(milestonePoints[point]);
-          star.className =
-            "pass-point-star" + (isMilestone ? " is-milestone" : "");
-          star.dataset.point = String(point);
-          star.textContent = isMilestone ? "✦" : "★";
-          star.setAttribute("aria-hidden", "true");
-          if (isMilestone) {
-            star.title = formatPointNumber(point) + " 點可獲得抽獎券";
-          }
-          fragment.appendChild(star);
-        }
-      }
-      container.replaceChildren(fragment);
-      container.dataset.signature = signature;
-    }
-
-    container.classList.toggle("is-progress", usesCompactProgress);
-    if (usesCompactProgress) {
-      container
-        .querySelector(".pass-point-progress-fill")
-        .style.setProperty(
-          "--point-progress",
-          (normalized.currentPoints / normalized.targetPoints) * 100 + "%"
-        );
-      Array.prototype.forEach.call(
-        container.querySelectorAll(".pass-point-progress-marker"),
-        function (marker) {
-          marker.classList.toggle(
-            "is-collected",
-            Number(marker.dataset.point) <= normalized.currentPoints
-          );
-        }
-      );
-      container.setAttribute("role", "progressbar");
-      container.setAttribute("aria-valuemin", "0");
-      container.setAttribute("aria-valuemax", String(normalized.targetPoints));
-      container.setAttribute("aria-valuenow", String(normalized.currentPoints));
-    } else {
-      Array.prototype.forEach.call(container.children, function (star) {
-        star.classList.toggle(
-          "is-collected",
-          Number(star.dataset.point) <= normalized.currentPoints
-        );
-      });
-      container.style.setProperty(
-        "--point-star-columns",
-        String(normalized.targetPoints <= 10 ? normalized.targetPoints : 10)
-      );
-      container.setAttribute("role", "img");
-      container.removeAttribute("aria-valuemin");
-      container.removeAttribute("aria-valuemax");
-      container.removeAttribute("aria-valuenow");
-    }
-    container.setAttribute(
-      "aria-label",
-      "本卡進度 " +
-        formatPointNumber(normalized.currentPoints) +
-        " 點，目標 " +
-        formatPointNumber(normalized.targetPoints) +
-        " 點；星芒代表可獲得抽獎券的節點。"
-    );
   }
 
   function formatMemberCardDate(value) {
@@ -1144,8 +787,6 @@
         "lottery-ticket-meta",
         "第 " + formatPointNumber(ticket.cardNumber) + " 張集點卡"
       );
-      var ticketRule = findMemberTicketRewardRule(summary, ticket);
-      appendMemberTicketPrizePreview(button, ticketRule);
       appendMemberTicketText(button, "lottery-ticket-action", "開啟轉盤 →");
       button.setAttribute(
         "aria-label",
@@ -1153,12 +794,10 @@
           ticket.cardNumber +
           " 張集點卡，" +
           ticket.milestonePoints +
-          " 點節點抽獎券" +
-          memberTicketPrizeAriaLabel(ticketRule) +
-          "，開啟轉盤"
+          " 點節點抽獎券，開啟轉盤"
       );
       button.addEventListener("click", function () {
-        requestMemberLotteryConfirmation(ticket);
+        openMemberLotteryTicket(ticket);
       });
       earnedFragment.appendChild(button);
     });
@@ -1181,7 +820,6 @@
         "lottery-ticket-meta",
         "本張卡達到 " + formatPointNumber(rule.points) + " 點後獲得"
       );
-      appendMemberTicketPrizePreview(item, rule);
       appendMemberTicketText(item, "lottery-ticket-action", "未獲得");
       lockedFragment.appendChild(item);
     });
@@ -1204,46 +842,6 @@
         (summary.availableRewards.length > 0 ? "earned" : "locked"),
       false
     );
-  }
-
-  function findMemberTicketRewardRule(summary, ticket) {
-    return (
-      summary.rewardRules.find(function (rule) {
-        return (
-          rule.points === ticket.milestonePoints &&
-          rule.lotteryTypeId === ticket.lotteryTypeId
-        );
-      }) || null
-    );
-  }
-
-  function uniqueMemberTicketPrizeLabels(rule) {
-    if (!rule || !rule.showPrizesOnTicket) return [];
-    var seen = Object.create(null);
-    return rule.prizeLabels.filter(function (label) {
-      if (seen[label]) return false;
-      seen[label] = true;
-      return true;
-    });
-  }
-
-  function appendMemberTicketPrizePreview(parent, rule) {
-    var prizeLabels = uniqueMemberTicketPrizeLabels(rule);
-    if (!prizeLabels.length) return;
-    var preview = document.createElement("span");
-    var heading = document.createElement("b");
-    var labels = document.createElement("span");
-    preview.className = "lottery-ticket-prizes";
-    heading.textContent = "可抽中";
-    labels.textContent = prizeLabels.join(" · ");
-    preview.appendChild(heading);
-    preview.appendChild(labels);
-    parent.appendChild(preview);
-  }
-
-  function memberTicketPrizeAriaLabel(rule) {
-    var prizeLabels = uniqueMemberTicketPrizeLabels(rule);
-    return prizeLabels.length ? "，可抽中 " + prizeLabels.join("、") : "";
   }
 
   function appendMemberTicketText(parent, className, value) {
@@ -1299,101 +897,12 @@
 
   function openMemberLotteryTicket(ticket) {
     var normalizedTicket = normalizeMemberRewardTicket(ticket);
-    if (isMemberLotteryOpening) return Promise.resolve(false);
-    isMemberLotteryOpening = true;
-    showToast("正在準備安全轉盤");
-    return ensureMemberLotteryAssets()
-      .then(function () {
-        closeDialog(byId("member-ticket-dialog"), true);
-        return window.MemberLotteryDialog.open(normalizedTicket);
-      })
-      .catch(function (error) {
-        showToast(normalizeClientError(error).message, "error");
-      })
-      .finally(function () {
-        isMemberLotteryOpening = false;
-      });
-  }
-
-  function requestMemberLotteryConfirmation(ticket) {
-    pendingMemberLotteryTicket = normalizeMemberRewardTicket(ticket);
-    byId("member-ticket-confirm-detail").textContent =
-      "第 " +
-      formatPointNumber(pendingMemberLotteryTicket.cardNumber) +
-      " 張集點卡 · " +
-      formatPointNumber(pendingMemberLotteryTicket.milestonePoints) +
-      " 點節點抽獎券";
-    openDialog(byId("member-ticket-confirm-dialog"));
-    window.requestAnimationFrame(function () {
-      byId("member-ticket-confirm-button").focus();
-    });
-  }
-
-  function confirmMemberLotteryTicket() {
-    var ticket = pendingMemberLotteryTicket;
-    if (!ticket) return Promise.resolve(false);
-    pendingMemberLotteryTicket = null;
-    closeDialog(byId("member-ticket-confirm-dialog"), true);
-    return openMemberLotteryTicket(ticket);
-  }
-
-  function cancelMemberLotteryConfirmation() {
-    pendingMemberLotteryTicket = null;
-    closeDialog(byId("member-ticket-confirm-dialog"), true);
-  }
-
-  function ensureMemberLotteryAssets() {
-    if (isMemberLotteryConfigured) return Promise.resolve();
-    if (memberLotteryAssetsPromise) return memberLotteryAssetsPromise;
-
-    memberLotteryAssetsPromise = loadDeferredScript(
-      "../shared/lottery-wheel.js",
-      "LotteryWheel"
-    )
-      .then(function () {
-        return loadDeferredScript("member-lottery.js", "MemberLotteryDialog");
-      })
-      .then(function () {
-        configureMemberLotteryDialog();
-      })
-      .catch(function (error) {
-        memberLotteryAssetsPromise = null;
-        throw error;
-      });
-    return memberLotteryAssetsPromise;
-  }
-
-  function loadDeferredScript(source, globalName) {
-    if (window[globalName]) return Promise.resolve();
-    return new Promise(function (resolve, reject) {
-      var script = document.createElement("script");
-      script.src = new URL(source, document.baseURI).toString();
-      script.async = true;
-      script.dataset.memberAsset = globalName;
-      script.onload = function () {
-        if (window[globalName]) {
-          resolve();
-          return;
-        }
-        script.remove();
-        reject(
-          createClientError(
-            "CLIENT_LIBRARY_ERROR",
-            "載入轉盤元件後無法完成初始化。"
-          )
-        );
-      };
-      script.onerror = function () {
-        script.remove();
-        reject(
-          createClientError(
-            "CLIENT_LIBRARY_ERROR",
-            "目前無法載入轉盤元件，請檢查網路後再試。"
-          )
-        );
-      };
-      document.head.appendChild(script);
-    });
+    if (!window.MemberLotteryDialog) {
+      showToast("轉盤元件尚未載入，請重新整理後再試。", "error");
+      return;
+    }
+    closeDialog(byId("member-ticket-dialog"), true);
+    window.MemberLotteryDialog.open(normalizedTicket);
   }
 
   function configureMemberLotteryDialog() {
@@ -1457,7 +966,6 @@
       normalizeError: normalizeClientError,
       showToast: showToast,
     });
-    isMemberLotteryConfigured = true;
   }
 
   function openPointHistoryDialog() {
@@ -1735,7 +1243,7 @@
   function updateMemberPointBalance(balance, animate) {
     var normalizedBalance = normalizePointBalance(balance);
     var output = byId("member-point-balance");
-    var container = output.closest(".member-consumption-hours");
+    var container = output.closest(".pass-points");
 
     output.textContent = formatPointNumber(normalizedBalance);
     if (currentMember) currentMember.pointBalance = normalizedBalance;
@@ -1971,93 +1479,61 @@
       );
     }
     setEmbeddedPointScannerStatus("正在啟動相機…");
-    byId("point-scanner-status").removeAttribute("data-tone");
-    byId("point-scanner-recovery").hidden = true;
-    byId("point-qr-link-input").value = "";
     openDialog(byId("point-scanner-dialog"));
     return new Promise(function (resolve, reject) {
       pointScannerResolve = resolve;
       pointScannerReject = reject;
-      startEmbeddedPointScanner();
-    });
-  }
-
-  function startEmbeddedPointScanner() {
-    if (!pointScannerReject) return Promise.resolve();
-    stopEmbeddedPointScanner();
-    byId("point-scanner-recovery").hidden = true;
-    byId("point-scanner-status").removeAttribute("data-tone");
-    setEmbeddedPointScannerStatus("正在啟動相機…");
-
-    return createEmbeddedPointBarcodeDetector()
-      .then(function (detector) {
-        if (
-          !window.navigator.mediaDevices ||
-          typeof window.navigator.mediaDevices.getUserMedia !== "function"
-        ) {
-          throw createClientError(
-            "CAMERA_UNAVAILABLE",
-            "目前瀏覽器無法開啟相機，請更新 LINE 或改用手機瀏覽器。"
-          );
-        }
-        return window.navigator.mediaDevices
-          .getUserMedia({
-            audio: false,
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 960 },
-              height: { ideal: 960 },
-            },
-          })
-          .then(function (stream) {
-            return { detector: detector, stream: stream };
+      createEmbeddedPointBarcodeDetector()
+        .then(function (detector) {
+          if (
+            !window.navigator.mediaDevices ||
+            typeof window.navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            throw createClientError(
+              "CAMERA_UNAVAILABLE",
+              "目前瀏覽器無法開啟相機，請更新 LINE 或改用手機瀏覽器。"
+            );
+          }
+          return window.navigator.mediaDevices
+            .getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 960 },
+                height: { ideal: 960 },
+              },
+            })
+            .then(function (stream) {
+              return { detector: detector, stream: stream };
+            });
+        })
+        .then(function (scanner) {
+          if (!pointScannerReject) {
+            scanner.stream.getTracks().forEach(function (track) {
+              track.stop();
+            });
+            return;
+          }
+          pointScannerStream = scanner.stream;
+          var video = byId("point-scanner-video");
+          video.srcObject = scanner.stream;
+          return Promise.resolve(video.play()).then(function () {
+            setEmbeddedPointScannerStatus(
+              "將 QR Code 對準框線，辨識成功後會自動領點。"
+            );
+            var label = byId("scan-point-button").querySelector("span");
+            if (label) label.textContent = "正在掃描";
+            scheduleEmbeddedPointScan(scanner.detector);
           });
-      })
-      .then(function (scanner) {
-        if (!pointScannerReject) {
-          scanner.stream.getTracks().forEach(function (track) {
-            track.stop();
-          });
-          return;
-        }
-        pointScannerStream = scanner.stream;
-        var video = byId("point-scanner-video");
-        video.srcObject = scanner.stream;
-        return Promise.resolve(video.play()).then(function () {
-          setEmbeddedPointScannerStatus(
-            "將 QR Code 對準框線，辨識成功後會自動領點。"
+        })
+        .catch(function (error) {
+          if (!pointScannerReject) return;
+          finishEmbeddedPointScanner(
+            "",
+            normalizeEmbeddedPointScannerError(error)
           );
-          var label = byId("scan-point-button").querySelector("span");
-          if (label) label.textContent = "正在掃描";
-          scheduleEmbeddedPointScan(scanner.detector);
         });
-      })
-      .catch(function (error) {
-        if (!pointScannerReject) return;
-        showEmbeddedPointScannerRecovery(error);
-      });
-  }
-
-  function showEmbeddedPointScannerRecovery(error) {
-    stopEmbeddedPointScanner();
-    var normalizedError = normalizeEmbeddedPointScannerError(error);
-    setEmbeddedPointScannerStatus(normalizedError.message);
-    byId("point-scanner-status").dataset.tone = "error";
-    byId("point-scanner-recovery").hidden = false;
-    window.requestAnimationFrame(function () {
-      byId("point-qr-link-input").focus();
     });
-  }
-
-  function submitPastedPointLink() {
-    var value = String(byId("point-qr-link-input").value || "").trim();
-    if (!extractPointClaimFromQr(value)) {
-      setEmbeddedPointScannerStatus("連結格式不正確，請貼上完整的 LIFF 集點連結。");
-      byId("point-scanner-status").dataset.tone = "error";
-      byId("point-qr-link-input").focus();
-      return;
-    }
-    finishEmbeddedPointScanner(value);
   }
 
   function createEmbeddedPointBarcodeDetector() {
@@ -2272,16 +1748,36 @@
     }
   }
 
-  function retryMemberConnection() {
-    if (
-      pendingMemberSyncRequestId &&
-      currentIdToken &&
-      window.liff &&
-      window.liff.isLoggedIn()
-    ) {
-      return syncMember(bootVersion).catch(handleClientError);
+  function handleLogout() {
+    if (isDemoSession) {
+      isDemoSession = false;
+      currentMember = null;
+      setConnection("等待設定", "setup");
+      setView("setup-state");
+      showToast("已離開預覽模式");
+      return;
     }
-    return start();
+
+    if (!window.liff) return;
+
+    currentIdToken = "";
+    currentMember = null;
+    isProfileOnboardingRequired = false;
+    stopPointScannerForPageExit();
+    closeDialog(byId("profile-dialog"), true);
+    clearInvalidTokenRecoveryGuard();
+    clearPendingPointClaim();
+
+    if (window.liff.isInClient()) {
+      window.liff.closeWindow();
+      return;
+    }
+
+    if (window.liff.isLoggedIn()) {
+      window.liff.logout();
+    }
+
+    window.location.replace(getCleanPageUrl());
   }
 
   function openProfileEditor() {
@@ -2350,6 +1846,7 @@
 
     if (isDemoSession) {
       renderMember(Object.assign({}, currentMember, profile), false);
+      byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
       closeDialog(byId("profile-dialog"));
       showToast("預覽：會員資料已更新");
       return;
@@ -2393,24 +1890,14 @@
           throw createClientError("INVALID_RESPONSE", "後台未完整保存電話與生日。");
         }
 
-        var completedNewMember = onboarding && currentMemberWasCreated;
         renderMember(response.data.member, false);
+        byId("sync-caption").textContent = "會員資料已更新";
         setProfileFormBusy(false);
         isProfileOnboardingRequired = false;
         setProfileDialogMode("edit");
         closeDialog(byId("profile-dialog"), true);
-        sendNewMemberJoinMessage(
-          getPointMessageContext(),
-          response.data.member,
-          completedNewMember
-        );
-        currentMemberWasCreated = false;
         showToast(onboarding ? "會員資料完成，可以開始集點" : "會員資料已儲存");
-        if (onboarding) {
-          return loadMemberCardSummarySafely()
-            .then(redeemPendingPointCampaign)
-            .then(openPendingMemberPanel);
-        }
+        if (onboarding) return redeemPendingPointCampaign();
       })
       .catch(function (error) {
         var normalized = normalizeClientError(error);
@@ -2551,6 +2038,45 @@
     return local.toISOString().slice(0, 10);
   }
 
+  function handleDeleteMember() {
+    var button = byId("delete-confirm-button");
+    if (button.disabled) return;
+
+    if (isDemoSession) {
+      closeDialog(byId("delete-dialog"));
+      showToast("預覽模式不會建立或刪除真實資料");
+      return;
+    }
+
+    var token = currentIdToken || (window.liff && window.liff.getIDToken()) || "";
+    if (!token) {
+      closeDialog(byId("delete-dialog"));
+      showError("MISSING_ID_TOKEN", "登入狀態已失效，請重新登入後再刪除會員資料。");
+      return;
+    }
+
+    setButtonBusy(button, true, "正在刪除");
+
+    sendGasRequest("deleteMember", token, getLiffContext())
+      .then(function (response) {
+        assertSuccessfulResponse(response);
+        clearInvalidTokenRecoveryGuard();
+        closeDialog(byId("delete-dialog"));
+        showToast("會員資料已永久刪除");
+
+        window.setTimeout(function () {
+          handleLogout();
+        }, 900);
+      })
+      .catch(function (error) {
+        closeDialog(byId("delete-dialog"));
+        handleClientError(error);
+      })
+      .finally(function () {
+        setButtonBusy(button, false);
+      });
+  }
+
   function sendGasRequest(action, idToken, context, fields, requestId) {
     return window.MemberApi.sendRequest({
       gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
@@ -2559,164 +2085,7 @@
       context: context || {},
       fields: fields || {},
       requestId: requestId,
-      onProgress: handleRequestProgress,
-      onTiming: handleRequestTiming,
     });
-  }
-
-  function handleRequestProgress(progress) {
-    progress = progress && typeof progress === "object" ? progress : {};
-    var action = String(progress.action || "");
-    var phase = String(progress.phase || "");
-    if (action === "reportClientPerformance") return;
-
-    if (phase === "fallback") {
-      setConnection("切換連線方式", "loading");
-      return;
-    }
-    if (phase === "failed") {
-      setConnection(
-        progress.errorCode === "REQUEST_STATUS_UNKNOWN"
-          ? "等待重新確認"
-          : "連線失敗",
-        "error"
-      );
-      return;
-    }
-    if (phase === "complete") {
-      setConnection("安全連線", "connected");
-      return;
-    }
-    if (phase !== "connecting") return;
-
-    if (action === "upsertMemberIdentity" || action === "upsertMember") {
-      setConnection("正在核對會員資料", "loading");
-      setLoadingCopy(
-        "正在安全同步會員",
-        "第一次連線最長可能需要約 45 秒，完成後會立即顯示會員資料。"
-      );
-      return;
-    }
-    if (action === "getMemberCardSummary") {
-      setConnection("正在載入點數卡", "loading");
-    }
-  }
-
-  function performanceNow() {
-    return window.performance && typeof window.performance.now === "function"
-      ? window.performance.now()
-      : Date.now();
-  }
-
-  function recordPhaseTiming(metricName, operation, startedAt, outcome, error) {
-    queuePerformanceReport({
-      metricName: metricName,
-      operation: operation,
-      durationMs: Math.max(0, Math.round(performanceNow() - startedAt)),
-      outcome: outcome,
-      requestTransport: "none",
-      fallbackUsed: false,
-      errorCode: performanceErrorCode(error),
-    });
-  }
-
-  function handleRequestTiming(timing) {
-    timing = timing && typeof timing === "object" ? timing : {};
-    var action = String(timing.action || "");
-    if (action === "reportClientPerformance") return;
-    var metricName =
-      action === "upsertMember" || action === "upsertMemberIdentity"
-        ? "member_sync"
-        : action === "prepareLotteryDraw"
-          ? "wheel_prepare"
-          : "api_request";
-    queuePerformanceReport({
-      metricName: metricName,
-      operation: action || "page",
-      durationMs: Math.max(0, Math.round(Number(timing.durationMs) || 0)),
-      outcome: String(timing.outcome || "failure"),
-      requestTransport: String(timing.transport || "none"),
-      fallbackUsed: timing.fallbackUsed === true,
-      errorCode: performanceErrorCode(timing.errorCode),
-    });
-    if (timing.outcome !== "success" && currentIdToken) {
-      enablePerformanceReporting();
-    }
-  }
-
-  function queuePerformanceReport(metric) {
-    var threshold = PERFORMANCE_THRESHOLDS[metric.metricName];
-    if (!threshold) return;
-    var normalizedOutcome = String(metric.outcome || "failure").toLowerCase();
-    if (normalizedOutcome === "success") {
-      if (metric.durationMs < threshold) return;
-      normalizedOutcome = "slow";
-    }
-    if (["slow", "timeout", "failure"].indexOf(normalizedOutcome) === -1) {
-      normalizedOutcome = "failure";
-    }
-    metric.outcome = normalizedOutcome;
-    metric.errorCode = normalizedOutcome === "slow" ? "" : metric.errorCode;
-    if (pendingPerformanceReports.length >= 12) return;
-    pendingPerformanceReports.push(metric);
-    drainPerformanceReports();
-  }
-
-  function enablePerformanceReporting() {
-    isPerformanceReportingReady = true;
-    window.setTimeout(drainPerformanceReports, 0);
-  }
-
-  function drainPerformanceReports() {
-    if (
-      !isPerformanceReportingReady ||
-      isPerformanceReportBusy ||
-      !currentIdToken ||
-      !hasCompleteConfig() ||
-      !pendingPerformanceReports.length
-    ) {
-      return;
-    }
-    isPerformanceReportBusy = true;
-    var metric = pendingPerformanceReports.shift();
-    var requestId = window.MemberApi.createRequestId();
-    sendPerformanceReport(metric, requestId, 0).finally(function () {
-      isPerformanceReportBusy = false;
-      drainPerformanceReports();
-    });
-  }
-
-  function sendPerformanceReport(metric, requestId, attempt) {
-    return window.MemberApi
-      .sendRequest({
-        gasUrl: String(CONFIG.GAS_WEB_APP_URL).trim(),
-        action: "reportClientPerformance",
-        idToken: currentIdToken,
-        context: {},
-        fields: metric,
-        requestId: requestId,
-      })
-      .then(function (response) {
-        if (!response || response.ok !== true) {
-          throw new Error("Performance report rejected");
-        }
-      })
-      .catch(function () {
-        if (attempt === 0) {
-          return sendPerformanceReport(metric, requestId, 1);
-        }
-      });
-  }
-
-  function performanceErrorCode(value) {
-    var code =
-      typeof value === "string"
-        ? value
-        : value && (value.code || value.name)
-          ? value.code || value.name
-          : "";
-    code = String(code || "").trim().toUpperCase();
-    return /^[A-Z0-9_]{2,60}$/.test(code) ? code : "CONNECTION_ERROR";
   }
 
   function assertSuccessfulResponse(response) {
@@ -2734,6 +2103,8 @@
     byId("access-message").textContent =
       "此帳號已停用。如有疑問，請聯絡服務人員。";
     byId("access-state").dataset.status = "denied";
+    byId("access-logout-button").textContent =
+      window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
 
     setConnection("已停用", "error");
     setView("access-state");
@@ -2748,10 +2119,9 @@
     var pictureUrl = getSafeImageUrl(member.pictureUrl);
     var phone = cleanDisplayText(member.phone, "");
     var birthday = normalizeBirthdayDisplayValue(member.birthday);
-    var hasPointBalance = member.pointBalance != null;
-    var pointBalance = hasPointBalance
-      ? normalizePointBalance(member.pointBalance)
-      : null;
+    var pointBalance = normalizePointBalance(
+      member.pointBalance == null ? 0 : member.pointBalance
+    );
 
     currentMember = Object.assign({}, member, {
       phone: phone,
@@ -2759,19 +2129,17 @@
       pointBalance: pointBalance,
     });
 
+    byId("member-greeting-name").textContent = name;
     byId("member-display-name").textContent = name;
     byId("member-avatar-fallback").textContent = getInitial(name);
     byId("member-id").textContent = cleanDisplayText(member.memberId, "—");
     byId("member-since").textContent = formatShortDate(member.joinedAt);
-    byId("member-phone").textContent = phone
-      ? maskMemberPhone(phone)
-      : "尚未填寫";
+    byId("member-phone").textContent = phone || "尚未填寫";
     byId("member-birthday").textContent = birthday
-      ? maskMemberBirthday(birthday)
+      ? formatBirthday(birthday)
       : "尚未填寫";
-    byId("member-point-balance").textContent = hasPointBalance
-      ? formatPointNumber(pointBalance)
-      : "—";
+    byId("member-point-balance").textContent = formatPointNumber(pointBalance);
+    byId("sync-caption").textContent = wasCreated ? "會員建立完成" : "會員資料已同步";
 
     var avatar = byId("member-avatar");
     var fallback = byId("member-avatar-fallback");
@@ -2795,9 +2163,16 @@
       avatar.removeAttribute("src");
     }
 
+    var logoutButton = byId("logout-button");
+    logoutButton.textContent =
+      window.liff && window.liff.isInClient() ? "關閉會員中心" : "登出目前裝置";
+
     setConnection(isDemoSession ? "展示模式" : "安全連線", isDemoSession ? "setup" : "connected");
     setView("member-state");
 
+    if (wasCreated) {
+      showToast("會員資料建立完成，歡迎加入");
+    }
   }
 
   function renderDemoMember() {
@@ -2823,30 +2198,10 @@
         currentCardNumber: 2,
         availableDraws: 1,
         rewardRules: [
-          {
-            points: 5,
-            lotteryTypeId: "LTY-PREVIEW001",
-            showPrizesOnTicket: true,
-            prizeLabels: ["小禮物", "精選獎", "頭獎"],
-          },
-          {
-            points: 10,
-            lotteryTypeId: "LTY-PREVIEW002",
-            showPrizesOnTicket: true,
-            prizeLabels: ["限定禮物"],
-          },
-          {
-            points: 15,
-            lotteryTypeId: "LTY-PREVIEW001",
-            showPrizesOnTicket: true,
-            prizeLabels: ["小禮物", "精選獎", "頭獎"],
-          },
-          {
-            points: 20,
-            lotteryTypeId: "LTY-PREVIEW001",
-            showPrizesOnTicket: true,
-            prizeLabels: ["小禮物", "精選獎", "頭獎"],
-          },
+          { points: 5, lotteryTypeId: "LTY-PREVIEW001" },
+          { points: 10, lotteryTypeId: "LTY-PREVIEW001" },
+          { points: 15, lotteryTypeId: "LTY-PREVIEW001" },
+          { points: 20, lotteryTypeId: "LTY-PREVIEW001" },
         ],
         availableRewards: [
           {
@@ -2862,6 +2217,7 @@
       },
       false
     );
+    byId("sync-caption").textContent = "這是預覽資料，不會寫入後台";
     openPendingMemberPanel();
   }
 
@@ -3028,8 +2384,6 @@
       LOTTERY_DATA_ERROR: "轉盤或抽獎紀錄目前無法使用，請聯絡服務人員。",
       LOTTERY_SCHEMA_MISMATCH: "轉盤資料表格式不正確，請聯絡管理員。",
       INVALID_RESPONSE: "後台回傳的資料格式不完整，請稍後再試。",
-      REQUEST_STATUS_UNKNOWN:
-        "後台可能仍在完成本次登入。請保留目前頁面並按「重新連線」，系統會安全核對同一筆請求。",
     };
 
     if (/(subwindowopen|scancodev2|no permission for liff)/i.test(errorText)) {
@@ -3123,18 +2477,6 @@
     return birthday ? birthday.replace(/-/g, ".") : "尚未填寫";
   }
 
-  function maskMemberPhone(value) {
-    var phone = String(value || "").trim();
-    var digits = phone.replace(/\D/g, "");
-    if (digits.length < 7) return "••••••";
-    return digits.slice(0, 4) + " ••• " + digits.slice(-3);
-  }
-
-  function maskMemberBirthday(value) {
-    var birthday = normalizeBirthdayDisplayValue(value);
-    return birthday ? "••••." + birthday.slice(5).replace(/-/g, ".") : "尚未填寫";
-  }
-
   function setButtonBusy(button, busy, busyLabel) {
     if (!button) return;
     var label = button.querySelector("span") || button;
@@ -3203,12 +2545,20 @@
       return;
     }
     if (dialog.id === "claim-dialog" && dialog.dataset.busy === "true") return;
+    if (dialog.id === "delete-dialog") resetDeleteConfirmation();
     if (dialog.id === "profile-dialog") resetProfileForm();
     if (typeof dialog.close === "function" && dialog.open) {
       dialog.close();
     } else {
       dialog.removeAttribute("open");
     }
+  }
+
+  function resetDeleteConfirmation() {
+    var button = byId("delete-confirm-button");
+    setButtonBusy(button, false);
+    byId("delete-confirm-input").value = "";
+    button.disabled = true;
   }
 
   function showToast(message, tone) {
@@ -3232,21 +2582,16 @@
 
   function bindInteractions() {
     byId("login-button").addEventListener("click", handleLogin);
+    byId("logout-button").addEventListener("click", handleLogout);
     byId("access-refresh-button").addEventListener("click", boot);
-    byId("retry-button").addEventListener("click", retryMemberConnection);
+    byId("access-logout-button").addEventListener("click", handleLogout);
+    byId("retry-button").addEventListener("click", start);
     byId("preview-button").addEventListener("click", renderDemoMember);
+    byId("delete-confirm-button").addEventListener("click", handleDeleteMember);
     byId("edit-profile-button").addEventListener("click", openProfileEditor);
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
     byId("scan-point-button").addEventListener("click", handleScanPointQr);
     byId("lottery-page-link").addEventListener("click", openMemberTicketDialog);
-    byId("member-ticket-confirm-button").addEventListener(
-      "click",
-      confirmMemberLotteryTicket
-    );
-    byId("member-ticket-confirm-cancel-button").addEventListener(
-      "click",
-      cancelMemberLotteryConfirmation
-    );
     byId("open-point-history-button").addEventListener(
       "click",
       openPointHistoryDialog
@@ -3270,14 +2615,6 @@
     byId("point-scanner-cancel-button").addEventListener(
       "click",
       cancelEmbeddedPointScanner
-    );
-    byId("point-scanner-retry-button").addEventListener(
-      "click",
-      startEmbeddedPointScanner
-    );
-    byId("point-scanner-link-button").addEventListener(
-      "click",
-      submitPastedPointLink
     );
     byId("claim-retry-button").addEventListener("click", redeemPendingPointCampaign);
     [
@@ -3322,6 +2659,14 @@
       });
     });
 
+    byId("delete-confirm-input").addEventListener("input", function (event) {
+      byId("delete-confirm-button").disabled = event.target.value.trim() !== "刪除";
+    });
+
+    byId("delete-dialog").addEventListener("close", function () {
+      resetDeleteConfirmation();
+    });
+
     byId("profile-dialog").addEventListener("close", function () {
       resetProfileForm();
       window.requestAnimationFrame(openPendingMemberPanel);
@@ -3329,10 +2674,6 @@
 
     byId("claim-dialog").addEventListener("close", function () {
       window.requestAnimationFrame(openPendingMemberPanel);
-    });
-
-    byId("member-ticket-confirm-dialog").addEventListener("close", function () {
-      pendingMemberLotteryTicket = null;
     });
 
     byId("profile-dialog").addEventListener("cancel", function (event) {
@@ -3372,7 +2713,6 @@
   byId("current-year").textContent = String(new Date().getFullYear());
 
   function start() {
-    recordPhaseTiming("page_shell", "page", pageStartedAt, "success");
     setConnection("正在載入設定", "loading");
     setLoadingCopy("正在載入會員系統", "讀取公開設定並準備 LINE 登入服務。請稍候。");
     setView("loading-state");
@@ -3380,7 +2720,7 @@
     return loadConfig()
       .then(function () {
         applyBrand();
-        warmMemberBackendCapabilities();
+        configureMemberLotteryDialog();
         return boot();
       })
       .catch(handleClientError);

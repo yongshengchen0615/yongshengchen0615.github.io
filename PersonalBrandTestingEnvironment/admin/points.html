@@ -299,15 +299,10 @@
               <h2 id="point-history-title">點數使用紀錄</h2>
               <p id="point-history-summary">會員 QR 領點紀錄。</p>
             </div>
-            <div class="history-heading-actions">
-              <button class="secondary-button" id="export-point-history-button" type="button" disabled>
-                匯出 CSV
-              </button>
-              <button class="refresh-button" id="refresh-point-history-button" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
-                <span>重新整理紀錄</span>
-              </button>
-            </div>
+            <button class="refresh-button" id="refresh-point-history-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 6M19 4v4h-4"></path></svg>
+              <span>重新整理紀錄</span>
+            </button>
           </header>
 
           <div
@@ -331,9 +326,6 @@
             目前還沒有點數領取紀錄。
           </p>
           <p class="inline-error admin-point-history-error" id="point-history-error" role="alert" hidden></p>
-          <button class="secondary-button history-load-more" id="load-more-point-history-button" type="button" hidden>
-            載入更多紀錄
-          </button>
         </section>
       </section>
     </main>

@@ -239,7 +239,7 @@ class FakeElement {
   }
 }
 
-function createHarness({ reducedMotion = true } = {}) {
+function createHarness() {
   const elements = Object.fromEntries(
     ELEMENT_IDS.map((id) => [id, new FakeElement(id)])
   );
@@ -258,7 +258,6 @@ function createHarness({ reducedMotion = true } = {}) {
     nextRequestId: 1,
   };
   const beforeUnloadListeners = [];
-  let animationTime = 0;
 
   const window = {
     LotteryWheel: {
@@ -289,10 +288,7 @@ function createHarness({ reducedMotion = true } = {}) {
       if (type === "beforeunload") beforeUnloadListeners.push(listener);
     },
     requestAnimationFrame(callback) {
-      return setTimeout(() => {
-        animationTime += 16;
-        callback(animationTime);
-      }, 0);
+      return setTimeout(() => callback(Date.now()), 0);
     },
     cancelAnimationFrame(timer) {
       clearTimeout(timer);
@@ -301,12 +297,10 @@ function createHarness({ reducedMotion = true } = {}) {
       return setTimeout(callback, Math.min(Number(delay) || 0, 5));
     },
     performance: {
-      now() {
-        return animationTime;
-      },
+      now: Date.now,
     },
     matchMedia() {
-      return { matches: reducedMotion };
+      return { matches: true };
     },
   };
   window.window = window;
@@ -395,40 +389,6 @@ function createHarness({ reducedMotion = true } = {}) {
   };
 }
 
-test("draw data is prepared before the center button starts one smooth animation", async () => {
-  const harness = createHarness({ reducedMotion: false });
-  const { controller, elements, state } = harness;
-  const actions = [];
-
-  state.requestHandler = (action) => {
-    actions.push(action);
-    if (action === "prepareLotteryDraw") return createDrawResponse();
-    throw new Error(`Unexpected action: ${action}`);
-  };
-
-  assert.equal(await controller.open(createTicket()), true);
-  assert.deepEqual(
-    actions,
-    ["prepareLotteryDraw"],
-    "opening the wheel must prepare its display data and draw result in one request"
-  );
-  assert.equal(
-    elements["member-lottery-rotor"].style.transform,
-    "rotate(0deg)"
-  );
-
-  harness.click("member-lottery-spin-button");
-  await waitFor(
-    () => elements["member-lottery-result-state"].hidden === false,
-    "prepared draw result did not complete its animation"
-  );
-  assert.deepEqual(actions, ["prepareLotteryDraw"]);
-  assert.notEqual(
-    elements["member-lottery-rotor"].style.transform,
-    "rotate(0deg)"
-  );
-});
-
 function createError(code, message = code) {
   const error = new Error(message);
   error.code = code;
@@ -452,7 +412,8 @@ test("pending draws are isolated by member and demo scope, then replay for the o
   let drawAttempt = 0;
 
   state.requestHandler = (action) => {
-    if (action === "prepareLotteryDraw") {
+    if (action === "getLotteryConfig") return createWorkspaceResponse();
+    if (action === "drawLottery") {
       drawAttempt += 1;
       return drawAttempt === 1
         ? Promise.reject(transientError)
@@ -461,7 +422,15 @@ test("pending draws are isolated by member and demo scope, then replay for the o
     throw new Error(`Unexpected action: ${action}`);
   };
 
-  assert.equal(await controller.open(createTicket()), false);
+  assert.equal(await controller.open(createTicket()), true);
+  harness.click("member-lottery-spin-button");
+  await waitFor(
+    () =>
+      harness.elements["member-lottery-spin-button"].attributes.get(
+        "aria-busy"
+      ) === "false",
+    "first draw attempt did not settle"
+  );
 
   assert.equal(controller.hasPending(), true);
   assert.equal(controller.canClose(), false);
@@ -511,9 +480,11 @@ test("definitive no-draw response clears pending and refreshes the host card", a
   state.requestHandler = (action) => {
     if (action === "getLotteryConfig") {
       configReads += 1;
-      return createWorkspaceResponse({ ticketAvailable: false });
+      return createWorkspaceResponse({
+        ticketAvailable: configReads === 1,
+      });
     }
-    if (action === "prepareLotteryDraw") {
+    if (action === "drawLottery") {
       return Promise.reject(
         createError(
           "LOTTERY_ROUND_NOT_READY",
@@ -524,11 +495,12 @@ test("definitive no-draw response clears pending and refreshes the host card", a
     throw new Error(`Unexpected action: ${action}`);
   };
 
-  assert.equal(await controller.open(createTicket()), false);
+  assert.equal(await controller.open(createTicket()), true);
+  harness.click("member-lottery-spin-button");
   await waitFor(
     () =>
-      configReads === 1 &&
-      state.updates.length >= 1 &&
+      configReads === 2 &&
+      state.updates.length >= 2 &&
       state.updates.at(-1).card.availableDraws === 0,
     "host card was not refreshed after the definitive no-draw response"
   );
@@ -537,7 +509,7 @@ test("definitive no-draw response clears pending and refreshes the host card", a
   assert.equal(controller.canClose(), true);
   assert.equal(controller.requestClose(), true);
   assert.equal(storage.has(MEMBER_A_STORAGE_KEY), false);
-  assert.equal(configReads, 1);
+  assert.equal(configReads, 2);
   assert.equal(
     harness.elements["member-lottery-error-code"].textContent,
     "LOTTERY ROUND NOT READY"
@@ -550,7 +522,11 @@ test("unknown draw errors retain the pending request and keep the dialog locked"
   let configReads = 0;
 
   state.requestHandler = (action) => {
-    if (action === "prepareLotteryDraw") {
+    if (action === "getLotteryConfig") {
+      configReads += 1;
+      return createWorkspaceResponse();
+    }
+    if (action === "drawLottery") {
       return Promise.reject(
         createError("CONNECTION_ERROR", "The request timed out")
       );
@@ -558,16 +534,24 @@ test("unknown draw errors retain the pending request and keep the dialog locked"
     throw new Error(`Unexpected action: ${action}`);
   };
 
-  assert.equal(await controller.open(createTicket()), false);
+  assert.equal(await controller.open(createTicket()), true);
+  harness.click("member-lottery-spin-button");
+  await waitFor(
+    () =>
+      harness.elements["member-lottery-spin-button"].attributes.get(
+        "aria-busy"
+      ) === "false",
+    "unknown draw error did not settle"
+  );
 
   assert.equal(controller.hasPending(), true);
   assert.equal(controller.canClose(), false);
   assert.equal(controller.requestClose(), false);
   assert.equal(storage.has(MEMBER_A_STORAGE_KEY), true);
-  assert.equal(configReads, 0);
+  assert.equal(configReads, 1);
   assert.match(
-    harness.elements["member-lottery-error-message"].textContent,
-    /timed out/
+    harness.elements["member-lottery-spin-status"].textContent,
+    /安全重試/
   );
 });
 
