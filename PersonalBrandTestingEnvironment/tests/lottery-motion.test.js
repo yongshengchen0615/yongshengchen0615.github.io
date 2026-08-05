@@ -4,6 +4,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
+const contracts = fs.readFileSync(
+  path.join(root, "client/lottery/contracts.js"),
+  "utf8"
+);
 const animator = fs.readFileSync(
   path.join(root, "client/lottery/wheel-animator.js"),
   "utf8"
@@ -28,15 +32,21 @@ const hostScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
 const legacyScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
 
-function getFunctionContaining(source, marker, nextMarker) {
+function getFunctionContaining(source, marker) {
   const match = marker.exec(source);
   assert.ok(match, `missing source marker ${marker}`);
-  const start = source.lastIndexOf("\n        function ", match.index);
-  assert.notEqual(start, -1, `marker ${marker} must be inside a module function`);
-  const end = nextMarker
-    ? source.indexOf(nextMarker, match.index + match[0].length)
-    : source.indexOf("\n        function ", match.index + match[0].length);
-  return source.slice(start + 1, end === -1 ? source.length : end);
+
+  const functionIndex = source.lastIndexOf("function ", match.index);
+  assert.notEqual(functionIndex, -1, `missing function for marker ${marker}`);
+  const lineStart = source.lastIndexOf("\n", functionIndex) + 1;
+  const indentation = source.slice(lineStart, functionIndex);
+  assert.match(indentation, /^\s*$/, `function ${marker} has invalid indentation`);
+
+  const nextFunction = source.indexOf(
+    `\n${indentation}function `,
+    match.index + match[0].length
+  );
+  return source.slice(lineStart, nextFunction === -1 ? source.length : nextFunction);
 }
 
 test("member lottery v2 settles quickly with a continuous fast-to-slow curve", () => {
@@ -62,26 +72,10 @@ test("member lottery v2 settles quickly with a continuous fast-to-slow curve", (
 });
 
 test("member lottery v2 retries a pending draw with the same persisted request id", () => {
-  const ensurePending = getFunctionContaining(
-    store,
-    /function\s+ensure\s*\(/,
-    "\n      function clear()"
-  );
-  const readPending = getFunctionContaining(
-    store,
-    /function\s+read\s*\(/,
-    "\n      function ensure("
-  );
-  const prepare = getFunctionContaining(
-    service,
-    /function\s+prepare\s*\(/,
-    "\n      function resolvePrepared("
-  );
-  const spin = getFunctionContaining(
-    controller,
-    /function\s+handleSpin\s*\(/,
-    "\n        function retry()"
-  );
+  const ensurePending = getFunctionContaining(store, /function\s+ensure\s*\(/);
+  const readPending = getFunctionContaining(store, /function\s+read\s*\(/);
+  const prepare = getFunctionContaining(service, /function\s+prepare\s*\(/);
+  const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
 
   assert.match(ensurePending, /var\s+stored\s*=\s*read\(\)/);
   assert.match(
@@ -108,20 +102,14 @@ test("member lottery v2 retries a pending draw with the same persisted request i
 
 test("member lottery v2 releases only definitive no-draw failures and refreshes the card", () => {
   const definitiveFailure = getFunctionContaining(
-    service,
-    /function\s+isDefinitiveNoDrawError\s*\(/,
-    "\n      function create("
+    contracts,
+    /function\s+isDefinitiveNoDrawError\s*\(/
   );
   const refreshCard = getFunctionContaining(
     service,
-    /function\s+refreshHostCard\s*\(/,
-    "\n      function prepare("
+    /function\s+refreshHostCard\s*\(/
   );
-  const prepare = getFunctionContaining(
-    service,
-    /function\s+prepare\s*\(/,
-    "\n      function resolvePrepared("
-  );
+  const prepare = getFunctionContaining(service, /function\s+prepare\s*\(/);
 
   assert.match(definitiveFailure, /LOTTERY_ROUND_NOT_READY/);
   assert.match(definitiveFailure, /LOTTERY_TICKET_MISMATCH/);
@@ -134,31 +122,21 @@ test("member lottery v2 releases only definitive no-draw failures and refreshes 
   );
   assert.match(
     prepare,
-    /isDefinitiveNoDrawError\(error\)[\s\S]*options\.store\.clear\(\)[\s\S]*options\.guard\.clear\(\)[\s\S]*refreshHostCard\(\)/
+    /contracts\.isDefinitiveNoDrawError\(error\)[\s\S]*options\.store\.clear\(\)[\s\S]*options\.guard\.clear\(\)[\s\S]*refreshHostCard\(\)/
   );
 });
 
 test("member lottery v2 cannot close or leave while spinning or awaiting confirmation", () => {
-  const canClose = getFunctionContaining(
-    controller,
-    /function\s+canClose\s*\(/,
-    "\n        function updateControls("
-  );
+  const canClose = getFunctionContaining(controller, /function\s+canClose\s*\(/);
   const requestClose = getFunctionContaining(
     controller,
-    /function\s+requestClose\s*\(/,
-    "\n        view.bind("
+    /function\s+requestClose\s*\(/
   );
   const updateControls = getFunctionContaining(
     view,
-    /function\s+updateControls\s*\(/,
-    "\n        function bind("
+    /function\s+updateControls\s*\(/
   );
-  const bind = getFunctionContaining(
-    view,
-    /function\s+bind\s*\(/,
-    "\n        assertReady()"
-  );
+  const bind = getFunctionContaining(view, /function\s+bind\s*\(/);
 
   assert.match(canClose, /return\s+!isBusy\s*&&\s*!getPending\(\)/);
   assert.match(
