@@ -156,7 +156,31 @@ jobs:
       - name: Test client GAS
         run: node --test PersonalBrandTestingEnvironment/tests/client-gas.test.js
 
-      - name: Test frontend structure
+      - name: Test frontend structure group A
+        run: >-
+          node --test
+          --test-name-pattern="split client|HTML documents|admin separates|client member profile|client profile dialog|incomplete members|shared GAS transport allowlists|admin exposes|admin lottery page"
+          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+
+      - name: Test frontend structure group B
+        run: >-
+          node --test
+          --test-name-pattern="member home opens|legacy client lottery|admin creates point|admin point rules|admin member and point|client member pass|client point history|primary pages|client claim dialog|client captures"
+          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+
+      - name: Test frontend structure group C
+        run: >-
+          node --test
+          --test-name-pattern="new member creation|shared transport exposes|LIFF pages preconnect|shared GAS transport keeps|member home updates|admin surfaces|member claim UI|member point scanner|admin loads a local QR|LIFF entry points"
+          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+
+      - name: Test frontend structure group D
+        run: >-
+          node --test
+          --test-name-pattern="member-facing client|admin maps phone|client and admin JSON|admin access updates|both applications load|member home uses|deployment guides|admin UI|client renews|client clears|client does not start|admin renews|admin clears|admin does not start"
+          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+
+      - name: Test complete frontend structure
         run: node --test PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
 
       - name: Run complete regression suite
