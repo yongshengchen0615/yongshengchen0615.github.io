@@ -571,7 +571,7 @@ assert.match(
   /var\s+buttonEnabled\s*=\s*canReveal\s*\|\|\s*canRetryPreparation[\s\S]*button\.disabled\s*=\s*!buttonEnabled/
 );
   assert.match(wheelCanvas, /<canvas\b/i);
-  assert.match(wheelRotor, /id=["']lottery-rotor["']/i);
+  assert.match(wheelRotor, /id=["']member-lottery-rotor["']/i);
   assert.match(html, /id=["']lottery-ticket-list["']/);
   assert.match(html, /id=["']locked-ticket-list["']/);
   assert.match(html, /id=["']lottery-result-dialog["']/);
