@@ -104,38 +104,19 @@ jobs:
             PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
 
       - name: Test module registry compatibility
-        id: legacy_module_registry
-        continue-on-error: true
         run: node --test PersonalBrandTestingEnvironment/tests/module-registry.test.js
 
       - name: Test preload compatibility
-        id: legacy_preload
-        continue-on-error: true
         run: node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
 
       - name: Test legacy dialog runtime
-        id: legacy_runtime
-        continue-on-error: true
         run: node --test PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js
 
       - name: Test preload structure compatibility
-        id: legacy_structure
-        continue-on-error: true
         run: node --test PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
 
       - name: Test legacy lottery motion
-        id: legacy_motion
-        continue-on-error: true
         run: node --test PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Verify legacy lottery compatibility tests
-        if: always()
-        run: |
-          test "${{ steps.legacy_module_registry.outcome }}" = "success"
-          test "${{ steps.legacy_preload.outcome }}" = "success"
-          test "${{ steps.legacy_runtime.outcome }}" = "success"
-          test "${{ steps.legacy_structure.outcome }}" = "success"
-          test "${{ steps.legacy_motion.outcome }}" = "success"
 
       - name: Run remaining regression tests
         run: |
