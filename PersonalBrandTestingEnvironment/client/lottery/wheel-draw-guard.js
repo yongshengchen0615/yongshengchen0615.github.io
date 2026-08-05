@@ -2,9 +2,7 @@
   "use strict";
 
   var registry = root.PersonaModules;
-  if (!registry) {
-    throw new Error("PersonaModules must load before wheel draw guard.");
-  }
+  if (!registry) return;
 
   registry.define(
     "lottery.wheel-draw-guard",
