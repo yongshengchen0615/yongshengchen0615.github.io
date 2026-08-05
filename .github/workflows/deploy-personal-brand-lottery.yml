@@ -1,23 +1,21 @@
-name: Validate and deploy prepared member lottery
+name: Validate and Activate Personal Brand Lottery Preload
 
 on:
   pull_request:
     branches: ["main"]
     paths:
-      - "PersonalBrandTestingEnvironment/client/member-lottery.js"
-      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/client/index.html"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
     paths:
-      - "PersonalBrandTestingEnvironment/client/member-lottery.js"
-      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/client/index.html"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
@@ -32,7 +30,6 @@ jobs:
   validate-and-activate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,7 +41,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Activate prepared draw modules
+      - name: Activate prepared lottery scripts
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -68,7 +65,7 @@ jobs:
               end = text.find(end_marker, start + len(start_marker))
               if start < 0 or end < 0:
                   raise SystemExit(
-                      "Unable to locate member-lottery.js and script.js in client/index.html"
+                      "Unable to locate the member lottery script boundary in client/index.html"
                   )
               end += len(end_marker)
               path.write_text(
@@ -85,18 +82,20 @@ jobs:
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
 
-      - name: Run prepared draw tests
+      - name: Run preload tests
         run: |
-          node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
+          node --test \
+            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
 
-      - name: Validate activation order
+      - name: Validate dependency order
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          text = Path(
-              "PersonalBrandTestingEnvironment/client/index.html"
-          ).read_text(encoding="utf-8")
+          text = Path("PersonalBrandTestingEnvironment/client/index.html").read_text(
+              encoding="utf-8"
+          )
           expected = "\n".join([
               '    <script defer src="member-lottery.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
@@ -107,20 +106,19 @@ jobs:
               '    <script defer src="script.js"></script>',
           ])
           if expected not in text:
-              raise SystemExit("Prepared draw module dependency order is invalid")
+              raise SystemExit("Lottery module dependency order is invalid")
           PY
 
-      - name: Commit activated script order
+      - name: Commit activated dependency order
         if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
-            echo "Prepared draw modules are already active."
+            echo "Prepared lottery scripts are already active."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
-          git commit -m "deploy: activate prepared member lottery"
-          git pull --rebase origin main
+          git commit -m "deploy: activate prepared lottery scripts"
           git push origin HEAD:main
