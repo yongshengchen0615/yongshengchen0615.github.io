@@ -1,4 +1,4 @@
-name: Validate Personal Brand Lottery Modules
+name: Validate and Activate Personal Brand Lottery Preload
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
@@ -14,6 +15,7 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
@@ -38,8 +40,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Activate modular lottery preparation
 
+      - name: Activate prepared lottery scripts
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -72,8 +74,7 @@ jobs:
               )
           PY
 
-      - name: Validate module syntax
-
+      - name: Validate JavaScript syntax
         run: |
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
@@ -81,27 +82,11 @@ jobs:
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
 
-          node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
-
-      - name: Validate activation order
+      - name: Run preload tests
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          text = Path("PersonalBrandTestingEnvironment/client/index.html").read_text(encoding="utf-8")
-          expected = (
-              '    <script defer src="member-lottery.js"></script>\n'
-              '    <script defer src="member-lottery-preload.js"></script>\n'
-              '    <script defer src="script.js"></script>'
-          )
-          if expected not in text:
-              raise SystemExit("Prepared lottery module is not loaded between member-lottery.js and script.js")
-          PY
-
-
-      - name: Run module boundary tests
-        run: |
-          node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
+          node --test \
+            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
 
       - name: Validate dependency order
         run: |
@@ -128,12 +113,12 @@ jobs:
         if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
-            echo "Modular lottery preparation is already active."
+            echo "Prepared lottery scripts are already active."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
-          git commit -m "deploy: activate modular lottery preparation"
-
+          git commit -m "deploy: activate prepared lottery scripts"
+          git push origin HEAD:main
