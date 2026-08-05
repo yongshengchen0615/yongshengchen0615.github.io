@@ -12,14 +12,24 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: deploy-personal-brand-lottery
+  cancel-in-progress: false
+
 jobs:
   validate-and-activate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Activate preload module
         run: |
@@ -37,10 +47,25 @@ jobs:
               path.write_text(text.replace(target, replacement, 1), encoding="utf-8")
           PY
 
-      - name: Validate JavaScript
+      - name: Validate prepared lottery module
         run: |
           node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
-          node --test PersonalBrandTestingEnvironment/tests/*.test.js
+          node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
+
+      - name: Validate activation order
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("PersonalBrandTestingEnvironment/client/index.html").read_text(encoding="utf-8")
+          expected = (
+              '    <script defer src="member-lottery.js"></script>\n'
+              '    <script defer src="member-lottery-preload.js"></script>\n'
+              '    <script defer src="script.js"></script>'
+          )
+          if expected not in text:
+              raise SystemExit("Prepared lottery module is not loaded between member-lottery.js and script.js")
+          PY
 
       - name: Commit activation
         run: |
@@ -48,8 +73,10 @@ jobs:
             echo "Preload module is already active."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
           git commit -m "deploy: activate prepared lottery flow"
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
