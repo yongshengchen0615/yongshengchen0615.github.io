@@ -4,116 +4,125 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const script = fs.readFileSync(path.join(root, "client/member-lottery.js"), "utf8");
+const animator = fs.readFileSync(
+  path.join(root, "client/lottery/wheel-animator.js"),
+  "utf8"
+);
+const store = fs.readFileSync(
+  path.join(root, "client/lottery/pending-request-store.js"),
+  "utf8"
+);
+const service = fs.readFileSync(
+  path.join(root, "client/lottery/preparation-service.js"),
+  "utf8"
+);
+const controller = fs.readFileSync(
+  path.join(root, "client/lottery/dialog-controller.js"),
+  "utf8"
+);
+const view = fs.readFileSync(
+  path.join(root, "client/lottery/dialog-view.js"),
+  "utf8"
+);
 const hostScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
 const legacyScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
 
-function getTopLevelFunctionContaining(source, marker) {
+function getFunctionContaining(source, marker, nextMarker) {
   const match = marker.exec(source);
   assert.ok(match, `missing source marker ${marker}`);
-
-  const start = source.lastIndexOf("\n  function ", match.index);
-  assert.notEqual(start, -1, `marker ${marker} must be inside a top-level function`);
-
-  const end = source.indexOf("\n  function ", match.index + match[0].length);
+  const start = source.lastIndexOf("\n        function ", match.index);
+  assert.notEqual(start, -1, `marker ${marker} must be inside a module function`);
+  const end = nextMarker
+    ? source.indexOf(nextMarker, match.index + match[0].length)
+    : source.indexOf("\n        function ", match.index + match[0].length);
   return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
-test("in-place member lottery settles quickly with a continuous fast-to-slow curve", () => {
-  assert.match(script, /SPIN_DEGREES_PER_MS\s*=\s*1\.45/);
-  assert.match(script, /FINAL_SPIN_TURNS\s*=\s*2/);
+test("member lottery v2 settles quickly with a continuous fast-to-slow curve", () => {
+  assert.match(animator, /SPIN_DEGREES_PER_MS\s*=\s*1\.45/);
+  assert.match(animator, /FINAL_SPIN_TURNS\s*=\s*2/);
   assert.match(
-    script,
+    animator,
     /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
   );
   assert.match(
-    script,
+    animator,
     /quadraticEaseOut\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
   );
   assert.match(
-    script,
-    /smoothstepCorrection\s*=\s*Math\.pow\(\s*progress\s*\*\s*\(1\s*-\s*progress\)\s*,\s*2\s*\)/
+    animator,
+    /smoothstepCorrection\s*=\s*Math\.pow\(progress\s*\*\s*\(1\s*-\s*progress\),\s*2\)/
   );
   assert.match(
-    script,
-    /easedProgress\s*=\s*quadraticEaseOut\s*\+\s*smoothstepCorrection/
+    animator,
+    /rotationDelta\s*\*\s*\(quadraticEaseOut\s*\+\s*smoothstepCorrection\)/
   );
+  assert.match(animator, /prefers-reduced-motion:\s*reduce/);
 });
 
-test("member lottery retries a pending draw with the same persisted request id", () => {
-  const ensurePending = getTopLevelFunctionContaining(
-    script,
-    /function\s+ensurePendingRequest\s*\(/
+test("member lottery v2 retries a pending draw with the same persisted request id", () => {
+  const ensurePending = getFunctionContaining(
+    store,
+    /function\s+ensure\s*\(/,
+    "\n      function clear()"
   );
-  const readPending = getTopLevelFunctionContaining(
-    script,
-    /function\s+readPendingRequest\s*\(/
+  const readPending = getFunctionContaining(
+    store,
+    /function\s+read\s*\(/,
+    "\n      function ensure("
   );
-  const handleDraw = getTopLevelFunctionContaining(
-    script,
-    /function\s+handleDraw\s*\(/
+  const prepare = getFunctionContaining(
+    service,
+    /function\s+prepare\s*\(/,
+    "\n      function resolvePrepared("
   );
-  const finishDraw = getTopLevelFunctionContaining(
-    script,
-    /function\s+finishDraw\s*\(/
-  );
-  const storageKey = getTopLevelFunctionContaining(
-    script,
-    /function\s+getRequestStorageKey\s*\(/
+  const spin = getFunctionContaining(
+    controller,
+    /function\s+handleSpin\s*\(/,
+    "\n        function retry()"
   );
 
-  assert.match(ensurePending, /var\s+storageKey\s*=\s*getRequestStorageKey\(\)/);
-  assert.match(ensurePending, /var\s+stored\s*=\s*readPendingRequest\(\)/);
+  assert.match(ensurePending, /var\s+stored\s*=\s*read\(\)/);
   assert.match(
     ensurePending,
-    /stored\.lotteryTypeId\s*!==\s*ticket\.lotteryTypeId[\s\S]*stored\.cardRoundKey\s*!==\s*ticket\.cardRoundKey/
+    /stored\.cardRoundKey\s*!==\s*ticket\.cardRoundKey[\s\S]*stored\.lotteryTypeId\s*!==\s*ticket\.lotteryTypeId/
+  );
+  assert.match(ensurePending, /return\s+stored/);
+  assert.match(ensurePending, /options\.createRequestId\(\)/);
+  assert.match(ensurePending, /storage\.setItem\(storageKey,\s*JSON\.stringify\(request\)\)/);
+  assert.match(readPending, /storage\.getItem\(storageKey\)/);
+  assert.match(store, /if\s*\(safeIsDemo\(\)\)/);
+  assert.match(store, /REQUEST_STORAGE_PREFIX\s*\+\s*liffId\s*\+\s*["']:demo["']/);
+  assert.match(store, /\/\^MBR-\[A-Z0-9\]\{10\}\$\//);
+  assert.match(
+    prepare,
+    /request\s*=\s*options\.store\.ensure\(ticket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*request\.requestId/
   );
   assert.match(
-    ensurePending,
-    /return\s+stored[\s\S]*window\.MemberApi\.createRequestId\(\)/
+    spin,
+    /preparationService\.resolvePrepared\(\s*selectedTicket,\s*pending\.requestId/
   );
-  assert.match(ensurePending, /window\.sessionStorage\.setItem\(/);
-  assert.match(readPending, /window\.sessionStorage\.getItem\(/);
-  assert.match(
-    readPending,
-    /pendingRequestStorageKey\s*!==\s*storageKey[\s\S]*pendingRequest\s*=\s*null/
-  );
-  assert.match(storageKey, /if\s*\(safeIsDemo\(\)\)/);
-  assert.match(storageKey, /options\.liffId\s*\+\s*["']:demo["']/);
-  assert.match(storageKey, /\/\^MBR-\[A-Z0-9\]\{10\}\$\//);
-  assert.match(
-    storageKey,
-    /REQUEST_STORAGE_PREFIX\s*\+\s*options\.liffId\s*\+\s*["']:["']\s*\+\s*memberId/
-  );
-  assert.match(
-    handleDraw,
-    /pendingRequest\s*=\s*ensurePendingRequest\(selectedTicket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*pendingRequest\.requestId/
-  );
-  assert.match(
-    finishDraw,
-    /animateToPrize\([^)]*\)\.then\([\s\S]*clearPendingRequest\(\)/
-  );
+  assert.doesNotMatch(spin, /options\.request\(|["']drawLottery["']/);
 });
 
-test("member lottery releases only definitive no-draw failures and refreshes the card", () => {
-  const handleDraw = getTopLevelFunctionContaining(
-    script,
-    /function\s+handleDraw\s*\(/
+test("member lottery v2 releases only definitive no-draw failures and refreshes the card", () => {
+  const definitiveFailure = getFunctionContaining(
+    service,
+    /function\s+isDefinitiveNoDrawError\s*\(/,
+    "\n      function create("
   );
-  const definitiveFailure = getTopLevelFunctionContaining(
-    script,
-    /function\s+isDefinitiveNoDrawError\s*\(/
+  const refreshCard = getFunctionContaining(
+    service,
+    /function\s+refreshHostCard\s*\(/,
+    "\n      function prepare("
   );
-  const refreshCard = getTopLevelFunctionContaining(
-    script,
-    /function\s+refreshHostCardAfterNoDraw\s*\(/
+  const prepare = getFunctionContaining(
+    service,
+    /function\s+prepare\s*\(/,
+    "\n      function resolvePrepared("
   );
 
-  assert.match(
-    handleDraw,
-    /isDefinitiveNoDrawError\(error\)[\s\S]*clearPendingRequest\(\)[\s\S]*refreshHostCardAfterNoDraw\(\)/
-  );
   assert.match(definitiveFailure, /LOTTERY_ROUND_NOT_READY/);
   assert.match(definitiveFailure, /LOTTERY_TICKET_MISMATCH/);
   assert.match(definitiveFailure, /INVALID_LOTTERY_TICKET/);
@@ -121,54 +130,61 @@ test("member lottery releases only definitive no-draw failures and refreshes the
   assert.match(refreshCard, /options\.request\(["']getLotteryConfig["']/);
   assert.match(
     refreshCard,
-    /normalizeWorkspace\(response\.data\)[\s\S]*safeCardUpdated\(cardStatus,\s*workspace\.totalPoints\)/
+    /response\.data[\s\S]*response\.data\.card[\s\S]*safeCardUpdated\(response\.data\.card,\s*totalPoints\)/
+  );
+  assert.match(
+    prepare,
+    /isDefinitiveNoDrawError\(error\)[\s\S]*options\.store\.clear\(\)[\s\S]*options\.guard\.clear\(\)[\s\S]*refreshHostCard\(\)/
   );
 });
 
-test("member lottery cannot close or leave while spinning or awaiting confirmation", () => {
-  const canClose = getTopLevelFunctionContaining(
-    script,
-    /function\s+canClose\s*\(/
+test("member lottery v2 cannot close or leave while spinning or awaiting confirmation", () => {
+  const canClose = getFunctionContaining(
+    controller,
+    /function\s+canClose\s*\(/,
+    "\n        function updateControls("
   );
-  const requestClose = getTopLevelFunctionContaining(
-    script,
-    /function\s+requestClose\s*\(/
+  const requestClose = getFunctionContaining(
+    controller,
+    /function\s+requestClose\s*\(/,
+    "\n        view.bind("
   );
-  const updateControls = getTopLevelFunctionContaining(
-    script,
-    /function\s+updateControls\s*\(/
+  const updateControls = getFunctionContaining(
+    view,
+    /function\s+updateControls\s*\(/,
+    "\n        function bind("
   );
-  const bindInteractions = getTopLevelFunctionContaining(
-    script,
-    /function\s+bindInteractions\s*\(/
+  const bind = getFunctionContaining(
+    view,
+    /function\s+bind\s*\(/,
+    "\n        assertReady()"
   );
 
-  assert.match(canClose, /!isBusy\s*&&\s*!readPendingRequest\(\)/);
+  assert.match(canClose, /return\s+!isBusy\s*&&\s*!getPending\(\)/);
   assert.match(
     requestClose,
     /if\s*\(!canClose\(\)\)[\s\S]*return false/
   );
-  assert.match(updateControls, /var\s+closeDisabled\s*=\s*!canClose\(\)/);
   assert.match(updateControls, /member-lottery-close-button/);
   assert.match(updateControls, /member-lottery-return-button/);
-  assert.match(updateControls, /button\.disabled\s*=\s*closeDisabled/);
+  assert.match(updateControls, /button\.disabled\s*=\s*state\.canClose\s*!==\s*true/);
   assert.match(
-    bindInteractions,
-    /dialog\.addEventListener\(["']cancel["'][\s\S]*event\.preventDefault\(\)[\s\S]*requestClose\(\)/
+    bind,
+    /dialog\.addEventListener\(["']cancel["'][\s\S]*event\.preventDefault\(\)[\s\S]*handlers\.onClose/
   );
   assert.match(
-    bindInteractions,
-    /dialog\.addEventListener\(\s*["']click["'][\s\S]*event\.target\s*!==\s*dialog[\s\S]*requestClose\(/
+    bind,
+    /dialog\.addEventListener\(\s*["']click["'][\s\S]*event\.target\s*!==\s*dialog[\s\S]*handlers\.onClose/
   );
   assert.match(
-    bindInteractions,
-    /window\.addEventListener\(["']beforeunload["'][\s\S]*if\s*\(canClose\(\)\)\s*return[\s\S]*event\.preventDefault\(\)[\s\S]*event\.returnValue\s*=\s*["']["']/
+    bind,
+    /runtime\.addEventListener\(["']beforeunload["'][\s\S]*handlers\.canClose\(\)[\s\S]*event\.preventDefault\(\)[\s\S]*event\.returnValue\s*=\s*["']["']/
   );
   assert.match(
     hostScript,
     /dialog\.id\s*===\s*["']member-lottery-dialog["'][\s\S]*!window\.MemberLotteryDialog\.canClose\(\)[\s\S]*!force[\s\S]*return/
   );
-  assert.match(script, /typeof\s+dialog\.showModal\s*===\s*["']function["']/);
+  assert.match(view, /typeof\s+dialog\.showModal\s*===\s*["']function["']/);
 });
 
 test("legacy lottery page still locks all navigation during a draw", () => {
