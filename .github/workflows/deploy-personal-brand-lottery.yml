@@ -53,6 +53,7 @@ jobs:
           expected = "\n".join([
               start_marker,
               '    <script defer src="../shared/module-registry.js"></script>',
+              '    <script defer src="member-lottery.js"></script>',
               '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
@@ -83,6 +84,7 @@ jobs:
       - name: Validate JavaScript syntax
         run: |
           node --check PersonalBrandTestingEnvironment/shared/module-registry.js
+          node --check PersonalBrandTestingEnvironment/client/member-lottery.js
           node --check PersonalBrandTestingEnvironment/client/lottery/contracts.js
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
@@ -171,6 +173,7 @@ jobs:
           expected = "\n".join([
               '    <script defer src="../shared/lottery-wheel.js"></script>',
               '    <script defer src="../shared/module-registry.js"></script>',
+              '    <script defer src="member-lottery.js"></script>',
               '    <script defer src="lottery/contracts.js"></script>',
               '    <script defer src="lottery/pending-request-store.js"></script>',
               '    <script defer src="lottery/preparation-service.js"></script>',
