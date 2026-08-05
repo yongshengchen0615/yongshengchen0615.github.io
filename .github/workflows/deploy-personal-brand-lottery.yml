@@ -94,7 +94,43 @@ jobs:
           node --check PersonalBrandTestingEnvironment/client/lottery/dialog-controller.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-v2.js
 
-      - name: Run lottery tests
+      - name: Run member lottery v2 tests
+        run: |
+          node --test \
+            PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
+            PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
+            PersonalBrandTestingEnvironment/tests/wheel-animator.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
+
+      - name: Run legacy lottery compatibility tests
+        run: |
+          node --test \
+            PersonalBrandTestingEnvironment/tests/module-registry.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
+
+      - name: Run remaining regression tests
+        run: |
+          mapfile -d '' tests < <(
+            find PersonalBrandTestingEnvironment/tests -maxdepth 1 -name '*.test.js' \
+              ! -name 'member-lottery-v2.test.js' \
+              ! -name 'workspace-mapper.test.js' \
+              ! -name 'wheel-animator.test.js' \
+              ! -name 'lottery-v2-structure.test.js' \
+              ! -name 'lottery-activation-compatibility.test.js' \
+              ! -name 'module-registry.test.js' \
+              ! -name 'member-lottery-preload.test.js' \
+              ! -name 'member-lottery-runtime.test.js' \
+              ! -name 'lottery-preload-structure.test.js' \
+              ! -name 'lottery-motion.test.js' \
+              -print0
+          )
+          node --test "${tests[@]}"
+
+      - name: Run complete regression suite
         run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
 
       - name: Validate dependency order
