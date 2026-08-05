@@ -11,8 +11,15 @@
     var getStorageKey = options.getStorageKey;
     var createRequestId = options.createRequestId;
     var normalizeTicket = options.normalizeTicket;
+    var memoryKey = "";
+    var memoryRequest = null;
 
-    if (!storage || typeof storage.getItem !== "function") {
+    if (
+      !storage ||
+      typeof storage.getItem !== "function" ||
+      typeof storage.setItem !== "function" ||
+      typeof storage.removeItem !== "function"
+    ) {
       throw createError(
         "INVALID_STORE_CONFIGURATION",
         "PendingRequestStore 需要 sessionStorage 相容介面。"
@@ -42,20 +49,18 @@
       if (!key) return null;
 
       try {
-        var value = JSON.parse(storage.getItem(key) || "null");
-        if (
-          !value ||
-          !/^[a-zA-Z0-9-]{10,80}$/.test(String(value.requestId || ""))
-        ) {
-          return null;
+        var stored = parseRequest(storage.getItem(key));
+        if (stored) {
+          remember(key, stored);
+          return cloneRequest(stored);
         }
-
-        var ticket = normalizeTicket(value);
-        ticket.requestId = String(value.requestId);
-        return ticket;
       } catch (_error) {
-        return null;
+        // Fall back to the in-memory request for this page session.
       }
+
+      return memoryKey === key && memoryRequest
+        ? cloneRequest(memoryRequest)
+        : null;
     }
 
     function ensure(ticketValue) {
@@ -99,18 +104,58 @@
         );
       }
 
-      storage.setItem(key, JSON.stringify(request));
-      return request;
+      remember(key, request);
+      try {
+        storage.setItem(key, JSON.stringify(request));
+      } catch (_error) {
+        // The in-memory request still preserves idempotency in this page.
+      }
+      return cloneRequest(request);
     }
 
     function clear() {
       var key = storageKey();
+      if (memoryKey === key) {
+        memoryKey = "";
+        memoryRequest = null;
+      }
       if (!key) return;
+
       try {
         storage.removeItem(key);
       } catch (_error) {
         // Storage failure must not hide the original draw outcome.
       }
+    }
+
+    function parseRequest(raw) {
+      var value = JSON.parse(raw || "null");
+      if (
+        !value ||
+        !/^[a-zA-Z0-9-]{10,80}$/.test(String(value.requestId || ""))
+      ) {
+        return null;
+      }
+
+      var ticket = normalizeTicket(value);
+      ticket.requestId = String(value.requestId);
+      return ticket;
+    }
+
+    function remember(key, request) {
+      memoryKey = key;
+      memoryRequest = cloneRequest(request);
+    }
+
+    function cloneRequest(request) {
+      return {
+        requestId: String(request.requestId),
+        settingVersion: String(request.settingVersion),
+        cardNumber: Number(request.cardNumber),
+        milestonePoints: Number(request.milestonePoints),
+        lotteryTypeId: String(request.lotteryTypeId),
+        cardRoundKey: String(request.cardRoundKey),
+      };
     }
 
     function storageKey() {
