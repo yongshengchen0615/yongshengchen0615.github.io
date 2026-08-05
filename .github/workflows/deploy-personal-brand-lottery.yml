@@ -21,8 +21,13 @@ permissions:
   contents: write
 
 concurrency:
+<<<<<<< HEAD
   group: personal-brand-lottery-${{ github.ref }}
   cancel-in-progress: true
+=======
+  group: deploy-personal-brand-lottery
+  cancel-in-progress: false
+>>>>>>> 1afb52516f29286104f139633c5f698c6fce300a
 
 jobs:
   validate-and-activate:
@@ -39,7 +44,11 @@ jobs:
         with:
           node-version: "22"
 
+<<<<<<< HEAD
       - name: Activate modular lottery preparation
+=======
+      - name: Activate preload module
+>>>>>>> 1afb52516f29286104f139633c5f698c6fce300a
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -72,13 +81,36 @@ jobs:
               )
           PY
 
+<<<<<<< HEAD
       - name: Validate module syntax
+=======
+      - name: Validate prepared lottery module
+>>>>>>> 1afb52516f29286104f139633c5f698c6fce300a
         run: |
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
+<<<<<<< HEAD
+=======
+          node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
+
+      - name: Validate activation order
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("PersonalBrandTestingEnvironment/client/index.html").read_text(encoding="utf-8")
+          expected = (
+              '    <script defer src="member-lottery.js"></script>\n'
+              '    <script defer src="member-lottery-preload.js"></script>\n'
+              '    <script defer src="script.js"></script>'
+          )
+          if expected not in text:
+              raise SystemExit("Prepared lottery module is not loaded between member-lottery.js and script.js")
+          PY
+>>>>>>> 1afb52516f29286104f139633c5f698c6fce300a
 
       - name: Run module boundary tests
         run: |
@@ -116,6 +148,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
+<<<<<<< HEAD
           git commit -m "deploy: activate modular lottery preparation"
+=======
+          git commit -m "deploy: activate prepared lottery flow"
+>>>>>>> 1afb52516f29286104f139633c5f698c6fce300a
           git pull --rebase origin main
           git push origin HEAD:main
