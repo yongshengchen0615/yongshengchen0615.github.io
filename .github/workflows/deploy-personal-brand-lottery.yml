@@ -10,6 +10,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
@@ -20,6 +21,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
@@ -98,7 +100,8 @@ jobs:
           node --test \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
-            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
 
       - name: Validate dependency order
         run: |
