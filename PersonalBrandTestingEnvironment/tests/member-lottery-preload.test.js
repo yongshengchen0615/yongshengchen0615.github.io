@@ -6,10 +6,15 @@ const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
 const scriptPaths = [
-  "client/lottery/pending-request-store.js",
-  "client/lottery/preparation-service.js",
+  "shared/module-registry.js",
+  // Deliberately define modules out of dependency order. The registry resolves
+  // the graph lazily when the composition root requests the controller.
+  "client/lottery/preload-controller.js",
   "client/lottery/preparation-view.js",
   "client/lottery/wheel-draw-guard.js",
+  "client/lottery/preparation-service.js",
+  "client/lottery/pending-request-store.js",
+  "client/lottery/contracts.js",
   "client/member-lottery-preload.js",
 ];
 
@@ -163,6 +168,7 @@ function createHarness() {
   };
 
   const window = {
+    console,
     document: {
       getElementById(id) {
         return elements[id] || null;
@@ -257,6 +263,7 @@ function createHarness() {
     originalCalls,
     state,
     storage,
+    window,
     async simulateLegacySpin() {
       const pending = JSON.parse(storage.get(STORAGE_KEY));
       return configuredOptions.request(
@@ -340,4 +347,14 @@ test("a definitive no-draw failure releases the pending request", async () => {
 
   assert.equal(harness.storage.has(STORAGE_KEY), false);
   assert.equal(harness.api.hasPending(), false);
+});
+
+test("internal lottery modules do not leak individual globals", () => {
+  const harness = createHarness();
+  assert.ok(harness.window.PersonaModules);
+  assert.equal(harness.window.MemberLotteryPendingRequestStore, undefined);
+  assert.equal(harness.window.MemberLotteryPreparationService, undefined);
+  assert.equal(harness.window.MemberLotteryPreparationView, undefined);
+  assert.equal(harness.window.MemberLotteryWheelDrawGuard, undefined);
+  assert.equal(harness.window.MemberLotteryDialogLegacy, undefined);
 });
