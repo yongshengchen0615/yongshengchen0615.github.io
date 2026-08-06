@@ -116,6 +116,26 @@ function createHarness() {
     },
   });
   registry.set("lottery.wheel-draw-guard", { create: () => guard });
+  registry.set("lottery.workspace-service", {
+    create({ request }) {
+      let inFlight = null;
+      return {
+        load() {
+          if (inFlight) return inFlight;
+          inFlight = Promise.resolve(
+            request("getLotteryConfig", {}, undefined)
+          ).finally(() => {
+            inFlight = null;
+          });
+          return inFlight;
+        },
+        prime(response) {
+          return response;
+        },
+        invalidate() {},
+      };
+    },
+  });
   registry.set("lottery.preparation-service", {
     create({ request, store, guard: drawGuard }) {
       return {
@@ -140,6 +160,7 @@ function createHarness() {
         resolvePrepared(activeTicket, requestId) {
           return drawGuard.resolve(activeTicket, requestId);
         },
+        invalidateWorkspace() {},
         isDefinitiveNoDrawError() {
           return false;
         },
@@ -193,6 +214,9 @@ function createHarness() {
       return {
         draw() {
           viewEvents.push("draw-wheel");
+        },
+        prepare() {
+          viewEvents.push("prepare-wheel");
         },
         reset() {
           viewEvents.push("reset-wheel");
@@ -342,7 +366,9 @@ function flush() {
 test("open prepares config and draw before the wheel becomes actionable", async () => {
   const harness = createHarness();
 
-  assert.equal(await harness.controller.open(harness.ticket), true);
+  const opening = harness.controller.open(harness.ticket);
+  assert.equal(harness.controller.canClose(), false);
+  assert.equal(await opening, true);
   assert.deepEqual(
     harness.requestCalls.map((call) => call.action),
     ["getLotteryConfig", "drawLottery"]
@@ -364,4 +390,18 @@ test("spin consumes the prepared response without another backend request", asyn
   assert.ok(harness.viewEvents.includes("settle"));
   assert.ok(harness.viewEvents.includes("result"));
   assert.equal(harness.controller.canClose(), true);
+});
+
+
+test("rapid duplicate opens share one preparation transaction", async () => {
+  const harness = createHarness();
+  const first = harness.controller.open(harness.ticket);
+  const second = harness.controller.open(harness.ticket);
+
+  assert.equal(first, second);
+  assert.equal(await first, true);
+  assert.deepEqual(
+    harness.requestCalls.map((call) => call.action),
+    ["getLotteryConfig", "drawLottery"]
+  );
 });

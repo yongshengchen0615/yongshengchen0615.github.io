@@ -8,13 +8,21 @@ on:
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/index.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/client/styles.css"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
+      - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
+      - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
+      - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
       - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
@@ -25,13 +33,21 @@ on:
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
       - "PersonalBrandTestingEnvironment/client/index.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/client/styles.css"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
+      - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
+      - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
+      - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
       - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
@@ -48,6 +64,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -60,7 +79,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Validate lottery JavaScript syntax
+      - name: Validate lottery JavaScript and GAS syntax
         shell: bash
         run: |
           set -euo pipefail
@@ -73,13 +92,21 @@ jobs:
             node --check "$file"
           done
 
+          cp PersonalBrandTestingEnvironment/gas/client/Code.gs /tmp/member-lottery-client-gas.js
+          node --check /tmp/member-lottery-client-gas.js
+
       - name: Run lottery regression suite
         run: |
           node --test \
+            PersonalBrandTestingEnvironment/tests/client-gas.test.js \
+            PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-motion.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js \
+            PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js \
             PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
             PersonalBrandTestingEnvironment/tests/wheel-animator.test.js

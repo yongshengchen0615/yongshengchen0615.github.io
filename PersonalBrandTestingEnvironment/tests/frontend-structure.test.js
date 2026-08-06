@@ -1435,6 +1435,39 @@ test("member home uses an isolated lottery dialog controller instead of page nav
   assert.doesNotMatch(html, /<iframe\b/i);
 });
 
+test("member ticket workspace refresh is deduplicated and the dialog exposes actionable states", () => {
+  const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
+  const controller = fs.readFileSync(
+    path.join(root, "client/lottery/dialog-controller.js"),
+    "utf8"
+  );
+  const workspaceService = fs.readFileSync(
+    path.join(root, "client/lottery/workspace-service.js"),
+    "utf8"
+  );
+
+  assert.match(html, /id="member-ticket-refresh-status"[^>]*role="status"/);
+  assert.match(html, /id="member-lottery-loading-title"/);
+  assert.match(html, /id="member-lottery-loading-message"/);
+  assert.match(html, /id="member-lottery-error-guidance"/);
+  assert.match(script, /if \(memberTicketRefreshPromise\) return memberTicketRefreshPromise;/);
+  assert.match(script, /\.refreshTickets\(\{ force: true \}\)/);
+  assert.match(
+    script,
+    /byId\("member-earned-ticket-list"\)\.addEventListener\(\s*"click"/
+  );
+  assert.doesNotMatch(
+    getTopLevelFunctionContaining(script, /function\s+renderMemberTicketPanels\s*\(/),
+    /addEventListener\(\s*"click"/
+  );
+  assert.match(controller, /if \(isPreparing && activeOpenPromise\)/);
+  assert.match(controller, /return !isPreparing && !isBusy && !getPending\(\);/);
+  assert.match(workspaceService, /var\s+DEFAULT_TTL_MS\s*=\s*5000/);
+  assert.match(workspaceService, /if \(inFlight\) return inFlight;/);
+  assert.match(workspaceService, /generation/);
+});
+
 test("deployment guides document two independent GAS deployments and Sheet-based admin approval", () => {
   for (const relativePath of ["README.md", "setup.html"]) {
     const guide = fs.readFileSync(path.join(root, relativePath), "utf8");

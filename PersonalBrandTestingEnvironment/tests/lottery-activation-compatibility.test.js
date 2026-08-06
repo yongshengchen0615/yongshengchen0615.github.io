@@ -15,6 +15,7 @@ const v2Boundary = [
   '    <script defer src="../shared/module-registry.js"></script>',
   '    <script defer src="lottery/contracts.js"></script>',
   '    <script defer src="lottery/pending-request-store.js"></script>',
+  '    <script defer src="lottery/workspace-service.js"></script>',
   '    <script defer src="lottery/preparation-service.js"></script>',
   '    <script defer src="lottery/wheel-draw-guard.js"></script>',
   '    <script defer src="lottery/workspace-mapper.js"></script>',

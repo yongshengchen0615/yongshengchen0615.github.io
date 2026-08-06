@@ -105,6 +105,9 @@ function createCanvasRecorder() {
     clearRect(x, y, width, height) {
       operations.push(["clearRect", x, y, width, height]);
     },
+    setTransform(a, b, c, d, e, f) {
+      operations.push(["setTransform", a, b, c, d, e, f]);
+    },
   };
   return {
     canvas: {
@@ -381,7 +384,10 @@ test("shared lottery wheel renders bounded labels and accessible text colors", (
 
   assert.equal(canvas.width, 720);
   assert.equal(canvas.height, 720);
-  assert.deepEqual(operations[0], ["clearRect", 0, 0, 720, 720]);
+  assert.deepEqual(
+    operations.find((operation) => operation[0] === "clearRect"),
+    ["clearRect", 0, 0, 720, 720]
+  );
   assert.deepEqual(
     operations.filter((operation) => operation[0] === "fill").map((operation) => operation[1]),
     ["#000000", "#D9D6CC"]
@@ -402,6 +408,31 @@ test("shared lottery wheel renders bounded labels and accessible text colors", (
     2
   );
   assert.deepEqual(operations.at(-1), ["stroke", "#0B3C2C", 10]);
+});
+
+
+
+test("shared lottery wheel uses a bounded high-DPI backing store", () => {
+  const window = loadBrowserModule("shared/lottery-wheel.js");
+  const { canvas, operations } = createCanvasRecorder();
+  const prizes = [
+    { label: "A", color: "#FFFFFF" },
+    { label: "B", color: "#0B3C2C" },
+  ];
+
+  assert.equal(
+    window.LotteryWheel.draw(canvas, prizes, {
+      size: 720,
+      pixelRatio: 3,
+    }),
+    true
+  );
+  assert.equal(canvas.width, 2160);
+  assert.equal(canvas.height, 2160);
+  assert.deepEqual(
+    operations.find((operation) => operation[0] === "setTransform"),
+    ["setTransform", 3, 0, 0, 3, 0, 0]
+  );
 });
 
 test("shared lottery wheel fails safely without a usable canvas", () => {

@@ -50,31 +50,27 @@ function getFunctionContaining(source, marker) {
 }
 
 test("member lottery v2 settles quickly with a continuous fast-to-slow curve", () => {
-  assert.match(animator, /SPIN_DEGREES_PER_MS\s*=\s*1\.45/);
-  assert.match(animator, /FINAL_SPIN_TURNS\s*=\s*2/);
+  assert.match(animator, /INITIAL_DEGREES_PER_MS\s*=\s*1\.45/);
+  assert.match(animator, /FINAL_SPIN_TURNS\s*=\s*3/);
+  assert.match(animator, /MIN_DURATION_MS\s*=\s*2200/);
+  assert.match(animator, /MAX_DURATION_MS\s*=\s*3200/);
   assert.match(
     animator,
-    /duration\s*=\s*\(2\s*\*\s*rotationDelta\)\s*\/\s*SPIN_DEGREES_PER_MS/
+    /\(3\s*\*\s*rotationDelta\)\s*\/\s*INITIAL_DEGREES_PER_MS/
   );
   assert.match(
     animator,
-    /quadraticEaseOut\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*2\)/
+    /eased\s*=\s*1\s*-\s*Math\.pow\(1\s*-\s*progress,\s*3\)/
   );
-  assert.match(
-    animator,
-    /smoothstepCorrection\s*=\s*Math\.pow\(progress\s*\*\s*\(1\s*-\s*progress\),\s*2\)/
-  );
-  assert.match(
-    animator,
-    /rotationDelta\s*\*\s*\(quadraticEaseOut\s*\+\s*smoothstepCorrection\)/
-  );
+  assert.match(animator, /rotationDelta\s*\*\s*eased/);
   assert.match(animator, /prefers-reduced-motion:\s*reduce/);
+  assert.match(animator, /function\s+prepare\s*\(/);
 });
 
 test("member lottery v2 retries a pending draw with the same persisted request id", () => {
   const ensurePending = getFunctionContaining(store, /function\s+ensure\s*\(/);
   const readPending = getFunctionContaining(store, /function\s+read\s*\(/);
-  const prepare = getFunctionContaining(service, /function\s+prepare\s*\(/);
+  const prepare = getFunctionContaining(service, /function\s+performPrepare\s*\(/);
   const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
 
   assert.match(ensurePending, /var\s+stored\s*=\s*read\(\)/);
@@ -98,6 +94,7 @@ test("member lottery v2 retries a pending draw with the same persisted request i
     /preparationService\.resolvePrepared\(\s*selectedTicket,\s*pending\.requestId/
   );
   assert.doesNotMatch(spin, /options\.request\(|["']drawLottery["']/);
+  assert.doesNotMatch(spin, /startWaiting\(/);
 });
 
 test("member lottery v2 releases only definitive no-draw failures and refreshes the card", () => {
@@ -109,13 +106,13 @@ test("member lottery v2 releases only definitive no-draw failures and refreshes 
     service,
     /function\s+refreshHostCard\s*\(/
   );
-  const prepare = getFunctionContaining(service, /function\s+prepare\s*\(/);
+  const prepare = getFunctionContaining(service, /function\s+performPrepare\s*\(/);
 
   assert.match(definitiveFailure, /LOTTERY_ROUND_NOT_READY/);
   assert.match(definitiveFailure, /LOTTERY_TICKET_MISMATCH/);
   assert.match(definitiveFailure, /INVALID_LOTTERY_TICKET/);
   assert.doesNotMatch(definitiveFailure, /BACKEND_TIMEOUT|BUSY|INVALID_RESPONSE/);
-  assert.match(refreshCard, /options\.request\(["']getLotteryConfig["']/);
+  assert.match(refreshCard, /workspaceService[\s\S]*\.load\(\{ force: true \}\)/);
   assert.match(
     refreshCard,
     /response\.data[\s\S]*response\.data\.card[\s\S]*safeCardUpdated\(response\.data\.card,\s*totalPoints\)/
@@ -138,7 +135,10 @@ test("member lottery v2 cannot close or leave while spinning or awaiting confirm
   );
   const bind = getFunctionContaining(view, /function\s+bind\s*\(/);
 
-  assert.match(canClose, /return\s+!isBusy\s*&&\s*!getPending\(\)/);
+  assert.match(
+    canClose,
+    /return\s+!isPreparing\s*&&\s*!isBusy\s*&&\s*!getPending\(\)/
+  );
   assert.match(
     requestClose,
     /if\s*\(!canClose\(\)\)[\s\S]*return false/

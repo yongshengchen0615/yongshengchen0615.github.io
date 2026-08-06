@@ -85,8 +85,8 @@ test("reduced-motion settlement still aligns the winning sector", async () => {
   animator.reset();
   await animator.settle({ prizeId: "B" }, lottery);
 
-  assert.equal(animator.getRotation(), 945);
-  assert.equal(rotor.style.transform, "rotate(945deg)");
+  assert.equal(animator.getRotation(), 1305);
+  assert.equal(rotor.style.transform, "rotate(1305deg)");
   assert.equal(statuses.at(-1), "轉盤旋轉中，請稍候結果…");
 });
 

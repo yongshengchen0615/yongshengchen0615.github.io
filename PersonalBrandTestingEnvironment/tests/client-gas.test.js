@@ -3249,3 +3249,25 @@ test("point redemption rolls back its ledger row when response assembly fails", 
   assert.equal(retry.data.pointBalance, 3);
   assert.equal(redemptionRows.length, 1);
 });
+
+test("lottery GAS bounds lock waits and reuses draw snapshots", () => {
+  const getConfigStart = code.indexOf("function getLotteryConfig_(");
+  const drawStart = code.indexOf("function drawLottery_(");
+  const resolveStart = code.indexOf("function resolveAvailablePointCardReward_(", drawStart);
+  const getConfig = code.slice(getConfigStart, drawStart);
+  const draw = code.slice(drawStart, resolveStart);
+
+  assert.match(getConfig, /initializationLock\.tryLock\(4000\)/);
+  assert.match(draw, /lock\.tryLock\(4000\)/);
+  assert.match(
+    code,
+    /function getMemberPointCardStatus_\([\s\S]*drawRecords[\s\S]*Array\.isArray\(drawRecords\)/
+  );
+  assert.equal(
+    (draw.match(/readAllLotteryDraws_\(drawSheet\)/g) || []).length,
+    2,
+    "a new draw should read one initial and one pre-append ledger snapshot"
+  );
+  assert.match(draw, /drawRecords\.concat\(\[persistedDraw\]\)/);
+  assert.doesNotMatch(draw, /findLotteryDrawByRequest_\(/);
+});

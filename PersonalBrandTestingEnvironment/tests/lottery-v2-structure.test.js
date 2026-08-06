@@ -17,6 +17,7 @@ const bootstrap = fs.readFileSync(
   "utf8"
 );
 const moduleNames = [
+  "workspace-service.js",
   "workspace-mapper.js",
   "wheel-animator.js",
   "dialog-view.js",
