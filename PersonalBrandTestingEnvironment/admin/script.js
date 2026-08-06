@@ -42,6 +42,7 @@
   var updatingMemberIds = Object.create(null);
   var toastTimer = null;
   var bootVersion = 0;
+  var startPromise = null;
   var listRequestVersion = 0;
   var pointHistoryRequestVersion = 0;
   var lotteryRequestVersion = 0;
@@ -51,10 +52,13 @@
   var isMutationLoading = false;
   var isPointMutationLoading = false;
   var isPointHistoryLoading = false;
+  var pointHistoryLoadPromise = null;
   var isPointWorkspaceAvailable = false;
   var isLotteryLoading = false;
+  var lotteryConfigLoadPromise = null;
   var isLotteryMutationLoading = false;
   var isLotteryHistoryLoading = false;
+  var lotteryHistoryLoadPromise = null;
   var isLiffInitialized = false;
   var memberSearchFrame = 0;
   var adminWheelRenderFrame = 0;
@@ -109,16 +113,23 @@
   }
 
   function start() {
+    if (startPromise) return startPromise;
+
     setLoading("正在載入管理後台", "讀取公開設定並準備 LINE 身分驗證。請稍候。");
     setConnection("正在載入設定", "loading");
     setView("loading-state");
 
-    return loadConfig()
+    var promise = loadConfig()
       .then(function () {
         applyBrand();
         return boot();
       })
-      .catch(handleFatalError);
+      .catch(handleFatalError)
+      .finally(function () {
+        if (startPromise === promise) startPromise = null;
+      });
+    startPromise = promise;
+    return promise;
   }
 
   function boot() {
@@ -278,7 +289,8 @@
   }
 
   function fetchPointHistory(expectedBootVersion, preserveDashboard) {
-    if (isPointHistoryLoading || isPointMutationLoading) return Promise.resolve();
+    if (pointHistoryLoadPromise) return pointHistoryLoadPromise;
+    if (isPointMutationLoading) return Promise.resolve();
     var thisHistoryRequest = ++pointHistoryRequestVersion;
     var refreshButton = byId("refresh-point-history-button");
     if (!currentIdToken && window.liff && typeof window.liff.getIDToken === "function") {
@@ -302,7 +314,7 @@
       setConnection("正在同步紀錄", "loading");
     }
 
-    return sendAdminRequest("adminListPointHistory", {})
+    var promise = sendAdminRequest("adminListPointHistory", {})
       .then(function (response) {
         if (
           expectedBootVersion !== bootVersion ||
@@ -334,15 +346,20 @@
         handleFatalError(error);
       })
       .finally(function () {
-        if (thisHistoryRequest !== pointHistoryRequestVersion) return;
-        isPointHistoryLoading = false;
-        setButtonBusy(refreshButton, false);
-        updateOperationControls();
+        if (thisHistoryRequest === pointHistoryRequestVersion) {
+          isPointHistoryLoading = false;
+          setButtonBusy(refreshButton, false);
+          updateOperationControls();
+        }
+        if (pointHistoryLoadPromise === promise) pointHistoryLoadPromise = null;
       });
+    pointHistoryLoadPromise = promise;
+    return promise;
   }
 
   function fetchLotteryConfig(expectedBootVersion, preserveDashboard) {
-    if (isLotteryLoading || isLotteryMutationLoading) return Promise.resolve();
+    if (lotteryConfigLoadPromise) return lotteryConfigLoadPromise;
+    if (isLotteryMutationLoading) return Promise.resolve();
     var thisRequest = ++lotteryRequestVersion;
     var refreshButton = byId("refresh-lottery-button");
     currentIdToken = window.liff.getIDToken() || "";
@@ -363,7 +380,7 @@
       setView("loading-state");
     }
 
-    return sendAdminRequest("adminGetLotteryConfig", {})
+    var promise = sendAdminRequest("adminGetLotteryConfig", {})
       .then(function (response) {
         if (
           expectedBootVersion !== bootVersion ||
@@ -391,17 +408,20 @@
         handleFatalError(error);
       })
       .finally(function () {
-        if (thisRequest !== lotteryRequestVersion) return;
-        isLotteryLoading = false;
-        setButtonBusy(refreshButton, false);
-        updateOperationControls();
+        if (thisRequest === lotteryRequestVersion) {
+          isLotteryLoading = false;
+          setButtonBusy(refreshButton, false);
+          updateOperationControls();
+        }
+        if (lotteryConfigLoadPromise === promise) lotteryConfigLoadPromise = null;
       });
+    lotteryConfigLoadPromise = promise;
+    return promise;
   }
 
   function fetchLotteryHistory(expectedBootVersion, preserveDashboard) {
-    if (isLotteryHistoryLoading || isLotteryMutationLoading) {
-      return Promise.resolve();
-    }
+    if (lotteryHistoryLoadPromise) return lotteryHistoryLoadPromise;
+    if (isLotteryMutationLoading) return Promise.resolve();
     var thisRequest = ++lotteryHistoryRequestVersion;
     var refreshButton = byId("refresh-lottery-history-button");
     if (!currentIdToken && window.liff && typeof window.liff.getIDToken === "function") {
@@ -425,7 +445,7 @@
       setConnection("正在同步紀錄", "loading");
     }
 
-    return sendAdminRequest("adminListLotteryDraws", {})
+    var promise = sendAdminRequest("adminListLotteryDraws", {})
       .then(function (response) {
         if (
           expectedBootVersion !== bootVersion ||
@@ -462,11 +482,15 @@
         handleFatalError(error);
       })
       .finally(function () {
-        if (thisRequest !== lotteryHistoryRequestVersion) return;
-        isLotteryHistoryLoading = false;
-        setButtonBusy(refreshButton, false);
-        updateOperationControls();
+        if (thisRequest === lotteryHistoryRequestVersion) {
+          isLotteryHistoryLoading = false;
+          setButtonBusy(refreshButton, false);
+          updateOperationControls();
+        }
+        if (lotteryHistoryLoadPromise === promise) lotteryHistoryLoadPromise = null;
       });
+    lotteryHistoryLoadPromise = promise;
+    return promise;
   }
 
   function sendAdminRequest(action, fields) {

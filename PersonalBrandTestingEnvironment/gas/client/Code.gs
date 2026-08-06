@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.10.0";
+var API_VERSION = "1.10.1";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -746,13 +746,26 @@ function updateMemberProfile_(identity, request, config) {
 }
 
 function listPointHistory_(identity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  var initializationLock = LockService.getScriptLock();
+  if (!initializationLock.tryLock(4000)) {
     throw appError_("BUSY", "點數紀錄正在整理，請稍後再試。");
   }
 
+  var memberSheet;
+  var redemptionSheet;
+  var lotteryDrawSheet;
   try {
-    var memberSheet = getOrCreateMemberSheet_(config);
+    memberSheet = getOrCreateMemberSheet_(config);
+    redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法初始化點數紀錄，請稍後再試。");
+  } finally {
+    initializationLock.releaseLock();
+  }
+
+  try {
     var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
     if (!memberRowNumber) {
       throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
@@ -766,8 +779,6 @@ function listPointHistory_(identity, request, config) {
       throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法讀取點數紀錄。");
     }
 
-    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
-    var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
     var pointBalance = getMemberPointBalance_(
       redemptionSheet,
       identity.lineUserId,
@@ -790,8 +801,6 @@ function listPointHistory_(identity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數紀錄，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -803,27 +812,33 @@ function readMemberPointHistory_(sheet, lineUserId) {
     .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
     .getValues();
   var redemptionIds = Object.create(null);
-  var requestKeys = Object.create(null);
+  var requestIds = Object.create(null);
   var campaignModes = Object.create(null);
   var history = [];
 
   rows.forEach(function (row, index) {
-    var redemptionId = plainSheetText_(
-      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
-      100
-    );
     var storedLineUserId = plainSheetText_(
       row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
       128
     );
+    if (!/^U[0-9a-f]{32}$/.test(storedLineUserId)) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "會員點數紀錄格式不正確，請聯絡管理員。"
+      );
+    }
+    if (storedLineUserId !== lineUserId) return;
+
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
     var requestId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.requestId - 1], 100);
-    var requestKey = storedLineUserId + ":" + requestId;
     if (
       !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
-      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
       !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
       redemptionIds[redemptionId] ||
-      requestKeys[requestKey]
+      requestIds[requestId]
     ) {
       throw appError_(
         "POINT_DATA_ERROR",
@@ -831,7 +846,7 @@ function readMemberPointHistory_(sheet, lineUserId) {
       );
     }
     redemptionIds[redemptionId] = true;
-    requestKeys[requestKey] = true;
+    requestIds[requestId] = true;
 
     var campaignId = plainSheetText_(
       row[POINT_REDEMPTION_COLUMN.campaignId - 1],
@@ -861,8 +876,8 @@ function readMemberPointHistory_(sheet, lineUserId) {
       balanceAfter < points ||
       isNaN(redeemedDate.getTime()) ||
       !redemptionMode ||
-      (campaignModes[storedLineUserId + ":" + campaignId] &&
-        (campaignModes[storedLineUserId + ":" + campaignId] !== redemptionMode ||
+      (campaignModes[campaignId] &&
+        (campaignModes[campaignId] !== redemptionMode ||
           redemptionMode !== "repeatable"))
     ) {
       throw appError_(
@@ -870,22 +885,20 @@ function readMemberPointHistory_(sheet, lineUserId) {
         "會員點數紀錄格式不正確，請聯絡管理員。"
       );
     }
-    campaignModes[storedLineUserId + ":" + campaignId] = redemptionMode;
+    campaignModes[campaignId] = redemptionMode;
 
-    if (storedLineUserId === lineUserId) {
-      history.push({
-        historyId: redemptionId,
-        entryType: "earn",
-        redemptionId: redemptionId,
-        label: String(points) + " 點",
-        points: points,
-        balanceAfter: balanceAfter,
-        redeemedAt: redeemedDate.toISOString(),
-        redemptionMode: redemptionMode,
-        source: "qr",
-        rowNumber: index + 2,
-      });
-    }
+    history.push({
+      historyId: redemptionId,
+      entryType: "earn",
+      redemptionId: redemptionId,
+      label: String(points) + " 點",
+      points: points,
+      balanceAfter: balanceAfter,
+      redeemedAt: redeemedDate.toISOString(),
+      redemptionMode: redemptionMode,
+      source: "qr",
+      rowNumber: index + 2,
+    });
   });
 
   history.sort(function (left, right) {
@@ -904,18 +917,25 @@ function readMemberLotteryHistory_(sheet, lineUserId) {
     .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
     .getValues();
   var drawIds = Object.create(null);
-  var requestKeys = Object.create(null);
+  var requestIds = Object.create(null);
   var history = [];
 
   rows.forEach(function (row) {
+    var storedLineUserId = plainSheetText_(
+      row[LOTTERY_DRAW_COLUMN.lineUserId - 1],
+      128
+    );
+    if (!/^U[0-9a-f]{32}$/.test(storedLineUserId)) {
+      throw appError_("LOTTERY_DATA_ERROR", "抽獎紀錄會員識別碼格式不正確。");
+    }
+    if (storedLineUserId !== lineUserId) return;
+
     var draw = lotteryDrawRecordFromRow_(row);
-    var requestKey = draw.lineUserId + ":" + draw.requestId;
-    if (drawIds[draw.drawId] || requestKeys[requestKey]) {
+    if (drawIds[draw.drawId] || requestIds[draw.requestId]) {
       throw appError_("LOTTERY_DATA_ERROR", "抽獎紀錄識別碼重複，請聯絡管理員。");
     }
     drawIds[draw.drawId] = true;
-    requestKeys[requestKey] = true;
-    if (draw.lineUserId !== lineUserId) return;
+    requestIds[draw.requestId] = true;
     history.push({
       historyId: draw.drawId,
       entryType: draw.legacyDraw ? "spend" : "draw",

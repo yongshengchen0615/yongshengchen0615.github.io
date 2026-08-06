@@ -28,7 +28,7 @@
  * status field.
  */
 
-var API_VERSION = "1.8.0";
+var API_VERSION = "1.8.1";
 var SERVICE_NAME = "member-admin-api";
 var REQUIRED_LINE_CHANNEL_ID = "2010791619";
 var DEFAULT_SHEET_NAME = "Members";
@@ -835,18 +835,26 @@ function adminListPointTypes_(adminIdentity, request, config) {
 }
 
 function adminListPointHistory_(adminIdentity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  var authorizationLock = LockService.getScriptLock();
+  if (!authorizationLock.tryLock(4000)) {
     throw appError_("BUSY", "點數紀錄正在讀取，請稍後再試。");
   }
 
+  var redemptionSheet;
   try {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
-    var redemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
-    var history = readAdminPointHistory_(redemptionSheet);
+    redemptionSheet = getOrCreatePointRedemptionSheet_(spreadsheet, config);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法初始化點數使用紀錄，請稍後再試。");
+  } finally {
+    authorizationLock.releaseLock();
+  }
 
+  try {
+    var history = readAdminPointHistory_(redemptionSheet);
     history.sort(function (left, right) {
       var timeDifference = dateSortValue_(right.redeemedAt) - dateSortValue_(left.redeemedAt);
       return timeDifference || right.rowNumber - left.rowNumber;
@@ -875,8 +883,6 @@ function adminListPointHistory_(adminIdentity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取點數使用紀錄，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
 }
 
@@ -1788,18 +1794,29 @@ function adminSaveLotteryConfig_(adminIdentity, request, config) {
 }
 
 function adminListLotteryDraws_(adminIdentity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  var authorizationLock = LockService.getScriptLock();
+  if (!authorizationLock.tryLock(4000)) {
     throw appError_("BUSY", "抽獎紀錄正在讀取，請稍後再試。");
   }
 
+  var drawSheet;
+  var typeSheet;
+  var memberSheet;
   try {
     var spreadsheet = openSpreadsheet_(config);
     var adminSheet = getOrCreateAdminSheet_(spreadsheet, config);
     requireApprovedAdmin_(adminIdentity, request, adminSheet);
-    var drawSheet = getOrCreateLotteryDrawSheet_(spreadsheet, config);
-    var typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
-    var memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
+    drawSheet = getOrCreateLotteryDrawSheet_(spreadsheet, config);
+    typeSheet = getOrCreateLotteryTypeSheet_(spreadsheet, config);
+    memberSheet = getOrCreateMemberSheet_(spreadsheet, config);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法初始化抽獎紀錄，請稍後再試。");
+  } finally {
+    authorizationLock.releaseLock();
+  }
+
+  try {
     var membersById = readMemberNamesById_(memberSheet);
     var lotteryTypeNames = Object.create(null);
     readLotteryTypes_(typeSheet).forEach(function (type) {
@@ -1843,8 +1860,6 @@ function adminListLotteryDraws_(adminIdentity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取抽獎紀錄，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
 }
 

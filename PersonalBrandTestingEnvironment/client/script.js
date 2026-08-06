@@ -16,6 +16,7 @@
   var isDemoSession = false;
   var toastTimer = null;
   var bootVersion = 0;
+  var startPromise = null;
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-member-invalid-token-recovery:";
   var POINT_CLAIM_STORAGE_PREFIX = "persona-member-point-claim:";
   var POINT_REDEMPTION_REQUEST_STORAGE_PREFIX =
@@ -37,6 +38,7 @@
   var memberTicketRefreshPromise = null;
   var isMemberTicketSelectionBusy = false;
   var isPointHistoryLoading = false;
+  var pointHistoryLoadPromise = null;
   var hasLoadedPointHistory = false;
   var isPointHistoryDirty = true;
   var pointHistoryRequestVersion = 0;
@@ -1080,7 +1082,7 @@
   }
 
   function loadPointHistory() {
-    if (isPointHistoryLoading) return Promise.resolve();
+    if (pointHistoryLoadPromise) return pointHistoryLoadPromise;
     if (isDemoSession) {
       renderDemoPointHistory();
       return Promise.resolve();
@@ -1094,7 +1096,7 @@
     var requestVersion = ++pointHistoryRequestVersion;
     isPointHistoryLoading = true;
     renderPointHistoryLoading();
-    return sendGasRequest("listPointHistory", token, getLiffContext())
+    var promise = sendGasRequest("listPointHistory", token, getLiffContext())
       .then(function (response) {
         if (requestVersion !== pointHistoryRequestVersion) return;
         assertSuccessfulResponse(response);
@@ -1131,11 +1133,17 @@
         renderPointHistoryError(normalized.message);
       })
       .finally(function () {
-        if (requestVersion !== pointHistoryRequestVersion) return;
-        isPointHistoryLoading = false;
-        byId("refresh-point-history-button").disabled = false;
-        byId("point-history-loading").hidden = true;
+        if (requestVersion === pointHistoryRequestVersion) {
+          isPointHistoryLoading = false;
+          byId("refresh-point-history-button").disabled = false;
+          byId("point-history-loading").hidden = true;
+        }
+        if (pointHistoryLoadPromise === promise) {
+          pointHistoryLoadPromise = null;
+        }
       });
+    pointHistoryLoadPromise = promise;
+    return promise;
   }
 
   function renderDemoPointHistory() {
@@ -2825,17 +2833,24 @@
   byId("current-year").textContent = String(new Date().getFullYear());
 
   function start() {
+    if (startPromise) return startPromise;
+
     setConnection("正在載入設定", "loading");
     setLoadingCopy("正在載入會員系統", "讀取公開設定並準備 LINE 登入服務。請稍候。");
     setView("loading-state");
 
-    return loadConfig()
+    var promise = loadConfig()
       .then(function () {
         applyBrand();
         configureMemberLotteryDialog();
         return boot();
       })
-      .catch(handleClientError);
+      .catch(handleClientError)
+      .finally(function () {
+        if (startPromise === promise) startPromise = null;
+      });
+    startPromise = promise;
+    return promise;
   }
 
   start();
