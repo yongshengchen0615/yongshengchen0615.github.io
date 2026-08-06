@@ -64,6 +64,35 @@ jobs:
 
           ref_expression = "$" + "{{ github.ref_name }}"
           for script_index, script in enumerate(scripts):
+              if script_index == 1:
+                  test_path = Path(
+                      "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
+                  )
+                  tests = test_path.read_text(encoding="utf-8")
+                  old = '''    createPointRedemptionRow(gas, {
+                    lineUserId: `U${"c".repeat(32)}`,
+                    requestId: "request-other-member",
+                  }),'''
+                  old = "\n".join(
+                      line[18:] if line.startswith("                  ") else line
+                      for line in old.splitlines()
+                  )
+                  new = '''    createPointRedemptionRow(gas, {
+                    requestId: "request-same-member-second",
+                  }),'''
+                  new = "\n".join(
+                      line[18:] if line.startswith("                  ") else line
+                      for line in new.splitlines()
+                  )
+                  if tests.count(old) != 1:
+                      raise SystemExit(
+                          "Unable to update the target-member duplicate ID regression case"
+                      )
+                  test_path.write_text(
+                      tests.replace(old, new, 1),
+                      encoding="utf-8",
+                  )
+
               if script_index == len(scripts) - 1:
                   if bootstrap_path.exists():
                       bootstrap_path.unlink()
