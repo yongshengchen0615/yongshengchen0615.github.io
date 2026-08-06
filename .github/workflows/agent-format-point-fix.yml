@@ -34,145 +34,139 @@ jobs:
               "    var pointBalance = getMemberPointBalance_(", redeem_start
           )
           outer_catch = text.index("  } catch (error) {", mutation_start)
-          mutation_block = '''    var pointBalance = getMemberPointBalance_(
-              redemptionSheet,
-              identity.lineUserId
-            );
-            var preflightCardStatus = getMemberPointCardStatusForConfig_(
-              config,
-              identity.lineUserId,
-              redemptionSheet,
-              lotteryDrawSheet
-            );
-            if (preflightCardStatus.totalPoints !== pointBalance) {
-              throw appError_(
-                "POINT_DATA_ERROR",
-                "領點前的集點卡累計資料不一致。"
-              );
-            }
-            if (pointBalance > 9007199254740991 - campaign.points) {
-              throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
-            }
-            var balanceAfter = pointBalance + campaign.points;
-            var now = new Date();
-            var redemptionId =
-              "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();
-            var redemptionAppended = false;
-
-            try {
-              redemptionSheet.appendRow([
-                redemptionId,
-                safeSheetText_(campaign.campaignId),
-                safeSheetText_(campaign.pointTypeId),
-                safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),
-                safeSheetText_(identity.lineUserId),
-                campaign.points,
-                balanceAfter,
-                now,
-                request.requestId,
-                campaign.redemptionMode,
-              ]);
-              redemptionAppended = true;
-
-              var redemptionRowNumber = findPointRedemptionRowNumber_(
-                redemptionSheet,
-                redemptionId,
-                identity.lineUserId,
-                request.requestId
-              );
-              if (!redemptionRowNumber) {
-                throw appError_(
-                  "POINT_DATA_ERROR",
-                  "領點紀錄寫入後無法定位，請聯絡管理員。"
-                );
-              }
-              applyPointRedemptionRowFormats_(redemptionSheet, redemptionRowNumber);
-              SpreadsheetApp.flush();
-
-              var response = pointCampaignRedemptionResponseForConfig_(
-                config,
-                identity.lineUserId,
-                redemptionSheet,
-                lotteryDrawSheet,
-                access,
-                campaign,
-                "",
-                campaign.points
-              );
-              if (response.data.pointBalance !== balanceAfter) {
-                throw appError_(
-                  "POINT_DATA_ERROR",
-                  "領點後的集點卡累計資料不一致。"
-                );
-              }
-              return response;
-            } catch (redemptionError) {
-              if (redemptionAppended) {
-                var appendedRowNumber = findPointRedemptionRowNumber_(
-                  redemptionSheet,
-                  redemptionId,
-                  identity.lineUserId,
-                  request.requestId
-                );
-                if (!appendedRowNumber) {
-                  throw appError_(
-                    "POINT_DATA_ERROR",
-                    "領點失敗且無法確認寫入狀態，請聯絡管理員。"
-                  );
-                }
-                redemptionSheet.deleteRow(appendedRowNumber);
-                SpreadsheetApp.flush();
-              }
-              throw redemptionError;
-            }
-          '''
-          mutation_block = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in mutation_block.splitlines()
-          ) + "\n"
+          mutation_block = "\n".join([
+              "    var pointBalance = getMemberPointBalance_(",
+              "      redemptionSheet,",
+              "      identity.lineUserId",
+              "    );",
+              "    var preflightCardStatus = getMemberPointCardStatusForConfig_(",
+              "      config,",
+              "      identity.lineUserId,",
+              "      redemptionSheet,",
+              "      lotteryDrawSheet",
+              "    );",
+              "    if (preflightCardStatus.totalPoints !== pointBalance) {",
+              "      throw appError_(",
+              '        "POINT_DATA_ERROR",',
+              '        "領點前的集點卡累計資料不一致。"',
+              "      );",
+              "    }",
+              "    if (pointBalance > 9007199254740991 - campaign.points) {",
+              '      throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");',
+              "    }",
+              "    var balanceAfter = pointBalance + campaign.points;",
+              "    var now = new Date();",
+              "    var redemptionId =",
+              '      "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();',
+              "    var redemptionAppended = false;",
+              "",
+              "    try {",
+              "      redemptionSheet.appendRow([",
+              "        redemptionId,",
+              "        safeSheetText_(campaign.campaignId),",
+              "        safeSheetText_(campaign.pointTypeId),",
+              '        safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),',
+              "        safeSheetText_(identity.lineUserId),",
+              "        campaign.points,",
+              "        balanceAfter,",
+              "        now,",
+              "        request.requestId,",
+              "        campaign.redemptionMode,",
+              "      ]);",
+              "      redemptionAppended = true;",
+              "",
+              "      var redemptionRowNumber = findPointRedemptionRowNumber_(",
+              "        redemptionSheet,",
+              "        redemptionId,",
+              "        identity.lineUserId,",
+              "        request.requestId",
+              "      );",
+              "      if (!redemptionRowNumber) {",
+              "        throw appError_(",
+              '          "POINT_DATA_ERROR",',
+              '          "領點紀錄寫入後無法定位，請聯絡管理員。"',
+              "        );",
+              "      }",
+              "      applyPointRedemptionRowFormats_(redemptionSheet, redemptionRowNumber);",
+              "      SpreadsheetApp.flush();",
+              "",
+              "      var response = pointCampaignRedemptionResponseForConfig_(",
+              "        config,",
+              "        identity.lineUserId,",
+              "        redemptionSheet,",
+              "        lotteryDrawSheet,",
+              "        access,",
+              "        campaign,",
+              '        "",',
+              "        campaign.points",
+              "      );",
+              "      if (response.data.pointBalance !== balanceAfter) {",
+              "        throw appError_(",
+              '          "POINT_DATA_ERROR",',
+              '          "領點後的集點卡累計資料不一致。"',
+              "        );",
+              "      }",
+              "      return response;",
+              "    } catch (redemptionError) {",
+              "      if (redemptionAppended) {",
+              "        var appendedRowNumber = findPointRedemptionRowNumber_(",
+              "          redemptionSheet,",
+              "          redemptionId,",
+              "          identity.lineUserId,",
+              "          request.requestId",
+              "        );",
+              "        if (!appendedRowNumber) {",
+              "          throw appError_(",
+              '            "POINT_DATA_ERROR",',
+              '            "領點失敗且無法確認寫入狀態，請聯絡管理員。"',
+              "          );",
+              "        }",
+              "        redemptionSheet.deleteRow(appendedRowNumber);",
+              "        SpreadsheetApp.flush();",
+              "      }",
+              "      throw redemptionError;",
+              "    }",
+              "",
+          ])
           text = text[:mutation_start] + mutation_block + text[outer_catch:]
 
           ledger_start = text.index("function readMemberPointLedger_(")
           loop_start = text.index("  rows.forEach(function (row) {", ledger_start)
           campaign_start = text.index("    var campaignId = plainSheetText_(", loop_start)
-          ledger_prefix = '''  rows.forEach(function (row) {
-              var storedLineUserId = plainSheetText_(
-                row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
-                128
-              );
-              if (storedLineUserId !== lineUserId) return;
-
-              var redemptionId = plainSheetText_(
-                row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
-                100
-              );
-              var requestId = plainSheetText_(
-                row[POINT_REDEMPTION_COLUMN.requestId - 1],
-                100
-              );
-              var requestKey = storedLineUserId + ":" + requestId;
-              if (
-                !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
-                !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
-                !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
-                redemptionIds[redemptionId] ||
-                requestKeys[requestKey]
-              ) {
-                throw appError_(
-                  "POINT_DATA_ERROR",
-                  "會員點數紀錄格式不正確，請聯絡管理員。"
-                );
-              }
-              redemptionIds[redemptionId] = true;
-              requestKeys[requestKey] = true;
-
-          '''
-          ledger_prefix = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in ledger_prefix.splitlines()
-          ) + "\n"
+          ledger_prefix = "\n".join([
+              "  rows.forEach(function (row) {",
+              "    var storedLineUserId = plainSheetText_(",
+              "      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],",
+              "      128",
+              "    );",
+              "    if (storedLineUserId !== lineUserId) return;",
+              "",
+              "    var redemptionId = plainSheetText_(",
+              "      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],",
+              "      100",
+              "    );",
+              "    var requestId = plainSheetText_(",
+              "      row[POINT_REDEMPTION_COLUMN.requestId - 1],",
+              "      100",
+              "    );",
+              '    var requestKey = storedLineUserId + ":" + requestId;',
+              "    if (",
+              "      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||",
+              "      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||",
+              "      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||",
+              "      redemptionIds[redemptionId] ||",
+              "      requestKeys[requestKey]",
+              "    ) {",
+              "      throw appError_(",
+              '        "POINT_DATA_ERROR",',
+              '        "會員點數紀錄格式不正確，請聯絡管理員。"',
+              "      );",
+              "    }",
+              "    redemptionIds[redemptionId] = true;",
+              "    requestKeys[requestKey] = true;",
+              "",
+          ])
           text = text[:loop_start] + ledger_prefix + text[campaign_start:]
-
           path.write_text(text, encoding="utf-8")
           PY
 
