@@ -33,28 +33,34 @@ jobs:
 
           bootstrap_path = Path(".github/workflows/agent-fix-point-redemption.yml")
           trigger_path = Path(".github/workflows/agent-trigger-point-fix.yml")
-          lines = bootstrap_path.read_text(encoding="utf-8").splitlines()
-          scripts = []
-          index = 0
-          while index < len(lines):
-              line = lines[index]
-              if line.lstrip() != "run: |":
-                  index += 1
-                  continue
-              run_indent = len(line) - len(line.lstrip())
-              content_indent = run_indent + 2
-              index += 1
-              script_lines = []
-              while index < len(lines):
-                  current = lines[index]
-                  if current and len(current) - len(current.lstrip()) <= run_indent:
-                      break
-                  script_lines.append(current[content_indent:] if current else "")
-                  index += 1
-              scripts.append("\n".join(script_lines) + "\n")
+          workflow_text = bootstrap_path.read_text(encoding="utf-8")
 
-          if len(scripts) != 4:
-              raise SystemExit(f"Expected 4 bootstrap scripts, found {len(scripts)}")
+          def extract_script(start_marker, end_marker=None):
+              start = workflow_text.index(start_marker) + len(start_marker)
+              end = workflow_text.index(end_marker, start) if end_marker else len(workflow_text)
+              raw = workflow_text[start:end]
+              return "\n".join(
+                  line[10:] if line.startswith("          ") else line
+                  for line in raw.splitlines()
+              ).strip("\n") + "\n"
+
+          scripts = [
+              extract_script(
+                  "      - name: Apply focused point redemption fix\n        run: |\n",
+                  "\n      - name: Add focused point claim CI workflow",
+              ),
+              extract_script(
+                  "      - name: Add focused point claim CI workflow\n        run: |\n",
+                  "\n      - name: Remove bootstrap workflow",
+              ),
+              extract_script(
+                  "      - name: Run focused tests\n        run: |\n",
+                  "\n      - name: Commit and push focused fix",
+              ),
+              extract_script(
+                  "      - name: Commit and push focused fix\n        run: |\n"
+              ),
+          ]
 
           ref_expression = "$" + "{{ github.ref_name }}"
           for script_index, script in enumerate(scripts):
