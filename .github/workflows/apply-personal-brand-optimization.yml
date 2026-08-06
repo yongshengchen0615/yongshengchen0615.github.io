@@ -1,9 +1,11 @@
 name: Apply Personal Brand Optimization Patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/analyze-and-optimize-personal-brand
+      - main
+    types:
+      - synchronize
     paths:
       - .github/workflows/apply-personal-brand-optimization.yml
 
@@ -12,6 +14,7 @@ permissions:
 
 jobs:
   apply:
+    if: github.head_ref == 'agent/analyze-and-optimize-personal-brand'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -20,12 +23,13 @@ jobs:
         with:
           ref: agent/analyze-and-optimize-personal-brand
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Guard branch target
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "agent/analyze-and-optimize-personal-brand"
+          test "${GITHUB_HEAD_REF}" = "agent/analyze-and-optimize-personal-brand"
           test "$(git branch --show-current)" = "agent/analyze-and-optimize-personal-brand"
 
       - name: Set up Node.js
