@@ -31,8 +31,11 @@
         "member-lottery-name",
         "member-lottery-ticket-detail",
         "member-lottery-spin-status",
+        "member-lottery-loading-title",
+        "member-lottery-loading-message",
         "member-lottery-error-code",
         "member-lottery-error-message",
+        "member-lottery-error-guidance",
         "member-lottery-result-prize",
         "member-lottery-result-detail",
         "member-lottery-result-swatch",
@@ -169,19 +172,26 @@
             setText("member-lottery-name", typeName || "準備轉盤");
             setText("member-lottery-ticket-detail", "正在確認抽獎券。");
           }
+          setText("member-lottery-loading-title", "正在準備轉盤");
+          setText(
+            "member-lottery-loading-message",
+            "正在驗證抽獎券、載入最新獎項並安全保存本次結果。"
+          );
           setState("member-lottery-loading-state");
           byId("member-lottery-dialog").setAttribute("aria-busy", "true");
-          setStatus("正在準備轉盤，確認最新獎項與本次抽獎結果…");
+          setStatus("正在準備轉盤，完成前請勿關閉頁面…");
         }
 
-        function markReady(ticket, selectedType, pending) {
+        function markReady(ticket, selectedType, pending, configurationUpdated) {
           renderHeading(ticket, selectedType && selectedType.name);
           byId("member-lottery-dialog").setAttribute("aria-busy", "false");
           setState("member-lottery-wheel-state");
           setStatus(
-            pending
-              ? "上次結果尚未確認，點選中央直接揭曉結果。"
-              : "轉盤已就緒，點選中央直接揭曉結果。"
+            configurationUpdated
+              ? "獎項設定已更新，已改用本次開獎的最新版本；點選中央揭曉結果。"
+              : pending
+                ? "上次結果已安全恢復，點選中央直接揭曉結果。"
+                : "轉盤已就緒，點選中央只會播放動畫，不會再次送出開獎請求。"
           );
           focus(byId("member-lottery-spin-button"));
         }
@@ -190,8 +200,14 @@
           setText("member-lottery-spin-status", message);
         }
 
-        function showError(errorValue) {
+        function showError(errorValue, stateValue) {
           var normalized = normalizeError(errorValue);
+          var state =
+            stateValue && typeof stateValue === "object" ? stateValue : {};
+          var pending = state.pending === true;
+          var definitive = state.definitive === true;
+          var retryButton = byId("member-lottery-retry-button");
+
           byId("member-lottery-dialog").setAttribute("aria-busy", "false");
           setText(
             "member-lottery-error-code",
@@ -201,7 +217,22 @@
             "member-lottery-error-message",
             normalized.message || "目前無法載入轉盤。"
           );
+          setText(
+            "member-lottery-error-guidance",
+            pending
+              ? "本次請求識別碼已安全保留。請按「安全重試」恢復同一次抽獎，不會重複使用抽獎券。"
+              : definitive
+                ? "後端已確認本次沒有完成開獎，可返回抽獎券清單查看最新狀態。"
+                : "請確認網路後重新載入；若持續失敗，請保留錯誤代碼並聯絡服務人員。"
+          );
+          retryButton.hidden = definitive;
+          setButtonLabel(retryButton, pending ? "安全重試" : "重新載入");
           setState("member-lottery-error-state");
+          focus(
+            definitive
+              ? byId("member-lottery-return-button")
+              : retryButton
+          );
         }
 
         function showResult(draw, selectedType) {
@@ -229,6 +260,7 @@
           var state =
             stateValue && typeof stateValue === "object" ? stateValue : {};
           var spinButton = byId("member-lottery-spin-button");
+          var retryButton = byId("member-lottery-retry-button");
           var canDraw = state.canDraw === true;
           spinButton.disabled = !canDraw;
           spinButton.setAttribute("aria-busy", String(state.isBusy === true));
@@ -250,6 +282,12 @@
                   : state.hasTicket
                     ? "點我抽獎"
                     : "選擇抽獎券"
+          );
+
+          retryButton.disabled = state.isPreparing === true || state.isBusy === true;
+          retryButton.setAttribute(
+            "aria-busy",
+            String(state.isPreparing === true)
           );
 
           [

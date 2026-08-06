@@ -3606,3 +3606,61 @@ code {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Member lottery flow: fresh ticket state, actionable recovery and stable animation. */
+.member-ticket-refresh-status {
+  min-height: 1.35rem;
+  margin: -0.3rem 0 0.85rem;
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.member-ticket-refresh-status[data-tone="loading"] {
+  color: var(--green-deep);
+}
+
+.member-ticket-refresh-status[data-tone="warning"] {
+  color: #8a5a17;
+}
+
+.member-ticket-dialog[aria-busy="true"] .lottery-ticket-button {
+  cursor: progress;
+}
+
+.member-ticket-dialog .lottery-ticket-button:disabled {
+  cursor: progress;
+  opacity: 0.58;
+}
+
+.member-lottery-error-state #member-lottery-error-guidance {
+  margin-top: 0.8rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(11, 60, 44, 0.14);
+  border-radius: 0.8rem;
+  background: rgba(243, 240, 231, 0.62);
+}
+
+.member-lottery-dialog[aria-busy="true"] .icon-button:disabled,
+.member-lottery-dialog button[aria-busy="true"] {
+  cursor: progress;
+}
+
+.member-lottery-dialog-head .icon-button:disabled {
+  cursor: not-allowed;
+}
+
+.member-lottery-hub[data-state="ready"] {
+  cursor: pointer;
+}
+
+.member-lottery-hub[data-state="busy"],
+.member-lottery-hub[data-state="loading"] {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member-lottery-rotor {
+    transition: none !important;
+  }
+}

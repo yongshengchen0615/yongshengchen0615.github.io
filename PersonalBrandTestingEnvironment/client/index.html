@@ -24,6 +24,7 @@
     <script defer src="../shared/module-registry.js"></script>
     <script defer src="lottery/contracts.js"></script>
     <script defer src="lottery/pending-request-store.js"></script>
+    <script defer src="lottery/workspace-service.js"></script>
     <script defer src="lottery/preparation-service.js"></script>
     <script defer src="lottery/wheel-draw-guard.js"></script>
     <script defer src="lottery/workspace-mapper.js"></script>
@@ -417,6 +418,14 @@
       <p class="member-panel-description" id="member-ticket-description">
         查看本張集點卡的抽獎節點；選擇已獲得的票券即可開啟轉盤。
       </p>
+      <p
+        class="member-ticket-refresh-status"
+        id="member-ticket-refresh-status"
+        role="status"
+        aria-live="polite"
+      >
+        開啟時會自動確認最新抽獎券狀態。
+      </p>
 
       <div class="lottery-ticket-tabs member-ticket-tabs" id="member-ticket-tabs" role="tablist" aria-label="抽獎券狀態">
         <button
@@ -504,8 +513,8 @@
         aria-live="polite"
       >
         <div class="claim-loader" aria-hidden="true"><span></span><span></span><span></span></div>
-        <strong>正在準備轉盤</strong>
-        <p>確認抽獎券與獎項設定，完成後即可開始。</p>
+        <strong id="member-lottery-loading-title">正在準備轉盤</strong>
+        <p id="member-lottery-loading-message">確認抽獎券與獎項設定，完成後即可開始。</p>
       </section>
 
       <section
@@ -516,6 +525,7 @@
       >
         <small class="error-code" id="member-lottery-error-code">LOTTERY ERROR</small>
         <strong id="member-lottery-error-message">目前無法載入轉盤。</strong>
+        <p id="member-lottery-error-guidance">請確認網路後重新載入。</p>
         <div class="member-lottery-actions">
           <button class="secondary-button" id="member-lottery-return-button" type="button">
             返回抽獎券
