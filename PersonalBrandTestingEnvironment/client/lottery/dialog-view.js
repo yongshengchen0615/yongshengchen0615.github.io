@@ -65,6 +65,47 @@
         var handlers = null;
         var bound = false;
         var hostCloseAllowed = false;
+        var preparationStartedAt = 0;
+        var slowPreparationTimer = 0;
+
+        function performanceNow() {
+          return runtime.performance &&
+            typeof runtime.performance.now === "function"
+            ? runtime.performance.now()
+            : Date.now();
+        }
+
+        function emitMetric(phase, startedAt) {
+          if (
+            !startedAt ||
+            typeof runtime.dispatchEvent !== "function" ||
+            typeof runtime.CustomEvent !== "function"
+          ) {
+            return;
+          }
+          try {
+            runtime.dispatchEvent(
+              new runtime.CustomEvent("persona:lottery-performance", {
+                detail: Object.freeze({
+                  phase: phase,
+                  durationMs: Math.max(
+                    0,
+                    Math.round((performanceNow() - startedAt) * 10) / 10
+                  ),
+                  source: "dialog",
+                }),
+              })
+            );
+          } catch (_error) {
+            // Diagnostics must not affect the dialog.
+          }
+        }
+
+        function clearSlowPreparationTimer() {
+          if (!slowPreparationTimer) return;
+          runtime.clearTimeout(slowPreparationTimer);
+          slowPreparationTimer = 0;
+        }
 
         function byId(id) {
           return documentValue.getElementById(id);
@@ -128,6 +169,7 @@
         function closeDialog() {
           var dialog = byId("member-lottery-dialog");
           hostCloseAllowed = true;
+          clearSlowPreparationTimer();
           if (typeof dialog.close === "function" && dialog.open) {
             dialog.close();
           } else {
@@ -164,8 +206,40 @@
           );
         }
 
+        function setPreparationStage(phase) {
+          var stages = {
+            loading_workspace: {
+              title: "正在取得最新獎項",
+              message: "正在同步抽獎券與非敏感轉盤設定。",
+              status: "正在取得最新獎項…",
+            },
+            validating_ticket: {
+              title: "正在確認抽獎券",
+              message: "正在確認這張券仍可使用，並沿用已載入的轉盤設定。",
+              status: "正在確認抽獎券…",
+            },
+            persisting_draw: {
+              title: "正在保存抽獎結果",
+              message: "後端正在安全決定並保存本次結果；完成後不會再次連線。",
+              status: "正在安全保存抽獎結果…",
+            },
+            rendering_wheel: {
+              title: "正在建立轉盤",
+              message: "結果已保存，正在建立清晰圖面與精確停止角度。",
+              status: "正在建立轉盤…",
+            },
+          };
+          var stage = stages[String(phase || "")];
+          if (!stage || byId("member-lottery-loading-state").hidden) return;
+          setText("member-lottery-loading-title", stage.title);
+          setText("member-lottery-loading-message", stage.message);
+          setStatus(stage.status);
+        }
+
         function markPreparing(ticket, typeName) {
           showDialog();
+          clearSlowPreparationTimer();
+          preparationStartedAt = performanceNow();
           if (ticket) {
             renderHeading(ticket, typeName);
           } else {
@@ -175,14 +249,27 @@
           setText("member-lottery-loading-title", "正在準備轉盤");
           setText(
             "member-lottery-loading-message",
-            "正在驗證抽獎券、載入最新獎項並安全保存本次結果。"
+            "正在驗證抽獎券、載入獎項並安全保存本次結果。"
           );
           setState("member-lottery-loading-state");
           byId("member-lottery-dialog").setAttribute("aria-busy", "true");
           setStatus("正在準備轉盤，完成前請勿關閉頁面…");
+          slowPreparationTimer = runtime.setTimeout(function () {
+            slowPreparationTimer = 0;
+            if (byId("member-lottery-loading-state").hidden) return;
+            setText("member-lottery-loading-title", "網路較慢，仍在安全確認");
+            setText(
+              "member-lottery-loading-message",
+              "請保持頁面開啟。若稍後出現安全重試，系統會沿用同一次請求，不會重複使用抽獎券。"
+            );
+            setStatus("正在安全確認抽獎結果，請勿重新選券或關閉頁面…");
+          }, 1800);
         }
 
         function markReady(ticket, selectedType, pending, configurationUpdated) {
+          clearSlowPreparationTimer();
+          emitMetric("ticket_to_ready", preparationStartedAt);
+          preparationStartedAt = 0;
           renderHeading(ticket, selectedType && selectedType.name);
           byId("member-lottery-dialog").setAttribute("aria-busy", "false");
           setState("member-lottery-wheel-state");
@@ -201,6 +288,9 @@
         }
 
         function showError(errorValue, stateValue) {
+          clearSlowPreparationTimer();
+          emitMetric("ticket_to_error", preparationStartedAt);
+          preparationStartedAt = 0;
           var normalized = normalizeError(errorValue);
           var state =
             stateValue && typeof stateValue === "object" ? stateValue : {};
@@ -228,11 +318,7 @@
           retryButton.hidden = definitive;
           setButtonLabel(retryButton, pending ? "安全重試" : "重新載入");
           setState("member-lottery-error-state");
-          focus(
-            definitive
-              ? byId("member-lottery-return-button")
-              : retryButton
-          );
+          focus(definitive ? byId("member-lottery-return-button") : retryButton);
         }
 
         function showResult(draw, selectedType) {
@@ -276,7 +362,7 @@
             state.isBusy
               ? "抽獎中"
               : state.isPreparing
-                ? "載入轉盤"
+                ? "確認結果"
                 : state.pending
                   ? "揭曉結果"
                   : state.hasTicket
@@ -364,6 +450,12 @@
             }
             event.preventDefault();
             event.returnValue = "";
+          });
+        }
+
+        if (typeof runtime.addEventListener === "function") {
+          runtime.addEventListener("persona:lottery-phase", function (event) {
+            setPreparationStage(event && event.detail && event.detail.phase);
           });
         }
 
