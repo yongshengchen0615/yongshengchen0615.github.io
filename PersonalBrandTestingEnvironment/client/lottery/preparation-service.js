@@ -22,6 +22,28 @@
           );
         }
 
+        var workspaceService =
+          options.workspaceService &&
+          typeof options.workspaceService.load === "function"
+            ? options.workspaceService
+            : {
+                load: function () {
+                  return Promise.resolve(
+                    options.request("getLotteryConfig", {}, undefined)
+                  ).then(contracts.assertSuccessfulResponse);
+                },
+                prime: function (response) {
+                  return response;
+                },
+                invalidate: function () {},
+              };
+        var activeKey = "";
+        var activePromise = null;
+
+        function ticketKey(ticket) {
+          return ticket.cardRoundKey + "|" + ticket.lotteryTypeId;
+        }
+
         function safeCardUpdated(card, totalPoints) {
           if (typeof options.onCardUpdated !== "function") return;
           try {
@@ -75,7 +97,7 @@
             if (!available) {
               throw contracts.createError(
                 "LOTTERY_ROUND_NOT_READY",
-                "這張抽獎券已使用或目前無法使用。"
+                "這張抽獎券已使用、已過期或目前無法使用。"
               );
             }
           }
@@ -94,7 +116,10 @@
             !data.lotteryType ||
             !data.card ||
             String(data.draw.cardRoundKey || "") !== ticket.cardRoundKey ||
-            String(data.draw.lotteryTypeId || "") !== ticket.lotteryTypeId
+            String(data.draw.lotteryTypeId || "") !== ticket.lotteryTypeId ||
+            String(data.lottery.lotteryTypeId || "") !== ticket.lotteryTypeId ||
+            String(data.lotteryType.lotteryTypeId || "") !==
+              ticket.lotteryTypeId
           ) {
             throw contracts.createError(
               "INVALID_RESPONSE",
@@ -105,12 +130,48 @@
           return response;
         }
 
+        function mergeAuthoritativeLottery(workspaceResponse, drawResponse, ticket) {
+          var workspaceData = workspaceResponse.data;
+          var drawData = drawResponse.data;
+          var previousType = workspaceData.lotteryTypes.find(function (type) {
+            return (
+              type &&
+              String(type.lotteryTypeId || "") === ticket.lotteryTypeId
+            );
+          });
+          var authoritativeType = Object.assign({}, drawData.lotteryType, {
+            lottery: drawData.lottery,
+          });
+          var nextTypes = workspaceData.lotteryTypes.map(function (type) {
+            return String(type && type.lotteryTypeId) === ticket.lotteryTypeId
+              ? authoritativeType
+              : type;
+          });
+          var previousVersion = String(
+            previousType && previousType.lottery
+              ? previousType.lottery.configVersion || ""
+              : ""
+          );
+          var nextVersion = String(drawData.lottery.configVersion || "");
+          var mergedResponse = Object.assign({}, workspaceResponse, {
+            data: Object.assign({}, workspaceData, {
+              lotteryTypes: nextTypes,
+            }),
+          });
+
+          workspaceService.prime(mergedResponse);
+          return Object.freeze({
+            workspaceResponse: mergedResponse,
+            configurationUpdated:
+              Boolean(previousVersion && nextVersion) &&
+              previousVersion !== nextVersion,
+          });
+        }
+
         function refreshHostCard() {
-          return Promise.resolve()
-            .then(function () {
-              return options.request("getLotteryConfig", {}, undefined);
-            })
-            .then(contracts.assertSuccessfulResponse)
+          workspaceService.invalidate();
+          return workspaceService
+            .load({ force: true })
             .then(function (response) {
               if (response.data && response.data.card) {
                 var totalPoints =
@@ -125,16 +186,13 @@
             });
         }
 
-        function prepare(ticketValue) {
-          var ticket = options.store.normalizeTicket(ticketValue);
+        function performPrepare(ticket) {
           var pendingBeforeConfig = options.store.read();
           var workspaceResponse;
           var request;
 
-          return Promise.resolve()
-            .then(function () {
-              return options.request("getLotteryConfig", {}, undefined);
-            })
+          return workspaceService
+            .load({ force: true })
             .then(function (response) {
               workspaceResponse = validateWorkspace(
                 response,
@@ -154,7 +212,11 @@
             .then(function (response) {
               var validated = validateDrawResponse(response, ticket);
               options.guard.save(ticket, request, validated);
-              return workspaceResponse;
+              return mergeAuthoritativeLottery(
+                workspaceResponse,
+                validated,
+                ticket
+              );
             })
             .catch(function (error) {
               if (!contracts.isDefinitiveNoDrawError(error)) throw error;
@@ -167,14 +229,48 @@
             });
         }
 
+        function prepare(ticketValue) {
+          var ticket = options.store.normalizeTicket
+            ? options.store.normalizeTicket(ticketValue)
+            : contracts.normalizeTicket(ticketValue);
+          var key = ticketKey(ticket);
+
+          if (activePromise) {
+            if (activeKey === key) return activePromise;
+            return Promise.reject(
+              contracts.createError(
+                "LOTTERY_PREPARATION_BUSY",
+                "另一張抽獎券正在準備中，請稍候完成。"
+              )
+            );
+          }
+
+          var promise = performPrepare(ticket).finally(function () {
+            if (activePromise === promise) {
+              activePromise = null;
+              activeKey = "";
+            }
+          });
+          activeKey = key;
+          activePromise = promise;
+          return promise;
+        }
+
         function resolvePrepared(ticketValue, requestId) {
-          var ticket = options.store.normalizeTicket(ticketValue);
+          var ticket = options.store.normalizeTicket
+            ? options.store.normalizeTicket(ticketValue)
+            : contracts.normalizeTicket(ticketValue);
           return options.guard.resolve(ticket, requestId);
+        }
+
+        function invalidateWorkspace() {
+          workspaceService.invalidate();
         }
 
         return Object.freeze({
           prepare: prepare,
           resolvePrepared: resolvePrepared,
+          invalidateWorkspace: invalidateWorkspace,
           isDefinitiveNoDrawError: contracts.isDefinitiveNoDrawError,
         });
       }

@@ -33,6 +33,9 @@
   var pointScannerReject = null;
   var pointScannerDetecting = false;
   var activeMemberTicketTab = "";
+  var isMemberTicketRefreshing = false;
+  var memberTicketRefreshPromise = null;
+  var isMemberTicketSelectionBusy = false;
   var isPointHistoryLoading = false;
   var hasLoadedPointHistory = false;
   var isPointHistoryDirty = true;
@@ -804,9 +807,8 @@
           ticket.milestonePoints +
           " 點節點抽獎券，開啟轉盤"
       );
-      button.addEventListener("click", function () {
-        openMemberLotteryTicket(ticket);
-      });
+      button.disabled =
+        isMemberTicketRefreshing || isMemberTicketSelectionBusy;
       earnedFragment.appendChild(button);
     });
 
@@ -889,8 +891,72 @@
     );
   }
 
+  function setMemberTicketRefreshState(isBusy, message, tone) {
+    isMemberTicketRefreshing = Boolean(isBusy);
+    var dialog = byId("member-ticket-dialog");
+    var status = byId("member-ticket-refresh-status");
+    dialog.setAttribute("aria-busy", String(isMemberTicketRefreshing));
+    status.textContent = String(message || "");
+    status.dataset.tone = tone || (isMemberTicketRefreshing ? "loading" : "ready");
+    dialog
+      .querySelectorAll(".lottery-ticket-button")
+      .forEach(function (button) {
+        button.disabled =
+          isMemberTicketRefreshing || isMemberTicketSelectionBusy;
+      });
+  }
+
+  function refreshMemberTickets() {
+    if (memberTicketRefreshPromise) return memberTicketRefreshPromise;
+    if (!window.MemberLotteryDialog || isDemoSession) {
+      return Promise.resolve(currentMemberCardSummary);
+    }
+
+    setMemberTicketRefreshState(
+      true,
+      "正在確認最新抽獎券狀態…",
+      "loading"
+    );
+    var promise = window.MemberLotteryDialog
+      .refreshTickets({ force: true })
+      .then(function (card) {
+        setMemberTicketRefreshState(
+          false,
+          card && card.availableDraws > 0
+            ? "抽獎券已更新，請選擇要使用的票券。"
+            : "已更新，目前沒有可使用的抽獎券。",
+          "ready"
+        );
+        return card;
+      })
+      .catch(function (error) {
+        var normalized = normalizeClientError(error);
+        if (
+          normalized.code === "INVALID_TOKEN" ||
+          normalized.code === "INVALID_ID_TOKEN" ||
+          normalized.code === "MEMBER_ACCESS_DENIED"
+        ) {
+          handleClientError(error);
+          throw error;
+        }
+        setMemberTicketRefreshState(
+          false,
+          "暫時無法更新；目前顯示上次資料，選擇後仍會再次安全驗證。",
+          "warning"
+        );
+        return currentMemberCardSummary;
+      })
+      .finally(function () {
+        if (memberTicketRefreshPromise === promise) {
+          memberTicketRefreshPromise = null;
+        }
+      });
+    memberTicketRefreshPromise = promise;
+    return promise;
+  }
+
   function openMemberTicketDialog() {
-    if (!currentMemberCardSummary) return;
+    if (!currentMemberCardSummary) return Promise.resolve(false);
     selectMemberTicketTab(
       currentMemberCardSummary.availableRewards.length > 0
         ? "earned"
@@ -898,19 +964,47 @@
       false
     );
     openDialog(byId("member-ticket-dialog"));
-    window.requestAnimationFrame(function () {
-      byId("member-" + activeMemberTicketTab + "-ticket-tab").focus();
+    var refreshPromise = refreshMemberTickets();
+    return Promise.resolve(refreshPromise).finally(function () {
+      window.requestAnimationFrame(function () {
+        var tab = byId("member-" + activeMemberTicketTab + "-ticket-tab");
+        if (tab) tab.focus();
+      });
     });
   }
 
+  function handleMemberTicketListClick(event) {
+    var button =
+      event.target && typeof event.target.closest === "function"
+        ? event.target.closest(".lottery-ticket-button")
+        : null;
+    if (!button || button.disabled || !currentMemberCardSummary) return;
+    var ticket = currentMemberCardSummary.availableRewards.find(function (item) {
+      return item.cardRoundKey === button.dataset.cardRoundKey;
+    });
+    if (ticket) openMemberLotteryTicket(ticket);
+  }
+
   function openMemberLotteryTicket(ticket) {
+    if (
+      isMemberTicketRefreshing ||
+      isMemberTicketSelectionBusy
+    ) {
+      showToast("正在確認抽獎券，請稍候完成。", "error");
+      return Promise.resolve(false);
+    }
     var normalizedTicket = normalizeMemberRewardTicket(ticket);
     if (!window.MemberLotteryDialog) {
       showToast("轉盤元件尚未載入，請重新整理後再試。", "error");
-      return;
+      return Promise.resolve(false);
     }
+    isMemberTicketSelectionBusy = true;
+    setMemberTicketRefreshState(false, "正在開啟轉盤…", "loading");
     closeDialog(byId("member-ticket-dialog"), true);
-    window.MemberLotteryDialog.open(normalizedTicket);
+    return Promise.resolve(window.MemberLotteryDialog.open(normalizedTicket))
+      .finally(function () {
+        isMemberTicketSelectionBusy = false;
+      });
   }
 
   function configureMemberLotteryDialog() {
@@ -2388,6 +2482,16 @@
       POINT_CARD_NOT_CONFIGURED: "管理員尚未完成集點卡設定。",
       POINT_CARD_DATA_ERROR: "集點卡資料目前無法使用，請聯絡管理員。",
       LOTTERY_NOT_CONFIGURED: "管理員尚未設定轉盤獎項，請稍後再試。",
+      LOTTERY_TYPE_NOT_FOUND: "這張抽獎券指定的轉盤目前無法使用。",
+      LOTTERY_ROUND_NOT_READY: "這張抽獎券已使用、已過期或目前無法使用。",
+      LOTTERY_TICKET_MISMATCH: "這張抽獎券只能使用指定的轉盤。",
+      INVALID_LOTTERY_TICKET: "抽獎券資料格式不正確，請重新載入清單。",
+      LOTTERY_PREPARATION_BUSY: "另一張抽獎券正在準備中，請稍候完成。",
+      LOTTERY_RESULT_NOT_PREPARED: "抽獎結果尚未準備完成，請安全重試。",
+      WHEEL_RENDER_ERROR: "目前無法繪製轉盤，請重新開啟後再試。",
+      BACKEND_TIMEOUT: "後台回應逾時；若已開始準備抽獎，請使用安全重試。",
+      CONNECTION_ERROR: "網路連線不穩定，請確認網路後再試。",
+      REQUEST_ID_CONFLICT: "抽獎請求與票券不一致，請聯絡服務人員。",
       INSUFFICIENT_POINTS: "目前點數不足，需要 5 點才能抽獎。",
       LOTTERY_DATA_ERROR: "轉盤或抽獎紀錄目前無法使用，請聯絡服務人員。",
       LOTTERY_SCHEMA_MISMATCH: "轉盤資料表格式不正確，請聯絡管理員。",
@@ -2596,6 +2700,10 @@
     byId("profile-form").addEventListener("submit", handleProfileSubmit);
     byId("scan-point-button").addEventListener("click", handleScanPointQr);
     byId("lottery-page-link").addEventListener("click", openMemberTicketDialog);
+    byId("member-earned-ticket-list").addEventListener(
+      "click",
+      handleMemberTicketListClick
+    );
     byId("open-point-history-button").addEventListener(
       "click",
       openPointHistoryDialog

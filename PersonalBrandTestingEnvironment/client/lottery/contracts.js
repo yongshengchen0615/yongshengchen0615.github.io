@@ -80,7 +80,11 @@
       return (
         code === "LOTTERY_ROUND_NOT_READY" ||
         code === "LOTTERY_TICKET_MISMATCH" ||
-        code === "INVALID_LOTTERY_TICKET"
+        code === "INVALID_LOTTERY_TICKET" ||
+        code === "LOTTERY_NOT_CONFIGURED" ||
+        code === "LOTTERY_TYPE_NOT_FOUND" ||
+        code === "POINT_CARD_NOT_CONFIGURED" ||
+        code === "MEMBER_ACCESS_DENIED"
       );
     }
 
