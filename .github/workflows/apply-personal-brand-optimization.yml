@@ -67,7 +67,19 @@ jobs:
           done < <(find PersonalBrandTestingEnvironment/gas -type f -name '*.gs' -print0 | sort -z)
 
       - name: Run complete regression suite
-        run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test PersonalBrandTestingEnvironment/tests/*.test.js 2>&1 | tee /tmp/personal-brand-tests.log
+
+      - name: Upload regression failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-brand-regression-log
+          path: /tmp/personal-brand-tests.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Commit exact optimized sources
         shell: bash
