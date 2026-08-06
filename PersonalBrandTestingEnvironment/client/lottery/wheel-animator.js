@@ -8,8 +8,10 @@
     "lottery.wheel-animator",
     ["lottery.contracts"],
     function (contracts) {
-      var SPIN_DEGREES_PER_MS = 1.45;
-      var FINAL_SPIN_TURNS = 2;
+      var INITIAL_DEGREES_PER_MS = 1.45;
+      var FINAL_SPIN_TURNS = 3;
+      var MIN_DURATION_MS = 2200;
+      var MAX_DURATION_MS = 3200;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -39,6 +41,8 @@
         var waitingLastTime = 0;
         var settlingFrame = 0;
         var animationVersion = 0;
+        var preparedConfigVersion = "";
+        var preparedTargets = Object.create(null);
 
         function prefersReducedMotion() {
           return (
@@ -47,8 +51,16 @@
           );
         }
 
+        function renderRotation(value) {
+          rotor.style.transform = "rotate(" + value + "deg)";
+        }
+
         function draw(prizes) {
-          if (!renderer.draw(canvas, prizes)) {
+          if (
+            !renderer.draw(canvas, prizes, {
+              pixelRatio: Number(runtime.devicePixelRatio) || 1,
+            })
+          ) {
             throw contracts.createError(
               "WHEEL_RENDER_ERROR",
               "目前無法繪製轉盤，請重新開啟後再試。"
@@ -73,7 +85,40 @@
         function reset() {
           stop();
           rotation = 0;
-          rotor.style.transform = "rotate(0deg)";
+          renderRotation(0);
+        }
+
+        function prepare(lotteryValue) {
+          var lottery =
+            lotteryValue && typeof lotteryValue === "object"
+              ? lotteryValue
+              : {};
+          var prizes = Array.isArray(lottery.prizes) ? lottery.prizes : [];
+          if (prizes.length < 2) {
+            throw contracts.createError(
+              "INVALID_RESPONSE",
+              "轉盤至少需要兩個獎項。"
+            );
+          }
+
+          reset();
+          draw(prizes);
+          var sectorDegrees = 360 / prizes.length;
+          var targets = Object.create(null);
+          prizes.forEach(function (prize, index) {
+            var prizeId = String(prize && prize.prizeId ? prize.prizeId : "");
+            if (!prizeId || targets[prizeId] != null) {
+              throw contracts.createError(
+                "INVALID_RESPONSE",
+                "轉盤獎項識別碼不完整。"
+              );
+            }
+            var desiredRotation = -(index + 0.5) * sectorDegrees;
+            targets[prizeId] = ((desiredRotation % 360) + 360) % 360;
+          });
+          preparedTargets = targets;
+          preparedConfigVersion = String(lottery.configVersion || "");
+          return true;
         }
 
         function startWaiting(isActive) {
@@ -89,8 +134,8 @@
             if (waitingLastTime) {
               rotation +=
                 Math.min(100, timestamp - waitingLastTime) *
-                SPIN_DEGREES_PER_MS;
-              rotor.style.transform = "rotate(" + rotation + "deg)";
+                INITIAL_DEGREES_PER_MS;
+              renderRotation(rotation);
             }
             waitingLastTime = timestamp;
             waitingFrame = runtime.requestAnimationFrame(rotate);
@@ -99,31 +144,48 @@
           waitingFrame = runtime.requestAnimationFrame(rotate);
         }
 
-        function settle(drawResult, lottery) {
-          stop();
-          var currentVersion = animationVersion;
-          var prizeIndex = lottery.prizes.findIndex(function (prize) {
-            return prize.prizeId === drawResult.prizeId;
-          });
-          if (prizeIndex < 0) {
-            return Promise.reject(
-              contracts.createError("INVALID_RESPONSE", "找不到抽中的獎項。")
+        function calculateTarget(drawResult, lottery) {
+          var configVersion = String(lottery.configVersion || "");
+          if (
+            preparedConfigVersion !== configVersion ||
+            preparedTargets[String(drawResult.prizeId || "")] == null
+          ) {
+            prepare(lottery);
+          }
+          var currentModulo = ((rotation % 360) + 360) % 360;
+          var desiredModulo =
+            preparedTargets[String(drawResult.prizeId || "")];
+          if (desiredModulo == null) {
+            throw contracts.createError(
+              "INVALID_RESPONSE",
+              "找不到抽中的獎項。"
             );
           }
-
-          var sectorDegrees = 360 / lottery.prizes.length;
-          var desiredRotation = -(prizeIndex + 0.5) * sectorDegrees;
-          var currentModulo = ((rotation % 360) + 360) % 360;
-          var desiredModulo = ((desiredRotation % 360) + 360) % 360;
           var alignment = (desiredModulo - currentModulo + 360) % 360;
+          return rotation + 360 * FINAL_SPIN_TURNS + alignment;
+        }
+
+        function settle(drawResult, lotteryValue) {
+          var lottery =
+            lotteryValue && typeof lotteryValue === "object"
+              ? lotteryValue
+              : {};
+          stop();
           var startRotation = rotation;
-          var rotationDelta = 360 * FINAL_SPIN_TURNS + alignment;
-          var targetRotation = startRotation + rotationDelta;
+          var targetRotation;
+          try {
+            targetRotation = calculateTarget(drawResult || {}, lottery);
+            startRotation = rotation;
+          } catch (error) {
+            return Promise.reject(error);
+          }
+          var currentVersion = animationVersion;
+          var rotationDelta = targetRotation - startRotation;
 
           setStatus("轉盤旋轉中，請稍候結果…");
           if (prefersReducedMotion()) {
             rotation = targetRotation;
-            rotor.style.transform = "rotate(" + rotation + "deg)";
+            renderRotation(rotation);
             return new Promise(function (resolve) {
               runtime.setTimeout(function () {
                 if (currentVersion === animationVersion) resolve();
@@ -131,24 +193,23 @@
             });
           }
 
-          var duration = (2 * rotationDelta) / SPIN_DEGREES_PER_MS;
+          var duration = Math.min(
+            MAX_DURATION_MS,
+            Math.max(
+              MIN_DURATION_MS,
+              (3 * rotationDelta) / INITIAL_DEGREES_PER_MS
+            )
+          );
           return new Promise(function (resolve) {
-            var startedAt =
-              runtime.performance &&
-              typeof runtime.performance.now === "function"
-                ? runtime.performance.now()
-                : null;
+            var startedAt = null;
 
             function decelerate(timestamp) {
               if (currentVersion !== animationVersion) return;
               if (startedAt === null) startedAt = timestamp;
               var progress = Math.min(1, (timestamp - startedAt) / duration);
-              var quadraticEaseOut = 1 - Math.pow(1 - progress, 2);
-              var smoothstepCorrection = Math.pow(progress * (1 - progress), 2);
-              rotation =
-                startRotation +
-                rotationDelta * (quadraticEaseOut + smoothstepCorrection);
-              rotor.style.transform = "rotate(" + rotation + "deg)";
+              var eased = 1 - Math.pow(1 - progress, 3);
+              rotation = startRotation + rotationDelta * eased;
+              renderRotation(rotation);
 
               if (progress < 1) {
                 settlingFrame = runtime.requestAnimationFrame(decelerate);
@@ -157,7 +218,7 @@
 
               settlingFrame = 0;
               rotation = targetRotation;
-              rotor.style.transform = "rotate(" + rotation + "deg)";
+              renderRotation(rotation);
               resolve();
             }
 
@@ -171,6 +232,7 @@
 
         return Object.freeze({
           draw: draw,
+          prepare: prepare,
           reset: reset,
           startWaiting: startWaiting,
           settle: settle,
