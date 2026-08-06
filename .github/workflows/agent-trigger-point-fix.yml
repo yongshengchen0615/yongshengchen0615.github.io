@@ -1,0 +1,75 @@
+name: Trigger Point Redemption Fix
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/agent-fix-point-redemption.yml"
+      - ".github/workflows/agent-trigger-point-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  execute-bootstrap:
+    if: github.head_ref == 'agent/fix-point-redemption-gas-error'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Execute and remove bootstrap workflow
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          bootstrap_path = Path(".github/workflows/agent-fix-point-redemption.yml")
+          trigger_path = Path(".github/workflows/agent-trigger-point-fix.yml")
+          lines = bootstrap_path.read_text(encoding="utf-8").splitlines()
+          scripts = []
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if line.lstrip() != "run: |":
+                  index += 1
+                  continue
+              run_indent = len(line) - len(line.lstrip())
+              content_indent = run_indent + 2
+              index += 1
+              script_lines = []
+              while index < len(lines):
+                  current = lines[index]
+                  if current and len(current) - len(current.lstrip()) <= run_indent:
+                      break
+                  if current:
+                      script_lines.append(current[content_indent:])
+                  else:
+                      script_lines.append("")
+                  index += 1
+              scripts.append("\n".join(script_lines) + "\n")
+
+          if len(scripts) != 5:
+              raise SystemExit(f"Expected 5 bootstrap scripts, found {len(scripts)}")
+
+          for script_index, script in enumerate(scripts):
+              if script_index == len(scripts) - 1:
+                  if trigger_path.exists():
+                      trigger_path.unlink()
+                  subprocess.run(
+                      ["git", "add", "-A", str(trigger_path)],
+                      check=True,
+                  )
+              script = script.replace(
+                  "${{ github.ref_name }}",
+                  os.environ["HEAD_BRANCH"],
+              )
+              subprocess.run(["bash", "-euo", "pipefail", "-c", script], check=True)
+          PY
