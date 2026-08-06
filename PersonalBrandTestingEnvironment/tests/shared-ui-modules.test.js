@@ -21,6 +21,51 @@ function loadBrowserModule(relativePath, globals = {}) {
   return window;
 }
 
+function loadGasApi(fetchImplementation) {
+  const window = {
+    location: { origin: "https://example.test" },
+    crypto: {
+      getRandomValues(bytes) {
+        bytes.fill(5);
+        return bytes;
+      },
+    },
+    fetch: fetchImplementation,
+    setTimeout,
+    clearTimeout,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const document = {
+    baseURI: "https://example.test/client/",
+    body: { appendChild() {} },
+    createElement() {
+      return {
+        appendChild() {},
+        remove() {},
+        submit() {},
+      };
+    },
+  };
+  const context = vm.createContext({
+    AbortController,
+    Promise,
+    TypeError,
+    URL,
+    Uint8Array,
+    clearTimeout,
+    document,
+    setTimeout,
+    window,
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(root, "shared/gas-api.js"), "utf8"),
+    context,
+    { filename: "shared/gas-api.js" }
+  );
+  return window.MemberApi;
+}
+
 function createCanvasRecorder() {
   const operations = [];
   const context = {
@@ -166,6 +211,71 @@ test("shared GAS requests try fetch before falling back to the bridge", async ()
   assert.equal(submittedForms, 1);
 });
 
+test("shared GAS transport rejects invalid endpoints and actions before fetch", async () => {
+  let fetchCalls = 0;
+  const api = loadGasApi(() => {
+    fetchCalls += 1;
+    return Promise.reject(new Error("fetch must not run"));
+  });
+
+  await assert.rejects(
+    api.sendRequest({
+      gasUrl: "https://example.test/not-gas",
+      action: "health",
+      requestId: "req-1234567890",
+    }),
+    (error) => error && error.code === "INVALID_GAS_URL"
+  );
+  await assert.rejects(
+    api.sendRequest({
+      gasUrl: "https://script.google.com/macros/s/example/exec",
+      action: "../health",
+      requestId: "req-1234567890",
+    }),
+    (error) => error && error.code === "INVALID_ACTION"
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("shared GAS transport sends only bounded context fields", async () => {
+  let capturedRequest = null;
+  const api = loadGasApi((_url, options) => {
+    capturedRequest = JSON.parse(options.body);
+    return Promise.resolve({
+      ok: true,
+      text() {
+        return Promise.resolve(
+          JSON.stringify({ ok: true, requestId: capturedRequest.requestId })
+        );
+      },
+    });
+  });
+
+  const result = await api.sendRequest({
+    gasUrl: "https://script.google.com/macros/s/example/exec",
+    action: "health",
+    requestId: "req-1234567890",
+    context: {
+      type: " utou ",
+      viewType: "compact",
+      os: "x".repeat(80),
+      language: "zh-Hant-TW",
+      inClient: 1,
+      secret: "must-not-leave-browser",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(capturedRequest.context, {
+    type: "utou",
+    viewType: "compact",
+    os: "x".repeat(40),
+    language: "zh-Hant-TW",
+    inClient: true,
+  });
+  assert.equal("secret" in capturedRequest.context, false);
+});
+
 test("shared LIFF runtime normalizes context and validates public configuration", () => {
   const window = loadBrowserModule("shared/liff-runtime.js");
   const runtime = window.LiffRuntime;
@@ -193,8 +303,13 @@ test("shared LIFF runtime normalizes context and validates public configuration"
   };
 
   assert.equal(Object.isFrozen(runtime), true);
+  const normalizedContext = runtime.getContext(liff, {
+    language: "en",
+    platform: "web",
+  });
+  assert.equal(Object.isFrozen(normalizedContext), true);
   assert.deepEqual(
-    { ...runtime.getContext(liff, { language: "en", platform: "web" }) },
+    { ...normalizedContext },
     {
       type: "utou",
       viewType: "full",

@@ -82,6 +82,9 @@
     second: "2-digit",
     hour12: false,
   });
+  var ADMIN_NUMBER_FORMATTER = new Intl.NumberFormat("zh-TW", {
+    maximumFractionDigits: 0,
+  });
   var INVALID_TOKEN_RECOVERY_PREFIX = "persona-admin-invalid-token-recovery:";
   var MEMBER_LIFF_PATH = "/2010787602-kaiSm2eq";
 
@@ -3457,7 +3460,7 @@
   }
 
   function formatNumber(value) {
-    return Math.max(0, Number(value) || 0).toLocaleString("zh-TW");
+    return ADMIN_NUMBER_FORMATTER.format(Math.max(0, Number(value) || 0));
   }
 
   function createError(code, message) {

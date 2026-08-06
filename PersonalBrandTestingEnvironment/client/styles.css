@@ -32,6 +32,7 @@ html {
   min-width: 320px;
   background: var(--paper);
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -129,6 +130,19 @@ img {
 
 .skip-link:focus {
   transform: translateY(0);
+}
+
+.noscript-notice {
+  position: relative;
+  z-index: 300;
+  width: min(calc(100% - 2rem), 52rem);
+  margin: 1rem auto;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--green-dark);
+  color: var(--green-dark);
+  background: var(--paper-soft);
+  font-weight: 700;
+  line-height: 1.6;
 }
 
 .page-texture {
@@ -1165,6 +1179,7 @@ code {
 }
 
 .point-history-list {
+  contain: layout paint;
   margin: 1.6rem 0 0;
   padding: 0;
   border-top: 1px solid var(--line-strong);
@@ -2547,6 +2562,7 @@ code {
 }
 
 .lottery-ticket-list {
+  contain: layout paint;
   min-width: 0;
 }
 
@@ -2732,6 +2748,8 @@ code {
 }
 
 .lottery-center-button {
+  position: absolute;
+  border-radius: 50%;
   cursor: pointer;
   appearance: none;
   transition:

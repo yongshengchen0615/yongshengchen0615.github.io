@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  var CONFIG_TIMEOUT_MS = 8000;
   var FETCH_TIMEOUT_MS = 12000;
   var BRIDGE_TIMEOUT_MS = 20000;
   var EXTRA_FIELD_NAMES = [
@@ -30,22 +31,19 @@
   ];
 
   function loadConfig(relativePath, requiredStringKeys) {
-    return window
-      .fetch(new URL(relativePath, document.baseURI).toString(), {
+    var configUrl = new URL(relativePath, document.baseURI).toString();
+    return fetchTextWithTimeout(
+      configUrl,
+      {
         method: "GET",
         headers: { Accept: "application/json" },
         cache: "no-cache",
         credentials: "same-origin",
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw createError(
-            "CONFIG_LOAD_ERROR",
-            "無法載入設定檔。請確認 config.json 已與頁面一起發布。"
-          );
-        }
-        return response.text();
-      })
+      },
+      CONFIG_TIMEOUT_MS,
+      "CONFIG_TIMEOUT",
+      "讀取設定檔逾時，請確認網路連線後再試。"
+    )
       .then(function (text) {
         var config;
         try {
@@ -86,12 +84,17 @@
         createError("INVALID_REQUEST_ID", "請求識別碼格式不正確。")
       );
     }
+    var action = String(options.action || "").trim();
+    if (!/^[a-z][a-zA-Z0-9]{1,63}$/.test(action)) {
+      return Promise.reject(createError("INVALID_ACTION", "請求動作格式不正確。"));
+    }
+
     var request = {
-      action: String(options.action || ""),
+      action: action,
       idToken: String(options.idToken || ""),
       requestId: requestId,
       callbackOrigin: getCallbackOrigin(),
-      context: options.context && typeof options.context === "object" ? options.context : {},
+      context: normalizeContext(options.context),
       transport: "fetch",
     };
     var fields = options.fields && typeof options.fields === "object" ? options.fields : {};
@@ -103,6 +106,11 @@
     });
 
     var gasUrl = String(options.gasUrl || "").trim();
+    if (!isValidGasUrl(gasUrl)) {
+      return Promise.reject(
+        createError("INVALID_GAS_URL", "GAS Web App 網址格式不正確，請使用正式 /exec 網址。")
+      );
+    }
     return postWithFetch(gasUrl, request).catch(function (error) {
       if (!shouldUseBridgeFallback(error)) throw error;
       return postWithBridge(gasUrl, request);
@@ -110,13 +118,9 @@
   }
 
   function postWithFetch(gasUrl, request) {
-    var controller = new AbortController();
-    var timeout = window.setTimeout(function () {
-      controller.abort();
-    }, FETCH_TIMEOUT_MS);
-
-    return window
-      .fetch(gasUrl, {
+    return fetchTextWithTimeout(
+      gasUrl,
+      {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=UTF-8" },
         body: JSON.stringify(request),
@@ -124,29 +128,55 @@
         credentials: "omit",
         redirect: "follow",
         referrerPolicy: "no-referrer",
-        signal: controller.signal,
-      })
-      .then(function (response) {
-        if (!response.ok) {
-          throw createError("BACKEND_HTTP_ERROR", "GAS 後台目前無法回應。");
-        }
-        return response.text();
-      })
-      .then(function (text) {
-        var result;
-        try {
-          result = JSON.parse(text);
-        } catch (_error) {
-          throw createError(
-            "BACKEND_RESPONSE_ERROR",
-            "GAS 回傳的不是 JSON。請確認 Web App 已設為任何人可存取並使用 /exec 網址。"
-          );
-        }
-        return validateResponseEnvelope(result, request.requestId);
-      })
-      .finally(function () {
-        window.clearTimeout(timeout);
-      });
+      },
+      FETCH_TIMEOUT_MS,
+      "BACKEND_TIMEOUT",
+      "GAS 後台目前沒有回應。"
+    ).then(function (text) {
+      var result;
+      try {
+        result = JSON.parse(text);
+      } catch (_error) {
+        throw createError(
+          "BACKEND_RESPONSE_ERROR",
+          "GAS 回傳的不是 JSON。請確認 Web App 已設為任何人可存取並使用 /exec 網址。"
+        );
+      }
+      return validateResponseEnvelope(result, request.requestId);
+    });
+  }
+
+  function fetchTextWithTimeout(url, fetchOptions, timeoutMs, timeoutCode, timeoutMessage) {
+    var controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    var options = Object.assign({}, fetchOptions || {});
+    if (controller) options.signal = controller.signal;
+
+    var timeout = 0;
+    var timeoutPromise = new Promise(function (_resolve, reject) {
+      timeout = window.setTimeout(function () {
+        if (controller) controller.abort();
+        reject(createError(timeoutCode, timeoutMessage));
+      }, timeoutMs);
+    });
+
+    var fetchPromise = window.fetch(url, options).then(function (response) {
+      if (!response || !response.ok) {
+        throw createError(
+          fetchOptions && fetchOptions.method === "GET"
+            ? "CONFIG_LOAD_ERROR"
+            : "BACKEND_HTTP_ERROR",
+          fetchOptions && fetchOptions.method === "GET"
+            ? "無法載入設定檔。請確認 config.json 已與頁面一起發布。"
+            : "GAS 後台目前無法回應。"
+        );
+      }
+      return response.text();
+    });
+
+    return Promise.race([fetchPromise, timeoutPromise]).finally(function () {
+      window.clearTimeout(timeout);
+    });
   }
 
   function postWithBridge(gasUrl, originalRequest) {
@@ -247,6 +277,18 @@
     form.appendChild(input);
   }
 
+  function normalizeContext(value) {
+    var source = value && typeof value === "object" ? value : {};
+    var context = {};
+    ["type", "viewType", "os", "language"].forEach(function (name) {
+      if (source[name] !== undefined && source[name] !== null) {
+        context[name] = String(source[name]).trim().slice(0, 40);
+      }
+    });
+    if (source.inClient !== undefined) context.inClient = Boolean(source.inClient);
+    return context;
+  }
+
   function validateResponseEnvelope(result, requestId) {
     if (!result || typeof result !== "object" || result.requestId !== requestId) {
       throw createError("INVALID_RESPONSE", "無法確認 GAS 回應與本次請求相符。");
@@ -257,7 +299,10 @@
   function shouldUseBridgeFallback(error) {
     return (
       error instanceof TypeError ||
-      (error && (error.name === "AbortError" || error.code === "FETCH_NETWORK_ERROR"))
+      (error &&
+        (error.name === "AbortError" ||
+          error.code === "FETCH_NETWORK_ERROR" ||
+          error.code === "BACKEND_TIMEOUT"))
     );
   }
 

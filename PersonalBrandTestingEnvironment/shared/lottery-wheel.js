@@ -33,10 +33,19 @@
     var center = size / 2;
     var radius = center - 12;
     var sector = prizes.length ? (Math.PI * 2) / prizes.length : 0;
+    var separatorColor =
+      String(options.separatorColor || "").trim() || DEFAULT_SEPARATOR_COLOR;
+    var prizeFont =
+      prizes.length > 8 ? "600 22px sans-serif" : "600 28px sans-serif";
 
     canvas.width = size;
     canvas.height = size;
     context.clearRect(0, 0, size, size);
+    context.strokeStyle = separatorColor;
+    context.lineWidth = 5;
+    context.textAlign = "right";
+    context.textBaseline = "middle";
+    context.font = prizeFont;
 
     prizes.forEach(function (prizeValue, index) {
       var prize =
@@ -52,19 +61,11 @@
       context.closePath();
       context.fillStyle = color;
       context.fill();
-      context.strokeStyle =
-        String(options.separatorColor || "").trim() ||
-        DEFAULT_SEPARATOR_COLOR;
-      context.lineWidth = 5;
       context.stroke();
 
       context.save();
       context.translate(center, center);
       context.rotate(start + sector / 2);
-      context.textAlign = "right";
-      context.textBaseline = "middle";
-      context.font =
-        prizes.length > 8 ? "600 22px sans-serif" : "600 28px sans-serif";
       context.fillStyle = textColor(color);
       context.fillText(
         String(prize.label || options.emptyLabel || "未命名").slice(0, 10),

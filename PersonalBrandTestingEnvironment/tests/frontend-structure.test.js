@@ -26,6 +26,18 @@ function getTopLevelFunctionContaining(source, marker) {
   return source.slice(start + 1, end === -1 ? source.length : end);
 }
 
+function getFunctionContainingAtIndent(source, marker, indentSize) {
+  const match = marker.exec(source);
+  assert.ok(match, `missing source marker ${marker}`);
+
+  const boundary = `\n${" ".repeat(indentSize)}function `;
+  const start = source.lastIndexOf(boundary, match.index);
+  assert.notEqual(start, -1, `marker ${marker} must be inside a function`);
+
+  const end = source.indexOf(boundary, match.index + match[0].length);
+  return source.slice(start + 1, end === -1 ? source.length : end);
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -423,7 +435,7 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const lotteryDialogScript = fs.readFileSync(
-    path.join(root, "client/member-lottery.js"),
+    path.join(root, "client/lottery/dialog-controller.js"),
     "utf8"
   );
   const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
@@ -445,17 +457,20 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
     script,
     /function\s+configureMemberLotteryDialog\s*\(/
   );
-  const openLotteryDialog = getTopLevelFunctionContaining(
+  const openLotteryDialog = getFunctionContainingAtIndent(
     lotteryDialogScript,
-    /function\s+open\s*\(ticketValue\)/
+    /function\s+open\s*\(ticketValue\)/,
+    8
   );
-  const loadWorkspace = getTopLevelFunctionContaining(
+  const prepareCurrent = getFunctionContainingAtIndent(
     lotteryDialogScript,
-    /function\s+loadWorkspace\s*\(/
+    /function\s+prepareCurrent\s*\(/,
+    8
   );
-  const finishDraw = getTopLevelFunctionContaining(
+  const handleSpin = getFunctionContainingAtIndent(
     lotteryDialogScript,
-    /function\s+finishDraw\s*\(/
+    /function\s+handleSpin\s*\(/,
+    8
   );
   const ticketDialogStyles = getCssRuleBody(
     styles,
@@ -534,12 +549,12 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
 
   assert.match(
     openLotteryDialog,
-    /showDialog\(dialog\)[\s\S]*setDialogState\(["']member-lottery-loading-state["']\)[\s\S]*loadWorkspace\(thisLoad\)/
+    /view\.markPreparing\(selectedTicket,[\s\S]*prepareCurrent\(expectedVersion, pendingBeforePrepare\)/
   );
-  assert.match(loadWorkspace, /options\.request\(\s*["']getLotteryConfig["']/);
+  assert.match(prepareCurrent, /preparationService\.prepare\(selectedTicket\)/);
   assert.match(
-    loadWorkspace,
-    /drawSelectedWheel\(\)[\s\S]*setDialogState\(["']member-lottery-wheel-state["']\)/
+    prepareCurrent,
+    /mapper\.normalizeWorkspace\(response\.data\)[\s\S]*animator\.draw\(selectedType\.lottery\.prizes\)[\s\S]*view\.markReady/
   );
   assert.match(
     configureDialog,
@@ -550,8 +565,8 @@ test("member home opens a fullscreen ticket picker and an in-place lottery dialo
     /getMemberId:\s*function\s*\(\)[\s\S]*?currentMember\.memberId/
   );
   assert.match(
-    finishDraw,
-    /animateToPrize\([^)]*\)\.then\([\s\S]*?clearPendingRequest\(\)[\s\S]*?safeCardUpdated\(cardStatus,\s*totalPoints\)[\s\S]*?setDialogState\(["']member-lottery-result-state["']\)/
+    handleSpin,
+    /preparationService\.resolvePrepared\([\s\S]*animator[\s\S]*?\.settle\([\s\S]*store\.clear\(\)[\s\S]*safeCardUpdated\(result\.card, result\.totalPoints\)[\s\S]*view\.showResult/
   );
 });
 
@@ -1375,7 +1390,7 @@ test("both applications load shared runtime modules before their own scripts", (
   }
 
   for (const [relativePath, scriptName] of [
-    ["client/index.html", "member-lottery.js"],
+    ["client/index.html", "member-lottery-v2.js"],
     ["client/lottery.html", "lottery.js"],
     ["admin/lottery.html", "script.js"],
   ]) {
@@ -1388,10 +1403,15 @@ test("both applications load shared runtime modules before their own scripts", (
 
   const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   assert.equal(
-    memberHtml.indexOf('src="member-lottery.js"') <
+    memberHtml.indexOf('src="member-lottery-v2.js"') <
       memberHtml.indexOf('src="script.js"'),
     true,
-    "the member lottery controller must be available before the member app configures it"
+    "the V2 member lottery controller must be available before the member app configures it"
+  );
+  assert.equal(
+    memberHtml.includes('src="member-lottery.js"'),
+    false,
+    "the homepage must not download the superseded legacy lottery facade"
   );
 });
 
@@ -1399,7 +1419,7 @@ test("member home uses an isolated lottery dialog controller instead of page nav
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
   const script = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
   const lotteryDialogScript = fs.readFileSync(
-    path.join(root, "client/member-lottery.js"),
+    path.join(root, "client/member-lottery-v2.js"),
     "utf8"
   );
   const openTicket = getTopLevelFunctionContaining(
@@ -1409,7 +1429,7 @@ test("member home uses an isolated lottery dialog controller instead of page nav
 
   assert.match(html, /id=["']member-lottery-dialog["']/);
   assert.match(script, /window\.MemberLotteryDialog\.configure\s*\(/);
-  assert.match(lotteryDialogScript, /window\.MemberLotteryDialog\s*=\s*api/);
+  assert.match(lotteryDialogScript, /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create/);
   assert.match(openTicket, /window\.MemberLotteryDialog\.open\(normalizedTicket\)/);
   assert.doesNotMatch(openTicket, /lottery\.html|location\.(?:assign|replace)/);
   assert.doesNotMatch(html, /<iframe\b/i);

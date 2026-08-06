@@ -27,7 +27,7 @@
       context.language = cleanContextValue(browser.language);
     }
 
-    return context;
+    return Object.freeze(context);
   }
 
   function hasCompleteConfig(config, memberApi) {

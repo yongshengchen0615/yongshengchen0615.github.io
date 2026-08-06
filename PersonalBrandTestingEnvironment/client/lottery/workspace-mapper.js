@@ -12,6 +12,9 @@
       var LOTTERY_CONFIG_ID_PATTERN = /^LCF-[A-Z0-9]{12}$/;
       var LOTTERY_PRIZE_ID_PATTERN = /^LPR-[A-Z0-9]{10}$/;
       var LOTTERY_DRAW_ID_PATTERN = /^LDW-[A-Z0-9]{16}$/;
+      var POINT_NUMBER_FORMATTER = new Intl.NumberFormat("zh-TW", {
+        maximumFractionDigits: 0,
+      });
 
       function normalizePointNumber(value) {
         var number = Number(value);
@@ -450,7 +453,7 @@
       }
 
       function formatNumber(value) {
-        return normalizePointNumber(value).toLocaleString("zh-TW");
+        return POINT_NUMBER_FORMATTER.format(normalizePointNumber(value));
       }
 
       return Object.freeze({

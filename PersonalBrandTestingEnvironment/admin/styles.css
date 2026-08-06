@@ -33,6 +33,7 @@
 html {
   min-width: 320px;
   background: var(--paper);
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -132,6 +133,19 @@ img {
 
 .skip-link:focus {
   transform: translateY(0);
+}
+
+.noscript-notice {
+  position: relative;
+  z-index: 300;
+  width: min(calc(100% - 2rem), 52rem);
+  margin: 1rem auto;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--green-deep);
+  color: var(--green-deep);
+  background: var(--paper-soft);
+  font-weight: 700;
+  line-height: 1.6;
 }
 
 .page-grid {
@@ -698,6 +712,7 @@ button:disabled {
 }
 
 .admin-point-history-list {
+  contain: layout paint;
   display: grid;
   margin: 0;
   padding: 0;
@@ -2317,6 +2332,7 @@ tbody tr[data-busy="true"] {
 }
 
 .lottery-history-list {
+  contain: layout paint;
   display: grid;
   margin: 0;
   padding: 0;

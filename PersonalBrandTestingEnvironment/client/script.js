@@ -44,6 +44,14 @@
     hour: "2-digit",
     minute: "2-digit",
   });
+  var POINT_NUMBER_FORMATTER = new Intl.NumberFormat("zh-TW", {
+    maximumFractionDigits: 0,
+  });
+  var MEMBER_SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 
   function loadConfig() {
     if (!window.MemberApi || !window.LiffRuntime) {
@@ -1376,7 +1384,7 @@
   }
 
   function formatPointNumber(value) {
-    return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 }).format(value);
+    return POINT_NUMBER_FORMATTER.format(value);
   }
 
   function handleScanPointQr() {
@@ -2458,11 +2466,7 @@
   function formatShortDate(value) {
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat("zh-TW", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
+    return MEMBER_SHORT_DATE_FORMATTER
       .format(date)
       .replace(/\//g, ".");
   }
