@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Apply, test and push focused UI changes
+      - name: Apply, test and expose focused UI commit
         env:
           HEAD_BRANCH: ${{ github.head_ref }}
         run: |
@@ -51,7 +51,6 @@ jobs:
               check=True,
           )
 
-          # Keep this low-risk batch on existing CSS primitives used by the app.
           client_css_path = Path(
               "PersonalBrandTestingEnvironment/client/styles.css"
           )
@@ -116,6 +115,11 @@ jobs:
               ],
               check=True,
           )
+          source_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"],
+              text=True,
+          ).strip()
+          print("VERIFIED_SOURCE_COMMIT_SHA=" + source_sha, flush=True)
           subprocess.run(
               [
                   "git",
@@ -125,4 +129,5 @@ jobs:
               ],
               check=True,
           )
+          print("PUSHED_SOURCE_COMMIT_SHA=" + source_sha, flush=True)
           PY
