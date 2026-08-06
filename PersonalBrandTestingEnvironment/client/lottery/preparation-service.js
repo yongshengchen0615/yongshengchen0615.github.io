@@ -40,6 +40,47 @@
         var activeKey = "";
         var activePromise = null;
 
+        function performanceNow() {
+          return root.performance && typeof root.performance.now === "function"
+            ? root.performance.now()
+            : Date.now();
+        }
+
+        function emit(name, detail) {
+          if (
+            typeof root.dispatchEvent !== "function" ||
+            typeof root.CustomEvent !== "function"
+          ) {
+            return;
+          }
+          try {
+            root.dispatchEvent(
+              new root.CustomEvent(name, {
+                detail: Object.freeze(
+                  Object.assign({}, detail && typeof detail === "object" ? detail : {})
+                ),
+              })
+            );
+          } catch (_error) {
+            // Diagnostics must never change draw persistence.
+          }
+        }
+
+        function emitPhase(phase) {
+          emit("persona:lottery-phase", { phase: phase });
+        }
+
+        function emitMetric(phase, startedAt) {
+          emit("persona:lottery-performance", {
+            phase: phase,
+            durationMs: Math.max(
+              0,
+              Math.round((performanceNow() - startedAt) * 10) / 10
+            ),
+            source: "client",
+          });
+        }
+
         function ticketKey(ticket) {
           return ticket.cardRoundKey + "|" + ticket.lotteryTypeId;
         }
@@ -187,38 +228,53 @@
         }
 
         function performPrepare(ticket) {
+          var totalStartedAt = performanceNow();
           var pendingBeforeConfig = options.store.read();
           var workspaceResponse;
           var request;
 
+          emitPhase("validating_ticket");
+          var workspaceStartedAt = performanceNow();
           return workspaceService
-            .load({ force: true })
+            .load({ allowStale: true })
             .then(function (response) {
+              emitMetric("workspace_validation", workspaceStartedAt);
               workspaceResponse = validateWorkspace(
                 response,
                 ticket,
                 pendingBeforeConfig
               );
               request = options.store.ensure(ticket);
-              return options.request(
-                "drawLottery",
-                {
-                  lotteryTypeId: ticket.lotteryTypeId,
-                  cardRoundKey: ticket.cardRoundKey,
-                },
-                request.requestId
-              );
+              emitPhase("persisting_draw");
+              var drawStartedAt = performanceNow();
+              return options
+                .request(
+                  "drawLottery",
+                  {
+                    lotteryTypeId: ticket.lotteryTypeId,
+                    cardRoundKey: ticket.cardRoundKey,
+                  },
+                  request.requestId
+                )
+                .then(function (response) {
+                  emitMetric("draw_lottery", drawStartedAt);
+                  return response;
+                });
             })
             .then(function (response) {
               var validated = validateDrawResponse(response, ticket);
               options.guard.save(ticket, request, validated);
-              return mergeAuthoritativeLottery(
+              emitPhase("rendering_wheel");
+              var merged = mergeAuthoritativeLottery(
                 workspaceResponse,
                 validated,
                 ticket
               );
+              emitMetric("preparation_service", totalStartedAt);
+              return merged;
             })
             .catch(function (error) {
+              emitMetric("preparation_service", totalStartedAt);
               if (!contracts.isDefinitiveNoDrawError(error)) throw error;
 
               options.store.clear();
