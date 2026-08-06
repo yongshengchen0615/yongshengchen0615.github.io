@@ -359,6 +359,62 @@ ALLOWED_ORIGINS=https://yongshengchen0615.github.io
 
 重新部署對應的 Web App，確認存取權是「任何人」，且前端使用 `/exec` 而不是 `/dev`。
 
+## 優化版部署與回滾
+
+本專案的靜態前端與兩套 GAS 採獨立部署，請依下列順序發布，避免前端先使用尚未部署的後台版本。
+
+### 1. 合併前驗證
+
+Pull Request 必須先通過唯讀 GitHub Actions：
+
+- 全部 HTML 品質基線與本機資源檢查；
+- 全部 JavaScript 與兩套 `Code.gs` 語法檢查；
+- `tests/*.test.js` 完整回歸測試；
+- workflow 不得直接推送或修改 `main`。
+
+### 2. 部署會員 GAS
+
+1. 開啟會員 Apps Script 專案。
+2. 以 `gas/client/Code.gs` 完整取代專案中的會員程式碼。
+3. 確認 Script Properties 仍包含 `SPREADSHEET_ID`、`LINE_CHANNEL_ID=2010787602`、`ALLOWED_ORIGINS` 等既有設定。
+4. 選擇「部署」→「管理部署作業」→ 編輯目前 Web App。
+5. 建立新版本，執行身分維持部署者，存取權維持「任何人」。
+6. 部署後確認 `/exec` URL 沒有改變；若已改變，更新 `client/config.json`。
+
+本版會員 GAS 會以 Token 的 SHA-256 雜湊作為快取鍵，最多快取 60 秒的成功 LINE 驗證結果；不會保存 ID Token 本體，失敗結果不會快取。
+
+### 3. 部署管理 GAS
+
+1. 開啟管理 Apps Script 專案。
+2. 以 `gas/admin/Code.gs` 完整取代專案中的管理程式碼。
+3. 確認 `SPREADSHEET_ID`、`LINE_CHANNEL_ID=2010791619`、`MEMBER_LIFF_URL` 與 `ALLOWED_ORIGINS`。
+4. 以新的 Web App 版本重新部署，存取權維持「任何人」。
+5. 確認管理端仍使用管理 GAS 的 `/exec` URL，不可誤用會員 GAS URL。
+
+### 4. 發布靜態前端
+
+1. 人工審查並合併 Pull Request 到 `main`。
+2. 等待 GitHub Pages／既有靜態部署 workflow 完成。
+3. 在 LINE LIFF 內分別開啟會員端與管理端，避免只用一般瀏覽器驗證。
+4. 強制重新整理後，依序驗證登入、會員資料、領點、點數紀錄、抽獎券、轉盤、管理員核准、點數設定與抽獎設定。
+
+會員首頁現在只載入 `member-lottery-v2.js` 與其模組；`member-lottery.js` 仍保留在 repository 作為短期回滾參考，但不再加入首頁下載與執行路徑。
+
+### 5. 驗證標準
+
+- 同一 ID Token 的短時間連續請求可以正常完成，且不需要每次重新呼叫 LINE 驗證 API。
+- 無效 GAS URL 或不合法 action 在瀏覽器端直接拒絕，不應發出網路請求。
+- 點選抽獎券時先完成資料與結果準備；中央按鈕只負責轉盤動畫與揭曉結果。
+- 手機直向、橫向、鍵盤開啟與 `prefers-reduced-motion` 模式皆可操作。
+- 未啟用 JavaScript 時會顯示明確提示，不會只留下空白頁面。
+
+### 6. 回滾
+
+- 前端回滾：revert 對應 PR commit，重新等待 GitHub Pages 發布。
+- GAS 回滾：在 Apps Script「管理部署作業」中改回上一個可用版本，不需要修改試算表 schema。
+- 若只有 LINE 驗證快取異常，可先回滾兩套 GAS；前端變更可維持不動。
+- 不要刪除 `Members`、`PointRedemptions`、`LotteryDraws` 或設定工作表作為回滾手段。
+
 ## 開發檢查
 
 ```bash

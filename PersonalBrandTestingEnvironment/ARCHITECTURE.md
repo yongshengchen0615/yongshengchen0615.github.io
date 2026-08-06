@@ -29,7 +29,7 @@
 
 | 入口 | 主要程式 | 現況責任 |
 | --- | --- | --- |
-| `client/index.html` | `client/script.js`、`client/member-lottery.js` | 會員登入、會員卡、個資、QR 領點、點數紀錄、抽獎券與轉盤 |
+| `client/index.html` | `client/script.js`、`client/member-lottery-v2.js`、`client/lottery/*.js` | 會員登入、會員卡、個資、QR 領點、點數紀錄、抽獎券與轉盤 |
 | `client/lottery.html` | `client/lottery.js` | 舊抽獎連結的相容 fallback |
 | `admin/index.html` | `admin/script.js` | 會員查詢與使用權限 |
 | `admin/points.html` | `admin/script.js` | 點數類型、活動 QR 與領點紀錄 |
@@ -66,14 +66,11 @@
 
 同一份程式依 `data-admin-page` 切換會員、點數、轉盤三種工作區，卻仍初始化全部狀態、formatter 與操作函式。這讓每個頁面載入不需要的邏輯，也提高跨頁回歸風險。
 
-### 3.3 抽獎程式曾是「拆檔但未解耦」
+### 3.3 抽獎流程已切換為顯式 V2 composition root
 
-先前預載功能雖拆成多個檔案，但每個檔案都掛在 `window.MemberLottery*`，再由 `member-lottery-preload.js` 覆寫 `window.MemberLotteryDialog` 並攔截：
+會員首頁直接載入 `client/lottery/*.js` 模組，再由 `member-lottery-v2.js` 建立唯一的 `window.MemberLotteryDialog` facade。首頁不再先下載並執行 56 KB 的 `member-lottery.js` 後再覆寫，降低初始下載、解析與重複狀態機成本。
 
-- `getLotteryConfig`：改成先抓設定、再先呼叫 `drawLottery`；
-- `drawLottery`：改成回傳記憶體中的預載結果。
-
-這個行為正確，但相依關係隱藏在 script 載入順序與全域名稱中。任何模組漏載時，舊版「按下按鈕才打後台」流程可能繼續運作，錯誤不夠明確。
+目前流程會在開啟抽獎券時先取得最新設定並以固定 request ID 完成預先開獎；中央按鈕只揭曉已確認結果與播放動畫。`member-lottery.js` 只保留作為短期回滾參考，不在正式入口執行。
 
 ### 3.4 驗證規則重複
 
@@ -139,37 +136,39 @@ storage、transport、clock 等介面
 | `pending-request-store.js` | request ID 持久化與 session idempotency |
 | `wheel-draw-guard.js` | 記憶體中 prepared result 的所有權與比對 |
 | `preparation-service.js` | 設定驗證、預先開獎、錯誤清理與 host card refresh |
-| `preparation-view.js` | 「準備中／已就緒」按鈕與文字狀態 |
-| `preload-controller.js` | 將 preload use case 接到既有 legacy dialog |
-| `member-lottery-preload.js` | 唯一 composition root 與失敗 facade |
+| `workspace-mapper.js` | GAS workspace 與中獎結果 normalization |
+| `wheel-animator.js` | 等待、減速、停獎與 reduced-motion 動畫 |
+| `dialog-view.js` | dialog 狀態、控制項與結果顯示 |
+| `dialog-controller.js` | 抽獎 use case 與狀態協調 |
+| `member-lottery-v2.js` | 唯一 composition root 與公開 facade |
 
-內部模組不再建立 `window.MemberLotteryPendingRequestStore`、`window.MemberLotteryPreparationService` 等全域物件。對外仍保留 `window.MemberLotteryDialog`，因此 `client/script.js` 暫時不需要高風險的大規模改寫。
+內部模組透過 `shared/module-registry.js` 註冊，不各自建立 `window.MemberLottery*` 全域物件。對外只保留 `window.MemberLotteryDialog`，因此 host `client/script.js` 的介面保持相容。
 
 ### 5.4 轉盤執行流程
 
 ```text
 點選抽獎券
-  -> controller 驗證 ticket
-  -> legacy dialog 顯示 loading
-  -> getLotteryConfig 進入 preparation service
-  -> 驗證抽獎券仍可使用
+  -> dialog controller 驗證 ticket
+  -> 顯示「正在準備轉盤」
+  -> getLotteryConfig 取得最新設定與資格
   -> 建立或沿用同一 request ID
-  -> 先呼叫 drawLottery
-  -> 驗證並保存 prepared response
+  -> drawLottery 預先確認結果
+  -> 保存 pending request 與 prepared ownership
   -> 繪製轉盤並啟用中央按鈕
 
 點選中央按鈕
-  -> legacy dialog 使用同一 request ID 要求 drawLottery
-  -> controller 只回傳記憶體 prepared response
-  -> 不發生網路請求
-  -> legacy dialog 只執行轉動、減速、停獎與結果畫面
+  -> resolvePrepared 使用同一 request ID 確認結果
+  -> 轉盤動畫依已確認獎項減速並停止
+  -> 清除 pending state
+  -> 更新會員卡與顯示結果
 ```
 
 ### 5.5 失敗策略
 
 - 暫時性網路錯誤：保留 pending request 與相同 request ID，安全重試。
-- 明確未開獎錯誤：清除 pending request 與 prepared response，重新同步卡片。
-- 模組初始化失敗：以 unavailable facade 明確拋出 `LOTTERY_BOOTSTRAP_ERROR`，不再靜默退回舊流程。
+- 明確未開獎錯誤：清除 pending request 與 prepared ownership，重新同步卡片。
+- 模組初始化失敗：立即拋出固定 bootstrap error，不靜默退回舊流程。
+- workflow：只驗證程式與測試，不再由 GitHub Actions 改寫入口或直接推送 `main`。
 
 ## 6. Spreadsheet 資料所有權
 
@@ -219,19 +218,9 @@ client/ui/app-state-view.js
 
 先抽 pure normalization 與 use case，再移動 DOM code；不要一次重寫整個會員頁。
 
-### Phase 3：淘汰 legacy `member-lottery.js`
+### Phase 3：清理 legacy `member-lottery.js`（執行路徑已完成）
 
-拆成：
-
-```text
-lottery/dialog-controller.js
-lottery/workspace-mapper.js
-lottery/wheel-animator.js
-lottery/result-presenter.js
-lottery/demo-provider.js
-```
-
-完成後，dialog controller 應直接呼叫 `prepare(ticket)` 與 `revealPrepared()`，移除 request interception compatibility layer。
+正式會員入口已只使用 `member-lottery-v2.js` 與 `lottery/*.js`。待一個完整發布週期與 LIFF 實機回歸完成後，可另開獨立 PR 刪除未載入的 legacy facade；不要與功能修改綁在同一次發布。
 
 ### Phase 4：按頁拆 `admin/script.js`
 
@@ -286,17 +275,14 @@ admin/lottery/history-controller.js
 - definitive no-draw error 解除 pending state；
 - internal lottery modules 不建立個別 global；
 - module registry 可亂序定義、維持 singleton、拒絕 duplicate、偵測 cycle；
-- GitHub Actions 自動插入與驗證正確 script boundary。
+- GitHub Actions 以唯讀權限驗證正確 script boundary，不修改部署分支。
 
 ```bash
 node --check shared/module-registry.js
 node --check client/lottery/*.js
-node --check client/member-lottery-preload.js
+node --check client/member-lottery-v2.js
 
-node --test \
-  tests/module-registry.test.js \
-  tests/member-lottery-preload.test.js \
-  tests/lottery-preload-structure.test.js
+node --test tests/*.test.js
 ```
 
 後續每抽出一個 controller，都應先建立 state-machine 或 contract test，再移除原始程式碼。
