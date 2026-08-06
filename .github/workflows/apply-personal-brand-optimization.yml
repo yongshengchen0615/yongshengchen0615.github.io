@@ -1,0 +1,88 @@
+name: Apply Personal Brand Optimization Patch
+
+on:
+  push:
+    branches:
+      - agent/analyze-and-optimize-personal-brand
+    paths:
+      - .github/workflows/apply-personal-brand-optimization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore: stage exact Personal Brand optimization patch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/analyze-and-optimize-personal-brand
+          fetch-depth: 0
+
+      - name: Guard branch target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "agent/analyze-and-optimize-personal-brand"
+          test "$(git branch --show-current)" = "agent/analyze-and-optimize-personal-brand"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact source transformations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/patches/personal-brand-optimization.py.gz.part* | gzip -dc | python3
+          git diff --check
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            PersonalBrandTestingEnvironment/admin/script.js \
+            PersonalBrandTestingEnvironment/client/script.js \
+            PersonalBrandTestingEnvironment/gas/admin/Code.gs \
+            PersonalBrandTestingEnvironment/gas/client/Code.gs | sort)"
+          test "$actual" = "$expected"
+
+      - name: Validate JavaScript and GAS syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find PersonalBrandTestingEnvironment -type f -name '*.js' -print0 | sort -z)
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          while IFS= read -r -d '' file; do
+            target="$temp_dir/$(basename "$(dirname "$file")")-$(basename "$file" .gs).js"
+            cp "$file" "$target"
+            node --check "$target"
+          done < <(find PersonalBrandTestingEnvironment/gas -type f -name '*.gs' -print0 | sort -z)
+
+      - name: Run complete regression suite
+        run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
+
+      - name: Commit exact optimized sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-personal-brand-optimization.yml
+          rm .github/patches/personal-brand-optimization.py.gz.part*
+          rmdir .github/patches 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            PersonalBrandTestingEnvironment/client/script.js \
+            PersonalBrandTestingEnvironment/admin/script.js \
+            PersonalBrandTestingEnvironment/gas/client/Code.gs \
+            PersonalBrandTestingEnvironment/gas/admin/Code.gs \
+            .github/workflows/apply-personal-brand-optimization.yml \
+            .github/patches/personal-brand-optimization.py.gz.part0 \
+            .github/patches/personal-brand-optimization.py.gz.part1 \
+            .github/patches/personal-brand-optimization.py.gz.part2
+          git commit -m "fix(perf): coalesce reads and reduce GAS lock scope"
+          git push origin HEAD:agent/analyze-and-optimize-personal-brand
