@@ -8,7 +8,7 @@
     "lottery.workspace-service",
     ["lottery.contracts"],
     function (contracts) {
-      var DEFAULT_TTL_MS = 5000;
+      var DEFAULT_TTL_MS = 30000;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -21,7 +21,7 @@
 
         var ttlMs = Number(options.ttlMs);
         ttlMs =
-          Number.isFinite(ttlMs) && ttlMs >= 0 && ttlMs <= 30000
+          Number.isFinite(ttlMs) && ttlMs >= 0 && ttlMs <= 60000
             ? ttlMs
             : DEFAULT_TTL_MS;
         var now =
@@ -34,6 +34,43 @@
         var cachedAt = 0;
         var inFlight = null;
         var generation = 0;
+
+        function performanceNow() {
+          return root.performance && typeof root.performance.now === "function"
+            ? root.performance.now()
+            : Date.now();
+        }
+
+        function emit(name, detail) {
+          if (
+            typeof root.dispatchEvent !== "function" ||
+            typeof root.CustomEvent !== "function"
+          ) {
+            return;
+          }
+          try {
+            root.dispatchEvent(
+              new root.CustomEvent(name, {
+                detail: Object.freeze(
+                  Object.assign({}, detail && typeof detail === "object" ? detail : {})
+                ),
+              })
+            );
+          } catch (_error) {
+            // Diagnostics must never change the lottery flow.
+          }
+        }
+
+        function emitMetric(phase, startedAt, source) {
+          emit("persona:lottery-performance", {
+            phase: phase,
+            durationMs: Math.max(
+              0,
+              Math.round((performanceNow() - startedAt) * 10) / 10
+            ),
+            source: source || "network",
+          });
+        }
 
         function isFresh() {
           return Boolean(
@@ -54,14 +91,31 @@
           cachedAt = 0;
         }
 
+        function peek() {
+          return cachedResponse;
+        }
+
         function load(loadOptions) {
           loadOptions =
             loadOptions && typeof loadOptions === "object" ? loadOptions : {};
-          if (loadOptions.force !== true && isFresh()) {
+          var force = loadOptions.force === true;
+          var allowStale = loadOptions.allowStale === true;
+
+          if (!force && (isFresh() || (allowStale && cachedResponse))) {
+            var cachedStartedAt = performanceNow();
+            emitMetric(
+              "workspace_load",
+              cachedStartedAt,
+              isFresh() ? "fresh-cache" : "stale-preview-cache"
+            );
             return Promise.resolve(cachedResponse);
           }
           if (inFlight) return inFlight;
 
+          emit("persona:lottery-phase", {
+            phase: "loading_workspace",
+          });
+          var startedAt = performanceNow();
           var requestGeneration = generation;
           var requestPromise = Promise.resolve()
             .then(function () {
@@ -70,6 +124,7 @@
             .then(contracts.assertSuccessfulResponse)
             .then(function (response) {
               if (requestGeneration === generation) prime(response);
+              emitMetric("workspace_load", startedAt, "network");
               return response;
             })
             .finally(function () {
@@ -85,6 +140,7 @@
           prime: prime,
           invalidate: invalidate,
           isFresh: isFresh,
+          peek: peek,
         });
       }
 
