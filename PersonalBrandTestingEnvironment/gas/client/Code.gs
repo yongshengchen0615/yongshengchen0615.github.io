@@ -2450,8 +2450,7 @@ function redeemPointCampaign_(identity, request, config) {
 
     var pointBalance = getMemberPointBalance_(
     redemptionSheet,
-    identity.lineUserId,
-    lotteryDrawSheet
+    identity.lineUserId
   );
   var preflightCardStatus = getMemberPointCardStatusForConfig_(
     config,
@@ -2460,7 +2459,10 @@ function redeemPointCampaign_(identity, request, config) {
     lotteryDrawSheet
   );
   if (preflightCardStatus.totalPoints !== pointBalance) {
-    throw appError_("POINT_DATA_ERROR", "領點前的集點卡累計資料不一致。");
+    throw appError_(
+      "POINT_DATA_ERROR",
+      "領點前的集點卡累計資料不一致。"
+    );
   }
   if (pointBalance > 9007199254740991 - campaign.points) {
     throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
@@ -2512,7 +2514,10 @@ function redeemPointCampaign_(identity, request, config) {
       campaign.points
     );
     if (response.data.pointBalance !== balanceAfter) {
-      throw appError_("POINT_DATA_ERROR", "領點後的集點卡累計資料不一致。");
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "領點後的集點卡累計資料不一致。"
+      );
     }
     return response;
   } catch (redemptionError) {
@@ -3642,32 +3647,35 @@ function readMemberPointLedger_(sheet, lineUserId) {
   var requestKeys = Object.create(null);
   var campaignModes = Object.create(null);
   rows.forEach(function (row) {
-  var storedLineUserId = plainSheetText_(
-    row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
-    128
-  );
-  if (storedLineUserId !== lineUserId) return;
+    var storedLineUserId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
+      128
+    );
+    if (storedLineUserId !== lineUserId) return;
 
-  var redemptionId = plainSheetText_(
-    row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
-    100
-  );
-  var requestId = plainSheetText_(
-    row[POINT_REDEMPTION_COLUMN.requestId - 1],
-    100
-  );
-  var requestKey = storedLineUserId + ":" + requestId;
-  if (
-    !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
-    !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
-    !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
-    redemptionIds[redemptionId] ||
-    requestKeys[requestKey]
-  ) {
-    throw appError_("POINT_DATA_ERROR", "會員點數紀錄格式不正確，請聯絡管理員。");
-  }
-  redemptionIds[redemptionId] = true;
-  requestKeys[requestKey] = true;
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
+    var requestId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.requestId - 1],
+      100
+    );
+    var requestKey = storedLineUserId + ":" + requestId;
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      redemptionIds[redemptionId] ||
+      requestKeys[requestKey]
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "會員點數紀錄格式不正確，請聯絡管理員。"
+      );
+    }
+    redemptionIds[redemptionId] = true;
+    requestKeys[requestKey] = true;
 
     var campaignId = plainSheetText_(
       row[POINT_REDEMPTION_COLUMN.campaignId - 1],
