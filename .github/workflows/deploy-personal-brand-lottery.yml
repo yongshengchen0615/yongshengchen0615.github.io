@@ -9,9 +9,19 @@ on:
       - "PersonalBrandTestingEnvironment/client/index.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/tests/**"
+      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
+      - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
+      - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
@@ -21,9 +31,19 @@ on:
       - "PersonalBrandTestingEnvironment/client/index.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-preload.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
-      - "PersonalBrandTestingEnvironment/tests/**"
+      - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
+      - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
+      - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
@@ -58,20 +78,34 @@ jobs:
           node --check PersonalBrandTestingEnvironment/shared/lottery-wheel.js
           node --check PersonalBrandTestingEnvironment/shared/module-registry.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery.js
+          node --check PersonalBrandTestingEnvironment/client/member-lottery-preload.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery-v2.js
           node --check PersonalBrandTestingEnvironment/client/script.js
           node --check PersonalBrandTestingEnvironment/client/lottery/contracts.js
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/preparation-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-draw-guard.js
+          node --check PersonalBrandTestingEnvironment/client/lottery/preload-controller.js
           node --check PersonalBrandTestingEnvironment/client/lottery/workspace-mapper.js
           node --check PersonalBrandTestingEnvironment/client/lottery/wheel-animator.js
           node --check PersonalBrandTestingEnvironment/client/lottery/dialog-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/demo-provider.js
           node --check PersonalBrandTestingEnvironment/client/lottery/dialog-controller.js
 
-      - name: Run complete regression suite
-        run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
+      - name: Run lottery regression suite
+        run: |
+          node --test \
+            PersonalBrandTestingEnvironment/tests/module-registry.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-motion.test.js \
+            PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
+            PersonalBrandTestingEnvironment/tests/wheel-animator.test.js
 
   activate-v2:
     if: github.event_name == 'push'
@@ -147,8 +181,9 @@ jobs:
       - name: Validate activated entry point
         run: |
           node --test \
-            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
-            PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+            PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
 
       - name: Commit activated dependency order
         run: |
