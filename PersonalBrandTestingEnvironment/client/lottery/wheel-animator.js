@@ -44,6 +44,38 @@
         var preparedConfigVersion = "";
         var preparedTargets = Object.create(null);
 
+        function performanceNow() {
+          return runtime.performance &&
+            typeof runtime.performance.now === "function"
+            ? runtime.performance.now()
+            : Date.now();
+        }
+
+        function emitMetric(phase, startedAt) {
+          if (
+            typeof runtime.dispatchEvent !== "function" ||
+            typeof runtime.CustomEvent !== "function"
+          ) {
+            return;
+          }
+          try {
+            runtime.dispatchEvent(
+              new runtime.CustomEvent("persona:lottery-performance", {
+                detail: Object.freeze({
+                  phase: phase,
+                  durationMs: Math.max(
+                    0,
+                    Math.round((performanceNow() - startedAt) * 10) / 10
+                  ),
+                  source: "canvas",
+                }),
+              })
+            );
+          } catch (_error) {
+            // Diagnostics must not affect rendering.
+          }
+        }
+
         function prefersReducedMotion() {
           return (
             typeof runtime.matchMedia === "function" &&
@@ -56,6 +88,7 @@
         }
 
         function draw(prizes) {
+          var startedAt = performanceNow();
           if (
             !renderer.draw(canvas, prizes, {
               pixelRatio: Number(runtime.devicePixelRatio) || 1,
@@ -66,6 +99,7 @@
               "目前無法繪製轉盤，請重新開啟後再試。"
             );
           }
+          emitMetric("canvas_draw", startedAt);
           return true;
         }
 
@@ -89,6 +123,7 @@
         }
 
         function prepare(lotteryValue) {
+          var startedAt = performanceNow();
           var lottery =
             lotteryValue && typeof lotteryValue === "object"
               ? lotteryValue
@@ -118,6 +153,7 @@
           });
           preparedTargets = targets;
           preparedConfigVersion = String(lottery.configVersion || "");
+          emitMetric("wheel_prepare", startedAt);
           return true;
         }
 
@@ -153,8 +189,7 @@
             prepare(lottery);
           }
           var currentModulo = ((rotation % 360) + 360) % 360;
-          var desiredModulo =
-            preparedTargets[String(drawResult.prizeId || "")];
+          var desiredModulo = preparedTargets[String(drawResult.prizeId || "")];
           if (desiredModulo == null) {
             throw contracts.createError(
               "INVALID_RESPONSE",
