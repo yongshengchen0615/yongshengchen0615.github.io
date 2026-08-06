@@ -8,7 +8,7 @@
     "lottery.workspace-service",
     ["lottery.contracts"],
     function (contracts) {
-      var DEFAULT_TTL_MS = 30000;
+      var DEFAULT_TTL_MS = 5000;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -52,7 +52,10 @@
             root.dispatchEvent(
               new root.CustomEvent(name, {
                 detail: Object.freeze(
-                  Object.assign({}, detail && typeof detail === "object" ? detail : {})
+                  Object.assign(
+                    {},
+                    detail && typeof detail === "object" ? detail : {}
+                  )
                 ),
               })
             );
