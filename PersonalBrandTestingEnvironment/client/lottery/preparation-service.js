@@ -250,19 +250,17 @@
               request = options.store.ensure(ticket);
               emitPhase("persisting_draw");
               var drawStartedAt = performanceNow();
-              return options
-                .request(
-                  "drawLottery",
-                  {
-                    lotteryTypeId: ticket.lotteryTypeId,
-                    cardRoundKey: ticket.cardRoundKey,
-                  },
-                  request.requestId
-                )
-                .then(function (response) {
-                  emitMetric("draw_lottery", drawStartedAt);
-                  return response;
-                });
+              return options.request(
+                "drawLottery",
+                {
+                  lotteryTypeId: ticket.lotteryTypeId,
+                  cardRoundKey: ticket.cardRoundKey,
+                },
+                request.requestId
+              ).then(function (response) {
+                emitMetric("draw_lottery", drawStartedAt);
+                return response;
+              });
             })
             .then(function (response) {
               var validated = validateDrawResponse(response, ticket);
