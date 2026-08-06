@@ -69,21 +69,11 @@ jobs:
                       "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
                   )
                   tests = test_path.read_text(encoding="utf-8")
-                  old = '''    createPointRedemptionRow(gas, {
-                    lineUserId: `U${"c".repeat(32)}`,
-                    requestId: "request-other-member",
-                  }),'''
-                  old = "\n".join(
-                      line[18:] if line.startswith("                  ") else line
-                      for line in old.splitlines()
+                  old = (
+                      '      lineUserId: `U${"c".repeat(32)}`,\n'
+                      '      requestId: "request-other-member",'
                   )
-                  new = '''    createPointRedemptionRow(gas, {
-                    requestId: "request-same-member-second",
-                  }),'''
-                  new = "\n".join(
-                      line[18:] if line.startswith("                  ") else line
-                      for line in new.splitlines()
-                  )
+                  new = '      requestId: "request-same-member-second",'
                   if tests.count(old) != 1:
                       raise SystemExit(
                           "Unable to update the target-member duplicate ID regression case"
