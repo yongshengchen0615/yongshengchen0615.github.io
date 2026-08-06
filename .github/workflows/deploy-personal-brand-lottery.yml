@@ -4,87 +4,62 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "PersonalBrandTestingEnvironment/shared/lottery-wheel.js"
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
-      - "PersonalBrandTestingEnvironment/client/lottery/**"
+      - "PersonalBrandTestingEnvironment/client/index.html"
+      - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
+      - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/tests/**"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   push:
     branches: ["main"]
     paths:
+      - "PersonalBrandTestingEnvironment/shared/lottery-wheel.js"
       - "PersonalBrandTestingEnvironment/shared/module-registry.js"
-      - "PersonalBrandTestingEnvironment/client/lottery/**"
+      - "PersonalBrandTestingEnvironment/client/index.html"
+      - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/client/member-lottery.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
+      - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/tests/**"
       - ".github/workflows/deploy-personal-brand-lottery.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: personal-brand-lottery-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-and-activate:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Activate member lottery v2 scripts
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("PersonalBrandTestingEnvironment/client/index.html")
-          text = path.read_text(encoding="utf-8")
-          start_marker = '    <script defer src="../shared/lottery-wheel.js"></script>'
-          end_marker = '    <script defer src="script.js"></script>'
-          expected = "\n".join([
-              start_marker,
-              '    <script defer src="../shared/module-registry.js"></script>',
-              '    <script defer src="member-lottery.js"></script>',
-              '    <script defer src="lottery/contracts.js"></script>',
-              '    <script defer src="lottery/pending-request-store.js"></script>',
-              '    <script defer src="lottery/preparation-service.js"></script>',
-              '    <script defer src="lottery/wheel-draw-guard.js"></script>',
-              '    <script defer src="lottery/workspace-mapper.js"></script>',
-              '    <script defer src="lottery/wheel-animator.js"></script>',
-              '    <script defer src="lottery/dialog-view.js"></script>',
-              '    <script defer src="lottery/demo-provider.js"></script>',
-              '    <script defer src="lottery/dialog-controller.js"></script>',
-              '    <script defer src="member-lottery-v2.js"></script>',
-              end_marker,
-          ])
-
-          if expected not in text:
-              start = text.find(start_marker)
-              end = text.find(end_marker, start + len(start_marker))
-              if start < 0 or end < 0:
-                  raise SystemExit(
-                      "Unable to locate the member lottery script boundary in client/index.html"
-                  )
-              end += len(end_marker)
-              path.write_text(
-                  text[:start] + expected + text[end:],
-                  encoding="utf-8",
-              )
-          PY
-
       - name: Validate JavaScript syntax
         run: |
+          node --check PersonalBrandTestingEnvironment/shared/lottery-wheel.js
           node --check PersonalBrandTestingEnvironment/shared/module-registry.js
           node --check PersonalBrandTestingEnvironment/client/member-lottery.js
+          node --check PersonalBrandTestingEnvironment/client/member-lottery-v2.js
+          node --check PersonalBrandTestingEnvironment/client/script.js
           node --check PersonalBrandTestingEnvironment/client/lottery/contracts.js
           node --check PersonalBrandTestingEnvironment/client/lottery/pending-request-store.js
           node --check PersonalBrandTestingEnvironment/client/lottery/preparation-service.js
@@ -94,107 +69,48 @@ jobs:
           node --check PersonalBrandTestingEnvironment/client/lottery/dialog-view.js
           node --check PersonalBrandTestingEnvironment/client/lottery/demo-provider.js
           node --check PersonalBrandTestingEnvironment/client/lottery/dialog-controller.js
-          node --check PersonalBrandTestingEnvironment/client/member-lottery-v2.js
-
-      - name: Run member lottery v2 tests
-        run: |
-          node --test \
-            PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
-            PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
-            PersonalBrandTestingEnvironment/tests/wheel-animator.test.js \
-            PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
-            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
-
-      - name: Test module registry compatibility
-        run: node --test PersonalBrandTestingEnvironment/tests/module-registry.test.js
-
-      - name: Test preload compatibility
-        run: node --test PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js
-
-      - name: Test legacy dialog runtime
-        run: node --test PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js
-
-      - name: Test preload structure compatibility
-        run: node --test PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js
-
-      - name: Test v2 motion curve invariant
-        run: node --test --test-name-pattern="settles quickly" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test v2 pending request invariant
-        run: node --test --test-name-pattern="same persisted request id" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test v2 definitive failure invariant
-        run: node --test --test-name-pattern="definitive no-draw" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test v2 close protection invariant
-        run: node --test --test-name-pattern="cannot close or leave" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test legacy page navigation lock invariant
-        run: node --test --test-name-pattern="legacy lottery page" PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test complete lottery motion invariants
-        run: node --test PersonalBrandTestingEnvironment/tests/lottery-motion.test.js
-
-      - name: Test QR code module
-        run: node --test PersonalBrandTestingEnvironment/tests/qr-code.test.js
-
-      - name: Test point contracts
-        run: node --test PersonalBrandTestingEnvironment/tests/point-contract.test.js
-
-      - name: Test shared UI modules
-        run: node --test PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js
-
-      - name: Test client claim flow
-        run: node --test PersonalBrandTestingEnvironment/tests/client-claim-flow.test.js
-
-      - name: Test client message flow
-        run: node --test PersonalBrandTestingEnvironment/tests/client-message-flow.test.js
-
-      - name: Test admin GAS
-        run: node --test PersonalBrandTestingEnvironment/tests/admin-gas.test.js
-
-      - name: Test client GAS
-        run: node --test PersonalBrandTestingEnvironment/tests/client-gas.test.js
-
-      - name: Test frontend structure group A
-        run: >-
-          node --test
-          --test-name-pattern="split client|HTML documents|admin separates|client member profile|client profile dialog|incomplete members|shared GAS transport allowlists|admin exposes|admin lottery page"
-          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
-
-      - name: Test frontend structure group B
-        run: >-
-          node --test
-          --test-name-pattern="member home opens|legacy client lottery|admin creates point|admin point rules|admin member and point|client member pass|client point history|primary pages|client claim dialog|client captures"
-          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
-
-      - name: Test frontend structure group C
-        run: >-
-          node --test
-          --test-name-pattern="new member creation|shared transport exposes|LIFF pages preconnect|shared GAS transport keeps|member home updates|admin surfaces|member claim UI|member point scanner|admin loads a local QR|LIFF entry points"
-          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
-
-      - name: Test frontend structure group D
-        run: >-
-          node --test
-          --test-name-pattern="member-facing client|admin maps phone|client and admin JSON|admin access updates|both applications load|member home uses|deployment guides|admin UI|client renews|client clears|client does not start|admin renews|admin clears|admin does not start"
-          PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
-
-      - name: Test complete frontend structure
-        run: node --test PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
 
       - name: Run complete regression suite
         run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
 
-      - name: Validate dependency order
+  activate-v2:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Activate V2 dependency boundary
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          text = Path("PersonalBrandTestingEnvironment/client/index.html").read_text(
-              encoding="utf-8"
-          )
-          expected = "\n".join([
+          path = Path("PersonalBrandTestingEnvironment/client/index.html")
+          text = path.read_text(encoding="utf-8")
+
+          legacy_boundary = "\n".join([
+              '    <script defer src="../shared/lottery-wheel.js"></script>',
+              '    <script defer src="../shared/module-registry.js"></script>',
+              '    <script defer src="member-lottery.js"></script>',
+              '    <script defer src="lottery/contracts.js"></script>',
+              '    <script defer src="lottery/pending-request-store.js"></script>',
+              '    <script defer src="lottery/preparation-service.js"></script>',
+              '    <script defer src="lottery/preparation-view.js"></script>',
+              '    <script defer src="lottery/wheel-draw-guard.js"></script>',
+              '    <script defer src="lottery/preload-controller.js"></script>',
+              '    <script defer src="member-lottery-preload.js"></script>',
+              '    <script defer src="script.js"></script>',
+          ])
+
+          v2_boundary = "\n".join([
               '    <script defer src="../shared/lottery-wheel.js"></script>',
               '    <script defer src="../shared/module-registry.js"></script>',
               '    <script defer src="member-lottery.js"></script>',
@@ -210,15 +126,34 @@ jobs:
               '    <script defer src="member-lottery-v2.js"></script>',
               '    <script defer src="script.js"></script>',
           ])
-          if expected not in text:
-              raise SystemExit("Member lottery v2 dependency order is invalid")
+
+          if v2_boundary in text:
+              print("Member lottery V2 is already active.")
+              raise SystemExit(0)
+
+          legacy_count = text.count(legacy_boundary)
+          if legacy_count != 1:
+              raise SystemExit(
+                  "Refusing to rewrite client/index.html: expected exactly one known legacy boundary, "
+                  f"found {legacy_count}."
+              )
+
+          path.write_text(
+              text.replace(legacy_boundary, v2_boundary, 1),
+              encoding="utf-8",
+          )
           PY
 
+      - name: Validate activated entry point
+        run: |
+          node --test \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
+            PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+
       - name: Commit activated dependency order
-        if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
-            echo "Member lottery v2 scripts are already active."
+            echo "Member lottery V2 scripts are already active."
             exit 0
           fi
 
@@ -226,4 +161,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add PersonalBrandTestingEnvironment/client/index.html
           git commit -m "deploy: activate member lottery v2"
-          git push origin HEAD:main
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Unable to push the activation commit after 3 attempts."
+              exit 1
+            fi
+
+            git fetch origin main
+            git rebase origin/main
+          done
