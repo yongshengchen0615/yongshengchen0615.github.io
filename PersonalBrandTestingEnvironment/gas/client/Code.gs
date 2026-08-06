@@ -1213,7 +1213,8 @@ function getMemberPointCardStatus_(
   redemptionSheet,
   drawSheet,
   settingSheet,
-  lineUserId
+  lineUserId,
+  drawRecords
 ) {
   var ledger = readMemberPointLedger_(redemptionSheet, lineUserId);
   var settings = readPointCardSettings_(settingSheet);
@@ -1334,7 +1335,10 @@ function getMemberPointCardStatus_(
   var usedOrdinals = Object.create(null);
   var legacyDrawCount = 0;
   var memberDrawCount = 0;
-  readAllLotteryDraws_(drawSheet).forEach(function (draw) {
+  (Array.isArray(drawRecords)
+    ? drawRecords
+    : readAllLotteryDraws_(drawSheet)
+  ).forEach(function (draw) {
     if (draw.lineUserId !== lineUserId) return;
     memberDrawCount += 1;
     if (draw.legacyDraw) {
@@ -1594,13 +1598,32 @@ function pointCardSummaryResponse_(status) {
 }
 
 function getLotteryConfig_(identity, request, config) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  var initializationLock = LockService.getScriptLock();
+  if (!initializationLock.tryLock(4000)) {
     throw appError_("BUSY", "抽獎設定正在同步，請稍後再試。");
   }
 
+  var memberSheet;
+  var prizeSheet;
+  var drawSheet;
+  var redemptionSheet;
+  var settingSheet;
+  var typeSheet;
   try {
-    var memberSheet = getOrCreateMemberSheet_(config);
+    memberSheet = getOrCreateMemberSheet_(config);
+    prizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    drawSheet = getOrCreateLotteryDrawSheet_(config);
+    redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    settingSheet = getOrCreatePointCardSettingSheet_(config);
+    typeSheet = getOrCreateLotteryTypeSheet_(config);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "目前無法初始化抽獎設定，請稍後再試。");
+  } finally {
+    initializationLock.releaseLock();
+  }
+
+  try {
     var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
     if (!memberRowNumber) {
       throw appError_("MEMBER_NOT_FOUND", "找不到會員資料，請重新登入後再試。");
@@ -1613,19 +1636,17 @@ function getLotteryConfig_(identity, request, config) {
       throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法使用抽獎功能。");
     }
 
-    var prizeSheet = getOrCreateLotteryPrizeSheet_(config);
-    var drawSheet = getOrCreateLotteryDrawSheet_(config);
-    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
-    var settingSheet = getOrCreatePointCardSettingSheet_(config);
-    var typeSheet = getOrCreateLotteryTypeSheet_(config);
+    var drawRecords = readAllLotteryDraws_(drawSheet);
+    var settings = readPointCardSettings_(settingSheet);
     var cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
       settingSheet,
-      identity.lineUserId
+      identity.lineUserId,
+      drawRecords
     );
     var requiredTypeIds = Object.create(null);
-    readPointCardSettings_(settingSheet).forEach(function (setting) {
+    settings.forEach(function (setting) {
       setting.rewardRules.forEach(function (rule) {
         if (rule.lotteryTypeId) {
           requiredTypeIds[rule.lotteryTypeId] = true;
@@ -1665,15 +1686,42 @@ function getLotteryConfig_(identity, request, config) {
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法讀取抽獎設定，請稍後再試。");
-  } finally {
-    lock.releaseLock();
   }
+}
+
+function drawLotteryReplayResponse_(
+  access,
+  replayedDraw,
+  cardStatus,
+  lotteryTypes,
+  prizeSheet
+) {
+  var lotteryConfig = readLotteryConfigByVersion_(
+    prizeSheet,
+    replayedDraw.configVersion
+  );
+  var lotteryType = findLotteryTypeById_(
+    lotteryTypes,
+    replayedDraw.lotteryTypeId
+  );
+  return {
+    data: {
+      access: access,
+      duplicate: true,
+      draw: lotteryDrawResponse_(replayedDraw),
+      lottery: lotteryConfigResponse_(lotteryConfig),
+      lotteryType: memberLotteryTypeResponse_(lotteryType, lotteryConfig),
+      card: pointCardStatusResponse_(cardStatus),
+      pointBalance: cardStatus.totalPoints,
+      totalPoints: cardStatus.totalPoints,
+    },
+  };
 }
 
 function drawLottery_(identity, request, config) {
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
-    throw appError_("BUSY", "抽獎資格正在處理，請稍後再試。");
+  if (!lock.tryLock(4000)) {
+    throw appError_("BUSY", "抽獎資格正在處理，請使用同一次請求安全重試。");
   }
 
   try {
@@ -1694,12 +1742,14 @@ function drawLottery_(identity, request, config) {
     var prizeSheet = getOrCreateLotteryPrizeSheet_(config);
     var typeSheet = getOrCreateLotteryTypeSheet_(config);
     var settingSheet = getOrCreatePointCardSettingSheet_(config);
-    var replayedDraw = findLotteryDrawByRequest_(
-      drawSheet,
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var lotteryTypes = readLotteryTypes_(typeSheet);
+    var drawRecords = readAllLotteryDraws_(drawSheet);
+    var replayedDraw = findLotteryDrawInRecords_(
+      drawRecords,
       identity.lineUserId,
       request.requestId
     );
-    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
     if (replayedDraw) {
       if (
         replayedDraw.lotteryTypeId !== request.lotteryTypeId ||
@@ -1708,39 +1758,27 @@ function drawLottery_(identity, request, config) {
       ) {
         throw appError_("REQUEST_ID_CONFLICT", "同一抽獎請求不可更換抽獎券。");
       }
-      var replayCardStatus = getMemberPointCardStatus_(
-        redemptionSheet,
-        drawSheet,
-        settingSheet,
-        identity.lineUserId
+      return drawLotteryReplayResponse_(
+        access,
+        replayedDraw,
+        getMemberPointCardStatus_(
+          redemptionSheet,
+          drawSheet,
+          settingSheet,
+          identity.lineUserId,
+          drawRecords
+        ),
+        lotteryTypes,
+        prizeSheet
       );
-      return {
-        data: {
-          access: access,
-          duplicate: true,
-          draw: lotteryDrawResponse_(replayedDraw),
-          lottery: lotteryConfigResponse_(
-            readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
-          ),
-          lotteryType: memberLotteryTypeResponse_(
-            findLotteryTypeById_(
-              readLotteryTypes_(typeSheet),
-              replayedDraw.lotteryTypeId
-            ),
-            readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
-          ),
-          card: pointCardStatusResponse_(replayCardStatus),
-          pointBalance: replayCardStatus.totalPoints,
-          totalPoints: replayCardStatus.totalPoints,
-        },
-      };
     }
 
     var cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
       settingSheet,
-      identity.lineUserId
+      identity.lineUserId,
+      drawRecords
     );
     var selectedReward = resolveAvailablePointCardReward_(
       cardStatus,
@@ -1753,7 +1791,7 @@ function drawLottery_(identity, request, config) {
       );
     }
     var lotteryType = findLotteryTypeById_(
-      readLotteryTypes_(typeSheet),
+      lotteryTypes,
       selectedReward.lotteryTypeId
     );
     var lotteryConfig = readLatestLotteryConfig_(
@@ -1761,7 +1799,7 @@ function drawLottery_(identity, request, config) {
       lotteryType.lotteryTypeId
     );
 
-    // Re-read access immediately before the append-only draw ledger mutation.
+    // Recheck access and the append-only ledger immediately before mutation.
     memberRow = memberSheet
       .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
       .getValues()[0];
@@ -1769,8 +1807,9 @@ function drawLottery_(identity, request, config) {
     if (!access.allowed) {
       throw appError_("MEMBER_ACCESS_DENIED", "目前帳號已停用，無法使用抽獎功能。");
     }
-    replayedDraw = findLotteryDrawByRequest_(
-      drawSheet,
+    drawRecords = readAllLotteryDraws_(drawSheet);
+    replayedDraw = findLotteryDrawInRecords_(
+      drawRecords,
       identity.lineUserId,
       request.requestId
     );
@@ -1782,39 +1821,27 @@ function drawLottery_(identity, request, config) {
       ) {
         throw appError_("REQUEST_ID_CONFLICT", "同一抽獎請求不可更換抽獎券。");
       }
-      cardStatus = getMemberPointCardStatus_(
-        redemptionSheet,
-        drawSheet,
-        settingSheet,
-        identity.lineUserId
+      return drawLotteryReplayResponse_(
+        access,
+        replayedDraw,
+        getMemberPointCardStatus_(
+          redemptionSheet,
+          drawSheet,
+          settingSheet,
+          identity.lineUserId,
+          drawRecords
+        ),
+        lotteryTypes,
+        prizeSheet
       );
-      return {
-        data: {
-          access: access,
-          duplicate: true,
-          draw: lotteryDrawResponse_(replayedDraw),
-          lottery: lotteryConfigResponse_(
-            readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
-          ),
-          lotteryType: memberLotteryTypeResponse_(
-            findLotteryTypeById_(
-              readLotteryTypes_(typeSheet),
-              replayedDraw.lotteryTypeId
-            ),
-            readLotteryConfigByVersion_(prizeSheet, replayedDraw.configVersion)
-          ),
-          card: pointCardStatusResponse_(cardStatus),
-          pointBalance: cardStatus.totalPoints,
-          totalPoints: cardStatus.totalPoints,
-        },
-      };
     }
 
     cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
       settingSheet,
-      identity.lineUserId
+      identity.lineUserId,
+      drawRecords
     );
     selectedReward = resolveAvailablePointCardReward_(
       cardStatus,
@@ -1827,7 +1854,7 @@ function drawLottery_(identity, request, config) {
       );
     }
     lotteryType = findLotteryTypeById_(
-      readLotteryTypes_(typeSheet),
+      lotteryTypes,
       selectedReward.lotteryTypeId
     );
     lotteryConfig = readLatestLotteryConfig_(
@@ -1860,11 +1887,31 @@ function drawLottery_(identity, request, config) {
     applyLotteryDrawRowFormats_(drawSheet, drawSheet.getLastRow());
     SpreadsheetApp.flush();
 
+    var persistedDraw = {
+      drawId: drawId,
+      configVersion: lotteryConfig.configVersion,
+      prizeId: prize.prizeId,
+      prizeLabel: prize.label,
+      prizeColor: prize.color,
+      probabilityBasisPoints: prize.probabilityBasisPoints,
+      memberId: String(memberRow[MEMBER_COLUMN.memberId - 1] || "").replace(/^'/, ""),
+      lineUserId: identity.lineUserId,
+      pointsSpent: 0,
+      balanceBefore: cardStatus.totalPoints,
+      balanceAfter: cardStatus.totalPoints,
+      drawnAt: now.toISOString(),
+      requestId: request.requestId,
+      lotteryTypeId: lotteryType.lotteryTypeId,
+      cardSettingVersion: selectedReward.settingVersion,
+      cardRoundKey: selectedReward.cardRoundKey,
+      legacyDraw: false,
+    };
     var updatedCardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
       settingSheet,
-      identity.lineUserId
+      identity.lineUserId,
+      drawRecords.concat([persistedDraw])
     );
     return {
       data: {
@@ -1894,7 +1941,7 @@ function drawLottery_(identity, request, config) {
     };
   } catch (error) {
     if (error && error.appCode) throw error;
-    throw appError_("SPREADSHEET_ERROR", "目前無法完成抽獎，請稍後再試。");
+    throw appError_("SPREADSHEET_ERROR", "目前無法完成抽獎，請使用同一次請求安全重試。");
   } finally {
     lock.releaseLock();
   }
@@ -2172,9 +2219,9 @@ function lotteryDrawRecordFromRow_(row) {
   };
 }
 
-function findLotteryDrawByRequest_(sheet, lineUserId, requestId) {
+function findLotteryDrawInRecords_(drawRecords, lineUserId, requestId) {
   var match = null;
-  readAllLotteryDraws_(sheet).forEach(function (draw) {
+  (Array.isArray(drawRecords) ? drawRecords : []).forEach(function (draw) {
     if (draw.lineUserId !== lineUserId || draw.requestId !== requestId) return;
     if (match) {
       throw appError_("LOTTERY_DATA_ERROR", "相同抽獎請求出現重複紀錄。");
@@ -2182,6 +2229,14 @@ function findLotteryDrawByRequest_(sheet, lineUserId, requestId) {
     match = draw;
   });
   return match;
+}
+
+function findLotteryDrawByRequest_(sheet, lineUserId, requestId) {
+  return findLotteryDrawInRecords_(
+    readAllLotteryDraws_(sheet),
+    lineUserId,
+    requestId
+  );
 }
 
 function readAllLotteryDraws_(sheet) {
