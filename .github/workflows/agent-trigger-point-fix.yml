@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Execute and remove bootstrap workflow
+      - name: Apply, test and push focused source changes
         env:
           HEAD_BRANCH: ${{ github.head_ref }}
         run: |
@@ -32,66 +32,81 @@ jobs:
           from pathlib import Path
 
           bootstrap_path = Path(".github/workflows/agent-fix-point-redemption.yml")
-          trigger_path = Path(".github/workflows/agent-trigger-point-fix.yml")
           workflow_text = bootstrap_path.read_text(encoding="utf-8")
 
-          def extract_script(start_marker, end_marker=None):
+          def extract_script(start_marker, end_marker):
               start = workflow_text.index(start_marker) + len(start_marker)
-              end = workflow_text.index(end_marker, start) if end_marker else len(workflow_text)
+              end = workflow_text.index(end_marker, start)
               raw = workflow_text[start:end]
               return "\n".join(
                   line[10:] if line.startswith("          ") else line
                   for line in raw.splitlines()
               ).strip("\n") + "\n"
 
-          scripts = [
-              extract_script(
-                  "      - name: Apply focused point redemption fix\n        run: |\n",
-                  "\n      - name: Add focused point claim CI workflow",
-              ),
-              extract_script(
-                  "      - name: Add focused point claim CI workflow\n        run: |\n",
-                  "\n      - name: Remove bootstrap workflow",
-              ),
-              extract_script(
-                  "      - name: Run focused tests\n        run: |\n",
-                  "\n      - name: Commit and push focused fix",
-              ),
-              extract_script(
-                  "      - name: Commit and push focused fix\n        run: |\n"
-              ),
-          ]
+          patch_script = extract_script(
+              "      - name: Apply focused point redemption fix\n        run: |\n",
+              "\n      - name: Add focused point claim CI workflow",
+          )
+          test_script = extract_script(
+              "      - name: Run focused tests\n        run: |\n",
+              "\n      - name: Commit and push focused fix",
+          )
 
-          ref_expression = "$" + "{{ github.ref_name }}"
-          for script_index, script in enumerate(scripts):
-              if script_index == 1:
-                  test_path = Path(
-                      "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
-                  )
-                  tests = test_path.read_text(encoding="utf-8")
-                  old = (
-                      '      lineUserId: `U${"c".repeat(32)}`,\n'
-                      '      requestId: "request-other-member",'
-                  )
-                  new = '      requestId: "request-same-member-second",'
-                  if tests.count(old) != 1:
-                      raise SystemExit(
-                          "Unable to update the target-member duplicate ID regression case"
-                      )
-                  test_path.write_text(
-                      tests.replace(old, new, 1),
-                      encoding="utf-8",
-                  )
+          subprocess.run(
+              ["bash", "-euo", "pipefail", "-c", patch_script],
+              check=True,
+          )
 
-              if script_index == len(scripts) - 1:
-                  if bootstrap_path.exists():
-                      bootstrap_path.unlink()
-                  if trigger_path.exists():
-                      trigger_path.unlink()
-                  subprocess.run(
-                      ["git", "add", "-A", str(trigger_path)],
-                      check=True,
-                  )
-              script = script.replace(ref_expression, os.environ["HEAD_BRANCH"])
-              subprocess.run(["bash", "-euo", "pipefail", "-c", script], check=True)
+          test_path = Path("PersonalBrandTestingEnvironment/tests/client-gas.test.js")
+          tests = test_path.read_text(encoding="utf-8")
+          old = (
+              '      lineUserId: `U${"c".repeat(32)}`,\n'
+              '      requestId: "request-other-member",'
+          )
+          new = '      requestId: "request-same-member-second",'
+          if tests.count(old) != 1:
+              raise SystemExit(
+                  "Unable to update the target-member duplicate ID regression case"
+              )
+          test_path.write_text(tests.replace(old, new, 1), encoding="utf-8")
+
+          subprocess.run(
+              ["bash", "-euo", "pipefail", "-c", test_script],
+              check=True,
+          )
+          subprocess.run(
+              ["git", "config", "user.name", "github-actions[bot]"],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "config",
+                  "user.email",
+                  "41898282+github-actions[bot]@users.noreply.github.com",
+              ],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "add",
+                  "PersonalBrandTestingEnvironment/gas/client/Code.gs",
+                  "PersonalBrandTestingEnvironment/tests/client-gas.test.js",
+              ],
+              check=True,
+          )
+          subprocess.run(
+              ["git", "commit", "-m", "fix: stabilize point redemption GAS flow"],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "push",
+                  "origin",
+                  "HEAD:" + os.environ["HEAD_BRANCH"],
+              ],
+              check=True,
+          )
           PY
