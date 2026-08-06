@@ -13,6 +13,7 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
+      - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
@@ -21,6 +22,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
@@ -38,6 +40,7 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
+      - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
@@ -46,6 +49,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
@@ -106,6 +110,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-motion.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js \
             PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js \
             PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
