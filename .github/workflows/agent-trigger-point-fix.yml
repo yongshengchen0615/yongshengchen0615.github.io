@@ -49,27 +49,24 @@ jobs:
                   current = lines[index]
                   if current and len(current) - len(current.lstrip()) <= run_indent:
                       break
-                  if current:
-                      script_lines.append(current[content_indent:])
-                  else:
-                      script_lines.append("")
+                  script_lines.append(current[content_indent:] if current else "")
                   index += 1
               scripts.append("\n".join(script_lines) + "\n")
 
-          if len(scripts) != 5:
-              raise SystemExit(f"Expected 5 bootstrap scripts, found {len(scripts)}")
+          if len(scripts) != 4:
+              raise SystemExit(f"Expected 4 bootstrap scripts, found {len(scripts)}")
 
+          ref_expression = "$" + "{{ github.ref_name }}"
           for script_index, script in enumerate(scripts):
               if script_index == len(scripts) - 1:
+                  if bootstrap_path.exists():
+                      bootstrap_path.unlink()
                   if trigger_path.exists():
                       trigger_path.unlink()
                   subprocess.run(
                       ["git", "add", "-A", str(trigger_path)],
                       check=True,
                   )
-              script = script.replace(
-                  "${{ github.ref_name }}",
-                  os.environ["HEAD_BRANCH"],
-              )
+              script = script.replace(ref_expression, os.environ["HEAD_BRANCH"])
               subprocess.run(["bash", "-euo", "pipefail", "-c", script], check=True)
           PY
