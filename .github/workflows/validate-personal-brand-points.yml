@@ -1,0 +1,57 @@
+name: Validate Personal Brand Point Claims
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/shared/gas-api.js"
+      - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
+      - "PersonalBrandTestingEnvironment/tests/client-claim-flow.test.js"
+      - "PersonalBrandTestingEnvironment/tests/point-contract.test.js"
+      - ".github/workflows/validate-personal-brand-points.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/client/script.js"
+      - "PersonalBrandTestingEnvironment/shared/gas-api.js"
+      - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
+      - "PersonalBrandTestingEnvironment/tests/client-claim-flow.test.js"
+      - "PersonalBrandTestingEnvironment/tests/point-contract.test.js"
+      - ".github/workflows/validate-personal-brand-points.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run point claim regression suite
+        run: |
+          node --test \
+            PersonalBrandTestingEnvironment/tests/point-contract.test.js \
+            PersonalBrandTestingEnvironment/tests/client-claim-flow.test.js \
+            PersonalBrandTestingEnvironment/tests/client-gas.test.js
