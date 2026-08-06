@@ -57,7 +57,10 @@
             root.dispatchEvent(
               new root.CustomEvent(name, {
                 detail: Object.freeze(
-                  Object.assign({}, detail && typeof detail === "object" ? detail : {})
+                  Object.assign(
+                    {},
+                    detail && typeof detail === "object" ? detail : {}
+                  )
                 ),
               })
             );
