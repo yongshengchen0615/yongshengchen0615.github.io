@@ -735,6 +735,45 @@ test("LINE verification sends the exact admin client_id and validates returned c
   );
 });
 
+test("successful administrator LINE verification reuses the short-lived hashed cache", () => {
+  let fetchCalls = 0;
+  const cache = new Map();
+  const gas = createGasContext({
+    cache,
+    globals: {
+      UrlFetchApp: {
+        fetch() {
+          fetchCalls += 1;
+          return {
+            getResponseCode: () => 200,
+            getContentText: () =>
+              JSON.stringify({
+                iss: "https://access.line.me",
+                sub: ADMIN_USER_ID,
+                aud: ADMIN_CHANNEL_ID,
+                exp: Math.floor(Date.now() / 1000) + 300,
+                iat: Math.floor(Date.now() / 1000),
+                name: "管理員",
+              }),
+          };
+        },
+      },
+    },
+  });
+  const token = "header.cached.signature";
+
+  const first = gas.verifyLineIdToken_(token, ADMIN_CHANNEL_ID);
+  const second = gas.verifyLineIdToken_(token, ADMIN_CHANNEL_ID);
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(second.lineUserId, first.lineUserId);
+  assert.equal(
+    Array.from(cache.keys()).some((key) => key.includes(token)),
+    false,
+    "cache keys must not contain the raw ID token"
+  );
+});
+
 test("only allowlisted administrator actions are accepted and untrusted fields are ignored", () => {
   const gas = createGasContext();
   for (const action of [

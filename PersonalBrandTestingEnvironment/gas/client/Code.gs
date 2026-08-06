@@ -42,6 +42,7 @@ var MAX_LOTTERY_PRIZES = 12;
 var MAX_AVAILABLE_REWARD_TICKETS = 50;
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
+var LINE_VERIFY_CACHE_SECONDS = 60;
 
 var LEGACY_MEMBER_HEADERS = [
   "member_id",
@@ -496,6 +497,9 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證格式不正確，請重新登入。");
   }
 
+  var cachedIdentity = getCachedLineIdentity_(idToken, expectedChannelId);
+  if (cachedIdentity) return cachedIdentity;
+
   enforceLineVerificationRateLimit_();
 
   try {
@@ -531,23 +535,27 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
   }
 
   var nowSeconds = Math.floor(Date.now() / 1000);
+  var issuedAt = Math.floor(Number(claims && claims.iat));
   if (
     !claims ||
-    !claims.sub ||
+    !/^U[0-9a-f]{32}$/.test(String(claims.sub || "")) ||
     String(claims.aud || "") !== expectedChannelId ||
     Number(claims.exp || 0) <= nowSeconds ||
-    Number(claims.iat || 0) <= 0 ||
+    issuedAt <= 0 ||
+    issuedAt > nowSeconds + 300 ||
     String(claims.iss || "") !== "https://access.line.me"
   ) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證驗證失敗，請重新登入。");
   }
 
-  return {
-    lineUserId: limitText_(claims.sub, 128),
+  var identity = {
+    lineUserId: String(claims.sub),
     displayName: limitText_(claims.name || "LINE 會員", 100),
     pictureUrl: normalizeHttpsUrl_(claims.picture),
-    tokenIssuedAt: Math.floor(Number(claims.iat)),
+    tokenIssuedAt: issuedAt,
   };
+  cacheLineIdentity_(idToken, expectedChannelId, claims.exp, identity);
+  return identity;
 }
 
 function upsertMember_(identity, request, config) {
@@ -3966,6 +3974,69 @@ function markRequestProcessed_(lineUserId, action, requestId, outcome) {
     );
   } catch (_error) {
     // last_request_id remains the local idempotency fallback.
+  }
+}
+
+function lineIdentityCacheKey_(idToken, expectedChannelId) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(idToken || ""),
+    Utilities.Charset.UTF_8
+  );
+  var hex = digest
+    .map(function (byte) {
+      return ((Number(byte) + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+  return "member-line-identity:" + expectedChannelId + ":" + hex;
+}
+
+function getCachedLineIdentity_(idToken, expectedChannelId) {
+  try {
+    var raw = CacheService.getScriptCache().get(
+      lineIdentityCacheKey_(idToken, expectedChannelId)
+    );
+    if (!raw) return null;
+    var cached = JSON.parse(raw);
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    if (
+      !cached ||
+      Number(cached.exp || 0) <= nowSeconds ||
+      !/^U[0-9a-f]{32}$/.test(String(cached.lineUserId || "")) ||
+      Number(cached.tokenIssuedAt || 0) <= 0
+    ) {
+      return null;
+    }
+    return {
+      lineUserId: String(cached.lineUserId),
+      displayName: limitText_(cached.displayName || "LINE 會員", 100),
+      pictureUrl: normalizeHttpsUrl_(cached.pictureUrl),
+      tokenIssuedAt: Math.floor(Number(cached.tokenIssuedAt)),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function cacheLineIdentity_(idToken, expectedChannelId, expiresAt, identity) {
+  try {
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    var remainingSeconds = Math.floor(Number(expiresAt) || 0) - nowSeconds;
+    if (remainingSeconds <= 0) return;
+    var ttl = Math.min(LINE_VERIFY_CACHE_SECONDS, remainingSeconds);
+    CacheService.getScriptCache().put(
+      lineIdentityCacheKey_(idToken, expectedChannelId),
+      JSON.stringify({
+        exp: Math.floor(Number(expiresAt)),
+        lineUserId: identity.lineUserId,
+        displayName: identity.displayName,
+        pictureUrl: identity.pictureUrl,
+        tokenIssuedAt: identity.tokenIssuedAt,
+      }),
+      ttl
+    );
+  } catch (_error) {
+    // Best effort. LINE remains the source of truth.
   }
 }
 

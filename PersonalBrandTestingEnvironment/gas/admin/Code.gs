@@ -43,6 +43,7 @@ var DEFAULT_LOTTERY_DRAWS_SHEET_NAME = "LotteryDraws";
 var DEFAULT_MEMBER_LIFF_URL = "https://liff.line.me/2010787602-kaiSm2eq";
 var LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 var MAX_ID_TOKEN_LENGTH = 6000;
+var LINE_VERIFY_CACHE_SECONDS = 60;
 var DEFAULT_ADMIN_PAGE_SIZE = 50;
 var MAX_ADMIN_PAGE_SIZE = 100;
 var MAX_POINT_VALUE = 9999;
@@ -574,6 +575,9 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證格式不正確，請重新登入。");
   }
 
+  var cachedIdentity = getCachedLineIdentity_(idToken, expectedChannelId);
+  if (cachedIdentity) return cachedIdentity;
+
   enforceLineVerificationRateLimit_();
 
   try {
@@ -622,13 +626,15 @@ function verifyLineIdToken_(idToken, expectedChannelId) {
     throw appError_("INVALID_TOKEN", "LINE 登入憑證驗證失敗，請重新登入。");
   }
 
-  return {
+  var identity = {
     lineUserId: String(claims.sub),
     displayName: limitText_(claims.name || "LINE 管理員", 100),
     pictureUrl: normalizeHttpsUrl_(claims.picture),
     email: limitText_(claims.email || "", 254),
     tokenIssuedAt: issuedAt,
   };
+  cacheLineIdentity_(idToken, expectedChannelId, claims.exp, identity);
+  return identity;
 }
 
 function adminListMembers_(adminIdentity, request, config) {
@@ -4300,6 +4306,71 @@ function isValidOrigin_(origin) {
 
 function normalizeOrigin_(value) {
   return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function lineIdentityCacheKey_(idToken, expectedChannelId) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(idToken || ""),
+    Utilities.Charset.UTF_8
+  );
+  var hex = digest
+    .map(function (byte) {
+      return ((Number(byte) + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+  return "admin-line-identity:" + expectedChannelId + ":" + hex;
+}
+
+function getCachedLineIdentity_(idToken, expectedChannelId) {
+  try {
+    var raw = CacheService.getScriptCache().get(
+      lineIdentityCacheKey_(idToken, expectedChannelId)
+    );
+    if (!raw) return null;
+    var cached = JSON.parse(raw);
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    if (
+      !cached ||
+      Number(cached.exp || 0) <= nowSeconds ||
+      !/^U[0-9a-f]{32}$/.test(String(cached.lineUserId || "")) ||
+      Number(cached.tokenIssuedAt || 0) <= 0
+    ) {
+      return null;
+    }
+    return {
+      lineUserId: String(cached.lineUserId),
+      displayName: limitText_(cached.displayName || "LINE 管理員", 100),
+      pictureUrl: normalizeHttpsUrl_(cached.pictureUrl),
+      email: limitText_(cached.email || "", 254),
+      tokenIssuedAt: Math.floor(Number(cached.tokenIssuedAt)),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function cacheLineIdentity_(idToken, expectedChannelId, expiresAt, identity) {
+  try {
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    var remainingSeconds = Math.floor(Number(expiresAt) || 0) - nowSeconds;
+    if (remainingSeconds <= 0) return;
+    var ttl = Math.min(LINE_VERIFY_CACHE_SECONDS, remainingSeconds);
+    CacheService.getScriptCache().put(
+      lineIdentityCacheKey_(idToken, expectedChannelId),
+      JSON.stringify({
+        exp: Math.floor(Number(expiresAt)),
+        lineUserId: identity.lineUserId,
+        displayName: identity.displayName,
+        pictureUrl: identity.pictureUrl,
+        email: identity.email,
+        tokenIssuedAt: identity.tokenIssuedAt,
+      }),
+      ttl
+    );
+  } catch (_error) {
+    // Best effort. LINE remains the source of truth.
+  }
 }
 
 function isJwtLike_(value) {

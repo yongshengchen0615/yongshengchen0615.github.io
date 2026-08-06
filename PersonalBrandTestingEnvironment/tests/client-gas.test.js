@@ -638,9 +638,39 @@ test("LINE ID token verification sends the member channel and validates claims",
 
   claims.aud = "2010791619";
   assert.throws(
-    () => gas.verifyLineIdToken_("header.payload.signature", "2010787602"),
+    () => gas.verifyLineIdToken_("header.changed.signature", "2010787602"),
     (error) => error.appCode === "INVALID_TOKEN"
   );
+});
+
+test("successful member LINE verification is cached without storing the raw token", () => {
+  let fetchCalls = 0;
+  const token = "header.cached.signature";
+  const gas = createGasContext({
+    UrlFetchApp: {
+      fetch() {
+        fetchCalls += 1;
+        return {
+          getResponseCode: () => 200,
+          getContentText: () =>
+            JSON.stringify({
+              iss: "https://access.line.me",
+              sub: `U${"d".repeat(32)}`,
+              aud: "2010787602",
+              exp: Math.floor(Date.now() / 1000) + 300,
+              iat: Math.floor(Date.now() / 1000),
+              name: "快取會員",
+            }),
+        };
+      },
+    },
+  });
+
+  const first = gas.verifyLineIdToken_(token, "2010787602");
+  const second = gas.verifyLineIdToken_(token, "2010787602");
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(second.lineUserId, first.lineUserId);
 });
 
 test("LINE provider errors are public-safe and distinguish throttling", () => {
