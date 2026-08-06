@@ -1,0 +1,362 @@
+name: Bootstrap Personal Brand UI UX Batch One
+
+on:
+  push:
+    branches:
+      - "agent/improve-ui-ux-batch-one"
+    paths:
+      - ".github/workflows/validate-personal-brand-ui.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/improve-ui-ux-batch-one
+          fetch-depth: 0
+
+      - name: Apply focused UI UX improvements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("PersonalBrandTestingEnvironment")
+          html_path = root / "client" / "index.html"
+          html = html_path.read_text(encoding="utf-8")
+          start_anchor = '            <div class="member-service-actions" role="group" aria-label="會員集點功能">'
+          end_anchor = '            <div class="member-account-actions">'
+          if 'class="member-service-panel"' not in html:
+              start = html.index(start_anchor)
+              end = html.index(end_anchor, start)
+              replacement = '''            <section class="member-service-panel" aria-labelledby="member-service-title">
+              <header class="member-service-heading">
+                <div>
+                  <p class="eyebrow">QUICK ACTIONS</p>
+                  <h2 id="member-service-title">會員快速操作</h2>
+                </div>
+                <p>先集點，再查看抽獎券或最近紀錄。</p>
+              </header>
+
+              <div class="member-service-actions" role="group" aria-label="會員集點功能">
+                <button
+                  class="primary-button member-scan-button"
+                  id="scan-point-button"
+                  type="button"
+                  aria-describedby="scan-point-help"
+                >
+                  <span>掃描集點碼</span>
+                  <small id="scan-point-help">掃描 QR 後立即領點</small>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"></path></svg>
+                </button>
+                <button
+                  class="secondary-button member-ticket-button"
+                  id="lottery-page-link"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="member-ticket-dialog"
+                  aria-label="抽獎券"
+                  aria-describedby="member-ticket-help"
+                >
+                  <span>抽獎券</span>
+                  <small id="member-ticket-help">查看可用與已獲得票券</small>
+                  <output class="member-ticket-count" id="member-ticket-count" aria-label="可用抽獎券數量" aria-live="polite" hidden>0</output>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4V7zM9 7v10"></path></svg>
+                </button>
+                <button
+                  class="secondary-button member-history-button"
+                  id="open-point-history-button"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="point-history-dialog"
+                  aria-describedby="member-history-help"
+                >
+                  <span>點數紀錄</span>
+                  <small id="member-history-help">查看最近 30 筆紀錄</small>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M20 12a8 8 0 1 1-2.3-5.7M17 4v3h3"></path></svg>
+                </button>
+              </div>
+            </section>
+
+'''
+              html = html[:start] + replacement + html[end:]
+              html_path.write_text(html, encoding="utf-8")
+
+          client_css_path = root / "client" / "styles.css"
+          client_css = client_css_path.read_text(encoding="utf-8")
+          client_marker = "/* UI UX batch one: member action hierarchy and busy feedback */"
+          if client_marker not in client_css:
+              client_css += '''
+
+/* UI UX batch one: member action hierarchy and busy feedback */
+.member-service-panel {
+  padding: clamp(1rem, 2.4vw, 1.4rem);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper-soft) 86%, transparent);
+}
+
+.member-service-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.member-service-heading h2 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.35rem, 2.5vw, 1.9rem);
+  font-weight: 580;
+  letter-spacing: -0.04em;
+}
+
+.member-service-heading > p {
+  max-width: 22rem;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  line-height: 1.65;
+  text-align: right;
+}
+
+.member-service-panel .member-service-actions {
+  margin-top: 0.85rem;
+}
+
+.member-service-actions > button {
+  min-height: 4.65rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 0.65rem;
+  row-gap: 0.2rem;
+  text-align: left;
+}
+
+.member-service-actions > button > span {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+}
+
+.member-service-actions > button > small {
+  grid-column: 1;
+  grid-row: 2;
+  color: currentColor;
+  font-size: 0.67rem;
+  font-weight: 520;
+  line-height: 1.35;
+  opacity: 0.68;
+}
+
+.member-service-actions > button > .member-ticket-count {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.member-service-actions > button > svg {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.primary-button[aria-busy="true"],
+.secondary-button[aria-busy="true"],
+.danger-button[aria-busy="true"],
+.refresh-button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.primary-button[aria-busy="true"]::after,
+.secondary-button[aria-busy="true"]::after,
+.danger-button[aria-busy="true"]::after,
+.refresh-button[aria-busy="true"]::after {
+  width: 0.95rem;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: spin 720ms linear infinite;
+}
+
+.primary-button[aria-busy="true"] > svg,
+.secondary-button[aria-busy="true"] > svg,
+.refresh-button[aria-busy="true"] > svg {
+  display: none;
+}
+
+.member-service-actions > button[aria-busy="true"]::after {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.member-service-actions > button[aria-busy="true"] > small,
+.member-service-actions > button[aria-busy="true"] > .member-ticket-count {
+  visibility: hidden;
+}
+
+@media (max-width: 680px) {
+  .member-service-panel {
+    padding: 1rem;
+  }
+
+  .member-service-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .member-service-heading > p {
+    max-width: none;
+    text-align: left;
+  }
+
+  .member-service-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .member-scan-button {
+    grid-column: auto;
+  }
+}
+'''
+              client_css_path.write_text(client_css, encoding="utf-8")
+
+          admin_css_path = root / "admin" / "styles.css"
+          admin_css = admin_css_path.read_text(encoding="utf-8")
+          admin_marker = "/* UI UX batch one: distinguish unavailable and in-progress controls */"
+          if admin_marker not in admin_css:
+              admin_css += '''
+
+/* UI UX batch one: distinguish unavailable and in-progress controls */
+button:disabled {
+  cursor: not-allowed;
+}
+
+.primary-button[aria-busy="true"],
+.secondary-button[aria-busy="true"],
+.danger-button[aria-busy="true"],
+.refresh-button[aria-busy="true"],
+.action-button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.primary-button[aria-busy="true"]::after,
+.secondary-button[aria-busy="true"]::after,
+.danger-button[aria-busy="true"]::after,
+.refresh-button[aria-busy="true"]::after,
+.action-button[aria-busy="true"]::after {
+  width: 0.95rem;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: spin 720ms linear infinite;
+}
+
+.primary-button[aria-busy="true"] > svg,
+.refresh-button[aria-busy="true"] > svg {
+  display: none;
+}
+'''
+              admin_css_path.write_text(admin_css, encoding="utf-8")
+
+          test_path = root / "tests" / "ui-ux-baseline.test.js"
+          test_path.write_text(r'''const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = path.resolve(__dirname, "..");
+const read = (relativePath) =>
+  fs.readFileSync(path.join(root, relativePath), "utf8");
+
+test("member homepage groups the three primary service actions with supporting copy", () => {
+  const html = read("client/index.html");
+
+  assert.match(html, /class="member-service-panel"/);
+  assert.match(html, /id="member-service-title">會員快速操作</);
+  assert.match(html, /id="scan-point-help">掃描 QR 後立即領點</);
+  assert.match(html, /id="member-ticket-help">查看可用與已獲得票券</);
+  assert.match(html, /id="member-history-help">查看最近 30 筆紀錄</);
+  assert.match(
+    html,
+    /id="scan-point-button"[\s\S]*?aria-describedby="scan-point-help"/
+  );
+  assert.match(
+    html,
+    /id="lottery-page-link"[\s\S]*?aria-describedby="member-ticket-help"/
+  );
+  assert.match(
+    html,
+    /id="open-point-history-button"[\s\S]*?aria-describedby="member-history-help"/
+  );
+});
+
+test("member service actions become single-column controls on small screens", () => {
+  const css = read("client/styles.css");
+
+  assert.match(css, /UI UX batch one: member action hierarchy/);
+  assert.match(
+    css,
+    /@media \(max-width: 680px\)[\s\S]*?\.member-service-actions\s*\{[\s\S]*?grid-template-columns:\s*1fr;/
+  );
+});
+
+test("busy buttons have visible progress feedback and disabled admin controls are not mislabeled as loading", () => {
+  const clientCss = read("client/styles.css");
+  const adminCss = read("admin/styles.css");
+
+  assert.match(clientCss, /\[aria-busy="true"\]::after/);
+  assert.match(clientCss, /cursor:\s*progress/);
+  assert.match(adminCss, /button:disabled\s*\{\s*cursor:\s*not-allowed;/);
+  assert.match(adminCss, /\[aria-busy="true"\][\s\S]*?cursor:\s*progress/);
+  assert.match(adminCss, /\[aria-busy="true"\]::after/);
+});
+
+test("existing reduced-motion safeguards remain in member and admin styles", () => {
+  for (const file of ["client/styles.css", "admin/styles.css"]) {
+    const css = read(file);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+    assert.match(css, /animation-duration:\s*0\.01ms\s*!important/);
+  }
+});
+''', encoding="utf-8")
+          PY
+
+      - name: Check JavaScript syntax
+        run: |
+          find PersonalBrandTestingEnvironment -type f -name '*.js' -print0 |
+            while IFS= read -r -d '' file; do
+              node --check "$file"
+            done
+
+      - name: Run full project tests
+        run: node --test PersonalBrandTestingEnvironment/tests/*.test.js
+
+      - name: Commit and push source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            PersonalBrandTestingEnvironment/client/index.html \
+            PersonalBrandTestingEnvironment/client/styles.css \
+            PersonalBrandTestingEnvironment/admin/styles.css \
+            PersonalBrandTestingEnvironment/tests/ui-ux-baseline.test.js
+          git commit -m "feat: improve member action hierarchy and busy feedback"
+          git push origin HEAD:agent/improve-ui-ux-batch-one
