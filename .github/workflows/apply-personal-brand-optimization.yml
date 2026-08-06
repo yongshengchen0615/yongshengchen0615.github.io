@@ -42,13 +42,34 @@ jobs:
         run: |
           set -euo pipefail
           cat .github/patches/personal-brand-optimization.py.gz.part* | gzip -dc | python3
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("PersonalBrandTestingEnvironment/tests/admin-gas.test.js"): (
+                  'assert.equal(response.data.version, "1.8.0");',
+                  'assert.equal(response.data.version, "1.8.1");',
+              ),
+              Path("PersonalBrandTestingEnvironment/tests/client-gas.test.js"): (
+                  'assert.equal(health.data.version, "1.10.0");',
+                  'assert.equal(health.data.version, "1.10.1");',
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              source = path.read_text(encoding="utf-8")
+              if source.count(old) != 1:
+                  raise SystemExit(f"expected one version contract in {path}")
+              path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
           git diff --check
           actual="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
             PersonalBrandTestingEnvironment/admin/script.js \
             PersonalBrandTestingEnvironment/client/script.js \
             PersonalBrandTestingEnvironment/gas/admin/Code.gs \
-            PersonalBrandTestingEnvironment/gas/client/Code.gs | sort)"
+            PersonalBrandTestingEnvironment/gas/client/Code.gs \
+            PersonalBrandTestingEnvironment/tests/admin-gas.test.js \
+            PersonalBrandTestingEnvironment/tests/client-gas.test.js | sort)"
           test "$actual" = "$expected"
 
       - name: Validate JavaScript and GAS syntax
@@ -95,6 +116,8 @@ jobs:
             PersonalBrandTestingEnvironment/admin/script.js \
             PersonalBrandTestingEnvironment/gas/client/Code.gs \
             PersonalBrandTestingEnvironment/gas/admin/Code.gs \
+            PersonalBrandTestingEnvironment/tests/admin-gas.test.js \
+            PersonalBrandTestingEnvironment/tests/client-gas.test.js \
             .github/workflows/apply-personal-brand-optimization.yml \
             .github/patches/personal-brand-optimization.py.gz.part0 \
             .github/patches/personal-brand-optimization.py.gz.part1 \
