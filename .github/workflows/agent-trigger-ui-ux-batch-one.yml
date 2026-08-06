@@ -1,0 +1,75 @@
+name: Trigger Personal Brand UI UX Batch One
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/validate-personal-brand-ui.yml"
+      - ".github/workflows/agent-trigger-ui-ux-batch-one.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  execute-bootstrap:
+    if: github.head_ref == 'agent/improve-ui-ux-batch-one'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply, test and push focused UI changes
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          workflow_path = Path(".github/workflows/validate-personal-brand-ui.yml")
+          text = workflow_path.read_text(encoding="utf-8")
+
+          def extract(start_marker, end_marker=None):
+              start = text.index(start_marker) + len(start_marker)
+              end = text.index(end_marker, start) if end_marker else len(text)
+              raw = text[start:end]
+              return "\n".join(
+                  line[10:] if line.startswith("          ") else line
+                  for line in raw.splitlines()
+              ).strip("\n") + "\n"
+
+          scripts = [
+              extract(
+                  "      - name: Apply focused UI UX improvements\n        run: |\n",
+                  "\n      - name: Check JavaScript syntax",
+              ),
+              extract(
+                  "      - name: Check JavaScript syntax\n        run: |\n",
+                  "\n      - name: Run full project tests",
+              ),
+              extract(
+                  "      - name: Run full project tests\n        run: ",
+                  "\n\n      - name: Commit and push source changes",
+              ),
+              extract(
+                  "      - name: Commit and push source changes\n        run: |\n"
+              ),
+          ]
+
+          scripts[2] = scripts[2].strip() + "\n"
+          scripts[3] = scripts[3].replace(
+              "HEAD:agent/improve-ui-ux-batch-one",
+              "HEAD:" + os.environ["HEAD_BRANCH"],
+          )
+
+          for script in scripts:
+              subprocess.run(
+                  ["bash", "-euo", "pipefail", "-c", script],
+                  check=True,
+              )
+          PY
