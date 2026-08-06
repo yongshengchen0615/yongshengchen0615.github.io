@@ -2449,18 +2449,31 @@ function redeemPointCampaign_(identity, request, config) {
     campaign = latestCampaign;
 
     var pointBalance = getMemberPointBalance_(
-      redemptionSheet,
-      identity.lineUserId,
-      lotteryDrawSheet
-    );
-    if (pointBalance > 9007199254740991 - campaign.points) {
-      throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
-    }
-    var balanceAfter = pointBalance + campaign.points;
-    var now = new Date();
+    redemptionSheet,
+    identity.lineUserId,
+    lotteryDrawSheet
+  );
+  var preflightCardStatus = getMemberPointCardStatusForConfig_(
+    config,
+    identity.lineUserId,
+    redemptionSheet,
+    lotteryDrawSheet
+  );
+  if (preflightCardStatus.totalPoints !== pointBalance) {
+    throw appError_("POINT_DATA_ERROR", "領點前的集點卡累計資料不一致。");
+  }
+  if (pointBalance > 9007199254740991 - campaign.points) {
+    throw appError_("POINT_DATA_ERROR", "會員點數資料超出可處理範圍。");
+  }
+  var balanceAfter = pointBalance + campaign.points;
+  var now = new Date();
+  var redemptionId =
+    "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();
+  var redemptionAppended = false;
 
+  try {
     redemptionSheet.appendRow([
-      "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase(),
+      redemptionId,
       safeSheetText_(campaign.campaignId),
       safeSheetText_(campaign.pointTypeId),
       safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),
@@ -2471,7 +2484,21 @@ function redeemPointCampaign_(identity, request, config) {
       request.requestId,
       campaign.redemptionMode,
     ]);
-    applyPointRedemptionRowFormats_(redemptionSheet, redemptionSheet.getLastRow());
+    redemptionAppended = true;
+
+    var redemptionRowNumber = findPointRedemptionRowNumber_(
+      redemptionSheet,
+      redemptionId,
+      identity.lineUserId,
+      request.requestId
+    );
+    if (!redemptionRowNumber) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "領點紀錄寫入後無法定位，請聯絡管理員。"
+      );
+    }
+    applyPointRedemptionRowFormats_(redemptionSheet, redemptionRowNumber);
     SpreadsheetApp.flush();
 
     var response = pointCampaignRedemptionResponseForConfig_(
@@ -2488,6 +2515,25 @@ function redeemPointCampaign_(identity, request, config) {
       throw appError_("POINT_DATA_ERROR", "領點後的集點卡累計資料不一致。");
     }
     return response;
+  } catch (redemptionError) {
+    if (redemptionAppended) {
+      var appendedRowNumber = findPointRedemptionRowNumber_(
+        redemptionSheet,
+        redemptionId,
+        identity.lineUserId,
+        request.requestId
+      );
+      if (!appendedRowNumber) {
+        throw appError_(
+"POINT_DATA_ERROR",
+"領點失敗且無法確認寫入狀態，請聯絡管理員。"
+        );
+      }
+      redemptionSheet.deleteRow(appendedRowNumber);
+      SpreadsheetApp.flush();
+    }
+    throw redemptionError;
+  }
   } catch (error) {
     if (error && error.appCode) throw error;
     throw appError_("SPREADSHEET_ERROR", "目前無法領取點數，請稍後再試。");
@@ -3444,6 +3490,47 @@ function findPointRedemptionByRequest_(sheet, lineUserId, requestId) {
   return match;
 }
 
+function findPointRedemptionRowNumber_(
+  sheet,
+  redemptionId,
+  lineUserId,
+  requestId
+) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var rowNumber = 0;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.redemptionId - 1],
+        100
+      ) !== redemptionId ||
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.lineUserId - 1],
+        128
+      ) !== lineUserId ||
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.requestId - 1],
+        100
+      ) !== requestId
+    ) {
+      continue;
+    }
+    if (rowNumber) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "同一領點寫入識別出現重複紀錄，請聯絡管理員。"
+      );
+    }
+    rowNumber = i + 2;
+  }
+  return rowNumber;
+}
+
 function assertRedemptionMatchesCampaign_(redemptionRow, campaign) {
   var storedCampaignId = plainSheetText_(
     redemptionRow[POINT_REDEMPTION_COLUMN.campaignId - 1],
@@ -3555,33 +3642,33 @@ function readMemberPointLedger_(sheet, lineUserId) {
   var requestKeys = Object.create(null);
   var campaignModes = Object.create(null);
   rows.forEach(function (row) {
-    var redemptionId = plainSheetText_(
-      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
-      100
-    );
-    var storedLineUserId = plainSheetText_(
-      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
-      128
-    );
-    var requestId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.requestId - 1], 100);
-    var requestKey = storedLineUserId + ":" + requestId;
-    if (
-      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
-      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
-      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
-      redemptionIds[redemptionId] ||
-      requestKeys[requestKey]
-    ) {
-      throw appError_("POINT_DATA_ERROR", "會員點數紀錄格式不正確，請聯絡管理員。");
-    }
-    redemptionIds[redemptionId] = true;
-    requestKeys[requestKey] = true;
+  var storedLineUserId = plainSheetText_(
+    row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
+    128
+  );
+  if (storedLineUserId !== lineUserId) return;
 
-    if (
-      storedLineUserId !== lineUserId
-    ) {
-      return;
-    }
+  var redemptionId = plainSheetText_(
+    row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+    100
+  );
+  var requestId = plainSheetText_(
+    row[POINT_REDEMPTION_COLUMN.requestId - 1],
+    100
+  );
+  var requestKey = storedLineUserId + ":" + requestId;
+  if (
+    !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+    !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+    redemptionIds[redemptionId] ||
+    requestKeys[requestKey]
+  ) {
+    throw appError_("POINT_DATA_ERROR", "會員點數紀錄格式不正確，請聯絡管理員。");
+  }
+  redemptionIds[redemptionId] = true;
+  requestKeys[requestKey] = true;
+
     var campaignId = plainSheetText_(
       row[POINT_REDEMPTION_COLUMN.campaignId - 1],
       100

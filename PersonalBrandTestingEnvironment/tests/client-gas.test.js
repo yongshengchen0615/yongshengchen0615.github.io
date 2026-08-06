@@ -1835,8 +1835,7 @@ test("point ledger permits repeatable campaigns but rejects duplicate request an
   const duplicateIdRows = [
     createPointRedemptionRow(gas),
     createPointRedemptionRow(gas, {
-      lineUserId: `U${"c".repeat(32)}`,
-      requestId: "request-other-member",
+      requestId: "request-same-member-second",
     }),
   ];
   assert.throws(
@@ -3145,4 +3144,78 @@ test("verification rate limit rejects excess requests", () => {
     () => gas.enforceLineVerificationRateLimit_(),
     (error) => error.appCode === "LINE_RATE_LIMITED"
   );
+});
+
+
+test("point redemption ignores malformed rows owned by another member", () => {
+  const gas = createGasContext();
+  const otherLineUserId = `U${"c".repeat(32)}`;
+  const redemptionRows = [
+    createPointRedemptionRow(gas, {
+      redemptionId: "legacy-invalid-id",
+      memberId: "MBR-SECOND0000",
+      lineUserId: otherLineUserId,
+      requestId: "legacy-invalid-request",
+    }),
+  ];
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    campaignRows: [createPointCampaignRow(gas)],
+    redemptionRows,
+  });
+
+  const result = gas.redeemPointCampaign_(
+    createIdentity(),
+    {
+      action: "redeemPointCampaign",
+      requestId: "request-ignore-other-member",
+      claim: POINT_CLAIM,
+    },
+    {}
+  );
+
+  assert.equal(result.data.redeemed, true);
+  assert.equal(result.data.pointBalance, 3);
+  assert.equal(redemptionRows.length, 2);
+  assert.equal(
+    redemptionRows[1][gas.POINT_REDEMPTION_COLUMN.lineUserId - 1],
+    createIdentity().lineUserId
+  );
+});
+
+test("point redemption rolls back its ledger row when response assembly fails", () => {
+  const gas = createGasContext();
+  const redemptionRows = [];
+  installPointSheets(gas, {
+    memberRows: [createMemberRow(gas)],
+    campaignRows: [createPointCampaignRow(gas)],
+    redemptionRows,
+  });
+  const originalResponseBuilder = gas.pointCampaignRedemptionResponseForConfig_;
+  gas.pointCampaignRedemptionResponseForConfig_ = function (...args) {
+    if (args[7] > 0) {
+      throw gas.appError_(
+        "POINT_CARD_DATA_ERROR",
+        "forced response assembly failure"
+      );
+    }
+    return originalResponseBuilder.apply(gas, args);
+  };
+  const request = {
+    action: "redeemPointCampaign",
+    requestId: "request-rollback-response",
+    claim: POINT_CLAIM,
+  };
+
+  assert.throws(
+    () => gas.redeemPointCampaign_(createIdentity(), request, {}),
+    (error) => error.appCode === "POINT_CARD_DATA_ERROR"
+  );
+  assert.equal(redemptionRows.length, 0);
+
+  gas.pointCampaignRedemptionResponseForConfig_ = originalResponseBuilder;
+  const retry = gas.redeemPointCampaign_(createIdentity(), request, {});
+  assert.equal(retry.data.redeemed, true);
+  assert.equal(retry.data.pointBalance, 3);
+  assert.equal(redemptionRows.length, 1);
 });
