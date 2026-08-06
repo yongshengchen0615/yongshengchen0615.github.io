@@ -330,4 +330,4001 @@ function doGet(e) {
     return jsonResponse_({
       ok: true,
       requestId: requestId,
-²È="25¥¹M•½¹‘Ì¤ì(€€€…¡•M•ÉÙ¥”¹•ÑMÉ¥ÁÑ…¡” ¤¹ÁÕĞ (€€€€€±¥¹•%‘•¹Ñ¥Ñå…¡•-•å|¡¥‘Q½­•¸°•áÁ•Ñ•‘¡…¹¹•±%¤°(€€€€€)M=8¹ÍÑÉ¥¹¥™ä¡ì(€€€€€€€•áÀè5…Ñ ¹™±½½È¡9Õµ‰•È¡•áÁ¥É•ÍĞ¤¤°(€€€€€€€±¥¹•UÍ•É%è¥‘•¹Ñ¥Ñä¹±¥¹•UÍ•É%°(€€€€€€€‘¥ÍÁ±…å9…µ”è¥‘•¹Ñ¥Ñä¹‘¥ÍÁ±…å9…µ”°(€€€€€€€Á¥ÑÕÉ•UÉ°è¥‘•¹Ñ¥Ñä¹Á¥ÑÕÉ•UÉ°°(€€€€€€€Ñ½­•¹%ÍÍÕ•‘Ğè¥‘•¹Ñ¥Ñä¹Ñ½­•¹%ÍÍÕ•‘Ğ°(€€€€€ô¤°(€€€€€ÑÑ°(€€€€¤ì(€ô…Ñ €¡}•ÉÉ½È¤ì(€€€€¼¼	•ÍĞ•™™½ÉĞ¸1%9É•µ…¥¹ÌÑ¡”Í½ÕÉ”½˜ÑÉÕÑ ¸(€ô)ô()™Õ¹Ñ¥½¸¥Í)İÑ1¥­•|¡Ù…±Õ”¤ì(€É•ÑÕÉ¸€½ymµi„µèÀ´å|µt­p¹mµi„µèÀ´å|µt­p¹mµi„µèÀ´å|µt¬¼¹Ñ•ÍĞ¡MÑÉ¥¹œ¡Ù…±Õ”ñğ€ˆˆ¤¤ì)ô()™Õ¹Ñ¥½¸•¹™½É•1¥¹•Y•É¥™¥…Ñ¥½¹I…Ñ•1¥µ¥Ñ| ¤ì(€Ù…È±½¬ì(€Ù…È…ÅÕ¥É•€ô™…±Í”ì((€ÑÉäì(€€€Ù…ÈÁÉ½Á•ÉÑ¥•Ì€ôAÉ½Á•ÉÑ¥•ÍM•ÉÙ¥”¹•ÑMÉ¥ÁÑAÉ½Á•ÉÑ¥•Ì ¤ì(€€€Ù…È½¹™¥ÕÉ•‘1¥µ¥Ğ€ô9Õµ‰•È¡ÁÉ½Á•ÉÑ¥•Ì¹•ÑAÉ½Á•ÉÑä ‰5a}YI%e}IEUMQM}AI}5%9UQˆ¤ñğ€ÄÈÀ¤ì(€€€Ù…È±¥µ¥Ğ€ô5…Ñ ¹µ…à Ä°5…Ñ ¹µ¥¸ ÄÀÀÀ°5…Ñ ¹™±½½È¡½¹™¥ÕÉ•‘1¥µ¥Ğ¤ñğ€ÄÈÀ¤¤ì(€€€Ù…Èµ¥¹ÕÑ•	Õ­•Ğ€ô5…Ñ ¹™±½½È¡…Ñ”¹¹½Ü ¤€¼€ØÀÀÀÀ¤ì(€€€Ù…È…¡•-•ä€ô€‰±¥¹”µÙ•É¥™äµ½Õ¹Ğèˆ€¬µ¥¹ÕÑ•	Õ­•Ğì(€€€±½¬€ô1½­M•ÉÙ¥”¹•ÑMÉ¥ÁÑ1½¬ ¤ì(€€€…ÅÕ¥É•€ô±½¬¹ÑÉå1½¬ ÄÀÀÀ¤ì((€€€¥˜€ ……ÅÕ¥É•¤ì(€€€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰	UMdˆ°€‹šr–N‡¦¦_¢¶'¢®/šÆ¢ò–’k¾ò3¢®/¢7–ú3–7¢¦›ˆ¤ì(€€€ô((€€€Ù…È…¡”€ô…¡•M•ÉÙ¥”¹•ÑMÉ¥ÁÑ…¡” ¤ì(€€€Ù…È½Õ¹Ğ€ô5…Ñ ¹µ…à À°9Õµ‰•È¡…¡”¹•Ğ¡…¡•-•ä¤¤ñğ€À¤ì(€€€¥˜€¡½Õ¹Ğ€øô±¥µ¥Ğ¤ì(€€€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰1%9}IQ}1%5%Qˆ°€‹šr–N‡¦¦_¢¶'¢®/šÆ–ŞË¦Sšj¯šf’â+¦fC¾ò3¢®/¢7–ú3–7¢¦›ˆ¤ì(€€€ô(€€€…¡”¹ÁÕĞ¡…¡•-•ä°MÑÉ¥¹œ¡½Õ¹Ğ€¬€Ä¤°€ÄÈÀ¤ì(€ô…Ñ €¡•ÉÉ½È¤ì(€€€¥˜€¡•ÉÉ½È€˜˜•ÉÉ½È¹…ÁÁ½‘”¤Ñ¡É½Ü•ÉÉ½Èì(€€€€¼¼	•ÍĞµ•™™½ÉĞÉ…Ñ”±¥µ¥Ñ¥¹œ¸1%9ÍÑ¥±°Ù…±¥‘…Ñ•Ì¥‘•¹Ñ¥Ñä¸(€ô™¥¹…±±äì(€€€¥˜€¡…ÅÕ¥É•€˜˜±½¬¤±½¬¹É•±•…Í•1½¬ ¤ì(€ô)ô()™Õ¹Ñ¥½¸‰É¥‘•I•ÍÁ½¹Í•|¡É•ÍÕ±Ğ°É•ÅÕ•ÍĞ¤ì(€Ù…ÈÑ…É•Ñ=É¥¥¸€ô¥ÍY…±¥‘=É¥¥¹|¡É•ÅÕ•ÍĞ¹…±±‰…­=É¥¥¸¤€üÉ•ÅÕ•ÍĞ¹…±±‰…­=É¥¥¸€è€ˆˆì(€Ù…ÈÍ•É•Ğ€ô€½ym„µ˜À´åuìĞáô¼¹Ñ•ÍĞ¡É•ÅÕ•ÍĞ¹É•ÅÕ•ÍÑM•É•Ğñğ€ˆˆ¤€üÉ•ÅÕ•ÍĞ¹É•ÅÕ•ÍÑM•É•Ğ€è€ˆˆì((€¥˜€ …Ñ…É•Ñ=É¥¥¸ñğ€…Í•É•Ğ¤ì(€€€É•ÑÕÉ¸!Ñµ±M•ÉÙ¥”(€€€€€€¹É•…Ñ•!Ñµ±=ÕÑÁÕĞ ˆğ…‘½ÑåÁ”¡Ñµ°øñµ•Ñ„¡…ÉÍ•Ğõp‰ÕÑ˜´ápˆøñÑ¥Ñ±”ù%¹Ù…±¥‰É¥‘”ğ½Ñ¥Ñ±”øˆ¤(€€€€€€¹Í•ÑaÉ…µ•=ÁÑ¥½¹Í5½‘”¡!Ñµ±M•ÉÙ¥”¹aÉ…µ•=ÁÑ¥½¹Í5½‘”¹11=]10¤ì(€ô((€Ù…Èµ•ÍÍ…”€ôì(€€€ÑåÁ”è€‰55	I}M}IMA=9Mˆ°(€€€É•ÅÕ•ÍÑ%èMÑÉ¥¹œ¡É•ÅÕ•ÍĞ¹É•ÅÕ•ÍÑ%ñğ€ˆˆ¤°(€€€É•ÅÕ•ÍÑM•É•ĞèÍ•É•Ğ°(€€€É•ÍÕ±ĞèÉ•ÍÕ±Ğ°(€ôì(€Ù…È¡Ñµ°€ô(€€€€ˆğ…‘½ÑåÁ”¡Ñµ°øñ¡Ñµ°øñ¡•…øñµ•Ñ„¡…ÉÍ•Ğõp‰ÕÑ˜´ápˆøñÑ¥Ñ±”ù5•µ‰•ÈÍå¹Œğ½Ñ¥Ñ±”øğ½¡•…øˆ€¬(€€€€ˆñ‰½‘äøñÍÉ¥ÁĞùİ¥¹‘½Ü¹Ñ½À¹Á½ÍÑ5•ÍÍ…” ˆ€¬(€€€Í…™•)Í½¹½É!Ñµ±|¡µ•ÍÍ…”¤€¬(€€€€ˆ°ˆ€¬(€€€Í…™•)Í½¹½É!Ñµ±|¡Ñ…É•Ñ=É¥¥¸¤€¬(€€€€ˆ¤ìñp½ÍÉ¥ÁĞøğ½‰½‘äøğ½¡Ñµ°øˆì((€É•ÑÕÉ¸!Ñµ±M•ÉÙ¥”(€€€€¹É•…Ñ•!Ñµ±=ÕÑÁÕĞ¡¡Ñµ°¤(€€€€¹Í•ÑaÉ…µ•=ÁÑ¥½¹Í5½‘”¡!Ñµ±M•ÉÙ¥”¹aÉ…µ•=ÁÑ¥½¹Í5½‘”¹11=]10¤ì)ô()™Õ¹Ñ¥½¸©Í½¹I•ÍÁ½¹Í•|¡Á…å±½…¤ì(€É•ÑÕÉ¸½¹Ñ•¹ÑM•ÉÙ¥”(€€€€¹É•…Ñ•Q•áÑ=ÕÑÁÕĞ¡)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…¤¤(€€€€¹Í•Ñ5¥µ•QåÁ”¡½¹Ñ•¹ÑM•ÉÙ¥”¹5¥µ•QåÁ”¹)M=8¤ì)ô()™Õ¹Ñ¥½¸Í…™•)Í½¹½É!Ñµ±|¡Ù…±Õ”¤ì(€É•ÑÕÉ¸)M=8¹ÍÑÉ¥¹¥™ä¡Ù…±Õ”¤(€€€€¹É•Á±…” ¼ğ½œ°€‰qqÔÀÀÍŒˆ¤(€€€€¹É•Á±…” ¼ø½œ°€‰qqÔÀÀÍ”ˆ¤(€€€€¹É•Á±…” ¼˜½œ°€‰qqÔÀÀÈØˆ¤(€€€€¹É•Á±…” ½qÔÈÀÈà½œ°€‰qqÔÈÀÈàˆ¤(€€€€¹É•Á±…” ½qÔÈÀÈä½œ°€‰qqÔÈÀÈäˆ¤ì)ô()™Õ¹Ñ¥½¸•ÉÉ½ÉI•ÍÕ±Ñ|¡•ÉÉ½È¤ì(€Ù…È½‘”€ô•ÉÉ½È€˜˜•ÉÉ½È¹…ÁÁ½‘”€ü•ÉÉ½È¹…ÁÁ½‘”€è€‰%9QI91}II=Hˆì(€Ù…Èµ•ÍÍ…”€ô•ÉÉ½È€˜˜•ÉÉ½È¹ÁÕ‰±¥5•ÍÍ…”€ü•ÉÉ½È¹ÁÕ‰±¥5•ÍÍ…”€è€‹–ú3–>ÃfóRšr«¦‚Cšrj¦2¿¢ª“ˆì((€€¼¼9•Ù•È±½œÉ•ÅÕ•ÍĞ‰½‘¥•Ì½È1%9Ñ½­•¹Ì¸(€½¹Í½±”¹•ÉÉ½È ‰5•µ‰•È±¥•¹ĞA$•ÉÉ½È½‘”è€ˆ€¬½‘”¤ì(€É•ÑÕÉ¸ì½¬è™…±Í”°½‘”è½‘”°µ•ÍÍ…”èµ•ÍÍ…”ôì)ô()™Õ¹Ñ¥½¸…ÁÁÉÉ½É|¡½‘”°ÁÕ‰±¥5•ÍÍ…”¤ì(€Ù…È•ÉÉ½È€ô¹•ÜÉÉ½È¡ÁÕ‰±¥5•ÍÍ…”¤ì(€•ÉÉ½È¹…ÁÁ½‘”€ô½‘”ì(€•ÉÉ½È¹ÁÕ‰±¥5•ÍÍ…”€ôÁÕ‰±¥5•ÍÍ…”ì(€É•ÑÕÉ¸•ÉÉ½Èì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•A½¥¹Ñ±…¥µ|¡Ù…±Õ”¤ì(€Ù…È±…¥´€ôMÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤¹ÑÉ¥´ ¤ì(€¥˜€ „½ymµi„µèÀ´å|µuìĞÍô¼¹Ñ•ÍĞ¡±…¥´¤¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}A=%9Q}1%4ˆ°€‰EH½‘”ƒ¦‚c¦î{šG¢¶'š‚ó–ò?’â7š¶Šëˆ¤ì(€ô(€É•ÑÕÉ¸±…¥´ì)ô()™Õ¹Ñ¥½¸Í¡„ÈÔÙ!•á|¡Ù…±Õ”¤ì(€Ù…È‰åÑ•Ì€ôUÑ¥±¥Ñ¥•Ì¹½µÁÕÑ•¥•ÍĞ (€€€UÑ¥±¥Ñ¥•Ì¹¥•ÍÑ±½É¥Ñ¡´¹M!|ÈÔØ°(€€€MÑÉ¥¹œ¡Ù…±Õ”¤°(€€€UÑ¥±¥Ñ¥•Ì¹¡…ÉÍ•Ğ¹UQ|à(€€¤ì(€É•ÑÕÉ¸‰åÑ•Ì(€€€€¹µ…À¡™Õ¹Ñ¥½¸€¡‰åÑ”¤ì(€€€€€É•ÑÕÉ¸€ ¡‰åÑ”€¬€ÈÔØ¤€”€ÈÔØ¤¹Ñ½MÑÉ¥¹œ ÄØ¤¹Á…‘MÑ…ÉĞ È°€ˆÀˆ¤ì(€€€ô¤(€€€€¹©½¥¸ ˆˆ¤ì)ô()™Õ¹Ñ¥½¸Á±…¥¹M¡••ÑQ•áÑ|¡Ù…±Õ”°µ…á1•¹Ñ ¤ì(€Ù…ÈÑ•áĞ€ôMÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤¹ÑÉ¥´ ¤ì(€¥˜€ ½xlô­pµt¼¹Ñ•ÍĞ¡Ñ•áĞ¤¤Ñ•áĞ€ôÑ•áĞ¹Í±¥” Ä¤ì(€É•ÑÕÉ¸Ñ•áĞ¹Í±¥” À°µ…á1•¹Ñ ñğ€ÈÀÀ¤ì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•A½¥¹Ñ	…±…¹•|¡Ù…±Õ”¤ì(€Ù…È‰…±…¹”€ô9Õµ‰•È¡Ù…±Õ”ñğ€À¤ì(€É•ÑÕÉ¸9Õµ‰•È¹¥Í%¹Ñ••È¡‰…±…¹”¤€˜˜‰…±…¹”€øô€À€˜˜‰…±…¹”€ğô€äÀÀÜÄääÈÔĞÜĞÀääÄ(€€€€ü‰…±…¹”(€€€€è€Àì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•5•µ‰•ÉA¡½¹•|¡Ù…±Õ”¤ì(€Ù…ÈÁ¡½¹”€ôMÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤¹ÑÉ¥´ ¤ì(€¥˜€ …Á¡½¹”¤É•ÑÕÉ¸€ˆˆì((€Ù…È‘¥¥Ñ½Õ¹Ğ€ôÁ¡½¹”¹É•Á±…” ½q½œ°€ˆˆ¤¹±•¹Ñ ì(€¥˜€ (€€€Á¡½¹”¹±•¹Ñ €ø€ÌÀñğ(€€€€„½ylÀ´ä¬ ¤¹p´€áat¬¼¹Ñ•ÍĞ¡Á¡½¹”¤ñğ(€€€‘¥¥Ñ½Õ¹Ğ€ğ€Øñğ(€€€‘¥¥Ñ½Õ¹Ğ€ø€ÈÀ(€€¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| (€€€€€€‰%9Y1%}A!=9ˆ°(€€€€€€‹¦nï¢¦Çš‚ó–ò?’â7š¶Šë¾ò3¢®/¢òã–”€Øƒ¢Ì€ÈÀƒ’ö7šVã–¶_¾ò3–>¿’öÿR£¦ëš‚ó¯·š.³¢fš"[–"š¦²›¢fˆ(€€€€¤ì(€ô((€É•ÑÕÉ¸Á¡½¹”ì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•5•µ‰•É	¥ÉÑ¡‘…å|¡Ù…±Õ”¤ì(€Ù…È‰¥ÉÑ¡‘…ä€ôMÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤¹ÑÉ¥´ ¤ì(€¥˜€ …‰¥ÉÑ¡‘…ä¤É•ÑÕÉ¸€ˆˆì((€Ù…Èµ…Ñ €ô€½x¡q‘ìÑô¤´¡q‘ìÉô¤´¡q‘ìÉô¤¼¹•á•Œ¡‰¥ÉÑ¡‘…ä¤ì(€¥˜€ …µ…Ñ ¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}	%IQ!dˆ°€‹Rš^—š‚ó–ò?’â7š¶Šë¾ò3¢®/’öÿR eeedµ54µˆ¤ì(€ô((€Ù…Èå•…È€ô9Õµ‰•È¡µ…Ñ¡lÅt¤ì(€Ù…Èµ½¹Ñ €ô9Õµ‰•È¡µ…Ñ¡lÉt¤ì(€Ù…È‘…ä€ô9Õµ‰•È¡µ…Ñ¡lÍt¤ì(€Ù…È‘…Ñ”€ô¹•Ü…Ñ”¡…Ñ”¹UQ¡å•…È°µ½¹Ñ €´€Ä°‘…ä¤¤ì(€¥˜€ (€€€‘…Ñ”¹•ÑUQÕ±±e•…È ¤€„ôôå•…Èñğ(€€€‘…Ñ”¹•ÑUQ5½¹Ñ  ¤€„ôôµ½¹Ñ €´€Äñğ(€€€‘…Ñ”¹•ÑUQ…Ñ” ¤€„ôô‘…ä(€€¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}	%IQ!dˆ°€‹Rš^—’â7šb¿šr'šV#jš^—šrˆ¤ì(€ô((€Ù…ÈÑ½‘…ä€ôUÑ¥±¥Ñ¥•Ì¹™½Éµ…Ñ…Ñ”¡¹•Ü…Ñ” ¤°€‰Í¥„½Q…¥Á•¤ˆ°€‰åååäµ54µ‘ˆ¤ì(€¥˜€¡‰¥ÉÑ¡‘…ä€øÑ½‘…ä¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}	%IQ!dˆ°€‹Rš^—’â7–>¿šfkšZó’î+–’§ˆ¤ì(€ô((€É•ÑÕÉ¸‰¥ÉÑ¡‘…äì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•I•ÅÕ¥É•‘5•µ‰•ÉAÉ½™¥±•|¡Á¡½¹•Y…±Õ”°‰¥ÉÑ¡‘…åY…±Õ”¤ì(€Ù…ÈÁ¡½¹”€ô¹½Éµ…±¥é•5•µ‰•ÉA¡½¹•|¡Á¡½¹•Y…±Õ”¤ì(€Ù…È‰¥ÉÑ¡‘…ä€ô¹½Éµ…±¥é•5•µ‰•É	¥ÉÑ¡‘…å|¡‰¥ÉÑ¡‘…åY…±Õ”¤ì(€¥˜€ …Á¡½¹”¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}A!=9ˆ°€‹¢®/–†¯–¾¯¦nï¢¦Ç–ú3–7–Ë–¶cšr–N‡¢ÎšZgˆ¤ì(€ô(€¥˜€ …‰¥ÉÑ¡‘…ä¤ì(€€€Ñ¡É½Ü…ÁÁÉÉ½É| ‰%9Y1%}	%IQ!dˆ°€‹¢®/–†¯–¾¯Rš^—–ú3–7–Ë–¶cšr–N‡¢ÎšZgˆ¤ì(€ô(€É•ÑÕÉ¸ì(€€€Á¡½¹”èÁ¡½¹”°(€€€‰¥ÉÑ¡‘…äè‰¥ÉÑ¡‘…ä°(€ôì)ô()™Õ¹Ñ¥½¸µ•µ‰•ÉA¡½¹•É½µI½İ|¡É½Ü¤ì(€Ù…ÈÁ¡½¹”€ôMÑÉ¥¹œ¡É½İm55	I}=1U58¹Á¡½¹”€´€Åtñğ€ˆˆ¤¹ÑÉ¥´ ¤¹Í±¥” À°€ÌÀ¤ì(€É•ÑÕÉ¸€½xlô­pµt¼¹Ñ•ÍĞ¡Á¡½¹”¤€üÁ¡½¹”¹Í±¥” Ä¤€èÁ¡½¹”ì)ô()™Õ¹Ñ¥½¸µ•µ‰•É	¥ÉÑ¡‘…åÉ½µI½İ|¡É½Ü¤ì(€Ù…È‰¥ÉÑ¡‘…ä€ôMÑÉ¥¹œ¡É½İm55	I}=1U58¹‰¥ÉÑ¡‘…ä€´€Åtñğ€ˆˆ¤¹ÑÉ¥´ ¤ì(€É•ÑÕÉ¸€½yq‘ìÑôµq‘ìÉôµq‘ìÉô¼¹Ñ•ÍĞ¡‰¥ÉÑ¡‘…ä¤€ü‰¥ÉÑ¡‘…ä€è€ˆˆì)ô()™Õ¹Ñ¥½¸Í…™•M¡••ÑQ•áÑ|¡Ù…±Õ”¤ì(€Ù…ÈÑ•áĞ€ôMÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤ì(€É•ÑÕÉ¸€½ylô­pµt¼¹Ñ•ÍĞ¡Ñ•áĞ¤€ü€ˆœˆ€¬Ñ•áĞ€èÑ•áĞì)ô()™Õ¹Ñ¥½¸±¥µ¥ÑQ•áÑ|¡Ù…±Õ”°µ…á1•¹Ñ ¤ì(€É•ÑÕÉ¸MÑÉ¥¹œ¡Ù…±Õ”€ôô¹Õ±°€ü€ˆˆ€èÙ…±Õ”¤¹ÑÉ¥´ ¤¹Í±¥” À°µ…á1•¹Ñ ñğ€ÈÀÀ¤ì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é•!ÑÑÁÍUÉ±|¡Ù…±Õ”¤ì(€Ù…ÈÕÉ°€ô±¥µ¥ÑQ•áÑ|¡Ù…±Õ”°€ÈÀÀÀ¤ì(€É•ÑÕÉ¸€½y¡ÑÑÁÌép½p¼½¤¹Ñ•ÍĞ¡ÕÉ°¤€üÕÉ°€è€ˆˆì)ô()™Õ¹Ñ¥½¸¹½Éµ…±¥é••ÍÍMÑ…ÑÕÍ|¡Ù…±Õ”¤ì(€Ù…ÈÍÑ…ÑÕÌ€ôMÑÉ¥¹œ¡Ù…±Õ”ñğ€ˆˆ¤¹ÑÉ¥´ ¤¹Ñ½1½İ•É…Í” ¤ì(€¥˜€ …ÍÑ…ÑÕÌñğÍÑ…ÑÕÌ€ôôô€‰…ÁÁÉ½Ù•ˆñğÍÑ…ÑÕÌ€ôôô€‰…Ñ¥Ù”ˆñğÍÑ…ÑÕÌ€ôôô€‰Á•¹‘¥¹œˆ¤ì(€€€É•ÑÕÉ¸€‰…ÁÁÉ½Ù•ˆì(€ô(€¥˜€¡ÍÑ…ÑÕÌ€ôôô€‰‘•¹¥•ˆ¤É•ÑÕÉ¸€‰‘•¹¥•ˆì(€É•ÑÕÉ¸€‰Á•¹‘¥¹œˆì)ô()™Õ¹Ñ¥½¸Ñ½%Í½MÑÉ¥¹|¡Ù…±Õ”¤ì(€Ù…È‘…Ñ”€ôÙ…±Õ”¥¹ÍÑ…¹•½˜…Ñ”€üÙ…±Õ”€è¹•Ü…Ñ”¡Ù…±Õ”¤ì(€É•ÑÕÉ¸¥Í9…8¡‘…Ñ”¹•ÑQ¥µ” ¤¤€ü€ˆˆ€è‘…Ñ”¹Ñ½%M=MÑÉ¥¹œ ¤ì)ô((((
+      data: {
+        service: "member-client-api",
+        version: API_VERSION,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  return jsonResponse_({
+    ok: false,
+    requestId: requestId,
+    code: "METHOD_NOT_ALLOWED",
+    message: "æ­¤æ“ä½œå¿…é ˆä½¿ç”¨ POSTã€‚",
+  });
+}
+
+function doPost(e) {
+  var request = {};
+  var result;
+
+  try {
+    request = parseRequest_(e);
+    validateRequestEnvelope_(request);
+
+    // callbackOrigin is only an operational allowlist. The verified LINE ID
+    // token remains the identity authority.
+    if (!isAllowedRequestOrigin_(request.callbackOrigin)) {
+      throw appError_("ORIGIN_NOT_ALLOWED", "ç›®å‰ç¶²ç«™ä¾†æºæœªè¢« GAS å…è¨±ã€‚");
+    }
+
+    result = handleMemberRequest_(request);
+    result.ok = true;
+  } catch (error) {
+    result = errorResult_(error);
+  }
+
+  result.requestId = String(request.requestId || "");
+
+  if (request.transport === "bridge") {
+    return bridgeResponse_(result, request);
+  }
+
+  return jsonResponse_(result);
+}
+
+/** Run once after configuring Script Properties. */
+function setup() {
+  var config = getConfig_();
+  var lock = LockService.getScriptLock();
+
+  if (!lock.tryLock(10000)) {
+    throw new Error("Could not acquire setup lock. Try again in a few seconds.");
+  }
+
+  try {
+    var sheet = getOrCreateMemberSheet_(config);
+    var pointTypeSheet = getOrCreatePointTypeSheet_(config);
+    var pointCampaignSheet = getOrCreatePointCampaignSheet_(config);
+    var pointRedemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var pointCardSettingSheet = getOrCreatePointCardSettingSheet_(config);
+    var lotteryTypeSheet = getOrCreateLotteryTypeSheet_(config);
+    ensureDefaultPointCardSetting_(pointCardSettingSheet);
+    var lotteryPrizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    ensureLotteryTypeForExistingPrizes_(lotteryTypeSheet, lotteryPrizeSheet);
+    ensurePointCardLotteryMappings_(
+      pointCardSettingSheet,
+      lotteryTypeSheet,
+      lotteryPrizeSheet
+    );
+    var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+    migrateDefaultMemberAccess_(sheet);
+    applySheetColumnFormats_(sheet);
+    applyPointTypeSheetFormats_(pointTypeSheet);
+    applyPointCampaignSheetFormats_(pointCampaignSheet);
+    applyPointRedemptionSheetFormats_(pointRedemptionSheet);
+    applyPointCardSettingSheetFormats_(pointCardSettingSheet);
+    applyLotteryTypeSheetFormats_(lotteryTypeSheet);
+    applyLotteryPrizeSheetFormats_(lotteryPrizeSheet);
+    applyLotteryDrawSheetFormats_(lotteryDrawSheet);
+    SpreadsheetApp.flush();
+    return {
+      ok: true,
+      spreadsheetId: config.spreadsheetId,
+      sheetName: sheet.getName(),
+      columns: MEMBER_HEADERS.length,
+      accessStatuses: ["approved", "denied"],
+      pointTypeSheetName: pointTypeSheet.getName(),
+      pointTypeColumns: POINT_TYPE_HEADERS.length,
+      pointCampaignSheetName: pointCampaignSheet.getName(),
+      pointCampaignColumns: POINT_CAMPAIGN_HEADERS.length,
+      pointRedemptionSheetName: pointRedemptionSheet.getName(),
+      pointRedemptionColumns: POINT_REDEMPTION_HEADERS.length,
+      pointCardSettingSheetName: pointCardSettingSheet.getName(),
+      pointCardSettingColumns: POINT_CARD_SETTING_HEADERS.length,
+      lotteryTypeSheetName: lotteryTypeSheet.getName(),
+      lotteryTypeColumns: LOTTERY_TYPE_HEADERS.length,
+      lotteryPrizeSheetName: lotteryPrizeSheet.getName(),
+      lotteryPrizeColumns: LOTTERY_PRIZE_HEADERS.length,
+      lotteryDrawSheetName: lotteryDrawSheet.getName(),
+      lotteryDrawColumns: LOTTERY_DRAW_HEADERS.length,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleMemberRequest_(request) {
+  // Keep this guard here as well as in validateRequestEnvelope_ so direct
+  // internal calls cannot make an admin request reach config or token checks.
+  assertSupportedAction_(request && request.action);
+
+  var config = getConfig_();
+  var identity = verifyLineIdToken_(request.idToken, config.lineChannelId);
+
+  if (request.action === "upsertMember") {
+    return upsertMember_(identity, request, config);
+  }
+
+  if (request.action === "updateMemberProfile") {
+    return updateMemberProfile_(identity, request, config);
+  }
+
+  if (request.action === "listPointHistory") {
+    return listPointHistory_(identity, request, config);
+  }
+
+  if (request.action === "getLotteryConfig") {
+    return getLotteryConfig_(identity, request, config);
+  }
+
+  if (request.action === "drawLottery") {
+    return drawLottery_(identity, request, config);
+  }
+
+  if (request.action === "previewPointCampaign") {
+    return previewPointCampaign_(identity, request, config);
+  }
+
+  if (request.action === "redeemPointCampaign") {
+    return redeemPointCampaign_(identity, request, config);
+  }
+
+  return deleteMember_(identity, request, config);
+}
+
+function assertSupportedAction_(action) {
+  if (
+    action !== "upsertMember" &&
+    action !== "updateMemberProfile" &&
+    action !== "listPointHistory" &&
+    action !== "getLotteryConfig" &&
+    action !== "drawLottery" &&
+    action !== "previewPointCampaign" &&
+    action !== "redeemPointCampaign" &&
+    action !== "deleteMember"
+  ) {
+    throw appError_("UNSUPPORTED_ACTION", "æ­¤æœƒå“¡ç«¯å¾Œå°ä¸æ”¯æ´è©²æ“ä½œã€‚");
+  }
+}
+
+function verifyLineIdToken_(idToken, expectedChannelId) {
+  var response;
+
+  if (!isJwtLike_(idToken)) {
+    throw appError_("INVALID_TOKEN", "LINE ç™»å…¥æ†‘è­‰æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹é‡æ–°ç™»å…¥ã€‚");
+  }
+
+  var cachedIdentity = getCachedLineIdentity_(idToken, expectedChannelId);
+  if (cachedIdentity) return cachedIdentity;
+
+  enforceLineVerificationRateLimit_();
+
+  try {
+    response = UrlFetchApp.fetch(LINE_VERIFY_URL, {
+      method: "post",
+      contentType: "application/x-www-form-urlencoded",
+      payload: {
+        id_token: idToken,
+        client_id: expectedChannelId,
+      },
+      muteHttpExceptions: true,
+    });
+  } catch (_error) {
+    throw appError_("LINE_UNAVAILABLE", "ç›®å‰ç„¡æ³•å‘ LINE é©—è­‰ç™»å…¥ç‹€æ…‹ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  var responseCode = response.getResponseCode();
+  if (responseCode === 400) {
+    throw appError_("INVALID_TOKEN", "LINE ç™»å…¥æ†‘è­‰ç„¡æ•ˆæˆ–å·²éæœŸï¼Œè«‹é‡æ–°ç™»å…¥ã€‚");
+  }
+  if (responseCode === 429) {
+    throw appError_("LINE_RATE_LIMITED", "LINE é©—è­‰è«‹æ±‚éæ–¼é »ç¹ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+  if (responseCode !== 200) {
+    throw appError_("LINE_UNAVAILABLE", "LINE é©—è­‰æœå‹™æš«æ™‚ç„¡æ³•ä½¿ç”¨ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  var claims;
+  try {
+    claims = JSON.parse(response.getContentText());
+  } catch (_error) {
+    throw appError_("LINE_RESPONSE_ERROR", "LINE é©—è­‰æœå‹™å›å‚³äº†ç„¡æ³•è­˜åˆ¥çš„è³‡æ–™ã€‚");
+  }
+
+  var nowSeconds = Math.floor(Date.now() / 1000);
+  var issuedAt = Math.floor(Number(claims && claims.iat));
+  if (
+    !claims ||
+    !/^U[0-9a-f]{32}$/.test(String(claims.sub || "")) ||
+    String(claims.aud || "") !== expectedChannelId ||
+    Number(claims.exp || 0) <= nowSeconds ||
+    issuedAt <= 0 ||
+    issuedAt > nowSeconds + 300 ||
+    String(claims.iss || "") !== "https://access.line.me"
+  ) {
+    throw appError_("INVALID_TOKEN", "LINE ç™»å…¥æ†‘è­‰é©—è­‰å¤±æ•—ï¼Œè«‹é‡æ–°ç™»å…¥ã€‚");
+  }
+
+  var identity = {
+    lineUserId: String(claims.sub),
+    displayName: limitText_(claims.name || "LINE æœƒå“¡", 100),
+    pictureUrl: normalizeHttpsUrl_(claims.picture),
+    tokenIssuedAt: issuedAt,
+  };
+  cacheLineIdentity_(idToken, expectedChannelId, claims.exp, identity);
+  return identity;
+}
+
+function upsertMember_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "æœƒå“¡è³‡æ–™æ­£åœ¨åŒæ­¥ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  try {
+    var deletedTokenIat = getMemberDeletionTombstone_(identity.lineUserId);
+    if (deletedTokenIat && identity.tokenIssuedAt <= deletedTokenIat) {
+      throw appError_("MEMBER_DELETED", "æœƒå“¡è³‡æ–™å‰›å®Œæˆåˆªé™¤ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†å»ºç«‹æœƒå“¡ã€‚");
+    }
+
+    var sheet = getOrCreateMemberSheet_(config);
+    var rowNumber = findMemberRow_(sheet, identity.lineUserId);
+    var now = new Date();
+    var context = normalizeContext_(request.context);
+    var created = rowNumber === 0;
+    var row;
+    var isDuplicate = false;
+    var recentOutcome = getRecentRequestOutcome_(identity.lineUserId, request.action, request.requestId);
+    var responseCreated = created;
+
+    if (created) {
+      row = createMemberRow_(identity, request.requestId, context, now);
+      sheet.appendRow(row);
+      rowNumber = sheet.getLastRow();
+      applyMemberRowFormats_(sheet, rowNumber);
+    } else {
+      row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+      isDuplicate =
+        String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId ||
+        Boolean(recentOutcome);
+      responseCreated =
+        recentOutcome === "created" ||
+        (!recentOutcome &&
+          String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId &&
+          Number(row[MEMBER_COLUMN.loginCount - 1]) === 1);
+
+      if (!isDuplicate) {
+        var isNewLoginSession =
+          Number(row[MEMBER_COLUMN.lastTokenIat - 1] || 0) !== identity.tokenIssuedAt;
+
+        // Deliberately use field-level writes. In particular, legacy email,
+        // status, admin_status, phone and birthday are never overwritten here.
+        sheet
+          .getRange(rowNumber, MEMBER_COLUMN.displayName, 1, 2)
+          .setValues([[
+            safeSheetText_(identity.displayName),
+            safeSheetText_(identity.pictureUrl),
+          ]]);
+        sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+        if (isNewLoginSession) {
+          sheet
+            .getRange(rowNumber, MEMBER_COLUMN.lastLoginAt, 1, 2)
+            .setValues([[
+              now,
+              Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0) + 1,
+            ]]);
+        }
+        sheet
+          .getRange(rowNumber, MEMBER_COLUMN.contextType, 1, 7)
+          .setValues([[
+            safeSheetText_(context.type),
+            safeSheetText_(context.os),
+            safeSheetText_(context.language),
+            context.inClient,
+            safeSheetText_(context.viewType),
+            identity.tokenIssuedAt,
+            request.requestId,
+          ]]);
+        applyMemberRowFormats_(sheet, rowNumber);
+      }
+    }
+
+    if (created || !isDuplicate) SpreadsheetApp.flush();
+
+    if (!isDuplicate) {
+      markRequestProcessed_(
+        identity.lineUserId,
+        request.action,
+        request.requestId,
+        created ? "created" : "updated"
+      );
+    }
+
+    // Re-read so an administrator's Sheet edit is reflected in the response.
+    row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    var access = memberAccessFromRow_(row);
+    var cardStatus = access.allowed
+      ? getMemberPointCardStatusForConfig_(config, identity.lineUserId)
+      : null;
+    var pointBalance = cardStatus ? cardStatus.totalPoints : 0;
+
+    return {
+      data: {
+        created: responseCreated,
+        access: access,
+        member: access.allowed
+          ? memberResponseFromRow_(row, identity, context, pointBalance)
+          : null,
+        cardSummary: cardStatus
+          ? pointCardSummaryResponse_(cardStatus)
+          : null,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "æœƒå“¡è©¦ç®—è¡¨ç›®å‰ç„¡æ³•ä½¿ç”¨ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateMemberProfile_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "æœƒå“¡è³‡æ–™æ­£åœ¨æ›´æ–°ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  try {
+    var profile = normalizeRequiredMemberProfile_(
+      request.phone,
+      request.birthday
+    );
+    var phone = profile.phone;
+    var birthday = profile.birthday;
+    var sheet = getOrCreateMemberSheet_(config);
+    var rowNumber = findMemberRow_(sheet, identity.lineUserId);
+    if (!rowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+
+    var row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    var access = memberAccessFromRow_(row);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•ä¿®æ”¹æœƒå“¡è³‡æ–™ã€‚");
+    }
+
+    var recentOutcome = getRecentRequestOutcome_(
+      identity.lineUserId,
+      request.action,
+      request.requestId
+    );
+    var isDuplicate =
+      String(row[MEMBER_COLUMN.lastRequestId - 1] || "") === request.requestId ||
+      Boolean(recentOutcome);
+
+    if (!isDuplicate) {
+      var now = new Date();
+      sheet.getRange(rowNumber, MEMBER_COLUMN.updatedAt).setValues([[now]]);
+      sheet
+        .getRange(rowNumber, MEMBER_COLUMN.lastRequestId)
+        .setValues([[request.requestId]]);
+      sheet
+        .getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2)
+        .setValues([[safeSheetText_(phone), safeSheetText_(birthday)]]);
+      applyMemberRowFormats_(sheet, rowNumber);
+      SpreadsheetApp.flush();
+      markRequestProcessed_(identity.lineUserId, request.action, request.requestId, "updated");
+    }
+
+    // Re-read because the independent administrator GAS can change access at
+    // any time. A newly disabled member never receives profile data.
+    row = sheet.getRange(rowNumber, 1, 1, MEMBER_HEADERS.length).getValues()[0];
+    access = memberAccessFromRow_(row);
+    var context = normalizeContext_(request.context);
+    var pointBalance = access.allowed
+      ? getMemberPointBalanceForConfig_(config, identity.lineUserId)
+      : 0;
+
+    return {
+      data: {
+        access: access,
+        member: access.allowed
+          ? memberResponseFromRow_(row, identity, context, pointBalance)
+          : null,
+        duplicate: isDuplicate,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•æ›´æ–°æœƒå“¡è³‡æ–™ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function listPointHistory_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "é»æ•¸ç´€éŒ„æ­£åœ¨æ•´ç†ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•è®€å–é»æ•¸ç´€éŒ„ã€‚");
+    }
+
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+    var pointBalance = getMemberPointBalance_(
+      redemptionSheet,
+      identity.lineUserId,
+      lotteryDrawSheet
+    );
+    var history = readMemberPointHistory_(redemptionSheet, identity.lineUserId)
+      .concat(readMemberLotteryHistory_(lotteryDrawSheet, identity.lineUserId))
+      .sort(function (left, right) {
+        return new Date(right.redeemedAt).getTime() - new Date(left.redeemedAt).getTime();
+      });
+
+    return {
+      data: {
+        access: access,
+        pointBalance: pointBalance,
+        history: history.slice(0, MAX_POINT_HISTORY_ENTRIES),
+        hasMore: history.length > MAX_POINT_HISTORY_ENTRIES,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•è®€å–é»æ•¸ç´€éŒ„ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function readMemberPointHistory_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var redemptionIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  var campaignModes = Object.create(null);
+  var history = [];
+
+  rows.forEach(function (row, index) {
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
+    var storedLineUserId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
+      128
+    );
+    var requestId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.requestId - 1], 100);
+    var requestKey = storedLineUserId + ":" + requestId;
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      redemptionIds[redemptionId] ||
+      requestKeys[requestKey]
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "æœƒå“¡é»æ•¸ç´€éŒ„æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+    redemptionIds[redemptionId] = true;
+    requestKeys[requestKey] = true;
+
+    var campaignId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.campaignId - 1],
+      100
+    );
+    var pointTypeId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.pointTypeId - 1],
+      100
+    );
+    var memberId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.memberId - 1], 100);
+    var points = Number(row[POINT_REDEMPTION_COLUMN.points - 1]);
+    var balanceAfter = Number(row[POINT_REDEMPTION_COLUMN.balanceAfter - 1]);
+    var redemptionMode = normalizeStoredRedemptionMode_(
+      row[POINT_REDEMPTION_COLUMN.redemptionModeSnapshot - 1]
+    );
+    var redeemedAt = row[POINT_REDEMPTION_COLUMN.redeemedAt - 1];
+    var redeemedDate =
+      redeemedAt instanceof Date ? redeemedAt : new Date(String(redeemedAt || ""));
+    if (
+      !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      !Number.isSafeInteger(balanceAfter) ||
+      balanceAfter < points ||
+      isNaN(redeemedDate.getTime()) ||
+      !redemptionMode ||
+      (campaignModes[storedLineUserId + ":" + campaignId] &&
+        (campaignModes[storedLineUserId + ":" + campaignId] !== redemptionMode ||
+          redemptionMode !== "repeatable"))
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "æœƒå“¡é»æ•¸ç´€éŒ„æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+    campaignModes[storedLineUserId + ":" + campaignId] = redemptionMode;
+
+    if (storedLineUserId === lineUserId) {
+      history.push({
+        historyId: redemptionId,
+        entryType: "earn",
+        redemptionId: redemptionId,
+        label: String(points) + " é»",
+        points: points,
+        balanceAfter: balanceAfter,
+        redeemedAt: redeemedDate.toISOString(),
+        redemptionMode: redemptionMode,
+        source: "qr",
+        rowNumber: index + 2,
+      });
+    }
+  });
+
+  history.sort(function (left, right) {
+    return new Date(right.redeemedAt).getTime() - new Date(left.redeemedAt).getTime();
+  });
+  return history.map(function (entry) {
+    delete entry.rowNumber;
+    return entry;
+  });
+}
+
+function readMemberLotteryHistory_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
+    .getValues();
+  var drawIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  var history = [];
+
+  rows.forEach(function (row) {
+    var draw = lotteryDrawRecordFromRow_(row);
+    var requestKey = draw.lineUserId + ":" + draw.requestId;
+    if (drawIds[draw.drawId] || requestKeys[requestKey]) {
+      throw appError_("LOTTERY_DATA_ERROR", "æŠ½çç´€éŒ„è­˜åˆ¥ç¢¼é‡è¤‡ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+    }
+    drawIds[draw.drawId] = true;
+    requestKeys[requestKey] = true;
+    if (draw.lineUserId !== lineUserId) return;
+    history.push({
+      historyId: draw.drawId,
+      entryType: draw.legacyDraw ? "spend" : "draw",
+      drawId: draw.drawId,
+      label: (draw.legacyDraw ? "5 é»æŠ½çåˆ¸ Â· " : "é›†é»å¡æŠ½ç Â· ") + draw.prizeLabel,
+      points: draw.pointsSpent ? -draw.pointsSpent : 0,
+      balanceAfter: draw.balanceAfter,
+      redeemedAt: draw.drawnAt,
+      redemptionMode: "lottery",
+      source: "lottery",
+      prizeLabel: draw.prizeLabel,
+      prizeColor: draw.prizeColor,
+      lotteryTypeId: draw.lotteryTypeId,
+    });
+  });
+
+  return history;
+}
+
+function readPointCardSettings_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("POINT_CARD_NOT_CONFIGURED", "ç®¡ç†å“¡å°šæœªè¨­å®šé›†é»å¡è¦å‰‡ã€‚");
+  }
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_CARD_SETTING_HEADERS.length)
+    .getValues();
+  var versions = Object.create(null);
+  var requests = Object.create(null);
+  var settings = rows.map(function (row) {
+    var settingVersion = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.settingVersion - 1],
+      100
+    );
+    var targetPoints = Number(row[POINT_CARD_SETTING_COLUMN.targetPoints - 1]);
+    var rawEffectiveAt = row[POINT_CARD_SETTING_COLUMN.effectiveAt - 1];
+    var effectiveAtDate =
+      rawEffectiveAt instanceof Date
+        ? rawEffectiveAt
+        : new Date(String(rawEffectiveAt || ""));
+    var updatedBy = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.updatedBy - 1],
+      100
+    );
+    var lastRequestId = plainSheetText_(
+      row[POINT_CARD_SETTING_COLUMN.lastRequestId - 1],
+      100
+    );
+    var rewardMilestones = parsePointCardMilestones_(
+      row[POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
+      targetPoints
+    );
+    var rewardLotteryTypeIds = parsePointCardLotteryTypeIds_(
+      row[POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds - 1],
+      rewardMilestones
+    );
+    var rewardRules = rewardMilestones.map(function (points, ruleIndex) {
+      return {
+        points: points,
+        lotteryTypeId: rewardLotteryTypeIds[ruleIndex],
+      };
+    });
+    var expiry = parseStoredPointCardExpiry_(
+      row[POINT_CARD_SETTING_COLUMN.expiryMode - 1],
+      row[POINT_CARD_SETTING_COLUMN.expiresOn - 1]
+    );
+    if (
+      !/^PCS-[A-Z0-9]{12}$/.test(settingVersion) ||
+      !Number.isInteger(targetPoints) ||
+      targetPoints < 1 ||
+      targetPoints > MAX_POINT_VALUE ||
+      isNaN(effectiveAtDate.getTime()) ||
+      (updatedBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(updatedBy)) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      (expiry.expiresAtTime &&
+        expiry.expiresAtTime <= effectiveAtDate.getTime()) ||
+      versions[settingVersion] ||
+      requests[lastRequestId]
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡è¦å‰‡è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºã€‚");
+    }
+    versions[settingVersion] = true;
+    requests[lastRequestId] = true;
+    return {
+      settingVersion: settingVersion,
+      targetPoints: targetPoints,
+      rewardMilestones: rewardMilestones,
+      rewardRules: rewardRules,
+      expiryMode: expiry.expiryMode,
+      expiresOn: expiry.expiresOn,
+      expiresAt: expiry.expiresAt,
+      expiresAtTime: expiry.expiresAtTime,
+      effectiveAt: effectiveAtDate.toISOString(),
+      effectiveAtTime: effectiveAtDate.getTime(),
+    };
+  });
+  settings.sort(function (left, right) {
+    return left.effectiveAtTime - right.effectiveAtTime;
+  });
+  for (var i = 1; i < settings.length; i += 1) {
+    if (settings[i].effectiveAtTime <= settings[i - 1].effectiveAtTime) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡è¦å‰‡ç”Ÿæ•ˆæ™‚é–“ä¸æ­£ç¢ºã€‚");
+    }
+  }
+  return settings;
+}
+
+function parseStoredPointCardExpiry_(modeValue, expiresOnValue) {
+  var mode = String(modeValue || "unlimited").trim().toLowerCase();
+  var expiresOn = String(expiresOnValue || "").trim();
+  if (mode !== "limited" && mode !== "unlimited") {
+    throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡æœŸé™æ¨¡å¼ä¸æ­£ç¢ºã€‚");
+  }
+  if (mode === "unlimited") {
+    if (expiresOn) {
+      throw appError_("POINT_CARD_DATA_ERROR", "ç„¡æœŸé™é›†é»å¡ä¸å¯è¨­å®šåˆ°æœŸæ—¥ã€‚");
+    }
+    return {
+      expiryMode: "unlimited",
+      expiresOn: "",
+      expiresAt: "",
+      expiresAtTime: 0,
+    };
+  }
+  if (!isValidPointCardDate_(expiresOn)) {
+    throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡åˆ°æœŸæ—¥æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  var expiresAtTime =
+    new Date(expiresOn + "T00:00:00+08:00").getTime() +
+    24 * 60 * 60 * 1000;
+  return {
+    expiryMode: "limited",
+    expiresOn: expiresOn,
+    expiresAt: new Date(expiresAtTime).toISOString(),
+    expiresAtTime: expiresAtTime,
+  };
+}
+
+function isValidPointCardDate_(value) {
+  var raw = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  var date = new Date(raw + "T00:00:00+08:00");
+  return (
+    !isNaN(date.getTime()) &&
+    new Date(date.getTime() + 8 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10) === raw
+  );
+}
+
+function parsePointCardMilestones_(value, targetPoints) {
+  var raw = String(value == null ? "" : value).trim();
+  if (!raw) raw = String(targetPoints);
+  var parts = raw.split(/[\s,ï¼Œã€]+/);
+  var milestones = [];
+  for (var i = 0; i < parts.length; i += 1) {
+    if (!parts[i]) continue;
+    var milestone = Number(parts[i]);
+    if (
+      !Number.isInteger(milestone) ||
+      milestone < 1 ||
+      milestone > targetPoints ||
+      (milestones.length && milestone <= milestones[milestones.length - 1])
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡æŠ½çç¯€é»è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºã€‚");
+    }
+    milestones.push(milestone);
+  }
+  if (
+    milestones.length < 1 ||
+    milestones.length > 20 ||
+    milestones[milestones.length - 1] !== targetPoints
+  ) {
+    throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡æŠ½çç¯€é»å¿…é ˆä»¥ç¸½é»æ•¸ä½œç‚ºæœ€å¾Œä¸€ç«™ã€‚");
+  }
+  return milestones;
+}
+
+function parsePointCardLotteryTypeIds_(value, rewardMilestones) {
+  var raw = String(value == null ? "" : value).trim();
+  if (!raw) {
+    return rewardMilestones.map(function () {
+      return "";
+    });
+  }
+  var typeIds = raw.split(",").map(function (item) {
+    return String(item || "").trim();
+  });
+  if (
+    typeIds.length !== rewardMilestones.length ||
+    typeIds.some(function (lotteryTypeId) {
+      return !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId);
+    })
+  ) {
+    throw appError_(
+      "POINT_CARD_DATA_ERROR",
+      "é›†é»å¡ç¯€é»å°æ‡‰çš„è½‰ç›¤è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºã€‚"
+    );
+  }
+  return typeIds;
+}
+
+function readLotteryTypes_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("LOTTERY_NOT_CONFIGURED", "ç®¡ç†å“¡å°šæœªå»ºç«‹è½‰ç›¤é¡å‹ã€‚");
+  }
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, LOTTERY_TYPE_HEADERS.length)
+    .getValues();
+  var ids = Object.create(null);
+  var activeNames = Object.create(null);
+  return rows.map(function (row) {
+    var lotteryTypeId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lotteryTypeId - 1], 100);
+    var name = plainSheetText_(row[LOTTERY_TYPE_COLUMN.name - 1], 40);
+    var status = String(row[LOTTERY_TYPE_COLUMN.status - 1] || "").trim().toLowerCase();
+    var createdAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.createdAt - 1]);
+    var updatedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.updatedAt - 1]);
+    var createdBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.createdBy - 1], 100);
+    var deletedAt = toIsoString_(row[LOTTERY_TYPE_COLUMN.deletedAt - 1]);
+    var deletedBy = plainSheetText_(row[LOTTERY_TYPE_COLUMN.deletedBy - 1], 100);
+    var lastRequestId = plainSheetText_(row[LOTTERY_TYPE_COLUMN.lastRequestId - 1], 100);
+    var deletionValid =
+      status === "active"
+        ? !deletedAt && !deletedBy
+        : status === "deleted" &&
+          Boolean(deletedAt) &&
+          /^ADM-[A-Z0-9]{10}$/.test(deletedBy);
+    if (
+      !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) ||
+      !name ||
+      !createdAt ||
+      !updatedAt ||
+      (createdBy !== "SYSTEM" && !/^ADM-[A-Z0-9]{10}$/.test(createdBy)) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId) ||
+      !deletionValid ||
+      ids[lotteryTypeId] ||
+      (status === "active" && activeNames[name.toLowerCase()])
+    ) {
+      throw appError_("LOTTERY_DATA_ERROR", "è½‰ç›¤é¡å‹è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºã€‚");
+    }
+    ids[lotteryTypeId] = true;
+    if (status === "active") activeNames[name.toLowerCase()] = true;
+    return {
+      lotteryTypeId: lotteryTypeId,
+      name: name,
+      status: status,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    };
+  });
+}
+
+function findLotteryTypeById_(types, lotteryTypeId) {
+  var matches = types.filter(function (type) {
+    return type.lotteryTypeId === lotteryTypeId;
+  });
+  if (matches.length !== 1) {
+    throw appError_("LOTTERY_DATA_ERROR", "æŠ½çç´€éŒ„ä½¿ç”¨äº†ä¸å­˜åœ¨çš„è½‰ç›¤é¡å‹ã€‚");
+  }
+  return matches[0];
+}
+
+function memberLotteryTypeResponse_(type, lotteryConfig) {
+  return {
+    lotteryTypeId: type.lotteryTypeId,
+    name: type.name,
+    lottery: lotteryConfigResponse_(lotteryConfig),
+  };
+}
+
+function getAvailableLotteryTypes_(typeSheet, prizeSheet, requiredTypeIds) {
+  var configs = readLotteryConfigs_(prizeSheet);
+  var responses = [];
+  readLotteryTypes_(typeSheet).forEach(function (type) {
+    if (
+      type.status !== "active" &&
+      !(requiredTypeIds && requiredTypeIds[type.lotteryTypeId])
+    ) {
+      return;
+    }
+    for (var i = 0; i < configs.length; i += 1) {
+      if (configs[i].lotteryTypeId !== type.lotteryTypeId) continue;
+      responses.push(memberLotteryTypeResponse_(type, configs[i]));
+      return;
+    }
+  });
+  if (!responses.length) {
+    throw appError_("LOTTERY_NOT_CONFIGURED", "ç®¡ç†å“¡å°šæœªå®Œæˆä»»ä½•è½‰ç›¤çé …è¨­å®šã€‚");
+  }
+  return responses;
+}
+
+function getMemberPointCardStatus_(
+  redemptionSheet,
+  drawSheet,
+  settingSheet,
+  lineUserId,
+  drawRecords
+) {
+  var ledger = readMemberPointLedger_(redemptionSheet, lineUserId);
+  var settings = readPointCardSettings_(settingSheet);
+  var pointsBySetting = Object.create(null);
+  var nowTime = new Date().getTime();
+  settings.forEach(function (setting) {
+    pointsBySetting[setting.settingVersion] = {
+      beforeExpiry: 0,
+      afterExpiry: 0,
+    };
+  });
+  ledger.events.forEach(function (event) {
+    var selected = null;
+    for (var i = 0; i < settings.length; i += 1) {
+      if (settings[i].effectiveAtTime <= event.redeemedAtTime) {
+        selected = settings[i];
+      } else {
+        break;
+      }
+    }
+    if (!selected) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é»æ•¸ç´€éŒ„æ—©æ–¼ç¬¬ä¸€ç‰ˆé›†é»å¡è¦å‰‡ã€‚");
+    }
+    var pointBucket = pointsBySetting[selected.settingVersion];
+    if (
+      selected.expiryMode === "limited" &&
+      event.redeemedAtTime >= selected.expiresAtTime
+    ) {
+      pointBucket.afterExpiry += event.points;
+    } else {
+      pointBucket.beforeExpiry += event.points;
+    }
+  });
+
+  var ranges = [];
+  var settingsByVersion = Object.create(null);
+  var totalCompletedCards = 0;
+  var totalEarnedRewards = 0;
+  var totalEligibleRewards = 0;
+  settings.forEach(function (setting) {
+    var pointBuckets = pointsBySetting[setting.settingVersion];
+    var expiryApplied =
+      setting.expiryMode === "limited" &&
+      setting.expiresAtTime <= nowTime;
+    var expiredPoints = expiryApplied ? pointBuckets.beforeExpiry : 0;
+    var earned = expiryApplied
+      ? pointBuckets.afterExpiry
+      : pointBuckets.beforeExpiry + pointBuckets.afterExpiry;
+    var expiredCompletedCards = Math.floor(
+      expiredPoints / setting.targetPoints
+    );
+    var expiredCurrentPoints = expiredPoints % setting.targetPoints;
+    var expiredReachedMilestones = setting.rewardMilestones.filter(
+      function (milestone) {
+        return milestone <= expiredCurrentPoints;
+      }
+    );
+    var expiredEarnedRewards =
+      expiredCompletedCards * setting.rewardMilestones.length +
+      expiredReachedMilestones.length;
+    var reservedExpiredCards = expiredPoints
+      ? Math.ceil(expiredPoints / setting.targetPoints)
+      : 0;
+    var completedCards = Math.floor(earned / setting.targetPoints);
+    var currentPoints = earned % setting.targetPoints;
+    var reachedMilestones = setting.rewardMilestones.filter(function (milestone) {
+      return milestone <= currentPoints;
+    });
+    var earnedRewards =
+      completedCards * setting.rewardMilestones.length +
+      reachedMilestones.length;
+    var allEarnedRewards = expiredEarnedRewards + earnedRewards;
+    if (
+      !Number.isSafeInteger(expiredEarnedRewards) ||
+      !Number.isSafeInteger(earnedRewards) ||
+      !Number.isSafeInteger(allEarnedRewards)
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡æŠ½çè³‡æ ¼æ•¸é‡è¶…å‡ºå¯è™•ç†ç¯„åœã€‚");
+    }
+    var range = {
+      settingVersion: setting.settingVersion,
+      targetPoints: setting.targetPoints,
+      rewardMilestones: setting.rewardMilestones,
+      rewardRules: setting.rewardRules,
+      earnedPoints: earned,
+      expiredPoints: expiredPoints,
+      currentPoints: currentPoints,
+      reachedMilestones: reachedMilestones,
+      completedCards: completedCards,
+      expiredCompletedCards: expiredCompletedCards,
+      expiredEarnedRewards: expiredEarnedRewards,
+      reservedExpiredCards: reservedExpiredCards,
+      activeEarnedRewards: earnedRewards,
+      earnedRewards: allEarnedRewards,
+      startOrdinal: totalEarnedRewards + 1,
+      expiredEndOrdinal: totalEarnedRewards + expiredEarnedRewards,
+      activeStartOrdinal: totalEarnedRewards + expiredEarnedRewards + 1,
+      endOrdinal: totalEarnedRewards + allEarnedRewards,
+      expiryMode: setting.expiryMode,
+      expiresOn: setting.expiresOn,
+      expiresAt: setting.expiresAt,
+      expiryApplied: expiryApplied,
+    };
+    totalCompletedCards += expiredCompletedCards + completedCards;
+    totalEarnedRewards += allEarnedRewards;
+    totalEligibleRewards += earnedRewards;
+    if (
+      !Number.isSafeInteger(totalCompletedCards) ||
+      !Number.isSafeInteger(totalEarnedRewards) ||
+      !Number.isSafeInteger(totalEligibleRewards)
+    ) {
+      throw appError_("POINT_CARD_DATA_ERROR", "é›†é»å¡ç´¯è¨ˆè³‡æ–™è¶…å‡ºå¯è™•ç†ç¯„åœã€‚");
+    }
+    ranges.push(range);
+    settingsByVersion[setting.settingVersion] = range;
+  });
+
+  var usedOrdinals = Object.create(null);
+  var legacyDrawCount = 0;
+  var memberDrawCount = 0;
+  (Array.isArray(drawRecords)
+    ? drawRecords
+    : readAllLotteryDraws_(drawSheet)
+  ).forEach(function (draw) {
+    if (draw.lineUserId !== lineUserId) return;
+    memberDrawCount += 1;
+    if (draw.legacyDraw) {
+      legacyDrawCount += 1;
+      return;
+    }
+    var range = settingsByVersion[draw.cardSettingVersion];
+    var keyParts = draw.cardRoundKey
+      .slice(draw.cardSettingVersion.length + 1)
+      .split(":");
+    var cardNumber = Number(keyParts[0]);
+    var milestonePoints =
+      keyParts.length === 1 ? range && range.targetPoints : Number(keyParts[1]);
+    var milestoneIndex = range
+      ? range.rewardMilestones.indexOf(milestonePoints)
+      : -1;
+    var isExpiredCard =
+      range && cardNumber <= range.reservedExpiredCards;
+    var relativeCardNumber = isExpiredCard
+      ? cardNumber
+      : cardNumber - (range ? range.reservedExpiredCards : 0);
+    var qualificationNumber =
+      (relativeCardNumber - 1) *
+        (range ? range.rewardMilestones.length : 0) +
+      milestoneIndex +
+      1;
+    if (!isExpiredCard && range) {
+      qualificationNumber += range.expiredEarnedRewards;
+    }
+    if (
+      !range ||
+      (keyParts.length !== 1 && keyParts.length !== 2) ||
+      !Number.isSafeInteger(cardNumber) ||
+      cardNumber < 1 ||
+      !Number.isSafeInteger(relativeCardNumber) ||
+      relativeCardNumber < 1 ||
+      milestoneIndex < 0 ||
+      !Number.isSafeInteger(qualificationNumber) ||
+      qualificationNumber < 1 ||
+      qualificationNumber > range.earnedRewards
+    ) {
+      throw appError_("LOTTERY_DATA_ERROR", "æŠ½çç´€éŒ„ä½¿ç”¨äº†ä¸å­˜åœ¨çš„é›†é»å¡çå‹µç¯€é»ã€‚");
+    }
+    var usedOrdinal = range.startOrdinal + qualificationNumber - 1;
+    if (usedOrdinals[usedOrdinal]) {
+      throw appError_("LOTTERY_DATA_ERROR", "åŒä¸€é›†é»å¡çå‹µç¯€é»è¢«é‡è¤‡æŠ½çã€‚");
+    }
+    usedOrdinals[usedOrdinal] = true;
+  });
+  if (memberDrawCount > totalEarnedRewards) {
+    throw appError_("LOTTERY_DATA_ERROR", "æŠ½çæ¬¡æ•¸è¶…éå·²å–å¾—çš„é›†é»å¡çå‹µã€‚");
+  }
+
+  var consumedOrdinals = Object.create(null);
+  Object.keys(usedOrdinals).forEach(function (ordinal) {
+    consumedOrdinals[ordinal] = true;
+  });
+  var legacyRemaining = legacyDrawCount;
+  for (
+    var legacyOrdinal = 1;
+    legacyOrdinal <= totalEarnedRewards && legacyRemaining > 0;
+    legacyOrdinal += 1
+  ) {
+    if (consumedOrdinals[legacyOrdinal]) continue;
+    consumedOrdinals[legacyOrdinal] = true;
+    legacyRemaining -= 1;
+  }
+  if (legacyRemaining > 0) {
+    throw appError_("LOTTERY_DATA_ERROR", "èˆŠç‰ˆæŠ½çæ¬¡æ•¸è¶…éå·²å–å¾—çš„é›†é»å¡çå‹µã€‚");
+  }
+
+  var availableRewards = [];
+  var consumedEligibleRewards = 0;
+  Object.keys(consumedOrdinals).forEach(function (ordinal) {
+    if (isEligiblePointCardRewardOrdinal_(ranges, Number(ordinal))) {
+      consumedEligibleRewards += 1;
+    }
+  });
+  ranges.forEach(function (range) {
+    for (
+      var ordinal = range.activeStartOrdinal;
+      ordinal <= range.endOrdinal &&
+      availableRewards.length < MAX_AVAILABLE_REWARD_TICKETS;
+      ordinal += 1
+    ) {
+      if (consumedOrdinals[ordinal]) continue;
+      availableRewards.push(pointCardRewardForOrdinal_(ranges, ordinal));
+    }
+  });
+  var availableDraws = totalEligibleRewards - consumedEligibleRewards;
+  if (!Number.isSafeInteger(availableDraws) || availableDraws < 0) {
+    throw appError_("LOTTERY_DATA_ERROR", "å¯ç”¨æŠ½çåˆ¸æ•¸é‡ä¸æ­£ç¢ºã€‚");
+  }
+  var nextReward = availableRewards.length ? availableRewards[0] : null;
+
+  var current = ranges[ranges.length - 1];
+  var nextMilestonePoints = current.targetPoints;
+  for (var milestoneIndex = 0; milestoneIndex < current.rewardMilestones.length; milestoneIndex += 1) {
+    if (current.rewardMilestones[milestoneIndex] > current.currentPoints) {
+      nextMilestonePoints = current.rewardMilestones[milestoneIndex];
+      break;
+    }
+  }
+  return {
+    settingVersion: current.settingVersion,
+    targetPoints: current.targetPoints,
+    rewardMilestones: current.rewardMilestones.slice(),
+    expiryMode:
+      current.expiryApplied ? "unlimited" : current.expiryMode,
+    expiresOn:
+      current.expiryApplied ? "" : current.expiresOn,
+    configuredExpiryMode: current.expiryMode,
+    configuredExpiresOn: current.expiresOn,
+    expiryRolledOver: current.expiryApplied,
+    reachedMilestones: current.reachedMilestones.slice(),
+    currentPoints: current.currentPoints,
+    nextMilestonePoints: nextMilestonePoints,
+    pointsRemaining: nextMilestonePoints - current.currentPoints,
+    pointsToCardComplete: current.targetPoints - current.currentPoints,
+    currentCardNumber:
+      current.reservedExpiredCards + current.completedCards + 1,
+    currentRound:
+      current.reservedExpiredCards + current.completedCards + 1,
+    completedCards: totalCompletedCards,
+    completedRounds: totalCompletedCards,
+    earnedRewards: totalEarnedRewards,
+    drawsUsed: memberDrawCount,
+    availableDraws: availableDraws,
+    totalPoints: ledger.totalPoints,
+    rewardRules: current.rewardRules.map(function (rule) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    }),
+    availableRewards: availableRewards,
+    nextReward: nextReward,
+    nextRound: nextReward,
+  };
+}
+
+function isEligiblePointCardRewardOrdinal_(ranges, ordinal) {
+  for (var rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+    var range = ranges[rangeIndex];
+    if (
+      ordinal >= range.activeStartOrdinal &&
+      ordinal <= range.endOrdinal
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pointCardRewardForOrdinal_(ranges, ordinal) {
+  for (var rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+    var candidate = ranges[rangeIndex];
+    if (
+      ordinal < candidate.startOrdinal ||
+      ordinal > candidate.endOrdinal
+    ) {
+      continue;
+    }
+    var inExpiredPeriod = ordinal <= candidate.expiredEndOrdinal;
+    var qualificationIndex = inExpiredPeriod
+      ? ordinal - candidate.startOrdinal
+      : ordinal - candidate.activeStartOrdinal;
+    var rewardIndex =
+      qualificationIndex % candidate.rewardMilestones.length;
+    var cardNumber =
+      Math.floor(qualificationIndex / candidate.rewardMilestones.length) +
+      1 +
+      (inExpiredPeriod ? 0 : candidate.reservedExpiredCards);
+    var milestonePoints = candidate.rewardMilestones[rewardIndex];
+    return {
+      settingVersion: candidate.settingVersion,
+      cardNumber: cardNumber,
+      roundNumber: cardNumber,
+      milestonePoints: milestonePoints,
+      lotteryTypeId: candidate.rewardRules[rewardIndex].lotteryTypeId,
+      cardRoundKey:
+        candidate.settingVersion +
+        ":" +
+        cardNumber +
+        ":" +
+        milestonePoints,
+    };
+  }
+  throw appError_("POINT_CARD_DATA_ERROR", "æ‰¾ä¸åˆ°æŠ½çåˆ¸å°æ‡‰çš„é›†é»å¡ç¯€é»ã€‚");
+}
+
+function pointCardStatusResponse_(status) {
+  return {
+    settingVersion: status.settingVersion,
+    targetPoints: status.targetPoints,
+    expiryMode: status.expiryMode,
+    expiresOn: status.expiresOn,
+    rewardMilestones: status.rewardMilestones.slice(),
+    rewardRules: status.rewardRules.map(function (rule) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    }),
+    reachedMilestones: status.reachedMilestones.slice(),
+    currentPoints: status.currentPoints,
+    nextMilestonePoints: status.nextMilestonePoints,
+    pointsRemaining: status.pointsRemaining,
+    pointsToCardComplete: status.pointsToCardComplete,
+    currentCardNumber: status.currentCardNumber,
+    currentRound: status.currentRound,
+    completedCards: status.completedCards,
+    completedRounds: status.completedRounds,
+    earnedRewards: status.earnedRewards,
+    drawsUsed: status.drawsUsed,
+    availableDraws: status.availableDraws,
+    availableRewards: status.availableRewards.map(function (reward) {
+      return {
+        settingVersion: reward.settingVersion,
+        cardNumber: reward.cardNumber,
+        roundNumber: reward.roundNumber,
+        milestonePoints: reward.milestonePoints,
+        lotteryTypeId: reward.lotteryTypeId,
+        cardRoundKey: reward.cardRoundKey,
+      };
+    }),
+    totalPoints: status.totalPoints,
+  };
+}
+
+function pointCardSummaryResponse_(status) {
+  return {
+    settingVersion: status.settingVersion,
+    currentPoints: status.currentPoints,
+    targetPoints: status.targetPoints,
+    expiryMode: status.expiryMode,
+    expiresOn: status.expiresOn,
+    currentCardNumber: status.currentCardNumber,
+    availableDraws: status.availableDraws,
+    rewardRules: status.rewardRules.map(function (rule) {
+      return {
+        points: rule.points,
+        lotteryTypeId: rule.lotteryTypeId,
+      };
+    }),
+    availableRewards: status.availableRewards.map(function (reward) {
+      return {
+        settingVersion: reward.settingVersion,
+        cardNumber: reward.cardNumber,
+        roundNumber: reward.roundNumber,
+        milestonePoints: reward.milestonePoints,
+        lotteryTypeId: reward.lotteryTypeId,
+        cardRoundKey: reward.cardRoundKey,
+      };
+    }),
+  };
+}
+
+function getLotteryConfig_(identity, request, config) {
+  var initializationLock = LockService.getScriptLock();
+  if (!initializationLock.tryLock(4000)) {
+    throw appError_("BUSY", "æŠ½çè¨­å®šæ­£åœ¨åŒæ­¥ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  var memberSheet;
+  var prizeSheet;
+  var drawSheet;
+  var redemptionSheet;
+  var settingSheet;
+  var typeSheet;
+  try {
+    memberSheet = getOrCreateMemberSheet_(config);
+    prizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    drawSheet = getOrCreateLotteryDrawSheet_(config);
+    redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    settingSheet = getOrCreatePointCardSettingSheet_(config);
+    typeSheet = getOrCreateLotteryTypeSheet_(config);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•åˆå§‹åŒ–æŠ½çè¨­å®šï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    initializationLock.releaseLock();
+  }
+
+  try {
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•ä½¿ç”¨æŠ½çåŠŸèƒ½ã€‚");
+    }
+
+    var drawRecords = readAllLotteryDraws_(drawSheet);
+    var settings = readPointCardSettings_(settingSheet);
+    var cardStatus = getMemberPointCardStatus_(
+      redemptionSheet,
+      drawSheet,
+      settingSheet,
+      identity.lineUserId,
+      drawRecords
+    );
+    var requiredTypeIds = Object.create(null);
+    settings.forEach(function (setting) {
+      setting.rewardRules.forEach(function (rule) {
+        if (rule.lotteryTypeId) {
+          requiredTypeIds[rule.lotteryTypeId] = true;
+        }
+      });
+    });
+    var lotteryTypes = getAvailableLotteryTypes_(
+      typeSheet,
+      prizeSheet,
+      requiredTypeIds
+    );
+    var availableTypeIds = Object.create(null);
+    lotteryTypes.forEach(function (type) {
+      availableTypeIds[type.lotteryTypeId] = true;
+    });
+    if (
+      cardStatus.availableRewards.some(function (reward) {
+        return !availableTypeIds[reward.lotteryTypeId];
+      })
+    ) {
+      throw appError_(
+        "POINT_CARD_NOT_CONFIGURED",
+        "ç›®å‰æŠ½çåˆ¸å°šæœªæŒ‡å®šå¯ä½¿ç”¨çš„è½‰ç›¤ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+
+    return {
+      data: {
+        access: access,
+        lotteryTypes: lotteryTypes,
+        card: pointCardStatusResponse_(cardStatus),
+        pointBalance: cardStatus.totalPoints,
+        totalPoints: cardStatus.totalPoints,
+        canDraw: cardStatus.availableDraws > 0,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•è®€å–æŠ½çè¨­å®šï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+}
+
+function drawLotteryReplayResponse_(
+  access,
+  replayedDraw,
+  cardStatus,
+  lotteryTypes,
+  prizeSheet
+) {
+  var lotteryConfig = readLotteryConfigByVersion_(
+    prizeSheet,
+    replayedDraw.configVersion
+  );
+  var lotteryType = findLotteryTypeById_(
+    lotteryTypes,
+    replayedDraw.lotteryTypeId
+  );
+  return {
+    data: {
+      access: access,
+      duplicate: true,
+      draw: lotteryDrawResponse_(replayedDraw),
+      lottery: lotteryConfigResponse_(lotteryConfig),
+      lotteryType: memberLotteryTypeResponse_(lotteryType, lotteryConfig),
+      card: pointCardStatusResponse_(cardStatus),
+      pointBalance: cardStatus.totalPoints,
+      totalPoints: cardStatus.totalPoints,
+    },
+  };
+}
+
+function drawLottery_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(4000)) {
+    throw appError_("BUSY", "æŠ½çè³‡æ ¼æ­£åœ¨è™•ç†ï¼Œè«‹ä½¿ç”¨åŒä¸€æ¬¡è«‹æ±‚å®‰å…¨é‡è©¦ã€‚");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•ä½¿ç”¨æŠ½çåŠŸèƒ½ã€‚");
+    }
+
+    var drawSheet = getOrCreateLotteryDrawSheet_(config);
+    var prizeSheet = getOrCreateLotteryPrizeSheet_(config);
+    var typeSheet = getOrCreateLotteryTypeSheet_(config);
+    var settingSheet = getOrCreatePointCardSettingSheet_(config);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var lotteryTypes = readLotteryTypes_(typeSheet);
+    var drawRecords = readAllLotteryDraws_(drawSheet);
+    var replayedDraw = findLotteryDrawInRecords_(
+      drawRecords,
+      identity.lineUserId,
+      request.requestId
+    );
+    if (replayedDraw) {
+      if (
+        replayedDraw.lotteryTypeId !== request.lotteryTypeId ||
+        (request.cardRoundKey &&
+          replayedDraw.cardRoundKey !== request.cardRoundKey)
+      ) {
+        throw appError_("REQUEST_ID_CONFLICT", "åŒä¸€æŠ½çè«‹æ±‚ä¸å¯æ›´æ›æŠ½çåˆ¸ã€‚");
+      }
+      return drawLotteryReplayResponse_(
+        access,
+        replayedDraw,
+        getMemberPointCardStatus_(
+          redemptionSheet,
+          drawSheet,
+          settingSheet,
+          identity.lineUserId,
+          drawRecords
+        ),
+        lotteryTypes,
+        prizeSheet
+      );
+    }
+
+    var cardStatus = getMemberPointCardStatus_(
+      redemptionSheet,
+      drawSheet,
+      settingSheet,
+      identity.lineUserId,
+      drawRecords
+    );
+    var selectedReward = resolveAvailablePointCardReward_(
+      cardStatus,
+      request.cardRoundKey
+    );
+    if (selectedReward.lotteryTypeId !== request.lotteryTypeId) {
+      throw appError_(
+        "LOTTERY_TICKET_MISMATCH",
+        "é€™å¼µæŠ½çåˆ¸åªèƒ½ä½¿ç”¨æŒ‡å®šçš„è½‰ç›¤ã€‚"
+      );
+    }
+    var lotteryType = findLotteryTypeById_(
+      lotteryTypes,
+      selectedReward.lotteryTypeId
+    );
+    var lotteryConfig = readLatestLotteryConfig_(
+      prizeSheet,
+      lotteryType.lotteryTypeId
+    );
+
+    // Recheck access and the append-only ledger immediately before mutation.
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•ä½¿ç”¨æŠ½çåŠŸèƒ½ã€‚");
+    }
+    drawRecords = readAllLotteryDraws_(drawSheet);
+    replayedDraw = findLotteryDrawInRecords_(
+      drawRecords,
+      identity.lineUserId,
+      request.requestId
+    );
+    if (replayedDraw) {
+      if (
+        replayedDraw.lotteryTypeId !== request.lotteryTypeId ||
+        (request.cardRoundKey &&
+          replayedDraw.cardRoundKey !== request.cardRoundKey)
+      ) {
+        throw appError_("REQUEST_ID_CONFLICT", "åŒä¸€æŠ½çè«‹æ±‚ä¸å¯æ›´æ›æŠ½çåˆ¸ã€‚");
+      }
+      return drawLotteryReplayResponse_(
+        access,
+        replayedDraw,
+        getMemberPointCardStatus_(
+          redemptionSheet,
+          drawSheet,
+          settingSheet,
+          identity.lineUserId,
+          drawRecords
+        ),
+        lotteryTypes,
+        prizeSheet
+      );
+    }
+
+    cardStatus = getMemberPointCardStatus_(
+      redemptionSheet,
+      drawSheet,
+      settingSheet,
+      identity.lineUserId,
+      drawRecords
+    );
+    selectedReward = resolveAvailablePointCardReward_(
+      cardStatus,
+      request.cardRoundKey
+    );
+    if (selectedReward.lotteryTypeId !== request.lotteryTypeId) {
+      throw appError_(
+        "LOTTERY_TICKET_MISMATCH",
+        "é€™å¼µæŠ½çåˆ¸åªèƒ½ä½¿ç”¨æŒ‡å®šçš„è½‰ç›¤ã€‚"
+      );
+    }
+    lotteryType = findLotteryTypeById_(
+      lotteryTypes,
+      selectedReward.lotteryTypeId
+    );
+    lotteryConfig = readLatestLotteryConfig_(
+      prizeSheet,
+      lotteryType.lotteryTypeId
+    );
+
+    var prize = pickLotteryPrize_(lotteryConfig.prizes);
+    var now = new Date();
+    var drawId =
+      "LDW-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();
+    drawSheet.appendRow([
+      drawId,
+      safeSheetText_(lotteryConfig.configVersion),
+      safeSheetText_(prize.prizeId),
+      safeSheetText_(prize.label),
+      prize.color,
+      prize.probabilityBasisPoints,
+      safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),
+      safeSheetText_(identity.lineUserId),
+      0,
+      cardStatus.totalPoints,
+      cardStatus.totalPoints,
+      now,
+      request.requestId,
+      lotteryType.lotteryTypeId,
+      selectedReward.settingVersion,
+      selectedReward.cardRoundKey,
+    ]);
+    applyLotteryDrawRowFormats_(drawSheet, drawSheet.getLastRow());
+    SpreadsheetApp.flush();
+
+    var persistedDraw = {
+      drawId: drawId,
+      configVersion: lotteryConfig.configVersion,
+      prizeId: prize.prizeId,
+      prizeLabel: prize.label,
+      prizeColor: prize.color,
+      probabilityBasisPoints: prize.probabilityBasisPoints,
+      memberId: String(memberRow[MEMBER_COLUMN.memberId - 1] || "").replace(/^'/, ""),
+      lineUserId: identity.lineUserId,
+      pointsSpent: 0,
+      balanceBefore: cardStatus.totalPoints,
+      balanceAfter: cardStatus.totalPoints,
+      drawnAt: now.toISOString(),
+      requestId: request.requestId,
+      lotteryTypeId: lotteryType.lotteryTypeId,
+      cardSettingVersion: selectedReward.settingVersion,
+      cardRoundKey: selectedReward.cardRoundKey,
+      legacyDraw: false,
+    };
+    var updatedCardStatus = getMemberPointCardStatus_(
+      redemptionSheet,
+      drawSheet,
+      settingSheet,
+      identity.lineUserId,
+      drawRecords.concat([persistedDraw])
+    );
+    return {
+      data: {
+        access: access,
+        duplicate: false,
+        lottery: lotteryConfigResponse_(lotteryConfig),
+        lotteryType: memberLotteryTypeResponse_(lotteryType, lotteryConfig),
+        draw: {
+          drawId: drawId,
+          configVersion: lotteryConfig.configVersion,
+          prizeId: prize.prizeId,
+          prizeLabel: prize.label,
+          prizeColor: prize.color,
+          lotteryTypeId: lotteryType.lotteryTypeId,
+          lotteryTypeName: lotteryType.name,
+          ticketCost: 0,
+          pointsSpent: 0,
+          originalPointBalance: cardStatus.totalPoints,
+          pointBalance: cardStatus.totalPoints,
+          cardRoundKey: selectedReward.cardRoundKey,
+          drawnAt: now.toISOString(),
+        },
+        card: pointCardStatusResponse_(updatedCardStatus),
+        pointBalance: updatedCardStatus.totalPoints,
+        totalPoints: updatedCardStatus.totalPoints,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•å®ŒæˆæŠ½çï¼Œè«‹ä½¿ç”¨åŒä¸€æ¬¡è«‹æ±‚å®‰å…¨é‡è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function resolveAvailablePointCardReward_(cardStatus, requestedCardRoundKey) {
+  if (!cardStatus.availableRewards.length) {
+    throw appError_(
+      "LOTTERY_ROUND_NOT_READY",
+      "å°šæœªå–å¾—æ–°çš„æŠ½çåˆ¸ï¼Œæˆ–ç¾æœ‰æŠ½çåˆ¸çš†å·²ä½¿ç”¨ã€‚"
+    );
+  }
+  if (!requestedCardRoundKey) return cardStatus.availableRewards[0];
+  for (var i = 0; i < cardStatus.availableRewards.length; i += 1) {
+    if (
+      cardStatus.availableRewards[i].cardRoundKey === requestedCardRoundKey
+    ) {
+      return cardStatus.availableRewards[i];
+    }
+  }
+  throw appError_(
+    "LOTTERY_ROUND_NOT_READY",
+    "é¸æ“‡çš„æŠ½çåˆ¸ä¸å­˜åœ¨æˆ–å·²ç¶“ä½¿ç”¨ã€‚"
+  );
+}
+
+function readLotteryConfigs_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, LOTTERY_PRIZE_HEADERS.length)
+    .getValues();
+  var groups = Object.create(null);
+  rows.forEach(function (row, index) {
+    var prize = lotteryPrizeRecordFromRow_(row, index + 2);
+    if (!groups[prize.configVersion]) {
+      groups[prize.configVersion] = {
+        configVersion: prize.configVersion,
+        updatedAt: prize.updatedAt,
+        updatedAtTime: new Date(prize.updatedAt).getTime(),
+        lotteryTypeId: prize.lotteryTypeId,
+        lastRowNumber: prize.rowNumber,
+        prizes: [],
+      };
+    }
+    var group = groups[prize.configVersion];
+    if (
+      group.updatedAt !== prize.updatedAt ||
+      group.lotteryTypeId !== prize.lotteryTypeId
+    ) {
+      throw appError_("LOTTERY_DATA_ERROR", "åŒä¸€ç‰ˆæŠ½çè¨­å®šçš„æ›´æ–°æ™‚é–“ä¸ä¸€è‡´ã€‚");
+    }
+    group.lastRowNumber = Math.max(group.lastRowNumber, prize.rowNumber);
+    group.prizes.push(prize);
+  });
+
+  var configs = Object.keys(groups).map(function (key) {
+    var group = groups[key];
+    var prizeIds = Object.create(null);
+    var orders = Object.create(null);
+    var total = 0;
+    if (
+      group.prizes.length < MIN_LOTTERY_PRIZES ||
+      group.prizes.length > MAX_LOTTERY_PRIZES
+    ) {
+      throw appError_("LOTTERY_DATA_ERROR", "æ¯ç‰ˆè½‰ç›¤å¿…é ˆåŒ…å« 2 åˆ° 12 å€‹çé …ã€‚");
+    }
+    group.prizes.forEach(function (prize) {
+      if (prizeIds[prize.prizeId] || orders[prize.sortOrder]) {
+        throw appError_("LOTTERY_DATA_ERROR", "åŒä¸€ç‰ˆè½‰ç›¤çš„çé …æˆ–é †åºé‡è¤‡ã€‚");
+      }
+      prizeIds[prize.prizeId] = true;
+      orders[prize.sortOrder] = true;
+      total += prize.probabilityBasisPoints;
+    });
+    if (total !== 10000) {
+      throw appError_("LOTTERY_DATA_ERROR", "è½‰ç›¤ä¸­çæ©Ÿç‡åˆè¨ˆå¿…é ˆæ˜¯ 100%ã€‚");
+    }
+    group.prizes.sort(function (left, right) {
+      return left.sortOrder - right.sortOrder;
+    });
+    for (var i = 0; i < group.prizes.length; i += 1) {
+      if (group.prizes[i].sortOrder !== i + 1) {
+        throw appError_("LOTTERY_DATA_ERROR", "è½‰ç›¤çé …é †åºå¿…é ˆå¾ 1 é€£çºŒç·¨è™Ÿã€‚");
+      }
+    }
+    return group;
+  });
+
+  configs.sort(function (left, right) {
+    return (
+      right.updatedAtTime - left.updatedAtTime ||
+      right.lastRowNumber - left.lastRowNumber
+    );
+  });
+  return configs;
+}
+
+function readLatestLotteryConfig_(sheet, lotteryTypeId) {
+  var configs = readLotteryConfigs_(sheet);
+  for (var i = 0; i < configs.length; i += 1) {
+    if (configs[i].lotteryTypeId === lotteryTypeId) return configs[i];
+  }
+  if (!configs.length) {
+    throw appError_("LOTTERY_NOT_CONFIGURED", "ç®¡ç†å“¡å°šæœªè¨­å®šè½‰ç›¤çé …ã€‚");
+  }
+  throw appError_("LOTTERY_NOT_CONFIGURED", "é€™å€‹è½‰ç›¤é¡å‹å°šæœªè¨­å®šçé …ã€‚");
+}
+
+function readLotteryConfigByVersion_(sheet, configVersion) {
+  var configs = readLotteryConfigs_(sheet);
+  for (var i = 0; i < configs.length; i += 1) {
+    if (configs[i].configVersion === configVersion) return configs[i];
+  }
+  throw appError_("LOTTERY_DATA_ERROR", "æ‰¾ä¸åˆ°æŠ½çç´€éŒ„æ‰€ä½¿ç”¨çš„è½‰ç›¤è¨­å®šã€‚");
+}
+
+function lotteryPrizeRecordFromRow_(row, rowNumber) {
+  var configVersion = plainSheetText_(
+    row[LOTTERY_PRIZE_COLUMN.configVersion - 1],
+    100
+  );
+  var prizeId = plainSheetText_(row[LOTTERY_PRIZE_COLUMN.prizeId - 1], 100);
+  var label = plainSheetText_(row[LOTTERY_PRIZE_COLUMN.label - 1], 40);
+  var color = String(row[LOTTERY_PRIZE_COLUMN.color - 1] || "")
+    .trim()
+    .toUpperCase();
+  var probabilityBasisPoints = Number(
+    row[LOTTERY_PRIZE_COLUMN.probabilityBasisPoints - 1]
+  );
+  var sortOrder = Number(row[LOTTERY_PRIZE_COLUMN.sortOrder - 1]);
+  var status = String(row[LOTTERY_PRIZE_COLUMN.status - 1] || "")
+    .trim()
+    .toLowerCase();
+  var rawUpdatedAt = row[LOTTERY_PRIZE_COLUMN.updatedAt - 1];
+  var updatedAtDate =
+    rawUpdatedAt instanceof Date ? rawUpdatedAt : new Date(String(rawUpdatedAt || ""));
+  var updatedBy = plainSheetText_(row[LOTTERY_PRIZE_COLUMN.updatedBy - 1], 100);
+  var lastRequestId = plainSheetText_(
+    row[LOTTERY_PRIZE_COLUMN.lastRequestId - 1],
+    100
+  );
+  var lotteryTypeId = plainSheetText_(
+    row[LOTTERY_PRIZE_COLUMN.lotteryTypeId - 1],
+    100
+  );
+  if (
+    !/^LCF-[A-Z0-9]{12}$/.test(configVersion) ||
+    !/^LPR-[A-Z0-9]{10}$/.test(prizeId) ||
+    !label ||
+    label.length > 40 ||
+    !/^#[0-9A-F]{6}$/.test(color) ||
+    !Number.isInteger(probabilityBasisPoints) ||
+    probabilityBasisPoints < 1 ||
+    probabilityBasisPoints > 9999 ||
+    !Number.isInteger(sortOrder) ||
+    sortOrder < 1 ||
+    sortOrder > MAX_LOTTERY_PRIZES ||
+    status !== "active" ||
+    isNaN(updatedAtDate.getTime()) ||
+    !/^ADM-[A-Z0-9]{10}$/.test(updatedBy) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(lastRequestId)
+    || !/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId)
+  ) {
+    throw appError_("LOTTERY_DATA_ERROR", "è½‰ç›¤çé …è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+  }
+  return {
+    configVersion: configVersion,
+    prizeId: prizeId,
+    label: label,
+    color: color,
+    probabilityBasisPoints: probabilityBasisPoints,
+    sortOrder: sortOrder,
+    updatedAt: updatedAtDate.toISOString(),
+    updatedBy: updatedBy,
+    lastRequestId: lastRequestId,
+    lotteryTypeId: lotteryTypeId,
+    rowNumber: Number(rowNumber) || 0,
+  };
+}
+
+function lotteryDrawRecordFromRow_(row) {
+  var drawId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.drawId - 1], 100);
+  var configVersion = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.configVersion - 1],
+    100
+  );
+  var prizeId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.prizeId - 1], 100);
+  var prizeLabel = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.prizeLabelSnapshot - 1],
+    40
+  );
+  var prizeColor = String(row[LOTTERY_DRAW_COLUMN.prizeColorSnapshot - 1] || "")
+    .trim()
+    .toUpperCase();
+  var probabilityBasisPoints = Number(
+    row[LOTTERY_DRAW_COLUMN.probabilityBasisPointsSnapshot - 1]
+  );
+  var memberId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.memberId - 1], 100);
+  var lineUserId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.lineUserId - 1], 128);
+  var pointsSpent = Number(row[LOTTERY_DRAW_COLUMN.pointsSpent - 1]);
+  var balanceBefore = Number(row[LOTTERY_DRAW_COLUMN.balanceBefore - 1]);
+  var balanceAfter = Number(row[LOTTERY_DRAW_COLUMN.balanceAfter - 1]);
+  var rawDrawnAt = row[LOTTERY_DRAW_COLUMN.drawnAt - 1];
+  var drawnAtDate =
+    rawDrawnAt instanceof Date ? rawDrawnAt : new Date(String(rawDrawnAt || ""));
+  var requestId = plainSheetText_(row[LOTTERY_DRAW_COLUMN.requestId - 1], 100);
+  var lotteryTypeId = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.lotteryTypeId - 1],
+    100
+  );
+  var cardSettingVersion = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.cardSettingVersion - 1],
+    100
+  );
+  var cardRoundKey = plainSheetText_(
+    row[LOTTERY_DRAW_COLUMN.cardRoundKey - 1],
+    100
+  );
+  var isLegacyDraw =
+    pointsSpent === LEGACY_LOTTERY_TICKET_COST &&
+    balanceBefore >= LEGACY_LOTTERY_TICKET_COST &&
+    balanceAfter === balanceBefore - LEGACY_LOTTERY_TICKET_COST &&
+    !lotteryTypeId &&
+    !cardSettingVersion &&
+    !cardRoundKey;
+  var isRoundDraw =
+    pointsSpent === 0 &&
+    balanceBefore >= 0 &&
+    balanceAfter === balanceBefore &&
+    /^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId) &&
+    /^PCS-[A-Z0-9]{12}$/.test(cardSettingVersion) &&
+    cardRoundKey.indexOf(cardSettingVersion + ":") === 0 &&
+    /^[1-9]\d*(?::[1-9]\d*)?$/.test(
+      cardRoundKey.slice(cardSettingVersion.length + 1)
+    );
+  if (
+    !/^LDW-[A-Z0-9]{16}$/.test(drawId) ||
+    !/^LCF-[A-Z0-9]{12}$/.test(configVersion) ||
+    !/^LPR-[A-Z0-9]{10}$/.test(prizeId) ||
+    !prizeLabel ||
+    !/^#[0-9A-F]{6}$/.test(prizeColor) ||
+    !Number.isInteger(probabilityBasisPoints) ||
+    probabilityBasisPoints < 1 ||
+    probabilityBasisPoints > 9999 ||
+    !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+    !/^U[0-9a-f]{32}$/.test(lineUserId) ||
+    !Number.isSafeInteger(balanceBefore) ||
+    !Number.isSafeInteger(balanceAfter) ||
+    (!isLegacyDraw && !isRoundDraw) ||
+    isNaN(drawnAtDate.getTime()) ||
+    !/^[a-zA-Z0-9-]{10,80}$/.test(requestId)
+  ) {
+    throw appError_("LOTTERY_DATA_ERROR", "æŠ½çç´€éŒ„æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+  }
+  return {
+    drawId: drawId,
+    configVersion: configVersion,
+    prizeId: prizeId,
+    prizeLabel: prizeLabel,
+    prizeColor: prizeColor,
+    probabilityBasisPoints: probabilityBasisPoints,
+    memberId: memberId,
+    lineUserId: lineUserId,
+    pointsSpent: pointsSpent,
+    balanceBefore: balanceBefore,
+    balanceAfter: balanceAfter,
+    drawnAt: drawnAtDate.toISOString(),
+    requestId: requestId,
+    lotteryTypeId: lotteryTypeId || DEFAULT_LOTTERY_TYPE_ID,
+    cardSettingVersion: cardSettingVersion,
+    cardRoundKey: cardRoundKey,
+    legacyDraw: isLegacyDraw,
+  };
+}
+
+function findLotteryDrawInRecords_(drawRecords, lineUserId, requestId) {
+  var match = null;
+  (Array.isArray(drawRecords) ? drawRecords : []).forEach(function (draw) {
+    if (draw.lineUserId !== lineUserId || draw.requestId !== requestId) return;
+    if (match) {
+      throw appError_("LOTTERY_DATA_ERROR", "ç›¸åŒæŠ½çè«‹æ±‚å‡ºç¾é‡è¤‡ç´€éŒ„ã€‚");
+    }
+    match = draw;
+  });
+  return match;
+}
+
+function findLotteryDrawByRequest_(sheet, lineUserId, requestId) {
+  return findLotteryDrawInRecords_(
+    readAllLotteryDraws_(sheet),
+    lineUserId,
+    requestId
+  );
+}
+
+function readAllLotteryDraws_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, LOTTERY_DRAW_HEADERS.length)
+    .getValues();
+  var drawIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  return rows.map(function (row) {
+    var draw = lotteryDrawRecordFromRow_(row);
+    var requestKey = draw.lineUserId + ":" + draw.requestId;
+    if (drawIds[draw.drawId] || requestKeys[requestKey]) {
+      throw appError_("LOTTERY_DATA_ERROR", "æŠ½çç´€éŒ„è­˜åˆ¥ç¢¼é‡è¤‡ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+    }
+    drawIds[draw.drawId] = true;
+    requestKeys[requestKey] = true;
+    return draw;
+  });
+}
+
+function pickLotteryPrize_(prizes) {
+  var randomHex = Utilities.getUuid().replace(/-/g, "").slice(0, 12);
+  var randomValue = parseInt(randomHex, 16) / 281474976710656;
+  var target = randomValue * 10000;
+  var cumulative = 0;
+  for (var i = 0; i < prizes.length; i += 1) {
+    cumulative += prizes[i].probabilityBasisPoints;
+    if (target < cumulative) return prizes[i];
+  }
+  return prizes[prizes.length - 1];
+}
+
+function lotteryConfigResponse_(lotteryConfig) {
+  return {
+    lotteryTypeId: lotteryConfig.lotteryTypeId,
+    configVersion: lotteryConfig.configVersion,
+    updatedAt: lotteryConfig.updatedAt,
+    prizes: lotteryConfig.prizes.map(function (prize) {
+      return {
+        prizeId: prize.prizeId,
+        label: prize.label,
+        color: prize.color,
+        probability: prize.probabilityBasisPoints / 100,
+      };
+    }),
+  };
+}
+
+function lotteryDrawResponse_(draw) {
+  return {
+    drawId: draw.drawId,
+    configVersion: draw.configVersion,
+    prizeId: draw.prizeId,
+    prizeLabel: draw.prizeLabel,
+    prizeColor: draw.prizeColor,
+    lotteryTypeId: draw.lotteryTypeId,
+    ticketCost: draw.pointsSpent,
+    pointsSpent: draw.pointsSpent,
+    originalPointBalance: draw.balanceBefore,
+    pointBalance: draw.balanceAfter,
+    cardRoundKey: draw.cardRoundKey,
+    drawnAt: draw.drawnAt,
+  };
+}
+
+function previewPointCampaign_(identity, request, config) {
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•é ˜å–é»æ•¸ã€‚");
+    }
+
+    var campaignSheet = getOrCreatePointCampaignSheet_(config);
+    var campaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    assertPointCampaignAvailable_(campaign, new Date());
+    var pointBalance = getMemberPointBalance_(
+      getOrCreatePointRedemptionSheet_(config),
+      identity.lineUserId,
+      getOrCreateLotteryDrawSheet_(config)
+    );
+
+    return {
+      data: {
+        access: access,
+        campaign: pointCampaignResponse_(campaign),
+        pointBalance: pointBalance,
+      },
+    };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•è®€å–é»æ•¸æ´»å‹•ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+}
+
+function redeemPointCampaign_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "é»æ•¸æ­£åœ¨è™•ç†ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  try {
+    var memberSheet = getOrCreateMemberSheet_(config);
+    var memberRowNumber = findMemberRow_(memberSheet, identity.lineUserId);
+    if (!memberRowNumber) {
+      throw appError_("MEMBER_NOT_FOUND", "æ‰¾ä¸åˆ°æœƒå“¡è³‡æ–™ï¼Œè«‹é‡æ–°ç™»å…¥å¾Œå†è©¦ã€‚");
+    }
+
+    var memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    var access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•é ˜å–é»æ•¸ã€‚");
+    }
+
+    var campaignSheet = getOrCreatePointCampaignSheet_(config);
+    var campaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+    var replayedRedemption = findPointRedemptionByRequest_(
+      redemptionSheet,
+      identity.lineUserId,
+      request.requestId
+    );
+
+    // A transport retry uses the same requestId. It must remain idempotent for
+    // both one-time and repeatable campaigns, even after expiry or disabling.
+    if (replayedRedemption) {
+      assertRedemptionMatchesCampaign_(replayedRedemption, campaign);
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        "request_replay",
+        0
+      );
+    }
+
+    var existingRedemption =
+      campaign.redemptionMode === "once_per_member"
+        ? findPointRedemption_(
+            redemptionSheet,
+            campaign.campaignId,
+            identity.lineUserId
+          )
+        : campaign.redemptionMode === "single_member"
+          ? findPointRedemptionByCampaign_(redemptionSheet, campaign.campaignId)
+          : null;
+    if (existingRedemption) {
+      if (campaign.redemptionMode === "single_member") {
+        assertRedemptionMatchesCampaign_(existingRedemption, campaign);
+      }
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        campaign.redemptionMode === "single_member"
+          ? "campaign_redeemed"
+          : "already_redeemed",
+        0
+      );
+    }
+
+    assertPointCampaignAvailable_(campaign, new Date());
+
+    // Re-read immediately before the sole ledger mutation. Administrator and
+    // member GAS projects do not share ScriptLock, so this narrows the window
+    // in which a concurrent access change could otherwise be missed.
+    memberRow = memberSheet
+      .getRange(memberRowNumber, 1, 1, MEMBER_HEADERS.length)
+      .getValues()[0];
+    access = memberAccessFromRow_(memberRow);
+    if (!access.allowed) {
+      throw appError_("MEMBER_ACCESS_DENIED", "ç›®å‰å¸³è™Ÿå·²åœç”¨ï¼Œç„¡æ³•é ˜å–é»æ•¸ã€‚");
+    }
+
+    // Check the persistent request key again immediately before append. The
+    // same request must never award twice, while a repeatable campaign may
+    // accept a distinct request.
+    replayedRedemption = findPointRedemptionByRequest_(
+      redemptionSheet,
+      identity.lineUserId,
+      request.requestId
+    );
+    if (replayedRedemption) {
+      assertRedemptionMatchesCampaign_(replayedRedemption, campaign);
+      return pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        "request_replay",
+        0
+      );
+    }
+
+    if (campaign.redemptionMode === "once_per_member") {
+      existingRedemption = findPointRedemption_(
+        redemptionSheet,
+        campaign.campaignId,
+        identity.lineUserId
+      );
+      if (existingRedemption) {
+        return pointCampaignRedemptionResponseForConfig_(
+          config,
+          identity.lineUserId,
+          redemptionSheet,
+          lotteryDrawSheet,
+          access,
+          campaign,
+          "already_redeemed",
+          0
+        );
+      }
+    } else if (campaign.redemptionMode === "single_member") {
+      existingRedemption = findPointRedemptionByCampaign_(
+        redemptionSheet,
+        campaign.campaignId
+      );
+      if (existingRedemption) {
+        assertRedemptionMatchesCampaign_(existingRedemption, campaign);
+        return pointCampaignRedemptionResponseForConfig_(
+          config,
+          identity.lineUserId,
+          redemptionSheet,
+          lotteryDrawSheet,
+          access,
+          campaign,
+          "campaign_redeemed",
+          0
+        );
+      }
+    }
+
+    // The spreadsheet owner can disable or edit a campaign outside this GAS
+    // lock. Re-read immediately before append, require the previewed snapshot
+    // to remain identical and re-check expiry/status.
+    var latestCampaign = findPointCampaignByClaim_(campaignSheet, request.claim);
+    assertPointCampaignAvailable_(latestCampaign, new Date());
+    if (
+      latestCampaign.campaignId !== campaign.campaignId ||
+      latestCampaign.pointTypeId !== campaign.pointTypeId ||
+      latestCampaign.label !== campaign.label ||
+      latestCampaign.points !== campaign.points ||
+      latestCampaign.expiresAt !== campaign.expiresAt ||
+      latestCampaign.expiryMode !== campaign.expiryMode ||
+      latestCampaign.redemptionMode !== campaign.redemptionMode
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "é»æ•¸æ´»å‹•åœ¨é ˜å–æœŸé–“å·²ç•°å‹•ï¼Œè«‹é‡æ–°æƒæå¾Œå†è©¦ã€‚"
+      );
+    }
+    campaign = latestCampaign;
+
+    var pointBalance = getMemberPointBalance_(
+      redemptionSheet,
+      identity.lineUserId
+    );
+    var preflightCardStatus = getMemberPointCardStatusForConfig_(
+      config,
+      identity.lineUserId,
+      redemptionSheet,
+      lotteryDrawSheet
+    );
+    if (preflightCardStatus.totalPoints !== pointBalance) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "é ˜é»å‰çš„é›†é»å¡ç´¯è¨ˆè³‡æ–™ä¸ä¸€è‡´ã€‚"
+      );
+    }
+    if (pointBalance > 9007199254740991 - campaign.points) {
+      throw appError_("POINT_DATA_ERROR", "æœƒå“¡é»æ•¸è³‡æ–™è¶…å‡ºå¯è™•ç†ç¯„åœã€‚");
+    }
+    var balanceAfter = pointBalance + campaign.points;
+    var now = new Date();
+    var redemptionId =
+      "RDM-" + Utilities.getUuid().replace(/-/g, "").slice(0, 16).toUpperCase();
+    var redemptionAppended = false;
+
+    try {
+      redemptionSheet.appendRow([
+        redemptionId,
+        safeSheetText_(campaign.campaignId),
+        safeSheetText_(campaign.pointTypeId),
+        safeSheetText_(String(memberRow[MEMBER_COLUMN.memberId - 1] || "")),
+        safeSheetText_(identity.lineUserId),
+        campaign.points,
+        balanceAfter,
+        now,
+        request.requestId,
+        campaign.redemptionMode,
+      ]);
+      redemptionAppended = true;
+
+      var redemptionRowNumber = findPointRedemptionRowNumber_(
+        redemptionSheet,
+        redemptionId,
+        identity.lineUserId,
+        request.requestId
+      );
+      if (!redemptionRowNumber) {
+        throw appError_(
+          "POINT_DATA_ERROR",
+          "é ˜é»ç´€éŒ„å¯«å…¥å¾Œç„¡æ³•å®šä½ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+        );
+      }
+      applyPointRedemptionRowFormats_(redemptionSheet, redemptionRowNumber);
+      SpreadsheetApp.flush();
+
+      var response = pointCampaignRedemptionResponseForConfig_(
+        config,
+        identity.lineUserId,
+        redemptionSheet,
+        lotteryDrawSheet,
+        access,
+        campaign,
+        "",
+        campaign.points
+      );
+      if (response.data.pointBalance !== balanceAfter) {
+        throw appError_(
+          "POINT_DATA_ERROR",
+          "é ˜é»å¾Œçš„é›†é»å¡ç´¯è¨ˆè³‡æ–™ä¸ä¸€è‡´ã€‚"
+        );
+      }
+      return response;
+    } catch (redemptionError) {
+      if (redemptionAppended) {
+        var appendedRowNumber = findPointRedemptionRowNumber_(
+          redemptionSheet,
+          redemptionId,
+          identity.lineUserId,
+          request.requestId
+        );
+        if (!appendedRowNumber) {
+          throw appError_(
+            "POINT_DATA_ERROR",
+            "é ˜é»å¤±æ•—ä¸”ç„¡æ³•ç¢ºèªå¯«å…¥ç‹€æ…‹ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+          );
+        }
+        redemptionSheet.deleteRow(appendedRowNumber);
+        SpreadsheetApp.flush();
+      }
+      throw redemptionError;
+    }
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•é ˜å–é»æ•¸ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function pointCampaignRedemptionResponseForConfig_(
+  config,
+  lineUserId,
+  redemptionSheet,
+  lotteryDrawSheet,
+  access,
+  campaign,
+  duplicateReason,
+  awardedPoints
+) {
+  var cardStatus = getMemberPointCardStatusForConfig_(
+    config,
+    lineUserId,
+    redemptionSheet,
+    lotteryDrawSheet
+  );
+  var normalizedDuplicateReason = String(duplicateReason || "");
+  var duplicate = Boolean(normalizedDuplicateReason);
+  return {
+    data: {
+      access: access,
+      redeemed: !duplicate,
+      duplicate: duplicate,
+      duplicateReason: normalizedDuplicateReason,
+      awardedPoints: awardedPoints,
+      pointBalance: cardStatus.totalPoints,
+      cardSummary: pointCardSummaryResponse_(cardStatus),
+      campaign: pointCampaignResponse_(campaign),
+    },
+  };
+}
+
+function deleteMember_(identity, request, config) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    throw appError_("BUSY", "æœƒå“¡è³‡æ–™æ­£åœ¨è™•ç†ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  }
+
+  try {
+    if (wasRequestRecentlyProcessed_(identity.lineUserId, request.action, request.requestId)) {
+      return { data: { deleted: true, duplicate: true } };
+    }
+
+    var sheet = getOrCreateMemberSheet_(config);
+    var rowNumbers = findMemberRows_(sheet, identity.lineUserId);
+    var redemptionSheet = getOrCreatePointRedemptionSheet_(config);
+    var deletedRedemptions = deletePointRedemptionsForMember_(
+      redemptionSheet,
+      identity.lineUserId
+    );
+    var lotteryDrawSheet = getOrCreateLotteryDrawSheet_(config);
+    var deletedLotteryDraws = deleteLotteryDrawsForMember_(
+      lotteryDrawSheet,
+      identity.lineUserId
+    );
+
+    rowNumbers.forEach(function (rowNumber) {
+      // Keep physical row numbers stable because the administrator backend is
+      // a separate GAS project whose ScriptLock cannot coordinate with this
+      // one. Clearing prevents a concurrent narrow admin write from shifting
+      // onto the next member while still removing all member data.
+      sheet
+        .getRange(rowNumber, 1, 1, MEMBER_HEADERS.length)
+        .setValues([new Array(MEMBER_HEADERS.length).fill("")]);
+    });
+    if (
+      rowNumbers.length > 0 ||
+      deletedRedemptions > 0 ||
+      deletedLotteryDraws > 0
+    ) {
+      SpreadsheetApp.flush();
+    }
+
+    markMemberDeleted_(identity.lineUserId, identity.tokenIssuedAt);
+    markRequestProcessed_(identity.lineUserId, request.action, request.requestId, "deleted");
+
+    return { data: { deleted: rowNumbers.length > 0 } };
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    throw appError_("SPREADSHEET_ERROR", "ç›®å‰ç„¡æ³•åˆªé™¤æœƒå“¡è³‡æ–™ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function createMemberRow_(identity, requestId, context, now) {
+  return [
+    "MBR-" + Utilities.getUuid().replace(/-/g, "").slice(0, 10).toUpperCase(),
+    safeSheetText_(identity.lineUserId),
+    safeSheetText_(identity.displayName),
+    safeSheetText_(identity.pictureUrl),
+    "",
+    "approved",
+    now,
+    now,
+    now,
+    1,
+    safeSheetText_(context.type),
+    safeSheetText_(context.os),
+    safeSheetText_(context.language),
+    context.inClient,
+    safeSheetText_(context.viewType),
+    identity.tokenIssuedAt,
+    requestId,
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ];
+}
+
+function memberAccessFromRow_(row) {
+  var status = normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]);
+  return { status: status, allowed: status === "approved" };
+}
+
+function memberResponseFromRow_(row, identity, context, pointBalance) {
+  return {
+    memberId: String(row[MEMBER_COLUMN.memberId - 1] || ""),
+    displayName: identity.displayName,
+    pictureUrl: identity.pictureUrl,
+    phone: memberPhoneFromRow_(row),
+    birthday: memberBirthdayFromRow_(row),
+    pointBalance: normalizePointBalance_(pointBalance),
+    totalPoints: normalizePointBalance_(pointBalance),
+    status: normalizeAccessStatus_(row[MEMBER_COLUMN.status - 1]),
+    joinedAt: toIsoString_(row[MEMBER_COLUMN.joinedAt - 1]),
+    updatedAt: toIsoString_(row[MEMBER_COLUMN.updatedAt - 1]),
+    lastLoginAt: toIsoString_(row[MEMBER_COLUMN.lastLoginAt - 1]),
+    loginCount: Math.max(0, Number(row[MEMBER_COLUMN.loginCount - 1]) || 0),
+    loginContext: context,
+  };
+}
+
+function getConfig_() {
+  var properties = PropertiesService.getScriptProperties();
+  var lineChannelId = String(properties.getProperty("LINE_CHANNEL_ID") || "").trim();
+  var spreadsheetId = String(properties.getProperty("SPREADSHEET_ID") || "").trim();
+  var sheetName = String(properties.getProperty("SHEET_NAME") || DEFAULT_SHEET_NAME).trim();
+  var pointTypeSheetName = String(
+    properties.getProperty("POINT_TYPE_SHEET_NAME") || DEFAULT_POINT_TYPE_SHEET_NAME
+  ).trim();
+  var pointCampaignSheetName = String(
+    properties.getProperty("POINT_CAMPAIGN_SHEET_NAME") || DEFAULT_POINT_CAMPAIGN_SHEET_NAME
+  ).trim();
+  var pointRedemptionSheetName = String(
+    properties.getProperty("POINT_REDEMPTION_SHEET_NAME") ||
+      DEFAULT_POINT_REDEMPTION_SHEET_NAME
+  ).trim();
+  var pointCardSettingSheetName = String(
+    properties.getProperty("POINT_CARD_SETTING_SHEET_NAME") ||
+      DEFAULT_POINT_CARD_SETTING_SHEET_NAME
+  ).trim();
+  var lotteryTypeSheetName = String(
+    properties.getProperty("LOTTERY_TYPE_SHEET_NAME") ||
+      DEFAULT_LOTTERY_TYPE_SHEET_NAME
+  ).trim();
+  var lotteryPrizeSheetName = String(
+    properties.getProperty("LOTTERY_PRIZE_SHEET_NAME") ||
+      DEFAULT_LOTTERY_PRIZE_SHEET_NAME
+  ).trim();
+  var lotteryDrawSheetName = String(
+    properties.getProperty("LOTTERY_DRAW_SHEET_NAME") ||
+      DEFAULT_LOTTERY_DRAW_SHEET_NAME
+  ).trim();
+  var allowedOrigins = getAllowedOrigins_();
+
+  if (
+    !/^\d{6,}$/.test(lineChannelId) ||
+    !spreadsheetId ||
+    !sheetName ||
+    !pointTypeSheetName ||
+    !pointCampaignSheetName ||
+    !pointRedemptionSheetName ||
+    !pointCardSettingSheetName ||
+    !lotteryTypeSheetName ||
+    !lotteryPrizeSheetName ||
+    !lotteryDrawSheetName ||
+    allowedOrigins.length === 0
+  ) {
+    throw appError_(
+      "CONFIG_ERROR",
+      "æœƒå“¡ç«¯ GAS å°šæœªå®Œæˆ LINEã€è©¦ç®—è¡¨æˆ–å…è¨±ä¾†æºè¨­å®šã€‚"
+    );
+  }
+
+  var sheetNames = [
+    sheetName,
+    pointTypeSheetName,
+    pointCampaignSheetName,
+    pointRedemptionSheetName,
+    pointCardSettingSheetName,
+    lotteryTypeSheetName,
+    lotteryPrizeSheetName,
+    lotteryDrawSheetName,
+  ].map(function (name) {
+    return name.toLowerCase();
+  });
+  if (
+    sheetNames.some(function (name) {
+      return name.length > 80;
+    }) ||
+    new Set(sheetNames).size !== sheetNames.length
+  ) {
+    throw appError_("CONFIG_ERROR", "æœƒå“¡èˆ‡é»æ•¸å·¥ä½œè¡¨åç¨±ä¸å¯é‡è¤‡ï¼Œä¸”ä¸å¯è¶…é 80 å€‹å­—å…ƒã€‚");
+  }
+
+  return {
+    lineChannelId: lineChannelId,
+    spreadsheetId: spreadsheetId,
+    sheetName: sheetName.slice(0, 80),
+    pointTypeSheetName: pointTypeSheetName.slice(0, 80),
+    pointCampaignSheetName: pointCampaignSheetName.slice(0, 80),
+    pointRedemptionSheetName: pointRedemptionSheetName.slice(0, 80),
+    pointCardSettingSheetName: pointCardSettingSheetName.slice(0, 80),
+    lotteryTypeSheetName: lotteryTypeSheetName.slice(0, 80),
+    lotteryPrizeSheetName: lotteryPrizeSheetName.slice(0, 80),
+    lotteryDrawSheetName: lotteryDrawSheetName.slice(0, 80),
+    allowedOrigins: allowedOrigins,
+  };
+}
+
+function getOrCreateMemberSheet_(config) {
+  var spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
+  } catch (_error) {
+    throw appError_("SPREADSHEET_ERROR", "ç„¡æ³•é–‹å•Ÿæœƒå“¡è©¦ç®—è¡¨ï¼Œè«‹æª¢æŸ¥ SPREADSHEET_ID èˆ‡æ¬Šé™ã€‚");
+  }
+
+  var sheet = spreadsheet.getSheetByName(config.sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(config.sheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).setValues([MEMBER_HEADERS]);
+    sheet.setFrozenRows(1);
+    styleMemberHeader_(sheet, 1, MEMBER_HEADERS.length);
+    sheet.autoResizeColumns(1, MEMBER_HEADERS.length);
+    applySheetColumnFormats_(sheet);
+    return sheet;
+  }
+
+  var lastColumn = sheet.getLastColumn();
+  if (
+    lastColumn === LEGACY_MEMBER_HEADERS.length ||
+    lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length ||
+    lastColumn === PRE_PROFILE_MEMBER_HEADERS.length
+  ) {
+    var previousHeaders = PRE_PROFILE_MEMBER_HEADERS;
+    if (lastColumn === LEGACY_MEMBER_HEADERS.length) {
+      previousHeaders = LEGACY_MEMBER_HEADERS;
+    } else if (lastColumn === ACCESS_AUDIT_MEMBER_HEADERS.length) {
+      previousHeaders = ACCESS_AUDIT_MEMBER_HEADERS;
+    }
+    var existingPreviousHeaders = sheet
+      .getRange(1, 1, 1, previousHeaders.length)
+      .getDisplayValues()[0];
+    assertMemberHeadersMatch_(existingPreviousHeaders, previousHeaders);
+
+    var appendedHeaders = MEMBER_HEADERS.slice(previousHeaders.length);
+    sheet
+      .getRange(1, previousHeaders.length + 1, 1, appendedHeaders.length)
+      .setValues([appendedHeaders]);
+    styleMemberHeader_(sheet, previousHeaders.length + 1, appendedHeaders.length);
+    sheet.autoResizeColumns(previousHeaders.length + 1, appendedHeaders.length);
+    migrateDefaultMemberAccess_(sheet);
+    applySheetColumnFormats_(sheet);
+    SpreadsheetApp.flush();
+    return sheet;
+  }
+
+  if (lastColumn !== MEMBER_HEADERS.length) throwMemberSchemaMismatch_();
+
+  var existingHeaders = sheet.getRange(1, 1, 1, MEMBER_HEADERS.length).getDisplayValues()[0];
+  assertMemberHeadersMatch_(existingHeaders, MEMBER_HEADERS);
+  return sheet;
+}
+
+function getOrCreatePointTypeSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointTypeSheetName || DEFAULT_POINT_TYPE_SHEET_NAME,
+    POINT_TYPE_HEADERS,
+    LEGACY_POINT_TYPE_HEADERS,
+    ["limited", "once_per_member", "", ""]
+  );
+}
+
+function getOrCreatePointCampaignSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointCampaignSheetName || DEFAULT_POINT_CAMPAIGN_SHEET_NAME,
+    POINT_CAMPAIGN_HEADERS,
+    LEGACY_POINT_CAMPAIGN_HEADERS,
+    ["limited", "once_per_member"]
+  );
+}
+
+function getOrCreatePointRedemptionSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointRedemptionSheetName || DEFAULT_POINT_REDEMPTION_SHEET_NAME,
+    POINT_REDEMPTION_HEADERS,
+    LEGACY_POINT_REDEMPTION_HEADERS,
+    ["once_per_member"]
+  );
+}
+
+function getOrCreatePointCardSettingSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.pointCardSettingSheetName || DEFAULT_POINT_CARD_SETTING_SHEET_NAME,
+    POINT_CARD_SETTING_HEADERS,
+    [
+      LEGACY_POINT_CARD_SETTING_HEADERS,
+      MILESTONE_POINT_CARD_SETTING_HEADERS,
+      LOTTERY_POINT_CARD_SETTING_HEADERS,
+    ],
+    [
+      ["", "", "unlimited", ""],
+      ["", "unlimited", ""],
+      ["unlimited", ""],
+    ]
+  );
+}
+
+function getOrCreateLotteryTypeSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.lotteryTypeSheetName || DEFAULT_LOTTERY_TYPE_SHEET_NAME,
+    LOTTERY_TYPE_HEADERS,
+    [],
+    []
+  );
+}
+
+function getOrCreateLotteryPrizeSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.lotteryPrizeSheetName || DEFAULT_LOTTERY_PRIZE_SHEET_NAME,
+    LOTTERY_PRIZE_HEADERS,
+    LEGACY_LOTTERY_PRIZE_HEADERS,
+    [DEFAULT_LOTTERY_TYPE_ID]
+  );
+}
+
+function getOrCreateLotteryDrawSheet_(config) {
+  return getOrCreatePointDataSheet_(
+    config,
+    config.lotteryDrawSheetName || DEFAULT_LOTTERY_DRAW_SHEET_NAME,
+    LOTTERY_DRAW_HEADERS,
+    LEGACY_LOTTERY_DRAW_HEADERS,
+    ["", "", ""]
+  );
+}
+
+function ensureDefaultPointCardSetting_(sheet) {
+  if (sheet.getLastRow() >= 2) return;
+  sheet.appendRow([
+    DEFAULT_POINT_CARD_SETTING_VERSION,
+    DEFAULT_POINT_CARD_TARGET,
+    new Date(0),
+    "SYSTEM",
+    "setup-default-card",
+    String(DEFAULT_POINT_CARD_TARGET),
+    "",
+    "unlimited",
+    "",
+  ]);
+  applyPointCardSettingSheetFormats_(sheet);
+}
+
+function ensurePointCardLotteryMappings_(settingSheet, typeSheet, prizeSheet) {
+  if (
+    settingSheet.getLastRow() < 2 ||
+    typeSheet.getLastRow() < 2 ||
+    prizeSheet.getLastRow() < 2
+  ) {
+    return;
+  }
+  var configuredTypeIds = Object.create(null);
+  readLotteryConfigs_(prizeSheet).forEach(function (config) {
+    configuredTypeIds[config.lotteryTypeId] = true;
+  });
+  var activeTypes = readLotteryTypes_(typeSheet).filter(function (type) {
+    return type.status === "active" && configuredTypeIds[type.lotteryTypeId];
+  });
+  if (!activeTypes.length) return;
+  var fallbackType = activeTypes[0];
+  activeTypes.forEach(function (type) {
+    if (type.lotteryTypeId === DEFAULT_LOTTERY_TYPE_ID) fallbackType = type;
+  });
+
+  var rowCount = settingSheet.getLastRow() - 1;
+  var rows = settingSheet
+    .getRange(2, 1, rowCount, POINT_CARD_SETTING_HEADERS.length)
+    .getDisplayValues();
+  rows.forEach(function (row, index) {
+    if (
+      String(
+        row[POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds - 1] || ""
+      ).trim()
+    ) {
+      return;
+    }
+    var targetPoints = Number(
+      row[POINT_CARD_SETTING_COLUMN.targetPoints - 1]
+    );
+    var milestones = parsePointCardMilestones_(
+      row[POINT_CARD_SETTING_COLUMN.rewardMilestones - 1],
+      targetPoints
+    );
+    settingSheet
+      .getRange(
+        index + 2,
+        POINT_CARD_SETTING_COLUMN.rewardLotteryTypeIds
+      )
+      .setValues([
+        [
+          milestones
+            .map(function () {
+              return fallbackType.lotteryTypeId;
+            })
+            .join(","),
+        ],
+      ]);
+  });
+}
+
+function ensureLotteryTypeForExistingPrizes_(typeSheet, prizeSheet) {
+  if (typeSheet.getLastRow() >= 2 || prizeSheet.getLastRow() < 2) return;
+  var typeIds = prizeSheet
+    .getRange(
+      2,
+      LOTTERY_PRIZE_COLUMN.lotteryTypeId,
+      prizeSheet.getLastRow() - 1,
+      1
+    )
+    .getDisplayValues();
+  for (var i = 0; i < typeIds.length; i += 1) {
+    if (String(typeIds[i][0] || "") !== DEFAULT_LOTTERY_TYPE_ID) {
+      throw appError_(
+        "LOTTERY_DATA_ERROR",
+        "æ—¢æœ‰è½‰ç›¤çé …ç¼ºå°‘å°æ‡‰çš„è½‰ç›¤é¡å‹ï¼Œè«‹å…ˆæª¢æŸ¥è©¦ç®—è¡¨ã€‚"
+      );
+    }
+  }
+  var epoch = new Date(0);
+  typeSheet.appendRow([
+    DEFAULT_LOTTERY_TYPE_ID,
+    safeSheetText_(DEFAULT_LOTTERY_TYPE_NAME),
+    "active",
+    epoch,
+    epoch,
+    "SYSTEM",
+    "",
+    "",
+    "setup-default-type",
+  ]);
+  applyLotteryTypeSheetFormats_(typeSheet);
+}
+
+function getOrCreatePointDataSheet_(
+  config,
+  sheetName,
+  expectedHeaders,
+  legacyHeaders,
+  legacyDefaults
+) {
+  var spreadsheet;
+  try {
+    spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
+  } catch (_error) {
+    throw appError_("SPREADSHEET_ERROR", "ç„¡æ³•é–‹å•Ÿé»æ•¸è©¦ç®—è¡¨ï¼Œè«‹æª¢æŸ¥ SPREADSHEET_ID èˆ‡æ¬Šé™ã€‚");
+  }
+
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    sheet.setFrozenRows(1);
+    styleMemberHeader_(sheet, 1, expectedHeaders.length);
+    sheet.autoResizeColumns(1, expectedHeaders.length);
+    return sheet;
+  }
+
+  var legacyHeaderOptions =
+    Array.isArray(legacyHeaders[0]) ? legacyHeaders : [legacyHeaders];
+  var legacyDefaultOptions =
+    Array.isArray(legacyHeaders[0]) ? legacyDefaults : [legacyDefaults];
+  var matchedLegacyIndex = -1;
+  for (
+    var legacyOptionIndex = 0;
+    legacyOptionIndex < legacyHeaderOptions.length;
+    legacyOptionIndex += 1
+  ) {
+    if (
+      sheet.getLastColumn() ===
+      legacyHeaderOptions[legacyOptionIndex].length
+    ) {
+      matchedLegacyIndex = legacyOptionIndex;
+      break;
+    }
+  }
+
+  if (matchedLegacyIndex >= 0) {
+    var matchedLegacyHeaders = legacyHeaderOptions[matchedLegacyIndex];
+    var matchedLegacyDefaults = legacyDefaultOptions[matchedLegacyIndex];
+    var legacyActualHeaders = sheet
+      .getRange(1, 1, 1, matchedLegacyHeaders.length)
+      .getDisplayValues()[0];
+    for (
+      var legacyIndex = 0;
+      legacyIndex < matchedLegacyHeaders.length;
+      legacyIndex += 1
+    ) {
+      if (
+        legacyActualHeaders[legacyIndex] !==
+        matchedLegacyHeaders[legacyIndex]
+      ) {
+        throwPointSchemaMismatch_(sheetName);
+      }
+    }
+    var appendedHeaders = expectedHeaders.slice(matchedLegacyHeaders.length);
+    sheet
+      .getRange(
+        1,
+        matchedLegacyHeaders.length + 1,
+        1,
+        appendedHeaders.length
+      )
+      .setValues([appendedHeaders]);
+    if (sheet.getLastRow() > 1) {
+      var defaultRows = [];
+      for (var rowIndex = 2; rowIndex <= sheet.getLastRow(); rowIndex += 1) {
+        defaultRows.push(matchedLegacyDefaults.slice());
+      }
+      sheet
+        .getRange(
+          2,
+          matchedLegacyHeaders.length + 1,
+          defaultRows.length,
+          matchedLegacyDefaults.length
+        )
+        .setValues(defaultRows);
+    }
+    SpreadsheetApp.flush();
+  }
+
+  if (sheet.getLastColumn() !== expectedHeaders.length) {
+    throwPointSchemaMismatch_(sheetName);
+  }
+
+  var actualHeaders = sheet
+    .getRange(1, 1, 1, expectedHeaders.length)
+    .getDisplayValues()[0];
+  for (var i = 0; i < expectedHeaders.length; i += 1) {
+    if (actualHeaders[i] !== expectedHeaders[i]) {
+      throwPointSchemaMismatch_(sheetName);
+    }
+  }
+  return sheet;
+}
+
+function throwPointSchemaMismatch_(sheetName) {
+  throw appError_(
+    "POINT_SCHEMA_MISMATCH",
+    String(sheetName || "é»æ•¸") + " å·¥ä½œè¡¨æ¬„ä½èˆ‡ç¨‹å¼ç‰ˆæœ¬ä¸ç›¸ç¬¦ï¼Œè«‹å‹¿æ‰‹å‹•èª¿æ•´ç¬¬ä¸€åˆ—æ¬„ä½ã€‚"
+  );
+}
+
+function assertMemberHeadersMatch_(actualHeaders, expectedHeaders) {
+  for (var i = 0; i < expectedHeaders.length; i += 1) {
+    if (actualHeaders[i] !== expectedHeaders[i]) throwMemberSchemaMismatch_();
+  }
+}
+
+function throwMemberSchemaMismatch_() {
+  throw appError_(
+    "SCHEMA_MISMATCH",
+    "Members å·¥ä½œè¡¨æ¬„ä½èˆ‡ç¨‹å¼ç‰ˆæœ¬ä¸ç›¸ç¬¦ï¼Œè«‹å‹¿æ‰‹å‹•èª¿æ•´ç¬¬ä¸€åˆ—æ¬„ä½ã€‚"
+  );
+}
+
+function migrateDefaultMemberAccess_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var changed = 0;
+  for (var rowNumber = 2; rowNumber <= lastRow; rowNumber += 1) {
+    var statusCell = sheet.getRange(rowNumber, MEMBER_COLUMN.status);
+    var value = statusCell.getValues()[0][0];
+    var status = String(value == null ? "" : value).trim().toLowerCase();
+
+    if (!status || status === "pending") {
+      // A single-cell write avoids touching administrator edits in any other
+      // row or in admin_status.
+      statusCell.setValues([["approved"]]);
+      changed += 1;
+    }
+  }
+
+  return changed;
+}
+
+function styleMemberHeader_(sheet, startColumn, columnCount) {
+  sheet
+    .getRange(1, startColumn, 1, columnCount)
+    .setBackground("#073b29")
+    .setFontColor("#ffffff")
+    .setFontWeight("bold");
+}
+
+function applySheetColumnFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  var textColumns = [
+    1, 2, 3, 4, 5, 6, 11, 12, 13, 15, 17, 19, 20, 21,
+    MEMBER_COLUMN.phone,
+    MEMBER_COLUMN.birthday,
+  ];
+
+  textColumns.forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  [7, 8, 9, MEMBER_COLUMN.accessUpdatedAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+  sheet.getRange(2, MEMBER_COLUMN.lastTokenIat, rowCount, 1).setNumberFormat("0");
+}
+
+function applyMemberRowFormats_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, MEMBER_COLUMN.memberId, 1, 6).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.joinedAt, 1, 3).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.contextType, 1, 3).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.viewType).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.lastTokenIat).setNumberFormat("0");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.lastRequestId).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedAt).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.accessUpdatedBy).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.lastAccessRequestId).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.adminStatus).setNumberFormat("@");
+  sheet.getRange(rowNumber, MEMBER_COLUMN.phone, 1, 2).setNumberFormat("@");
+}
+
+function applyPointTypeSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 4, 7, 8, 9, 10, 11, 12].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet.getRange(2, POINT_TYPE_COLUMN.points, rowCount, 1).setNumberFormat("0");
+  [POINT_TYPE_COLUMN.createdAt, POINT_TYPE_COLUMN.updatedAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+}
+
+function applyPointCampaignSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 5, 6, 9, 10, 11, 12].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_CAMPAIGN_COLUMN.pointsSnapshot, rowCount, 1)
+    .setNumberFormat("0");
+  [POINT_CAMPAIGN_COLUMN.expiresAt, POINT_CAMPAIGN_COLUMN.createdAt].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  });
+}
+
+function applyPointRedemptionSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 9, 10].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.points, rowCount, 2)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.redeemedAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyPointRedemptionRowFormats_(sheet, rowNumber) {
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.redemptionId, 1, 5)
+    .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.points, 1, 2)
+    .setNumberFormat("0");
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.redeemedAt)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(rowNumber, POINT_REDEMPTION_COLUMN.requestId, 1, 2)
+    .setNumberFormat("@");
+}
+
+function applyPointCardSettingSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 4, 5, 6, 7, 8, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, POINT_CARD_SETTING_COLUMN.targetPoints, rowCount, 1)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, POINT_CARD_SETTING_COLUMN.effectiveAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyLotteryTypeSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 6, 8, 9].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, LOTTERY_TYPE_COLUMN.createdAt, rowCount, 2)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(2, LOTTERY_TYPE_COLUMN.deletedAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyLotteryPrizeSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 7, 9, 10, LOTTERY_PRIZE_COLUMN.lotteryTypeId].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(2, LOTTERY_PRIZE_COLUMN.probabilityBasisPoints, rowCount, 2)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, LOTTERY_PRIZE_COLUMN.updatedAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyLotteryDrawSheetFormats_(sheet) {
+  var rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  [1, 2, 3, 4, 5, 7, 8, 13, 14, 15, 16].forEach(function (column) {
+    sheet.getRange(2, column, rowCount, 1).setNumberFormat("@");
+  });
+  sheet
+    .getRange(
+      2,
+      LOTTERY_DRAW_COLUMN.probabilityBasisPointsSnapshot,
+      rowCount,
+      1
+    )
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, LOTTERY_DRAW_COLUMN.pointsSpent, rowCount, 3)
+    .setNumberFormat("0");
+  sheet
+    .getRange(2, LOTTERY_DRAW_COLUMN.drawnAt, rowCount, 1)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+}
+
+function applyLotteryDrawRowFormats_(sheet, rowNumber) {
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.drawId, 1, 5)
+    .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.probabilityBasisPointsSnapshot)
+    .setNumberFormat("0");
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.memberId, 1, 2)
+    .setNumberFormat("@");
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.pointsSpent, 1, 3)
+    .setNumberFormat("0");
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.drawnAt)
+    .setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet
+    .getRange(rowNumber, LOTTERY_DRAW_COLUMN.requestId, 1, 4)
+    .setNumberFormat("@");
+}
+
+function findMemberRow_(sheet, lineUserId) {
+  var rows = findMemberRows_(sheet, lineUserId);
+  if (rows.length > 1) {
+    throw appError_(
+      "MEMBER_DATA_CONFLICT",
+      "æœƒå“¡è³‡æ–™æœ‰é‡è¤‡è­˜åˆ¥ç¢¼ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+    );
+  }
+  return rows.length ? rows[0] : 0;
+}
+
+function findMemberRows_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var values = sheet
+    .getRange(2, MEMBER_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var rowNumbers = [];
+  for (var i = 0; i < values.length; i += 1) {
+    if (String(values[i][0] || "") !== lineUserId) continue;
+    rowNumbers.push(i + 2);
+  }
+  return rowNumbers;
+}
+
+function findPointCampaignByClaim_(sheet, claim) {
+  var claimHash = sha256Hex_(normalizePointClaim_(claim));
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    throw appError_("POINT_CAMPAIGN_NOT_FOUND", "æ‰¾ä¸åˆ°é€™å€‹é»æ•¸æ´»å‹•ï¼Œè«‹ç¢ºèª QR Codeã€‚");
+  }
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_CAMPAIGN_HEADERS.length)
+    .getValues();
+  var matchingRows = rows.filter(function (row) {
+    return String(row[POINT_CAMPAIGN_COLUMN.claimHash - 1] || "").trim().toLowerCase() ===
+      claimHash;
+  });
+
+  if (matchingRows.length === 0) {
+    throw appError_("POINT_CAMPAIGN_NOT_FOUND", "æ‰¾ä¸åˆ°é€™å€‹é»æ•¸æ´»å‹•ï¼Œè«‹ç¢ºèª QR Codeã€‚");
+  }
+  if (matchingRows.length > 1) {
+    throw appError_("POINT_DATA_ERROR", "é»æ•¸æ´»å‹•è³‡æ–™é‡è¤‡ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+  }
+
+  var row = matchingRows[0];
+  var campaignId = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.campaignId - 1], 100);
+  var pointTypeId = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.pointTypeId - 1], 100);
+  var label = plainSheetText_(row[POINT_CAMPAIGN_COLUMN.labelSnapshot - 1], 100);
+  var points = Number(row[POINT_CAMPAIGN_COLUMN.pointsSnapshot - 1]);
+  var status = String(row[POINT_CAMPAIGN_COLUMN.status - 1] || "").trim().toLowerCase();
+  var rawExpiresAt = row[POINT_CAMPAIGN_COLUMN.expiresAt - 1];
+  var expiryMode = normalizeStoredExpiryMode_(
+    row[POINT_CAMPAIGN_COLUMN.expiryModeSnapshot - 1]
+  );
+  var redemptionMode = normalizeStoredRedemptionMode_(
+    row[POINT_CAMPAIGN_COLUMN.redemptionModeSnapshot - 1]
+  );
+  var expiresAt = "";
+  var expiresAtTime = 0;
+
+  if (
+    !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+    !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+    !Number.isInteger(points) ||
+    points < 1 ||
+    points > 9999 ||
+    label !== String(points) + " é»" ||
+    !expiryMode ||
+    !redemptionMode
+  ) {
+    throw appError_("POINT_DATA_ERROR", "é»æ•¸æ´»å‹•è³‡æ–™æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+  }
+
+  if (expiryMode === "limited") {
+    if (rawExpiresAt === "" || rawExpiresAt == null) {
+      throw appError_("POINT_DATA_ERROR", "é™æ™‚é»æ•¸æ´»å‹•åˆ°æœŸæ™‚é–“ä¸å¯ç‚ºç©ºç™½ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+    }
+    var expiresDate =
+      rawExpiresAt instanceof Date ? rawExpiresAt : new Date(String(rawExpiresAt));
+    if (isNaN(expiresDate.getTime())) {
+      throw appError_("POINT_DATA_ERROR", "é»æ•¸æ´»å‹•åˆ°æœŸæ™‚é–“æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+    }
+    expiresAt = expiresDate.toISOString();
+    expiresAtTime = expiresDate.getTime();
+  } else if (rawExpiresAt !== "" && rawExpiresAt != null) {
+    throw appError_("POINT_DATA_ERROR", "ç„¡æœŸé™é»æ•¸æ´»å‹•ä¸å¯è¨­å®šåˆ°æœŸæ™‚é–“ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+  }
+
+  return {
+    campaignId: campaignId,
+    pointTypeId: pointTypeId,
+    label: label,
+    points: points,
+    status: status,
+    expiresAt: expiresAt,
+    expiresAtTime: expiresAtTime,
+    expiryMode: expiryMode,
+    redemptionMode: redemptionMode,
+  };
+}
+
+function assertPointCampaignAvailable_(campaign, now) {
+  if (!campaign || campaign.status !== "active") {
+    throw appError_("POINT_CAMPAIGN_INACTIVE", "é€™å€‹é»æ•¸æ´»å‹•ç›®å‰æœªé–‹æ”¾é ˜å–ã€‚");
+  }
+  if (
+    campaign.expiryMode === "limited" &&
+    campaign.expiresAtTime <= now.getTime()
+  ) {
+    throw appError_("POINT_CAMPAIGN_EXPIRED", "é€™å€‹é»æ•¸æ´»å‹•å·²ç¶“çµæŸã€‚");
+  }
+}
+
+function pointCampaignResponse_(campaign) {
+  return {
+    label: campaign.label,
+    points: campaign.points,
+    expiresAt: campaign.expiresAt,
+    expiryMode: campaign.expiryMode,
+    redemptionMode: campaign.redemptionMode,
+  };
+}
+
+function normalizeStoredExpiryMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  return mode === "limited" || mode === "unlimited" ? mode : "";
+}
+
+function normalizeStoredRedemptionMode_(value) {
+  var mode = String(value || "").trim().toLowerCase();
+  return mode === "once_per_member" ||
+    mode === "repeatable" ||
+    mode === "single_member"
+    ? mode
+    : "";
+}
+
+function findPointRedemptionByRequest_(sheet, lineUserId, requestId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var match = null;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.lineUserId - 1], 128) ===
+        lineUserId &&
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.requestId - 1], 100) ===
+        requestId
+    ) {
+      if (match) {
+        throw appError_(
+          "POINT_DATA_ERROR",
+          "åŒä¸€é ˜é»è«‹æ±‚æœ‰é‡è¤‡ç´€éŒ„ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+        );
+      }
+      match = rows[i];
+    }
+  }
+  return match;
+}
+
+function findPointRedemptionRowNumber_(
+  sheet,
+  redemptionId,
+  lineUserId,
+  requestId
+) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var rowNumber = 0;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.redemptionId - 1],
+        100
+      ) !== redemptionId ||
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.lineUserId - 1],
+        128
+      ) !== lineUserId ||
+      plainSheetText_(
+        rows[i][POINT_REDEMPTION_COLUMN.requestId - 1],
+        100
+      ) !== requestId
+    ) {
+      continue;
+    }
+    if (rowNumber) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "åŒä¸€é ˜é»å¯«å…¥è­˜åˆ¥å‡ºç¾é‡è¤‡ç´€éŒ„ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+    rowNumber = i + 2;
+  }
+  return rowNumber;
+}
+
+function assertRedemptionMatchesCampaign_(redemptionRow, campaign) {
+  var storedCampaignId = plainSheetText_(
+    redemptionRow[POINT_REDEMPTION_COLUMN.campaignId - 1],
+    100
+  );
+  var storedMode = normalizeStoredRedemptionMode_(
+    redemptionRow[POINT_REDEMPTION_COLUMN.redemptionModeSnapshot - 1]
+  );
+  if (
+    storedCampaignId !== campaign.campaignId ||
+    !storedMode ||
+    storedMode !== campaign.redemptionMode
+  ) {
+    throw appError_(
+      "REQUEST_ID_CONFLICT",
+      "é»æ•¸é ˜å–ç´€éŒ„èˆ‡æ´»å‹•è¦å‰‡ä¸ä¸€è‡´ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+    );
+  }
+}
+
+function findPointRedemption_(sheet, campaignId, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var match = null;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.campaignId - 1], 100) ===
+        campaignId &&
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.lineUserId - 1], 128) ===
+        lineUserId
+    ) {
+      if (match) {
+        throw appError_(
+          "POINT_DATA_ERROR",
+          "åŒä¸€æœƒå“¡æœ‰é‡è¤‡çš„é»æ•¸é ˜å–ç´€éŒ„ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+        );
+      }
+      match = rows[i];
+    }
+  }
+  return match;
+}
+
+function findPointRedemptionByCampaign_(sheet, campaignId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var match = null;
+  for (var i = 0; i < rows.length; i += 1) {
+    if (
+      plainSheetText_(rows[i][POINT_REDEMPTION_COLUMN.campaignId - 1], 100) !==
+      campaignId
+    ) {
+      continue;
+    }
+    if (match) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "åŒä¸€é»æ•¸æ´»å‹•æœ‰é‡è¤‡é ˜å–ç´€éŒ„ï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+    match = rows[i];
+  }
+  return match;
+}
+
+function getMemberPointBalanceForConfig_(config, lineUserId) {
+  return getMemberPointBalance_(
+    getOrCreatePointRedemptionSheet_(config),
+    lineUserId
+  );
+}
+
+function getMemberPointCardStatusForConfig_(
+  config,
+  lineUserId,
+  redemptionSheet,
+  lotteryDrawSheet
+) {
+  return getMemberPointCardStatus_(
+    redemptionSheet || getOrCreatePointRedemptionSheet_(config),
+    lotteryDrawSheet || getOrCreateLotteryDrawSheet_(config),
+    getOrCreatePointCardSettingSheet_(config),
+    lineUserId
+  );
+}
+
+function getMemberPointBalance_(sheet, lineUserId) {
+  return readMemberPointLedger_(sheet, lineUserId).totalPoints;
+}
+
+function readMemberPointLedger_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { totalPoints: 0, events: [] };
+
+  var rows = sheet
+    .getRange(2, 1, lastRow - 1, POINT_REDEMPTION_HEADERS.length)
+    .getValues();
+  var totalPoints = 0;
+  var events = [];
+  var redemptionIds = Object.create(null);
+  var requestKeys = Object.create(null);
+  var campaignModes = Object.create(null);
+  rows.forEach(function (row) {
+    var storedLineUserId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.lineUserId - 1],
+      128
+    );
+    if (storedLineUserId !== lineUserId) return;
+
+    var redemptionId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.redemptionId - 1],
+      100
+    );
+    var requestId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.requestId - 1],
+      100
+    );
+    var requestKey = storedLineUserId + ":" + requestId;
+    if (
+      !/^RDM-[A-Z0-9]{16}$/.test(redemptionId) ||
+      !/^U[0-9a-f]{32}$/.test(storedLineUserId) ||
+      !/^[a-zA-Z0-9-]{10,80}$/.test(requestId) ||
+      redemptionIds[redemptionId] ||
+      requestKeys[requestKey]
+    ) {
+      throw appError_(
+        "POINT_DATA_ERROR",
+        "æœƒå“¡é»æ•¸ç´€éŒ„æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚"
+      );
+    }
+    redemptionIds[redemptionId] = true;
+    requestKeys[requestKey] = true;
+    var campaignId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.campaignId - 1],
+      100
+    );
+    var pointTypeId = plainSheetText_(
+      row[POINT_REDEMPTION_COLUMN.pointTypeId - 1],
+      100
+    );
+    var memberId = plainSheetText_(row[POINT_REDEMPTION_COLUMN.memberId - 1], 100);
+    var points = Number(row[POINT_REDEMPTION_COLUMN.points - 1]);
+    var balanceAfter = Number(row[POINT_REDEMPTION_COLUMN.balanceAfter - 1]);
+    var redemptionMode = normalizeStoredRedemptionMode_(
+      row[POINT_REDEMPTION_COLUMN.redemptionModeSnapshot - 1]
+    );
+    var redeemedAt = row[POINT_REDEMPTION_COLUMN.redeemedAt - 1];
+    var redeemedDate =
+      redeemedAt instanceof Date ? redeemedAt : new Date(String(redeemedAt || ""));
+    if (
+      !/^PCG-[A-Z0-9]{10}$/.test(campaignId) ||
+      !/^PTY-[A-Z0-9]{10}$/.test(pointTypeId) ||
+      !/^MBR-[A-Z0-9]{10}$/.test(memberId) ||
+      !Number.isInteger(points) ||
+      points < 1 ||
+      points > 9999 ||
+      !Number.isSafeInteger(balanceAfter) ||
+      balanceAfter < points ||
+      isNaN(redeemedDate.getTime()) ||
+      !redemptionMode ||
+      (campaignModes[campaignId] &&
+        (campaignModes[campaignId] !== redemptionMode ||
+          redemptionMode !== "repeatable"))
+    ) {
+      throw appError_("POINT_DATA_ERROR", "æœƒå“¡é»æ•¸ç´€éŒ„æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¯çµ¡ç®¡ç†å“¡ã€‚");
+    }
+    campaignModes[campaignId] = redemptionMode;
+    if (totalPoints > 9007199254740991 - points) {
+      throw appError_("POINT_DATA_ERROR", "æœƒå“¡é»æ•¸è³‡æ–™è¶…å‡ºå¯è™•ç†ç¯„åœã€‚");
+    }
+    totalPoints += points;
+    events.push({
+      redemptionId: redemptionId,
+      points: points,
+      redeemedAt: redeemedDate.toISOString(),
+      redeemedAtTime: redeemedDate.getTime(),
+    });
+  });
+  events.sort(function (left, right) {
+    return left.redeemedAtTime - right.redeemedAtTime;
+  });
+  return { totalPoints: totalPoints, events: events };
+}
+
+function deletePointRedemptionsForMember_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var values = sheet
+    .getRange(2, POINT_REDEMPTION_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var deleted = 0;
+  for (var i = values.length - 1; i >= 0; i -= 1) {
+    if (plainSheetText_(values[i][0], 128) === lineUserId) {
+      sheet.deleteRow(i + 2);
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
+function deleteLotteryDrawsForMember_(sheet, lineUserId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var values = sheet
+    .getRange(2, LOTTERY_DRAW_COLUMN.lineUserId, lastRow - 1, 1)
+    .getValues();
+  var deleted = 0;
+  for (var i = values.length - 1; i >= 0; i -= 1) {
+    if (plainSheetText_(values[i][0], 128) === lineUserId) {
+      sheet.deleteRow(i + 2);
+      deleted += 1;
+    }
+  }
+  return deleted;
+}
+
+function parseRequest_(e) {
+  if (!e) throw appError_("INVALID_REQUEST", "æ²’æœ‰æ”¶åˆ°è«‹æ±‚å…§å®¹ã€‚");
+
+  if (e.parameter && String(e.parameter.transport || "") === "bridge") {
+    return {
+      action: String(e.parameter.action || ""),
+      idToken: String(e.parameter.idToken || ""),
+      requestId: String(e.parameter.requestId || ""),
+      requestSecret: String(e.parameter.requestSecret || ""),
+      callbackOrigin: normalizeOrigin_(e.parameter.callbackOrigin),
+      context: parseContext_(e.parameter.context),
+      phone: String(e.parameter.phone || "").trim(),
+      birthday: String(e.parameter.birthday || "").trim(),
+      claim: String(e.parameter.claim || "").trim(),
+      lotteryTypeId: String(e.parameter.lotteryTypeId || "").trim(),
+      cardRoundKey: String(e.parameter.cardRoundKey || "").trim(),
+      transport: "bridge",
+    };
+  }
+
+  var contents = e.postData && e.postData.contents ? e.postData.contents : "";
+  if (!contents) throw appError_("INVALID_REQUEST", "è«‹æ±‚å…§å®¹æ˜¯ç©ºçš„ã€‚");
+
+  var parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch (_error) {
+    throw appError_("INVALID_JSON", "è«‹æ±‚å…§å®¹ä¸æ˜¯æœ‰æ•ˆçš„ JSONã€‚");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw appError_("INVALID_REQUEST", "è«‹æ±‚å…§å®¹å¿…é ˆæ˜¯ JSON ç‰©ä»¶ã€‚");
+  }
+
+  return {
+    action: String(parsed.action || ""),
+    idToken: String(parsed.idToken || ""),
+    requestId: String(parsed.requestId || ""),
+    requestSecret: "",
+    callbackOrigin: normalizeOrigin_(parsed.callbackOrigin),
+    context: normalizeContext_(parsed.context),
+    phone: String(parsed.phone || "").trim(),
+    birthday: String(parsed.birthday || "").trim(),
+    claim: String(parsed.claim || "").trim(),
+    lotteryTypeId: String(parsed.lotteryTypeId || "").trim(),
+    cardRoundKey: String(parsed.cardRoundKey || "").trim(),
+    transport: "fetch",
+  };
+}
+
+function validateRequestEnvelope_(request) {
+  // Reject admin/unknown actions before inspecting their token or parameters.
+  assertSupportedAction_(request.action);
+
+  if (!/^[a-zA-Z0-9-]{10,80}$/.test(request.requestId || "")) {
+    throw appError_("INVALID_REQUEST_ID", "è«‹æ±‚è­˜åˆ¥ç¢¼æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  if (!request.idToken || request.idToken.length > MAX_ID_TOKEN_LENGTH || !isJwtLike_(request.idToken)) {
+    throw appError_("INVALID_TOKEN", "LINE ç™»å…¥æ†‘è­‰ç¼ºå°‘æˆ–æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  if (request.transport === "bridge" && !/^[a-f0-9]{48}$/.test(request.requestSecret || "")) {
+    throw appError_("INVALID_BRIDGE", "å®‰å…¨å›æ‡‰é€šé“æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+
+  if (request.action === "updateMemberProfile") {
+    var profile = normalizeRequiredMemberProfile_(
+      request.phone,
+      request.birthday
+    );
+    request.phone = profile.phone;
+    request.birthday = profile.birthday;
+  }
+  if (
+    request.action === "previewPointCampaign" ||
+    request.action === "redeemPointCampaign"
+  ) {
+    request.claim = normalizePointClaim_(request.claim);
+  }
+  if (request.action === "drawLottery") {
+    request.lotteryTypeId = normalizeLotteryTypeId_(request.lotteryTypeId);
+    request.cardRoundKey = normalizeOptionalCardRoundKey_(
+      request.cardRoundKey
+    );
+  }
+}
+
+function normalizeLotteryTypeId_(value) {
+  var lotteryTypeId = String(value || "").trim();
+  if (!/^LTY-[A-Z0-9]{10}$/.test(lotteryTypeId)) {
+    throw appError_("INVALID_LOTTERY_TYPE_ID", "è½‰ç›¤é¡å‹è­˜åˆ¥ç¢¼æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  return lotteryTypeId;
+}
+
+function normalizeOptionalCardRoundKey_(value) {
+  var cardRoundKey = String(value || "").trim();
+  if (
+    cardRoundKey &&
+    !/^PCS-[A-Z0-9]{12}:[1-9]\d{0,15}:[1-9]\d{0,3}$/.test(cardRoundKey)
+  ) {
+    throw appError_("INVALID_LOTTERY_TICKET", "æŠ½çåˆ¸è­˜åˆ¥ç¢¼æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  return cardRoundKey;
+}
+
+function parseContext_(value) {
+  if (!value) return normalizeContext_({});
+  try {
+    return normalizeContext_(JSON.parse(String(value)));
+  } catch (_error) {
+    return normalizeContext_({});
+  }
+}
+
+function normalizeContext_(context) {
+  context = context && typeof context === "object" ? context : {};
+  return {
+    type: limitText_(context.type, 40),
+    os: limitText_(context.os, 40),
+    language: limitText_(context.language, 40),
+    inClient: context.inClient === true || String(context.inClient) === "true",
+    viewType: limitText_(context.viewType, 40),
+  };
+}
+
+function isAllowedRequestOrigin_(requestedOrigin) {
+  if (!requestedOrigin || !isValidOrigin_(requestedOrigin)) return false;
+  return getAllowedOrigins_().indexOf(requestedOrigin) !== -1;
+}
+
+function getAllowedOrigins_() {
+  var raw = String(
+    PropertiesService.getScriptProperties().getProperty("ALLOWED_ORIGINS") || ""
+  );
+  return raw
+    .split(",")
+    .map(normalizeOrigin_)
+    .filter(function (origin) {
+      return Boolean(origin && isValidOrigin_(origin));
+    });
+}
+
+function isValidOrigin_(origin) {
+  return (
+    /^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(origin)
+  );
+}
+
+function normalizeOrigin_(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function requestCacheKey_(lineUserId, action, requestId) {
+  return "member-request:" + lineUserId + ":" + action + ":" + requestId;
+}
+
+function memberDeletionCacheKey_(lineUserId) {
+  return "member-deleted:" + lineUserId;
+}
+
+function getMemberDeletionTombstone_(lineUserId) {
+  try {
+    return Number(CacheService.getScriptCache().get(memberDeletionCacheKey_(lineUserId)) || 0);
+  } catch (_error) {
+    return 0;
+  }
+}
+
+function markMemberDeleted_(lineUserId, tokenIssuedAt) {
+  try {
+    CacheService.getScriptCache().put(
+      memberDeletionCacheKey_(lineUserId),
+      String(tokenIssuedAt || 0),
+      3700
+    );
+  } catch (_error) {
+    // Best effort. The Sheet deletion remains authoritative.
+  }
+}
+
+function getRecentRequestOutcome_(lineUserId, action, requestId) {
+  try {
+    return String(
+      CacheService.getScriptCache().get(requestCacheKey_(lineUserId, action, requestId)) || ""
+    );
+  } catch (_error) {
+    return "";
+  }
+}
+
+function wasRequestRecentlyProcessed_(lineUserId, action, requestId) {
+  return Boolean(getRecentRequestOutcome_(lineUserId, action, requestId));
+}
+
+function markRequestProcessed_(lineUserId, action, requestId, outcome) {
+  try {
+    CacheService.getScriptCache().put(
+      requestCacheKey_(lineUserId, action, requestId),
+      String(outcome || "processed"),
+      600
+    );
+  } catch (_error) {
+    // last_request_id remains the local idempotency fallback.
+  }
+}
+
+function lineIdentityCacheKey_(idToken, expectedChannelId) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(idToken || ""),
+    Utilities.Charset.UTF_8
+  );
+  var hex = digest
+    .map(function (byte) {
+      return ((Number(byte) + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+  return "member-line-identity:" + expectedChannelId + ":" + hex;
+}
+
+function getCachedLineIdentity_(idToken, expectedChannelId) {
+  try {
+    var raw = CacheService.getScriptCache().get(
+      lineIdentityCacheKey_(idToken, expectedChannelId)
+    );
+    if (!raw) return null;
+    var cached = JSON.parse(raw);
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    if (
+      !cached ||
+      Number(cached.exp || 0) <= nowSeconds ||
+      !/^U[0-9a-f]{32}$/.test(String(cached.lineUserId || "")) ||
+      Number(cached.tokenIssuedAt || 0) <= 0
+    ) {
+      return null;
+    }
+    return {
+      lineUserId: String(cached.lineUserId),
+      displayName: limitText_(cached.displayName || "LINE æœƒå“¡", 100),
+      pictureUrl: normalizeHttpsUrl_(cached.pictureUrl),
+      tokenIssuedAt: Math.floor(Number(cached.tokenIssuedAt)),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function cacheLineIdentity_(idToken, expectedChannelId, expiresAt, identity) {
+  try {
+    var nowSeconds = Math.floor(Date.now() / 1000);
+    var remainingSeconds = Math.floor(Number(expiresAt) || 0) - nowSeconds;
+    if (remainingSeconds <= 0) return;
+    var ttl = Math.min(LINE_VERIFY_CACHE_SECONDS, remainingSeconds);
+    CacheService.getScriptCache().put(
+      lineIdentityCacheKey_(idToken, expectedChannelId),
+      JSON.stringify({
+        exp: Math.floor(Number(expiresAt)),
+        lineUserId: identity.lineUserId,
+        displayName: identity.displayName,
+        pictureUrl: identity.pictureUrl,
+        tokenIssuedAt: identity.tokenIssuedAt,
+      }),
+      ttl
+    );
+  } catch (_error) {
+    // Best effort. LINE remains the source of truth.
+  }
+}
+
+function isJwtLike_(value) {
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(value || ""));
+}
+
+function enforceLineVerificationRateLimit_() {
+  var lock;
+  var acquired = false;
+
+  try {
+    var properties = PropertiesService.getScriptProperties();
+    var configuredLimit = Number(properties.getProperty("MAX_VERIFY_REQUESTS_PER_MINUTE") || 120);
+    var limit = Math.max(1, Math.min(1000, Math.floor(configuredLimit) || 120));
+    var minuteBucket = Math.floor(Date.now() / 60000);
+    var cacheKey = "line-verify-count:" + minuteBucket;
+    lock = LockService.getScriptLock();
+    acquired = lock.tryLock(1000);
+
+    if (!acquired) {
+      throw appError_("BUSY", "æœƒå“¡é©—è­‰è«‹æ±‚è¼ƒå¤šï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+    }
+
+    var cache = CacheService.getScriptCache();
+    var count = Math.max(0, Number(cache.get(cacheKey)) || 0);
+    if (count >= limit) {
+      throw appError_("LINE_RATE_LIMITED", "æœƒå“¡é©—è­‰è«‹æ±‚å·²é”æš«æ™‚ä¸Šé™ï¼Œè«‹ç¨å¾Œå†è©¦ã€‚");
+    }
+    cache.put(cacheKey, String(count + 1), 120);
+  } catch (error) {
+    if (error && error.appCode) throw error;
+    // Best-effort rate limiting. LINE still validates identity.
+  } finally {
+    if (acquired && lock) lock.releaseLock();
+  }
+}
+
+function bridgeResponse_(result, request) {
+  var targetOrigin = isValidOrigin_(request.callbackOrigin) ? request.callbackOrigin : "";
+  var secret = /^[a-f0-9]{48}$/.test(request.requestSecret || "") ? request.requestSecret : "";
+
+  if (!targetOrigin || !secret) {
+    return HtmlService
+      .createHtmlOutput("<!doctype html><meta charset=\"utf-8\"><title>Invalid bridge</title>")
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  var message = {
+    type: "MEMBER_GAS_RESPONSE",
+    requestId: String(request.requestId || ""),
+    requestSecret: secret,
+    result: result,
+  };
+  var html =
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>Member sync</title></head>" +
+    "<body><script>window.top.postMessage(" +
+    safeJsonForHtml_(message) +
+    "," +
+    safeJsonForHtml_(targetOrigin) +
+    ");<\/script></body></html>";
+
+  return HtmlService
+    .createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function jsonResponse_(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeJsonForHtml_(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function errorResult_(error) {
+  var code = error && error.appCode ? error.appCode : "INTERNAL_ERROR";
+  var message = error && error.publicMessage ? error.publicMessage : "å¾Œå°ç™¼ç”Ÿæœªé æœŸçš„éŒ¯èª¤ã€‚";
+
+  // Never log request bodies or LINE tokens.
+  console.error("Member client API error code: " + code);
+  return { ok: false, code: code, message: message };
+}
+
+function appError_(code, publicMessage) {
+  var error = new Error(publicMessage);
+  error.appCode = code;
+  error.publicMessage = publicMessage;
+  return error;
+}
+
+function normalizePointClaim_(value) {
+  var claim = String(value == null ? "" : value).trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(claim)) {
+    throw appError_("INVALID_POINT_CLAIM", "QR Code é ˜é»æ†‘è­‰æ ¼å¼ä¸æ­£ç¢ºã€‚");
+  }
+  return claim;
+}
+
+function sha256Hex_(value) {
+  var bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8
+  );
+  return bytes
+    .map(function (byte) {
+      return ((byte + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+function plainSheetText_(value, maxLength) {
+  var text = String(value == null ? "" : value).trim();
+  if (/^'[=+\-@]/.test(text)) text = text.slice(1);
+  return text.slice(0, maxLength || 200);
+}
+
+function normalizePointBalance_(value) {
+  var balance = Number(value || 0);
+  return Number.isInteger(balance) && balance >= 0 && balance <= 9007199254740991
+    ? balance
+    : 0;
+}
+
+function normalizeMemberPhone_(value) {
+  var phone = String(value == null ? "" : value).trim();
+  if (!phone) return "";
+
+  var digitCount = phone.replace(/\D/g, "").length;
+  if (
+    phone.length > 30 ||
+    !/^[0-9+().\- #xX]+$/.test(phone) ||
+    digitCount < 6 ||
+    digitCount > 20
+  ) {
+    throw appError_(
+      "INVALID_PHONE",
+      "é›»è©±æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹è¼¸å…¥ 6 è‡³ 20 ä½æ•¸å­—ï¼Œå¯ä½¿ç”¨ç©ºæ ¼ã€+ã€-ã€æ‹¬è™Ÿæˆ–åˆ†æ©Ÿç¬¦è™Ÿã€‚"
+    );
+  }
+
+  return phone;
+}
+
+function normalizeMemberBirthday_(value) {
+  var birthday = String(value == null ? "" : value).trim();
+  if (!birthday) return "";
+
+  var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday);
+  if (!match) {
+    throw appError_("INVALID_BIRTHDAY", "ç”Ÿæ—¥æ ¼å¼ä¸æ­£ç¢ºï¼Œè«‹ä½¿ç”¨ YYYY-MM-DDã€‚");
+  }
+
+  var year = Number(match[1]);
+  var month = Number(match[2]);
+  var day = Number(match[3]);
+  var date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw appError_("INVALID_BIRTHDAY", "ç”Ÿæ—¥ä¸æ˜¯æœ‰æ•ˆçš„æ—¥æœŸã€‚");
+  }
+
+  var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+  if (birthday > today) {
+    throw appError_("INVALID_BIRTHDAY", "ç”Ÿæ—¥ä¸å¯æ™šæ–¼ä»Šå¤©ã€‚");
+  }
+
+  return birthday;
+}
+
+function normalizeRequiredMemberProfile_(phoneValue, birthdayValue) {
+  var phone = normalizeMemberPhone_(phoneValue);
+  var birthday = normalizeMemberBirthday_(birthdayValue);
+  if (!phone) {
+    throw appError_("INVALID_PHONE", "è«‹å¡«å¯«é›»è©±å¾Œå†å„²å­˜æœƒå“¡è³‡æ–™ã€‚");
+  }
+  if (!birthday) {
+    throw appError_("INVALID_BIRTHDAY", "è«‹å¡«å¯«ç”Ÿæ—¥å¾Œå†å„²å­˜æœƒå“¡è³‡æ–™ã€‚");
+  }
+  return {
+    phone: phone,
+    birthday: birthday,
+  };
+}
+
+function memberPhoneFromRow_(row) {
+  var phone = String(row[MEMBER_COLUMN.phone - 1] || "").trim().slice(0, 30);
+  return /^'[=+\-@]/.test(phone) ? phone.slice(1) : phone;
+}
+
+function memberBirthdayFromRow_(row) {
+  var birthday = String(row[MEMBER_COLUMN.birthday - 1] || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday : "";
+}
+
+function safeSheetText_(value) {
+  var text = String(value == null ? "" : value);
+  return /^[=+\-@]/.test(text) ? "'" + text : text;
+}
+
+function limitText_(value, maxLength) {
+  return String(value == null ? "" : value).trim().slice(0, maxLength || 200);
+}
+
+function normalizeHttpsUrl_(value) {
+  var url = limitText_(value, 2000);
+  return /^https:\/\//i.test(url) ? url : "";
+}
+
+function normalizeAccessStatus_(value) {
+  var status = String(value || "").trim().toLowerCase();
+  if (!status || status === "approved" || status === "active" || status === "pending") {
+    return "approved";
+  }
+  if (status === "denied") return "denied";
+  return "pending";
+}
+
+function toIsoString_(value) {
+  var date = value instanceof Date ? value : new Date(value);
+  return isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+
+
