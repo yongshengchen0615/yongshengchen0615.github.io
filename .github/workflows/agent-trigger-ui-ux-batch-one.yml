@@ -32,44 +32,97 @@ jobs:
           from pathlib import Path
 
           workflow_path = Path(".github/workflows/validate-personal-brand-ui.yml")
-          text = workflow_path.read_text(encoding="utf-8")
+          workflow_text = workflow_path.read_text(encoding="utf-8")
+          start_marker = (
+              "      - name: Apply focused UI UX improvements\n"
+              "        run: |\n"
+          )
+          end_marker = "\n      - name: Check JavaScript syntax"
+          start = workflow_text.index(start_marker) + len(start_marker)
+          end = workflow_text.index(end_marker, start)
+          raw_patch = workflow_text[start:end]
+          patch_script = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in raw_patch.splitlines()
+          ).strip("\n") + "\n"
 
-          def extract(start_marker, end_marker=None):
-              start = text.index(start_marker) + len(start_marker)
-              end = text.index(end_marker, start) if end_marker else len(text)
-              raw = text[start:end]
-              return "\n".join(
-                  line[10:] if line.startswith("          ") else line
-                  for line in raw.splitlines()
-              ).strip("\n") + "\n"
-
-          scripts = [
-              extract(
-                  "      - name: Apply focused UI UX improvements\n        run: |\n",
-                  "\n      - name: Check JavaScript syntax",
-              ),
-              extract(
-                  "      - name: Check JavaScript syntax\n        run: |\n",
-                  "\n      - name: Run full project tests",
-              ),
-              extract(
-                  "      - name: Run full project tests\n        run: ",
-                  "\n\n      - name: Commit and push source changes",
-              ),
-              extract(
-                  "      - name: Commit and push source changes\n        run: |\n"
-              ),
-          ]
-
-          scripts[2] = scripts[2].strip() + "\n"
-          scripts[3] = scripts[3].replace(
-              "HEAD:agent/improve-ui-ux-batch-one",
-              "HEAD:" + os.environ["HEAD_BRANCH"],
+          subprocess.run(
+              ["bash", "-euo", "pipefail", "-c", patch_script],
+              check=True,
           )
 
-          for script in scripts:
+          # Keep this low-risk batch on existing CSS primitives used by the app.
+          client_css_path = Path(
+              "PersonalBrandTestingEnvironment/client/styles.css"
+          )
+          client_css = client_css_path.read_text(encoding="utf-8")
+          client_css = client_css.replace(
+              "background: color-mix(in srgb, var(--paper-soft) 86%, transparent);",
+              "background: var(--paper-soft);",
+          )
+          client_css_path.write_text(client_css, encoding="utf-8")
+
+          js_files = sorted(
+              Path("PersonalBrandTestingEnvironment").rglob("*.js")
+          )
+          if not js_files:
+              raise SystemExit("No JavaScript files found for syntax validation")
+          for js_file in js_files:
               subprocess.run(
-                  ["bash", "-euo", "pipefail", "-c", script],
+                  ["node", "--check", str(js_file)],
                   check=True,
               )
+
+          test_files = sorted(
+              Path("PersonalBrandTestingEnvironment/tests").glob("*.test.js")
+          )
+          if not test_files:
+              raise SystemExit("No test files found")
+          subprocess.run(
+              ["node", "--test", *[str(path) for path in test_files]],
+              check=True,
+          )
+
+          subprocess.run(
+              ["git", "config", "user.name", "github-actions[bot]"],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "config",
+                  "user.email",
+                  "41898282+github-actions[bot]@users.noreply.github.com",
+              ],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "add",
+                  "PersonalBrandTestingEnvironment/client/index.html",
+                  "PersonalBrandTestingEnvironment/client/styles.css",
+                  "PersonalBrandTestingEnvironment/admin/styles.css",
+                  "PersonalBrandTestingEnvironment/tests/ui-ux-baseline.test.js",
+              ],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "commit",
+                  "-m",
+                  "feat: improve member action hierarchy and busy feedback",
+              ],
+              check=True,
+          )
+          subprocess.run(
+              [
+                  "git",
+                  "push",
+                  "origin",
+                  "HEAD:" + os.environ["HEAD_BRANCH"],
+              ],
+              check=True,
+          )
           PY
