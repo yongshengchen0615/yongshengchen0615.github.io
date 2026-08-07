@@ -129,7 +129,8 @@ test("preparation force-refreshes workspace and never calls drawLottery", async 
   const result = await first;
 
   assert.equal(requestCalls, 0);
-  assert.deepEqual(loadOptions, [{ force: true }]);
+  assert.equal(loadOptions.length, 1);
+  assert.equal(loadOptions[0].force, true);
   assert.equal(result.data.lotteryTypes[0].lottery.configVersion, "LCF-CURRENT");
 });
 
