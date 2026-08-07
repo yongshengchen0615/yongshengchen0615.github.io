@@ -43,15 +43,17 @@ function createTicket() {
   };
 }
 
-function createHarness() {
+function createHarness({ initialPending = false, deferDraw = false } = {}) {
   const registry = new Registry();
   const ticket = createTicket();
   const requestCalls = [];
   const viewEvents = [];
   let handlers;
-  let stored = null;
-  let prepared = null;
+  let stored = initialPending
+    ? { ...ticket, requestId: "request-existing" }
+    : null;
   let requestSequence = 0;
+  let resolveDeferredDraw;
 
   const contracts = {
     createError(code, message) {
@@ -67,28 +69,9 @@ function createHarness() {
     },
     assertSuccessfulResponse(response) {
       if (!response || response.ok !== true) {
-        throw contracts.createError("BACKEND_ERROR", "backend error");
+        throw contracts.createError(response?.code || "BACKEND_ERROR", "backend error");
       }
       return response;
-    },
-  };
-
-  const guard = {
-    save(_ticket, request, response) {
-      prepared = { requestId: request.requestId, response };
-    },
-    resolve(_ticket, requestId) {
-      return prepared && prepared.requestId === requestId
-        ? Promise.resolve(prepared.response)
-        : Promise.reject(
-            contracts.createError("LOTTERY_RESULT_NOT_PREPARED", "missing")
-          );
-    },
-    has(_ticket, requestId) {
-      return Boolean(prepared && prepared.requestId === requestId);
-    },
-    clear() {
-      prepared = null;
     },
   };
 
@@ -115,38 +98,38 @@ function createHarness() {
       };
     },
   });
-  registry.set("lottery.wheel-draw-guard", { create: () => guard });
+
+  let workspaceServiceInstance;
   registry.set("lottery.workspace-service", {
     create({ request }) {
-      let inFlight = null;
-      return {
+      workspaceServiceInstance = {
         load() {
-          if (inFlight) return inFlight;
-          inFlight = Promise.resolve(
-            request("getLotteryConfig", {}, undefined)
-          ).finally(() => {
-            inFlight = null;
-          });
-          return inFlight;
-        },
-        prime(response) {
-          return response;
+          return request("getLotteryConfig", {}, undefined);
         },
         invalidate() {},
       };
+      return workspaceServiceInstance;
     },
   });
   registry.set("lottery.preparation-service", {
-    create({ request, store, guard: drawGuard }) {
+    create({ workspaceService }) {
       return {
-        async prepare(activeTicket) {
-          const workspaceResponse = await request(
-            "getLotteryConfig",
-            {},
-            undefined
-          );
+        prepare() {
+          return workspaceService.load({ force: true });
+        },
+        invalidateWorkspace() {},
+        isDefinitiveNoDrawError() {
+          return false;
+        },
+      };
+    },
+  });
+  registry.set("lottery.draw-service", {
+    create({ request, store, workspaceService }) {
+      return {
+        draw(activeTicket) {
           const pending = store.ensure(activeTicket);
-          const drawResponse = await request(
+          return request(
             "drawLottery",
             {
               lotteryTypeId: activeTicket.lotteryTypeId,
@@ -154,13 +137,15 @@ function createHarness() {
             },
             pending.requestId
           );
-          drawGuard.save(activeTicket, pending, drawResponse);
-          return workspaceResponse;
         },
-        resolvePrepared(activeTicket, requestId) {
-          return drawGuard.resolve(activeTicket, requestId);
+        complete() {
+          store.clear();
+          workspaceService.invalidate();
         },
-        invalidateWorkspace() {},
+        clear() {
+          store.clear();
+          workspaceService.invalidate();
+        },
         isDefinitiveNoDrawError() {
           return false;
         },
@@ -174,6 +159,7 @@ function createHarness() {
         lotteryTypeId: ticket.lotteryTypeId,
         name: "測試轉盤",
         lottery: {
+          configVersion: "LCF-TEST00000001",
           prizes: [
             { prizeId: "LPR-TEST000001" },
             { prizeId: "LPR-TEST000002" },
@@ -212,17 +198,11 @@ function createHarness() {
   registry.set("lottery.wheel-animator", {
     create() {
       return {
-        draw() {
-          viewEvents.push("draw-wheel");
-        },
         prepare() {
           viewEvents.push("prepare-wheel");
         },
         reset() {
           viewEvents.push("reset-wheel");
-        },
-        startWaiting() {
-          viewEvents.push("start-waiting");
         },
         settle() {
           viewEvents.push("settle");
@@ -252,8 +232,8 @@ function createHarness() {
         markPreparing() {
           viewEvents.push("preparing");
         },
-        markReady() {
-          viewEvents.push("ready");
+        markReady(_ticket, _type, pending) {
+          viewEvents.push(pending ? "ready-pending" : "ready");
         },
         showError(error) {
           viewEvents.push(["error", error.code]);
@@ -275,6 +255,9 @@ function createHarness() {
     create() {
       return {
         prepare() {
+          throw new Error("unexpected demo");
+        },
+        draw() {
           throw new Error("unexpected demo");
         },
       };
@@ -336,6 +319,11 @@ function createHarness() {
         return Promise.resolve({ ok: true, data: {} });
       }
       if (action === "drawLottery") {
+        if (deferDraw) {
+          return new Promise((resolve) => {
+            resolveDeferredDraw = resolve;
+          });
+        }
         return Promise.resolve({ ok: true, data: {} });
       }
       throw new Error(`unexpected action: ${action}`);
@@ -356,6 +344,10 @@ function createHarness() {
     requestCalls,
     ticket,
     viewEvents,
+    pending: () => stored,
+    resolveDeferredDraw() {
+      resolveDeferredDraw?.({ ok: true, data: {} });
+    },
   };
 }
 
@@ -363,7 +355,7 @@ function flush() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-test("open prepares config and draw before the wheel becomes actionable", async () => {
+test("open prepares only the latest config and does not create a draw transaction", async () => {
   const harness = createHarness();
 
   const opening = harness.controller.open(harness.ticket);
@@ -371,29 +363,70 @@ test("open prepares config and draw before the wheel becomes actionable", async 
   assert.equal(await opening, true);
   assert.deepEqual(
     harness.requestCalls.map((call) => call.action),
-    ["getLotteryConfig", "drawLottery"]
+    ["getLotteryConfig"]
   );
-  assert.equal(harness.controller.canClose(), false);
+  assert.equal(harness.pending(), null);
+  assert.equal(harness.controller.canClose(), true);
   assert.ok(harness.viewEvents.includes("ready"));
 });
 
-test("spin consumes the prepared response without another backend request", async () => {
+test("central spin creates the request id, calls drawLottery once, then animates", async () => {
   const harness = createHarness();
   await harness.controller.open(harness.ticket);
-  const callsBeforeSpin = harness.requestCalls.length;
 
   harness.handlers().onSpin();
   await flush();
   await flush();
 
-  assert.equal(harness.requestCalls.length, callsBeforeSpin);
+  assert.deepEqual(
+    harness.requestCalls.map((call) => call.action),
+    ["getLotteryConfig", "drawLottery"]
+  );
+  assert.equal(harness.requestCalls[1].requestId, "request-0001");
   assert.ok(harness.viewEvents.includes("settle"));
   assert.ok(harness.viewEvents.includes("result"));
+  assert.equal(harness.pending(), null);
   assert.equal(harness.controller.canClose(), true);
 });
 
+test("rapid duplicate spin clicks cannot create a second draw request", async () => {
+  const harness = createHarness({ deferDraw: true });
+  await harness.controller.open(harness.ticket);
 
-test("rapid duplicate opens share one preparation transaction", async () => {
+  harness.handlers().onSpin();
+  harness.handlers().onSpin();
+  await flush();
+  assert.equal(
+    harness.requestCalls.filter((call) => call.action === "drawLottery").length,
+    1
+  );
+
+  harness.resolveDeferredDraw();
+  await flush();
+  await flush();
+  assert.ok(harness.viewEvents.includes("result"));
+});
+
+test("a restored pending request is prepared read-only and reuses its request id on spin", async () => {
+  const harness = createHarness({ initialPending: true });
+  await harness.controller.restorePending();
+
+  assert.deepEqual(
+    harness.requestCalls.map((call) => call.action),
+    ["getLotteryConfig"]
+  );
+  assert.ok(harness.viewEvents.includes("ready-pending"));
+  assert.equal(harness.controller.canClose(), false);
+
+  harness.handlers().onSpin();
+  await flush();
+  await flush();
+  assert.equal(harness.requestCalls[1].action, "drawLottery");
+  assert.equal(harness.requestCalls[1].requestId, "request-existing");
+  assert.equal(harness.pending(), null);
+});
+
+test("rapid duplicate opens share one read-only preparation transaction", async () => {
   const harness = createHarness();
   const first = harness.controller.open(harness.ticket);
   const second = harness.controller.open(harness.ticket);
@@ -402,6 +435,6 @@ test("rapid duplicate opens share one preparation transaction", async () => {
   assert.equal(await first, true);
   assert.deepEqual(
     harness.requestCalls.map((call) => call.action),
-    ["getLotteryConfig", "drawLottery"]
+    ["getLotteryConfig"]
   );
 });
