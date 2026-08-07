@@ -10,6 +10,8 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
       - "PersonalBrandTestingEnvironment/client/styles.css"
+      - "PersonalBrandTestingEnvironment/client/runtime-optimizations.css"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-loader.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
@@ -18,6 +20,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
@@ -45,6 +48,8 @@ on:
       - "PersonalBrandTestingEnvironment/client/lottery.html"
       - "PersonalBrandTestingEnvironment/client/script.js"
       - "PersonalBrandTestingEnvironment/client/styles.css"
+      - "PersonalBrandTestingEnvironment/client/runtime-optimizations.css"
+      - "PersonalBrandTestingEnvironment/client/member-lottery-loader.js"
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
@@ -53,6 +58,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
@@ -106,6 +112,7 @@ jobs:
           for file in \
             PersonalBrandTestingEnvironment/shared/lottery-wheel.js \
             PersonalBrandTestingEnvironment/shared/module-registry.js \
+            PersonalBrandTestingEnvironment/client/member-lottery-loader.js \
             PersonalBrandTestingEnvironment/client/member-lottery-v2.js \
             PersonalBrandTestingEnvironment/client/script.js \
             PersonalBrandTestingEnvironment/client/lottery/*.js; do
@@ -121,6 +128,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/client-gas.test.js \
             PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
