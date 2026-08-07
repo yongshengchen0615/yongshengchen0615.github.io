@@ -235,15 +235,19 @@
           var available = nextCard.availableRewards.some(function (reward) {
             return reward.cardRoundKey === ticket.cardRoundKey;
           });
-          if (available) {
-            nextCard.drawsUsed += 1;
-            nextCard.availableDraws -= 1;
-            nextCard.availableRewards = nextCard.availableRewards.filter(function (
-              reward
-            ) {
-              return reward.cardRoundKey !== ticket.cardRoundKey;
-            });
+          if (!available) {
+            throw contracts.createError(
+              "LOTTERY_ROUND_NOT_READY",
+              "這張展示抽獎券已使用。"
+            );
           }
+          nextCard.drawsUsed += 1;
+          nextCard.availableDraws -= 1;
+          nextCard.availableRewards = nextCard.availableRewards.filter(function (
+            reward
+          ) {
+            return reward.cardRoundKey !== ticket.cardRoundKey;
+          });
 
           return {
             ok: true,
@@ -272,21 +276,39 @@
           };
         }
 
-        function prepare(ticketValue, store, guard) {
+        function prepare(ticketValue) {
           var ticket = contracts.normalizeTicket(ticketValue);
           var workspace = buildWorkspace(ticket);
-          var request = store.ensure(ticket);
-          var drawResponse = createDrawResponse(workspace, ticket);
-
           return new Promise(function (resolve) {
             runtime.setTimeout(function () {
-              guard.save(ticket, request, drawResponse);
               resolve({ ok: true, data: workspace });
             }, 120);
           });
         }
 
-        return Object.freeze({ prepare: prepare });
+        function draw(ticketValue, workspaceValue, store) {
+          var ticket = contracts.normalizeTicket(ticketValue);
+          if (!store || typeof store.ensure !== "function") {
+            return Promise.reject(
+              contracts.createError(
+                "INVALID_CONFIGURATION",
+                "展示抽獎缺少 pending request store。"
+              )
+            );
+          }
+          store.ensure(ticket);
+          return new Promise(function (resolve, reject) {
+            runtime.setTimeout(function () {
+              try {
+                resolve(createDrawResponse(workspaceValue, ticket));
+              } catch (error) {
+                reject(error);
+              }
+            }, 80);
+          });
+        }
+
+        return Object.freeze({ prepare: prepare, draw: draw });
       }
 
       return Object.freeze({ create: create });
