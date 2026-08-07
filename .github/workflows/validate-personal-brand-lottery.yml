@@ -18,7 +18,10 @@ on:
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-draw-service.test.js"
@@ -26,6 +29,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/project-quality.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
       - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
@@ -47,7 +51,10 @@ on:
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-draw-service.test.js"
@@ -55,6 +62,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
+      - "PersonalBrandTestingEnvironment/tests/project-quality.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
       - "PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js"
       - "PersonalBrandTestingEnvironment/tests/wheel-animator.test.js"
@@ -109,7 +117,10 @@ jobs:
             PersonalBrandTestingEnvironment/tests/client-gas.test.js \
             PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-v2-structure.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-draw-service.test.js \
@@ -117,6 +128,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js \
+            PersonalBrandTestingEnvironment/tests/project-quality.test.js \
             PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js \
             PersonalBrandTestingEnvironment/tests/workspace-mapper.test.js \
             PersonalBrandTestingEnvironment/tests/wheel-animator.test.js
