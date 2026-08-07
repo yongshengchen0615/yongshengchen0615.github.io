@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+// One-shot guarded branch patch. Removed before the Draft PR is finalized.
 const file = path.resolve(
   "PersonalBrandTestingEnvironment/gas/client/Code.gs"
 );
