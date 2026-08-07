@@ -38,7 +38,7 @@ test("all HTML documents expose a consistent metadata and language baseline", ()
   }
 });
 
-test("interactive pages provide progressive fallback and deferred scripts", () => {
+test("interactive pages provide progressive fallback and deferred external scripts", () => {
   for (const relativePath of applicationPages) {
     const html = read(relativePath);
     assert.match(html, /<noscript>[\s\S]*role=["']alert["']/i, `${relativePath}: noscript`);
@@ -51,7 +51,9 @@ test("interactive pages provide progressive fallback and deferred scripts", () =
 test("member home loads only the V2 lottery facade", () => {
   const html = read("client/index.html");
   assert.match(html, /src=["']member-lottery-v2\.js["']/);
+  assert.match(html, /src=["']lottery\/draw-service\.js["']/);
   assert.doesNotMatch(html, /src=["']member-lottery\.js["']/);
+  assert.doesNotMatch(html, /wheel-draw-guard/);
 });
 
 test("styles include no-script, reduced-motion, and large-list containment safeguards", () => {
@@ -67,7 +69,7 @@ test("styles include no-script, reduced-motion, and large-list containment safeg
 
 test("repository workflows validate without pushing application code", () => {
   for (const relativePath of [
-    ".github/workflows/deploy-personal-brand-lottery.yml",
+    ".github/workflows/validate-personal-brand-lottery.yml",
     ".github/workflows/validate-personal-brand-project.yml",
   ]) {
     const workflow = fs.readFileSync(path.join(repositoryRoot, relativePath), "utf8");
