@@ -16,8 +16,12 @@ const store = fs.readFileSync(
   path.join(root, "client/lottery/pending-request-store.js"),
   "utf8"
 );
-const service = fs.readFileSync(
+const preparationService = fs.readFileSync(
   path.join(root, "client/lottery/preparation-service.js"),
+  "utf8"
+);
+const drawService = fs.readFileSync(
+  path.join(root, "client/lottery/draw-service.js"),
   "utf8"
 );
 const controller = fs.readFileSync(
@@ -29,8 +33,7 @@ const view = fs.readFileSync(
   "utf8"
 );
 const hostScript = fs.readFileSync(path.join(root, "client/script.js"), "utf8");
-const legacyScript = fs.readFileSync(path.join(root, "client/lottery.js"), "utf8");
-const styles = fs.readFileSync(path.join(root, "client/styles.css"), "utf8");
+const legacyHtml = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
 
 function getFunctionContaining(source, marker) {
   const match = marker.exec(source);
@@ -65,12 +68,17 @@ test("member lottery v2 settles quickly with a continuous fast-to-slow curve", (
   assert.match(animator, /rotationDelta\s*\*\s*eased/);
   assert.match(animator, /prefers-reduced-motion:\s*reduce/);
   assert.match(animator, /function\s+prepare\s*\(/);
+  assert.doesNotMatch(animator, /startWaiting|waitingFrame|waitingLastTime/);
 });
 
-test("member lottery v2 retries a pending draw with the same persisted request id", () => {
+test("pending draw ids are created only by draw service and reused for retries", () => {
   const ensurePending = getFunctionContaining(store, /function\s+ensure\s*\(/);
   const readPending = getFunctionContaining(store, /function\s+read\s*\(/);
-  const prepare = getFunctionContaining(service, /function\s+performPrepare\s*\(/);
+  const prepare = getFunctionContaining(
+    preparationService,
+    /function\s+performPrepare\s*\(/
+  );
+  const draw = getFunctionContaining(drawService, /function\s+draw\s*\(/);
   const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
 
   assert.match(ensurePending, /var\s+stored\s*=\s*read\(\)/);
@@ -85,45 +93,34 @@ test("member lottery v2 retries a pending draw with the same persisted request i
   assert.match(store, /if\s*\(safeIsDemo\(\)\)/);
   assert.match(store, /REQUEST_STORAGE_PREFIX\s*\+\s*liffId\s*\+\s*["']:demo["']/);
   assert.match(store, /\/\^MBR-\[A-Z0-9\]\{10\}\$\//);
+
+  assert.doesNotMatch(prepare, /\.ensure\(|drawLottery/);
   assert.match(
-    prepare,
+    draw,
     /request\s*=\s*options\.store\.ensure\(ticket\)[\s\S]*options\.request\(\s*["']drawLottery["'][\s\S]*request\.requestId/
   );
-  assert.match(
-    spin,
-    /preparationService\.resolvePrepared\(\s*selectedTicket,\s*pending\.requestId/
-  );
-  assert.doesNotMatch(spin, /options\.request\(|["']drawLottery["']/);
-  assert.doesNotMatch(spin, /startWaiting\(/);
+  assert.match(spin, /performDraw/);
+  assert.doesNotMatch(spin, /options\.request\(/);
 });
 
-test("member lottery v2 releases only definitive no-draw failures and refreshes the card", () => {
+test("only definitive no-draw failures release the persisted request", () => {
   const definitiveFailure = getFunctionContaining(
     contracts,
     /function\s+isDefinitiveNoDrawError\s*\(/
   );
-  const refreshCard = getFunctionContaining(
-    service,
-    /function\s+refreshHostCard\s*\(/
-  );
-  const prepare = getFunctionContaining(service, /function\s+performPrepare\s*\(/);
+  const draw = getFunctionContaining(drawService, /function\s+draw\s*\(/);
 
   assert.match(definitiveFailure, /LOTTERY_ROUND_NOT_READY/);
   assert.match(definitiveFailure, /LOTTERY_TICKET_MISMATCH/);
   assert.match(definitiveFailure, /INVALID_LOTTERY_TICKET/);
   assert.doesNotMatch(definitiveFailure, /BACKEND_TIMEOUT|BUSY|INVALID_RESPONSE/);
-  assert.match(refreshCard, /workspaceService[\s\S]*\.load\(\{ force: true \}\)/);
   assert.match(
-    refreshCard,
-    /response\.data[\s\S]*response\.data\.card[\s\S]*safeCardUpdated\(response\.data\.card,\s*totalPoints\)/
-  );
-  assert.match(
-    prepare,
-    /contracts\.isDefinitiveNoDrawError\(error\)[\s\S]*options\.store\.clear\(\)[\s\S]*options\.guard\.clear\(\)[\s\S]*refreshHostCard\(\)/
+    draw,
+    /contracts\.isDefinitiveNoDrawError\(error\)[\s\S]*clear\(\)/
   );
 });
 
-test("member lottery v2 cannot close or leave while spinning or awaiting confirmation", () => {
+test("member lottery v2 cannot close while preparing, drawing, or awaiting retry", () => {
   const canClose = getFunctionContaining(controller, /function\s+canClose\s*\(/);
   const requestClose = getFunctionContaining(
     controller,
@@ -165,38 +162,14 @@ test("member lottery v2 cannot close or leave while spinning or awaiting confirm
   assert.match(view, /typeof\s+dialog\.showModal\s*===\s*["']function["']/);
 });
 
-test("legacy lottery page still locks all navigation during a draw", () => {
-  const updateControls = getFunctionContaining(
-    legacyScript,
-    /var\s+lockedByPreparedTransaction\s*=/
-  );
-  const bindInteractions = getFunctionContaining(
-    legacyScript,
-    /function\s+bindInteractions\s*\(/
-  );
-
-  assert.match(
-    updateControls,
-    /lockedByPreparedTransaction\s*=\s*isBusy\s*\|\|\s*isWheelPreparing\s*\|\|\s*Boolean\(\s*pendingRequest\s*\)/
-  );
-  assert.match(
-    updateControls,
-    /setMemberRoutesLocked\(\s*lockedByPreparedTransaction\s*\)/
-  );
-  assert.match(
-    legacyScript,
-    /link\.setAttribute\(\s*["']aria-disabled["']\s*,\s*["']true["']\s*\)/
-  );
-  assert.match(
-    bindInteractions,
-    /document\.addEventListener\(\s*["']click["']\s*,\s*preventMemberRouteDuringSpin\s*,\s*true\s*\)/
-  );
-  assert.match(
-    bindInteractions,
-    /window\.addEventListener\(\s*["']beforeunload["']\s*,\s*preventPageExitDuringSpin\s*\)/
-  );
-  assert.match(
-    styles,
-    /\.lottery-page\s+\[data-member-route\]\[aria-disabled=["']true["']\]\s*\{[^}]*pointer-events:\s*none/s
+test("legacy lottery URL is compatibility-only and no second lottery implementation remains", () => {
+  assert.match(legacyHtml, /searchParams|URLSearchParams/);
+  assert.match(legacyHtml, /params\.set\(["']panel["'],\s*["']tickets["']\)/);
+  assert.match(legacyHtml, /window\.location\.replace\(target\.toString\(\)\)/);
+  assert.equal(fs.existsSync(path.join(root, "client/lottery.js")), false);
+  assert.equal(fs.existsSync(path.join(root, "client/member-lottery.js")), false);
+  assert.equal(
+    fs.existsSync(path.join(root, "client/lottery/wheel-draw-guard.js")),
+    false
   );
 });
