@@ -135,6 +135,20 @@
           }
         }
 
+        function syncLatestWorkspaceSnapshot() {
+          if (!workspaceService || typeof workspaceService.peek !== "function") {
+            return;
+          }
+          var response = workspaceService.peek();
+          if (!response || !response.data) return;
+          try {
+            var latestWorkspace = mapper.normalizeWorkspace(response.data);
+            safeCardUpdated(latestWorkspace.card, latestWorkspace.totalPoints);
+          } catch (_error) {
+            // A failed snapshot refresh must not replace the original preparation error.
+          }
+        }
+
         function safeReturnToTickets() {
           try {
             if (options && typeof options.onReturnToTickets === "function") {
@@ -298,6 +312,7 @@
           preparationService = preparationServiceFactory.create({
             request: options.request,
             workspaceService: workspaceService,
+            selectionMaxAgeMs: 2000,
           });
           drawService = drawServiceFactory.create({
             request: options.request,
@@ -367,9 +382,11 @@
                 updateControls();
                 return false;
               }
+              var definitive = preparationService.isDefinitiveNoDrawError(error);
+              if (definitive) syncLatestWorkspaceSnapshot();
               view.showError(error, {
                 pending: Boolean(getPending()),
-                definitive: preparationService.isDefinitiveNoDrawError(error),
+                definitive: definitive,
               });
               updateControls();
               return false;
