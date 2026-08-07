@@ -8,6 +8,8 @@
     "lottery.preparation-service",
     ["lottery.contracts"],
     function (contracts) {
+      var DEFAULT_SELECTION_MAX_AGE_MS = 2000;
+
       function create(options) {
         options = options && typeof options === "object" ? options : {};
 
@@ -34,6 +36,13 @@
           };
         }
 
+        var selectionMaxAgeMs = Number(options.selectionMaxAgeMs);
+        selectionMaxAgeMs =
+          Number.isFinite(selectionMaxAgeMs) &&
+          selectionMaxAgeMs >= 0 &&
+          selectionMaxAgeMs <= 5000
+            ? selectionMaxAgeMs
+            : DEFAULT_SELECTION_MAX_AGE_MS;
         var activeKey = "";
         var activePromise = null;
 
@@ -142,7 +151,7 @@
 
           emitPhase("loading_workspace");
           return workspaceService
-            .load({ force: true })
+            .load({ force: true, maxAgeMs: selectionMaxAgeMs })
             .then(function (response) {
               emitPhase("validating_ticket");
               return validateWorkspace(response, ticket, allowPendingTicket);
