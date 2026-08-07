@@ -62,6 +62,7 @@ function createFactory() {
       window,
       Array,
       Boolean,
+      Date,
       Error,
       Number,
       Object,
@@ -79,7 +80,7 @@ function ticket(id = "A") {
   };
 }
 
-function workspaceResponse(version = "LCF-OLD") {
+function workspaceResponse({ available = true } = {}) {
   return {
     ok: true,
     data: {
@@ -88,91 +89,35 @@ function workspaceResponse(version = "LCF-OLD") {
         {
           lotteryTypeId: "LTY-A",
           name: "會員轉盤",
-          lottery: { lotteryTypeId: "LTY-A", configVersion: version },
+          lottery: { lotteryTypeId: "LTY-A", configVersion: "LCF-CURRENT" },
         },
       ],
       card: {
-        availableRewards: [ticket("A")],
+        availableRewards: available ? [ticket("A")] : [],
       },
       totalPoints: 10,
     },
   };
 }
 
-function drawResponse(version = "LCF-NEW") {
-  return {
-    ok: true,
-    data: {
-      draw: {
-        cardRoundKey: "ROUND-A",
-        lotteryTypeId: "LTY-A",
-      },
-      lottery: {
-        lotteryTypeId: "LTY-A",
-        configVersion: version,
-      },
-      lotteryType: {
-        lotteryTypeId: "LTY-A",
-        name: "會員轉盤",
-      },
-      card: { availableRewards: [] },
-    },
-  };
-}
-
-test("same-ticket preparation is coalesced and uses the authoritative draw config", async () => {
+test("preparation force-refreshes workspace and never calls drawLottery", async () => {
   const factory = createFactory();
   let resolveWorkspace;
-  let drawCalls = 0;
-  let pending = null;
-  let prepared = null;
-  const cached = [];
+  let requestCalls = 0;
+  const loadOptions = [];
   const service = factory.create({
-    request(action, _fields, requestId) {
-      if (action === "drawLottery") {
-        drawCalls += 1;
-        assert.equal(requestId, "request-0001");
-        return Promise.resolve(drawResponse());
-      }
-      throw new Error(`unexpected action ${action}`);
+    request() {
+      requestCalls += 1;
+      throw new Error("preparation must not call request when workspace service exists");
     },
     workspaceService: {
-      load() {
+      load(options) {
+        loadOptions.push(options);
         return new Promise((resolve) => {
           resolveWorkspace = resolve;
         });
       },
-      prime(response) {
-        cached.push(response);
-        return response;
-      },
       invalidate() {},
-    },
-    store: {
-      normalizeTicket(value) {
-        return { ...value };
-      },
-      read() {
-        return pending;
-      },
-      ensure(value) {
-        if (!pending) pending = { ...value, requestId: "request-0001" };
-        return pending;
-      },
-      clear() {
-        pending = null;
-      },
-    },
-    guard: {
-      save(_ticket, request, response) {
-        prepared = { request, response };
-      },
-      resolve() {
-        return Promise.resolve(prepared.response);
-      },
-      clear() {
-        prepared = null;
-      },
     },
   });
 
@@ -183,46 +128,60 @@ test("same-ticket preparation is coalesced and uses the authoritative draw confi
   resolveWorkspace(workspaceResponse());
   const result = await first;
 
-  assert.equal(drawCalls, 1);
-  assert.equal(result.configurationUpdated, true);
-  assert.equal(
-    result.workspaceResponse.data.lotteryTypes[0].lottery.configVersion,
-    "LCF-NEW"
+  assert.equal(requestCalls, 0);
+  assert.deepEqual(loadOptions, [{ force: true }]);
+  assert.equal(result.data.lotteryTypes[0].lottery.configVersion, "LCF-CURRENT");
+});
+
+test("an unavailable ticket is rejected before any draw transaction exists", async () => {
+  const factory = createFactory();
+  const service = factory.create({
+    request() {
+      throw new Error("draw request must not happen during preparation");
+    },
+    workspaceService: {
+      load() {
+        return Promise.resolve(workspaceResponse({ available: false }));
+      },
+      invalidate() {},
+    },
+  });
+
+  await assert.rejects(
+    service.prepare(ticket("A")),
+    (error) => error.code === "LOTTERY_ROUND_NOT_READY"
   );
-  assert.equal(cached.length, 1);
+});
+
+test("a persisted pending draw may prepare even when the ticket was already consumed", async () => {
+  const factory = createFactory();
+  const service = factory.create({
+    workspaceService: {
+      load() {
+        return Promise.resolve(workspaceResponse({ available: false }));
+      },
+      invalidate() {},
+    },
+  });
+
+  const response = await service.prepare(ticket("A"), {
+    allowPendingTicket: true,
+  });
+  assert.equal(response.ok, true);
 });
 
 test("a different ticket cannot replace an in-flight preparation", async () => {
   const factory = createFactory();
   let resolveWorkspace;
   const service = factory.create({
-    request() {
-      return Promise.resolve(drawResponse());
-    },
     workspaceService: {
       load() {
         return new Promise((resolve) => {
           resolveWorkspace = resolve;
         });
       },
-      prime(response) {
-        return response;
-      },
       invalidate() {},
     },
-    store: {
-      normalizeTicket(value) {
-        return { ...value };
-      },
-      read() {
-        return null;
-      },
-      ensure(value) {
-        return { ...value, requestId: "request-0001" };
-      },
-      clear() {},
-    },
-    guard: { save() {}, clear() {}, resolve() {} },
   });
 
   const first = service.prepare(ticket("A"));
