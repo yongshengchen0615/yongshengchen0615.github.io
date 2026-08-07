@@ -79,12 +79,25 @@ test("HTML documents do not contain duplicate IDs", () => {
   }
 });
 
-test("member page loads shared runtime and Lottery V2 modules in dependency order", () => {
+test("member page keeps startup scripts small and defers Lottery V2 internals", () => {
   const html = read("client/index.html");
-  const orderedScripts = [
+  const loader = read("client/member-lottery-loader.js");
+  const startupScripts = [
     "../shared/gas-api.js",
     "../shared/liff-runtime.js",
     "../shared/lottery-wheel.js",
+    "member-lottery-loader.js",
+    "script.js",
+  ];
+  let previous = -1;
+  for (const scriptPath of startupScripts) {
+    const index = html.indexOf(`src="${scriptPath}"`);
+    assert.notEqual(index, -1, `client/index.html must load ${scriptPath}`);
+    assert.equal(index > previous, true, `${scriptPath} is out of dependency order`);
+    previous = index;
+  }
+
+  for (const deferredPath of [
     "../shared/module-registry.js",
     "lottery/contracts.js",
     "lottery/pending-request-store.js",
@@ -97,14 +110,9 @@ test("member page loads shared runtime and Lottery V2 modules in dependency orde
     "lottery/demo-provider.js",
     "lottery/dialog-controller.js",
     "member-lottery-v2.js",
-    "script.js",
-  ];
-  let previous = -1;
-  for (const scriptPath of orderedScripts) {
-    const index = html.indexOf(`src="${scriptPath}"`);
-    assert.notEqual(index, -1, `client/index.html must load ${scriptPath}`);
-    assert.equal(index > previous, true, `${scriptPath} is out of dependency order`);
-    previous = index;
+  ]) {
+    assert.doesNotMatch(html, new RegExp(`src=["']${escapeRegExp(deferredPath)}["']`));
+    assert.match(loader, new RegExp(escapeRegExp(`"${deferredPath}"`)));
   }
   assert.doesNotMatch(html, /wheel-draw-guard\.js|member-lottery\.js/);
 });
