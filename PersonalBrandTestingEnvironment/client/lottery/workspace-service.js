@@ -41,6 +41,7 @@
         var cachedResponse = null;
         var cachedAt = 0;
         var inFlight = null;
+        var inFlightGeneration = -1;
         var generation = 0;
 
         function performanceNow() {
@@ -106,6 +107,10 @@
           generation += 1;
           cachedResponse = null;
           cachedAt = 0;
+          if (inFlightGeneration !== generation) {
+            inFlight = null;
+            inFlightGeneration = -1;
+          }
         }
 
         function peek() {
@@ -117,6 +122,21 @@
             loadOptions && typeof loadOptions === "object" ? loadOptions : {};
           var force = loadOptions.force === true;
           var allowStale = loadOptions.allowStale === true;
+          var maxAgeMs = Number(loadOptions.maxAgeMs);
+          var hasMaxAge =
+            Number.isFinite(maxAgeMs) && maxAgeMs >= 0 && maxAgeMs <= maxStaleMs;
+
+          if (inFlight && inFlightGeneration === generation) return inFlight;
+
+          if (hasMaxAge && cachedResponse && cacheAge() <= maxAgeMs) {
+            var boundedFreshStartedAt = performanceNow();
+            emitMetric(
+              "workspace_load",
+              boundedFreshStartedAt,
+              "bounded-fresh-cache"
+            );
+            return Promise.resolve(cachedResponse);
+          }
 
           if (!force && (isFresh() || (allowStale && isUsableStale()))) {
             var cachedStartedAt = performanceNow();
@@ -127,7 +147,6 @@
             );
             return Promise.resolve(cachedResponse);
           }
-          if (inFlight) return inFlight;
 
           emit("persona:lottery-phase", { phase: "loading_workspace" });
           var startedAt = performanceNow();
@@ -143,10 +162,14 @@
               return response;
             })
             .finally(function () {
-              if (inFlight === requestPromise) inFlight = null;
+              if (inFlight === requestPromise) {
+                inFlight = null;
+                inFlightGeneration = -1;
+              }
             });
 
           inFlight = requestPromise;
+          inFlightGeneration = requestGeneration;
           return requestPromise;
         }
 
