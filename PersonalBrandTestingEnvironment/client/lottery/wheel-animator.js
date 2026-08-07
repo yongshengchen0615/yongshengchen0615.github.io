@@ -37,8 +37,6 @@
         }
 
         var rotation = 0;
-        var waitingFrame = 0;
-        var waitingLastTime = 0;
         var settlingFrame = 0;
         var animationVersion = 0;
         var preparedConfigVersion = "";
@@ -104,15 +102,10 @@
         }
 
         function stop() {
-          if (waitingFrame) {
-            runtime.cancelAnimationFrame(waitingFrame);
-            waitingFrame = 0;
-          }
           if (settlingFrame) {
             runtime.cancelAnimationFrame(settlingFrame);
             settlingFrame = 0;
           }
-          waitingLastTime = 0;
           animationVersion += 1;
         }
 
@@ -155,29 +148,6 @@
           preparedConfigVersion = String(lottery.configVersion || "");
           emitMetric("wheel_prepare", startedAt);
           return true;
-        }
-
-        function startWaiting(isActive) {
-          stop();
-          if (prefersReducedMotion()) return;
-          waitingLastTime = 0;
-
-          function rotate(timestamp) {
-            if (typeof isActive === "function" && !isActive()) {
-              stop();
-              return;
-            }
-            if (waitingLastTime) {
-              rotation +=
-                Math.min(100, timestamp - waitingLastTime) *
-                INITIAL_DEGREES_PER_MS;
-              renderRotation(rotation);
-            }
-            waitingLastTime = timestamp;
-            waitingFrame = runtime.requestAnimationFrame(rotate);
-          }
-
-          waitingFrame = runtime.requestAnimationFrame(rotate);
         }
 
         function calculateTarget(drawResult, lottery) {
@@ -269,7 +239,6 @@
           draw: draw,
           prepare: prepare,
           reset: reset,
-          startWaiting: startWaiting,
           settle: settle,
           stop: stop,
           getRotation: getRotation,
