@@ -9,6 +9,7 @@
     ["lottery.contracts"],
     function (contracts) {
       var DEFAULT_TTL_MS = 5000;
+      var DEFAULT_MAX_STALE_MS = 30000;
 
       function create(options) {
         options = options && typeof options === "object" ? options : {};
@@ -24,6 +25,13 @@
           Number.isFinite(ttlMs) && ttlMs >= 0 && ttlMs <= 60000
             ? ttlMs
             : DEFAULT_TTL_MS;
+        var maxStaleMs = Number(options.maxStaleMs);
+        maxStaleMs =
+          Number.isFinite(maxStaleMs) &&
+          maxStaleMs >= ttlMs &&
+          maxStaleMs <= 5 * 60 * 1000
+            ? maxStaleMs
+            : DEFAULT_MAX_STALE_MS;
         var now =
           typeof options.now === "function"
             ? options.now
@@ -75,10 +83,16 @@
           });
         }
 
+        function cacheAge() {
+          return cachedResponse ? Math.max(0, now() - cachedAt) : Infinity;
+        }
+
         function isFresh() {
-          return Boolean(
-            cachedResponse && ttlMs > 0 && now() - cachedAt <= ttlMs
-          );
+          return Boolean(cachedResponse && ttlMs > 0 && cacheAge() <= ttlMs);
+        }
+
+        function isUsableStale() {
+          return Boolean(cachedResponse && cacheAge() <= maxStaleMs);
         }
 
         function prime(response) {
@@ -104,20 +118,18 @@
           var force = loadOptions.force === true;
           var allowStale = loadOptions.allowStale === true;
 
-          if (!force && (isFresh() || (allowStale && cachedResponse))) {
+          if (!force && (isFresh() || (allowStale && isUsableStale()))) {
             var cachedStartedAt = performanceNow();
             emitMetric(
               "workspace_load",
               cachedStartedAt,
-              isFresh() ? "fresh-cache" : "stale-preview-cache"
+              isFresh() ? "fresh-cache" : "bounded-stale-cache"
             );
             return Promise.resolve(cachedResponse);
           }
           if (inFlight) return inFlight;
 
-          emit("persona:lottery-phase", {
-            phase: "loading_workspace",
-          });
+          emit("persona:lottery-phase", { phase: "loading_workspace" });
           var startedAt = performanceNow();
           var requestGeneration = generation;
           var requestPromise = Promise.resolve()
@@ -143,6 +155,7 @@
           prime: prime,
           invalidate: invalidate,
           isFresh: isFresh,
+          isUsableStale: isUsableStale,
           peek: peek,
         });
       }
