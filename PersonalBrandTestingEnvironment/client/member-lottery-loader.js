@@ -1,8 +1,9 @@
 (function (root) {
   "use strict";
 
-  var MODULE_SOURCES = [
-    "../shared/module-registry.js",
+  var REGISTRY_SOURCE = "../shared/module-registry.js";
+  var RUNTIME_SOURCES = [
+    "../shared/lottery-wheel.js",
     "lottery/contracts.js",
     "lottery/pending-request-store.js",
     "lottery/workspace-service.js",
@@ -13,12 +14,13 @@
     "lottery/dialog-view.js",
     "lottery/demo-provider.js",
     "lottery/dialog-controller.js",
-    "member-lottery-v2.js",
   ];
+  var ENTRY_SOURCE = "member-lottery-v2.js";
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
   var configuredOptions = null;
   var realFacade = null;
   var loadPromise = null;
+  var prewarmPromise = null;
   var facade = null;
   var openVersion = 0;
 
@@ -26,6 +28,37 @@
     var error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function performanceNow() {
+    return root.performance && typeof root.performance.now === "function"
+      ? root.performance.now()
+      : Date.now();
+  }
+
+  function emitMetric(phase, startedAt, source) {
+    if (
+      typeof root.dispatchEvent !== "function" ||
+      typeof root.CustomEvent !== "function"
+    ) {
+      return;
+    }
+    try {
+      root.dispatchEvent(
+        new root.CustomEvent("persona:lottery-performance", {
+          detail: Object.freeze({
+            phase: phase,
+            durationMs: Math.max(
+              0,
+              Math.round((performanceNow() - startedAt) * 10) / 10
+            ),
+            source: source,
+          }),
+        })
+      );
+    } catch (_error) {
+      // Diagnostics must never affect runtime activation.
+    }
   }
 
   function isDialogOpen(dialog) {
@@ -78,7 +111,7 @@
 
       var script = documentValue.createElement("script");
       script.src = source;
-      script.async = false;
+      script.async = true;
       script.dataset.lotteryModule = source;
       script.addEventListener(
         "load",
@@ -274,18 +307,73 @@
     if (realFacade) return Promise.resolve(realFacade);
     if (loadPromise) return loadPromise;
 
-    var promise = MODULE_SOURCES.reduce(function (chain, source) {
-      return chain.then(function () {
-        return loadScript(source);
-      });
-    }, Promise.resolve())
+    var startedAt = performanceNow();
+    var promise = loadScript(REGISTRY_SOURCE)
+      .then(function () {
+        return Promise.all(
+          RUNTIME_SOURCES.map(function (source) {
+            return loadScript(source);
+          })
+        );
+      })
+      .then(function () {
+        return loadScript(ENTRY_SOURCE);
+      })
       .then(configureRealFacade)
+      .then(function (controller) {
+        emitMetric("lottery_runtime_load", startedAt, "network");
+        return controller;
+      })
       .catch(function (error) {
+        emitMetric("lottery_runtime_load", startedAt, "network-error");
         loadPromise = null;
         root.MemberLotteryDialog = facade;
         throw error;
       });
     loadPromise = promise;
+    return promise;
+  }
+
+  function prewarm() {
+    if (realFacade || loadPromise) {
+      return ensureLoaded().then(
+        function () {
+          return true;
+        },
+        function () {
+          return false;
+        }
+      );
+    }
+    if (prewarmPromise) return prewarmPromise;
+
+    var promise = new Promise(function (resolve) {
+      function startPrewarm() {
+        ensureLoaded().then(
+          function () {
+            resolve(true);
+          },
+          function () {
+            // Background prewarm is opportunistic. User-initiated open/refresh
+            // will surface an actionable error if the runtime is still unavailable.
+            resolve(false);
+          }
+        );
+      }
+
+      if (typeof root.requestIdleCallback === "function") {
+        root.requestIdleCallback(startPrewarm, { timeout: 1200 });
+        return;
+      }
+      if (typeof root.setTimeout === "function") {
+        root.setTimeout(startPrewarm, 250);
+        return;
+      }
+      Promise.resolve().then(startPrewarm);
+    }).finally(function () {
+      if (prewarmPromise === promise) prewarmPromise = null;
+    });
+    prewarmPromise = promise;
     return promise;
   }
 
@@ -443,6 +531,7 @@
   facade = Object.freeze({
     configure: configure,
     ensureLoaded: ensureLoaded,
+    prewarm: prewarm,
     open: open,
     refreshTickets: refreshTickets,
     restorePending: restorePending,
