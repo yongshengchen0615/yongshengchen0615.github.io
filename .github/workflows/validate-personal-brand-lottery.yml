@@ -19,6 +19,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
@@ -28,6 +29,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-workspace-events.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/project-quality.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
@@ -52,6 +54,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js"
@@ -61,6 +64,7 @@ on:
       - "PersonalBrandTestingEnvironment/tests/lottery-motion.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js"
+      - "PersonalBrandTestingEnvironment/tests/lottery-workspace-events.test.js"
       - "PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js"
       - "PersonalBrandTestingEnvironment/tests/project-quality.test.js"
       - "PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js"
@@ -118,6 +122,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-v2.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preload-structure.test.js \
@@ -127,6 +132,7 @@ jobs:
             PersonalBrandTestingEnvironment/tests/lottery-motion.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-preparation-service.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-readiness-latency.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-workspace-events.test.js \
             PersonalBrandTestingEnvironment/tests/lottery-workspace-service.test.js \
             PersonalBrandTestingEnvironment/tests/project-quality.test.js \
             PersonalBrandTestingEnvironment/tests/shared-ui-modules.test.js \
