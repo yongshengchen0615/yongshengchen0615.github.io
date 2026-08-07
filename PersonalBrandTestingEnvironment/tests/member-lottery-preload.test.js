@@ -5,356 +5,246 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const scriptPaths = [
-  "shared/module-registry.js",
-  // Deliberately define modules out of dependency order. The registry resolves
-  // the graph lazily when the composition root requests the controller.
-  "client/lottery/preload-controller.js",
-  "client/lottery/preparation-view.js",
-  "client/lottery/wheel-draw-guard.js",
-  "client/lottery/preparation-service.js",
-  "client/lottery/pending-request-store.js",
-  "client/lottery/contracts.js",
-  "client/member-lottery-preload.js",
-];
+const preparationSource = fs.readFileSync(
+  path.join(root, "client/lottery/preparation-service.js"),
+  "utf8"
+);
+const drawSource = fs.readFileSync(
+  path.join(root, "client/lottery/draw-service.js"),
+  "utf8"
+);
 
-const LIFF_ID = "liff-preload";
-const MEMBER_ID = "MBR-AAAAAAAAAA";
-const SETTING_VERSION = "PCS-TEST00000001";
-const LOTTERY_TYPE_ID = "LTY-TEST000001";
-const CARD_ROUND_KEY = `${SETTING_VERSION}:1:10`;
-const STORAGE_KEY =
-  `persona-member-lottery-round-request:${LIFF_ID}:${MEMBER_ID}`;
-
-function createTicket() {
-  return {
-    settingVersion: SETTING_VERSION,
-    cardNumber: 1,
-    milestonePoints: 10,
-    lotteryTypeId: LOTTERY_TYPE_ID,
-    cardRoundKey: CARD_ROUND_KEY,
-  };
-}
-
-function createWorkspaceResponse({ ticketAvailable = true } = {}) {
-  const ticket = createTicket();
-  const lottery = {
-    lotteryTypeId: LOTTERY_TYPE_ID,
-    configVersion: "LCF-TEST00000001",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-    prizes: [
-      {
-        prizeId: "LPR-TEST000001",
-        label: "會員好禮",
-        color: "#8DCCAA",
-        probability: 50,
-      },
-      {
-        prizeId: "LPR-TEST000002",
-        label: "本輪頭獎",
-        color: "#0B3C2C",
-        probability: 50,
-      },
-    ],
-  };
-
-  return {
-    ok: true,
-    data: {
-      access: { allowed: true, status: "approved" },
-      lotteryTypes: [
-        {
-          lotteryTypeId: LOTTERY_TYPE_ID,
-          name: "測試轉盤",
-          lottery,
-        },
-      ],
-      card: {
-        availableRewards: ticketAvailable ? [ticket] : [],
-      },
-      totalPoints: 12,
-    },
-  };
-}
-
-function createDrawResponse() {
-  const workspace = createWorkspaceResponse();
-  const lotteryType = workspace.data.lotteryTypes[0];
-  const prize = lotteryType.lottery.prizes[0];
-
-  return {
-    ok: true,
-    data: {
-      access: { allowed: true, status: "approved" },
-      lotteryType,
-      lottery: lotteryType.lottery,
-      draw: {
-        drawId: "LDW-TEST000000000001",
-        configVersion: lotteryType.lottery.configVersion,
-        prizeId: prize.prizeId,
-        prizeLabel: prize.label,
-        prizeColor: prize.color,
-        lotteryTypeId: LOTTERY_TYPE_ID,
-        cardRoundKey: CARD_ROUND_KEY,
-        originalPointBalance: 12,
-        pointBalance: 12,
-        pointsSpent: 0,
-        drawnAt: "2026-08-05T00:00:00.000Z",
-      },
-      card: { availableRewards: [] },
-      totalPoints: 12,
-    },
-  };
-}
-
-class FakeElement {
+class Registry {
   constructor() {
-    this.disabled = false;
-    this.textContent = "";
-    this.dataset = {};
-    this.attributes = new Map();
+    this.definitions = new Map();
+    this.instances = new Map();
   }
-
-  querySelector() {
-    return null;
+  define(name, dependencies, factory) {
+    this.definitions.set(name, { dependencies, factory });
   }
-
-  setAttribute(name, value) {
-    this.attributes.set(name, String(value));
+  set(name, value) {
+    this.instances.set(name, value);
   }
-}
-
-function createHarness() {
-  const storage = new Map();
-  const elements = {
-    "member-lottery-spin-status": new FakeElement(),
-    "member-lottery-spin-button": new FakeElement(),
-  };
-  const originalCalls = [];
-  const createdRequestIds = [];
-  let requestSequence = 0;
-  let configuredOptions = null;
-  let activeTicket = null;
-  let legacyPending = false;
-
-  const legacy = {
-    configure(options) {
-      configuredOptions = options;
-      return this;
-    },
-    open(ticket) {
-      activeTicket = ticket;
-      return Promise.resolve()
-        .then(() => configuredOptions.request("getLotteryConfig", {}, undefined))
-        .then(() => true);
-    },
-    hasPending() {
-      return legacyPending;
-    },
-    canClose() {
-      return !legacyPending;
-    },
-    requestClose() {
-      if (legacyPending) return false;
-      activeTicket = null;
-      return true;
-    },
-  };
-
-  const state = {
-    drawAttempts: 0,
-    failNextDraw: null,
-    ticketAvailable: true,
-  };
-
-  const window = {
-    console,
-    document: {
-      getElementById(id) {
-        return elements[id] || null;
-      },
-    },
-    sessionStorage: {
-      getItem(key) {
-        return storage.get(key) || null;
-      },
-      setItem(key, value) {
-        storage.set(key, String(value));
-        legacyPending = true;
-      },
-      removeItem(key) {
-        storage.delete(key);
-        legacyPending = false;
-      },
-    },
-    MemberApi: {
-      createRequestId() {
-        requestSequence += 1;
-        const id = `preload-request-${String(requestSequence).padStart(4, "0")}`;
-        createdRequestIds.push(id);
-        return id;
-      },
-    },
-    MemberLotteryDialog: legacy,
-  };
-  window.window = window;
-
-  const context = vm.createContext({
-    Array,
-    Boolean,
-    Date,
-    Error,
-    JSON,
-    Math,
-    Number,
-    Object,
-    Promise,
-    RegExp,
-    String,
-    clearTimeout,
-    console,
-    document: window.document,
-    setTimeout,
-    window,
-  });
-
-  for (const relativePath of scriptPaths) {
-    vm.runInContext(
-      fs.readFileSync(path.join(root, relativePath), "utf8"),
-      context,
-      { filename: relativePath }
+  get(name) {
+    if (this.instances.has(name)) return this.instances.get(name);
+    const definition = this.definitions.get(name);
+    const value = definition.factory(
+      ...definition.dependencies.map((dependency) => this.get(dependency))
     );
+    this.instances.set(name, value);
+    return value;
   }
+}
 
-  const api = window.MemberLotteryDialog;
-  api.configure({
-    liffId: LIFF_ID,
-    isDemo() {
-      return false;
-    },
-    getMemberId() {
-      return MEMBER_ID;
-    },
-    onCardUpdated() {},
-    request(action, fields, requestId) {
-      originalCalls.push({ action, fields, requestId });
-      if (action === "getLotteryConfig") {
-        return Promise.resolve(
-          createWorkspaceResponse({ ticketAvailable: state.ticketAvailable })
-        );
-      }
-      if (action === "drawLottery") {
-        state.drawAttempts += 1;
-        if (state.failNextDraw) {
-          const error = state.failNextDraw;
-          state.failNextDraw = null;
-          return Promise.reject(error);
-        }
-        return Promise.resolve(createDrawResponse());
-      }
-      throw new Error(`Unexpected action: ${action}`);
-    },
-  });
-
+function createContracts() {
   return {
-    api,
-    createdRequestIds,
-    elements,
-    originalCalls,
-    state,
-    storage,
-    window,
-    async simulateLegacySpin() {
-      const pending = JSON.parse(storage.get(STORAGE_KEY));
-      return configuredOptions.request(
-        "drawLottery",
-        {
-          lotteryTypeId: activeTicket.lotteryTypeId,
-          cardRoundKey: activeTicket.cardRoundKey,
-        },
-        pending.requestId
-      );
+    createError(code, message) {
+      const error = new Error(message);
+      error.code = code;
+      return error;
+    },
+    normalizeTicket(value) {
+      return { ...value };
+    },
+    assertSuccessfulResponse(response) {
+      if (response?.ok === true) return response;
+      const error = new Error(response?.message || "backend error");
+      error.code = response?.code || "BACKEND_ERROR";
+      throw error;
+    },
+    isDefinitiveNoDrawError(error) {
+      return error?.code === "LOTTERY_ROUND_NOT_READY";
     },
   };
 }
 
-function createError(code, message = code) {
-  const error = new Error(message);
-  error.code = code;
-  return error;
+function loadFactory(source, name) {
+  const registry = new Registry();
+  registry.set("lottery.contracts", createContracts());
+  const window = { PersonaModules: registry };
+  window.window = window;
+  vm.runInContext(
+    source,
+    vm.createContext({
+      window,
+      Array,
+      Boolean,
+      Date,
+      Error,
+      Math,
+      Number,
+      Object,
+      Promise,
+      String,
+    })
+  );
+  return registry.get(name);
 }
 
-test("opening a ticket preloads config and draw before enabling the wheel", async () => {
-  const harness = createHarness();
+function ticket() {
+  return { lotteryTypeId: "LTY-A", cardRoundKey: "ROUND-A" };
+}
 
-  assert.equal(await harness.api.open(createTicket()), true);
-  assert.deepEqual(
-    harness.originalCalls.map((call) => call.action),
-    ["getLotteryConfig", "drawLottery"]
-  );
-  assert.equal(harness.createdRequestIds.length, 1);
-  assert.equal(harness.storage.has(STORAGE_KEY), true);
-  assert.equal(harness.elements["member-lottery-spin-button"].disabled, false);
-  assert.equal(
-    harness.elements["member-lottery-spin-status"].textContent,
-    "轉盤已就緒，點選中央直接揭曉結果。"
-  );
-});
+function workspaceResponse(available = true) {
+  return {
+    ok: true,
+    data: {
+      access: { allowed: true },
+      lotteryTypes: [
+        { lotteryTypeId: "LTY-A", lottery: { configVersion: "LCF-A" } },
+      ],
+      card: { availableRewards: available ? [ticket()] : [] },
+      totalPoints: 10,
+    },
+  };
+}
 
-test("pressing the wheel consumes only the prepared in-memory response", async () => {
-  const harness = createHarness();
+function drawResponse() {
+  return {
+    ok: true,
+    data: {
+      draw: { cardRoundKey: "ROUND-A", lotteryTypeId: "LTY-A" },
+      lottery: { lotteryTypeId: "LTY-A" },
+      lotteryType: { lotteryTypeId: "LTY-A" },
+      card: {},
+    },
+  };
+}
 
-  await harness.api.open(createTicket());
-  const callsBeforeSpin = harness.originalCalls.length;
-  const response = await harness.simulateLegacySpin();
+function createStore() {
+  let pending = null;
+  return {
+    ensure(value) {
+      if (!pending) pending = { ...value, requestId: "request-0001" };
+      return pending;
+    },
+    read() {
+      return pending;
+    },
+    clear() {
+      pending = null;
+    },
+  };
+}
 
+test("opening readiness performs only a forced workspace refresh", async () => {
+  const factory = loadFactory(preparationSource, "lottery.preparation-service");
+  const loads = [];
+  let directRequests = 0;
+  const service = factory.create({
+    request() {
+      directRequests += 1;
+      throw new Error("unexpected direct request");
+    },
+    workspaceService: {
+      load(options) {
+        loads.push(options);
+        return Promise.resolve(workspaceResponse(true));
+      },
+      invalidate() {},
+    },
+  });
+
+  const response = await service.prepare(ticket());
   assert.equal(response.ok, true);
-  assert.equal(harness.originalCalls.length, callsBeforeSpin);
-  assert.equal(harness.state.drawAttempts, 1);
+  assert.equal(loads.length, 1);
+  assert.equal(loads[0].force, true);
+  assert.equal(directRequests, 0);
 });
 
-test("a transient preload failure keeps the same request id for retry", async () => {
-  const harness = createHarness();
-  harness.state.failNextDraw = createError("CONNECTION_ERROR", "temporary");
+test("readiness rejection cannot create a pending draw", async () => {
+  const factory = loadFactory(preparationSource, "lottery.preparation-service");
+  const service = factory.create({
+    workspaceService: {
+      load() {
+        return Promise.resolve(workspaceResponse(false));
+      },
+      invalidate() {},
+    },
+  });
 
   await assert.rejects(
-    harness.api.open(createTicket()),
-    (error) => error.code === "CONNECTION_ERROR"
-  );
-
-  const persistedAfterFailure = JSON.parse(harness.storage.get(STORAGE_KEY));
-  assert.equal(harness.createdRequestIds.length, 1);
-
-  assert.equal(await harness.api.open(createTicket()), true);
-  const persistedAfterRetry = JSON.parse(harness.storage.get(STORAGE_KEY));
-
-  assert.equal(persistedAfterRetry.requestId, persistedAfterFailure.requestId);
-  assert.equal(harness.createdRequestIds.length, 1);
-  assert.equal(harness.state.drawAttempts, 2);
-});
-
-test("a definitive no-draw failure releases the pending request", async () => {
-  const harness = createHarness();
-  harness.state.failNextDraw = createError(
-    "LOTTERY_ROUND_NOT_READY",
-    "already used"
-  );
-
-  await assert.rejects(
-    harness.api.open(createTicket()),
+    service.prepare(ticket()),
     (error) => error.code === "LOTTERY_ROUND_NOT_READY"
   );
-
-  assert.equal(harness.storage.has(STORAGE_KEY), false);
-  assert.equal(harness.api.hasPending(), false);
+  assert.doesNotMatch(preparationSource, /\.ensure\(|["']drawLottery["']/);
 });
 
-test("internal lottery modules do not leak individual globals", () => {
-  const harness = createHarness();
-  assert.ok(harness.window.PersonaModules);
-  assert.equal(harness.window.MemberLotteryPendingRequestStore, undefined);
-  assert.equal(harness.window.MemberLotteryPreparationService, undefined);
-  assert.equal(harness.window.MemberLotteryPreparationView, undefined);
-  assert.equal(harness.window.MemberLotteryWheelDrawGuard, undefined);
-  assert.equal(harness.window.MemberLotteryDialogLegacy, undefined);
+test("draw service creates the request only when formal draw starts", async () => {
+  const factory = loadFactory(drawSource, "lottery.draw-service");
+  const store = createStore();
+  const calls = [];
+  const service = factory.create({
+    store,
+    request(action, fields, requestId) {
+      calls.push({ action, fields, requestId });
+      return Promise.resolve(drawResponse());
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  assert.equal(store.read(), null);
+  await service.draw(ticket());
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].action, "drawLottery");
+  assert.equal(calls[0].requestId, "request-0001");
+  assert.equal(store.read().requestId, "request-0001");
+});
+
+test("transient failure keeps the same persistent request id for retry", async () => {
+  const factory = loadFactory(drawSource, "lottery.draw-service");
+  const store = createStore();
+  const ids = [];
+  let attempt = 0;
+  const service = factory.create({
+    store,
+    request(_action, _fields, requestId) {
+      ids.push(requestId);
+      attempt += 1;
+      if (attempt === 1) {
+        const error = new Error("timeout");
+        error.code = "BACKEND_TIMEOUT";
+        return Promise.reject(error);
+      }
+      return Promise.resolve(drawResponse());
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  await assert.rejects(service.draw(ticket()), (error) => error.code === "BACKEND_TIMEOUT");
+  assert.equal(store.read().requestId, "request-0001");
+  await service.draw(ticket());
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], "request-0001");
+  assert.equal(ids[1], "request-0001");
+});
+
+test("definitive no-draw failure clears pending and legacy preload modules stay removed", async () => {
+  const factory = loadFactory(drawSource, "lottery.draw-service");
+  const store = createStore();
+  const service = factory.create({
+    store,
+    request() {
+      return Promise.resolve({
+        ok: false,
+        code: "LOTTERY_ROUND_NOT_READY",
+        message: "already used",
+      });
+    },
+    workspaceService: { invalidate() {} },
+  });
+
+  await assert.rejects(
+    service.draw(ticket()),
+    (error) => error.code === "LOTTERY_ROUND_NOT_READY"
+  );
+  assert.equal(store.read(), null);
+  for (const relativePath of [
+    "client/member-lottery-preload.js",
+    "client/lottery/preload-controller.js",
+    "client/lottery/preparation-view.js",
+    "client/lottery/wheel-draw-guard.js",
+  ]) {
+    assert.equal(fs.existsSync(path.join(root, relativePath)), false);
+  }
 });
