@@ -57,31 +57,26 @@ test("preparation is read-only and draw mutation is isolated in draw service", (
   assert.doesNotMatch(spinBody[1], /options\.request\(/);
 });
 
-test("background ticket refresh stays non-blocking while selection keeps its own lock", () => {
-  assert.doesNotMatch(
-    hostScript,
-    /isMemberTicketRefreshing\s*\|\|\s*isMemberTicketSelectionBusy/
+test("ticket dialog renders first while refresh runs stale-while-revalidate", () => {
+  const openDialogBody = hostScript.match(
+    /function openMemberTicketDialog\(\) \{([\s\S]*?)\n  \}/
   );
-  assert.match(hostScript, /button\.disabled\s*=\s*isMemberTicketSelectionBusy/);
-
-  const refreshStateBody = hostScript.match(
-    /function setMemberTicketRefreshState\([\s\S]*?\n  \}/
-  );
-  assert.ok(refreshStateBody, "missing ticket refresh state function");
+  assert.ok(openDialogBody, "missing host ticket dialog flow");
   assert.match(
-    refreshStateBody[0],
-    /button\.disabled\s*=\s*isMemberTicketSelectionBusy/
+    openDialogBody[1],
+    /openDialog\(byId\(["']member-ticket-dialog["']\)\)[\s\S]*refreshMemberTickets\(\)/
   );
 
-  const openTicketBody = hostScript.match(
-    /function openMemberLotteryTicket\(ticket\) \{([\s\S]*?)\n  \}/
+  const refreshBody = controller.match(
+    /function refreshTickets\(refreshOptions\) \{([\s\S]*?)\n        function restorePending\(\)/
   );
-  assert.ok(openTicketBody, "missing ticket selection function");
-  assert.match(openTicketBody[1], /if \(isMemberTicketSelectionBusy\)/);
-  assert.doesNotMatch(openTicketBody[1], /if \(isMemberTicketRefreshing/);
+  assert.ok(refreshBody, "missing controller ticket refresh flow");
+  assert.match(refreshBody[1], /workspaceService[\s\S]*\.load\(/);
+  assert.match(refreshBody[1], /safeCardUpdated\(/);
+  assert.match(refreshBody[1], /activeTicketRefresh/);
   assert.match(
-    openTicketBody[1],
-    /isMemberTicketSelectionBusy\s*=\s*true[\s\S]*MemberLotteryDialog\.open/
+    refreshBody[1],
+    /return Promise\.resolve\(options\.getCurrentCardSummary\(\)\)/
   );
 });
 
