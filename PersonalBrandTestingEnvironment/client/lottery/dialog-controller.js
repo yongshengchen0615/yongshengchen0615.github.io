@@ -11,7 +11,7 @@
       "lottery.pending-request-store",
       "lottery.workspace-service",
       "lottery.preparation-service",
-      "lottery.wheel-draw-guard",
+      "lottery.draw-service",
       "lottery.workspace-mapper",
       "lottery.wheel-animator",
       "lottery.dialog-view",
@@ -22,7 +22,7 @@
       pendingRequestStoreFactory,
       workspaceServiceFactory,
       preparationServiceFactory,
-      drawGuardFactory,
+      drawServiceFactory,
       mapper,
       wheelAnimatorFactory,
       dialogViewFactory,
@@ -41,9 +41,9 @@
         var options = null;
         var configured = false;
         var store = null;
-        var guard = null;
         var workspaceService = null;
         var preparationService = null;
+        var drawService = null;
         var demoProvider = null;
         var workspace = null;
         var selectedTicket = null;
@@ -121,7 +121,7 @@
               options.showToast(String(message || ""));
             }
           } catch (_error) {
-            // Host UI errors must not change draw persistence.
+            // Host UI errors must never alter draw persistence.
           }
         }
 
@@ -171,9 +171,9 @@
             !configured ||
             !options ||
             !store ||
-            !guard ||
             !workspaceService ||
-            !preparationService
+            !preparationService ||
+            !drawService
           ) {
             throw contracts.createError(
               "NOT_CONFIGURED",
@@ -200,11 +200,6 @@
         function updateControls() {
           if (!configured) return;
           var pending = getPending();
-          var prepared = Boolean(
-            pending &&
-              selectedTicket &&
-              guard.has(selectedTicket, pending.requestId)
-          );
           view.updateControls({
             isPreparing: isPreparing,
             isBusy: isBusy,
@@ -214,8 +209,7 @@
               !isPreparing &&
               !isBusy &&
               Boolean(workspace) &&
-              Boolean(selectedType) &&
-              prepared,
+              Boolean(selectedType),
             canClose: canClose(),
           });
         }
@@ -289,7 +283,6 @@
                 : function () {},
           };
 
-          guard = drawGuardFactory.create();
           store = pendingRequestStoreFactory.create({
             liffId: options.liffId,
             storage: runtime.sessionStorage,
@@ -300,19 +293,23 @@
           workspaceService = workspaceServiceFactory.create({
             request: options.request,
             ttlMs: 5000,
+            maxStaleMs: 30000,
           });
           preparationService = preparationServiceFactory.create({
             request: options.request,
-            store: store,
-            guard: guard,
             workspaceService: workspaceService,
-            onCardUpdated: options.onCardUpdated,
+          });
+          drawService = drawServiceFactory.create({
+            request: options.request,
+            store: store,
+            workspaceService: workspaceService,
           });
           demoProvider = demoProviderFactory.create({
             root: runtime,
             getCurrentCardSummary: options.getCurrentCardSummary,
             getCurrentTotalPoints: options.getCurrentTotalPoints,
           });
+
           workspace = null;
           selectedTicket = null;
           selectedType = null;
@@ -328,54 +325,35 @@
 
         function prepareCurrent(expectedVersion, pendingBeforePrepare) {
           var preparePromise = safeIsDemo()
-            ? demoProvider.prepare(selectedTicket, store, guard)
-            : preparationService.prepare(selectedTicket);
+            ? demoProvider.prepare(selectedTicket)
+            : preparationService.prepare(selectedTicket, {
+                allowPendingTicket: Boolean(pendingBeforePrepare),
+              });
 
           return Promise.resolve(preparePromise)
-            .then(function (preparedValue) {
+            .then(function (response) {
               if (expectedVersion !== loadVersion) return false;
-              var response =
-                preparedValue && preparedValue.workspaceResponse
-                  ? preparedValue.workspaceResponse
-                  : preparedValue;
-              var configurationUpdated = Boolean(
-                preparedValue && preparedValue.configurationUpdated
-              );
               contracts.assertSuccessfulResponse(response);
               var nextWorkspace = mapper.normalizeWorkspace(response.data);
               var nextSelectedType = mapper.findLotteryType(
                 nextWorkspace.lotteryTypes,
                 selectedTicket.lotteryTypeId
               );
-              var pending = store.read();
-
               if (!nextSelectedType) {
                 throw contracts.createError(
                   "LOTTERY_TYPE_NOT_FOUND",
                   "這張抽獎券指定的轉盤目前無法使用。"
                 );
               }
-              if (!pending || !guard.has(selectedTicket, pending.requestId)) {
-                throw contracts.createError(
-                  "LOTTERY_RESULT_NOT_PREPARED",
-                  "抽獎結果尚未準備完成，請重新開啟轉盤。"
-                );
-              }
 
               workspace = nextWorkspace;
               selectedType = nextSelectedType;
-              if (typeof animator.prepare === "function") {
-                animator.prepare(selectedType.lottery);
-              } else {
-                animator.draw(selectedType.lottery.prizes);
-                animator.reset();
-              }
+              animator.prepare(selectedType.lottery);
               isPreparing = false;
               view.markReady(
                 selectedTicket,
                 selectedType,
-                Boolean(pendingBeforePrepare),
-                configurationUpdated
+                Boolean(pendingBeforePrepare)
               );
               safeCardUpdated(workspace.card, workspace.totalPoints);
               updateControls();
@@ -427,7 +405,7 @@
 
           var key = ticketKey(nextTicket);
           if (isBusy) {
-            safeShowToast("轉盤正在揭曉結果，請稍候完成。");
+            safeShowToast("轉盤正在處理抽獎，請稍候完成。");
             return Promise.resolve(false);
           }
           if (isPreparing && activeOpenPromise) {
@@ -446,13 +424,14 @@
           view.markPreparing(selectedTicket, "準備轉盤");
           updateControls();
 
-          var promise = prepareCurrent(expectedVersion, pendingBeforePrepare)
-            .finally(function () {
+          var promise = prepareCurrent(expectedVersion, pendingBeforePrepare).finally(
+            function () {
               if (activeOpenPromise === promise) {
                 activeOpenPromise = null;
                 activeOpenKey = "";
               }
-            });
+            }
+          );
           activeOpenKey = key;
           activeOpenPromise = promise;
           return promise;
@@ -494,6 +473,12 @@
           return configured ? Boolean(store.read()) : false;
         }
 
+        function performDraw() {
+          return safeIsDemo()
+            ? demoProvider.draw(selectedTicket, workspace, store)
+            : drawService.draw(selectedTicket);
+        }
+
         function handleSpin() {
           if (
             isBusy ||
@@ -504,24 +489,19 @@
           ) {
             return;
           }
-          var pending = store.read();
-          if (!pending || !guard.has(selectedTicket, pending.requestId)) {
-            view.setStatus("抽獎結果尚未準備完成，請重新開啟轉盤。");
-            updateControls();
-            return;
-          }
 
+          var pendingBeforeDraw = getPending();
+          var preparedConfigVersion = selectedType.lottery.configVersion;
           isBusy = true;
-          view.setStatus("轉盤旋轉中，正在揭曉預先確認的結果…");
+          view.setStatus(
+            pendingBeforeDraw
+              ? "正在使用同一次請求安全重試，不會重複使用抽獎券…"
+              : "正在向後端確認本次抽獎結果…"
+          );
           updateControls();
 
           Promise.resolve()
-            .then(function () {
-              return preparationService.resolvePrepared(
-                selectedTicket,
-                pending.requestId
-              );
-            })
+            .then(performDraw)
             .then(function (response) {
               contracts.assertSuccessfulResponse(response);
               var result = mapper.normalizeDrawResult(
@@ -529,6 +509,9 @@
                 workspace,
                 selectedTicket
               );
+              if (result.selectedType.lottery.configVersion !== preparedConfigVersion) {
+                view.setStatus("獎項設定已更新，正在使用本次開獎的最新版本…");
+              }
               return animator
                 .settle(result.draw, result.selectedType.lottery)
                 .then(function () {
@@ -536,9 +519,7 @@
                 });
             })
             .then(function (result) {
-              store.clear();
-              guard.clear();
-              preparationService.invalidateWorkspace();
+              drawService.complete();
               workspace = Object.freeze({
                 lotteryTypes: result.lotteryTypes,
                 card: result.card,
@@ -558,13 +539,11 @@
                 updateControls();
                 return;
               }
-              if (preparationService.isDefinitiveNoDrawError(error)) {
-                store.clear();
-                guard.clear();
-              }
+              var definitive = drawService.isDefinitiveNoDrawError(error);
+              if (definitive) drawService.clear();
               view.showError(error, {
                 pending: Boolean(getPending()),
-                definitive: preparationService.isDefinitiveNoDrawError(error),
+                definitive: definitive,
               });
               updateControls();
             });
@@ -572,6 +551,12 @@
 
         function retry() {
           if (!selectedTicket || isPreparing || isBusy) return;
+          if (getPending() && workspace && selectedType) {
+            view.markReady(selectedTicket, selectedType, true);
+            updateControls();
+            handleSpin();
+            return;
+          }
           open(selectedTicket);
         }
 
@@ -582,8 +567,10 @@
           if (!canClose()) {
             safeShowToast(
               isPreparing
-                ? "轉盤正在安全準備中，完成前請勿關閉。"
-                : "抽獎結果尚未確認，請先完成本次抽獎。"
+                ? "轉盤正在準備中，完成前請勿關閉。"
+                : isBusy
+                  ? "抽獎正在處理中，請稍候完成。"
+                  : "抽獎請求尚未確認，請先安全重試完成本次抽獎。"
             );
             return false;
           }
@@ -611,8 +598,10 @@
           onBlockedClose: function () {
             safeShowToast(
               isPreparing
-                ? "轉盤正在安全準備中，完成前請勿關閉。"
-                : "抽獎結果尚未確認，請先完成本次抽獎。"
+                ? "轉盤正在準備中，完成前請勿關閉。"
+                : isBusy
+                  ? "抽獎正在處理中，請稍候完成。"
+                  : "抽獎請求尚未確認，請先安全重試完成本次抽獎。"
             );
           },
         });
