@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: true
 
-      - name: Apply exact GAS source patch
+      - name: Apply exact guarded source patches
         run: node .github/agent/patch-lottery-gas-snapshot.js
 
       - name: Validate patched syntax and diff
@@ -32,18 +32,31 @@ jobs:
           set -euo pipefail
           cp PersonalBrandTestingEnvironment/gas/client/Code.gs /tmp/Code.js
           node --check /tmp/Code.js
+          node --check PersonalBrandTestingEnvironment/tests/client-gas.test.js
+          node --check PersonalBrandTestingEnvironment/tests/frontend-structure.test.js
+          node --check PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js
+          node --check PersonalBrandTestingEnvironment/tests/project-quality.test.js
+          node --check PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js
+          node --check PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js
           git diff --check
-          git diff --exit-code -- PersonalBrandTestingEnvironment/gas/client/Code.gs && {
-            echo "Expected the guarded patch to modify Code.gs" >&2
-            exit 1
-          }
 
       - name: Commit guarded patch result
         shell: bash
         run: |
           set -euo pipefail
+          git add \
+            PersonalBrandTestingEnvironment/gas/client/Code.gs \
+            PersonalBrandTestingEnvironment/tests/client-gas.test.js \
+            PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/lottery-activation-compatibility.test.js \
+            PersonalBrandTestingEnvironment/tests/project-quality.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js
+          if git diff --cached --quiet; then
+            echo "Guarded patches are already applied."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add PersonalBrandTestingEnvironment/gas/client/Code.gs
-          git commit -m "Preserve historical lottery mappings with settings snapshot"
+          git commit -m "Preserve historical lottery mappings and lazy runtime contracts"
           git push origin HEAD:${GITHUB_REF_NAME}
