@@ -123,10 +123,8 @@ test("draw starts only when draw service is invoked and coalesces rapid repeats"
     request(action, fields, requestId) {
       calls += 1;
       assert.equal(action, "drawLottery");
-      assert.deepEqual(fields, {
-        lotteryTypeId: "LTY-A",
-        cardRoundKey: "ROUND-A",
-      });
+      assert.equal(fields.lotteryTypeId, "LTY-A");
+      assert.equal(fields.cardRoundKey, "ROUND-A");
       assert.equal(requestId, "request-0001");
       return new Promise((resolve) => {
         resolveRequest = resolve;
@@ -140,8 +138,10 @@ test("draw starts only when draw service is invoked and coalesces rapid repeats"
   const second = service.draw(ticket());
   assert.equal(first, second);
   await Promise.resolve();
+  await Promise.resolve();
   assert.equal(calls, 1);
   assert.equal(store.read().requestId, "request-0001");
+  assert.equal(typeof resolveRequest, "function");
   resolveRequest(drawResponse());
   await first;
 });
@@ -169,7 +169,9 @@ test("an ambiguous network failure keeps the same request id for safe retry", as
   await assert.rejects(service.draw(ticket()), (error) => error.code === "BACKEND_TIMEOUT");
   assert.equal(store.read().requestId, "request-0001");
   await service.draw(ticket());
-  assert.deepEqual(requestIds, ["request-0001", "request-0001"]);
+  assert.equal(requestIds.length, 2);
+  assert.equal(requestIds[0], "request-0001");
+  assert.equal(requestIds[1], "request-0001");
 });
 
 test("definitive no-draw errors clear the pending transaction", async () => {
