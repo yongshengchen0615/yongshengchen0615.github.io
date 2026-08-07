@@ -20,11 +20,20 @@
   var realFacade = null;
   var loadPromise = null;
   var facade = null;
+  var openVersion = 0;
 
   function createLoaderError(code, message) {
     var error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function isDialogOpen(dialog) {
+    return Boolean(
+      dialog &&
+        (dialog.open === true ||
+          (typeof dialog.hasAttribute === "function" && dialog.hasAttribute("open")))
+    );
   }
 
   function loadScript(source) {
@@ -40,7 +49,8 @@
         return;
       }
 
-      var selector = 'script[data-lottery-module="' + source.replace(/"/g, "") + '"]';
+      var selector =
+        'script[data-lottery-module="' + source.replace(/"/g, "") + '"]';
       var existing =
         typeof documentValue.querySelector === "function"
           ? documentValue.querySelector(selector)
@@ -107,7 +117,9 @@
       }
     }
     return {
-      code: String((error && (error.code || error.name)) || "CLIENT_LIBRARY_ERROR"),
+      code: String(
+        (error && (error.code || error.name)) || "CLIENT_LIBRARY_ERROR"
+      ),
       message: String(
         (error && error.message) ||
           "目前無法載入抽獎元件，請確認網路後再試。"
@@ -117,7 +129,9 @@
 
   function showLoaderPreparing(ticket) {
     var documentValue = root.document;
-    if (!documentValue || typeof documentValue.getElementById !== "function") return;
+    if (!documentValue || typeof documentValue.getElementById !== "function") {
+      return;
+    }
     var dialog = documentValue.getElementById("member-lottery-dialog");
     var loading = documentValue.getElementById("member-lottery-loading-state");
     var errorState = documentValue.getElementById("member-lottery-error-state");
@@ -125,7 +139,9 @@
     var result = documentValue.getElementById("member-lottery-result-state");
     var title = documentValue.getElementById("member-lottery-loading-title");
     var message = documentValue.getElementById("member-lottery-loading-message");
-    var description = documentValue.getElementById("member-lottery-dialog-description");
+    var description = documentValue.getElementById(
+      "member-lottery-dialog-description"
+    );
     var status = documentValue.getElementById("member-lottery-spin-status");
     if (!dialog || !loading) return;
 
@@ -138,11 +154,13 @@
       message.textContent =
         "先載入本次需要的轉盤程式；此階段不會使用抽獎券，也不會產生開獎結果。";
     }
-    if (description) description.textContent = "正在載入抽獎轉盤元件，尚未正式開獎。";
+    if (description) {
+      description.textContent = "正在載入抽獎轉盤元件，尚未正式開獎。";
+    }
     if (status) status.textContent = "正在載入轉盤元件…";
     dialog.setAttribute("aria-busy", "true");
     dialog.removeAttribute("hidden");
-    if (!dialog.open && !dialog.hasAttribute("open")) {
+    if (!isDialogOpen(dialog)) {
       if (typeof dialog.showModal === "function") {
         try {
           dialog.showModal();
@@ -156,7 +174,11 @@
 
     if (ticket) {
       var detail = documentValue.getElementById("member-lottery-ticket-detail");
-      if (detail && Number.isSafeInteger(Number(ticket.cardNumber))) {
+      if (
+        detail &&
+        Number.isSafeInteger(Number(ticket.cardNumber)) &&
+        Number.isSafeInteger(Number(ticket.milestonePoints))
+      ) {
         detail.textContent =
           "第 " +
           Number(ticket.cardNumber) +
@@ -167,24 +189,56 @@
     }
   }
 
+  function closeLoaderDialog() {
+    var documentValue = root.document;
+    if (!documentValue || typeof documentValue.getElementById !== "function") {
+      return false;
+    }
+    var dialog = documentValue.getElementById("member-lottery-dialog");
+    if (!isDialogOpen(dialog)) return false;
+    dialog.setAttribute("aria-busy", "false");
+    if (typeof dialog.close === "function" && dialog.open) {
+      try {
+        dialog.close();
+        return true;
+      } catch (_error) {
+        // Fall back to removing the open attribute below.
+      }
+    }
+    dialog.removeAttribute("open");
+    return true;
+  }
+
+  function showTicketLoadWarning(message) {
+    var documentValue = root.document;
+    if (!documentValue || typeof documentValue.getElementById !== "function") {
+      return;
+    }
+    var dialog = documentValue.getElementById("member-ticket-dialog");
+    var status = documentValue.getElementById("member-ticket-refresh-status");
+    if (!dialog || !status || !isDialogOpen(dialog)) return;
+    dialog.setAttribute("aria-busy", "false");
+    status.textContent =
+      message || "抽獎元件暫時載入失敗；目前票券資料仍保留，請確認網路後再試。";
+    status.dataset.tone = "warning";
+  }
+
   function showLoaderError(error) {
     var normalized = normalizeLoaderError(error);
-    var documentValue = root.document;
-    if (documentValue && typeof documentValue.getElementById === "function") {
-      var dialog = documentValue.getElementById("member-lottery-dialog");
-      var loading = documentValue.getElementById("member-lottery-loading-state");
-      var errorState = documentValue.getElementById("member-lottery-error-state");
-      var code = documentValue.getElementById("member-lottery-error-code");
-      var message = documentValue.getElementById("member-lottery-error-message");
-      var guidance = documentValue.getElementById("member-lottery-error-guidance");
-      var retryButton = documentValue.getElementById("member-lottery-retry-button");
-      if (loading) loading.hidden = true;
-      if (errorState) errorState.hidden = false;
-      if (dialog) dialog.setAttribute("aria-busy", "false");
-      if (code) code.textContent = String(normalized.code || "CLIENT LIBRARY ERROR").replace(/_/g, " ");
-      if (message) message.textContent = normalized.message;
-      if (guidance) guidance.textContent = "請確認網路後返回抽獎券並重新開啟。尚未建立任何抽獎請求。";
-      if (retryButton) retryButton.hidden = true;
+    openVersion += 1;
+    var hadLotteryDialog = closeLoaderDialog();
+    showTicketLoadWarning(normalized.message);
+
+    if (
+      hadLotteryDialog &&
+      configuredOptions &&
+      typeof configuredOptions.onReturnToTickets === "function"
+    ) {
+      try {
+        configuredOptions.onReturnToTickets();
+      } catch (_error) {
+        // Host UI failures must never create a draw transaction.
+      }
     }
     if (configuredOptions && typeof configuredOptions.showToast === "function") {
       try {
@@ -197,17 +251,18 @@
 
   function configureRealFacade() {
     var candidate = root.MemberLotteryDialog;
-    if (!candidate || candidate === facade || typeof candidate.configure !== "function") {
+    if (
+      !candidate ||
+      candidate === facade ||
+      typeof candidate.configure !== "function"
+    ) {
       throw createLoaderError(
         "CLIENT_LIBRARY_ERROR",
         "抽獎元件載入後沒有建立控制器，請重新整理後再試。"
       );
     }
     if (!configuredOptions) {
-      throw createLoaderError(
-        "NOT_CONFIGURED",
-        "會員抽獎尚未完成初始化。"
-      );
+      throw createLoaderError("NOT_CONFIGURED", "會員抽獎尚未完成初始化。");
     }
     realFacade = candidate;
     realFacade.configure(configuredOptions);
@@ -291,12 +346,15 @@
     root.setTimeout(function () {
       if (realFacade) return;
       var documentValue = root.document;
-      if (!documentValue || typeof documentValue.getElementById !== "function") return;
+      if (!documentValue || typeof documentValue.getElementById !== "function") {
+        return;
+      }
       var dialog = documentValue.getElementById("member-ticket-dialog");
       var status = documentValue.getElementById("member-ticket-refresh-status");
-      if (!dialog || !status || (!dialog.open && !dialog.hasAttribute("open"))) return;
+      if (!dialog || !status || !isDialogOpen(dialog)) return;
       dialog.setAttribute("aria-busy", "true");
-      status.textContent = "正在載入抽獎元件並背景同步；目前票券仍可直接選擇。";
+      status.textContent =
+        "正在載入抽獎元件並背景同步；目前票券仍可直接選擇。";
       status.dataset.tone = "loading";
     }, 0);
   }
@@ -308,13 +366,21 @@
   }
 
   function open(ticket) {
+    var expectedOpenVersion = ++openVersion;
     showLoaderPreparing(ticket);
     return ensureLoaded()
       .then(function (controller) {
+        if (expectedOpenVersion !== openVersion) return false;
+        var documentValue = root.document;
+        var dialog =
+          documentValue && typeof documentValue.getElementById === "function"
+            ? documentValue.getElementById("member-lottery-dialog")
+            : null;
+        if (dialog && !isDialogOpen(dialog)) return false;
         return controller.open(ticket);
       })
       .catch(function (error) {
-        showLoaderError(error);
+        if (expectedOpenVersion === openVersion) showLoaderError(error);
         return false;
       });
   }
@@ -357,7 +423,21 @@
 
   function requestClose(options) {
     if (realFacade) return realFacade.requestClose(options);
-    return canClose();
+    openVersion += 1;
+    closeLoaderDialog();
+    if (
+      options &&
+      options.returnToTickets &&
+      configuredOptions &&
+      typeof configuredOptions.onReturnToTickets === "function"
+    ) {
+      try {
+        configuredOptions.onReturnToTickets();
+      } catch (_error) {
+        // Host UI failures must never create a draw transaction.
+      }
+    }
+    return true;
   }
 
   facade = Object.freeze({
