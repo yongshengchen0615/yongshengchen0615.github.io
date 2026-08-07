@@ -1,15 +1,4 @@
-/* Runtime-only rendering optimizations layered after styles.css. */
-
-html {
-  scrollbar-gutter: stable;
-}
-
-.member-pass,
-.data-control,
-.member-ticket-dialog,
-.member-history-dialog {
-  contain: layout paint;
-}
+/* Progressive rendering optimizations layered after styles.css. */
 
 @supports (content-visibility: auto) {
   .data-control,
@@ -25,9 +14,7 @@ html {
   }
 
   .member-pass,
-  .modal,
-  .member-ticket-dialog,
-  .member-history-dialog {
+  .modal {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
