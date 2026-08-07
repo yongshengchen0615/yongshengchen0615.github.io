@@ -35,8 +35,12 @@ const moduleNames = [
   "dialog-controller.js",
 ];
 
-test("ticket preparation force-refreshes configuration without creating a draw transaction", () => {
-  assert.match(preparation, /\.load\(\{ force: true \}\)/);
+test("ticket preparation requires authoritative workspace validation without creating a draw transaction", () => {
+  assert.match(
+    preparation,
+    /\.load\(\{\s*force:\s*true,\s*maxAgeMs:\s*selectionMaxAgeMs\s*\}\)/
+  );
+  assert.match(preparation, /DEFAULT_SELECTION_MAX_AGE_MS\s*=\s*2000/);
   assert.match(preparation, /validateWorkspace/);
   assert.doesNotMatch(preparation, /["']drawLottery["']/);
   assert.doesNotMatch(preparation, /\.ensure\(/);
