@@ -48,12 +48,28 @@ test("interactive pages provide progressive fallback and deferred external scrip
   }
 });
 
-test("member home loads only the V2 lottery facade", () => {
+test("member home defers Lottery V2 internals behind the lazy facade", () => {
   const html = read("client/index.html");
-  assert.match(html, /src=["']member-lottery-v2\.js["']/);
-  assert.match(html, /src=["']lottery\/draw-service\.js["']/);
+  const loader = read("client/member-lottery-loader.js");
+  assert.match(html, /src=["']member-lottery-loader\.js["']/);
+  assert.match(html, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.doesNotMatch(html, /src=["']member-lottery-v2\.js["']/);
+  assert.doesNotMatch(html, /src=["']lottery\/(?:contracts|draw-service|dialog-controller)\.js["']/);
+  assert.match(loader, /"member-lottery-v2\.js"/);
+  assert.match(loader, /"lottery\/draw-service\.js"/);
+  assert.match(loader, /"lottery\/dialog-controller\.js"/);
   assert.doesNotMatch(html, /src=["']member-lottery\.js["']/);
   assert.doesNotMatch(html, /wheel-draw-guard/);
+});
+
+test("client runtime optimization layer is progressive and data-aware", () => {
+  const html = read("client/index.html");
+  const css = read("client/runtime-optimizations.css");
+  assert.match(html, /href=["']runtime-optimizations\.css["']/);
+  assert.match(css, /@supports\s*\(content-visibility:\s*auto\)/i);
+  assert.match(css, /contain-intrinsic-size:/i);
+  assert.match(css, /@media\s*\(prefers-reduced-data:\s*reduce\)/i);
+  assert.match(css, /backdrop-filter:\s*none/i);
 });
 
 test("styles include no-script, reduced-motion, and large-list containment safeguards", () => {
