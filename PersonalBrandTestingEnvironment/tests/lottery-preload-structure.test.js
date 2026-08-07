@@ -4,62 +4,90 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const controller = fs.readFileSync(
-  path.join(root, "client/lottery/preload-controller.js"),
-  "utf8"
-);
-const service = fs.readFileSync(
+const preparation = fs.readFileSync(
   path.join(root, "client/lottery/preparation-service.js"),
   "utf8"
 );
-const bootstrap = fs.readFileSync(
-  path.join(root, "client/member-lottery-preload.js"),
+const drawService = fs.readFileSync(
+  path.join(root, "client/lottery/draw-service.js"),
   "utf8"
 );
+const controller = fs.readFileSync(
+  path.join(root, "client/lottery/dialog-controller.js"),
+  "utf8"
+);
+const bootstrap = fs.readFileSync(
+  path.join(root, "client/member-lottery-v2.js"),
+  "utf8"
+);
+const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
 
-const internalModules = [
+const moduleNames = [
   "contracts.js",
   "pending-request-store.js",
+  "workspace-service.js",
   "preparation-service.js",
-  "preparation-view.js",
-  "wheel-draw-guard.js",
-  "preload-controller.js",
-].map((name) =>
-  fs.readFileSync(path.join(root, "client/lottery", name), "utf8")
-);
+  "draw-service.js",
+  "workspace-mapper.js",
+  "wheel-animator.js",
+  "dialog-view.js",
+  "demo-provider.js",
+  "dialog-controller.js",
+];
 
-test("drawLottery is prepared during the getLotteryConfig phase", () => {
+test("ticket preparation force-refreshes configuration without creating a draw transaction", () => {
+  assert.match(preparation, /\.load\(\{ force: true \}\)/);
+  assert.match(preparation, /validateWorkspace/);
+  assert.doesNotMatch(preparation, /["']drawLottery["']/);
+  assert.doesNotMatch(preparation, /\.ensure\(/);
+  assert.doesNotMatch(preparation, /requestId/);
+});
+
+test("draw mutation and persistent request creation belong to draw-service", () => {
+  assert.match(drawService, /options\.store\.ensure\(ticket\)/);
   assert.match(
-    controller,
-    /action\s*===\s*["']getLotteryConfig["'][\s\S]*service\.prepare\(activeTicket\)/
-  );
-  assert.match(
-    service,
+    drawService,
     /options\.request\(\s*["']drawLottery["'][\s\S]*request\.requestId/
   );
+  assert.match(drawService, /if\s*\(activePromise\)/);
+  assert.match(drawService, /contracts\.isDefinitiveNoDrawError\(error\)/);
 });
 
-test("the wheel click path returns cached data and does not call the backend", () => {
-  const drawBranch = controller.match(
-    /if\s*\(action\s*===\s*["']drawLottery["']\)\s*\{([\s\S]*?)\n\s*\}/
-  );
-  assert.ok(drawBranch, "missing drawLottery interception");
-  assert.match(drawBranch[1], /service\.resolvePrepared\(activeTicket,\s*requestId\)/);
-  assert.doesNotMatch(drawBranch[1], /value\.request|options\.request/);
+test("dialog controller reaches READY from preparation and invokes DrawService only from spin", () => {
+  const prepareStart = controller.indexOf("function prepareCurrent");
+  const spinStart = controller.indexOf("function handleSpin");
+  const retryStart = controller.indexOf("function retry()", spinStart);
+  assert.notEqual(prepareStart, -1);
+  assert.notEqual(spinStart, -1);
+  assert.notEqual(retryStart, -1);
+
+  const prepareBody = controller.slice(prepareStart, spinStart);
+  const spinBody = controller.slice(spinStart, retryStart);
+  assert.match(prepareBody, /preparationService\.prepare/);
+  assert.match(prepareBody, /animator\.prepare\(selectedType\.lottery\)/);
+  assert.match(prepareBody, /view\.markReady/);
+  assert.doesNotMatch(prepareBody, /drawService\.draw|drawLottery/);
+  assert.match(spinBody, /isBusy\s*=\s*true/);
+  assert.match(spinBody, /performDraw/);
+  assert.doesNotMatch(spinBody, /getLotteryConfig|options\.request/);
 });
 
-test("the composition root only wires dependencies and publishes the facade", () => {
-  assert.match(bootstrap, /registry\.get\(["']lottery\.preload-controller["']\)/);
+test("V2 composition root and HTML load only current modules", () => {
+  assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
   assert.match(bootstrap, /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create/);
-  assert.doesNotMatch(bootstrap, /action\s*===\s*["']drawLottery["']/);
+  assert.match(memberHtml, /src=["']lottery\/draw-service\.js["']/);
+  assert.doesNotMatch(memberHtml, /wheel-draw-guard|member-lottery\.js/);
+  assert.equal(fs.existsSync(path.join(root, "client/lottery/wheel-draw-guard.js")), false);
 });
 
-test("internal modules register through PersonaModules instead of leaking globals", () => {
-  for (const source of internalModules) {
-    assert.match(source, /registry\.define\(/);
+test("current internal lottery modules register without leaking public globals", () => {
+  for (const name of moduleNames) {
+    const source = fs.readFileSync(path.join(root, "client/lottery", name), "utf8");
+    assert.match(source, /registry\.define\(/, `${name} is not registered`);
     assert.doesNotMatch(
       source,
-      /root\.MemberLottery(?:PendingRequestStore|PreparationService|PreparationView|WheelDrawGuard)\s*=/
+      /root\.MemberLottery[A-Za-z]+\s*=/,
+      `${name} leaks an internal MemberLottery global`
     );
   }
 });
