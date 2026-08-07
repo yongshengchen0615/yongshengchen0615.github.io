@@ -6,14 +6,18 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
-test("ticket preparation force-refreshes authoritative workspace without drawing", () => {
+test("ticket preparation uses authoritative workspace with only a bounded fresh reuse window", () => {
   const source = read("client/lottery/preparation-service.js");
   const performPrepare = source.slice(
     source.indexOf("function performPrepare"),
     source.indexOf("function prepare(ticketValue")
   );
 
-  assert.match(performPrepare, /\.load\(\{ force: true \}\)/);
+  assert.match(
+    performPrepare,
+    /\.load\(\{\s*force:\s*true,\s*maxAgeMs:\s*selectionMaxAgeMs\s*\}\)/
+  );
+  assert.match(source, /DEFAULT_SELECTION_MAX_AGE_MS\s*=\s*2000/);
   assert.doesNotMatch(performPrepare, /allowStale/);
   assert.doesNotMatch(performPrepare, /drawLottery|\.ensure\(/);
 });
@@ -25,6 +29,7 @@ test("workspace service bounds stale preview reuse without weakening explicit re
   assert.match(source, /allowStale && isUsableStale\(\)/);
   assert.match(source, /DEFAULT_MAX_STALE_MS/);
   assert.match(source, /force = loadOptions\.force === true/);
+  assert.match(source, /maxAgeMs = Number\(loadOptions\.maxAgeMs\)/);
   assert.match(source, /options\.request\("getLotteryConfig"/);
   assert.match(source, /persona:lottery-performance/);
 });
