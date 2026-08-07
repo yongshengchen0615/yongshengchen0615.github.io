@@ -55,13 +55,15 @@ test("draw mutation and persistent request creation belong to draw-service", () 
 
 test("dialog controller reaches READY from preparation and invokes DrawService only from spin", () => {
   const prepareStart = controller.indexOf("function prepareCurrent");
+  const openStart = controller.indexOf("function open(ticketValue)", prepareStart);
   const spinStart = controller.indexOf("function handleSpin");
   const retryStart = controller.indexOf("function retry()", spinStart);
   assert.notEqual(prepareStart, -1);
+  assert.notEqual(openStart, -1);
   assert.notEqual(spinStart, -1);
   assert.notEqual(retryStart, -1);
 
-  const prepareBody = controller.slice(prepareStart, spinStart);
+  const prepareBody = controller.slice(prepareStart, openStart);
   const spinBody = controller.slice(spinStart, retryStart);
   assert.match(prepareBody, /preparationService\.prepare/);
   assert.match(prepareBody, /animator\.prepare\(selectedType\.lottery\)/);
