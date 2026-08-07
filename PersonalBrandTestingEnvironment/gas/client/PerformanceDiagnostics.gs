@@ -70,7 +70,7 @@ function diagnoseMemberGasScale() {
     getLotteryConfig:
       byKey.members.rows +
       byKey.pointRedemptions.estimatedCells +
-      byKey.pointCardSettings.estimatedCells * 2 +
+      byKey.pointCardSettings.estimatedCells +
       byKey.lotteryTypes.estimatedCells +
       byKey.lotteryPrizes.estimatedCells +
       byKey.lotteryDraws.estimatedCells,
