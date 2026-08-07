@@ -463,20 +463,31 @@
           if (safeIsDemo()) {
             return Promise.resolve(options.getCurrentCardSummary());
           }
-          if (activeTicketRefresh) return activeTicketRefresh;
 
-          var promise = workspaceService
-            .load({ force: refreshOptions.force !== false })
-            .then(function (response) {
-              var nextWorkspace = mapper.normalizeWorkspace(response.data);
-              safeCardUpdated(nextWorkspace.card, nextWorkspace.totalPoints);
-              return nextWorkspace.card;
-            })
-            .finally(function () {
-              if (activeTicketRefresh === promise) activeTicketRefresh = null;
-            });
-          activeTicketRefresh = promise;
-          return promise;
+          if (!activeTicketRefresh) {
+            var promise = workspaceService
+              .load({ force: refreshOptions.force !== false })
+              .then(function (response) {
+                var nextWorkspace = mapper.normalizeWorkspace(response.data);
+                safeCardUpdated(nextWorkspace.card, nextWorkspace.totalPoints);
+                return nextWorkspace.card;
+              })
+              .catch(function (error) {
+                if (!isPreparing && !delegateAuthorizationError(error)) {
+                  safeShowToast(normalizeError(error).message);
+                }
+                return null;
+              })
+              .finally(function () {
+                if (activeTicketRefresh === promise) activeTicketRefresh = null;
+              });
+            activeTicketRefresh = promise;
+          }
+
+          // Ticket lists use stale-while-revalidate: release the host UI on the
+          // current snapshot immediately while the authoritative refresh remains
+          // in flight. Preparation will share that same WorkspaceService request.
+          return Promise.resolve(options.getCurrentCardSummary());
         }
 
         function restorePending() {
