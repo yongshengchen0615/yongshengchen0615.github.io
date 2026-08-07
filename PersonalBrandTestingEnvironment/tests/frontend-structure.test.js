@@ -85,7 +85,6 @@ test("member page keeps startup scripts small and defers Lottery V2 internals", 
   const startupScripts = [
     "../shared/gas-api.js",
     "../shared/liff-runtime.js",
-    "../shared/lottery-wheel.js",
     "member-lottery-loader.js",
     "script.js",
   ];
@@ -99,6 +98,7 @@ test("member page keeps startup scripts small and defers Lottery V2 internals", 
 
   for (const deferredPath of [
     "../shared/module-registry.js",
+    "../shared/lottery-wheel.js",
     "lottery/contracts.js",
     "lottery/pending-request-store.js",
     "lottery/workspace-service.js",

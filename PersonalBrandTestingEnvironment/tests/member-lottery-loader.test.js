@@ -255,8 +255,7 @@ test("registry loads first, runtime definitions download together, and entry loa
   assert.equal(harness.appendedSources.includes(ENTRY_SOURCE), false);
 
   RUNTIME_SOURCES.forEach((source) => harness.emitScript(source));
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(harness.appendedSources.at(-1), ENTRY_SOURCE);
 
   harness.emitScript(ENTRY_SOURCE);

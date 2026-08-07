@@ -52,7 +52,8 @@ test("member home defers Lottery V2 internals behind the lazy facade", () => {
   const html = read("client/index.html");
   const loader = read("client/member-lottery-loader.js");
   assert.match(html, /src=["']member-lottery-loader\.js["']/);
-  assert.match(html, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.doesNotMatch(html, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.match(loader, /["']\.\.\/shared\/lottery-wheel\.js["']/);
   assert.doesNotMatch(html, /src=["']member-lottery-v2\.js["']/);
   assert.doesNotMatch(html, /src=["']lottery\/(?:contracts|draw-service|dialog-controller)\.js["']/);
   assert.match(loader, /"member-lottery-v2\.js"/);

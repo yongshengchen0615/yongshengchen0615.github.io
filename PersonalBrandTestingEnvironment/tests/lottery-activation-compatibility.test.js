@@ -17,6 +17,7 @@ const workflow = fs.readFileSync(
 
 const lazyBoundary = [
   "../shared/module-registry.js",
+  "../shared/lottery-wheel.js",
   "lottery/contracts.js",
   "lottery/pending-request-store.js",
   "lottery/workspace-service.js",
@@ -31,7 +32,8 @@ const lazyBoundary = [
 ];
 
 test("checked-in member entry exposes only the lazy V2 facade at startup", () => {
-  assert.match(index, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.doesNotMatch(index, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.match(loader, /["']\.\.\/shared\/lottery-wheel\.js["']/);
   assert.match(index, /src=["']member-lottery-loader\.js["']/);
   assert.match(index, /src=["']script\.js["']/);
   for (const source of lazyBoundary) {
