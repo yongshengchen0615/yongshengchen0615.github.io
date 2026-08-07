@@ -17,22 +17,12 @@
     <link rel="dns-prefetch" href="https://static.line-scdn.net" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2306c755'/%3E%3Cpath d='M18 19h28v21H32l-9 7v-7h-5z' fill='white'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="runtime-optimizations.css" />
     <script defer src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script defer src="../shared/gas-api.js"></script>
     <script defer src="../shared/liff-runtime.js"></script>
     <script defer src="../shared/lottery-wheel.js"></script>
-    <script defer src="../shared/module-registry.js"></script>
-    <script defer src="lottery/contracts.js"></script>
-    <script defer src="lottery/pending-request-store.js"></script>
-    <script defer src="lottery/workspace-service.js"></script>
-    <script defer src="lottery/preparation-service.js"></script>
-    <script defer src="lottery/draw-service.js"></script>
-    <script defer src="lottery/workspace-mapper.js"></script>
-    <script defer src="lottery/wheel-animator.js"></script>
-    <script defer src="lottery/dialog-view.js"></script>
-    <script defer src="lottery/demo-provider.js"></script>
-    <script defer src="lottery/dialog-controller.js"></script>
-    <script defer src="member-lottery-v2.js"></script>
+    <script defer src="member-lottery-loader.js"></script>
     <script defer src="script.js"></script>
   </head>
   <body>
@@ -183,7 +173,7 @@
 
               <div class="pass-profile">
                 <div class="member-avatar">
-                  <img id="member-avatar" alt="" hidden />
+                  <img id="member-avatar" alt="" decoding="async" referrerpolicy="no-referrer" hidden />
                   <span id="member-avatar-fallback" aria-hidden="true">M</span>
                 </div>
                 <div>
@@ -333,6 +323,7 @@
               type="tel"
               inputmode="tel"
               autocomplete="tel"
+              enterkeyhint="next"
               maxlength="30"
               required
               placeholder="例如：0912 345 678"
@@ -349,6 +340,7 @@
               name="birthday"
               type="date"
               autocomplete="bday"
+              enterkeyhint="done"
               required
               aria-describedby="profile-birthday-error"
             />
@@ -390,6 +382,7 @@
           autoplay
           muted
           playsinline
+          disablepictureinpicture
           aria-label="QR Code 相機預覽"
         ></video>
         <span class="scanner-guide" aria-hidden="true"></span>
@@ -734,7 +727,16 @@
       <p>這會永久刪除試算表中的會員紀錄，且無法復原。若要確認，請在下方輸入「刪除」。</p>
       <label class="confirm-field">
         <span>確認文字</span>
-        <input id="delete-confirm-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入：刪除" />
+        <input
+          id="delete-confirm-input"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          enterkeyhint="done"
+          placeholder="輸入：刪除"
+        />
       </label>
       <button class="danger-button full-width" id="delete-confirm-button" type="button" disabled>永久刪除會員資料</button>
     </dialog>
