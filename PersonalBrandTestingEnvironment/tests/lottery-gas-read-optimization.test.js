@@ -10,44 +10,52 @@ const diagnostics = fs.readFileSync(
   "utf8"
 );
 
-function functionSlice(source, startName, endName) {
-  const start = source.indexOf(`function ${startName}`);
-  const end = source.indexOf(`function ${endName}`, start + 1);
-  assert.notEqual(start, -1, `missing ${startName}`);
-  assert.notEqual(end, -1, `missing ${endName}`);
+function sliceBetween(source, startText, endText) {
+  const start = source.indexOf(startText);
+  const end = source.indexOf(endText, start + startText.length);
+  assert.notEqual(start, -1, `missing ${startText}`);
+  assert.notEqual(end, -1, `missing ${endText}`);
   return source.slice(start, end);
 }
 
-test("getLotteryConfig reuses the card-status settings read instead of scanning settings twice", () => {
-  const getConfig = functionSlice(
+test("getLotteryConfig reuses one complete point-card settings snapshot", () => {
+  const getConfig = sliceBetween(
     code,
-    "getLotteryConfig_(identity, request, config)",
-    "drawLotteryReplayResponse_"
+    "function getLotteryConfig_(identity, request, config) {",
+    "function drawLotteryReplayResponse_("
   );
-  const cardStatus = functionSlice(
+  const cardStatus = sliceBetween(
     code,
-    "getMemberPointCardStatus_",
-    "isEligiblePointCardRewardOrdinal_"
+    "function getMemberPointCardStatus_(",
+    "function isEligiblePointCardRewardOrdinal_("
   );
 
   assert.match(code, /var API_VERSION = "1\.10\.2"/);
-  assert.doesNotMatch(getConfig, /var settings\s*=\s*readPointCardSettings_/);
-  assert.match(getConfig, /getMemberPointCardStatus_\(/);
-  assert.match(getConfig, /cardStatus\.rewardRules\.forEach/);
-  assert.match(getConfig, /cardStatus\.availableRewards\.forEach/);
-  assert.match(cardStatus, /var settings\s*=\s*readPointCardSettings_\(settingSheet\)/);
+  assert.match(getConfig, /var settings\s*=\s*readPointCardSettings_\(settingSheet\)/);
+  assert.match(
+    getConfig,
+    /getMemberPointCardStatus_\([\s\S]*drawRecords,\s*settings\s*\)/
+  );
+  assert.match(getConfig, /settings\.forEach\(function \(setting\)/);
+  assert.match(getConfig, /setting\.rewardRules\.forEach/);
+  assert.match(cardStatus, /settingsSnapshot/);
+  assert.match(
+    cardStatus,
+    /Array\.isArray\(settingsSnapshot\)[\s\S]*settingsSnapshot[\s\S]*readPointCardSettings_\(settingSheet\)/
+  );
 });
 
-test("drawLottery keeps fresh server-side revalidation before mutation", () => {
-  const draw = functionSlice(
+test("drawLottery keeps fresh server-side revalidation without a shared settings snapshot", () => {
+  const draw = sliceBetween(
     code,
-    "drawLottery_(identity, request, config)",
-    "resolveAvailablePointCardReward_"
+    "function drawLottery_(identity, request, config) {",
+    "function resolveAvailablePointCardReward_("
   );
 
   assert.match(draw, /Recheck access and the append-only ledger immediately before mutation/);
   assert.match(draw, /drawRecords\s*=\s*readAllLotteryDraws_\(drawSheet\)/);
   assert.match(draw, /getMemberPointCardStatus_\(/);
+  assert.doesNotMatch(draw, /getMemberPointCardStatus_\([\s\S]*drawRecords,\s*settings\s*\)/);
   assert.match(draw, /readLatestLotteryConfig_\(/);
   assert.match(draw, /pickLotteryPrize_\(lotteryConfig\.prizes\)/);
   assert.match(draw, /drawSheet\.appendRow\(/);
