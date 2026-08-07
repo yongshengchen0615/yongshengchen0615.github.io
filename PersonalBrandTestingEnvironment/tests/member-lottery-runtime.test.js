@@ -222,10 +222,19 @@ test("a new store instance restores the same pending request for reload retry", 
   assert.equal(reloaded.ensure(createTicket()).requestId, "runtime-request-0001");
 });
 
-test("production runtime no longer includes any legacy lottery implementation", () => {
+test("production runtime retains only the lazy V2 path and no legacy implementation", () => {
   const html = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
-  assert.match(html, /src=["']member-lottery-v2\.js["']/);
-  assert.match(html, /src=["']lottery\/draw-service\.js["']/);
+  const loader = fs.readFileSync(
+    path.join(root, "client/member-lottery-loader.js"),
+    "utf8"
+  );
+
+  assert.match(html, /src=["']member-lottery-loader\.js["']/);
+  assert.doesNotMatch(html, /src=["']member-lottery-v2\.js["']/);
+  assert.doesNotMatch(html, /src=["']lottery\/draw-service\.js["']/);
+  assert.match(loader, /"member-lottery-v2\.js"/);
+  assert.match(loader, /"lottery\/draw-service\.js"/);
+
   for (const relativePath of [
     "client/member-lottery.js",
     "client/member-lottery-preload.js",
