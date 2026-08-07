@@ -755,6 +755,7 @@
         : "抽獎券，目前沒有可用票券"
     );
     renderMemberTicketPanels(normalized);
+    prewarmLotteryRuntime(normalized);
 
     if (animate && pointsContainer) {
       pointsContainer.removeAttribute("data-updated");
@@ -765,6 +766,20 @@
         }, 650);
       });
     }
+  }
+
+  function prewarmLotteryRuntime(summary) {
+    if (
+      isDemoSession ||
+      !summary ||
+      !Array.isArray(summary.availableRewards) ||
+      summary.availableRewards.length < 1 ||
+      !window.MemberLotteryDialog ||
+      typeof window.MemberLotteryDialog.prewarm !== "function"
+    ) {
+      return;
+    }
+    window.MemberLotteryDialog.prewarm();
   }
 
   function formatMemberCardDate(value) {
@@ -1010,7 +1025,7 @@
   }
 
   function configureMemberLotteryDialog() {
-    if (!window.MemberLotteryDialog || !window.LotteryWheel) {
+    if (!window.MemberLotteryDialog) {
       throw createClientError(
         "CLIENT_LIBRARY_ERROR",
         "無法載入轉盤元件，請重新整理頁面。"
