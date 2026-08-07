@@ -339,6 +339,18 @@ test("closing during lazy load prevents a late real-controller open", async () =
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
+test("closing after runtime prewarm invalidates a queued open before real-controller delegation", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  configure(loader);
+
+  assert.equal(await loader.prewarm(), true);
+  const opening = loader.open(createTicket());
+  assert.equal(loader.requestClose({ returnToTickets: true }), true);
+  assert.equal(await opening, false);
+  assert.equal(harness.counts().realOpenCalls, 0);
+});
+
 test("module load failure fails closed without invoking draw or request code", async () => {
   const harness = createHarness({ failSource: "lottery/draw-service.js" });
   const loader = harness.context.MemberLotteryDialog;
