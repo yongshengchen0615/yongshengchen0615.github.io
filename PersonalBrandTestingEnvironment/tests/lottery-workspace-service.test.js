@@ -96,6 +96,39 @@ test("concurrent workspace loads share one backend request and reuse a fresh cac
   assert.equal(calls, 1);
 });
 
+test("selection maxAge reuses only a very recent authoritative workspace", async () => {
+  const factory = createFactory();
+  let calls = 0;
+  let now = 1000;
+  const service = factory.create({
+    ttlMs: 5000,
+    maxStaleMs: 30000,
+    now: () => now,
+    request() {
+      calls += 1;
+      return Promise.resolve({ ok: true, data: { version: calls } });
+    },
+  });
+
+  assert.deepEqual(await service.load({ force: true }), {
+    ok: true,
+    data: { version: 1 },
+  });
+  now += 1500;
+  assert.deepEqual(await service.load({ force: true, maxAgeMs: 2000 }), {
+    ok: true,
+    data: { version: 1 },
+  });
+  assert.equal(calls, 1);
+
+  now += 600;
+  assert.deepEqual(await service.load({ force: true, maxAgeMs: 2000 }), {
+    ok: true,
+    data: { version: 2 },
+  });
+  assert.equal(calls, 2);
+});
+
 test("allowStale is bounded and cannot reuse an indefinitely old workspace", async () => {
   const factory = createFactory();
   let calls = 0;
@@ -147,4 +180,32 @@ test("invalidating a workspace prevents a stale request from repopulating the ca
   assert.equal(calls, 2);
   resolvers[1]({ ok: true, data: { version: 2 } });
   assert.deepEqual(await fresh, { ok: true, data: { version: 2 } });
+});
+
+test("a new generation never reuses an invalidated in-flight request", async () => {
+  const factory = createFactory();
+  let calls = 0;
+  const resolvers = [];
+  const service = factory.create({
+    request() {
+      calls += 1;
+      return new Promise((resolve) => resolvers.push(resolve));
+    },
+  });
+
+  const first = service.load({ force: true });
+  await Promise.resolve();
+  assert.equal(calls, 1);
+
+  service.invalidate();
+  const second = service.load({ force: true });
+  await Promise.resolve();
+  assert.equal(calls, 2);
+  assert.notEqual(first, second);
+
+  resolvers[0]({ ok: true, data: { version: 1 } });
+  resolvers[1]({ ok: true, data: { version: 2 } });
+  assert.deepEqual(await first, { ok: true, data: { version: 1 } });
+  assert.deepEqual(await second, { ok: true, data: { version: 2 } });
+  assert.deepEqual(service.peek(), { ok: true, data: { version: 2 } });
 });
