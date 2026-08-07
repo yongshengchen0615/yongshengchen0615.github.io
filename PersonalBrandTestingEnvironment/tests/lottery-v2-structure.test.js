@@ -4,6 +4,10 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
+const hostScript = fs.readFileSync(
+  path.join(root, "client/script.js"),
+  "utf8"
+);
 const controller = fs.readFileSync(
   path.join(root, "client/lottery/dialog-controller.js"),
   "utf8"
@@ -35,6 +39,10 @@ test("preparation is read-only and draw mutation is isolated in draw service", (
   assert.match(preparationService, /getLotteryConfig/);
   assert.doesNotMatch(preparationService, /["']drawLottery["']/);
   assert.doesNotMatch(preparationService, /\.ensure\(/);
+  assert.match(
+    preparationService,
+    /\.load\(\{\s*force:\s*true,\s*maxAgeMs:\s*selectionMaxAgeMs\s*\}\)/
+  );
 
   assert.match(
     drawService,
@@ -47,6 +55,43 @@ test("preparation is read-only and draw mutation is isolated in draw service", (
   );
   assert.ok(spinBody, "missing handleSpin implementation");
   assert.doesNotMatch(spinBody[1], /options\.request\(/);
+});
+
+test("background ticket refresh stays non-blocking while selection keeps its own lock", () => {
+  assert.doesNotMatch(
+    hostScript,
+    /isMemberTicketRefreshing\s*\|\|\s*isMemberTicketSelectionBusy/
+  );
+  assert.match(hostScript, /button\.disabled\s*=\s*isMemberTicketSelectionBusy/);
+
+  const refreshStateBody = hostScript.match(
+    /function setMemberTicketRefreshState\([\s\S]*?\n  \}/
+  );
+  assert.ok(refreshStateBody, "missing ticket refresh state function");
+  assert.match(
+    refreshStateBody[0],
+    /button\.disabled\s*=\s*isMemberTicketSelectionBusy/
+  );
+
+  const openTicketBody = hostScript.match(
+    /function openMemberLotteryTicket\(ticket\) \{([\s\S]*?)\n  \}/
+  );
+  assert.ok(openTicketBody, "missing ticket selection function");
+  assert.match(openTicketBody[1], /if \(isMemberTicketSelectionBusy\)/);
+  assert.doesNotMatch(openTicketBody[1], /if \(isMemberTicketRefreshing/);
+  assert.match(
+    openTicketBody[1],
+    /isMemberTicketSelectionBusy\s*=\s*true[\s\S]*MemberLotteryDialog\.open/
+  );
+});
+
+test("stale ticket recovery can update the host snapshot without an extra request", () => {
+  assert.match(controller, /function syncLatestWorkspaceSnapshot\(\)/);
+  assert.match(controller, /workspaceService\.peek\(\)/);
+  assert.match(
+    controller,
+    /if \(definitive\) syncLatestWorkspaceSnapshot\(\)/
+  );
 });
 
 test("v2 composition root only publishes the existing public facade", () => {
