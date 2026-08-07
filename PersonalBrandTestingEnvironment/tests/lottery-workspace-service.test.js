@@ -96,6 +96,35 @@ test("concurrent workspace loads share one backend request and reuse a fresh cac
   assert.equal(calls, 1);
 });
 
+test("allowStale is bounded and cannot reuse an indefinitely old workspace", async () => {
+  const factory = createFactory();
+  let calls = 0;
+  let now = 1000;
+  const responses = [
+    { ok: true, data: { version: 1 } },
+    { ok: true, data: { version: 2 } },
+  ];
+  const service = factory.create({
+    ttlMs: 5000,
+    maxStaleMs: 30000,
+    now: () => now,
+    request() {
+      const response = responses[calls];
+      calls += 1;
+      return Promise.resolve(response);
+    },
+  });
+
+  assert.deepEqual(await service.load({ force: true }), responses[0]);
+  now += 10000;
+  assert.deepEqual(await service.load({ allowStale: true }), responses[0]);
+  assert.equal(calls, 1);
+
+  now += 30000;
+  assert.deepEqual(await service.load({ allowStale: true }), responses[1]);
+  assert.equal(calls, 2);
+});
+
 test("invalidating a workspace prevents a stale request from repopulating the cache", async () => {
   const factory = createFactory();
   let calls = 0;
