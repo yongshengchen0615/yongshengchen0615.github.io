@@ -1234,10 +1234,13 @@ function getMemberPointCardStatus_(
   drawSheet,
   settingSheet,
   lineUserId,
-  drawRecords
+  drawRecords,
+  settingsSnapshot
 ) {
   var ledger = readMemberPointLedger_(redemptionSheet, lineUserId);
-  var settings = readPointCardSettings_(settingSheet);
+  var settings = Array.isArray(settingsSnapshot)
+    ? settingsSnapshot
+    : readPointCardSettings_(settingSheet);
   var pointsBySetting = Object.create(null);
   var nowTime = new Date().getTime();
   settings.forEach(function (setting) {
@@ -1657,23 +1660,22 @@ function getLotteryConfig_(identity, request, config) {
     }
 
     var drawRecords = readAllLotteryDraws_(drawSheet);
+    var settings = readPointCardSettings_(settingSheet);
     var cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
       settingSheet,
       identity.lineUserId,
-      drawRecords
+      drawRecords,
+      settings
     );
     var requiredTypeIds = Object.create(null);
-    cardStatus.rewardRules.forEach(function (rule) {
-      if (rule.lotteryTypeId) {
-        requiredTypeIds[rule.lotteryTypeId] = true;
-      }
-    });
-    cardStatus.availableRewards.forEach(function (reward) {
-      if (reward.lotteryTypeId) {
-        requiredTypeIds[reward.lotteryTypeId] = true;
-      }
+    settings.forEach(function (setting) {
+      setting.rewardRules.forEach(function (rule) {
+        if (rule.lotteryTypeId) {
+          requiredTypeIds[rule.lotteryTypeId] = true;
+        }
+      });
     });
     var lotteryTypes = getAvailableLotteryTypes_(
       typeSheet,
