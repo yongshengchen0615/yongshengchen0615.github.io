@@ -97,7 +97,7 @@
               })
             );
           } catch (_error) {
-            // Diagnostics must not affect the dialog.
+            // Diagnostics must never change dialog behavior.
           }
         }
 
@@ -140,9 +140,9 @@
             byId(id).hidden = id !== activeId;
           });
           var descriptions = {
-            "member-lottery-loading-state": "正在確認抽獎券、獎項與抽獎結果。",
+            "member-lottery-loading-state": "正在確認抽獎券與最新轉盤設定，尚未正式開獎。",
             "member-lottery-error-state": "轉盤目前無法使用，請查看錯誤內容。",
-            "member-lottery-wheel-state": "轉盤已就緒，可點選中央揭曉結果。",
+            "member-lottery-wheel-state": "轉盤已就緒，可點選中央正式抽獎。",
             "member-lottery-result-state": "抽獎結果已顯示。",
           };
           setText(
@@ -210,23 +210,13 @@
           var stages = {
             loading_workspace: {
               title: "正在取得最新獎項",
-              message: "正在同步抽獎券與非敏感轉盤設定。",
+              message: "正在同步抽獎券與非敏感轉盤設定，此階段不會開獎。",
               status: "正在取得最新獎項…",
             },
             validating_ticket: {
               title: "正在確認抽獎券",
-              message: "正在確認這張券仍可使用，並沿用已載入的轉盤設定。",
+              message: "正在確認這張券仍可使用，完成後才會開放中央抽獎按鈕。",
               status: "正在確認抽獎券…",
-            },
-            persisting_draw: {
-              title: "正在保存抽獎結果",
-              message: "後端正在安全決定並保存本次結果；完成後不會再次連線。",
-              status: "正在安全保存抽獎結果…",
-            },
-            rendering_wheel: {
-              title: "正在建立轉盤",
-              message: "結果已保存，正在建立清晰圖面與精確停止角度。",
-              status: "正在建立轉盤…",
             },
           };
           var stage = stages[String(phase || "")];
@@ -249,24 +239,24 @@
           setText("member-lottery-loading-title", "正在準備轉盤");
           setText(
             "member-lottery-loading-message",
-            "正在驗證抽獎券、載入獎項並安全保存本次結果。"
+            "正在驗證抽獎券並載入最新獎項；完成前不會使用抽獎券，也不會決定中獎結果。"
           );
           setState("member-lottery-loading-state");
           byId("member-lottery-dialog").setAttribute("aria-busy", "true");
-          setStatus("正在準備轉盤，完成前請勿關閉頁面…");
+          setStatus("正在準備轉盤…");
           slowPreparationTimer = runtime.setTimeout(function () {
             slowPreparationTimer = 0;
             if (byId("member-lottery-loading-state").hidden) return;
-            setText("member-lottery-loading-title", "網路較慢，仍在安全確認");
+            setText("member-lottery-loading-title", "網路較慢，仍在同步最新設定");
             setText(
               "member-lottery-loading-message",
-              "請保持頁面開啟。若稍後出現安全重試，系統會沿用同一次請求，不會重複使用抽獎券。"
+              "請保持頁面開啟；目前仍只是準備階段，不會先行開獎或使用抽獎券。"
             );
-            setStatus("正在安全確認抽獎結果，請勿重新選券或關閉頁面…");
+            setStatus("仍在確認抽獎券與最新獎項…");
           }, 1800);
         }
 
-        function markReady(ticket, selectedType, pending, configurationUpdated) {
+        function markReady(ticket, selectedType, pending) {
           clearSlowPreparationTimer();
           emitMetric("ticket_to_ready", preparationStartedAt);
           preparationStartedAt = 0;
@@ -274,11 +264,9 @@
           byId("member-lottery-dialog").setAttribute("aria-busy", "false");
           setState("member-lottery-wheel-state");
           setStatus(
-            configurationUpdated
-              ? "獎項設定已更新，已改用本次開獎的最新版本；點選中央揭曉結果。"
-              : pending
-                ? "上次結果已安全恢復，點選中央直接揭曉結果。"
-                : "轉盤已就緒，點選中央只會播放動畫，不會再次送出開獎請求。"
+            pending
+              ? "上次抽獎請求尚待確認，點選中央使用同一次請求安全重試。"
+              : "轉盤已就緒；只有點選中央後才會正式送出抽獎請求。"
           );
           focus(byId("member-lottery-spin-button"));
         }
@@ -310,7 +298,7 @@
           setText(
             "member-lottery-error-guidance",
             pending
-              ? "本次請求識別碼已安全保留。請按「安全重試」恢復同一次抽獎，不會重複使用抽獎券。"
+              ? "抽獎請求識別碼已保留。請按「安全重試」使用同一次請求確認結果，不會重複使用抽獎券。"
               : definitive
                 ? "後端已確認本次沒有完成開獎，可返回抽獎券清單查看最新狀態。"
                 : "請確認網路後重新載入；若持續失敗，請保留錯誤代碼並聯絡服務人員。"
@@ -362,9 +350,9 @@
             state.isBusy
               ? "抽獎中"
               : state.isPreparing
-                ? "確認結果"
+                ? "準備中"
                 : state.pending
-                  ? "揭曉結果"
+                  ? "安全重試"
                   : state.hasTicket
                     ? "點我抽獎"
                     : "選擇抽獎券"
@@ -373,23 +361,23 @@
           retryButton.disabled = state.isPreparing === true || state.isBusy === true;
           retryButton.setAttribute(
             "aria-busy",
-            String(state.isPreparing === true)
+            String(state.isPreparing === true || state.isBusy === true)
           );
 
-          [
-            "member-lottery-close-button",
-            "member-lottery-return-button",
-          ].forEach(function (id) {
-            var button = byId(id);
-            button.disabled = state.canClose !== true;
-            button.setAttribute("aria-disabled", String(state.canClose !== true));
-          });
+          ["member-lottery-close-button", "member-lottery-return-button"].forEach(
+            function (id) {
+              var button = byId(id);
+              button.disabled = state.canClose !== true;
+              button.setAttribute("aria-disabled", String(state.canClose !== true));
+            }
+          );
         }
 
         function bind(nextHandlers) {
           if (bound) return;
           handlers = nextHandlers || {};
           bound = true;
+
           byId("member-lottery-spin-button").addEventListener("click", function () {
             if (typeof handlers.onSpin === "function") handlers.onSpin();
           });
