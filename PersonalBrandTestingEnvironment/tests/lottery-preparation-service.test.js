@@ -100,7 +100,7 @@ function workspaceResponse({ available = true } = {}) {
   };
 }
 
-test("preparation force-refreshes workspace and never calls drawLottery", async () => {
+test("preparation requests a forced workspace with a short selection freshness window and never draws", async () => {
   const factory = createFactory();
   let resolveWorkspace;
   let requestCalls = 0;
@@ -131,7 +131,27 @@ test("preparation force-refreshes workspace and never calls drawLottery", async 
   assert.equal(requestCalls, 0);
   assert.equal(loadOptions.length, 1);
   assert.equal(loadOptions[0].force, true);
+  assert.equal(loadOptions[0].maxAgeMs, 2000);
   assert.equal(result.data.lotteryTypes[0].lottery.configVersion, "LCF-CURRENT");
+});
+
+test("selection freshness is configurable without becoming a long-lived authorization cache", async () => {
+  const factory = createFactory();
+  const loadOptions = [];
+  const service = factory.create({
+    selectionMaxAgeMs: 750,
+    workspaceService: {
+      load(options) {
+        loadOptions.push(options);
+        return Promise.resolve(workspaceResponse());
+      },
+      invalidate() {},
+    },
+  });
+
+  await service.prepare(ticket("A"));
+  assert.equal(loadOptions[0].force, true);
+  assert.equal(loadOptions[0].maxAgeMs, 750);
 });
 
 test("an unavailable ticket is rejected before any draw transaction exists", async () => {
