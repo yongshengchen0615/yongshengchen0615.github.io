@@ -15,10 +15,12 @@ on:
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/gas/client/PerformanceDiagnostics.gs"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
@@ -53,10 +55,12 @@ on:
       - "PersonalBrandTestingEnvironment/client/member-lottery-v2.js"
       - "PersonalBrandTestingEnvironment/client/lottery/**"
       - "PersonalBrandTestingEnvironment/gas/client/Code.gs"
+      - "PersonalBrandTestingEnvironment/gas/client/PerformanceDiagnostics.gs"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_V2.md"
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
@@ -119,14 +123,17 @@ jobs:
             node --check "$file"
           done
 
-          cp PersonalBrandTestingEnvironment/gas/client/Code.gs /tmp/member-lottery-client-gas.js
-          node --check /tmp/member-lottery-client-gas.js
+          for file in PersonalBrandTestingEnvironment/gas/client/*.gs; do
+            cp "$file" "/tmp/$(basename "$file" .gs).js"
+            node --check "/tmp/$(basename "$file" .gs).js"
+          done
 
       - name: Run lottery regression suite
         run: |
           node --test \
             PersonalBrandTestingEnvironment/tests/client-gas.test.js \
             PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
