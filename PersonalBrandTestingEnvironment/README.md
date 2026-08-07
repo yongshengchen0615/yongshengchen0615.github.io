@@ -1,435 +1,250 @@
 # PERSONA MEMBERS
 
-以原生 HTML、CSS、JavaScript 製作的 LINE LIFF 會員系統。會員端與管理端使用不同的 LIFF Channel、不同的 Google Apps Script（GAS）專案與部署；兩套 GAS 只共用同一份 Google Spreadsheet。
+以原生 HTML、CSS、JavaScript 製作的 LINE LIFF 會員、集點與轉盤抽獎系統。會員端與管理端使用不同的 LINE Login / LIFF Channel、不同的 Google Apps Script（GAS）部署，兩套 GAS 共用同一份 Google Spreadsheet。
 
-## 系統行為
+## 核心安全邊界
 
-- 會員端 LIFF `2010787602-kaiSm2eq` 只呼叫會員 GAS。
-- 管理端 LIFF `2010791619-vhevCvvD` 只呼叫管理 GAS。
-- 新會員預設 `Members.status=approved`，登入後可直接使用會員中心。
-- 新會員首次進入會員中心時須填寫 `phone` 與 `birthday`，之後可自行修改。
-- 管理員可把 `Members.status` 改為 `approved`（可使用）或 `denied`（停用）。
-- 管理端將會員資料、點數 QR 與轉盤抽獎拆成三個頁面，各頁只載入自己需要的資料。
-- 管理員首次登入會在 `Admins` 工作表建立 `pending` 申請。
-- 只有試算表擁有者手動將 `Admins.status` 改為 `approved` 才能進入後台；改為 `denied` 會拒絕登入。
-- 已核准管理員可建立 `1 點`～`9999 點`的點數類型，設定期限與領取方式（每位會員一次、可重複、整張 QR 僅限一位會員）後產生會員 LIFF QR Code。
-- 已核准會員從會員資料頁掃描 QR 後會直接領取點數；結果畫面顯示原本、獲得與目前點數，確認後會員卡進度與抽獎券數量會立即同步。活動可設定每會員一次、重新掃描後重複領取，或整張 QR 僅開放第一位會員。
-- 會員資料頁的「點數紀錄」按鈕會開啟小視窗，顯示本人最近 30 筆領點與抽獎結果；只有第一次開啟或資料變更時才讀取後台。
-- 管理員可逐筆新增一張集點卡的抽獎節點，例如總點數 `20`，分別建立 `5`、`10`、`15`、`20` 點節點；每個節點必須指定且只能指定一個已完成設定的轉盤。集滿後畫面開始下一張卡，但 `PointRedemptions` 的終身累計點數仍完整保留。
-- 管理員可將集點卡設為無期限或指定到期日；到期當天仍可集點與抽獎，隔日重置當輪進度及未用票券，但終身累計與已抽紀錄不受影響。
-- 管理員可新增或軟刪除轉盤。新增時在同一個編輯區完成名稱、2～12 個獎項、色塊與中獎機率，最後只需按一次「儲存並啟用轉盤」。會員按「抽獎券」會開啟滿版票券清單並切換「未獲得／已獲得」；選定可用券後，原頁先顯示載入狀態，再開啟置中的小型轉盤。轉盤由快到慢平順停下，開獎期間所有返回操作都會暫停，抽完的券會直接移除。
-- 會員不需要加入官方帳號即可註冊與集點；「掃描集點碼」位於會員卡下方。若頁面是在官方帳號一對一聊天室中開啟，且 LIFF 具備 `chat_message.write` 權限，首次建立會員與領點成功後會額外嘗試用 `sendMessages()` 傳送通知，通知失敗不影響會員建立或點數發放。
-- `Members.admin_status` 是舊版相容欄位，不再用來授予管理權限。
-- 兩套 GAS 都會各自向 LINE 驗證 ID Token，不信任前端傳入的 userId、姓名、頭像或角色。
+- 會員端只呼叫會員 GAS；管理端只呼叫管理 GAS。
+- 兩套 GAS 都會向 LINE 驗證 ID Token，不信任前端提供的 userId、姓名、頭像或角色。
+- 管理員權限以獨立 `Admins` 工作表為準，`Members.admin_status` 只保留舊版相容性。
+- 點數與抽獎資格皆由 server-side Spreadsheet ledger 推導，前端顯示狀態不是 authority。
+- `drawLottery` 不接受前端指定 `prizeId`、winning index 或 probability；獎項只由會員 GAS 根據最新 Lottery Config 決定。
+- 抽獎使用 persistent request ID 與 `LotteryDraws` replay 實作 idempotency，timeout / retry 不會重複使用同一抽獎券。
+
+## 目前主要使用流程
+
+### 會員
+
+```text
+LIFF init
+  -> get ID Token
+  -> upsertMember
+  -> GAS 向 LINE verify
+  -> 會員資料 / 點數 / 集點卡摘要
+  -> 掃描集點 QR、查看點數紀錄、查看抽獎券
+```
+
+### Lottery V2
+
+正式抽獎只有一套 implementation，整合在 `client/index.html` 的 Dialog 中：
+
+```text
+選擇抽獎券
+  -> PREPARING
+  -> 強制取得最新 getLotteryConfig
+  -> 驗證 ticket / lottery config
+  -> Canvas 與停止角度完成
+  -> READY
+
+此時尚未呼叫 drawLottery，也尚未消耗票券。
+
+點「點我抽獎」
+  -> 建立 / 沿用 persistent requestId
+  -> drawLottery
+  -> GAS 再驗證會員 / ticket / authoritative config
+  -> GAS 決定 prize 並 append LotteryDraws
+  -> authoritative response
+  -> 2.2–3.2 秒自然減速動畫
+  -> 精準停在中獎扇區
+  -> 更新 card / tickets
+  -> RESULT
+```
+
+若 draw request 已送出但 response 無法確認，前端保留同一 request ID；「安全重試」會讓 GAS replay 同一次結果，而不是重新抽獎。
+
+詳細 transaction contract：[`docs/LOTTERY_V2.md`](docs/LOTTERY_V2.md)。
+效能與實機診斷：[`docs/LOTTERY_READINESS_DIAGNOSTICS.md`](docs/LOTTERY_READINESS_DIAGNOSTICS.md)。
 
 ## 專案結構
 
 ```text
 PersonalBrandTestingEnvironment/
-├── index.html                 # 舊網址相容入口，導向 client/
-├── setup.html                 # 瀏覽器版部署指南
-├── client/                    # 會員端 LIFF
-│   ├── index.html
-│   ├── lottery.html           # 舊抽獎連結的相容備援畫面
-│   ├── member-lottery.js      # 會員首頁內的轉盤小視窗與安全重試
-│   ├── lottery.js
+├── index.html                       # 舊根網址相容入口，導向 client/
+├── setup.html                       # 瀏覽器版部署指南
+├── README.md
+├── ARCHITECTURE.md
+│
+├── client/                          # 會員 LIFF
+│   ├── index.html                   # 正式會員首頁 + Lottery V2 dialogs
+│   ├── lottery.html                 # 舊抽獎 URL compatibility redirect -> ?panel=tickets
 │   ├── privacy.html
 │   ├── styles.css
-│   ├── script.js
-│   └── config.json
-├── admin/                     # 管理員端 LIFF
-│   ├── index.html             # 會員資料與使用權限
-│   ├── points.html            # 點數建立、QR 發放與領取紀錄
-│   ├── lottery.html           # 集點卡規則、轉盤類型、獎項與抽獎紀錄
+│   ├── script.js                    # 會員 / 點數 / ticket host integration
+│   ├── member-lottery-v2.js         # Lottery V2 composition root
+│   ├── config.json
+│   └── lottery/
+│       ├── contracts.js
+│       ├── pending-request-store.js
+│       ├── workspace-service.js
+│       ├── preparation-service.js   # read-only ticket/config preparation
+│       ├── draw-service.js          # click-time draw transaction + retry
+│       ├── workspace-mapper.js
+│       ├── wheel-animator.js
+│       ├── dialog-view.js
+│       ├── demo-provider.js
+│       └── dialog-controller.js
+│
+├── admin/                           # 管理員 LIFF
+│   ├── index.html                   # 會員資料與使用權限
+│   ├── points.html                  # 點數類型、QR、領取紀錄
+│   ├── lottery.html                 # 集點卡、轉盤設定、抽獎紀錄
 │   ├── styles.css
 │   ├── script.js
 │   └── config.json
+│
 ├── shared/
-│   ├── gas-api.js             # 兩端共用的跨網域傳輸
-│   ├── liff-runtime.js        # 兩端共用的 LIFF 環境與公開設定檢查
-│   ├── lottery-wheel.js       # 管理端與會員端共用的轉盤 Canvas 繪製
-│   └── qr-code.js             # 管理端本機 QR SVG／PNG 產生器
+│   ├── gas-api.js                   # timeout、fetch / bridge transport、request envelope
+│   ├── liff-runtime.js
+│   ├── module-registry.js
+│   ├── lottery-wheel.js             # 共用 Canvas renderer
+│   └── qr-code.js
+│
 ├── gas/
-│   ├── client/                # 處理會員登入、個人資料、領點、抽獎與刪除資料
-│   │   ├── Code.gs
+│   ├── client/
+│   │   ├── Code.gs                  # 會員、領點、歷史、抽獎、刪除資料
 │   │   └── appsscript.json
-│   └── admin/                 # 處理管理員授權、會員權限、點數 QR 與轉盤設定
-│       ├── Code.gs
+│   └── admin/
+│       ├── Code.gs                  # 管理授權、點數與 Lottery 設定
 │       └── appsscript.json
+│
+├── docs/
 └── tests/
 ```
 
-程式邊界、資料所有權、安全設計與後續拆分順序請參考 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+舊的完整 `client/lottery.js`、舊 `client/member-lottery.js` 與 pre-draw `wheel-draw-guard.js` 不再屬於正式架構。`client/lottery.html` 只保留舊連結相容性，不維護第二套 Lottery App。
 
 ## 本機預覽
 
-本專案沒有套件依賴或建置步驟。在專案目錄執行：
+沒有 npm dependency 或 build step。在 `PersonalBrandTestingEnvironment/` 執行：
 
 ```bash
 python3 -m http.server 8080
 ```
 
-- 會員端預覽：[http://localhost:8080/client/?demo=1](http://localhost:8080/client/?demo=1)
-- 會員端抽獎頁預覽：[http://localhost:8080/client/lottery.html?demo=1](http://localhost:8080/client/lottery.html?demo=1)
-- 管理端會員頁預覽：[http://localhost:8080/admin/?demo=1](http://localhost:8080/admin/?demo=1)
-- 管理端點數頁預覽：[http://localhost:8080/admin/points.html?demo=1](http://localhost:8080/admin/points.html?demo=1)
-- 管理端轉盤頁預覽：[http://localhost:8080/admin/lottery.html?demo=1](http://localhost:8080/admin/lottery.html?demo=1)
+常用入口：
 
-展示模式不會把資料送到 GAS。真實登入必須使用公開 HTTPS Endpoint。
+- 會員：`http://localhost:8080/client/?demo=1`
+- 舊抽獎 URL 相容測試：`http://localhost:8080/client/lottery.html?demo=1`
+- 管理員會員頁：`http://localhost:8080/admin/?demo=1`
+- 管理員點數頁：`http://localhost:8080/admin/points.html?demo=1`
+- 管理員轉盤頁：`http://localhost:8080/admin/lottery.html?demo=1`
 
-全部自動測試可直接用 Node.js 內建測試工具執行：
+`demo=1` 不會把資料送到 GAS。
 
-```bash
-node --test tests/*.test.js
-```
+## Google Spreadsheet
 
-## 1. 建立共用 Google Spreadsheet
+會員 GAS 與管理 GAS 的 `SPREADSHEET_ID` 必須指向同一份 Spreadsheet。主要工作表包括：
 
-建立一份 Google 試算表，從網址複製 Spreadsheet ID：
+- `Members`
+- `Admins`
+- `PointTypes`
+- `PointCampaigns`
+- `PointRedemptions`
+- `PointCardSettings`
+- `LotteryTypes`
+- `LotteryPrizes`
+- `LotteryDraws`
 
-```text
-https://docs.google.com/spreadsheets/d/{這一段是 SPREADSHEET_ID}/edit
-```
+不要公開 Spreadsheet 編輯權。可直接修改 `Admins.status` 的人等同最高管理權限。
 
-會員 GAS 與管理 GAS 的 `SPREADSHEET_ID` 必須填完全相同的值。不要公開分享試算表的編輯權；可以編輯 `Admins.status` 的人等同最高管理者。
+## 會員 GAS 部署
 
-## 2. 建立並部署會員 GAS
+必要 Script Properties：
 
-1. 建立第一個獨立 Apps Script 專案，例如命名為 `PERSONA Member API`。
-2. 將 [`gas/client/Code.gs`](gas/client/Code.gs) 貼入 `Code.gs`。
-3. 開啟資訊清單檔案後，以 [`gas/client/appsscript.json`](gas/client/appsscript.json) 取代內容。
-4. 在「專案設定 → 指令碼屬性」加入：
+| 屬性 | 說明 |
+| --- | --- |
+| `LINE_CHANNEL_ID` | 會員 LINE Login Channel ID |
+| `SPREADSHEET_ID` | 共用 Spreadsheet ID |
+| `ALLOWED_ORIGINS` | 例如 `https://yongshengchen0615.github.io`，只填 origin |
 
-   | 屬性 | 必要 | 值 |
-   | --- | --- | --- |
-   | `LINE_CHANNEL_ID` | 是 | `2010787602` |
-   | `SPREADSHEET_ID` | 是 | 共用 Google Spreadsheet ID |
-   | `ALLOWED_ORIGINS` | 是 | `https://yongshengchen0615.github.io` |
-   | `SHEET_NAME` | 否 | 預設 `Members`；自訂時須與管理 GAS 相同 |
-   | `POINT_TYPE_SHEET_NAME` | 否 | 預設 `PointTypes` |
-   | `POINT_CAMPAIGN_SHEET_NAME` | 否 | 預設 `PointCampaigns` |
-   | `POINT_REDEMPTION_SHEET_NAME` | 否 | 預設 `PointRedemptions` |
-   | `POINT_CARD_SETTING_SHEET_NAME` | 否 | 預設 `PointCardSettings` |
-   | `LOTTERY_TYPE_SHEET_NAME` | 否 | 預設 `LotteryTypes` |
-   | `LOTTERY_PRIZE_SHEET_NAME` | 否 | 預設 `LotteryPrizes` |
-   | `LOTTERY_DRAW_SHEET_NAME` | 否 | 預設 `LotteryDraws` |
-   | `MAX_VERIFY_REQUESTS_PER_MINUTE` | 否 | 預設 `120`，範圍 `1`–`1000` |
+可選工作表名稱 properties 需與管理 GAS 對應一致；`MAX_VERIFY_REQUESTS_PER_MINUTE` 預設 `120`。
 
-5. 執行一次 `setup()` 並完成授權，建立或驗證 `Members`、三張點數工作表、`PointCardSettings`、`LotteryTypes`、`LotteryPrizes` 與 `LotteryDraws`。
-6. 選擇「部署 → 新增部署作業 → 網頁應用程式」：
-   - 執行身分：**我（部署者）**
-   - 誰可以存取：**任何人**
-7. 複製結尾為 `/exec` 的會員 GAS URL。
+部署：
 
-正式站的 `ALLOWED_ORIGINS` 只填 origin，不含 `/PersonalBrandTestingEnvironment/client/` 路徑、結尾斜線或 `*`。需要本機串接時才額外用逗號加入 `http://localhost:8080`。
+1. 建立獨立 Apps Script 專案。
+2. 貼入 `gas/client/Code.gs` 與 `appsscript.json`。
+3. 設定 Script Properties。
+4. 執行一次 `setup()`。
+5. 部署為 Web App：執行身分為部署者、可存取者為任何人。
+6. 將 `/exec` URL 填入 `client/config.json`。
 
-會員 GAS 健康檢查：
+Health check：
 
 ```bash
 curl -L "會員_GAS_EXEC_URL?action=health"
 ```
 
-成功回應會包含 `"ok":true` 與 `"service":"member-client-api"`。
+## 管理 GAS 部署
 
-## 3. 建立並部署管理 GAS
+管理端必須是另一個獨立 Apps Script 專案。必要 properties：
 
-1. 建立第二個、完全獨立的 Apps Script 專案，例如命名為 `PERSONA Admin API`。不要把管理程式貼進會員 GAS 專案。
-2. 將 [`gas/admin/Code.gs`](gas/admin/Code.gs) 貼入 `Code.gs`。
-3. 開啟資訊清單檔案後，以 [`gas/admin/appsscript.json`](gas/admin/appsscript.json) 取代內容。
-4. 在這個專案的「指令碼屬性」加入：
+| 屬性 | 說明 |
+| --- | --- |
+| `LINE_CHANNEL_ID` | 管理員 LINE Login Channel ID |
+| `SPREADSHEET_ID` | 與會員 GAS 完全相同 |
+| `ALLOWED_ORIGINS` | 正式 GitHub Pages origin |
 
-   | 屬性 | 必要 | 值 |
-   | --- | --- | --- |
-   | `LINE_CHANNEL_ID` | 是 | `2010791619` |
-   | `SPREADSHEET_ID` | 是 | 與會員 GAS 完全相同的 Spreadsheet ID |
-   | `ALLOWED_ORIGINS` | 是 | `https://yongshengchen0615.github.io` |
-   | `SHEET_NAME` | 否 | 預設 `Members`；自訂時須與會員 GAS 相同 |
-   | `ADMIN_SHEET_NAME` | 否 | 預設 `Admins` |
-   | `POINT_TYPE_SHEET_NAME` | 否 | 預設 `PointTypes`，須與會員 GAS 相同 |
-   | `POINT_CAMPAIGN_SHEET_NAME` | 否 | 預設 `PointCampaigns`，須與會員 GAS 相同 |
-   | `POINT_REDEMPTION_SHEET_NAME` | 否 | 預設 `PointRedemptions`，須與會員 GAS 相同 |
-   | `POINT_CARD_SETTING_SHEET_NAME` | 否 | 預設 `PointCardSettings`，須與會員 GAS 相同 |
-   | `LOTTERY_TYPE_SHEET_NAME` | 否 | 預設 `LotteryTypes`，須與會員 GAS 相同 |
-   | `LOTTERY_PRIZE_SHEET_NAME` | 否 | 預設 `LotteryPrizes`，須與會員 GAS 相同 |
-   | `LOTTERY_DRAW_SHEET_NAME` | 否 | 預設 `LotteryDraws`，須與會員 GAS 相同 |
-   | `MEMBER_LIFF_URL` | 否 | 預設且目前限定 `https://liff.line.me/2010787602-kaiSm2eq` |
-   | `MAX_VERIFY_REQUESTS_PER_MINUTE` | 否 | 預設 `120`，範圍 `1`–`1000` |
+另外需設定管理工作表、點數/抽獎工作表與 `MEMBER_LIFF_URL` 等相容 properties。首次 `setup()` 會建立必要工作表/secret；管理員第一次登入建立 `pending` row，必須由 Spreadsheet 擁有者手動改為 `approved`。
 
-5. 執行一次 `setup()` 並完成授權，建立或驗證九張工作表。`setup()` 也會自動建立管理 GAS 專用的 `POINT_CLAIM_SECRET`；不要放進前端 JSON、試算表或公開文件。
-6. 另外部署成「網頁應用程式」，執行身分選「我」、存取權選「任何人」。
-7. 複製管理 GAS 自己的 `/exec` URL。此 URL 必須與會員 GAS URL 不同。
+## 前端公開設定
 
-管理 GAS 的 `ALLOWED_ORIGINS` 同樣填：
-
-```text
-https://yongshengchen0615.github.io
-```
-
-修改任何 GAS 程式後，儲存並不會更新既有正式部署；必須到「部署 → 管理部署作業」建立新版本。
-
-### 從既有版本升級
-
-電話與生日會追加為 `Members.phone` 與 `Members.birthday`，原有 1–21 欄位置不會改變。點數功能使用 `PointTypes`、`PointCampaigns`、`PointRedemptions`；集點卡與轉盤功能使用 `PointCardSettings`、`LotteryTypes`、`LotteryPrizes`、`LotteryDraws`，都不會增加 `Members` 欄位。新版 `setup()` 會替舊點數資料補上期限／領取規則快照，並在 `PointCardSettings` 尾端追加 `reward_milestones`、`reward_lottery_type_ids`、`expiry_mode` 與 `expires_on`。舊集點卡會安全補成無期限；節點與轉盤欄逐項對應，記錄每個節點唯一可使用的轉盤。全新安裝的 `LotteryTypes` 只有欄位標題，不會自動建立轉盤；請先從管理端按「新增第一個轉盤」完成設定，再替預設 5 點節點選擇該轉盤並儲存集點卡。只有舊版已存在轉盤獎項時，升級程序才會建立「經典轉盤」、把舊獎項歸入該類型並將舊節點指派給它。舊集點卡規則的空白節點相容解讀為「只在滿點抽一次」；既有活動預設遷移為「有期限＋每位會員一次」。升級時請在維護時段連續完成：
-
-1. 同時將最新的會員 `Code.gs` 與管理 `Code.gs` 貼入各自專案。
-2. 先在管理 GAS、再在會員 GAS 各執行一次 `setup()`，確認 `Members` 為 23 欄、三張點數工作表已完成升級，並已建立 `PointCardSettings`、`LotteryTypes`、`LotteryPrizes`、`LotteryDraws`。
-3. 兩個 GAS 都建立新的正式部署版本。
-4. 最後再發布前端。
-
-不要只升級其中一套 GAS；舊版程式會把 23 欄工作表視為 schema mismatch。
-
-## 4. 設定兩個 LINE LIFF App
-
-在 [LINE Developers Console](https://developers.line.biz/console/) 確認：
-
-| 用途 | LIFF ID | Channel ID | Endpoint URL |
-| --- | --- | --- | --- |
-| 會員端 | `2010787602-kaiSm2eq` | `2010787602` | `https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/client/` |
-| 管理端 | `2010791619-vhevCvvD` | `2010791619` | `https://yongshengchen0615.github.io/PersonalBrandTestingEnvironment/admin/` |
-
-管理 LIFF Endpoint 仍維持在 `admin/`；`admin/points.html` 與 `admin/lottery.html` 都是同一個管理 LIFF 下的子頁，不需要新增 LIFF App，也不需要另一份 `config.json`。
-
-兩個 App 都勾選：
-
-- `openid`：必要，用來取得 ID Token。
-- `profile`：必要，用來取得顯示名稱與頭像。
-- `email`：不需要；會員聯絡資料改由會員自行填寫電話與生日。
-
-Endpoint URL 必須使用 HTTPS、不可包含 `#fragment`，且會員端與管理端不可對調。建議 Size 選 `Full`。
-
-會員端若要在官方帳號一對一聊天室中傳送首次加入會員與領點通知，請另外勾選 `chat_message.write`；這個權限不是註冊或集點必要條件，管理端不需要這個 Scope。會員不需要加入官方帳號，也可以登入、建立會員、掃描 QR 與完成領點。
-
-會員端 LIFF App 應在 LINE Developers Console 開啟 `Scan QR` 功能，會員卡下方的「掃描集點碼」按鈕會優先呼叫 `liff.scanCodeV2()`。建議 Size 選 `Full`，並在實機上授予相機權限。若 LIFF 原生掃描因 `subwindowOpen` 或環境限制不可用，前端會在支援 `BarcodeDetector` 與 `getUserMedia` 的瀏覽器自動切換成頁內後鏡頭掃描；若兩種能力都不可用，才顯示設定提示。從管理端產生的點數 QR 也可以直接開啟會員 LIFF，保留原本的自動領點流程。
-
-官方參考：
-
-- [註冊 LIFF App](https://developers.line.biz/en/docs/liff/registering-liff-apps/)
-- [LIFF 初始化與登入](https://developers.line.biz/en/docs/liff/developing-liff-apps/)
-- [安全使用 LIFF 會員資料](https://developers.line.biz/en/docs/liff/using-user-profile/)
-- [LINE ID Token 驗證 API](https://developers.line.biz/en/reference/line-login/#verify-id-token)
-- [LIFF API：`scanCodeV2()`、`sendMessages()` 與登入](https://developers.line.biz/en/reference/liff)
-
-## 5. 填入前端 config.json
-
-[`client/config.json`](client/config.json) 保留現有會員 LIFF ID 與會員 GAS URL：
+`client/config.json` 與 `admin/config.json` 只放公開連線資訊，例如：
 
 ```json
 {
   "BRAND_NAME": "PERSONA",
-  "LIFF_ID": "2010787602-kaiSm2eq",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/會員部署識別碼/exec"
+  "LIFF_ID": "YOUR_LIFF_ID",
+  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"
 }
 ```
 
-[`admin/config.json`](admin/config.json) 的 LIFF ID 已固定；部署管理 GAS 後，把 placeholder 換成新管理 GAS URL：
+不要把 API secret、Spreadsheet credential、private key 或 LINE Channel Secret 放進 GitHub Pages。
 
-```json
-{
-  "LIFF_ID": "2010791619-vhevCvvD",
-  "GAS_WEB_APP_URL": "https://script.google.com/macros/s/管理部署識別碼/exec",
-  "BRAND_NAME": "PERSONA",
-  "PAGE_SIZE": 50
-}
-```
+## 測試
 
-會員端與管理端的 `GAS_WEB_APP_URL` 不可共用或對調。這些是瀏覽器可見的公開設定；不要把 LINE Channel Secret、ID Token、Google 憑證、私鑰或管理員狀態放進前端 JSON。
-
-## 6. 首次管理員核准
-
-1. 先完成兩套 GAS 的 `setup()`、部署與兩份 `config.json`。
-2. 使用管理端 LIFF 登入。管理 GAS 驗證成功後，會在共用 Spreadsheet 的 `Admins` 工作表建立一列 `status=pending` 的申請。
-3. 試算表擁有者確認該列資料，手動把 `status` 改為小寫 `approved`。
-4. 回到管理端等待畫面，按「重新整理」即可進入會員管理後台。
-
-若要撤銷管理資格，在 `Admins` 工作表把該列 `status` 改為 `denied`。管理端不提供核准其他管理員的 API；核准只允許由試算表擁有者手動執行。
-
-管理員不必先在會員端登入。管理端身分只對應 `Admins` 工作表；`Members.admin_status` 即使填成 `approved` 也不會取得管理權限。
-
-## 會員權限
-
-`Members.status` 是會員是否能使用系統的唯一控制欄位：
-
-- `approved`：可以登入會員系統。
-- `denied`：停止使用會員系統，但仍可要求刪除自己的資料。
-
-新會員預設為 `approved`。後續登入只同步 LINE 名稱、頭像與登入紀錄，不會覆蓋會員自行填寫的電話、生日，也不會覆蓋管理員設定的 `status`。除了管理後台，也可以由試算表擁有者直接手動修改這一欄。
-
-## 點數 QR 流程
-
-1. 管理員切換到 `admin/points.html` 點數管理頁，輸入 `1`～`9999` 的整數點數，並選擇「有期限／無期限」與「每位會員一次／可重複／僅限一位會員」後新增類型。同一點數可依規則組合建立多種類型。
-2. 選取類型產生 QR Code。有期限類型須設定未來到期時間（最長 366 天）；無期限類型不顯示日期欄，可直接產生 QR。
-3. 會員可在會員資料頁按「掃描集點碼」使用 LIFF 相機掃描，也可以直接開啟 QR 連結；系統會先驗證會員仍為 `approved`、活動為 `active`，有期限活動還會核對是否到期。
-4. 會員掃描並完成登入後，會員 GAS 直接把領取紀錄寫入 `PointRedemptions`；結果畫面顯示原本點數、此次獲得點數與目前點數。按「確認」時會員卡進度與票券徽章已同步完成。
-5. 會員資料頁的「點數紀錄」小視窗會透過 `listPointHistory` 合併本人最近 30 筆領點與轉盤結果；其他會員的 LINE User ID、Email 與內部欄位不會送到前端。
-6. 管理員點數頁會透過 `adminListPointHistory` 顯示共用 `PointRedemptions` 最近 50 筆領取紀錄，包含會員編號、增加點數、領取後累計與領取規則；LINE User ID、請求識別碼等內部欄位不會送到前端。
-7. 管理員可刪除不再使用的點數類型。刪除採停用方式保存稽核資料，只阻止產生新的 QR；既有 QR 仍依建立當時的規則快照運作。
-
-規則組合的行為：
-
-- 有期限＋不可重複：到期前，每位會員一次。
-- 有期限＋可重複：到期前，每次重新掃描並確認都可再次領取。
-- 無期限＋不可重複：永久有效，每位會員一次。
-- 無期限＋可重複：永久有效，每次重新掃描並確認都可再次領取。
-- 有期限／無期限＋僅限一位會員：第一位有效會員成功領取後，整張 QR 不再接受其他會員。
-
-QR 只包含一個 43 字元的不透明 claim，不包含點數、會員 ID 或 LINE Token。`PointCampaigns` 只保存 claim 的 SHA-256 hash；點數、期限模式與領取方式都使用建立活動當下的後台快照，前端傳入的數值不會被採信。會員端會為一次確認操作保留固定的 request ID，因此網路逾時後重試不會把同一次可重複領取誤算兩次；完成後若要再領，必須重新掃描 QR。
-
-QR 連結可以被轉傳，因此它代表「持有連結即可參加」而不是現場定位或一次性票券。尤其「無期限＋可重複」QR 外流後，任何仍具會員資格的人都能反覆領點，請只在能接受此風險時使用。若要提前停止活動，可由試算表擁有者把對應 `PointCampaigns.status` 改為 `inactive`。刪除會員資料時也會刪除該會員的 `PointRedemptions` 與 `LotteryDraws`，因此累計點數、集點卡進度、領取及抽獎歷史會一併清除；若日後重新建立會員，仍有效的舊 QR 可依活動規則重新領取。
-
-## 集點卡與轉盤抽獎流程
-
-1. 初始狀態沒有轉盤。管理員前往 `admin/lottery.html` 按「新增第一個轉盤」，在同一個表單設定名稱、2～12 個獎項、`#RRGGBB` 色塊與中獎機率，預覽確認後只按一次「儲存並啟用轉盤」。每個機率最多兩位小數，合計必須精確等於 100%。
-2. 設定集點卡總點數與「無期限／指定到期日」後，用「新增節點」逐筆建立節點並在同一列指定轉盤，不再輸入逗號分隔文字。例如 20 點卡可建立 5、10、15、20 點四列，各列可對應不同轉盤。節點必須是不重複的遞增整數，最後一個節點必須等於總點數；一個節點只能使用一個轉盤。目前規則仍引用的轉盤不可刪除，必須先發布新規則移除引用；歷史規則已發出的抽獎券仍可使用原轉盤。
-3. `PointRedemptions` 的點數永遠代表終身累計。以上述 20 點卡為例，本張卡到 5、10、15、20 點時各產生一張指定轉盤的抽獎券；到 20 點後會員畫面以「本張已集 0 點／集滿目標 20 點」分區顯示第 2 張卡，但終身累計仍為 20。
-4. 會員卡直接顯示目前集點與期限；「抽獎券」會開啟滿版清單並強制同步最新工作區。同時間的清單請求會合併，快速重複點擊不會送出第二次請求；`client/lottery.html` 僅保留舊連結相容。
-5. 點選可用券後，會員首頁立即顯示「正在準備轉盤」，並禁止關閉、返回或切換票券。前端強制讀取最新設定、建立或沿用固定 request ID，由會員 GAS 在鎖定狀態下重新確認會員權限、抽獎券與指定轉盤，再依設定機率決定獎項並追加 `LotteryDraws`。
-6. 前端不自行決定獎項。GAS 結果、最新獎項版本、高 DPI Canvas 圖面與所有停止角度都在中央按鈕啟用前完成；中央按下後只執行 `requestAnimationFrame` 動畫，不再呼叫 `getLotteryConfig`、`drawLottery` 或其他後端 API。轉盤以連續減速曲線精確停在 GAS 回傳的區塊，`prefers-reduced-motion` 也會對齊同一結果。
-7. 每次操作會依會員與卡片輪次保存固定 request ID，展示模式使用獨立空間。網路逾時、GAS 忙碌或回應無法確認時會保留 pending，使用「安全重試」沿用同一 request ID，只重播原結果，不會重複使用節點資格；只有後端明確確認未產生抽獎時才解除 pending 並重新同步。
-8. 抽獎不扣點。完成後該券直接從「已獲得」清單移除，會員卡同步更新；管理端可查看最新 50 筆抽獎紀錄，但不會收到 LINE User ID 或 request ID。詳細狀態、模組、測試、部署與回滾請見 [`docs/LOTTERY_V2.md`](docs/LOTTERY_V2.md)。
-
-## 資料與安全邊界
-
-```text
-會員 LIFF ID Token
-  → 會員 GAS（LINE_CHANNEL_ID=2010787602）
-  → Members：建立會員、更新登入、修改本人電話／生日、刪除本人資料
-  → PointCampaigns：用 claim hash 查詢活動
-  → PointRedemptions：確認後寫入領取紀錄，以 request ID 防止同次重送並保留終身累計
-  → PointCardSettings：依生效版本計算卡片總點數、抽獎節點與每個節點指定的唯一轉盤
-  → LotteryTypes／LotteryPrizes：讀取可用轉盤類型、目前版本與機率
-  → LotteryDraws：後台決定獎項後寫入類型、卡片節點資格與結果快照，不扣累計點數
-
-管理 LIFF ID Token
-  → 管理 GAS（LINE_CHANNEL_ID=2010791619）
-  → Admins：建立 pending 申請並檢查 status
-  → status=approved 後才可讀取／調整 Members.status
-  → status=approved 後才可建立／刪除 PointTypes、建立 PointCampaigns 與讀取 PointRedemptions 使用紀錄
-  → status=approved 後才可版本化 PointCardSettings、新增／軟刪除 LotteryTypes、追加 LotteryPrizes 設定版本與讀取 LotteryDraws
-```
-
-兩套 GAS 各自只接受自己的動作與 Channel Token。它們透過相同 `SPREADSHEET_ID` 讀寫同一份試算表，而不是彼此呼叫。前端傳入的身分、callback origin 或角色不構成權限。
-
-管理端身分只在 `Admins` 工作表比對，不需要命中會員端建立的 `Members.line_user_id`。因此兩個官方帳號即使位於不同 Provider、LINE 驗證得到不同的 `sub`，也不會影響管理員核准或會員權限管理。
-
-ID Token 只放在 HTTPS POST body，不會寫入 Sheet、Log 或 Query String。GAS 使用 LINE 驗證結果中的 `sub` 作為各自工作表的身分鍵。
-
-## 常見問題
-
-### 管理端顯示「尚未完成設定」
-
-`admin/config.json` 的 `GAS_WEB_APP_URL` 仍是 `YOUR_ADMIN_GAS_WEB_APP_URL`，或不是管理 GAS 正式部署的 `/exec` URL。完成第二次 GAS 部署後再替換。
-
-### 管理端顯示「等待核准」
-
-這是首次登入的正常流程。到共用 Spreadsheet 的 `Admins` 工作表找到該申請，把 `status` 從 `pending` 改為 `approved`，再回管理端按「重新整理」。不要修改 `Members.admin_status`。
-
-### 管理端顯示「申請已拒絕」
-
-該帳號在 `Admins.status` 不是 `approved`，通常是 `denied`。只有試算表擁有者可以手動恢復為 `approved`。
-
-### 顯示 `INVALID_TOKEN`
-
-確認兩端沒有共用或對調 GAS URL，且各 GAS 的 `LINE_CHANNEL_ID` 正確：
-
-```text
-會員 GAS：2010787602
-管理 GAS：2010791619
-```
-
-修正 Script Property 後建立新的 GAS 部署版本，再關閉 LIFF 視窗並重新登入取得新 Token。
-
-### 顯示 `MISSING_ID_TOKEN`
-
-確認對應 LIFF App 的 Scope 已勾選 `openid`。變更 Scope 後，使用者可能需要重新同意或登入。
-
-### 顯示 `SCAN_QR_UNAVAILABLE` 或 `subwindowOpen is not allowed in this LIFF app`
-
-新版前端會先自動切換成頁內相機掃描；若裝置也不支援頁內 QR 辨識，請到 LINE Developers Console 的會員 LIFF 設定開啟 `Scan QR`，並將 Size 設為 `Full`。儲存後關閉目前 LIFF 視窗，再從會員 LIFF URL 重新開啟；仍無法使用時請更新 LINE App，或改用支援相機與 `BarcodeDetector` 的手機瀏覽器。
-
-### 顯示 `ORIGIN_NOT_ALLOWED` 或等待 GAS 逾時
-
-兩個 GAS 專案都要各自設定：
-
-```text
-ALLOWED_ORIGINS=https://yongshengchen0615.github.io
-```
-
-不要加入 `/PersonalBrandTestingEnvironment/`、`client/`、`admin/` 或 `*`。
-
-### GAS 回傳 Google 登入頁面
-
-重新部署對應的 Web App，確認存取權是「任何人」，且前端使用 `/exec` 而不是 `/dev`。
-
-## 優化版部署與回滾
-
-本專案的靜態前端與兩套 GAS 採獨立部署，請依下列順序發布，避免前端先使用尚未部署的後台版本。
-
-### 1. 合併前驗證
-
-Pull Request 必須先通過唯讀 GitHub Actions：
-
-- 全部 HTML 品質基線與本機資源檢查；
-- 全部 JavaScript 與兩套 `Code.gs` 語法檢查；
-- `tests/*.test.js` 完整回歸測試；
-- workflow 不得直接推送或修改 `main`。
-
-### 2. 部署會員 GAS
-
-1. 開啟會員 Apps Script 專案。
-2. 以 `gas/client/Code.gs` 完整取代專案中的會員程式碼。
-3. 確認 Script Properties 仍包含 `SPREADSHEET_ID`、`LINE_CHANNEL_ID=2010787602`、`ALLOWED_ORIGINS` 等既有設定。
-4. 選擇「部署」→「管理部署作業」→ 編輯目前 Web App。
-5. 建立新版本，執行身分維持部署者，存取權維持「任何人」。
-6. 部署後確認 `/exec` URL 沒有改變；若已改變，更新 `client/config.json`。
-
-本版會員 GAS 會以 Token 的 SHA-256 雜湊作為快取鍵，最多快取 60 秒的成功 LINE 驗證結果；不會保存 ID Token 本體，失敗結果不會快取。
-
-### 3. 部署管理 GAS
-
-1. 開啟管理 Apps Script 專案。
-2. 以 `gas/admin/Code.gs` 完整取代專案中的管理程式碼。
-3. 確認 `SPREADSHEET_ID`、`LINE_CHANNEL_ID=2010791619`、`MEMBER_LIFF_URL` 與 `ALLOWED_ORIGINS`。
-4. 以新的 Web App 版本重新部署，存取權維持「任何人」。
-5. 確認管理端仍使用管理 GAS 的 `/exec` URL，不可誤用會員 GAS URL。
-
-### 4. 發布靜態前端
-
-1. 人工審查並合併 Pull Request 到 `main`。
-2. 等待 GitHub Pages／既有靜態部署 workflow 完成。
-3. 在 LINE LIFF 內分別開啟會員端與管理端，避免只用一般瀏覽器驗證。
-4. 強制重新整理後，依序驗證登入、會員資料、領點、點數紀錄、抽獎券、轉盤、管理員核准、點數設定與抽獎設定。
-
-會員首頁現在只載入 `member-lottery-v2.js` 與其模組；`member-lottery.js` 仍保留在 repository 作為短期回滾參考，但不再加入首頁下載與執行路徑。
-
-### 5. 驗證標準
-
-- 同一 ID Token 的短時間連續請求可以正常完成，且不需要每次重新呼叫 LINE 驗證 API。
-- 無效 GAS URL 或不合法 action 在瀏覽器端直接拒絕，不應發出網路請求。
-- 點選抽獎券時先完成資料與結果準備；中央按鈕只負責轉盤動畫與揭曉結果。
-- 手機直向、橫向、鍵盤開啟與 `prefers-reduced-motion` 模式皆可操作。
-- 未啟用 JavaScript 時會顯示明確提示，不會只留下空白頁面。
-
-### 6. 回滾
-
-- 前端回滾：revert 對應 PR commit，重新等待 GitHub Pages 發布。
-- GAS 回滾：在 Apps Script「管理部署作業」中改回上一個可用版本，不需要修改試算表 schema。
-- 若只有 LINE 驗證快取異常，可先回滾兩套 GAS；前端變更可維持不動。
-- 不要刪除 `Members`、`PointRedemptions`、`LotteryDraws` 或設定工作表作為回滾手段。
-
-## 開發檢查
+完整 regression suite：
 
 ```bash
-node --check shared/gas-api.js
-node --check shared/qr-code.js
-node --check client/script.js
-node --check admin/script.js
-python3 -m json.tool client/config.json
-python3 -m json.tool admin/config.json
-node --check < gas/client/Code.gs
-node --check < gas/admin/Code.gs
-python3 -m json.tool gas/client/appsscript.json
-python3 -m json.tool gas/admin/appsscript.json
 node --test tests/*.test.js
 ```
 
-真實 LINE 驗證與 Google Sheet 寫入，只有在兩套 GAS 完成部署並填入各自 URL 後才能做端對端測試。
+完整 repository validation 亦會檢查：
+
+```bash
+# JavaScript syntax
+find . -type f -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+
+# JSON parse
+find . -type f -name '*.json' -print0 | sort -z | \
+  xargs -0 -n1 node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))'
+```
+
+GitHub Actions：
+
+- `.github/workflows/validate-personal-brand-project.yml`：完整專案 validation。
+- `.github/workflows/validate-personal-brand-lottery.yml`：Lottery V2 專項 validation。
+- `.github/workflows/validate-personal-brand-points.yml`：點數/claim 專項 regression。
+
+這些 workflow 不會自動 merge `main`。
+
+## Lottery 人工驗收
+
+合併前至少確認：
+
+1. 選券進入 READY 後，`LotteryDraws` 沒有新 row。
+2. READY 直接關閉，票券仍可使用。
+3. 點中央後才出現 `drawLottery` request 與 `LotteryDraws` row。
+4. 快速連點只有一筆 draw。
+5. timeout 後安全重試沿用同 request ID。
+6. 同一 session reload 可恢復 pending draw。
+7. 前端 request 沒有 prize / probability 欄位。
+8. authoritative config 在 READY 後變更時仍能正確停獎。
+9. iOS / Android LINE LIFF 的返回鍵、safe-area、reduced-motion 與 Canvas 都正常。
+
+## 已知後續擴充點
+
+- 會員 GAS 對 `LotteryDraws` / `PointRedemptions` 的歷史資料仍存在 O(n) 讀取路徑；資料量大時應以量測結果再設計 summary/index，而不是先加入複雜快取。
+- 會員 GAS 與管理 GAS 是不同 Apps Script project，`ScriptLock` 不跨 project。現行管理端完整 prize config 使用單次 `setValues(rows)`，本輪沒有發現需立即修改的資料競態；若未來新增多步跨 Sheet transaction，再設計跨專案一致性機制。
+- `sessionStorage` 能保護同一 browser/LIFF session 的 reload retry；若產品要求「完全關閉 LIFF 後仍自動恢復未揭曉結果」，應新增 server-side unresolved-draw lookup，而不是把 prize 持久化在前端。
+
+更多系統邊界與資料所有權請參考 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
