@@ -20,6 +20,10 @@ const bootstrap = fs.readFileSync(
   path.join(root, "client/member-lottery-v2.js"),
   "utf8"
 );
+const loader = fs.readFileSync(
+  path.join(root, "client/member-lottery-loader.js"),
+  "utf8"
+);
 const memberHtml = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
 
 const moduleNames = [
@@ -78,10 +82,13 @@ test("dialog controller reaches READY from preparation and invokes DrawService o
   assert.doesNotMatch(spinBody, /getLotteryConfig|options\.request/);
 });
 
-test("V2 composition root and HTML load only current modules", () => {
+test("V2 composition root remains current while HTML loads only the lazy facade", () => {
   assert.match(bootstrap, /registry\.get\(["']lottery\.dialog-controller["']\)/);
   assert.match(bootstrap, /root\.MemberLotteryDialog\s*=\s*controllerFactory\.create/);
-  assert.match(memberHtml, /src=["']lottery\/draw-service\.js["']/);
+  assert.match(memberHtml, /src=["']member-lottery-loader\.js["']/);
+  assert.doesNotMatch(memberHtml, /src=["']lottery\/draw-service\.js["']/);
+  assert.match(loader, /"lottery\/draw-service\.js"/);
+  assert.match(loader, /"member-lottery-v2\.js"/);
   assert.doesNotMatch(memberHtml, /wheel-draw-guard|member-lottery\.js/);
   assert.equal(fs.existsSync(path.join(root, "client/lottery/wheel-draw-guard.js")), false);
 });
