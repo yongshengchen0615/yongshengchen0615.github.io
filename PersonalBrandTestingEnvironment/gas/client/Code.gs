@@ -21,7 +21,7 @@
  * authorize or implement administrator actions.
  */
 
-var API_VERSION = "1.10.1";
+var API_VERSION = "1.10.2";
 var DEFAULT_SHEET_NAME = "Members";
 var DEFAULT_POINT_TYPE_SHEET_NAME = "PointTypes";
 var DEFAULT_POINT_CAMPAIGN_SHEET_NAME = "PointCampaigns";
@@ -1657,7 +1657,6 @@ function getLotteryConfig_(identity, request, config) {
     }
 
     var drawRecords = readAllLotteryDraws_(drawSheet);
-    var settings = readPointCardSettings_(settingSheet);
     var cardStatus = getMemberPointCardStatus_(
       redemptionSheet,
       drawSheet,
@@ -1666,12 +1665,15 @@ function getLotteryConfig_(identity, request, config) {
       drawRecords
     );
     var requiredTypeIds = Object.create(null);
-    settings.forEach(function (setting) {
-      setting.rewardRules.forEach(function (rule) {
-        if (rule.lotteryTypeId) {
-          requiredTypeIds[rule.lotteryTypeId] = true;
-        }
-      });
+    cardStatus.rewardRules.forEach(function (rule) {
+      if (rule.lotteryTypeId) {
+        requiredTypeIds[rule.lotteryTypeId] = true;
+      }
+    });
+    cardStatus.availableRewards.forEach(function (reward) {
+      if (reward.lotteryTypeId) {
+        requiredTypeIds[reward.lotteryTypeId] = true;
+      }
     });
     var lotteryTypes = getAvailableLotteryTypes_(
       typeSheet,
@@ -4345,6 +4347,4 @@ function toIsoString_(value) {
   var date = value instanceof Date ? value : new Date(value);
   return isNaN(date.getTime()) ? "" : date.toISOString();
 }
-
-
 
