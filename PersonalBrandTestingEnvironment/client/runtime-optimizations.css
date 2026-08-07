@@ -1,0 +1,34 @@
+/* Runtime-only rendering optimizations layered after styles.css. */
+
+html {
+  scrollbar-gutter: stable;
+}
+
+.member-pass,
+.data-control,
+.member-ticket-dialog,
+.member-history-dialog {
+  contain: layout paint;
+}
+
+@supports (content-visibility: auto) {
+  .data-control,
+  .site-footer {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 14rem;
+  }
+}
+
+@media (prefers-reduced-data: reduce) {
+  .page-texture {
+    display: none;
+  }
+
+  .member-pass,
+  .modal,
+  .member-ticket-dialog,
+  .member-history-dialog {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
