@@ -510,8 +510,8 @@
   }
 
   function requestClose(options) {
-    if (realFacade) return realFacade.requestClose(options);
     openVersion += 1;
+    if (realFacade) return realFacade.requestClose(options);
     closeLoaderDialog();
     if (
       options &&
