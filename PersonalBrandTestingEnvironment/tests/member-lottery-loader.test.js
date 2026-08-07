@@ -155,6 +155,16 @@ function configure(loader, overrides = {}) {
   return summary;
 }
 
+function createTicket() {
+  return {
+    settingVersion: "PCS-ABCDEFGHIJKL",
+    cardNumber: 2,
+    milestonePoints: 10,
+    lotteryTypeId: "LTY-ABCDEFGHIJ",
+    cardRoundKey: "PCS-ABCDEFGHIJKL:2:10",
+  };
+}
+
 test("loader keeps Lottery V2 off the initial execution path", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
@@ -224,6 +234,18 @@ test("pending draw is detectable before modules load and delegates recovery afte
   assert.equal(harness.counts().realConfigureCalls, 1);
 });
 
+test("closing during lazy load prevents a late real-controller open", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  configure(loader);
+
+  const opening = loader.open(createTicket());
+  assert.equal(loader.requestClose({ returnToTickets: true }), true);
+  assert.equal(await opening, false);
+  assert.equal(harness.counts().realConfigureCalls, 1);
+  assert.equal(harness.counts().realOpenCalls, 0);
+});
+
 test("module load failure fails closed without invoking draw or request code", async () => {
   const harness = createHarness({ failSource: "lottery/draw-service.js" });
   const loader = harness.context.MemberLotteryDialog;
@@ -235,13 +257,7 @@ test("module load failure fails closed without invoking draw or request code", a
     },
   });
 
-  const opened = await loader.open({
-    settingVersion: "PCS-ABCDEFGHIJKL",
-    cardNumber: 2,
-    milestonePoints: 10,
-    lotteryTypeId: "LTY-ABCDEFGHIJ",
-    cardRoundKey: "PCS-ABCDEFGHIJKL:2:10",
-  });
+  const opened = await loader.open(createTicket());
 
   assert.equal(opened, false);
   assert.equal(requestCalls, 0);
