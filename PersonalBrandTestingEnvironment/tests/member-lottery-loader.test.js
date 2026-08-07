@@ -9,10 +9,28 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
+const REGISTRY_SOURCE = "../shared/module-registry.js";
+const RUNTIME_SOURCES = [
+  "../shared/lottery-wheel.js",
+  "lottery/contracts.js",
+  "lottery/pending-request-store.js",
+  "lottery/workspace-service.js",
+  "lottery/preparation-service.js",
+  "lottery/draw-service.js",
+  "lottery/workspace-mapper.js",
+  "lottery/wheel-animator.js",
+  "lottery/dialog-view.js",
+  "lottery/demo-provider.js",
+  "lottery/dialog-controller.js",
+];
+const ENTRY_SOURCE = "member-lottery-v2.js";
+
 function createHarness(options = {}) {
   const appendedSources = [];
+  const scriptsBySource = new Map();
   const storage = new Map();
   const listeners = new Map();
+  const performanceEvents = [];
   let realConfigureCalls = 0;
   let realRefreshCalls = 0;
   let realOpenCalls = 0;
@@ -62,15 +80,29 @@ function createHarness(options = {}) {
     };
   }
 
+  function emitScript(source, eventName = "load") {
+    const script = scriptsBySource.get(source);
+    assert.ok(script, `script was not appended: ${source}`);
+    if (source === ENTRY_SOURCE && eventName === "load") {
+      context.MemberLotteryDialog = realFacade;
+    }
+    script.emit(eventName);
+  }
+
   const document = {
     head: {
       appendChild(script) {
         appendedSources.push(script.src);
+        scriptsBySource.set(script.src, script);
         script.parentNode = this;
-        if (script.src === "member-lottery-v2.js") {
-          context.MemberLotteryDialog = realFacade;
+        if (!options.manualLoad) {
+          queueMicrotask(() => {
+            emitScript(
+              script.src,
+              options.failSource === script.src ? "error" : "load"
+            );
+          });
         }
-        queueMicrotask(() => script.emit(options.failSource === script.src ? "error" : "load"));
       },
       removeChild() {},
     },
@@ -87,6 +119,11 @@ function createHarness(options = {}) {
     },
   };
 
+  function CustomEvent(name, init = {}) {
+    this.type = name;
+    this.detail = init.detail;
+  }
+
   const context = {
     console,
     document,
@@ -97,9 +134,17 @@ function createHarness(options = {}) {
     Object,
     RegExp,
     String,
+    Date,
+    Math,
+    CustomEvent,
+    performance: { now: () => Date.now() },
     setTimeout,
     clearTimeout,
     queueMicrotask,
+    requestIdleCallback(callback) {
+      queueMicrotask(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+      return 1;
+    },
     sessionStorage: {
       getItem(key) {
         return storage.get(key) ?? null;
@@ -114,6 +159,12 @@ function createHarness(options = {}) {
     addEventListener(name, callback) {
       listeners.set(name, callback);
     },
+    dispatchEvent(event) {
+      if (event.type === "persona:lottery-performance") {
+        performanceEvents.push(event.detail);
+      }
+      return true;
+    },
   };
   context.window = context;
   vm.createContext(context);
@@ -123,7 +174,9 @@ function createHarness(options = {}) {
     context,
     storage,
     appendedSources,
+    performanceEvents,
     realFacade,
+    emitScript,
     counts() {
       return {
         realConfigureCalls,
@@ -165,7 +218,7 @@ function createTicket() {
   };
 }
 
-test("loader keeps Lottery V2 off the initial execution path", async () => {
+test("loader keeps Lottery V2 and wheel off the initial execution path", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -175,21 +228,40 @@ test("loader keeps Lottery V2 off the initial execution path", async () => {
 
   await loader.ensureLoaded();
   assert.deepEqual(harness.appendedSources, [
-    "../shared/module-registry.js",
-    "lottery/contracts.js",
-    "lottery/pending-request-store.js",
-    "lottery/workspace-service.js",
-    "lottery/preparation-service.js",
-    "lottery/draw-service.js",
-    "lottery/workspace-mapper.js",
-    "lottery/wheel-animator.js",
-    "lottery/dialog-view.js",
-    "lottery/demo-provider.js",
-    "lottery/dialog-controller.js",
-    "member-lottery-v2.js",
+    REGISTRY_SOURCE,
+    ...RUNTIME_SOURCES,
+    ENTRY_SOURCE,
   ]);
   assert.equal(harness.counts().realConfigureCalls, 1);
   assert.equal(harness.context.MemberLotteryDialog, loader);
+  assert.deepEqual(
+    harness.performanceEvents.map((event) => event.phase),
+    ["lottery_runtime_load"]
+  );
+});
+
+test("registry loads first, runtime definitions download together, and entry loads last", async () => {
+  const harness = createHarness({ manualLoad: true });
+  const loader = harness.context.MemberLotteryDialog;
+  configure(loader);
+
+  const loading = loader.ensureLoaded();
+  assert.deepEqual(harness.appendedSources, [REGISTRY_SOURCE]);
+
+  harness.emitScript(REGISTRY_SOURCE);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(harness.appendedSources, [REGISTRY_SOURCE, ...RUNTIME_SOURCES]);
+  assert.equal(harness.appendedSources.includes(ENTRY_SOURCE), false);
+
+  RUNTIME_SOURCES.forEach((source) => harness.emitScript(source));
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(harness.appendedSources.at(-1), ENTRY_SOURCE);
+
+  harness.emitScript(ENTRY_SOURCE);
+  assert.equal(await loading, harness.realFacade);
+  assert.equal(harness.counts().realConfigureCalls, 1);
 });
 
 test("concurrent loader calls share one module load and refresh stays stale-while-revalidate", async () => {
@@ -201,12 +273,33 @@ test("concurrent loader calls share one module load and refresh stays stale-whil
   const second = loader.ensureLoaded();
   assert.equal(first, second);
   await Promise.all([first, second]);
-  assert.equal(harness.appendedSources.length, 12);
+  assert.equal(harness.appendedSources.length, 13);
 
   const returned = await loader.refreshTickets({ force: true });
   assert.equal(returned, summary);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(harness.counts().realRefreshCalls, 1);
+});
+
+test("background prewarm is runtime-only and shares the same loader transaction", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  let requestCalls = 0;
+  configure(loader, {
+    request() {
+      requestCalls += 1;
+      return Promise.resolve({ ok: true });
+    },
+  });
+
+  const first = loader.prewarm();
+  const second = loader.prewarm();
+  assert.equal(first, second);
+  assert.equal(await first, true);
+  assert.equal(requestCalls, 0);
+  assert.equal(harness.appendedSources.length, 13);
+  assert.equal(harness.counts().realRefreshCalls, 0);
+  assert.equal(harness.counts().realOpenCalls, 0);
 });
 
 test("pending draw is detectable before modules load and delegates recovery after load", async () => {
