@@ -5,31 +5,39 @@ const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
 const index = fs.readFileSync(path.join(root, "client/index.html"), "utf8");
+const loader = fs.readFileSync(
+  path.join(root, "client/member-lottery-loader.js"),
+  "utf8"
+);
 const legacyPage = fs.readFileSync(path.join(root, "client/lottery.html"), "utf8");
 const workflow = fs.readFileSync(
   path.resolve(root, "..", ".github/workflows/validate-personal-brand-lottery.yml"),
   "utf8"
 );
 
-const v2Boundary = [
-  '    <script defer src="../shared/lottery-wheel.js"></script>',
-  '    <script defer src="../shared/module-registry.js"></script>',
-  '    <script defer src="lottery/contracts.js"></script>',
-  '    <script defer src="lottery/pending-request-store.js"></script>',
-  '    <script defer src="lottery/workspace-service.js"></script>',
-  '    <script defer src="lottery/preparation-service.js"></script>',
-  '    <script defer src="lottery/draw-service.js"></script>',
-  '    <script defer src="lottery/workspace-mapper.js"></script>',
-  '    <script defer src="lottery/wheel-animator.js"></script>',
-  '    <script defer src="lottery/dialog-view.js"></script>',
-  '    <script defer src="lottery/demo-provider.js"></script>',
-  '    <script defer src="lottery/dialog-controller.js"></script>',
-  '    <script defer src="member-lottery-v2.js"></script>',
-  '    <script defer src="script.js"></script>',
-].join("\n");
+const lazyBoundary = [
+  "../shared/module-registry.js",
+  "lottery/contracts.js",
+  "lottery/pending-request-store.js",
+  "lottery/workspace-service.js",
+  "lottery/preparation-service.js",
+  "lottery/draw-service.js",
+  "lottery/workspace-mapper.js",
+  "lottery/wheel-animator.js",
+  "lottery/dialog-view.js",
+  "lottery/demo-provider.js",
+  "lottery/dialog-controller.js",
+  "member-lottery-v2.js",
+];
 
-test("checked-in member entry uses the direct V2 dependency boundary", () => {
-  assert.ok(index.includes(v2Boundary), "client/index.html is missing the V2 lottery boundary");
+test("checked-in member entry exposes only the lazy V2 facade at startup", () => {
+  assert.match(index, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
+  assert.match(index, /src=["']member-lottery-loader\.js["']/);
+  assert.match(index, /src=["']script\.js["']/);
+  for (const source of lazyBoundary) {
+    assert.equal(index.includes(`src="${source}"`), false, `${source} must be lazy`);
+    assert.ok(loader.includes(`"${source}"`), `loader is missing ${source}`);
+  }
   assert.equal(index.includes('src="member-lottery.js"'), false);
   assert.equal(index.includes('src="lottery/wheel-draw-guard.js"'), false);
 });
@@ -41,12 +49,14 @@ test("legacy lottery deep link redirects to the V2 ticket panel", () => {
   assert.equal(fs.existsSync(path.join(root, "client/member-lottery.js")), false);
 });
 
-test("lottery workflow validates V2 without mutating the deployment branch", () => {
+test("lottery workflow validates the lazy V2 boundary without mutating deployment", () => {
   for (const scriptPath of [
     "shared/lottery-wheel.js",
     "shared/module-registry.js",
+    "client/member-lottery-loader.js",
     "client/member-lottery-v2.js",
     "client/lottery/*.js",
+    "tests/member-lottery-loader.test.js",
     "tests/lottery-draw-service.test.js",
   ]) {
     assert.ok(workflow.includes(scriptPath), `workflow is missing ${scriptPath}`);
@@ -56,14 +66,13 @@ test("lottery workflow validates V2 without mutating the deployment branch", () 
   assert.doesNotMatch(workflow, /git\s+push/);
 });
 
-test("V2 facade loads after its modules and before host configuration", () => {
-  const registryAt = v2Boundary.indexOf('src="../shared/module-registry.js"');
-  const drawAt = v2Boundary.indexOf('src="lottery/draw-service.js"');
-  const controllerAt = v2Boundary.indexOf('src="lottery/dialog-controller.js"');
-  const v2At = v2Boundary.indexOf('src="member-lottery-v2.js"');
-  const hostAt = v2Boundary.indexOf('src="script.js"');
-  assert.equal(
-    registryAt >= 0 && drawAt > registryAt && controllerAt > drawAt && v2At > controllerAt && hostAt > v2At,
-    true
-  );
+test("lazy V2 facade preserves deterministic module dependency order", () => {
+  let previous = -1;
+  for (const source of lazyBoundary) {
+    const current = loader.indexOf(`"${source}"`);
+    assert.notEqual(current, -1, `missing ${source}`);
+    assert.equal(current > previous, true, `${source} is out of dependency order`);
+    previous = current;
+  }
+  assert.match(loader, /root\.MemberLotteryDialog\s*=\s*facade/);
 });
