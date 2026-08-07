@@ -1,66 +1,70 @@
 # 抽獎轉盤就緒延遲診斷與部署說明
 
-## 核心結論
+## 現行 transaction boundary
 
-PR #13 已完成「先由 GAS 決定並保存結果，再讓中央按鈕只播放動畫」的安全架構；本次問題不是動畫時間，而是選券後的準備流程仍會串行等待重複的工作區讀取。
-
-修改前的正常路徑：
+轉盤就緒速度與正式開獎現在是兩個獨立階段：
 
 ```text
-開啟抽獎券清單
-  -> refreshTickets({ force: true })
-  -> getLotteryConfig
-  -> 使用者選券
-  -> preparation-service.load({ force: true })
-  -> 再次 getLotteryConfig
+選擇抽獎券
+  -> getLotteryConfig（force refresh）
+  -> ticket / lottery config validation
+  -> Canvas draw + target angle preparation
+  -> READY
+
+使用者點中央按鈕
+  -> 建立/沿用 requestId
   -> drawLottery
-  -> Canvas 與停止角度
-  -> 中央按鈕可用
+  -> authoritative result
+  -> animation
+  -> RESULT
 ```
 
-修改後：
+READY 之前不會呼叫 `drawLottery`。因此「ticket-to-ready」只量測最新工作區、票券驗證與 Canvas 準備，不再把 GAS 正式開獎延遲混在一起。
 
-```text
-開啟抽獎券清單
-  -> getLotteryConfig（同時間請求去重並保存工作區）
-  -> 使用者選券
-  -> 立即重用已載入的工作區做前置驗證
-  -> drawLottery（唯一必要的正式交易）
-  -> 使用後端權威設定建立 Canvas 與停止角度
-  -> 中央按鈕立即可用
-```
+## 為什麼 open(ticket) 使用 force refresh
 
-重用的工作區只用於前置顯示與快速驗證。正式 `drawLottery` 仍會在 GAS 內重新確認會員權限、抽獎券、卡片輪次、指定轉盤與設定版本，並回傳本次開獎的權威設定。因此即使前置快取較舊，也不能決定獎項或繞過後端驗證。
+抽獎券清單可以使用短期 cache 改善瀏覽體驗，但當使用者選定一張券準備正式抽獎時，前端必須重新確認：
 
-## 已確認根因
+- 該 `cardRoundKey` 仍存在。
+- 該 ticket 的 `lotteryTypeId` 仍一致。
+- 目前可用 Lottery Type / Prize Config 可被完整驗證。
 
-1. 抽獎券清單開啟時已呼叫一次 `getLotteryConfig`。
-2. 選券後 `preparation-service` 又使用 `force: true` 呼叫第二次 `getLotteryConfig`。
-3. 第二次設定請求與 `drawLottery` 串行，中央按鈕必須等待兩次 GAS 往返。
-4. UI 只顯示「正在準備轉盤」，無法辨識卡在工作區、正式開獎或 Canvas。
+所以 `preparation-service` 使用 `workspaceService.load({ force: true })`。這次網路往返是刻意保留的 correctness boundary；它不會消耗 ticket，也不會決定 prize。
 
-## 修改內容
+`workspace-service` 仍提供：
 
-- `workspace-service` 支援 `allowStale` 的預覽快取重用；明確 `force: true` 仍會重新同步。
-- 選券準備使用既有工作區，省略第二次設定往返。
-- `drawLottery` 仍只呼叫一次，重試仍沿用相同 request ID。
-- GAS 回傳的 `lottery` 與 `lotteryType` 仍覆蓋前端工作區，設定更新時保持正確。
-- UI 顯示「確認抽獎券／取得最新獎項／保存抽獎結果／建立轉盤」。
-- 超過 1.8 秒顯示慢速網路與安全重試說明。
-- 發送匿名階段耗時事件：
-  - `workspace_load`
-  - `workspace_validation`
-  - `draw_lottery`
-  - `preparation_service`
-  - `canvas_draw`
-  - `wheel_prepare`
-  - `ticket_to_ready`
+- 5 秒 fresh cache。
+- in-flight request dedupe。
+- bounded stale preview（預設最多 30 秒）。
+- explicit `force: true` bypass cache。
+- generation-based invalidation，防止舊 response 重新污染 cache。
 
-事件名稱為 `persona:lottery-performance`，detail 只包含 `phase`、`durationMs` 與 `source`，不包含 Token、request ID、會員 ID、卡片 ID、獎項或試算表資料。
+## 正式開獎延遲
 
-## 正式裝置量測
+使用者按中央按鈕後，`draw-service` 才送出 `drawLottery`。這段 latency 不能靠前端假結果隱藏，因為 GAS 是唯一 authority。
 
-在瀏覽器 DevTools Console 執行：
+目前使用者狀態會清楚區分：
+
+- PREPARING：正在同步最新票券與獎項，尚未開獎。
+- READY：可以正式抽獎。
+- DRAWING：後端正在驗證與保存本次結果。
+- ANIMATING：已收到 authoritative result，播放本機動畫。
+- ERROR + pending：結果不確定，使用同 request ID 安全重試。
+
+## 診斷事件
+
+前端仍發送匿名效能事件 `persona:lottery-performance`。detail 只包含 `phase`、`durationMs`、`source`，不包含 ID Token、request ID、會員 ID、ticket ID 或 prize。
+
+主要 phase：
+
+- `workspace_load`
+- `preparation_service`
+- `canvas_draw`
+- `wheel_prepare`
+- `ticket_to_ready`
+- `draw_lottery`
+
+瀏覽器 DevTools：
 
 ```javascript
 window.addEventListener("persona:lottery-performance", (event) => {
@@ -68,56 +72,84 @@ window.addEventListener("persona:lottery-performance", (event) => {
 });
 ```
 
-然後依序：
+## 判讀方式
 
-1. 登入會員。
-2. 開啟抽獎券清單。
-3. 選擇一張券。
-4. 等中央按鈕啟用。
-5. 記錄 `draw_lottery` 與 `ticket_to_ready`。
+### `ticket_to_ready` 高
 
-判讀方式：
+依序看：
 
-- `workspace_load` 是 `fresh-cache` 或 `stale-preview-cache`：選券後沒有第二次設定網路請求。
-- `draw_lottery` 很高：瓶頸在會員 GAS、Sheets 或網路。
-- `canvas_draw`／`wheel_prepare` 很高：瓶頸在裝置 Canvas 或獎項數量。
-- `ticket_to_ready` 明顯高於其他階段總和：需要檢查主執行緒或額外 UI 工作。
+1. `workspace_load`：GAS / network 讀取最新 config 是否慢。
+2. `canvas_draw`：裝置 Canvas 是否慢。
+3. `wheel_prepare`：獎項目標角度準備是否異常。
 
-## 部署確認
+PREPARING 不含 `draw_lottery`；若在 READY 前看到 draw request，代表 transaction boundary regression。
 
-### GitHub Pages
+### `draw_lottery` 高
 
-1. 合併 PR 後等待 Pages 發布完成。
-2. 使用無痕視窗開啟會員頁。
-3. DevTools Network 勾選 Disable cache 後重新整理。
-4. 確認 `workspace-service.js` 含 `allowStale`。
-5. 確認 `preparation-service.js` 的正式準備路徑沒有 `load({ force: true })`。
-6. Repository 沒有 Service Worker；若仍看到舊檔，優先檢查瀏覽器、LINE WebView 或 CDN 快取。
+瓶頸在正式交易：
 
-### 會員 GAS
+- LINE token verification（未命中短期驗證 cache）。
+- Google Sheets read/validation。
+- ScriptLock contention。
+- 網路或 Apps Script runtime。
 
-本次沒有修改 `gas/client/Code.gs`，因此不需要為本 PR 重新發布會員 GAS。
+不要用 client-side prize prediction 或提前 draw 來掩蓋這段時間；應從 GAS/Sheet 規模與量測處理。
 
-但 PR #13 曾修改會員 GAS。如果 PR #13 合併後尚未在 Apps Script「管理部署作業」建立新版本，正式環境仍可能使用舊 GAS。請確認：
+### 動畫卡頓
 
-1. 會員 Apps Script 的 `Code.gs` 與目前 `main` 一致。
-2. 既有 Web App 已建立新版本。
-3. 執行身分與存取權限未改變。
-4. `client/config.json` 的 `/exec` URL 指向該部署。
+正式動畫不讀網路，也不每 frame 重畫 Canvas。若 `draw_lottery` 已完成但轉盤仍不流暢，才檢查 GPU、CSS transform、requestAnimationFrame 與裝置負載。
 
-GitHub repository 無法直接證明 Apps Script 管理介面目前選用哪個 deployment version，必須由具備 Apps Script 權限的人員確認。
+## 安全重試量測
 
-## 安全與冪等性
+測試 timeout / 網路中斷時：
 
-- 獎項仍只由會員 GAS 決定。
-- 中央按鈕只在後端結果已保存且 Canvas 已完成後啟用。
-- 點擊中央按鈕後零後端請求。
-- timeout、BUSY、網路中斷仍保留 pending request。
-- 只有後端明確未開獎才清除 pending request。
-- Spreadsheet schema、GAS action 與 response contract 均未變更。
+1. 點中央按鈕。
+2. 在 request 已送出後中斷網路。
+3. 確認 UI 顯示 pending / 安全重試。
+4. 恢復網路後重試。
+5. 檢查 `LotteryDraws`：同一 request ID 只有一筆。
+6. 第二次回應必須是原 draw 的 replay，而非新 prize。
+
+快速雙擊亦應只出現一次 `draw_lottery` in-flight request。
+
+## Authoritative config 更新
+
+READY 與 CLICK 之間管理員可能發布新 Lottery Config。前端 READY 時顯示的 config 不是開獎 authority；`drawLottery` 會使用後端最新 config。
+
+若 draw response 的 `configVersion` 改變：
+
+- `workspace-mapper` 驗證 authoritative lottery。
+- `wheel-animator` 在動畫前重新建立必要 Canvas / target angles。
+- 不再額外呼叫 `getLotteryConfig`。
+- 最終指針仍必須停在 authoritative prize center。
+
+## Legacy URL
+
+`client/lottery.html` 不再是一套獨立 Lottery App，只保留 compatibility redirect 到：
+
+```text
+client/?panel=tickets
+```
+
+Query/hash 會保留。正式 runtime 不再載入 `client/lottery.js` 或 `client/member-lottery.js`。
+
+## GitHub Pages 部署確認
+
+1. 確認 Draft PR 的 validation workflows 全部通過。
+2. 人工驗證 LIFF 後再合併 `main`。
+3. 等 GitHub Pages 發布。
+4. 使用無痕視窗或清除 LINE WebView cache 驗證新 JS。
+5. Network 面板確認：
+   - 選券：只有 `getLotteryConfig`。
+   - READY 前：沒有 `drawLottery`。
+   - 中央 click：才出現 `drawLottery`。
+
+本次 refactor 不需要更改會員 GAS action、Spreadsheet schema 或 GAS deployment URL；若正式 Apps Script 部署版本落後 repository `main`，仍需由具 Apps Script 權限的人員建立新 deployment version。
 
 ## 回滾
 
-1. Revert 本 PR 的 merge commit。
+本次前端 transaction refactor 不變更 Spreadsheet schema。需要回滾時：
+
+1. Revert PR merge commit。
 2. 等待 GitHub Pages 重新發布。
-3. 本 PR 沒有 GAS 或 Spreadsheet 變更，不需要 GAS／資料回滾。
+3. GAS / Spreadsheet 無 schema migration，因此不需要資料回滾。
