@@ -84,6 +84,15 @@
           });
         }
 
+        function emitWorkspaceState(state, requestGeneration) {
+          emit("persona:lottery-workspace-state", {
+            state: String(state || ""),
+            source: "network",
+            generation: requestGeneration,
+            current: requestGeneration === generation,
+          });
+        }
+
         function cacheAge() {
           return cachedResponse ? Math.max(0, now() - cachedAt) : Infinity;
         }
@@ -151,6 +160,7 @@
           emit("persona:lottery-phase", { phase: "loading_workspace" });
           var startedAt = performanceNow();
           var requestGeneration = generation;
+          emitWorkspaceState("loading", requestGeneration);
           var requestPromise = Promise.resolve()
             .then(function () {
               return options.request("getLotteryConfig", {}, undefined);
@@ -159,7 +169,13 @@
             .then(function (response) {
               if (requestGeneration === generation) prime(response);
               emitMetric("workspace_load", startedAt, "network");
+              emitWorkspaceState("ready", requestGeneration);
               return response;
+            })
+            .catch(function (error) {
+              emitMetric("workspace_load", startedAt, "network-error");
+              emitWorkspaceState("error", requestGeneration);
+              throw error;
             })
             .finally(function () {
               if (inFlight === requestPromise) {
