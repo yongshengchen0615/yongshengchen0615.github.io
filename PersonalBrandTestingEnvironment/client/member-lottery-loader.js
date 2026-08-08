@@ -2,8 +2,8 @@
   "use strict";
 
   var REGISTRY_SOURCE = "../shared/module-registry.js";
+  var WHEEL_SOURCE = "../shared/lottery-wheel.js";
   var RUNTIME_SOURCES = [
-    "../shared/lottery-wheel.js",
     "lottery/contracts.js",
     "lottery/pending-request-store.js",
     "lottery/workspace-service.js",
@@ -308,14 +308,15 @@
     if (loadPromise) return loadPromise;
 
     var startedAt = performanceNow();
-    var promise = loadScript(REGISTRY_SOURCE)
-      .then(function () {
-        return Promise.all(
-          RUNTIME_SOURCES.map(function (source) {
-            return loadScript(source);
-          })
-        );
-      })
+    var wheelPromise = loadScript(WHEEL_SOURCE);
+    var definitionsPromise = loadScript(REGISTRY_SOURCE).then(function () {
+      return Promise.all(
+        RUNTIME_SOURCES.map(function (source) {
+          return loadScript(source);
+        })
+      );
+    });
+    var promise = Promise.all([wheelPromise, definitionsPromise])
       .then(function () {
         return loadScript(ENTRY_SOURCE);
       })
