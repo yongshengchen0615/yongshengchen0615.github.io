@@ -43,7 +43,7 @@ test("loader prewarm is runtime-only and preserves user-triggered authoritative 
 
   assert.match(body, /ensureLoaded\(\)/);
   assert.match(body, /requestIdleCallback/);
-  assert.match(body, /setTimeout\(startPrewarm,\s*250\)/);
+  assert.match(body, /setTimeout\(startPrewarm,\s*0\)/);
   assert.doesNotMatch(body, /refreshTickets|getLotteryConfig|drawLottery|\brequestId\b/);
 
   const refreshStart = loader.indexOf("function refreshTickets(options)");
