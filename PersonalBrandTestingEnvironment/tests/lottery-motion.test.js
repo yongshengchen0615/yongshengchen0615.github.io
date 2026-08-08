@@ -68,6 +68,7 @@ test("member lottery v2 settles quickly with a continuous fast-to-slow curve", (
   assert.match(animator, /rotationDelta\s*\*\s*eased/);
   assert.match(animator, /prefers-reduced-motion:\s*reduce/);
   assert.match(animator, /function\s+prepare\s*\(/);
+  assert.match(animator, /function\s+startPendingSpin\s*\(/);
   assert.doesNotMatch(animator, /startWaiting|waitingFrame|waitingLastTime/);
 });
 
@@ -101,6 +102,24 @@ test("pending draw ids are created only by draw service and reused for retries",
   );
   assert.match(spin, /performDraw/);
   assert.doesNotMatch(spin, /options\.request\(/);
+});
+
+test("central draw click starts prize-agnostic motion before awaiting the authoritative result", () => {
+  const spin = getFunctionContaining(controller, /function\s+handleSpin\s*\(/);
+  const drawIndex = spin.indexOf("drawPromise = performDraw()");
+  const pendingSpinIndex = spin.indexOf("animator.startPendingSpin()");
+  const responseIndex = spin.indexOf(".then(function (response)");
+
+  assert.ok(drawIndex >= 0, "draw service should be invoked synchronously so requestId exists first");
+  assert.ok(
+    pendingSpinIndex > drawIndex,
+    "pending motion must start after the persistent draw request is created"
+  );
+  assert.ok(
+    responseIndex > pendingSpinIndex,
+    "pending motion must begin before the authoritative response is handled"
+  );
+  assert.doesNotMatch(spin, /getLotteryConfig/);
 });
 
 test("only definitive no-draw failures release the persisted request", () => {
