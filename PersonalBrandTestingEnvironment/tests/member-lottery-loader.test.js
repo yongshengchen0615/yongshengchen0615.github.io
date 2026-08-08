@@ -10,8 +10,8 @@ const loaderCode = fs.readFileSync(
 );
 
 const REGISTRY_SOURCE = "../shared/module-registry.js";
+const WHEEL_SOURCE = "../shared/lottery-wheel.js";
 const RUNTIME_SOURCES = [
-  "../shared/lottery-wheel.js",
   "lottery/contracts.js",
   "lottery/pending-request-store.js",
   "lottery/workspace-service.js",
@@ -228,6 +228,7 @@ test("loader keeps Lottery V2 and wheel off the initial execution path", async (
 
   await loader.ensureLoaded();
   assert.deepEqual(harness.appendedSources, [
+    WHEEL_SOURCE,
     REGISTRY_SOURCE,
     ...RUNTIME_SOURCES,
     ENTRY_SOURCE,
@@ -240,21 +241,29 @@ test("loader keeps Lottery V2 and wheel off the initial execution path", async (
   );
 });
 
-test("registry loads first, runtime definitions download together, and entry loads last", async () => {
+test("wheel and registry start together, definitions wait for registry, and entry loads last", async () => {
   const harness = createHarness({ manualLoad: true });
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
 
   const loading = loader.ensureLoaded();
-  assert.deepEqual(harness.appendedSources, [REGISTRY_SOURCE]);
+  assert.deepEqual(harness.appendedSources, [WHEEL_SOURCE, REGISTRY_SOURCE]);
 
   harness.emitScript(REGISTRY_SOURCE);
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(harness.appendedSources, [REGISTRY_SOURCE, ...RUNTIME_SOURCES]);
+  assert.deepEqual(harness.appendedSources, [
+    WHEEL_SOURCE,
+    REGISTRY_SOURCE,
+    ...RUNTIME_SOURCES,
+  ]);
   assert.equal(harness.appendedSources.includes(ENTRY_SOURCE), false);
 
   RUNTIME_SOURCES.forEach((source) => harness.emitScript(source));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(harness.appendedSources.includes(ENTRY_SOURCE), false);
+
+  harness.emitScript(WHEEL_SOURCE);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(harness.appendedSources.at(-1), ENTRY_SOURCE);
 
