@@ -359,23 +359,29 @@ function flush() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-test("open prepares only the latest config and does not create a draw transaction", async () => {
+test("prepare-for-open loads the latest config while dialog open stays local-only", async () => {
   const harness = createHarness();
 
-  const opening = harness.controller.open(harness.ticket);
+  const preparation = harness.controller.prepareForOpen(harness.ticket);
   assert.equal(harness.controller.canClose(), false);
-  assert.equal(await opening, true);
+  assert.equal(await preparation, true);
   assert.deepEqual(
     harness.requestCalls.map((call) => call.action),
     ["getLotteryConfig"]
   );
   assert.equal(harness.pending(), null);
   assert.equal(harness.controller.canClose(), true);
+  assert.equal(harness.viewEvents.includes("ready"), false);
+
+  const requestCount = harness.requestCalls.length;
+  assert.equal(await harness.controller.open(harness.ticket), true);
+  assert.equal(harness.requestCalls.length, requestCount);
   assert.ok(harness.viewEvents.includes("ready"));
 });
 
 test("central spin creates the request id, starts pending motion, calls drawLottery once, then settles", async () => {
   const harness = createHarness();
+  await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
 
   harness.handlers().onSpin();
@@ -397,6 +403,7 @@ test("central spin creates the request id, starts pending motion, calls drawLott
 
 test("pending motion is immediate while a slow authoritative draw is still unresolved", async () => {
   const harness = createHarness({ deferDraw: true });
+  await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
 
   harness.handlers().onSpin();
@@ -423,6 +430,7 @@ test("pending motion is immediate while a slow authoritative draw is still unres
 
 test("rapid duplicate spin clicks cannot create a second draw request", async () => {
   const harness = createHarness({ deferDraw: true });
+  await harness.controller.prepareForOpen(harness.ticket);
   await harness.controller.open(harness.ticket);
 
   harness.handlers().onSpin();
@@ -463,10 +471,10 @@ test("a restored pending request is prepared read-only and reuses its request id
   assert.equal(harness.pending(), null);
 });
 
-test("rapid duplicate opens share one read-only preparation transaction", async () => {
+test("rapid duplicate preparations share one read-only preparation transaction", async () => {
   const harness = createHarness();
-  const first = harness.controller.open(harness.ticket);
-  const second = harness.controller.open(harness.ticket);
+  const first = harness.controller.prepareForOpen(harness.ticket);
+  const second = harness.controller.prepareForOpen(harness.ticket);
 
   assert.equal(first, second);
   assert.equal(await first, true);
@@ -474,4 +482,6 @@ test("rapid duplicate opens share one read-only preparation transaction", async 
     harness.requestCalls.map((call) => call.action),
     ["getLotteryConfig"]
   );
+  assert.equal(await harness.controller.open(harness.ticket), true);
+  assert.equal(harness.requestCalls.length, 1);
 });
