@@ -9,10 +9,27 @@ const loaderCode = fs.readFileSync(
   "utf8"
 );
 
+const registrySource = "../shared/module-registry.js";
+const definitionSources = [
+  "lottery/contracts.js",
+  "lottery/pending-request-store.js",
+  "lottery/workspace-service.js",
+  "lottery/preparation-service.js",
+  "lottery/draw-service.js",
+  "lottery/workspace-mapper.js",
+  "lottery/wheel-animator.js",
+  "lottery/dialog-view.js",
+  "lottery/demo-provider.js",
+  "lottery/dialog-controller.js",
+];
+const entrySource = "member-lottery-v2.js";
+const allSources = [registrySource, ...definitionSources, entrySource];
+
 function createHarness(options = {}) {
   const appendedSources = [];
   const storage = new Map();
   const listeners = new Map();
+  const scriptsBySource = new Map();
   let realConfigureCalls = 0;
   let realRefreshCalls = 0;
   let realOpenCalls = 0;
@@ -62,15 +79,24 @@ function createHarness(options = {}) {
     };
   }
 
+  const ticketList = {
+    observer: null,
+  };
+
   const document = {
     head: {
       appendChild(script) {
         appendedSources.push(script.src);
+        scriptsBySource.set(script.src, script);
         script.parentNode = this;
-        if (script.src === "member-lottery-v2.js") {
+        if (script.src === entrySource) {
           context.MemberLotteryDialog = realFacade;
         }
-        queueMicrotask(() => script.emit(options.failSource === script.src ? "error" : "load"));
+        if (!options.manualLoads) {
+          queueMicrotask(() =>
+            script.emit(options.failSource === script.src ? "error" : "load")
+          );
+        }
       },
       removeChild() {},
     },
@@ -82,10 +108,22 @@ function createHarness(options = {}) {
     querySelector() {
       return null;
     },
-    getElementById() {
-      return null;
+    getElementById(id) {
+      return id === "member-earned-ticket-list" ? ticketList : null;
     },
   };
+
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe(target) {
+      target.observer = this;
+    }
+    disconnect() {
+      if (ticketList.observer === this) ticketList.observer = null;
+    }
+  }
 
   const context = {
     console,
@@ -97,9 +135,12 @@ function createHarness(options = {}) {
     Object,
     RegExp,
     String,
+    Date,
+    Math,
     setTimeout,
     clearTimeout,
     queueMicrotask,
+    MutationObserver: FakeMutationObserver,
     sessionStorage: {
       getItem(key) {
         return storage.get(key) ?? null;
@@ -124,6 +165,12 @@ function createHarness(options = {}) {
     storage,
     appendedSources,
     realFacade,
+    ticketList,
+    release(source, event = "load") {
+      const script = scriptsBySource.get(source);
+      assert.ok(script, `missing script ${source}`);
+      script.emit(event);
+    },
     counts() {
       return {
         realConfigureCalls,
@@ -165,6 +212,10 @@ function createTicket() {
   };
 }
 
+function flush() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 test("loader keeps Lottery V2 off the initial execution path", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
@@ -174,22 +225,71 @@ test("loader keeps Lottery V2 off the initial execution path", async () => {
   assert.equal(harness.counts().realConfigureCalls, 0);
 
   await loader.ensureLoaded();
-  assert.deepEqual(harness.appendedSources, [
-    "../shared/module-registry.js",
-    "lottery/contracts.js",
-    "lottery/pending-request-store.js",
-    "lottery/workspace-service.js",
-    "lottery/preparation-service.js",
-    "lottery/draw-service.js",
-    "lottery/workspace-mapper.js",
-    "lottery/wheel-animator.js",
-    "lottery/dialog-view.js",
-    "lottery/demo-provider.js",
-    "lottery/dialog-controller.js",
-    "member-lottery-v2.js",
-  ]);
+  assert.deepEqual(harness.appendedSources, allSources);
   assert.equal(harness.counts().realConfigureCalls, 1);
   assert.equal(harness.context.MemberLotteryDialog, loader);
+});
+
+test("registry loads first, definition downloads start together, and entry loads last", async () => {
+  const harness = createHarness({ manualLoads: true });
+  const loader = harness.context.MemberLotteryDialog;
+  configure(loader);
+
+  const loading = loader.ensureLoaded();
+  assert.deepEqual(harness.appendedSources, [registrySource]);
+
+  harness.release(registrySource);
+  await flush();
+  assert.deepEqual(harness.appendedSources, [registrySource, ...definitionSources]);
+  assert.equal(harness.appendedSources.includes(entrySource), false);
+
+  definitionSources.forEach((source) => harness.release(source));
+  await flush();
+  assert.equal(harness.appendedSources.at(-1), entrySource);
+
+  harness.release(entrySource);
+  await loading;
+  assert.deepEqual(harness.appendedSources, allSources);
+});
+
+test("eligible ticket snapshot opportunistically prewarms runtime without GAS", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  let requestCalls = 0;
+  const summary = {
+    availableDraws: 1,
+    availableRewards: [createTicket()],
+  };
+
+  configure(loader, {
+    getCurrentCardSummary: () => summary,
+    request() {
+      requestCalls += 1;
+      return Promise.resolve({ ok: true });
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(harness.appendedSources, allSources);
+  assert.equal(harness.counts().realConfigureCalls, 1);
+  assert.equal(requestCalls, 0);
+});
+
+test("card render mutation starts prewarm only after a ticket becomes available", async () => {
+  const harness = createHarness();
+  const loader = harness.context.MemberLotteryDialog;
+  let summary = { availableDraws: 0, availableRewards: [] };
+  configure(loader, { getCurrentCardSummary: () => summary });
+
+  assert.deepEqual(harness.appendedSources, []);
+  assert.ok(harness.ticketList.observer);
+
+  summary = { availableDraws: 1, availableRewards: [createTicket()] };
+  harness.ticketList.observer.callback();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.deepEqual(harness.appendedSources, allSources);
+  assert.equal(harness.ticketList.observer, null);
 });
 
 test("concurrent loader calls share one module load and refresh stays stale-while-revalidate", async () => {
