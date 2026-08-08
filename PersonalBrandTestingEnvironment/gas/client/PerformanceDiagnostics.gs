@@ -62,18 +62,51 @@ function diagnoseMemberGasScale() {
     byKey[table.key] = table;
   });
 
+  var getLotteryConfigScanMultipliers = {
+    members: 1,
+    pointRedemptions: 1,
+    pointCardSettings: 1,
+    lotteryTypes: 1,
+    lotteryPrizes: 1,
+    lotteryDraws: 1,
+  };
+  var drawLotterySuccessfulScanMultipliers = {
+    members: 1,
+    pointRedemptions: 3,
+    pointCardSettings: 3,
+    lotteryTypes: 1,
+    lotteryPrizes: 2,
+    lotteryDraws: 2,
+  };
+
+  function estimateReadCells_(multipliers) {
+    return Object.keys(multipliers).reduce(function (total, key) {
+      var table = byKey[key];
+      if (!table) return total;
+      // Members lookup scans only the identifier column before one bounded row
+      // read, so use row count rather than full row width for this estimate.
+      var unit = key === "members" ? table.rows : table.estimatedCells;
+      return total + unit * multipliers[key];
+    }, 0);
+  }
+
   var estimatedReadCells = {
     listPointHistory:
       byKey.members.rows +
       byKey.pointRedemptions.estimatedCells * 2 +
       byKey.lotteryDraws.estimatedCells,
-    getLotteryConfig:
-      byKey.members.rows +
-      byKey.pointRedemptions.estimatedCells +
-      byKey.pointCardSettings.estimatedCells +
-      byKey.lotteryTypes.estimatedCells +
-      byKey.lotteryPrizes.estimatedCells +
-      byKey.lotteryDraws.estimatedCells,
+    getLotteryConfig: estimateReadCells_(getLotteryConfigScanMultipliers),
+  };
+
+  var lotteryOperations = {
+    getLotteryConfig: {
+      scanMultipliers: getLotteryConfigScanMultipliers,
+      estimatedReadCells: estimatedReadCells.getLotteryConfig,
+    },
+    drawLotterySuccessful: {
+      scanMultipliers: drawLotterySuccessfulScanMultipliers,
+      estimatedReadCells: estimateReadCells_(drawLotterySuccessfulScanMultipliers),
+    },
   };
 
   var recommendations = [];
@@ -106,6 +139,7 @@ function diagnoseMemberGasScale() {
     },
     tables: tables,
     estimatedReadCells: estimatedReadCells,
+    lotteryOperations: lotteryOperations,
     recommendations: recommendations,
   };
 
