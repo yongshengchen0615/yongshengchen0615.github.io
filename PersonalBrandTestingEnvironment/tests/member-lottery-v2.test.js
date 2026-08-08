@@ -201,6 +201,10 @@ function createHarness({ initialPending = false, deferDraw = false } = {}) {
         prepare() {
           viewEvents.push("prepare-wheel");
         },
+        startPendingSpin() {
+          viewEvents.push("pending-spin");
+          return true;
+        },
         reset() {
           viewEvents.push("reset-wheel");
         },
@@ -370,11 +374,14 @@ test("open prepares only the latest config and does not create a draw transactio
   assert.ok(harness.viewEvents.includes("ready"));
 });
 
-test("central spin creates the request id, calls drawLottery once, then animates", async () => {
+test("central spin creates the request id, starts pending motion, calls drawLottery once, then settles", async () => {
   const harness = createHarness();
   await harness.controller.open(harness.ticket);
 
   harness.handlers().onSpin();
+  assert.equal(harness.requestCalls[1].action, "drawLottery");
+  assert.equal(harness.requestCalls[1].requestId, "request-0001");
+  assert.ok(harness.viewEvents.includes("pending-spin"));
   await flush();
   await flush();
 
@@ -382,11 +389,36 @@ test("central spin creates the request id, calls drawLottery once, then animates
     harness.requestCalls.map((call) => call.action),
     ["getLotteryConfig", "drawLottery"]
   );
-  assert.equal(harness.requestCalls[1].requestId, "request-0001");
   assert.ok(harness.viewEvents.includes("settle"));
   assert.ok(harness.viewEvents.includes("result"));
   assert.equal(harness.pending(), null);
   assert.equal(harness.controller.canClose(), true);
+});
+
+test("pending motion is immediate while a slow authoritative draw is still unresolved", async () => {
+  const harness = createHarness({ deferDraw: true });
+  await harness.controller.open(harness.ticket);
+
+  harness.handlers().onSpin();
+
+  assert.equal(
+    harness.requestCalls.filter((call) => call.action === "drawLottery").length,
+    1
+  );
+  assert.equal(harness.pending().requestId, "request-0001");
+  assert.ok(harness.viewEvents.includes("pending-spin"));
+  assert.equal(harness.viewEvents.includes("settle"), false);
+  assert.equal(harness.viewEvents.includes("result"), false);
+  assert.equal(harness.controller.canClose(), false);
+
+  harness.resolveDeferredDraw();
+  await flush();
+  await flush();
+
+  assert.ok(
+    harness.viewEvents.indexOf("pending-spin") < harness.viewEvents.indexOf("settle")
+  );
+  assert.ok(harness.viewEvents.includes("result"));
 });
 
 test("rapid duplicate spin clicks cannot create a second draw request", async () => {
@@ -398,6 +430,10 @@ test("rapid duplicate spin clicks cannot create a second draw request", async ()
   await flush();
   assert.equal(
     harness.requestCalls.filter((call) => call.action === "drawLottery").length,
+    1
+  );
+  assert.equal(
+    harness.viewEvents.filter((event) => event === "pending-spin").length,
     1
   );
 
@@ -419,6 +455,7 @@ test("a restored pending request is prepared read-only and reuses its request id
   assert.equal(harness.controller.canClose(), false);
 
   harness.handlers().onSpin();
+  assert.ok(harness.viewEvents.includes("pending-spin"));
   await flush();
   await flush();
   assert.equal(harness.requestCalls[1].action, "drawLottery");
