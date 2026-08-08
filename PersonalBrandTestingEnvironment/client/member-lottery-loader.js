@@ -348,8 +348,12 @@
     }
     if (prewarmPromise) return prewarmPromise;
 
+    var scheduledAt = performanceNow();
     var promise = new Promise(function (resolve) {
-      function startPrewarm() {
+      function startPrewarm(deadline) {
+        var schedulingSource =
+          deadline && typeof deadline.timeRemaining === "function" ? "idle" : "task";
+        emitMetric("lottery_runtime_prewarm_wait", scheduledAt, schedulingSource);
         ensureLoaded().then(
           function () {
             resolve(true);
