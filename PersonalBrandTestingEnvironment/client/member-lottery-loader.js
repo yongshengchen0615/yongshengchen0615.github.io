@@ -582,12 +582,13 @@
       return demoPromise;
     }
 
-    var promise = ensureLoaded()
-      .then(function (controller) {
-        return loadSessionConfig().then(function () {
-          // Prime controller state from sessionRequest(); this does not reach GAS.
-          return controller.refreshTickets({ force: true });
-        });
+    var runtimePromise = ensureLoaded();
+    var configPromise = loadSessionConfig();
+    var promise = Promise.all([runtimePromise, configPromise])
+      .then(function (results) {
+        var controller = results[0];
+        // Prime controller state from sessionRequest(); this does not reach GAS.
+        return controller.refreshTickets({ force: true });
       })
       .then(
         function () {
@@ -644,10 +645,7 @@
     var documentValue = root.document;
     var target =
       documentValue && (documentValue.body || documentValue.documentElement);
-    if (
-      !target ||
-      typeof root.MutationObserver !== "function"
-    ) {
+    if (!target || typeof root.MutationObserver !== "function") {
       return;
     }
 
