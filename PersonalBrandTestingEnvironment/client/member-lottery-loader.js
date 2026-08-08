@@ -1,8 +1,8 @@
 (function (root) {
   "use strict";
 
-  var MODULE_SOURCES = [
-    "../shared/module-registry.js",
+  var MODULE_REGISTRY_SOURCE = "../shared/module-registry.js";
+  var MODULE_DEFINITION_SOURCES = [
     "lottery/contracts.js",
     "lottery/pending-request-store.js",
     "lottery/workspace-service.js",
@@ -13,19 +13,52 @@
     "lottery/dialog-view.js",
     "lottery/demo-provider.js",
     "lottery/dialog-controller.js",
-    "member-lottery-v2.js",
   ];
+  var MODULE_ENTRY_SOURCE = "member-lottery-v2.js";
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
   var configuredOptions = null;
   var realFacade = null;
   var loadPromise = null;
   var facade = null;
   var openVersion = 0;
+  var prewarmObserver = null;
+  var prewarmScheduled = false;
 
   function createLoaderError(code, message) {
     var error = new Error(message);
     error.code = code;
     return error;
+  }
+
+  function performanceNow() {
+    return root.performance && typeof root.performance.now === "function"
+      ? root.performance.now()
+      : Date.now();
+  }
+
+  function emitMetric(phase, startedAt, source) {
+    if (
+      typeof root.dispatchEvent !== "function" ||
+      typeof root.CustomEvent !== "function"
+    ) {
+      return;
+    }
+    try {
+      root.dispatchEvent(
+        new root.CustomEvent("persona:lottery-performance", {
+          detail: Object.freeze({
+            phase: String(phase || ""),
+            durationMs: Math.max(
+              0,
+              Math.round((performanceNow() - startedAt) * 10) / 10
+            ),
+            source: String(source || "network"),
+          }),
+        })
+      );
+    } catch (_error) {
+      // Diagnostics must never alter lottery behavior.
+    }
   }
 
   function isDialogOpen(dialog) {
@@ -270,17 +303,107 @@
     return realFacade;
   }
 
+  function disconnectPrewarmObserver() {
+    if (!prewarmObserver) return;
+    try {
+      prewarmObserver.disconnect();
+    } catch (_error) {
+      // Background optimization must never affect the member UI.
+    }
+    prewarmObserver = null;
+  }
+
+  function hasEligibleTicket() {
+    if (
+      !configuredOptions ||
+      typeof configuredOptions.getCurrentCardSummary !== "function"
+    ) {
+      return false;
+    }
+    try {
+      var summary = configuredOptions.getCurrentCardSummary();
+      return Boolean(
+        summary &&
+          Array.isArray(summary.availableRewards) &&
+          summary.availableRewards.length > 0
+      );
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function scheduleIdle(callback) {
+    if (typeof root.requestIdleCallback === "function") {
+      root.requestIdleCallback(callback, { timeout: 1500 });
+      return;
+    }
+    if (typeof root.setTimeout === "function") {
+      root.setTimeout(callback, 0);
+      return;
+    }
+    Promise.resolve().then(callback);
+  }
+
+  function scheduleRuntimePrewarmIfEligible() {
+    if (realFacade || loadPromise || prewarmScheduled || !hasEligibleTicket()) {
+      return false;
+    }
+    prewarmScheduled = true;
+    disconnectPrewarmObserver();
+    scheduleIdle(function () {
+      prewarmScheduled = false;
+      if (realFacade || loadPromise || !hasEligibleTicket()) return;
+      ensureLoaded().catch(function () {
+        // Background prewarm is opportunistic. User-triggered open/refresh will
+        // retry through the normal fail-closed path if this attempt failed.
+      });
+    });
+    return true;
+  }
+
+  function installRuntimePrewarmObserver() {
+    disconnectPrewarmObserver();
+    if (scheduleRuntimePrewarmIfEligible()) return;
+    var documentValue = root.document;
+    if (
+      !documentValue ||
+      typeof documentValue.getElementById !== "function" ||
+      typeof root.MutationObserver !== "function"
+    ) {
+      return;
+    }
+    var ticketList = documentValue.getElementById("member-earned-ticket-list");
+    if (!ticketList) return;
+    prewarmObserver = new root.MutationObserver(function () {
+      scheduleRuntimePrewarmIfEligible();
+    });
+    prewarmObserver.observe(ticketList, { childList: true });
+  }
+
   function ensureLoaded() {
     if (realFacade) return Promise.resolve(realFacade);
     if (loadPromise) return loadPromise;
 
-    var promise = MODULE_SOURCES.reduce(function (chain, source) {
-      return chain.then(function () {
-        return loadScript(source);
-      });
-    }, Promise.resolve())
+    disconnectPrewarmObserver();
+    var startedAt = performanceNow();
+    var promise = loadScript(MODULE_REGISTRY_SOURCE)
+      .then(function () {
+        return Promise.all(
+          MODULE_DEFINITION_SOURCES.map(function (source) {
+            return loadScript(source);
+          })
+        );
+      })
+      .then(function () {
+        return loadScript(MODULE_ENTRY_SOURCE);
+      })
       .then(configureRealFacade)
+      .then(function (controller) {
+        emitMetric("lottery_runtime_load", startedAt, "network");
+        return controller;
+      })
       .catch(function (error) {
+        emitMetric("lottery_runtime_load", startedAt, "network-error");
         loadPromise = null;
         root.MemberLotteryDialog = facade;
         throw error;
@@ -362,6 +485,7 @@
   function configure(options) {
     configuredOptions = options && typeof options === "object" ? options : {};
     if (realFacade) realFacade.configure(configuredOptions);
+    installRuntimePrewarmObserver();
     return facade;
   }
 
