@@ -62,7 +62,7 @@
           }
         });
 
-        preconnectGasOrigin(config.GAS_WEB_APP_URL);
+        preconnectGasUrl(config.GAS_WEB_APP_URL);
         return Object.freeze(config);
       })
       .catch(function (error) {
@@ -74,10 +74,14 @@
       });
   }
 
-  function preconnectGasOrigin(gasUrl) {
-    if (!isValidGasUrl(gasUrl) || !document || !document.head) return;
+  function preconnectGasUrl(value) {
+    if (!isValidGasUrl(value)) return;
+    if (!document || typeof document.createElement !== "function") return;
 
-    var origin = new URL(String(gasUrl).trim()).origin;
+    var parent = document.head || document.documentElement;
+    if (!parent || typeof parent.appendChild !== "function") return;
+
+    var origin = new URL(String(value).trim()).origin;
     var selector = 'link[rel="preconnect"][href="' + origin + '"]';
     if (
       typeof document.querySelector === "function" &&
@@ -86,12 +90,11 @@
       return;
     }
 
-    if (typeof document.createElement !== "function") return;
     var link = document.createElement("link");
     link.rel = "preconnect";
     link.href = origin;
     link.crossOrigin = "anonymous";
-    document.head.appendChild(link);
+    parent.appendChild(link);
   }
 
   function sendRequest(options) {
