@@ -18,6 +18,9 @@
   var ENTRY_SOURCE = "member-lottery-v2.js";
   var REQUEST_STORAGE_PREFIX = "persona-member-lottery-round-request:";
   var configuredOptions = null;
+  var rawRequest = null;
+  var sessionConfigResponse = null;
+  var sessionConfigPromise = null;
   var realFacade = null;
   var loadPromise = null;
   var prewarmPromise = null;
@@ -191,7 +194,7 @@
 
     dialog.setAttribute("aria-busy", "true");
     status.textContent =
-      "正在準備轉盤：同步最新抽獎設定、確認票券並建立轉盤；完成後才會開啟。";
+      "正在準備轉盤：使用登入時載入的抽獎資料建立轉盤；完成後即開啟。";
     status.dataset.tone = "loading";
     if (typeof dialog.querySelectorAll === "function") {
       dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
@@ -244,7 +247,7 @@
     if (!dialog || !status || !isDialogOpen(dialog)) return;
     dialog.setAttribute("aria-busy", "false");
     status.textContent =
-      message || "轉盤準備失敗；目前票券資料仍保留，請確認網路後再試。";
+      message || "登入時的轉盤資料尚未載入完成，請重新整理後再試。";
     status.dataset.tone = "warning";
     if (typeof dialog.querySelectorAll === "function") {
       dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
@@ -334,51 +337,89 @@
     return promise;
   }
 
-  function prewarm() {
-    if (realFacade || loadPromise) {
-      return ensureLoaded().then(
+  function sessionRequest(action, fields, requestId) {
+    if (action === "getLotteryConfig") {
+      if (sessionConfigResponse) return Promise.resolve(sessionConfigResponse);
+      if (sessionConfigPromise) return sessionConfigPromise;
+      return Promise.reject(
+        createLoaderError(
+          "LOTTERY_SESSION_NOT_READY",
+          "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
+        )
+      );
+    }
+    if (typeof rawRequest !== "function") {
+      return Promise.reject(
+        createLoaderError("NOT_CONFIGURED", "會員抽獎尚未完成初始化。")
+      );
+    }
+    return rawRequest(action, fields, requestId);
+  }
+
+  function loadSessionConfig() {
+    if (sessionConfigResponse) return Promise.resolve(sessionConfigResponse);
+    if (sessionConfigPromise) return sessionConfigPromise;
+    if (typeof rawRequest !== "function") {
+      return Promise.reject(
+        createLoaderError("NOT_CONFIGURED", "會員抽獎尚未完成初始化。")
+      );
+    }
+
+    var startedAt = performanceNow();
+    var promise = Promise.resolve()
+      .then(function () {
+        return rawRequest("getLotteryConfig", {}, undefined);
+      })
+      .then(function (response) {
+        if (!response || response.ok !== true || !response.data) {
+          throw createLoaderError(
+            "INVALID_RESPONSE",
+            "登入時取得的抽獎資料格式不完整。"
+          );
+        }
+        sessionConfigResponse = response;
+        emitMetric("lottery_session_preload", startedAt, "network");
+        return response;
+      })
+      .catch(function (error) {
+        emitMetric("lottery_session_preload", startedAt, "network-error");
+        throw error;
+      })
+      .finally(function () {
+        if (sessionConfigPromise === promise) sessionConfigPromise = null;
+      });
+    sessionConfigPromise = promise;
+    return promise;
+  }
+
+  function preloadSession() {
+    if (prewarmPromise) return prewarmPromise;
+    var promise = ensureLoaded()
+      .then(function (controller) {
+        return loadSessionConfig().then(function () {
+          return controller.refreshTickets({ force: true });
+        });
+      })
+      .then(
         function () {
           return true;
         },
         function () {
           return false;
         }
-      );
-    }
-    if (prewarmPromise) return prewarmPromise;
-
-    var scheduledAt = performanceNow();
-    var promise = new Promise(function (resolve) {
-      function startPrewarm(deadline) {
-        var schedulingSource =
-          deadline && typeof deadline.timeRemaining === "function" ? "idle" : "task";
-        emitMetric("lottery_runtime_prewarm_wait", scheduledAt, schedulingSource);
-        ensureLoaded().then(
-          function () {
-            resolve(true);
-          },
-          function () {
-            // Background prewarm is opportunistic. User-initiated preparation
-            // will surface an actionable error if the runtime is unavailable.
-            resolve(false);
-          }
-        );
-      }
-
-      if (typeof root.requestIdleCallback === "function") {
-        root.requestIdleCallback(startPrewarm, { timeout: 1200 });
-        return;
-      }
-      if (typeof root.setTimeout === "function") {
-        root.setTimeout(startPrewarm, 0);
-        return;
-      }
-      Promise.resolve().then(startPrewarm);
-    }).finally(function () {
-      if (prewarmPromise === promise) prewarmPromise = null;
-    });
+      )
+      .finally(function () {
+        if (prewarmPromise === promise) prewarmPromise = null;
+      });
     prewarmPromise = promise;
     return promise;
+  }
+
+  function prewarm() {
+    // The host calls prewarm as soon as the authenticated member card exposes
+    // an available reward. It now warms both runtime and authoritative Lottery
+    // workspace so later ticket/wheel interactions stay network-free.
+    return preloadSession();
   }
 
   function getPendingStorageKey() {
@@ -436,7 +477,6 @@
   function scheduleTicketLoadingCopy() {
     if (typeof root.setTimeout !== "function") return;
     root.setTimeout(function () {
-      if (realFacade) return;
       var documentValue = root.document;
       if (!documentValue || typeof documentValue.getElementById !== "function") {
         return;
@@ -444,15 +484,22 @@
       var dialog = documentValue.getElementById("member-ticket-dialog");
       var status = documentValue.getElementById("member-ticket-refresh-status");
       if (!dialog || !status || !isDialogOpen(dialog)) return;
-      dialog.setAttribute("aria-busy", "true");
-      status.textContent =
-        "正在載入抽獎元件並背景同步；選擇票券後會先完成準備，再開啟轉盤。";
-      status.dataset.tone = "loading";
+      dialog.setAttribute("aria-busy", "false");
+      status.textContent = sessionConfigResponse
+        ? "抽獎資料已於登入時載入，可直接選擇票券。"
+        : "登入時的抽獎資料尚未載入完成。";
+      status.dataset.tone = sessionConfigResponse ? "ready" : "warning";
     }, 0);
   }
 
   function configure(options) {
-    configuredOptions = options && typeof options === "object" ? options : {};
+    var sourceOptions = options && typeof options === "object" ? options : {};
+    rawRequest = typeof sourceOptions.request === "function" ? sourceOptions.request : null;
+    sessionConfigResponse = null;
+    sessionConfigPromise = null;
+    configuredOptions = Object.assign({}, sourceOptions, {
+      request: sessionRequest,
+    });
     if (realFacade) realFacade.configure(configuredOptions);
     return facade;
   }
@@ -460,8 +507,22 @@
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
     var preparationDialogShown = showTicketPreparing();
+    var sessionReady = sessionConfigResponse
+      ? Promise.resolve(true)
+      : prewarmPromise
+        ? prewarmPromise
+        : Promise.resolve(false);
 
-    return ensureLoaded()
+    return sessionReady
+      .then(function (ready) {
+        if (!ready || !sessionConfigResponse) {
+          throw createLoaderError(
+            "LOTTERY_SESSION_NOT_READY",
+            "登入時的抽獎資料尚未載入完成，請重新整理後再試。"
+          );
+        }
+        return ensureLoaded();
+      })
       .then(function (controller) {
         if (expectedOpenVersion !== openVersion) return false;
         return controller.prepareForOpen(ticket);
@@ -479,9 +540,6 @@
           closeTicketDialogForLottery();
         }
 
-        // controller.open() is deliberately local-only. Runtime, authoritative
-        // workspace/config, ticket validation, and Canvas preparation are all
-        // complete before the Lottery dialog is allowed to appear.
         return realFacade.open(ticket);
       })
       .catch(function (error) {
@@ -497,6 +555,7 @@
         ? configuredOptions.getCurrentCardSummary()
         : null;
     scheduleTicketLoadingCopy();
+    if (!sessionConfigResponse) return Promise.resolve(snapshot);
     ensureLoaded()
       .then(function (controller) {
         return controller.refreshTickets(options);
@@ -508,9 +567,18 @@
   }
 
   function restorePending() {
-    return ensureLoaded()
+    var sessionReady = sessionConfigResponse
+      ? Promise.resolve(true)
+      : prewarmPromise
+        ? prewarmPromise
+        : preloadSession();
+    return sessionReady
+      .then(function (ready) {
+        if (!ready || !sessionConfigResponse) return false;
+        return ensureLoaded();
+      })
       .then(function (controller) {
-        return controller.restorePending();
+        return controller ? controller.restorePending() : false;
       })
       .catch(function (error) {
         showLoaderError(error);
@@ -549,6 +617,7 @@
     configure: configure,
     ensureLoaded: ensureLoaded,
     prewarm: prewarm,
+    preloadSession: preloadSession,
     open: open,
     refreshTickets: refreshTickets,
     restorePending: restorePending,
