@@ -11,7 +11,7 @@ const html = read("client/index.html");
 const host = read("client/script.js");
 const loader = read("client/member-lottery-loader.js");
 
-test("member startup keeps wheel and internal lottery runtime off the initial HTML path", () => {
+test("member startup keeps wheel and internal lottery runtime off the unauthenticated HTML path", () => {
   assert.match(html, /src=["']member-lottery-loader\.js["']/);
   assert.doesNotMatch(html, /src=["']\.\.\/shared\/lottery-wheel\.js["']/);
   assert.doesNotMatch(html, /src=["']lottery\//);
@@ -19,7 +19,7 @@ test("member startup keeps wheel and internal lottery runtime off the initial HT
   assert.match(loader, /["']\.\.\/shared\/lottery-wheel\.js["']/);
 });
 
-test("host prewarms runtime only after a real member has at least one available reward", () => {
+test("host triggers Lottery session preload after an authenticated member has a usable reward", () => {
   const start = host.indexOf("function prewarmLotteryRuntime");
   const end = host.indexOf("function formatMemberCardDate", start);
   assert.notEqual(start, -1);
@@ -31,31 +31,33 @@ test("host prewarms runtime only after a real member has at least one available 
   assert.match(body, /Array\.isArray\(summary\.availableRewards\)/);
   assert.match(body, /summary\.availableRewards\.length\s*<\s*1/);
   assert.match(body, /MemberLotteryDialog\.prewarm\(\)/);
-  assert.doesNotMatch(body, /refreshTickets|getLotteryConfig|drawLottery|createRequestId|requestId/);
+  assert.doesNotMatch(body, /drawLottery|createRequestId|requestId/);
 });
 
-test("loader prewarm is runtime-only and preserves user-triggered authoritative refresh", () => {
-  const start = loader.indexOf("function prewarm()") ;
+test("loader prewarm now loads runtime plus one authoritative session workspace", () => {
+  const start = loader.indexOf("function loadSessionConfig()") ;
   const end = loader.indexOf("function getPendingStorageKey", start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const body = loader.slice(start, end);
 
   assert.match(body, /ensureLoaded\(\)/);
-  assert.match(body, /requestIdleCallback/);
-  assert.match(body, /setTimeout\(startPrewarm,\s*0\)/);
-  assert.doesNotMatch(body, /refreshTickets|getLotteryConfig|drawLottery|\brequestId\b/);
+  assert.match(body, /rawRequest\("getLotteryConfig", \{\}, undefined\)/);
+  assert.match(body, /sessionConfigResponse/);
+  assert.match(body, /controller\.refreshTickets\(\{ force: true \}\)/);
+  assert.match(body, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
+  assert.doesNotMatch(body, /drawLottery|createRequestId|\brequestId\b/);
 
   const refreshStart = loader.indexOf("function refreshTickets(options)");
   const refreshEnd = loader.indexOf("function restorePending", refreshStart);
   const refreshBody = loader.slice(refreshStart, refreshEnd);
-  assert.match(refreshBody, /ensureLoaded\(\)/);
-  assert.match(refreshBody, /controller\.refreshTickets\(options\)/);
+  assert.doesNotMatch(refreshBody, /rawRequest|getLotteryConfig/);
+  assert.match(refreshBody, /sessionConfigResponse/);
 });
 
 test("loader uses registry-first parallel definitions and an entry-last composition phase", () => {
   const start = loader.indexOf("function ensureLoaded()") ;
-  const end = loader.indexOf("function prewarm()", start);
+  const end = loader.indexOf("function sessionRequest", start);
   const body = loader.slice(start, end);
 
   assert.match(body, /loadScript\(REGISTRY_SOURCE\)/);
