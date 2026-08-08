@@ -124,7 +124,7 @@
           renderRotation(0);
         }
 
-        function prepare(lotteryValue) {
+        function prepareLottery(lotteryValue, resetRotation) {
           var startedAt = performanceNow();
           var lottery =
             lotteryValue && typeof lotteryValue === "object"
@@ -138,7 +138,7 @@
             );
           }
 
-          reset();
+          if (resetRotation) reset();
           draw(prizes);
           var sectorDegrees = 360 / prizes.length;
           var targets = Object.create(null);
@@ -157,6 +157,10 @@
           preparedConfigVersion = String(lottery.configVersion || "");
           emitMetric("wheel_prepare", startedAt);
           return true;
+        }
+
+        function prepare(lotteryValue) {
+          return prepareLottery(lotteryValue, true);
         }
 
         function startPendingSpin() {
@@ -197,7 +201,10 @@
             preparedConfigVersion !== configVersion ||
             preparedTargets[String(drawResult.prizeId || "")] == null
           ) {
-            prepare(lottery);
+            // An authoritative draw may return a newer config than the READY
+            // snapshot. Refresh the Canvas/target mapping without resetting the
+            // rotor so pending motion remains visually continuous.
+            prepareLottery(lottery, false);
           }
           var currentModulo = ((rotation % 360) + 360) % 360;
           var desiredModulo = preparedTargets[String(drawResult.prizeId || "")];
