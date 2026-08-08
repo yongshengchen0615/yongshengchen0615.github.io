@@ -62,6 +62,7 @@
           }
         });
 
+        preconnectGasOrigin(config.GAS_WEB_APP_URL);
         return Object.freeze(config);
       })
       .catch(function (error) {
@@ -71,6 +72,26 @@
           "無法讀取 config.json。請透過網站伺服器開啟頁面後再試。"
         );
       });
+  }
+
+  function preconnectGasOrigin(gasUrl) {
+    if (!isValidGasUrl(gasUrl) || !document || !document.head) return;
+
+    var origin = new URL(String(gasUrl).trim()).origin;
+    var selector = 'link[rel="preconnect"][href="' + origin + '"]';
+    if (
+      typeof document.querySelector === "function" &&
+      document.querySelector(selector)
+    ) {
+      return;
+    }
+
+    if (typeof document.createElement !== "function") return;
+    var link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    link.crossOrigin = "anonymous";
+    document.head.appendChild(link);
   }
 
   function sendRequest(options) {
