@@ -367,7 +367,7 @@
         return;
       }
       if (typeof root.setTimeout === "function") {
-        root.setTimeout(startPrewarm, 250);
+        root.setTimeout(startPrewarm, 0);
         return;
       }
       Promise.resolve().then(startPrewarm);
