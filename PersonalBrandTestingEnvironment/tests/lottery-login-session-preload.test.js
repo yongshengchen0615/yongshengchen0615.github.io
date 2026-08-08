@@ -14,12 +14,32 @@ const controllerSource = fs.readFileSync(
   "utf8"
 );
 
-test("authenticated member card prewarm loads runtime plus authoritative Lottery workspace", () => {
+test("authenticated member startup preloads runtime plus authoritative Lottery workspace", () => {
   assert.match(scriptSource, /MemberLotteryDialog\.prewarm\(\)/);
   assert.match(loaderSource, /function preloadSession\(\)/);
   assert.match(loaderSource, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
   assert.match(loaderSource, /rawRequest\("getLotteryConfig", \{\}, undefined\)/);
   assert.match(loaderSource, /lottery_session_preload/);
+});
+
+test("loader starts session preload when authentication appears even with zero rewards", () => {
+  assert.match(loaderSource, /function armAuthenticatedSessionPreload\(\)/);
+  assert.match(loaderSource, /function tryAuthenticatedSessionPreload\(\)/);
+  assert.match(loaderSource, /new root\.MutationObserver/);
+
+  const triggerMatch = loaderSource.match(
+    /function tryAuthenticatedSessionPreload\(\) \{([\s\S]*?)\n  \}\n\n  function armAuthenticatedSessionPreload/
+  );
+  assert.ok(triggerMatch, "authenticated preload trigger should be discoverable");
+  assert.match(triggerMatch[1], /currentMemberId\(\)/);
+  assert.match(triggerMatch[1], /preloadSession\(\)/);
+  assert.doesNotMatch(triggerMatch[1], /availableRewards|availableDraws/);
+
+  const configureMatch = loaderSource.match(
+    /function configure\(options\) \{([\s\S]*?)\n  \}\n\n  function open/
+  );
+  assert.ok(configureMatch, "loader configure implementation should be discoverable");
+  assert.match(configureMatch[1], /armAuthenticatedSessionPreload\(\)/);
 });
 
 test("post-login getLotteryConfig is served from a member-scoped in-memory session view", () => {
