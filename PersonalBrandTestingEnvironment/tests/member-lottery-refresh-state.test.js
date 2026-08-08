@@ -31,6 +31,7 @@ function createHarness() {
   };
   const controller = Object.freeze({
     configure() {},
+    prepareForOpen() {},
     open() {},
     refreshTickets() {},
     restorePending() {},
@@ -136,7 +137,7 @@ test("background loading reasserts truthful sync state after host releases ticke
   assert.equal(harness.dialog.getAttribute("aria-busy"), "true");
   assert.equal(
     harness.status.textContent,
-    "正在背景同步最新抽獎券；目前票券仍可直接選擇。"
+    "正在背景同步最新抽獎券；若現在選擇票券，會先完成轉盤準備再開啟。"
   );
   assert.equal(harness.status.dataset.tone, "loading");
 });
@@ -166,8 +167,9 @@ test("ready and error states settle aria-busy without disabling selection", () =
   });
   harness.runTimers();
   assert.equal(harness.dialog.getAttribute("aria-busy"), "false");
-  assert.match(harness.status.textContent, /仍可選擇/);
-  assert.match(harness.status.textContent, /再次安全驗證/);
+  assert.match(harness.status.textContent, /選擇票券後/);
+  assert.match(harness.status.textContent, /安全驗證/);
+  assert.match(harness.status.textContent, /再開啟轉盤/);
   assert.equal(harness.status.dataset.tone, "warning");
 });
 
