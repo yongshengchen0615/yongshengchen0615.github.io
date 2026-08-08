@@ -392,19 +392,20 @@ test("closing after login preload cancels queued preparation and local open dele
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
-test("module load failure during authenticated preload fails closed before any config or draw request", async () => {
+test("module load failure may overlap read-only config but never reaches a partial controller or draw", async () => {
   const harness = createHarness({ failSource: "lottery/draw-service.js" });
   const loader = harness.context.MemberLotteryDialog;
   let requestCalls = 0;
   configure(loader, {
-    request() {
+    request(action) {
+      assert.equal(action, "getLotteryConfig");
       requestCalls += 1;
       return Promise.resolve(configResponse());
     },
   });
 
   assert.equal(await loader.prewarm(), false);
-  assert.equal(requestCalls, 0);
+  assert.equal(requestCalls, 1);
   assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
   assert.equal(harness.counts().realConfigureCalls, 0);
