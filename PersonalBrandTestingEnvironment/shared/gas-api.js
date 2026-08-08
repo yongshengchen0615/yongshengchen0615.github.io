@@ -168,28 +168,23 @@
     }
 
     var startedAt = performanceNow();
-    return postWithFetch(gasUrl, request).then(
-      function (result) {
-        emitTransportMetric(startedAt, "fetch");
-        return result;
-      },
-      function (error) {
-        if (!shouldUseBridgeFallback(error)) {
-          emitTransportMetric(startedAt, "fetch-error");
+    var transportSource = "fetch";
+    return postWithFetch(gasUrl, request)
+      .catch(function (error) {
+        if (!shouldUseBridgeFallback(error)) throw error;
+        transportSource = "bridge";
+        return postWithBridge(gasUrl, request);
+      })
+      .then(
+        function (result) {
+          emitTransportMetric(startedAt, transportSource);
+          return result;
+        },
+        function (error) {
+          emitTransportMetric(startedAt, transportSource + "-error");
           throw error;
         }
-        return postWithBridge(gasUrl, request).then(
-          function (result) {
-            emitTransportMetric(startedAt, "bridge");
-            return result;
-          },
-          function (bridgeError) {
-            emitTransportMetric(startedAt, "bridge-error");
-            throw bridgeError;
-          }
-        );
-      }
-    );
+      );
   }
 
   function postWithFetch(gasUrl, request) {
