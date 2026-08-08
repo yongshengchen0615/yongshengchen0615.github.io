@@ -456,16 +456,19 @@
 
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
-    showLoaderPreparing(ticket);
+    var runtimeWasReady = Boolean(realFacade);
+    if (!runtimeWasReady) showLoaderPreparing(ticket);
     return ensureLoaded()
       .then(function (controller) {
         if (expectedOpenVersion !== openVersion) return false;
-        var documentValue = root.document;
-        var dialog =
-          documentValue && typeof documentValue.getElementById === "function"
-            ? documentValue.getElementById("member-lottery-dialog")
-            : null;
-        if (dialog && !isDialogOpen(dialog)) return false;
+        if (!runtimeWasReady) {
+          var documentValue = root.document;
+          var dialog =
+            documentValue && typeof documentValue.getElementById === "function"
+              ? documentValue.getElementById("member-lottery-dialog")
+              : null;
+          if (dialog && !isDialogOpen(dialog)) return false;
+        }
         return controller.open(ticket);
       })
       .catch(function (error) {
