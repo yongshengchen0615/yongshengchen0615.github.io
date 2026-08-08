@@ -528,8 +528,28 @@
           );
           updateControls();
 
-          Promise.resolve()
-            .then(performDraw)
+          var drawPromise;
+          var drawStarted = false;
+          try {
+            // DrawService / DemoProvider creates or reuses the persistent request ID
+            // synchronously before the network request is scheduled.
+            drawPromise = performDraw();
+            drawStarted = true;
+          } catch (error) {
+            drawPromise = Promise.reject(error);
+          }
+
+          if (drawStarted) {
+            try {
+              // This animation has no prize input. It only fills the unavoidable
+              // server-authoritative round-trip with immediate visual feedback.
+              animator.startPendingSpin();
+            } catch (_animationError) {
+              // Presentation failure must never cancel or duplicate an in-flight draw.
+            }
+          }
+
+          Promise.resolve(drawPromise)
             .then(function (response) {
               contracts.assertSuccessfulResponse(response);
               var result = mapper.normalizeDrawResult(
