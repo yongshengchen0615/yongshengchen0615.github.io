@@ -18,7 +18,7 @@ test("GAS scale diagnostics remain aggregate-only and read-only", () => {
   assert.doesNotMatch(source, /line_user_id|request_id|prize_label|claim_hash/i);
 });
 
-test("GAS scale diagnostic reports thresholds without exposing row values", () => {
+test("GAS scale diagnostic reports Lottery operation scan pressure without row values", () => {
   const rows = {
     Members: 101,
     PointRedemptions: 6001,
@@ -86,6 +86,33 @@ test("GAS scale diagnostic reports thresholds without exposing row values", () =
   assert.equal(byKey.lotteryDraws.risk, "critical");
   assert.equal(normalized.thresholds.warningRows, 5000);
   assert.equal(normalized.thresholds.criticalRows, 20000);
+
+  assert.ok(normalized.lotteryOperations);
+  assert.deepEqual(normalized.lotteryOperations.getLotteryConfig.scanMultipliers, {
+    members: 1,
+    pointRedemptions: 1,
+    pointCardSettings: 1,
+    lotteryTypes: 1,
+    lotteryPrizes: 1,
+    lotteryDraws: 1,
+  });
+  assert.deepEqual(normalized.lotteryOperations.drawLotterySuccessful.scanMultipliers, {
+    members: 1,
+    pointRedemptions: 3,
+    pointCardSettings: 3,
+    lotteryTypes: 1,
+    lotteryPrizes: 2,
+    lotteryDraws: 2,
+  });
+  assert.equal(
+    normalized.lotteryOperations.getLotteryConfig.estimatedReadCells,
+    normalized.estimatedReadCells.getLotteryConfig
+  );
+  assert.equal(
+    normalized.lotteryOperations.drawLotterySuccessful.estimatedReadCells >
+      normalized.lotteryOperations.getLotteryConfig.estimatedReadCells,
+    true
+  );
   assert.equal(normalized.recommendations.length >= 2, true);
   assert.equal(logged.length, 1);
   assert.doesNotMatch(logged[0], /MBR-|U[0-9a-f]{32}|request-/i);
