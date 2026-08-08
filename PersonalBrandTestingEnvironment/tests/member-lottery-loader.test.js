@@ -237,11 +237,12 @@ function createTicket() {
   };
 }
 
-test("loader keeps Lottery V2 and wheel off the initial execution path", async () => {
+test("unauthenticated loader keeps Lottery V2 and wheel off the initial execution path", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
-  configure(loader);
 
+  assert.deepEqual(harness.appendedSources, []);
+  configure(loader, { getMemberId: () => "" });
   assert.deepEqual(harness.appendedSources, []);
   assert.equal(harness.counts().realConfigureCalls, 0);
 
@@ -291,10 +292,10 @@ test("wheel and registry start together, definitions wait for registry, and entr
   assert.equal(harness.counts().realConfigureCalls, 1);
 });
 
-test("ticket refresh before login preload stays local and does not start Lottery I/O", async () => {
+test("ticket refresh before authentication stays local and does not start Lottery I/O", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
-  const summary = configure(loader);
+  const summary = configure(loader, { getMemberId: () => "" });
 
   const returned = await loader.refreshTickets({ force: true });
   assert.equal(returned, summary);
@@ -302,7 +303,7 @@ test("ticket refresh before login preload stays local and does not start Lottery
   assert.equal(harness.counts().realRefreshCalls, 0);
 });
 
-test("login prewarm single-flights runtime plus one authoritative config snapshot", async () => {
+test("authenticated configure single-flights runtime plus one authoritative config snapshot", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   let requestCalls = 0;
@@ -328,7 +329,7 @@ test("login prewarm single-flights runtime plus one authoritative config snapsho
   );
 });
 
-test("pending draw recovery can preload session state before delegating", async () => {
+test("pending draw recovery shares authenticated session preload before delegating", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -347,14 +348,15 @@ test("pending draw recovery can preload session state before delegating", async 
   );
 
   assert.equal(loader.hasPending(), true);
-  assert.deepEqual(harness.appendedSources, []);
+  assert.equal(await loader.prewarm(), true);
+  assert.equal(harness.appendedSources.length, 13);
   assert.equal(await loader.restorePending(), true);
   assert.equal(harness.counts().realRestoreCalls, 1);
   assert.equal(harness.counts().realConfigureCalls, 1);
   assert.equal(harness.counts().realRefreshCalls, 1);
 });
 
-test("opening after login preload prepares locally then delegates open", async () => {
+test("opening after authenticated preload prepares locally then delegates open", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -365,10 +367,10 @@ test("opening after login preload prepares locally then delegates open", async (
   assert.equal(harness.counts().realOpenCalls, 1);
 });
 
-test("opening before session preload fails closed without starting Lottery I/O", async () => {
+test("opening before authentication fails closed without starting Lottery I/O", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
-  configure(loader);
+  configure(loader, { getMemberId: () => "" });
 
   assert.equal(await loader.open(createTicket()), false);
   assert.equal(harness.appendedSources.length, 0);
@@ -390,7 +392,7 @@ test("closing after login preload cancels queued preparation and local open dele
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
-test("module load failure during login preload fails closed before any config or draw request", async () => {
+test("module load failure during authenticated preload fails closed before any config or draw request", async () => {
   const harness = createHarness({ failSource: "lottery/draw-service.js" });
   const loader = harness.context.MemberLotteryDialog;
   let requestCalls = 0;
