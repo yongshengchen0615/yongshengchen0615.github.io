@@ -14,7 +14,7 @@ const controllerSource = fs.readFileSync(
   "utf8"
 );
 
-test("authenticated member card prewarm now loads runtime plus authoritative Lottery workspace", () => {
+test("authenticated member card prewarm loads runtime plus authoritative Lottery workspace", () => {
   assert.match(scriptSource, /MemberLotteryDialog\.prewarm\(\)/);
   assert.match(loaderSource, /function preloadSession\(\)/);
   assert.match(loaderSource, /function prewarm\(\)[\s\S]*return preloadSession\(\)/);
@@ -22,28 +22,42 @@ test("authenticated member card prewarm now loads runtime plus authoritative Lot
   assert.match(loaderSource, /lottery_session_preload/);
 });
 
-test("post-login getLotteryConfig calls are served from the in-memory session snapshot", () => {
+test("post-login getLotteryConfig is served from a member-scoped in-memory session view", () => {
   const requestMatch = loaderSource.match(
     /function sessionRequest\(action, fields, requestId\) \{([\s\S]*?)\n  \}\n\n  function loadSessionConfig/
   );
   assert.ok(requestMatch, "sessionRequest implementation should be discoverable");
   assert.match(requestMatch[1], /action === "getLotteryConfig"/);
-  assert.match(requestMatch[1], /sessionConfigResponse/);
-  assert.match(requestMatch[1], /Promise\.resolve\(sessionConfigResponse\)/);
+  assert.match(requestMatch[1], /getSessionConfigView\(\)/);
   assert.match(requestMatch[1], /LOTTERY_SESSION_NOT_READY/);
+  assert.doesNotMatch(requestMatch[1], /rawRequest\("getLotteryConfig"/);
+
+  assert.match(loaderSource, /function currentMemberId\(\)/);
+  assert.match(loaderSource, /sessionMemberId/);
+  assert.match(loaderSource, /function getSessionConfigView\(\)/);
+  assert.match(loaderSource, /getCurrentCardSummary/);
+  assert.match(loaderSource, /getCurrentTotalPoints/);
 });
 
-test("ticket refresh after login cannot start another authoritative config request", () => {
+test("ticket refresh after login is purely local and cannot start runtime or config I/O", () => {
   const refreshMatch = loaderSource.match(
-    /function refreshTickets\(options\) \{([\s\S]*?)\n  \}\n\n  function restorePending/
+    /function refreshTickets\([^)]*\) \{([\s\S]*?)\n  \}\n\n  function restorePending/
   );
   assert.ok(refreshMatch, "refreshTickets implementation should be discoverable");
-  assert.doesNotMatch(refreshMatch[1], /rawRequest|getLotteryConfig/);
-  assert.match(refreshMatch[1], /sessionConfigResponse/);
+  assert.doesNotMatch(
+    refreshMatch[1],
+    /rawRequest|getLotteryConfig|ensureLoaded|controller\.refreshTickets/
+  );
+  assert.match(refreshMatch[1], /getCurrentCardSummary|currentCardSummary/);
 });
 
-test("formal draw stays in DrawService and bypasses the config snapshot", () => {
-  assert.match(loaderSource, /return rawRequest\(action, fields, requestId\)/);
+test("authoritative draw response advances the session snapshot without refetching config", () => {
+  assert.match(loaderSource, /function updateSessionConfigFromDraw\(response\)/);
+  assert.match(loaderSource, /action === "drawLottery"/);
+  assert.match(loaderSource, /updateSessionConfigFromDraw\(response\)/);
+  assert.match(loaderSource, /response\.data\.card/);
+  assert.match(loaderSource, /response\.data\.lotteryType/);
+
   assert.match(controllerSource, /function performDraw\(\)/);
   assert.match(controllerSource, /drawService\.draw\(selectedTicket\)/);
   const preloadMatch = loaderSource.match(
