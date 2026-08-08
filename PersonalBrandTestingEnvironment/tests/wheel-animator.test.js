@@ -90,6 +90,69 @@ test("reduced-motion settlement still aligns the winning sector", async () => {
   assert.equal(statuses.at(-1), "轉盤旋轉中，請稍候結果…");
 });
 
+test("pending spin starts without a prize and settles continuously after the authoritative result", async () => {
+  const factory = createFactory();
+  const rotor = { style: {} };
+  const frames = new Map();
+  let nextFrameId = 1;
+  const runtime = {
+    matchMedia() { return { matches: false }; },
+    setTimeout(callback) { callback(); },
+    requestAnimationFrame(callback) {
+      const id = nextFrameId++;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      frames.delete(id);
+    },
+  };
+  function runFrame(timestamp) {
+    const entry = frames.entries().next().value;
+    assert.ok(entry, `expected animation frame at ${timestamp}ms`);
+    const [id, callback] = entry;
+    frames.delete(id);
+    callback(timestamp);
+  }
+
+  const animator = factory.create({
+    root: runtime,
+    rotor,
+    canvas: {},
+    renderer: { draw() { return true; } },
+  });
+  const lottery = {
+    configVersion: "CFG-1",
+    prizes: [
+      { prizeId: "A" },
+      { prizeId: "B" },
+      { prizeId: "C" },
+      { prizeId: "D" },
+    ],
+  };
+
+  animator.prepare(lottery);
+  assert.equal(typeof animator.startPendingSpin, "function");
+  assert.equal(animator.startPendingSpin(), true);
+  runFrame(0);
+  runFrame(100);
+
+  const pendingRotation = animator.getRotation();
+  assert.ok(pendingRotation > 0, "pending spin should move before a prize exists");
+
+  const settlePromise = animator.settle({ prizeId: "B" }, lottery);
+  runFrame(100);
+  runFrame(1200);
+  runFrame(2300);
+  runFrame(3400);
+  await settlePromise;
+
+  const settledRotation = animator.getRotation();
+  assert.ok(settledRotation > pendingRotation, "settlement should continue from the pending rotation");
+  assert.equal(((settledRotation % 360) + 360) % 360, 225);
+  assert.equal(rotor.style.transform, `rotate(${settledRotation}deg)`);
+});
+
 test("renderer failure is surfaced as a wheel render error", () => {
   const factory = createFactory();
   const animator = factory.create({
