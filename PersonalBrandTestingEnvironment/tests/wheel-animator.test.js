@@ -153,6 +153,29 @@ test("pending spin starts without a prize and settles continuously after the aut
   assert.equal(rotor.style.transform, `rotate(${settledRotation}deg)`);
 });
 
+test("pending spin respects reduced motion and does not schedule continuous frames", () => {
+  const factory = createFactory();
+  let frameCalls = 0;
+  const animator = factory.create({
+    root: {
+      matchMedia() { return { matches: true }; },
+      setTimeout(callback) { callback(); },
+      requestAnimationFrame() {
+        frameCalls += 1;
+        return 1;
+      },
+      cancelAnimationFrame() {},
+    },
+    rotor: { style: {} },
+    canvas: {},
+    renderer: { draw() { return true; } },
+  });
+
+  assert.equal(animator.startPendingSpin(), false);
+  assert.equal(frameCalls, 0);
+  assert.equal(animator.getRotation(), 0);
+});
+
 test("renderer failure is surfaced as a wheel render error", () => {
   const factory = createFactory();
   const animator = factory.create({
