@@ -87,10 +87,11 @@ test("reduced-motion settlement still aligns the winning sector", async () => {
 
   assert.equal(animator.getRotation(), 1305);
   assert.equal(rotor.style.transform, "rotate(1305deg)");
+  assert.equal(rotor.style.willChange, "auto");
   assert.equal(statuses.at(-1), "轉盤旋轉中，請稍候結果…");
 });
 
-test("pending spin starts without a prize and settles continuously after the authoritative result", async () => {
+test("pending spin uses a compositing hint only while motion is active", async () => {
   const factory = createFactory();
   const rotor = { style: {} };
   const frames = new Map();
@@ -132,8 +133,10 @@ test("pending spin starts without a prize and settles continuously after the aut
   };
 
   animator.prepare(lottery);
+  assert.equal(rotor.style.willChange, "auto");
   assert.equal(typeof animator.startPendingSpin, "function");
   assert.equal(animator.startPendingSpin(), true);
+  assert.equal(rotor.style.willChange, "transform");
   runFrame(0);
   runFrame(100);
 
@@ -141,6 +144,7 @@ test("pending spin starts without a prize and settles continuously after the aut
   assert.ok(pendingRotation > 0, "pending spin should move before a prize exists");
 
   const settlePromise = animator.settle({ prizeId: "B" }, lottery);
+  assert.equal(rotor.style.willChange, "transform");
   runFrame(100);
   runFrame(1200);
   runFrame(2300);
@@ -151,6 +155,7 @@ test("pending spin starts without a prize and settles continuously after the aut
   assert.ok(settledRotation > pendingRotation, "settlement should continue from the pending rotation");
   assert.equal(((settledRotation % 360) + 360) % 360, 225);
   assert.equal(rotor.style.transform, `rotate(${settledRotation}deg)`);
+  assert.equal(rotor.style.willChange, "auto");
 });
 
 test("authoritative config changes redraw prizes without resetting pending rotation", async () => {
@@ -240,11 +245,13 @@ test("authoritative config changes redraw prizes without resetting pending rotat
   await settlePromise;
 
   assert.equal(((animator.getRotation() % 360) + 360) % 360, 135);
+  assert.equal(rotor.style.willChange, "auto");
 });
 
 test("pending spin respects reduced motion and does not schedule continuous frames", () => {
   const factory = createFactory();
   let frameCalls = 0;
+  const rotor = { style: {} };
   const animator = factory.create({
     root: {
       matchMedia() { return { matches: true }; },
@@ -255,7 +262,7 @@ test("pending spin respects reduced motion and does not schedule continuous fram
       },
       cancelAnimationFrame() {},
     },
-    rotor: { style: {} },
+    rotor,
     canvas: {},
     renderer: { draw() { return true; } },
   });
@@ -263,6 +270,7 @@ test("pending spin respects reduced motion and does not schedule continuous fram
   assert.equal(animator.startPendingSpin(), false);
   assert.equal(frameCalls, 0);
   assert.equal(animator.getRotation(), 0);
+  assert.equal(rotor.style.willChange, "auto");
 });
 
 test("renderer failure is surfaced as a wheel render error", () => {
