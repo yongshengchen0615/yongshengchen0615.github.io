@@ -21,12 +21,14 @@ on:
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/gas-api-performance.test.js"
       - "PersonalBrandTestingEnvironment/tests/gas-api-preconnect.test.js"
       - "PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-fallback.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-performance.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js"
@@ -67,12 +69,14 @@ on:
       - "PersonalBrandTestingEnvironment/docs/LOTTERY_READINESS_DIAGNOSTICS.md"
       - "PersonalBrandTestingEnvironment/tests/client-gas.test.js"
       - "PersonalBrandTestingEnvironment/tests/frontend-structure.test.js"
+      - "PersonalBrandTestingEnvironment/tests/gas-api-performance.test.js"
       - "PersonalBrandTestingEnvironment/tests/gas-api-preconnect.test.js"
       - "PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js"
       - "PersonalBrandTestingEnvironment/tests/module-registry.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-fallback.test.js"
+      - "PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-performance.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js"
       - "PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js"
@@ -145,12 +149,14 @@ jobs:
           node --test \
             PersonalBrandTestingEnvironment/tests/client-gas.test.js \
             PersonalBrandTestingEnvironment/tests/frontend-structure.test.js \
+            PersonalBrandTestingEnvironment/tests/gas-api-performance.test.js \
             PersonalBrandTestingEnvironment/tests/gas-api-preconnect.test.js \
             PersonalBrandTestingEnvironment/tests/gas-performance-diagnostics.test.js \
             PersonalBrandTestingEnvironment/tests/module-registry.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-loader.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-preload.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-fallback.test.js \
+            PersonalBrandTestingEnvironment/tests/member-lottery-prewarm-performance.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-refresh-state.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-runtime.test.js \
             PersonalBrandTestingEnvironment/tests/member-lottery-runtime-prewarm.test.js \
