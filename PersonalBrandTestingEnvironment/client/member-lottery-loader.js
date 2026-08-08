@@ -160,40 +160,47 @@
     };
   }
 
-  function showLoaderPreparing(ticket) {
+  function closeLoaderDialog() {
     var documentValue = root.document;
     if (!documentValue || typeof documentValue.getElementById !== "function") {
-      return;
+      return false;
     }
     var dialog = documentValue.getElementById("member-lottery-dialog");
-    var loading = documentValue.getElementById("member-lottery-loading-state");
-    var errorState = documentValue.getElementById("member-lottery-error-state");
-    var wheel = documentValue.getElementById("member-lottery-wheel-state");
-    var result = documentValue.getElementById("member-lottery-result-state");
-    var title = documentValue.getElementById("member-lottery-loading-title");
-    var message = documentValue.getElementById("member-lottery-loading-message");
-    var description = documentValue.getElementById(
-      "member-lottery-dialog-description"
-    );
-    var status = documentValue.getElementById("member-lottery-spin-status");
-    if (!dialog || !loading) return;
+    if (!isDialogOpen(dialog)) return false;
+    dialog.setAttribute("aria-busy", "false");
+    if (typeof dialog.close === "function" && dialog.open) {
+      try {
+        dialog.close();
+        return true;
+      } catch (_error) {
+        // Fall back to removing the open attribute below.
+      }
+    }
+    dialog.removeAttribute("open");
+    return true;
+  }
 
-    [errorState, wheel, result].forEach(function (section) {
-      if (section) section.hidden = true;
-    });
-    loading.hidden = false;
-    if (title) title.textContent = "正在載入轉盤元件";
-    if (message) {
-      message.textContent =
-        "先載入本次需要的轉盤程式；此階段不會使用抽獎券，也不會產生開獎結果。";
+  function showTicketPreparing() {
+    var documentValue = root.document;
+    if (!documentValue || typeof documentValue.getElementById !== "function") {
+      return false;
     }
-    if (description) {
-      description.textContent = "正在載入抽獎轉盤元件，尚未正式開獎。";
-    }
-    if (status) status.textContent = "正在載入轉盤元件…";
+    var dialog = documentValue.getElementById("member-ticket-dialog");
+    var status = documentValue.getElementById("member-ticket-refresh-status");
+    if (!dialog || !status) return false;
+
     dialog.setAttribute("aria-busy", "true");
-    dialog.removeAttribute("hidden");
+    status.textContent =
+      "正在準備轉盤：同步最新抽獎設定、確認票券並建立轉盤；完成後才會開啟。";
+    status.dataset.tone = "loading";
+    if (typeof dialog.querySelectorAll === "function") {
+      dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
+        button.disabled = true;
+      });
+    }
+
     if (!isDialogOpen(dialog)) {
+      dialog.removeAttribute("hidden");
       if (typeof dialog.showModal === "function") {
         try {
           dialog.showModal();
@@ -204,30 +211,15 @@
         dialog.setAttribute("open", "");
       }
     }
-
-    if (ticket) {
-      var detail = documentValue.getElementById("member-lottery-ticket-detail");
-      if (
-        detail &&
-        Number.isSafeInteger(Number(ticket.cardNumber)) &&
-        Number.isSafeInteger(Number(ticket.milestonePoints))
-      ) {
-        detail.textContent =
-          "第 " +
-          Number(ticket.cardNumber) +
-          " 張集點卡 · " +
-          Number(ticket.milestonePoints) +
-          " 點節點抽獎券";
-      }
-    }
+    return true;
   }
 
-  function closeLoaderDialog() {
+  function closeTicketDialogForLottery() {
     var documentValue = root.document;
     if (!documentValue || typeof documentValue.getElementById !== "function") {
       return false;
     }
-    var dialog = documentValue.getElementById("member-lottery-dialog");
+    var dialog = documentValue.getElementById("member-ticket-dialog");
     if (!isDialogOpen(dialog)) return false;
     dialog.setAttribute("aria-busy", "false");
     if (typeof dialog.close === "function" && dialog.open) {
@@ -252,8 +244,13 @@
     if (!dialog || !status || !isDialogOpen(dialog)) return;
     dialog.setAttribute("aria-busy", "false");
     status.textContent =
-      message || "抽獎元件暫時載入失敗；目前票券資料仍保留，請確認網路後再試。";
+      message || "轉盤準備失敗；目前票券資料仍保留，請確認網路後再試。";
     status.dataset.tone = "warning";
+    if (typeof dialog.querySelectorAll === "function") {
+      dialog.querySelectorAll(".lottery-ticket-button").forEach(function (button) {
+        button.disabled = false;
+      });
+    }
   }
 
   function showLoaderError(error) {
@@ -287,11 +284,13 @@
     if (
       !candidate ||
       candidate === facade ||
-      typeof candidate.configure !== "function"
+      typeof candidate.configure !== "function" ||
+      typeof candidate.prepareForOpen !== "function" ||
+      typeof candidate.open !== "function"
     ) {
       throw createLoaderError(
         "CLIENT_LIBRARY_ERROR",
-        "抽獎元件載入後沒有建立控制器，請重新整理後再試。"
+        "抽獎元件載入後沒有建立完整控制器，請重新整理後再試。"
       );
     }
     if (!configuredOptions) {
@@ -359,8 +358,8 @@
             resolve(true);
           },
           function () {
-            // Background prewarm is opportunistic. User-initiated open/refresh
-            // will surface an actionable error if the runtime is still unavailable.
+            // Background prewarm is opportunistic. User-initiated preparation
+            // will surface an actionable error if the runtime is unavailable.
             resolve(false);
           }
         );
@@ -447,7 +446,7 @@
       if (!dialog || !status || !isDialogOpen(dialog)) return;
       dialog.setAttribute("aria-busy", "true");
       status.textContent =
-        "正在載入抽獎元件並背景同步；目前票券仍可直接選擇。";
+        "正在載入抽獎元件並背景同步；選擇票券後會先完成準備，再開啟轉盤。";
       status.dataset.tone = "loading";
     }, 0);
   }
@@ -460,20 +459,30 @@
 
   function open(ticket) {
     var expectedOpenVersion = ++openVersion;
-    var runtimeWasReady = Boolean(realFacade);
-    if (!runtimeWasReady) showLoaderPreparing(ticket);
+    var preparationDialogShown = showTicketPreparing();
+
     return ensureLoaded()
       .then(function (controller) {
         if (expectedOpenVersion !== openVersion) return false;
-        if (!runtimeWasReady) {
+        return controller.prepareForOpen(ticket);
+      })
+      .then(function (prepared) {
+        if (!prepared || expectedOpenVersion !== openVersion) return false;
+
+        if (preparationDialogShown) {
           var documentValue = root.document;
-          var dialog =
+          var ticketDialog =
             documentValue && typeof documentValue.getElementById === "function"
-              ? documentValue.getElementById("member-lottery-dialog")
+              ? documentValue.getElementById("member-ticket-dialog")
               : null;
-          if (dialog && !isDialogOpen(dialog)) return false;
+          if (!isDialogOpen(ticketDialog)) return false;
+          closeTicketDialogForLottery();
         }
-        return controller.open(ticket);
+
+        // controller.open() is deliberately local-only. Runtime, authoritative
+        // workspace/config, ticket validation, and Canvas preparation are all
+        // complete before the Lottery dialog is allowed to appear.
+        return realFacade.open(ticket);
       })
       .catch(function (error) {
         if (expectedOpenVersion === openVersion) showLoaderError(error);
