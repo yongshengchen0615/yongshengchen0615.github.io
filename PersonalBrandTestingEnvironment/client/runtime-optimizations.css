@@ -1,5 +1,9 @@
 /* Progressive rendering optimizations layered after styles.css. */
 
+.member-lottery-rotor {
+  will-change: auto;
+}
+
 @supports (content-visibility: auto) {
   .data-control,
   .site-footer {
