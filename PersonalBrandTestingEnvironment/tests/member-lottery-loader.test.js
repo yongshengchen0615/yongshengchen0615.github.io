@@ -365,7 +365,7 @@ test("closing during lazy load prevents preparation and late real-controller ope
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
-test("closing after runtime prewarm invalidates a queued open before real-controller delegation", async () => {
+test("closing after runtime prewarm cancels preparation and local open delegation", async () => {
   const harness = createHarness();
   const loader = harness.context.MemberLotteryDialog;
   configure(loader);
@@ -374,7 +374,7 @@ test("closing after runtime prewarm invalidates a queued open before real-contro
   const opening = loader.open(createTicket());
   assert.equal(loader.requestClose({ returnToTickets: true }), true);
   assert.equal(await opening, false);
-  assert.equal(harness.counts().realPrepareCalls, 1);
+  assert.equal(harness.counts().realPrepareCalls, 0);
   assert.equal(harness.counts().realOpenCalls, 0);
 });
 
